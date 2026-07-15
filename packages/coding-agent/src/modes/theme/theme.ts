@@ -251,7 +251,7 @@ const UNICODE_SYMBOLS: SymbolMap = {
 	"status.disabled": "⦸",
 	"status.enabled": "●",
 	"status.running": "⟳",
-	"status.shadowed": "o",
+	"status.shadowed": "○",
 	"status.aborted": "⏹",
 	"status.done": "•",
 	// Navigation
