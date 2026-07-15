@@ -769,7 +769,7 @@ export class PlanReviewOverlay implements Component {
 		// accent bar `▎` on the current scrolled section, otherwise blank. The
 		// glyph keeps the cursor legible even where the selection background is
 		// subtle; the focused row also gets the full-row highlight.
-		const gutter = selected ? "›" : glow ? "▎" : " ";
+		const gutter = selected ? theme.nav.cursor : glow ? "▎" : " ";
 		const line = gutter + body;
 		if (selected) return theme.bg("selectedBg", theme.bold(fit(line, width)));
 		if (glow) return theme.fg("accent", line);

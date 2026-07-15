@@ -130,7 +130,7 @@ export class CopySelectorComponent implements Component {
 			for (let l = 0; l < node.depth - 1; l++) prefix += gutterCells(node.ancestorHasNext[l]!);
 			if (node.depth > 0) prefix += connectorCells(node.isLast ? theme.tree.last : theme.tree.branch);
 
-			const cursor = isSelected ? "> " : "  ";
+			const cursor = isSelected ? `${theme.nav.cursor} ` : "  ";
 			const hint = target.hint ?? "";
 			const hintWidth = hint ? visibleWidth(hint) + 2 : 0;
 			const used = visibleWidth(cursor) + visibleWidth(prefix);

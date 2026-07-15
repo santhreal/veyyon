@@ -218,9 +218,9 @@ export async function directoryExists(dir: string): Promise<boolean> {
 	}
 }
 
-/** Get the config directory name relative to home (e.g. ".veyyon" or PI_CONFIG_DIR override). */
+/** Get the config directory name relative to home (e.g. ".veyyon" or VEYYON_CONFIG_DIR / PI_CONFIG_DIR override). */
 export function getConfigDirName(): string {
-	return process.env.PI_CONFIG_DIR || CONFIG_DIR_NAME;
+	return pickProcessEnv("VEYYON_CONFIG_DIR", "OMP_CONFIG_DIR", "PI_CONFIG_DIR") || CONFIG_DIR_NAME;
 }
 
 /** Get the config agent directory name relative to home (e.g. ".omp/agent" or PI_CONFIG_DIR + "/agent"). */

@@ -4,10 +4,9 @@
  * into a single self-contained script (React included, CSS inlined) for
  * embedding in coding-agent HTML session exports.
  *
- * Source: src/export/html/tool-render/ (rehomed from the trimmed collab-web app;
- * the HTML export owns these renderers).
+ * Source: `@veyyon/tool-render` + local `src/export/html/tool-render/{element,standalone}.tsx`.
  * Output: src/export/html/tool-views.generated.js
- * Run via `bun run gen:tool-views` after changing src/export/html/tool-render/.
+ * Run via `bun run gen:tool-views` after changing packages/tool-render or the local host shells.
  */
 import * as path from "node:path";
 

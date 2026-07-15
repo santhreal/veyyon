@@ -14,9 +14,12 @@ active profile is selected by its own variable:
 
 | Variable | Purpose |
 | --- | --- |
-| `PI_CONFIG_DIR` | Overrides the config directory **name** under `$HOME` (default `.veyyon`). Does not accept a full path. |
-| `PI_CODING_AGENT_DIR` | Full override for the agent directory (default `~/<PI_CONFIG_DIR or .veyyon>/agent`). |
+| `VEYYON_CONFIG_DIR` | Overrides the config directory **name** under `$HOME` (default `.veyyon`). Does not accept a full path. Legacy aliases `OMP_CONFIG_DIR` and `PI_CONFIG_DIR` are still accepted (first set wins: Veyyon → OMP → PI). |
+| `PI_CODING_AGENT_DIR` | Full override for the agent directory (default `~/<config-dir-name>/agent`). |
 | `VEYYON_PROFILE` | Selects the active named profile (`~/.veyyon/profiles/<name>/agent`). Legacy aliases `OMP_PROFILE` and `PI_PROFILE` are still accepted. |
+| `VEYYON_PACKAGE_DIR` | Override package directory for bundled assets (Nix/Guix). Legacy `OMP_PACKAGE_DIR` / `PI_PACKAGE_DIR`. |
+| `VEYYON_NO_PTY` | Set to `1` to disable PTY-based interactive bash. Legacy `OMP_NO_PTY` / `PI_NO_PTY`. |
+| `VEYYON_NO_TITLE` | Set to disable auto terminal-title updates. Legacy `OMP_NO_TITLE` / `PI_NO_TITLE`. |
 
 On Linux, `veyyon config init-xdg` migrates state under `$XDG_DATA_HOME`/`$XDG_STATE_HOME`/`$XDG_CACHE_HOME`
 when those are set; unmigrated installs stay under `~/.veyyon`. See

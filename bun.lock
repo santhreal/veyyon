@@ -96,6 +96,7 @@
         "@veyyon/pi-utils": "catalog:",
         "@veyyon/pi-wire": "catalog:",
         "@veyyon/snapcompact": "catalog:",
+        "@veyyon/tool-render": "catalog:",
         "@xterm/headless": "catalog:",
         "arktype": "catalog:",
         "chalk": "catalog:",
@@ -131,6 +132,7 @@
       "version": "16.3.6",
       "dependencies": {
         "@veyyon/pi-wire": "catalog:",
+        "@veyyon/tool-render": "catalog:",
         "lucide-react": "catalog:",
         "marked": "catalog:",
         "react": "catalog:",
@@ -274,6 +276,23 @@
         "@veyyon/pi-coding-agent": "^16",
       },
     },
+    "packages/tool-render": {
+      "name": "@veyyon/tool-render",
+      "version": "16.5.2",
+      "dependencies": {
+        "@veyyon/pi-utils": "catalog:",
+        "@veyyon/pi-wire": "catalog:",
+        "react": "catalog:",
+      },
+      "devDependencies": {
+        "@types/bun": "catalog:",
+        "@types/react": "catalog:",
+      },
+      "peerDependencies": {
+        "react": "catalog:",
+        "react-dom": "catalog:",
+      },
+    },
     "packages/tui": {
       "name": "@veyyon/pi-tui",
       "version": "16.5.2",
@@ -399,6 +418,7 @@
     "@veyyon/pi-wire": "16.5.2",
     "@veyyon/snapcompact": "16.5.2",
     "@veyyon/swarm-extension": "16.5.2",
+    "@veyyon/tool-render": "16.5.2",
     "@xterm/headless": "^6.0.0",
     "arktype": "2.2.3",
     "chalk": "^5.6.2",
@@ -1002,6 +1022,8 @@
     "@veyyon/snapcompact": ["@veyyon/snapcompact@workspace:packages/snapcompact"],
 
     "@veyyon/swarm-extension": ["@veyyon/swarm-extension@workspace:packages/swarm-extension"],
+
+    "@veyyon/tool-render": ["@veyyon/tool-render@workspace:packages/tool-render"],
 
     "@veyyon/typescript-edit-benchmark": ["@veyyon/typescript-edit-benchmark@workspace:packages/typescript-edit-benchmark"],
 

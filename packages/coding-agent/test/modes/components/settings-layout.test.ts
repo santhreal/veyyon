@@ -85,42 +85,60 @@ describe("settings layout", () => {
 		expect(SETTINGS_SCHEMA.personality.ui.options).toBe("runtime");
 	});
 
-	it("keeps advanced snapcompact shapes schema-only (not in the lean settings UI)", () => {
-		const def = getSettingsForTab("appearance")
-			.concat(getSettingsForTab("model"))
-			.concat(getSettingsForTab("editor"))
-			.concat(getSettingsForTab("privacy"))
-			.concat(getSettingsForTab("advanced"))
-			.find(def => def.path === "snapcompact.shape");
-
-		expect(def).toBeUndefined();
+	it("exposes snapcompact.shape under context Experimental", () => {
+		const def = getSettingsForTab("context").find(item => item.path === "snapcompact.shape");
+		expect(def).toMatchObject({
+			path: "snapcompact.shape",
+			tab: "context",
+			group: "Experimental",
+			label: "Snapcompact Shape",
+		});
 		expect(SETTINGS_SCHEMA["snapcompact.shape"].values).toContain("silver16-bw");
 	});
 
-	it("keeps advisor sub-settings schema-only in the lean settings UI", () => {
+	it("exposes advisor sub-settings under the model Advisor group", () => {
 		const advisorDependentPaths: SettingPath[] = ["advisor.subagents", "advisor.syncBacklog", "advisor.immuneTurns"];
-		const visible = SETTING_TABS.flatMap(tab => getSettingsForTab(tab));
 		for (const path of advisorDependentPaths) {
-			expect(visible.some(def => def.path === path)).toBe(false);
+			const def = getSettingsForTab("model").find(item => item.path === path);
+			expect(def).toMatchObject({
+				path,
+				tab: "model",
+				group: "Advisor",
+			});
 		}
 	});
 
-	it("keeps provider request limits schema-only in the lean settings UI", () => {
-		const visible = SETTING_TABS.flatMap(tab => getSettingsForTab(tab));
-		expect(visible.some(def => def.path === "providers.maxInFlightRequests")).toBe(false);
+	it("exposes provider request limits on the providers Services group", () => {
+		const def = getSettingsForTab("providers").find(item => item.path === "providers.maxInFlightRequests");
+		expect(def).toMatchObject({
+			path: "providers.maxInFlightRequests",
+			tab: "providers",
+			group: "Services",
+			label: "Max In-Flight Requests",
+		});
 	});
 
-	it("keeps retry fallback chains schema-only in the lean settings UI", () => {
-		const visible = SETTING_TABS.flatMap(tab => getSettingsForTab(tab));
-		expect(visible.some(def => def.path === "retry.fallbackChains")).toBe(false);
+	it("exposes retry fallback chains on the model Retry & Fallback group", () => {
+		const def = getSettingsForTab("model").find(item => item.path === "retry.fallbackChains");
+		expect(def).toMatchObject({
+			path: "retry.fallbackChains",
+			tab: "model",
+			group: "Retry & Fallback",
+			label: "Retry Fallback Chains",
+		});
 	});
 
-	it("keeps ask.enabled schema-only in the lean settings UI", () => {
-		const visible = SETTING_TABS.flatMap(tab => getSettingsForTab(tab));
-		expect(visible.some(def => def.path === "ask.enabled")).toBe(false);
+	it("exposes ask.enabled on the tools Available Tools group", () => {
+		const def = getSettingsForTab("tools").find(item => item.path === "ask.enabled");
+		expect(def).toMatchObject({
+			path: "ask.enabled",
+			tab: "tools",
+			group: "Available Tools",
+			label: "Ask",
+		});
 	});
 
-	it("exposes core model thinking controls in the lean model tab", () => {
+	it("exposes core model thinking controls in the model tab", () => {
 		const def = getSettingsForTab("model").find(item => item.path === "defaultThinkingLevel");
 		expect(def).toMatchObject({
 			path: "defaultThinkingLevel",
@@ -129,12 +147,17 @@ describe("settings layout", () => {
 		});
 	});
 
-	it("exposes privacy notifications in the lean privacy tab", () => {
-		const def = getSettingsForTab("privacy").find(item => item.path === "completion.notify");
+	it("exposes completion notifications on the interaction Notifications group", () => {
+		const def = getSettingsForTab("interaction").find(item => item.path === "completion.notify");
 		expect(def).toMatchObject({
 			path: "completion.notify",
-			tab: "privacy",
+			tab: "interaction",
 			group: "Notifications",
 		});
+	});
+
+	it("exposes Privacy as a providers tab group (no standalone privacy tab)", () => {
+		expect(SETTING_TABS).not.toContain("privacy");
+		expect(TAB_GROUPS.providers).toContain("Privacy");
 	});
 });

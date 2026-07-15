@@ -377,11 +377,13 @@ export function getExtraHelpText(): string {
   OMP_PROFILE                 - Named profile for isolated agent state (same as --profile)
   Use \`veyyon --profile <name> --alias <command>\` to create a shell shortcut for a profile
   PI_CODING_AGENT_DIR        - Session storage directory (default: ~/${CONFIG_DIR_NAME}/agent)
-  PI_PACKAGE_DIR             - Override package directory (for Nix/Guix store paths)
+  VEYYON_PACKAGE_DIR         - Override package directory (for Nix/Guix store paths)
+  PI_PACKAGE_DIR             - Legacy alias for VEYYON_PACKAGE_DIR
   PI_SMOL_MODEL              - Override smol/fast model (see --smol)
   PI_SLOW_MODEL              - Override slow/reasoning model (see --slow)
   PI_PLAN_MODEL              - Override planning model (see --plan)
-  PI_NO_PTY                  - Disable PTY-based interactive bash execution
+  VEYYON_NO_PTY              - Disable PTY-based interactive bash execution
+  PI_NO_PTY                  - Legacy alias for VEYYON_NO_PTY
   For complete environment variable reference, see:
   ${chalk.dim("docs/environment-variables.md")}
 ${chalk.bold("Available Tools (default-enabled unless noted):")}

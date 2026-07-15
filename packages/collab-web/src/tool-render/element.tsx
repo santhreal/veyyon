@@ -1,6 +1,7 @@
 /**
- * `<omp-tool-view>` — web-component wrapper around ToolView for non-React
- * hosts (the exported-session HTML page).
+ * `<vey-tool-view>` — web-component wrapper around ToolView for non-React
+ * hosts (the exported-session HTML page). Local host shell; shared chrome/tools
+ * live in `@veyyon/tool-render`.
  *
  * Payload sources, in priority order:
  * 1. `el.data = {...}` property assignment.
@@ -13,11 +14,11 @@
  */
 import type { Root } from "react-dom/client";
 import { createRoot } from "react-dom/client";
-import { ToolView, type ToolViewProps } from "./ToolView";
+import { ToolView, type ToolViewProps } from "@veyyon/tool-render";
 
 type PayloadStore = { get(key: string): ToolViewProps | undefined };
 
-export class OmpToolViewElement extends HTMLElement {
+export class VeyToolViewElement extends HTMLElement {
 	#root: Root | null = null;
 	#data: ToolViewProps | null = null;
 
@@ -66,6 +67,6 @@ export class OmpToolViewElement extends HTMLElement {
 	}
 }
 
-export function defineToolViewElement(tag = "omp-tool-view"): void {
-	if (!customElements.get(tag)) customElements.define(tag, OmpToolViewElement);
+export function defineToolViewElement(tag = "vey-tool-view"): void {
+	if (!customElements.get(tag)) customElements.define(tag, VeyToolViewElement);
 }

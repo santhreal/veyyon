@@ -1,6 +1,6 @@
+/**
+ * Local host shell for HTML session export. Shared renderers live in `@veyyon/tool-render`.
+ */
+export * from "@veyyon/tool-render";
 export * from "./element";
-export * from "./parts";
-export * from "./registry";
-export * from "./ToolView";
-export * from "./types";
-export * from "./util";
+export * from "./standalone";

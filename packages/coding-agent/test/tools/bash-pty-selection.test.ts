@@ -3,6 +3,8 @@ import { canUseInteractiveBashPty } from "@veyyon/pi-coding-agent/tools/bash-pty
 
 const originalPlatform = process.platform;
 const originalNoPty = Bun.env.PI_NO_PTY;
+const originalVeyyonNoPty = Bun.env.VEYYON_NO_PTY;
+const originalOmpNoPty = Bun.env.OMP_NO_PTY;
 
 function setPlatform(platform: NodeJS.Platform): void {
 	Object.defineProperty(process, "platform", {
@@ -20,12 +22,16 @@ function restorePlatform(): void {
 	});
 }
 
-function setNoPty(value: string | undefined): void {
-	if (value === undefined) {
-		delete Bun.env.PI_NO_PTY;
-		return;
-	}
-	Bun.env.PI_NO_PTY = value;
+function clearNoPtyAliases(): void {
+	delete Bun.env.PI_NO_PTY;
+	delete Bun.env.VEYYON_NO_PTY;
+	delete Bun.env.OMP_NO_PTY;
+}
+
+function setNoPty(value: string | undefined, key: "PI_NO_PTY" | "VEYYON_NO_PTY" | "OMP_NO_PTY" = "PI_NO_PTY"): void {
+	clearNoPtyAliases();
+	if (value === undefined) return;
+	Bun.env[key] = value;
 }
 
 function interactiveContext() {
@@ -35,7 +41,10 @@ function interactiveContext() {
 describe("bash PTY selection", () => {
 	afterEach(() => {
 		restorePlatform();
-		setNoPty(originalNoPty);
+		clearNoPtyAliases();
+		if (originalNoPty !== undefined) Bun.env.PI_NO_PTY = originalNoPty;
+		if (originalVeyyonNoPty !== undefined) Bun.env.VEYYON_NO_PTY = originalVeyyonNoPty;
+		if (originalOmpNoPty !== undefined) Bun.env.OMP_NO_PTY = originalOmpNoPty;
 	});
 
 	it("allows interactive PTY on Windows when requested with UI", () => {
@@ -54,6 +63,12 @@ describe("bash PTY selection", () => {
 		expect(canUseInteractiveBashPty(true, undefined)).toBe(false);
 
 		setNoPty("1");
+		expect(canUseInteractiveBashPty(true, interactiveContext())).toBe(false);
+	});
+
+	it("disables interactive PTY when VEYYON_NO_PTY=1", () => {
+		setPlatform("linux");
+		setNoPty("1", "VEYYON_NO_PTY");
 		expect(canUseInteractiveBashPty(true, interactiveContext())).toBe(false);
 	});
 

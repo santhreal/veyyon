@@ -41,8 +41,9 @@ export function walkUpForPackageDir(startDir: string): string | undefined {
 /**
  * Get the base directory for resolving optional package assets (docs, examples, CHANGELOG.md).
  *
- * Honors the `PI_PACKAGE_DIR` override (useful for Nix/Guix store paths);
- * otherwise walks up from `import.meta.dir` looking for a `package.json`.
+ * Honors `VEYYON_PACKAGE_DIR` (preferred), then legacy `OMP_PACKAGE_DIR` /
+ * `PI_PACKAGE_DIR` (useful for Nix/Guix store paths); otherwise walks up from
+ * `import.meta.dir` looking for a `package.json`.
  * Returns `undefined` when no owning package is locatable — notably inside
  * `bun --compile` binaries where `import.meta.dir` resolves to `/$bunfs/root`
  * and the walk hits the filesystem root with nothing found.
@@ -53,7 +54,8 @@ export function walkUpForPackageDir(startDir: string): string | undefined {
  * project's `CHANGELOG.md` rendered as omp's startup changelog).
  */
 export function getPackageDir(): string | undefined {
-	const envDir = process.env.PI_PACKAGE_DIR;
+	const envDir =
+		process.env.VEYYON_PACKAGE_DIR ?? process.env.OMP_PACKAGE_DIR ?? process.env.PI_PACKAGE_DIR;
 	if (envDir) {
 		return expandTilde(envDir);
 	}
