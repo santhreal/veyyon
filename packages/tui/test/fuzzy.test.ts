@@ -1,6 +1,6 @@
 import { Glob } from "bun";
 import { describe, expect, it } from "bun:test";
-import { fuzzyFilter, fuzzyMatch, isSubsequenceMatch } from "@veyyon/pi-tui/fuzzy";
+import { fuzzyFilter, fuzzyMatch, isSubsequenceMatch, subsequenceScore } from "@veyyon/pi-tui/fuzzy";
 
 describe("fuzzyFilter", () => {
 	it("does not satisfy long tokens by scattering letters across unrelated words", () => {
@@ -76,5 +76,36 @@ describe("isSubsequenceMatch", () => {
 		}
 		expect(subsequenceDefs).toEqual(["tui/src/fuzzy.ts"]);
 		expect(booleanFuzzyMatchDefs).toEqual([]);
+	});
+});
+
+describe("subsequenceScore", () => {
+	it("ranks exact > prefix > substring > gapped subsequence, 0 for non-match", () => {
+		expect(subsequenceScore("", "anything")).toBe(1);
+		expect(subsequenceScore("plan", "plan")).toBe(100);
+		expect(subsequenceScore("pl", "plan")).toBe(80); // prefix
+		expect(subsequenceScore("an", "plan")).toBe(60); // substring
+		// gapped subsequence: p..a..n hits with gaps -> 40 minus 5 per gap.
+		expect(subsequenceScore("pn", "plan")).toBe(35);
+		expect(subsequenceScore("zz", "plan")).toBe(0);
+	});
+
+	// ONE-PLACE lock: the same score() was hand-rolled in all three autocomplete
+	// files. It now lives only in fuzzy.ts.
+	it("is defined in exactly one source file", async () => {
+		const root = `${import.meta.dir}/../..`;
+		const defs: string[] = [];
+		for (const pkg of ["tui/src", "coding-agent/src"]) {
+			const glob = new Glob("**/*.ts");
+			for await (const rel of glob.scan({ cwd: `${root}/${pkg}` })) {
+				const src = await Bun.file(`${root}/${pkg}/${rel}`).text();
+				if (/function\s+subsequenceScore\b/.test(src)) defs.push(`${pkg}/${rel}`);
+				// The old local copies were named `fuzzyScore(query, target): number`.
+				if (/function\s+fuzzyScore\s*\(\s*query:\s*string,\s*target:\s*string\s*\):\s*number/.test(src)) {
+					defs.push(`STRAY:${pkg}/${rel}`);
+				}
+			}
+		}
+		expect(defs).toEqual(["tui/src/fuzzy.ts"]);
 	});
 });

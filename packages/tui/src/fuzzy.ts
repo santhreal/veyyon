@@ -338,6 +338,33 @@ export function isSubsequenceMatch(query: string, target: string): boolean {
 }
 
 /**
+ * Rank quality of a subsequence match, higher is better: exact (100) > prefix
+ * (80) > substring (60) > scattered subsequence (40 minus 5 per gap, floored at
+ * 1); 0 when `query` is not a subsequence of `target`, 1 for an empty query.
+ * The lightweight scorer the autocomplete filters sort by after
+ * {@link isSubsequenceMatch} gates candidates in; callers lowercase both sides
+ * first for case-insensitive ranking.
+ */
+export function subsequenceScore(query: string, target: string): number {
+	if (query.length === 0) return 1;
+	if (target === query) return 100;
+	if (target.startsWith(query)) return 80;
+	if (target.includes(query)) return 60;
+	let qi = 0;
+	let gaps = 0;
+	let lastMatchIdx = -1;
+	for (let ti = 0; ti < target.length && qi < query.length; ti++) {
+		if (query[qi] === target[ti]) {
+			if (lastMatchIdx >= 0 && ti - lastMatchIdx > 1) gaps++;
+			lastMatchIdx = ti;
+			qi++;
+		}
+	}
+	if (qi !== query.length) return 0;
+	return Math.max(1, 40 - gaps * 5);
+}
+
+/**
  * A text prepared once for repeated fuzzy matching.
  *
  * `fuzzyMatch` builds a search index per call; the module cache only admits

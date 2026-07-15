@@ -3,7 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { fuzzyFind } from "@veyyon/pi-natives";
 import { getProjectDir } from "@veyyon/pi-utils";
-import { isSubsequenceMatch } from "./fuzzy";
+import { isSubsequenceMatch, subsequenceScore } from "./fuzzy";
 
 const PATH_DELIMITERS = new Set([" ", "\t", '"', "'", "="]);
 
@@ -125,34 +125,6 @@ function buildCompletionValue(
 	return `${openQuote}${path}${closeQuote}`;
 }
 
-/**
- * Score a fuzzy match. Higher = better match.
- * Prioritizes: exact match > starts-with > contains > subsequence
- */
-function fuzzyScore(query: string, target: string): number {
-	if (query.length === 0) return 1;
-	if (target === query) return 100;
-	if (target.startsWith(query)) return 80;
-	if (target.includes(query)) return 60;
-
-	// Subsequence match - score by how "tight" the match is
-	// (fewer gaps between matched characters = higher score)
-	let qi = 0;
-	let gaps = 0;
-	let lastMatchIdx = -1;
-	for (let ti = 0; ti < target.length && qi < query.length; ti++) {
-		if (query[qi] === target[ti]) {
-			if (lastMatchIdx >= 0 && ti - lastMatchIdx > 1) gaps++;
-			lastMatchIdx = ti;
-			qi++;
-		}
-	}
-	if (qi !== query.length) return 0;
-
-	// Base score 40 for subsequence, minus penalty for gaps
-	return Math.max(1, 40 - gaps * 5);
-}
-
 export interface AutocompleteItem {
 	value: string;
 	label: string;
@@ -270,7 +242,7 @@ export function scoreCommandTextMatch(lowerPrefix: string, lowerTarget: string):
 	// name first (e.g. `/set` → `setup` above `settings`), silently changing the
 	// command that the sync-completion path applies on Enter.
 	if (lowerTarget.startsWith(lowerPrefix)) return 900;
-	return isSubsequenceMatch(lowerPrefix, lowerTarget) ? fuzzyScore(lowerPrefix, lowerTarget) : 0;
+	return isSubsequenceMatch(lowerPrefix, lowerTarget) ? subsequenceScore(lowerPrefix, lowerTarget) : 0;
 }
 
 function buildSlashCommandCompletions(commands: CommandEntry[], lowerPrefix: string): AutocompleteItem[] {
@@ -300,7 +272,7 @@ function buildSlashCommandCompletions(commands: CommandEntry[], lowerPrefix: str
 				lowerPrefix.length === 0 && isSkillCommand ? 950 : scoreCommandTextMatch(lowerPrefix, name.toLowerCase());
 			const lowerDesc = staticDesc.toLowerCase();
 			const descScore =
-				lowerDesc && isSubsequenceMatch(lowerPrefix, lowerDesc) ? fuzzyScore(lowerPrefix, lowerDesc) * 0.5 : 0;
+				lowerDesc && isSubsequenceMatch(lowerPrefix, lowerDesc) ? subsequenceScore(lowerPrefix, lowerDesc) * 0.5 : 0;
 			const primaryScore = Math.max(nameScore, descScore);
 			if (primaryScore > 0) {
 				const fullDesc = resolveFullDesc();
