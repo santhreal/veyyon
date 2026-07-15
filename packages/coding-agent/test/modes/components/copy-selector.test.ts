@@ -77,7 +77,7 @@ describe("CopySelectorComponent", () => {
 
 	it("renders an outlined tree with code blocks nested under their message", () => {
 		const out = render(new CopySelectorComponent(makeRoots(), { onPick: vi.fn(), onCancel: vi.fn() }));
-		expect(out).toContain(theme.boxRound.topLeft);
+		expect(out).toContain(theme.boxSharp.topLeft);
 		expect(out).toContain("│");
 		expect(out).toContain("Copy to clipboard");
 		// Messages and their nested blocks are all visible (always expanded),
