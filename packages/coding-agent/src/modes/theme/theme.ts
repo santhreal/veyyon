@@ -1550,6 +1550,18 @@ export class Theme {
 	}
 
 	/**
+	 * Get the resolved CSS hex string for a background theme color (the
+	 * background-key counterpart to {@link getColorHex}). Backgrounds are
+	 * pre-resolved at construction, so a default-terminal background surfaces as
+	 * the theme's resolved default rather than the raw "".
+	 */
+	getBgColorHex(color: ThemeBg): string {
+		const hex = this.#hexBgColors[color];
+		if (hex === undefined) throw new Error(`Unknown theme background color: ${color}`);
+		return hex;
+	}
+
+	/**
 	 * Get all foreground and background theme colors as CSS hex strings.
 	 * Skips colors resolved to the default terminal color (unstyled).
 	 */
