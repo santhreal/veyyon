@@ -82,9 +82,9 @@ describe("launchToolRenderer", () => {
 		expect(rendered.some(line => line.includes("line one"))).toBe(true);
 		expect(rendered.some(line => line.includes("line two"))).toBe(true);
 		expect(rendered.some(line => line.includes("[web: running"))).toBe(false);
-		expect(rendered[0]).toContain("╭");
+		expect(rendered[0]).toContain("┌");
 		expect(rendered.some(line => line.includes("Output"))).toBe(true);
-		expect(rendered.at(-1)).toContain("╰");
+		expect(rendered.at(-1)).toContain("└");
 	});
 
 	it("replays terminal screen rows so cursor rewrites retain their final color and weight", async () => {
