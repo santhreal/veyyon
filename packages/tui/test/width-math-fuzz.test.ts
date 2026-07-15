@@ -182,4 +182,45 @@ describe("width-math fuzz invariants", () => {
 			}
 		}
 	});
+
+	it("wrapTextWithAnsi keeps each line within the width on realistic content", () => {
+		// A wrapped line wider than the target makes the terminal wrap it AGAIN,
+		// corrupting the frame's row accounting. The only unavoidable overflow is a
+		// single unbreakable token wider than the whole width; excluding a stray
+		// space so tokens stay atomic, every produced line must fit. Uses the agreed
+		// width surface (see SAFE_FRAGMENTS) so the check is about wrapping, not the
+		// native/JS width-oracle divergence.
+		const wrapFragments = SAFE_FRAGMENTS.filter(f => f !== " ");
+		const rand = lcg(0xc0ffee11);
+		for (let iter = 0; iter < 5000; iter++) {
+			const width = [1, 2, 3, 5, 8, 13, 40][Math.floor(rand() * 7)]!;
+			// Build space-separated tokens each no wider than `width` so no token is
+			// inherently unbreakable — then every wrapped line is expected to fit.
+			const tokenCount = 1 + Math.floor(rand() * 6);
+			const tokens: string[] = [];
+			for (let t = 0; t < tokenCount; t++) {
+				let token = "";
+				while (visibleWidth(token) < width) {
+					const frag = wrapFragments[Math.floor(rand() * wrapFragments.length)]!;
+					if (visibleWidth(token + frag) > width) break;
+					token += frag;
+				}
+				// A token must be genuinely visible: a pure-ANSI (zero-width) token
+				// carries only its separating spaces, and a run of them sums those
+				// interior spaces past the width — an artifact of standalone
+				// zero-width tokens that never occurs in real content (ANSI codes
+				// attach to text, they are not space-separated on their own).
+				tokens.push(visibleWidth(token) >= 1 ? token : "a");
+			}
+			const s = tokens.join(" ");
+			for (const line of wrapTextWithAnsi(s, width)) {
+				const lineWidth = visibleWidth(line);
+				if (lineWidth > width) {
+					throw new Error(
+						`wrapTextWithAnsi(${JSON.stringify(s)}, ${width}) produced over-wide line ${JSON.stringify(line)} = ${lineWidth}`,
+					);
+				}
+			}
+		}
+	});
 });
