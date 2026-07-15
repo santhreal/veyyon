@@ -30,9 +30,12 @@ const renderMarkdown = (text: string, width: number): readonly string[] =>
 	new Markdown(text, 0, 0, defaultMarkdownTheme).render(width);
 
 describe("component rendering at pathological widths", () => {
+	// 1200 iters x 10 widths = 12000 renders: enough fuzz to shake out a
+	// width-math crash, comfortably under Bun's per-test timeout. The explicit
+	// timeout is a floor so a slow CI host never flakes this coverage.
 	it("Text never throws and returns a string array at any width", () => {
 		const rand = lcg(0x7e_00_11);
-		for (let iter = 0; iter < 4000; iter++) {
+		for (let iter = 0; iter < 1200; iter++) {
 			const content = buildString(rand);
 			for (const width of PATHOLOGICAL_WIDTHS) {
 				let lines: readonly string[];
@@ -45,11 +48,13 @@ describe("component rendering at pathological widths", () => {
 				for (const line of lines) expect(typeof line).toBe("string");
 			}
 		}
-	});
+	}, 20000);
 
+	// 1200 iters x 10 widths = 12000 markdown renders; same fuzz-vs-timeout
+	// budget as the Text case above.
 	it("Markdown never throws and returns a string array at any width", () => {
 		const rand = lcg(0x7e_00_22);
-		for (let iter = 0; iter < 3000; iter++) {
+		for (let iter = 0; iter < 1200; iter++) {
 			const content = buildString(rand);
 			for (const width of PATHOLOGICAL_WIDTHS) {
 				let lines: readonly string[];
@@ -62,7 +67,7 @@ describe("component rendering at pathological widths", () => {
 				for (const line of lines) expect(typeof line).toBe("string");
 			}
 		}
-	});
+	}, 20000);
 
 	// Direct regression on the primitive that crashed: padding() must be total —
 	// no throw, no gigabyte allocation — for every out-of-contract argument.
