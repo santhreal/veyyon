@@ -1,6 +1,6 @@
 import { matchesKey } from "../keys";
 import type { Component } from "../tui";
-import { Ellipsis, replaceTabs, truncateToWidth, visibleWidth } from "../utils";
+import { clamp, Ellipsis, replaceTabs, truncateToWidth, visibleWidth } from "../utils";
 
 const DEFAULT_TRACK = "│";
 const DEFAULT_THUMB = "█";
@@ -204,7 +204,7 @@ export class ScrollView implements Component {
 	}
 
 	#clampScrollOffset(): void {
-		this.#scrollOffset = Math.max(0, Math.min(this.#scrollOffset, this.getMaxScrollOffset()));
+		this.#scrollOffset = clamp(this.#scrollOffset, 0, this.getMaxScrollOffset());
 	}
 
 	#shouldRenderScrollbar(): boolean {
@@ -218,7 +218,7 @@ export class ScrollView implements Component {
 		if (this.#height <= 0) return { start: 0, end: 0 };
 		const rowCount = this.#totalRows ?? this.#lines.length;
 		if (rowCount <= this.#height) return { start: 0, end: this.#height };
-		const thumbSize = Math.max(1, Math.min(Math.floor((this.#height * this.#height) / rowCount), this.#height));
+		const thumbSize = clamp(Math.floor((this.#height * this.#height) / rowCount), 1, this.#height);
 		const travel = this.#height - thumbSize;
 		const maxOffset = this.getMaxScrollOffset();
 		const start = maxOffset === 0 ? 0 : Math.round((this.#scrollOffset / maxOffset) * travel);

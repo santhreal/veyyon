@@ -10,7 +10,7 @@
  */
 import { matchesKey } from "../keys";
 import type { Component } from "../tui";
-import { truncateToWidth, visibleWidth } from "../utils";
+import { clamp, truncateToWidth, visibleWidth } from "../utils";
 
 /** Tab definition */
 export interface Tab {
@@ -87,7 +87,7 @@ export class TabBar implements Component {
 
 	/** Set the active tab by index (clamped to valid range) */
 	setActiveIndex(index: number): void {
-		const newIndex = Math.max(0, Math.min(index, this.#tabs.length - 1));
+		const newIndex = clamp(index, 0, this.#tabs.length - 1);
 		if (newIndex !== this.#activeIndex) {
 			this.#activeIndex = newIndex;
 			this.onTabChange?.(this.#tabs[this.#activeIndex], this.#activeIndex);

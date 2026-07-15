@@ -3,7 +3,15 @@ import { getKeybindings } from "../keybindings";
 import { extractPrintableText } from "../keys";
 import type { MouseRoutable, SgrMouseEvent } from "../mouse";
 import type { Component } from "../tui";
-import { Ellipsis, padding, sanitizeSingleLine, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "../utils";
+import {
+	clamp,
+	Ellipsis,
+	padding,
+	sanitizeSingleLine,
+	truncateToWidth,
+	visibleWidth,
+	wrapTextWithAnsi,
+} from "../utils";
 import { ScrollView } from "./scroll-view";
 
 export interface SettingItem {
@@ -369,7 +377,7 @@ export class SettingsList implements Component {
 		if (sections.length < 2) {
 			const len = this.#filteredItems.length;
 			if (len === 0) return;
-			this.#selectedIndex = Math.max(0, Math.min(this.#selectedIndex + delta * this.#maxVisible, len - 1));
+			this.#selectedIndex = clamp(this.#selectedIndex + delta * this.#maxVisible, 0, len - 1);
 			this.#clampSelectedIndex();
 		} else {
 			const next = (this.#activeSectionIndex(sections) + delta + sections.length) % sections.length;
@@ -383,7 +391,7 @@ export class SettingsList implements Component {
 			this.#selectedIndex = 0;
 			return;
 		}
-		this.#selectedIndex = Math.max(0, Math.min(this.#selectedIndex, this.#filteredItems.length - 1));
+		this.#selectedIndex = clamp(this.#selectedIndex, 0, this.#filteredItems.length - 1);
 		if (!this.#filteredItems[this.#selectedIndex]?.heading) return;
 		// Landed on a heading: prefer the next selectable item, else the previous one.
 		for (let i = this.#selectedIndex + 1; i < this.#filteredItems.length; i++) {

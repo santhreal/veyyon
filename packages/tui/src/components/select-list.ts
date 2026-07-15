@@ -5,7 +5,15 @@ import { extractPrintableText } from "../keys";
 import { type MouseRoutable, routeSelectListMouse, type SgrMouseEvent } from "../mouse";
 import type { SymbolTheme } from "../symbols";
 import type { Component } from "../tui";
-import { Ellipsis, padding, sanitizeSingleLine, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "../utils";
+import {
+	clamp,
+	Ellipsis,
+	padding,
+	sanitizeSingleLine,
+	truncateToWidth,
+	visibleWidth,
+	wrapTextWithAnsi,
+} from "../utils";
 import { ScrollView } from "./scroll-view";
 
 const DEFAULT_PRIMARY_COLUMN_WIDTH = 32;
@@ -13,8 +21,6 @@ const PRIMARY_COLUMN_GAP = 2;
 const MIN_DESCRIPTION_WIDTH = 10;
 
 const DEFAULT_CURSOR_SYMBOL = ">";
-
-const clamp = (value: number, min: number, max: number): number => Math.max(min, Math.min(value, max));
 
 export interface SelectItem {
 	value: string;
@@ -107,7 +113,7 @@ export class SelectList implements Component, MouseRoutable {
 	}
 
 	setSelectedIndex(index: number): void {
-		this.#selectedIndex = Math.max(0, Math.min(index, this.#filteredItems.length - 1));
+		this.#selectedIndex = clamp(index, 0, this.#filteredItems.length - 1);
 	}
 
 	/** Resolve a 0-based rendered-line index to a filtered-item index. */
@@ -331,7 +337,7 @@ export class SelectList implements Component, MouseRoutable {
 		budget: number,
 	): { startIndex: number; endIndex: number; visualOffset: number } {
 		const n = rowCounts.length;
-		const selected = Math.max(0, Math.min(this.#selectedIndex, n - 1));
+		const selected = clamp(this.#selectedIndex, 0, n - 1);
 		if (n === 0) return { startIndex: 0, endIndex: 0, visualOffset: 0 };
 
 		const half = Math.floor(budget / 2);
@@ -378,7 +384,7 @@ export class SelectList implements Component, MouseRoutable {
 		const descriptionSingleLine = item.description ? sanitizeSingleLine(item.description) : undefined;
 
 		if (descriptionSingleLine && width > 40) {
-			const effectivePrimaryColumnWidth = Math.max(1, Math.min(primaryColumnWidth, width - prefixWidth - 4));
+			const effectivePrimaryColumnWidth = clamp(primaryColumnWidth, 1, width - prefixWidth - 4);
 			const maxPrimaryWidth = Math.max(1, effectivePrimaryColumnWidth - PRIMARY_COLUMN_GAP);
 			const truncatedValue = this.#truncatePrimary(item, isSelected, maxPrimaryWidth, effectivePrimaryColumnWidth);
 			const truncatedValueWidth = visibleWidth(truncatedValue);
@@ -425,7 +431,7 @@ export class SelectList implements Component, MouseRoutable {
 			this.layout.maxPrimaryColumnWidth ?? this.layout.minPrimaryColumnWidth ?? DEFAULT_PRIMARY_COLUMN_WIDTH;
 
 		return {
-			min: Math.max(1, Math.min(rawMin, rawMax)),
+			min: clamp(rawMin, 1, rawMax),
 			max: Math.max(1, Math.max(rawMin, rawMax)),
 		};
 	}

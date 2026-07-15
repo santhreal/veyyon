@@ -133,6 +133,14 @@ export function truncateToWidth(
 	);
 }
 
+/** Horizontally center `line` in `width` cells; truncates when the line is wider. */
+export function centerLine(line: string, width: number): string {
+	const lineWidth = visibleWidth(line);
+	if (lineWidth >= width) return truncateToWidth(line, width);
+	const left = Math.floor((width - lineWidth) / 2);
+	return padding(left) + line + padding(width - left - lineWidth);
+}
+
 export function wrapTextWithAnsi(text: string, width: number): string[] {
 	// Normalize CR and CRLF to LF before wrapping. The native wrapper breaks only
 	// on LF, so a `\r\n` source leaves a trailing `\r` on the wrapped row and a
@@ -192,6 +200,18 @@ export function padding(n: number): string {
 	if (!(n >= 1)) return "";
 	if (n <= 512) return SPACE_BUFFER.slice(0, n);
 	return " ".repeat(n > MAX_PADDING ? MAX_PADDING : n);
+}
+
+/**
+ * Constrain `value` to the inclusive range [min, max].
+ *
+ * Canonical owner for the `Math.max(min, Math.min(value, max))` idiom that was
+ * inlined across dozens of layout/scroll/selection sites. Semantics match that
+ * idiom exactly: on an inverted range (min > max) `min` wins, and a NaN `value`
+ * propagates as NaN (callers that need a finite fallback must sanitize first).
+ */
+export function clamp(value: number, min: number, max: number): number {
+	return Math.max(min, Math.min(value, max));
 }
 
 // Grapheme segmenter (shared instance)

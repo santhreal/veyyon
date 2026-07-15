@@ -1,6 +1,6 @@
-import { Glob } from "bun";
 import { describe, expect, it } from "bun:test";
 import {
+	clamp,
 	encodeTextSized,
 	extractSegments,
 	sanitizeSingleLine,
@@ -8,6 +8,7 @@ import {
 	truncateToWidth,
 	visibleWidth,
 } from "@veyyon/pi-tui/utils";
+import { Glob } from "bun";
 
 describe("text utils", () => {
 	it("computes visible width for ANSI and tabs", () => {
@@ -167,6 +168,51 @@ describe("sanitizeSingleLine", () => {
 				const src = await Bun.file(`${root}/${pkg}/${rel}`).text();
 				if (/function\s+sanitizeSingleLine\b/.test(src)) definitions.push(`${pkg}/${rel}`);
 			}
+		}
+		expect(definitions).toEqual(["tui/src/utils.ts"]);
+	});
+});
+
+describe("clamp", () => {
+	it("returns the value untouched inside the range", () => {
+		expect(clamp(5, 0, 10)).toBe(5);
+		expect(clamp(0, 0, 10)).toBe(0);
+		expect(clamp(10, 0, 10)).toBe(10);
+	});
+
+	it("clamps below min and above max", () => {
+		expect(clamp(-3, 0, 10)).toBe(0);
+		expect(clamp(42, 0, 10)).toBe(10);
+	});
+
+	it("preserves the historical inline idiom on an inverted range (min wins)", () => {
+		// The inlined `Math.max(min, Math.min(value, max))` returns min when min > max
+		// regardless of value; the extracted helper must match byte-for-byte.
+		expect(clamp(5, 10, 0)).toBe(10);
+		expect(clamp(-5, 10, 0)).toBe(10);
+		expect(clamp(Math.max(10, Math.min(5, 0)), 0, 20)).toBe(10);
+	});
+
+	it("propagates NaN value (same as the idiom) so callers sanitize first", () => {
+		expect(clamp(Number.NaN, 0, 10)).toBeNaN();
+	});
+
+	it("passes Infinity bounds through unchanged", () => {
+		expect(clamp(1e9, 0, Number.POSITIVE_INFINITY)).toBe(1e9);
+		expect(clamp(Number.NEGATIVE_INFINITY, 0, 10)).toBe(0);
+	});
+
+	// ONE-PLACE lock: the clamp idiom was inlined across select-list, settings-list,
+	// scroll-view, spacer, and tab-bar (and a local `const clamp` lived in
+	// select-list). It now has a single owner in utils.ts — a re-declared `clamp`
+	// (function or const) anywhere in tui/src must re-import instead, or copies drift.
+	it("is defined in exactly one source file", async () => {
+		const root = `${import.meta.dir}/../..`;
+		const definitions: string[] = [];
+		const glob = new Glob("**/*.ts");
+		for await (const rel of glob.scan({ cwd: `${root}/tui/src` })) {
+			const src = await Bun.file(`${root}/tui/src/${rel}`).text();
+			if (/(?:function\s+clamp\b|(?:const|let)\s+clamp\s*=)/.test(src)) definitions.push(`tui/src/${rel}`);
 		}
 		expect(definitions).toEqual(["tui/src/utils.ts"]);
 	});
