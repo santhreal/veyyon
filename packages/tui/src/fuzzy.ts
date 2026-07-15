@@ -391,7 +391,7 @@ export class FuzzyText {
  * Filter and sort items by fuzzy match quality (best matches first).
  * Supports space-separated tokens: all tokens must match.
  */
-export function fuzzyRank<T>(items: T[], query: string, getText: (item: T) => string): FuzzyFilterResult<T>[] {
+export function fuzzyRank<T>(items: readonly T[], query: string, getText: (item: T) => string): FuzzyFilterResult<T>[] {
 	if (!query.trim()) {
 		return items.map(item => ({ item, score: 0 }));
 	}
@@ -413,7 +413,7 @@ export function fuzzyRank<T>(items: T[], query: string, getText: (item: T) => st
 	return results;
 }
 
-export function fuzzyFilter<T>(items: T[], query: string, getText: (item: T) => string): T[] {
+export function fuzzyFilter<T>(items: readonly T[], query: string, getText: (item: T) => string): T[] {
 	return fuzzyRank(items, query, getText).map(result => result.item);
 }
 

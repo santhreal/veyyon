@@ -78,6 +78,11 @@ type SelectItemLayout =
 
 export class SelectList implements Component, MouseRoutable {
 	#filteredItems: ReadonlyArray<SelectItem>;
+	// Each item paired with its precomputed, sanitized filter text. Built once on
+	// first filter (items are immutable), so typing a query does not re-run
+	// `#getFilterText` (string concat + sanitizeSingleLine) for every item on
+	// every keystroke — the dominant cost when filtering a large candidate list.
+	#searchable?: ReadonlyArray<{ item: SelectItem; text: string }>;
 	#filterQuery = "";
 	#selectedIndex: number = 0;
 	#hoveredIndex: number | null = null;
@@ -487,7 +492,8 @@ export class SelectList implements Component, MouseRoutable {
 			// large-list filter stall instead of logging it as "unknown".
 			pushLoopPhase("ui.select-filter");
 			try {
-				this.#filteredItems = fuzzyFilter([...this.items], filter, item => this.#getFilterText(item));
+				this.#searchable ??= this.items.map(item => ({ item, text: this.#getFilterText(item) }));
+				this.#filteredItems = fuzzyFilter(this.#searchable, filter, entry => entry.text).map(entry => entry.item);
 			} finally {
 				popLoopPhase();
 			}
