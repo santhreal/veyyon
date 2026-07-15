@@ -112,7 +112,13 @@ export function truncateToWidth(
 	ellipsisKind?: Ellipsis | null | "",
 	pad?: boolean | null,
 ): string {
-	maxWidth = Math.max(0, maxWidth | 0);
+	// Normalize the width. `| 0` alone truncates fractions and coerces non-numbers,
+	// but it wraps at 2^31: `2**31 | 0`, `Infinity | 0`, and `NaN | 0` all become 0
+	// (or negative), so an "unbounded" call like `truncateToWidth(text, Infinity)`
+	// would silently return the empty string instead of the full text. Cap any
+	// width at or above INT32_MAX at INT32_MAX (which the native path accepts and
+	// the fast path below treats as "no truncation" for every realistic string).
+	maxWidth = maxWidth >= 0x7fff_ffff ? 0x7fff_ffff : Math.max(0, maxWidth | 0);
 	// Fast path: every UTF-16 unit is at most 3 cells wide, so a string whose
 	// `length * 3` already fits within `safeWidth` cannot need truncation.
 	if (!pad && text.length * 3 <= maxWidth) {

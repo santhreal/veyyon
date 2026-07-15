@@ -146,12 +146,25 @@ describe("width-math fuzz invariants", () => {
 			const s = buildSafeString(rand);
 			const w = WIDTHS[Math.floor(rand() * WIDTHS.length)]!;
 			const out = truncateToWidth(s, w, Ellipsis.Omit);
-			const target = Math.max(0, w | 0);
+			// Mirror truncateToWidth's own normalization: widths at/above INT32_MAX
+			// (incl. Infinity) are capped there rather than wrapping through `| 0`.
+			const target = w >= 0x7fff_ffff ? 0x7fff_ffff : Math.max(0, w | 0);
 			const outWidth = visibleWidth(out);
 			if (outWidth > target) {
 				throw new Error(
 					`truncateToWidth(${JSON.stringify(s)}, ${w}) -> width ${outWidth} > target ${target}: ${JSON.stringify(out)}`,
 				);
+			}
+		}
+	});
+
+	it("truncateToWidth returns the full text for unbounded widths (no 2^31 wrap)", () => {
+		// `maxWidth | 0` wraps at 2^31, so Infinity/NaN/>=2^31 once collapsed to 0
+		// and truncated the text to nothing. An unbounded width must be a no-op.
+		const samples = ["hello world", "一二三四五", "\x1b[31mred\x1b[0m text", "a".repeat(1000), "😀 mixed 漢字"];
+		for (const text of samples) {
+			for (const w of [Number.POSITIVE_INFINITY, 2 ** 31, 2 ** 31 + 1, Number.MAX_SAFE_INTEGER, 0x7fff_ffff]) {
+				expect(truncateToWidth(text, w, Ellipsis.Omit)).toBe(text);
 			}
 		}
 	});
