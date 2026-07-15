@@ -1222,9 +1222,33 @@ class LatexParser {
 	#i = 0;
 	#foreground: string | null = null;
 	#background: string | null = null;
+	/** Current recursion depth (nested groups + arguments). */
+	#depth = 0;
+	/**
+	 * Nesting cap. `latexToUnicode` runs on model-authored output, so a deeply
+	 * nested payload (`{{{…}}}`, `\frac{a}\frac{a}…`, `x^{x^{…}}`) would recurse
+	 * through parse↔#group and #command↔#argument until the JS stack overflows —
+	 * a trivial DoS. Past this depth the parser consumes input as literal text
+	 * without recursing: it still advances `#i` (no hang) and unwinds one frame
+	 * per close brace, so output degrades to raw text instead of crashing. Real
+	 * math nests only a handful deep; this bound is far below the JS stack limit.
+	 */
+	static readonly #MAX_DEPTH = 500;
 
 	constructor(src: string) {
 		this.#s = src;
+	}
+
+	/** Consume the current group as literal text without recursing (depth guard). */
+	#literalRun(stopAtBrace: boolean): string {
+		let out = "";
+		while (this.#i < this.#s.length) {
+			const c = this.#s[this.#i];
+			if (c === "}" && stopAtBrace) break;
+			this.#i++;
+			out += c;
+		}
+		return out;
 	}
 
 	render(): string {
@@ -1233,6 +1257,8 @@ class LatexParser {
 
 	/** Parse a run until end-of-input, or until `}` when `stopAtBrace`. */
 	parse(style: FontStyle | null, stopAtBrace: boolean): string {
+		if (this.#depth >= LatexParser.#MAX_DEPTH) return this.#literalRun(stopAtBrace);
+		this.#depth++;
 		let out = "";
 		while (this.#i < this.#s.length) {
 			const c = this.#s[this.#i];
@@ -1243,6 +1269,7 @@ class LatexParser {
 			}
 			out += this.#node(style);
 		}
+		this.#depth--;
 		return out;
 	}
 
@@ -1536,20 +1563,38 @@ class LatexParser {
 		while (this.#s[this.#i] === " ") this.#i++;
 		const c = this.#s[this.#i];
 		if (c === undefined) return { text: "", group: false };
-		if (c === "{") {
+		// Depth guard: `#command`/`#script` args recurse through here (e.g.
+		// `\frac{a}\frac{a}…`, bare-script chains) without going through `parse`,
+		// so bound this path too. Past the cap, consume the argument literally.
+		if (this.#depth >= LatexParser.#MAX_DEPTH) {
+			if (c === "{") {
+				this.#i++;
+				const inner = this.#literalRun(true);
+				if (this.#s[this.#i] === "}") this.#i++;
+				return { text: inner, group: true };
+			}
 			this.#i++;
-			const inner = this.parse(style, true);
-			if (this.#s[this.#i] === "}") this.#i++;
-			return { text: inner, group: true };
+			return { text: c, group: false };
 		}
-		if (c === "\\") return { text: this.#command(style), group: false };
-		if (c === "^" || c === "_") {
-			// Bare script with no base (e.g. `{}^{n}`): treat the script as the arg.
+		this.#depth++;
+		try {
+			if (c === "{") {
+				this.#i++;
+				const inner = this.parse(style, true);
+				if (this.#s[this.#i] === "}") this.#i++;
+				return { text: inner, group: true };
+			}
+			if (c === "\\") return { text: this.#command(style), group: false };
+			if (c === "^" || c === "_") {
+				// Bare script with no base (e.g. `{}^{n}`): treat the script as the arg.
+				this.#i++;
+				return { text: this.#script(style, c === "^"), group: false };
+			}
 			this.#i++;
-			return { text: this.#script(style, c === "^"), group: false };
+			return { text: styleChar(c, style), group: false };
+		} finally {
+			this.#depth--;
 		}
-		this.#i++;
-		return { text: styleChar(c, style), group: false };
 	}
 
 	/** Read a raw (unparsed) argument, returning its literal source text. */
