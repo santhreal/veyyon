@@ -243,8 +243,8 @@ type SymbolMap = Record<SymbolKey, string>;
 
 const UNICODE_SYMBOLS: SymbolMap = {
 	// Status
-	"status.success": "",
-	"status.error": "",
+	"status.success": "✓",
+	"status.error": "✗",
 	"status.warning": "warn",
 	"status.info": "ⓘ",
 	"status.pending": "⏳",
@@ -360,7 +360,7 @@ const UNICODE_SYMBOLS: SymbolMap = {
 	"checkbox.unchecked": "□",
 	// Radio (single-choice)
 	"radio.selected": "◉",
-	"radio.unselected": "o",
+	"radio.unselected": "○",
 	// Formatting
 	"format.bullet": "•",
 	"format.dash": "—",
