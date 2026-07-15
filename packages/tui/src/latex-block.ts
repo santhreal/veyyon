@@ -834,7 +834,39 @@ function colorizeBox(box: Box, scope: (text: string) => string): Box {
  * them is gathered into inline runs rendered through `latexToUnicode` under the
  * active scope wrapper (`ctx`), with `\color` state re-applied per run.
  */
+/**
+ * Recursion guard for the 2-D block layout. `parseExpr` recurses through
+ * fractions/binoms/radicals/scripts/groups/environment cells, and the box layout
+ * cost is super-linear in nesting depth — a depth-1000 `\frac` chain took ~6.6s
+ * and deeper hangs for minutes, so model-authored display math is a trivial DoS.
+ * Past this depth, degrade the remaining source to a single flat inline box via
+ * the (linear, depth-guarded) `latexToUnicode` instead of recursing further. Real
+ * display math nests only a handful deep; continued fractions rarely past ~10.
+ * `parseExpr` is fully synchronous, so a module-level counter unwinds correctly.
+ */
+const MAX_BLOCK_DEPTH = 64;
+// Longest tail flattened inline at the depth cap. Past MAX_BLOCK_DEPTH the source
+// is unreadable as 2-D layout; a giant tail (a 50k-deep `\frac` chain is ~300KB)
+// would make even the linear `latexToUnicode` degrade costly via bubbling string
+// concatenation, so flatten only a bounded prefix. Real math never reaches here.
+const MAX_BLOCK_DEGRADE_TAIL = 2048;
+let blockDepth = 0;
+
 function parseExpr(src: string, ctx: Ctx = ROOT_CTX): Box {
+	if (blockDepth >= MAX_BLOCK_DEPTH) {
+		return textBox(
+			latexToUnicode(src.length > MAX_BLOCK_DEGRADE_TAIL ? `${src.slice(0, MAX_BLOCK_DEGRADE_TAIL)}…` : src),
+		);
+	}
+	blockDepth++;
+	try {
+		return parseExprInner(src, ctx);
+	} finally {
+		blockDepth--;
+	}
+}
+
+function parseExprInner(src: string, ctx: Ctx = ROOT_CTX): Box {
 	const boxes: Box[] = [];
 	let inline = "";
 	let color = "";

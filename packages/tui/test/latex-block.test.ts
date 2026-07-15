@@ -247,3 +247,56 @@ describe("latexToBlock (2-D layout)", () => {
 		expect(lines.map(stripVTControlCharacters).map(line => line.trimEnd())).toEqual([" n", " ∑", "i=1"]);
 	});
 });
+
+describe("latexToBlock DoS guard (deep nesting)", () => {
+	// `parseExpr` recurses through fractions/radicals/groups and the 2-D box
+	// layout is super-linear in depth — before the MAX_BLOCK_DEPTH guard, a
+	// depth-1000 `\frac` chain took ~6.6s and deeper hung for minutes. Display
+	// math is model-authored, so this is a DoS reachable from every `$$…$$`
+	// block in the transcript (markdown.ts calls latexToBlock on it). The guard
+	// must bound work regardless of depth while leaving realistic math untouched.
+	it("bounds work on a deeply nested fraction chain (no hang, no overflow)", () => {
+		for (const depth of [1000, 50_000, 200_000]) {
+			const frac = "\\frac{".repeat(depth) + "a" + "}{b}".repeat(depth);
+			const t0 = performance.now();
+			let lines: string[];
+			try {
+				lines = latexToBlock(frac);
+			} catch (e) {
+				throw new Error(`latexToBlock(frac depth ${depth}) threw: ${e}`);
+			}
+			const elapsed = performance.now() - t0;
+			expect(Array.isArray(lines)).toBe(true);
+			// Height is capped by the depth guard (~2 lines/level to the cap), NOT
+			// proportional to input depth: identical bound for depth 1k and 200k.
+			expect(lines.length).toBeLessThan(MAX_BLOCK_HEIGHT_BOUND);
+			// Linear + bounded: even ~1.2MB of input completes well under the old hang.
+			expect(elapsed).toBeLessThan(3000);
+		}
+	});
+
+	it("bounds deeply nested radicals and groups too", () => {
+		for (const payload of [
+			"\\sqrt{".repeat(20_000) + "x" + "}".repeat(20_000),
+			"{".repeat(50_000) + "x" + "}".repeat(50_000),
+		]) {
+			expect(Array.isArray(latexToBlock(payload))).toBe(true);
+		}
+	});
+
+	it("leaves realistic (shallow) display math fully intact", () => {
+		// The guard degrades only past depth 64; real math renders unchanged.
+		expect(latexToBlock("\\frac{a+b}{c}")).toEqual([" a+b ", "─────", "  c  "]);
+		expect(latexToBlock("\\frac{\\frac{a}{b}}{c}")).toEqual(["  a  ", " ─── ", "  b  ", "─────", "  c  "]);
+		// A 10-deep continued fraction (deeper than any real one) still renders 2-D.
+		let cf = "x";
+		for (let k = 0; k < 10; k++) cf = `1+\\frac{1}{${cf}}`;
+		expect(latexToBlock(cf).length).toBeGreaterThan(10);
+	});
+});
+
+// The layout height at the depth cap is ~2 lines per level (numerator + bar) up
+// to the internal MAX_BLOCK_DEPTH (64), so a guarded expression tops out around
+// 129 lines. This bound is comfortably above that and far below any depth-
+// proportional height, so it fails loudly if the guard ever stops capping.
+const MAX_BLOCK_HEIGHT_BOUND = 200;
