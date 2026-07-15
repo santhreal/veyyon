@@ -356,8 +356,8 @@ const UNICODE_SYMBOLS: SymbolMap = {
 	"thinking.max": "◉ max",
 	"thinking.autoPending": "⟳",
 	// Checkboxes
-	"checkbox.checked": "",
-	"checkbox.unchecked": "",
+	"checkbox.checked": "■",
+	"checkbox.unchecked": "□",
 	// Radio (single-choice)
 	"radio.selected": "◉",
 	"radio.unselected": "o",
