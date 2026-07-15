@@ -158,6 +158,12 @@ export function extractSegments(
 // Pre-allocated space buffer for padding
 const SPACE_BUFFER = " ".repeat(512);
 const TAB_SPACES = " ".repeat(DEFAULT_TAB_WIDTH);
+// Upper bound on a single padding run. No terminal is anywhere near this wide;
+// the cap exists only to keep `padding` total against an out-of-contract width
+// (a bad resize delivering Infinity/NaN, or a computed width in the millions),
+// which would otherwise throw in `String.prototype.repeat` (Infinity) or
+// allocate multiple gigabytes (a huge finite n) — a render-path crash / DoS.
+const MAX_PADDING = 1 << 20; // 1,048,576
 
 /*
  * Replace tabs with the fixed display tab width for consistent rendering.
@@ -182,9 +188,10 @@ export function sanitizeSingleLine(text: string): string {
  * Returns a string of n spaces. Uses a pre-allocated buffer for efficiency.
  */
 export function padding(n: number): string {
-	if (n <= 0) return "";
+	// `!(n >= 1)` rejects n <= 0, NaN, and -Infinity in one check.
+	if (!(n >= 1)) return "";
 	if (n <= 512) return SPACE_BUFFER.slice(0, n);
-	return " ".repeat(n);
+	return " ".repeat(n > MAX_PADDING ? MAX_PADDING : n);
 }
 
 // Grapheme segmenter (shared instance)
