@@ -8,8 +8,10 @@
  *   2. Alias/typo key repair — rename an unrecognized key to the one declared
  *      schema property it unambiguously matches ({@link planAliasKeyRepairs}).
  *   3. Strict unknown-key rejection — refuse leftover unrecognized keys when
- *      the schema declares `additionalProperties: false`
- *      ({@link detectStrictUnknownKeyRepair}).
+ *      the tool's own schema authoring literally declares
+ *      `additionalProperties: false` ({@link detectStrictUnknownKeyRepair}).
+ *      Gated to raw-JSON/TypeBox-authored tools only — see the note on
+ *      `schemaAuthoredAsPlainJsonSchema` in {@link repairToolCallArguments}.
  *   4. Ambiguity guard — refuse when a missing required string could be
  *      filled from more than one plausible donor field
  *      ({@link detectAmbiguousRequiredStringRepair}).
@@ -17,7 +19,7 @@
  * Schema coercion and type drift remain in `@veyyon/pi-ai/utils/validation`.
  */
 import type { Tool, ToolCall } from "@veyyon/pi-ai/types";
-import { toolWireSchema } from "@veyyon/pi-ai/utils/schema";
+import { isArkSchema, isZodSchema, toolWireSchema } from "@veyyon/pi-ai/utils/schema";
 import { parseJsonWithRepair } from "@veyyon/pi-utils/json-parse";
 
 /** Hard cap on raw JSON bytes accepted for repair attempts. */
@@ -223,6 +225,16 @@ function applyAliasKeyRenames(
  * the object (`additionalProperties: false`). Non-strict schemas (the
  * default when the keyword is absent) keep passing unrecognized keys through
  * unchanged, matching prior behavior.
+ *
+ * Callers MUST NOT pass a Zod- or ArkType-derived wire schema here: wire
+ * conversion for those two authoring paths (`closeDeclaredObjects` in
+ * `@veyyon/pi-ai/utils/schema/wire`) sets `additionalProperties: false` on
+ * every declared object node purely to match the provider-facing "closed"
+ * emission convention — it is not an authorial strictness opt-in, and
+ * treating it as one would refuse hallucinated keys on nearly every real
+ * tool. Only raw-JSON-Schema/TypeBox authoring leaves this keyword exactly as
+ * written. {@link repairToolCallArguments} enforces this via
+ * `schemaAuthoredAsPlainJsonSchema`.
  */
 export function detectStrictUnknownKeyRepair(
 	schema: Record<string, unknown>,
@@ -361,6 +373,16 @@ export function repairToolCallArguments(tool: Tool, toolCall: ToolCall): ToolCal
 
 	const wireSchema = toolWireSchema(tool);
 
+	// Whether `wireSchema.additionalProperties === false` reflects the tool
+	// author's real intent, or is merely wire-conversion boilerplate. Zod and
+	// ArkType tools (the canonical authoring paths — see `Tool.parameters` in
+	// `@veyyon/pi-ai/types`) always emit `additionalProperties: false` on the
+	// wire to match the provider-facing "closed" convention, regardless of
+	// whether the tool's real validator rejects extra keys. Only raw-JSON /
+	// TypeBox authoring carries the keyword exactly as the author wrote it,
+	// so strict unknown-key rejection is gated to that path.
+	const schemaAuthoredAsPlainJsonSchema = !isZodSchema(tool.parameters) && !isArkSchema(tool.parameters);
+
 	let workingArgs: Record<string, unknown>;
 	let hints: string[] = [];
 	let repaired = false;
@@ -409,7 +431,9 @@ export function repairToolCallArguments(tool: Tool, toolCall: ToolCall): ToolCal
 		hints = [...hints, `Renamed alias/typo field name(s) to the declared schema name: ${renameSummary}.`];
 	}
 
-	const strictUnknownKey = detectStrictUnknownKeyRepair(wireSchema, workingArgs);
+	const strictUnknownKey = schemaAuthoredAsPlainJsonSchema
+		? detectStrictUnknownKeyRepair(wireSchema, workingArgs)
+		: undefined;
 	if (strictUnknownKey) {
 		return { status: "unrepairable", reason: strictUnknownKey.reason, hints: strictUnknownKey.hints };
 	}

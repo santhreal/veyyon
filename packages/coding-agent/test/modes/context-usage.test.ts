@@ -6,11 +6,14 @@
  * internals, which massively overcounts.
  */
 import { describe, expect, it, vi } from "bun:test";
+import type { AgentMessage } from "@veyyon/pi-agent-core";
+import * as compactionModule from "@veyyon/pi-agent-core/compaction";
 import { arkToWireSchema } from "@veyyon/pi-ai/utils/schema";
 import {
 	type ContextBreakdown,
 	computeNonMessageBreakdown,
 	computeNonMessageTokens,
+	computeStoredMessagesTokens,
 	estimateToolSchemaTokens,
 	renderContextUsage,
 } from "@veyyon/pi-coding-agent/modes/utils/context-usage";
@@ -163,5 +166,81 @@ describe("computeNonMessageTokens / computeNonMessageBreakdown memoization", () 
 		estimateToolSchemaTokens([tool as never]);
 		expect(stringifySpy.mock.calls.length).toBe(afterFirst);
 		stringifySpy.mockRestore();
+	});
+});
+
+/**
+ * Contract (BACKLOG P5): the hot compaction path (`#estimatePrePromptContextTokens`
+ * and friends on AgentSession) must not re-walk the full stored-message history
+ * on every call. A second estimate against the SAME `session.messages` array
+ * must not re-measure messages already accounted for.
+ */
+describe("computeStoredMessagesTokens incremental cache", () => {
+	function userMessage(text: string): AgentMessage {
+		return { role: "user", content: text, timestamp: Date.now() } as AgentMessage;
+	}
+
+	function makeSession(messages: AgentMessage[]) {
+		return { messages };
+	}
+
+	it("does not re-walk unchanged messages on a second estimate", () => {
+		const messages = [userMessage("one"), userMessage("two"), userMessage("three")];
+		const session = makeSession(messages);
+		const estimateSpy = vi.spyOn(compactionModule, "estimateTokens");
+
+		const first = computeStoredMessagesTokens(session as never);
+		expect(estimateSpy).toHaveBeenCalledTimes(messages.length);
+
+		estimateSpy.mockClear();
+		const second = computeStoredMessagesTokens(session as never);
+
+		// Only the volatile last slot is re-read; the settled prefix (indices
+		// before the last message) is served from the cached running sum.
+		expect(estimateSpy).toHaveBeenCalledTimes(1);
+		expect(estimateSpy).toHaveBeenCalledWith(messages[messages.length - 1], undefined);
+		expect(second).toBe(first);
+
+		estimateSpy.mockRestore();
+	});
+
+	it("walks only the newly appended tail when messages grow", () => {
+		const messages = [userMessage("one"), userMessage("two")];
+		const session = makeSession(messages);
+		computeStoredMessagesTokens(session as never);
+
+		const estimateSpy = vi.spyOn(compactionModule, "estimateTokens");
+		messages.push(userMessage("three"));
+		computeStoredMessagesTokens(session as never);
+
+		// The newly-settled second message ("two") and the new last message
+		// ("three") are measured; the already-settled first message ("one")
+		// is not re-measured.
+		expect(estimateSpy).toHaveBeenCalledTimes(2);
+		expect(estimateSpy).not.toHaveBeenCalledWith(messages[0], undefined);
+		expect(estimateSpy).toHaveBeenCalledWith(messages[1], undefined);
+		expect(estimateSpy).toHaveBeenCalledWith(messages[2], undefined);
+
+		estimateSpy.mockRestore();
+	});
+
+	it("re-measures the last slot when it is replaced in place (streaming partial → final)", () => {
+		const partial = userMessage("partial reply");
+		const messages = [userMessage("prompt"), partial];
+		const session = makeSession(messages);
+		computeStoredMessagesTokens(session as never);
+
+		const estimateSpy = vi.spyOn(compactionModule, "estimateTokens");
+		// Mirrors agent-loop.ts: `context.messages[context.messages.length - 1] = finalMessage`.
+		const final = userMessage("partial reply, now complete");
+		messages[messages.length - 1] = final;
+		const result = computeStoredMessagesTokens(session as never);
+
+		expect(estimateSpy).toHaveBeenCalledTimes(1);
+		expect(estimateSpy).toHaveBeenCalledWith(final, undefined);
+		expect(estimateSpy).not.toHaveBeenCalledWith(partial, undefined);
+		expect(result).toBeGreaterThan(0);
+
+		estimateSpy.mockRestore();
 	});
 });

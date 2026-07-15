@@ -18,6 +18,7 @@ import {
 	getRemoteDir,
 	type ImageMetadata,
 	isProbablyBinary,
+	isProbablyBinaryHeader,
 	logger,
 	prompt,
 	readImageMetadata,
@@ -702,7 +703,7 @@ async function findUniqueSuffixMatch(
 }
 
 function decodeUtf8Text(bytes: Uint8Array): string | null {
-	if (bytes.indexOf(0) !== -1) return null;
+	if (isProbablyBinaryHeader(bytes)) return null;
 
 	try {
 		return new TextDecoder("utf-8", { fatal: true }).decode(bytes);

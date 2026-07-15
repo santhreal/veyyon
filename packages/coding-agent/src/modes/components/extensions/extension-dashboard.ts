@@ -474,7 +474,7 @@ class TwoColumnBody implements Component {
 		const rightRendered = rightView.render(rightWidth);
 
 		const combined: string[] = [];
-		const separator = theme.fg("dim", ` ${theme.boxRound.vertical} `);
+		const separator = theme.fg("dim", ` ${theme.boxSharp.vertical} `);
 		for (let i = 0; i < numLines; i++) {
 			const left = truncateToWidth(leftLines[i] ?? "", leftWidth);
 			const leftPadded = left + padding(Math.max(0, leftWidth - visibleWidth(left)));

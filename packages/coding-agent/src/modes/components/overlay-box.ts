@@ -1,6 +1,6 @@
 /**
  * Shared box-drawing chrome for fullscreen overlays (the `/copy` picker, the
- * plan-review overlay, …). Every helper paints with `theme.boxRound` glyphs
+ * plan-review overlay, …). Every helper paints with `theme.boxSharp` glyphs
  * (rounded corners, sharp tee/cross junctions) and the `border`/`accent` theme
  * colors so all outlined overlays read identically.
  */
@@ -24,7 +24,7 @@ function paint(s: string): string {
 
 /** Top border with an optional accent-colored title inset into the rule. */
 export function topBorder(width: number, title: string): string {
-	const box = theme.boxRound;
+	const box = theme.boxSharp;
 	const inner = Math.max(0, width - 2);
 	if (!title) return paint(box.topLeft + box.horizontal.repeat(inner) + box.topRight);
 	const shown = truncateToWidth(` ${title} `, Math.max(0, inner - 2));
@@ -38,18 +38,18 @@ export function topBorder(width: number, title: string): string {
 
 /** A horizontal rule with left/right tees, splitting overlay sections. */
 export function divider(width: number): string {
-	const box = theme.boxRound;
+	const box = theme.boxSharp;
 	return paint(box.teeRight + box.horizontal.repeat(Math.max(0, width - 2)) + box.teeLeft);
 }
 
 export function bottomBorder(width: number): string {
-	const box = theme.boxRound;
+	const box = theme.boxSharp;
 	return paint(box.bottomLeft + box.horizontal.repeat(Math.max(0, width - 2)) + box.bottomRight);
 }
 
 /** Wrap pre-styled content in vertical borders with single-column insets. */
 export function row(content: string, width: number): string {
-	const box = theme.boxRound;
+	const box = theme.boxSharp;
 	return `${paint(box.vertical)} ${fit(content, Math.max(0, width - 4))} ${paint(box.vertical)}`;
 }
 
@@ -71,7 +71,7 @@ export function splitBodyWidth(width: number, sidebarWidth: number): number {
 
 /** Top border carrying the title, split by a `┬` over the column divider. */
 export function topBorderSplit(width: number, title: string, sidebarWidth: number): string {
-	const box = theme.boxRound;
+	const box = theme.boxSharp;
 	const dividerCol = splitDividerCol(sidebarWidth);
 	const leftLen = Math.max(0, dividerCol - 1);
 	const rightLen = Math.max(0, width - 2 - dividerCol);
@@ -91,7 +91,7 @@ export function topBorderSplit(width: number, title: string, sidebarWidth: numbe
 
 /** Section rule that closes the sidebar column with a `┴` over the divider. */
 export function dividerSplit(width: number, sidebarWidth: number): string {
-	const box = theme.boxRound;
+	const box = theme.boxSharp;
 	const dividerCol = splitDividerCol(sidebarWidth);
 	const leftLen = Math.max(0, dividerCol - 1);
 	const rightLen = Math.max(0, width - 2 - dividerCol);
@@ -102,7 +102,7 @@ export function dividerSplit(width: number, sidebarWidth: number): string {
 
 /** A two-column content row: `│ sidebar │ body │`, each inset by one column. */
 export function splitRow(sidebar: string, body: string, width: number, sidebarWidth: number): string {
-	const box = theme.boxRound;
+	const box = theme.boxSharp;
 	const bodyWidth = splitBodyWidth(width, sidebarWidth);
 	const bar = paint(box.vertical);
 	return `${bar} ${fit(sidebar, sidebarWidth)} ${bar} ${fit(body, bodyWidth)} ${bar}`;

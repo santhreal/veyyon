@@ -125,3 +125,4 @@
 
 - [Brand and identity](./design/brand.md)
 - [TUI design language](./design/tui-design-language.md)
+- [Retained coordination and prompt patterns](./design/omp-keepers.md)

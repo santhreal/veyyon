@@ -630,14 +630,36 @@ function injectIntentIntoSchema(
 	};
 }
 
+/**
+ * Cross-request cache for {@link normalizeTools} (P7, BACKLOG perf hotspots).
+ * `toolWireSchema`/`stripSchemaDescriptions` are already stamped per-tool (see
+ * `@veyyon/pi-ai/utils/schema/stamps`), so the expensive schema conversion
+ * itself is not repeated — but every call still re-runs the outer `.map()`
+ * (object spreads, `injectIntentIntoSchema`, `renderToolExamples`) even when
+ * `tools` and the flags are unchanged. Callers like `takeSnapshot` in
+ * `append-only-context.ts` and `Agent#buildSideRequestContext` invoke this
+ * with the SAME `tools` array reference on every turn/request, so keying a
+ * single-slot cache off that array identity (invalidated whenever the flags
+ * change) skips the whole rebuild. Keyed on the array, not the session, since
+ * that's the actual stable+shared reference across call sites.
+ */
+const normalizedToolsCache = new WeakMap<
+	NonNullable<AgentContext["tools"]>,
+	{ key: string; result: Context["tools"] }
+>();
+
 export function normalizeTools(
 	tools: AgentContext["tools"],
 	injectIntent: boolean,
 	exampleDialect?: Dialect,
 	pruneDescriptions = false,
 ): Context["tools"] {
+	if (!tools) return tools;
 	injectIntent = injectIntent && Bun.env.PI_NO_INTENT !== "1";
-	return tools?.map(t => {
+	const cacheKey = `${injectIntent}|${exampleDialect ?? ""}|${pruneDescriptions}`;
+	const cached = normalizedToolsCache.get(tools);
+	if (cached && cached.key === cacheKey) return cached.result;
+	const result = tools.map(t => {
 		const intentMode = resolveIntentMode(t.intent);
 		const doInjectIntent = injectIntent && intentMode !== "omit";
 		// When the full catalog is rendered into the system prompt, ship the tool
@@ -660,6 +682,8 @@ export function normalizeTools(
 		const finalDescription = examplesBlock ? `${description}\n\n${examplesBlock}` : description;
 		return { ...t, parameters, description: finalDescription };
 	});
+	normalizedToolsCache.set(tools, { key: cacheKey, result });
+	return result;
 }
 
 function resolveIntentMode(intent: AgentTool["intent"]): "require" | "optional" | "omit" {

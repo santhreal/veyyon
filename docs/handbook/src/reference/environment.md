@@ -1,131 +1,161 @@
 # Environment variables
 
-These are the environment variables you would set day to day. Veyyon also reads many internal
-`VEYYON_*` variables for testing, CI, packaging, sandbox injection, and eval harnesses; those are
-not part of the supported surface and are not listed here.
+This page covers the day-to-day surface only: identity/profile selection, provider auth, and the
+handful of `VEYYON_*` variables that are actually read by the runtime today. Veyyon also reads a large
+number of `PI_*` debug/behavior-toggle variables (timing, startup tracing, TUI flags, eval-runtime
+toggles, and more) that are not day-to-day configuration. For the complete, code-grounded reference —
+including every provider credential var, precedence chains, and internal toggles — see
+[`docs/environment-variables.md`](../../../environment-variables.md).
 
 ## Location and identity
 
+There is no `VEYYON_HOME`. The config directory **name** (not a full path) is overridable, and the
+active profile is selected by its own variable:
+
 | Variable | Purpose |
 | --- | --- |
-| `VEYYON_HOME` | Config and state home. Defaults to `~/.veyyon` on Unix and the Veyyon application directory on Windows. Holds `config.yml`, `auth.json`, sessions, logs, and the encrypted secrets store. |
-| `VEYYON_SQLITE_HOME` | Directory for the SQLite state database. When set, Veyyon stores the SQLite state DB here instead of under `VEYYON_HOME`. This is the environment-side override for the `sqlite_home` config key. |
+| `PI_CONFIG_DIR` | Overrides the config directory **name** under `$HOME` (default `.veyyon`). Does not accept a full path. |
+| `PI_CODING_AGENT_DIR` | Full override for the agent directory (default `~/<PI_CONFIG_DIR or .veyyon>/agent`). |
+| `VEYYON_PROFILE` | Selects the active named profile (`~/.veyyon/profiles/<name>/agent`). Legacy aliases `OMP_PROFILE` and `PI_PROFILE` are still accepted. |
+
+On Linux, `veyyon config init-xdg` migrates state under `$XDG_DATA_HOME`/`$XDG_STATE_HOME`/`$XDG_CACHE_HOME`
+when those are set; unmigrated installs stay under `~/.veyyon`. See
+[`packages/utils/src/dirs.ts`](https://github.com/santhsecurity/veyyon/blob/main/packages/utils/src/dirs.ts).
+
+There is no separate SQLite-state-directory override; state lives under the resolved agent directory
+above.
 
 ## Authentication
 
-Provider BYOK uses provider-native key variables. There is no Veyyon-branded API key
-(`VEYYON_API_KEY` was a legacy alias and has been removed).
+Provider BYOK uses each provider's native key variable — there is no Veyyon-branded API key or access
+token (a `VEYYON_API_KEY`/`VEYYON_ACCESS_TOKEN` legacy alias does not exist in the current runtime).
+When a provider's key variable is set, it is used without an interactive sign-in. For providers with
+OAuth (Anthropic, xAI, Qwen, Cursor, and others), the OAuth token variable takes precedence over the
+plain API key — see the provider tables below and
+[`docs/environment-variables.md`](../../../environment-variables.md#1-modelprovider-authentication).
 
-| Variable | Purpose |
-| --- | --- |
-| `OPENAI_API_KEY` | Primary provider BYOK key for OpenAI-compatible sign-in. When set, it is used without interactive login and wins over a stored key. |
-| `OPENAI_ACCESS_TOKEN` | Provider access token (ChatGPT / PAT path). Prefer this name for new shells. |
-| `VEYYON_ACCESS_TOKEN` | Legacy alias for the same access-token path as `OPENAI_ACCESS_TOKEN`. Still accepted; prefer the provider-native name. |
-
-Pipe keys into login rather than putting them on the argv:
-
-```shell
-printenv OPENAI_API_KEY | veyyon login --with-api-key
-printenv OPENAI_ACCESS_TOKEN | veyyon login --with-access-token
-```
+OAuth sign-in itself is interactive: run `/login` inside the TUI (or `--provider <id>` at startup) to
+open the OAuth selector. There is no `veyyon login --with-api-key`/`--with-access-token` CLI subcommand;
+piping a key into a login command is not part of the shipped CLI surface.
 
 ## Provider keys
 
 Each model provider reads its own standard key variable (or the name in
-`[model_providers.<id>].env_key`). When set, it is used without an interactive sign-in and wins over
-a stored key.
+`[model_providers.<id>].env_key` for a custom provider). When set, it is used without an interactive
+sign-in and wins over a stored key.
 
 | Provider | Variable |
 | --- | --- |
 | OpenAI | `OPENAI_API_KEY` |
+| Anthropic | `ANTHROPIC_API_KEY` (or `ANTHROPIC_OAUTH_TOKEN`, which takes precedence) |
 | DeepSeek | `DEEPSEEK_API_KEY` |
 | Moonshot | `MOONSHOT_API_KEY` |
 | Z.AI | `ZAI_API_KEY` |
 | OpenRouter | `OPENROUTER_API_KEY` |
-| Google | `GEMINI_API_KEY` |
-| xAI | `XAI_API_KEY` |
+| Google Gemini | `GEMINI_API_KEY` |
+| xAI | `XAI_API_KEY` (or `XAI_OAUTH_TOKEN`, which takes precedence for `xai-oauth`) |
 | Groq | `GROQ_API_KEY` |
 | Mistral | `MISTRAL_API_KEY` |
+| Cursor | `CURSOR_ACCESS_TOKEN` |
 
 A custom provider uses whatever variable its `[model_providers.<id>].env_key` names. See
-[Configuration](../using/configuration.md).
+[Configuration](../using/configuration.md) and the full provider table in
+[`docs/environment-variables.md`](../../../environment-variables.md#1-modelprovider-authentication)
+(30+ providers, cloud auth chains for Bedrock/Vertex/Azure, and web-search provider keys).
 
-## Catalog and local providers
+## Local and self-hosted providers
 
 | Variable | Purpose |
 | --- | --- |
-| `VEYYON_OSS_BASE_URL` | Base URL for local OSS providers (`ollama`, `lmstudio`). |
-| `VEYYON_OSS_PORT` | Port when base URL unset. |
+| `OLLAMA_BASE_URL` / `OLLAMA_HOST` | Ollama discovery base URL (defaults to `http://127.0.0.1:11434`). |
+| `LM_STUDIO_BASE_URL` | LM Studio discovery base URL (defaults to `http://127.0.0.1:1234/v1`). |
+| `LLAMA_CPP_BASE_URL` | llama.cpp discovery base URL (defaults to `http://127.0.0.1:8080`). |
+| `LITELLM_BASE_URL` | LiteLLM proxy base URL fallback (defaults to `http://localhost:4000/v1`). |
 | `PI_EDIT_VARIANT` | Force edit tool variant: `hashline`, `apply_patch`, `patch`, `replace`. |
+
+There is no `VEYYON_OSS_BASE_URL`/`VEYYON_OSS_PORT`; each local backend has its own discovery variable
+above.
 
 ## TLS and certificates
 
 | Variable | Purpose |
 | --- | --- |
-| `VEYYON_CA_CERTIFICATE` | Path to a PEM or DER file with one or more certificate blocks used as custom trust roots. Takes precedence over `SSL_CERT_FILE`. |
-| `SSL_CERT_FILE` | Standard fallback custom-CA path when `VEYYON_CA_CERTIFICATE` is unset. |
+| `NODE_EXTRA_CA_CERTS` | Extra CA bundle (path or inline PEM) merged into the trust root for every provider fetch (OpenAI-compatible, Codex, Ollama, Azure Responses, Google, Anthropic). |
+| `CLAUDE_CODE_CLIENT_CERT` / `CLAUDE_CODE_CLIENT_KEY` | mTLS client certificate/key, used in Anthropic Foundry gateway mode (`CLAUDE_CODE_USE_FOUNDRY=1`). |
 
-`veyyon doctor` checks that these paths are readable certificate data; point them at a real file or unset
-them to use system roots. See [Diagnostics and health](../features/doctor.md).
-
-## ChatGPT auth overrides
-
-These exist for the ChatGPT / OpenAI account login path (PAT whoami). They point at OpenAI AuthAPI
-hosts, not a Veyyon-hosted cloud.
-
-| Variable | Purpose |
-| --- | --- |
-| `VEYYON_AUTHAPI_BASE_URL` | Override for the ChatGPT AuthAPI base used by personal-access-token whoami. Defaults to `https://auth.openai.com/api/accounts`. |
+There is no `VEYYON_CA_CERTIFICATE` or `SSL_CERT_FILE` support; `NODE_EXTRA_CA_CERTS` is the real
+override, honored across providers because Bun's `fetch` does not read it natively (Veyyon merges it
+into `RequestInit.tls.ca` itself).
 
 ## Install and updates
 
 | Variable | Purpose |
 | --- | --- |
-| `VEYYON_NON_INTERACTIVE` | Set to `1`, `true`, or `yes` when running the install scripts so they skip prompts (used by the update-available install command). |
+| `PI_INSTALL_DIR` | Overrides the install script's target directory (default `~/.local/bin` on Unix, `%LOCALAPPDATA%\omp` on Windows). |
 
-`VEYYON_INSTALL_URL` is an optional no-default HTTPS override for the unix auto-updater install script.
-When unset the updater stays inert (it never phones a hard-coded host).
-It is not a day-to-day interactive-TUI variable.
+There is no `VEYYON_NON_INTERACTIVE` or `VEYYON_INSTALL_URL`; the install scripts (`scripts/install.sh`,
+`scripts/install.ps1`) do not read those names today.
 
-## MCP and connectors
+## MCP
 
-| Variable | Purpose |
-| --- | --- |
-| `VEYYON_GITHUB_PERSONAL_ACCESS_TOKEN` | Conventional name for a GitHub personal access token when configuring GitHub MCP via `bearer_token_env_var` in `config.yml` (GitHub MCP does not support OAuth). |
-| `VEYYON_CONNECTORS_TOKEN` | Bearer token env for the built-in apps/connectors MCP path when that integration is enabled. |
-
-Any MCP server can name a different secret via `[mcp_servers.<name>].bearer_token_env_var`.
-
-## Repair overrides (Spec — not shipped)
-
-These variables are reserved for the planned schema-repair bridge. Unset in current Veyyon builds.
+Any MCP server names its own bearer-token secret via `[mcp_servers.<name>].bearer_token_env_var` in
+`config.yml` — this points at *any* env var you choose (for example plain `GITHUB_PERSONAL_ACCESS_TOKEN`),
+not a fixed `VEYYON_*` name. There is no `VEYYON_GITHUB_PERSONAL_ACCESS_TOKEN` or `VEYYON_CONNECTORS_TOKEN`
+convention in the current runtime.
 
 | Variable | Purpose |
 | --- | --- |
-| `VEYYON_REPAIR_DISABLE` | Disable repair when implemented |
-| `VEYYON_REPAIR_LOG` | Repair telemetry log path |
+| `VEYYON_MCP_TIMEOUT_MS` | Overrides the MCP client request timeout (ms) for every server; `0` disables client-side timeouts. Default `30000`. Legacy alias `OMP_MCP_TIMEOUT_MS`. |
 
-Details: [Repair overview](../repair/overview.md).
+See [Configuration](../using/configuration.md) for `bearer_token_env_var` examples.
+
+## Remote auth broker (optional)
+
+Real, shipped `VEYYON_*` variables that switch credential resolution from local SQLite to a remote
+broker host:
+
+| Variable | Purpose |
+| --- | --- |
+| `VEYYON_AUTH_BROKER_URL` | Base URL of the remote auth-broker; selects broker mode. Legacy alias `OMP_AUTH_BROKER_URL`. |
+| `VEYYON_AUTH_BROKER_TOKEN` | Bearer token sent to the broker. Legacy alias `OMP_AUTH_BROKER_TOKEN`. |
+| `VEYYON_AUTH_BROKER_SNAPSHOT_TTL_MS` | Freshness window (ms) for the encrypted local snapshot cache; default `3600000`. |
+| `VEYYON_AUTH_BROKER_SNAPSHOT_CACHE` | Path to the encrypted local snapshot cache. |
+
+Most installs never set these. Details: `docs/auth-broker-gateway.md`.
+
+## Repair
+
+| Variable | Purpose |
+| --- | --- |
+| `VEYYON_REPAIR_DISABLE` | Truthy disables the shipped tool-call schema repair (see [Repair overview](../repair/overview.md)) at the tool-dispatch seam. |
+
+There is no `VEYYON_REPAIR_LOG`; per-`(model,tool,shape)` repair telemetry is **Spec — not shipped**.
 
 ## Terminal behavior
 
 | Variable | Purpose |
 | --- | --- |
-| `NO_COLOR` | When set (to any value), Veyyon renders without color; the interface preserves hierarchy through emphasis, spacing, and glyphs. |
+| `NO_COLOR` | When set (to any value), Veyyon renders without color; hierarchy comes through emphasis, spacing, and glyphs instead. |
 | `TERM` / `COLORTERM` | Read to detect terminal capabilities (truecolor, ANSI-256, ANSI-16) and pick the matching palette mapping. |
-| `VEYYON_TUI_DISABLE_KEYBOARD_ENHANCEMENT` | Truthy disables crossterm keyboard-enhancement flags (useful on broken terminal stacks; also auto-detected for some WSL + VS Code setups). |
-| `VEYYON_TUI_RECORD_SESSION` | Truthy enables TUI session input recording for debugging. |
-| `VEYYON_TUI_SESSION_LOG_PATH` | Optional path for the session recording log when recording is enabled. |
+| `PI_HARDWARE_CURSOR` | Truthy enables hardware cursor mode. |
+| `PI_TUI_WRITE_LOG` | When set, logs TUI writes to the given file (debugging). |
 
-## Descoped or non-day-to-day
+There is no `VEYYON_TUI_DISABLE_KEYBOARD_ENHANCEMENT`, `VEYYON_TUI_RECORD_SESSION`, or
+`VEYYON_TUI_SESSION_LOG_PATH`; see
+[`docs/environment-variables.md`](../../../environment-variables.md#9-tui-runtime-flags-shared-package-affects-coding-agent-ux)
+for the real `PI_*`-prefixed TUI flags.
+
+## Removed / does not exist
 
 | Name | Status |
 | --- | --- |
-| `VEYYON_API_KEY` | **Removed.** Legacy Veyyon-branded API-key alias; auth is provider-native keys only (`OPENAI_API_KEY`, and each provider's `env_key`). |
-| `VEYYON_APP_SERVER_LOGIN_ISSUER` | Debug-only login-issuer override. Not a supported day-to-day variable. |
-| `VEYYON_INSTALL_URL` | Optional auto-updater install-script override only (see Install and updates). |
-| Packaging markers (`VEYYON_MANAGED_BY_NPM`, `VEYYON_MANAGED_BY_BUN`, `VEYYON_MANAGED_PACKAGE_ROOT`) | Set by installers; not something you normally export by hand. |
-| Sandbox-injected vars (`VEYYON_SANDBOX`, `VEYYON_SANDBOX_NETWORK_DISABLED`, `VEYYON_THREAD_ID`, …) | Written by the runtime into sandboxed child processes; not user configuration. |
+| `VEYYON_HOME` | Never existed. Config location is `PI_CONFIG_DIR` (dirname override) + optional XDG migration, not a single home-path variable. |
+| `VEYYON_SQLITE_HOME` | Never existed. No separate SQLite-state override; state lives under the resolved agent directory. |
+| `VEYYON_API_KEY` / `VEYYON_ACCESS_TOKEN` | Never existed as a Veyyon-branded credential; use each provider's native key variable. |
+| `VEYYON_AUTHAPI_BASE_URL` | Never existed. The ChatGPT AuthAPI host used by personal-access-token whoami is not overridable via env today. |
+| `VEYYON_APP_SERVER_LOGIN_ISSUER` | Belonged to the removed app-server daemon; no equivalent exists in this runtime. |
+| `VEYYON_MANAGED_BY_NPM` / `VEYYON_MANAGED_BY_BUN` / `VEYYON_MANAGED_PACKAGE_ROOT` | Never existed. |
+| `VEYYON_SANDBOX` / `VEYYON_SANDBOX_NETWORK_DISABLED` / `VEYYON_THREAD_ID` | Never existed under these names. |
 
 Config values can also be overridden per run with `-c key=value`, which is usually clearer than an
 environment variable; see the [CLI reference](./cli.md).

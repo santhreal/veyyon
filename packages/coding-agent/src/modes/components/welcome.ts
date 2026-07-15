@@ -249,7 +249,7 @@ export class WelcomeComponent implements Component {
 
 		// Right column separator
 		const separatorWidth = Math.max(0, rightCol - 2); // padding on each side
-		const separator = ` ${theme.fg("borderMuted", theme.boxRound.horizontal.repeat(separatorWidth))}`;
+		const separator = ` ${theme.fg("borderMuted", theme.boxSharp.horizontal.repeat(separatorWidth))}`;
 
 		// Recent sessions content
 		const sessionLines: string[] = [];
@@ -317,13 +317,13 @@ export class WelcomeComponent implements Component {
 		];
 
 		// Hairline chrome — silver only on the product name in the title rail
-		const hChar = theme.boxRound.horizontal;
+		const hChar = theme.boxSharp.horizontal;
 		const h = theme.fg("borderMuted", hChar);
-		const v = theme.fg("borderMuted", theme.boxRound.vertical);
-		const tl = theme.fg("borderMuted", theme.boxRound.topLeft);
-		const tr = theme.fg("borderMuted", theme.boxRound.topRight);
-		const bl = theme.fg("borderMuted", theme.boxRound.bottomLeft);
-		const br = theme.fg("borderMuted", theme.boxRound.bottomRight);
+		const v = theme.fg("borderMuted", theme.boxSharp.vertical);
+		const tl = theme.fg("borderMuted", theme.boxSharp.topLeft);
+		const tr = theme.fg("borderMuted", theme.boxSharp.topRight);
+		const bl = theme.fg("borderMuted", theme.boxSharp.bottomLeft);
+		const br = theme.fg("borderMuted", theme.boxSharp.bottomRight);
 
 		const lines: string[] = [];
 
@@ -356,7 +356,7 @@ export class WelcomeComponent implements Component {
 		}
 		// Bottom border
 		if (showRightColumn) {
-			lines.push(bl + h.repeat(leftCol) + theme.fg("borderMuted", theme.boxRound.teeUp) + h.repeat(rightCol) + br);
+			lines.push(bl + h.repeat(leftCol) + theme.fg("borderMuted", theme.boxSharp.teeUp) + h.repeat(rightCol) + br);
 		} else {
 			lines.push(bl + h.repeat(leftCol) + br);
 		}

@@ -28,6 +28,7 @@ export * from "./sanitize-text";
 export * from "./snowflake";
 export * from "./stderr-guard";
 export * from "./stream";
+export * from "./strip-ansi";
 export * from "./tab-spacing";
 export * from "./temp";
 export * from "./tls-fetch";

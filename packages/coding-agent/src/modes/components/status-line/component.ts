@@ -1310,7 +1310,7 @@ export class StatusLineComponent implements Component {
 			? getSessionAccentHex(sessionName, theme.getMajorThemeColorHexes(), theme.accentSurfaceLuminance)
 			: undefined;
 		const gapColor = getSessionAccentAnsi(accentHex) ?? theme.getFgAnsi("border");
-		const gapFill = `${gapColor}${theme.boxRound.horizontal.repeat(gapWidth)}\x1b[39m`;
+		const gapFill = `${gapColor}${theme.boxSharp.horizontal.repeat(gapWidth)}\x1b[39m`;
 		return leftGroup + gapFill + rightGroup;
 	}
 

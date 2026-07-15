@@ -21,7 +21,7 @@ append rollout entry ──► update active leaf
         │
         ├─ next user message ──► next turn
         ├─ /compact when the window is tight
-        └─ /fork / /clone / /tree when exploring branches
+        └─ /fork / /branch / /tree when exploring branches
 ```
 
 Interactive `veyyon`, a non-interactive `veyyon "prompt"` run, and resume paths all share this loop.
@@ -43,7 +43,10 @@ While a turn runs you can steer it with `Enter` or queue a follow-up with `Tab` 
 
 At any moment, one path through the session tree is active. That path is the thread. The active leaf is the current entry at the end of that path.
 
-Branching creates siblings in the tree. `/tree` browses every entry, including abandoned branches. `/fork` copies history up to a chosen point into a new session. `/clone` duplicates the current session at its current leaf. The original session is never modified.
+Branching creates siblings in the tree. `/tree` browses every entry, including abandoned branches.
+`/branch` copies history up to a chosen user message into a new session file. `/fork` duplicates the
+**entire** current session into a new file (no entry picker). There is no `/clone` command. The
+original session is never modified.
 
 ## Context pressure and compaction
 

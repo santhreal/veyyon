@@ -59,8 +59,8 @@ export function outputBlockContentWidth(width: number, contentPaddingLeft?: numb
 
 export function renderOutputBlock(options: OutputBlockOptions, theme: Theme): string[] {
 	const { header, headerMeta, state, sections = [], width, applyBg = true } = options;
-	const h = theme.boxRound.horizontal;
-	const v = theme.boxRound.vertical;
+	const h = theme.boxSharp.horizontal;
+	const v = theme.boxSharp.vertical;
 	const cap = h.repeat(3);
 	const lineWidth = Math.max(0, width);
 	// Border colors: running/pending use accent, success uses dim (gray), error/warning keep their colors
@@ -95,8 +95,8 @@ export function renderOutputBlock(options: OutputBlockOptions, theme: Theme): st
 	const rows: BlockRow[] = [];
 	rows.push({
 		kind: "bar",
-		leftChar: theme.boxRound.topLeft,
-		rightChar: theme.boxRound.topRight,
+		leftChar: theme.boxSharp.topLeft,
+		rightChar: theme.boxSharp.topRight,
 		label: header,
 		meta: headerMeta,
 	});
@@ -110,15 +110,15 @@ export function renderOutputBlock(options: OutputBlockOptions, theme: Theme): st
 		if (section.label) {
 			rows.push({
 				kind: "bar",
-				leftChar: theme.boxRound.teeRight,
-				rightChar: theme.boxRound.teeLeft,
+				leftChar: theme.boxSharp.teeRight,
+				rightChar: theme.boxSharp.teeLeft,
 				label: section.label,
 			});
 		} else if (section.separator && sectionIndex > 0) {
 			rows.push({
 				kind: "bar",
-				leftChar: theme.boxRound.teeRight,
-				rightChar: theme.boxRound.teeLeft,
+				leftChar: theme.boxSharp.teeRight,
+				rightChar: theme.boxSharp.teeLeft,
 			});
 		}
 		const allLines = section.lines.flatMap(l => l.split("\n"));
@@ -137,7 +137,7 @@ export function renderOutputBlock(options: OutputBlockOptions, theme: Theme): st
 		}
 	}
 
-	rows.push({ kind: "bottom", leftChar: theme.boxRound.bottomLeft, rightChar: theme.boxRound.bottomRight });
+	rows.push({ kind: "bottom", leftChar: theme.boxSharp.bottomLeft, rightChar: theme.boxSharp.bottomRight });
 
 	const H = rows.length;
 

@@ -1,8 +1,14 @@
 /**
  * Pure helpers shared by tool renderers. Host-agnostic; no DOM beyond
- * `globalThis` feature probes, no host package imports.
+ * `globalThis` feature probes, no host-framework imports. `stripAnsi` is
+ * re-exported from the dependency-free `@veyyon/pi-utils/strip-ansi` subpath
+ * (bypasses the Node-heavy package barrel) so this file stays safe to bundle
+ * for the browser — see BACKLOG SPEC-ONE-PLACE-AUDIT F6.
  */
+import { stripAnsi } from "@veyyon/pi-utils/strip-ansi";
 import type { ToolResultImage, ToolResultLike } from "./types";
+
+export { stripAnsi };
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -78,13 +84,6 @@ export function normalizeWs(s: string): string {
 
 export function replaceTabs(s: string): string {
 	return s.replace(/\t/g, "   ");
-}
-
-// Control Sequence Introducer + OSC escapes.
-const ANSI_RE = /\x1b(?:\[[0-9;?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\))/g;
-
-export function stripAnsi(s: string): string {
-	return s.replace(ANSI_RE, "");
 }
 
 const EXT_TO_LANG: Record<string, string> = {

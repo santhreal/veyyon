@@ -59,7 +59,7 @@ export function renderFramedMessage<M extends FramedMessage>(opts: RebuildFrameO
 
 	opts.box.clear();
 	// Match the skill card: a subtle rounded outline so injected messages read as cards.
-	opts.box.setBorder({ chars: theme.boxRound, color: t => theme.fg("borderMuted", t) });
+	opts.box.setBorder({ chars: theme.boxSharp, color: t => theme.fg("borderMuted", t) });
 
 	const tag = opts.icon ? `${opts.icon} ${opts.message.customType}` : opts.message.customType;
 	opts.box.addChild(new Text(theme.fg("customMessageLabel", theme.bold(tag)), 0, 0));

@@ -60,7 +60,7 @@ function renderMockStatusLine(width: number): string {
 }
 
 function renderMockEditor(width: number): string[] {
-	const box = theme.boxRound;
+	const box = theme.boxSharp;
 	const innerWidth = Math.max(1, width - 2);
 	const horizontal = box.horizontal.repeat(innerWidth);
 	const top = theme.fg("borderAccent", `${box.topLeft}${horizontal}${box.topRight}`);

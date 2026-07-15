@@ -255,8 +255,8 @@ const UNICODE_SYMBOLS: SymbolMap = {
 	"status.aborted": "⏹",
 	"status.done": "•",
 	// Navigation
-	"nav.cursor": ">",
-	"nav.selected": ">",
+	"nav.cursor": "›",
+	"nav.selected": "›",
 	"nav.expand": "▸",
 	"nav.collapse": "▾",
 	"nav.back": "⟵",

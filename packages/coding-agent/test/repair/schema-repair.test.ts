@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import type { Tool, ToolCall } from "@veyyon/pi-ai/types";
+import { toolWireSchema } from "@veyyon/pi-ai/utils/schema";
 import {
 	detectAmbiguousRequiredStringRepair,
 	detectStrictUnknownKeyRepair,
@@ -7,6 +8,7 @@ import {
 	planAliasKeyRepairs,
 	repairToolCallArguments,
 } from "@veyyon/pi-coding-agent/repair/schema-repair";
+import { type } from "arktype";
 
 const sampleTool: Tool = {
 	name: "demo",
@@ -248,5 +250,26 @@ describe("schema repair — strict unknown-key mode (U4-01)", () => {
 			bogus: "nope",
 		});
 		expect(reason).toBeUndefined();
+	});
+
+	it("never applies strict unknown-key rejection to a real ArkType-authored tool (regression)", () => {
+		// ArkType/Zod wire conversion (`closeDeclaredObjects`) synthesizes
+		// `additionalProperties: false` on every declared object node to match
+		// the provider-facing "closed" emission convention — it is NOT an
+		// authorial strictness opt-in. Mirrors a real shipped tool shape
+		// (e.g. `write.ts`'s `{ path, content }`) through the actual
+		// `toolWireSchema()` pipeline the runtime uses, so this must fail if
+		// the gate in `repairToolCallArguments` is removed or weakened.
+		const arkTool: Tool = {
+			name: "write",
+			description: "write a file",
+			parameters: type({ path: "string", content: "string" }),
+		};
+		expect(toolWireSchema(arkTool).additionalProperties).toBe(false);
+
+		const outcome = call({ path: "/tmp/a.txt", content: "hello", hallucinatedExtra: "model-noise" }, arkTool);
+		expect(outcome.status).not.toBe("unrepairable");
+		if (outcome.status === "unrepairable") return;
+		expect(outcome.arguments).toMatchObject({ path: "/tmp/a.txt", content: "hello" });
 	});
 });

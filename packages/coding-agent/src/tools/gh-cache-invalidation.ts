@@ -17,10 +17,8 @@
  * number, all auth_keys) because the upside of staleness elimination
  * dwarfs the cost of one cache miss.
  */
+import { parseIssueUrl, parsePrUrl } from "./gh-url";
 import { invalidateAllForNumber, invalidateAllForRepo } from "./github-cache";
-
-const PR_URL_PATTERN = /^https:\/\/github\.com\/([^/\s]+\/[^/\s]+)\/pull\/(\d+)(?:[/?#].*)?$/i;
-const ISSUE_URL_PATTERN = /^https:\/\/github\.com\/([^/\s]+\/[^/\s]+)\/issues\/(\d+)(?:[/?#].*)?$/i;
 
 /** Subcommands that mutate the rendered issue/PR view in any meaningful way. */
 const MUTATING_ISSUE_SUBCMDS: Record<string, true> = {
@@ -48,6 +46,16 @@ const MUTATING_PR_SUBCMDS: Record<string, true> = {
 	lock: true,
 	unlock: true,
 };
+
+/** Parse `token` as an issue or PR URL (per `subject`) via the shared `gh-url` parsers. */
+function parseSubjectUrl(subject: "issue" | "pr", token: string): { repo?: string; num?: number } {
+	if (subject === "pr") {
+		const { repo, prNumber } = parsePrUrl(token);
+		return { repo, num: prNumber };
+	}
+	const { repo, issueNumber } = parseIssueUrl(token);
+	return { repo, num: issueNumber };
+}
 
 /**
  * Flags whose value is the next argv token (`--milestone 3`). The detector
@@ -140,13 +148,10 @@ function detectGhMutation(tokens: readonly string[]): { number?: number; repo?: 
 		if (direct !== undefined && Number.isSafeInteger(direct) && direct > 0) {
 			return repo !== undefined ? { number: direct, repo } : { number: direct };
 		}
-		const urlMatch = (subject === "pr" ? PR_URL_PATTERN : ISSUE_URL_PATTERN).exec(token);
-		if (urlMatch) {
-			const num = Number(urlMatch[2]);
-			if (Number.isSafeInteger(num) && num > 0) {
-				// URL carries its own repo and wins over a stray --repo flag.
-				return { number: num, repo: urlMatch[1] };
-			}
+		const { repo: urlRepo, num } = parseSubjectUrl(subject, token);
+		if (num !== undefined && Number.isSafeInteger(num) && num > 0) {
+			// URL carries its own repo and wins over a stray --repo flag.
+			return { number: num, repo: urlRepo };
 		}
 	}
 	// Mutating subcommand with no identifier: gh operates on the current

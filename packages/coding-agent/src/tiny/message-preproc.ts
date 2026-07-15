@@ -7,6 +7,7 @@
  * both ends with an explicit omission marker. Title generation, auto-thinking,
  * and the title benchmark MUST use this same policy.
  */
+import { stripAnsi } from "@veyyon/pi-utils";
 
 /** Maximum characters emitted by {@link preprocessTinyMessage}. */
 export const MAX_TINY_MESSAGE_CHARS = 2000;
@@ -19,19 +20,12 @@ export const MAX_TINY_MESSAGE_CHARS = 2000;
 const MIN_STRIPPED_TITLE_CHARS = 12;
 /** Matches a fenced code block (3+ backticks), including an unterminated trailing fence. */
 const FENCED_CODE_BLOCK = /```+[\s\S]*?(?:```+|$)/g;
-/** Matches SGR ANSI escape sequences (colors/styles) that leak in from pasted terminal output. */
-const ANSI_ESCAPE = /\u001b\[[0-9;]*m/g;
 /** Matches a paired XML/HTML-ish block, e.g. `<user>…</user>` or a tool envelope. */
 const XML_BLOCK = /<([a-zA-Z][\w-]*)(?:\s[^>]*)?>[\s\S]*?<\/\1>/g;
 /** Matches a hex run long enough to be a full commit SHA rather than an ordinary word. */
 const LONG_HEX_RUN = /\b[0-9a-fA-F]{12,}\b/g;
 /** Short-hash prefix length kept after truncating a long hex run. */
 const SHORT_HASH_CHARS = 7;
-
-/** Drop SGR ANSI escape sequences. */
-export function stripAnsi(message: string): string {
-	return message.replace(ANSI_ESCAPE, "");
-}
 
 /**
  * Remove paired XML/HTML-ish blocks (`<user>…</user>`, `<think>…</think>`,

@@ -84,7 +84,7 @@ describe("gallery harness", () => {
 		const lines = await renderGalleryState("task", task, "error", 100);
 		const stripped = lines.map(line => Bun.stripANSI(line).trim());
 		// The framed result header carries the label inside the box border...
-		expect(stripped.some(line => line.startsWith(theme.boxRound.topLeft) && line.includes("Task"))).toBe(true);
+		expect(stripped.some(line => line.startsWith(theme.boxSharp.topLeft) && line.includes("Task"))).toBe(true);
 		// ...but no standalone "Task" label line precedes it.
 		expect(stripped).not.toContain("Task");
 	});

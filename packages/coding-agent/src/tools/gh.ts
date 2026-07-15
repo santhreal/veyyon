@@ -17,6 +17,7 @@ import githubDescription from "../prompts/tools/github.md" with { type: "text" }
 import * as git from "../utils/git";
 import type { ToolSession } from ".";
 import { formatShortSha } from "./gh-format";
+import { parseIssueUrl, parsePrUrl } from "./gh-url";
 import { type CacheStatus, getOrFetchView, invalidateAllForNumber, resolveGithubCacheAuthKey } from "./github-cache";
 import type { OutputMeta } from "./output-meta";
 import { ToolError, throwIfAborted } from "./tool-errors";
@@ -239,8 +240,6 @@ const RUN_WATCH_TAIL_DEFAULT = 15;
 const RUN_WATCH_TAIL_MAX = 200;
 const REVIEW_COMMENTS_PAGE_SIZE = 100;
 const RUN_JOBS_PAGE_SIZE = 100;
-const PR_URL_PATTERN = /^https:\/\/github\.com\/([^/]+\/[^/]+)\/pull\/(\d+)(?:\/.*)?$/;
-const ISSUE_URL_PATTERN = /^https:\/\/github\.com\/([^/]+\/[^/]+)\/issues\/(\d+)(?:\/.*)?$/;
 const RUN_URL_PATTERN = /^https:\/\/github\.com\/([^/]+\/[^/]+)\/actions\/runs\/(\d+)(?:\/.*)?$/;
 const RUN_SUCCESS_CONCLUSIONS = new Set(["success", "neutral", "skipped"]);
 const RUN_FAILURE_CONCLUSIONS = new Set(["failure", "timed_out", "cancelled", "action_required", "startup_failure"]);
@@ -1148,23 +1147,6 @@ function parseRunReference(value: string | undefined): GhRunReference {
 	};
 }
 
-function parsePullRequestUrl(value: string | undefined): { repo?: string; prNumber?: number } {
-	const normalized = normalizeOptionalString(value);
-	if (!normalized) {
-		return {};
-	}
-
-	const match = normalized.match(PR_URL_PATTERN);
-	if (!match) {
-		return {};
-	}
-
-	return {
-		repo: match[1],
-		prNumber: Number(match[2]),
-	};
-}
-
 /**
  * Parse a digit-only decimal positive integer or return undefined. Rejects
  * `1e2`, `0x10`, `12.0`, leading +/-, or any other shape `Number()` would
@@ -1175,17 +1157,6 @@ export function parsePositiveDecimalInt(value: string | undefined): number | und
 	const num = Number(value);
 	if (!Number.isSafeInteger(num) || num <= 0) return undefined;
 	return num;
-}
-
-function parseIssueUrl(value: string | undefined): { repo?: string; issueNumber?: number } {
-	const normalized = normalizeOptionalString(value);
-	if (!normalized) return {};
-	const match = normalized.match(ISSUE_URL_PATTERN);
-	if (!match) return {};
-	return {
-		repo: match[1],
-		issueNumber: Number(match[2]),
-	};
 }
 
 function normalizePrReviewComment(comment: GhPrReviewCommentApi): GhPrReviewComment | null {
@@ -3214,7 +3185,7 @@ async function executePrPush(
 	// A successful push changes what `pr://N` and `pr://N/diff` should show;
 	// drop the cached rows so the canonical "push → re-read diff" flow sees
 	// fresh data instead of a soft-TTL stale snapshot.
-	const pushedPr = parsePullRequestUrl(target.prUrl);
+	const pushedPr = parsePrUrl(target.prUrl);
 	if (pushedPr.prNumber !== undefined) {
 		invalidateAllForNumber(pushedPr.prNumber, pushedPr.repo);
 	}
@@ -3295,7 +3266,7 @@ async function executePrCreate(
 				.split("\n")
 				.map(line => line.trim())
 				.find(line => line.startsWith("https://github.com/")) ?? output.trim();
-		const parsed = parsePullRequestUrl(url);
+		const parsed = parsePrUrl(url);
 		const resolvedRepo = repo ?? parsed.repo;
 
 		let prView: GhPrViewData | undefined;

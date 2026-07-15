@@ -1,4 +1,4 @@
-import { countTokens } from "@veyyon/pi-agent-core";
+import { countTokens, type AgentMessage } from "@veyyon/pi-agent-core";
 import type { CompactionSettings } from "@veyyon/pi-agent-core/compaction";
 import { effectiveReserveTokens, estimateTokens, resolveThresholdTokens } from "@veyyon/pi-agent-core/compaction";
 import type { Tool as AiTool, Model } from "@veyyon/pi-ai";
@@ -155,6 +155,60 @@ export function computeNonMessageTokens(session: AgentSession): number {
 	const tokens = countTokens(systemPromptParts) + estimateToolSchemaTokens(tools);
 	entry.tokens = tokens;
 	return tokens;
+}
+
+/**
+ * Incremental cache for {@link computeStoredMessagesTokens} (P5, BACKLOG perf
+ * hotspots). `estimateTokens` itself already memoizes each message's token
+ * count by identity (see `estimateTokens`/`tokenEstimateCache` in
+ * `@veyyon/pi-agent-core/compaction`), but the pre-prompt, mid-turn, and
+ * post-turn compaction checks each re-summed the FULL `session.messages`
+ * array on every call — an O(n) history walk repeated several times per turn
+ * even when nothing in the history had changed since the last call.
+ *
+ * `settledLength`/`settledSum` cover `[0, settledLength)` for the current
+ * `messagesRef`. The array's last slot is deliberately excluded from the
+ * settled range and re-read every call: `agent-loop.ts` replaces
+ * `messages[messages.length - 1]` in place while streaming (partial → final
+ * assistant message), which keeps the same array reference and length but
+ * swaps the message identity — folding that slot into the settled sum would
+ * silently return a stale estimate. Any reference change or length shrink
+ * (rewind, `Agent#pop`, compaction replacing the array) resets the cache.
+ */
+interface StoredMessagesTokenCache {
+	messagesRef: AgentMessage[];
+	settledLength: number;
+	settledSum: number;
+}
+
+const storedMessagesTokenCache = new WeakMap<AgentSession, StoredMessagesTokenCache>();
+
+/**
+ * Local token estimate of `session.messages` alone (no non-message or
+ * pending-message contribution — callers add those separately, mirroring
+ * {@link computeNonMessageTokens}). See {@link StoredMessagesTokenCache} for
+ * why the array's last slot is always re-measured rather than cached.
+ */
+export function computeStoredMessagesTokens(
+	session: AgentSession,
+	options?: { excludeEncryptedReasoning?: boolean },
+): number {
+	const messages = session.messages ?? [];
+	const settledLength = Math.max(0, messages.length - 1);
+
+	let cache = storedMessagesTokenCache.get(session);
+	if (!cache || cache.messagesRef !== messages || cache.settledLength > settledLength) {
+		cache = { messagesRef: messages, settledLength: 0, settledSum: 0 };
+	}
+	for (let i = cache.settledLength; i < settledLength; i++) {
+		cache.settledSum += estimateTokens(messages[i]!, options);
+	}
+	cache.settledLength = settledLength;
+	storedMessagesTokenCache.set(session, cache);
+
+	const lastMessage = messages.length > 0 ? messages[messages.length - 1] : undefined;
+	const lastTokens = lastMessage ? estimateTokens(lastMessage, options) : 0;
+	return cache.settledSum + lastTokens;
 }
 
 /**

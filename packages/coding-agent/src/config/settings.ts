@@ -361,9 +361,20 @@ export class Settings {
 			return this.#resolvedCache.get(path) as SettingValue<P>;
 		}
 
-		const value = getByPath(this.#merged, SETTING_PATH_SEGMENTS[path]);
+		// A read must never crash startup for an unregistered dotted path (e.g.
+		// new subsystems reading `harness.profiles` before it lands in the
+		// schema). Fall back to splitting the path — the same computation
+		// SETTING_PATH_SEGMENTS memoizes — and skip the schema default lookup,
+		// which only exists for registered paths.
+		const registered = SETTING_PATH_SEGMENTS[path] !== undefined;
+		const segments = registered ? SETTING_PATH_SEGMENTS[path] : path.split(".");
+		const value = getByPath(this.#merged, segments);
 		const resolved =
-			value !== undefined ? (resolvePathScopedStringArray(path, value, this.#cwd) ?? value) : getDefault(path);
+			value !== undefined
+				? (resolvePathScopedStringArray(path, value, this.#cwd) ?? value)
+				: registered
+					? getDefault(path)
+					: undefined;
 		this.#resolvedCache.set(path, resolved);
 		return resolved as SettingValue<P>;
 	}
@@ -373,7 +384,7 @@ export class Settings {
 	 * config, or runtime override) rather than falling back to the schema default.
 	 */
 	isConfigured(path: SettingPath): boolean {
-		return getByPath(this.#merged, SETTING_PATH_SEGMENTS[path]) !== undefined;
+		return getByPath(this.#merged, SETTING_PATH_SEGMENTS[path] ?? path.split(".")) !== undefined;
 	}
 
 	/**

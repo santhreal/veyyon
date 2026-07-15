@@ -8,7 +8,7 @@ compound.
 
 ## What improves
 
-- Bounded `read`, `find`, `grep`, and `ls` tools prevent one call from flooding the context.
+- Bounded `read`, `glob`, and `grep` tools prevent one call from flooding the context.
 - Tool output says exactly when and how it was truncated.
 - Compaction preserves the task state instead of dropping history silently.
 - The deterministic file working set survives compaction.

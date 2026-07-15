@@ -196,7 +196,12 @@ import {
 	resolveModelOverride,
 	resolveModelRoleValue,
 } from "../config/model-resolver";
-import { getKnownRoleIds, LEGACY_DEFAULT_MODEL_ROLE, MODEL_ROLES, SELECTABLE_MODEL_ROLE_IDS } from "../config/model-roles";
+import {
+	getKnownRoleIds,
+	LEGACY_DEFAULT_MODEL_ROLE,
+	MODEL_ROLES,
+	SELECTABLE_MODEL_ROLE_IDS,
+} from "../config/model-roles";
 import { expandPromptTemplate, type PromptTemplate } from "../config/prompt-templates";
 import { buildServiceTierByFamily, serviceTierForAllFamilies, serviceTierSettingToTier } from "../config/service-tier";
 import type { Settings, SkillsSettings } from "../config/settings";
@@ -262,7 +267,11 @@ import { containsOrchestrate, ORCHESTRATE_NOTICE } from "../modes/orchestrate";
 import { theme } from "../modes/theme/theme";
 import { parseTurnBudget } from "../modes/turn-budget";
 import { containsUltrathink, ULTRATHINK_NOTICE } from "../modes/ultrathink";
-import { computeNonMessageBreakdown, computeNonMessageTokens } from "../modes/utils/context-usage";
+import {
+	computeNonMessageBreakdown,
+	computeNonMessageTokens,
+	computeStoredMessagesTokens,
+} from "../modes/utils/context-usage";
 import { containsWorkflow, renderWorkflowNotice } from "../modes/workflow";
 import { resolveApprovedPlan } from "../plan-mode/approved-plan";
 import { createPlanReadMatcher } from "../plan-mode/plan-protection";
@@ -2739,8 +2748,7 @@ export class AgentSession {
 			this.#recordSessionExit(reason);
 		});
 
-		this.#advisorEnabled =
-			isAdvisorProductEnabled() && (this.settings.get("advisor.enabled") as boolean);
+		this.#advisorEnabled = isAdvisorProductEnabled() && (this.settings.get("advisor.enabled") as boolean);
 		if (this.#advisorEnabled) this.#buildAdvisorRuntime();
 
 		this.#rehydrateCheckpointRewindState();
@@ -10985,7 +10993,7 @@ export class AgentSession {
 		const opts = { excludeEncryptedReasoning: true } as const;
 		return (
 			computeNonMessageTokens(this) +
-			this.messages.reduce((sum, msg) => sum + estimateTokens(msg, opts), 0) +
+			computeStoredMessagesTokens(this, opts) +
 			pendingMessages.reduce((sum, msg) => sum + estimateTokens(msg, opts), 0)
 		);
 	}
@@ -11290,10 +11298,7 @@ export class AgentSession {
 		const supersedeResult = await this.#pruneStaleToolResults();
 
 		const compactionSettings = this.settings.getGroup("compaction");
-		if (
-			!compactionSettings.enabled ||
-			isCompactionStrategyOff(compactionSettings.strategy as string)
-		)
+		if (!compactionSettings.enabled || isCompactionStrategyOff(compactionSettings.strategy as string))
 			return COMPACTION_CHECK_NONE;
 
 		// Case 4: Threshold - turn succeeded but context is getting large

@@ -7,6 +7,7 @@ import type { Settings } from "../config/settings";
 import unexpectedStopClassifierPrompt from "../prompts/system/unexpected-stop-classifier.md" with { type: "text" };
 import { isTinyMemoryLocalModelKey, ONLINE_MEMORY_MODEL_KEY } from "../tiny/models";
 import { tinyModelClient } from "../tiny/title-client";
+import { REASONING_SAFE_MAX_TOKENS } from "./classifier-tokens";
 
 const CLASSIFIER_SYSTEM_PROMPT = prompt.render(unexpectedStopClassifierPrompt);
 
@@ -15,14 +16,6 @@ const CLASSIFIER_SYSTEM_PROMPT = prompt.render(unexpectedStopClassifierPrompt);
  * 16, so 16 is the smallest portable budget for this classifier.
  */
 const ANSWER_MAX_TOKENS = 16;
-/**
- * Online classifier budget. Sized to survive backends that ignore
- * `disableReasoning` (e.g. Qwen3 via llama.cpp catalogued `reasoning: false`
- * but still emitting thinking): the yes/no keyword needs to land after any
- * unavoidable thinking preamble. `maxTokens` is a hard cap — non-thinking
- * completions still return in a single word (issue #4355).
- */
-const REASONING_SAFE_MAX_TOKENS = 1024;
 
 export interface ClassifyUnexpectedStopDeps {
 	settings: Settings;

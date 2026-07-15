@@ -1,110 +1,112 @@
 # Bounded reads & instant search
 
-> **Status: Built.** The `read`, `grep`, `find`, `ls`, and `write` tools ship in the Bun/TypeScript
-> product. This chapter describes the behavioral contracts they hold.
+> **Status: Built.** The `read`, `glob`, `grep`, and `write` tools ship as TypeScript modules in
+> `packages/coding-agent/src/tools/{read,glob,grep,write}.ts`. There is no `experimental_tools` or
+> `backends.toml` gating — every tool below is always on. This chapter describes their real parameter
+> shapes and behavioral contracts.
 
 These tools fight **token blowup** and **latency** — supporting concerns that compound into
 control-flow failures on long trajectories, the long-context runs where a model stops making progress
 because its window is full of raw dumps.
 
-## The `read` tool
+## The `read` tool (`tools/read.ts`)
 
-A model that `cat`s a 20k-line file blows its whole context on one call. The `read` tool bounds every
-read to a budget and tells the model how to page the rest:
+A model that `cat`s a 20k-line file blows its whole context on one call. The `read` tool takes a single
+`path` string (no separate `offset`/`limit` arguments) and bounds every read to a budget:
 
-- **Dual budget, whichever is hit first:** a line cap (2000) and a byte cap (50 KB). A file that is
-  short in lines but huge in bytes (minified JS, a data blob) is bounded by bytes; a file that is many
-  short lines is bounded by lines.
-- **`offset` / `limit` paging:** `read {path, offset?, limit?}`, where `offset` is a 1-indexed start
-  line and `limit` caps how many lines come back. The model walks a large file in budget-sized windows
-  instead of one ruinous dump.
-- **Truncation is never silent.** When content is withheld, the output carries an actionable notice
-  that names the exact continuation, for example `[Showing lines 1-2000 of 30000. Use offset=2001 to
-  continue.]`. A single line larger than the whole budget points the model at the one tool that can
-  slice it.
-- **Whole-file fidelity.** A read that fits the budget reconstructs the file's bytes verbatim,
-  trailing newline included.
+- **One parameter, inline selectors.** `read {path}`, where `path` can carry a line-range selector
+  appended after a colon: `src/foo.ts:50-200` (inclusive range), `src/foo.ts:50` / `:50-` (from line 50
+  on), `src/foo.ts:50+150` (150 lines from line 50), or `src/foo.ts:5-16,960-973` (multiple ranges in
+  one call). `:raw` reads verbatim with no anchors or line prefixes.
+- **Dual budget, whichever is hit first:** a line cap (`DEFAULT_MAX_LINES = 3000`) and a byte cap
+  (`DEFAULT_MAX_BYTES = 50 KB`), defined in `session/streaming-output.ts`. A file that is short in lines
+  but huge in bytes (minified JS, a data blob) is bounded by bytes; a file with many short lines is
+  bounded by lines.
+- **Structural summaries for parseable code.** A read with no selector on a parseable source file
+  returns declarations with bodies elided (`…`), and the footer names the recovery selector so the model
+  re-issues only the ranges it actually needs instead of re-reading the whole file.
+- **Truncation is never silent.** A summary footer or a `[Showing lines …]`-style notice always names the
+  exact continuation selector.
+- **Beyond plain text files:** the same tool also reads directories (depth-limited listing), archives
+  (`.tar`, `.tar.gz`, `.zip`, via `archive.zip:path/inside`), SQLite databases (`file.db:table`, with
+  pagination and `where`/`order` filters), PDF/Word/PowerPoint/Excel/EPUB (extracted text), Jupyter
+  notebooks (editable cell text), images, URLs (reader-mode by default), and internal URI schemes
+  (`memory://`, `skill://`, `artifact://`, `mcp://`, `ssh://`, and others).
 
 Text reading is intentionally separate from image inspection: image files go through `view_image` or
 a vision prepass rather than being bundled into ordinary text reads.
 
-## The `find` tool
+## The `glob` tool (`tools/glob.ts`)
 
-A model that runs `find . -name '*.rs'` or `ls -R` in the shell gets back an unbounded dump that
-includes `target/`, `node_modules/`, and `.git/`. The `find` tool is bounded and gitignore-aware:
+There is no separate `find` or `ls` tool — pattern matching and directory listing are both the `glob`
+tool. A model that runs `find . -name '*.rs'` or `ls -R` in the shell gets back an unbounded dump that
+includes `target/`, `node_modules/`, and `.git/`; `glob` is bounded and gitignore-aware instead:
 
-- **Glob matching with `fd` semantics:** `find {pattern, path?, limit?}`. A pattern with no `/` matches
-  the **file name** at any depth (`*.rs` finds `src/deep/lib.rs`); a pattern containing `/` matches the
-  **full path**, with an implicit leading `**/`.
-- **Honors `.gitignore`, hierarchically.** Traversal walks the environment's filesystem (local or
-  remote) through the same abstraction `read`/`edit` use, applying a stack of `.gitignore` matchers with
-  deepest-directory precedence, including `!`-negation re-includes. `.git` and `node_modules` are never
-  descended, so it is correct inside a sandbox or remote container, not just on the host.
-- **Bounded, and never silently.** Output stops at a result limit (default 1000) or 50 KB, whichever is
-  hit first, and every limit is surfaced as an actionable notice. A permission-denied subtree is
-  reported (`[N directories could not be read]`), not swallowed.
-- **Deterministic output.** Results are lexicographically sorted, depth-first; directories carry a
-  trailing `/`.
+- **Glob matching, or a bare directory/file path.** `glob {path?, hidden?, gitignore?, limit?}`. `path`
+  accepts a glob, a single file, a directory (recursed), or a semicolon-delimited list of any of those
+  (`src/**/*.ts; test/**/*.ts`); omitted, it searches the workspace root.
+- **`gitignore` (default `true`)** hides `.gitignore` matches; set `false` to find `.env*`, build
+  output, or anything the repo ignores. **`hidden` (default `true`)** includes dotfiles.
+- **Bounded by result count**, default and max `200` (`DEFAULT_LIMIT` / `MAX_LIMIT` in `glob.ts`) — not
+  a byte cap. Every truncation is surfaced as an actionable notice.
+- **Sorted by mtime, newest first** (not lexicographic), grouped under `# <dir>/` headers with
+  basenames below; directories get a trailing `/`.
+- **`.git` and `node_modules` are never descended**, and traversal goes through the same filesystem
+  abstraction `read`/`grep` use, so it is correct inside a sandbox or remote container, not just on the
+  host.
 
-## The `ls` tool
-
-`find` recurses by glob; `ls` answers the different, common question "what is *immediately* in this
-directory?" `ls {path?, limit?}` lists a directory's immediate entries, sorted case-insensitively, with
-a `/` suffix on directories and dotfiles included. It does not recurse and does not consult
-`.gitignore` — it is the raw directory view. It is bounded (500 entries / 50 KB) with actionable
-limit notices and an explicit `(empty directory)`.
-
-## The `grep` tool
+## The `grep` tool (`tools/grep.ts`)
 
 A model that runs `grep -r` / `rg` in the shell can get back tens of thousands of matching lines. The
-`grep` tool bounds the search on top of the same gitignore-aware traversal `find` uses:
+`grep` tool is always regex (Rust regex / PCRE2 syntax; no literal-match flag) and paginates by file
+count on top of the same gitignore-aware traversal `glob` uses:
 
-- **Regex or literal, optional case-insensitivity.** `grep {pattern, path?, glob?, ignoreCase?,
-  literal?, context?, limit?}`. `pattern` is a regex unless `literal: true`.
-- **Gitignore-aware candidate selection**, optionally narrowed by a `glob` (`*.rs`, `src/**/*.ts`),
-  using the same filesystem abstraction as `read`/`find` so it is correct on a remote or sandboxed
-  environment.
-- **Output is `path:line: text`**, with `context` lines emitted as gutter rows around each match.
-- **Bounded, and never silently.** It stops at a match limit (default 100) or 50 KB, long lines are
-  truncated to 500 chars, and every bound is an actionable notice.
-- **Binary files are skipped** (non-UTF-8) as grep's defined contract, distinct from a genuine read
-  failure, which is surfaced rather than hidden.
+- **`grep {pattern, path?, case?, gitignore?, skip?}`.** `path` scopes the search (single path,
+  semicolon-delimited list, or a `file:line-range` selector on one target); `case` enables
+  case-sensitivity (default case-insensitive is **not** assumed — see the tool description for the
+  exact default); `skip` pages past files already returned once a call hits the file limit.
+- **Bounded by file count, not match count.** Results are paginated at `DEFAULT_FILE_LIMIT = 20` files
+  per call, with an internal total cap of `2000` matches (`grep.ts`); `skip` continues from where the
+  previous call left off.
+- **Output is per-file, line-number-prefixed**, with context rows around each match when the harness
+  runs in line-number mode.
+- **Cross-line patterns** are detected from a literal `\n`/`\\n` in `pattern`.
+- The tool description explicitly forbids shelling out to `grep`/`rg`/`ripgrep`/`ag`/`ack`/`git grep`
+  via Bash — the built-in tool is the only sanctioned path.
 
-## The `write` tool
+## The `write` tool (`tools/write.ts`)
 
-`read`/`find`/`grep`/`ls` are the read side; `write` creates or replaces a whole file. It routes
-through the **same verified path** as `edit`, never touching the filesystem directly:
+`read`/`glob`/`grep` are the read side; `write {path, content}` creates or replaces a whole file. It
+shares infrastructure with the edit engine rather than touching the filesystem directly:
 
-- **One verified pipeline, not two.** `write {path, content}` reads the target to decide
-  create-vs-overwrite, then applies the change through the same handler that `edit` uses, inheriting its
-  verification, approval prompt, sandbox enforcement, event emission, and turn-diff tracking. There is
-  exactly one code path that mutates a file.
-- **Race-free create-vs-overwrite.** A non-parallel tool holds the exclusive mutation lock for the whole
-  call, so nothing can create or change the file between the existence check and the apply. Identical
-  content short-circuits to "no change" rather than emitting an empty diff.
-- **Steers to `edit` for surgery.** `write` is for new files or full rewrites; for a surgical change to
-  an existing file the model is told to prefer `edit`, which keeps `write` from becoming the lazy
-  "re-emit the whole file" habit that burns tokens.
+- **Shared verified pipeline.** `write.ts` imports the same file-snapshot store and LF-normalization
+  helpers as the edit path (`../edit/file-snapshot-store`, `../edit/normalize`) and formats hashline
+  headers via `@veyyon/hashline`, so writes inherit LSP diagnostics writethrough and diff/verification
+  behavior rather than bypassing it.
+- **Exclusive concurrency.** The tool declares `concurrency: "exclusive"`, so nothing else can create or
+  change the target file mid-call.
+- **Steers to `edit` for surgery.** The tool description tells the model to prefer `edit` for a
+  surgical change to an existing file, keeping `write` from becoming a "re-emit the whole file" habit
+  that burns tokens.
 
 ## Sanitizing exec output for the model
 
-The shell/exec tool captures raw terminal bytes, which are full of things that cost tokens and confuse
-a reader without carrying information: ANSI color codes, cursor-move and clear-line sequences, OSC title
-strings, `\r`-driven progress redraws, and stray control bytes. Veyyon strips this noise before it
-reaches the model:
+Bash/exec tool output is sanitized before it reaches the model, via `sanitizeText()`
+(`packages/utils/src/sanitize-text.ts`), used from `session/streaming-output.ts` and the interactive PTY
+capture path (`tools/bash-interactive.ts`):
 
-- **One linear pass over the ECMA-48 grammar**, recognizing escape sequences by their defined shape
-  rather than a heuristic regex, so an uncommon-but-valid sequence cannot leak through and an escape
-  flood cannot backtrack.
-- **Keep `\n` and `\t`, drop the rest** of the C0 control bytes, `\r`, and the interlinear-annotation
-  format chars that crash width counters.
+- **ANSI stripping is Bun-native, not a hand-rolled parser.** `sanitizeText()` calls Bun's built-in
+  `Bun.stripANSI()` when an ESC byte is present, then strips C0/C1 control bytes and DEL with a single
+  regex pass. The function is a TypeScript replacement for a former Rust native
+  (`crates/pi-natives/src/text.rs::sanitize_text`, noted in the current source comment) — there is no
+  live Rust ECMA-48 grammar walker in this path today.
+- **Keep `\n` and `\t`, drop the rest.** The control regex covers C0 (excluding tab/newline), `\r`,
+  DEL, and the C1 range; `\n` and `\t` are the two explicit exclusions.
 - **Model-facing only.** Sanitizing happens on the text that becomes tool output for the model. The TUI
   renders exec output from its own delta stream and keeps its colors, so the operator's view is
   untouched.
-- **Both exec surfaces**, not just the legacy `shell` tool: every model-facing render runs through the
-  same sanitizer.
-- **Zero-cost when clean.** Ordinary output that carries no escapes returns without any allocation; only
-  output that actually carries escapes pays for a rewrite.
+- **Zero-cost when clean.** Well-formed input with no control/ANSI bytes returns the original string
+  reference after one regex probe; only output that actually carries escapes pays for `Bun.stripANSI()`.
 
 ## Why these are grouped with context
 

@@ -33,8 +33,7 @@ import type {
 	LogDetails,
 	NumericMetricMap,
 } from "../types";
-
-const EXPERIMENT_TOOL_NAMES = ["init_experiment", "run_experiment", "log_experiment", "update_notes"];
+import { EXPERIMENT_TOOL_NAMES } from ".";
 
 const logExperimentSchema = type({
 	metric: type("number").describe("primary metric value"),

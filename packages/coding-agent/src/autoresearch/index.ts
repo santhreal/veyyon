@@ -22,13 +22,12 @@ import {
 	reconstructControlState,
 } from "./state";
 import { openAutoresearchStorage, openAutoresearchStorageIfExists, type RunRow, type SessionRow } from "./storage";
+import { EXPERIMENT_TOOL_NAMES } from "./tools";
 import { createInitExperimentTool } from "./tools/init-experiment";
 import { createLogExperimentTool } from "./tools/log-experiment";
 import { createRunExperimentTool } from "./tools/run-experiment";
 import { createUpdateNotesTool } from "./tools/update-notes";
 import type { AutoresearchRuntime, ExperimentResult, PendingRunSummary } from "./types";
-
-const EXPERIMENT_TOOL_NAMES = ["init_experiment", "run_experiment", "log_experiment", "update_notes"];
 
 export const createAutoresearchExtension: ExtensionFactory = api => {
 	const runtimeStore = createRuntimeStore();

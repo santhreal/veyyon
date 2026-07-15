@@ -90,10 +90,10 @@ describe("MoveOverlay", () => {
 		const plainLines = lines.map(stripAnsi);
 
 		expect(lines.map(line => visibleWidth(line))).toEqual(Array(lines.length).fill(72));
-		expect(plainLines[0]!.endsWith(uiTheme.boxRound.topRight)).toBe(true);
-		expect(plainLines.at(-1)!.endsWith(uiTheme.boxRound.bottomRight)).toBe(true);
+		expect(plainLines[0]!.endsWith(uiTheme.boxSharp.topRight)).toBe(true);
+		expect(plainLines.at(-1)!.endsWith(uiTheme.boxSharp.bottomRight)).toBe(true);
 		for (const line of plainLines.slice(1, -1)) {
-			expect(line.endsWith(uiTheme.boxRound.vertical)).toBe(true);
+			expect(line.endsWith(uiTheme.boxSharp.vertical)).toBe(true);
 		}
 	});
 

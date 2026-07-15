@@ -21,6 +21,7 @@ import { resolveRoleSelection } from "../config/model-resolver";
 import type { Settings } from "../config/settings";
 import difficultySystemPrompt from "../prompts/system/auto-thinking-difficulty.md" with { type: "text" };
 import difficultyLocalPrompt from "../prompts/system/auto-thinking-difficulty-local.md" with { type: "text" };
+import { REASONING_SAFE_MAX_TOKENS } from "../session/classifier-tokens";
 import { clampAutoThinkingEffort } from "../thinking";
 import { preprocessTinyMessage } from "../tiny/message-preproc";
 import {
@@ -34,14 +35,6 @@ const DIFFICULTY_SYSTEM_PROMPT = prompt.render(difficultySystemPrompt);
 
 /** Local classifiers occasionally need more room for chat-template boilerplate. */
 const LOCAL_ANSWER_MAX_TOKENS = 16;
-/**
- * Online classifier budget. Sized to survive backends that ignore
- * `disableReasoning` (e.g. Qwen3 via llama.cpp catalogued `reasoning: false`
- * but still emitting thinking): the classifier keyword needs to land after any
- * unavoidable thinking preamble. `maxTokens` is a hard cap — non-thinking
- * completions still return in a handful of tokens (issue #4355).
- */
-const REASONING_SAFE_MAX_TOKENS = 1024;
 
 export interface ClassifyDifficultyDeps {
 	settings: Settings;

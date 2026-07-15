@@ -118,24 +118,27 @@ Normal-mode basics:
 
 For the full list of motions, operators, and text objects, see [Keybindings and Vim mode](../features/keybindings.md).
 
-## Customizing in config.yml
+## Customizing (real path: keybindings.yml)
 
-> **Spec — not shipped:** the `tui.keymap` config surface below is a design target; it is not yet
-> wired in the current build.
-
-Set custom bindings under `tui.keymap.<context>` in `~/.veyyon/config.yml`. Use a single string, a list of strings, or an empty list to disable an action.
+Custom bindings are **shipped** — but the config surface is its own file, not a `tui.keymap` block in
+`config.yml`. Set bindings by action ID in **`~/.veyyon/agent/keybindings.yml`** (YAML map of action ID
+→ chord or chord list). A single string, a list of chords, or an empty list (disables the action) are
+all valid values:
 
 ```yaml
-tui:
-  keymap:
-    global:
-      open_transcript: ctrl-y
-      copy: [ctrl-c, alt-c]
-      clear_terminal: []  # disables the action
+app.model.cycleForward: Ctrl+P
+app.history.search: []   # disables the action
+app.clipboard.copyLine: [Ctrl+C, Alt+C]
 ```
 
-Key format: modifiers (`ctrl`, `alt`, `shift`) joined by hyphens, followed by the key. Special keys include `enter`, `tab`, `esc`, `space`, `up`, `down`, `left`, `right`, `home`, `end`, `page-up`, `page-down`, `delete`, `backspace`, and `f1` through `f24`.
+Action IDs are namespaced (`app.model.cycleForward`, `app.plan.toggle`, `tui.select.pageUp`, …), not the
+`global`/`clear_terminal`-style context keys shown in older drafts of this page. Older flat legacy names
+and `keybindings.json` files migrate automatically to the namespaced `.yml` form on load. Run
+**`/hotkeys`** in a session to see active chords.
 
-Aliases normalize automatically: `escape` becomes `esc`, `return` becomes `enter`, `spacebar` becomes `space`, `pgup`/`pageup` becomes `page-up`, `pgdn`/`pagedown` becomes `page-down`, and `del` becomes `delete`.
+> **Spec — not shipped:** a `/keymap` interactive remapper and nested `tui.keymap.<context>` tables
+> inside `config.yml`. The customization surface that actually ships is the flat `keybindings.yml` file
+> above.
 
-For context definitions and more examples, see [Keybindings and Vim mode](../features/keybindings.md).
+For the full action-ID list and Vim mode details, see [Keybindings and Vim mode](../features/keybindings.md)
+and the engineering reference [`docs/keybindings.md`](../../../keybindings.md).

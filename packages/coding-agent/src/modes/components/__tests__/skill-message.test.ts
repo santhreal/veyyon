@@ -47,8 +47,8 @@ describe("SkillMessageComponent", () => {
 		expect(text).toContain("88 lines");
 
 		// The card is drawn with an outline.
-		expect(text).toContain(uiTheme.boxRound.topLeft);
-		expect(text).toContain(uiTheme.boxRound.bottomRight);
+		expect(text).toContain(uiTheme.boxSharp.topLeft);
+		expect(text).toContain(uiTheme.boxSharp.bottomRight);
 
 		// Path is home-shortened and never leaks the absolute home dir.
 		expect(text).toContain("~/.agent/skills/atomic-commit/SKILL.md");

@@ -41,39 +41,9 @@ const WINDOWS_ENV_ALLOWLIST = [
 	"USERPROFILE",
 	"USERNAME",
 	"WINDIR",
-]);
-
-const DEFAULT_ENV_DENYLIST = new Set([
-	"OPENAI_API_KEY",
-	"ANTHROPIC_API_KEY",
-	"GOOGLE_API_KEY",
-	"GEMINI_API_KEY",
-	"OPENROUTER_API_KEY",
-	"PERPLEXITY_API_KEY",
-	"PERPLEXITY_COOKIES",
-	"EXA_API_KEY",
-	"AZURE_OPENAI_API_KEY",
-	"MISTRAL_API_KEY",
-]);
+];
 
 const DEFAULT_ENV_ALLOW_PREFIXES = ["LC_", "XDG_", "PI_"];
-
-const CASE_INSENSITIVE_ENV = process.platform === "win32";
-const BASE_ENV_ALLOWLIST = new Set([...DEFAULT_ENV_ALLOWLIST, ...WINDOWS_ENV_ALLOWLIST]);
-
-const NORMALIZED_ALLOWLIST = new Set(
-	Array.from(BASE_ENV_ALLOWLIST, key => (CASE_INSENSITIVE_ENV ? key.toUpperCase() : key)),
-);
-const NORMALIZED_DENYLIST = new Set(
-	Array.from(DEFAULT_ENV_DENYLIST, key => (CASE_INSENSITIVE_ENV ? key.toUpperCase() : key)),
-);
-const NORMALIZED_ALLOW_PREFIXES = CASE_INSENSITIVE_ENV
-	? DEFAULT_ENV_ALLOW_PREFIXES.map(prefix => prefix.toUpperCase())
-	: DEFAULT_ENV_ALLOW_PREFIXES;
-
-function normalizeEnvKey(key: string): string {
-	return CASE_INSENSITIVE_ENV ? key.toUpperCase() : key;
-}
 
 function resolvePathKey(env: Record<string, string | undefined>): string {
 	if (!CASE_INSENSITIVE_ENV) return "PATH";
@@ -101,27 +71,12 @@ export interface PythonRuntime {
 	venvPath?: string;
 }
 
-/**
- * Filter environment variables to a safe allowlist for Python subprocesses.
- * Removes sensitive API keys and limits to known-safe variables.
- */
-export function filterEnv(env: Record<string, string | undefined>): Record<string, string | undefined> {
-	const filtered: Record<string, string | undefined> = {};
-	for (const [key, value] of Object.entries(env)) {
-		if (value === undefined) continue;
-		const normalizedKey = normalizeEnvKey(key);
-		if (NORMALIZED_DENYLIST.has(normalizedKey)) continue;
-		if (NORMALIZED_ALLOWLIST.has(normalizedKey)) {
-			const destKey = normalizedKey === "PATH" ? "PATH" : key;
-			filtered[destKey] = value;
-			continue;
-		}
-		if (NORMALIZED_ALLOW_PREFIXES.some(prefix => normalizedKey.startsWith(prefix))) {
-			filtered[key] = value;
-		}
-	}
-	return filtered;
-}
+export const filterEnv = createEnvFilter({
+	allowList: [...BASE_ENV_ALLOWLIST, ...PYTHON_ENV_ALLOWLIST],
+	windowsAllowList: WINDOWS_ENV_ALLOWLIST,
+	denyList: SECRET_ENV_DENYLIST,
+	allowPrefixes: DEFAULT_ENV_ALLOW_PREFIXES,
+});
 
 /**
  * Detect virtual environment path from VIRTUAL_ENV or common locations.

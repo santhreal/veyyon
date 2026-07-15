@@ -137,7 +137,7 @@ class OutlinedList extends Container {
 
 	render(width: number): readonly string[] {
 		const borderColor = (text: string) => theme.fg("border", text);
-		const horizontal = borderColor(theme.boxRound.horizontal.repeat(Math.max(1, width)));
+		const horizontal = borderColor(theme.boxSharp.horizontal.repeat(Math.max(1, width)));
 		const innerWidth = Math.max(1, width - 2);
 		const content: string[] = [];
 		for (const row of this.#rows) {
@@ -149,7 +149,7 @@ class OutlinedList extends Container {
 				const pad = Math.max(0, innerWidth - visibleWidth(wrappedLine));
 				const filled = `${wrappedLine}${padding(pad)}`;
 				const painted = row.highlight ? paintSelectedRow(filled) : filled;
-				content.push(`${borderColor(theme.boxRound.vertical)}${painted}${borderColor(theme.boxRound.vertical)}`);
+				content.push(`${borderColor(theme.boxSharp.vertical)}${painted}${borderColor(theme.boxSharp.vertical)}`);
 			}
 		}
 		return [horizontal, ...content, horizontal];

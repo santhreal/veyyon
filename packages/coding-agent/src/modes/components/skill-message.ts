@@ -41,7 +41,7 @@ export class SkillMessageComponent extends Container {
 		this.addChild(this.#box);
 		this.#box.clear();
 		// Re-read symbols every rebuild so a runtime theme/preset switch refreshes the outline.
-		this.#box.setBorder({ chars: theme.boxRound, color: t => theme.fg("borderMuted", t) });
+		this.#box.setBorder({ chars: theme.boxSharp, color: t => theme.fg("borderMuted", t) });
 
 		const details = this.message.details;
 		const name = details?.name?.trim() || "unknown";
