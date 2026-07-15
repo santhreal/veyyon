@@ -307,9 +307,9 @@ const UNICODE_SYMBOLS: SymbolMap = {
 	"icon.pause": "⏸",
 	"icon.loop": "↻",
 	"icon.folder": "F",
-	"icon.worktree": "",
+	"icon.worktree": "⧉",
 	"icon.search": "",
-	"icon.scratchFolder": "",
+	"icon.scratchFolder": "T",
 	"icon.file": "",
 	"icon.git": "⎇",
 	"icon.branch": "⑂",
@@ -388,18 +388,18 @@ const UNICODE_SYMBOLS: SymbolMap = {
 	"lang.julia": "Ⓙ",
 	"lang.php": "",
 	"lang.swift": "",
-	"lang.kotlin": "🅺",
-	"lang.shell": "S",
-	"lang.html": "N",
-	"lang.css": "A",
+	"lang.kotlin": "Ⓚ",
+	"lang.shell": "",
+	"lang.html": "",
+	"lang.css": "",
 	"lang.json": "",
-	"lang.yaml": "C",
+	"lang.yaml": "",
 	"lang.markdown": "",
 	"lang.sql": "",
 	"lang.docker": "",
 	"lang.lua": "",
 	"lang.text": "",
-	"lang.env": "T",
+	"lang.env": "",
 	"lang.toml": "",
 	"lang.xml": "⟨⟩",
 	"lang.ini": "",
@@ -1931,10 +1931,15 @@ export class Theme {
 	 * Maps common language names to their corresponding symbol keys.
 	 */
 	getLangIcon(lang: string | undefined): string {
-		if (!lang) return this.#symbols["lang.default"];
-		const normalized = lang.toLowerCase();
-		const key = langMap[normalized];
-		return key ? this.#symbols[key] : this.#symbols["lang.default"];
+		const fallback = this.#symbols["lang.default"];
+		if (!lang) return fallback;
+		const key = langMap[lang.toLowerCase()];
+		const icon = key ? this.#symbols[key] : fallback;
+		// A known language whose preset glyph is empty (the unicode preset leaves
+		// most langs blank, intending the default mark) must still render a visible
+		// badge — otherwise the file icon disappears. Fall back to `lang.default`.
+		// No-op for the nerd/ascii presets, whose per-lang glyphs are non-empty.
+		return icon || fallback;
 	}
 
 	/**
