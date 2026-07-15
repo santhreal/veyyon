@@ -728,32 +728,47 @@ export function calculateImageRows(
 	return Math.max(1, rows);
 }
 
-function calculateImageFit(
+// Hard ceiling on an image's fitted cell grid. The renderer reserves one real
+// terminal row per fit row (image.ts), so an unbounded `rows` is an OOM DoS: a
+// hostile image header can report billions of pixels or an extreme aspect ratio
+// (a 1x4e9 PNG), and even when a caller caps only one axis (image.ts caps width,
+// not height) the other explodes. This ceiling is far above any real terminal —
+// a legit image fit to the viewport is at most a few hundred cells — so it never
+// alters realistic output, only defuses the pathological case.
+const MAX_IMAGE_FIT_CELLS = 4096;
+
+export function calculateImageFit(
 	imageDimensions: ImageDimensions,
 	options: ImageRenderOptions,
 	cellDims: CellDimensions,
 ): { columns: number; rows: number } {
+	// Sanitize source dimensions: a malformed/hostile header can report 0 or a
+	// non-finite value, and `0 * Infinity` in the scale math below yields NaN,
+	// which slips past `Math.min` caps. Force finite, >= 1.
+	const widthPx = Number.isFinite(imageDimensions.widthPx) ? Math.max(1, imageDimensions.widthPx) : 1;
+	const heightPx = Number.isFinite(imageDimensions.heightPx) ? Math.max(1, imageDimensions.heightPx) : 1;
 	const maxColumns = options.maxWidthCells !== undefined ? Math.max(1, Math.floor(options.maxWidthCells)) : undefined;
 	const maxRows = options.maxHeightCells !== undefined ? Math.max(1, Math.floor(options.maxHeightCells)) : undefined;
 
+	let columns: number;
+	let rows: number;
 	if (maxColumns === undefined && maxRows === undefined) {
-		const columns = Math.max(1, Math.ceil(imageDimensions.widthPx / cellDims.widthPx));
-		const rows = Math.max(1, Math.ceil(imageDimensions.heightPx / cellDims.heightPx));
-		return { columns, rows };
+		columns = Math.max(1, Math.ceil(widthPx / cellDims.widthPx));
+		rows = Math.max(1, Math.ceil(heightPx / cellDims.heightPx));
+	} else {
+		const maxWidthPx = maxColumns !== undefined ? maxColumns * cellDims.widthPx : Number.POSITIVE_INFINITY;
+		const maxHeightPx = maxRows !== undefined ? maxRows * cellDims.heightPx : Number.POSITIVE_INFINITY;
+		const scale = Math.min(maxWidthPx / widthPx, maxHeightPx / heightPx);
+		columns = Math.max(1, Math.floor((widthPx * scale) / cellDims.widthPx));
+		rows = Math.max(1, Math.ceil((heightPx * scale) / cellDims.heightPx));
+		if (maxColumns !== undefined) columns = Math.min(columns, maxColumns);
+		if (maxRows !== undefined) rows = Math.min(rows, maxRows);
 	}
 
-	const maxWidthPx = maxColumns !== undefined ? maxColumns * cellDims.widthPx : Number.POSITIVE_INFINITY;
-	const maxHeightPx = maxRows !== undefined ? maxRows * cellDims.heightPx : Number.POSITIVE_INFINITY;
-	const scale = Math.min(maxWidthPx / imageDimensions.widthPx, maxHeightPx / imageDimensions.heightPx);
-	const fittedWidthPx = imageDimensions.widthPx * scale;
-	const fittedHeightPx = imageDimensions.heightPx * scale;
-
-	const columns = Math.max(1, Math.floor(fittedWidthPx / cellDims.widthPx));
-	const rows = Math.max(1, Math.ceil(fittedHeightPx / cellDims.heightPx));
-
+	// Final safety clamp (covers both branches and every caller/protocol).
 	return {
-		columns: maxColumns !== undefined ? Math.min(columns, maxColumns) : columns,
-		rows: maxRows !== undefined ? Math.min(rows, maxRows) : rows,
+		columns: Math.min(columns, MAX_IMAGE_FIT_CELLS),
+		rows: Math.min(rows, MAX_IMAGE_FIT_CELLS),
 	};
 }
 
