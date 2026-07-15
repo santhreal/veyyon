@@ -5,7 +5,7 @@ import { extractPrintableText } from "../keys";
 import { type MouseRoutable, routeSelectListMouse, type SgrMouseEvent } from "../mouse";
 import type { SymbolTheme } from "../symbols";
 import type { Component } from "../tui";
-import { Ellipsis, padding, replaceTabs, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "../utils";
+import { Ellipsis, padding, sanitizeSingleLine, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "../utils";
 import { ScrollView } from "./scroll-view";
 
 const DEFAULT_PRIMARY_COLUMN_WIDTH = 32;
@@ -13,13 +13,6 @@ const PRIMARY_COLUMN_GAP = 2;
 const MIN_DESCRIPTION_WIDTH = 10;
 
 const DEFAULT_CURSOR_SYMBOL = ">";
-
-function sanitizeSingleLine(text: string): string {
-	return replaceTabs(text)
-		.replace(/[\r\n]+/g, " ")
-		.replace(/\s+/g, " ")
-		.trim();
-}
 
 const clamp = (value: number, min: number, max: number): number => Math.max(min, Math.min(value, max));
 

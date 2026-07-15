@@ -1,7 +1,9 @@
+import { Glob } from "bun";
 import { describe, expect, it } from "bun:test";
 import {
 	encodeTextSized,
 	extractSegments,
+	sanitizeSingleLine,
 	sliceWithWidth,
 	truncateToWidth,
 	visibleWidth,
@@ -140,5 +142,32 @@ describe("text utils", () => {
 		expect(result.after).toBe("H");
 		expect(result.afterWidth).toBe(1);
 		expect(result.after.includes("\x1b]66")).toBe(false);
+	});
+});
+
+describe("sanitizeSingleLine", () => {
+	it("collapses newlines, tabs, and whitespace runs to single spaces and trims", () => {
+		expect(sanitizeSingleLine("  a\tb\n\nc  \r\n d  ")).toBe("a b c d");
+	});
+
+	it("flattens an embedded newline so a list row cannot break", () => {
+		expect(sanitizeSingleLine("line one\nline two")).toBe("line one line two");
+		expect(sanitizeSingleLine("")).toBe("");
+	});
+
+	// ONE-PLACE lock: this helper was copy-pasted byte-for-byte into select-list
+	// and settings-list. It now lives only in utils.ts — a second definition must
+	// re-import, not re-declare, or copies drift.
+	it("is defined in exactly one source file", async () => {
+		const root = `${import.meta.dir}/../..`;
+		const definitions: string[] = [];
+		for (const pkg of ["tui/src", "coding-agent/src"]) {
+			const glob = new Glob("**/*.ts");
+			for await (const rel of glob.scan({ cwd: `${root}/${pkg}` })) {
+				const src = await Bun.file(`${root}/${pkg}/${rel}`).text();
+				if (/function\s+sanitizeSingleLine\b/.test(src)) definitions.push(`${pkg}/${rel}`);
+			}
+		}
+		expect(definitions).toEqual(["tui/src/utils.ts"]);
 	});
 });

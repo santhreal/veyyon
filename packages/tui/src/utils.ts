@@ -167,6 +167,18 @@ export function replaceTabs(text: string): string {
 }
 
 /**
+ * Flatten text to a single trimmed line: expand tabs, collapse every run of
+ * whitespace (including newlines) to one space. Used by list components that
+ * render one row per item and must never let an embedded newline break the row.
+ */
+export function sanitizeSingleLine(text: string): string {
+	return replaceTabs(text)
+		.replace(/[\r\n]+/g, " ")
+		.replace(/\s+/g, " ")
+		.trim();
+}
+
+/**
  * Returns a string of n spaces. Uses a pre-allocated buffer for efficiency.
  */
 export function padding(n: number): string {
