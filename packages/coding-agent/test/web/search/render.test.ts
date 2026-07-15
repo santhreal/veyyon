@@ -1,8 +1,8 @@
 import { beforeAll, describe, expect, it } from "bun:test";
-import { getThemeByName, initTheme } from "@oh-my-pi/pi-coding-agent/modes/theme/theme";
-import { renderSearchResult, type SearchRenderDetails } from "@oh-my-pi/pi-coding-agent/web/search/render";
-import type { SearchResponse } from "@oh-my-pi/pi-coding-agent/web/search/types";
-import { sanitizeText } from "@oh-my-pi/pi-utils";
+import { getThemeByName, initTheme } from "@veyyon/pi-coding-agent/modes/theme/theme";
+import { renderSearchResult, type SearchRenderDetails } from "@veyyon/pi-coding-agent/web/search/render";
+import type { SearchResponse } from "@veyyon/pi-coding-agent/web/search/types";
+import { sanitizeText } from "@veyyon/pi-utils";
 
 const ANSWER = [
 	"## Overview Heading",

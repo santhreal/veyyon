@@ -1,7 +1,7 @@
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { $which, logger, Snowflake } from "@oh-my-pi/pi-utils";
+import { $which, logger, Snowflake } from "@veyyon/pi-utils";
 import { $, type Subprocess } from "bun";
 import { ensureTool, getToolPath } from "../utils/tools-manager";
 import { decodePcmS16LE } from "./wav";
@@ -355,7 +355,7 @@ async function startRecordingWithRecorder(recorder: ResolvedRecorder, outputPath
 export async function startRecording(outputPath: string): Promise<RecordingHandle> {
 	const recorders = detectRecorders();
 	if (recorders.length === 0) {
-		throw new Error("No audio recorder available — run `omp setup speech`");
+		throw new Error("No audio recorder available — run `veyyon setup speech`");
 	}
 
 	const failures: string[] = [];
@@ -372,7 +372,7 @@ export async function startRecording(outputPath: string): Promise<RecordingHandl
 			});
 		}
 	}
-	throw new Error(`No audio recorder could start — run \`omp setup speech\`.\n${failures.join("\n")}`);
+	throw new Error(`No audio recorder could start — run \`veyyon setup speech\`.\n${failures.join("\n")}`);
 }
 
 /**
@@ -515,7 +515,7 @@ export async function startStreamingRecording(
 ): Promise<StreamingRecordingHandle | null> {
 	const recorders = detectRecorders();
 	if (recorders.length === 0) {
-		throw new Error("No audio recorder available — run `omp setup speech`");
+		throw new Error("No audio recorder available — run `veyyon setup speech`");
 	}
 	const streamingRecorders = recorders.filter(recorder => recorder.tool !== "powershell");
 	if (streamingRecorders.length === 0) return null;

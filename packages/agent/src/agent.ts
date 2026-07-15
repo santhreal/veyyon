@@ -21,12 +21,12 @@ import {
 	type ThinkingBudgets,
 	type ToolChoice,
 	type ToolResultMessage,
-} from "@oh-my-pi/pi-ai";
-import type { Dialect } from "@oh-my-pi/pi-ai/dialect";
-import type { HarmonyAuditEvent } from "@oh-my-pi/pi-ai/utils/harmony-leak";
-import { preferredDialect } from "@oh-my-pi/pi-catalog/identity";
-import { getBundledModel } from "@oh-my-pi/pi-catalog/models";
-import { logger } from "@oh-my-pi/pi-utils";
+} from "@veyyon/pi-ai";
+import type { Dialect } from "@veyyon/pi-ai/dialect";
+import type { HarmonyAuditEvent } from "@veyyon/pi-ai/utils/harmony-leak";
+import { preferredDialect } from "@veyyon/pi-catalog/identity";
+import { getBundledModel } from "@veyyon/pi-catalog/models";
+import { logger } from "@veyyon/pi-utils";
 import {
 	abortReasonText,
 	agentLoop,
@@ -285,6 +285,11 @@ export interface AgentOptions {
 	 */
 	cwdResolver?: () => string | undefined;
 	/**
+	 * Schema-based repair for malformed tool arguments, run before validation.
+	 * See {@link AgentLoopConfig.repairToolCallArguments}.
+	 */
+	repairToolCallArguments?: AgentLoopConfig["repairToolCallArguments"];
+	/**
 	 * Called after a tool call has been validated and is about to execute.
 	 * See {@link AgentLoopConfig.beforeToolCall} for full semantics.
 	 */
@@ -377,6 +382,7 @@ export class Agent {
 	#kimiApiFormat?: "openai" | "anthropic";
 	#preferWebsockets?: boolean;
 	#transformToolCallArguments?: (args: Record<string, unknown>, toolName: string) => Record<string, unknown>;
+	#repairToolCallArguments?: AgentLoopConfig["repairToolCallArguments"];
 	#intentTracing: boolean;
 	#pruneToolDescriptions: boolean;
 	#dialect?: Dialect;
@@ -456,6 +462,7 @@ export class Agent {
 		this.#kimiApiFormat = opts.kimiApiFormat;
 		this.#preferWebsockets = opts.preferWebsockets;
 		this.#transformToolCallArguments = opts.transformToolCallArguments;
+		this.#repairToolCallArguments = opts.repairToolCallArguments;
 		this.#intentTracing = opts.intentTracing === true;
 		this.#pruneToolDescriptions = opts.pruneToolDescriptions === true;
 		this.#dialect = opts.dialect;
@@ -1159,6 +1166,7 @@ export class Agent {
 			cwd: this.#cwd,
 			getCwd: this.#cwdResolver,
 			transformToolCallArguments: this.#transformToolCallArguments,
+			repairToolCallArguments: this.#repairToolCallArguments,
 			intentTracing: this.#intentTracing,
 			pruneToolDescriptions: this.#pruneToolDescriptions,
 			dialect: this.#dialect,

@@ -1,6 +1,6 @@
-import type { AssistantMessage, ImageContent } from "@oh-my-pi/pi-ai";
-import { Container, Image, type ImageBudget, ImageProtocol, Markdown, Spacer, TERMINAL, Text } from "@oh-my-pi/pi-tui";
-import { formatNumber } from "@oh-my-pi/pi-utils";
+import type { AssistantMessage, ImageContent } from "@veyyon/pi-ai";
+import { Container, Image, type ImageBudget, ImageProtocol, Markdown, Spacer, TERMINAL, Text } from "@veyyon/pi-tui";
+import { formatNumber } from "@veyyon/pi-utils";
 import chalk from "chalk";
 import type { AssistantThinkingRenderer } from "../../extensibility/extensions/types";
 import { getMarkdownTheme, theme } from "../../modes/theme/theme";
@@ -73,13 +73,13 @@ function containsMermaidFence(text: string): boolean {
 /**
  * Frames for the streaming "thinking" pulse rendered in place of a hidden
  * thinking block while the model is still producing it. A single fixed-width
- * starburst cycles through facets (✻ ✼ ❉ ❊ ✺ ✹ ✸ ✶) so the indicator animates
+ * starburst cycles through facets (* * * * * * * *) so the indicator animates
  * in place without shifting the line or the trailing speed badge. The dwell per
  * frame eases between {@link THINKING_DOTS_FRAME_MS_MIN} and
  * {@link THINKING_DOTS_FRAME_MS_MAX} across each revolution (see
  * {@link AssistantMessageComponent.thinkingDotsFrameDelay}).
  */
-const THINKING_DOTS_FRAMES = ["✻", "✼", "❉", "❊", "✺", "✹", "✸", "✶"] as const;
+const THINKING_DOTS_FRAMES = ["*", "*", "*", "*", "*", "*", "*", "*"] as const;
 /**
  * Pulse cadence bounds (ms). Each frame's dwell eases between these on a
  * raised-cosine "breath" — quickest at the cycle start, slowest at its midpoint —

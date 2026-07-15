@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
-import { ProcessTerminal } from "@oh-my-pi/pi-tui/terminal";
-import { isTerminalHeadless, setTerminalHeadless } from "@oh-my-pi/pi-utils";
+import { ProcessTerminal } from "@veyyon/pi-tui/terminal";
+import { isTerminalHeadless, setTerminalHeadless } from "@veyyon/pi-utils";
 
 // Regression: running `bun test` inside a real TTY used to paint the TUI frame,
 // the start() capability probes (OSC 11 / DA1 / kitty), and the editor/status

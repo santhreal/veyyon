@@ -2,11 +2,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { Settings, settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import * as downloader from "@oh-my-pi/pi-coding-agent/stt/downloader";
-import * as recorder from "@oh-my-pi/pi-coding-agent/stt/recorder";
-import { STTController } from "@oh-my-pi/pi-coding-agent/stt/stt-controller";
-import { getTinyModelsCacheDir, removeWithRetries, setAgentDir } from "@oh-my-pi/pi-utils";
+import { Settings, settings } from "@veyyon/pi-coding-agent/config/settings";
+import * as downloader from "@veyyon/pi-coding-agent/stt/downloader";
+import * as recorder from "@veyyon/pi-coding-agent/stt/recorder";
+import { STTController } from "@veyyon/pi-coding-agent/stt/stt-controller";
+import { getTinyModelsCacheDir, removeWithRetries, setAgentDir } from "@veyyon/pi-utils";
 import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "./helpers/settings-test-state";
 
 const WHISPER_BASE_REPO = "onnx-community/whisper-base";

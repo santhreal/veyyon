@@ -10,14 +10,13 @@ import {
 	getProjectPluginOverridesPath,
 	isEnoent,
 	logger,
-} from "@oh-my-pi/pi-utils";
+} from "@veyyon/pi-utils";
 import { withExitGuard } from "../utils";
 import { refreshBunGitCache } from "./bun-git-cache";
 import { type GitSource, parseGitUrl } from "./git-url";
 import { installLegacyPiSpecifierShim, loadLegacyPiModule } from "./legacy-pi-compat";
 import { resolvePluginManifestEntries } from "./loader";
-import { getInstalledPluginsRegistryPath, readInstalledPluginsRegistry } from "./marketplace/registry";
-import { parsePluginId } from "./marketplace/types";
+import { getInstalledPluginsRegistryPath, parsePluginId, readInstalledPluginsRegistry } from "./installed-registry";
 import { extractPackageName, parsePluginSpec } from "./parser";
 import { normalizePluginRuntimeConfig } from "./runtime-config";
 import type {

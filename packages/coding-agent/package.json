@@ -1,9 +1,9 @@
 {
   "type": "module",
-  "name": "@oh-my-pi/pi-coding-agent",
+  "name": "@veyyon/pi-coding-agent",
   "version": "16.5.2",
   "description": "Coding agent CLI with read, bash, edit, write tools and session management",
-  "homepage": "https://omp.sh",
+  "homepage": "https://veyyon.dev",
   "author": "Can Boluk",
   "contributors": [
     "Mario Zechner"
@@ -28,7 +28,7 @@
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "bin": {
-    "omp": "src/cli.ts"
+    "veyyon": "src/cli.ts"
   },
   "scripts": {
     "build": "bun scripts/build-binary.ts",
@@ -39,30 +39,29 @@
     "fix": "biome check --write --unsafe . && bun run format-prompts",
     "fmt": "biome format --write . && bun run format-prompts",
     "format-prompts": "bun scripts/format-prompts.ts",
-    "gen:tool-views": "bun --cwd=../collab-web run gen:tool-views",
     "gen:bundle": "bun scripts/bundle-dist.ts",
     "gen:mupdf": "bun scripts/embed-mupdf-wasm.ts --generate",
     "gen:mupdf:reset": "bun scripts/embed-mupdf-wasm.ts --reset",
     "gen:native": "bun --cwd=../natives run gen:native",
+    "gen:tool-views": "bun --cwd=../collab-web run gen:tool-views",
     "gen:native:reset": "bun --cwd=../natives run gen:native:reset",
-    "prepack": "bun run gen:tool-views && bun run gen:bundle",
+    "prepack": "bun run gen:bundle",
     "bench:guard": "bun scripts/bench-guard.ts"
   },
   "dependencies": {
     "@agentclientprotocol/sdk": "catalog:",
     "@babel/parser": "catalog:",
     "@mozilla/readability": "catalog:",
-    "@oh-my-pi/hashline": "catalog:",
-    "@oh-my-pi/omp-stats": "catalog:",
-    "@oh-my-pi/pi-agent-core": "catalog:",
-    "@oh-my-pi/pi-ai": "catalog:",
-    "@oh-my-pi/pi-catalog": "catalog:",
-    "@oh-my-pi/pi-mnemopi": "catalog:",
-    "@oh-my-pi/pi-natives": "catalog:",
-    "@oh-my-pi/pi-tui": "catalog:",
-    "@oh-my-pi/pi-utils": "catalog:",
-    "@oh-my-pi/pi-wire": "catalog:",
-    "@oh-my-pi/snapcompact": "catalog:",
+    "@veyyon/hashline": "catalog:",
+    "@veyyon/pi-agent-core": "catalog:",
+    "@veyyon/pi-ai": "catalog:",
+    "@veyyon/pi-catalog": "catalog:",
+    "@veyyon/pi-mnemopi": "catalog:",
+    "@veyyon/pi-natives": "catalog:",
+    "@veyyon/pi-tui": "catalog:",
+    "@veyyon/pi-utils": "catalog:",
+    "@veyyon/pi-wire": "catalog:",
+    "@veyyon/snapcompact": "catalog:",
     "@opentelemetry/api": "catalog:",
     "@opentelemetry/context-async-hooks": "catalog:",
     "@opentelemetry/exporter-trace-otlp-proto": "catalog:",
@@ -80,19 +79,26 @@
     "header-generator": "catalog:",
     "linkedom": "catalog:",
     "lru-cache": "catalog:",
+    "lucide-react": "catalog:",
     "mammoth": "catalog:",
+    "marked": "catalog:",
     "mupdf": "catalog:",
     "puppeteer-core": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
     "turndown": "catalog:",
     "turndown-plugin-gfm": "catalog:",
-    "zod": "catalog:"
+    "zod": "catalog:",
+    "@veyyon/omp-stats": "catalog:"
   },
   "optionalDependencies": {
     "@huggingface/transformers": "catalog:",
     "sherpa-onnx-node": "1.13.2"
   },
   "devDependencies": {
-    "@types/bun": "catalog:"
+    "@types/bun": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:"
   },
   "engines": {
     "bun": ">=1.3.14"
@@ -334,14 +340,6 @@
     "./extensibility/plugins/*": {
       "types": "./src/extensibility/plugins/*.ts",
       "import": "./src/extensibility/plugins/*.ts"
-    },
-    "./extensibility/plugins/marketplace": {
-      "types": "./src/extensibility/plugins/marketplace/index.ts",
-      "import": "./src/extensibility/plugins/marketplace/index.ts"
-    },
-    "./extensibility/plugins/marketplace/*": {
-      "types": "./src/extensibility/plugins/marketplace/*.ts",
-      "import": "./src/extensibility/plugins/marketplace/*.ts"
     },
     "./internal-urls": {
       "types": "./src/internal-urls/index.ts",

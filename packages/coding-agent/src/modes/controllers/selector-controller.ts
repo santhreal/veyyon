@@ -1,29 +1,15 @@
-import { ThinkingLevel } from "@oh-my-pi/pi-agent-core";
-import { PASTE_CODE_LOGIN_PROVIDERS } from "@oh-my-pi/pi-ai";
-import { getOAuthProviders } from "@oh-my-pi/pi-ai/oauth";
-import type { OAuthProvider } from "@oh-my-pi/pi-ai/oauth/types";
-import type { Component, OverlayHandle } from "@oh-my-pi/pi-tui";
-import { Loader, Spacer, setTuiTight, Text } from "@oh-my-pi/pi-tui";
-import { getAgentDbPath, getAgentDir, getProjectDir, normalizePathForComparison } from "@oh-my-pi/pi-utils";
-import {
-	type AdvisorConfigScope,
-	discoverAdvisorConfigs,
-	loadWatchdogConfigFile,
-	resolveAdvisorConfigEditPath,
-	saveWatchdogConfigFile,
-} from "../../advisor";
-import { formatModelSelectorValue, resolveAdvisorRoleSelection } from "../../config/model-resolver";
+import { ThinkingLevel } from "@veyyon/pi-agent-core";
+import { PASTE_CODE_LOGIN_PROVIDERS } from "@veyyon/pi-ai";
+import { getOAuthProviders } from "@veyyon/pi-ai/oauth";
+import type { OAuthProvider } from "@veyyon/pi-ai/oauth/types";
+import type { Component, OverlayHandle } from "@veyyon/pi-tui";
+import { Loader, Spacer, setTuiTight, Text } from "@veyyon/pi-tui";
+import { getAgentDbPath, getAgentDir, getProjectDir, normalizePathForComparison } from "@veyyon/pi-utils";
+import { formatModelSelectorValue } from "../../config/model-resolver";
 import { getRoleInfo } from "../../config/model-roles";
 import { settings } from "../../config/settings";
 import { disableProvider, enableProvider } from "../../discovery";
 import { clearPluginRootsAndCaches, resolveActiveProjectRegistryPath } from "../../discovery/helpers";
-import {
-	getInstalledPluginsRegistryPath,
-	getMarketplacesCacheDir,
-	getMarketplacesRegistryPath,
-	getPluginsCacheDir,
-	MarketplaceManager,
-} from "../../extensibility/plugins/marketplace";
 import {
 	getAvailableThemes,
 	getSymbolTheme,
@@ -35,6 +21,7 @@ import {
 	theme,
 } from "../../modes/theme/theme";
 import type { InteractiveModeContext } from "../../modes/types";
+import { resolveAvailablePersonalities } from "../../personality/resolver";
 import type { ResetCreditAccountStatus, ResetCreditRedeemOutcome } from "../../session/auth-storage";
 import type { SessionInfo } from "../../session/session-listing";
 import { SessionManager } from "../../session/session-manager";
@@ -58,7 +45,6 @@ import { shortenPath } from "../../tools/render-utils";
 import { copyToClipboard } from "../../utils/clipboard";
 import { repo } from "../../utils/git";
 import { setSessionTerminalTitle } from "../../utils/title-generator";
-import { type AdvisorConfigDeps, AdvisorConfigOverlayComponent } from "../components/advisor-config";
 import { AgentDashboard } from "../components/agent-dashboard";
 import { AgentHubOverlayComponent } from "../components/agent-hub";
 import { AssistantMessageComponent } from "../components/assistant-message";
@@ -70,7 +56,6 @@ import { LogoutAccountSelectorComponent } from "../components/logout-account-sel
 import { ModelHubComponent } from "../components/model-hub";
 import { ModelPickerComponent } from "../components/model-picker";
 import { OAuthSelectorComponent } from "../components/oauth-selector";
-import { PluginSelectorComponent } from "../components/plugin-selector";
 import { ResetUsageSelectorComponent } from "../components/reset-usage-selector";
 import { renderSegmentTrack } from "../components/segment-track";
 import { SessionSelectorComponent } from "../components/session-selector";
@@ -131,164 +116,102 @@ export class SelectorController {
 	}
 
 	showSettingsSelector(): void {
-		getAvailableThemes().then(availableThemes => {
-			// Fullscreen settings editor on the alternate screen: the overlay
-			// enables mouse tracking (click/hover/wheel) for its lifetime and
-			// the transcript stays untouched underneath.
-			let overlayHandle: OverlayHandle | undefined;
-			const done = () => {
-				overlayHandle?.hide();
-				this.focusActiveEditorArea();
-				this.ctx.ui.requestRender();
-			};
-			const selector = new SettingsSelectorComponent(
-				{
-					availableThinkingLevels: [...this.ctx.session.getAvailableThinkingLevels()],
-					thinkingLevel: this.ctx.session.thinkingLevel,
-					availableThemes,
-					providers: [...new Set(this.ctx.session.getAvailableModels().map(model => model.provider))].sort(
-						(a, b) => a.localeCompare(b),
-					),
-					cwd: getProjectDir(),
-					model: this.ctx.session.model,
-					imageBudget: this.ctx.ui.imageBudget,
-					requestRender: () => this.ctx.ui.requestRender(),
-				},
-				{
-					onChange: (id, value) => this.handleSettingChange(id, value),
-					onThemePreview: async themeName => {
-						const result = await previewTheme(themeName);
-						if (result.success) {
-							this.ctx.statusLine.invalidate();
-							this.ctx.ui.invalidate();
+		Promise.all([getAvailableThemes(), resolveAvailablePersonalities({ cwd: getProjectDir() })]).then(
+			([availableThemes, availablePersonalities]) => {
+				// Fullscreen settings editor on the alternate screen: the overlay
+				// enables mouse tracking (click/hover/wheel) for its lifetime and
+				// the transcript stays untouched underneath.
+				let overlayHandle: OverlayHandle | undefined;
+				const done = () => {
+					overlayHandle?.hide();
+					this.focusActiveEditorArea();
+					this.ctx.ui.requestRender();
+				};
+				const selector = new SettingsSelectorComponent(
+					{
+						availableThinkingLevels: [...this.ctx.session.getAvailableThinkingLevels()],
+						thinkingLevel: this.ctx.session.thinkingLevel,
+						availableThemes,
+						availablePersonalities,
+						providers: [...new Set(this.ctx.session.getAvailableModels().map(model => model.provider))].sort(
+							(a, b) => a.localeCompare(b),
+						),
+						cwd: getProjectDir(),
+						model: this.ctx.session.model,
+						imageBudget: this.ctx.ui.imageBudget,
+						requestRender: () => this.ctx.ui.requestRender(),
+						modelRegistry: this.ctx.session.modelRegistry,
+						availableModels: this.ctx.session.getAvailableModels(),
+					},
+					{
+						onChange: (id, value) => this.handleSettingChange(id, value),
+						onThemePreview: async themeName => {
+							const result = await previewTheme(themeName);
+							if (result.success) {
+								this.ctx.statusLine.invalidate();
+								this.ctx.ui.invalidate();
+								this.ctx.ui.requestRender();
+							}
+						},
+						onStatusLinePreview: previewSettings => {
+							// Update status line with preview settings
+							this.ctx.statusLine.updateSettings({
+								preset: settings.get("statusLine.preset"),
+								leftSegments: settings.get("statusLine.leftSegments"),
+								rightSegments: settings.get("statusLine.rightSegments"),
+								separator: settings.get("statusLine.separator"),
+								showHookStatus: settings.get("statusLine.showHookStatus"),
+								sessionAccent: settings.get("statusLine.sessionAccent"),
+								transparent: settings.get("statusLine.transparent"),
+								compactThinkingLevel: settings.get("statusLine.compactThinkingLevel"),
+								...previewSettings,
+							});
 							this.ctx.ui.requestRender();
-						}
+						},
+						getStatusLinePreview: () => {
+							// Return the rendered status line for inline preview
+							const availableWidth = this.ctx.editor.getTopBorderAvailableWidth(this.ctx.ui.terminal.columns);
+							return this.ctx.statusLine.getTopBorder(availableWidth).content;
+						},
+						onPluginsChanged: async () => {
+							const projectPath = await resolveActiveProjectRegistryPath(this.ctx.sessionManager.getCwd());
+							clearPluginRootsAndCaches(projectPath ? [projectPath] : undefined);
+							await this.ctx.refreshSlashCommandState();
+							await this.ctx.session.refreshSshTool({ activateIfAvailable: true });
+							this.ctx.ui.requestRender();
+						},
+						onCancel: () => {
+							done();
+							// Restore status line to saved settings
+							this.ctx.statusLine.updateSettings({
+								preset: settings.get("statusLine.preset"),
+								leftSegments: settings.get("statusLine.leftSegments"),
+								rightSegments: settings.get("statusLine.rightSegments"),
+								separator: settings.get("statusLine.separator"),
+								showHookStatus: settings.get("statusLine.showHookStatus"),
+								sessionAccent: settings.get("statusLine.sessionAccent"),
+								transparent: settings.get("statusLine.transparent"),
+								compactThinkingLevel: settings.get("statusLine.compactThinkingLevel"),
+							});
+							this.ctx.ui.requestRender();
+						},
 					},
-					onStatusLinePreview: previewSettings => {
-						// Update status line with preview settings
-						this.ctx.statusLine.updateSettings({
-							preset: settings.get("statusLine.preset"),
-							leftSegments: settings.get("statusLine.leftSegments"),
-							rightSegments: settings.get("statusLine.rightSegments"),
-							separator: settings.get("statusLine.separator"),
-							showHookStatus: settings.get("statusLine.showHookStatus"),
-							sessionAccent: settings.get("statusLine.sessionAccent"),
-							transparent: settings.get("statusLine.transparent"),
-							compactThinkingLevel: settings.get("statusLine.compactThinkingLevel"),
-							...previewSettings,
-						});
-						this.ctx.ui.requestRender();
-					},
-					getStatusLinePreview: () => {
-						// Return the rendered status line for inline preview
-						const availableWidth = this.ctx.editor.getTopBorderAvailableWidth(this.ctx.ui.terminal.columns);
-						return this.ctx.statusLine.getTopBorder(availableWidth).content;
-					},
-					onPluginsChanged: async () => {
-						const projectPath = await resolveActiveProjectRegistryPath(this.ctx.sessionManager.getCwd());
-						clearPluginRootsAndCaches(projectPath ? [projectPath] : undefined);
-						await this.ctx.refreshSlashCommandState();
-						await this.ctx.session.refreshSshTool({ activateIfAvailable: true });
-						this.ctx.ui.requestRender();
-					},
-					onCancel: () => {
-						done();
-						// Restore status line to saved settings
-						this.ctx.statusLine.updateSettings({
-							preset: settings.get("statusLine.preset"),
-							leftSegments: settings.get("statusLine.leftSegments"),
-							rightSegments: settings.get("statusLine.rightSegments"),
-							separator: settings.get("statusLine.separator"),
-							showHookStatus: settings.get("statusLine.showHookStatus"),
-							sessionAccent: settings.get("statusLine.sessionAccent"),
-							transparent: settings.get("statusLine.transparent"),
-							compactThinkingLevel: settings.get("statusLine.compactThinkingLevel"),
-						});
-						this.ctx.ui.requestRender();
-					},
-				},
-			);
-			overlayHandle = this.ctx.ui.showOverlay(selector, {
-				anchor: "bottom-center",
-				width: "100%",
-				maxHeight: "100%",
-				margin: 0,
-				fullscreen: true,
-			});
-			this.ctx.ui.setFocus(selector);
-			this.ctx.ui.requestRender();
-		});
+				);
+				overlayHandle = this.ctx.ui.showOverlay(selector, {
+					anchor: "bottom-center",
+					width: "100%",
+					maxHeight: "100%",
+					margin: 0,
+					fullscreen: true,
+				});
+				this.ctx.ui.setFocus(selector);
+				this.ctx.ui.requestRender();
+			},
+		);
 	}
 
 	showAdvisorConfigure(): void {
-		const cwd = this.ctx.sessionManager.getCwd();
-		const agentDir = getAgentDir() ?? getProjectDir();
-		const initialScope: AdvisorConfigScope = "project";
-		void (async () => {
-			// "Project" scope edits the repo-root WATCHDOG.yml (the project-level file
-			// discovery walks), not the launch subdir — `getProjectDir()` is only cwd.
-			let projectDir = cwd;
-			try {
-				projectDir = (await repo.root(cwd)) ?? cwd;
-			} catch {
-				projectDir = cwd;
-			}
-			const dirs = { projectDir, agentDir };
-			const initialDoc = await loadWatchdogConfigFile(await resolveAdvisorConfigEditPath(initialScope, dirs));
-			// Fullscreen editor on the alternate screen (the /settings idiom): the
-			// overlay holds the alt buffer + mouse tracking; the transcript stays put.
-			let overlayHandle: OverlayHandle | undefined;
-			const done = () => {
-				overlayHandle?.hide();
-				this.focusActiveEditorArea();
-				this.ctx.ui.requestRender();
-			};
-			// Label the seeded implicit-default row with the actual advisor-role model
-			// (NOT the first live advisor, which may be a named advisor from another scope).
-			const advisorRoleSel = resolveAdvisorRoleSelection(
-				this.ctx.settings,
-				this.ctx.session.modelRegistry.getAvailable(),
-			);
-			const defaultAdvisorModel = advisorRoleSel?.model;
-			const deps: AdvisorConfigDeps = {
-				modelRegistry: this.ctx.session.modelRegistry,
-				settings: this.ctx.settings,
-				scopedModels: this.ctx.session.scopedModels,
-				availableToolNames: this.ctx.session.getAdvisorAvailableToolNames(),
-				defaultModelLabel: defaultAdvisorModel
-					? `${defaultAdvisorModel.provider}/${defaultAdvisorModel.id}`
-					: undefined,
-			};
-			const overlay = new AdvisorConfigOverlayComponent(this.ctx.ui, deps, initialScope, initialDoc, {
-				loadDoc: async scope => loadWatchdogConfigFile(await resolveAdvisorConfigEditPath(scope, dirs)),
-				save: async (scope, doc) => {
-					await saveWatchdogConfigFile(await resolveAdvisorConfigEditPath(scope, dirs), doc);
-					// Re-discover the merged roster (project + user) so the live advisors
-					// reflect cross-level precedence, not just the edited file.
-					const discovered = await discoverAdvisorConfigs(cwd, agentDir);
-					const count = this.ctx.session.applyAdvisorConfigs(discovered.advisors, discovered.sharedInstructions);
-					this.ctx.statusLine.invalidate();
-					this.ctx.showStatus(
-						count > 0
-							? `Saved ${scope} WATCHDOG.yml — ${count} advisor${count === 1 ? "" : "s"} active.`
-							: `Saved ${scope} WATCHDOG.yml. Run /advisor on to activate the configured advisors.`,
-					);
-					this.ctx.ui.requestRender();
-				},
-				close: done,
-				requestRender: () => this.ctx.ui.requestRender(),
-				notify: message => this.ctx.showStatus(message),
-			});
-			overlayHandle = this.ctx.ui.showOverlay(overlay, {
-				anchor: "bottom-center",
-				width: "100%",
-				maxHeight: "100%",
-				margin: 0,
-				fullscreen: true,
-			});
-			this.ctx.ui.setFocus(overlay);
-			this.ctx.ui.requestRender();
-		})();
+		this.ctx.showStatus("Advisor/watchdog was removed from Veyyon.");
 	}
 
 	showHistorySearch(): void {
@@ -599,23 +522,16 @@ export class SelectorController {
 	}
 
 	showModelSelector(options?: { temporaryOnly?: boolean }): void {
-		if (options?.temporaryOnly) {
-			this.#showModelPicker();
-			return;
-		}
-		this.#showModelHub({});
+		this.#showModelPicker(options?.temporaryOnly === true);
 	}
 
 	/**
-	 * Compact session-only model picker (alt+p / `/switch`): a floating
-	 * bottom-anchored overlay over the transcript. The current model is
-	 * highlighted and preselected; a leading `@` searches ctrl+p quick roles.
+	 * Compact session model picker (alt+p / `/switch` / `/model`): a floating
+	 * bottom-anchored overlay over the transcript.
 	 */
-	#showModelPicker(): void {
+	#showModelPicker(temporaryOnly: boolean): void {
 		const currentContextTokens = this.ctx.session.getContextUsage()?.tokens ?? 0;
 		const current = this.ctx.session.model;
-		const quickRoleOrder = this.ctx.settings.get("cycleOrder");
-		const quickRoleCycle = this.ctx.session.getRoleModelCycle(quickRoleOrder);
 		let overlayHandle: OverlayHandle | undefined;
 		let closed = false;
 		const done = () => {
@@ -633,29 +549,21 @@ export class SelectorController {
 			{
 				onPick: async (model, selector) => {
 					try {
-						// Session-only: update agent state but don't persist the model to settings.
 						const roleThinkingLevel = this.ctx.session.resolveTemporaryModelThinkingLevel(model);
-						await this.ctx.session.setModelTemporary(model, roleThinkingLevel);
+						if (temporaryOnly) {
+							await this.ctx.session.setModelTemporary(model, roleThinkingLevel);
+							this.ctx.showStatus(`Session-only model: ${selector}`);
+						} else {
+							await this.ctx.session.setModel(model, "interactive", {
+								selector,
+								thinkingLevel: roleThinkingLevel === AUTO_THINKING ? ThinkingLevel.Inherit : roleThinkingLevel,
+								persist: true,
+								currentContextTokens,
+							});
+							this.ctx.showStatus(`Model: ${selector}`);
+						}
 						this.ctx.statusLine.invalidate();
 						this.ctx.updateEditorBorderColor();
-						const roleSelectorHint = this.ctx.keybindings.getKeys("app.model.select")[0] ?? "Alt+M";
-						this.ctx.showStatus(`Session-only model: ${selector}. Use ${roleSelectorHint} or /model for roles.`);
-						done();
-					} catch (error) {
-						this.ctx.showError(error instanceof Error ? error.message : String(error));
-					}
-				},
-				onPickRole: async entry => {
-					try {
-						await this.ctx.session.applyRoleModel(entry);
-						this.ctx.statusLine.invalidate();
-						this.ctx.updateEditorBorderColor();
-						this.ctx.showModelCycleTrack(
-							renderSegmentTrack(
-								quickRoleOrder.map(role => ({ label: role })),
-								quickRoleOrder.indexOf(entry.role),
-							),
-						);
 						done();
 					} catch (error) {
 						this.ctx.showError(error instanceof Error ? error.message : String(error));
@@ -666,9 +574,6 @@ export class SelectorController {
 			{
 				currentContextTokens,
 				currentSelector: current ? `${current.provider}/${current.id}` : undefined,
-				quickRoles: quickRoleCycle?.models,
-				quickRoleOrder,
-				currentQuickRole: quickRoleCycle?.models[quickRoleCycle.currentIndex]?.role,
 			},
 		);
 		overlayHandle = this.ctx.ui.showOverlay(picker, {
@@ -716,8 +621,9 @@ export class SelectorController {
 					const concreteThinking = isAuto || thinkingLevel === undefined ? undefined : thinkingLevel;
 					const selectorValue = selector ?? `${model.provider}/${model.id}`;
 					try {
-						if (role === "default") {
-							const { switched } = await this.ctx.session.setModel(model, role, {
+						if (role === "default" || role === "interactive") {
+							// Interactive model is not a role slot — persist as session/interactive only.
+							const { switched } = await this.ctx.session.setModel(model, "interactive", {
 								selector,
 								thinkingLevel: isAuto ? ThinkingLevel.Inherit : concreteThinking,
 								persist: true,
@@ -736,9 +642,9 @@ export class SelectorController {
 								this.ctx.statusLine.invalidate();
 								this.ctx.updateEditorBorderColor();
 							}
-							this.ctx.showStatus(`Default model: ${selector ?? model.id}`);
+							this.ctx.showStatus(`Model: ${selector ?? model.id}`);
 						} else {
-							// Other roles (smol, slow, custom): update settings, not the current model.
+							// Named roles (smol, slow, custom): update settings, not the current model.
 							this.ctx.settings.setModelRole(role, formatModelSelectorValue(selectorValue, concreteThinking));
 							if (isAuto) {
 								this.ctx.session.setThinkingLevel(AUTO_THINKING, true);
@@ -818,91 +724,8 @@ export class SelectorController {
 		}
 	}
 
-	async showPluginSelector(mode: "install" | "uninstall" = "install"): Promise<void> {
-		const mgr = new MarketplaceManager({
-			marketplacesRegistryPath: getMarketplacesRegistryPath(),
-			installedRegistryPath: getInstalledPluginsRegistryPath(),
-			projectInstalledRegistryPath: (await resolveActiveProjectRegistryPath(getProjectDir())) ?? undefined,
-			marketplacesCacheDir: getMarketplacesCacheDir(),
-			pluginsCacheDir: getPluginsCacheDir(),
-			clearPluginRootsCache: clearPluginRootsAndCaches,
-		});
-
-		const [marketplaces, installed] = await Promise.all([mgr.listMarketplaces(), mgr.listInstalledPlugins()]);
-		const installedIds = new Set(installed.map(p => p.id));
-
-		if (mode === "uninstall") {
-			// Show only installed plugins for uninstall
-			const items = installed.map(p => {
-				const entry = p.entries[0];
-				const atIdx = p.id.lastIndexOf("@");
-				const pluginName = atIdx > 0 ? p.id.slice(0, atIdx) : p.id;
-				const mkt = atIdx > 0 ? p.id.slice(atIdx + 1) : "unknown";
-				return {
-					plugin: { name: pluginName, version: entry?.version, description: undefined as string | undefined },
-					marketplace: mkt,
-					scope: p.scope,
-				};
-			});
-			this.showSelector(done => {
-				const selector = new PluginSelectorComponent(marketplaces.length, items, new Set(), {
-					onSelect: async (name, marketplace, scope) => {
-						done();
-						const pluginId = `${name}@${marketplace}`;
-						this.ctx.showStatus(`Uninstalling ${pluginId}...`);
-						this.ctx.ui.requestRender();
-						try {
-							await mgr.uninstallPlugin(pluginId, scope);
-							this.ctx.showStatus(`Uninstalled ${pluginId}`);
-						} catch (err) {
-							this.ctx.showStatus(`Uninstall failed: ${err}`);
-						}
-						this.ctx.ui.requestRender();
-					},
-					onCancel: () => {
-						done();
-						this.ctx.ui.requestRender();
-					},
-				});
-				return { component: selector, focus: selector.getSelectList() };
-			});
-			return;
-		}
-
-		// Install mode: show all available plugins from all marketplaces
-		const allPlugins: Array<{
-			plugin: { name: string; version?: string; description?: string };
-			marketplace: string;
-		}> = [];
-		for (const mkt of marketplaces) {
-			const plugins = await mgr.listAvailablePlugins(mkt.name);
-			for (const plugin of plugins) {
-				allPlugins.push({ plugin, marketplace: mkt.name });
-			}
-		}
-
-		this.showSelector(done => {
-			const selector = new PluginSelectorComponent(marketplaces.length, allPlugins, installedIds, {
-				onSelect: async (name, marketplace) => {
-					done();
-					this.ctx.showStatus(`Installing ${name} from ${marketplace}...`);
-					this.ctx.ui.requestRender();
-					try {
-						const force = installedIds.has(`${name}@${marketplace}`);
-						await mgr.installPlugin(name, marketplace, { force });
-						this.ctx.showStatus(`Installed ${name} from ${marketplace}`);
-					} catch (err) {
-						this.ctx.showStatus(`Install failed: ${err}`);
-					}
-					this.ctx.ui.requestRender();
-				},
-				onCancel: () => {
-					done();
-					this.ctx.ui.requestRender();
-				},
-			});
-			return { component: selector, focus: selector.getSelectList() };
-		});
+	async showPluginSelector(_mode: "install" | "uninstall" = "install"): Promise<void> {
+		this.ctx.showStatus("Marketplace plugins were removed. Use `veyyon plugin install` for npm/git/local plugins.");
 	}
 
 	showUserMessageSelector(): void {
@@ -1466,8 +1289,12 @@ export class SelectorController {
 						);
 						return !!apiKey;
 					},
+					// Component-scoped: the validating spinner ticks every 80ms while
+					// this selector is shown over a possibly large live transcript;
+					// a full requestRender() would re-walk that whole tree per tick
+					// purely to advance a spinner glyph or one provider's auth state.
 					requestRender: () => {
-						this.ctx.ui.requestRender();
+						this.ctx.ui.requestComponentRender(selector);
 					},
 				},
 			);

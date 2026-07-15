@@ -138,7 +138,7 @@ export async function resolveProviderModels<TApi extends Api = Api, TModelsDevPa
 	// fetch is skipped, AND the static catalog slice is byte-identical to what
 	// was merged in last time, the cache row IS the authoritative merge result.
 	// Re-running `mergeDynamicModels(static, cache)` would just rebuild the same
-	// objects (~800ms in the steady-state cold-start profile for `omp -p hi`).
+	// objects (~800ms in the steady-state cold-start profile for `veyyon -p hi`).
 	if (!shouldFetchFromNetwork && cache?.fresh && hasAuthoritativeCache && cacheFingerprintMatches) {
 		return { models: collapseBuiltModelVariants(passModelList<TApi>(cache.models)), stale: false };
 	}

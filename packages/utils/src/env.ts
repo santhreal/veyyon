@@ -101,9 +101,11 @@ export function parseEnvFile(filePath: string): Record<string, string> {
 		// File doesn't exist or can't be read - return empty result
 	}
 
-	// OMP_ overrides PI_
+	// VEYYON_ / OMP_ override PI_
 	for (const k in result) {
-		if (k.startsWith("OMP_")) {
+		if (k.startsWith("VEYYON_")) {
+			result[`PI_${k.slice(7)}`] = result[k];
+		} else if (k.startsWith("OMP_")) {
 			result[`PI_${k.slice(4)}`] = result[k];
 		}
 	}
@@ -142,7 +144,7 @@ refreshDirsFromEnv();
 /**
  * Intentional re-export of Bun.env.
  *
- * All users should import this env module (import { $env } from "@oh-my-pi/pi-utils")
+ * All users should import this env module (import { $env } from "@veyyon/pi-utils")
  * before using environment variables. This ensures that .env files have been loaded and
  * overrides (project, home) have been applied, so $env always reflects the correct values.
  */

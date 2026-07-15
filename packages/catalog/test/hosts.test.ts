@@ -5,7 +5,7 @@ import {
 	isVertexExpressOpenAIUrl,
 	isVertexRawPredictUrl,
 	modelMatchesHost,
-} from "@oh-my-pi/pi-catalog/hosts";
+} from "@veyyon/pi-catalog/hosts";
 
 describe("hostMatchesUrl", () => {
 	test("matches OpenRouter URLs and rejects other or missing URLs", () => {

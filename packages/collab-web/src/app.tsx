@@ -104,7 +104,7 @@ export function App(): ReactNode {
 	}, [connect]);
 
 	useEffect(() => {
-		if (!client) document.title = "omp collab";
+		if (!client) document.title = "veyyon collab";
 	}, [client]);
 
 	if (!client) {

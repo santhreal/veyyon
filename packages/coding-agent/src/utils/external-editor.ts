@@ -5,7 +5,7 @@ import { spawn } from "node:child_process";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { $env, Snowflake } from "@oh-my-pi/pi-utils";
+import { $env, Snowflake } from "@veyyon/pi-utils";
 
 /**
  * Returns the user's preferred editor command, or a platform default.

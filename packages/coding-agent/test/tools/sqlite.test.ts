@@ -3,18 +3,18 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { removeWithRetries } from "@oh-my-pi/pi-utils";
-import "@oh-my-pi/pi-coding-agent/tools/renderers";
-import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import { ReadTool } from "@oh-my-pi/pi-coding-agent/tools/read";
+import { removeWithRetries } from "@veyyon/pi-utils";
+import "@veyyon/pi-coding-agent/tools/renderers";
+import { Settings } from "@veyyon/pi-coding-agent/config/settings";
+import { ReadTool } from "@veyyon/pi-coding-agent/tools/read";
 import {
 	listTables,
 	parseSqlitePathCandidates,
 	parseSqliteSelector,
 	renderTable,
 	renderTableList,
-} from "@oh-my-pi/pi-coding-agent/tools/sqlite-reader";
-import { WriteTool } from "@oh-my-pi/pi-coding-agent/tools/write";
+} from "@veyyon/pi-coding-agent/tools/sqlite-reader";
+import { WriteTool } from "@veyyon/pi-coding-agent/tools/write";
 
 type ToolTextResult = {
 	content: Array<{ type: string; text?: string }>;

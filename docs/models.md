@@ -9,15 +9,15 @@ Primary implementation files:
 - `src/config/model-registry.ts` — loads built-in + custom models, provider overrides, runtime discovery, auth integration
 - `src/config/model-resolver.ts` — parses model patterns and selects initial/smol/slow models
 - `src/config/settings-schema.ts` — model-related settings (`modelRoles`, provider transport preferences)
-- `src/session/auth-storage.ts` — re-exports `AuthStorage` from `@oh-my-pi/pi-ai` (`packages/ai/src/auth-storage.ts`); API key + OAuth resolution order
+- `src/session/auth-storage.ts` — re-exports `AuthStorage` from `@veyyon/pi-ai` (`packages/ai/src/auth-storage.ts`); API key + OAuth resolution order
 - `packages/catalog/src/models.ts` and `packages/catalog/src/types.ts` — built-in providers/models (`getBundledModels` / `getBundledProviders`) and `Model`/`compat` types
 
 ## Config file location and legacy behavior
 
 Default config paths, in precedence order:
 
-- `~/.omp/agent/models.yml`
-- `~/.omp/agent/models.yaml`
+- `~/.veyyon/agent/models.yml`
+- `~/.veyyon/agent/models.yaml`
 
 Legacy behavior still present:
 
@@ -158,7 +158,7 @@ Successful command outputs are cached for the process lifetime so the command is
 
 ModelRegistry pipeline (on refresh):
 
-1. Load built-in providers/models from `@oh-my-pi/pi-catalog` (`getBundledProviders` / `getBundledModels`).
+1. Load built-in providers/models from `@veyyon/pi-catalog` (`getBundledProviders` / `getBundledModels`).
 2. Load `models.yml` / `models.yaml` custom config.
 3. Apply provider overrides (`baseUrl`, `headers`, `disableStrictTools`) to built-in models.
 4. Apply `modelOverrides` (per provider + model id).
@@ -735,7 +735,7 @@ providers:
 
 ## Legacy consumer caveat
 
-Most model configuration now flows through `models.yml` / `models.yaml` via `ModelRegistry`. Explicit `.json` / `.jsonc` paths remain supported only when passed programmatically to `ModelRegistry`; the default user config prefers `~/.omp/agent/models.yml`, then falls back to `~/.omp/agent/models.yaml`.
+Most model configuration now flows through `models.yml` / `models.yaml` via `ModelRegistry`. Explicit `.json` / `.jsonc` paths remain supported only when passed programmatically to `ModelRegistry`; the default user config prefers `~/.veyyon/agent/models.yml`, then falls back to `~/.veyyon/agent/models.yaml`.
 
 ## Failure mode
 

@@ -255,7 +255,7 @@ cosmetic, not corrupting.
 `visibleWidth` / `truncateToWidth` / `sliceByColumn` / `wrapTextWithAnsi`
 (`utils.ts`) all agree on **one UAX#11 width model**. Slicing, truncation,
 wrapping, and segment extraction run on the native engine
-(`@oh-my-pi/pi-natives`, Rust `unicode-width`); `visibleWidth` measures with
+(`@veyyon/pi-natives`, Rust `unicode-width`); `visibleWidth` measures with
 `Bun.stringWidth` **pinned to that same model** (`STRING_WIDTH_OPTS`:
 `countAnsiEscapeCodes: false`, `ambiguousIsNarrow: true`) — a JSC builtin that
 shares the native width tables without the per-call N-API box the native

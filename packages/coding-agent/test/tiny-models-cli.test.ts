@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, spyOn, vi } from "bun:test";
-import { resolveModels, runTinyModelsCommand } from "@oh-my-pi/pi-coding-agent/cli/tiny-models-cli";
-import { TINY_LOCAL_MODELS } from "@oh-my-pi/pi-coding-agent/tiny/models";
-import { tinyTitleClient } from "@oh-my-pi/pi-coding-agent/tiny/title-client";
+import { resolveModels, runTinyModelsCommand } from "@veyyon/pi-coding-agent/cli/tiny-models-cli";
+import { TINY_LOCAL_MODELS } from "@veyyon/pi-coding-agent/tiny/models";
+import { tinyTitleClient } from "@veyyon/pi-coding-agent/tiny/title-client";
 
 afterEach(() => {
 	vi.restoreAllMocks();

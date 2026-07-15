@@ -1,9 +1,9 @@
 import { describe, expect, it } from "bun:test";
-import { streamOpenAICompletions } from "@oh-my-pi/pi-ai/providers/openai-completions";
-import type { Context, FetchImpl, Model } from "@oh-my-pi/pi-ai/types";
-import { buildModel } from "@oh-my-pi/pi-catalog/build";
-import { Effort } from "@oh-my-pi/pi-catalog/effort";
-import { getSupportedEfforts } from "@oh-my-pi/pi-catalog/model-thinking";
+import { streamOpenAICompletions } from "@veyyon/pi-ai/providers/openai-completions";
+import type { Context, FetchImpl, Model } from "@veyyon/pi-ai/types";
+import { buildModel } from "@veyyon/pi-catalog/build";
+import { Effort } from "@veyyon/pi-catalog/effort";
+import { getSupportedEfforts } from "@veyyon/pi-catalog/model-thinking";
 
 const testContext: Context = {
 	messages: [{ role: "user", content: "hello", timestamp: 0 }],

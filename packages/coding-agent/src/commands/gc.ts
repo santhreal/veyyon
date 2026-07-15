@@ -1,7 +1,7 @@
 /**
  * Run on-disk storage maintenance.
  */
-import { Command, Flags } from "@oh-my-pi/pi-utils/cli";
+import { Command, Flags } from "@veyyon/pi-utils/cli";
 import { collectGcErrors, type GcCommandArgs, runGcCommand } from "../cli/gc-cli";
 
 export default class Gc extends Command {

@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from "bun:test";
-import { renderWelcomeTip } from "@oh-my-pi/pi-coding-agent/modes/components/welcome";
-import { initTheme, setTheme, theme } from "@oh-my-pi/pi-coding-agent/modes/theme/theme";
-import { visibleWidth } from "@oh-my-pi/pi-tui";
+import { renderWelcomeTip } from "@veyyon/pi-coding-agent/modes/components/welcome";
+import { initTheme, setTheme, theme } from "@veyyon/pi-coding-agent/modes/theme/theme";
+import { visibleWidth } from "@veyyon/pi-tui";
 
 describe("renderWelcomeTip", () => {
 	beforeAll(async () => {
@@ -23,36 +23,35 @@ describe("renderWelcomeTip", () => {
 		}
 	});
 
-	it("replaces a trailing [NEW] marker with a rainbow NEW! tag", () => {
+	it("replaces a trailing [NEW] marker with a quiet silver 'new' tag", () => {
 		const lines = renderWelcomeTip("Try the shiny advisor [NEW]", 60);
 		const plain = lines.map(line => Bun.stripANSI(line)).join("\n");
 		const styled = lines.join("\n");
 
 		expect(plain).toContain("Try the shiny advisor");
-		expect(plain).not.toContain("[NEW]"); // literal marker stripped
-		expect(plain).toContain("NEW!"); // replaced by the visible tag
-		expect(styled).toContain("\x1b[1m"); // tag is bold
-		expect(styled).not.toBe(plain); // tag carries SGR color escapes
+		expect(plain).not.toContain("[NEW]");
+		expect(plain).toContain("new");
+		expect(plain).not.toContain("NEW!");
+		expect(styled).toContain("\x1b[1m");
+		expect(styled).not.toBe(plain);
 	});
 
-	it("keeps the NEW! tag within the box width", () => {
-		// A width that leaves the wrapped body ending near the right edge forces
-		// the tag onto its own continuation line rather than overflowing.
+	it("keeps the new tag within the box width", () => {
 		for (const width of [24, 40, 60]) {
 			const lines = renderWelcomeTip("Turn on the advisor to review every turn [NEW]", width);
 			for (const line of lines) {
 				expect(visibleWidth(line)).toBeLessThanOrEqual(width);
 			}
-			expect(lines.map(l => Bun.stripANSI(l)).join("\n")).toContain("NEW!");
+			expect(lines.map(l => Bun.stripANSI(l)).join("\n")).toContain("new");
 		}
 	});
 
-	it("shimmers the tag across phases without changing visible text", () => {
+	it("keeps the tag static across phases (no rainbow shimmer)", () => {
 		const tip = "Fresh feature here [NEW]";
 		const still = renderWelcomeTip(tip, 60, 0);
 		const shifted = renderWelcomeTip(tip, 60, 0.5);
 
-		expect(shifted.join("\n")).not.toBe(still.join("\n")); // hues rotate
+		expect(shifted.join("\n")).toBe(still.join("\n"));
 		expect(shifted.map(l => Bun.stripANSI(l))).toEqual(still.map(l => Bun.stripANSI(l)));
 	});
 
@@ -64,8 +63,6 @@ describe("renderWelcomeTip", () => {
 	});
 
 	it("derives label and body colors from the active theme, with no manual dim layer", async () => {
-		// Regression for #3337: hardcoded #b48cff/#9ccfff plus a manual `\x1b[2m`
-		// dropped the body to ~1.5:1 contrast on any light-theme background.
 		await setTheme("dark");
 		const darkLabelAnsi = theme.getFgAnsi("customMessageLabel");
 		const darkMutedAnsi = theme.getFgAnsi("muted");
@@ -76,18 +73,11 @@ describe("renderWelcomeTip", () => {
 		const lightMutedAnsi = theme.getFgAnsi("muted");
 		const light = renderWelcomeTip("Welcome aboard friend", 60).join("\n");
 
-		// Each theme paints with its own tokens.
 		expect(dark).toContain(darkLabelAnsi);
 		expect(dark).toContain(darkMutedAnsi);
 		expect(light).toContain(lightLabelAnsi);
 		expect(light).toContain(lightMutedAnsi);
-
-		// Switching themes must change the emitted bytes — the previous bug
-		// produced byte-identical output for both.
 		expect(dark).not.toBe(light);
-
-		// The manual `\x1b[2m` dim is gone; muted/label tokens carry their own
-		// theme-tuned luminance.
 		expect(dark).not.toContain("\x1b[2m");
 		expect(light).not.toContain("\x1b[2m");
 	});

@@ -1,14 +1,14 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { getBundledModel } from "@oh-my-pi/pi-catalog/models";
-import { ModelRegistry } from "@oh-my-pi/pi-coding-agent/config/model-registry";
-import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import { createAgentSession } from "@oh-my-pi/pi-coding-agent/sdk";
-import type { AgentSession } from "@oh-my-pi/pi-coding-agent/session/agent-session";
-import { AuthStorage } from "@oh-my-pi/pi-coding-agent/session/auth-storage";
-import { SessionManager } from "@oh-my-pi/pi-coding-agent/session/session-manager";
-import { TempDir } from "@oh-my-pi/pi-utils";
+import { getBundledModel } from "@veyyon/pi-catalog/models";
+import { ModelRegistry } from "@veyyon/pi-coding-agent/config/model-registry";
+import { Settings } from "@veyyon/pi-coding-agent/config/settings";
+import { createAgentSession } from "@veyyon/pi-coding-agent/sdk";
+import type { AgentSession } from "@veyyon/pi-coding-agent/session/agent-session";
+import { AuthStorage } from "@veyyon/pi-coding-agent/session/auth-storage";
+import { SessionManager } from "@veyyon/pi-coding-agent/session/session-manager";
+import { TempDir } from "@veyyon/pi-utils";
 
 describe("advisor watchdog prompt discovery", () => {
 	const tempDirs: TempDir[] = [];

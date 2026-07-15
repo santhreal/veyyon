@@ -12,8 +12,8 @@ import {
 	Text,
 	TruncatedText,
 	truncateToWidth,
-} from "@oh-my-pi/pi-tui";
-import { getMCPConfigPath, getProjectDir } from "@oh-my-pi/pi-utils";
+} from "@veyyon/pi-tui";
+import { getMCPConfigPath, getProjectDir } from "@veyyon/pi-utils";
 import { validateServerName } from "../../mcp/config-writer";
 import { analyzeAuthError, discoverOAuthEndpoints, fetchResourceMetadataScopes } from "../../mcp/oauth-discovery";
 import type { MCPHttpServerConfig, MCPServerConfig, MCPSseServerConfig, MCPStdioServerConfig } from "../../mcp/types";
@@ -279,7 +279,7 @@ export class MCPAddWizard extends Container {
 
 		// Show validation error if any
 		if (this.#validationError) {
-			this.#contentContainer.addChild(new Text(theme.fg("error", `✗ ${sanitize(this.#validationError)}`), 0, 0));
+			this.#contentContainer.addChild(new Text(theme.fg("error", `x ${sanitize(this.#validationError)}`), 0, 0));
 			this.#contentContainer.addChild(new Spacer(1));
 		}
 
@@ -354,7 +354,7 @@ export class MCPAddWizard extends Container {
 
 		// Show validation error if any
 		if (this.#validationError) {
-			this.#contentContainer.addChild(new Text(theme.fg("error", `✗ ${sanitize(this.#validationError)}`), 0, 0));
+			this.#contentContainer.addChild(new Text(theme.fg("error", `x ${sanitize(this.#validationError)}`), 0, 0));
 			this.#contentContainer.addChild(new Spacer(1));
 		}
 
@@ -988,7 +988,7 @@ export class MCPAddWizard extends Container {
 
 			// Success! No auth required
 			this.#contentContainer.clear();
-			this.#contentContainer.addChild(new Text(theme.fg("success", "✓ Connection successful!"), 0, 0));
+			this.#contentContainer.addChild(new Text(theme.fg("success", "ok Connection successful!"), 0, 0));
 			this.#contentContainer.addChild(new Spacer(1));
 			this.#contentContainer.addChild(new Text("No authentication required", 0, 0));
 			this.#contentContainer.addChild(new Spacer(1));
@@ -1036,7 +1036,7 @@ export class MCPAddWizard extends Container {
 					this.#state.authMethod = "oauth";
 
 					this.#contentContainer.clear();
-					this.#contentContainer.addChild(new Text(theme.fg("success", "✓ OAuth detected"), 0, 0));
+					this.#contentContainer.addChild(new Text(theme.fg("success", "ok OAuth detected"), 0, 0));
 					this.#contentContainer.addChild(new Spacer(1));
 					this.#contentContainer.addChild(new Text("Launching browser for authorization...", 0, 0));
 					this.#contentContainer.addChild(new Spacer(1));
@@ -1047,7 +1047,7 @@ export class MCPAddWizard extends Container {
 
 				// OAuth metadata unavailable: fallback to manual API key.
 				this.#contentContainer.clear();
-				this.#contentContainer.addChild(new Text(theme.fg("warning", "⚠ Authentication required"), 0, 0));
+				this.#contentContainer.addChild(new Text(theme.fg("warning", "warn Authentication required"), 0, 0));
 				this.#contentContainer.addChild(new Spacer(1));
 				this.#contentContainer.addChild(new Text("OAuth parameters could not be discovered.", 0, 0));
 				this.#contentContainer.addChild(new Text("Provide API key/token manually.", 0, 0));
@@ -1058,7 +1058,7 @@ export class MCPAddWizard extends Container {
 				// Not an auth error - just a connection failure
 				const errorMsg = sanitize(error instanceof Error ? error.message : String(error));
 				this.#contentContainer.clear();
-				this.#contentContainer.addChild(new Text(theme.fg("error", "✗ Connection failed"), 0, 0));
+				this.#contentContainer.addChild(new Text(theme.fg("error", "x Connection failed"), 0, 0));
 				this.#contentContainer.addChild(new Spacer(1));
 				this.#contentContainer.addChild(new Text(errorMsg, 0, 0));
 				this.#contentContainer.addChild(new Spacer(1));
@@ -1214,7 +1214,7 @@ export class MCPAddWizard extends Container {
 
 			// Show success message
 			this.#contentContainer.clear();
-			this.#contentContainer.addChild(new Text(theme.fg("success", "✓ Authentication successful!"), 0, 0));
+			this.#contentContainer.addChild(new Text(theme.fg("success", "ok Authentication successful!"), 0, 0));
 			this.#contentContainer.addChild(new Spacer(1));
 			this.#contentContainer.addChild(new Text(theme.fg("muted", "Running connection health check..."), 0, 0));
 			const spinnerFrames = theme.spinnerFrames;
@@ -1256,9 +1256,9 @@ export class MCPAddWizard extends Container {
 
 			clearInterval(spinner);
 			if (healthPassed) {
-				healthText.setText(theme.fg("success", "✓ Health check passed"));
+				healthText.setText(theme.fg("success", "ok Health check passed"));
 			} else {
-				healthText.setText(theme.fg("warning", "⚠ Health check failed (will still save config)"));
+				healthText.setText(theme.fg("warning", "warn Health check failed (will still save config)"));
 				this.#contentContainer.addChild(new Spacer(1));
 				this.#contentContainer.addChild(new Text(theme.fg("muted", healthError), 0, 0));
 			}
@@ -1283,7 +1283,7 @@ export class MCPAddWizard extends Container {
 			this.#contentContainer.clear();
 			this.#contentContainer.addChild(
 				new Text(
-					cancelled ? theme.fg("muted", "○ OAuth cancelled") : theme.fg("error", "✗ OAuth authentication failed"),
+					cancelled ? theme.fg("muted", "o OAuth cancelled") : theme.fg("error", "x OAuth authentication failed"),
 					0,
 					0,
 				),

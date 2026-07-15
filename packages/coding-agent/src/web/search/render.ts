@@ -4,8 +4,8 @@
  * Tree-based rendering with collapsed/expanded states for web search results.
  */
 
-import type { Component } from "@oh-my-pi/pi-tui";
-import { Markdown, Text } from "@oh-my-pi/pi-tui";
+import type { Component } from "@veyyon/pi-tui";
+import { Markdown, Text } from "@veyyon/pi-tui";
 import type { RenderResultOptions } from "../../extensibility/custom-tools/types";
 import { getMarkdownTheme, type Theme } from "../../modes/theme/theme";
 import {
@@ -165,7 +165,7 @@ export function renderSearchResult(
 			if (renderedAnswer.length === 0) {
 				answerLines = [theme.fg("muted", "No answer text returned")];
 			} else if (args?.maxAnswerLines !== undefined && !expanded) {
-				// CLI compact mode (`omp q`) caps the answer; the TUI passes no cap and shows it in full.
+				// CLI compact mode (`veyyon q`) caps the answer; the TUI passes no cap and shows it in full.
 				// `renderedAnswer` is the Markdown component's shared cache — slice copies before appending.
 				const capped = renderedAnswer.slice(0, args.maxAnswerLines);
 				const remaining = renderedAnswer.length - capped.length;

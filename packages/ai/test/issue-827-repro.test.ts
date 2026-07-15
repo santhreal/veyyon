@@ -8,10 +8,10 @@
  * reasoning for that single turn rather than dropping `tool_choice` outright.
  */
 import { describe, expect, it } from "bun:test";
-import { streamOpenAICompletions } from "@oh-my-pi/pi-ai/providers/openai-completions";
-import type { Context, Model, ModelSpec, Tool } from "@oh-my-pi/pi-ai/types";
-import { buildModel } from "@oh-my-pi/pi-catalog/build";
-import { getBundledModel } from "@oh-my-pi/pi-catalog/models";
+import { streamOpenAICompletions } from "@veyyon/pi-ai/providers/openai-completions";
+import type { Context, Model, ModelSpec, Tool } from "@veyyon/pi-ai/types";
+import { buildModel } from "@veyyon/pi-catalog/build";
+import { getBundledModel } from "@veyyon/pi-catalog/models";
 import { type } from "arktype";
 
 const echoTool: Tool = {

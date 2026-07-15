@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import Plugin from "@oh-my-pi/pi-coding-agent/commands/plugin";
-import type { CliConfig } from "@oh-my-pi/pi-utils/cli";
+import Plugin from "@veyyon/pi-coding-agent/commands/plugin";
+import type { CliConfig } from "@veyyon/pi-utils/cli";
 
 const TEST_CONFIG: CliConfig = {
 	bin: "omp",

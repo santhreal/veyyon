@@ -5,9 +5,9 @@ import * as path from "node:path";
 import {
 	SPINNER_GLYPH_ADVANCE_MS,
 	sharedSpinnerFrame,
-} from "@oh-my-pi/pi-coding-agent/modes/components/tool-execution";
-import { getThemeByName } from "@oh-my-pi/pi-coding-agent/modes/theme/theme";
-import { getConfigRootDir, getCustomThemesDir, removeWithRetries, setAgentDir } from "@oh-my-pi/pi-utils";
+} from "@veyyon/pi-coding-agent/modes/components/tool-execution";
+import { getThemeByName } from "@veyyon/pi-coding-agent/modes/theme/theme";
+import { getConfigRootDir, getCustomThemesDir, removeWithRetries, setAgentDir } from "@veyyon/pi-utils";
 
 // Path of the built-in dark theme JSON, used as a known-valid base we can
 // extend with custom `symbols.spinnerFrames` shapes.

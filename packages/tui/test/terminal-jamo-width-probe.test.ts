@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { resolveHangulCompatibilityJamoWidthFromTerminalIdentity } from "@oh-my-pi/pi-tui/terminal";
+import { resolveHangulCompatibilityJamoWidthFromTerminalIdentity } from "@veyyon/pi-tui/terminal";
 
 describe("Hangul Compatibility Jamo width terminal-identity resolution", () => {
 	it("forces wide (2) for Ghostty, platform default otherwise", () => {

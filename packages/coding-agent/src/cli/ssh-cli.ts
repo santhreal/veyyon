@@ -1,10 +1,10 @@
 /**
  * SSH CLI command handlers.
  *
- * Handles `omp ssh <command>` subcommands for SSH host configuration management.
+ * Handles `veyyon ssh <command>` subcommands for SSH host configuration management.
  */
 
-import { getSSHConfigPath } from "@oh-my-pi/pi-utils";
+import { getSSHConfigPath } from "@veyyon/pi-utils";
 import chalk from "chalk";
 import { addSSHHost, readSSHConfigFile, removeSSHHost, type SSHHostConfig } from "../ssh/config-writer";
 
@@ -158,7 +158,7 @@ async function handleList(cmd: SSHCommandArgs): Promise<void> {
 	}
 
 	if (hasUser) {
-		process.stdout.write(chalk.bold("User SSH Hosts (~/.omp/agent/ssh.json):\n"));
+		process.stdout.write(chalk.bold("User SSH Hosts (~/.veyyon/agent/ssh.json):\n"));
 		printHosts(userHosts);
 	}
 }

@@ -5,6 +5,7 @@ import * as path from "node:path";
 import * as url from "node:url";
 import {
 	__resetProfileSnapshotForTests,
+	APP_NAME,
 	getActiveProfile,
 	getAgentDbPath,
 	getAgentDir,
@@ -13,12 +14,14 @@ import {
 	getPythonGatewayDir,
 	getSessionsDir,
 	getStatsDbPath,
+	listProfiles,
 	normalizeProfileName,
+	profileExists,
 	resolveProfileEnv,
 	setAgentDir,
 	setProfile,
-} from "@oh-my-pi/pi-utils/dirs";
-import { Snowflake } from "@oh-my-pi/pi-utils/snowflake";
+} from "@veyyon/pi-utils/dirs";
+import { Snowflake } from "@veyyon/pi-utils/snowflake";
 
 async function readStream(stream: ReadableStream<Uint8Array>): Promise<string> {
 	const reader = stream.getReader();
@@ -140,6 +143,21 @@ describe("profile directories", () => {
 		expect(getAgentDir()).toBe(path.join(root, "agent"));
 	});
 
+	it("lists default and named profiles", async () => {
+		const root = path.join(os.homedir(), configDir);
+		await fs.mkdir(path.join(root, "profiles", "work", "agent"), { recursive: true });
+		const listed = listProfiles();
+		expect(listed.map(profile => profile.name)).toEqual(["default", "work"]);
+		expect(listed.find(profile => profile.name === "work")?.rootDir).toBe(path.join(root, "profiles", "work"));
+	});
+
+	it("reports profile existence", async () => {
+		expect(profileExists("default")).toBe(false);
+		const root = path.join(os.homedir(), configDir);
+		await fs.mkdir(path.join(root, "profiles", "work"), { recursive: true });
+		expect(profileExists("work")).toBe(true);
+	});
+
 	it("keeps XDG-backed named profile state under profile-specific roots", async () => {
 		if (process.platform === "win32") return;
 
@@ -148,16 +166,16 @@ describe("profile directories", () => {
 		process.env.XDG_CACHE_HOME = path.join(tempRoot, "cache");
 		// Named profiles only adopt XDG when their *own* XDG path already exists,
 		// so the profile location stays stable across activations.
-		await fs.mkdir(path.join(process.env.XDG_DATA_HOME, "omp", "profiles", "work"), { recursive: true });
-		await fs.mkdir(path.join(process.env.XDG_STATE_HOME, "omp", "profiles", "work"), { recursive: true });
-		await fs.mkdir(path.join(process.env.XDG_CACHE_HOME, "omp", "profiles", "work"), { recursive: true });
+		await fs.mkdir(path.join(process.env.XDG_DATA_HOME, APP_NAME, "profiles", "work"), { recursive: true });
+		await fs.mkdir(path.join(process.env.XDG_STATE_HOME, APP_NAME, "profiles", "work"), { recursive: true });
+		await fs.mkdir(path.join(process.env.XDG_CACHE_HOME, APP_NAME, "profiles", "work"), { recursive: true });
 
 		setProfile("work");
 
-		expect(getAgentDbPath()).toBe(path.join(process.env.XDG_DATA_HOME, "omp", "profiles", "work", "agent.db"));
-		expect(getSessionsDir()).toBe(path.join(process.env.XDG_DATA_HOME, "omp", "profiles", "work", "sessions"));
+		expect(getAgentDbPath()).toBe(path.join(process.env.XDG_DATA_HOME, APP_NAME, "profiles", "work", "agent.db"));
+		expect(getSessionsDir()).toBe(path.join(process.env.XDG_DATA_HOME, APP_NAME, "profiles", "work", "sessions"));
 		expect(getPythonGatewayDir()).toBe(
-			path.join(process.env.XDG_STATE_HOME, "omp", "profiles", "work", "python-gateway"),
+			path.join(process.env.XDG_STATE_HOME, APP_NAME, "profiles", "work", "python-gateway"),
 		);
 	});
 
@@ -178,9 +196,9 @@ describe("profile directories", () => {
 		// Later, the base XDG app dir materializes (e.g. via `omp config init-xdg`
 		// migrating only the default-profile data). The named profile must stay
 		// in its original location until the user explicitly migrates it.
-		await fs.mkdir(path.join(process.env.XDG_DATA_HOME, "omp"), { recursive: true });
-		await fs.mkdir(path.join(process.env.XDG_STATE_HOME, "omp"), { recursive: true });
-		await fs.mkdir(path.join(process.env.XDG_CACHE_HOME, "omp"), { recursive: true });
+		await fs.mkdir(path.join(process.env.XDG_DATA_HOME, APP_NAME), { recursive: true });
+		await fs.mkdir(path.join(process.env.XDG_STATE_HOME, APP_NAME), { recursive: true });
+		await fs.mkdir(path.join(process.env.XDG_CACHE_HOME, APP_NAME), { recursive: true });
 
 		setProfile(undefined);
 		setProfile("work");
@@ -188,8 +206,8 @@ describe("profile directories", () => {
 	});
 
 	it("rejects path-like profile names", () => {
-		expect(() => setProfile("../work")).toThrow("Invalid OMP profile");
-		expect(() => setProfile("work/team")).toThrow("Invalid OMP profile");
+		expect(() => setProfile("../work")).toThrow("Invalid profile");
+		expect(() => setProfile("work/team")).toThrow("Invalid profile");
 	});
 
 	it("rejects trailing-dot profile names to avoid Windows path collisions", () => {
@@ -269,8 +287,8 @@ describe("profile env + name validation", () => {
 	it("rejects uppercase profile names so isolation is filesystem-independent", () => {
 		// `work` and `WORK` would collide on case-insensitive macOS/Windows but
 		// differ on Linux; reject uppercase to keep profile identity stable.
-		expect(() => normalizeProfileName("WORK")).toThrow("Invalid OMP profile");
-		expect(() => normalizeProfileName("Work")).toThrow("Invalid OMP profile");
+		expect(() => normalizeProfileName("WORK")).toThrow("Invalid profile");
+		expect(() => normalizeProfileName("Work")).toThrow("Invalid profile");
 		expect(normalizeProfileName("work")).toBe("work");
 		expect(normalizeProfileName("work-2.0_a")).toBe("work-2.0_a");
 	});
@@ -321,7 +339,7 @@ describe("dirs module import behavior", () => {
 	it("exposes worker-host without loading agent env", async () => {
 		const root = await fs.mkdtemp(path.join(os.tmpdir(), "pi-utils-worker-host-import-"));
 		try {
-			const workerHostUrl = import.meta.resolve("@oh-my-pi/pi-utils/worker-host");
+			const workerHostUrl = import.meta.resolve("@veyyon/pi-utils/worker-host");
 			const agentDir = path.join(root, "agent");
 			await fs.mkdir(agentDir, { recursive: true });
 			await Bun.write(path.join(agentDir, ".env"), "OMP_WORKER_HOST_PROBE=from-agent-env\n");
@@ -431,7 +449,7 @@ describe("dirs module import behavior", () => {
 			// import time — the exact ordering refreshDirsFromEnv() guards.
 			await Bun.write(path.join(agentDir, ".env"), `XDG_STATE_HOME=${xdgStateRoot}\n`);
 			// Named profiles only adopt XDG when their own XDG path already exists.
-			const xdgProfileRoot = path.join(xdgStateRoot, "omp", "profiles", "work");
+			const xdgProfileRoot = path.join(xdgStateRoot, APP_NAME, "profiles", "work");
 			await fs.mkdir(xdgProfileRoot, { recursive: true });
 
 			const probePath = path.join(root, "probe.ts");

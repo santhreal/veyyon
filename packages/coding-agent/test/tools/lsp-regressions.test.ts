@@ -2,18 +2,18 @@ import { afterEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { AgentToolResult, RenderResultOptions } from "@oh-my-pi/pi-agent-core";
-import { preloadPluginRoots } from "@oh-my-pi/pi-coding-agent/discovery/helpers";
-import { LspTool } from "@oh-my-pi/pi-coding-agent/lsp";
-import * as lspClient from "@oh-my-pi/pi-coding-agent/lsp/client";
-import * as lspConfig from "@oh-my-pi/pi-coding-agent/lsp/config";
-import { getServersForFile, type LspConfig, loadConfig } from "@oh-my-pi/pi-coding-agent/lsp/config";
+import type { AgentToolResult, RenderResultOptions } from "@veyyon/pi-agent-core";
+import { preloadPluginRoots } from "@veyyon/pi-coding-agent/discovery/helpers";
+import { LspTool } from "@veyyon/pi-coding-agent/lsp";
+import * as lspClient from "@veyyon/pi-coding-agent/lsp/client";
+import * as lspConfig from "@veyyon/pi-coding-agent/lsp/config";
+import { getServersForFile, type LspConfig, loadConfig } from "@veyyon/pi-coding-agent/lsp/config";
 import {
 	applyTextEditsToString,
 	applyWorkspaceEdit,
 	sortAndValidateTextEdits,
-} from "@oh-my-pi/pi-coding-agent/lsp/edits";
-import { renderCall, renderResult } from "@oh-my-pi/pi-coding-agent/lsp/render";
+} from "@veyyon/pi-coding-agent/lsp/edits";
+import { renderCall, renderResult } from "@veyyon/pi-coding-agent/lsp/render";
 import type {
 	CodeAction,
 	CreateFile,
@@ -26,7 +26,7 @@ import type {
 	SymbolInformation,
 	TextDocumentEdit,
 	WorkspaceEdit,
-} from "@oh-my-pi/pi-coding-agent/lsp/types";
+} from "@veyyon/pi-coding-agent/lsp/types";
 import {
 	applyCodeAction,
 	collectGlobMatches,
@@ -38,12 +38,12 @@ import {
 	resolveDiagnosticTargets,
 	resolveSymbolColumn,
 	uriToFile,
-} from "@oh-my-pi/pi-coding-agent/lsp/utils";
-import { getThemeByName } from "@oh-my-pi/pi-coding-agent/modes/theme/theme";
-import type { ToolSession } from "@oh-my-pi/pi-coding-agent/tools";
-import { clampTimeout } from "@oh-my-pi/pi-coding-agent/tools/tool-timeouts";
-import * as piUtils from "@oh-my-pi/pi-utils";
-import { sanitizeText, TempDir } from "@oh-my-pi/pi-utils";
+} from "@veyyon/pi-coding-agent/lsp/utils";
+import { getThemeByName } from "@veyyon/pi-coding-agent/modes/theme/theme";
+import type { ToolSession } from "@veyyon/pi-coding-agent/tools";
+import { clampTimeout } from "@veyyon/pi-coding-agent/tools/tool-timeouts";
+import * as piUtils from "@veyyon/pi-utils";
+import { sanitizeText, TempDir } from "@veyyon/pi-utils";
 import type { Subprocess } from "bun";
 import DEFAULTS from "../../src/lsp/defaults.json" with { type: "json" };
 import { getLanguageFromPath } from "../../src/utils/lang-from-path";

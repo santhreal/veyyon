@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 import {
 	__resolveTypeBoxShimPath,
 	__validateLegacyPiPackageRootOverrides,
-} from "@oh-my-pi/pi-coding-agent/extensibility/plugins/legacy-pi-compat";
+} from "@veyyon/pi-coding-agent/extensibility/plugins/legacy-pi-compat";
 
 // Regression for issue #2168: in compiled-binary mode the package-root
 // override branch of `resolveCanonicalPiSpecifier` returned a bunfs path
@@ -22,8 +22,8 @@ import {
 describe("legacy pi compat package-root override validation (issue #2168)", () => {
 	it("keeps overrides whose filesystem targets exist", () => {
 		const candidates = {
-			"@oh-my-pi/pi-ai": "/tmp/exists-ai.js",
-			"@oh-my-pi/pi-utils": "/tmp/exists-utils.js",
+			"@veyyon/pi-ai": "/tmp/exists-ai.js",
+			"@veyyon/pi-utils": "/tmp/exists-utils.js",
 		};
 		const result = __validateLegacyPiPackageRootOverrides(candidates, () => true);
 		expect(result).toEqual(candidates);
@@ -31,29 +31,29 @@ describe("legacy pi compat package-root override validation (issue #2168)", () =
 
 	it("drops overrides whose filesystem targets are missing on disk", () => {
 		const candidates = {
-			"@oh-my-pi/pi-ai": "/tmp/exists-ai.js",
-			"@oh-my-pi/pi-coding-agent": "/tmp/exists-shim.js",
-			"@oh-my-pi/pi-utils": "/$bunfs/root/packages/utils/src/index.js",
-			"@oh-my-pi/pi-tui": "/$bunfs/root/packages/tui/src/index.js",
+			"@veyyon/pi-ai": "/tmp/exists-ai.js",
+			"@veyyon/pi-coding-agent": "/tmp/exists-shim.js",
+			"@veyyon/pi-utils": "/$bunfs/root/packages/utils/src/index.js",
+			"@veyyon/pi-tui": "/$bunfs/root/packages/tui/src/index.js",
 		};
 		const missing = new Set(["/$bunfs/root/packages/utils/src/index.js", "/$bunfs/root/packages/tui/src/index.js"]);
 		const result = __validateLegacyPiPackageRootOverrides(candidates, p => !missing.has(p));
 		expect(result).toEqual({
-			"@oh-my-pi/pi-ai": "/tmp/exists-ai.js",
-			"@oh-my-pi/pi-coding-agent": "/tmp/exists-shim.js",
+			"@veyyon/pi-ai": "/tmp/exists-ai.js",
+			"@veyyon/pi-coding-agent": "/tmp/exists-shim.js",
 		});
 		// `pi-utils` and `pi-tui` are absent so the resolver falls through to
 		// `getResolvedSpecifier` (which throws under bunfs), which triggers
 		// the catch in `rewriteLegacyPiImports` that leaves the specifier
 		// unchanged for native `node_modules` resolution.
-		expect(result).not.toHaveProperty("@oh-my-pi/pi-utils");
-		expect(result).not.toHaveProperty("@oh-my-pi/pi-tui");
+		expect(result).not.toHaveProperty("@veyyon/pi-utils");
+		expect(result).not.toHaveProperty("@veyyon/pi-tui");
 	});
 
 	it("drops every override when none of the filesystem targets exist", () => {
 		const candidates = {
-			"@oh-my-pi/pi-utils": "/$bunfs/root/packages/utils/src/index.js",
-			"@oh-my-pi/pi-tui": "/$bunfs/root/packages/tui/src/index.js",
+			"@veyyon/pi-utils": "/$bunfs/root/packages/utils/src/index.js",
+			"@veyyon/pi-tui": "/$bunfs/root/packages/tui/src/index.js",
 		};
 		const result = __validateLegacyPiPackageRootOverrides(candidates, () => false);
 		expect(result).toEqual({});
@@ -66,12 +66,12 @@ describe("legacy pi compat package-root override validation (issue #2168)", () =
 		// validator MUST short-circuit before any filesystem probe.
 		let probed = false;
 		const candidates = {
-			"@oh-my-pi/pi-ai": "omp-legacy-pi-bundled:@oh-my-pi/pi-ai",
-			"@oh-my-pi/pi-coding-agent": "omp-legacy-pi-bundled:@oh-my-pi/pi-coding-agent",
-			"@oh-my-pi/pi-agent-core": "omp-legacy-pi-bundled:@oh-my-pi/pi-agent-core",
-			"@oh-my-pi/pi-natives": "omp-legacy-pi-bundled:@oh-my-pi/pi-natives",
-			"@oh-my-pi/pi-tui": "omp-legacy-pi-bundled:@oh-my-pi/pi-tui",
-			"@oh-my-pi/pi-utils": "omp-legacy-pi-bundled:@oh-my-pi/pi-utils",
+			"@veyyon/pi-ai": "omp-legacy-pi-bundled:@veyyon/pi-ai",
+			"@veyyon/pi-coding-agent": "omp-legacy-pi-bundled:@veyyon/pi-coding-agent",
+			"@veyyon/pi-agent-core": "omp-legacy-pi-bundled:@veyyon/pi-agent-core",
+			"@veyyon/pi-natives": "omp-legacy-pi-bundled:@veyyon/pi-natives",
+			"@veyyon/pi-tui": "omp-legacy-pi-bundled:@veyyon/pi-tui",
+			"@veyyon/pi-utils": "omp-legacy-pi-bundled:@veyyon/pi-utils",
 		};
 		const result = __validateLegacyPiPackageRootOverrides(candidates, () => {
 			probed = true;
@@ -83,15 +83,15 @@ describe("legacy pi compat package-root override validation (issue #2168)", () =
 
 	it("mixes virtual and filesystem entries: virtuals always pass, filesystems gated", () => {
 		const candidates = {
-			"@oh-my-pi/pi-ai": "omp-legacy-pi-bundled:@oh-my-pi/pi-ai",
-			"@oh-my-pi/pi-coding-agent": "/dev/source/legacy-pi-coding-agent-shim.ts",
-			"@oh-my-pi/pi-tui": "/missing/path.ts",
+			"@veyyon/pi-ai": "omp-legacy-pi-bundled:@veyyon/pi-ai",
+			"@veyyon/pi-coding-agent": "/dev/source/legacy-pi-coding-agent-shim.ts",
+			"@veyyon/pi-tui": "/missing/path.ts",
 		};
 		const missing = new Set(["/missing/path.ts"]);
 		const result = __validateLegacyPiPackageRootOverrides(candidates, p => !missing.has(p));
 		expect(result).toEqual({
-			"@oh-my-pi/pi-ai": "omp-legacy-pi-bundled:@oh-my-pi/pi-ai",
-			"@oh-my-pi/pi-coding-agent": "/dev/source/legacy-pi-coding-agent-shim.ts",
+			"@veyyon/pi-ai": "omp-legacy-pi-bundled:@veyyon/pi-ai",
+			"@veyyon/pi-coding-agent": "/dev/source/legacy-pi-coding-agent-shim.ts",
 		});
 	});
 });

@@ -101,7 +101,6 @@ const fastWorkspacePackages = [
 const nativeAndIntegrationPackages = [
 	"packages/natives",
 	"packages/tui",
-	"packages/collab-web",
 	"packages/typescript-edit-benchmark",
 ];
 
@@ -161,7 +160,7 @@ const codingAgentRuntimePathPatterns = [
 ];
 
 const codingAgentNativeContentMarkers = [
-	"@oh-my-pi/pi-natives",
+	"@veyyon/pi-natives",
 	"pi-natives",
 	"native",
 	"readImageMetadata",
@@ -197,7 +196,7 @@ const codingAgentSingletonContentPatterns = [
 ];
 
 const codingAgentUiContentMarkers = [
-	"@oh-my-pi/pi-tui",
+	"@veyyon/pi-tui",
 	"InteractiveMode",
 	"InputController",
 	"StatusLine",

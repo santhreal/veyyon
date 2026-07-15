@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it, vi } from "bun:test";
-import { CommandController } from "@oh-my-pi/pi-coding-agent/modes/controllers/command-controller";
-import { getThemeByName, setThemeInstance } from "@oh-my-pi/pi-coding-agent/modes/theme/theme";
-import type { InteractiveModeContext } from "@oh-my-pi/pi-coding-agent/modes/types";
+import { CommandController } from "@veyyon/pi-coding-agent/modes/controllers/command-controller";
+import { getThemeByName, setThemeInstance } from "@veyyon/pi-coding-agent/modes/theme/theme";
+import type { InteractiveModeContext } from "@veyyon/pi-coding-agent/modes/types";
 
 function createContainer() {
 	return {

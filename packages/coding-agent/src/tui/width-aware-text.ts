@@ -1,4 +1,4 @@
-import { type Component, getPaddingX, Text } from "@oh-my-pi/pi-tui";
+import { type Component, getPaddingX, Text } from "@veyyon/pi-tui";
 
 /**
  * Text whose content is (re)formatted against the actual render width.

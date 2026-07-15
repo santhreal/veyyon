@@ -1,7 +1,7 @@
 /**
  * Manage plugins (install, uninstall, list, etc.).
  */
-import { Args, Command, Flags } from "@oh-my-pi/pi-utils/cli";
+import { Args, Command, Flags } from "@veyyon/pi-utils/cli";
 import { type PluginAction, type PluginCommandArgs, runPluginCommand } from "../cli/plugin-cli";
 import { initTheme } from "../modes/theme/theme";
 
@@ -15,9 +15,6 @@ const ACTIONS: PluginAction[] = [
 	"config",
 	"enable",
 	"disable",
-	"marketplace",
-	"discover",
-	"upgrade",
 ];
 
 export default class Plugin extends Command {

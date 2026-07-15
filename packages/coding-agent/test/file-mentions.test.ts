@@ -2,8 +2,8 @@ import { afterEach, describe, expect, test } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { extractFileMentions, generateFileMentionMessages } from "@oh-my-pi/pi-coding-agent/utils/file-mentions";
-import { removeWithRetries } from "@oh-my-pi/pi-utils";
+import { extractFileMentions, generateFileMentionMessages } from "@veyyon/pi-coding-agent/utils/file-mentions";
+import { removeWithRetries } from "@veyyon/pi-utils";
 
 const tempDirs: string[] = [];
 

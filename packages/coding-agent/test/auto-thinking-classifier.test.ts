@@ -1,18 +1,18 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
-import { ThinkingLevel } from "@oh-my-pi/pi-agent-core";
-import * as ai from "@oh-my-pi/pi-ai";
-import { Effort, type Model } from "@oh-my-pi/pi-ai";
-import { buildModel } from "@oh-my-pi/pi-catalog/build";
-import { getBundledModel } from "@oh-my-pi/pi-catalog/models";
+import { ThinkingLevel } from "@veyyon/pi-agent-core";
+import * as ai from "@veyyon/pi-ai";
+import { Effort, type Model } from "@veyyon/pi-ai";
+import { buildModel } from "@veyyon/pi-catalog/build";
+import { getBundledModel } from "@veyyon/pi-catalog/models";
 import {
 	classifyDifficulty,
 	parseDifficultyBucket,
 	parseDifficultyLevel,
-} from "@oh-my-pi/pi-coding-agent/auto-thinking/classifier";
-import { ModelRegistry } from "@oh-my-pi/pi-coding-agent/config/model-registry";
-import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import { AuthStorage } from "@oh-my-pi/pi-coding-agent/session/auth-storage";
+} from "@veyyon/pi-coding-agent/auto-thinking/classifier";
+import { ModelRegistry } from "@veyyon/pi-coding-agent/config/model-registry";
+import { Settings } from "@veyyon/pi-coding-agent/config/settings";
+import { AuthStorage } from "@veyyon/pi-coding-agent/session/auth-storage";
 import {
 	AUTO_THINKING,
 	clampAutoThinkingEffort,
@@ -21,10 +21,10 @@ import {
 	parseEffort,
 	parseThinkingLevel,
 	resolveProvisionalAutoLevel,
-} from "@oh-my-pi/pi-coding-agent/thinking";
-import type { TinyMemoryLocalModelKey } from "@oh-my-pi/pi-coding-agent/tiny/models";
-import { tinyModelClient } from "@oh-my-pi/pi-coding-agent/tiny/title-client";
-import { TempDir } from "@oh-my-pi/pi-utils";
+} from "@veyyon/pi-coding-agent/thinking";
+import type { TinyMemoryLocalModelKey } from "@veyyon/pi-coding-agent/tiny/models";
+import { tinyModelClient } from "@veyyon/pi-coding-agent/tiny/title-client";
+import { TempDir } from "@veyyon/pi-utils";
 
 describe("auto thinking classifier helpers", () => {
 	afterEach(() => {

@@ -3,15 +3,15 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
-import { listOmpExtensionRoots } from "@oh-my-pi/pi-coding-agent/discovery/omp-extension-roots";
-import { getEnabledPlugins } from "@oh-my-pi/pi-coding-agent/extensibility/plugins/loader";
-import { PluginManager } from "@oh-my-pi/pi-coding-agent/extensibility/plugins/manager";
+import { listOmpExtensionRoots } from "@veyyon/pi-coding-agent/discovery/omp-extension-roots";
+import { getEnabledPlugins } from "@veyyon/pi-coding-agent/extensibility/plugins/loader";
+import { PluginManager } from "@veyyon/pi-coding-agent/extensibility/plugins/manager";
 import {
 	MarketplaceManager,
 	readInstalledPluginsRegistry,
-} from "@oh-my-pi/pi-coding-agent/extensibility/plugins/marketplace";
-import * as piUtils from "@oh-my-pi/pi-utils";
-import { removeSyncWithRetries } from "@oh-my-pi/pi-utils";
+} from "@veyyon/pi-coding-agent/extensibility/plugins/marketplace";
+import * as piUtils from "@veyyon/pi-utils";
+import { removeSyncWithRetries } from "@veyyon/pi-utils";
 
 // Minimal marketplace fixture, built once into a temp dir (see beforeAll). It carries only
 // what these tests assert — one plugin entry plus a plugin.json for the version-fallback path —

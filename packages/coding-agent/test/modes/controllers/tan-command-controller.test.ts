@@ -1,15 +1,15 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
-import type { AssistantMessage, Model } from "@oh-my-pi/pi-ai";
-import type { AsyncJobRegisterOptions } from "@oh-my-pi/pi-coding-agent/async/job-manager";
-import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import { TanCommandController } from "@oh-my-pi/pi-coding-agent/modes/controllers/tan-command-controller";
-import type { InteractiveModeContext } from "@oh-my-pi/pi-coding-agent/modes/types";
-import { AgentRegistry, MAIN_AGENT_ID } from "@oh-my-pi/pi-coding-agent/registry/agent-registry";
-import type { CreateAgentSessionResult } from "@oh-my-pi/pi-coding-agent/sdk";
-import * as sdkModule from "@oh-my-pi/pi-coding-agent/sdk";
-import { SessionManager } from "@oh-my-pi/pi-coding-agent/session/session-manager";
-import { TempDir } from "@oh-my-pi/pi-utils";
+import type { AssistantMessage, Model } from "@veyyon/pi-ai";
+import type { AsyncJobRegisterOptions } from "@veyyon/pi-coding-agent/async/job-manager";
+import { Settings } from "@veyyon/pi-coding-agent/config/settings";
+import { TanCommandController } from "@veyyon/pi-coding-agent/modes/controllers/tan-command-controller";
+import type { InteractiveModeContext } from "@veyyon/pi-coding-agent/modes/types";
+import { AgentRegistry, MAIN_AGENT_ID } from "@veyyon/pi-coding-agent/registry/agent-registry";
+import type { CreateAgentSessionResult } from "@veyyon/pi-coding-agent/sdk";
+import * as sdkModule from "@veyyon/pi-coding-agent/sdk";
+import { SessionManager } from "@veyyon/pi-coding-agent/session/session-manager";
+import { TempDir } from "@veyyon/pi-utils";
 
 interface CapturedJobRunContext {
 	jobId: string;

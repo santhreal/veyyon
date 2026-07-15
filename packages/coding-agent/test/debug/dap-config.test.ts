@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import * as piUtils from "@oh-my-pi/pi-utils";
+import * as piUtils from "@veyyon/pi-utils";
 import {
 	getAdapterConfigs,
 	type LaunchAdapterSelection,
@@ -137,11 +137,11 @@ describe("DAP adapter configuration", () => {
 
 	it("loads adapter config from project config directories and YAML", async () => {
 		const cwd = await makeTempDir("omp-dap-config-yaml-");
-		await fs.mkdir(path.join(cwd, ".omp"), { recursive: true });
+		await fs.mkdir(path.join(cwd, ".veyyon"), { recursive: true });
 		await fs.writeFile(path.join(cwd, "build.gradle.kts"), "plugins {}\n");
 		await fs.writeFile(path.join(cwd, "Main.kt"), "fun main() {}\n");
 		await fs.writeFile(
-			path.join(cwd, ".omp", "dap.yaml"),
+			path.join(cwd, ".veyyon", "dap.yaml"),
 			[
 				"adapters:",
 				"  yaml-kotlin:",

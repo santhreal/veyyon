@@ -12,11 +12,11 @@
  */
 import { describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
-import { parseArgs } from "@oh-my-pi/pi-coding-agent/cli/args";
-import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import { runRootCommand } from "@oh-my-pi/pi-coding-agent/main";
-import { AuthStorage } from "@oh-my-pi/pi-coding-agent/session/auth-storage";
-import { TempDir } from "@oh-my-pi/pi-utils";
+import { parseArgs } from "@veyyon/pi-coding-agent/cli/args";
+import { Settings } from "@veyyon/pi-coding-agent/config/settings";
+import { runRootCommand } from "@veyyon/pi-coding-agent/main";
+import { AuthStorage } from "@veyyon/pi-coding-agent/session/auth-storage";
+import { TempDir } from "@veyyon/pi-utils";
 
 class ProcessExitSignal extends Error {
 	constructor(readonly code: number) {
@@ -37,7 +37,7 @@ describe("runRootCommand — startup --resume picker cancellation", () => {
 		);
 
 		const authStorage = await AuthStorage.create(path.join(sessionDir, "auth.db"));
-		const settings = Settings.isolated({ "marketplace.autoUpdate": "off" });
+		const settings = Settings.isolated({});
 
 		// --print keeps initTheme non-interactive so no global appearance/SIGWINCH
 		// listeners leak into the rest of the suite; the picker branch is gated on

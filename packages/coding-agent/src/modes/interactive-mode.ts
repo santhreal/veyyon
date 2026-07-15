@@ -11,10 +11,10 @@ import {
 	type AgentToolResult,
 	EventLoopKeepalive,
 	ThinkingLevel,
-} from "@oh-my-pi/pi-agent-core";
-import type { CompactionOutcome } from "@oh-my-pi/pi-agent-core/compaction";
-import type { AssistantMessage, ImageContent, Message, Model, Usage, UsageReport } from "@oh-my-pi/pi-ai";
-import { modelsAreEqual } from "@oh-my-pi/pi-catalog/models";
+} from "@veyyon/pi-agent-core";
+import type { CompactionOutcome } from "@veyyon/pi-agent-core/compaction";
+import type { AssistantMessage, ImageContent, Message, Model, Usage, UsageReport } from "@veyyon/pi-ai";
+import { modelsAreEqual } from "@veyyon/pi-catalog/models";
 import type {
 	AutocompleteProvider,
 	Component,
@@ -23,7 +23,7 @@ import type {
 	NativeScrollbackLiveRegion,
 	OverlayHandle,
 	SlashCommand,
-} from "@oh-my-pi/pi-tui";
+} from "@veyyon/pi-tui";
 import {
 	Container,
 	clearRenderCache,
@@ -37,8 +37,8 @@ import {
 	Text,
 	TUI,
 	visibleWidth,
-} from "@oh-my-pi/pi-tui";
-import { isInsideTerminalMultiplexer } from "@oh-my-pi/pi-tui/terminal-capabilities";
+} from "@veyyon/pi-tui";
+import { isInsideTerminalMultiplexer } from "@veyyon/pi-tui/terminal-capabilities";
 import {
 	APP_NAME,
 	adjustHsv,
@@ -50,7 +50,7 @@ import {
 	postmortem,
 	prompt,
 	setProjectDir,
-} from "@oh-my-pi/pi-utils";
+} from "@veyyon/pi-utils";
 import chalk from "chalk";
 import { reset as resetCapabilities } from "../capability";
 import type { CollabGuestLink } from "../collab/guest";
@@ -985,7 +985,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		// custom messages, branch summaries, and compaction summaries) and the user
 		// set no explicit `mode_change` (which #reconcileModeFromSession just
 		// restored). SDK startup metadata and extension `custom` state entries are
-		// ignored. This way `omp --continue` (or auto-resume) that finds no recent
+		// ignored. This way `veyyon --continue` (or auto-resume) that finds no recent
 		// session and creates a fresh one still honors the default, while a session
 		// with restored context or an explicit mode keeps its reconciled mode. Scoped
 		// to launch (not the switch reconciler above) so /new and the plan-approval →
@@ -3516,35 +3516,35 @@ export class InteractiveMode implements InteractiveModeContext {
 	 */
 	static #AUTOQA_CONSENT_PROMPTS: ReadonlyArray<readonly [string, string]> = [
 		[
-			"😤 Your agent is fuming about a tool.",
+			" Your agent is fuming about a tool.",
 			"Wanna let it vent to the devs? Just the tool name + what set it off, nothing personal.",
 		],
 		[
-			"😵‍💫 Your agent is having an existential crisis over a tool.",
+			"‍ Your agent is having an existential crisis over a tool.",
 			"Forward the dread to the devs? Tool + what broke its little mind, no personal info.",
 		],
 		[
-			"😭 Your agent wants to cry about a misbehaving tool.",
+			" Your agent wants to cry about a misbehaving tool.",
 			"Let it cry to the devs? Tool + the tears, never anything personal.",
 		],
 		[
-			"🤬 Your agent is BIG MAD at one of the tools.",
+			" Your agent is BIG MAD at one of the tools.",
 			"Pass the rant along? Just the tool name and what enraged it, nothing personal.",
 		],
 		[
-			"🫠 Your agent is melting down over a tool.",
+			" Your agent is melting down over a tool.",
 			"Mop up by alerting the devs? Tool + what melted it, no personal info.",
 		],
 		[
-			"🤯 Your agent's brain broke at a tool's nonsense.",
+			" Your agent's brain broke at a tool's nonsense.",
 			"Ship the pieces to the devs? Tool name + the confusion, never anything personal.",
 		],
 		[
-			"😩 Your agent is begging to file a complaint about a tool.",
+			" Your agent is begging to file a complaint about a tool.",
 			"Hand it the form? Tool + what wronged it, nothing personal.",
 		],
 		[
-			"🥲 Your agent put on a brave face but a tool did it dirty.",
+			" Your agent put on a brave face but a tool did it dirty.",
 			"Let it tell the devs the truth? Tool name + the dirt, no personal info.",
 		],
 	];
@@ -4110,7 +4110,7 @@ export class InteractiveMode implements InteractiveModeContext {
 
 	#setMicCursor(color: { r: number; g: number; b: number }): void {
 		this.editor.cursorOverride = `\x1b[38;2;${color.r};${color.g};${color.b}m${theme.icon.mic}\x1b[0m`;
-		// Theme symbols can be wide (for example, 🎤), so measure the rendered override.
+		// Theme symbols can be wide (for example, ), so measure the rendered override.
 		this.editor.cursorOverrideWidth = visibleWidth(this.editor.cursorOverride);
 	}
 

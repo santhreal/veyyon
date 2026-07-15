@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { type ContextFile, contextFileCapability } from "@oh-my-pi/pi-coding-agent/capability/context-file";
+import { type ContextFile, contextFileCapability } from "@veyyon/pi-coding-agent/capability/context-file";
 
 function makeContextFile(overrides: Partial<ContextFile> & Pick<ContextFile, "path" | "level">): ContextFile {
 	return {

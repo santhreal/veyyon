@@ -1,4 +1,4 @@
-import type { AutocompleteItem } from "@oh-my-pi/pi-tui";
+import type { AutocompleteItem } from "@veyyon/pi-tui";
 import buckets from "./data/emojis.json" with { type: "json" };
 
 // Bucket layout: `{ "<first-char>": [["<name>", "<emoji>"], ...] }`, with each
@@ -12,48 +12,48 @@ const BUCKETS = buckets as unknown as Readonly<Record<string, readonly Entry[]>>
 // in `emojis.json`. Sorted longest-first so `:-)` wins over `:)` when both
 // would match.
 const EMOTICONS: ReadonlyArray<readonly [pattern: string, char: string]> = [
-	[":'-(", "😢"],
-	[">:-(", "😠"],
-	[":-)", "🙂"],
-	[":-(", "🙁"],
-	[":-D", "😃"],
-	[":-P", "😛"],
-	[":-p", "😛"],
-	[":-O", "😮"],
-	[":-o", "😮"],
-	[":-|", "😐"],
-	[":-/", "😕"],
-	[":-\\", "😕"],
-	[":-*", "😘"],
-	[";-)", "😉"],
-	[";-P", "😜"],
-	[":')", "🥲"],
-	[":'D", "😂"],
-	[":'(", "😢"],
-	["</3", "💔"],
-	[">:(", "😠"],
-	["B-)", "😎"],
-	["8-)", "😎"],
-	["o.O", "😳"],
-	["O.o", "😳"],
-	[":)", "🙂"],
-	[":(", "🙁"],
-	[":D", "😃"],
-	[":P", "😛"],
-	[":p", "😛"],
-	[":O", "😮"],
-	[":o", "😮"],
-	[":|", "😐"],
-	[":/", "😕"],
-	[":\\", "😕"],
-	[":*", "😘"],
-	[";)", "😉"],
-	[":3", "😺"],
-	["<3", "❤️"],
-	["xD", "😆"],
-	["XD", "😆"],
-	["B)", "😎"],
-	["8)", "😎"],
+	[":'-(", ""],
+	[">:-(", ""],
+	[":-)", ""],
+	[":-(", ""],
+	[":-D", ""],
+	[":-P", ""],
+	[":-p", ""],
+	[":-O", ""],
+	[":-o", ""],
+	[":-|", ""],
+	[":-/", ""],
+	[":-\\", ""],
+	[":-*", ""],
+	[";-)", ""],
+	[";-P", ""],
+	[":')", ""],
+	[":'D", ""],
+	[":'(", ""],
+	["</3", ""],
+	[">:(", ""],
+	["B-)", ""],
+	["8-)", ""],
+	["o.O", ""],
+	["O.o", ""],
+	[":)", ""],
+	[":(", ""],
+	[":D", ""],
+	[":P", ""],
+	[":p", ""],
+	[":O", ""],
+	[":o", ""],
+	[":|", ""],
+	[":/", ""],
+	[":\\", ""],
+	[":*", ""],
+	[";)", ""],
+	[":3", ""],
+	["<3", "️"],
+	["xD", ""],
+	["XD", ""],
+	["B)", ""],
+	["8)", ""],
 ];
 
 const MAX_SUGGESTIONS = 12;
@@ -206,13 +206,13 @@ function tryShortcodeInlineReplace(textBeforeCursor: string): { replaceLen: numb
 }
 
 // A trailing delimiter (space/tab/newline) confirms the user is done with the
-// token — that way typing `:PATH` doesn't turn into `😛ATH` halfway through.
+// token — that way typing `:PATH` doesn't turn into `ATH` halfway through.
 function isEmoticonTerminator(c: number): boolean {
 	return c === 0x20 || c === 0x09 || c === 0x0a || c === 0x0d;
 }
 
 // Western text emoticons fire only once a terminator follows the pattern
-// (e.g. typing space after `;)` rewrites `;) ` to `😉 `). The terminator is
+// (e.g. typing space after `;)` rewrites `;) ` to ` `). The terminator is
 // preserved in the replacement so the user keeps typing without losing it.
 // EMOTICONS is sorted longest-first so `:-) ` wins over `:) `.
 function tryEmoticonInlineReplace(textBeforeCursor: string): { replaceLen: number; insert: string } | null {

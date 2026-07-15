@@ -11,11 +11,11 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import { InternalUrlRouter, LocalProtocolHandler, parseInternalUrl } from "@oh-my-pi/pi-coding-agent/internal-urls";
-import type { ToolSession } from "@oh-my-pi/pi-coding-agent/tools";
-import { ReadTool } from "@oh-my-pi/pi-coding-agent/tools/read";
-import { removeWithRetries } from "@oh-my-pi/pi-utils";
+import { Settings } from "@veyyon/pi-coding-agent/config/settings";
+import { InternalUrlRouter, LocalProtocolHandler, parseInternalUrl } from "@veyyon/pi-coding-agent/internal-urls";
+import type { ToolSession } from "@veyyon/pi-coding-agent/tools";
+import { ReadTool } from "@veyyon/pi-coding-agent/tools/read";
+import { removeWithRetries } from "@veyyon/pi-utils";
 
 // 1x1 transparent PNG — small enough to pass through image loading untouched.
 const TINY_PNG = Buffer.from(

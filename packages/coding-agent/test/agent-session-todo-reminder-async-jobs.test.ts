@@ -1,16 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
-import { Agent } from "@oh-my-pi/pi-agent-core";
-import type { AssistantMessage } from "@oh-my-pi/pi-ai";
-import { getBundledModel } from "@oh-my-pi/pi-catalog/models";
-import { AsyncJobManager } from "@oh-my-pi/pi-coding-agent/async";
-import { ModelRegistry } from "@oh-my-pi/pi-coding-agent/config/model-registry";
-import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import type { ExtensionRunner } from "@oh-my-pi/pi-coding-agent/extensibility/extensions";
-import { AgentSession, type AgentSessionEvent } from "@oh-my-pi/pi-coding-agent/session/agent-session";
-import { AuthStorage } from "@oh-my-pi/pi-coding-agent/session/auth-storage";
-import { SessionManager } from "@oh-my-pi/pi-coding-agent/session/session-manager";
-import { TempDir, withTimeout } from "@oh-my-pi/pi-utils";
+import { Agent } from "@veyyon/pi-agent-core";
+import type { AssistantMessage } from "@veyyon/pi-ai";
+import { getBundledModel } from "@veyyon/pi-catalog/models";
+import { AsyncJobManager } from "@veyyon/pi-coding-agent/async";
+import { ModelRegistry } from "@veyyon/pi-coding-agent/config/model-registry";
+import { Settings } from "@veyyon/pi-coding-agent/config/settings";
+import type { ExtensionRunner } from "@veyyon/pi-coding-agent/extensibility/extensions";
+import { AgentSession, type AgentSessionEvent } from "@veyyon/pi-coding-agent/session/agent-session";
+import { AuthStorage } from "@veyyon/pi-coding-agent/session/auth-storage";
+import { SessionManager } from "@veyyon/pi-coding-agent/session/session-manager";
+import { TempDir, withTimeout } from "@veyyon/pi-utils";
 
 /**
  * Regression coverage for the `#hasPendingAsyncWake()` gate shared by the

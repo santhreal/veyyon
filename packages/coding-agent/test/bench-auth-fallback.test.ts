@@ -7,9 +7,9 @@ import type {
 	AssistantMessageEventStream,
 	Model,
 	SimpleStreamOptions,
-} from "@oh-my-pi/pi-ai";
-import { type BenchModelRegistry, type BenchSummary, runBenchCommand } from "@oh-my-pi/pi-coding-agent/cli/bench-cli";
-import type { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
+} from "@veyyon/pi-ai";
+import { type BenchModelRegistry, type BenchSummary, runBenchCommand } from "@veyyon/pi-coding-agent/cli/bench-cli";
+import type { Settings } from "@veyyon/pi-coding-agent/config/settings";
 
 function fakeModel(provider: string, id: string): Model<Api> {
 	return {

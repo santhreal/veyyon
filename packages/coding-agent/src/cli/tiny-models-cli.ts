@@ -1,4 +1,4 @@
-import { formatBytes } from "@oh-my-pi/pi-utils";
+import { formatBytes } from "@veyyon/pi-utils";
 import chalk from "chalk";
 import {
 	DEFAULT_TINY_TITLE_LOCAL_MODEL_KEY,

@@ -12,17 +12,17 @@
  * helper itself is exercised directly.
  */
 import { afterEach, describe, expect, it, vi } from "bun:test";
-import type { AuthStorage, FetchImpl } from "@oh-my-pi/pi-ai";
-import type { AgentStorage } from "@oh-my-pi/pi-coding-agent/session/agent-storage";
-import type { ToolSession } from "@oh-my-pi/pi-coding-agent/tools";
-import { ToolAbortError } from "@oh-my-pi/pi-coding-agent/tools/tool-errors";
-import { WebSearchTool } from "@oh-my-pi/pi-coding-agent/web/search";
-import * as provider from "@oh-my-pi/pi-coding-agent/web/search/provider";
-import { searchAnthropic } from "@oh-my-pi/pi-coding-agent/web/search/providers/anthropic";
-import type { SearchParams } from "@oh-my-pi/pi-coding-agent/web/search/providers/base";
-import { searchBrave } from "@oh-my-pi/pi-coding-agent/web/search/providers/brave";
-import { withHardTimeout } from "@oh-my-pi/pi-coding-agent/web/search/providers/utils";
-import type { SearchProviderId, SearchResponse } from "@oh-my-pi/pi-coding-agent/web/search/types";
+import type { AuthStorage, FetchImpl } from "@veyyon/pi-ai";
+import type { AgentStorage } from "@veyyon/pi-coding-agent/session/agent-storage";
+import type { ToolSession } from "@veyyon/pi-coding-agent/tools";
+import { ToolAbortError } from "@veyyon/pi-coding-agent/tools/tool-errors";
+import { WebSearchTool } from "@veyyon/pi-coding-agent/web/search";
+import * as provider from "@veyyon/pi-coding-agent/web/search/provider";
+import { searchAnthropic } from "@veyyon/pi-coding-agent/web/search/providers/anthropic";
+import type { SearchParams } from "@veyyon/pi-coding-agent/web/search/providers/base";
+import { searchBrave } from "@veyyon/pi-coding-agent/web/search/providers/brave";
+import { withHardTimeout } from "@veyyon/pi-coding-agent/web/search/providers/utils";
+import type { SearchProviderId, SearchResponse } from "@veyyon/pi-coding-agent/web/search/types";
 
 const FAKE_SESSION = {} as ToolSession;
 const fakeStorage = {

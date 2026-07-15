@@ -8,13 +8,13 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { AgentSideConnection, InitializeRequest } from "@agentclientprotocol/sdk";
-import type { Model } from "@oh-my-pi/pi-ai";
-import { buildModel } from "@oh-my-pi/pi-catalog/build";
-import { AcpAgent } from "@oh-my-pi/pi-coding-agent/modes/acp/acp-agent";
-import { ACP_TERMINAL_AUTH_FLAG, prepareAcpTerminalAuthArgs } from "@oh-my-pi/pi-coding-agent/modes/acp/terminal-auth";
-import type { AgentSession } from "@oh-my-pi/pi-coding-agent/session/agent-session";
-import { SessionManager } from "@oh-my-pi/pi-coding-agent/session/session-manager";
-import { getConfigRootDir, setAgentDir, VERSION } from "@oh-my-pi/pi-utils";
+import type { Model } from "@veyyon/pi-ai";
+import { buildModel } from "@veyyon/pi-catalog/build";
+import { AcpAgent } from "@veyyon/pi-coding-agent/modes/acp/acp-agent";
+import { ACP_TERMINAL_AUTH_FLAG, prepareAcpTerminalAuthArgs } from "@veyyon/pi-coding-agent/modes/acp/terminal-auth";
+import type { AgentSession } from "@veyyon/pi-coding-agent/session/agent-session";
+import { SessionManager } from "@veyyon/pi-coding-agent/session/session-manager";
+import { getConfigRootDir, setAgentDir, VERSION } from "@veyyon/pi-utils";
 import { type } from "arktype";
 import { expectAcpStructure } from "./helpers/acp-schema";
 
@@ -202,6 +202,8 @@ describe("ACP initialize conformance", () => {
 			expect.objectContaining({
 				type: "terminal",
 				id: "terminal",
+				name: "Set up Veyyon in terminal",
+				description: "Launch the veyyon TUI to add provider keys and select models.",
 				args: [ACP_TERMINAL_AUTH_FLAG],
 			}),
 		);
@@ -228,8 +230,8 @@ describe("ACP initialize conformance", () => {
 		const pkg = (await Bun.file(pkgPath).json()) as { version: string };
 		expect(response.agentInfo).toEqual(
 			expect.objectContaining({
-				name: "oh-my-pi",
-				title: "Oh My Pi",
+				name: "veyyon",
+				title: "Veyyon",
 				version: VERSION,
 			}),
 		);

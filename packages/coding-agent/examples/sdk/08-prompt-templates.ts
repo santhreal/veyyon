@@ -8,7 +8,7 @@ import {
 	discoverPromptTemplates,
 	type PromptTemplate,
 	SessionManager,
-} from "@oh-my-pi/pi-coding-agent";
+} from "@veyyon/pi-coding-agent";
 
 // Discover templates from cwd/.pi/prompts/ and ~/.pi/agent/prompts/
 const discovered = await discoverPromptTemplates();

@@ -7,7 +7,7 @@
  * that walks the resulting fallback chain.
  */
 import * as fs from "node:fs/promises";
-import { $which } from "@oh-my-pi/pi-utils";
+import { $which } from "@veyyon/pi-utils";
 import { getToolPath } from "../utils/tools-manager";
 
 export interface PlayerCommand {
@@ -93,7 +93,7 @@ export async function playAudioFile(filePath: string, options: PlayAudioOptions 
 	if (commands.length === 0) {
 		throw new Error(
 			"No audio player available. Install PulseAudio (paplay) or ALSA (aplay), " +
-				"or run `omp setup speech` to download a bundled ffmpeg.",
+				"or run `veyyon setup speech` to download a bundled ffmpeg.",
 		);
 	}
 

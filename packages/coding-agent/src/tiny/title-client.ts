@@ -1,4 +1,4 @@
-import { $env, logger } from "@oh-my-pi/pi-utils";
+import { $env, logger } from "@veyyon/pi-utils";
 import { settings } from "../config/settings";
 import {
 	createUnavailableWorker,
@@ -71,7 +71,7 @@ function readTinyModelSetting(path: "providers.tinyModelDevice" | "providers.tin
 		const value = settings.get(path);
 		return typeof value === "string" ? value : undefined;
 	} catch {
-		// Settings may be uninitialized (e.g. `omp --smoke-test`); fall back to env/default.
+		// Settings may be uninitialized (e.g. `veyyon --smoke-test`); fall back to env/default.
 		return undefined;
 	}
 }

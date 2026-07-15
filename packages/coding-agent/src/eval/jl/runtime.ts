@@ -1,36 +1,7 @@
 /**
  * Julia runtime resolution utilities.
  */
-import { createEnvFilter, enumerateRuntimes, resolveExplicitPath, resolveRuntime } from "../runtime-env";
-
-const DEFAULT_ENV_ALLOWLIST = [
-	"PATH",
-	"HOME",
-	"USER",
-	"USERNAME",
-	"LOGNAME",
-	"SHELL",
-	"TERM",
-	"LANG",
-	"SYSTEMROOT",
-	"WINDIR",
-	"COMSPEC",
-	"PATHEXT",
-	"TEMP",
-	"TMP",
-	"TERM_PROGRAM",
-	"TERM_PROGRAM_VERSION",
-	"SSH_AUTH_SOCK",
-	"SSH_AGENT_PID",
-	"SSH_CONNECTION",
-	"SSH_CLIENT",
-	"SSH_TTY",
-	"DISPLAY",
-	"XAUTHORITY",
-	"TZ",
-	"LD_LIBRARY_PATH",
-	"DYLD_LIBRARY_PATH",
-];
+import { BASE_ENV_ALLOWLIST, createEnvFilter, enumerateRuntimes, resolveExplicitPath, resolveRuntime, SECRET_ENV_DENYLIST } from "../runtime-env";
 
 const WINDOWS_ENV_ALLOWLIST = [
 	"ALLUSERSPROFILE",
@@ -60,8 +31,6 @@ const WINDOWS_ENV_ALLOWLIST = [
 	"USERPROFILE",
 ];
 
-const DEFAULT_ENV_DENYLIST = ["PI_API_KEY", "PI_TOKEN", "PI_PASSWORD", "PI_SESSION", "PI_TOOL_BRIDGE_TOKEN"];
-
 // Julia version managers and package layout live behind these prefixes; passing them
 // through lets Julia discover packages and configure its runtime consistently.
 const DEFAULT_ENV_ALLOW_PREFIXES = ["LC_", "XDG_", "PI_", "JULIA_", "OPENBLAS_", "MKL_"];
@@ -74,9 +43,9 @@ export interface JuliaRuntime {
 }
 
 export const filterEnv = createEnvFilter({
-	allowList: DEFAULT_ENV_ALLOWLIST,
+	allowList: BASE_ENV_ALLOWLIST,
 	windowsAllowList: WINDOWS_ENV_ALLOWLIST,
-	denyList: DEFAULT_ENV_DENYLIST,
+	denyList: SECRET_ENV_DENYLIST,
 	allowPrefixes: DEFAULT_ENV_ALLOW_PREFIXES,
 });
 

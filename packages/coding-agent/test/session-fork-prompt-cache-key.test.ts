@@ -1,19 +1,19 @@
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { ThinkingLevel } from "@oh-my-pi/pi-agent-core";
-import { getBundledModel } from "@oh-my-pi/pi-catalog/models";
-import { type Args, parseArgs } from "@oh-my-pi/pi-coding-agent/cli/args";
-import { ModelRegistry } from "@oh-my-pi/pi-coding-agent/config/model-registry";
-import type { ScopedModel } from "@oh-my-pi/pi-coding-agent/config/model-resolver";
-import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import { buildSessionOptions } from "@oh-my-pi/pi-coding-agent/main";
-import { type CreateAgentSessionOptions, createAgentSession } from "@oh-my-pi/pi-coding-agent/sdk";
-import type { AgentSession } from "@oh-my-pi/pi-coding-agent/session/agent-session";
-import { AuthStorage } from "@oh-my-pi/pi-coding-agent/session/auth-storage";
-import { CURRENT_SESSION_VERSION, type SessionHeader } from "@oh-my-pi/pi-coding-agent/session/session-entries";
-import { SessionManager } from "@oh-my-pi/pi-coding-agent/session/session-manager";
-import { TempDir } from "@oh-my-pi/pi-utils";
+import { ThinkingLevel } from "@veyyon/pi-agent-core";
+import { getBundledModel } from "@veyyon/pi-catalog/models";
+import { type Args, parseArgs } from "@veyyon/pi-coding-agent/cli/args";
+import { ModelRegistry } from "@veyyon/pi-coding-agent/config/model-registry";
+import type { ScopedModel } from "@veyyon/pi-coding-agent/config/model-resolver";
+import { Settings } from "@veyyon/pi-coding-agent/config/settings";
+import { buildSessionOptions } from "@veyyon/pi-coding-agent/main";
+import { type CreateAgentSessionOptions, createAgentSession } from "@veyyon/pi-coding-agent/sdk";
+import type { AgentSession } from "@veyyon/pi-coding-agent/session/agent-session";
+import { AuthStorage } from "@veyyon/pi-coding-agent/session/auth-storage";
+import { CURRENT_SESSION_VERSION, type SessionHeader } from "@veyyon/pi-coding-agent/session/session-entries";
+import { SessionManager } from "@veyyon/pi-coding-agent/session/session-manager";
+import { TempDir } from "@veyyon/pi-utils";
 
 const OPENAI_TEST_MODEL = getBundledModel("openai", "gpt-4o-mini");
 
@@ -63,7 +63,6 @@ async function createMinimalSession(
 		model: shouldSupplyModel ? (options.model ?? OPENAI_TEST_MODEL) : options.model,
 		settings: Settings.isolated({
 			"async.enabled": false,
-			"marketplace.autoUpdate": "off",
 		}),
 		disableExtensionDiscovery: true,
 		preloadedExtensions: undefined,
@@ -221,7 +220,7 @@ describe("provider prompt-cache key session affinity", () => {
 				scopedModels,
 				forkedManager,
 				modelRegistry,
-				Settings.isolated({ "marketplace.autoUpdate": "off" }),
+				Settings.isolated({}),
 			);
 
 			expect(options.model).toBe(OPENAI_TEST_MODEL);

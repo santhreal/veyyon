@@ -4,8 +4,8 @@
  * Handles /mcp subcommands for managing MCP servers.
  */
 import * as path from "node:path";
-import { type Component, replaceTabs, Spacer, Text } from "@oh-my-pi/pi-tui";
-import { getMCPConfigPath, getProjectDir } from "@oh-my-pi/pi-utils";
+import { type Component, replaceTabs, Spacer, Text } from "@veyyon/pi-tui";
+import { getMCPConfigPath, getProjectDir } from "@veyyon/pi-utils";
 import type { SourceMeta } from "../../capability/types";
 import { expandEnvVarsDeep } from "../../discovery/helpers";
 import {
@@ -838,7 +838,7 @@ export class MCPCommandController {
 
 			this.ctx.present([
 				new Spacer(1),
-				new Text(theme.fg("success", "✓ Authorization completed in browser."), 1, 0),
+				new Text(theme.fg("success", "ok Authorization completed in browser."), 1, 0),
 			]);
 
 			// Deterministic per-URL id: every profile resolves its own credential row
@@ -1124,7 +1124,7 @@ export class MCPCommandController {
 				block.setStatus(
 					options?.suppressDisconnectedWarning
 						? theme.fg("muted", `◌ Connection check complete for "${name}"`)
-						: theme.fg("warning", `⚠ Could not connect to "${name}" yet`),
+						: theme.fg("warning", `warn Could not connect to "${name}" yet`),
 				);
 			}
 			return state;
@@ -1198,7 +1198,7 @@ export class MCPCommandController {
 				lines.push(theme.fg("muted", `  Run ${theme.fg("accent", `/mcp test ${name}`)} in a few seconds.`));
 				lines.push("");
 			} else {
-				lines.push(theme.fg("warning", `⚠ Server added but not yet connected`));
+				lines.push(theme.fg("warning", `warn Server added but not yet connected`));
 				lines.push(theme.fg("muted", `  Run ${theme.fg("accent", `/mcp test ${name}`)} to test the connection.`));
 				lines.push("");
 			}
@@ -1309,7 +1309,7 @@ export class MCPCommandController {
 								? theme.fg("success", " ● connected")
 								: state === "connecting"
 									? theme.fg("muted", " ◌ connecting")
-									: theme.fg("muted", " ○ not connected");
+									: theme.fg("muted", " o not connected");
 					lines.push(`  ${theme.fg("accent", name)}${status} ${theme.fg("dim", `[${type}]`)}`);
 				}
 				lines.push("");
@@ -1332,7 +1332,7 @@ export class MCPCommandController {
 								? theme.fg("success", " ● connected")
 								: state === "connecting"
 									? theme.fg("muted", " ◌ connecting")
-									: theme.fg("muted", " ○ not connected");
+									: theme.fg("muted", " o not connected");
 					lines.push(`  ${theme.fg("accent", name)}${status} ${theme.fg("dim", `[${type}]`)}`);
 				}
 				lines.push("");
@@ -1349,7 +1349,7 @@ export class MCPCommandController {
 								? theme.fg("success", " ● connected")
 								: state === "connecting"
 									? theme.fg("muted", " ◌ connecting")
-									: theme.fg("muted", " ○ not connected");
+									: theme.fg("muted", " o not connected");
 						lines.push(`  ${theme.fg("accent", name)}${status}`);
 					}
 					lines.push("");
@@ -1770,7 +1770,7 @@ export class MCPCommandController {
 
 			const lines = [
 				"",
-				theme.fg("success", `✓ Reauthorized "${name}" (${found.scope} config)`),
+				theme.fg("success", `ok Reauthorized "${name}" (${found.scope} config)`),
 				"",
 				`  Status: ${
 					state === "connected"
@@ -2016,8 +2016,8 @@ export class MCPCommandController {
 			hasAny = true;
 
 			lines.push(`${theme.fg("accent", name)}:`);
-			const check = theme.fg("success", "✓");
-			const cross = theme.fg("dim", "✗");
+			const check = theme.fg("success", "ok");
+			const cross = theme.fg("dim", "x");
 			if (supportsToolsChanged) lines.push(`  ${check} tools/list_changed`);
 			if (supportsResourcesChanged) lines.push(`  ${check} resources/list_changed`);
 			if (supportsPromptsChanged) lines.push(`  ${check} prompts/list_changed`);
@@ -2034,7 +2034,7 @@ export class MCPCommandController {
 				lines.push(`  ${check} resources/subscribe  ${subStatus}`);
 				if (enabled && subscribedUris && subscribedUris.size > 0) {
 					for (const uri of subscribedUris) {
-						lines.push(`    ${theme.fg("success", "✓")} ${theme.fg("dim", uri)}`);
+						lines.push(`    ${theme.fg("success", "ok")} ${theme.fg("dim", uri)}`);
 					}
 				}
 			} else if (supportsResources) {

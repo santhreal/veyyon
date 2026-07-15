@@ -2,7 +2,7 @@
  * MusicBrainz URL handler for artists, releases, and recordings
  */
 
-import { tryParseJson } from "@oh-my-pi/pi-utils";
+import { tryParseJson } from "@veyyon/pi-utils";
 import type { RenderResult, SpecialHandler } from "./types";
 import { buildResult, formatMediaDuration, loadPage } from "./types";
 
@@ -64,7 +64,7 @@ interface MusicBrainzRelease {
 }
 
 const MUSICBRAINZ_HOSTS = new Set(["musicbrainz.org", "www.musicbrainz.org"]);
-const USER_AGENT = "omp-web-fetch/1.0 (https://github.com/anthropics)";
+const USER_AGENT = "veyyon-web-fetch/1.0 (https://github.com/santhsecurity/veyyon)";
 const MAX_TRACKS = 50;
 
 function parseEntity(url: URL): { entity: MusicBrainzEntity; mbid: string } | null {

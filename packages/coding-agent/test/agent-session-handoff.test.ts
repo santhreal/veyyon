@@ -1,23 +1,29 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
-import { Agent, type AgentMessage, type StreamFn } from "@oh-my-pi/pi-agent-core";
-import * as compactionModule from "@oh-my-pi/pi-agent-core/compaction";
-import type { AssistantMessage, Model, ToolCall } from "@oh-my-pi/pi-ai";
-import { createMockModel } from "@oh-my-pi/pi-ai/providers/mock";
-import { AssistantMessageEventStream } from "@oh-my-pi/pi-ai/utils/event-stream";
-import { getBundledModel } from "@oh-my-pi/pi-catalog/models";
-import { ModelRegistry } from "@oh-my-pi/pi-coding-agent/config/model-registry";
-import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import { ExtensionRunner, loadExtensions } from "@oh-my-pi/pi-coding-agent/extensibility/extensions";
-import { SecretObfuscator } from "@oh-my-pi/pi-coding-agent/secrets";
-import { AgentSession, type AgentSessionEvent } from "@oh-my-pi/pi-coding-agent/session/agent-session";
-import { AuthStorage } from "@oh-my-pi/pi-coding-agent/session/auth-storage";
-import { SessionManager } from "@oh-my-pi/pi-coding-agent/session/session-manager";
-import { TempDir } from "@oh-my-pi/pi-utils";
-import * as snapcompact from "@oh-my-pi/snapcompact";
+import { Agent, type AgentMessage, type StreamFn } from "@veyyon/pi-agent-core";
+import * as compactionModule from "@veyyon/pi-agent-core/compaction";
+import type { AssistantMessage, Model, ToolCall } from "@veyyon/pi-ai";
+import { createMockModel } from "@veyyon/pi-ai/providers/mock";
+import { AssistantMessageEventStream } from "@veyyon/pi-ai/utils/event-stream";
+import { getBundledModel } from "@veyyon/pi-catalog/models";
+import { ModelRegistry } from "@veyyon/pi-coding-agent/config/model-registry";
+import { Settings } from "@veyyon/pi-coding-agent/config/settings";
+import { ExtensionRunner, loadExtensions } from "@veyyon/pi-coding-agent/extensibility/extensions";
+import { SecretObfuscator } from "@veyyon/pi-coding-agent/secrets";
+import { AgentSession, type AgentSessionEvent } from "@veyyon/pi-coding-agent/session/agent-session";
+import { AuthStorage } from "@veyyon/pi-coding-agent/session/auth-storage";
+import { SessionManager } from "@veyyon/pi-coding-agent/session/session-manager";
+import { TempDir } from "@veyyon/pi-utils";
+import * as snapcompact from "@veyyon/snapcompact";
 
 const HANDOFF_SECRET = "HANDOFF_SECRET_TOKEN_12345";
 const UNRENDERABLE_SNAPCOMPACT_TEXT = "\uE000\uE001\uE002\uE003\uE004\uE005\uE006\uE007\uE008\uE009";
+
+/** Force legacy in-session LLM compaction for tests (migrated configs store handoff|snap only). */
+function withLegacyContextFullStrategy(settings: Settings): Settings {
+	settings.override("compaction.strategy", "context-full" as never);
+	return settings;
+}
 
 describe("AgentSession handoff", () => {
 	// Immutable across the whole file: the model registry's synchronous bundled-model
@@ -432,7 +438,7 @@ describe("AgentSession handoff", () => {
 	});
 
 	it("obfuscates the previous compaction summary but preserves opaque replay data", async () => {
-		session.settings.set("compaction.strategy", "context-full");
+		session.settings.override("compaction.strategy", "context-full" as never);
 		const placeholder = obfuscator.obfuscate(HANDOFF_SECRET);
 		const entries = sessionManager.getBranch();
 		const lastEntryId = entries[entries.length - 1]?.id;
@@ -475,7 +481,7 @@ describe("AgentSession handoff", () => {
 	});
 
 	it("obfuscates migrated snapcompact archive text but preserves opaque replay data", async () => {
-		session.settings.set("compaction.strategy", "context-full");
+		session.settings.override("compaction.strategy", "context-full" as never);
 		const placeholder = obfuscator.obfuscate(HANDOFF_SECRET);
 		const entries = sessionManager.getBranch();
 		const lastEntryId = entries[entries.length - 1]?.id;
@@ -560,7 +566,7 @@ describe("AgentSession handoff", () => {
 	});
 
 	it("downgrades auto snapcompact to context-full when local preflight rejects the transcript", async () => {
-		session.settings.set("compaction.strategy", "snapcompact");
+		session.settings.override("compaction.strategy", "snapcompact" as never);
 		const entries = sessionManager.getBranch();
 		const lastEntryId = entries[entries.length - 1]?.id;
 		if (!lastEntryId) throw new Error("Expected a seeded entry id");
@@ -659,11 +665,12 @@ describe("AgentSession handoff", () => {
 		const localSession = new AgentSession({
 			agent: localAgent,
 			sessionManager: localSessionManager,
-			settings: Settings.isolated({
+			settings: withLegacyContextFullStrategy(
+				Settings.isolated({
 				"compaction.enabled": true,
 				"compaction.autoContinue": false,
-				"compaction.strategy": "context-full",
-			}),
+				}),
+			),
 			modelRegistry,
 			extensionRunner,
 		});
@@ -729,11 +736,12 @@ describe("AgentSession handoff", () => {
 		const localSession = new AgentSession({
 			agent: localAgent,
 			sessionManager: localSessionManager,
-			settings: Settings.isolated({
+			settings: withLegacyContextFullStrategy(
+				Settings.isolated({
 				"compaction.enabled": true,
 				"compaction.autoContinue": false,
-				"compaction.strategy": "context-full",
-			}),
+				}),
+			),
 			modelRegistry,
 			extensionRunner,
 		});
@@ -755,7 +763,7 @@ describe("AgentSession handoff", () => {
 	});
 
 	it("runs context maintenance before sending an oversized pending prompt", async () => {
-		session.settings.set("compaction.strategy", "context-full");
+		session.settings.override("compaction.strategy", "context-full" as never);
 		session.settings.set("compaction.thresholdTokens", 50);
 		session.settings.set("compaction.keepRecentTokens", 1);
 		session.settings.set("contextPromotion.enabled", false);
@@ -785,7 +793,7 @@ describe("AgentSession handoff", () => {
 	});
 
 	it("falls back after one auto-compaction timeout instead of retrying the same model", async () => {
-		session.settings.set("compaction.strategy", "context-full");
+		session.settings.override("compaction.strategy", "context-full" as never);
 		session.settings.set("compaction.thresholdTokens", 50);
 		session.settings.set("compaction.keepRecentTokens", 1);
 		session.settings.set("contextPromotion.enabled", false);
@@ -901,13 +909,14 @@ describe("AgentSession handoff", () => {
 		session = new AgentSession({
 			agent,
 			sessionManager,
-			settings: Settings.isolated({
+			settings: withLegacyContextFullStrategy(
+				Settings.isolated({
 				"compaction.enabled": true,
 				"compaction.autoContinue": false,
-				"compaction.strategy": "context-full",
 				"compaction.thresholdTokens": 8_000,
 				"contextPromotion.enabled": false,
-			}),
+				}),
+			),
 			modelRegistry,
 		});
 		session.subscribe(event => {
@@ -986,13 +995,14 @@ describe("AgentSession handoff", () => {
 		session = new AgentSession({
 			agent,
 			sessionManager,
-			settings: Settings.isolated({
+			settings: withLegacyContextFullStrategy(
+				Settings.isolated({
 				"compaction.enabled": true,
 				"compaction.autoContinue": false,
-				"compaction.strategy": "context-full",
 				"compaction.thresholdTokens": 8_000,
 				"contextPromotion.enabled": false,
-			}),
+				}),
+			),
 			modelRegistry,
 		});
 		session.subscribe(event => {
@@ -1068,14 +1078,15 @@ describe("AgentSession handoff", () => {
 		session = new AgentSession({
 			agent,
 			sessionManager,
-			settings: Settings.isolated({
+			settings: withLegacyContextFullStrategy(
+				Settings.isolated({
 				"compaction.enabled": true,
 				"compaction.autoContinue": false,
-				"compaction.strategy": "context-full",
 				"compaction.thresholdTokens": 8_000,
 				"compaction.keepRecentTokens": 1,
 				"contextPromotion.enabled": false,
-			}),
+				}),
+			),
 			modelRegistry,
 			extensionRunner,
 		});
@@ -1154,13 +1165,14 @@ describe("AgentSession handoff", () => {
 		session = new AgentSession({
 			agent,
 			sessionManager,
-			settings: Settings.isolated({
+			settings: withLegacyContextFullStrategy(
+				Settings.isolated({
 				"compaction.enabled": false,
 				"compaction.autoContinue": false,
-				"compaction.strategy": "context-full",
 				"compaction.thresholdTokens": 9_500,
 				"contextPromotion.enabled": false,
-			}),
+				}),
+			),
 			modelRegistry,
 		});
 		session.subscribe(event => {
@@ -1287,7 +1299,7 @@ describe("AgentSession handoff", () => {
 	});
 
 	it("does not run auto maintenance when strategy is off", async () => {
-		session.settings.set("compaction.strategy", "off");
+		session.settings.override("compaction.strategy", "off" as never);
 		session.settings.set("compaction.thresholdPercent", 1);
 		session.settings.set("contextPromotion.enabled", false);
 
@@ -1326,11 +1338,11 @@ describe("AgentSession handoff", () => {
 
 	it("restores default strategy when enabling auto-compaction from off strategy", () => {
 		session.settings.set("compaction.enabled", true);
-		session.settings.set("compaction.strategy", "off");
+		session.settings.override("compaction.strategy", "off" as never);
 
 		expect(session.autoCompactionEnabled).toBe(false);
 		session.setAutoCompactionEnabled(true);
-		expect(session.settings.get("compaction.strategy")).toBe("snapcompact");
+		expect(session.settings.get("compaction.strategy")).toBe("snap");
 		expect(session.autoCompactionEnabled).toBe(true);
 	});
 

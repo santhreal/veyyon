@@ -1,6 +1,6 @@
 import * as path from "node:path";
 
-import { Text } from "@oh-my-pi/pi-tui";
+import { Text } from "@veyyon/pi-tui";
 import { type } from "arktype";
 import type { ToolDefinition } from "../../extensibility/extensions";
 import type { Theme } from "../../modes/theme/theme";

@@ -1,7 +1,7 @@
 /**
  * CLI argument parsing and help display
  */
-import { APP_NAME, CONFIG_DIR_NAME, logger } from "@oh-my-pi/pi-utils";
+import { APP_NAME, CONFIG_DIR_NAME, logger } from "@veyyon/pi-utils";
 import chalk from "chalk";
 import { CLI_THINKING_LEVELS, type ConfiguredThinkingLevel, parseCliThinkingLevel } from "../thinking";
 import { BUILTIN_TOOL_NAMES, normalizeToolNames } from "../tools/builtin-names";
@@ -28,6 +28,8 @@ export interface Args {
 	smol?: string;
 	slow?: string;
 	plan?: string;
+	subagentModel?: string;
+	compactionModel?: string;
 	prewalk?: boolean;
 	noPrewalk?: boolean;
 	prewalkInto?: string;
@@ -69,7 +71,7 @@ export interface Args {
 	noRules?: boolean;
 	noTitle?: boolean;
 	autoApprove?: boolean;
-	approvalMode?: "always-ask" | "write" | "yolo";
+	approvalMode?: "plan" | "ask" | "auto-edit" | "yolo" | "always-ask" | "write";
 	messages: string[];
 	fileArgs: string[];
 	/** Extension-registered flags this parse recognized — name to value. */
@@ -90,7 +92,7 @@ export interface Args {
 /**
  * Runtime dependencies the data-driven setters need. Constructed once at
  * module load and passed to every {@link STRING_SETTERS} call so the
- * setter table itself can stay free of `@oh-my-pi/pi-utils` runtime imports
+ * setter table itself can stay free of `@veyyon/pi-utils` runtime imports
  * (which would otherwise trip the profile bootstrap's env-init ordering).
  */
 const PARSE_DEPS: ParseDeps = {
@@ -373,7 +375,7 @@ export function getExtraHelpText(): string {
 
   ${chalk.dim("# Configuration")}
   OMP_PROFILE                 - Named profile for isolated agent state (same as --profile)
-  Use \`omp --profile <name> --alias <command>\` to create a shell shortcut for a profile
+  Use \`veyyon --profile <name> --alias <command>\` to create a shell shortcut for a profile
   PI_CODING_AGENT_DIR        - Session storage directory (default: ~/${CONFIG_DIR_NAME}/agent)
   PI_PACKAGE_DIR             - Override package directory (for Nix/Guix store paths)
   PI_SMOL_MODEL              - Override smol/fast model (see --smol)
@@ -403,7 +405,7 @@ ${chalk.bold("Plugin Options:")}
   --plugin-dir <path>        Load plugin from directory (repeatable)
 
 ${chalk.bold("Useful Commands:")}
-  omp agents unpack           - Export bundled subagents to ~/.omp/agent/agents (default)
+  omp agents unpack           - Export bundled subagents to ~/.veyyon/agent/agents (default)
   omp agents unpack --project - Export bundled subagents to ./.omp/agents`;
 }
 

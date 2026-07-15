@@ -7,7 +7,7 @@
  * the registry of these definitions. Adding a provider is one new file in
  * `./providers/` plus one line in `./registry.ts`. Model-catalog metadata
  * (default model, model-manager factory, catalog discovery) lives in
- * `@oh-my-pi/pi-catalog`'s descriptor table.
+ * `@veyyon/pi-catalog`'s descriptor table.
  */
 import type { OAuthCredentials, OAuthLoginCallbacks } from "./oauth/types";
 

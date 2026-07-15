@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
-import { getBundledModel } from "@oh-my-pi/pi-catalog/models";
-import { runCommitAgentSession } from "@oh-my-pi/pi-coding-agent/commit/agentic/agent";
-import * as toolsModule from "@oh-my-pi/pi-coding-agent/commit/agentic/tools";
-import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import type { CreateAgentSessionResult } from "@oh-my-pi/pi-coding-agent/sdk";
-import * as sdkModule from "@oh-my-pi/pi-coding-agent/sdk";
-import type { PromptOptions } from "@oh-my-pi/pi-coding-agent/session/agent-session";
+import { getBundledModel } from "@veyyon/pi-catalog/models";
+import { runCommitAgentSession } from "@veyyon/pi-coding-agent/commit/agentic/agent";
+import * as toolsModule from "@veyyon/pi-coding-agent/commit/agentic/tools";
+import { Settings } from "@veyyon/pi-coding-agent/config/settings";
+import type { CreateAgentSessionResult } from "@veyyon/pi-coding-agent/sdk";
+import * as sdkModule from "@veyyon/pi-coding-agent/sdk";
+import type { PromptOptions } from "@veyyon/pi-coding-agent/session/agent-session";
 
 describe("commit agent prompt attribution", () => {
 	afterEach(() => {

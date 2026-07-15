@@ -17,16 +17,16 @@ import {
 	type TSchema,
 	toolWireSchema,
 	validateToolArguments,
-} from "@oh-my-pi/pi-ai";
+} from "@veyyon/pi-ai";
 import {
 	type Dialect,
 	encodeInbandToolHistory,
 	renderInbandToolPrompt,
 	renderToolExamples,
 	wrapInbandToolStream,
-} from "@oh-my-pi/pi-ai/dialect";
-import * as AIError from "@oh-my-pi/pi-ai/error";
-import { type CursorExecResolvedCarrier, kCursorExecResolved } from "@oh-my-pi/pi-ai/utils/block-symbols";
+} from "@veyyon/pi-ai/dialect";
+import * as AIError from "@veyyon/pi-ai/error";
+import { type CursorExecResolvedCarrier, kCursorExecResolved } from "@veyyon/pi-ai/utils/block-symbols";
 import {
 	createHarmonyAuditEvent,
 	detectHarmonyLeakInAssistantMessage,
@@ -36,10 +36,10 @@ import {
 	isHarmonyLeakMitigationTarget,
 	recoverHarmonyToolCall,
 	signalListLabel,
-} from "@oh-my-pi/pi-ai/utils/harmony-leak";
-import { preferredDialect } from "@oh-my-pi/pi-catalog/identity";
-import { sanitizeText, structuredCloneJSON } from "@oh-my-pi/pi-utils";
-import { INTENT_FIELD } from "@oh-my-pi/pi-wire";
+} from "@veyyon/pi-ai/utils/harmony-leak";
+import { preferredDialect } from "@veyyon/pi-catalog/identity";
+import { sanitizeText, structuredCloneJSON } from "@veyyon/pi-utils";
+import { INTENT_FIELD } from "@veyyon/pi-wire";
 import { agentPauseGate } from "./pause";
 import { type AgentRunCoverage, type AgentRunSummary, ToolCallBlockedError } from "./run-collector";
 import {
@@ -1954,6 +1954,37 @@ async function executeToolCalls(
 		let effectiveArgs: Record<string, unknown>;
 		try {
 			if (!tool) throw new Error(`Tool ${toolCall.name} not found`);
+			if (config.repairToolCallArguments) {
+				const repairOutcome = config.repairToolCallArguments(tool, {
+					...toolCall,
+					arguments: argsForExecution,
+				});
+				if (repairOutcome.status === "unrepairable") {
+					const hintSuffix =
+						repairOutcome.hints.length > 0
+							? `\n\n[Tool argument repair]\n${repairOutcome.hints.map(h => `- ${h}`).join("\n")}`
+							: "";
+					const errorText = `${repairOutcome.reason ?? "Tool arguments could not be repaired."}${hintSuffix}`;
+					record.args = argsForExecution;
+					emitToolResult(
+						record,
+						{
+							content: [{ type: "text" as const, text: errorText }],
+							details: { isError: true, error: errorText },
+						},
+						true,
+					);
+					return;
+				}
+				argsForExecution = repairOutcome.arguments;
+				if (intentTracing) {
+					const { intent, strippedArgs } = extractIntent(argsForExecution);
+					argsForExecution = strippedArgs;
+					if (intent) {
+						toolCall.intent = intent;
+					}
+				}
+			}
 			effectiveArgs = validateToolArguments(tool, { ...toolCall, arguments: argsForExecution });
 		} catch (validationError) {
 			if (tool?.lenientArgValidation) {

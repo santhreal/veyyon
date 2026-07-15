@@ -4,13 +4,14 @@ import * as os from "node:os";
 import * as path from "node:path";
 import {
 	__resetDirsFromEnvForTests,
+	APP_NAME,
 	getActiveProfile,
 	getConfigDirName,
 	getDocumentConversionCacheDir,
 	getProfileRootDir,
 	setAgentDir,
-} from "@oh-my-pi/pi-utils/dirs";
-import { Snowflake } from "@oh-my-pi/pi-utils/snowflake";
+} from "@veyyon/pi-utils/dirs";
+import { Snowflake } from "@veyyon/pi-utils/snowflake";
 
 function restoreEnv(key: string, value: string | undefined): void {
 	if (value === undefined) {
@@ -45,17 +46,17 @@ describe("document conversion cache directory", () => {
 		await fs.rm(tempRoot, { recursive: true, force: true });
 	});
 
-	it("uses XDG_CACHE_HOME for the default agent dir when $XDG_CACHE_HOME/omp exists", async () => {
+	it("uses XDG_CACHE_HOME for the default agent dir when $XDG_CACHE_HOME/veyyon exists", async () => {
 		if (process.platform === "win32") return;
 
 		process.env.XDG_CACHE_HOME = path.join(tempRoot, "cache");
-		await fs.mkdir(path.join(process.env.XDG_CACHE_HOME, "omp"), { recursive: true });
+		await fs.mkdir(path.join(process.env.XDG_CACHE_HOME, APP_NAME), { recursive: true });
 
 		const defaultAgentDir = path.join(os.homedir(), getConfigDirName(), "agent");
 		setAgentDir(defaultAgentDir);
 
 		expect(getDocumentConversionCacheDir()).toBe(
-			path.join(process.env.XDG_CACHE_HOME, "omp", "cache", "document-conversions"),
+			path.join(process.env.XDG_CACHE_HOME, APP_NAME, "cache", "document-conversions"),
 		);
 	});
 

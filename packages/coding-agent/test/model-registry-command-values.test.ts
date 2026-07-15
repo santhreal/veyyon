@@ -2,11 +2,11 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { Api, Model } from "@oh-my-pi/pi-ai/types";
-import { buildModel } from "@oh-my-pi/pi-catalog/build";
-import { ModelRegistry } from "@oh-my-pi/pi-coding-agent/config/model-registry";
-import { AuthStorage } from "@oh-my-pi/pi-coding-agent/session/auth-storage";
-import { removeSyncWithRetries, Snowflake } from "@oh-my-pi/pi-utils";
+import type { Api, Model } from "@veyyon/pi-ai/types";
+import { buildModel } from "@veyyon/pi-catalog/build";
+import { ModelRegistry } from "@veyyon/pi-coding-agent/config/model-registry";
+import { AuthStorage } from "@veyyon/pi-coding-agent/session/auth-storage";
+import { removeSyncWithRetries, Snowflake } from "@veyyon/pi-utils";
 
 function stdoutCommand(value: string): string {
 	return `${JSON.stringify(process.execPath)} -e ${JSON.stringify(`process.stdout.write(${JSON.stringify(value)})`)}`;

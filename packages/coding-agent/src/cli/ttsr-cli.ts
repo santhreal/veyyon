@@ -1,19 +1,19 @@
 /**
  * TTSR CLI command handlers.
  *
- * `omp ttsr test` — feed a snippet (inline text, `--file`, or stdin) through the
+ * `veyyon ttsr test` — feed a snippet (inline text, `--file`, or stdin) through the
  * real TTSR matching pipeline (`TtsrManager.checkSnapshot` for regex conditions,
  * `checkAstSnapshot` for ast-grep conditions) and report which rules would
  * trigger. The match context (`--source`, `--tool`, `--path`) is honored so
  * glob/AST/scope-scoped rules evaluate the same way they do in a live session.
  *
- * `omp ttsr list` — show every TTSR-registered rule the current project/user
+ * `veyyon ttsr list` — show every TTSR-registered rule the current project/user
  * config would load, with its conditions, scope, and source.
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { AstMatchStrictness, astMatch, FileType, type GlobMatch, glob } from "@oh-my-pi/pi-natives";
-import { getProjectDir } from "@oh-my-pi/pi-utils/dirs";
+import { AstMatchStrictness, astMatch, FileType, type GlobMatch, glob } from "@veyyon/pi-natives";
+import { getProjectDir } from "@veyyon/pi-utils/dirs";
 import chalk from "chalk";
 import { BUILTIN_DEFAULTS_PROVIDER_ID, type Rule, ruleCapability } from "../capability/rule";
 import { bucketRules } from "../capability/rule-buckets";
@@ -408,7 +408,7 @@ function renderTestReport(report: TestReport, verbose: boolean, isolated: boolea
 	}
 }
 function renderRuleDetail(detail: RuleMatchDetail, hit: boolean): void {
-	const mark = hit ? chalk.green("✓") : chalk.red("✗");
+	const mark = hit ? chalk.green("[ok]") : chalk.red("[FAIL]");
 	const condParts: string[] = [];
 	// For triggered rules, show which conditions fired. For not-triggered
 	// rules (verbose), show the rule's full condition set so users can see

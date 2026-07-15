@@ -1,4 +1,4 @@
-import { routeSelectListMouse, type SelectItem, SelectList, type SgrMouseEvent } from "@oh-my-pi/pi-tui";
+import { routeSelectListMouse, type SelectItem, SelectList, type SgrMouseEvent } from "@veyyon/pi-tui";
 import { getSelectListTheme, type SymbolPreset, setSymbolPreset, theme } from "../../theme/theme";
 import type { SetupScene, SetupSceneController, SetupSceneHost } from "./types";
 
@@ -12,7 +12,7 @@ const GLYPH_LABELS: Readonly<Record<SymbolPreset, string>> = {
 
 const GLYPH_SAMPLES: Readonly<Record<SymbolPreset, string>> = {
 	nerd: "      󰉋  ",
-	unicode: "✔  ✖  📁  ⬢  ╭─╮  ├─  •  ⠋  →",
+	unicode: "    F  ⬢  ╭─╮  ├─  •  ⠋  →",
 	ascii: "[ok]  [x]  >  +  [D]  +-+  |--  *  ->",
 };
 
@@ -20,7 +20,7 @@ const GLYPH_SAMPLES: Readonly<Record<SymbolPreset, string>> = {
 const GLYPH_ITEMS: readonly SelectItem[] = GLYPH_PRESETS.map((preset, index) => ({
 	value: preset,
 	label: `${index + 1}  ${GLYPH_LABELS[preset]}`,
-	description: preset === "nerd" ? `${GLYPH_SAMPLES.nerd}  ╭─╮  ├─  ◆  ✔  ✖` : GLYPH_SAMPLES[preset],
+	description: preset === "nerd" ? `${GLYPH_SAMPLES.nerd}  ╭─╮  ├─  ◆    ` : GLYPH_SAMPLES[preset],
 }));
 
 class GlyphSceneController implements SetupSceneController {

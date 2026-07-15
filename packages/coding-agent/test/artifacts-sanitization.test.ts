@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import * as os from "node:os";
 import * as path from "node:path";
-import { ArtifactManager } from "@oh-my-pi/pi-coding-agent/session/artifacts";
-import { removeSyncWithRetries } from "@oh-my-pi/pi-utils";
+import { ArtifactManager } from "@veyyon/pi-coding-agent/session/artifacts";
+import { removeSyncWithRetries } from "@veyyon/pi-utils";
 
 describe("ArtifactManager tool-type sanitization", () => {
 	const dirs: string[] = [];

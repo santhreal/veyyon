@@ -1,14 +1,14 @@
 import { describe, expect, it } from "bun:test";
-import { agentLoop } from "@oh-my-pi/pi-agent-core/agent-loop";
+import { agentLoop } from "@veyyon/pi-agent-core/agent-loop";
 import type {
 	AgentContext,
 	AgentLoopConfig,
 	AgentMessage,
 	AgentTool,
 	SoftToolRequirement,
-} from "@oh-my-pi/pi-agent-core/types";
-import type { Message, ToolChoice } from "@oh-my-pi/pi-ai";
-import { createMockModel } from "@oh-my-pi/pi-ai/providers/mock";
+} from "@veyyon/pi-agent-core/types";
+import type { Message, ToolChoice } from "@veyyon/pi-ai";
+import { createMockModel } from "@veyyon/pi-ai/providers/mock";
 import { type } from "arktype";
 import { createUserMessage } from "./helpers";
 

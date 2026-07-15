@@ -20,10 +20,10 @@
 //! - Backtraces are captured via [`Backtrace::force_capture`], so they work
 //!   regardless of `RUST_BACKTRACE`.
 //! - The crash log path mirrors the JS side (`packages/utils/src/dirs.ts`):
-//!   `$XDG_STATE_HOME/omp/logs/` on Linux / macOS when the user has migrated to
+//!   `$XDG_STATE_HOME/veyyon/logs/` on Linux / macOS when the user has migrated to
 //!   XDG (i.e. that directory already exists and `PI_CODING_AGENT_DIR` isn't
 //!   pointed somewhere custom), otherwise `<home>/<PI_CONFIG_DIR>/logs/`
-//!   (defaulting to `~/.omp/logs/`).
+//!   (defaulting to `~/.veyyon/logs/`).
 //! - Hook installation is idempotent across repeated module loads.
 
 use std::{
@@ -46,12 +46,12 @@ use std::{
 
 /// Default directory name for OMP's per-user state (overridable via
 /// `PI_CONFIG_DIR`, matching `packages/utils/src/dirs.ts`).
-const DEFAULT_CONFIG_DIR: &str = ".omp";
+const DEFAULT_CONFIG_DIR: &str = ".veyyon";
 
-/// App name used as the XDG-root subdirectory (`$XDG_STATE_HOME/omp/`),
+/// App name used as the XDG-root subdirectory (`$XDG_STATE_HOME/veyyon/`),
 /// matching `APP_NAME` in `packages/utils/src/dirs.ts`.
 #[cfg(any(target_os = "linux", target_os = "macos"))]
-const APP_NAME: &str = "omp";
+const APP_NAME: &str = "veyyon";
 
 static INSTALL: Once = Once::new();
 static ALLOC_HOOK_ACTIVE: AtomicBool = AtomicBool::new(false);
@@ -276,7 +276,7 @@ fn resolve_logs_dir(
 	config_dir_override: Option<&OsStr>,
 	xdg_state_logs: Option<PathBuf>,
 ) -> PathBuf {
-	// XDG takes precedence so users who migrated to `$XDG_STATE_HOME/omp/logs/`
+	// XDG takes precedence so users who migrated to `$XDG_STATE_HOME/veyyon/logs/`
 	// see native crash reports in the same directory the JS logger rotates.
 	if let Some(p) = xdg_state_logs {
 		return p;

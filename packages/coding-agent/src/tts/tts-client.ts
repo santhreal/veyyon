@@ -1,4 +1,4 @@
-import { logger } from "@oh-my-pi/pi-utils";
+import { logger } from "@veyyon/pi-utils";
 import {
 	createUnavailableWorker,
 	createWorkerHandle,
@@ -380,7 +380,7 @@ export class TtsClient {
 
 	/**
 	 * The TTS subprocess is spawned `unref`'d so an idle worker never blocks
-	 * process exit. A short-lived CLI command (`omp say`) awaiting a request would
+	 * process exit. A short-lived CLI command (`veyyon say`) awaiting a request would
 	 * otherwise let the event loop drain and exit before the audio arrives, so we
 	 * `ref` the worker exactly while at least one request is pending.
 	 */

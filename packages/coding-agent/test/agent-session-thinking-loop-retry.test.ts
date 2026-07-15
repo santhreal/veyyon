@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
 import { scheduler } from "node:timers/promises";
-import { Agent } from "@oh-my-pi/pi-agent-core";
+import { Agent } from "@veyyon/pi-agent-core";
 import type {
 	Api,
 	AssistantMessage,
@@ -10,18 +10,18 @@ import type {
 	SimpleStreamOptions,
 	TextContent,
 	ThinkingContent,
-} from "@oh-my-pi/pi-ai";
-import * as AIError from "@oh-my-pi/pi-ai/error";
-import { createMockModel } from "@oh-my-pi/pi-ai/providers/mock";
-import { AssistantMessageEventStream } from "@oh-my-pi/pi-ai/utils/event-stream";
-import { withGeminiThinkingLoopGuard } from "@oh-my-pi/pi-ai/utils/thinking-loop";
-import { ModelRegistry } from "@oh-my-pi/pi-coding-agent/config/model-registry";
-import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import { AgentSession, type AgentSessionEvent } from "@oh-my-pi/pi-coding-agent/session/agent-session";
-import { AuthStorage } from "@oh-my-pi/pi-coding-agent/session/auth-storage";
-import { type CustomMessage, convertToLlm } from "@oh-my-pi/pi-coding-agent/session/messages";
-import { SessionManager } from "@oh-my-pi/pi-coding-agent/session/session-manager";
-import { TempDir } from "@oh-my-pi/pi-utils";
+} from "@veyyon/pi-ai";
+import * as AIError from "@veyyon/pi-ai/error";
+import { createMockModel } from "@veyyon/pi-ai/providers/mock";
+import { AssistantMessageEventStream } from "@veyyon/pi-ai/utils/event-stream";
+import { withGeminiThinkingLoopGuard } from "@veyyon/pi-ai/utils/thinking-loop";
+import { ModelRegistry } from "@veyyon/pi-coding-agent/config/model-registry";
+import { Settings } from "@veyyon/pi-coding-agent/config/settings";
+import { AgentSession, type AgentSessionEvent } from "@veyyon/pi-coding-agent/session/agent-session";
+import { AuthStorage } from "@veyyon/pi-coding-agent/session/auth-storage";
+import { type CustomMessage, convertToLlm } from "@veyyon/pi-coding-agent/session/messages";
+import { SessionManager } from "@veyyon/pi-coding-agent/session/session-manager";
+import { TempDir } from "@veyyon/pi-utils";
 
 const LOOP_PARAGRAPHS = [
 	"I am now verifying the test module to guarantee there are no compile errors and the code is completely safe.",

@@ -3,15 +3,24 @@
  *
  * Approval policy is declared by each tool. This module only knows how to:
  * - normalize user `tools.approval.<tool>: allow | deny | prompt` overrides,
- * - compare a tool capability tier against the active approval mode,
+ * - compare a tool capability tier against the active autonomy / approval mode,
  * - format the generic approval prompt body.
  */
-import type { AgentTool, ToolApprovalDecision, ToolTier } from "@oh-my-pi/pi-agent-core";
+import type { AgentTool, ToolApprovalDecision, ToolTier } from "@veyyon/pi-agent-core";
 
-export type { ToolApproval, ToolApprovalDecision, ToolTier } from "@oh-my-pi/pi-agent-core";
+export type { ToolApproval, ToolApprovalDecision, ToolTier } from "@veyyon/pi-agent-core";
 
 export type ApprovalPolicy = "allow" | "deny" | "prompt";
-export type ApprovalMode = "always-ask" | "write" | "yolo";
+
+/** Shipped autonomy ladder (A2). Legacy omp names remain accepted in config/CLI. */
+export type AutonomyLevel = "plan" | "ask" | "auto-edit" | "yolo";
+export type LegacyApprovalMode = "always-ask" | "write";
+export type ApprovalMode = AutonomyLevel | LegacyApprovalMode;
+
+export interface ApprovalResolutionOptions {
+	/** When plan-mode session is active, write-tier tools may run (plan-file guard at execute). */
+	planModeActive?: boolean;
+}
 
 type ApprovalSubject = Pick<AgentTool, "name" | "approval" | "formatApprovalDetails">;
 
@@ -31,13 +40,32 @@ const TIER_RANK: Record<ToolTier, number> = {
 	exec: 2,
 };
 
-const APPROVAL_MODE_MAX_TIER: Record<ApprovalMode, ToolTier> = {
-	"always-ask": "read",
-	write: "write",
+const AUTONOMY_MAX_TIER: Record<AutonomyLevel, ToolTier> = {
+	plan: "read",
+	ask: "read",
+	"auto-edit": "write",
 	yolo: "exec",
 };
 
 const DEFAULT_PROMPT_TRUNCATE_CHARS = 2000;
+
+/** Map stored setting / CLI values to the shipped autonomy ladder. */
+export function normalizeApprovalMode(mode: string | undefined): AutonomyLevel {
+	switch (mode) {
+		case "plan":
+			return "plan";
+		case "ask":
+		case "always-ask":
+			return "ask";
+		case "auto-edit":
+		case "write":
+			return "auto-edit";
+		case "yolo":
+			return "yolo";
+		default:
+			return "yolo";
+	}
+}
 
 /** Best-effort conversion of an arbitrary user-supplied value to a policy. */
 function normalizePolicy(value: unknown): ApprovalPolicy | undefined {
@@ -75,8 +103,19 @@ function getToolDecision(tool: ApprovalSubject, args: unknown): Omit<ResolvedApp
 	return normalizeDecision(decision);
 }
 
-function modeApprovesTier(mode: ApprovalMode, tier: ToolTier): boolean {
-	return TIER_RANK[tier] <= TIER_RANK[APPROVAL_MODE_MAX_TIER[mode]];
+function autonomyApprovesTier(level: AutonomyLevel, tier: ToolTier): boolean {
+	return TIER_RANK[tier] <= TIER_RANK[AUTONOMY_MAX_TIER[level]];
+}
+
+function planAutonomyBlocksMutation(
+	level: AutonomyLevel,
+	tier: ToolTier,
+	options?: ApprovalResolutionOptions,
+): boolean {
+	if (level !== "plan") return false;
+	if (tier === "read") return false;
+	if (options?.planModeActive && tier === "write") return false;
+	return true;
 }
 
 /**
@@ -85,7 +124,7 @@ function modeApprovesTier(mode: ApprovalMode, tier: ToolTier): boolean {
  * Resolution order:
  *  1. Tool `approval(args)` decision, defaulting to tier "exec" when omitted.
  *  2. User per-tool override, if set and valid.
- *  3. Active mode tier comparison.
+ *  3. Active autonomy level tier comparison (`plan` denies mutations; `ask` prompts).
  *
  * In yolo mode, override-based tool prompts are ignored; user `tools.approval`
  * settings remain authoritative.
@@ -95,11 +134,13 @@ export function resolveApproval(
 	args: unknown,
 	mode: ApprovalMode,
 	userConfig: Record<string, unknown> = {},
+	options?: ApprovalResolutionOptions,
 ): ResolvedApproval {
+	const level = normalizeApprovalMode(mode);
 	const decision = getToolDecision(tool, args);
 	const userPolicy = Object.hasOwn(userConfig, tool.name) ? normalizePolicy(userConfig[tool.name]) : undefined;
 
-	if (mode === "yolo") {
+	if (level === "yolo") {
 		return { policy: userPolicy ?? "allow", tier: decision.tier, override: false };
 	}
 
@@ -119,7 +160,18 @@ export function resolveApproval(
 		return { policy: userPolicy, tier: decision.tier, override: false };
 	}
 
-	if (modeApprovesTier(mode, decision.tier)) {
+	if (planAutonomyBlocksMutation(level, decision.tier, options)) {
+		return {
+			policy: "deny",
+			tier: decision.tier,
+			override: false,
+			reason: options?.planModeActive
+				? "Plan mode: mutating tools are blocked (draft the plan via local:// plan files only)."
+				: "Plan autonomy: non-mutating tools only (read/search/grep/lsp). Raise autonomy to ask or higher to mutate.",
+		};
+	}
+
+	if (autonomyApprovesTier(level, decision.tier)) {
 		return { policy: "allow", tier: decision.tier, override: false };
 	}
 
@@ -129,6 +181,18 @@ export function resolveApproval(
 		override: false,
 		...(decision.reason ? { reason: decision.reason } : {}),
 	};
+}
+
+/**
+ * Effective autonomy when plan-mode session is active: cap to `plan` unless CLI yolo.
+ */
+export function resolveEffectiveApprovalMode(
+	configured: ApprovalMode | string | undefined,
+	options?: { planModeActive?: boolean; cliAutoApprove?: boolean },
+): ApprovalMode {
+	if (options?.cliAutoApprove) return "yolo";
+	if (options?.planModeActive) return "plan";
+	return (configured ?? "yolo") as ApprovalMode;
 }
 
 /**
@@ -142,14 +206,16 @@ export function requiresApproval(
 	args: unknown,
 	mode: ApprovalMode,
 	userConfig: Record<string, unknown> = {},
+	options?: ApprovalResolutionOptions,
 ): { required: boolean; reason?: string } {
-	const { policy, reason } = resolveApproval(tool, args, mode, userConfig);
+	const { policy, reason } = resolveApproval(tool, args, mode, userConfig, options);
 
 	if (policy === "deny") {
-		throw new Error(
+		const detail =
+			reason ??
 			`Tool "${tool.name}" is blocked by user policy.\n` +
-				`To allow: remove "tools.approval.${tool.name}: deny" from config.`,
-		);
+				`To allow: remove "tools.approval.${tool.name}: deny" from config.`;
+		throw new Error(detail);
 	}
 
 	if (policy === "prompt") return { required: true, reason };

@@ -1,6 +1,6 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { isEnoent, postmortem } from "@oh-my-pi/pi-utils";
+import { isEnoent, postmortem } from "@veyyon/pi-utils";
 import { daemonRuntimeDir } from "./paths";
 
 const CLIENTS_DIR = "clients";

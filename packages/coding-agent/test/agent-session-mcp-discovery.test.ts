@@ -8,15 +8,15 @@ import {
 	type AgentToolContext,
 	type AgentToolResult,
 	ThinkingLevel,
-} from "@oh-my-pi/pi-agent-core";
-import { Effort, type Model } from "@oh-my-pi/pi-ai";
-import { buildModel } from "@oh-my-pi/pi-catalog/build";
-import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import type { CustomTool } from "@oh-my-pi/pi-coding-agent/extensibility/custom-tools/types";
-import { AgentSession } from "@oh-my-pi/pi-coding-agent/session/agent-session";
-import { SessionManager } from "@oh-my-pi/pi-coding-agent/session/session-manager";
-import type { OutputMeta } from "@oh-my-pi/pi-coding-agent/tools/output-meta";
-import { removeSyncWithRetries } from "@oh-my-pi/pi-utils";
+} from "@veyyon/pi-agent-core";
+import { Effort, type Model } from "@veyyon/pi-ai";
+import { buildModel } from "@veyyon/pi-catalog/build";
+import { Settings } from "@veyyon/pi-coding-agent/config/settings";
+import type { CustomTool } from "@veyyon/pi-coding-agent/extensibility/custom-tools/types";
+import { AgentSession } from "@veyyon/pi-coding-agent/session/agent-session";
+import { SessionManager } from "@veyyon/pi-coding-agent/session/session-manager";
+import type { OutputMeta } from "@veyyon/pi-coding-agent/tools/output-meta";
+import { removeSyncWithRetries } from "@veyyon/pi-utils";
 import { type } from "arktype";
 
 function createModel(): Model<"openai-responses"> {

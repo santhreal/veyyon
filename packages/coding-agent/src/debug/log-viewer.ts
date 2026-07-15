@@ -7,8 +7,8 @@ import {
 	replaceTabs,
 	truncateToWidth,
 	visibleWidth,
-} from "@oh-my-pi/pi-tui";
-import { sanitizeText } from "@oh-my-pi/pi-utils";
+} from "@veyyon/pi-tui";
+import { sanitizeText } from "@veyyon/pi-utils";
 import { bottomBorder, divider, row, topBorder } from "../modes/components/overlay-box";
 import { theme } from "../modes/theme/theme";
 import { copyToClipboard } from "../utils/clipboard";
@@ -706,7 +706,7 @@ export class DebugLogViewerComponent implements Component {
 	}
 
 	#controlsText(): string {
-		return "Esc close · Ctrl+C copy · ↑/↓/wheel move · click toggle · Shift+↑/↓ select · ←/→ collapse/expand · Ctrl+A all · Ctrl+O older · Ctrl+P pid";
+		return "Esc close · Ctrl+C copy · up/down/wheel move · click toggle · Shift+up/down select · left/right collapse/expand · Ctrl+A all · Ctrl+O older · Ctrl+P pid";
 	}
 
 	#filterText(): string {
@@ -816,7 +816,7 @@ export class DebugLogViewerComponent implements Component {
 
 			if (row.kind === "load-older") {
 				const active = this.#model.cursorRowIndex === rowIndex;
-				const marker = active ? theme.fg("accent", "❯") : " ";
+				const marker = active ? theme.fg("accent", ">") : " ";
 				const prefix = `${marker}  `;
 				const contentWidth = Math.max(1, innerWidth - visibleWidth(prefix));
 				const label = truncateToWidth(LOAD_OLDER_LABEL, contentWidth);
@@ -832,8 +832,8 @@ export class DebugLogViewerComponent implements Component {
 			const cursorLogIndex = this.#model.cursorLogIndex;
 			const active = cursorLogIndex !== undefined && cursorLogIndex === logIndex;
 			const expanded = this.#model.isExpanded(logIndex);
-			const marker = active ? theme.fg("accent", "❯") : selected ? theme.fg("accent", "•") : " ";
-			const fold = expanded ? theme.fg("accent", "▾") : theme.fg("muted", "▸");
+			const marker = active ? theme.fg("accent", ">") : selected ? theme.fg("accent", "*") : " ";
+			const fold = expanded ? theme.fg("accent", "v") : theme.fg("muted", ">");
 			const prefix = `${marker}${fold} `;
 			const contentWidth = Math.max(1, innerWidth - visibleWidth(prefix));
 

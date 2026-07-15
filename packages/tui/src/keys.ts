@@ -18,12 +18,12 @@
  * - isKittyProtocolActive() - Query global Kitty protocol state
  */
 
-import type { KeyEventType } from "@oh-my-pi/pi-natives";
+import type { KeyEventType } from "@veyyon/pi-natives";
 import {
 	matchesKey as matchesKeyNative,
 	parseKey as parseKeyNative,
 	parseKittySequence as parseKittySequenceNative,
-} from "@oh-my-pi/pi-natives";
+} from "@veyyon/pi-natives";
 
 // =============================================================================
 // Platform Detection

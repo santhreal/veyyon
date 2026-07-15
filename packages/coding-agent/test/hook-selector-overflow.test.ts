@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from "bun:test";
-import { HookSelectorComponent } from "@oh-my-pi/pi-coding-agent/modes/components/hook-selector";
-import { getThemeByName, setThemeInstance, theme } from "@oh-my-pi/pi-coding-agent/modes/theme/theme";
-import { visibleWidth } from "@oh-my-pi/pi-tui";
+import { HookSelectorComponent } from "@veyyon/pi-coding-agent/modes/components/hook-selector";
+import { getThemeByName, setThemeInstance, theme } from "@veyyon/pi-coding-agent/modes/theme/theme";
+import { visibleWidth } from "@veyyon/pi-tui";
 
 beforeAll(async () => {
 	const theme = await getThemeByName("dark");
@@ -61,10 +61,10 @@ describe("HookSelectorComponent", () => {
 			{
 				label: "Use existing local credentials",
 				description:
-					"Authenticate via the provider keys and OAuth state already configured under ~/.omp without opening a new browser-based setup flow.",
+					"Authenticate via the provider keys and OAuth state already configured under ~/.veyyon without opening a new browser-based setup flow.",
 			},
 			{
-				label: "Set up Oh My Pi in terminal",
+				label: "Set up Veyyon in terminal",
 				description:
 					"Launch the local terminal UI to add provider keys, select models, and keep the current editor session waiting for the configured credentials.",
 			},

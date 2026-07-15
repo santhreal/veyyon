@@ -14,15 +14,15 @@ export function createAcpConnection(
 }
 
 export async function runAcpMode(createSession: AcpSessionFactory, initialSession?: AgentSession): Promise<never> {
-	// Humans who run `omp acp` by hand see a silent process and assume it is
+	// Humans who run `veyyon acp` by hand see a silent process and assume it is
 	// broken (stdout is the JSON-RPC transport, so nothing may be printed
 	// there). When stdin is a TTY no ACP client is attached — say so on stderr
 	// before the transport starts.
 	if (process.stdin.isTTY) {
 		process.stderr.write(
-			"omp acp: ACP server speaking JSON-RPC over stdio.\n" +
+			"veyyon acp: ACP server speaking JSON-RPC over stdio.\n" +
 				'This command is meant to be spawned by an ACP client (e.g. Zed\'s "agent_servers" config), not run directly.\n' +
-				"Waiting for protocol frames on stdin; logs: ~/.omp/logs/\n",
+				"Waiting for protocol frames on stdin; logs: ~/.veyyon/logs/\n",
 		);
 	}
 	const input = stream.Writable.toWeb(process.stdout);

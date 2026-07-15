@@ -1,4 +1,4 @@
-import { logger, postmortem, Snowflake, workerHostEntry } from "@oh-my-pi/pi-utils";
+import { logger, postmortem, Snowflake, workerHostEntry } from "@veyyon/pi-utils";
 import {
 	createWorkerHandle,
 	createWorkerSubprocess,
@@ -166,7 +166,7 @@ export async function disposeAllVmContexts(): Promise<void> {
  * fallback). Catches silent process-load and init-message regressions
  * that otherwise strand every cell on the init timeout in a distribution build —
  * the failure mode that motivated `installWorkerInbox`. Wired into
- * `omp --smoke-test` so binary / source / tarball installs all exercise it.
+ * `veyyon --smoke-test` so binary / source / tarball installs all exercise it.
  */
 export async function smokeTestJsEvalWorker(): Promise<void> {
 	const worker = spawnJsWorker();

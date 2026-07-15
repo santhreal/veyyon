@@ -7,8 +7,8 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { AgentToolResult } from "@oh-my-pi/pi-agent-core";
-import { isEnoent } from "@oh-my-pi/pi-utils";
+import type { AgentToolResult } from "@veyyon/pi-agent-core";
+import { isEnoent } from "@veyyon/pi-utils";
 import { type } from "arktype";
 import {
 	type FileDiagnosticsResult,

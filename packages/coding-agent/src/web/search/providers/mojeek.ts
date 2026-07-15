@@ -1,5 +1,5 @@
-import type { AuthStorage } from "@oh-my-pi/pi-ai";
-import { untilAborted } from "@oh-my-pi/pi-utils";
+import type { AuthStorage } from "@veyyon/pi-ai";
+import { untilAborted } from "@veyyon/pi-utils";
 import { parseHTML } from "linkedom";
 import type { Page } from "puppeteer-core";
 import type { SearchResponse, SearchSource } from "../../../web/search/types";

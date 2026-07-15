@@ -5,7 +5,7 @@
  * API docs: https://www.discogs.com/developers
  */
 
-import { tryParseJson } from "@oh-my-pi/pi-utils";
+import { tryParseJson } from "@veyyon/pi-utils";
 import type { RenderResult, SpecialHandler } from "./types";
 import { buildResult, loadPage } from "./types";
 
@@ -277,7 +277,7 @@ export const handleDiscogs: SpecialHandler = async (
 			signal,
 			headers: {
 				Accept: "application/json",
-				"User-Agent": "CodingAgent/1.0 +https://github.com/can1357/oh-my-pi",
+				"User-Agent": "CodingAgent/1.0 +https://github.com/santhsecurity/veyyon",
 			},
 		});
 

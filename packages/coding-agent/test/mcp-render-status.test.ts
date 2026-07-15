@@ -1,15 +1,15 @@
 import { beforeAll, describe, expect, it } from "bun:test";
-import type { AgentTool } from "@oh-my-pi/pi-agent-core";
-import type { TSchema } from "@oh-my-pi/pi-ai";
-import { resetSettingsForTest, Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import { renderMCPResult } from "@oh-my-pi/pi-coding-agent/mcp/render";
-import { DeferredMCPTool, MCPTool, type MCPToolDetails } from "@oh-my-pi/pi-coding-agent/mcp/tool-bridge";
-import type { MCPServerConnection, MCPToolDefinition, MCPTransport } from "@oh-my-pi/pi-coding-agent/mcp/types";
-import { ToolExecutionComponent } from "@oh-my-pi/pi-coding-agent/modes/components/tool-execution";
-import { theme as activeTheme, getThemeByName, initTheme } from "@oh-my-pi/pi-coding-agent/modes/theme/theme";
-import { formatOutputNotice, type OutputMeta } from "@oh-my-pi/pi-coding-agent/tools/output-meta";
-import { formatStatusIcon } from "@oh-my-pi/pi-coding-agent/tools/render-utils";
-import { TUI } from "@oh-my-pi/pi-tui";
+import type { AgentTool } from "@veyyon/pi-agent-core";
+import type { TSchema } from "@veyyon/pi-ai";
+import { resetSettingsForTest, Settings } from "@veyyon/pi-coding-agent/config/settings";
+import { renderMCPResult } from "@veyyon/pi-coding-agent/mcp/render";
+import { DeferredMCPTool, MCPTool, type MCPToolDetails } from "@veyyon/pi-coding-agent/mcp/tool-bridge";
+import type { MCPServerConnection, MCPToolDefinition, MCPTransport } from "@veyyon/pi-coding-agent/mcp/types";
+import { ToolExecutionComponent } from "@veyyon/pi-coding-agent/modes/components/tool-execution";
+import { theme as activeTheme, getThemeByName, initTheme } from "@veyyon/pi-coding-agent/modes/theme/theme";
+import { formatOutputNotice, type OutputMeta } from "@veyyon/pi-coding-agent/tools/output-meta";
+import { formatStatusIcon } from "@veyyon/pi-coding-agent/tools/render-utils";
+import { TUI } from "@veyyon/pi-tui";
 import { VirtualTerminal } from "../../tui/test/virtual-terminal";
 
 beforeAll(async () => {

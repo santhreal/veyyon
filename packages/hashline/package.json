@@ -1,9 +1,9 @@
 {
   "type": "module",
-  "name": "@oh-my-pi/hashline",
+  "name": "@veyyon/hashline",
   "version": "16.5.2",
   "description": "Hashline: a compact, line-anchored patch language and applier. Pluggable FS/IO so it works over disk, in-memory, or any custom backend.",
-  "homepage": "https://omp.sh",
+  "homepage": "https://veyyon.dev",
   "author": "Can Boluk",
   "license": "MIT",
   "repository": {

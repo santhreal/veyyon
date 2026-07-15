@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import type { AgentMessage } from "@oh-my-pi/pi-agent-core";
-import * as snapcompact from "@oh-my-pi/snapcompact";
+import type { AgentMessage } from "@veyyon/pi-agent-core";
+import * as snapcompact from "@veyyon/snapcompact";
 import type { CompactionSummaryMessage } from "./messages";
 import { buildSessionContext, type StrippedToolCallsMarker } from "./session-context";
 import type { SessionEntry } from "./session-entries";

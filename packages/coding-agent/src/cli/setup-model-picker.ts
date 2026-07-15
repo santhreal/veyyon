@@ -1,12 +1,12 @@
 /**
- * Standalone TUI model picker used by `omp setup speech`.
+ * Standalone TUI model picker used by `veyyon setup speech`.
  *
  * Mirrors {@link ./session-picker.ts} for the standalone-TUI lifecycle: spin up
  * a one-shot {@link TUI} over a {@link SelectList}, resolve on select/cancel, and
  * tear the UI down. The standalone TUI auto-renders on input, so no manual
  * render wiring is needed beyond `addChild`/`setFocus`/`start`.
  */
-import { ProcessTerminal, type SelectItem, SelectList, TUI } from "@oh-my-pi/pi-tui";
+import { ProcessTerminal, type SelectItem, SelectList, TUI } from "@veyyon/pi-tui";
 import { getSelectListTheme } from "../modes/theme/theme";
 
 /**

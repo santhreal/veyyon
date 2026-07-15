@@ -1,9 +1,9 @@
 {
   "type": "module",
-  "name": "@oh-my-pi/pi-tui",
+  "name": "@veyyon/pi-tui",
   "version": "16.5.2",
   "description": "Terminal User Interface library with differential rendering for efficient text-based applications",
-  "homepage": "https://omp.sh",
+  "homepage": "https://veyyon.dev",
   "author": "Can Boluk",
   "contributors": [
     "Mario Zechner"
@@ -37,8 +37,8 @@
     "fmt": "biome format --write ."
   },
   "dependencies": {
-    "@oh-my-pi/pi-natives": "catalog:",
-    "@oh-my-pi/pi-utils": "catalog:",
+    "@veyyon/pi-natives": "catalog:",
+    "@veyyon/pi-utils": "catalog:",
     "lru-cache": "catalog:",
     "marked": "catalog:"
   },

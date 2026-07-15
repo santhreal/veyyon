@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { TempDir } from "@oh-my-pi/pi-utils";
+import { TempDir } from "@veyyon/pi-utils";
 import { Settings } from "../../config/settings";
 import type { ToolSession } from "../../tools";
 import {

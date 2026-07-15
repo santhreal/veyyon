@@ -9,16 +9,16 @@
  * headroom) must never spend a credit — it self-heals within the hour.
  */
 import { describe, expect, it } from "bun:test";
-import type { OAuthAccountIdentity, UsageReport } from "@oh-my-pi/pi-ai";
-import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import { SETTINGS_SCHEMA } from "@oh-my-pi/pi-coding-agent/config/settings-schema";
+import type { OAuthAccountIdentity, UsageReport } from "@veyyon/pi-ai";
+import { Settings } from "@veyyon/pi-coding-agent/config/settings";
+import { SETTINGS_SCHEMA } from "@veyyon/pi-coding-agent/config/settings-schema";
 import {
 	type CodexAutoRedeemInput,
 	DEBOUNCE_BUCKET_MS,
 	evaluateCodexAutoRedeem,
 	shouldEvaluateCodexAutoRedeem,
 	shouldPromptCodexAutoRedeem,
-} from "@oh-my-pi/pi-coding-agent/session/codex-auto-reset";
+} from "@veyyon/pi-coding-agent/session/codex-auto-reset";
 
 // Epoch ms divisible by 60_000 so a minute-boundary `resetsAt` lets the
 // debounce-jitter cases reason about bucket crossings precisely.

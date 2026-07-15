@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { $which, APP_NAME, getToolsDir, logger, ptree, TempDir } from "@oh-my-pi/pi-utils";
+import { $which, APP_NAME, getToolsDir, logger, ptree, TempDir } from "@veyyon/pi-utils";
 import { extractArchive } from "./zip";
 
 const TOOLS_DIR = getToolsDir();

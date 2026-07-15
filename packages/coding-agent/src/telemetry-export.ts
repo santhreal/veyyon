@@ -1,7 +1,7 @@
 /**
  * OTLP trace export bootstrap.
  *
- * oh-my-pi's agent core (`@oh-my-pi/pi-agent-core`) emits OpenTelemetry GenAI
+ * Veyyon's agent core (`@veyyon/pi-agent-core`) emits OpenTelemetry GenAI
  * spans through the global `@opentelemetry/api` tracer, but only when a
  * TracerProvider is registered in the process — otherwise the API returns a
  * no-op tracer and the spans are silently dropped. The shipped CLI never
@@ -22,7 +22,7 @@
  * after the success path. `exporter-trace-otlp-proto@0.218` paired with
  * `sdk-trace-base@2.7` exports cleanly on Bun.
  */
-import { logger, postmortem } from "@oh-my-pi/pi-utils";
+import { logger, postmortem } from "@veyyon/pi-utils";
 import type * as TraceNode from "@opentelemetry/sdk-trace-node";
 
 /**
@@ -100,7 +100,7 @@ async function registerProvider(): Promise<void> {
 	const exporter = new OTLPTraceExporter();
 	const tracerProvider = new NodeTracerProvider({
 		resource: resourceFromAttributes({
-			"service.name": process.env.OTEL_SERVICE_NAME ?? "oh-my-pi",
+			"service.name": process.env.OTEL_SERVICE_NAME ?? "veyyon",
 		}),
 		spanProcessors: [new BatchSpanProcessor(exporter)],
 	});

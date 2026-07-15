@@ -1,4 +1,4 @@
-import { Box, type Component, Markdown } from "@oh-my-pi/pi-tui";
+import { Box, type Component, Markdown } from "@veyyon/pi-tui";
 import { getMarkdownTheme, theme } from "../../modes/theme/theme";
 import type { BranchSummaryMessage, CompactionSummaryMessage, CustomMessage } from "../../session/messages";
 
@@ -76,7 +76,7 @@ class SummaryDividerComponent implements Component {
 /**
  * Compaction point in the transcript, rendered as a slim horizontal divider:
  *
- *   ──────── 📷 compacted · ctrl+o ────────
+ *   ────────  compacted · ctrl+o ────────
  *
  * The conversation above the divider stays visible (display transcript keeps
  * full history); only the LLM context was reset. Expanding (ctrl+o) reveals

@@ -13,14 +13,14 @@ Settings are stored as plain YAML mappings. Every key, its type, default, and en
 
 | Scope | Path | Read behavior | Write behavior |
 |---|---|---|---|
-| Global | `~/.omp/agent/config.yml` | The main persistent settings file. Always loaded. | `/settings`, `omp config set`, and `omp config reset` write here. |
-| Global legacy | `~/.omp/agent/settings.json` | Migrated into `config.yml` once, only when `config.yml` does not yet exist. | Not written after migration; the original is renamed to `settings.json.bak`. |
+| Global | `~/.veyyon/agent/config.yml` | The main persistent settings file. Always loaded. | `/settings`, `omp config set`, and `omp config reset` write here. |
+| Global legacy | `~/.veyyon/agent/settings.json` | Migrated into `config.yml` once, only when `config.yml` does not yet exist. | Not written after migration; the original is renamed to `settings.json.bak`. |
 | Project | `<cwd>/.omp/config.yml` (plus `.omp/settings.json`) | Loaded when the process working directory has a non-empty `.omp/`. | Read-only from settings commands; edit the file by hand. |
 | Project legacy | `<cwd>/.omp/settings.json` | Still read; project `config.yml` is merged on top of it. | Not written by settings commands. |
 | CLI overlay | Any file passed with `--config <file>` | Loaded after global and project settings, for that one process. Repeatable. | Never persisted. |
 | Runtime overrides | In-memory only | Set by dedicated CLI flags (`--model`, `--approval-mode`, …) and feature env vars. | Never persisted. |
 
-`PI_CODING_AGENT_DIR` relocates the `~/.omp/agent` base directory. When it is set, the global `config.yml`, the auth store (`agent.db`), and everything else under the agent directory move with it. Use `omp config path` to print the active agent directory.
+`PI_CODING_AGENT_DIR` relocates the `~/.veyyon/agent` base directory. When it is set, the global `config.yml`, the auth store (`agent.db`), and everything else under the agent directory move with it. Use `omp config path` to print the active agent directory.
 
 Native project settings are intentionally scoped to the process working directory's `.omp/` folder — settings discovery does **not** walk ancestor directories looking for the nearest `.omp/`. Other discovery providers (Claude, Codex, Gemini, Cursor, OpenCode) can also contribute project-level settings from their own files; those are read-only from `omp` settings commands and can be turned off by provider id (see [Provider and source disabling](#provider-and-source-disabling)).
 
@@ -99,7 +99,7 @@ From highest to lowest:
 1. **Runtime overrides** — dedicated CLI flags and feature env vars applied in memory for the current process: `--model`, `--smol`, `--slow`, `--plan`, `--approval-mode`, `--auto-approve`/`--yolo`, `--hide-thinking`, `--advisor`, `--no-pty`, `--api-key`, and protocol-mode defaults. Never persisted.
 2. **CLI config overlays** — each `--config <file>`; later overlay files override earlier ones.
 3. **Project settings** — `<cwd>/.omp/settings.json` then `<cwd>/.omp/config.yml` (and contributions from other discovery providers at project level).
-4. **Global settings** — `~/.omp/agent/config.yml`.
+4. **Global settings** — `~/.veyyon/agent/config.yml`.
 5. **Built-in defaults** — from the settings schema.
 
 A key that is unset at every layer resolves to its schema default at read time.
@@ -148,7 +148,7 @@ tools:
 ### Worked example: global vs. project
 
 ```yaml
-# ~/.omp/agent/config.yml
+# ~/.veyyon/agent/config.yml
 tools:
   approvalMode: write
   approval:
@@ -264,7 +264,7 @@ Most provider-control use cases list model provider ids. Disabling the `claude` 
 Because arrays replace rather than append, a project that sets `disabledProviders` must list the complete desired set:
 
 ```yaml
-# ~/.omp/agent/config.yml
+# ~/.veyyon/agent/config.yml
 disabledProviders:
   - anthropic
   - openai
@@ -557,7 +557,7 @@ memory:
 | `compaction.remoteEnabled` | boolean | `true` | Allow remote compaction service. |
 | `compaction.autoContinue` | boolean | `true` | Continue automatically after compaction. |
 | `memory.backend` | enum | `off` | `off`, `local`, `hindsight`, `mnemopi`. Each backend has its own `hindsight.*` / `mnemopi.*` / `memories.*` tuning keys. |
-| `autolearn.enabled` | boolean | `false` | Experimental: after the agent stops, nudge it to capture lessons to memory and create/enhance isolated managed skills under `~/.omp/agent/managed-skills`. Enables the `manage_skill` tool (and `learn` when a memory backend is active). |
+| `autolearn.enabled` | boolean | `false` | Experimental: after the agent stops, nudge it to capture lessons to memory and create/enhance isolated managed skills under `~/.veyyon/agent/managed-skills`. Enables the `manage_skill` tool (and `learn` when a memory backend is active). |
 | `autolearn.autoContinue` | boolean | `false` | When `autolearn.enabled`, auto-run one capture turn at stop (uses extra tokens). Off = a passive reminder rides your next turn. |
 | `autolearn.minToolCalls` | number | `5` | Only nudge after a turn that used at least this many tools. |
 
@@ -681,9 +681,9 @@ Provider credentials and custom model definitions are configured separately — 
 
 ### Startup migration to `config.yml`
 
-When `~/.omp/agent/config.yml` does not exist, startup builds it once from legacy sources, then writes the result:
+When `~/.veyyon/agent/config.yml` does not exist, startup builds it once from legacy sources, then writes the result:
 
-1. `~/.omp/agent/settings.json` (renamed to `settings.json.bak` after a successful migration).
+1. `~/.veyyon/agent/settings.json` (renamed to `settings.json.bak` after a successful migration).
 2. Settings persisted in `agent.db`.
 
 After `config.yml` exists, these legacy sources are no longer consulted. The generic config loader also performs `.json` -> `.yml` migration for other config files when only the `.json` form is present.
@@ -729,7 +729,7 @@ Arrays replace; they do not append. If a project sets `disabledProviders`, `enab
 
 ### `omp config reset` did not remove my key
 
-`reset` writes the schema **default** value into the global config — it persists the default rather than deleting the key. To stop overriding a project value from global config, delete the key from `~/.omp/agent/config.yml` by hand.
+`reset` writes the schema **default** value into the global config — it persists the default rather than deleting the key. To stop overriding a project value from global config, delete the key from `~/.veyyon/agent/config.yml` by hand.
 
 ### A `--config` overlay fails at startup
 

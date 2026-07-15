@@ -8,7 +8,7 @@
  * here once.
  */
 
-import { buildModel } from "@oh-my-pi/pi-catalog/build";
+import { buildModel } from "@veyyon/pi-catalog/build";
 import { ANTHROPIC_THINKING, mapAnthropicToolChoice } from "../stream";
 import type { Context, Model, ModelSpec, SimpleStreamOptions } from "../types";
 import { AssistantMessageEventStream } from "../utils/event-stream";

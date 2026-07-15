@@ -28,7 +28,7 @@ import {
 	resolveBlockEdits,
 	type SnapshotStore,
 	stripBom,
-} from "@oh-my-pi/hashline";
+} from "@veyyon/hashline";
 import { resolveToCwd } from "../../tools/path-utils";
 import { generateDiffString } from "../diff";
 import { canonicalSnapshotKey } from "../file-snapshot-store";

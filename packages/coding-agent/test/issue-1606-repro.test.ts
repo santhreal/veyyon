@@ -16,7 +16,7 @@
  */
 import { describe, expect, it } from "bun:test";
 import * as path from "node:path";
-import { createTinyTitleSubprocess } from "@oh-my-pi/pi-coding-agent/tiny/title-client";
+import { createTinyTitleSubprocess } from "@veyyon/pi-coding-agent/tiny/title-client";
 
 describe("issue #1606 — tiny model lives in an isolated subprocess", () => {
 	it("ping/pongs through the spawned worker subprocess and tears it down cleanly", async () => {
@@ -26,7 +26,7 @@ describe("issue #1606 — tiny model lives in an isolated subprocess", () => {
 		// starve nested Bun subprocess IPC on some Bun builds.
 		const repoRoot = path.resolve(import.meta.dir, "../../..");
 		const script =
-			'const { smokeTestTinyTitleWorker } = await import("@oh-my-pi/pi-coding-agent/tiny/title-client"); await smokeTestTinyTitleWorker({ timeoutMs: 15000 });';
+			'const { smokeTestTinyTitleWorker } = await import("@veyyon/pi-coding-agent/tiny/title-client"); await smokeTestTinyTitleWorker({ timeoutMs: 15000 });';
 		const proc = Bun.spawn([process.execPath, "-e", script], {
 			cwd: repoRoot,
 			stdout: "pipe",

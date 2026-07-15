@@ -2,22 +2,22 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import * as capability from "@oh-my-pi/pi-coding-agent/capability";
-import type { CapabilityResult } from "@oh-my-pi/pi-coding-agent/capability/types";
-import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import { resetActiveSkillsForTests, setActiveSkills } from "@oh-my-pi/pi-coding-agent/extensibility/skills";
+import * as capability from "@veyyon/pi-coding-agent/capability";
+import type { CapabilityResult } from "@veyyon/pi-coding-agent/capability/types";
+import { Settings } from "@veyyon/pi-coding-agent/config/settings";
+import { resetActiveSkillsForTests, setActiveSkills } from "@veyyon/pi-coding-agent/extensibility/skills";
 import {
 	type InternalResource,
 	type InternalUrl,
 	InternalUrlRouter,
 	LocalProtocolHandler,
 	type ProtocolHandler,
-} from "@oh-my-pi/pi-coding-agent/internal-urls";
-import { AgentRegistry } from "@oh-my-pi/pi-coding-agent/registry/agent-registry";
-import * as sshFileTransfer from "@oh-my-pi/pi-coding-agent/ssh/file-transfer";
-import type { ToolSession } from "@oh-my-pi/pi-coding-agent/tools";
-import { ReadTool } from "@oh-my-pi/pi-coding-agent/tools/read";
-import { removeWithRetries } from "@oh-my-pi/pi-utils";
+} from "@veyyon/pi-coding-agent/internal-urls";
+import { AgentRegistry } from "@veyyon/pi-coding-agent/registry/agent-registry";
+import * as sshFileTransfer from "@veyyon/pi-coding-agent/ssh/file-transfer";
+import type { ToolSession } from "@veyyon/pi-coding-agent/tools";
+import { ReadTool } from "@veyyon/pi-coding-agent/tools/read";
+import { removeWithRetries } from "@veyyon/pi-utils";
 import { GlobTool } from "../../src/tools/glob";
 import { GrepTool } from "../../src/tools/grep";
 

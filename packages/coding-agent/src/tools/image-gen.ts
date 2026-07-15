@@ -1,15 +1,15 @@
 import * as os from "node:os";
 import * as path from "node:path";
-import { type ApiKey, type FetchImpl, getEnvApiKey, type Model, withAuth } from "@oh-my-pi/pi-ai";
-import { ProviderHttpError } from "@oh-my-pi/pi-ai/error";
+import { type ApiKey, type FetchImpl, getEnvApiKey, type Model, withAuth } from "@veyyon/pi-ai";
+import { ProviderHttpError } from "@veyyon/pi-ai/error";
 import {
 	CODEX_BASE_URL,
 	getCodexAccountId,
 	OPENAI_HEADER_VALUES,
 	OPENAI_HEADERS,
 	URL_PATHS,
-} from "@oh-my-pi/pi-catalog/wire/codex";
-import { getAntigravityUserAgent } from "@oh-my-pi/pi-catalog/wire/gemini-headers";
+} from "@veyyon/pi-catalog/wire/codex";
+import { getAntigravityUserAgent } from "@veyyon/pi-catalog/wire/gemini-headers";
 import {
 	$env,
 	isEnoent,
@@ -19,13 +19,13 @@ import {
 	readSseJson,
 	Snowflake,
 	untilAborted,
-} from "@oh-my-pi/pi-utils";
+} from "@veyyon/pi-utils";
 import { type } from "arktype";
 import packageJson from "../../package.json" with { type: "json" };
 import { isAuthenticated, type ModelRegistry } from "../config/model-registry";
 import { settings } from "../config/settings";
 import type { CustomTool } from "../extensibility/custom-tools/types";
-import { ohMyPiXAIUserAgent, resolveXAIHttpCredentials } from "../lib/xai-http";
+import { veyyonXAIUserAgent, resolveXAIHttpCredentials } from "../lib/xai-http";
 import imageGenDescription from "../prompts/tools/image-gen.md" with { type: "text" };
 import { resolveReadPath } from "./path-utils";
 
@@ -1316,7 +1316,7 @@ export const imageGenTool: CustomTool<typeof imageGenSchema, ImageGenToolDetails
 							headers: {
 								Authorization: `Bearer ${key}`,
 								"Content-Type": "application/json",
-								"User-Agent": ohMyPiXAIUserAgent(),
+								"User-Agent": veyyonXAIUserAgent(),
 							},
 							body: JSON.stringify(xaiBody),
 							signal: requestSignal,
@@ -1402,8 +1402,8 @@ export const imageGenTool: CustomTool<typeof imageGenSchema, ImageGenToolDetails
 							headers: {
 								"Content-Type": "application/json",
 								Authorization: `Bearer ${key}`,
-								"HTTP-Referer": "https://omp.sh/",
-								"X-OpenRouter-Title": "Oh-My-Pi",
+								"HTTP-Referer": "https://veyyon.dev/",
+								"X-OpenRouter-Title": "Veyyon",
 								"X-OpenRouter-Categories": "cli-agent",
 							},
 							body: JSON.stringify(requestBody),

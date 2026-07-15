@@ -1,5 +1,5 @@
-import { type ApiKey, type ApiKeyResolver, type AuthStorage, withAuth } from "@oh-my-pi/pi-ai";
-import { $env } from "@oh-my-pi/pi-utils";
+import { type ApiKey, type ApiKeyResolver, type AuthStorage, withAuth } from "@veyyon/pi-ai";
+import { $env } from "@veyyon/pi-utils";
 import type { SearchCitation, SearchResponse, SearchSource, SearchUsage } from "../../../web/search/types";
 import { SearchProviderError } from "../../../web/search/types";
 import { clampNumResults } from "../utils";

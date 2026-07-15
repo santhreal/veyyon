@@ -5,7 +5,7 @@
  * Endpoint: POST https://api.synthetic.new/v2/search
  */
 
-import { type ApiKey, type AuthStorage, type FetchImpl, getEnvApiKey, withAuth } from "@oh-my-pi/pi-ai";
+import { type ApiKey, type AuthStorage, type FetchImpl, getEnvApiKey, withAuth } from "@veyyon/pi-ai";
 import type { SearchResponse, SearchSource } from "../../../web/search/types";
 import { SearchProviderError } from "../../../web/search/types";
 import type { SearchParams } from "./base";
@@ -76,7 +76,7 @@ export async function searchSynthetic(params: SearchParamsWithFetch): Promise<Se
 	const fetchImpl = params.fetch;
 	const data = await withAuth(keyOrResolver, key => callSyntheticSearch(key, params.query, params.signal, fetchImpl), {
 		signal: params.signal,
-		missingKeyMessage: "Synthetic credentials not found. Set SYNTHETIC_API_KEY or login with 'omp /login synthetic'.",
+		missingKeyMessage: "Synthetic credentials not found. Set SYNTHETIC_API_KEY or login with 'veyyon /login synthetic'.",
 	});
 	const sources: SearchSource[] = [];
 

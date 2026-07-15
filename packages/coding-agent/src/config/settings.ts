@@ -14,7 +14,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { configureProviderMaxInFlightRequests } from "@oh-my-pi/pi-ai/stream";
+import { configureProviderMaxInFlightRequests } from "@veyyon/pi-ai/stream";
 import {
 	getAgentDbPath,
 	getAgentDir,
@@ -25,7 +25,7 @@ import {
 	MAIN_CONFIG_FILENAMES,
 	procmgr,
 	setWorktreesDir,
-} from "@oh-my-pi/pi-utils";
+} from "@veyyon/pi-utils";
 import { JSONC, YAML } from "bun";
 import { type Settings as SettingsCapabilityItem, settingsCapability } from "../capability/settings";
 import type { ModelRole } from "../config/model-roles";
@@ -35,6 +35,7 @@ import { AgentStorage } from "../session/agent-storage";
 import { normalizeToolName } from "../tools/builtin-names";
 import { type EditMode, normalizeEditMode } from "../utils/edit-mode";
 import { withFileLock } from "./file-lock";
+import { migrateCompactionStrategyValue, type CompactionStrategySetting } from "./compaction-strategy";
 import {
 	type BashInterceptorRule,
 	type GroupPrefix,
@@ -961,14 +962,69 @@ export class Settings {
 			raw["edit.mode"] = "hashline";
 		}
 
-		// compaction.strategy: removed local-model shake-summary mode; plain shake
-		// keeps the same mechanical artifact-backed reduction without background CPU.
+		// compaction.strategy: collapse legacy strategies to handoff|snap; off disables compaction.
 		const compactionObj = raw.compaction as Record<string, unknown> | undefined;
-		if (compactionObj?.strategy === "shake-summary") {
-			compactionObj.strategy = "shake";
+		const migrateStrategy = (current: unknown): CompactionStrategySetting | undefined => {
+			if (typeof current !== "string") return undefined;
+			if (current === "off") return "handoff";
+			return migrateCompactionStrategyValue(current);
+		};
+		if (compactionObj) {
+			if (compactionObj.strategy === "shake-summary") {
+				compactionObj.strategy = "handoff";
+			} else if (compactionObj.strategy === "off") {
+				compactionObj.strategy = "handoff";
+				if (compactionObj.enabled === undefined) {
+					compactionObj.enabled = false;
+				}
+			} else {
+				const migrated = migrateStrategy(compactionObj.strategy);
+				if (migrated) compactionObj.strategy = migrated;
+			}
+			if (compactionObj.compactionModel !== undefined && compactionObj.model === undefined) {
+				compactionObj.model = compactionObj.compactionModel;
+				delete compactionObj.compactionModel;
+			}
 		}
 		if (raw["compaction.strategy"] === "shake-summary") {
-			raw["compaction.strategy"] = "shake";
+			raw["compaction.strategy"] = "handoff";
+		} else if (raw["compaction.strategy"] === "off") {
+			raw["compaction.strategy"] = "handoff";
+			if (raw["compaction.enabled"] === undefined) {
+				raw["compaction.enabled"] = false;
+			}
+		} else {
+			const migrated = migrateStrategy(raw["compaction.strategy"]);
+			if (migrated) raw["compaction.strategy"] = migrated;
+		}
+		if (raw["compaction.compactionModel"] !== undefined && raw["compaction.model"] === undefined) {
+			raw["compaction.model"] = raw["compaction.compactionModel"];
+			delete raw["compaction.compactionModel"];
+		}
+		if (typeof raw.compactionModel === "string" && raw["compaction.model"] === undefined) {
+			raw["compaction.model"] = raw.compactionModel;
+			delete raw.compactionModel;
+		}
+
+		const modelOverrides = raw.modelOverrides as Record<string, Record<string, unknown>> | undefined;
+		if (modelOverrides && raw["compaction.model"] === undefined && compactionObj?.model === undefined) {
+			for (const entry of Object.values(modelOverrides)) {
+				const compactionModel = entry?.compactionModel;
+				if (typeof compactionModel === "string" && compactionModel.trim()) {
+					if (compactionObj) {
+						compactionObj.model = compactionModel;
+					} else {
+						raw["compaction.model"] = compactionModel;
+					}
+					break;
+				}
+			}
+		}
+
+		// cycleOrder: drop legacy default pseudo-role from ctrl+p order.
+		const cycleOrder = raw.cycleOrder;
+		if (Array.isArray(cycleOrder)) {
+			raw.cycleOrder = cycleOrder.filter(role => role !== "default");
 		}
 
 		// snapcompact.systemPrompt: boolean -> scoped enum.
@@ -1073,6 +1129,7 @@ export class Settings {
 					!("bankId" in hindsightObj) &&
 					typeof agentName === "string" &&
 					agentName.trim().length > 0 &&
+					agentName !== "veyyon" &&
 					agentName !== "omp"
 				) {
 					hindsightObj.bankId = agentName;

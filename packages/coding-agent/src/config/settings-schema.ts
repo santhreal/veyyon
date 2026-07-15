@@ -1,6 +1,6 @@
-import { THINKING_EFFORTS } from "@oh-my-pi/pi-ai";
-import { DEFAULT_SHARE_URL } from "@oh-my-pi/pi-wire";
-import { SHAPE_VARIANT_NAMES } from "@oh-my-pi/snapcompact";
+import { THINKING_EFFORTS } from "@veyyon/pi-ai";
+import { DEFAULT_SHARE_URL } from "@veyyon/pi-wire";
+import { SHAPE_VARIANT_NAMES } from "@veyyon/snapcompact";
 import { DEFAULT_RELAY_URL } from "../collab/protocol";
 import { DEFAULT_STT_MODEL_KEY, STT_MODEL_OPTIONS, STT_MODEL_VALUES } from "../stt/models";
 import { STT_SUBMIT_TRIGGER_OPTIONS, STT_SUBMIT_TRIGGER_VALUES } from "../stt/submit-trigger";
@@ -116,8 +116,19 @@ export const TAB_METADATA: Record<SettingTab, { label: string; icon: `tab.${stri
  * Ungrouped settings render first, before any section heading.
  */
 export const TAB_GROUPS: Record<SettingTab, readonly string[]> = {
-	appearance: ["Theme", "Status Line", "Display", "Images"],
-	model: ["Thinking", "Sampling", "Prompt", "Retry & Fallback", "Advisor", "Prewalk", "Vision"],
+	appearance: ["Theme", "Status Line", "Display"],
+	model: [
+		"Models",
+		"Compaction",
+		"Roles",
+		"Thinking",
+		"Sampling",
+		"Prompt",
+		"Retry & Fallback",
+		"Advisor",
+		"Prewalk",
+		"Vision",
+	],
 	interaction: [
 		"Input",
 		"Approvals",
@@ -130,7 +141,7 @@ export const TAB_GROUPS: Record<SettingTab, readonly string[]> = {
 		"Agent",
 		"Git",
 	],
-	context: ["General", "Compaction", "Rules (TTSR)", "Experimental"],
+	context: ["General", "Rules (TTSR)", "Experimental"],
 	memory: ["General", "Auto-Learn", "Mnemopi", "Hindsight"],
 	files: ["Editing", "Reading", "Read Summaries", "LSP"],
 	shell: ["Bash", "Eval & Runtimes"],
@@ -190,6 +201,8 @@ interface UiBase {
 	description: string;
 	/** Condition function name - setting only shown when true */
 	condition?: string;
+	/** When true, the setting renders inside the tab's collapsed "Advanced" fold instead of its normal group. */
+	advanced?: boolean;
 }
 
 interface UiBoolean extends UiBase {}
@@ -284,7 +297,7 @@ export interface ModelTagsSettings {
 const EMPTY_STRING_ARRAY: string[] = [];
 const EMPTY_STRING_RECORD: Record<string, string> = {};
 const EMPTY_NUMBER_RECORD: Record<string, number> = {};
-const DEFAULT_CYCLE_ORDER: string[] = ["smol", "default", "slow"];
+const DEFAULT_CYCLE_ORDER: string[] = ["smol", "slow"];
 const DEFAULT_TOOL_CALL_LOOP_EXEMPT_TOOLS: string[] = ["job", "irc"];
 const EMPTY_MODEL_TAGS_RECORD: ModelTagsSettings = {};
 const HINDSIGHT_RECALL_TYPES_DEFAULT: string[] = ["world", "experience"];
@@ -358,7 +371,7 @@ export const SETTINGS_SCHEMA = {
 	// ────────────────────────────────────────────────────────────────────────
 	setupVersion: { type: "number", default: 0 },
 
-	// Auth broker — credentials proxied through a remote `omp auth-broker serve`
+	// Auth broker — credentials proxied through a remote `veyyon auth-broker serve`
 	// host. Hidden from the UI; populate via env vars or hand-edited config.yml.
 	// Env (`OMP_AUTH_BROKER_URL` / `OMP_AUTH_BROKER_TOKEN`) takes precedence so
 	// per-machine overrides remain trivial.
@@ -509,7 +522,29 @@ export const SETTINGS_SCHEMA = {
 
 	disabledExtensions: { type: "array", default: EMPTY_STRING_ARRAY },
 
-	modelRoles: { type: "record", default: EMPTY_STRING_RECORD },
+	modelRoles: {
+		type: "record",
+		default: EMPTY_STRING_RECORD,
+		ui: {
+			tab: "model",
+			group: "Roles",
+			label: "Role Models",
+			description:
+				"Assign a model to each role (task, plan, advisor, …). Opens a searchable picker with auth status. Scoped to the active profile — never edit config by hand.",
+		},
+	},
+
+	"subagent.model": {
+		type: "string",
+		default: undefined,
+		ui: {
+			tab: "model",
+			group: "Models",
+			label: "Subagent Model",
+			description:
+				"Model for spawned task subagents. Searchable picker with auth status. Overrides modelRoles.task when set. Clear to fall back to the interactive model / task role.",
+		},
+	},
 
 	modelTags: { type: "record", default: EMPTY_MODEL_TAGS_RECORD },
 
@@ -625,6 +660,7 @@ export const SETTINGS_SCHEMA = {
 			group: "Status Line",
 			label: "Session Accent",
 			description: "Use the session name color for the editor border and status line gap",
+			advanced: true,
 		},
 	},
 
@@ -637,6 +673,7 @@ export const SETTINGS_SCHEMA = {
 			label: "Transparent Status Line",
 			description:
 				"Use the terminal's default background for the status line instead of the theme's `statusLineBg`. Powerline end caps are dropped because they need a contrasting fill to bridge into the surrounding terminal.",
+			advanced: true,
 		},
 	},
 	"statusLine.compactThinkingLevel": {
@@ -648,6 +685,7 @@ export const SETTINGS_SCHEMA = {
 			label: "Compact Thinking Level",
 			description:
 				"Show the thinking level as a single icon on the model name instead of a separate ` · <level>` suffix.",
+			advanced: true,
 		},
 	},
 	"tools.artifactSpillThreshold": {
@@ -764,6 +802,7 @@ export const SETTINGS_SCHEMA = {
 			group: "Status Line",
 			label: "Show Hook Status",
 			description: "Display hook status messages below the status line",
+			advanced: true,
 		},
 	},
 
@@ -779,7 +818,7 @@ export const SETTINGS_SCHEMA = {
 		default: true,
 		ui: {
 			tab: "appearance",
-			group: "Images",
+			group: "Display",
 			label: "Show Inline Images",
 			description: "Render images inline in the terminal",
 			condition: "hasImageProtocol",
@@ -791,18 +830,21 @@ export const SETTINGS_SCHEMA = {
 		default: true,
 		ui: {
 			tab: "appearance",
-			group: "Images",
+			group: "Display",
 			label: "Auto-Resize Images",
 			description: "Resize large images to 2000x2000 max for better model compatibility",
+			advanced: true,
 		},
 	},
 
+	// Moved from appearance/Images: blocking images is a privacy control
+	// (prevents images reaching providers), not a display preference.
 	"images.blockImages": {
 		type: "boolean",
 		default: false,
 		ui: {
-			tab: "appearance",
-			group: "Images",
+			tab: "providers",
+			group: "Privacy",
 			label: "Block Images",
 			description: "Prevent images from being sent to LLM providers",
 		},
@@ -849,6 +891,7 @@ export const SETTINGS_SCHEMA = {
 			group: "Display",
 			label: "Native Terminal Progress",
 			description: "Emit OSC 9;4 indeterminate progress while the agent or context maintenance is running",
+			advanced: true,
 		},
 	},
 
@@ -861,6 +904,7 @@ export const SETTINGS_SCHEMA = {
 			label: "Large Headings (Kitty)",
 			description:
 				"Render Markdown H1 headings at 2x scale using Kitty's OSC 66 text-sizing protocol. Only takes effect on Kitty terminals; ignored everywhere else. Off by default.",
+			advanced: true,
 		},
 	},
 
@@ -872,6 +916,7 @@ export const SETTINGS_SCHEMA = {
 			group: "Display",
 			label: "Render Mermaid Diagrams",
 			description: "Render Mermaid fenced code blocks as ASCII diagrams",
+			advanced: true,
 		},
 	},
 
@@ -895,6 +940,7 @@ export const SETTINGS_SCHEMA = {
 			group: "Display",
 			label: "Tight Layout",
 			description: "Remove the 1-character horizontal padding from the left and right of the terminal output",
+			advanced: true,
 		},
 	},
 	"tui.scrollbackRebuild": {
@@ -906,6 +952,7 @@ export const SETTINGS_SCHEMA = {
 			label: "Rewrite Scrollback",
 			description:
 				"Erase and replay terminal scrollback when a block's final form replaces its live preview. When off (default), stale preview copies remain in history and the final content is appended below.",
+			advanced: true,
 		},
 	},
 
@@ -956,15 +1003,18 @@ export const SETTINGS_SCHEMA = {
 			group: "Display",
 			label: "Cache Miss Marker",
 			description: "Show a divider above an assistant turn whose request lost (missed) the prompt cache",
+			advanced: true,
 		},
 	},
 
+	// Moved from appearance/Display: governs post-compaction transcript
+	// display, so it lives with the rest of the Compaction knobs on model.
 	"display.collapseCompacted": {
 		type: "boolean",
 		default: true,
 		ui: {
-			tab: "appearance",
-			group: "Display",
+			tab: "model",
+			group: "Compaction",
 			label: "Collapse Compacted History",
 			description:
 				"Collapse pre-compaction history behind the summary divider on the live transcript; disable to keep the full transcript inline with dividers at each compaction point",
@@ -979,6 +1029,7 @@ export const SETTINGS_SCHEMA = {
 			group: "Display",
 			label: "Show Hardware Cursor",
 			description: "Show terminal cursor for IME support",
+			advanced: true,
 		},
 	},
 
@@ -1148,33 +1199,20 @@ export const SETTINGS_SCHEMA = {
 		},
 	},
 
+	// Value is a personality name resolved at runtime against built-ins plus
+	// Tier-B `~/.veyyon/personalities/*.md` and `.veyyon/personalities/*.md`
+	// data files (project > user > built-in). "none" is a reserved sentinel
+	// that omits the block. See packages/coding-agent/src/personality/resolver.ts.
 	personality: {
-		type: "enum",
-		values: ["default", "friendly", "pragmatic", "none"] as const,
+		type: "string",
 		default: "default",
 		ui: {
 			tab: "model",
 			group: "Prompt",
 			label: "Personality",
-			description: "Communication style rendered into the system prompt's personality block",
-			options: [
-				{
-					value: "default",
-					label: "Default",
-					description: "Terse, evidence-first engineer; dense, action-oriented replies",
-				},
-				{
-					value: "friendly",
-					label: "Friendly",
-					description: "Warm, encouraging collaborator focused on momentum and morale",
-				},
-				{
-					value: "pragmatic",
-					label: "Pragmatic",
-					description: "Direct, efficient engineer focused on clarity and rigor",
-				},
-				{ value: "none", label: "None", description: "Omit the personality block entirely" },
-			],
+			description:
+				"Communication style rendered into the system prompt's personality block. Extend via ~/.veyyon/personalities/<name>.md or project .veyyon/personalities/<name>.md",
+			options: "runtime",
 		},
 	},
 
@@ -1938,56 +1976,29 @@ export const SETTINGS_SCHEMA = {
 	"compaction.enabled": {
 		type: "boolean",
 		default: true,
-		ui: {
-			tab: "context",
-			group: "Compaction",
-			label: "Auto-Compact",
-			description: "Automatically compact context when it gets too large",
-		},
 	},
 
 	"compaction.midTurnEnabled": {
 		type: "boolean",
 		default: true,
-		ui: {
-			tab: "context",
-			group: "Compaction",
-			label: "Mid-Turn Compaction",
-			description: "Check thresholds at safe mid-turn tool-loop boundaries before the next provider request",
-		},
 	},
 
 	"compaction.strategy": {
 		type: "enum",
-		values: ["context-full", "handoff", "shake", "snapcompact", "off"] as const,
-		default: "snapcompact",
+		values: ["handoff", "snap"] as const,
+		default: "snap",
 		ui: {
-			tab: "context",
+			tab: "model",
 			group: "Compaction",
-			label: "Compaction Strategy",
+			label: "Compaction Type",
 			description:
-				"Choose in-place context-full maintenance, auto-handoff, surgical shake (drop heavy content), snapcompact (archive history as dense images), or disable auto maintenance (off)",
+				"Handoff generates a session transfer; Snap archives history as dense images (snapcompact engine).",
 			options: [
-				{
-					value: "context-full",
-					label: "Context-full",
-					description: "Summarize in-place and keep the current session",
-				},
 				{ value: "handoff", label: "Handoff", description: "Generate handoff and continue in a new session" },
 				{
-					value: "shake",
-					label: "Shake",
-					description: "Drop heavy content (tool results + large blocks) in place; recover via artifact",
-				},
-				{
-					value: "snapcompact",
-					label: "Snapcompact",
+					value: "snap",
+					label: "Snap",
 					description: "Archive history onto dense bitmap images the model reads back; no LLM call",
-				},
-				{
-					value: "off",
-					label: "Off",
-					description: "Disable automatic context maintenance (same behavior as Auto-compact off)",
 				},
 			],
 		},
@@ -1997,10 +2008,11 @@ export const SETTINGS_SCHEMA = {
 		type: "number",
 		default: -1,
 		ui: {
-			tab: "context",
+			tab: "model",
 			group: "Compaction",
 			label: "Compaction Threshold",
-			description: "Percent threshold for context maintenance; set to Default to use legacy reserve-based behavior",
+			description:
+				"Auto-compact when context exceeds this percent of the window (-1 = provider default). Alias: compaction.threshold",
 			options: [
 				{ value: "default", label: "Default", description: "Legacy reserve-based threshold" },
 				{ value: "10", label: "10%", description: "Extremely early maintenance" },
@@ -2021,55 +2033,33 @@ export const SETTINGS_SCHEMA = {
 	"compaction.thresholdTokens": {
 		type: "number",
 		default: -1,
+	},
+
+	"compaction.model": {
+		type: "string",
+		default: undefined,
 		ui: {
-			tab: "context",
+			tab: "model",
 			group: "Compaction",
-			label: "Compaction Token Limit",
-			description: "Fixed token limit for context maintenance; overrides percentage if set",
-			options: [
-				{ value: "default", label: "Default", description: "Use percentage-based threshold" },
-				{ value: "25000", label: "25K tokens", description: "Quarter of a 200K window" },
-				{ value: "50000", label: "50K tokens", description: "Half of a 200K window" },
-				{ value: "100000", label: "100K tokens", description: "Half of a 200K window" },
-				{ value: "150000", label: "150K tokens", description: "Three-quarters of a 200K window" },
-				{ value: "200000", label: "200K tokens", description: "Full standard context window" },
-				{ value: "300000", label: "300K tokens", description: "Large context window" },
-				{ value: "500000", label: "500K tokens", description: "Very large context window" },
-			],
+			label: "Compaction Model",
+			description:
+				"Model used for LLM compaction / handoff. Searchable picker with auth status. Clear to use the interactive model.",
 		},
 	},
 
 	"compaction.handoffSaveToDisk": {
 		type: "boolean",
 		default: false,
-		ui: {
-			tab: "context",
-			group: "Compaction",
-			label: "Save Handoff Docs",
-			description: "Save generated handoff documents to markdown files for the auto-handoff flow",
-		},
 	},
 
 	"compaction.remoteEnabled": {
 		type: "boolean",
 		default: true,
-		ui: {
-			tab: "context",
-			group: "Compaction",
-			label: "Remote Compaction",
-			description: "Use remote compaction endpoints when available instead of local summarization",
-		},
 	},
 
 	"compaction.remoteStreamingV2Enabled": {
 		type: "boolean",
 		default: true,
-		ui: {
-			tab: "context",
-			group: "Compaction",
-			label: "Remote Compaction V2",
-			description: "Use Responses streaming compaction for compatible remote compaction models",
-		},
 	},
 
 	// No default: an unset reserve tells the compaction layer the user never
@@ -2090,76 +2080,26 @@ export const SETTINGS_SCHEMA = {
 	"compaction.idleEnabled": {
 		type: "boolean",
 		default: false,
-		ui: {
-			tab: "context",
-			group: "Compaction",
-			label: "Idle Compaction",
-			description: "Compact context while idle when token count exceeds threshold",
-		},
 	},
 
 	"compaction.idleThresholdTokens": {
 		type: "number",
 		default: 200000,
-		ui: {
-			tab: "context",
-			group: "Compaction",
-			label: "Idle Compaction Threshold",
-			description: "Token count above which idle compaction triggers",
-			options: [
-				{ value: "100000", label: "100K tokens" },
-				{ value: "200000", label: "200K tokens" },
-				{ value: "300000", label: "300K tokens" },
-				{ value: "400000", label: "400K tokens" },
-				{ value: "500000", label: "500K tokens" },
-				{ value: "600000", label: "600K tokens" },
-				{ value: "700000", label: "700K tokens" },
-				{ value: "800000", label: "800K tokens" },
-				{ value: "900000", label: "900K tokens" },
-			],
-		},
 	},
 
 	"compaction.idleTimeoutSeconds": {
 		type: "number",
 		default: 300,
-		ui: {
-			tab: "context",
-			group: "Compaction",
-			label: "Idle Compaction Delay",
-			description: "Seconds to wait while idle before compacting",
-			options: [
-				{ value: "60", label: "1 minute" },
-				{ value: "120", label: "2 minutes" },
-				{ value: "300", label: "5 minutes" },
-				{ value: "600", label: "10 minutes" },
-				{ value: "1800", label: "30 minutes" },
-				{ value: "3600", label: "1 hour" },
-			],
-		},
 	},
 
 	"compaction.supersedeReads": {
 		type: "boolean",
 		default: true,
-		ui: {
-			tab: "context",
-			group: "Compaction",
-			label: "Supersede Stale Reads",
-			description: "Prune older read results when the same file is read again (cache-aware, runs every turn)",
-		},
 	},
 
 	"compaction.dropUseless": {
 		type: "boolean",
 		default: true,
-		ui: {
-			tab: "context",
-			group: "Compaction",
-			label: "Elide Uneventful Results",
-			description:
-				"Prune tool results flagged contextually useless (no matches, timed-out waits) once consumed (cache-aware)",
-		},
 	},
 
 	// Experimental: snapcompact inline imaging (transient, per-request; never persisted)
@@ -2810,7 +2750,7 @@ export const SETTINGS_SCHEMA = {
 	},
 	"hindsight.retainEveryNTurns": { type: "number", default: 3 },
 	"hindsight.retainOverlapTurns": { type: "number", default: 2 },
-	"hindsight.retainContext": { type: "string", default: "omp" },
+	"hindsight.retainContext": { type: "string", default: "veyyon" },
 
 	"hindsight.recallBudget": {
 		type: "enum",
@@ -4110,7 +4050,7 @@ export const SETTINGS_SCHEMA = {
 			group: "Isolation",
 			label: "Worktree Base Directory",
 			description:
-				"Base directory for agent-managed worktrees — task-isolation copies, `github` PR checkouts, and `omp worktree` cleanup all live here. Unset uses ~/.omp/wt. Must be an absolute or ~-relative path; relative paths are ignored. The OMP_WORKTREE_DIR env var overrides this.",
+				"Base directory for agent-managed worktrees — task-isolation copies, `github` PR checkouts, and `veyyon worktree` cleanup all live here. Unset uses ~/.omp/wt. Must be an absolute or ~-relative path; relative paths are ignored. The OMP_WORKTREE_DIR env var overrides this.",
 		},
 	},
 
@@ -4293,6 +4233,7 @@ export const SETTINGS_SCHEMA = {
 			group: "Display",
 			label: "Show Resolved Model Badge",
 			description: "Display the actual model ID used by each subagent in the task widget status line",
+			advanced: true,
 		},
 	},
 
@@ -4995,14 +4936,19 @@ export const SETTINGS_SCHEMA = {
 		},
 	},
 
+	// No bundled Veyyon QA-push endpoint exists yet. Default is unset so the
+	// feature fails closed (see report-tool-issue.ts's `resolvePushConfig` —
+	// an empty/missing endpoint short-circuits to no-op) instead of guessing
+	// an upstream `qa.omp.sh`-style URL or an unowned Veyyon domain. Set this
+	// or `PI_AUTO_QA_PUSH_URL` explicitly to opt in.
 	"dev.autoqaPush.endpoint": {
 		type: "string",
-		default: "https://qa.omp.sh/v1/grievances" as const,
+		default: undefined,
 		ui: {
 			tab: "tools",
 			group: "Developer",
 			label: "Auto QA Push Endpoint",
-			description: "Full URL receiving Auto QA JSON reports (default https://qa.omp.sh/v1/grievances)",
+			description: "Full URL receiving Auto QA JSON reports (unset by default; no bundled endpoint)",
 		},
 	},
 
@@ -5140,9 +5086,10 @@ export type Personality = SettingValue<"personality">;
 
 export interface CompactionSettings {
 	enabled: boolean;
-	strategy: "context-full" | "handoff" | "shake" | "snapcompact" | "off";
+	strategy: "handoff" | "snap";
 	thresholdPercent: number;
 	thresholdTokens: number;
+	model?: string;
 	reserveTokens: number | undefined;
 	keepRecentTokens: number;
 	midTurnEnabled: boolean;

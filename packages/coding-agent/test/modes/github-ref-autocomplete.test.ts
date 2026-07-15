@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
-import { KeybindingsManager as AppKeybindingsManager } from "@oh-my-pi/pi-coding-agent/config/keybindings";
-import { getGithubRefContext, getGithubRefSuggestions } from "@oh-my-pi/pi-coding-agent/modes/github-ref-autocomplete";
-import { createPromptActionAutocompleteProvider } from "@oh-my-pi/pi-coding-agent/modes/prompt-action-autocomplete";
+import { KeybindingsManager as AppKeybindingsManager } from "@veyyon/pi-coding-agent/config/keybindings";
+import { getGithubRefContext, getGithubRefSuggestions } from "@veyyon/pi-coding-agent/modes/github-ref-autocomplete";
+import { createPromptActionAutocompleteProvider } from "@veyyon/pi-coding-agent/modes/prompt-action-autocomplete";
 
 function makeProvider() {
 	return createPromptActionAutocompleteProvider({

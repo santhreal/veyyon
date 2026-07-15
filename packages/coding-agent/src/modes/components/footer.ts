@@ -1,9 +1,9 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { stripVTControlCharacters } from "node:util";
-import { ThinkingLevel } from "@oh-my-pi/pi-agent-core";
-import { type Component, padding, truncateToWidth, visibleWidth } from "@oh-my-pi/pi-tui";
-import { formatNumber, getProjectDir } from "@oh-my-pi/pi-utils";
+import { ThinkingLevel } from "@veyyon/pi-agent-core";
+import { type Component, padding, truncateToWidth, visibleWidth } from "@veyyon/pi-tui";
+import { formatNumber, getProjectDir } from "@veyyon/pi-utils";
 import { settings } from "../../config/settings";
 import { theme } from "../../modes/theme/theme";
 import type { AgentSession } from "../../session/agent-session";
@@ -179,7 +179,7 @@ export class FooterComponent implements Component {
 		if (totalCost || usingSubscription || normalizedPremiumRequests) {
 			const billingParts: string[] = [];
 			if (totalCost) billingParts.push(`$${totalCost.toFixed(3)}`);
-			if (normalizedPremiumRequests) billingParts.push(`★ ${formatNumber(normalizedPremiumRequests)}`);
+			if (normalizedPremiumRequests) billingParts.push(`* ${formatNumber(normalizedPremiumRequests)}`);
 			if (usingSubscription) billingParts.push("(sub)");
 			if (billingParts.length > 0) statsParts.push(billingParts.join(" "));
 		}

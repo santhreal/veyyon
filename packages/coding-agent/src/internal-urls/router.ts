@@ -1,5 +1,5 @@
 /**
- * Internal URL router for internal protocols (`agent://`, `artifact://`, `history://`, `issue://`, `local://`, `mcp://`, `memory://`, `omp://`, `pr://`, `rule://`, `skill://`, `ssh://`, and `vault://`).
+ * Internal URL router for internal protocols (`agent://`, `artifact://`, `history://`, `issue://`, `local://`, `mcp://`, `memory://`, `veyyon://` (legacy alias `omp://`), `pr://`, `rule://`, `skill://`, `ssh://`, and `vault://`).
  *
  * One process-global router with one handler per scheme. Access via
  * `InternalUrlRouter.instance()`. Handlers are stateless; per-session and
@@ -12,7 +12,7 @@ import { IssueProtocolHandler, PrProtocolHandler } from "./issue-pr-protocol";
 import { LocalProtocolHandler } from "./local-protocol";
 import { McpProtocolHandler } from "./mcp-protocol";
 import { MemoryProtocolHandler } from "./memory-protocol";
-import { OmpProtocolHandler } from "./omp-protocol";
+import { VeyyonProtocolHandler } from "./omp-protocol";
 import { parseInternalUrl } from "./parse";
 import { RuleProtocolHandler } from "./rule-protocol";
 import { SkillProtocolHandler } from "./skill-protocol";
@@ -26,7 +26,7 @@ export class InternalUrlRouter {
 	#handlers = new Map<string, ProtocolHandler>();
 
 	constructor() {
-		this.register(new OmpProtocolHandler());
+		this.register(new VeyyonProtocolHandler());
 		this.register(new AgentProtocolHandler());
 		this.register(new ArtifactProtocolHandler());
 		this.register(new MemoryProtocolHandler());
@@ -54,6 +54,9 @@ export class InternalUrlRouter {
 
 	register(handler: ProtocolHandler): void {
 		this.#handlers.set(handler.scheme.toLowerCase(), handler);
+		for (const alias of handler.aliases ?? []) {
+			this.#handlers.set(alias.toLowerCase(), handler);
+		}
 	}
 
 	unregister(scheme: string): boolean {

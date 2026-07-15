@@ -5,7 +5,7 @@ import {
 	type RenderTimer,
 	TUI,
 	type ViewportTailProvider,
-} from "@oh-my-pi/pi-tui";
+} from "@veyyon/pi-tui";
 import { VirtualTerminal } from "./virtual-terminal";
 
 // Outside a multiplexer a resize used to erase-and-replay the whole transcript

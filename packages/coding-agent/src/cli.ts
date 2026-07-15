@@ -15,16 +15,16 @@ try {
  * lightweight CLI runner from pi-utils.
  */
 import { parentPort } from "node:worker_threads";
-import type { CliConfig } from "@oh-my-pi/pi-utils/cli";
+import type { CliConfig } from "@veyyon/pi-utils/cli";
 import {
 	APP_NAME,
 	getActiveProfile,
 	MIN_BUN_VERSION,
-	resolveProfileEnv,
+	resolveProfileFromEnv,
 	setProfile,
 	VERSION,
-} from "@oh-my-pi/pi-utils/dirs";
-import { declareWorkerHostEntry, installWorkerInbox } from "@oh-my-pi/pi-utils/worker-host";
+} from "@veyyon/pi-utils/dirs";
+import { declareWorkerHostEntry, installWorkerInbox } from "@veyyon/pi-utils/worker-host";
 import { installProfileAlias, resolveProfileAliasCommandFromProcess } from "./cli/profile-alias";
 import { extractProfileFlags } from "./cli/profile-bootstrap";
 import { DAEMON_BROKER_WORKER_ARG } from "./launch/protocol";
@@ -49,11 +49,11 @@ const isProcessEntry = import.meta.main || process.env.PI_COMPILED === "true";
 // Worker-host entry declaration (Worker threads and worker subprocesses
 // re-enter `Bun.main` with a hidden argv selector instead of loading separate
 // worker entrypoints) happens inside `runCli` after profile bootstrap:
-// `@oh-my-pi/pi-utils/env` eagerly loads `.env` from the agent directory at
+// `@veyyon/pi-utils/env` eagerly loads `.env` from the agent directory at
 // import time, so it must not be imported before `setProfile` runs.
 
 async function showHelp(config: CliConfig): Promise<void> {
-	const { renderRootHelp } = await import("@oh-my-pi/pi-utils/cli");
+	const { renderRootHelp } = await import("@veyyon/pi-utils/cli");
 	const { getExtraHelpText } = await import("./cli/args");
 	renderRootHelp(config);
 	const extra = getExtraHelpText();
@@ -62,8 +62,7 @@ async function showHelp(config: CliConfig): Promise<void> {
 	}
 }
 /**
- * Smoke-test entry. Spawns bundled workers, serves the stats dashboard once,
- * pings everything, then exits.
+ * Smoke-test entry. Spawns bundled workers, pings everything, then exits.
  *
  * Purpose: catch the silent worker-load and bundled-asset regressions that hit
  * compiled binaries and the npm CLI bundle. Version/help paths do not spawn
@@ -73,7 +72,7 @@ async function showHelp(config: CliConfig): Promise<void> {
  * tarball installs all exercise it on every CI run.
  */
 async function runSmokeTest(): Promise<void> {
-	const { smokeTestSyncWorker, startServer } = await import("@oh-my-pi/omp-stats");
+	const { smokeTestSyncWorker, startServer } = await import("@veyyon/omp-stats");
 	const { smokeTestTinyTitleWorker } = await import("./tiny/title-client");
 	const { smokeTestSttWorker } = await import("./stt/asr-client");
 	const { smokeTestTtsWorker } = await import("./tts/tts-client");
@@ -105,39 +104,17 @@ async function runSmokeTest(): Promise<void> {
 }
 
 const TINY_WORKER_ARG = "__omp_worker_tiny_inference";
-const STATS_SYNC_WORKER_ARG = "__omp_worker_stats_sync";
 const TAB_WORKER_ARG = "__omp_worker_tab";
 const JS_EVAL_WORKER_ARG = "__omp_worker_js_eval";
 const JS_EVAL_PROCESS_ARG = "__omp_worker_js_eval_process";
 const STT_WORKER_ARG = "__omp_worker_stt";
 const TTS_WORKER_ARG = "__omp_worker_tts";
 const MNEMOPI_EMBED_WORKER_ARG = "__omp_worker_mnemopi_embed";
+const STATS_SYNC_WORKER_ARG = "__omp_worker_stats_sync";
 
 async function runWorkerEntrypoint(arg: string | undefined): Promise<boolean> {
 	if (arg === TINY_WORKER_ARG) {
 		await runTinyWorker();
-		return true;
-	}
-	if (arg === STATS_SYNC_WORKER_ARG) {
-		// The sync worker handles messages via `self.onmessage`, assigned during
-		// this *async* dynamic import. Bun flushes the worker's initial message
-		// buffer when the entry module's top-level evaluation finishes — before
-		// this dispatch completes — so anything the parent posted right after
-		// spawning (the smoke ping, the first parse request) would be dropped.
-		// Park early events and replay them once the module's handler is live.
-		// Worker-thread entries using `parentPort` need the same sync-prefix
-		// buffering; the tab/eval cases install that inbox below before import.
-		const scope = globalThis as unknown as { onmessage: ((event: MessageEvent) => void) | null };
-		const pending: MessageEvent[] = [];
-		const buffer = (event: MessageEvent): void => {
-			pending.push(event);
-		};
-		scope.onmessage = buffer;
-		await import("@oh-my-pi/omp-stats/sync-worker");
-		const handler = scope.onmessage;
-		if (handler && handler !== buffer) {
-			for (const event of pending) handler.call(scope, event);
-		}
 		return true;
 	}
 	// Bun flushes messages the parent posted before spawn once this entry's
@@ -184,6 +161,28 @@ async function runWorkerEntrypoint(arg: string | undefined): Promise<boolean> {
 		// Worker selectors must dispatch before the normal command graph loads.
 		const { startDaemonBrokerFromEnvironment } = await import("./launch/broker");
 		await startDaemonBrokerFromEnvironment();
+		return true;
+	}
+	if (arg === STATS_SYNC_WORKER_ARG) {
+		// The sync worker handles messages via `self.onmessage`, assigned during
+		// this *async* dynamic import. Bun flushes the worker's initial message
+		// buffer when the entry module's top-level evaluation finishes — before
+		// this dispatch completes — so anything the parent posted right after
+		// spawning (the smoke ping, the first parse request) would be dropped.
+		// Park early events and replay them once the module's handler is live.
+		// Worker-thread entries using `parentPort` need the same sync-prefix
+		// buffering; the tab/eval cases install that inbox below before import.
+		const scope = globalThis as unknown as { onmessage: ((event: MessageEvent) => void) | null };
+		const pending: MessageEvent[] = [];
+		const buffer = (event: MessageEvent): void => {
+			pending.push(event);
+		};
+		scope.onmessage = buffer;
+		await import("@veyyon/omp-stats/sync-worker");
+		const handler = scope.onmessage;
+		if (handler && handler !== buffer) {
+			for (const event of pending) handler.call(scope, event);
+		}
 		return true;
 	}
 	return false;
@@ -306,12 +305,12 @@ export async function runCli(argv: string[]): Promise<void> {
 			// validation here turns `OMP_PROFILE=.. omp --version` into a clean error;
 			// calling setProfile keeps every later path helper on the env-selected
 			// profile instead of the default agent directory.
-			setProfile(resolveProfileEnv(process.env.OMP_PROFILE, process.env.PI_PROFILE));
+			setProfile(resolveProfileFromEnv());
 		}
 		if (extracted.aliasName !== undefined) {
 			const profile = extracted.profile ?? getActiveProfile();
 			if (!profile) {
-				throw new Error("--alias requires --profile <name> or OMP_PROFILE");
+				throw new Error("--alias requires --profile <name> or VEYYON_PROFILE");
 			}
 			const result = await installProfileAlias({
 				profile,
@@ -344,7 +343,7 @@ export async function runCli(argv: string[]): Promise<void> {
 
 	// Declare this module as the worker-host entry now that the active profile
 	// is resolved. The worker-host module is side-effect-free; importing
-	// `@oh-my-pi/pi-utils/env` here would snapshot the wrong agent `.env`.
+	// `@veyyon/pi-utils/env` here would snapshot the wrong agent `.env`.
 	// Gated on `isProcessEntry`: only the real CLI process entry is a valid
 	// worker host. Worker-thread re-entry already returned above at the
 	// `__omp_worker_` dispatch, and importers (`runCli` in profile-CLI tests,
@@ -358,7 +357,7 @@ export async function runCli(argv: string[]): Promise<void> {
 		return;
 	}
 	const [{ run }, { commands, resolveCliArgv }] = await Promise.all([
-		import("@oh-my-pi/pi-utils/cli"),
+		import("@veyyon/pi-utils/cli"),
 		import("./cli-commands"),
 	]);
 	// --help and --version are handled by run() directly, don't rewrite those.

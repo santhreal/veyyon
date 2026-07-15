@@ -1,8 +1,8 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
 import * as os from "node:os";
 import * as path from "node:path";
-import { KeybindingsManager } from "@oh-my-pi/pi-coding-agent/config/keybindings";
-import { getThemeByName, initTheme, type Theme, theme } from "@oh-my-pi/pi-coding-agent/modes/theme/theme";
+import { KeybindingsManager } from "@veyyon/pi-coding-agent/config/keybindings";
+import { getThemeByName, initTheme, type Theme, theme } from "@veyyon/pi-coding-agent/modes/theme/theme";
 import {
 	dedupeParseErrors,
 	expandKeyHint,
@@ -14,8 +14,8 @@ import {
 	formatScreenshot,
 	shortenPath,
 	truncateDiffByHunk,
-} from "@oh-my-pi/pi-coding-agent/tools/render-utils";
-import { getKeybindings, setKeybindings, type KeybindingsManager as TuiKeybindingsManager } from "@oh-my-pi/pi-tui";
+} from "@veyyon/pi-coding-agent/tools/render-utils";
+import { getKeybindings, setKeybindings, type KeybindingsManager as TuiKeybindingsManager } from "@veyyon/pi-tui";
 
 describe("parse error formatting", () => {
 	it("deduplicates parse errors while preserving order", () => {

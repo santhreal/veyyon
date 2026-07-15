@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import * as path from "node:path";
-import { $which, TempDir } from "@oh-my-pi/pi-utils";
+import { $which, TempDir } from "@veyyon/pi-utils";
 import { disposeJuliaKernelSessionsByOwner, executeJulia } from "../jl/executor";
 
 const HAS_JULIA = Boolean($which("julia"));

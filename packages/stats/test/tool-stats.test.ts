@@ -1,10 +1,10 @@
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { getToolDashboardStats, syncAllSessions } from "@oh-my-pi/omp-stats/aggregator";
-import { getToolStats, getToolStatsByModel } from "@oh-my-pi/omp-stats/db";
-import type { ToolUsageStats } from "@oh-my-pi/omp-stats/types";
-import { getSessionsDir } from "@oh-my-pi/pi-utils";
+import { getToolDashboardStats, syncAllSessions } from "@veyyon/omp-stats/aggregator";
+import { getToolStats, getToolStatsByModel } from "@veyyon/omp-stats/db";
+import type { ToolUsageStats } from "@veyyon/omp-stats/types";
+import { getSessionsDir } from "@veyyon/pi-utils";
 import { installStatsTestIsolation } from "./helpers/temp-agent";
 
 installStatsTestIsolation("@pi-stats-tool-stats-");

@@ -3,7 +3,7 @@ import {
 	formatDebugLogExpandedLines,
 	formatDebugLogLine,
 	parseDebugLogTimestampMs,
-} from "@oh-my-pi/pi-coding-agent/debug/log-formatting";
+} from "@veyyon/pi-coding-agent/debug/log-formatting";
 
 describe("formatDebugLogLine", () => {
 	it("strips ANSI codes and carriage returns", () => {

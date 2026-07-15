@@ -2,9 +2,9 @@ import { beforeAll, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { CommandController } from "@oh-my-pi/pi-coding-agent/modes/controllers/command-controller";
-import { getThemeByName, setThemeInstance } from "@oh-my-pi/pi-coding-agent/modes/theme/theme";
-import type { InteractiveModeContext } from "@oh-my-pi/pi-coding-agent/modes/types";
+import { CommandController } from "@veyyon/pi-coding-agent/modes/controllers/command-controller";
+import { getThemeByName, setThemeInstance } from "@veyyon/pi-coding-agent/modes/theme/theme";
+import type { InteractiveModeContext } from "@veyyon/pi-coding-agent/modes/types";
 
 function createMoveContext(sourceDir: string) {
 	const state = { cwd: sourceDir, movedTo: undefined as string | undefined };

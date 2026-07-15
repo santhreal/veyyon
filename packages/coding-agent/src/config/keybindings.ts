@@ -8,8 +8,8 @@ import {
 	setKeybindings,
 	TUI_KEYBINDINGS,
 	KeybindingsManager as TuiKeybindingsManager,
-} from "@oh-my-pi/pi-tui";
-import { getActiveProfile, getAgentDir, getProfileRootDir, isEnoent, logger } from "@oh-my-pi/pi-utils";
+} from "@veyyon/pi-tui";
+import { getActiveProfile, getAgentDir, getProfileRootDir, isEnoent, logger } from "@veyyon/pi-utils";
 import { JSONC, YAML } from "bun";
 
 /**
@@ -57,7 +57,7 @@ interface AppKeybindings {
 
 export type AppKeybinding = keyof AppKeybindings;
 
-declare module "@oh-my-pi/pi-tui" {
+declare module "@veyyon/pi-tui" {
 	interface Keybindings extends AppKeybindings {}
 }
 
@@ -377,8 +377,10 @@ interface KeybindingsConfigPaths {
 
 /** Controls inherited keybinding lookup when creating a manager for a named profile. */
 export interface KeybindingsCreateOptions {
-	/** Default-profile agent directory whose keybindings are merged before profile-specific bindings. */
+	/** @deprecated Live merge removed; seed keybindings at profile creation instead. */
 	inheritedAgentDir?: string;
+	/** When false, skip the one-time default-profile keybindings seed (tests). */
+	seedFromDefault?: boolean;
 }
 
 /**
@@ -434,46 +436,56 @@ function resolveKeybindingsConfigPaths(agentDir: string): KeybindingsConfigPaths
 	return { readPath: ymlPath, writeBackPath: ymlPath };
 }
 
-function mergeKeybindingsConfig(
-	inheritedConfig: KeybindingsConfig,
-	profileConfig: KeybindingsConfig,
-): KeybindingsConfig {
-	return { ...inheritedConfig, ...profileConfig };
+
+export function profileHasKeybindingsFile(agentDir: string): boolean {
+	for (const filename of [KEYBINDINGS_YML, KEYBINDINGS_YAML, LEGACY_KEYBINDINGS_JSON]) {
+		if (fs.existsSync(path.join(agentDir, filename))) return true;
+	}
+	return false;
 }
 
-function resolveInheritedAgentDir(agentDir: string, options: KeybindingsCreateOptions): string | undefined {
-	const inheritedAgentDir =
-		options.inheritedAgentDir ?? (getActiveProfile() ? path.join(getProfileRootDir(undefined), "agent") : undefined);
-	if (!inheritedAgentDir) return undefined;
-	if (path.resolve(inheritedAgentDir) === path.resolve(agentDir)) return undefined;
-	return inheritedAgentDir;
+/**
+ * Copy keybindings from `sourceAgentDir` into `targetAgentDir` when the target
+ * has none. Returns true when a file was materialized (seed-once semantics).
+ */
+export function seedKeybindingsFromAgentDir(targetAgentDir: string, sourceAgentDir: string): boolean {
+	if (profileHasKeybindingsFile(targetAgentDir)) return false;
+	const sourcePaths = resolveKeybindingsConfigPaths(sourceAgentDir);
+	const rawConfig = loadRawConfig(sourcePaths.readPath);
+	if (rawConfig === null) return false;
+
+	const { config: migratedConfig } = migrateKeybindingNames(rawConfig);
+	fs.mkdirSync(targetAgentDir, { recursive: true });
+	const targetPath = path.join(targetAgentDir, KEYBINDINGS_YML);
+	const ordered = orderKeybindingsConfig(migratedConfig);
+	return writeKeybindingsConfig(targetPath, ordered);
 }
 
-function loadMergedKeybindingsConfig(
+function maybeSeedProfileKeybindings(agentDir: string, options: KeybindingsCreateOptions): void {
+	if (options.seedFromDefault === false) return;
+	if (!getActiveProfile()) return;
+	if (profileHasKeybindingsFile(agentDir)) return;
+
+	const defaultAgentDir = path.join(getProfileRootDir(undefined), "agent");
+	if (path.resolve(defaultAgentDir) === path.resolve(agentDir)) return;
+
+	if (seedKeybindingsFromAgentDir(agentDir, defaultAgentDir)) {
+		logger.info("Seeded profile keybindings from the default profile (one-time)", {
+			profile: getActiveProfile(),
+			path: path.join(agentDir, KEYBINDINGS_YML),
+		});
+	}
+}
+
+function loadProfileKeybindingsConfig(
 	agentDir: string,
-	options: KeybindingsCreateOptions,
 ): {
 	config: KeybindingsConfig;
 	profilePath: string;
-	inheritedPath: string | undefined;
 } {
 	const profilePaths = resolveKeybindingsConfigPaths(agentDir);
 	const profile = loadKeybindingsConfig(profilePaths.readPath, profilePaths.writeBackPath);
-	const inheritedAgentDir = resolveInheritedAgentDir(agentDir, options);
-	if (!inheritedAgentDir) {
-		return { config: profile.config, profilePath: profile.persistedPath, inheritedPath: undefined };
-	}
-
-	const inheritedPaths = resolveKeybindingsConfigPaths(inheritedAgentDir);
-	// Read-only: a named-profile process must never write migration output into
-	// the default profile's agent dir. Name migration still applies in-memory;
-	// the on-disk migration happens when the default profile itself launches.
-	const inherited = loadKeybindingsConfig(inheritedPaths.readPath, undefined);
-	return {
-		config: mergeKeybindingsConfig(inherited.config, profile.config),
-		profilePath: profile.persistedPath,
-		inheritedPath: inherited.persistedPath,
-	};
+	return { config: profile.config, profilePath: profile.persistedPath };
 }
 
 /**
@@ -547,23 +559,24 @@ function keyConfigValue(keys: KeyId[]): KeyId | KeyId[] {
  */
 export class KeybindingsManager extends TuiKeybindingsManager {
 	#configPath: string | undefined;
-	#inheritedConfigPath: string | undefined;
 	#userBindings: KeybindingsConfig;
 
-	constructor(userBindings: KeybindingsConfig = {}, configPath?: string, inheritedConfigPath?: string) {
+	constructor(userBindings: KeybindingsConfig = {}, configPath?: string) {
 		super(KEYBINDINGS, userBindings);
 		this.#configPath = configPath;
-		this.#inheritedConfigPath = inheritedConfigPath;
 		this.#userBindings = userBindings;
 	}
 
 	/**
-	 * Create from config files at agentDir/keybindings.yml and the default profile.
+	 * Create from config files at agentDir/keybindings.yml.
 	 * Legacy keybindings.json is migrated to keybindings.yml on load.
+	 * Named profiles use only their own keybindings file; missing files are
+	 * seeded once from the default profile on first launch.
 	 */
 	static create(agentDir: string = getAgentDir(), options: KeybindingsCreateOptions = {}): KeybindingsManager {
-		const { config: userBindings, profilePath, inheritedPath } = loadMergedKeybindingsConfig(agentDir, options);
-		const manager = new KeybindingsManager(userBindings, profilePath, inheritedPath);
+		maybeSeedProfileKeybindings(agentDir, options);
+		const { config: userBindings, profilePath } = loadProfileKeybindingsConfig(agentDir);
+		const manager = new KeybindingsManager(userBindings, profilePath);
 		// Set globally so getKeybindings() returns this manager
 		setKeybindings(manager);
 		return manager;
@@ -581,11 +594,8 @@ export class KeybindingsManager extends TuiKeybindingsManager {
 	 */
 	reload(): void {
 		if (!this.#configPath) return;
-		const { config: inheritedConfig } = this.#inheritedConfigPath
-			? KeybindingsManager.#loadFromFile(this.#inheritedConfigPath)
-			: { config: {} };
 		const { config: profileConfig } = KeybindingsManager.#loadFromFile(this.#configPath);
-		this.setUserBindings(mergeKeybindingsConfig(inheritedConfig, profileConfig));
+		this.setUserBindings(profileConfig);
 	}
 
 	setUserBindings(userBindings: KeybindingsConfig): void {

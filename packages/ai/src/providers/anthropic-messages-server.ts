@@ -1,5 +1,5 @@
-import { Effort } from "@oh-my-pi/pi-catalog/effort";
-import { logger } from "@oh-my-pi/pi-utils";
+import { Effort } from "@veyyon/pi-catalog/effort";
+import { logger } from "@veyyon/pi-utils";
 import { type } from "arktype";
 import { captureRequestHeaders, resolvePromptCacheKey } from "../auth-gateway/http";
 import * as AIError from "../error";

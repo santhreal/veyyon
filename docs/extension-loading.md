@@ -31,10 +31,10 @@ Extension loading builds a list of module entry files, imports each module with 
 Native `extension-module` discovery comes from:
 
 - Project directory: `<cwd>/.omp/extensions`
-- User directory: `~/.omp/agent/extensions`
-- Native legacy/settings JSON entries: `<cwd>/.omp/settings.json#extensions` and `~/.omp/agent/settings.json#extensions`
+- User directory: `~/.veyyon/agent/extensions`
+- Native legacy/settings JSON entries: `<cwd>/.omp/settings.json#extensions` and `~/.veyyon/agent/settings.json#extensions`
 
-The project root is the native provider's `.omp` directory (`SOURCE_PATHS.native.projectDir`), cwd-only; it does not walk ancestors. The user root is the active profile's agent directory via `getAgentDir()`, so under `omp --profile <name>` it becomes `~/.omp/profiles/<name>/agent/extensions` (and it honors `PI_CODING_AGENT_DIR`). See [Profiles](./config-usage.md#profiles).
+The project root is the native provider's `.omp` directory (`SOURCE_PATHS.native.projectDir`), cwd-only; it does not walk ancestors. The user root is the active profile's agent directory via `getAgentDir()`, so under `omp --profile <name>` it becomes `~/.veyyon/profiles/<name>/agent/extensions` (and it honors `PI_CODING_AGENT_DIR`). See [Profiles](./config-usage.md#profiles).
 
 Notes:
 
@@ -64,18 +64,18 @@ Configured path sources in the main session startup path (`sdk.ts`):
 
 Settings files:
 
-- User: `~/.omp/agent/config.yml` (or custom agent dir via `PI_CODING_AGENT_DIR`)
+- User: `~/.veyyon/agent/config.yml` (or custom agent dir via `PI_CODING_AGENT_DIR`)
 - Project/native settings capability: `<cwd>/.omp/config.yml` and `<cwd>/.omp/settings.json`
 
 Native extension-module discovery also reads legacy JSON extension lists from:
 
-- `~/.omp/agent/settings.json`
+- `~/.veyyon/agent/settings.json`
 - `<cwd>/.omp/settings.json`
 
 Examples:
 
 ```yaml
-# ~/.omp/agent/config.yml
+# ~/.veyyon/agent/config.yml
 extensions:
   - ~/my-exts/safety.ts
   - ./local/ext-pack
@@ -230,7 +230,7 @@ When events run through `ExtensionRunner`, handler exceptions are caught and emi
 ### User-level
 
 ```text
-~/.omp/agent/
+~/.veyyon/agent/
   config.yml
   extensions/
     guardrails.ts

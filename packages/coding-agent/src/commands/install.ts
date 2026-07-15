@@ -1,6 +1,6 @@
 /**
- * `omp install <target>` — top-level convenience over `omp plugin install` /
- * `omp plugin link`.
+ * `veyyon install <target>` — top-level convenience over `veyyon plugin install` /
+ * `veyyon plugin link`.
  *
  * The docs (omp.sh/docs/extension-authoring) advertise
  *
@@ -14,18 +14,18 @@
  *
  * Local-path targets (`./foo`, `/abs/foo`, `~/foo`, or an existing directory)
  * route to `plugin link` so they are symlinked into the plugin set, matching
- * the documented behavior. Everything else (`pkg`, `pkg@1.2.3`,
- * `name@marketplace`) routes to `plugin install`.
+ * the documented behavior. Everything else (`pkg`, `pkg@1.2.3`, git URL)
+ * routes to `plugin install`.
  */
 
 import { existsSync } from "node:fs";
 import * as path from "node:path";
-import { Args, Command, Flags } from "@oh-my-pi/pi-utils/cli";
+import { Args, Command, Flags } from "@veyyon/pi-utils/cli";
 import { type PluginAction, type PluginCommandArgs, runPluginCommand } from "../cli/plugin-cli";
 import { initTheme } from "../modes/theme/theme";
 
 /**
- * Heuristic used to decide whether `omp install <target>` should `link` a
+ * Heuristic used to decide whether `veyyon install <target>` should `link` a
  * local directory or `install` a remote spec. Exported for tests.
  */
 export function looksLikeLocalPath(target: string, cwd?: string): boolean {
@@ -45,7 +45,7 @@ export default class Install extends Command {
 
 	static args = {
 		targets: Args.string({
-			description: "Local path, npm spec, or marketplace ref (e.g. ./my-ext, my-pkg@1.2.3, name@marketplace)",
+			description: "Local path or npm/git spec (e.g. ./my-ext, my-pkg@1.2.3, github:user/repo)",
 			required: false,
 			multiple: true,
 		}),
@@ -56,7 +56,7 @@ export default class Install extends Command {
 		force: Flags.boolean({ description: "Force install" }),
 		"dry-run": Flags.boolean({ description: "Show actions without applying changes" }),
 		scope: Flags.string({
-			description: 'Install scope: "user" (default) or "project" (marketplace installs only)',
+			description: 'Install scope: "user" (default) or "project"',
 			options: ["user", "project"],
 		}),
 	};
@@ -66,7 +66,7 @@ export default class Install extends Command {
 		const targets = Array.isArray(args.targets) ? args.targets : args.targets ? [args.targets] : [];
 
 		if (targets.length === 0) {
-			process.stderr.write("Usage: omp install <path | npm-spec | name@marketplace> [...]\n");
+			process.stderr.write("Usage: veyyon install <path | npm-spec | git-url> [...]\n");
 			process.exit(1);
 		}
 

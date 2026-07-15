@@ -3,10 +3,10 @@ import {
 	containsOrchestrate,
 	highlightOrchestrate,
 	ORCHESTRATE_NOTICE,
-} from "@oh-my-pi/pi-coding-agent/modes/orchestrate";
-import { initTheme } from "@oh-my-pi/pi-coding-agent/modes/theme/theme";
-import { containsUltrathink, highlightUltrathink } from "@oh-my-pi/pi-coding-agent/modes/ultrathink";
-import { clearBundledCommandsCache, loadBundledCommands } from "@oh-my-pi/pi-coding-agent/task/commands";
+} from "@veyyon/pi-coding-agent/modes/orchestrate";
+import { initTheme } from "@veyyon/pi-coding-agent/modes/theme/theme";
+import { containsUltrathink, highlightUltrathink } from "@veyyon/pi-coding-agent/modes/ultrathink";
+import { clearBundledCommandsCache, loadBundledCommands } from "@veyyon/pi-coding-agent/task/commands";
 
 beforeAll(() => {
 	// highlightOrchestrate/highlightUltrathink read the global theme's color mode.

@@ -1,8 +1,8 @@
 # Native Crates
 
 Contributor-facing map of the Rust crates under `crates/`. These crates back
-`@oh-my-pi/pi-natives` and the embedded shell/PTY runtime. They are intentionally
-internal: end users see `@oh-my-pi/pi-natives` exports, not these crate APIs.
+`@veyyon/pi-natives` and the embedded shell/PTY runtime. They are intentionally
+internal: end users see `@veyyon/pi-natives` exports, not these crate APIs.
 
 For the consumer-side runtime contract see
 [`natives-architecture.md`](./natives-architecture.md). For inclusion policy
@@ -25,7 +25,7 @@ covering when a crate should be promoted to user-facing docs, see
 
 ## What lives where
 
-- Native API surface and loader (`@oh-my-pi/pi-natives`):
+- Native API surface and loader (`@veyyon/pi-natives`):
   [`natives-architecture.md`](./natives-architecture.md),
   [`natives-addon-loader-runtime.md`](./natives-addon-loader-runtime.md),
   [`natives-binding-contract.md`](./natives-binding-contract.md),
@@ -43,6 +43,6 @@ covering when a crate should be promoted to user-facing docs, see
 ## Policy
 
 These crates are implementation details. End-user docs live with the consuming
-package (`@oh-my-pi/pi-natives`) and the architecture pages above. Promote a
+package (`@veyyon/pi-natives`) and the architecture pages above. Promote a
 crate to a dedicated user-facing doc only when it grows a standalone CLI or
 public API consumed outside `packages/natives`.

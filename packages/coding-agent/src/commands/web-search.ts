@@ -1,7 +1,7 @@
 /**
  * Test web search providers.
  */
-import { Args, Command, Flags } from "@oh-my-pi/pi-utils/cli";
+import { Args, Command, Flags } from "@veyyon/pi-utils/cli";
 import { runSearchCommand, type SearchCommandArgs } from "../cli/web-search-cli";
 import { SEARCH_PROVIDER_ORDER } from "../web/search/provider";
 

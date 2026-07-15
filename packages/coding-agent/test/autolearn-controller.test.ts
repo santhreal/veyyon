@@ -1,9 +1,9 @@
 import { describe, expect, it } from "bun:test";
-import type { AgentMessage } from "@oh-my-pi/pi-agent-core";
-import type { AssistantMessage } from "@oh-my-pi/pi-ai";
-import { AutoLearnController, buildAutoLearnInstructions } from "@oh-my-pi/pi-coding-agent/autolearn/controller";
-import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import type { AgentSession, AgentSessionEvent } from "@oh-my-pi/pi-coding-agent/session/agent-session";
+import type { AgentMessage } from "@veyyon/pi-agent-core";
+import type { AssistantMessage } from "@veyyon/pi-ai";
+import { AutoLearnController, buildAutoLearnInstructions } from "@veyyon/pi-coding-agent/autolearn/controller";
+import { Settings } from "@veyyon/pi-coding-agent/config/settings";
+import type { AgentSession, AgentSessionEvent } from "@veyyon/pi-coding-agent/session/agent-session";
 
 interface CapturedNudge {
 	message: { customType: string; content: string; display?: boolean; attribution?: string };

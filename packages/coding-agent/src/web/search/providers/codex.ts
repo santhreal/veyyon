@@ -7,13 +7,13 @@
  * SQLite store, never POSTs the broker sentinel to an OpenAI token endpoint.
  */
 import * as os from "node:os";
-import { type AuthStorage, type FetchImpl, type Model, type OAuthAccess, withOAuthAccess } from "@oh-my-pi/pi-ai";
-import { decodeJwt } from "@oh-my-pi/pi-ai/oauth/openai-codex";
-import { applyCodexResponsesLiteShape } from "@oh-my-pi/pi-ai/providers/openai-codex/request-transformer";
-import { createOpenAICodexCompatibilityMetadata } from "@oh-my-pi/pi-ai/providers/openai-codex-responses";
-import { getBundledModels } from "@oh-my-pi/pi-catalog/models";
-import { CODEX_CLIENT_VERSION, OPENAI_HEADER_VALUES, OPENAI_HEADERS } from "@oh-my-pi/pi-catalog/wire/codex";
-import { $env, readSseJson } from "@oh-my-pi/pi-utils";
+import { type AuthStorage, type FetchImpl, type Model, type OAuthAccess, withOAuthAccess } from "@veyyon/pi-ai";
+import { decodeJwt } from "@veyyon/pi-ai/oauth/openai-codex";
+import { applyCodexResponsesLiteShape } from "@veyyon/pi-ai/providers/openai-codex/request-transformer";
+import { createOpenAICodexCompatibilityMetadata } from "@veyyon/pi-ai/providers/openai-codex-responses";
+import { getBundledModels } from "@veyyon/pi-catalog/models";
+import { CODEX_CLIENT_VERSION, OPENAI_HEADER_VALUES, OPENAI_HEADERS } from "@veyyon/pi-catalog/wire/codex";
+import { $env, readSseJson } from "@veyyon/pi-utils";
 import packageJson from "../../../../package.json" with { type: "json" };
 import type { SearchResponse, SearchSource } from "../../../web/search/types";
 import { SearchProviderError } from "../../../web/search/types";
@@ -544,7 +544,7 @@ export async function searchCodex(params: SearchParams): Promise<SearchResponse>
 	const seed = await findCodexAuth(params.authStorage, params.sessionId, params.signal);
 	if (!seed) {
 		throw new Error(
-			"No Codex OAuth credentials found. Login with 'omp /login openai-codex' to enable Codex web search.",
+			"No Codex OAuth credentials found. Login with 'veyyon /login openai-codex' to enable Codex web search.",
 		);
 	}
 

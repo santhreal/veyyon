@@ -3,13 +3,11 @@
  * settings-schema.ts and produces typed widget definitions for the
  * settings selector.
  *
- * To add a new setting to the UI: declare it in `settings-schema.ts`
- * with a `ui` block carrying `tab` and `group` (the group must be listed
- * in `TAB_GROUPS[tab]`). If it needs a submenu, include `options: [...]`
- * (or `options: "runtime"` for runtime-injected lists like themes).
+ * Settings surface is intentionally lean: see TAB_GROUPS in settings-schema.ts
+ * for which tabs/groups remain visible vs schema-only (no `ui` block).
  */
 
-import { TERMINAL } from "@oh-my-pi/pi-tui";
+import { TERMINAL } from "@veyyon/pi-tui";
 import { Settings } from "../../config/settings";
 import {
 	type AnyUiMetadata,
@@ -44,6 +42,8 @@ interface BaseSettingDef {
 	 * enums, submenus, and text inputs.
 	 */
 	condition?: () => boolean;
+	/** When true, the setting renders inside the tab's collapsed "Advanced" fold instead of its normal group. */
+	advanced?: boolean;
 }
 
 export interface BooleanSettingDef extends BaseSettingDef {
@@ -72,12 +72,24 @@ export interface ProviderLimitsSettingDef extends BaseSettingDef {
 	type: "providerLimits";
 }
 
+/** Searchable model picker (auth badges). Used for subagent/compaction model slots. */
+export interface ModelSelectorSettingDef extends BaseSettingDef {
+	type: "modelSelector";
+}
+
+/** Per-role model assignments via the same searchable picker. */
+export interface ModelRolesSettingDef extends BaseSettingDef {
+	type: "modelRoles";
+}
+
 export type SettingDef =
 	| BooleanSettingDef
 	| EnumSettingDef
 	| SubmenuSettingDef
 	| TextInputSettingDef
-	| ProviderLimitsSettingDef;
+	| ProviderLimitsSettingDef
+	| ModelSelectorSettingDef
+	| ModelRolesSettingDef;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Condition Functions
@@ -145,7 +157,15 @@ function pathToSettingDef(path: SettingPath): SettingDef | null {
 
 	const schemaType = getType(path);
 	const condition = ui.condition ? CONDITIONS[ui.condition] : undefined;
-	const base = { path, label: ui.label, description: ui.description, tab: ui.tab, group: ui.group, condition };
+	const base = {
+		path,
+		label: ui.label,
+		description: ui.description,
+		tab: ui.tab,
+		group: ui.group,
+		condition,
+		advanced: ui.advanced,
+	};
 
 	if (schemaType === "boolean") {
 		return { ...base, type: "boolean" };
@@ -169,6 +189,9 @@ function pathToSettingDef(path: SettingPath): SettingDef | null {
 	}
 
 	if (schemaType === "string") {
+		if (path === "subagent.model" || path === "compaction.model") {
+			return { ...base, type: "modelSelector" };
+		}
 		if (options === "runtime") {
 			// Empty list now; the selector layer (theme handling, etc.) injects choices.
 			return { ...base, type: "submenu", options: [] };
@@ -180,7 +203,9 @@ function pathToSettingDef(path: SettingPath): SettingDef | null {
 	}
 
 	if (schemaType === "record") {
-		return path === "providers.maxInFlightRequests" ? { ...base, type: "providerLimits" } : { ...base, type: "text" };
+		if (path === "providers.maxInFlightRequests") return { ...base, type: "providerLimits" };
+		if (path === "modelRoles") return { ...base, type: "modelRoles" };
+		return { ...base, type: "text" };
 	}
 
 	return null;
@@ -192,6 +217,11 @@ function pathToSettingDef(path: SettingPath): SettingDef | null {
 
 /** Cache of generated definitions */
 let cachedDefs: SettingDef[] | null = null;
+
+/** Drop the cached defs (tests / hot schema reload). */
+export function invalidateSettingDefsCache(): void {
+	cachedDefs = null;
+}
 
 /** Get all setting definitions with UI */
 export function getAllSettingDefs(): SettingDef[] {

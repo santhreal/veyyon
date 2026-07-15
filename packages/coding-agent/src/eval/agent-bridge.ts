@@ -4,7 +4,7 @@
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { prompt, Snowflake } from "@oh-my-pi/pi-utils";
+import { prompt, Snowflake } from "@veyyon/pi-utils";
 import { type } from "arktype";
 import { resolveAgentModelPatterns } from "../config/model-resolver";
 import type { LocalProtocolOptions } from "../internal-urls";

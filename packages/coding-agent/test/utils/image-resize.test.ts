@@ -1,5 +1,5 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
-import { resizeImage } from "@oh-my-pi/pi-coding-agent/utils/image-resize";
+import { resizeImage } from "@veyyon/pi-coding-agent/utils/image-resize";
 
 // 1x1 red PNG (69 bytes) — used as a Bun.Image seed to synthesize larger fixtures
 // without checking binary blobs into the repo.

@@ -1,6 +1,6 @@
 import { execSync } from "node:child_process";
 import * as path from "node:path";
-import { registerCustomApi, unregisterCustomApis } from "@oh-my-pi/pi-ai/api-registry";
+import { registerCustomApi, unregisterCustomApis } from "@veyyon/pi-ai/api-registry";
 import type {
 	Api,
 	Context,
@@ -9,28 +9,28 @@ import type {
 	RemoteCompactionConfig,
 	SimpleStreamOptions,
 	ThinkingConfig,
-} from "@oh-my-pi/pi-ai/types";
-import type { AssistantMessageEventStream } from "@oh-my-pi/pi-ai/utils/event-stream";
-import { buildModel } from "@oh-my-pi/pi-catalog/build";
-import { isVertexExpressOpenAIUrl } from "@oh-my-pi/pi-catalog/hosts";
-import { readModelCache } from "@oh-my-pi/pi-catalog/model-cache";
+} from "@veyyon/pi-ai/types";
+import type { AssistantMessageEventStream } from "@veyyon/pi-ai/utils/event-stream";
+import { buildModel } from "@veyyon/pi-catalog/build";
+import { isVertexExpressOpenAIUrl } from "@veyyon/pi-catalog/hosts";
+import { readModelCache } from "@veyyon/pi-catalog/model-cache";
 import {
 	createModelManager,
 	type ModelManagerOptions,
 	type ModelRefreshStrategy,
-} from "@oh-my-pi/pi-catalog/model-manager";
-import { getBundledModels, getBundledProviders } from "@oh-my-pi/pi-catalog/models";
+} from "@veyyon/pi-catalog/model-manager";
+import { getBundledModels, getBundledProviders } from "@veyyon/pi-catalog/models";
 import {
 	googleAntigravityModelManagerOptions,
 	googleGeminiCliModelManagerOptions,
 	openaiCodexModelManagerOptions,
 	PROVIDER_DESCRIPTORS,
-} from "@oh-my-pi/pi-catalog/provider-models";
+} from "@veyyon/pi-catalog/provider-models";
 import {
 	collapseBuiltModelVariants,
 	getVariantAliasSources,
 	resolveVariantAlias,
-} from "@oh-my-pi/pi-catalog/variant-collapse";
+} from "@veyyon/pi-catalog/variant-collapse";
 
 const SPECIAL_MODEL_MANAGER_PROVIDER_IDS: readonly string[] = [
 	"google-antigravity",
@@ -61,11 +61,11 @@ const RUNTIME_DYNAMIC_MODEL_FETCH_TIMEOUT_MS = 15_000;
 const BUILT_IN_DISCOVERY_CACHE_TTL_MS = 2 * 60 * 60 * 1000;
 const BUILT_IN_DISCOVERY_NON_AUTHORITATIVE_RETRY_MS = 5 * 60 * 1000;
 
-import type { ApiKeyResolver, FetchImpl } from "@oh-my-pi/pi-ai";
-import { registerOAuthProvider, unregisterOAuthProviders } from "@oh-my-pi/pi-ai/oauth";
-import type { OAuthCredentials, OAuthLoginCallbacks } from "@oh-my-pi/pi-ai/oauth/types";
-import { getBundledModelReferenceIndex, resolveModelReference } from "@oh-my-pi/pi-catalog/identity";
-import { isBunTestRuntime, isRecord, logger, wrapFetchForExtraCa } from "@oh-my-pi/pi-utils";
+import type { ApiKeyResolver, FetchImpl } from "@veyyon/pi-ai";
+import { registerOAuthProvider, unregisterOAuthProviders } from "@veyyon/pi-ai/oauth";
+import type { OAuthCredentials, OAuthLoginCallbacks } from "@veyyon/pi-ai/oauth/types";
+import { getBundledModelReferenceIndex, resolveModelReference } from "@veyyon/pi-catalog/identity";
+import { isBunTestRuntime, isRecord, logger, wrapFetchForExtraCa } from "@veyyon/pi-utils";
 import { parseModelString, resolveProviderModelReference } from "../config/model-resolver";
 import type { AuthStorage, OAuthCredential } from "../session/auth-storage";
 import { type ApiKeyResolverModel, type ApiKeyResolverOptions, createApiKeyResolver } from "./api-key-resolver";
@@ -1967,6 +1967,11 @@ export class ModelRegistry {
 			this.#keylessProviders.has(model.provider) ||
 			this.authStorage.hasAuth(model.provider)
 		);
+	}
+
+	/** True when the provider is usable without stored credentials (ollama, lm-studio, …). */
+	isKeylessProvider(provider: string): boolean {
+		return this.#keylessProviders.has(provider);
 	}
 
 	getDiscoverableProviders(): string[] {

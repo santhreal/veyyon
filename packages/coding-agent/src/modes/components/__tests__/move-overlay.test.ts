@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import * as fsp from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { visibleWidth } from "@oh-my-pi/pi-tui";
+import { visibleWidth } from "@veyyon/pi-tui";
 import { Settings } from "../../../config/settings";
 import { getThemeByName, setThemeInstance, type Theme } from "../../theme/theme";
 import { MoveOverlay, type MoveOverlayResult, resolveExistingDirectory, resolveMovePath } from "../move-overlay";

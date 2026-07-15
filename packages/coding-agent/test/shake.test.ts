@@ -1,16 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
 import { scheduler } from "node:timers/promises";
-import { Agent, type AgentMessage } from "@oh-my-pi/pi-agent-core";
-import * as compactionModule from "@oh-my-pi/pi-agent-core/compaction";
-import type { AssistantMessage, ImageContent, ToolResultMessage } from "@oh-my-pi/pi-ai";
-import { getBundledModel } from "@oh-my-pi/pi-catalog/models";
-import { ModelRegistry } from "@oh-my-pi/pi-coding-agent/config/model-registry";
-import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import { AgentSession, type AgentSessionEvent } from "@oh-my-pi/pi-coding-agent/session/agent-session";
-import { AuthStorage } from "@oh-my-pi/pi-coding-agent/session/auth-storage";
-import { SessionManager } from "@oh-my-pi/pi-coding-agent/session/session-manager";
-import { TempDir } from "@oh-my-pi/pi-utils";
+import { Agent, type AgentMessage } from "@veyyon/pi-agent-core";
+import * as compactionModule from "@veyyon/pi-agent-core/compaction";
+import type { AssistantMessage, ImageContent, ToolResultMessage } from "@veyyon/pi-ai";
+import { getBundledModel } from "@veyyon/pi-catalog/models";
+import { ModelRegistry } from "@veyyon/pi-coding-agent/config/model-registry";
+import { Settings } from "@veyyon/pi-coding-agent/config/settings";
+import { AgentSession, type AgentSessionEvent } from "@veyyon/pi-coding-agent/session/agent-session";
+import { AuthStorage } from "@veyyon/pi-coding-agent/session/auth-storage";
+import { SessionManager } from "@veyyon/pi-coding-agent/session/session-manager";
+import { TempDir } from "@veyyon/pi-utils";
 
 const usage = {
 	input: 16,
@@ -155,7 +155,7 @@ describe("AgentSession shake", () => {
 
 	describe("auto-shake strategy", () => {
 		it("dispatches the elide path and emits a shake action for threshold maintenance", async () => {
-			session.settings.set("compaction.strategy", "shake");
+			session.settings.override("compaction.strategy", "shake" as never);
 			session.settings.set("compaction.thresholdPercent", 1);
 			session.settings.set("contextPromotion.enabled", false);
 
@@ -195,7 +195,7 @@ describe("AgentSession shake", () => {
 		});
 
 		it("keeps a successful overflow shake recovery committed before retrying", async () => {
-			session.settings.set("compaction.strategy", "shake");
+			session.settings.override("compaction.strategy", "shake" as never);
 			session.settings.set("contextPromotion.enabled", false);
 			seedHeavyToolResult("X ".repeat(20000));
 			branchToolResults()[0].useless = true;
@@ -251,7 +251,7 @@ describe("AgentSession shake", () => {
 		});
 
 		it("keeps a no-op incomplete shake retry committed before rollback can restore the length tail", async () => {
-			session.settings.set("compaction.strategy", "shake");
+			session.settings.override("compaction.strategy", "shake" as never);
 			session.settings.set("contextPromotion.enabled", false);
 			vi.spyOn(scheduler, "wait").mockResolvedValue(undefined);
 			vi.spyOn(session.agent, "continue").mockResolvedValue();
@@ -311,7 +311,7 @@ describe("AgentSession shake", () => {
 			// Defect 1 parity for the shake strategy: the controller backing isCompacting
 			// must be installed before auto_compaction_start is emitted, so a message
 			// typed as the loader appears is queued safely rather than mis-routed.
-			session.settings.set("compaction.strategy", "shake");
+			session.settings.override("compaction.strategy", "shake" as never);
 			session.settings.set("compaction.thresholdPercent", 1);
 			session.settings.set("contextPromotion.enabled", false);
 
@@ -354,7 +354,7 @@ describe("AgentSession shake", () => {
 		});
 
 		it("falls back to context-full when shake cannot drop context below the threshold (regression #2119)", async () => {
-			session.settings.set("compaction.strategy", "shake");
+			session.settings.override("compaction.strategy", "shake" as never);
 			session.settings.set("compaction.thresholdPercent", 1);
 			session.settings.set("contextPromotion.enabled", false);
 
@@ -411,7 +411,7 @@ describe("AgentSession shake", () => {
 		});
 
 		it("falls back when provider-reported usage stays above the threshold even though the local estimate is below it (regression #2275)", async () => {
-			session.settings.set("compaction.strategy", "shake");
+			session.settings.override("compaction.strategy", "shake" as never);
 			session.settings.set("compaction.thresholdTokens", 5_000);
 			session.settings.set("contextPromotion.enabled", false);
 
@@ -462,7 +462,7 @@ describe("AgentSession shake", () => {
 		});
 
 		it("counts pre-shake prune savings when deciding whether to fall back to context-full", async () => {
-			session.settings.set("compaction.strategy", "shake");
+			session.settings.override("compaction.strategy", "shake" as never);
 			session.settings.set("compaction.thresholdTokens", 76384);
 			session.settings.set("compaction.thresholdPercent", -1);
 			session.settings.set("compaction.dropUseless", true);
@@ -526,7 +526,7 @@ describe("AgentSession shake", () => {
 		});
 
 		it("falls back after pre-prompt shake when the floored stored conversation remains over threshold", async () => {
-			session.settings.set("compaction.strategy", "shake");
+			session.settings.override("compaction.strategy", "shake" as never);
 			session.settings.set("compaction.thresholdTokens", 8_000);
 			session.settings.set("compaction.keepRecentTokens", 1);
 			session.settings.set("contextPromotion.enabled", false);

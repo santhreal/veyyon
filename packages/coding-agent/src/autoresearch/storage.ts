@@ -1,14 +1,14 @@
 import { Database, type SQLQueryBindings } from "bun:sqlite";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { getAutoresearchDbPath, getAutoresearchProjectDir, logger } from "@oh-my-pi/pi-utils";
+import { getAutoresearchDbPath, getAutoresearchProjectDir, logger } from "@veyyon/pi-utils";
 import * as git from "../utils/git";
 import type { ASIData, ExperimentStatus, MetricDirection, NumericMetricMap } from "./types";
 
 /**
  * Encode an absolute project path into a single filesystem-safe segment.
  *
- * Used to key per-project autoresearch state under `~/.omp/autoresearch/`.
+ * Used to key per-project autoresearch state under `~/.veyyon/autoresearch/`.
  * The `--…--` wrapper is historical — existing on-disk state depends on it,
  * so changing the format here would orphan every prior autoresearch DB.
  * Not collision-free for pathological inputs (`/a/b` vs `/a-b`) but matches
@@ -572,7 +572,8 @@ export async function openAutoresearchStorageIfExists(cwd: string): Promise<Auto
 }
 
 async function resolveAutoresearchPaths(cwd: string): Promise<{ dbPath: string; projectDir: string }> {
-	const override = process.env.OMP_AUTORESEARCH_DB_DIR;
+	const override =
+		process.env.VEYYON_AUTORESEARCH_DB_DIR ?? process.env.OMP_AUTORESEARCH_DB_DIR;
 	const repoRoot = (await git.repo.root(cwd)) ?? cwd;
 	const encoded = encodeProjectKey(repoRoot);
 	if (override) {

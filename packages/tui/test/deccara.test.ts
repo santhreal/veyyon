@@ -12,7 +12,7 @@ import {
 	setTerminalDeccara,
 	TERMINAL,
 	TUI,
-} from "@oh-my-pi/pi-tui";
+} from "@veyyon/pi-tui";
 import { VirtualTerminal } from "./virtual-terminal";
 
 // Truecolor background open token used throughout the integration tests.

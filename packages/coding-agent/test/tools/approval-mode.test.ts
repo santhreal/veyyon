@@ -2,13 +2,14 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { AgentToolContext } from "@oh-my-pi/pi-agent-core";
-import { getBundledModel } from "@oh-my-pi/pi-catalog/models";
-import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import { createAgentSession } from "@oh-my-pi/pi-coding-agent/sdk";
-import type { AgentSession } from "@oh-my-pi/pi-coding-agent/session/agent-session";
-import { SessionManager } from "@oh-my-pi/pi-coding-agent/session/session-manager";
-import { removeSyncWithRetries, Snowflake } from "@oh-my-pi/pi-utils";
+import type { AgentToolContext } from "@veyyon/pi-agent-core";
+import { getBundledModel } from "@veyyon/pi-catalog/models";
+import { Settings } from "@veyyon/pi-coding-agent/config/settings";
+import { createAgentSession } from "@veyyon/pi-coding-agent/sdk";
+import type { AgentSession } from "@veyyon/pi-coding-agent/session/agent-session";
+import { SessionManager } from "@veyyon/pi-coding-agent/session/session-manager";
+import { normalizeApprovalMode } from "@veyyon/pi-coding-agent/tools/approval";
+import { removeSyncWithRetries, Snowflake } from "@veyyon/pi-utils";
 
 const BASE_SETTINGS = {
 	"async.enabled": false,
@@ -178,6 +179,24 @@ describe("tools.approvalMode setting", () => {
 			} as AgentToolContext,
 		);
 		expect(textOf(result)).toContain("(no output)");
+	});
+
+	it("normalizes shipped autonomy ladder and legacy aliases", () => {
+		expect(normalizeApprovalMode("plan")).toBe("plan");
+		expect(normalizeApprovalMode("ask")).toBe("ask");
+		expect(normalizeApprovalMode("always-ask")).toBe("ask");
+		expect(normalizeApprovalMode("auto-edit")).toBe("auto-edit");
+		expect(normalizeApprovalMode("write")).toBe("auto-edit");
+		expect(normalizeApprovalMode("yolo")).toBe("yolo");
+	});
+
+	it("plan mode blocks exec-tier tools", async () => {
+		const settings = approvalSettings({ "tools.approvalMode": "plan" });
+		await expect(
+			bashTool().execute("plan-blocked", { command: "echo no" }, undefined, undefined, {
+				settings,
+			} as AgentToolContext),
+		).rejects.toThrow(/Plan autonomy: non-mutating tools only/);
 	});
 
 	it("constructs an extensionRunner unconditionally so the approval gate is always installed", async () => {

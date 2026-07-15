@@ -4,7 +4,7 @@
  */
 import * as os from "node:os";
 import * as path from "node:path";
-import { $which } from "@oh-my-pi/pi-utils";
+import { $which } from "@veyyon/pi-utils";
 
 export const CASE_INSENSITIVE_ENV = process.platform === "win32";
 
@@ -12,6 +12,74 @@ export const CASE_INSENSITIVE_ENV = process.platform === "win32";
 // under a broad allow-prefix.
 export const SECRET_KEY_PATTERN =
 	/API[_-]?KEY|APIKEY|SECRET|TOKEN|PASSWORD|PASSWD|CREDENTIAL|ACCESS[_-]?KEY|PRIVATE[_-]?KEY/i;
+
+/**
+ * Cross-language base allowlist shared by every eval sandbox (py/rb/jl).
+ * Covers the common shell/locale/proxy vars every interpreter needs to start
+ * up and find libraries. Language-runtime-specific vars (Python's venv/conda
+ * layout, etc.) are layered on top by the owning runtime module — only the
+ * genuinely shared baseline lives here.
+ */
+export const BASE_ENV_ALLOWLIST = [
+	"PATH",
+	"HOME",
+	"USER",
+	"USERNAME",
+	"LOGNAME",
+	"SHELL",
+	"LANG",
+	"LC_ALL",
+	"LC_CTYPE",
+	"LC_MESSAGES",
+	"TERM",
+	"TERM_PROGRAM",
+	"TERM_PROGRAM_VERSION",
+	"TMPDIR",
+	"TEMP",
+	"TMP",
+	"XDG_CACHE_HOME",
+	"XDG_CONFIG_HOME",
+	"XDG_DATA_HOME",
+	"XDG_RUNTIME_DIR",
+	"SSH_AUTH_SOCK",
+	"SSH_AGENT_PID",
+	"SSH_CONNECTION",
+	"SSH_CLIENT",
+	"SSH_TTY",
+	"DISPLAY",
+	"XAUTHORITY",
+	"TZ",
+	"SYSTEMROOT",
+	"WINDIR",
+	"COMSPEC",
+	"PATHEXT",
+	"LD_LIBRARY_PATH",
+	"DYLD_LIBRARY_PATH",
+];
+
+/**
+ * Union of internal PI tokens and provider API keys that must never reach an
+ * eval sandbox, even under a broad allow-prefix (e.g. the `PI_` prefix admits
+ * `PI_SESSION`/`PI_TOKEN` unless explicitly denied here). Single authoritative
+ * source for py/rb/jl — see BACKLOG SPEC-ONE-PLACE-AUDIT F3.
+ */
+export const SECRET_ENV_DENYLIST = [
+	"PI_API_KEY",
+	"PI_TOKEN",
+	"PI_PASSWORD",
+	"PI_SESSION",
+	"PI_TOOL_BRIDGE_TOKEN",
+	"OPENAI_API_KEY",
+	"ANTHROPIC_API_KEY",
+	"GOOGLE_API_KEY",
+	"GEMINI_API_KEY",
+	"OPENROUTER_API_KEY",
+	"PERPLEXITY_API_KEY",
+	"PERPLEXITY_COOKIES",
+	"EXA_API_KEY",
+	"AZURE_OPENAI_API_KEY",
+	"MISTRAL_API_KEY",
+];
 
 export interface EnvFilterOptions {
 	allowList: string[];

@@ -8,7 +8,7 @@ import {
 	setTerminalScreenToScrollback,
 	TERMINAL,
 	TUI,
-} from "@oh-my-pi/pi-tui";
+} from "@veyyon/pi-tui";
 import { VirtualTerminal } from "./virtual-terminal";
 
 class MutableLinesComponent implements Component {

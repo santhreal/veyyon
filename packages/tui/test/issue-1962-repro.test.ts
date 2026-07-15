@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
-import { type Component, type Focusable, TUI } from "@oh-my-pi/pi-tui";
+import { type Component, type Focusable, TUI } from "@veyyon/pi-tui";
 import { StressRenderScheduler } from "./render-stress-scheduler";
 import { VirtualTerminal } from "./virtual-terminal";
 

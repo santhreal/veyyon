@@ -21,15 +21,15 @@ import {
 	type Tool,
 	type Usage,
 	withAuth,
-} from "@oh-my-pi/pi-ai";
-import { ProviderHttpError } from "@oh-my-pi/pi-ai/error";
-import { createOpenAICodexCompactionRequestContext } from "@oh-my-pi/pi-ai/providers/openai-codex-responses";
-import { convertTools } from "@oh-my-pi/pi-ai/providers/openai-responses";
-import { buildResponsesInput, resolveOpenAICompatPolicy } from "@oh-my-pi/pi-ai/providers/openai-shared";
-import { preferredDialect } from "@oh-my-pi/pi-catalog/identity";
-import { clampThinkingLevelForModel } from "@oh-my-pi/pi-catalog/model-thinking";
-import { logger, prompt, stringifyJson } from "@oh-my-pi/pi-utils";
-import * as snapcompact from "@oh-my-pi/snapcompact";
+} from "@veyyon/pi-ai";
+import { ProviderHttpError } from "@veyyon/pi-ai/error";
+import { createOpenAICodexCompactionRequestContext } from "@veyyon/pi-ai/providers/openai-codex-responses";
+import { convertTools } from "@veyyon/pi-ai/providers/openai-responses";
+import { buildResponsesInput, resolveOpenAICompatPolicy } from "@veyyon/pi-ai/providers/openai-shared";
+import { preferredDialect } from "@veyyon/pi-catalog/identity";
+import { clampThinkingLevelForModel } from "@veyyon/pi-catalog/model-thinking";
+import { logger, prompt, stringifyJson } from "@veyyon/pi-utils";
+import * as snapcompact from "@veyyon/snapcompact";
 import { type AgentTelemetry, instrumentedCompleteSimple } from "../telemetry";
 import { ThinkingLevel } from "../thinking";
 import { countTokens } from "../tokenizer";
@@ -160,7 +160,7 @@ export interface CompactionResult<T = unknown> {
 
 export interface CompactionSettings {
 	enabled: boolean;
-	strategy?: "context-full" | "handoff" | "shake" | "snapcompact" | "off";
+	strategy?: "handoff" | "snap" | "context-full" | "shake" | "snapcompact" | "off";
 	thresholdPercent?: number;
 	thresholdTokens?: number;
 	midTurnEnabled?: boolean;
@@ -189,7 +189,7 @@ export const DEFAULT_RESERVE_TOKENS = 16384;
 // chose a reserve" from "user explicitly configured the default value".
 export const DEFAULT_COMPACTION_SETTINGS: CompactionSettings = {
 	enabled: true,
-	strategy: "context-full",
+	strategy: "snap",
 	thresholdPercent: -1,
 	thresholdTokens: -1,
 	midTurnEnabled: true,
@@ -352,6 +352,25 @@ export function resolveThresholdTokens(contextWindow: number, settings: Compacti
 const IMAGE_TOKEN_ESTIMATE = 1200;
 
 /**
+ * Per-message token estimate cache, keyed by message object identity. Agent
+ * messages are treated as immutable once constructed — streaming replaces
+ * `context.messages[i]` with a new object per delta rather than mutating one
+ * in place (see `agent-loop.ts`), so caching by identity is safe: a message
+ * object's estimate never needs to change after it is first computed, and a
+ * superseded in-flight object is simply dropped by the `WeakMap` once nothing
+ * else references it. This avoids re-walking (and re-tokenizing) the same
+ * unchanged messages every time compaction/context-usage code re-estimates
+ * the stored conversation (`#estimateStoredContextTokens`,
+ * `getContextBreakdown`'s tail walk, etc. call `estimateTokens` per message
+ * on every recompute).
+ *
+ * The two option variants (`default` vs `excludeEncryptedReasoning`) can
+ * disagree for a message with encrypted reasoning, so they get separate slots
+ * rather than sharing one cached number.
+ */
+const tokenEstimateCache = new WeakMap<AgentMessage, { default?: number; noReasoning?: number }>();
+
+/**
  * Estimate token count for a message using cl100k_base via the native
  * tokenizer. This is not Claude's first-party tokenizer (Anthropic doesn't
  * publish one) but is within ~5–10% across English/code text.
@@ -364,6 +383,16 @@ const IMAGE_TOKEN_ESTIMATE = 1200;
  * content) excludes them to avoid false triggers on thinking-heavy turns.
  */
 export function estimateTokens(message: AgentMessage, options?: { excludeEncryptedReasoning?: boolean }): number {
+	const slotKey = options?.excludeEncryptedReasoning ? "noReasoning" : "default";
+	const cached = tokenEstimateCache.get(message);
+	const hit = cached?.[slotKey];
+	if (hit !== undefined) return hit;
+	const value = estimateTokensUncached(message, options);
+	tokenEstimateCache.set(message, { ...cached, [slotKey]: value });
+	return value;
+}
+
+function estimateTokensUncached(message: AgentMessage, options?: { excludeEncryptedReasoning?: boolean }): number {
 	const fragments: string[] = [];
 	let extra = 0;
 	if ((message as { role?: string }).role === "bashExecution") {

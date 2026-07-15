@@ -1,7 +1,9 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
-import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import { pickWeightedTip, WelcomeComponent } from "@oh-my-pi/pi-coding-agent/modes/components/welcome";
-import { initTheme, theme } from "@oh-my-pi/pi-coding-agent/modes/theme/theme";
+import { Settings } from "@veyyon/pi-coding-agent/config/settings";
+import { pickWeightedTip, WelcomeComponent } from "@veyyon/pi-coding-agent/modes/components/welcome";
+import { initTheme, theme } from "@veyyon/pi-coding-agent/modes/theme/theme";
+
+const NERDFONT_TIP = "Please use nerdfont for the best symbol rendering.";
 
 describe("WelcomeComponent tips", () => {
 	beforeAll(async () => {
@@ -17,7 +19,7 @@ describe("WelcomeComponent tips", () => {
 		vi.spyOn(theme, "getSymbolPreset").mockReturnValue("nerd");
 
 		const welcome = new WelcomeComponent("1.0.0", "model", "provider");
-		expect(welcome.tip).not.toBe("Please use nerdfont 😭.");
+		expect(welcome.tip).not.toBe(NERDFONT_TIP);
 		expect(welcome.tip).toBeDefined();
 	});
 
@@ -27,7 +29,7 @@ describe("WelcomeComponent tips", () => {
 		// 9% chance => selects special tip
 		vi.spyOn(Math, "random").mockReturnValue(0.09);
 		const welcomeSpecial = new WelcomeComponent("1.0.0", "model", "provider");
-		expect(welcomeSpecial.tip).toBe("Please use nerdfont 😭.");
+		expect(welcomeSpecial.tip).toBe(NERDFONT_TIP);
 
 		// 10% chance => selects regular tip
 		vi.spyOn(Math, "random").mockReturnValue(0.1);

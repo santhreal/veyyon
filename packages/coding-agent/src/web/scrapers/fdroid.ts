@@ -1,4 +1,4 @@
-import { tryParseJson } from "@oh-my-pi/pi-utils";
+import { tryParseJson } from "@veyyon/pi-utils";
 import type { LocalizedText, RenderResult, SpecialHandler } from "./types";
 import { buildResult, getLocalizedText, loadPage } from "./types";
 

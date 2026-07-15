@@ -1,7 +1,8 @@
 /**
  * Show provider usage limits for every authenticated account.
  */
-import { Args, Command, Flags } from "@oh-my-pi/pi-utils/cli";
+import { APP_NAME } from "@veyyon/pi-utils";
+import { Args, Command, Flags } from "@veyyon/pi-utils/cli";
 import { runUsageCommand } from "../cli/usage-cli";
 
 export default class Usage extends Command {
@@ -31,13 +32,13 @@ export default class Usage extends Command {
 	};
 
 	static examples = [
-		"# Detailed per-account usage breakdown across all providers\n  omp usage",
-		"# Only Anthropic accounts\n  omp usage --provider anthropic",
-		"# Redact account identifiers for screenshots\n  omp usage --redact",
-		"# Machine-readable output\n  omp usage --json",
-		"# Usage-limit trend over the last 30 days\n  omp usage --history --days 30",
-		"# Invalidate cached usage reports for all providers\n  omp usage invalidate",
-		"# Invalidate cached usage reports for a specific provider\n  omp usage invalidate --provider anthropic",
+		`# Detailed per-account usage breakdown across all providers\n  ${APP_NAME} usage`,
+		`# Only Anthropic accounts\n  ${APP_NAME} usage --provider anthropic`,
+		`# Redact account identifiers for screenshots\n  ${APP_NAME} usage --redact`,
+		`# Machine-readable output\n  ${APP_NAME} usage --json`,
+		`# Usage-limit trend over the last 30 days\n  ${APP_NAME} usage --history --days 30`,
+		`# Invalidate cached usage reports for all providers\n  ${APP_NAME} usage invalidate`,
+		`# Invalidate cached usage reports for a specific provider\n  ${APP_NAME} usage invalidate --provider anthropic`,
 	];
 
 	async run(): Promise<void> {

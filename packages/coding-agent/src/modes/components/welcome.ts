@@ -6,8 +6,8 @@ import {
 	truncateToWidth,
 	visibleWidth,
 	wrapTextWithAnsi,
-} from "@oh-my-pi/pi-tui";
-import { APP_NAME } from "@oh-my-pi/pi-utils";
+} from "@veyyon/pi-tui";
+import { APP_NAME } from "@veyyon/pi-utils";
 import { theme } from "../../modes/theme/theme";
 import tipsText from "./tips.txt" with { type: "text" };
 
@@ -31,14 +31,11 @@ export const WELCOME_LSP_SLOTS = 4;
 
 /** Trailing marker that flags a tip as a "what's new" callout. Stripped before
  *  wrapping (with any preceding whitespace) and replaced by {@link NEW_TAG_TEXT}
- *  painted as a shimmering rainbow. Non-global so `.test` stays stateless. */
+ *  painted with a silver shimmer. Non-global so `.test` stays stateless. */
 const NEW_TIP_MARKER = /\s*\[NEW\]\s*$/;
 
-/** Visible text rendered in place of {@link NEW_TIP_MARKER}. */
-const NEW_TAG_TEXT = "NEW!";
-
-/** Milliseconds for one full hue rotation of the rainbow "NEW!" tag. */
-const NEW_GLOW_PERIOD_MS = 1500;
+/** Visible text rendered in place of {@link NEW_TIP_MARKER}. Quiet, not shouty. */
+const NEW_TAG_TEXT = "new";
 
 /** Selection weight for "[NEW]" tips; ordinary tips weigh 1, so a freshly added
  *  affordance surfaces this many times as often. */
@@ -59,30 +56,11 @@ export function pickWeightedTip(tips: readonly string[], r: number): string {
 	return tips[tips.length - 1] ?? "";
 }
 
-type ColorEncoding = "ansi-16m" | "ansi-256";
-
-/** Paint each glyph of {@link NEW_TAG_TEXT} on a moving HSL rainbow. `phase`
- *  rotates the hue offset cyclically; successive renders with increasing phase
- *  shimmer, while a fixed phase yields a still rainbow. */
-function renderNewTag(phase: number, encoding: ColorEncoding): string {
-	const bold = "\x1b[1m";
-	const reset = "\x1b[0m";
-	const wrapped = ((phase % 1) + 1) % 1;
-	const chars = [...NEW_TAG_TEXT];
-	let out = bold;
-	let prev = "";
-	for (let i = 0; i < chars.length; i++) {
-		const hue = Math.round(((i / chars.length + wrapped) % 1) * 360);
-		const color = Bun.color(`hsl(${hue}, 95%, 60%)`, encoding) ?? "";
-		if (color !== prev) {
-			out += color;
-			prev = color;
-		}
-		out += chars[i];
-	}
-	return out + reset;
+/** Static silver-bright tag — no rainbow, no motion (brand: restrained chrome). */
+function renderNewTag(): string {
+	return `\x1b[1m${silverEscape(1)}${NEW_TAG_TEXT}\x1b[0m`;
 }
-export function renderWelcomeTip(tip: string, boxWidth: number, phase = 0): string[] {
+export function renderWelcomeTip(tip: string, boxWidth: number, _phase = 0): string[] {
 	const label = "Tip: ";
 	const labelWidth = visibleWidth(label);
 	const bodyBudget = boxWidth - 1 - labelWidth; // 1 = leading indent
@@ -107,11 +85,8 @@ export function renderWelcomeTip(tip: string, boxWidth: number, phase = 0): stri
 	});
 
 	if (isNew) {
-		// Append the rainbow tag to the final body line when it fits within the
-		// box; otherwise drop it onto its own indented continuation line so the
-		// styled glyphs never overflow or reflow the wrapped body.
-		const encoding: ColorEncoding = TERMINAL.trueColor ? "ansi-16m" : "ansi-256";
-		const tag = renderNewTag(phase, encoding);
+		// Append a quiet silver "new" tag — static, no motion.
+		const tag = renderNewTag();
 		const tagWidth = 1 + visibleWidth(NEW_TAG_TEXT); // 1 = space separator
 		const lastLine = lines[lines.length - 1];
 		if (lastLine !== undefined && visibleWidth(lastLine) + tagWidth <= boxWidth) {
@@ -136,7 +111,7 @@ export interface LspServerInfo {
 }
 
 /**
- * Premium welcome screen with block-based OMP logo and two-column layout.
+ * Welcome screen with block Veyyon wordmark and two-column layout.
  */
 export class WelcomeComponent implements Component {
 	#animStart: number | null = null;
@@ -158,7 +133,7 @@ export class WelcomeComponent implements Component {
 	get tip(): string | undefined {
 		if (this.#selectedTip === undefined) {
 			if (theme.getSymbolPreset() === "unicode" && Math.random() < 0.1) {
-				this.#selectedTip = "Please use nerdfont 😭.";
+				this.#selectedTip = "Please use nerdfont for the best symbol rendering.";
 			} else {
 				this.#selectedTip = pickWeightedTip(TIPS, Math.random());
 			}
@@ -239,12 +214,12 @@ export class WelcomeComponent implements Component {
 			return [];
 		}
 		const dualContentWidth = boxWidth - 3; // 3 = │ + │ + │
-		const preferredLeftCol = 26;
-		const minLeftCol = 12; // logo width
-		const minRightCol = 20;
+		const preferredLeftCol = 22;
+		const minLeftCol = 18; // compact VEYYON_LOGO width
+		const minRightCol = 22;
 		const leftMinContentWidth = Math.max(
 			minLeftCol,
-			visibleWidth("Welcome back!"),
+			visibleWidth("Welcome"),
 			visibleWidth(this.modelName),
 			visibleWidth(this.providerName),
 		);
@@ -264,17 +239,17 @@ export class WelcomeComponent implements Component {
 		// Left column - centered content
 		const leftLines = [
 			"",
-			this.#centerText(theme.bold("Welcome back!"), leftCol),
+			this.#centerText(theme.fg("dim", "Welcome"), leftCol),
 			"",
 			...logoColored.map(l => this.#centerText(l, leftCol)),
 			"",
 			this.#centerText(theme.fg("muted", this.modelName), leftCol),
-			this.#centerText(theme.fg("borderMuted", this.providerName), leftCol),
+			this.#centerText(theme.fg("dim", this.providerName), leftCol),
 		];
 
 		// Right column separator
 		const separatorWidth = Math.max(0, rightCol - 2); // padding on each side
-		const separator = ` ${theme.fg("dim", theme.boxRound.horizontal.repeat(separatorWidth))}`;
+		const separator = ` ${theme.fg("borderMuted", theme.boxRound.horizontal.repeat(separatorWidth))}`;
 
 		// Recent sessions content
 		const sessionLines: string[] = [];
@@ -327,42 +302,45 @@ export class WelcomeComponent implements Component {
 
 		// Right column
 		const rightLines = [
-			` ${theme.bold(theme.fg("accent", "Tips"))}`,
-			` ${theme.fg("dim", "#")}${theme.fg("muted", " for prompt actions")}`,
-			` ${theme.fg("dim", "/")}${theme.fg("muted", " for commands")}`,
-			` ${theme.fg("dim", "!")}${theme.fg("muted", " to run bash")}`,
-			` ${theme.fg("dim", "$")}${theme.fg("muted", " to run python")}`,
+			` ${theme.fg("dim", "Tips")}`,
+			` ${theme.fg("dim", "#")}${theme.fg("muted", " prompt actions")}`,
+			` ${theme.fg("dim", "/")}${theme.fg("muted", " commands")}`,
+			` ${theme.fg("dim", "!")}${theme.fg("muted", " bash")}`,
+			` ${theme.fg("dim", "$")}${theme.fg("muted", " python")}`,
 			separator,
-			` ${theme.bold(theme.fg("accent", "LSP Servers"))}`,
+			` ${theme.fg("dim", "LSP")}`,
 			...lspLines,
 			separator,
-			` ${theme.bold(theme.fg("accent", "Recent sessions"))}`,
+			` ${theme.fg("dim", "Sessions")}`,
 			...sessionLines,
 			"",
 		];
 
-		// Border characters (dim)
+		// Hairline chrome — silver only on the product name in the title rail
 		const hChar = theme.boxRound.horizontal;
-		const h = theme.fg("dim", hChar);
-		const v = theme.fg("dim", theme.boxRound.vertical);
-		const tl = theme.fg("dim", theme.boxRound.topLeft);
-		const tr = theme.fg("dim", theme.boxRound.topRight);
-		const bl = theme.fg("dim", theme.boxRound.bottomLeft);
-		const br = theme.fg("dim", theme.boxRound.bottomRight);
+		const h = theme.fg("borderMuted", hChar);
+		const v = theme.fg("borderMuted", theme.boxRound.vertical);
+		const tl = theme.fg("borderMuted", theme.boxRound.topLeft);
+		const tr = theme.fg("borderMuted", theme.boxRound.topRight);
+		const bl = theme.fg("borderMuted", theme.boxRound.bottomLeft);
+		const br = theme.fg("borderMuted", theme.boxRound.bottomRight);
 
 		const lines: string[] = [];
 
-		// Top border with embedded title
-		const title = ` ${APP_NAME} v${this.version} `;
-		const titlePrefixRaw = hChar.repeat(3);
-		const titleStyled = theme.fg("dim", titlePrefixRaw) + theme.fg("muted", title);
-		const titleVisLen = visibleWidth(titlePrefixRaw) + visibleWidth(title);
+		const title = ` ${APP_NAME} `;
+		const version = `v${this.version} `;
+		const titlePrefixRaw = hChar.repeat(2);
+		const titleStyled =
+			theme.fg("borderMuted", titlePrefixRaw) +
+			theme.bold(theme.fg("accent", title)) +
+			theme.fg("dim", version);
+		const titleVisLen = visibleWidth(titlePrefixRaw) + visibleWidth(title) + visibleWidth(version);
 		const titleSpace = boxWidth - 2;
 		if (titleVisLen >= titleSpace) {
 			lines.push(tl + truncateToWidth(titleStyled, titleSpace) + tr);
 		} else {
 			const afterTitle = titleSpace - titleVisLen;
-			lines.push(tl + titleStyled + theme.fg("dim", hChar.repeat(afterTitle)) + tr);
+			lines.push(tl + titleStyled + theme.fg("borderMuted", hChar.repeat(afterTitle)) + tr);
 		}
 
 		// Content rows
@@ -378,7 +356,7 @@ export class WelcomeComponent implements Component {
 		}
 		// Bottom border
 		if (showRightColumn) {
-			lines.push(bl + h.repeat(leftCol) + theme.fg("dim", theme.boxRound.teeUp) + h.repeat(rightCol) + br);
+			lines.push(bl + h.repeat(leftCol) + theme.fg("borderMuted", theme.boxRound.teeUp) + h.repeat(rightCol) + br);
 		} else {
 			lines.push(bl + h.repeat(leftCol) + br);
 		}
@@ -397,12 +375,7 @@ export class WelcomeComponent implements Component {
 	#renderTip(boxWidth: number): string[] {
 		const tip = this.tip;
 		if (!tip) return [];
-		// A trailing "[NEW]" marker paints an animated rainbow "NEW!" tag. Derive
-		// its hue phase from wall-clock time so it shimmers across the welcome
-		// intro's re-render frames, then settles into a still rainbow once the box
-		// caches its resting frame. Non-"[NEW]" tips ignore the phase entirely.
-		const phase = NEW_TIP_MARKER.test(tip) ? performance.now() / NEW_GLOW_PERIOD_MS : 0;
-		return renderWelcomeTip(tip, boxWidth, phase);
+		return renderWelcomeTip(tip, boxWidth);
 	}
 
 	/** Center text within a given width */
@@ -450,87 +423,72 @@ export class WelcomeComponent implements Component {
 	}
 }
 
-export const PI_LOGO = ["▀██████████▀", " ╘██    ██  ", "  ██    ██  ", "  ██    ██  ", " ▄██▄  ▄██▄ "];
-
-/** Multi-stop palette for the diagonal gradient. */
-const GRADIENT_STOPS: ReadonlyArray<readonly [number, number, number]> = [
-	[255, 92, 200], // hot pink
-	[200, 110, 255], // violet
-	[120, 130, 255], // periwinkle
-	[60, 200, 255], // bright cyan
-	[120, 255, 220], // mint
+/** Compact box-drawing wordmark — sharp, fits the welcome column, reads VEYYON. */
+export const VEYYON_LOGO = [
+	"╦  ╦╔═╗╦ ╦╦ ╦╔═╗╔╗╔",
+	"╚╗╔╝║╣ ╚═╣╚╦╝║ ║║║║",
+	" ╚╝ ╚═╝  ╩ ╩ ╚═╝╝╚╝",
 ];
 
-/** 256-color ramp fallback when truecolor isn't available. */
-const GRADIENT_RAMP_256 = [199, 171, 135, 99, 75, 51, 87];
+/** Veyyon silver luminance stops: dark → brand → bright. */
+const SILVER_STOPS: ReadonlyArray<readonly [number, number, number]> = [
+	[116, 123, 134], // #747B86
+	[184, 189, 199], // #B8BDC7
+	[225, 228, 233], // #E1E4E9
+];
 
-/** Half-width of the shine highlight band, expressed in gradient-t units. */
-const SHINE_HALF_WIDTH = 0.18;
+/** 256-color approx for the three silver stops. */
+const SILVER_RAMP_256 = [243, 250, 255];
+
+/**
+ * Foreground SGR for a silver intensity in [0, 1] (0 = silver-dark, 0.5 = brand, 1 = bright).
+ * Brand contract: monochrome silver only — no hue sweep.
+ */
+export function silverEscape(intensity: number): string {
+	const t = Math.max(0, Math.min(1, intensity));
+	if (TERMINAL.trueColor) {
+		const seg = t * (SILVER_STOPS.length - 1);
+		const i = Math.min(SILVER_STOPS.length - 2, Math.floor(seg));
+		const f = seg - i;
+		const a = SILVER_STOPS[i];
+		const b = SILVER_STOPS[i + 1];
+		const r = Math.round(a[0] + (b[0] - a[0]) * f);
+		const g = Math.round(a[1] + (b[1] - a[1]) * f);
+		const bl = Math.round(a[2] + (b[2] - a[2]) * f);
+		return `\x1b[38;2;${r};${g};${bl}m`;
+	}
+	const idx = Math.min(SILVER_RAMP_256.length - 1, Math.max(0, Math.round(t * (SILVER_RAMP_256.length - 1))));
+	return `\x1b[38;5;${SILVER_RAMP_256[idx]}m`;
+}
 
 export interface ShineConfig {
-	/** Overall opacity of the shine overlay, in [0, 1]. */
+	/** 0 = fully revealed / resting; 1 = intro start (edge hot). Used only for entrance fade. */
 	strength: number;
-	/** Center of the shine band along the diagonal, in [0, 1]. */
+	/** Reveal frontier along the wordmark (0..1), left → right. */
 	pos: number;
 }
 
 /**
- * Resolve the gradient SGR foreground escape for a normalized position `t`
- * (0..1) along the diagonal, compositing the optional sliding shine highlight.
- * Shared by {@link gradientLogo} and the setup splash so both stay
- * color-identical (truecolor when available, 256-color ramp otherwise).
+ * Wordmark / tip foreground. Resting = brand silver. During entrance, `shine.pos`
+ * is the reveal frontier and `shine.strength` warms the leading edge.
  */
-export function gradientEscape(t: number, shine?: ShineConfig): string {
-	const shineStrength = shine && shine.strength > 0 ? shine.strength : 0;
-	const shinePos = shine ? shine.pos : 0;
-	if (TERMINAL.trueColor) {
-		// 5-stop palette widens the visible color range and avoids the
-		// deep-blue valley a naive HSL lerp falls into.
-		const stops = GRADIENT_STOPS;
-		const seg = t * (stops.length - 1);
-		const i = Math.min(stops.length - 2, Math.floor(seg));
-		const f = seg - i;
-		const a = stops[i];
-		const b = stops[i + 1];
-		let r = a[0] + (b[0] - a[0]) * f;
-		let g = a[1] + (b[1] - a[1]) * f;
-		let bl = a[2] + (b[2] - a[2]) * f;
-		if (shineStrength > 0) {
-			const dist = Math.abs(t - shinePos);
-			const intensity = Math.max(0, 1 - dist / SHINE_HALF_WIDTH) * shineStrength;
-			if (intensity > 0) {
-				r += (255 - r) * intensity;
-				g += (255 - g) * intensity;
-				bl += (255 - bl) * intensity;
-			}
-		}
-		return `\x1b[38;2;${Math.round(r)};${Math.round(g)};${Math.round(bl)}m`;
-	}
-	const ramp = GRADIENT_RAMP_256;
-	let idx = Math.min(ramp.length - 1, Math.max(0, Math.floor(t * (ramp.length - 1) + 0.5)));
-	if (shineStrength > 0) {
-		const dist = Math.abs(t - shinePos);
-		const intensity = Math.max(0, 1 - dist / SHINE_HALF_WIDTH) * shineStrength;
-		// Promote to the brightest ramp slot when the shine band peaks here.
-		if (intensity > 0.5) idx = ramp.length - 1;
-	}
-	return `\x1b[38;5;${ramp[idx]}m`;
+export function gradientEscape(_t: number, shine?: ShineConfig): string {
+	if (!shine || shine.strength <= 0) return silverEscape(0.55);
+	const edge = Math.max(0, 1 - Math.abs(_t - shine.pos) / 0.12) * shine.strength;
+	return silverEscape(0.45 + edge * 0.55);
 }
 
 /**
- * Apply a multi-stop diagonal gradient (bottom-left → top-right) plus an
- * optional sliding shine band across multi-line art. `phase` (0..1) shifts the
- * gradient along the diagonal, wrapping at 1. When `shine` is provided, a soft
- * white highlight is composited on top, centered at `shine.pos`.
+ * Paint multi-line art in Veyyon silver. Entrance uses a left→right reveal with a
+ * bright leading edge that settles to brand silver.
  */
 export function gradientLogo(lines: readonly string[], phase = 0, shine?: ShineConfig): string[] {
 	const reset = "\x1b[0m";
-	const rows = lines.length;
-	const cols = Math.max(...lines.map(l => l.length));
-	// span+1 so `base` stays strictly < 1: avoids the wrap-around at the
-	// far corner mapping back to t=0 (hot pink) on the resting frame.
-	const span = Math.max(1, cols + rows - 1);
-	return lines.map((line, y) => {
+	const cols = Math.max(1, ...lines.map(l => l.length));
+	const frontier = shine ? Math.max(0, Math.min(1, shine.pos)) : 1;
+	const edgeStrength = shine?.strength ?? 0;
+	void phase;
+	return lines.map(line => {
 		let result = "";
 		for (let x = 0; x < line.length; x++) {
 			const char = line[x];
@@ -538,41 +496,33 @@ export function gradientLogo(lines: readonly string[], phase = 0, shine?: ShineC
 				result += char;
 				continue;
 			}
-			// Diagonal: bottom-left (x=0, y=rows-1) → top-right (x=cols-1, y=0)
-			const base = (x + (rows - 1 - y)) / span;
-			const t = (((base + phase) % 1) + 1) % 1;
-			result += gradientEscape(t, shine) + char + reset;
+			const t = x / Math.max(1, cols - 1);
+			if (t > frontier + 0.02) {
+				result += " ";
+				continue;
+			}
+			const nearEdge = Math.max(0, 1 - Math.abs(t - frontier) / 0.14) * edgeStrength;
+			const intensity = frontier >= 0.999 ? 0.55 : 0.4 + nearEdge * 0.6;
+			result += silverEscape(intensity) + char + reset;
 		}
 		return result;
 	});
 }
 
 /** Total length of the intro animation. */
-const INTRO_MS = 3000;
+const INTRO_MS = 2200;
 /** Render cadence during the intro (~30fps). */
 const INTRO_TICK_MS = 33;
-/** Number of full gradient rotations the sweep performs before settling. */
-const INTRO_SWEEPS = 2.5;
-/** Number of times the shine highlight crosses the diagonal across the intro. */
-const INTRO_SHINE_TRAVERSALS = 3;
 
 /**
  * Logo frame for a normalized intro progress in [0, 1).
- *
- * Ease-out cubic so the spin decelerates into the resting state. The gradient
- * sweeps backward through INTRO_SWEEPS full rotations (`eased == 1` → phase =
- * 0 = resting frame) while the shine traverses the diagonal at a steady pace,
- * decoupled from the gradient phase so the two layers parallax; its strength
- * fades with the same ease-out curve so the highlight is gone by the resting
- * frame.
+ * Ease-out reveal left → right; leading edge bright, settles to brand silver.
  */
 function introLogoFrame(progress: number): string[] {
 	const eased = 1 - (1 - progress) ** 3;
-	const phase = ((((1 - eased) * INTRO_SWEEPS) % 1) + 1) % 1;
-	const shinePos = (((progress * INTRO_SHINE_TRAVERSALS) % 1) + 1) % 1;
-	const shineStrength = (1 - eased) ** 1.5;
-	return gradientLogo(PI_LOGO, phase, { strength: shineStrength, pos: shinePos });
+	const edge = Math.max(0, 1 - eased) ** 1.2;
+	return gradientLogo(VEYYON_LOGO, 0, { pos: eased, strength: edge });
 }
 
-/** Resting gradient frame, cached for re-renders outside of the intro. */
-const REST_FRAME = gradientLogo(PI_LOGO, 0);
+/** Resting wordmark, cached for re-renders outside of the intro. */
+const REST_FRAME = gradientLogo(VEYYON_LOGO, 0);

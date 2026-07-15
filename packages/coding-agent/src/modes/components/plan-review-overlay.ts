@@ -27,7 +27,7 @@ import {
 	ScrollView,
 	truncateToWidth,
 	visibleWidth,
-} from "@oh-my-pi/pi-tui";
+} from "@veyyon/pi-tui";
 import { getMarkdownTheme, theme } from "../theme/theme";
 import {
 	matchesAppExternalEditor,
@@ -761,7 +761,7 @@ export class PlanReviewOverlay implements Component {
 		// Compact, VS Code-like rows: a single-column gutter, one space of indent
 		// per nesting level, then the title and an annotation marker.
 		const indent = " ".repeat(Math.max(0, section.level - this.#tocBaseLevel));
-		const ann = section.annotations.length > 0 ? " ✎" : "";
+		const ann = section.annotations.length > 0 ? " note" : "";
 		const avail = Math.max(0, width - 1 - indent.length - visibleWidth(ann));
 		const title = truncateToWidth(section.title || "(untitled)", avail, Ellipsis.Unicode);
 		const body = indent + title + ann;

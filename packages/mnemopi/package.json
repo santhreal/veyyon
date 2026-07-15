@@ -1,9 +1,9 @@
 {
   "type": "module",
-  "name": "@oh-my-pi/pi-mnemopi",
+  "name": "@veyyon/pi-mnemopi",
   "version": "16.5.2",
-  "description": "Local SQLite memory engine for Oh My Pi agents",
-  "homepage": "https://omp.sh",
+  "description": "Local SQLite memory engine for Veyyon agents",
+  "homepage": "https://veyyon.dev",
   "author": "Can Boluk",
   "contributors": [
     "Abdias J"
@@ -39,9 +39,9 @@
     "fmt": "biome format --write ."
   },
   "dependencies": {
-    "@oh-my-pi/pi-ai": "catalog:",
-    "@oh-my-pi/pi-catalog": "catalog:",
-    "@oh-my-pi/pi-utils": "catalog:",
+    "@veyyon/pi-ai": "catalog:",
+    "@veyyon/pi-catalog": "catalog:",
+    "@veyyon/pi-utils": "catalog:",
     "lru-cache": "catalog:"
   },
   "peerDependencies": {

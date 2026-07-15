@@ -11,10 +11,10 @@
 import { describe, expect, test } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { expandPromptTemplate, type PromptTemplate } from "@oh-my-pi/pi-coding-agent/config/prompt-templates";
-import { expandSlashCommand, type FileSlashCommand } from "@oh-my-pi/pi-coding-agent/extensibility/slash-commands";
-import { parseCommandArgs, substituteArgs } from "@oh-my-pi/pi-coding-agent/utils/command-args";
-import { prompt } from "@oh-my-pi/pi-utils";
+import { expandPromptTemplate, type PromptTemplate } from "@veyyon/pi-coding-agent/config/prompt-templates";
+import { expandSlashCommand, type FileSlashCommand } from "@veyyon/pi-coding-agent/extensibility/slash-commands";
+import { parseCommandArgs, substituteArgs } from "@veyyon/pi-coding-agent/utils/command-args";
+import { prompt } from "@veyyon/pi-utils";
 
 // ============================================================================
 // substituteArgs

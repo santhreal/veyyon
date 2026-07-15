@@ -7,7 +7,7 @@
  * `ToolSession` registered for the current execution and forwards to the same
  * `callSessionTool` implementation the JS bridge uses.
  */
-import { logger } from "@oh-my-pi/pi-utils";
+import { logger } from "@veyyon/pi-utils";
 import type { ToolSession } from "../../tools";
 import { callSessionTool, type JsStatusEvent } from "../js/tool-bridge";
 

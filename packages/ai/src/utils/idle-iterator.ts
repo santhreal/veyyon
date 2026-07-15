@@ -1,4 +1,4 @@
-import { $env } from "@oh-my-pi/pi-utils";
+import { $env } from "@veyyon/pi-utils";
 import * as AIError from "../error";
 
 const DEFAULT_STREAM_IDLE_TIMEOUT_MS = 120_000;

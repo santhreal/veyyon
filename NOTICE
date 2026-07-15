@@ -1,0 +1,66 @@
+Veyyon third-party attribution notice
+=====================================
+
+Veyyon's own license is MIT (see `LICENSE`). This file lists third-party code
+incorporated into this repository under licenses other than, or in addition
+to, that grant. It documents what is actually vendored or adapted in this
+tree today; it is not a general survey of runtime dependencies (those are
+declared in `package.json`, `Cargo.toml`, and their lockfiles, each under its
+own published license).
+
+For the fork relationship to oh-my-pi, see `UPSTREAM.md`.
+
+## oh-my-pi (MIT)
+
+Veyyon is a source fork of oh-my-pi (`can1357/oh-my-pi`), MIT licensed. The
+bulk of the TypeScript/Bun agent loop and TUI, the `pi-*` Rust natives (grep,
+PTY, hashline edits), provider integrations, and session/role plumbing carry
+forward from it. The MIT permission notice for that incorporated code is the
+root `LICENSE` in this repository.
+
+## Apache License 2.0 components
+
+The following files are vendored or adapted from Apache-2.0 licensed
+upstream projects. Copyright and attribution are preserved in the file
+headers; the Apache License 2.0 full text is available at
+<https://www.apache.org/licenses/LICENSE-2.0>.
+
+- `packages/ai/src/providers/openai-chat-wire.ts`,
+  `packages/ai/src/providers/openai-responses-wire.ts` — wire-type
+  definitions vendored from `openai-node` v6.42.0 (Copyright OpenAI,
+  Apache-2.0), trimmed to the streaming wire surface this repo speaks.
+- `packages/coding-agent/src/tools/browser/aria/aria-snapshot.bundle.txt` —
+  a generated, committed bundle of Playwright's injected ARIA-snapshot
+  sources (Copyright Microsoft Corporation, Apache-2.0), pinned and rebuilt
+  by `packages/coding-agent/scripts/generate-aria-snapshot.ts`. The upstream
+  Playwright sources themselves are not vendored, only the built artifact.
+
+## OpenAI Codex — format interoperability, not vendored code
+
+`packages/coding-agent/src/edit/apply-patch/` and related callers implement
+the `apply_patch` patch-envelope *format* popularized by OpenAI's Codex CLI
+(`openai/codex`, Apache-2.0) so Veyyon can read/write patches in that shape.
+This repository does not vendor Codex source code for that format: the
+parser, renderer, and patch application logic under `packages/coding-agent`
+and `packages/hashline` are Veyyon/oh-my-pi's own TypeScript implementation.
+Likewise, `packages/ai/src/providers/openai-codex-responses.ts` and
+`packages/catalog/src/wire/codex.ts` implement a client for OpenAI's public
+Codex/ChatGPT backend wire protocol (endpoints, headers, streaming shape) —
+protocol interoperability, not copied implementation. No Apache-2.0 notice
+carries forward here because no Codex source is present in this tree.
+
+## MIT components (Rust natives)
+
+- `crates/pi-shell/NOTICE` documents the RTK-derived (`rtk-ai/rtk`, MIT)
+  pytest-output-minimizer algorithm adapted in that crate.
+- `crates/vendor/*` contains vendored/patched copies of MIT-licensed Rust
+  crates (uutils coreutils reimplementations `uu-*`, `brush-core` /
+  `brush-builtins` from `reubeno/brush`, and `jaq`). Each subdirectory
+  carries its own `LICENSE` file from the upstream project; those are the
+  authoritative permission notices for that code and are not restated here.
+
+## Fonts and other assets
+
+- `docs/handbook/book/fonts/OPEN-SANS-LICENSE.txt` and
+  `website/docs/fonts/OPEN-SANS-LICENSE.txt` — Open Sans font, Apache
+  License 2.0.

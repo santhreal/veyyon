@@ -1611,7 +1611,7 @@ async function runBenchmark(cfg: Config): Promise<BenchmarkRun> {
 			process.stdout.write(bold("models.yml:\n"));
 			process.stdout.write(`${fs.readFileSync(modelsYaml, "utf8")}\n`);
 		}
-		process.stdout.write(bold("omp env:\n"));
+		process.stdout.write(bold("veyyon env:\n"));
 		for (const key in harborEnv) {
 			if (key === "OMP_BENCH_FORWARD_ENV") continue;
 			if (key.startsWith("OMP_BENCH_") || key === "PYTHONPATH") process.stdout.write(`  ${key}=${harborEnv[key]}\n`);

@@ -13,10 +13,10 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { resetSettingsForTest, Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import { EditTool, type EditToolDetails } from "@oh-my-pi/pi-coding-agent/edit";
-import type { ToolSession } from "@oh-my-pi/pi-coding-agent/tools";
-import { removeWithRetries } from "@oh-my-pi/pi-utils";
+import { resetSettingsForTest, Settings } from "@veyyon/pi-coding-agent/config/settings";
+import { EditTool, type EditToolDetails } from "@veyyon/pi-coding-agent/edit";
+import type { ToolSession } from "@veyyon/pi-coding-agent/tools";
+import { removeWithRetries } from "@veyyon/pi-utils";
 
 function makeApplyPatchSession(cwd: string): ToolSession {
 	return {

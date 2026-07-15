@@ -10,17 +10,17 @@
  * - interactive mode stacks each factory on top of the built-in editor provider.
  *
  * NOTE: imports are relative (`../src/...`) so the tests exercise this checkout
- * even when `node_modules/@oh-my-pi/pi-coding-agent` resolves elsewhere.
+ * even when `node_modules/@veyyon/pi-coding-agent` resolves elsewhere.
  */
 
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { Agent, type AgentTool } from "@oh-my-pi/pi-agent-core";
-import { type Api, Effort, type Model } from "@oh-my-pi/pi-ai";
-import type { AutocompleteProvider } from "@oh-my-pi/pi-tui";
-import { logger, TempDir } from "@oh-my-pi/pi-utils";
+import { Agent, type AgentTool } from "@veyyon/pi-agent-core";
+import { type Api, Effort, type Model } from "@veyyon/pi-ai";
+import type { AutocompleteProvider } from "@veyyon/pi-tui";
+import { logger, TempDir } from "@veyyon/pi-utils";
 import { type } from "arktype";
 import { ModelRegistry } from "../src/config/model-registry";
 import { resetSettingsForTest, Settings } from "../src/config/settings";

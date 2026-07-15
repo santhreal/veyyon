@@ -12,7 +12,7 @@ import {
 	parsePatch,
 	Recovery,
 	type SplitOptions,
-} from "@oh-my-pi/hashline";
+} from "@veyyon/hashline";
 
 const repl = (text: string): string => `+${text}`;
 

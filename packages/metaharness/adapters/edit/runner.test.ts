@@ -1,12 +1,12 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import type { AgentMessage } from "@oh-my-pi/pi-agent-core";
-import { formatSessionDumpText, SessionManager } from "@oh-my-pi/pi-coding-agent";
-import { TempDir } from "@oh-my-pi/pi-utils";
+import type { AgentMessage } from "@veyyon/pi-agent-core";
+import { formatSessionDumpText, SessionManager } from "@veyyon/pi-coding-agent";
+import { TempDir } from "@veyyon/pi-utils";
 import { generateReport } from "./report";
 import { buildBenchmarkResult, type TaskRunResult, writeConversationDump } from "./runner";
-import type { EditTask } from "@oh-my-pi/typescript-edit-benchmark/tasks";
+import type { EditTask } from "@veyyon/typescript-edit-benchmark/tasks";
 
 const tempDirs: TempDir[] = [];
 

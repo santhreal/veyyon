@@ -10,7 +10,7 @@ Extensions are the primary way to add capabilities to `oh-my-pi`. A single exten
 ## Minimum viable extension
 
 ```ts
-import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
+import type { ExtensionAPI } from "@veyyon/pi-coding-agent";
 
 export default function (pi: ExtensionAPI) {
   pi.on("session_start", async (_event, ctx) => {
@@ -19,14 +19,14 @@ export default function (pi: ExtensionAPI) {
 }
 ```
 
-That is a working extension. Drop it into `~/.omp/agent/extensions/hello.ts` and restart omp to see the notification.
+That is a working extension. Drop it into `~/.veyyon/agent/extensions/hello.ts` and restart omp to see the notification.
 
 ## Full example
 
 The following extension registers a slash command, a tool, and a session-start hook:
 
 ```ts
-import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
+import type { ExtensionAPI } from "@veyyon/pi-coding-agent";
 
 export default function myExtension(pi: ExtensionAPI) {
   const z = pi.zod;
@@ -79,9 +79,9 @@ omp loads extension modules from these sources:
 
 1. Native `.omp` locations discovered through the capability system:
    - `<cwd>/.omp/extensions/`
-   - `~/.omp/agent/extensions/`
-   - legacy extension paths listed in `.omp/settings.json#extensions` or `~/.omp/agent/settings.json#extensions`
-2. Installed plugins under `~/.omp/plugins/node_modules` (`omp plugin install` npm/git specs, or `omp plugin link`) via their `omp.extensions`/`pi.extensions` manifests. Marketplace cache installs do not feed extension modules — they surface skills/commands/hooks/tools/MCP only.
+   - `~/.veyyon/agent/extensions/`
+   - legacy extension paths listed in `.omp/settings.json#extensions` or `~/.veyyon/agent/settings.json#extensions`
+2. Installed plugins under `~/.veyyon/plugins/node_modules` (`omp plugin install` npm/git specs, or `omp plugin link`) via their `omp.extensions`/`pi.extensions` manifests. Marketplace cache installs do not feed extension modules — they surface skills/commands/hooks/tools/MCP only.
 3. Explicit configured paths passed by the CLI (`omp --extension ./my-ext.ts`, also `-e`; `--hook` is treated as an alias) and by the `extensions:` setting in config.
 
 The runtime de-duplicates by resolved absolute path — first seen wins.
@@ -216,7 +216,7 @@ Full event catalog: see [extension authoring guide](../extensions.md).
 |---|---|
 | Tools + commands + events in one module | **Extension** (`ExtensionAPI`) |
 | Pure event interception (policy, redaction) | **Extension** or **Hook** (both work; extension is preferred) |
-| Legacy hook module already exists | **Hook** (`HookAPI` from `@oh-my-pi/pi-coding-agent/extensibility/hooks`) |
+| Legacy hook module already exists | **Hook** (`HookAPI` from `@veyyon/pi-coding-agent/extensibility/hooks`) |
 | Registering a provider, shortcut, or CLI flag | **Extension only** |
 | Shipping as a marketplace plugin | **Extension** (use `package.json` manifest) |
 
@@ -224,10 +224,10 @@ Extensions are a strict superset of hooks. New authoring should use `ExtensionAP
 
 ## Debugging
 
-omp writes structured logs to a rotating file under `~/.omp/logs/` (debug level is always on; nothing is written to the console, which would corrupt the TUI). Tail today's log to see extension load diagnostics:
+omp writes structured logs to a rotating file under `~/.veyyon/logs/` (debug level is always on; nothing is written to the console, which would corrupt the TUI). Tail today's log to see extension load diagnostics:
 
 ```
-tail -f ~/.omp/logs/omp.$(date +%F).log
+tail -f ~/.veyyon/logs/omp.$(date +%F).log
 ```
 
 Failed extension loads are logged with their path and error. Loaded extensions may also emit their own debug logs via `pi.logger`.
@@ -235,7 +235,7 @@ Failed extension loads are logged with their path and error. Loaded extensions m
 To temporarily disable a specific extension module by name without removing the file:
 
 ```yaml
-# ~/.omp/agent/config.yml
+# ~/.veyyon/agent/config.yml
 disabledExtensions:
   - extension-module:my-ext
 ```

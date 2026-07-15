@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { applyEdits, Patch, parsePatch } from "@oh-my-pi/hashline";
+import { applyEdits, Patch, parsePatch } from "@veyyon/hashline";
 
 function applyPatch(text: string, diff: string): string {
 	return applyEdits(text, parsePatch(diff).edits).text;

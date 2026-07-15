@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import "./setup";
-import { configureRecallFeatures } from "@oh-my-pi/pi-mnemopi/config";
-import { BeamMemory } from "@oh-my-pi/pi-mnemopi/core/beam";
-import type { EpisodicGraph, RelatedMemory } from "@oh-my-pi/pi-mnemopi/core/episodic-graph";
-import { Mnemopi } from "@oh-my-pi/pi-mnemopi/core/memory";
+import { configureRecallFeatures } from "@veyyon/pi-mnemopi/config";
+import { BeamMemory } from "@veyyon/pi-mnemopi/core/beam";
+import type { EpisodicGraph, RelatedMemory } from "@veyyon/pi-mnemopi/core/episodic-graph";
+import { Mnemopi } from "@veyyon/pi-mnemopi/core/memory";
 
 const previousProactive = process.env.MNEMOPI_PROACTIVE_LINKING;
 

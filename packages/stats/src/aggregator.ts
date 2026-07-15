@@ -1,5 +1,5 @@
 import * as fs from "node:fs";
-import { workerHostEntry } from "@oh-my-pi/pi-utils";
+import { workerHostEntry } from "@veyyon/pi-utils";
 import {
 	getRecentErrors as dbGetRecentErrors,
 	getRecentRequests as dbGetRecentRequests,
@@ -99,7 +99,7 @@ interface WorkerHandle {
  * self-dispatching CLI entry (omp in source, npm-bundle, or compiled form),
  * re-enter that entry with a worker argv selector; otherwise (standalone
  * omp-stats, bun test, SDK embedding) load the worker module directly, so this
- * package keeps zero runtime dependency on `@oh-my-pi/pi-coding-agent`.
+ * package keeps zero runtime dependency on `@veyyon/pi-coding-agent`.
  */
 function createSyncWorker(): Worker {
 	const hostEntry = workerHostEntry();
@@ -153,7 +153,7 @@ function dispatch(handle: WorkerHandle, request: SyncWorkerRequest): Promise<Par
 
 /**
  * Smoke test: spawns one sync worker, pings it, asserts the pong response,
- * then terminates. Used by `omp --smoke-test` so the install-method CI jobs
+ * then terminates. Used by `veyyon --smoke-test` so the install-method CI jobs
  * catch the silent worker-load failure that hit compiled binaries in #1011
  * and #1027 — neither `--version` nor `stats --summary` exercises the worker
  * spawn path on a fresh install (no session files = early return), so a

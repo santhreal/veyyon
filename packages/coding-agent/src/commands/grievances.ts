@@ -1,7 +1,7 @@
 /**
  * View, clean, and push reported tool issues from automated QA.
  */
-import { Args, Command, Flags } from "@oh-my-pi/pi-utils/cli";
+import { Args, Command, Flags } from "@veyyon/pi-utils/cli";
 import { cleanGrievances, listGrievances, pushGrievances } from "../cli/grievances-cli";
 
 export default class Grievances extends Command {
@@ -9,7 +9,7 @@ export default class Grievances extends Command {
 
 	static args = {
 		// Positional action: "list" (default), "clean", or "push". A positional
-		// arg keeps the historical `omp grievances` invocation working unchanged
+		// arg keeps the historical `veyyon grievances` invocation working unchanged
 		// while reusing the same command surface for the clean/push verbs.
 		action: Args.string({
 			description: "list (default), clean, or push",
@@ -28,12 +28,12 @@ export default class Grievances extends Command {
 	};
 
 	static examples = [
-		"omp grievances",
-		"omp grievances list --tool find",
-		"omp grievances clean --id 209",
-		"omp grievances clean --tool find",
-		"omp grievances clean --all",
-		"omp grievances push",
+		"veyyon grievances",
+		"veyyon grievances list --tool find",
+		"veyyon grievances clean --id 209",
+		"veyyon grievances clean --tool find",
+		"veyyon grievances clean --all",
+		"veyyon grievances push",
 	];
 
 	async run(): Promise<void> {

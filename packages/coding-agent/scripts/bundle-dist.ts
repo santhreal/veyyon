@@ -2,7 +2,7 @@
 
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { isEnoent } from "@oh-my-pi/pi-utils";
+import { isEnoent } from "@veyyon/pi-utils";
 import { buildDocsIndexPayload } from "./generate-docs-index";
 
 const packageDir = path.join(import.meta.dir, "..");
@@ -15,7 +15,7 @@ const shebang = "#!/usr/bin/env bun\n";
 // the npm bundle never executes that `isCompiledBinary()` branch.
 const ALWAYS_EXTERNAL = [
 	"mupdf",
-	"@oh-my-pi/pi-natives",
+	"@veyyon/pi-natives",
 	"@huggingface/transformers",
 	"fastembed",
 	"onnxruntime-node",

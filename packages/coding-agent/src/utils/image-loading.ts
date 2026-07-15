@@ -1,6 +1,6 @@
 import * as fs from "node:fs/promises";
-import type { ImageContent, Model } from "@oh-my-pi/pi-ai";
-import { formatBytes, readImageMetadata, SUPPORTED_IMAGE_MIME_TYPES } from "@oh-my-pi/pi-utils";
+import type { ImageContent, Model } from "@veyyon/pi-ai";
+import { formatBytes, readImageMetadata, SUPPORTED_IMAGE_MIME_TYPES } from "@veyyon/pi-utils";
 import { resolveReadPath } from "../tools/path-utils";
 import { formatDimensionNote, type ImageResizeOptions, resizeImage } from "./image-resize";
 

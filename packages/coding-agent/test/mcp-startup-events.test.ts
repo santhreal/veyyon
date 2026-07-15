@@ -5,7 +5,7 @@ import {
 	formatMCPConnectionStatusMessage,
 	isMcpConnectionStatusEvent,
 	MCP_CONNECTION_STATUS_EVENT_CHANNEL,
-} from "@oh-my-pi/pi-coding-agent/mcp/startup-events";
+} from "@veyyon/pi-coding-agent/mcp/startup-events";
 
 // Cross-module contract guard.
 //
@@ -58,7 +58,7 @@ describe("mcp/startup-events — connection-status cross-module contract", () =>
 		expect(message).not.toContain(os.homedir());
 		expect(message).not.toContain("\n");
 		expect(message).not.toContain("\t");
-		expect(message).toContain("broken: failed at   ~/.omp/mcp.log");
+		expect(message).toContain("broken: failed at   ~/.veyyon/mcp.log");
 	});
 
 	it("sanitizes server names before rendering them in status text", () => {
@@ -72,9 +72,9 @@ describe("mcp/startup-events — connection-status cross-module contract", () =>
 		expect(message).not.toContain(os.homedir());
 		expect(message).not.toContain("\n");
 		expect(message).not.toContain("\t");
-		expect(message).toContain("Connected: ~/.omp/connected   server.");
-		expect(message).toContain("Failed: ~/.omp/broken server: missing command.");
-		expect(message).toContain("Still connecting: ~/.omp/pending");
+		expect(message).toContain("Connected: ~/.veyyon/connected   server.");
+		expect(message).toContain("Failed: ~/.veyyon/broken server: missing command.");
+		expect(message).toContain("Still connecting: ~/.veyyon/pending");
 	});
 
 	it("keeps pending servers visible while other servers settle", () => {

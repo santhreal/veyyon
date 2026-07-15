@@ -17,10 +17,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { ImageContent } from "@oh-my-pi/pi-ai";
-import { resetSettingsForTest, Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import { InputController } from "@oh-my-pi/pi-coding-agent/modes/controllers/input-controller";
-import type { InteractiveModeContext } from "@oh-my-pi/pi-coding-agent/modes/types";
+import type { ImageContent } from "@veyyon/pi-ai";
+import { resetSettingsForTest, Settings } from "@veyyon/pi-coding-agent/config/settings";
+import { InputController } from "@veyyon/pi-coding-agent/modes/controllers/input-controller";
+import type { InteractiveModeContext } from "@veyyon/pi-coding-agent/modes/types";
 
 // A clipboard with no image on it — the deterministic default for the
 // not-found assertions so a real screenshot on the dev's clipboard cannot

@@ -1,9 +1,8 @@
-import { padding, truncateToWidth, visibleWidth } from "@oh-my-pi/pi-tui";
-import { gradientLogo, PI_LOGO } from "../../components/welcome";
+import { padding, truncateToWidth, visibleWidth } from "@veyyon/pi-tui";
+import { gradientLogo, VEYYON_LOGO } from "../../components/welcome";
 import { theme } from "../../theme/theme";
-import { renderStarfield, SETUP_TICK_MS } from "./splash";
 
-export const SETUP_OUTRO_MS = 1200;
+export const SETUP_OUTRO_MS = 1100;
 
 function centerLine(line: string, width: number): string {
 	const lineWidth = visibleWidth(line);
@@ -17,17 +16,21 @@ function clampLine(line: string, width: number): string {
 	return truncated + padding(Math.max(0, width - visibleWidth(truncated)));
 }
 
+/** Quiet handoff: settled silver wordmark on empty field — no starfield. */
 export function renderSetupOutro(width: number, height: number, elapsedMs: number): string[] {
-	const frame = Math.floor(elapsedMs / SETUP_TICK_MS);
-	const lines = renderStarfield(width, height, frame + 1000);
+	void SETUP_OUTRO_MS;
 	const progress = Math.max(0, Math.min(1, elapsedMs / SETUP_OUTRO_MS));
-	const logo = gradientLogo(PI_LOGO, progress * 1.2, { pos: (progress * 2) % 1, strength: 1 - progress });
-	const title = theme.bold(theme.fg("success", `${theme.status.success} Setup saved`));
-	const subtitle = theme.fg("muted", "Handing off to the normal CLI…");
-	const sweepWidth = Math.max(1, Math.min(width - 8, Math.floor((width - 8) * progress)));
-	const sweep = `${theme.fg("accent", "━".repeat(sweepWidth))}${theme.fg("dim", "─".repeat(Math.max(0, width - 8 - sweepWidth)))}`;
-	const content = [...logo, "", title, subtitle, "", sweep];
+	const eased = 1 - (1 - progress) ** 2;
+	const logo = gradientLogo(VEYYON_LOGO, 0, { pos: 1, strength: Math.max(0, 1 - eased) * 0.35 });
+	const title = theme.fg("muted", "Setup saved");
+	const subtitle = theme.fg("dim", "Opening Veyyon…");
+	const railMax = Math.max(1, Math.min(width - 10, visibleWidth(VEYYON_LOGO[0] ?? "") + 4));
+	const filled = Math.max(1, Math.floor(railMax * eased));
+	const rail =
+		theme.fg("accent", "━".repeat(filled)) + theme.fg("borderMuted", "─".repeat(Math.max(0, railMax - filled)));
+	const content = [...logo, "", title, subtitle, "", rail];
 	const start = Math.max(0, Math.floor((height - content.length) / 2));
+	const lines: string[] = Array.from({ length: height }, () => "");
 	for (let i = 0; i < content.length && start + i < lines.length; i++) {
 		lines[start + i] = centerLine(content[i] ?? "", width);
 	}

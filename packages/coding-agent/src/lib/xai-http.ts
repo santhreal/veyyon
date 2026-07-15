@@ -1,7 +1,7 @@
 // Ported from NousResearch/hermes-agent (MIT) — tools/xai_http.py.
 
-import { getBundledModels } from "@oh-my-pi/pi-catalog/models";
-import { $env } from "@oh-my-pi/pi-utils";
+import { getBundledModels } from "@veyyon/pi-catalog/models";
+import { $env } from "@veyyon/pi-utils";
 import type { ModelRegistry } from "../config/model-registry";
 
 const DEFAULT_BASE_URL = "https://api.x.ai/v1";
@@ -12,9 +12,12 @@ interface XAICredentials {
 	baseURL: string;
 }
 
-export function ohMyPiXAIUserAgent(): string {
-	return "oh-my-pi/xai";
+export function veyyonXAIUserAgent(): string {
+	return "veyyon/xai";
 }
+
+/** @deprecated Use {@link veyyonXAIUserAgent} */
+export const ohMyPiXAIUserAgent = veyyonXAIUserAgent;
 
 type XAIProvider = "xai-oauth" | "xai";
 

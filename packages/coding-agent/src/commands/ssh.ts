@@ -1,7 +1,7 @@
 /**
  * Manage SSH host configurations.
  */
-import { Args, Command, Flags } from "@oh-my-pi/pi-utils/cli";
+import { Args, Command, Flags } from "@veyyon/pi-utils/cli";
 import { runSSHCommand, type SSHAction, type SSHCommandArgs } from "../cli/ssh-cli";
 import { initTheme } from "../modes/theme/theme";
 

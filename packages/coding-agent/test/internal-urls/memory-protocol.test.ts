@@ -2,17 +2,17 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { InternalUrlRouter } from "@oh-my-pi/pi-coding-agent/internal-urls";
-import { getMemoryRoot } from "@oh-my-pi/pi-coding-agent/memories";
+import { InternalUrlRouter } from "@veyyon/pi-coding-agent/internal-urls";
+import { getMemoryRoot } from "@veyyon/pi-coding-agent/memories";
 import {
 	loadMnemopi,
 	loadMnemopiCore,
 	MnemopiSessionState,
 	setMnemopiSessionState,
-} from "@oh-my-pi/pi-coding-agent/mnemopi/state";
-import { AgentRegistry } from "@oh-my-pi/pi-coding-agent/registry/agent-registry";
-import type { AgentSession } from "@oh-my-pi/pi-coding-agent/session/agent-session";
-import { getAgentDir, removeWithRetries, setAgentDir, TempDir } from "@oh-my-pi/pi-utils";
+} from "@veyyon/pi-coding-agent/mnemopi/state";
+import { AgentRegistry } from "@veyyon/pi-coding-agent/registry/agent-registry";
+import type { AgentSession } from "@veyyon/pi-coding-agent/session/agent-session";
+import { getAgentDir, removeWithRetries, setAgentDir, TempDir } from "@veyyon/pi-utils";
 
 // Mnemopi state is loaded lazily; preload so `new MnemopiSessionState(...)` can
 // resolve the module synchronously in the fixtures below.

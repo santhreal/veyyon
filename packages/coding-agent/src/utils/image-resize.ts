@@ -1,4 +1,4 @@
-import type { ImageContent } from "@oh-my-pi/pi-ai";
+import type { ImageContent } from "@veyyon/pi-ai";
 
 export interface ImageResizeOptions {
 	maxWidth?: number;
@@ -121,12 +121,12 @@ function readImageHeaderDimensions(buffer: Uint8Array): ImageHeaderDimensions | 
 }
 
 /**
- * Read `OMP_NO_WEBP` per-call so runtime toggles take effect.
+ * Read `VEYYON_NO_WEBP` / `OMP_NO_WEBP` per-call so runtime toggles take effect.
  * Only `"1"` and `"true"` (case-insensitive) enable exclusion — an empty string
  * or `"0"` MUST be treated as disabled.
  */
 function isWebPExcluded(): boolean {
-	const raw = Bun.env.OMP_NO_WEBP;
+	const raw = Bun.env.VEYYON_NO_WEBP ?? Bun.env.OMP_NO_WEBP;
 	if (raw === undefined) return false;
 	const v = raw.toLowerCase();
 	return v === "1" || v === "true";

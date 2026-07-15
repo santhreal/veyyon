@@ -7,7 +7,7 @@ import {
 	logger,
 	parseFrontmatter,
 	prompt,
-} from "@oh-my-pi/pi-utils";
+} from "@veyyon/pi-utils";
 import { jtdToTypeScript } from "../tools/jtd-to-typescript";
 import { parseCommandArgs, substituteArgs } from "../utils/command-args";
 

@@ -20,11 +20,11 @@
 // iTerm2, WezTerm, …) keep working unchanged and the BEL emission still fires
 // for tmux `monitor-bell`, X11 urgency hints, and audible-bell handlers.
 
-import { $which } from "@oh-my-pi/pi-utils";
+import { $which } from "@veyyon/pi-utils";
 import type { TerminalId, TerminalNotification } from "./terminal-capabilities";
 
 /** Application name surfaced as the notification source. */
-const APP_NAME = "Oh My Pi";
+const APP_NAME = "Veyyon";
 
 /** Resolved notifier binary used to fan a notification out to D-Bus. */
 export type DesktopNotifierKind = "notify-send" | "gdbus";

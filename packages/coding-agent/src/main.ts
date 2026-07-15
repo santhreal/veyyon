@@ -7,8 +7,8 @@
 import * as fsSync from "node:fs";
 import * as os from "node:os";
 import { createInterface } from "node:readline/promises";
-import { EventLoopKeepalive } from "@oh-my-pi/pi-agent-core";
-import type { ImageContent } from "@oh-my-pi/pi-ai";
+import { EventLoopKeepalive } from "@veyyon/pi-agent-core";
+import type { ImageContent } from "@veyyon/pi-ai";
 import {
 	$env,
 	directoryExists,
@@ -19,7 +19,7 @@ import {
 	postmortem,
 	setProjectDir,
 	VERSION,
-} from "@oh-my-pi/pi-utils";
+} from "@veyyon/pi-utils";
 import chalk from "chalk";
 import { reset as resetCapabilities } from "./capability";
 import { type Args, reportUnrecognizedFlags } from "./cli/args";
@@ -50,7 +50,6 @@ import {
 import { injectOmpExtensionCliRoots } from "./discovery/omp-extension-roots";
 import { ExtensionRunner } from "./extensibility/extensions/runner";
 import type { ExtensionUIContext } from "./extensibility/extensions/types";
-import { scheduleMarketplaceAutoUpdate } from "./extensibility/plugins/marketplace-auto-update";
 import { registerDaemonProjectPresence } from "./launch/presence";
 import type { MCPManager } from "./mcp";
 import { InteractiveMode } from "./modes/interactive-mode";
@@ -106,7 +105,7 @@ async function checkForNewVersion(currentVersion: string): Promise<string | unde
 		return;
 	}
 	try {
-		const response = await fetch("https://registry.npmjs.org/@oh-my-pi/pi-coding-agent/latest", {
+		const response = await fetch("https://registry.npmjs.org/@veyyon/pi-coding-agent/latest", {
 			signal: withTimeoutSignal(5_000),
 		});
 		if (!response.ok) return undefined;
@@ -140,14 +139,6 @@ const HOST_DEFAULTED_SETTING_PATHS: SettingPath[] = [
 	// memory should opt in explicitly through their own settings layer.
 	"memory.backend",
 	"memories.enabled",
-	// Advisor is interactive-session assistance. Protocol hosts opt in explicitly
-	// instead of inheriting a user's globally-enabled local preference, and when
-	// they do opt in they get the default tuning rather than the user's local tuning.
-	"advisor.enabled",
-	"advisor.subagents",
-	"advisor.syncBacklog",
-	"advisor.immuneTurns",
-	"tier.advisor",
 ];
 
 const RPC_BACKGROUND_DEFAULTED_SETTING_PATHS: SettingPath[] = [
@@ -487,7 +478,7 @@ async function runInteractiveMode(
 		}
 	}
 
-	// `omp join <link>`: dispatch through the same builtin path as a typed
+	// `veyyon join <link>`: dispatch through the same builtin path as a typed
 	// `/join` so collab guards and error rendering stay in one place.
 	if (joinLink !== undefined) {
 		await executeBuiltinSlashCommand(`/join ${joinLink}`, { ctx: mode });
@@ -677,7 +668,7 @@ export async function createSessionManager(
 		if (!match) {
 			throw new SessionResolutionError(
 				`Session "${forkSource}" not found.`,
-				"Run `omp --resume` without an argument to pick from recent sessions, or `omp` to start a new one.",
+				"Run `veyyon --resume` without an argument to pick from recent sessions, or `omp` to start a new one.",
 			);
 		}
 		return await SessionManager.forkFrom(match.session.path, cwd, parsed.sessionDir);
@@ -697,7 +688,7 @@ export async function createSessionManager(
 		if (!match) {
 			throw new SessionResolutionError(
 				`Session "${sessionArg}" not found.`,
-				"Run `omp --resume` without an argument to pick from recent sessions, or `omp` to start a new one.",
+				"Run `veyyon --resume` without an argument to pick from recent sessions, or `omp` to start a new one.",
 			);
 		}
 		if (match.scope === "local") {
@@ -1170,6 +1161,12 @@ export async function runRootCommand(
 			plan: planModel,
 		});
 	}
+	if (parsedArgs.subagentModel) {
+		settingsInstance.override("subagent.model", parsedArgs.subagentModel);
+	}
+	if (parsedArgs.compactionModel) {
+		settingsInstance.override("compaction.model", parsedArgs.compactionModel);
+	}
 
 	// --print-thoughts (single-shot print mode) must surface reasoning, so un-hide
 	// thinking before the session is built — otherwise a passive omitThinking
@@ -1328,12 +1325,6 @@ export async function runRootCommand(
 		await logger.time("registerDaemonProjectPresence", registerDaemonProjectPresence, cwd);
 	}
 
-	scheduleMarketplaceAutoUpdate({
-		autoUpdate: settingsInstance.get("marketplace.autoUpdate"),
-		resolveActiveProjectRegistryPath,
-		clearPluginRootsCache: clearPluginRootsAndCaches,
-	});
-
 	const sessionOptions = await logger.time(
 		"buildSessionOptions",
 		buildSessionOptions,
@@ -1415,7 +1406,7 @@ export async function runRootCommand(
 		};
 		const initialArgs = applyExtensionFlags(extensionFlagSink, rawArgs) ?? parsedArgs;
 		normalizeContinueSessionArgs(initialArgs, rawArgs);
-		// Fail fast on stale/typo flags (e.g. `omp --list-models`) now that we
+		// Fail fast on stale/typo flags (e.g. `veyyon --list-models`) now that we
 		// know the real extension flag set. Without this check the unrecognized
 		// token gets silently consumed and any following positional leaks as the
 		// initial prompt — kicking off a real LLM session, MCP connection, and

@@ -58,7 +58,7 @@ export function shouldDetachKernel(platform: NodeJS.Platform): boolean {
  *
  * Returns `true` if any of stdin/stdout/stderr is currently a TTY. This
  * correctly detects the common interactive launches and the partial-
- * redirection cases (`omp -p > out.txt`, `< in.txt`, `2> err.log`) where at
+ * redirection cases (`veyyon -p > out.txt`, `< in.txt`, `2> err.log`) where at
  * least one stream stays bound to the terminal. The all-stdio-redirected
  * case (`< in > out 2> err` from a console) is the reason we prefer the
  * Win32 probe over this fallback whenever possible.
@@ -119,7 +119,7 @@ export function __resetWindowsConsoleProbeCache(): void {
  *
  * - On Windows, the authoritative signal is `GetConsoleWindow()`. It returns
  *   a non-NULL HWND whenever the process has a console attached, regardless
- *   of how the standard streams are redirected — so an `omp -p ... < in.txt
+ *   of how the standard streams are redirected — so an `veyyon -p ... < in.txt
  *   > out.txt 2> err.log` launched from a real Windows Terminal session is
  *   correctly classified as console-attached and the kernel keeps its
  *   inheritable console.

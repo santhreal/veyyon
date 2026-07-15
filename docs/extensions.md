@@ -19,7 +19,7 @@ For packaged user-facing extension CLIs/features such as `packages/swarm-extensi
 An extension is a TS/JS module exporting a default factory:
 
 ```ts
-import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
+import type { ExtensionAPI } from "@veyyon/pi-coding-agent";
 
 export default function myExtension(pi: ExtensionAPI) {
   // register handlers/tools/commands/renderers
@@ -67,7 +67,7 @@ Important constraint from `loader.ts`:
 ## Quick start
 
 ```ts
-import type { ExtensionAPI } from "@oh-my-pi/pi-coding-agent";
+import type { ExtensionAPI } from "@veyyon/pi-coding-agent";
 
 export default function (pi: ExtensionAPI) {
   const { z } = pi.zod;
@@ -385,7 +385,7 @@ Used by interactive rendering when custom messages are displayed.
 ## Assistant thinking renderer
 
 ```ts
-import { Container, Text } from "@oh-my-pi/pi-tui";
+import { Container, Text } from "@veyyon/pi-tui";
 
 pi.registerAssistantThinkingRenderer((context, theme) => {
   const container = new Container();

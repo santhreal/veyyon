@@ -2,8 +2,8 @@
  * Root command for the coding agent CLI.
  */
 
-import { APP_NAME } from "@oh-my-pi/pi-utils";
-import { Args, Command, Flags } from "@oh-my-pi/pi-utils/cli";
+import { APP_NAME } from "@veyyon/pi-utils";
+import { Args, Command, Flags } from "@veyyon/pi-utils/cli";
 import { type Args as ParsedArgs, parseArgs, reportCliUsageError } from "../cli/args";
 import { runRootCommand } from "../main";
 import { prepareAcpTerminalAuthArgs } from "../modes/acp/terminal-auth";
@@ -172,8 +172,9 @@ export default class Index extends Command {
 		// in `main.ts` after the `Settings` instance is constructed, so every `settings.get("tools.approvalMode")`
 		// site (wrapper, `/settings` UI) observes the same value.
 		"approval-mode": Flags.string({
-			options: ["always-ask", "write", "yolo"],
-			description: "Override tools.approvalMode for this session (always-ask|write|yolo)",
+			options: ["plan", "ask", "auto-edit", "yolo", "always-ask", "write"],
+			description:
+				"Override tools.approvalMode for this session (plan|ask|auto-edit|yolo; legacy always-ask|write accepted)",
 		}),
 	};
 
@@ -183,10 +184,10 @@ export default class Index extends Command {
 		`# Include files in initial message\n  ${APP_NAME} @prompt.md @image.png "What color is the sky?"`,
 		`# Non-interactive mode (process and exit)\n  ${APP_NAME} -p "List all .ts files in src/"`,
 		`# Continue previous session\n  ${APP_NAME} --continue "What did we discuss?"`,
-		`# Create a shell shortcut for a work profile\n  ${APP_NAME} --profile work --alias omp-work`,
+		`# Create a shell shortcut for a work profile\n  ${APP_NAME} --profile work --alias ${APP_NAME}-work`,
 		`# Use different model (fuzzy matching)\n  ${APP_NAME} --model opus "Help me refactor this code"`,
 		`# Limit model cycling to specific models\n  ${APP_NAME} --models claude-sonnet,claude-haiku,gpt-4o`,
-		`# Export a session file to HTML\n  ${APP_NAME} --export ~/.omp/agent/sessions/--path--/session.jsonl`,
+		`# Export a session file to HTML\n  ${APP_NAME} --export ~/.veyyon/agent/sessions/--path--/session.jsonl`,
 	];
 
 	static strict = false;

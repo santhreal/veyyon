@@ -12,17 +12,17 @@
  */
 
 import { afterEach, beforeAll, beforeEach, describe, expect, it, type Mock, vi } from "bun:test";
-import type { AgentMessage } from "@oh-my-pi/pi-agent-core";
-import type { AssistantMessage, ImageContent, Usage } from "@oh-my-pi/pi-ai";
-import { kStreamingPartialJson } from "@oh-my-pi/pi-ai/utils/block-symbols";
-import { resetSettingsForTest, Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import { initTheme } from "@oh-my-pi/pi-coding-agent/modes/theme/theme";
-import type { InteractiveModeContext } from "@oh-my-pi/pi-coding-agent/modes/types";
-import { UiHelpers } from "@oh-my-pi/pi-coding-agent/modes/utils/ui-helpers";
-import type { SessionContext } from "@oh-my-pi/pi-coding-agent/session/session-context";
-import { SessionManager } from "@oh-my-pi/pi-coding-agent/session/session-manager";
-import { type Component, Container, Image, ImageProtocol, setTerminalImageProtocol, TERMINAL } from "@oh-my-pi/pi-tui";
-import { TempDir } from "@oh-my-pi/pi-utils";
+import type { AgentMessage } from "@veyyon/pi-agent-core";
+import type { AssistantMessage, ImageContent, Usage } from "@veyyon/pi-ai";
+import { kStreamingPartialJson } from "@veyyon/pi-ai/utils/block-symbols";
+import { resetSettingsForTest, Settings } from "@veyyon/pi-coding-agent/config/settings";
+import { initTheme } from "@veyyon/pi-coding-agent/modes/theme/theme";
+import type { InteractiveModeContext } from "@veyyon/pi-coding-agent/modes/types";
+import { UiHelpers } from "@veyyon/pi-coding-agent/modes/utils/ui-helpers";
+import type { SessionContext } from "@veyyon/pi-coding-agent/session/session-context";
+import { SessionManager } from "@veyyon/pi-coding-agent/session/session-manager";
+import { type Component, Container, Image, ImageProtocol, setTerminalImageProtocol, TERMINAL } from "@veyyon/pi-tui";
+import { TempDir } from "@veyyon/pi-utils";
 
 beforeAll(() => {
 	initTheme();

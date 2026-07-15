@@ -3,9 +3,10 @@
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { ImageContent } from "@oh-my-pi/pi-ai";
-import { getProjectDir, isEnoent, readImageMetadata } from "@oh-my-pi/pi-utils";
+import type { ImageContent } from "@veyyon/pi-ai";
+import { getProjectDir, isEnoent, readImageMetadata } from "@veyyon/pi-utils";
 import chalk from "chalk";
+import { CONVERTIBLE_EXTENSIONS } from "../markit";
 import { resolveReadPath } from "../tools/path-utils";
 import { formatBytes } from "../tools/render-utils";
 import { formatDimensionNote, resizeImage } from "../utils/image-resize";
@@ -15,7 +16,6 @@ import { convertFileWithMarkit } from "../utils/markit";
 // If a file exceeds these limits, we include it as a path-only <file/> block.
 const MAX_CLI_TEXT_BYTES = 5 * 1024 * 1024; // 5MB
 const MAX_CLI_IMAGE_BYTES = 25 * 1024 * 1024; // 25MB
-const CONVERTIBLE_EXTENSIONS = new Set([".pdf", ".doc", ".docx", ".ppt", ".pptx", ".xls", ".xlsx", ".rtf", ".epub"]);
 
 export interface ProcessedFiles {
 	text: string;

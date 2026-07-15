@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { loginLiteLLM } from "@oh-my-pi/pi-ai/registry/litellm";
+import { loginLiteLLM } from "@veyyon/pi-ai/registry/litellm";
 
 describe("LiteLLM login", () => {
 	it("mentions LITELLM_BASE_URL for custom proxy endpoints", async () => {

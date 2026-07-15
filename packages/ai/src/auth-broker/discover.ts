@@ -13,7 +13,8 @@ import {
 	isEnoent,
 	logger,
 	MAIN_CONFIG_FILENAMES,
-} from "@oh-my-pi/pi-utils";
+	$pickenv,
+} from "@veyyon/pi-utils";
 import { YAML } from "bun";
 import { AuthStorage } from "../auth-storage";
 import * as AIError from "../error";
@@ -39,7 +40,7 @@ export interface DiscoverAuthStorageOptions {
 	sourceLabel?: string;
 }
 
-/** Path to the local bearer token file. Created by `omp auth-broker token`. */
+/** Path to the local bearer token file. Created by `veyyon auth-broker token`. */
 export function getAuthBrokerTokenFilePath(): string {
 	return path.join(getConfigRootDir(), "auth-broker.token");
 }
@@ -113,20 +114,23 @@ async function readConfigYaml(agentDir: string): Promise<ConfigSnapshot> {
 }
 
 function resolveSnapshotTtlMs(): number {
-	const raw = process.env.OMP_AUTH_BROKER_SNAPSHOT_TTL_MS;
+	const raw = $pickenv("VEYYON_AUTH_BROKER_SNAPSHOT_TTL_MS", "OMP_AUTH_BROKER_SNAPSHOT_TTL_MS");
 	if (raw === undefined) return DEFAULT_SNAPSHOT_CACHE_TTL_MS;
 	const value = raw.trim();
 	if (value === "") return DEFAULT_SNAPSHOT_CACHE_TTL_MS;
 	const ttlMs = Number(value);
 	if (Number.isFinite(ttlMs) && ttlMs >= 0) return ttlMs;
-	logger.warn("Invalid OMP_AUTH_BROKER_SNAPSHOT_TTL_MS; using default", { value: raw });
+	logger.warn("Invalid VEYYON_AUTH_BROKER_SNAPSHOT_TTL_MS / OMP_AUTH_BROKER_SNAPSHOT_TTL_MS; using default", {
+		value: raw,
+	});
 	return DEFAULT_SNAPSHOT_CACHE_TTL_MS;
 }
 
 /**
  * Resolve broker connection configuration using the same precedence as the TUI:
  *
- * 1. `OMP_AUTH_BROKER_URL` / `OMP_AUTH_BROKER_TOKEN` env vars.
+ * 1. `VEYYON_AUTH_BROKER_URL` / `VEYYON_AUTH_BROKER_TOKEN` env vars
+ *    (`OMP_AUTH_BROKER_*` legacy fallbacks).
  * 2. `auth.broker.url` / `auth.broker.token` in `<agentDir>/config.yml` or `<agentDir>/config.yaml`.
  * 3. `<config-root>/auth-broker.token` file (paired with a URL from env/config).
  *
@@ -140,8 +144,8 @@ export async function resolveAuthBrokerConfig(
 	const agentDir = options.agentDir ?? getAgentDir();
 	const resolveConfig = options.configValueResolver ?? defaultResolveConfigValue;
 
-	const envUrl = process.env.OMP_AUTH_BROKER_URL;
-	const envToken = process.env.OMP_AUTH_BROKER_TOKEN;
+	const envUrl = $pickenv("VEYYON_AUTH_BROKER_URL", "OMP_AUTH_BROKER_URL");
+	const envToken = $pickenv("VEYYON_AUTH_BROKER_TOKEN", "OMP_AUTH_BROKER_TOKEN");
 
 	let url = envUrl && envUrl.length > 0 ? envUrl : undefined;
 	let configToken: string | undefined;

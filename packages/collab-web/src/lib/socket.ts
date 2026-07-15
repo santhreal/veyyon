@@ -1,6 +1,6 @@
 /**
  * Browser WebSocket wrapper for collab live-session sharing (vendored mirror
- * of `@oh-my-pi/pi-coding-agent/src/collab/relay-client.ts` semantics).
+ * of `@veyyon/pi-coding-agent/src/collab/relay-client.ts` semantics).
  *
  * Connects to a relay room, seals/opens AES-GCM frames in strict order, and
  * reconnects with exponential backoff on transient drops. Fatal relay close
@@ -8,7 +8,7 @@
  * reconnect.
  */
 
-import type { GuestFrame, HostFrame, RelayControlMessage } from "@oh-my-pi/pi-wire";
+import type { GuestFrame, HostFrame, RelayControlMessage } from "@veyyon/pi-wire";
 import { open, seal } from "./codec";
 import { packEnvelope, unpackEnvelope } from "./link";
 

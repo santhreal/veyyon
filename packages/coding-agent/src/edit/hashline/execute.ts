@@ -18,8 +18,8 @@ import {
 	Patcher,
 	type PatchSectionResult,
 	type PreparedSection,
-} from "@oh-my-pi/hashline";
-import type { AgentToolResult } from "@oh-my-pi/pi-agent-core";
+} from "@veyyon/hashline";
+import type { AgentToolResult } from "@veyyon/pi-agent-core";
 import type { FileDiagnosticsResult, WritethroughCallback, WritethroughDeferredHandle } from "../../lsp";
 import type { ToolSession } from "../../tools";
 import { outputMeta } from "../../tools/output-meta";

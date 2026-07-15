@@ -9,10 +9,10 @@
  * drains pending messages; `list` shows every addressable peer.
  */
 
-import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@oh-my-pi/pi-agent-core";
-import type { ToolExample } from "@oh-my-pi/pi-ai";
-import { type Component, Text } from "@oh-my-pi/pi-tui";
-import { formatAge, formatDuration, prompt } from "@oh-my-pi/pi-utils";
+import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/pi-agent-core";
+import type { ToolExample } from "@veyyon/pi-ai";
+import { type Component, Text } from "@veyyon/pi-tui";
+import { formatAge, formatDuration, prompt } from "@veyyon/pi-utils";
 import { type } from "arktype";
 import type { Settings } from "../config/settings";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
@@ -536,7 +536,7 @@ function bodyLines(
 	return lines;
 }
 
-/** Header title carrying the op direction: `IRC ➤ peer` out, `IRC ⟵ peer` in. */
+/** Header title carrying the op direction: `IRC > peer` out, `IRC ⟵ peer` in. */
 function callTitle(args: IrcRenderArgs | undefined, theme: Theme): string {
 	switch (args?.op) {
 		case "send":

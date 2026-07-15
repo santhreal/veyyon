@@ -1,8 +1,8 @@
 /**
  * Regression: OMP-native user-level config discovery must follow the active
- * profile. A profile relocates the agent directory to ~/.omp/profiles/<name>/agent;
+ * profile. A profile relocates the agent directory to ~/.veyyon/profiles/<name>/agent;
  * the native provider used to read user config (commands, skills, rules, etc.)
- * from the literal home (~/.omp/agent) via `ctx.home`, leaking the default
+ * from the literal home (~/.veyyon/agent) via `ctx.home`, leaking the default
  * profile's config into every profile. Discovery now resolves the user scope
  * through getAgentDir(), so a profile sees only its own config.
  *
@@ -17,11 +17,11 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { clearCache as clearFsCache } from "@oh-my-pi/pi-coding-agent/capability/fs";
-import { type Skill, skillCapability } from "@oh-my-pi/pi-coding-agent/capability/skill";
-import { type SlashCommand, slashCommandCapability } from "@oh-my-pi/pi-coding-agent/capability/slash-command";
-import { loadCapability } from "@oh-my-pi/pi-coding-agent/discovery";
-import { getConfigRootDir, removeWithRetries, setAgentDir } from "@oh-my-pi/pi-utils";
+import { clearCache as clearFsCache } from "@veyyon/pi-coding-agent/capability/fs";
+import { type Skill, skillCapability } from "@veyyon/pi-coding-agent/capability/skill";
+import { type SlashCommand, slashCommandCapability } from "@veyyon/pi-coding-agent/capability/slash-command";
+import { loadCapability } from "@veyyon/pi-coding-agent/discovery";
+import { getConfigRootDir, removeWithRetries, setAgentDir } from "@veyyon/pi-utils";
 
 const originalAgentDirEnv = process.env.PI_CODING_AGENT_DIR;
 const fallbackAgentDir = path.join(getConfigRootDir(), "agent");
@@ -58,7 +58,7 @@ describe("native user-level config discovery follows the active profile", () => 
 		await writeSkill(path.join(profileAgentDir, "skills"), "profile-skill");
 
 		// Decoy: default profile's config at the literal-home path the old loader read.
-		const defaultAgentDir = path.join(tempHome, ".omp", "agent");
+		const defaultAgentDir = path.join(tempHome, ".veyyon", "agent");
 		await writeFile(path.join(defaultAgentDir, "commands", "default-cmd.md"), "Default command.\n");
 		await writeSkill(path.join(defaultAgentDir, "skills"), "default-skill");
 	});

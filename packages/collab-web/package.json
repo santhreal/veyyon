@@ -1,10 +1,10 @@
 {
   "type": "module",
-  "name": "@oh-my-pi/collab-web",
+  "name": "@veyyon/collab-web",
   "version": "16.3.6",
   "private": true,
   "description": "Browser guest client and local relay tools for omp collab live sessions",
-  "homepage": "https://omp.sh",
+  "homepage": "https://veyyon.dev",
   "author": "Can Boluk",
   "license": "MIT",
   "repository": {
@@ -37,7 +37,7 @@
     "fmt": "biome format --write ."
   },
   "dependencies": {
-    "@oh-my-pi/pi-wire": "catalog:",
+    "@veyyon/pi-wire": "catalog:",
     "lucide-react": "catalog:",
     "marked": "catalog:",
     "react": "catalog:",

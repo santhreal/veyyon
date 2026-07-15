@@ -15,7 +15,7 @@ import {
 	truncateToWidth,
 	visibleWidth,
 	wrapTextWithAnsi,
-} from "@oh-my-pi/pi-tui";
+} from "@veyyon/pi-tui";
 import type {
 	ExtensionAskDialogQuestion,
 	ExtensionAskDialogResultItem,
@@ -271,7 +271,7 @@ function renderRowLabel(
 	const marker = `${theme.fg(checked ? "success" : "dim", optionMarker(question, checked))} `;
 	const cursor = selected ? theme.fg("accent", `${theme.nav.cursor} `) : "  ";
 	const label = renderInlineMarkdown(rowItem.label, mdTheme, t => theme.fg(color, t));
-	const noteMarker = state.note && state.noteRowKey === rowItem.key ? theme.fg("success", "  ✎ note") : "";
+	const noteMarker = state.note && state.noteRowKey === rowItem.key ? theme.fg("success", "  note note") : "";
 	const firstLine = `${cursor}${marker}${label}${noteMarker}`;
 	const lines = [truncateToWidth(firstLine, width, Ellipsis.Unicode)];
 	if (rowItem.kind === "option") {

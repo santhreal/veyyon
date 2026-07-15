@@ -1,4 +1,4 @@
-import type { ResolvedThinkingLevel } from "@oh-my-pi/pi-agent-core";
+import type { ResolvedThinkingLevel } from "@veyyon/pi-agent-core";
 import type {
 	Api,
 	ApiKeyResolver,
@@ -12,11 +12,11 @@ import type {
 	ServiceTier,
 	ServiceTierByFamily,
 	SimpleStreamOptions,
-} from "@oh-my-pi/pi-ai";
-import { resolveModelServiceTier, streamSimple } from "@oh-my-pi/pi-ai";
-import { buildModelProviderPriorityRank } from "@oh-my-pi/pi-catalog/identity";
-import { replaceTabs, truncateToWidth } from "@oh-my-pi/pi-tui";
-import { formatDuration, getProjectDir } from "@oh-my-pi/pi-utils";
+} from "@veyyon/pi-ai";
+import { resolveModelServiceTier, streamSimple } from "@veyyon/pi-ai";
+import { buildModelProviderPriorityRank } from "@veyyon/pi-catalog/identity";
+import { replaceTabs, truncateToWidth } from "@veyyon/pi-tui";
+import { formatDuration, getProjectDir } from "@veyyon/pi-utils";
 import chalk from "chalk";
 import type { ApiKeyResolverModel } from "../config/api-key-resolver";
 import { ModelRegistry } from "../config/model-registry";
@@ -254,7 +254,7 @@ async function runBenchRequest(
 		// carries no visible final content, and measured no output tokens
 		// benchmarked nothing — a genuinely empty stream (e.g. a gateway that 200s
 		// with an empty body). Surface it as a failure instead of a misleading
-		// 0-token "✓". Streaming and buffered providers that produce content keep
+		// 0-token "[ok]". Streaming and buffered providers that produce content keep
 		// passing even when usage is omitted.
 		if (firstTokenAt === undefined && outputTokens === 0 && !hasVisibleFinalContent(message)) {
 			return {
@@ -311,9 +311,9 @@ function formatMs(ms: number): string {
 function formatRunLine(result: BenchRunResult, index: number, total: number): string {
 	const prefix = chalk.dim(`run ${index + 1}/${total}`);
 	if (result.ok) {
-		return `  ${chalk.green("✓")} ${prefix} ${chalk.dim("TTFT")} ${formatMs(result.ttftMs)} ${chalk.dim("TPS")} ${result.tokensPerSecond.toFixed(1)}/s ${chalk.dim("tokens")} ${result.outputTokens} ${chalk.dim("total")} ${formatMs(result.durationMs)}`;
+		return `  ${chalk.green("[ok]")} ${prefix} ${chalk.dim("TTFT")} ${formatMs(result.ttftMs)} ${chalk.dim("TPS")} ${result.tokensPerSecond.toFixed(1)}/s ${chalk.dim("tokens")} ${result.outputTokens} ${chalk.dim("total")} ${formatMs(result.durationMs)}`;
 	}
-	return `  ${chalk.red("✗")} ${prefix} ${chalk.red(truncateToWidth(replaceTabs(result.error).replace(/\r?\n/g, " "), ERROR_WIDTH))}`;
+	return `  ${chalk.red("[FAIL]")} ${prefix} ${chalk.red(truncateToWidth(replaceTabs(result.error).replace(/\r?\n/g, " "), ERROR_WIDTH))}`;
 }
 
 export function formatBenchTable(summary: BenchSummary): string {
@@ -490,7 +490,7 @@ export async function runBenchCommand(command: BenchCommandArgs, deps: BenchDepe
 	const now = deps.now ?? (() => performance.now());
 	const interactive = deps.stdoutIsTTY ?? process.stdout.isTTY === true;
 	if (command.models.length === 0) {
-		throw new Error("Pass at least one model selector, e.g. `omp bench opus gpt-5.2`");
+		throw new Error("Pass at least one model selector, e.g. `veyyon bench opus gpt-5.2`");
 	}
 
 	const runtime = await (deps.createRuntime ?? createDefaultRuntime)();

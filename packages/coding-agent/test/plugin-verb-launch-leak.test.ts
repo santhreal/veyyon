@@ -12,7 +12,7 @@
  * merely happen to begin with one of these verbs still fall through to `launch`
  * so genuine prompts are unaffected.
  *
- * Imported via a relative path (not the `@oh-my-pi/pi-coding-agent` alias) so the
+ * Imported via a relative path (not the `@veyyon/pi-coding-agent` alias) so the
  * assertions exercise this checkout's `cli-commands.ts` directly.
  */
 import { describe, expect, test } from "bun:test";

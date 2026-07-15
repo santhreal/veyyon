@@ -640,7 +640,7 @@ const PREVIEW_SIDE_LINES = 6;
  *
  * Format:
  *
- *     ⚠ N unresolved conflicts detected
+ *     warn N unresolved conflicts detected
  *     - ours = HEAD
  *     - theirs = feature/x
  *     NOTICE: …
@@ -682,10 +682,10 @@ export function formatConflictWarning(
 	if (partial) {
 		const hintPath = options.displayPath ?? "<file>";
 		out.push(
-			`⚠ ${entries.length} of ${total} unresolved ${word} visible in this window (read \`${hintPath}:conflicts\` for the full list).`,
+			`warn ${entries.length} of ${total} unresolved ${word} visible in this window (read \`${hintPath}:conflicts\` for the full list).`,
 		);
 	} else {
-		out.push(`⚠ ${total} unresolved ${word} detected`);
+		out.push(`warn ${total} unresolved ${word} detected`);
 	}
 	if (options.scanTruncated) {
 		out.push("- note: file scan hit the byte cap; additional conflicts may exist beyond the scanned prefix.");
@@ -756,7 +756,7 @@ export function formatConflictSummary(
 	const lines: string[] = [];
 	const total = entries.length;
 	const word = total === 1 ? "conflict" : "conflicts";
-	lines.push(`⚠ ${total} unresolved ${word} in ${options.displayPath || "<file>"}`);
+	lines.push(`warn ${total} unresolved ${word} in ${options.displayPath || "<file>"}`);
 	if (options.scanTruncated) {
 		lines.push("- note: file scan hit the byte cap; additional conflicts may exist beyond the scanned prefix.");
 	}

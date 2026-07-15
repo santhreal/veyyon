@@ -11,8 +11,8 @@
  */
 import { describe, expect, it } from "bun:test";
 
-import { loginFireworks } from "@oh-my-pi/pi-ai/registry/fireworks";
-import type { FetchImpl } from "@oh-my-pi/pi-catalog/types";
+import { loginFireworks } from "@veyyon/pi-ai/registry/fireworks";
+import type { FetchImpl } from "@veyyon/pi-catalog/types";
 
 const CONTROL_PLANE_HOST = "api.fireworks.ai";
 const CONTROL_PLANE_PATH = "/v1/accounts/fireworks/models";

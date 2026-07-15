@@ -7,7 +7,7 @@ This page indexes README-only user-facing package CLIs and features that need ro
 - **Include** root docs coverage for package-local CLIs, extension features, dashboards, and benchmark runners that users can run directly or through `omp`.
 - **Exclude explicitly** when a package/crate is internal implementation only; point to the architecture doc that owns it.
 - Package READMEs and manifests remain the source of truth for package-local setup and flags; root docs make the feature discoverable and link to exact source paths.
-- Internal Rust crates remain covered by native architecture docs unless promoted as standalone user-facing commands or APIs. The contributor-facing map lives at [`native-crates.md`](./native-crates.md); today every `crates/*` entry is internal to `@oh-my-pi/pi-natives` and the embedded shell, so [`natives-architecture.md`](./natives-architecture.md) and the surrounding native docs own them.
+- Internal Rust crates remain covered by native architecture docs unless promoted as standalone user-facing commands or APIs. The contributor-facing map lives at [`native-crates.md`](./native-crates.md); today every `crates/*` entry is internal to `@veyyon/pi-natives` and the embedded shell, so [`natives-architecture.md`](./natives-architecture.md) and the surrounding native docs own them.
 
 ## Package CLIs and features
 
@@ -15,7 +15,7 @@ This page indexes README-only user-facing package CLIs and features that need ro
 
 Sources: [`packages/swarm-extension/README.md`](../packages/swarm-extension/README.md), [`packages/swarm-extension/package.json`](../packages/swarm-extension/package.json), [`packages/swarm-extension/src/cli.ts`](../packages/swarm-extension/src/cli.ts), [`packages/swarm-extension/src/extension.ts`](../packages/swarm-extension/src/extension.ts).
 
-- Package: `@oh-my-pi/swarm-extension`; bin: `omp-swarm`.
+- Package: `@veyyon/swarm-extension`; bin: `omp-swarm`.
 - Feature: multi-agent DAG orchestration from YAML swarms, supporting `pipeline`, `parallel`, and `sequential` modes.
 - Standalone CLI: `omp-swarm path/to/swarm.yaml` runs until completion or process termination.
 - TUI extension mode: add the package path to `extensions`, then use `/swarm run <file.yaml>`, `/swarm status <name>`, or `/swarm help`.
@@ -27,7 +27,7 @@ Sources: [`packages/swarm-extension/README.md`](../packages/swarm-extension/READ
 
 Sources: [`packages/terminal-bench/README.md`](../packages/terminal-bench/README.md), [`packages/terminal-bench/package.json`](../packages/terminal-bench/package.json), [`packages/terminal-bench/src/runner.ts`](../packages/terminal-bench/src/runner.ts), [`packages/terminal-bench/agent/omp_local.py`](../packages/terminal-bench/agent/omp_local.py).
 
-- Package: private `@oh-my-pi/terminal-bench`; bin: `tb2`.
+- Package: private `@veyyon/terminal-bench`; bin: `tb2`.
 - Feature: runs `harbor-framework/terminal-bench-2` against a local or published `omp` build with a live progress, spend, token, ETA, and pass/fail dashboard.
 - CLI: `bun src/runner.ts [options] [-- <extra harbor args>]`; package bin exposes `tb2`.
 - Modes: default `omp` agent, `oracle`/`nop`/any Harbor agent via `--agent`; local source packing by default, published npm install via `--install published`; `cleanup` command removes leftover Harbor Docker resources.
@@ -39,11 +39,11 @@ Sources: [`packages/terminal-bench/README.md`](../packages/terminal-bench/README
 
 Sources: [`packages/stats/README.md`](../packages/stats/README.md), [`packages/stats/package.json`](../packages/stats/package.json), [`packages/coding-agent/src/cli/stats-cli.ts`](../packages/coding-agent/src/cli/stats-cli.ts).
 
-- Package: `@oh-my-pi/omp-stats`; bin: `omp-stats`; main user path: `omp stats`.
+- Package: `@veyyon/omp-stats`; bin: `omp-stats`; main user path: `omp stats`.
 - Feature: local observability dashboard for AI usage statistics from session JSONL logs.
 - CLI modes: `omp stats` starts the dashboard server, opens `http://localhost:3847`, and keeps running; `omp stats --port <port>` changes the port; `omp stats --summary` prints a console summary; `omp stats --json` prints JSON and exits.
 - Programmatic API: exports helpers such as `syncAllSessions()` and `getDashboardStats()` for embedding.
-- Inputs/storage: reads `~/.omp/agent/sessions/`; stores aggregates in `~/.omp/stats.db`.
+- Inputs/storage: reads `~/.veyyon/agent/sessions/`; stores aggregates in `~/.veyyon/stats.db`.
 - Outputs: dashboard metrics and API endpoints including `/api/stats`, `/api/stats/models`, `/api/stats/folders`, `/api/stats/timeseries`, and `/api/sync`.
 - Side effects/limits: syncs session files before output; long-running dashboard stops on `Ctrl+C` and closes the stats database.
 
@@ -53,7 +53,7 @@ Sources: [`packages/typescript-edit-benchmark/package.json`](../packages/typescr
 
 There is no package README at this path today; the manifest and CLI entrypoint help are the cited package-local sources.
 
-- Package: private `@oh-my-pi/typescript-edit-benchmark`; bin: `typescript-edit-benchmark`.
+- Package: private `@veyyon/typescript-edit-benchmark`; bin: `typescript-edit-benchmark`.
 - Feature: benchmark suite for evaluating coding-agent edit success on TypeScript source-code mutation fixtures.
 - CLI: `bun run bench:edit [options]` in source help; package scripts also expose `bun run src/index.ts` through `start`.
 - Key inputs: provider/model, thinking level, runs per task, timeout, task concurrency, task IDs, max tasks, fixture directory or `.tar.gz`, edit variant/fuzzy settings, guided mode, retry/turn limits, output path, report format, fixture validation, and required tool-call flags.

@@ -1,5 +1,5 @@
-import type { SnapshotStore } from "@oh-my-pi/hashline";
-import type { AgentTool } from "@oh-my-pi/pi-agent-core";
+import type { SnapshotStore } from "@veyyon/hashline";
+import type { AgentTool } from "@veyyon/pi-agent-core";
 import {
 	Box,
 	type Component,
@@ -13,8 +13,8 @@ import {
 	TERMINAL,
 	Text,
 	type TUI,
-} from "@oh-my-pi/pi-tui";
-import { getProjectDir, logger, sanitizeText } from "@oh-my-pi/pi-utils";
+} from "@veyyon/pi-tui";
+import { getProjectDir, logger, sanitizeText } from "@veyyon/pi-utils";
 import { EDIT_MODE_STRATEGIES, type EditMode, type PerFileDiffPreview } from "../../edit";
 import type { Theme } from "../../modes/theme/theme";
 import { getThemeEpoch, theme } from "../../modes/theme/theme";
@@ -658,7 +658,7 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 		this.#backgroundTaskFrozen = true;
 		this.#updateSpinnerAnimation();
 		this.#updateDisplay();
-		this.#ui.requestRender();
+		this.#ui.requestComponentRender(this);
 		return true;
 	}
 
@@ -747,7 +747,7 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 		this.#backgroundTaskFrozen = true;
 		this.stopAnimation();
 		this.#updateDisplay();
-		this.#ui.requestRender();
+		this.#ui.requestComponentRender(this);
 	}
 
 	/**

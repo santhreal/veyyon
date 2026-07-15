@@ -1,11 +1,10 @@
 import { beforeAll, describe, expect, it } from "bun:test";
-import { Effort } from "@oh-my-pi/pi-ai";
-import { PluginSelectorComponent } from "@oh-my-pi/pi-coding-agent/modes/components/plugin-selector";
-import { QueueModeSelectorComponent } from "@oh-my-pi/pi-coding-agent/modes/components/queue-mode-selector";
-import { ThemeSelectorComponent } from "@oh-my-pi/pi-coding-agent/modes/components/theme-selector";
-import { ThinkingSelectorComponent } from "@oh-my-pi/pi-coding-agent/modes/components/thinking-selector";
-import { initTheme } from "@oh-my-pi/pi-coding-agent/modes/theme/theme";
-import type { SgrMouseEvent } from "@oh-my-pi/pi-tui";
+import { Effort } from "@veyyon/pi-ai";
+import { QueueModeSelectorComponent } from "@veyyon/pi-coding-agent/modes/components/queue-mode-selector";
+import { ThemeSelectorComponent } from "@veyyon/pi-coding-agent/modes/components/theme-selector";
+import { ThinkingSelectorComponent } from "@veyyon/pi-coding-agent/modes/components/thinking-selector";
+import { initTheme } from "@veyyon/pi-coding-agent/modes/theme/theme";
+import type { SgrMouseEvent } from "@veyyon/pi-tui";
 
 beforeAll(async () => {
 	await initTheme();
@@ -79,27 +78,5 @@ describe("inline-picker wrapper routeMouse offset", () => {
 		// First SelectList row is "one-at-a-time" regardless of the preselected mode.
 		component.routeMouse(leftClick(1), 1, 0);
 		expect(selected).toBe("one-at-a-time");
-	});
-
-	it("PluginSelectorComponent ignores the border row and selects the first plugin below it", () => {
-		let selectedName: string | undefined;
-		const component = new PluginSelectorComponent(
-			1,
-			[{ plugin: { name: "alpha", description: "first" }, marketplace: "shop" }],
-			new Set<string>(),
-			{
-				onSelect: name => {
-					selectedName = name;
-				},
-				onCancel: () => {},
-			},
-		);
-		component.render(80);
-
-		component.routeMouse(leftClick(0), 0, 0);
-		expect(selectedName).toBeUndefined();
-
-		component.routeMouse(leftClick(1), 1, 0);
-		expect(selectedName).toBe("alpha");
 	});
 });

@@ -1,4 +1,4 @@
-import { hostMatchesUrl } from "@oh-my-pi/pi-catalog/hosts";
+import { hostMatchesUrl } from "@veyyon/pi-catalog/hosts";
 
 /** Provider metadata needed to resolve append-only context mode. */
 export interface AppendOnlyContextModel {

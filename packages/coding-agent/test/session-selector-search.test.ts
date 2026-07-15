@@ -2,9 +2,9 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "bun:
 import {
 	rankSessionSearchMatches,
 	SessionSelectorComponent,
-} from "@oh-my-pi/pi-coding-agent/modes/components/session-selector";
-import { initTheme } from "@oh-my-pi/pi-coding-agent/modes/theme/theme";
-import type { SessionInfo } from "@oh-my-pi/pi-coding-agent/session/session-listing";
+} from "@veyyon/pi-coding-agent/modes/components/session-selector";
+import { initTheme } from "@veyyon/pi-coding-agent/modes/theme/theme";
+import type { SessionInfo } from "@veyyon/pi-coding-agent/session/session-listing";
 
 /**
  * Contracts of the session picker's incremental search engine: a keystroke

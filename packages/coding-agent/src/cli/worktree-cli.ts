@@ -1,7 +1,7 @@
 /**
- * CLI handler for `omp worktree` — list and clean up agent-managed worktrees.
+ * CLI handler for `veyyon worktree` — list and clean up agent-managed worktrees.
  *
- * Layout under `~/.omp/wt/`:
+ * Layout under `~/.veyyon/wt/`:
  *
  *   - **PR-checkout worktrees** (`tools/gh.ts`): a regular git worktree dir
  *     containing a `.git` *file* that points back at
@@ -16,7 +16,7 @@
  */
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { getWorktreesDir, isEnoent } from "@oh-my-pi/pi-utils";
+import { getWorktreesDir, isEnoent } from "@veyyon/pi-utils";
 import chalk from "chalk";
 import * as git from "../utils/git";
 
@@ -25,7 +25,7 @@ type WorktreeKind = "pr-checkout" | "task-isolation" | "empty" | "stray";
 const TASK_ISOLATION_MOUNT_DIRS = ["m", "merged"] as const;
 
 export interface WorktreeEntry {
-	/** Absolute path to the worktree dir (or stray container) under `~/.omp/wt/`. */
+	/** Absolute path to the worktree dir (or stray container) under `~/.veyyon/wt/`. */
 	path: string;
 	/** Classification of what we found on disk. */
 	kind: WorktreeKind;
@@ -33,7 +33,7 @@ export interface WorktreeEntry {
 	parentRepo?: string;
 	/** Branch name extracted from the parent's tracking file, when available. */
 	branch?: string;
-	/** When set, the entry is unhealthy and `omp worktree clear` will remove it. */
+	/** When set, the entry is unhealthy and `veyyon worktree clear` will remove it. */
 	orphanReason?: string;
 }
 
@@ -176,7 +176,7 @@ async function scanWorktrees(): Promise<WorktreeEntry[]> {
 			continue;
 		}
 
-		// Legacy nesting: ~/.omp/wt/<encoded-project>/<branch-or-id>
+		// Legacy nesting: ~/.veyyon/wt/<encoded-project>/<branch-or-id>
 		let children: string[];
 		try {
 			children = await fs.readdir(dir);

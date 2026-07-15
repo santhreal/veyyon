@@ -2,9 +2,9 @@
  * Minimal SDK Usage
  *
  * Uses all defaults: discovers skills, hooks, tools, context files
- * from cwd and ~/.omp/agent. Model chosen from settings or first available.
+ * from cwd and ~/.veyyon/agent. Model chosen from settings or first available.
  */
-import { createAgentSession } from "@oh-my-pi/pi-coding-agent";
+import { createAgentSession } from "@veyyon/pi-coding-agent";
 
 const { session } = await createAgentSession();
 

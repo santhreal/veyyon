@@ -1,8 +1,8 @@
 import { Database } from "bun:sqlite";
 import { afterEach, describe, expect, it } from "bun:test";
 import * as path from "node:path";
-import { AgentStorage } from "@oh-my-pi/pi-coding-agent/session/agent-storage";
-import { TempDir } from "@oh-my-pi/pi-utils";
+import { AgentStorage } from "@veyyon/pi-coding-agent/session/agent-storage";
+import { TempDir } from "@veyyon/pi-utils";
 
 describe("AgentStorage model perf aggregates", () => {
 	let tempDir: TempDir;

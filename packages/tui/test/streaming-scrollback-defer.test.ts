@@ -6,7 +6,7 @@ import {
 	type NativeScrollbackCommittedRows,
 	type NativeScrollbackLiveRegion,
 	TUI,
-} from "@oh-my-pi/pi-tui";
+} from "@veyyon/pi-tui";
 import { VirtualTerminal } from "./virtual-terminal";
 
 // Law-encoding suite for native-scrollback commits.

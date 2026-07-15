@@ -1,10 +1,10 @@
 import { describe, expect, it } from "bun:test";
-import { resolveProviderModels } from "@oh-my-pi/pi-catalog/model-manager";
-import { googleVertexModelManagerOptions } from "@oh-my-pi/pi-catalog/provider-models/google";
+import { resolveProviderModels } from "@veyyon/pi-catalog/model-manager";
+import { googleVertexModelManagerOptions } from "@veyyon/pi-catalog/provider-models/google";
 import {
 	MODELS_DEV_PROVIDER_DESCRIPTORS,
 	mapModelsDevToModels,
-} from "@oh-my-pi/pi-catalog/provider-models/openai-compat";
+} from "@veyyon/pi-catalog/provider-models/openai-compat";
 
 const googleVertexModelsDevPayload = {
 	"google-vertex": {

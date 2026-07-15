@@ -1,5 +1,5 @@
 import * as path from "node:path";
-import { getConfigRootDir } from "@oh-my-pi/pi-utils";
+import { getConfigRootDir } from "@veyyon/pi-utils";
 
 /** Resolve the private runtime directory shared by omp processes in one project directory. */
 export function daemonRuntimeDir(projectDir: string, configRoot: string = getConfigRootDir()): string {

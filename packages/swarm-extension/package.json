@@ -1,9 +1,9 @@
 {
   "type": "module",
-  "name": "@oh-my-pi/swarm-extension",
+  "name": "@veyyon/swarm-extension",
   "version": "16.5.2",
   "description": "Swarm orchestration extension for omp",
-  "homepage": "https://omp.sh",
+  "homepage": "https://veyyon.dev",
   "author": "Derek Rynd",
   "license": "MIT",
   "repository": {
@@ -31,13 +31,13 @@
     "fmt": "biome format --write ."
   },
   "dependencies": {
-    "@oh-my-pi/pi-utils": "workspace:*"
+    "@veyyon/pi-utils": "workspace:*"
   },
   "devDependencies": {
     "@types/bun": "^1.3.14"
   },
   "peerDependencies": {
-    "@oh-my-pi/pi-coding-agent": "^16"
+    "@veyyon/pi-coding-agent": "^16"
   },
   "engines": {
     "bun": ">=1.3.14"

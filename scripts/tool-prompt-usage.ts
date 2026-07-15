@@ -17,8 +17,8 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { parseArgs } from "node:util";
-import { countTokens, Encoding } from "@oh-my-pi/pi-natives";
-import { prompt } from "@oh-my-pi/pi-utils";
+import { countTokens, Encoding } from "@veyyon/pi-natives";
+import { prompt } from "@veyyon/pi-utils";
 import { loadBundledAgents } from "../packages/coding-agent/src/task/agents";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..");

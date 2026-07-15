@@ -95,7 +95,7 @@ All project clients may observe the same managed process. Input is one shared st
 ## Cross-instance lifecycle
 Every omp session registers its process in the canonical project scope. The first `launch` call starts a detached broker over a private socket; later `launch` calls from any registered omp process connect to the same broker and see the same names, logs, and state.
 
-Runtime data lives under `~/.omp/run/daemons/<project-hash>/`:
+Runtime data lives under `~/.veyyon/run/daemons/<project-hash>/`:
 - `broker.sock` (or a Windows named pipe)
 - a mode-0600 authentication token
 - broker PID metadata

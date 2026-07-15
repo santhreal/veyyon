@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { FileType, glob } from "@oh-my-pi/pi-natives";
+import { FileType, glob } from "@veyyon/pi-natives";
 import {
 	CONFIG_DIR_NAME,
 	getAgentDir,
@@ -10,7 +10,7 @@ import {
 	getProjectDir,
 	parseFrontmatter,
 	tryParseJson,
-} from "@oh-my-pi/pi-utils";
+} from "@veyyon/pi-utils";
 import type { ExtensionModule } from "../capability/extension-module";
 import { invalidate as invalidateFsCache, readDirEntries, readFile } from "../capability/fs";
 import { parseRuleConditionAndScope, type Rule, type RuleFrontmatter } from "../capability/rule";
@@ -787,7 +787,7 @@ export function parseClaudePluginsRegistry(content: string): ClaudePluginsRegist
  */
 export async function resolveActiveProjectRegistryPath(cwd: string): Promise<string | null> {
 	// Pass 1: walk up looking for an existing .omp/ directory (nearest wins).
-	// Stop before os.homedir() — ~/.omp/ is the user-level config dir, not a project root.
+	// Stop before os.homedir() — ~/.veyyon/ is the user-level config dir, not a project root.
 	const homeDir = os.homedir();
 	let dir = path.resolve(cwd);
 	while (dir !== homeDir) {
@@ -853,7 +853,7 @@ export function registerPluginCacheInvalidator(invalidator: () => void): void {
 
 /**
  * List all installed Claude Code plugin roots from the plugin cache.
- * Reads ~/.claude/plugins/installed_plugins.json and ~/.omp/plugins/installed_plugins.json,
+ * Reads ~/.claude/plugins/installed_plugins.json and ~/.veyyon/plugins/installed_plugins.json,
  * and optionally the nearest project-scoped registry resolved from `cwd`.
  *
  * Results are cached per `home:resolvedProjectPath` key to avoid repeated parsing.

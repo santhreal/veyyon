@@ -2,16 +2,16 @@ import { afterEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import * as executorModule from "@oh-my-pi/pi-coding-agent/task/executor";
+import * as executorModule from "@veyyon/pi-coding-agent/task/executor";
 import {
 	applyEligibleNestedPatches,
 	mergeIsolatedChanges,
 	runIsolatedSubprocess,
-} from "@oh-my-pi/pi-coding-agent/task/isolation-runner";
-import type { SingleResult } from "@oh-my-pi/pi-coding-agent/task/types";
-import * as worktreeModule from "@oh-my-pi/pi-coding-agent/task/worktree";
-import * as gitModule from "@oh-my-pi/pi-coding-agent/utils/git";
-import * as natives from "@oh-my-pi/pi-natives";
+} from "@veyyon/pi-coding-agent/task/isolation-runner";
+import type { SingleResult } from "@veyyon/pi-coding-agent/task/types";
+import * as worktreeModule from "@veyyon/pi-coding-agent/task/worktree";
+import * as gitModule from "@veyyon/pi-coding-agent/utils/git";
+import * as natives from "@veyyon/pi-natives";
 import { $ } from "bun";
 
 function result(overrides: Partial<SingleResult> = {}): SingleResult {

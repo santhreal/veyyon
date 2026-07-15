@@ -37,7 +37,7 @@
  * questions); the event controller wires the per-session enhancer via
  * {@link Vocalizer.setEnhancer}.
  */
-import { logger } from "@oh-my-pi/pi-utils";
+import { logger } from "@veyyon/pi-utils";
 import { settings } from "../config/settings";
 import { DEFAULT_TTS_VOICE } from "./models";
 import { SpeakableStream } from "./speakable";

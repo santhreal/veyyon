@@ -12,17 +12,18 @@
  * invoked exactly once and the decision is persisted. Subsequent calls
  * (including from subagents) read the cached decision without prompting.
  *
- * When the user grants consent, push is automatically active against the
- * bundled endpoint (`dev.autoqaPush.endpoint`, default `qa.omp.sh`). Each
+ * When the user grants consent, push is automatically active against
+ * `dev.autoqaPush.endpoint` — unset by default (no bundled endpoint; see
+ * `settings-schema.ts`), so push is a no-op until an operator sets it. Each
  * insert schedules a background flush that POSTs pending rows and deletes
  * them on HTTP 2xx. `PI_AUTO_QA_PUSH=1` forces push in non-interactive
  * environments where the consent dialog never fires. Tool execution is
  * never blocked on the network and never throws.
  */
 import { Database } from "bun:sqlite";
-import type { AgentTool } from "@oh-my-pi/pi-agent-core";
-import type { FetchImpl } from "@oh-my-pi/pi-ai";
-import { $env, $flag, getAutoQaDbDir, getInstallId, logger, VERSION } from "@oh-my-pi/pi-utils";
+import type { AgentTool } from "@veyyon/pi-agent-core";
+import type { FetchImpl } from "@veyyon/pi-ai";
+import { $env, $flag, getAutoQaDbDir, getInstallId, logger, VERSION } from "@veyyon/pi-utils";
 import { type } from "arktype";
 import type { Settings } from "..";
 import type { ToolSession } from "./index";
@@ -187,13 +188,13 @@ let cachedDb: Database | null = null;
 
 /**
  * Open (or return the cached handle for) the auto-QA SQLite database at
- * `~/.omp/agent/autoqa.db`. Idempotently runs schema creation, the
+ * `~/.veyyon/agent/autoqa.db`. Idempotently runs schema creation, the
  * `pushed`-column migration, and index setup so every consumer — tool
- * execute path, manual `omp grievances push`, future debug scripts —
+ * execute path, manual `veyyon grievances push`, future debug scripts —
  * sees the same prepared schema. Returns `null` only on a hard open
  * failure (filesystem permissions, etc.); a missing file is created.
  *
- * Exported because the `omp grievances` CLI handlers need the migrated
+ * Exported because the `veyyon grievances` CLI handlers need the migrated
  * handle too — having a second `openDb` in the CLI led to the column
  * never being added on the manual-push path.
  */
@@ -245,7 +246,7 @@ export interface FlushResult {
 }
 
 /**
- * Optional per-flush controls. Used by `omp grievances push` to surface
+ * Optional per-flush controls. Used by `veyyon grievances push` to surface
  * progress to a TTY and to skip the user-facing consent gate (manual
  * pushes are the user's explicit intent, not a side effect of a tool call).
  */
@@ -312,7 +313,7 @@ function resolvePushConfig(settings: Settings | undefined, bypassConsent: boolea
 	if (!isAutoQaEnabled(settings)) return null;
 
 	// Consent IS the push opt-in for the auto-flush path. `bypassConsent`
-	// covers explicit user-driven pushes (`omp grievances push`) where the
+	// covers explicit user-driven pushes (`veyyon grievances push`) where the
 	// user clearly intends to ship regardless of dialog state. The
 	// `PI_AUTO_QA_PUSH` env flag stays as a CI/headless override too.
 	if (!bypassConsent) {
@@ -353,7 +354,7 @@ async function performFlush(db: Database, config: PushConfig, options: FlushOpti
 		if (rows.length === 0) return { pushed: totalPushed, ok: true };
 
 		const body = JSON.stringify({
-			agent: { name: "omp", version: VERSION },
+			agent: { name: "veyyon", version: VERSION },
 			installId: getInstallId(),
 			// Coarse host fingerprint for triage — `darwin`/`linux`/`win32` +
 			// `arm64`/`x64`. Useful for "is this bug arch-specific?" without
@@ -474,8 +475,8 @@ export function createReportToolIssueTool(session: ToolSession, activeBuiltinNam
 		intent: "omit",
 		async execute(_toolCallId, rawParams) {
 			// Save is unconditional: the row lives in the user's own SQLite
-			// at ~/.omp/agent/autoqa.db regardless of consent — they always
-			// own their local data and can inspect or wipe it via `omp grievances`.
+			// at ~/.veyyon/agent/autoqa.db regardless of consent — they always
+			// own their local data and can inspect or wipe it via `veyyon grievances`.
 			// Consent only gates whether the row is *shipped* to the shared
 			// backend; that decision rides on `dev.autoqa.consent` and is
 			// enforced inside `flushGrievances` via `resolvePushConfig`.
@@ -507,7 +508,7 @@ export function createReportToolIssueTool(session: ToolSession, activeBuiltinNam
 					//      share the same module-level state).
 					//   2. Attempt a flush — `resolvePushConfig` no-ops when consent
 					//      isn't granted, so a "no" leaves the row local for later
-					//      `omp grievances push` or a future consent change.
+					//      `veyyon grievances push` or a future consent change.
 					// Tool execution returns immediately; the model never waits
 					// on the dialog.
 					void (async () => {

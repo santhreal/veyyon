@@ -19,8 +19,8 @@ import * as path from "node:path";
 import { scheduler } from "node:timers/promises";
 import { isPromise } from "node:util/types";
 
-import type { InMemorySnapshotStore } from "@oh-my-pi/hashline";
-import { Patch } from "@oh-my-pi/hashline";
+import type { InMemorySnapshotStore } from "@veyyon/hashline";
+import { Patch } from "@veyyon/hashline";
 import {
 	type AfterToolCallContext,
 	type AfterToolCallResult,
@@ -42,7 +42,7 @@ import {
 	TERMINAL_TOOL_RESULT_ABORT_REASON,
 	ThinkingLevel,
 	type ToolChoiceDirective,
-} from "@oh-my-pi/pi-agent-core";
+} from "@veyyon/pi-agent-core";
 import {
 	AGGRESSIVE_SHAKE_CONFIG,
 	AUTO_HANDOFF_THRESHOLD_FOCUS,
@@ -73,14 +73,14 @@ import {
 	type SummaryOptions,
 	shouldCompact,
 	shouldUseOpenAiRemoteCompaction,
-} from "@oh-my-pi/pi-agent-core/compaction";
+} from "@veyyon/pi-agent-core/compaction";
 import {
 	DEFAULT_PRUNE_CONFIG,
 	pruneSupersededToolResults,
 	pruneToolOutputs,
 	readToolSupersedeKey,
-} from "@oh-my-pi/pi-agent-core/compaction/pruning";
-import type { ProtectedToolMatcher } from "@oh-my-pi/pi-agent-core/compaction/tool-protection";
+} from "@veyyon/pi-agent-core/compaction/pruning";
+import type { ProtectedToolMatcher } from "@veyyon/pi-agent-core/compaction/tool-protection";
 import type {
 	AssistantMessage,
 	AssistantMessageEvent,
@@ -106,7 +106,7 @@ import type {
 	ToolChoice,
 	Usage,
 	UsageReport,
-} from "@oh-my-pi/pi-ai";
+} from "@veyyon/pi-ai";
 import {
 	calculateRateLimitBackoffMs,
 	clearAnthropicFastModeFallback,
@@ -118,16 +118,16 @@ import {
 	resolveModelServiceTier,
 	serviceTierFamily,
 	streamSimple,
-} from "@oh-my-pi/pi-ai";
-import * as AIError from "@oh-my-pi/pi-ai/error";
-import { resetOpenAICodexHistoryAfterCompaction } from "@oh-my-pi/pi-ai/providers/openai-codex-responses";
-import { toolWireSchema } from "@oh-my-pi/pi-ai/utils/schema";
-import { GeminiHeaderRunDetector, isGeminiThinkingModel } from "@oh-my-pi/pi-ai/utils/thinking-loop";
-import { type RepeatedToolCallDetection, ToolCallLoopGuard } from "@oh-my-pi/pi-ai/utils/tool-call-loop-guard";
-import { isFireworksFastModelId, toFireworksBaseModelId } from "@oh-my-pi/pi-catalog/fireworks-model-id";
-import { getSupportedEfforts } from "@oh-my-pi/pi-catalog/model-thinking";
-import { modelsAreEqual } from "@oh-my-pi/pi-catalog/models";
-import { MacOSPowerAssertion } from "@oh-my-pi/pi-natives";
+} from "@veyyon/pi-ai";
+import * as AIError from "@veyyon/pi-ai/error";
+import { resetOpenAICodexHistoryAfterCompaction } from "@veyyon/pi-ai/providers/openai-codex-responses";
+import { toolWireSchema } from "@veyyon/pi-ai/utils/schema";
+import { GeminiHeaderRunDetector, isGeminiThinkingModel } from "@veyyon/pi-ai/utils/thinking-loop";
+import { type RepeatedToolCallDetection, ToolCallLoopGuard } from "@veyyon/pi-ai/utils/tool-call-loop-guard";
+import { isFireworksFastModelId, toFireworksBaseModelId } from "@veyyon/pi-catalog/fireworks-model-id";
+import { getSupportedEfforts } from "@veyyon/pi-catalog/model-thinking";
+import { modelsAreEqual } from "@veyyon/pi-catalog/models";
+import { MacOSPowerAssertion } from "@veyyon/pi-natives";
 import {
 	escapeXmlText,
 	extractHttpStatusFromError,
@@ -143,8 +143,8 @@ import {
 	relativePathWithinRoot,
 	Snowflake,
 	withTimeout,
-} from "@oh-my-pi/pi-utils";
-import * as snapcompact from "@oh-my-pi/snapcompact";
+} from "@veyyon/pi-utils";
+import * as snapcompact from "@veyyon/snapcompact";
 import {
 	ADVISOR_DEFAULT_TOOL_NAMES,
 	AdviseTool,
@@ -163,6 +163,7 @@ import {
 	formatAdvisorBatchContent,
 	getOrCreateAdvisorProviderSessionId,
 	isAdvisorInterruptImmuneTurnActive,
+	isAdvisorProductEnabled,
 	isInterruptingSeverity,
 	quarantineAdvisorUnsafeOutput,
 	resolveAdvisorDeliveryChannel,
@@ -173,6 +174,13 @@ import { classifyDifficulty } from "../auto-thinking/classifier";
 import { reset as resetCapabilities } from "../capability";
 import type { Rule } from "../capability/rule";
 import { shouldEnableAppendOnlyContext } from "../config/append-only-context-mode";
+import {
+	isCompactionStrategyOff,
+	isThresholdCompactionDisabled,
+	normalizeCompactionStrategy,
+	resolveCompactionEngineAction,
+	toAgentCompactionSettings,
+} from "../config/compaction-strategy";
 import type { ModelRegistry } from "../config/model-registry";
 import {
 	extractExplicitThinkingSelector,
@@ -184,10 +192,11 @@ import {
 	parseModelString,
 	type ResolvedModelRoleValue,
 	resolveAdvisorRoleSelection,
+	resolveCompactionModelPatterns,
 	resolveModelOverride,
 	resolveModelRoleValue,
 } from "../config/model-resolver";
-import { getKnownRoleIds, MODEL_ROLE_IDS, MODEL_ROLES } from "../config/model-roles";
+import { getKnownRoleIds, LEGACY_DEFAULT_MODEL_ROLE, MODEL_ROLES, SELECTABLE_MODEL_ROLE_IDS } from "../config/model-roles";
 import { expandPromptTemplate, type PromptTemplate } from "../config/prompt-templates";
 import { buildServiceTierByFamily, serviceTierForAllFamilies, serviceTierSettingToTier } from "../config/service-tier";
 import type { Settings, SkillsSettings } from "../config/settings";
@@ -2067,7 +2076,7 @@ export class AgentSession {
 		if (mode === "off") return;
 		try {
 			this.#powerAssertion = MacOSPowerAssertion.start({
-				reason: "Oh My Pi agent session",
+				reason: "Veyyon agent session",
 				idle: true,
 				display: mode === "display" || mode === "system",
 				system: mode === "system",
@@ -2730,7 +2739,8 @@ export class AgentSession {
 			this.#recordSessionExit(reason);
 		});
 
-		this.#advisorEnabled = this.settings.get("advisor.enabled") as boolean;
+		this.#advisorEnabled =
+			isAdvisorProductEnabled() && (this.settings.get("advisor.enabled") as boolean);
 		if (this.#advisorEnabled) this.#buildAdvisorRuntime();
 
 		this.#rehydrateCheckpointRewindState();
@@ -2741,7 +2751,7 @@ export class AgentSession {
 		// Re-evaluate append-only context mode when the setting changes at runtime.
 		this.#unsubscribeAppendOnly = onAppendOnlyModeChanged(_value => this.#syncAppendOnlyContext(this.model));
 		this.#unsubscribeModelRoles = onModelRolesChanged(() => {
-			if (!this.#advisorEnabled || this.#isDisposed) return;
+			if (!isAdvisorProductEnabled() || !this.#advisorEnabled || this.#isDisposed) return;
 			if (this.#advisors.length > 0 && !this.#advisorRuntimeMatchesCurrentConfig()) this.#stopAdvisorRuntime();
 			this.#buildAdvisorRuntime(true);
 		});
@@ -3290,7 +3300,7 @@ export class AgentSession {
 		const agent = advisor.agent;
 
 		const compactionSettings = this.settings.getGroup("compaction");
-		if (compactionSettings.strategy === "off") return false;
+		if (isCompactionStrategyOff(compactionSettings.strategy as string)) return false;
 		if (!compactionSettings.enabled) return false;
 
 		const advisorModel = agent.state.model;
@@ -3361,7 +3371,7 @@ export class AgentSession {
 		);
 		const preparation = prepareCompaction(
 			pathEntries,
-			compactionSettings,
+			toAgentCompactionSettings(compactionSettings),
 			await this.#runnableCompactionCandidates(candidates, advisorProviderSessionId),
 		);
 		if (!preparation) {
@@ -9552,7 +9562,7 @@ export class AgentSession {
 	 */
 	async setModel(
 		model: Model,
-		role: string = "default",
+		role: string = "interactive",
 		options?: {
 			selector?: string;
 			thinkingLevel?: ThinkingLevel;
@@ -9570,11 +9580,18 @@ export class AgentSession {
 		this.#modelRegistry.clearSuppressedSelector(formatModelStringWithRouting(targetModel));
 		this.#clearActiveRetryFallback();
 		this.#setModelWithProviderSessionReset(targetModel);
-		this.sessionManager.appendModelChange(`${targetModel.provider}/${targetModel.id}`, role);
+		const logRole = role === "default" ? "interactive" : role;
+		this.sessionManager.appendModelChange(`${targetModel.provider}/${targetModel.id}`, logRole);
 		if (options?.persist) {
+			// Interactive model is not a selectable role; remember it under the legacy
+			// modelRoles.default key so startup / --models restore still works.
+			const persistRole =
+				role === "interactive" || role === "default" || role === LEGACY_DEFAULT_MODEL_ROLE
+					? LEGACY_DEFAULT_MODEL_ROLE
+					: role;
 			this.settings.setModelRole(
-				role,
-				this.#formatRoleModelValue(role, targetModel, options.selector, options.thinkingLevel),
+				persistRole,
+				this.#formatRoleModelValue(persistRole, targetModel, options.selector, options.thinkingLevel),
 			);
 		}
 		this.settings.getStorage()?.recordModelUsage(`${targetModel.provider}/${targetModel.id}`);
@@ -10392,7 +10409,7 @@ export class AgentSession {
 			const pathEntries = this.sessionManager.getBranch();
 			const preparation = prepareCompaction(
 				pathEntries,
-				effectiveSettings,
+				toAgentCompactionSettings(effectiveSettings),
 				await this.#runnableCompactionCandidates(compactionCandidates, this.sessionId),
 			);
 			if (!preparation) {
@@ -10434,7 +10451,8 @@ export class AgentSession {
 			// summary; a text-only model cannot read snapcompact frames.
 			const wantsSnapcompact =
 				compactionPrep.kind !== "fromHook" &&
-				effectiveSettings.strategy === "snapcompact" &&
+				(normalizeCompactionStrategy(effectiveSettings.strategy) === "snap" ||
+					effectiveSettings.strategy === "snapcompact") &&
 				!customInstructions &&
 				!options?.internalGuidance;
 			// `/compact snapcompact` is an explicit no-LLM archive request: honor
@@ -11047,7 +11065,7 @@ export class AgentSession {
 		const compactionSettings = this.settings.getGroup("compaction");
 		if (
 			!compactionSettings.enabled ||
-			compactionSettings.strategy === "off" ||
+			isCompactionStrategyOff(compactionSettings.strategy as string) ||
 			compactionSettings.midTurnEnabled === false
 		) {
 			return;
@@ -11172,7 +11190,7 @@ export class AgentSession {
 
 			// No promotion target available fall through to compaction
 			const compactionSettings = this.settings.getGroup("compaction");
-			if (compactionSettings.enabled && compactionSettings.strategy !== "off") {
+			if (compactionSettings.enabled && !isCompactionStrategyOff(compactionSettings.strategy as string)) {
 				return await this.#runRecoveryCompactionWithRollback("overflow", assistantMessage, allowDefer, {
 					autoContinue,
 				});
@@ -11245,7 +11263,10 @@ export class AgentSession {
 			}
 
 			const incompleteCompactionSettings = this.settings.getGroup("compaction");
-			if (incompleteCompactionSettings.enabled && incompleteCompactionSettings.strategy !== "off") {
+			if (
+				incompleteCompactionSettings.enabled &&
+				!isCompactionStrategyOff(incompleteCompactionSettings.strategy as string)
+			) {
 				logger.debug("Compaction triggered by response.incomplete (length stop, no promotion target)", {
 					model: `${assistantMessage.provider}/${assistantMessage.model}`,
 					strategy: incompleteCompactionSettings.strategy,
@@ -11269,7 +11290,11 @@ export class AgentSession {
 		const supersedeResult = await this.#pruneStaleToolResults();
 
 		const compactionSettings = this.settings.getGroup("compaction");
-		if (!compactionSettings.enabled || compactionSettings.strategy === "off") return COMPACTION_CHECK_NONE;
+		if (
+			!compactionSettings.enabled ||
+			isCompactionStrategyOff(compactionSettings.strategy as string)
+		)
+			return COMPACTION_CHECK_NONE;
 
 		// Case 4: Threshold - turn succeeded but context is getting large
 		// Skip if this was an error (non-overflow errors don't have usage data)
@@ -12730,18 +12755,23 @@ export class AgentSession {
 			const key = this.#getModelKey(model);
 			if (seen.has(key)) return;
 			seen.add(key);
-			// `seen` still tracks rejected models so the largest-context fallback
-			// scan below doesn't reintroduce them; the filter just suppresses
-			// inclusion in this caller's candidate chain.
 			if (filter && !filter(model)) return;
 			candidates.push(model);
 		};
+
+		for (const pattern of resolveCompactionModelPatterns(this.settings)) {
+			const resolved = resolveModelRoleValue(pattern, availableModels, {
+				settings: this.settings,
+				matchPreferences: getModelMatchPreferences(this.settings),
+			});
+			addCandidate(resolved.model);
+		}
 
 		if (preferredModel) {
 			addCandidate(this.#resolveCompactionConfiguredTarget(preferredModel, availableModels));
 		}
 		addCandidate(preferredModel ?? undefined);
-		for (const role of MODEL_ROLE_IDS) {
+		for (const role of SELECTABLE_MODEL_ROLE_IDS) {
 			addCandidate(this.#resolveRoleModelFull(role, availableModels, preferredModel ?? undefined).model);
 		}
 
@@ -13183,8 +13213,12 @@ export class AgentSession {
 		} = {},
 	): Promise<CompactionCheckResult> {
 		const compactionSettings = this.settings.getGroup("compaction");
-		if (compactionSettings.strategy === "off") return COMPACTION_CHECK_NONE;
-		if (reason !== "idle" && !compactionSettings.enabled) return COMPACTION_CHECK_NONE;
+		const rawStrategy = compactionSettings.strategy as string | undefined;
+		if (reason === "idle") {
+			if (isCompactionStrategyOff(rawStrategy)) return COMPACTION_CHECK_NONE;
+		} else if (isThresholdCompactionDisabled(compactionSettings.enabled, rawStrategy)) {
+			return COMPACTION_CHECK_NONE;
+		}
 		const generation = this.#promptGeneration;
 		const suppressContinuation = options.suppressContinuation === true;
 		const shouldAutoContinue =
@@ -13194,7 +13228,7 @@ export class AgentSession {
 		// Shake runs inline (cheap, no remote LLM). On overflow recovery, if shake
 		// reclaims nothing we fall through to the summary-compaction body below so
 		// the oversized input still gets resolved.
-		if (compactionSettings.strategy === "shake") {
+		if ((compactionSettings.strategy as string) === "shake") {
 			const outcome = await this.#runAutoShake(
 				reason,
 				willRetry,
@@ -13232,12 +13266,10 @@ export class AgentSession {
 		// "overflow" forces context-full because the input itself is broken — a handoff
 		// LLM call would hit the same overflow. "incomplete" is an output-side problem,
 		// so a handoff request on the existing context is still viable.
-		let action: "context-full" | "handoff" | "snapcompact" =
-			compactionSettings.strategy === "snapcompact"
-				? "snapcompact"
-				: compactionSettings.strategy === "handoff" && reason !== "overflow" && !suppressHandoff
-					? "handoff"
-					: "context-full";
+		let action: "context-full" | "handoff" | "snapcompact" = resolveCompactionEngineAction(
+			compactionSettings.strategy,
+			{ reason, suppressHandoff },
+		);
 		if (action === "snapcompact" && this.model && !this.model.input.includes("image")) {
 			this.emitNotice(
 				"warning",
@@ -13335,7 +13367,11 @@ export class AgentSession {
 				this.#getCompactionModelCandidates(availableModels),
 				this.sessionId,
 			);
-			const preparation = prepareCompaction(pathEntries, compactionSettings, autoCompactionCandidates);
+			const preparation = prepareCompaction(
+				pathEntries,
+				toAgentCompactionSettings(compactionSettings),
+				autoCompactionCandidates,
+			);
 			if (!preparation) {
 				await this.#emitSessionEvent({
 					type: "auto_compaction_end",
@@ -14009,15 +14045,15 @@ export class AgentSession {
 	 */
 	setAutoCompactionEnabled(enabled: boolean): void {
 		this.settings.set("compaction.enabled", enabled);
-		if (enabled && this.settings.get("compaction.strategy") === "off") {
-			const defaultStrategy = getDefault("compaction.strategy");
-			this.settings.set("compaction.strategy", defaultStrategy === "off" ? "context-full" : defaultStrategy);
+		if (enabled && isCompactionStrategyOff(this.settings.get("compaction.strategy") as string)) {
+			this.settings.override("compaction.strategy", getDefault("compaction.strategy"));
 		}
 	}
 
 	/** Whether auto-compaction is enabled */
 	get autoCompactionEnabled(): boolean {
-		return this.settings.get("compaction.enabled") && this.settings.get("compaction.strategy") !== "off";
+		const compaction = this.settings.getGroup("compaction");
+		return !isThresholdCompactionDisabled(compaction.enabled, compaction.strategy);
 	}
 
 	// =========================================================================
@@ -16172,6 +16208,7 @@ export class AgentSession {
 			})) as SessionBeforeTreeResult | undefined;
 
 			if (result?.cancel) {
+				this.#branchSummaryAbortController = undefined;
 				return { cancelled: true };
 			}
 
@@ -16220,8 +16257,17 @@ export class AgentSession {
 				modifiedFiles: result.modifiedFiles || [],
 			};
 		} else if (hookSummary) {
+			// Hook supplied the summary directly: the signal was only needed for the
+			// session_before_tree emit above, so release it now instead of relying on
+			// the unconditional clear near the end of this method.
 			summaryText = hookSummary.summary;
 			summaryDetails = hookSummary.details;
+			this.#branchSummaryAbortController = undefined;
+		} else {
+			// No summarization requested (or nothing to summarize): the controller was
+			// only ever used for the session_before_tree signal above, so it can be
+			// released immediately rather than staying set until the method returns.
+			this.#branchSummaryAbortController = undefined;
 		}
 
 		// Determine the new leaf position based on target type

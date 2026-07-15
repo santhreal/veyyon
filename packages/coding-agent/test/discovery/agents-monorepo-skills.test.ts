@@ -10,17 +10,17 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { clearCache, readFile } from "@oh-my-pi/pi-coding-agent/capability/fs";
-import type { Rule } from "@oh-my-pi/pi-coding-agent/capability/rule";
-import type { LoadContext } from "@oh-my-pi/pi-coding-agent/capability/types";
-import { getProjectPathCandidates } from "@oh-my-pi/pi-coding-agent/discovery/agents";
+import { clearCache, readFile } from "@veyyon/pi-coding-agent/capability/fs";
+import type { Rule } from "@veyyon/pi-coding-agent/capability/rule";
+import type { LoadContext } from "@veyyon/pi-coding-agent/capability/types";
+import { getProjectPathCandidates } from "@veyyon/pi-coding-agent/discovery/agents";
 import {
 	buildRuleFromMarkdown,
 	calculateDepth,
 	loadFilesFromDir,
 	scanSkillsFromDir,
-} from "@oh-my-pi/pi-coding-agent/discovery/helpers";
-import { removeSyncWithRetries } from "@oh-my-pi/pi-utils";
+} from "@veyyon/pi-coding-agent/discovery/helpers";
+import { removeSyncWithRetries } from "@veyyon/pi-utils";
 
 const PROVIDER_ID = "agents";
 

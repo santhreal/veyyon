@@ -1,6 +1,6 @@
 import { expect, it } from "bun:test";
 import * as path from "node:path";
-import { TempDir } from "@oh-my-pi/pi-utils";
+import { TempDir } from "@veyyon/pi-utils";
 
 it("imports the JS process entry without loading dotenv before profile bootstrap", async () => {
 	using tempDir = TempDir.createSync("@omp-js-process-import-");

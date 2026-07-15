@@ -56,7 +56,7 @@ Because bundled parsing uses `level: "fatal"`, malformed bundled frontmatter thr
 
 ## Filesystem and plugin discovery
 
-`discoverAgents(cwd, home)` (`src/task/discovery.ts`) merges agents from OMP-native roots and Claude plugin roots before appending bundled definitions. Cross-harness roots such as `.claude/agents`, `.codex/agents`, and `.gemini/agents` are intentionally skipped — their frontmatter schema is not the OMP task-agent contract (`TASK_AGENT_CONFIG_SOURCE = ".omp"` filters both dir lists).
+`discoverAgents(cwd, home)` (`src/task/discovery.ts`) merges agents from OMP-native roots and Claude plugin roots before appending bundled definitions. Cross-harness roots such as `.claude/agents`, `.codex/agents`, and `.gemini/agents` are intentionally skipped — their frontmatter schema is not the OMP task-agent contract (`TASK_AGENT_CONFIG_SOURCE = ".veyyon"` filters both dir lists).
 
 ### Discovery inputs
 
@@ -68,7 +68,7 @@ Because bundled parsing uses `level: "fatal"`, malformed bundled frontmatter thr
 ### Actual source order
 
 1. project `.omp/agents`
-2. user `~/.omp/agent/agents`
+2. user `~/.veyyon/agent/agents`
 3. plugin `agents/` dirs (project-scope first, then user-scope)
 4. bundled agents last
 

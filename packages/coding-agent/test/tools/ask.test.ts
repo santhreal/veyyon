@@ -1,16 +1,16 @@
 import { beforeAll, describe, expect, it, vi } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
-import type { AgentToolContext } from "@oh-my-pi/pi-agent-core";
-import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
+import type { AgentToolContext } from "@veyyon/pi-agent-core";
+import { Settings } from "@veyyon/pi-coding-agent/config/settings";
 import type {
 	ExtensionAskDialogQuestion,
 	ExtensionAskDialogResult,
 	ExtensionUISelectItem,
-} from "@oh-my-pi/pi-coding-agent/extensibility/extensions";
-import { getThemeByName, initTheme } from "@oh-my-pi/pi-coding-agent/modes/theme/theme";
-import type { ToolSession } from "@oh-my-pi/pi-coding-agent/tools";
-import { AskTool, askToolRenderer } from "@oh-my-pi/pi-coding-agent/tools/ask";
-import { ToolAbortError } from "@oh-my-pi/pi-coding-agent/tools/tool-errors";
+} from "@veyyon/pi-coding-agent/extensibility/extensions";
+import { getThemeByName, initTheme } from "@veyyon/pi-coding-agent/modes/theme/theme";
+import type { ToolSession } from "@veyyon/pi-coding-agent/tools";
+import { AskTool, askToolRenderer } from "@veyyon/pi-coding-agent/tools/ask";
+import { ToolAbortError } from "@veyyon/pi-coding-agent/tools/tool-errors";
 import { type } from "arktype";
 
 function createSession(overrides: Partial<ToolSession> = {}): ToolSession {
@@ -415,7 +415,7 @@ describe("AskTool option descriptions", () => {
 		const select = vi.fn(async (_prompt: string, options: ExtensionUISelectItem[]) => {
 			expect(options[0]).toEqual({
 				label: "Use local credentials",
-				description: "Authenticate with provider keys already configured under ~/.omp.",
+				description: "Authenticate with provider keys already configured under ~/.veyyon.",
 			});
 			expect(options[1]).toEqual({
 				label: "Set up in terminal",
@@ -436,7 +436,7 @@ describe("AskTool option descriptions", () => {
 						options: [
 							{
 								label: "Use local credentials",
-								description: "Authenticate with provider keys already configured under ~/.omp.",
+								description: "Authenticate with provider keys already configured under ~/.veyyon.",
 							},
 							{
 								label: "Set up in terminal",
@@ -470,7 +470,7 @@ describe("AskTool option descriptions", () => {
 				options: [
 					{
 						label: "Use local credentials",
-						description: "Authenticate with provider keys already configured under ~/.omp.",
+						description: "Authenticate with provider keys already configured under ~/.veyyon.",
 					},
 					{
 						label: "Set up in terminal",

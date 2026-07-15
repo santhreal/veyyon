@@ -7,10 +7,10 @@
  * state, while the advisor config overlay embeds it as a plain "pick one
  * model" list.
  */
-import { ThinkingLevel } from "@oh-my-pi/pi-agent-core";
-import type { Model } from "@oh-my-pi/pi-ai";
-import { buildModel } from "@oh-my-pi/pi-catalog/build";
-import { modelsAreEqual } from "@oh-my-pi/pi-catalog/models";
+import { ThinkingLevel } from "@veyyon/pi-agent-core";
+import type { Model } from "@veyyon/pi-ai";
+import { buildModel } from "@veyyon/pi-catalog/build";
+import { modelsAreEqual } from "@veyyon/pi-catalog/models";
 import {
 	type Component,
 	fuzzyRank,
@@ -20,8 +20,8 @@ import {
 	type SgrMouseEvent,
 	truncateToWidth,
 	visibleWidth,
-} from "@oh-my-pi/pi-tui";
-import { formatNumber } from "@oh-my-pi/pi-utils";
+} from "@veyyon/pi-tui";
+import { formatNumber } from "@veyyon/pi-utils";
 import { getModelMatchPreferences, resolveModelRoleValue } from "../../config/model-resolver";
 import { getKnownRoleIds, getRoleInfo, MODEL_ROLE_IDS } from "../../config/model-roles";
 import type { Settings } from "../../config/settings";
@@ -44,6 +44,10 @@ export interface ModelBrowserItem {
 	selector: string;
 	/** Optional foreground color for the row label. */
 	labelColor?: ThemeColor;
+	/** Optional right-of-name badge (e.g. auth status). */
+	badge?: string;
+	/** Color for {@link badge}. */
+	badgeColor?: ThemeColor;
 }
 
 /** Resolved role assignment as displayed by the browser and the hub. */
@@ -728,10 +732,13 @@ export class ModelBrowser implements Component {
 				: item.id;
 		const currentMark =
 			item.selector === this.#currentSelector ? ` ${theme.fg("success", theme.status.enabled)}` : "";
+		const authBadge = item.badge
+			? ` ${theme.fg(item.badgeColor ?? "dim", item.badge)}`
+			: "";
 		const overLimit = disabled
 			? ` ${theme.status.disabled} context>${formatNumber(item.model.contextWindow ?? 0).toLowerCase()}`
 			: "";
-		let left = `${prefix}${providerPrefix}${name}${currentMark}${overLimit}`;
+		let left = `${prefix}${providerPrefix}${name}${currentMark}${authBadge}${overLimit}`;
 
 		// Perf column collapses entirely when no visible row has measurements.
 		const perfCol =

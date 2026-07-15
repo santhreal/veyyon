@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "bun:test";
-import { canUseInteractiveBashPty } from "@oh-my-pi/pi-coding-agent/tools/bash-pty-selection";
+import { canUseInteractiveBashPty } from "@veyyon/pi-coding-agent/tools/bash-pty-selection";
 
 const originalPlatform = process.platform;
 const originalNoPty = Bun.env.PI_NO_PTY;

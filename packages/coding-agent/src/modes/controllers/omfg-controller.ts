@@ -1,5 +1,5 @@
 import * as path from "node:path";
-import { CONFIG_DIR_NAME, prompt } from "@oh-my-pi/pi-utils";
+import { CONFIG_DIR_NAME, prompt } from "@veyyon/pi-utils";
 import type { Rule } from "../../capability/rule";
 import omfgUserPrompt from "../../prompts/system/omfg-user.md" with { type: "text" };
 import { shortenPath } from "../../tools/render-utils";
@@ -33,7 +33,7 @@ type SaveCandidateResult = { kind: "saved" | "aborted" | "rejected" } | { kind: 
 
 const MAX_ATTEMPTS = 3;
 const PROJECT_OPTION = "This project (.omp/rules)";
-const GLOBAL_OPTION = "Global — all projects (~/.omp/agent/rules)";
+const GLOBAL_OPTION = "Global — all projects (~/.veyyon/agent/rules)";
 const AMEND_OPTION = "Amend with feedback…";
 
 export class OmfgController {

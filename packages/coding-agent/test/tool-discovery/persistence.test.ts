@@ -1,9 +1,9 @@
 import { describe, expect, it } from "bun:test";
-import type { DiscoverableTool } from "@oh-my-pi/pi-coding-agent/tool-discovery/tool-index";
+import type { DiscoverableTool } from "@veyyon/pi-coding-agent/tool-discovery/tool-index";
 import {
 	buildDiscoverableToolSearchIndex,
 	searchDiscoverableTools,
-} from "@oh-my-pi/pi-coding-agent/tool-discovery/tool-index";
+} from "@veyyon/pi-coding-agent/tool-discovery/tool-index";
 
 describe("generic index: DiscoverableTool round-trip", () => {
 	const tools: DiscoverableTool[] = [

@@ -8,7 +8,7 @@ import {
 	postmortem,
 	restoreTerminalStderr,
 	suppressTerminalStderr,
-} from "@oh-my-pi/pi-utils";
+} from "@veyyon/pi-utils";
 import { setKittyProtocolActive } from "./keys";
 import { StdinBuffer } from "./stdin-buffer";
 import {

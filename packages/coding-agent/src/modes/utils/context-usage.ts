@@ -1,9 +1,9 @@
-import { countTokens } from "@oh-my-pi/pi-agent-core";
-import type { CompactionSettings } from "@oh-my-pi/pi-agent-core/compaction";
-import { effectiveReserveTokens, estimateTokens, resolveThresholdTokens } from "@oh-my-pi/pi-agent-core/compaction";
-import type { Tool as AiTool, Model } from "@oh-my-pi/pi-ai";
-import { toolWireSchema } from "@oh-my-pi/pi-ai/utils/schema";
-import { formatNumber } from "@oh-my-pi/pi-utils";
+import { countTokens } from "@veyyon/pi-agent-core";
+import type { CompactionSettings } from "@veyyon/pi-agent-core/compaction";
+import { effectiveReserveTokens, estimateTokens, resolveThresholdTokens } from "@veyyon/pi-agent-core/compaction";
+import type { Tool as AiTool, Model } from "@veyyon/pi-ai";
+import { toolWireSchema } from "@veyyon/pi-ai/utils/schema";
+import { formatNumber } from "@veyyon/pi-utils";
 import type { Skill } from "../../extensibility/skills";
 import type { AgentSession } from "../../session/agent-session";
 import { estimateInlineSavings, type SnapcompactSavingsEstimate } from "../../session/snapcompact-inline";
@@ -45,6 +45,32 @@ const EMPTY_STRING_PARTS: readonly string[] = [];
 const EMPTY_TOOLS: ReadonlyArray<Pick<Tool, "name" | "description" | "parameters">> = [];
 const EMPTY_SKILLS: readonly Skill[] = [];
 
+/** Memoize wire-schema JSON per stable `parameters` object — tool defs are
+ *  replaced wholesale via setTools, never mutated in place. */
+const toolWireJsonByParameters = new WeakMap<object, string>();
+
+function wireSchemaJsonFragment(tool: Pick<Tool, "name" | "description" | "parameters">): string {
+	const parameters = tool.parameters;
+	if (parameters !== null && typeof parameters === "object") {
+		const cached = toolWireJsonByParameters.get(parameters);
+		if (cached !== undefined) return cached;
+	}
+	try {
+		const wireTool: AiTool = {
+			name: tool.name,
+			description: tool.description,
+			parameters: tool.parameters as AiTool["parameters"],
+		};
+		const json = JSON.stringify(toolWireSchema(wireTool) ?? {});
+		if (parameters !== null && typeof parameters === "object") {
+			toolWireJsonByParameters.set(parameters, json);
+		}
+		return json;
+	} catch {
+		return "{}";
+	}
+}
+
 export function estimateSkillsTokens(skills: readonly Skill[]): number {
 	const fragments: string[] = [];
 	for (const skill of skills) {
@@ -60,17 +86,7 @@ export function estimateToolSchemaTokens(
 ): number {
 	const fragments: string[] = [];
 	for (const tool of tools) {
-		fragments.push(tool.name, tool.description);
-		try {
-			const wireTool: AiTool = {
-				name: tool.name,
-				description: tool.description,
-				parameters: tool.parameters as AiTool["parameters"],
-			};
-			fragments.push(JSON.stringify(toolWireSchema(wireTool) ?? {}));
-		} catch {
-			// Schema may contain functions or cycles; ignore.
-		}
+		fragments.push(tool.name, tool.description, wireSchemaJsonFragment(tool));
 	}
 	return countTokens(fragments);
 }

@@ -1,19 +1,19 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { Agent } from "@oh-my-pi/pi-agent-core";
-import * as compactionModule from "@oh-my-pi/pi-agent-core/compaction";
-import { resolveThresholdTokens, shouldCompact } from "@oh-my-pi/pi-agent-core/compaction";
-import { getBundledModel } from "@oh-my-pi/pi-catalog/models";
-import { ModelRegistry } from "@oh-my-pi/pi-coding-agent/config/model-registry";
-import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import { loadExtensions } from "@oh-my-pi/pi-coding-agent/extensibility/extensions/loader";
-import { ExtensionRunner } from "@oh-my-pi/pi-coding-agent/extensibility/extensions/runner";
-import { AgentSession } from "@oh-my-pi/pi-coding-agent/session/agent-session";
-import { AuthStorage } from "@oh-my-pi/pi-coding-agent/session/auth-storage";
-import type { CompactionEntry } from "@oh-my-pi/pi-coding-agent/session/session-entries";
-import { SessionManager } from "@oh-my-pi/pi-coding-agent/session/session-manager";
-import { getProjectAgentDir, TempDir } from "@oh-my-pi/pi-utils";
+import { Agent } from "@veyyon/pi-agent-core";
+import * as compactionModule from "@veyyon/pi-agent-core/compaction";
+import { resolveThresholdTokens, shouldCompact } from "@veyyon/pi-agent-core/compaction";
+import { getBundledModel } from "@veyyon/pi-catalog/models";
+import { ModelRegistry } from "@veyyon/pi-coding-agent/config/model-registry";
+import { Settings } from "@veyyon/pi-coding-agent/config/settings";
+import { loadExtensions } from "@veyyon/pi-coding-agent/extensibility/extensions/loader";
+import { ExtensionRunner } from "@veyyon/pi-coding-agent/extensibility/extensions/runner";
+import { AgentSession } from "@veyyon/pi-coding-agent/session/agent-session";
+import { AuthStorage } from "@veyyon/pi-coding-agent/session/auth-storage";
+import type { CompactionEntry } from "@veyyon/pi-coding-agent/session/session-entries";
+import { SessionManager } from "@veyyon/pi-coding-agent/session/session-manager";
+import { getProjectAgentDir, TempDir } from "@veyyon/pi-utils";
 
 /**
  * Regression test for the auto-compaction thrash loop.
@@ -1074,7 +1074,7 @@ describe("AgentSession auto-compaction progress guard", () => {
 		// Pin the threshold so the recovery band is exact: floor(76384 * 0.8) = 61107.
 		session.settings.set("compaction.thresholdTokens", 76384);
 		session.settings.set("compaction.thresholdPercent", -1);
-		session.settings.set("compaction.strategy", "context-full");
+		session.settings.override("compaction.strategy", "context-full" as never);
 		session.settings.set("compaction.dropUseless", true);
 		session.settings.set("compaction.supersedeReads", true);
 		session.settings.set("compaction.keepRecentTokens", 10000);

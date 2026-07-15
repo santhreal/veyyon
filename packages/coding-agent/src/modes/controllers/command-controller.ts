@@ -1,7 +1,7 @@
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { CompactionCancelledError, type CompactionOutcome } from "@oh-my-pi/pi-agent-core/compaction";
+import { CompactionCancelledError, type CompactionOutcome } from "@veyyon/pi-agent-core/compaction";
 import {
 	getEnvApiKey,
 	getProviderDetails,
@@ -9,9 +9,9 @@ import {
 	resolveUsedFraction,
 	type UsageLimit,
 	type UsageReport,
-} from "@oh-my-pi/pi-ai";
-import { Loader, Markdown, padding, Spacer, Text, visibleWidth } from "@oh-my-pi/pi-tui";
-import { formatDuration, Snowflake, sanitizeText } from "@oh-my-pi/pi-utils";
+} from "@veyyon/pi-ai";
+import { Loader, Markdown, padding, Spacer, Text, visibleWidth } from "@veyyon/pi-tui";
+import { formatDuration, Snowflake, sanitizeText } from "@veyyon/pi-utils";
 import { shouldEnableAppendOnlyContext } from "../../config/append-only-context-mode";
 import { type LoadedCustomShare, loadCustomShare } from "../../export/custom-share";
 import { shareSession } from "../../export/share";
@@ -121,24 +121,8 @@ export class CommandController {
 		}
 	}
 
-	handleAdvisorDumpCommand(isRaw = false) {
-		try {
-			const advisorHistory = this.ctx.session.formatAdvisorHistoryAsText({ compact: !isRaw });
-			if (advisorHistory === null) {
-				this.ctx.showError("Advisor is not active for this session.");
-				return;
-			}
-			if (!advisorHistory) {
-				this.ctx.showError("Advisor has no history yet.");
-				return;
-			}
-			copyToClipboard(advisorHistory);
-			this.ctx.showStatus("Advisor history copied to clipboard");
-		} catch (error: unknown) {
-			this.ctx.showError(
-				`Failed to copy advisor history: ${error instanceof Error ? error.message : "Unknown error"}`,
-			);
-		}
+	handleAdvisorDumpCommand(_isRaw = false) {
+		this.ctx.showError("Advisor/watchdog was removed from Veyyon.");
 	}
 
 	async handleDebugTranscriptCommand(): Promise<void> {
@@ -350,71 +334,7 @@ export class CommandController {
 	}
 
 	async handleAdvisorStatusCommand(): Promise<void> {
-		const stats = this.ctx.session.getAdvisorStats();
-		if (!stats.active) {
-			this.ctx.present([
-				new Spacer(1),
-				new Text(
-					stats.configured
-						? "Advisor setting is enabled, but no model is assigned to the 'advisor' role."
-						: "Advisor is disabled.",
-					1,
-					0,
-				),
-			]);
-			return;
-		}
-		if (stats.advisors.length > 1) {
-			let info = `${theme.bold("Advisor Status")} (${stats.advisors.length} advisors)\n`;
-			for (const a of stats.advisors) {
-				const ctx =
-					a.contextWindow > 0
-						? `${a.contextTokens.toLocaleString()} / ${a.contextWindow.toLocaleString()} (${Math.round((a.contextTokens / a.contextWindow) * 100)}%)`
-						: `${a.contextTokens.toLocaleString()}`;
-				info += `\n${theme.bold(a.name)}\n`;
-				info += `${theme.fg("dim", "Model:")} ${a.model.provider}/${a.model.id}\n`;
-				info += `${theme.fg("dim", "Context:")} ${ctx}\n`;
-				info += `${theme.fg("dim", "Messages:")} ${a.messages.total.toLocaleString()}\n`;
-				info += `${theme.fg("dim", "Spend:")} ${a.tokens.input.toLocaleString()} in / ${a.tokens.output.toLocaleString()} out`;
-				if (a.cost > 0) info += `, $${a.cost.toFixed(4)}`;
-				info += "\n";
-			}
-			info += `\n${theme.bold("Totals")}\n`;
-			info += `${theme.fg("dim", "Tokens:")} ${stats.tokens.total.toLocaleString()}\n`;
-			if (stats.cost > 0) info += `${theme.fg("dim", "Cost:")} $${stats.cost.toFixed(4)}\n`;
-			this.ctx.present([new Spacer(1), new Text(info, 1, 0)]);
-			return;
-		}
-		const model = stats.model!;
-		let info = `${theme.bold("Advisor Status")}\n\n`;
-		info += `${theme.bold("Provider")}\n`;
-		info += `${theme.fg("dim", "Model:")} ${model.provider}/${model.id}\n`;
-		info += `\n${theme.bold("Messages")}\n`;
-		info += `${theme.fg("dim", "User:")} ${stats.messages.user.toLocaleString()}\n`;
-		info += `${theme.fg("dim", "Assistant:")} ${stats.messages.assistant.toLocaleString()}\n`;
-		info += `${theme.fg("dim", "Total:")} ${stats.messages.total.toLocaleString()}\n`;
-		info += `\n${theme.bold("Context")}\n`;
-		if (stats.contextWindow > 0) {
-			const percent = Math.round((stats.contextTokens / stats.contextWindow) * 100);
-			info += `${theme.fg("dim", "Tokens:")} ${stats.contextTokens.toLocaleString()} / ${stats.contextWindow.toLocaleString()} (${percent}%)\n`;
-		} else {
-			info += `${theme.fg("dim", "Tokens:")} ${stats.contextTokens.toLocaleString()}\n`;
-		}
-		info += `\n${theme.bold("Spend")}\n`;
-		info += `${theme.fg("dim", "Input:")} ${stats.tokens.input.toLocaleString()}\n`;
-		info += `${theme.fg("dim", "Output:")} ${stats.tokens.output.toLocaleString()}\n`;
-		if (stats.tokens.cacheRead > 0) {
-			info += `${theme.fg("dim", "Cache Read:")} ${stats.tokens.cacheRead.toLocaleString()}\n`;
-		}
-		if (stats.tokens.cacheWrite > 0) {
-			info += `${theme.fg("dim", "Cache Write:")} ${stats.tokens.cacheWrite.toLocaleString()}\n`;
-		}
-		info += `${theme.fg("dim", "Total:")} ${stats.tokens.total.toLocaleString()}\n`;
-		if (stats.cost > 0) {
-			info += `\n${theme.bold("Cost")}\n`;
-			info += `${theme.fg("dim", "Total:")} $${stats.cost.toFixed(4)}\n`;
-		}
-		this.ctx.present([new Spacer(1), new Text(info, 1, 0)]);
+		this.ctx.showError("Advisor/watchdog was removed from Veyyon.");
 	}
 
 	async handleJobsCommand(): Promise<void> {

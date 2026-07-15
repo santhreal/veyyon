@@ -6,7 +6,7 @@ import {
 	type NativeScrollbackLiveRegion,
 	type NativeScrollbackReplay,
 	TUI,
-} from "@oh-my-pi/pi-tui";
+} from "@veyyon/pi-tui";
 import { StressRenderScheduler } from "./render-stress-scheduler";
 import { VirtualTerminal } from "./virtual-terminal";
 

@@ -3,12 +3,12 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { create } from "@bufbuild/protobuf";
-import type { AgentEvent, AgentTool } from "@oh-my-pi/pi-agent-core";
-import { ReadArgsSchema, ShellArgsSchema } from "@oh-my-pi/pi-catalog/discovery/cursor-gen/agent_pb";
-import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import { CursorExecHandlers } from "@oh-my-pi/pi-coding-agent/cursor";
-import { GrepTool, type ToolSession } from "@oh-my-pi/pi-coding-agent/tools";
-import { removeWithRetries } from "@oh-my-pi/pi-utils";
+import type { AgentEvent, AgentTool } from "@veyyon/pi-agent-core";
+import { ReadArgsSchema, ShellArgsSchema } from "@veyyon/pi-catalog/discovery/cursor-gen/agent_pb";
+import { Settings } from "@veyyon/pi-coding-agent/config/settings";
+import { CursorExecHandlers } from "@veyyon/pi-coding-agent/cursor";
+import { GrepTool, type ToolSession } from "@veyyon/pi-coding-agent/tools";
+import { removeWithRetries } from "@veyyon/pi-utils";
 import { type } from "arktype";
 
 function createTestSession(cwd: string, overrides: Partial<ToolSession> = {}): ToolSession {

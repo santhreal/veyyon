@@ -1,4 +1,4 @@
-import { Container } from "@oh-my-pi/pi-tui";
+import { Container } from "@veyyon/pi-tui";
 
 /**
  * Capabilities a mounted {@link ChatBlock} may use against its host transcript.

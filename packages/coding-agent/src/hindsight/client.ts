@@ -11,7 +11,7 @@
 import { isTimeoutError, withTimeoutSignal } from "../utils/fetch-timeout";
 import type { HindsightConfig } from "./config";
 
-const USER_AGENT = "oh-my-pi-coding-agent";
+const USER_AGENT = "veyyon-coding-agent";
 const DEFAULT_USER_AGENT = USER_AGENT;
 const HINDSIGHT_REQUEST_TIMEOUT_MS = 30_000;
 

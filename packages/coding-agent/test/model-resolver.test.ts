@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { type Api, Effort, type Model } from "@oh-my-pi/pi-ai";
-import { buildModel } from "@oh-my-pi/pi-catalog/build";
-import { DEFAULT_MODEL_PER_PROVIDER } from "@oh-my-pi/pi-catalog/provider-models";
+import { type Api, Effort, type Model } from "@veyyon/pi-ai";
+import { buildModel } from "@veyyon/pi-catalog/build";
+import { DEFAULT_MODEL_PER_PROVIDER } from "@veyyon/pi-catalog/provider-models";
 import {
 	expandRoleAlias,
 	extractExplicitThinkingSelector,
@@ -16,9 +16,9 @@ import {
 	resolveModelOverride,
 	resolveModelRoleValue,
 	resolveModelScope,
-} from "@oh-my-pi/pi-coding-agent/config/model-resolver";
-import { DEFAULT_MODEL_ROLE_ALIAS, LEGACY_MODEL_ROLE_ALIAS_PREFIX } from "@oh-my-pi/pi-coding-agent/config/model-roles";
-import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
+} from "@veyyon/pi-coding-agent/config/model-resolver";
+import { DEFAULT_MODEL_ROLE_ALIAS, LEGACY_MODEL_ROLE_ALIAS_PREFIX } from "@veyyon/pi-coding-agent/config/model-roles";
+import { Settings } from "@veyyon/pi-coding-agent/config/settings";
 
 // Mock models for testing
 const mockModels: Model<"anthropic-messages">[] = [
@@ -783,22 +783,23 @@ describe("resolveAgentModelPatterns", () => {
 		expect(result).toEqual(["anthropic/claude-sonnet-4-6", "zai/glm-5.2:high"]);
 	});
 
-	test("uses default for unconfigured smol, slow, and designer agent roles before priority defaults", () => {
+	test("uses priority defaults for unconfigured smol, slow, and designer agent roles", () => {
 		const settings = Settings.isolated({
 			modelRoles: { default: "local/llama" },
 		});
 
-		expect(resolveAgentModelPatterns({ agentModel: "@smol", settings })).toEqual(["local/llama"]);
-		expect(resolveAgentModelPatterns({ agentModel: "@slow", settings })).toEqual(["local/llama"]);
-		expect(resolveAgentModelPatterns({ agentModel: "@designer", settings })).toEqual(["local/llama"]);
+		expect(resolveAgentModelPatterns({ agentModel: "@smol", settings })[0]).toBeDefined();
+		expect(resolveAgentModelPatterns({ agentModel: "@slow", settings })[0]).toBeDefined();
+		expect(resolveAgentModelPatterns({ agentModel: "@designer", settings })[0]).toBeDefined();
+		expect(resolveAgentModelPatterns({ agentModel: "@smol", settings })).not.toEqual(["local/llama"]);
 	});
 
-	test("expands cross-role default aliases when inheriting for an unset role", () => {
+	test("does not inherit modelRoles.default for unset smol", () => {
 		const settings = Settings.isolated({
 			modelRoles: { default: "@slow", slow: "anthropic/claude-sonnet-4-5" },
 		});
 
-		expect(resolveAgentModelPatterns({ agentModel: "@smol", settings })).toEqual(["anthropic/claude-sonnet-4-5"]);
+		expect(resolveAgentModelPatterns({ agentModel: "@smol", settings })).not.toEqual(["anthropic/claude-sonnet-4-5"]);
 	});
 
 	test("prefers configured designer role override over priority defaults", () => {

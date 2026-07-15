@@ -1,7 +1,7 @@
 /**
  * Render a code or markdown cell with optional output section.
  */
-import { Markdown } from "@oh-my-pi/pi-tui";
+import { Markdown } from "@veyyon/pi-tui";
 import { getMarkdownTheme, highlightCode, type Theme } from "../modes/theme/theme";
 import {
 	formatDuration,

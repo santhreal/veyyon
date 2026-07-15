@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { createHash } from "node:crypto";
-import { logger } from "@oh-my-pi/pi-utils";
+import { logger } from "@veyyon/pi-utils";
 import * as embeddings from "./embeddings";
 import { cosineSimilarity } from "./vector-math";
 

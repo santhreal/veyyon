@@ -1,4 +1,4 @@
-import { logger } from "@oh-my-pi/pi-utils";
+import { logger } from "@veyyon/pi-utils";
 import { sttClient } from "./asr-client";
 import { resolveSttModelSpec } from "./models";
 import { decodeWavToMono16k } from "./wav";

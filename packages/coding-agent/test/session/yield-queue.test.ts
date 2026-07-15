@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import type { AgentMessage } from "@oh-my-pi/pi-agent-core";
-import { YieldQueue } from "@oh-my-pi/pi-coding-agent/session/yield-queue";
+import type { AgentMessage } from "@veyyon/pi-agent-core";
+import { YieldQueue } from "@veyyon/pi-coding-agent/session/yield-queue";
 
 type Entry = {
 	id: string;

@@ -4,17 +4,16 @@ import {
 	SelectList,
 	type SgrMouseEvent,
 	truncateToWidth,
-} from "@oh-my-pi/pi-tui";
-import { SETTINGS_SCHEMA } from "../../../config/settings-schema";
+} from "@veyyon/pi-tui";
 import { getSearchProvider, setPreferredSearchProvider } from "../../../web/search/provider";
-import { isSearchProviderPreference, type SearchProviderId } from "../../../web/search/types";
+import { isSearchProviderPreference, SEARCH_PROVIDER_OPTIONS, type SearchProviderId } from "../../../web/search/types";
 import { getSelectListTheme, theme } from "../../theme/theme";
 import type { SetupSceneHost, SetupTab } from "./types";
 
 const MAX_VISIBLE = 8;
 
-/** Reuse the settings schema as the single source of truth for labels/descriptions. */
-const WEB_SEARCH_ITEMS: readonly SelectItem[] = SETTINGS_SCHEMA["providers.webSearch"].ui.options.map(option => ({
+/** Reuse search provider metadata as the single source of truth for labels/descriptions. */
+const WEB_SEARCH_ITEMS: readonly SelectItem[] = SEARCH_PROVIDER_OPTIONS.map(option => ({
 	value: option.value,
 	label: option.label,
 	description: option.description,

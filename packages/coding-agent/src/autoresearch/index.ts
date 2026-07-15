@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { AutocompleteItem } from "@oh-my-pi/pi-tui";
-import { logger, prompt } from "@oh-my-pi/pi-utils";
+import type { AutocompleteItem } from "@veyyon/pi-tui";
+import { logger, prompt } from "@veyyon/pi-utils";
 import type { ExtensionContext, ExtensionFactory } from "../extensibility/extensions";
 import * as git from "../utils/git";
 import commandResumeTemplate from "./command-resume.md" with { type: "text" };

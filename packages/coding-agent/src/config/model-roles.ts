@@ -40,7 +40,8 @@ export interface ModelRoleInfo {
 }
 
 export const MODEL_ROLES: Record<ModelRole, ModelRoleInfo> = {
-	default: { tag: "DEFAULT", name: "Default", color: "success" },
+	/** Legacy only — not selectable; interactive model is the session model, not a role. */
+	default: { tag: "DEFAULT", name: "Default", color: "success", hidden: true },
 	smol: { tag: "SMOL", name: "Fast", color: "warning" },
 	slow: { tag: "SLOW", name: "Thinking", color: "accent" },
 	vision: { tag: "VISION", name: "Vision", color: "error" },
@@ -53,7 +54,6 @@ export const MODEL_ROLES: Record<ModelRole, ModelRoleInfo> = {
 };
 
 export const MODEL_ROLE_IDS: ModelRole[] = [
-	"default",
 	"smol",
 	"slow",
 	"vision",
@@ -65,6 +65,12 @@ export const MODEL_ROLE_IDS: ModelRole[] = [
 	"advisor",
 ];
 
+/** Built-in roles that may appear in settings-backed role assignment UI. */
+export const SELECTABLE_MODEL_ROLE_IDS: ModelRole[] = MODEL_ROLE_IDS;
+
+/** Legacy default role — not selectable in pickers; interactive model is not a role slot. */
+export const LEGACY_DEFAULT_MODEL_ROLE = "default" as const;
+
 export type RoleInfo = ModelRoleInfo;
 
 /**
@@ -75,7 +81,9 @@ export type RoleInfo = ModelRoleInfo;
  * entries across settings.
  */
 export function getKnownRoleIds(settings: Settings): string[] {
-	const roles = MODEL_ROLE_IDS.filter(role => !MODEL_ROLES[role as ModelRole]?.hidden) as string[];
+	const roles = SELECTABLE_MODEL_ROLE_IDS.filter(
+		role => !MODEL_ROLES[role as ModelRole]?.hidden,
+	) as string[];
 	const seen = new Set<string>(roles);
 	const addRole = (role: string) => {
 		if (seen.has(role)) return;
@@ -83,8 +91,14 @@ export function getKnownRoleIds(settings: Settings): string[] {
 		roles.push(role);
 	};
 
-	for (const role of settings.get("cycleOrder")) addRole(role);
-	for (const role in settings.getModelRoles()) addRole(role);
+	for (const role of settings.get("cycleOrder")) {
+		if (role === LEGACY_DEFAULT_MODEL_ROLE) continue;
+		addRole(role);
+	}
+	for (const role in settings.getModelRoles()) {
+		if (role === LEGACY_DEFAULT_MODEL_ROLE) continue;
+		addRole(role);
+	}
 	for (const role in settings.get("modelTags")) addRole(role);
 
 	return roles;

@@ -1,11 +1,11 @@
 /**
  * Config CLI command handlers.
  *
- * Handles `omp config <command>` subcommands for managing settings.
+ * Handles `veyyon config <command>` subcommands for managing settings.
  * Uses the settings schema as the source of truth for available settings.
  */
 
-import { APP_NAME, getAgentDir } from "@oh-my-pi/pi-utils";
+import { APP_NAME, getAgentDir } from "@veyyon/pi-utils";
 import chalk from "chalk";
 import {
 	getDefault,

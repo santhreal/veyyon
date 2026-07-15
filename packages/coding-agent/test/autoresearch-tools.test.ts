@@ -1,22 +1,22 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { ImageContent, TextContent } from "@oh-my-pi/pi-ai";
-import { createSessionRuntime } from "@oh-my-pi/pi-coding-agent/autoresearch/state";
+import type { ImageContent, TextContent } from "@veyyon/pi-ai";
+import { createSessionRuntime } from "@veyyon/pi-coding-agent/autoresearch/state";
 import {
 	type AutoresearchStorage,
 	closeAllAutoresearchStorages,
 	openAutoresearchStorage,
 	type SessionRow,
-} from "@oh-my-pi/pi-coding-agent/autoresearch/storage";
-import { createInitExperimentTool } from "@oh-my-pi/pi-coding-agent/autoresearch/tools/init-experiment";
-import { createLogExperimentTool } from "@oh-my-pi/pi-coding-agent/autoresearch/tools/log-experiment";
-import { createRunExperimentTool } from "@oh-my-pi/pi-coding-agent/autoresearch/tools/run-experiment";
-import { createUpdateNotesTool } from "@oh-my-pi/pi-coding-agent/autoresearch/tools/update-notes";
-import type { ASIData, LogDetails, NumericMetricMap, RunDetails } from "@oh-my-pi/pi-coding-agent/autoresearch/types";
-import type { ExtensionAPI, ExtensionContext } from "@oh-my-pi/pi-coding-agent/extensibility/extensions";
-import * as git from "@oh-my-pi/pi-coding-agent/utils/git";
-import { TempDir } from "@oh-my-pi/pi-utils";
+} from "@veyyon/pi-coding-agent/autoresearch/storage";
+import { createInitExperimentTool } from "@veyyon/pi-coding-agent/autoresearch/tools/init-experiment";
+import { createLogExperimentTool } from "@veyyon/pi-coding-agent/autoresearch/tools/log-experiment";
+import { createRunExperimentTool } from "@veyyon/pi-coding-agent/autoresearch/tools/run-experiment";
+import { createUpdateNotesTool } from "@veyyon/pi-coding-agent/autoresearch/tools/update-notes";
+import type { ASIData, LogDetails, NumericMetricMap, RunDetails } from "@veyyon/pi-coding-agent/autoresearch/types";
+import type { ExtensionAPI, ExtensionContext } from "@veyyon/pi-coding-agent/extensibility/extensions";
+import * as git from "@veyyon/pi-coding-agent/utils/git";
+import { TempDir } from "@veyyon/pi-utils";
 import { $ } from "bun";
 
 afterEach(() => {

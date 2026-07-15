@@ -1,11 +1,11 @@
 /**
  * Read CLI command handler.
  *
- * Handles `omp read` — invokes the `read` agent tool against a path/URL and
+ * Handles `veyyon read` — invokes the `read` agent tool against a path/URL and
  * prints the resulting content blocks exactly as the model would receive them
  * (including truncation/limit notices appended by the meta-notice wrapper).
  */
-import { getProjectDir } from "@oh-my-pi/pi-utils";
+import { getProjectDir } from "@veyyon/pi-utils";
 import chalk from "chalk";
 import { Settings } from "../config/settings";
 import type { ToolSession } from "../tools";

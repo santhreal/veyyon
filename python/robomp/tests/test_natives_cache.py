@@ -64,7 +64,7 @@ def _seed_repo(root: Path, *, with_all_inputs: bool = True) -> Path:
         (crates / "src.rs").write_text("// source\n")
         natives = root / "packages" / "natives"
         natives.mkdir(parents=True)
-        (natives / "package.json").write_text('{"name":"@oh-my-pi/pi-natives"}\n')
+        (natives / "package.json").write_text('{"name":"@veyyon/pi-natives"}\n')
         scripts = natives / "scripts"
         scripts.mkdir()
         (scripts / "build-native.ts").write_text("// build script\n")

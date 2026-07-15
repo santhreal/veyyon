@@ -2,20 +2,20 @@ import { describe, expect, it } from "bun:test";
 import {
 	__getLegacyPiBundledModulesGlobal,
 	__synthesizeLegacyPiBundledSourceWithModules,
-} from "@oh-my-pi/pi-coding-agent/extensibility/plugins/legacy-pi-compat";
+} from "@veyyon/pi-coding-agent/extensibility/plugins/legacy-pi-compat";
 
 // Regression for issue #3423: Bun 1.3.14 made `--compile` extras unreachable
 // via every filesystem-style API. The compat layer now routes canonical
-// `@oh-my-pi/pi-*` imports through virtual modules backed by live host module
+// `@veyyon/pi-*` imports through virtual modules backed by live host module
 // references. The synthesizer must preserve every named/default export.
 describe("legacy-pi bundled virtual module synthesizer (issue #3423)", () => {
 	const modules = {
-		"@oh-my-pi/pi-coding-agent": {
+		"@veyyon/pi-coding-agent": {
 			VERSION: "16.1.17",
 			defineTool: () => undefined,
 			Type: { Object: () => undefined },
 		},
-		"@oh-my-pi/pi-utils": {
+		"@veyyon/pi-utils": {
 			isCompiledBinary: () => false,
 			default: () => "default-export",
 			VERSION: "16.1.17",
@@ -27,9 +27,9 @@ describe("legacy-pi bundled virtual module synthesizer (issue #3423)", () => {
 	const globalKey = __getLegacyPiBundledModulesGlobal();
 
 	it("emits one ES named export per enumerable namespace key", () => {
-		const src = __synthesizeLegacyPiBundledSourceWithModules("@oh-my-pi/pi-coding-agent", modules);
+		const src = __synthesizeLegacyPiBundledSourceWithModules("@veyyon/pi-coding-agent", modules);
 		expect(src).toContain(
-			`const __omp_bundled = globalThis[${JSON.stringify(globalKey)}]["@oh-my-pi/pi-coding-agent"];`,
+			`const __omp_bundled = globalThis[${JSON.stringify(globalKey)}]["@veyyon/pi-coding-agent"];`,
 		);
 		expect(src).toContain('export const VERSION = __omp_bundled["VERSION"];');
 		expect(src).toContain('export const defineTool = __omp_bundled["defineTool"];');
@@ -39,7 +39,7 @@ describe("legacy-pi bundled virtual module synthesizer (issue #3423)", () => {
 	});
 
 	it("forwards `default` through `export default` so default imports survive", () => {
-		const src = __synthesizeLegacyPiBundledSourceWithModules("@oh-my-pi/pi-utils", modules);
+		const src = __synthesizeLegacyPiBundledSourceWithModules("@veyyon/pi-utils", modules);
 		expect(src).toContain("export default __omp_bundled.default;");
 		// Default and named exports coexist on the same module.
 		expect(src).toContain('export const VERSION = __omp_bundled["VERSION"];');
@@ -47,12 +47,12 @@ describe("legacy-pi bundled virtual module synthesizer (issue #3423)", () => {
 	});
 
 	it("omits `default` line when the registered namespace has no default export", () => {
-		const src = __synthesizeLegacyPiBundledSourceWithModules("@oh-my-pi/pi-coding-agent", modules);
+		const src = __synthesizeLegacyPiBundledSourceWithModules("@veyyon/pi-coding-agent", modules);
 		expect(src).not.toContain("export default");
 	});
 
 	it("throws when asked to synthesize a key the bundled modules do not cover", () => {
-		expect(() => __synthesizeLegacyPiBundledSourceWithModules("@oh-my-pi/pi-not-bundled", modules)).toThrow(
+		expect(() => __synthesizeLegacyPiBundledSourceWithModules("@veyyon/pi-not-bundled", modules)).toThrow(
 			/no bundled module registered for @oh-my-pi\/pi-not-bundled/,
 		);
 	});
@@ -73,7 +73,7 @@ describe("legacy-pi bundled virtual module synthesizer (issue #3423)", () => {
 		// or skipped an enumerable export.
 		Reflect.set(globalThis, globalKey, modules);
 		try {
-			const src = __synthesizeLegacyPiBundledSourceWithModules("@oh-my-pi/pi-coding-agent", modules);
+			const src = __synthesizeLegacyPiBundledSourceWithModules("@veyyon/pi-coding-agent", modules);
 			// Strip the ES export prefix and run the body as a plain script so
 			// we can read `__omp_bundled` from the returned closure.
 			const body = src

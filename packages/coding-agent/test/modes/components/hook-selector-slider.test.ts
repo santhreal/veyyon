@@ -2,8 +2,8 @@ import { beforeAll, describe, expect, it } from "bun:test";
 import {
 	HookSelectorComponent,
 	type HookSelectorSlider,
-} from "@oh-my-pi/pi-coding-agent/modes/components/hook-selector";
-import { initTheme } from "@oh-my-pi/pi-coding-agent/modes/theme/theme";
+} from "@veyyon/pi-coding-agent/modes/components/hook-selector";
+import { initTheme } from "@veyyon/pi-coding-agent/modes/theme/theme";
 
 const LEFT = "\x1b[D";
 const RIGHT = "\x1b[C";

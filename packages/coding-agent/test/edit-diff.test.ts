@@ -2,15 +2,15 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { formatHashlineHeader, InMemorySnapshotStore, missingSnapshotTagMessage } from "@oh-my-pi/hashline";
+import { formatHashlineHeader, InMemorySnapshotStore, missingSnapshotTagMessage } from "@veyyon/hashline";
 import {
 	adjustIndentation,
 	computeEditDiff,
 	computeHashlineDiff,
 	DEFAULT_FUZZY_THRESHOLD,
 	findMatch,
-} from "@oh-my-pi/pi-coding-agent/edit";
-import { removeWithRetries } from "@oh-my-pi/pi-utils";
+} from "@veyyon/pi-coding-agent/edit";
+import { removeWithRetries } from "@veyyon/pi-utils";
 
 describe("findMatch", () => {
 	describe("exact matching", () => {

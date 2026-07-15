@@ -1,9 +1,9 @@
 {
   "type": "module",
-  "name": "@oh-my-pi/pi-ai",
+  "name": "@veyyon/pi-ai",
   "version": "16.5.2",
   "description": "Unified LLM API with automatic model discovery and provider configuration",
-  "homepage": "https://omp.sh",
+  "homepage": "https://veyyon.dev",
   "author": "Can Boluk",
   "contributors": [
     "Mario Zechner"
@@ -38,9 +38,9 @@
   },
   "dependencies": {
     "@bufbuild/protobuf": "catalog:",
-    "@oh-my-pi/pi-catalog": "catalog:",
-    "@oh-my-pi/pi-utils": "catalog:",
-    "@oh-my-pi/pi-wire": "catalog:",
+    "@veyyon/pi-catalog": "catalog:",
+    "@veyyon/pi-utils": "catalog:",
+    "@veyyon/pi-wire": "catalog:",
     "arktype": "catalog:",
     "zod": "catalog:"
   },

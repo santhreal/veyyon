@@ -18,8 +18,8 @@ import { beforeEach, describe, expect, it } from "bun:test";
 import {
 	RedisSessionStorage,
 	type RedisSessionStorageClient,
-} from "@oh-my-pi/pi-coding-agent/session/redis-session-storage";
-import { serializeTitleSlot } from "@oh-my-pi/pi-coding-agent/session/session-title-slot";
+} from "@veyyon/pi-coding-agent/session/redis-session-storage";
+import { serializeTitleSlot } from "@veyyon/pi-coding-agent/session/session-title-slot";
 
 interface FakeRedisCall {
 	method: string;

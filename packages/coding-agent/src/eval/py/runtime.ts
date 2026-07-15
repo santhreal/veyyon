@@ -7,38 +7,14 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { $env, $which, getPythonEnvDir } from "@oh-my-pi/pi-utils";
+import { $env, $which, getPythonEnvDir } from "@veyyon/pi-utils";
+import { BASE_ENV_ALLOWLIST, CASE_INSENSITIVE_ENV, createEnvFilter, SECRET_ENV_DENYLIST } from "../runtime-env";
 
-const DEFAULT_ENV_ALLOWLIST = new Set([
-	"PATH",
-	"HOME",
-	"USER",
-	"LOGNAME",
-	"SHELL",
-	"LANG",
-	"LC_ALL",
-	"LC_CTYPE",
-	"LC_MESSAGES",
-	"TERM",
-	"TERM_PROGRAM",
-	"TERM_PROGRAM_VERSION",
-	"TMPDIR",
-	"TEMP",
-	"TMP",
-	"XDG_CACHE_HOME",
-	"XDG_CONFIG_HOME",
-	"XDG_DATA_HOME",
-	"XDG_RUNTIME_DIR",
-	"SSH_AUTH_SOCK",
-	"SSH_AGENT_PID",
-	"CONDA_PREFIX",
-	"CONDA_DEFAULT_ENV",
-	"VIRTUAL_ENV",
-	"PYTHONPATH",
-	"LD_LIBRARY_PATH",
-]);
+// Python-specific runtime-state vars not shared by the other language
+// sandboxes (venv/conda layout, import path).
+const PYTHON_ENV_ALLOWLIST = ["CONDA_PREFIX", "CONDA_DEFAULT_ENV", "VIRTUAL_ENV", "PYTHONPATH"];
 
-const WINDOWS_ENV_ALLOWLIST = new Set([
+const WINDOWS_ENV_ALLOWLIST = [
 	"APPDATA",
 	"COMPUTERNAME",
 	"COMSPEC",
@@ -221,7 +197,7 @@ export function resolveExplicitPythonRuntime(
 
 /**
  * Enumerate candidate Python runtimes in priority order: an active/project venv,
- * the managed `~/.omp/python-env`, then the system interpreter on PATH. Every
+ * the managed `~/.veyyon/python-env`, then the system interpreter on PATH. Every
  * candidate that physically exists is returned so callers can probe each in turn
  * rather than committing to the first — a managed env left behind by a removed
  * `uv` install no longer shadows a working system Python.

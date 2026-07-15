@@ -6,11 +6,11 @@
  * (and exit with code 1). This test verifies the guard skips silent-abort.
  */
 import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from "bun:test";
-import type { AssistantMessage } from "@oh-my-pi/pi-ai";
-import * as AIError from "@oh-my-pi/pi-ai/error";
-import { runPrintMode } from "@oh-my-pi/pi-coding-agent/modes/print-mode";
-import type { AgentSession } from "@oh-my-pi/pi-coding-agent/session/agent-session";
-import { SILENT_ABORT_MARKER } from "@oh-my-pi/pi-coding-agent/session/messages";
+import type { AssistantMessage } from "@veyyon/pi-ai";
+import * as AIError from "@veyyon/pi-ai/error";
+import { runPrintMode } from "@veyyon/pi-coding-agent/modes/print-mode";
+import type { AgentSession } from "@veyyon/pi-coding-agent/session/agent-session";
+import { SILENT_ABORT_MARKER } from "@veyyon/pi-coding-agent/session/messages";
 
 function makeAssistantMessage(overrides: Partial<AssistantMessage> = {}): AssistantMessage {
 	return {

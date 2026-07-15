@@ -76,23 +76,17 @@ async function runCommand(
 
 async function main(): Promise<void> {
 	const crossBuild = resolveCrossBuild(Bun.env.CROSS_TARGET);
-	const outName = crossBuild ? `omp-${crossBuild.id}` : "omp";
+	const outName = crossBuild ? `vey-${crossBuild.id}` : "vey";
 	const outputPath = path.join(packageDir, "dist", outName);
-	// Generate inside the try so the finally always restores the empty checked-in
-	// placeholders (stats client archive, docs index) even on failure.
+	// tool-views.generated.js is a build artifact (gitignored); regenerate it from
+	// src/export/html/tool-render/ before bundling the export subpath.
+	await runCommand(
+		["bun", "--cwd=../natives", "run", "gen:native"],
+		crossBuild ? { ...Bun.env, TARGET_PLATFORM: crossBuild.platform, TARGET_ARCH: crossBuild.arch } : Bun.env,
+	);
+	await runCommand(["bun", "run", "gen:mupdf"]);
+	await runCommand(["bun", "run", "gen:tool-views"]);
 	try {
-		await runCommand(["bun", "--cwd=../stats", "run", "gen:stats"]);
-		// The in-memory legacy Pi virtual module reaches the coding-agent
-		// `export/html` subpath, whose source imports `tool-views.generated.js`.
-		// Rebuild it before compilation so clean checkouts that skipped install
-		// hooks still contain that generated bundle.
-		await runCommand(["bun", "--cwd=../collab-web", "run", "gen:tool-views"]);
-		await runCommand(
-			["bun", "--cwd=../natives", "run", "gen:native"],
-			crossBuild ? { ...Bun.env, TARGET_PLATFORM: crossBuild.platform, TARGET_ARCH: crossBuild.arch } : Bun.env,
-		);
-		await runCommand(["bun", "run", "gen:mupdf"]);
-		try {
 			await compileCodingAgent({
 				repoRoot,
 				entrypoint: path.join(packageDir, "src", "cli.ts"),
@@ -105,12 +99,9 @@ async function main(): Promise<void> {
 			if (shouldAdhocSignDarwinBinary(crossBuild)) {
 				await runCommand(["codesign", "--force", "--sign", "-", outputPath]);
 			}
-		} finally {
-			await runCommand(["bun", "run", "gen:mupdf:reset"]);
-			await runCommand(["bun", "--cwd=../natives", "run", "gen:native:reset"]);
-		}
 	} finally {
-		await runCommand(["bun", "--cwd=../stats", "run", "gen:stats:reset"]);
+		await runCommand(["bun", "run", "gen:mupdf:reset"]);
+		await runCommand(["bun", "--cwd=../natives", "run", "gen:native:reset"]);
 	}
 }
 

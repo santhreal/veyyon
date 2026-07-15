@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { postmortem } from "@oh-my-pi/pi-utils";
+import { postmortem } from "@veyyon/pi-utils";
 import { createSessionTeardown } from "./session-teardown";
 
 /**

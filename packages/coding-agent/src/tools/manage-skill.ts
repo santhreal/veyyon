@@ -1,5 +1,5 @@
 import * as path from "node:path";
-import type { AgentTool, AgentToolResult } from "@oh-my-pi/pi-agent-core";
+import type { AgentTool, AgentToolResult } from "@veyyon/pi-agent-core";
 import { type } from "arktype";
 import {
 	deleteManagedSkill,

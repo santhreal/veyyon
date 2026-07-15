@@ -3,12 +3,12 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { AgentToolResult } from "@oh-my-pi/pi-agent-core";
-import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import type { ToolSession } from "@oh-my-pi/pi-coding-agent/tools";
-import type { ReadToolDetails } from "@oh-my-pi/pi-coding-agent/tools/read";
-import { ReadTool } from "@oh-my-pi/pi-coding-agent/tools/read";
-import { removeWithRetries } from "@oh-my-pi/pi-utils";
+import type { AgentToolResult } from "@veyyon/pi-agent-core";
+import { Settings } from "@veyyon/pi-coding-agent/config/settings";
+import type { ToolSession } from "@veyyon/pi-coding-agent/tools";
+import type { ReadToolDetails } from "@veyyon/pi-coding-agent/tools/read";
+import { ReadTool } from "@veyyon/pi-coding-agent/tools/read";
+import { removeWithRetries } from "@veyyon/pi-utils";
 
 let artifactCounter = 0;
 

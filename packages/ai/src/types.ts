@@ -1,5 +1,5 @@
-export * from "@oh-my-pi/pi-catalog/effort";
-export * from "@oh-my-pi/pi-catalog/types";
+export * from "@veyyon/pi-catalog/effort";
+export * from "@veyyon/pi-catalog/types";
 
 import type {
 	DeleteArgs,
@@ -17,10 +17,10 @@ import type {
 	ShellResult,
 	WriteArgs,
 	WriteResult,
-} from "@oh-my-pi/pi-catalog/discovery/cursor-gen/agent_pb";
-import type { Effort } from "@oh-my-pi/pi-catalog/effort";
-import { isOpenAIModelId } from "@oh-my-pi/pi-catalog/identity/family";
-import type { Api, FetchImpl, KnownApi, Model, Provider, ThinkingBudgets, Usage } from "@oh-my-pi/pi-catalog/types";
+} from "@veyyon/pi-catalog/discovery/cursor-gen/agent_pb";
+import type { Effort } from "@veyyon/pi-catalog/effort";
+import { isOpenAIModelId } from "@veyyon/pi-catalog/identity/family";
+import type { Api, FetchImpl, KnownApi, Model, Provider, ThinkingBudgets, Usage } from "@veyyon/pi-catalog/types";
 import type { Type } from "arktype";
 import type { ZodType, z } from "zod/v4";
 import type { ApiKey } from "./auth-retry";

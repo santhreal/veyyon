@@ -1,4 +1,4 @@
-import { logger, toError } from "@oh-my-pi/pi-utils";
+import { logger, toError } from "@veyyon/pi-utils";
 import {
 	IndexedSessionStorage,
 	type SessionStorageBackend,
@@ -42,6 +42,11 @@ export interface RedisSessionStorageOptions {
 	scanCount?: number;
 }
 
+// Kept as "omp:" (not renamed to "veyyon:") for back-compat: this is a Redis
+// key namespace, not a user-facing string. Renaming it would orphan every
+// session key already written under the old prefix in deployments upgrading
+// in place, with no migration path. Override via `prefix` if a clean
+// namespace is needed for a new deployment.
 const DEFAULT_PREFIX = "omp:sessions:";
 const DEFAULT_SCAN_COUNT = 500;
 

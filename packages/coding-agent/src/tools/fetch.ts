@@ -2,15 +2,16 @@ import { Database } from "bun:sqlite";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { AgentToolResult } from "@oh-my-pi/pi-agent-core";
-import type { FetchImpl, ImageContent, TextContent } from "@oh-my-pi/pi-ai";
-import { htmlToMarkdown } from "@oh-my-pi/pi-natives";
-import { type Component, Text } from "@oh-my-pi/pi-tui";
-import { $which, ptree, truncate } from "@oh-my-pi/pi-utils";
+import type { AgentToolResult } from "@veyyon/pi-agent-core";
+import type { FetchImpl, ImageContent, TextContent } from "@veyyon/pi-ai";
+import { htmlToMarkdown } from "@veyyon/pi-natives";
+import { type Component, Text } from "@veyyon/pi-tui";
+import { $which, ptree, truncate } from "@veyyon/pi-utils";
 import { LRUCache } from "lru-cache/raw";
 import type { Settings } from "../config/settings";
 import { readEditableNotebookText } from "../edit/notebook";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
+import { CONVERTIBLE_EXTENSIONS } from "../markit";
 import { type Theme, theme } from "../modes/theme/theme";
 import type { ToolSession } from "../sdk";
 import type { AgentStorage } from "../session/agent-storage";
@@ -51,8 +52,6 @@ const CONVERTIBLE_MIMES = new Set([
 	"application/rtf",
 	"application/epub+zip",
 ]);
-
-const CONVERTIBLE_EXTENSIONS = new Set([".pdf", ".doc", ".docx", ".ppt", ".pptx", ".xls", ".xlsx", ".rtf", ".epub"]);
 
 const NOTEBOOK_MIMES = new Set(["application/x-ipynb+json"]);
 const NOTEBOOK_EXTENSIONS = new Set([".ipynb"]);

@@ -1,7 +1,7 @@
 /**
  * Show what the read tool will return for a path, URL, or internal URI.
  */
-import { Args, Command } from "@oh-my-pi/pi-utils/cli";
+import { Args, Command } from "@veyyon/pi-utils/cli";
 import { type ReadCommandArgs, runReadCommand } from "../cli/read-cli";
 import { initTheme } from "../modes/theme/theme";
 
@@ -17,14 +17,14 @@ export default class Read extends Command {
 	};
 
 	static examples = [
-		"omp read src/foo.ts",
-		"omp read src/foo.ts:50-100",
-		"omp read src/foo.ts:raw",
-		"omp read https://example.com",
-		"omp read omp://",
-		"omp read issue://123",
-		"omp read path/to/archive.zip:dir/file.ts",
-		"omp read path/to/db.sqlite:users:42",
+		"veyyon read src/foo.ts",
+		"veyyon read src/foo.ts:50-100",
+		"veyyon read src/foo.ts:raw",
+		"veyyon read https://example.com",
+		"veyyon read veyyon://",
+		"veyyon read issue://123",
+		"veyyon read path/to/archive.zip:dir/file.ts",
+		"veyyon read path/to/db.sqlite:users:42",
 	];
 
 	async run(): Promise<void> {

@@ -8,7 +8,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { type Component, CURSOR_MARKER, type Focusable, Key, matchesKey } from "@oh-my-pi/pi-tui";
+import { type Component, CURSOR_MARKER, type Focusable, Key, matchesKey } from "@veyyon/pi-tui";
 import { theme } from "../theme/theme";
 import { matchesSelectCancel, matchesSelectDown, matchesSelectUp } from "../utils/keybinding-matchers";
 import { bottomBorder, row, topBorder } from "./overlay-box";

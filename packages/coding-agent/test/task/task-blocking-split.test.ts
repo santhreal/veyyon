@@ -18,15 +18,15 @@
  *    and reports the failed spawn.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
-import { AsyncJobManager } from "@oh-my-pi/pi-coding-agent/async/job-manager";
-import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import { AgentLifecycleManager } from "@oh-my-pi/pi-coding-agent/registry/agent-lifecycle";
-import { AgentRegistry } from "@oh-my-pi/pi-coding-agent/registry/agent-registry";
-import { TaskTool } from "@oh-my-pi/pi-coding-agent/task";
-import * as discoveryModule from "@oh-my-pi/pi-coding-agent/task/discovery";
-import * as executorModule from "@oh-my-pi/pi-coding-agent/task/executor";
-import type { AgentDefinition, SingleResult, TaskParams, TaskToolDetails } from "@oh-my-pi/pi-coding-agent/task/types";
-import type { ToolSession } from "@oh-my-pi/pi-coding-agent/tools";
+import { AsyncJobManager } from "@veyyon/pi-coding-agent/async/job-manager";
+import { Settings } from "@veyyon/pi-coding-agent/config/settings";
+import { AgentLifecycleManager } from "@veyyon/pi-coding-agent/registry/agent-lifecycle";
+import { AgentRegistry } from "@veyyon/pi-coding-agent/registry/agent-registry";
+import { TaskTool } from "@veyyon/pi-coding-agent/task";
+import * as discoveryModule from "@veyyon/pi-coding-agent/task/discovery";
+import * as executorModule from "@veyyon/pi-coding-agent/task/executor";
+import type { AgentDefinition, SingleResult, TaskParams, TaskToolDetails } from "@veyyon/pi-coding-agent/task/types";
+import type { ToolSession } from "@veyyon/pi-coding-agent/tools";
 
 const taskAgent: AgentDefinition = {
 	name: "task",

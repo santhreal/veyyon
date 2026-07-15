@@ -10,10 +10,10 @@ import type {
 	OAuthAccess,
 	OAuthAccessResolution,
 	SimpleStreamOptions,
-} from "@oh-my-pi/pi-ai";
-import { streamSimple } from "@oh-my-pi/pi-ai";
-import { replaceTabs, truncateToWidth } from "@oh-my-pi/pi-tui";
-import { formatDuration, getProjectDir } from "@oh-my-pi/pi-utils";
+} from "@veyyon/pi-ai";
+import { streamSimple } from "@veyyon/pi-ai";
+import { replaceTabs, truncateToWidth } from "@veyyon/pi-tui";
+import { formatDuration, getProjectDir } from "@veyyon/pi-utils";
 import chalk from "chalk";
 import { ModelRegistry } from "../config/model-registry";
 import {
@@ -297,11 +297,11 @@ function normalizeBenchMs(value: number): number {
 function renderBenchResultLine(index: number, total: number, result: DryBalanceBenchResult): string {
 	const prefix = formatBenchIndex(index, total);
 	if (result.ok) {
-		return `${chalk.green("✓")} ${prefix} ${formatBenchAccount(result.account)} ${chalk.dim("TTFT")} ${formatBenchDuration(
+		return `${chalk.green("[ok]")} ${prefix} ${formatBenchAccount(result.account)} ${chalk.dim("TTFT")} ${formatBenchDuration(
 			result.ttftMs,
 		)} ${chalk.dim("TPS")} ${formatBenchTps(result.tokensPerSecond)}`;
 	}
-	return `${chalk.red("✗")} ${prefix} ${formatBenchAccount(result.account)} ${chalk.red(
+	return `${chalk.red("[FAIL]")} ${prefix} ${formatBenchAccount(result.account)} ${chalk.red(
 		sanitizeBenchText(result.error, BENCH_ERROR_WIDTH),
 	)}`;
 }
@@ -315,7 +315,7 @@ function renderBenchStatusLine(
 	const prefix = formatBenchIndex(index, total);
 	switch (status.state) {
 		case "waiting":
-			return `${chalk.dim("○")} ${prefix} ${chalk.dim("waiting")}`;
+			return `${chalk.dim("-")} ${prefix} ${chalk.dim("waiting")}`;
 		case "running": {
 			const spinner = BENCH_SPINNER_FRAMES[frame % BENCH_SPINNER_FRAMES.length] ?? "*";
 			return `${chalk.yellow(spinner)} ${prefix} ${formatBenchAccount(status.account)} ${chalk.dim("sending request")}`;

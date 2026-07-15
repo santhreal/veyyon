@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { applyEdits, InMemorySnapshotStore, parsePatch, Recovery } from "@oh-my-pi/hashline";
+import { applyEdits, InMemorySnapshotStore, parsePatch, Recovery } from "@veyyon/hashline";
 
 function apply(text: string, diff: string): { text: string; warnings: string[] } {
 	const result = applyEdits(text, parsePatch(diff).edits);

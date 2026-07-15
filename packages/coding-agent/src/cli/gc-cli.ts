@@ -2,7 +2,7 @@ import { Database } from "bun:sqlite";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { gunzipSync, gzipSync } from "node:zlib";
-import { getAgentDir, getBlobsDir, getHistoryDbPath, getModelDbPath, getSessionsDir } from "@oh-my-pi/pi-utils";
+import { getAgentDir, getBlobsDir, getHistoryDbPath, getModelDbPath, getSessionsDir } from "@veyyon/pi-utils";
 import { Settings } from "../config/settings";
 import { getDefault } from "../config/settings-schema";
 import { listSessionsReadOnly, type SessionInfo, type SessionStatus } from "../session/session-listing";

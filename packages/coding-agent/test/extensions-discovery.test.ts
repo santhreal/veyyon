@@ -1,15 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { type ExtensionModule, extensionModuleCapability } from "@oh-my-pi/pi-coding-agent/capability/extension-module";
-import { resetSettingsForTest, Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import { getCapability, initializeWithSettings } from "@oh-my-pi/pi-coding-agent/discovery";
+import { type ExtensionModule, extensionModuleCapability } from "@veyyon/pi-coding-agent/capability/extension-module";
+import { resetSettingsForTest, Settings } from "@veyyon/pi-coding-agent/config/settings";
+import { getCapability, initializeWithSettings } from "@veyyon/pi-coding-agent/discovery";
 import {
 	discoverAndLoadExtensions,
 	discoverExtensionPaths,
 	loadExtensions,
-} from "@oh-my-pi/pi-coding-agent/extensibility/extensions/loader";
-import { getProjectAgentDir, TempDir } from "@oh-my-pi/pi-utils";
+} from "@veyyon/pi-coding-agent/extensibility/extensions/loader";
+import { getProjectAgentDir, TempDir } from "@veyyon/pi-utils";
 import { filterUserScoped } from "./utils/filter-user-extensions";
 
 describe("extensions discovery", () => {

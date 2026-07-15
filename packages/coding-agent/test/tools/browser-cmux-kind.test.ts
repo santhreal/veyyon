@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { resolveCmuxKind } from "@oh-my-pi/pi-coding-agent/tools/browser";
+import { resolveCmuxKind } from "@veyyon/pi-coding-agent/tools/browser";
 
 describe("resolveCmuxKind", () => {
 	it("returns a cmux kind from environment socket settings", () => {

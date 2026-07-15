@@ -3,23 +3,26 @@
  */
 
 import * as os from "node:os";
-import type { AgentTool } from "@oh-my-pi/pi-agent-core";
-import type { ToolExample, TSchema } from "@oh-my-pi/pi-ai";
-import { renderToolInventory } from "@oh-my-pi/pi-ai/dialect";
-import { $env, getGpuCachePath, getProjectDir, hasFsCode, isEnoent, logger, prompt } from "@oh-my-pi/pi-utils";
+import type { AgentTool } from "@veyyon/pi-agent-core";
+import type { ToolExample, TSchema } from "@veyyon/pi-ai";
+import { renderToolInventory } from "@veyyon/pi-ai/dialect";
+import { $env, getGpuCachePath, getProjectDir, hasFsCode, isEnoent, logger, prompt } from "@veyyon/pi-utils";
 import { contextFileCapability } from "./capability/context-file";
 import { systemPromptCapability } from "./capability/system-prompt";
 import { findConfigFile } from "./config";
-import type { Personality, SkillsSettings } from "./config/settings";
+import type { SkillsSettings } from "./config/settings";
 import { type ContextFile, loadCapability, type SystemPrompt as SystemPromptFile } from "./discovery";
 import { expandAtImports } from "./discovery/at-imports";
 import { loadSkills, type Skill } from "./extensibility/skills";
 import { hasObsidian } from "./internal-urls/vault-protocol";
+import {
+	BUILTIN_PERSONALITIES,
+	DEFAULT_PERSONALITY_NAME,
+	type ResolvedPersonality,
+	resolvePersonality,
+} from "./personality/resolver";
 import activeRepoContextTemplate from "./prompts/system/active-repo-context.md" with { type: "text" };
 import customSystemPromptTemplate from "./prompts/system/custom-system-prompt.md" with { type: "text" };
-import defaultPersonality from "./prompts/system/personalities/default.md" with { type: "text" };
-import friendlyPersonality from "./prompts/system/personalities/friendly.md" with { type: "text" };
-import pragmaticPersonality from "./prompts/system/personalities/pragmatic.md" with { type: "text" };
 import projectPromptTemplate from "./prompts/system/project-prompt.md" with { type: "text" };
 import systemPromptTemplate from "./prompts/system/system-prompt.md" with { type: "text" };
 import { normalizeConcurrencyLimit } from "./task/parallel";
@@ -29,13 +32,6 @@ import { type ActiveRepoContext, resolveActiveRepoContext } from "./utils/active
 import { formatLocalCalendarDate } from "./utils/local-date";
 import { normalizePromptPath } from "./utils/prompt-path";
 import { AGENTS_MD_LIMIT, buildWorkspaceTree, type WorkspaceTree } from "./workspace-tree";
-
-/** Bundled personality specs, keyed by the `personality` setting value. */
-const PERSONALITY_SPECS: Record<Exclude<Personality, "none">, string> = {
-	default: defaultPersonality,
-	friendly: friendlyPersonality,
-	pragmatic: pragmaticPersonality,
-};
 
 interface AlwaysApplyRule {
 	name: string;
@@ -501,8 +497,13 @@ export interface BuildSystemPromptOptions {
 	model?: string;
 	/** Whether to surface `model` in the workstation block. Model-specific prompt policy still uses it. Default: true. */
 	includeModelInPrompt?: boolean;
-	/** Personality preset rendered into the default system prompt. "none" omits the block. Default: "default" */
-	personality?: Personality;
+	/**
+	 * Personality name rendered into the default system prompt. Resolved against
+	 * built-ins plus Tier-B `~/.veyyon/personalities` and `.veyyon/personalities`
+	 * data files (project > user > built-in). "none" omits the block. An unknown
+	 * name falls back to "default" with a warning. Default: "default"
+	 */
+	personality?: string;
 	/** Whether to include the workspace directory tree in the system prompt. Default: false */
 	includeWorkspaceTree?: boolean;
 	/** Whether Mermaid fenced blocks render as terminal ASCII diagrams. Default: true */
@@ -575,6 +576,10 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 		activeRepoContext: null as ActiveRepoContext | null,
 		cpuModel: undefined as string | undefined,
 		gpu: undefined as string | undefined,
+		resolvedPersonality: {
+			name: DEFAULT_PERSONALITY_NAME,
+			text: BUILTIN_PERSONALITIES[DEFAULT_PERSONALITY_NAME],
+		} as ResolvedPersonality,
 	};
 
 	const { promise: deadline, resolve: fireDeadline } = Promise.withResolvers<"__timeout__">();
@@ -646,6 +651,10 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 			: logger.time("resolveActiveRepoContext", () => resolveActiveRepoContext(resolvedCwd));
 	const cpuModelPromise = logger.time("getCpuModel", getCpuModel);
 	const gpuPromise = logger.time("getCachedGpu", getCachedGpu);
+	const personalityPromise: Promise<ResolvedPersonality> =
+		personality === "none"
+			? Promise.resolve({ name: "none", text: "" })
+			: logger.time("resolvePersonality", () => resolvePersonality(personality, { cwd: resolvedCwd }));
 
 	const [
 		resolvedCustomPrompt,
@@ -657,6 +666,7 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 		activeRepoContext,
 		cpuModel,
 		gpu,
+		resolvedPersonality,
 	] = await Promise.all([
 		withDeadline(
 			"customPrompt",
@@ -681,8 +691,14 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 		withDeadline("resolveActiveRepoContext", activeRepoContextPromise, prepDefaults.activeRepoContext),
 		withDeadline("getCpuModel", cpuModelPromise, prepDefaults.cpuModel),
 		withDeadline("getCachedGpu", gpuPromise, prepDefaults.gpu),
+		withDeadline("resolvePersonality", personalityPromise, prepDefaults.resolvedPersonality),
 	]);
 	clearTimeout(deadlineTimer);
+
+	if (resolvedPersonality.warning) {
+		logger.warn(resolvedPersonality.warning, { cwd: resolvedCwd, requested: personality });
+		process.stderr.write(`Warning: ${resolvedPersonality.warning}\n`);
+	}
 	const agentsMdFiles = Array.from(new Set(workspaceTree.agentsMdFiles)).sort().slice(0, AGENTS_MD_LIMIT);
 
 	if (timedOut.length > 0) {
@@ -783,7 +799,7 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 		cwd: promptCwd,
 		model: includeModelInPrompt ? (model ?? "") : "",
 		useCodexTaskPrompt: usesCodexTaskPrompt(model),
-		personality: personality === "none" ? "" : PERSONALITY_SPECS[personality].trim(),
+		personality: resolvedPersonality.text,
 		intentTracing: !!intentField,
 		intentField: intentField ?? "",
 		mcpDiscoveryMode,

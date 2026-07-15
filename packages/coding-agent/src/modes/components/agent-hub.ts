@@ -15,9 +15,9 @@
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { type AgentTool, ThinkingLevel } from "@oh-my-pi/pi-agent-core";
-import { Container, Ellipsis, matchesKey, type OverlayHandle, padding, type TUI, visibleWidth } from "@oh-my-pi/pi-tui";
-import { formatAge, getProjectDir, logger } from "@oh-my-pi/pi-utils";
+import { type AgentTool, ThinkingLevel } from "@veyyon/pi-agent-core";
+import { Container, Ellipsis, matchesKey, type OverlayHandle, padding, type TUI, visibleWidth } from "@veyyon/pi-tui";
+import { formatAge, getProjectDir, logger } from "@veyyon/pi-utils";
 import { ADVISOR_TRANSCRIPT_FILENAME, isAdvisorTranscriptName } from "../../advisor";
 import type { KeyId } from "../../config/keybindings";
 import type { MessageRenderer } from "../../extensibility/extensions/types";
@@ -286,7 +286,13 @@ export class AgentHubOverlayComponent extends Container {
 
 		this.#unsubscribers.push(this.#registry.onChange(() => this.#scheduleDataChange()));
 		this.#unsubscribers.push(this.#observers.onChange(() => this.#scheduleDataChange()));
-		this.#ageTimer = setInterval(() => this.#requestRender(), AGE_TICK_MS);
+		// Component-scoped: only the relative-time column changes on this tick,
+		// never the hub's row count or layout, so a full-tree requestRender()
+		// would re-walk the whole UI every AGE_TICK_MS purely to refresh a
+		// timestamp label. The timer only exists while the hub is mounted
+		// (started in the constructor, cleared in dispose()), so this never
+		// fires while the overlay is hidden.
+		this.#ageTimer = setInterval(() => this.#ui.requestComponentRender(this), AGE_TICK_MS);
 		this.#ageTimer.unref?.();
 
 		this.persistedSubagentsReady = this.#remote
@@ -526,7 +532,7 @@ export class AgentHubOverlayComponent extends Container {
 
 	/**
 	 * One agent entry, 1-2 lines:
-	 * `❯ ⟳ Name  type  ↳ parent  ⧉ 2 ········ model ◒ level · age` — identity
+	 * `> ⟳ Name  type  ↳ parent  ⧉ 2 ········ model ◒ level · age` — identity
 	 * left, metadata right-aligned (inlined when the terminal is too narrow) —
 	 * plus an indented dim task line when the agent's work is known.
 	 */

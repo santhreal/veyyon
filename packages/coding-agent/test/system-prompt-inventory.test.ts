@@ -2,15 +2,15 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import { buildSystemPrompt as buildSdkSystemPrompt } from "@oh-my-pi/pi-coding-agent/sdk";
+import { Settings } from "@veyyon/pi-coding-agent/config/settings";
+import { buildSystemPrompt as buildSdkSystemPrompt } from "@veyyon/pi-coding-agent/sdk";
 import {
 	buildSystemPrompt,
 	buildSystemPromptToolMetadata,
 	DEFAULT_SYSTEM_PROMPT_TOOL_NAMES,
 	type SystemPromptToolMetadata,
-} from "@oh-my-pi/pi-coding-agent/system-prompt";
-import { createTools, type Tool, type ToolSession } from "@oh-my-pi/pi-coding-agent/tools";
+} from "@veyyon/pi-coding-agent/system-prompt";
+import { createTools, type Tool, type ToolSession } from "@veyyon/pi-coding-agent/tools";
 import { cleanupTempHome } from "./helpers/temp-home-cleanup";
 
 const EMPTY_TREE = {

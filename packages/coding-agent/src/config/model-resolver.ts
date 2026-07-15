@@ -15,18 +15,18 @@
  *   CLI flags, scope globs — onto that pipeline.
  */
 
-import { ThinkingLevel } from "@oh-my-pi/pi-agent-core";
-import type { Api, Effort, KnownProvider, Model, ModelSpec } from "@oh-my-pi/pi-ai";
-import { buildModel } from "@oh-my-pi/pi-catalog/build";
-import { modelMatchesHost } from "@oh-my-pi/pi-catalog/hosts";
-import { buildModelProviderPriorityRank } from "@oh-my-pi/pi-catalog/identity";
-import { stripThinkingVariantToken } from "@oh-my-pi/pi-catalog/identity/family";
-import { clampThinkingLevelForModel } from "@oh-my-pi/pi-catalog/model-thinking";
-import { modelsAreEqual } from "@oh-my-pi/pi-catalog/models";
-import { DEFAULT_MODEL_PER_PROVIDER } from "@oh-my-pi/pi-catalog/provider-models";
-import { resolveBareVariantAlias, resolveVariantAlias } from "@oh-my-pi/pi-catalog/variant-collapse";
-import { fuzzyMatch } from "@oh-my-pi/pi-tui";
-import { logger } from "@oh-my-pi/pi-utils";
+import { ThinkingLevel } from "@veyyon/pi-agent-core";
+import type { Api, Effort, KnownProvider, Model, ModelSpec } from "@veyyon/pi-ai";
+import { buildModel } from "@veyyon/pi-catalog/build";
+import { modelMatchesHost } from "@veyyon/pi-catalog/hosts";
+import { buildModelProviderPriorityRank } from "@veyyon/pi-catalog/identity";
+import { stripThinkingVariantToken } from "@veyyon/pi-catalog/identity/family";
+import { clampThinkingLevelForModel } from "@veyyon/pi-catalog/model-thinking";
+import { modelsAreEqual } from "@veyyon/pi-catalog/models";
+import { DEFAULT_MODEL_PER_PROVIDER } from "@veyyon/pi-catalog/provider-models";
+import { resolveBareVariantAlias, resolveVariantAlias } from "@veyyon/pi-catalog/variant-collapse";
+import { fuzzyMatch } from "@veyyon/pi-tui";
+import { logger } from "@veyyon/pi-utils";
 import chalk from "chalk";
 import MODEL_PRIO from "../priority.json" with { type: "json" };
 import {
@@ -893,17 +893,9 @@ function normalizeModelPatternList(value: string | string[] | undefined): string
 
 function isSessionInheritedAgentPattern(value: string): boolean {
 	return (
-		value === DEFAULT_MODEL_ROLE ||
-		value === formatModelRoleAlias(DEFAULT_MODEL_ROLE) ||
-		value === DEFAULT_MODEL_ROLE_ALIAS ||
-		value === `${LEGACY_MODEL_ROLE_ALIAS_PREFIX}${DEFAULT_MODEL_ROLE}` ||
 		value === formatModelRoleAlias("task") ||
 		value === `${LEGACY_MODEL_ROLE_ALIAS_PREFIX}task`
 	);
-}
-
-function shouldInheritDefaultBeforePriority(role: ModelRole): boolean {
-	return role === "smol" || role === "slow" || role === "designer";
 }
 
 /**
@@ -927,46 +919,6 @@ function rolePriorityDefaults(role: ModelRole): string[] {
 	return normalizeModelPatternList(MODEL_PRIO[key]);
 }
 
-function resolveDefaultInheritedPatterns(
-	role: ModelRole,
-	configuredDefault: string | undefined,
-	roleDefaults: string[],
-	settings: Settings | undefined,
-	visited: Set<string>,
-): string[] {
-	if (!shouldInheritDefaultBeforePriority(role) || !configuredDefault) return [];
-
-	const resolved: string[] = [];
-	for (const pattern of normalizeModelPatternList(configuredDefault)) {
-		const { base: aliasCandidate, level: thinkingLevel } = splitThinkingSuffix(
-			pattern,
-			modelRoleAliasPrefixLength(pattern) ?? LEGACY_MODEL_ROLE_ALIAS_PREFIX.length,
-			MAX_THINKING_SUFFIX_OPTIONS,
-		);
-		const aliasRole = getModelRoleAlias(aliasCandidate, settings);
-		if (aliasRole === role) {
-			// Self-alias (e.g. modelRoles.default = "@smol") would loop back to the
-			resolved.push(
-				...(thinkingLevel
-					? roleDefaults.map(defaultPattern => `${defaultPattern}:${thinkingLevel}`)
-					: roleDefaults),
-			);
-			continue;
-		}
-		if (aliasRole && !visited.has(aliasRole)) {
-			// Cross-role alias (e.g. modelRoles.default = "@slow"): resolve the
-			// concrete model patterns instead of another role alias.
-			const recursed = resolveConfiguredRolePattern(pattern, settings, new Set(visited));
-			if (recursed && recursed.length > 0) {
-				resolved.push(...recursed);
-				continue;
-			}
-		}
-		resolved.push(pattern);
-	}
-	return resolved;
-}
-
 function resolveConfiguredRolePattern(
 	value: string,
 	settings?: Settings,
@@ -986,16 +938,8 @@ function resolveConfiguredRolePattern(
 	visited.add(role);
 
 	const configured = settings?.getModelRole(role)?.trim();
-	const configuredDefault = settings?.getModelRole(DEFAULT_MODEL_ROLE)?.trim();
 	const roleDefaults = isModelRole(role) ? rolePriorityDefaults(role) : [];
-	const resolved = configured
-		? normalizeModelPatternList(configured)
-		: isModelRole(role)
-			? resolveDefaultInheritedPatterns(role, configuredDefault, roleDefaults, settings, visited)
-			: roleDefaults;
-	if (resolved.length === 0) {
-		resolved.push(...roleDefaults);
-	}
+	const resolved = configured ? normalizeModelPatternList(configured) : roleDefaults;
 	if (resolved.length === 0) {
 		return undefined;
 	}
@@ -1008,8 +952,12 @@ function resolveConfiguredRolePattern(
  */
 export function expandRoleAlias(value: string, settings?: Settings): string {
 	const normalized = value.trim();
-	if (normalized === DEFAULT_MODEL_ROLE) {
-		return settings?.getModelRole("default") ?? value;
+	if (
+		normalized === DEFAULT_MODEL_ROLE ||
+		normalized === DEFAULT_MODEL_ROLE_ALIAS ||
+		normalized === formatModelRoleAlias(DEFAULT_MODEL_ROLE)
+	) {
+		return normalized;
 	}
 
 	const resolved = resolveConfiguredRolePattern(value, settings)?.[0];
@@ -1037,6 +985,12 @@ export function resolveAgentModelPatterns(options: AgentModelPatternResolutionOp
 	const overridePatterns = resolveConfiguredModelPatterns(settingsOverride, settings);
 	if (overridePatterns.length > 0) return overridePatterns;
 
+	const subagentModel = settings?.get("subagent.model")?.trim();
+	if (subagentModel) {
+		const subagentPatterns = resolveConfiguredModelPatterns(subagentModel, settings);
+		if (subagentPatterns.length > 0) return subagentPatterns;
+	}
+
 	const normalizedAgentPatterns = normalizeModelPatternList(agentModel);
 	const configuredAgentPatterns = resolveConfiguredModelPatterns(agentModel, settings);
 	const singleAgentPattern = normalizedAgentPatterns.length === 1 ? normalizedAgentPatterns[0] : undefined;
@@ -1051,9 +1005,15 @@ export function resolveAgentModelPatterns(options: AgentModelPatternResolutionOp
 		if (!agentInheritsSessionModel) return configuredAgentPatterns;
 	}
 
-	const fallback =
-		activeModelPattern?.trim() || fallbackModelPattern?.trim() || settings?.getModelRole("default")?.trim() || "";
+	const fallback = activeModelPattern?.trim() || fallbackModelPattern?.trim() || "";
 	return resolveConfiguredModelPatterns(fallback, settings);
+}
+
+/** Resolve configured compaction model patterns from settings (`compaction.model`). */
+export function resolveCompactionModelPatterns(settings?: Settings): string[] {
+	const configured = settings?.get("compaction.model")?.trim();
+	if (!configured) return [];
+	return resolveConfiguredModelPatterns(configured, settings);
 }
 
 /**
@@ -1578,7 +1538,7 @@ export function resolveCliModel(options: {
 			model: undefined,
 			selector: undefined,
 			warning: undefined,
-			error: `Unknown provider "${cliProvider}". Run "omp models" to see available providers/models.`,
+			error: `Unknown provider "${cliProvider}". Run "veyyon models" to see available providers/models.`,
 		};
 	}
 
@@ -1652,7 +1612,7 @@ export function resolveCliModel(options: {
 			selector: undefined,
 			thinkingLevel: undefined,
 			warning,
-			error: `Model "${display}" not found. Run "omp models" to see available models.`,
+			error: `Model "${display}" not found. Run "veyyon models" to see available models.`,
 		};
 	}
 

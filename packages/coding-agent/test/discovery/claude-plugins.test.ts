@@ -2,20 +2,20 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { loadCapability } from "@oh-my-pi/pi-coding-agent/capability";
-import { clearCache as clearFsCache } from "@oh-my-pi/pi-coding-agent/capability/fs";
+import { loadCapability } from "@veyyon/pi-coding-agent/capability";
+import { clearCache as clearFsCache } from "@veyyon/pi-coding-agent/capability/fs";
 import {
 	clearClaudePluginRootsCache,
 	listClaudePluginRoots,
 	parseClaudePluginsRegistry,
-} from "@oh-my-pi/pi-coding-agent/discovery/helpers";
-import { loadSlashCommands } from "@oh-my-pi/pi-coding-agent/extensibility/slash-commands";
-import { discoverAgents } from "@oh-my-pi/pi-coding-agent/task/discovery";
-import { removeWithRetries } from "@oh-my-pi/pi-utils";
-import "@oh-my-pi/pi-coding-agent/discovery/claude-plugins";
-import { type MCPServer, mcpCapability } from "@oh-my-pi/pi-coding-agent/capability/mcp";
-import type { Skill } from "@oh-my-pi/pi-coding-agent/capability/skill";
-import type { SlashCommand } from "@oh-my-pi/pi-coding-agent/capability/slash-command";
+} from "@veyyon/pi-coding-agent/discovery/helpers";
+import { loadSlashCommands } from "@veyyon/pi-coding-agent/extensibility/slash-commands";
+import { discoverAgents } from "@veyyon/pi-coding-agent/task/discovery";
+import { removeWithRetries } from "@veyyon/pi-utils";
+import "@veyyon/pi-coding-agent/discovery/claude-plugins";
+import { type MCPServer, mcpCapability } from "@veyyon/pi-coding-agent/capability/mcp";
+import type { Skill } from "@veyyon/pi-coding-agent/capability/skill";
+import type { SlashCommand } from "@veyyon/pi-coding-agent/capability/slash-command";
 
 describe("parseClaudePluginsRegistry", () => {
 	test("parses valid registry", () => {

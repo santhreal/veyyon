@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
-import { Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import { TaskTool, taskSchema } from "@oh-my-pi/pi-coding-agent/task";
-import * as discoveryModule from "@oh-my-pi/pi-coding-agent/task/discovery";
-import type { ToolSession } from "@oh-my-pi/pi-coding-agent/tools";
+import { Settings } from "@veyyon/pi-coding-agent/config/settings";
+import { TaskTool, taskSchema } from "@veyyon/pi-coding-agent/task";
+import * as discoveryModule from "@veyyon/pi-coding-agent/task/discovery";
+import type { ToolSession } from "@veyyon/pi-coding-agent/tools";
 import { type } from "arktype";
 
 // Contract: the single-spawn schema (`task.batch: false`; the exported

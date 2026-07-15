@@ -16,12 +16,11 @@ import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { runPluginCommand } from "@oh-my-pi/pi-coding-agent/cli/plugin-cli";
-import { PluginManager } from "@oh-my-pi/pi-coding-agent/extensibility/plugins/manager";
-import { MarketplaceManager } from "@oh-my-pi/pi-coding-agent/extensibility/plugins/marketplace";
-import type { InstalledPlugin } from "@oh-my-pi/pi-coding-agent/extensibility/plugins/types";
-import * as piUtils from "@oh-my-pi/pi-utils";
-import { removeWithRetries } from "@oh-my-pi/pi-utils";
+import { runPluginCommand, parsePluginArgs } from "@veyyon/pi-coding-agent/cli/plugin-cli";
+import { PluginManager } from "@veyyon/pi-coding-agent/extensibility/plugins/manager";
+import type { InstalledPlugin } from "@veyyon/pi-coding-agent/extensibility/plugins/types";
+import * as piUtils from "@veyyon/pi-utils";
+import { removeWithRetries } from "@veyyon/pi-utils";
 
 const FAKE_INSTALLED: InstalledPlugin = {
 	name: "kimi-datasource",
@@ -60,10 +59,6 @@ describe("runPluginCommand({ action: 'install', args: [<local>] })", () => {
 		spyOn(piUtils, "getPluginsLockfile").mockReturnValue(path.join(tmpRoot, "omp-plugins.lock.json"));
 		spyOn(piUtils, "getProjectDir").mockReturnValue(tmpRoot);
 		spyOn(piUtils, "getProjectPluginOverridesPath").mockReturnValue(path.join(tmpRoot, "plugin-overrides.json"));
-		// runPluginCommand always builds a MarketplaceManager to enumerate
-		// registered marketplaces. Stub the registry list so classification has
-		// no marketplace candidates to confuse local paths with.
-		spyOn(MarketplaceManager.prototype, "listMarketplaces").mockResolvedValue([]);
 
 		// Swallow CLI output so test logs stay clean.
 		spyOn(console, "log").mockImplementation(() => undefined);
@@ -150,7 +145,6 @@ describe("runPluginCommand({ action: 'install', args: [<local>] })", () => {
 		spyOn(console, "log").mockImplementation(message => {
 			output.push(String(message));
 		});
-		spyOn(MarketplaceManager.prototype, "listInstalledPlugins").mockResolvedValue([]);
 
 		await runPluginCommand({ action: "link", args: [localPlugin], flags: { json: true } });
 		output.length = 0;
@@ -158,6 +152,14 @@ describe("runPluginCommand({ action: 'install', args: [<local>] })", () => {
 
 		const listed = JSON.parse(output.join("\n")) as { npm: InstalledPlugin[] };
 		expect(listed.npm.map(plugin => plugin.name)).toContain("kimi-datasource");
+	});
+
+	test("plugin upgrade is rejected at parse time", () => {
+		const errorSpy = spyOn(console, "error").mockImplementation(() => undefined);
+		const exitSpy = spyOn(process, "exit").mockImplementation((() => undefined) as typeof process.exit);
+		parsePluginArgs(["plugin", "upgrade", "some-pkg"]);
+		expect(errorSpy).toHaveBeenCalled();
+		expect(exitSpy).toHaveBeenCalledWith(1);
 	});
 
 	test("doctor --fix preserves linked local plugin state without package dependencies", async () => {

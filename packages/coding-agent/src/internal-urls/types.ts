@@ -1,7 +1,7 @@
 /**
  * Types for the internal URL routing system.
  *
- * Internal URLs (`agent://`, `artifact://`, `history://`, `issue://`, `local://`, `mcp://`, `memory://`, `omp://`, `pr://`, `rule://`, `skill://`, `ssh://`, and `vault://`) are resolved by tools like read,
+ * Internal URLs (`agent://`, `artifact://`, `history://`, `issue://`, `local://`, `mcp://`, `memory://`, `veyyon://`, `pr://`, `rule://`, `skill://`, `ssh://`, and `vault://`) are resolved by tools like read,
  * providing access to agent outputs and server resources without exposing filesystem paths.
  */
 
@@ -139,6 +139,12 @@ export interface WriteContext {
 export interface ProtocolHandler {
 	/** The scheme this handler processes (without trailing ://) */
 	readonly scheme: string;
+	/**
+	 * Legacy scheme aliases that resolve to this same handler. Used when a
+	 * scheme is renamed (e.g. `omp://` -> `veyyon://`) so links persisted in
+	 * older sessions still resolve. Registered alongside {@link scheme}.
+	 */
+	readonly aliases?: readonly string[];
 	/**
 	 * Whether resources produced by this handler are immutable (cannot be
 	 * edited by the agent). When true, callers suppress hashline anchors and

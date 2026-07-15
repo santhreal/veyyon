@@ -8,7 +8,7 @@
  * `launch` — see #1496 for the original "args silently leak to the LLM"
  * regression that motivated the split.
  */
-import type { CommandEntry } from "@oh-my-pi/pi-utils/cli";
+import type { CommandEntry } from "@veyyon/pi-utils/cli";
 import { flagConsumesValue } from "./cli/flag-tables";
 
 export const commands: CommandEntry[] = [
@@ -31,12 +31,13 @@ export const commands: CommandEntry[] = [
 	{ name: "join", load: () => import("./commands/join").then(m => m.default) },
 	{ name: "models", load: () => import("./commands/models").then(m => m.default) },
 	{ name: "plugin", load: () => import("./commands/plugin").then(m => m.default) },
+	{ name: "profile", load: () => import("./commands/profile").then(m => m.default), aliases: ["profiles"] },
 	{ name: "say", load: () => import("./commands/say").then(m => m.default) },
 	{ name: "setup", load: () => import("./commands/setup").then(m => m.default) },
 	{ name: "shell", load: () => import("./commands/shell").then(m => m.default) },
+	{ name: "stats", load: () => import("./commands/stats").then(m => m.default) },
 	{ name: "read", load: () => import("./commands/read").then(m => m.default) },
 	{ name: "ssh", load: () => import("./commands/ssh").then(m => m.default) },
-	{ name: "stats", load: () => import("./commands/stats").then(m => m.default) },
 	{ name: "update", load: () => import("./commands/update").then(m => m.default) },
 	{ name: "usage", load: () => import("./commands/usage").then(m => m.default) },
 	{ name: "tiny-models", load: () => import("./commands/tiny-models").then(m => m.default) },
@@ -47,24 +48,24 @@ export const commands: CommandEntry[] = [
 ];
 
 // Documented-looking plugin-management verbs that are NOT registered top-level
-// commands. Without a guard `resolveCliArgv` rewrites e.g. `omp list` to
-// `omp launch list`, silently forwarding the bare verb to the model as a prompt
+// commands. Without a guard `resolveCliArgv` rewrites e.g. `veyyon list` to
+// `veyyon launch list`, silently forwarding the bare verb to the model as a prompt
 // instead of managing plugins (#2935; same class as the `install` leak fixed in
 // #1496/#1498). A bare (single-arg) use gets a hint pointing at the real
-// `omp plugin <action>` command; multi-word invocations still fall through to
+// `veyyon plugin <action>` command; multi-word invocations still fall through to
 // `launch`, so genuine prompts that merely begin with one of these words work.
 const RESERVED_TOP_LEVEL_WORDS = new Map<string, string>([
 	[
 		"extensions",
-		'`omp extensions` is not a management command. Use `omp plugin list` / `omp plugin install`, or run `omp launch extensions` if you meant to send "extensions" as a prompt.',
+		'`veyyon extensions` is not a management command. Use `veyyon plugin list` / `veyyon plugin install`, or run `veyyon launch extensions` if you meant to send "extensions" as a prompt.',
 	],
 	[
 		"list",
-		'`omp list` is not a top-level command. Use `omp plugin list` to list installed plugins, or run `omp launch list` if you meant to send "list" as a prompt.',
+		'`veyyon list` is not a top-level command. Use `veyyon plugin list` to list installed plugins, or run `veyyon launch list` if you meant to send "list" as a prompt.',
 	],
 	[
 		"remove",
-		'`omp remove` is not a top-level command. Use `omp plugin uninstall <name>` to remove a plugin, or run `omp launch remove` if you meant to send "remove" as a prompt.',
+		'`veyyon remove` is not a top-level command. Use `veyyon plugin uninstall <name>` to remove a plugin, or run `veyyon launch remove` if you meant to send "remove" as a prompt.',
 	],
 ]);
 
@@ -119,7 +120,7 @@ export function resolveCliArgv(argv: string[]): ResolvedCliArgv {
 	}
 	if (isSubcommand(first)) return { argv };
 	// A subcommand can hide behind leading global option flags
-	// (`omp --approval-mode=yolo acp`). `run` dispatches strictly on argv[0], so
+	// (`veyyon --approval-mode=yolo acp`). `run` dispatches strictly on argv[0], so
 	// hoist the subcommand to the front and keep the leading flags as its own
 	// argv; the command's parser then applies them. Genuine launch prompts (no
 	// trailing subcommand) are untouched.

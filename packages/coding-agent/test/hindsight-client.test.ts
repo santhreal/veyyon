@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
-import { HindsightApi } from "@oh-my-pi/pi-coding-agent/hindsight/client";
+import { HindsightApi } from "@veyyon/pi-coding-agent/hindsight/client";
 
 function captureRequestBodies(): string[] {
 	const bodies: string[] = [];

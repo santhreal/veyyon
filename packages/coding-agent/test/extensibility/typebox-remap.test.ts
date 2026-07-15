@@ -5,9 +5,9 @@ import * as path from "node:path";
 import {
 	installLegacyPiSpecifierShim,
 	loadLegacyPiModule,
-} from "@oh-my-pi/pi-coding-agent/extensibility/plugins/legacy-pi-compat";
-import { Type as TypeBoxShimType } from "@oh-my-pi/pi-coding-agent/extensibility/typebox";
-import { removeWithRetries } from "@oh-my-pi/pi-utils";
+} from "@veyyon/pi-coding-agent/extensibility/plugins/legacy-pi-compat";
+import { Type as TypeBoxShimType } from "@veyyon/pi-coding-agent/extensibility/typebox";
+import { removeWithRetries } from "@veyyon/pi-utils";
 
 // The remap installs a Bun.plugin onResolve hook plus an explicit
 // rewrite branch inside `rewriteBareImportsForLegacyExtension` that

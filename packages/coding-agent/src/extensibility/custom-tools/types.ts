@@ -10,11 +10,11 @@ import type {
 	ToolApproval,
 	ToolApprovalDecision,
 	ToolTier,
-} from "@oh-my-pi/pi-agent-core";
-import type { CompactionResult } from "@oh-my-pi/pi-agent-core/compaction";
-import type { FetchImpl, Model, Static, TSchema } from "@oh-my-pi/pi-ai";
-import type { Component } from "@oh-my-pi/pi-tui";
-import type { logger as PiLogger } from "@oh-my-pi/pi-utils";
+} from "@veyyon/pi-agent-core";
+import type { CompactionResult } from "@veyyon/pi-agent-core/compaction";
+import type { FetchImpl, Model, Static, TSchema } from "@veyyon/pi-ai";
+import type { Component } from "@veyyon/pi-tui";
+import type { logger as PiLogger } from "@veyyon/pi-utils";
 import type { type as ArkType } from "arktype";
 import type * as zod from "zod/v4";
 import type { Rule } from "../../capability/rule";
@@ -101,6 +101,8 @@ export interface CustomToolContext {
 	localProtocolOptions?: LocalProtocolOptions;
 	/** Whether to auto-approve all destructive tool operations (--auto-approve CLI flag) */
 	autoApprove?: boolean;
+	/** Plan-mode session active — approval caps to plan autonomy (read + plan-file write). */
+	planModeActive?: boolean;
 }
 
 /** Session event passed to onSession callback */

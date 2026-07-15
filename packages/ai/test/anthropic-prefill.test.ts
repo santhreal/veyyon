@@ -1,8 +1,8 @@
 import { describe, expect, it } from "bun:test";
-import { convertAnthropicMessages } from "@oh-my-pi/pi-ai/providers/anthropic";
-import { transformMessages } from "@oh-my-pi/pi-ai/providers/transform-messages";
-import type { AssistantMessage, Model, ModelSpec, UserMessage } from "@oh-my-pi/pi-ai/types";
-import { buildModel } from "@oh-my-pi/pi-catalog/build";
+import { convertAnthropicMessages } from "@veyyon/pi-ai/providers/anthropic";
+import { transformMessages } from "@veyyon/pi-ai/providers/transform-messages";
+import type { AssistantMessage, Model, ModelSpec, UserMessage } from "@veyyon/pi-ai/types";
+import { buildModel } from "@veyyon/pi-catalog/build";
 
 /**
  * Regression: some Anthropic-routed models reject "assistant prefill" requests

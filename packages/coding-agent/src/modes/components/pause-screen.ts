@@ -11,7 +11,7 @@
  * Use case: freeze a busy session, hand-edit the repo, resume, then explain
  * the change via a normal steering message.
  */
-import { agentPauseGate } from "@oh-my-pi/pi-agent-core";
+import { agentPauseGate } from "@veyyon/pi-agent-core";
 import {
 	type Component,
 	matchesKey,
@@ -19,7 +19,7 @@ import {
 	type OverlayHandle,
 	type OverlayOptions,
 	visibleWidth,
-} from "@oh-my-pi/pi-tui";
+} from "@veyyon/pi-tui";
 import { formatDuration } from "../../slash-commands/helpers/format";
 import { theme } from "../theme/theme";
 import { matchesAppInterrupt } from "../utils/keybinding-matchers";

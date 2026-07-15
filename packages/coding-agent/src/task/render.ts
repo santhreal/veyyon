@@ -5,9 +5,9 @@
  * task execution in the terminal UI.
  */
 import path from "node:path";
-import type { Component } from "@oh-my-pi/pi-tui";
-import { Container, Markdown, Text } from "@oh-my-pi/pi-tui";
-import { formatNumber, sanitizeText } from "@oh-my-pi/pi-utils";
+import type { Component } from "@veyyon/pi-tui";
+import { Container, Markdown, Text } from "@veyyon/pi-tui";
+import { formatNumber, sanitizeText } from "@veyyon/pi-utils";
 import { settings } from "../config/settings";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import { formatContextUsage } from "../modes/components/status-line/context-thresholds";

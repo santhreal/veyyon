@@ -8,6 +8,24 @@ import { XlsxConverter } from "./converters/xlsx";
 import type { ConversionResult, Converter, MarkitOptions, StreamInfo } from "./types";
 
 /**
+ * File extensions {@link Markit} can convert to markdown. Single source of
+ * truth for callers that need to decide whether to route a file through
+ * markit before markit itself ever sees it (e.g. CLI attachment handling,
+ * `read`/`fetch` content-type sniffing).
+ */
+export const CONVERTIBLE_EXTENSIONS = new Set([
+	".pdf",
+	".doc",
+	".docx",
+	".ppt",
+	".pptx",
+	".xls",
+	".xlsx",
+	".rtf",
+	".epub",
+]);
+
+/**
  * In-house document → markdown engine (replaces the `markit-ai` package).
  *
  * Only the document converters omp routes are registered (pdf, docx, pptx,

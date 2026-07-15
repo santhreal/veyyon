@@ -1,0 +1,10 @@
+<!-- Veyyon handbook: self-contained head additions. No remote resources. -->
+<meta name="theme-color" content="#050505">
+<meta name="color-scheme" content="dark">
+<style>
+  /* Paint the near-black surface before CSS/JS resolve the theme, so there is
+     no light flash on load. Kept in sync with theme/veyyon.css. */
+  html { background: #050505; }
+  /* Tighten the base box model for the premium layout. */
+  *, *::before, *::after { box-sizing: border-box; }
+</style>

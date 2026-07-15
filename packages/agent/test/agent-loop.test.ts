@@ -4,7 +4,7 @@ import {
 	agentLoopContinue,
 	agentLoopDetailed,
 	TERMINAL_TOOL_RESULT_ABORT_REASON,
-} from "@oh-my-pi/pi-agent-core/agent-loop";
+} from "@veyyon/pi-agent-core/agent-loop";
 import type {
 	AgentContext,
 	AgentEvent,
@@ -13,15 +13,16 @@ import type {
 	AgentTool,
 	AgentToolContext,
 	ToolCallContext,
-} from "@oh-my-pi/pi-agent-core/types";
-import type { AssistantMessage, AssistantMessageEvent, Message, ToolResultMessage } from "@oh-my-pi/pi-ai";
-import { createMockModel, type MockResponse } from "@oh-my-pi/pi-ai/providers/mock";
-import { AssistantMessageEventStream } from "@oh-my-pi/pi-ai/utils/event-stream";
-import { INTENT_FIELD } from "@oh-my-pi/pi-wire";
+} from "@veyyon/pi-agent-core/types";
+import type { AssistantMessage, AssistantMessageEvent, Message, ToolResultMessage } from "@veyyon/pi-ai";
+import { createMockModel, type MockResponse } from "@veyyon/pi-ai/providers/mock";
+import { AssistantMessageEventStream } from "@veyyon/pi-ai/utils/event-stream";
+import { parseJsonWithRepair } from "@veyyon/pi-utils/json-parse";
+import { INTENT_FIELD } from "@veyyon/pi-wire";
 import { type } from "arktype";
 import { createAssistantMessage, createUserMessage } from "./helpers";
 
-declare module "@oh-my-pi/pi-agent-core/types" {
+declare module "@veyyon/pi-agent-core/types" {
 	interface CustomAgentMessages {
 		advisor: {
 			role: "custom";
@@ -857,6 +858,71 @@ describe("agentLoop with AgentMessage", () => {
 		});
 		expect(firstRequestToolSchema?.required).toEqual(expect.arrayContaining([INTENT_FIELD]));
 		expect(executedParams).toEqual([{ value: "hello" }]);
+		expect(tracedToolCall?.type).toBe("toolCall");
+		if (tracedToolCall?.type === "toolCall") {
+			expect(tracedToolCall.intent).toBe("Read one file");
+		}
+	});
+
+	it("repairs malformed JSON then strips intent before tool execution", async () => {
+		const toolSchema = type({ value: "string" });
+		const executedParams: Record<string, unknown>[] = [];
+		const tool: AgentTool<typeof toolSchema, { value: string }> = {
+			name: "echo",
+			label: "Echo",
+			description: "Echo tool",
+			parameters: toolSchema,
+			async execute(_toolCallId, params) {
+				executedParams.push(params as Record<string, unknown>);
+				return {
+					content: [{ type: "text", text: `echoed: ${params.value}` }],
+					details: { value: params.value },
+				};
+			},
+		};
+
+		const context: AgentContext = { systemPrompt: [""], messages: [], tools: [tool] };
+		const rawJson = `{"value":"hello","${INTENT_FIELD}":"Read one file",}`;
+
+		const mock = createMockModel({
+			responses: [
+				{
+					content: [
+						{
+							type: "toolCall",
+							id: "tool-repair-1",
+							name: "echo",
+							arguments: { __parseError: "Unexpected token", __rawJson: rawJson },
+						},
+					],
+				},
+				{ content: ["done"] },
+			],
+		});
+		const config: AgentLoopConfig = {
+			model: mock.model,
+			convertToLlm: identityConverter,
+			intentTracing: true,
+			repairToolCallArguments: (_tool, toolCall) => {
+				const args = toolCall.arguments as Record<string, unknown>;
+				const raw = typeof args.__rawJson === "string" ? args.__rawJson : "";
+				const parsed = parseJsonWithRepair<Record<string, unknown>>(raw);
+				return { status: "repaired", arguments: parsed, hints: ["fixed json"] };
+			},
+		};
+
+		const stream = agentLoop([createUserMessage("run")], context, config, undefined, mock.stream);
+		for await (const _ of stream) {
+			// drain
+		}
+		const messages = await stream.result();
+		const assistantWithToolCall = messages.find(
+			message => message.role === "assistant" && message.content.some(content => content.type === "toolCall"),
+		) as AssistantMessage | undefined;
+		const tracedToolCall = assistantWithToolCall?.content.find(content => content.type === "toolCall");
+
+		expect(executedParams).toEqual([{ value: "hello" }]);
+		expect(executedParams[0]).not.toHaveProperty(INTENT_FIELD);
 		expect(tracedToolCall?.type).toBe("toolCall");
 		if (tracedToolCall?.type === "toolCall") {
 			expect(tracedToolCall.intent).toBe("Read one file");
@@ -3091,7 +3157,7 @@ describe("agentLoop streaming snapshots", () => {
 
 describe("agentLoop kCursorExecResolved (issue #4348)", () => {
 	it("skips execute for a toolCall block marked as already run by Cursor's exec channel", async () => {
-		const { kCursorExecResolved } = await import("@oh-my-pi/pi-ai/utils/block-symbols");
+		const { kCursorExecResolved } = await import("@veyyon/pi-ai/utils/block-symbols");
 
 		const toolSchema = type({ command: "string" });
 		let executeCalls = 0;
@@ -3182,7 +3248,7 @@ describe("agentLoop kCursorExecResolved (issue #4348)", () => {
 	it("still runs a normal, unmarked toolCall block in the same turn", async () => {
 		// Guards against the filter over-matching: a mixed turn where only
 		// SOME blocks are Cursor-resolved must still execute the unmarked one.
-		const { kCursorExecResolved } = await import("@oh-my-pi/pi-ai/utils/block-symbols");
+		const { kCursorExecResolved } = await import("@veyyon/pi-ai/utils/block-symbols");
 
 		const toolSchema = type({ value: "string" });
 		const executed: string[] = [];

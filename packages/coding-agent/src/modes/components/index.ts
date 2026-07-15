@@ -1,6 +1,5 @@
 // UI Components barrel export
 
-export * from "./advisor-config";
 export * from "./assistant-message";
 export * from "./bash-execution";
 export * from "./bordered-loader";
@@ -21,6 +20,7 @@ export * from "./logout-account-selector";
 export * from "./model-browser";
 export * from "./model-hub";
 export * from "./model-picker";
+export * from "./model-selector";
 export * from "./oauth-selector";
 export * from "./queue-mode-selector";
 export * from "./read-tool-group";

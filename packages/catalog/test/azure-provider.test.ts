@@ -1,14 +1,14 @@
 import { describe, expect, test } from "bun:test";
-import { buildModel } from "@oh-my-pi/pi-catalog/build";
-import { buildOpenAIResponsesCompat } from "@oh-my-pi/pi-catalog/compat/openai";
-import { Effort } from "@oh-my-pi/pi-catalog/effort";
+import { buildModel } from "@veyyon/pi-catalog/build";
+import { buildOpenAIResponsesCompat } from "@veyyon/pi-catalog/compat/openai";
+import { Effort } from "@veyyon/pi-catalog/effort";
 import {
 	DEFAULT_MODEL_PER_PROVIDER,
 	MODELS_DEV_PROVIDER_DESCRIPTORS,
 	mapModelsDevToModels,
 	PROVIDER_DESCRIPTORS,
-} from "@oh-my-pi/pi-catalog/provider-models";
-import type { ModelSpec } from "@oh-my-pi/pi-catalog/types";
+} from "@veyyon/pi-catalog/provider-models";
+import type { ModelSpec } from "@veyyon/pi-catalog/types";
 
 // A models.dev "azure" payload: two OpenAI-family models (one reasoning), a
 // non-tool-capable instruct model, and a Foundry-hosted third party served via

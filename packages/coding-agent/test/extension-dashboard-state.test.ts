@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { applyDisabledExtensionsToState } from "@oh-my-pi/pi-coding-agent/modes/components/extensions/state-manager";
-import type { DashboardState, Extension } from "@oh-my-pi/pi-coding-agent/modes/components/extensions/types";
+import { applyDisabledExtensionsToState } from "@veyyon/pi-coding-agent/modes/components/extensions/state-manager";
+import type { DashboardState, Extension } from "@veyyon/pi-coding-agent/modes/components/extensions/types";
 
 function extension(overrides: Partial<Extension> & Pick<Extension, "id">): Extension {
 	return {

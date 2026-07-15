@@ -1,8 +1,7 @@
 /**
  * Check for and install updates.
  */
-import { Command, Flags } from "@oh-my-pi/pi-utils/cli";
-import * as pluginCli from "../cli/plugin-cli";
+import { Command, Flags } from "@veyyon/pi-utils/cli";
 import * as updateCli from "../cli/update-cli";
 import { initTheme } from "../modes/theme/theme";
 
@@ -19,7 +18,10 @@ export default class Update extends Command {
 		const { flags } = await this.parse(Update);
 		await initTheme();
 		if (flags.plugins) {
-			await pluginCli.runPluginCommand({ action: "upgrade", args: [], flags: {} });
+			process.stderr.write(
+				"Bulk plugin upgrade is not available. Use `veyyon plugin install <package>` to refresh npm/git plugins.\n",
+			);
+			process.exit(1);
 		} else {
 			await updateCli.runUpdateCommand({ force: flags.force, check: flags.check });
 		}

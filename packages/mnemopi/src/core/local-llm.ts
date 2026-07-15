@@ -6,8 +6,8 @@ import {
 	type FetchImpl,
 	type Model,
 	withAuth,
-} from "@oh-my-pi/pi-ai";
-import { ProviderHttpError } from "@oh-my-pi/pi-ai/error";
+} from "@veyyon/pi-ai";
+import { ProviderHttpError } from "@veyyon/pi-ai/error";
 import { type CompleteOptions, callHostLlm, getHostLlmBackend } from "./llm-backends";
 import {
 	getMnemopiRuntimeOptions,

@@ -2,18 +2,18 @@ import { Database } from "bun:sqlite";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { formatHashlineHeader, formatNumberedLine, formatNumberedLines } from "@oh-my-pi/hashline";
+import { formatHashlineHeader, formatNumberedLine, formatNumberedLines } from "@veyyon/hashline";
 import type {
 	AgentTool,
 	AgentToolContext,
 	AgentToolResult,
 	AgentToolUpdateCallback,
 	ToolTier,
-} from "@oh-my-pi/pi-agent-core";
-import type { ImageContent, TextContent } from "@oh-my-pi/pi-ai";
-import { glob, type SummaryResult, summarizeCode } from "@oh-my-pi/pi-natives";
-import type { Component } from "@oh-my-pi/pi-tui";
-import { Text } from "@oh-my-pi/pi-tui";
+} from "@veyyon/pi-agent-core";
+import type { ImageContent, TextContent } from "@veyyon/pi-ai";
+import { glob, type SummaryResult, summarizeCode } from "@veyyon/pi-natives";
+import type { Component } from "@veyyon/pi-tui";
+import { Text } from "@veyyon/pi-tui";
 import {
 	getRemoteDir,
 	type ImageMetadata,
@@ -22,7 +22,7 @@ import {
 	prompt,
 	readImageMetadata,
 	untilAborted,
-} from "@oh-my-pi/pi-utils";
+} from "@veyyon/pi-utils";
 import { type } from "arktype";
 import { LRUCache } from "lru-cache/raw";
 import {
@@ -40,6 +40,7 @@ import { InternalUrlRouter, resolveLocalUrlToFile } from "../internal-urls";
 import { type ResolvedArtifactFile, resolveArtifactFile } from "../internal-urls/artifact-protocol";
 import { parseInternalUrl } from "../internal-urls/parse";
 import type { InternalUrl } from "../internal-urls/types";
+import { CONVERTIBLE_EXTENSIONS } from "../markit";
 import { getLanguageFromPath, type Theme } from "../modes/theme/theme";
 import readDescription from "../prompts/tools/read.md" with { type: "text" };
 import type { ToolSession } from "../sdk";
@@ -148,9 +149,6 @@ function getSummaryParseCache(session: object): LRUCache<string, SummaryResult |
 	}
 	return cache;
 }
-
-// Document types converted to markdown via markit.
-const CONVERTIBLE_EXTENSIONS = new Set([".pdf", ".doc", ".docx", ".ppt", ".pptx", ".xls", ".xlsx", ".rtf", ".epub"]);
 
 const MAX_SUMMARY_BYTES = 2 * 1024 * 1024;
 const MAX_SUMMARY_LINES = 20_000;
@@ -775,7 +773,7 @@ export interface ReadToolDetails {
 		lineNumbers?: Array<number | null>;
 	};
 	summary?: { lines: number; elidedSpans: number; elidedLines: number };
-	/** Number of unresolved git conflicts surfaced by this read (TUI uses for inline `⚠ N` badge). */
+	/** Number of unresolved git conflicts surfaced by this read (TUI uses for inline `warn N` badge). */
 	conflictCount?: number;
 	/** Paths recovered from a delimited read argument; used only by the TUI to render one call as multiple read rows. */
 	displayReadTargets?: string[];
@@ -2179,7 +2177,7 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 			return executeReadUrl(this.session, { path: parsedUrlTarget.path, raw: urlRaw }, signal);
 		}
 
-		// Handle internal URLs (agent://, artifact://, memory://, skill://, rule://, local://, mcp://, omp://, issue://, pr://).
+		// Handle internal URLs (agent://, artifact://, memory://, skill://, rule://, local://, mcp://, veyyon://, issue://, pr://).
 		// Use the internal-URL-aware splitter so malformed selectors are peeled
 		// off the URL and surfaced via parseSel rather than confusing handlers.
 		const internalRouter = InternalUrlRouter.instance();
@@ -3510,7 +3508,7 @@ export const readToolRenderer = {
 		}
 		if (details?.conflictCount && details.conflictCount > 0) {
 			const n = details.conflictCount;
-			title += ` ${uiTheme.fg("warning", `(⚠ ${n} conflict${n === 1 ? "" : "s"})`)}`;
+			title += ` ${uiTheme.fg("warning", `(warn ${n} conflict${n === 1 ? "" : "s"})`)}`;
 		}
 		const rawRequested = args?.raw === true || isRawSelector(parseSel(renderPath.sel));
 		const isMarkdown = details?.contentType === "text/markdown" && !rawRequested;

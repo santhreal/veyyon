@@ -1,13 +1,13 @@
 import * as os from "node:os";
 import { scheduler } from "node:timers/promises";
-import { calculateCost } from "@oh-my-pi/pi-catalog/models";
+import { calculateCost } from "@veyyon/pi-catalog/models";
 import {
 	CODEX_BASE_URL,
 	CODEX_CLIENT_VERSION,
 	getCodexAccountId,
 	OPENAI_HEADER_VALUES,
 	OPENAI_HEADERS,
-} from "@oh-my-pi/pi-catalog/wire/codex";
+} from "@veyyon/pi-catalog/wire/codex";
 import {
 	$env,
 	$flag,
@@ -18,7 +18,7 @@ import {
 	parseStreamingJson,
 	readSseJson,
 	structuredCloneJSON,
-} from "@oh-my-pi/pi-utils";
+} from "@veyyon/pi-utils";
 import { type } from "arktype";
 import packageJson from "../../package.json" with { type: "json" };
 import * as AIError from "../error";

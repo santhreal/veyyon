@@ -9,17 +9,17 @@ import {
 	resolveExecHandler,
 	streamCursor,
 	type ToolCallState,
-} from "@oh-my-pi/pi-ai/providers/cursor";
-import { streamCursor as lazyStreamCursor, setCursorProviderModule } from "@oh-my-pi/pi-ai/providers/register-builtins";
-import type { AssistantMessage, Context, CursorExecHandlers, Model, ToolResultMessage } from "@oh-my-pi/pi-ai/types";
-import { AssistantMessageEventStream } from "@oh-my-pi/pi-ai/utils/event-stream";
-import { buildModel } from "@oh-my-pi/pi-catalog/build";
+} from "@veyyon/pi-ai/providers/cursor";
+import { streamCursor as lazyStreamCursor, setCursorProviderModule } from "@veyyon/pi-ai/providers/register-builtins";
+import type { AssistantMessage, Context, CursorExecHandlers, Model, ToolResultMessage } from "@veyyon/pi-ai/types";
+import { AssistantMessageEventStream } from "@veyyon/pi-ai/utils/event-stream";
+import { buildModel } from "@veyyon/pi-catalog/build";
 import {
 	type AgentRunRequest,
 	AgentServerMessageSchema,
 	ExecServerMessageSchema,
 	ReadArgsSchema,
-} from "@oh-my-pi/pi-catalog/discovery/cursor-gen/agent_pb";
+} from "@veyyon/pi-catalog/discovery/cursor-gen/agent_pb";
 
 const cursorModel: Model<"cursor-agent"> = buildModel({
 	id: "cursor-composer-2.5",

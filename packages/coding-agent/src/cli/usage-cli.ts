@@ -1,7 +1,7 @@
 /**
  * Usage CLI command handler.
  *
- * Handles `omp usage` — fetches provider usage reports for every
+ * Handles `veyyon usage` — fetches provider usage reports for every
  * authenticated account and prints a detailed per-account breakdown
  * (limits, windows, reset times, plan metadata). Accounts whose
  * credentials produced no usage report are listed too, so the output
@@ -14,8 +14,8 @@ import {
 	type UsageLimit,
 	type UsageReport,
 	type UsageUnit,
-} from "@oh-my-pi/pi-ai";
-import { formatDuration, formatNumber, sanitizeText } from "@oh-my-pi/pi-utils";
+} from "@veyyon/pi-ai";
+import { formatDuration, formatNumber, sanitizeText } from "@veyyon/pi-utils";
 import chalk from "chalk";
 import { ModelRegistry } from "../config/model-registry";
 import { discoverAuthStorage } from "../sdk";
@@ -364,7 +364,7 @@ function formatAccountHeader(
 	redaction?: Map<string, string>,
 ): string {
 	const status = aggregateStatus(report.limits);
-	const icon = STATUS_COLOR[status]("●");
+	const icon = STATUS_COLOR[status]("*");
 	const label = reportAccountLabel(report, index);
 	let header = `${icon} ${chalk.bold(redaction?.get(label) ?? label)}`;
 	const metaOrgName = report.metadata?.orgName;
@@ -377,7 +377,7 @@ function formatAccountHeader(
 	if (typeof planType === "string" && planType) header += chalk.dim(` · plan: ${planType}`);
 	const savedResets = report.resetCredits?.availableCount ?? 0;
 	if (savedResets > 0) {
-		header += chalk.cyan(` · ✦ ${savedResets} saved reset${savedResets === 1 ? "" : "s"}`);
+		header += chalk.cyan(` · * ${savedResets} saved reset${savedResets === 1 ? "" : "s"}`);
 		const credits = report.resetCredits?.credits;
 		if (credits) {
 			const expiries = credits
@@ -412,7 +412,7 @@ function formatLimitLine(limit: UsageLimit, labelWidth: number, nowMs: number): 
 		details.push(`resets in ${formatDuration(resetsAt - nowMs)}`);
 	}
 	const lines = [
-		`      ${STATUS_COLOR[status]("●")} ${padded}  ${renderBar(limit)}  ${chalk.dim(details.join(" · "))}`,
+		`      ${STATUS_COLOR[status]("*")} ${padded}  ${renderBar(limit)}  ${chalk.dim(details.join(" · "))}`,
 	];
 	if (limit.notes && limit.notes.length > 0) {
 		lines.push(`        ${chalk.dim(limit.notes.join(" · "))}`);
@@ -440,7 +440,7 @@ function collectProviderLimitTemplates(reports: UsageReport[]): ProviderLimitTem
 
 function formatMissingLimitLine(template: ProviderLimitTemplate, labelWidth: number): string {
 	const padded = template.title.padEnd(labelWidth);
-	return `      ${chalk.dim("○")} ${padded}  ${chalk.dim("·".repeat(BAR_WIDTH))}  ${chalk.dim("not reported")}`;
+	return `      ${chalk.dim("-")} ${padded}  ${chalk.dim("·".repeat(BAR_WIDTH))}  ${chalk.dim("not reported")}`;
 }
 
 /** Per-window capacity stat: how much account quota is burned and left. */
@@ -570,14 +570,14 @@ export function formatUsageBreakdown(
 
 		for (const account of providerUnreported) {
 			const label = accountIdentityLabel(account, redaction);
-			lines.push(`  ${chalk.dim("○")} ${chalk.dim(`${label} — no usage data`)}`);
+			lines.push(`  ${chalk.dim("-")} ${chalk.dim(`${label} — no usage data`)}`);
 		}
 
 		const stats = computeProviderWindowStats(providerReports);
 		if (stats.length > 0) {
 			const parts = stats.map(
 				stat =>
-					`${stat.window} → ${stat.usedAccounts.toFixed(2)}/${stat.accounts} ${stat.accounts === 1 ? "account" : "accounts"} used (${stat.remainingAccounts.toFixed(2)}× quota left)`,
+					`${stat.window} -> ${stat.usedAccounts.toFixed(2)}/${stat.accounts} ${stat.accounts === 1 ? "account" : "accounts"} used (${stat.remainingAccounts.toFixed(2)}× quota left)`,
 			);
 			lines.push(`  ${chalk.dim(`capacity: ${parts.join(" · ")}`)}`);
 		}
@@ -715,7 +715,7 @@ export function formatUsageHistory(
 				if (peakFraction !== undefined) details.push(`peak ${(peakFraction * 100).toFixed(1)}%`);
 				details.push(`${series.entries.length} snapshot${series.entries.length === 1 ? "" : "s"}`);
 				lines.push(
-					`      ${STATUS_COLOR[status]("●")} ${series.title.padEnd(labelWidth)}  ${renderHistorySparkline(series.entries, sinceMs, nowMs)}  ${chalk.dim(details.join(" · "))}`,
+					`      ${STATUS_COLOR[status]("*")} ${series.title.padEnd(labelWidth)}  ${renderHistorySparkline(series.entries, sinceMs, nowMs)}  ${chalk.dim(details.join(" · "))}`,
 				);
 			}
 		}
@@ -760,7 +760,7 @@ function collectStoredAccounts(authStorage: AuthStorage): UsageAccountIdentity[]
  * `hasUsageProvider` is injected (in practice {@link AuthStorage.usageProviderFor})
  * so custom/broker resolvers stay authoritative — no provider list is duplicated
  * here. An explicit `--provider` request bypasses the cull, so
- * `omp usage --provider xai` can still confirm the stored credential has no
+ * `veyyon usage --provider xai` can still confirm the stored credential has no
  * usage endpoint.
  */
 export function selectReportableAccounts(

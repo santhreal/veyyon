@@ -20,7 +20,7 @@
  * up automatically, so the two cannot drift out of sync.
  *
  * IMPORT RULE: this module MUST NOT import any runtime value from
- * `@oh-my-pi/pi-utils` (or anything that transitively does). That package's
+ * `@veyyon/pi-utils` (or anything that transitively does). That package's
  * `env.ts` eagerly loads `.env` files from `getAgentDir()` during module
  * initialization, which would race the profile bootstrap. Type-only imports
  * are erased at runtime and are therefore safe.
@@ -40,7 +40,7 @@ import { CliUsageError } from "./usage-error";
  * passes it to each {@link STRING_SETTERS} call.
  *
  * Keeping these out of the setter closures means this module stays free of
- * runtime imports from `@oh-my-pi/pi-utils`, which is the whole reason it can
+ * runtime imports from `@veyyon/pi-utils`, which is the whole reason it can
  * be safely imported by `profile-bootstrap.ts` before `setProfile` runs.
  */
 export interface ParseDeps {
@@ -140,6 +140,12 @@ export const STRING_SETTERS: Record<string, StringSetter> = {
 	"--plan": (result, value) => {
 		result.plan = value;
 	},
+	"--subagent-model": (result, value) => {
+		result.subagentModel = value;
+	},
+	"--compaction-model": (result, value) => {
+		result.compactionModel = value;
+	},
 	"--prewalk-into": (result, value) => {
 		result.prewalkInto = value;
 	},
@@ -218,12 +224,13 @@ export const STRING_SETTERS: Record<string, StringSetter> = {
 		result.skills = value.split(",").map(s => s.trim());
 	},
 	"--approval-mode": (result, value, deps) => {
-		if (value === "always-ask" || value === "write" || value === "yolo") {
-			result.approvalMode = value;
+		const valid = new Set(["plan", "ask", "auto-edit", "yolo", "always-ask", "write"]);
+		if (valid.has(value)) {
+			result.approvalMode = value as typeof result.approvalMode;
 		} else {
 			deps.logger.warn("Invalid value passed to --approval-mode", {
 				value,
-				validValues: ["always-ask", "write", "yolo"],
+				validValues: [...valid],
 			});
 		}
 	},
@@ -275,7 +282,7 @@ export const PROFILE_BOOTSTRAP_BOUNDARY_ARG = "--omp-profile-boundary";
 /**
  * Long-form launch flags that take NO value (booleans). The bootstrap pre-parser
  * needs this to tell a known value-less flag (whose successor is a fresh
- * argument — `omp --print --profile work` still selects a profile) apart from an
+ * argument — `veyyon --print --profile work` still selects a profile) apart from an
  * UNKNOWN long option that might be an extension string flag consuming the next
  * token as its value (so the bootstrap must not steal that token as a global
  * `--profile`/`--alias`). MUST mirror the value-less flag arms of `parseArgs`
@@ -329,7 +336,7 @@ export function isUnknownLongValueCandidate(arg: string): boolean {
  * Whether a leading option `flag` consumes the following argv token `next` as
  * its value, applying the same contract as `extractProfileFlags` / `parseArgs`.
  * Single source of truth so subcommand detection ({@link resolveCliArgv}) skips
- * a flag's value instead of mistaking it for the subcommand — `omp --model acp`
+ * a flag's value instead of mistaking it for the subcommand — `veyyon --model acp`
  * means model `acp`, not the `acp` subcommand, exactly as the launch parser
  * reads it.
  */

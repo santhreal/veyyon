@@ -1,9 +1,9 @@
 {
   "type": "module",
-  "name": "@oh-my-pi/pi-wire",
+  "name": "@veyyon/pi-wire",
   "version": "16.5.2",
   "description": "Shared wire protocol types for Oh My Pi packages",
-  "homepage": "https://omp.sh",
+  "homepage": "https://veyyon.dev",
   "author": "Can Boluk",
   "license": "MIT",
   "repository": {

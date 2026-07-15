@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { KeybindingsManager as AppKeybindingsManager } from "@oh-my-pi/pi-coding-agent/config/keybindings";
-import { createPromptActionAutocompleteProvider } from "@oh-my-pi/pi-coding-agent/modes/prompt-action-autocomplete";
-import { KeybindingsManager, setKeybindings, TUI_KEYBINDINGS } from "@oh-my-pi/pi-tui";
+import { KeybindingsManager as AppKeybindingsManager } from "@veyyon/pi-coding-agent/config/keybindings";
+import { createPromptActionAutocompleteProvider } from "@veyyon/pi-coding-agent/modes/prompt-action-autocomplete";
+import { KeybindingsManager, setKeybindings, TUI_KEYBINDINGS } from "@veyyon/pi-tui";
 
 describe("prompt action autocomplete", () => {
 	beforeEach(() => {

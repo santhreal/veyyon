@@ -10,17 +10,17 @@ It documents only active behavior.
 
 ## Resolution model and precedence
 
-Most runtime lookups use `$env` from `@oh-my-pi/pi-utils` (`packages/utils/src/env.ts`).
+Most runtime lookups use `$env` from `@veyyon/pi-utils` (`packages/utils/src/env.ts`).
 
 `$env` loading order:
 
 1. Existing process environment (`Bun.env`)
 2. Project `.env` (`$PWD/.env`) for keys not already set
-3. Agent `.env` (`~/.omp/agent/.env`, respecting `PI_CONFIG_DIR` / `PI_CODING_AGENT_DIR`) for keys not already set
-4. Config-root `.env` (`~/.omp/.env`, respecting `PI_CONFIG_DIR`) for keys not already set
+3. Agent `.env` (`~/.veyyon/agent/.env`, respecting `PI_CONFIG_DIR` / `PI_CODING_AGENT_DIR`) for keys not already set
+4. Config-root `.env` (`~/.veyyon/.env`, respecting `PI_CONFIG_DIR`) for keys not already set
 5. Home `.env` (`~/.env`) for keys not already set
 
-Additional rule inside each `.env` file: `OMP_*` keys are mirrored to `PI_*` keys in that parsed file.
+Additional rule inside each `.env` file: `VEYYON_*` and `OMP_*` keys are mirrored to `PI_*` keys in that parsed file.
 
 ---
 
@@ -100,12 +100,12 @@ When the broker is enabled, the local SQLite credential store is bypassed and al
 
 | Variable                | Used for                                                                                     | Required when                                                                                                             | Notes / precedence                                                                                                                                                                         |
 | ----------------------- | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `OMP_AUTH_BROKER_URL`   | Base URL of the remote auth-broker (e.g. `https://broker.tailnet:8765`); selects broker mode | Resolving credentials through a broker; also required by `omp auth-gateway serve` (the gateway is itself a broker client) | Wins over `auth.broker.url` in `config.yml`. When set with no resolvable token, `resolveAuthBrokerConfig()` hard-errors instead of falling back to local SQLite.                           |
-| `OMP_AUTH_BROKER_TOKEN` | Bearer token sent on every broker endpoint except `/v1/healthz`                              | `OMP_AUTH_BROKER_URL` is set and no token is available from `auth.broker.token` or `<config-dir>/auth-broker.token`       | Resolution: this env → `auth.broker.token` (`$ENV_NAME` indirection supported) → `<config-dir>/auth-broker.token` (mode `0600`). `<config-dir>` is `~/.omp/` (respecting `PI_CONFIG_DIR`). |
-| `OMP_AUTH_BROKER_SNAPSHOT_TTL_MS` | Freshness window for the encrypted local broker snapshot cache | Optional in broker mode | Default `3600000` (1 h). Freshness is based on broker `snapshot.generatedAt`; `0` disables cache reads/writes and forces the old blocking fetch every startup. |
-| `OMP_AUTH_BROKER_SNAPSHOT_CACHE` | Path to the encrypted local broker snapshot cache | Optional in broker mode | Defaults to `~/.omp/cache/auth-broker-snapshot.enc` (or XDG cache equivalent). Useful for tests, ephemeral hosts, or relocating the `0600` cache file. |
+| `VEYYON_AUTH_BROKER_URL`   | Base URL of the remote auth-broker (e.g. `https://broker.tailnet:8765`); selects broker mode | Resolving credentials through a broker; also required by `veyyon auth-gateway serve` (the gateway is itself a broker client) | Wins over `auth.broker.url` in `config.yml`. Legacy alias: `OMP_AUTH_BROKER_URL`. When set with no resolvable token, `resolveAuthBrokerConfig()` hard-errors instead of falling back to local SQLite.                           |
+| `VEYYON_AUTH_BROKER_TOKEN` | Bearer token sent on every broker endpoint except `/v1/healthz`                              | `VEYYON_AUTH_BROKER_URL` is set and no token is available from `auth.broker.token` or `<config-dir>/auth-broker.token`       | Resolution: this env → `auth.broker.token` (`$ENV_NAME` indirection supported) → `<config-dir>/auth-broker.token` (mode `0600`). Legacy alias: `OMP_AUTH_BROKER_TOKEN`. `<config-dir>` is `~/.veyyon/` (respecting `PI_CONFIG_DIR`). |
+| `VEYYON_AUTH_BROKER_SNAPSHOT_TTL_MS` | Freshness window for the encrypted local broker snapshot cache | Optional in broker mode | Default `3600000` (1 h). Legacy alias: `OMP_AUTH_BROKER_SNAPSHOT_TTL_MS`. Freshness is based on broker `snapshot.generatedAt`; `0` disables cache reads/writes and forces the old blocking fetch every startup. |
+| `VEYYON_AUTH_BROKER_SNAPSHOT_CACHE` | Path to the encrypted local broker snapshot cache | Optional in broker mode | Defaults to `~/.veyyon/cache/auth-broker-snapshot.enc` (or XDG cache equivalent). Legacy alias: `OMP_AUTH_BROKER_SNAPSHOT_CACHE`. Useful for tests, ephemeral hosts, or relocating the `0600` cache file. |
 
-The gateway has no dedicated env vars — it inherits `OMP_AUTH_BROKER_*`. Its own inbound bearer token lives at `<config-dir>/auth-gateway.token` and is managed via `omp auth-gateway token`.
+The gateway has no dedicated env vars — it inherits `VEYYON_AUTH_BROKER_*` (legacy `OMP_AUTH_BROKER_*`). Its own inbound bearer token lives at `<config-dir>/auth-gateway.token` and is managed via `veyyon auth-gateway token`.
 
 ---
 
@@ -254,7 +254,7 @@ OAuth host chain: `KIMI_CODE_OAUTH_HOST` → `KIMI_OAUTH_HOST` → `https://auth
 | `SEARXNG_ENDPOINT`, `SEARXNG_TOKEN`                 | SearXNG endpoint and optional bearer token                    |
 | `SEARXNG_BASIC_USERNAME`, `SEARXNG_BASIC_PASSWORD`  | SearXNG HTTP Basic Auth credentials                           |
 
-SearXNG also reads the equivalent `searxng.endpoint`, `searxng.token`, `searxng.basicUsername`, and `searxng.basicPassword` settings from `~/.omp/agent/config.yml`; environment variables are fallbacks.
+SearXNG also reads the equivalent `searxng.endpoint`, `searxng.token`, `searxng.basicUsername`, and `searxng.basicPassword` settings from `~/.veyyon/agent/config.yml`; environment variables are fallbacks.
 
 ### Anthropic web search auth chain
 
@@ -343,7 +343,7 @@ Extra conditional behavior:
 | `PI_FORCE_IMAGE_PROTOCOL`    | Forces supported image protocol (`kitty`, `iterm2`/`iterm`, `sixel`, `none`) where used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | `PI_ALLOW_SIXEL_PASSTHROUGH` | Allows SIXEL passthrough when `PI_FORCE_IMAGE_PROTOCOL=sixel`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | `PI_NO_PTY`                  | If `1`, disables interactive PTY path for bash tool                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-| `OMP_MCP_TIMEOUT_MS`         | Overrides MCP client request timeout (ms) for every MCP server. `0` disables client-side timeouts (`AbortSignal` never fires). Invalid (negative or non-numeric) values are ignored with a warning and the per-server config or default (`30000`) is used.                                                                                                                                                                                                                                                                                                                                                 |
+| `VEYYON_MCP_TIMEOUT_MS`         | Overrides MCP client request timeout (ms) for every MCP server. `0` disables client-side timeouts (`AbortSignal` never fires). Invalid (negative or non-numeric) values are ignored with a warning and the per-server config or default (`30000`) is used. Legacy alias: `OMP_MCP_TIMEOUT_MS`.                                                                                                                                                                                                                                                                                                                                                 |
 
 `PI_NO_PTY` is also set internally when CLI `--no-pty` is used.
 
@@ -351,7 +351,7 @@ Extra conditional behavior:
 
 ## 6) Storage and config root paths
 
-These are consumed via `@oh-my-pi/pi-utils/dirs` and affect where coding-agent stores data.
+These are consumed via `@veyyon/pi-utils/dirs` and affect where coding-agent stores data.
 
 | Variable              | Default / behavior                                                            |
 | --------------------- | ----------------------------------------------------------------------------- |

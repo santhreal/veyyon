@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { gzipSync } from "node:zlib";
-import { decodeDocsIndex } from "@oh-my-pi/pi-coding-agent/internal-urls/docs-index";
+import { decodeDocsIndex } from "@veyyon/pi-coding-agent/internal-urls/docs-index";
 
 function embed(files: readonly string[], bodies: readonly string[]): string {
 	return `${JSON.stringify(files)}\n${Buffer.from(gzipSync(Buffer.from(JSON.stringify(bodies)))).toString("base64")}`;

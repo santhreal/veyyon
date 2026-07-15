@@ -5,16 +5,16 @@
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
-import { resetSettingsForTest, Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import { IrcBus } from "@oh-my-pi/pi-coding-agent/irc/bus";
-import { AgentHubOverlayComponent } from "@oh-my-pi/pi-coding-agent/modes/components/agent-hub";
-import { SelectorController } from "@oh-my-pi/pi-coding-agent/modes/controllers/selector-controller";
-import { SessionObserverRegistry } from "@oh-my-pi/pi-coding-agent/modes/session-observer-registry";
-import { initTheme } from "@oh-my-pi/pi-coding-agent/modes/theme/theme";
-import type { InteractiveModeContext } from "@oh-my-pi/pi-coding-agent/modes/types";
-import { AgentRegistry } from "@oh-my-pi/pi-coding-agent/registry/agent-registry";
-import type { AgentSession } from "@oh-my-pi/pi-coding-agent/session/agent-session";
-import { TempDir } from "@oh-my-pi/pi-utils";
+import { resetSettingsForTest, Settings } from "@veyyon/pi-coding-agent/config/settings";
+import { IrcBus } from "@veyyon/pi-coding-agent/irc/bus";
+import { AgentHubOverlayComponent } from "@veyyon/pi-coding-agent/modes/components/agent-hub";
+import { SelectorController } from "@veyyon/pi-coding-agent/modes/controllers/selector-controller";
+import { SessionObserverRegistry } from "@veyyon/pi-coding-agent/modes/session-observer-registry";
+import { initTheme } from "@veyyon/pi-coding-agent/modes/theme/theme";
+import type { InteractiveModeContext } from "@veyyon/pi-coding-agent/modes/types";
+import { AgentRegistry } from "@veyyon/pi-coding-agent/registry/agent-registry";
+import type { AgentSession } from "@veyyon/pi-coding-agent/session/agent-session";
+import { TempDir } from "@veyyon/pi-utils";
 
 const AGENT_ID = "Worker";
 const TEST_CWD = path.resolve("agent-hub-cwd");

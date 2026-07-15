@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
-import { convertBufferWithMarkit } from "@oh-my-pi/pi-coding-agent/utils/markit";
-import { logger } from "@oh-my-pi/pi-utils";
+import { convertBufferWithMarkit } from "@veyyon/pi-coding-agent/utils/markit";
+import { logger } from "@veyyon/pi-utils";
 
 function warningPdf(): Uint8Array {
 	const objects: string[] = [];

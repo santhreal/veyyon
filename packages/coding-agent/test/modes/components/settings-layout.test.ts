@@ -1,13 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { resetSettingsForTest, Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
+import { resetSettingsForTest, Settings } from "@veyyon/pi-coding-agent/config/settings";
 import {
 	SETTING_TABS,
 	SETTINGS_SCHEMA,
 	type SettingPath,
 	type SettingTab,
 	TAB_GROUPS,
-} from "@oh-my-pi/pi-coding-agent/config/settings-schema";
-import { getSettingsForTab } from "@oh-my-pi/pi-coding-agent/modes/components/settings-defs";
+} from "@veyyon/pi-coding-agent/config/settings-schema";
+import { getSettingsForTab } from "@veyyon/pi-coding-agent/modes/components/settings-defs";
 
 interface UiShape {
 	tab: SettingTab;
@@ -70,69 +70,71 @@ describe("settings layout", () => {
 		});
 	});
 
-	it("exposes every accepted snapcompact shape in the settings submenu", () => {
-		const def = getSettingsForTab("context").find(def => def.path === "snapcompact.shape");
+	it("exposes a Personality row in the model settings menu with runtime-resolved options", () => {
+		const def = getSettingsForTab("model").find(def => def.path === "personality");
 
-		expect(def?.type).toBe("submenu");
-		if (def?.type !== "submenu") throw new Error("snapcompact.shape should render as a submenu");
-		const values = def.options.map(option => option.value);
-		expect(values).toContain("silver16-bw");
-		expect(values).toEqual([...SETTINGS_SCHEMA["snapcompact.shape"].values]);
+		expect(def).toMatchObject({
+			// A string schema type with ui.options: "runtime" resolves to a
+			// submenu whose choices are injected by the selector layer at
+			// render time (see settings-selector.ts #createSubmenu).
+			type: "submenu",
+			label: "Personality",
+			group: "Prompt",
+		});
+		expect(SETTINGS_SCHEMA.personality.type).toBe("string");
+		expect(SETTINGS_SCHEMA.personality.ui.options).toBe("runtime");
 	});
 
-	it("hides advisor dependent settings when advisor is disabled", () => {
+	it("keeps advanced snapcompact shapes schema-only (not in the lean settings UI)", () => {
+		const def = getSettingsForTab("appearance")
+			.concat(getSettingsForTab("model"))
+			.concat(getSettingsForTab("editor"))
+			.concat(getSettingsForTab("privacy"))
+			.concat(getSettingsForTab("advanced"))
+			.find(def => def.path === "snapcompact.shape");
+
+		expect(def).toBeUndefined();
+		expect(SETTINGS_SCHEMA["snapcompact.shape"].values).toContain("silver16-bw");
+	});
+
+	it("keeps advisor sub-settings schema-only in the lean settings UI", () => {
 		const advisorDependentPaths: SettingPath[] = ["advisor.subagents", "advisor.syncBacklog", "advisor.immuneTurns"];
-		const advisorDependentPathSet = new Set(advisorDependentPaths);
-		const defs = getSettingsForTab("model").filter(def => advisorDependentPathSet.has(def.path));
-
-		expect(defs.map(def => def.path)).toEqual(advisorDependentPaths);
-		for (const def of defs) {
-			expect(def.condition?.()).toBe(false);
-		}
-
-		Settings.instance.set("advisor.enabled", true);
-
-		for (const def of defs) {
-			expect(def.condition?.()).toBe(true);
+		const visible = SETTING_TABS.flatMap(tab => getSettingsForTab(tab));
+		for (const path of advisorDependentPaths) {
+			expect(visible.some(def => def.path === path)).toBe(false);
 		}
 	});
 
-	it("shows provider request limits as a providers services submenu setting", () => {
-		const [def] = getSettingsForTab("providers").filter(item => item.path === "providers.maxInFlightRequests");
-
-		expect(def).toMatchObject({
-			path: "providers.maxInFlightRequests",
-			type: "providerLimits",
-			tab: "providers",
-			group: "Services",
-		});
+	it("keeps provider request limits schema-only in the lean settings UI", () => {
+		const visible = SETTING_TABS.flatMap(tab => getSettingsForTab(tab));
+		expect(visible.some(def => def.path === "providers.maxInFlightRequests")).toBe(false);
 	});
 
-	it("exposes retry fallback chains as editable JSON in the model settings", () => {
-		const def = getSettingsForTab("model").find(item => item.path === "retry.fallbackChains");
+	it("keeps retry fallback chains schema-only in the lean settings UI", () => {
+		const visible = SETTING_TABS.flatMap(tab => getSettingsForTab(tab));
+		expect(visible.some(def => def.path === "retry.fallbackChains")).toBe(false);
+	});
 
+	it("keeps ask.enabled schema-only in the lean settings UI", () => {
+		const visible = SETTING_TABS.flatMap(tab => getSettingsForTab(tab));
+		expect(visible.some(def => def.path === "ask.enabled")).toBe(false);
+	});
+
+	it("exposes core model thinking controls in the lean model tab", () => {
+		const def = getSettingsForTab("model").find(item => item.path === "defaultThinkingLevel");
 		expect(def).toMatchObject({
-			path: "retry.fallbackChains",
-			type: "text",
+			path: "defaultThinkingLevel",
 			tab: "model",
-			group: "Retry & Fallback",
-			label: "Retry Fallback Chains",
+			group: "Thinking",
 		});
-		if (!def) throw new Error("retry.fallbackChains setting definition missing");
-
-		const description = def.description.toLowerCase();
-		expect(description).toContain("json");
-		expect(description).toContain("fallback");
-		expect(description).toContain("selector");
 	});
 
-	it("exposes ask.enabled as a boolean under Available Tools", () => {
-		const def = getSettingsForTab("tools").find(def => def.path === "ask.enabled");
-
+	it("exposes privacy notifications in the lean privacy tab", () => {
+		const def = getSettingsForTab("privacy").find(item => item.path === "completion.notify");
 		expect(def).toMatchObject({
-			type: "boolean",
-			label: "Ask",
-			group: "Available Tools",
+			path: "completion.notify",
+			tab: "privacy",
+			group: "Notifications",
 		});
 	});
 });

@@ -1,9 +1,9 @@
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { getOAuthProviders } from "@oh-my-pi/pi-ai/oauth";
-import { type AutocompleteItem, Spacer } from "@oh-my-pi/pi-tui";
-import { APP_NAME, getProjectDir, setProjectDir } from "@oh-my-pi/pi-utils";
+import { getOAuthProviders } from "@veyyon/pi-ai/oauth";
+import { type AutocompleteItem, Spacer } from "@veyyon/pi-tui";
+import { APP_NAME, getProjectDir, setProjectDir } from "@veyyon/pi-utils";
 import { COLLAB_GUEST_ALLOWED_COMMANDS, CollabGuestLink } from "../collab/guest";
 import { CollabHost } from "../collab/host";
 import { expandRoleAlias, getModelMatchPreferences, resolveCliModel } from "../config/model-resolver";
@@ -17,13 +17,6 @@ import {
 } from "../discovery/helpers.js";
 import { shareSession } from "../export/share";
 import { PluginManager } from "../extensibility/plugins";
-import {
-	getInstalledPluginsRegistryPath,
-	getMarketplacesCacheDir,
-	getMarketplacesRegistryPath,
-	getPluginsCacheDir,
-	MarketplaceManager,
-} from "../extensibility/plugins/marketplace";
 import { resolveMemoryBackend } from "../memory-backend";
 import { runPauseScreen } from "../modes/components/pause-screen";
 import { describeLoopLimitRuntime } from "../modes/loop-limit";
@@ -46,15 +39,12 @@ import { copyToClipboard } from "../utils/clipboard";
 import { CollabQrCodeComponent } from "./helpers/collab-qrcode";
 import { buildContextReportText } from "./helpers/context-report";
 import { formatDuration } from "./helpers/format";
-import { createMarketplaceManager } from "./helpers/marketplace-manager";
 import { handleMcpAcp } from "./helpers/mcp";
 import { commandConsumed, errorMessage, parseSlashCommand, parseSubcommand, usage } from "./helpers/parse";
 import { describeRedeemOutcome, type ResetUsageAccount, toResetUsageAccounts } from "./helpers/reset-usage";
 import { handleSshAcp } from "./helpers/ssh";
-import { launchStatsDashboard, parseStatsDashboardArgs } from "./helpers/stats-dashboard";
 import { handleTodoAcp } from "./helpers/todo";
 import { buildUsageReportText } from "./helpers/usage-report";
-import { parseMarketplaceInstallArgs, parsePluginScopeArgs } from "./marketplace-install-parser";
 import type {
 	BuiltinSlashCommand,
 	ParsedSlashCommand,
@@ -483,122 +473,6 @@ const BUILTIN_SLASH_COMMAND_REGISTRY: ReadonlyArray<SlashCommandSpec> = [
 				`Prewalk on: switching to ${resolved.model.provider}/${resolved.model.id} at the next edit/write (todo-gated).`,
 			);
 			return commandConsumed();
-		},
-	},
-	{
-		name: "advisor",
-		description: "Toggle the advisor (a second model that reviews each turn and injects notes)",
-		acpDescription: "Toggle advisor",
-		acpInputHint: "[on|off|status|dump [raw]|configure]",
-		subcommands: [
-			{ name: "on", description: "Enable the advisor" },
-			{ name: "off", description: "Disable the advisor" },
-			{ name: "status", description: "Show advisor status" },
-			{ name: "dump", description: "Copy the advisor's transcript to clipboard", usage: "[raw]" },
-			{ name: "configure", description: "Open the advisor configuration editor (TUI)" },
-		],
-		allowArgs: true,
-		getTuiAutocompleteDescription: runtime => {
-			const stats = runtime.ctx.session.getAdvisorStats();
-			if (stats.active && stats.advisors.length > 1) return `Advisor: on (${stats.advisors.length} advisors)`;
-			if (stats.active && stats.model) return `Advisor: on (${stats.model.provider}/${stats.model.id})`;
-			if (stats.configured) return "Advisor: configured, no model";
-			return "Advisor: off";
-		},
-		handle: async (command, runtime) => {
-			const { verb, rest } = parseSubcommand(command.args);
-			if (!verb || verb === "toggle") {
-				const active = runtime.session.toggleAdvisorEnabled();
-				const configured = runtime.session.isAdvisorEnabled();
-				if (active) {
-					await runtime.output("Advisor enabled.");
-				} else if (configured) {
-					await runtime.output("Advisor setting enabled, but no model is assigned to the 'advisor' role.");
-				} else {
-					await runtime.output("Advisor disabled.");
-				}
-				return commandConsumed();
-			}
-			if (verb === "on") {
-				const active = runtime.session.setAdvisorEnabled(true);
-				await runtime.output(
-					active ? "Advisor enabled." : "Advisor setting enabled, but no model is assigned to the 'advisor' role.",
-				);
-				return commandConsumed();
-			}
-			if (verb === "off") {
-				runtime.session.setAdvisorEnabled(false);
-				await runtime.output("Advisor disabled.");
-				return commandConsumed();
-			}
-			if (verb === "status") {
-				await runtime.output(runtime.session.formatAdvisorStatus());
-				return commandConsumed();
-			}
-			if (verb === "dump") {
-				const isRaw = rest.toLowerCase() === "raw";
-				const text = runtime.session.formatAdvisorHistoryAsText({ compact: !isRaw });
-				await runtime.output(text ?? "Advisor is not active for this session.");
-				return commandConsumed();
-			}
-			if (verb === "configure") {
-				await runtime.output(
-					"/advisor configure opens an interactive editor and is only available in the interactive TUI.",
-				);
-				return commandConsumed();
-			}
-			return usage("Usage: /advisor [on|off|status|dump [raw]|configure]", runtime);
-		},
-		handleTui: async (command, runtime) => {
-			const { verb, rest } = parseSubcommand(command.args);
-			if (!verb || verb === "toggle") {
-				const active = runtime.ctx.session.toggleAdvisorEnabled();
-				const configured = runtime.ctx.session.isAdvisorEnabled();
-				if (active) {
-					runtime.ctx.showStatus("Advisor enabled.");
-				} else if (configured) {
-					runtime.ctx.showStatus("Advisor setting enabled, but no model is assigned to the 'advisor' role.");
-				} else {
-					runtime.ctx.showStatus("Advisor disabled.");
-				}
-				refreshStatusLine(runtime.ctx);
-				runtime.ctx.editor.setText("");
-				return;
-			}
-			if (verb === "on") {
-				const active = runtime.ctx.session.setAdvisorEnabled(true);
-				runtime.ctx.showStatus(
-					active ? "Advisor enabled." : "Advisor setting enabled, but no model is assigned to the 'advisor' role.",
-				);
-				refreshStatusLine(runtime.ctx);
-				runtime.ctx.editor.setText("");
-				return;
-			}
-			if (verb === "off") {
-				runtime.ctx.session.setAdvisorEnabled(false);
-				runtime.ctx.showStatus("Advisor disabled.");
-				refreshStatusLine(runtime.ctx);
-				runtime.ctx.editor.setText("");
-				return;
-			}
-			if (verb === "status") {
-				await runtime.ctx.handleAdvisorStatusCommand();
-				runtime.ctx.editor.setText("");
-				return;
-			}
-			if (verb === "dump") {
-				const isRaw = rest.toLowerCase() === "raw";
-				runtime.ctx.handleAdvisorDumpCommand(isRaw);
-				runtime.ctx.editor.setText("");
-				return;
-			}
-			if (verb === "configure") {
-				runtime.ctx.showAdvisorConfigure();
-				runtime.ctx.editor.setText("");
-				return;
-			}
-			runtime.ctx.showStatus("Usage: /advisor [on|off|status|dump [raw]|configure]");
-			runtime.ctx.editor.setText("");
 		},
 	},
 	{
@@ -1109,25 +983,6 @@ const BUILTIN_SLASH_COMMAND_REGISTRY: ReadonlyArray<SlashCommandSpec> = [
 		},
 	},
 	{
-		name: "stats",
-		description: "Launch the local stats dashboard",
-		inlineHint: "[--port <port>]",
-		allowArgs: true,
-		handle: async (command, runtime) => {
-			const parsed = parseStatsDashboardArgs(command.args);
-			if ("error" in parsed) return usage(parsed.error, runtime);
-
-			await runtime.output("Syncing session files...");
-			try {
-				const result = await launchStatsDashboard(parsed);
-				await runtime.output(result.message);
-			} catch (error) {
-				await runtime.output(`Stats dashboard failed: ${errorMessage(error)}`);
-			}
-			return commandConsumed();
-		},
-	},
-	{
 		name: "changelog",
 		description: "Show changelog entries",
 		acpDescription: "Show changelog",
@@ -1216,6 +1071,15 @@ const BUILTIN_SLASH_COMMAND_REGISTRY: ReadonlyArray<SlashCommandSpec> = [
 		description: "Open Agent Control Center dashboard",
 		handleTui: (_command, runtime) => {
 			runtime.ctx.showAgentsDashboard();
+			runtime.ctx.editor.setText("");
+		},
+	},
+	{
+		name: "cockpit",
+		aliases: ["hub"],
+		description: "Live multi-agent cockpit (status, model per agent, drill-in)",
+		handleTui: (_command, runtime) => {
+			runtime.ctx.showAgentHub();
 			runtime.ctx.editor.setText("");
 		},
 	},
@@ -1727,509 +1591,40 @@ const BUILTIN_SLASH_COMMAND_REGISTRY: ReadonlyArray<SlashCommandSpec> = [
 		handleTui: shutdownHandlerTui,
 	},
 	{
-		name: "marketplace",
-		description: "Manage marketplace plugin sources and installed plugins",
-		acpDescription: "Manage plugins from marketplaces",
-		acpInputHint: "<subcommand>",
-		subcommands: [
-			{ name: "add", description: "Add a marketplace source", usage: "<source>" },
-			{ name: "remove", description: "Remove a marketplace source", usage: "<name>" },
-			{ name: "update", description: "Update marketplace catalog(s)", usage: "[name]" },
-			{ name: "list", description: "List configured marketplaces" },
-			{ name: "discover", description: "Browse available plugins", usage: "[marketplace]" },
-			{
-				name: "install",
-				description: "Install a plugin (interactive browser if no args)",
-				usage: "[--force] [name@marketplace]",
-			},
-			{ name: "uninstall", description: "Uninstall a plugin (selector if no args)", usage: "[name@marketplace]" },
-			{ name: "installed", description: "List installed marketplace plugins" },
-			{ name: "upgrade", description: "Upgrade outdated plugins", usage: "[name@marketplace]" },
-			{ name: "help", description: "Show usage guide" },
-		],
-		allowArgs: true,
-		handle: async (command, runtime) => {
-			const { verb, rest } = parseSubcommand(command.args);
-			if (!verb) {
-				try {
-					const manager = await createMarketplaceManager(runtime);
-					const marketplaces = await manager.listMarketplaces();
-					if (marketplaces.length === 0) {
-						await runtime.output(
-							"No marketplaces configured.\n\nGet started:\n  /marketplace add anthropics/claude-plugins-official\n\nThen browse with /marketplace discover",
-						);
-					} else {
-						const lines = marketplaces.map(m => `  ${m.name}  ${m.sourceUri}`);
-						await runtime.output(
-							`Marketplaces:\n${lines.join("\n")}\n\nUse /marketplace discover to browse plugins, or /marketplace help for all commands`,
-						);
-					}
-					return commandConsumed();
-				} catch (err) {
-					return usage(`Marketplace error: ${errorMessage(err)}`, runtime);
-				}
-			}
-			if (verb === "help") {
-				await runtime.output(
-					[
-						"Marketplace commands:",
-						"  /marketplace                              List configured marketplaces",
-						"  /marketplace add <source>                  Add a marketplace (e.g. owner/repo)",
-						"  /marketplace remove <name>                 Remove a marketplace",
-						"  /marketplace update [name]                 Re-fetch catalog(s)",
-						"  /marketplace list                          List configured marketplaces",
-						"  /marketplace discover [marketplace]        Browse available plugins",
-						"  /marketplace install <name@marketplace>    Install a plugin",
-						"  /marketplace uninstall <name@marketplace>  Uninstall a plugin",
-						"  /marketplace installed                     List installed plugins",
-						"  /marketplace upgrade [name@marketplace]    Upgrade plugin(s)",
-						"",
-						"Quick start:",
-						"  /marketplace add anthropics/claude-plugins-official",
-					].join("\n"),
-				);
-				return commandConsumed();
-			}
-			if ((verb === "install" || verb === "uninstall") && !rest) {
-				return usage(
-					"Interactive plugin pickers are TUI-only. Pass an explicit name@marketplace argument.",
-					runtime,
-				);
-			}
-			try {
-				const manager = await createMarketplaceManager(runtime);
-				switch (verb) {
-					case "add": {
-						if (!rest) return usage("Usage: /marketplace add <source>", runtime);
-						const entry = await manager.addMarketplace(rest);
-						await runtime.output(`Added marketplace: ${entry.name}`);
-						return commandConsumed();
-					}
-					case "remove":
-					case "rm": {
-						if (!rest) return usage("Usage: /marketplace remove <name>", runtime);
-						await manager.removeMarketplace(rest);
-						await runtime.output(`Removed marketplace: ${rest}`);
-						return commandConsumed();
-					}
-					case "update": {
-						if (rest) {
-							await manager.updateMarketplace(rest);
-							await runtime.output(`Updated marketplace: ${rest}`);
-						} else {
-							const results = await manager.updateAllMarketplaces();
-							await runtime.output(`Updated ${results.length} marketplace(s)`);
-						}
-						return commandConsumed();
-					}
-					case "list": {
-						const marketplaces = await manager.listMarketplaces();
-						if (marketplaces.length === 0) {
-							await runtime.output("No marketplaces configured.");
-						} else {
-							const lines = marketplaces.map(m => `  ${m.name}  ${m.sourceUri}`);
-							await runtime.output(`Marketplaces:\n${lines.join("\n")}`);
-						}
-						return commandConsumed();
-					}
-					case "discover": {
-						const plugins = await manager.listAvailablePlugins(rest || undefined);
-						if (plugins.length === 0) {
-							const marketplaces = await manager.listMarketplaces();
-							await runtime.output(
-								marketplaces.length === 0
-									? "No marketplaces configured. Try:\n  /marketplace add anthropics/claude-plugins-official"
-									: "No plugins available in configured marketplaces",
-							);
-							return commandConsumed();
-						}
-						const lines = ["Available plugins:"];
-						for (const plugin of plugins) {
-							lines.push(`  - ${plugin.name}${plugin.version ? `@${plugin.version}` : ""}`);
-							if (plugin.description) lines.push(`      ${plugin.description}`);
-						}
-						await runtime.output(lines.join("\n"));
-						return commandConsumed();
-					}
-					case "install": {
-						const parsed = parseMarketplaceInstallArgs(rest);
-						if ("error" in parsed) return usage(parsed.error, runtime);
-						const atIndex = parsed.installSpec.lastIndexOf("@");
-						const pluginName = parsed.installSpec.slice(0, atIndex);
-						const marketplace = parsed.installSpec.slice(atIndex + 1);
-						await manager.installPlugin(pluginName, marketplace, { force: parsed.force, scope: parsed.scope });
-						await runtime.reloadPlugins();
-						await runtime.output(`Installed ${pluginName} from ${marketplace}`);
-						return commandConsumed();
-					}
-					case "uninstall": {
-						const parsed = parsePluginScopeArgs(
-							rest,
-							"Usage: /marketplace uninstall [--scope user|project] <name@marketplace>",
-						);
-						if ("error" in parsed) return usage(parsed.error, runtime);
-						await manager.uninstallPlugin(parsed.pluginId, parsed.scope);
-						await runtime.reloadPlugins();
-						await runtime.output(`Uninstalled ${parsed.pluginId}`);
-						return commandConsumed();
-					}
-					case "installed": {
-						const installed = await manager.listInstalledPlugins();
-						if (installed.length === 0) {
-							await runtime.output("No marketplace plugins installed");
-						} else {
-							const lines = installed.map(
-								p => `  ${p.id} [${p.scope}]${p.shadowedBy ? " [shadowed]" : ""} (${p.entries.length} entry)`,
-							);
-							await runtime.output(`Installed plugins:\n${lines.join("\n")}`);
-						}
-						return commandConsumed();
-					}
-					case "upgrade": {
-						if (rest) {
-							const parsed = parsePluginScopeArgs(
-								rest,
-								"Usage: /marketplace upgrade [--scope user|project] <name@marketplace>",
-							);
-							if ("error" in parsed) return usage(parsed.error, runtime);
-							const result = await manager.upgradePlugin(parsed.pluginId, parsed.scope);
-							await runtime.reloadPlugins();
-							await runtime.output(`Upgraded ${parsed.pluginId} to ${result.version}`);
-							return commandConsumed();
-						}
-						const results = await manager.upgradeAllPlugins();
-						if (results.length === 0) {
-							await runtime.output("All marketplace plugins are up to date");
-						} else {
-							await runtime.reloadPlugins();
-							const lines = results.map(r => `  ${r.pluginId}: ${r.from} -> ${r.to}`);
-							await runtime.output(`Upgraded ${results.length} plugin(s):\n${lines.join("\n")}`);
-						}
-						return commandConsumed();
-					}
-					default:
-						return usage(
-							`Unknown /marketplace subcommand: ${verb}. Use /marketplace help for available commands.`,
-							runtime,
-						);
-				}
-			} catch (err) {
-				return usage(`Marketplace error: ${errorMessage(err)}`, runtime);
-			}
-		},
-		handleTui: async (command, runtime) => {
-			runtime.ctx.editor.setText("");
-			const args = command.args.trim().split(/\s+/);
-			const sub = args[0] || "install";
-			const rest = args.slice(1).join(" ").trim();
-
-			// /marketplace (no args) or /marketplace install (no args) → interactive browser
-			if ((sub === "install" && !rest) || (!args[0] && !command.args.trim())) {
-				try {
-					runtime.ctx.showPluginSelector("install");
-				} catch (err) {
-					runtime.ctx.showStatus(`Marketplace error: ${err}`);
-				}
-				return;
-			}
-
-			const mgr = new MarketplaceManager({
-				marketplacesRegistryPath: getMarketplacesRegistryPath(),
-				installedRegistryPath: getInstalledPluginsRegistryPath(),
-				projectInstalledRegistryPath: await resolveOrDefaultProjectRegistryPath(
-					runtime.ctx.sessionManager.getCwd(),
-				),
-				marketplacesCacheDir: getMarketplacesCacheDir(),
-				pluginsCacheDir: getPluginsCacheDir(),
-				clearPluginRootsCache: clearPluginRootsAndCaches,
-			});
-
-			try {
-				switch (sub) {
-					case "add": {
-						if (!rest) {
-							runtime.ctx.showStatus("Usage: /marketplace add <source>");
-							return;
-						}
-						const entry = await mgr.addMarketplace(rest);
-						runtime.ctx.showStatus(`Added marketplace: ${entry.name}`);
-						break;
-					}
-					case "remove":
-					case "rm": {
-						if (!rest) {
-							runtime.ctx.showStatus("Usage: /marketplace remove <name>");
-							return;
-						}
-						await mgr.removeMarketplace(rest);
-						runtime.ctx.showStatus(`Removed marketplace: ${rest}`);
-						break;
-					}
-					case "update": {
-						if (rest) {
-							await mgr.updateMarketplace(rest);
-							runtime.ctx.showStatus(`Updated marketplace: ${rest}`);
-						} else {
-							const results = await mgr.updateAllMarketplaces();
-							runtime.ctx.showStatus(`Updated ${results.length} marketplace(s)`);
-						}
-						break;
-					}
-					case "discover": {
-						const plugins = await mgr.listAvailablePlugins(rest || undefined);
-						if (plugins.length === 0) {
-							const marketplaces = await mgr.listMarketplaces();
-							if (marketplaces.length === 0) {
-								runtime.ctx.showStatus(
-									"No marketplaces configured. Try:\n  /marketplace add anthropics/claude-plugins-official",
-								);
-							} else {
-								runtime.ctx.showStatus("No plugins available in configured marketplaces");
-							}
-						} else {
-							const lines = plugins.map(
-								p =>
-									`  ${p.name}${p.version ? `@${p.version}` : ""}${p.description ? ` - ${p.description}` : ""}`,
-							);
-							runtime.ctx.showStatus(`Available plugins:\n${lines.join("\n")}`);
-						}
-						break;
-					}
-					case "install": {
-						// Parse: /marketplace install [--force] [--scope user|project] name@marketplace
-						const parsed = parseMarketplaceInstallArgs(rest);
-						if ("error" in parsed) {
-							runtime.ctx.showStatus(parsed.error);
-							return;
-						}
-						const atIdx = parsed.installSpec.lastIndexOf("@");
-						const name = parsed.installSpec.slice(0, atIdx);
-						const marketplace = parsed.installSpec.slice(atIdx + 1);
-						await mgr.installPlugin(name, marketplace, { force: parsed.force, scope: parsed.scope });
-						runtime.ctx.showStatus(`Installed ${name} from ${marketplace}`);
-						break;
-					}
-					case "uninstall": {
-						if (!rest) {
-							// No args → open interactive uninstall selector
-							runtime.ctx.showPluginSelector("uninstall");
-							return;
-						}
-						const uninstArgs = parsePluginScopeArgs(
-							rest,
-							"Usage: /marketplace uninstall [--scope user|project] <name@marketplace>",
-						);
-						if ("error" in uninstArgs) {
-							runtime.ctx.showStatus(uninstArgs.error);
-							return;
-						}
-						await mgr.uninstallPlugin(uninstArgs.pluginId, uninstArgs.scope);
-						runtime.ctx.showStatus(`Uninstalled ${uninstArgs.pluginId}`);
-						break;
-					}
-					case "installed": {
-						const installed = await mgr.listInstalledPlugins();
-						if (installed.length === 0) {
-							runtime.ctx.showStatus("No marketplace plugins installed");
-						} else {
-							const lines = installed.map(
-								p => `  ${p.id} [${p.scope}]${p.shadowedBy ? " [shadowed]" : ""} (${p.entries.length} entry)`,
-							);
-							runtime.ctx.showStatus(`Installed plugins:\n${lines.join("\n")}`);
-						}
-						break;
-					}
-					case "upgrade": {
-						if (rest) {
-							const upArgs = parsePluginScopeArgs(
-								rest,
-								"Usage: /marketplace upgrade [--scope user|project] <name@marketplace>",
-							);
-							if ("error" in upArgs) {
-								runtime.ctx.showStatus(upArgs.error);
-								return;
-							}
-							const result = await mgr.upgradePlugin(upArgs.pluginId, upArgs.scope);
-							runtime.ctx.showStatus(`Upgraded ${upArgs.pluginId} to ${result.version}`);
-						} else {
-							const results = await mgr.upgradeAllPlugins();
-							if (results.length === 0) {
-								runtime.ctx.showStatus("All marketplace plugins are up to date");
-							} else {
-								const lines = results.map(r => `  ${r.pluginId}: ${r.from} -> ${r.to}`);
-								runtime.ctx.showStatus(`Upgraded ${results.length} plugin(s):\n${lines.join("\n")}`);
-							}
-						}
-						break;
-					}
-					case "help": {
-						runtime.ctx.showStatus(
-							[
-								"Marketplace commands:",
-								"  /marketplace                              Browse and install plugins",
-								"  /marketplace add <source>                  Add a marketplace (e.g. owner/repo)",
-								"  /marketplace remove <name>                 Remove a marketplace",
-								"  /marketplace update [name]                 Re-fetch catalog(s)",
-								"  /marketplace list                          List configured marketplaces",
-								"  /marketplace discover [marketplace]        Browse available plugins",
-								"  /marketplace install <name@marketplace>    Install a plugin",
-								"  /marketplace uninstall <name@marketplace>  Uninstall a plugin",
-								"  /marketplace installed                     List installed plugins",
-								"  /marketplace upgrade [name@marketplace]    Upgrade plugin(s)",
-								"",
-								"Quick start:",
-								"  /marketplace add anthropics/claude-plugins-official",
-								"  /marketplace                               (opens interactive browser)",
-							].join("\n"),
-						);
-						break;
-					}
-					default: {
-						const marketplaces = await mgr.listMarketplaces();
-						if (marketplaces.length === 0) {
-							runtime.ctx.showStatus(
-								"No marketplaces configured.\n\nGet started:\n  /marketplace add anthropics/claude-plugins-official\n\nThen browse plugins with /marketplace or /marketplace discover",
-							);
-						} else {
-							const lines = marketplaces.map(m => `  ${m.name}  ${m.sourceUri}`);
-							runtime.ctx.showStatus(
-								`Marketplaces:\n${lines.join("\n")}\n\nUse /marketplace discover to browse plugins, or /marketplace help for all commands`,
-							);
-						}
-						break;
-					}
-				}
-			} catch (err) {
-				const msg = err instanceof Error ? err.message : String(err);
-				runtime.ctx.showStatus(`Marketplace error: ${msg}`);
-			}
-		},
-	},
-	{
 		name: "plugins",
-		description: "View and manage installed plugins",
+		description: "View installed npm/link plugins",
 		acpDescription: "Manage plugins",
-		acpInputHint: "[list|enable|disable]",
-		subcommands: [
-			{ name: "list", description: "List all installed plugins (npm + marketplace)" },
-			{ name: "enable", description: "Enable a marketplace plugin", usage: "<name@marketplace>" },
-			{ name: "disable", description: "Disable a marketplace plugin", usage: "<name@marketplace>" },
-		],
+		acpInputHint: "[list]",
+		subcommands: [{ name: "list", description: "List installed npm/link plugins" }],
 		allowArgs: true,
 		handle: async (command, runtime) => {
-			const { verb, rest } = parseSubcommand(command.args);
-			try {
-				if (verb === "enable" || verb === "disable") {
-					const parsed = parsePluginScopeArgs(
-						rest,
-						`Usage: /plugins ${verb} [--scope user|project] <name@marketplace>`,
-					);
-					if ("error" in parsed) return usage(parsed.error, runtime);
-					const manager = await createMarketplaceManager(runtime);
-					const isEnable = verb === "enable";
-					await manager.setPluginEnabled(parsed.pluginId, isEnable, parsed.scope);
-					await runtime.reloadPlugins();
-					await runtime.output(`${isEnable ? "Enabled" : "Disabled"} ${parsed.pluginId}`);
-					return commandConsumed();
-				}
-				// Default: list
-				const lines: string[] = [];
-				const npmManager = new PluginManager();
-				const npmPlugins = await npmManager.list();
-				if (npmPlugins.length > 0) {
-					lines.push("npm plugins:");
-					for (const plugin of npmPlugins) {
-						const status = plugin.enabled === false ? " (disabled)" : "";
-						lines.push(`  ${plugin.name}@${plugin.version}${status}`);
-					}
-				}
-
-				const marketplaceManager = await createMarketplaceManager(runtime);
-				const marketplacePlugins = await marketplaceManager.listInstalledPlugins();
-				if (marketplacePlugins.length > 0) {
-					if (lines.length > 0) lines.push("");
-					lines.push("marketplace plugins:");
-					for (const plugin of marketplacePlugins) {
-						const entry = plugin.entries[0];
-						const status = entry?.enabled === false ? " (disabled)" : "";
-						const shadowed = plugin.shadowedBy ? " [shadowed]" : "";
-						lines.push(`  ${plugin.id} v${entry?.version ?? "?"}${status} [${plugin.scope}]${shadowed}`);
-					}
-				}
-
-				await runtime.output(lines.length === 0 ? "No plugins installed" : lines.join("\n"));
+			const npmManager = new PluginManager();
+			const npmPlugins = await npmManager.list();
+			if (npmPlugins.length === 0) {
+				await runtime.output("No plugins installed");
 				return commandConsumed();
-			} catch (err) {
-				return usage(`Plugin error: ${errorMessage(err)}`, runtime);
 			}
+			const lines = npmPlugins.map(plugin => {
+				const status = plugin.enabled === false ? " (disabled)" : "";
+				return `  ${plugin.name}@${plugin.version}${status}`;
+			});
+			await runtime.output(["npm plugins:", ...lines].join("\n"));
+			return commandConsumed();
 		},
-		handleTui: async (command, runtime) => {
+		handleTui: async (_command, runtime) => {
 			runtime.ctx.editor.setText("");
-			const args = command.args.trim().split(/\s+/);
-			const sub = args[0] || "list";
-			const rest = args.slice(1).join(" ").trim();
-
 			try {
-				const mgr = new MarketplaceManager({
-					marketplacesRegistryPath: getMarketplacesRegistryPath(),
-					installedRegistryPath: getInstalledPluginsRegistryPath(),
-					projectInstalledRegistryPath: await resolveOrDefaultProjectRegistryPath(
-						runtime.ctx.sessionManager.getCwd(),
-					),
-					marketplacesCacheDir: getMarketplacesCacheDir(),
-					pluginsCacheDir: getPluginsCacheDir(),
-					clearPluginRootsCache: clearPluginRootsAndCaches,
-				});
-
-				switch (sub) {
-					case "enable":
-					case "disable": {
-						const parsed = parsePluginScopeArgs(
-							rest ?? "",
-							`Usage: /plugins ${sub} [--scope user|project] <name@marketplace>`,
-						);
-						if ("error" in parsed) {
-							runtime.ctx.showStatus(parsed.error);
-							return;
-						}
-						const isEnable = sub === "enable";
-						await mgr.setPluginEnabled(parsed.pluginId, isEnable, parsed.scope);
-						runtime.ctx.showStatus(`${isEnable ? "Enabled" : "Disabled"} ${parsed.pluginId}`);
-						break;
-					}
-					default: {
-						const lines: string[] = [];
-
-						const npm = new PluginManager();
-						const npmPlugins = await npm.list();
-						if (npmPlugins.length > 0) {
-							lines.push("npm plugins:");
-							for (const p of npmPlugins) {
-								const status = p.enabled === false ? " (disabled)" : "";
-								lines.push(`  ${p.name}@${p.version}${status}`);
-							}
-						}
-
-						const mktPlugins = await mgr.listInstalledPlugins();
-						if (mktPlugins.length > 0) {
-							if (lines.length > 0) lines.push("");
-							lines.push("marketplace plugins:");
-							for (const p of mktPlugins) {
-								const entry = p.entries[0];
-								const status = entry?.enabled === false ? " (disabled)" : "";
-								const shadowed = p.shadowedBy ? " [shadowed]" : "";
-								lines.push(`  ${p.id} v${entry?.version ?? "?"}${status} [${p.scope}]${shadowed}`);
-							}
-						}
-
-						if (lines.length === 0) {
-							runtime.ctx.showStatus("No plugins installed");
-						} else {
-							runtime.ctx.showStatus(lines.join("\n"));
-						}
-						break;
-					}
+				const npm = new PluginManager();
+				const npmPlugins = await npm.list();
+				if (npmPlugins.length === 0) {
+					runtime.ctx.showStatus("No plugins installed");
+					return;
 				}
+				const lines = ["npm plugins:", ...npmPlugins.map(p => {
+					const status = p.enabled === false ? " (disabled)" : "";
+					return `  ${p.name}@${p.version}${status}`;
+				})];
+				runtime.ctx.showStatus(lines.join("\n"));
 			} catch (err) {
 				runtime.ctx.showStatus(`Plugin error: ${err}`);
 			}

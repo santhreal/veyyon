@@ -7,7 +7,7 @@
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { isEnoent, logger } from "@oh-my-pi/pi-utils";
+import { isEnoent, logger } from "@veyyon/pi-utils";
 import * as git from "../../../utils/git";
 
 import type { MarketplaceCatalog, MarketplaceSourceType } from "./types";

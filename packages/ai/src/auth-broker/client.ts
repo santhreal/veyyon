@@ -2,10 +2,10 @@
  * HTTP client for the omp auth-broker server.
  *
  * Used by {@link RemoteAuthCredentialStore} (snapshot pulls) and by
- * `omp auth-broker status` (liveness checks). All endpoints except
+ * `veyyon auth-broker status` (liveness checks). All endpoints except
  * `/v1/healthz` require a bearer token.
  */
-import { readSseEvents } from "@oh-my-pi/pi-utils";
+import { readSseEvents } from "@veyyon/pi-utils";
 import { type } from "arktype";
 import type { AuthCredential } from "../auth-storage";
 import type {

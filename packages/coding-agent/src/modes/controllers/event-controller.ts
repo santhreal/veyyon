@@ -1,9 +1,9 @@
-import type { AssistantMessage, ImageContent } from "@oh-my-pi/pi-ai";
-import * as AIError from "@oh-my-pi/pi-ai/error";
-import { getStreamingPartialJson } from "@oh-my-pi/pi-ai/utils/block-symbols";
-import { type Component, Loader, TERMINAL } from "@oh-my-pi/pi-tui";
-import { logger, prompt } from "@oh-my-pi/pi-utils";
-import { INTENT_FIELD } from "@oh-my-pi/pi-wire";
+import type { AssistantMessage, ImageContent } from "@veyyon/pi-ai";
+import * as AIError from "@veyyon/pi-ai/error";
+import { getStreamingPartialJson } from "@veyyon/pi-ai/utils/block-symbols";
+import { type Component, Loader, TERMINAL } from "@veyyon/pi-tui";
+import { logger, prompt } from "@veyyon/pi-utils";
+import { INTENT_FIELD } from "@veyyon/pi-wire";
 import { extractTextContent } from "../../commit/utils";
 import { settings } from "../../config/settings";
 import { getFileSnapshotStore } from "../../edit/file-snapshot-store";
@@ -291,6 +291,21 @@ export class EventController {
 			this.ctx.chatContainer.addChild(component);
 		}
 		return component;
+	}
+
+	/** Component-scoped repaints for message_update: avoids a full-tree walk on
+	 *  every provider delta while smooth reveal / tool-args reveal pace paints. */
+	#repaintMessageUpdateComponents(components: Iterable<Component>): void {
+		let scheduled = false;
+		for (const component of components) {
+			scheduled = true;
+			if (typeof this.ctx.ui.requestComponentRender === "function") {
+				this.ctx.ui.requestComponentRender(component);
+			}
+		}
+		if (scheduled && typeof this.ctx.ui.requestComponentRender !== "function") {
+			this.ctx.ui.requestRender();
+		}
 	}
 
 	#updateWorkingMessageFromIntent(intent: unknown): void {
@@ -688,10 +703,14 @@ export class EventController {
 		this.#ensureWorkingLoaderWhileStreaming();
 		this.#vocalizeDelta(event);
 		if (this.ctx.streamingComponent && event.message.role === "assistant") {
+			const smoothStreaming = this.ctx.settings.get("display.smoothStreaming");
+			const repaintTargets = new Set<Component>();
+			const streamingComponent = this.ctx.streamingComponent;
 			const unlockedThinkingVisibility = this.ctx.noteDisplayableThinkingContent(event.message);
 			if (unlockedThinkingVisibility) {
-				this.ctx.streamingComponent.setHideThinkingBlock(this.ctx.effectiveHideThinkingBlock);
+				streamingComponent.setHideThinkingBlock(this.ctx.effectiveHideThinkingBlock);
 				this.#streamingReveal.resyncVisibility();
+				repaintTargets.add(streamingComponent);
 			}
 			this.ctx.streamingMessage = event.message;
 			const timeline = splitAssistantMessageToolTimeline(this.ctx.streamingMessage);
@@ -703,6 +722,12 @@ export class EventController {
 					(content.type === "thinking" && canonicalizeMessage(content.thinking)),
 			).length;
 			if (visibleBlockCount > this.#lastVisibleBlockCount) {
+				// A new visible block after the first (e.g. thinking closed, next text
+				// block) changes transcript layout; the first block's growth is paced
+				// by the reveal timer when smooth streaming is on.
+				if (!smoothStreaming || this.#lastVisibleBlockCount >= 1) {
+					repaintTargets.add(streamingComponent);
+				}
 				this.#resetReadGroup();
 				this.#lastVisibleBlockCount = visibleBlockCount;
 			}
@@ -717,7 +742,8 @@ export class EventController {
 			// can never reach native scrollback: the head of the preview is
 			// neither committed nor on screen and the transcript reads as cut.
 			if (this.ctx.streamingMessage.content.some(content => content.type === "toolCall")) {
-				this.ctx.streamingComponent.markTranscriptBlockFinalized();
+				streamingComponent.markTranscriptBlockFinalized();
+				repaintTargets.add(streamingComponent);
 			}
 			for (const content of this.ctx.streamingMessage.content) {
 				if (content.type !== "toolCall") continue;
@@ -734,11 +760,13 @@ export class EventController {
 						const component = this.ctx.pendingTools.get(content.id);
 						if (component) {
 							component.updateArgs(content.arguments, content.id);
+							repaintTargets.add(component);
 						} else {
 							const group = this.#getReadGroup();
 							group.updateArgs(content.arguments, content.id);
 							this.ctx.pendingTools.set(content.id, group);
 							this.#toolTimelineComponents.set(content.id, group);
+							repaintTargets.add(group);
 						}
 						continue;
 					}
@@ -787,16 +815,24 @@ export class EventController {
 					this.ctx.pendingTools.set(content.id, component);
 					this.#toolTimelineComponents.set(content.id, component);
 					this.#toolArgsReveal.bind(content.id, component);
+					repaintTargets.add(component);
 				} else {
 					const component = this.ctx.pendingTools.get(content.id);
 					if (component) {
 						component.updateArgs(renderArgs, content.id);
 						this.#toolArgsReveal.bind(content.id, component);
+						// Paced args reveal schedules its own component-scoped paints.
+						if (!partialJson || !smoothStreaming) {
+							repaintTargets.add(component);
+						}
 					}
 				}
 			}
 			for (const [toolCallId, segment] of timeline.afterToolCalls) {
-				this.#upsertPostToolAssistantSegment(toolCallId, segment);
+				const segmentComponent = this.#upsertPostToolAssistantSegment(toolCallId, segment);
+				if (segmentComponent) {
+					repaintTargets.add(segmentComponent);
+				}
 			}
 
 			// Update working message with intent from streamed tool arguments
@@ -820,7 +856,13 @@ export class EventController {
 				}
 			}
 
-			this.ctx.ui.requestRender();
+			// Smooth assistant reveal paints on its own 30fps timer; repainting the
+			// streaming block on every provider delta duplicated full-tree walks
+			// while the revealed prefix was unchanged between ticks (issue #4377).
+			if (!smoothStreaming) {
+				repaintTargets.add(streamingComponent);
+			}
+			this.#repaintMessageUpdateComponents(repaintTargets);
 		}
 	}
 
@@ -1559,7 +1601,7 @@ export class EventController {
 
 		const sessionName = this.ctx.sessionManager.getSessionName();
 		TERMINAL.sendNotification({
-			title: sessionName || "Oh My Pi",
+			title: sessionName || "Veyyon",
 			body: "Complete",
 			type: "completion",
 			actions: "focus",

@@ -7,13 +7,13 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { invalidateGithubCacheForBashCommand } from "@oh-my-pi/pi-coding-agent/tools/gh-cache-invalidation";
+import { invalidateGithubCacheForBashCommand } from "@veyyon/pi-coding-agent/tools/gh-cache-invalidation";
 import {
 	getCached,
 	putCached,
 	resetForTests as resetCacheForTests,
-} from "@oh-my-pi/pi-coding-agent/tools/github-cache";
-import { removeWithRetries } from "@oh-my-pi/pi-utils";
+} from "@veyyon/pi-coding-agent/tools/github-cache";
+import { removeWithRetries } from "@veyyon/pi-utils";
 
 const REPO = "owner/example";
 

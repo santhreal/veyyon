@@ -2,16 +2,16 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { KeybindingsManager } from "@oh-my-pi/pi-coding-agent/config/keybindings";
-import { matchesAppFollowUp } from "@oh-my-pi/pi-coding-agent/modes/utils/keybinding-matchers";
-import { type KeybindingsConfig, setKeybindings } from "@oh-my-pi/pi-tui";
+import { KeybindingsManager } from "@veyyon/pi-coding-agent/config/keybindings";
+import { matchesAppFollowUp } from "@veyyon/pi-coding-agent/modes/utils/keybinding-matchers";
+import { type KeybindingsConfig, setKeybindings } from "@veyyon/pi-tui";
 import {
 	__resetDirsFromEnvForTests,
 	getAgentDir,
 	getProfileRootDir,
 	removeWithRetries,
 	setProfile,
-} from "@oh-my-pi/pi-utils";
+} from "@veyyon/pi-utils";
 import { YAML } from "bun";
 
 function ctrl(key: string): string {
@@ -168,7 +168,7 @@ describe("KeybindingsManager.create", () => {
 		}
 	});
 
-	it("inherits default user keybindings for a named profile without a profile keybindings file (#4867)", async () => {
+	it("does not inherit default user keybindings for a named profile without its own file", async () => {
 		const rootDir = await fs.mkdtemp(path.join(os.tmpdir(), "pi-keybindings-profile-"));
 		const defaultAgentDir = path.join(rootDir, "default", "agent");
 		const profileAgentDir = path.join(rootDir, "profiles", "work", "agent");
@@ -179,16 +179,15 @@ describe("KeybindingsManager.create", () => {
 		});
 
 		try {
-			const manager = KeybindingsManager.create(profileAgentDir, { inheritedAgentDir: defaultAgentDir });
+			const manager = KeybindingsManager.create(profileAgentDir, { seedFromDefault: false });
 
-			expect(manager.getKeys("app.session.fork")).toEqual(["ctrl+f"]);
-			expect(manager.getKeys("tui.editor.deleteCharBackward")).toEqual(["backspace", "ctrl+h"]);
+			expect(manager.getKeys("app.session.fork")).toEqual([]);
 		} finally {
 			await removeWithRetries(rootDir);
 		}
 	});
 
-	it("merges default user keybindings with profile overrides for a named profile (#4867)", async () => {
+	it("uses only profile keybindings when both default and profile files exist", async () => {
 		const rootDir = await fs.mkdtemp(path.join(os.tmpdir(), "pi-keybindings-profile-"));
 		const defaultAgentDir = path.join(rootDir, "default", "agent");
 		const profileAgentDir = path.join(rootDir, "profiles", "work", "agent");
@@ -203,9 +202,9 @@ describe("KeybindingsManager.create", () => {
 		});
 
 		try {
-			const manager = KeybindingsManager.create(profileAgentDir, { inheritedAgentDir: defaultAgentDir });
+			const manager = KeybindingsManager.create(profileAgentDir, { seedFromDefault: false });
 
-			expect(manager.getKeys("app.session.new")).toEqual(["ctrl+n"]);
+			expect(manager.getKeys("app.session.new")).toEqual([]);
 			expect(manager.getKeys("app.session.fork")).toEqual(["alt+f"]);
 			expect(manager.getKeys("app.clipboard.copyLine")).toEqual(["alt+l"]);
 		} finally {
@@ -213,69 +212,62 @@ describe("KeybindingsManager.create", () => {
 		}
 	});
 
-	it("never writes migration output into the inherited default agent dir (#4867)", async () => {
+	it("seeds default keybindings into a named profile on first create when missing", async () => {
 		const rootDir = await fs.mkdtemp(path.join(os.tmpdir(), "pi-keybindings-profile-"));
-		const defaultAgentDir = path.join(rootDir, "default", "agent");
+		const defaultAgentDir = path.join(rootDir, "agent");
 		const profileAgentDir = path.join(rootDir, "profiles", "work", "agent");
 
-		// Legacy JSON in the default dir: loading it with a write-back path would
-		// materialize keybindings.yml there. The inherited load must stay read-only.
-		await fs.mkdir(defaultAgentDir, { recursive: true });
-		await Bun.write(
-			path.join(defaultAgentDir, "keybindings.json"),
-			JSON.stringify({ "app.session.fork": "ctrl+f" }, null, 2),
-		);
+		await writeKeybindingsYaml(defaultAgentDir, {
+			"app.session.fork": "ctrl+f",
+		});
+		await fs.mkdir(profileAgentDir, { recursive: true });
 
+		const originalConfigDir = process.env.PI_CONFIG_DIR;
 		try {
-			const manager = KeybindingsManager.create(profileAgentDir, { inheritedAgentDir: defaultAgentDir });
+			process.env.PI_CONFIG_DIR = path.relative(os.homedir(), rootDir);
+			__resetDirsFromEnvForTests();
+			setProfile("work");
 
+			const manager = KeybindingsManager.create();
 			expect(manager.getKeys("app.session.fork")).toEqual(["ctrl+f"]);
-			expect(await Bun.file(path.join(defaultAgentDir, "keybindings.yml")).exists()).toBe(false);
+			expect(await Bun.file(path.join(profileAgentDir, "keybindings.yml")).exists()).toBe(true);
 		} finally {
+			if (originalConfigDir === undefined) delete process.env.PI_CONFIG_DIR;
+			else process.env.PI_CONFIG_DIR = originalConfigDir;
+			setProfile(undefined);
+			__resetDirsFromEnvForTests();
 			await removeWithRetries(rootDir);
 		}
 	});
 
-	it("merges default user keybindings when create uses the active profile with no arguments (#4867)", async () => {
+	it("does not re-seed profile keybindings on second create", async () => {
+		const rootDir = await fs.mkdtemp(path.join(os.tmpdir(), "pi-keybindings-profile-"));
+		const defaultAgentDir = path.join(rootDir, "agent");
+		const profileAgentDir = path.join(rootDir, "profiles", "work", "agent");
+
+		await writeKeybindingsYaml(defaultAgentDir, { "app.session.fork": "ctrl+f" });
+		await fs.mkdir(profileAgentDir, { recursive: true });
+
 		const originalConfigDir = process.env.PI_CONFIG_DIR;
-		const originalAgentDirEnv = process.env.PI_CODING_AGENT_DIR;
-		const originalOmpProfile = process.env.OMP_PROFILE;
-		const originalPiProfile = process.env.PI_PROFILE;
-		const configRootDir = await fs.mkdtemp(path.join(os.tmpdir(), "pi-keybindings-active-profile-"));
-
 		try {
-			process.env.PI_CONFIG_DIR = path.relative(os.homedir(), configRootDir);
-			restoreEnvValue("PI_CODING_AGENT_DIR", originalAgentDirEnv);
-			restoreEnvValue("OMP_PROFILE", originalOmpProfile);
-			restoreEnvValue("PI_PROFILE", originalPiProfile);
+			process.env.PI_CONFIG_DIR = path.relative(os.homedir(), rootDir);
 			__resetDirsFromEnvForTests();
-
-			const defaultAgentDir = path.join(getProfileRootDir(undefined), "agent");
-			const profileAgentDir = path.join(getProfileRootDir("work"), "agent");
-			await writeKeybindingsYaml(defaultAgentDir, {
-				"app.session.fork": "ctrl+f",
-				"app.session.new": "ctrl+n",
-			});
-			await writeKeybindingsYaml(profileAgentDir, {
-				"app.session.fork": "alt+f",
-				"app.clipboard.copyLine": "alt+l",
-			});
-
 			setProfile("work");
 
-			expect(getAgentDir()).toBe(profileAgentDir);
-			const manager = KeybindingsManager.create();
+			KeybindingsManager.create();
+			await Bun.write(
+				path.join(profileAgentDir, "keybindings.yml"),
+				YAML.stringify({ "app.session.fork": "alt+f" }, null, 2),
+			);
 
-			expect(manager.getKeys("app.session.new")).toEqual(["ctrl+n"]);
+			const manager = KeybindingsManager.create();
 			expect(manager.getKeys("app.session.fork")).toEqual(["alt+f"]);
-			expect(manager.getKeys("app.clipboard.copyLine")).toEqual(["alt+l"]);
 		} finally {
-			restoreEnvValue("PI_CONFIG_DIR", originalConfigDir);
-			restoreEnvValue("PI_CODING_AGENT_DIR", originalAgentDirEnv);
-			restoreEnvValue("OMP_PROFILE", originalOmpProfile);
-			restoreEnvValue("PI_PROFILE", originalPiProfile);
+			if (originalConfigDir === undefined) delete process.env.PI_CONFIG_DIR;
+			else process.env.PI_CONFIG_DIR = originalConfigDir;
+			setProfile(undefined);
 			__resetDirsFromEnvForTests();
-			await removeWithRetries(configRootDir);
+			await removeWithRetries(rootDir);
 		}
 	});
 

@@ -1,9 +1,9 @@
 {
   "type": "module",
-  "name": "@oh-my-pi/pi-utils",
+  "name": "@veyyon/pi-utils",
   "version": "16.5.2",
   "description": "Shared utilities for pi packages",
-  "homepage": "https://omp.sh",
+  "homepage": "https://veyyon.dev",
   "author": "Can Boluk",
   "license": "MIT",
   "repository": {
@@ -31,7 +31,7 @@
     "fmt": "biome format --write ."
   },
   "dependencies": {
-    "@oh-my-pi/pi-natives": "catalog:",
+    "@veyyon/pi-natives": "catalog:",
     "handlebars": "catalog:",
     "winston": "catalog:",
     "winston-daily-rotate-file": "catalog:"

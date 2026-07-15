@@ -1,9 +1,9 @@
 {
-  "name": "@oh-my-pi/pi-natives",
+  "name": "@veyyon/pi-natives",
   "version": "16.5.2",
   "description": "Native Rust bindings for grep, clipboard, image processing, syntax highlighting, PTY, and shell operations via N-API",
   "type": "module",
-  "homepage": "https://omp.sh",
+  "homepage": "https://veyyon.dev",
   "author": "Can Boluk",
   "license": "MIT",
   "repository": {

@@ -3,7 +3,7 @@
  *
  * Discovers agent definitions from:
  *   - Bundled agents (shipped with omp-coding-agent)
- *   - ~/.omp/agent/agents/*.md (user-level)
+ *   - ~/.veyyon/agent/agents/*.md (user-level)
  *   - .omp/agents/*.md (project-level)
  *
  * Supports:
@@ -16,9 +16,9 @@
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import path from "node:path";
-import type { AgentTool, AgentToolResult, AgentToolUpdateCallback } from "@oh-my-pi/pi-agent-core";
-import type { Usage } from "@oh-my-pi/pi-ai";
-import { $env, logger, prompt, Snowflake } from "@oh-my-pi/pi-utils";
+import type { AgentTool, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/pi-agent-core";
+import type { Usage } from "@veyyon/pi-ai";
+import { $env, logger, prompt, Snowflake } from "@veyyon/pi-utils";
 import type { ToolSession } from "..";
 import { resolveAgentModelPatterns } from "../config/model-resolver";
 import { MCPManager } from "../mcp/manager";

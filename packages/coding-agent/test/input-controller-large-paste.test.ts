@@ -1,4 +1,4 @@
-import { removeWithRetries } from "@oh-my-pi/pi-utils";
+import { removeWithRetries } from "@veyyon/pi-utils";
 /**
  * Large-paste menu: when a paste reaches the configured `paste.largeMenuThreshold` line count,
  * the editor's `onLargePaste` hook routes through `InputController.handleLargePaste`, which offers
@@ -10,8 +10,8 @@ import { afterEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { InputController } from "@oh-my-pi/pi-coding-agent/modes/controllers/input-controller";
-import type { InteractiveModeContext } from "@oh-my-pi/pi-coding-agent/modes/types";
+import { InputController } from "@veyyon/pi-coding-agent/modes/controllers/input-controller";
+import type { InteractiveModeContext } from "@veyyon/pi-coding-agent/modes/types";
 
 function createContext(options?: { threshold?: number; choice?: string; artifactsDir?: string }) {
 	const insertPaste = vi.fn();

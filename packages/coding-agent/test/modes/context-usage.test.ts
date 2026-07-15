@@ -5,15 +5,15 @@
  * actually receive — not by stringifying the arktype instance's enumerable
  * internals, which massively overcounts.
  */
-import { describe, expect, it } from "bun:test";
-import { arkToWireSchema } from "@oh-my-pi/pi-ai/utils/schema";
+import { describe, expect, it, vi } from "bun:test";
+import { arkToWireSchema } from "@veyyon/pi-ai/utils/schema";
 import {
 	type ContextBreakdown,
 	computeNonMessageBreakdown,
 	computeNonMessageTokens,
 	estimateToolSchemaTokens,
 	renderContextUsage,
-} from "@oh-my-pi/pi-coding-agent/modes/utils/context-usage";
+} from "@veyyon/pi-coding-agent/modes/utils/context-usage";
 import { type } from "arktype";
 
 describe("estimateToolSchemaTokens", () => {
@@ -83,6 +83,23 @@ describe("renderContextUsage snapcompact section", () => {
 		expect(output).toContain("Snapcompact: inactive (model has no image input)");
 	});
 
+	it("renders the context grid with non-empty category glyphs", () => {
+		const output = renderContextUsage(
+			{
+				model: { id: "test-model", name: "Test Model", contextWindow: 200000 } as never,
+				contextWindow: 200000,
+				categories: [
+					{ id: "systemPrompt", label: "System prompt", tokens: 1000, color: "accent", glyph: "⛁" },
+				],
+				usedTokens: 1000,
+				autoCompactBufferTokens: 0,
+				freeTokens: 199000,
+			},
+			themeStub,
+		);
+		expect(output).toContain("⛁");
+	});
+
 	it("omits the section entirely when no snapcompact setting is on", () => {
 		const output = renderContextUsage(breakdownWith(undefined), themeStub);
 		expect(output).not.toContain("Snapcompact");
@@ -135,5 +152,16 @@ describe("computeNonMessageTokens / computeNonMessageBreakdown memoization", () 
 		session.systemPrompt = ["shared prompt but longer now to shift the count"];
 		expect(computeNonMessageTokens(session as never)).not.toBe(tokens);
 		expect(computeNonMessageBreakdown(session as never).systemPromptTokens).not.toBe(breakdown.systemPromptTokens);
+	});
+
+	it("reuses wire-schema JSON for stable tool parameter identity", () => {
+		const parameters = { type: "object", properties: { path: { type: "string" } } };
+		const tool = { name: "read", description: "Read a file.", parameters };
+		const stringifySpy = vi.spyOn(JSON, "stringify");
+		estimateToolSchemaTokens([tool as never]);
+		const afterFirst = stringifySpy.mock.calls.length;
+		estimateToolSchemaTokens([tool as never]);
+		expect(stringifySpy.mock.calls.length).toBe(afterFirst);
+		stringifySpy.mockRestore();
 	});
 });

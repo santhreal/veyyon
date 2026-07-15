@@ -6,7 +6,7 @@
  * permits it. Falls back to plain text when disabled.
  */
 import * as url from "node:url";
-import { TERMINAL } from "@oh-my-pi/pi-tui";
+import { TERMINAL } from "@veyyon/pi-tui";
 import { isSettingsInitialized, settings } from "../config/settings";
 import {
 	LocalProtocolHandler,
@@ -149,7 +149,7 @@ export function fileHyperlink(filePath: string, displayText: string, opts?: { li
  * during the call/streaming phase before a result lands).
  *
  * Async-resolved schemes (`artifact://`, `agent://`, `skill://`, `rule://`,
- * `omp://`) are not handled here — those rely on `details.resolvedPath` set
+ * `veyyon://`) are not handled here — those rely on `details.resolvedPath` set
  * by the read tool's router resolution.
  */
 export function tryResolveInternalUrlSync(input: string): string | undefined {

@@ -1,6 +1,6 @@
 # Natives Binding Contract (JavaScript/TypeScript Side)
 
-This document defines the JS/TS contract between `@oh-my-pi/pi-natives` callers and the loaded N-API addon.
+This document defines the JS/TS contract between `@veyyon/pi-natives` callers and the loaded N-API addon.
 
 Current package shape is direct-to-native: there is no `packages/natives/src/<module>` TypeScript wrapper layer. The public API is the generated `packages/natives/native/index.d.ts` declaration file, the ESM loader/export wrapper in `packages/natives/native/index.js`, and the Rust `#[napi]` exports in `crates/pi-natives/src`.
 
@@ -50,7 +50,7 @@ There is no current `NativeBindings` declaration-merging lifecycle and no full r
 }
 ```
 
-Consumers in `packages/coding-agent` and `packages/tui` import directly from `@oh-my-pi/pi-natives`.
+Consumers in `packages/coding-agent` and `packages/tui` import directly from `@veyyon/pi-natives`.
 
 ## JS API ↔ native export mapping (representative)
 

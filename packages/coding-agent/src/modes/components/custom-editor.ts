@@ -1,7 +1,7 @@
 import { fileURLToPath } from "node:url";
-import type { ImageContent } from "@oh-my-pi/pi-ai";
-import { addKeyAliases, canonicalKeyId, Editor, type KeyId, parseKey, parseKittySequence } from "@oh-my-pi/pi-tui";
-import { BracketedPasteHandler } from "@oh-my-pi/pi-tui/bracketed-paste";
+import type { ImageContent } from "@veyyon/pi-ai";
+import { addKeyAliases, canonicalKeyId, Editor, type KeyId, parseKey, parseKittySequence } from "@veyyon/pi-tui";
+import { BracketedPasteHandler } from "@veyyon/pi-tui/bracketed-paste";
 import type { AppKeybinding } from "../../config/keybindings";
 import { isSettingsInitialized, settings } from "../../config/settings";
 import { imageReferenceHyperlink, PLACEHOLDER_REGEX, renderPlaceholders } from "../image-references";
@@ -349,7 +349,7 @@ export class CustomEditor extends Editor {
 			renderText: value => {
 				const highlighted = highlightMagicKeywords(value, undefined, phase);
 				if (this.#queueShorthandActive && (value.startsWith("->") || value.startsWith("=>"))) {
-					const icon = typeof theme === "undefined" ? "➤" : theme.nav.selected;
+					const icon = typeof theme === "undefined" ? ">" : theme.nav.selected;
 					return `${fgOrPlain("dim", `Queueing ${icon}`)}${highlighted.slice(2)}`;
 				}
 				if (this.#queueListActive) {

@@ -1,14 +1,14 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
-import { CollabHost } from "@oh-my-pi/pi-coding-agent/collab/host";
-import { resetSettingsForTest, Settings } from "@oh-my-pi/pi-coding-agent/config/settings";
-import { initTheme } from "@oh-my-pi/pi-coding-agent/modes/theme/theme";
-import type { InteractiveModeContext } from "@oh-my-pi/pi-coding-agent/modes/types";
+import { CollabHost } from "@veyyon/pi-coding-agent/collab/host";
+import { resetSettingsForTest, Settings } from "@veyyon/pi-coding-agent/config/settings";
+import { initTheme } from "@veyyon/pi-coding-agent/modes/theme/theme";
+import type { InteractiveModeContext } from "@veyyon/pi-coding-agent/modes/types";
 import {
 	type BuiltinSlashCommandRuntime,
 	executeBuiltinSlashCommand,
-} from "@oh-my-pi/pi-coding-agent/slash-commands/builtin-registry";
-import { CollabQrCodeComponent } from "@oh-my-pi/pi-coding-agent/slash-commands/helpers/collab-qrcode";
-import { Spacer } from "@oh-my-pi/pi-tui";
+} from "@veyyon/pi-coding-agent/slash-commands/builtin-registry";
+import { CollabQrCodeComponent } from "@veyyon/pi-coding-agent/slash-commands/helpers/collab-qrcode";
+import { Spacer } from "@veyyon/pi-tui";
 
 beforeAll(async () => {
 	resetSettingsForTest();

@@ -1,4 +1,4 @@
-import type { AgentTool, AgentToolResult } from "@oh-my-pi/pi-agent-core/types";
+import type { AgentTool, AgentToolResult } from "@veyyon/pi-agent-core/types";
 import { type } from "arktype";
 
 export interface GetCurrentTimeResult extends AgentToolResult<{ utcTimestamp: number }> {}

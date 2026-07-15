@@ -1,4 +1,4 @@
-import type { ServiceTier, ServiceTierByFamily } from "@oh-my-pi/pi-ai";
+import type { ServiceTier, ServiceTierByFamily } from "@veyyon/pi-ai";
 import type { SubmenuOption } from "./settings-schema";
 
 /**
@@ -90,7 +90,7 @@ export function buildServiceTierByFamily(openai: string, anthropic: string, goog
  * Broadcast a single chosen tier across families, clamped to what each family
  * realizes: OpenAI takes any tier, Anthropic only `priority`, Google only
  * `flex`/`priority`. Used by the subagent/advisor single-value settings and the
- * `omp bench --service-tier` flag, which apply one tier to whatever family the
+ * `veyyon bench --service-tier` flag, which apply one tier to whatever family the
  * target model belongs to.
  */
 export function serviceTierForAllFamilies(tier: ServiceTier | undefined): ServiceTierByFamily {

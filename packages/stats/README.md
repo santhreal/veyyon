@@ -1,4 +1,4 @@
-# @oh-my-pi/omp-stats
+# @veyyon/omp-stats
 
 Local observability dashboard for AI usage statistics.
 
@@ -41,7 +41,7 @@ omp stats --json
 ### Programmatic
 
 ```typescript
-import { getDashboardStats, syncAllSessions } from "@oh-my-pi/omp-stats";
+import { getDashboardStats, syncAllSessions } from "@veyyon/omp-stats";
 
 // Sync session logs to database
 const { processed, files } = await syncAllSessions();

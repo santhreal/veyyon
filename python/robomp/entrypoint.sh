@@ -69,7 +69,7 @@ chown -R root:root /srv/agent-home || true
 find /srv/agent-home -type d -exec chmod 0755 {} +
 find /srv/agent-home -type f -exec chmod 0644 {} +
 
-# omp registers daemon project presence under ~/.omp/run at startup, nesting
+# omp registers daemon project presence under ~/.veyyon/run at startup, nesting
 # per-project dirs (daemons/<hash>/clients) that any slot user must be able to
 # create and enter regardless of which slot first made them: setgid + group
 # omp keeps the whole tree group-writable (entrypoint umask 0002 carries into

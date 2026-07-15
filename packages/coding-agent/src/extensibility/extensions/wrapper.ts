@@ -1,11 +1,17 @@
 /**
  * Tool wrappers for extensions.
  */
-import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@oh-my-pi/pi-agent-core";
-import type { ImageContent, Static, TextContent, TSchema } from "@oh-my-pi/pi-ai";
+import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/pi-agent-core";
+import type { ImageContent, Static, TextContent, TSchema } from "@veyyon/pi-ai";
 import type { Settings } from "../../config/settings";
 import type { Theme } from "../../modes/theme/theme";
-import { type ApprovalMode, formatApprovalPrompt, requiresApproval } from "../../tools/approval";
+import {
+	type ApprovalMode,
+	formatApprovalPrompt,
+	normalizeApprovalMode,
+	requiresApproval,
+	resolveEffectiveApprovalMode,
+} from "../../tools/approval";
 import { normalizeToolEventInput, resolveToolEventInput } from "../tool-event-input";
 import { applyToolProxy } from "../tool-proxy";
 import type { ExtensionRunner } from "./runner";
@@ -117,9 +123,10 @@ export class ExtensionToolWrapper<TParameters extends TSchema = TSchema, TDetail
 		const cliAutoApprove = context?.autoApprove === true;
 		const settings: Settings | undefined = context?.settings;
 		const configuredMode = (settings?.get("tools.approvalMode") ?? "yolo") as ApprovalMode;
-		const approvalMode: ApprovalMode = cliAutoApprove ? "yolo" : configuredMode;
+		const planModeActive = context?.planModeActive === true;
+		const approvalMode = resolveEffectiveApprovalMode(configuredMode, { planModeActive, cliAutoApprove });
 		const userPolicies = (settings?.get("tools.approval") ?? {}) as Record<string, unknown>;
-		const approvalCheck = requiresApproval(this.tool, params, approvalMode, userPolicies);
+		const approvalCheck = requiresApproval(this.tool, params, approvalMode, userPolicies, { planModeActive });
 
 		if (approvalCheck.required) {
 			const hasApprovalHandlers =
@@ -155,7 +162,7 @@ export class ExtensionToolWrapper<TParameters extends TSchema = TSchema, TDetail
 				throw new Error(
 					`Tool "${this.tool.name}" requires approval but no interactive UI available.\n` +
 						`Options:\n` +
-						`  1. Set tools.approvalMode: yolo in /settings\n` +
+						`  1. Set tools.approvalMode: yolo (or auto-edit / ask) in /settings\n` +
 						`  2. Add tools.approval.${this.tool.name}: allow to config\n` +
 						`  3. Use an interactive UI to approve the tool call`,
 				);

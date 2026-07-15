@@ -1,5 +1,5 @@
-import type { ThinkingLevel } from "@oh-my-pi/pi-agent-core";
-import type { Effort } from "@oh-my-pi/pi-ai";
+import type { ThinkingLevel } from "@veyyon/pi-agent-core";
+import type { Effort, Model } from "@veyyon/pi-ai";
 import {
 	type Component,
 	Container,
@@ -24,8 +24,10 @@ import {
 	Text,
 	truncateToWidth,
 	visibleWidth,
-} from "@oh-my-pi/pi-tui";
-import type { ShapeTarget } from "@oh-my-pi/snapcompact";
+} from "@veyyon/pi-tui";
+import type { ShapeTarget } from "@veyyon/snapcompact";
+import type { ModelRegistry } from "../../config/model-registry";
+import { getRoleInfo, SELECTABLE_MODEL_ROLE_IDS } from "../../config/model-roles";
 import {
 	getDefault,
 	getType,
@@ -42,8 +44,10 @@ import type {
 } from "../../config/settings-schema";
 import { SETTING_TABS, TAB_METADATA } from "../../config/settings-schema";
 import { getCurrentThemeName, getSelectListTheme, getSettingsListTheme, theme } from "../../modes/theme/theme";
+import { BUILTIN_PERSONALITY_DESCRIPTIONS, NONE_PERSONALITY } from "../../personality/resolver";
 import { AUTO_THINKING, type ConfiguredThinkingLevel } from "../../thinking";
 import { getTabBarTheme } from "../shared";
+import { ModelSelectorPanel } from "./model-selector";
 import { bottomBorder, divider, row, topBorder } from "./overlay-box";
 import { handleInputOrEscape, PluginSettingsComponent } from "./plugin-settings";
 import { getSettingDef, getSettingsForTab, type SettingDef } from "./settings-defs";
@@ -326,6 +330,120 @@ class ProviderLimitsSubmenu extends Container {
 	}
 }
 
+/**
+ * Role list → reusable {@link ModelSelectorPanel} for each role.
+ * Assignments write through `settings.setModelRole` (profile-scoped).
+ */
+class ModelRolesSubmenu extends Container {
+	#selectList: SelectList | undefined;
+	#models: ReadonlyArray<Model>;
+	#registry: ModelRegistry;
+
+	constructor(
+		models: ReadonlyArray<Model>,
+		registry: ModelRegistry,
+		private readonly onChange: () => void,
+		private readonly onCancel: () => void,
+		private readonly requestRender?: () => void,
+	) {
+		super();
+		this.#models = models;
+		this.#registry = registry;
+		this.#showRoleList();
+	}
+
+	#showRoleList(): void {
+		this.clear();
+		this.addChild(new Text(theme.bold(theme.fg("accent", "Role Models")), 0, 0));
+		this.addChild(new Spacer(1));
+		this.addChild(
+			new Text(
+				theme.fg(
+					"muted",
+					"Assign a model per role. Searchable picker · auth status on each row. Per active profile.",
+				),
+				0,
+				0,
+			),
+		);
+		this.addChild(new Spacer(1));
+
+		const items: SelectItem[] = SELECTABLE_MODEL_ROLE_IDS.map(role => {
+			const info = getRoleInfo(role, settings);
+			const assigned = settings.getModelRole(role)?.trim();
+			return {
+				value: role,
+				label: info.name,
+				description: assigned && assigned.length > 0 ? assigned : "unset (auto)",
+			};
+		});
+		this.#selectList = new SelectList(items, Math.min(Math.max(items.length, 1), 12), getSelectListTheme());
+		this.#selectList.onSelect = item => {
+			this.#showModelPicker(item.value);
+		};
+		this.#selectList.onCancel = this.onCancel;
+		this.addChild(this.#selectList);
+		this.addChild(new Spacer(1));
+		this.addChild(new Text(theme.fg("dim", "  Enter to pick model · Esc to go back"), 0, 0));
+	}
+
+	#showModelPicker(role: string): void {
+		this.clear();
+		this.#selectList = undefined;
+		const info = getRoleInfo(role, settings);
+		const current = settings.getModelRole(role)?.trim();
+		const panel = new ModelSelectorPanel(
+			settings,
+			this.#registry,
+			this.#models,
+			{
+				title: `${info.name} model`,
+				description: `Role \`${role}\` — used when that work type runs. Del clears (auto).`,
+				currentSelector: current,
+				allowClear: true,
+			},
+			{
+				onPick: (_model, selector) => {
+					settings.setModelRole(role, selector);
+					this.onChange();
+					this.#showRoleList();
+					this.requestRender?.();
+				},
+				onClear: () => {
+					settings.setModelRole(role, undefined);
+					this.onChange();
+					this.#showRoleList();
+					this.requestRender?.();
+				},
+				onCancel: () => {
+					this.#showRoleList();
+					this.requestRender?.();
+				},
+			},
+		);
+		this.addChild(panel);
+	}
+
+	handleInput(data: string): void {
+		if (this.#selectList) {
+			this.#selectList.handleInput(data);
+			return;
+		}
+		this.children[0]?.handleInput?.(data);
+	}
+}
+
+/** Synthetic item id prefix for the per-tab "Advanced" fold toggle row. */
+const ADVANCED_TOGGLE_ID_PREFIX = "__advanced:";
+
+function advancedToggleId(tab: SettingTab): string {
+	return `${ADVANCED_TOGGLE_ID_PREFIX}${tab}`;
+}
+
+function isAdvancedToggleId(id: string): boolean {
+	return id.startsWith(ADVANCED_TOGGLE_ID_PREFIX);
+}
+
 let cachedSidebarWidth: number | undefined;
 /**
  * Split-sidebar width derived from every group name in the schema (not just
@@ -367,6 +485,8 @@ export interface SettingsRuntimeContext {
 	thinkingLevel: ThinkingLevel | undefined;
 	/** Available themes */
 	availableThemes: string[];
+	/** Resolved personality catalog (built-ins + Tier-B data-file overrides), excluding `none`. */
+	availablePersonalities: string[];
 	/** Provider/source ids shown in /model. */
 	providers: string[];
 	/** Working directory for plugins tab */
@@ -377,6 +497,10 @@ export interface SettingsRuntimeContext {
 	imageBudget?: ImageBudget;
 	/** Schedules a re-render after async preview work completes. */
 	requestRender?: () => void;
+	/** Model registry for auth badges + catalog (required for model pickers). */
+	modelRegistry?: ModelRegistry;
+	/** Models offered in settings model pickers (usually getAvailable()). */
+	availableModels?: ReadonlyArray<Model>;
 }
 
 /** Status line settings subset for preview */
@@ -424,6 +548,8 @@ export class SettingsSelectorComponent implements Component {
 	#searchFirstMatch = new Map<string, string>();
 	#textInputActive = false;
 	#hasSectionJump = false;
+	/** Per-tab collapsed state for the "Advanced" fold (session-only, defaults collapsed). */
+	#showAdvanced = new Map<SettingTab, boolean>();
 	// Frame geometry from the last render, for mouse hit-testing (the
 	// fullscreen overlay paints from screen row 0, so mouse rows map 1:1).
 	#tabRowStart = 0;
@@ -728,6 +854,12 @@ export class SettingsSelectorComponent implements Component {
 		const selectedDef = selected ? getSettingDef(selected.id as SettingPath) : undefined;
 		const targetTab: SettingTab | "plugins" = selectedDef?.tab ?? this.#preSearchTabId;
 
+		// Landing on an advanced item from search: auto-expand its tab's fold
+		// so the selected row is actually visible once search closes.
+		if (selectedDef?.advanced && targetTab !== "plugins") {
+			this.#showAdvanced.set(targetTab, true);
+		}
+
 		this.#searchQuery = "";
 		this.#searchFirstMatch.clear();
 		this.#searchMatchCount = 0;
@@ -851,6 +983,26 @@ export class SettingsSelectorComponent implements Component {
 					submenu: (_cv, done) => this.#createProviderLimitsInput(done),
 					changed,
 				};
+
+			case "modelSelector":
+				return {
+					id: def.path,
+					label: def.label,
+					description: def.description,
+					currentValue: this.#formatModelSelectorValue(currentValue),
+					submenu: (_cv, done) => this.#createModelSelectorInput(def.path, done),
+					changed,
+				};
+
+			case "modelRoles":
+				return {
+					id: def.path,
+					label: def.label,
+					description: def.description,
+					currentValue: this.#formatModelRolesValue(),
+					submenu: (_cv, done) => this.#createModelRolesInput(done),
+					changed,
+				};
 		}
 	}
 
@@ -896,6 +1048,15 @@ export class SettingsSelectorComponent implements Component {
 			});
 		} else if (def.path === "theme.dark" || def.path === "theme.light") {
 			options = this.context.availableThemes.map(t => ({ value: t, label: t }));
+		} else if (def.path === "personality") {
+			options = [
+				...this.context.availablePersonalities.map(name => ({
+					value: name,
+					label: name.charAt(0).toUpperCase() + name.slice(1),
+					description: BUILTIN_PERSONALITY_DESCRIPTIONS[name],
+				})),
+				{ value: NONE_PERSONALITY, label: "None", description: "Omit the personality block entirely" },
+			];
 		}
 
 		// Preview handlers
@@ -1015,6 +1176,91 @@ export class SettingsSelectorComponent implements Component {
 		);
 	}
 
+	#requireModelPickerContext(): { registry: ModelRegistry; models: ReadonlyArray<Model> } | undefined {
+		const registry = this.context.modelRegistry;
+		const models = this.context.availableModels;
+		if (!registry || !models) return undefined;
+		return { registry, models };
+	}
+
+	#formatModelSelectorValue(value: unknown): string {
+		if (typeof value === "string" && value.trim()) return value.trim();
+		return "unset";
+	}
+
+	#formatModelRolesValue(): string {
+		const roles = settings.getModelRoles();
+		let assigned = 0;
+		for (const role of SELECTABLE_MODEL_ROLE_IDS) {
+			if (roles[role]?.trim()) assigned++;
+		}
+		if (assigned === 0) return "none set";
+		return `${assigned} assigned`;
+	}
+
+	#createModelSelectorInput(path: SettingPath, done: (value?: string) => void): Container {
+		const ctx = this.#requireModelPickerContext();
+		if (!ctx) {
+			const fallback = new Container();
+			fallback.addChild(new Text(theme.fg("warning", "Model catalog unavailable in this context"), 0, 0));
+			fallback.addChild(new Spacer(1));
+			fallback.addChild(new Text(theme.fg("dim", "  Esc to go back"), 0, 0));
+			(fallback as Container & { handleInput?: (data: string) => void }).handleInput = data => {
+				if (matchesKey(data, "app:cancel") || data === "\x1b") done();
+			};
+			return fallback;
+		}
+		const current = settings.get(path);
+		const currentSelector = typeof current === "string" ? current.trim() : undefined;
+		const label =
+			path === "subagent.model" ? "Subagent Model" : path === "compaction.model" ? "Compaction Model" : String(path);
+		return new ModelSelectorPanel(
+			settings,
+			ctx.registry,
+			ctx.models,
+			{
+				title: label,
+				description: "Searchable catalog · auth / local / no auth shown on each row.",
+				currentSelector: currentSelector || undefined,
+				allowClear: true,
+			},
+			{
+				onPick: (_model, selector) => {
+					settings.set(path, selector as never);
+					this.callbacks.onChange(path, selector);
+					done(selector);
+				},
+				onClear: () => {
+					settings.set(path, undefined as never);
+					this.callbacks.onChange(path, undefined);
+					done("unset");
+				},
+				onCancel: () => done(),
+			},
+		);
+	}
+
+	#createModelRolesInput(done: (value?: string) => void): Container {
+		const ctx = this.#requireModelPickerContext();
+		if (!ctx) {
+			const fallback = new Container();
+			fallback.addChild(new Text(theme.fg("warning", "Model catalog unavailable in this context"), 0, 0));
+			(fallback as Container & { handleInput?: (data: string) => void }).handleInput = data => {
+				if (matchesKey(data, "app:cancel") || data === "\x1b") done();
+			};
+			return fallback;
+		}
+		return new ModelRolesSubmenu(
+			ctx.models,
+			ctx.registry,
+			() => {
+				this.callbacks.onChange("modelRoles", settings.getModelRoles());
+			},
+			() => done(this.#formatModelRolesValue()),
+			this.context.requestRender,
+		);
+	}
+
 	#formatProviderLimitsValue(value: unknown): string {
 		const limits = normalizeProviderMaxInFlightRequests(value);
 		const entries = Object.entries(limits).sort(([a], [b]) => a.localeCompare(b));
@@ -1072,7 +1318,7 @@ export class SettingsSelectorComponent implements Component {
 	#showSettingsTab(tabId: SettingTab): void {
 		const defs = getSettingsForTab(tabId);
 
-		const items = this.#buildItemsForDefs(defs);
+		const items = this.#buildItemsForDefs(defs, tabId);
 		// Mirror SettingsList's section detection (leading ungrouped items form
 		// an implicit section) so the footer hint only advertises PgUp/PgDn
 		// when the jump actually changes sections.
@@ -1084,6 +1330,12 @@ export class SettingsSelectorComponent implements Component {
 			10,
 			getSettingsListTheme(),
 			(id, newValue) => {
+				if (isAdvancedToggleId(id)) {
+					this.#toggleAdvanced(tabId);
+					this.#refreshCurrentTabItems(defs);
+					return;
+				}
+
 				const def = defs.find(d => d.path === id);
 				if (!def) return;
 
@@ -1115,30 +1367,72 @@ export class SettingsSelectorComponent implements Component {
 		);
 	}
 
+	/** Whether the tab's "Advanced" fold is currently expanded (default: collapsed). */
+	#isAdvancedExpanded(tab: SettingTab): boolean {
+		return this.#showAdvanced.get(tab) === true;
+	}
+
+	/** Flip the tab's "Advanced" fold state. */
+	#toggleAdvanced(tab: SettingTab): void {
+		this.#showAdvanced.set(tab, !this.#isAdvancedExpanded(tab));
+	}
+
 	/**
 	 * Map a definition list to UI items, dropping any whose condition is false.
 	 * Inserts a heading row whenever the (group-sorted) definition list crosses
 	 * into a new group; groups whose items are all condition-hidden emit none.
+	 *
+	 * `advanced` defs are pulled out of the normal group flow and rendered
+	 * after a single collapsible "▸ Advanced (N)" row appended at the end of
+	 * the tab: hidden while collapsed unless their value differs from default
+	 * (changed values always surface), shown in full once expanded. The count
+	 * in the heading always reflects every advanced def, not just the hidden
+	 * ones, so it doesn't shift as changed values get surfaced.
 	 */
-	#buildItemsForDefs(defs: SettingDef[]): SettingItem[] {
+	#buildItemsForDefs(defs: SettingDef[], tabId: SettingTab): SettingItem[] {
 		const items: SettingItem[] = [];
+		const advancedItems: SettingItem[] = [];
 		let lastGroup: string | undefined;
+		let advancedTotal = 0;
 		for (const def of defs) {
 			const item = this.#defToItem(def);
 			if (!item) continue;
+			if (def.advanced) {
+				advancedTotal++;
+				advancedItems.push(item);
+				continue;
+			}
 			if (def.group && def.group !== lastGroup) {
 				items.push({ id: `__heading:${def.group}`, label: def.group, currentValue: "", heading: true });
 				lastGroup = def.group;
 			}
 			items.push(item);
 		}
+
+		if (advancedTotal > 0) {
+			const expanded = this.#isAdvancedExpanded(tabId);
+			const arrow = expanded ? "▾" : "▸";
+			items.push({
+				id: advancedToggleId(tabId),
+				label: `${arrow} Advanced (${advancedTotal})`,
+				currentValue: "",
+				// A single-value cycle keeps this row activatable (Enter/Space/click)
+				// like any other setting row, without pi-tui's inert `heading` rows.
+				values: ["toggle"],
+			});
+			for (const item of advancedItems) {
+				if (expanded || item.changed) items.push(item);
+			}
+		}
+
 		return items;
 	}
 
 	/** Re-evaluate condition gates against the current settings and refresh the active list. */
 	#refreshCurrentTabItems(defs: SettingDef[]): void {
-		if (this.#currentTabId === "plugins" || !this.#currentList) return;
-		this.#currentList.setItems(this.#buildItemsForDefs(defs));
+		const tabId = this.#currentTabId;
+		if (tabId === "plugins" || !this.#currentList) return;
+		this.#currentList.setItems(this.#buildItemsForDefs(defs, tabId));
 	}
 
 	/**

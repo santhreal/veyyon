@@ -1,9 +1,9 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
-import type { AgentTool } from "@oh-my-pi/pi-agent-core";
-import { ToolExecutionComponent } from "@oh-my-pi/pi-coding-agent/modes/components/tool-execution";
-import { initTheme } from "@oh-my-pi/pi-coding-agent/modes/theme/theme";
-import { Text, type TUI } from "@oh-my-pi/pi-tui";
+import type { AgentTool } from "@veyyon/pi-agent-core";
+import { ToolExecutionComponent } from "@veyyon/pi-coding-agent/modes/components/tool-execution";
+import { initTheme } from "@veyyon/pi-coding-agent/modes/theme/theme";
+import { Text, type TUI } from "@veyyon/pi-tui";
 
 /**
  * Contract under test (tool-result render memoization):
@@ -150,7 +150,9 @@ describe("ToolExecutionComponent tool-result render memoization", () => {
 	it("re-shapes when a background task freezes via seal(), not only on key fields", () => {
 		const tool = makeShapingTool();
 		const shapeSpy = vi.spyOn(tool, "renderResult");
-		const ui = { requestRender() {}, requestComponentRender() {} } as unknown as TUI;
+		const requestRender = vi.fn();
+		const requestComponentRender = vi.fn();
+		const ui = { requestRender, requestComponentRender } as unknown as TUI;
 
 		const component = new ToolExecutionComponent(
 			"custom_render",
@@ -171,5 +173,8 @@ describe("ToolExecutionComponent tool-result render memoization", () => {
 		// change), so the memo must still re-shape to settle the row to its frozen form.
 		component.seal();
 		expect(shapeSpy.mock.calls.length).toBe(afterResult + 1);
+		expect(requestComponentRender).toHaveBeenCalledTimes(1);
+		expect(requestComponentRender.mock.calls[0]?.[0]).toBe(component);
+		expect(requestRender).not.toHaveBeenCalled();
 	});
 });

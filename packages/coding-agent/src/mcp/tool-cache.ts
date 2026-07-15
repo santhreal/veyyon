@@ -3,7 +3,7 @@
  *
  * Stores tool definitions per server in agent.db for fast startup.
  */
-import { isRecord, logger } from "@oh-my-pi/pi-utils";
+import { isRecord, logger } from "@veyyon/pi-utils";
 import type { AgentStorage } from "../session/agent-storage";
 import type { MCPServerConfig, MCPToolDefinition } from "./types";
 

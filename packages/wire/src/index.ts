@@ -1,7 +1,7 @@
 /**
  * Shared wire types for the omp collab live-session protocol.
  *
- * Dependency-free JSON shapes produced by `@oh-my-pi/pi-coding-agent`
+ * Dependency-free JSON shapes produced by `@veyyon/pi-coding-agent`
  * (`src/collab/protocol.ts` and friends). Browser and test clients import this
  * package instead of depending on the coding-agent runtime; conformance is
  * asserted type-only in `packages/coding-agent/test/collab/web-wire.types.ts`.
@@ -418,11 +418,26 @@ export const ROOM_KEY_BYTES = 32;
  */
 export const WRITE_TOKEN_BYTES = 16;
 
-/** Default public relay; bare `<roomId>.<key>` links resolve against it. */
-export const DEFAULT_RELAY_URL = "wss://my.omp.sh";
+/**
+ * Default public relay; bare `<roomId>.<key>` links resolve against it.
+ *
+ * Points at the Veyyon-owned relay host. As of this writing `veyyon.dev` has
+ * no live DNS/relay deployed yet — `/collab` against the default (no
+ * `--relay` override) will fail to connect until that infra ships. Repoint
+ * or override via `collab.relayUrl` once a real relay is standing.
+ */
+export const DEFAULT_RELAY_URL = "wss://share.veyyon.dev";
 
-/** Default share viewer/upload base; `/share` links resolve against `<base>/<id>#<key>`. */
-export const DEFAULT_SHARE_URL = "https://my.omp.sh/s";
+/**
+ * Default share viewer/upload base; `/share` links resolve against
+ * `<base>/<id>#<key>`.
+ *
+ * Same caveat as {@link DEFAULT_RELAY_URL}: `share.veyyon.dev` is not yet a
+ * deployed Veyyon share server. `/share` without `--server`/`share.serverUrl`
+ * will fail closed on upload (network error) rather than silently reaching
+ * upstream `omp.sh` infra.
+ */
+export const DEFAULT_SHARE_URL = "https://share.veyyon.dev/s";
 
 export interface ParsedCollabLink {
 	/** wss://host[:port]/r/<roomId> — no query, no fragment. */

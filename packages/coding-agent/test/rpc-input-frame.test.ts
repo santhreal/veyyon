@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { RpcHostToolBridge } from "@oh-my-pi/pi-coding-agent/modes/rpc/host-tools";
+import { RpcHostToolBridge } from "@veyyon/pi-coding-agent/modes/rpc/host-tools";
 import {
 	dispatchRpcInputFrame,
 	type PendingExtensionRequest,
@@ -7,14 +7,14 @@ import {
 	type RpcInputFrameDeps,
 	RpcPendingExtensionRequests,
 	RpcShutdownCoordinator,
-} from "@oh-my-pi/pi-coding-agent/modes/rpc/rpc-mode";
+} from "@veyyon/pi-coding-agent/modes/rpc/rpc-mode";
 import type {
 	RpcCommand,
 	RpcExtensionUIResponse,
 	RpcHostToolCallRequest,
 	RpcHostToolCancelRequest,
 	RpcResponse,
-} from "@oh-my-pi/pi-coding-agent/modes/rpc/rpc-types";
+} from "@veyyon/pi-coding-agent/modes/rpc/rpc-types";
 
 type OutputFrame = RpcResponse | object;
 

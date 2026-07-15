@@ -1,12 +1,12 @@
 import { describe, expect, it, vi } from "bun:test";
-import type { InteractiveModeContext } from "@oh-my-pi/pi-coding-agent/modes/types";
-import type { ShakeMode } from "@oh-my-pi/pi-coding-agent/session/shake-types";
+import type { InteractiveModeContext } from "@veyyon/pi-coding-agent/modes/types";
+import type { ShakeMode } from "@veyyon/pi-coding-agent/session/shake-types";
 import {
 	ACP_BUILTIN_SLASH_COMMANDS,
 	executeAcpBuiltinSlashCommand,
-} from "@oh-my-pi/pi-coding-agent/slash-commands/acp-builtins";
-import { executeBuiltinSlashCommand } from "@oh-my-pi/pi-coding-agent/slash-commands/builtin-registry";
-import type { SlashCommandRuntime } from "@oh-my-pi/pi-coding-agent/slash-commands/types";
+} from "@veyyon/pi-coding-agent/slash-commands/acp-builtins";
+import { executeBuiltinSlashCommand } from "@veyyon/pi-coding-agent/slash-commands/builtin-registry";
+import type { SlashCommandRuntime } from "@veyyon/pi-coding-agent/slash-commands/types";
 
 function acpRuntime() {
 	const shake = vi.fn(async (mode: ShakeMode) => ({

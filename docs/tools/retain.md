@@ -97,7 +97,7 @@ Mnemopi:
 - Hindsight auto-retain settings:
   - `hindsight.retainEveryNTurns` default `3`
   - `hindsight.retainOverlapTurns` default `2`
-  - `hindsight.retainContext` default `"omp"`
+  - `hindsight.retainContext` default `"veyyon"` (provenance tag sent with each retain; not a recall filter — memories tagged `"omp"` under the prior default remain fully recallable)
   - `hindsight.retainMode` default `"full-session"`
 - Mnemopi retain settings:
   - `mnemopi.retainEveryNTurns` default `4`
