@@ -449,6 +449,25 @@ export function isWordNavJoiner(grapheme: string): boolean {
 }
 
 /**
+ * Snap a UTF-16 index to the grapheme-cluster boundary at or before it. Callers
+ * normally keep the cursor on a boundary, but if one ever lands mid-cluster (a
+ * surrogate pair or ZWJ/combining sequence), the word-nav below would slice the
+ * string mid-cluster and return another mid-cluster index — a cursor-corruption
+ * hazard. Flooring first makes the result unconditionally a boundary; it is a
+ * no-op when `cursor` is already one, so valid callers see no behavior change.
+ */
+function floorToGraphemeBoundary(text: string, cursor: number): number {
+	if (cursor <= 0) return 0;
+	let prev = 0;
+	for (const { segment } of segmenter.segment(text)) {
+		const next = prev + segment.length;
+		if (next >= cursor) return next === cursor ? cursor : prev;
+		prev = next;
+	}
+	return prev;
+}
+
+/**
  * Move the cursor one "word" to the left using Unicode-aware coarse navigation.
  *
  * Returns a new cursor index in the range [0, text.length].
@@ -456,7 +475,7 @@ export function isWordNavJoiner(grapheme: string): boolean {
 export function moveWordLeft(text: string, cursor: number): number {
 	const len = text.length;
 	if (len === 0) return 0;
-	let i = Math.min(Math.max(cursor, 0), len);
+	let i = floorToGraphemeBoundary(text, Math.min(Math.max(cursor, 0), len));
 	if (i === 0) return 0;
 
 	const graphemes = [...segmenter.segment(text.slice(0, i))];
@@ -512,7 +531,7 @@ export function moveWordLeft(text: string, cursor: number): number {
 export function moveWordRight(text: string, cursor: number): number {
 	const len = text.length;
 	if (len === 0) return 0;
-	let i = Math.min(Math.max(cursor, 0), len);
+	let i = floorToGraphemeBoundary(text, Math.min(Math.max(cursor, 0), len));
 	if (i === len) return len;
 
 	const iterator = segmenter.segment(text.slice(i))[Symbol.iterator]();
