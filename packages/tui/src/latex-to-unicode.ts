@@ -1235,8 +1235,14 @@ class LatexParser {
 	 */
 	static readonly #MAX_DEPTH = 500;
 
-	constructor(src: string) {
+	constructor(src: string, startDepth = 0) {
 		this.#s = src;
+		// Optional-argument parsing (`\sqrt[…]`, `\xrightarrow[…]`) spins up a child
+		// parser on the extracted `[…]` source. Seeding it with the parent's depth
+		// keeps the guard cumulative across that boundary; a fresh 0 here would let a
+		// nested-optional-arg chain recurse without limit and blow the JS stack (the
+		// exact DoS `#MAX_DEPTH` exists to stop) while re-scanning O(n^2).
+		this.#depth = startDepth;
 	}
 
 	/** Consume the current group as literal text without recursing (depth guard). */
@@ -1725,7 +1731,7 @@ class LatexParser {
 	#optionalArgument(style: FontStyle | null): Argument | null {
 		const source = this.#optionalRawArgument();
 		if (source === null) return null;
-		return { text: new LatexParser(source).parse(style, false), group: true };
+		return { text: new LatexParser(source, this.#depth).parse(style, false), group: true };
 	}
 
 	#optionalRawArgument(): string | null {
