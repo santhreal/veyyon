@@ -2841,7 +2841,14 @@ export function highlightCode(code: string, lang?: string, highlightTheme: Theme
 	const highlighted = highlightCached(code, validLang, highlightTheme);
 	// Always return a fresh array: callers (e.g. renderCodeCell) push extra lines
 	// onto the result, which would corrupt the cached string otherwise.
-	return (highlighted ?? code).split("\n");
+	const lines = (highlighted ?? code).split("\n");
+	// A highlighter only styles tokens inline — it must never change the source
+	// line count. If it did (invalid UTF-16 like a lone surrogate is mangled
+	// crossing the native UTF-8 boundary and can drop lines), the styled output
+	// is untrustworthy: fall back to the raw code so the block renders complete
+	// rather than silently missing lines.
+	const rawLines = code.split("\n");
+	return lines.length === rawLines.length ? lines : rawLines;
 }
 
 export function getSymbolTheme(): SymbolTheme {
