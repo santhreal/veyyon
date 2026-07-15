@@ -810,8 +810,9 @@ export class Editor implements Component, Focusable {
 		const layoutWidth = this.#getLayoutWidth(width, paddingX);
 		this.#lastLayoutWidth = layoutWidth;
 
-		// Box-drawing characters for rounded corners
-		const box = this.#theme.symbols.boxRound;
+		// Sharp box-drawing corners: the composer is the most prominent frame and
+		// the brand is sharp-edged everywhere (no rounded chrome).
+		const box = this.#theme.symbols.boxSharp;
 		const borderWidth = this.#getHorizontalChromeWidth(paddingX);
 		const topLeft = this.borderColor(`${box.topLeft}${box.horizontal.repeat(paddingX)}`);
 		const topRight = this.borderColor(`${box.horizontal.repeat(paddingX)}${box.topRight}`);

@@ -785,7 +785,7 @@ describe("Editor component", () => {
 			}
 
 			// Verify content split correctly - extract content between borders
-			// Middle lines use "│  " and "  │", last line uses "╰─ " and " ─╯"
+			// Middle lines use "│  " and "  │", last line uses "└─ " and " ─┘"
 			const contentLines = lines.slice(1).map(l => {
 				const stripped = stripVTControlCharacters(l);
 				// Both border styles use 3 chars on each side
@@ -832,8 +832,8 @@ describe("Editor component", () => {
 
 		it("keeps the bordered editor inside `width` when the cursor lands past a wide trailing grapheme (#3431)", () => {
 			// Regression: typing a fullwidth char (e.g. CJK comma `，`, U+FF0C) at the end
-			// of the input used to push the bottom-right `─╯` 1–2 cells past the terminal
-			// edge, wrapping `╯` to its own row. The end-of-line cursor glyph + wide grapheme
+			// of the input used to push the bottom-right `─┘` 1–2 cells past the terminal
+			// edge, wrapping `┘` to its own row. The end-of-line cursor glyph + wide grapheme
 			// extends into the right padding zone; the right chrome must shrink by the exact
 			// overflow cell count.
 			for (const paddingX of [1, 2]) {
