@@ -81,3 +81,16 @@ describe("lang icon badges (unicode preset)", () => {
 		expect(theme.getLangIcon(undefined)).toBe(DEFAULT_MARK);
 	});
 });
+
+describe("standalone icon badges (unicode preset)", () => {
+	// Icons consumed as a *sole* mark (not `${icon} ${value}`, where the value
+	// carries the meaning) must be non-empty in the unicode preset, or the
+	// affordance renders invisible. icon.search fronts every search box and
+	// grep/glob tool title (7 sites); icon.file is the muted badge before file
+	// names in eval/json-tree/task renders (8 sites) — both shipped empty.
+	it("renders a visible glyph for search and file badges", async () => {
+		const theme = await unicodeTheme();
+		expect(theme.symbol("icon.search")).toBe("⌕");
+		expect(theme.symbol("icon.file")).toBe("▤");
+	});
+});
