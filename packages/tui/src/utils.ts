@@ -134,7 +134,15 @@ export function truncateToWidth(
 }
 
 export function wrapTextWithAnsi(text: string, width: number): string[] {
-	return nativeWrapTextWithAnsi(text, width, DEFAULT_TAB_WIDTH);
+	// Normalize CR and CRLF to LF before wrapping. The native wrapper breaks only
+	// on LF, so a `\r\n` source leaves a trailing `\r` on the wrapped row and a
+	// bare `\r` stays embedded — either one moves the terminal cursor to column 0
+	// and corrupts the line. Universal-newline normalization (`\r\n` and bare `\r`
+	// both become `\n`) keeps every produced row a single clean line. Guarded on
+	// `includes` so the overwhelmingly common CR-free text pays one scan rather
+	// than a regex rewrite.
+	const normalized = text.includes("\r") ? text.replace(/\r\n?/g, "\n") : text;
+	return nativeWrapTextWithAnsi(normalized, width, DEFAULT_TAB_WIDTH);
 }
 
 export function extractSegments(

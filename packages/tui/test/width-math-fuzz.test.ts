@@ -116,6 +116,19 @@ describe("width-math fuzz invariants", () => {
 		}
 	});
 
+	it("wrapTextWithAnsi normalizes CR/CRLF so no row carries a stray carriage return", () => {
+		// A `\r` surviving into a wrapped row moves the terminal cursor to column 0
+		// and corrupts the line. CRLF and bare CR must both act as clean LF breaks.
+		expect(wrapTextWithAnsi("First\r\nSecond", 40)).toEqual(["First", "Second"]);
+		expect(wrapTextWithAnsi("Alpha\rBeta", 40)).toEqual(["Alpha", "Beta"]);
+		expect(wrapTextWithAnsi("a\rb\r\nc", 40)).toEqual(["a", "b", "c"]);
+		for (const s of ["x\r\ny", "p\rq", "\r\r\r", "line\r"]) {
+			for (const line of wrapTextWithAnsi(s, 8)) {
+				expect(line.includes("\r")).toBe(false);
+			}
+		}
+	});
+
 	it("wrapTextWithAnsi never throws for positive widths", () => {
 		const rand = lcg(0xfeed_face);
 		for (let iter = 0; iter < 4000; iter++) {
