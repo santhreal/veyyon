@@ -295,7 +295,7 @@ export function wordWrapLine(line: string, maxWidth: number): TextChunk[] {
 }
 
 /** Visual cell column of code-unit `offset` within `text`, counted by grapheme walk. */
-function visualColAtOffset(text: string, offset: number): number {
+export function visualColAtOffset(text: string, offset: number): number {
 	if (offset <= 0) return 0;
 	let col = 0;
 	for (const seg of segmenter.segment(text)) {
@@ -307,7 +307,7 @@ function visualColAtOffset(text: string, offset: number): number {
 
 /** Code-unit offset of visual cell `col` within `text`, snapped to a grapheme
  *  boundary so the result never splits a surrogate pair or cluster. */
-function offsetAtVisualCol(text: string, col: number): number {
+export function offsetAtVisualCol(text: string, col: number): number {
 	if (col <= 0) return 0;
 	let current = 0;
 	for (const seg of segmenter.segment(text)) {
@@ -321,7 +321,7 @@ function offsetAtVisualCol(text: string, col: number): number {
 /** Highest visual column the cursor may occupy on a wrap segment: the full width
  *  on a logical line's last segment, otherwise just before the final grapheme
  *  (the segment end is the next segment's start). */
-function maxSegmentVisualCol(text: string, isLastSegment: boolean): number {
+export function maxSegmentVisualCol(text: string, isLastSegment: boolean): number {
 	let total = 0;
 	let lastWidth = 0;
 	for (const seg of segmenter.segment(text)) {
