@@ -57,7 +57,10 @@ describe("getResolvedThemeColors HTML export defaults", () => {
 	});
 
 	it("uses light grey for empty text tokens on dark themes", async () => {
-		const colors = await getResolvedThemeColors("dark");
+		// "titanium" (the shipped default dark theme) leaves its text tokens empty,
+		// so it exercises the dark-theme grey fallback. The "dark" theme now sets an
+		// explicit brand text color, so it no longer probes this fallback path.
+		const colors = await getResolvedThemeColors("titanium");
 		expect(colors.text).toBe("#e5e5e7");
 		expect(colors.userMessageText).toBe("#e5e5e7");
 	});
