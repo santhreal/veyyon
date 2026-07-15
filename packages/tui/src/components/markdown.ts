@@ -627,6 +627,38 @@ function renderedLinesCacheSize(lines: readonly string[]): number {
 // over-matching is safe (it only costs the fast path), under-matching is not.
 const HAS_REF_DEF = /^ {0,3}\[(?:\\.|[^\]\\])+\]:/m;
 
+// Untrusted model output can over-nest markdown structure: a blockquote nests
+// once per leading `>` (`>>>>…`), a list once per indentation step. marked's
+// block lexer recurses per nesting level and is super-linear on list indent, so
+// a payload nested thousands deep overflows the stack (deep `>`) or hangs for
+// minutes (deep list) *before* render() — a trivial DoS on the TUI. Cap each
+// line's structural nesting to a depth far beyond any real document; the
+// render-depth guard (Markdown.MAX_RENDER_DEPTH) then bounds token recursion for
+// whatever survives. Applied once per render, folded into tab normalization.
+const MAX_BLOCKQUOTE_MARKERS = 24;
+const MAX_LEADING_INDENT = 64;
+// Cheap detector: does any line's leading `>`-run or whitespace-run exceed a cap?
+// `.test()` short-circuits and allocates nothing on the common no-match input, so
+// the streaming hotpath pays only a linear scan (as HAS_REF_DEF already does).
+const OVER_NESTED = new RegExp(
+	`(?:^|\\n)(?:[ \\t]*>){${MAX_BLOCKQUOTE_MARKERS + 1},}|(?:^|\\n)[ \\t]{${MAX_LEADING_INDENT + 1},}\\S`,
+);
+// Slow-path caps (only run when OVER_NESTED matches): keep the first N leading
+// blockquote markers and drop the rest of the `>`-run; keep the first M leading
+// whitespace chars and drop the rest up to the first non-space. Multiline `^`, so
+// each line is capped independently — the transform stays line-local and thus
+// append-stable for the streaming prefix cache.
+const BLOCKQUOTE_CAP = new RegExp(`^((?:[ \\t]*>){${MAX_BLOCKQUOTE_MARKERS}})(?:[ \\t]*>)+`, "gm");
+const INDENT_CAP = new RegExp(`^([ \\t]{${MAX_LEADING_INDENT}})[ \\t]+(?=\\S)`, "gm");
+
+// Bound structural nesting depth so pathological input can neither overflow the
+// lexer stack nor hang it. No-op (returns the input) unless a line actually
+// over-nests, so realistic markdown pays only the OVER_NESTED scan.
+function capMarkdownNesting(text: string): string {
+	if (!OVER_NESTED.test(text)) return text;
+	return text.replace(BLOCKQUOTE_CAP, "$1").replace(INDENT_CAP, "$1");
+}
+
 /** Drop all L2 cache entries. Call on theme change to prevent stale styled output. */
 export function clearRenderCache(): void {
 	renderCache.clear();
@@ -967,6 +999,8 @@ export class Markdown implements Component {
 	#defaultStylePrefix?: string;
 	/** Number of spaces used to indent code block content. */
 	#codeBlockIndent: number;
+	/** Current token-render recursion depth (nested blockquotes/lists). */
+	#renderDepth = 0;
 
 	// Cache for rendered output. Cached arrays are shared and returned by
 	// reference (render contract: results are component-owned and immutable to
@@ -1183,8 +1217,9 @@ export class Markdown implements Component {
 			return EMPTY_RENDER_LINES;
 		}
 
-		// Replace tabs with 3 spaces for consistent rendering
-		const normalizedText = replaceTabs(this.#text);
+		// Replace tabs with 3 spaces for consistent rendering, then bound structural
+		// nesting depth so pathological model output can't overflow or hang the lexer.
+		const normalizedText = capMarkdownNesting(replaceTabs(this.#text));
 		const signature = this.#renderSignature(width, paddingX);
 
 		// L2: module-level LRU — survives component disposal/recreation across
@@ -1626,7 +1661,35 @@ export class Markdown implements Component {
 		};
 	}
 
+	/**
+	 * Render one token, bounding recursion depth. Markdown from model output can
+	 * nest blockquotes/lists arbitrarily deep (`>>>>…`), and the per-token
+	 * recursion would overflow the JS stack — a crash on untrusted input. Past
+	 * {@link Markdown.MAX_RENDER_DEPTH} the token is rendered as its raw source on
+	 * a single plain line instead of recursing into its children.
+	 */
+	static readonly MAX_RENDER_DEPTH = 20;
+
 	#renderToken(token: Token, width: number, nextTokenType?: string, styleContext?: InlineStyleContext): string[] {
+		if (this.#renderDepth >= Markdown.MAX_RENDER_DEPTH) {
+			const raw = "raw" in token && typeof token.raw === "string" ? token.raw : "";
+			if (!raw) return [];
+			return [this.#applyDefaultStyle(raw.replace(/[\r\n]+/g, " "))];
+		}
+		this.#renderDepth++;
+		try {
+			return this.#renderTokenInner(token, width, nextTokenType, styleContext);
+		} finally {
+			this.#renderDepth--;
+		}
+	}
+
+	#renderTokenInner(
+		token: Token,
+		width: number,
+		nextTokenType?: string,
+		styleContext?: InlineStyleContext,
+	): string[] {
 		const lines: string[] = [];
 
 		// Display math block (own-line `$$…$$` / `\[…\]`): stack `\frac` vertically
