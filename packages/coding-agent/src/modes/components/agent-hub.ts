@@ -30,6 +30,7 @@ import { replaceTabs, TRUNCATE_LENGTHS, truncateToWidth } from "../../tools/rend
 import type { ObservableSession, SessionObserverRegistry } from "../session-observer-registry";
 import { theme } from "../theme/theme";
 import { matchesSelectDown, matchesSelectUp } from "../utils/keybinding-matchers";
+import { agentStatusGlyph } from "./agent-status-display";
 import { AgentTranscriptViewer } from "./agent-transcript-viewer";
 import { DynamicBorder } from "./dynamic-border";
 
@@ -55,20 +56,6 @@ function clampHubLine(line: string, width: number): string {
 }
 
 const STATUS_ORDER: Record<AgentStatus, number> = { running: 0, idle: 1, parked: 2, aborted: 3 };
-
-/** Status glyph, colored per theme status conventions. The title-line counts spell out the words. */
-function statusGlyph(status: AgentStatus): string {
-	switch (status) {
-		case "running":
-			return theme.fg("accent", theme.status.running);
-		case "idle":
-			return theme.fg("success", theme.status.enabled);
-		case "parked":
-			return theme.fg("muted", theme.status.shadowed);
-		case "aborted":
-			return theme.fg("error", theme.status.aborted);
-	}
-}
 
 /** Model id + thinking level (`sonnet-4-6 ◒ high`), level colored per theme. */
 function formatModelBadge(modelId: string, level: ThinkingLevel | undefined): string {
@@ -539,7 +526,7 @@ export class AgentHubOverlayComponent extends Container {
 	#renderEntry(ref: AgentRef, selected: boolean, width: number): string[] {
 		const max = Math.max(1, width - 2);
 		const cursor = selected ? theme.fg("accent", theme.nav.cursor) : " ";
-		const fields: string[] = [`${cursor} ${statusGlyph(ref.status)} ${theme.bold(replaceTabs(ref.id))}`];
+		const fields: string[] = [`${cursor} ${agentStatusGlyph(ref.status)} ${theme.bold(replaceTabs(ref.id))}`];
 		if (ref.displayName && ref.displayName !== ref.id) {
 			fields.push(theme.fg("dim", replaceTabs(ref.displayName)));
 		}

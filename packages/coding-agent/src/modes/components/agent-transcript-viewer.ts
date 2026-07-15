@@ -28,6 +28,7 @@ import type { ObservableSession, SessionObserverRegistry } from "../session-obse
 import { getEditorTheme, theme } from "../theme/theme";
 import { matchesSelectDown, matchesSelectUp } from "../utils/keybinding-matchers";
 import type { AgentHubRemote } from "./agent-hub";
+import { agentStatusWord } from "./agent-status-display";
 import { ChatTranscriptBuilder } from "./chat-transcript-builder";
 import { DynamicBorder } from "./dynamic-border";
 import { formatContextUsage } from "./status-line/context-thresholds";
@@ -120,19 +121,6 @@ function sentinelsFromBuffer(buffer: Buffer): LocalTranscriptSentinel[] {
 function sentinelsFromFile(file: string, size: number): LocalTranscriptSentinel[] {
 	const length = Math.min(SENTINEL_BYTES, size);
 	return sentinelOffsets(size).map(offset => ({ offset, bytes: readFileRangeSync(file, offset, length) }));
-}
-
-function statusBadge(status: AgentStatus): string {
-	switch (status) {
-		case "running":
-			return theme.fg("success", "running");
-		case "idle":
-			return theme.fg("accent", "idle");
-		case "parked":
-			return theme.fg("muted", "parked");
-		case "aborted":
-			return theme.fg("error", "aborted");
-	}
 }
 
 export class AgentTranscriptViewer implements Component {
@@ -596,7 +584,7 @@ export class AgentTranscriptViewer implements Component {
 		if (status && kind) {
 			const kindTag = theme.fg("dim", ` ${parentId ? `${kind} ${theme.sep.dot} of ${parentId}` : kind}`);
 			const modelLabel = this.#model ? theme.fg("muted", `${theme.sep.dot}${this.#model}`) : "";
-			lines.push(`${theme.bold(this.deps.agentId)} ${statusBadge(status)}${kindTag}${modelLabel}`);
+			lines.push(`${theme.bold(this.deps.agentId)} ${agentStatusWord(status)}${kindTag}${modelLabel}`);
 		}
 		return lines;
 	}

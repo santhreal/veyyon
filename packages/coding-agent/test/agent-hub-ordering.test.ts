@@ -9,7 +9,7 @@ import { afterEach, beforeAll, describe, expect, it, setSystemTime, vi } from "b
 import { IrcBus } from "@veyyon/pi-coding-agent/irc/bus";
 import { AgentHubOverlayComponent } from "@veyyon/pi-coding-agent/modes/components/agent-hub";
 import { SessionObserverRegistry } from "@veyyon/pi-coding-agent/modes/session-observer-registry";
-import { initTheme } from "@veyyon/pi-coding-agent/modes/theme/theme";
+import { initTheme, theme } from "@veyyon/pi-coding-agent/modes/theme/theme";
 import { AgentRegistry } from "@veyyon/pi-coding-agent/registry/agent-registry";
 import type { AgentSession } from "@veyyon/pi-coding-agent/session/agent-session";
 import { visibleWidth } from "@veyyon/pi-tui/utils";
@@ -54,10 +54,16 @@ function makeHub(agents: AgentRegistry) {
 
 function renderedAgentIds(hub: AgentHubOverlayComponent): string[] {
 	// Entry first lines are ` <cursor> <status-glyph> <id> …`; task lines are
-	// indented deeper and chrome lines never carry the cursor slot.
+	// indented deeper and chrome lines never carry the cursor slot. The cursor
+	// slot is the theme's nav cursor on the selected row and a space elsewhere —
+	// derive it from the theme so the parser can never drift from the rendered
+	// glyph again (it once hardcoded `❯`, which the theme never produced, so the
+	// selected row was silently unmatched and dropped from the ids).
+	const cursorSlot = `[${theme.nav.cursor} ]`;
+	const re = new RegExp(`^ ${cursorSlot} (\\S+) (\\S+)`, "u");
 	const ids: string[] = [];
 	for (const raw of hub.render(120)) {
-		const match = /^ (?:❯| ) (\S+) (\S+)/u.exec(Bun.stripANSI(raw));
+		const match = re.exec(Bun.stripANSI(raw));
 		if (match) ids.push(match[2]!);
 	}
 	return ids;

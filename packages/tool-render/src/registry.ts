@@ -82,6 +82,14 @@ const RENDERERS: Record<string, ToolRenderer> = {
 	yield: yieldRenderer,
 };
 
+/**
+ * Wire tool names are attacker/model-controlled input, so a plain-object
+ * lookup must not fall through the prototype chain: `RENDERERS.constructor`
+ * or `RENDERERS.toString` resolve to `Object.prototype` members (truthy, so
+ * `??` never reaches the fallback) instead of `undefined`, which would hand
+ * `ToolView` a non-`ToolRenderer` whose `.Summary` is `undefined` and crash
+ * the render (`Object.hasOwn` restricts lookups to declared own keys).
+ */
 export function resolveToolRenderer(name: string): ToolRenderer {
-	return RENDERERS[name] ?? genericRenderer;
+	return Object.hasOwn(RENDERERS, name) ? RENDERERS[name] : genericRenderer;
 }
