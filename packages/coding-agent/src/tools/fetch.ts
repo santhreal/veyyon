@@ -40,6 +40,64 @@ import { clampTimeout } from "./tool-timeouts";
 // =============================================================================
 
 const FETCH_DEFAULT_MAX_LINES = 300;
+
+// The native `htmlToMarkdown` recurses per nested element and hard-crashes the
+// whole process (unrecoverable native stack overflow, not a catchable throw) on
+// deeply nested HTML — ~2000 nested elements is fine, ~5000 core-dumps. Fetch
+// runs it on attacker-controlled pages, so a hostile/malformed page with deep
+// nesting would take down the agent. Real pages nest well under ~100 deep, so a
+// cap of 500 never rejects legitimate content while keeping the input far below
+// the crash threshold; over-nested HTML skips the native path and falls through
+// to the next extractor. The native binary is prebuilt (no in-repo source), so
+// this boundary guard is the only place to fix it.
+const MAX_HTML_NESTING_DEPTH = 500;
+// HTML void elements never nest (no closing tag), so they must not count toward
+// depth or a page with a long run of them (many <br>/<img>) would false-trip.
+const VOID_HTML_ELEMENTS = new Set([
+	"area",
+	"base",
+	"br",
+	"col",
+	"embed",
+	"hr",
+	"img",
+	"input",
+	"link",
+	"meta",
+	"param",
+	"source",
+	"track",
+	"wbr",
+]);
+const HTML_TAG_RE = /<(\/?)([a-zA-Z][a-zA-Z0-9-]*)\b[^>]*?(\/?)>/g;
+
+/**
+ * True when `html`'s element nesting exceeds {@link MAX_HTML_NESTING_DEPTH}.
+ * A linear tag scan: opening tags increase depth, closing tags decrease it, and
+ * void/self-closing tags are depth-neutral. Approximate (it does not validate
+ * mismatched tags), but it cannot under-count the pure `<div>`-repeat attack,
+ * and over-counting only matters far above any real page's depth.
+ *
+ * Exported for the DoS regression test (calling htmlToMarkdown on the attack
+ * input would core-dump the test process, so the guard is verified directly).
+ */
+export function htmlNestingExceeds(html: string, limit: number): boolean {
+	let depth = 0;
+	HTML_TAG_RE.lastIndex = 0;
+	for (let m = HTML_TAG_RE.exec(html); m !== null; m = HTML_TAG_RE.exec(html)) {
+		const isClose = m[1] === "/";
+		const selfClosing = m[3] === "/";
+		const name = m[2]!.toLowerCase();
+		if (isClose) {
+			if (depth > 0) depth--;
+		} else if (!selfClosing && !VOID_HTML_ELEMENTS.has(name)) {
+			depth++;
+			if (depth > limit) return true;
+		}
+	}
+	return false;
+}
+
 // Convertible document types handled by markit.
 const CONVERTIBLE_MIMES = new Set([
 	"application/pdf",
@@ -625,8 +683,11 @@ export async function renderHtmlToText(
 
 	const runners: Record<FetchProvider, () => Promise<string | null>> = {
 		// Purely local, no network/subprocess: still works on already-loaded HTML
-		// even after remote/subprocess attempts are aborted by the budget.
-		native: () => htmlToMarkdown(html, { cleanContent: true }),
+		// even after remote/subprocess attempts are aborted by the budget. Deeply
+		// nested HTML crashes the native converter (see MAX_HTML_NESTING_DEPTH), so
+		// skip it for such input and let the chain fall through to another reader.
+		native: () =>
+			htmlNestingExceeds(html, MAX_HTML_NESTING_DEPTH) ? Promise.resolve(null) : htmlToMarkdown(html, { cleanContent: true }),
 		trafilatura: async () => {
 			const trafilatura = await ensureTool("trafilatura", { signal: overallSignal, silent: true });
 			if (!trafilatura) return null;
