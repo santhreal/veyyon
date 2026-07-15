@@ -3,17 +3,34 @@ import type { Component } from "../tui";
 /**
  * Spacer component that renders empty lines
  */
+/**
+ * Coerce a requested line count to a safe array length. `render` builds
+ * `new Array(#lines)`, which throws `RangeError` for a negative, fractional,
+ * NaN, or out-of-range value — so a public caller passing a computed height
+ * (e.g. `availableRows - usedRows` gone negative) would crash the render.
+ * Clamp to a non-negative integer, matching ScrollView/Image height handling.
+ */
+function normalizeLineCount(lines: number): number {
+	if (!Number.isFinite(lines)) return 0;
+	return Math.max(0, Math.min(Math.trunc(lines), MAX_SPACER_LINES));
+}
+
+// Far above any real layout; a spacer taller than this is a caller bug, not a
+// legitimate request, and reserving it would waste memory in the render tree.
+const MAX_SPACER_LINES = 1 << 16;
+
 export class Spacer implements Component {
 	#lines: number;
 	#cached: string[] | undefined;
 
 	constructor(lines: number = 1) {
-		this.#lines = lines;
+		this.#lines = normalizeLineCount(lines);
 	}
 
 	setLines(lines: number): void {
-		if (lines === this.#lines) return;
-		this.#lines = lines;
+		const normalized = normalizeLineCount(lines);
+		if (normalized === this.#lines) return;
+		this.#lines = normalized;
 		this.#cached = undefined;
 	}
 
