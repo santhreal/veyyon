@@ -320,6 +320,24 @@ export function fuzzyMatch(query: string, text: string): FuzzyMatch {
 }
 
 /**
+ * Order-preserving subsequence test: are all of `query`'s characters present in
+ * `target` in order? Case-sensitive — callers that want case-insensitive
+ * matching lowercase both sides first. This is the lightweight boolean gate used
+ * by the autocomplete filters (a candidate is kept iff the typed prefix is a
+ * subsequence of it); {@link fuzzyMatch} is the heavier scoring matcher for
+ * ranking. Kept distinct so the two never drift into one ambiguous name.
+ */
+export function isSubsequenceMatch(query: string, target: string): boolean {
+	if (query.length === 0) return true;
+	if (query.length > target.length) return false;
+	let qi = 0;
+	for (let ti = 0; ti < target.length && qi < query.length; ti++) {
+		if (query[qi] === target[ti]) qi++;
+	}
+	return qi === query.length;
+}
+
+/**
  * A text prepared once for repeated fuzzy matching.
  *
  * `fuzzyMatch` builds a search index per call; the module cache only admits

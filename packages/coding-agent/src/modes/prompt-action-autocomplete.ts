@@ -4,6 +4,7 @@ import {
 	CombinedAutocompleteProvider,
 	findLeadingSlashCommandStart,
 	getKeybindings,
+	isSubsequenceMatch,
 	type SlashCommand,
 } from "@veyyon/pi-tui";
 import { formatKeyHints, type KeybindingsManager } from "../config/keybindings";
@@ -40,20 +41,6 @@ interface PromptActionAutocompleteOptions {
 	moveCursorToMessageStart: () => void;
 	moveCursorToLineStart: () => void;
 	moveCursorToLineEnd: () => void;
-}
-
-function fuzzyMatch(query: string, target: string): boolean {
-	if (query.length === 0) return true;
-	if (query.length > target.length) return false;
-
-	let queryIndex = 0;
-	for (let targetIndex = 0; targetIndex < target.length && queryIndex < query.length; targetIndex += 1) {
-		if (query[queryIndex] === target[targetIndex]) {
-			queryIndex += 1;
-		}
-	}
-
-	return queryIndex === query.length;
 }
 
 function fuzzyScore(query: string, target: string): number {
@@ -173,7 +160,7 @@ export class PromptActionAutocompleteProvider implements AutocompleteProvider {
 			const items = this.#actions
 				.map(action => {
 					const searchable = [action.label, action.description, ...action.keywords].join(" ").toLowerCase();
-					if (!fuzzyMatch(query, searchable)) return null;
+					if (!isSubsequenceMatch(query, searchable)) return null;
 					return {
 						value: action.label,
 						label: action.label,

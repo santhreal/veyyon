@@ -6,7 +6,7 @@
  * TUI editor (`packages/tui/src/components/editor.ts`); the editor fires the
  * popup, this module decides whether there are candidates to show.
  */
-import type { AutocompleteItem } from "@veyyon/pi-tui";
+import { type AutocompleteItem, isSubsequenceMatch } from "@veyyon/pi-tui";
 import { InternalUrlRouter } from "../internal-urls/router";
 
 /** Upper bound on candidates surfaced in the dropdown. */
@@ -27,17 +27,6 @@ export interface InternalUrlContext {
 	query: string;
 	/** Exact buffer token from its boundary to the cursor (the completion prefix). */
 	token: string;
-}
-
-// Subsequence fuzzy match: `hum` matches `humanizer`, `lp` matches `local-plan`.
-function fuzzyMatch(query: string, target: string): boolean {
-	if (query.length === 0) return true;
-	if (query.length > target.length) return false;
-	let q = 0;
-	for (let t = 0; t < target.length && q < query.length; t += 1) {
-		if (query[q] === target[t]) q += 1;
-	}
-	return q === query.length;
 }
 
 // Higher is better: exact > prefix > substring > scattered subsequence.
@@ -108,7 +97,7 @@ export async function getInternalUrlSuggestions(
 	const scored: Array<{ item: AutocompleteItem; score: number }> = [];
 	for (const candidate of candidates) {
 		const target = decodeUrlCompletionValue(candidate.value).toLowerCase();
-		if (!fuzzyMatch(query, target)) continue;
+		if (!isSubsequenceMatch(query, target)) continue;
 		scored.push({
 			item: {
 				value: `${ctx.scheme}://${candidate.value}`,

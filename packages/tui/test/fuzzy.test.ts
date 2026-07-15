@@ -1,5 +1,6 @@
+import { Glob } from "bun";
 import { describe, expect, it } from "bun:test";
-import { fuzzyFilter, fuzzyMatch } from "@veyyon/pi-tui/fuzzy";
+import { fuzzyFilter, fuzzyMatch, isSubsequenceMatch } from "@veyyon/pi-tui/fuzzy";
 
 describe("fuzzyFilter", () => {
 	it("does not satisfy long tokens by scattering letters across unrelated words", () => {
@@ -41,5 +42,39 @@ describe("fuzzyFilter", () => {
 
 		expect(fuzzyFilter(items, "搜索", item => item)).toEqual(["搜索历史", "文件搜索"]);
 		expect(fuzzyMatch("搜索", "Settings").matches).toBe(false);
+	});
+});
+
+describe("isSubsequenceMatch", () => {
+	it("is true iff query chars appear in target in order (case-sensitive)", () => {
+		expect(isSubsequenceMatch("wig", "skill:wig")).toBe(true);
+		expect(isSubsequenceMatch("lp", "local-plan")).toBe(true);
+		expect(isSubsequenceMatch("", "anything")).toBe(true);
+		expect(isSubsequenceMatch("giw", "skill:wig")).toBe(false); // wrong order
+		expect(isSubsequenceMatch("WIG", "skill:wig")).toBe(false); // case-sensitive
+		expect(isSubsequenceMatch("longer", "short")).toBe(false); // query longer than target
+	});
+
+	// ONE-PLACE lock: this subsequence matcher was hand-rolled identically in
+	// autocomplete.ts, prompt-action-autocomplete.ts, and internal-url-
+	// autocomplete.ts. It now lives only in fuzzy.ts. A re-declared boolean
+	// `fuzzyMatch(query, target)` copy or a second isSubsequenceMatch must fail
+	// here, not silently drift.
+	it("is defined in exactly one source file and has no boolean-fuzzyMatch twins", async () => {
+		const root = `${import.meta.dir}/../..`;
+		const subsequenceDefs: string[] = [];
+		const booleanFuzzyMatchDefs: string[] = [];
+		for (const pkg of ["tui/src", "coding-agent/src"]) {
+			const glob = new Glob("**/*.ts");
+			for await (const rel of glob.scan({ cwd: `${root}/${pkg}` })) {
+				const src = await Bun.file(`${root}/${pkg}/${rel}`).text();
+				if (/function\s+isSubsequenceMatch\b/.test(src)) subsequenceDefs.push(`${pkg}/${rel}`);
+				if (/function\s+fuzzyMatch\s*\(\s*query:\s*string,\s*target:\s*string\s*\):\s*boolean/.test(src)) {
+					booleanFuzzyMatchDefs.push(`${pkg}/${rel}`);
+				}
+			}
+		}
+		expect(subsequenceDefs).toEqual(["tui/src/fuzzy.ts"]);
+		expect(booleanFuzzyMatchDefs).toEqual([]);
 	});
 });
