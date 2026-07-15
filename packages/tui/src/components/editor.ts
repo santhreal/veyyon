@@ -59,8 +59,12 @@ interface TextChunk {
  * @param line - The text line to wrap
  * @param maxWidth - Maximum visible width per chunk
  * @returns Array of chunks with text and position information
+ *
+ * Exported for the wrap-invariant fuzz (chunk indices drive cursor positioning,
+ * so they must stay in-range and ordered for any line/width); not part of the
+ * package's main entrypoint.
  */
-function wordWrapLine(line: string, maxWidth: number): TextChunk[] {
+export function wordWrapLine(line: string, maxWidth: number): TextChunk[] {
 	if (!line || maxWidth <= 0) {
 		return [{ text: "", startIndex: 0, endIndex: 0 }];
 	}
