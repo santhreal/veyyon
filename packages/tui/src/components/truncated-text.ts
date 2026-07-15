@@ -39,11 +39,15 @@ export class TruncatedText implements Component {
 		// Calculate available width after horizontal padding
 		const availableWidth = Math.max(1, width - this.#paddingX * 2);
 
-		// Take only the first line (stop at newline)
+		// Take only the first line. Cut at the first CR or LF: cutting on `\n`
+		// alone leaves a stray `\r` from a CRLF source in the output, which moves
+		// the terminal cursor to column 0 and corrupts the rendered row; a bare
+		// `\r` (no `\n`) would slip through entirely. Cutting before either keeps
+		// the line a single clean row.
 		let singleLineText = this.#text;
-		const newlineIndex = this.#text.indexOf("\n");
-		if (newlineIndex !== -1) {
-			singleLineText = this.#text.substring(0, newlineIndex);
+		const breakIndex = this.#text.search(/[\r\n]/);
+		if (breakIndex !== -1) {
+			singleLineText = this.#text.slice(0, breakIndex);
 		}
 
 		// Truncate text if needed (accounting for ANSI codes)

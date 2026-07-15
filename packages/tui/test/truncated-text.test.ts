@@ -122,6 +122,28 @@ describe("TruncatedText component", () => {
 		expect(!stripped.includes("Third line")).toBeTruthy();
 	});
 
+	it("cuts at a CRLF without leaving a stray carriage return", () => {
+		const crlf = new TruncatedText("First line\r\nSecond line", 0, 0);
+		const lines = crlf.render(40);
+
+		expect(lines.length).toBe(1);
+		// No stray control chars: a leftover `\r` would move the cursor to col 0.
+		expect(lines[0].includes("\r")).toBe(false);
+		expect(lines[0].includes("\n")).toBe(false);
+		expect(stripVTControlCharacters(lines[0]).trim()).toBe("First line");
+		expect(lines[0].includes("Second line")).toBe(false);
+	});
+
+	it("stops at a bare carriage return", () => {
+		const cr = new TruncatedText("Alpha\rBeta", 0, 0);
+		const lines = cr.render(40);
+
+		expect(lines.length).toBe(1);
+		expect(lines[0].includes("\r")).toBe(false);
+		expect(stripVTControlCharacters(lines[0]).trim()).toBe("Alpha");
+		expect(lines[0].includes("Beta")).toBe(false);
+	});
+
 	it("truncates first line even with newlines in text", () => {
 		const longMultilineText = "This is a very long first line that needs truncation\nSecond line";
 		const text = new TruncatedText(longMultilineText, 1, 0);
