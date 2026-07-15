@@ -343,13 +343,13 @@ function frameText(text: string, max: number): string {
 /**
  * Draw a left-railed mini terminal:
  * ```
- * ╭─ <header>
+ * ┌─ <header>
  * │ <body…>
- * ╰─ <footer>
+ * └─ <footer>
  * ```
  */
 function miniFrame(uiTheme: Theme, header: string, body: string[], footer?: string): string[] {
-	const box = uiTheme.boxRound;
+	const box = uiTheme.boxSharp;
 	const rail = (glyph: string) => uiTheme.fg("dim", glyph);
 	const lines = [`${rail(`${box.topLeft}${box.horizontal}`)} ${header}`];
 	for (const row of body) {
