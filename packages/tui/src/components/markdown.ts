@@ -1001,6 +1001,8 @@ export class Markdown implements Component {
 	#codeBlockIndent: number;
 	/** Current token-render recursion depth (nested blockquotes/lists). */
 	#renderDepth = 0;
+	/** Current inline-render recursion depth (nested strong/em/link/del). */
+	#inlineDepth = 0;
 
 	// Cache for rendered output. Cached arrays are shared and returned by
 	// reference (render contract: results are component-owned and immutable to
@@ -1670,6 +1672,18 @@ export class Markdown implements Component {
 	 */
 	static readonly MAX_RENDER_DEPTH = 20;
 
+	/**
+	 * Inline-token recursion cap. marked nests emphasis arbitrarily deep — a run
+	 * like `**`×N around content parses to N-deep strong>strong>… tokens — and
+	 * `#renderInlineTokens` wraps each level in ANSI codes, so the bubbling string
+	 * concatenation is O(n^2): `**`×3000 rendered in ~8.8s (a per-message hang on
+	 * untrusted model output). Real inline nesting (a link holding bold holding
+	 * code) is only a handful deep; past this cap, flatten the subtree to styled
+	 * plain text in one pass (`plainInlineTokens` is O(n), no per-level wrapping)
+	 * instead of recursing.
+	 */
+	static readonly MAX_INLINE_DEPTH = 32;
+
 	#renderToken(token: Token, width: number, nextTokenType?: string, styleContext?: InlineStyleContext): string[] {
 		if (this.#renderDepth >= Markdown.MAX_RENDER_DEPTH) {
 			const raw = "raw" in token && typeof token.raw === "string" ? token.raw : "";
@@ -1684,12 +1698,7 @@ export class Markdown implements Component {
 		}
 	}
 
-	#renderTokenInner(
-		token: Token,
-		width: number,
-		nextTokenType?: string,
-		styleContext?: InlineStyleContext,
-	): string[] {
+	#renderTokenInner(token: Token, width: number, nextTokenType?: string, styleContext?: InlineStyleContext): string[] {
 		const lines: string[] = [];
 
 		// Display math block (own-line `$$…$$` / `\[…\]`): stack `\frac` vertically
@@ -1927,6 +1936,22 @@ export class Markdown implements Component {
 	}
 
 	#renderInlineTokens(tokens: Token[], styleContext?: InlineStyleContext): string {
+		if (this.#inlineDepth >= Markdown.MAX_INLINE_DEPTH) {
+			// Degrade a pathologically deep inline tree to styled plain text: one
+			// O(n) flatten + one style pass, no further per-level ANSI wrapping.
+			const ctx = styleContext ?? this.#getDefaultInlineStyleContext();
+			const plain = plainInlineTokens(tokens);
+			return plain === "" ? "" : ctx.applyText(plain);
+		}
+		this.#inlineDepth++;
+		try {
+			return this.#renderInlineTokensInner(tokens, styleContext);
+		} finally {
+			this.#inlineDepth--;
+		}
+	}
+
+	#renderInlineTokensInner(tokens: Token[], styleContext?: InlineStyleContext): string {
 		let result = "";
 		const resolvedStyleContext = styleContext ?? this.#getDefaultInlineStyleContext();
 		const { applyText, stylePrefix } = resolvedStyleContext;
@@ -2420,7 +2445,19 @@ export function renderInlineMarkdown(text: string, mdTheme: MarkdownTheme, baseC
 	return result;
 }
 
-function renderInlineTokens(tokens: Token[], mdTheme: MarkdownTheme, applyText: (t: string) => string): string {
+function renderInlineTokens(
+	tokens: Token[],
+	mdTheme: MarkdownTheme,
+	applyText: (t: string) => string,
+	depth = 0,
+): string {
+	// Same O(n^2) ANSI-wrapping hazard as Markdown#renderInlineTokens: deeply
+	// nested emphasis (`**`×N) recurses N deep, each level re-wrapping. Past the
+	// shared cap, flatten to styled plain text (O(n), no per-level wrapping).
+	if (depth >= Markdown.MAX_INLINE_DEPTH) {
+		const plain = plainInlineTokens(tokens);
+		return plain === "" ? "" : applyText(plain);
+	}
 	let result = "";
 	const styleReset = applyText("");
 	for (const token of collapseInlineHtml(tokens)) {
@@ -2431,25 +2468,28 @@ function renderInlineTokens(tokens: Token[], mdTheme: MarkdownTheme, applyText: 
 		switch (token.type) {
 			case "text":
 				if (token.tokens && token.tokens.length > 0) {
-					result += renderInlineTokens(token.tokens, mdTheme, applyText);
+					result += renderInlineTokens(token.tokens, mdTheme, applyText, depth + 1);
 				} else {
 					result += applyText(normalizeHtmlEntitiesForTerminal(token.text));
 				}
 				break;
 			case "strong":
-				result += mdTheme.bold(renderInlineTokens(token.tokens || [], mdTheme, applyText)) + styleReset;
+				result += mdTheme.bold(renderInlineTokens(token.tokens || [], mdTheme, applyText, depth + 1)) + styleReset;
 				break;
 			case "em":
-				result += mdTheme.italic(renderInlineTokens(token.tokens || [], mdTheme, applyText)) + styleReset;
+				result +=
+					mdTheme.italic(renderInlineTokens(token.tokens || [], mdTheme, applyText, depth + 1)) + styleReset;
 				break;
 			case "codespan":
 				result += mdTheme.code(token.text) + styleReset;
 				break;
 			case "del":
-				result += mdTheme.strikethrough(renderInlineTokens(token.tokens || [], mdTheme, applyText)) + styleReset;
+				result +=
+					mdTheme.strikethrough(renderInlineTokens(token.tokens || [], mdTheme, applyText, depth + 1)) +
+					styleReset;
 				break;
 			case "link": {
-				const linkText = renderInlineTokens(token.tokens || [], mdTheme, applyText);
+				const linkText = renderInlineTokens(token.tokens || [], mdTheme, applyText, depth + 1);
 				result += mdTheme.link(mdTheme.underline(linkText)) + styleReset;
 				break;
 			}

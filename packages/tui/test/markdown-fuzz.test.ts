@@ -133,10 +133,43 @@ describe("markdown deep-nesting DoS", () => {
 	// The caps must be invisible to realistic content: shallow nesting renders
 	// exactly as it would without them.
 	it("leaves realistic nested content unchanged", () => {
-		const md = "# Title\n\n- a\n  - b\n    - c\n\n> quote\n>> nested quote\n\n```js\nconst x = 1;\n```\n\nText **bold** and `code`.";
+		const md =
+			"# Title\n\n- a\n  - b\n    - c\n\n> quote\n>> nested quote\n\n```js\nconst x = 1;\n```\n\nText **bold** and `code`.";
 		const capped = render(md);
 		expect(capped.length).toBeGreaterThan(8);
 		expect(capped.join("\n")).toContain("Title");
 		expect(capped.join("\n")).toContain("nested quote");
+	});
+
+	// marked parses a run of emphasis markers (`**`×N) into N-deep strong>strong>…
+	// inline tokens; the inline renderer wraps each level in ANSI codes, so the
+	// bubbling string concatenation was O(n^2) — `**`×3000 took ~8.8s, a per-
+	// message hang on untrusted model output. The inline-depth guard
+	// (Markdown.MAX_INLINE_DEPTH) flattens past the cap, cutting OUR contribution
+	// to near-zero (the small residual is marked's own lexer, out of our hands).
+	it("does not blow up on deeply nested inline emphasis", () => {
+		for (const marker of ["**", "*", "__", "_", "~~"]) {
+			const src = marker.repeat(3000) + "a" + marker.repeat(3000);
+			const t0 = performance.now();
+			let lines: readonly string[];
+			try {
+				lines = render(src);
+			} catch (e) {
+				throw new Error(`deep inline ${marker} threw: ${e}`);
+			}
+			const elapsedMs = performance.now() - t0;
+			expect(Array.isArray(lines)).toBe(true);
+			// Was ~8.8s before the guard; now dominated by marked's lexer (~0.4s).
+			expect(elapsedMs).toBeLessThan(3000);
+		}
+	});
+
+	it("still styles realistic (shallow) nested inline formatting", () => {
+		const lines = render("A **bold _em [link](u) `code`_** tail");
+		const joined = lines.join("\n");
+		expect(joined).toContain("bold");
+		expect(joined).toContain("link");
+		expect(joined).toContain("code");
+		expect(joined).toContain("tail");
 	});
 });
