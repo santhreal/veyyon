@@ -1,12 +1,13 @@
-# OMP Coding Agent Installer for Windows
-# Usage: irm https://raw.githubusercontent.com/can1357/oh-my-pi/main/scripts/install.ps1 | iex
+# Veyyon Coding Agent Installer for Windows
+# Usage: irm https://veyyon.dev/install.ps1 | iex
+#   or:  irm https://raw.githubusercontent.com/santhsecurity/veyyon/main/scripts/install.ps1 | iex
 #
 # Or with options:
-#   & ([scriptblock]::Create((irm https://raw.githubusercontent.com/can1357/oh-my-pi/main/scripts/install.ps1))) -Source
-#   & ([scriptblock]::Create((irm https://raw.githubusercontent.com/can1357/oh-my-pi/main/scripts/install.ps1))) -Binary
-#   & ([scriptblock]::Create((irm https://raw.githubusercontent.com/can1357/oh-my-pi/main/scripts/install.ps1))) -Source -Ref v3.20.1
-#   & ([scriptblock]::Create((irm https://raw.githubusercontent.com/can1357/oh-my-pi/main/scripts/install.ps1))) -Source -Ref main
-#   & ([scriptblock]::Create((irm https://raw.githubusercontent.com/can1357/oh-my-pi/main/scripts/install.ps1))) -Binary -Ref v3.20.1
+#   & ([scriptblock]::Create((irm https://veyyon.dev/install.ps1))) -Source
+#   & ([scriptblock]::Create((irm https://veyyon.dev/install.ps1))) -Binary
+#   & ([scriptblock]::Create((irm https://veyyon.dev/install.ps1))) -Source -Ref v16.5.2
+#   & ([scriptblock]::Create((irm https://veyyon.dev/install.ps1))) -Source -Ref main
+#   & ([scriptblock]::Create((irm https://veyyon.dev/install.ps1))) -Binary -Ref v16.5.2
 
 param(
     [switch]$Source,
@@ -16,10 +17,13 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$Repo = "can1357/oh-my-pi"
+$Repo = "santhsecurity/veyyon"
 $Package = "@veyyon/pi-coding-agent"
-$InstallDir = if ($env:PI_INSTALL_DIR) { $env:PI_INSTALL_DIR } else { "$env:LOCALAPPDATA\omp" }
-$BinaryName = "omp-windows-x64.exe"
+# VEYYON_INSTALL_DIR is the modern name; PI_INSTALL_DIR is honored for compatibility.
+$InstallDir = if ($env:VEYYON_INSTALL_DIR) { $env:VEYYON_INSTALL_DIR } elseif ($env:PI_INSTALL_DIR) { $env:PI_INSTALL_DIR } else { "$env:LOCALAPPDATA\veyyon" }
+$BinName = "veyyon"
+$AliasName = "vey"
+$BinaryAsset = "veyyon-windows-x64.exe"
 $MinimumBunVersion = "1.3.14"
 
 function Test-BunInstalled {
@@ -102,7 +106,7 @@ function Find-BashShell {
 
 function Configure-BashShell {
     try {
-        $settingsDir = Join-Path $env:USERPROFILE ".omp\agent"
+        $settingsDir = Join-Path $env:USERPROFILE ".veyyon\agent"
         $settingsFile = Join-Path $settingsDir "settings.json"
 
         # Check if settings.json already has a shellPath configured
@@ -143,29 +147,34 @@ function Configure-BashShell {
 
             # Write settings
             $settings | ConvertTo-Json -Depth 10 | Set-Content $settingsFile -Encoding UTF8
-            Write-Host "✓ Configured shell path in $settingsFile" -ForegroundColor Green
+            Write-Host "OK  Configured shell path in $settingsFile" -ForegroundColor Green
         } else {
             Write-Host ""
-            Write-Host "⚠ No bash shell found!" -ForegroundColor Yellow
-            Write-Host "  OMP requires a bash shell on Windows. Options:" -ForegroundColor Yellow
-            Write-Host "    1. Install Git for Windows: https://git-scm.com/download/win" -ForegroundColor Yellow
-            Write-Host "    2. Use WSL, Cygwin, or MSYS2" -ForegroundColor Yellow
+            Write-Host "!  No bash shell found!" -ForegroundColor Yellow
+            Write-Host "   Veyyon requires a bash shell on Windows. Options:" -ForegroundColor Yellow
+            Write-Host "     1. Install Git for Windows: https://git-scm.com/download/win" -ForegroundColor Yellow
+            Write-Host "     2. Use WSL, Cygwin, or MSYS2" -ForegroundColor Yellow
             Write-Host ""
-            Write-Host "  After installing, you can set a custom path in:" -ForegroundColor Yellow
-            Write-Host "    $settingsFile" -ForegroundColor Yellow
-            Write-Host '    { "shellPath": "C:\\path\\to\\bash.exe" }' -ForegroundColor Yellow
+            Write-Host "   After installing, you can set a custom path in:" -ForegroundColor Yellow
+            Write-Host "     $settingsFile" -ForegroundColor Yellow
+            Write-Host '     { "shellPath": "C:\\path\\to\\bash.exe" }' -ForegroundColor Yellow
         }
     } catch {
-        Write-Host "⚠ Could not configure bash shell: $_" -ForegroundColor Yellow
+        Write-Host "!  Could not configure bash shell: $_" -ForegroundColor Yellow
     }
 }
 
-function Install-Bun {
-    Write-Host "Installing bun..."
-    irm bun.sh/install.ps1 | iex
-    # Refresh PATH
-    $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "User") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "Machine")
-    Assert-BunVersion $MinimumBunVersion
+# Write a `vey.cmd` shim next to the binary so `vey` launches Veyyon, mirroring
+# the `vey` symlink the Unix installer creates.
+function Install-Alias {
+    param([string]$Target)
+    try {
+        $shim = Join-Path $InstallDir "$AliasName.cmd"
+        Set-Content -Path $shim -Value "@echo off`r`n`"$Target`" %*" -Encoding ASCII
+        Write-Host "OK  linked '$AliasName' -> $BinName" -ForegroundColor Green
+    } catch {
+        Write-Host "!  could not create '$AliasName' shim (launch with '$BinName')" -ForegroundColor Yellow
+    }
 }
 
 function Install-ViaBun {
@@ -175,7 +184,7 @@ function Install-ViaBun {
             throw "git is required for -Ref when installing from source"
         }
 
-        $tmpRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("omp-install-" + [System.Guid]::NewGuid().ToString("N"))
+        $tmpRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("veyyon-install-" + [System.Guid]::NewGuid().ToString("N"))
         New-Item -ItemType Directory -Force -Path $tmpRoot | Out-Null
 
         try {
@@ -228,11 +237,11 @@ function Install-ViaBun {
     }
 
     Write-Host ""
-    Write-Host "✓ Installed omp via bun" -ForegroundColor Green
+    Write-Host "OK  Installed veyyon via bun" -ForegroundColor Green
 
     Configure-BashShell
 
-    Write-Host "Run 'omp' to get started!"
+    Write-Host "Run '$BinName' (or '$AliasName') to get started!"
 }
 
 function Install-Binary {
@@ -257,13 +266,31 @@ function Install-Binary {
     New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
 
     # Download binary
-    $BinaryUrl = "https://github.com/$Repo/releases/download/$Latest/$BinaryName"
-    Write-Host "Downloading $BinaryName..."
-    $OutPath = Join-Path $InstallDir "omp.exe"
+    $BinaryUrl = "https://github.com/$Repo/releases/download/$Latest/$BinaryAsset"
+    Write-Host "Downloading $BinaryAsset..."
+    $OutPath = Join-Path $InstallDir "$BinName.exe"
     Invoke-WebRequest -Uri $BinaryUrl -OutFile $OutPath -TimeoutSec 900
 
+    # Verify checksum when the release publishes one — loud, never silent.
+    try {
+        $expected = (Invoke-RestMethod -Uri "$BinaryUrl.sha256" -TimeoutSec 30).Trim().Split(" ")[0].ToLower()
+        if ($expected) {
+            $actual = (Get-FileHash -Path $OutPath -Algorithm SHA256).Hash.ToLower()
+            if ($actual -ne $expected) {
+                Remove-Item $OutPath -ErrorAction SilentlyContinue
+                throw "checksum mismatch for $BinaryAsset (expected $expected, got $actual)"
+            }
+            Write-Host "OK  checksum verified" -ForegroundColor Green
+        }
+    } catch {
+        if ($_.Exception.Message -like "*checksum mismatch*") { throw }
+        Write-Host "!  no published checksum for $BinaryAsset - installing UNVERIFIED" -ForegroundColor Yellow
+    }
+
+    Install-Alias -Target $OutPath
+
     Write-Host ""
-    Write-Host "✓ Installed omp to $OutPath" -ForegroundColor Green
+    Write-Host "OK  Installed veyyon to $OutPath" -ForegroundColor Green
 
     # Add to PATH if not already there
     $UserPath = [Environment]::GetEnvironmentVariable("Path", "User")
@@ -276,9 +303,9 @@ function Install-Binary {
     Configure-BashShell
 
     if ($needsRestart) {
-        Write-Host "Restart your terminal, then run 'omp' to get started!"
+        Write-Host "Restart your terminal, then run '$BinName' (or '$AliasName') to get started!"
     } else {
-        Write-Host "Run 'omp' to get started!"
+        Write-Host "Run '$BinName' (or '$AliasName') to get started!"
     }
 }
 
@@ -289,7 +316,9 @@ if ($Ref -and -not $Source -and -not $Binary) {
 
 if ($Source) {
     if (-not (Test-BunInstalled)) {
-        Install-Bun
+        Write-Host "Installing bun..."
+        irm bun.sh/install.ps1 | iex
+        $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "User") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "Machine")
     }
     Assert-BunVersion $MinimumBunVersion
     Install-ViaBun
