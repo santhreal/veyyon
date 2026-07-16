@@ -23,13 +23,6 @@ const MIN_CONTENT_WIDTH = 20;
 /** Cross-dissolve duration from the splash into the first scene. */
 const SCENE_TRANSITION_MS = 420;
 
-function centerLine(line: string, width: number): string {
-	const lineWidth = visibleWidth(line);
-	if (lineWidth >= width) return truncateToWidth(line, width);
-	const left = Math.floor((width - lineWidth) / 2);
-	return padding(left) + line + padding(width - left - lineWidth);
-}
-
 function clampLine(line: string, width: number): string {
 	const truncated = truncateToWidth(line, width);
 	return truncated + padding(Math.max(0, width - visibleWidth(truncated)));
@@ -196,17 +189,30 @@ export class SetupWizardComponent implements Component, OverlayFocusOwner {
 		return this.#fitToScreen(lines, safeWidth, height);
 	}
 
+	/** Segmented ember progress: filled bars up to the current scene, dim ahead. */
+	#renderProgress(): string {
+		const total = this.scenes.length;
+		const current = this.#sceneIndex + 1;
+		const segments: string[] = [];
+		for (let i = 0; i < total; i++) {
+			segments.push(i < current ? theme.fg("accent", "▰") : theme.fg("dim", "▱"));
+		}
+		return `${segments.join(" ")}   ${theme.fg("muted", `Step ${current} of ${total}`)}`;
+	}
+
 	#renderScene(width: number, height: number): string[] {
 		const scene = this.scenes[this.#sceneIndex];
 		const title = this.#activeScene?.title ?? scene?.title ?? "Setup";
 		const subtitle = this.#activeScene?.subtitle;
 		const contentWidth = Math.max(MIN_CONTENT_WIDTH, width - SCENE_MARGIN_X * 2);
 		const logo = gradientLogo(VEYYON_LOGO, 0);
+		// One left rail: the wordmark, progress, title, and body all share the
+		// SCENE_MARGIN_X edge so the header never floats away from the content.
 		const header = [
 			"",
-			...logo.map(line => centerLine(line, width)),
-			centerLine(theme.bold(theme.fg("accent", APP_NAME)), width),
-			centerLine(theme.fg("muted", `Setup step ${this.#sceneIndex + 1} of ${this.scenes.length}`), width),
+			...logo.map(line => indentLine(line, width, SCENE_MARGIN_X)),
+			indentLine(theme.bold(theme.fg("accent", APP_NAME)), width, SCENE_MARGIN_X),
+			indentLine(this.#renderProgress(), width, SCENE_MARGIN_X),
 			"",
 			indentLine(theme.bold(title), width, SCENE_MARGIN_X),
 		];
@@ -218,7 +224,11 @@ export class SetupWizardComponent implements Component, OverlayFocusOwner {
 
 		const footer = [
 			"",
-			centerLine(theme.fg("dim", "up/down select  |  enter confirm  |  esc skip  |  ctrl+c exit"), width),
+			indentLine(
+				theme.fg("dim", "up/down select   ·   enter confirm   ·   esc skip   ·   ctrl+c exit"),
+				width,
+				SCENE_MARGIN_X,
+			),
 		];
 		const maxBodyLines = Math.max(0, height - header.length - footer.length);
 		const body = this.#activeScene?.render(contentWidth).slice(0, maxBodyLines) ?? [];
