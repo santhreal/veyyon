@@ -3,10 +3,10 @@
  */
 
 import type { Api, ModelSpec } from "@veyyon/pi-ai/types";
-import { ConfigFile } from "./config-file";
+import { ConfigFile, deferSchema } from "./config-file";
 import {
 	type ModelsConfig,
-	ModelsConfigSchema,
+	modelsConfigSchemas,
 	type ProviderAuthMode,
 	type ProviderDiscovery,
 } from "./models-config-schema";
@@ -106,29 +106,29 @@ export function validateProviderConfiguration(
 	}
 }
 
-export const ModelsConfigFile = new ConfigFile<ModelsConfig>("models", ModelsConfigSchema).withValidation(
+export const ModelsConfigFile = new ConfigFile<ModelsConfig>(
 	"models",
-	config => {
-		const providers = config.providers ?? {};
-		for (const providerName in providers) {
-			const providerConfig = providers[providerName];
-			validateProviderConfiguration(
-				providerName,
-				{
-					baseUrl: providerConfig.baseUrl,
-					headers: providerConfig.headers,
-					apiKey: providerConfig.apiKey,
-					api: providerConfig.api as Api | undefined,
-					auth: (providerConfig.auth ?? "apiKey") as ProviderAuthMode,
-					discovery: providerConfig.discovery as ProviderDiscovery | undefined,
-					compat: providerConfig.compat,
-					remoteCompaction: providerConfig.remoteCompaction,
-					disableStrictTools: providerConfig.disableStrictTools,
-					modelOverrides: providerConfig.modelOverrides,
-					models: (providerConfig.models ?? []) as ProviderValidationModel[],
-				},
-				"models-config",
-			);
-		}
-	},
-);
+	deferSchema(() => modelsConfigSchemas().ModelsConfigSchema),
+).withValidation("models", config => {
+	const providers = config.providers ?? {};
+	for (const providerName in providers) {
+		const providerConfig = providers[providerName];
+		validateProviderConfiguration(
+			providerName,
+			{
+				baseUrl: providerConfig.baseUrl,
+				headers: providerConfig.headers,
+				apiKey: providerConfig.apiKey,
+				api: providerConfig.api as Api | undefined,
+				auth: (providerConfig.auth ?? "apiKey") as ProviderAuthMode,
+				discovery: providerConfig.discovery as ProviderDiscovery | undefined,
+				compat: providerConfig.compat,
+				remoteCompaction: providerConfig.remoteCompaction,
+				disableStrictTools: providerConfig.disableStrictTools,
+				modelOverrides: providerConfig.modelOverrides,
+				models: (providerConfig.models ?? []) as ProviderValidationModel[],
+			},
+			"models-config",
+		);
+	}
+});

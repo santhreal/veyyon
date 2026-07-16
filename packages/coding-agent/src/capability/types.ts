@@ -66,6 +66,8 @@ export interface LoadOptions {
 	excludeProviders?: string[];
 	/** Custom cwd. Default: getProjectDir() */
 	cwd?: string;
+	/** Custom home dir for user-level scans. Default: os.homedir() */
+	home?: string;
 	/** Include items even if they fail validation. Default: false */
 	includeInvalid?: boolean;
 	/** Include items disabled via settings. Default: false */

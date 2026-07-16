@@ -37,7 +37,16 @@ export interface ModelRoleInfo {
 	color?: ThemeColor;
 	/** If true, the role is functional but not shown in the model selector UI. */
 	hidden?: boolean;
+	/**
+	 * What an unset role resolves to, shown in role pickers. Every role
+	 * inherits the live main model when unset (resolveRoleSelectionWithInherit)
+	 * except advisor, which resolves the thinking priority chain by design.
+	 */
+	unsetLabel?: string;
 }
+
+/** Picker label for roles that follow the live main model when unset. */
+export const ROLE_INHERIT_LABEL = "inherit (follows main model)";
 
 export const MODEL_ROLES: Record<ModelRole, ModelRoleInfo> = {
 	/** Legacy only — not selectable; interactive model is the session model, not a role. */
@@ -50,7 +59,7 @@ export const MODEL_ROLES: Record<ModelRole, ModelRoleInfo> = {
 	commit: { tag: "COMMIT", name: "Commit", color: "dim" },
 	tiny: { tag: "TINY", name: "Tiny", color: "dim" },
 	task: { tag: "TASK", name: "Subtask", color: "muted" },
-	advisor: { tag: "ADVISOR", name: "Advisor", color: "accent" },
+	advisor: { tag: "ADVISOR", name: "Advisor", color: "accent", unsetLabel: "auto (thinking-model chain)" },
 };
 
 export const MODEL_ROLE_IDS: ModelRole[] = [
@@ -118,6 +127,7 @@ export function getRoleInfo(role: string, settings: Settings): RoleInfo {
 			name: configured.name || builtIn?.name || role,
 			color: configured.color && isValidThemeColor(configured.color) ? configured.color : builtIn?.color,
 			hidden: configured.hidden ?? builtIn?.hidden,
+			unsetLabel: builtIn?.unsetLabel,
 		};
 	}
 

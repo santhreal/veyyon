@@ -121,18 +121,41 @@ export type LoadResult<T> =
 	| { value: T; error?: undefined; status: "ok" }
 	| { value?: null; error?: unknown; status: "not-found" };
 
+/**
+ * A schema supplied as a builder instead of a constructed Type, so ConfigFile
+ * defers ArkType construction until the config is actually validated (missing
+ * files never pay it). Use {@link deferSchema} — a plain thunk is ambiguous
+ * because ArkType Types are themselves callable.
+ */
+export interface DeferredSchema {
+	readonly deferredSchema: true;
+	readonly build: () => Type;
+}
+
+/** Mark a schema builder for lazy construction on first validation. */
+export function deferSchema(build: () => Type): DeferredSchema {
+	return { deferredSchema: true, build };
+}
+
+function isDeferredSchema(schema: Type | DeferredSchema): schema is DeferredSchema {
+	return typeof schema === "object" && schema !== null && "deferredSchema" in schema;
+}
+
 export class ConfigFile<T> implements IConfigFile<T> {
 	readonly #basePath: string;
 	readonly #yamlFallbackPath: string | null;
 	readonly #jsonMigrationPath: string | null;
+	readonly #schemaSource: Type | DeferredSchema;
+	#resolvedSchema?: Type;
 	#cache?: LoadResult<T>;
 	#auxValidate?: (value: T) => void;
 
 	constructor(
 		readonly id: string,
-		readonly schema: Type,
+		schema: Type | DeferredSchema,
 		configPath: string = path.join(getAgentDir(), `${id}.yml`),
 	) {
+		this.#schemaSource = schema;
 		this.#basePath = configPath;
 		if (configPath.endsWith(".yml")) {
 			this.#yamlFallbackPath = `${configPath.slice(0, -4)}.yaml`;
@@ -162,9 +185,15 @@ export class ConfigFile<T> implements IConfigFile<T> {
 		migrateJsonToYml(this.#jsonMigrationPath, this.#basePath);
 	}
 
+	/** The validation schema, constructing a deferred one on first access. */
+	get schema(): Type {
+		this.#resolvedSchema ??= isDeferredSchema(this.#schemaSource) ? this.#schemaSource.build() : this.#schemaSource;
+		return this.#resolvedSchema;
+	}
+
 	relocate(configPath?: string): ConfigFile<T> {
 		if (!configPath || configPath === this.#basePath) return this;
-		const result = new ConfigFile<T>(this.id, this.schema, configPath);
+		const result = new ConfigFile<T>(this.id, this.#schemaSource, configPath);
 		result.#auxValidate = this.#auxValidate;
 		result.#ensureMigrated();
 		return result;

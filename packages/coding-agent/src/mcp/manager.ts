@@ -188,6 +188,11 @@ export class MCPManager {
 	#pendingConnections = new Map<string, Promise<MCPServerConnection>>();
 	#pendingToolLoads = new Map<string, Promise<ToolLoadResult>>();
 	#sources = new Map<string, SourceMeta>();
+	// Last connection failure per server, retained so `/mcp list` can show *why*
+	// a server is not connected instead of a bare "not connected". Cleared when
+	// the server later connects. This is what lets the noisy startup banner shrink
+	// to a count without hiding the error (the detail lives in `/mcp list`).
+	#lastErrors = new Map<string, string>();
 	#authStorage: AuthStorage | null = null;
 	#onNotification?: (serverName: string, method: string, params: unknown) => void;
 	#onToolsChanged?: (tools: CustomTool<TSchema, MCPToolDetails>[]) => void;
@@ -480,6 +485,7 @@ export class MCPManager {
 					this.#onToolsChanged?.(this.#tools);
 					void this.toolCache?.set(name, config, serverTools);
 
+					this.#lastErrors.delete(name);
 					onStatus?.({ type: "connected", serverName: name });
 					await this.#loadServerResourcesAndPrompts(name, connection);
 				})
@@ -487,6 +493,7 @@ export class MCPManager {
 					if (this.#pendingToolLoads.get(name) !== toolsPromise) return;
 					this.#pendingToolLoads.delete(name);
 					const message = error instanceof Error ? error.message : String(error);
+					this.#lastErrors.set(name, message);
 					onStatus?.({ type: "failed", serverName: name, error: message });
 					if (!allowBackgroundLogging || reportedErrors.has(name)) return;
 					logger.error("MCP tool load failed", { path: `mcp:${name}`, error: message });
@@ -497,6 +504,7 @@ export class MCPManager {
 		if (statusServerNames.length > 0 && onStatus) {
 			onStatus({ type: "connecting", serverNames: statusServerNames });
 			for (const { name, message } of validationFailures) {
+				this.#lastErrors.set(name, message);
 				onStatus({ type: "failed", serverName: name, error: message });
 			}
 		}
@@ -672,6 +680,16 @@ export class MCPManager {
 		)
 			return "connecting";
 		return "disconnected";
+	}
+
+	/**
+	 * The last connection failure for a server, if it failed and has not since
+	 * reconnected. Lets `/mcp list` explain a "not connected" server instead of
+	 * leaving the operator to guess — the detail the compact startup banner omits.
+	 */
+	getLastError(name: string): string | undefined {
+		if (this.#connections.has(name)) return undefined;
+		return this.#lastErrors.get(name);
 	}
 
 	/**

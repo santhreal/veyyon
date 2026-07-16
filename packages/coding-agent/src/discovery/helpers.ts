@@ -777,17 +777,17 @@ export function parseClaudePluginsRegistry(content: string): ClaudePluginsRegist
  * Resolve the active project registry path by walking up from `cwd`.
  *
  * Walk order:
- * 1. Walk up from `cwd` looking for the nearest directory containing `.omp/`.
- *    The first match returns `<dir>/.omp/plugins/installed_plugins.json`.
- * 2. If no `.omp/` is found, rescan from `cwd` upward looking for `.git`.
- *    The git root is used as an anchor: `<gitRoot>/.omp/plugins/installed_plugins.json`.
+ * 1. Walk up from `cwd` looking for the nearest directory containing the project
+ *    config dir (`.veyyon/`). The first match returns `<dir>/.veyyon/plugins/installed_plugins.json`.
+ * 2. If none is found, rescan from `cwd` upward looking for `.git`.
+ *    The git root is used as an anchor: `<gitRoot>/.veyyon/plugins/installed_plugins.json`.
  * 3. If neither is found, return `null` — no project context is active.
  *
  * This is the single source of truth for "active project root" used by install,
  * uninstall, list, upgrade, discovery, and doctor. Deterministic for a given `cwd`.
  */
 export async function resolveActiveProjectRegistryPath(cwd: string): Promise<string | null> {
-	// Pass 1: walk up looking for an existing .omp/ directory (nearest wins).
+	// Pass 1: walk up looking for an existing project config directory (nearest wins).
 	// Stop before os.homedir() — ~/.veyyon/ is the user-level config dir, not a project root.
 	const homeDir = os.homedir();
 	let dir = path.resolve(cwd);
@@ -823,11 +823,11 @@ export async function resolveActiveProjectRegistryPath(cwd: string): Promise<str
 }
 
 /**
- * Like resolveActiveProjectRegistryPath, but falls back to `<cwd>/.omp/plugins/installed_plugins.json`
- * when no project anchor (.omp/ or .git/) is found.
+ * Like resolveActiveProjectRegistryPath, but falls back to `<cwd>/.veyyon/plugins/installed_plugins.json`
+ * when no project anchor (.veyyon/ or .git/) is found.
  *
  * Use this when the caller accepts an explicit --scope project so that installing into a freshly
- * bootstrapped directory (no .omp/ or .git/ yet) works: writeInstalledPluginsRegistry auto-creates
+ * bootstrapped directory (no .veyyon/ or .git/ yet) works: writeInstalledPluginsRegistry auto-creates
  * the directory tree on first write.
  *
  * Returns undefined when cwd is os.homedir() — that path is already the user registry and must
@@ -967,7 +967,7 @@ export async function listClaudePluginRoots(
 	}
 
 	// ── Project-scoped OMP registry ────────────────────────────────────────
-	// Loaded from the nearest .omp/plugins/installed_plugins.json relative to cwd.
+	// Loaded from the nearest .veyyon/plugins/installed_plugins.json relative to cwd.
 	// Project entries take precedence over user entries for the same plugin ID.
 	if (resolvedProjectPath) {
 		const projectContent = await readFile(resolvedProjectPath);

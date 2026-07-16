@@ -37,7 +37,7 @@ import {
 
 const PROVIDER_ID = "native";
 const DISPLAY_NAME = "OMP";
-const DESCRIPTION = "Native OMP configuration from ~/.veyyon and .omp/";
+const DESCRIPTION = "Native configuration from ~/.veyyon and .veyyon/";
 const PRIORITY = 100;
 
 const PATHS = SOURCE_PATHS.native;
@@ -270,7 +270,7 @@ registerProvider<SystemPrompt>(systemPromptCapability.id, {
 
 // Skills
 async function loadSkills(ctx: LoadContext): Promise<LoadResult<Skill>> {
-	// Walk up from cwd finding .omp/skills/ in ancestors (closest first)
+	// Walk up from cwd finding .veyyon/skills/ in ancestors (closest first)
 	const ancestors = getAncestorDirs(ctx.cwd, ctx.repoRoot ?? ctx.home);
 	const projectScans = ancestors.map(({ dir }) =>
 		scanSkillsFromDir(ctx, {
@@ -378,7 +378,7 @@ async function loadRules(ctx: LoadContext): Promise<LoadResult<Rule>> {
 	// https://omp.sh/docs/context-files as the file that gets "re-injected near
 	// the current turn so they keep hold across long conversations".
 	// User scope:    ~/.veyyon/agent/RULES.md
-	// Project scope: nearest .omp/RULES.md walking up from cwd to repoRoot
+	// Project scope: nearest .veyyon/RULES.md walking up from cwd to repoRoot
 	const userRulesFile = path.join(getAgentDir(), "RULES.md");
 	const userRule = await loadStickyRulesFile(userRulesFile, "user");
 	if (userRule) items.push(userRule);
@@ -929,7 +929,7 @@ async function loadContextFiles(ctx: LoadContext): Promise<LoadResult<ContextFil
 registerProvider<ContextFile>(contextFileCapability.id, {
 	id: PROVIDER_ID,
 	displayName: DISPLAY_NAME,
-	description: "Load AGENTS.md from .omp/ directories",
+	description: "Load AGENTS.md from .veyyon/ directories",
 	priority: PRIORITY,
 	load: loadContextFiles,
 });

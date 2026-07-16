@@ -176,7 +176,7 @@ export async function listOmpExtensionRoots(ctx: LoadContext): Promise<OmpExtens
  * Marketplace installs also create runtime symlinks for enable-state persistence,
  * but their resources are discovered through the `claude-plugins` provider.
  * Filtering them here prevents `/status` from showing the same plugin under both
- * "Claude Code Marketplace" and "OMP Extension Packages".
+ * "Claude Code Marketplace" and "Extension Packages".
  */
 async function realpathOrResolved(p: string): Promise<string> {
 	try {

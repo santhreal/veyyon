@@ -15,20 +15,27 @@ import {
 import { normalizeToolEventInput, resolveToolEventInput } from "../tool-event-input";
 import { applyToolProxy } from "../tool-proxy";
 import type { ExtensionRunner } from "./runner";
-import type { RegisteredTool, ToolCallEventResult } from "./types";
+import type { RegisteredTool, ToolCallEventResult, ToolRenderResultOptions } from "./types";
 
 /**
  * Adapts a RegisteredTool into an AgentTool.
  */
-export class RegisteredToolAdapter implements AgentTool<any, any, any> {
+export class RegisteredToolAdapter implements AgentTool<TSchema, unknown, unknown> {
 	declare name: string;
 	declare description: string;
-	declare parameters: any;
+	declare parameters: TSchema;
 	declare label: string;
 	declare strict: boolean;
 
-	renderCall?: (args: any, options: any, theme: any) => any;
-	renderResult?: (result: any, options: any, theme: any, args?: any) => any;
+	// `theme` stays unknown to satisfy the default AgentTool TTheme; the
+	// constructor narrows it once when bridging to the definition's Theme.
+	renderCall?: (args: Static<TSchema>, options: ToolRenderResultOptions, theme: unknown) => unknown;
+	renderResult?: (
+		result: AgentToolResult<unknown>,
+		options: ToolRenderResultOptions,
+		theme: unknown,
+		args?: Static<TSchema>,
+	) => unknown;
 
 	constructor(
 		private registeredTool: RegisteredTool,
@@ -41,11 +48,10 @@ export class RegisteredToolAdapter implements AgentTool<any, any, any> {
 		// enters the custom-renderer path, gets undefined back, and silently
 		// discards tool result text (extensions without renderers show blank).
 		if (registeredTool.definition.renderCall) {
-			this.renderCall = (args: any, options: any, theme: any) =>
-				registeredTool.definition.renderCall!(args, options, theme as Theme);
+			this.renderCall = (args, options, theme) => registeredTool.definition.renderCall!(args, options, theme as Theme);
 		}
 		if (registeredTool.definition.renderResult) {
-			this.renderResult = (result: any, options: any, theme: any, args?: any) =>
+			this.renderResult = (result, options, theme, args) =>
 				registeredTool.definition.renderResult!(
 					result,
 					{ expanded: options.expanded, isPartial: options.isPartial, spinnerFrame: options.spinnerFrame },
@@ -57,9 +63,9 @@ export class RegisteredToolAdapter implements AgentTool<any, any, any> {
 
 	async execute(
 		toolCallId: string,
-		params: any,
+		params: Static<TSchema>,
 		signal?: AbortSignal,
-		onUpdate?: AgentToolUpdateCallback<any>,
+		onUpdate?: AgentToolUpdateCallback<unknown>,
 		_context?: AgentToolContext,
 	) {
 		return this.registeredTool.definition.execute(toolCallId, params, signal, onUpdate, this.runner.createContext());
@@ -212,7 +218,7 @@ export class ExtensionToolWrapper<TParameters extends TSchema = TSchema, TDetail
 		}
 
 		// Execute the actual tool
-		let result: { content: any; details?: TDetails };
+		let result: { content: AgentToolResult<TDetails, TParameters>["content"]; details?: TDetails };
 		let executionError: Error | undefined;
 
 		try {

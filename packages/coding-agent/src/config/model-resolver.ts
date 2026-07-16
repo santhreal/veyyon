@@ -40,6 +40,7 @@ import { isAuthenticated, kNoAuth, type ModelRegistry } from "./model-registry";
 import {
 	DEFAULT_MODEL_ROLE_ALIAS,
 	formatModelRoleAlias,
+	LEGACY_DEFAULT_MODEL_ROLE,
 	LEGACY_MODEL_ROLE_ALIAS_PREFIX,
 	MODEL_ROLE_ALIAS_PREFIX,
 	MODEL_ROLE_IDS,
@@ -892,10 +893,7 @@ function normalizeModelPatternList(value: string | string[] | undefined): string
 }
 
 function isSessionInheritedAgentPattern(value: string): boolean {
-	return (
-		value === formatModelRoleAlias("task") ||
-		value === `${LEGACY_MODEL_ROLE_ALIAS_PREFIX}task`
-	);
+	return value === formatModelRoleAlias("task") || value === `${LEGACY_MODEL_ROLE_ALIAS_PREFIX}task`;
 }
 
 /**
@@ -952,11 +950,16 @@ function resolveConfiguredRolePattern(
  */
 export function expandRoleAlias(value: string, settings?: Settings): string {
 	const normalized = value.trim();
+	if (normalized === DEFAULT_MODEL_ROLE || normalized === DEFAULT_MODEL_ROLE_ALIAS) {
+		// Bare "default" / "*" are inherit/wildcard sentinels, never expanded.
+		return normalized;
+	}
 	if (
-		normalized === DEFAULT_MODEL_ROLE ||
-		normalized === DEFAULT_MODEL_ROLE_ALIAS ||
-		normalized === formatModelRoleAlias(DEFAULT_MODEL_ROLE)
+		normalized === formatModelRoleAlias(DEFAULT_MODEL_ROLE) &&
+		settings?.getModelRole(DEFAULT_MODEL_ROLE) === undefined
 	) {
+		// "@default" with no stored legacy default role stays literal; when the
+		// role IS configured it expands like any other alias (#980 fail-closed).
 		return normalized;
 	}
 
@@ -1147,7 +1150,11 @@ export function resolveModelFromSettings(options: {
 	roleOrder?: readonly ModelRole[];
 }): Model<Api> | undefined {
 	const { settings, availableModels, matchPreferences, roleOrder } = options;
-	const roles = roleOrder ?? MODEL_ROLE_IDS;
+	// The legacy "default" role is hidden from pickers (not in MODEL_ROLE_IDS)
+	// but remains a valid stored assignment and must be honored first — a
+	// configured provider-qualified default that misses must yield undefined,
+	// never silently fall back to availableModels[0] (#980).
+	const roles = roleOrder ?? [LEGACY_DEFAULT_MODEL_ROLE, ...MODEL_ROLE_IDS];
 	let sawConfiguredProviderQualifiedRole = false;
 	for (const role of roles) {
 		const configured = settings.getModelRole(role);
@@ -1275,6 +1282,30 @@ export function resolveRoleSelection(
 		}
 	}
 	return undefined;
+}
+
+/**
+ * Role resolution with the inherit default: configured roles win; when every
+ * role in the chain is unset (or resolves to no available model), the live
+ * main model is inherited. Headless contexts (no session) pass no `liveModel`
+ * and inherit the persisted `default` role instead. This is the single owner
+ * of the "unset role follows the main model" product contract — role
+ * consumers must not hand-roll their own unset fallback.
+ */
+export function resolveRoleSelectionWithInherit(
+	roles: readonly string[],
+	settings: Settings,
+	availableModels: Model<Api>[],
+	liveModel?: Model<Api>,
+): { model: Model<Api>; thinkingLevel?: ConfiguredThinkingLevel } | undefined {
+	const configured = resolveRoleSelection(roles, settings, availableModels);
+	if (configured) return configured;
+	if (liveModel) return { model: liveModel, thinkingLevel: undefined };
+	const persisted = resolveModelRoleValue(settings.getModelRole("default"), availableModels, {
+		settings,
+		matchPreferences: getModelMatchPreferences(settings),
+	});
+	return persisted.model ? { model: persisted.model, thinkingLevel: persisted.thinkingLevel } : undefined;
 }
 
 /**

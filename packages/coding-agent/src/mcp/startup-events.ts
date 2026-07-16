@@ -34,7 +34,12 @@ function formatServerList(serverNames: readonly string[]): string {
 function formatServerCount(count: number): string {
 	return count === 1 ? "server" : "servers";
 }
-function sanitizeMcpStatusError(error: string): string {
+/**
+ * Collapse an MCP failure error to a single safe display line: tabs/newlines
+ * stripped, embedded home paths shortened, truncated. Shared by the compact
+ * startup banner and the `/mcp list` per-server detail so both sanitize identically.
+ */
+export function sanitizeMcpStatusError(error: string): string {
 	return sanitizeMcpStatusText(error, TRUNCATE_LENGTHS.CONTENT);
 }
 
@@ -55,35 +60,37 @@ export function formatMCPConnectingMessage(serverNames: readonly string[]): stri
 	return `Connecting to MCP servers: ${formatServerList(serverNames)}…`;
 }
 
-function formatFailedServer({ serverName, error }: { serverName: string; error: string }): string {
-	return `${sanitizeMcpServerName(serverName)}: ${sanitizeMcpStatusError(error)}`;
-}
+/** Where the operator finds the per-server failure detail this banner omits. */
+const MCP_DETAIL_HINT = "/mcp list for detail";
 
 export function formatMCPConnectionStatusMessage(snapshot: McpConnectionStatusSnapshot): string {
 	const { pendingServers, connectedServers, failedServers } = snapshot;
+
+	// Still connecting: name what we're waiting on; summarize done/failed as counts.
+	// The per-server error text is intentionally not dumped here — it lives in
+	// `/mcp list`, so a slow startup stays one quiet line, not a wall of errors.
 	if (pendingServers.length > 0) {
 		if (connectedServers.length === 0 && failedServers.length === 0) {
 			return formatMCPConnectingMessage(pendingServers);
 		}
-		const parts: string[] = [];
-		if (connectedServers.length > 0) {
-			parts.push(`Connected: ${formatServerList(connectedServers)}.`);
-		}
-		if (failedServers.length > 0) {
-			parts.push(`Failed: ${failedServers.map(formatFailedServer).join("; ")}.`);
-		}
-		parts.push(`Still connecting: ${formatServerList(pendingServers)}…`);
-		return parts.join(" ");
+		const done: string[] = [];
+		if (connectedServers.length > 0) done.push(`${connectedServers.length} connected`);
+		if (failedServers.length > 0) done.push(`${failedServers.length} failed`);
+		return `MCP: ${done.join(", ")}; still connecting ${formatServerList(pendingServers)}…`;
 	}
+
+	// Terminal state. Failures collapse to a count + the servers that failed
+	// (names only) + a pointer to the detail view — loud enough that the operator
+	// cannot miss that something failed, without the error wall (Law 10).
 	if (failedServers.length > 0) {
-		const failureText = failedServers.map(formatFailedServer).join("; ");
+		const failedNames = formatServerList(failedServers.map(f => f.serverName));
 		if (connectedServers.length === 0) {
-			return `MCP ${formatServerCount(failedServers.length)} failed to connect: ${failureText}`;
+			return `MCP: all ${failedServers.length} ${formatServerCount(failedServers.length)} failed (${failedNames}) — ${MCP_DETAIL_HINT}`;
 		}
-		return `MCP finished with failures. Connected: ${formatServerList(connectedServers)}. Failed: ${failureText}`;
+		return `MCP: ${connectedServers.length} connected, ${failedServers.length} failed (${failedNames}) — ${MCP_DETAIL_HINT}`;
 	}
 	if (connectedServers.length > 0) {
-		return `Connected to MCP ${formatServerCount(connectedServers.length)}: ${formatServerList(connectedServers)}.`;
+		return `MCP: ${connectedServers.length} connected (${formatServerList(connectedServers)})`;
 	}
 	return "";
 }

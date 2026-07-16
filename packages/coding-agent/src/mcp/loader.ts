@@ -105,7 +105,7 @@ export async function discoverAndLoadMCPTools(cwd: string, options?: MCPToolsLoa
 		return {
 			path,
 			resolvedPath: `mcp:${tool.name}`,
-			tool: tool as any, // MCPToolDetails is compatible with CustomTool<TSchema, any>
+			tool,
 		};
 	});
 

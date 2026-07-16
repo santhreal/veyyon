@@ -39,6 +39,33 @@ const providerMeta = new Map<string, { displayName: string; description: string 
 /** Disabled providers (by ID) */
 const disabledProviders = new Set<string>();
 
+/**
+ * Providers that discover configuration authored for *other* AI tools — skills,
+ * context files (CLAUDE.md/AGENTS.md), rules, and MCP servers found by scanning
+ * another tool's conventions on disk. These are gated behind
+ * `discovery.importForeignConfig` (default ON: global CLAUDE.md and external
+ * skills load as the machine-wide base layer; the user can opt out to run on
+ * veyyon-native config only). veyyon's own providers (native, omp-plugins,
+ * builtin, project/user commands, ssh/mcp standards) are never gated by this.
+ */
+export const FOREIGN_PROVIDER_IDS: ReadonlySet<string> = new Set([
+	"agents",
+	"agents-md",
+	"claude",
+	"claude-plugins",
+	"cline",
+	"codex",
+	"cursor",
+	"gemini",
+	"github",
+	"opencode",
+	"vscode",
+	"windsurf",
+]);
+
+/** When false, FOREIGN_PROVIDER_IDS are treated as disabled. Matches the schema default (on). */
+let importForeignConfig = true;
+
 /** Settings manager for persistence (if set) */
 let settings: Settings | null = null;
 
@@ -208,12 +235,24 @@ async function loadImpl<T>(
  * Filter providers based on options and disabled state.
  */
 function filterProviders<T>(capability: Capability<T>, options: LoadOptions): Provider<T>[] {
-	let providers = (capability.providers as Provider<T>[]).filter(p => !disabledProviders.has(p.id));
-
+	// isProviderEnabled folds in BOTH the explicit disabled set and the
+	// foreign-config gate (FOREIGN_PROVIDER_IDS follow discovery.importForeignConfig).
+	// The gate guards AMBIENT collection only: an explicit `options.providers`
+	// allowlist names its sources deliberately, so it bypasses the foreign gate
+	// (but never the user's explicit disabledProviders set).
 	if (options.providers) {
 		const allowed = new Set(options.providers);
-		providers = providers.filter(p => allowed.has(p.id));
+		let providers = (capability.providers as Provider<T>[]).filter(
+			p => allowed.has(p.id) && !disabledProviders.has(p.id),
+		);
+		if (options.excludeProviders) {
+			const excluded = new Set(options.excludeProviders);
+			providers = providers.filter(p => !excluded.has(p.id));
+		}
+		return providers;
 	}
+
+	let providers = (capability.providers as Provider<T>[]).filter(p => isProviderEnabled(p.id));
 	if (options.excludeProviders) {
 		const excluded = new Set(options.excludeProviders);
 		providers = providers.filter(p => !excluded.has(p.id));
@@ -232,7 +271,7 @@ export async function loadCapability<T>(capabilityId: string, options: LoadOptio
 	}
 
 	const cwd = options.cwd ?? getProjectDir();
-	const home = os.homedir();
+	const home = options.home ?? os.homedir();
 	const repoRoot = await findRepoRoot(cwd);
 	const ctx: LoadContext = { cwd, home, repoRoot };
 	const providers = filterProviders(capability, options);
@@ -256,6 +295,8 @@ export function initializeWithSettings(activeSettings: Settings): void {
 	for (const id of disabled) {
 		disabledProviders.add(id);
 	}
+	// Foreign-config auto-import: on by default (schema), opt-out via settings.
+	importForeignConfig = settings.get("discovery.importForeignConfig") === true;
 }
 
 /**
@@ -287,7 +328,19 @@ export function enableProvider(providerId: string): void {
  * Check if a provider is enabled.
  */
 export function isProviderEnabled(providerId: string): boolean {
+	// Foreign-tool config providers are off unless the user opts in.
+	if (!importForeignConfig && FOREIGN_PROVIDER_IDS.has(providerId)) return false;
 	return !disabledProviders.has(providerId);
+}
+
+/** Whether foreign-tool config auto-import is currently enabled. */
+export function isForeignConfigImportEnabled(): boolean {
+	return importForeignConfig;
+}
+
+/** The provider IDs gated behind `discovery.importForeignConfig`. */
+export function getForeignProviderIds(): string[] {
+	return Array.from(FOREIGN_PROVIDER_IDS);
 }
 
 /**
@@ -342,7 +395,7 @@ export function getCapabilityInfo(capabilityId: string): CapabilityInfo | undefi
 			displayName: p.displayName,
 			description: p.description,
 			priority: p.priority,
-			enabled: !disabledProviders.has(p.id),
+			enabled: isProviderEnabled(p.id),
 		})),
 	};
 }
@@ -379,7 +432,7 @@ export function getProviderInfo(providerId: string): ProviderInfo | undefined {
 		description: meta.description,
 		priority,
 		capabilities: Array.from(caps),
-		enabled: !disabledProviders.has(providerId),
+		enabled: isProviderEnabled(providerId),
 	};
 }
 

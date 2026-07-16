@@ -6,15 +6,8 @@
 
 import { APP_NAME, getProjectDir } from "@veyyon/pi-utils";
 import chalk from "chalk";
-import { resolveOrDefaultProjectRegistryPath } from "../discovery/helpers";
 import { PluginManager, parseSettingValue, validateSetting } from "../extensibility/plugins";
-import {
-	getInstalledPluginsRegistryPath,
-	getMarketplacesCacheDir,
-	getMarketplacesRegistryPath,
-	getPluginsCacheDir,
-	MarketplaceManager,
-} from "../extensibility/plugins/marketplace/index.js";
+import { createMarketplaceManager, type MarketplaceManager } from "../extensibility/plugins/marketplace/index.js";
 import { theme } from "../modes/theme/theme";
 
 // =============================================================================
@@ -193,14 +186,8 @@ export async function runPluginCommand(cmd: PluginCommandArgs): Promise<void> {
 // Marketplace Handlers
 // =============================================================================
 
-async function makeMarketplaceManager(): Promise<MarketplaceManager> {
-	return new MarketplaceManager({
-		marketplacesRegistryPath: getMarketplacesRegistryPath(),
-		installedRegistryPath: getInstalledPluginsRegistryPath(),
-		projectInstalledRegistryPath: await resolveOrDefaultProjectRegistryPath(getProjectDir()),
-		marketplacesCacheDir: getMarketplacesCacheDir(),
-		pluginsCacheDir: getPluginsCacheDir(),
-	});
+function makeMarketplaceManager(): Promise<MarketplaceManager> {
+	return createMarketplaceManager(getProjectDir());
 }
 
 async function handleMarketplace(args: string[], _flags: PluginCommandArgs["flags"]): Promise<void> {

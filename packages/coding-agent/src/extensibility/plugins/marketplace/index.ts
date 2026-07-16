@@ -1,4 +1,5 @@
 export * from "./cache";
+export * from "./factory";
 export * from "./fetcher";
 export * from "./manager";
 export * from "./registry";

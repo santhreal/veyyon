@@ -127,6 +127,8 @@ export interface ExtensionAskDialogQuestion {
 	options: ExtensionAskDialogOption[];
 	multi?: boolean;
 	recommended?: number;
+	/** Option labels selected when the dialog opens (multi questions only). */
+	preselected?: string[];
 }
 
 export interface ExtensionAskDialogResultItem {

@@ -3,7 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { getOAuthProviders } from "@veyyon/pi-ai/oauth";
 import { type AutocompleteItem, Spacer } from "@veyyon/pi-tui";
-import { APP_NAME, getProjectDir, setProjectDir } from "@veyyon/pi-utils";
+import { APP_NAME, CHANGELOG_URL, getProjectDir, setProjectDir } from "@veyyon/pi-utils";
 import { COLLAB_GUEST_ALLOWED_COMMANDS, CollabGuestLink } from "../collab/guest";
 import { CollabHost } from "../collab/host";
 import { expandRoleAlias, getModelMatchPreferences, resolveCliModel } from "../config/model-resolver";
@@ -29,12 +29,6 @@ import { resolveResumableSession } from "../session/session-listing";
 import { formatShakeSummary, type ShakeMode } from "../session/shake-types";
 import { expandTilde, resolveToCwd } from "../tools/path-utils";
 import { urlHyperlinkAlways } from "../tui";
-import {
-	getChangelogPath,
-	parseChangelog,
-	RECENT_CHANGELOG_ENTRY_LIMIT,
-	renderChangelogEntries,
-} from "../utils/changelog";
 import { copyToClipboard } from "../utils/clipboard";
 import { CollabQrCodeComponent } from "./helpers/collab-qrcode";
 import { buildContextReportText } from "./helpers/context-report";
@@ -198,6 +192,54 @@ const BUILTIN_SLASH_COMMAND_REGISTRY: ReadonlyArray<SlashCommandSpec> = [
 		description: "Open settings menu",
 		handleTui: (_command, runtime) => {
 			runtime.ctx.showSettingsSelector();
+			runtime.ctx.editor.setText("");
+		},
+	},
+	{
+		name: "welcome",
+		description: "Show the full welcome screen (actions, recent sessions)",
+		handleTui: async (_command, runtime) => {
+			await runtime.ctx.showFullWelcome();
+			runtime.ctx.editor.setText("");
+		},
+	},
+	{
+		name: "lsp",
+		description: "Show language server status",
+		handleTui: async (_command, runtime) => {
+			const servers = runtime.ctx.lspServers ?? [];
+			if (servers.length === 0) {
+				// Explain WHY the list is empty: distinguish "no matching project"
+				// from "project detected but the server binary is not installed".
+				const { loadConfig } = await import("../lsp/config");
+				const missing = loadConfig(process.cwd()).missingServers;
+				if (missing.length > 0) {
+					const lines = [
+						"No language servers running. Detected for this project but not installed:",
+						...missing.map(
+							server =>
+								`${theme.fg("warning", theme.status.pending)} ${server.name} ${theme.fg("dim", `(needs \`${server.command}\` on $PATH · ${server.fileTypes.join(", ")})`)}`,
+						),
+					];
+					runtime.ctx.showStatus(lines.join("\n"), { dim: false });
+				} else {
+					runtime.ctx.showStatus("No language servers configured for this project.");
+				}
+			} else {
+				const glyph = (status: string) =>
+					status === "ready"
+						? theme.fg("success", theme.status.enabled)
+						: status === "error"
+							? theme.fg("error", theme.status.error)
+							: status === "connecting"
+								? theme.fg("warning", theme.status.pending)
+								: theme.fg("dim", theme.status.info);
+				const lines = servers.map(
+					server =>
+						`${glyph(server.status)} ${server.name} ${theme.fg("dim", `(${server.status} · ${server.fileTypes.join(", ")})`)}`,
+				);
+				runtime.ctx.showStatus(lines.join("\n"), { dim: false });
+			}
 			runtime.ctx.editor.setText("");
 		},
 	},
@@ -984,26 +1026,14 @@ const BUILTIN_SLASH_COMMAND_REGISTRY: ReadonlyArray<SlashCommandSpec> = [
 	},
 	{
 		name: "changelog",
-		description: "Show changelog entries",
-		acpDescription: "Show changelog",
-		acpInputHint: "[full]",
-		subcommands: [{ name: "full", description: "Show complete changelog" }],
-		allowArgs: true,
-		handle: async (command, runtime) => {
-			const changelogPath = getChangelogPath();
-			const allEntries = await parseChangelog(changelogPath);
-			const showFull = command.args.trim().toLowerCase() === "full";
-			const entriesToShow = showFull ? allEntries : allEntries.slice(0, RECENT_CHANGELOG_ENTRY_LIMIT);
-			if (entriesToShow.length === 0) {
-				await runtime.output("No changelog entries found.");
-				return commandConsumed();
-			}
-			await runtime.output(renderChangelogEntries(entriesToShow).markdown);
+		description: "Open the release notes on the web",
+		acpDescription: "Open the release notes on the web",
+		handle: async (_command, runtime) => {
+			await runtime.output(`Release notes: ${CHANGELOG_URL}`);
 			return commandConsumed();
 		},
-		handleTui: async (command, runtime) => {
-			const showFull = command.args.split(/\s+/).filter(Boolean).includes("full");
-			await runtime.ctx.handleChangelogCommand(showFull);
+		handleTui: async (_command, runtime) => {
+			await runtime.ctx.handleChangelogCommand();
 			runtime.ctx.editor.setText("");
 		},
 	},
@@ -1591,6 +1621,113 @@ const BUILTIN_SLASH_COMMAND_REGISTRY: ReadonlyArray<SlashCommandSpec> = [
 		handleTui: shutdownHandlerTui,
 	},
 	{
+		name: "profile",
+		aliases: ["profiles"],
+		description: "List profiles, switch with /profile <name>, rename with /profile [name] rename to <new>",
+		allowArgs: true,
+		handleTui: async (command, runtime) => {
+			runtime.ctx.editor.setText("");
+			const { getActiveProfile, listProfiles } = await import("@veyyon/pi-utils");
+			const { createProfile, readProfileDisplayName, resolveProfileByName, writeProfileDisplayName } = await import(
+				"../cli/profile-cli"
+			);
+			const args = command.args.trim();
+			const active = getActiveProfile();
+			const activeName = active ?? "default";
+
+			const listOut = async (): Promise<void> => {
+				const lines: string[] = [];
+				for (const profile of listProfiles()) {
+					const display = await readProfileDisplayName(profile.name === "default" ? undefined : profile.name);
+					const marker = profile.name === activeName ? "*" : " ";
+					const label = display && display !== profile.name ? `${profile.name} (${display})` : profile.name;
+					lines.push(`${marker} ${label}`);
+				}
+				lines.push("", "Switch: /profile <name> · Rename: /profile [name] rename to <new> · New: /profile new <name>");
+				runtime.ctx.showStatus(lines.join("\n"));
+			};
+
+			try {
+				if (!args || args === "list") {
+					await listOut();
+					return commandConsumed();
+				}
+
+				const newMatch = args.match(/^new\s+(\S+)$/);
+				if (newMatch) {
+					const { PROFILE_COPY_ITEMS } = await import("../cli/profile-cli");
+					const labels = PROFILE_COPY_ITEMS.map(item => item.label);
+					const result = await runtime.ctx.showAskDialog([
+						{
+							id: "copy-items",
+							header: "New profile",
+							question: `Copy which items from "${activeName}" into "${newMatch[1]}"? Everything is selected; deselect what should stay behind.`,
+							options: PROFILE_COPY_ITEMS.map(item => ({ label: item.label, description: item.description })),
+							multi: true,
+							preselected: labels,
+						},
+					]);
+					if (!result || result.kind !== "submit") {
+						runtime.ctx.showStatus("Profile creation cancelled");
+						return commandConsumed();
+					}
+					const chosen = new Set(result.results[0]?.selectedOptions ?? []);
+					const keys = new Set(PROFILE_COPY_ITEMS.filter(item => chosen.has(item.label)).map(item => item.key));
+					const created = await createProfile(newMatch[1]!, keys.size > 0 ? (active ?? "default") : "blank", keys);
+					runtime.ctx.showStatus(
+						`Created profile "${created.name}" (${keys.size}/${PROFILE_COPY_ITEMS.length} items copied from "${activeName}"). Switch with /profile ${created.name}`,
+					);
+					return commandConsumed();
+				}
+
+				// `/profile rename to <new>` renames the active profile;
+				// `/profile <name> rename to <new>` renames a specific one.
+				const renameMatch = args.match(/^(?:(\S+)\s+)?rename\s+to\s+(.+)$/);
+				if (renameMatch) {
+					const targetInput = renameMatch[1];
+					const newName = renameMatch[2]!.trim();
+					const target = targetInput === undefined ? active : await resolveProfileByName(targetInput);
+					if (target === null) {
+						runtime.ctx.showError(`No profile named "${targetInput}". Try /profile list`);
+						return commandConsumed();
+					}
+					await writeProfileDisplayName(target, newName);
+					runtime.ctx.showStatus(`Renamed profile "${target ?? "default"}" to "${newName}"`);
+					return commandConsumed();
+				}
+
+				const resolved = await resolveProfileByName(args);
+				if (resolved === null) {
+					runtime.ctx.showError(`No profile named "${args}". Try /profile list or /profile new ${args}`);
+					return commandConsumed();
+				}
+				if (resolved === active) {
+					runtime.ctx.showStatus(`Already on profile "${resolved ?? "default"}"`);
+					return commandConsumed();
+				}
+
+				const { resolveOmpCommand } = await import("../task/omp-command");
+				const omp = resolveOmpCommand();
+				const argv =
+					omp.shell && process.platform === "win32" ? ["cmd.exe", "/c", omp.cmd, ...omp.args] : [omp.cmd, ...omp.args];
+				runtime.ctx.requestRelaunch({
+					argv,
+					env: {
+						VEYYON_PROFILE: resolved,
+						OMP_PROFILE: undefined,
+						PI_PROFILE: undefined,
+					},
+				});
+				runtime.ctx.showStatus(`Switching to profile "${resolved ?? "default"}" — starting a fresh session…`);
+				void runtime.ctx.shutdown();
+				return commandConsumed();
+			} catch (error) {
+				runtime.ctx.showError(error instanceof Error ? error.message : String(error));
+				return commandConsumed();
+			}
+		},
+	},
+	{
 		name: "plugins",
 		description: "View installed npm/link plugins",
 		acpDescription: "Manage plugins",
@@ -1789,6 +1926,38 @@ function buildStaticInlineHint(hint: string): (argumentText: string) => string |
 }
 
 /**
+ * Build getArgumentCompletions for /profile: existing profile names (marked
+ * active/switch) plus the verb subcommands.
+ */
+function buildProfileArgumentCompletions(): (prefix: string) => Promise<AutocompleteItem[] | null> {
+	return async (argumentPrefix: string) => {
+		const prefix = argumentPrefix.trimStart();
+		if (prefix.includes(" ")) return null;
+		const { listProfiles, getActiveProfile } = await import("@veyyon/pi-utils");
+		const { readProfileDisplayName } = await import("../cli/profile-cli");
+		const active = getActiveProfile() ?? "default";
+		const items: AutocompleteItem[] = [];
+		for (const profile of listProfiles()) {
+			if (!profile.name.toLowerCase().startsWith(prefix.toLowerCase())) continue;
+			const display = await readProfileDisplayName(profile.name === "default" ? undefined : profile.name);
+			items.push({
+				value: profile.name,
+				label: profile.name,
+				description:
+					(profile.name === active ? "active" : "switch (fresh session)") +
+					(display && display !== profile.name ? ` — ${display}` : ""),
+			});
+		}
+		for (const sub of ["list", "new ", "rename to "]) {
+			if (sub.startsWith(prefix.toLowerCase())) {
+				items.push({ value: sub, label: sub.trim(), description: "" });
+			}
+		}
+		return items.length > 0 ? items : null;
+	};
+}
+
+/**
  * Build getArgumentCompletions that suggests directories relative to the
  * current project directory. Used by /move so users can Tab-complete the
  * destination directory.
@@ -1912,6 +2081,8 @@ function materializeTuiBuiltinSlashCommand(
 	} else if (cmd.name === "move") {
 		materialized.getArgumentCompletions = buildDirectoryArgumentCompletions();
 		if (cmd.inlineHint) materialized.getInlineHint = buildStaticInlineHint(cmd.inlineHint);
+	} else if (cmd.name === "profile") {
+		materialized.getArgumentCompletions = buildProfileArgumentCompletions();
 	} else if (cmd.inlineHint) {
 		materialized.getInlineHint = buildStaticInlineHint(cmd.inlineHint);
 	}
