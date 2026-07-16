@@ -1,20 +1,29 @@
 import { getOAuthProviders } from "@veyyon/pi-ai/oauth";
 import type { OAuthProviderInfo } from "@veyyon/pi-ai/oauth/types";
 import {
-	Container,
+	type Component,
 	extractPrintableText,
 	fuzzyFilter,
 	matchesKey,
+	padding,
+	routeSgrMouseInput,
 	ScrollView,
 	type SgrMouseEvent,
-	Spacer,
-	TruncatedText,
 } from "@veyyon/pi-tui";
 import { settings } from "../../config/settings";
 import { theme } from "../../modes/theme/theme";
 import { matchesSelectCancel, matchesSelectDown, matchesSelectUp } from "../../modes/utils/keybinding-matchers";
 import type { AuthStorage, CredentialOriginKind } from "../../session/auth-storage";
-import { DynamicBorder } from "./dynamic-border";
+import {
+	computeModalDims,
+	hitTestModalChrome,
+	MODAL_SIZING_MEDIUM,
+	type ModalShellGeometry,
+	type ModalShortcut,
+	renderModalShell,
+	SELECT_LIST_SHORTCUTS,
+	withCompact,
+} from "./modal-shell";
 
 const OAUTH_SELECTOR_MAX_VISIBLE = 10;
 
@@ -32,12 +41,6 @@ function getDisabledProviderIds(): ReadonlySet<string> {
 	}
 }
 
-/**
- * Rendered lines before the provider rows: top border, spacer, title, spacer
- * (must mirror the constructor's addChild order).
- */
-const LIST_ROW_OFFSET = 4;
-
 /** Compact, human-readable tag for each credential-origin leg. */
 const ORIGIN_LABELS: Record<CredentialOriginKind, string> = {
 	runtime: "--api-key",
@@ -47,17 +50,26 @@ const ORIGIN_LABELS: Record<CredentialOriginKind, string> = {
 	env: "env",
 	fallback: "custom provider",
 };
+
 /**
  * Component that renders an OAuth provider selector.
+ *
+ * Two hosting modes:
+ * - Embedded (`standalone: false`, the default): content-only rows, no
+ *   chrome. Used inline by the setup wizard's Sign-in tab, which supplies its
+ *   own scene border and forwards mouse via {@link routeMouse} at a local
+ *   line/col offset.
+ * - Standalone (`standalone: true`): a floating ModalShell medium card,
+ *   hosted fullscreen by `SelectorController.showOAuthSelector`. Handles its
+ *   own SGR mouse input (chrome + body) via {@link handleInput}.
  */
-export class OAuthSelectorComponent extends Container {
-	#listContainer: Container;
+export class OAuthSelectorComponent implements Component {
 	#allProviders: OAuthProviderInfo[] = [];
 	#filteredProviders: OAuthProviderInfo[] = [];
 	#searchQuery = "";
 	#selectedIndex: number = 0;
 	#hoveredIndex: number | null = null;
-	/** First provider index of the visible ScrollView window (last #updateList). */
+	/** First provider index of the visible ScrollView window (last #buildBody). */
 	#scrollStart = 0;
 	#visibleCount = 0;
 	#mode: "login" | "logout";
@@ -71,6 +83,11 @@ export class OAuthSelectorComponent extends Container {
 	#spinnerFrame: number = 0;
 	#spinnerInterval?: NodeJS.Timeout;
 	#validationGeneration: number = 0;
+	#standalone: boolean;
+	#shellGeometry: ModalShellGeometry | null = null;
+	#hoveredShortcutId: string | null = null;
+	#onRequestRender?: () => void;
+
 	constructor(
 		mode: "login" | "logout",
 		authStorage: AuthStorage,
@@ -79,38 +96,33 @@ export class OAuthSelectorComponent extends Container {
 		options?: {
 			validateAuth?: (providerId: string) => Promise<boolean>;
 			requestRender?: () => void;
+			standalone?: boolean;
 		},
 	) {
-		super();
 		this.#mode = mode;
 		this.#authStorage = authStorage;
 		this.#onSelectCallback = onSelect;
 		this.#onCancelCallback = onCancel;
 		this.#validateAuthCallback = options?.validateAuth;
 		this.#requestRenderCallback = options?.requestRender;
-		// Load all OAuth providers
+		this.#standalone = options?.standalone ?? false;
 		this.#loadProviders();
-		this.addChild(new DynamicBorder());
-		this.addChild(new Spacer(1));
-		// Add title
-		const title = mode === "login" ? "Select provider to login:" : "Select provider to logout:";
-		this.addChild(new TruncatedText(theme.bold(title)));
-		this.addChild(new Spacer(1));
-		// Create list container
-		this.#listContainer = new Container();
-		this.addChild(this.#listContainer);
-		this.addChild(new Spacer(1));
-		// Add bottom border
-		this.addChild(new DynamicBorder());
-		// Initial render
-		this.#updateList();
 		this.#startValidation();
+	}
+
+	setOnRequestRender(cb: () => void): void {
+		this.#onRequestRender = cb;
 	}
 
 	stopValidation(): void {
 		this.#validationGeneration += 1;
 		this.#stopSpinner();
 	}
+
+	invalidate(): void {
+		// No cached state to invalidate currently
+	}
+
 	#hasSelectableAuth(providerId: string): boolean {
 		return this.#mode === "logout" ? this.#authStorage.has(providerId) : this.#authStorage.hasAuth(providerId);
 	}
@@ -154,7 +166,6 @@ export class OAuthSelectorComponent extends Container {
 
 		if (pending > 0) {
 			this.#startSpinner();
-			this.#updateList();
 			this.#requestRenderCallback?.();
 		}
 	}
@@ -173,7 +184,6 @@ export class OAuthSelectorComponent extends Container {
 		if (![...this.#authState.values()].includes("checking")) {
 			this.#stopSpinner();
 		}
-		this.#updateList();
 		this.#requestRenderCallback?.();
 	}
 
@@ -184,7 +194,6 @@ export class OAuthSelectorComponent extends Container {
 			if (frameCount > 0) {
 				this.#spinnerFrame = (this.#spinnerFrame + 1) % frameCount;
 			}
-			this.#updateList();
 			this.#requestRenderCallback?.();
 		}, 80);
 	}
@@ -260,7 +269,6 @@ export class OAuthSelectorComponent extends Container {
 			: this.#allProviders;
 		this.#selectedIndex = 0;
 		this.#statusMessage = undefined;
-		this.#updateList();
 	}
 
 	#handleSearchInput(keyData: string): boolean {
@@ -282,9 +290,7 @@ export class OAuthSelectorComponent extends Container {
 		return true;
 	}
 
-	#updateList(): void {
-		this.#listContainer.clear();
-
+	#buildBody(width: number): string[] {
 		const total = this.#filteredProviders.length;
 		const maxVisible = OAUTH_SELECTOR_MAX_VISIBLE;
 		const startIndex =
@@ -318,6 +324,7 @@ export class OAuthSelectorComponent extends Container {
 			rows.push(line);
 		}
 
+		const body: string[] = [];
 		if (rows.length > 0) {
 			const sv = new ScrollView(rows, {
 				height: rows.length,
@@ -326,12 +333,12 @@ export class OAuthSelectorComponent extends Container {
 				theme: { track: t => theme.fg("muted", t), thumb: t => theme.fg("accent", t) },
 			});
 			sv.setScrollOffset(startIndex);
-			this.#listContainer.addChild(sv);
+			body.push(...sv.render(width));
 		}
 
 		// Search status line (scrollbar covers overflow indication)
 		if (this.#shouldRenderSearchStatus()) {
-			this.#listContainer.addChild(new TruncatedText(this.#renderStatusLine(total), 0, 0));
+			body.push(this.#renderStatusLine(total));
 		}
 
 		if (total === 0) {
@@ -341,14 +348,20 @@ export class OAuthSelectorComponent extends Container {
 						? "No OAuth providers available"
 						: "No stored provider credentials to log out"
 					: "No matching providers";
-			this.#listContainer.addChild(new TruncatedText(theme.fg("muted", `  ${message}`), 0, 0));
+			body.push(theme.fg("muted", `  ${message}`));
 		}
 		if (this.#statusMessage) {
-			this.#listContainer.addChild(new Spacer(1));
-			this.#listContainer.addChild(new TruncatedText(theme.fg("warning", `  ${this.#statusMessage}`), 0, 0));
+			body.push("", theme.fg("warning", `  ${this.#statusMessage}`));
 		}
+		return body;
 	}
+
 	handleInput(keyData: string): void {
+		if (this.#standalone && keyData.startsWith("\x1b[<")) {
+			routeSgrMouseInput(keyData, event => this.#routeStandaloneMouse(event));
+			return;
+		}
+
 		// Escape or Ctrl+C
 		if (matchesSelectCancel(keyData)) {
 			this.stopValidation();
@@ -367,7 +380,6 @@ export class OAuthSelectorComponent extends Container {
 					this.#selectedIndex === 0 ? this.#filteredProviders.length - 1 : this.#selectedIndex - 1;
 			}
 			this.#statusMessage = undefined;
-			this.#updateList();
 		}
 		// Down arrow
 		else if (matchesSelectDown(keyData)) {
@@ -376,7 +388,6 @@ export class OAuthSelectorComponent extends Container {
 					this.#selectedIndex === this.#filteredProviders.length - 1 ? 0 : this.#selectedIndex + 1;
 			}
 			this.#statusMessage = undefined;
-			this.#updateList();
 		}
 		// Page up - jump up by one visible page
 		else if (matchesKey(keyData, "pageUp")) {
@@ -384,7 +395,6 @@ export class OAuthSelectorComponent extends Container {
 				this.#selectedIndex = Math.max(0, this.#selectedIndex - OAUTH_SELECTOR_MAX_VISIBLE);
 			}
 			this.#statusMessage = undefined;
-			this.#updateList();
 		}
 		// Page down - jump down by one visible page
 		else if (matchesKey(keyData, "pageDown")) {
@@ -395,7 +405,6 @@ export class OAuthSelectorComponent extends Container {
 				);
 			}
 			this.#statusMessage = undefined;
-			this.#updateList();
 		}
 		// Enter
 		else if (matchesKey(keyData, "enter") || matchesKey(keyData, "return") || keyData === "\n") {
@@ -412,7 +421,6 @@ export class OAuthSelectorComponent extends Container {
 			this.#onSelectCallback(selectedProvider.id);
 		} else if (selectedProvider) {
 			this.#statusMessage = "Provider unavailable in this environment.";
-			this.#updateList();
 		}
 	}
 
@@ -423,28 +431,23 @@ export class OAuthSelectorComponent extends Container {
 		if (next === this.#selectedIndex) return;
 		this.#selectedIndex = next;
 		this.#statusMessage = undefined;
-		this.#updateList();
 	}
 
 	/**
-	 * Route an SGR mouse report at component-local coordinates. Provider rows
-	 * start LIST_ROW_OFFSET lines into the render; the ScrollView window shows
-	 * #visibleCount rows from #scrollStart. Wheel moves the selection, motion
-	 * drives the hover band, and a left click selects and confirms like Enter.
+	 * Route an SGR mouse report at component-local coordinates. Embedded hosts
+	 * (the setup wizard's sign-in tab) call this directly at a line/col offset
+	 * relative to where the selector's own body begins. Provider rows start at
+	 * line 0 — this component renders no chrome above the list itself.
 	 */
 	routeMouse(event: SgrMouseEvent, line: number, _col: number): void {
 		if (event.wheel !== null) {
 			this.handleWheel(event.wheel);
 			return;
 		}
-		const localRow = line - LIST_ROW_OFFSET;
-		const index = localRow >= 0 && localRow < this.#visibleCount ? this.#scrollStart + localRow : undefined;
+		const index = line >= 0 && line < this.#visibleCount ? this.#scrollStart + line : undefined;
 		const target = index !== undefined && index < this.#filteredProviders.length ? index : null;
 		if (event.motion) {
-			if (target !== this.#hoveredIndex) {
-				this.#hoveredIndex = target;
-				this.#updateList();
-			}
+			this.#hoveredIndex = target;
 			return;
 		}
 		if (!event.leftClick || target === null) return;
@@ -453,5 +456,60 @@ export class OAuthSelectorComponent extends Container {
 			this.#statusMessage = undefined;
 		}
 		this.#confirmSelection();
+	}
+
+	/** Standalone-only: hit-test ModalShell chrome first, then forward to {@link routeMouse}. */
+	#routeStandaloneMouse(event: SgrMouseEvent): boolean {
+		const chrome = hitTestModalChrome(this.#shellGeometry, event.row, event.col, {
+			motion: event.motion,
+			leftClick: event.leftClick,
+		});
+		if (chrome.kind === "hover-shortcut") {
+			if (this.#hoveredShortcutId !== chrome.id) {
+				this.#hoveredShortcutId = chrome.id;
+				this.#onRequestRender?.();
+			}
+			return true;
+		}
+		if (chrome.kind === "close" || chrome.kind === "outside" || (chrome.kind === "shortcut" && chrome.id === "close")) {
+			this.stopValidation();
+			this.#onCancelCallback();
+			return true;
+		}
+		if (chrome.kind === "shortcut" && chrome.id === "confirm") {
+			this.#confirmSelection();
+			return true;
+		}
+		const geo = this.#shellGeometry;
+		if (!geo) return true;
+		this.routeMouse(event, event.row - geo.bodyRowStart, event.col - (geo.leftPad + 2));
+		return true;
+	}
+
+	render(width: number): readonly string[] {
+		if (!this.#standalone) {
+			return this.#buildBody(width);
+		}
+
+		const height = process.stdout.rows || 40;
+		const sizing = withCompact(MODAL_SIZING_MEDIUM, height < 24);
+		const dims = computeModalDims(width, height, sizing);
+		if (!dims) {
+			this.#shellGeometry = null;
+			return Array.from({ length: height }, () => padding(width));
+		}
+
+		const shell = renderModalShell({
+			title: this.#mode === "login" ? "Login" : "Logout",
+			sizing,
+			areaWidth: width,
+			areaHeight: height,
+			body: this.#buildBody(dims.contentWidth),
+			shortcuts: SELECT_LIST_SHORTCUTS,
+			hoveredShortcutId: this.#hoveredShortcutId,
+			showClose: true,
+		});
+		this.#shellGeometry = shell.geometry;
+		return shell.lines;
 	}
 }

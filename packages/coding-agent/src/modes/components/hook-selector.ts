@@ -240,6 +240,7 @@ export class HookSelectorComponent extends Container {
 			this.#countdown = new CountdownTimer(
 				opts.timeout,
 				opts.tui,
+				this,
 				s => this.#titleComponent.setText(`${this.#baseTitle} (${s}s)`),
 				() => {
 					opts?.onTimeout?.();

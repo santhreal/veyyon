@@ -2,6 +2,7 @@ import type { AgentMessage } from "@veyyon/pi-agent-core";
 import type { AssistantMessage, ImageContent, Message, Usage } from "@veyyon/pi-ai";
 import { getStreamingPartialJson } from "@veyyon/pi-ai/utils/block-symbols";
 import { type Component, Spacer, Text, TruncatedText } from "@veyyon/pi-tui";
+import { APP_NAME } from "@veyyon/pi-utils";
 import type { AdvisorMessageDetails } from "../../advisor";
 import { COLLAB_PROMPT_MESSAGE_TYPE, type CollabPromptDetails } from "../../collab/protocol";
 import { settings } from "../../config/settings";
@@ -18,7 +19,6 @@ import {
 	createHandoffSummaryMessageComponent,
 } from "../../modes/components/compaction-summary-message";
 import { CustomMessageComponent } from "../../modes/components/custom-message";
-import { DynamicBorder } from "../../modes/components/dynamic-border";
 import { EvalExecutionComponent } from "../../modes/components/eval-execution";
 import {
 	type LateDiagnosticsFile,
@@ -705,19 +705,21 @@ export class UiHelpers {
 	}
 
 	showNewVersionNotification(newVersion: string): void {
+		// A single quiet line, not a warning box: the update is good news, not an
+		// alarm. Points at `/changelog` (which opens the web release notes).
 		const block = new TranscriptBlock();
-		block.addChild(new DynamicBorder(text => theme.fg("warning", text)));
 		block.addChild(
 			new Text(
-				theme.bold(theme.fg("warning", "Update Available")) +
-					"\n" +
-					theme.fg("muted", `New version ${newVersion} is available. Run: `) +
-					theme.fg("accent", "veyyon update"),
+				theme.fg("accent", `${APP_NAME} ${newVersion} available`) +
+					theme.fg("dim", " · run ") +
+					theme.fg("accent", `${APP_NAME} update`) +
+					theme.fg("dim", " · ") +
+					theme.fg("accent", "/changelog") +
+					theme.fg("dim", " for what's new"),
 				1,
 				0,
 			),
 		);
-		block.addChild(new DynamicBorder(text => theme.fg("warning", text)));
 		this.ctx.present(block);
 	}
 
@@ -754,6 +756,11 @@ export class UiHelpers {
 			const hintText = theme.fg("dim", `  ${theme.tree.hook} ${dequeueKey} to edit`);
 			this.ctx.pendingMessagesContainer.addChild(new TruncatedText(hintText, 1, 0));
 		}
+		// Every call site here follows a queue mutation (enqueue/dequeue/clear/restore),
+		// so this is the one choke point where the composer's queue chip needs refreshing.
+		// Optional: many controller-level tests mock a partial InteractiveModeContext
+		// without the composer bar wired up.
+		this.ctx.refreshComposerShortcuts?.();
 	}
 
 	queueCompactionMessage(text: string, mode: "steer" | "followUp", images?: ImageContent[]): void {

@@ -1,9 +1,11 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { AgentMessage } from "@veyyon/pi-agent-core";
+import { resolveThresholdTokens } from "@veyyon/pi-agent-core/compaction";
 import type { AssistantMessage, UsageLimit, UsageReport } from "@veyyon/pi-ai";
 import { type Component, truncateToWidth, visibleWidth } from "@veyyon/pi-tui";
 import { getProjectDir } from "@veyyon/pi-utils";
+import { isCompactionStrategyOff } from "../../../config/compaction-strategy";
 import { settings } from "../../../config/settings";
 import type { AgentSession } from "../../../session/agent-session";
 import type { OAuthAccountIdentity } from "../../../session/auth-storage";
@@ -400,12 +402,6 @@ export class StatusLineComponent implements Component {
 	setSubagentCount(count: number): void {
 		this.#subagentCount = count;
 	}
-
-	/**
-	 * Compatibility shim for callers predating the simplified subagent badge.
-	 * The status line now intentionally shows only the active count.
-	 */
-	setSubagentHubHint(_hint: string | undefined): void {}
 
 	/** Active subagent count as currently displayed (collab state mirroring). */
 	get subagentCount(): number {
@@ -1031,6 +1027,17 @@ export class StatusLineComponent implements Component {
 			const breakdown = this.getCachedContextBreakdown();
 			contextTokens = breakdown.usedTokens;
 			contextWindow = breakdown.contextWindow || contextWindow;
+			// Display against the auto-compact fire point, not the raw model
+			// window: the question the bar answers is "when will compaction
+			// happen", so 100% = auto-compact triggers now. With auto-compact
+			// off the raw window is the real limit and stays the denominator.
+			if (this.#autoCompactEnabled && contextWindow > 0) {
+				const compactionSettings = this.session.settings.getGroup("compaction");
+				if (compactionSettings.enabled && !isCompactionStrategyOff(compactionSettings.strategy as string)) {
+					const thresholdTokens = resolveThresholdTokens(contextWindow, compactionSettings);
+					if (thresholdTokens > 0) contextWindow = thresholdTokens;
+				}
+			}
 			contextPercent = contextWindow > 0 ? (breakdown.usedTokens / contextWindow) * 100 : null;
 		}
 

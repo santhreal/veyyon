@@ -1,4 +1,13 @@
-import { type Component, matchesKey, padding, Text, truncateToWidth, visibleWidth } from "@veyyon/pi-tui";
+import {
+	type Component,
+	matchesKey,
+	padding,
+	routeSgrMouseInput,
+	type SgrMouseEvent,
+	Text,
+	truncateToWidth,
+	visibleWidth,
+} from "@veyyon/pi-tui";
 import { replaceTabs } from "../../tools/render-utils";
 import { highlightCode, theme } from "../theme/theme";
 import type { CopyTarget } from "../utils/copy-targets";
@@ -9,13 +18,17 @@ import {
 	matchesSelectPageUp,
 	matchesSelectUp,
 } from "../utils/keybinding-matchers";
-import { keyHint, rawKeyHint } from "./keybinding-hints";
-import { bottomBorder, divider, row, topBorder } from "./overlay-box";
+import {
+	computeModalDims,
+	hitTestModalChrome,
+	MODAL_SIZING_LARGE,
+	type ModalShellGeometry,
+	renderModalShell,
+	withCompact,
+} from "./modal-shell";
 
 /** Minimum rows reserved for the tree even on short terminals. */
 const MIN_TREE_ROWS = 3;
-/** Fixed chrome rows: top border, two dividers, footer, bottom border. */
-const CHROME_ROWS = 5;
 
 export interface CopySelectorCallbacks {
 	/** A copy target was chosen — copy its `content`. */
@@ -45,10 +58,8 @@ function gutterCells(hasNext: boolean): string {
 }
 
 /**
- * Fullscreen `/copy` picker rendered as a `/tree`-style tree inside one
- * outlined box: a title, the tree of copy targets (recent assistant messages
- * with their code blocks nested beneath), a live preview of the highlighted
- * node, and a keybinding footer. Every node copies its `content` on Enter.
+ * `/copy` picker: tree of copy targets inside a floating ModalShell card with
+ * live preview and shortcut chips.
  */
 export class CopySelectorComponent implements Component {
 	#roots: CopyTarget[];
@@ -58,6 +69,9 @@ export class CopySelectorComponent implements Component {
 	#treeRows = MIN_TREE_ROWS;
 	// Reused across renders to wrap preview content to the pane width.
 	#previewText = new Text("", 0, 0);
+	#shellGeometry: ModalShellGeometry | null = null;
+	#hoveredShortcutId: string | null = null;
+	#onRequestRender?: () => void;
 
 	constructor(
 		roots: CopyTarget[],
@@ -65,6 +79,10 @@ export class CopySelectorComponent implements Component {
 	) {
 		this.#roots = roots;
 		this.#cursorId = roots[0]?.id ?? "";
+	}
+
+	setOnRequestRender(cb: () => void): void {
+		this.#onRequestRender = cb;
 	}
 
 	invalidate(): void {
@@ -86,6 +104,10 @@ export class CopySelectorComponent implements Component {
 	}
 
 	handleInput(keyData: string): void {
+		if (keyData.startsWith("\x1b[<")) {
+			routeSgrMouseInput(keyData, event => this.#routeMouse(event));
+			return;
+		}
 		if (matchesSelectCancel(keyData)) {
 			this.callbacks.onCancel();
 			return;
@@ -112,15 +134,37 @@ export class CopySelectorComponent implements Component {
 		}
 	}
 
-	#renderTree(width: number, flat: FlatNode[], cursorIdx: number, rows: number): string[] {
-		const inner = Math.max(0, width - 4);
+	#routeMouse(event: SgrMouseEvent): boolean {
+		const chrome = hitTestModalChrome(this.#shellGeometry, event.row, event.col, {
+			motion: event.motion,
+			leftClick: event.leftClick,
+		});
+		if (chrome.kind === "hover-shortcut") {
+			if (this.#hoveredShortcutId !== chrome.id) {
+				this.#hoveredShortcutId = chrome.id;
+				this.#onRequestRender?.();
+			}
+			return true;
+		}
+		if (chrome.kind === "close" || chrome.kind === "outside" || (chrome.kind === "shortcut" && chrome.id === "close")) {
+			this.callbacks.onCancel();
+			return true;
+		}
+		if (chrome.kind === "shortcut" && chrome.id === "confirm") {
+			this.handleInput("\n");
+			return true;
+		}
+		return true;
+	}
+
+	#renderTree(inner: number, flat: FlatNode[], cursorIdx: number, rows: number): string[] {
 		const start = Math.max(0, Math.min(cursorIdx - Math.floor(rows / 2), Math.max(0, flat.length - rows)));
 		const out: string[] = [];
 		for (let r = 0; r < rows; r++) {
 			const i = start + r;
 			const node = flat[i];
 			if (!node) {
-				out.push(row("", width));
+				out.push("");
 				continue;
 			}
 			const target = node.target;
@@ -139,24 +183,22 @@ export class CopySelectorComponent implements Component {
 				? theme.fg("accent", cursor) + theme.fg("dim", prefix) + theme.bold(theme.fg("accent", labelPlain))
 				: cursor + theme.fg("dim", prefix) + labelPlain;
 			const gap = Math.max(1, inner - used - visibleWidth(labelPlain) - visibleWidth(hint));
-			out.push(row(left + padding(gap) + (hint ? theme.fg("dim", hint) : ""), width));
+			out.push(left + padding(gap) + (hint ? theme.fg("dim", hint) : ""));
 		}
 		return out;
 	}
 
-	#renderPreview(width: number, target: CopyTarget | undefined, rows: number): string[] {
+	#renderPreview(inner: number, target: CopyTarget | undefined, rows: number): string[] {
 		const out: string[] = [];
 		const hint = target?.hint;
-		out.push(row(theme.fg("dim", `Preview${hint ? ` · ${hint}` : ""}`), width));
+		out.push(theme.fg("dim", `Preview${hint ? ` · ${hint}` : ""}`));
 
 		const contentRows = rows - 1;
 		if (!target || contentRows <= 0) {
-			while (out.length < rows) out.push(row("", width));
+			while (out.length < rows) out.push("");
 			return out;
 		}
 
-		// Code/command previews are syntax-highlighted; everything else is shown
-		// as plain text. Both are wrapped (not hard-truncated) to the pane width.
 		const isCode = target.language !== undefined;
 		let source: string;
 		if (target === this.#lastSourceTarget && this.#lastSource !== undefined) {
@@ -169,17 +211,17 @@ export class CopySelectorComponent implements Component {
 			this.#lastSource = source;
 		}
 		this.#previewText.setText(source);
-		const wrapped = this.#previewText.render(Math.max(1, width - 4));
+		const wrapped = this.#previewText.render(Math.max(1, inner));
 
 		const hasMore = wrapped.length > contentRows;
 		const visibleCount = hasMore ? contentRows - 1 : Math.min(wrapped.length, contentRows);
 		for (let k = 0; k < contentRows; k++) {
 			if (k < visibleCount) {
-				out.push(row(isCode ? wrapped[k]! : theme.fg("muted", wrapped[k]!), width));
+				out.push(isCode ? wrapped[k]! : theme.fg("muted", wrapped[k]!));
 			} else if (k === visibleCount && hasMore) {
-				out.push(row(theme.fg("dim", `… ${wrapped.length - visibleCount} more lines`), width));
+				out.push(theme.fg("dim", `… ${wrapped.length - visibleCount} more lines`));
 			} else {
-				out.push(row("", width));
+				out.push("");
 			}
 		}
 		return out;
@@ -187,6 +229,12 @@ export class CopySelectorComponent implements Component {
 
 	render(width: number): readonly string[] {
 		const height = process.stdout.rows || 40;
+		const sizing = withCompact(MODAL_SIZING_LARGE, height < 24);
+		const dims = computeModalDims(width, height, sizing);
+		if (!dims) {
+			return Array.from({ length: height }, () => padding(width));
+		}
+
 		const flat = this.#flatten();
 		const cursorIdx = Math.max(
 			0,
@@ -194,25 +242,33 @@ export class CopySelectorComponent implements Component {
 		);
 		const selected = flat[cursorIdx]?.target;
 
-		const available = Math.max(MIN_TREE_ROWS + 1, height - CHROME_ROWS);
+		const available = Math.max(MIN_TREE_ROWS + 1, dims.modalHeight - 8);
 		const treeRows = Math.max(1, Math.min(flat.length, Math.floor(available / 2)));
 		this.#treeRows = treeRows;
 		const previewRows = Math.max(1, available - treeRows);
+		const inner = dims.contentWidth;
 
-		const footer = [
-			rawKeyHint("↑↓", "move"),
-			keyHint("tui.select.confirm", "copy"),
-			keyHint("tui.select.cancel", "quit"),
-		].join(theme.fg("dim", " · "));
-
-		return [
-			topBorder(width, "Copy to clipboard"),
-			...this.#renderTree(width, flat, cursorIdx, treeRows),
-			divider(width),
-			...this.#renderPreview(width, selected, previewRows),
-			divider(width),
-			row(footer, width),
-			bottomBorder(width),
+		const body = [
+			...this.#renderTree(inner, flat, cursorIdx, treeRows),
+			"",
+			...this.#renderPreview(inner, selected, previewRows),
 		];
+
+		const shell = renderModalShell({
+			title: "Copy to clipboard",
+			sizing,
+			areaWidth: width,
+			areaHeight: height,
+			body,
+			shortcuts: [
+				{ label: "up/down move" },
+				{ label: "enter copy", clickable: true, id: "confirm" },
+				{ label: "esc close", clickable: true, id: "close" },
+			],
+			hoveredShortcutId: this.#hoveredShortcutId,
+			showClose: true,
+		});
+		this.#shellGeometry = shell.geometry;
+		return shell.lines;
 	}
 }

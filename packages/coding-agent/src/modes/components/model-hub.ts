@@ -21,6 +21,7 @@ import {
 	getKeybindings,
 	Input,
 	matchesKey,
+	padding,
 	routeSgrMouseInput,
 	type SgrMouseEvent,
 	type TUI,
@@ -34,6 +35,15 @@ import { AUTO_THINKING, type ConfiguredThinkingLevel, getConfiguredThinkingLevel
 import { theme } from "../theme/theme";
 import { matchesSelectCancel, matchesSelectDown, matchesSelectUp } from "../utils/keybinding-matchers";
 import {
+	computeModalDims,
+	hitTestModalChrome,
+	MODAL_SIZING_LARGE,
+	type ModalShellGeometry,
+	type ModalShortcut,
+	renderModalShell,
+	withCompact,
+} from "./modal-shell";
+import {
 	buildBrowserItems,
 	ModelBrowser,
 	type ModelBrowserItem,
@@ -42,7 +52,7 @@ import {
 	sortModelItems,
 	thinkingLevelGlyph,
 } from "./model-browser";
-import { bottomBorder, dividerSplit, row, splitBodyWidth, splitRow, topBorderSplit } from "./overlay-box";
+import { fit } from "./overlay-box";
 import { renderSegmentTrack } from "./segment-track";
 
 /**
@@ -156,8 +166,13 @@ export function resetProviderAutoRefreshGuard(): void {
 }
 
 /**
- * The fullscreen model hub component. Hosted via `ui.showOverlay(..., { fullscreen: true })`;
- * the host must call {@link ModelHubComponent.dispose} when the overlay closes.
+ * The model hub component: a floating ModalShell LARGE card (title + `[x]`,
+ * click-outside/Esc cancel), hosted fullscreen via
+ * `ui.showOverlay(..., { fullscreen: true })` like `/settings`. The sidebar
+ * (scopes/providers) and body (roles/browser/locked) render as split panes
+ * inside the shell, joined by a plain vertical rule — the shell owns the
+ * chrome, not a DynamicBorder box. The host must call
+ * {@link ModelHubComponent.dispose} when the overlay closes.
  */
 export class ModelHubComponent implements Component {
 	#tui: TUI;
@@ -208,12 +223,19 @@ export class ModelHubComponent implements Component {
 	#refreshSpinnerFrame = 0;
 	#refreshSpinnerInterval?: Timer;
 
-	// Frame geometry from the last render, for mouse hit-testing (the
-	// fullscreen overlay paints from screen row 0, so mouse rows map 1:1).
+	// Frame geometry from the last render, for mouse hit-testing against the
+	// floating ModalShell card (see hitTestModalChrome + #routeMouseEvent).
+	#shellGeometry: ModalShellGeometry | null = null;
+	#hoveredShortcutId: string | null = null;
+	/** Card left inset (centering pad) from the last render. */
+	#frameLeft = 0;
+	/** Screen row where the sidebar|body split rows begin. */
 	#contentRowStart = 1;
-	#contentRowCount = 0;
+	/** Number of split (sidebar|body) rows rendered — excludes the strip/hint row. */
+	#splitRowCount = 0;
 	#sidebarWidthLast = SIDEBAR_MIN_WIDTH;
-	#footerRow = 0;
+	/** Screen row of the full-width strip/hint row (last body row, below the split). */
+	#stripRow = 0;
 	#chipRanges: ChipRange[] = [];
 	#lockedLoginLine: number | null = null;
 	#rolesRowStart = 1;
@@ -1329,22 +1351,47 @@ export class ModelHubComponent implements Component {
 	// ═══════════════════════════════════════════════════════════════════════
 
 	#routeMouseEvent(event: SgrMouseEvent): boolean {
+		const chrome = hitTestModalChrome(this.#shellGeometry, event.row, event.col, {
+			motion: event.motion,
+			leftClick: event.leftClick,
+		});
+		if (chrome.kind === "hover-shortcut") {
+			if (this.#hoveredShortcutId !== chrome.id) {
+				this.#hoveredShortcutId = chrome.id;
+				this.#tui.requestRender();
+			}
+			return true;
+		}
+		if (
+			chrome.kind === "close" ||
+			chrome.kind === "outside" ||
+			(chrome.kind === "shortcut" && chrome.id === "close")
+		) {
+			this.#callbacks.onCancel();
+			return true;
+		}
+
+		// row() insets content by the border column plus a space; the card may
+		// be centered, so the sidebar|body split starts at `frameLeft + 2`.
+		const contentColInset = 2 + this.#frameLeft;
+		const innerCol = event.col - contentColInset;
 		const contentLine = event.row - this.#contentRowStart;
-		const overContent = contentLine >= 0 && contentLine < this.#contentRowCount;
-		const sidebarColStart = 2;
-		const sidebarColEnd = sidebarColStart + this.#sidebarWidthLast;
-		const bodyColStart = this.#sidebarWidthLast + 5;
-		const overSidebar = overContent && event.col >= 0 && event.col < sidebarColEnd;
-		const overBody = overContent && event.col >= bodyColStart;
+		const overSplitRows = contentLine >= 0 && contentLine < this.#splitRowCount;
+		const bodyColStart = this.#sidebarWidthLast + 3; // sidebar + " │ " separator
+		const overSidebar = overSplitRows && innerCol >= 0 && innerCol < this.#sidebarWidthLast;
+		const overBody = overSplitRows && innerCol >= bodyColStart;
 		const bodyLine = contentLine - 1; // body row 0 is the status row
 		const entry = this.#activeEntry();
 
-		// Footer strip chips.
-		if (event.row === this.#footerRow && this.#strip) {
+		// Strip/hint row: a full-width row below the split, not part of
+		// ModalShell's own shortcut chips. Chip ranges are card-relative
+		// columns (see #renderStripRow), so subtract just `frameLeft`.
+		if (event.row === this.#stripRow && this.#strip) {
 			const strip = this.#strip;
 			if (event.leftClick && strip.kind !== "roleName") {
+				const stripInnerCol = event.col - this.#frameLeft;
 				for (const range of this.#chipRanges) {
-					if (event.col >= range.start && event.col < range.end) {
+					if (stripInnerCol >= range.start && stripInnerCol < range.end) {
 						strip.index = range.index;
 						this.#activateStripChip();
 						return true;
@@ -1357,7 +1404,7 @@ export class ModelHubComponent implements Component {
 		if (event.wheel !== null) {
 			if (overSidebar) {
 				// Wheel pans the sidebar viewport; picking a scope is click/keys only.
-				const maxScroll = Math.max(0, this.#entries.length - this.#contentRowCount);
+				const maxScroll = Math.max(0, this.#entries.length - this.#splitRowCount);
 				this.#sidebarScroll = Math.max(0, Math.min(this.#sidebarScroll + event.wheel, maxScroll));
 				this.#sidebarHover = this.#sidebarEntryIndexAt(contentLine);
 			} else if (overBody) {
@@ -1474,7 +1521,7 @@ export class ModelHubComponent implements Component {
 			const entry = this.#entries[i];
 			if (!entry) continue;
 			if (entry.kind === "separator") {
-				lines.push(theme.fg("border", "─".repeat(width)));
+				lines.push(theme.fg("borderAccent", "─".repeat(width)));
 				continue;
 			}
 			const active = entry.id === this.#activeEntryId;
@@ -1628,7 +1675,7 @@ export class ModelHubComponent implements Component {
 			const cursor = selected && listFocused ? theme.fg("accent", theme.nav.cursor) : " ";
 
 			if (rowDef.kind === "separator") {
-				lines.push(`   ${theme.fg("border", "─".repeat(Math.max(1, width - 6)))}`);
+				lines.push(`   ${theme.fg("borderAccent", "─".repeat(Math.max(1, width - 6)))}`);
 				continue;
 			}
 
@@ -1809,8 +1856,13 @@ export class ModelHubComponent implements Component {
 		return `Enter assign roles · ${arrows} · type to search${refresh} · Esc close`;
 	}
 
-	/** Footer row: active strip (chips) or the contextual hint line. */
-	#renderFooter(width: number): string {
+	/**
+	 * Full-width row below the sidebar|body split: the active strip (chips)
+	 * or the contextual hint line. This is body content, not ModalShell's own
+	 * shortcut chips ({@link #shortcuts}) — it carries per-state detail (which
+	 * row kind, which chip is selected) that a static footer can't.
+	 */
+	#renderStripRow(width: number): string {
 		this.#chipRanges = [];
 		const strip = this.#strip;
 		if (!strip) {
@@ -1878,38 +1930,127 @@ export class ModelHubComponent implements Component {
 		return truncateToWidth(line, width);
 	}
 
+	/**
+	 * Centered, focus-aware ModalShell footer chips — a static, discoverable
+	 * complement to the detailed per-state hint in {@link #renderStripRow}.
+	 */
+	#shortcuts(): readonly ModalShortcut[] {
+		const strip = this.#strip;
+		if (strip) {
+			if (strip.kind === "roleName") {
+				return [{ label: "enter create" }, { label: "esc cancel", clickable: true, id: "close" }];
+			}
+			return strip.kind === "role"
+				? [
+						{ label: "←/→ choose" },
+						{ label: "enter assign/clear" },
+						{ label: "esc cancel", clickable: true, id: "close" },
+					]
+				: [{ label: "←/→ level" }, { label: "enter apply" }, { label: "esc keep", clickable: true, id: "close" }];
+		}
+		if (this.#assigning !== null) {
+			return [
+				{ label: "type to search" },
+				{ label: "↑/↓ providers" },
+				{ label: "enter pick" },
+				{ label: "esc cancel", clickable: true, id: "close" },
+			];
+		}
+		const entry = this.#activeEntry();
+		if (entry.kind === "roles") {
+			if (this.#focus !== "list") {
+				return [
+					{ label: "↑/↓ providers" },
+					{ label: "→ roles" },
+					{ label: "esc close", clickable: true, id: "close" },
+				];
+			}
+			return [
+				{ label: "↑/↓ rows" },
+				{ label: "enter pick" },
+				{ label: "f fallback" },
+				{ label: "x clear" },
+				{ label: "esc close", clickable: true, id: "close" },
+			];
+		}
+		if (entry.kind === "provider" && entry.locked) {
+			return entry.oauth
+				? [{ label: "enter log in" }, { label: "esc close", clickable: true, id: "close" }]
+				: [{ label: "esc close", clickable: true, id: "close" }];
+		}
+		const arrows = this.#focus === "scope" ? "↑/↓ providers · → models" : "↑/↓ models · ← providers";
+		const refresh: ModalShortcut[] = entry.kind === "provider" ? [{ label: "F5 refresh" }] : [];
+		return [
+			{ label: arrows },
+			{ label: "enter assign" },
+			{ label: "/ search" },
+			...refresh,
+			{ label: "esc close", clickable: true, id: "close" },
+		];
+	}
+
+	/**
+	 * Floating ModalShell LARGE card: sidebar|body split panes inside the
+	 * shell body (Grok idiom — chrome is the shell, not a DynamicBorder box),
+	 * a full-width strip/hint row below the split, and centered footer chips.
+	 */
 	render(width: number): string[] {
 		const height = Math.max(16, this.#tui.terminal?.rows || process.stdout.rows || 40);
+		const compact = height < 24;
+		const sizing = withCompact(MODAL_SIZING_LARGE, compact);
+		const dims = computeModalDims(width, height, sizing);
+		if (!dims) {
+			this.#shellGeometry = null;
+			return Array.from({ length: height }, () => padding(width));
+		}
+		const contentWidth = dims.contentWidth;
 		const sidebarWidth = this.#sidebarWidth();
 		this.#sidebarWidthLast = sidebarWidth;
-		const bodyWidth = splitBodyWidth(width, sidebarWidth);
-		const contentRows = Math.max(10, height - 4);
-		this.#contentRowCount = contentRows;
+		const paneSep = theme.fg("dim", ` ${theme.boxSharp.vertical} `);
+		const bodyWidth = Math.max(1, contentWidth - sidebarWidth - 3);
+
+		// Mirrors ModalShell's internal body budget (no search chrome; the
+		// shortcut chips fit within `sizing.footerLines` rows) so the strip
+		// row reserved below is never truncated or padded away.
+		const bodyBudget = Math.max(1, dims.modalHeight - (3 + sizing.footerLines) - sizing.vPad);
+		const splitRows = Math.max(4, bodyBudget - 1);
 
 		const entry = this.#activeEntry();
-		const bodyLines: string[] = [this.#statusRow(bodyWidth)];
+		const paneLines: string[] = [this.#statusRow(bodyWidth)];
 		if (entry.kind === "roles" && this.#assigning === null) {
-			bodyLines.push(...this.#renderRolesView(bodyWidth, contentRows - 1));
+			paneLines.push(...this.#renderRolesView(bodyWidth, splitRows - 1));
 		} else if (entry.kind === "provider" && entry.locked && this.#assigning === null) {
-			bodyLines.push(...this.#renderLockedView(entry, bodyWidth, contentRows - 1));
+			paneLines.push(...this.#renderLockedView(entry, bodyWidth, splitRows - 1));
 		} else {
-			this.#browser.setMaxVisible(contentRows - 1 - 5);
+			this.#browser.setMaxVisible(splitRows - 1 - 5);
 			this.#browser.setFocused(this.#focus === "list");
-			bodyLines.push(...this.#browser.render(bodyWidth));
+			paneLines.push(...this.#browser.render(bodyWidth));
 		}
 
-		const sidebarLines = this.#renderSidebar(sidebarWidth, contentRows);
+		const sidebarLines = this.#renderSidebar(sidebarWidth, splitRows);
 
-		const out: string[] = [];
-		out.push(topBorderSplit(width, "Models", sidebarWidth));
-		this.#contentRowStart = out.length;
-		for (let i = 0; i < contentRows; i++) {
-			out.push(splitRow(sidebarLines[i] ?? "", bodyLines[i] ?? "", width, sidebarWidth));
+		const body: string[] = [];
+		for (let i = 0; i < splitRows; i++) {
+			body.push(fit(sidebarLines[i] ?? "", sidebarWidth) + paneSep + fit(paneLines[i] ?? "", bodyWidth));
 		}
-		out.push(dividerSplit(width, sidebarWidth));
-		this.#footerRow = out.length;
-		out.push(row(this.#renderFooter(width - 4), width));
-		out.push(bottomBorder(width));
-		return out;
+		this.#splitRowCount = splitRows;
+		body.push(this.#renderStripRow(contentWidth));
+
+		const shell = renderModalShell({
+			title: "Models",
+			sizing,
+			areaWidth: width,
+			areaHeight: height,
+			body,
+			shortcuts: this.#shortcuts(),
+			hoveredShortcutId: this.#hoveredShortcutId,
+			showClose: true,
+		});
+
+		this.#shellGeometry = shell.geometry;
+		this.#frameLeft = shell.geometry?.leftPad ?? 0;
+		this.#contentRowStart = shell.geometry?.bodyRowStart ?? 0;
+		this.#stripRow = this.#contentRowStart + splitRows;
+		return shell.lines;
 	}
 }

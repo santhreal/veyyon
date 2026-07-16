@@ -1,19 +1,43 @@
-import { Container, matchesKey, ScrollView, Spacer, TruncatedText } from "@veyyon/pi-tui";
-import { theme } from "../../modes/theme/theme";
-import { matchesSelectCancel, matchesSelectDown, matchesSelectUp } from "../../modes/utils/keybinding-matchers";
+import {
+	type Component,
+	matchesKey,
+	padding,
+	routeSgrMouseInput,
+	ScrollView,
+	type SgrMouseEvent,
+} from "@veyyon/pi-tui";
 import type { LogoutAccount } from "../../slash-commands/helpers/logout";
-import { DynamicBorder } from "./dynamic-border";
+import { theme } from "../theme/theme";
+import { matchesSelectCancel, matchesSelectDown, matchesSelectUp } from "../utils/keybinding-matchers";
+import {
+	computeModalDims,
+	hitTestModalChrome,
+	MODAL_SIZING_MEDIUM,
+	type ModalShellGeometry,
+	type ModalShortcut,
+	renderModalShell,
+	withCompact,
+} from "./modal-shell";
 
 const LOGOUT_SELECTOR_MAX_VISIBLE = 10;
 
-/** Account picker for `/logout` after the provider has been selected. */
-export class LogoutAccountSelectorComponent extends Container {
-	#listContainer: Container;
+const LOGOUT_SHORTCUTS: readonly ModalShortcut[] = [
+	{ label: "up/down navigate" },
+	{ label: "enter logout", clickable: true, id: "confirm" },
+	{ label: "esc close", clickable: true, id: "close" },
+];
+
+/** Account picker for `/logout` after the provider has been selected — floating ModalShell card. */
+export class LogoutAccountSelectorComponent implements Component {
+	#providerName: string;
 	#accounts: LogoutAccount[];
 	#selectedIndex = 0;
 	#statusMessage: string | undefined;
 	#onSelectCallback: (account: LogoutAccount) => void;
 	#onCancelCallback: () => void;
+	#shellGeometry: ModalShellGeometry | null = null;
+	#hoveredShortcutId: string | null = null;
+	#onRequestRender?: () => void;
 
 	constructor(
 		providerName: string,
@@ -21,27 +45,23 @@ export class LogoutAccountSelectorComponent extends Container {
 		onSelect: (account: LogoutAccount) => void,
 		onCancel: () => void,
 	) {
-		super();
+		this.#providerName = providerName;
 		this.#accounts = accounts;
 		this.#onSelectCallback = onSelect;
 		this.#onCancelCallback = onCancel;
 		const activeIndex = accounts.findIndex(account => account.active);
 		this.#selectedIndex = activeIndex >= 0 ? activeIndex : 0;
-
-		this.addChild(new DynamicBorder());
-		this.addChild(new Spacer(1));
-		this.addChild(new TruncatedText(theme.bold(`Select ${providerName} account to log out:`)));
-		this.addChild(new Spacer(1));
-		this.#listContainer = new Container();
-		this.addChild(this.#listContainer);
-		this.addChild(new Spacer(1));
-		this.addChild(new DynamicBorder());
-		this.#updateList();
 	}
 
-	#updateList(): void {
-		this.#listContainer.clear();
+	setOnRequestRender(cb: () => void): void {
+		this.#onRequestRender = cb;
+	}
 
+	invalidate(): void {
+		// No cached state to invalidate currently
+	}
+
+	#buildBody(width: number): string[] {
 		const total = this.#accounts.length;
 		const maxVisible = LOGOUT_SELECTOR_MAX_VISIBLE;
 		const startIndex =
@@ -63,6 +83,7 @@ export class LogoutAccountSelectorComponent extends Container {
 			}
 		}
 
+		const body: string[] = [];
 		if (rows.length > 0) {
 			const sv = new ScrollView(rows, {
 				height: rows.length,
@@ -71,24 +92,26 @@ export class LogoutAccountSelectorComponent extends Container {
 				theme: { track: text => theme.fg("muted", text), thumb: text => theme.fg("accent", text) },
 			});
 			sv.setScrollOffset(startIndex);
-			this.#listContainer.addChild(sv);
+			body.push(...sv.render(width));
 		}
 
 		if (total === 0) {
-			this.#listContainer.addChild(new TruncatedText(theme.fg("muted", "  No stored accounts to log out"), 0, 0));
+			body.push(theme.fg("muted", "No stored accounts to log out"));
 		}
-
-		this.#listContainer.addChild(
-			new TruncatedText(theme.fg("muted", "  ↑/↓ select · ↵ log out account · Esc cancel"), 0, 0),
-		);
 
 		if (this.#statusMessage) {
-			this.#listContainer.addChild(new Spacer(1));
-			this.#listContainer.addChild(new TruncatedText(theme.fg("warning", `  ${this.#statusMessage}`), 0, 0));
+			body.push("", theme.fg("warning", this.#statusMessage));
 		}
+
+		return body;
 	}
 
 	handleInput(keyData: string): void {
+		if (keyData.startsWith("\x1b[<")) {
+			routeSgrMouseInput(keyData, event => this.#routeMouse(event));
+			return;
+		}
+
 		if (matchesSelectCancel(keyData)) {
 			this.#onCancelCallback();
 			return;
@@ -99,19 +122,16 @@ export class LogoutAccountSelectorComponent extends Container {
 				this.#selectedIndex = this.#selectedIndex === 0 ? this.#accounts.length - 1 : this.#selectedIndex - 1;
 			}
 			this.#statusMessage = undefined;
-			this.#updateList();
 		} else if (matchesSelectDown(keyData)) {
 			if (this.#accounts.length > 0) {
 				this.#selectedIndex = this.#selectedIndex === this.#accounts.length - 1 ? 0 : this.#selectedIndex + 1;
 			}
 			this.#statusMessage = undefined;
-			this.#updateList();
 		} else if (matchesKey(keyData, "pageUp")) {
 			if (this.#accounts.length > 0) {
 				this.#selectedIndex = Math.max(0, this.#selectedIndex - LOGOUT_SELECTOR_MAX_VISIBLE);
 			}
 			this.#statusMessage = undefined;
-			this.#updateList();
 		} else if (matchesKey(keyData, "pageDown")) {
 			if (this.#accounts.length > 0) {
 				this.#selectedIndex = Math.min(
@@ -120,11 +140,60 @@ export class LogoutAccountSelectorComponent extends Container {
 				);
 			}
 			this.#statusMessage = undefined;
-			this.#updateList();
 		} else if (matchesKey(keyData, "enter") || matchesKey(keyData, "return") || keyData === "\n") {
 			const account = this.#accounts[this.#selectedIndex];
 			if (!account) return;
 			this.#onSelectCallback(account);
 		}
+	}
+
+	#routeMouse(event: SgrMouseEvent): boolean {
+		const chrome = hitTestModalChrome(this.#shellGeometry, event.row, event.col, {
+			motion: event.motion,
+			leftClick: event.leftClick,
+		});
+		if (chrome.kind === "hover-shortcut") {
+			if (this.#hoveredShortcutId !== chrome.id) {
+				this.#hoveredShortcutId = chrome.id;
+				this.#onRequestRender?.();
+			}
+			return true;
+		}
+		if (
+			chrome.kind === "close" ||
+			chrome.kind === "outside" ||
+			(chrome.kind === "shortcut" && chrome.id === "close")
+		) {
+			this.#onCancelCallback();
+			return true;
+		}
+		if (chrome.kind === "shortcut" && chrome.id === "confirm") {
+			this.handleInput("\n");
+			return true;
+		}
+		return true;
+	}
+
+	render(width: number): readonly string[] {
+		const height = process.stdout.rows || 40;
+		const sizing = withCompact(MODAL_SIZING_MEDIUM, height < 24);
+		const dims = computeModalDims(width, height, sizing);
+		if (!dims) {
+			this.#shellGeometry = null;
+			return Array.from({ length: height }, () => padding(width));
+		}
+
+		const shell = renderModalShell({
+			title: `Logout · ${this.#providerName}`,
+			sizing,
+			areaWidth: width,
+			areaHeight: height,
+			body: this.#buildBody(dims.contentWidth),
+			shortcuts: LOGOUT_SHORTCUTS,
+			hoveredShortcutId: this.#hoveredShortcutId,
+			showClose: true,
+		});
+		this.#shellGeometry = shell.geometry;
+		return shell.lines;
 	}
 }

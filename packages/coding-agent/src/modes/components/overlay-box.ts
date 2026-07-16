@@ -1,8 +1,8 @@
 /**
- * Shared box-drawing chrome for fullscreen overlays (the `/copy` picker, the
- * plan-review overlay, …). Every helper paints with `theme.boxSharp` glyphs
- * (rounded corners, sharp tee/cross junctions) and the `border`/`accent` theme
- * colors so all outlined overlays read identically.
+ * Shared box-drawing chrome for floating overlays. Sharp `theme.boxSharp`
+ * glyphs painted in brand silver (`borderAccent`) — never muddy `border`
+ * gray hairlines, never sun/ember. ModalShell and these helpers share one
+ * structural color so every card reads as Veyyon, not a gray clone.
  */
 import { padding, truncateToWidth, visibleWidth } from "@veyyon/pi-tui";
 import { theme } from "../theme/theme";
@@ -18,8 +18,9 @@ export function fit(text: string, width: number): string {
 	return cw < width ? cut + padding(width - cw) : cut;
 }
 
+/** Structural chrome — silver (`borderAccent`), not dim gray `border`. */
 function paint(s: string): string {
-	return theme.fg("border", s);
+	return theme.fg("borderAccent", s);
 }
 
 /** Top border with an optional accent-colored title inset into the rule. */

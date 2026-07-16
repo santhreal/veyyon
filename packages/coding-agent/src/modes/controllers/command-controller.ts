@@ -10,8 +10,8 @@ import {
 	type UsageLimit,
 	type UsageReport,
 } from "@veyyon/pi-ai";
-import { Loader, Markdown, padding, Spacer, Text, visibleWidth } from "@veyyon/pi-tui";
-import { formatDuration, Snowflake, sanitizeText } from "@veyyon/pi-utils";
+import { Loader, Markdown, type OverlayHandle, padding, Spacer, Text, visibleWidth } from "@veyyon/pi-tui";
+import { APP_NAME, CHANGELOG_URL, formatDuration, Snowflake, sanitizeText } from "@veyyon/pi-utils";
 import { shouldEnableAppendOnlyContext } from "../../config/append-only-context-mode";
 import { type LoadedCustomShare, loadCustomShare } from "../../export/custom-share";
 import { shareSession } from "../../export/share";
@@ -47,12 +47,6 @@ import { limitMatchesActiveAccount } from "../../slash-commands/helpers/active-o
 import { outputMeta } from "../../tools/output-meta";
 import { resolveToCwd, stripOuterDoubleQuotes } from "../../tools/path-utils";
 import { replaceTabs, truncateToWidth } from "../../tools/render-utils";
-import {
-	getChangelogPath,
-	parseChangelog,
-	RECENT_CHANGELOG_ENTRY_LIMIT,
-	renderChangelogEntries,
-} from "../../utils/changelog";
 import { copyToClipboard } from "../../utils/clipboard";
 import { openPath } from "../../utils/open";
 import { setSessionTerminalTitle } from "../../utils/title-generator";
@@ -409,24 +403,22 @@ export class CommandController {
 		this.ctx.present([new Spacer(1), new Text(output, 1, 0)]);
 	}
 
-	async handleChangelogCommand(showFull = false): Promise<void> {
-		const changelogPath = getChangelogPath();
-		const allEntries = await parseChangelog(changelogPath);
-		const entriesToShow = showFull ? allEntries : allEntries.slice(0, RECENT_CHANGELOG_ENTRY_LIMIT);
-		const changelogMarkdown =
-			entriesToShow.length > 0 ? renderChangelogEntries(entriesToShow).markdown : "No changelog entries found.";
-		const title = showFull ? "Full Changelog" : "Recent Changes";
-		const hint = showFull
-			? ""
-			: `\n\n${theme.fg("dim", "Use")} ${theme.bold("/changelog full")} ${theme.fg("dim", "to view the complete changelog.")}`;
-
+	async handleChangelogCommand(_showFull = false): Promise<void> {
+		// Release notes live on the website now, not in the terminal. Print the
+		// link and try to open it in the browser (best-effort; harmless if headless).
 		const block = new TranscriptBlock();
 		block.addChild(new DynamicBorder());
-		block.addChild(new Text(theme.bold(theme.fg("accent", title)), 1, 0));
+		block.addChild(new Text(theme.bold(theme.fg("accent", "Changelog")), 1, 0));
 		block.addChild(new Spacer(1));
-		block.addChild(new Markdown(changelogMarkdown + hint, 1, 1, getMarkdownTheme()));
+		block.addChild(new Text(`${theme.fg("dim", "What's new in")} ${APP_NAME}${theme.fg("dim", ":")}`, 1, 0));
+		block.addChild(new Text(theme.fg("link", CHANGELOG_URL), 1, 0));
 		block.addChild(new DynamicBorder());
 		this.ctx.present(block);
+		try {
+			openPath(CHANGELOG_URL);
+		} catch {
+			// Best-effort: the printed link is the fallback.
+		}
 	}
 
 	handleHotkeysCommand(): void {
@@ -843,6 +835,36 @@ export class CommandController {
 	}
 
 	/**
+	 * Floating ModalShell card for the `/move` path picker, hosted fullscreen
+	 * (like the extensions dashboard / copy picker) so the transcript stays
+	 * visible around it and SGR mouse tracking is enabled for its lifetime.
+	 */
+	#showMoveOverlay(): Promise<MoveOverlayResult | undefined> {
+		const { promise, resolve } = Promise.withResolvers<MoveOverlayResult | undefined>();
+		let overlayHandle: OverlayHandle | undefined;
+		let closed = false;
+		const overlay = new MoveOverlay(this.ctx.sessionManager.getCwd(), result => {
+			if (closed) return;
+			closed = true;
+			overlayHandle?.hide();
+			this.ctx.focusActiveEditorArea();
+			this.ctx.ui.requestRender();
+			resolve(result);
+		});
+		overlay.setOnRequestRender(() => this.ctx.ui.requestRender());
+		overlayHandle = this.ctx.ui.showOverlay(overlay, {
+			anchor: "top-left",
+			width: "100%",
+			maxHeight: "100%",
+			margin: 0,
+			fullscreen: true,
+		});
+		this.ctx.ui.setFocus(overlay);
+		this.ctx.ui.requestRender();
+		return promise;
+	}
+
+	/**
 	 * `/move` — relocate the current session to a different directory.
 	 *
 	 * With no `targetPath` (TUI only), opens an autocomplete overlay so the user
@@ -861,10 +883,7 @@ export class CommandController {
 
 		// No argument in TUI mode: open the path autocomplete overlay.
 		if (!input) {
-			const result = await this.ctx.showHookCustom<MoveOverlayResult | undefined>(
-				(_tui, _theme, _keybindings, done) => new MoveOverlay(this.ctx.sessionManager.getCwd(), done),
-				{ overlay: true },
-			);
+			const result = await this.#showMoveOverlay();
 			if (!result) return; // cancelled
 			input = result.directory;
 		}

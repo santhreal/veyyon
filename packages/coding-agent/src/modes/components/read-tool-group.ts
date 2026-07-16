@@ -4,6 +4,7 @@ import { Container, Text } from "@veyyon/pi-tui";
 import { InternalUrlRouter } from "../../internal-urls";
 import { getLanguageFromPath, theme } from "../../modes/theme/theme";
 import { parseLineRanges, selectorLineRanges, splitPathAndSel } from "../../tools/path-utils";
+import type { ReadRenderArgs } from "../../tools/read";
 import { PREVIEW_LIMITS, shortenPath } from "../../tools/render-utils";
 import { fileHyperlink, renderCodeCell, tryResolveInternalUrlSync } from "../../tui";
 import type { ToolExecutionHandle } from "./tool-execution";
@@ -24,7 +25,7 @@ function readArgsTarget(args: unknown): string | undefined {
 			: undefined;
 }
 
-export function readArgsHaveTarget(args: unknown): boolean {
+export function readArgsHaveTarget(args: unknown): args is ReadRenderArgs {
 	return readArgsTarget(args) !== undefined;
 }
 
@@ -33,11 +34,6 @@ export function readArgsTargetInternalUrl(args: unknown): boolean {
 	if (!target) return false;
 	return InternalUrlRouter.instance().canHandle(target);
 }
-
-type ReadRenderArgs = {
-	path?: string;
-	file_path?: string;
-};
 
 type ReadToolSuffixResolution = {
 	from: string;
@@ -341,7 +337,7 @@ export class ReadToolGroupComponent extends Container implements ToolExecutionHa
 
 	updateArgs(args: ReadRenderArgs, toolCallId?: string): void {
 		if (!toolCallId) return;
-		const rawPath = args.file_path || args.path || "";
+		const rawPath = readArgsTarget(args) ?? "";
 		const entry: ReadEntry = this.#entries.get(toolCallId) ?? {
 			toolCallId,
 			path: rawPath,

@@ -1,26 +1,32 @@
 import {
 	type Component,
-	Container,
 	Ellipsis,
 	Input,
 	matchesKey,
 	padding,
-	Spacer,
-	Text,
+	routeSgrMouseInput,
+	type SgrMouseEvent,
 	truncateToWidth,
 	visibleWidth,
 } from "@veyyon/pi-tui";
-import { theme } from "../../modes/theme/theme";
+import type { HistoryEntry, HistoryStorage } from "../../session/history-storage";
+import { theme } from "../theme/theme";
 import {
 	matchesAppInterrupt,
 	matchesSelectDown,
 	matchesSelectPageDown,
 	matchesSelectPageUp,
 	matchesSelectUp,
-} from "../../modes/utils/keybinding-matchers";
-import type { HistoryEntry, HistoryStorage } from "../../session/history-storage";
-import { DynamicBorder } from "./dynamic-border";
-import { rawKeyHint } from "./keybinding-hints";
+} from "../utils/keybinding-matchers";
+import {
+	computeModalDims,
+	hitTestModalChrome,
+	MODAL_SIZING_MEDIUM,
+	type ModalShellGeometry,
+	renderModalShell,
+	SELECT_LIST_SHORTCUTS,
+	withCompact,
+} from "./modal-shell";
 import { centeredWindow, contentRowWidth, renderScrollableList } from "./selector-helpers";
 
 /** Visible result rows; also the jump distance for PageUp/PageDown. */
@@ -148,7 +154,8 @@ class HistoryResultsList implements Component {
 	}
 }
 
-export class HistorySearchComponent extends Container {
+/** `/history` search — floating ModalShell card with a live search row and result list. */
+export class HistorySearchComponent implements Component {
 	#historyStorage: HistoryStorage;
 	#searchInput: Input;
 	#results: HistoryEntry[] = [];
@@ -157,9 +164,11 @@ export class HistorySearchComponent extends Container {
 	#onSelect: (prompt: string) => void;
 	#onCancel: () => void;
 	#resultLimit = 100;
+	#shellGeometry: ModalShellGeometry | null = null;
+	#hoveredShortcutId: string | null = null;
+	#onRequestRender?: () => void;
 
 	constructor(historyStorage: HistoryStorage, onSelect: (prompt: string) => void, onCancel: () => void) {
-		super();
 		this.#historyStorage = historyStorage;
 		this.#onSelect = onSelect;
 		this.#onCancel = onCancel;
@@ -176,28 +185,23 @@ export class HistorySearchComponent extends Container {
 		};
 
 		this.#resultsList = new HistoryResultsList();
-
-		const title = theme.bold(theme.fg("accent", `${theme.icon.rewind} Search History`));
-		const dot = theme.fg("dim", theme.sep.dot);
-		const hint = [rawKeyHint("↑↓", "navigate"), rawKeyHint("enter", "select"), rawKeyHint("esc", "cancel")].join(dot);
-
-		this.addChild(new Spacer(1));
-		this.addChild(new Text(title, 1, 0));
-		this.addChild(new Spacer(1));
-		this.addChild(new DynamicBorder());
-		this.addChild(new Spacer(1));
-		this.addChild(this.#searchInput);
-		this.addChild(new Spacer(1));
-		this.addChild(this.#resultsList);
-		this.addChild(new Spacer(1));
-		this.addChild(new Text(hint, 1, 0));
-		this.addChild(new Spacer(1));
-		this.addChild(new DynamicBorder());
-
 		this.#updateResults();
 	}
 
+	setOnRequestRender(cb: () => void): void {
+		this.#onRequestRender = cb;
+	}
+
+	invalidate(): void {
+		this.#resultsList.invalidate();
+	}
+
 	handleInput(keyData: string): void {
+		if (keyData.startsWith("\x1b[<")) {
+			routeSgrMouseInput(keyData, event => this.#routeMouse(event));
+			return;
+		}
+
 		if (matchesSelectUp(keyData)) {
 			if (this.#results.length === 0) return;
 			this.#selectedIndex = Math.max(0, this.#selectedIndex - 1);
@@ -257,6 +261,33 @@ export class HistorySearchComponent extends Container {
 		this.#updateResults();
 	}
 
+	#routeMouse(event: SgrMouseEvent): boolean {
+		const chrome = hitTestModalChrome(this.#shellGeometry, event.row, event.col, {
+			motion: event.motion,
+			leftClick: event.leftClick,
+		});
+		if (chrome.kind === "hover-shortcut") {
+			if (this.#hoveredShortcutId !== chrome.id) {
+				this.#hoveredShortcutId = chrome.id;
+				this.#onRequestRender?.();
+			}
+			return true;
+		}
+		if (
+			chrome.kind === "close" ||
+			chrome.kind === "outside" ||
+			(chrome.kind === "shortcut" && chrome.id === "close")
+		) {
+			this.#onCancel();
+			return true;
+		}
+		if (chrome.kind === "shortcut" && chrome.id === "confirm") {
+			this.handleInput("\n");
+			return true;
+		}
+		return true;
+	}
+
 	#updateResults(): void {
 		const query = this.#searchInput.getValue().trim();
 		this.#results = query
@@ -264,5 +295,32 @@ export class HistorySearchComponent extends Container {
 			: this.#historyStorage.getRecent(this.#resultLimit);
 		this.#selectedIndex = 0;
 		this.#resultsList.setResults(this.#results, this.#selectedIndex, query ? queryTokens(query) : []);
+	}
+
+	render(width: number): readonly string[] {
+		const height = process.stdout.rows || 40;
+		const sizing = withCompact(MODAL_SIZING_MEDIUM, height < 24);
+		const dims = computeModalDims(width, height, sizing);
+		if (!dims) {
+			this.#shellGeometry = null;
+			return Array.from({ length: height }, () => padding(width));
+		}
+
+		const searchLine = this.#searchInput.render(dims.contentWidth)[0] ?? "";
+		const body = [...this.#resultsList.render(dims.contentWidth)];
+
+		const shell = renderModalShell({
+			title: "Search History",
+			sizing,
+			areaWidth: width,
+			areaHeight: height,
+			body,
+			searchLine,
+			shortcuts: SELECT_LIST_SHORTCUTS,
+			hoveredShortcutId: this.#hoveredShortcutId,
+			showClose: true,
+		});
+		this.#shellGeometry = shell.geometry;
+		return shell.lines;
 	}
 }

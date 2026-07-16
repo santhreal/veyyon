@@ -2188,11 +2188,14 @@ export class AcpAgent implements Agent {
 			toolCallId: message.toolCallId,
 			toolName: message.toolName,
 			isError: message.isError === true,
+			// Replayed from persisted session state: the on-disk shape is the
+			// tool-result content the session originally recorded, plus the legacy
+			// `errorMessage` field the ACP mapper still coerces into readable text.
 			result: {
 				content: message.content,
 				details: message.details,
 				errorMessage: message.errorMessage,
-			},
+			} as unknown as AgentToolResult<unknown>,
 		};
 		const notifications = mapAgentSessionEventToAcpSessionUpdates(endEvent, sessionId, {
 			cwd,

@@ -2,9 +2,18 @@ import type { PresetDef, StatusLinePreset } from "./types";
 
 export const STATUS_LINE_PRESETS: Record<StatusLinePreset, PresetDef> = {
 	default: {
-		leftSegments: ["pi", "model", "mode", "collab", "path", "git", "pr", "context_pct", "cost"],
+		// Decluttered: the essentials only — model, mode, where you are, context.
+		// Cost/PR/collab live in their own views, not crammed on the composer.
+		//
+		// A thin `│` separator, not powerline chevrons: the powerline styles need a
+		// patched Nerd Font to render their triangular caps and otherwise degrade to
+		// stray `>`/`▶` glyphs on the composer border. `pipe` has no end-caps, reads
+		// as clean silver text on black, and never depends on a font the user may not
+		// have. Icons are blank in the default theme (see theme.ts), so segments read
+		// as plain words divided by a quiet bar — the premium, un-omp look.
+		leftSegments: ["model", "mode", "path", "git", "context_pct"],
 		rightSegments: ["session_name"],
-		separator: "powerline-thin",
+		separator: "pipe",
 		segmentOptions: {
 			model: { showThinkingLevel: true },
 			path: { abbreviate: true, maxLength: 40, stripWorkPrefix: true },

@@ -1,5 +1,5 @@
 import type { SnapshotStore } from "@veyyon/hashline";
-import type { AgentTool } from "@veyyon/pi-agent-core";
+import type { AnyAgentTool } from "@veyyon/pi-agent-core";
 import {
 	Box,
 	type Component,
@@ -113,7 +113,7 @@ function isEditLikeToolName(toolName: string): boolean {
 	return toolName === "edit" || toolName === "apply_patch";
 }
 
-function resolveEditModeForTool(toolName: string, tool: AgentTool | undefined): EditMode | undefined {
+function resolveEditModeForTool(toolName: string, tool: AnyAgentTool | undefined): EditMode | undefined {
 	if (toolName === "apply_patch") return "apply_patch";
 	if (toolName !== "edit") return undefined;
 	return (tool as { mode?: EditMode } | undefined)?.mode;
@@ -168,11 +168,11 @@ export interface ToolExecutionOptions {
 }
 
 export interface ToolExecutionHandle extends Component {
-	updateArgs(args: any, toolCallId?: string): void;
+	updateArgs(args: unknown, toolCallId?: string): void;
 	updateResult(
 		result: {
 			content: Array<{ type: string; text?: string; data?: string; mimeType?: string }>;
-			details?: any;
+			details?: unknown;
 			isError?: boolean;
 		},
 		isPartial?: boolean,
@@ -216,7 +216,7 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 	readonly #instanceId = ++toolExecutionInstanceSeq;
 	#toolName: string;
 	#toolLabel: string;
-	#args: any;
+	#args: unknown;
 	#expanded = false;
 	#showImages: boolean;
 	#editFuzzyThreshold: number | undefined;
@@ -239,13 +239,13 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 	// so a terminal resize re-shapes image-bearing results to rescale them without
 	// forcing the common image-free result to re-shape on every resize tick.
 	#renderedImageCount = 0;
-	#tool?: AgentTool;
+	#tool?: AnyAgentTool;
 	#ui: TUI;
 	#cwd: string;
 	#result?: {
 		content: Array<{ type: string; text?: string; data?: string; mimeType?: string }>;
 		isError?: boolean;
-		details?: any;
+		details?: unknown;
 	};
 	// Edit preview state
 	#editMode?: EditMode;
@@ -305,9 +305,9 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 
 	constructor(
 		toolName: string,
-		args: any,
+		args: unknown,
 		options: ToolExecutionOptions = {},
-		tool: AgentTool | undefined,
+		tool: AnyAgentTool | undefined,
 		ui: TUI,
 		cwd: string = getProjectDir(),
 		_toolCallId?: string,
@@ -351,7 +351,7 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 		this.#schedulePreviewDiff();
 	}
 
-	updateArgs(args: any, _toolCallId?: string): void {
+	updateArgs(args: unknown, _toolCallId?: string): void {
 		// Reference-equality short-circuit before any further work. Callers
 		// always allocate a new arg object on each streamed delta (see
 		// event-controller.ts and ui-helpers.ts), so a same-reference assignment
@@ -482,7 +482,7 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 	updateResult(
 		result: {
 			content: Array<{ type: string; text?: string; data?: string; mimeType?: string }>;
-			details?: any;
+			details?: unknown;
 			isError?: boolean;
 		},
 		isPartial = false,
@@ -529,8 +529,9 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 	 */
 	#getAllImageBlocks(): Array<{ data?: string; mimeType?: string }> {
 		if (!this.#result) return [];
-		const contentImages = this.#result.content?.filter((c: any) => c.type === "image") || [];
-		const detailImages = this.#result.details?.images || [];
+		const contentImages = this.#result.content?.filter(c => c.type === "image") || [];
+		const detailImages =
+			(this.#result.details as { images?: Array<{ data?: string; mimeType?: string }> } | undefined)?.images || [];
 		return [...contentImages, ...detailImages];
 	}
 
@@ -627,7 +628,7 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 				// Component-scoped: a spinner tick only changes this tool block, so
 				// the TUI reuses every other root subtree instead of walking the
 				// whole tree (issue #4377).
-				this.#ui.requestComponentRender(this);
+				this.#requestScopedRender();
 			}, SPINNER_RENDER_INTERVAL_MS);
 		} else if (!needsSpinner && this.#spinnerInterval) {
 			clearInterval(this.#spinnerInterval);
@@ -658,7 +659,7 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 		this.#backgroundTaskFrozen = true;
 		this.#updateSpinnerAnimation();
 		this.#updateDisplay();
-		this.#ui.requestComponentRender(this);
+		this.#requestScopedRender();
 		return true;
 	}
 
@@ -686,7 +687,7 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 			}
 			// Component-scoped: strike animation only mutates this tool block's
 			// glyph, so the TUI reuses every other root subtree (issue #4377).
-			this.#ui.requestComponentRender(this);
+			this.#requestScopedRender();
 		}, 65);
 	}
 
@@ -734,6 +735,18 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 	}
 
 	/**
+	 * Prefer component-scoped repaint (P3). Fall back to full-tree `requestRender`
+	 * for minimal TUI stubs that omit `requestComponentRender`.
+	 */
+	#requestScopedRender(): void {
+		if (typeof this.#ui.requestComponentRender === "function") {
+			this.#ui.requestComponentRender(this);
+			return;
+		}
+		this.#ui.requestRender();
+	}
+
+	/**
 	 * Mark the tool terminal even though no result arrived (the turn aborted or
 	 * abandoned it) and stop animating, so it can freeze and stops pinning the
 	 * transcript live region.
@@ -747,7 +760,7 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 		this.#backgroundTaskFrozen = true;
 		this.stopAnimation();
 		this.#updateDisplay();
-		this.#ui.requestComponentRender(this);
+		this.#requestScopedRender();
 	}
 
 	/**
@@ -927,7 +940,7 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 					) => Component;
 					const resultComponent = renderResult(
 						{
-							content: this.#result.content as any,
+							content: this.#result.content,
 							details: this.#result.details,
 							isError: this.#result.isError,
 						},
@@ -967,9 +980,9 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 			this.#multiFileBoxes = [];
 
 			// Check for multi-file edit results
-			const perFileResults = this.#result?.details?.perFileResults as
-				| Array<{ path: string; isError?: boolean }>
-				| undefined;
+			const perFileResults = (
+				this.#result?.details as { perFileResults?: Array<{ path: string; isError?: boolean }> } | undefined
+			)?.perFileResults;
 			if (perFileResults && perFileResults.length > 1) {
 				// Multi-file: render each file as its own Box (identical to separate tool calls)
 				this.#contentBox.setBgFn(undefined);
@@ -1001,9 +1014,8 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 				}
 
 				// Show pending indicator for remaining files
-				const totalFiles = this.#args?.edits
-					? new Set((this.#args.edits as any[]).map((e: any) => e?.path).filter(Boolean)).size
-					: 0;
+				const argEdits = (this.#args as { edits?: Array<{ path?: unknown }> } | undefined)?.edits;
+				const totalFiles = argEdits ? new Set(argEdits.map(e => e?.path).filter(Boolean)).size : 0;
 				const remaining = Math.max(0, totalFiles - perFileResults.length);
 				if (remaining > 0 && this.#isPartial) {
 					const pendingSpacer = new Spacer(1);
@@ -1052,7 +1064,7 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 					try {
 						const resultComponent = renderer.renderResult(
 							{
-								content: this.#result.content as any,
+								content: this.#result.content,
 								details: this.#result.details,
 								isError: this.#result.isError,
 							},
@@ -1122,7 +1134,7 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 		this.#renderedImageCount = this.#imageComponents.length;
 	}
 
-	#getCallArgsForRender(): any {
+	#getCallArgsForRender(): unknown {
 		const renderArgs = getArgsWithStreamedTextInput(this.#args);
 		if (!isEditLikeToolName(this.#toolName)) {
 			return renderArgs;
@@ -1160,7 +1172,7 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 			}
 			context.expanded = this.#expanded;
 			context.previewLines = BASH_DEFAULT_PREVIEW_LINES;
-			context.timeout = normalizeTimeoutSeconds(this.#args?.timeout, 3600);
+			context.timeout = normalizeTimeoutSeconds((this.#args as { timeout?: unknown } | undefined)?.timeout, 3600);
 		} else if (this.#toolName === "eval" && this.#result) {
 			const output = this.#getTextOutput().trimEnd();
 			context.output = output;
@@ -1203,20 +1215,19 @@ export class ToolExecutionComponent extends Container implements NativeScrollbac
 	#getTextOutput(): string {
 		if (!this.#result) return "";
 
-		const textBlocks = this.#result.content?.filter((c: any) => c.type === "text") || [];
+		const textBlocks = this.#result.content?.filter(c => c.type === "text") || [];
 		const imageBlocks = this.#getAllImageBlocks();
 
-		let output = textBlocks
-			.map((c: any) => {
-				return sanitizeWithOptionalSixelPassthrough(c.text || "", sanitizeText);
-			})
-			.join("\n");
+		let output = textBlocks.map(c => sanitizeWithOptionalSixelPassthrough(c.text || "", sanitizeText)).join("\n");
 
 		if (imageBlocks.length > 0 && (!TERMINAL.imageProtocol || !this.#showImages)) {
 			const imageIndicators = imageBlocks
-				.map((img: any) => {
-					const dims = img.data ? (getImageDimensions(img.data, img.mimeType) ?? undefined) : undefined;
-					return imageFallback(img.mimeType, dims);
+				.map(img => {
+					// A block missing mimeType used to render "[Image: [undefined]]"
+					// through the old `any`-typed path; label it generically instead.
+					const mimeType = img.mimeType ?? "image";
+					const dims = img.data ? (getImageDimensions(img.data, mimeType) ?? undefined) : undefined;
+					return imageFallback(mimeType, dims);
 				})
 				.join("\n");
 			output = output ? `${output}\n${imageIndicators}` : imageIndicators;

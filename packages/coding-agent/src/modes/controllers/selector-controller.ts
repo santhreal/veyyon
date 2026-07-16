@@ -26,6 +26,7 @@ import type { ResetCreditAccountStatus, ResetCreditRedeemOutcome } from "../../s
 import type { SessionInfo } from "../../session/session-listing";
 import { SessionManager } from "../../session/session-manager";
 import { FileSessionStorage } from "../../session/session-storage";
+import { openPath } from "../../utils/open";
 import { type LogoutAccount, toLogoutAccounts } from "../../slash-commands/helpers/logout";
 import {
 	describeRedeemOutcome,
@@ -33,14 +34,13 @@ import {
 	toResetUsageAccounts,
 } from "../../slash-commands/helpers/reset-usage";
 import { AUTO_THINKING, type ConfiguredThinkingLevel } from "../../thinking";
+import { isImageProviderPreference, setPreferredImageProvider } from "../../tools/image-gen";
 import {
-	isImageProviderPreference,
 	isSearchProviderId,
 	isSearchProviderPreference,
 	setExcludedSearchProviders,
-	setPreferredImageProvider,
 	setPreferredSearchProvider,
-} from "../../tools";
+} from "../../web/search";
 import { shortenPath } from "../../tools/render-utils";
 import { copyToClipboard } from "../../utils/clipboard";
 import { repo } from "../../utils/git";
@@ -115,7 +115,36 @@ export class SelectorController {
 		this.ctx.ui.requestRender();
 	}
 
-	showSettingsSelector(): void {
+	/**
+	 * Shows a floating ModalShell picker as a fullscreen overlay (clear underpaint).
+	 * Prefer this over {@link showSelector} for structure-system pickers.
+	 */
+	showModalSelector(
+		create: (done: () => void) => {
+			component: Component & { setOnRequestRender?: (cb: () => void) => void };
+			focus: Component;
+		},
+	): void {
+		let overlayHandle: OverlayHandle | undefined;
+		const done = () => {
+			overlayHandle?.hide();
+			this.focusActiveEditorArea();
+			this.ctx.ui.requestRender();
+		};
+		const { component, focus } = create(done);
+		component.setOnRequestRender?.(() => this.ctx.ui.requestRender());
+		overlayHandle = this.ctx.ui.showOverlay(component, {
+			anchor: "top-left",
+			width: "100%",
+			maxHeight: "100%",
+			margin: 0,
+			fullscreen: true,
+		});
+		this.ctx.ui.setFocus(focus);
+		this.ctx.ui.requestRender();
+	}
+
+	showSettingsSelector(initialItemId?: string): void {
 		Promise.all([getAvailableThemes(), resolveAvailablePersonalities({ cwd: getProjectDir() })]).then(
 			([availableThemes, availablePersonalities]) => {
 				// Fullscreen settings editor on the alternate screen: the overlay
@@ -196,6 +225,7 @@ export class SelectorController {
 							this.ctx.ui.requestRender();
 						},
 					},
+					initialItemId,
 				);
 				overlayHandle = this.ctx.ui.showOverlay(selector, {
 					anchor: "bottom-center",
@@ -218,7 +248,7 @@ export class SelectorController {
 		const historyStorage = this.ctx.historyStorage;
 		if (!historyStorage) return;
 
-		this.showSelector(done => {
+		this.showModalSelector(done => {
 			const component = new HistorySearchComponent(
 				historyStorage,
 				prompt => {
@@ -273,11 +303,16 @@ export class SelectorController {
 			activeModelPattern,
 			defaultModelPattern,
 		});
+		// Fullscreen dashboard on the alternate screen (the /settings idiom): the
+		// overlay borrows the terminal's alt buffer and enables mouse tracking for
+		// its lifetime, leaving the transcript untouched underneath. The card
+		// itself floats within this via ModalShell LARGE (see agent-dashboard.ts).
 		const overlay = this.ctx.ui.showOverlay(dashboard, {
 			width: "100%",
 			maxHeight: "100%",
 			anchor: "top-left",
 			margin: 0,
+			fullscreen: true,
 		});
 		dashboard.onClose = () => {
 			overlay.hide();
@@ -576,11 +611,13 @@ export class SelectorController {
 				currentSelector: current ? `${current.provider}/${current.id}` : undefined,
 			},
 		);
+		// Fullscreen host; ModelPicker paints a floating ModalShell medium card.
 		overlayHandle = this.ctx.ui.showOverlay(picker, {
-			anchor: "bottom-center",
+			anchor: "top-left",
 			width: "100%",
 			maxHeight: "100%",
 			margin: 0,
+			fullscreen: true,
 		});
 		this.ctx.ui.setFocus(picker);
 		this.ctx.ui.requestRender();
@@ -736,7 +773,7 @@ export class SelectorController {
 			return;
 		}
 
-		this.showSelector(done => {
+		this.showModalSelector(done => {
 			const selector = new UserMessageSelectorComponent(
 				userMessages.map(m => ({ id: m.entryId, text: m.text })),
 				async entryId => {
@@ -758,7 +795,7 @@ export class SelectorController {
 					this.ctx.ui.requestRender();
 				},
 			);
-			return { component: selector, focus: selector.getMessageList() };
+			return { component: selector, focus: selector };
 		});
 	}
 
@@ -785,11 +822,13 @@ export class SelectorController {
 		});
 
 		overlayHandle = this.ctx.ui.showOverlay(selector, {
-			anchor: "bottom-center",
+			anchor: "top-left",
 			width: "100%",
 			maxHeight: "100%",
 			margin: 0,
+			fullscreen: true,
 		});
+		selector.setOnRequestRender?.(() => this.ctx.ui.requestRender());
 		this.ctx.ui.setFocus(selector);
 		this.ctx.ui.requestRender();
 	}
@@ -1132,6 +1171,12 @@ export class SelectorController {
 					dialog.showProgress(message);
 				},
 				onManualCodeInput: useManualInput ? () => manualInput.waitForInput(providerId) : undefined,
+				onSuccessPage: (url: string) => {
+					// Device-code/paste flows (grok, Copilot, Kimi) get no browser
+					// redirect of their own; open the freshly-served branded success
+					// page so every provider ends on the same "Signed in" screen.
+					openPath(url);
+				},
 			});
 			this.ctx.session.modelRegistry.refreshInBackground();
 			const block = new TranscriptBlock();
@@ -1223,7 +1268,7 @@ export class SelectorController {
 			return;
 		}
 
-		this.showSelector(done => {
+		this.showModalSelector(done => {
 			const selector = new LogoutAccountSelectorComponent(
 				provider?.name ?? providerId,
 				accounts,
@@ -1262,7 +1307,7 @@ export class SelectorController {
 			}
 		}
 
-		this.showSelector(done => {
+		this.showModalSelector(done => {
 			let selector: OAuthSelectorComponent;
 			selector = new OAuthSelectorComponent(
 				mode,
@@ -1296,6 +1341,7 @@ export class SelectorController {
 					requestRender: () => {
 						this.ctx.ui.requestComponentRender(selector);
 					},
+					standalone: true,
 				},
 			);
 			return { component: selector, focus: selector };
@@ -1325,7 +1371,7 @@ export class SelectorController {
 			);
 			return;
 		}
-		this.showSelector(done => {
+		this.showModalSelector(done => {
 			const selector = new ResetUsageSelectorComponent(
 				accounts,
 				account => {
@@ -1365,7 +1411,7 @@ export class SelectorController {
 
 	async showDebugSelector(): Promise<void> {
 		const { DebugSelectorComponent } = await import("../../debug");
-		this.showSelector(done => {
+		this.showModalSelector(done => {
 			const selector = new DebugSelectorComponent(this.ctx, done);
 			return { component: selector, focus: selector };
 		});

@@ -37,27 +37,31 @@ import {
 } from "../utils/keybinding-matchers";
 import type { HookSelectorSlider } from "./hook-selector";
 import {
-	bottomBorder,
-	divider,
-	dividerSplit,
-	fit,
-	row,
-	splitBodyWidth,
-	splitRow,
-	topBorder,
-	topBorderSplit,
-} from "./overlay-box";
+	computeModalDims,
+	hitTestModalChrome,
+	MODAL_SIZING_LARGE,
+	type ModalShellGeometry,
+	type ModalShortcut,
+	renderModalShell,
+} from "./modal-shell";
+import { fit } from "./overlay-box";
 import { joinPlanSections, parsePlanSections, sectionDeletionSpan } from "./plan-toc";
 import { renderSegmentTrack } from "./segment-track";
 
-/** Title shown in the overlay's top border. */
+/** Title shown in the ModalShell chrome. */
 const OVERLAY_TITLE = "Plan Review";
 /** Minimum plan-body rows kept visible even on short terminals. */
 const MIN_BODY_ROWS = 3;
-/** Sidebar gates: enough headings, a wide terminal, and a usable body column. */
+/** Sidebar gates: enough headings, a wide content column, and a usable body column. */
 const SIDEBAR_MIN_HEADINGS = 2;
 const SIDEBAR_MIN_TOTAL_WIDTH = 64;
 const SIDEBAR_MIN_BODY_WIDTH = 40;
+/** Columns spent on the sidebar/body divider: one space, the glyph, one space. */
+const SIDEBAR_DIVIDER_COLS = 3;
+/** Fixed rows ModalShell reserves outside the body budget (see ask-dialog's
+ *  identically-derived CHROME_ROWS): top/close bar, footer divider, bottom
+ *  border, sizing vPad, and the minimum footer band. */
+const CHROME_ROWS = 3 + MODAL_SIZING_LARGE.footerLines + MODAL_SIZING_LARGE.vPad;
 
 type Focus = "toc" | "body" | "actions";
 
@@ -144,11 +148,15 @@ export class PlanReviewOverlay implements Component {
 	#optionClickRows = new Map<number, number>();
 	#tocClickRows = new Map<number, number>();
 	#bodyClickRows = new Set<number>();
-	/** Exclusive 0-based column bound below which a region-row click targets the sidebar. */
+	/** Exclusive absolute-screen-column bound below which a region-row click targets the sidebar. */
 	#sidebarClickMaxCol = 0;
 	/** Option index the pointer is currently hovering, or undefined. Updated from
 	 *  motion mouse reports and cleared when the pointer leaves the option rows. */
 	#hoveredOption: number | undefined;
+	#shellGeometry: ModalShellGeometry | null = null;
+	#hoveredShortcutId: string | null = null;
+	/** Screen row where the composed body content starts, from the last render's ModalShell geometry. */
+	#bodyRowOffset = 0;
 
 	#annotating = false;
 	#input: Input;
@@ -338,23 +346,58 @@ export class PlanReviewOverlay implements Component {
 	 * confirm), on a ToC row jumps to that section, and on the body column focuses
 	 * the body.
 	 */
+	/**
+	 * Hit-test an SGR mouse report against ModalShell chrome first (close glyph,
+	 * click-outside, footer chips), then fall back to the click maps the last
+	 * render recorded for the sidebar/body/options region. Those maps are keyed
+	 * by row-within-the-composed-body-content, so incoming screen rows are
+	 * translated via `#bodyRowOffset` (the shell's `bodyRowStart`) before
+	 * consulting them.
+	 */
 	#handleMouse(data: string): boolean {
 		return routeSgrMouseInput(data, event => {
+			const chrome = hitTestModalChrome(this.#shellGeometry, event.row, event.col, {
+				motion: event.motion,
+				leftClick: event.leftClick,
+			});
+			if (chrome.kind === "hover-shortcut") {
+				this.#hoveredShortcutId = chrome.id;
+				if (chrome.id !== null) {
+					this.#setHoveredOption(undefined);
+					return true;
+				}
+				// Motion inside the card but not over a chip: fall through so the
+				// per-row option hover below still runs.
+			} else if (
+				chrome.kind === "close" ||
+				chrome.kind === "outside" ||
+				(chrome.kind === "shortcut" && chrome.id === "close")
+			) {
+				this.callbacks.onCancel();
+				return true;
+			} else if (chrome.kind === "shortcut" && chrome.id === "confirm") {
+				if (this.#annotating) this.#submitAnnotation(this.#input.getValue());
+				else this.#confirmSelection();
+				return true;
+			}
+
 			if (event.wheel !== null) {
 				// Scroll wheel: three rows per notch.
 				this.#scrollView.scroll(event.wheel * 3);
 				return true;
 			}
 			if (event.release) return true;
+
+			const bodyRow = event.row - this.#bodyRowOffset;
 			if (event.motion) {
 				// Motion (hover or drag): light up the option row under the pointer so a
 				// mouse user gets the same affordance the keyboard cursor gives. Any
 				// non-option row clears the highlight.
-				this.#setHoveredOption(this.#optionClickRows.get(event.row));
+				this.#setHoveredOption(this.#optionClickRows.get(bodyRow));
 				return true;
 			}
 			if (!event.leftClick) return true;
-			const optionIndex = this.#optionClickRows.get(event.row);
+			const optionIndex = this.#optionClickRows.get(bodyRow);
 			if (optionIndex !== undefined) {
 				if (!this.#disabled.has(optionIndex)) {
 					this.#focus = "actions";
@@ -363,14 +406,14 @@ export class PlanReviewOverlay implements Component {
 				}
 				return true;
 			}
-			const tocPos = this.#tocClickRows.get(event.row);
+			const tocPos = this.#tocClickRows.get(bodyRow);
 			if (tocPos !== undefined && event.col < this.#sidebarClickMaxCol) {
 				this.#focus = "toc";
 				this.#tocCursor = tocPos;
 				this.#scrubBodyToToc();
 				return true;
 			}
-			if (this.#bodyClickRows.has(event.row)) {
+			if (this.#bodyClickRows.has(bodyRow)) {
 				this.#setFocus("body");
 			}
 			return true;
@@ -668,26 +711,34 @@ export class PlanReviewOverlay implements Component {
 		});
 	}
 
-	#buildHelp(): string {
-		const sep = " · ";
-		const parts: string[] = [];
+	/** Footer chips for the current focus region, or the annotate mini-editor's
+	 *  chips while an annotation draft is active. */
+	#buildShortcuts(): ModalShortcut[] {
+		if (this.#annotating) {
+			const chips: ModalShortcut[] = [{ label: "enter save", clickable: true, id: "confirm" }];
+			if (this.#externalEditorLabel) chips.push({ label: `${this.#externalEditorLabel} editor` });
+			chips.push({ label: "esc cancel", clickable: true, id: "close" });
+			return chips;
+		}
+		const chips: ModalShortcut[] = [];
 		switch (this.#focus) {
 			case "actions":
-				parts.push("↑↓ select", "⏎ confirm");
-				if (this.#slider) parts.push("◂▸ model");
+				chips.push({ label: "up/down select" }, { label: "enter confirm", clickable: true, id: "confirm" });
+				if (this.#slider) chips.push({ label: "left/right model" });
 				break;
 			case "toc":
-				parts.push("↑↓ section", "⏎ open", "a annotate", "d delete", "u undo");
+				chips.push({ label: "up/down section" }, { label: "enter open" });
+				chips.push({ label: "a annotate" }, { label: "d delete" }, { label: "u undo" });
 				break;
 			case "body":
-				parts.push("↑↓ scroll", "⇧ faster", "pgup/pgdn", "g/G ends");
+				chips.push({ label: "up/down scroll" }, { label: "shift faster" }, { label: "pgup/pgdn" }, { label: "g/G ends" });
 				break;
 		}
-		if (this.callbacks.onCopyPlan) parts.push("c copy");
-		parts.push("tab regions");
-		if (this.#externalEditorLabel && this.#focus !== "toc") parts.push(`${this.#externalEditorLabel} editor`);
-		parts.push(this.#helpSuffix);
-		return parts.join(sep);
+		if (this.callbacks.onCopyPlan) chips.push({ label: "c copy" });
+		chips.push({ label: "tab regions" });
+		if (this.#externalEditorLabel && this.#focus !== "toc") chips.push({ label: `${this.#externalEditorLabel} editor` });
+		chips.push({ label: this.#helpSuffix, clickable: true, id: "close" });
+		return chips;
 	}
 
 	/** Build the concatenated body lines and record each section's start row. */
@@ -723,10 +774,16 @@ export class PlanReviewOverlay implements Component {
 		return Math.max(18, Math.min(30, Math.round(width * 0.24)));
 	}
 
-	#sidebarVisible(width: number): boolean {
+	/** Body-content width left over for a sidebar of `sidebarWidth` columns
+	 *  inside a `contentWidth`-wide ModalShell body. */
+	#sidebarBodyWidth(contentWidth: number, sidebarWidth: number): number {
+		return Math.max(1, contentWidth - sidebarWidth - SIDEBAR_DIVIDER_COLS);
+	}
+
+	#sidebarVisible(contentWidth: number): boolean {
 		if (this.#toc.length < SIDEBAR_MIN_HEADINGS) return false;
-		if (width < SIDEBAR_MIN_TOTAL_WIDTH) return false;
-		return splitBodyWidth(width, this.#sidebarWidthFor(width)) >= SIDEBAR_MIN_BODY_WIDTH;
+		if (contentWidth < SIDEBAR_MIN_TOTAL_WIDTH) return false;
+		return this.#sidebarBodyWidth(contentWidth, this.#sidebarWidthFor(contentWidth)) >= SIDEBAR_MIN_BODY_WIDTH;
 	}
 
 	/** Sidebar lines plus, per row, the ToC position shown there (for clicks). */
@@ -761,7 +818,7 @@ export class PlanReviewOverlay implements Component {
 		// Compact, VS Code-like rows: a single-column gutter, one space of indent
 		// per nesting level, then the title and an annotation marker.
 		const indent = " ".repeat(Math.max(0, section.level - this.#tocBaseLevel));
-		const ann = section.annotations.length > 0 ? " note" : "";
+		const ann = section.annotations.length > 0 ? " ✎" : "";
 		const avail = Math.max(0, width - 1 - indent.length - visibleWidth(ann));
 		const title = truncateToWidth(section.title || "(untitled)", avail, Ellipsis.Unicode);
 		const body = indent + title + ann;
@@ -776,35 +833,49 @@ export class PlanReviewOverlay implements Component {
 		return theme.fg("muted", line);
 	}
 
-	#renderFooterLines(innerWidth: number): string[] {
-		if (this.#annotating) {
-			const section = this.#sections[this.#toc[this.#tocCursor]!];
-			const title = section?.title ?? "";
-			const caption = `${theme.fg("dim", "Annotate")} ${theme.fg("accent", `‹${title}›`)}`;
-			const hintParts = ["enter save", "esc cancel"];
-			if (this.#externalEditorLabel) hintParts.push(`${this.#externalEditorLabel} editor`);
-			return [caption, this.#input.render(innerWidth)[0] ?? "", theme.fg("dim", hintParts.join(" · "))];
-		}
-		return [theme.fg("dim", this.#buildHelp())];
+	/** The annotate mini-editor's caption + input line, or nothing when not
+	 *  annotating (the shortcut chips carry its hints instead of a footer line). */
+	#renderAnnotateLines(contentWidth: number): string[] {
+		if (!this.#annotating) return [];
+		const section = this.#sections[this.#toc[this.#tocCursor]!];
+		const title = section?.title ?? "";
+		const caption = `${theme.fg("dim", "Annotate")} ${theme.fg("accent", `‹${title}›`)}`;
+		return [caption, this.#input.render(contentWidth)[0] ?? ""];
+	}
+
+	/** Plain horizontal rule (no outer box glyphs — ModalShell owns those)
+	 *  separating the sidebar/body region from the prompt/slider/options below. */
+	#renderRegionRule(contentWidth: number): string {
+		return theme.fg("borderAccent", theme.boxSharp.horizontal.repeat(Math.max(0, contentWidth)));
+	}
+
+	/** Compose one `sidebar │ body` row inside a `contentWidth`-wide slot. */
+	#composeSplitLine(sidebar: string, body: string, sidebarWidth: number, bodyWidth: number): string {
+		const divider = theme.fg("borderAccent", theme.boxSharp.vertical);
+		return `${fit(sidebar, sidebarWidth)} ${divider} ${fit(body, bodyWidth)}`;
 	}
 
 	render(width: number): readonly string[] {
-		const termHeight = process.stdout.rows || 40;
-		const sidebarShown = this.#sidebarVisible(width);
+		const termHeight = Math.max(14, process.stdout.rows || 40);
+		const sizing = MODAL_SIZING_LARGE;
+		const dims = computeModalDims(width, termHeight, sizing);
+		const contentWidth = dims?.contentWidth ?? Math.max(1, width - 4);
+
+		const sidebarShown = this.#sidebarVisible(contentWidth);
 		this.#sidebarShown = sidebarShown;
-		const sidebarWidth = sidebarShown ? this.#sidebarWidthFor(width) : 0;
-		const innerWidth = Math.max(1, width - 4);
-		const bodyContentWidth = sidebarShown ? splitBodyWidth(width, sidebarWidth) : innerWidth;
+		const sidebarWidth = sidebarShown ? this.#sidebarWidthFor(contentWidth) : 0;
+		const bodyContentWidth = sidebarShown ? this.#sidebarBodyWidth(contentWidth, sidebarWidth) : contentWidth;
 
 		const sliderLines = this.#renderSliderLines();
 		const optionLines = this.#renderOptionLines();
 		const promptLines = this.#promptTitle ? [theme.bold(theme.fg("accent", this.#promptTitle))] : [];
-		const footerLines = this.#renderFooterLines(innerWidth);
+		const annotateLines = this.#renderAnnotateLines(contentWidth);
 
-		// Chrome rows: top border, two dividers, bottom border, plus the
-		// prompt/slider/option/footer rows between them.
-		const chrome = 4 + promptLines.length + sliderLines.length + optionLines.length + footerLines.length;
-		const regionRows = Math.max(MIN_BODY_ROWS, termHeight - chrome);
+		// Region rows: everything below the sidebar/body block (the region rule,
+		// prompt, slider, options, and the annotate mini-editor) plus ModalShell's
+		// own fixed chrome (see CHROME_ROWS).
+		const belowRegionRows = 1 + promptLines.length + sliderLines.length + optionLines.length + annotateLines.length;
+		const regionRows = Math.max(MIN_BODY_ROWS, (dims?.modalHeight ?? termHeight) - CHROME_ROWS - belowRegionRows);
 
 		const bodyLines = this.#buildBody(bodyContentWidth);
 		this.#scrollView.setLines(bodyLines);
@@ -819,36 +890,46 @@ export class PlanReviewOverlay implements Component {
 		this.#optionClickRows.clear();
 		this.#tocClickRows.clear();
 		this.#bodyClickRows.clear();
-		this.#sidebarClickMaxCol = sidebarShown ? sidebarWidth + 3 : 0;
 
-		const out: string[] = [];
+		const content: string[] = [];
 		if (sidebarShown) {
 			const { lines: sidebar, posForRow } = this.#renderSidebarLines(regionRows, sidebarWidth);
-			out.push(topBorderSplit(width, OVERLAY_TITLE, sidebarWidth));
 			for (let i = 0; i < regionRows; i++) {
 				const pos = posForRow[i];
-				if (pos !== undefined) this.#tocClickRows.set(out.length, pos);
-				this.#bodyClickRows.add(out.length);
-				out.push(splitRow(sidebar[i] ?? "", body[i] ?? "", width, sidebarWidth));
+				if (pos !== undefined) this.#tocClickRows.set(content.length, pos);
+				this.#bodyClickRows.add(content.length);
+				content.push(this.#composeSplitLine(sidebar[i] ?? "", body[i] ?? "", sidebarWidth, bodyContentWidth));
 			}
-			out.push(dividerSplit(width, sidebarWidth));
 		} else {
-			out.push(topBorder(width, OVERLAY_TITLE));
 			for (const line of body) {
-				this.#bodyClickRows.add(out.length);
-				out.push(row(line, width));
+				this.#bodyClickRows.add(content.length);
+				content.push(line);
 			}
-			out.push(divider(width));
 		}
-		for (const line of promptLines) out.push(row(line, width));
-		for (const line of sliderLines) out.push(row(line, width));
+		content.push(this.#renderRegionRule(contentWidth));
+		for (const line of promptLines) content.push(line);
+		for (const line of sliderLines) content.push(line);
 		for (let i = 0; i < optionLines.length; i++) {
-			this.#optionClickRows.set(out.length, i);
-			out.push(row(optionLines[i]!, width));
+			this.#optionClickRows.set(content.length, i);
+			content.push(optionLines[i]!);
 		}
-		out.push(divider(width));
-		for (const line of footerLines) out.push(row(line, width));
-		out.push(bottomBorder(width));
-		return out;
+		for (const line of annotateLines) content.push(line);
+
+		const shell = renderModalShell({
+			title: OVERLAY_TITLE,
+			sizing,
+			areaWidth: width,
+			areaHeight: termHeight,
+			body: content,
+			shortcuts: this.#buildShortcuts(),
+			hoveredShortcutId: this.#hoveredShortcutId,
+			showClose: true,
+		});
+		this.#shellGeometry = shell.geometry;
+		this.#bodyRowOffset = shell.geometry?.bodyRowStart ?? 0;
+		this.#sidebarClickMaxCol = sidebarShown
+			? (shell.geometry?.leftPad ?? 0) + 2 + sidebarWidth + 1
+			: 0;
+		return shell.lines;
 	}
 }

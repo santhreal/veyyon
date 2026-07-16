@@ -30,7 +30,14 @@ import { setMcpServerEnabled } from "../../../mcp/config-writer";
 import { getTabBarTheme } from "../../../modes/shared";
 import { theme } from "../../../modes/theme/theme";
 import { matchesAppInterrupt } from "../../../modes/utils/keybinding-matchers";
-import { bottomBorder, divider, row, topBorder } from "../overlay-box";
+import {
+	computeModalDims,
+	hitTestModalChrome,
+	MODAL_SIZING_LARGE,
+	type ModalShellGeometry,
+	renderModalShell,
+	withCompact,
+} from "../modal-shell";
 import { ExtensionList } from "./extension-list";
 import { InspectorPanel } from "./inspector-panel";
 import {
@@ -43,7 +50,12 @@ import {
 } from "./state-manager";
 import type { DashboardState, ProviderTab } from "./types";
 
-const EXT_FOOTER = " ↑/↓: navigate · Space: toggle · ←/→: provider · Esc: close";
+const EXT_SHORTCUTS = [
+	{ label: "up/down navigate" },
+	{ label: "space toggle", clickable: true, id: "toggle" },
+	{ label: "left/right provider" },
+	{ label: "esc close", clickable: true, id: "close" },
+] as const;
 
 /**
  * Map dashboard provider tabs to {@link TabBar} tabs. Empty *enabled* providers
@@ -76,6 +88,9 @@ export class ExtensionDashboard implements Component {
 	#tabRowCount = 0;
 	#bodyRowStart = 0;
 	#bodyRowCount = 0;
+	#shellGeometry: ModalShellGeometry | null = null;
+	#hoveredShortcutId: string | null = null;
+	#frameLeft = 0;
 
 	onClose?: () => void;
 	onRequestRender?: () => void;
@@ -144,36 +159,46 @@ export class ExtensionDashboard implements Component {
 	}
 
 	/**
-	 * Fullscreen frame: titled top border, the tab row(s), a divider, the
-	 * two-column body sized to fill the viewport, a divider, the footer hint, and
-	 * the bottom border. Records row geometry for mouse hit-testing.
+	 * Floating ModalShell card: titled chrome, tabs, two-column body, tip gap,
+	 * centered shortcut chips. Transcript visible around the card.
 	 */
 	render(width: number): readonly string[] {
 		const height = Math.max(14, this.#terminalRows());
-		const innerWidth = Math.max(1, width - 4);
+		const sizing = withCompact(MODAL_SIZING_LARGE, height < 24);
+		const dims = computeModalDims(width, height, sizing);
+		if (!dims) {
+			this.#shellGeometry = null;
+			return Array.from({ length: height }, () => padding(width));
+		}
+		const contentWidth = dims.contentWidth;
 
-		const tabLines = this.#tabBar.render(innerWidth);
-		// Fixed chrome: top border + tab rows + divider + divider + footer + bottom border.
-		const fixedRows = 1 + tabLines.length + 1 + 1 + 1 + 1;
-		const contentRows = Math.max(5, height - fixedRows);
+		const tabLines = this.#tabBar.render(contentWidth);
+		const contentRows = Math.max(5, dims.modalHeight - 8 - tabLines.length);
 
 		this.#mainList.setMaxVisible(Math.max(3, contentRows - 2));
 		this.#body.setMaxHeight(contentRows);
-		const bodyLines = this.#body.render(innerWidth);
+		const bodyLines = this.#body.render(contentWidth);
+		const body: string[] = [...tabLines];
+		for (let i = 0; i < contentRows; i++) body.push(bodyLines[i] ?? "");
 
-		const out: string[] = [];
-		out.push(topBorder(width, "Extension Control Center"));
-		this.#tabRowStart = out.length;
+		const shell = renderModalShell({
+			title: "Extension Control Center",
+			sizing,
+			areaWidth: width,
+			areaHeight: height,
+			body,
+			shortcuts: [...EXT_SHORTCUTS],
+			hoveredShortcutId: this.#hoveredShortcutId,
+			showClose: true,
+		});
+
+		this.#shellGeometry = shell.geometry;
+		this.#frameLeft = shell.geometry?.leftPad ?? 0;
+		this.#tabRowStart = shell.geometry?.bodyRowStart ?? 0;
 		this.#tabRowCount = tabLines.length;
-		for (const line of tabLines) out.push(row(line, width));
-		out.push(divider(width));
-		this.#bodyRowStart = out.length;
+		this.#bodyRowStart = this.#tabRowStart + tabLines.length;
 		this.#bodyRowCount = contentRows;
-		for (let i = 0; i < contentRows; i++) out.push(row(bodyLines[i] ?? "", width));
-		out.push(divider(width));
-		out.push(row(theme.fg("dim", EXT_FOOTER), width));
-		out.push(bottomBorder(width));
-		return out;
+		return shell.lines;
 	}
 
 	invalidate(): void {
@@ -191,8 +216,30 @@ export class ExtensionDashboard implements Component {
 		const event = parseSgrMouse(data);
 		if (!event) return;
 
-		// row() insets content by two columns (border + space).
-		const innerCol = event.col - 2;
+		const chrome = hitTestModalChrome(this.#shellGeometry, event.row, event.col, {
+			motion: event.motion,
+			leftClick: event.leftClick,
+		});
+		if (chrome.kind === "hover-shortcut") {
+			if (this.#hoveredShortcutId !== chrome.id) {
+				this.#hoveredShortcutId = chrome.id;
+				this.onRequestRender?.();
+			}
+			return;
+		}
+		if (chrome.kind === "close" || chrome.kind === "outside" || (chrome.kind === "shortcut" && chrome.id === "close")) {
+			this.onClose?.();
+			return;
+		}
+		if (chrome.kind === "shortcut" && chrome.id === "toggle") {
+			this.#mainList.handleInput(" ");
+			this.onRequestRender?.();
+			return;
+		}
+
+		// row() insets content by the border column plus a space; frame may be centered.
+		const contentColInset = 2 + this.#frameLeft;
+		const innerCol = event.col - contentColInset;
 		const tabLine = event.row - this.#tabRowStart;
 		const overTabs = tabLine >= 0 && tabLine < this.#tabRowCount;
 		const bodyLine = event.row - this.#bodyRowStart;

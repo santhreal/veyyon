@@ -1,9 +1,9 @@
-import { countTokens, type AgentMessage } from "@veyyon/pi-agent-core";
+import { type AgentMessage, countTokens } from "@veyyon/pi-agent-core";
 import type { CompactionSettings } from "@veyyon/pi-agent-core/compaction";
 import { effectiveReserveTokens, estimateTokens, resolveThresholdTokens } from "@veyyon/pi-agent-core/compaction";
 import type { Tool as AiTool, Model } from "@veyyon/pi-ai";
 import { toolWireSchema } from "@veyyon/pi-ai/utils/schema";
-import { formatNumber } from "@veyyon/pi-utils";
+import { formatNumber, logger } from "@veyyon/pi-utils";
 import type { Skill } from "../../extensibility/skills";
 import type { AgentSession } from "../../session/agent-session";
 import { estimateInlineSavings, type SnapcompactSavingsEstimate } from "../../session/snapcompact-inline";
@@ -66,10 +66,20 @@ function wireSchemaJsonFragment(tool: Pick<Tool, "name" | "description" | "param
 			toolWireJsonByParameters.set(parameters, json);
 		}
 		return json;
-	} catch {
+	} catch (error) {
+		// Estimation must not crash the usage panel, but counting this tool
+		// as ~0 tokens silently understates context usage — warn once per tool.
+		if (!wireJsonFailureWarned.has(tool.name)) {
+			wireJsonFailureWarned.add(tool.name);
+			logger.warn("tool wire-schema serialization failed; context usage understates this tool", {
+				tool: tool.name,
+				error: error instanceof Error ? error.message : String(error),
+			});
+		}
 		return "{}";
 	}
 }
+const wireJsonFailureWarned = new Set<string>();
 
 export function estimateSkillsTokens(skills: readonly Skill[]): number {
 	const fragments: string[] = [];

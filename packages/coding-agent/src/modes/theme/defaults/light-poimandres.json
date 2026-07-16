@@ -50,7 +50,7 @@
     "muted": "poimandresBluishGray",
     "dim": "poimandresDarkerGray",
     "text": "poimandresBluishGray",
-    "thinkingText": "poimandresBluishGray",
+    "thinkingText": "poimandresDarkerGray",
     "selectedBg": "poimandresSelection",
     "userMessageBg": "poimandresBluishGrayBrighter",
     "userMessageText": "poimandresWhite",
@@ -135,7 +135,7 @@
       "icon.loop": "↻",
       "icon.folder": "▸",
       "icon.scratchFolder": "◌",
-      "icon.pi": "π",
+      "icon.pi": "",
       "format.bullet": "◦",
       "md.bullet": "◦"
     }

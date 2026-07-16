@@ -139,7 +139,7 @@ export class ModelSelectorPanel extends Container {
 	}
 
 	handleInput(data: string): void {
-		if (this.#allowClear && this.#browser.query.length === 0 && matchesKey(data, "app:delete")) {
+		if (this.#allowClear && this.#browser.query.length === 0 && matchesKey(data, "delete")) {
 			this.#onClear?.();
 			return;
 		}
@@ -147,7 +147,7 @@ export class ModelSelectorPanel extends Container {
 	}
 
 	render(width: number): string[] {
-		const lines = super.render(width);
+		const lines = [...super.render(width)];
 		if (lines.length > 0) {
 			lines[lines.length - 1] = truncateToWidth(lines[lines.length - 1] ?? "", width);
 		}

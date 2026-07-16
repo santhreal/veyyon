@@ -1,12 +1,12 @@
-import { Container } from "@veyyon/pi-tui";
+import { type Component, Container } from "@veyyon/pi-tui";
 
 /**
  * Capabilities a mounted {@link ChatBlock} may use against its host transcript.
  * Kept minimal so blocks never reach into the full TUI/InteractiveMode surface.
  */
 export interface ChatBlockHost {
-	/** Schedule a repaint of the transcript. */
-	requestRender(): void;
+	/** Schedule a repaint scoped to one block — never the whole transcript. */
+	requestComponentRender(component: Component): void;
 }
 
 /**
@@ -52,9 +52,9 @@ export abstract class ChatBlock extends Container {
 		this.#cleanups.push(cleanup);
 	}
 
-	/** Ask the host to repaint. No-op before mount or after dispose. */
+	/** Ask the host to repaint this block. No-op before mount or after dispose. */
 	protected requestRender(): void {
-		this.#host?.requestRender();
+		this.#host?.requestComponentRender(this);
 	}
 
 	/** True between {@link mount} and {@link finish}/{@link dispose}. */

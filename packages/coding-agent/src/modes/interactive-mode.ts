@@ -28,7 +28,6 @@ import {
 	Container,
 	clearRenderCache,
 	Loader,
-	Markdown,
 	ProcessTerminal,
 	Spacer,
 	setTerminalTextSizing,
@@ -62,6 +61,8 @@ import { clearClaudePluginRootsCache } from "../discovery/helpers";
 import type {
 	AutocompleteProviderFactory,
 	ContextUsage,
+	ExtensionAskDialogQuestion,
+	ExtensionAskDialogResult,
 	ExtensionUIContext,
 	ExtensionUIDialogOptions,
 	ExtensionUISelectItem,
@@ -130,8 +131,8 @@ import { VibeSessionRegistry } from "../vibe/runtime";
 import type { AssistantMessageComponent } from "./components/assistant-message";
 import type { BashExecutionComponent } from "./components/bash-execution";
 import { ChatBlock, type ChatBlockHost } from "./components/chat-block";
+import { buildComposerShortcuts, ComposerShortcutsBar } from "./components/composer-shortcuts";
 import { CustomEditor } from "./components/custom-editor";
-import { DynamicBorder } from "./components/dynamic-border";
 import { ErrorBannerComponent } from "./components/error-banner";
 import type { EvalExecutionComponent } from "./components/eval-execution";
 import type { HookEditorComponent } from "./components/hook-editor";
@@ -178,7 +179,6 @@ import { type ShimmerPalette, shimmerEnabled, shimmerSegments, shimmerText } fro
 import type { Theme } from "./theme/theme";
 import {
 	getEditorTheme,
-	getMarkdownTheme,
 	getSymbolTheme,
 	onTerminalAppearanceChange,
 	onThemeChange,
@@ -423,6 +423,7 @@ export class InteractiveMode implements InteractiveModeContext {
 	modelCycleContainer: Container;
 	editor: CustomEditor;
 	editorContainer: Container;
+	composerShortcuts: ComposerShortcutsBar;
 	hookWidgetContainerAbove: Container;
 	hookWidgetContainerBelow: Container;
 	statusLine: StatusLineComponent;
@@ -503,6 +504,7 @@ export class InteractiveMode implements InteractiveModeContext {
 	lastLeftTapTime = 0;
 	shutdownRequested = false;
 	#isShuttingDown = false;
+	#relaunchSpec: { argv: string[]; env?: Record<string, string | undefined> } | undefined;
 	/** True once `shutdown()` has begun teardown. Surfaced to the input
 	 *  controller so a Ctrl+C arriving while teardown is in flight can hard-
 	 *  abort the remaining work instead of stacking another no-op call. */
@@ -528,7 +530,6 @@ export class InteractiveMode implements InteractiveModeContext {
 	#cleanupUnsubscribe?: () => void;
 	#signalTeardown?: SessionTeardown;
 	readonly #version: string;
-	readonly #changelogMarkdown: string | undefined;
 	#planModePreviousTools: string[] | undefined;
 	#goalModePreviousTools: string[] | undefined;
 	#vibeModePreviousTools: string[] | undefined;
@@ -609,6 +610,19 @@ export class InteractiveMode implements InteractiveModeContext {
 	#voicePreviousShowHardwareCursor: boolean | null = null;
 	#voicePreviousUseTerminalCursor: boolean | null = null;
 	#resizeHandler?: () => void;
+	// Flexible spacer that pushes the composer to the viewport bottom on the home
+	// screen (empty transcript). Once a conversation starts, the transcript fills
+	// the viewport and this collapses to zero, so the composer sits at its natural
+	// bottom. Sized by #syncBottomFill(); an inline layout touch, not a renderer change.
+	#bottomFill: Spacer = new Spacer(0);
+	// Top counterpart on the home screen: takes a share of the slack while the
+	// welcome card is up so the hero sits vertically centred (UI-2). Collapses
+	// to zero on dismissal or the first conversation turn.
+	#topFill: Spacer = new Spacer(0);
+	// True until the first real conversation turn (a ChatBlock) mounts. Warnings
+	// and notices in the transcript do not end the home screen, so the composer
+	// stays bottom-anchored until the user actually starts a conversation.
+	#homeAnchorActive = true;
 	#observerRegistry: SessionObserverRegistry;
 	#eventBus?: EventBus;
 	#eventBusUnsubscribers: Array<() => void> = [];
@@ -621,12 +635,20 @@ export class InteractiveMode implements InteractiveModeContext {
 	#mcpConnectedServers = new Set<string>();
 	#mcpFailedServers = new Map<string, string>();
 	#welcomeComponent?: WelcomeComponent;
-	readonly #chatHost: ChatBlockHost = { requestRender: () => this.ui.requestRender() };
+	/** The welcome card's surrounding spacers, kept so dismissal removes the
+	 *  whole block and leaves no blank rows behind. */
+	#welcomeSpacers: Spacer[] = [];
+	// Component-scoped: a ChatBlock (e.g. the MCP "Connecting..." spinner) ticks
+	// its own animation on a fixed cadence inside a possibly large transcript; a
+	// full requestRender() would re-walk that whole tree per tick purely to
+	// advance the block's own glyph.
+	readonly #chatHost: ChatBlockHost = {
+		requestComponentRender: component => this.ui.requestComponentRender(component),
+	};
 
 	constructor(
 		session: AgentSession,
 		version: string,
-		changelogMarkdown: string | undefined = undefined,
 		setToolUIContext: (uiContext: ExtensionUIContext, hasUI: boolean) => void = () => {},
 		lspServers: LspStartupServerInfo[] | undefined = undefined,
 		mcpManager?: MCPManager,
@@ -638,7 +660,6 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.keybindings = KeybindingsManager.inMemory();
 		this.agent = session.agent;
 		this.#version = version;
-		this.#changelogMarkdown = changelogMarkdown;
 		this.#toolUiContextSetter = setToolUIContext;
 		this.lspServers = lspServers;
 		this.mcpManager = mcpManager;
@@ -692,9 +713,21 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.#syncEditorMaxHeight();
 		this.#resizeHandler = () => {
 			this.#syncEditorMaxHeight();
+			this.#syncBottomFill();
 			this.ui.requestRender();
 		};
 		process.stdout.on("resize", this.#resizeHandler);
+		// Home-screen anchor self-correction: content mounted or resized after the
+		// fill was seeded (e.g. the async MCP status line) would otherwise leave
+		// the composer drifting off the viewport bottom until the next resize.
+		this.ui.onFrameComposed = () => {
+			if (!this.#homeAnchorActive) return;
+			const width = this.ui.terminal.columns;
+			const before = this.#topFill.render(width).length + this.#bottomFill.render(width).length;
+			this.#syncBottomFill();
+			const after = this.#topFill.render(width).length + this.#bottomFill.render(width).length;
+			if (after !== before) this.ui.requestRender();
+		};
 		try {
 			this.historyStorage = HistoryStorage.open();
 			this.editor.setHistoryStorage(this.historyStorage);
@@ -707,6 +740,8 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.hookWidgetContainerBelow = new Container();
 		this.editorContainer = new Container();
 		this.editorContainer.addChild(this.editor);
+		this.composerShortcuts = new ComposerShortcutsBar();
+		this.#refreshComposerShortcuts();
 		this.statusLine = new StatusLineComponent(session);
 		this.statusLine.setAutoCompactEnabled(session.autoCompactionEnabled);
 		// Lazy provider — the top border rebuild coalesces to at most one
@@ -820,6 +855,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		if (this.isInitialized) return;
 
 		this.keybindings = logger.time("InteractiveMode.init:keybindings", () => KeybindingsManager.create());
+		this.#refreshComposerShortcuts();
 
 		// Route SIGINT/SIGTERM/SIGHUP/uncaughtException through the same teardown
 		// the TUI Ctrl+C keypress path performs: persist the in-progress editor
@@ -859,9 +895,11 @@ export class InteractiveMode implements InteractiveModeContext {
 			getProjectDir(),
 		);
 
-		// Get current model info for welcome screen
-		const modelName = this.session.model?.name ?? "Unknown";
-		const providerName = this.session.model?.provider ?? "Unknown";
+		// Get current model info for welcome screen. Empty (not "Unknown") when no
+		// model is configured, so the welcome renders a "/login" call to action
+		// instead of a dead "Unknown · Unknown".
+		const modelName = this.session.model?.name ?? "";
+		const providerName = this.session.model?.provider ?? "";
 
 		// Get recent sessions
 		const recentSessions = await logger.time("InteractiveMode.init:recentSessions", () =>
@@ -892,28 +930,13 @@ export class InteractiveMode implements InteractiveModeContext {
 			);
 
 			// Setup UI layout
-			this.ui.addChild(new Spacer(1));
+			this.ui.addChild(this.#topFill);
+			this.#welcomeSpacers = [new Spacer(1), new Spacer(1)];
+			this.ui.addChild(this.#welcomeSpacers[0] as Spacer);
 			this.ui.addChild(this.#welcomeComponent);
-			this.ui.addChild(new Spacer(1));
+			this.ui.addChild(this.#welcomeSpacers[1] as Spacer);
 			if (!options.suppressWelcomeIntro) {
 				this.playWelcomeIntro();
-			}
-
-			// Add changelog if provided
-			if (this.#changelogMarkdown) {
-				this.ui.addChild(new DynamicBorder());
-				if (settings.get("collapseChangelog")) {
-					const versionMatch = this.#changelogMarkdown.match(/##\s+\[?(\d+\.\d+\.\d+)\]?/);
-					const latestVersion = versionMatch ? versionMatch[1] : this.#version;
-					const condensedText = `Updated to v${latestVersion}. Use ${theme.bold("/changelog")} to view full changelog.`;
-					this.ui.addChild(new Text(condensedText, 1, 0));
-				} else {
-					this.ui.addChild(new Text(theme.bold(theme.fg("accent", "What's New")), 1, 0));
-					this.ui.addChild(new Spacer(1));
-					this.ui.addChild(new Markdown(this.#changelogMarkdown.trim(), 1, 0, getMarkdownTheme()));
-					this.ui.addChild(new Spacer(1));
-				}
-				this.ui.addChild(new DynamicBorder());
 			}
 		}
 
@@ -925,6 +948,10 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.ui.addChild(this.omfgContainer);
 		this.ui.addChild(this.errorBannerContainer);
 		this.ui.addChild(this.modelCycleContainer);
+		// Bottom-anchor fill: on the home screen this expands to sink the whole
+		// status + composer block to the viewport bottom (grok placement); it sits
+		// above the status loader so they travel down together.
+		this.ui.addChild(this.#bottomFill);
 		// Working loader / transient status sits below the sticky todo + subagent
 		// HUDs, just above the editor's hook-widget top margin — so it reads next to
 		// the prompt while keeping the one-line gap above the editor.
@@ -932,8 +959,11 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.ui.addChild(this.statusLine); // Only renders hook statuses (main status in editor border)
 		this.ui.addChild(this.hookWidgetContainerAbove);
 		this.ui.addChild(this.editorContainer);
+		this.ui.addChild(this.composerShortcuts);
 		this.ui.addChild(this.hookWidgetContainerBelow);
 		this.ui.setFocus(this.editor);
+		// Anchor the composer to the viewport bottom on the launch/home screen.
+		this.#syncBottomFill();
 
 		this.#inputController.setupKeyHandlers();
 		this.#inputController.setupEditorSubmitHandler();
@@ -954,6 +984,11 @@ export class InteractiveMode implements InteractiveModeContext {
 		// Start the UI. Cold `omp` launch opts into clearing on the first paint so
 		// the initial welcome frame does not append over the previous run's scrollback.
 		this.ui.start({ clearScrollback: options.clearInitialTerminalHistory === true });
+		// The first paint used an estimated fill (no composed frame existed yet);
+		// now the exact composed height is known, so re-anchor precisely. It only
+		// re-renders if the estimate was off, so there is usually no visible reflow.
+		this.#syncBottomFill();
+		if (this.#bottomFill.render(this.ui.terminal.columns).length > 0) this.ui.requestRender();
 		pushTerminalTitle();
 		setSessionTerminalTitle(this.sessionManager.getSessionName(), this.sessionManager.getCwd());
 		this.updateEditorBorderColor();
@@ -1278,6 +1313,19 @@ export class InteractiveMode implements InteractiveModeContext {
 		return this.session.isStreaming || this.session.isCompacting || this.session.hasPostPromptWork;
 	}
 
+	#refreshComposerShortcuts(): void {
+		this.composerShortcuts.setShortcuts(
+			buildComposerShortcuts(this.keybindings, {
+				busy: this.#isAutoSubmitBlocked(),
+				hasDraft: this.editor.getText().trim().length > 0,
+				hasQueue: this.session.queuedMessageCount > 0,
+			}),
+		);
+		// Live refresh: draft/busy/queue transitions call this after init, so the
+		// bar needs its own repaint request rather than relying on the initial mount.
+		this.ui.requestComponentRender(this.composerShortcuts);
+	}
+
 	#submitLoopPromptWhenReady(prompt: string): void {
 		if (!this.loopModeEnabled || this.loopPrompt !== prompt || !this.onInputCallback) return;
 		if (isLoopDurationExpired(this.loopLimit)) {
@@ -1523,6 +1571,65 @@ export class InteractiveMode implements InteractiveModeContext {
 
 	#syncEditorMaxHeight(): void {
 		this.editor.setMaxHeight(this.#computeEditorMaxHeight());
+	}
+
+	/**
+	 * Anchor the composer to the viewport bottom on the home screen by sizing
+	 * {@link #bottomFill} to the slack between the rendered content and the
+	 * terminal height. While the welcome card is up, a share of that slack goes
+	 * to {@link #topFill} so the hero sits vertically centred instead of jammed
+	 * into the top-left. Only fills when the transcript is empty (the launch/home
+	 * screen) — once a conversation scrolls in, the composer is at the natural
+	 * bottom and both fills collapse to zero. Measures only side-effect-free
+	 * components (welcome, status line, shortcut bar) and treats the bordered
+	 * editor as its minimum height; being off by a row is harmless.
+	 */
+	#syncBottomFill(): void {
+		// Only anchor on the launch/home screen (an empty transcript). The anchor
+		// deliberately outlives the welcome card: the first keystroke dismisses
+		// the card but the composer must stay at the viewport bottom until a real
+		// conversation turn scrolls in.
+		if (!this.#homeAnchorActive) {
+			this.#topFill.setLines(0);
+			this.#bottomFill.setLines(0);
+			return;
+		}
+		const width = this.ui.terminal.columns;
+		const rows = this.ui.terminal.rows;
+		const currentTopFill = this.#topFill.render(width).length;
+		const currentFill = this.#bottomFill.render(width).length;
+
+		// Prefer the exact composed frame height (all children, wrapping included)
+		// minus our own fills; fall back to a measured estimate before the first
+		// frame exists so the launch frame is already anchored (no visible reflow).
+		let contentExclFill = this.ui.composedFrameRows - currentFill - currentTopFill;
+		if (this.ui.composedFrameRows <= 0) {
+			// Pre-first-render seed: measure the actual home-screen content so the
+			// launch frame is already anchored (no reflow). Includes any transcript
+			// notices (e.g. the no-model warning) that mount before the first paint.
+			let above = this.session.configWarnings.length * 2;
+			if (this.#welcomeComponent) {
+				above += 1 + this.#welcomeComponent.render(width).length + 1;
+			}
+			for (const child of this.chatContainer.children) {
+				try {
+					above += child.render(width).length;
+				} catch {
+					above += 1;
+				}
+			}
+			const below =
+				EDITOR_MIN_RENDERED_ROWS + this.statusLine.render(width).length + this.composerShortcuts.render(width).length;
+			contentExclFill = above + below;
+		}
+
+		const slack = Math.max(0, rows - contentExclFill);
+		// With the hero up, give it 2/5 of the slack as top margin (slightly above
+		// true centre reads optically centred); once dismissed, all slack drops
+		// below so the composer stays pinned to the viewport bottom.
+		const top = this.#welcomeComponent ? Math.floor((slack * 2) / 5) : 0;
+		if (top !== currentTopFill) this.#topFill.setLines(top);
+		if (slack - top !== currentFill) this.#bottomFill.setLines(slack - top);
 	}
 
 	#syncStatusLineSettings(): void {
@@ -3384,7 +3491,11 @@ export class InteractiveMode implements InteractiveModeContext {
 		// which model drove the planning conversation. Left/right move it from there;
 		// hidden when fewer than two role models resolve — a lone tier is no choice.
 		// `selectedTierIndex` tracks the live slider position.
-		const cycle = this.session.getRoleModelCycle(this.session.settings.get("cycleOrder"));
+		// `cycleOrder` is the ctrl+p cycle and no longer carries the legacy `default`
+		// pseudo-role (see settings.ts's cycleOrder migration), but the slider still
+		// needs `default` as its anchor tier, so it is prepended explicitly here.
+		const roleOrder = ["default", ...this.session.settings.get("cycleOrder").filter(role => role !== "default")];
+		const cycle = this.session.getRoleModelCycle(roleOrder);
 		const defaultTierIndex = cycle ? cycle.models.findIndex(entry => entry.role === "default") : -1;
 		const startTierIndex = defaultTierIndex >= 0 ? defaultTierIndex : (cycle?.currentIndex ?? 0);
 		let selectedTierIndex = startTierIndex;
@@ -3648,7 +3759,24 @@ export class InteractiveMode implements InteractiveModeContext {
 			process.stderr.write(`\n${chalk.dim(`Resume this session with ${APP_NAME} --resume ${sessionId}`)}\n`);
 		}
 
+		// A requested relaunch (e.g. `/profile <name>`) takes over the restored
+		// terminal; the parent lingers only to propagate the child's exit code.
+		if (this.#relaunchSpec) {
+			const { argv, env } = this.#relaunchSpec;
+			const childEnv: Record<string, string> = {};
+			for (const [key, value] of Object.entries({ ...process.env, ...env })) {
+				if (value !== undefined) childEnv[key] = value;
+			}
+			const child = Bun.spawn(argv, { stdio: ["inherit", "inherit", "inherit"], env: childEnv });
+			await postmortem.quit(await child.exited);
+			return;
+		}
+
 		await postmortem.quit(0);
+	}
+
+	requestRelaunch(spec: { argv: string[]; env?: Record<string, string | undefined> }): void {
+		this.#relaunchSpec = spec;
 	}
 
 	async checkShutdownRequested(): Promise<void> {
@@ -3718,7 +3846,13 @@ export class InteractiveMode implements InteractiveModeContext {
 
 	#mountChatChild(item: Component): void {
 		this.chatContainer.addChild(item);
-		if (item instanceof ChatBlock) item.mount(this.#chatHost);
+		if (item instanceof ChatBlock) {
+			item.mount(this.#chatHost);
+			// A real conversation turn ends the home screen; the composer now rides
+			// the natural bottom of the growing transcript.
+			this.#homeAnchorActive = false;
+		}
+		this.#syncBottomFill();
 	}
 
 	resetTranscript(): void {
@@ -3927,6 +4061,39 @@ export class InteractiveMode implements InteractiveModeContext {
 
 	updatePendingMessagesDisplay(): void {
 		this.#uiHelpers.updatePendingMessagesDisplay();
+	}
+
+	refreshComposerShortcuts(): void {
+		this.#refreshComposerShortcuts();
+	}
+
+	/** Remove the startup welcome card (and its spacers) — the first real
+	 *  keystroke ends the hero moment. Idempotent; the bottom anchor stays so
+	 *  the composer does not jump until a conversation turn scrolls in. */
+	dismissWelcome(): void {
+		const welcome = this.#welcomeComponent;
+		if (!welcome) return;
+		this.#welcomeComponent = undefined;
+		welcome.stopIntro();
+		const width = this.ui.terminal.columns;
+		// #syncBottomFill measures via the last composed frame, which still
+		// includes the card — subtract the removed rows explicitly so the composer
+		// stays pinned to the viewport bottom on this very frame, not the next.
+		// The centring top margin goes with the card.
+		const removedRows =
+			welcome.render(width).length + this.#welcomeSpacers.length + this.#topFill.render(width).length;
+		this.#topFill.setLines(0);
+		for (const spacer of this.#welcomeSpacers) this.ui.removeChild(spacer);
+		this.#welcomeSpacers = [];
+		this.ui.removeChild(welcome);
+		if (this.#homeAnchorActive && this.ui.composedFrameRows > 0) {
+			const currentFill = this.#bottomFill.render(width).length;
+			const contentExclFill = this.ui.composedFrameRows - currentFill - removedRows;
+			this.#bottomFill.setLines(Math.max(0, this.ui.terminal.rows - contentExclFill));
+		} else {
+			this.#syncBottomFill();
+		}
+		this.ui.requestRender();
 	}
 
 	queueCompactionMessage(text: string, mode: "steer" | "followUp", images?: ImageContent[]): void {
@@ -4215,9 +4382,31 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.#commandController.openInBrowser(urlOrPath);
 	}
 
+	focusActiveEditorArea(): void {
+		this.#selectorController.focusActiveEditorArea();
+	}
+
 	// Selector handling
-	showSettingsSelector(): void {
-		this.#selectorController.showSettingsSelector();
+	async showFullWelcome(): Promise<void> {
+		const recentSessions = await getRecentSessions(this.sessionManager.getSessionDir()).then(sessions =>
+			sessions.map(s => ({ name: s.name, timeAgo: s.timeAgo })),
+		);
+		const welcome = new WelcomeComponent(
+			this.#version,
+			this.session.model?.name ?? "",
+			this.session.model?.provider ?? "",
+			recentSessions,
+			this.#getWelcomeLspServers(),
+			true,
+		);
+		this.chatContainer.addChild(new Spacer(1));
+		this.chatContainer.addChild(welcome);
+		this.chatContainer.addChild(new Spacer(1));
+		welcome.playIntro(() => this.ui.requestComponentRender(welcome));
+	}
+
+	showSettingsSelector(initialItemId?: string): void {
+		this.#selectorController.showSettingsSelector(initialItemId);
 	}
 
 	showAdvisorConfigure(): void {
@@ -4462,6 +4651,13 @@ export class InteractiveMode implements InteractiveModeContext {
 
 	hideHookSelector(): void {
 		this.#extensionUiController.hideHookSelector();
+	}
+
+	showAskDialog(
+		questions: ExtensionAskDialogQuestion[],
+		dialogOptions?: ExtensionUIDialogOptions,
+	): Promise<ExtensionAskDialogResult | undefined> {
+		return this.#extensionUiController.showAskDialog(questions, dialogOptions);
 	}
 
 	showHookInput(title: string, placeholder?: string): Promise<string | undefined> {

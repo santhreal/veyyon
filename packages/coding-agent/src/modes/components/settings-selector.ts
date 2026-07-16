@@ -10,6 +10,7 @@ import {
 	type ImageBudget,
 	Input,
 	matchesKey,
+	padding,
 	replaceTabs,
 	routeSelectListMouse,
 	routeSgrMouseInput,
@@ -27,7 +28,7 @@ import {
 } from "@veyyon/pi-tui";
 import type { ShapeTarget } from "@veyyon/snapcompact";
 import type { ModelRegistry } from "../../config/model-registry";
-import { getRoleInfo, SELECTABLE_MODEL_ROLE_IDS } from "../../config/model-roles";
+import { getRoleInfo, ROLE_INHERIT_LABEL, SELECTABLE_MODEL_ROLE_IDS } from "../../config/model-roles";
 import {
 	getDefault,
 	getType,
@@ -48,7 +49,18 @@ import { BUILTIN_PERSONALITY_DESCRIPTIONS, NONE_PERSONALITY } from "../../person
 import { AUTO_THINKING, type ConfiguredThinkingLevel } from "../../thinking";
 import { getTabBarTheme } from "../shared";
 import { ModelSelectorPanel } from "./model-selector";
-import { bottomBorder, divider, row, topBorder } from "./overlay-box";
+import {
+	BREADCRUMB_HOVER_ID,
+	computeModalDims,
+	hitTestModalChrome,
+	MODAL_SIZING_SETTINGS,
+	type ModalShellGeometry,
+	renderModalShell,
+	SETTINGS_BROWSE_SHORTCUTS,
+	SETTINGS_FILTER_SHORTCUTS,
+	SETTINGS_SUBPANE_SHORTCUTS,
+	withCompact,
+} from "./modal-shell";
 import { handleInputOrEscape, PluginSettingsComponent } from "./plugin-settings";
 import { getSettingDef, getSettingsForTab, type SettingDef } from "./settings-defs";
 import { SnapcompactShapePreview } from "./snapcompact-shape-preview";
@@ -374,7 +386,7 @@ class ModelRolesSubmenu extends Container {
 			return {
 				value: role,
 				label: info.name,
-				description: assigned && assigned.length > 0 ? assigned : "unset (auto)",
+				description: assigned && assigned.length > 0 ? assigned : (info.unsetLabel ?? ROLE_INHERIT_LABEL),
 			};
 		});
 		this.#selectList = new SelectList(items, Math.min(Math.max(items.length, 1), 12), getSelectListTheme());
@@ -398,7 +410,7 @@ class ModelRolesSubmenu extends Container {
 			this.#models,
 			{
 				title: `${info.name} model`,
-				description: `Role \`${role}\` — used when that work type runs. Del clears (auto).`,
+				description: `Role \`${role}\` — used when that work type runs. Del clears (${info.unsetLabel ?? "inherit main model"}).`,
 				currentSelector: current,
 				allowClear: true,
 			},
@@ -436,6 +448,14 @@ class ModelRolesSubmenu extends Container {
 /** Synthetic item id prefix for the per-tab "Advanced" fold toggle row. */
 const ADVANCED_TOGGLE_ID_PREFIX = "__advanced:";
 
+// Numeric compaction settings whose -1 sentinel renders as (and is set via)
+// the "default" submenu option: -1 = derive the value from the model/provider.
+const COMPACTION_DEFAULT_SENTINEL_PATHS: ReadonlySet<string> = new Set([
+	"compaction.thresholdPercent",
+	"compaction.thresholdTokens",
+	"compaction.modelContextWindow",
+]);
+
 function advancedToggleId(tab: SettingTab): string {
 	return `${ADVANCED_TOGGLE_ID_PREFIX}${tab}`;
 }
@@ -462,6 +482,9 @@ function settingsSidebarWidth(): number {
 	}
 	return cachedSidebarWidth;
 }
+
+/** Columns between the sidebar and the settings pane: `│` hairline + two spaces. */
+const SIDEBAR_GAP_COLS = 3;
 
 function getSettingsTabs(): Tab[] {
 	return [
@@ -556,10 +579,25 @@ export class SettingsSelectorComponent implements Component {
 	#tabRowCount = 0;
 	#contentRowStart = 0;
 	#contentRowCount = 0;
+	/** Left pad when the modal is width-constrained and centered. */
+	#frameLeft = 0;
+	/** Width of the category sidebar column at the last render. */
+	#sidebarCols = 0;
+	#sidebarWidthCache: number | undefined;
+	/** Last ModalShell geometry for mouse hit-testing. */
+	#shellGeometry: ModalShellGeometry | null = null;
+	#hoveredShortcutId: string | null = null;
+	/** Setting ids whose descriptions are expanded (Right/l). */
+	#expandedIds = new Set<string>();
+
+	/** @deprecated Prefer ModalShell sizing; kept for tests that assert width. */
+	static readonly MODAL_MAX_WIDTH = MODAL_SIZING_SETTINGS.maxWidth;
 
 	constructor(
 		private readonly context: SettingsRuntimeContext,
 		private readonly callbacks: SettingsCallbacks,
+		/** Setting path to pre-select on the default (appearance) tab, e.g. `/statusline` jumping to `statusLine.preset`. */
+		initialItemId?: string,
 	) {
 		// No label prefix (the frame title already says Settings) and no
 		// "(tab to cycle)" hint (folded into the footer hint line).
@@ -578,6 +616,23 @@ export class SettingsSelectorComponent implements Component {
 
 		// Initialize with first tab
 		this.#switchToTab("appearance");
+		if (initialItemId) this.#currentList?.selectItem(initialItemId);
+	}
+
+	/** The currently selected setting's path, or undefined (e.g. on a heading or empty tab). Test/debug hook. */
+	getSelectedSettingId(): string | undefined {
+		return (this.#searchList ?? this.#currentList)?.getSelectedItem()?.id;
+	}
+
+	/** Select a setting by path in the active list. Test/debug + deep-link hook. */
+	selectSetting(path: string): boolean {
+		return (this.#searchList ?? this.#currentList)?.selectItem(path) ?? false;
+	}
+
+	/** Open a settings tab by id. Test/debug + deep-link hook. */
+	openTab(tabId: SettingTab | "plugins"): void {
+		this.#tabBar.setActiveById(tabId);
+		this.#switchToTab(tabId);
 	}
 
 	invalidate(): void {
@@ -606,86 +661,135 @@ export class SettingsSelectorComponent implements Component {
 		});
 	}
 
-	#footerHintText(): string {
-		if (this.#searchList) {
-			return "Enter to change · Tab to jump tabs · Esc to exit search";
-		}
-		if (this.#currentTabId === "plugins") {
-			return "Tab to switch tabs · Esc to close";
-		}
-		if (this.#currentList?.sectionFocused) {
-			return "↑/↓ to jump sections · Tab/Enter to settings · ←/→ to switch tabs · Esc to close";
-		}
-		const nav = this.#hasSectionJump ? "Tab to jump sections · ←/→ to switch tabs" : "Tab to switch tabs";
-		return `Enter/Space to change · ${nav} · Type to search · Esc to close`;
+	#settingsShortcuts() {
+		if (this.#searchList) return SETTINGS_FILTER_SHORTCUTS;
+		if ((this.#searchList ?? this.#currentList)?.hasOpenSubmenu()) return SETTINGS_SUBPANE_SHORTCUTS;
+		return SETTINGS_BROWSE_SHORTCUTS;
 	}
 
 	/** Single-line search banner: accent icon, editable query with live cursor, right-aligned match count. */
 	#renderSearchBanner(width: number): string {
 		const icon = theme.symbol("icon.search");
 		const countText = this.#searchMatchCount === 1 ? "1 match" : `${this.#searchMatchCount} matches`;
-		const rightWidth = visibleWidth(countText) + 1; // trailing margin
+		const rightWidth = visibleWidth(countText) + 1;
 		const prefix = ` ${theme.fg("accent", icon)} `;
-		// The input pads itself to exactly this width and keeps the cursor in view.
 		const inputWidth = Math.max(4, width - visibleWidth(prefix) - rightWidth - 1);
 		const inputLine = this.#searchInput.render(inputWidth)[0] ?? "";
 		const count = theme.fg(this.#searchMatchCount > 0 ? "dim" : "warning", countText);
 		return truncateToWidth(`${prefix}${theme.bold(inputLine)} ${count} `, width);
 	}
 
+	#searchChromeLine(width: number): string {
+		if (this.#searchList) return this.#renderSearchBanner(width);
+		const icon = theme.symbol("icon.search");
+		return truncateToWidth(` ${theme.fg("dim", icon)} ${theme.fg("dim", "/ search settings")}`, width);
+	}
+
 	/**
-	 * Fullscreen frame: title border, tab row, divider, optional search banner,
-	 * the active content sized to fill the terminal, the appearance preview,
-	 * then a footer hint pinned above the bottom border.
+	 * Category sidebar width: widest base tab label plus the cursor column and
+	 * headroom for search-mode " (99)" match counts, so the divider column
+	 * never moves when entering/leaving search. Clamped to a third of the
+	 * content width on narrow terminals.
+	 */
+	#sidebarWidth(contentWidth: number): number {
+		if (this.#sidebarWidthCache === undefined) {
+			let labelWidth = 0;
+			for (const tab of getSettingsTabs()) {
+				labelWidth = Math.max(labelWidth, visibleWidth(tab.label));
+			}
+			this.#sidebarWidthCache = labelWidth + 2 + 5;
+		}
+		return Math.min(this.#sidebarWidthCache, Math.max(10, Math.floor(contentWidth / 3)));
+	}
+
+	/**
+	 * Floating ModalShell settings card: always-on search chrome, body list,
+	 * tip, centered shortcut chips. Transcript visible around the card.
 	 */
 	render(width: number): readonly string[] {
-		const height = Math.max(14, process.stdout.rows || 40);
-		const innerWidth = Math.max(1, width - 4);
+		const termHeight = Math.max(14, process.stdout.rows || 40);
+		const compact = termHeight < 24;
+		const sizing = withCompact(MODAL_SIZING_SETTINGS, compact);
+		const dims = computeModalDims(width, termHeight, sizing);
+		if (!dims) {
+			this.#shellGeometry = null;
+			return Array.from({ length: termHeight }, () => padding(width));
+		}
+		// Must match ModalShell's contentWidth — provisional maxWidth math
+		// over-sized the search banner and fit() chopped off the match count.
+		const contentWidth = dims.contentWidth;
 
-		const tabLines = this.#tabBar.render(innerWidth);
+		// Vertical category sidebar on the left, settings pane on the right,
+		// separated by a silver hairline: `sidebar │  pane`.
+		const sidebarWidth = this.#sidebarWidth(contentWidth);
+		const paneWidth = Math.max(20, contentWidth - sidebarWidth - SIDEBAR_GAP_COLS);
+		const sidebarLines = this.#tabBar.renderVertical(sidebarWidth, `${theme.nav.cursor} `);
 		const searching = this.#searchList !== null;
 		const showPreview = !searching && this.#currentTabId === "appearance";
 		const previewLines = showPreview ? ["", theme.fg("muted", "Preview:"), this.#getStatusPreviewString()] : [];
 
-		// Fixed chrome: top border, tabs, divider, [search row], divider, hint, bottom border.
-		const fixedRows = 1 + tabLines.length + 1 + (searching ? 1 : 0) + 1 + 1 + 1;
-		const contentRows = Math.max(7, height - fixedRows - previewLines.length);
-
+		// Non-body chrome (borders, search row, footer band) costs ~10 rows —
+		// mirrors renderModalShell's own nonBody() budget below. The sidebar
+		// runs parallel to the pane, so it costs no vertical budget.
+		const estimatedBody = Math.max(10, dims.modalHeight - 10);
 		const list = this.#searchList ?? this.#currentList;
-		let contentLines: readonly string[];
+		let listLines: readonly string[] = [];
 		if (list) {
-			// SettingsList pads itself to viewport + blank + 3 description rows.
-			list.setMaxVisible(contentRows - 4);
-			contentLines = list.render(innerWidth);
+			list.setMaxVisible(Math.max(8, estimatedBody - (showPreview ? 3 : 0)));
+			list.setOptions({
+				descriptionMode: "expand",
+				expandedIds: this.#expandedIds,
+				layout: "flat",
+			});
+			listLines = list.render(paneWidth);
 		} else if (this.#pluginComponent) {
-			contentLines = this.#pluginComponent.render(innerWidth);
-		} else {
-			contentLines = [];
+			listLines = this.#pluginComponent.render(paneWidth);
 		}
 
-		const out: string[] = [];
-		out.push(topBorder(width, "Settings"));
-		this.#tabRowStart = out.length;
-		this.#tabRowCount = tabLines.length;
-		for (const line of tabLines) {
-			out.push(row(line, width));
+		const paneLines: string[] = [...listLines, ...previewLines];
+		const bar = theme.fg("borderAccent", theme.boxSharp.vertical);
+		const bodyRows = Math.max(sidebarLines.length, paneLines.length);
+		const body: string[] = [];
+		for (let r = 0; r < bodyRows; r++) {
+			const side = sidebarLines[r] ?? padding(sidebarWidth);
+			body.push(`${side}${bar}  ${paneLines[r] ?? ""}`);
 		}
-		out.push(divider(width));
-		if (searching) {
-			out.push(row(this.#renderSearchBanner(innerWidth), width));
-		}
-		this.#contentRowStart = out.length;
-		this.#contentRowCount = contentRows;
-		for (let i = 0; i < contentRows; i++) {
-			out.push(row(contentLines[i] ?? "", width));
-		}
-		for (const line of previewLines) {
-			out.push(row(line, width));
-		}
-		out.push(divider(width));
-		out.push(row(theme.fg("dim", this.#footerHintText()), width));
-		out.push(bottomBorder(width));
-		return out;
+
+		// Breadcrumb: "Settings › Label" while a sub-pane (enum picker, text
+		// input, provider limits, model roles, …) owns the panel — mirrors
+		// Grok's PickingEnum/PickingGroup/EditingValue title. Clicking it
+		// peels one level back to Browse (same as the "esc back" chip).
+		const openSubmenuLabel = list?.hasOpenSubmenu() ? list.getOpenSubmenuLabel() : undefined;
+		const breadcrumb = openSubmenuLabel ? ` ${theme.nav.cursor} ${openSubmenuLabel}` : undefined;
+
+		const shell = renderModalShell({
+			title: "Settings",
+			breadcrumb,
+			breadcrumbClickable: true,
+			breadcrumbHovered: this.#hoveredShortcutId === BREADCRUMB_HOVER_ID,
+			sizing,
+			areaWidth: width,
+			areaHeight: termHeight,
+			body,
+			searchLine: this.#searchChromeLine(contentWidth),
+			tipCandidates: [
+				'Tip · Ask the agent: "change theme to titanium" or "what does compact do?"',
+				"Tip · Ask the agent to change a setting",
+			],
+			shortcuts: this.#settingsShortcuts(),
+			hoveredShortcutId: this.#hoveredShortcutId,
+			showClose: true,
+		});
+
+		this.#shellGeometry = shell.geometry;
+		this.#frameLeft = shell.geometry?.leftPad ?? 0;
+		// Sidebar and pane share the same body rows (side-by-side columns).
+		this.#tabRowStart = shell.geometry?.bodyRowStart ?? 0;
+		this.#tabRowCount = Math.min(sidebarLines.length, shell.geometry?.bodyRowCount ?? 0);
+		this.#contentRowStart = this.#tabRowStart;
+		this.#contentRowCount = shell.geometry?.bodyRowCount ?? 0;
+		this.#sidebarCols = sidebarWidth;
+		return shell.lines;
 	}
 
 	/**
@@ -700,52 +804,98 @@ export class SettingsSelectorComponent implements Component {
 	}
 
 	#routeMouseEvent(event: SgrMouseEvent): boolean {
-		const list = this.#searchList ?? this.#currentList;
-		// row() insets content by the border column plus a space.
-		const contentColInset = 2;
-		const innerCol = event.col - contentColInset;
-		const contentLine = event.row - this.#contentRowStart;
-
-		// An open submenu owns the pointer: wheel, hover, and clicks route into
-		// it (text-input submenus ignore routed events).
-		if (list?.hasOpenSubmenu()) {
-			list.routeSubmenuMouse(event, contentLine, innerCol);
+		const chrome = hitTestModalChrome(this.#shellGeometry, event.row, event.col, {
+			motion: event.motion,
+			leftClick: event.leftClick,
+		});
+		if (chrome.kind === "hover-shortcut") {
+			if (this.#hoveredShortcutId !== chrome.id) {
+				this.#hoveredShortcutId = chrome.id;
+				this.context.requestRender?.();
+			}
 			return true;
 		}
+		if (chrome.kind === "close" || chrome.kind === "outside") {
+			this.callbacks.onCancel();
+			return true;
+		}
+		if (chrome.kind === "breadcrumb") {
+			// Peel one sub-pane level back to Browse — same as the "esc back"
+			// footer chip, just reachable from the title too.
+			(this.#searchList ?? this.#currentList)?.handleInput("\x1b");
+			return true;
+		}
+		if (chrome.kind === "shortcut") {
+			if (chrome.id === "close") {
+				this.callbacks.onCancel();
+				return true;
+			}
+			if (chrome.id === "clear-filter") {
+				this.#endSearch(true);
+				return true;
+			}
+			if (chrome.id === "back") {
+				(this.#searchList ?? this.#currentList)?.handleInput("\x1b");
+				return true;
+			}
+		}
 
-		const tabLine = event.row - this.#tabRowStart;
-		const overTabs = tabLine >= 0 && tabLine < this.#tabRowCount;
-		const overContent = contentLine >= 0 && contentLine < this.#contentRowCount;
+		const list = this.#searchList ?? this.#currentList;
+		// row() insets content by the border column plus a space; frame may be centered.
+		const contentColInset = 2 + this.#frameLeft;
+		const innerCol = event.col - contentColInset;
+		const bodyLine = event.row - this.#contentRowStart;
+		const overBody = bodyLine >= 0 && bodyLine < this.#contentRowCount;
+		// Sidebar column on the left, settings pane right of the hairline gap.
+		const overSidebar = overBody && innerCol >= 0 && innerCol < this.#sidebarCols && bodyLine < this.#tabRowCount;
+		const paneCol = innerCol - (this.#sidebarCols + SIDEBAR_GAP_COLS);
+		const overPane = overBody && paneCol >= 0;
 
 		if (event.wheel !== null) {
-			if (overContent) {
-				list?.handleWheelAt(event.wheel, contentLine, innerCol);
+			if (overPane) {
+				// An open submenu owns the pane pointer (text inputs ignore it).
+				if (list?.hasOpenSubmenu()) list.routeSubmenuMouse(event, bodyLine, paneCol);
+				else list?.handleWheelAt(event.wheel, bodyLine, paneCol);
 			}
 			return true;
 		}
 
 		if (event.motion) {
-			const hovered = overTabs ? this.#tabBar.tabAt(tabLine, innerCol) : undefined;
+			const hovered = overSidebar ? this.#tabBar.tabAt(bodyLine, innerCol) : undefined;
 			this.#tabBar.setHoverTab(hovered && !hovered.muted ? hovered.id : null);
-			// hoverTest: never light up pane rows while the pointer is on the
-			// sidebar — only rows the pointer is actually on.
-			list?.setHoverItem(overContent ? (list.hoverTest(contentLine, innerCol) ?? null) : null);
+			if (list?.hasOpenSubmenu()) {
+				// Only rows the pointer is actually on — never light up submenu
+				// rows while the pointer is over the sidebar.
+				if (overPane) list.routeSubmenuMouse(event, bodyLine, paneCol);
+			} else {
+				list?.setHoverItem(overPane ? (list.hoverTest(bodyLine, paneCol) ?? null) : null);
+			}
 			return true;
 		}
 		if (!event.leftClick) return true;
 
-		if (overTabs) {
-			const tab = this.#tabBar.tabAt(tabLine, innerCol);
+		// A sidebar click switches category even while a sub-pane is open (the
+		// rebuilt tab list discards the submenu, same as Esc + Tab).
+		if (overSidebar) {
+			const tab = this.#tabBar.tabAt(bodyLine, innerCol);
 			if (tab) this.#tabBar.selectTab(tab.id);
 			return true;
 		}
-		if (overContent && list) {
-			const id = list.hitTest(contentLine, innerCol);
+		if (list?.hasOpenSubmenu()) {
+			list.routeSubmenuMouse(event, bodyLine, paneCol);
+			return true;
+		}
+		if (overPane && list) {
+			const id = list.hitTest(bodyLine, paneCol);
 			if (id !== undefined) {
 				const wasSelected = list.getSelectedItem()?.id === id;
+				const onValueColumn = list.isValueColumnHit(bodyLine, paneCol);
 				list.selectItem(id);
-				// Click-again activates: toggle booleans, open submenus.
-				if (wasSelected) list.handleInput("\n");
+				// A click on the always-aligned value column activates
+				// immediately (toggle / open submenu) — mirrors Grok's
+				// per-row value+chevron hit-rect. Re-clicking an
+				// already-selected label does the same (legacy dual-click).
+				if (wasSelected || onValueColumn) list.handleInput("\n");
 			}
 		}
 		return true;
@@ -1019,10 +1169,7 @@ export class SettingsSelectorComponent implements Component {
 
 	#getSubmenuCurrentValue(path: SettingPath, value: unknown): string {
 		const rawValue = String(value ?? "");
-		if (path === "compaction.thresholdPercent" && (rawValue === "-1" || rawValue === "")) {
-			return "default";
-		}
-		if (path === "compaction.thresholdTokens" && (rawValue === "-1" || rawValue === "")) {
+		if (COMPACTION_DEFAULT_SENTINEL_PATHS.has(path) && (rawValue === "-1" || rawValue === "")) {
 			return "default";
 		}
 		return rawValue;
@@ -1185,7 +1332,8 @@ export class SettingsSelectorComponent implements Component {
 
 	#formatModelSelectorValue(value: unknown): string {
 		if (typeof value === "string" && value.trim()) return value.trim();
-		return "unset";
+		// Unset resolves live against the active main model at use time.
+		return "inherit";
 	}
 
 	#formatModelRolesValue(): string {
@@ -1194,7 +1342,7 @@ export class SettingsSelectorComponent implements Component {
 		for (const role of SELECTABLE_MODEL_ROLE_IDS) {
 			if (roles[role]?.trim()) assigned++;
 		}
-		if (assigned === 0) return "none set";
+		if (assigned === 0) return "all inherit";
 		return `${assigned} assigned`;
 	}
 
@@ -1206,11 +1354,13 @@ export class SettingsSelectorComponent implements Component {
 			fallback.addChild(new Spacer(1));
 			fallback.addChild(new Text(theme.fg("dim", "  Esc to go back"), 0, 0));
 			(fallback as Container & { handleInput?: (data: string) => void }).handleInput = data => {
-				if (matchesKey(data, "app:cancel") || data === "\x1b") done();
+				if (matchesKey(data, "escape") || data === "\x1b") done();
 			};
 			return fallback;
 		}
-		const current = settings.get(path);
+		// `SettingValue<SettingPath>` collapses to never for the full path union;
+		// widen and narrow by runtime type instead.
+		const current: unknown = settings.get(path);
 		const currentSelector = typeof current === "string" ? current.trim() : undefined;
 		const label =
 			path === "subagent.model" ? "Subagent Model" : path === "compaction.model" ? "Compaction Model" : String(path);
@@ -1233,7 +1383,7 @@ export class SettingsSelectorComponent implements Component {
 				onClear: () => {
 					settings.set(path, undefined as never);
 					this.callbacks.onChange(path, undefined);
-					done("unset");
+					done("inherit");
 				},
 				onCancel: () => done(),
 			},
@@ -1246,7 +1396,7 @@ export class SettingsSelectorComponent implements Component {
 			const fallback = new Container();
 			fallback.addChild(new Text(theme.fg("warning", "Model catalog unavailable in this context"), 0, 0));
 			(fallback as Container & { handleInput?: (data: string) => void }).handleInput = data => {
-				if (matchesKey(data, "app:cancel") || data === "\x1b") done();
+				if (matchesKey(data, "escape") || data === "\x1b") done();
 			};
 			return fallback;
 		}
@@ -1285,9 +1435,7 @@ export class SettingsSelectorComponent implements Component {
 	#setSettingValue(path: SettingPath, value: string): void {
 		const currentValue = settings.get(path);
 		const schemaType = getType(path);
-		if (path === "compaction.thresholdPercent" && value === "default") {
-			settings.set(path, -1 as never);
-		} else if (path === "compaction.thresholdTokens" && value === "default") {
+		if (COMPACTION_DEFAULT_SENTINEL_PATHS.has(path) && value === "default") {
 			settings.set(path, -1 as never);
 		} else if (schemaType === "record") {
 			let parsed: unknown;
@@ -1363,7 +1511,7 @@ export class SettingsSelectorComponent implements Component {
 			() => this.callbacks.onCancel(),
 			// The selector owns type-to-search and the footer hint; pin the
 			// split sidebar width so the divider never jumps between tabs.
-			{ typeToSearch: false, hint: "", sidebarWidth: settingsSidebarWidth() },
+			{ typeToSearch: false, hint: "", layout: "flat", descriptionMode: "expand", expandedIds: this.#expandedIds },
 		);
 	}
 
@@ -1494,6 +1642,27 @@ export class SettingsSelectorComponent implements Component {
 			return;
 		}
 
+		// Right/l expands the selected setting description; Left/h collapses.
+		if (matchesKey(data, "right") || data === "l") {
+			const id = this.#currentList?.getSelectedItem()?.id;
+			if (id) {
+				this.#expandedIds.add(id);
+				this.#currentList?.setOptions({ expandedIds: this.#expandedIds, descriptionMode: "expand" });
+				return;
+			}
+		}
+		if (matchesKey(data, "left") || data === "h") {
+			const id = this.#currentList?.getSelectedItem()?.id;
+			if (id && this.#expandedIds.has(id)) {
+				this.#expandedIds.delete(id);
+				this.#currentList?.setOptions({ expandedIds: this.#expandedIds, descriptionMode: "expand" });
+				return;
+			}
+			// No expanded desc: Left still switches tabs (legacy).
+			this.#tabBar.handleInput(data);
+			return;
+		}
+
 		// Tab toggles keyboard focus between section headings and setting rows
 		// (fast section hopping); tabs without sections keep Tab switching tabs.
 		if (matchesKey(data, "tab") || matchesKey(data, "shift+tab")) {
@@ -1501,10 +1670,6 @@ export class SettingsSelectorComponent implements Component {
 				this.#currentList.toggleSectionFocus();
 				return;
 			}
-			this.#tabBar.handleInput(data);
-			return;
-		}
-		if (matchesKey(data, "left") || matchesKey(data, "right")) {
 			this.#tabBar.handleInput(data);
 			return;
 		}

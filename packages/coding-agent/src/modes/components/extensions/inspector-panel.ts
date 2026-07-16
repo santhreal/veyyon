@@ -6,9 +6,38 @@
 import * as os from "node:os";
 import { isZodSchema, zodToWireSchema } from "@veyyon/pi-ai/utils/schema";
 import { type Component, truncateToWidth, wrapTextWithAnsi } from "@veyyon/pi-tui";
+import type { ThemeColor } from "../../../modes/theme/color";
 import { theme } from "../../../modes/theme/theme";
 import { shortenPath } from "../../../tools/render-utils";
 import type { Extension, ExtensionState } from "./types";
+
+/** Structural views over extension payloads whose concrete shape varies by source (zod tool, wire tool, MCP config, skill). Each renderer narrows `unknown` once to the optional fields it reads. */
+interface ToolDefView {
+	parameters?: unknown;
+	inputSchema?: unknown;
+}
+interface ParamSpecView {
+	type?: string;
+	default?: unknown;
+}
+interface JsonSchemaView {
+	properties?: Record<string, unknown>;
+	required?: string[];
+}
+interface SkillView {
+	prompt?: string;
+	instruction?: string;
+	content?: string;
+}
+interface McpConfigView {
+	transport?: string;
+	type?: string;
+	command?: string;
+	cmd?: string;
+	args?: string[];
+	arguments?: string[];
+	env?: Record<string, unknown>;
+}
 
 export class InspectorPanel implements Component {
 	#extension: Extension | null = null;
@@ -168,10 +197,11 @@ export class InspectorPanel implements Component {
 		lines.push(theme.fg("dim", theme.boxSharp.horizontal.repeat(Math.min(width - 2, 40))));
 
 		try {
-			const tool = raw as any;
-			const wire = (s: unknown): any => (isZodSchema(s) ? zodToWireSchema(s) : s);
-			const paramSchema = wire(tool?.parameters);
-			const inputSchema = wire(tool?.inputSchema);
+			const tool = (raw ?? {}) as ToolDefView;
+			const wire = (s: unknown): JsonSchemaView | undefined =>
+				(isZodSchema(s) ? zodToWireSchema(s) : s) as JsonSchemaView | undefined;
+			const paramSchema = wire(tool.parameters);
+			const inputSchema = wire(tool.inputSchema);
 			const params = paramSchema?.properties || inputSchema?.properties || {};
 
 			if (Object.keys(params).length === 0) {
@@ -180,7 +210,7 @@ export class InspectorPanel implements Component {
 				const required = new Set(paramSchema?.required || inputSchema?.required || []);
 
 				for (const [name, spec] of Object.entries(params)) {
-					const param = spec as any;
+					const param = (spec ?? {}) as ParamSpecView;
 					const type = param.type || "any";
 					const isRequired = required.has(name);
 					const defaultVal = param.default !== undefined ? `Default: ${param.default}` : null;
@@ -210,8 +240,8 @@ export class InspectorPanel implements Component {
 		lines.push(theme.fg("dim", theme.boxSharp.horizontal.repeat(Math.min(width - 2, 40))));
 
 		try {
-			const skill = raw as any;
-			const instruction = skill?.prompt || skill?.instruction || skill?.content || "";
+			const skill = (raw ?? {}) as SkillView;
+			const instruction = skill.prompt || skill.instruction || skill.content || "";
 
 			if (!instruction) {
 				lines.push(theme.fg("dim", "  (no instruction text)"));
@@ -239,10 +269,10 @@ export class InspectorPanel implements Component {
 		lines.push(theme.fg("dim", theme.boxSharp.horizontal.repeat(Math.min(width - 2, 40))));
 
 		try {
-			const mcp = raw as any;
-			const transport = mcp?.transport || mcp?.type || "unknown";
-			const command = mcp?.command || mcp?.cmd || "";
-			const args = mcp?.args || mcp?.arguments || [];
+			const mcp = (raw ?? {}) as McpConfigView;
+			const transport = mcp.transport || mcp.type || "unknown";
+			const command = mcp.command || mcp.cmd || "";
+			const args = mcp.args || mcp.arguments || [];
 
 			lines.push(`  ${theme.fg("muted", "Transport:")}  ${theme.fg("accent", transport)}`);
 
@@ -255,7 +285,7 @@ export class InspectorPanel implements Component {
 			}
 
 			// Environment variables if present
-			if (mcp?.env && typeof mcp.env === "object") {
+			if (mcp.env && typeof mcp.env === "object") {
 				const envCount = Object.keys(mcp.env).length;
 				if (envCount > 0) {
 					lines.push(`  ${theme.fg("muted", "Env vars:")}   ${theme.fg("dim", `${envCount} defined`)}`);
@@ -284,7 +314,7 @@ export class InspectorPanel implements Component {
 	}
 
 	#getKindBadge(kind: string): string {
-		const kindColors: Record<string, string> = {
+		const kindColors: Record<string, ThemeColor> = {
 			"extension-module": "accent",
 			skill: "accent",
 			rule: "success",
@@ -298,7 +328,7 @@ export class InspectorPanel implements Component {
 		};
 
 		const color = kindColors[kind] || "muted";
-		return theme.fg(color as any, kind);
+		return theme.fg(color, kind);
 	}
 
 	#getStatusBadge(state: ExtensionState, reason?: string, shadowedBy?: string): string {

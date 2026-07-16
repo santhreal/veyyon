@@ -512,6 +512,12 @@ export class InputController {
 			if (wasBashMode !== this.ctx.isBashMode || wasPythonMode !== this.ctx.isPythonMode) {
 				this.ctx.updateEditorBorderColor();
 			}
+			// Optional: many controller-level tests mock a partial InteractiveModeContext
+			// without the composer bar wired up.
+			this.ctx.refreshComposerShortcuts?.();
+			// The first real keystroke ends the hero moment (UI-10). Guarded the
+			// same way for partial test contexts.
+			if (text.length > 0) this.ctx.dismissWelcome?.();
 		};
 	}
 
@@ -1463,8 +1469,13 @@ export class InputController {
 					mimeType: imageData.mimeType,
 				});
 				imageData = { type: "image", data: resized.data, mimeType: resized.mimeType };
-			} catch {
-				// Keep the normalized image when resize fails.
+			} catch (error) {
+				// Keep the normalized image, but say so: the user enabled
+				// autoResize and an unresized image can blow the token budget.
+				logger.warn("image auto-resize failed; attaching the original unresized image", {
+					mimeType: imageData.mimeType,
+					error: error instanceof Error ? error.message : String(error),
+				});
 			}
 		}
 		await this.#insertPendingImage(imageData);

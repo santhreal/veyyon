@@ -1,5 +1,6 @@
 import {
 	type Component,
+	Ellipsis,
 	padding,
 	replaceTabs,
 	TERMINAL,
@@ -8,7 +9,9 @@ import {
 	wrapTextWithAnsi,
 } from "@veyyon/pi-tui";
 import { APP_NAME } from "@veyyon/pi-utils";
+import { shimmerEnabled } from "../../modes/theme/shimmer";
 import { theme } from "../../modes/theme/theme";
+import { sunMark } from "./sun";
 import tipsText from "./tips.txt" with { type: "text" };
 
 /** Tips embedded at build time, one per line; blanks dropped. */
@@ -17,17 +20,40 @@ const TIPS: readonly string[] = tipsText
 	.map(line => line.trim())
 	.filter(line => line.length > 0);
 
-/**
- * Fixed number of session rows in the welcome box so its height stays stable
- * across recent-session updates.
- */
-export const WELCOME_SESSION_SLOTS = 4;
+/** Max recent-session rows shown under the action menu (only when present). */
+export const WELCOME_SESSION_SLOTS = 3;
 
 /**
- * Fixed number of LSP-server rows, for the same reason. Overflow is sliced so
- * the box height is constant regardless of how many servers a project has.
+ * Retained for call-site API stability. LSP status no longer paints on the
+ * welcome hero (operational noise; it belongs in `/lsp` or the status line).
  */
-export const WELCOME_LSP_SLOTS = 4;
+export const WELCOME_LSP_SLOTS = 0;
+
+/** One-line value prop under the wordmark — shipped strengths only. */
+export const VEYYON_VALUE_LINE = "Hashline edits that land. Your keys.";
+
+/** Card width cap — a constrained, centred column (Grok geometry), never full-bleed. */
+const HERO_MAX_WIDTH = 72;
+/** Sun mark size (cells) for the full card's left column. */
+const SUN_W = 18;
+const SUN_H = 8;
+/** Below this inner width the sun is dropped and the identity goes full-width. */
+const SUN_MIN_INNER = 42;
+/** Sun mark size (cells) for the compact card — same disc, quarter the area. */
+const COMPACT_SUN_W = 9;
+const COMPACT_SUN_H = 4;
+/** Below this inner width the compact card drops the sun. */
+const COMPACT_SUN_MIN_INNER = 30;
+/** Hard height contract for the compact card, borders and tip included. */
+export const WELCOME_COMPACT_MAX_ROWS = 8;
+
+/** Action rows: label left, shortcut right. The composer is the primary affordance. */
+const WELCOME_ACTIONS: ReadonlyArray<readonly [label: string, shortcut: string]> = [
+	["Resume session", "/resume"],
+	["Settings", "/settings"],
+	["Providers", "/providers"],
+	["Quit", "ctrl+d"],
+];
 
 /** Trailing marker that flags a tip as a "what's new" callout. Stripped before
  *  wrapping (with any preceding whitespace) and replaced by {@link NEW_TAG_TEXT}
@@ -60,6 +86,7 @@ export function pickWeightedTip(tips: readonly string[], r: number): string {
 function renderNewTag(): string {
 	return `\x1b[1m${silverEscape(1)}${NEW_TAG_TEXT}\x1b[0m`;
 }
+
 export function renderWelcomeTip(tip: string, boxWidth: number, _phase = 0): string[] {
 	const label = "Tip: ";
 	const labelWidth = visibleWidth(label);
@@ -72,9 +99,6 @@ export function renderWelcomeTip(tip: string, boxWidth: number, _phase = 0): str
 	const wrappedBody = wrapTextWithAnsi(replaceTabs(body), bodyBudget);
 	if (wrappedBody.length === 0) return [];
 
-	// Pull both colors from the active theme so the line stays readable on light
-	// themes; the previous hardcoded `#b48cff` / `#9ccfff` pastels (plus a manual
-	// `\x1b[2m` dim on the body) dropped to ~1.5:1 contrast on a white background.
 	const continuationIndent = padding(labelWidth);
 	const styledLabel = theme.fg("customMessageLabel", label);
 
@@ -85,7 +109,6 @@ export function renderWelcomeTip(tip: string, boxWidth: number, _phase = 0): str
 	});
 
 	if (isNew) {
-		// Append a quiet silver "new" tag — static, no motion.
 		const tag = renderNewTag();
 		const tagWidth = 1 + visibleWidth(NEW_TAG_TEXT); // 1 = space separator
 		const lastLine = lines[lines.length - 1];
@@ -111,15 +134,18 @@ export interface LspServerInfo {
 }
 
 /**
- * Welcome screen with block Veyyon wordmark and two-column layout.
+ * Welcome hero: one centred card. The living sun is the mark on the left; the
+ * identity (wordmark, value line, action menu, recent sessions) sits on the
+ * right. Grok card composition, Veyyon brand — silver on black, the sun the one
+ * ember. No dashboard panels, no interior dividers, no clutter.
  */
 export class WelcomeComponent implements Component {
 	#animStart: number | null = null;
 	#animTimer: Timer | null = null;
 	#selectedTip: string | undefined;
-	// Render cache: the welcome box is the first transcript-area component, so
-	// returning a stable array reference keeps the whole frame prefix stable.
-	// Bypassed while the intro animation runs (every frame differs).
+	// Render cache: the welcome box is the first transcript-area component, so a
+	// stable array reference keeps the whole frame prefix stable. Bypassed while
+	// the intro animation runs (every frame differs).
 	#cachedWidth = -1;
 	#cachedLines: string[] | undefined;
 
@@ -129,7 +155,11 @@ export class WelcomeComponent implements Component {
 		private providerName: string,
 		private recentSessions: RecentSession[] = [],
 		private lspServers: LspServerInfo[] = [],
+		/** Full hero (sun column, action menu, recents). Default is the compact
+		 *  ≤{@link WELCOME_COMPACT_MAX_ROWS}-row card; `/welcome` shows the full one. */
+		private readonly full: boolean = false,
 	) {}
+
 	get tip(): string | undefined {
 		if (this.#selectedTip === undefined) {
 			if (theme.getSymbolPreset() === "unicode" && Math.random() < 0.1) {
@@ -147,12 +177,18 @@ export class WelcomeComponent implements Component {
 	}
 
 	/**
-	 * Play a one-shot intro that sweeps the gradient through every phase
-	 * before settling on the resting frame. Safe to call multiple times —
-	 * subsequent calls reset and replay.
+	 * Play the one-shot launch bloom: the sun rises from a hot point to a full
+	 * resting disc, then settles. Safe to call repeatedly — it resets and replays.
+	 * Degraded path: without truecolor, or with animations disabled
+	 * (`display.shimmer: disabled`), the bloom is skipped entirely and the mark
+	 * renders one static settled frame.
 	 */
 	playIntro(requestRender: () => void): void {
 		this.#stopAnimation();
+		if (!TERMINAL.trueColor || !shimmerEnabled()) {
+			requestRender();
+			return;
+		}
 		this.#animStart = performance.now();
 		requestRender();
 		this.#animTimer = setInterval(() => {
@@ -162,6 +198,12 @@ export class WelcomeComponent implements Component {
 			}
 			requestRender();
 		}, INTRO_TICK_MS);
+	}
+
+	/** Halt the intro timer — used when the card is dismissed mid-bloom so the
+	 *  interval doesn't keep repainting a removed component. */
+	stopIntro(): void {
+		this.#stopAnimation();
 	}
 
 	#stopAnimation(): void {
@@ -207,234 +249,210 @@ export class WelcomeComponent implements Component {
 	}
 
 	#renderLines(termWidth: number): string[] {
-		// Box dimensions - responsive with max width and small-terminal support
-		const maxWidth = 100;
-		const boxWidth = Math.min(maxWidth, Math.max(0, termWidth - 2));
-		if (boxWidth < 4) {
-			return [];
+		const boxWidth = Math.min(HERO_MAX_WIDTH, Math.max(0, termWidth - 2));
+		if (boxWidth < 24) return [];
+		const inner = boxWidth - 4; // │ + space + content + space + │
+		if (!this.full) return this.#renderCompactLines(termWidth, boxWidth, inner);
+
+		// Two columns, no interior divider: the sun on the left, identity on the right.
+		const sunW = inner >= SUN_MIN_INNER ? SUN_W : 0;
+		const gap = sunW ? 3 : 0;
+		const rightW = Math.max(1, inner - sunW - gap);
+		const sun = sunW ? this.#currentLogoFrame(sunW) : [];
+		const right = this.#rightColumn(rightW);
+
+		const rowsN = Math.max(sun.length, right.length);
+		const sunTop = Math.floor((rowsN - sun.length) / 2);
+		const rightTop = Math.floor((rowsN - right.length) / 2);
+		const body: string[] = [""];
+		for (let i = 0; i < rowsN; i++) {
+			const l = sunW ? (sun[i - sunTop] ?? padding(sunW)) : "";
+			const r = right[i - rightTop] ?? "";
+			body.push(this.#fitToWidth(sunW ? l + padding(gap) + r : r, inner));
 		}
-		const dualContentWidth = boxWidth - 3; // 3 = │ + │ + │
-		const preferredLeftCol = 22;
-		const minLeftCol = 18; // compact VEYYON_LOGO width
-		const minRightCol = 22;
-		const leftMinContentWidth = Math.max(
-			minLeftCol,
-			visibleWidth("Welcome"),
-			visibleWidth(this.modelName),
-			visibleWidth(this.providerName),
-		);
-		const desiredLeftCol = Math.min(preferredLeftCol, Math.max(minLeftCol, Math.floor(dualContentWidth * 0.35)));
-		const dualLeftCol =
-			dualContentWidth >= minRightCol + 1
-				? Math.min(desiredLeftCol, dualContentWidth - minRightCol)
-				: Math.max(1, dualContentWidth - 1);
-		const dualRightCol = Math.max(1, dualContentWidth - dualLeftCol);
-		const showRightColumn = dualLeftCol >= leftMinContentWidth && dualRightCol >= minRightCol;
-		const leftCol = showRightColumn ? dualLeftCol : boxWidth - 2;
-		const rightCol = showRightColumn ? dualRightCol : 0;
-
-		// Logo: pick a frame from the intro animation if active, else the resting frame.
-		const logoColored = this.#currentLogoFrame();
-
-		// Left column - centered content
-		const leftLines = [
-			"",
-			this.#centerText(theme.fg("dim", "Welcome"), leftCol),
-			"",
-			...logoColored.map(l => this.#centerText(l, leftCol)),
-			"",
-			this.#centerText(theme.fg("muted", this.modelName), leftCol),
-			this.#centerText(theme.fg("dim", this.providerName), leftCol),
-		];
-
-		// Right column separator
-		const separatorWidth = Math.max(0, rightCol - 2); // padding on each side
-		const separator = ` ${theme.fg("borderMuted", theme.boxSharp.horizontal.repeat(separatorWidth))}`;
-
-		// Recent sessions content
-		const sessionLines: string[] = [];
-		if (this.recentSessions.length === 0) {
-			sessionLines.push(` ${theme.fg("dim", "No recent sessions")}`);
-		} else {
-			// Reserve width for the bullet prefix (" • ") and the trailing " (timeAgo)"
-			// so the relative time is never the part that gets truncated. The name
-			// absorbs whatever space is left.
-			const bulletPrefix = ` ${theme.md.bullet} `;
-			const prefixWidth = visibleWidth(bulletPrefix);
-			for (const session of this.recentSessions.slice(0, WELCOME_SESSION_SLOTS)) {
-				const timeSuffixRaw = ` (${session.timeAgo})`;
-				const timeWidth = visibleWidth(timeSuffixRaw);
-				const nameBudget = Math.max(1, rightCol - prefixWidth - timeWidth);
-				const nameVis = visibleWidth(session.name);
-				const name = nameVis > nameBudget ? truncateToWidth(session.name, nameBudget) : session.name;
-				sessionLines.push(
-					`${theme.fg("dim", bulletPrefix)}${theme.fg("muted", name)}${theme.fg("dim", timeSuffixRaw)}`,
-				);
-			}
-		}
-		// Pad to the fixed slot count so the box height doesn't depend on session count.
-		while (sessionLines.length < WELCOME_SESSION_SLOTS) {
-			sessionLines.push("");
+		body.push("");
+		for (const tipLine of this.#renderTip(inner)) {
+			body.push(this.#fitToWidth(tipLine.trimStart(), inner));
 		}
 
-		// LSP servers content
-		const lspLines: string[] = [];
-		if (this.lspServers.length === 0) {
-			lspLines.push(` ${theme.fg("dim", "No LSP servers")}`);
-		} else {
-			for (const server of this.lspServers.slice(0, WELCOME_LSP_SLOTS)) {
-				const icon =
-					server.status === "ready"
-						? theme.styledSymbol("status.enabled", "success")
-						: server.status === "available"
-							? theme.styledSymbol("status.enabled", "dim")
-							: server.status === "connecting"
-								? theme.styledSymbol("status.pending", "muted")
-								: theme.styledSymbol("status.error", "error");
-				const exts = server.fileTypes.slice(0, 3).join(" ");
-				lspLines.push(` ${icon} ${theme.fg("muted", server.name)} ${theme.fg("dim", exts)}`);
-			}
-		}
-		// Pad to the fixed slot count so the box height doesn't depend on server count.
-		while (lspLines.length < WELCOME_LSP_SLOTS) {
-			lspLines.push("");
-		}
-
-		// Right column
-		const rightLines = [
-			` ${theme.fg("dim", "Tips")}`,
-			` ${theme.fg("dim", "#")}${theme.fg("muted", " prompt actions")}`,
-			` ${theme.fg("dim", "/")}${theme.fg("muted", " commands")}`,
-			` ${theme.fg("dim", "!")}${theme.fg("muted", " bash")}`,
-			` ${theme.fg("dim", "$")}${theme.fg("muted", " python")}`,
-			separator,
-			` ${theme.fg("dim", "LSP")}`,
-			...lspLines,
-			separator,
-			` ${theme.fg("dim", "Sessions")}`,
-			...sessionLines,
-			"",
-		];
-
-		// Hairline chrome — silver only on the product name in the title rail
+		// Plain sharp border — the identity lives inside the card, not on the rail.
+		// Uses the visible `border` silver (not the recessive `borderMuted`) so the
+		// hero card reads as a crisp frame on black, not a barely-there outline.
 		const hChar = theme.boxSharp.horizontal;
-		const h = theme.fg("borderMuted", hChar);
-		const v = theme.fg("borderMuted", theme.boxSharp.vertical);
-		const tl = theme.fg("borderMuted", theme.boxSharp.topLeft);
-		const tr = theme.fg("borderMuted", theme.boxSharp.topRight);
-		const bl = theme.fg("borderMuted", theme.boxSharp.bottomLeft);
-		const br = theme.fg("borderMuted", theme.boxSharp.bottomRight);
+		const bm = (s: string) => theme.fg("border", s);
+		const v = bm(theme.boxSharp.vertical);
+		const top = bm(theme.boxSharp.topLeft + hChar.repeat(boxWidth - 2) + theme.boxSharp.topRight);
+		const bottom = bm(theme.boxSharp.bottomLeft + hChar.repeat(boxWidth - 2) + theme.boxSharp.bottomRight);
 
-		const lines: string[] = [];
+		// Centre the card horizontally in the terminal (Grok placement).
+		const leftMargin = padding(Math.max(0, Math.floor((termWidth - boxWidth) / 2)));
 
-		const title = ` ${APP_NAME} `;
-		const version = `v${this.version} `;
-		const titlePrefixRaw = hChar.repeat(2);
-		const titleStyled =
-			theme.fg("borderMuted", titlePrefixRaw) +
-			theme.bold(theme.fg("accent", title)) +
-			theme.fg("dim", version);
-		const titleVisLen = visibleWidth(titlePrefixRaw) + visibleWidth(title) + visibleWidth(version);
-		const titleSpace = boxWidth - 2;
-		if (titleVisLen >= titleSpace) {
-			lines.push(tl + truncateToWidth(titleStyled, titleSpace) + tr);
-		} else {
-			const afterTitle = titleSpace - titleVisLen;
-			lines.push(tl + titleStyled + theme.fg("borderMuted", hChar.repeat(afterTitle)) + tr);
+		const lines: string[] = [leftMargin + top];
+		for (const row of body) {
+			lines.push(`${leftMargin}${v} ${this.#fitToWidth(row, inner)} ${v}`);
 		}
-
-		// Content rows
-		const maxRows = showRightColumn ? Math.max(leftLines.length, rightLines.length) : leftLines.length;
-		for (let i = 0; i < maxRows; i++) {
-			const left = this.#fitToWidth(leftLines[i] ?? "", leftCol);
-			if (showRightColumn) {
-				const right = this.#fitToWidth(rightLines[i] ?? "", rightCol);
-				lines.push(v + left + v + right + v);
-			} else {
-				lines.push(v + left + v);
-			}
-		}
-		// Bottom border
-		if (showRightColumn) {
-			lines.push(bl + h.repeat(leftCol) + theme.fg("borderMuted", theme.boxSharp.teeUp) + h.repeat(rightCol) + br);
-		} else {
-			lines.push(bl + h.repeat(leftCol) + br);
-		}
-
-		// Randomly picked tip, rendered directly beneath the box.
-		lines.push(...this.#renderTip(boxWidth));
-
+		lines.push(leftMargin + bottom);
 		return lines;
 	}
 
 	/**
-	 * Render the per-instance tip line: the `customMessageLabel`-themed `Tip:`
-	 * label followed by a `muted` body, the whole line italicized. Returns `[]`
-	 * when no tip is available or the box is too narrow to be useful.
+	 * Compact card: the same two-column composition at quarter scale — a 4-row
+	 * sun, wordmark, value line, model line, and a `/welcome` pointer — capped at
+	 * {@link WELCOME_COMPACT_MAX_ROWS} rows including borders and tip.
 	 */
+	#renderCompactLines(termWidth: number, boxWidth: number, inner: number): string[] {
+		const sunW = inner >= COMPACT_SUN_MIN_INNER ? COMPACT_SUN_W : 0;
+		const gap = sunW ? 3 : 0;
+		const rightW = Math.max(1, inner - sunW - gap);
+		const sun = sunW ? this.#currentLogoFrame(sunW, COMPACT_SUN_H) : [];
+
+		const right: string[] = [];
+		right.push(this.#fitToWidth(theme.bold(theme.fg("accent", APP_NAME)) + theme.fg("dim", ` v${this.version}`), rightW));
+		right.push(this.#fitToWidth(theme.fg("muted", VEYYON_VALUE_LINE), rightW));
+		const model =
+			this.modelName && this.providerName
+				? `${this.modelName} · ${this.providerName}`
+				: this.modelName || this.providerName;
+		right.push(
+			this.#fitToWidth(
+				model ? theme.fg("dim", model) : theme.fg("dim", `no model yet · ${theme.fg("accent", "/login")}`),
+				rightW,
+			),
+		);
+		right.push(
+			this.#fitToWidth(`${theme.fg("dim", "more:")} ${theme.fg("accent", "/welcome")}${theme.fg("dim", " · /resume · /settings")}`, rightW),
+		);
+
+		const rowsN = Math.max(sun.length, right.length);
+		const sunTop = Math.floor((rowsN - sun.length) / 2);
+		const rightTop = Math.floor((rowsN - right.length) / 2);
+		const body: string[] = [];
+		for (let i = 0; i < rowsN; i++) {
+			const l = sunW ? (sun[i - sunTop] ?? padding(sunW)) : "";
+			const r = right[i - rightTop] ?? "";
+			body.push(this.#fitToWidth(sunW ? l + padding(gap) + r : r, inner));
+		}
+		// Tip: exactly one line in compact. Wrapping breaks at word boundaries, so a
+		// dropped continuation never trips #fitToWidth's overflow ellipsis — mark
+		// the cut explicitly or the tip reads as a complete (garbled) sentence.
+		const tipLines = this.#renderTip(inner);
+		const tipLine = tipLines[0];
+		if (tipLine !== undefined && body.length + 3 <= WELCOME_COMPACT_MAX_ROWS) {
+			const clipped = tipLines.length > 1 ? `${tipLine.trimStart()}${theme.fg("muted", "…")}` : tipLine.trimStart();
+			body.push(this.#fitToWidth(clipped, inner));
+		}
+
+		const hChar = theme.boxSharp.horizontal;
+		const bm = (s: string) => theme.fg("border", s);
+		const v = bm(theme.boxSharp.vertical);
+		const top = bm(theme.boxSharp.topLeft + hChar.repeat(boxWidth - 2) + theme.boxSharp.topRight);
+		const bottom = bm(theme.boxSharp.bottomLeft + hChar.repeat(boxWidth - 2) + theme.boxSharp.bottomRight);
+		const leftMargin = padding(Math.max(0, Math.floor((termWidth - boxWidth) / 2)));
+
+		const lines: string[] = [leftMargin + top];
+		for (const row of body.slice(0, WELCOME_COMPACT_MAX_ROWS - 2)) {
+			lines.push(`${leftMargin}${v} ${this.#fitToWidth(row, inner)} ${v}`);
+		}
+		lines.push(leftMargin + bottom);
+		return lines;
+	}
+
+	/** Identity column: wordmark + version, value line, model, action menu, recents. */
+	#rightColumn(w: number): string[] {
+		const lines: string[] = [];
+		lines.push(this.#fitToWidth(theme.bold(theme.fg("accent", APP_NAME)) + theme.fg("dim", ` v${this.version}`), w));
+		lines.push("");
+		for (const line of wrapTextWithAnsi(VEYYON_VALUE_LINE, w)) {
+			lines.push(this.#fitToWidth(theme.fg("muted", line), w));
+		}
+		// Model line. With a model set it reads `model · provider`; with none it
+		// becomes a quiet call to action rather than a bare "Unknown · Unknown"
+		// (a launch you can't act on is worse than one that tells you the next step).
+		const model =
+			this.modelName && this.providerName
+				? `${this.modelName} · ${this.providerName}`
+				: this.modelName || this.providerName;
+		lines.push(
+			this.#fitToWidth(
+				model ? theme.fg("dim", model) : theme.fg("dim", `no model yet · ${theme.fg("accent", "/login")}`),
+				w,
+			),
+		);
+		lines.push("");
+		for (const [label, shortcut] of WELCOME_ACTIONS) lines.push(this.#menuRow(label, shortcut, w));
+
+		const sessions = this.recentSessions.slice(0, WELCOME_SESSION_SLOTS);
+		if (sessions.length > 0) {
+			lines.push("");
+			lines.push(this.#fitToWidth(theme.fg("dim", "Recent"), w));
+			for (const session of sessions) lines.push(this.#sessionRow(session, w));
+		}
+		return lines;
+	}
+
+	/** Label flush left, shortcut flush right. */
+	#menuRow(label: string, shortcut: string, width: number): string {
+		const used = visibleWidth(label) + visibleWidth(shortcut);
+		const gap = Math.max(2, width - used);
+		return this.#fitToWidth(
+			`${theme.bold(theme.fg("accent", label))}${padding(gap)}${theme.fg("dim", shortcut)}`,
+			width,
+		);
+	}
+
+	/** Recent-session row: bullet + name, relative time flush right (name truncates first). */
+	#sessionRow(session: RecentSession, width: number): string {
+		const bullet = `${theme.md.bullet} `;
+		const time = ` ${session.timeAgo}`;
+		const budget = Math.max(1, width - visibleWidth(bullet) - visibleWidth(time));
+		const name = visibleWidth(session.name) > budget ? truncateToWidth(session.name, budget) : session.name;
+		return this.#fitToWidth(`${theme.fg("dim", bullet)}${theme.fg("muted", name)}${theme.fg("dim", time)}`, width);
+	}
+
 	#renderTip(boxWidth: number): string[] {
 		const tip = this.tip;
 		if (!tip) return [];
 		return renderWelcomeTip(tip, boxWidth);
 	}
 
-	/** Center text within a given width */
-	#centerText(text: string, width: number): string {
-		const visLen = visibleWidth(text);
-		if (visLen >= width) {
-			return truncateToWidth(text, width);
-		}
-		const leftPad = Math.floor((width - visLen) / 2);
-		const rightPad = width - visLen - leftPad;
-		return padding(leftPad) + text + padding(rightPad);
-	}
-
-	/** Fit string to exact width with ANSI-aware truncation/padding */
+	/** Fit string to exact width with ANSI-aware truncation/padding. */
 	#fitToWidth(str: string, width: number): string {
-		const visLen = visibleWidth(str);
-		if (visLen > width) {
-			const ellipsis = "…";
-			const ellipsisWidth = visibleWidth(ellipsis);
-			const maxWidth = Math.max(0, width - ellipsisWidth);
-			let truncated = "";
-			let currentWidth = 0;
-			let inEscape = false;
-			for (const char of str) {
-				if (char === "\x1b") inEscape = true;
-				if (inEscape) {
-					truncated += char;
-					if (char === "m") inEscape = false;
-				} else if (currentWidth < maxWidth) {
-					truncated += char;
-					currentWidth++;
-				}
-			}
-			return `${truncated}${ellipsis}`;
-		}
-		return str + padding(width - visLen);
+		return truncateToWidth(str, width, Ellipsis.Unicode, true);
 	}
 
-	/** Pick the logo frame for the current intro phase, or the resting frame. */
-	#currentLogoFrame(): readonly string[] {
-		if (this.#animStart == null) return REST_FRAME;
-		const elapsed = performance.now() - this.#animStart;
-		if (elapsed >= INTRO_MS) return REST_FRAME;
-		return introLogoFrame(elapsed / INTRO_MS);
+	/**
+	 * The sun mark for the card. At rest it is a steady ember disc; during the
+	 * intro it blooms (radius eases open, dither churns) then settles. A pure
+	 * function of elapsed time, so the intro timer drives it by re-rendering.
+	 */
+	#currentLogoFrame(sunW: number, sunH: number = SUN_H): readonly string[] {
+		let bloom: number | undefined;
+		let time = 0.6;
+		if (this.#animStart != null) {
+			const elapsed = performance.now() - this.#animStart;
+			bloom = Math.min(1, elapsed / INTRO_MS);
+			time = 0.2 + (elapsed / 1000) * 1.6;
+		}
+		return sunMark(sunW, sunH, { trueColor: TERMINAL.trueColor, bloom, time });
 	}
 }
 
-/** Compact box-drawing wordmark — sharp, fits the welcome column, reads VEYYON. */
+/** Retained for API/compat and tests — the old box-drawing wordmark. */
 export const VEYYON_LOGO = [
 	"╦  ╦╔═╗╦ ╦╦ ╦╔═╗╔╗╔",
 	"╚╗╔╝║╣ ╚═╣╚╦╝║ ║║║║",
 	" ╚╝ ╚═╝  ╩ ╩ ╚═╝╝╚╝",
 ];
 
-/** Veyyon silver luminance stops: dark → brand → bright. */
-const SILVER_STOPS: ReadonlyArray<readonly [number, number, number]> = [
+/**
+ * Veyyon silver luminance stops: dark → brand → bright. The middle/bright
+ * stops are the brand silvers (website --silver / --silver-hi); brand-conformance
+ * tests pin them to site.css so the wordmark shimmer cannot drift off-brand.
+ */
+export const SILVER_STOPS: ReadonlyArray<readonly [number, number, number]> = [
 	[116, 123, 134], // #747B86
-	[184, 189, 199], // #B8BDC7
-	[225, 228, 233], // #E1E4E9
+	[198, 203, 212], // #C6CBD4 — brand silver (website --silver / titanium `silver`)
+	[230, 233, 238], // #E6E9EE — silver bright (website --silver-hi / titanium `silverBright`)
 ];
 
 /** 256-color approx for the three silver stops. */
@@ -462,15 +480,15 @@ export function silverEscape(intensity: number): string {
 }
 
 export interface ShineConfig {
-	/** 0 = fully revealed / resting; 1 = intro start (edge hot). Used only for entrance fade. */
+	/** 0 = fully revealed / resting; 1 = intro start (edge hot). */
 	strength: number;
 	/** Reveal frontier along the wordmark (0..1), left → right. */
 	pos: number;
 }
 
 /**
- * Wordmark / tip foreground. Resting = brand silver. During entrance, `shine.pos`
- * is the reveal frontier and `shine.strength` warms the leading edge.
+ * Wordmark foreground. Resting = brand silver. During entrance, `shine.pos` is
+ * the reveal frontier and `shine.strength` warms the leading edge.
  */
 export function gradientEscape(_t: number, shine?: ShineConfig): string {
 	if (!shine || shine.strength <= 0) return silverEscape(0.55);
@@ -478,10 +496,7 @@ export function gradientEscape(_t: number, shine?: ShineConfig): string {
 	return silverEscape(0.45 + edge * 0.55);
 }
 
-/**
- * Paint multi-line art in Veyyon silver. Entrance uses a left→right reveal with a
- * bright leading edge that settles to brand silver.
- */
+/** Paint multi-line art in Veyyon silver with an optional left→right reveal. */
 export function gradientLogo(lines: readonly string[], phase = 0, shine?: ShineConfig): string[] {
 	const reset = "\x1b[0m";
 	const cols = Math.max(1, ...lines.map(l => l.length));
@@ -509,20 +524,7 @@ export function gradientLogo(lines: readonly string[], phase = 0, shine?: ShineC
 	});
 }
 
-/** Total length of the intro animation. */
+/** Total length of the launch bloom. */
 const INTRO_MS = 2200;
 /** Render cadence during the intro (~30fps). */
 const INTRO_TICK_MS = 33;
-
-/**
- * Logo frame for a normalized intro progress in [0, 1).
- * Ease-out reveal left → right; leading edge bright, settles to brand silver.
- */
-function introLogoFrame(progress: number): string[] {
-	const eased = 1 - (1 - progress) ** 3;
-	const edge = Math.max(0, 1 - eased) ** 1.2;
-	return gradientLogo(VEYYON_LOGO, 0, { pos: eased, strength: edge });
-}
-
-/** Resting wordmark, cached for re-renders outside of the intro. */
-const REST_FRAME = gradientLogo(VEYYON_LOGO, 0);

@@ -600,12 +600,21 @@ export class ExtensionUiController {
 		return winner.value;
 	}
 
+	/**
+	 * Local ask dialog: a fullscreen ModalShell overlay (the `/copy`/session-
+	 * picker idiom), not an editor-slot component. A nested custom-answer/note
+	 * prompt (`onPrompt`) temporarily hides the overlay and swaps a
+	 * `HookEditorComponent` into the normal editor slot instead of stacking a
+	 * second fullscreen surface — the overlay un-hides and regains focus once
+	 * the prompt settles.
+	 */
 	#showLocalAskDialog(
 		questions: ExtensionAskDialogQuestion[],
 		dialogOptions?: ExtensionUIDialogOptions,
 	): Promise<ExtensionAskDialogResult | undefined> {
 		return this.#presentDialog<ExtensionAskDialogResult>(dialogOptions?.signal, settle => {
 			let askDialog: AskDialogComponent | undefined;
+			let overlayHandle: OverlayHandle | undefined;
 			let promptEditor: HookEditorComponent | undefined;
 			let promptResolve: ((value: string | undefined) => void) | undefined;
 			let closed = false;
@@ -613,7 +622,8 @@ export class ExtensionUiController {
 			const restoreAskDialog = (): void => {
 				if (closed || !askDialog) return;
 				this.ctx.editorContainer.clear();
-				this.ctx.editorContainer.addChild(askDialog);
+				this.ctx.editorContainer.addChild(this.ctx.editor);
+				overlayHandle?.setHidden(false);
 				this.ctx.ui.setFocus(askDialog);
 				this.ctx.ui.requestRender();
 			};
@@ -638,6 +648,7 @@ export class ExtensionUiController {
 					() => finishPrompt(undefined),
 					{ promptStyle: true },
 				);
+				overlayHandle?.setHidden(true);
 				this.ctx.editorContainer.clear();
 				this.ctx.editorContainer.addChild(promptEditor);
 				this.ctx.ui.setFocus(promptEditor);
@@ -658,20 +669,30 @@ export class ExtensionUiController {
 					tui: this.ctx.ui,
 				},
 			);
-			this.ctx.editorContainer.clear();
-			this.ctx.editorContainer.addChild(askDialog);
+			askDialog.setOnRequestRender(() => this.ctx.ui.requestRender());
+			overlayHandle = this.ctx.ui.showOverlay(askDialog, {
+				anchor: "top-left",
+				width: "100%",
+				maxHeight: "100%",
+				margin: 0,
+				fullscreen: true,
+			});
 			this.ctx.ui.setFocus(askDialog);
 			this.ctx.ui.requestRender();
 
 			return () => {
 				closed = true;
 				askDialog?.dispose();
+				overlayHandle?.hide();
+				overlayHandle = undefined;
 				promptResolve?.(undefined);
 				promptResolve = undefined;
 				promptEditor = undefined;
+				// A nested prompt may have been mid-flight when this settled — make
+				// sure the normal editor slot is restored before handing focus back.
 				this.ctx.editorContainer.clear();
 				this.ctx.editorContainer.addChild(this.ctx.editor);
-				this.ctx.ui.setFocus(this.ctx.editor);
+				this.ctx.focusActiveEditorArea();
 				this.ctx.ui.requestRender();
 			};
 		});

@@ -1,17 +1,35 @@
 /**
  * `/move` overlay: a path input with live directory autocomplete.
  *
- * Rendered as a centered modal via `showHookCustom(..., { overlay: true })`.
- * The user types a path, Tab autocomtes the highlighted directory, and Enter
- * confirms — yielding the resolved directory string (or `undefined` on cancel).
+ * Rendered as a floating ModalShell card, hosted fullscreen so the transcript
+ * stays visible around it. The user types a path, Tab autocompletes the
+ * highlighted directory, and Enter confirms — yielding the resolved directory
+ * string (or `undefined` on cancel).
  */
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { type Component, CURSOR_MARKER, type Focusable, Key, matchesKey } from "@veyyon/pi-tui";
+import {
+	type Component,
+	CURSOR_MARKER,
+	type Focusable,
+	Key,
+	matchesKey,
+	padding,
+	routeSgrMouseInput,
+	type SgrMouseEvent,
+} from "@veyyon/pi-tui";
 import { theme } from "../theme/theme";
 import { matchesSelectCancel, matchesSelectDown, matchesSelectUp } from "../utils/keybinding-matchers";
-import { bottomBorder, row, topBorder } from "./overlay-box";
+import {
+	computeModalDims,
+	hitTestModalChrome,
+	MODAL_SIZING_MEDIUM,
+	type ModalShellGeometry,
+	type ModalShortcut,
+	renderModalShell,
+	withCompact,
+} from "./modal-shell";
 
 export interface MoveOverlayResult {
 	directory: string;
@@ -25,6 +43,13 @@ interface DirEntry {
 }
 
 const MAX_RESULTS = 15;
+
+const MOVE_SHORTCUTS: readonly ModalShortcut[] = [
+	{ label: "up/down navigate" },
+	{ label: "tab complete" },
+	{ label: "enter confirm", clickable: true, id: "confirm" },
+	{ label: "esc cancel", clickable: true, id: "close" },
+];
 
 /** TTL for the directory listing cache (ms). */
 const DIR_CACHE_TTL = 500;
@@ -160,6 +185,9 @@ export class MoveOverlay implements Component, Focusable {
 	#results: DirEntry[] = [];
 	#cwd: string;
 	#done: (result: MoveOverlayResult | undefined) => void;
+	#shellGeometry: ModalShellGeometry | null = null;
+	#hoveredShortcutId: string | null = null;
+	#onRequestRender?: () => void;
 
 	constructor(cwd: string, done: (result: MoveOverlayResult | undefined) => void) {
 		this.#cwd = cwd;
@@ -167,6 +195,10 @@ export class MoveOverlay implements Component, Focusable {
 		// Warm the cache for the current directory so the first keystroke is instant.
 		readDirCached(cwd);
 		this.#updateResults();
+	}
+
+	setOnRequestRender(cb: () => void): void {
+		this.#onRequestRender = cb;
 	}
 
 	get focused(): boolean {
@@ -178,6 +210,10 @@ export class MoveOverlay implements Component, Focusable {
 	}
 
 	handleInput(data: string): void {
+		if (data.startsWith("\x1b[<")) {
+			routeSgrMouseInput(data, event => this.#routeMouse(event));
+			return;
+		}
 		if (matchesSelectCancel(data) || matchesKey(data, Key.escape) || matchesKey(data, Key.ctrl("c"))) {
 			this.#done(undefined);
 			return;
@@ -230,32 +266,65 @@ export class MoveOverlay implements Component, Focusable {
 	}
 
 	render(width: number): readonly string[] {
-		const w = width;
-		const lines: string[] = [];
+		const height = process.stdout.rows || 40;
+		const sizing = withCompact(MODAL_SIZING_MEDIUM, height < 24);
+		const dims = computeModalDims(width, height, sizing);
+		if (!dims) {
+			this.#shellGeometry = null;
+			return Array.from({ length: height }, () => padding(width));
+		}
 
-		lines.push(topBorder(w, "Move to directory"));
-		lines.push(row(this.#renderInput(), w));
-		lines.push(row("", w));
-
+		const body: string[] = [this.#renderInput(), ""];
 		if (this.#results.length === 0 && this.#input.length > 0) {
-			lines.push(row(theme.fg("dim", "No matching directories"), w));
+			body.push(theme.fg("dim", "No matching directories"));
 		} else {
 			for (let i = 0; i < Math.min(this.#results.length, MAX_RESULTS); i++) {
 				const item = this.#results[i]!;
 				const selected = i === this.#selectedIndex;
 				const marker = selected ? theme.fg("accent", "▶ ") : "  ";
 				const label = selected ? theme.fg("accent", item.label) : theme.fg("text", item.label);
-				lines.push(row(`${marker}${label}`, w));
+				body.push(`${marker}${label}`);
 			}
 		}
 
-		lines.push(row("", w));
-		lines.push(row(theme.fg("dim", "Type to filter · ↑↓ navigate · Tab accept · Enter confirm · Esc cancel"), w));
-		lines.push(bottomBorder(w));
-		return lines;
+		const shell = renderModalShell({
+			title: "Move",
+			sizing,
+			areaWidth: width,
+			areaHeight: height,
+			body,
+			shortcuts: MOVE_SHORTCUTS,
+			hoveredShortcutId: this.#hoveredShortcutId,
+			showClose: true,
+		});
+		this.#shellGeometry = shell.geometry;
+		return shell.lines;
 	}
 
 	invalidate(): void {}
+
+	#routeMouse(event: SgrMouseEvent): boolean {
+		const chrome = hitTestModalChrome(this.#shellGeometry, event.row, event.col, {
+			motion: event.motion,
+			leftClick: event.leftClick,
+		});
+		if (chrome.kind === "hover-shortcut") {
+			if (this.#hoveredShortcutId !== chrome.id) {
+				this.#hoveredShortcutId = chrome.id;
+				this.#onRequestRender?.();
+			}
+			return true;
+		}
+		if (chrome.kind === "close" || chrome.kind === "outside" || (chrome.kind === "shortcut" && chrome.id === "close")) {
+			this.#done(undefined);
+			return true;
+		}
+		if (chrome.kind === "shortcut" && chrome.id === "confirm") {
+			this.#confirm();
+			return true;
+		}
+		return true;
+	}
 
 	#renderInput(): string {
 		const prompt = theme.fg("dim", "Path: ");

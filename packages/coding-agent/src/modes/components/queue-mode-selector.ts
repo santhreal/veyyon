@@ -1,21 +1,18 @@
-import { Container, type SelectItem, SelectList, type SgrMouseEvent } from "@veyyon/pi-tui";
+import type { SelectItem, SgrMouseEvent } from "@veyyon/pi-tui";
 import { getSelectListTheme } from "../../modes/theme/theme";
-import { DynamicBorder } from "./dynamic-border";
-import { routeSelectListMouseWithTopBorder } from "./select-list-mouse-routing";
+import { ModalSelectListComponent } from "./modal-select-list";
 
 /**
- * Component that renders a queue mode selector with borders
+ * Queue-mode picker — floating ModalShell medium card.
  */
-export class QueueModeSelectorComponent extends Container {
-	#selectList: SelectList;
+export class QueueModeSelectorComponent {
+	#inner: ModalSelectListComponent;
 
 	constructor(
 		currentMode: "all" | "one-at-a-time",
 		onSelect: (mode: "all" | "one-at-a-time") => void,
 		onCancel: () => void,
 	) {
-		super();
-
 		const queueModes: SelectItem[] = [
 			{
 				value: "one-at-a-time",
@@ -24,38 +21,43 @@ export class QueueModeSelectorComponent extends Container {
 			},
 			{ value: "all", label: "all", description: "Process all queued messages at once" },
 		];
-
-		// Add top border
-		this.addChild(new DynamicBorder());
-
-		// Create selector
-		this.#selectList = new SelectList(queueModes, 2, getSelectListTheme());
-
-		// Preselect current mode
 		const currentIndex = queueModes.findIndex(item => item.value === currentMode);
-		if (currentIndex !== -1) {
-			this.#selectList.setSelectedIndex(currentIndex);
-		}
-
-		this.#selectList.onSelect = item => {
-			onSelect(item.value as "all" | "one-at-a-time");
-		};
-
-		this.#selectList.onCancel = () => {
-			onCancel();
-		};
-
-		this.addChild(this.#selectList);
-
-		// Add bottom border
-		this.addChild(new DynamicBorder());
+		this.#inner = new ModalSelectListComponent(
+			{
+				title: "Queue Mode",
+				items: queueModes,
+				theme: getSelectListTheme(),
+				selectedIndex: currentIndex,
+				maxVisible: 2,
+			},
+			{
+				onSelect: item => onSelect(item.value as "all" | "one-at-a-time"),
+				onCancel,
+			},
+		);
 	}
 
-	getSelectList(): SelectList {
-		return this.#selectList;
+	setOnRequestRender(cb: () => void): void {
+		this.#inner.setOnRequestRender(cb);
+	}
+
+	getSelectList() {
+		return this.#inner.getSelectList();
 	}
 
 	routeMouse(event: SgrMouseEvent, line: number, col: number): void {
-		routeSelectListMouseWithTopBorder(this.#selectList, event, line, col);
+		this.#inner.getSelectList().routeMouse(event, line - 1, col);
+	}
+
+	handleInput(data: string): void {
+		this.#inner.handleInput(data);
+	}
+
+	render(width: number): string[] {
+		return this.#inner.render(width);
+	}
+
+	invalidate(): void {
+		this.#inner.invalidate();
 	}
 }

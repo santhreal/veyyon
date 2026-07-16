@@ -1,4 +1,4 @@
-import type { AssistantMessage, ImageContent } from "@veyyon/pi-ai";
+import type { AssistantMessage, ImageContent, TextContent } from "@veyyon/pi-ai";
 import * as AIError from "@veyyon/pi-ai/error";
 import { getStreamingPartialJson } from "@veyyon/pi-ai/utils/block-symbols";
 import { type Component, Loader, TERMINAL } from "@veyyon/pi-tui";
@@ -444,6 +444,9 @@ export class EventController {
 		this.ctx.statusLine.markActivityStart();
 		this.#setTerminalProgress(true);
 		this.ctx.ensureLoadingAnimation();
+		// Optional: many controller-level tests mock a partial InteractiveModeContext
+		// without the composer bar wired up.
+		this.ctx.refreshComposerShortcuts?.();
 		this.ctx.ui.requestRender();
 	}
 
@@ -1142,7 +1145,7 @@ export class EventController {
 			}
 		} else if (event.toolName === "todo" && event.isError) {
 			const textContent = event.result.content.find(
-				(content: { type: string; text?: string }) => content.type === "text",
+				(content): content is TextContent => content.type === "text",
 			)?.text;
 			this.ctx.showWarning(
 				`Todo update failed${textContent ? `: ${textContent}` : ". Progress may be stale until todo succeeds."}`,
@@ -1217,6 +1220,7 @@ export class EventController {
 		this.#resolveDisplaceablePoll();
 		this.#resolveDisplaceableTodo();
 		this.#lastAssistantComponent = undefined;
+		this.ctx.refreshComposerShortcuts?.();
 		this.ctx.ui.requestRender();
 		this.#scheduleIdleCompaction();
 		this.#scheduleIdleRecap();
@@ -1293,6 +1297,7 @@ export class EventController {
 			getSymbolTheme().spinnerFrames,
 		);
 		this.ctx.statusContainer.addChild(this.ctx.autoCompactionLoader);
+		this.ctx.refreshComposerShortcuts?.();
 		this.ctx.ui.requestRender();
 	}
 
@@ -1374,6 +1379,7 @@ export class EventController {
 		}
 		await this.ctx.flushCompactionQueue({ willRetry: event.willRetry });
 		this.#ensureWorkingLoaderWhileStreaming();
+		this.ctx.refreshComposerShortcuts?.();
 		this.ctx.ui.requestRender();
 	}
 

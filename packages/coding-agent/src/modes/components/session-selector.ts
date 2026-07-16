@@ -18,8 +18,15 @@ import { theme } from "../../modes/theme/theme";
 import { matchesAppInterrupt, matchesSelectDown, matchesSelectUp } from "../../modes/utils/keybinding-matchers";
 import type { SessionInfo, SessionStatus } from "../../session/session-listing";
 import { shortenPath } from "../../tools/render-utils";
-import { DynamicBorder } from "./dynamic-border";
 import { HookSelectorComponent } from "./hook-selector";
+import {
+	computeModalDims,
+	hitTestModalChrome,
+	MODAL_SIZING_LARGE,
+	type ModalShellGeometry,
+	renderModalShell,
+	withCompact,
+} from "./modal-shell";
 
 /**
  * Themed glyph + colored label for a session's lifecycle status, or `undefined`
@@ -769,9 +776,10 @@ export class SessionSelectorComponent extends Container {
 	// hit-test the list, so a footer click on a cramped (trimmed) frame can't
 	// resume a session scrolled off-screen.
 	#footerStart = 0;
+	#shellGeometry: ModalShellGeometry | null = null;
+	#hoveredShortcutId: string | null = null;
 	readonly #getTerminalRows: () => number;
 	readonly #fillHeight: boolean;
-	readonly #bottomBorder = new DynamicBorder();
 
 	constructor(
 		sessions: SessionInfo[],
@@ -789,13 +797,8 @@ export class SessionSelectorComponent extends Container {
 		this.#globalSessions = options.allSessions ?? null;
 		this.#getTerminalRows = options.getTerminalRows ?? (() => 24);
 		this.#fillHeight = options.fillHeight ?? false;
-		// Add header
-		this.addChild(new Spacer(1));
 		this.#headerText = new Text(this.#headerLabel(), 1, 0);
 		this.addChild(this.#headerText);
-		this.addChild(new Spacer(1));
-		this.addChild(new DynamicBorder());
-		this.addChild(new Spacer(1));
 		this.addChild(this.#messageContainer);
 		// Create session list in folder scope; the empty-state hint invites the
 		// user to Tab into all-projects rather than silently surfacing other
@@ -830,8 +833,7 @@ export class SessionSelectorComponent extends Container {
 	}
 
 	#headerLabel(): string {
-		const scopeLabel = this.#scope === "all" ? "all projects" : "current folder";
-		return `${theme.bold("Resume Session")} ${theme.fg("muted", `(${scopeLabel})`)}`;
+		return "";
 	}
 
 	/**
@@ -936,39 +938,46 @@ export class SessionSelectorComponent extends Container {
 	}
 
 	/**
-	 * Concatenate the children's renders (like {@link Container}) while recording
-	 * the line where the session list begins, so the fullscreen picker can hit-
-	 * test mouse rows against the live list window. SessionList rebuilds its lines
-	 * every frame, so Container's reference-memoization never applied here.
-	 *
-	 * In fill-height mode the body is padded (or, on a cramped terminal, trimmed)
-	 * to leave exactly enough room for the footer at the screen bottom, so the
-	 * footer is always visible and never drifts as the list window resizes. The
-	 * in-editor selector just appends the footer directly.
+	 * Floating ModalShell card: header + messages + session list, tip gap, and
+	 * centered shortcut chips. Transcript visible around the card.
 	 */
 	render(width: number): readonly string[] {
-		const lines: string[] = [];
-		for (const child of this.children) {
-			const childLines = child.render(width);
-			if (child === this.#contentSlot) this.#listLineOffset = lines.length;
-			for (const line of childLines) lines.push(line);
+		const termHeight = Math.max(14, this.#getTerminalRows());
+		const sizing = withCompact(MODAL_SIZING_LARGE, termHeight < 24 || !this.#fillHeight);
+		const dims = computeModalDims(width, termHeight, sizing);
+		if (!dims) {
+			this.#shellGeometry = null;
+			return Array.from({ length: termHeight }, () => padding(width));
 		}
-		const footer = this.#footerLines(width);
-		if (this.#fillHeight) {
-			const target = Math.max(0, this.#getTerminalRows() - footer.length);
-			if (lines.length > target) lines.length = target;
-			else for (let i = lines.length; i < target; i++) lines.push("");
-		}
-		this.#footerStart = lines.length;
-		for (const line of footer) lines.push(line);
-		return lines;
-	}
 
-	/** Blank · keybinding hint · bottom border. Rendered by {@link render}. */
-	#footerLines(width: number): string[] {
-		const scopeHint = this.#scope === "all" ? "current folder" : "all projects";
-		const hint = theme.fg("muted", `  [Del/⌫ delete · Enter select · Tab ${scopeHint} · Esc cancel]`);
-		return ["", hint, "", ...this.#bottomBorder.render(width)];
+		const body: string[] = [];
+		for (const line of this.#headerText.render(dims.contentWidth)) body.push(line);
+		for (const line of this.#messageContainer.render(dims.contentWidth)) body.push(line);
+		this.#listLineOffset = body.length;
+		for (const line of this.#contentSlot.render(dims.contentWidth)) body.push(line);
+
+		const scopeLabel = this.#scope === "all" ? "current folder" : "all projects";
+		const shell = renderModalShell({
+			title: "Resume Session",
+			breadcrumb: this.#scope === "all" ? " · all projects" : " · current folder",
+			sizing,
+			areaWidth: width,
+			areaHeight: termHeight,
+			body,
+			shortcuts: [
+				{ label: "enter select", clickable: true, id: "confirm" },
+				{ label: "del delete", clickable: true, id: "delete" },
+				{ label: `tab ${scopeLabel}` },
+				{ label: "esc close", clickable: true, id: "close" },
+			],
+			hoveredShortcutId: this.#hoveredShortcutId,
+			showClose: true,
+		});
+
+		this.#shellGeometry = shell.geometry;
+		this.#listLineOffset = (shell.geometry?.bodyRowStart ?? 0) + this.#listLineOffset;
+		this.#footerStart = shell.geometry?.footerRowStart ?? shell.lines.length;
+		return shell.lines;
 	}
 
 	handleInput(keyData: string): void {
@@ -992,6 +1001,33 @@ export class SessionSelectorComponent extends Container {
 	#handleMouse(data: string): void {
 		if (this.#confirmationDialog) return;
 		routeSgrMouseInput(data, event => {
+			const chrome = hitTestModalChrome(this.#shellGeometry, event.row, event.col, {
+				motion: event.motion,
+				leftClick: event.leftClick,
+			});
+			if (chrome.kind === "hover-shortcut") {
+				if (this.#hoveredShortcutId !== chrome.id) {
+					this.#hoveredShortcutId = chrome.id;
+					this.#onRequestRender?.();
+				}
+				return true;
+			}
+			if (
+				chrome.kind === "close" ||
+				chrome.kind === "outside" ||
+				(chrome.kind === "shortcut" && chrome.id === "close")
+			) {
+				this.#sessionList.onCancel?.();
+				return true;
+			}
+			if (chrome.kind === "shortcut" && chrome.id === "confirm") {
+				this.#sessionList.handleInput("\n");
+				return true;
+			}
+			if (chrome.kind === "shortcut" && chrome.id === "delete") {
+				this.#sessionList.handleInput("\x7f");
+				return true;
+			}
 			if (event.wheel !== null) {
 				this.#sessionList.handleWheel(event.wheel);
 				return true;

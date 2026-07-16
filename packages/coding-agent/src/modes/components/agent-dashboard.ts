@@ -26,6 +26,7 @@ import {
 	matchesKey,
 	padding,
 	replaceTabs,
+	routeSgrMouseInput,
 	ScrollView,
 	Spacer,
 	Text,
@@ -57,8 +58,16 @@ import {
 	matchesSelectDown,
 	matchesSelectUp,
 } from "../utils/keybinding-matchers";
-import { DynamicBorder } from "./dynamic-border";
-import { clampSelection, handleTabSwitchKey, padLinesToHeight, searchableChar } from "./selector-helpers";
+import {
+	computeModalDims,
+	hitTestModalChrome,
+	MODAL_SIZING_LARGE,
+	type ModalShellGeometry,
+	type ModalShortcut,
+	renderModalShell,
+	withCompact,
+} from "./modal-shell";
+import { clampSelection, handleTabSwitchKey, searchableChar } from "./selector-helpers";
 
 type SourceTabId = "all" | AgentSource;
 type AgentScope = "project" | "user";
@@ -104,8 +113,19 @@ const SOURCE_LABEL: Record<AgentSource, string> = {
 	bundled: "Bundled",
 };
 
-const LIST_FOOTER =
-	" ↑/↓: navigate  Space: toggle  Enter: model override  N: new agent  ←/→: source  Ctrl+R: reload  Esc: close";
+/** ModalShell footer chips for the list/inspector view. */
+const AGENT_LIST_SHORTCUTS: readonly ModalShortcut[] = [
+	{ label: "up/down navigate" },
+	{ label: "space toggle" },
+	{ label: "enter override" },
+	{ label: "n new agent" },
+	{ label: "left/right source" },
+	{ label: "ctrl+r reload" },
+	{ label: "esc close", clickable: true, id: "close" },
+];
+
+/** ModalShell footer chips for create/edit sub-views, which carry their own inline hint line. */
+const AGENT_SUBVIEW_SHORTCUTS: readonly ModalShortcut[] = [{ label: "esc cancel", clickable: true, id: "close" }];
 
 const IDENTIFIER_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+){1,5}$/;
 function joinPatterns(patterns: string[]): string {
@@ -358,6 +378,12 @@ export class AgentDashboard extends Container {
 	#notice: string | null = null;
 	#builtRows = -1;
 	#builtCols = -1;
+	/** Content-column width inside the ModalShell card, refreshed every render. */
+	#contentWidth = 80;
+	/** Card height budget inside the ModalShell card, refreshed every render. */
+	#modalHeight = 20;
+	#shellGeometry: ModalShellGeometry | null = null;
+	#hoveredShortcutId: string | null = null;
 
 	#editInput: Input | null = null;
 	#editingAgentName: string | null = null;
@@ -492,19 +518,15 @@ export class AgentDashboard extends Container {
 
 	#noticeBlockLines(): number {
 		if (!this.#notice) return 0;
-		return wrapTextWithAnsi(theme.fg("success", replaceTabs(this.#notice)), this.#uiWidth()).length + 1;
+		return wrapTextWithAnsi(theme.fg("success", replaceTabs(this.#notice)), this.#contentWidth).length + 1;
 	}
 
-	#footerLines(): number {
-		return Math.max(1, wrapTextWithAnsi(theme.fg("dim", LIST_FOOTER), this.#uiWidth()).length);
-	}
-
-	/** Height budget for the two-column body, sized to the live terminal. */
+	/** Height budget for the two-column body, sized to the ModalShell card. */
 	#computeBodyHeight(): number {
-		// Chrome around the body: top border + title + tab bar + spacer (4),
-		// optional notice block, then spacer + footer + bottom border.
-		const chrome = 4 + this.#noticeBlockLines() + 1 + this.#footerLines() + 1;
-		return Math.max(5, this.#terminalRows() - chrome);
+		// Chrome inside the card: tab bar + spacer (2), plus an optional notice
+		// block. ModalShell itself owns the border, title, and footer chips.
+		const preRows = 2 + this.#noticeBlockLines();
+		return Math.max(5, this.#modalHeight - 8 - preRows);
 	}
 
 	#getMaxVisibleItems(): number {
@@ -512,17 +534,51 @@ export class AgentDashboard extends Container {
 		return Math.max(3, this.#computeBodyHeight() - 3);
 	}
 
+	#currentShortcuts(): readonly ModalShortcut[] {
+		if (this.#createSpec || this.#createInput || this.#createGenerating || this.#editInput) {
+			return AGENT_SUBVIEW_SHORTCUTS;
+		}
+		return AGENT_LIST_SHORTCUTS;
+	}
+
+	/**
+	 * Floating ModalShell card: titled chrome, tab bar, two-column body (or
+	 * create/edit sub-view), centered shortcut chips. Transcript visible around
+	 * the card (host overlay is fullscreen so the alt-screen + mouse tracking
+	 * stay active for the card's lifetime).
+	 */
 	override render(width: number): readonly string[] {
-		// Rebuild when terminal geometry changes so the full-screen overlay
-		// re-fits on resize.
-		if (this.#terminalRows() !== this.#builtRows || this.#uiWidth() !== this.#builtCols) {
+		const height = Math.max(14, this.#terminalRows());
+		// The create/edit sub-views run taller than a plain list, so reclaim
+		// margin a bit earlier than the sibling dashboards' `height < 24`.
+		const sizing = withCompact(MODAL_SIZING_LARGE, height <= 24);
+		const dims = computeModalDims(width, height, sizing);
+		if (!dims) {
+			this.#shellGeometry = null;
+			return Array.from({ length: height }, () => padding(width));
+		}
+
+		this.#contentWidth = dims.contentWidth;
+		this.#modalHeight = dims.modalHeight;
+		// Rebuild when terminal geometry changes so the card re-fits on resize.
+		if (height !== this.#builtRows || dims.contentWidth !== this.#builtCols) {
 			this.#buildLayout();
 		}
-		const lines = super.render(width);
-		// Pad to the full viewport so every state (list, edit, create) covers the
-		// screen as a true full-screen view instead of letting the transcript peek
-		// through below it.
-		return padLinesToHeight(lines, this.#terminalRows());
+
+		const body = super.render(dims.contentWidth);
+		const shell = renderModalShell({
+			title: "Agent Control Center",
+			sizing,
+			areaWidth: width,
+			areaHeight: height,
+			body,
+			shortcuts: this.#currentShortcuts(),
+			hoveredShortcutId: this.#hoveredShortcutId,
+			showClose: true,
+		});
+
+		this.#shellGeometry = shell.geometry;
+		return shell.lines;
 	}
 
 	#clampSelection(): void {
@@ -608,7 +664,7 @@ export class AgentDashboard extends Container {
 		const editor = new Editor(getEditorTheme());
 		editor.setBorderVisible(false);
 		editor.setPromptGutter("> ");
-		editor.setMaxHeight(Math.max(3, Math.min(8, this.#terminalRows() - 12)));
+		editor.setMaxHeight(Math.max(3, Math.min(8, this.#modalHeight - 12)));
 		editor.disableSubmit = true;
 		editor.onChange = value => {
 			this.#createDescription = value;
@@ -866,7 +922,7 @@ export class AgentDashboard extends Container {
 		this.addChild(new Text(theme.fg("muted", "Describe what the new agent should do:"), 0, 0));
 		this.addChild(new Spacer(1));
 		if (this.#createInput) {
-			this.#createInput.setMaxHeight(Math.max(3, Math.min(8, this.#terminalRows() - 12)));
+			this.#createInput.setMaxHeight(Math.max(3, Math.min(8, this.#modalHeight - 12)));
 			this.addChild(this.#createInput);
 		}
 		this.addChild(new Spacer(1));
@@ -876,8 +932,8 @@ export class AgentDashboard extends Container {
 			this.addChild(new Text(theme.fg("accent", "Generating agent specification..."), 0, 0));
 			if (this.#createStreamingText) {
 				this.addChild(new Spacer(1));
-				const maxPreview = Math.max(3, this.#terminalRows() - 18);
-				const contentWidth = Math.max(20, this.#uiWidth() - 4);
+				const maxPreview = Math.max(3, this.#modalHeight - 18);
+				const contentWidth = Math.max(20, this.#contentWidth - 4);
 				const wrappedLines: string[] = [];
 				for (const raw of this.#createStreamingText.split("\n")) {
 					for (const w of wrapTextWithAnsi(replaceTabs(raw), contentWidth)) {
@@ -913,12 +969,15 @@ export class AgentDashboard extends Container {
 		this.addChild(new Text(theme.fg("muted", `Scope: ${this.#createScope}`), 0, 0));
 		this.addChild(new Spacer(1));
 		this.addChild(new Text(theme.fg("muted", "whenToUse:"), 0, 0));
-		for (const line of wrapTextWithAnsi(replaceTabs(spec.whenToUse), Math.max(20, this.#uiWidth() - 2)).slice(0, 8)) {
-			this.addChild(new Text(truncateToWidth(line, this.#uiWidth() - 2), 0, 0));
+		for (const line of wrapTextWithAnsi(replaceTabs(spec.whenToUse), Math.max(20, this.#contentWidth - 2)).slice(
+			0,
+			8,
+		)) {
+			this.addChild(new Text(truncateToWidth(line, this.#contentWidth - 2), 0, 0));
 		}
 		this.addChild(new Spacer(1));
 		this.addChild(new Text(theme.fg("muted", "systemPrompt preview:"), 0, 0));
-		const promptWidth = Math.max(20, this.#uiWidth() - 4);
+		const promptWidth = Math.max(20, this.#contentWidth - 4);
 		const wrappedPrompt: string[] = [];
 		for (const raw of spec.systemPrompt.split("\n")) {
 			for (const w of wrapTextWithAnsi(replaceTabs(raw), promptWidth)) {
@@ -942,10 +1001,6 @@ export class AgentDashboard extends Container {
 		this.addChild(new Text(theme.fg("dim", " Enter: save  Tab: toggle scope  R: regenerate  Esc: cancel"), 0, 0));
 	}
 
-	#uiWidth(): number {
-		return Math.max(40, process.stdout.columns ?? 100);
-	}
-
 	/** Rebuild layout and request a TUI render pass (for use after async state changes). */
 	#rebuildAndRender(): void {
 		this.#buildLayout();
@@ -954,8 +1009,6 @@ export class AgentDashboard extends Container {
 
 	#buildLayout(): void {
 		this.clear();
-		this.addChild(new DynamicBorder());
-		this.addChild(new Text(theme.bold(theme.fg("accent", " Agent Control Center")), 0, 0));
 		this.addChild(new Text(this.#renderTabBar(), 0, 0));
 		this.addChild(new Spacer(1));
 
@@ -1043,16 +1096,80 @@ export class AgentDashboard extends Container {
 			);
 			const bodyHeight = this.#computeBodyHeight();
 			this.addChild(new TwoColumnBody(listPane, inspector, bodyHeight));
-			this.addChild(new Spacer(1));
-			this.addChild(new Text(theme.fg("dim", LIST_FOOTER), 0, 0));
 		}
 
-		this.addChild(new DynamicBorder());
 		this.#builtRows = this.#terminalRows();
-		this.#builtCols = this.#uiWidth();
+		this.#builtCols = this.#contentWidth;
+	}
+
+	/**
+	 * Shared Esc/close-chrome behavior: cancel the innermost open sub-view
+	 * (create review → create input → edit override → search), or close the
+	 * whole dashboard. Shared by the Esc key path and the ModalShell `[x]`/
+	 * click-outside mouse chrome so both dismiss the same layer.
+	 */
+	#handleEscape(): void {
+		if (this.#createSpec) {
+			this.#clearCreateFlow();
+			this.#buildLayout();
+			return;
+		}
+		if (this.#createInput || this.#createGenerating) {
+			if (!this.#createGenerating) {
+				this.#clearCreateFlow();
+				this.#buildLayout();
+			}
+			return;
+		}
+		if (this.#editInput) {
+			this.#cancelModelEdit();
+			return;
+		}
+		if (this.#searchQuery.length > 0) {
+			this.#searchQuery = "";
+			this.#applyFilters();
+			this.#buildLayout();
+			return;
+		}
+		this.onClose?.();
+	}
+
+	/**
+	 * Route an SGR mouse report against the last render's ModalShell geometry.
+	 * Only chrome (close glyph, click-outside, footer chip hover) is wired;
+	 * list/inspector selection stays keyboard-driven.
+	 */
+	#handleMouse(data: string): void {
+		routeSgrMouseInput(data, event => {
+			const chrome = hitTestModalChrome(this.#shellGeometry, event.row, event.col, {
+				motion: event.motion,
+				leftClick: event.leftClick,
+			});
+			if (chrome.kind === "hover-shortcut") {
+				if (this.#hoveredShortcutId !== chrome.id) {
+					this.#hoveredShortcutId = chrome.id;
+					this.onRequestRender?.();
+				}
+				return true;
+			}
+			if (
+				chrome.kind === "close" ||
+				chrome.kind === "outside" ||
+				(chrome.kind === "shortcut" && chrome.id === "close")
+			) {
+				this.#handleEscape();
+				this.onRequestRender?.();
+			}
+			return true;
+		});
 	}
 
 	handleInput(data: string): void {
+		if (data.startsWith("\x1b[<")) {
+			this.#handleMouse(data);
+			return;
+		}
+
 		if (matchesKey(data, "ctrl+c")) {
 			this.onClose?.();
 			return;
@@ -1060,8 +1177,7 @@ export class AgentDashboard extends Container {
 
 		if (this.#createSpec) {
 			if (matchesAppInterrupt(data)) {
-				this.#clearCreateFlow();
-				this.#buildLayout();
+				this.#handleEscape();
 				return;
 			}
 			if (matchesKey(data, "tab") || matchesKey(data, "shift+tab")) {
@@ -1084,10 +1200,7 @@ export class AgentDashboard extends Container {
 
 		if (this.#createInput || this.#createGenerating) {
 			if (matchesAppInterrupt(data)) {
-				if (!this.#createGenerating) {
-					this.#clearCreateFlow();
-					this.#buildLayout();
-				}
+				this.#handleEscape();
 				return;
 			}
 			if (!this.#createGenerating && matchesAppFollowUp(data)) {
@@ -1112,7 +1225,7 @@ export class AgentDashboard extends Container {
 
 		if (this.#editInput) {
 			if (matchesAppInterrupt(data)) {
-				this.#cancelModelEdit();
+				this.#handleEscape();
 				return;
 			}
 			this.#editInput.handleInput(data);
@@ -1123,13 +1236,7 @@ export class AgentDashboard extends Container {
 		}
 
 		if (matchesAppInterrupt(data)) {
-			if (this.#searchQuery.length > 0) {
-				this.#searchQuery = "";
-				this.#applyFilters();
-				this.#buildLayout();
-				return;
-			}
-			this.onClose?.();
+			this.#handleEscape();
 			return;
 		}
 

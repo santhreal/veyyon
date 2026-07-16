@@ -70,7 +70,7 @@ interface PromptState {
 /**
  * "Sign in" panel: lets the user authenticate one or more model providers via
  * OAuth. Unlike a standalone scene it never auto-advances the wizard — the user
- * may sign in to several providers and then continue with Esc.
+ * may sign in to several providers and then skip ahead with Esc.
  */
 export class SignInTab implements SetupTab {
 	readonly id = "sign-in";
@@ -223,6 +223,12 @@ export class SignInTab implements SetupTab {
 				},
 				onManualCodeInput: () =>
 					this.#showPrompt({ message: "Paste the authorization code (or full redirect URL):" }),
+				onSuccessPage: url => {
+					// Device-code/paste flows have no browser redirect of their own;
+					// open the freshly-served branded success page so every provider
+					// finishes on the same "Signed in to Veyyon" screen.
+					this.host.ctx.openInBrowser(url);
+				},
 			});
 			await this.host.ctx.session.modelRegistry.refresh();
 			if (this.#disposed) return;
@@ -248,7 +254,7 @@ export class SignInTab implements SetupTab {
 				const message = error instanceof Error ? error.message : String(error);
 				this.#statusLines = [
 					theme.fg("error", `Login failed: ${message}`),
-					theme.fg("dim", "Choose another provider or press Esc to continue."),
+					theme.fg("dim", "Choose another provider or press Esc to skip."),
 				];
 				this.#authUrl = undefined;
 				this.#authLaunchUrl = undefined;

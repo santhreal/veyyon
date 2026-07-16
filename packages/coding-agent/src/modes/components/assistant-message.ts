@@ -72,14 +72,17 @@ function containsMermaidFence(text: string): boolean {
 
 /**
  * Frames for the streaming "thinking" pulse rendered in place of a hidden
- * thinking block while the model is still producing it. A single fixed-width
- * starburst cycles through facets (* * * * * * * *) so the indicator animates
- * in place without shifting the line or the trailing speed badge. The dwell per
- * frame eases between {@link THINKING_DOTS_FRAME_MS_MIN} and
+ * thinking block while the model is still producing it. The theme's symbol
+ * system owns the glyphs (`theme.getSpinnerFrames("thinking")`): a fixed-width
+ * starburst cycling through facets (✻ ✼ ❉ …) on unicode/nerd presets, a single
+ * static `*` on ascii (one frame ⇒ no animation timer). The dwell per frame
+ * eases between {@link THINKING_DOTS_FRAME_MS_MIN} and
  * {@link THINKING_DOTS_FRAME_MS_MAX} across each revolution (see
  * {@link AssistantMessageComponent.thinkingDotsFrameDelay}).
  */
-const THINKING_DOTS_FRAMES = ["*", "*", "*", "*", "*", "*", "*", "*"] as const;
+function thinkingPulseFrames(): readonly string[] {
+	return theme.getSpinnerFrames("thinking");
+}
 /**
  * Pulse cadence bounds (ms). Each frame's dwell eases between these on a
  * raised-cosine "breath" — quickest at the cycle start, slowest at its midpoint —
@@ -324,7 +327,8 @@ export class AssistantMessageComponent extends Container {
 	}
 
 	#thinkingDotsLabel(): string {
-		const glyph = THINKING_DOTS_FRAMES[this.#thinkingDotsFrame % THINKING_DOTS_FRAMES.length] ?? "…";
+		const frames = thinkingPulseFrames();
+		const glyph = frames[this.#thinkingDotsFrame % frames.length] ?? "…";
 		const coloredGlyph = theme.fg("thinkingText", glyph);
 		const thinkingLabel = theme.fg("muted", " Thinking");
 		const rate = Math.min(SPEED_MAX, sharedSpeedTracker.getSpeed());
@@ -358,13 +362,15 @@ export class AssistantMessageComponent extends Container {
 	 *  8-frame cycle, continuous across the wrap, so the rotation breathes rather
 	 *  than advancing at a fixed interval. */
 	#thinkingDotsFrameDelay(): number {
-		const phase = (1 - Math.cos((2 * Math.PI * this.#thinkingDotsFrame) / THINKING_DOTS_FRAMES.length)) / 2;
+		const frameCount = thinkingPulseFrames().length;
+		const phase = (1 - Math.cos((2 * Math.PI * this.#thinkingDotsFrame) / frameCount)) / 2;
 		return THINKING_DOTS_FRAME_MS_MIN + (THINKING_DOTS_FRAME_MS_MAX - THINKING_DOTS_FRAME_MS_MIN) * phase;
 	}
 
 	/** Self-rescheduling timeout (not a fixed interval) so each frame can pick its
-	 *  own eased dwell. */
+	 *  own eased dwell. A one-frame set (ascii preset) is static: no timer. */
 	#scheduleThinkingFrame(): void {
+		if (thinkingPulseFrames().length <= 1) return;
 		this.#thinkingDotsTimer = setTimeout(() => this.#advanceThinkingDots(), this.#thinkingDotsFrameDelay());
 		this.#thinkingDotsTimer.unref?.();
 	}
@@ -375,7 +381,7 @@ export class AssistantMessageComponent extends Container {
 			this.#stopThinkingAnimation();
 			return;
 		}
-		this.#thinkingDotsFrame = (this.#thinkingDotsFrame + 1) % THINKING_DOTS_FRAMES.length;
+		this.#thinkingDotsFrame = (this.#thinkingDotsFrame + 1) % thinkingPulseFrames().length;
 		if (this.#thinkingDots.setText(this.#thinkingDotsLabel())) {
 			this.onImageUpdate?.();
 		}

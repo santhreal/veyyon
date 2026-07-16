@@ -1,50 +1,54 @@
-import { Container, type SelectItem, SelectList, type SgrMouseEvent } from "@veyyon/pi-tui";
+import type { SelectItem, SgrMouseEvent } from "@veyyon/pi-tui";
 import { getSelectListTheme } from "../../modes/theme/theme";
-import { DynamicBorder } from "./dynamic-border";
-import { routeSelectListMouseWithTopBorder } from "./select-list-mouse-routing";
+import { ModalSelectListComponent } from "./modal-select-list";
 
 /**
- * Component that renders a show images selector with borders
+ * Show-images picker — floating ModalShell medium card.
  */
-export class ShowImagesSelectorComponent extends Container {
-	#selectList: SelectList;
+export class ShowImagesSelectorComponent {
+	#inner: ModalSelectListComponent;
 
 	constructor(currentValue: boolean, onSelect: (show: boolean) => void, onCancel: () => void) {
-		super();
-
 		const items: SelectItem[] = [
 			{ value: "yes", label: "Yes", description: "Show images inline in terminal" },
 			{ value: "no", label: "No", description: "Show text placeholder instead" },
 		];
-
-		// Add top border
-		this.addChild(new DynamicBorder());
-
-		// Create selector
-		this.#selectList = new SelectList(items, 5, getSelectListTheme());
-
-		// Preselect current value
-		this.#selectList.setSelectedIndex(currentValue ? 0 : 1);
-
-		this.#selectList.onSelect = item => {
-			onSelect(item.value === "yes");
-		};
-
-		this.#selectList.onCancel = () => {
-			onCancel();
-		};
-
-		this.addChild(this.#selectList);
-
-		// Add bottom border
-		this.addChild(new DynamicBorder());
+		this.#inner = new ModalSelectListComponent(
+			{
+				title: "Show Images",
+				items,
+				theme: getSelectListTheme(),
+				selectedIndex: currentValue ? 0 : 1,
+				maxVisible: 5,
+			},
+			{
+				onSelect: item => onSelect(item.value === "yes"),
+				onCancel,
+			},
+		);
 	}
 
-	getSelectList(): SelectList {
-		return this.#selectList;
+	setOnRequestRender(cb: () => void): void {
+		this.#inner.setOnRequestRender(cb);
+	}
+
+	getSelectList() {
+		return this.#inner.getSelectList();
 	}
 
 	routeMouse(event: SgrMouseEvent, line: number, col: number): void {
-		routeSelectListMouseWithTopBorder(this.#selectList, event, line, col);
+		this.#inner.getSelectList().routeMouse(event, line - 1, col);
+	}
+
+	handleInput(data: string): void {
+		this.#inner.handleInput(data);
+	}
+
+	render(width: number): string[] {
+		return this.#inner.render(width);
+	}
+
+	invalidate(): void {
+		this.#inner.invalidate();
 	}
 }

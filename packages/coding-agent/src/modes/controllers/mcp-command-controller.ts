@@ -49,6 +49,7 @@ import {
 } from "../../mcp/smithery-registry";
 import type { MCPAuthConfig, MCPServerConfig, MCPServerConnection } from "../../mcp/types";
 import { shortenPath } from "../../tools/render-utils";
+import { sanitizeMcpStatusError } from "../../mcp/startup-events";
 import { urlHyperlinkAlways } from "../../tui";
 import { copyToClipboard } from "../../utils/clipboard";
 import { openPath } from "../../utils/open";
@@ -1239,6 +1240,31 @@ export class MCPCommandController {
 	/**
 	 * Handle /mcp list - Show all configured servers
 	 */
+	/**
+	 * One server's rows in `/mcp list`: the name + status glyph, and — when the
+	 * server is not connected and the manager retained a failure — an indented
+	 * dim line with the actual error. This is the honest home for the detail the
+	 * compact startup banner deliberately omits (Law 10: don't hide failures,
+	 * surface them where the operator looks).
+	 */
+	#serverStatusRows(name: string, state: string, type?: string): string[] {
+		const status =
+			state === "inactive"
+				? theme.fg("warning", " ◌ inactive")
+				: state === "connected"
+					? theme.fg("success", " ● connected")
+					: state === "connecting"
+						? theme.fg("muted", " ◌ connecting")
+						: theme.fg("muted", " o not connected");
+		const typeTag = type ? ` ${theme.fg("dim", `[${type}]`)}` : "";
+		const rows = [`  ${theme.fg("accent", name)}${status}${typeTag}`];
+		if (state === "disconnected" || state === "not connected") {
+			const err = this.ctx.mcpManager?.getLastError(name);
+			if (err) rows.push(`      ${theme.fg("dim", sanitizeMcpStatusError(err))}`);
+		}
+		return rows;
+	}
+
 	async #handleList(): Promise<void> {
 		try {
 			const cwd = getProjectDir();
@@ -1302,15 +1328,7 @@ export class MCPCommandController {
 						config.enabled === false
 							? "inactive"
 							: (this.ctx.mcpManager?.getConnectionStatus(name) ?? "disconnected");
-					const status =
-						state === "inactive"
-							? theme.fg("warning", " ◌ inactive")
-							: state === "connected"
-								? theme.fg("success", " ● connected")
-								: state === "connecting"
-									? theme.fg("muted", " ◌ connecting")
-									: theme.fg("muted", " o not connected");
-					lines.push(`  ${theme.fg("accent", name)}${status} ${theme.fg("dim", `[${type}]`)}`);
+					lines.push(...this.#serverStatusRows(name, state, type));
 				}
 				lines.push("");
 			}
@@ -1325,15 +1343,7 @@ export class MCPCommandController {
 						config.enabled === false
 							? "inactive"
 							: (this.ctx.mcpManager?.getConnectionStatus(name) ?? "disconnected");
-					const status =
-						state === "inactive"
-							? theme.fg("warning", " ◌ inactive")
-							: state === "connected"
-								? theme.fg("success", " ● connected")
-								: state === "connecting"
-									? theme.fg("muted", " ◌ connecting")
-									: theme.fg("muted", " o not connected");
-					lines.push(`  ${theme.fg("accent", name)}${status} ${theme.fg("dim", `[${type}]`)}`);
+					lines.push(...this.#serverStatusRows(name, state, type));
 				}
 				lines.push("");
 			}
@@ -1344,13 +1354,7 @@ export class MCPCommandController {
 					lines.push(theme.fg("accent", providerName) + theme.fg("muted", ` (${shortPath}):`));
 					for (const { name } of entries) {
 						const state = this.ctx.mcpManager!.getConnectionStatus(name);
-						const status =
-							state === "connected"
-								? theme.fg("success", " ● connected")
-								: state === "connecting"
-									? theme.fg("muted", " ◌ connecting")
-									: theme.fg("muted", " o not connected");
-						lines.push(`  ${theme.fg("accent", name)}${status}`);
+						lines.push(...this.#serverStatusRows(name, state));
 					}
 					lines.push("");
 				}

@@ -8,6 +8,8 @@ import type { KeybindingsManager } from "../config/keybindings";
 import type { Settings } from "../config/settings";
 import type {
 	AutocompleteProviderFactory,
+	ExtensionAskDialogQuestion,
+	ExtensionAskDialogResult,
 	ExtensionUIContext,
 	ExtensionUIDialogOptions,
 	ExtensionUISelectItem,
@@ -218,6 +220,12 @@ export interface InteractiveModeContext {
 	playWelcomeIntro(): void;
 	shutdown(): Promise<void>;
 	checkShutdownRequested(): Promise<void>;
+	/**
+	 * Arrange for a replacement process to take over this terminal after
+	 * shutdown completes (e.g. `/profile <name>` relaunching under another
+	 * profile). The parent waits on the child and exits with its code.
+	 */
+	requestRelaunch(spec: { argv: string[]; env?: Record<string, string | undefined> }): void;
 
 	// Extension UI integration
 	setToolUIContext(uiContext: ExtensionUIContext, hasUI: boolean): void;
@@ -251,7 +259,15 @@ export interface InteractiveModeContext {
 	showWarning(message: string): void;
 	showNewVersionNotification(newVersion: string): void;
 	clearEditor(): void;
+	/** Restore keyboard focus to whatever currently owns the editor slot (the
+	 *  editor itself, or a hook selector/input/editor pushed into it while a
+	 *  fullscreen overlay was up). Delegates to `SelectorController`. */
+	focusActiveEditorArea(): void;
 	updatePendingMessagesDisplay(): void;
+	/** Recompute the composer's contextual shortcut chips from current draft/busy/queue state and repaint. */
+	refreshComposerShortcuts(): void;
+	/** Remove the startup welcome card; the first real keystroke ends the hero moment. Idempotent. */
+	dismissWelcome(): void;
 	queueCompactionMessage(text: string, mode: "steer" | "followUp", images?: ImageContent[]): void;
 	flushCompactionQueue(options?: { willRetry?: boolean }): Promise<void>;
 	flushPendingBashComponents(): void;
@@ -349,8 +365,12 @@ export interface InteractiveModeContext {
 	refreshSlashCommandState(cwd?: string): Promise<void>;
 	applyCwdChange(newCwd: string): Promise<void>;
 
+	/** Append the full welcome hero (sun, action menu, recents) to the transcript — `/welcome`. */
+	showFullWelcome(): Promise<void>;
+
 	// Selector handling
-	showSettingsSelector(): void;
+	/** Opens the settings overlay, optionally pre-selecting a setting path on the appearance tab (e.g. `/statusline`). */
+	showSettingsSelector(initialItemId?: string): void;
 	showAdvisorConfigure(): void;
 	showHistorySearch(): void;
 	showExtensionsDashboard(): void;
@@ -421,6 +441,11 @@ export interface InteractiveModeContext {
 		options: ExtensionUISelectItem[],
 		dialogOptions?: InteractiveSelectorDialogOptions,
 	): Promise<string | undefined>;
+	/** Fullscreen multi-question dialog (the `ask` tool surface). `undefined` = cancelled. */
+	showAskDialog(
+		questions: ExtensionAskDialogQuestion[],
+		dialogOptions?: ExtensionUIDialogOptions,
+	): Promise<ExtensionAskDialogResult | undefined>;
 	hideHookSelector(): void;
 	showHookInput(title: string, placeholder?: string): Promise<string | undefined>;
 	hideHookInput(): void;

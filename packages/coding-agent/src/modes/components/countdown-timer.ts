@@ -1,7 +1,7 @@
 /**
  * Reusable countdown timer for dialog components.
  */
-import type { TUI } from "@veyyon/pi-tui";
+import type { Component, TUI } from "@veyyon/pi-tui";
 
 export class CountdownTimer {
 	#intervalId: NodeJS.Timeout | undefined;
@@ -13,6 +13,9 @@ export class CountdownTimer {
 	constructor(
 		timeoutMs: number,
 		private tui: TUI | undefined,
+		/** Host component to scope the per-second repaint to. When omitted, falls
+		 *  back to a full `requestRender()` (existing test-only construction). */
+		private component: Component | undefined,
 		private onTick: (seconds: number) => void,
 		private onExpire: () => void,
 	) {
@@ -26,12 +29,24 @@ export class CountdownTimer {
 		return Math.ceil(remainingMs / 1000);
 	}
 
+	/** These dialogs live in the editor slot, above a possibly large live
+	 *  transcript; a full requestRender() would re-walk that whole tree every
+	 *  second purely to advance the countdown label (BACKLOG Perf "Next
+	 *  candidates"). */
+	#requestRender(): void {
+		if (this.component) {
+			this.tui?.requestComponentRender(this.component);
+		} else {
+			this.tui?.requestRender();
+		}
+	}
+
 	#start(): void {
 		const now = Date.now();
 		this.#deadlineMs = now + this.#initialMs;
 		this.#remainingSeconds = this.#calculateRemainingSeconds(now);
 		this.onTick(this.#remainingSeconds);
-		this.tui?.requestRender();
+		this.#requestRender();
 
 		this.#expireTimeoutId = setTimeout(() => {
 			this.dispose();
@@ -52,7 +67,7 @@ export class CountdownTimer {
 				this.#remainingSeconds = remainingSeconds;
 				this.onTick(this.#remainingSeconds);
 			}
-			this.tui?.requestRender();
+			this.#requestRender();
 		}, 1000);
 	}
 

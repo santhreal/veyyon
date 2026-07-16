@@ -1,10 +1,10 @@
 /**
- * Compact session-model picker (alt+p / `/switch`): a bottom-anchored
- * floating overlay hosting just a {@link ModelBrowser} — no provider sidebar.
+ * Compact session-model picker (alt+p / `/switch`): a floating ModalShell
+ * hosting just a {@link ModelBrowser} — no provider sidebar.
  * Model entries switch the current session only.
  */
 import type { Model } from "@veyyon/pi-ai";
-import type { Component, TUI } from "@veyyon/pi-tui";
+import { type Component, padding, routeSgrMouseInput, type SgrMouseEvent, type TUI } from "@veyyon/pi-tui";
 import type { ModelRegistry } from "../../config/model-registry";
 import type { Settings } from "../../config/settings";
 import { theme } from "../theme/theme";
@@ -16,7 +16,14 @@ import {
 	sortModelItems,
 } from "./model-browser";
 import type { ScopedModelItem } from "./model-hub";
-import { bottomBorder, row, topBorder } from "./overlay-box";
+import {
+	computeModalDims,
+	hitTestModalChrome,
+	MODAL_SIZING_MEDIUM,
+	type ModalShellGeometry,
+	renderModalShell,
+	withCompact,
+} from "./modal-shell";
 
 export interface ModelPickerCallbacks {
 	/** A model was chosen for a session-only switch. `selector` is `provider/id`. */
@@ -32,22 +39,16 @@ export interface ModelPickerOptions {
 	currentSelector?: string;
 }
 
-/** Fixed chrome rows: top border, status row, footer, bottom border. */
-const CHROME_ROWS = 4;
 /** Rows the browser renders around its list window (search + blank, blank + two detail rows). */
 const BROWSER_FRAME_ROWS = 5;
 /** Minimum rows for the browser list window on short terminals. */
 const MIN_VISIBLE = 5;
-/** Fraction of the terminal height the floating overlay occupies. */
-const HEIGHT_FRACTION = 0.4;
 
 const STATUS_HINT = "Interactive model — role / subagent / compaction slots stay unchanged";
-const FOOTER_HINT = "↑/↓ models · Enter use · type to search · Esc close";
 
 /**
- * The alt+p picker component. Hosted as a non-fullscreen bottom-anchored
- * overlay (`ui.showOverlay(..., { anchor: "bottom-center" })`); keyboard-only,
- * since mouse tracking is reserved for fullscreen overlays.
+ * The alt+p picker. Hosted fullscreen; ModalShell paints a floating medium card
+ * with clear underpaint so the transcript stays visible around it.
  */
 export class ModelPickerComponent implements Component {
 	#tui: TUI;
@@ -58,6 +59,9 @@ export class ModelPickerComponent implements Component {
 	#configError: string | undefined;
 	#currentSelector: string | undefined;
 	#modelItems: ModelBrowserItem[] = [];
+	#shellGeometry: ModalShellGeometry | null = null;
+	#hoveredShortcutId: string | null = null;
+	#onCancel: () => void;
 
 	constructor(
 		tui: TUI,
@@ -72,6 +76,7 @@ export class ModelPickerComponent implements Component {
 		this.#registry = registry;
 		this.#scopedModels = scopedModels;
 		this.#currentSelector = options.currentSelector;
+		this.#onCancel = callbacks.onCancel;
 
 		this.#browser = new ModelBrowser(settings, {
 			currentContextTokens: options.currentContextTokens,
@@ -131,28 +136,69 @@ export class ModelPickerComponent implements Component {
 	}
 
 	handleInput(data: string): void {
-		if (data.startsWith("\x1b[<")) return;
+		if (data.startsWith("\x1b[<")) {
+			routeSgrMouseInput(data, event => this.#routeMouse(event));
+			return;
+		}
 		this.#browser.handleInput(data);
+	}
+
+	#routeMouse(event: SgrMouseEvent): boolean {
+		const chrome = hitTestModalChrome(this.#shellGeometry, event.row, event.col, {
+			motion: event.motion,
+			leftClick: event.leftClick,
+		});
+		if (chrome.kind === "hover-shortcut") {
+			if (this.#hoveredShortcutId !== chrome.id) {
+				this.#hoveredShortcutId = chrome.id;
+				this.#tui.requestRender();
+			}
+			return true;
+		}
+		if (chrome.kind === "close" || chrome.kind === "outside" || (chrome.kind === "shortcut" && chrome.id === "close")) {
+			this.#onCancel();
+			return true;
+		}
+		if (chrome.kind === "shortcut" && chrome.id === "confirm") {
+			this.#browser.handleInput("\n");
+			return true;
+		}
+		return true;
 	}
 
 	render(width: number): string[] {
 		const termRows = Math.max(16, this.#tui.terminal?.rows || process.stdout.rows || 40);
-		const listBudget = Math.floor(termRows * HEIGHT_FRACTION) - CHROME_ROWS - BROWSER_FRAME_ROWS;
-		this.#browser.setMaxVisible(Math.max(MIN_VISIBLE, listBudget));
-
-		const inner = Math.max(1, width - 4);
-		const status = this.#configError
-			? theme.fg("error", ` ${this.#configError}`)
-			: theme.fg("muted", ` ${STATUS_HINT}`);
-
-		const out: string[] = [];
-		out.push(topBorder(width, "Switch Model"));
-		out.push(row(status, width));
-		for (const line of this.#browser.render(inner)) {
-			out.push(row(line, width));
+		const sizing = withCompact(MODAL_SIZING_MEDIUM, termRows < 24);
+		const dims = computeModalDims(width, termRows, sizing);
+		if (!dims) {
+			this.#shellGeometry = null;
+			return Array.from({ length: termRows }, () => padding(width));
 		}
-		out.push(row(theme.fg("dim", FOOTER_HINT), width));
-		out.push(bottomBorder(width));
-		return out;
+
+		const listBudget = Math.max(MIN_VISIBLE, dims.modalHeight - 8 - BROWSER_FRAME_ROWS);
+		this.#browser.setMaxVisible(listBudget);
+
+		const status = this.#configError
+			? theme.fg("error", this.#configError)
+			: theme.fg("muted", STATUS_HINT);
+
+		const body = [status, ...this.#browser.render(dims.contentWidth)];
+		const shell = renderModalShell({
+			title: "Switch Model",
+			sizing,
+			areaWidth: width,
+			areaHeight: termRows,
+			body,
+			shortcuts: [
+				{ label: "up/down models" },
+				{ label: "enter use", clickable: true, id: "confirm" },
+				{ label: "type to search" },
+				{ label: "esc close", clickable: true, id: "close" },
+			],
+			hoveredShortcutId: this.#hoveredShortcutId,
+			showClose: true,
+		});
+		this.#shellGeometry = shell.geometry;
+		return shell.lines;
 	}
 }

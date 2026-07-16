@@ -1,5 +1,6 @@
-import { padding, truncateToWidth, visibleWidth } from "@veyyon/pi-tui";
-import { gradientLogo, VEYYON_LOGO } from "../../components/welcome";
+import { padding, TERMINAL, truncateToWidth, visibleWidth } from "@veyyon/pi-tui";
+import { APP_NAME } from "@veyyon/pi-utils";
+import { sunMark } from "../../components/sun";
 import { theme } from "../../theme/theme";
 
 export const SETUP_SPLASH_MS = 2400;
@@ -20,30 +21,37 @@ function centerLine(line: string, width: number): string {
 }
 
 /**
- * Setup splash: quiet black field, silver wordmark reveal left→right,
- * hairline progress. No starfield, no doubled glyphs, no rainbow.
+ * Setup splash: the launch signature. On a quiet black field the living ember
+ * sun blooms open from a point (bloom 0→1, eased) while its ember churns, then
+ * the lowercase `veyyon` wordmark reveals beneath it as the disc settles. This
+ * is the same `sunMark` recipe the welcome card rests on — the sun IS the logo.
+ * No starfield, no doubled glyphs, no rainbow.
  */
 export function renderSetupSplash(width: number, height: number, elapsedMs: number): string[] {
 	const w = Math.max(1, width);
 	const h = Math.max(1, height);
 	const progress = Math.max(0, Math.min(1, elapsedMs / SETUP_SPLASH_MS));
 	const eased = 1 - (1 - progress) ** 3;
-	const edge = Math.max(0, 1 - eased) ** 1.2;
 
-	const art = gradientLogo(VEYYON_LOGO, 0, { pos: eased, strength: edge });
-	const railMax = Math.max(1, Math.min(w - 10, visibleWidth(VEYYON_LOGO[0] ?? "") + 4));
-	const filled = Math.max(1, Math.floor(railMax * eased));
-	const rail =
-		theme.fg("accent", "━".repeat(filled)) + theme.fg("borderMuted", "─".repeat(Math.max(0, railMax - filled)));
+	// Sun sized to the field but capped so it stays a tasteful disc, not a wall.
+	// Rows ≈ cols / 2.1 keeps the disc round under terminal cell aspect (sunMark
+	// applies the same correction internally).
+	const sunCols = Math.max(9, Math.min(32, Math.floor(w * 0.45)));
+	const sunRows = Math.max(5, Math.min(16, Math.round(sunCols / 2.1)));
+	// Ember churns forward as it blooms, so the disc reads as alive, not a static
+	// stamp fading in.
+	const sun = sunMark(sunCols, sunRows, { trueColor: TERMINAL.trueColor, bloom: eased, time: 0.25 + eased * 0.7 });
 
-	const content = [
-		...art,
-		"",
-		theme.bold(theme.fg("accent", "Veyyon")),
-		theme.fg("dim", "coding agent"),
-		"",
-		rail,
-	];
+	// Wordmark reveals only once the disc is most of the way open, so the eye lands
+	// on the sun first and the name second — the micro-interaction the harness lives on.
+	const nameReveal = Math.max(0, Math.min(1, (eased - 0.45) / 0.55));
+	const content: string[] = [...sun];
+	if (nameReveal > 0) {
+		content.push("");
+		content.push(theme.bold(theme.fg("accent", APP_NAME)));
+		if (nameReveal > 0.5) content.push(theme.fg("dim", "coding agent"));
+	}
+
 	const start = Math.max(0, Math.floor((h - content.length) / 2));
 	const lines: string[] = [];
 	for (let y = 0; y < h; y++) {

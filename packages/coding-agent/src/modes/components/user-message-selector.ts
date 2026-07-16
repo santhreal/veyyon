@@ -1,23 +1,37 @@
 import {
 	type Component,
-	Container,
 	extractPrintableText,
 	fuzzyFilter,
 	matchesKey,
+	padding,
+	routeSgrMouseInput,
 	ScrollView,
-	Spacer,
-	Text,
+	type SgrMouseEvent,
 	truncateToWidth,
 } from "@veyyon/pi-tui";
 import { theme } from "../../modes/theme/theme";
 import { matchesSelectCancel, matchesSelectDown, matchesSelectUp } from "../../modes/utils/keybinding-matchers";
-import { DynamicBorder } from "./dynamic-border";
+import {
+	computeModalDims,
+	hitTestModalChrome,
+	MODAL_SIZING_MEDIUM,
+	type ModalShellGeometry,
+	type ModalShortcut,
+	renderModalShell,
+	withCompact,
+} from "./modal-shell";
 
 interface UserMessageItem {
 	id: string; // Entry ID in the session
 	text: string; // The message text
 	timestamp?: string; // Optional timestamp if available
 }
+
+const USER_MESSAGE_SHORTCUTS: readonly ModalShortcut[] = [
+	{ label: "up/down navigate" },
+	{ label: "enter select", clickable: true, id: "confirm" },
+	{ label: "esc close", clickable: true, id: "close" },
+];
 
 /**
  * Custom user message list component with selection
@@ -188,32 +202,21 @@ class UserMessageList implements Component {
 }
 
 /**
- * Component that renders a user message selector for branching
+ * `/branch` picker: pick a prior user message to branch from, inside a
+ * floating ModalShell medium card.
  */
-export class UserMessageSelectorComponent extends Container {
+export class UserMessageSelectorComponent implements Component {
 	#messageList: UserMessageList;
+	#onCancelCallback: () => void;
+	#shellGeometry: ModalShellGeometry | null = null;
+	#hoveredShortcutId: string | null = null;
+	#onRequestRender?: () => void;
 
 	constructor(messages: UserMessageItem[], onSelect: (entryId: string) => void, onCancel: () => void) {
-		super();
-
-		// Add header
-		this.addChild(new Spacer(1));
-		this.addChild(new Text(theme.bold("Branch from Message"), 1, 0));
-		this.addChild(new Text(theme.fg("muted", "Select a message to create a new branch from that point"), 1, 0));
-		this.addChild(new Spacer(1));
-		this.addChild(new DynamicBorder());
-		this.addChild(new Spacer(1));
-
-		// Create message list
+		this.#onCancelCallback = onCancel;
 		this.#messageList = new UserMessageList(messages);
 		this.#messageList.onSelect = onSelect;
 		this.#messageList.onCancel = onCancel;
-
-		this.addChild(this.#messageList);
-
-		// Add bottom border
-		this.addChild(new Spacer(1));
-		this.addChild(new DynamicBorder());
 
 		// Auto-cancel if no messages
 		if (messages.length === 0) {
@@ -221,7 +224,75 @@ export class UserMessageSelectorComponent extends Container {
 		}
 	}
 
+	setOnRequestRender(cb: () => void): void {
+		this.#onRequestRender = cb;
+	}
+
+	invalidate(): void {
+		this.#messageList.invalidate();
+	}
+
 	getMessageList(): UserMessageList {
 		return this.#messageList;
+	}
+
+	handleInput(keyData: string): void {
+		if (keyData.startsWith("\x1b[<")) {
+			routeSgrMouseInput(keyData, event => this.#routeMouse(event));
+			return;
+		}
+		this.#messageList.handleInput(keyData);
+	}
+
+	#routeMouse(event: SgrMouseEvent): boolean {
+		const chrome = hitTestModalChrome(this.#shellGeometry, event.row, event.col, {
+			motion: event.motion,
+			leftClick: event.leftClick,
+		});
+		if (chrome.kind === "hover-shortcut") {
+			if (this.#hoveredShortcutId !== chrome.id) {
+				this.#hoveredShortcutId = chrome.id;
+				this.#onRequestRender?.();
+			}
+			return true;
+		}
+		if (chrome.kind === "close" || chrome.kind === "outside" || (chrome.kind === "shortcut" && chrome.id === "close")) {
+			this.#onCancelCallback();
+			return true;
+		}
+		if (chrome.kind === "shortcut" && chrome.id === "confirm") {
+			this.handleInput("\n");
+			return true;
+		}
+		return true;
+	}
+
+	render(width: number): readonly string[] {
+		const height = process.stdout.rows || 40;
+		const sizing = withCompact(MODAL_SIZING_MEDIUM, height < 24);
+		const dims = computeModalDims(width, height, sizing);
+		if (!dims) {
+			this.#shellGeometry = null;
+			return Array.from({ length: height }, () => padding(width));
+		}
+
+		const body = [
+			theme.fg("muted", "Select a message to create a new branch from that point"),
+			"",
+			...this.#messageList.render(dims.contentWidth),
+		];
+
+		const shell = renderModalShell({
+			title: "Branch from Message",
+			sizing,
+			areaWidth: width,
+			areaHeight: height,
+			body,
+			shortcuts: USER_MESSAGE_SHORTCUTS,
+			hoveredShortcutId: this.#hoveredShortcutId,
+			showClose: true,
+		});
+		this.#shellGeometry = shell.geometry;
+		return shell.lines;
 	}
 }

@@ -7,6 +7,7 @@ import {
 	padding,
 	renderInlineMarkdown,
 	replaceTabs,
+	routeSgrMouseInput,
 	ScrollView,
 	type Tab,
 	TabBar,
@@ -25,19 +26,28 @@ import { getTabBarTheme } from "../shared";
 import { getMarkdownTheme, highlightCode, theme } from "../theme/theme";
 import { matchesSelectCancel, matchesSelectDown, matchesSelectUp } from "../utils/keybinding-matchers";
 import { CountdownTimer } from "./countdown-timer";
-import { bottomBorder, divider, row, topBorder } from "./overlay-box";
+import {
+	computeModalDims,
+	hitTestModalChrome,
+	MODAL_SIZING_LARGE,
+	type ModalShellGeometry,
+	type ModalShortcut,
+	renderModalShell,
+} from "./modal-shell";
 import { handleTabSwitchKey } from "./selector-helpers";
 
 const OTHER_OPTION = "Other (type your own)";
 const SUBMIT_OPTION = "Submit";
 
-/** Fraction of the terminal the dialog may occupy. The box height is fixed
- *  at spawn from the tallest tab's content (re-measured only on viewport
- *  resize) and clamped to this ratio; it rises from the bottom as a stable
- *  panel that never resizes on tab switches or cursor moves. */
-const DIALOG_HEIGHT_RATIO = 0.7;
-const MIN_DIALOG_ROWS = 12;
+/** Minimum plan-body rows kept visible even on a short terminal. */
 const MIN_BODY_ROWS = 5;
+/** Fixed rows reserved by ModalShell chrome outside the body budget: top
+ *  border/close bar, the divider before the footer, the bottom border, plus
+ *  the sizing's vertical padding and minimum footer band. Mirrors the
+ *  arithmetic `renderModalShell` uses internally so the body/list layout
+ *  decision (side-by-side preview vs stacked) is made against a realistic
+ *  budget without needing to duplicate the whole layout pass. */
+const CHROME_ROWS = 3 + MODAL_SIZING_LARGE.footerLines + MODAL_SIZING_LARGE.vPad;
 const PREVIEW_MIN_WIDTH = 40;
 const SIDE_BY_SIDE_LIST_MIN_WIDTH = 30;
 const SIDE_BY_SIDE_GAP_WIDTH = 3;
@@ -301,7 +311,9 @@ export class AskDialogComponent implements Component {
 	#timeoutExpired = false;
 	#closed = false;
 	#tabBar: TabBar | undefined;
-	#stableHeight: { key: string; total: number } | undefined;
+	#shellGeometry: ModalShellGeometry | null = null;
+	#hoveredShortcutId: string | null = null;
+	#onRequestRenderExternal: (() => void) | undefined;
 
 	constructor(
 		private readonly questions: ExtensionAskDialogQuestion[],
@@ -311,8 +323,11 @@ export class AskDialogComponent implements Component {
 		this.#states = questions.map(question => {
 			const recommended = Number.isInteger(question.recommended) ? question.recommended : 0;
 			const maxIndex = Math.max(0, question.options.length - 1);
+			const preselected = question.multi
+				? (question.preselected ?? []).filter(label => question.options.some(option => option.label === label))
+				: [];
 			return {
-				selectedOptions: new Set<string>(),
+				selectedOptions: new Set<string>(preselected),
 				customInput: undefined,
 				note: undefined,
 				noteRowKey: undefined,
@@ -325,6 +340,7 @@ export class AskDialogComponent implements Component {
 			this.#countdown = new CountdownTimer(
 				options.timeout,
 				options.tui,
+				this,
 				seconds => {
 					this.#remainingSeconds = seconds;
 				},
@@ -334,7 +350,6 @@ export class AskDialogComponent implements Component {
 	}
 
 	invalidate(): void {
-		this.#stableHeight = undefined;
 		this.#tabBar?.invalidate();
 	}
 
@@ -343,7 +358,15 @@ export class AskDialogComponent implements Component {
 		this.#countdown?.dispose();
 	}
 
+	setOnRequestRender(callback: () => void): void {
+		this.#onRequestRenderExternal = callback;
+	}
+
 	handleInput(keyData: string): void {
+		if (keyData.startsWith("\x1b[<")) {
+			this.#handleMouse(keyData);
+			return;
+		}
 		if (this.#closed || this.#promptActive) return;
 		// Reset the inactivity countdown on any key that reaches past the
 		// closed/prompt guards, matching HookSelector/HookInput semantics.
@@ -364,86 +387,83 @@ export class AskDialogComponent implements Component {
 	}
 
 	render(width: number): readonly string[] {
-		const innerWidth = Math.max(1, width - 4);
-		// Fixed panel height: measured from the tallest tab at spawn and
-		// re-measured only when the viewport changes. Tab switches, cursor
-		// moves, and later answers never resize the box; content that
-		// outgrows it scrolls.
-		const totalRows = this.#dialogHeight(innerWidth, process.stdout.rows || 40);
-		const headerLines = this.#renderHeader(innerWidth);
-		// topBorder(1) + header(N) + divider(1) + divider(1) + footer(1) +
-		// bottomBorder(1) = N + 5 fixed rows outside the body. Without the
-		// bottomBorder term the dialog overflowed the viewport by one row
-		// (PRRT_kwDOQxs0bc6OFbDY).
-		const fixedRows = 1 + headerLines.length + 1 + 1 + 1 + 1;
-		const bodyRows = Math.max(MIN_BODY_ROWS, totalRows - fixedRows);
+		const termHeight = Math.max(14, process.stdout.rows || 40);
+		const sizing = MODAL_SIZING_LARGE;
+		const dims = computeModalDims(width, termHeight, sizing);
+		const contentWidth = dims?.contentWidth ?? Math.max(1, width - 4);
+		const headerLines = this.#renderHeader(contentWidth);
+		// ModalShell's own chrome (top/close bar, footer divider, bottom border,
+		// vertical padding, footer band) reserves CHROME_ROWS outside the body;
+		// the header rows are part of the body we hand it, so subtract those too.
+		const bodyRows = Math.max(
+			MIN_BODY_ROWS,
+			(dims?.modalHeight ?? termHeight) - headerLines.length - CHROME_ROWS,
+		);
 		const bodyLines = this.#isSubmitTab()
-			? this.#renderSubmitBody(innerWidth, bodyRows)
-			: this.#renderQuestionBody(innerWidth, bodyRows);
-		const footer = this.#footerHintText(bodyLines.indicator);
-		return [
-			topBorder(width, this.#titleText()),
-			...headerLines.map(line => row(line, width)),
-			divider(width),
-			...bodyLines.lines.map(line => row(line, width)),
-			divider(width),
-			row(theme.fg("dim", footer), width),
-			bottomBorder(width),
-		];
+			? this.#renderSubmitBody(contentWidth, bodyRows)
+			: this.#renderQuestionBody(contentWidth, bodyRows);
+
+		const shell = renderModalShell({
+			title: this.#titleText(),
+			sizing,
+			areaWidth: width,
+			areaHeight: termHeight,
+			body: [...headerLines, ...bodyLines.lines],
+			shortcuts: this.#buildShortcuts(bodyLines.indicator),
+			hoveredShortcutId: this.#hoveredShortcutId,
+			showClose: true,
+		});
+		this.#shellGeometry = shell.geometry;
+		return shell.lines;
 	}
 
-	#dialogHeight(width: number, termRows: number): number {
-		const key = `${width}:${termRows}`;
-		if (this.#stableHeight?.key === key) return this.#stableHeight.total;
-		const total = this.#measureHeight(width, termRows);
-		this.#stableHeight = { key, total };
-		return total;
-	}
-
-	/** Measure the tallest tab's natural content height, clamped to
-	 *  DIALOG_HEIGHT_RATIO of the terminal. Derived from questions and
-	 *  viewport only — never from cursor, tab, or answer state — so the box
-	 *  size is stable for the dialog's lifetime at a given terminal size. */
-	#measureHeight(width: number, termRows: number): number {
-		const maxHeight = Math.max(MIN_DIALOG_ROWS, Math.floor(termRows * DIALOG_HEIGHT_RATIO));
-		const chrome = 5; // topBorder + divider + divider + footer + bottomBorder
-		const tabBarRows = this.#hasSubmitTab() ? 1 : 0;
-		const mdTheme = getMarkdownTheme();
-		let needed = MIN_DIALOG_ROWS;
-		for (let index = 0; index < this.questions.length; index++) {
-			const question = this.questions[index];
-			const state = this.#states[index];
-			if (!question || !state) continue;
-			const headerRows = tabBarRows + renderQuestionTitle(question, width).length;
-			const rowItems = this.#questionRows(question);
-			const listRows = (listWidth: number): number => {
-				let total = 0;
-				for (const rowItem of rowItems) {
-					total += renderRowLabel(rowItem, question, state, false, mdTheme, listWidth).length;
-				}
-				return total;
-			};
-			let body = listRows(width);
-			const previews = question.options.filter(option => option.preview?.trim());
-			const sideBySide = width >= SIDE_BY_SIDE_LIST_MIN_WIDTH + PREVIEW_MIN_WIDTH + SIDE_BY_SIDE_GAP_WIDTH;
-			if (previews.length > 0 && sideBySide) {
-				const previewWidth = Math.max(PREVIEW_MIN_WIDTH, Math.floor(width * 0.45));
-				const listWidth = Math.max(1, width - previewWidth - SIDE_BY_SIDE_GAP_WIDTH);
-				let pane = 0;
-				for (const option of previews) {
-					pane = Math.max(pane, renderPreviewContent(option.preview ?? "", Math.max(1, previewWidth - 2)).length);
-				}
-				body = Math.max(body, listRows(listWidth), pane);
+	/** Footer chips for the active tab (browse vs submit review), mirroring
+	 *  the old dynamic hint text as clickable/inert ModalShortcut entries. */
+	#buildShortcuts(indicator: string): ModalShortcut[] {
+		const chips: ModalShortcut[] = [];
+		if (this.#isSubmitTab()) {
+			chips.push({ label: "enter submit", clickable: true, id: "confirm" });
+			chips.push({ label: "up/down scroll" });
+		} else {
+			const question = this.questions[this.#currentQuestionIndex()];
+			if (question?.multi) {
+				chips.push({ label: "space toggle" });
+				chips.push({ label: "enter toggle" });
+			} else {
+				chips.push({ label: "enter select", clickable: true, id: "confirm" });
 			}
-			needed = Math.max(needed, chrome + headerRows + Math.max(MIN_BODY_ROWS, body));
+			chips.push({ label: "n note" });
 		}
-		if (this.#hasSubmitTab()) {
-			// Warning line + blank, one summary line per question, blank, and
-			// the Submit row; note lines added later scroll within the body.
-			const body = 2 + this.questions.length + 2;
-			needed = Math.max(needed, chrome + tabBarRows + 1 + Math.max(MIN_BODY_ROWS, body));
-		}
-		return Math.min(needed, maxHeight);
+		if (this.#hasSubmitTab()) chips.push({ label: "tab tabs" });
+		if (indicator) chips.push({ label: `${indicator} scroll` });
+		chips.push({ label: "esc cancel", clickable: true, id: "close" });
+		return chips;
+	}
+
+	#handleMouse(data: string): void {
+		routeSgrMouseInput(data, event => {
+			const chrome = hitTestModalChrome(this.#shellGeometry, event.row, event.col, {
+				motion: event.motion,
+				leftClick: event.leftClick,
+			});
+			if (chrome.kind === "hover-shortcut") {
+				if (this.#hoveredShortcutId !== chrome.id) {
+					this.#hoveredShortcutId = chrome.id;
+					this.#requestRender();
+				}
+				return true;
+			}
+			if (this.#closed || this.#promptActive) return true;
+			if (chrome.kind === "close" || chrome.kind === "outside" || (chrome.kind === "shortcut" && chrome.id === "close")) {
+				this.#finishCancel();
+				return true;
+			}
+			if (chrome.kind === "shortcut" && chrome.id === "confirm") {
+				if (this.#isSubmitTab()) this.#handleSubmitTabInput("\n");
+				else this.#handleQuestionInput("\n");
+			}
+			return true;
+		});
 	}
 
 	#titleText(): string {
@@ -471,6 +491,7 @@ export class AskDialogComponent implements Component {
 
 	#requestRender(): void {
 		this.options.tui?.requestRender();
+		this.#onRequestRenderExternal?.();
 	}
 
 	#renderHeader(width: number): string[] {
@@ -496,17 +517,6 @@ export class AskDialogComponent implements Component {
 		if (!question) return lines;
 		lines.push(...renderQuestionTitle(question, width));
 		return lines;
-	}
-
-	#footerHintText(indicator: string): string {
-		const scroll = indicator ? ` ${indicator} scroll ·` : "";
-		if (this.#isSubmitTab()) {
-			return `Enter submit · ↑/↓ scroll ·${scroll} Esc cancel`;
-		}
-		const question = this.questions[this.#currentQuestionIndex()];
-		const action = question?.multi ? "Space/Enter toggle · n note" : "Enter select · n note";
-		const tabs = this.#hasSubmitTab() ? " · Tab/←/→ tabs" : "";
-		return `${action} · ↑/↓ move${tabs} ·${scroll} Esc cancel`;
 	}
 
 	#questionRows(question: ExtensionAskDialogQuestion): QuestionRow[] {
@@ -689,14 +699,14 @@ export class AskDialogComponent implements Component {
 				const left = truncateToWidth(list.lines[index] ?? "", listWidth, Ellipsis.Unicode);
 				const right = truncateToWidth(previewLines[index] ?? "", previewWidth, Ellipsis.Unicode);
 				const gap = padding(Math.max(1, listWidth - visibleWidth(left)) + 1);
-				lines.push(`${left}${gap}${theme.fg("border", "│")} ${right}`);
+				lines.push(`${left}${gap}${theme.fg("borderAccent", "│")} ${right}`);
 			}
 			return { lines, scrollOffset: list.scrollOffset, indicator: list.indicator };
 		}
 		const previewLines = this.#renderPreviewPane(preview, width, Math.max(3, Math.min(8, Math.floor(maxRows * 0.4))));
 		const listRows = Math.max(3, maxRows - previewLines.length - 1);
 		const list = this.#renderQuestionList(question, state, rowItems, width, listRows);
-		const lines = [...list.lines, theme.fg("border", "─".repeat(Math.max(1, width))), ...previewLines];
+		const lines = [...list.lines, theme.fg("borderAccent", "─".repeat(Math.max(1, width))), ...previewLines];
 		while (lines.length < maxRows) lines.push("");
 		return { lines: lines.slice(0, maxRows), scrollOffset: list.scrollOffset, indicator: list.indicator };
 	}

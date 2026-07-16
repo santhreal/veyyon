@@ -3,7 +3,7 @@
  *
  * Handles /ssh subcommands for managing SSH host configurations.
  */
-import { getProjectDir, getSSHConfigPath } from "@veyyon/pi-utils";
+import { getProjectDir, getSSHConfigPath, logger } from "@veyyon/pi-utils";
 import { type SSHHost, sshCapability } from "../../capability/ssh";
 import { loadCapability } from "../../discovery";
 import { addSSHHost, readSSHConfigFile, removeSSHHost, type SSHHostConfig } from "../../ssh/config-writer";
@@ -260,8 +260,12 @@ export class SSHCommandController {
 			try {
 				const result = await loadCapability<SSHHost>(sshCapability.id, { cwd });
 				discoveredHosts = result.items.filter(h => !configHostNames.has(h.name));
-			} catch {
-				// Ignore discovery errors
+			} catch (error) {
+				// Configured hosts still list, but the user should know why
+				// discovered hosts are missing instead of seeing a short list.
+				logger.warn("SSH host discovery failed; listing configured hosts only", {
+					error: error instanceof Error ? error.message : String(error),
+				});
 			}
 
 			if (userHosts.length === 0 && projectHosts.length === 0 && discoveredHosts.length === 0) {

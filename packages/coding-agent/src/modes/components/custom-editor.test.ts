@@ -338,3 +338,48 @@ describe("CustomEditor space-hold push-to-talk", () => {
 		expect(events).toEqual([]);
 	});
 });
+
+describe("CustomEditor arrow-key caret movement (BUG-1 guard)", () => {
+	beforeAll(async () => {
+		await initTheme();
+	});
+
+	const LEFT = "\x1b[D";
+	const RIGHT = "\x1b[C";
+
+	it("plain left/right move the caret through existing text (never swallowed)", () => {
+		const editor = new CustomEditor(getEditorTheme());
+		for (const ch of "hello") editor.handleInput(ch);
+		editor.handleInput(LEFT);
+		editor.handleInput(LEFT);
+		editor.handleInput("X");
+		expect(editor.getText()).toBe("helXlo");
+		editor.handleInput(RIGHT);
+		editor.handleInput("Y");
+		expect(editor.getText()).toBe("helXlYo");
+	});
+
+	it("left on an empty editor fires the agent-hub gesture instead of moving", () => {
+		const editor = new CustomEditor(getEditorTheme());
+		let gestures = 0;
+		editor.onLeftAtStart = () => {
+			gestures++;
+		};
+		editor.handleInput(LEFT);
+		expect(gestures).toBe(1);
+		expect(editor.getText()).toBe("");
+	});
+
+	it("the empty-editor gesture never intercepts in-text left movement", () => {
+		const editor = new CustomEditor(getEditorTheme());
+		let gestures = 0;
+		editor.onLeftAtStart = () => {
+			gestures++;
+		};
+		for (const ch of "ab") editor.handleInput(ch);
+		editor.handleInput(LEFT);
+		editor.handleInput("X");
+		expect(gestures).toBe(0);
+		expect(editor.getText()).toBe("aXb");
+	});
+});

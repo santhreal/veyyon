@@ -524,7 +524,7 @@ function parseValueDialogResponse(
 }
 
 function shouldEmitRpcTitles(): boolean {
-	const raw = $env.PI_RPC_EMIT_TITLE;
+	const raw = $env.VEYYON_RPC_EMIT_TITLE ?? $env.PI_RPC_EMIT_TITLE;
 	if (!raw) return false;
 	const normalized = raw.trim().toLowerCase();
 	return normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on";
@@ -799,7 +799,7 @@ export async function runRpcMode(
 		}
 
 		setTitle(title: string): void {
-			// Title updates are low-value noise for most RPC hosts; opt in via PI_RPC_EMIT_TITLE=1.
+			// Title updates are low-value noise for most RPC hosts; opt in via VEYYON_RPC_EMIT_TITLE=1 (legacy: PI_RPC_EMIT_TITLE).
 			if (!emitRpcTitles) return;
 			this.output({
 				type: "extension_ui_request",

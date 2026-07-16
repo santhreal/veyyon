@@ -77,23 +77,30 @@ describe("MoveOverlay", () => {
 		await fsp.rm(tmp, { recursive: true, force: true });
 	});
 
-	it("renders a box with a title and input prompt", () => {
+	it("renders a modal card with a title and input prompt", () => {
 		const overlay = new MoveOverlay(cwd, () => {});
 		const text = strip(overlay.render(80));
-		expect(text).toContain("Move to directory");
+		expect(text).toContain(`${uiTheme.boxSharp.horizontal} Move `);
 		expect(text).toContain("Path:");
 	});
 
-	it("renders every frame row at the assigned overlay width", () => {
+	it("renders every fullscreen row at the assigned width with one modal frame inside", () => {
 		const overlay = new MoveOverlay(cwd, () => {});
 		const lines = overlay.render(72);
 		const plainLines = lines.map(stripAnsi);
 
 		expect(lines.map(line => visibleWidth(line))).toEqual(Array(lines.length).fill(72));
-		expect(plainLines[0]!.endsWith(uiTheme.boxSharp.topRight)).toBe(true);
-		expect(plainLines.at(-1)!.endsWith(uiTheme.boxSharp.bottomRight)).toBe(true);
-		for (const line of plainLines.slice(1, -1)) {
-			expect(line.endsWith(uiTheme.boxSharp.vertical)).toBe(true);
+		// The ModalShell card floats centered: exactly one top and one bottom
+		// border row, and every row between them carries the frame verticals.
+		const top = plainLines.findIndex(line => line.includes(uiTheme.boxSharp.topRight));
+		const bottom = plainLines.findIndex(line => line.includes(uiTheme.boxSharp.bottomRight));
+		expect(top).toBeGreaterThanOrEqual(0);
+		expect(bottom).toBeGreaterThan(top);
+		for (const line of plainLines.slice(top + 1, bottom)) {
+			// Body rows end with the frame vertical; the shortcut divider row
+			// ends with the right tee junction.
+			const tail = line.trimEnd().at(-1) ?? "";
+			expect([uiTheme.boxSharp.vertical, uiTheme.boxSharp.teeLeft]).toContain(tail);
 		}
 	});
 

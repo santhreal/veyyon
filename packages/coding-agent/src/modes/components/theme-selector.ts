@@ -1,15 +1,12 @@
-import { Container, type SelectItem, SelectList, type SgrMouseEvent } from "@veyyon/pi-tui";
+import { type SelectItem, type SgrMouseEvent } from "@veyyon/pi-tui";
 import { getSelectListTheme } from "../../modes/theme/theme";
-import { DynamicBorder } from "./dynamic-border";
-import { routeSelectListMouseWithTopBorder } from "./select-list-mouse-routing";
+import { ModalSelectListComponent } from "./modal-select-list";
 
 /**
- * Component that renders a theme selector.
- * Themes must be pre-loaded and passed to the constructor.
+ * Theme picker — floating ModalShell medium card (replaces DynamicBorder sandwich).
  */
-export class ThemeSelectorComponent extends Container {
-	#selectList: SelectList;
-	#onPreview: (themeName: string) => void;
+export class ThemeSelectorComponent {
+	#inner: ModalSelectListComponent;
 
 	constructor(
 		currentTheme: string,
@@ -18,51 +15,51 @@ export class ThemeSelectorComponent extends Container {
 		onCancel: () => void,
 		onPreview: (themeName: string) => void,
 	) {
-		super();
-		this.#onPreview = onPreview;
-
-		// Create select items from provided themes
 		const themeItems: SelectItem[] = themes.map(name => ({
 			value: name,
 			label: name,
 			description: name === currentTheme ? "(current)" : undefined,
 		}));
-
-		// Add top border
-		this.addChild(new DynamicBorder());
-
-		// Create selector
-		this.#selectList = new SelectList(themeItems, 10, getSelectListTheme());
-
-		// Preselect current theme
 		const currentIndex = themes.indexOf(currentTheme);
-		if (currentIndex !== -1) {
-			this.#selectList.setSelectedIndex(currentIndex);
-		}
-
-		this.#selectList.onSelect = item => {
-			onSelect(item.value);
-		};
-
-		this.#selectList.onCancel = () => {
-			onCancel();
-		};
-
-		this.#selectList.onSelectionChange = item => {
-			this.#onPreview(item.value);
-		};
-
-		this.addChild(this.#selectList);
-
-		// Add bottom border
-		this.addChild(new DynamicBorder());
+		this.#inner = new ModalSelectListComponent(
+			{
+				title: "Theme",
+				items: themeItems,
+				theme: getSelectListTheme(),
+				selectedIndex: currentIndex,
+				maxVisible: 10,
+				tipCandidates: ["Tip · Themes apply live as you move", "Tip · Esc cancel"],
+			},
+			{
+				onSelect: item => onSelect(item.value),
+				onCancel,
+				onSelectionChange: item => onPreview(item.value),
+			},
+		);
 	}
 
-	getSelectList(): SelectList {
-		return this.#selectList;
+	setOnRequestRender(cb: () => void): void {
+		this.#inner.setOnRequestRender(cb);
 	}
 
+	getSelectList() {
+		return this.#inner.getSelectList();
+	}
+
+	/** @deprecated Prefer fullscreen ModalShell mouse; kept for editor-slot hosts. */
 	routeMouse(event: SgrMouseEvent, line: number, col: number): void {
-		routeSelectListMouseWithTopBorder(this.#selectList, event, line, col);
+		this.#inner.getSelectList().routeMouse(event, line - 1, col);
+	}
+
+	handleInput(data: string): void {
+		this.#inner.handleInput(data);
+	}
+
+	render(width: number): string[] {
+		return this.#inner.render(width);
+	}
+
+	invalidate(): void {
+		this.#inner.invalidate();
 	}
 }
