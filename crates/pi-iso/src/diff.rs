@@ -363,7 +363,9 @@ fn plain_change(
 		ChangeKind::Added => (Vec::new(), primary),
 		ChangeKind::Removed => (primary, Vec::new()),
 		ChangeKind::Modified => {
-			let peer = peer_root.expect("modified change requires peer root");
+			let peer = peer_root.ok_or_else(|| {
+				IsoError::other(format!("modified change for {} requires a peer root to diff against", rel.display()))
+			})?;
 			let peer_full = peer.join(rel);
 			let peer_bytes = std::fs::read(&peer_full)
 				.map_err(|err| IsoError::other(format!("read {}: {err}", peer_full.display())))?;
@@ -418,4 +420,49 @@ fn render_unified(rel: &Path, op: ChangeKind, old: &str, new: &str) -> String {
 
 fn looks_binary(bytes: &[u8]) -> bool {
 	bytes.iter().take(8192).any(|&b| b == 0)
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	fn temp_root(tag: &str) -> PathBuf {
+		let dir = std::env::temp_dir().join(format!("pi-iso-diff-{tag}-{}", std::process::id()));
+		std::fs::create_dir_all(&dir).unwrap();
+		dir
+	}
+
+	#[test]
+	fn modified_without_peer_root_is_an_error_not_a_panic() {
+		let side = temp_root("no-peer");
+		std::fs::write(side.join("file.txt"), "new contents\n").unwrap();
+
+		let err = plain_change(&side, Path::new("file.txt"), ChangeKind::Modified, None)
+			.expect_err("modified change without a peer root must fail");
+		assert!(
+			err.to_string().contains("requires a peer root"),
+			"error should name the missing peer root, got: {err}"
+		);
+
+		std::fs::remove_dir_all(&side).unwrap();
+	}
+
+	#[test]
+	fn modified_with_peer_root_diffs_both_sides() {
+		let side = temp_root("upper");
+		let peer = temp_root("lower");
+		std::fs::write(side.join("file.txt"), "line one\nline two changed\n").unwrap();
+		std::fs::write(peer.join("file.txt"), "line one\nline two\n").unwrap();
+
+		let change =
+			plain_change(&side, Path::new("file.txt"), ChangeKind::Modified, Some(&peer)).unwrap();
+		assert_eq!(change.op, ChangeKind::Modified);
+		assert_eq!(change.path, Path::new("file.txt"));
+		let diff = change.diff.expect("text files must carry a unified diff");
+		assert!(diff.contains("-line two\n"), "diff missing removed line: {diff}");
+		assert!(diff.contains("+line two changed\n"), "diff missing added line: {diff}");
+
+		std::fs::remove_dir_all(&side).unwrap();
+		std::fs::remove_dir_all(&peer).unwrap();
+	}
 }

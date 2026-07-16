@@ -1210,7 +1210,13 @@ pub fn truncate_to_width(
 	let original = text;
 
 	let text_u16 = text.into_utf16()?;
-	let text = text_u16.as_slice();
+	let mut text = text_u16.as_slice();
+	// The napi UTF-16 buffer carries a NUL terminator; the pad branch below
+	// appends spaces after it, which would bury the NUL mid-string where
+	// build_utf16_string's trailing-NUL pop cannot remove it.
+	while text.last() == Some(&0) {
+		text = &text[..text.len() - 1];
+	}
 
 	// Fast path: early-exit width check
 	let (text_w, exceeded) = visible_width_u16_up_to(text, max_width, tab_width);
