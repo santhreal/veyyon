@@ -374,14 +374,14 @@ export function getExtraHelpText(): string {
   ANTHROPIC_SEARCH_BASE_URL  - Anthropic web search base URL (override; pairs with ANTHROPIC_SEARCH_API_KEY)
 
   ${chalk.dim("# Configuration")}
-  OMP_PROFILE                 - Named profile for isolated agent state (same as --profile)
+  VEYYON_PROFILE             - Named profile for isolated agent state (same as --profile; legacy OMP_PROFILE / PI_PROFILE)
   Use \`veyyon --profile <name> --alias <command>\` to create a shell shortcut for a profile
   VEYYON_CODING_AGENT_DIR    - Session storage directory (default: ~/${CONFIG_DIR_NAME}/agent; legacy PI_CODING_AGENT_DIR)
   VEYYON_PACKAGE_DIR         - Override package directory (for Nix/Guix store paths)
   PI_PACKAGE_DIR             - Legacy alias for VEYYON_PACKAGE_DIR
-  PI_SMOL_MODEL              - Override smol/fast model (see --smol)
-  PI_SLOW_MODEL              - Override slow/reasoning model (see --slow)
-  PI_PLAN_MODEL              - Override planning model (see --plan)
+  VEYYON_SMOL_MODEL          - Override smol/fast model (see --smol; legacy PI_SMOL_MODEL)
+  VEYYON_SLOW_MODEL          - Override slow/reasoning model (see --slow; legacy PI_SLOW_MODEL)
+  VEYYON_PLAN_MODEL          - Override planning model (see --plan; legacy PI_PLAN_MODEL)
   VEYYON_NO_PTY              - Disable PTY-based interactive bash execution
   PI_NO_PTY                  - Legacy alias for VEYYON_NO_PTY
   For complete environment variable reference, see:

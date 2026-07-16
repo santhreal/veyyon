@@ -26,13 +26,13 @@ export default class Index extends Command {
 			description: 'Model to use (fuzzy match: "opus", "gpt-5.2", or "openai/gpt-5.2")',
 		}),
 		smol: Flags.string({
-			description: "Smol/fast model for lightweight tasks (or PI_SMOL_MODEL env)",
+			description: "Smol/fast model for lightweight tasks (or VEYYON_SMOL_MODEL env)",
 		}),
 		slow: Flags.string({
-			description: "Slow/reasoning model for thorough analysis (or PI_SLOW_MODEL env)",
+			description: "Slow/reasoning model for thorough analysis (or VEYYON_SLOW_MODEL env)",
 		}),
 		plan: Flags.string({
-			description: "Plan model for architectural planning (or PI_PLAN_MODEL env)",
+			description: "Plan model for architectural planning (or VEYYON_PLAN_MODEL env)",
 		}),
 		prewalk: Flags.boolean({
 			description:
