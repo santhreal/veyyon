@@ -13,10 +13,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { getAgentDir } from "@veyyon/pi-utils";
 import type * as mupdf from "mupdf";
-import {
-	type EmbeddedMupdfModuleFiles,
-	loadEmbeddedMupdfModuleFiles,
-} from "../../../utils/mupdf-wasm-embed";
+import { type EmbeddedMupdfModuleFiles, loadEmbeddedMupdfModuleFiles } from "../../../utils/mupdf-wasm-embed";
 import type { ImageRegion, PageContent, Segment, TextBox } from "./types";
 
 // mupdf instantiates its WASM module via a top-level await. A static

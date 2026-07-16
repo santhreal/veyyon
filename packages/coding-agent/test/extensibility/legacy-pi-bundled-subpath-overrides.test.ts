@@ -27,9 +27,7 @@ describe("legacy pi compat compiled-mode subpath overrides (issue #3442)", () =>
 		// fall-through. The generator now globs each wildcard's source pattern
 		// and registers every concrete `.ts` match against the virtual namespace.
 		const overrides = __buildLegacyPiPackageRootOverrides(true, bundledModuleKeys);
-		expect(overrides["@veyyon/pi-ai/oauth/anthropic"]).toBe(
-			"omp-legacy-pi-bundled:@veyyon/pi-ai/oauth/anthropic",
-		);
+		expect(overrides["@veyyon/pi-ai/oauth/anthropic"]).toBe("omp-legacy-pi-bundled:@veyyon/pi-ai/oauth/anthropic");
 		// Sanity: the wildcard expansion also reaches deeper subroots so plugins
 		// pinned to e.g. `@veyyon/pi-ai/providers/openai` keep resolving.
 		expect(bundledModuleKeys.has("@veyyon/pi-ai/oauth/anthropic")).toBe(true);

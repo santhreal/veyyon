@@ -1619,7 +1619,9 @@ export class InteractiveMode implements InteractiveModeContext {
 				}
 			}
 			const below =
-				EDITOR_MIN_RENDERED_ROWS + this.statusLine.render(width).length + this.composerShortcuts.render(width).length;
+				EDITOR_MIN_RENDERED_ROWS +
+				this.statusLine.render(width).length +
+				this.composerShortcuts.render(width).length;
 			contentExclFill = above + below;
 		}
 

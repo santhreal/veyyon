@@ -315,7 +315,11 @@ export class MoveOverlay implements Component, Focusable {
 			}
 			return true;
 		}
-		if (chrome.kind === "close" || chrome.kind === "outside" || (chrome.kind === "shortcut" && chrome.id === "close")) {
+		if (
+			chrome.kind === "close" ||
+			chrome.kind === "outside" ||
+			(chrome.kind === "shortcut" && chrome.id === "close")
+		) {
 			this.#done(undefined);
 			return true;
 		}

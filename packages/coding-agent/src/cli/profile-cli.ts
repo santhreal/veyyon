@@ -1,8 +1,9 @@
 /**
  * Profile lifecycle CLI: list, create, and remove self-contained profiles.
  */
-import * as fs from "node:fs/promises";
+
 import type { Dirent } from "node:fs";
+import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import {
 	getActiveProfile,
@@ -10,9 +11,9 @@ import {
 	listProfiles,
 	MAIN_CONFIG_FILENAMES,
 	normalizeProfileName,
+	type ProfileInfo,
 	profileExists,
 	removeWithRetries,
-	type ProfileInfo,
 } from "@veyyon/pi-utils";
 import chalk from "chalk";
 import { seedKeybindingsFromAgentDir } from "../config/keybindings";

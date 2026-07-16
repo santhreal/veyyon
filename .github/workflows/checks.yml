@@ -55,7 +55,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install keyhog
-        run: curl -fsSL https://raw.githubusercontent.com/santhreal/keyhog/main/install.sh | sh
+        # Pin a release and fetch the linux binary directly with a SHA-256 check.
+        # keyhog's install.sh insists on a full signed GPU-sidecar bundle that
+        # isn't needed for a CPU-backend CI scan, so the direct download is the
+        # robust, reproducible path here.
+        env:
+          KEYHOG_VERSION: v0.5.40
+        run: |
+          base="https://github.com/santhreal/keyhog/releases/download/${KEYHOG_VERSION}"
+          curl -fsSL -o keyhog "$base/keyhog-linux-x86_64"
+          curl -fsSL -o keyhog.sha256 "$base/keyhog-linux-x86_64.sha256"
+          echo "$(awk '{print $1}' keyhog.sha256)  keyhog" | sha256sum -c -
+          chmod +x keyhog
+          mkdir -p "$HOME/.local/bin"
+          mv keyhog "$HOME/.local/bin/keyhog"
+          "$HOME/.local/bin/keyhog" --version
       - name: Scan the repo for new secrets
         # --precision drops entropy/ML-speculative noise and raises the confidence
         # floor; the committed baseline suppresses the known public OAuth client IDs

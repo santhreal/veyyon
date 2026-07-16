@@ -10,7 +10,7 @@
  *
  * Deterministic LCG so a failure reproduces from the printed seed input.
  */
-import { describe, expect, it } from "bun:test";
+import { describe, it } from "bun:test";
 import { extractSegments, sliceWithWidth, visibleWidth } from "@veyyon/pi-tui";
 import { buildString, lcg } from "./helpers/adversarial-strings";
 
@@ -34,9 +34,7 @@ describe("slice/extract fuzz invariants", () => {
 			try {
 				result = sliceWithWidth(line, startCol, length, strict);
 			} catch (e) {
-				throw new Error(
-					`sliceWithWidth(${JSON.stringify(line)}, ${startCol}, ${length}, ${strict}) threw: ${e}`,
-				);
+				throw new Error(`sliceWithWidth(${JSON.stringify(line)}, ${startCol}, ${length}, ${strict}) threw: ${e}`);
 			}
 			if (typeof result.text !== "string") {
 				throw new Error(`sliceWithWidth text is not a string: ${JSON.stringify(result)}`);

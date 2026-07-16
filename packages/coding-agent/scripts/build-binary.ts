@@ -87,18 +87,18 @@ async function main(): Promise<void> {
 	await runCommand(["bun", "run", "gen:mupdf"]);
 	await runCommand(["bun", "run", "gen:tool-views"]);
 	try {
-			await compileCodingAgent({
-				repoRoot,
-				entrypoint: path.join(packageDir, "src", "cli.ts"),
-				outfile: outputPath,
-				transformersVersion,
-				target: crossBuild?.target,
-				skipBuiltinCodesign: shouldAdhocSignDarwinBinary(crossBuild),
-			});
+		await compileCodingAgent({
+			repoRoot,
+			entrypoint: path.join(packageDir, "src", "cli.ts"),
+			outfile: outputPath,
+			transformersVersion,
+			target: crossBuild?.target,
+			skipBuiltinCodesign: shouldAdhocSignDarwinBinary(crossBuild),
+		});
 
-			if (shouldAdhocSignDarwinBinary(crossBuild)) {
-				await runCommand(["codesign", "--force", "--sign", "-", outputPath]);
-			}
+		if (shouldAdhocSignDarwinBinary(crossBuild)) {
+			await runCommand(["codesign", "--force", "--sign", "-", outputPath]);
+		}
 	} finally {
 		await runCommand(["bun", "run", "gen:mupdf:reset"]);
 		await runCommand(["bun", "--cwd=../natives", "run", "gen:native:reset"]);

@@ -1,11 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
-import {
-	type Component,
-	type RenderScheduler,
-	type RenderTimer,
-	TUI,
-	type ViewportTailProvider,
-} from "@veyyon/pi-tui";
+import { type Component, type RenderScheduler, type RenderTimer, TUI, type ViewportTailProvider } from "@veyyon/pi-tui";
 import { VirtualTerminal } from "./virtual-terminal";
 
 // Outside a multiplexer a resize used to erase-and-replay the whole transcript

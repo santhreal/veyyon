@@ -9,11 +9,7 @@ import { Settings } from "@veyyon/pi-coding-agent/config/settings";
 import { AgentSession } from "@veyyon/pi-coding-agent/session/agent-session";
 import { AuthStorage } from "@veyyon/pi-coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/pi-coding-agent/session/session-manager";
-import {
-	AUTO_THINKING,
-	clampAutoThinkingEffort,
-	resolveProvisionalAutoLevel,
-} from "@veyyon/pi-coding-agent/thinking";
+import { AUTO_THINKING, clampAutoThinkingEffort, resolveProvisionalAutoLevel } from "@veyyon/pi-coding-agent/thinking";
 import { TempDir } from "@veyyon/pi-utils";
 import { createAssistantMessage } from "./helpers/agent-session-setup";
 

@@ -272,7 +272,9 @@ function buildSlashCommandCompletions(commands: CommandEntry[], lowerPrefix: str
 				lowerPrefix.length === 0 && isSkillCommand ? 950 : scoreCommandTextMatch(lowerPrefix, name.toLowerCase());
 			const lowerDesc = staticDesc.toLowerCase();
 			const descScore =
-				lowerDesc && isSubsequenceMatch(lowerPrefix, lowerDesc) ? subsequenceScore(lowerPrefix, lowerDesc) * 0.5 : 0;
+				lowerDesc && isSubsequenceMatch(lowerPrefix, lowerDesc)
+					? subsequenceScore(lowerPrefix, lowerDesc) * 0.5
+					: 0;
 			const primaryScore = Math.max(nameScore, descScore);
 			if (primaryScore > 0) {
 				const fullDesc = resolveFullDesc();

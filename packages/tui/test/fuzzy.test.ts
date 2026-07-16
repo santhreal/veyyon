@@ -1,6 +1,6 @@
-import { Glob } from "bun";
 import { describe, expect, it } from "bun:test";
 import { fuzzyFilter, fuzzyMatch, isSubsequenceMatch, subsequenceScore } from "@veyyon/pi-tui/fuzzy";
+import { Glob } from "bun";
 
 describe("fuzzyFilter", () => {
 	it("does not satisfy long tokens by scattering letters across unrelated words", () => {
@@ -36,8 +36,14 @@ describe("fuzzyFilter", () => {
 		// nearly every setting description contains it, so the old ≤2-extra-chars
 		// word-extension rule matched 121 of ~130 settings for this query.
 		const items = [
-			{ label: "Dark Theme", text: "Dark Theme theme.dark titanium Theme used when the terminal background is dark" },
-			{ label: "Light Theme", text: "Light Theme theme.light light Theme used when the terminal background is light" },
+			{
+				label: "Dark Theme",
+				text: "Dark Theme theme.dark titanium Theme used when the terminal background is dark",
+			},
+			{
+				label: "Light Theme",
+				text: "Light Theme theme.light light Theme used when the terminal background is light",
+			},
 			{
 				label: "Approval Mode",
 				text: "Approval Mode tools.approvalMode yolo Controls when the agent asks before running a tool",

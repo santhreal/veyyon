@@ -8,10 +8,7 @@ import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { discoverAndLoadExtensions } from "@veyyon/pi-coding-agent/extensibility/extensions/loader";
-import {
-	MANIFEST_KEYS,
-	manifestFromPackageJson,
-} from "@veyyon/pi-coding-agent/extensibility/manifest-key";
+import { MANIFEST_KEYS, manifestFromPackageJson } from "@veyyon/pi-coding-agent/extensibility/manifest-key";
 import { TempDir } from "@veyyon/pi-utils";
 
 interface FakeManifest {
@@ -42,9 +39,7 @@ describe("manifestFromPackageJson", () => {
 			veyyon: { extensions: ["./veyyon.ts"] },
 		});
 		expect(manifest?.extensions).toEqual(["./veyyon.ts"]);
-		expect(manifestFromPackageJson<FakeManifest>({ pi: { version: "1" }, omp: { version: "2" } })?.version).toBe(
-			"2",
-		);
+		expect(manifestFromPackageJson<FakeManifest>({ pi: { version: "1" }, omp: { version: "2" } })?.version).toBe("2");
 	});
 
 	it("returns undefined when no manifest key is present", () => {

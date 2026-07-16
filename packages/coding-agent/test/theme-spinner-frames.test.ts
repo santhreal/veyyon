@@ -2,10 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import {
-	SPINNER_GLYPH_ADVANCE_MS,
-	sharedSpinnerFrame,
-} from "@veyyon/pi-coding-agent/modes/components/tool-execution";
+import { SPINNER_GLYPH_ADVANCE_MS, sharedSpinnerFrame } from "@veyyon/pi-coding-agent/modes/components/tool-execution";
 import { getThemeByName } from "@veyyon/pi-coding-agent/modes/theme/theme";
 import { getConfigRootDir, getCustomThemesDir, removeWithRetries, setAgentDir } from "@veyyon/pi-utils";
 

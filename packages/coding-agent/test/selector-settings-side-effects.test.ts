@@ -104,11 +104,7 @@ describe("selector setting side effects", () => {
 		picker.handleInput("\n");
 		await Promise.resolve();
 
-		expect(setModel).toHaveBeenCalledWith(
-			nextModel,
-			"interactive",
-			expect.objectContaining({ persist: true }),
-		);
+		expect(setModel).toHaveBeenCalledWith(nextModel, "interactive", expect.objectContaining({ persist: true }));
 	});
 
 	it("temporary /switch picker updates the session model", async () => {

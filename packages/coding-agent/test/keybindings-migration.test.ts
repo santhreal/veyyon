@@ -5,13 +5,7 @@ import * as path from "node:path";
 import { KeybindingsManager } from "@veyyon/pi-coding-agent/config/keybindings";
 import { matchesAppFollowUp } from "@veyyon/pi-coding-agent/modes/utils/keybinding-matchers";
 import { type KeybindingsConfig, setKeybindings } from "@veyyon/pi-tui";
-import {
-	__resetDirsFromEnvForTests,
-	getAgentDir,
-	getProfileRootDir,
-	removeWithRetries,
-	setProfile,
-} from "@veyyon/pi-utils";
+import { __resetDirsFromEnvForTests, removeWithRetries, setProfile } from "@veyyon/pi-utils";
 import { YAML } from "bun";
 
 function ctrl(key: string): string {

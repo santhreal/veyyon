@@ -436,7 +436,6 @@ function resolveKeybindingsConfigPaths(agentDir: string): KeybindingsConfigPaths
 	return { readPath: ymlPath, writeBackPath: ymlPath };
 }
 
-
 export function profileHasKeybindingsFile(agentDir: string): boolean {
 	for (const filename of [KEYBINDINGS_YML, KEYBINDINGS_YAML, LEGACY_KEYBINDINGS_JSON]) {
 		if (fs.existsSync(path.join(agentDir, filename))) return true;
@@ -477,9 +476,7 @@ function maybeSeedProfileKeybindings(agentDir: string, options: KeybindingsCreat
 	}
 }
 
-function loadProfileKeybindingsConfig(
-	agentDir: string,
-): {
+function loadProfileKeybindingsConfig(agentDir: string): {
 	config: KeybindingsConfig;
 	profilePath: string;
 } {

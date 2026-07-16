@@ -1,10 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import {
-	type Dialect,
-	getDialectDefinition,
-	type InbandScanEvent,
-	ThinkingInbandScanner,
-} from "@veyyon/pi-ai/dialect";
+import { type Dialect, getDialectDefinition, type InbandScanEvent, ThinkingInbandScanner } from "@veyyon/pi-ai/dialect";
 import { streamGoogleGeminiCli } from "@veyyon/pi-ai/providers/google-gemini-cli";
 import { streamOpenAICompletions } from "@veyyon/pi-ai/providers/openai-completions";
 import { stream } from "@veyyon/pi-ai/stream";

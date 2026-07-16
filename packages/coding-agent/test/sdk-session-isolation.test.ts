@@ -177,7 +177,10 @@ describe("createAgentSession session storage isolation", () => {
 			}
 
 			fs.mkdirSync(path.join(cwd, ".veyyon"), { recursive: true });
-			fs.writeFileSync(path.join(cwd, ".veyyon", "secrets.yml"), "- type: plain\n  content: sdk-secret-token-123456\n");
+			fs.writeFileSync(
+				path.join(cwd, ".veyyon", "secrets.yml"),
+				"- type: plain\n  content: sdk-secret-token-123456\n",
+			);
 
 			const withSecrets = await createAgentSession(commonOptions);
 			try {
@@ -195,7 +198,10 @@ describe("createAgentSession session storage isolation", () => {
 			const cwd = path.join(tempDir, "project");
 			const agentDir = path.join(tempDir, "agent");
 			fs.mkdirSync(path.join(cwd, ".veyyon"), { recursive: true });
-			fs.writeFileSync(path.join(cwd, ".veyyon", "secrets.yml"), "- type: plain\n  content: sdk-secret-token-123456\n");
+			fs.writeFileSync(
+				path.join(cwd, ".veyyon", "secrets.yml"),
+				"- type: plain\n  content: sdk-secret-token-123456\n",
+			);
 
 			const model = getBundledModel("anthropic", "claude-sonnet-4-5");
 			if (!model) throw new Error("Expected anthropic model");

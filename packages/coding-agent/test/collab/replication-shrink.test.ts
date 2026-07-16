@@ -30,10 +30,7 @@ import {
 	unpackEnvelope,
 } from "@veyyon/pi-coding-agent/collab/protocol";
 import { CollabSocket } from "@veyyon/pi-coding-agent/collab/relay-client";
-import {
-	MAX_REPLICATED_PAYLOAD_BYTES,
-	shrinkForReplication,
-} from "@veyyon/pi-coding-agent/collab/replication-shrink";
+import { MAX_REPLICATED_PAYLOAD_BYTES, shrinkForReplication } from "@veyyon/pi-coding-agent/collab/replication-shrink";
 import type { InteractiveModeContext } from "@veyyon/pi-coding-agent/modes/types";
 import type { SessionEntry } from "@veyyon/pi-coding-agent/session/session-entries";
 

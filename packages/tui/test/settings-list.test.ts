@@ -289,7 +289,14 @@ describe("SettingsList", () => {
 			{ id: "b5", label: "B5", currentValue: "off", values: ["off", "on"] },
 			{ id: "b6", label: "B6", currentValue: "off", values: ["off", "on"] },
 		];
-		const list = new SettingsList(items, 3, testTheme, () => {}, () => {}, { layout: "flat" });
+		const list = new SettingsList(
+			items,
+			3,
+			testTheme,
+			() => {},
+			() => {},
+			{ layout: "flat" },
+		);
 
 		list.selectItem("b4");
 		const output = list.render(32);

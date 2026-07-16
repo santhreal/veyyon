@@ -47,9 +47,9 @@ import {
 	searchSmitheryRegistry,
 	toConfigName,
 } from "../../mcp/smithery-registry";
+import { sanitizeMcpStatusError } from "../../mcp/startup-events";
 import type { MCPAuthConfig, MCPServerConfig, MCPServerConnection } from "../../mcp/types";
 import { shortenPath } from "../../tools/render-utils";
-import { sanitizeMcpStatusError } from "../../mcp/startup-events";
 import { urlHyperlinkAlways } from "../../tui";
 import { copyToClipboard } from "../../utils/clipboard";
 import { openPath } from "../../utils/open";

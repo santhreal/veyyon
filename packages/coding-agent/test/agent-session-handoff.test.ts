@@ -667,8 +667,8 @@ describe("AgentSession handoff", () => {
 			sessionManager: localSessionManager,
 			settings: withLegacyContextFullStrategy(
 				Settings.isolated({
-				"compaction.enabled": true,
-				"compaction.autoContinue": false,
+					"compaction.enabled": true,
+					"compaction.autoContinue": false,
 				}),
 			),
 			modelRegistry,
@@ -738,8 +738,8 @@ describe("AgentSession handoff", () => {
 			sessionManager: localSessionManager,
 			settings: withLegacyContextFullStrategy(
 				Settings.isolated({
-				"compaction.enabled": true,
-				"compaction.autoContinue": false,
+					"compaction.enabled": true,
+					"compaction.autoContinue": false,
 				}),
 			),
 			modelRegistry,
@@ -937,10 +937,10 @@ describe("AgentSession handoff", () => {
 			sessionManager,
 			settings: withLegacyContextFullStrategy(
 				Settings.isolated({
-				"compaction.enabled": true,
-				"compaction.autoContinue": false,
-				"compaction.thresholdTokens": 8_000,
-				"contextPromotion.enabled": false,
+					"compaction.enabled": true,
+					"compaction.autoContinue": false,
+					"compaction.thresholdTokens": 8_000,
+					"contextPromotion.enabled": false,
 				}),
 			),
 			modelRegistry,
@@ -1023,10 +1023,10 @@ describe("AgentSession handoff", () => {
 			sessionManager,
 			settings: withLegacyContextFullStrategy(
 				Settings.isolated({
-				"compaction.enabled": true,
-				"compaction.autoContinue": false,
-				"compaction.thresholdTokens": 8_000,
-				"contextPromotion.enabled": false,
+					"compaction.enabled": true,
+					"compaction.autoContinue": false,
+					"compaction.thresholdTokens": 8_000,
+					"contextPromotion.enabled": false,
 				}),
 			),
 			modelRegistry,
@@ -1106,11 +1106,11 @@ describe("AgentSession handoff", () => {
 			sessionManager,
 			settings: withLegacyContextFullStrategy(
 				Settings.isolated({
-				"compaction.enabled": true,
-				"compaction.autoContinue": false,
-				"compaction.thresholdTokens": 8_000,
-				"compaction.keepRecentTokens": 1,
-				"contextPromotion.enabled": false,
+					"compaction.enabled": true,
+					"compaction.autoContinue": false,
+					"compaction.thresholdTokens": 8_000,
+					"compaction.keepRecentTokens": 1,
+					"contextPromotion.enabled": false,
 				}),
 			),
 			modelRegistry,
@@ -1193,10 +1193,10 @@ describe("AgentSession handoff", () => {
 			sessionManager,
 			settings: withLegacyContextFullStrategy(
 				Settings.isolated({
-				"compaction.enabled": false,
-				"compaction.autoContinue": false,
-				"compaction.thresholdTokens": 9_500,
-				"contextPromotion.enabled": false,
+					"compaction.enabled": false,
+					"compaction.autoContinue": false,
+					"compaction.thresholdTokens": 9_500,
+					"contextPromotion.enabled": false,
 				}),
 			),
 			modelRegistry,

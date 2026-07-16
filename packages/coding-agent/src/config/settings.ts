@@ -34,8 +34,8 @@ import { isLightTheme, setAutoThemeMapping, setColorBlindMode, setSymbolPreset }
 import { AgentStorage } from "../session/agent-storage";
 import { normalizeToolName } from "../tools/builtin-names";
 import { type EditMode, normalizeEditMode } from "../utils/edit-mode";
+import { type CompactionStrategySetting, migrateCompactionStrategyValue } from "./compaction-strategy";
 import { withFileLock } from "./file-lock";
-import { migrateCompactionStrategyValue, type CompactionStrategySetting } from "./compaction-strategy";
 import {
 	type BashInterceptorRule,
 	type GroupPrefix,

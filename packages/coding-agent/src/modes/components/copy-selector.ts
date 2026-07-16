@@ -146,7 +146,11 @@ export class CopySelectorComponent implements Component {
 			}
 			return true;
 		}
-		if (chrome.kind === "close" || chrome.kind === "outside" || (chrome.kind === "shortcut" && chrome.id === "close")) {
+		if (
+			chrome.kind === "close" ||
+			chrome.kind === "outside" ||
+			(chrome.kind === "shortcut" && chrome.id === "close")
+		) {
 			this.callbacks.onCancel();
 			return true;
 		}

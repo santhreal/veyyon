@@ -41,12 +41,7 @@ import {
 import { ModelsConfigFile } from "./config/models-config";
 import { getDefault, type SettingPath, Settings, settings } from "./config/settings";
 import { initializeWithSettings } from "./discovery";
-import {
-	clearPluginRootsAndCaches,
-	injectPluginDirRoots,
-	preloadPluginRoots,
-	resolveActiveProjectRegistryPath,
-} from "./discovery/helpers";
+import { clearPluginRootsAndCaches, injectPluginDirRoots, preloadPluginRoots } from "./discovery/helpers";
 import { injectOmpExtensionCliRoots } from "./discovery/omp-extension-roots";
 import { ExtensionRunner } from "./extensibility/extensions/runner";
 import type { ExtensionUIContext } from "./extensibility/extensions/types";

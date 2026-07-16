@@ -395,10 +395,7 @@ export class AskDialogComponent implements Component {
 		// ModalShell's own chrome (top/close bar, footer divider, bottom border,
 		// vertical padding, footer band) reserves CHROME_ROWS outside the body;
 		// the header rows are part of the body we hand it, so subtract those too.
-		const bodyRows = Math.max(
-			MIN_BODY_ROWS,
-			(dims?.modalHeight ?? termHeight) - headerLines.length - CHROME_ROWS,
-		);
+		const bodyRows = Math.max(MIN_BODY_ROWS, (dims?.modalHeight ?? termHeight) - headerLines.length - CHROME_ROWS);
 		const bodyLines = this.#isSubmitTab()
 			? this.#renderSubmitBody(contentWidth, bodyRows)
 			: this.#renderQuestionBody(contentWidth, bodyRows);
@@ -454,7 +451,11 @@ export class AskDialogComponent implements Component {
 				return true;
 			}
 			if (this.#closed || this.#promptActive) return true;
-			if (chrome.kind === "close" || chrome.kind === "outside" || (chrome.kind === "shortcut" && chrome.id === "close")) {
+			if (
+				chrome.kind === "close" ||
+				chrome.kind === "outside" ||
+				(chrome.kind === "shortcut" && chrome.id === "close")
+			) {
 				this.#finishCancel();
 				return true;
 			}

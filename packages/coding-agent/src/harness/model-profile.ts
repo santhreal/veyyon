@@ -93,7 +93,10 @@ function profileMatchesKey(key: string, modelKeyValue: string): boolean {
 }
 
 /** Resolve the harness profile for a model, if any. */
-export function resolveHarnessProfileForModel(settings: Settings, model: Model | undefined): HarnessModelProfile | undefined {
+export function resolveHarnessProfileForModel(
+	settings: Settings,
+	model: Model | undefined,
+): HarnessModelProfile | undefined {
 	if (!model) return undefined;
 	const profiles = mergedProfiles(settings);
 	const key = modelKey(model);

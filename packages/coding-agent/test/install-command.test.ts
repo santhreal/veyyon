@@ -12,13 +12,13 @@
  *     shapes users actually type.
  */
 import { describe, expect, test } from "bun:test";
-import { APP_NAME } from "@veyyon/pi-utils/dirs";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { commands, isSubcommand, resolveCliArgv } from "@veyyon/pi-coding-agent/cli-commands";
 import { looksLikeLocalPath } from "@veyyon/pi-coding-agent/commands/install";
 import { removeSyncWithRetries } from "@veyyon/pi-utils";
+import { APP_NAME } from "@veyyon/pi-utils/dirs";
 
 describe("install command is registered as a top-level subcommand", () => {
 	test("CLI runner sees `install` as a known command", () => {

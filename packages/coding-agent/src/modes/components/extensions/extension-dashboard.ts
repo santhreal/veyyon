@@ -227,7 +227,11 @@ export class ExtensionDashboard implements Component {
 			}
 			return;
 		}
-		if (chrome.kind === "close" || chrome.kind === "outside" || (chrome.kind === "shortcut" && chrome.id === "close")) {
+		if (
+			chrome.kind === "close" ||
+			chrome.kind === "outside" ||
+			(chrome.kind === "shortcut" && chrome.id === "close")
+		) {
 			this.onClose?.();
 			return;
 		}

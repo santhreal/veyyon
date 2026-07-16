@@ -124,7 +124,10 @@ describe("built-in command vs skill ranking", () => {
 	async function suggestionValues(prefixLine: string): Promise<string[]> {
 		const { CombinedAutocompleteProvider } = await import("@veyyon/pi-tui/autocomplete");
 		const commands = [
-			{ name: "skill:bug-bounty-campaign", description: "Run a structured bug bounty campaign, thinking through triage and hunting" },
+			{
+				name: "skill:bug-bounty-campaign",
+				description: "Run a structured bug bounty campaign, thinking through triage and hunting",
+			},
 			{ name: "skill:humanizer", description: "Rewrite thinking-heavy output in a human voice" },
 			{ name: "thinking", description: "Set the thinking level" },
 			{ name: "theme", description: "Switch color theme" },

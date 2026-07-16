@@ -8,6 +8,13 @@
  * `runInActiveSpan` → `finishChatSpan` / `failChatSpan`).
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
+import { SpanStatusCode } from "@opentelemetry/api";
+import {
+	BasicTracerProvider,
+	InMemorySpanExporter,
+	type ReadableSpan,
+	SimpleSpanProcessor,
+} from "@opentelemetry/sdk-trace-base";
 import {
 	type CompactionPreparation,
 	compact,
@@ -28,13 +35,6 @@ import type { AgentMessage } from "@veyyon/pi-agent-core/types";
 import type { AssistantMessage, Model, Usage } from "@veyyon/pi-ai";
 import * as ai from "@veyyon/pi-ai";
 import { buildModel } from "@veyyon/pi-catalog/build";
-import { SpanStatusCode } from "@opentelemetry/api";
-import {
-	BasicTracerProvider,
-	InMemorySpanExporter,
-	type ReadableSpan,
-	SimpleSpanProcessor,
-} from "@opentelemetry/sdk-trace-base";
 
 const MODEL: Model = buildModel({
 	id: "mock-model",

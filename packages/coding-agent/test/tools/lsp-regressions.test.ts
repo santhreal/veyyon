@@ -1141,7 +1141,11 @@ describe("lsp regressions", () => {
 				resolveProjectLoaded: () => {},
 			};
 
-			vi.spyOn(lspConfig, "loadConfig").mockReturnValue({ servers: {}, idleTimeoutMs: undefined, missingServers: [] });
+			vi.spyOn(lspConfig, "loadConfig").mockReturnValue({
+				servers: {},
+				idleTimeoutMs: undefined,
+				missingServers: [],
+			});
 			vi.spyOn(lspConfig, "getServersForFile").mockReturnValue([["test-lsp", server]]);
 			vi.spyOn(lspClient, "getOrCreateClient").mockResolvedValue(client);
 
@@ -1814,7 +1818,7 @@ describe("lsp regressions", () => {
 			vi.spyOn(lspConfig, "loadConfig").mockReturnValue({
 				servers: { "test-rs": server },
 				idleTimeoutMs: undefined,
-			missingServers: [],
+				missingServers: [],
 			});
 			vi.spyOn(lspConfig, "getServersForFile").mockReturnValue([["test-rs", server]]);
 			vi.spyOn(lspClient, "getOrCreateClient").mockResolvedValue(client);
@@ -2368,7 +2372,7 @@ describe("lsp regressions", () => {
 			vi.spyOn(lspConfig, "loadConfig").mockReturnValue({
 				servers: { "test-ts": { command: "test-ts", fileTypes: [".ts"], rootMarkers: [] } },
 				idleTimeoutMs: undefined,
-			missingServers: [],
+				missingServers: [],
 			});
 			const sendSpy = vi.spyOn(lspClient, "sendRequest");
 			const notifySpy = vi.spyOn(lspClient, "sendNotification");
@@ -2463,7 +2467,7 @@ describe("lsp regressions", () => {
 				},
 			},
 			idleTimeoutMs: undefined,
-		missingServers: [],
+			missingServers: [],
 		});
 		vi.spyOn(lspClient, "getActiveClients").mockReturnValue([
 			{ name: "typescript-language-server", status: "ready", fileTypes: [".ts"] },

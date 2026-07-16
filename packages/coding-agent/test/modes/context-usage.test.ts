@@ -91,9 +91,7 @@ describe("renderContextUsage snapcompact section", () => {
 			{
 				model: { id: "test-model", name: "Test Model", contextWindow: 200000 } as never,
 				contextWindow: 200000,
-				categories: [
-					{ id: "systemPrompt", label: "System prompt", tokens: 1000, color: "accent", glyph: "⛁" },
-				],
+				categories: [{ id: "systemPrompt", label: "System prompt", tokens: 1000, color: "accent", glyph: "⛁" }],
 				usedTokens: 1000,
 				autoCompactBufferTokens: 0,
 				freeTokens: 199000,

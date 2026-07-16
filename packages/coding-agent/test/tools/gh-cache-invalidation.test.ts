@@ -8,11 +8,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { invalidateGithubCacheForBashCommand } from "@veyyon/pi-coding-agent/tools/gh-cache-invalidation";
-import {
-	getCached,
-	putCached,
-	resetForTests as resetCacheForTests,
-} from "@veyyon/pi-coding-agent/tools/github-cache";
+import { getCached, putCached, resetForTests as resetCacheForTests } from "@veyyon/pi-coding-agent/tools/github-cache";
 import { removeWithRetries } from "@veyyon/pi-utils";
 
 const REPO = "owner/example";

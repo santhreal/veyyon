@@ -14,7 +14,7 @@ import { Buffer } from "node:buffer";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { removeWithRetries, VERSION } from "@veyyon/pi-utils";
+import { removeWithRetries } from "@veyyon/pi-utils";
 import {
 	type ChangelogEntry,
 	RECENT_CHANGELOG_ENTRY_LIMIT,

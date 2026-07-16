@@ -37,12 +37,7 @@ import {
 	getOpenAIResponsesHistoryPayload,
 	normalizeResponsesToolCallId,
 } from "@veyyon/pi-ai/utils";
-import {
-	CODEX_BASE_URL,
-	getCodexAccountId,
-	OPENAI_HEADER_VALUES,
-	OPENAI_HEADERS,
-} from "@veyyon/pi-catalog/wire/codex";
+import { CODEX_BASE_URL, getCodexAccountId, OPENAI_HEADER_VALUES, OPENAI_HEADERS } from "@veyyon/pi-catalog/wire/codex";
 import { $env, logger, stringifyJson } from "@veyyon/pi-utils";
 
 export * from "./compaction-v2-streaming";

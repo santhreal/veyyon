@@ -4,7 +4,7 @@ import { getOAuthProviders } from "@veyyon/pi-ai/oauth";
 import type { OAuthProvider } from "@veyyon/pi-ai/oauth/types";
 import type { Component, OverlayHandle } from "@veyyon/pi-tui";
 import { Loader, Spacer, setTuiTight, Text } from "@veyyon/pi-tui";
-import { getAgentDbPath, getAgentDir, getProjectDir, normalizePathForComparison } from "@veyyon/pi-utils";
+import { getAgentDbPath, getProjectDir, normalizePathForComparison } from "@veyyon/pi-utils";
 import { formatModelSelectorValue } from "../../config/model-resolver";
 import { getRoleInfo } from "../../config/model-roles";
 import { settings } from "../../config/settings";
@@ -26,7 +26,6 @@ import type { ResetCreditAccountStatus, ResetCreditRedeemOutcome } from "../../s
 import type { SessionInfo } from "../../session/session-listing";
 import { SessionManager } from "../../session/session-manager";
 import { FileSessionStorage } from "../../session/session-storage";
-import { openPath } from "../../utils/open";
 import { type LogoutAccount, toLogoutAccounts } from "../../slash-commands/helpers/logout";
 import {
 	describeRedeemOutcome,
@@ -35,16 +34,16 @@ import {
 } from "../../slash-commands/helpers/reset-usage";
 import { AUTO_THINKING, type ConfiguredThinkingLevel } from "../../thinking";
 import { isImageProviderPreference, setPreferredImageProvider } from "../../tools/image-gen";
+import { shortenPath } from "../../tools/render-utils";
+import { copyToClipboard } from "../../utils/clipboard";
+import { openPath } from "../../utils/open";
+import { setSessionTerminalTitle } from "../../utils/title-generator";
 import {
 	isSearchProviderId,
 	isSearchProviderPreference,
 	setExcludedSearchProviders,
 	setPreferredSearchProvider,
 } from "../../web/search";
-import { shortenPath } from "../../tools/render-utils";
-import { copyToClipboard } from "../../utils/clipboard";
-import { repo } from "../../utils/git";
-import { setSessionTerminalTitle } from "../../utils/title-generator";
 import { AgentDashboard } from "../components/agent-dashboard";
 import { AgentHubOverlayComponent } from "../components/agent-hub";
 import { AssistantMessageComponent } from "../components/assistant-message";
@@ -57,7 +56,6 @@ import { ModelHubComponent } from "../components/model-hub";
 import { ModelPickerComponent } from "../components/model-picker";
 import { OAuthSelectorComponent } from "../components/oauth-selector";
 import { ResetUsageSelectorComponent } from "../components/reset-usage-selector";
-import { renderSegmentTrack } from "../components/segment-track";
 import { SessionSelectorComponent } from "../components/session-selector";
 import { SettingsSelectorComponent } from "../components/settings-selector";
 import { ToolExecutionComponent } from "../components/tool-execution";

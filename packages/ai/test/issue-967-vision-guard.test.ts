@@ -3,10 +3,7 @@ import { convertAnthropicMessages } from "@veyyon/pi-ai/providers/anthropic";
 import { convertMessages as convertGoogleMessages } from "@veyyon/pi-ai/providers/google-shared";
 import { convertCodexResponsesMessages } from "@veyyon/pi-ai/providers/openai-codex-responses";
 import { convertMessages as convertOpenAICompletionsMessages } from "@veyyon/pi-ai/providers/openai-completions";
-import {
-	appendResponsesToolResultMessages,
-	convertResponsesInputContent,
-} from "@veyyon/pi-ai/providers/openai-shared";
+import { appendResponsesToolResultMessages, convertResponsesInputContent } from "@veyyon/pi-ai/providers/openai-shared";
 import { NON_VISION_IMAGE_PLACEHOLDER } from "@veyyon/pi-ai/providers/vision-guard";
 import type { Api, AssistantMessage, Context, Model, ModelSpec, ToolResultMessage, Usage } from "@veyyon/pi-ai/types";
 import { buildModel } from "@veyyon/pi-catalog/build";

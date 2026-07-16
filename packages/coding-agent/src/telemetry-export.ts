@@ -22,8 +22,9 @@
  * after the success path. `exporter-trace-otlp-proto@0.218` paired with
  * `sdk-trace-base@2.7` exports cleanly on Bun.
  */
-import { logger, postmortem } from "@veyyon/pi-utils";
+
 import type * as TraceNode from "@opentelemetry/sdk-trace-node";
+import { logger, postmortem } from "@veyyon/pi-utils";
 
 /**
  * Periodic flush interval. A long-lived `omp` process (the ACP server is

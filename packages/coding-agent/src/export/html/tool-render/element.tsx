@@ -11,9 +11,10 @@
  *
  * The boolean `open` attribute expands the card by default.
  */
+
+import { ToolView, type ToolViewProps } from "@veyyon/tool-render";
 import type { Root } from "react-dom/client";
 import { createRoot } from "react-dom/client";
-import { ToolView, type ToolViewProps } from "@veyyon/tool-render";
 
 type PayloadStore = { get(key: string): ToolViewProps | undefined };
 

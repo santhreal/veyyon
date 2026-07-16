@@ -98,11 +98,7 @@ const fastWorkspacePackages = [
 // These suites cover the native package, TUI/browser-ish behavior, local servers,
 // or coding-agent-adjacent benchmark paths. Keep them low-concurrency and in jobs
 // that have downloaded the Linux x64 native addon artifacts.
-const nativeAndIntegrationPackages = [
-	"packages/natives",
-	"packages/tui",
-	"packages/typescript-edit-benchmark",
-];
+const nativeAndIntegrationPackages = ["packages/natives", "packages/tui", "packages/typescript-edit-benchmark"];
 
 // Packages the CI buckets deliberately skip but a local full run should still
 // cover. mnemopi's embedding suites need a ~270MB fastembed model absent from CI

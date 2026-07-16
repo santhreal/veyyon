@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from "bun:test";
-import { APP_NAME } from "@veyyon/pi-utils";
 import { renderSetupSplash, SETUP_SPLASH_MS } from "@veyyon/pi-coding-agent/modes/setup-wizard/scenes/splash";
 import { initTheme } from "@veyyon/pi-coding-agent/modes/theme/theme";
+import { APP_NAME } from "@veyyon/pi-utils";
 
 beforeAll(async () => {
 	await initTheme(false);
@@ -21,8 +21,7 @@ function filledCells(lines: string[]): number {
 		.map(strip)
 		.join("")
 		.split("")
-		.filter(c => c !== " ")
-		.length;
+		.filter(c => c !== " ").length;
 }
 
 describe("setup splash — the sun-bloom launch signature", () => {

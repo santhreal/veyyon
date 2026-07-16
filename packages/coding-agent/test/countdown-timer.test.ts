@@ -43,7 +43,13 @@ describe("CountdownTimer", () => {
 		const tui = { requestRender, requestComponentRender } as unknown as TUI;
 		const component = { render: () => [], invalidate: () => {} } as unknown as Component;
 
-		new CountdownTimer(3000, tui, component, () => {}, () => {});
+		new CountdownTimer(
+			3000,
+			tui,
+			component,
+			() => {},
+			() => {},
+		);
 		requestRender.mockClear();
 		requestComponentRender.mockClear();
 
@@ -61,7 +67,13 @@ describe("CountdownTimer", () => {
 		const requestComponentRender = vi.fn();
 		const tui = { requestRender, requestComponentRender } as unknown as TUI;
 
-		new CountdownTimer(3000, tui, undefined, () => {}, () => {});
+		new CountdownTimer(
+			3000,
+			tui,
+			undefined,
+			() => {},
+			() => {},
+		);
 		requestRender.mockClear();
 		requestComponentRender.mockClear();
 

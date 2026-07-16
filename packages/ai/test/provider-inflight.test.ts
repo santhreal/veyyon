@@ -4,11 +4,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { clearCustomApis } from "@veyyon/pi-ai/api-registry";
 import { createMockModel, registerMockApi } from "@veyyon/pi-ai/providers/mock";
-import {
-	__providerInFlightForTesting,
-	configureProviderMaxInFlightRequests,
-	streamSimple,
-} from "@veyyon/pi-ai/stream";
+import { __providerInFlightForTesting, configureProviderMaxInFlightRequests, streamSimple } from "@veyyon/pi-ai/stream";
 import type { Context } from "@veyyon/pi-ai/types";
 
 function context(): Context {

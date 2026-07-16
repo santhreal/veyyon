@@ -4,14 +4,10 @@ import {
 	normalizeCompactionStrategy,
 } from "@veyyon/pi-coding-agent/config/compaction-strategy";
 import {
-	getKnownRoleIds,
-	MODEL_ROLE_IDS,
-	SELECTABLE_MODEL_ROLE_IDS,
-} from "@veyyon/pi-coding-agent/config/model-roles";
-import {
 	resolveAgentModelPatterns,
 	resolveCompactionModelPatterns,
 } from "@veyyon/pi-coding-agent/config/model-resolver";
+import { getKnownRoleIds, MODEL_ROLE_IDS, SELECTABLE_MODEL_ROLE_IDS } from "@veyyon/pi-coding-agent/config/model-roles";
 import { Settings } from "@veyyon/pi-coding-agent/config/settings";
 import { getSettingsForTab } from "@veyyon/pi-coding-agent/modes/components/settings-defs";
 

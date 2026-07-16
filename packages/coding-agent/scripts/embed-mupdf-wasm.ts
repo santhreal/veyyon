@@ -113,4 +113,6 @@ export function loadEmbeddedMupdfModuleFiles(): EmbeddedMupdfModuleFiles | undef
 `;
 
 await Bun.write(helperPath, generated);
-console.log(`Embedded mupdf ${mupdfVersion} runtime (wasm + js modules) into ${path.relative(process.cwd(), utilsDir)}`);
+console.log(
+	`Embedded mupdf ${mupdfVersion} runtime (wasm + js modules) into ${path.relative(process.cwd(), utilsDir)}`,
+);

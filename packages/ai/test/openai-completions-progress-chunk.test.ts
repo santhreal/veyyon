@@ -1,8 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import {
-	isOpenAICompletionsProgressChunk,
-	streamOpenAICompletions,
-} from "@veyyon/pi-ai/providers/openai-completions";
+import { isOpenAICompletionsProgressChunk, streamOpenAICompletions } from "@veyyon/pi-ai/providers/openai-completions";
 import type { Context, FetchImpl, Model, ModelSpec } from "@veyyon/pi-ai/types";
 import { buildModel } from "@veyyon/pi-catalog/build";
 import { getBundledModel } from "@veyyon/pi-catalog/models";

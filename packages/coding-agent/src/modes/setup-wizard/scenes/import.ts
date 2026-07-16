@@ -1,9 +1,5 @@
 import { routeSelectListMouse, type SelectItem, SelectList, type SgrMouseEvent, truncateToWidth } from "@veyyon/pi-tui";
-import {
-	type ImportCandidate,
-	importForeignItems,
-	scanForeignConfig,
-} from "../../../discovery/import-scan";
+import { type ImportCandidate, importForeignItems, scanForeignConfig } from "../../../discovery/import-scan";
 import { getSelectListTheme, theme } from "../../theme/theme";
 import type { SetupScene, SetupSceneController, SetupSceneHost } from "./types";
 
@@ -100,7 +96,10 @@ class ImportSceneController implements SetupSceneController {
 		} catch (error) {
 			this.#importing = false;
 			this.#status = [
-				theme.fg("error", `${theme.status.error} Import failed: ${error instanceof Error ? error.message : String(error)}`),
+				theme.fg(
+					"error",
+					`${theme.status.error} Import failed: ${error instanceof Error ? error.message : String(error)}`,
+				),
 			];
 			this.host.requestRender();
 		}

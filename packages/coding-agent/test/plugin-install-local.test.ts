@@ -16,7 +16,7 @@ import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { runPluginCommand, parsePluginArgs } from "@veyyon/pi-coding-agent/cli/plugin-cli";
+import { parsePluginArgs, runPluginCommand } from "@veyyon/pi-coding-agent/cli/plugin-cli";
 import { PluginManager } from "@veyyon/pi-coding-agent/extensibility/plugins/manager";
 import type { InstalledPlugin } from "@veyyon/pi-coding-agent/extensibility/plugins/types";
 import * as piUtils from "@veyyon/pi-utils";

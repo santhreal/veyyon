@@ -42,7 +42,6 @@ import type {
 	AgentLoopConfig,
 	AgentMessage,
 	AgentState,
-	AgentTool,
 	AgentToolContext,
 	AgentTurnEndContext,
 	AnyAgentTool,

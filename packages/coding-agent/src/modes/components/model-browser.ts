@@ -732,9 +732,7 @@ export class ModelBrowser implements Component {
 				: item.id;
 		const currentMark =
 			item.selector === this.#currentSelector ? ` ${theme.fg("success", theme.status.enabled)}` : "";
-		const authBadge = item.badge
-			? ` ${theme.fg(item.badgeColor ?? "dim", item.badge)}`
-			: "";
+		const authBadge = item.badge ? ` ${theme.fg(item.badgeColor ?? "dim", item.badge)}` : "";
 		const overLimit = disabled
 			? ` ${theme.status.disabled} context>${formatNumber(item.model.contextWindow ?? 0).toLowerCase()}`
 			: "";

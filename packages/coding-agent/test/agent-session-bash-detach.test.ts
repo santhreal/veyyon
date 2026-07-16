@@ -50,7 +50,7 @@ import { AgentSession } from "@veyyon/pi-coding-agent/session/agent-session";
 import { AuthStorage } from "@veyyon/pi-coding-agent/session/auth-storage";
 import { convertToLlm } from "@veyyon/pi-coding-agent/session/messages";
 import { SessionManager } from "@veyyon/pi-coding-agent/session/session-manager";
-import { type ToolSession } from "@veyyon/pi-coding-agent/tools";
+import type { ToolSession } from "@veyyon/pi-coding-agent/tools";
 import { BashTool } from "@veyyon/pi-coding-agent/tools/bash";
 import { removeSyncWithRetries, Snowflake } from "@veyyon/pi-utils";
 
