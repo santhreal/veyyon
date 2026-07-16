@@ -46,10 +46,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-60567633.js";
+            window.path_to_searchindex_js = "../searchindex-c7a85c3d.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-40ee9e8c.js"></script>
+        <script src="../toc-b266b4db.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -235,7 +235,7 @@
 </thead>
 <tbody>
 <tr><td><code>/branch</code></td><td>Pick a <strong>user message</strong>; copy history up to that boundary into a <strong>new session file</strong> (or reset root); prefills composer. When <code>doubleEscapeAction = "tree"</code>, opens <code>/tree</code> instead.</td></tr>
-<tr><td><code>/fork</code></td><td>Duplicate session from a chosen point into a new persisted file (<code>handleForkCommand</code>).</td></tr>
+<tr><td><code>/fork</code></td><td>Duplicate the <strong>entire</strong> current session — every entry, including sibling branches — into a new persisted file (<code>handleForkCommand</code>). No entry picker; for a slice from a chosen point, use <code>/branch</code>.</td></tr>
 <tr><td>CLI</td><td><code>veyyon --fork &lt;session-id&gt;</code> at startup</td></tr>
 </tbody>
 </table>

@@ -13,7 +13,7 @@ Extend Veyyon with tools that are implemented and documented today:
 | [Plugins](./plugins.md) | Install extensions; `veyyon plugin install …` |
 | [Hooks](./hooks.md) | Event-driven automation in the agent loop |
 | [Skills](./skills.md) | Bundled instructions and tool patterns |
-| OAuth providers | `/login`, `/setup providers` for supported APIs |
+| OAuth providers | `/login`, `/setup` / `/providers` for supported APIs |
 
 Tool policy uses `tools.approvalMode` and `tools.approval.<tool>` — same machinery for bash, MCP, and custom tools (`docs/approval-mode.md`).
 

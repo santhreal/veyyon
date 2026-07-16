@@ -14,12 +14,13 @@ resume metadata rather than relying on the model to remember everything from raw
 
 - Start fresh with `veyyon`.
 - Continue saved work from the session picker on launch, or `/resume` inside the TUI.
-- Branch a previous conversation with `/fork` (or `/clone`).
+- Branch a previous conversation with `/branch` (from a chosen user message) or duplicate the whole
+  session with `/fork`.
 - Manage saved sessions with `/session`; garbage-collect old artifacts with `veyyon gc`.
 - Run a bounded non-interactive task by passing a prompt: `veyyon "…"`.
 
 > **Spec — not shipped:** top-level `veyyon resume` / `fork` / `archive` verbs. Veyyon resumes from
-> the launch picker or `/resume`, and branches with `/fork` / `/clone`.
+> the launch picker or `/resume`, and branches with `/branch` / `/fork` (there is no `/clone`).
 
 ## Long work
 
@@ -60,22 +61,32 @@ abandoned. Picking an entry opens a small action menu:
   render as `[label]` tags in the tree; the corresponding `tui` option in `config.yml` also shows when
   each label was set. Submitting empty text, or picking **Clear label**, removes it.
 
-The tree view offers filter tabs: the conversation view (default), user messages only, labeled
-entries only, and every raw entry. Typing filters rows by preview and label text. A `tui` option in
-`config.yml` (`conversation`, `user`, `labeled`, or `all`) picks the tab the view opens on.
+The tree view filter modes (`treeFilterMode` in `config.yml`, also toggled in the `/tree` UI) are:
 
-### Forking from an earlier point
+| Mode | What it shows |
+| --- | --- |
+| `default` | Conversation entries (hides low-signal noise) |
+| `no-tools` | `default` plus hides tool-result-only assistant messages |
+| `user-only` | User messages only |
+| `labeled-only` | Entries with labels |
+| `all` | Every raw entry |
 
-`/fork` opens a picker: fork the whole session, or pick an earlier user message to fork from just
-before it: the new session file keeps only the history up to that point and the message text is
-recalled into the composer for edit-and-resubmit. The original session is never modified. The launch
-session picker forks a recorded session the same way at startup. Programmatic clients pass
-`forkAtEntry` (a `thread/tree/read` entry id) to `thread/fork`; an unknown entry id fails loudly
-instead of silently forking the full history.
+Typing filters rows by preview and label text. There is no separate Conversation/User/Labeled/All tab chrome beyond these filter modes — see [Branching](../features/branching.md).
 
-`/clone` duplicates the current session at the current position without a picker: the active
-branch is copied into a new session file that resumes independently, and abandoned branches stay
-behind in the original.
+### Forking and branching to a new file
+
+`/fork` and `/branch` both create a new session file and never modify the original; `/tree`
+navigation above stays inside the current file.
+
+- **`/fork`** duplicates the **entire** current session — every entry, including sibling branches —
+  into a new persisted file. There is no entry picker; for a slice from a chosen point, use
+  `/branch`. `veyyon --fork <session-id>` does the same at startup, and the launch session picker
+  forks a recorded session the same way.
+- **`/branch`** picks an earlier **user message** and copies the history up to that point (or resets
+  to a fresh root if the picked message is the first one) into a new session file, then recalls the
+  message text into the composer for edit-and-resubmit.
+
+There is no `/clone` slash command in the shipped registry.
 
 Labels are stored in the session file itself as append-only bookkeeping lines (last write wins), so
 they survive resume and never rewrite history.

@@ -46,10 +46,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-60567633.js";
+            window.path_to_searchindex_js = "../searchindex-c7a85c3d.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-40ee9e8c.js"></script>
+        <script src="../toc-b266b4db.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -352,22 +352,26 @@
 </table>
 </div>
 <p>For the full list of motions, operators, and text objects, see <a href="../features/keybindings.html">Keybindings and Vim mode</a>.</p>
-<h2 id="customizing-in-configyml"><a class="header" href="#customizing-in-configyml">Customizing in config.yml</a></h2>
-<blockquote>
-<p><strong>Spec — not shipped:</strong> the <code>tui.keymap</code> config surface below is a design target; it is not yet
-wired in the current build.</p>
-</blockquote>
-<p>Set custom bindings under <code>tui.keymap.&lt;context&gt;</code> in <code>~/.veyyon/config.yml</code>. Use a single string, a list of strings, or an empty list to disable an action.</p>
-<pre><code class="language-yaml">tui:
-  keymap:
-    global:
-      open_transcript: ctrl-y
-      copy: [ctrl-c, alt-c]
-      clear_terminal: []  # disables the action
+<h2 id="customizing-real-path-keybindingsyml"><a class="header" href="#customizing-real-path-keybindingsyml">Customizing (real path: keybindings.yml)</a></h2>
+<p>Custom bindings are <strong>shipped</strong> — but the config surface is its own file, not a <code>tui.keymap</code> block in
+<code>config.yml</code>. Set bindings by action ID in <strong><code>~/.veyyon/agent/keybindings.yml</code></strong> (YAML map of action ID
+→ chord or chord list). A single string, a list of chords, or an empty list (disables the action) are
+all valid values:</p>
+<pre><code class="language-yaml">app.model.cycleForward: Ctrl+P
+app.history.search: []   # disables the action
+app.clipboard.copyLine: [Ctrl+C, Alt+C]
 </code></pre>
-<p>Key format: modifiers (<code>ctrl</code>, <code>alt</code>, <code>shift</code>) joined by hyphens, followed by the key. Special keys include <code>enter</code>, <code>tab</code>, <code>esc</code>, <code>space</code>, <code>up</code>, <code>down</code>, <code>left</code>, <code>right</code>, <code>home</code>, <code>end</code>, <code>page-up</code>, <code>page-down</code>, <code>delete</code>, <code>backspace</code>, and <code>f1</code> through <code>f24</code>.</p>
-<p>Aliases normalize automatically: <code>escape</code> becomes <code>esc</code>, <code>return</code> becomes <code>enter</code>, <code>spacebar</code> becomes <code>space</code>, <code>pgup</code>/<code>pageup</code> becomes <code>page-up</code>, <code>pgdn</code>/<code>pagedown</code> becomes <code>page-down</code>, and <code>del</code> becomes <code>delete</code>.</p>
-<p>For context definitions and more examples, see <a href="../features/keybindings.html">Keybindings and Vim mode</a>.</p>
+<p>Action IDs are namespaced (<code>app.model.cycleForward</code>, <code>app.plan.toggle</code>, <code>tui.select.pageUp</code>, …), not the
+<code>global</code>/<code>clear_terminal</code>-style context keys shown in older drafts of this page. Older flat legacy names
+and <code>keybindings.json</code> files migrate automatically to the namespaced <code>.yml</code> form on load. Run
+<strong><code>/hotkeys</code></strong> in a session to see active chords.</p>
+<blockquote>
+<p><strong>Spec — not shipped:</strong> a <code>/keymap</code> interactive remapper and nested <code>tui.keymap.&lt;context&gt;</code> tables
+inside <code>config.yml</code>. The customization surface that actually ships is the flat <code>keybindings.yml</code> file
+above.</p>
+</blockquote>
+<p>For the full action-ID list and Vim mode details, see <a href="../features/keybindings.html">Keybindings and Vim mode</a>
+and the engineering reference <a href="../../../keybindings.html"><code>docs/keybindings.md</code></a>.</p>
 
                     </main>
 

@@ -1,20 +1,35 @@
 # TUI design language
 
-North-star for Veyyon Code terminal UX. Implementation lives in `packages/tui` (rendering) and `packages/coding-agent/src/modes/theme/` (themes and tokens).
+North-star for Veyyon terminal UX. Implementation lives in `packages/tui` (rendering) and `packages/coding-agent/src/modes/theme/` (themes and tokens).
 
 ## Brand palette in the TUI
 
-Veyyon Dark and Veyyon Light follow the [brand system](https://github.com/santhsecurity/veyyon/blob/main/docs/brand-system.md):
+First-party themes follow [Brand and identity](./brand.md); the website (`website/site.css` `:root`) is the reference token source.
 
-| Role | Dark (shipped) | Light (shipped, upstream) |
-| --- | --- | --- |
-| Surface | `#050505` | Terminal / `#e0e0e0` status chrome |
-| Primary text | `#FAFAFA` | Terminal default |
-| Brand accent (dark only today) | `#B8BDC7` | Teal `#5a8080` in `light.json` |
+| Role | Titanium (default dark) | Veyyon Dark | Light (default light) |
+| --- | --- | --- | --- |
+| Surface | Pitch black `#000000` | Pitch black `#000000` | White `#FFFFFF` |
+| Primary text | Silver bright `#E6E9EE` | `#FAFAFA` | Terminal default (near-black) |
+| Structure / brand | Silver `#C6CBD4` | Silver `#B8BDC7` | Dark silver `#5C6470` |
+| Accent | Ember `#F0862E` | Deep blue `#4A84C9` (pre-ember) | Ember `#F0862E` (chrome) / `#B65E14` (links) |
 
-Veyyon Dark follows the brand system. Light theme JSON is still the upstream oh-my-pi palette until a silver light theme lands (**Spec — not shipped**).
+Titanium mirrors the website tokens exactly, and Light is its sanctioned inverse (see `docs/internal/design.md`, "Light ground") — both locked by `test/brand-conformance.test.ts`.
 
 Theme JSON is validated in `theme.ts` (`themeJsonSchema`). User overrides can live under `~/.veyyon/agent/themes/`. See [Themes and identity](../using/themes.md) and engine doc `docs/theme.md`.
+
+## Layout and width
+
+Work surfaces are **full-bleed**: the transcript, prompt/composer, status line,
+hints, and banners span the terminal width, flush left. There is no shared
+centered content column — a terminal is a work instrument, and artificial
+margins waste columns on the dense tool output this product lives in.
+
+The one exception is the **hero moment**: the startup welcome card centers
+horizontally at a 72-column maximum (`welcome.ts` `HERO_MAX_WIDTH`) and floats
+on the empty home screen. Once real work starts, everything is full-bleed.
+
+Overlays (settings, pickers, hubs) size themselves from the modal sizing
+tokens, not ad-hoc widths.
 
 ## Spacing scale
 
@@ -34,10 +49,11 @@ Prefer `space-1` / `space-2` in dense tool UIs. One-off paddings are bugs.
 
 | Role | Rule |
 | --- | --- |
-| Primary text | Theme `text` token (`#FAFAFA` / `#050505`) |
+| Primary text | Theme `text` token |
 | Secondary / meta | `dim` or `muted` tokens |
 | Emphasis | Bold on primary; silver accent for focus and selection |
-| Links / paths | Theme `accent` (silver in first-party themes) |
+| Links | Theme `link` / `mdLink` (ember in titanium, matching website link color) |
+| Focus / selected surface | `borderAccent` (ember) + `selectedBg` (ember glow `#241510`) — the TUI's analog of the website `:focus-visible` ember ring |
 | Danger / deny | Theme `error` (red) |
 | Success / approved | Theme `success` (green) |
 | Warning | Theme `warning` (yellow) |
@@ -73,6 +89,10 @@ No gratuitous animation on static content.
 ## Iconography
 
 Prefer ASCII-safe glyphs with Unicode upgrades when width is known (`theme.symbols` presets: `unicode`, `nerd`, `ascii`). Width math uses grapheme-aware helpers in `@veyyon/pi-tui`, not byte length.
+
+## Voice register
+
+The website nav speaks lowercase terse ("docs install models changelog") — a display-typography choice for the marketing surface. The TUI deliberately does **not** copy it: menu items, action rows, and settings labels use sentence case ("Resume session", "Settings") because terminal UIs carry no font-weight hierarchy and lowercase labels read as unfinished next to command literals (`/resume`, `ctrl+d`). Command names, flags, and paths stay verbatim lowercase everywhere. Do not mix registers within one surface.
 
 ## Composer and chrome
 

@@ -4,10 +4,10 @@
 
 ## Source
 - Tool: `packages/coding-agent/src/tools/launch.ts`
-- Broker client: `packages/coding-agent/src/daemon/client.ts`
-- Broker runtime: `packages/coding-agent/src/daemon/broker.ts`
-- Omp process presence: `packages/coding-agent/src/daemon/presence.ts`
-- Protocol: `packages/coding-agent/src/daemon/protocol.ts`
+- Broker client: `packages/coding-agent/src/launch/client.ts`
+- Broker runtime: `packages/coding-agent/src/launch/broker.ts`
+- Omp process presence: `packages/coding-agent/src/launch/presence.ts`
+- Protocol: `packages/coding-agent/src/launch/protocol.ts`
 - Model-facing prompt: `packages/coding-agent/src/prompts/tools/launch.md`
 
 ## When to use it

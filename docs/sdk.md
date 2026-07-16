@@ -58,7 +58,7 @@ await session.dispose();
 If omitted, it resolves:
 
 - `cwd`: `getProjectDir()`
-- `agentDir`: `~/.veyyon/agent` (via `getAgentDir()`)
+- `agentDir`: `~/.veyyon/agent` via `getAgentDir()` — profile-aware: under a named profile (`--profile <name>` / `VEYYON_PROFILE`) this resolves to `~/.veyyon/profiles/<name>/agent`
 - `authStorage`: `discoverAuthStorage(agentDir)`
 - `modelRegistry`: `new ModelRegistry(authStorage)` + background `refreshInBackground()` when the registry is not provided
 - `settings`: `await Settings.init({ cwd, agentDir })`

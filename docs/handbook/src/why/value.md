@@ -1,8 +1,6 @@
 # What Veyyon gives you
 
-Veyyon is a coding agent that runs in your terminal and edits real code. It is built on one idea: a
-capable open model does not need a frontier price tag to do frontier work. It needs the right harness
-around it.
+Veyyon runs in your terminal and edits real code on your keys. The harness is built so capable models waste fewer turns on bad edits and opaque scaffolding.
 
 ## The problem Veyyon solves
 
@@ -10,8 +8,8 @@ Most coding agents wrap every model in the same generic scaffolding. A model tra
 is forced into another. The result is wasted turns, malformed tool calls, diffs that fail to apply, and
 token bills that climb with every retry. The weights are often capable; the scaffolding holds them back.
 
-Veyyon (oh-my-pi lineage) removes much of that waste: **hashline** edits tuned per model, native search
-and read paths, provider-agnostic configuration, and a TUI that keeps sandboxing and approvals visible.
+Veyyon (oh-my-pi lineage) cuts that waste: **hashline** edits tuned per model, native search and read paths,
+provider-agnostic configuration, and a TUI that keeps sandboxing and approvals visible.
 
 ## What you get today
 

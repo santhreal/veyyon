@@ -87,7 +87,7 @@ Example:
 interface:
   display_name: "Code Review"
   short_description: "Review code for quality and correctness"
-  brand_color: "#B8BDC7"
+  brand_color: "#C6CBD4"
   default_prompt: "Review the current diff"
 dependencies:
   tools:

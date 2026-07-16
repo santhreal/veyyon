@@ -46,10 +46,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-60567633.js";
+            window.path_to_searchindex_js = "../searchindex-c7a85c3d.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-40ee9e8c.js"></script>
+        <script src="../toc-b266b4db.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -197,8 +197,8 @@ configurable status line, session tree navigation, background jobs, and optional
 A full IRC-style live multi-agent dashboard (model-per-subagent, drill-in panels) is not shipped yet.</p>
 <h2 id="status-line-built"><a class="header" href="#status-line-built">Status line (built)</a></h2>
 <p>The bottom status bar summarizes model, path, git, tokens, cost, context, subagents, and related
-session state. Configure it in <strong>Settings → Appearance → Status Line</strong> (<code>/settings</code>) or in
-<code>config.yml</code>:</p>
+session state. Configure it in <strong>Settings → Appearance → Status Line</strong>, reached via <code>/statusline</code>
+(jumps straight to this group) or <code>/settings</code>, or in <code>config.yml</code>:</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -213,12 +213,17 @@ session state. Configure it in <strong>Settings → Appearance → Status Line</
 </tbody>
 </table>
 </div>
-<p>Built-in segment IDs include <code>model</code>, <code>path</code>, <code>git</code>, <code>pr</code>, <code>subagents</code>, <code>context_pct</code>,
-<code>token_in</code>, <code>token_out</code>, <code>token_total</code>, <code>token_rate</code>, <code>cost</code>, <code>usage</code>, <code>collab</code>, <code>mode</code>
-(plan/goal/loop indicators), <code>session</code>, <code>session_name</code>, <code>time</code>, and <code>hostname</code>.</p>
+<p>There are 24 built-in segment IDs (<code>StatusLineSegmentId</code>): <code>pi</code>, <code>model</code>, <code>mode</code> (plan/goal/loop
+indicators), <code>path</code>, <code>git</code>, <code>pr</code>, <code>subagents</code>, <code>token_in</code>, <code>token_out</code>, <code>token_total</code>,
+<code>token_rate</code>, <code>cost</code>, <code>context_pct</code>, <code>context_total</code>, <code>time_spent</code>, <code>time</code>, <code>session</code>, <code>hostname</code>,
+<code>cache_read</code>, <code>cache_write</code>, <code>cache_hit</code>, <code>session_name</code>, <code>usage</code>, and <code>collab</code>.</p>
+<p><strong>Shipped today:</strong> <code>/statusline</code> opens Settings pre-focused on the Status Line group (preset,
+separator, and toggles), and <code>preset: custom</code> + <code>leftSegments</code>/<code>rightSegments</code> in <code>config.yml</code> give
+full control over which of the 24 IDs appear and in what order.</p>
 <blockquote>
-<p><strong>Spec — not shipped:</strong> an interactive <code>/statusline</code> picker with 28 toggleable item IDs, a terminal
-title composer (<code>/title</code>), and terminal pets (<code>/pets</code>). Veyyon uses preset-based status lines only.</p>
+<p><strong>Spec — not shipped:</strong> an in-TUI interactive picker that lets you toggle/reorder individual
+segment IDs without hand-editing <code>config.yml</code> (no per-segment checkbox/drag UI exists), a terminal
+title composer (<code>/title</code>), and terminal pets (<code>/pets</code>).</p>
 </blockquote>
 <h2 id="session-tree-and-branching-built"><a class="header" href="#session-tree-and-branching-built">Session tree and branching (built)</a></h2>
 <div class="table-wrapper">
@@ -228,8 +233,8 @@ title composer (<code>/title</code>), and terminal pets (<code>/pets</code>). Ve
 </thead>
 <tbody>
 <tr><td><code>/tree</code></td><td>Browse the session entry tree and jump or label entries</td></tr>
-<tr><td><code>/branch</code></td><td>Start a branch from the current leaf</td></tr>
-<tr><td><code>/fork</code></td><td>Fork from an earlier message</td></tr>
+<tr><td><code>/branch</code></td><td>Pick an earlier user message and branch a new session file from it</td></tr>
+<tr><td><code>/fork</code></td><td>Duplicate the entire current session into a new file (no entry picker)</td></tr>
 <tr><td><code>/session info</code></td><td>Session metadata and stats</td></tr>
 <tr><td><code>/agents</code></td><td>Configure task subagent definitions (bundled/project/user)</td></tr>
 <tr><td><code>/cockpit</code></td><td>Live multi-agent monitor: status, model per agent, drill-in transcript</td></tr>
@@ -257,9 +262,10 @@ agents for tangential work.</p>
 <p><strong>Shipped:</strong> <code>/cockpit</code> (alias <code>/hub</code>) opens the Agent Hub overlay: every registered agent except Main,
 with status, unread IRC count, model badge, and drill-in transcript chat. Same surface as the
 <code>app.agents.hub</code> keybinding.</p>
-<p><strong>Spec — not shipped:</strong> full IRC-style dashboard with channel tabs, terminal title composer, and
-28-segment interactive <code>/statusline</code> picker. Use <code>/cockpit</code>, <code>/jobs</code>, <code>/tree</code>, swarm status files,
-and the <code>irc</code> tool for multi-agent visibility today.</p>
+<p><strong>Spec — not shipped:</strong> full IRC-style dashboard with channel tabs, terminal title composer, and an
+interactive per-segment status-line picker (<code>/statusline</code> opens settings, not a picker — see
+above). Use <code>/cockpit</code>, <code>/jobs</code>, <code>/tree</code>, swarm status files, and the <code>irc</code> tool for multi-agent
+visibility today.</p>
 
                     </main>
 

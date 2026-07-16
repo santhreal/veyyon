@@ -13,7 +13,7 @@ Use the interactive slash commands inside a session:
 - `/login <redirect-url>` — completes an OAuth flow that needs a pasted callback URL.
 - `/logout` — opens the provider selector to remove stored credentials.
 
-On first run, the setup wizard (`/setup providers`) walks the same flow.
+On first run, the setup ceremony (`veyyon setup`, or `/setup` / `/providers` later) walks the same flow.
 
 ## Headless and remote hosts
 

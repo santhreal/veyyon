@@ -20,7 +20,7 @@ Settings are stored as plain YAML mappings. Every key, its type, default, and en
 | CLI overlay | Any file passed with `--config <file>` | Loaded after global and project settings, for that one process. Repeatable. | Never persisted. |
 | Runtime overrides | In-memory only | Set by dedicated CLI flags (`--model`, `--approval-mode`, …) and feature env vars. | Never persisted. |
 
-`PI_CODING_AGENT_DIR` relocates the `~/.veyyon/agent` base directory. When it is set, the global `config.yml`, the auth store (`agent.db`), and everything else under the agent directory move with it. Use `veyyon config path` to print the active agent directory.
+`VEYYON_CODING_AGENT_DIR` (legacy `PI_CODING_AGENT_DIR`) relocates the `~/.veyyon/agent` base directory. When it is set, the global `config.yml`, the auth store (`agent.db`), and everything else under the agent directory move with it. Use `veyyon config path` to print the active agent directory.
 
 Native project settings are intentionally scoped to the process working directory's `.veyyon/` folder — settings discovery does **not** walk ancestor directories looking for the nearest `.veyyon/`. Other discovery providers (Claude, Codex, Gemini, Cursor, OpenCode) can also contribute project-level settings from their own files; those are read-only from `veyyon` settings commands and can be turned off by provider id (see [Provider and source disabling](#provider-and-source-disabling)).
 
@@ -63,7 +63,7 @@ This only controls the startup splash animation. It does not rerun setup or chan
 | `veyyon config get <key>` | Print the effective value of one key. Unknown keys exit non-zero. `--json` emits `{ key, value, type, description }`. |
 | `veyyon config set <key> <value>` | Parse `<value>` against the key's schema type and write it to the global `config.yml`. |
 | `veyyon config reset <key>` | Write the key's schema **default** back to the global config (this persists the default, it does not delete the key). |
-| `veyyon config path` | Print the active agent directory (honors `PI_CODING_AGENT_DIR`). |
+| `veyyon config path` | Print the active agent directory (honors `VEYYON_CODING_AGENT_DIR`). |
 
 `veyyon config` with no subcommand, or `--help`, prints the help and lists settings. The `--json` flag is accepted by `list`, `get`, `set`, and `reset`.
 
@@ -120,7 +120,7 @@ Environment variables are **not** a single settings layer. Each is read by the f
 | `PI_TINY_DTYPE` | `providers.tinyModelDtype` | ONNX precision for local tiny models. |
 | `OMP_AUTH_BROKER_URL` | `auth.broker.url` | Env value takes precedence over config. |
 | `OMP_AUTH_BROKER_TOKEN` | `auth.broker.token` | Env value takes precedence over config. |
-| `PI_CODING_AGENT_DIR` | (relocates agent dir) | Moves `config.yml`, `agent.db`, and the whole agent base. |
+| `VEYYON_CODING_AGENT_DIR` (legacy `PI_CODING_AGENT_DIR`) | (relocates agent dir) | Moves `config.yml`, `agent.db`, and the whole agent base. |
 
 Provider API keys are resolved separately (stored auth, OAuth, `models.yml`, environment, and `.env` files); see [Providers](./providers.md) and the full [Environment variables](./environment-variables.md) reference.
 

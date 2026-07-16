@@ -1,6 +1,6 @@
 # Getting started
 
-Install Veyyon, point it at a model, and land your first approved edit. Budget about five minutes.
+Install Veyyon, complete the first-run ceremony, and land your first approved edit. Budget about five minutes.
 
 ## 1. Install
 
@@ -24,9 +24,17 @@ $ bun dev --version
 
 Shell completions: `veyyon completions bash|zsh|fish`. See [Install](./install.md).
 
-## 2. Point Veyyon at a model
+## 2. First launch — the setup ceremony
 
-On first interactive launch, `/setup providers` (or the setup wizard) walks sign-in and API keys.
+The first interactive `veyyon` (or an explicit `veyyon setup`) opens a fullscreen ceremony:
+
+1. **Splash** — silver wordmark reveal
+2. **Providers** — sign in to a model provider; optional web search tab
+3. **Glyphs** — Nerd Font / Unicode / ASCII for your terminal
+4. **Theme** — Titanium (default dark), Light, or browse
+5. **Outro** — handoff into the session welcome
+
+Re-run the provider panel later with `/setup` or `/providers` inside the TUI. Skip the ceremony with `VEYYON_SKIP_SETUP=1` (or resume an existing session).
 
 **API key (example):** set `DEEPSEEK_API_KEY` in the environment, then pick a DeepSeek model in `/model`.
 
@@ -45,7 +53,7 @@ providers:
         maxTokens: 8192
 ```
 
-**OAuth providers:** `/login` or `/login anthropic` inside the TUI.
+**OAuth providers:** `/login` or `/login anthropic` inside the TUI (same flows the Providers scene uses).
 
 Details: [Models and providers](./models.md), [Configuring providers](./configuring-providers.md), engine doc `docs/providers.md`.
 

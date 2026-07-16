@@ -4,7 +4,7 @@ Providers are the model backends `veyyon` can route requests to: Anthropic, Open
 
 A **provider** is the account or backend namespace, such as `anthropic`, `openai`, `google`, or `ollama`. A **model** is a concrete model under that provider, selected as `provider/model-id`, such as `anthropic/claude-opus-4-6`. Disabling a provider removes every model under it from selection; if you only want to narrow individual models, use model settings instead.
 
-This page covers how providers become available, how credentials are resolved, the provider/environment-variable map, local engines, disabling providers, and custom providers. For endpoint-specific request, reasoning, tool, stream, usage, and retry constraints, see [Provider endpoint constraints](./internal/provider-endpoint-constraints.md). For model selection and the full `models.yml` schema, see [Model and Provider Configuration](./models.md). For config-file locations and merge precedence, see [Settings](./settings.md). For credential storage and login flows in depth, see [Secrets and credentials](./secrets.md). For the complete environment-variable reference, see [Environment variables](./environment-variables.md). For local engine setup, see [Local models](./local-models.md). For context-file discovery providers, see [Context files](./context-files.md).
+This page covers how providers become available, how credentials are resolved, the provider/environment-variable map, local engines, disabling providers, and custom providers. For endpoint-specific request, reasoning, tool, stream, usage, and retry constraints, see [Provider endpoint constraints](./internal/provider-endpoint-constraints.md). For model selection and the full `models.yml` schema, see [Model and Provider Configuration](./models.md). For config-file locations and merge precedence, see [Settings](./settings.md). For credential storage and login flows in depth, see [Secrets and credentials](./secrets.md). For the complete environment-variable reference, see [Environment variables](./environment-variables.md). For the embedded tiny-model engineering record (title/memory/auto-thinking local models), see [Local tiny models](./internal/local-tiny-models.md). For context-file discovery providers, see [Context files](./context-files.md).
 
 ## How `veyyon` decides a provider is available
 
@@ -35,7 +35,7 @@ When a provider needs an API key, `veyyon` resolves it in this order (first matc
 5. **Provider environment variable** — including values loaded from `.env` files (see [the env-var table](#environment-variables-and-env-files)).
 6. **`models.yml` fallback resolver** — keys for custom providers not otherwise registered.
 
-Stored credentials live in the auth store at `~/.veyyon/agent/agent.db` for local auth, or in the configured auth-broker snapshot when running in broker mode. (`PI_CODING_AGENT_DIR` relocates the `~/.veyyon/agent` base, and the auth store moves with it.)
+Stored credentials live in the auth store at `~/.veyyon/agent/agent.db` for local auth, or in the configured auth-broker snapshot when running in broker mode. (`VEYYON_CODING_AGENT_DIR`, legacy `PI_CODING_AGENT_DIR`, relocates the `~/.veyyon/agent` base, and the auth store moves with it.)
 
 ### OAuth vs API key, and provider-scoped logins
 
@@ -176,7 +176,7 @@ These implicit engines are **skipped** when:
 - a provider with the same ID is already configured in `models.yml` (your explicit config wins); or
 - the provider ID appears in the effective `disabledProviders` list.
 
-For installing and running these engines, see [Local models](./local-models.md).
+Install and run these engines with their own tooling (`ollama serve`, `llama-server`, LM Studio); Veyyon discovers a running endpoint automatically via the table above.
 
 ## Disabling model providers
 

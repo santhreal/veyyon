@@ -46,10 +46,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-60567633.js";
+            window.path_to_searchindex_js = "../searchindex-c7a85c3d.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-40ee9e8c.js"></script>
+        <script src="../toc-b266b4db.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -201,6 +201,7 @@
 <p>That relocation is uniform across settings, sessions, blobs, slash commands, rules, prompts, hooks, tools, extensions, skills, MCP, keybindings, theme, and top-level instruction files (<code>SYSTEM.md</code>, <code>RULES.md</code>, <code>AGENTS.md</code>) discovered from the user agent dir. A named profile does <strong>not</strong> read another profile’s <code>agent/</code> tree at runtime.</p>
 <p><strong>Keybindings:</strong> each profile owns <code>agent/keybindings.*</code>. New profiles seeded with <code>veyyon profile new --from default</code> copy the default profile’s keybindings once. On first launch of an older named profile that has no keybindings file, Veyyon performs the same one-time seed and logs it. There is no live merge from the default profile after that.</p>
 <p>Project-level dirs (<code>&lt;cwd&gt;/.veyyon</code>, <code>.claude</code>, etc.) are <strong>not</strong> profile-scoped; they follow the working directory.</p>
+<p><strong>Other tools’ config</strong> (skills and <code>CLAUDE.md</code>/<code>AGENTS.md</code> written for Claude, Codex, and similar) is on by default and controlled per profile by <code>discovery.importForeignConfig</code>, so one profile can keep importing it while another opts out to run native-only. Another tool’s own global dir (<code>~/.claude/skills</code>, …) cannot be relocated into a profile — see <a href="./skills.html#profiles-isolate-skills">Skills › Profiles isolate skills</a>.</p>
 <h2 id="activating-a-profile"><a class="header" href="#activating-a-profile">Activating a profile</a></h2>
 <ul>
 <li><strong>CLI:</strong> <code>veyyon --profile &lt;name&gt;</code> (no short form; <code>-p</code> is <code>--print</code>).</li>

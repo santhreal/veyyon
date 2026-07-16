@@ -329,7 +329,7 @@ Current no-op methods in this controller:
 `ctx.ui` is backed by RPC `extension_ui_request` events:
 
 - dialog methods (`select`, `confirm`, `input`, `editor`) round-trip to client responses
-- fire-and-forget methods emit requests (`notify`, `setStatus`, `setWidget` for string arrays, `setEditorText`; `setTitle` emits only when `PI_RPC_EMIT_TITLE=1`)
+- fire-and-forget methods emit requests (`notify`, `setStatus`, `setWidget` for string arrays, `setEditorText`; `setTitle` emits only when `VEYYON_RPC_EMIT_TITLE=1` — legacy alias `PI_RPC_EMIT_TITLE`)
 
 Unsupported/no-op in RPC implementation:
 

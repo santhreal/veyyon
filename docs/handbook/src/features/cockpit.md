@@ -7,8 +7,8 @@ A full IRC-style live multi-agent dashboard (model-per-subagent, drill-in panels
 ## Status line (built)
 
 The bottom status bar summarizes model, path, git, tokens, cost, context, subagents, and related
-session state. Configure it in **Settings → Appearance → Status Line** (`/settings`) or in
-`config.yml`:
+session state. Configure it in **Settings → Appearance → Status Line**, reached via `/statusline`
+(jumps straight to this group) or `/settings`, or in `config.yml`:
 
 | Key | Purpose |
 | --- | --- |
@@ -18,20 +18,26 @@ session state. Configure it in **Settings → Appearance → Status Line** (`/se
 | `statusLine.sessionAccent` | Color the bar from the session accent |
 | `statusLine.showHookStatus` | Show active hook status when hooks run |
 
-Built-in segment IDs include `model`, `path`, `git`, `pr`, `subagents`, `context_pct`,
-`token_in`, `token_out`, `token_total`, `token_rate`, `cost`, `usage`, `collab`, `mode`
-(plan/goal/loop indicators), `session`, `session_name`, `time`, and `hostname`.
+There are 24 built-in segment IDs (`StatusLineSegmentId`): `pi`, `model`, `mode` (plan/goal/loop
+indicators), `path`, `git`, `pr`, `subagents`, `token_in`, `token_out`, `token_total`,
+`token_rate`, `cost`, `context_pct`, `context_total`, `time_spent`, `time`, `session`, `hostname`,
+`cache_read`, `cache_write`, `cache_hit`, `session_name`, `usage`, and `collab`.
 
-> **Spec — not shipped:** an interactive `/statusline` picker with 28 toggleable item IDs, a terminal
-> title composer (`/title`), and terminal pets (`/pets`). Veyyon uses preset-based status lines only.
+**Shipped today:** `/statusline` opens Settings pre-focused on the Status Line group (preset,
+separator, and toggles), and `preset: custom` + `leftSegments`/`rightSegments` in `config.yml` give
+full control over which of the 24 IDs appear and in what order.
+
+> **Spec — not shipped:** an in-TUI interactive picker that lets you toggle/reorder individual
+> segment IDs without hand-editing `config.yml` (no per-segment checkbox/drag UI exists), a terminal
+> title composer (`/title`), and terminal pets (`/pets`).
 
 ## Session tree and branching (built)
 
 | Command | What it does |
 | --- | --- |
 | `/tree` | Browse the session entry tree and jump or label entries |
-| `/branch` | Start a branch from the current leaf |
-| `/fork` | Fork from an earlier message |
+| `/branch` | Pick an earlier user message and branch a new session file from it |
+| `/fork` | Duplicate the entire current session into a new file (no entry picker) |
 | `/session info` | Session metadata and stats |
 | `/agents` | Configure task subagent definitions (bundled/project/user) |
 | `/cockpit` | Live multi-agent monitor: status, model per agent, drill-in transcript |
@@ -69,6 +75,7 @@ State and logs persist under `<workspace>/.swarm_<name>/` (`state/pipeline.json`
 with status, unread IRC count, model badge, and drill-in transcript chat. Same surface as the
 `app.agents.hub` keybinding.
 
-**Spec — not shipped:** full IRC-style dashboard with channel tabs, terminal title composer, and
-28-segment interactive `/statusline` picker. Use `/cockpit`, `/jobs`, `/tree`, swarm status files,
-and the `irc` tool for multi-agent visibility today.
+**Spec — not shipped:** full IRC-style dashboard with channel tabs, terminal title composer, and an
+interactive per-segment status-line picker (`/statusline` opens settings, not a picker — see
+above). Use `/cockpit`, `/jobs`, `/tree`, swarm status files, and the `irc` tool for multi-agent
+visibility today.

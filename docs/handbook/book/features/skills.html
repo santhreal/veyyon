@@ -46,10 +46,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-60567633.js";
+            window.path_to_searchindex_js = "../searchindex-c7a85c3d.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-40ee9e8c.js"></script>
+        <script src="../toc-b266b4db.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -210,6 +210,41 @@
 </tbody>
 </table>
 </div>
+<h2 id="other-tools-skills-and-config-on-by-default"><a class="header" href="#other-tools-skills-and-config-on-by-default">Other tools’ skills and config (on by default)</a></h2>
+<p>By default Veyyon also discovers skills, context files (<code>CLAUDE.md</code>, standalone
+<code>AGENTS.md</code>), rules, and MCP servers authored for other AI coding tools —
+Claude, Codex, Gemini, Cursor, opencode, Windsurf, Cline, and similar — found on
+disk. Your global <code>CLAUDE.md</code> and existing external skills load as a shared base
+layer, so Veyyon works with the config you already have.</p>
+<p>To run Veyyon on its <strong>own</strong> config only, turn off the single toggle in
+<strong>Settings › Providers › Discovery › Import Other Tools’ Config</strong>, or set it in
+<code>config.yml</code>:</p>
+<pre><code class="language-yaml">discovery:
+  importForeignConfig: false
+</code></pre>
+<p>When it is off, those foreign sources are skipped entirely — they never appear
+in <code>/skills</code>, in the enable/disable list, or in the model’s context. When it is
+on (the default), the per-source toggles under <code>skills.*</code> (for example
+<code>skills.enableClaudeUser</code>) give finer control. Veyyon’s own <code>AGENTS.md</code> lives in
+<code>.veyyon/</code> (project) and <code>$HOME/.veyyon/agent</code> (user); those are always read and
+are not affected by this toggle.</p>
+<h2 id="profiles-isolate-skills"><a class="header" href="#profiles-isolate-skills">Profiles isolate skills</a></h2>
+<p>Each <a href="./profiles.html">profile</a> is a separate config root
+(<code>$HOME/.veyyon/profiles/&lt;name&gt;/agent</code>). Every skill source Veyyon owns — user
+skills, managed (auto-learn) skills, and plugin skills — resolves under that
+root, so profiles never share a skill directory:</p>
+<ul>
+<li>Switching profiles re-homes user and managed skills to the active profile.</li>
+<li>The <code>discovery.importForeignConfig</code> toggle and all <code>skills.*</code> settings are
+stored per profile, so one profile can import other tools’ skills while
+another stays clean.</li>
+</ul>
+<p>Two things are shared on purpose: <strong>project</strong> skills (<code>.veyyon/skills</code> next to
+your code) belong to the repository, not a profile; and another tool’s own skill
+directory (<code>$HOME/.claude/skills</code>, …) is global to the machine — a profile
+cannot relocate it, so per-profile isolation there means each profile decides
+independently whether to import it (via <code>discovery.importForeignConfig</code>, which
+is stored per profile and on by default).</p>
 <h2 id="skill-structure"><a class="header" href="#skill-structure">Skill structure</a></h2>
 <p>Each skill is defined in its own subdirectory containing a <code>SKILL.md</code> file.</p>
 <h3 id="the-skill-file-skillmd"><a class="header" href="#the-skill-file-skillmd">The skill file (<code>SKILL.md</code>)</a></h3>

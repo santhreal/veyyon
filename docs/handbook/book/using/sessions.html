@@ -46,10 +46,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-60567633.js";
+            window.path_to_searchindex_js = "../searchindex-c7a85c3d.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-40ee9e8c.js"></script>
+        <script src="../toc-b266b4db.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -202,13 +202,14 @@ resume metadata rather than relying on the model to remember everything from raw
 <ul>
 <li>Start fresh with <code>veyyon</code>.</li>
 <li>Continue saved work from the session picker on launch, or <code>/resume</code> inside the TUI.</li>
-<li>Branch a previous conversation with <code>/fork</code> (or <code>/clone</code>).</li>
+<li>Branch a previous conversation with <code>/branch</code> (from a chosen user message) or duplicate the whole
+session with <code>/fork</code>.</li>
 <li>Manage saved sessions with <code>/session</code>; garbage-collect old artifacts with <code>veyyon gc</code>.</li>
 <li>Run a bounded non-interactive task by passing a prompt: <code>veyyon "…"</code>.</li>
 </ul>
 <blockquote>
 <p><strong>Spec — not shipped:</strong> top-level <code>veyyon resume</code> / <code>fork</code> / <code>archive</code> verbs. Veyyon resumes from
-the launch picker or <code>/resume</code>, and branches with <code>/fork</code> / <code>/clone</code>.</p>
+the launch picker or <code>/resume</code>, and branches with <code>/branch</code> / <code>/fork</code> (there is no <code>/clone</code>).</p>
 </blockquote>
 <h2 id="long-work"><a class="header" href="#long-work">Long work</a></h2>
 <p>For large tasks, make the desired outcome explicit. The harness should preserve active instructions,
@@ -243,19 +244,35 @@ conversation</strong> resets to an empty conversation with the original prompt r
 render as <code>[label]</code> tags in the tree; the corresponding <code>tui</code> option in <code>config.yml</code> also shows when
 each label was set. Submitting empty text, or picking <strong>Clear label</strong>, removes it.</li>
 </ul>
-<p>The tree view offers filter tabs: the conversation view (default), user messages only, labeled
-entries only, and every raw entry. Typing filters rows by preview and label text. A <code>tui</code> option in
-<code>config.yml</code> (<code>conversation</code>, <code>user</code>, <code>labeled</code>, or <code>all</code>) picks the tab the view opens on.</p>
-<h3 id="forking-from-an-earlier-point"><a class="header" href="#forking-from-an-earlier-point">Forking from an earlier point</a></h3>
-<p><code>/fork</code> opens a picker: fork the whole session, or pick an earlier user message to fork from just
-before it: the new session file keeps only the history up to that point and the message text is
-recalled into the composer for edit-and-resubmit. The original session is never modified. The launch
-session picker forks a recorded session the same way at startup. Programmatic clients pass
-<code>forkAtEntry</code> (a <code>thread/tree/read</code> entry id) to <code>thread/fork</code>; an unknown entry id fails loudly
-instead of silently forking the full history.</p>
-<p><code>/clone</code> duplicates the current session at the current position without a picker: the active
-branch is copied into a new session file that resumes independently, and abandoned branches stay
-behind in the original.</p>
+<p>The tree view filter modes (<code>treeFilterMode</code> in <code>config.yml</code>, also toggled in the <code>/tree</code> UI) are:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Mode</th><th>What it shows</th></tr>
+</thead>
+<tbody>
+<tr><td><code>default</code></td><td>Conversation entries (hides low-signal noise)</td></tr>
+<tr><td><code>no-tools</code></td><td><code>default</code> plus hides tool-result-only assistant messages</td></tr>
+<tr><td><code>user-only</code></td><td>User messages only</td></tr>
+<tr><td><code>labeled-only</code></td><td>Entries with labels</td></tr>
+<tr><td><code>all</code></td><td>Every raw entry</td></tr>
+</tbody>
+</table>
+</div>
+<p>Typing filters rows by preview and label text. There is no separate Conversation/User/Labeled/All tab chrome beyond these filter modes — see <a href="../features/branching.html">Branching</a>.</p>
+<h3 id="forking-and-branching-to-a-new-file"><a class="header" href="#forking-and-branching-to-a-new-file">Forking and branching to a new file</a></h3>
+<p><code>/fork</code> and <code>/branch</code> both create a new session file and never modify the original; <code>/tree</code>
+navigation above stays inside the current file.</p>
+<ul>
+<li><strong><code>/fork</code></strong> duplicates the <strong>entire</strong> current session — every entry, including sibling branches —
+into a new persisted file. There is no entry picker; for a slice from a chosen point, use
+<code>/branch</code>. <code>veyyon --fork &lt;session-id&gt;</code> does the same at startup, and the launch session picker
+forks a recorded session the same way.</li>
+<li><strong><code>/branch</code></strong> picks an earlier <strong>user message</strong> and copies the history up to that point (or resets
+to a fresh root if the picked message is the first one) into a new session file, then recalls the
+message text into the composer for edit-and-resubmit.</li>
+</ul>
+<p>There is no <code>/clone</code> slash command in the shipped registry.</p>
 <p>Labels are stored in the session file itself as append-only bookkeeping lines (last write wins), so
 they survive resume and never rewrite history.</p>
 <h3 id="exporting-a-session"><a class="header" href="#exporting-a-session">Exporting a session</a></h3>

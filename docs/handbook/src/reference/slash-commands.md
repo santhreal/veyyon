@@ -15,6 +15,7 @@ picker. Commands below are the **builtin** set; extensions may add more.
 | `/export [path]` | Export session JSONL or HTML |
 | `/dump` | Dump debug artifacts |
 | `/session info`, `/session delete` | Session metadata or delete |
+| `/profile [name]` | List profiles, or switch (relaunches as a fresh session); `/profile new <name>` opens the copy picker; `/profile [name] rename to <new>` sets a display name |
 | `/exit`, `/quit`, `/pause` | Leave or pause |
 
 ## Model, modes, and behavior
@@ -31,7 +32,8 @@ picker. Commands below are the **builtin** set; extensions may add more.
 | `/loop` | Loop mode controls |
 | `/prewalk` | Prewalk edit path |
 | `/advisor …` | Secondary reviewer model |
-| `/settings`, `/setup` | Settings UI; `/setup providers` for auth |
+| `/settings`, `/setup` | Settings UI; `/setup` / `/providers` opens provider sign-in |
+| `/statusline` | Settings UI, jumped to Status Line (preset/segments/separator) |
 | `/reload-plugins` | Reload extensions |
 | `/force` | Force-submit queued work |
 
@@ -85,7 +87,8 @@ picker. Commands below are the **builtin** set; extensions may add more.
 
 Extension packages (e.g. **swarm**) add commands such as `/swarm run`.
 
-> **Spec — not shipped:** `/pets`, `/statusline`, `/title`, `/personality`, `/permissions`, `/profile`,
+> **Spec — not shipped:** `/pets`, `/title`, `/personality`, `/permissions`,
 > `/import`, `/archive`, `/delete`, `/diff`, `/init`, `/mention`, `/vim`, `/keymap`,
 > `/apps`, `/ide`, `/whoami`, `/memories`. Use `/settings`, `/memory`, `/hotkeys`, and
-> status-line presets instead.
+> status-line presets instead. `/statusline` (shipped) jumps into the Status Line settings
+> group, not a standalone interactive segment picker — see [Cockpit](../features/cockpit.md).

@@ -46,10 +46,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-60567633.js";
+            window.path_to_searchindex_js = "../searchindex-c7a85c3d.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-40ee9e8c.js"></script>
+        <script src="../toc-b266b4db.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -209,12 +209,13 @@ veyyon --version
 <blockquote>
 <p><strong>Spec — not shipped:</strong> a top-level <code>veyyon doctor</code> install health command. Use <code>veyyon plugin doctor</code> and the TUI <code>/debug</code> today. See <a href="../features/doctor.html">Diagnostics and health</a>.</p>
 </blockquote>
-<p>Config and sessions live under <code>~/.veyyon/agent/</code> by default (<code>PI_CONFIG_DIR</code> can rename the home-relative dir).</p>
+<p>Config and sessions live under <code>~/.veyyon/agent/</code> by default (<code>VEYYON_CONFIG_DIR</code> / <code>OMP_CONFIG_DIR</code> / <code>PI_CONFIG_DIR</code> can rename the home-relative dir).</p>
 <h2 id="start-your-first-session"><a class="header" href="#start-your-first-session">Start your first session</a></h2>
 <pre><code class="language-shell">cd my-project
 veyyon
 </code></pre>
-<p>You should see the TUI composer, model indicator, and workspace path.</p>
+<p><strong>First interactive launch</strong> shows the setup ceremony (splash → providers → glyphs → theme → outro), then the welcome screen and composer. Resume / <code>VEYYON_SKIP_SETUP=1</code> skips it. Re-open providers later with <code>/setup</code> or <code>/providers</code>, or run <code>veyyon setup</code> from the shell.</p>
+<p>After that you should see the TUI composer, model indicator, and workspace path.</p>
 <h2 id="ask-for-a-small-edit"><a class="header" href="#ask-for-a-small-edit">Ask for a small edit</a></h2>
 <pre><code class="language-text">&gt; Add a name argument to greet() in greet.py, default 'world'.
 </code></pre>

@@ -46,10 +46,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-60567633.js";
+            window.path_to_searchindex_js = "../searchindex-c7a85c3d.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-40ee9e8c.js"></script>
+        <script src="../toc-b266b4db.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -192,7 +192,7 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="install"><a class="header" href="#install">Install</a></h1>
-<p>Veyyon Code ships as the npm package <strong><code>@veyyon/pi-coding-agent</code></strong> and installs the <code>veyyon</code>
+<p>Veyyon ships as the npm package <strong><code>@veyyon/pi-coding-agent</code></strong> and installs the <code>veyyon</code>
 executable. It is a TypeScript + Bun agent loop with Rust natives (<code>@veyyon/pi-natives</code>) for hot paths
 (grep, walker, shell/PTY, hashline edits). After install, run <code>veyyon plugin doctor</code>.</p>
 <h2 id="requirements"><a class="header" href="#requirements">Requirements</a></h2>
@@ -211,6 +211,8 @@ $ veyyon --version
 $ veyyon --version
 </code></pre>
 <p><code>bun install</code> also builds <code>@veyyon/pi-natives</code>. Config and state default to <code>~/.veyyon</code>.</p>
+<h2 id="after-install"><a class="header" href="#after-install">After install</a></h2>
+<p>The first interactive <code>veyyon</code> opens the setup ceremony (splash → providers → glyphs → theme → outro). Force it again with <code>veyyon setup</code>. Re-open providers inside a session with <code>/setup</code> or <code>/providers</code>. See <a href="./getting-started.html">Getting started</a>.</p>
 <h2 id="build-from-source"><a class="header" href="#build-from-source">Build from source</a></h2>
 <pre><code class="language-console">$ git clone https://github.com/santhsecurity/veyyon.git
 $ cd veyyon
@@ -240,10 +242,10 @@ $ veyyon plugin doctor
 </code></pre>
 <p>Layout: <a href="../reference/file-locations.html">File locations</a>.</p>
 <h2 id="first-credentials"><a class="header" href="#first-credentials">First credentials</a></h2>
-<p>On first interactive launch, <code>/setup providers</code> (or the setup wizard) walks sign-in and API keys.
-Inside a session, use <code>/login</code> (or <code>/login &lt;provider&gt;</code>) for OAuth and key entry, or export the
-provider’s environment variable and skip the interactive step. See
-<a href="./authentication.html">Authentication</a> and <a href="./configuring-providers.html">Configuring providers</a>.</p>
+<p>On first interactive launch, the setup ceremony (or <code>veyyon setup</code>) walks sign-in and API keys.
+Inside a session, use <code>/setup</code> / <code>/providers</code> to re-open that panel, <code>/login</code> (or <code>/login &lt;provider&gt;</code>)
+for OAuth and key entry, or export the provider’s environment variable and skip the interactive step.
+See <a href="./authentication.html">Authentication</a> and <a href="./configuring-providers.html">Configuring providers</a>.</p>
 <h2 id="uninstall"><a class="header" href="#uninstall">Uninstall</a></h2>
 <p>Remove the global package:</p>
 <pre><code class="language-console">$ bun remove -g @veyyon/pi-coding-agent

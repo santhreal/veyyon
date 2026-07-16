@@ -1,6 +1,6 @@
 # Install
 
-Veyyon Code ships as the npm package **`@veyyon/pi-coding-agent`** and installs the `veyyon`
+Veyyon ships as the npm package **`@veyyon/pi-coding-agent`** and installs the `veyyon`
 executable. It is a TypeScript + Bun agent loop with Rust natives (`@veyyon/pi-natives`) for hot paths
 (grep, walker, shell/PTY, hashline edits). After install, run `veyyon plugin doctor`.
 
@@ -26,6 +26,10 @@ $ veyyon --version
 ```
 
 `bun install` also builds `@veyyon/pi-natives`. Config and state default to `~/.veyyon`.
+
+## After install
+
+The first interactive `veyyon` opens the setup ceremony (splash → providers → glyphs → theme → outro). Force it again with `veyyon setup`. Re-open providers inside a session with `/setup` or `/providers`. See [Getting started](./getting-started.md).
 
 ## Build from source
 
@@ -72,10 +76,10 @@ Layout: [File locations](../reference/file-locations.md).
 
 ## First credentials
 
-On first interactive launch, `/setup providers` (or the setup wizard) walks sign-in and API keys.
-Inside a session, use `/login` (or `/login <provider>`) for OAuth and key entry, or export the
-provider's environment variable and skip the interactive step. See
-[Authentication](./authentication.md) and [Configuring providers](./configuring-providers.md).
+On first interactive launch, the setup ceremony (or `veyyon setup`) walks sign-in and API keys.
+Inside a session, use `/setup` / `/providers` to re-open that panel, `/login` (or `/login <provider>`)
+for OAuth and key entry, or export the provider's environment variable and skip the interactive step.
+See [Authentication](./authentication.md) and [Configuring providers](./configuring-providers.md).
 
 ## Uninstall
 

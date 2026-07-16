@@ -140,7 +140,7 @@ $ veyyon --profile work
 $ # edit ~/.veyyon/profiles/work/agent/config.yml
 ```
 
-Activate with `--profile <name>` (short `-p`), or `VEYYON_PROFILE=<name>` (legacy `OMP_PROFILE` /
+Activate with `--profile <name>` (no short form — `-p` is `--print`), or `VEYYON_PROFILE=<name>` (legacy `OMP_PROFILE` /
 `PI_PROFILE`). Profiles are chosen at process start; there is no `/profile` switch mid-session. See
 [Profiles](../features/profiles.md).
 

@@ -29,7 +29,7 @@ Optional: `/debug` in the TUI for interactive diagnostics.
 
 > **Spec — not shipped:** a top-level `veyyon doctor` install health command. Use `veyyon plugin doctor` and the TUI `/debug` today. See [Diagnostics and health](../features/doctor.md).
 
-Config and sessions live under `~/.veyyon/agent/` by default (`PI_CONFIG_DIR` can rename the home-relative dir).
+Config and sessions live under `~/.veyyon/agent/` by default (`VEYYON_CONFIG_DIR` / `OMP_CONFIG_DIR` / `PI_CONFIG_DIR` can rename the home-relative dir).
 
 ## Start your first session
 
@@ -38,7 +38,9 @@ cd my-project
 veyyon
 ```
 
-You should see the TUI composer, model indicator, and workspace path.
+**First interactive launch** shows the setup ceremony (splash → providers → glyphs → theme → outro), then the welcome screen and composer. Resume / `VEYYON_SKIP_SETUP=1` skips it. Re-open providers later with `/setup` or `/providers`, or run `veyyon setup` from the shell.
+
+After that you should see the TUI composer, model indicator, and workspace path.
 
 ## Ask for a small edit
 

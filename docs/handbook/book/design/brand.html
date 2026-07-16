@@ -46,10 +46,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-60567633.js";
+            window.path_to_searchindex_js = "../searchindex-c7a85c3d.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-40ee9e8c.js"></script>
+        <script src="../toc-b266b4db.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -192,7 +192,8 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="brand-and-identity"><a class="header" href="#brand-and-identity">Brand and identity</a></h1>
-<p>Cross-product identity is defined in the workspace <a href="https://github.com/santhsecurity/veyyon/blob/main/docs/brand-system.md">brand system</a>. This page is the handbook contract for how that identity appears in the Veyyon harness (CLI, TUI, packages, config paths, and docs).</p>
+<p>Cross-product identity: workspace <a href="https://github.com/santhsecurity/veyyon/blob/main/docs/brand-system.md">brand system</a>.
+This page is how that identity shows up in the Veyyon harness (CLI, TUI, packages, config paths, docs).</p>
 <h2 id="product-identity"><a class="header" href="#product-identity">Product identity</a></h2>
 <div class="table-wrapper">
 <table>
@@ -200,25 +201,29 @@
 <tr><th>Item</th><th>Value</th></tr>
 </thead>
 <tbody>
-<tr><td>Product</td><td>Veyyon</td></tr>
-<tr><td>CLI / TUI product name</td><td>Veyyon Code (user-facing harness)</td></tr>
-<tr><td>Executable</td><td><code>veyyon</code></td></tr>
-<tr><td>npm scope</td><td><code>@veyyon/*</code> (for example <code>@veyyon/pi-coding-agent</code>)</td></tr>
-<tr><td>Config home</td><td><code>~/.veyyon</code> (override dir name with <code>PI_CONFIG_DIR</code>; Linux XDG via <code>veyyon config init-xdg</code>)</td></tr>
+<tr><td>Product name</td><td><strong>Veyyon</strong> (only name — not “Veyyon Code”)</td></tr>
+<tr><td>Primary command</td><td><code>veyyon</code></td></tr>
+<tr><td>Short alias</td><td><code>vey</code></td></tr>
+<tr><td>npm scope</td><td><code>@veyyon/*</code> (e.g. <code>@veyyon/pi-coding-agent</code>)</td></tr>
+<tr><td>Config home</td><td><code>~/.veyyon</code> (<code>VEYYON_CONFIG_DIR</code> / legacy <code>OMP_CONFIG_DIR</code> / <code>PI_CONFIG_DIR</code>)</td></tr>
 <tr><td>Profile env</td><td><code>VEYYON_PROFILE</code> (also accepts legacy <code>OMP_PROFILE</code> / <code>PI_PROFILE</code>)</td></tr>
 </tbody>
 </table>
 </div>
-<p>Veyyon is a fork of <a href="https://github.com/can1357/oh-my-pi">oh-my-pi</a> (MIT): TypeScript and Bun for the agent loop and TUI, Rust natives for hot paths (grep, PTY, hashline edits). Features described with a <code>&gt; **Spec — not shipped:**</code> callout are target design, not current behavior.</p>
-<p>Legal provenance stays in <code>LICENSE</code>, <code>NOTICE</code>, <code>UPSTREAM.md</code>, and <a href="../acknowledgements.html">Acknowledgements</a>. OpenAI-compatible wire formats and upstream attribution are protocol or history facts, not active product branding.</p>
+<p>Veyyon forks <a href="https://github.com/can1357/oh-my-pi">oh-my-pi</a> (MIT): TypeScript/Bun agent loop and TUI, Rust natives for hot paths (grep, PTY, hashline). Upstream provenance is license and history — not a tagline to paste into Veyyon UI or docs.</p>
+<p>Features marked <code>&gt; **Spec — not shipped:**</code> are target design, not current behavior.</p>
+<p>Legal provenance: <code>LICENSE</code>, <code>NOTICE</code>, <code>UPSTREAM.md</code>, <a href="../acknowledgements.html">Acknowledgements</a>. OpenAI-compatible wire formats are protocol facts, not product branding.</p>
+<h2 id="voice"><a class="header" href="#voice">Voice</a></h2>
+<p>Exact, restrained, technical. Name the product <strong>Veyyon</strong>. Prefer short factual sentences. No inherited slogans (“IDE wired in”), no second product name for the CLI, no mascot language, no unbacked capability claims.</p>
 <h2 id="interface-palette"><a class="header" href="#interface-palette">Interface palette</a></h2>
-<p><strong>Veyyon Dark</strong> (<code>dark.json</code>) matches the brand system. <strong>Light</strong> (<code>light.json</code>) is still the upstream oh-my-pi palette until a silver light theme ships.</p>
+<p><strong>Titanium</strong> (<code>titanium.json</code>) is the shipped <strong>default</strong> dark theme (<code>theme.dark</code> defaults to <code>titanium</code>). <strong>Veyyon Dark</strong> (<code>dark.json</code>) is an alternative on the same brand rules. <strong>Light</strong> (<code>light.json</code>) is still the upstream oh-my-pi palette until a silver light theme ships.</p>
 <div class="table-wrapper">
 <table>
 <thead>
 <tr><th>Theme</th><th>Status</th><th>Ground</th><th>Primary text</th><th>Brand accent</th><th>Highlight</th></tr>
 </thead>
 <tbody>
+<tr><td>Titanium (default)</td><td>Shipped</td><td>Pitch black <code>#000000</code></td><td><code>#e5e5e7</code></td><td>Silver <code>#B8BDC7</code></td><td>Deep blue <code>#4A84C9</code></td></tr>
 <tr><td>Veyyon Dark</td><td>Shipped</td><td>Pitch black <code>#000000</code></td><td><code>#FAFAFA</code></td><td>Silver <code>#B8BDC7</code></td><td>Deep blue <code>#4A84C9</code></td></tr>
 <tr><td>Light</td><td>Shipped (upstream)</td><td>Terminal / light gray chrome</td><td>Terminal default</td><td>Teal <code>#5a8080</code></td><td>—</td></tr>
 </tbody>
@@ -227,36 +232,35 @@
 <blockquote>
 <p><strong>Spec — not shipped:</strong> Veyyon Light with <code>#FAFAFA</code> ground-inverse and silver <code>#B8BDC7</code> (brand-system target).</p>
 </blockquote>
-<p>The ground is <strong>pitch black</strong>. On it, two colors do two clearly separate jobs:</p>
+<p>The ground is <strong>pitch black</strong>. On it, two colors do two jobs:</p>
 <ul>
-<li><strong>Silver <code>#B8BDC7</code> is the brand accent</strong> — the color you actually see. It carries the identity and all structure: the wordmark and marks, labels and kickers, rules and hairlines, focus and selection, progress, and <strong>primary actions</strong> (a primary button is silver/near-white, not blue). Silver is metallic and legible on black; keep it bright enough to read as silver, not dim gray.</li>
-<li><strong>Deep blue <code>#4A84C9</code> is a highlight only</strong> — a sparing pop on the single thing that matters in a view: a key link, an active/selected state, the input caret, one accented word. Blue is <strong>never</strong> a primary fill, a dominant surface, or the default color of chrome. If more than a little blue is showing, it is being misused. When in doubt, use silver and let one blue accent stand out.</li>
+<li><strong>Silver <code>#B8BDC7</code> is the brand accent</strong> — wordmark, labels, rules, focus, progress, primary actions.</li>
+<li><strong>Deep blue <code>#4A84C9</code> is a highlight only</strong> — one accent per view (link, caret, active state). Never a primary fill.</li>
 </ul>
-<p>Green, red, and yellow accent objects when their meaning fits (success, error, warning). They do not replace silver or blue.</p>
-<p>Supporting tones:</p>
+<p>Green, red, and yellow only when meaning fits (success, error, warning).</p>
 <div class="table-wrapper">
 <table>
 <thead>
 <tr><th>Token</th><th>Value</th><th>Use</th></tr>
 </thead>
 <tbody>
-<tr><td>Silver</td><td><code>#B8BDC7</code></td><td>Brand accent — structure, labels, marks, rules, primary actions</td></tr>
-<tr><td>Silver bright</td><td><code>#E1E4E9</code></td><td>Emphasis and hover on dark surfaces; primary-action text ground</td></tr>
-<tr><td>Silver dark</td><td><code>#747B86</code></td><td>Secondary structure and muted labels</td></tr>
-<tr><td>Deep blue</td><td><code>#4A84C9</code></td><td>Highlight — one accent per view (link, active state, caret)</td></tr>
-<tr><td>Blue bright</td><td><code>#6BA3E8</code></td><td>Link/highlight hover</td></tr>
+<tr><td>Silver</td><td><code>#B8BDC7</code></td><td>Brand accent</td></tr>
+<tr><td>Silver bright</td><td><code>#E1E4E9</code></td><td>Emphasis on dark surfaces</td></tr>
+<tr><td>Silver dark</td><td><code>#747B86</code></td><td>Secondary labels</td></tr>
+<tr><td>Deep blue</td><td><code>#4A84C9</code></td><td>Highlight</td></tr>
+<tr><td>Blue bright</td><td><code>#6BA3E8</code></td><td>Highlight hover</td></tr>
 </tbody>
 </table>
 </div>
-<p><strong>Every background is pure black <code>#000000</code>.</strong> There are no raised panels, no tinted surfaces, no elevated cards, no <code>#050505</code>/<code>#0A0A0A</code> “near-black” fills, and no colored state backgrounds (no reddish error fill, no gray selection fill). Every surface — page, card, terminal, panel, code block, status line, selected row, tool output — sits on the same pitch black. Separation and hierarchy come from <strong>silver hairline borders and text color only</strong>, never from a background fill. A selected or active element is shown with a silver rule, a caret (<code>›</code>), or brighter text — not a lighter background.</p>
-<p>Cyan, orange, purple, and rainbow (multi-color) treatments are not Veyyon chrome. <strong>No gradients and no glow</strong> — not on surfaces, buttons, marks, or text. Edges are sharp.</p>
+<p><strong>Every background is pure black <code>#000000</code>.</strong> Hierarchy from silver hairlines and text weight — not raised panels or tinted fills. No cyan/orange/purple/rainbow chrome. No gradients. No glow. Sharp edges.</p>
 <h2 id="onboarding-and-installers"><a class="header" href="#onboarding-and-installers">Onboarding and installers</a></h2>
-<p>Interactive terminals may show the Veyyon wordmark and silver progress when color is available. Piped and no-color output stays plain. Install and upgrade flows use Veyyon names and the <code>veyyon</code> executable only — no Codex/OpenAI product aliases, <code>~/.codex</code> paths, or hidden compatibility shims.</p>
+<p>Fullscreen setup: Veyyon wordmark + silver progress. No secondary product name and no upstream tagline under the mark. Install/upgrade copy uses <strong>Veyyon</strong>, commands <code>veyyon</code> / <code>vey</code> only.</p>
+<p>Session welcome is a single hero card (not a dual-column dashboard): wordmark, one value line (<code>Hashline edits that land. Your keys.</code>), action rows with right-aligned shortcuts, optional recent sessions. Settings is a width-capped centered panel.</p>
 <h2 id="documentation-contract"><a class="header" href="#documentation-contract">Documentation contract</a></h2>
 <ul>
 <li>Identity and palette: brand system + this page.</li>
 <li>Engine behavior: handbook pages reconciled to shipped code.</li>
-<li><strong>Spec — not shipped</strong>: target design (self-contained profiles, top-level <code>veyyon doctor</code>, provider-hosted connectors) until a release ships it.</li>
+<li><strong>Spec — not shipped</strong>: target design until a release ships it.</li>
 </ul>
 <p>See also: <a href="../using/themes.html">Themes and identity</a>, <a href="./tui-design-language.html">TUI design language</a>.</p>
 

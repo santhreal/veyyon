@@ -46,10 +46,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-60567633.js";
+            window.path_to_searchindex_js = "../searchindex-c7a85c3d.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-40ee9e8c.js"></script>
+        <script src="../toc-b266b4db.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -206,12 +206,20 @@ agent dir. Keys match <code>provider/model-id</code> or <code>provider/*</code> 
     "anthropic/claude-sonnet-4-20250514":
       repair: true
       tools: ["read", "edit", "grep", "bash"]
+      promptSectionOrder: ["activeRepo", "system", "project"]
     "google/*":
       repair: false
 </code></pre>
 <ul>
 <li><code>repair: false</code> skips schema repair for that model.</li>
 <li><code>tools: [...]</code> filters the initial tool allowlist (MVP hint surface).</li>
+<li><code>promptSectionOrder: [...]</code> reorders the top-level system-prompt blocks for that model. The three
+addressable blocks are <code>system</code> (the rendered <code>system-prompt.md</code>/custom prompt), <code>project</code> (the
+environment/workspace footer), and <code>activeRepo</code> (nested-repo notice, when applicable). Named
+blocks move to the front in the order given; unlisted blocks keep their default relative order
+after the named ones. This reorders whole blocks only — it does <strong>not</strong> reorder content <em>within</em>
+<code>system-prompt.md</code> (e.g. moving “Delegation” before “Tool Policy”), because that template renders
+as one piece, not a list of named sections.</li>
 </ul>
 <p>Disable all repair: <code>VEYYON_REPAIR_DISABLE=1</code>.</p>
 <h2 id="spec--not-shipped"><a class="header" href="#spec--not-shipped">Spec — not shipped</a></h2>
@@ -219,6 +227,8 @@ agent dir. Keys match <code>provider/model-id</code> or <code>provider/*</code> 
 <li>Per-<code>(model,tool,shape)</code> telemetry counters</li>
 <li>Strictness tables (refuse earlier vs coerce more) beyond the ambiguity guard</li>
 <li>Full <code>backends.toml</code> three-backend tuning</li>
+<li>Reordering <em>within</em> <code>system-prompt.md</code> (Skills vs. Tool Policy vs. Delegation, etc.) — only the
+three coarse top-level blocks above are addressable today; the template itself is monolithic.</li>
 </ul>
 <p>See <a href="./overview.html">Why repair exists</a> and <a href="../using/models.html#per-model-harness-profiles-mvp">Models</a>.</p>
 

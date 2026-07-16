@@ -37,14 +37,14 @@ Sources: [`packages/stats/README.md`](../../packages/stats/README.md), [`package
 
 ### `packages/typescript-edit-benchmark` — TypeScript edit benchmark
 
-Sources: [`packages/typescript-edit-benchmark/package.json`](../../packages/typescript-edit-benchmark/package.json), [`packages/typescript-edit-benchmark/src/index.ts`](../../packages/typescript-edit-benchmark/src/index.ts), [`packages/typescript-edit-benchmark/src/runner.ts`](../../packages/typescript-edit-benchmark/src/runner.ts), [`packages/typescript-edit-benchmark/src/tasks.ts`](../../packages/typescript-edit-benchmark/src/tasks.ts), [`packages/typescript-edit-benchmark/src/report.ts`](../../packages/typescript-edit-benchmark/src/report.ts).
+Sources: [`packages/typescript-edit-benchmark/package.json`](../../packages/typescript-edit-benchmark/package.json), [`packages/typescript-edit-benchmark/src/generate.ts`](../../packages/typescript-edit-benchmark/src/generate.ts), [`packages/typescript-edit-benchmark/src/tasks.ts`](../../packages/typescript-edit-benchmark/src/tasks.ts), [`packages/typescript-edit-benchmark/src/verify.ts`](../../packages/typescript-edit-benchmark/src/verify.ts), [`packages/typescript-edit-benchmark/src/in-process-client.ts`](../../packages/typescript-edit-benchmark/src/in-process-client.ts).
 
-There is no package README at this path today; the manifest and CLI entrypoint help are the cited package-local sources.
+There is no package README at this path today; the manifest and source headers are the cited package-local sources.
 
-- Package: private `@veyyon/typescript-edit-benchmark`; bin: `typescript-edit-benchmark`.
-- Feature: benchmark suite for evaluating coding-agent edit success on TypeScript source-code mutation fixtures.
-- CLI: `bun run bench:edit [options]` in source help; package scripts also expose `bun run src/index.ts` through `start`.
-- Key inputs: provider/model, thinking level, runs per task, timeout, task concurrency, task IDs, max tasks, fixture directory or `.tar.gz`, edit variant/fuzzy settings, guided mode, retry/turn limits, output path, report format, fixture validation, and required tool-call flags.
-- Fixtures: each task directory contains `prompt.md`, `input/`, `expected/`, and `metadata.json`; bundled distribution can use `fixtures.tar.gz`.
-- Outputs: markdown or JSON benchmark reports under `runs/` by default, with live progress and optional conversation dumps.
-- Side effects/limits: creates the repository `runs/` directory, extracts fixture archives to temp space, and runs agent sessions against copied fixtures; `--check-fixtures` validates fixture structure and exits.
+- Package: private `@veyyon/typescript-edit-benchmark`; library only (no `bin` entry — the benchmark runner lives in `packages/metaharness/adapters/edit/{cli,runner}.ts` and imports this package).
+- Feature: fixture generation, task loading, and verification for benchmarking coding-agent edit precision on TypeScript source-code mutations.
+- Modules: `generate.ts` builds fixtures by mutating a TypeScript repo (difficulty modes easy/medium/hard/nightmare; root script `bench:gen-fixtures`), `mutations.ts` defines the mutation catalog, `tasks.ts` loads tasks from a fixtures directory or `fixtures.tar.gz`, `verify.ts` compares output against expected files byte-for-byte (with format-equivalence and indent scoring), `in-process-client.ts` runs `AgentSession`s in-process to avoid per-task CLI startup cost, `formatter.ts`/`shared.ts` are support code.
+- CLI (via the metaharness edit adapter): `--model` and `--output` (required), `--tasks <ids>`, `--max-tasks` (default 80), `--task-concurrency` (default 32), `--runs`, `--list`.
+- Fixtures: each task directory contains `prompt.md`, `input/`, `expected/`, and `metadata.json`; bundled distribution uses `fixtures.tar.gz`.
+- Outputs: JSON result snapshots written to the adapter's `--output` path, plus conversation dumps in a sibling `result.dump/` directory.
+- Side effects/limits: extracts fixture archives to temp space and runs agent sessions against copied fixture inputs.

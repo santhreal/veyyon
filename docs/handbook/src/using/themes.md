@@ -1,15 +1,16 @@
 # Themes and identity
 
-Veyyon Code's interface is built around near-black, near-white, and a persistent **Veyyon silver** accent (`#B8BDC7`).
+Veyyon's interface is built around near-black, near-white, and a persistent **Veyyon silver** accent (`#C6CBD4`).
 
 ## Shipped themes
 
 | File | Name | Notes |
 | --- | --- | --- |
-| `dark.json` | Veyyon Dark | Rebranded: `#050505` / `#FAFAFA` / silver `#B8BDC7` |
-| `light.json` | Light | Upstream oh-my-pi palette (teal accent); not yet silver-rebranded |
+| `defaults/titanium.json` | Titanium | **Default dark theme.** Pitch black `#000000`, silver `#C6CBD4`, ember accent `#F0862E` — matches the website tokens (`website/site.css`) |
+| `dark.json` | Veyyon Dark | Pitch black `#000000` / `#FAFAFA` / silver `#B8BDC7`; predates the ember accent |
+| `light.json` | Light | **Default light theme.** Titanium's inverse: white `#FFFFFF` ground, dark-silver structure `#5C6470`, ember accent (`#F0862E` chrome, `#B65E14` links) — see `docs/internal/design.md` "Light ground" |
 
-> **Spec — not shipped:** Veyyon Light with inverted black/white poles and a persistent silver accent.
+A larger bundled catalog ships under `modes/theme/defaults/` and is selectable from the theme picker.
 
 ## Changing theme
 

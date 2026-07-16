@@ -3,10 +3,6 @@
 </p>
 
 <p align="center">
-  <strong>A coding agent with the IDE wired in.</strong>
-</p>
-
-<p align="center">
   <a href="https://www.npmjs.com/package/@veyyon/pi-coding-agent"><img src="https://img.shields.io/npm/v/@veyyon/pi-coding-agent?style=flat&colorA=222222&colorB=CB3837" alt="npm version"></a>
   <a href="https://github.com/santhsecurity/veyyon/blob/main/packages/coding-agent/CHANGELOG.md"><img src="https://img.shields.io/badge/changelog-keep-E05735?style=flat&colorA=222222" alt="Changelog"></a>
   <a href="https://github.com/santhsecurity/veyyon/actions"><img src="https://img.shields.io/github/actions/workflow/status/santhsecurity/veyyon/ci.yml?style=flat&colorA=222222&colorB=3FB950" alt="CI"></a>
@@ -22,7 +18,7 @@
 </p>
 
 
-The most capable agent surface that ships. Continuously tuned by real-world use — complete out of the box, open all the way down.
+Terminal coding agent. Hashline edits that land. Your keys. Open all the way down.
 
 **40+** providers · **32** built-in tools · **14** lsp ops · **28** dap ops · **~55k** lines of Rust core.
 
@@ -33,6 +29,8 @@ The most capable agent surface that ships. Continuously tuned by real-world use 
 ```sh
 bun install -g @veyyon/pi-coding-agent
 ```
+
+First interactive `veyyon` opens the setup ceremony (providers, glyphs, theme). Re-run with `veyyon setup`.
 
 **From source**
 

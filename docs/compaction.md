@@ -388,6 +388,10 @@ Can:
 
 Post-navigation event exposing new/old leaf and optional summary entry.
 
+## Which model compacts
+
+`compaction.model` (settings/`config.yml`, `--compaction-model` CLI, or the Compaction Model picker in `/settings`) selects the model used for LLM compaction and handoff generation. **Default: unset — compaction inherits the main session model live**, so switching the session model also switches the compactor. When set, `resolveCompactionModelPatterns` expands the value through the normal pattern/role resolution (role aliases like `"@smol"` and `:thinking` suffixes work), and auto compaction tries the resulting candidates in order. Legacy config keys `compaction.compactionModel` / top-level `compactionModel` are migrated to `compaction.model` on load.
+
 ## Runtime behavior and failure semantics
 
 - Manual compaction aborts current agent operation first.

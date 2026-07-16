@@ -16,6 +16,49 @@ Veyyon loads skills from several locations depending on the desired scope.
 | **Project** | `.veyyon/skills` | Project-scoped skills placed at the root of a repository. |
 | **Repository** | `.agents/skills` | Local skills discovered incrementally in directories between the working directory and the project root. |
 
+## Other tools' skills and config (on by default)
+
+By default Veyyon also discovers skills, context files (`CLAUDE.md`, standalone
+`AGENTS.md`), rules, and MCP servers authored for other AI coding tools —
+Claude, Codex, Gemini, Cursor, opencode, Windsurf, Cline, and similar — found on
+disk. Your global `CLAUDE.md` and existing external skills load as a shared base
+layer, so Veyyon works with the config you already have.
+
+To run Veyyon on its **own** config only, turn off the single toggle in
+**Settings › Providers › Discovery › Import Other Tools' Config**, or set it in
+`config.yml`:
+
+```yaml
+discovery:
+  importForeignConfig: false
+```
+
+When it is off, those foreign sources are skipped entirely — they never appear
+in `/skills`, in the enable/disable list, or in the model's context. When it is
+on (the default), the per-source toggles under `skills.*` (for example
+`skills.enableClaudeUser`) give finer control. Veyyon's own `AGENTS.md` lives in
+`.veyyon/` (project) and `$HOME/.veyyon/agent` (user); those are always read and
+are not affected by this toggle.
+
+## Profiles isolate skills
+
+Each [profile](./profiles.md) is a separate config root
+(`$HOME/.veyyon/profiles/<name>/agent`). Every skill source Veyyon owns — user
+skills, managed (auto-learn) skills, and plugin skills — resolves under that
+root, so profiles never share a skill directory:
+
+- Switching profiles re-homes user and managed skills to the active profile.
+- The `discovery.importForeignConfig` toggle and all `skills.*` settings are
+  stored per profile, so one profile can import other tools' skills while
+  another stays clean.
+
+Two things are shared on purpose: **project** skills (`.veyyon/skills` next to
+your code) belong to the repository, not a profile; and another tool's own skill
+directory (`$HOME/.claude/skills`, ...) is global to the machine — a profile
+cannot relocate it, so per-profile isolation there means each profile decides
+independently whether to import it (via `discovery.importForeignConfig`, which
+is stored per profile and on by default).
+
 ## Skill structure
 
 Each skill is defined in its own subdirectory containing a `SKILL.md` file.
@@ -58,7 +101,7 @@ Here is an example `agents/openai.yaml` file.
 interface:
   display_name: "Code Auditor"
   short_description: "Audit code for typical issues"
-  brand_color: "#B8BDC7"
+  brand_color: "#C6CBD4"
   default_prompt: "Audit the files in the current workspace"
 dependencies:
   tools:

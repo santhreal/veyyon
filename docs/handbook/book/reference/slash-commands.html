@@ -46,10 +46,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-60567633.js";
+            window.path_to_searchindex_js = "../searchindex-c7a85c3d.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-40ee9e8c.js"></script>
+        <script src="../toc-b266b4db.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -230,7 +230,8 @@ picker. Commands below are the <strong>builtin</strong> set; extensions may add 
 <tr><td><code>/loop</code></td><td>Loop mode controls</td></tr>
 <tr><td><code>/prewalk</code></td><td>Prewalk edit path</td></tr>
 <tr><td><code>/advisor …</code></td><td>Secondary reviewer model</td></tr>
-<tr><td><code>/settings</code>, <code>/setup</code></td><td>Settings UI; <code>/setup providers</code> for auth</td></tr>
+<tr><td><code>/settings</code>, <code>/setup</code></td><td>Settings UI; <code>/setup</code> / <code>/providers</code> opens provider sign-in</td></tr>
+<tr><td><code>/statusline</code></td><td>Settings UI, jumped to Status Line (preset/segments/separator)</td></tr>
 <tr><td><code>/reload-plugins</code></td><td>Reload extensions</td></tr>
 <tr><td><code>/force</code></td><td>Force-submit queued work</td></tr>
 </tbody>
@@ -306,10 +307,11 @@ picker. Commands below are the <strong>builtin</strong> set; extensions may add 
 </div>
 <p>Extension packages (e.g. <strong>swarm</strong>) add commands such as <code>/swarm run</code>.</p>
 <blockquote>
-<p><strong>Spec — not shipped:</strong> <code>/pets</code>, <code>/statusline</code>, <code>/title</code>, <code>/personality</code>, <code>/permissions</code>, <code>/profile</code>,
+<p><strong>Spec — not shipped:</strong> <code>/pets</code>, <code>/title</code>, <code>/personality</code>, <code>/permissions</code>, <code>/profile</code>,
 <code>/import</code>, <code>/archive</code>, <code>/delete</code>, <code>/diff</code>, <code>/init</code>, <code>/mention</code>, <code>/vim</code>, <code>/keymap</code>,
 <code>/apps</code>, <code>/ide</code>, <code>/whoami</code>, <code>/memories</code>. Use <code>/settings</code>, <code>/memory</code>, <code>/hotkeys</code>, and
-status-line presets instead.</p>
+status-line presets instead. <code>/statusline</code> (shipped) jumps into the Status Line settings
+group, not a standalone interactive segment picker — see <a href="../features/cockpit.html">Cockpit</a>.</p>
 </blockquote>
 
                     </main>

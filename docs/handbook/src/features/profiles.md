@@ -18,13 +18,23 @@ That relocation is uniform across settings, sessions, blobs, slash commands, rul
 
 Project-level dirs (`<cwd>/.veyyon`, `.claude`, etc.) are **not** profile-scoped; they follow the working directory.
 
+**Other tools' config** (skills and `CLAUDE.md`/`AGENTS.md` written for Claude, Codex, and similar) is on by default and controlled per profile by `discovery.importForeignConfig`, so one profile can keep importing it while another opts out to run native-only. Another tool's own global dir (`~/.claude/skills`, …) cannot be relocated into a profile — see [Skills › Profiles isolate skills](./skills.md#profiles-isolate-skills).
+
 ## Activating a profile
 
 - **CLI:** `veyyon --profile <name>` (no short form; `-p` is `--print`).
 - **Env:** `VEYYON_PROFILE=<name>` (legacy: `OMP_PROFILE`, `PI_PROFILE`).
+- **TUI:** `/profile <name>` ends the current conversation and relaunches Veyyon on that profile (a fresh session — profiles are chosen at process start, so there is no hot-swap). Bare `/profile` lists profiles with the active one marked.
 - **Shell alias:** `veyyon --profile work --alias mywork` installs a managed block in your shell rc (see `cli/profile-alias.ts`).
 
-Profiles are chosen at process start. There is no `/profile` slash command in the shipped TUI; start a new `veyyon` invocation to switch.
+## Profile names and renaming
+
+A profile's directory name (`~/.veyyon/profiles/<name>`) is its stable identity and never changes. Each profile can additionally carry a **display name** — the `profile.displayName` setting, stored in that profile's own `config.yml`:
+
+- **Settings:** `/settings` › Interaction › Profile › Profile Name.
+- **TUI:** `/profile rename to <new>` renames the active profile; `/profile <name> rename to <new>` renames another one. The default profile is renamable too.
+
+`/profile list` shows `name (Display Name)` when they differ, and `/profile <input>` resolves a directory name first, then a unique display name. A copied settings file never carries the source's display name — `profile new` clears it so two profiles cannot answer to one name.
 
 ## Creating and managing profiles
 
@@ -40,7 +50,13 @@ $ veyyon profile rm work --yes
 - `--from blank` creates an empty agent tree.
 - `rm` refuses the default profile, the active profile, and destructive deletes without `--yes`.
 
+In the TUI, `/profile new <name>` opens a picker listing every carry-over item — AGENTS.md, settings, MCP servers, SSH targets, skills, commands, tools, prompts, themes, extensions, keybindings — each individually toggleable (all selected by default). The new profile is seeded from the **active** profile with exactly the chosen items.
+
 You can still create a profile implicitly by running `veyyon --profile <name>` once; use `profile new` when you want seeding without launching the TUI.
+
+## Onboarding import
+
+On first run (and once after upgrading past setup version 2), the setup wizard scans the machine for user-level config written for other tools — skills and `CLAUDE.md`/`AGENTS.md` from Claude Code, Codex, Cursor, and similar — and offers each item for import into your default profile. Imports **copy**: skills land in the profile's `skills/`, instruction files append to the profile's `AGENTS.md` under a source marker (re-imports are idempotent). The originals keep loading ambiently as the machine-wide base layer unless you turn off `discovery.importForeignConfig`.
 
 Do not document inline `[profiles.<name>]` tables or standalone `<name>.config.yml` files as shipped; settings use `config.yml` under the active agent dir.
 
@@ -60,7 +76,7 @@ modelRoles:                         # optional; settings → Models → Roles
   plan: openai/o3
 ```
 
-`default` is not a model or role. Switching profiles switches these assignments with the profile.
+**Unset slots and roles inherit the live main model.** The compaction model and every model role default to "inherit": when unset, they resolve to whatever the main model is *at use time*, so switching with `/model` changes them instantly. Only an explicit assignment pins a different model. (The advisor role is the one exception — unset, it follows its thinking-model chain; the settings UI labels each role's unset behavior.) Switching profiles switches all of these assignments with the profile.
 
 ## See also
 

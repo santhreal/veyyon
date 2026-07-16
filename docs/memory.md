@@ -1,8 +1,19 @@
 # Autonomous Memory
 
-When the local memory backend is enabled, the agent automatically extracts durable knowledge from past sessions and injects a compact summary into future sessions for the same project. Over time it builds a project-scoped memory store — technical decisions, recurring workflows, pitfalls — that carries forward without manual effort.
+When a memory backend is enabled, the agent automatically extracts durable knowledge from past sessions and injects a compact summary into future sessions for the same project. Over time it builds a project-scoped memory store — technical decisions, recurring workflows, pitfalls — that carries forward without manual effort.
 
-Disabled by default. Enable the local summary pipeline via `/settings` or `config.yml`:
+## Backends
+
+`memory.backend` selects the subsystem (default `off`):
+
+| Value | What it is |
+| --- | --- |
+| `off` | No memory subsystem runs. |
+| `local` | Local rollout-summarisation pipeline described on this page (`MEMORY.md` / `memory_summary.md` / generated skills). |
+| `mnemopi` | Local SQLite recall/retain backend with optional embeddings; the agent uses the [`recall`](tools/recall.md), [`retain`](tools/retain.md), and [`reflect`](tools/reflect.md) tools. `mnemopi.*` settings tune it. |
+| `hindsight` | Vectorize Hindsight remote memory service. |
+
+The rest of this page documents the **local** pipeline. Enable it via `/settings` or `config.yml`:
 
 ```yaml
 memory:

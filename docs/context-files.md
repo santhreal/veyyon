@@ -31,7 +31,7 @@ Two details matter:
 - **Walk-up to the repository root.** Discovery starts in the current working directory and climbs through each ancestor up to the repository root, stopping at the first ancestor that has a usable `.veyyon/` directory. The *nearest* match wins; ancestors above it are not loaded as native context.
 - **The `.veyyon/` directory must be non-empty.** An empty `.veyyon/` directory is skipped during the walk-up, so the search continues to the next ancestor. An empty `AGENTS.md` or `RULES.md` file contributes nothing.
 
-`~/.veyyon/agent` is the user base. If `PI_CODING_AGENT_DIR` is set, it relocates that base, so the user files become `$PI_CODING_AGENT_DIR/AGENTS.md` and `$PI_CODING_AGENT_DIR/RULES.md`.
+`~/.veyyon/agent` is the user base, and it is **profile-aware**: under a named profile (`--profile <name>` / `VEYYON_PROFILE`) the base becomes `~/.veyyon/profiles/<name>/agent`, so each profile carries its own `AGENTS.md` and `RULES.md`. Non-native user files (`~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md`, …) are profile-independent and still discovered under every profile. If `VEYYON_CODING_AGENT_DIR` (legacy `PI_CODING_AGENT_DIR`) is set, it relocates the base outright, so the user files become `$VEYYON_CODING_AGENT_DIR/AGENTS.md` and `$VEYYON_CODING_AGENT_DIR/RULES.md`.
 
 ### Monorepo example
 
@@ -225,7 +225,7 @@ At one user scope or project depth, the higher-priority provider shadows the oth
 
 ### User context disappeared
 
-Only one user-level context file survives, and `~/.veyyon/agent/AGENTS.md` has the highest priority. If it exists, it shadows user-level `~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md`, `~/.gemini/GEMINI.md`, `~/.config/opencode/AGENTS.md`, `~/.copilot/copilot-instructions.md`, and `~/.agent`/`~/.agents` files. Consolidate user guidance into the native file or remove the native one if you prefer another tool's file.
+Only one user-level context file survives, and `~/.veyyon/agent/AGENTS.md` has the highest priority. If it exists, it shadows user-level `~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md`, `~/.gemini/GEMINI.md`, `~/.config/opencode/AGENTS.md`, `~/.copilot/copilot-instructions.md`, and `~/.agent`/`~/.agents` files. Consolidate user guidance into the native file or remove the native one if you prefer another tool's file. Under a named profile the native user file is the profile's own `~/.veyyon/profiles/<name>/agent/AGENTS.md` — a profile without one falls through to the next-priority user file (typically `~/.claude/CLAUDE.md`).
 
 ### A `RULES.md` file is ignored
 

@@ -106,7 +106,7 @@ Artifacts and side channels:
   - on — `{ context, tasks[] }`: one independent spawn per item, required `context` shared across the call's spawns, `agent`/`isolated` per item. Lifecycle, revival, and concurrency semantics match N parallel single calls.
   - off — single spawn per call; `tasks`/`context` are rejected and removed from the schema.
 - Isolation mode (`task.isolation.mode`): `none`, `auto`, `apfs`, `btrfs`, `zfs`, `reflink`, `overlayfs`, `projfs`, `block-clone`, `rcopy` (legacy `worktree`, `fuse-overlay`, `fuse-projfs` accepted for back-compat); the PAL resolves the actual backend with fallback.
-- Isolation merge strategy: patch mode (capture/apply root patches) or branch mode (commit to `omp/task/<id>`, cherry-pick into parent).
+- Isolation merge strategy: patch mode (capture/apply root patches) or branch mode (commit to `veyyon/task/<id>`, cherry-pick into parent).
 - Agent source precedence: project custom agents, then user custom agents, then bundled agents (`scout`, `designer`, `reviewer`, `task`, `sonic`, `librarian`).
 
 ## Side Effects

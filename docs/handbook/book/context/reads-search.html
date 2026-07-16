@@ -46,10 +46,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-60567633.js";
+            window.path_to_searchindex_js = "../searchindex-c7a85c3d.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-40ee9e8c.js"></script>
+        <script src="../toc-b266b4db.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -193,100 +193,106 @@
                     <main>
                         <h1 id="bounded-reads--instant-search"><a class="header" href="#bounded-reads--instant-search">Bounded reads &amp; instant search</a></h1>
 <blockquote>
-<p><strong>Status: Built.</strong> The <code>read</code>, <code>grep</code>, <code>find</code>, <code>ls</code>, and <code>write</code> tools ship in the Bun/TypeScript
-product. This chapter describes the behavioral contracts they hold.</p>
+<p><strong>Status: Built.</strong> The <code>read</code>, <code>glob</code>, <code>grep</code>, and <code>write</code> tools ship as TypeScript modules in
+<code>packages/coding-agent/src/tools/{read,glob,grep,write}.ts</code>. There is no <code>experimental_tools</code> or
+<code>backends.toml</code> gating — every tool below is always on. This chapter describes their real parameter
+shapes and behavioral contracts.</p>
 </blockquote>
 <p>These tools fight <strong>token blowup</strong> and <strong>latency</strong> — supporting concerns that compound into
 control-flow failures on long trajectories, the long-context runs where a model stops making progress
 because its window is full of raw dumps.</p>
-<h2 id="the-read-tool"><a class="header" href="#the-read-tool">The <code>read</code> tool</a></h2>
-<p>A model that <code>cat</code>s a 20k-line file blows its whole context on one call. The <code>read</code> tool bounds every
-read to a budget and tells the model how to page the rest:</p>
+<h2 id="the-read-tool-toolsreadts"><a class="header" href="#the-read-tool-toolsreadts">The <code>read</code> tool (<code>tools/read.ts</code>)</a></h2>
+<p>A model that <code>cat</code>s a 20k-line file blows its whole context on one call. The <code>read</code> tool takes a single
+<code>path</code> string (no separate <code>offset</code>/<code>limit</code> arguments) and bounds every read to a budget:</p>
 <ul>
-<li><strong>Dual budget, whichever is hit first:</strong> a line cap (2000) and a byte cap (50 KB). A file that is
-short in lines but huge in bytes (minified JS, a data blob) is bounded by bytes; a file that is many
-short lines is bounded by lines.</li>
-<li><strong><code>offset</code> / <code>limit</code> paging:</strong> <code>read {path, offset?, limit?}</code>, where <code>offset</code> is a 1-indexed start
-line and <code>limit</code> caps how many lines come back. The model walks a large file in budget-sized windows
-instead of one ruinous dump.</li>
-<li><strong>Truncation is never silent.</strong> When content is withheld, the output carries an actionable notice
-that names the exact continuation, for example <code>[Showing lines 1-2000 of 30000. Use offset=2001 to continue.]</code>. A single line larger than the whole budget points the model at the one tool that can
-slice it.</li>
-<li><strong>Whole-file fidelity.</strong> A read that fits the budget reconstructs the file’s bytes verbatim,
-trailing newline included.</li>
+<li><strong>One parameter, inline selectors.</strong> <code>read {path}</code>, where <code>path</code> can carry a line-range selector
+appended after a colon: <code>src/foo.ts:50-200</code> (inclusive range), <code>src/foo.ts:50</code> / <code>:50-</code> (from line 50
+on), <code>src/foo.ts:50+150</code> (150 lines from line 50), or <code>src/foo.ts:5-16,960-973</code> (multiple ranges in
+one call). <code>:raw</code> reads verbatim with no anchors or line prefixes.</li>
+<li><strong>Dual budget, whichever is hit first:</strong> a line cap (<code>DEFAULT_MAX_LINES = 3000</code>) and a byte cap
+(<code>DEFAULT_MAX_BYTES = 50 KB</code>), defined in <code>session/streaming-output.ts</code>. A file that is short in lines
+but huge in bytes (minified JS, a data blob) is bounded by bytes; a file with many short lines is
+bounded by lines.</li>
+<li><strong>Structural summaries for parseable code.</strong> A read with no selector on a parseable source file
+returns declarations with bodies elided (<code>…</code>), and the footer names the recovery selector so the model
+re-issues only the ranges it actually needs instead of re-reading the whole file.</li>
+<li><strong>Truncation is never silent.</strong> A summary footer or a <code>[Showing lines …]</code>-style notice always names the
+exact continuation selector.</li>
+<li><strong>Beyond plain text files:</strong> the same tool also reads directories (depth-limited listing), archives
+(<code>.tar</code>, <code>.tar.gz</code>, <code>.zip</code>, via <code>archive.zip:path/inside</code>), SQLite databases (<code>file.db:table</code>, with
+pagination and <code>where</code>/<code>order</code> filters), PDF/Word/PowerPoint/Excel/EPUB (extracted text), Jupyter
+notebooks (editable cell text), images, URLs (reader-mode by default), and internal URI schemes
+(<code>memory://</code>, <code>skill://</code>, <code>artifact://</code>, <code>mcp://</code>, <code>ssh://</code>, and others).</li>
 </ul>
 <p>Text reading is intentionally separate from image inspection: image files go through <code>view_image</code> or
 a vision prepass rather than being bundled into ordinary text reads.</p>
-<h2 id="the-find-tool"><a class="header" href="#the-find-tool">The <code>find</code> tool</a></h2>
-<p>A model that runs <code>find . -name '*.rs'</code> or <code>ls -R</code> in the shell gets back an unbounded dump that
-includes <code>target/</code>, <code>node_modules/</code>, and <code>.git/</code>. The <code>find</code> tool is bounded and gitignore-aware:</p>
+<h2 id="the-glob-tool-toolsglobts"><a class="header" href="#the-glob-tool-toolsglobts">The <code>glob</code> tool (<code>tools/glob.ts</code>)</a></h2>
+<p>There is no separate <code>find</code> or <code>ls</code> tool — pattern matching and directory listing are both the <code>glob</code>
+tool. A model that runs <code>find . -name '*.rs'</code> or <code>ls -R</code> in the shell gets back an unbounded dump that
+includes <code>target/</code>, <code>node_modules/</code>, and <code>.git/</code>; <code>glob</code> is bounded and gitignore-aware instead:</p>
 <ul>
-<li><strong>Glob matching with <code>fd</code> semantics:</strong> <code>find {pattern, path?, limit?}</code>. A pattern with no <code>/</code> matches
-the <strong>file name</strong> at any depth (<code>*.rs</code> finds <code>src/deep/lib.rs</code>); a pattern containing <code>/</code> matches the
-<strong>full path</strong>, with an implicit leading <code>**/</code>.</li>
-<li><strong>Honors <code>.gitignore</code>, hierarchically.</strong> Traversal walks the environment’s filesystem (local or
-remote) through the same abstraction <code>read</code>/<code>edit</code> use, applying a stack of <code>.gitignore</code> matchers with
-deepest-directory precedence, including <code>!</code>-negation re-includes. <code>.git</code> and <code>node_modules</code> are never
-descended, so it is correct inside a sandbox or remote container, not just on the host.</li>
-<li><strong>Bounded, and never silently.</strong> Output stops at a result limit (default 1000) or 50 KB, whichever is
-hit first, and every limit is surfaced as an actionable notice. A permission-denied subtree is
-reported (<code>[N directories could not be read]</code>), not swallowed.</li>
-<li><strong>Deterministic output.</strong> Results are lexicographically sorted, depth-first; directories carry a
-trailing <code>/</code>.</li>
+<li><strong>Glob matching, or a bare directory/file path.</strong> <code>glob {path?, hidden?, gitignore?, limit?}</code>. <code>path</code>
+accepts a glob, a single file, a directory (recursed), or a semicolon-delimited list of any of those
+(<code>src/**/*.ts; test/**/*.ts</code>); omitted, it searches the workspace root.</li>
+<li><strong><code>gitignore</code> (default <code>true</code>)</strong> hides <code>.gitignore</code> matches; set <code>false</code> to find <code>.env*</code>, build
+output, or anything the repo ignores. <strong><code>hidden</code> (default <code>true</code>)</strong> includes dotfiles.</li>
+<li><strong>Bounded by result count</strong>, default and max <code>200</code> (<code>DEFAULT_LIMIT</code> / <code>MAX_LIMIT</code> in <code>glob.ts</code>) — not
+a byte cap. Every truncation is surfaced as an actionable notice.</li>
+<li><strong>Sorted by mtime, newest first</strong> (not lexicographic), grouped under <code># &lt;dir&gt;/</code> headers with
+basenames below; directories get a trailing <code>/</code>.</li>
+<li><strong><code>.git</code> and <code>node_modules</code> are never descended</strong>, and traversal goes through the same filesystem
+abstraction <code>read</code>/<code>grep</code> use, so it is correct inside a sandbox or remote container, not just on the
+host.</li>
 </ul>
-<h2 id="the-ls-tool"><a class="header" href="#the-ls-tool">The <code>ls</code> tool</a></h2>
-<p><code>find</code> recurses by glob; <code>ls</code> answers the different, common question “what is <em>immediately</em> in this
-directory?” <code>ls {path?, limit?}</code> lists a directory’s immediate entries, sorted case-insensitively, with
-a <code>/</code> suffix on directories and dotfiles included. It does not recurse and does not consult
-<code>.gitignore</code> — it is the raw directory view. It is bounded (500 entries / 50 KB) with actionable
-limit notices and an explicit <code>(empty directory)</code>.</p>
-<h2 id="the-grep-tool"><a class="header" href="#the-grep-tool">The <code>grep</code> tool</a></h2>
+<h2 id="the-grep-tool-toolsgrepts"><a class="header" href="#the-grep-tool-toolsgrepts">The <code>grep</code> tool (<code>tools/grep.ts</code>)</a></h2>
 <p>A model that runs <code>grep -r</code> / <code>rg</code> in the shell can get back tens of thousands of matching lines. The
-<code>grep</code> tool bounds the search on top of the same gitignore-aware traversal <code>find</code> uses:</p>
+<code>grep</code> tool is always regex (Rust regex / PCRE2 syntax; no literal-match flag) and paginates by file
+count on top of the same gitignore-aware traversal <code>glob</code> uses:</p>
 <ul>
-<li><strong>Regex or literal, optional case-insensitivity.</strong> <code>grep {pattern, path?, glob?, ignoreCase?, literal?, context?, limit?}</code>. <code>pattern</code> is a regex unless <code>literal: true</code>.</li>
-<li><strong>Gitignore-aware candidate selection</strong>, optionally narrowed by a <code>glob</code> (<code>*.rs</code>, <code>src/**/*.ts</code>),
-using the same filesystem abstraction as <code>read</code>/<code>find</code> so it is correct on a remote or sandboxed
-environment.</li>
-<li><strong>Output is <code>path:line: text</code></strong>, with <code>context</code> lines emitted as gutter rows around each match.</li>
-<li><strong>Bounded, and never silently.</strong> It stops at a match limit (default 100) or 50 KB, long lines are
-truncated to 500 chars, and every bound is an actionable notice.</li>
-<li><strong>Binary files are skipped</strong> (non-UTF-8) as grep’s defined contract, distinct from a genuine read
-failure, which is surfaced rather than hidden.</li>
+<li><strong><code>grep {pattern, path?, case?, gitignore?, skip?}</code>.</strong> <code>path</code> scopes the search (single path,
+semicolon-delimited list, or a <code>file:line-range</code> selector on one target); <code>case</code> enables
+case-sensitivity (default case-insensitive is <strong>not</strong> assumed — see the tool description for the
+exact default); <code>skip</code> pages past files already returned once a call hits the file limit.</li>
+<li><strong>Bounded by file count, not match count.</strong> Results are paginated at <code>DEFAULT_FILE_LIMIT = 20</code> files
+per call, with an internal total cap of <code>2000</code> matches (<code>grep.ts</code>); <code>skip</code> continues from where the
+previous call left off.</li>
+<li><strong>Output is per-file, line-number-prefixed</strong>, with context rows around each match when the harness
+runs in line-number mode.</li>
+<li><strong>Cross-line patterns</strong> are detected from a literal <code>\n</code>/<code>\\n</code> in <code>pattern</code>.</li>
+<li>The tool description explicitly forbids shelling out to <code>grep</code>/<code>rg</code>/<code>ripgrep</code>/<code>ag</code>/<code>ack</code>/<code>git grep</code>
+via Bash — the built-in tool is the only sanctioned path.</li>
 </ul>
-<h2 id="the-write-tool"><a class="header" href="#the-write-tool">The <code>write</code> tool</a></h2>
-<p><code>read</code>/<code>find</code>/<code>grep</code>/<code>ls</code> are the read side; <code>write</code> creates or replaces a whole file. It routes
-through the <strong>same verified path</strong> as <code>edit</code>, never touching the filesystem directly:</p>
+<h2 id="the-write-tool-toolswritets"><a class="header" href="#the-write-tool-toolswritets">The <code>write</code> tool (<code>tools/write.ts</code>)</a></h2>
+<p><code>read</code>/<code>glob</code>/<code>grep</code> are the read side; <code>write {path, content}</code> creates or replaces a whole file. It
+shares infrastructure with the edit engine rather than touching the filesystem directly:</p>
 <ul>
-<li><strong>One verified pipeline, not two.</strong> <code>write {path, content}</code> reads the target to decide
-create-vs-overwrite, then applies the change through the same handler that <code>edit</code> uses, inheriting its
-verification, approval prompt, sandbox enforcement, event emission, and turn-diff tracking. There is
-exactly one code path that mutates a file.</li>
-<li><strong>Race-free create-vs-overwrite.</strong> A non-parallel tool holds the exclusive mutation lock for the whole
-call, so nothing can create or change the file between the existence check and the apply. Identical
-content short-circuits to “no change” rather than emitting an empty diff.</li>
-<li><strong>Steers to <code>edit</code> for surgery.</strong> <code>write</code> is for new files or full rewrites; for a surgical change to
-an existing file the model is told to prefer <code>edit</code>, which keeps <code>write</code> from becoming the lazy
-“re-emit the whole file” habit that burns tokens.</li>
+<li><strong>Shared verified pipeline.</strong> <code>write.ts</code> imports the same file-snapshot store and LF-normalization
+helpers as the edit path (<code>../edit/file-snapshot-store</code>, <code>../edit/normalize</code>) and formats hashline
+headers via <code>@veyyon/hashline</code>, so writes inherit LSP diagnostics writethrough and diff/verification
+behavior rather than bypassing it.</li>
+<li><strong>Exclusive concurrency.</strong> The tool declares <code>concurrency: "exclusive"</code>, so nothing else can create or
+change the target file mid-call.</li>
+<li><strong>Steers to <code>edit</code> for surgery.</strong> The tool description tells the model to prefer <code>edit</code> for a
+surgical change to an existing file, keeping <code>write</code> from becoming a “re-emit the whole file” habit
+that burns tokens.</li>
 </ul>
 <h2 id="sanitizing-exec-output-for-the-model"><a class="header" href="#sanitizing-exec-output-for-the-model">Sanitizing exec output for the model</a></h2>
-<p>The shell/exec tool captures raw terminal bytes, which are full of things that cost tokens and confuse
-a reader without carrying information: ANSI color codes, cursor-move and clear-line sequences, OSC title
-strings, <code>\r</code>-driven progress redraws, and stray control bytes. Veyyon strips this noise before it
-reaches the model:</p>
+<p>Bash/exec tool output is sanitized before it reaches the model, via <code>sanitizeText()</code>
+(<code>packages/utils/src/sanitize-text.ts</code>), used from <code>session/streaming-output.ts</code> and the interactive PTY
+capture path (<code>tools/bash-interactive.ts</code>):</p>
 <ul>
-<li><strong>One linear pass over the ECMA-48 grammar</strong>, recognizing escape sequences by their defined shape
-rather than a heuristic regex, so an uncommon-but-valid sequence cannot leak through and an escape
-flood cannot backtrack.</li>
-<li><strong>Keep <code>\n</code> and <code>\t</code>, drop the rest</strong> of the C0 control bytes, <code>\r</code>, and the interlinear-annotation
-format chars that crash width counters.</li>
+<li><strong>ANSI stripping is Bun-native, not a hand-rolled parser.</strong> <code>sanitizeText()</code> calls Bun’s built-in
+<code>Bun.stripANSI()</code> when an ESC byte is present, then strips C0/C1 control bytes and DEL with a single
+regex pass. The function is a TypeScript replacement for a former Rust native
+(<code>crates/pi-natives/src/text.rs::sanitize_text</code>, noted in the current source comment) — there is no
+live Rust ECMA-48 grammar walker in this path today.</li>
+<li><strong>Keep <code>\n</code> and <code>\t</code>, drop the rest.</strong> The control regex covers C0 (excluding tab/newline), <code>\r</code>,
+DEL, and the C1 range; <code>\n</code> and <code>\t</code> are the two explicit exclusions.</li>
 <li><strong>Model-facing only.</strong> Sanitizing happens on the text that becomes tool output for the model. The TUI
 renders exec output from its own delta stream and keeps its colors, so the operator’s view is
 untouched.</li>
-<li><strong>Both exec surfaces</strong>, not just the legacy <code>shell</code> tool: every model-facing render runs through the
-same sanitizer.</li>
-<li><strong>Zero-cost when clean.</strong> Ordinary output that carries no escapes returns without any allocation; only
-output that actually carries escapes pays for a rewrite.</li>
+<li><strong>Zero-cost when clean.</strong> Well-formed input with no control/ANSI bytes returns the original string
+reference after one regex probe; only output that actually carries escapes pays for <code>Bun.stripANSI()</code>.</li>
 </ul>
 <h2 id="why-these-are-grouped-with-context"><a class="header" href="#why-these-are-grouped-with-context">Why these are grouped with context</a></h2>
 <p>A read that bounds and a search that bounds its output are both about keeping the working context

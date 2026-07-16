@@ -29,7 +29,7 @@ Exact, restrained, technical. Name the product **Veyyon**. Prefer short factual 
 
 | Theme | Status | Ground | Primary text | Structure | Accent |
 | --- | --- | --- | --- | --- | --- |
-| Titanium (default) | Shipped | Pitch black `#000000` | Silver bright `#E8ECF4` | Silver `#B8BDC7` | Ember `#F0862E` |
+| Titanium (default) | Shipped | Pitch black `#000000` | Silver bright `#E6E9EE` | Silver `#C6CBD4` | Ember `#F0862E` |
 | Veyyon Dark | Shipped | Pitch black `#000000` | `#FAFAFA` | Silver `#B8BDC7` | Deep blue `#4A84C9` (pre-ember; see below) |
 | Light | Shipped (upstream) | Terminal / light gray chrome | Terminal default | Teal `#5a8080` | — |
 
@@ -37,14 +37,14 @@ Exact, restrained, technical. Name the product **Veyyon**. Prefer short factual 
 
 The ground is **pitch black**. On it, two colors do two jobs — the same system the website ships (`website/site.css` `:root` tokens):
 
-- **Silver is structure** — wordmark, labels, hairlines, progress, primary text hierarchy. Website: `#c6cbd4` / bright `#e6e9ee`. TUI (titanium): `#B8BDC7` / bright `#E8ECF4`.
-- **Ember is the single accent** — the sun. Website: `#f0862e` / hover `#fb9e44`, carried by links and the focus ring. TUI (titanium): `ember #F0862E`, `emberDim #B8632A`, `emberGlow #241510`, carried by the accent border, selection glow, and list bullets. One accent per view; never a primary fill.
+- **Silver is structure** — wordmark, labels, hairlines, progress, primary text hierarchy: `#C6CBD4` / bright `#E6E9EE` (same value on both surfaces).
+- **Ember is the single accent** — the sun: `#F0862E`, carried on the website by links, hover `#FB9E44`, and the focus ring; in the TUI (titanium) by links, the accent border, list bullets, and the selection glow (`emberDim #B8632A`, `emberGlow #241510`). One accent per view; never a primary fill.
 
-Green, amber, and red only when meaning fits (success, warning, error). Website: `#7fb98a` / `#c9a24b` / `#c96f6e`. Ember is the brand accent and stays distinct from the amber warning color.
+Green, amber, and red only when meaning fits (success, warning, error): `#7FB98A` / `#C9A24B` / `#C96F6E` on both surfaces. Ember is the brand accent and stays distinct from the amber warning color. `website/site.css` `:root` is the canonical token source; the titanium theme mirrors it, locked by `test/brand-conformance.test.ts` (site.css parity test).
 
 **Every background is pure black `#000000`.** Hierarchy comes from silver hairlines, text weight, and the ember accent — not raised panels or tinted fills. No cyan/purple/rainbow chrome. No gradients. Sharp edges. The only permitted glow is the ember selection tint (`emberGlow`).
 
-Known drift (tracked in `BACKLOG.md`): the TUI and website silver/status hex values differ slightly, TUI links are still deep blue `#4A84C9` where the website uses ember, and `dark.json` predates the ember accent entirely.
+Known drift (tracked in `BACKLOG.md`): `dark.json` (Veyyon Dark) predates the ember accent entirely, and the light theme is still the upstream palette.
 
 ## Onboarding and installers
 

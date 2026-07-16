@@ -1,8 +1,6 @@
 # The Veyyon handbook
 
-Veyyon is a coding agent that runs in your terminal and edits real code. It is built on one idea: a
-capable open model does not need a frontier price tag to do frontier work. It needs the right harness
-around it. Veyyon is that harness, tuned for how each model actually behaves.
+Veyyon runs in your terminal and edits real code. Bring your own model keys; the harness is tuned for coding work, not chat theater.
 
 This handbook is for everyone who uses Veyyon or wants to understand it.
 
@@ -16,7 +14,7 @@ If you read nothing else: [What Veyyon gives you](./why/value.md), [Getting star
 
 ## What Veyyon is, in one paragraph
 
-Veyyon is a fork of [oh-my-pi](https://github.com/can1357/oh-my-pi): TypeScript and Bun for the CLI, TUI, tools, providers, and session loop; Rust natives for grep, PTY, and **hashline** edits. Install via `bun install -g @veyyon/pi-coding-agent` or `bun dev` from source. The CLI command is **`veyyon`**. Config and state default to `~/.veyyon` (`PI_CONFIG_DIR` can override the directory name).
+Veyyon is a fork of [oh-my-pi](https://github.com/can1357/oh-my-pi): TypeScript and Bun for the CLI, TUI, tools, providers, and session loop; Rust natives for grep, PTY, and **hashline** edits. Install with `bun install -g @veyyon/pi-coding-agent` or `bun dev` from source. The command is **`veyyon`** (short alias **`vey`**). Config and state default to `~/.veyyon`.
 
 Shipped today: hashline edits, mnemopi memory, model roles, session trees, MCP, skills, and plan/goal modes.
 

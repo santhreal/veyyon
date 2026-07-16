@@ -46,10 +46,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-60567633.js";
+            window.path_to_searchindex_js = "../searchindex-c7a85c3d.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-40ee9e8c.js"></script>
+        <script src="../toc-b266b4db.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -210,7 +210,7 @@ append rollout entry ──► update active leaf
         │
         ├─ next user message ──► next turn
         ├─ /compact when the window is tight
-        └─ /fork / /clone / /tree when exploring branches
+        └─ /fork / /branch / /tree when exploring branches
 </code></pre>
 <p>Interactive <code>veyyon</code>, a non-interactive <code>veyyon "prompt"</code> run, and resume paths all share this loop.
 The difference is who supplies the next prompt and whether a TUI is attached.</p>
@@ -222,7 +222,10 @@ The difference is who supplies the next prompt and whether a TUI is attached.</p
 <p>While a turn runs you can steer it with <code>Enter</code> or queue a follow-up with <code>Tab</code> or <code>alt+enter</code>. A queued follow-up becomes a new turn after the current one finishes. Interrupting with <code>Esc</code> aborts the turn and returns queued messages to the composer.</p>
 <h2 id="threads-and-the-active-leaf"><a class="header" href="#threads-and-the-active-leaf">Threads and the active leaf</a></h2>
 <p>At any moment, one path through the session tree is active. That path is the thread. The active leaf is the current entry at the end of that path.</p>
-<p>Branching creates siblings in the tree. <code>/tree</code> browses every entry, including abandoned branches. <code>/fork</code> copies history up to a chosen point into a new session. <code>/clone</code> duplicates the current session at its current leaf. The original session is never modified.</p>
+<p>Branching creates siblings in the tree. <code>/tree</code> browses every entry, including abandoned branches.
+<code>/branch</code> copies history up to a chosen user message into a new session file. <code>/fork</code> duplicates the
+<strong>entire</strong> current session into a new file (no entry picker). There is no <code>/clone</code> command. The
+original session is never modified.</p>
 <h2 id="context-pressure-and-compaction"><a class="header" href="#context-pressure-and-compaction">Context pressure and compaction</a></h2>
 <p>Models have a finite token window. As a session grows, the raw transcript may no longer fit. Veyyon compacts history into a smaller, information-preserving summary instead of truncating it.</p>
 <p>Compaction preserves the goal card, active user instructions, recent turns, and a deterministic working-set of files touched. This lets a resumed session show the model what matters without forcing it to read the entire transcript.</p>

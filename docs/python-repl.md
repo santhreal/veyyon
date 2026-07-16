@@ -37,7 +37,7 @@ The tool is `concurrency = "exclusive"` for a session, so calls do not overlap.
 
 ## Kernel lifecycle
 
-Each Python kernel is a single subprocess: `<resolved-python> -u <runner.py>`. The runner is bundled with the host binary (Bun text import), written to an `omp-python-runner` cache under the OS temp directory once per script hash, and reused by subsequent spawns.
+Each Python kernel is a single subprocess: `<resolved-python> -u <runner.py>`. The runner is bundled with the host binary (Bun text import), written to a `veyyon-python-runner` cache under the OS temp directory once per script hash, and reused by subsequent spawns.
 
 Kernel startup sequence:
 
@@ -237,6 +237,8 @@ Output is streamed through `OutputSink` and may be persisted to artifact storage
 - **Working directory errors** — Tool validates `cwd` exists and is a directory before execution.
 
 ## Relevant environment variables
+
+Each variable also accepts its `VEYYON_`-prefixed primary name (e.g. `VEYYON_PY`); the `VEYYON_`/`OMP_` value wins when both are set.
 
 - `PI_PY` / `PI_JS` — eval backend exposure overrides
 - `PI_PYTHON_SKIP_CHECK=1` — bypass Python preflight/warm checks

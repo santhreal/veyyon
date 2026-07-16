@@ -28,7 +28,7 @@ Use `.veyyon/mcp.json` or `~/.veyyon/agent/mcp.json` when you want Veyyon to own
 
 ### Profiles
 
-Named profiles (`veyyon --profile <name>`, the `--alias` shortcut, or `OMP_PROFILE`/`PI_PROFILE`) isolate user-level MCP config. When a profile is active, the **user** scope resolves to the profile's agent directory instead of the default one:
+Named profiles (`veyyon --profile <name>`, the `--alias` shortcut, or `VEYYON_PROFILE` — legacy `OMP_PROFILE`/`PI_PROFILE` still work) isolate user-level MCP config. When a profile is active, the **user** scope resolves to the profile's agent directory instead of the default one:
 
 - Default profile: `~/.veyyon/agent/mcp.json`
 - Profile `<name>`: `~/.veyyon/profiles/<name>/agent/mcp.json`
@@ -87,7 +87,7 @@ Shared fields for every transport:
 - `auth?: { ... }` — auth metadata used by Veyyon for OAuth/API-key flows
 - `oauth?: { ... }` — explicit OAuth client settings used during auth/reauth
 
-Set `OMP_MCP_TIMEOUT_MS=0` to disable the client-side timeout for every MCP server in the current process. Set it to a positive millisecond value, such as `OMP_MCP_TIMEOUT_MS=120000`, to apply one global timeout without editing each server entry.
+Set `VEYYON_MCP_TIMEOUT_MS=0` (legacy alias: `OMP_MCP_TIMEOUT_MS`) to disable the client-side timeout for every MCP server in the current process. Set it to a positive millisecond value, such as `VEYYON_MCP_TIMEOUT_MS=120000`, to apply one global timeout without editing each server entry.
 
 ### `stdio` transport
 

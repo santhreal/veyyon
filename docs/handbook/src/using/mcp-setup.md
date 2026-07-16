@@ -167,7 +167,7 @@ $ curl -i https://analytics.example.com/mcp
 ### Timeout
 
 If `/mcp` shows the server but tool calls time out, raise the per-server `timeout` (milliseconds), or
-set `OMP_MCP_TIMEOUT_MS` for the whole process:
+set `VEYYON_MCP_TIMEOUT_MS` (legacy `OMP_MCP_TIMEOUT_MS`) for the whole process:
 
 ```json
 { "mcpServers": { "analytics": { "type": "http", "url": "…", "timeout": 60000 } } }

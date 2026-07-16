@@ -85,7 +85,7 @@ If omitted, export code derives defaults from resolved theme colors.
 
 - `symbols.preset` sets a theme-level default symbol set.
 - `symbols.overrides` can override individual `SymbolKey` values.
-- `symbols.spinnerFrames` overrides the loading spinner frames. Accepts either a flat `string[]` (applied to both spinner types) or an object `{ "status"?: string[], "activity"?: string[] }` to override each type independently. Any type not specified falls back to the symbol preset's default frames. `status` drives the ~12.5fps spinner used by loaders and tool-execution indicators; `activity` drives the ~30fps spinner used by markdown progress bars and similar high-frequency UI.
+- `symbols.spinnerFrames` overrides the loading spinner frames. Accepts either a flat `string[]` (applied to the `status` and `activity` spinners) or an object `{ "status"?: string[], "activity"?: string[], "thinking"?: string[] }` to override each type independently. Any type not specified falls back to the symbol preset's default frames. `status` drives the ~12.5fps spinner used by loaders and tool-execution indicators; `activity` drives the ~30fps spinner used by markdown progress bars and similar high-frequency UI; `thinking` drives the starburst pulse shown in place of hidden reasoning while a model thinks (a single-frame array renders it static, with no animation timer).
 
 Runtime precedence:
 
@@ -114,8 +114,8 @@ Theme lookup order (`loadThemeJson`):
 
 Custom themes directory comes from `getCustomThemesDir()`:
 
-- default: `~/.veyyon/agent/themes`
-- overridden by `PI_CODING_AGENT_DIR` (`$PI_CODING_AGENT_DIR/themes`)
+- default: `~/.veyyon/agent/themes` — profile-aware: under a named profile (`--profile <name>` / `VEYYON_PROFILE`) this resolves to `~/.veyyon/profiles/<name>/agent/themes`
+- overridden by `VEYYON_CODING_AGENT_DIR` (legacy `PI_CODING_AGENT_DIR`): `$VEYYON_CODING_AGENT_DIR/themes`
 
 `getAvailableThemes()` returns merged built-in + custom names, sorted, with built-ins taking precedence on name collision.
 
@@ -226,7 +226,7 @@ Other tokens are unchanged.
 Theme-related settings are persisted by `Settings` to global config YAML:
 
 - path: `<agentDir>/config.yml`
-- default agent dir: `~/.veyyon/agent`
+- default agent dir: `~/.veyyon/agent` (profile-aware: `~/.veyyon/profiles/<name>/agent` under a named profile)
 - effective default file: `~/.veyyon/agent/config.yml`
 
 Persisted keys:

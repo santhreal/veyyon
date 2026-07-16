@@ -71,8 +71,9 @@ A **profile** relocates `~/.veyyon/agent/` to `~/.veyyon/profiles/<name>/agent/`
 config (settings, sessions, MCP, skills, hooks, and your role assignments and model slots). Activate
 with `veyyon --profile <name>` or `VEYYON_PROFILE`.
 
-Profiles are chosen at process start, not mid-session. See [Profiles](../features/profiles.md) for the
-lifecycle commands (`veyyon profile list/new/rm`).
+Profiles are chosen at process start; `/profile <name>` in the TUI relaunches Veyyon on the target
+profile as a fresh session. See [Profiles](../features/profiles.md) for the lifecycle commands
+(`veyyon profile list/new/rm`), the `/profile new` copy picker, and display-name renaming.
 
 ## Tool approval
 

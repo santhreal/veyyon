@@ -46,10 +46,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-60567633.js";
+            window.path_to_searchindex_js = "../searchindex-c7a85c3d.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-40ee9e8c.js"></script>
+        <script src="../toc-b266b4db.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -193,9 +193,10 @@
                     <main>
                         <h1 id="why-repair-exists"><a class="header" href="#why-repair-exists">Why repair exists</a></h1>
 <blockquote>
-<p><strong>Status: Shipped (basic fix-if-clear).</strong> Schema-based tool-call repair runs in the agent loop
-before validation. The full multi-rule cascade, telemetry, and per-shape backends remain <strong>Spec —
-not shipped</strong> — see <a href="./cascade.html">The repair cascade</a>.</p>
+<p><strong>Status: Mostly shipped.</strong> Schema-based tool-call repair runs in the agent loop before
+validation, including parse leniency, ambiguity refusal, alias/typo key rename, and strict
+unknown-key rejection. Per-model posture, telemetry, and per-shape backends remain <strong>Spec — not
+shipped</strong> — see <a href="./cascade.html">The repair cascade</a>.</p>
 </blockquote>
 <p>OSS backends malform tool-call arguments in model-specific ways: stringified JSON, truncated JSON,
 trailing commas, ambiguous field names. Each malformation, left alone, costs a whole turn.</p>
@@ -210,17 +211,23 @@ most importantly the <strong>edit</strong> path, where a malformed call is a fai
 <li><strong>Seam:</strong> argument repair runs in the agent loop, before argument validation.</li>
 <li><strong>Fix-if-clear:</strong> trailing commas, parse sentinels (<code>__parseError</code> / <code>__rawJson</code>), stringified JSON objects.</li>
 <li><strong>Refuse-if-ambiguous:</strong> missing required strings with multiple plausible sources → unrepairable (no invent).</li>
+<li><strong>Alias/typo rename:</strong> unknown keys that clearly alias a declared property are renamed; refuses on
+genuine ambiguity instead of guessing.</li>
+<li><strong>Strict unknown-key rejection:</strong> <code>additionalProperties: false</code> schemas refuse leftover
+unrecognized keys after alias resolution.</li>
 <li><strong>Bounded:</strong> inputs over 1 MiB refuse repair.</li>
 <li><strong>Disable:</strong> <code>VEYYON_REPAIR_DISABLE=1</code> or per-model <code>harness.profiles</code> with <code>repair: false</code>.</li>
 </ul>
 <h2 id="not-shipped-yet"><a class="header" href="#not-shipped-yet">Not shipped yet</a></h2>
 <ul>
-<li>Full ordered rule cascade (alias maps, strict unknown-key rejection, per-tool shape tables)</li>
+<li>Per-tool shape tables beyond the generic alias/strict rules</li>
 <li>Per-<code>(model,tool,shape)</code> telemetry store</li>
-<li>A large conformance suite extending the shipped TypeScript repair module
-(<code>packages/coding-agent/src/repair/schema-repair.ts</code>) at the tool-dispatch seam — this stays a TS
-module, not a separate Rust crate</li>
+<li>Per-model posture knobs</li>
 </ul>
+<p>The shipped rule cascade and its conformance suite live in the TypeScript repair module
+(<code>packages/coding-agent/src/repair/schema-repair.ts</code>, tested by
+<code>packages/coding-agent/test/repair/schema-repair.test.ts</code>) at the tool-dispatch seam — this stays a
+TS module, not a separate Rust crate.</p>
 <p>See <a href="./cascade.html">The repair cascade</a>, <a href="./per-model.html">Per-model posture</a>, and
 <a href="./soundness.html">Soundness and telemetry</a> for the target design. For the shipped edit engine,
 see <a href="../edit/engine.html">The hashline edit engine</a>.</p>

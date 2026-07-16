@@ -30,7 +30,7 @@ kind (main vs subagent).
 
 ## Provider-agnostic runtime
 
-The agent loop, TUI, session format, MCP, skills, hooks, and extensions are provider-neutral. You configure providers in `~/.veyyon/agent/config.yml` or via `/setup providers`.
+The agent loop, TUI, session format, MCP, skills, hooks, and extensions are provider-neutral. You configure providers in `~/.veyyon/agent/config.yml` or via `/setup` / `/providers`.
 
 ## Control flow in the harness
 
