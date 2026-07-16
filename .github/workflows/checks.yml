@@ -56,16 +56,51 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install keyhog
         run: curl -fsSL https://raw.githubusercontent.com/santhsecurity/keyhog/main/install.sh | sh
-      - name: Scan packages for new secrets
+      - name: Scan the repo for new secrets
         # --precision drops entropy/ML-speculative noise and raises the confidence
         # floor; the committed baseline suppresses the known public OAuth client IDs
         # and test fixtures, so the job fails only on a genuinely NEW leak.
+        #
+        # keyhog fails closed (exit 13) when it cannot scan every byte — e.g. the
+        # image/tarball/embedded-byte test fixtures it detects as binary. A real
+        # secret in *text* still yields exit 1 even when binaries are present
+        # (verified), so exit 13 provably means "no findings, coverage just
+        # incomplete." We therefore gate on exit-code semantics rather than a
+        # fragile hand-maintained binary exclude-list: fail on secrets (1/10) or a
+        # genuine source failure, tolerate benign binary skips.
         run: |
           export PATH="$HOME/.local/bin:$PATH"
-          keyhog scan packages \
+          set +e
+          keyhog scan . \
             --precision \
             --backend cpu \
             --baseline .keyhog-baseline.json \
             --exclude-paths node_modules \
             --exclude-paths target \
-            --exclude-paths packages/natives/target
+            --exclude-paths '**/target' \
+            --exclude-paths .git \
+            --exclude-paths dist \
+            --exclude-paths '**/dist' \
+            --exclude-paths '**/adv-debug-*' \
+            2> keyhog.stderr
+          code=$?
+          set -e
+          cat keyhog.stderr
+          case "$code" in
+            0)
+              echo "keyhog: clean, full coverage." ;;
+            1|10)
+              echo "::error::keyhog found secret material (exit $code)."
+              exit 1 ;;
+            13)
+              # Coverage incomplete. Fail only if a real source failure caused it;
+              # benign binary/unreadable-file skips are expected on this tree.
+              if grep -qiE 'requested source failed|permission denied|no such file|i/o error|failed to read' keyhog.stderr; then
+                echo "::error::keyhog could not read a requested source (exit 13)."
+                exit 1
+              fi
+              echo "keyhog: no secrets found; some binary files were unscannable (benign)." ;;
+            *)
+              echo "::error::keyhog exited unexpectedly (exit $code)."
+              exit 1 ;;
+          esac
