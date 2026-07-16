@@ -30,12 +30,12 @@ Key integration points:
          Generic helper order (`config.ts`)
 ┌───────────────────────────────────────┐
 │ 1) ~/.veyyon/agent, ~/.claude, ...       │
-│ 2) <cwd>/.omp, <cwd>/.claude, ...     │
+│ 2) <cwd>/.veyyon, <cwd>/.claude, ...     │
 └───────────────────────────────────────┘
                     │
                     ▼
         capability providers enumerate items
- (native provider scans project .omp before user .omp;
+ (native provider scans project .veyyon before user .veyyon;
   other providers have their own loading rules)
                     │
                     ▼
@@ -52,7 +52,7 @@ Key integration points:
 
 `src/config.ts` defines a fixed source priority list:
 
-1. `.omp` (native)
+1. `.veyyon` (native)
 2. `.claude`
 3. `.codex`
 4. `.gemini`
@@ -66,22 +66,22 @@ User-level bases:
 
 Project-level bases:
 
-- `<cwd>/.omp`
+- `<cwd>/.veyyon`
 - `<cwd>/.claude`
 - `<cwd>/.codex`
 - `<cwd>/.gemini`
 
-`CONFIG_DIR_NAME` is `.omp` (`packages/utils/src/dirs.ts`).
+`CONFIG_DIR_NAME` is `.veyyon` (`packages/utils/src/dirs.ts`).
 
 ## Profiles
 
-A named profile (`omp --profile <name>`, the `--alias` shortcut, or `OMP_PROFILE` / `PI_PROFILE`) relocates the OMP user base. When a profile is active, every OMP-native user-level path written here as `~/.veyyon/agent/...` resolves to `~/.veyyon/profiles/<name>/agent/...` instead.
+A named profile (`veyyon --profile <name>`, the `--alias` shortcut, `/profile <name>` in the TUI, or `VEYYON_PROFILE` — legacy `OMP_PROFILE` / `PI_PROFILE`) relocates the Veyyon user base. When a profile is active, every Veyyon-native user-level path written here as `~/.veyyon/agent/...` resolves to `~/.veyyon/profiles/<name>/agent/...` instead.
 
-The relocation is uniform across the native provider (`builtin.ts`) and the generic `config.ts` helpers, so it covers slash commands, rules, prompts, instructions, hooks, tools, extensions, settings, skills, and MCP, plus the top-level `SYSTEM.md` / `RULES.md` / `AGENTS.md` files and runtime state (sessions, blobs, `agent.db`). A profile sees only its own OMP config, never the default profile's `~/.veyyon/agent`.
+The relocation is uniform across the native provider (`builtin.ts`) and the generic `config.ts` helpers, so it covers slash commands, rules, prompts, instructions, hooks, tools, extensions, settings, skills, and MCP, plus the top-level `SYSTEM.md` / `RULES.md` / `AGENTS.md` files and runtime state (sessions, blobs, `agent.db`). A profile sees only its own Veyyon config, never the default profile's `~/.veyyon/agent`.
 
-Keybindings are the one exception: a named profile merges the default profile's `~/.veyyon/agent/keybindings.*` under its own `~/.veyyon/profiles/<name>/agent/keybindings.*`, with the profile file overriding per binding ([#4867](https://github.com/can1357/oh-my-pi/issues/4867)). Keybindings describe the terminal/keyboard in front of the user, which doesn't change with the active profile, so user-level remaps keep working in every profile unless the profile explicitly overrides them. The inherited file is read-only for the profile process — legacy-format migration of the default profile's file only happens when the default profile itself runs.
+Keybindings get a one-time seed rather than a live merge: a new named profile copies the default profile's `~/.veyyon/agent/keybindings.*` once (at `profile new`, or on first launch of an older profile that has no keybindings file). After that the profile's own file is the only one read — later edits to the default profile's keybindings do not flow into other profiles.
 
-The other source bases are not profile-scoped and load identically under every profile: the external-tool bases (`~/.claude`, `~/.codex`, `~/.gemini`) belong to those tools, and the project-level bases (`<cwd>/.omp`, `<cwd>/.claude`, ...) are keyed to the working directory. Throughout this document, read `~/.veyyon/agent` as shorthand for the active profile's agent directory.
+The other source bases are not profile-scoped and load identically under every profile: the external-tool bases (`~/.claude`, `~/.codex`, `~/.gemini`) belong to those tools, and the project-level bases (`<cwd>/.veyyon`, `<cwd>/.claude`, ...) are keyed to the working directory. Throughout this document, read `~/.veyyon/agent` as shorthand for the active profile's agent directory.
 
 ## Important constraint
 
@@ -113,7 +113,7 @@ Searches for the first existing file across ordered bases, returns first match (
 
 ## `findAllNearestProjectConfigDirs(subpath, cwd)`
 
-Walks parent directories upward and returns the **nearest existing directory per source base** (`.omp`, `.claude`, `.codex`, `.gemini`), then sorts results by source priority.
+Walks parent directories upward and returns the **nearest existing directory per source base** (`.veyyon`, `.claude`, `.codex`, `.gemini`), then sorts results by source priority.
 
 Use this when project config should be inherited from ancestor directories (monorepo/nested workspace behavior).
 
@@ -149,7 +149,7 @@ The runtime settings model is layered:
 
 1. Global settings: `~/.veyyon/agent/config.yml`
 2. Project settings: discovered via settings capability (`settings.json` and `config.yml` from providers)
-3. CLI config overlays: `omp --config <path>` / repeated `--config` files, loaded as `config.yml`-style YAML for this process only
+3. CLI config overlays: `veyyon --config <path>` / repeated `--config` files, loaded as `config.yml`-style YAML for this process only
 4. Runtime overrides: in-memory, non-persistent
 5. Schema defaults: from `SETTINGS_SCHEMA`
 
@@ -186,7 +186,7 @@ Most non-core config loading flows through the capability registry (`src/capabil
 
 Providers are sorted by numeric priority (higher first). Example priorities:
 
-- Native OMP (`builtin.ts`): `100`
+- Native Veyyon (`builtin.ts`): `100`
 - Claude: `80`
 - Codex / agents / Claude marketplace: `70`
 - Gemini: `60`
@@ -194,7 +194,7 @@ Providers are sorted by numeric priority (higher first). Example priorities:
 ```text
 Provider precedence (higher wins)
 
-native (.omp)          priority 100
+native (.veyyon)          priority 100
 claude                 priority  80
 codex / agents / ...   priority  70
 gemini                 priority  60
@@ -218,22 +218,22 @@ Relevant keys:
 
 ---
 
-## 6) Native `.omp` provider behavior (`packages/coding-agent/src/discovery/builtin.ts`)
+## 6) Native `.veyyon` provider behavior (`packages/coding-agent/src/discovery/builtin.ts`)
 
 Native provider (`id: native`) reads native config from:
 
-- project: `<cwd>/.omp/...`
+- project: `<cwd>/.veyyon/...`
 - user: `~/.veyyon/agent/...`
 
 ### Directory admission rules
 
 - Slash commands, rules, prompts, instructions, hooks, tools, extensions, extension modules, and settings use a project/user root only when the root directory exists and is non-empty.
-- Skills scan `<ancestor>/.omp/skills` for each ancestor from the current working directory up to the repo root/home boundary, plus `~/.veyyon/agent/skills`, without requiring the root `.omp` directory itself to be non-empty.
-- `SYSTEM.md` and `AGENTS.md` read user-level files directly and use nearest-ancestor project `.omp` lookup for project files, but the project `.omp` directory must be non-empty. See [`docs/system-prompt-customization.md`](./system-prompt-customization.md) for the full `SYSTEM.md` / `APPEND_SYSTEM.md` contract (replace vs. append, templating).
+- Skills scan `<ancestor>/.veyyon/skills` for each ancestor from the current working directory up to the repo root/home boundary, plus `~/.veyyon/agent/skills`, without requiring the root `.veyyon` directory itself to be non-empty.
+- `SYSTEM.md` and `AGENTS.md` read user-level files directly and use nearest-ancestor project `.veyyon` lookup for project files, but the project `.veyyon` directory must be non-empty. See [`docs/system-prompt-customization.md`](./system-prompt-customization.md) for the full `SYSTEM.md` / `APPEND_SYSTEM.md` contract (replace vs. append, templating).
 
 ### Scope-specific loading
 
-- Skills: `<ancestor>/.omp/skills/*/SKILL.md` and `~/.veyyon/agent/skills/*/SKILL.md`
+- Skills: `<ancestor>/.veyyon/skills/*/SKILL.md` and `~/.veyyon/agent/skills/*/SKILL.md`
 - Slash commands: `commands/*.md`
 - Rules: `rules/*.{md,mdc}`
 - Prompts: `prompts/*.md`
@@ -246,7 +246,7 @@ Native provider (`id: native`) reads native config from:
 
 ### Nearest-project lookup nuance
 
-## For `SYSTEM.md` and `AGENTS.md`, native provider uses nearest-ancestor project `.omp` directory search (walk-up) and still requires the project `.omp` dir to be non-empty.
+## For `SYSTEM.md` and `AGENTS.md`, native provider uses nearest-ancestor project `.veyyon` directory search (walk-up) and still requires the project `.veyyon` dir to be non-empty.
 
 ## 7) How major subsystems consume config
 
@@ -265,7 +265,7 @@ Generate a session name using lowercase `<type>:<primary-objective>`.
 ```
 
 - Missing `TITLE_SYSTEM.md` keeps the bundled title prompts.
-- Discovery uses the same project-then-user config directory pattern as `SYSTEM.md`: project `.omp/TITLE_SYSTEM.md` first, then user `~/.veyyon/agent/TITLE_SYSTEM.md` and the other supported config bases.
+- Discovery uses the same project-then-user config directory pattern as `SYSTEM.md`: project `.veyyon/TITLE_SYSTEM.md` first, then user `~/.veyyon/agent/TITLE_SYSTEM.md` and the other supported config bases.
 - The override replaces only the automatic session-title generation system prompt; normal `SYSTEM.md` / `APPEND_SYSTEM.md` prompt customization is unaffected.
 - The online path asks the title model to wrap the title in `<title>...</title>` and parses it leniently from text (a plain sentence, a truncated/unclosed tag, or a stray `{"title": "..."}` JSON echo all still work). A `TITLE_SYSTEM.md` override gets the wrap-in-`<title>` instruction appended after it. The local tiny-title path keeps the `<title>...</title>` prefill/stop wrapper and uses this file as its system turn.
 

@@ -288,5 +288,5 @@ $ veyyon exec resume "$THREAD" "continue; finish applying the plan"
 - [Sessions](../using/sessions.md) — resuming and branching.
 - [Sandbox and approvals](./sandbox.md) — policies for CI.
 - [Exit codes](../reference/exit-codes.md)
-- [ACP / SDK](../../../docs/sdk.md) for programmatic control.
+- [ACP / SDK](../../../sdk.md) for programmatic control.
 - [CLI reference](../reference/cli.md)

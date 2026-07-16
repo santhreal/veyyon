@@ -35,7 +35,7 @@ Define custom secret entries in YAML. Two locations are checked:
 | Level   | Path                       | Purpose                     |
 | ------- | -------------------------- | --------------------------- |
 | Global  | `~/.veyyon/agent/secrets.yml` | Secrets across all projects |
-| Project | `<cwd>/.omp/secrets.yml`   | Project-specific secrets    |
+| Project | `<cwd>/.veyyon/secrets.yml`   | Project-specific secrets    |
 
 Project entries override global entries with matching `content`.
 
@@ -109,4 +109,4 @@ Environment variables are collected first, then file-defined entries are appende
 
 ## See also
 
-- [`auth-broker-gateway.md`](./auth-broker-gateway.md) -- remote credential vault and forward-proxy that keep provider OAuth refresh tokens and access tokens off developer hosts entirely (complementary to in-process obfuscation).
+- [`auth-broker-gateway.md`](./internal/auth-broker-gateway.md) -- remote credential vault and forward-proxy that keep provider OAuth refresh tokens and access tokens off developer hosts entirely (complementary to in-process obfuscation).

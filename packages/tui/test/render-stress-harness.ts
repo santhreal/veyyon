@@ -2818,7 +2818,7 @@ function sameLines(left: readonly string[], right: readonly string[]): boolean {
 // non-spacing marks across neighboring cells for combining-heavy scripts
 // (Arabic harakat), so a byte-exact round trip through the virtual terminal is
 // not achievable for those rows (the engine paints them verbatim; see the
-// WIDTH notes in docs/tui-core-renderer.md). Fall back to comparing with
+// WIDTH notes in docs/internal/tui-core-renderer.md). Fall back to comparing with
 // non-spacing marks stripped — row count, order, and all spacing content stay
 // exact.
 const NONSPACING_MARKS = /\p{Mn}/gu;

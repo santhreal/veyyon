@@ -31,7 +31,7 @@ interface ParsedCall {
 
 /**
  * Scanner for the Gemma 4 token-delimited tool-calling convention (see
- * `docs/toolconv/gemma.md`). Each call is one `<|tool_call>call:NAME{…}<tool_call|>`
+ * `docs/internal/toolconv/gemma.md`). Each call is one `<|tool_call>call:NAME{…}<tool_call|>`
  * block whose argument list is `key:value` pairs; string values are wrapped in
  * the `<|"|>` token rather than ASCII quotes, so splitting must skip those spans.
  */

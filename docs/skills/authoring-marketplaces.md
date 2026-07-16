@@ -1,6 +1,6 @@
 ---
 name: authoring-marketplaces
-description: Use when creating a new omp marketplace. Covers marketplace.json schema, source types, install commands, and publishing.
+description: Use when creating a new veyyon marketplace. Covers marketplace.json schema, source types, install commands, and publishing.
 ---
 
 # Authoring Marketplaces
@@ -43,7 +43,7 @@ Push to GitHub. Users install with:
 
 ## marketplace.json schema
 
-The catalog file lives at either `.omp-plugin/marketplace.json` or `.claude-plugin/marketplace.json` in the repository root. omp prefers the `.omp-plugin/` path and falls back to the Claude path; a repository may publish both to expose tool-specific catalogs from a single source tree.
+The catalog file lives at either `.omp-plugin/marketplace.json` or `.claude-plugin/marketplace.json` in the repository root. veyyon prefers the `.omp-plugin/` path and falls back to the Claude path; a repository may publish both to expose tool-specific catalogs from a single source tree.
 
 ### Top-level fields
 
@@ -206,7 +206,7 @@ my-plugin/
   README.md                ← recommended: description + usage
 ```
 
-> Note: extension modules declared via `package.json` `omp.extensions` are **not** loaded from marketplace installs — that mechanism only applies to npm-installed or `omp plugin link`ed plugins. Ship marketplace plugin behavior through the conventional directories above.
+> Note: extension modules declared via `package.json` `veyyon.extensions` (legacy `omp`/`pi`) are **not** loaded from marketplace installs — that mechanism only applies to npm-installed or `veyyon plugin link`ed plugins. Ship marketplace plugin behavior through the conventional directories above.
 
 ## Install command
 
@@ -219,14 +219,14 @@ my-plugin/
 CLI equivalent:
 
 ```
-omp plugin marketplace add owner/repo
-omp plugin install name@marketplace-name
+veyyon plugin marketplace add owner/repo
+veyyon plugin install name@marketplace-name
 ```
 
 Scope behavior:
 
 - **user** (default) — installed in `~/.veyyon/plugins/installed_plugins.json`, available in all projects
-- **project** — installed in `<project>/.omp/plugins/installed_plugins.json`, available only in that project
+- **project** — installed in `<project>/.veyyon/plugins/installed_plugins.json`, available only in that project
 
 Project-scoped installs shadow user-scoped installs of the same plugin name.
 

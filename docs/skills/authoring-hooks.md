@@ -1,6 +1,6 @@
 ---
 name: authoring-hooks
-description: Use when creating a new omp hook. Covers HookAPI, event catalog, blocking/overriding tool calls, and context modification.
+description: Use when creating a new veyyon hook. Covers HookAPI, event catalog, blocking/overriding tool calls, and context modification.
 ---
 
 # Authoring Hooks

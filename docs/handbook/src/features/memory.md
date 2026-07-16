@@ -31,7 +31,7 @@ With `memory.backend: mnemopi`, Veyyon:
 
 Key settings: `mnemopi.scoping`, `mnemopi.recallLimit`, `mnemopi.autoRecall`, `mnemopi.autoRetain`,
 `mnemopi.polyphonicRecall`, `mnemopi.noEmbeddings`. See
-[`docs/mnemosyne-memory-backend.md`](../../../mnemosyne-memory-backend.md).
+[`docs/internal/mnemosyne-memory-backend.md`](../../../internal/mnemosyne-memory-backend.md).
 
 Dedicated tools when enabled: `memory_recall`, `memory_retain`, `memory_reflect`, `memory_edit`.
 The `/memory` slash command exposes `view`, `stats`, `diagnose`, `clear`, and `enqueue`.

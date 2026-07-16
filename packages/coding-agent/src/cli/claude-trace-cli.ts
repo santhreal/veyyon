@@ -749,7 +749,7 @@ export async function runClaudeMessagesCapture(args: ClaudeTraceCommandArgs = {}
 			try {
 				session.write(`${message}\r`);
 			} catch (error) {
-				ptyOutput += `\n[omp input write failed: ${errorMessage(error)}]\n`;
+				ptyOutput += `\n[veyyon input write failed: ${errorMessage(error)}]\n`;
 			}
 		})();
 		const captureRace = proxy.waitForCapture(timeoutMs).then(

@@ -1,6 +1,6 @@
 ---
 name: authoring-extensions
-description: Use when creating a new omp extension. Covers ExtensionAPI, factory signature, tool/command/event registration, and local-dev testing.
+description: Use when creating a new veyyon extension. Covers ExtensionAPI, factory signature, tool/command/event registration, and local-dev testing.
 ---
 
 # Authoring Extensions
@@ -19,7 +19,7 @@ export default function (pi: ExtensionAPI) {
 }
 ```
 
-That is a working extension. Drop it into `~/.veyyon/agent/extensions/hello.ts` and restart omp to see the notification.
+That is a working extension. Drop it into `~/.veyyon/agent/extensions/hello.ts` and restart veyyon to see the notification.
 
 ## Full example
 
@@ -75,35 +75,35 @@ export default function myExtension(pi: ExtensionAPI) {
 
 ## Discovery paths
 
-omp loads extension modules from these sources:
+veyyon loads extension modules from these sources:
 
-1. Native `.omp` locations discovered through the capability system:
-   - `<cwd>/.omp/extensions/`
+1. Native `.veyyon` locations discovered through the capability system:
+   - `<cwd>/.veyyon/extensions/`
    - `~/.veyyon/agent/extensions/`
-   - legacy extension paths listed in `.omp/settings.json#extensions` or `~/.veyyon/agent/settings.json#extensions`
-2. Installed plugins under `~/.veyyon/plugins/node_modules` (`omp plugin install` npm/git specs, or `omp plugin link`) via their `omp.extensions`/`pi.extensions` manifests. Marketplace cache installs do not feed extension modules — they surface skills/commands/hooks/tools/MCP only.
-3. Explicit configured paths passed by the CLI (`omp --extension ./my-ext.ts`, also `-e`; `--hook` is treated as an alias) and by the `extensions:` setting in config.
+   - legacy extension paths listed in `.veyyon/settings.json#extensions` or `~/.veyyon/agent/settings.json#extensions`
+2. Installed plugins under `~/.veyyon/plugins/node_modules` (`veyyon plugin install` npm/git specs, or `veyyon plugin link`) via their `veyyon.extensions` manifests (legacy `omp.extensions`/`pi.extensions` still accepted). Marketplace cache installs do not feed extension modules — they surface skills/commands/hooks/tools/MCP only.
+3. Explicit configured paths passed by the CLI (`veyyon --extension ./my-ext.ts`, also `-e`; `--hook` is treated as an alias) and by the `extensions:` setting in config.
 
 The runtime de-duplicates by resolved absolute path — first seen wins.
 
-When a path points to a directory, omp resolves the entry point in this order:
+When a path points to a directory, veyyon resolves the entry point in this order:
 
-1. `package.json` with `omp.extensions` (or legacy `pi.extensions`) field
+1. `package.json` with `veyyon.extensions` (legacy `omp.extensions` / `pi.extensions`) field
 2. `index.ts`
 3. `index.js`
 
-When scanning an `extensions/` directory, omp also loads direct `*.ts`/`*.js` files and one-level subdirectories that have `index.ts`, `index.js`, or a manifest.
+When scanning an `extensions/` directory, veyyon also loads direct `*.ts`/`*.js` files and one-level subdirectories that have `index.ts`, `index.js`, or a manifest.
 
 Extension packages can also bundle sibling capability directories. When a package is loaded through `extensions:` or `--extension`/`-e`, the `omp-plugins` provider discovers its `skills/`, `hooks/pre|post/`, `tools/`, `commands/`, `rules/`, `prompts/`, and `.mcp.json`.
 
 ## package.json manifest
 
-To package an extension as an installable plugin, add an `omp` field to `package.json`:
+To package an extension as an installable plugin, add a `veyyon` field to `package.json` (legacy `omp` / `pi` keys still load; `veyyon` wins when several are present):
 
 ```json
 {
   "name": "my-omp-extension",
-  "omp": {
+  "veyyon": {
     "extensions": ["./src/main.ts"]
   }
 }
@@ -123,7 +123,7 @@ Multiple entry points are supported:
 
 ```json
 {
-  "omp": {
+  "veyyon": {
     "extensions": ["./src/safety.ts", "./src/tools.ts"]
   }
 }
@@ -224,10 +224,10 @@ Extensions are a strict superset of hooks. New authoring should use `ExtensionAP
 
 ## Debugging
 
-omp writes structured logs to a rotating file under `~/.veyyon/logs/` (debug level is always on; nothing is written to the console, which would corrupt the TUI). Tail today's log to see extension load diagnostics:
+veyyon writes structured logs to a rotating file under `~/.veyyon/logs/` (debug level is always on; nothing is written to the console, which would corrupt the TUI). Tail today's log to see extension load diagnostics:
 
 ```
-tail -f ~/.veyyon/logs/omp.$(date +%F).log
+tail -f ~/.veyyon/logs/veyyon.$(date +%F).log
 ```
 
 Failed extension loads are logged with their path and error. Loaded extensions may also emit their own debug logs via `pi.logger`.
@@ -252,6 +252,6 @@ The derived name is the filename stem (or directory name for `index.ts`-style en
 ## Further reading
 
 - `docs/extensions.md` — runtime internals and full API surface reference
-- `docs/extension-loading.md` — detailed path resolution rules
+- `docs/internal/extension-loading.md` — detailed path resolution rules
 - `docs/hooks.md` — hook subsystem internals
 - `docs/skills/examples/hello-extension/` — complete working example

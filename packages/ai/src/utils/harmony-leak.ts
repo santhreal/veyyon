@@ -1,7 +1,7 @@
 /**
  * GPT-5 Harmony-header leakage detection and recovery.
  *
- * Background and policy: see `docs/ERRATA-GPT5-HARMONY.md`. This module
+ * Background and policy: see `docs/internal/ERRATA-GPT5-HARMONY.md`. This module
  * implements §3 of that document: detection by signal fusion, plus a
  * truncate-and-resume primitive for the `edit` tool when its input is in
  * hashline DSL form. Other tools and surfaces fall through to

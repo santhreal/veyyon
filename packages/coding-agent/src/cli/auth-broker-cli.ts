@@ -183,7 +183,7 @@ async function runLogin(flags: AuthBrokerCommandArgs["flags"]): Promise<void> {
 	if (!providerArg) {
 		if (flags.via) {
 			throw new Error(
-				"Usage: omp auth-broker login <provider> --via=user@host (provider required for remote login)",
+				"Usage: veyyon auth-broker login <provider> --via=user@host (provider required for remote login)",
 			);
 		}
 		providerArg = await pickProviderInteractively(providers);
@@ -423,7 +423,7 @@ async function runList(flags: AuthBrokerCommandArgs["flags"]): Promise<void> {
 // ─── CLIProxyAPI import ─────────────────────────────────────────────────
 
 /**
- * Maps the `type` field of a CLIProxyAPI credential JSON to the omp provider id.
+ * Maps the `type` field of a CLIProxyAPI credential JSON to the veyyon provider id.
  * The filename also encodes the type (e.g. `claude-foo@bar.json`), but the
  * in-file `type` is authoritative — we only fall back to filename if absent.
  */
@@ -519,7 +519,7 @@ async function loadImportPlan(
 		if (!provider) {
 			skipped.push({
 				file,
-				reason: `cannot determine omp provider from type=${json.type ?? "?"} (pass --provider to override)`,
+				reason: `cannot determine veyyon provider from type=${json.type ?? "?"} (pass --provider to override)`,
 			});
 			continue;
 		}
@@ -565,7 +565,7 @@ function describeImportEntry(entry: ImportPlanEntry): string {
 async function runImport(flags: AuthBrokerCommandArgs["flags"]): Promise<void> {
 	const target = flags.source;
 	if (!target) {
-		throw new Error("Usage: omp auth-broker import <file|dir> [--provider=<id>] [--include-disabled] [--dry-run]");
+		throw new Error("Usage: veyyon auth-broker import <file|dir> [--provider=<id>] [--include-disabled] [--dry-run]");
 	}
 	const resolvedTarget = path.resolve(target.startsWith("~") ? target.replace(/^~/, os.homedir()) : target);
 	const { entries, skipped } = await loadImportPlan(resolvedTarget, flags.provider, flags.includeDisabled === true);

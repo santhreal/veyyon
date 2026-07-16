@@ -2,7 +2,7 @@
 
 Veyyon sessions are **trees**, not linear chat logs. Each entry has `id` and `parentId`; the active position is the current **leaf**. Branching appends from the chosen parent without deleting sibling branches.
 
-Engine reference: `docs/tree.md`, `docs/session-tree-plan.md`.
+Engine reference: `docs/tree.md`, `docs/internal/session-tree-plan.md`.
 
 ## Navigate in place: `/tree`
 

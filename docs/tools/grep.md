@@ -14,7 +14,7 @@
   - `packages/coding-agent/src/config/settings-schema.ts` — default context lines.
   - `packages/natives/native/index.d.ts` — native `grep()` types exposed to TS.
   - `crates/pi-natives/src/grep.rs` — native regex/file search implementation.
-  - `docs/natives-text-search-pipeline.md` — native search pipeline overview.
+  - `docs/internal/natives-text-search-pipeline.md` — native search pipeline overview.
 
 ## Inputs
 
@@ -59,7 +59,7 @@ The tool returns a single text block in `content[0].text` plus structured `detai
    - glob metacharacters (`*`, `?`, `[`, `{`) are rejected for internal URLs;
    - resources with `sourcePath` are searched through their backing file;
    - resources without `sourcePath` are searched in memory with JavaScript `RegExp`;
-   - `omp://` expands to every embedded documentation file via URL completion;
+   - `veyyon://` (legacy alias `omp://`) expands to every embedded documentation file via URL completion;
    - immutable sources are tracked so output can suppress editable hashline numbered output per file.
 5. For multi-path calls, `partitionExistingPaths()` skips only ENOENT entries. If every filesystem entry is missing and no virtual internal resources remain, the tool errors.
 6. Path resolution branches:
@@ -80,7 +80,7 @@ The tool returns a single text block in `content[0].text` plus structured `detai
 10. Native execution happens in `crates/pi-natives/src/grep.rs`:
    - `build_matcher()` sanitizes non-quantifier braces before regex compile;
    - if compile fails with unopened/unclosed-group errors, it retries after escaping previously unescaped parentheses;
-   - directory scans use the grep pipeline described in `docs/natives-text-search-pipeline.md`.
+   - directory scans use the grep pipeline described in `docs/internal/natives-text-search-pipeline.md`.
 11. Grep dispatch differs by resolved path set:
    - exact explicit files or fanned-out multi-targets: JS loops over targets, merges `grep()` results itself, and deduplicates overlapping targets by absolute path + line number;
    - single file/directory base: one `grep()` call handles native scanning.
@@ -112,7 +112,7 @@ The tool returns a single text block in `content[0].text` plus structured `detai
 5. **Internal URL paths**
    - Filesystem-backed resources search their resolved `sourcePath`.
    - Virtual resources without `sourcePath` search their resolved content in memory.
-   - `omp://` expands to all embedded documentation files so it can be used as a docs search root.
+   - `veyyon://` (legacy alias `omp://`) expands to all embedded documentation files so it can be used as a docs search root.
    - No internal-URL globbing.
    - Immutable and virtual sources suppress editable hashline anchors.
 

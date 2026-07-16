@@ -45,7 +45,7 @@ CustomTool.execute(toolCallId, params, onUpdate, ctx, signal)
 `discoverAndLoadCustomTools(configuredPaths, cwd, builtInToolNames)` merges:
 
 1. Capability providers (`toolCapability`), including:
-   - Native OMP config (`~/.veyyon/agent/tools`, `.omp/tools`)
+   - Native Veyyon config (`~/.veyyon/agent/tools`, `.veyyon/tools`)
    - Claude config (`~/.claude/tools`, `.claude/tools`)
    - Codex config (`~/.codex/tools`, `.codex/tools`)
    - Claude marketplace plugin cache provider
@@ -129,7 +129,7 @@ From `types.ts` and `loader.ts`:
 - `typebox`: zod-backed compatibility shim for legacy TypeBox-style schemas
 - `zod`: injected `zod/v4` module (canonical for new schemas)
 - `pi`: injected `@veyyon/pi-coding-agent` exports
-- `pushPendingAction(action)`: register a preview action for hidden `resolve` tool (`docs/resolve-tool-runtime.md`)
+- `pushPendingAction(action)`: register a preview action for hidden `resolve` tool (`docs/internal/resolve-tool-runtime.md`)
   Loader starts with a no-op UI context and requires host code to call `setUIContext(...)` when real UI is ready.
 
 ## Execution contract and typing

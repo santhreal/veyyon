@@ -407,8 +407,8 @@ ${chalk.bold("Plugin Options:")}
   --plugin-dir <path>        Load plugin from directory (repeatable)
 
 ${chalk.bold("Useful Commands:")}
-  omp agents unpack           - Export bundled subagents to ~/.veyyon/agent/agents (default)
-  omp agents unpack --project - Export bundled subagents to ./.omp/agents`;
+  veyyon agents unpack           - Export bundled subagents to ~/.veyyon/agent/agents (default)
+  veyyon agents unpack --project - Export bundled subagents to ./.veyyon/agents`;
 }
 
 export function printHelp(): void {

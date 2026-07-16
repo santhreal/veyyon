@@ -1,62 +1,61 @@
 # Brand and identity
 
-Cross-product identity is defined in the workspace [brand system](https://github.com/santhsecurity/veyyon/blob/main/docs/brand-system.md). This page is the handbook contract for how that identity appears in the Veyyon harness (CLI, TUI, packages, config paths, and docs).
+This page is the identity contract for the Veyyon harness (CLI, TUI, packages, config paths, docs). The shipped website (`website/`) is the reference implementation of the visual system — when this page and the website disagree, the website wins and this page gets fixed.
 
 ## Product identity
 
 | Item | Value |
 | --- | --- |
-| Product | Veyyon |
-| CLI / TUI product name | Veyyon Code (user-facing harness) |
-| Executable | `veyyon` |
-| npm scope | `@veyyon/*` (for example `@veyyon/pi-coding-agent`) |
-| Config home | `~/.veyyon` (override dir name with `PI_CONFIG_DIR`; Linux XDG via `veyyon config init-xdg`) |
+| Product name | **Veyyon** (only name — not "Veyyon Code") |
+| Primary command | `veyyon` |
+| Short alias | `vey` |
+| npm scope | `@veyyon/*` (e.g. `@veyyon/pi-coding-agent`) |
+| Config home | `~/.veyyon` (`VEYYON_CONFIG_DIR` / legacy `OMP_CONFIG_DIR` / `PI_CONFIG_DIR`) |
 | Profile env | `VEYYON_PROFILE` (also accepts legacy `OMP_PROFILE` / `PI_PROFILE`) |
 
-Veyyon is a fork of [oh-my-pi](https://github.com/can1357/oh-my-pi) (MIT): TypeScript and Bun for the agent loop and TUI, Rust natives for hot paths (grep, PTY, hashline edits). Features described with a `> **Spec — not shipped:**` callout are target design, not current behavior.
+Veyyon forks [oh-my-pi](https://github.com/can1357/oh-my-pi) (MIT): TypeScript/Bun agent loop and TUI, Rust natives for hot paths (grep, PTY, hashline). Upstream provenance is license and history — not a tagline to paste into Veyyon UI or docs.
 
-Legal provenance stays in `LICENSE`, `NOTICE`, `UPSTREAM.md`, and [Acknowledgements](../acknowledgements.md). OpenAI-compatible wire formats and upstream attribution are protocol or history facts, not active product branding.
+Features marked `> **Spec — not shipped:**` are target design, not current behavior.
+
+Legal provenance: `LICENSE`, `NOTICE`, `UPSTREAM.md`, [Acknowledgements](../acknowledgements.md). OpenAI-compatible wire formats are protocol facts, not product branding.
+
+## Voice
+
+Exact, restrained, technical. Name the product **Veyyon**. Prefer short factual sentences. No inherited slogans ("IDE wired in"), no second product name for the CLI, no mascot language, no unbacked capability claims.
 
 ## Interface palette
 
-**Veyyon Dark** (`dark.json`) matches the brand system. **Light** (`light.json`) is still the upstream oh-my-pi palette until a silver light theme ships.
+**Titanium** (`titanium.json`) is the shipped **default** dark theme (`theme.dark` defaults to `titanium`). **Veyyon Dark** (`dark.json`) is an alternative on the same brand rules. **Light** (`light.json`) is still the upstream oh-my-pi palette until a silver light theme ships.
 
-| Theme | Status | Ground | Primary text | Brand accent | Highlight |
+| Theme | Status | Ground | Primary text | Structure | Accent |
 | --- | --- | --- | --- | --- | --- |
-| Veyyon Dark | Shipped | Pitch black `#000000` | `#FAFAFA` | Silver `#B8BDC7` | Deep blue `#4A84C9` |
+| Titanium (default) | Shipped | Pitch black `#000000` | Silver bright `#E8ECF4` | Silver `#B8BDC7` | Ember `#F0862E` |
+| Veyyon Dark | Shipped | Pitch black `#000000` | `#FAFAFA` | Silver `#B8BDC7` | Deep blue `#4A84C9` (pre-ember; see below) |
 | Light | Shipped (upstream) | Terminal / light gray chrome | Terminal default | Teal `#5a8080` | — |
 
 > **Spec — not shipped:** Veyyon Light with `#FAFAFA` ground-inverse and silver `#B8BDC7` (brand-system target).
 
-The ground is **pitch black**. On it, two colors do two clearly separate jobs:
+The ground is **pitch black**. On it, two colors do two jobs — the same system the website ships (`website/site.css` `:root` tokens):
 
-- **Silver `#B8BDC7` is the brand accent** — the color you actually see. It carries the identity and all structure: the wordmark and marks, labels and kickers, rules and hairlines, focus and selection, progress, and **primary actions** (a primary button is silver/near-white, not blue). Silver is metallic and legible on black; keep it bright enough to read as silver, not dim gray.
-- **Deep blue `#4A84C9` is a highlight only** — a sparing pop on the single thing that matters in a view: a key link, an active/selected state, the input caret, one accented word. Blue is **never** a primary fill, a dominant surface, or the default color of chrome. If more than a little blue is showing, it is being misused. When in doubt, use silver and let one blue accent stand out.
+- **Silver is structure** — wordmark, labels, hairlines, progress, primary text hierarchy. Website: `#c6cbd4` / bright `#e6e9ee`. TUI (titanium): `#B8BDC7` / bright `#E8ECF4`.
+- **Ember is the single accent** — the sun. Website: `#f0862e` / hover `#fb9e44`, carried by links and the focus ring. TUI (titanium): `ember #F0862E`, `emberDim #B8632A`, `emberGlow #241510`, carried by the accent border, selection glow, and list bullets. One accent per view; never a primary fill.
 
-Green, red, and yellow accent objects when their meaning fits (success, error, warning). They do not replace silver or blue.
+Green, amber, and red only when meaning fits (success, warning, error). Website: `#7fb98a` / `#c9a24b` / `#c96f6e`. Ember is the brand accent and stays distinct from the amber warning color.
 
-Supporting tones:
+**Every background is pure black `#000000`.** Hierarchy comes from silver hairlines, text weight, and the ember accent — not raised panels or tinted fills. No cyan/purple/rainbow chrome. No gradients. Sharp edges. The only permitted glow is the ember selection tint (`emberGlow`).
 
-| Token | Value | Use |
-| --- | --- | --- |
-| Silver | `#B8BDC7` | Brand accent — structure, labels, marks, rules, primary actions |
-| Silver bright | `#E1E4E9` | Emphasis and hover on dark surfaces; primary-action text ground |
-| Silver dark | `#747B86` | Secondary structure and muted labels |
-| Deep blue | `#4A84C9` | Highlight — one accent per view (link, active state, caret) |
-| Blue bright | `#6BA3E8` | Link/highlight hover |
-
-**Every background is pure black `#000000`.** There are no raised panels, no tinted surfaces, no elevated cards, no `#050505`/`#0A0A0A` "near-black" fills, and no colored state backgrounds (no reddish error fill, no gray selection fill). Every surface — page, card, terminal, panel, code block, status line, selected row, tool output — sits on the same pitch black. Separation and hierarchy come from **silver hairline borders and text color only**, never from a background fill. A selected or active element is shown with a silver rule, a caret (`›`), or brighter text — not a lighter background.
-
-Cyan, orange, purple, and rainbow (multi-color) treatments are not Veyyon chrome. **No gradients and no glow** — not on surfaces, buttons, marks, or text. Edges are sharp.
+Known drift (tracked in `BACKLOG.md`): the TUI and website silver/status hex values differ slightly, TUI links are still deep blue `#4A84C9` where the website uses ember, and `dark.json` predates the ember accent entirely.
 
 ## Onboarding and installers
 
-Interactive terminals may show the Veyyon wordmark and silver progress when color is available. Piped and no-color output stays plain. Install and upgrade flows use Veyyon names and the `veyyon` executable only — no Codex/OpenAI product aliases, `~/.codex` paths, or hidden compatibility shims.
+Fullscreen setup: Veyyon wordmark + silver progress. No secondary product name and no upstream tagline under the mark. Install/upgrade copy uses **Veyyon**, commands `veyyon` / `vey` only.
+
+Session welcome is a single hero card (not a dual-column dashboard): wordmark, one value line (`Hashline edits that land. Your keys.`), action rows with right-aligned shortcuts, optional recent sessions. Settings is a width-capped centered panel.
 
 ## Documentation contract
 
 - Identity and palette: brand system + this page.
 - Engine behavior: handbook pages reconciled to shipped code.
-- **Spec — not shipped**: target design (self-contained profiles, top-level `veyyon doctor`, provider-hosted connectors) until a release ships it.
+- **Spec — not shipped**: target design until a release ships it.
 
 See also: [Themes and identity](../using/themes.md), [TUI design language](./tui-design-language.md).

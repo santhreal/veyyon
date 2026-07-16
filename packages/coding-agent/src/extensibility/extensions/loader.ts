@@ -9,6 +9,7 @@ import type { ImageContent, Model, TextContent, TSchema } from "@veyyon/pi-ai";
 import type { KeyId } from "@veyyon/pi-tui";
 import { hasFsCode, isEacces, isEnoent, logger } from "@veyyon/pi-utils";
 import { Type } from "arktype";
+import { type ManifestHolder, manifestFromPackageJson } from "../manifest-key";
 import * as zodModule from "zod/v4";
 import { type ExtensionModule, extensionModuleCapability } from "../../capability/extension-module";
 import { type Hook, hookCapability } from "../../capability/hook";
@@ -366,8 +367,8 @@ interface ExtensionManifest {
 
 async function readExtensionManifest(packageJsonPath: string): Promise<ExtensionManifest | null> {
 	try {
-		const pkg = (await Bun.file(packageJsonPath).json()) as { omp?: ExtensionManifest; pi?: ExtensionManifest };
-		const manifest = pkg.omp ?? pkg.pi;
+		const pkg = (await Bun.file(packageJsonPath).json()) as ManifestHolder<ExtensionManifest>;
+		const manifest = manifestFromPackageJson(pkg);
 		if (manifest && typeof manifest === "object") {
 			return manifest;
 		}
@@ -440,7 +441,7 @@ async function resolveExtensionEntries(dir: string): Promise<string[] | null> {
  * Discovery rules:
  * 1. Direct files: `extensions/*.ts` or `*.js` → load
  * 2. Subdirectory with index: `extensions/<ext>/index.ts` or `index.js` → load
- * 3. Subdirectory with package.json: `extensions/<ext>/package.json` with "omp"/"pi" field → load declared paths
+ * 3. Subdirectory with package.json: `extensions/<ext>/package.json` with "veyyon" (legacy "omp"/"pi") field → load declared paths
  *
  * No recursion beyond one level. Complex packages must use package.json manifest.
  */
@@ -484,7 +485,7 @@ async function discoverExtensionsInDir(dir: string): Promise<string[]> {
 /**
  * Discover absolute paths of extensions to load, without importing or
  * binding factories. Hot path on session startup — the scan walks native
- * `.omp`/`.pi` extension capabilities, JS/TS hook factories, the
+ * `.veyyon`/`.pi` extension capabilities, JS/TS hook factories, the
  * installed-plugin tree, and any configured paths.
  *
  * Subagents reuse the parent's collected paths via the SDK's
@@ -521,7 +522,7 @@ export async function discoverExtensionPaths(
 		}
 	};
 
-	// 1. Discover extension modules via capability API (native .omp/.pi only).
+	// 1. Discover extension modules via capability API (native .veyyon/.pi only).
 	// Scope the load to the native provider — the extension-module capability
 	// also has claude/codex/gemini/opencode providers, and their items were
 	// discarded here anyway (see #4198). The provider filter skips the walk

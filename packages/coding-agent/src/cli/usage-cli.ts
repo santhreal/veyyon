@@ -839,7 +839,7 @@ export async function runUsageCommand(cmd: UsageCommandArgs): Promise<void> {
 				const scope = cmd.provider ? ` for provider "${cmd.provider}"` : "";
 				process.stderr.write(
 					chalk.yellow(
-						`No usage history recorded${scope} yet. Snapshots accumulate whenever usage is fetched (TUI footer, /usage, omp usage).\n`,
+						`No usage history recorded${scope} yet. Snapshots accumulate whenever usage is fetched (TUI footer, /usage, veyyon usage).\n`,
 					),
 				);
 				process.exitCode = 1;

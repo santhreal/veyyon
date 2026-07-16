@@ -19,6 +19,12 @@ import { engines, version } from "../package.json" with { type: "json" };
 /** App name (e.g. "veyyon") */
 export const APP_NAME: string = "veyyon";
 
+/** Canonical marketing/docs site. Single owner — import, never re-hardcode. */
+export const SITE_URL: string = "https://veyyon.dev";
+
+/** Public changelog/releases page. Where `/changelog` and the update notice point. */
+export const CHANGELOG_URL: string = "https://veyyon.dev/changelog";
+
 /** Config directory name (e.g. ".veyyon") */
 export const CONFIG_DIR_NAME: string = ".veyyon";
 
@@ -94,9 +100,17 @@ function pickProcessEnv(...keys: readonly string[]): string | undefined {
 
 /** Resolve the active profile from `VEYYON_PROFILE`, `OMP_PROFILE`, and `PI_PROFILE`. */
 export function resolveProfileFromEnv(): string | undefined {
-	const veyyon = process.env.VEYYON_PROFILE;
-	if (veyyon !== undefined) return resolveProfileEnv(veyyon, undefined);
-	return resolveProfileEnv(process.env.OMP_PROFILE, process.env.PI_PROFILE);
+	for (const key of PROFILE_ENV_KEYS) {
+		const value = process.env[key];
+		if (value === undefined) continue;
+		try {
+			return normalizeProfileName(value);
+		} catch (error) {
+			// Name which env var carried the bad value — the operator set it out-of-band.
+			throw new Error(`Invalid ${key}: ${error instanceof Error ? error.message : String(error)}`);
+		}
+	}
+	return undefined;
 }
 
 function getProfileFromEnv(): string | undefined {
@@ -223,7 +237,7 @@ export function getConfigDirName(): string {
 	return pickProcessEnv("VEYYON_CONFIG_DIR", "OMP_CONFIG_DIR", "PI_CONFIG_DIR") || CONFIG_DIR_NAME;
 }
 
-/** Get the config agent directory name relative to home (e.g. ".omp/agent" or PI_CONFIG_DIR + "/agent"). */
+/** Get the config agent directory name relative to home (e.g. ".veyyon/agent" or PI_CONFIG_DIR + "/agent"). */
 export function getConfigAgentDirName(): string {
 	const profile = getActiveProfile();
 	return profile ? path.join(getConfigDirName(), "profiles", profile, "agent") : `${getConfigDirName()}/agent`;
@@ -565,7 +579,7 @@ export function getAgentDir(): string {
 	return dirs.agentDir;
 }
 
-/** Get the project-local config directory (.omp). */
+/** Get the project-local config directory (.veyyon). */
 export function getProjectAgentDir(cwd: string = getProjectDir()): string {
 	return path.join(cwd, CONFIG_DIR_NAME);
 }
@@ -584,7 +598,7 @@ export function getLogsDir(): string {
 	return dirs.rootSubdir("logs", "state");
 }
 
-/** Get the path to a dated log file (~/.veyyon/logs/omp.YYYY-MM-DD.log). */
+/** Get the path to a dated log file (~/.veyyon/logs/veyyon.YYYY-MM-DD.log). */
 export function getLogPath(date = new Date()): string {
 	return path.join(getLogsDir(), `${APP_NAME}.${date.toISOString().slice(0, 10)}.log`);
 }
@@ -886,20 +900,20 @@ export function getDebugLogPath(agentDir?: string): string {
 }
 
 // =============================================================================
-// Project subdirectories (.omp/*)
+// Project subdirectories (.veyyon/*)
 // =============================================================================
 
-/** Get the project-level Python modules directory (.omp/modules). */
+/** Get the project-level Python modules directory (.veyyon/modules). */
 export function getProjectModulesDir(cwd: string = getProjectDir()): string {
 	return path.join(getProjectAgentDir(cwd), "modules");
 }
 
-/** Get the project-level prompts directory (.omp/prompts). */
+/** Get the project-level prompts directory (.veyyon/prompts). */
 export function getProjectPromptsDir(cwd: string = getProjectDir()): string {
 	return path.join(getProjectAgentDir(cwd), "prompts");
 }
 
-/** Get the project-level plugin overrides path (.omp/plugin-overrides.json). */
+/** Get the project-level plugin overrides path (.veyyon/plugin-overrides.json). */
 export function getProjectPluginOverridesPath(cwd: string = getProjectDir()): string {
 	return path.join(getProjectAgentDir(cwd), "plugin-overrides.json");
 }

@@ -16,6 +16,7 @@ import { invalidate as invalidateFsCache, readDirEntries, readFile } from "../ca
 import { parseRuleConditionAndScope, type Rule, type RuleFrontmatter } from "../capability/rule";
 import type { Skill, SkillFrontmatter } from "../capability/skill";
 import type { LoadContext, LoadResult, SourceMeta } from "../capability/types";
+import { type ManifestHolder, manifestFromPackageJson } from "../extensibility/manifest-key";
 import { type ConfiguredThinkingLevel, parseConfiguredThinkingLevel } from "../thinking";
 import { normalizeToolNames } from "../tools/builtin-names";
 
@@ -567,8 +568,8 @@ async function readExtensionModuleManifest(
 	const content = await readFile(packageJsonPath);
 	if (!content) return null;
 
-	const pkg = tryParseJson<{ omp?: ExtensionModuleManifest; pi?: ExtensionModuleManifest }>(content);
-	const manifest = pkg?.omp ?? pkg?.pi;
+	const pkg = tryParseJson<ManifestHolder<ExtensionModuleManifest>>(content);
+	const manifest = pkg ? manifestFromPackageJson(pkg) : undefined;
 	if (manifest && typeof manifest === "object") {
 		return manifest;
 	}
@@ -581,7 +582,7 @@ async function readExtensionModuleManifest(
  * Discovery rules:
  * 1. Direct files: `extensions/*.ts` or `*.js` → load
  * 2. Subdirectory with index: `extensions/<ext>/index.ts` or `index.js` → load
- * 3. Subdirectory with package.json: `extensions/<ext>/package.json` with "omp"/"pi" field → load declared paths
+ * 3. Subdirectory with package.json: `extensions/<ext>/package.json` with "veyyon" (legacy "omp"/"pi") field → load declared paths
  *
  * No recursion beyond one level. Complex packages must use package.json manifest.
  * Uses native glob for fast filesystem scanning with gitignore support.

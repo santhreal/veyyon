@@ -5,7 +5,7 @@
  * session. It applies the user's disable levers, registers TTSR rules with the
  * manager, and splits the rest into the always-apply and rulebook buckets.
  *
- * Bucket precedence (matches docs/rulebook-matching-pipeline.md §5):
+ * Bucket precedence (matches docs/internal/rulebook-matching-pipeline.md §5):
  *   1. TTSR     — non-empty `condition`/`astCondition` that `TtsrManager.addRule` accepts
  *   2. always   — `alwaysApply === true`
  *   3. rulebook — has a `description`

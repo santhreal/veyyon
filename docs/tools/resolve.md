@@ -6,7 +6,7 @@
 - Entry: `packages/coding-agent/src/tools/resolve.ts`
 - Model-facing prompt: `packages/coding-agent/src/prompts/tools/resolve.md`
 - Key collaborators:
-  - `docs/resolve-tool-runtime.md` — preview/apply runtime reference
+  - `docs/internal/resolve-tool-runtime.md` — preview/apply runtime reference
   - `packages/coding-agent/src/extensibility/custom-tools/loader.ts` — forwards custom pending actions into the queue
   - `packages/coding-agent/src/tools/ast-edit.ts` — built-in preview producer example
   - `packages/coding-agent/src/session/agent-session.ts` — tool-choice queue, standing resolve handler, and invoker access
@@ -35,7 +35,7 @@
 1. Preview-producing code can call `queueResolveHandler(...)` with a label, source tool name, `apply(reason, extra?)` callback, and optional `reject(reason, extra?)` callback.
 2. Modes can also register a standing resolve handler through `session.setStandingResolveHandler(...)`; `resolve.execute()` consults it only when no queued invoker is active.
 3. `queueResolveHandler(...)` registers a non-forcing pending invoker on the session's tool-choice queue under a unique `pending-action:<sourceTool>:<seq>` id. It does NOT force a tool choice and does NOT steer a reminder.
-4. While a preview is pending, the session's `getToolChoice` (`nextToolChoiceDirective`) returns a `SoftToolRequirement` (`toolName: "resolve"`) carrying the resolve reminder — a non-consuming peek. The agent runtime injects the reminder once and forces `tool_choice: resolve` for one turn only if the model declines (see `docs/resolve-tool-runtime.md`). The reminder text is:
+4. While a preview is pending, the session's `getToolChoice` (`nextToolChoiceDirective`) returns a `SoftToolRequirement` (`toolName: "resolve"`) carrying the resolve reminder — a non-consuming peek. The agent runtime injects the reminder once and forces `tool_choice: resolve` for one turn only if the model declines (see `docs/internal/resolve-tool-runtime.md`). The reminder text is:
 
 ```text
 <system-reminder>

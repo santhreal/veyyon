@@ -1,6 +1,6 @@
-# LSP configuration in OMP
+# LSP configuration in Veyyon
 
-This guide explains how to configure language servers for the OMP coding agent.
+This guide explains how to configure language servers for the Veyyon coding agent.
 
 Source of truth in code:
 
@@ -10,7 +10,7 @@ Source of truth in code:
 
 ## Auto-detection
 
-When no LSP config file is present, OMP auto-detects servers by intersecting two conditions:
+When no LSP config file is present, Veyyon auto-detects servers by intersecting two conditions:
 
 1. The project directory contains at least one of the server's `rootMarkers`.
 2. The server binary is available — checked in project-local bin directories first (e.g., `node_modules/.bin/`, `.venv/bin/`), then `$PATH`.
@@ -19,14 +19,14 @@ No configuration is required for common setups. The built-in server list covers 
 
 ## Config file locations
 
-OMP merges LSP config from multiple files, lowest to highest priority:
+Veyyon merges LSP config from multiple files, lowest to highest priority:
 
 | Priority    | Location                                                                                                                    |
 | ----------- | --------------------------------------------------------------------------------------------------------------------------- |
 | 5 (lowest)  | `~/lsp.json`, `~/.lsp.json`, `~/lsp.yaml`, `~/.lsp.yaml`, `~/lsp.yml`, `~/.lsp.yml`                                         |
 | 4           | Plugin LSP configs (marketplace / `--plugin-dir` roots)                                                                     |
 | 3           | User config dirs: `~/.veyyon/agent/lsp.*`, `~/.claude/lsp.*`, `~/.codex/lsp.*`, `~/.gemini/lsp.*`                              |
-| 2           | Project config dirs: `<project>/.omp/lsp.*`, `<project>/.claude/lsp.*`, `<project>/.codex/lsp.*`, `<project>/.gemini/lsp.*` |
+| 2           | Project config dirs: `<project>/.veyyon/lsp.*`, `<project>/.claude/lsp.*`, `<project>/.codex/lsp.*`, `<project>/.gemini/lsp.*` |
 | 1 (highest) | Project root: `<project>/lsp.*` and `<project>/.lsp.*`                                                                      |
 
 Each location accepts `.json`, `.yaml`, and `.yml` variants, including hidden-file versions (`.lsp.json`, `.lsp.yaml`, `.lsp.yml`). Files are merged in order: higher-priority files override lower-priority fields for the same server. Servers not mentioned in any override file remain at their built-in defaults.
@@ -34,9 +34,9 @@ Each location accepts `.json`, `.yaml`, and `.yml` variants, including hidden-fi
 **Recommended locations:**
 
 - User-wide preferences → `~/.veyyon/agent/lsp.json`
-- Project-specific overrides → `<project>/.omp/lsp.json`
+- Project-specific overrides → `<project>/.veyyon/lsp.json`
 
-> **Note:** Auto-detection is skipped only when at least one config file contributes server overrides. A config file that only sets `idleTimeoutMs` still lets OMP auto-detect built-in servers. When server overrides exist, OMP merges them with defaults and then loads servers that have matching `rootMarkers`, an available binary, and are not explicitly `disabled`.
+> **Note:** Auto-detection is skipped only when at least one config file contributes server overrides. A config file that only sets `idleTimeoutMs` still lets Veyyon auto-detect built-in servers. When server overrides exist, Veyyon merges them with defaults and then loads servers that have matching `rootMarkers`, an available binary, and are not explicitly `disabled`.
 
 ## File shape
 
@@ -84,7 +84,7 @@ Top-level keys:
 
 ### Capabilities
 
-The `capabilities` object enables optional server-specific features that OMP supports on a per-server basis:
+The `capabilities` object enables optional server-specific features that Veyyon supports on a per-server basis:
 
 ```json
 {
@@ -166,7 +166,7 @@ Shut down language servers that have been inactive for more than five minutes:
 
 ### Disable a server for one project, keep it globally
 
-Place the override in `<project>/.omp/lsp.json`:
+Place the override in `<project>/.veyyon/lsp.json`:
 
 ```json
 {

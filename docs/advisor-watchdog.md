@@ -167,14 +167,14 @@ Especially watch for:
 
 `discoverWatchdogFiles(cwd, agentDir)` loads every readable candidate from these locations:
 
-1. user level: `<active agent dir>/WATCHDOG.md` (`~/.omp/agent/WATCHDOG.md` by default; relocated by `PI_CODING_AGENT_DIR`)
+1. user level: `<active agent dir>/WATCHDOG.md` (`~/.veyyon/agent/WATCHDOG.md` by default; relocated by `PI_CODING_AGENT_DIR`)
 2. project levels while walking from `cwd` upward to the git repository root, or to the home directory when no repo root is found:
    - `<dir>/WATCHDOG.md`
-   - `<dir>/.omp/WATCHDOG.md`
+   - `<dir>/.veyyon/WATCHDOG.md`
 
 Unlike native context files, watchdog discovery does not stop at the nearest project file. Multiple project watchdog files can load together.
 
-Candidates in hidden owner directories are ignored unless the file is inside an `.omp` directory. This keeps unrelated dot-directory conventions from being picked up accidentally while still allowing `.omp/WATCHDOG.md`.
+Candidates in hidden owner directories are ignored unless the file is inside an `.veyyon` directory. This keeps unrelated dot-directory conventions from being picked up accidentally while still allowing `.veyyon/WATCHDOG.md`.
 
 ### `@` imports
 
@@ -238,7 +238,7 @@ Fields:
 
 ### Discovery locations
 
-`WATCHDOG.yml`/`WATCHDOG.yaml` share the same user + project search path as `WATCHDOG.md`: the user-level `<active agent dir>/WATCHDOG.yml` plus every `WATCHDOG.yml`/`.omp/WATCHDOG.yml` encountered while walking from `cwd` up to the repository root (or the home directory when no repo root is found). All discovered files are loaded together; a more-specific file (project leaf > project ancestor > user) replaces an earlier entry with the same advisor slug.
+`WATCHDOG.yml`/`WATCHDOG.yaml` share the same user + project search path as `WATCHDOG.md`: the user-level `<active agent dir>/WATCHDOG.yml` plus every `WATCHDOG.yml`/`.veyyon/WATCHDOG.yml` encountered while walking from `cwd` up to the repository root (or the home directory when no repo root is found). All discovered files are loaded together; a more-specific file (project leaf > project ancestor > user) replaces an earlier entry with the same advisor slug.
 
 ## Subagents
 
@@ -272,7 +272,7 @@ The path is derived from the session file (not the artifacts dir, which subagent
 
 Why a file:
 
-- **Usage attribution.** `omp stats` scans each session folder recursively, so advisor assistant turns (with their usage/cost) are attributed to the same project/session like any other subagent. Advisor "session update" prompts are persisted as `synthetic`, agent-attributed user messages so they never inflate user-message metrics.
+- **Usage attribution.** `veyyon stats` scans each session folder recursively, so advisor assistant turns (with their usage/cost) are attributed to the same project/session like any other subagent. Advisor "session update" prompts are persisted as `synthetic`, agent-attributed user messages so they never inflate user-message metrics.
 - **Observability.** The Agent Hub discovers `__advisor.jsonl` on open and shows it as a read-only `advisor`-kind transcript under its owning session.
 
 The file follows session switches: on `/new`, resume/switch, and branch the recorder reopens at the new session's path on the next advisor turn; before a `/drop` deletes the old artifacts dir the recorder feed is detached and drained so a queued write cannot recreate the deleted file. The on-disk log is append-only and independent of the in-memory context — re-primes and compaction never truncate it.

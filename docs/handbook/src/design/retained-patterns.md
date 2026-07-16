@@ -19,7 +19,7 @@ These are genuinely good patterns. Refactors must preserve behavior.
    `packages/coding-agent/src/session/agent-session.ts`. Preserves task continuity across compaction
    when `compaction.type` is `handoff` (the other user-facing type is `snap`; see
    [Compaction & project memory](../context/compaction-memory.md)). Engineering detail:
-   [`docs/handoff-generation-pipeline.md`](../../../handoff-generation-pipeline.md).
+   [`docs/internal/handoff-generation-pipeline.md`](../../../internal/handoff-generation-pipeline.md).
 2. **Subagent spawn model** — `packages/coding-agent/src/task/executor.ts` (spawn, per-model
    concurrency semaphore, soft output-budget steering notice, background output capture) plus
    `packages/coding-agent/src/task/agents.ts` (bundled subagent definitions) and the `task` tool

@@ -19,11 +19,14 @@ export interface ProfileAliasCommand {
 	powerShell: string;
 }
 
+// Marker comments in shell rc files intentionally keep the historical
+// "omp profile alias" text so blocks installed by older builds are still
+// found and upserted; only the wrapped command is the current binary.
 const DEFAULT_ALIAS_COMMAND: ProfileAliasCommand = {
-	display: "omp",
-	posix: "omp",
-	fish: "omp",
-	powerShell: "omp",
+	display: "veyyon",
+	posix: "veyyon",
+	fish: "veyyon",
+	powerShell: "veyyon",
 };
 
 export interface ProfileAliasInstallOptions {
@@ -278,7 +281,7 @@ function renderAliasBlock(
 	switch (shell) {
 		case "fish":
 			body = [
-				`function ${aliasName} --wraps omp --description 'OMP profile ${profile}'`,
+				`function ${aliasName} --wraps ${command.fish} --description 'Veyyon profile ${profile}'`,
 				`    command ${command.fish} --profile=${profile} $argv`,
 				"end",
 			].join("\n");

@@ -231,7 +231,7 @@ Output is streamed through `OutputSink` and may be persisted to artifact storage
 ## Operational troubleshooting
 
 - **Python backend not available** — Check `eval.py`, `PI_PY`, and that `python`/`python3` is on PATH. If preflight fails and `eval.js` is enabled, use a `js` cell.
-- **No Python on PATH** — Install a system Python 3.8+ or place a venv at `~/.veyyon/python-env`. `omp setup python --check` reports the resolved interpreter.
+- **No Python on PATH** — Install a system Python 3.8+ or place a venv at `~/.veyyon/python-env`. `veyyon setup python --check` reports the resolved interpreter.
 - **Execution hangs then times out** — Increase tool `timeout` (max 3600s) if workload is legitimate. For stuck native code, cancellation triggers `SIGINT` first then escalates; the session restarts on the next request.
 - **stdin/input prompts in Python code** — `input()` is not supported; pass data programmatically.
 - **Working directory errors** — Tool validates `cwd` exists and is a directory before execution.

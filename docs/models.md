@@ -106,7 +106,7 @@ providers:
 
 - `auth`: `apiKey` (default), `none`, or `oauth`; for `models.yml` custom models, `oauth` is accepted by schema but does not waive the `apiKey` requirement
 - `discovery.type`: `ollama`, `llama.cpp`, `lm-studio`, `openai-models-list`, `proxy`, or `litellm`
-- `transport`: `pi-native` only. When set, every model under that provider is sent to an `omp auth-gateway` compatible `baseUrl` via `POST /v1/pi/stream`; `apiKey` is the gateway bearer.
+- `transport`: `pi-native` only. When set, every model under that provider is sent to an `veyyon auth-gateway` compatible `baseUrl` via `POST /v1/pi/stream`; `apiKey` is the gateway bearer.
 
 ## Validation rules (current)
 
@@ -400,7 +400,7 @@ Keyless providers:
 
 When `OMP_AUTH_BROKER_URL` (or `auth.broker.url`) is set, the local SQLite credential store is replaced by `RemoteAuthCredentialStore`. Layers 2 and 3 above (stored API key / OAuth in `agent.db`) are served from a broker-supplied snapshot whose `refresh` tokens are redacted; expiry triggers `POST /v1/credential/:id/refresh` on the broker rather than a local refresh.
 
-`AuthStorage.setConfigApiKey` lets a `models.yml` `apiKey` win over a broker-resolved OAuth token without overriding a runtime `--api-key`. See [`auth-broker-gateway.md`](./auth-broker-gateway.md) for the full broker / gateway design and env surface (`OMP_AUTH_BROKER_URL`, `OMP_AUTH_BROKER_TOKEN`, `auth.broker.url`, `auth.broker.token`).
+`AuthStorage.setConfigApiKey` lets a `models.yml` `apiKey` win over a broker-resolved OAuth token without overriding a runtime `--api-key`. See [`auth-broker-gateway.md`](./internal/auth-broker-gateway.md) for the full broker / gateway design and env surface (`OMP_AUTH_BROKER_URL`, `OMP_AUTH_BROKER_TOKEN`, `auth.broker.url`, `auth.broker.token`).
 
 ## Model availability vs all models
 
@@ -489,14 +489,14 @@ disabledProviders:
 
 String entries apply everywhere. Scoped entries apply when the current working directory is the configured path or one of its subdirectories. Use `path`, `paths`, `pathPrefix`, or `pathPrefixes`; use `models` for `enabledModels`, `providers` for `disabledProviders`, or `values` for either.
 
-## `/model` and `omp models`
+## `/model` and `veyyon models`
 
 Both surfaces keep provider-prefixed models visible and selectable.
 
 They now also expose canonical/coalesced models:
 
 - `/model` includes a canonical view alongside provider tabs
-- `omp models` prints provider-grouped tables of every concrete model, and `omp models canonical` prints the coalesced canonical view
+- `veyyon models` prints provider-grouped tables of every concrete model, and `veyyon models canonical` prints the coalesced canonical view
 
 Selecting a canonical entry stores the canonical selector. Selecting a provider row stores the explicit `provider/modelId`.
 
@@ -556,7 +556,7 @@ The built-in model policy currently links OpenAI `codex-spark` variants to `gpt-
 
 The `compat` block on a provider or model overrides the URL-based auto-detection in `packages/catalog/src/compat/openai.ts` (`buildOpenAICompat`). It is validated by `OpenAICompatSchema` in `packages/coding-agent/src/config/models-config-schema.ts` and consumed by every `openai-completions` transport (`packages/ai/src/providers/openai-completions.ts`). The canonical type is `OpenAICompat` in `packages/catalog/src/types.ts`.
 
-Endpoint-specific exceptions that interact with these fields are cataloged in [Provider endpoint constraints](./provider-endpoint-constraints.md).
+Endpoint-specific exceptions that interact with these fields are cataloged in [Provider endpoint constraints](./internal/provider-endpoint-constraints.md).
 
 `models.yml` accepts the following keys (all optional; unset falls back to URL detection):
 
@@ -612,7 +612,7 @@ For `anthropic-messages` models the runtime uses a separate `AnthropicCompat` sh
 
 ### Strict tool schemas (`disableStrictTools`)
 
-Anthropic's API supports a `strict` field on tool definitions that forces the model to always follow the provided schema exactly. OMP enables it by default for a small allowlist of high-frequency built-in `anthropic-messages` tools (`bash`, `python`, `edit`, and `find`) whose schemas fit Anthropic's strict grammar limits; other tools still send normalized schemas but omit `strict`.
+Anthropic's API supports a `strict` field on tool definitions that forces the model to always follow the provided schema exactly. Veyyon enables it by default for a small allowlist of high-frequency built-in `anthropic-messages` tools (`bash`, `python`, `edit`, and `find`) whose schemas fit Anthropic's strict grammar limits; other tools still send normalized schemas but omit `strict`.
 
 Third-party providers that front the Anthropic API (AWS Bedrock, Azure, self-hosted proxies) do not always implement this field and will reject requests that include it. Set `disableStrictTools: true` at the provider level to opt out of strict mode for the allowlisted tools:
 
@@ -636,12 +636,12 @@ providers:
           cacheWrite: 3.75
 ```
 
-`disableStrictTools` is a provider-level flag that applies to all models in the provider. It disables the Anthropic `strict` marker only for tools that OMP would otherwise mark strict; it does not change runtime tool argument validation. OMP can automatically retry without strict tools after Anthropic reports a strict-grammar-too-large error before the first streamed token, but proxies that reject the `strict` field for other reasons should set this flag explicitly.
+`disableStrictTools` is a provider-level flag that applies to all models in the provider. It disables the Anthropic `strict` marker only for tools that Veyyon would otherwise mark strict; it does not change runtime tool argument validation. Veyyon can automatically retry without strict tools after Anthropic reports a strict-grammar-too-large error before the first streamed token, but proxies that reject the `strict` field for other reasons should set this flag explicitly.
 
 Tool schemas going on the wire are normalized by the unified flow in
 `packages/ai/src/utils/schema/normalize.ts` (Google/CCA/MCP dispatchers
 plus the OpenAI strict-mode sanitize+enforce pipeline). See
-[`ai-schema-normalize.md`](./ai-schema-normalize.md) for the strict-mode
+[`ai-schema-normalize.md`](./internal/ai-schema-normalize.md) for the strict-mode
 edge cases (local `$ref` inlining, single-item `allOf` collapse,
 `anyOf`-wrapper description hoist, enum/const primitive-type inference)
 and the per-provider dispatcher mapping.
@@ -673,7 +673,7 @@ providers:
       type: openai-models-list
 ```
 
-The built-in vLLM provider can be pointed at a non-default endpoint without declaring a custom discovery type. OMP uses vLLM's `/v1/models` metadata and preserves vLLM's `max_model_len` field as the discovered context window.
+The built-in vLLM provider can be pointed at a non-default endpoint without declaring a custom discovery type. Veyyon uses vLLM's `/v1/models` metadata and preserves vLLM's `max_model_len` field as the discovered context window.
 
 ```yaml
 providers:

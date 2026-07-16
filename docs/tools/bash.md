@@ -15,7 +15,7 @@
   - `packages/coding-agent/src/session/streaming-output.ts` — tail buffer, truncation, artifact spill.
   - `packages/coding-agent/src/tools/tool-timeouts.ts` — timeout clamp bounds.
   - `packages/coding-agent/src/config/settings-schema.ts` — default interceptor rules.
-  - `docs/bash-tool-runtime.md` — deeper executor/runtime notes; use as the companion doc for shell-session internals.
+  - `docs/internal/bash-tool-runtime.md` — deeper executor/runtime notes; use as the companion doc for shell-session internals.
 
 ## Inputs
 
@@ -68,7 +68,7 @@ Stdout and stderr are merged before the model sees them. Definite non-zero exit 
 9. Foreground non-PTY without client terminal calls `executeBash()` from `packages/coding-agent/src/exec/bash-executor.ts`.
 10. Foreground PTY calls `runInteractiveBashPty()` from `packages/coding-agent/src/tools/bash-interactive.ts`.
 11. Local non-PTY and PTY paths allocate an output artifact first when `session.allocateOutputArtifact` is available. The artifact path/id are passed into the sink so large output can spill to disk.
-12. `executeBash()` loads shell settings, optional shell snapshot, and shell minimizer settings, then runs via a persistent native `Shell` session or one-shot `executeShell()`. `docs/bash-tool-runtime.md` covers that path in detail.
+12. `executeBash()` loads shell settings, optional shell snapshot, and shell minimizer settings, then runs via a persistent native `Shell` session or one-shot `executeShell()`. `docs/internal/bash-tool-runtime.md` covers that path in detail.
 13. `runInteractiveBashPty()` creates a `PtySession`, overlays an xterm-backed console UI, forwards user key input into the PTY, captures output through `OutputSink`, and kills the PTY on dismiss/dispose.
 14. Client-terminal bridge mode calls `session.getClientBridge().createTerminal(...)`, emits `terminalId` updates, polls output until exit/timeout/abort, maps signal exits to `137`, and releases the handle in `finally`.
 15. On completion, `#buildCompletedResult()` formats `(no output)` when needed, attaches truncation metadata from the output summary, appends wall-time/timeout/exit notices, and re-checks unfinished status before returning.
@@ -160,4 +160,4 @@ Stdout and stderr are merged before the model sees them. Definite non-zero exit 
 - Non-PTY runs merge `NON_INTERACTIVE_ENV` with `env` via `buildNonInteractiveEnv()`; PTY runs instead inherit the user environment with `TERM=xterm-256color` prepended before the custom `env` values.
 - When the shell minimizer rewrites output inside `executeBash()`, the visible output is replaced with minimized text and a `[raw output: artifact://<id>]` footer may be appended if `onMinimizedSave` persisted the original text.
 - The TUI renderer parses partial JSON to recover `env` assignments early in streaming previews; that behavior is display-only.
-- For executor internals that are not tool-specific — shell session reuse keys, snapshots, prefix handling, and native timeout behavior — see `docs/bash-tool-runtime.md`.
+- For executor internals that are not tool-specific — shell session reuse keys, snapshots, prefix handling, and native timeout behavior — see `docs/internal/bash-tool-runtime.md`.

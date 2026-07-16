@@ -6,16 +6,16 @@ It covers runtime behavior as implemented today, including precedence, invalid-d
 
 ## Implementation files
 
-- [`src/task/discovery.ts`](../packages/coding-agent/src/task/discovery.ts)
-- [`src/task/agents.ts`](../packages/coding-agent/src/task/agents.ts)
-- [`src/task/types.ts`](../packages/coding-agent/src/task/types.ts)
-- [`src/task/index.ts`](../packages/coding-agent/src/task/index.ts)
-- [`src/task/commands.ts`](../packages/coding-agent/src/task/commands.ts)
-- [`src/prompts/agents/task.md`](../packages/coding-agent/src/prompts/agents/task.md)
-- [`src/prompts/tools/task.md`](../packages/coding-agent/src/prompts/tools/task.md)
-- [`src/discovery/helpers.ts`](../packages/coding-agent/src/discovery/helpers.ts)
-- [`src/config.ts`](../packages/coding-agent/src/config.ts)
-- [`src/task/executor.ts`](../packages/coding-agent/src/task/executor.ts)
+- [`src/task/discovery.ts`](../../packages/coding-agent/src/task/discovery.ts)
+- [`src/task/agents.ts`](../../packages/coding-agent/src/task/agents.ts)
+- [`src/task/types.ts`](../../packages/coding-agent/src/task/types.ts)
+- [`src/task/index.ts`](../../packages/coding-agent/src/task/index.ts)
+- [`src/task/commands.ts`](../../packages/coding-agent/src/task/commands.ts)
+- [`src/prompts/agents/task.md`](../../packages/coding-agent/src/prompts/agents/task.md)
+- [`src/prompts/tools/task.md`](../../packages/coding-agent/src/prompts/tools/task.md)
+- [`src/discovery/helpers.ts`](../../packages/coding-agent/src/discovery/helpers.ts)
+- [`src/config.ts`](../../packages/coding-agent/src/config.ts)
+- [`src/task/executor.ts`](../../packages/coding-agent/src/task/executor.ts)
 
 ---
 
@@ -60,14 +60,14 @@ Because bundled parsing uses `level: "fatal"`, malformed bundled frontmatter thr
 
 ### Discovery inputs
 
-1. Nearest project `.omp` agents dir from `findAllNearestProjectConfigDirs("agents", cwd)` (filtered to `.omp`; first hit only)
-2. User `.omp` agents dir from `getConfigDirs("agents", { project: false })` (filtered to `.omp`; first hit only)
+1. Nearest project `.veyyon` agents dir from `findAllNearestProjectConfigDirs("agents", cwd)` (filtered to `.veyyon`; first hit only)
+2. User `.veyyon` agents dir from `getConfigDirs("agents", { project: false })` (filtered to `.veyyon`; first hit only)
 3. Claude plugin roots (`listClaudePluginRoots(home, cwd)`) with `agents/` subdirs — only when `isProviderEnabled("claude-plugins")`; project-scope plugins sort before user-scope
 4. Bundled agents (`loadBundledAgents()`)
 
 ### Actual source order
 
-1. project `.omp/agents`
+1. project `.veyyon/agents`
 2. user `~/.veyyon/agent/agents`
 3. plugin `agents/` dirs (project-scope first, then user-scope)
 4. bundled agents last
@@ -82,7 +82,7 @@ Discovery uses first-wins dedup by exact `agent.name`:
 
 Implications:
 
-- Project `.omp` overrides user `.omp`.
+- Project `.veyyon` overrides user `.veyyon`.
 - Non-bundled agents override bundled agents with the same name.
 - Name matching is case-sensitive (`Task` and `task` are distinct).
 - Within one directory, markdown files are read in lexicographic filename order before dedup.

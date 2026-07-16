@@ -972,7 +972,7 @@ export class RemoteAuthCredentialStore implements AuthCredentialStore {
 				logger.warn("auth-broker usage fetch failed", { error: String(error) });
 				// Documented 15s TTL fallback: cache the null so sequential callers
 				// don't re-hit the broker while it's still down. See
-				// docs/auth-broker-gateway.md § "Client-side single-flight".
+				// docs/internal/auth-broker-gateway.md § "Client-side single-flight".
 				if (epoch !== this.#usageCacheEpoch) return this.#loadUsageReports();
 				this.#usageCache = { reports: null, fetchedAt: Date.now() };
 				return null;

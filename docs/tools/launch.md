@@ -1,6 +1,6 @@
 # launch
 
-> Launch and control long-running project processes shared by every omp instance in the same directory.
+> Launch and control long-running project processes shared by every veyyon instance in the same directory.
 
 ## Source
 - Tool: `packages/coding-agent/src/tools/launch.ts`
@@ -61,7 +61,7 @@ Defaults:
 - `detached`: `false`
 - readiness timeout: 30 seconds
 
-`detached: true` implies `persist: true`, forces `pty: false`, and disables stdin. Its process survives broker shutdown and every omp exit; a later broker reconnects to its records for logs and explicit `stop`.
+`detached: true` implies `persist: true`, forces `pty: false`, and disables stdin. Its process survives broker shutdown and every veyyon exit; a later broker reconnects to its records for logs and explicit `stop`.
 
 `ready.log` is a regular expression matched against captured output. `ready.port` probes TCP at `ready.host` (default `127.0.0.1`). When both are present, both must pass. A readiness timeout leaves the process running and returns its current state so the caller can inspect logs or stop it.
 
@@ -93,18 +93,18 @@ The broker keeps a 25 MiB current log and one 25 MiB rotated log while it owns a
 All project clients may observe the same managed process. Input is one shared stream: each send operation is serialized, but two clients writing independently still address the same process stdin.
 
 ## Cross-instance lifecycle
-Every omp session registers its process in the canonical project scope. The first `launch` call starts a detached broker over a private socket; later `launch` calls from any registered omp process connect to the same broker and see the same names, logs, and state.
+Every veyyon session registers its process in the canonical project scope. The first `launch` call starts a detached broker over a private socket; later `launch` calls from any registered veyyon process connect to the same broker and see the same names, logs, and state.
 
 Runtime data lives under `~/.veyyon/run/daemons/<project-hash>/`:
 - `broker.sock` (or a Windows named pipe)
 - a mode-0600 authentication token
 - broker PID metadata
 - per-managed-process launch metadata and logs
-- live omp process-presence records
+- live veyyon process-presence records
 
-After the last tool socket disconnects, the broker checks the project-presence records. Live omp PIDs keep non-persistent managed processes running even when those omp instances have not called `launch`; dead PIDs are removed. Once no omp process remains, the broker waits three seconds, stops every non-persistent managed process, and exits. This PID check still works when an omp process is killed without JavaScript cleanup.
+After the last tool socket disconnects, the broker checks the project-presence records. Live veyyon PIDs keep non-persistent managed processes running even when those veyyon instances have not called `launch`; dead PIDs are removed. Once no veyyon process remains, the broker waits three seconds, stops every non-persistent managed process, and exits. This PID check still works when an veyyon process is killed without JavaScript cleanup.
 
-`persist: true` explicitly opts a managed process out of last-client teardown. A broker with a live persistent process remains available without clients until another omp reconnects and stops it. Broker recovery terminates stale recorded children and preserves their records as exited instead of adopting an unknown process state.
+`persist: true` explicitly opts a managed process out of last-client teardown. A broker with a live persistent process remains available without clients until another veyyon reconnects and stops it. Broker recovery terminates stale recorded children and preserves their records as exited instead of adopting an unknown process state.
 
 ## Restart policies
 - `no`: never restart automatically (default)

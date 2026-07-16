@@ -1,0 +1,71 @@
+# Public-runner checks for the veyyon harness: lint + type check, the TypeScript
+# test suite, and a keyhog secret scan. Runs on GitHub-hosted runners so it works
+# on the public repo without the self-hosted `omp-kata` runners the release
+# pipeline (ci.yml) uses.
+name: Checks
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "website/**"
+      - "docs/**"
+      - "**/*.md"
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: "checks-${{ github.ref }}"
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  lint-and-typecheck:
+    name: Lint & type check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.14"
+      - run: bun install --frozen-lockfile
+      - name: Biome check + workspace type check
+        run: bun run check:ts
+      - name: Lint
+        run: bun run lint:ts
+
+  test:
+    name: TypeScript tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.14"
+      - run: bun install --frozen-lockfile
+      - name: Workspace test suite
+        run: bun run ci:test:ts:workspace
+
+  secret-scan:
+    name: Secret scan (keyhog)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install keyhog
+        run: curl -fsSL https://raw.githubusercontent.com/santhsecurity/keyhog/main/install.sh | sh
+      - name: Scan packages for new secrets
+        # --precision drops entropy/ML-speculative noise and raises the confidence
+        # floor; the committed baseline suppresses the known public OAuth client IDs
+        # and test fixtures, so the job fails only on a genuinely NEW leak.
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          keyhog scan packages \
+            --precision \
+            --backend cpu \
+            --baseline .keyhog-baseline.json \
+            --exclude-paths node_modules \
+            --exclude-paths target \
+            --exclude-paths packages/natives/target

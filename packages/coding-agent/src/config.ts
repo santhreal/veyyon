@@ -101,7 +101,7 @@ export interface ConfigDirEntry {
 export interface GetConfigDirsOptions {
 	/** Include user-level directories (~/.veyyon/agent/...). Default: true */
 	user?: boolean;
-	/** Include project-level directories (.omp/...). Default: true */
+	/** Include project-level directories (.veyyon/...). Default: true */
 	project?: boolean;
 	/** Current working directory for project paths. Default: getProjectDir() */
 	cwd?: string;

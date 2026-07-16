@@ -28,7 +28,7 @@ interface ParsedCall {
 
 /**
  * Scanner for the hosted-Gemini / Gemma 3 Pythonic tool-calling convention
- * (see `docs/toolconv/gemini.md`). Tool calls arrive as a ```` ```tool_code ````
+ * (see `docs/internal/toolconv/gemini.md`). Tool calls arrive as a ```` ```tool_code ````
  * fenced block whose body is one or more Python call expressions, e.g.
  * `print(default_api.search(pattern="x", skip=40))`. Like the qwen3 scanner we
  * buffer the whole block until its closing fence, then parse all calls at once

@@ -16,8 +16,8 @@ at the narrowest layer that actually owns the behavior.
 
 Related references:
 
-- [Providers](./providers.md) — provider availability, credentials, custom providers
-- [Model and Provider Configuration](./models.md) — `models.yml`, routing, and compat fields
+- [Providers](../providers.md) — provider availability, credentials, custom providers
+- [Model and Provider Configuration](../models.md) — `models.yml`, routing, and compat fields
 - [Provider streaming internals](./provider-streaming-internals.md) — stream event normalization
 - [Adding a provider](./adding-a-provider.md) — catalog/auth wiring for a new provider
 

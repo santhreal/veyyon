@@ -10,9 +10,9 @@ This document covers the current extension runtime in:
 - `src/extensibility/extensions/index.ts`
 - `src/modes/controllers/extension-ui-controller.ts`
 
-For discovery paths and filesystem loading rules, see [`extension-loading.md`](./extension-loading.md).
+For discovery paths and filesystem loading rules, see [`extension-loading.md`](./internal/extension-loading.md).
 
-For packaged user-facing extension CLIs/features such as `packages/swarm-extension`, see [`user-facing-packages.md`](./user-facing-packages.md).
+For packaged user-facing extension CLIs/features such as `packages/swarm-extension`, see [`user-facing-packages.md`](./internal/user-facing-packages.md).
 
 ## What an extension is
 

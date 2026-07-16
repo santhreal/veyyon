@@ -13,7 +13,7 @@
  * ED3 is unsafe, instead re-anchor and recommit below the stale fragment —
  * duplication, never loss. The engine never probes or guesses the terminal's
  * scroll position, and the hot path clamps over-wide lines instead of
- * throwing. See `docs/tui-core-renderer.md`.
+ * throwing. See `docs/internal/tui-core-renderer.md`.
  */
 import * as fs from "node:fs";
 import { performance } from "node:perf_hooks";
@@ -1280,6 +1280,15 @@ export class TUI extends Container {
 
 	get fullRedraws(): number {
 		return this.#fullRedrawCount;
+	}
+
+	/**
+	 * Total row count of the last composed frame (all root children). 0 before the
+	 * first render. Read-only; lets callers that need to bottom-anchor content
+	 * measure the exact composed height without re-rendering.
+	 */
+	get composedFrameRows(): number {
+		return this.#previousFrameLength;
 	}
 
 	/**

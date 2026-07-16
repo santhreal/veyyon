@@ -94,7 +94,7 @@ into `RequestInit.tls.ca` itself).
 
 | Variable | Purpose |
 | --- | --- |
-| `PI_INSTALL_DIR` | Overrides the install script's target directory (default `~/.local/bin` on Unix, `%LOCALAPPDATA%\omp` on Windows). |
+| `VEYYON_INSTALL_DIR` | Overrides the install script's target directory (default `~/.local/bin` on Unix, `%LOCALAPPDATA%\veyyon` on Windows). Legacy alias `PI_INSTALL_DIR` is still accepted. |
 
 There is no `VEYYON_NON_INTERACTIVE` or `VEYYON_INSTALL_URL`; the install scripts (`scripts/install.sh`,
 `scripts/install.ps1`) do not read those names today.
@@ -124,7 +124,7 @@ broker host:
 | `VEYYON_AUTH_BROKER_SNAPSHOT_TTL_MS` | Freshness window (ms) for the encrypted local snapshot cache; default `3600000`. |
 | `VEYYON_AUTH_BROKER_SNAPSHOT_CACHE` | Path to the encrypted local snapshot cache. |
 
-Most installs never set these. Details: `docs/auth-broker-gateway.md`.
+Most installs never set these. Details: `docs/internal/auth-broker-gateway.md`.
 
 ## Repair
 
@@ -152,7 +152,7 @@ for the real `PI_*`-prefixed TUI flags.
 
 | Name | Status |
 | --- | --- |
-| `VEYYON_HOME` | Never existed. Config location is `PI_CONFIG_DIR` (dirname override) + optional XDG migration, not a single home-path variable. |
+| `VEYYON_HOME` | Never existed. Config location is `VEYYON_CONFIG_DIR` (dirname override, legacy `OMP_CONFIG_DIR`/`PI_CONFIG_DIR`) + optional XDG migration, not a single home-path variable. |
 | `VEYYON_SQLITE_HOME` | Never existed. No separate SQLite-state override; state lives under the resolved agent directory. |
 | `VEYYON_API_KEY` / `VEYYON_ACCESS_TOKEN` | Never existed as a Veyyon-branded credential; use each provider's native key variable. |
 | `VEYYON_AUTHAPI_BASE_URL` | Never existed. The ChatGPT AuthAPI host used by personal-access-token whoami is not overridable via env today. |

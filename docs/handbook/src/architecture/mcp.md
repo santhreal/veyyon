@@ -30,5 +30,5 @@ User guide: [MCP](../features/mcp.md), [MCP setup](../using/mcp-setup.md).
 
 Engineering detail:
 [`docs/mcp-config.md`](../../../mcp-config.md),
-[`docs/mcp-runtime-lifecycle.md`](../../../mcp-runtime-lifecycle.md),
-[`docs/mcp-protocol-transports.md`](../../../mcp-protocol-transports.md).
+[`docs/internal/mcp-runtime-lifecycle.md`](../../../internal/mcp-runtime-lifecycle.md),
+[`docs/internal/mcp-protocol-transports.md`](../../../internal/mcp-protocol-transports.md).
