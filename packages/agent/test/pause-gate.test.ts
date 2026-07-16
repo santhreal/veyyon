@@ -25,6 +25,18 @@ function makeEchoTool(executed: string[]): AgentTool {
 	return echoTool as AgentTool;
 }
 
+// Deterministically wait for an observable condition instead of a fixed sleep that
+// races slow/loaded CI runners. Once the predicate holds, settle briefly so a
+// following "did NOT happen" assertion still has room to catch wrong behavior.
+async function waitFor(predicate: () => boolean, { timeoutMs = 2000, settleMs = 15 } = {}): Promise<void> {
+	const start = performance.now();
+	while (!predicate()) {
+		if (performance.now() - start > timeoutMs) throw new Error("waitFor: predicate not met within timeout");
+		await Bun.sleep(1);
+	}
+	if (settleMs > 0) await Bun.sleep(settleMs);
+}
+
 describe("agentPauseGate", () => {
 	afterEach(() => {
 		// The gate is process-global: never leak an engaged pause into other files.
@@ -66,7 +78,9 @@ describe("agentPauseGate", () => {
 		const config: AgentLoopConfig = { model: mock.model, convertToLlm: identityConverter };
 
 		const result = agentLoop([createUserMessage("run echo")], context, config, undefined, mock.stream).result();
-		await Bun.sleep(20);
+		// Wait for the paused model call to register (deterministic), then the settle
+		// window proves the tool stays parked instead of racing a fixed 20ms sleep.
+		await waitFor(() => mock.calls.length === 1);
 		expect(executed).toEqual([]); // tool parked, not started
 		expect(mock.calls.length).toBe(1); // and no follow-up model call either
 
