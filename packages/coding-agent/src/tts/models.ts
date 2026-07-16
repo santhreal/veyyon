@@ -17,7 +17,7 @@ export interface TtsLocalVoiceSpec {
  * (`KokoroTTS.from_pretrained`), which runs on the same `@huggingface/transformers`
  * + `onnxruntime` runtime as the rest of the tiny-model stack and bundles the
  * misaki/espeak phonemizer Kokoro needs. `dtype` is the default ONNX precision
- * (overridable via `providers.tinyModelDtype`/`PI_TINY_DTYPE`).
+ * (overridable via `providers.tinyModelDtype`/`VEYYON_TINY_DTYPE`).
  */
 export interface TtsLocalModelSpec {
 	key: string;

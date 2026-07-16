@@ -9,7 +9,14 @@
  *
  * Coordinate system: PDF native (origin = bottom-left, Y increases upward).
  */
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { getAgentDir } from "@veyyon/pi-utils";
 import type * as mupdf from "mupdf";
+import {
+	type EmbeddedMupdfModuleFiles,
+	loadEmbeddedMupdfModuleFiles,
+} from "../../../utils/mupdf-wasm-embed";
 import type { ImageRegion, PageContent, Segment, TextBox } from "./types";
 
 // mupdf instantiates its WASM module via a top-level await. A static
@@ -19,10 +26,55 @@ import type { ImageRegion, PageContent, Segment, TextBox } from "./types";
 // exposing the converter classes before their module-level consts initialize
 // (e.g. `EXTENSIONS` reads as undefined). Importing mupdf lazily keeps the chunk
 // init synchronous and also keeps the ~10MB wasm off non-PDF conversions.
+//
+// Compiled binaries go further: that top-level await is incompatible with
+// bytecode compilation, so the binary build embeds mupdf's JS modules as opaque
+// file assets (scripts/embed-mupdf-wasm.ts) instead of bundling them. On first
+// PDF use they are materialized side by side into a version-keyed cache dir
+// (mupdf.js statically imports `./mupdf-wasm.js`, so the sibling layout must be
+// preserved) and imported by path. The wasm bytes themselves arrive through
+// `$libmupdf_wasm_Module.wasmBinary` (src/utils/markit.ts), so the `.wasm`
+// sibling is never read from disk.
 let mupdfModule: typeof mupdf | undefined;
+
+function materializeEmbeddedMupdf(embedded: EmbeddedMupdfModuleFiles): string {
+	const cacheDir = path.join(getAgentDir(), "cache", "mupdf", embedded.version);
+	const targets = [
+		{ asset: embedded.mupdfJs, name: "mupdf.js" },
+		{ asset: embedded.mupdfWasmJs, name: "mupdf-wasm.js" },
+	];
+	for (const { asset, name } of targets) {
+		const target = path.join(cacheDir, name);
+		const bytes = fs.readFileSync(asset);
+		if (fs.existsSync(target) && fs.statSync(target).size === bytes.byteLength) continue;
+		fs.mkdirSync(cacheDir, { recursive: true });
+		// Write-then-rename so a concurrent process never imports a torn file.
+		const tmp = path.join(cacheDir, `.${name}.${process.pid}.tmp`);
+		fs.writeFileSync(tmp, bytes);
+		fs.renameSync(tmp, target);
+	}
+	return path.join(cacheDir, "mupdf.js");
+}
+
 async function loadMupdf(): Promise<typeof mupdf> {
 	if (!mupdfModule) {
-		mupdfModule = await import("mupdf");
+		const embedded = loadEmbeddedMupdfModuleFiles();
+		if (embedded) {
+			let entry: string;
+			try {
+				entry = materializeEmbeddedMupdf(embedded);
+			} catch (err) {
+				throw new Error(
+					`Failed to materialize the embedded mupdf runtime under ${path.join(getAgentDir(), "cache", "mupdf")}: ` +
+						`${err instanceof Error ? err.message : String(err)}. ` +
+						`PDF conversion needs a writable agent cache dir — check permissions/disk space, or remove the dir to force a rewrite.`,
+					{ cause: err },
+				);
+			}
+			mupdfModule = (await import(entry)) as typeof mupdf;
+		} else {
+			mupdfModule = await import("mupdf");
+		}
 	}
 	return mupdfModule;
 }

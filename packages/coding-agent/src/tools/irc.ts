@@ -14,13 +14,11 @@ import type { ToolExample } from "@veyyon/pi-ai";
 import { type Component, Text } from "@veyyon/pi-tui";
 import { formatAge, formatDuration, prompt } from "@veyyon/pi-utils";
 import { type } from "arktype";
-import type { Settings } from "../config/settings";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import { IrcBus, type IrcDeliveryReceipt, type IrcMessage } from "../irc/bus";
 import type { Theme } from "../modes/theme/theme";
 import ircDescription from "../prompts/tools/irc.md" with { type: "text" };
 import { type AgentRegistry, MAIN_AGENT_ID } from "../registry/agent-registry";
-import { canSpawnAtDepth } from "../task/types";
 import { Ellipsis, renderStatusLine, renderTreeList, truncateToWidth } from "../tui";
 import type { ToolSession } from ".";
 import {
@@ -35,19 +33,11 @@ import {
 
 const DEFAULT_IRC_TIMEOUT_MS = 120_000;
 
-/**
- * IRC availability: there must be someone to chat with. True for every
- * subagent (it always has a parent, and possibly siblings) and for any
- * session that can still spawn subagents through the task tool. Only a
- * top-level session with task spawning unavailable has no peers — no irc.
- */
-export function isIrcEnabled(settings: Settings, taskDepth: number): boolean {
-	if (taskDepth > 0) return true;
-	// Top-level session: peers exist only if it can still spawn subagents — the
-	// same capacity gate the task tool uses, reused here to avoid drift.
-	const maxDepth = settings.get("task.maxRecursionDepth") ?? 2;
-	return canSpawnAtDepth(maxDepth, taskDepth);
-}
+// Re-exported for back-compat: the definition lives in the light module so the
+// tool registry can gate irc without loading this implementation at boot.
+import { isIrcEnabled } from "./irc-enabled";
+
+export { isIrcEnabled };
 
 const ircSchema = type({
 	op: type("'send' | 'wait' | 'inbox' | 'list'").describe("irc operation"),

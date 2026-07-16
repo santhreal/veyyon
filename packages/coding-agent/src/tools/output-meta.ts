@@ -11,7 +11,7 @@ import type {
 	AgentToolResult,
 	AgentToolUpdateCallback,
 } from "@veyyon/pi-agent-core";
-import type { ImageContent, TextContent } from "@veyyon/pi-ai";
+import type { ImageContent, Static, TextContent, TSchema } from "@veyyon/pi-ai";
 import { logger } from "@veyyon/pi-utils";
 import { getDefault, type Settings } from "../config/settings";
 import { formatGroupedDiagnosticMessages } from "../lsp/utils";
@@ -651,7 +651,7 @@ async function spillLargeResultToArtifact(
 	const { threshold, tailBytes, tailLines, headBytes } = getSpillConfig(context?.settings);
 
 	// Skip if tool already saved an artifact
-	const existingMeta: OutputMeta | undefined = result.details?.meta;
+	const existingMeta = (result.details as { meta?: OutputMeta } | undefined)?.meta;
 	if (existingMeta?.truncation?.artifactId) return result;
 
 	// Measure total text content
@@ -762,7 +762,7 @@ async function spillLargeResultToArtifact(
 async function wrappedExecute(
 	this: AgentTool & { [kUnwrappedExecute]: AgentToolExecFn },
 	toolCallId: string,
-	params: any,
+	params: Static<TSchema>,
 	signal?: AbortSignal,
 	onUpdate?: AgentToolUpdateCallback,
 	context?: AgentToolContext,
@@ -776,7 +776,7 @@ async function wrappedExecute(
 		result = await spillLargeResultToArtifact(result, this.name, context);
 
 		// Append notices from meta
-		const meta: OutputMeta | undefined = result.details?.meta;
+		const meta = (result.details as { meta?: OutputMeta } | undefined)?.meta;
 		if (meta) {
 			return {
 				...result,

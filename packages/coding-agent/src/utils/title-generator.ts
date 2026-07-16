@@ -8,7 +8,7 @@ import { StreamMarkupHealing } from "@veyyon/pi-ai/utils/stream-markup-healing";
 import { isTerminalHeadless, logger, prompt } from "@veyyon/pi-utils";
 import type { ModelRegistry } from "../config/model-registry";
 
-import { resolveRoleSelection } from "../config/model-resolver";
+import { resolveRoleSelectionWithInherit } from "../config/model-resolver";
 import type { Settings } from "../config/settings";
 import titleMarkerInstruction from "../prompts/system/title-marker-instruction.md" with { type: "text" };
 import titleSystemPrompt from "../prompts/system/title-system.md" with { type: "text" };
@@ -47,12 +47,7 @@ function getTitleModel(registry: ModelRegistry, settings: Settings, currentModel
 	const availableModels = registry.getAvailable();
 	if (availableModels.length === 0) return undefined;
 
-	const titleModel = resolveRoleSelection(["tiny", "commit", "smol"], settings, availableModels)?.model;
-	if (titleModel) return titleModel;
-
-	if (currentModel) return currentModel;
-
-	return undefined;
+	return resolveRoleSelectionWithInherit(["tiny", "commit", "smol"], settings, availableModels, currentModel)?.model;
 }
 
 /**

@@ -77,7 +77,7 @@ function readTinyModelSetting(path: "providers.tinyModelDevice" | "providers.tin
 }
 
 /**
- * Decide which `PI_TINY_DEVICE` / `PI_TINY_DTYPE` vars to overlay onto the worker
+ * Decide which tiny device/dtype env vars (`VEYYON_TINY_*` primary, `PI_TINY_*` legacy) to overlay onto the worker
  * env. A present env var wins (left untouched); otherwise the mapped persisted
  * setting is used. Returns only the keys to add — never the default sentinel.
  * Pure for testability; see {@link tinyWorkerEnv} for the spawn-time glue.
@@ -89,13 +89,21 @@ export function tinyWorkerEnvOverlay(
 	dtypeSetting: string | undefined,
 ): Record<string, string> {
 	const overlay: Record<string, string> = {};
-	if (!env.PI_TINY_DEVICE) {
+	if (!env.VEYYON_TINY_DEVICE && !env.PI_TINY_DEVICE) {
 		const device = tinyModelDeviceSettingToEnv(deviceSetting);
-		if (device) overlay.PI_TINY_DEVICE = device;
+		if (device) {
+			// Write both names in lockstep so the child resolves the same value
+			// whichever alias it reads (VEYYON_* primary, PI_* legacy).
+			overlay.VEYYON_TINY_DEVICE = device;
+			overlay.PI_TINY_DEVICE = device;
+		}
 	}
-	if (!env.PI_TINY_DTYPE) {
+	if (!env.VEYYON_TINY_DTYPE && !env.PI_TINY_DTYPE) {
 		const dtype = tinyModelDtypeSettingToEnv(dtypeSetting);
-		if (dtype) overlay.PI_TINY_DTYPE = dtype;
+		if (dtype) {
+			overlay.VEYYON_TINY_DTYPE = dtype;
+			overlay.PI_TINY_DTYPE = dtype;
+		}
 	}
 	return overlay;
 }

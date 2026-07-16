@@ -162,8 +162,8 @@ describe("vibe tool renderers", () => {
 		const text = lines.join("\n");
 
 		// One framed screen per worker, stacked.
-		expect(lines.filter(line => line.includes("╭─")).length).toBe(2);
-		expect(lines.filter(line => line.startsWith("╰─")).length).toBe(2);
+		expect(lines.filter(line => line.includes("┌─")).length).toBe(2);
+		expect(lines.filter(line => line.startsWith("└─")).length).toBe(2);
 		// Live screen: header, typed turn message, trace, current tool, streamed tail.
 		expect(text).toContain("Anna");
 		// Badge glyphs are theme-driven (⟦fast⟧ on dark); assert the flavor label itself.

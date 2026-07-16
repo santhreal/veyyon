@@ -14,6 +14,8 @@ import { getAgentDir, isEnoent } from "@veyyon/pi-utils";
 import { YAML } from "bun";
 
 /** Provider id stamped on discovered managed skills (distinguishes them from authored). */
+// Persisted in user settings (`disabledProviders`) — renaming would silently
+// re-enable the provider for users who disabled it, so the id stays "omp-managed".
 export const MANAGED_SKILLS_PROVIDER_ID = "omp-managed";
 
 /** Hard cap on a managed SKILL.md body to keep generated skills bounded. */

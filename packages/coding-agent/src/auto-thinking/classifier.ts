@@ -17,7 +17,7 @@ import { type AssistantMessage, completeSimple, Effort, type Model } from "@veyy
 import { prompt } from "@veyyon/pi-utils";
 
 import type { ModelRegistry } from "../config/model-registry";
-import { resolveRoleSelection } from "../config/model-resolver";
+import { resolveRoleSelectionWithInherit } from "../config/model-resolver";
 import type { Settings } from "../config/settings";
 import difficultySystemPrompt from "../prompts/system/auto-thinking-difficulty.md" with { type: "text" };
 import difficultyLocalPrompt from "../prompts/system/auto-thinking-difficulty-local.md" with { type: "text" };
@@ -65,7 +65,8 @@ export async function classifyDifficulty(
 }
 
 async function classifyOnline(input: string, deps: ClassifyDifficultyDeps): Promise<Effort> {
-	const resolved = resolveRoleSelection(["tiny", "smol"], deps.settings, deps.registry.getAvailable());
+	// Unset tiny/smol inherits the live main model (the classification prompt is tiny).
+	const resolved = resolveRoleSelectionWithInherit(["tiny", "smol"], deps.settings, deps.registry.getAvailable(), deps.model);
 	const model = resolved?.model;
 	if (!model) {
 		throw new Error("auto-thinking: no tiny/smol model available for classification");

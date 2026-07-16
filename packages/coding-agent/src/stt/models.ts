@@ -34,7 +34,7 @@ interface SttModelBase {
 /** A Whisper-family tier loaded via the transformers.js ASR pipeline. */
 export interface TransformersSttModelSpec extends SttModelBase {
 	engine: "transformers";
-	/** ONNX precision used unless overridden by `PI_TINY_DTYPE` / `providers.tinyModelDtype`. */
+	/** ONNX precision used unless overridden by `VEYYON_TINY_DTYPE` / `providers.tinyModelDtype`. */
 	dtype: TinyModelDtype;
 }
 

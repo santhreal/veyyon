@@ -7,6 +7,7 @@ import {
 	parseModelPattern,
 	resolveModelRoleValue,
 	resolveRoleSelection,
+	resolveRoleSelectionWithInherit,
 } from "../config/model-resolver";
 import { MODEL_ROLE_IDS } from "../config/model-roles";
 import type { Settings } from "../config/settings";
@@ -43,7 +44,7 @@ export async function resolvePrimaryModel(
 	const matchPreferences = getModelMatchPreferences(settings);
 	const resolved = override
 		? resolveModelRoleValue(override, available, { settings, matchPreferences })
-		: resolveRoleSelection(["commit", "smol", ...MODEL_ROLE_IDS], settings, available);
+		: resolveRoleSelectionWithInherit(["commit", "smol", ...MODEL_ROLE_IDS], settings, available);
 	const model = resolved?.model;
 	if (!model) {
 		throw new Error("No model available for commit generation");

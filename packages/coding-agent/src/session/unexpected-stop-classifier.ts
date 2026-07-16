@@ -1,8 +1,8 @@
-import { type AssistantMessage, completeSimple } from "@veyyon/pi-ai";
+import { type AssistantMessage, completeSimple, type Model } from "@veyyon/pi-ai";
 import { logger, prompt } from "@veyyon/pi-utils";
 
 import type { ModelRegistry } from "../config/model-registry";
-import { resolveRoleSelection } from "../config/model-resolver";
+import { resolveRoleSelectionWithInherit } from "../config/model-resolver";
 import type { Settings } from "../config/settings";
 import unexpectedStopClassifierPrompt from "../prompts/system/unexpected-stop-classifier.md" with { type: "text" };
 import { isTinyMemoryLocalModelKey, ONLINE_MEMORY_MODEL_KEY } from "../tiny/models";
@@ -20,6 +20,8 @@ const ANSWER_MAX_TOKENS = 16;
 export interface ClassifyUnexpectedStopDeps {
 	settings: Settings;
 	registry: ModelRegistry;
+	/** Live main model — inherited when tiny/smol roles are unset. */
+	model?: Model;
 	sessionId: string;
 	metadataResolver?: (provider: string) => Record<string, unknown> | undefined;
 	signal?: AbortSignal;
@@ -60,7 +62,7 @@ export async function classifyUnexpectedStop(
 }
 
 async function classifyOnline(text: string, deps: ClassifyUnexpectedStopDeps): Promise<boolean | undefined> {
-	const resolved = resolveRoleSelection(["tiny", "smol"], deps.settings, deps.registry.getAvailable());
+	const resolved = resolveRoleSelectionWithInherit(["tiny", "smol"], deps.settings, deps.registry.getAvailable(), deps.model);
 	const model = resolved?.model;
 	if (!model) {
 		throw new Error("unexpected-stop: no tiny/smol model available for classification");

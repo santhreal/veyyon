@@ -6,17 +6,11 @@ import type { AsyncJobManager } from "../async/job-manager";
 import type { Rule } from "../capability/rule";
 import type { PromptTemplate } from "../config/prompt-templates";
 import type { Settings } from "../config/settings";
-import { EditTool } from "../edit";
-import { checkJuliaKernelAvailability } from "../eval/jl/kernel";
-import { checkPythonKernelAvailability } from "../eval/py/kernel";
-import { checkRubyKernelAvailability } from "../eval/rb/kernel";
 import type { ToolPathWithSource } from "../extensibility/custom-tools";
 import type { Skill } from "../extensibility/skills";
 import type { GoalModeState, GoalRuntime } from "../goals";
-import { GoalTool } from "../goals/tools/goal-tool";
 import type { HindsightSessionState } from "../hindsight/state";
 import type { LocalProtocolOptions } from "../internal-urls";
-import { LspTool } from "../lsp";
 import type { MCPManager } from "../mcp";
 import type { MnemopiSessionState } from "../mnemopi/state";
 import type { PlanModeState } from "../plan-mode/state";
@@ -26,88 +20,31 @@ import type { ClientBridge } from "../session/client-bridge";
 import type { CustomMessage } from "../session/messages";
 import type { UsageStatistics } from "../session/session-entries";
 import type { ToolChoiceQueue } from "../session/tool-choice-queue";
-import { TaskTool } from "../task";
 import type { AgentOutputManager } from "../task/output-manager";
 import { canSpawnAtDepth } from "../task/types";
 import { countToolsForAutoDiscovery, resolveEffectiveToolDiscoveryMode } from "../tool-discovery/mode";
 import type { DiscoverableTool, DiscoverableToolSearchIndex } from "../tool-discovery/tool-index";
 import type { EventBus } from "../utils/event-bus";
-import { WebSearchTool } from "../web/search";
 import type { WorkspaceTree } from "../workspace-tree";
-import { AskTool } from "./ask";
-import { AstEditTool } from "./ast-edit";
-import { AstGrepTool } from "./ast-grep";
-import { BashTool } from "./bash";
-import { BrowserTool } from "./browser";
 import { type BuiltinToolName, normalizeToolNames } from "./builtin-names";
-import { type CheckpointState, CheckpointTool, type CompletedRewindState, RewindTool } from "./checkpoint";
-import { DebugTool } from "./debug";
-import { EvalTool } from "./eval";
+import type { CheckpointState, CompletedRewindState } from "./checkpoint";
 import { resolveEvalBackends } from "./eval-backends";
-import { GithubTool } from "./gh";
-import { GlobTool } from "./glob";
-import { GrepTool } from "./grep";
-import { InspectImageTool } from "./inspect-image";
-import { IrcTool, isIrcEnabled } from "./irc";
-import { JobTool } from "./job";
-import { LaunchTool } from "./launch";
-import { LearnTool } from "./learn";
-import { ManageSkillTool } from "./manage-skill";
-import { MemoryEditTool } from "./memory-edit";
-import { MemoryRecallTool } from "./memory-recall";
-import { MemoryReflectTool } from "./memory-reflect";
-import { MemoryRetainTool } from "./memory-retain";
+import { isIrcEnabled } from "./irc-enabled";
 import { wrapToolWithMetaNotice } from "./output-meta";
-import { ReadTool } from "./read";
-import { createReportToolIssueTool, isAutoQaEnabled } from "./report-tool-issue";
-import { ResolveTool } from "./resolve";
-import { reportFindingTool } from "./review";
-import { SearchToolBm25Tool } from "./search-tool-bm25";
-import { loadSshTool } from "./ssh";
-import { type TodoPhase, TodoTool } from "./todo";
-import { WriteTool } from "./write";
-import { YieldTool } from "./yield";
+import type { TodoPhase } from "./todo";
 
-export * from "../edit";
-export * from "../goals";
-export * from "../lsp";
-export * from "../session/streaming-output";
-export * from "../task";
-export * from "../web/search";
-export * from "./ask";
-export * from "./ast-edit";
-export * from "./ast-grep";
-export * from "./bash";
-export * from "./browser";
-export * from "./checkpoint";
-export * from "./debug";
-export * from "./eval";
-export * from "./eval-backends";
-export * from "./gh";
-export * from "./glob";
-export * from "./grep";
-export * from "./image-gen";
-export * from "./inspect-image";
-export * from "./irc";
-export * from "./job";
-export * from "./launch";
-export * from "./learn";
-export * from "./manage-skill";
-export * from "./memory-edit";
-export * from "./memory-recall";
-export * from "./memory-reflect";
-export * from "./memory-retain";
-export * from "./read";
-export * from "./report-tool-issue";
-export * from "./resolve";
-export * from "./review";
-export * from "./search-tool-bm25";
-export * from "./ssh";
-export * from "./todo";
-export * from "./tts";
-export * from "./vibe";
-export * from "./write";
-export * from "./yield";
+// NOTE: tool implementation modules are intentionally NOT imported eagerly
+// here. Each factory in BUILTIN_TOOLS / HIDDEN_TOOLS dynamic-imports its
+// module on first construction, so the CLI boot path never parses tool
+// implementations it does not activate. The public re-exports of every tool
+// module live in `src/index.ts` (the library entry), not in this barrel.
+// Type-only re-exports below are erased at runtime and cost nothing.
+export type { LspStartupServerInfo } from "../lsp";
+export type { BashToolDetails, BashToolInput } from "./bash";
+export type { GlobToolDetails, GlobToolInput } from "./glob";
+export type { GrepToolDetails, GrepToolInput } from "./grep";
+export type { ReadToolDetails, ReadToolInput } from "./read";
+export type { WriteToolInput } from "./write";
 
 /** Tool type (AgentTool from pi-ai) */
 export type Tool = AgentTool<any, any, any>;
@@ -449,45 +386,45 @@ export function filterInitialToolsForDiscoveryAll(
  * `BUILTIN_TOOLS[name](session)` to construct a tool directly.
  */
 export const BUILTIN_TOOLS: Record<BuiltinToolName, ToolFactory> = {
-	read: s => new ReadTool(s),
-	bash: s => new BashTool(s),
-	launch: s => new LaunchTool(s),
-	edit: s => new EditTool(s),
-	ast_grep: s => new AstGrepTool(s),
-	ast_edit: s => new AstEditTool(s),
-	ask: AskTool.createIf,
-	debug: DebugTool.createIf,
-	eval: s => new EvalTool(s),
-	ssh: loadSshTool,
-	github: GithubTool.createIf,
-	glob: s => new GlobTool(s, { rootPathAlias: true }),
-	grep: s => new GrepTool(s),
-	lsp: LspTool.createIf,
-	inspect_image: s => new InspectImageTool(s),
-	browser: s => new BrowserTool(s),
-	checkpoint: CheckpointTool.createIf,
-	rewind: RewindTool.createIf,
-	task: s => TaskTool.create(s),
-	job: s => new JobTool(s),
-	irc: IrcTool.createIf,
-	todo: s => new TodoTool(s),
-	web_search: s => new WebSearchTool(s),
-	search_tool_bm25: SearchToolBm25Tool.createIf,
-	write: s => new WriteTool(s),
-	memory_edit: MemoryEditTool.createIf,
-	retain: MemoryRetainTool.createIf,
-	recall: MemoryRecallTool.createIf,
-	reflect: MemoryReflectTool.createIf,
-	learn: LearnTool.createIf,
-	manage_skill: ManageSkillTool.createIf,
+	read: async s => new (await import("./read")).ReadTool(s),
+	bash: async s => new (await import("./bash")).BashTool(s),
+	launch: async s => new (await import("./launch")).LaunchTool(s),
+	edit: async s => new (await import("../edit")).EditTool(s),
+	ast_grep: async s => new (await import("./ast-grep")).AstGrepTool(s),
+	ast_edit: async s => new (await import("./ast-edit")).AstEditTool(s),
+	ask: async s => (await import("./ask")).AskTool.createIf(s),
+	debug: async s => (await import("./debug")).DebugTool.createIf(s),
+	eval: async s => new (await import("./eval")).EvalTool(s),
+	ssh: async s => (await import("./ssh")).loadSshTool(s),
+	github: async s => (await import("./gh")).GithubTool.createIf(s),
+	glob: async s => new (await import("./glob")).GlobTool(s, { rootPathAlias: true }),
+	grep: async s => new (await import("./grep")).GrepTool(s),
+	lsp: async s => (await import("../lsp")).LspTool.createIf(s),
+	inspect_image: async s => new (await import("./inspect-image")).InspectImageTool(s),
+	browser: async s => new (await import("./browser")).BrowserTool(s),
+	checkpoint: async s => (await import("./checkpoint")).CheckpointTool.createIf(s),
+	rewind: async s => (await import("./checkpoint")).RewindTool.createIf(s),
+	task: async s => (await import("../task")).TaskTool.create(s),
+	job: async s => new (await import("./job")).JobTool(s),
+	irc: async s => (await import("./irc")).IrcTool.createIf(s),
+	todo: async s => new (await import("./todo")).TodoTool(s),
+	web_search: async s => new (await import("../web/search")).WebSearchTool(s),
+	search_tool_bm25: async s => (await import("./search-tool-bm25")).SearchToolBm25Tool.createIf(s),
+	write: async s => new (await import("./write")).WriteTool(s),
+	memory_edit: async s => (await import("./memory-edit")).MemoryEditTool.createIf(s),
+	retain: async s => (await import("./memory-retain")).MemoryRetainTool.createIf(s),
+	recall: async s => (await import("./memory-recall")).MemoryRecallTool.createIf(s),
+	reflect: async s => (await import("./memory-reflect")).MemoryReflectTool.createIf(s),
+	learn: async s => (await import("./learn")).LearnTool.createIf(s),
+	manage_skill: async s => (await import("./manage-skill")).ManageSkillTool.createIf(s),
 };
 
 export const HIDDEN_TOOLS: Record<string, ToolFactory> = {
-	yield: s => new YieldTool(s),
-	report_finding: () => reportFindingTool,
-	report_tool_issue: s => createReportToolIssueTool(s),
-	resolve: s => new ResolveTool(s),
-	goal: s => new GoalTool(s),
+	yield: async s => new (await import("./yield")).YieldTool(s),
+	report_finding: async () => (await import("./review")).reportFindingTool,
+	report_tool_issue: async s => (await import("./report-tool-issue")).createReportToolIssueTool(s),
+	resolve: async s => new (await import("./resolve")).ResolveTool(s),
+	goal: async s => new (await import("../goals/tools/goal-tool")).GoalTool(s),
 };
 
 export type ToolName = BuiltinToolName;
@@ -519,6 +456,7 @@ export async function createTools(session: ToolSession, toolNames?: string[]): P
 	const evalRequested = requestedTools === undefined || requestedTools.includes("eval");
 	if (!skipEvalPreflight && !allowJs && evalRequested) {
 		if (allowPython) {
+			const { checkPythonKernelAvailability } = await import("../eval/py/kernel");
 			const availability = await logger.time(
 				"createTools:pythonCheck",
 				checkPythonKernelAvailability,
@@ -531,6 +469,7 @@ export async function createTools(session: ToolSession, toolNames?: string[]): P
 			}
 		}
 		if (allowRuby) {
+			const { checkRubyKernelAvailability } = await import("../eval/rb/kernel");
 			const availability = await checkRubyKernelAvailability(
 				session.cwd,
 				session.settings.get("ruby.interpreter")?.trim() || undefined,
@@ -541,6 +480,7 @@ export async function createTools(session: ToolSession, toolNames?: string[]): P
 			}
 		}
 		if (allowJulia) {
+			const { checkJuliaKernelAvailability } = await import("../eval/jl/kernel");
 			const availability = await checkJuliaKernelAvailability(
 				session.cwd,
 				session.settings.get("julia.interpreter")?.trim() || undefined,
@@ -681,6 +621,7 @@ export async function createTools(session: ToolSession, toolNames?: string[]): P
 
 	// Auto-inject report_tool_issue when autoqa is enabled (env or setting).
 	// Injected unconditionally into every agent, regardless of requested tool list.
+	const { createReportToolIssueTool, isAutoQaEnabled } = await import("./report-tool-issue");
 	const autoQA = isAutoQaEnabled(session.settings);
 	if (autoQA && !tools.some(t => t.name === "report_tool_issue")) {
 		// Build the enum from tools we just constructed via BUILTIN_TOOLS / HIDDEN_TOOLS.

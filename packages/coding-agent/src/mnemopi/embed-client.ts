@@ -51,17 +51,12 @@ export function createMnemopiEmbedSubprocess(): SpawnedSubprocess<MnemopiEmbedWo
 
 function wrapSubprocess(spawned: SpawnedSubprocess<MnemopiEmbedWorkerOutbound>): MnemopiEmbedWorkerHandle {
 	const { proc } = spawned;
-	// Embed keeps its own guarded `proc.send` (neutralizes only the synchronous
-	// throw, not the async EPIPE rejection) rather than the shared `safeSend`
-	// the other workers use — behaviour preserved verbatim.
+	// `proc.send` throws synchronously when the child's IPC pipe is already
+	// closed. That throw MUST propagate: the caller registers a pending
+	// resolver before sending, and a swallowed send failure leaves that
+	// request awaiting a reply that can never arrive (a silent hang).
 	return createWorkerHandle<MnemopiEmbedWorkerInbound, MnemopiEmbedWorkerOutbound>(spawned, message => {
-		try {
-			proc.send(message);
-		} catch (error) {
-			logger.debug("mnemopi-embed: send to subprocess failed", {
-				error: error instanceof Error ? error.message : String(error),
-			});
-		}
+		proc.send(message);
 	});
 }
 
@@ -121,7 +116,7 @@ export class MnemopiEmbedClient {
 				this.#pending.delete(id);
 			}
 		} catch (error) {
-			logger.debug("mnemopi-embed: init failed", {
+			logger.warn("mnemopi-embed: init failed; local embeddings unavailable for this model", {
 				model,
 				error: error instanceof Error ? error.message : String(error),
 			});

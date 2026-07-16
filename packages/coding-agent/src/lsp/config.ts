@@ -14,6 +14,20 @@ export interface LspConfig {
 	servers: Record<string, ServerConfig>;
 	/** Idle timeout in milliseconds. If set, LSP clients will be shutdown after this period of inactivity. Disabled by default. */
 	idleTimeoutMs?: number;
+	/**
+	 * Servers whose project root markers matched but whose binary could not be
+	 * resolved (not installed locally or on $PATH). Surfaced by `/lsp` so an
+	 * empty server list explains itself instead of reading as "not configured".
+	 */
+	missingServers: MissingLspServer[];
+}
+
+/** A detected-but-uninstallable server: root markers matched, binary absent. */
+export interface MissingLspServer {
+	name: string;
+	/** The unresolved executable name, e.g. "typescript-language-server". */
+	command: string;
+	fileTypes: string[];
 }
 
 // =============================================================================
@@ -452,6 +466,7 @@ export function loadConfig(cwd: string): LspConfig {
 	if (!hasOverrides) {
 		// Auto-detect: find servers based on project markers AND available binaries
 		const detected: Record<string, ServerConfig> = {};
+		const missingServers: MissingLspServer[] = [];
 		const defaultsWithRuntime = applyRuntimeDefaults(mergedServers);
 
 		for (const [name, config] of Object.entries(defaultsWithRuntime)) {
@@ -460,27 +475,34 @@ export function loadConfig(cwd: string): LspConfig {
 
 			// Check if the language server binary is available (local or $PATH)
 			const resolved = resolveCommand(config.command, cwd);
-			if (!resolved) continue;
+			if (!resolved) {
+				missingServers.push({ name, command: config.command, fileTypes: config.fileTypes });
+				continue;
+			}
 
 			detected[name] = { ...config, resolvedCommand: resolved };
 		}
 
-		return { servers: detected, idleTimeoutMs };
+		return { servers: detected, idleTimeoutMs, missingServers };
 	}
 
 	// Merge overrides with defaults and filter to available servers
 	const mergedWithRuntime = applyRuntimeDefaults(mergedServers);
 	const available: Record<string, ServerConfig> = {};
+	const missingServers: MissingLspServer[] = [];
 
 	for (const [name, config] of Object.entries(mergedWithRuntime)) {
 		if (config.disabled) continue;
 		if (!hasRootMarkers(cwd, config.rootMarkers)) continue;
 		const resolved = resolveCommand(config.command, cwd);
-		if (!resolved) continue;
+		if (!resolved) {
+			missingServers.push({ name, command: config.command, fileTypes: config.fileTypes });
+			continue;
+		}
 		available[name] = { ...config, resolvedCommand: resolved };
 	}
 
-	return { servers: available, idleTimeoutMs };
+	return { servers: available, idleTimeoutMs, missingServers };
 }
 
 // =============================================================================

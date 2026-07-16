@@ -206,7 +206,13 @@ async function acquireTabImpl(
 						{ cwd: process.cwd() },
 					);
 				}
-				return { tab: tabs.get(name)!, created: false };
+				// Re-fetch after the awaited reuse steps: the tab can be released
+				// concurrently while the snapshot run is in flight.
+				const reused = tabs.get(name);
+				if (!reused) {
+					throw new Error(`Browser tab "${name}" was released while being reused; retry the operation`);
+				}
+				return { tab: reused, created: false };
 			}
 		} else {
 			if (existing.browser === browser) {

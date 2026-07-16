@@ -2,6 +2,7 @@ import { describe, expect, it, spyOn } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import { APP_NAME, DIR_OVERRIDE_ENV_KEYS } from "@veyyon/pi-utils";
 import { buildSystemPrompt } from "./system-prompt";
 
 interface ProbeRunResult {
@@ -24,7 +25,7 @@ async function runProbeScenario(options: {
 		const cacheRoot = path.join(tempRoot, "cache");
 		const probeCountPath = path.join(tempRoot, "probe-count");
 		await fs.mkdir(binDir, { recursive: true });
-		await fs.mkdir(path.join(cacheRoot, "omp"), { recursive: true });
+		await fs.mkdir(path.join(cacheRoot, APP_NAME), { recursive: true });
 		const lspciPath = path.join(binDir, "lspci");
 		await Bun.write(
 			lspciPath,
@@ -73,7 +74,7 @@ console.log(JSON.stringify({ elapsedMs: Math.round(performance.now() - startedAt
 		};
 		// Strip inherited dirs-resolver overrides so XDG_CACHE_HOME above wins and
 		// the test cannot touch the developer/CI profile's real gpu_cache.json.
-		for (const key of ["PI_CODING_AGENT_DIR", "OMP_PROFILE", "PI_PROFILE", "PI_CONFIG_DIR"]) {
+		for (const key of DIR_OVERRIDE_ENV_KEYS) {
 			delete env[key];
 		}
 		if (options.sleepSeconds === undefined) {

@@ -233,7 +233,7 @@ async function installOnnxRuntimeCudaProviders(packageDir: string, runtimeDir: s
  */
 export async function ensureOnnxRuntimeCudaProviders(
 	runtimeDir: string,
-	device = process.env.PI_TINY_DEVICE,
+	device = process.env.VEYYON_TINY_DEVICE ?? process.env.PI_TINY_DEVICE,
 ): Promise<void> {
 	if (!shouldInstallOnnxRuntimeCudaProviders(device)) return;
 	const nodeModules = path.join(runtimeDir, "node_modules");
@@ -393,7 +393,7 @@ export async function formatOnnxRuntimeCudaDiagnostics(
 	if (!packageDir) {
 		return [
 			"ONNX Runtime CUDA diagnostics:",
-			`  PI_TINY_DEVICE=${requestedDevice} requested CUDAExecutionProvider`,
+			`  VEYYON_TINY_DEVICE=${requestedDevice} requested CUDAExecutionProvider`,
 			"  cause: unable to resolve onnxruntime-node in the tiny-model runtime",
 		].join("\n");
 	}
@@ -402,7 +402,7 @@ export async function formatOnnxRuntimeCudaDiagnostics(
 	const sideRuntime = metadata.__ompRuntimeNodeModules;
 	const lines = [
 		"ONNX Runtime CUDA diagnostics:",
-		`  PI_TINY_DEVICE=${requestedDevice} requested CUDAExecutionProvider`,
+		`  VEYYON_TINY_DEVICE=${requestedDevice} requested CUDAExecutionProvider`,
 		sideRuntime ? `  side runtime: ${sideRuntime}` : `  onnxruntime-node: ${packageDir}`,
 		`  cause: ${cudaFailureCause(metadata, error, missingFiles)}`,
 	];

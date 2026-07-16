@@ -172,12 +172,15 @@ export function formatStatusIcon(status: ToolUIStatus, theme: Theme, spinnerFram
 
 /**
  * Format the expand hint with proper theming.
+ * Same fold dialect as settings/ModalShell: collapsed chevron + key, not a
+ * third bracket grammar.
  * Returns empty string if already expanded or there is nothing more to show.
  */
 export function formatExpandHint(theme: Theme, expanded?: boolean, hasMore?: boolean): string {
 	if (expanded) return "";
 	if (hasMore === false) return "";
-	return theme.fg("dim", wrapBrackets(`${expandKeyHint()}: Expand`, theme));
+	const chevron = theme.nav?.expand ?? "▸";
+	return theme.fg("dim", `${chevron} ${expandKeyHint()} expand`);
 }
 
 /**

@@ -7,12 +7,10 @@ import * as fs from "node:fs/promises";
 import * as url from "node:url";
 import { getWorkProfile } from "@veyyon/pi-natives";
 import {
-	Container,
 	isNotificationSuppressed,
 	Loader,
 	type OverlayHandle,
 	type SelectItem,
-	SelectList,
 	Spacer,
 	TERMINAL,
 	type TerminalNotification,
@@ -20,6 +18,7 @@ import {
 } from "@veyyon/pi-tui";
 import { getSessionsDir } from "@veyyon/pi-utils";
 import { DynamicBorder } from "../modes/components/dynamic-border";
+import { ModalSelectListComponent } from "../modes/components/modal-select-list";
 import { TranscriptBlock } from "../modes/components/transcript-container";
 import { getSelectListTheme, getSymbolTheme, theme } from "../modes/theme/theme";
 import type { InteractiveModeContext } from "../modes/types";
@@ -70,40 +69,47 @@ const formatFileHyperlink = (path: string): string => {
 };
 
 /**
- * Debug selector component.
+ * Debug selector — floating ModalShell medium card (replaces the DynamicBorder
+ * sandwich; hosted fullscreen via `showModalSelector`).
  */
-export class DebugSelectorComponent extends Container {
-	#selectList: SelectList;
+export class DebugSelectorComponent {
+	#inner: ModalSelectListComponent;
 
 	constructor(
 		private ctx: InteractiveModeContext,
 		onDone: () => void,
 	) {
-		super();
+		this.#inner = new ModalSelectListComponent(
+			{
+				title: "Debug Tools",
+				items: DEBUG_MENU_ITEMS,
+				theme: getSelectListTheme(),
+				maxVisible: 10,
+			},
+			{
+				onSelect: item => {
+					onDone();
+					void this.#handleSelection(item.value);
+				},
+				onCancel: () => onDone(),
+			},
+		);
+	}
 
-		// Title
-		this.addChild(new DynamicBorder());
-		this.addChild(new Text(theme.bold(theme.fg("accent", "Debug Tools")), 1, 0));
-		this.addChild(new Spacer(1));
+	setOnRequestRender(cb: () => void): void {
+		this.#inner.setOnRequestRender(cb);
+	}
 
-		// Select list
-		this.#selectList = new SelectList(DEBUG_MENU_ITEMS, 7, getSelectListTheme());
+	invalidate(): void {
+		this.#inner.invalidate();
+	}
 
-		this.#selectList.onSelect = item => {
-			onDone();
-			void this.#handleSelection(item.value);
-		};
-
-		this.#selectList.onCancel = () => {
-			onDone();
-		};
-
-		this.addChild(this.#selectList);
-		this.addChild(new DynamicBorder());
+	render(width: number): readonly string[] {
+		return this.#inner.render(width);
 	}
 
 	handleInput(keyData: string): void {
-		this.#selectList.handleInput(keyData);
+		this.#inner.handleInput(keyData);
 	}
 
 	async #handleSelection(value: string): Promise<void> {

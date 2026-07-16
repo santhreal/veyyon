@@ -10,6 +10,9 @@ import { mapWithConcurrencyLimit } from "./parallel";
 
 const { IsoBackendKind } = natives;
 
+/** Branch namespace for task-result branches created in the user's repo. */
+export const TASK_BRANCH_PREFIX = "veyyon/task/";
+
 const TASK_ISOLATION_DIR_PREFIX = "t";
 const TASK_ISOLATION_DIR_DIGEST_CHARS = 9;
 const TASK_ISOLATION_MOUNT_DIR = "m";
@@ -710,7 +713,7 @@ async function replayFilteredAgentCommits(opts: FilteredAgentReplayOptions): Pro
 
 /**
  * Capture task-only changes from the isolation worktree onto a parent-repo
- * branch named `omp/task/${taskId}`. Only root-repo changes go on the branch;
+ * branch named `veyyon/task/${taskId}`. Only root-repo changes go on the branch;
  * nested-repo patches are returned separately because the parent git can't
  * track files inside gitlinks.
  *
@@ -744,7 +747,7 @@ export async function commitToBranch(
 	if (!rootPatch.trim()) return { nestedPatches };
 
 	const repoRoot = baseline.root.repoRoot;
-	const branchName = `omp/task/${taskId}`;
+	const branchName = `${TASK_BRANCH_PREFIX}${taskId}`;
 	const fallbackMessage = description || taskId;
 
 	let branchCreated = false;

@@ -61,7 +61,8 @@ export function parseConventionalAnalysisResponse(
 ): ConventionalAnalysis {
 	const toolCall = extractToolCall(message, tool.name);
 	if (toolCall) {
-		const parsed = validateToolCall([tool], toolCall) as any;
+		// Schema-validated against conventionalAnalysisParameters just above.
+		const parsed = validateToolCall([tool], toolCall) as unknown as ParsedConventionalAnalysis;
 		return normalizeAnalysis(parsed);
 	}
 	const text = extractTextContent(message);

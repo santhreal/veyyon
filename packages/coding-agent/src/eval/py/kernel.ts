@@ -40,7 +40,7 @@ const TRACE_IPC = $flag("PI_PYTHON_IPC_TRACE");
 
 // Cache the runner script on disk so the subprocess loads it normally. Cached
 // per script hash so installs don't race across versions.
-const RUNNER_CACHE_DIR = path.join(os.tmpdir(), "omp-python-runner");
+const RUNNER_CACHE_DIR = path.join(os.tmpdir(), "veyyon-python-runner");
 let RUNNER_SCRIPT_PATH: string | null = null;
 
 async function ensureRunnerScript(): Promise<string> {

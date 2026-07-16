@@ -2857,10 +2857,14 @@ export class AgentSession {
 			} else {
 				const sel = resolveAdvisorRoleSelection(this.settings, this.#modelRegistry.getAvailable());
 				if (!sel) {
+					// An enabled advisor silently doing nothing is a silent fallback —
+					// surface it like the explicit-override miss above.
 					if (emitWarnings) {
-						logger.debug("advisor enabled but no model assigned to the 'advisor' role; advisor inactive", {
-							advisor: config.name,
-						});
+						this.emitNotice(
+							"warning",
+							`Advisor "${config.name}": no advisor-role model available (set modelRoles.advisor); advisor inactive`,
+							"advisor",
+						);
 					}
 					continue;
 				}
@@ -11647,6 +11651,7 @@ export class AgentSession {
 			classification = await classifyUnexpectedStop(text, {
 				settings: this.settings,
 				registry: this.#modelRegistry,
+				model: this.model ?? undefined,
 				sessionId: this.sessionId,
 				metadataResolver: (provider: string) => this.agent.metadataForProvider(provider),
 				signal: controller.signal,
@@ -12815,7 +12820,31 @@ export class AgentSession {
 			precomputedCandidates ?? this.#getCompactionModelCandidates(this.#modelRegistry.getAvailable());
 		const telemetry = resolveTelemetry(this.agent.telemetry, this.sessionId);
 
+		// Effective window of the model RUNNING the compaction. The payload was
+		// sized against the MAIN model's threshold, so a compaction model with a
+		// smaller window would overflow mid-compact; skip those candidates loudly
+		// instead. compaction.modelContextWindow (-1 = candidate's own metadata)
+		// overrides for proxies that serve a different window than advertised.
+		const configuredCompactionWindow = this.settings.get("compaction.modelContextWindow");
+		const summarizePayloadTokens = preparation.messagesToSummarize
+			.concat(preparation.turnPrefixMessages)
+			.reduce((sum, msg) => sum + estimateTokens(msg), 0);
+		let skippedForWindow = 0;
+
 		for (const candidate of candidates) {
+			const candidateWindow =
+				typeof configuredCompactionWindow === "number" && configuredCompactionWindow > 0
+					? configuredCompactionWindow
+					: (candidate.contextWindow ?? 0);
+			if (candidateWindow > 0 && summarizePayloadTokens > candidateWindow) {
+				skippedForWindow++;
+				logger.warn("compaction candidate skipped: summarization payload exceeds its context window", {
+					candidate: `${candidate.provider}/${candidate.id}`,
+					candidateWindow,
+					summarizePayloadTokens,
+				});
+				continue;
+			}
 			const apiKey = await this.#modelRegistry.getApiKey(candidate, this.sessionId);
 			if (!apiKey) continue;
 
@@ -12861,6 +12890,12 @@ export class AgentSession {
 			}
 		}
 
+		if (skippedForWindow > 0 && skippedForWindow === candidates.length) {
+			throw new Error(
+				`Compaction failed: the summarization payload (~${summarizePayloadTokens} tokens) exceeds the context window of every compaction candidate. ` +
+					`Raise compaction.modelContextWindow only if your provider really serves a larger window, pick a larger compaction.model, or lower compaction.thresholdPercent so compaction runs earlier.`,
+			);
+		}
 		throw this.#buildCompactionAuthError();
 	}
 

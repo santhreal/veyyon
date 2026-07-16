@@ -109,7 +109,10 @@ export async function runCommitAgentSession(input: CommitAgentInput): Promise<Co
 			}
 			case "tool_execution_start":
 				toolCalls += 1;
-				toolArgsById.set(event.toolCallId, { name: event.toolName, args: event.args });
+				toolArgsById.set(event.toolCallId, {
+					name: event.toolName,
+					args: event.args as Record<string, unknown> | undefined,
+				});
 				break;
 			case "message_end": {
 				const role = event.message?.role;

@@ -37,12 +37,12 @@ export function normalizeTinyModelDevice(value: string | undefined): TinyModelDe
 	if (raw === "metal") return "webgpu";
 	if (raw in DEVICE_VALUES) return raw as TinyModelDevice;
 	throw new Error(
-		`Unsupported PI_TINY_DEVICE=${JSON.stringify(value)}. Use cpu, gpu, metal, webgpu, auto, cuda, dml, coreml, wasm, webnn, webnn-gpu, webnn-cpu, or webnn-npu.`,
+		`Unsupported VEYYON_TINY_DEVICE=${JSON.stringify(value)}. Use cpu, gpu, metal, webgpu, auto, cuda, dml, coreml, wasm, webnn, webnn-gpu, webnn-cpu, or webnn-npu.`,
 	);
 }
 
 export function resolveTinyModelDevicePreference(
-	value: string | undefined = $env.PI_TINY_DEVICE,
+	value: string | undefined = $env.VEYYON_TINY_DEVICE ?? $env.PI_TINY_DEVICE,
 ): TinyModelDevicePreference {
 	return {
 		device: normalizeTinyModelDevice(value) ?? CPU_DEVICE,
@@ -100,7 +100,7 @@ export const TINY_MODEL_DEVICE_SETTING_OPTIONS = [
 }>;
 
 /**
- * Map a `providers.tinyModelDevice` setting value onto a `PI_TINY_DEVICE` env
+ * Map a `providers.tinyModelDevice` setting value onto a tiny-device env
  * value for the worker. Returns `undefined` for the default sentinel so the
  * worker keeps its built-in CPU default; the worker still validates the
  * forwarded value via {@link normalizeTinyModelDevice}.

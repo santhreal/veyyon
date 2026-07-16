@@ -1202,11 +1202,11 @@ describe("runEvalAgent isolation", () => {
 		vi.spyOn(isolationRunner, "runIsolatedSubprocess").mockImplementation(async opts =>
 			singleResult(opts.baseOptions, {
 				output: "ran",
-				branchName: `omp/task/${opts.agentId}`,
+				branchName: `veyyon/task/${opts.agentId}`,
 			}),
 		);
 		vi.spyOn(isolationRunner, "mergeIsolatedChanges").mockResolvedValue({
-			summary: "\n\n<system-notification>Branch merge failed: omp/task/x.\nConflict: foo.ts</system-notification>",
+			summary: "\n\n<system-notification>Branch merge failed: veyyon/task/x.\nConflict: foo.ts</system-notification>",
 			changesApplied: false,
 			hadAnyChanges: false,
 			mergedBranchForNestedPatches: false,
@@ -1214,7 +1214,7 @@ describe("runEvalAgent isolation", () => {
 
 		const session = isolatedSession({ "task.isolation.merge": "branch" });
 		await expect(runEvalAgent({ prompt: "scout", isolated: true }, { session })).rejects.toThrow(
-			/isolated apply failed.*Branch merge failed.*Captured branch preserved as omp\/task\//s,
+			/isolated apply failed.*Branch merge failed.*Captured branch preserved as veyyon\/task\//s,
 		);
 	});
 
@@ -1321,7 +1321,7 @@ describe("runEvalAgent isolation", () => {
 		vi.spyOn(isolationRunner, "runIsolatedSubprocess").mockImplementation(async opts =>
 			singleResult(opts.baseOptions, {
 				output: "branched",
-				branchName: `omp/task/${opts.agentId}`,
+				branchName: `veyyon/task/${opts.agentId}`,
 			}),
 		);
 		const mergeSpy = vi.spyOn(isolationRunner, "mergeIsolatedChanges");
@@ -1330,8 +1330,8 @@ describe("runEvalAgent isolation", () => {
 		const result = await runEvalAgent({ prompt: "scout", isolated: true, apply: false }, { session });
 
 		expect(mergeSpy).not.toHaveBeenCalled();
-		expect(result.details.branchName).toMatch(/^omp\/task\//);
-		expect(result.text).toContain("omp/task/");
+		expect(result.details.branchName).toMatch(/^veyyon\/task\//);
+		expect(result.text).toContain("veyyon/task/");
 		expect(result.text).toContain("apply=false");
 	});
 

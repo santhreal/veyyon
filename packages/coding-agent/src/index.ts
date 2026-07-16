@@ -57,6 +57,49 @@ export * from "./task/executor";
 export type * from "./task/types";
 // Tools (detail types and utilities)
 export * from "./tools";
+// Tool implementation modules. These were re-exported through the tools
+// barrel; they now live here so the CLI boot path (which never imports this
+// library entry) can lazy-load tool implementations on first construction.
+export * from "./edit";
+export * from "./goals";
+export * from "./lsp";
+export * from "./session/streaming-output";
+export * from "./task";
+export * from "./tools/ask";
+export * from "./tools/ast-edit";
+export * from "./tools/ast-grep";
+export * from "./tools/bash";
+export * from "./tools/browser";
+export * from "./tools/checkpoint";
+export * from "./tools/debug";
+export * from "./tools/eval";
+export * from "./tools/eval-backends";
+export * from "./tools/gh";
+export * from "./tools/glob";
+export * from "./tools/grep";
+export * from "./tools/image-gen";
+export * from "./tools/inspect-image";
+export * from "./tools/irc";
+export * from "./tools/job";
+export * from "./tools/launch";
+export * from "./tools/learn";
+export * from "./tools/manage-skill";
+export * from "./tools/memory-edit";
+export * from "./tools/memory-recall";
+export * from "./tools/memory-reflect";
+export * from "./tools/memory-retain";
+export * from "./tools/read";
+export * from "./tools/report-tool-issue";
+export * from "./tools/resolve";
+export * from "./tools/review";
+export * from "./tools/search-tool-bm25";
+export * from "./tools/ssh";
+export * from "./tools/todo";
+export * from "./tools/tts";
+export * from "./tools/vibe";
+export * from "./tools/write";
+export * from "./tools/yield";
+export * from "./web/search";
 export * from "./utils/git";
 // UI components for extensions
 export {

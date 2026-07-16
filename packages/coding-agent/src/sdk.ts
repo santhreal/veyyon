@@ -18,6 +18,12 @@ import { FALLBACK_DIALECT, preferredDialect } from "@veyyon/pi-catalog/identity"
 import type { Component } from "@veyyon/pi-tui";
 import { $env, $flag, getAgentDir, getProjectDir, logger, postmortem, prompt, Snowflake } from "@veyyon/pi-utils";
 import { INTENT_FIELD } from "@veyyon/pi-wire";
+import {
+	discoverAdvisorConfigs,
+	discoverWatchdogFiles,
+	formatActiveRepoWatchdogPrompt,
+	formatAdvisorContextPrompt,
+} from "./advisor";
 import { type AsyncJob, AsyncJobManager } from "./async";
 import { AutoLearnController, buildAutoLearnInstructions } from "./autolearn/controller";
 import { loadCapability } from "./capability";
@@ -76,9 +82,10 @@ import {
 	setActiveSkills,
 } from "./extensibility/skills";
 import { type FileSlashCommand, loadSlashCommands as loadSlashCommandsInternal } from "./extensibility/slash-commands";
-import type { HindsightSessionState } from "./hindsight/state";
 import { filterToolsByHarnessProfile } from "./harness/model-profile";
+import type { HindsightSessionState } from "./hindsight/state";
 import { LocalProtocolHandler, type LocalProtocolOptions } from "./internal-urls";
+import type { LspStartupServerInfo } from "./lsp";
 import { LSP_STARTUP_EVENT_CHANNEL, type LspStartupEvent } from "./lsp/startup-events";
 import {
 	discoverAndLoadMCPTools,
@@ -91,11 +98,11 @@ import {
 import { MCP_CONNECTION_STATUS_EVENT_CHANNEL, type McpConnectionStatusEvent } from "./mcp/startup-events";
 import { createSessionMemoryRuntimeContext, resolveMemoryBackend } from "./memory-backend";
 import type { MnemopiSessionState } from "./mnemopi/state";
-import { createRepairToolCallArgumentsHook } from "./repair/agent-hook";
 import asyncResultTemplate from "./prompts/tools/async-result.md" with { type: "text" };
 import lateDiagnosticTemplate from "./prompts/tools/lsp-late-diagnostic.md" with { type: "text" };
 import { AgentLifecycleManager } from "./registry/agent-lifecycle";
 import { AgentRegistry, MAIN_AGENT_ID } from "./registry/agent-registry";
+import { createRepairToolCallArgumentsHook } from "./repair/agent-hook";
 import {
 	collectEnvSecrets,
 	deobfuscateSessionContext,
@@ -155,48 +162,34 @@ import {
 	summarizeDiscoverableTools,
 } from "./tool-discovery/tool-index";
 import {
-	BashTool,
 	BUILTIN_TOOLS,
 	computeEssentialBuiltinNames,
 	createTools,
-	createVibeTools,
 	type DeferredDiagnosticsEntry,
-	discoverStartupLspServers,
-	EditTool,
-	EvalTool,
 	filterInitialToolsForDiscoveryAll,
-	GlobTool,
-	GrepTool,
-	getSearchTools,
 	HIDDEN_TOOLS,
-	isImageProviderPreference,
-	isSearchProviderId,
-	isSearchProviderPreference,
-	type LspStartupServerInfo,
-	loadSshTool,
-	ReadTool,
-	ResolveTool,
-	renderSearchToolBm25Description,
-	SearchToolBm25Tool,
-	setExcludedSearchProviders,
-	setPreferredImageProvider,
-	setPreferredSearchProvider,
 	type Tool,
 	type ToolSession,
-	WebSearchTool,
-	WriteTool,
-	warmupLspServers,
 } from "./tools";
 import { normalizeToolName, normalizeToolNames } from "./tools/builtin-names";
 import { ToolContextStore } from "./tools/context";
-import { getImageGenTools } from "./tools/image-gen";
-import { isIrcEnabled } from "./tools/irc";
+import { getImageGenTools, isImageProviderPreference, setPreferredImageProvider } from "./tools/image-gen";
+import { isIrcEnabled } from "./tools/irc-enabled";
 import { wrapToolWithMetaNotice } from "./tools/output-meta";
 import { queueResolveHandler } from "./tools/resolve";
+import { renderSearchToolBm25Description, SearchToolBm25Tool } from "./tools/search-tool-bm25";
 import { ttsTool } from "./tools/tts";
+import { createVibeTools } from "./tools/vibe";
 import { resolveActiveRepoContext } from "./utils/active-repo-context";
 import { EventBus } from "./utils/event-bus";
 import { buildNamedToolChoice } from "./utils/tool-choice";
+import {
+	getSearchTools,
+	isSearchProviderId,
+	isSearchProviderPreference,
+	setExcludedSearchProviders,
+	setPreferredSearchProvider,
+} from "./web/search";
 import { buildWorkspaceTree, type WorkspaceTree } from "./workspace-tree";
 
 type AsyncResultEntry = {
@@ -626,23 +619,15 @@ export type { MCPManager, MCPServerConfig, MCPServerConnection, MCPToolsLoadResu
 export type { Tool } from "./tools";
 export { buildDirectoryTree, buildWorkspaceTree, type DirectoryTree, type WorkspaceTree } from "./workspace-tree";
 
+// Individual tool classes (BashTool, EditTool, ...) are re-exported from the
+// library entry `src/index.ts` via their implementation modules — importing
+// them here would eagerly parse every tool implementation on the CLI boot path.
 export {
-	// Individual tool classes (for custom usage)
-	BashTool,
-	// Tool classes and factories
+	// Tool factories and registry
 	BUILTIN_TOOLS,
 	createTools,
-	EditTool,
-	EvalTool,
-	GlobTool,
-	GrepTool,
 	HIDDEN_TOOLS,
-	loadSshTool,
-	ReadTool,
-	ResolveTool,
 	type ToolSession,
-	WebSearchTool,
-	WriteTool,
 };
 
 // Helper Functions
@@ -866,17 +851,23 @@ function createCustomToolContext(ctx: ExtensionContext): CustomToolContext {
 	};
 }
 
+const TOOL_DEFINITION_MARKER = Symbol("__isToolDefinition");
+/** String twin of {@link TOOL_DEFINITION_MARKER} set by the legacy-pi-coding-agent shim. */
+const LEGACY_TOOL_DEFINITION_MARKER = "__isToolDefinition";
+
 function isCustomTool(tool: CustomTool | ToolDefinition): tool is CustomTool {
-	// To distinguish, we mark converted tools with a hidden symbol property.
-	// If the tool doesn't have this marker, it's a CustomTool that needs conversion.
-	return !(tool as any).__isToolDefinition;
+	// Converted tools carry a hidden marker: the sdk's symbol
+	// (customToolToDefinition) or the legacy shim's string prop. Anything
+	// unmarked is a CustomTool that still needs conversion — checking only one
+	// marker would double-convert the other kind, scrambling execute()'s
+	// argument order.
+	const marked = tool as { [TOOL_DEFINITION_MARKER]?: true; [LEGACY_TOOL_DEFINITION_MARKER]?: true };
+	return marked[TOOL_DEFINITION_MARKER] !== true && marked[LEGACY_TOOL_DEFINITION_MARKER] !== true;
 }
 
 function isLegacyBuiltinToolDefinition(tool: CustomTool | ToolDefinition): boolean {
 	return !isCustomTool(tool) && "__ompLegacyBuiltinTool" in tool && tool.__ompLegacyBuiltinTool === true;
 }
-
-const TOOL_DEFINITION_MARKER = Symbol("__isToolDefinition");
 
 /** Matches the truncation applied to per-server instructions inside `rebuildSystemPrompt`. */
 const MAX_MCP_INSTRUCTIONS_LENGTH = 4000;
@@ -1183,6 +1174,10 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		}
 	});
 	activeRepoContextPromise.catch(() => {});
+	const watchdogFilesPromise = logger.time("discoverWatchdogFiles", () => discoverWatchdogFiles(cwd, agentDir));
+	watchdogFilesPromise.catch(() => {});
+	const advisorConfigsPromise = logger.time("discoverAdvisorConfigs", () => discoverAdvisorConfigs(cwd, agentDir));
+	advisorConfigsPromise.catch(() => {});
 	const promptTemplatesPromise = options.promptTemplates
 		? Promise.resolve(options.promptTemplates)
 		: logger.time("discoverPromptTemplates", discoverPromptTemplates, cwd, agentDir);
@@ -1460,11 +1455,14 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		}
 		return result;
 	};
-	const [contextFiles, resolvedWorkspaceTree, activeRepoContext] = await Promise.all([
-		contextFilesPromise,
-		raceWithDeadline("buildWorkspaceTree", workspaceTreePromise),
-		activeRepoContextPromise,
-	]);
+	const [contextFiles, resolvedWorkspaceTree, activeRepoContext, watchdogFiles, discoveredAdvisors] =
+		await Promise.all([
+			contextFilesPromise,
+			raceWithDeadline("buildWorkspaceTree", workspaceTreePromise),
+			activeRepoContextPromise,
+			watchdogFilesPromise,
+			advisorConfigsPromise,
+		]);
 
 	let agent: Agent;
 	let session!: AgentSession;
@@ -1651,7 +1649,13 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			allocateOutputArtifact: async toolType => {
 				try {
 					return await sessionManager.allocateArtifactPath(toolType);
-				} catch {
+				} catch (error) {
+					// Without an artifact, oversized output is truncated with no
+					// full-output copy — never degrade to that silently.
+					logger.error("Artifact allocation failed; large output will be truncated without a saved copy", {
+						toolType,
+						error: error instanceof Error ? error.message : String(error),
+					});
 					return {};
 				}
 			},
@@ -2360,6 +2364,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 
 		const reloadSshTool = async (): Promise<AgentTool | null> => {
 			if (!requestedToolNameSet.has("ssh")) return null;
+			const { loadSshTool } = await import("./tools/ssh");
 			const sshTool = (await loadSshTool({
 				...toolSession,
 				cwd: sessionManager.getCwd(),
@@ -2742,6 +2747,9 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			settings,
 			createSettingsAwareStreamFn(settings),
 		);
+		// One warning per model when auto tool-format reroutes a non-tool-calling
+		// model onto an in-band text dialect — the operator must see the degrade.
+		const notifiedDialectFallbackModels = new Set<string>();
 		agent = new Agent({
 			initialState: {
 				systemPrompt,
@@ -2808,7 +2816,25 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			repairToolCallArguments: createRepairToolCallArgumentsHook(settings, () => agent.state.model),
 			intentTracing: !!intentField,
 			pruneToolDescriptions: inlineToolDescriptors,
-			dialect: resolveDialect(settings.get("tools.format"), model),
+			// Re-resolved with the active model on every request so mid-session
+			// model switches pick the right tool-calling shape (a switch to a
+			// `supportsTools: false` model must stop sending a native `tools`
+			// param the endpoint rejects with a 400).
+			dialect: requestModel => {
+				const dialect = resolveDialect(settings.get("tools.format"), requestModel);
+				if (dialect !== undefined && requestModel.supportsTools === false) {
+					const modelKey = `${requestModel.provider}/${requestModel.id}`;
+					if (!notifiedDialectFallbackModels.has(modelKey)) {
+						notifiedDialectFallbackModels.add(modelKey);
+						session?.emitNotice(
+							"warning",
+							`${modelKey} is cataloged as non-tool-calling; tools are delivered through the "${dialect}" text dialect instead of the native tools parameter.`,
+							"tools.format",
+						);
+					}
+				}
+				return dialect;
+			},
 			abortOnFabricatedToolResult: settings.get("tools.abortOnFabricatedResult"),
 			getToolChoice: () => session?.nextToolChoiceDirective(),
 			telemetry: options.telemetry,
@@ -2839,10 +2865,52 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			}
 		}
 
+		// Full toolset for the advisor, built unconditionally so it can be toggled at
+		// runtime. Bound to a DISTINCT ToolSession (its own `-advisor` session id +
+		// agent id) so the advisor's tool state — snapshot, seen-lines, conflict, and
+		// summary caches, all keyed on session identity — stays isolated from the
+		// primary, while edit/bash/write stay fully functional: the advisor is a full
+		// agent and its config's `tools` selects which of these it actually gets
+		// (defaulting to read/grep/glob).
+		const advisorToolSession: ToolSession = {
+			...toolSession,
+			get cwd() {
+				return sessionManager.getCwd();
+			},
+			hasEditTool: true,
+			requireYieldTool: false,
+			getSessionId: () => {
+				const id = sessionManager.getSessionId?.();
+				return id ? `${id}-advisor` : null;
+			},
+			getAgentId: () => "advisor",
+		};
+		const advisorToolBuilds: Array<Tool | null | Promise<Tool | null>> = [];
+		for (const name in BUILTIN_TOOLS) {
+			advisorToolBuilds.push(BUILTIN_TOOLS[name as keyof typeof BUILTIN_TOOLS](advisorToolSession));
+		}
+		const builtAdvisorTools = await Promise.all(advisorToolBuilds);
+		const advisorTools: Tool[] = builtAdvisorTools
+			.filter((tool): tool is Tool => tool != null)
+			.map(wrapToolWithMetaNotice);
+
+		const advisorWatchdogPrompts = [...watchdogFiles];
+		if (activeRepoContext) {
+			advisorWatchdogPrompts.push(formatActiveRepoWatchdogPrompt(activeRepoContext));
+		}
+		const advisorWatchdogPrompt = advisorWatchdogPrompts.length > 0 ? advisorWatchdogPrompts.join("\n\n") : undefined;
+		// Hand the advisor the same project context files (AGENTS.md, etc.) the
+		// primary agent gets in its system prompt, so the read-only reviewer judges
+		// against the user's standing project rules instead of advising blind.
+		const advisorContextPrompt = formatAdvisorContextPrompt(contextFiles);
 		// Owned only when this session created the manager; subagents receive a
 		// parent's manager via `options.mcpManager` and MUST NOT disconnect it.
 		const ownedMcpManager = options.mcpManager ? undefined : mcpManager;
 		session = new AgentSession({
+			advisorWatchdogPrompt,
+			advisorContextPrompt,
+			advisorSharedInstructions: discoveredAdvisors.sharedInstructions,
+			advisorConfigs: discoveredAdvisors.advisors,
 			agent,
 			pruneToolDescriptions: inlineToolDescriptors,
 			thinkingLevel: autoThinking ? AUTO_THINKING : effectiveThinkingLevel,
@@ -2912,6 +2980,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			providerSessionId: options.providerSessionId,
 			providerPromptCacheKeySource,
 			parentEvalSessionId: options.parentEvalSessionId,
+			advisorTools,
 			titleSystemPrompt: options.titleSystemPrompt,
 		});
 		hasSession = true;
@@ -2997,14 +3066,17 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		// CPU parsing big `initialize` responses concurrently with the LLM stream consumer, jittering
 		// perceived latency.
 		let lspServers: CreateAgentSessionResult["lspServers"];
-		if (enableLsp && options.hasUI && settings.get("lsp.lazy")) {
-			lspServers = discoverStartupLspServers(cwd, "available");
-		} else if (enableLsp && options.hasUI) {
-			lspServers = discoverStartupLspServers(cwd);
+		// Dynamic import: the lsp barrel pulls the full client/config machinery,
+		// which must stay off the boot path when LSP is disabled or has no UI.
+		const lazyLsp = enableLsp && options.hasUI ? await import("./lsp") : undefined;
+		if (lazyLsp && settings.get("lsp.lazy")) {
+			lspServers = lazyLsp.discoverStartupLspServers(cwd, "available");
+		} else if (lazyLsp) {
+			lspServers = lazyLsp.discoverStartupLspServers(cwd);
 			if (lspServers.length > 0) {
 				void (async () => {
 					try {
-						const result = await logger.time("warmupLspServers", warmupLspServers, cwd);
+						const result = await logger.time("warmupLspServers", lazyLsp.warmupLspServers, cwd);
 						const serversByName = new Map(result.servers.map(server => [server.name, server] as const));
 						for (const server of lspServers ?? []) {
 							const next = serversByName.get(server.name);

@@ -52,7 +52,7 @@ import { ExtensionRunner } from "./extensibility/extensions/runner";
 import type { ExtensionUIContext } from "./extensibility/extensions/types";
 import { registerDaemonProjectPresence } from "./launch/presence";
 import type { MCPManager } from "./mcp";
-import { InteractiveMode } from "./modes/interactive-mode";
+import type { InteractiveMode } from "./modes/interactive-mode";
 import type { PrintModeOptions } from "./modes/print-mode";
 import { CURRENT_SETUP_VERSION } from "./modes/setup-version";
 import { initTheme, stopThemeWatcher } from "./modes/theme/theme";
@@ -77,14 +77,6 @@ import { createPersistedSubagentReviverFactory } from "./task/persisted-revive";
 import { initTelemetryExport, isTelemetryExportEnabled } from "./telemetry-export";
 import { concreteThinkingLevel, parseConfiguredThinkingLevel } from "./thinking";
 import type { LspStartupServerInfo } from "./tools";
-import {
-	getChangelogPath,
-	parseChangelog,
-	parseChangelogVersion,
-	readLastChangelogVersion,
-	selectStartupChangelog,
-	writeLastChangelogVersion,
-} from "./utils/changelog";
 import { EventBus } from "./utils/event-bus";
 import { withTimeoutSignal } from "./utils/fetch-timeout";
 
@@ -386,10 +378,16 @@ export function createAcpSessionFactory(args: AcpSessionFactoryOptions): AcpSess
 	};
 }
 
+let interactiveModeLoad: Promise<typeof import("./modes/interactive-mode")> | undefined;
+
+function loadInteractiveMode(): Promise<typeof import("./modes/interactive-mode")> {
+	interactiveModeLoad ??= import("./modes/interactive-mode");
+	return interactiveModeLoad;
+}
+
 async function runInteractiveMode(
 	session: AgentSession,
 	version: string,
-	changelogMarkdown: string | undefined,
 	notifs: (InteractiveModeNotify | null)[],
 	versionCheckPromise: Promise<string | undefined>,
 	initialMessages: string[],
@@ -404,15 +402,8 @@ async function runInteractiveMode(
 	initialImages?: ImageContent[],
 	joinLink?: string,
 ): Promise<void> {
-	const mode = new InteractiveMode(
-		session,
-		version,
-		changelogMarkdown,
-		setExtensionUIContext,
-		lspServers,
-		mcpManager,
-		eventBus,
-	);
+	const { InteractiveMode } = await loadInteractiveMode();
+	const mode = new InteractiveMode(session, version, setExtensionUIContext, lspServers, mcpManager, eventBus);
 
 	// Cold-launch gate: the full setup wizard (every scene + the overlay and
 	// their TUI/OAuth/search/theme deps) is heavy, yet the common case only needs
@@ -598,35 +589,6 @@ async function moveMissingCwdSessionIfNeeded(
 	return { status: "moved", manager };
 }
 
-async function getChangelogForDisplay(parsed: Args): Promise<string | undefined> {
-	if (parsed.continue || parsed.resume) {
-		return undefined;
-	}
-
-	const lastVersion = await readLastChangelogVersion();
-	const parsedLastVersion = parseChangelogVersion(lastVersion);
-	if (!parsedLastVersion) {
-		await writeLastChangelogVersion(VERSION);
-		return undefined;
-	}
-	if (lastVersion === VERSION) {
-		// Steady state: user already saw the current version's changelog. Skip the file read + parse.
-		return undefined;
-	}
-
-	const changelogPath = getChangelogPath();
-	const entries = await parseChangelog(changelogPath);
-	const startupChangelog = selectStartupChangelog(entries, lastVersion, VERSION);
-	if (startupChangelog.persistCurrentVersion) {
-		await writeLastChangelogVersion(VERSION);
-	}
-	if (startupChangelog.markdown) {
-		return startupChangelog.markdown;
-	}
-
-	return undefined;
-}
-
 const SESSION_ID_ARG_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function normalizeContinueSessionArgs(parsed: Args, rawArgs?: readonly string[]): void {
@@ -765,7 +727,7 @@ export async function createSessionManager(
 
 /** Discover SYSTEM.md file if no CLI system prompt was provided */
 function discoverSystemPromptFile(): string | undefined {
-	// Check project-local first (.omp/SYSTEM.md, .pi/SYSTEM.md legacy)
+	// Check project-local first (.veyyon/SYSTEM.md, legacy dirs after)
 	const projectPath = findConfigFile("SYSTEM.md", { user: false });
 	if (projectPath) {
 		return projectPath;
@@ -1146,6 +1108,11 @@ export async function runRootCommand(
 	const pipedInput = isProtocolMode ? undefined : await logger.time("readPipedInput", readPipedInput);
 	const autoPrint = pipedInput !== undefined && !parsedArgs.print && parsedArgs.mode === undefined;
 	const isInteractive = !parsedArgs.print && !autoPrint && parsedArgs.mode === undefined;
+	// Interactive mode's modes/components subtree is the largest single chunk of
+	// the boot module graph. Kick its load here so the parse overlaps with
+	// session creation, and so print/rpc/acp runs never pay for it at all
+	// (runInteractiveMode awaits this same promise before constructing the mode).
+	if (isInteractive) void loadInteractiveMode();
 
 	// Initialize discovery system with settings for provider persistence
 	logger.time("initializeWithSettings", initializeWithSettings, settingsInstance);
@@ -1498,7 +1465,6 @@ export async function runRootCommand(
 			await runRpcMode(session, mode === "rpc-ui" ? setToolUIContext : undefined, eventBus);
 		} else if (isInteractive) {
 			const versionCheckPromise = checkForNewVersion(VERSION).catch(() => undefined);
-			const changelogMarkdown = await logger.time("main:getChangelogForDisplay", getChangelogForDisplay, parsedArgs);
 
 			const modelScopeNotification = buildModelScopeNotification(
 				scopedModels,
@@ -1523,7 +1489,6 @@ export async function runRootCommand(
 			await runInteractiveMode(
 				session,
 				VERSION,
-				changelogMarkdown,
 				notifs,
 				versionCheckPromise,
 				initialArgs.messages,
