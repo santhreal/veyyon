@@ -23,7 +23,7 @@ third-party attribution.
 This repository's git remotes reflect that lineage directly:
 
 ```
-origin    https://github.com/santhsecurity/veyyon.git
+origin    https://github.com/santhreal/veyyon.git
 upstream  https://github.com/can1357/oh-my-pi.git
 ```
 

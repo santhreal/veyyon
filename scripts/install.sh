@@ -3,7 +3,7 @@ set -e
 
 # Veyyon installer
 # Usage: curl -fsSL https://get.veyyon.dev | sh
-#   or:  curl -fsSL https://raw.githubusercontent.com/santhsecurity/veyyon/main/scripts/install.sh | sh
+#   or:  curl -fsSL https://raw.githubusercontent.com/santhreal/veyyon/main/scripts/install.sh | sh
 #
 # Options:
 #   --source        Install from source via bun (installs bun if needed)
@@ -15,7 +15,7 @@ set -e
 #
 # After install, launch with `vey` in any repo.
 
-REPO="santhsecurity/veyyon"
+REPO="santhreal/veyyon"
 PACKAGE="@veyyon/pi-coding-agent"
 BIN_NAME="veyyon"
 ALIAS_NAME="vey"

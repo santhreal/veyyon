@@ -64,7 +64,7 @@ interface MusicBrainzRelease {
 }
 
 const MUSICBRAINZ_HOSTS = new Set(["musicbrainz.org", "www.musicbrainz.org"]);
-const USER_AGENT = "veyyon-web-fetch/1.0 (https://github.com/santhsecurity/veyyon)";
+const USER_AGENT = "veyyon-web-fetch/1.0 (https://github.com/santhreal/veyyon)";
 const MAX_TRACKS = 50;
 
 function parseEntity(url: URL): { entity: MusicBrainzEntity; mbid: string } | null {

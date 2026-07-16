@@ -8,8 +8,8 @@ src = "src"
 [output.html]
 default-theme = "navy"
 preferred-dark-theme = "navy"
-git-repository-url = "https://github.com/santhsecurity/veyyon"
-edit-url-template = "https://github.com/santhsecurity/veyyon/edit/main/docs/handbook/{path}"
+git-repository-url = "https://github.com/santhreal/veyyon"
+edit-url-template = "https://github.com/santhreal/veyyon/edit/main/docs/handbook/{path}"
 additional-css = ["theme/veyyon.css"]
 
 [output.html.fold]

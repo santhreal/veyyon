@@ -120,10 +120,10 @@ describe("update-cli install target detection", () => {
 
 	it("uses mise update when prioritized omp is in an active mise bin path", () => {
 		const method = resolveUpdateMethodForTest(
-			"/Users/test/.local/share/mise/installs/github-santhsecurity-veyyon/latest/bin/veyyon",
+			"/Users/test/.local/share/mise/installs/github-santhreal-veyyon/latest/bin/veyyon",
 			undefined,
 			{
-				miseBinDirs: ["/Users/test/.local/share/mise/installs/github-santhsecurity-veyyon/latest/bin"],
+				miseBinDirs: ["/Users/test/.local/share/mise/installs/github-santhreal-veyyon/latest/bin"],
 			},
 		);
 
@@ -141,13 +141,13 @@ describe("update-cli install target detection", () => {
 
 describe("update-cli package manager commands", () => {
 	it("targets the Homebrew tap formula and switches to reinstall for forced updates", () => {
-		expect(buildHomebrewUpdateArgs(false)).toEqual(["upgrade", "santhsecurity/tap/veyyon"]);
-		expect(buildHomebrewUpdateArgs(true)).toEqual(["reinstall", "santhsecurity/tap/veyyon"]);
+		expect(buildHomebrewUpdateArgs(false)).toEqual(["upgrade", "santhreal/tap/veyyon"]);
+		expect(buildHomebrewUpdateArgs(true)).toEqual(["reinstall", "santhreal/tap/veyyon"]);
 	});
 
 	it("targets the mise GitHub backend tool and force-reinstalls the checked version when requested", () => {
-		expect(buildMiseUpgradeArgs()).toEqual(["upgrade", "github:santhsecurity/veyyon", "--bump"]);
-		expect(buildMiseForceInstallArgs("15.10.5")).toEqual(["install", "--force", "github:santhsecurity/veyyon@15.10.5"]);
+		expect(buildMiseUpgradeArgs()).toEqual(["upgrade", "github:santhreal/veyyon", "--bump"]);
+		expect(buildMiseForceInstallArgs("15.10.5")).toEqual(["install", "--force", "github:santhreal/veyyon@15.10.5"]);
 	});
 
 	it("pins npm package installs to the official registry and the checked native package versions", () => {

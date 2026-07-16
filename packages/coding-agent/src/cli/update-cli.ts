@@ -14,10 +14,10 @@ import chalk from "chalk";
 import { theme } from "../modes/theme/theme";
 import { isTimeoutError, withTimeoutSignal } from "../utils/fetch-timeout";
 
-const REPO = "santhsecurity/veyyon";
+const REPO = "santhreal/veyyon";
 const PACKAGE = "@veyyon/pi-coding-agent";
-const HOMEBREW_FORMULA = "santhsecurity/tap/veyyon";
-const MISE_TOOL = "github:santhsecurity/veyyon";
+const HOMEBREW_FORMULA = "santhreal/tap/veyyon";
+const MISE_TOOL = "github:santhreal/veyyon";
 /**
  * Official npm registry origin.
  *

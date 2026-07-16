@@ -73,4 +73,4 @@ Branching commands require a started session (at least one turn). Some commands 
 ## See also
 
 - [Sessions](../using/sessions.md)
-- [Session operations](https://github.com/santhsecurity/veyyon/blob/main/docs/internal/session-operations-export-share-fork-resume.md)
+- [Session operations](https://github.com/santhreal/veyyon/blob/main/docs/internal/session-operations-export-share-fork-resume.md)

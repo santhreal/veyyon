@@ -4,9 +4,9 @@
 
 <p align="center">
   <a href="https://www.npmjs.com/package/@veyyon/pi-coding-agent"><img src="https://img.shields.io/npm/v/@veyyon/pi-coding-agent?style=flat&colorA=222222&colorB=CB3837" alt="npm version"></a>
-  <a href="https://github.com/santhsecurity/veyyon/blob/main/packages/coding-agent/CHANGELOG.md"><img src="https://img.shields.io/badge/changelog-keep-E05735?style=flat&colorA=222222" alt="Changelog"></a>
-  <a href="https://github.com/santhsecurity/veyyon/actions"><img src="https://img.shields.io/github/actions/workflow/status/santhsecurity/veyyon/ci.yml?style=flat&colorA=222222&colorB=3FB950" alt="CI"></a>
-  <a href="https://github.com/santhsecurity/veyyon/blob/main/LICENSE"><img src="https://img.shields.io/github/license/santhsecurity/veyyon?style=flat&colorA=222222&colorB=58A6FF" alt="License"></a>
+  <a href="https://github.com/santhreal/veyyon/blob/main/packages/coding-agent/CHANGELOG.md"><img src="https://img.shields.io/badge/changelog-keep-E05735?style=flat&colorA=222222" alt="Changelog"></a>
+  <a href="https://github.com/santhreal/veyyon/actions"><img src="https://img.shields.io/github/actions/workflow/status/santhreal/veyyon/ci.yml?style=flat&colorA=222222&colorB=3FB950" alt="CI"></a>
+  <a href="https://github.com/santhreal/veyyon/blob/main/LICENSE"><img src="https://img.shields.io/github/license/santhreal/veyyon?style=flat&colorA=222222&colorB=58A6FF" alt="License"></a>
   <a href="https://www.typescriptlang.org"><img src="https://img.shields.io/badge/TypeScript-3178C6?style=flat&colorA=222222&logo=typescript&logoColor=white" alt="TypeScript"></a>
   <a href="https://www.rust-lang.org"><img src="https://img.shields.io/badge/Rust-DEA584?style=flat&colorA=222222&logo=rust&logoColor=white" alt="Rust"></a>
   <a href="https://bun.sh"><img src="https://img.shields.io/badge/runtime-Bun-f472b6?style=flat&colorA=222222" alt="Bun"></a>
@@ -14,7 +14,7 @@
 
 <p align="center">
   Fork of <a href="https://github.com/can1357/oh-my-pi">oh-my-pi</a> (MIT) and <a href="https://github.com/badlogic/pi-mono">Pi</a> by <a href="https://github.com/mariozechner">@mariozechner</a>.
-  Maintained at <a href="https://github.com/santhsecurity/veyyon">santhsecurity/veyyon</a>.
+  Maintained at <a href="https://github.com/santhreal/veyyon">santhreal/veyyon</a>.
 </p>
 
 
@@ -448,9 +448,9 @@ SDK: `@veyyon/pi-coding-agent` (see `packages/coding-agent`).
 
 ## A harness worth keeping is one you _don't_ outgrow.
 
-Source and releases: **[github.com/santhsecurity/veyyon](https://github.com/santhsecurity/veyyon)**.
+Source and releases: **[github.com/santhreal/veyyon](https://github.com/santhreal/veyyon)**.
 
-Veyyon is a fork of [Pi](https://github.com/badlogic/pi-mono) by [Mario Zechner](https://github.com/mariozechner), rewritten as a coding-first surface: sessions, subagents, slash commands, extensions — all TypeScript, all MIT, on [GitHub](https://github.com/santhsecurity/veyyon). Shape it from config, hook it from outside, or read the source when you need to.
+Veyyon is a fork of [Pi](https://github.com/badlogic/pi-mono) by [Mario Zechner](https://github.com/mariozechner), rewritten as a coding-first surface: sessions, subagents, slash commands, extensions — all TypeScript, all MIT, on [GitHub](https://github.com/santhreal/veyyon). Shape it from config, hook it from outside, or read the source when you need to.
 
 ### Primitives
 
@@ -551,7 +551,7 @@ Veyyon is a fork of [oh-my-pi](https://github.com/can1357/oh-my-pi) (MIT) and [P
 
 _made for terminals that stay open_
 
-- [GitHub](https://github.com/santhsecurity/veyyon)
-- [Changelog](https://github.com/santhsecurity/veyyon/blob/main/packages/coding-agent/CHANGELOG.md)
+- [GitHub](https://github.com/santhreal/veyyon)
+- [Changelog](https://github.com/santhreal/veyyon/blob/main/packages/coding-agent/CHANGELOG.md)
 - [npm](https://www.npmjs.com/package/@veyyon/pi-coding-agent)
-- [MIT](https://github.com/santhsecurity/veyyon/blob/main/LICENSE)
+- [MIT](https://github.com/santhreal/veyyon/blob/main/LICENSE)

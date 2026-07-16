@@ -277,7 +277,7 @@ export const handleDiscogs: SpecialHandler = async (
 			signal,
 			headers: {
 				Accept: "application/json",
-				"User-Agent": "CodingAgent/1.0 +https://github.com/santhsecurity/veyyon",
+				"User-Agent": "CodingAgent/1.0 +https://github.com/santhreal/veyyon",
 			},
 		});
 

@@ -1,6 +1,6 @@
 # Veyyon Coding Agent Installer for Windows
 # Usage: irm https://veyyon.dev/install.ps1 | iex
-#   or:  irm https://raw.githubusercontent.com/santhsecurity/veyyon/main/scripts/install.ps1 | iex
+#   or:  irm https://raw.githubusercontent.com/santhreal/veyyon/main/scripts/install.ps1 | iex
 #
 # Or with options:
 #   & ([scriptblock]::Create((irm https://veyyon.dev/install.ps1))) -Source
@@ -17,7 +17,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$Repo = "santhsecurity/veyyon"
+$Repo = "santhreal/veyyon"
 $Package = "@veyyon/pi-coding-agent"
 # VEYYON_INSTALL_DIR is the modern name; PI_INSTALL_DIR is honored for compatibility.
 $InstallDir = if ($env:VEYYON_INSTALL_DIR) { $env:VEYYON_INSTALL_DIR } elseif ($env:PI_INSTALL_DIR) { $env:PI_INSTALL_DIR } else { "$env:LOCALAPPDATA\veyyon" }

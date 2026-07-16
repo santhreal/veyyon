@@ -55,7 +55,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install keyhog
-        run: curl -fsSL https://raw.githubusercontent.com/santhsecurity/keyhog/main/install.sh | sh
+        run: curl -fsSL https://raw.githubusercontent.com/santhreal/keyhog/main/install.sh | sh
       - name: Scan the repo for new secrets
         # --precision drops entropy/ML-speculative noise and raises the confidence
         # floor; the committed baseline suppresses the known public OAuth client IDs

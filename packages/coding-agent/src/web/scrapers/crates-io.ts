@@ -26,7 +26,7 @@ export const handleCratesIo: SpecialHandler = async (
 		const result = await loadPage(apiUrl, {
 			timeout,
 			signal,
-			headers: { "User-Agent": "veyyon-web-fetch/1.0 (https://github.com/santhsecurity/veyyon)" },
+			headers: { "User-Agent": "veyyon-web-fetch/1.0 (https://github.com/santhreal/veyyon)" },
 		});
 
 		if (!result.ok) return null;

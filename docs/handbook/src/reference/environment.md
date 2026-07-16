@@ -23,7 +23,7 @@ active profile is selected by its own variable:
 
 On Linux, `veyyon config init-xdg` migrates state under `$XDG_DATA_HOME`/`$XDG_STATE_HOME`/`$XDG_CACHE_HOME`
 when those are set; unmigrated installs stay under `~/.veyyon`. See
-[`packages/utils/src/dirs.ts`](https://github.com/santhsecurity/veyyon/blob/main/packages/utils/src/dirs.ts).
+[`packages/utils/src/dirs.ts`](https://github.com/santhreal/veyyon/blob/main/packages/utils/src/dirs.ts).
 
 There is no separate SQLite-state-directory override; state lives under the resolved agent directory
 above.

@@ -34,7 +34,7 @@ The first interactive `veyyon` opens the setup ceremony (splash â†’ providers â†
 ## Build from source
 
 ```console
-$ git clone https://github.com/santhsecurity/veyyon.git
+$ git clone https://github.com/santhreal/veyyon.git
 $ cd veyyon
 $ bun setup      # installs workspace deps and builds @veyyon/pi-natives
 $ bun dev --version

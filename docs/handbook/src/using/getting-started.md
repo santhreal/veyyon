@@ -14,7 +14,7 @@ $ veyyon --version
 **From source** (repo root):
 
 ```console
-$ git clone https://github.com/santhsecurity/veyyon.git
+$ git clone https://github.com/santhreal/veyyon.git
 $ cd veyyon
 $ bun setup
 $ bun dev --version

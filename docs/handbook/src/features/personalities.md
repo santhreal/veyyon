@@ -54,4 +54,4 @@ See `packages/coding-agent/src/personality/resolver.ts` for the resolver impleme
 ## See also
 
 - [Configuration](../using/configuration.md)
-- [System prompt customization](https://github.com/santhsecurity/veyyon/blob/main/docs/system-prompt-customization.md) (engine doc)
+- [System prompt customization](https://github.com/santhreal/veyyon/blob/main/docs/system-prompt-customization.md) (engine doc)
