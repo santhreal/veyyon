@@ -84,3 +84,6 @@ docs/internal/design.md
 # Debug scratch DBs (never commit)
 packages/*/adv-debug-*/
 adv-debug-*/
+
+# Review-only local task ledger (fleet rule)
+BACKLOG.md
