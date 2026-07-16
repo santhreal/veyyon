@@ -36,7 +36,7 @@ import { armPreResponseTimeout, getStreamFirstEventTimeoutMs } from "../utils/id
 // the stream provider trusts the access token threaded through `options.apiKey`.
 import { normalizeSchemaForCCA } from "../utils/schema";
 import { StreamMarkupHealing, type StreamMarkupHealingEvent } from "../utils/stream-markup-healing";
-import type { Content, FunctionCallingConfigMode, ThinkingConfig } from "./google-shared";
+import type { Content, FunctionCallingConfigMode, ThinkingConfig, ThinkingLevel } from "./google-shared";
 import {
 	convertMessages,
 	convertTools,
@@ -1255,8 +1255,8 @@ export function buildRequest(
 		};
 		// Gemini 3 models use thinkingLevel, older models use thinkingBudget
 		if (options.thinking.level !== undefined) {
-			// Cast to any since our GoogleThinkingLevel mirrors Google's ThinkingLevel enum values
-			generationConfig.thinkingConfig.thinkingLevel = options.thinking.level as any;
+			// GoogleThinkingLevel mirrors the SDK's `ThinkingLevel` string enum values 1:1.
+			generationConfig.thinkingConfig.thinkingLevel = options.thinking.level as ThinkingLevel;
 		} else if (options.thinking.budgetTokens !== undefined) {
 			generationConfig.thinkingConfig.thinkingBudget = options.thinking.budgetTokens;
 		}
@@ -1266,8 +1266,8 @@ export function buildRequest(
 		const suppress = options.thinking.suppress;
 		generationConfig.thinkingConfig = { includeThoughts: false };
 		if ("level" in suppress) {
-			// Cast to any since our GoogleThinkingLevel mirrors Google's ThinkingLevel enum values
-			generationConfig.thinkingConfig.thinkingLevel = suppress.level as any;
+			// GoogleThinkingLevel mirrors the SDK's `ThinkingLevel` string enum values 1:1.
+			generationConfig.thinkingConfig.thinkingLevel = suppress.level as ThinkingLevel;
 		} else {
 			generationConfig.thinkingConfig.thinkingBudget = suppress.budget;
 		}

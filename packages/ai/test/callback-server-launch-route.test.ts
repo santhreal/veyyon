@@ -125,10 +125,12 @@ describe("OAuthCallbackFlow /launch route", () => {
 		expect(callbackResponse.status).toBe(200);
 		const html = await callbackResponse.text();
 
-		expect(html).toContain("Authentication Successful");
-		expect(html).toContain("You have successfully logged in.<br>You can now close this tab.");
-		expect(html).toContain("Close Window");
-		expect(html).not.toContain("This window will close automatically.");
+		// The Veyyon-branded callback page renders success state from the
+		// embedded server-state JSON and must always offer a manual close.
+		expect(html).toContain('{"ok":true');
+		expect(html).toContain("Signed in");
+		expect(html).toContain('onclick="window.close()"');
+		expect(html).toContain("Close window");
 		await login;
 	});
 

@@ -74,7 +74,9 @@ export async function readAuthBrokerSnapshotCache(
 		if (!plaintext) return null;
 		const parsed: unknown = JSON.parse(TEXT_DECODER.decode(plaintext));
 		if (!isSnapshotResponseShape(parsed)) {
-			logger.debug("auth-broker snapshot cache schema invalid", { path: opts.path });
+			logger.warn("auth-broker snapshot cache schema invalid — falling back to a live broker fetch", {
+				path: opts.path,
+			});
 			return null;
 		}
 		const snapshot = parsed;
@@ -82,7 +84,10 @@ export async function readAuthBrokerSnapshotCache(
 		if (now - snapshot.generatedAt > opts.ttlMs) return null;
 		return snapshot;
 	} catch (error) {
-		logger.debug("auth-broker snapshot cache read failed", { path: opts.path, error: String(error) });
+		logger.warn("auth-broker snapshot cache read failed — falling back to a live broker fetch", {
+			path: opts.path,
+			error: String(error),
+		});
 		return null;
 	}
 }
@@ -134,12 +139,16 @@ async function encryptCachePayload(snapshot: SnapshotResponse, token: string, ur
 
 async function decryptCachePayload(data: Uint8Array, token: string, url: string): Promise<Uint8Array | null> {
 	if (data.byteLength <= HEADER_LENGTH) {
-		logger.debug("auth-broker snapshot cache file too short");
+		logger.warn(
+			"auth-broker snapshot cache file too short — cache file corrupt, falling back to a live broker fetch",
+		);
 		return null;
 	}
 	for (let i = 0; i < MAGIC.byteLength; i++) {
 		if (data[i] !== MAGIC[i]) {
-			logger.debug("auth-broker snapshot cache magic mismatch");
+			logger.warn(
+				"auth-broker snapshot cache magic mismatch — cache file corrupt, falling back to a live broker fetch",
+			);
 			return null;
 		}
 	}
@@ -163,7 +172,9 @@ async function decryptCachePayload(data: Uint8Array, token: string, url: string)
 			),
 		);
 	} catch (error) {
-		logger.debug("auth-broker snapshot cache decrypt failed", { error: String(error) });
+		logger.warn("auth-broker snapshot cache decrypt failed — falling back to a live broker fetch", {
+			error: String(error),
+		});
 		return null;
 	}
 }

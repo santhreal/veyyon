@@ -11,7 +11,7 @@
  * - exchangeToken(): Exchange authorization code for tokens
  */
 import * as AIError from "../../error";
-import templateHtml from "./oauth.html" with { type: "text" };
+import { renderOAuthResultHtml } from "./success-page";
 import type { OAuthController, OAuthCredentials } from "./types";
 
 const DEFAULT_TIMEOUT = 300_000;
@@ -345,13 +345,10 @@ export abstract class OAuthCallbackFlow {
 			}
 		});
 
-		return new Response(
-			(templateHtml as unknown as string).replaceAll("__OAUTH_STATE__", JSON.stringify(resultState)),
-			{
-				status: resultState.ok ? 200 : 500,
-				headers: { "Content-Type": "text/html" },
-			},
-		);
+		return new Response(renderOAuthResultHtml(resultState), {
+			status: resultState.ok ? 200 : 500,
+			headers: { "Content-Type": "text/html" },
+		});
 	}
 
 	/**

@@ -16,7 +16,7 @@ function tokenInput(overrides: Partial<ResolveOpenAIOutputTokenInput> = {}): Res
 		maxTokensExplicit: false,
 		modelMaxTokens: 131_072,
 		omitMaxOutputTokens: false,
-		isOpenRouterHost: false,
+		routedUpstreamSelfCaps: false,
 		alwaysSendMaxTokens: false,
 		...overrides,
 	};
@@ -74,28 +74,28 @@ describe("resolveOpenAIOutputTokenParam", () => {
 		).toEqual({ field: "max_completion_tokens", value: OPENAI_MAX_OUTPUT_TOKENS });
 	});
 
-	it("omits the catalog default for OpenRouter when the caller did not explicitly set a cap", () => {
+	it("omits the catalog default for a routed host (OpenRouter, HF router) when the caller did not explicitly set a cap", () => {
 		expect(
 			resolveOpenAIOutputTokenParam(
-				tokenInput({ isOpenRouterHost: true, maxTokens: 131_072, maxTokensExplicit: false }),
+				tokenInput({ routedUpstreamSelfCaps: true, maxTokens: 131_072, maxTokensExplicit: false }),
 			),
 		).toBeUndefined();
 	});
 
-	it("preserves an explicit caller cap for OpenRouter", () => {
+	it("preserves an explicit caller cap for a routed host", () => {
 		expect(
 			resolveOpenAIOutputTokenParam(
-				tokenInput({ isOpenRouterHost: true, maxTokens: 2048, maxTokensExplicit: true }),
+				tokenInput({ routedUpstreamSelfCaps: true, maxTokens: 2048, maxTokensExplicit: true }),
 			),
 		).toEqual({ field: "max_completion_tokens", value: 2048 });
 	});
 
-	it("keeps the cap for OpenRouter models that require it (alwaysSendMaxTokens overrides routing omission)", () => {
+	it("keeps the cap for routed-host models that require it (alwaysSendMaxTokens overrides routing omission)", () => {
 		expect(
 			resolveOpenAIOutputTokenParam(
 				tokenInput({
 					field: "max_output_tokens",
-					isOpenRouterHost: true,
+					routedUpstreamSelfCaps: true,
 					alwaysSendMaxTokens: true,
 					maxTokens: 131_072,
 					maxTokensExplicit: false,

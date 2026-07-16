@@ -47,6 +47,7 @@ export type {
 	GenerateContentParameters,
 	GenerateContentResponse,
 	ThinkingConfig,
+	ThinkingLevel,
 } from "./google-types";
 export { normalizeSchemaForGoogle };
 

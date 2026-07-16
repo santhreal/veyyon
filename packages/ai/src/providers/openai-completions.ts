@@ -1564,7 +1564,7 @@ function buildParams(
 		maxTokensExplicit: options?.maxTokensExplicit ?? options?.maxTokens !== undefined,
 		modelMaxTokens: model.maxTokens,
 		omitMaxOutputTokens: model.omitMaxOutputTokens ?? false,
-		isOpenRouterHost: compat.isOpenRouterHost,
+		routedUpstreamSelfCaps: compat.routedUpstreamSelfCaps,
 		alwaysSendMaxTokens: compat.alwaysSendMaxTokens,
 		providerOutputClamp: resolveZaiReasoningOutputClamp(model, compat),
 	});

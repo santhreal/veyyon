@@ -81,7 +81,7 @@ function startMcpToolCall(h: Harness, name: string, id = "call-1"): void {
 				value: {
 					callId: id,
 					toolCall: {
-						mcpToolCall: { args: { name, toolName: name, toolCallId: id } },
+						tool: { case: "mcpToolCall", value: { args: { name, toolName: name, toolCallId: id } } },
 					},
 				},
 			},
@@ -108,7 +108,7 @@ function completeMcpToolCall(h: Harness, args: Record<string, Uint8Array> | unde
 		{
 			message: {
 				case: "toolCallCompleted",
-				value: { toolCall: { mcpToolCall: { args: { args } } } },
+				value: { toolCall: { tool: { case: "mcpToolCall", value: { args: { args } } } } },
 			},
 		},
 		h.output,
@@ -380,6 +380,44 @@ describe("synthesizeCursorExecToolCall (issue #4348)", () => {
 			arguments: { command: "echo hi", cwd: undefined, timeout: undefined },
 		});
 		expect(t3).toMatchObject({ type: "text", text: "done" });
+	});
+
+	it("builds a todo tool call from the decoded updateTodosToolCall oneof", () => {
+		// Regression: `fromBinary` decodes the agent.v1.ToolCall oneof as
+		// `{ tool: { case, value } }`. The old flat `toolCall.updateTodosToolCall`
+		// read never matched a real decoded message, silently dropping Cursor
+		// todo tool calls.
+		const h = newHarness();
+		processInteractionUpdate(
+			{
+				message: {
+					case: "toolCallStarted",
+					value: {
+						callId: "todo-1",
+						toolCall: {
+							tool: {
+								case: "updateTodosToolCall",
+								value: { args: { todos: [{ id: "a", content: "write tests", status: 2 }] } },
+							},
+						},
+					},
+				},
+			},
+			h.output,
+			h.stream,
+			h.state,
+			h.usageState,
+		);
+
+		expect(h.output.content).toHaveLength(1);
+		expect(h.output.content[0]).toMatchObject({
+			type: "toolCall",
+			id: "todo-1",
+			name: "todo",
+			arguments: {
+				todos: [{ id: "a", content: "write tests", activeForm: "write tests", status: "in_progress" }],
+			},
+		});
 	});
 
 	it("emits toolcall events at the exact index the block occupies in content", () => {

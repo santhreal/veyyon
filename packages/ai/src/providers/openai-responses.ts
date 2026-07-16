@@ -848,7 +848,7 @@ export function buildParams(
 		maxTokensExplicit: options?.maxTokensExplicit ?? options?.maxTokens !== undefined,
 		modelMaxTokens: model.maxTokens,
 		omitMaxOutputTokens: model.omitMaxOutputTokens ?? false,
-		isOpenRouterHost: model.compat.isOpenRouterHost,
+		routedUpstreamSelfCaps: model.compat.routedUpstreamSelfCaps,
 		alwaysSendMaxTokens: model.compat.alwaysSendMaxTokens,
 	});
 

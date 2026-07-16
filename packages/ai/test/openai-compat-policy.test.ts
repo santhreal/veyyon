@@ -119,6 +119,59 @@ describe("OpenAI compat policy", () => {
 		expect(responseBody.reasoning).toBeUndefined();
 	});
 
+	it("sends no effort field to a DeepSeek model behind the HF router", () => {
+		// HF-routed DeepSeek upstreams 400 on a bare OpenAI `reasoning_effort`
+		// ("thinking mode openai_effort is not supported"); the catalog marks the
+		// combination as effort-unsupported so no effort field reaches the wire.
+		const model = buildModel({
+			id: "deepseek-ai/DeepSeek-V3.2",
+			name: "DeepSeek-V3.2",
+			api: "openai-completions",
+			provider: "huggingface",
+			baseUrl: "https://router.huggingface.co/v1",
+			reasoning: true,
+			input: ["text"],
+			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+			contextWindow: 163_840,
+			maxTokens: 65_536,
+		} satisfies ModelSpec<"openai-completions">);
+		const chatBody = chatParams();
+
+		applyChatCompletionsCompatPolicy(
+			chatBody,
+			resolveOpenAICompatPolicy(model, { endpoint: "chat-completions", reasoning: Effort.High }),
+		);
+
+		expect(model.compat.supportsReasoningEffort).toBe(false);
+		expect(chatBody.reasoning_effort).toBeUndefined();
+		expect(chatBody.thinking).toBeUndefined();
+	});
+
+	it("sends no effort field to a non-reasoning model even when effort is requested", () => {
+		const model = buildModel({
+			id: "qwen2.5-coder-3b",
+			name: "Qwen2.5 Coder 3B",
+			api: "openai-completions",
+			provider: "huggingface",
+			baseUrl: "https://router.huggingface.co/v1",
+			reasoning: false,
+			input: ["text"],
+			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+			contextWindow: 32_768,
+			maxTokens: 4096,
+		} satisfies ModelSpec<"openai-completions">);
+		const chatBody = chatParams();
+
+		applyChatCompletionsCompatPolicy(
+			chatBody,
+			resolveOpenAICompatPolicy(model, { endpoint: "chat-completions", reasoning: Effort.High }),
+		);
+
+		expect(chatBody.reasoning_effort).toBeUndefined();
+		expect(chatBody.thinking).toBeUndefined();
+		expect(chatBody.enable_thinking).toBeUndefined();
+	});
+
 	it("leaves Responses input unchanged when reasoning is not requested", () => {
 		const responseBody = responsesParams();
 

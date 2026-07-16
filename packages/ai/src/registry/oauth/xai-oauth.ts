@@ -10,6 +10,7 @@
 import * as AIError from "../../error";
 import type { FetchImpl } from "../../types";
 import { type OAuthDeviceCodePollResult, pollOAuthDeviceCodeFlow } from "./device-code";
+import { emitOAuthSuccessPage } from "./success-page";
 import type { OAuthController, OAuthCredentials } from "./types";
 
 const XAI_OAUTH_ISSUER = "https://auth.x.ai";
@@ -364,12 +365,16 @@ export async function loginXAIOAuth(ctrl: OAuthController): Promise<OAuthCredent
 	});
 	ctrl.onProgress?.("Waiting for xAI device authorization...");
 
-	return pollOAuthDeviceCodeFlow({
+	const credentials = await pollOAuthDeviceCodeFlow({
 		poll: () => pollXAIDeviceToken(discovery.token_endpoint, device.deviceCode, fetchImpl, ctrl.signal),
 		intervalSeconds: device.intervalSeconds,
 		expiresInSeconds: device.expiresInSeconds,
 		signal: ctrl.signal,
 	});
+	// Device-code flows get no browser redirect of their own; bring up the
+	// branded success page so grok ends on the same screen as callback providers.
+	emitOAuthSuccessPage(ctrl);
+	return credentials;
 }
 
 /**

@@ -12,7 +12,7 @@ import {
 	type SnapshotResponse,
 	startAuthBroker,
 } from "@veyyon/pi-ai/auth-broker";
-import { snapshotResponseSchema } from "@veyyon/pi-ai/auth-broker/wire-schemas";
+import { wireSchemas } from "@veyyon/pi-ai/auth-broker/wire-schemas";
 import * as oauthUtils from "@veyyon/pi-ai/registry/oauth";
 import type { UsageLimit, UsageReport } from "@veyyon/pi-ai/usage";
 import { type } from "arktype";
@@ -380,7 +380,7 @@ describe("RemoteAuthCredentialStore + AuthStorage integration", () => {
 
 	test("snapshot wire schema accepts entries with and without credential blocks", () => {
 		const futureBlock = Date.now() + 60_000;
-		const validated = snapshotResponseSchema({
+		const validated = wireSchemas().snapshotResponseSchema({
 			generation: 1,
 			generatedAt: Date.now(),
 			serverNowMs: Date.now(),

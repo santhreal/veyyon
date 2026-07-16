@@ -227,9 +227,9 @@ function debugBytes(bytes: Uint8Array, asHex: boolean): string {
 function debugReplacer(key: string, value: unknown): unknown {
 	if (
 		value instanceof Uint8Array ||
-		(value && typeof value === "object" && "type" in value && value.type === "Buffer")
+		(value && typeof value === "object" && "type" in value && value.type === "Buffer" && "data" in value)
 	) {
-		const bytes = value instanceof Uint8Array ? value : new Uint8Array((value as any).data);
+		const bytes = value instanceof Uint8Array ? value : new Uint8Array((value as { data: ArrayLike<number> }).data);
 		const asHex = key === "blobId" || key === "blob_id" || key.endsWith("Id") || key.endsWith("_id");
 		return debugBytes(bytes, asHex);
 	}
@@ -673,7 +673,10 @@ export async function handleServerMessage(
 	log("serverMessage", msgCase, msg.message.value);
 
 	if (msgCase === "interactionUpdate") {
-		processInteractionUpdate(msg.message.value, output, stream, state, usageState);
+		// InteractionUpdateView is a structural subset of the generated type; the
+		// weak-type rule (all-optional view vs. field-less updates like
+		// thinkingCompleted) blocks direct assignability, hence the assertion.
+		processInteractionUpdate(msg.message.value as InteractionUpdateView, output, stream, state, usageState);
 	} else if (msgCase === "kvServerMessage") {
 		handleKvServerMessage(msg.message.value as KvServerMessage, blobStore, h2Request);
 	} else if (msgCase === "execServerMessage") {
@@ -795,7 +798,7 @@ async function handleShellStreamArgs(
 	const normalizedArgs: ShellArgs = { ...args, workingDirectory: normalizedWorkingDirectory };
 	const startTs = performance.now();
 	log("shellStream", "start", {
-		command: (args as any).command,
+		command: args.command,
 		workingDirectory: normalizedWorkingDirectory,
 		execId: execMsg.execId,
 		hasExecHandlers: !!execHandlers,
@@ -904,14 +907,12 @@ async function handleShellStreamArgs(
 	const handler = streamHandler ? (shellArgs: ShellArgs) => streamHandler(shellArgs, streamCallbacks) : batchHandler;
 
 	const { execResult } = await resolveExecHandler(
-		args as any,
+		args,
 		handler as typeof batchHandler,
 		onToolResult,
-		toolResult => buildShellResultFromToolResult(normalizedArgs as any, toolResult),
-		reason =>
-			buildShellRejectedResult((normalizedArgs as any).command, (normalizedArgs as any).workingDirectory, reason),
-		error =>
-			buildShellFailureResult((normalizedArgs as any).command, (normalizedArgs as any).workingDirectory, error),
+		toolResult => buildShellResultFromToolResult(normalizedArgs, toolResult),
+		reason => buildShellRejectedResult(normalizedArgs.command, normalizedArgs.workingDirectory, reason),
+		error => buildShellFailureResult(normalizedArgs.command, normalizedArgs.workingDirectory, error),
 	);
 
 	// When using the batch handler (no shellStream), send buffered stdout/stderr
@@ -1342,19 +1343,18 @@ async function handleExecServerMessage(
 	}
 }
 
-function sendExecClientMessage<T>(
+function sendExecClientMessage<C extends NonNullable<ExecClientMessage["message"]["case"]>>(
 	h2Request: http2.ClientHttp2Stream,
 	execMsg: ExecServerMessage,
-	messageCase: ExecClientMessage["message"]["case"],
-	value: T,
+	messageCase: C,
+	value: Extract<ExecClientMessage["message"], { case: C }>["value"],
 ): void {
 	const execClientMessage = create(ExecClientMessageSchema, {
 		id: execMsg.id,
 		execId: execMsg.execId,
-		message: {
-			case: messageCase,
-			value: value as any,
-		},
+		// The generic correlates case and value at every call site; the union
+		// member itself cannot be proven pairwise by TS, hence the assertion.
+		message: { case: messageCase, value } as ExecClientMessage["message"],
 	});
 
 	const clientMessage = create(AgentClientMessageSchema, {
@@ -1988,14 +1988,31 @@ interface CursorTodoItem {
 	status?: number;
 }
 
-interface CursorUpdateTodosToolCall {
-	updateTodosToolCall?: { args?: { todos?: CursorTodoItem[] } };
+interface CursorMcpArgsView {
+	toolCallId?: string;
+	name?: string;
+	toolName?: string;
+	args?: Record<string, Uint8Array>;
 }
 
-function buildTodoArgs(toolCall: CursorUpdateTodosToolCall): {
+/** Oneof-shaped view of `agent.v1.ToolCall` limited to the cases this state
+ *  machine consumes. `fromBinary` decodes oneofs as `{ case, value }` — flat
+ *  `toolCall.mcpToolCall` property access never matches a decoded message. */
+interface CursorToolCallView {
+	tool?: { case?: string; value?: unknown };
+}
+
+function mcpToolCallOf(toolCall: CursorToolCallView): { args?: CursorMcpArgsView } | undefined {
+	return toolCall.tool?.case === "mcpToolCall" ? (toolCall.tool.value as { args?: CursorMcpArgsView }) : undefined;
+}
+
+function buildTodoArgs(toolCall: CursorToolCallView): {
 	todos: Array<{ id?: string; content: string; activeForm: string; status: "pending" | "in_progress" | "completed" }>;
 } | null {
-	const todos = toolCall.updateTodosToolCall?.args?.todos;
+	const todos =
+		toolCall.tool?.case === "updateTodosToolCall"
+			? (toolCall.tool.value as { args?: { todos?: CursorTodoItem[] } }).args?.todos
+			: undefined;
 	if (!todos) return null;
 	return {
 		todos: todos.map(todo => ({
@@ -2166,21 +2183,43 @@ export function synthesizeCursorExecToolCall(
 	stream.push({ type: "toolcall_end", contentIndex: idx, toolCall: block, partial: output });
 }
 
+/** Structural view of the generated `InteractionUpdate` oneof, limited to the
+ *  fields the streaming state machine reads. Same idiom as
+ *  {@link CursorToolCallView}: real protobuf messages satisfy it and
+ *  test harnesses can fabricate updates without protobuf branding. */
+export interface InteractionUpdateView {
+	message?: {
+		case?: string;
+		value?: {
+			/** textDelta / thinkingDelta */
+			text?: string;
+			/** toolCallStarted / toolCallCompleted */
+			toolCall?: CursorToolCallView;
+			callId?: string;
+			/** toolCallDelta / partialToolCall: cumulative args-JSON snapshot */
+			argsTextDelta?: string;
+			/** tokenDelta */
+			tokens?: number;
+		};
+	};
+}
+
 /** Exported for tests: drives one Cursor interaction update through the streaming state machine. */
 export function processInteractionUpdate(
-	update: any,
+	update: InteractionUpdateView,
 	output: AssistantMessage,
 	stream: AssistantMessageEventStream,
 	state: BlockState,
 	usageState: UsageState,
 ): void {
 	const updateCase = update.message?.case;
+	const value = update.message?.value ?? {};
 
 	log("interactionUpdate", updateCase, update.message?.value);
 
 	if (updateCase === "textDelta") {
 		state.setFirstTokenTime();
-		const delta = update.message.value.text || "";
+		const delta = value.text || "";
 		if (!state.currentTextBlock) {
 			const block: TextContent & { [kStreamingBlockIndex]: number } = {
 				type: "text",
@@ -2196,7 +2235,7 @@ export function processInteractionUpdate(
 		stream.push({ type: "text_delta", contentIndex: idx, delta, partial: output });
 	} else if (updateCase === "thinkingDelta") {
 		state.setFirstTokenTime();
-		const delta = update.message.value.text || "";
+		const delta = value.text || "";
 		if (!state.currentThinkingBlock) {
 			const block: ThinkingContent & { [kStreamingBlockIndex]: number } = {
 				type: "thinking",
@@ -2215,9 +2254,9 @@ export function processInteractionUpdate(
 	} else if (updateCase === "toolCallStarted") {
 		endCurrentTextBlock(output, stream, state);
 		endCurrentThinkingBlock(output, stream, state);
-		const toolCall = update.message.value.toolCall;
+		const toolCall = value.toolCall;
 		if (toolCall) {
-			const mcpCall = toolCall.mcpToolCall;
+			const mcpCall = mcpToolCallOf(toolCall);
 			if (mcpCall) {
 				const args = mcpCall.args || {};
 				const block: ToolCallState = {
@@ -2237,7 +2276,7 @@ export function processInteractionUpdate(
 
 			const todoArgs = buildTodoArgs(toolCall);
 			if (todoArgs) {
-				const callId = update.message.value.callId || crypto.randomUUID();
+				const callId = value.callId || crypto.randomUUID();
 				const block: ToolCallState = {
 					type: "toolCall",
 					id: callId,
@@ -2257,7 +2296,7 @@ export function processInteractionUpdate(
 			// delta is a cumulative snapshot of the JSON-text args. Strip the prefix we already
 			// have to recover the new suffix; fall back to treating the value as an incremental
 			// fragment when it doesn't extend the buffer.
-			const snapshot: string = update.message.value.argsTextDelta || "";
+			const snapshot: string = value.argsTextDelta || "";
 			const current = state.currentToolCall[kStreamingPartialJson] ?? "";
 			const chunk = snapshot.startsWith(current) ? snapshot.slice(current.length) : snapshot;
 			if (chunk.length === 0) {
@@ -2278,7 +2317,7 @@ export function processInteractionUpdate(
 		}
 	} else if (updateCase === "toolCallCompleted") {
 		if (state.currentToolCall) {
-			const toolCall = update.message.value.toolCall;
+			const toolCall = value.toolCall;
 			if (state.currentToolCall[kStreamingBlockKind] === "mcp") {
 				// Authoritative full parse of the accumulated argument buffer; the delta
 				// path throttles mid-stream parses, so `arguments` may lag the buffer.
@@ -2286,7 +2325,7 @@ export function processInteractionUpdate(
 				if (partial !== undefined) {
 					state.currentToolCall.arguments = parseStreamingJson(partial);
 				}
-				const decodedArgs = decodeMcpArgsMap(toolCall?.mcpToolCall?.args?.args);
+				const decodedArgs = decodeMcpArgsMap(toolCall ? mcpToolCallOf(toolCall)?.args?.args : undefined);
 				state.currentToolCall.arguments = mergeCursorMcpToolCallArgs(
 					state.currentToolCall.arguments as Record<string, unknown> | undefined,
 					decodedArgs,
@@ -2305,7 +2344,7 @@ export function processInteractionUpdate(
 	} else if (updateCase === "turnEnded") {
 		output.stopReason = "stop";
 	} else if (updateCase === "tokenDelta") {
-		const tokenDelta = update.message.value;
+		const tokenDelta = value;
 		usageState.sawTokenDelta = true;
 		output.usage.output += tokenDelta.tokens || 0;
 		output.usage.totalTokens = output.usage.input + output.usage.output;

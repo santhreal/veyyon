@@ -2591,6 +2591,7 @@ export class AuthStorage {
 			onProgress: ctrl.onProgress,
 			onPrompt: ctrl.onPrompt,
 			onManualCodeInput: ctrl.onManualCodeInput ?? manualCodeInput,
+			onSuccessPage: ctrl.onSuccessPage,
 			signal: ctrl.signal,
 			fetch: ctrl.fetch,
 		});

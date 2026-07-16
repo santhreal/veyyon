@@ -3,6 +3,7 @@ import * as net from "node:net";
 import * as AIError from "@veyyon/pi-ai/error";
 import type { FetchImpl } from "@veyyon/pi-ai/types";
 import {
+	__resetProxyCache,
 	connectProxiedSocket,
 	getProxyForProvider,
 	isLocalOrMetadataHost,
@@ -64,11 +65,14 @@ async function waitForSocketClose(socket: net.Socket): Promise<void> {
 const isProxyEnvKey = (k: string): boolean => k.startsWith("PI_PROXY") || k === "NO_PROXY" || k === "no_proxy";
 
 // Snapshot + clear every proxy-related env var so each test starts clean and
-// leaves nothing behind for later files. Provider-specific tests use unique
-// provider ids so the module-level resolver cache can never cross-contaminate.
+// leaves nothing behind for later files. The resolver cache must also be
+// reset: bun test runs every file in one process, so an earlier file that
+// resolved a real provider id (e.g. github-copilot) memoizes `undefined`
+// and would shadow the env vars set here.
 let saved: Record<string, string | undefined>;
 
 beforeEach(() => {
+	__resetProxyCache();
 	saved = {};
 	for (const key in Bun.env) {
 		if (!isProxyEnvKey(key)) continue;

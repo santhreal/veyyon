@@ -198,6 +198,7 @@ describe("openai-completions compatibility", () => {
 			supportsReasoningParams: true,
 			alwaysSendMaxTokens: false,
 			isOpenRouterHost: false,
+			routedUpstreamSelfCaps: false,
 			isVercelGatewayHost: false,
 			wireModelIdMode: "raw",
 			stripDeepseekSpecialTokens: false,

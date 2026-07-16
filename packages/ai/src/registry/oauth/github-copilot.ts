@@ -14,6 +14,7 @@ import {
 } from "@veyyon/pi-catalog/wire/github-copilot";
 import * as AIError from "../../error";
 import type { FetchImpl } from "../../types";
+import { emitOAuthSuccessPage } from "./success-page";
 import type { OAuthCredentials } from "./types";
 
 const CLIENT_ID = "Ov23li8tweQw6odWQebz";
@@ -25,6 +26,7 @@ type GitHubCopilotLoginOptions = {
 	onAuth: (url: string, instructions?: string) => void;
 	onPrompt: (prompt: { message: string; placeholder?: string; allowEmpty?: boolean }) => Promise<string>;
 	onProgress?: (message: string) => void;
+	onSuccessPage?: (url: string) => void;
 	signal?: AbortSignal;
 	pollIntervalFloorMs?: number;
 	pollIntervalScaleMs?: number;
@@ -365,5 +367,7 @@ export async function loginGitHubCopilot(options: GitHubCopilotLoginOptions): Pr
 	// Enable all models after successful login
 	options.onProgress?.("Enabling models...");
 	await enableAllGitHubCopilotModels(githubAccessToken, enterpriseDomain ?? undefined, apiEndpoint, fetchImpl);
+	// Device-code flow has no browser redirect; show the branded success page.
+	emitOAuthSuccessPage(options);
 	return credentials;
 }

@@ -513,8 +513,8 @@ export interface ResolveOpenAIOutputTokenInput {
 	modelMaxTokens: number | null | undefined;
 	/** Drop the field entirely — proxies with unknown upstream caps (Ollama via `model.omitMaxOutputTokens`). */
 	omitMaxOutputTokens: boolean;
-	/** The model sits behind OpenRouter (catalog default caps are omitted so each upstream self-caps). */
-	isOpenRouterHost: boolean;
+	/** The model sits behind a multi-upstream router (OpenRouter, HF Inference router); catalog default caps are omitted so each upstream self-caps. */
+	routedUpstreamSelfCaps: boolean;
 	/** Endpoint always needs a cap (Kimi-family TPM math); supplies the model default when the caller did not. */
 	alwaysSendMaxTokens: boolean;
 	/** Hard provider clamp; defaults to {@link OPENAI_MAX_OUTPUT_TOKENS}. */
@@ -529,10 +529,12 @@ export interface ResolveOpenAIOutputTokenInput {
  *  - `alwaysSendMaxTokens`: Kimi-family endpoints derive TPM limits from the
  *    cap and require one on every call, so default from the model cap (or
  *    {@link OPENAI_MAX_OUTPUT_TOKENS}) when the caller omitted it.
- *  - OpenRouter routing omission: OpenRouter fans out to upstreams whose output
- *    caps differ from the catalog value, so a catalog default above the routed
- *    upstream's cap makes OpenRouter skip that upstream. Omit catalog defaults
- *    (explicit caller caps still win) so `provider.order`/`only` is honored.
+ *  - `routedUpstreamSelfCaps` omission: multi-upstream routers (OpenRouter,
+ *    the HF Inference Providers router) fan out to upstreams whose output caps
+ *    differ from the catalog value, so a catalog default above the routed
+ *    upstream's cap makes OpenRouter skip that upstream or the HF router 400
+ *    ("max_tokens exceeds maximum"). Omit catalog defaults (explicit caller
+ *    caps still win) so routing and per-upstream caps are honored.
  *  - model/provider clamp: never exceed `model.maxTokens` or the provider clamp
  *    (`OPENAI_MAX_OUTPUT_TOKENS`, raised for GLM-5.2 reasoning by the caller).
  *  - `omitMaxOutputTokens`: proxies (Ollama) with unknown upstream caps drop it.
@@ -544,7 +546,7 @@ export function resolveOpenAIOutputTokenParam(
 	const requested =
 		input.maxTokens ?? (input.alwaysSendMaxTokens ? (input.modelMaxTokens ?? OPENAI_MAX_OUTPUT_TOKENS) : undefined);
 	if (requested === undefined) return undefined;
-	if (input.isOpenRouterHost && !input.alwaysSendMaxTokens && !input.maxTokensExplicit) return undefined;
+	if (input.routedUpstreamSelfCaps && !input.alwaysSendMaxTokens && !input.maxTokensExplicit) return undefined;
 	const value = Math.min(
 		requested,
 		input.modelMaxTokens ?? Number.POSITIVE_INFINITY,
@@ -2033,6 +2035,15 @@ type OpenAIResponsesTerminalStreamEvent =
 	| Extract<ResponseStreamEvent, { type: "response.completed" | "response.incomplete" }>
 	| { type: "response.done"; response?: Partial<OpenAIResponse> };
 
+/**
+ * Some Responses-compatible backends (Azure deployments among them) report
+ * failure detail under an undocumented `status_details` envelope instead of
+ * the SDK-typed top-level `error` field.
+ */
+interface ResponsesStatusDetailsView {
+	status_details?: { error?: { code?: string; message?: string }; reason?: unknown };
+}
+
 function getOpenAIResponsesTerminalEvent(event: ResponseStreamEvent): OpenAIResponsesTerminalStreamEvent | undefined {
 	const type = (event as { type?: unknown }).type;
 	return type === "response.completed" || type === "response.incomplete" || type === "response.done"
@@ -2549,9 +2560,10 @@ export async function processResponsesStream<TApi extends Api>(
 			);
 			output.stopReason = mapOpenAIResponsesStopReason(response?.status);
 			if (response?.status === "failed" || response?.status === "cancelled") {
-				const error = response?.error ?? (response as any)?.status_details?.error;
+				const statusDetails = (response as ResponsesStatusDetailsView | undefined)?.status_details;
+				const error = response?.error ?? statusDetails?.error;
 				const details = response?.incomplete_details;
-				const statusDetailsReason = (response as any)?.status_details?.reason;
+				const statusDetailsReason = statusDetails?.reason;
 				const message = error
 					? `${error.code || "unknown"}: ${error.message || "no message"}`
 					: details?.reason
@@ -2581,7 +2593,14 @@ export async function processResponsesStream<TApi extends Api>(
 			// reaches the SDK stream), actively releasing the connection.
 			break;
 		} else if (event.type === "error") {
-			const err = (event as any).error ?? event;
+			// Error events carry either a nested `error` object or the code/message
+			// fields inline, depending on the backend.
+			const errorEvent = event as {
+				error?: { code?: unknown; message?: unknown };
+				code?: unknown;
+				message?: unknown;
+			};
+			const err = errorEvent.error ?? errorEvent;
 			const code = err.code ?? "unknown";
 			const message = err.message ?? "no message";
 			throw new AIError.ProviderResponseError(`Error Code ${code}: ${message}`, {
@@ -2590,7 +2609,8 @@ export async function processResponsesStream<TApi extends Api>(
 			});
 		} else if (event.type === "response.failed") {
 			populateResponsesUsageFromResponse(output, event.response?.usage);
-			const error = event.response?.error ?? (event.response as any)?.status_details?.error;
+			const error =
+				event.response?.error ?? (event.response as ResponsesStatusDetailsView | undefined)?.status_details?.error;
 			const details = event.response?.incomplete_details;
 			const message = error
 				? `${error.code || "unknown"}: ${error.message || "no message"}`

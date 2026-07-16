@@ -23,18 +23,7 @@ import type {
 	UsageResponse,
 	UsageStaleResponse,
 } from "./types";
-import {
-	credentialBlockResponseSchema,
-	credentialBlocksDeleteResponseSchema,
-	credentialDisableResponseSchema,
-	credentialRefreshResponseSchema,
-	credentialUploadResponseSchema,
-	healthzResponseSchema,
-	snapshotResponseSchema,
-	snapshotStreamEventSchema,
-	usageResponseSchema,
-	usageStaleResponseSchema,
-} from "./wire-schemas";
+import { wireSchemas } from "./wire-schemas";
 
 export interface AuthBrokerClientOptions {
 	/** Base URL (e.g. `https://broker.tailnet:8765`). Trailing slashes are trimmed. */
@@ -114,7 +103,7 @@ export class AuthBrokerClient {
 
 	healthz(signal?: AbortSignal): Promise<HealthzResponse> {
 		return this.#request<HealthzResponse>("GET", "/v1/healthz", {
-			schema: healthzResponseSchema,
+			schema: wireSchemas().healthzResponseSchema,
 			auth: false,
 			signal,
 		});
@@ -143,7 +132,7 @@ export class AuthBrokerClient {
 		}
 		const text = await response.text();
 		const raw = this.#parseJson(text, response.status);
-		const validated = snapshotResponseSchema(raw);
+		const validated = wireSchemas().snapshotResponseSchema(raw);
 		if (validated instanceof type.errors) {
 			throw new AuthBrokerError("Auth broker response failed schema validation", {
 				status: response.status,
@@ -211,7 +200,7 @@ export class AuthBrokerClient {
 					cause: err,
 				});
 			}
-			const validated = snapshotStreamEventSchema(parsed);
+			const validated = wireSchemas().snapshotStreamEventSchema(parsed);
 			if (validated instanceof type.errors) {
 				throw new AuthBrokerError("Auth broker stream event failed schema validation", {
 					body: validated.summary,
@@ -241,19 +230,19 @@ export class AuthBrokerClient {
 		// `metadata`) but leaves provider-specific extension fields permissive so
 		// the broker can ship new shapes ahead of the client. `raw` is accepted
 		// but normally stripped by the broker before send.
-		return this.#request<UsageResponse>("GET", "/v1/usage", { schema: usageResponseSchema, signal });
+		return this.#request<UsageResponse>("GET", "/v1/usage", { schema: wireSchemas().usageResponseSchema, signal });
 	}
 
 	notifyUsageStale(signal?: AbortSignal): Promise<UsageStaleResponse> {
 		return this.#request<UsageStaleResponse>("POST", "/v1/usage/stale", {
-			schema: usageStaleResponseSchema,
+			schema: wireSchemas().usageStaleResponseSchema,
 			signal,
 		});
 	}
 
 	async refreshCredential(id: number, signal?: AbortSignal): Promise<CredentialRefreshResponse> {
 		return this.#request<CredentialRefreshResponse>("POST", `/v1/credential/${id}/refresh`, {
-			schema: credentialRefreshResponseSchema,
+			schema: wireSchemas().credentialRefreshResponseSchema,
 			signal,
 		});
 	}
@@ -262,7 +251,7 @@ export class AuthBrokerClient {
 		const body: CredentialDisableRequest = { cause };
 		return this.#request<CredentialDisableResponse>("POST", `/v1/credential/${id}/disable`, {
 			body,
-			schema: credentialDisableResponseSchema,
+			schema: wireSchemas().credentialDisableResponseSchema,
 			signal,
 		});
 	}
@@ -275,7 +264,7 @@ export class AuthBrokerClient {
 		const body: CredentialUploadRequest = { provider, credential };
 		return this.#request<CredentialUploadResponse>("POST", "/v1/credential", {
 			body,
-			schema: credentialUploadResponseSchema,
+			schema: wireSchemas().credentialUploadResponseSchema,
 			signal,
 		});
 	}
@@ -288,14 +277,14 @@ export class AuthBrokerClient {
 		const body: CredentialBlockRequest = block;
 		return this.#request<CredentialBlockResponse>("POST", `/v1/credential/${id}/block`, {
 			body,
-			schema: credentialBlockResponseSchema,
+			schema: wireSchemas().credentialBlockResponseSchema,
 			signal,
 		});
 	}
 
 	async deleteCredentialBlocks(id: number, signal?: AbortSignal): Promise<CredentialBlocksDeleteResponse> {
 		return this.#request<CredentialBlocksDeleteResponse>("DELETE", `/v1/credential/${id}/blocks`, {
-			schema: credentialBlocksDeleteResponseSchema,
+			schema: wireSchemas().credentialBlocksDeleteResponseSchema,
 			signal,
 		});
 	}

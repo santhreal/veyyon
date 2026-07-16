@@ -10,6 +10,7 @@ import { scheduler } from "node:timers/promises";
 import { $env, getAgentDir, isEnoent } from "@veyyon/pi-utils";
 import packageJson from "../../../package.json" with { type: "json" };
 import * as AIError from "../../error";
+import { emitOAuthSuccessPage } from "./success-page";
 import type { OAuthController, OAuthCredentials } from "./types";
 
 const CLIENT_ID = "17e5f671-d194-4dfb-9706-5516cb48c098";
@@ -254,7 +255,10 @@ export async function loginKimi(options: OAuthController): Promise<OAuthCredenti
 		instructions: `Enter code: ${device.userCode}`,
 	});
 
-	return pollForToken(device.deviceCode, device.intervalMs, device.expiresInMs, options.signal);
+	const credentials = await pollForToken(device.deviceCode, device.intervalMs, device.expiresInMs, options.signal);
+	// Device-code flow has no browser redirect; show the branded success page.
+	emitOAuthSuccessPage(options);
+	return credentials;
 }
 
 /**

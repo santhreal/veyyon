@@ -1,7 +1,7 @@
 /**
  * Regression for #3268: provider-level `notes` on `UsageReport` must survive
  * the broker wire schema. The broker client validates `/v1/usage` responses
- * against `usageResponseSchema`, which uses `"+": "reject"` — unknown fields
+ * against `wireSchemas().usageResponseSchema`, which uses `"+": "reject"` — unknown fields
  * at the envelope level are rejected, not silently stripped. Both the
  * `usage.ts` schema and the `auth-broker/wire-schemas.ts` copy must declare
  * `notes?: string[]` at the report level, or the field is lost on
@@ -11,7 +11,7 @@
 
 import { describe, expect, it } from "bun:test";
 import { usageReportSchema } from "@veyyon/pi-ai";
-import { usageResponseSchema } from "@veyyon/pi-ai/auth-broker/wire-schemas";
+import { wireSchemas } from "@veyyon/pi-ai/auth-broker/wire-schemas";
 import { type } from "arktype";
 
 const DISCLAIMER = "OMP-observed spend only; OpenCode usage outside OMP is not included.";
@@ -42,12 +42,12 @@ describe("usage report notes wire schema", () => {
 		expect(validated).toHaveProperty("notes", [DISCLAIMER]);
 	});
 
-	it("usageResponseSchema preserves report-level notes through the broker reject gate", () => {
+	it("wireSchemas().usageResponseSchema preserves report-level notes through the broker reject gate", () => {
 		const response = {
 			generatedAt: Date.now(),
 			reports: [reportWithNotes()],
 		};
-		const validated = usageResponseSchema(response);
+		const validated = wireSchemas().usageResponseSchema(response);
 		expect(validated).not.toBeInstanceOf(type.errors);
 		expect(validated).toHaveProperty("reports");
 		if (validated instanceof type.errors) throw new Error("expected valid response");

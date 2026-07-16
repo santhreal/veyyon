@@ -66,6 +66,15 @@ export interface OAuthController {
 	onProgress?(message: string): void;
 	onManualCodeInput?(): Promise<string>;
 	onPrompt?(prompt: OAuthPrompt): Promise<string>;
+	/**
+	 * Loopback URL of a freshly-served branded success page, emitted by flows
+	 * that get NO browser redirect of their own (device-code, paste-code) right
+	 * after the token lands. Interactive UIs SHOULD open it so every provider
+	 * ends on the same "Signed in to Veyyon" page; non-interactive controllers
+	 * omit this and no browser is opened. Callback flows never emit it — they
+	 * already render the page on their own redirect.
+	 */
+	onSuccessPage?(url: string): void;
 	signal?: AbortSignal;
 	fetch?: FetchImpl;
 }
