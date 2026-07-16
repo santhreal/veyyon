@@ -90,7 +90,7 @@ function renderThemePreview(width: number): string[] {
 
 class ThemeSceneController implements SetupSceneController {
 	title = "Pick a theme";
-	subtitle = "Move through the list to preview; Enter saves the highlighted choice.";
+	subtitle = "Themes preview live as you move; nothing saves until you confirm.";
 	#mode: ThemeMode = "curated";
 	#selectList: SelectList;
 	#loadingAllThemes = false;
@@ -138,10 +138,7 @@ class ThemeSceneController implements SetupSceneController {
 
 	render(width: number): readonly string[] {
 		const lines = [
-			theme.fg("muted", "Theme changes preview live. Nothing is saved until you press Enter."),
-			this.#mode === "all"
-				? theme.fg("dim", "Browsing all themes · Esc returns to curated choices")
-				: theme.fg("dim", "Esc skips this step"),
+			this.#mode === "all" ? theme.fg("dim", "Browsing all themes · Esc returns to curated choices") : "",
 			"",
 			...renderThemePreview(width),
 			"",
