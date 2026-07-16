@@ -20,6 +20,7 @@ import type { CreateAgentSessionOptions, CreateAgentSessionResult } from "@veyyo
 import type { AgentSession } from "@veyyon/pi-coding-agent/session/agent-session";
 import { AuthStorage } from "@veyyon/pi-coding-agent/session/auth-storage";
 import { TempDir } from "@veyyon/pi-utils";
+import { CONFIG_DIR_NAME } from "@veyyon/pi-utils/dirs";
 
 describe("createAcpSessionFactory MCP isolation (issue #1234)", () => {
 	it("forces enableMCP=false even when baseOptions opts in", async () => {
@@ -86,7 +87,7 @@ describe("createAcpSessionFactory TITLE_SYSTEM.md per-cwd resolution (PR #3736)"
 			const settings = Settings.isolated({});
 
 			const projectDir = tempDir.join("project");
-			await Bun.write(`${projectDir}/.omp/TITLE_SYSTEM.md`, "Project-specific title policy.");
+			await Bun.write(`${projectDir}/${CONFIG_DIR_NAME}/TITLE_SYSTEM.md`, "Project-specific title policy.");
 
 			const fakeSession = {} as AgentSession;
 			const captured: CreateAgentSessionOptions[] = [];

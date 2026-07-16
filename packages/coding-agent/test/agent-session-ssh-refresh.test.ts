@@ -10,7 +10,8 @@ import { AgentSession } from "@veyyon/pi-coding-agent/session/agent-session";
 import { SessionManager } from "@veyyon/pi-coding-agent/session/session-manager";
 import { addSSHHost, removeSSHHost, updateSSHHost } from "@veyyon/pi-coding-agent/ssh/config-writer";
 import * as connectionManager from "@veyyon/pi-coding-agent/ssh/connection-manager";
-import { loadSshTool, type ToolSession } from "@veyyon/pi-coding-agent/tools";
+import { type ToolSession } from "@veyyon/pi-coding-agent/tools";
+import { loadSshTool } from "@veyyon/pi-coding-agent/tools/ssh";
 import { getSSHConfigPath, TempDir } from "@veyyon/pi-utils";
 
 function createModel(): Model<"openai-responses"> {

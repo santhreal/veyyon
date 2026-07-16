@@ -77,7 +77,7 @@ Top-level entry modules: `cli.ts`, `main.ts`, `sdk.ts`, `index.ts` (SDK barrel),
 | `internal-urls/` | Router + handlers (`agent://`, `docs://`, `rule://`, …) | [tree.md](../../docs/tree.md) |
 | `tui/`, `collab/` | Low-level TUI primitives, live session sharing | [tui.md](../../docs/tui.md), [collab.md](../../docs/collab.md) |
 | `tts/`, `stt/` | Text-to-speech / speech-to-text | — |
-| `tiny/`, `auto-thinking/` | Embedded tiny-model experiments, auto thinking level | [local-models.md](../../docs/local-models.md) |
+| `tiny/`, `auto-thinking/` | Embedded tiny-model experiments, auto thinking level | [local-tiny-models.md](../../docs/internal/local-tiny-models.md) |
 | `async/`, `lib/`, `utils/`, `prompts/`, `edit/` | Shared plumbing, prompt assets, patch/diff engine | [tools/edit.md](../../docs/tools/edit.md) |
 
 ## Subsystem reference
@@ -86,7 +86,7 @@ Top-level entry modules: `cli.ts`, `main.ts`, `sdk.ts`, `index.ts` (SDK barrel),
 - [session.md](../../docs/internal/session.md) — storage and entry model
 - [session-tree-plan.md](../../docs/internal/session-tree-plan.md) — branch/tree architecture
 - [session-switching-and-recent-listing.md](../../docs/internal/session-switching-and-recent-listing.md)
-- [session-operations-export-share-fork-resume.md](../../docs/session-operations-export-share-fork-resume.md)
+- [session-operations-export-share-fork-resume.md](../../docs/internal/session-operations-export-share-fork-resume.md)
 - [compaction.md](../../docs/compaction.md) — compaction and branch summaries
 - [ttsr-injection-lifecycle.md](../../docs/internal/ttsr-injection-lifecycle.md)
 - [non-compaction-retry-policy.md](../../docs/internal/non-compaction-retry-policy.md)
@@ -96,7 +96,7 @@ Top-level entry modules: `cli.ts`, `main.ts`, `sdk.ts`, `index.ts` (SDK barrel),
 - [settings.md](../../docs/settings.md), [config-usage.md](../../docs/config-usage.md)
 - [environment-variables.md](../../docs/environment-variables.md)
 - [models.md](../../docs/models.md), [providers.md](../../docs/providers.md), [adding-a-provider.md](../../docs/internal/adding-a-provider.md)
-- [local-models.md](../../docs/local-models.md)
+- [local-tiny-models.md](../../docs/internal/local-tiny-models.md)
 - [provider-streaming-internals.md](../../docs/internal/provider-streaming-internals.md), [ai-schema-normalize.md](../../docs/internal/ai-schema-normalize.md)
 - [toolconv/](../../docs/internal/toolconv/) — per-family tool-call conversion (anthropic, harmony, qwen3, deepseek, glm-4.5, kimi-k2, gemini, gemma, pi-native); see also [ERRATA-GPT5-HARMONY.md](../../docs/internal/ERRATA-GPT5-HARMONY.md)
 - [keybindings.md](../../docs/keybindings.md)
@@ -124,7 +124,7 @@ Top-level entry modules: `cli.ts`, `main.ts`, `sdk.ts`, `index.ts` (SDK barrel),
 
 ### MCP
 - [mcp-config.md](../../docs/mcp-config.md), [mcp-runtime-lifecycle.md](../../docs/internal/mcp-runtime-lifecycle.md)
-- [mcp-protocol-transports.md](../../docs/internal/mcp-protocol-transports.md), [mcp-server-tool-authoring.md](../../docs/mcp-server-tool-authoring.md)
+- [mcp-protocol-transports.md](../../docs/internal/mcp-protocol-transports.md), [mcp-server-tool-authoring.md](../../docs/internal/mcp-server-tool-authoring.md)
 
 ### Memory
 - [memory.md](../../docs/memory.md), [mnemosyne-memory-backend.md](../../docs/internal/mnemosyne-memory-backend.md)
@@ -158,7 +158,7 @@ Top-level entry modules: `cli.ts`, `main.ts`, `sdk.ts`, `index.ts` (SDK barrel),
 | An RPC command | `src/modes/rpc/rpc-types.ts` + [rpc.md](../../docs/rpc.md) |
 | A skill | [skills.md](../../docs/skills.md) |
 | A marketplace plugin | [marketplace.md](../../docs/marketplace.md), [plugin-manager-installer-plumbing.md](../../docs/internal/plugin-manager-installer-plumbing.md), [skills/authoring-marketplaces.md](../../docs/skills/authoring-marketplaces.md), [gemini-manifest-extensions.md](../../docs/internal/gemini-manifest-extensions.md) |
-| A custom MCP tool/server | [mcp-server-tool-authoring.md](../../docs/mcp-server-tool-authoring.md), [custom-tools.md](../../docs/custom-tools.md) |
+| A custom MCP tool/server | [mcp-server-tool-authoring.md](../../docs/internal/mcp-server-tool-authoring.md), [custom-tools.md](../../docs/custom-tools.md) |
 | A provider | [adding-a-provider.md](../../docs/internal/adding-a-provider.md) |
 | Programmatic/SDK use | [sdk.md](../../docs/sdk.md) |
 

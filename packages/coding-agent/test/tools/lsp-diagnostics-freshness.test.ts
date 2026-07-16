@@ -117,7 +117,7 @@ describe("LSP diagnostics freshness", () => {
 
 	it("announces watched-file creates even when no server owns the file type", async () => {
 		const filePath = path.join(tempDir.path(), "probe.module.scss");
-		vi.spyOn(lspConfig, "loadConfig").mockReturnValue({ servers: {}, idleTimeoutMs: undefined });
+		vi.spyOn(lspConfig, "loadConfig").mockReturnValue({ servers: {}, idleTimeoutMs: undefined, missingServers: [] });
 		vi.spyOn(lspConfig, "getServersForFile").mockReturnValue([]);
 		const notify = vi.spyOn(lspClient, "notifyWorkspaceWatchedFiles").mockResolvedValue();
 
@@ -138,7 +138,7 @@ describe("LSP diagnostics freshness", () => {
 
 	it("does not start an LSP server just to notify existing clients when write-time features are disabled", async () => {
 		const filePath = path.join(tempDir.path(), "plain.ts");
-		const loadConfig = vi.spyOn(lspConfig, "loadConfig").mockReturnValue({ servers: {}, idleTimeoutMs: undefined });
+		const loadConfig = vi.spyOn(lspConfig, "loadConfig").mockReturnValue({ servers: {}, idleTimeoutMs: undefined, missingServers: [] });
 		const getServers = vi.spyOn(lspConfig, "getServersForFile").mockReturnValue([["test-lsp", TEST_SERVER]]);
 		const getOrCreate = vi
 			.spyOn(lspClient, "getOrCreateClient")
@@ -171,7 +171,7 @@ describe("LSP diagnostics freshness", () => {
 		const events: string[] = [];
 		const notifySignals: Array<AbortSignal | undefined> = [];
 
-		vi.spyOn(lspConfig, "loadConfig").mockReturnValue({ servers: {}, idleTimeoutMs: undefined });
+		vi.spyOn(lspConfig, "loadConfig").mockReturnValue({ servers: {}, idleTimeoutMs: undefined, missingServers: [] });
 		vi.spyOn(lspConfig, "getServersForFile").mockImplementation((_config, filePath) =>
 			filePath.endsWith(".module.scss") ? [] : [["test-lsp", TEST_SERVER]],
 		);
@@ -215,7 +215,7 @@ describe("LSP diagnostics freshness", () => {
 		const clock = new VirtualClock(Date.now());
 		installVirtualTime(clock);
 
-		vi.spyOn(lspConfig, "loadConfig").mockReturnValue({ servers: {}, idleTimeoutMs: undefined });
+		vi.spyOn(lspConfig, "loadConfig").mockReturnValue({ servers: {}, idleTimeoutMs: undefined, missingServers: [] });
 		vi.spyOn(lspConfig, "getServersForFile").mockReturnValue([["test-lsp", TEST_SERVER]]);
 		vi.spyOn(lspClient, "getOrCreateClient").mockResolvedValue(client);
 		vi.spyOn(lspClient, "syncContent").mockImplementation(async (mockClient, syncedFilePath) => {
@@ -259,7 +259,7 @@ describe("LSP diagnostics freshness", () => {
 		const clock = new VirtualClock(Date.now());
 		installVirtualTime(clock);
 
-		vi.spyOn(lspConfig, "loadConfig").mockReturnValue({ servers: {}, idleTimeoutMs: undefined });
+		vi.spyOn(lspConfig, "loadConfig").mockReturnValue({ servers: {}, idleTimeoutMs: undefined, missingServers: [] });
 		vi.spyOn(lspConfig, "getServersForFile").mockReturnValue([["test-lsp", TEST_SERVER]]);
 		vi.spyOn(lspClient, "getOrCreateClient").mockResolvedValue(client);
 		vi.spyOn(lspClient, "syncContent").mockImplementation(async (mockClient, syncedFilePath) => {
@@ -302,7 +302,7 @@ describe("LSP diagnostics freshness", () => {
 		const clock = new VirtualClock(Date.now());
 		installVirtualTime(clock);
 
-		vi.spyOn(lspConfig, "loadConfig").mockReturnValue({ servers: {}, idleTimeoutMs: undefined });
+		vi.spyOn(lspConfig, "loadConfig").mockReturnValue({ servers: {}, idleTimeoutMs: undefined, missingServers: [] });
 		vi.spyOn(lspConfig, "getServersForFile").mockReturnValue([["test-lsp", TEST_SERVER]]);
 		vi.spyOn(lspClient, "getOrCreateClient").mockResolvedValue(client);
 		vi.spyOn(lspClient, "syncContent").mockImplementation(async (mockClient, syncedFilePath) => {
@@ -362,7 +362,7 @@ describe("LSP diagnostics freshness", () => {
 		const clock = new VirtualClock(Date.now());
 		installVirtualTime(clock);
 
-		vi.spyOn(lspConfig, "loadConfig").mockReturnValue({ servers: {}, idleTimeoutMs: undefined });
+		vi.spyOn(lspConfig, "loadConfig").mockReturnValue({ servers: {}, idleTimeoutMs: undefined, missingServers: [] });
 		vi.spyOn(lspConfig, "getServersForFile").mockReturnValue([["test-lsp", TEST_SERVER]]);
 		vi.spyOn(lspClient, "getOrCreateClient").mockResolvedValue(client);
 		vi.spyOn(lspClient, "syncContent").mockImplementation(async (mockClient, syncedFilePath) => {
@@ -425,6 +425,7 @@ describe("LSP diagnostics freshness", () => {
 			vi.spyOn(lspConfig, "loadConfig").mockReturnValue({
 				servers: { "typescript-language-server": server },
 				idleTimeoutMs: undefined,
+				missingServers: [],
 			});
 			vi.spyOn(lspConfig, "getServersForFile").mockReturnValue([["typescript-language-server", server]]);
 			vi.spyOn(lspClient, "getOrCreateClient").mockResolvedValue(client);

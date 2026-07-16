@@ -168,7 +168,7 @@ describe("AgentDashboard layout", () => {
 			// past it (which is what pushed the controls into scrollback).
 			expect(lines.length).toBe(30);
 			expect(plain).toContain("Agent Control Center");
-			expect(plain).toContain("Esc: close");
+			expect(plain).toContain("esc close");
 		} finally {
 			geo.restore();
 		}
@@ -186,7 +186,7 @@ describe("AgentDashboard layout", () => {
 			const shrunk = dashboard.render(100);
 			expect(shrunk.length).toBe(18);
 			// Footer survives the shrink instead of being clipped off the bottom.
-			expect(shrunk.map(line => line.replace(ANSI_PATTERN, "")).join("\n")).toContain("Esc: close");
+			expect(shrunk.map(line => line.replace(ANSI_PATTERN, "")).join("\n")).toContain("esc close");
 		} finally {
 			geo.restore();
 		}

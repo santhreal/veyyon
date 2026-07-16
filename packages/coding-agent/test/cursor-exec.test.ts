@@ -7,7 +7,8 @@ import type { AgentEvent, AgentTool } from "@veyyon/pi-agent-core";
 import { ReadArgsSchema, ShellArgsSchema } from "@veyyon/pi-catalog/discovery/cursor-gen/agent_pb";
 import { Settings } from "@veyyon/pi-coding-agent/config/settings";
 import { CursorExecHandlers } from "@veyyon/pi-coding-agent/cursor";
-import { GrepTool, type ToolSession } from "@veyyon/pi-coding-agent/tools";
+import { type ToolSession } from "@veyyon/pi-coding-agent/tools";
+import { GrepTool } from "@veyyon/pi-coding-agent/tools/grep";
 import { removeWithRetries } from "@veyyon/pi-utils";
 import { type } from "arktype";
 

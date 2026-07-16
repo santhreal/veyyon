@@ -781,11 +781,13 @@ function makeAskHostContext(): InteractiveModeContext {
 		...base,
 		editorContainer: { clear: () => {}, addChild: () => {} },
 		editor: { getText: () => "", setText: () => {} },
+		focusActiveEditorArea: () => {},
 		ui: {
 			requestRender: () => {},
 			setFocus: () => {},
 			terminal: { rows: 40, columns: 80 },
 			addInputListener: () => () => {},
+			showOverlay: () => ({ hide: () => {} }),
 		},
 	};
 	return stub as unknown as InteractiveModeContext;

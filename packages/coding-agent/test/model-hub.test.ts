@@ -20,9 +20,20 @@ function normalize(lines: readonly string[]): string {
 	return stripVTControlCharacters(lines.join("\n")).replace(/\s+/g, " ").trim();
 }
 
-/** The footer row (hint line or an active chip strip) of a rendered frame. */
+/**
+ * The strip row (hint line or an active chip strip) of a rendered frame: the
+ * last line of the sidebar|body split, directly above the ModalShell divider
+ * that separates the body from its own footer shortcut chips. Located
+ * dynamically since the ModalShell card floats and is vertically centered.
+ */
 function footerLine(lines: readonly string[]): string {
-	return stripVTControlCharacters(lines[lines.length - 2] ?? "");
+	const stripped = lines.map(line => stripVTControlCharacters(line));
+	const dividerIndex = stripped.findIndex(line => {
+		const trimmed = line.trim();
+		return trimmed.startsWith("├") && trimmed.endsWith("┤");
+	});
+	if (dividerIndex <= 0) return "";
+	return stripped[dividerIndex - 1] ?? "";
 }
 
 function makeModel(provider: string, id: string, contextWindow = 128_000): Model {
@@ -153,8 +164,9 @@ describe("ModelHub", () => {
 			const model = getBundledModel("anthropic", "claude-sonnet-4-5");
 			if (!model) throw new Error("Expected bundled model anthropic/claude-sonnet-4-5");
 			const settings = Settings.isolated({
-				cycleOrder: ["smol", "custom-fast", "default"],
+				cycleOrder: ["smol", "custom-fast", "slow"],
 				modelRoles: {
+					// Legacy `default` may still be stored, but it is hidden — not a chip.
 					default: `${model.provider}/${model.id}`,
 					"custom-fast": `${model.provider}/${model.id}:low`,
 					smol: `${model.provider}/${model.id}`,
@@ -164,7 +176,7 @@ describe("ModelHub", () => {
 			installTestTheme();
 
 			const rendered = normalize(hub.render(220));
-			expect(rendered).toContain("●default");
+			expect(rendered).not.toContain("●default");
 			expect(rendered).toContain("●custom-fast");
 			// Explicit :low suffix surfaces as the low thinking glyph on the chip.
 			expect(rendered).toContain("◔");
@@ -193,8 +205,8 @@ describe("ModelHub", () => {
 			const settings = Settings.isolated({
 				defaultThinkingLevel: AUTO_THINKING,
 				modelRoles: {
-					default: `${model.provider}/${model.id}`,
 					smol: `${model.provider}/${model.id}:auto`,
+					slow: `${model.provider}/${model.id}`,
 				},
 			});
 			const { hub } = createHub({ models: [model], scoped: true, settings });
@@ -202,11 +214,15 @@ describe("ModelHub", () => {
 
 			hub.handleInput(UP); // All models → Roles (since Recent is removed)
 			const lines = hub.render(220).map(line => stripVTControlCharacters(line));
-			const defaultRow = lines.find(line => line.includes("DEFAULT"));
+			expect(lines.some(line => line.includes("DEFAULT"))).toBe(false);
 			const smolRow = lines.find(line => line.includes("SMOL"));
-			expect(defaultRow).toContain("auto");
-			expect(defaultRow).not.toContain("inherit");
+			const slowRow = lines.find(line => line.includes("SLOW"));
+			expect(smolRow).toBeDefined();
 			expect(smolRow).toContain("auto");
+			expect(slowRow).toBeDefined();
+			// Explicit `:auto` is what paints the auto label; global
+			// defaultThinkingLevel alone does not rewrite other role rows.
+			expect(slowRow).not.toContain("auto");
 		});
 
 		test("x clears a configured role back to auto-selection", () => {
@@ -226,8 +242,7 @@ describe("ModelHub", () => {
 			installTestTheme();
 
 			hub.handleInput(UP); // All models → Roles (top of the sidebar)
-			hub.handleInput("\n"); // dive into the role rows
-			hub.handleInput(DOWN); // default → smol row
+			hub.handleInput("\n"); // dive into the role rows — cursor on SMOL (first visible)
 			hub.handleInput("x");
 
 			expect(settings.getModelRole("smol")).toBeUndefined();
@@ -284,17 +299,17 @@ describe("ModelHub", () => {
 			installTestTheme();
 
 			hub.handleInput(UP); // All models → Roles (since Recent is removed)
-			hub.handleInput("\n"); // dive into rows; cursor on DEFAULT
+			hub.handleInput("\n"); // dive into rows; cursor on SMOL (first visible)
 
-			// Default cycle is [smol, default, slow]: c removes default…
+			// Default cycle is [smol, slow]: c removes smol…
 			hub.handleInput("c");
-			expect(changes[0]).toEqual(["smol", "slow"]);
+			expect(changes[0]).toEqual(["slow"]);
 			// …c again re-appends it at the end…
 			hub.handleInput("c");
-			expect(changes[1]).toEqual(["smol", "slow", "default"]);
+			expect(changes[1]).toEqual(["slow", "smol"]);
 			// …and [ moves it one slot earlier.
 			hub.handleInput("[");
-			expect(changes[2]).toEqual(["smol", "default", "slow"]);
+			expect(changes[2]).toEqual(["smol", "slow"]);
 
 			// The preview line renders the resulting ctrl+p track in order.
 			const preview = hub
@@ -304,8 +319,8 @@ describe("ModelHub", () => {
 			expect(preview).toBeDefined();
 			const previewText = preview ?? "";
 			expect(previewText.indexOf("smol")).toBeGreaterThan(-1);
-			expect(previewText.indexOf("smol")).toBeLessThan(previewText.indexOf("default"));
-			expect(previewText.indexOf("default")).toBeLessThan(previewText.indexOf("slow"));
+			expect(previewText.indexOf("smol")).toBeLessThan(previewText.indexOf("slow"));
+			expect(previewText).not.toContain("default");
 		});
 
 		test("the + New role row names a custom role and jumps into assigning it", () => {
@@ -340,15 +355,18 @@ describe("ModelHub", () => {
 			installTestTheme();
 
 			hub.handleInput("\n");
+			// The ModalShell card caps at MODAL_SIZING_LARGE.maxWidth, so the chip
+			// row is narrower than the full terminal — the retry-fallback chip
+			// (reached via the dedicated overflow tests below) may scroll off.
 			const strip = footerLine(hub.render(220));
-			expect(strip).toContain("default");
-			expect(strip).toContain("retry-fallback");
+			expect(strip).toContain("smol");
+			expect(strip).not.toContain("default");
 
-			hub.handleInput("\n"); // assign to default (first chip)
+			hub.handleInput("\n"); // assign to smol (first visible chip)
 			expect(onAssign).toHaveBeenCalledTimes(1);
 			const call = onAssign.mock.calls[0];
 			expect(call?.[0]).toBe(model);
-			expect(call?.[1]).toBe("default");
+			expect(call?.[1]).toBe("smol");
 			expect(call?.[2]).toBe(ThinkingLevel.Inherit);
 			expect(call?.[3]).toBe("openai/gpt-5.5");
 
@@ -379,8 +397,7 @@ describe("ModelHub", () => {
 			const { hub, onAssign, onUnassign } = createHub({ models: [model], scoped: true, settings });
 			installTestTheme();
 
-			hub.handleInput("\n"); // role strip
-			hub.handleInput(DOWN); // default → smol chip (down moves right)
+			hub.handleInput("\n"); // role strip — cursor already on smol (first chip)
 			hub.handleInput("\n");
 
 			expect(onUnassign).toHaveBeenCalledWith("smol");
@@ -415,8 +432,10 @@ describe("ModelHub", () => {
 			installTestTheme();
 
 			hub.handleInput("\n"); // open the role strip
-			// At full width every chip fits and no left ellipsis appears.
-			expect(footerLine(hub.render(220))).not.toContain("…");
+			// The window starts at the first chip, so no *leading* ellipsis
+			// appears — the ModalShell card's width cap may still truncate a
+			// trailing chip, which the overflow case below covers directly.
+			expect(footerLine(hub.render(220)).trimStart().startsWith("…")).toBe(false);
 
 			hub.handleInput(LEFT); // wrap to the trailing retry-fallback chip
 			const narrow = footerLine(hub.render(80));
@@ -426,7 +445,7 @@ describe("ModelHub", () => {
 			// Back on the first chip the window resets — no leading ellipsis.
 			hub.handleInput("\x1b[C"); // wrap right back to the first chip
 			const reset = footerLine(hub.render(80));
-			expect(reset).toContain("[ default");
+			expect(reset).toContain("[ smol");
 			expect(reset.trimStart().startsWith("…")).toBe(false);
 		});
 	});
@@ -442,7 +461,7 @@ describe("ModelHub", () => {
 			const a = makeModel("test", "model-a");
 			const b = makeModel("test", "model-b");
 			const settings = Settings.isolated({
-				"retry.fallbackChains": { default: ["test/model-a", "test/model-b"] },
+				"retry.fallbackChains": { smol: ["test/model-a", "test/model-b"] },
 			});
 			const { hub } = createHub({ models: [a, b], scoped: true, settings });
 
@@ -458,11 +477,11 @@ describe("ModelHub", () => {
 			const { hub, onFallbackChainChange, onAssign } = createHub({ models: [a], scoped: true, settings });
 
 			enterRolesView(hub);
-			hub.handleInput("f"); // add a fallback for the first role (default)
+			hub.handleInput("f"); // add a fallback for the first visible role (smol)
 			expect(normalize(hub.render(220))).toContain("Adding fallback for");
 
 			hub.handleInput("\n"); // pick the only model
-			expect(onFallbackChainChange).toHaveBeenCalledWith("default", ["test/model-a"]);
+			expect(onFallbackChainChange).toHaveBeenCalledWith("smol", ["test/model-a"]);
 			expect(onAssign).not.toHaveBeenCalled(); // no role assignment, no thinking strip
 			expect(normalize(hub.render(220))).toContain("↳ test/model-a");
 		});
@@ -471,20 +490,20 @@ describe("ModelHub", () => {
 			const a = makeModel("test", "model-a");
 			const b = makeModel("test", "model-b");
 			const settings = Settings.isolated({
-				"retry.fallbackChains": { default: ["test/model-a", "test/model-b"] },
+				"retry.fallbackChains": { smol: ["test/model-a", "test/model-b"] },
 			});
 			const { hub, onFallbackChainChange } = createHub({ models: [a, b], scoped: true, settings });
 
 			enterRolesView(hub);
-			hub.handleInput(DOWN); // default → its first chain entry (model-a)
+			hub.handleInput(DOWN); // smol → its first chain entry (model-a)
 			hub.handleInput("\n"); // replace this entry
 			expect(normalize(hub.render(220))).toContain("Replacing fallback of");
 			for (const ch of "model-b") hub.handleInput(ch); // search: arrows hop scopes in assign mode
 			hub.handleInput("\n");
-			expect(onFallbackChainChange).toHaveBeenLastCalledWith("default", ["test/model-b"]);
+			expect(onFallbackChainChange).toHaveBeenLastCalledWith("smol", ["test/model-b"]);
 
 			hub.handleInput("x"); // cursor landed on the replaced entry — remove it
-			expect(onFallbackChainChange).toHaveBeenLastCalledWith("default", []);
+			expect(onFallbackChainChange).toHaveBeenLastCalledWith("smol", []);
 			expect(normalize(hub.render(220))).not.toContain("↳");
 		});
 
@@ -492,18 +511,18 @@ describe("ModelHub", () => {
 			const a = makeModel("test", "model-a");
 			const b = makeModel("test", "model-b");
 			const settings = Settings.isolated({
-				"retry.fallbackChains": { default: ["test/model-a", "test/model-b"] },
+				"retry.fallbackChains": { smol: ["test/model-a", "test/model-b"] },
 			});
 			const { hub, onFallbackChainChange } = createHub({ models: [a, b], scoped: true, settings });
 
 			enterRolesView(hub);
 			hub.handleInput(DOWN); // first chain entry (model-a)
 			hub.handleInput("]");
-			expect(onFallbackChainChange).toHaveBeenLastCalledWith("default", ["test/model-b", "test/model-a"]);
+			expect(onFallbackChainChange).toHaveBeenLastCalledWith("smol", ["test/model-b", "test/model-a"]);
 
 			// Cursor followed the moved entry: x removes model-a, not model-b.
 			hub.handleInput("x");
-			expect(onFallbackChainChange).toHaveBeenLastCalledWith("default", ["test/model-b"]);
+			expect(onFallbackChainChange).toHaveBeenLastCalledWith("smol", ["test/model-b"]);
 		});
 
 		test("clicking a roles row hits the row under the pointer", () => {
@@ -511,15 +530,19 @@ describe("ModelHub", () => {
 			const { hub } = createHub({ models: [a], scoped: true });
 
 			hub.handleInput(UP); // All models → Roles
-			// Derive the pointer row from the frame itself: the fullscreen
-			// overlay paints from screen row 0, so frame index == screen row.
+			// Derive the pointer row/col from the frame itself: the ModalShell
+			// card floats and is centered, so absolute coordinates shift with
+			// terminal size — frame index is still the screen row, and the
+			// "SMOL" text itself sits safely inside the body pane's columns.
 			const frame = hub.render(220).map(line => stripVTControlCharacters(line));
-			const screenRow = frame.findIndex(line => line.includes("DEFAULT"));
+			const screenRow = frame.findIndex(line => line.includes("SMOL"));
 			expect(screenRow).toBeGreaterThan(0);
-			const sgr = `\x1b[<0;61;${screenRow + 1}M`; // SGR reports are 1-based
+			const screenCol = frame[screenRow]?.indexOf("SMOL") ?? -1;
+			expect(screenCol).toBeGreaterThan(0);
+			const sgr = `\x1b[<0;${screenCol + 1};${screenRow + 1}M`; // SGR reports are 1-based
 			hub.handleInput(sgr); // select (dive into rows)
 			hub.handleInput(sgr); // click-again activates
-			expect(normalize(hub.render(220))).toContain("Assigning DEFAULT");
+			expect(normalize(hub.render(220))).toContain("Assigning SMOL");
 		});
 
 		test("fallbacks chip keys a new chain by the selected model", () => {
@@ -612,11 +635,26 @@ describe("ModelHub", () => {
 		expect(rendered).toContain("↑/↓ providers · → models");
 	});
 
+	/** Screen row/col (0-based) of the first line containing `needle` (string or pattern). */
+	function locate(frame: readonly string[], needle: string | RegExp): { row: number; col: number } {
+		const stripped = frame.map(line => stripVTControlCharacters(line));
+		const test =
+			typeof needle === "string" ? (line: string) => line.includes(needle) : (line: string) => needle.test(line);
+		const row = stripped.findIndex(test);
+		if (row < 0) throw new Error(`${String(needle)} not found in rendered frame`);
+		const match = typeof needle === "string" ? needle : (needle.exec(stripped[row]!)?.[0] ?? "");
+		return { row, col: stripped[row]!.indexOf(match) };
+	}
+
+	/** Build an SGR wheel report at a 0-based screen row/col (SGR is 1-based). */
+	function sgrWheel(direction: "up" | "down", row: number, col: number): string {
+		const button = direction === "down" ? 65 : 64;
+		return `\x1b[<${button};${col + 1};${row + 1}M`;
+	}
+
 	describe("mouse wheel", () => {
-		// SGR wheel reports: button 64 = up, 65 = down. Column 100 lands in the
-		// body pane, column 3 in the sidebar; row 10 is inside the content rows.
-		const WHEEL_UP_BODY = "\x1b[<64;100;10M";
-		const WHEEL_DOWN_BODY = "\x1b[<65;100;10M";
+		// SGR wheel reports: button 64 = up, 65 = down. Column 3, row 10 is a
+		// fixed fallback for cases where geometry isn't derived from the frame.
 		const WHEEL_UP_SIDEBAR = "\x1b[<64;3;10M";
 		const WHEEL_DOWN_SIDEBAR = "\x1b[<65;3;10M";
 
@@ -624,7 +662,15 @@ describe("ModelHub", () => {
 			const models = Array.from({ length: 40 }, (_, i) => makeModel("test", `model-${String(i).padStart(2, "0")}`));
 			const { hub } = createHub({ models, scoped: true });
 
-			const before = normalize(hub.render(220)); // establishes mouse geometry
+			const initialFrame = hub.render(220);
+			const before = normalize(initialFrame); // establishes mouse geometry
+			// The ModalShell card floats and is centered, so the body pane's
+			// screen coordinates shift with sizing — anchor the wheel pointer on
+			// the first visible model row rather than a magic row/col.
+			const { row, col } = locate(initialFrame, /model-\d\d/);
+			const wheelUpBody = sgrWheel("up", row, col);
+			const wheelDownBody = sgrWheel("down", row, col);
+
 			// Enter opens the role strip for the selected model — its footer
 			// (`<model-id> → …`) identifies the selection.
 			hub.handleInput("\n");
@@ -633,7 +679,7 @@ describe("ModelHub", () => {
 			hub.handleInput(ESC); // close the strip
 
 			// Panning reveals rows that were below the fold...
-			for (let i = 0; i < 8; i++) hub.handleInput(WHEEL_DOWN_BODY);
+			for (let i = 0; i < 8; i++) hub.handleInput(wheelDownBody);
 			const panned = normalize(hub.render(220));
 			const modelIdsIn = (frame: string) => new Set(Array.from(frame.matchAll(/model-\d\d/g), match => match[0]));
 			const beforeIds = modelIdsIn(before);
@@ -646,13 +692,13 @@ describe("ModelHub", () => {
 			hub.handleInput(ESC);
 
 			// The window clamps at the bottom instead of wrapping back to the top...
-			for (let i = 0; i < 500; i++) hub.handleInput(WHEEL_DOWN_BODY);
+			for (let i = 0; i < 500; i++) hub.handleInput(wheelDownBody);
 			const saturated = normalize(hub.render(220));
-			hub.handleInput(WHEEL_DOWN_BODY);
+			hub.handleInput(wheelDownBody);
 			expect(normalize(hub.render(220))).toBe(saturated);
 
 			// ...and scrolling back up restores the original window exactly.
-			for (let i = 0; i < 500; i++) hub.handleInput(WHEEL_UP_BODY);
+			for (let i = 0; i < 500; i++) hub.handleInput(wheelUpBody);
 			expect(normalize(hub.render(220))).toBe(before);
 		});
 
@@ -686,11 +732,13 @@ describe("ModelHub", () => {
 			const { hub } = createHub({ models: [makeModel("test", "model-a")], scoped: true });
 
 			hub.handleInput(UP); // All models → Roles
-			hub.render(220); // establish mouse geometry
-			for (let i = 0; i < 4; i++) hub.handleInput(WHEEL_UP_BODY); // cursor stays on the first role
+			const frame = hub.render(220); // establish mouse geometry
+			const { row, col } = locate(frame, "SMOL");
+			const wheelUpBody = sgrWheel("up", row, col);
+			for (let i = 0; i < 4; i++) hub.handleInput(wheelUpBody); // cursor stays on the first role
 			hub.handleInput("\n"); // dive into the rows
 			hub.handleInput("\n"); // activate the cursor row
-			expect(normalize(hub.render(220))).toContain("Assigning DEFAULT");
+			expect(normalize(hub.render(220))).toContain("Assigning SMOL");
 		});
 	});
 

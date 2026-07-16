@@ -217,7 +217,7 @@ describe("DebugLogViewerModel", () => {
 			.render(80)
 			.map(line => Bun.stripANSI(line))
 			.join("\n");
-		expect(rendered).toContain("▾ beta");
+		expect(rendered).toContain("v beta");
 		expect(updates).toBe(1);
 	});
 });

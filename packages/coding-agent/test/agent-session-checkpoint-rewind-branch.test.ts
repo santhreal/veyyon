@@ -10,7 +10,8 @@ import { AgentSession } from "@veyyon/pi-coding-agent/session/agent-session";
 import { AuthStorage } from "@veyyon/pi-coding-agent/session/auth-storage";
 import { convertToLlm } from "@veyyon/pi-coding-agent/session/messages";
 import { SessionManager } from "@veyyon/pi-coding-agent/session/session-manager";
-import { RewindTool, type ToolSession } from "@veyyon/pi-coding-agent/tools";
+import { type ToolSession } from "@veyyon/pi-coding-agent/tools";
+import { RewindTool } from "@veyyon/pi-coding-agent/tools/checkpoint";
 import { TempDir } from "@veyyon/pi-utils";
 
 const checkpointSchema = z.object({ goal: z.string() });

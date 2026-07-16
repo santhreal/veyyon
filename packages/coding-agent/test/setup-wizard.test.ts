@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, mock } from "bun:test";
+import { stripVTControlCharacters } from "node:util";
 import { runOnboardingSetup } from "@veyyon/pi-coding-agent/commands/setup";
 import { Settings } from "@veyyon/pi-coding-agent/config/settings";
 import { SETTINGS_SCHEMA } from "@veyyon/pi-coding-agent/config/settings-schema";
@@ -252,6 +253,44 @@ describe("setup wizard mouse routing", () => {
 			expect(routed[2]?.kind).toBe("wheel:-1");
 			// routeMouse scenes get no synthesized arrows and no raw SGR bytes.
 			expect(keys).toEqual([]);
+		} finally {
+			component.dispose();
+		}
+	});
+});
+
+describe("setup wizard scene footer copy", () => {
+	it("uses the up/down · pipe-chip dialect and says esc skip, never a bare 'continue'", async () => {
+		await initTheme(false, "unicode", false, "titanium", "light");
+		const scene: SetupScene = {
+			id: "scene",
+			title: "scene",
+			minVersion: 1,
+			mount: () => ({
+				title: "scene",
+				render: () => [],
+				invalidate: () => {},
+			}),
+		};
+		const ctx = {
+			settings: Settings.isolated(),
+			ui: {
+				terminal: { rows: 24 },
+				setFocus: () => {},
+				requestRender: () => {},
+			},
+		} as unknown as InteractiveModeContext;
+		const component = new SetupWizardComponent(ctx, [scene]);
+		try {
+			void component.run();
+			component.handleInput("\r"); // splash → scene
+			await Bun.sleep(500); // let the splash→scene dissolve finish
+			const frame = component
+				.render(80)
+				.map(line => stripVTControlCharacters(line))
+				.join("\n");
+			expect(frame).toContain("up/down select  |  enter confirm  |  esc skip  |  ctrl+c exit");
+			expect(frame).not.toContain("esc continue");
 		} finally {
 			component.dispose();
 		}

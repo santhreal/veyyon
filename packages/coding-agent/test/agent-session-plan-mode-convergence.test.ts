@@ -79,6 +79,11 @@ describe("AgentSession plan-mode convergence", () => {
 
 	beforeEach(() => {
 		tempDir = TempDir.createSync("@pi-plan-converge-");
+		// T2b parks a waiter on the process-global bus/registry; state left by
+		// earlier test files (stale waiters, registered agents) can swallow the
+		// side-channel reply and hang the test under a full-suite run.
+		IrcBus.resetGlobalForTests();
+		AgentRegistry.resetGlobalForTests();
 	});
 
 	afterEach(async () => {
@@ -223,7 +228,9 @@ describe("AgentSession plan-mode convergence", () => {
 		} finally {
 			registry.unregister("peer");
 		}
-	});
+		// 30s: the ephemeral side-channel turn exceeds the runner's default 5s
+		// deadline under full-suite load; a broken auto-reply still fails here.
+	}, 30_000);
 
 	it("T3a: convergence reminders are bounded by the cap, then yield to the user", async () => {
 		// Alternating text-stop / read cascade: each text stop with awaiting=false

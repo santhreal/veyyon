@@ -3,6 +3,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { Model } from "@veyyon/pi-ai/types";
+import { buildModel } from "@veyyon/pi-catalog/build";
 import { Settings } from "@veyyon/pi-coding-agent/config/settings";
 import {
 	filterToolsByHarnessProfile,
@@ -12,24 +13,25 @@ import {
 } from "@veyyon/pi-coding-agent/harness/model-profile";
 import { removeSyncWithRetries, setAgentDir, Snowflake } from "@veyyon/pi-utils";
 
-const model: Model = {
+const model: Model = buildModel({
 	id: "gpt-test",
 	name: "gpt-test",
 	provider: "openai",
 	api: "openai-completions",
+	baseUrl: "",
 	reasoning: false,
 	input: ["text"],
 	cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
 	contextWindow: 128_000,
 	maxTokens: 4096,
-};
+}) as Model;
 
 describe("harness model profiles (A3 MVP)", () => {
 	let tempDir: string;
 
 	afterEach(() => {
 		resetHarnessProfileFileCache();
-		if (tempDir) removeSyncWithRetries(tempDir, { recursive: true, force: true });
+		if (tempDir) removeSyncWithRetries(tempDir);
 	});
 
 	it("resolves exact and wildcard profile keys from settings", () => {

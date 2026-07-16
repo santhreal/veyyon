@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import type { AgentTool, AgentToolCall } from "@veyyon/pi-agent-core";
+import { buildModel } from "@veyyon/pi-catalog/build";
 import { Settings } from "@veyyon/pi-coding-agent/config/settings";
 import {
 	createRepairToolCallArgumentsHook,
@@ -14,7 +15,7 @@ const tool = {
 		properties: { path: { type: "string" } },
 		required: ["path"],
 	},
-} as AgentTool;
+} as unknown as AgentTool;
 
 const toolCall: AgentToolCall = {
 	type: "toolCall",
@@ -37,17 +38,20 @@ describe("repair agent hook", () => {
 		const settings = Settings.isolated({
 			"harness.profiles": { "openai/*": { repair: false } },
 		});
-		const hook = createRepairToolCallArgumentsHook(settings, () => ({
-			id: "m",
-			name: "m",
-			provider: "openai",
-			api: "openai-completions",
-			reasoning: false,
-			input: ["text"],
-			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-			contextWindow: 1,
-			maxTokens: 1,
-		}));
+		const hook = createRepairToolCallArgumentsHook(settings, () =>
+			buildModel({
+				id: "m",
+				name: "m",
+				provider: "openai",
+				api: "openai-completions",
+				baseUrl: "",
+				reasoning: false,
+				input: ["text"],
+				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+				contextWindow: 1,
+				maxTokens: 1,
+			}),
+		);
 		const outcome = hook(tool, toolCall);
 		expect(outcome.status).toBe("clean");
 	});

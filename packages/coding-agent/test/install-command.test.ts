@@ -12,6 +12,7 @@
  *     shapes users actually type.
  */
 import { describe, expect, test } from "bun:test";
+import { APP_NAME } from "@veyyon/pi-utils/dirs";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -27,7 +28,7 @@ describe("install command is registered as a top-level subcommand", () => {
 
 	test("CLI runner rejects only bare reserved management words", () => {
 		expect(resolveCliArgv(["extensions"])).toEqual({
-			error: '`omp extensions` is not a management command. Use `omp plugin list` / `omp plugin install`, or run `omp launch extensions` if you meant to send "extensions" as a prompt.',
+			error: `\`${APP_NAME} extensions\` is not a management command. Use \`${APP_NAME} plugin list\` / \`${APP_NAME} plugin install\`, or run \`${APP_NAME} launch extensions\` if you meant to send "extensions" as a prompt.`,
 		});
 		expect(resolveCliArgv(["extensions", "are", "not", "loading"])).toEqual({
 			argv: ["launch", "extensions", "are", "not", "loading"],

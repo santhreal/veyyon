@@ -199,6 +199,50 @@ describe("AskDialogComponent", () => {
 		expect(onSubmit.mock.calls[0][0].results[0].selectedOptions).toEqual(["Option A", "Option B"]);
 	});
 
+	it("multi-select: preselected labels start checked and can be toggled off before submit", () => {
+		const onSubmit = vi.fn();
+		const onCancel = vi.fn();
+		const onPrompt = vi.fn();
+
+		const questions: ExtensionAskDialogQuestion[] = [
+			{
+				id: "q1",
+				question: "Copy which items?",
+				options: [{ label: "Option A" }, { label: "Option B" }, { label: "Option C" }],
+				multi: true,
+				preselected: ["Option A", "Option B", "Not An Option"],
+			},
+		];
+
+		const component = new AskDialogComponent(questions, { onSubmit, onCancel, onPrompt });
+
+		// Deselect Option A; B stays preselected, C stays unselected.
+		component.handleInput(SPACE);
+		component.handleInput(TAB);
+		component.handleInput(ENTER);
+
+		expect(onSubmit).toHaveBeenCalledTimes(1);
+		expect(onSubmit.mock.calls[0][0].results[0].selectedOptions).toEqual(["Option B"]);
+	});
+
+	it("single-select: preselected is ignored (multi-only contract)", () => {
+		const onSubmit = vi.fn();
+
+		const questions: ExtensionAskDialogQuestion[] = [
+			{
+				id: "q1",
+				question: "Choose one?",
+				options: [{ label: "Option A" }, { label: "Option B" }],
+				preselected: ["Option B"],
+			},
+		];
+
+		const component = new AskDialogComponent(questions, { onSubmit, onCancel: vi.fn(), onPrompt: vi.fn() });
+		component.handleInput(ENTER);
+
+		expect(onSubmit.mock.calls[0][0].results[0].selectedOptions).toEqual(["Option A"]);
+	});
+
 	it("tab-state persistence: answer question 0, Tab forward, Tab back, answer still present", () => {
 		const onSubmit = vi.fn();
 		const onCancel = vi.fn();
@@ -1079,7 +1123,7 @@ describe("AskDialogComponent", () => {
 		expect(onSubmit.mock.calls[0][0].results[0].selectedOptions).toEqual(["Option A"]);
 	});
 
-	it("keeps a fixed spawn-time height across tabs, clamped to 70% of the terminal", () => {
+	it("fills the terminal frame as a floating ModalShell card with stable height across tabs", () => {
 		const questions: ExtensionAskDialogQuestion[] = [
 			{
 				id: "q1",
@@ -1088,17 +1132,19 @@ describe("AskDialogComponent", () => {
 				multi: true,
 			},
 		];
+		Object.defineProperty(process.stdout, "rows", { configurable: true, get: () => 40 });
 		const component = new AskDialogComponent(questions, {
 			onSubmit: vi.fn(),
 			onCancel: vi.fn(),
 			onPrompt: vi.fn(),
 		});
-		const cap = Math.max(12, Math.floor((process.stdout.rows || 40) * 0.7));
 		const questionTab = component.render(80);
-		expect(questionTab.length).toBeLessThanOrEqual(cap);
+		expect(questionTab.length).toBe(40);
+		expect(questionTab.join("\n")).toContain("Ask");
+		expect(questionTab.join("\n")).toContain("[x]");
 
-		// The submit tab renders at exactly the same height — the box is
-		// sized once from the tallest tab, not per-tab content.
+		// The submit tab renders at exactly the same height — the shell fills
+		// the terminal once; tab content never resizes the frame.
 		component.handleInput(TAB);
 		const submitTab = component.render(80);
 		expect(submitTab.length).toBe(questionTab.length);

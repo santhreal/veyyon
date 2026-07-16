@@ -5,6 +5,7 @@ import { ModelRegistry } from "@veyyon/pi-coding-agent/config/model-registry";
 import { resetSettingsForTest, Settings } from "@veyyon/pi-coding-agent/config/settings";
 import { LSP_STARTUP_EVENT_CHANNEL, type LspStartupEvent } from "@veyyon/pi-coding-agent/lsp/startup-events";
 import { InteractiveMode } from "@veyyon/pi-coding-agent/modes/interactive-mode";
+import { lookupBuiltinSlashCommand } from "@veyyon/pi-coding-agent/slash-commands/builtin-registry";
 import { initTheme, theme } from "@veyyon/pi-coding-agent/modes/theme/theme";
 import { AgentSession } from "@veyyon/pi-coding-agent/session/agent-session";
 import { AuthStorage } from "@veyyon/pi-coding-agent/session/auth-storage";
@@ -68,7 +69,7 @@ describe("InteractiveMode LSP startup welcome banner", () => {
 				fileTypes: [".rs"],
 			},
 		];
-		mode = new InteractiveMode(session, "test", undefined, () => {}, lspServers, undefined, eventBus);
+		mode = new InteractiveMode(session, "test", () => {}, lspServers, undefined, eventBus);
 		// This test exercises the LSP startup banner, not git branch watching.
 		// Starting a real fs.watch on the repo HEAD in a parallel Bun worker is
 		// enough to trigger a Bun SIGTRAP in unrelated workers during the
@@ -85,15 +86,31 @@ describe("InteractiveMode LSP startup welcome banner", () => {
 		resetSettingsForTest();
 	});
 
-	it("updates the welcome banner when startup warmup completes", async () => {
+	it("reflects startup warmup completion in the /lsp status surface", async () => {
 		await mode.init();
 
-		const findServerLine = () =>
-			Bun.stripANSI(mode.ui.render(120).join("\n"))
-				.split("\n")
-				.find(line => line.includes("rust-analyzer")) ?? "";
+		// The welcome hero no longer paints LSP status; /lsp is the surface.
+		const lspCommand = lookupBuiltinSlashCommand("lsp");
+		if (!lspCommand?.handleTui) throw new Error("Expected a /lsp builtin with a TUI handler");
+		const outputs: string[] = [];
+		const runtime = {
+			ctx: {
+				...mode,
+				lspServers: mode.lspServers,
+				editor: { setText: () => {} },
+				showStatus: (text: string) => {
+					outputs.push(text);
+				},
+			},
+		} as unknown as Parameters<NonNullable<typeof lspCommand.handleTui>>[1];
+		const runLsp = async () => {
+			await lspCommand.handleTui?.({ name: "lsp", args: "" } as Parameters<
+				NonNullable<typeof lspCommand.handleTui>
+			>[0], runtime);
+			return Bun.stripANSI(outputs[outputs.length - 1] ?? "");
+		};
 
-		expect(findServerLine()).toContain(theme.status.pending);
+		expect(await runLsp()).toContain(theme.status.pending);
 
 		const requestRenderSpy = vi.spyOn(mode.ui, "requestRender");
 		const showStatusSpy = vi.spyOn(mode, "showStatus");
@@ -116,8 +133,10 @@ describe("InteractiveMode LSP startup welcome banner", () => {
 
 		expect(requestRenderSpy).toHaveBeenCalled();
 		expect(showStatusSpy).not.toHaveBeenCalled();
-		expect(findServerLine()).toContain(theme.status.enabled);
-		expect(findServerLine()).not.toContain(theme.status.pending);
+		const after = await runLsp();
+		expect(after).toContain("rust-analyzer");
+		expect(after).toContain(theme.status.enabled);
+		expect(after).not.toContain(theme.status.pending);
 	});
 
 	it("does not render LSP startup warnings when startup.quiet is enabled", () => {

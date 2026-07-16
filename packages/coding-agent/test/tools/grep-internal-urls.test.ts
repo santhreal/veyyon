@@ -330,7 +330,7 @@ describe("GrepTool internal URL resolution", () => {
 		});
 
 		const text = getResultText(result);
-		expect(text).toContain("# omp://tools/grep.md");
+		expect(text).toContain("# veyyon://tools/grep.md");
 		expect(text).toContain("Grep file contents with a regex across files");
 	});
 
@@ -344,7 +344,7 @@ describe("GrepTool internal URL resolution", () => {
 		});
 
 		const text = getResultText(result);
-		expect(text).toContain("# omp://tools/read.md");
+		expect(text).toContain("# veyyon://tools/read.md");
 		expect(text).toContain("Read files, directories, archives");
 	});
 

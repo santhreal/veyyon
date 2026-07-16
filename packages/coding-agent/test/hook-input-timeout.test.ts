@@ -22,7 +22,7 @@ describe("HookInputComponent timeout", () => {
 		const onSubmit = vi.fn();
 		const onCancel = vi.fn();
 		const onTimeout = vi.fn();
-		const tui = { requestRender: vi.fn() } as unknown as TUI;
+		const tui = { requestRender: vi.fn(), requestComponentRender: vi.fn() } as unknown as TUI;
 
 		const component = new HookInputComponent("Prompt", undefined, onSubmit, onCancel, {
 			timeout: 1_000,
@@ -53,7 +53,7 @@ describe("HookInputComponent timeout", () => {
 		const onSubmit = vi.fn();
 		const onCancel = vi.fn();
 		const onTimeout = vi.fn();
-		const tui = { requestRender: vi.fn() } as unknown as TUI;
+		const tui = { requestRender: vi.fn(), requestComponentRender: vi.fn() } as unknown as TUI;
 
 		const component = new HookInputComponent("Prompt", undefined, onSubmit, onCancel, {
 			timeout: 1_000,
@@ -82,7 +82,7 @@ describe("HookInputComponent timeout", () => {
 		const onSubmit = vi.fn();
 		const onCancel = vi.fn();
 		const onTimeout = vi.fn();
-		const tui = { requestRender: vi.fn() } as unknown as TUI;
+		const tui = { requestRender: vi.fn(), requestComponentRender: vi.fn() } as unknown as TUI;
 
 		const component = new HookInputComponent("Prompt", undefined, onSubmit, onCancel, {
 			timeout: 1_000,

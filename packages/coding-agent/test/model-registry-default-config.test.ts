@@ -1,7 +1,17 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { TempDir } from "@veyyon/pi-utils";
+import { DIR_OVERRIDE_ENV_KEYS, TempDir } from "@veyyon/pi-utils";
+
+// Full-run test files leak profile/config-dir env overrides into process.env;
+// the child must resolve dirs purely from PI_CODING_AGENT_DIR below.
+function stripDirOverrides(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+	const clean = { ...env };
+	for (const key of DIR_OVERRIDE_ENV_KEYS) {
+		delete clean[key];
+	}
+	return clean;
+}
 
 const packageRoot = path.resolve(import.meta.dir, "..");
 
@@ -31,7 +41,7 @@ describe("ModelRegistry default custom models config", () => {
 
 		expect(model?.name).toBe("YAML default model");
 		expect(model?.baseUrl).toBe("https://yaml-default.example.com/v1");
-	});
+	}, 30_000);
 
 	test("prefers default models.yml over models.yaml when both exist", () => {
 		writeModelsYaml("models.yml", {
@@ -58,7 +68,7 @@ describe("ModelRegistry default custom models config", () => {
 
 		expect(ymlModel?.baseUrl).toBe("https://yml-winner.example.com/v1");
 		expect(yamlModel).toBeUndefined();
-	});
+	}, 30_000);
 
 	test("prefers default models.yaml over legacy models.json when models.yml is absent", () => {
 		writeModelsYaml("models.yaml", {
@@ -85,7 +95,7 @@ describe("ModelRegistry default custom models config", () => {
 
 		expect(yamlModel?.baseUrl).toBe("https://yaml-over-json.example.com/v1");
 		expect(jsonModel).toBeUndefined();
-	});
+	}, 30_000);
 });
 
 interface ProviderFixture {
@@ -181,7 +191,7 @@ function loadDefaultRegistryModel(lookup: ModelLookup): ModelSnapshot | undefine
 	const result = Bun.spawnSync([process.execPath, "-e", script], {
 		cwd: packageRoot,
 		env: {
-			...process.env,
+			...stripDirOverrides(process.env),
 			PI_CODING_AGENT_DIR: tempDir.path(),
 		},
 		stdout: "pipe",

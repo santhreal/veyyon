@@ -333,17 +333,17 @@ describe("formatExpandHint / expandKeyHint", () => {
 		setKeybindings(previous);
 	});
 
-	it("reports the default tool-output expand key", () => {
+	it("reports the default tool-output expand key with fold glyph", () => {
 		setKeybindings(KeybindingsManager.inMemory());
 		expect(expandKeyHint()).toBe("Ctrl+O");
-		// Single bracket pair from the theme, no double-wrapping around the key.
-		expect(formatExpandHint(plainTheme, false, true)).toBe("[Ctrl+O: Expand]");
+		// Same fold dialect as settings/ModalShell (chevron + key + expand).
+		expect(formatExpandHint(plainTheme, false, true)).toBe("▸ Ctrl+O expand");
 	});
 
 	it("tracks a user remap of the expand binding", () => {
 		setKeybindings(KeybindingsManager.inMemory({ "app.tools.expand": "alt+e" }));
 		expect(expandKeyHint()).toBe("Alt+E");
-		expect(formatExpandHint(plainTheme, false, true)).toBe("[Alt+E: Expand]");
+		expect(formatExpandHint(plainTheme, false, true)).toBe("▸ Alt+E expand");
 	});
 
 	it("renders nothing when expanded or there is no more content", () => {

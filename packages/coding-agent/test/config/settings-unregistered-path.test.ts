@@ -14,10 +14,11 @@ import { describe, expect, it } from "bun:test";
 import { Settings } from "@veyyon/pi-coding-agent/config/settings";
 
 describe("Settings read on an unregistered dotted path", () => {
-	it("returns undefined instead of throwing for harness.profiles", async () => {
+	it("returns undefined instead of throwing for a dotted path not in the schema", async () => {
 		const settings = await Settings.init({ inMemory: true });
 		// deliberately untyped: this path is not in the schema union
-		const read = () => (settings.get as (p: string) => unknown)("harness.profiles");
+		// (harness.profiles, the original repro, has since been registered)
+		const read = () => (settings.get as (p: string) => unknown)("harness.unregisteredExample");
 		expect(read).not.toThrow();
 		expect(read()).toBeUndefined();
 	});
@@ -31,7 +32,7 @@ describe("Settings read on an unregistered dotted path", () => {
 
 	it("reports isConfigured=false for an unregistered path without throwing", async () => {
 		const settings = await Settings.init({ inMemory: true });
-		const check = () => (settings.isConfigured as (p: string) => boolean)("harness.profiles");
+		const check = () => (settings.isConfigured as (p: string) => boolean)("harness.unregisteredExample");
 		expect(check).not.toThrow();
 		expect(check()).toBe(false);
 	});

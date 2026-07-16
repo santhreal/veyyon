@@ -214,7 +214,7 @@ describe("formatUsageBreakdown", () => {
 		expect(text).toContain("84.0% used");
 		expect(text).toContain("Cerebras");
 		expect(text).toContain("API key — no usage data");
-		expect(text).toContain("capacity: 5h → 1.34/2 accounts used (0.66× quota left)");
+		expect(text).toContain("capacity: 5h -> 1.34/2 accounts used (0.66× quota left)");
 	});
 
 	it("keeps near-exhausted capacity fractional instead of rounding it to an exact need", () => {
@@ -227,7 +227,7 @@ describe("formatUsageBreakdown", () => {
 			]),
 		];
 		const text = stripVTControlCharacters(formatUsageBreakdown(nearReports, [], Date.now()));
-		expect(text).toContain("capacity: 5h → 1.99/2 accounts used (0.01× quota left)");
+		expect(text).toContain("capacity: 5h -> 1.99/2 accounts used (0.01× quota left)");
 		expect(text).not.toContain("need:");
 	});
 

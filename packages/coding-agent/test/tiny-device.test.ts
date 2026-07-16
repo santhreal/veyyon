@@ -33,7 +33,7 @@ describe("tiny model device selection", () => {
 	});
 
 	it("rejects unknown ONNX execution providers", () => {
-		expect(() => resolveTinyModelDevicePreference("neural-magic")).toThrow("Unsupported PI_TINY_DEVICE");
+		expect(() => resolveTinyModelDevicePreference("neural-magic")).toThrow("Unsupported VEYYON_TINY_DEVICE");
 	});
 });
 

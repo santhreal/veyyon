@@ -32,7 +32,7 @@ describe("ChatBlock lifecycle", () => {
 	beforeEach(() => {
 		renders = 0;
 		host = {
-			requestRender: () => {
+			requestComponentRender: () => {
 				renders++;
 			},
 		};

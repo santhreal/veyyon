@@ -37,12 +37,17 @@ const strictTool: Tool = {
 	},
 };
 
-function call(args: ToolCall["arguments"], tool: Tool = sampleTool): ReturnType<typeof repairToolCallArguments> {
+// `| string` deliberately: malformed model output can arrive as a raw string,
+// and the oversize/adversarial cases exercise exactly that path.
+function call(
+	args: ToolCall["arguments"] | string,
+	tool: Tool = sampleTool,
+): ReturnType<typeof repairToolCallArguments> {
 	return repairToolCallArguments(tool, {
 		type: "toolCall",
 		id: "tc-1",
 		name: tool.name,
-		arguments: args,
+		arguments: args as ToolCall["arguments"],
 	});
 }
 

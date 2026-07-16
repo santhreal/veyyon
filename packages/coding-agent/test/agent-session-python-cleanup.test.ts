@@ -445,7 +445,7 @@ describe("AgentSession python cleanup", () => {
 		expect(disposed).toBe(true);
 		expect(toolExecutionSettled).toBe(true);
 		expect(executeSpy).toHaveBeenCalledTimes(1);
-		expect(toolResult.details?.isError).toBe(true);
+		expect((toolResult.details as { isError?: boolean } | undefined)?.isError).toBe(true);
 		expect(toolResult.content).toContainEqual(
 			expect.objectContaining({ type: "text", text: expect.stringContaining("Command aborted") }),
 		);

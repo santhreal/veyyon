@@ -301,7 +301,7 @@ describe("AskTool timeout", () => {
 		const onTimeoutReset = vi.fn();
 		const selector = new HookSelectorComponent("Pick one", ["SQLite", "Postgres"], vi.fn(), vi.fn(), {
 			timeout: 10,
-			tui: { requestRender: vi.fn() } as unknown as TUI,
+			tui: { requestRender: vi.fn(), requestComponentRender: vi.fn() } as unknown as TUI,
 			onTimeoutStart,
 			onTimeoutReset,
 		});

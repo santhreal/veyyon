@@ -23,6 +23,15 @@ function createEditorContainer(): TestEditorContainer {
 	};
 }
 
+function createOverlayHost() {
+	let overlaid: unknown;
+	const showOverlay = vi.fn((component: unknown) => {
+		overlaid = component;
+		return { hide: vi.fn() };
+	});
+	return { showOverlay, getOverlaid: () => overlaid };
+}
+
 function createStoredCredential(id: number, email: string, accountId: string): StoredAuthCredential {
 	return {
 		id,
@@ -66,12 +75,14 @@ describe("SelectorController logout", () => {
 		} as unknown as AuthStorage;
 		const refresh = vi.fn(async () => undefined);
 		const presented = Promise.withResolvers<void>();
+		const overlayHost = createOverlayHost();
 		const ctx = {
 			editorContainer,
 			editor: {},
 			ui: {
 				setFocus: vi.fn(),
 				requestRender: vi.fn(),
+				showOverlay: overlayHost.showOverlay,
 			},
 			session: {
 				sessionId: "session-logout-test",
@@ -89,7 +100,7 @@ describe("SelectorController logout", () => {
 
 		await controller.showOAuthSelector("logout", "anthropic");
 
-		const selector = editorContainer.children[0];
+		const selector = overlayHost.getOverlaid();
 		if (!(selector instanceof LogoutAccountSelectorComponent)) {
 			throw new Error("Expected logout account selector");
 		}

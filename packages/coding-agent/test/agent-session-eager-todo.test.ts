@@ -12,7 +12,7 @@ import { AuthStorage } from "@veyyon/pi-coding-agent/session/auth-storage";
 import { convertToLlm } from "@veyyon/pi-coding-agent/session/messages";
 import { SessionManager } from "@veyyon/pi-coding-agent/session/session-manager";
 import type { ToolSession } from "@veyyon/pi-coding-agent/tools";
-import { TodoTool } from "@veyyon/pi-coding-agent/tools";
+import { TodoTool } from "@veyyon/pi-coding-agent/tools/todo";
 import { TempDir } from "@veyyon/pi-utils";
 import { type } from "arktype";
 import eagerTodoPrompt from "../src/prompts/system/eager-todo.md" with { type: "text" };

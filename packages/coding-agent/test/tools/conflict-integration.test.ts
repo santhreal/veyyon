@@ -99,8 +99,7 @@ describe("read surfaces conflicts as a warning footer", () => {
 		expect(text).toContain("oldApi(x)");
 		expect(text).toContain(">>>>>>> feature/x");
 		// Warning footer is appended.
-		expect(text).toContain("⚠");
-		expect(text).toContain("⚠ 1 unresolved conflict detected");
+		expect(text).toContain("warn 1 unresolved conflict detected");
 		expect(text).toContain("- ours = HEAD");
 		expect(text).toContain("- theirs = feature/x");
 		expect(text).toContain("──── #1  L2-6 ────");
@@ -153,7 +152,7 @@ describe("read surfaces conflicts as a warning footer", () => {
 		const text = getText(result);
 		expect(text).toContain("const a = 1;");
 		expect(text).not.toContain("conflict://");
-		expect(text).not.toContain("⚠");
+		expect(text).not.toContain("unresolved conflict");
 		expect(session.conflictHistory?.get(1)).toBeUndefined();
 	});
 
@@ -184,7 +183,7 @@ describe("read surfaces conflicts as a warning footer", () => {
 		expect(text).toContain("newApi(x)");
 		expect(text).toContain(">>>>>>> feature/x");
 		// No conflict warning footer when expanding a single block by id.
-		expect(text).not.toContain("⚠");
+		expect(text).not.toContain("unresolved conflict");
 	});
 
 	it("renders only the theirs body via reads of `conflict://<N>/theirs`", async () => {

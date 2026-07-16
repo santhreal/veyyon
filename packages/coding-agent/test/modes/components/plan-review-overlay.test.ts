@@ -234,12 +234,13 @@ describe("PlanReviewOverlay", () => {
 			{ onPick: vi.fn(), onCancel: vi.fn() },
 		);
 		const out = render(overlay);
-		// Two-column split chrome (┬ joins the title rule over the divider) and the
-		// bare section list — no "Contents" label.
-		expect(out).toContain("┬");
+		// ModalShell floating card with a two-column body (sidebar | plan).
+		expect(out).toContain("Plan Review");
+		expect(out).toContain("[x]");
 		expect(out).not.toContain("Contents");
 		expect(out).toContain("Overview");
-		// Tab into the ToC region surfaces its focus-specific help.
+		expect(out).toContain("│");
+		// Tab into the ToC region surfaces its focus-specific chips.
 		overlay.handleInput(TAB);
 		const tocFocused = render(overlay);
 		expect(tocFocused).toContain("a annotate");
@@ -273,8 +274,8 @@ describe("PlanReviewOverlay", () => {
 		// Walk to the last ToC entry, then one more Down drops into the actions.
 		for (let i = 0; i < 10; i++) overlay.handleInput(DOWN);
 		const out = render(overlay);
-		// Actions focus restores the option cursor highlight + actions help.
-		expect(out).toContain("⏎ confirm");
+		// Actions focus restores the option cursor highlight + actions chips.
+		expect(out).toContain("enter confirm");
 		expect(out).not.toContain("a annotate");
 	});
 
@@ -311,8 +312,9 @@ describe("PlanReviewOverlay", () => {
 		render(overlay);
 		overlay.handleInput(TAB); // -> toc (Overview)
 		overlay.handleInput(DOWN); // -> Goal, scrubbing the body to it
-		const body = render(overlay).split("\n").slice(1, 5).join(" ");
-		expect(body).toContain("Goal");
+		const out = render(overlay);
+		expect(out).toContain("Goal");
+		expect(out).toContain("a annotate");
 	});
 
 	it("deletes the selected section and restores it with undo", () => {
@@ -437,9 +439,12 @@ describe("PlanReviewOverlay", () => {
 		expect(onFeedbackChange).not.toHaveBeenCalled();
 	});
 
-	// Click a rendered row. The fullscreen overlay paints from screen row 0, so a
-	// 1-based SGR mouse row equals the rendered-line index + 1.
-	const clickRow = (overlay: PlanReviewOverlay, needle: string, col = 4): boolean => {
+	// Click a rendered row. The overlay paints its floating ModalShell card from
+	// screen row 0 (no outer vertical margin in the test's 80x40 frame), so a
+	// 1-based SGR mouse row equals the rendered-line index + 1. The column must
+	// land inside the card (past its horizontal `leftPad` inset) — 20 sits
+	// safely inside the sidebar column, matching other ModalShell mouse tests.
+	const clickRow = (overlay: PlanReviewOverlay, needle: string, col = 20): boolean => {
 		const lines = overlay.render(80);
 		const row = lines.findIndex(line => stripVTControlCharacters(line).includes(needle));
 		if (row < 0) return false;
@@ -460,18 +465,32 @@ describe("PlanReviewOverlay", () => {
 	});
 
 	it("selects a ToC section on click and scrubs the body to it", () => {
+		// Overview carries enough filler that the unscrolled viewport cannot show
+		// "Steps" too: this makes the scrub assertion below falsifiable (a no-op
+		// scrub would leave "step body" off-screen after the click).
+		const overflowPlan =
+			"# Overview\n\n" +
+			Array.from({ length: 20 }, (_, i) => `overview filler line ${i}`).join("\n\n") +
+			"\n\n## Goal\n\ngoal body\n\n## Steps\n\nstep body\n\n# Risks\n\nrisk body\n";
 		const overlay = new PlanReviewOverlay(
-			SECTION_PLAN,
+			overflowPlan,
 			{ promptTitle: "next", options: APPROVAL_OPTIONS },
 			{ onPick: vi.fn(), onCancel: vi.fn() },
 		);
-		render(overlay);
-		// Click the "Steps" entry in the sidebar column.
-		expect(clickRow(overlay, "Steps", 4)).toBe(true);
+		const before = render(overlay);
+		// "step body" is scrolled out of the unclicked viewport (still buried
+		// behind the Overview filler).
+		expect(before).not.toContain("step body");
+		// Click the "Steps" entry in the sidebar column (findIndex matches the
+		// sidebar row, which is visible regardless of body scroll; the later
+		// body heading row with the same text is scrolled off at this point).
+		expect(clickRow(overlay, "Steps")).toBe(true);
 		const out = render(overlay);
 		expect(out).toContain("a annotate"); // ToC focus
-		// The body scrubbed to the clicked section.
-		expect(out.split("\n").slice(1, 5).join(" ")).toContain("Steps");
+		// The body scrubbed to the clicked section: its heading and body are now
+		// visible, proving the click moved the scroll offset (not just focus).
+		expect(out).toContain("Steps");
+		expect(out).toContain("step body");
 	});
 
 	it("includes deleted sections in the refinement feedback", () => {

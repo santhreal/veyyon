@@ -4,7 +4,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { TodoCommandController } from "@veyyon/pi-coding-agent/modes/controllers/todo-command-controller";
 import type { InteractiveModeContext } from "@veyyon/pi-coding-agent/modes/types";
-import { type TodoPhase, USER_TODO_EDIT_CUSTOM_TYPE } from "@veyyon/pi-coding-agent/tools";
+import { type TodoPhase, USER_TODO_EDIT_CUSTOM_TYPE } from "@veyyon/pi-coding-agent/tools/todo";
 import { removeWithRetries } from "@veyyon/pi-utils";
 
 function createContext(cwd: string, phases: TodoPhase[]): InteractiveModeContext {

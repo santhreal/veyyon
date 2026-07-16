@@ -5,6 +5,7 @@ import {
 	formatMCPConnectionStatusMessage,
 	isMcpConnectionStatusEvent,
 	MCP_CONNECTION_STATUS_EVENT_CHANNEL,
+	sanitizeMcpStatusError,
 } from "@veyyon/pi-coding-agent/mcp/startup-events";
 
 // Cross-module contract guard.
@@ -34,47 +35,60 @@ describe("mcp/startup-events — connection-status cross-module contract", () =>
 				connectedServers: ["alpha", "beta"],
 				failedServers: [],
 			}),
-		).toBe("Connected to MCP servers: alpha, beta.");
+		).toBe("MCP: 2 connected (alpha, beta)");
 	});
 
-	it("formats failures with server names and errors", () => {
+	it("collapses partial failures to counts + failed names + a detail pointer, not an error wall", () => {
+		const message = formatMCPConnectionStatusMessage({
+			pendingServers: [],
+			connectedServers: ["alpha"],
+			failedServers: [{ serverName: "broken", error: "missing command" }],
+		});
+		expect(message).toBe("MCP: 1 connected, 1 failed (broken) — /mcp list for detail");
+		// The banner names *which* server failed but never dumps the error text —
+		// that detail lives in `/mcp list` (Law 10: surfaced, not hidden, not spammed).
+		expect(message).not.toContain("missing command");
+	});
+
+	it("collapses an all-failed terminal state to a count + names + detail pointer", () => {
 		expect(
 			formatMCPConnectionStatusMessage({
 				pendingServers: [],
-				connectedServers: ["alpha"],
-				failedServers: [{ serverName: "broken", error: "missing command" }],
+				connectedServers: [],
+				failedServers: [
+					{ serverName: "a", error: "boom" },
+					{ serverName: "b", error: "kaboom" },
+				],
 			}),
-		).toBe("MCP finished with failures. Connected: alpha. Failed: broken: missing command");
+		).toBe("MCP: all 2 servers failed (a, b) — /mcp list for detail");
 	});
 
-	it("sanitizes failure errors before rendering them in status text", () => {
-		const homePath = `${os.homedir()}/.omp/mcp.log`;
+	it("keeps failed-server names sanitized and never leaks the error text into the banner", () => {
+		const homePath = `${os.homedir()}/.omp`;
 		const message = formatMCPConnectionStatusMessage({
-			pendingServers: ["slow"],
+			pendingServers: [],
 			connectedServers: [],
-			failedServers: [{ serverName: "broken", error: `failed at\t${homePath}\n${"x".repeat(120)}` }],
+			failedServers: [{ serverName: `${homePath}/broken\nserver`, error: `secret at ${os.homedir()}/x` }],
 		});
-
 		expect(message).not.toContain(os.homedir());
 		expect(message).not.toContain("\n");
-		expect(message).not.toContain("\t");
-		expect(message).toContain("broken: failed at   ~/.veyyon/mcp.log");
+		expect(message).not.toContain("secret at");
+		expect(message).toContain("~/.omp/broken server");
+		expect(message).toContain("/mcp list for detail");
 	});
 
-	it("sanitizes server names before rendering them in status text", () => {
+	it("sanitizes pending server names while other servers settle", () => {
 		const homePath = `${os.homedir()}/.omp`;
 		const message = formatMCPConnectionStatusMessage({
 			pendingServers: [`${homePath}/pending\n${"p".repeat(80)}`],
-			connectedServers: [`${homePath}/connected\tserver`],
-			failedServers: [{ serverName: `${homePath}/broken\nserver`, error: "missing command" }],
+			connectedServers: ["alpha"],
+			failedServers: [{ serverName: "broken", error: "missing command" }],
 		});
-
 		expect(message).not.toContain(os.homedir());
 		expect(message).not.toContain("\n");
 		expect(message).not.toContain("\t");
-		expect(message).toContain("Connected: ~/.veyyon/connected   server.");
-		expect(message).toContain("Failed: ~/.veyyon/broken server: missing command.");
-		expect(message).toContain("Still connecting: ~/.veyyon/pending");
+		expect(message).not.toContain("missing command");
+		expect(message).toContain("MCP: 1 connected, 1 failed; still connecting ~/.omp/pending");
 	});
 
 	it("keeps pending servers visible while other servers settle", () => {
@@ -84,7 +98,16 @@ describe("mcp/startup-events — connection-status cross-module contract", () =>
 				connectedServers: ["alpha"],
 				failedServers: [{ serverName: "broken", error: "missing command" }],
 			}),
-		).toBe("Connected: alpha. Failed: broken: missing command. Still connecting: slow…");
+		).toBe("MCP: 1 connected, 1 failed; still connecting slow…");
+	});
+
+	it("sanitizeMcpStatusError strips control chars and shortens home paths (shared by /mcp list)", () => {
+		const raw = `failed at\t${os.homedir()}/.omp/mcp.log\n${"x".repeat(200)}`;
+		const out = sanitizeMcpStatusError(raw);
+		expect(out).not.toContain(os.homedir());
+		expect(out).not.toContain("\n");
+		expect(out).not.toContain("\t");
+		expect(out).toContain("~/.omp/mcp.log");
 	});
 
 	it("terminates active connecting messages with a single U+2026 ellipsis", () => {

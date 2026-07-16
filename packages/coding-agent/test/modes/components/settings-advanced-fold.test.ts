@@ -159,9 +159,14 @@ describe("appearance advanced fold — panel rendering", () => {
 		const rendered = comp.render(FLAT_WIDTH).join("\n");
 		expect(rendered).toContain("Advanced (13)");
 		expect(rendered).toContain("Transparent Status Line");
-		expect(rendered).toContain("Tight Layout");
-		expect(rendered).toContain("Show Resolved Model Badge");
+		expect(rendered).toContain("Render Mermaid Diagrams");
 		expect(rendered).toContain("Session Accent");
+		// Demoted rows below the floating viewport are reachable by scroll; the
+		// fold is open when the early advanced rows paint under the toggle.
+		// (The sticky "Theme" header pinned above — its own section scrolled
+		// out of view — costs one row of the visible window.)
+		expect(rendered).toContain("▾ Advanced (13)");
+		expect(rendered).toContain("Theme");
 	});
 
 	it("surfaces a non-default advanced value even while the fold stays collapsed, without inflating the heading count", () => {
@@ -219,6 +224,49 @@ describe("appearance advanced fold — search", () => {
 		const rendered = comp.render(120).join("\n");
 		expect(rendered).toContain("Block Images");
 		expect(rendered).toContain("Providers");
+	});
+});
+
+describe("settings selector — initial item jump (/statusline)", () => {
+	beforeEach(async () => {
+		resetSettingsForTest();
+		await Settings.init({ inMemory: true });
+	});
+
+	afterEach(() => {
+		resetSettingsForTest();
+	});
+
+	function createSelector(initialItemId?: string): SettingsSelectorComponent {
+		return new SettingsSelectorComponent(
+			{
+				availableThinkingLevels: [],
+				thinkingLevel: undefined,
+				availableThemes: ["dark"],
+				availablePersonalities: ["default"],
+				providers: [],
+				cwd: process.cwd(),
+			},
+			{ onChange: () => {}, onCancel: () => {} },
+			initialItemId,
+		);
+	}
+
+	it("defaults to the first appearance item when no initial item is given", () => {
+		const comp = createSelector();
+		expect(comp.getSelectedSettingId()).toBe("theme.dark");
+	});
+
+	it("pre-selects statusLine.preset when opened via /statusline", () => {
+		const comp = createSelector("statusLine.preset");
+		expect(comp.getSelectedSettingId()).toBe("statusLine.preset");
+		// Cursor row renders the Status Line group's preset item, not the default Theme item.
+		comp.render(70);
+	});
+
+	it("falls back to the default selection for an unknown initial item id", () => {
+		const comp = createSelector("no.such.setting");
+		expect(comp.getSelectedSettingId()).toBe("theme.dark");
 	});
 });
 

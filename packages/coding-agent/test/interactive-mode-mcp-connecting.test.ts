@@ -69,7 +69,7 @@ describe("InteractiveMode MCP connection status", () => {
 			modelRegistry,
 		});
 		eventBus = new EventBus();
-		mode = new InteractiveMode(session, "test", undefined, () => {}, [], undefined, eventBus);
+		mode = new InteractiveMode(session, "test", () => {}, [], undefined, eventBus);
 		// This contract is the banner wiring, not git branch watching; a real
 		// fs.watch in a parallel Bun worker can trip an unrelated-worker SIGTRAP.
 		vi.spyOn(mode.statusLine, "watchBranch").mockImplementation(() => {});
@@ -135,9 +135,9 @@ describe("InteractiveMode MCP connection status", () => {
 
 		expect(showStatusSpy.mock.calls.map(call => call[0])).toEqual([
 			"Connecting to MCP servers: alpha, broken, slow…",
-			"Connected: alpha. Still connecting: broken, slow…",
-			"Connected: alpha. Failed: broken: missing command. Still connecting: slow…",
-			"MCP finished with failures. Connected: alpha, slow. Failed: broken: missing command",
+			"MCP: 1 connected; still connecting broken, slow…",
+			"MCP: 1 connected, 1 failed; still connecting slow…",
+			"MCP: 2 connected, 1 failed (broken) — /mcp list for detail",
 		]);
 	});
 

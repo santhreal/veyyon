@@ -16,6 +16,7 @@ import {
 	resolveModelOverride,
 	resolveModelRoleValue,
 	resolveModelScope,
+	resolveRoleSelectionWithInherit,
 } from "@veyyon/pi-coding-agent/config/model-resolver";
 import { DEFAULT_MODEL_ROLE_ALIAS, LEGACY_MODEL_ROLE_ALIAS_PREFIX } from "@veyyon/pi-coding-agent/config/model-roles";
 import { Settings } from "@veyyon/pi-coding-agent/config/settings";
@@ -1722,5 +1723,41 @@ describe("effort-tier variant aliases", () => {
 	test("consumed X-thinking twins resolve via the grammar fallback", () => {
 		expect(parseModelPattern("venice/kimi-k2-thinking", variantModels).model?.id).toBe("kimi-k2");
 		expect(parseModelPattern("kimi-k2-thinking", variantModels).model?.id).toBe("kimi-k2");
+	});
+});
+
+describe("resolveRoleSelectionWithInherit", () => {
+	test("configured role wins over the live model", () => {
+		const settings = Settings.isolated();
+		settings.setModelRole("tiny", "openai/gpt-4o");
+
+		const live = mockModels[0]!; // anthropic/claude-sonnet-4-5
+		const result = resolveRoleSelectionWithInherit(["tiny", "smol"], settings, mockModels, live);
+		expect(result?.model.provider).toBe("openai");
+		expect(result?.model.id).toBe("gpt-4o");
+	});
+
+	test("unset roles inherit the live main model", () => {
+		const settings = Settings.isolated();
+
+		const live = mockModels[1]!; // openai/gpt-4o
+		const result = resolveRoleSelectionWithInherit(["tiny", "smol"], settings, mockModels, live);
+		expect(result?.model.provider).toBe("openai");
+		expect(result?.model.id).toBe("gpt-4o");
+		expect(result?.thinkingLevel).toBeUndefined();
+	});
+
+	test("headless (no live model) inherits the persisted default role", () => {
+		const settings = Settings.isolated();
+		settings.setModelRole("default", "anthropic/claude-sonnet-4-5");
+
+		const result = resolveRoleSelectionWithInherit(["tiny", "smol"], settings, mockModels);
+		expect(result?.model.provider).toBe("anthropic");
+		expect(result?.model.id).toBe("claude-sonnet-4-5");
+	});
+
+	test("returns undefined only when nothing is configured and no live model exists", () => {
+		const settings = Settings.isolated();
+		expect(resolveRoleSelectionWithInherit(["tiny", "smol"], settings, mockModels)).toBeUndefined();
 	});
 });

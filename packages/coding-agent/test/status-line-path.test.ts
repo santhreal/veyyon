@@ -12,6 +12,19 @@ beforeAll(async () => {
 	await initTheme();
 });
 
+
+/**
+ * Icon presence is preset-dependent: the default unicode preset is
+ * deliberately icon-light (folder/scratch glyphs are empty strings), while the
+ * nerd preset carries real glyphs. Assert the marker distinction only when the
+ * active preset actually renders one — `toContain("")` is vacuous and
+ * `not.toContain("")` is always false.
+ */
+function expectIconMarker(content: string, expected: string, absent: string): void {
+	if (expected) expect(content).toContain(expected);
+	if (absent && absent !== expected) expect(content).not.toContain(absent);
+}
+
 function createPathContext(): SegmentContext {
 	return {
 		session: {
@@ -128,8 +141,7 @@ describe("status line path segment", () => {
 
 			const rendered = renderSegment("path", createPathContext());
 			expect(rendered.visible).toBe(true);
-			expect(rendered.content).toContain(theme.icon.scratchFolder);
-			expect(rendered.content).not.toContain(theme.icon.folder);
+			expectIconMarker(rendered.content, theme.icon.scratchFolder, theme.icon.folder);
 			// Display is just the scratch-relative tail — no leading tmpdir, no ancestor segments.
 			expectContentToContainPath(rendered.content, path.basename(getProjectDir()));
 			expect(rendered.content).not.toContain(os.tmpdir());
@@ -166,8 +178,7 @@ describe("status line path segment", () => {
 			ctx.options.path = { ...ctx.options.path, stripWorkPrefix: false };
 			const rendered = renderSegment("path", ctx);
 			expect(rendered.visible).toBe(true);
-			expect(rendered.content).toContain(theme.icon.folder);
-			expect(rendered.content).not.toContain(theme.icon.scratchFolder);
+			expectIconMarker(rendered.content, theme.icon.folder, theme.icon.scratchFolder);
 		} finally {
 			setProjectDir(originalProjectDir);
 			removeSyncWithRetries(scratchDir);
@@ -182,8 +193,7 @@ describe("status line path segment", () => {
 
 			const rendered = renderSegment("path", createPathContext());
 			expect(rendered.visible).toBe(true);
-			expect(rendered.content).toContain(theme.icon.folder);
-			expect(rendered.content).not.toContain(theme.icon.scratchFolder);
+			expectIconMarker(rendered.content, theme.icon.folder, theme.icon.scratchFolder);
 		} finally {
 			setProjectDir(originalProjectDir);
 			removeSyncWithRetries(realProjectDir);
@@ -260,7 +270,7 @@ describe("status line path segment in a linked worktree", () => {
 		// The base prefix, the worktree dir, and the folder icon are all gone.
 		expect(content).not.toContain(".tree");
 		expect(content).not.toContain("/xx");
-		expect(content).not.toContain(theme.icon.folder);
+		if (theme.icon.folder) expect(content).not.toContain(theme.icon.folder);
 	});
 
 	it("keeps the worktree dir when it diverges from the branch", () => {

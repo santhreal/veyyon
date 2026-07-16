@@ -184,14 +184,14 @@ describe("last changelog marker", () => {
 });
 
 describe.skipIf(!hasPtyHarness)("interactive startup changelog PTY smoke", () => {
-	test("does not dump packaged changelog history on first install with uncollapsed notes", async () => {
+	test("never renders changelog history on startup (release notes live on the web)", async () => {
 		await withTempAgentDir(async agentDir => {
-			const root = await fs.mkdtemp(path.join(os.tmpdir(), "omp-changelog-pty-"));
+			const root = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-changelog-pty-"));
 			try {
 				await fs.mkdir(path.join(root, "xdg-config"), { recursive: true });
 				await fs.mkdir(path.join(root, "xdg-state"), { recursive: true });
 				await fs.mkdir(path.join(root, "xdg-data"), { recursive: true });
-				await Bun.write(path.join(agentDir, "config.yml"), "setupVersion: 1\ncollapseChangelog: false\n");
+				await Bun.write(path.join(agentDir, "config.yml"), "setupVersion: 1\n");
 
 				const proc = Bun.spawn(
 					["timeout", "6s", "script", "-q", "-c", `bun ${JSON.stringify(cliEntry)}`, "/dev/null"],
@@ -223,10 +223,12 @@ describe.skipIf(!hasPtyHarness)("interactive startup changelog PTY smoke", () =>
 
 				expect(exitCode).toBe(124);
 				expect(Buffer.byteLength(output)).toBeLessThan(PTY_STARTUP_OUTPUT_CEILING);
+				// The changelog is gone from the CLI entirely — no version headers, no
+				// "What's New", no full-changelog hint, regardless of any legacy config.
 				expect(output).not.toContain("## [");
+				expect(output).not.toContain("What's New");
 				expect(output).not.toContain(STARTUP_CHANGELOG_FULL_HINT);
 				expect(stderr).not.toContain("Cannot find module");
-				expect(await readLastChangelogVersion(agentDir)).toBe(VERSION);
 			} finally {
 				await removeWithRetries(root);
 			}

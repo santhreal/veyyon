@@ -147,12 +147,16 @@ describe("AgentSession approved-plan reference re-injection after compaction (is
 		const settings = Settings.isolated({
 			"compaction.enabled": true,
 			"compaction.autoContinue": true,
-			"compaction.strategy": strategy,
 			"task.eager": "default",
 			"todo.enabled": false,
 			"todo.eager": "default",
 			"todo.reminders": false,
 		});
+		// Settings.isolated() migrates the legacy "context-full" token to "handoff" on
+		// load (migrated configs store handoff|snap only). Force the raw legacy value via
+		// a runtime override so auto-compaction takes the in-session context-full engine
+		// action instead of a full LLM handoff, matching agent-session-handoff.test.ts.
+		settings.override("compaction.strategy", strategy as never);
 		const sessionManager = SessionManager.inMemory(tempDir.path());
 
 		let session: AgentSession;

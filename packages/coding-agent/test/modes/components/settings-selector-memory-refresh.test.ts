@@ -1,7 +1,12 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
+import { stripVTControlCharacters } from "node:util";
 import { resetSettingsForTest, Settings, settings } from "@veyyon/pi-coding-agent/config/settings";
 import { SettingsSelectorComponent } from "@veyyon/pi-coding-agent/modes/components/settings-selector";
 import { initTheme } from "@veyyon/pi-coding-agent/modes/theme/theme";
+
+function strip(s: string): string {
+	return stripVTControlCharacters(s);
+}
 
 beforeAll(async () => {
 	await initTheme();
@@ -56,18 +61,17 @@ function createSelector(onCancel: () => void = () => {}): SettingsSelectorCompon
 	);
 }
 
-/** Switch the selector to the memory tab. SETTING_TABS puts memory at index 4 (after appearance/model/interaction/context). */
-function focusMemoryTab(comp: SettingsSelectorComponent): void {
-	for (let i = 0; i < 4; i++) {
-		comp.handleInput("\x1b[C");
-	}
+/** Jump to Memory Backend on the Memory tab. */
+function focusMemoryBackend(comp: SettingsSelectorComponent): void {
+	comp.openTab("memory");
+	expect(comp.selectSetting("memory.backend")).toBe(true);
 }
 
 describe("SettingsSelectorComponent memory tab", () => {
 	it("reveals condition-gated Hindsight rows the moment memory.backend changes via the submenu", () => {
 		settings.set("memory.backend", "off");
 		const comp = createSelector();
-		focusMemoryTab(comp);
+		focusMemoryBackend(comp);
 		// Width 70 keeps the flat single-column layout (the wide split layout
 		// shows only the active section's rows, covered by the sidebar test).
 		const before = comp.render(70).join("\n");
@@ -91,7 +95,7 @@ describe("SettingsSelectorComponent memory tab", () => {
 	it("hides Hindsight rows again when the backend is switched back to off without leaving the tab", () => {
 		settings.set("memory.backend", "hindsight");
 		const comp = createSelector();
-		focusMemoryTab(comp);
+		focusMemoryBackend(comp);
 		// Width 70 keeps the flat layout so all sections' rows render inline.
 		expect(comp.render(70).join("\n")).toContain("Hindsight API URL");
 
@@ -183,17 +187,19 @@ describe("SettingsSelectorComponent memory tab", () => {
 		const comp = createSelector(() => {
 			cancelCount++;
 		});
-		focusMemoryTab(comp);
+		focusMemoryBackend(comp);
 
 		comp.handleInput("\n");
-		expect(comp.render(120).join("\n")).toContain("Esc to go back");
+		const openSub = strip(comp.render(120).join("\n"));
+		expect(openSub).toMatch(/esc/i);
+		expect(openSub).toMatch(/back/i);
 
 		comp.handleInput("\x1b");
-		const afterBack = comp.render(120).join("\n");
+		const afterBack = strip(comp.render(120).join("\n"));
 		expect(cancelCount).toBe(0);
 		expect(afterBack).toContain("Memory Backend");
-		expect(afterBack).toContain("Esc to close");
-		expect(afterBack).not.toContain("Esc to go back");
+		expect(afterBack.toLowerCase()).toContain("esc close");
+		expect(afterBack.toLowerCase()).not.toContain("esc back");
 
 		comp.handleInput("\x1b");
 		expect(cancelCount).toBe(1);

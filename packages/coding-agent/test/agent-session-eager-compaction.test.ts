@@ -12,7 +12,8 @@ import { AgentSession } from "@veyyon/pi-coding-agent/session/agent-session";
 import { AuthStorage } from "@veyyon/pi-coding-agent/session/auth-storage";
 import { convertToLlm } from "@veyyon/pi-coding-agent/session/messages";
 import { SessionManager } from "@veyyon/pi-coding-agent/session/session-manager";
-import { TodoTool, type ToolSession, USER_TODO_EDIT_CUSTOM_TYPE } from "@veyyon/pi-coding-agent/tools";
+import { type ToolSession } from "@veyyon/pi-coding-agent/tools";
+import { TodoTool, USER_TODO_EDIT_CUSTOM_TYPE } from "@veyyon/pi-coding-agent/tools/todo";
 import { TempDir } from "@veyyon/pi-utils";
 import { type } from "arktype";
 
@@ -157,13 +158,22 @@ describe("AgentSession eager prelude re-injection after compaction", () => {
 		const settings = Settings.isolated({
 			"compaction.enabled": true,
 			"compaction.autoContinue": true,
-			"compaction.strategy": "context-full",
 			"task.eager": "always",
 			"todo.enabled": false,
 			"todo.eager": "default",
 			"todo.reminders": false,
 			...settingsOverride,
 		});
+		// `compaction.strategy` legacy values (e.g. "context-full") are collapsed to the
+		// user-facing handoff|snap enum during Settings construction (see
+		// config/compaction-strategy.ts), so the isolated-overrides constructor path above
+		// can never leave the raw "context-full" engine action in effect. Route it through
+		// the runtime `override()` API instead, which bypasses that migration — same pattern
+		// as agent-session-auto-compaction-progress-guard.test.ts and agent-session-handoff.test.ts.
+		settings.override(
+			"compaction.strategy",
+			((settingsOverride["compaction.strategy"] as string | undefined) ?? "context-full") as never,
+		);
 		const sessionManager = SessionManager.inMemory(tempDir.path());
 
 		const mockTaskTool: AgentTool = {

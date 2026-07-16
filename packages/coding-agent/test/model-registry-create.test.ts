@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { ConfigFile } from "@veyyon/pi-coding-agent/config/config-file";
 import { ModelRegistry } from "@veyyon/pi-coding-agent/config/model-registry";
-import { ModelsConfigSchema } from "@veyyon/pi-coding-agent/config/models-config-schema";
+import { modelsConfigSchemas } from "@veyyon/pi-coding-agent/config/models-config-schema";
 import { AuthStorage } from "@veyyon/pi-coding-agent/session/auth-storage";
 import { TempDir } from "@veyyon/pi-utils";
 
@@ -58,7 +58,7 @@ describe("ModelRegistry.create() factory (F6)", () => {
 		const json = path.join(tempDir.path(), "models.json");
 		await Bun.write(json, JSON.stringify({ models: [] }));
 
-		const cf = new ConfigFile("models", ModelsConfigSchema, yml);
+		const cf = new ConfigFile("models", modelsConfigSchemas().ModelsConfigSchema, yml);
 		cf.tryLoad();
 		expect(fs.existsSync(yml)).toBe(true);
 		const mtime1 = fs.statSync(yml).mtimeMs;
@@ -83,7 +83,7 @@ describe("ModelRegistry.create() factory (F6)", () => {
 			}`,
 		);
 
-		const cf = new ConfigFile("models", ModelsConfigSchema, yml);
+		const cf = new ConfigFile("models", modelsConfigSchemas().ModelsConfigSchema, yml);
 		const result = cf.tryLoad();
 		expect(result.status).toBe("ok");
 		expect(fs.existsSync(yml)).toBe(true);

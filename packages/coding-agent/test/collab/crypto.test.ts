@@ -200,7 +200,7 @@ describe("collab link format", () => {
 	it("keeps the key out of web-link path and query", () => {
 		const webLink = formatCollabWebLink(DEFAULT_RELAY_URL, roomId, key);
 		const url = new URL(webLink);
-		expect(url.origin).toBe("https://my.omp.sh");
+		expect(url.origin).toBe("https://share.veyyon.dev");
 		expect(url.pathname).toBe("/");
 		expect(url.search).toBe("");
 		expect(url.hash).toBe(`#${roomId}.${Buffer.from(key).toString("base64url")}`);

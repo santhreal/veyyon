@@ -6,6 +6,7 @@ import { runRootCommand } from "@veyyon/pi-coding-agent/main";
 import type { CreateAgentSessionOptions } from "@veyyon/pi-coding-agent/sdk";
 import { AuthStorage } from "@veyyon/pi-coding-agent/session/auth-storage";
 import { TempDir } from "@veyyon/pi-utils";
+import { APP_NAME } from "@veyyon/pi-utils/dirs";
 import { runCli } from "../src/cli";
 
 describe("parseArgs — --max-time flag", () => {
@@ -72,7 +73,7 @@ describe("parseArgs — --max-time flag", () => {
 		const stderr = captured.join("");
 		expect(observedExitCode).toBe(2);
 		expect(stderr).toContain("Error: Invalid --max-time value");
-		expect(stderr).toContain("Run `omp --help` for available flags.");
+		expect(stderr).toContain(`Run \`${APP_NAME} --help\` for available flags.`);
 		expect(stderr).not.toContain("parseMaxTimeSeconds");
 		expect(stderr).not.toContain("CliUsageError");
 	});

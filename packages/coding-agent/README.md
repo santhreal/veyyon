@@ -10,7 +10,7 @@ Package-specific references:
 - [CHANGELOG](./CHANGELOG.md)
 - [MCP configuration guide](../../docs/mcp-config.md)
 - [MCP runtime lifecycle](../../docs/internal/mcp-runtime-lifecycle.md)
-- [MCP server/tool authoring](../../docs/mcp-server-tool-authoring.md)
+- [MCP server/tool authoring](../../docs/internal/mcp-server-tool-authoring.md)
 - [DEVELOPMENT](./DEVELOPMENT.md)
 
 ## Memory backends

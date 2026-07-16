@@ -11,7 +11,7 @@ import {
 	TodoTool,
 	todoMatchesAnyDescription,
 	todoToolRenderer,
-} from "@veyyon/pi-coding-agent/tools";
+} from "@veyyon/pi-coding-agent/tools/todo";
 import type { Component } from "@veyyon/pi-tui";
 import { type } from "arktype";
 

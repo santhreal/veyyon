@@ -46,7 +46,7 @@ class FakeSession {
 
 	toolCalls(n: number): void {
 		for (let i = 0; i < n; i++) {
-			this.emit({ type: "tool_execution_end", toolCallId: `t${i}`, toolName: "read", result: null });
+			this.emit({ type: "tool_execution_end", toolCallId: `t${i}`, toolName: "read", result: { content: [] } });
 		}
 	}
 

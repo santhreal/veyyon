@@ -36,6 +36,7 @@ async function createHarness(sessionName: string): Promise<Harness> {
 		},
 		customCommands: [],
 		skills: [],
+		configWarnings: [],
 		autoCompactionEnabled: true,
 		messages: [],
 		systemPrompt: [],

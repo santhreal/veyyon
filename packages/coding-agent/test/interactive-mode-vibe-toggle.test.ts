@@ -70,7 +70,7 @@ describe("InteractiveMode vibe mode toggle", () => {
 			toolRegistry: new Map(registryTools.map(tool => [tool.name, tool])),
 			createVibeTools: () => VIBE_TOOL_NAMES.map(stubTool),
 		});
-		mode = new InteractiveMode(session, "test", undefined, undefined, undefined, undefined, new EventBus());
+		mode = new InteractiveMode(session, "test", undefined, undefined, undefined, new EventBus());
 	});
 
 	afterEach(async () => {

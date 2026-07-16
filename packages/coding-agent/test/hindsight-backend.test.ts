@@ -606,7 +606,7 @@ describe("hindsightBackend live bank routing", () => {
 		});
 
 		const initial = session.getHindsightSessionState();
-		expect(initial?.bankId).toBe("omp");
+		expect(initial?.bankId).toBe("veyyon");
 		expect(initial?.retainTags).toBeUndefined();
 
 		settings.set("hindsight.scoping", "per-project");
@@ -614,7 +614,7 @@ describe("hindsightBackend live bank routing", () => {
 
 		const next = session.getHindsightSessionState();
 		expect(next).toBeDefined();
-		expect(next?.bankId).toBe("omp-proj");
+		expect(next?.bankId).toBe("veyyon-proj");
 		expect(next).not.toBe(initial);
 	});
 
@@ -680,21 +680,21 @@ describe("hindsightBackend live bank routing", () => {
 		const next = session.getHindsightSessionState();
 		expect(next).toBeDefined();
 		expect(next).not.toBe(initial);
-		// With scoping=per-project the base falls back to the default ("omp"),
+		// With scoping=per-project the base falls back to the default ("veyyon"),
 		// so the reset bank id picks up the project suffix from cwd.
-		expect(next?.bankId).toBe("omp-_NEW_XenGameKit");
+		expect(next?.bankId).toBe("veyyon-_NEW_XenGameKit");
 
 		next!.enqueueRetain("post-reset fact", "reset routing");
 		await next!.flushRetainQueue();
 
 		expect(retainBatchSpy).toHaveBeenCalledTimes(1);
-		expect(retainBatchSpy.mock.calls[0][0]).toBe("omp-_NEW_XenGameKit");
+		expect(retainBatchSpy.mock.calls[0][0]).toBe("veyyon-_NEW_XenGameKit");
 	});
 
 	// Companion case: when `hindsight.scoping` is `global`, clearing the
 	// non-empty bankId should restore the bare `omp` default — the operator's
 	// stated expectation in the live repro from #1902.
-	it("routes future retains to the bare omp bank when bankId is cleared in global scoping", async () => {
+	it("routes future retains to the bare veyyon bank when bankId is cleared in global scoping", async () => {
 		const retainBatchSpy = vi.spyOn(HindsightApi.prototype, "retainBatch").mockResolvedValue({} as never);
 		vi.spyOn(HindsightApi.prototype, "createBank").mockResolvedValue({} as never);
 		const settings = Settings.isolated({
@@ -718,13 +718,13 @@ describe("hindsightBackend live bank routing", () => {
 		await Bun.sleep(0);
 
 		const next = session.getHindsightSessionState();
-		expect(next?.bankId).toBe("omp");
+		expect(next?.bankId).toBe("veyyon");
 
 		next!.enqueueRetain("post-reset global fact");
 		await next!.flushRetainQueue();
 
 		expect(retainBatchSpy).toHaveBeenCalledTimes(1);
-		expect(retainBatchSpy.mock.calls[0][0]).toBe("omp");
+		expect(retainBatchSpy.mock.calls[0][0]).toBe("veyyon");
 	});
 
 	it("coalesces synchronous routing hooks so rebuilt states do not leak agent listeners", async () => {

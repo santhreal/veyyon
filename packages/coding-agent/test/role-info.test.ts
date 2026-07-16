@@ -10,6 +10,7 @@ describe("getRoleInfo", () => {
 			name: "Default",
 			color: "success",
 			tag: "DEFAULT",
+			hidden: true,
 		});
 		expect(getRoleInfo("smol", settings)).toEqual({
 			name: "Fast",

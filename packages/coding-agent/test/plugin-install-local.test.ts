@@ -154,12 +154,13 @@ describe("runPluginCommand({ action: 'install', args: [<local>] })", () => {
 		expect(listed.npm.map(plugin => plugin.name)).toContain("kimi-datasource");
 	});
 
-	test("plugin upgrade is rejected at parse time", () => {
+	test("plugin upgrade parses as a valid action", () => {
 		const errorSpy = spyOn(console, "error").mockImplementation(() => undefined);
 		const exitSpy = spyOn(process, "exit").mockImplementation((() => undefined) as typeof process.exit);
-		parsePluginArgs(["plugin", "upgrade", "some-pkg"]);
-		expect(errorSpy).toHaveBeenCalled();
-		expect(exitSpy).toHaveBeenCalledWith(1);
+		const parsed = parsePluginArgs(["plugin", "upgrade", "some-pkg"]);
+		expect(parsed).toEqual({ action: "upgrade", args: ["some-pkg"], flags: {} });
+		expect(errorSpy).not.toHaveBeenCalled();
+		expect(exitSpy).not.toHaveBeenCalled();
 	});
 
 	test("doctor --fix preserves linked local plugin state without package dependencies", async () => {

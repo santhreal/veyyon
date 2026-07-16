@@ -603,7 +603,7 @@ describe("ACP event mapper", () => {
 				toolName: "bash",
 				isError: true,
 				result: { errorMessage: "command failed", details: { terminalId: "term-1" } },
-			} as AgentSessionEvent,
+			} as unknown as AgentSessionEvent, // legacy result shape the mapper must coerce
 			"session-1",
 		);
 		const messageUpdates = mapAgentSessionEventToAcpSessionUpdates(
@@ -613,7 +613,7 @@ describe("ACP event mapper", () => {
 				toolName: "bash",
 				isError: false,
 				result: { message: "command completed", details: { terminalId: "term-1" } },
-			} as AgentSessionEvent,
+			} as unknown as AgentSessionEvent, // legacy result shape the mapper must coerce
 			"session-1",
 		);
 
@@ -647,7 +647,7 @@ describe("ACP event mapper", () => {
 				toolName: "bash",
 				isError: false,
 				result: "hello from stdout",
-			} as AgentSessionEvent,
+			} as unknown as AgentSessionEvent, // legacy result shape the mapper must coerce
 			"session-1",
 		);
 
@@ -668,7 +668,7 @@ describe("ACP event mapper", () => {
 				toolName: "bash",
 				isError: false,
 				result: { terminalId: "term-1" },
-			} as AgentSessionEvent,
+			} as unknown as AgentSessionEvent, // legacy result shape the mapper must coerce
 			"session-1",
 		);
 
@@ -691,7 +691,7 @@ describe("ACP event mapper", () => {
 					content: [{ type: "terminal", terminalId: "term-1" }],
 					details: { terminalId: "term-1" },
 				},
-			} as AgentSessionEvent,
+			} as unknown as AgentSessionEvent, // ACP terminal content extends the core content union
 			"session-1",
 		);
 

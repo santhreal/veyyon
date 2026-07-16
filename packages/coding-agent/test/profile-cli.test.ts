@@ -314,7 +314,7 @@ describe("global --profile flag", () => {
 			]);
 
 			expect(stdout, stderr).toContain("HANDLED");
-			expect(stderr).toContain("Invalid OMP profile");
+			expect(stderr).toContain("Invalid OMP_PROFILE");
 			expect(exitCode).toBe(1);
 		} finally {
 			await removeWithRetries(root);

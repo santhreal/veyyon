@@ -19,7 +19,7 @@ describe("createLspWritethrough batching", () => {
 	it("defers LSP work until the batch flush", async () => {
 		const loadConfigSpy = vi
 			.spyOn(lspConfig, "loadConfig")
-			.mockReturnValue({ servers: {}, idleTimeoutMs: undefined });
+			.mockReturnValue({ servers: {}, idleTimeoutMs: undefined, missingServers: [] });
 		const getServersSpy = vi.spyOn(lspConfig, "getServersForFile").mockReturnValue([]);
 		const writethrough = createLspWritethrough(tempDir.path(), { enableFormat: true, enableDiagnostics: true });
 
@@ -52,7 +52,7 @@ describe("createLspWritethrough batching", () => {
 	it("runs LSP immediately when no batch is provided", async () => {
 		const loadConfigSpy = vi
 			.spyOn(lspConfig, "loadConfig")
-			.mockReturnValue({ servers: {}, idleTimeoutMs: undefined });
+			.mockReturnValue({ servers: {}, idleTimeoutMs: undefined, missingServers: [] });
 		const getServersSpy = vi.spyOn(lspConfig, "getServersForFile").mockReturnValue([]);
 		const writethrough = createLspWritethrough(tempDir.path(), { enableFormat: true, enableDiagnostics: true });
 

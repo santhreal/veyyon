@@ -738,6 +738,7 @@ describe("lsp regressions", () => {
 			vi.spyOn(lspConfig, "loadConfig").mockReturnValue({
 				servers: { "rust-analyzer": server },
 				idleTimeoutMs: undefined,
+				missingServers: [],
 			});
 			vi.spyOn(lspConfig, "getServersForFile").mockReturnValue([["rust-analyzer", server]]);
 
@@ -807,6 +808,7 @@ describe("lsp regressions", () => {
 			vi.spyOn(lspConfig, "loadConfig").mockReturnValue({
 				servers: { "rust-analyzer": server },
 				idleTimeoutMs: undefined,
+				missingServers: [],
 			});
 			vi.spyOn(lspConfig, "getServersForFile").mockReturnValue([["rust-analyzer", server]]);
 
@@ -1139,7 +1141,7 @@ describe("lsp regressions", () => {
 				resolveProjectLoaded: () => {},
 			};
 
-			vi.spyOn(lspConfig, "loadConfig").mockReturnValue({ servers: {}, idleTimeoutMs: undefined });
+			vi.spyOn(lspConfig, "loadConfig").mockReturnValue({ servers: {}, idleTimeoutMs: undefined, missingServers: [] });
 			vi.spyOn(lspConfig, "getServersForFile").mockReturnValue([["test-lsp", server]]);
 			vi.spyOn(lspClient, "getOrCreateClient").mockResolvedValue(client);
 
@@ -1273,6 +1275,63 @@ describe("lsp regressions", () => {
 			expect(whichSpy).not.toHaveBeenCalledWith("typescript-language-server");
 		} finally {
 			vi.restoreAllMocks();
+			tempDir.removeSync();
+		}
+	});
+
+	it("reports detected-but-uninstalled servers as missingServers instead of dropping them silently", async () => {
+		const tempDir = TempDir.createSync("@omp-lsp-missing-");
+		try {
+			// Root markers match but the binary is resolvable nowhere ($PATH or node_modules/.bin).
+			await Bun.write(path.join(tempDir.path(), "package.json"), "{}");
+			await Bun.write(
+				path.join(tempDir.path(), "lsp.json"),
+				JSON.stringify({
+					servers: {
+						"ghost-lsp": {
+							command: "definitely-not-a-real-lsp-binary-xn7",
+							fileTypes: [".zz"],
+							rootMarkers: ["package.json"],
+						},
+					},
+				}),
+			);
+
+			const config = loadConfig(tempDir.path());
+			expect(config.servers["ghost-lsp"]).toBeUndefined();
+			const missing = config.missingServers.find(server => server.name === "ghost-lsp");
+			expect(missing?.command).toBe("definitely-not-a-real-lsp-binary-xn7");
+			expect(missing?.fileTypes).toEqual([".zz"]);
+		} finally {
+			tempDir.removeSync();
+		}
+	});
+
+	it("an installed server lands in servers, not missingServers (positive twin)", async () => {
+		const tempDir = TempDir.createSync("@omp-lsp-installed-");
+		try {
+			await Bun.write(path.join(tempDir.path(), "package.json"), "{}");
+			// Resolvable via the project-local node_modules/.bin lookup — no $PATH involved.
+			const localBin = path.join(tempDir.path(), "node_modules", ".bin", "real-lsp");
+			await fs.promises.mkdir(path.dirname(localBin), { recursive: true });
+			await Bun.write(localBin, "#!/bin/sh\n");
+			await Bun.write(
+				path.join(tempDir.path(), "lsp.json"),
+				JSON.stringify({
+					servers: {
+						"real-lsp": {
+							command: "real-lsp",
+							fileTypes: [".zz"],
+							rootMarkers: ["package.json"],
+						},
+					},
+				}),
+			);
+
+			const config = loadConfig(tempDir.path());
+			expect(config.servers["real-lsp"]?.resolvedCommand).toBe(localBin);
+			expect(config.missingServers.some(server => server.name === "real-lsp")).toBe(false);
+		} finally {
 			tempDir.removeSync();
 		}
 	});
@@ -1519,6 +1578,7 @@ describe("lsp regressions", () => {
 			vi.spyOn(lspConfig, "loadConfig").mockReturnValue({
 				servers: { "test-lsp": server },
 				idleTimeoutMs: undefined,
+				missingServers: [],
 			});
 			vi.spyOn(lspClient, "getOrCreateClient").mockResolvedValue(client);
 
@@ -1621,6 +1681,7 @@ describe("lsp regressions", () => {
 			vi.spyOn(lspConfig, "loadConfig").mockReturnValue({
 				servers: { "test-lsp": server },
 				idleTimeoutMs: undefined,
+				missingServers: [],
 			});
 			vi.spyOn(lspClient, "getOrCreateClient").mockResolvedValue(client);
 			vi.spyOn(lspClient, "sendRequest").mockResolvedValue({
@@ -1682,6 +1743,7 @@ describe("lsp regressions", () => {
 			vi.spyOn(lspConfig, "loadConfig").mockReturnValue({
 				servers: { "test-lsp": server },
 				idleTimeoutMs: undefined,
+				missingServers: [],
 			});
 			vi.spyOn(lspClient, "getOrCreateClient").mockResolvedValue(client);
 
@@ -1752,6 +1814,7 @@ describe("lsp regressions", () => {
 			vi.spyOn(lspConfig, "loadConfig").mockReturnValue({
 				servers: { "test-rs": server },
 				idleTimeoutMs: undefined,
+			missingServers: [],
 			});
 			vi.spyOn(lspConfig, "getServersForFile").mockReturnValue([["test-rs", server]]);
 			vi.spyOn(lspClient, "getOrCreateClient").mockResolvedValue(client);
@@ -1822,6 +1885,7 @@ describe("lsp regressions", () => {
 			vi.spyOn(lspConfig, "loadConfig").mockReturnValue({
 				servers: { "test-lsp": server },
 				idleTimeoutMs: undefined,
+				missingServers: [],
 			});
 			vi.spyOn(lspClient, "getOrCreateClient").mockResolvedValue(client);
 
@@ -1886,6 +1950,7 @@ describe("lsp regressions", () => {
 			vi.spyOn(lspConfig, "loadConfig").mockReturnValue({
 				servers: { "test-lsp": server },
 				idleTimeoutMs: undefined,
+				missingServers: [],
 			});
 			vi.spyOn(lspClient, "getOrCreateClient").mockResolvedValue(client);
 
@@ -2303,6 +2368,7 @@ describe("lsp regressions", () => {
 			vi.spyOn(lspConfig, "loadConfig").mockReturnValue({
 				servers: { "test-ts": { command: "test-ts", fileTypes: [".ts"], rootMarkers: [] } },
 				idleTimeoutMs: undefined,
+			missingServers: [],
 			});
 			const sendSpy = vi.spyOn(lspClient, "sendRequest");
 			const notifySpy = vi.spyOn(lspClient, "sendNotification");
@@ -2341,9 +2407,9 @@ describe("lsp regressions", () => {
 				rootMarkers: ["package.json"],
 			};
 			const configs: LspConfig[] = [
-				{ servers: {}, idleTimeoutMs: undefined },
-				{ servers: { "test-lsp": server }, idleTimeoutMs: undefined },
-				{ servers: { "test-lsp": server }, idleTimeoutMs: undefined },
+				{ servers: {}, idleTimeoutMs: undefined, missingServers: [] },
+				{ servers: { "test-lsp": server }, idleTimeoutMs: undefined, missingServers: [] },
+				{ servers: { "test-lsp": server }, idleTimeoutMs: undefined, missingServers: [] },
 			];
 			const loadConfigSpy = vi
 				.spyOn(lspConfig, "loadConfig")
@@ -2397,6 +2463,7 @@ describe("lsp regressions", () => {
 				},
 			},
 			idleTimeoutMs: undefined,
+		missingServers: [],
 		});
 		vi.spyOn(lspClient, "getActiveClients").mockReturnValue([
 			{ name: "typescript-language-server", status: "ready", fileTypes: [".ts"] },
@@ -2422,7 +2489,7 @@ describe("lsp regressions", () => {
 		const tempDir = TempDir.createSync("@omp-lsp-config-cache-reload-");
 		try {
 			const cwd = tempDir.path();
-			const empty: LspConfig = { servers: {}, idleTimeoutMs: undefined };
+			const empty: LspConfig = { servers: {}, idleTimeoutMs: undefined, missingServers: [] };
 			const withServer: LspConfig = {
 				servers: {
 					"fake-pylsp": {
@@ -2433,6 +2500,7 @@ describe("lsp regressions", () => {
 					},
 				},
 				idleTimeoutMs: undefined,
+				missingServers: [],
 			};
 			const loadConfigSpy = vi
 				.spyOn(lspConfig, "loadConfig")
@@ -2735,7 +2803,7 @@ describe("lsp regressions", () => {
 
 describe("expert elixir lsp", () => {
 	it("registers expert for .ex while keeping elixirls primary", () => {
-		const config = { servers: DEFAULTS as unknown as Record<string, ServerConfig> };
+		const config = { servers: DEFAULTS as unknown as Record<string, ServerConfig>, missingServers: [] };
 		const names = getServersForFile(config, "lib/app.ex").map(([name]) => name);
 		expect(names).toContain("expert");
 		expect(names).toContain("elixirls");

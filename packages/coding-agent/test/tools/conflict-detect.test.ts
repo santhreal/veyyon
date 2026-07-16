@@ -568,7 +568,7 @@ describe("formatConflictWarning", () => {
 			theirsLines: ["c"],
 		});
 		const text = formatConflictWarning([entry]);
-		expect(text).toContain("⚠ 1 unresolved conflict detected");
+		expect(text).toContain("warn 1 unresolved conflict detected");
 		expect(text).toContain("- ours = HEAD");
 		expect(text).toContain("- theirs = feature/x");
 		expect(text).toContain("──── #7  L12-16 ────");
@@ -593,7 +593,7 @@ describe("formatConflictWarning", () => {
 		const e1 = makeEntry({ id: 1 });
 		const e2 = makeEntry({ id: 2, startLine: 20, separatorLine: 22, endLine: 24 });
 		const text = formatConflictWarning([e1, e2]);
-		expect(text).toContain("⚠ 2 unresolved conflicts detected");
+		expect(text).toContain("warn 2 unresolved conflicts detected");
 		expect(text).toContain("──── #1  L2-6 ────");
 		expect(text).toContain("──── #2  L20-24 ────");
 	});

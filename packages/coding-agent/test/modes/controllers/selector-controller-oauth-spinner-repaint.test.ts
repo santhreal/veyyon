@@ -1,11 +1,12 @@
 /**
  * Contract: the OAuth picker's "checking" spinner (BACKLOG P6) repaints only
  * itself, never the whole UI. `showOAuthSelector` without a `providerId`
- * mounts an `OAuthSelectorComponent` over the live editor slot — which sits
- * above a possibly large transcript — and starts a validating spinner that
- * ticks every 80ms while any provider's stored auth is still being checked.
- * Before this fix that tick called the full `ui.requestRender()`, re-walking
- * the whole transcript tree on a fixed cadence purely to advance one glyph.
+ * mounts an `OAuthSelectorComponent` as a fullscreen ModalShell overlay —
+ * which sits above a possibly large transcript — and starts a validating
+ * spinner that ticks every 80ms while any provider's stored auth is still
+ * being checked. Before this fix that tick called the full
+ * `ui.requestRender()`, re-walking the whole transcript tree on a fixed
+ * cadence purely to advance one glyph.
  */
 import { afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
 import { getOAuthProviders } from "@veyyon/pi-ai/oauth";
@@ -15,22 +16,13 @@ import { initTheme } from "@veyyon/pi-coding-agent/modes/theme/theme";
 import type { InteractiveModeContext } from "@veyyon/pi-coding-agent/modes/types";
 import type { AuthStorage } from "@veyyon/pi-coding-agent/session/auth-storage";
 
-interface EditorSlot {
-	children: unknown[];
-	clear: () => void;
-	addChild: (child: unknown) => void;
-}
-
-function createEditorSlot(): EditorSlot {
-	return {
-		children: [],
-		clear() {
-			this.children = [];
-		},
-		addChild(child: unknown) {
-			this.children.push(child);
-		},
-	};
+function createOverlayHost() {
+	let overlaid: unknown;
+	const showOverlay = vi.fn((component: unknown) => {
+		overlaid = component;
+		return { hide: vi.fn() };
+	});
+	return { showOverlay, getOverlaid: () => overlaid };
 }
 
 beforeAll(async () => {
@@ -56,13 +48,13 @@ describe("SelectorController.showOAuthSelector spinner repaint scope", () => {
 		// interval keeps ticking for the whole test.
 		const getApiKeyForProvider = vi.fn(() => new Promise<string | undefined>(() => {}));
 
-		const editorContainer = createEditorSlot();
+		const overlayHost = createOverlayHost();
 		const requestRender = vi.fn();
 		const requestComponentRender = vi.fn();
 		const ctx = {
 			editor: { id: "editor" },
-			editorContainer,
-			ui: { setFocus: vi.fn(), requestRender, requestComponentRender },
+			editorContainer: { clear: vi.fn(), addChild: vi.fn(), children: [] },
+			ui: { setFocus: vi.fn(), requestRender, requestComponentRender, showOverlay: overlayHost.showOverlay },
 			session: {
 				sessionId: "session-oauth-spinner-test",
 				modelRegistry: { authStorage, getApiKeyForProvider },
@@ -73,12 +65,12 @@ describe("SelectorController.showOAuthSelector spinner repaint scope", () => {
 		void controller.showOAuthSelector("login");
 		await Promise.resolve();
 
-		const selector = editorContainer.children[0];
+		const selector = overlayHost.getOverlaid();
 		if (!(selector instanceof OAuthSelectorComponent)) {
-			throw new Error("Expected the OAuth provider selector to occupy the editor slot");
+			throw new Error("Expected the OAuth provider selector to be shown as a fullscreen overlay");
 		}
 
-		// `showSelector` itself does one full render to swap the editor slot in;
+		// `showModalSelector` itself does one full render to mount the overlay;
 		// that is expected and unrelated to the spinner cadence being asserted.
 		requestRender.mockClear();
 		requestComponentRender.mockClear();

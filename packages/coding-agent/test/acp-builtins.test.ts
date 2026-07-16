@@ -2,12 +2,7 @@ import { describe, expect, it, spyOn } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import type {
-	ResetCreditAccountStatus,
-	ResetCreditRedeemOutcome,
-	ResetCreditTarget,
-	UsageReport,
-} from "@veyyon/pi-ai";
+import type { ResetCreditAccountStatus, ResetCreditRedeemOutcome, ResetCreditTarget, UsageReport } from "@veyyon/pi-ai";
 import { Settings } from "@veyyon/pi-coding-agent/config/settings";
 import type { AgentSession } from "@veyyon/pi-coding-agent/session/agent-session";
 import type { SessionManager } from "@veyyon/pi-coding-agent/session/session-manager";
@@ -918,27 +913,14 @@ describe("wave 4 commands", () => {
 		expect(output[0]).toContain("Unknown");
 	});
 
-	// /marketplace
-	it("/marketplace help: outputs help text", async () => {
+	// /marketplace was removed as a slash command (plugin management lives in
+	// the `plugin` CLI subcommand and the TUI dashboards); ACP must not consume
+	// it — the input falls through as a regular prompt.
+	it("/marketplace is not a builtin: falls through as a prompt", async () => {
 		const { output, runtime } = createRuntime();
 		const result = await executeAcpBuiltinSlashCommand("/marketplace help", runtime);
-		expect(result).toEqual({ consumed: true });
-		expect(output[0]).toContain("Marketplace commands");
-		expect(output[0]).toContain("install");
-	});
-
-	it("/marketplace install (no args): returns interactive picker usage", async () => {
-		const { output, runtime } = createRuntime();
-		const result = await executeAcpBuiltinSlashCommand("/marketplace install", runtime);
-		expect(result).toEqual({ consumed: true });
-		expect(output[0]).toContain("TUI-only");
-	});
-
-	it("/marketplace uninstall (no args): returns interactive picker usage", async () => {
-		const { output, runtime } = createRuntime();
-		const result = await executeAcpBuiltinSlashCommand("/marketplace uninstall", runtime);
-		expect(result).toEqual({ consumed: true });
-		expect(output[0]).toContain("TUI-only");
+		expect(result).toBe(false);
+		expect(output).toEqual([]);
 	});
 
 	// /plugins

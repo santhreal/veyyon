@@ -126,6 +126,10 @@
       "types": "./src/async/index.ts",
       "import": "./src/async/index.ts"
     },
+    "./extensibility/plugins/marketplace": {
+      "types": "./src/extensibility/plugins/marketplace/index.ts",
+      "import": "./src/extensibility/plugins/marketplace/index.ts"
+    },
     "./async/*": {
       "types": "./src/async/*.ts",
       "import": "./src/async/*.ts"

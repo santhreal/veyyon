@@ -46,22 +46,22 @@ describe("SessionSelectorComponent scope toggle", () => {
 			},
 		);
 
-		// Folder scope: header says current folder, no foreign cwd column.
-		expect(selector.render(120).join("\n")).toContain("(current folder)");
+		// Folder scope: title breadcrumb says current folder, no foreign cwd column.
+		expect(selector.render(120).join("\n")).toContain("current folder");
 		expect(selector.render(120).join("\n")).not.toContain("other-project");
 
 		selector.handleInput(TAB);
 		await Bun.sleep(0);
 
 		const rendered = selector.render(120).join("\n");
-		expect(rendered).toContain("(all projects)");
+		expect(rendered).toContain("all projects");
 		expect(rendered).toContain("other-project");
 		expect(loads).toBe(1);
 
 		// Toggling back returns to folder scope without reloading.
 		selector.handleInput(TAB);
 		await Bun.sleep(0);
-		expect(selector.render(120).join("\n")).toContain("(current folder)");
+		expect(selector.render(120).join("\n")).toContain("current folder");
 		expect(loads).toBe(1);
 
 		// Re-entering all scope reuses the cached global list.
@@ -108,10 +108,10 @@ describe("SessionSelectorComponent scope toggle", () => {
 		);
 
 		const rendered = selector.render(120).join("\n");
-		// Header stays scoped to the cwd so the user is never silently shown
+		// Breadcrumb stays scoped to the cwd so the user is never silently shown
 		// other projects' sessions just because the current folder is empty.
-		expect(rendered).toContain("(current folder)");
-		expect(rendered).not.toContain("(all projects)");
+		expect(rendered).toContain("current folder");
+		expect(rendered).not.toMatch(/Resume Session · all projects/);
 		expect(rendered).not.toContain("other-project");
 		// The empty-state hint must be visible so the user knows Tab is the way out.
 		expect(rendered).toContain("No sessions in current folder");

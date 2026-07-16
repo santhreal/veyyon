@@ -69,7 +69,7 @@ describe("InteractiveMode todo HUD persistence", () => {
 			settings: Settings.isolated({ "tasks.todoClearDelay": todoClearDelay }),
 			modelRegistry,
 		});
-		mode = new InteractiveMode(session, "test", undefined, undefined, undefined, undefined, eventBus);
+		mode = new InteractiveMode(session, "test", undefined, undefined, undefined, eventBus);
 	}
 
 	it("clears closed todos from the panel instantly without mutating session history", async () => {

@@ -833,6 +833,32 @@ describe("AgentSession handoff", () => {
 		expect(fallbackCandidateKey).toBeDefined();
 		expect(promptSpy).toHaveBeenCalledTimes(1);
 	});
+	it("inherits the live session model as the first compaction candidate when compaction.model is unset", async () => {
+		session.settings.override("compaction.strategy", "context-full" as never);
+		session.settings.set("compaction.thresholdTokens", 50);
+		session.settings.set("compaction.keepRecentTokens", 1);
+		session.settings.set("contextPromotion.enabled", false);
+		expect(session.settings.get("compaction.model")).toBeUndefined();
+
+		let firstCandidateKey: string | undefined;
+		vi.spyOn(compactionModule, "compact").mockImplementation(async (preparation, candidate) => {
+			firstCandidateKey ??= `${candidate.provider}/${candidate.id}`;
+			return {
+				summary: "compacted",
+				shortSummary: undefined,
+				firstKeptEntryId: preparation.firstKeptEntryId,
+				tokensBefore: preparation.tokensBefore,
+				details: {},
+			};
+		});
+		vi.spyOn(session.agent, "prompt").mockImplementation(async () => {});
+
+		await session.prompt("pending prompt ".repeat(120));
+		await waitFor(() => firstCandidateKey !== undefined);
+		// Unset compaction.model = inherit: the live session model runs compaction.
+		expect(firstCandidateKey).toBe(`${model.provider}/${model.id}`);
+	});
+
 	it("keeps pre-prompt context-full checks aligned with provider-anchored usage", async () => {
 		await session.dispose();
 		authStorage.setRuntimeApiKey("openai", "test-key");
