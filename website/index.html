@@ -3,48 +3,91 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<meta name="theme-color" content="#070a10" />
+<meta name="theme-color" content="#000000" />
 <title>Veyyon — the harness is the lever</title>
 <meta name="description" content="A terminal coding agent that turns capable open models into frontier work. Explicit model selection, edits that land, honest by design." />
 <link rel="stylesheet" href="./site.css" />
 </head>
 <body>
 
-<header class="site">
+<canvas id="sun" aria-hidden="true"></canvas>
+
+<header class="site" id="hdr">
   <div class="wrap nav">
-    <a class="brand" href="./"><span class="mark"></span>VEYYON</a>
+    <a class="brand" href="./">veyyon</a>
     <nav>
-      <a href="./models.html">Models</a>
-      <a href="./features.html">Features</a>
-      <a href="./install.html">Install</a>
+      <a href="./models">Models</a>
+      <a href="./features">Features</a>
+      <a href="./install">Install</a>
+      <a href="./changelog">Changelog</a>
       <a href="./docs/">Docs</a>
       <a href="https://github.com/santhsecurity/veyyon">GitHub</a>
-      <a href="./install.html" class="btn">Get started</a>
+      <a href="./install" class="btn">Get started</a>
     </nav>
   </div>
 </header>
 
-<main class="wrap">
+<!-- cinematic scroll journey: sun -> the unique idea -> a walk through the product -> it working -->
+<section class="stage" id="stage">
+  <div class="stage-pin">
+    <div class="cue" id="cue"><span>scroll</span></div>
 
-  <section class="hero plain">
-    <span class="eyebrow"><b>◆</b> Terminal coding agent</span>
-    <h1>The harness is the lever.</h1>
-    <p class="lede">Veyyon is a terminal coding agent that edits real code. It's tuned to work well with
-      open and hosted models alike, so you can pick the model that fits the task instead of paying for the
-      most expensive one by default.</p>
-    <div class="cta">
-      <a href="./install.html" class="btn primary">Get started</a>
-      <a href="./docs/" class="btn">Read the handbook</a>
-    </div>
-    <div class="install">
-      <span class="p">$</span>
-      <code id="cmd">curl -fsSL https://get.veyyon.dev | sh</code>
-      <button id="copy" aria-label="Copy install command">copy</button>
-    </div>
+    <!-- act I — the idea, centered beneath the sun. leads with what makes veyyon different. -->
+    <div class="scene center" id="s1"><p class="scene-name">veyyon</p></div>
+    <div class="scene center" id="s2"><p class="scene-lead">The model is just an engine. Everyone rents the same ones.</p></div>
+    <div class="scene center" id="s3"><p class="scene-lead">What you build around it — the harness — is where work is won or lost.</p></div>
+    <div class="scene center" id="s4"><p class="scene-lead">Veyyon tunes the harness to each model. A modest engine reaches frontier work.</p></div>
 
-    <div class="showcase">
-      <div class="term">
-        <div class="bar"><span class="dot"></span><span class="path">~/acme/api</span><span class="rt">anthropic/claude-sonnet-5</span></div>
+    <!-- act II — the product, left-aligned with the sun docked to the right -->
+    <div class="scene left" id="s5"><div class="scene-inner hero-inner">
+      <span class="eyebrow">Terminal coding agent</span>
+      <h1>The harness is the lever.</h1>
+      <div class="cta">
+        <a href="./install" class="btn primary">Get started</a>
+        <a href="./docs/" class="btn">Read the handbook</a>
+      </div>
+      <div class="install"><span class="p">$</span><code id="cmd">curl -fsSL https://get.veyyon.dev | sh</code><button id="copy" aria-label="Copy install command">copy</button></div>
+      <div class="run-hint">then <b>vey</b> in any repo to launch</div>
+    </div></div>
+
+    <div class="scene left" id="s6"><div class="scene-inner">
+      <span class="kicker">Plan mode</span>
+      <h2 class="scene-title">Ground, propose, execute.</h2>
+      <p class="scene-detail">Veyyon reads your code and lays out a plan before it touches anything. Tools stay read-only until you approve — so nothing mutates on a guess, and you always see the shape of the work first.</p>
+    </div></div>
+
+    <div class="scene left" id="s7"><div class="scene-inner">
+      <span class="kicker">Edits that land</span>
+      <h2 class="scene-title">Anchored to content, not line numbers.</h2>
+      <p class="scene-detail">Edits attach to what the code says, then get checked before they apply — so far fewer land malformed. When a patch drifts, the harness repairs it instead of corrupting your file.</p>
+    </div></div>
+
+    <div class="scene left" id="s8"><div class="scene-inner">
+      <span class="kicker">Models</span>
+      <h2 class="scene-title">Three models, chosen by you.</h2>
+      <p class="scene-detail">The model you talk to, the one that runs your subagents, and the one that compacts context — each set on its own. No opaque per-role maze, and <span class="mono">default</span> is never a model.</p>
+      <pre class="scene-code"><span class="k">model</span>: <span class="s">openai/gpt-5.6-sol</span>
+<span class="k">subagent.model</span>: <span class="s">anthropic/claude-haiku-4-5</span>
+<span class="k">compaction.model</span>: <span class="s">openai/gpt-5</span></pre>
+    </div></div>
+
+    <div class="scene left" id="s9"><div class="scene-inner">
+      <span class="kicker">Cockpit</span>
+      <h2 class="scene-title">Watch every agent at once.</h2>
+      <p class="scene-detail">A live multi-agent view: a model per subagent, drill into any one, and follow the work as it happens. Fork, clone, and label threads to explore a path without losing the trunk.</p>
+    </div></div>
+
+    <div class="scene left" id="s10"><div class="scene-inner">
+      <span class="kicker">Extend</span>
+      <h2 class="scene-title">MCP, skills, hooks.</h2>
+      <p class="scene-detail">Bring MCP servers, authored skills, and lifecycle hooks — plus browser, web search, and headless exec for CI. The harness is yours to shape.</p>
+    </div></div>
+
+    <!-- act III — see it work -->
+    <div class="scene" id="s11">
+      <div class="showcase">
+        <div class="term">
+          <div class="bar"><span class="dot"></span><span class="path">~/acme/api</span><span class="rt">openai/gpt-5.6-sol</span></div>
 <div class="body"><span class="pr">›</span> <span class="u">add rate limiting to the upload endpoint</span>
 
   <span class="tc">◆ plan</span>
@@ -55,90 +98,32 @@
   running tests <span class="tk">…</span>  <span class="ok">ok</span>  <span class="tk">42 passed</span>
 
   <span class="hint">esc to interrupt              ? shortcuts   / commands</span></div>
+        </div>
+        <a href="./install" class="btn primary" style="margin-top:34px">Get started</a>
       </div>
     </div>
-  </section>
-
-  <section>
-    <div class="values">
-      <div><span class="kicker">Edits</span><h3>Edits that apply cleanly</h3><p>Edits are anchored to file content, not line numbers, and checked before they apply — so fewer of them land malformed.</p></div>
-      <div><span class="kicker">Models</span><h3>You pick the models</h3><p>Set the model you talk to, the one that runs subagents, and the one that compacts context. Each is set on its own.</p></div>
-      <div><span class="kicker">Control</span><h3>Clear about what it does</h3><p>Sandbox and approval settings you control. It tells you what it did, what it skipped, and what it couldn't do.</p></div>
-    </div>
-  </section>
-
-  <section id="models">
-    <div class="lead">
-      <span class="kicker">Model selection</span>
-      <h2>Three explicit models. No <span class="accent">default</span> magic.</h2>
-      <p class="sub">Most agents bury model choice in an opaque per-role maze. Veyyon gives you three plain
-        choices — and keeps roles in settings, scoped per profile, for when you actually want them.
-        <a href="./models.html">See how models work →</a></p>
-    </div>
-    <div class="panel">
-      <div class="copy">
-        <ul>
-          <li><b>Interactive model</b> — the model you talk to, chosen live with <span class="mono">/model</span>.</li>
-          <li><b>Subagent model</b> — one setting for the model your subagents run on.</li>
-          <li><b>Compaction model</b> — one setting for the model that compacts context.</li>
-          <li><b>Roles in settings</b> — kept, scoped per profile, out of the picker. <span class="mono">default</span> is not a model.</li>
-        </ul>
-      </div>
-      <pre class="demo" aria-hidden="true"><span class="c"># ~/.veyyon/config.yml</span>
-<span class="k">model</span>: <span class="s">anthropic/claude-sonnet-5</span>
-<span class="k">subagent</span>:
-  <span class="k">model</span>: <span class="s">anthropic/claude-haiku-4-5</span>
-<span class="k">compaction</span>:
-  <span class="k">threshold</span>: 80
-  <span class="k">type</span>: handoff       <span class="c"># or snap</span>
-  <span class="k">model</span>: <span class="s">openai/gpt-5</span>
-
-<span class="g">✓ each slot uses its own model</span></pre>
-    </div>
-  </section>
-
-  <section id="features">
-    <div class="lead">
-      <span class="kicker">In the box</span>
-      <h2>What's included.</h2>
-      <p class="sub">TypeScript and Bun run the agent loop and TUI. Rust handles the parts that need to be
-        fast — grep, PTY, and hashline edits. <a href="./features.html">See all features →</a></p>
-    </div>
-    <div class="grid">
-      <div class="card"><div class="ic"><svg viewBox="0 0 20 20"><path d="M4 5h9M4 10h6M4 15h9"/><path d="M15 13l1.6 1.6L20 11"/></svg></div><h3>Plan mode &amp; goals</h3><p>Ground, propose, then execute — tools gated to non-mutating work until you approve the plan.</p></div>
-      <div class="card"><div class="ic"><svg viewBox="0 0 20 20"><path d="M10 2l7 3v5c0 4-3 6.5-7 8-4-1.5-7-4-7-8V5z"/></svg></div><h3>Sandbox &amp; approvals</h3><p>Read-only, workspace-write, or full access. Per-tool approval tiers you control, fail-closed by default.</p></div>
-      <div class="card"><div class="ic"><svg viewBox="0 0 20 20"><ellipse cx="10" cy="5" rx="6.5" ry="2.6"/><path d="M3.5 5v10c0 1.4 2.9 2.6 6.5 2.6s6.5-1.2 6.5-2.6V5M3.5 10c0 1.4 2.9 2.6 6.5 2.6s6.5-1.2 6.5-2.6"/></svg></div><h3>Memory</h3><p>Durable project memory across sessions — recall on the way in, retain on the way out. Off until you turn it on.</p></div>
-      <div class="card"><div class="ic"><svg viewBox="0 0 20 20"><circle cx="5" cy="5" r="2.2"/><circle cx="5" cy="15" r="2.2"/><circle cx="15" cy="9" r="2.2"/><path d="M5 7.2v5.6M7 5h4a2 2 0 0 1 2 2v0"/></svg></div><h3>Session branching</h3><p>Fork, clone, and label conversation threads. Explore a path without losing the trunk.</p></div>
-      <div class="card"><div class="ic"><svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="7"/><circle cx="10" cy="10" r="2.4"/><path d="M10 3v2.6M10 14.4V17M3 10h2.6M14.4 10H17"/></svg></div><h3>Cockpit</h3><p>Live multi-agent view — a model per subagent, drill into any one, watch the work as it happens.</p></div>
-      <div class="card"><div class="ic"><svg viewBox="0 0 20 20"><path d="M7 3v4M13 3v4M5 7h10v3a5 5 0 0 1-10 0z"/><path d="M10 15v3"/></svg></div><h3>MCP, skills, hooks</h3><p>Extend with MCP servers, authored skills, and lifecycle hooks. Plus browser, web search, and headless exec.</p></div>
-    </div>
-  </section>
-
-  <section class="thesis">
-    <span class="kicker">The thesis</span>
-    <h2>The model is the engine. The <span class="accent">harness</span> is the lever.</h2>
-    <p>Prompt order, tool exposure, edit format, and repair all change how much a model gets done. Veyyon
-      tunes those to each model, so a cheaper one can hold its own on real work.</p>
-  </section>
-
-</main>
+  </div>
+</section>
 
 <footer class="site">
   <div class="wrap foot">
     <div>
-      <span class="brand"><span class="mark"></span>VEYYON</span>
+      <span class="brand">veyyon</span>
       <div class="attrib">A fork of <a href="https://github.com/can1357/oh-my-pi">oh-my-pi</a> (MIT), by Can Boluk. Built as its own product.</div>
     </div>
     <nav>
-      <a href="./models.html">Models</a>
-      <a href="./features.html">Features</a>
-      <a href="./install.html">Install</a>
+      <a href="./models">Models</a>
+      <a href="./features">Features</a>
+      <a href="./install">Install</a>
+      <a href="./changelog">Changelog</a>
       <a href="./docs/">Docs</a>
       <a href="https://github.com/santhsecurity/veyyon">GitHub</a>
     </nav>
   </div>
 </footer>
 
+<script src="./sun.js" defer></script>
+<script src="./motion.js" defer></script>
 <script>
   (function(){var b=document.getElementById('copy'),c=document.getElementById('cmd');
    if(b&&c)b.addEventListener('click',function(){if(navigator.clipboard)navigator.clipboard.writeText(c.textContent).then(function(){b.textContent='copied';setTimeout(function(){b.textContent='copy'},1300)})})})();
