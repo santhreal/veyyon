@@ -1,2 +1,3 @@
-# Convenience alias for the installer (extensionless → the shell script).
-/install    /install.sh   302
+# (Removed the /install -> /install.sh alias: /install now serves the install
+#  page via clean-URL resolution; the raw script lives at /install.sh and
+#  get.veyyon.dev.)
