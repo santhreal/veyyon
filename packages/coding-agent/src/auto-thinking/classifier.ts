@@ -66,7 +66,12 @@ export async function classifyDifficulty(
 
 async function classifyOnline(input: string, deps: ClassifyDifficultyDeps): Promise<Effort> {
 	// Unset tiny/smol inherits the live main model (the classification prompt is tiny).
-	const resolved = resolveRoleSelectionWithInherit(["tiny", "smol"], deps.settings, deps.registry.getAvailable(), deps.model);
+	const resolved = resolveRoleSelectionWithInherit(
+		["tiny", "smol"],
+		deps.settings,
+		deps.registry.getAvailable(),
+		deps.model,
+	);
 	const model = resolved?.model;
 	if (!model) {
 		throw new Error("auto-thinking: no tiny/smol model available for classification");

@@ -6,11 +6,7 @@
  * only emit it when the controller can open it.
  */
 import { describe, expect, test } from "bun:test";
-import {
-	emitOAuthSuccessPage,
-	renderOAuthResultHtml,
-	serveOAuthSuccessPage,
-} from "../success-page";
+import { emitOAuthSuccessPage, renderOAuthResultHtml, serveOAuthSuccessPage } from "../success-page";
 
 describe("renderOAuthResultHtml", () => {
 	test("embeds the success state and leaves no template placeholder", () => {

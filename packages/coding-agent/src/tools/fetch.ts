@@ -687,7 +687,9 @@ export async function renderHtmlToText(
 		// nested HTML crashes the native converter (see MAX_HTML_NESTING_DEPTH), so
 		// skip it for such input and let the chain fall through to another reader.
 		native: () =>
-			htmlNestingExceeds(html, MAX_HTML_NESTING_DEPTH) ? Promise.resolve(null) : htmlToMarkdown(html, { cleanContent: true }),
+			htmlNestingExceeds(html, MAX_HTML_NESTING_DEPTH)
+				? Promise.resolve(null)
+				: htmlToMarkdown(html, { cleanContent: true }),
 		trafilatura: async () => {
 			const trafilatura = await ensureTool("trafilatura", { signal: overallSignal, silent: true });
 			if (!trafilatura) return null;

@@ -9,7 +9,6 @@
  * test environment (verified: `bun run import-helpers.ts` succeeds).
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
-import { CONFIG_DIR_NAME } from "@veyyon/pi-utils/dirs";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -26,6 +25,7 @@ import {
 	writeInstalledPluginsRegistry,
 } from "@veyyon/pi-coding-agent/extensibility/plugins/marketplace";
 import { removeSyncWithRetries } from "@veyyon/pi-utils";
+import { CONFIG_DIR_NAME } from "@veyyon/pi-utils/dirs";
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 

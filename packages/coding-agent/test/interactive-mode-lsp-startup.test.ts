@@ -5,11 +5,11 @@ import { ModelRegistry } from "@veyyon/pi-coding-agent/config/model-registry";
 import { resetSettingsForTest, Settings } from "@veyyon/pi-coding-agent/config/settings";
 import { LSP_STARTUP_EVENT_CHANNEL, type LspStartupEvent } from "@veyyon/pi-coding-agent/lsp/startup-events";
 import { InteractiveMode } from "@veyyon/pi-coding-agent/modes/interactive-mode";
-import { lookupBuiltinSlashCommand } from "@veyyon/pi-coding-agent/slash-commands/builtin-registry";
 import { initTheme, theme } from "@veyyon/pi-coding-agent/modes/theme/theme";
 import { AgentSession } from "@veyyon/pi-coding-agent/session/agent-session";
 import { AuthStorage } from "@veyyon/pi-coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/pi-coding-agent/session/session-manager";
+import { lookupBuiltinSlashCommand } from "@veyyon/pi-coding-agent/slash-commands/builtin-registry";
 import type { LspStartupServerInfo } from "@veyyon/pi-coding-agent/tools";
 import { EventBus } from "@veyyon/pi-coding-agent/utils/event-bus";
 import { TempDir } from "@veyyon/pi-utils";
@@ -104,9 +104,10 @@ describe("InteractiveMode LSP startup welcome banner", () => {
 			},
 		} as unknown as Parameters<NonNullable<typeof lspCommand.handleTui>>[1];
 		const runLsp = async () => {
-			await lspCommand.handleTui?.({ name: "lsp", args: "" } as Parameters<
-				NonNullable<typeof lspCommand.handleTui>
-			>[0], runtime);
+			await lspCommand.handleTui?.(
+				{ name: "lsp", args: "" } as Parameters<NonNullable<typeof lspCommand.handleTui>>[0],
+				runtime,
+			);
 			return Bun.stripANSI(outputs[outputs.length - 1] ?? "");
 		};
 

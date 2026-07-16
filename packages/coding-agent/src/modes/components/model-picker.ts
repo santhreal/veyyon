@@ -9,14 +9,6 @@ import type { ModelRegistry } from "../../config/model-registry";
 import type { Settings } from "../../config/settings";
 import { theme } from "../theme/theme";
 import {
-	buildBrowserItems,
-	ModelBrowser,
-	type ModelBrowserItem,
-	resolveRoleAssignments,
-	sortModelItems,
-} from "./model-browser";
-import type { ScopedModelItem } from "./model-hub";
-import {
 	computeModalDims,
 	hitTestModalChrome,
 	MODAL_SIZING_MEDIUM,
@@ -24,6 +16,14 @@ import {
 	renderModalShell,
 	withCompact,
 } from "./modal-shell";
+import {
+	buildBrowserItems,
+	ModelBrowser,
+	type ModelBrowserItem,
+	resolveRoleAssignments,
+	sortModelItems,
+} from "./model-browser";
+import type { ScopedModelItem } from "./model-hub";
 
 export interface ModelPickerCallbacks {
 	/** A model was chosen for a session-only switch. `selector` is `provider/id`. */
@@ -155,7 +155,11 @@ export class ModelPickerComponent implements Component {
 			}
 			return true;
 		}
-		if (chrome.kind === "close" || chrome.kind === "outside" || (chrome.kind === "shortcut" && chrome.id === "close")) {
+		if (
+			chrome.kind === "close" ||
+			chrome.kind === "outside" ||
+			(chrome.kind === "shortcut" && chrome.id === "close")
+		) {
 			this.#onCancel();
 			return true;
 		}
@@ -178,9 +182,7 @@ export class ModelPickerComponent implements Component {
 		const listBudget = Math.max(MIN_VISIBLE, dims.modalHeight - 8 - BROWSER_FRAME_ROWS);
 		this.#browser.setMaxVisible(listBudget);
 
-		const status = this.#configError
-			? theme.fg("error", this.#configError)
-			: theme.fg("muted", STATUS_HINT);
+		const status = this.#configError ? theme.fg("error", this.#configError) : theme.fg("muted", STATUS_HINT);
 
 		const body = [status, ...this.#browser.render(dims.contentWidth)];
 		const shell = renderModalShell({

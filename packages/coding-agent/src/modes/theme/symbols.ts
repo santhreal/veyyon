@@ -587,11 +587,11 @@ export const NERD_SYMBOLS: SymbolMap = {
 	"icon.time": "\uf017",
 	// pick:  | alt: π ∏ ∑
 	"icon.pi": "\ue22c",
-	// pick: 󰊠 (nf-md-ghost) | alt: 
+	// pick: 󰊠 (nf-md-ghost) | alt:
 	"icon.ghost": "\u{f02a0}",
 	// pick:  | alt: 
 	"icon.agents": "\uf0c0",
-	// pick:  (nf-fa-gear) | alt:  
+	// pick:  (nf-fa-gear) | alt:
 	"icon.job": "\uf013",
 	// pick:  | alt:  
 	"icon.cache": "\uf1c0",

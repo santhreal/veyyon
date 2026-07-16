@@ -307,7 +307,9 @@ export class WelcomeComponent implements Component {
 		const sun = sunW ? this.#currentLogoFrame(sunW, COMPACT_SUN_H) : [];
 
 		const right: string[] = [];
-		right.push(this.#fitToWidth(theme.bold(theme.fg("accent", APP_NAME)) + theme.fg("dim", ` v${this.version}`), rightW));
+		right.push(
+			this.#fitToWidth(theme.bold(theme.fg("accent", APP_NAME)) + theme.fg("dim", ` v${this.version}`), rightW),
+		);
 		right.push(this.#fitToWidth(theme.fg("muted", VEYYON_VALUE_LINE), rightW));
 		const model =
 			this.modelName && this.providerName
@@ -320,7 +322,10 @@ export class WelcomeComponent implements Component {
 			),
 		);
 		right.push(
-			this.#fitToWidth(`${theme.fg("dim", "more:")} ${theme.fg("accent", "/welcome")}${theme.fg("dim", " · /resume · /settings")}`, rightW),
+			this.#fitToWidth(
+				`${theme.fg("dim", "more:")} ${theme.fg("accent", "/welcome")}${theme.fg("dim", " · /resume · /settings")}`,
+				rightW,
+			),
 		);
 
 		const rowsN = Math.max(sun.length, right.length);
@@ -438,11 +443,7 @@ export class WelcomeComponent implements Component {
 }
 
 /** Retained for API/compat and tests — the old box-drawing wordmark. */
-export const VEYYON_LOGO = [
-	"╦  ╦╔═╗╦ ╦╦ ╦╔═╗╔╗╔",
-	"╚╗╔╝║╣ ╚═╣╚╦╝║ ║║║║",
-	" ╚╝ ╚═╝  ╩ ╩ ╚═╝╝╚╝",
-];
+export const VEYYON_LOGO = ["╦  ╦╔═╗╦ ╦╦ ╦╔═╗╔╗╔", "╚╗╔╝║╣ ╚═╣╚╦╝║ ║║║║", " ╚╝ ╚═╝  ╩ ╩ ╚═╝╝╚╝"];
 
 /**
  * Veyyon silver luminance stops: dark → brand → bright. The middle/bright

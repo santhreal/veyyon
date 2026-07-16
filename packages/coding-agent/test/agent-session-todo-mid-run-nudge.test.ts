@@ -9,7 +9,7 @@ import { AgentSession, type AgentSessionEvent } from "@veyyon/pi-coding-agent/se
 import { AuthStorage } from "@veyyon/pi-coding-agent/session/auth-storage";
 import type { CustomMessage } from "@veyyon/pi-coding-agent/session/messages";
 import { SessionManager } from "@veyyon/pi-coding-agent/session/session-manager";
-import { type ToolSession } from "@veyyon/pi-coding-agent/tools";
+import type { ToolSession } from "@veyyon/pi-coding-agent/tools";
 import { TodoTool } from "@veyyon/pi-coding-agent/tools/todo";
 import { TempDir } from "@veyyon/pi-utils";
 

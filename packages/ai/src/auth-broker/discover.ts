@@ -6,6 +6,7 @@
  */
 import * as path from "node:path";
 import {
+	$pickenv,
 	getAgentDbPath,
 	getAgentDir,
 	getAuthBrokerSnapshotCachePath,
@@ -13,7 +14,6 @@ import {
 	isEnoent,
 	logger,
 	MAIN_CONFIG_FILENAMES,
-	$pickenv,
 } from "@veyyon/pi-utils";
 import { YAML } from "bun";
 import { AuthStorage } from "../auth-storage";

@@ -138,7 +138,9 @@ describe("LSP diagnostics freshness", () => {
 
 	it("does not start an LSP server just to notify existing clients when write-time features are disabled", async () => {
 		const filePath = path.join(tempDir.path(), "plain.ts");
-		const loadConfig = vi.spyOn(lspConfig, "loadConfig").mockReturnValue({ servers: {}, idleTimeoutMs: undefined, missingServers: [] });
+		const loadConfig = vi
+			.spyOn(lspConfig, "loadConfig")
+			.mockReturnValue({ servers: {}, idleTimeoutMs: undefined, missingServers: [] });
 		const getServers = vi.spyOn(lspConfig, "getServersForFile").mockReturnValue([["test-lsp", TEST_SERVER]]);
 		const getOrCreate = vi
 			.spyOn(lspClient, "getOrCreateClient")

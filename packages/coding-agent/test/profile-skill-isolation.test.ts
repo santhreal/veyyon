@@ -17,8 +17,8 @@
  */
 
 import { afterEach, describe, expect, test } from "bun:test";
-import { getAgentDir, getActiveProfile, MAIN_CONFIG_FILENAMES, setProfile } from "@veyyon/pi-utils";
 import { getManagedSkillsDir } from "@veyyon/pi-coding-agent/autolearn/managed-skills";
+import { getActiveProfile, getAgentDir, MAIN_CONFIG_FILENAMES, setProfile } from "@veyyon/pi-utils";
 
 function nativeUserSkillsDir(): string {
 	// Mirrors discovery/builtin.ts loadSkills user scan: `<agentDir>/skills`.

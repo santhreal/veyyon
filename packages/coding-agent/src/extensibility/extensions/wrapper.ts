@@ -8,7 +8,6 @@ import type { Theme } from "../../modes/theme/theme";
 import {
 	type ApprovalMode,
 	formatApprovalPrompt,
-	normalizeApprovalMode,
 	requiresApproval,
 	resolveEffectiveApprovalMode,
 } from "../../tools/approval";
@@ -48,7 +47,8 @@ export class RegisteredToolAdapter implements AgentTool<TSchema, unknown, unknow
 		// enters the custom-renderer path, gets undefined back, and silently
 		// discards tool result text (extensions without renderers show blank).
 		if (registeredTool.definition.renderCall) {
-			this.renderCall = (args, options, theme) => registeredTool.definition.renderCall!(args, options, theme as Theme);
+			this.renderCall = (args, options, theme) =>
+				registeredTool.definition.renderCall!(args, options, theme as Theme);
 		}
 		if (registeredTool.definition.renderResult) {
 			this.renderResult = (result, options, theme, args) =>

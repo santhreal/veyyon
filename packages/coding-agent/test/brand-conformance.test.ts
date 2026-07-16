@@ -14,8 +14,8 @@
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { SILVER_STOPS } from "@veyyon/pi-coding-agent/modes/components/welcome";
 import { EMBER as SUN_EMBER_RAMP } from "@veyyon/pi-coding-agent/modes/components/sun";
+import { SILVER_STOPS } from "@veyyon/pi-coding-agent/modes/components/welcome";
 import { getThemeByName } from "@veyyon/pi-coding-agent/modes/theme/theme";
 
 const BLACK = "#000000";

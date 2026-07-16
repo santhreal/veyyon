@@ -114,9 +114,7 @@ describe("legacy-pi @(scope)/pi-ai root `Type` remap (issue #1437)", () => {
 
 	it("exports getModel as getBundledModel", async () => {
 		const loaded = (await loadLegacyPiModule(
-			await writeFixtureExtension(
-				'import { getModel } from "@veyyon/pi-ai"; export const testGetModel = getModel;',
-			),
+			await writeFixtureExtension('import { getModel } from "@veyyon/pi-ai"; export const testGetModel = getModel;'),
 		)) as { testGetModel: unknown };
 		expect(loaded.testGetModel).toBe(getBundledModel);
 	});

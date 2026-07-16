@@ -20,10 +20,7 @@ import "./setup";
 import { cmdRemember } from "@veyyon/pi-mnemopi/cli";
 import { BeamMemory } from "@veyyon/pi-mnemopi/core/beam";
 import { Mnemopi } from "@veyyon/pi-mnemopi/core/memory";
-import {
-	type ResolvedMnemopiRuntimeOptions,
-	withMnemopiRuntimeOptions,
-} from "@veyyon/pi-mnemopi/core/runtime-options";
+import { type ResolvedMnemopiRuntimeOptions, withMnemopiRuntimeOptions } from "@veyyon/pi-mnemopi/core/runtime-options";
 
 interface EmbeddingRow {
 	readonly memory_id: string;

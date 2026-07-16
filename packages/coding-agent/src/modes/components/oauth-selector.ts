@@ -19,7 +19,6 @@ import {
 	hitTestModalChrome,
 	MODAL_SIZING_MEDIUM,
 	type ModalShellGeometry,
-	type ModalShortcut,
 	renderModalShell,
 	SELECT_LIST_SHORTCUTS,
 	withCompact,
@@ -471,7 +470,11 @@ export class OAuthSelectorComponent implements Component {
 			}
 			return true;
 		}
-		if (chrome.kind === "close" || chrome.kind === "outside" || (chrome.kind === "shortcut" && chrome.id === "close")) {
+		if (
+			chrome.kind === "close" ||
+			chrome.kind === "outside" ||
+			(chrome.kind === "shortcut" && chrome.id === "close")
+		) {
 			this.stopValidation();
 			this.#onCancelCallback();
 			return true;

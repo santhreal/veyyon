@@ -1,10 +1,4 @@
-import {
-	routeSelectListMouse,
-	type SelectItem,
-	SelectList,
-	type SgrMouseEvent,
-	truncateToWidth,
-} from "@veyyon/pi-tui";
+import { routeSelectListMouse, type SelectItem, SelectList, type SgrMouseEvent, truncateToWidth } from "@veyyon/pi-tui";
 import { getSearchProvider, setPreferredSearchProvider } from "../../../web/search/provider";
 import { isSearchProviderPreference, SEARCH_PROVIDER_OPTIONS, type SearchProviderId } from "../../../web/search/types";
 import { getSelectListTheme, theme } from "../../theme/theme";

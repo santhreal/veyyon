@@ -100,7 +100,7 @@ describe("markdown deep-nesting DoS", () => {
 	// point (~20k) to prove the input cap, not just the render guard, is holding.
 	it("does not overflow on deep blockquotes", () => {
 		for (const depth of [200, 1000, 5000, 20000, 50000]) {
-			for (const src of [">".repeat(depth) + " x", "> ".repeat(depth) + "x"]) {
+			for (const src of [`${">".repeat(depth)} x`, `${"> ".repeat(depth)}x`]) {
 				let lines: readonly string[];
 				try {
 					lines = render(src);
@@ -117,7 +117,7 @@ describe("markdown deep-nesting DoS", () => {
 	// The input cap must keep it well under a second.
 	it("does not hang on deep nested lists", () => {
 		let md = "";
-		for (let i = 0; i < 2000; i++) md += "  ".repeat(i) + "- x\n";
+		for (let i = 0; i < 2000; i++) md += `${"  ".repeat(i)}- x\n`;
 		const t0 = performance.now();
 		let lines: readonly string[];
 		try {
@@ -149,7 +149,7 @@ describe("markdown deep-nesting DoS", () => {
 	// to near-zero (the small residual is marked's own lexer, out of our hands).
 	it("does not blow up on deeply nested inline emphasis", () => {
 		for (const marker of ["**", "*", "__", "_", "~~"]) {
-			const src = marker.repeat(3000) + "a" + marker.repeat(3000);
+			const src = `${marker.repeat(3000)}a${marker.repeat(3000)}`;
 			const t0 = performance.now();
 			let lines: readonly string[];
 			try {

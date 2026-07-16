@@ -7,7 +7,10 @@ const ENV_MODULE = path.resolve(import.meta.dir, "../src/env.ts");
  * The VEYYON_/OMP_ → PI_ mirror runs at env-module import time, so each case
  * spawns a fresh bun that imports the module and prints the resolved values.
  */
-async function resolveInSubprocess(env: Record<string, string>, keys: string[]): Promise<Record<string, string | undefined>> {
+async function resolveInSubprocess(
+	env: Record<string, string>,
+	keys: string[],
+): Promise<Record<string, string | undefined>> {
 	const script = `const { $env } = await import(${JSON.stringify(ENV_MODULE)}); console.log(JSON.stringify(${JSON.stringify(keys)}.map(k => $env[k])));`;
 	const proc = Bun.spawn(["bun", "-e", script], {
 		env: { ...process.env, ...env },

@@ -1,8 +1,8 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { $which, getPuppeteerDir, logger } from "@veyyon/pi-utils";
 import type * as BrowsersNs from "@puppeteer/browsers";
+import { $which, getPuppeteerDir, logger } from "@veyyon/pi-utils";
 import type { Browser, CDPSession, Page, default as Puppeteer, Target } from "puppeteer-core";
 import stealthTamperingScript from "../puppeteer/00_stealth_tampering.txt" with { type: "text" };
 import stealthActivityScript from "../puppeteer/01_stealth_activity.txt" with { type: "text" };

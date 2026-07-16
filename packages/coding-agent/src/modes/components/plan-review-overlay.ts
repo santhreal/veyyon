@@ -731,12 +731,18 @@ export class PlanReviewOverlay implements Component {
 				chips.push({ label: "a annotate" }, { label: "d delete" }, { label: "u undo" });
 				break;
 			case "body":
-				chips.push({ label: "up/down scroll" }, { label: "shift faster" }, { label: "pgup/pgdn" }, { label: "g/G ends" });
+				chips.push(
+					{ label: "up/down scroll" },
+					{ label: "shift faster" },
+					{ label: "pgup/pgdn" },
+					{ label: "g/G ends" },
+				);
 				break;
 		}
 		if (this.callbacks.onCopyPlan) chips.push({ label: "c copy" });
 		chips.push({ label: "tab regions" });
-		if (this.#externalEditorLabel && this.#focus !== "toc") chips.push({ label: `${this.#externalEditorLabel} editor` });
+		if (this.#externalEditorLabel && this.#focus !== "toc")
+			chips.push({ label: `${this.#externalEditorLabel} editor` });
 		chips.push({ label: this.#helpSuffix, clickable: true, id: "close" });
 		return chips;
 	}
@@ -927,9 +933,7 @@ export class PlanReviewOverlay implements Component {
 		});
 		this.#shellGeometry = shell.geometry;
 		this.#bodyRowOffset = shell.geometry?.bodyRowStart ?? 0;
-		this.#sidebarClickMaxCol = sidebarShown
-			? (shell.geometry?.leftPad ?? 0) + 2 + sidebarWidth + 1
-			: 0;
+		this.#sidebarClickMaxCol = sidebarShown ? (shell.geometry?.leftPad ?? 0) + 2 + sidebarWidth + 1 : 0;
 		return shell.lines;
 	}
 }

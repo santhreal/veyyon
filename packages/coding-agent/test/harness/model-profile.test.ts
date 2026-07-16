@@ -11,7 +11,7 @@ import {
 	resetHarnessProfileFileCache,
 	resolveHarnessProfileForModel,
 } from "@veyyon/pi-coding-agent/harness/model-profile";
-import { removeSyncWithRetries, setAgentDir, Snowflake } from "@veyyon/pi-utils";
+import { removeSyncWithRetries, Snowflake, setAgentDir } from "@veyyon/pi-utils";
 
 const model: Model = buildModel({
 	id: "gpt-test",

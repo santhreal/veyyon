@@ -2,13 +2,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import {
-	type AssistantMessageEventStream,
-	clearCustomApis,
-	Effort,
-	type FetchImpl,
-	getCustomApi,
-} from "@veyyon/pi-ai";
+import { type AssistantMessageEventStream, clearCustomApis, Effort, type FetchImpl, getCustomApi } from "@veyyon/pi-ai";
 import { getOAuthProviders, unregisterOAuthProviders } from "@veyyon/pi-ai/oauth";
 import type { OAuthCredentials } from "@veyyon/pi-ai/oauth/types";
 import { ModelRegistry, type ProviderConfigInput } from "@veyyon/pi-coding-agent/config/model-registry";

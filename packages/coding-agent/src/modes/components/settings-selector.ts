@@ -48,7 +48,6 @@ import { getCurrentThemeName, getSelectListTheme, getSettingsListTheme, theme } 
 import { BUILTIN_PERSONALITY_DESCRIPTIONS, NONE_PERSONALITY } from "../../personality/resolver";
 import { AUTO_THINKING, type ConfiguredThinkingLevel } from "../../thinking";
 import { getTabBarTheme } from "../shared";
-import { ModelSelectorPanel } from "./model-selector";
 import {
 	BREADCRUMB_HOVER_ID,
 	computeModalDims,
@@ -61,6 +60,7 @@ import {
 	SETTINGS_SUBPANE_SHORTCUTS,
 	withCompact,
 } from "./modal-shell";
+import { ModelSelectorPanel } from "./model-selector";
 import { handleInputOrEscape, PluginSettingsComponent } from "./plugin-settings";
 import { getSettingDef, getSettingsForTab, type SettingDef } from "./settings-defs";
 import { SnapcompactShapePreview } from "./snapcompact-shape-preview";

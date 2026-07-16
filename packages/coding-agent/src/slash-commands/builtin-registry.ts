@@ -10,11 +10,7 @@ import { expandRoleAlias, getModelMatchPreferences, resolveCliModel } from "../c
 import { applyProviderGlobalsFromSettings } from "../config/provider-globals";
 import type { SettingPath, SettingValue } from "../config/settings";
 import { settings } from "../config/settings";
-import {
-	clearPluginRootsAndCaches,
-	resolveActiveProjectRegistryPath,
-	resolveOrDefaultProjectRegistryPath,
-} from "../discovery/helpers.js";
+import { clearPluginRootsAndCaches, resolveActiveProjectRegistryPath } from "../discovery/helpers.js";
 import { shareSession } from "../export/share";
 import { PluginManager } from "../extensibility/plugins";
 import { resolveMemoryBackend } from "../memory-backend";
@@ -1643,7 +1639,10 @@ const BUILTIN_SLASH_COMMAND_REGISTRY: ReadonlyArray<SlashCommandSpec> = [
 					const label = display && display !== profile.name ? `${profile.name} (${display})` : profile.name;
 					lines.push(`${marker} ${label}`);
 				}
-				lines.push("", "Switch: /profile <name> · Rename: /profile [name] rename to <new> · New: /profile new <name>");
+				lines.push(
+					"",
+					"Switch: /profile <name> · Rename: /profile [name] rename to <new> · New: /profile new <name>",
+				);
 				runtime.ctx.showStatus(lines.join("\n"));
 			};
 
@@ -1667,7 +1666,7 @@ const BUILTIN_SLASH_COMMAND_REGISTRY: ReadonlyArray<SlashCommandSpec> = [
 							preselected: labels,
 						},
 					]);
-					if (!result || result.kind !== "submit") {
+					if (result?.kind !== "submit") {
 						runtime.ctx.showStatus("Profile creation cancelled");
 						return commandConsumed();
 					}
@@ -1709,7 +1708,9 @@ const BUILTIN_SLASH_COMMAND_REGISTRY: ReadonlyArray<SlashCommandSpec> = [
 				const { resolveOmpCommand } = await import("../task/omp-command");
 				const omp = resolveOmpCommand();
 				const argv =
-					omp.shell && process.platform === "win32" ? ["cmd.exe", "/c", omp.cmd, ...omp.args] : [omp.cmd, ...omp.args];
+					omp.shell && process.platform === "win32"
+						? ["cmd.exe", "/c", omp.cmd, ...omp.args]
+						: [omp.cmd, ...omp.args];
 				runtime.ctx.requestRelaunch({
 					argv,
 					env: {
@@ -1734,7 +1735,7 @@ const BUILTIN_SLASH_COMMAND_REGISTRY: ReadonlyArray<SlashCommandSpec> = [
 		acpInputHint: "[list]",
 		subcommands: [{ name: "list", description: "List installed npm/link plugins" }],
 		allowArgs: true,
-		handle: async (command, runtime) => {
+		handle: async (_command, runtime) => {
 			const npmManager = new PluginManager();
 			const npmPlugins = await npmManager.list();
 			if (npmPlugins.length === 0) {
@@ -1757,10 +1758,13 @@ const BUILTIN_SLASH_COMMAND_REGISTRY: ReadonlyArray<SlashCommandSpec> = [
 					runtime.ctx.showStatus("No plugins installed");
 					return;
 				}
-				const lines = ["npm plugins:", ...npmPlugins.map(p => {
-					const status = p.enabled === false ? " (disabled)" : "";
-					return `  ${p.name}@${p.version}${status}`;
-				})];
+				const lines = [
+					"npm plugins:",
+					...npmPlugins.map(p => {
+						const status = p.enabled === false ? " (disabled)" : "";
+						return `  ${p.name}@${p.version}${status}`;
+					}),
+				];
 				runtime.ctx.showStatus(lines.join("\n"));
 			} catch (err) {
 				runtime.ctx.showStatus(`Plugin error: ${err}`);

@@ -20,17 +20,19 @@ describe("html nesting DoS gate", () => {
 	it("flags the deep-nesting attack that crashes the native converter", () => {
 		// ~5000-deep is the empirically-observed core-dump depth; the gate must trip
 		// well before it.
-		const attack = "<div>".repeat(5000) + "x" + "</div>".repeat(5000);
+		const attack = `${"<div>".repeat(5000)}x${"</div>".repeat(5000)}`;
 		expect(htmlNestingExceeds(attack, LIMIT)).toBe(true);
 		// Just past the limit also trips.
-		expect(htmlNestingExceeds("<div>".repeat(LIMIT + 5) + "x", LIMIT)).toBe(true);
+		expect(htmlNestingExceeds(`${"<div>".repeat(LIMIT + 5)}x`, LIMIT)).toBe(true);
 	});
 
 	it("does not flag realistic pages, even large or void-heavy ones", () => {
 		// A normal document nests only a handful deep.
-		expect(htmlNestingExceeds("<html><body><main><article><p>hi</p></article></main></body></html>", LIMIT)).toBe(false);
+		expect(htmlNestingExceeds("<html><body><main><article><p>hi</p></article></main></body></html>", LIMIT)).toBe(
+			false,
+		);
 		// Depth ~20 (deeper than almost any real page) still passes.
-		expect(htmlNestingExceeds("<div>".repeat(20) + "x" + "</div>".repeat(20), LIMIT)).toBe(false);
+		expect(htmlNestingExceeds(`${"<div>".repeat(20)}x${"</div>".repeat(20)}`, LIMIT)).toBe(false);
 		// A long run of VOID elements does not nest — must not false-trip.
 		expect(htmlNestingExceeds("<br>".repeat(3000), LIMIT)).toBe(false);
 		expect(htmlNestingExceeds('<img src="x">'.repeat(3000), LIMIT)).toBe(false);

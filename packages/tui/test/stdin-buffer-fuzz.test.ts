@@ -116,7 +116,9 @@ describe("StdinBuffer fuzz", () => {
 				try {
 					buffer.process(chunk);
 				} catch (e) {
-					throw new Error(`process threw on stream ${JSON.stringify(stream)} chunk ${JSON.stringify(chunk)}: ${e}`);
+					throw new Error(
+						`process threw on stream ${JSON.stringify(stream)} chunk ${JSON.stringify(chunk)}: ${e}`,
+					);
 				}
 				fedSoFar += chunk.length;
 				// The pending buffer can never hold more than the bytes fed so far —

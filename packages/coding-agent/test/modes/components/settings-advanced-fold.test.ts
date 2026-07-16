@@ -13,7 +13,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { resetSettingsForTest, Settings, settings } from "@veyyon/pi-coding-agent/config/settings";
 import { SETTINGS_SCHEMA, TAB_GROUPS } from "@veyyon/pi-coding-agent/config/settings-schema";
-import { getSettingDef, getSettingsForTab, type SettingDef } from "@veyyon/pi-coding-agent/modes/components/settings-defs";
+import { getSettingDef, getSettingsForTab } from "@veyyon/pi-coding-agent/modes/components/settings-defs";
 import { SettingsSelectorComponent } from "@veyyon/pi-coding-agent/modes/components/settings-selector";
 import { initTheme } from "@veyyon/pi-coding-agent/modes/theme/theme";
 import { ImageProtocol, TERMINAL } from "@veyyon/pi-tui";
@@ -87,7 +87,12 @@ describe("appearance advanced fold — schema", () => {
 	});
 
 	it("does not delete any of the 26 original appearance keys from the schema (demotion/move is placement-only)", () => {
-		const originalAppearanceKeys = [...KEPT_APPEARANCE_PATHS, ...DEMOTED_APPEARANCE_PATHS, "images.blockImages", "display.collapseCompacted"];
+		const originalAppearanceKeys = [
+			...KEPT_APPEARANCE_PATHS,
+			...DEMOTED_APPEARANCE_PATHS,
+			"images.blockImages",
+			"display.collapseCompacted",
+		];
 		for (const key of originalAppearanceKeys) {
 			expect(Object.prototype.hasOwnProperty.call(SETTINGS_SCHEMA, key)).toBe(true);
 		}

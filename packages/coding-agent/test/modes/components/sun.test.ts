@@ -134,7 +134,9 @@ describe("renderSunField edge sizes (the UI can pass anything — never crash)",
 	}
 
 	test("zero radius still produces a valid (tiny or empty) hot spot, never NaN glyphs", () => {
-		const out = renderSunField({ ...BASE, radius: 0 }).map(strip).join("");
+		const out = renderSunField({ ...BASE, radius: 0 })
+			.map(strip)
+			.join("");
 		expect(out).not.toContain("NaN");
 		expect(out).not.toContain("undefined");
 	});

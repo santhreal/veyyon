@@ -91,11 +91,11 @@ describe("latex fuzz invariants", () => {
 		// `#MAX_DEPTH` and overflows the stack (regression: it did, throwing a
 		// RangeError at depth ~8k and re-scanning O(n^2)).
 		for (const depth of [200, 1000, 5000, 20000]) {
-			const nestedBraces = "{".repeat(depth) + "x" + "}".repeat(depth);
-			const nestedFrac = "\\frac{a}".repeat(depth) + "{b}";
-			const nestedScripts = "x^{".repeat(depth) + "y" + "}".repeat(depth);
-			const nestedSqrtOpt = "\\sqrt[".repeat(depth) + "2" + "]{x}".repeat(depth);
-			const nestedXarrowOpt = "\\xrightarrow[".repeat(depth) + "a" + "]{b}".repeat(depth);
+			const nestedBraces = `${"{".repeat(depth)}x${"}".repeat(depth)}`;
+			const nestedFrac = `${"\\frac{a}".repeat(depth)}{b}`;
+			const nestedScripts = `${"x^{".repeat(depth)}y${"}".repeat(depth)}`;
+			const nestedSqrtOpt = `${"\\sqrt[".repeat(depth)}2${"]{x}".repeat(depth)}`;
+			const nestedXarrowOpt = `${"\\xrightarrow[".repeat(depth)}a${"]{b}".repeat(depth)}`;
 			for (const payload of [nestedBraces, nestedFrac, nestedScripts, nestedSqrtOpt, nestedXarrowOpt]) {
 				let out: string;
 				try {
@@ -113,7 +113,7 @@ describe("latex fuzz invariants", () => {
 		// crashing; a huge payload must complete in roughly linear time (the old
 		// fresh-parser laundering was quadratic — 5k-deep took ~750ms and 10k-deep
 		// blew the stack). 100k-deep here is ~1.4MB of input and must return.
-		const attack = "\\sqrt[".repeat(100_000) + "2" + "]{x}".repeat(100_000);
+		const attack = `${"\\sqrt[".repeat(100_000)}2${"]{x}".repeat(100_000)}`;
 		expect(typeof latexToUnicode(attack)).toBe("string");
 		// Real (shallow) optional-argument math is untouched by the fix.
 		expect(latexToUnicode("\\sqrt[3]{x}")).toBe("∛x");

@@ -24,6 +24,16 @@
  */
 
 import {
+	type Attributes,
+	type AttributeValue,
+	context,
+	type Span,
+	SpanKind,
+	SpanStatusCode,
+	type Tracer,
+	trace,
+} from "@opentelemetry/api";
+import {
 	type Api,
 	type AssistantMessage,
 	type Context,
@@ -37,16 +47,6 @@ import {
 	type ToolChoice,
 	type Usage,
 } from "@veyyon/pi-ai";
-import {
-	type Attributes,
-	type AttributeValue,
-	context,
-	type Span,
-	SpanKind,
-	SpanStatusCode,
-	type Tracer,
-	trace,
-} from "@opentelemetry/api";
 import { AgentRunCollector, type AgentRunCoverage, type AgentRunSummary, type ToolStatus } from "./run-collector";
 import type { AgentTool } from "./types";
 import { EventLoopKeepalive } from "./utils/yield";

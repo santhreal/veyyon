@@ -61,7 +61,19 @@ const FRAGMENTS: readonly string[] = [
 	"SELECT * FROM",
 ];
 
-const LANGS = [undefined, "typescript", "javascript", "python", "rust", "json", "html", "sql", "bash", "not-a-language", ""];
+const LANGS = [
+	undefined,
+	"typescript",
+	"javascript",
+	"python",
+	"rust",
+	"json",
+	"html",
+	"sql",
+	"bash",
+	"not-a-language",
+	"",
+];
 
 function buildCode(rand: () => number): string {
 	const n = Math.floor(rand() * 50);
@@ -95,7 +107,7 @@ describe("highlightCode fuzz", () => {
 	it("deeply nested code does not overflow the highlighter", async () => {
 		const theme = await getThemeByName("dark");
 		for (const depth of [500, 5000, 20000]) {
-			const code = "{".repeat(depth) + "x" + "}".repeat(depth);
+			const code = `${"{".repeat(depth)}x${"}".repeat(depth)}`;
 			let lines: string[];
 			try {
 				lines = highlightCode(code, "json", theme!);

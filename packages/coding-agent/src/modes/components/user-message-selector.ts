@@ -256,7 +256,11 @@ export class UserMessageSelectorComponent implements Component {
 			}
 			return true;
 		}
-		if (chrome.kind === "close" || chrome.kind === "outside" || (chrome.kind === "shortcut" && chrome.id === "close")) {
+		if (
+			chrome.kind === "close" ||
+			chrome.kind === "outside" ||
+			(chrome.kind === "shortcut" && chrome.id === "close")
+		) {
 			this.#onCancelCallback();
 			return true;
 		}

@@ -257,7 +257,7 @@ describe("latexToBlock DoS guard (deep nesting)", () => {
 	// must bound work regardless of depth while leaving realistic math untouched.
 	it("bounds work on a deeply nested fraction chain (no hang, no overflow)", () => {
 		for (const depth of [1000, 50_000, 200_000]) {
-			const frac = "\\frac{".repeat(depth) + "a" + "}{b}".repeat(depth);
+			const frac = `${"\\frac{".repeat(depth)}a${"}{b}".repeat(depth)}`;
 			const t0 = performance.now();
 			let lines: string[];
 			try {
@@ -277,8 +277,8 @@ describe("latexToBlock DoS guard (deep nesting)", () => {
 
 	it("bounds deeply nested radicals and groups too", () => {
 		for (const payload of [
-			"\\sqrt{".repeat(20_000) + "x" + "}".repeat(20_000),
-			"{".repeat(50_000) + "x" + "}".repeat(50_000),
+			`${"\\sqrt{".repeat(20_000)}x${"}".repeat(20_000)}`,
+			`${"{".repeat(50_000)}x${"}".repeat(50_000)}`,
 		]) {
 			expect(Array.isArray(latexToBlock(payload))).toBe(true);
 		}

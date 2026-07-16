@@ -12,7 +12,6 @@ beforeAll(async () => {
 	await initTheme();
 });
 
-
 /**
  * Icon presence is preset-dependent: the default unicode preset is
  * deliberately icon-light (folder/scratch glyphs are empty strings), while the

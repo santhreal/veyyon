@@ -10,7 +10,7 @@
  *
  * Deterministic LCG so a failing width sequence reproduces from the seed.
  */
-import { describe, expect, it } from "bun:test";
+import { describe, it } from "bun:test";
 import { Markdown } from "@veyyon/pi-tui/components/markdown";
 import { Text } from "@veyyon/pi-tui/components/text";
 import { buildString, lcg } from "./helpers/adversarial-strings";

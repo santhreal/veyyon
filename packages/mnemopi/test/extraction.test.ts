@@ -12,10 +12,7 @@ import {
 	resetHostLlmBackendForTests,
 	setHostLlmBackend,
 } from "@veyyon/pi-mnemopi/core/llm-backends";
-import {
-	type ResolvedMnemopiRuntimeOptions,
-	withMnemopiRuntimeOptions,
-} from "@veyyon/pi-mnemopi/core/runtime-options";
+import { type ResolvedMnemopiRuntimeOptions, withMnemopiRuntimeOptions } from "@veyyon/pi-mnemopi/core/runtime-options";
 
 const OLD_ENV = { ...process.env };
 function restoreEnv(): void {

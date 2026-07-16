@@ -140,7 +140,11 @@ describe("WelcomeComponent hero layout", () => {
 		const welcome = new WelcomeComponent("1.2.3", "gpt-5", "openai", [], [], true);
 		const tip = welcome.tip;
 		if (!tip) throw new Error("Expected a selected tip");
-		const lastWord = tip.replace(/\s*\[NEW\]$/, "").split(/\s+/).at(-1) ?? "";
+		const lastWord =
+			tip
+				.replace(/\s*\[NEW\]$/, "")
+				.split(/\s+/)
+				.at(-1) ?? "";
 		expect(plain(welcome.render(200))).toContain(lastWord);
 	});
 

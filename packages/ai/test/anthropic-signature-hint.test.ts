@@ -1,8 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import {
-	isInvalidThinkingSignatureError,
-	maybeAddReplayUnsignedThinkingHint,
-} from "@veyyon/pi-ai/providers/anthropic";
+import { isInvalidThinkingSignatureError, maybeAddReplayUnsignedThinkingHint } from "@veyyon/pi-ai/providers/anthropic";
 import type { Model, ModelSpec } from "@veyyon/pi-ai/types";
 import { buildModel } from "@veyyon/pi-catalog/build";
 

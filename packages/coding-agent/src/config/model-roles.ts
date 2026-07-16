@@ -90,9 +90,7 @@ export type RoleInfo = ModelRoleInfo;
  * entries across settings.
  */
 export function getKnownRoleIds(settings: Settings): string[] {
-	const roles = SELECTABLE_MODEL_ROLE_IDS.filter(
-		role => !MODEL_ROLES[role as ModelRole]?.hidden,
-	) as string[];
+	const roles = SELECTABLE_MODEL_ROLE_IDS.filter(role => !MODEL_ROLES[role as ModelRole]?.hidden) as string[];
 	const seen = new Set<string>(roles);
 	const addRole = (role: string) => {
 		if (seen.has(role)) return;

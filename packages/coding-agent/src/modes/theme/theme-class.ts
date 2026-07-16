@@ -7,25 +7,11 @@ import type { ThinkingLevel } from "@veyyon/pi-agent-core";
 import type { Effort } from "@veyyon/pi-ai";
 import { colorLuma, logger, relativeLuminance } from "@veyyon/pi-utils";
 import chalk from "chalk";
+import { bgAnsi, type ColorMode, colorToAnsi, fgAnsi, resolveToHex, type ThemeBg, type ThemeColor } from "./color";
 import {
-	bgAnsi,
-	type ColorMode,
-	colorToAnsi,
-	type ColorValue,
-	detectColorMode,
-	fgAnsi,
-	resolveThemeColors,
-	resolveToHex,
-	type ThemeBg,
-	type ThemeColor,
-	type ThemeJson,
-} from "./color";
-import {
-	normalizeSpinnerFramesOverride,
 	SPINNER_FRAMES,
-	SYMBOL_PRESETS,
-	type SpinnerFramesOverride,
 	type SpinnerType,
+	SYMBOL_PRESETS,
 	type SymbolKey,
 	type SymbolMap,
 	type SymbolPreset,
@@ -145,7 +131,6 @@ const LANG_BRAND_COLORS: Partial<Record<SymbolKey, string>> = {
 	"lang.ruby": "#cc342d",
 	"lang.julia": "#9558b2",
 };
-
 
 export class Theme {
 	#fgColors: Record<ThemeColor, string>;

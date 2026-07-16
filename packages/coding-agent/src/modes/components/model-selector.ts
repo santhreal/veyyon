@@ -10,12 +10,7 @@ import { type Component, Container, matchesKey, Spacer, Text, truncateToWidth } 
 import type { ModelRegistry } from "../../config/model-registry";
 import type { Settings } from "../../config/settings";
 import { theme } from "../theme/theme";
-import {
-	buildBrowserItems,
-	type ModelBrowserItem,
-	ModelBrowser,
-	sortModelItems,
-} from "./model-browser";
+import { buildBrowserItems, ModelBrowser, type ModelBrowserItem, sortModelItems } from "./model-browser";
 
 /** Auth posture shown next to a model id in the selector. */
 export type ModelAuthStatus = "authenticated" | "unauthenticated" | "keyless";
@@ -67,10 +62,7 @@ export function formatModelAuthBadge(status: ModelAuthStatus): {
  * Build browser rows with auth badges. Shared by settings and any host that
  * needs the same catalog + auth chrome.
  */
-export function buildAuthAwareBrowserItems(
-	models: ReadonlyArray<Model>,
-	registry: ModelRegistry,
-): ModelBrowserItem[] {
+export function buildAuthAwareBrowserItems(models: ReadonlyArray<Model>, registry: ModelRegistry): ModelBrowserItem[] {
 	const items = buildBrowserItems(models);
 	for (const item of items) {
 		const status = resolveModelAuthStatus(registry, item.model);
@@ -133,9 +125,7 @@ export class ModelSelectorPanel extends Container {
 		this.addChild(this.#browser as unknown as Component);
 		this.addChild(new Spacer(1));
 		const clearHint = this.#allowClear ? " · Del clear" : "";
-		this.addChild(
-			new Text(theme.fg("dim", `  type to search · ↑/↓ · Enter select${clearHint} · Esc back`), 0, 0),
-		);
+		this.addChild(new Text(theme.fg("dim", `  type to search · ↑/↓ · Enter select${clearHint} · Esc back`), 0, 0));
 	}
 
 	handleInput(data: string): void {
