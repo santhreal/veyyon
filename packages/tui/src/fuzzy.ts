@@ -33,14 +33,27 @@ interface SearchWord {
 interface SearchIndex {
 	normalized: string;
 	compact: string;
-	/** Start offsets of each word within `compact` (cumulative word lengths). */
-	compactWordStarts: Set<number>;
+	/** Start offset of each word within `compact` → that word's length. */
+	compactWordStarts: Map<number, number>;
 	words: SearchWord[];
 }
 
 const ALPHANUMERIC_SWAP_PENALTY = 5;
 const COMPACT_PHRASE_BONUS = 1200;
 const PHRASE_BONUS = 1000;
+/** Inflections a query token may add past an indexed word ("themes" ⊃ "theme"). */
+const EXTENSION_SUFFIXES = new Set(["s", "es", "d", "ed"]);
+/**
+ * English stopwords that may not LEAD a cross-word compact match. Descriptions
+ * are prose, so nearly every candidate contains "the"/"them"/"with"/…;
+ * letting a compact span start on one ("theme" over "the menu…") makes almost
+ * everything match. Meaningful short words ("gpt" over "gpt-4o") stay valid.
+ */
+const COMPACT_STOPWORDS = new Set([
+	"the", "a", "an", "of", "to", "in", "on", "at", "or", "and", "for", "is", "are",
+	"be", "as", "by", "it", "its", "if", "them", "then", "than", "this", "that",
+	"these", "those", "with", "when", "was", "were", "not", "no", "so", "but",
+]);
 
 function normalizeForSearch(value: string): string {
 	return value
@@ -85,17 +98,17 @@ function buildSearchIndex(text: string): SearchIndex {
 function buildUncachedSearchIndex(text: string): SearchIndex {
 	const normalized = normalizeForSearch(text);
 	if (normalized.length === 0) {
-		return { normalized, compact: "", compactWordStarts: new Set(), words: [] };
+		return { normalized, compact: "", compactWordStarts: new Map(), words: [] };
 	}
 
 	const words: SearchWord[] = [];
-	const compactWordStarts = new Set<number>();
+	const compactWordStarts = new Map<number, number>();
 	let index = 0;
 	let compactIndex = 0;
 	let ordinal = 0;
 	for (const word of normalized.split(" ")) {
 		words.push({ text: word, index, ordinal });
-		compactWordStarts.add(compactIndex);
+		compactWordStarts.set(compactIndex, word.length);
 		index += word.length + 1;
 		compactIndex += word.length;
 		ordinal++;
@@ -165,6 +178,22 @@ function withPosition(score: number, index: number): number {
 	return score + index * 0.01;
 }
 
+/**
+ * Whether a compact (space-stripped) match at `start` of `length` chars is
+ * word-aligned enough to count: it must begin at a word start, and when that
+ * first word is a stopword the match must end exactly on a word boundary.
+ * Without the stopword gate, "theme" compact-matches any text containing
+ * "the menu"/"the me…" — stopword-led spans over unrelated prose. Meaningful
+ * spans ("gpt4" over "gpt-4o", "statusl" over "status line") stay valid.
+ */
+function isCompactWordAligned(index: SearchIndex, start: number, length: number): boolean {
+	const firstWordLength = index.compactWordStarts.get(start);
+	if (firstWordLength === undefined) return false;
+	if (!COMPACT_STOPWORDS.has(index.compact.slice(start, start + firstWordLength))) return true;
+	const end = start + length;
+	return end === index.compact.length || index.compactWordStarts.has(end);
+}
+
 function isWordBoundaryPhrase(normalized: string, index: number, length: number): boolean {
 	const before = index === 0 || normalized[index - 1] === " ";
 	const afterIndex = index + length;
@@ -181,7 +210,11 @@ function scoreTokenAgainstWord(token: string, word: SearchWord): FuzzyMatch | nu
 		return { matches: true, score: withPosition(-170 + (word.text.length - token.length) * 0.5, word.index) };
 	}
 
-	if (token.startsWith(word.text) && token.length - word.text.length <= 2) {
+	// Query token extends past the word (typed "themes", word "theme"). Only
+	// inflection suffixes are allowed: an arbitrary ≤2-char extension let
+	// stopwords absorb longer query tokens ("theme" ⊃ "the", "theme" ⊃ "them",
+	// "model" ⊃ "mode"), matching nearly every description.
+	if (word.text.length >= 4 && token.startsWith(word.text) && EXTENSION_SUFFIXES.has(token.slice(word.text.length))) {
 		return { matches: true, score: withPosition(-150 + token.length - word.text.length, word.index) };
 	}
 
@@ -231,7 +264,7 @@ function scoreTokenDirect(token: string, index: SearchIndex): FuzzyMatch {
 
 	let best: FuzzyMatch | null = null;
 	const compactIndex = index.compact.indexOf(token);
-	if (compactIndex >= 0 && index.compactWordStarts.has(compactIndex)) {
+	if (compactIndex >= 0 && isCompactWordAligned(index, compactIndex, token.length)) {
 		best = { matches: true, score: withPosition(-140, compactIndex) };
 	}
 
@@ -297,7 +330,7 @@ function fuzzyMatchCore(pq: PreparedQuery | null, index: SearchIndex): FuzzyMatc
 	}
 
 	const compactPhraseIndex = index.compact.indexOf(pq.compact);
-	if (compactPhraseIndex >= 0 && index.compactWordStarts.has(compactPhraseIndex)) {
+	if (compactPhraseIndex >= 0 && isCompactWordAligned(index, compactPhraseIndex, pq.compact.length)) {
 		totalScore -= COMPACT_PHRASE_BONUS;
 		totalScore += compactPhraseIndex * 0.01;
 	}

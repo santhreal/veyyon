@@ -316,6 +316,7 @@ export function buildOpenAICompat(spec: ModelSpec<"openai-completions">): Resolv
 	const isOpenAIHost = modelMatchesHost(hostModel, "openai");
 	const isAzureHost = modelMatchesHost(hostModel, "azureOpenAI");
 	const isOpenRouter = modelMatchesHost(hostModel, "openrouter");
+	const isHuggingfaceRouter = modelMatchesHost(hostModel, "huggingfaceRouter");
 	const isVercelGateway = modelMatchesHost(hostModel, "vercelAIGateway");
 	const isTogether = modelMatchesHost(hostModel, "together");
 	const isFireworks = hostMatchesUrl(baseUrl, "fireworks");
@@ -406,7 +407,16 @@ export function buildOpenAICompat(spec: ModelSpec<"openai-completions">): Resolv
 		// OpenAI's reasoning-API surface.
 		supportsDeveloperRole: isOpenAIHost || isAzureHost,
 		supportsMultipleSystemMessages: supportsMultipleSystemMessagesDefault,
-		supportsReasoningEffort: !isGrok && !isXiaomiMimo && (!(isZai || isZhipu) || supportsZaiReasoningEffort),
+		// DeepSeek-family upstreams reached through the HF Inference Providers router
+		// reject a bare OpenAI `reasoning_effort` (400 "thinking mode openai_effort is
+		// not supported") — only the direct DeepSeek API (which pairs it with
+		// `thinking: {type: "enabled"}`, see `extraBody` below) and translating
+		// gateways like OpenRouter accept an effort knob for these models.
+		supportsReasoningEffort:
+			!isGrok &&
+			!isXiaomiMimo &&
+			!(isDeepseekFamily && isHuggingfaceRouter) &&
+			(!(isZai || isZhipu) || supportsZaiReasoningEffort),
 		// GitHub Copilot's chat-completions endpoint rejects reasoning params wholesale.
 		supportsReasoningParams: provider !== "github-copilot",
 		reasoningEffortMap: isMimoReasoningEffortModel ? MIMO_REASONING_EFFORT_MAP : {},
@@ -507,6 +517,7 @@ export function buildOpenAICompat(spec: ModelSpec<"openai-completions">): Resolv
 		openRouterRouting: undefined,
 		vercelGatewayRouting: undefined,
 		isOpenRouterHost: isOpenRouter,
+		routedUpstreamSelfCaps: isOpenRouter || isHuggingfaceRouter,
 		wireModelIdMode,
 		isVercelGatewayHost: isVercelGateway,
 		supportsStrictMode: detectStrictModeSupport(provider, baseUrl),
@@ -576,6 +587,7 @@ export function buildOpenAIResponsesCompat(spec: OpenAIResponsesSpecLike): Resol
 	const baseUrl = spec.baseUrl ?? "";
 	const isAzure = modelMatchesHost({ provider: spec.provider, baseUrl }, "azureOpenAI");
 	const isOpenRouter = modelMatchesHost({ provider: spec.provider, baseUrl }, "openrouter");
+	const isHuggingfaceRouter = modelMatchesHost({ provider: spec.provider, baseUrl }, "huggingfaceRouter");
 	const isOpenAIUrl = hostMatchesUrl(baseUrl, "openai");
 	const id = spec.id ?? "";
 	const thinkingFormat: ResolvedOpenAISharedCompat["thinkingFormat"] = isOpenRouter ? "openrouter" : "openai";
@@ -634,6 +646,7 @@ export function buildOpenAIResponsesCompat(spec: OpenAIResponsesSpecLike): Resol
 		requiresAssistantContentForToolCalls: isKimiModel,
 		openRouterRouting: undefined,
 		isOpenRouterHost: isOpenRouter,
+		routedUpstreamSelfCaps: isOpenRouter || isHuggingfaceRouter,
 		wireModelIdMode: isOpenRouter ? "openrouter" : "raw",
 		alwaysSendMaxTokens: spec.id ? isKimiModelId(spec.id) : false,
 		enableGeminiThinkingLoopGuard: modelFamilyToken(spec.id ?? "") === "gemini",

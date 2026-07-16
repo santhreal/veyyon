@@ -13,6 +13,7 @@ import {
 	getSegmenter,
 	padding,
 	replaceTabs,
+	sgrCarryAfter,
 	truncateToWidth,
 	visibleWidth,
 	wrapTextWithAnsi,
@@ -300,19 +301,6 @@ const TREE_BRANCH_CONNECTOR_RE = /[├┣╠└┗╚╰][─━═]/;
 const MIN_TREE_CONTENT_WIDTH = 8;
 
 const SGR_SEQUENCE_STICKY = /\x1b\[[0-9;:]*m/y;
-const SGR_SEQUENCE_GLOBAL = /\x1b\[[0-9;:]*m/g;
-
-/**
- * Everything before the last full SGR reset is dead state — drop it so the
- * re-played `carry` stays bounded by the paragraph's live style run instead
- * of its whole code history.
- */
-function compactSgrCarry(carry: string): string {
-	const shortReset = carry.lastIndexOf("\x1b[m");
-	const longReset = carry.lastIndexOf("\x1b[0m");
-	const cut = Math.max(shortReset === -1 ? -1 : shortReset + 3, longReset === -1 ? -1 : longReset + 4);
-	return cut === -1 ? carry : carry.slice(cut);
-}
 
 interface TreeGuidePrefix {
 	/** Index of the first char past the guide run (start of the node text). */
@@ -381,7 +369,7 @@ function hangWrapTreeGuideLines(text: string, width: number): string[] | undefin
 		const prefix = hangs(line);
 		if (!prefix) {
 			out.push(carry ? carry + line : line);
-			carry = compactSgrCarry(carry + (line.match(SGR_SEQUENCE_GLOBAL)?.join("") ?? ""));
+			carry = sgrCarryAfter(carry, line);
 			continue;
 		}
 		// Re-play the SGR state ahead of the node text so the wrapper carries
@@ -397,7 +385,7 @@ function hangWrapTreeGuideLines(text: string, width: number): string[] | undefin
 		for (let i = 1; i < rows.length; i++) {
 			out.push(activeCodes + hang + rows[i]!);
 		}
-		carry = compactSgrCarry(carry + (line.match(SGR_SEQUENCE_GLOBAL)?.join("") ?? ""));
+		carry = sgrCarryAfter(carry, line);
 	}
 	return out;
 }

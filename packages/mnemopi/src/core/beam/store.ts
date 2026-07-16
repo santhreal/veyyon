@@ -192,8 +192,13 @@ function addTemporalAnnotations(beam: BeamMemoryState, memoryId: string, timesta
 		if (source && source !== "conversation" && source !== "user" && source !== "assistant") {
 			beam.annotations?.add?.(memoryId, "has_source", source);
 		}
-	} catch {
-		// Annotation enrichment is best-effort, matching Python's non-blocking path.
+	} catch (error) {
+		// Non-blocking (matches Python's path), but dropped annotations degrade
+		// temporal recall — surface it.
+		logger.warn("mnemopi: temporal annotation enrichment failed for stored memory", {
+			memoryId,
+			error: error instanceof Error ? error.message : String(error),
+		});
 	}
 }
 
@@ -219,8 +224,13 @@ function proactiveLinkIfEnabled(
 			linkExisting: true,
 			extractEntities,
 		});
-	} catch {
-		// Proactive graph enrichment must never block durable memory storage.
+	} catch (error) {
+		// Must never block durable memory storage, but a silently missing graph
+		// link is invisible recall loss — surface it.
+		logger.warn("mnemopi: proactive graph linking failed; memory stored without episodic links", {
+			memoryId,
+			error: error instanceof Error ? error.message : String(error),
+		});
 	}
 }
 
@@ -236,8 +246,13 @@ async function runFactExtraction(beam: BeamMemoryState, memoryId: string, conten
 		if (countExtractedFactCategories(extracted) === 0) return;
 		storeExtractedFactCategories(beam, extracted, 0, memoryId);
 		invalidateCaches(beam);
-	} catch {
-		// Background fact extraction is best-effort and never surfaces to the caller.
+	} catch (error) {
+		// Never disrupts the `remember` that scheduled it, but a failed
+		// extraction means facts silently never became searchable — surface it.
+		logger.warn("mnemopi: background fact extraction failed; no facts stored for memory", {
+			memoryId,
+			error: error instanceof Error ? error.message : String(error),
+		});
 	}
 }
 

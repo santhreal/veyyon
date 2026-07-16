@@ -134,7 +134,20 @@ for (const file of [projectEnv, agentEnv, piEnv, homeEnv]) {
 	}
 }
 
-// Directory-affecting keys (XDG_*_HOME, and in default mode PI_CODING_AGENT_DIR)
+// Mirror VEYYON_/OMP_ vars onto their PI_ legacy names in the merged env, so
+// call sites that still read the PI_ alias (e.g. `$flag("PI_PY")`) honor the
+// primary name whether it came from a .env file (mirrored at parse time above)
+// or the real process environment. OMP_ first, then VEYYON_, so VEYYON_ wins
+// when both are set — matching the VEYYON_ > OMP_ > PI_ precedence everywhere.
+for (const prefix of ["OMP_", "VEYYON_"] as const) {
+	for (const key of Object.keys(Bun.env)) {
+		if (key.startsWith(prefix)) {
+			Bun.env[`PI_${key.slice(prefix.length)}`] = Bun.env[key];
+		}
+	}
+}
+
+// Directory-affecting keys (XDG_*_HOME, and in default mode VEYYON_/PI_CODING_AGENT_DIR)
 // may have just arrived from the profile/agent `.env` applied above. The dirs
 // resolver cached its paths at module load — before this file ran — so rebuild
 // it now from the updated env. `getAgentDir()` already located the `.env` from

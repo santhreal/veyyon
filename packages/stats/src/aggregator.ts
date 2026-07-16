@@ -34,7 +34,14 @@ import type { SyncWorkerRequest, SyncWorkerResponse } from "./sync-worker";
 // hidden argv mode, so the compiled binary and npm bundle only need one
 // JavaScript entry. Standalone source `omp-stats` keeps using this package's
 // own sync-worker source file.
-import type { BehaviorDashboardStats, DashboardStats, MessageStats, RequestDetails, ToolDashboardStats } from "./types";
+import type {
+	BehaviorDashboardStats,
+	DashboardStats,
+	MessageStats,
+	RequestDetails,
+	SessionMessageEntry,
+	ToolDashboardStats,
+} from "./types";
 
 /**
  * Apply a freshly parsed result to the database. Runs entirely on the
@@ -456,6 +463,9 @@ export async function getRequestDetails(id: number): Promise<RequestDetails | nu
 
 	const entry = await getSessionEntry(msg.sessionFile, msg.entryId);
 	if (entry?.type !== "message") return null;
+	// The `{ type: string }` catch-all in SessionEntry keeps the literal check
+	// from narrowing; type === "message" is SessionMessageEntry by contract.
+	const messageEntry = entry as SessionMessageEntry;
 
 	// TODO: Get parent/context messages?
 	// For now we return the single entry which contains the assistant response.
@@ -464,7 +474,7 @@ export async function getRequestDetails(id: number): Promise<RequestDetails | nu
 	return {
 		...msg,
 		messages: [entry],
-		output: (entry as any).message,
+		output: messageEntry.message,
 	};
 }
 

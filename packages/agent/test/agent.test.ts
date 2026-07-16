@@ -711,7 +711,12 @@ describe("Agent — F3 in-place state mutation", () => {
 		const agent = new Agent({ initialState: { messages, pendingToolCalls } });
 
 		agent.appendMessage({ role: "user", content: "y", timestamp: 2 });
-		agent.emitExternalEvent({ type: "tool_execution_end", toolCallId: "call-1", toolName: "tool", result: {} });
+		agent.emitExternalEvent({
+			type: "tool_execution_end",
+			toolCallId: "call-1",
+			toolName: "tool",
+			result: { content: [] },
+		});
 
 		expect(messages.length).toBe(1);
 		expect(pendingToolCalls.has("call-1")).toBe(true);

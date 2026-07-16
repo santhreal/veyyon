@@ -610,6 +610,17 @@ describe("pi-natives", () => {
 			expect(truncateToWidth("\tfoo", 6, undefined, false, 4)).toBe("\tf…");
 			expect(wrapTextWithAnsi("\tfoo", 4, 4)).toEqual(["\t", "foo"]);
 		});
+
+		it("pads without burying the napi NUL terminator mid-string", () => {
+			// The pad branch copies the raw UTF-16 buffer, which carries a trailing
+			// NUL; padding after it puts "\0" mid-string where the trailing-NUL
+			// strip cannot reach (surfaced as "abc    " on every padded TUI row).
+			expect(truncateToWidth("abc", 10, undefined, true, 8)).toBe("abc       ");
+			expect(truncateToWidth("ab\x1b[31mcd\x1b[0m", 10, undefined, true, 8)).toBe("ab\x1b[31mcd\x1b[0m      ");
+			// Exact fit and truncation paths stay byte-clean too.
+			expect(truncateToWidth("abcde", 5, undefined, true, 8)).toBe("abcde");
+			expect(truncateToWidth("abcdefghijklm", 10, undefined, true, 8)).toBe("abcdefghi…");
+		});
 	});
 
 	describe("pty", () => {

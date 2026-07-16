@@ -267,4 +267,47 @@ describe("agentLoop with owned in-band tool calls", () => {
 			else Bun.env.PI_DIALECT = before;
 		}
 	});
+
+	it("re-evaluates a function-form dialect with the active model on every request", async () => {
+		// A non-tool-calling model must get in-band tools (no native `tools` on
+		// the wire) even when the session started on a tool-capable model.
+		const toolSchema = type({ msg: "string" });
+		const echoTool: AgentTool<typeof toolSchema, { msg: string }> = {
+			name: "echo",
+			label: "Echo",
+			description: "Echo a message back",
+			parameters: toolSchema,
+			async execute(_toolCallId, params) {
+				return { content: [{ type: "text", text: `echoed:${params.msg}` }], details: params };
+			},
+		};
+
+		const captured: Context[] = [];
+		const resolvedFor: string[] = [];
+		const mock = createMockModel({
+			responses: [
+				context => {
+					captured.push(context);
+					return { content: ["no tools needed"] };
+				},
+			],
+		});
+		const model = { ...mock.model, supportsTools: false };
+
+		const context: AgentContext = { systemPrompt: ["BASE PROMPT"], messages: [], tools: [echoTool] };
+		const config: AgentLoopConfig = {
+			model,
+			convertToLlm: identityConverter,
+			dialect: requestModel => {
+				resolvedFor.push(requestModel.id);
+				return requestModel.supportsTools === false ? "glm" : undefined;
+			},
+		};
+
+		await agentLoop([createUserMessage("say hi")], context, config, undefined, mock.stream).result();
+
+		expect(resolvedFor).toEqual([model.id]);
+		expect(captured[0].tools).toBeUndefined();
+		expect((captured[0].systemPrompt ?? []).join("\n")).toContain("echo");
+	});
 });

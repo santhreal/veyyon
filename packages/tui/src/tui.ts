@@ -17,7 +17,7 @@
  */
 import * as fs from "node:fs";
 import { performance } from "node:perf_hooks";
-import { $flag, getDebugLogPath } from "@veyyon/pi-utils";
+import { $flag, getDebugLogPath, logger } from "@veyyon/pi-utils";
 import { DEFAULT_MAX_INLINE_IMAGES, ImageBudget } from "./components/image";
 import { planDeccaraFills } from "./deccara";
 import { isKeyRelease, matchesKey } from "./keys";
@@ -170,7 +170,7 @@ export interface Component {
 	/**
 	 * Optional hook to set whether this component ignores tight layout mode.
 	 */
-	setIgnoreTight?(ignore: boolean): any;
+	setIgnoreTight?(ignore: boolean): void;
 
 	/**
 	 * Optional teardown. Called when the component is permanently removed from
@@ -1292,6 +1292,15 @@ export class TUI extends Container {
 	}
 
 	/**
+	 * Invoked after every frame commit, once the freshly composed row count is
+	 * readable via {@link composedFrameRows}. Lets a bottom-anchoring owner
+	 * correct its fill against the exact frame instead of a stale estimate; the
+	 * callback must not render synchronously — schedule via requestRender()
+	 * (a corrected fill converges after one follow-up frame).
+	 */
+	onFrameComposed?: () => void;
+
+	/**
 	 * Transient viewport-only paints emitted by the non-multiplexer resize fast
 	 * path. These never touch native scrollback or the commit ledger, so they
 	 * are counted apart from {@link fullRedraws}.
@@ -1545,8 +1554,12 @@ export class TUI extends Container {
 		for (const listener of this.#startListeners) {
 			try {
 				listener();
-			} catch {
-				// Startup listeners are feature hooks; one broken hook must not prevent rendering.
+			} catch (error) {
+				// Startup listeners are feature hooks; one broken hook must not
+				// prevent rendering — but a swallowed throw hides a dead feature.
+				logger.error("TUI start listener threw; its feature did not initialize", {
+					error: error instanceof Error ? error.message : String(error),
+				});
 			}
 		}
 		this.terminal.hideCursor();
@@ -3338,6 +3351,7 @@ export class TUI extends Container {
 		this.#previousWidth = width;
 		this.#previousHeight = height;
 		this.#recordHardwareCursorUpdate(hardwareCursor);
+		this.onFrameComposed?.();
 	}
 
 	#targetHardwareCursorState(

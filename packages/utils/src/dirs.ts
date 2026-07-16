@@ -98,6 +98,41 @@ function pickProcessEnv(...keys: readonly string[]): string | undefined {
 	return undefined;
 }
 
+/** Env keys accepted for the agent-dir override; `VEYYON_` wins, `PI_` is the legacy alias. */
+const AGENT_DIR_ENV_KEYS = ["VEYYON_CODING_AGENT_DIR", "PI_CODING_AGENT_DIR"] as const;
+
+/** Env keys accepted for the config-dir-name override; `VEYYON_` wins, `OMP_`/`PI_` are legacy aliases. */
+const CONFIG_DIR_ENV_KEYS = ["VEYYON_CONFIG_DIR", "OMP_CONFIG_DIR", "PI_CONFIG_DIR"] as const;
+
+/**
+ * Every env key that redirects veyyon directory resolution (agent dir,
+ * profile, config-dir name). Tests spawning children that must resolve dirs
+ * from a controlled location (e.g. XDG_* pointing at a temp root) strip these
+ * so overrides inherited from the developer/CI environment cannot leak in.
+ */
+export const DIR_OVERRIDE_ENV_KEYS: readonly string[] = [
+	...AGENT_DIR_ENV_KEYS,
+	...PROFILE_ENV_KEYS,
+	...CONFIG_DIR_ENV_KEYS,
+];
+
+/** One owner for reading the agent-dir override from the environment. */
+function readAgentDirEnv(): string | undefined {
+	return pickProcessEnv(...AGENT_DIR_ENV_KEYS);
+}
+
+/**
+ * One owner for writing the agent-dir override. Both keys are kept in lockstep
+ * (like the VEYYON_/OMP_/PI_PROFILE triple in `setProfile`) so child processes
+ * reading either name see the same value; `undefined` clears both.
+ */
+function writeAgentDirEnv(dir: string | undefined): void {
+	for (const key of AGENT_DIR_ENV_KEYS) {
+		if (dir === undefined) delete process.env[key];
+		else process.env[key] = dir;
+	}
+}
+
 /** Resolve the active profile from `VEYYON_PROFILE`, `OMP_PROFILE`, and `PI_PROFILE`. */
 export function resolveProfileFromEnv(): string | undefined {
 	for (const key of PROFILE_ENV_KEYS) {
@@ -234,7 +269,7 @@ export async function directoryExists(dir: string): Promise<boolean> {
 
 /** Get the config directory name relative to home (e.g. ".veyyon" or VEYYON_CONFIG_DIR / PI_CONFIG_DIR override). */
 export function getConfigDirName(): string {
-	return pickProcessEnv("VEYYON_CONFIG_DIR", "OMP_CONFIG_DIR", "PI_CONFIG_DIR") || CONFIG_DIR_NAME;
+	return pickProcessEnv(...CONFIG_DIR_ENV_KEYS) || CONFIG_DIR_NAME;
 }
 
 /** Get the config agent directory name relative to home (e.g. ".veyyon/agent" or PI_CONFIG_DIR + "/agent"). */
@@ -382,7 +417,7 @@ let activeProfile = readProfileFromEnvSafe();
 function resolveActiveAgentDirOverride(): string | undefined {
 	return activeProfile
 		? undefined
-		: resolvePreProfileAgentDir(undefined, process.env.PI_CODING_AGENT_DIR, readPiProfileFromEnvSafe());
+		: resolvePreProfileAgentDir(undefined, readAgentDirEnv(), readPiProfileFromEnvSafe());
 }
 
 let dirs = new DirResolver({
@@ -402,7 +437,7 @@ let dirs = new DirResolver({
  */
 let preProfileAgentDirEnv: string | undefined = resolvePreProfileAgentDir(
 	activeProfile,
-	process.env.PI_CODING_AGENT_DIR,
+	readAgentDirEnv(),
 	activeProfile ?? readPiProfileFromEnvSafe(),
 );
 // Anchor home for the resolver. Captured at module load to stay stable across
@@ -441,7 +476,7 @@ export function getConfigRootDir(): string {
 export function setAgentDir(dir: string): void {
 	activeProfile = undefined;
 	dirs = new DirResolver({ agentDirOverride: dir });
-	process.env.PI_CODING_AGENT_DIR = dir;
+	writeAgentDirEnv(dir);
 	preProfileAgentDirEnv = dir;
 	for (const key of PROFILE_ENV_KEYS) {
 		delete process.env[key];
@@ -459,7 +494,7 @@ export function setAgentDir(dir: string): void {
 export function __resetProfileSnapshotForTests(): void {
 	preProfileAgentDirEnv = resolvePreProfileAgentDir(
 		activeProfile,
-		process.env.PI_CODING_AGENT_DIR,
+		readAgentDirEnv(),
 		activeProfile ?? readPiProfileFromEnvSafe(),
 	);
 }
@@ -485,11 +520,7 @@ export function setProfile(profile: string | undefined): void {
 		// explicit override. Subsequent profile switches keep the original
 		// snapshot — the "pre-profile" baseline is the state before profiles
 		// entered the picture, not the state between two activations.
-		preProfileAgentDirEnv = resolvePreProfileAgentDir(
-			undefined,
-			process.env.PI_CODING_AGENT_DIR,
-			readPiProfileFromEnvSafe(),
-		);
+		preProfileAgentDirEnv = resolvePreProfileAgentDir(undefined, readAgentDirEnv(), readPiProfileFromEnvSafe());
 	}
 	activeProfile = next;
 	if (activeProfile) {
@@ -497,16 +528,12 @@ export function setProfile(profile: string | undefined): void {
 		process.env.VEYYON_PROFILE = activeProfile;
 		process.env.OMP_PROFILE = activeProfile;
 		process.env.PI_PROFILE = activeProfile;
-		process.env.PI_CODING_AGENT_DIR = dirs.agentDir;
+		writeAgentDirEnv(dirs.agentDir);
 	} else {
 		for (const key of PROFILE_ENV_KEYS) {
 			delete process.env[key];
 		}
-		if (preProfileAgentDirEnv === undefined) {
-			delete process.env.PI_CODING_AGENT_DIR;
-		} else {
-			process.env.PI_CODING_AGENT_DIR = preProfileAgentDirEnv;
-		}
+		writeAgentDirEnv(preProfileAgentDirEnv);
 		dirs = new DirResolver({ agentDirOverride: preProfileAgentDirEnv });
 	}
 }

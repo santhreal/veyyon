@@ -31,6 +31,34 @@ describe("fuzzyFilter", () => {
 		expect(results).not.toContain("Service Tier");
 	});
 
+	it("does not let stopwords absorb longer query tokens", () => {
+		// "theme" must not match texts whose only hook is the word "the" —
+		// nearly every setting description contains it, so the old ≤2-extra-chars
+		// word-extension rule matched 121 of ~130 settings for this query.
+		const items = [
+			{ label: "Dark Theme", text: "Dark Theme theme.dark titanium Theme used when the terminal background is dark" },
+			{ label: "Light Theme", text: "Light Theme theme.light light Theme used when the terminal background is light" },
+			{
+				label: "Approval Mode",
+				text: "Approval Mode tools.approvalMode yolo Controls when the agent asks before running a tool",
+			},
+			{
+				label: "Auto Compact",
+				text: "Auto Compact compaction.auto true Compact the conversation when the context window fills up",
+			},
+		];
+
+		const results = fuzzyFilter(items, "theme", item => item.text).map(item => item.label);
+
+		expect(results).toEqual(["Dark Theme", "Light Theme"]);
+		expect(fuzzyMatch("theme", "Controls when the agent asks before running a tool").matches).toBe(false);
+	});
+
+	it("still matches a query token that extends a real word by up to two chars", () => {
+		expect(fuzzyMatch("themes", "Dark Theme theme.dark").matches).toBe(true);
+		expect(fuzzyMatch("keybindings", "Keybinding actions").matches).toBe(true);
+	});
+
 	it("still supports short word-initial abbreviations", () => {
 		const items = ["Ollama", "Kagi", "OpenCode Go", "Tavily"];
 

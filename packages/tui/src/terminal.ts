@@ -544,8 +544,12 @@ export class ProcessTerminal implements Terminal {
 		if (this.#appearance) {
 			try {
 				callback(this.#appearance);
-			} catch {
-				/* ignore callback errors */
+			} catch (error) {
+				// Keep other subscribers alive, but a throwing appearance
+				// subscriber (e.g. the theme bridge) is a broken feature.
+				logger.error("appearance-change subscriber threw during replay", {
+					error: error instanceof Error ? error.message : String(error),
+				});
 			}
 		}
 	}
@@ -1171,8 +1175,15 @@ export class ProcessTerminal implements Terminal {
 		for (const cb of this.#privateModeCallbacks) {
 			try {
 				cb(mode, supported);
-			} catch {
-				// Ignore subscriber errors — capability reporting must not crash input.
+			} catch (error) {
+				// Capability reporting must not crash input, but a throwing
+				// subscriber is a broken feature (in-band resize, appearance
+				// polling) — surface it.
+				logger.error("private-mode capability subscriber threw", {
+					mode,
+					supported,
+					error: error instanceof Error ? error.message : String(error),
+				});
 			}
 		}
 		if (mode === 2048 && supported) this.#enableInBandResize();

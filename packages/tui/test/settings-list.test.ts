@@ -277,6 +277,37 @@ describe("SettingsList", () => {
 		]);
 	});
 
+	it("pins the active section's heading at the top once scrolling carries it out of view (flat layout)", () => {
+		const items = [
+			{ id: "__heading:a", label: "Group A", currentValue: "", heading: true },
+			{ id: "a1", label: "A1", currentValue: "off", values: ["off", "on"] },
+			{ id: "__heading:b", label: "Group B", currentValue: "", heading: true },
+			{ id: "b1", label: "B1", currentValue: "off", values: ["off", "on"] },
+			{ id: "b2", label: "B2", currentValue: "off", values: ["off", "on"] },
+			{ id: "b3", label: "B3", currentValue: "off", values: ["off", "on"] },
+			{ id: "b4", label: "B4", currentValue: "off", values: ["off", "on"] },
+			{ id: "b5", label: "B5", currentValue: "off", values: ["off", "on"] },
+			{ id: "b6", label: "B6", currentValue: "off", values: ["off", "on"] },
+		];
+		const list = new SettingsList(items, 3, testTheme, () => {}, () => {}, { layout: "flat" });
+
+		list.selectItem("b4");
+		const output = list.render(32);
+
+		// Group B has scrolled out of its own section's window — the heading
+		// still pins to row 0 instead of disappearing, and Group A (further
+		// back) is off-screen entirely.
+		expect(output[0]).toContain("Group B");
+		expect(output.join("\n")).not.toContain("Group A");
+		expect(output.join("\n")).toContain("B4");
+
+		// The pinned heading row is not a click/selection target; the rows
+		// beneath it still resolve to their real items.
+		expect(list.hitTest(0, 0)).toBeUndefined();
+		expect(list.hitTest(1, 0)).toBe("b3");
+		expect(list.hitTest(2, 0)).toBe("b4");
+	});
+
 	it("renders a section sidebar at wide widths with the whole list in the pane", () => {
 		const list = new SettingsList(
 			sectionedItems(),
@@ -571,6 +602,66 @@ describe("SettingsList", () => {
 		const after = list.render(60).join("\n");
 		expect(after).toContain("Item 0");
 		expect(after).toContain("Item 11");
+	});
+
+	it("flags clicks on the always-aligned value column but not the label, via isValueColumnHit", () => {
+		const list = new SettingsList(
+			[{ id: "mode", label: "Mode", currentValue: "123456", values: ["123456"] }],
+			3,
+			testTheme,
+			() => {},
+			() => {},
+		);
+		const line = list.render(16)[0];
+		expect(line).toBe("→ Mode  123456");
+
+		// Cursor + label columns (0..7) are select-only, not the value gutter.
+		expect(list.isValueColumnHit(0, 0)).toBe(false);
+		expect(list.isValueColumnHit(0, 5)).toBe(false);
+		expect(list.isValueColumnHit(0, 7)).toBe(false);
+		// Value column starts at col 8 ("1" of "123456") and extends to the end.
+		expect(list.isValueColumnHit(0, 8)).toBe(true);
+		expect(list.isValueColumnHit(0, 13)).toBe(true);
+		// A row with no hit (e.g. a padded blank line past the item) never counts.
+		expect(list.isValueColumnHit(5, 8)).toBe(false);
+	});
+
+	it("keeps the value-column hit-rect aligned across rows of differing label length", () => {
+		const list = new SettingsList(
+			[
+				{ id: "a", label: "A", currentValue: "off", values: ["off", "on"] },
+				{ id: "long", label: "A Much Longer Label", currentValue: "off", values: ["off", "on"] },
+			],
+			5,
+			testTheme,
+			() => {},
+			() => {},
+		);
+		list.render(60);
+		// Both rows share the same maxLabelWidth-derived value column: hitting
+		// the short row's label-column tail must not register as its value,
+		// while the same column on the long row (still inside its label) also
+		// stays select-only — proving the gutter is uniform, not per-row.
+		expect(list.isValueColumnHit(0, 3)).toBe(false);
+		expect(list.isValueColumnHit(1, 3)).toBe(false);
+		const valueCol = "→ A".length + 2 + "A Much Longer Label".length - "A".length; // same for both rows
+		expect(list.isValueColumnHit(0, valueCol)).toBe(true);
+		expect(list.isValueColumnHit(1, valueCol)).toBe(true);
+	});
+
+	it("never reports a value-column hit while a submenu is open", () => {
+		const list = new SettingsList(
+			[{ id: "picker", label: "Picker", currentValue: "x", submenu: () => ({ render: () => ["line"] }) }],
+			5,
+			testTheme,
+			() => {},
+			() => {},
+		);
+		list.render(60);
+		expect(list.isValueColumnHit(0, 10)).toBe(true);
+		list.handleInput("\n"); // open the submenu
+		list.render(60);
+		expect(list.isValueColumnHit(0, 10)).toBe(false);
 	});
 
 	it("routes mouse events into an open submenu", () => {

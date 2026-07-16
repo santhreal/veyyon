@@ -77,6 +77,15 @@ export interface SettingsListOptions {
 	hint?: string;
 	/** Fixed split-sidebar width (columns incl. indent+gap); default derives from section names. */
 	sidebarWidth?: number;
+	/**
+	 * How selected-item descriptions paint.
+	 * - `reserved` (default): always 1 blank + 3 rows (legacy panel density).
+	 * - `expand`: only when the selected item id is in `expandedIds` (Grok-style).
+	 * - `none`: never paint descriptions in the list.
+	 */
+	descriptionMode?: "reserved" | "expand" | "none";
+	/** Ids whose descriptions are expanded (used when descriptionMode is `expand`). */
+	expandedIds?: ReadonlySet<string>;
 }
 
 /** Searchable text for a setting item: label, id, value, description, and cycle values. */
@@ -116,6 +125,8 @@ export class SettingsList implements Component {
 	#hitRows: (string | undefined)[] = [];
 	#sidebarHitRows: (string | undefined)[] = [];
 	#sidebarHitCol = 0;
+	/** Column where the always-aligned value gutter starts this frame (-1 when not rendered). */
+	#valueColStart = -1;
 	constructor(
 		items: SettingItem[],
 		maxVisible: number,
@@ -176,6 +187,12 @@ export class SettingsList implements Component {
 		return this.#submenuComponent !== null;
 	}
 
+	/** Label of the item whose submenu is open, for breadcrumb chrome (`Settings › Label`). */
+	getOpenSubmenuLabel(): string | undefined {
+		if (this.#submenuItemId === null) return undefined;
+		return this.#items.find(item => item.id === this.#submenuItemId)?.label;
+	}
+
 	#notifySelection(): void {
 		const item = this.getSelectedItem();
 		if (item?.id === this.#lastNotifiedSelectionId) return;
@@ -225,6 +242,18 @@ export class SettingsList implements Component {
 			return this.#sidebarHitRows[line];
 		}
 		return this.#hitRows[line];
+	}
+
+	/**
+	 * True when `(line, col)` lands on the always-aligned value column (past
+	 * the label gutter) rather than the label — mirrors Grok's per-row value
+	 * hit-rect. Hosts use this to activate on the first click there (open a
+	 * submenu, cycle a value) while a click on the label only selects.
+	 */
+	isValueColumnHit(line: number, col: number): boolean {
+		if (this.#submenuComponent || this.#valueColStart < 0) return false;
+		if (this.#sidebarHitCol > 0 && col < this.#sidebarHitCol) return false;
+		return col >= this.#valueColStart && this.#hitRows[line] !== undefined;
 	}
 
 	/**
@@ -371,6 +400,14 @@ export class SettingsList implements Component {
 		return 0;
 	}
 
+	/** Nearest heading row strictly before `index`, or -1 when none precedes it. */
+	#lastHeadingIndexBefore(index: number): number {
+		for (let i = index - 1; i >= 0; i--) {
+			if (this.#filteredItems[i]?.heading) return i;
+		}
+		return -1;
+	}
+
 	/** Jump to the next/previous section; page through items when there are no sections. */
 	#jumpSection(delta: -1 | 1): void {
 		const sections = this.#sections();
@@ -445,18 +482,21 @@ export class SettingsList implements Component {
 	}
 
 	/**
-	 * Every render path is padded to the same stable height so interacting with
-	 * the list (navigating sections, opening submenus, filtering, condition-gated
-	 * rows appearing) never resizes the panel. A live region that thrashes its
-	 * height forces the terminal to re-anchor and can strand scrollback rows.
+	 * Height budget for the list frame. Expand/none description modes do not
+	 * reserve the legacy blank+3 description band.
 	 */
 	#stableHeight(): number {
-		// viewport + blank + 3 description rows, plus the optional search status
-		// row and the optional blank+hint footer.
-		let height = this.#maxVisible + 4;
+		const descMode = this.#options.descriptionMode ?? "reserved";
+		const descBand = descMode === "reserved" ? 4 : 0;
+		let height = this.#maxVisible + descBand;
 		if (this.#options.typeToSearch !== false) height += 1;
 		if (this.#options.hint !== "") height += 2;
 		return height;
+	}
+
+	/** Replace list options (e.g. expanded description ids) without rebuilding the list. */
+	setOptions(patch: Partial<SettingsListOptions>): void {
+		this.#options = { ...this.#options, ...patch };
 	}
 
 	#padLines(lines: string[]): string[] {
@@ -469,6 +509,7 @@ export class SettingsList implements Component {
 		this.#hitRows = [];
 		this.#sidebarHitRows = [];
 		this.#sidebarHitCol = 0;
+		this.#valueColStart = -1;
 		// If submenu is active, render it instead (padded to the list's stable
 		// height so opening/closing a submenu does not resize the panel).
 		if (this.#submenuComponent) {
@@ -546,13 +587,51 @@ export class SettingsList implements Component {
 		if (splitLines) {
 			lines.push(...splitLines);
 		} else {
-			const viewportHeight = Math.min(this.#maxVisible, this.#filteredItems.length);
-			const startIndex = Math.max(
-				0,
-				Math.min(this.#selectedIndex - Math.floor(viewportHeight / 2), this.#filteredItems.length - viewportHeight),
+			// Expand-mode description renders inline, directly under the selected
+			// row inside the viewport (never detached below the padded panel), so
+			// it borrows its rows from the item budget up front.
+			const descMode = this.#options.descriptionMode ?? "reserved";
+			const selectedForDesc = this.#filteredItems[this.#selectedIndex];
+			const inlineDesc: string[] = [];
+			if (
+				descMode === "expand" &&
+				selectedForDesc?.description &&
+				!selectedForDesc.heading &&
+				this.#options.expandedIds?.has(selectedForDesc.id)
+			) {
+				const wrappedDesc = wrapTextWithAnsi(selectedForDesc.description, Math.max(1, width - 4));
+				const cap = Math.min(8, Math.max(1, this.#maxVisible - 4));
+				for (const line of wrappedDesc.slice(0, cap)) {
+					inlineDesc.push(this.#theme.description(`    ${line}`));
+				}
+			}
+			const computeStart = (vh: number) =>
+				Math.max(0, Math.min(this.#selectedIndex - Math.floor(vh / 2), this.#filteredItems.length - vh));
+			let viewportHeight = Math.min(
+				Math.max(1, this.#maxVisible - inlineDesc.length),
+				this.#filteredItems.length,
 			);
+			let startIndex = computeStart(viewportHeight);
+			// Sticky header: once scrolling carries the active section's heading
+			// above the viewport, pin it as a leading row (borrowed from the
+			// scrollable window) so the category a row belongs to is never
+			// ambiguous mid-scroll.
+			let stickyHeadingIndex = this.#lastHeadingIndexBefore(startIndex);
+			if (stickyHeadingIndex >= 0 && viewportHeight > 1) {
+				viewportHeight -= 1;
+				startIndex = computeStart(viewportHeight);
+				stickyHeadingIndex = this.#lastHeadingIndexBefore(startIndex);
+				if (stickyHeadingIndex < 0) {
+					// Recentering brought the heading itself back into view.
+					viewportHeight += 1;
+					startIndex = computeStart(viewportHeight);
+				}
+			}
 			const labelWidths = this.#filteredItems.filter(item => !item.heading).map(item => visibleWidth(item.label));
 			const maxLabelWidth = Math.min(30, labelWidths.length > 0 ? Math.max(...labelWidths) : 0);
+			// Reserved fold/cursor gutter (2) + label column + separator (2) —
+			// the always-aligned start of the value column for this frame.
+			this.#valueColStart = 2 + maxLabelWidth + 2;
 			const itemRowsOverflow = this.#filteredItems.length > viewportHeight;
 			const itemRowWidth = Math.max(0, width - (itemRowsOverflow ? 1 : 0));
 			const visibleItems = this.#filteredItems.slice(startIndex, startIndex + viewportHeight);
@@ -560,6 +639,20 @@ export class SettingsList implements Component {
 			// section-focus cursor (the split layout shows it in the sidebar).
 			const active = sections[this.#activeSectionIndex(sections)];
 			const focusedHeadingIndex = this.#sectionFocus && active?.name ? active.firstItemIndex - 1 : -1;
+			if (stickyHeadingIndex >= 0) {
+				const stickyItem = this.#filteredItems[stickyHeadingIndex]!;
+				lines.push(
+					this.#renderItemRow(
+						stickyItem,
+						stickyHeadingIndex,
+						maxLabelWidth,
+						itemRowWidth,
+						false,
+						stickyHeadingIndex === focusedHeadingIndex,
+					),
+				);
+				this.#hitRows[0] = undefined;
+			}
 			const itemRows = visibleItems.map((item, index) =>
 				this.#renderItemRow(
 					item,
@@ -570,11 +663,21 @@ export class SettingsList implements Component {
 					startIndex + index === focusedHeadingIndex,
 				),
 			);
+			// Splice the expanded description directly under the selected row;
+			// rows below it shift down by the description height in the hit map.
+			const selectedVisiblePos = this.#selectedIndex - startIndex;
+			const descInView =
+				inlineDesc.length > 0 && selectedVisiblePos >= 0 && selectedVisiblePos < visibleItems.length;
+			if (descInView) {
+				itemRows.splice(selectedVisiblePos + 1, 0, ...inlineDesc);
+			}
+			const hitOffset = stickyHeadingIndex >= 0 ? 1 : 0;
 			visibleItems.forEach((item, index) => {
-				this.#hitRows[index] = item.heading ? undefined : item.id;
+				const shift = descInView && index > selectedVisiblePos ? inlineDesc.length : 0;
+				this.#hitRows[index + hitOffset + shift] = item.heading ? undefined : item.id;
 			});
 			const scrollView = new ScrollView(itemRows, {
-				height: viewportHeight,
+				height: viewportHeight + (descInView ? inlineDesc.length : 0),
 				scrollbar: "auto",
 				totalRows: this.#filteredItems.length,
 				theme: {
@@ -588,22 +691,24 @@ export class SettingsList implements Component {
 			while (lines.length < this.#maxVisible) lines.push("");
 		}
 
-		// Description area: 1 blank + exactly 3 rows, clamped with an ellipsis,
-		// so moving between items with/without descriptions never shifts rows.
-		lines.push("");
-		const selectedItem = this.#filteredItems[this.#selectedIndex];
-		const descLines: string[] = [];
-		if (selectedItem?.description && !selectedItem.heading) {
-			const wrappedDesc = wrapTextWithAnsi(selectedItem.description, width - 4);
-			for (const line of wrappedDesc.slice(0, 3)) {
-				descLines.push(this.#theme.description(`  ${line}`));
+		// Description: reserved band (legacy) — expand mode renders inline
+		// under the selected row inside the viewport above.
+		if ((this.#options.descriptionMode ?? "reserved") === "reserved") {
+			lines.push("");
+			const selectedItem = this.#filteredItems[this.#selectedIndex];
+			const descLines: string[] = [];
+			if (selectedItem?.description && !selectedItem.heading) {
+				const wrappedDesc = wrapTextWithAnsi(selectedItem.description, width - 4);
+				for (const line of wrappedDesc.slice(0, 3)) {
+					descLines.push(this.#theme.description(`  ${line}`));
+				}
+				if (wrappedDesc.length > 3) {
+					descLines[2] = truncateToWidth(`${descLines[2]}…`, width);
+				}
 			}
-			if (wrappedDesc.length > 3) {
-				descLines[2] = truncateToWidth(`${descLines[2]}…`, width);
-			}
+			while (descLines.length < 3) descLines.push("");
+			lines.push(...descLines);
 		}
-		while (descLines.length < 3) descLines.push("");
-		lines.push(...descLines);
 
 		// External-search mode: the host renders the query; skip the status row.
 		if (this.#options.typeToSearch !== false) {
@@ -662,6 +767,9 @@ export class SettingsList implements Component {
 		// Label column width spans all items so the layout stays stable across sections.
 		const labelWidths = this.#filteredItems.filter(item => !item.heading).map(item => visibleWidth(item.label));
 		const maxLabelWidth = Math.min(30, labelWidths.length > 0 ? Math.max(...labelWidths) : 0);
+		// Sidebar + "│ " separator (2) + reserved fold/cursor gutter (2) + label
+		// column + separator (2) — the always-aligned start of the value column.
+		this.#valueColStart = sidebarWidth + 2 + 2 + maxLabelWidth + 2;
 		const overflow = this.#filteredItems.length > viewportHeight;
 		const rowWidth = Math.max(0, paneWidth - (overflow ? 1 : 0));
 		const itemRows: string[] = [];

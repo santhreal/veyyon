@@ -749,9 +749,12 @@ describe("agentLoop with AgentMessage", () => {
 		// The event's result carries the same discriminator so the UI can
 		// render "provider transport failed, tool not executed" instead of a
 		// generic "Edit tool failed" panel.
-		expect(endEvent?.result?.details?.__synthetic).toBe(true);
-		expect(endEvent?.result?.details?.source).toBe("assistant_stop_error");
-		expect(endEvent?.result?.details?.executed).toBe(false);
+		const syntheticDetails = endEvent?.result?.details as
+			| { __synthetic?: boolean; source?: string; executed?: boolean }
+			| undefined;
+		expect(syntheticDetails?.__synthetic).toBe(true);
+		expect(syntheticDetails?.source).toBe("assistant_stop_error");
+		expect(syntheticDetails?.executed).toBe(false);
 	});
 
 	it("recovers completed custom-wire tool calls after stream_read_error", async () => {

@@ -30,6 +30,8 @@ export const KNOWN_HOSTS = {
 		urlMarkers: [".openai.azure.com", "azure.com/openai", "models.inference.ai.azure.com"],
 	},
 	openrouter: { providers: ["openrouter"], urlMarkers: ["openrouter.ai"] },
+	/** Hugging Face Inference Providers router — fans out to third-party inference providers whose output caps differ per routed upstream. */
+	huggingfaceRouter: { providers: ["huggingface"], urlMarkers: ["router.huggingface.co"] },
 	vercelAIGateway: { providers: ["vercel-ai-gateway"], urlMarkers: ["ai-gateway.vercel.sh"] },
 	githubCopilot: { providers: ["github-copilot"], urlMarkers: ["githubcopilot.com", "copilot-api."] },
 	anthropic: { providers: ["anthropic"], urlMarkers: ["api.anthropic.com"] },

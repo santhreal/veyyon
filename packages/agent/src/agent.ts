@@ -22,7 +22,6 @@ import {
 	type ToolChoice,
 	type ToolResultMessage,
 } from "@veyyon/pi-ai";
-import type { Dialect } from "@veyyon/pi-ai/dialect";
 import type { HarmonyAuditEvent } from "@veyyon/pi-ai/utils/harmony-leak";
 import { preferredDialect } from "@veyyon/pi-catalog/identity";
 import { getBundledModel } from "@veyyon/pi-catalog/models";
@@ -33,7 +32,7 @@ import {
 	agentLoopContinue,
 	normalizeMessagesForProvider,
 	normalizeTools,
-	resolveOwnedDialectFromEnv,
+	resolveConfiguredDialect,
 } from "./agent-loop";
 import type { AppendOnlyContextManager } from "./append-only-context";
 import { isProviderRefusalMessage } from "./replay-policy";
@@ -46,7 +45,9 @@ import type {
 	AgentTool,
 	AgentToolContext,
 	AgentTurnEndContext,
+	AnyAgentTool,
 	AsideMessage,
+	ConfiguredDialect,
 	StreamFn,
 	ToolCallContext,
 	ToolChoiceDirective,
@@ -251,8 +252,12 @@ export interface AgentOptions {
 	 * prompt so descriptions are not duplicated on the wire. Native tool calling only.
 	 */
 	pruneToolDescriptions?: boolean;
-	/** Owned tool-calling dialect. Undefined keeps provider-native tool calling. */
-	dialect?: Dialect;
+	/**
+	 * Owned tool-calling dialect. Undefined keeps provider-native tool calling.
+	 * A function form is re-evaluated with the active model on every request, so
+	 * mid-session model switches pick the right tool-calling shape.
+	 */
+	dialect?: ConfiguredDialect;
 	/**
 	 * When owned tool calling is active and the model fabricates a tool result
 	 * mid-turn: `true` (default) aborts the provider request immediately; `false`
@@ -385,7 +390,7 @@ export class Agent {
 	#repairToolCallArguments?: AgentLoopConfig["repairToolCallArguments"];
 	#intentTracing: boolean;
 	#pruneToolDescriptions: boolean;
-	#dialect?: Dialect;
+	#dialect?: ConfiguredDialect;
 	#abortOnFabricatedToolResult?: boolean;
 	#getToolChoice?: () => ToolChoiceDirective | undefined;
 	#onPayload?: SimpleStreamOptions["onPayload"];
@@ -720,7 +725,7 @@ export class Agent {
 	): Promise<Context> {
 		const model = this.#state.model;
 		if (!model) throw new Error("No active model on agent");
-		const ownedDialect = this.#dialect ?? resolveOwnedDialectFromEnv(Bun.env.PI_DIALECT);
+		const ownedDialect = resolveConfiguredDialect(this.#dialect, model);
 		const messages = normalizeMessagesForProvider(llmMessages, model);
 		const tools = ownedDialect
 			? []
@@ -836,7 +841,7 @@ export class Agent {
 		return this.#interruptMode;
 	}
 
-	setTools(t: AgentTool<any>[]) {
+	setTools(t: AnyAgentTool[]) {
 		this.#state.tools = t;
 	}
 
@@ -1096,12 +1101,13 @@ export class Agent {
 				? async (message: ToolResultMessage) => {
 						let finalMessage = message;
 						if (this.#cursorOnToolResult) {
-							try {
-								const updated = await this.#cursorOnToolResult(message);
-								if (updated) {
-									finalMessage = updated;
-								}
-							} catch {}
+							// Host hooks fail closed like convertToLlm/transformContext: a
+							// throw here propagates as a stream error instead of silently
+							// dropping the host's transformation.
+							const updated = await this.#cursorOnToolResult(message);
+							if (updated) {
+								finalMessage = updated;
+							}
 						}
 						// Cursor executes tools server-side during streaming. We buffer
 						// each toolResult and emit them right after the assistant message
@@ -1253,8 +1259,15 @@ export class Agent {
 						break;
 
 					case "turn_end":
-						if (event.message.role === "assistant" && (event.message as any).errorMessage) {
-							this.#state.error = (event.message as any).errorMessage;
+						// `in`-narrowing instead of a role narrow: declaration-merged
+						// CustomAgentMessages members keep AgentMessage from narrowing
+						// to AssistantMessage on `role` alone.
+						if (
+							event.message.role === "assistant" &&
+							"errorMessage" in event.message &&
+							typeof event.message.errorMessage === "string"
+						) {
+							this.#state.error = event.message.errorMessage;
 						}
 						break;
 

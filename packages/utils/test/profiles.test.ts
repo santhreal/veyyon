@@ -4,6 +4,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import * as url from "node:url";
 import {
+	__resetDirsFromEnvForTests,
 	__resetProfileSnapshotForTests,
 	APP_NAME,
 	getActiveProfile,
@@ -45,6 +46,7 @@ describe("profile directories", () => {
 	let originalAgentDir = "";
 	let originalProfile: string | undefined;
 	let originalAgentDirEnv: string | undefined;
+	let originalVeyyonAgentDirEnv: string | undefined;
 	let originalOmpProfileEnv: string | undefined;
 	let originalPiProfileEnv: string | undefined;
 	let originalConfigDir: string | undefined;
@@ -56,6 +58,7 @@ describe("profile directories", () => {
 		originalAgentDir = getAgentDir();
 		originalProfile = getActiveProfile();
 		originalAgentDirEnv = process.env.PI_CODING_AGENT_DIR;
+		originalVeyyonAgentDirEnv = process.env.VEYYON_CODING_AGENT_DIR;
 		originalOmpProfileEnv = process.env.OMP_PROFILE;
 		originalPiProfileEnv = process.env.PI_PROFILE;
 		originalConfigDir = process.env.PI_CONFIG_DIR;
@@ -71,6 +74,7 @@ describe("profile directories", () => {
 		// pre-profile snapshot. Reset it here so each test starts from a clean
 		// `PI_CODING_AGENT_DIR` baseline matching the env we just configured.
 		delete process.env.PI_CODING_AGENT_DIR;
+		delete process.env.VEYYON_CODING_AGENT_DIR;
 		__resetProfileSnapshotForTests();
 		delete process.env.XDG_DATA_HOME;
 		delete process.env.XDG_STATE_HOME;
@@ -105,6 +109,11 @@ describe("profile directories", () => {
 			setAgentDir(originalAgentDir);
 		} else {
 			setProfile(undefined);
+		}
+		if (originalVeyyonAgentDirEnv === undefined) {
+			delete process.env.VEYYON_CODING_AGENT_DIR;
+		} else {
+			process.env.VEYYON_CODING_AGENT_DIR = originalVeyyonAgentDirEnv;
 		}
 		if (originalOmpProfileEnv === undefined) {
 			delete process.env.OMP_PROFILE;
@@ -240,6 +249,39 @@ describe("profile directories", () => {
 		setProfile("work");
 		setProfile(undefined);
 		expect(process.env.PI_CODING_AGENT_DIR).toBeUndefined();
+		expect(process.env.VEYYON_CODING_AGENT_DIR).toBeUndefined();
+	});
+
+	it("keeps VEYYON_CODING_AGENT_DIR and PI_CODING_AGENT_DIR in lockstep on profile switch and reset", () => {
+		const customAgentDir = path.join(tempRoot, "lockstep-agent");
+		setAgentDir(customAgentDir);
+		expect(process.env.VEYYON_CODING_AGENT_DIR).toBe(customAgentDir);
+		expect(process.env.PI_CODING_AGENT_DIR).toBe(customAgentDir);
+
+		setProfile("work");
+		const workAgentDir = getAgentDir();
+		expect(process.env.VEYYON_CODING_AGENT_DIR).toBe(workAgentDir);
+		expect(process.env.PI_CODING_AGENT_DIR).toBe(workAgentDir);
+
+		setProfile(undefined);
+		expect(process.env.VEYYON_CODING_AGENT_DIR).toBe(customAgentDir);
+		expect(process.env.PI_CODING_AGENT_DIR).toBe(customAgentDir);
+	});
+
+	it("prefers VEYYON_CODING_AGENT_DIR over PI_CODING_AGENT_DIR when both are set", () => {
+		const veyyonDir = path.join(tempRoot, "veyyon-agent");
+		const piDir = path.join(tempRoot, "pi-legacy-agent");
+		process.env.VEYYON_CODING_AGENT_DIR = veyyonDir;
+		process.env.PI_CODING_AGENT_DIR = piDir;
+		__resetDirsFromEnvForTests();
+		expect(getAgentDir()).toBe(veyyonDir);
+	});
+
+	it("honors VEYYON_CODING_AGENT_DIR alone as the agent-dir override", () => {
+		const veyyonDir = path.join(tempRoot, "veyyon-only-agent");
+		process.env.VEYYON_CODING_AGENT_DIR = veyyonDir;
+		__resetDirsFromEnvForTests();
+		expect(getAgentDir()).toBe(veyyonDir);
 	});
 
 	it("rejects Windows reserved device names case-insensitively", () => {

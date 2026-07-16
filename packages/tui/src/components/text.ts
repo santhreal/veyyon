@@ -1,5 +1,14 @@
 import type { Component } from "../tui";
-import { applyBackgroundToLine, getPaddingX, padding, replaceTabs, visibleWidth, wrapTextWithAnsi } from "../utils";
+import {
+	applyBackgroundToLine,
+	getPaddingX,
+	normalizeWrapInput,
+	padding,
+	replaceTabs,
+	sgrCarryAfter,
+	visibleWidth,
+	wrapTextWithAnsi,
+} from "../utils";
 
 /**
  * Text component - displays multi-line text with word wrapping
@@ -22,6 +31,16 @@ export class Text implements Component {
 	#cachedText?: string;
 	#cachedWidth?: number;
 	#cachedLines?: string[];
+
+	// Append-aware wrap cache: wrapped rows for every logical line up to the
+	// last "\n" boundary of the previous render, plus the SGR carry open at
+	// that boundary. Streaming appends (the token-by-token assistant path)
+	// re-wrap only the unfinished last line instead of the whole accumulated
+	// text, turning an O(text²) stream into O(text).
+	#wrapPrefixText?: string;
+	#wrapPrefixWidth?: number;
+	#wrapPrefixRows?: string[];
+	#wrapPrefixCarry = "";
 
 	constructor(text: string = "", paddingX: number = 1, paddingY: number = 1, customBgFn?: (text: string) => string) {
 		this.#text = text;
@@ -56,6 +75,56 @@ export class Text implements Component {
 		this.#cachedText = undefined;
 		this.#cachedWidth = undefined;
 		this.#cachedLines = undefined;
+		this.#wrapPrefixText = undefined;
+		this.#wrapPrefixWidth = undefined;
+		this.#wrapPrefixRows = undefined;
+		this.#wrapPrefixCarry = "";
+	}
+
+	/**
+	 * Wrap `normalized` to `contentWidth`, reusing the wrapped rows of every
+	 * logical line that was already complete (ended in "\n") on the previous
+	 * render when the new text extends the old. The carried SGR state is
+	 * baked into the re-wrapped tail, so styling across the reuse boundary
+	 * matches a from-scratch wrap.
+	 */
+	#wrapIncremental(normalized: string, contentWidth: number): string[] {
+		const boundary = normalized.lastIndexOf("\n") + 1; // 0 when single-line
+		const stable = normalized.slice(0, boundary);
+
+		let prefixRows: string[];
+		let carry: string;
+		const cached = this.#wrapPrefixText;
+		if (
+			cached !== undefined &&
+			this.#wrapPrefixWidth === contentWidth &&
+			this.#wrapPrefixRows &&
+			stable.startsWith(cached)
+		) {
+			prefixRows = this.#wrapPrefixRows;
+			carry = this.#wrapPrefixCarry;
+			if (boundary > cached.length) {
+				// New complete logical lines appeared since the last render:
+				// wrap just those (with the carry replayed) and commit them.
+				const grown = normalized.slice(cached.length, boundary - 1);
+				prefixRows = prefixRows.concat(wrapTextWithAnsi(carry + grown, contentWidth));
+				carry = sgrCarryAfter(carry, grown);
+			}
+		} else if (boundary > 0) {
+			prefixRows = wrapTextWithAnsi(stable.slice(0, -1), contentWidth);
+			carry = sgrCarryAfter("", stable);
+		} else {
+			prefixRows = [];
+			carry = "";
+		}
+
+		this.#wrapPrefixText = stable;
+		this.#wrapPrefixWidth = contentWidth;
+		this.#wrapPrefixRows = prefixRows;
+		this.#wrapPrefixCarry = carry;
+
+		const tailRows = wrapTextWithAnsi(carry + normalized.slice(boundary), contentWidth);
+		return prefixRows.length > 0 ? prefixRows.concat(tailRows) : tailRows;
 	}
 
 	render(width: number): readonly string[] {
@@ -73,14 +142,16 @@ export class Text implements Component {
 			return result;
 		}
 
-		// Replace tabs with 3 spaces
-		const normalizedText = replaceTabs(this.#text);
+		// Replace tabs with 3 spaces; normalize newlines up front so the
+		// incremental wrap's prefix offsets index the exact text that gets
+		// wrapped.
+		const normalizedText = normalizeWrapInput(replaceTabs(this.#text));
 
 		// Calculate content width (subtract left/right margins)
 		const paddingX = this.#ignoreTight ? this.#paddingX : getPaddingX(this.#paddingX);
 		const contentWidth = Math.max(1, width - paddingX * 2);
 		// Wrap text (this preserves ANSI codes but does NOT pad)
-		const wrappedLines = wrapTextWithAnsi(normalizedText, contentWidth);
+		const wrappedLines = this.#wrapIncremental(normalizedText, contentWidth);
 
 		// Add margins and background to each line
 		const leftMargin = padding(paddingX);

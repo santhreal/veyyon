@@ -127,7 +127,9 @@ export async function embedBatch(texts: readonly string[]): Promise<Vector[]> {
 	try {
 		matrix = await embeddings.embed(texts);
 	} catch (error) {
-		logger.debug("mnemopi shmr embedding failed; using hash fallback", { error: String(error) });
+		logger.warn("mnemopi shmr embedding provider failed; recall degraded to hash embeddings for this batch", {
+			error: String(error),
+		});
 	}
 	if (matrix !== null && matrix.length === texts.length) return matrix;
 	return texts.map(hashEmbedding);

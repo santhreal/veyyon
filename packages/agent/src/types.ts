@@ -19,6 +19,15 @@ import type {
 	TSchema,
 } from "@veyyon/pi-ai";
 import type { Dialect } from "@veyyon/pi-ai/dialect";
+
+/**
+ * Owned-dialect configuration: a fixed dialect, or a per-model resolver that is
+ * re-evaluated with the active model on every request. `undefined` (value or
+ * resolver result) keeps provider-native tool calling, subject to the
+ * `PI_DIALECT` env override.
+ */
+export type ConfiguredDialect = Dialect | ((model: Model) => Dialect | undefined);
+
 import type { HarmonyAuditEvent } from "@veyyon/pi-ai/utils/harmony-leak";
 import type { AppendOnlyContextManager } from "./append-only-context";
 import type { AgentRunCoverage, AgentRunSummary } from "./run-collector";
@@ -287,8 +296,13 @@ export interface AgentLoopConfig extends SimpleStreamOptions {
 	 * native `tools`, forces `toolChoice` off, appends that dialect's tool catalog
 	 * instructions, re-encodes prior tool calls/results as text, and parses the
 	 * model's text output back into canonical `toolCall` blocks.
+	 *
+	 * A function form is re-evaluated with the active model on every request, so
+	 * mid-session model switches pick the right tool-calling shape (e.g. a switch
+	 * to a `supportsTools: false` model engages an in-band dialect instead of
+	 * sending a native `tools` param the endpoint rejects).
 	 */
-	dialect?: Dialect;
+	dialect?: ConfiguredDialect;
 	/**
 	 * When owned (in-band) tool calling is active and the model starts
 	 * fabricating a tool result inside its own turn, control how the loop reacts:
@@ -436,10 +450,7 @@ export interface AgentLoopConfig extends SimpleStreamOptions {
 	 * `validateToolArguments`. When repair returns `unrepairable`, the loop emits
 	 * an error tool result and does not dispatch.
 	 */
-	repairToolCallArguments?: (
-		tool: AgentTool,
-		toolCall: AgentToolCall,
-	) => ToolCallRepairResult;
+	repairToolCallArguments?: (tool: AgentTool, toolCall: AgentToolCall) => ToolCallRepairResult;
 	/**
 	 * Opt-in OpenTelemetry instrumentation. Passing `{}` enables the loop's
 	 * GenAI-semantic-convention spans (`invoke_agent`, `chat`, `execute_tool`)
@@ -570,7 +581,7 @@ export interface AgentState {
 	model: Model;
 	thinkingLevel?: Effort;
 	disableReasoning?: boolean;
-	tools: AgentTool<any>[];
+	tools: AnyAgentTool[];
 	messages: AgentMessage[]; // Can include attachments + custom message types
 	isStreaming: boolean;
 	streamMessage: AgentMessage | null;
@@ -578,7 +589,7 @@ export interface AgentState {
 	error?: string;
 }
 
-export interface AgentToolResult<T = any, _TInput = unknown> {
+export interface AgentToolResult<T = unknown, _TInput = unknown> {
 	// Content blocks supporting text and images
 	content: (TextContent | ImageContent)[];
 	// Details to be displayed in a UI or logged
@@ -591,7 +602,9 @@ export interface AgentToolResult<T = any, _TInput = unknown> {
 }
 
 // Callback for streaming tool execution updates
-export type AgentToolUpdateCallback<T = any, TInput = unknown> = (partialResult: AgentToolResult<T, TInput>) => void;
+export type AgentToolUpdateCallback<T = unknown, TInput = unknown> = (
+	partialResult: AgentToolResult<T, TInput>,
+) => void;
 
 /** Options passed to renderResult */
 export interface RenderResultOptions {
@@ -626,7 +639,7 @@ export interface AgentToolContext {
 	// Empty by default - apps extend via declaration merging
 }
 
-export type AgentToolExecFn<TParameters extends TSchema = TSchema, TDetails = any, TTheme = unknown> = (
+export type AgentToolExecFn<TParameters extends TSchema = TSchema, TDetails = unknown, TTheme = unknown> = (
 	this: AgentTool<TParameters, TDetails, TTheme>,
 	toolCallId: string,
 	params: Static<TParameters>,
@@ -636,7 +649,7 @@ export type AgentToolExecFn<TParameters extends TSchema = TSchema, TDetails = an
 ) => Promise<AgentToolResult<TDetails, TParameters>>;
 
 // AgentTool extends Tool but adds the execute function
-export interface AgentTool<TParameters extends TSchema = TSchema, TDetails = any, TTheme = unknown>
+export interface AgentTool<TParameters extends TSchema = TSchema, TDetails = unknown, TTheme = unknown>
 	extends Tool<TParameters> {
 	// A human-readable label for the tool to be displayed in UI
 	label: string;
@@ -725,11 +738,20 @@ export interface AgentTool<TParameters extends TSchema = TSchema, TDetails = any
 	) => unknown;
 }
 
+/**
+ * Existential tool type for heterogeneous collections. `TDetails` is
+ * contravariant in `renderResult`/`onUpdate`, so a typed tool is not
+ * assignable to `AgentTool<TSchema, unknown>` — collections that hold tools of
+ * differing detail types must use this alias instead.
+ */
+// biome-ignore lint/suspicious/noExplicitAny: existential type over all tool instantiations
+export type AnyAgentTool = AgentTool<any, any, any>;
+
 // AgentContext is like Context but uses AgentTool
 export interface AgentContext {
 	systemPrompt: string[];
 	messages: AgentMessage[];
-	tools?: AgentTool<any>[];
+	tools?: AnyAgentTool[];
 }
 
 /**
@@ -755,6 +777,18 @@ export type AgentEvent =
 	| { type: "message_update"; message: AgentMessage; assistantMessageEvent: AssistantMessageEvent }
 	| { type: "message_end"; message: AgentMessage }
 	// Tool execution lifecycle
-	| { type: "tool_execution_start"; toolCallId: string; toolName: string; args: any; intent?: string }
-	| { type: "tool_execution_update"; toolCallId: string; toolName: string; args: any; partialResult: any }
-	| { type: "tool_execution_end"; toolCallId: string; toolName: string; result: any; isError?: boolean };
+	| { type: "tool_execution_start"; toolCallId: string; toolName: string; args: unknown; intent?: string }
+	| {
+			type: "tool_execution_update";
+			toolCallId: string;
+			toolName: string;
+			args: unknown;
+			partialResult: AgentToolResult<unknown>;
+	  }
+	| {
+			type: "tool_execution_end";
+			toolCallId: string;
+			toolName: string;
+			result: AgentToolResult<unknown>;
+			isError?: boolean;
+	  };

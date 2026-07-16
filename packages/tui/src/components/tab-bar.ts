@@ -280,6 +280,42 @@ export class TabBar implements Component {
 	}
 
 	/**
+	 * Render the tabs as a vertical sidebar column: one tab per line, padded to
+	 * `width` so active/hover styles paint a full-width bar. The active tab is
+	 * prefixed with `cursor`; labels that overflow fall back to `short`, then
+	 * truncate. Hit zones cover each full row, so `tabAt`/`setHoverTab` work
+	 * exactly as after a horizontal `render`.
+	 */
+	renderVertical(width: number, cursor = "> "): readonly string[] {
+		const maxWidth = Math.max(1, width);
+		const cursorW = visibleWidth(cursor);
+		this.#hitZones = [];
+		const lines: string[] = [];
+		for (let i = 0; i < this.#tabs.length; i++) {
+			const tab = this.#tabs[i];
+			// Muted tabs never take the active highlight (matches render()).
+			const active = i === this.#activeIndex && !tab.muted;
+			const hovered = tab.id === this.#hoverTabId && !tab.muted && !active;
+			let label = tab.label;
+			if (cursorW + visibleWidth(label) > maxWidth && tab.short !== undefined) {
+				label = tab.short;
+			}
+			let text = truncateToWidth(`${active ? cursor : " ".repeat(cursorW)}${label}`, maxWidth);
+			text += " ".repeat(Math.max(0, maxWidth - visibleWidth(text)));
+			const style = tab.muted
+				? (this.#theme.mutedTab ?? this.#theme.inactiveTab)
+				: active
+					? this.#theme.activeTab
+					: hovered
+						? (this.#theme.hoverTab ?? this.#theme.inactiveTab)
+						: this.#theme.inactiveTab;
+			this.#hitZones.push({ line: i, start: 0, end: maxWidth, index: i });
+			lines.push(style(text));
+		}
+		return lines.length > 0 ? lines : [""];
+	}
+
+	/**
 	 * Resolve a pointer position against the last rendered frame. `line` is the
 	 * 0-based line index within this component's render output, `col` the
 	 * 0-based column.

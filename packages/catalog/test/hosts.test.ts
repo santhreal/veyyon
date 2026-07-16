@@ -18,6 +18,11 @@ describe("hostMatchesUrl", () => {
 		expect(hostMatchesUrl("https://API.Z.AI/api/paas/v4", "zai")).toBe(true);
 	});
 
+	test("matches the Hugging Face Inference Providers router by URL", () => {
+		expect(hostMatchesUrl("https://router.huggingface.co/v1", "huggingfaceRouter")).toBe(true);
+		expect(hostMatchesUrl("https://api-inference.huggingface.co/v1", "huggingfaceRouter")).toBe(false);
+	});
+
 	test("keeps DeepSeek direct host narrower than DeepSeek family", () => {
 		expect(hostMatchesUrl("https://api.deepseek.com/v1", "deepseekDirect")).toBe(true);
 		expect(hostMatchesUrl("https://api.deepseek.com/v1", "deepseekFamily")).toBe(true);

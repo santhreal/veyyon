@@ -525,6 +525,10 @@ export function createSimpleOpenAICompletionsOptions(
 	providerId: Parameters<typeof getBundledModels>[0],
 	defaultBaseUrl: string,
 	config?: SimpleProviderConfig,
+	refineModel?: (
+		entry: OpenAICompatibleModelRecord,
+		model: ModelSpec<"openai-completions">,
+	) => ModelSpec<"openai-completions">,
 ): ModelManagerOptions<"openai-completions"> {
 	const apiKey = config?.apiKey;
 	const baseUrl = config?.baseUrl ?? defaultBaseUrl;
@@ -541,7 +545,8 @@ export function createSimpleOpenAICompletionsOptions(
 					headers: resolveSimpleProviderHeaders(config?.headers),
 					mapModel: (entry, defaults) => {
 						const reference = references.get(defaults.id);
-						return mapWithBundledReference(entry, defaults, reference);
+						const mapped = mapWithBundledReference(entry, defaults, reference);
+						return refineModel ? refineModel(entry, mapped) : mapped;
 					},
 					fetch: config?.fetch,
 				}),
@@ -951,10 +956,36 @@ export interface HuggingfaceModelManagerConfig {
 	fetch?: FetchImpl;
 }
 
+/**
+ * The HF Inference Providers router advertises per-upstream capabilities in a
+ * `providers` array on each `/v1/models` entry (`supports_tools`,
+ * `context_length`, pricing, …). Stamp `supportsTools: false` only when every
+ * listed upstream explicitly reports `supports_tools: false` — sending a native
+ * `tools` param to such a model 400s. Unknown or mixed capability keeps the
+ * default (tool-capable) so discovery never speculatively degrades a model.
+ */
+export function applyHuggingfaceProviderCapabilities(
+	entry: OpenAICompatibleModelRecord,
+	model: ModelSpec<"openai-completions">,
+): ModelSpec<"openai-completions"> {
+	if (!Array.isArray(entry.providers)) return model;
+	const upstreams = entry.providers.filter(isRecord);
+	if (upstreams.length === 0) return model;
+	if (upstreams.every(upstream => upstream.supports_tools === false)) {
+		return { ...model, supportsTools: false };
+	}
+	return model;
+}
+
 export function huggingfaceModelManagerOptions(
 	config?: HuggingfaceModelManagerConfig,
 ): ModelManagerOptions<"openai-completions"> {
-	return createSimpleOpenAICompletionsOptions("huggingface", "https://router.huggingface.co/v1", config);
+	return createSimpleOpenAICompletionsOptions(
+		"huggingface",
+		"https://router.huggingface.co/v1",
+		config,
+		applyHuggingfaceProviderCapabilities,
+	);
 }
 
 // ---------------------------------------------------------------------------
@@ -2625,7 +2656,13 @@ export function lmStudioModelManagerOptions(
 ): ModelManagerOptions<"openai-completions"> {
 	const apiKey = config?.apiKey;
 	const baseUrl = config?.baseUrl ?? Bun.env.LM_STUDIO_BASE_URL ?? "http://127.0.0.1:1234/v1";
-	const references = createBundledReferenceMap<"openai-completions">("lm-studio" as any);
+	// models.json bundles no lm-studio entries (local models are host-specific);
+	// specs come entirely from the live /v1/models + native metadata fetch. The
+	// empty map keeps the mapModel shape identical to reference-bundling
+	// providers. If lm-studio references are ever bundled, switch back to
+	// createBundledReferenceMap("lm-studio") — GeneratedProvider will then
+	// include the key without a cast.
+	const references = new Map<string, ModelSpec<"openai-completions">>();
 	return {
 		providerId: "lm-studio",
 		fetchDynamicModels: async () => {

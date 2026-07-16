@@ -110,6 +110,52 @@ describe("buildModel", () => {
 		expect(model.compat.openRouterRouting).toEqual({ only: ["anthropic"], order: ["anthropic"] });
 	});
 
+	it("marks multi-upstream routers as self-capping and direct hosts as not", () => {
+		expect(buildModel(completionsSpec()).compat.routedUpstreamSelfCaps).toBe(false);
+		expect(buildModel(openrouterSpec()).compat.routedUpstreamSelfCaps).toBe(true);
+		expect(
+			buildOpenAICompat(completionsSpec({ provider: "huggingface", baseUrl: "https://router.huggingface.co/v1" }))
+				.routedUpstreamSelfCaps,
+		).toBe(true);
+		expect(
+			buildOpenAICompat(completionsSpec({ provider: "custom", baseUrl: "https://router.huggingface.co/v1" }))
+				.routedUpstreamSelfCaps,
+		).toBe(true);
+	});
+
+	it("drops OpenAI-style effort for DeepSeek models behind the HF router only", () => {
+		const hfDeepseek = buildOpenAICompat(
+			completionsSpec({
+				id: "deepseek-ai/DeepSeek-V3.2",
+				provider: "huggingface",
+				baseUrl: "https://router.huggingface.co/v1",
+				reasoning: true,
+			}),
+		);
+		expect(hfDeepseek.supportsReasoningEffort).toBe(false);
+		expect(hfDeepseek.omitReasoningEffort).toBe(true);
+
+		const hfGptOss = buildOpenAICompat(
+			completionsSpec({
+				id: "openai/gpt-oss-120b",
+				provider: "huggingface",
+				baseUrl: "https://router.huggingface.co/v1",
+				reasoning: true,
+			}),
+		);
+		expect(hfGptOss.supportsReasoningEffort).toBe(true);
+
+		const directDeepseek = buildOpenAICompat(
+			completionsSpec({
+				id: "deepseek-reasoner",
+				provider: "deepseek",
+				baseUrl: "https://api.deepseek.com",
+				reasoning: true,
+			}),
+		);
+		expect(directDeepseek.supportsReasoningEffort).toBe(true);
+	});
+
 	it("loads bundled OpenRouter models with resolved compat", () => {
 		const model = getBundledModel<"openrouter">("openrouter", "anthropic/claude-sonnet-4");
 

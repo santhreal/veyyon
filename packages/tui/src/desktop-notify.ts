@@ -20,7 +20,7 @@
 // iTerm2, WezTerm, …) keep working unchanged and the BEL emission still fires
 // for tmux `monitor-bell`, X11 urgency hints, and audible-bell handlers.
 
-import { $which } from "@veyyon/pi-utils";
+import { $which, logger } from "@veyyon/pi-utils";
 import type { TerminalId, TerminalNotification } from "./terminal-capabilities";
 
 /** Application name surfaced as the notification source. */
@@ -180,7 +180,12 @@ export function sendDesktopNotification(message: string | TerminalNotification):
 			stderr: "ignore",
 		});
 		child.unref();
-	} catch {
-		// Best-effort: a failed spawn is silent.
+	} catch (error) {
+		// Best-effort — a broken notifier must not crash rendering — but say
+		// so: a silent failure means the user never learns why attention
+		// pings stopped arriving.
+		logger.warn("desktop notification spawn failed; notifications will not appear", {
+			error: error instanceof Error ? error.message : String(error),
+		});
 	}
 }

@@ -108,16 +108,16 @@ export class AppendOnlyLog {
 		return this.#entries.length;
 	}
 
-	append(message: any): void {
+	append(message: Message): void {
 		this.#entries.push(message);
 	}
 
-	extend(messages: any[]): void {
+	extend(messages: Message[]): void {
 		for (const m of messages) this.#entries.push(m);
 	}
 
 	/** Replace the last entry — only legal for compaction. */
-	replaceTail(replacement: any): void {
+	replaceTail(replacement: Message): void {
 		const idx = this.#entries.length - 1;
 		if (idx >= 0) this.#entries[idx] = replacement;
 	}
@@ -204,7 +204,7 @@ export class AppendOnlyContextManager {
 	 *    lets the provider's KV cache stay warm up to the divergence
 	 *    point — the model only re-prefills from the changed message on.
 	 */
-	syncMessages(normalizedMessages: any[]): void {
+	syncMessages(normalizedMessages: Message[]): void {
 		// Compaction (array shrunk) — every previously-synced message is gone,
 		// so the log can't carry any byte-stable bytes forward.
 		if (normalizedMessages.length < this.#lastSyncCount) {
@@ -251,11 +251,11 @@ export class AppendOnlyContextManager {
 		this.#messageDigests = [];
 	}
 
-	appendMessage(message: any): void {
+	appendMessage(message: Message): void {
 		this.log.append(message);
 	}
 
-	replaceTailMessage(message: any): void {
+	replaceTailMessage(message: Message): void {
 		this.log.replaceTail(message);
 	}
 

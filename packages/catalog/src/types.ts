@@ -491,8 +491,15 @@ export interface ResolvedOpenAISharedCompat {
 	emptyLengthFinishIsContextError: boolean;
 	usesOpenAIToolCallIdLimit: boolean;
 	promptCacheSessionHeader?: OpenAICompat["promptCacheSessionHeader"];
-	/** The model sits behind OpenRouter (routing prefs and max-token omission apply). */
+	/** The model sits behind OpenRouter (routing prefs apply). */
 	isOpenRouterHost: boolean;
+	/**
+	 * The model sits behind a multi-upstream router (OpenRouter, the Hugging
+	 * Face Inference Providers router) whose routed upstreams enforce output
+	 * caps that differ from the catalog value. Catalog-default max-token caps
+	 * are omitted so each upstream self-caps; explicit caller caps still win.
+	 */
+	routedUpstreamSelfCaps: boolean;
 	/** Whether this endpoint needs a max-token field even when caller did not set one. */
 	alwaysSendMaxTokens: boolean;
 	/** See {@link OpenAICompat.enableGeminiThinkingLoopGuard}. Set by the builder from the family classifier. */

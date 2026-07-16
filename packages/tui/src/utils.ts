@@ -141,16 +141,46 @@ export function centerLine(line: string, width: number): string {
 	return padding(left) + line + padding(width - left - lineWidth);
 }
 
+/**
+ * Normalize CR and CRLF to LF for wrapping. The native wrapper breaks only
+ * on LF, so a `\r\n` source leaves a trailing `\r` on the wrapped row and a
+ * bare `\r` stays embedded — either one moves the terminal cursor to column 0
+ * and corrupts the line. Universal-newline normalization (`\r\n` and bare `\r`
+ * both become `\n`) keeps every produced row a single clean line. Guarded on
+ * `includes` so the overwhelmingly common CR-free text pays one scan rather
+ * than a regex rewrite. Exported so callers that index into the text they
+ * pass to {@link wrapTextWithAnsi} can align their offsets with what the
+ * wrapper actually wraps.
+ */
+export function normalizeWrapInput(text: string): string {
+	return text.includes("\r") ? text.replace(/\r\n?/g, "\n") : text;
+}
+
 export function wrapTextWithAnsi(text: string, width: number): string[] {
-	// Normalize CR and CRLF to LF before wrapping. The native wrapper breaks only
-	// on LF, so a `\r\n` source leaves a trailing `\r` on the wrapped row and a
-	// bare `\r` stays embedded — either one moves the terminal cursor to column 0
-	// and corrupts the line. Universal-newline normalization (`\r\n` and bare `\r`
-	// both become `\n`) keeps every produced row a single clean line. Guarded on
-	// `includes` so the overwhelmingly common CR-free text pays one scan rather
-	// than a regex rewrite.
-	const normalized = text.includes("\r") ? text.replace(/\r\n?/g, "\n") : text;
-	return nativeWrapTextWithAnsi(normalized, width, DEFAULT_TAB_WIDTH);
+	return nativeWrapTextWithAnsi(normalizeWrapInput(text), width, DEFAULT_TAB_WIDTH);
+}
+
+const SGR_SEQUENCE_GLOBAL = /\x1b\[[0-9;:]*m/g;
+
+/**
+ * Everything before the last full SGR reset is dead state — drop it so a
+ * re-played carry stays bounded by the live style run instead of the whole
+ * code history.
+ */
+export function compactSgrCarry(carry: string): string {
+	const shortReset = carry.lastIndexOf("\x1b[m");
+	const longReset = carry.lastIndexOf("\x1b[0m");
+	const cut = Math.max(shortReset === -1 ? -1 : shortReset + 3, longReset === -1 ? -1 : longReset + 4);
+	return cut === -1 ? carry : carry.slice(cut);
+}
+
+/**
+ * Advance an SGR carry across `text`: the returned string, replayed at the
+ * start of whatever follows `text`, restores the styling state open at its
+ * end. Compacts at every step so the carry never grows past the live run.
+ */
+export function sgrCarryAfter(carry: string, text: string): string {
+	return compactSgrCarry(carry + (text.match(SGR_SEQUENCE_GLOBAL)?.join("") ?? ""));
 }
 
 export function extractSegments(

@@ -115,3 +115,30 @@ describe("midPromptSkillTokenMatches", () => {
 		expect(midPromptSkillTokenMatches("world", "skill:humanizer", "rewrites text")).toBe(false);
 	});
 });
+
+describe("built-in command vs skill ranking", () => {
+	// Regression: typing "/thinking" once ranked skill:bug-bounty-campaign above
+	// the built-in /thinking command, so Enter invoked the wrong entry. An
+	// exact or prefix name match must always outrank any skill matched only
+	// through its description (descScore is capped at subsequenceScore * 0.5).
+	async function suggestionValues(prefixLine: string): Promise<string[]> {
+		const { CombinedAutocompleteProvider } = await import("@veyyon/pi-tui/autocomplete");
+		const commands = [
+			{ name: "skill:bug-bounty-campaign", description: "Run a structured bug bounty campaign, thinking through triage and hunting" },
+			{ name: "skill:humanizer", description: "Rewrite thinking-heavy output in a human voice" },
+			{ name: "thinking", description: "Set the thinking level" },
+			{ name: "theme", description: "Switch color theme" },
+		];
+		const provider = new CombinedAutocompleteProvider(commands, process.cwd());
+		const result = await provider.getSuggestions([prefixLine], 0, prefixLine.length);
+		return result?.items.map(item => item.value) ?? [];
+	}
+
+	it("locks /thinking → the thinking command first", async () => {
+		expect((await suggestionValues("/thinking"))[0]).toBe("thinking");
+	});
+
+	it("ranks a prefix match on a built-in above description-only skill matches", async () => {
+		expect((await suggestionValues("/think"))[0]).toBe("thinking");
+	});
+});

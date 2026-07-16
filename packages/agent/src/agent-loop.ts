@@ -8,6 +8,7 @@ import {
 	type Context,
 	EventStream,
 	isApiKeyResolver,
+	type Model,
 	resolveApiKeyOnce,
 	seedApiKeyResolver,
 	streamSimple,
@@ -38,7 +39,7 @@ import {
 	signalListLabel,
 } from "@veyyon/pi-ai/utils/harmony-leak";
 import { preferredDialect } from "@veyyon/pi-catalog/identity";
-import { sanitizeText, structuredCloneJSON } from "@veyyon/pi-utils";
+import { logger, sanitizeText, structuredCloneJSON } from "@veyyon/pi-utils";
 import { INTENT_FIELD } from "@veyyon/pi-wire";
 import { agentPauseGate } from "./pause";
 import { type AgentRunCoverage, type AgentRunSummary, ToolCallBlockedError } from "./run-collector";
@@ -67,6 +68,7 @@ import type {
 	AgentToolResult,
 	AgentTurnEndContext,
 	AsideMessage,
+	ConfiguredDialect,
 	SteeringInterruptSource,
 	SteeringQueueState,
 	StreamFn,
@@ -154,6 +156,17 @@ class HarmonyLeakInterruption extends Error {
 		this.name = "HarmonyLeakInterruption";
 	}
 }
+/**
+ * Resolve the effective owned dialect for a request: the configured value (or
+ * per-model resolver) wins, then the `PI_DIALECT` env override, else native
+ * tool calling. The single owner of this precedence — both the agent loop and
+ * side-channel requests go through here.
+ */
+export function resolveConfiguredDialect(configured: ConfiguredDialect | undefined, model: Model): Dialect | undefined {
+	const resolved = typeof configured === "function" ? configured(model) : configured;
+	return resolved ?? resolveOwnedDialectFromEnv(Bun.env.PI_DIALECT);
+}
+
 export function resolveOwnedDialectFromEnv(value: string | undefined): Dialect | undefined {
 	switch (value) {
 		case "1":
@@ -1259,7 +1272,7 @@ async function streamAssistantResponse(
 	const llmMessages = await config.convertToLlm(messages);
 	const normalizedMessages = normalizeMessagesForProvider(llmMessages, model);
 
-	const ownedDialect: Dialect | undefined = config.dialect ?? resolveOwnedDialectFromEnv(Bun.env.PI_DIALECT);
+	const ownedDialect: Dialect | undefined = resolveConfiguredDialect(config.dialect, model);
 	const exampleDialect = ownedDialect ?? preferredDialect(model.id);
 	// Owned/in-band dialects carry the catalog in the prompt as text and send no
 	// native `tools`, so description pruning only applies to native tool calling.
@@ -1970,8 +1983,13 @@ async function executeToolCalls(
 					if (derived) {
 						toolCall.intent = derived;
 					}
-				} catch {
-					// intent function must never break tool execution
+				} catch (error) {
+					// Must never break tool execution, but a throwing intent
+					// resolver is a broken tool feature — surface it.
+					logger.warn("tool intent resolver threw; using the default intent label", {
+						tool: toolCall.name,
+						error: error instanceof Error ? error.message : String(error),
+					});
 				}
 			}
 		}
@@ -2242,8 +2260,12 @@ async function executeToolCalls(
 			// take down the whole batch, so fall back to the safe (serial) mode.
 			try {
 				concurrency = concurrencyMode(record.args);
-			} catch {
+			} catch (error) {
 				concurrency = "exclusive";
+				logger.warn("tool concurrency resolver threw; running the call serially", {
+					tool: record.tool?.name,
+					error: error instanceof Error ? error.message : String(error),
+				});
 			}
 		} else {
 			concurrency = concurrencyMode ?? "shared";
