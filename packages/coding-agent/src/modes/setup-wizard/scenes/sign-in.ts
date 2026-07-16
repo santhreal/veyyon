@@ -1,5 +1,6 @@
 import type { AuthStorage } from "@veyyon/pi-ai";
 import { PASTE_CODE_LOGIN_PROVIDERS } from "@veyyon/pi-ai";
+import { getOAuthProviders } from "@veyyon/pi-ai/oauth";
 import type { OAuthProvider } from "@veyyon/pi-ai/oauth/types";
 import {
 	type Component,
@@ -21,6 +22,11 @@ function loginUrlLink(url: string): string {
 
 function loginCopyHint(): string {
 	return theme.fg("dim", "(clipboard copy attempted; Alt+C retries)");
+}
+
+/** Friendly provider name for status copy (e.g. "Anthropic"), falling back to the raw id. */
+function providerDisplayName(providerId: string): string {
+	return getOAuthProviders().find(provider => provider.id === providerId)?.name ?? providerId;
 }
 
 class CopyablePromptInput implements Component, Focusable {
@@ -134,7 +140,7 @@ export class SignInTab implements SetupTab {
 	render(width: number): readonly string[] {
 		const lines: string[] = [];
 		if (this.#loggingInProvider) {
-			lines.push(theme.bold(`Signing in to ${this.#loggingInProvider}`));
+			lines.push(theme.bold(`Signing in to ${providerDisplayName(this.#loggingInProvider)}`));
 		} else {
 			lines.push(theme.fg("muted", "Pick a provider to sign in — you can connect more than one."), "");
 			this.#selectorRowStart = lines.length;
@@ -233,7 +239,7 @@ export class SignInTab implements SetupTab {
 			await this.host.ctx.session.modelRegistry.refresh();
 			if (this.#disposed) return;
 			this.#statusLines = [
-				theme.fg("success", `${theme.status.success} Signed in to ${providerId}`),
+				theme.fg("success", `${theme.status.success} Signed in to ${providerDisplayName(providerId)}`),
 				theme.fg("dim", `Credentials saved to ${getAgentDbPath()}`),
 			];
 			this.#authUrl = undefined;
