@@ -23,9 +23,33 @@ const GLYPH_ITEMS: readonly SelectItem[] = GLYPH_PRESETS.map((preset, index) => 
 	description: preset === "nerd" ? `${GLYPH_SAMPLES.nerd}  ╭─╮  ├─  ◆    ` : GLYPH_SAMPLES[preset],
 }));
 
+/**
+ * A live sample of real Veyyon chrome — status marks, a spinner frame, tree
+ * connectors, the file glyph, checkboxes and the prompt cursor — rendered with
+ * the highlighted preset (which {@link GlyphSceneController.#preview} applies
+ * before each render, so the panel updates in place as the highlight moves).
+ * Every glyph here resolves to something meaningful in all three presets, so a
+ * blank or a box reads as a genuine terminal gap rather than an intentional one.
+ */
+function renderGlyphPreview(): string[] {
+	const spinner = theme.getSpinnerFrames("activity")[0] ?? "-";
+	const sep = theme.fg("dim", theme.sep.pipe);
+	return [
+		theme.bold("Preview"),
+		[
+			theme.fg("success", `${theme.status.success} 3 formatted`),
+			theme.fg("warning", `${theme.status.warning} 1 lint`),
+			theme.fg("error", `${theme.status.error} 0 failed`),
+		].join(sep),
+		theme.fg("muted", `${theme.tree.branch} ${theme.checkbox.checked} ${theme.icon.file} src/app.ts`),
+		theme.fg("muted", `${theme.tree.last} ${theme.checkbox.unchecked} ${theme.icon.file} src/app.test.ts`),
+		`${theme.fg("dim", `${spinner} running tests…`)}    ${theme.fg("accent", `${theme.nav.cursor} ready`)}`,
+	];
+}
+
 class GlyphSceneController implements SetupSceneController {
 	title = "Choose glyph mode";
-	subtitle = "Pick the row that renders cleanly in your terminal.";
+	subtitle = "Pick the preset that renders cleanly — boxes or tofu mean try another.";
 	#selectList: SelectList;
 	#previewRequest = 0;
 	#committing = false;
@@ -69,7 +93,7 @@ class GlyphSceneController implements SetupSceneController {
 	}
 
 	render(width: number): readonly string[] {
-		const lines = [theme.fg("muted", "If a row shows boxes, tofu, or misaligned icons, pick another."), ""];
+		const lines = [...renderGlyphPreview(), ""];
 		this.#listRowStart = lines.length;
 		lines.push(...this.#selectList.render(width));
 		return lines;
