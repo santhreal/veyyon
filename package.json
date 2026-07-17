@@ -170,6 +170,7 @@
     "robomp:reset": "docker compose --project-directory python/robomp down -v && (docker image rm \"${PI_IMAGE:-oh-my-pi/pi:dev}\" || true)",
     "robomp:web:dev": "bun --cwd=python/robomp/web run dev",
     "robomp:web:build": "bun --cwd=python/robomp/web run build",
+    "collab:web:build": "bun --cwd=packages/collab-web run build",
     "lint:py": "ruff check python && ruff format --check python",
     "fix:py": "ruff check --fix python && ruff format python",
     "prepublishOnly": "bun run check",
@@ -184,6 +185,8 @@
     "gen:bundle": "bun --cwd=packages/coding-agent run gen:bundle",
     "gen:mupdf": "bun --cwd=packages/coding-agent run gen:mupdf",
     "gen:mupdf:reset": "bun --cwd=packages/coding-agent run gen:mupdf:reset",
+    "gen:stats": "bun --cwd=packages/stats run gen:stats",
+    "gen:stats:reset": "bun --cwd=packages/stats run gen:stats:reset",
     "gen:native": "bun --cwd=packages/natives run gen:native",
     "gen:native:reset": "bun --cwd=packages/natives run gen:native:reset",
     "check-spoofed-versions": "bun scripts/check-spoofed-versions.ts"
