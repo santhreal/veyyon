@@ -15,7 +15,7 @@ const SAMPLE = `# Changelog
 
 ### Added
 
-- A pending unreleased line that must never render.
+- An unreleased veyyon change staged for the next release.
 
 ## [1.1.0] - 2026-08-02
 
@@ -54,6 +54,19 @@ describe("parseReleases", () => {
 		const v100 = rels.find((r: any) => r.version === "1.0.0");
 		expect(v100.sections.map((s: any) => s.name)).toEqual(["Added", "Fixed"]);
 		expect(v100.sections[0].items).toEqual(["The first veyyon release."]);
+	});
+});
+
+describe("parseUnreleased", () => {
+	it("returns the Unreleased block's sections so upcoming veyyon news can render", () => {
+		const u = gen.parseUnreleased(SAMPLE);
+		expect(u.version.toLowerCase()).toBe("unreleased");
+		expect(u.sections[0].name).toBe("Added");
+		expect(u.sections[0].items).toEqual(["An unreleased veyyon change staged for the next release."]);
+	});
+
+	it("returns null when there is no Unreleased content", () => {
+		expect(gen.parseUnreleased("# Changelog\n\n## [1.0.0] - 2026-08-01\n\n### Added\n\n- x\n")).toBeNull();
 	});
 });
 
@@ -116,20 +129,41 @@ describe("reconcile", () => {
 
 describe("buildChangelogHtml", () => {
 	const rels = gen.parseReleases(SAMPLE);
+	const unreleased = gen.parseUnreleased(SAMPLE);
 
-	it("splits at the fork point and gives 'latest' to the newest PUBLISHED veyyon release", () => {
+	it("shows only veyyon releases as cards; pre-fork history is a credit note, never upstream cards", () => {
 		const gh = [{ tag_name: "v1.0.0", published_at: "2026-08-01T00:00:00Z", html_url: "u", draft: false }];
 		const { releases } = gen.reconcile(rels, gh);
-		const { html, veyyonCount, upstreamShownCount } = gen.buildChangelogHtml(releases);
+		const { html, veyyonCount, upstreamCount } = gen.buildChangelogHtml(releases);
 		expect(veyyonCount).toBe(2); // 1.1.0, 1.0.0
-		expect(upstreamShownCount).toBe(2); // 16.5.2, 16.5.1
+		expect(upstreamCount).toBe(2); // 16.5.2, 16.5.1 exist but are NOT rendered as cards
+		// No oh-my-pi version card is ever emitted.
+		expect(html).not.toContain('id="v16-5-2"');
+		expect(html).not.toContain('id="v16-5-1"');
+		expect(html).not.toContain("Inherited from oh-my-pi");
+		// Instead, a single provenance note links upstream for the pre-fork history.
+		expect(html).toContain('class="upstream-note"');
+		expect(html).toContain("fork of");
+		expect(html).toContain("https://github.com/can1357/oh-my-pi/releases");
 		// 1.1.0 is newer but unpublished → pending; 1.0.0 is the published latest.
 		expect(html).toContain('id="v1-0-0"');
-		expect(html.indexOf("pending release")).toBeGreaterThan(-1);
 		const v110Block = html.slice(html.indexOf('id="v1-1-0"'), html.indexOf('id="v1-0-0"'));
 		expect(v110Block).toContain("pending release");
 		expect(v110Block).not.toContain(">latest<");
-		expect(html).toContain("Inherited from oh-my-pi");
+	});
+
+	it("renders the Unreleased block first when passed, with a 'next release' pill", () => {
+		const { releases } = gen.reconcile(rels, null);
+		const { html, hasUnreleased } = gen.buildChangelogHtml(releases, { unreleased });
+		expect(hasUnreleased).toBe(true);
+		expect(html.indexOf('id="unreleased"')).toBeGreaterThan(-1);
+		// The Unreleased card is above the first cut release card.
+		expect(html.indexOf('id="unreleased"')).toBeLessThan(html.indexOf('id="v1-1-0"'));
+		const uBlock = html.slice(html.indexOf('id="unreleased"'), html.indexOf('id="v1-1-0"'));
+		expect(uBlock).toContain("next release");
+		expect(uBlock).toContain("An unreleased veyyon change staged for the next release.");
+		// It carries no version-derived GitHub link.
+		expect(uBlock).not.toContain("gh-link");
 	});
 
 	it("emits a View-on-GitHub link only for published releases", () => {
@@ -144,9 +178,27 @@ describe("buildChangelogHtml", () => {
 		const gh = [{ tag_name: "v1.0.0", published_at: "2026-08-05T00:00:00Z", html_url: "u", draft: false }];
 		const { releases } = gen.reconcile(rels, gh);
 		const { html } = gen.buildChangelogHtml(releases);
-		const v100Block = html.slice(html.indexOf('id="v1-0-0"'), html.indexOf("Inherited"));
+		const v100Block = html.slice(html.indexOf('id="v1-0-0"'), html.indexOf("upstream-note"));
 		expect(v100Block).toContain("2026-08-05"); // GitHub date, not the 2026-08-01 CHANGELOG date
 		expect(v100Block).not.toContain("2026-08-01");
+	});
+
+	it("emits no upstream note when there is no pre-fork history", () => {
+		const noFork = gen.parseReleases("# Changelog\n\n## [1.1.0] - 2026-08-02\n\n### Added\n\n- b\n\n## [1.0.0] - 2026-08-01\n\n### Added\n\n- a\n");
+		const { releases } = gen.reconcile(noFork, null);
+		const { html, upstreamCount } = gen.buildChangelogHtml(releases);
+		expect(upstreamCount).toBe(0);
+		expect(html).not.toContain("upstream-note");
+	});
+});
+
+describe("upstreamNote", () => {
+	it("credits and links oh-my-pi at the fork point instead of replaying its releases", () => {
+		const note = gen.upstreamNote("16.5.2");
+		expect(note).toContain('class="upstream-note"');
+		expect(note).toContain("oh-my-pi</a> 16.5.2");
+		expect(note).toContain("https://github.com/can1357/oh-my-pi/releases");
+		expect(note).not.toContain("release-head"); // it is a note, not a version card
 	});
 });
 

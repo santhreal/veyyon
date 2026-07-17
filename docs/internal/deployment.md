@@ -31,8 +31,10 @@ bun run site:build      # = node website/build.mjs
    (the curated source of truth) via `website/tools/gen-changelog.mjs`, reconciled
    against the **published GitHub Releases** so the page can't drift from what actually
    shipped. The generator:
-   - is fork-aware: veyyon's own releases render normally, inherited oh-my-pi entries
-     go under an "Inherited from oh-my-pi" divider and never as "latest";
+   - is fork-aware: it renders **only veyyon's own release cards** plus the
+     `[Unreleased]` block (as an "Unreleased / next release" card at the top). The
+     pre-fork oh-my-pi history is never replayed as release cards — it collapses to a
+     single credit note linking upstream;
    - marks each veyyon version `published` only when GitHub has a non-draft release for
      it — using GitHub's publish date and a `View on GitHub ↗` permalink — and marks a
      finalized-but-unpublished version as `pending release`;
