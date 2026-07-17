@@ -1,7 +1,7 @@
 {
   "type": "module",
   "name": "@veyyon/pi-wire",
-  "version": "16.5.2",
+  "version": "1.0.0",
   "description": "Shared wire protocol types for Veyyon packages",
   "homepage": "https://veyyon.dev",
   "author": "Can Boluk",
