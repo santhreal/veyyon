@@ -1,7 +1,7 @@
 /**
  * MCP Configuration File Writer
  *
- * Utilities for reading/writing .omp/mcp.json files at user or project level.
+ * Utilities for reading/writing .veyyon/mcp.json files at user or project level.
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -270,7 +270,7 @@ export interface SetMcpServerEnabledOptions {
 	projectPath: string;
 	/**
 	 * Absolute path to the loaded row's source mcp.json. Provide ONLY for
-	 * formats this codebase owns (native `.omp/mcp.json` and `mcp-json`
+	 * formats this codebase owns (native `.veyyon/mcp.json` and `mcp-json`
 	 * `mcp.json`/`.mcp.json`). Tool-owned configs (opencode.json, claude.json,
 	 * settings.json …) MUST be omitted; we never mutate another tool's file.
 	 */

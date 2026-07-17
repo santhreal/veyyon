@@ -32,7 +32,7 @@ interface GenerateCandidateOptions {
 type SaveCandidateResult = { kind: "saved" | "aborted" | "rejected" } | { kind: "amend"; feedback: string };
 
 const MAX_ATTEMPTS = 3;
-const PROJECT_OPTION = "This project (.omp/rules)";
+const PROJECT_OPTION = `This project (${CONFIG_DIR_NAME}/rules)`;
 const GLOBAL_OPTION = "Global — all projects (~/.veyyon/agent/rules)";
 const AMEND_OPTION = "Amend with feedback…";
 

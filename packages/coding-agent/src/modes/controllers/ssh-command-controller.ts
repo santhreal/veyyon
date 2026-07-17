@@ -3,7 +3,7 @@
  *
  * Handles /ssh subcommands for managing SSH host configurations.
  */
-import { getProjectDir, getSSHConfigPath, logger } from "@veyyon/pi-utils";
+import { CONFIG_DIR_NAME, getProjectDir, getSSHConfigPath, logger } from "@veyyon/pi-utils";
 import { type SSHHost, sshCapability } from "../../capability/ssh";
 import { loadCapability } from "../../discovery";
 import { addSSHHost, readSSHConfigFile, removeSSHHost, type SSHHostConfig } from "../../ssh/config-writer";
@@ -296,7 +296,7 @@ export class SSHCommandController {
 
 			// Show project-level hosts
 			if (projectHosts.length > 0) {
-				lines.push(theme.fg("accent", "Project level") + theme.fg("muted", ` (.omp/ssh.json):`));
+				lines.push(theme.fg("accent", "Project level") + theme.fg("muted", ` (${CONFIG_DIR_NAME}/ssh.json):`));
 				for (const name of projectHosts) {
 					const config = projectConfig.hosts![name];
 					const details = this.#formatHostDetails(config);
