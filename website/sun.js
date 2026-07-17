@@ -26,14 +26,14 @@
   // is the terminal itself, so the walk *ends on the product working* — no fragile
   // hand-off to a separate page.
   var WIN = [
-    [0.04, 0.12], [0.14, 0.23], [0.25, 0.34], [0.36, 0.44], // act I — the idea, centered
-    [0.49, 0.575], [0.595, 0.665], [0.685, 0.755], [0.775, 0.84], [0.855, 0.915], [0.925, 0.965], // act II — product
-    [0.972, 1.2], // act III — the terminal, working
+    [0.03, 0.1], [0.115, 0.185], [0.2, 0.27], [0.285, 0.35], // act I — the idea, centered
+    [0.425, 0.495], [0.51, 0.575], [0.59, 0.655], [0.67, 0.73], [0.745, 0.8], [0.815, 0.865], // act II — product
+    [0.885, 1.2], // act III — the terminal, working; gets the longest dwell (the payoff)
   ];
   var scenes = document.querySelectorAll(".scene");
   var FADE = 0.022;
-  var DOCK_START = 0.44,
-    DOCK_END = 0.5;
+  var DOCK_START = 0.36,
+    DOCK_END = 0.42;
 
   var COLORS = ["#4a2714", "#6e3418", "#96431b", "#c25a24", "#f0862e", "#fb9e44", "#fbc06d", "#ffe3ad"];
   var GLYPH = ["·", "·", ":", "░", "▒", "▒", "▓", "█"];
@@ -86,15 +86,18 @@
     return ((h ^ (h >>> 16)) >>> 0) / 4294967295;
   }
 
-  // sun path: fullscreen -> parked centre (act I) -> docked right (act II)
+  // sun path: fullscreen -> parked centre (act I) -> docked right (act II).
+  // On narrow screens there is no room beside the text, so the dock is top-centre
+  // and act II scenes centre beneath it (see the mobile rules in site.css).
   function sunAt(p) {
+    var narrow = W < 860;
     var fullR = mn * 0.45,
       parkR = mn * 0.19,
-      dockR = mn * 0.26;
+      dockR = narrow ? mn * 0.24 : mn * 0.26;
     var parkCx = W / 2,
       parkCy = H * 0.34,
-      dockCx = W * 0.8,
-      dockCy = H * 0.34;
+      dockCx = narrow ? W / 2 : W * 0.8,
+      dockCy = narrow ? H * 0.21 : H * 0.34;
     if (p < 0.05) {
       var t = ease(p / 0.05);
       return { cx: parkCx, cy: lerp(H / 2, parkCy, t), R: lerp(fullR, parkR, t) };
@@ -227,11 +230,20 @@
         var r = stage.getBoundingClientRect();
         var travel = stage.offsetHeight - H;
         p = travel > 0 ? clamp01(-r.top / travel) : 1;
-        e = clamp01((H - r.bottom) / (H * 0.6)); // fade journey out as the runway leaves
+        // Fade the journey out over the last stretch of the runway itself. The pin
+        // and canvas are fixed overlays: fading only after the runway leaves (the old
+        // (H - r.bottom) term) can never complete when the following content is
+        // shorter than the fade distance, so the sun ghosted over the page forever.
+        e = smooth(0.96, 0.99, p);
       }
-      if (pin) pin.style.opacity = String(1 - e);
+      var gone = e >= 1;
+      if (pin) {
+        pin.style.opacity = String(1 - e);
+        pin.style.visibility = gone ? "hidden" : "";
+      }
       cv.style.opacity = String(1 - e);
-      draw((now - t0) / 1000, p);
+      cv.style.visibility = gone ? "hidden" : "";
+      if (!gone) draw((now - t0) / 1000, p); // skip the cell field entirely once the journey is over
     }
     requestAnimationFrame(loop);
   }

@@ -1,3 +1,3 @@
-# (Removed the /install -> /install.sh alias: /install now serves the install
-#  page via clean-URL resolution; the raw script lives at /install.sh and
-#  get.veyyon.dev.)
+# The extensionless /install is for humans: serve the install page. The raw
+# scripts stay at /install.sh and /install.ps1 (and get.veyyon.dev for curl).
+/install    /install.html  200
