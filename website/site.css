@@ -253,6 +253,16 @@ h3{text-wrap:balance;letter-spacing:-.015em}
 .tag.rm{color:var(--muted);border-color:var(--line-2)}
 .tag.sec{color:var(--sun);border-color:color-mix(in srgb,var(--sun) 45%,transparent)}
 .tag.break{color:#e2686a;border-color:color-mix(in srgb,#e2686a 45%,transparent)}
+/* Inherited oh-my-pi history: de-emphasized, neutral pill, no sun accent. */
+.release.upstream{opacity:.8}
+.release.upstream::before{background:var(--line-2);box-shadow:0 0 0 4px var(--bg)}
+.release.upstream .release-head h2 a{color:var(--muted)}
+.release-head .pill.upstream{color:var(--muted);border-color:var(--line-2)}
+.upstream-divider{margin:48px 0 4px;padding:24px 0 0;border-top:1px dashed var(--line-2)}
+.upstream-divider h2{margin:0 0 6px;font-family:var(--mono);font-weight:700;font-size:15px;letter-spacing:.02em;
+  color:var(--muted);text-transform:none}
+.upstream-divider p{margin:0;font-size:13px;line-height:1.6;color:var(--dim);max-width:62ch}
+.upstream-divider p a{color:var(--sun-hi)}
 @media (max-width:560px){.sec{grid-template-columns:1fr;gap:8px}.changelog{padding-left:20px}}
 
 /* footer */
