@@ -29,5 +29,3 @@ The contract applies to onboarding, composer, menus, dialogs, status line, markd
 - CLI binary: `veyyon`
 - Config root: `~/.veyyon` (`PI_CONFIG_DIR` overrides the directory name; XDG paths after `veyyon config init-xdg`)
 - npm packages: `@veyyon/*`
-
-Full brand rules: [Brand and identity](../design/brand.md) and the repo `docs/brand-system.md`.

@@ -46,10 +46,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-c7a85c3d.js";
+            window.path_to_searchindex_js = "../searchindex-5fa9cb6b.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-b266b4db.js"></script>
+        <script src="../toc-b8eaaacb.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -192,7 +192,7 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="themes-and-identity"><a class="header" href="#themes-and-identity">Themes and identity</a></h1>
-<p>Veyyon’s interface is built around near-black, near-white, and a persistent <strong>Veyyon silver</strong> accent (<code>#B8BDC7</code>).</p>
+<p>Veyyon’s interface is built around near-black, near-white, and a persistent <strong>Veyyon silver</strong> accent (<code>#C6CBD4</code>).</p>
 <h2 id="shipped-themes"><a class="header" href="#shipped-themes">Shipped themes</a></h2>
 <div class="table-wrapper">
 <table>
@@ -200,14 +200,13 @@
 <tr><th>File</th><th>Name</th><th>Notes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>dark.json</code></td><td>Veyyon Dark</td><td>Rebranded: <code>#050505</code> / <code>#FAFAFA</code> / silver <code>#B8BDC7</code></td></tr>
-<tr><td><code>light.json</code></td><td>Light</td><td>Upstream oh-my-pi palette (teal accent); not yet silver-rebranded</td></tr>
+<tr><td><code>defaults/titanium.json</code></td><td>Titanium</td><td><strong>Default dark theme.</strong> Pitch black <code>#000000</code>, silver <code>#C6CBD4</code>, ember accent <code>#F0862E</code> — matches the website tokens (<code>website/site.css</code>)</td></tr>
+<tr><td><code>dark.json</code></td><td>Veyyon Dark</td><td>Pitch black <code>#000000</code> / <code>#FAFAFA</code> / silver <code>#B8BDC7</code>; predates the ember accent</td></tr>
+<tr><td><code>light.json</code></td><td>Light</td><td><strong>Default light theme.</strong> Titanium’s inverse: white <code>#FFFFFF</code> ground, dark-silver structure <code>#5C6470</code>, ember accent (<code>#F0862E</code> chrome, <code>#B65E14</code> links) — see <code>docs/internal/design.md</code> “Light ground”</td></tr>
 </tbody>
 </table>
 </div>
-<blockquote>
-<p><strong>Spec — not shipped:</strong> Veyyon Light with inverted black/white poles and a persistent silver accent.</p>
-</blockquote>
+<p>A larger bundled catalog ships under <code>modes/theme/defaults/</code> and is selectable from the theme picker.</p>
 <h2 id="changing-theme"><a class="header" href="#changing-theme">Changing theme</a></h2>
 <ul>
 <li><strong>Settings UI:</strong> <code>/settings</code> → Appearance → theme (or the theme picker on first run).</li>
@@ -223,7 +222,6 @@
 <li>Config root: <code>~/.veyyon</code> (<code>PI_CONFIG_DIR</code> overrides the directory name; XDG paths after <code>veyyon config init-xdg</code>)</li>
 <li>npm packages: <code>@veyyon/*</code></li>
 </ul>
-<p>Full brand rules: <a href="../design/brand.html">Brand and identity</a> and the repo <code>docs/brand-system.md</code>.</p>
 
                     </main>
 

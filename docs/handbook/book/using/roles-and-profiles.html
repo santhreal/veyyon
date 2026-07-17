@@ -46,10 +46,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-c7a85c3d.js";
+            window.path_to_searchindex_js = "../searchindex-5fa9cb6b.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-b266b4db.js"></script>
+        <script src="../toc-b8eaaacb.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -250,8 +250,9 @@ surface you configure every turn.</p>
 <p>A <strong>profile</strong> relocates <code>~/.veyyon/agent/</code> to <code>~/.veyyon/profiles/&lt;name&gt;/agent/</code> for native Veyyon
 config (settings, sessions, MCP, skills, hooks, and your role assignments and model slots). Activate
 with <code>veyyon --profile &lt;name&gt;</code> or <code>VEYYON_PROFILE</code>.</p>
-<p>Profiles are chosen at process start, not mid-session. See <a href="../features/profiles.html">Profiles</a> for the
-lifecycle commands (<code>veyyon profile list/new/rm</code>).</p>
+<p>Profiles are chosen at process start; <code>/profile &lt;name&gt;</code> in the TUI relaunches Veyyon on the target
+profile as a fresh session. See <a href="../features/profiles.html">Profiles</a> for the lifecycle commands
+(<code>veyyon profile list/new/rm</code>), the <code>/profile new</code> copy picker, and display-name renaming.</p>
 <h2 id="tool-approval"><a class="header" href="#tool-approval">Tool approval</a></h2>
 <p>Behavior is governed by <code>tools.approvalMode</code> (<code>plan</code>, <code>ask</code>, <code>auto-edit</code>, <code>yolo</code>) and per-tool
 <code>tools.approval</code> overrides. Configure in <code>/settings</code> → Safety or <code>--approval-mode</code> on launch.</p>

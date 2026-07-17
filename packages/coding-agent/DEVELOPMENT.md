@@ -144,8 +144,15 @@ Top-level entry modules: `cli.ts`, `main.ts`, `sdk.ts`, `index.ts` (SDK barrel),
 - [natives-build-release-debugging.md](../../docs/internal/natives-build-release-debugging.md), [natives-rust-task-cancellation.md](../../docs/internal/natives-rust-task-cancellation.md), [porting-to-natives.md](../../docs/internal/porting-to-natives.md)
 
 ### Build, release, and porting
+- [releasing.md](../../docs/internal/releasing.md) — cut a release (versioning, `release.ts`, CI)
+- [deployment.md](../../docs/internal/deployment.md) — ship the website + binaries; install endpoints
 - [macos-signing-notarization.md](../../docs/internal/macos-signing-notarization.md)
 - [porting-from-pi-mono.md](../../docs/internal/porting-from-pi-mono.md)
+
+### Design and brand
+- [brand.md](../../docs/internal/brand.md) — identity contract (names, palette, voice)
+- [tui-design-language.md](../../docs/internal/tui-design-language.md) — terminal-UX conventions
+- [retained-patterns.md](../../docs/internal/retained-patterns.md) — coordination + prompt keepers
 
 ## Extending omp
 

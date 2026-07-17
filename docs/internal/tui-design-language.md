@@ -1,6 +1,6 @@
 # TUI design language
 
-North-star for Veyyon terminal UX. Implementation lives in `packages/tui` (rendering) and `packages/coding-agent/src/modes/theme/` (themes and tokens).
+The terminal-UX conventions Veyyon follows. Implementation lives in `packages/tui` (rendering) and `packages/coding-agent/src/modes/theme/` (themes and tokens).
 
 ## Brand palette in the TUI
 
@@ -15,7 +15,7 @@ First-party themes follow [Brand and identity](./brand.md); the website (`websit
 
 Titanium mirrors the website tokens exactly, and Light is its sanctioned inverse (see `docs/internal/design.md`, "Light ground") — both locked by `test/brand-conformance.test.ts`.
 
-Theme JSON is validated in `theme.ts` (`themeJsonSchema`). User overrides can live under `~/.veyyon/agent/themes/`. See [Themes and identity](../using/themes.md) and engine doc `docs/theme.md`.
+Theme JSON is validated in `theme.ts` (`themeJsonSchema`). User overrides can live under `~/.veyyon/agent/themes/`. See [Themes and identity](../handbook/src/using/themes.md) and engine doc `docs/theme.md`.
 
 ## Layout and width
 

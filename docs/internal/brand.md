@@ -17,7 +17,7 @@ Veyyon forks [oh-my-pi](https://github.com/can1357/oh-my-pi) (MIT): TypeScript/B
 
 Features marked `> **Spec — not shipped:**` are target design, not current behavior.
 
-Legal provenance: `LICENSE`, `NOTICE`, `UPSTREAM.md`, [Acknowledgements](../acknowledgements.md). OpenAI-compatible wire formats are protocol facts, not product branding.
+Legal provenance: `LICENSE`, `NOTICE`, `UPSTREAM.md`, [Acknowledgements](../handbook/src/acknowledgements.md). OpenAI-compatible wire formats are protocol facts, not product branding.
 
 ## Voice
 
@@ -58,4 +58,4 @@ Session welcome is a single hero card (not a dual-column dashboard): wordmark, o
 - Engine behavior: handbook pages reconciled to shipped code.
 - **Spec — not shipped**: target design until a release ships it.
 
-See also: [Themes and identity](../using/themes.md), [TUI design language](./tui-design-language.md).
+See also: [Themes and identity](../handbook/src/using/themes.md), [TUI design language](./tui-design-language.md).

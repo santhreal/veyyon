@@ -46,10 +46,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-c7a85c3d.js";
+            window.path_to_searchindex_js = "../searchindex-5fa9cb6b.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-b266b4db.js"></script>
+        <script src="../toc-b8eaaacb.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -209,6 +209,7 @@ picker. Commands below are the <strong>builtin</strong> set; extensions may add 
 <tr><td><code>/export [path]</code></td><td>Export session JSONL or HTML</td></tr>
 <tr><td><code>/dump</code></td><td>Dump debug artifacts</td></tr>
 <tr><td><code>/session info</code>, <code>/session delete</code></td><td>Session metadata or delete</td></tr>
+<tr><td><code>/profile [name]</code></td><td>List profiles, or switch (relaunches as a fresh session); <code>/profile new &lt;name&gt;</code> opens the copy picker; <code>/profile [name] rename to &lt;new&gt;</code> sets a display name</td></tr>
 <tr><td><code>/exit</code>, <code>/quit</code>, <code>/pause</code></td><td>Leave or pause</td></tr>
 </tbody>
 </table>
@@ -307,7 +308,7 @@ picker. Commands below are the <strong>builtin</strong> set; extensions may add 
 </div>
 <p>Extension packages (e.g. <strong>swarm</strong>) add commands such as <code>/swarm run</code>.</p>
 <blockquote>
-<p><strong>Spec — not shipped:</strong> <code>/pets</code>, <code>/title</code>, <code>/personality</code>, <code>/permissions</code>, <code>/profile</code>,
+<p><strong>Spec — not shipped:</strong> <code>/pets</code>, <code>/title</code>, <code>/personality</code>, <code>/permissions</code>,
 <code>/import</code>, <code>/archive</code>, <code>/delete</code>, <code>/diff</code>, <code>/init</code>, <code>/mention</code>, <code>/vim</code>, <code>/keymap</code>,
 <code>/apps</code>, <code>/ide</code>, <code>/whoami</code>, <code>/memories</code>. Use <code>/settings</code>, <code>/memory</code>, <code>/hotkeys</code>, and
 status-line presets instead. <code>/statusline</code> (shipped) jumps into the Status Line settings

@@ -47,10 +47,10 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-c7a85c3d.js";
+            window.path_to_searchindex_js = "searchindex-5fa9cb6b.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-b266b4db.js"></script>
+        <script src="toc-b8eaaacb.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -2707,12 +2707,12 @@ $ veyyon exec resume "$THREAD" "continue; finish applying the plan"
 <li><a href="#sessions">Sessions</a> — resuming and branching.</li>
 <li><a href="#sandbox-and-approvals">Sandbox and approvals</a> — policies for CI.</li>
 <li><a href="#exit-codes-2">Exit codes</a></li>
-<li><a href="../../docs/sdk.html">ACP / SDK</a> for programmatic control.</li>
+<li><a href="../../sdk.html">ACP / SDK</a> for programmatic control.</li>
 <li><a href="#cli-reference">CLI reference</a></li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="themes-and-identity"><a class="header" href="#themes-and-identity">Themes and identity</a></h1>
-<p>Veyyon’s interface is built around near-black, near-white, and a persistent <strong>Veyyon silver</strong> accent (<code>#B8BDC7</code>).</p>
+<p>Veyyon’s interface is built around near-black, near-white, and a persistent <strong>Veyyon silver</strong> accent (<code>#C6CBD4</code>).</p>
 <h2 id="shipped-themes"><a class="header" href="#shipped-themes">Shipped themes</a></h2>
 <div class="table-wrapper">
 <table>
@@ -2720,14 +2720,13 @@ $ veyyon exec resume "$THREAD" "continue; finish applying the plan"
 <tr><th>File</th><th>Name</th><th>Notes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>dark.json</code></td><td>Veyyon Dark</td><td>Rebranded: <code>#050505</code> / <code>#FAFAFA</code> / silver <code>#B8BDC7</code></td></tr>
-<tr><td><code>light.json</code></td><td>Light</td><td>Upstream oh-my-pi palette (teal accent); not yet silver-rebranded</td></tr>
+<tr><td><code>defaults/titanium.json</code></td><td>Titanium</td><td><strong>Default dark theme.</strong> Pitch black <code>#000000</code>, silver <code>#C6CBD4</code>, ember accent <code>#F0862E</code> — matches the website tokens (<code>website/site.css</code>)</td></tr>
+<tr><td><code>dark.json</code></td><td>Veyyon Dark</td><td>Pitch black <code>#000000</code> / <code>#FAFAFA</code> / silver <code>#B8BDC7</code>; predates the ember accent</td></tr>
+<tr><td><code>light.json</code></td><td>Light</td><td><strong>Default light theme.</strong> Titanium’s inverse: white <code>#FFFFFF</code> ground, dark-silver structure <code>#5C6470</code>, ember accent (<code>#F0862E</code> chrome, <code>#B65E14</code> links) — see <code>docs/internal/design.md</code> “Light ground”</td></tr>
 </tbody>
 </table>
 </div>
-<blockquote>
-<p><strong>Spec — not shipped:</strong> Veyyon Light with inverted black/white poles and a persistent silver accent.</p>
-</blockquote>
+<p>A larger bundled catalog ships under <code>modes/theme/defaults/</code> and is selectable from the theme picker.</p>
 <h2 id="changing-theme"><a class="header" href="#changing-theme">Changing theme</a></h2>
 <ul>
 <li><strong>Settings UI:</strong> <code>/settings</code> → Appearance → theme (or the theme picker on first run).</li>
@@ -2743,7 +2742,6 @@ $ veyyon exec resume "$THREAD" "continue; finish applying the plan"
 <li>Config root: <code>~/.veyyon</code> (<code>PI_CONFIG_DIR</code> overrides the directory name; XDG paths after <code>veyyon config init-xdg</code>)</li>
 <li>npm packages: <code>@veyyon/*</code></li>
 </ul>
-<p>Full brand rules: <a href="#brand-and-identity">Brand and identity</a> and the repo <code>docs/brand-system.md</code>.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="examples"><a class="header" href="#examples">Examples</a></h1>
 <p>Use Veyyon from the repository root for tasks where the harness can inspect files, edit, and verify.</p>
@@ -2944,7 +2942,7 @@ Use this skill when analyzing source files. Ensure you focus on:
 <pre><code class="language-yaml">interface:
   display_name: "Code Auditor"
   short_description: "Audit code for typical issues"
-  brand_color: "#B8BDC7"
+  brand_color: "#C6CBD4"
   default_prompt: "Audit the files in the current workspace"
 dependencies:
   tools:
@@ -3089,7 +3087,7 @@ Do not leave comments on external platforms unless the user explicitly asks for 
 <pre><code class="language-yaml">interface:
   display_name: "Code Review"
   short_description: "Review code for quality and correctness"
-  brand_color: "#B8BDC7"
+  brand_color: "#C6CBD4"
   default_prompt: "Review the current diff"
 dependencies:
   tools:
@@ -4110,7 +4108,7 @@ account-gated app tools). Veyyon does not ship this subsystem today.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="session-branching"><a class="header" href="#session-branching">Session branching</a></h1>
 <p>Veyyon sessions are <strong>trees</strong>, not linear chat logs. Each entry has <code>id</code> and <code>parentId</code>; the active position is the current <strong>leaf</strong>. Branching appends from the chosen parent without deleting sibling branches.</p>
-<p>Engine reference: <code>docs/tree.md</code>, <code>docs/session-tree-plan.md</code>.</p>
+<p>Engine reference: <code>docs/tree.md</code>, <code>docs/internal/session-tree-plan.md</code>.</p>
 <h2 id="navigate-in-place-tree"><a class="header" href="#navigate-in-place-tree">Navigate in place: <code>/tree</code></a></h2>
 <p><code>/tree</code> opens the session tree selector (<code>TreeSelectorComponent</code>). It moves the leaf <strong>within the same session file</strong> — no new session id.</p>
 <p>Also opens via:</p>
@@ -4174,7 +4172,7 @@ branchSummary:
 <h2 id="see-also-5"><a class="header" href="#see-also-5">See also</a></h2>
 <ul>
 <li><a href="#sessions">Sessions</a></li>
-<li><a href="https://github.com/santhreal/veyyon/blob/main/docs/session-operations-export-share-fork-resume.md">Session operations</a></li>
+<li><a href="https://github.com/santhreal/veyyon/blob/main/docs/internal/session-operations-export-share-fork-resume.md">Session operations</a></li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="memory"><a class="header" href="#memory">Memory</a></h1>
@@ -4209,7 +4207,7 @@ prompt when recall runs from <code>agent_start</code>).</li>
 </ol>
 <p>Key settings: <code>mnemopi.scoping</code>, <code>mnemopi.recallLimit</code>, <code>mnemopi.autoRecall</code>, <code>mnemopi.autoRetain</code>,
 <code>mnemopi.polyphonicRecall</code>, <code>mnemopi.noEmbeddings</code>. See
-<a href="../../mnemosyne-memory-backend.html"><code>docs/mnemosyne-memory-backend.md</code></a>.</p>
+<a href="../../internal/mnemosyne-memory-backend.html"><code>docs/internal/mnemosyne-memory-backend.md</code></a>.</p>
 <p>Dedicated tools when enabled: <code>memory_recall</code>, <code>memory_retain</code>, <code>memory_reflect</code>, <code>memory_edit</code>.
 The <code>/memory</code> slash command exposes <code>view</code>, <code>stats</code>, <code>diagnose</code>, <code>clear</code>, and <code>enqueue</code>.</p>
 <h3 id="local-summary-pipeline"><a class="header" href="#local-summary-pipeline">Local summary pipeline</a></h3>
@@ -4268,9 +4266,16 @@ and a <code>/memories</code> settings pane. Veyyon uses the backends above inste
 <ul>
 <li><strong>CLI:</strong> <code>veyyon --profile &lt;name&gt;</code> (no short form; <code>-p</code> is <code>--print</code>).</li>
 <li><strong>Env:</strong> <code>VEYYON_PROFILE=&lt;name&gt;</code> (legacy: <code>OMP_PROFILE</code>, <code>PI_PROFILE</code>).</li>
+<li><strong>TUI:</strong> <code>/profile &lt;name&gt;</code> ends the current conversation and relaunches Veyyon on that profile (a fresh session — profiles are chosen at process start, so there is no hot-swap). Bare <code>/profile</code> lists profiles with the active one marked.</li>
 <li><strong>Shell alias:</strong> <code>veyyon --profile work --alias mywork</code> installs a managed block in your shell rc (see <code>cli/profile-alias.ts</code>).</li>
 </ul>
-<p>Profiles are chosen at process start. There is no <code>/profile</code> slash command in the shipped TUI; start a new <code>veyyon</code> invocation to switch.</p>
+<h2 id="profile-names-and-renaming"><a class="header" href="#profile-names-and-renaming">Profile names and renaming</a></h2>
+<p>A profile’s directory name (<code>~/.veyyon/profiles/&lt;name&gt;</code>) is its stable identity and never changes. Each profile can additionally carry a <strong>display name</strong> — the <code>profile.displayName</code> setting, stored in that profile’s own <code>config.yml</code>:</p>
+<ul>
+<li><strong>Settings:</strong> <code>/settings</code> › Interaction › Profile › Profile Name.</li>
+<li><strong>TUI:</strong> <code>/profile rename to &lt;new&gt;</code> renames the active profile; <code>/profile &lt;name&gt; rename to &lt;new&gt;</code> renames another one. The default profile is renamable too.</li>
+</ul>
+<p><code>/profile list</code> shows <code>name (Display Name)</code> when they differ, and <code>/profile &lt;input&gt;</code> resolves a directory name first, then a unique display name. A copied settings file never carries the source’s display name — <code>profile new</code> clears it so two profiles cannot answer to one name.</p>
 <h2 id="creating-and-managing-profiles"><a class="header" href="#creating-and-managing-profiles">Creating and managing profiles</a></h2>
 <pre><code class="language-console">$ veyyon profile list
 $ veyyon profile new work
@@ -4283,7 +4288,10 @@ $ veyyon profile rm work --yes
 <li><code>--from blank</code> creates an empty agent tree.</li>
 <li><code>rm</code> refuses the default profile, the active profile, and destructive deletes without <code>--yes</code>.</li>
 </ul>
+<p>In the TUI, <code>/profile new &lt;name&gt;</code> opens a picker listing every carry-over item — AGENTS.md, settings, MCP servers, SSH targets, skills, commands, tools, prompts, themes, extensions, keybindings — each individually toggleable (all selected by default). The new profile is seeded from the <strong>active</strong> profile with exactly the chosen items.</p>
 <p>You can still create a profile implicitly by running <code>veyyon --profile &lt;name&gt;</code> once; use <code>profile new</code> when you want seeding without launching the TUI.</p>
+<h2 id="onboarding-import"><a class="header" href="#onboarding-import">Onboarding import</a></h2>
+<p>On first run (and once after upgrading past setup version 2), the setup wizard scans the machine for user-level config written for other tools — skills and <code>CLAUDE.md</code>/<code>AGENTS.md</code> from Claude Code, Codex, Cursor, and similar — and offers each item for import into your default profile. Imports <strong>copy</strong>: skills land in the profile’s <code>skills/</code>, instruction files append to the profile’s <code>AGENTS.md</code> under a source marker (re-imports are idempotent). The originals keep loading ambiently as the machine-wide base layer unless you turn off <code>discovery.importForeignConfig</code>.</p>
 <p>Do not document inline <code>[profiles.&lt;name&gt;]</code> tables or standalone <code>&lt;name&gt;.config.yml</code> files as shipped; settings use <code>config.yml</code> under the active agent dir.</p>
 <h2 id="model-slots-and-roles-per-profile"><a class="header" href="#model-slots-and-roles-per-profile">Model slots and roles (per profile)</a></h2>
 <p>Each profile’s <code>config.yml</code> owns the three model slots and optional roles:</p>
@@ -4297,7 +4305,7 @@ compaction:
 modelRoles:                         # optional; settings → Models → Roles
   plan: openai/o3
 </code></pre>
-<p><code>default</code> is not a model or role. Switching profiles switches these assignments with the profile.</p>
+<p><strong>Unset slots and roles inherit the live main model.</strong> The compaction model and every model role default to “inherit”: when unset, they resolve to whatever the main model is <em>at use time</em>, so switching with <code>/model</code> changes them instantly. Only an explicit assignment pins a different model. (The advisor role is the one exception — unset, it follows its thinking-model chain; the settings UI labels each role’s unset behavior.) Switching profiles switches all of these assignments with the profile.</p>
 <h2 id="see-also-6"><a class="header" href="#see-also-6">See also</a></h2>
 <ul>
 <li><a href="#models-roles-and-profiles">Models, roles, and profiles</a></li>
@@ -4364,8 +4372,9 @@ surface you configure every turn.</p>
 <p>A <strong>profile</strong> relocates <code>~/.veyyon/agent/</code> to <code>~/.veyyon/profiles/&lt;name&gt;/agent/</code> for native Veyyon
 config (settings, sessions, MCP, skills, hooks, and your role assignments and model slots). Activate
 with <code>veyyon --profile &lt;name&gt;</code> or <code>VEYYON_PROFILE</code>.</p>
-<p>Profiles are chosen at process start, not mid-session. See <a href="#profiles">Profiles</a> for the
-lifecycle commands (<code>veyyon profile list/new/rm</code>).</p>
+<p>Profiles are chosen at process start; <code>/profile &lt;name&gt;</code> in the TUI relaunches Veyyon on the target
+profile as a fresh session. See <a href="#profiles">Profiles</a> for the lifecycle commands
+(<code>veyyon profile list/new/rm</code>), the <code>/profile new</code> copy picker, and display-name renaming.</p>
 <h2 id="tool-approval"><a class="header" href="#tool-approval">Tool approval</a></h2>
 <p>Behavior is governed by <code>tools.approvalMode</code> (<code>plan</code>, <code>ask</code>, <code>auto-edit</code>, <code>yolo</code>) and per-tool
 <code>tools.approval</code> overrides. Configure in <code>/settings</code> → Safety or <code>--approval-mode</code> on launch.</p>
@@ -5173,6 +5182,7 @@ picker. Commands below are the <strong>builtin</strong> set; extensions may add 
 <tr><td><code>/export [path]</code></td><td>Export session JSONL or HTML</td></tr>
 <tr><td><code>/dump</code></td><td>Dump debug artifacts</td></tr>
 <tr><td><code>/session info</code>, <code>/session delete</code></td><td>Session metadata or delete</td></tr>
+<tr><td><code>/profile [name]</code></td><td>List profiles, or switch (relaunches as a fresh session); <code>/profile new &lt;name&gt;</code> opens the copy picker; <code>/profile [name] rename to &lt;new&gt;</code> sets a display name</td></tr>
 <tr><td><code>/exit</code>, <code>/quit</code>, <code>/pause</code></td><td>Leave or pause</td></tr>
 </tbody>
 </table>
@@ -5271,7 +5281,7 @@ picker. Commands below are the <strong>builtin</strong> set; extensions may add 
 </div>
 <p>Extension packages (e.g. <strong>swarm</strong>) add commands such as <code>/swarm run</code>.</p>
 <blockquote>
-<p><strong>Spec — not shipped:</strong> <code>/pets</code>, <code>/title</code>, <code>/personality</code>, <code>/permissions</code>, <code>/profile</code>,
+<p><strong>Spec — not shipped:</strong> <code>/pets</code>, <code>/title</code>, <code>/personality</code>, <code>/permissions</code>,
 <code>/import</code>, <code>/archive</code>, <code>/delete</code>, <code>/diff</code>, <code>/init</code>, <code>/mention</code>, <code>/vim</code>, <code>/keymap</code>,
 <code>/apps</code>, <code>/ide</code>, <code>/whoami</code>, <code>/memories</code>. Use <code>/settings</code>, <code>/memory</code>, <code>/hotkeys</code>, and
 status-line presets instead. <code>/statusline</code> (shipped) jumps into the Status Line settings
@@ -5569,7 +5579,7 @@ active profile is selected by its own variable:</p>
 </thead>
 <tbody>
 <tr><td><code>VEYYON_CONFIG_DIR</code></td><td>Overrides the config directory <strong>name</strong> under <code>$HOME</code> (default <code>.veyyon</code>). Does not accept a full path. Legacy aliases <code>OMP_CONFIG_DIR</code> and <code>PI_CONFIG_DIR</code> are still accepted (first set wins: Veyyon → OMP → PI).</td></tr>
-<tr><td><code>PI_CODING_AGENT_DIR</code></td><td>Full override for the agent directory (default <code>~/&lt;config-dir-name&gt;/agent</code>).</td></tr>
+<tr><td><code>VEYYON_CODING_AGENT_DIR</code></td><td>Full override for the agent directory (default <code>~/&lt;config-dir-name&gt;/agent</code>); legacy alias <code>PI_CODING_AGENT_DIR</code>.</td></tr>
 <tr><td><code>VEYYON_PROFILE</code></td><td>Selects the active named profile (<code>~/.veyyon/profiles/&lt;name&gt;/agent</code>). Legacy aliases <code>OMP_PROFILE</code> and <code>PI_PROFILE</code> are still accepted.</td></tr>
 <tr><td><code>VEYYON_PACKAGE_DIR</code></td><td>Override package directory for bundled assets (Nix/Guix). Legacy <code>OMP_PACKAGE_DIR</code> / <code>PI_PACKAGE_DIR</code>.</td></tr>
 <tr><td><code>VEYYON_NO_PTY</code></td><td>Set to <code>1</code> to disable PTY-based interactive bash. Legacy <code>OMP_NO_PTY</code> / <code>PI_NO_PTY</code>.</td></tr>
@@ -5697,7 +5707,7 @@ broker host:</p>
 </tbody>
 </table>
 </div>
-<p>Most installs never set these. Details: <code>docs/auth-broker-gateway.md</code>.</p>
+<p>Most installs never set these. Details: <code>docs/internal/auth-broker-gateway.md</code>.</p>
 <h2 id="repair"><a class="header" href="#repair">Repair</a></h2>
 <div class="table-wrapper">
 <table>
@@ -6039,8 +6049,8 @@ Claude/Codex/Gemini configs) when discovery is enabled.</p>
 <p>User guide: <a href="#mcp">MCP</a>, <a href="#mcp-server-setup">MCP setup</a>.</p>
 <p>Engineering detail:
 <a href="../../mcp-config.html"><code>docs/mcp-config.md</code></a>,
-<a href="../../mcp-runtime-lifecycle.html"><code>docs/mcp-runtime-lifecycle.md</code></a>,
-<a href="../../mcp-protocol-transports.html"><code>docs/mcp-protocol-transports.md</code></a>.</p>
+<a href="../../internal/mcp-runtime-lifecycle.html"><code>docs/internal/mcp-runtime-lifecycle.md</code></a>,
+<a href="../../internal/mcp-protocol-transports.html"><code>docs/internal/mcp-protocol-transports.md</code></a>.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="providers"><a class="header" href="#providers">Providers</a></h1>
 <p>The providers subsystem connects Veyyon to model APIs and normalizes their
@@ -6863,250 +6873,6 @@ and <code>UPSTREAM.md</code>.</p>
 </li>
 </ul>
 <p>See also: <a href="#sessions-turns-and-threads">Sessions, turns, and threads</a>, <a href="#permission-model">Permission model</a>, <a href="#model-contract">Model contract</a>, <a href="#why-repair-exists">Repair overview</a>, and <a href="#compaction-and-project-memory">Compaction and memory</a>.</p>
-<div style="break-before: page; page-break-before: always;"></div>
-<h1 id="brand-and-identity"><a class="header" href="#brand-and-identity">Brand and identity</a></h1>
-<p>Cross-product identity: workspace <a href="https://github.com/santhreal/veyyon/blob/main/docs/brand-system.md">brand system</a>.
-This page is how that identity shows up in the Veyyon harness (CLI, TUI, packages, config paths, docs).</p>
-<h2 id="product-identity"><a class="header" href="#product-identity">Product identity</a></h2>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Item</th><th>Value</th></tr>
-</thead>
-<tbody>
-<tr><td>Product name</td><td><strong>Veyyon</strong> (only name — not “Veyyon Code”)</td></tr>
-<tr><td>Primary command</td><td><code>veyyon</code></td></tr>
-<tr><td>Short alias</td><td><code>vey</code></td></tr>
-<tr><td>npm scope</td><td><code>@veyyon/*</code> (e.g. <code>@veyyon/pi-coding-agent</code>)</td></tr>
-<tr><td>Config home</td><td><code>~/.veyyon</code> (<code>VEYYON_CONFIG_DIR</code> / legacy <code>OMP_CONFIG_DIR</code> / <code>PI_CONFIG_DIR</code>)</td></tr>
-<tr><td>Profile env</td><td><code>VEYYON_PROFILE</code> (also accepts legacy <code>OMP_PROFILE</code> / <code>PI_PROFILE</code>)</td></tr>
-</tbody>
-</table>
-</div>
-<p>Veyyon forks <a href="https://github.com/can1357/oh-my-pi">oh-my-pi</a> (MIT): TypeScript/Bun agent loop and TUI, Rust natives for hot paths (grep, PTY, hashline). Upstream provenance is license and history — not a tagline to paste into Veyyon UI or docs.</p>
-<p>Features marked <code>&gt; **Spec — not shipped:**</code> are target design, not current behavior.</p>
-<p>Legal provenance: <code>LICENSE</code>, <code>NOTICE</code>, <code>UPSTREAM.md</code>, <a href="#acknowledgements">Acknowledgements</a>. OpenAI-compatible wire formats are protocol facts, not product branding.</p>
-<h2 id="voice"><a class="header" href="#voice">Voice</a></h2>
-<p>Exact, restrained, technical. Name the product <strong>Veyyon</strong>. Prefer short factual sentences. No inherited slogans (“IDE wired in”), no second product name for the CLI, no mascot language, no unbacked capability claims.</p>
-<h2 id="interface-palette"><a class="header" href="#interface-palette">Interface palette</a></h2>
-<p><strong>Titanium</strong> (<code>titanium.json</code>) is the shipped <strong>default</strong> dark theme (<code>theme.dark</code> defaults to <code>titanium</code>). <strong>Veyyon Dark</strong> (<code>dark.json</code>) is an alternative on the same brand rules. <strong>Light</strong> (<code>light.json</code>) is still the upstream oh-my-pi palette until a silver light theme ships.</p>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Theme</th><th>Status</th><th>Ground</th><th>Primary text</th><th>Brand accent</th><th>Highlight</th></tr>
-</thead>
-<tbody>
-<tr><td>Titanium (default)</td><td>Shipped</td><td>Pitch black <code>#000000</code></td><td><code>#e5e5e7</code></td><td>Silver <code>#B8BDC7</code></td><td>Deep blue <code>#4A84C9</code></td></tr>
-<tr><td>Veyyon Dark</td><td>Shipped</td><td>Pitch black <code>#000000</code></td><td><code>#FAFAFA</code></td><td>Silver <code>#B8BDC7</code></td><td>Deep blue <code>#4A84C9</code></td></tr>
-<tr><td>Light</td><td>Shipped (upstream)</td><td>Terminal / light gray chrome</td><td>Terminal default</td><td>Teal <code>#5a8080</code></td><td>—</td></tr>
-</tbody>
-</table>
-</div>
-<blockquote>
-<p><strong>Spec — not shipped:</strong> Veyyon Light with <code>#FAFAFA</code> ground-inverse and silver <code>#B8BDC7</code> (brand-system target).</p>
-</blockquote>
-<p>The ground is <strong>pitch black</strong>. On it, two colors do two jobs:</p>
-<ul>
-<li><strong>Silver <code>#B8BDC7</code> is the brand accent</strong> — wordmark, labels, rules, focus, progress, primary actions.</li>
-<li><strong>Deep blue <code>#4A84C9</code> is a highlight only</strong> — one accent per view (link, caret, active state). Never a primary fill.</li>
-</ul>
-<p>Green, red, and yellow only when meaning fits (success, error, warning).</p>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Token</th><th>Value</th><th>Use</th></tr>
-</thead>
-<tbody>
-<tr><td>Silver</td><td><code>#B8BDC7</code></td><td>Brand accent</td></tr>
-<tr><td>Silver bright</td><td><code>#E1E4E9</code></td><td>Emphasis on dark surfaces</td></tr>
-<tr><td>Silver dark</td><td><code>#747B86</code></td><td>Secondary labels</td></tr>
-<tr><td>Deep blue</td><td><code>#4A84C9</code></td><td>Highlight</td></tr>
-<tr><td>Blue bright</td><td><code>#6BA3E8</code></td><td>Highlight hover</td></tr>
-</tbody>
-</table>
-</div>
-<p><strong>Every background is pure black <code>#000000</code>.</strong> Hierarchy from silver hairlines and text weight — not raised panels or tinted fills. No cyan/orange/purple/rainbow chrome. No gradients. No glow. Sharp edges.</p>
-<h2 id="onboarding-and-installers"><a class="header" href="#onboarding-and-installers">Onboarding and installers</a></h2>
-<p>Fullscreen setup: Veyyon wordmark + silver progress. No secondary product name and no upstream tagline under the mark. Install/upgrade copy uses <strong>Veyyon</strong>, commands <code>veyyon</code> / <code>vey</code> only.</p>
-<p>Session welcome is a single hero card (not a dual-column dashboard): wordmark, one value line (<code>Hashline edits that land. Your keys.</code>), action rows with right-aligned shortcuts, optional recent sessions. Settings is a width-capped centered panel.</p>
-<h2 id="documentation-contract"><a class="header" href="#documentation-contract">Documentation contract</a></h2>
-<ul>
-<li>Identity and palette: brand system + this page.</li>
-<li>Engine behavior: handbook pages reconciled to shipped code.</li>
-<li><strong>Spec — not shipped</strong>: target design until a release ships it.</li>
-</ul>
-<p>See also: <a href="#themes-and-identity">Themes and identity</a>, <a href="#tui-design-language">TUI design language</a>.</p>
-<div style="break-before: page; page-break-before: always;"></div>
-<h1 id="tui-design-language"><a class="header" href="#tui-design-language">TUI design language</a></h1>
-<p>North-star for Veyyon terminal UX. Implementation lives in <code>packages/tui</code> (rendering) and <code>packages/coding-agent/src/modes/theme/</code> (themes and tokens).</p>
-<h2 id="brand-palette-in-the-tui"><a class="header" href="#brand-palette-in-the-tui">Brand palette in the TUI</a></h2>
-<p>Veyyon Dark and Veyyon Light follow the <a href="https://github.com/santhreal/veyyon/blob/main/docs/brand-system.md">brand system</a>:</p>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Role</th><th>Dark (shipped)</th><th>Light (shipped, upstream)</th></tr>
-</thead>
-<tbody>
-<tr><td>Surface</td><td><code>#050505</code></td><td>Terminal / <code>#e0e0e0</code> status chrome</td></tr>
-<tr><td>Primary text</td><td><code>#FAFAFA</code></td><td>Terminal default</td></tr>
-<tr><td>Brand accent (dark only today)</td><td><code>#B8BDC7</code></td><td>Teal <code>#5a8080</code> in <code>light.json</code></td></tr>
-</tbody>
-</table>
-</div>
-<p>Veyyon Dark follows the brand system. Light theme JSON is still the upstream oh-my-pi palette until a silver light theme lands (<strong>Spec — not shipped</strong>).</p>
-<p>Theme JSON is validated in <code>theme.ts</code> (<code>themeJsonSchema</code>). User overrides can live under <code>~/.veyyon/agent/themes/</code>. See <a href="#themes-and-identity">Themes and identity</a> and engine doc <code>docs/theme.md</code>.</p>
-<h2 id="spacing-scale"><a class="header" href="#spacing-scale">Spacing scale</a></h2>
-<p>Use a 4-cell rhythm:</p>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Token</th><th style="text-align: right">Cells</th><th>Use</th></tr>
-</thead>
-<tbody>
-<tr><td><code>space-0</code></td><td style="text-align: right">0</td><td>Flush edges</td></tr>
-<tr><td><code>space-1</code></td><td style="text-align: right">1</td><td>Inline gap, chip padding</td></tr>
-<tr><td><code>space-2</code></td><td style="text-align: right">2</td><td>Between stacked rows</td></tr>
-<tr><td><code>space-3</code></td><td style="text-align: right">3</td><td>Section break inside a pane</td></tr>
-<tr><td><code>space-4</code></td><td style="text-align: right">4</td><td>Pane padding from terminal edge</td></tr>
-</tbody>
-</table>
-</div>
-<p>Prefer <code>space-1</code> / <code>space-2</code> in dense tool UIs. One-off paddings are bugs.</p>
-<h2 id="color-and-emphasis"><a class="header" href="#color-and-emphasis">Color and emphasis</a></h2>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Role</th><th>Rule</th></tr>
-</thead>
-<tbody>
-<tr><td>Primary text</td><td>Theme <code>text</code> token (<code>#FAFAFA</code> / <code>#050505</code>)</td></tr>
-<tr><td>Secondary / meta</td><td><code>dim</code> or <code>muted</code> tokens</td></tr>
-<tr><td>Emphasis</td><td>Bold on primary; silver accent for focus and selection</td></tr>
-<tr><td>Links / paths</td><td>Theme <code>accent</code> (silver in first-party themes)</td></tr>
-<tr><td>Danger / deny</td><td>Theme <code>error</code> (red)</td></tr>
-<tr><td>Success / approved</td><td>Theme <code>success</code> (green)</td></tr>
-<tr><td>Warning</td><td>Theme <code>warning</code> (yellow)</td></tr>
-<tr><td>MCP / external tools</td><td>Distinct marker glyph; consistent hue within MCP cells</td></tr>
-</tbody>
-</table>
-</div>
-<p>Never rely on color alone. Pair hue with a glyph or word (<code>ok</code>, <code>err</code>, <code>mcp</code>). Respect <code>NO_COLOR</code> / <code>--no-color</code>.</p>
-<p>Call sites route through <code>packages/coding-agent/src/modes/theme/theme.ts</code> helpers — not raw ANSI literals at widget sites.</p>
-<h2 id="motion"><a class="header" href="#motion">Motion</a></h2>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Kind</th><th>Budget</th></tr>
-</thead>
-<tbody>
-<tr><td>Spinner / shimmer</td><td>Low effective FPS; no 30 FPS frames for short blinks</td></tr>
-<tr><td>Cursor blink</td><td>~600ms period</td></tr>
-<tr><td>Status pulse</td><td>Slow, interruptible</td></tr>
-</tbody>
-</table>
-</div>
-<p>No gratuitous animation on static content.</p>
-<h2 id="empty--loading--error"><a class="header" href="#empty--loading--error">Empty / loading / error</a></h2>
-<ul>
-<li><strong>Empty:</strong> one quiet hint + example prompts; hide once the user types.</li>
-<li><strong>Loading:</strong> spinner + short verb (<code>thinking</code>, <code>running</code>, <code>compacting</code>).</li>
-<li><strong>Error:</strong> cause first, remediation second. No stack dumps in the composer.</li>
-</ul>
-<h2 id="tool-call-rendering"><a class="header" href="#tool-call-rendering">Tool-call rendering</a></h2>
-<ol>
-<li>Header: glyph + tool name + status word.</li>
-<li>Arguments: syntax-aware JSON when applicable; wrap with expand affordance for large bodies.</li>
-<li>Output: collapse large bodies; keep a one-line summary visible.</li>
-<li>MCP tools: visually distinct from local shell/file tools.</li>
-</ol>
-<h2 id="iconography"><a class="header" href="#iconography">Iconography</a></h2>
-<p>Prefer ASCII-safe glyphs with Unicode upgrades when width is known (<code>theme.symbols</code> presets: <code>unicode</code>, <code>nerd</code>, <code>ascii</code>). Width math uses grapheme-aware helpers in <code>@veyyon/pi-tui</code>, not byte length.</p>
-<h2 id="composer-and-chrome"><a class="header" href="#composer-and-chrome">Composer and chrome</a></h2>
-<ul>
-<li>Empty composer hints <code>?</code> for shortcuts and <code>/</code> for commands.</li>
-<li>Mid-turn: <code>esc to interrupt</code> while a turn runs.</li>
-<li>Picker gutters use <code>› </code> (not <code>&gt;</code>) for the selected row caret.</li>
-<li>Tree connectors (<code>├─</code>, <code>└─</code>) use theme <code>tree.*</code> symbols consistently in session tree and tool groups.</li>
-</ul>
-<h2 id="conformance"><a class="header" href="#conformance">Conformance</a></h2>
-<p>When touching TUI polish, name the token (spacing, theme color, motion budget). Hardcoded hex or ANSI at call sites outside <code>theme.ts</code> is a design-system bug.</p>
-<div style="break-before: page; page-break-before: always;"></div>
-<h1 id="retained-coordination-and-prompt-patterns"><a class="header" href="#retained-coordination-and-prompt-patterns">Retained coordination and prompt patterns</a></h1>
-<p>Product decision. Do not “clean up” the coordination + prompt keepers below. Do not confuse them with
-settings UX that was cut (model-selection matrix, role-based routing popups — replaced by the shipped
-model-slots-plus-3-knob-compaction design, see <a href="#compaction-and-project-memory">Compaction &amp; project memory</a>
-and <a href="#models-roles-and-profiles">Models, roles, and profiles</a>).</p>
-<p>This page is a keep/cut ledger carried forward from the pre-fork planning notes. The keep/cut
-<em>decisions</em> are sound; the module pointers below have been re-grounded on the real TypeScript tree —
-the original notes pointed at an archived Rust/codex layout (<code>crates/core/src/...</code>,
-<code>multi_agents_v2</code>, <code>RoleModelSetting</code>) that was never the shipped engine for this product.</p>
-<h2 id="keep--coordination--prompts"><a class="header" href="#keep--coordination--prompts">KEEP — coordination + prompts</a></h2>
-<p>These are genuinely good patterns. Refactors must preserve behavior.</p>
-<ol>
-<li><strong>Handoff / compaction prompt</strong> — <code>packages/agent/src/compaction/compaction.ts</code>
-(<code>renderHandoffPrompt</code>, <code>generateHandoffFromContext</code>), called from
-<code>packages/coding-agent/src/session/agent-session.ts</code>. Preserves task continuity across compaction
-when <code>compaction.type</code> is <code>handoff</code> (the other user-facing type is <code>snap</code>; see
-<a href="#compaction-and-project-memory">Compaction &amp; project memory</a>). Engineering detail:
-<a href="../../handoff-generation-pipeline.html"><code>docs/handoff-generation-pipeline.md</code></a>.</li>
-<li><strong>Subagent spawn model</strong> — <code>packages/coding-agent/src/task/executor.ts</code> (spawn, per-model
-concurrency semaphore, soft output-budget steering notice, background output capture) plus
-<code>packages/coding-agent/src/task/agents.ts</code> (bundled subagent definitions) and the <code>task</code> tool
-registered in <code>packages/coding-agent/src/tools/index.ts</code>.</li>
-<li><strong>Addressed inter-agent messaging</strong> — the <code>irc</code> tool (<code>packages/coding-agent/src/tools/irc.ts</code>,
-bus in <code>packages/coding-agent/src/irc/bus.ts</code>): <code>send</code>/<code>wait</code>/<code>inbox</code>/<code>list</code> ops, delivery receipts,
-reply-to threading. This is the shipped equivalent of the old point-to-point
-<code>InterAgentCommunication</code>/<code>send_message</code>/<code>wait</code> model — <code>send</code> wakes an idle recipient with a real
-turn, revives a parked one via the lifecycle manager, or injects a non-interrupting aside into a
-busy one (the wake-now-vs-defer split the old notes called <code>steeringQueue</code>/<code>followUpQueue</code>). Parent
-steering-hint prompt text lives in
-<code>packages/coding-agent/src/prompts/steering/{parent-irc,user-interjection}.md</code>. A richer IRC-style,
-full multi-agent <strong>dashboard</strong> (channels, not just the message bus) remains <strong>Spec — not shipped</strong>
-(BACKLOG <code>U4-10</code>, beyond the <code>/cockpit</code> MVP) — the messaging primitive itself is built; the
-dashboard UI around it is not.</li>
-<li><strong>Subagent + todo-list interaction model</strong> — the <code>todo</code> tool
-(<code>packages/coding-agent/src/tools/todo.ts</code>) plus plan-mode guardrails
-(<code>packages/coding-agent/src/tools/plan-mode-guard.ts</code>). Agents maintain a checklist across
-multi-step work; this model is frozen and any TUI presentation work extends it without replacing it.</li>
-</ol>
-<h2 id="cut--confusing-settings--model-selection-ux"><a class="header" href="#cut--confusing-settings--model-selection-ux">CUT — confusing settings / model-selection UX</a></h2>
-<p>These are <strong>not</strong> keepers. Do not preserve them when condensing settings; they were already replaced by
-the shipped model-slots-plus-3-knob-compaction design (see <a href="#compaction-and-project-memory">Compaction &amp; project memory</a>).</p>
-<ol>
-<li><strong>Role-based model-selection matrix and per-role popups.</strong> Superseded by the shipped design: the
-interactive model via <code>/model</code>, plain <code>subagent.model</code> and <code>compaction.model</code> fields in settings.
-<code>default</code> is not a model or a role — see <code>packages/coding-agent/src/config/model-roles.ts</code> and
-<code>packages/coding-agent/src/config/model-resolver.ts</code>.</li>
-<li><strong>Silent per-role heuristic routing.</strong> The primary model drives everything unless the plain
-subagent/compaction fields say otherwise; there is no hidden per-role auto-pick behind the scenes.</li>
-<li><strong>Overlapping compaction settings UX.</strong> Condensed to three fields: threshold, type
-(<code>handoff</code>/<code>snap</code>), model — see <code>packages/coding-agent/src/config/compaction-strategy.ts</code> and the
-<code>compaction.*</code> group in <code>packages/coding-agent/src/config/settings-schema.ts</code>. Not a parallel
-model-picker maze.</li>
-<li><strong>Hosted Cloud/Ultra task-list backend types.</strong> Out of scope for this product; do not conflate with
-the <code>todo</code> tool above.</li>
-</ol>
-<h2 id="coordination-vs-settings--the-confusion-line"><a class="header" href="#coordination-vs-settings--the-confusion-line">Coordination vs settings — the confusion line</a></h2>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Layer</th><th>KEEP or CUT</th><th>Where it lives</th></tr>
-</thead>
-<tbody>
-<tr><td>How agents are spawned and report back</td><td><strong>KEEP</strong></td><td><code>task/executor.ts</code>, <code>task</code> tool</td></tr>
-<tr><td>How agents message each other directly (send/wait/inbox)</td><td><strong>KEEP</strong></td><td><code>tools/irc.ts</code>, <code>irc/bus.ts</code></td></tr>
-<tr><td>How agents track work (todo/checklist discipline)</td><td><strong>KEEP</strong></td><td><code>tools/todo.ts</code> + prompt guidance</td></tr>
-<tr><td>How compaction hands off context</td><td><strong>KEEP</strong></td><td><code>packages/agent/src/compaction/compaction.ts</code></td></tr>
-<tr><td>Which model runs for which role (matrix + popups)</td><td><strong>CUT</strong></td><td>Replaced by plain <code>subagent.model</code> / <code>compaction.model</code> fields</td></tr>
-<tr><td>Forced role reassignment on model change</td><td><strong>CUT</strong></td><td><code>/model</code> only changes the interactive model</td></tr>
-<tr><td>Compaction/subagent model popups</td><td><strong>CUT</strong></td><td>Plain settings fields (model tab)</td></tr>
-<tr><td>Full IRC-style multi-agent dashboard (channels)</td><td><strong>Spec — not shipped</strong></td><td>Tracked as BACKLOG <code>U4-10</code>; the messaging tool itself is built</td></tr>
-</tbody>
-</table>
-</div>
-<p><strong>Rule for future refactors:</strong> if a change touches subagent spawning, <code>irc</code> messaging, or the compaction
-handoff prompt, preserve behavior. If it touches model-routing <em>settings knobs</em>, follow the shipped
-model-slots design above — do not resurrect a role→model matrix because an old fork had one.</p>
 
                     </main>
 
