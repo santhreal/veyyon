@@ -152,6 +152,43 @@ release with all assets + checksums. The install scripts then pick it up through
 > release never depends on the self-hosted fleet — see
 > [releasing.md](./releasing.md) §Release runners.
 
+## Repository secrets and variables
+
+Everything CI needs to publish, in one place. Every secret is optional-with-a-loud-skip
+except `GITHUB_TOKEN` (automatic): a missing secret emits a CI `::warning::` and skips
+its publish leg — the release itself still ships the GitHub binaries.
+
+| Name | Kind | Gates |
+| --- | --- | --- |
+| `NPM_TOKEN` | secret | npm publish of `@veyyon/*` (or set repo var `NPM_TRUSTED_PUBLISH=on` once a trusted publisher exists) |
+| `HOMEBREW_TAP_DEPLOY_KEY` | secret | Homebrew formula push — also needs repo var `HOMEBREW_TAP_REPO` (e.g. `santhreal/homebrew-tap`) |
+| `CLOUDFLARE_API_TOKEN` | secret | `release_site` auto-deploy (Pages:Edit token; same value as `CF_PAGES_API_TOKEN` in `/credentials/.env`) |
+| `CLOUDFLARE_ACCOUNT_ID` | secret | only if the token spans multiple Cloudflare accounts |
+| `APPLE_CERTIFICATE_P12` + `APPLE_CERTIFICATE_PASSWORD` + `APPLE_API_KEY` + `APPLE_API_KEY_ID` + `APPLE_API_ISSUER_ID` | secrets | macOS Developer-ID signing + notarization (all five or signing is skipped) |
+| `SITE_AUTODEPLOY` | repo var | set `off` to disable the release site auto-deploy |
+
+## Rollback and hotfix
+
+The installers resolve **`releases/latest`**, so what "latest" points at *is* the
+rollback lever:
+
+- **Bad release, binaries broken** — mark the bad GitHub release as a **pre-release**
+  (or delete it). `releases/latest` immediately falls back to the previous good
+  release and every new `curl | sh` install gets the old binaries. This is the fastest
+  path and needs no new build.
+- **npm** — you cannot unpublish after the fact; `npm deprecate @veyyon/<pkg>@<ver> "broken, use <prev>"`
+  instead, then ship the fix. Deprecation warns on install without breaking resolution.
+- **Homebrew** — revert the formula commit in the tap repo; `brew install` follows the
+  tap head, not GitHub `latest`.
+- **Website/changelog** — the next `site:deploy` (manual or the fixed release's
+  auto-deploy) reconciles the changelog against the *published* releases, so an
+  unpublished/rolled-back version automatically drops back to `pending release`.
+
+**Hotfix flow**: fix on `main` → `bun run release patch`. There are no release
+branches — a hotfix is just the next patch release. If the bad version must stop
+being installed *right now*, do the pre-release flip above first, then take the time
+to fix properly.
+
 ## Checklist for a normal site update
 
 A release ships the site automatically (see *Automatic deploy on release*), so the
