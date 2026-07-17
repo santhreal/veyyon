@@ -28,9 +28,19 @@ bun run site:build      # = node website/build.mjs
 `build.mjs` does three things:
 
 1. Regenerates `website/changelog.html` from `packages/coding-agent/CHANGELOG.md`
-   (the single source of truth) via `website/tools/gen-changelog.mjs`. The generator
-   is fork-aware: veyyon's own releases render normally, inherited oh-my-pi entries go
-   under an "Inherited from oh-my-pi" divider and never as "latest".
+   (the curated source of truth) via `website/tools/gen-changelog.mjs`, reconciled
+   against the **published GitHub Releases** so the page can't drift from what actually
+   shipped. The generator:
+   - is fork-aware: veyyon's own releases render normally, inherited oh-my-pi entries
+     go under an "Inherited from oh-my-pi" divider and never as "latest";
+   - marks each veyyon version `published` only when GitHub has a non-draft release for
+     it — using GitHub's publish date and a `View on GitHub ↗` permalink — and marks a
+     finalized-but-unpublished version as `pending release`;
+   - fails **loud** (never silently): if the GitHub API is unreachable it warns and
+     builds from the CHANGELOG alone (`--no-github` forces this offline mode), and if a
+     published release has no CHANGELOG entry it prints a coherence warning rather than
+     dropping it. Repo resolves from `--repo` / `VEYYON_SITE_REPO` / `GITHUB_REPOSITORY`
+     / the git remote, defaulting to `santhreal/veyyon`.
 2. Stages `scripts/install.sh` and `scripts/install.ps1` at the site root so
    `veyyon.dev/install.sh` resolves. **The staged copies are build artifacts** — edit
    the originals in `scripts/`, never `website/install.*`.
@@ -49,7 +59,28 @@ cd docs/handbook && mdbook build
 Use mdbook **v0.5.2** — the `docs.yml` book-freshness gate rebuilds with that pinned
 version and fails CI if the committed `docs/handbook/book/` doesn't match the sources.
 
-### Deploy
+### Automatic deploy on release (primary path)
+
+The site redeploys itself whenever a release publishes. `ci.yml`'s `release_site` job
+runs after `release_github`: it regenerates the changelog (now reconciled against the
+just-published release), builds the site with the brand check gating, and deploys the
+`veyyon` Pages project with `wrangler pages deploy`. This is what keeps the changelog
+current — no human has to remember to redeploy after a release.
+
+It needs two GitHub **repository secrets**:
+
+- **`CLOUDFLARE_API_TOKEN`** — a Cloudflare Pages:Edit token (the same value as
+  `CF_PAGES_API_TOKEN` in `/credentials/.env`).
+- **`CLOUDFLARE_ACCOUNT_ID`** — optional; set it only if the token spans more than one
+  account.
+
+If `CLOUDFLARE_API_TOKEN` is absent the job **skips loudly** with a CI `::warning::`
+(it never silently no-ops), and you fall back to the manual deploy below. Set repo
+variable `SITE_AUTODEPLOY=off` to disable the job entirely.
+
+### Manual deploy (override / out-of-band site edits)
+
+Use this to ship a site change without cutting a release, or if the auto-deploy is off:
 
 ```
 export CLOUDFLARE_API_TOKEN="$CF_PAGES_API_TOKEN"   # token lives in /credentials/.env
@@ -120,6 +151,10 @@ release with all assets + checksums. The install scripts then pick it up through
 > [releasing.md](./releasing.md) §Release runners.
 
 ## Checklist for a normal site update
+
+A release ships the site automatically (see *Automatic deploy on release*), so the
+changelog stays current with zero manual steps. Use this only for out-of-band site
+edits between releases:
 
 1. Edit the page(s) under `website/` (or the changelog source, or `scripts/install.*`).
 2. `bun run site:build` — confirm the brand check passes and the changelog looks right.
