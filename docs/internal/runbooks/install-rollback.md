@@ -25,6 +25,9 @@ binary back does not lose sessions or config:
 
 1. Reinstall the previous version (now `latest` again) with the same `curl … | sh`, or restore the
    prior binary from the user's package manager / a kept archive.
+   To pin an exact version regardless of `latest`:
+   `curl -fsSL https://get.veyyon.dev | sh -s -- --binary --ref vX.Y.Z` (sha256-verified release
+   asset; note a bare `--ref` without `--binary` implies `--source` — it clones and builds that ref).
 2. If the bad version wrote config keys the old binary rejects, remove or rename those keys — the error
    names the file and line. Leave `sessions/` and `archived_sessions/` in place.
 3. `veyyon plugin doctor` to confirm health.

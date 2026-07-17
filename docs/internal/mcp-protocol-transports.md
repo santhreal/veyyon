@@ -125,7 +125,7 @@ If read loop exits unexpectedly, `finally` triggers `#handleClose()` which perfo
 
 Per request:
 
-- timeout from `resolveMCPTimeoutMs`: `OMP_MCP_TIMEOUT_MS` env override, else `config.timeout ?? 30000`; `0` disables
+- timeout from `resolveMCPTimeoutMs`: `VEYYON_MCP_TIMEOUT_MS` env override (legacy alias `OMP_MCP_TIMEOUT_MS`), else `config.timeout ?? 30000`; `0` disables
 - optional `AbortSignal` from caller
 - abort and timeout both reject the pending promise and clean map entry
 
@@ -177,7 +177,7 @@ So `connected` means "transport usable", not "persistent stream established".
 
 For `request()`:
 
-- timeout uses `AbortController` via `createMCPTimeout` (`OMP_MCP_TIMEOUT_MS` override, else `config.timeout ?? 30000`; `0` disables)
+- timeout uses `AbortController` via `createMCPTimeout` (`VEYYON_MCP_TIMEOUT_MS` override, else `config.timeout ?? 30000`; `0` disables)
 - external signal, if provided, is merged via `AbortSignal.any([...])`
 - AbortError handling distinguishes caller abort vs timeout
 
@@ -213,7 +213,7 @@ Two SSE paths exist:
 2. **Background SSE listener** (`startSSEListener()`)
    - optional GET listener for server-initiated notifications and server-to-client requests
    - `connectToServer()` starts it for Streamable HTTP transports after `initialize` and before `notifications/initialized`
-   - listener startup waits up to one second, or less for very small request timeouts; `timeout: 0` / `OMP_MCP_TIMEOUT_MS=0` disables that startup deadline
+   - listener startup waits up to one second, or less for very small request timeouts; `timeout: 0` / `VEYYON_MCP_TIMEOUT_MS=0` disables that startup deadline
    - if GET returns `405`, another non-OK status, no body, or times out, listener silently disables itself
 
 ## Malformed payload and disconnect handling
@@ -281,3 +281,5 @@ They fail fast and propagate errors.
 If the concern is message shape, id correlation, or MCP method ordering, it belongs to protocol/client logic.
 
 If the concern is framing (JSONL vs HTTP/SSE), stream parsing, fetch/spawn lifecycle, timeout clocks, or connection teardown, it belongs to transport implementation.
+
+*Verified against `a49ff74` on 2026-07-17.*

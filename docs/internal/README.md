@@ -14,6 +14,11 @@ New here? Read [onboarding](onboarding.md) and [testing](testing.md) first.
 - **Match tests and code.** A claim here must be true of the code, or it is a bug in the doc. When a
   page describes a planned mechanism, label it and say what ships today.
 - **Keep it navigable.** Every new internal doc gets a row in the relevant table below.
+- **Verification stamps.** A doc whose claims have been checked against the code ends with
+  `*Verified against \`<commit-sha>\` on YYYY-MM-DD.*` as its last line. `scripts/check-doc-freshness.ts`
+  (a `docs.yml` gate) fails a stamped doc edited after its stamp date — re-verify and re-stamp in the
+  same change. Stamping is earned by actually verifying, never backfilled blind; unstamped docs are
+  reported loudly but do not fail.
 
 ## Getting started and process
 

@@ -1,6 +1,6 @@
 # Install ID
 
-A persistent per-install UUID that identifies a single oh-my-pi installation across sessions. Used as a stable correlation key for server-side dedup of telemetry-style pushes (currently the auto-QA grievance flush from `report_tool_issue`).
+A persistent per-install UUID that identifies a single Veyyon installation across sessions. Used as a stable correlation key for server-side dedup of telemetry-style pushes (currently the auto-QA grievance flush from `report_tool_issue`).
 
 ## API
 
@@ -15,7 +15,7 @@ Generated IDs are lowercase RFC 4122 UUIDs. Existing persisted values are accept
 
 ## Storage
 
-- Path: `<base-config-root>/install-id` — i.e. `~/.veyyon/install-id` by default, respecting `PI_CONFIG_DIR`. Resolved against the base config root (`getBaseConfigRoot()`) regardless of the active profile, so every profile on a host shares one install ID (install identity is per-install, not per-profile).
+- Path: `<base-config-root>/install-id` — i.e. `~/.veyyon/install-id` by default, respecting `VEYYON_CONFIG_DIR` (legacy aliases `OMP_CONFIG_DIR` / `PI_CONFIG_DIR`). Resolved against the base config root (`getBaseConfigRoot()`) regardless of the active profile, so every profile on a host shares one install ID (install identity is per-install, not per-profile).
 - Format: a single UUID line (trailing `\n`).
 - Permissions: file is created with mode `0o600`.
 - Lifecycle: independent of `~/.veyyon/agent/`. Wiping agent state (sessions, settings, DB) does NOT regenerate the install ID; only deleting the `install-id` file itself does.
@@ -37,5 +37,7 @@ New consumers MUST treat the value as opaque and MUST NOT derive PII from it; th
 
 ## See also
 
-- [environment-variables.md](../environment-variables.md) — `PI_CONFIG_DIR` controls where `install-id` lives.
+- [environment-variables.md](../environment-variables.md) — `VEYYON_CONFIG_DIR` (legacy `PI_CONFIG_DIR`) controls where `install-id` lives.
 - [config-usage.md](../config-usage.md) — broader config-root layout.
+
+*Verified against `a49ff74` on 2026-07-17.*
