@@ -2,8 +2,8 @@
 
 Product decision. Do not "clean up" the coordination + prompt keepers below. Do not confuse them with
 settings UX that was cut (model-selection matrix, role-based routing popups — replaced by the shipped
-model-slots-plus-3-knob-compaction design, see [Compaction & project memory](../context/compaction-memory.md)
-and [Models, roles, and profiles](../using/roles-and-profiles.md)).
+model-slots-plus-3-knob-compaction design, see [Compaction & project memory](../handbook/src/context/compaction-memory.md)
+and [Models, roles, and profiles](../handbook/src/using/roles-and-profiles.md)).
 
 This page is a keep/cut ledger carried forward from the pre-fork planning notes. The keep/cut
 *decisions* are sound; the module pointers below have been re-grounded on the real TypeScript tree —
@@ -18,8 +18,8 @@ These are genuinely good patterns. Refactors must preserve behavior.
    (`renderHandoffPrompt`, `generateHandoffFromContext`), called from
    `packages/coding-agent/src/session/agent-session.ts`. Preserves task continuity across compaction
    when `compaction.type` is `handoff` (the other user-facing type is `snap`; see
-   [Compaction & project memory](../context/compaction-memory.md)). Engineering detail:
-   [`docs/internal/handoff-generation-pipeline.md`](../../../internal/handoff-generation-pipeline.md).
+   [Compaction & project memory](../handbook/src/context/compaction-memory.md)). Engineering detail:
+   [`docs/internal/handoff-generation-pipeline.md`](./handoff-generation-pipeline.md).
 2. **Subagent spawn model** — `packages/coding-agent/src/task/executor.ts` (spawn, per-model
    concurrency semaphore, soft output-budget steering notice, background output capture) plus
    `packages/coding-agent/src/task/agents.ts` (bundled subagent definitions) and the `task` tool
@@ -43,7 +43,7 @@ These are genuinely good patterns. Refactors must preserve behavior.
 ## CUT — confusing settings / model-selection UX
 
 These are **not** keepers. Do not preserve them when condensing settings; they were already replaced by
-the shipped model-slots-plus-3-knob-compaction design (see [Compaction & project memory](../context/compaction-memory.md)).
+the shipped model-slots-plus-3-knob-compaction design (see [Compaction & project memory](../handbook/src/context/compaction-memory.md)).
 
 1. **Role-based model-selection matrix and per-role popups.** Superseded by the shipped design: the
    interactive model via `/model`, plain `subagent.model` and `compaction.model` fields in settings.

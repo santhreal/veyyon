@@ -46,10 +46,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-c7a85c3d.js";
+            window.path_to_searchindex_js = "../searchindex-5fa9cb6b.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-b266b4db.js"></script>
+        <script src="../toc-b8eaaacb.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -208,7 +208,7 @@ active profile is selected by its own variable:</p>
 </thead>
 <tbody>
 <tr><td><code>VEYYON_CONFIG_DIR</code></td><td>Overrides the config directory <strong>name</strong> under <code>$HOME</code> (default <code>.veyyon</code>). Does not accept a full path. Legacy aliases <code>OMP_CONFIG_DIR</code> and <code>PI_CONFIG_DIR</code> are still accepted (first set wins: Veyyon → OMP → PI).</td></tr>
-<tr><td><code>PI_CODING_AGENT_DIR</code></td><td>Full override for the agent directory (default <code>~/&lt;config-dir-name&gt;/agent</code>).</td></tr>
+<tr><td><code>VEYYON_CODING_AGENT_DIR</code></td><td>Full override for the agent directory (default <code>~/&lt;config-dir-name&gt;/agent</code>); legacy alias <code>PI_CODING_AGENT_DIR</code>.</td></tr>
 <tr><td><code>VEYYON_PROFILE</code></td><td>Selects the active named profile (<code>~/.veyyon/profiles/&lt;name&gt;/agent</code>). Legacy aliases <code>OMP_PROFILE</code> and <code>PI_PROFILE</code> are still accepted.</td></tr>
 <tr><td><code>VEYYON_PACKAGE_DIR</code></td><td>Override package directory for bundled assets (Nix/Guix). Legacy <code>OMP_PACKAGE_DIR</code> / <code>PI_PACKAGE_DIR</code>.</td></tr>
 <tr><td><code>VEYYON_NO_PTY</code></td><td>Set to <code>1</code> to disable PTY-based interactive bash. Legacy <code>OMP_NO_PTY</code> / <code>PI_NO_PTY</code>.</td></tr>
@@ -336,7 +336,7 @@ broker host:</p>
 </tbody>
 </table>
 </div>
-<p>Most installs never set these. Details: <code>docs/auth-broker-gateway.md</code>.</p>
+<p>Most installs never set these. Details: <code>docs/internal/auth-broker-gateway.md</code>.</p>
 <h2 id="repair"><a class="header" href="#repair">Repair</a></h2>
 <div class="table-wrapper">
 <table>

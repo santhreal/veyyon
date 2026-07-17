@@ -300,6 +300,10 @@ per-platform binaries, then publishes: **GitHub release** (all binaries + `.sha2
 
 ## Releasing
 
+> Full contributor detail: [`docs/internal/releasing.md`](docs/internal/releasing.md)
+> and [`docs/internal/deployment.md`](docs/internal/deployment.md). This section is the
+> operational summary.
+
 `veyyon` is a source fork of oh-my-pi (see `UPSTREAM.md`). The changelog carries
 upstream's release history; **veyyon's own release process is the flow below**, and a
 release is only real once it is a tagged commit **and** a published GitHub release that
@@ -338,7 +342,8 @@ changed package's `## [Unreleased]` so the generated `## [1.0.0]` entry isn't em
 
 ## Maintenance
 
-Routine operational tasks and where their single source of truth lives.
+Routine operational tasks and where their single source of truth lives. Full detail
+lives in [`docs/internal/deployment.md`](docs/internal/deployment.md).
 
 ### Website (veyyon.dev)
 

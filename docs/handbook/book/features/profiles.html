@@ -46,10 +46,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-c7a85c3d.js";
+            window.path_to_searchindex_js = "../searchindex-5fa9cb6b.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-b266b4db.js"></script>
+        <script src="../toc-b8eaaacb.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -206,9 +206,16 @@
 <ul>
 <li><strong>CLI:</strong> <code>veyyon --profile &lt;name&gt;</code> (no short form; <code>-p</code> is <code>--print</code>).</li>
 <li><strong>Env:</strong> <code>VEYYON_PROFILE=&lt;name&gt;</code> (legacy: <code>OMP_PROFILE</code>, <code>PI_PROFILE</code>).</li>
+<li><strong>TUI:</strong> <code>/profile &lt;name&gt;</code> ends the current conversation and relaunches Veyyon on that profile (a fresh session — profiles are chosen at process start, so there is no hot-swap). Bare <code>/profile</code> lists profiles with the active one marked.</li>
 <li><strong>Shell alias:</strong> <code>veyyon --profile work --alias mywork</code> installs a managed block in your shell rc (see <code>cli/profile-alias.ts</code>).</li>
 </ul>
-<p>Profiles are chosen at process start. There is no <code>/profile</code> slash command in the shipped TUI; start a new <code>veyyon</code> invocation to switch.</p>
+<h2 id="profile-names-and-renaming"><a class="header" href="#profile-names-and-renaming">Profile names and renaming</a></h2>
+<p>A profile’s directory name (<code>~/.veyyon/profiles/&lt;name&gt;</code>) is its stable identity and never changes. Each profile can additionally carry a <strong>display name</strong> — the <code>profile.displayName</code> setting, stored in that profile’s own <code>config.yml</code>:</p>
+<ul>
+<li><strong>Settings:</strong> <code>/settings</code> › Interaction › Profile › Profile Name.</li>
+<li><strong>TUI:</strong> <code>/profile rename to &lt;new&gt;</code> renames the active profile; <code>/profile &lt;name&gt; rename to &lt;new&gt;</code> renames another one. The default profile is renamable too.</li>
+</ul>
+<p><code>/profile list</code> shows <code>name (Display Name)</code> when they differ, and <code>/profile &lt;input&gt;</code> resolves a directory name first, then a unique display name. A copied settings file never carries the source’s display name — <code>profile new</code> clears it so two profiles cannot answer to one name.</p>
 <h2 id="creating-and-managing-profiles"><a class="header" href="#creating-and-managing-profiles">Creating and managing profiles</a></h2>
 <pre><code class="language-console">$ veyyon profile list
 $ veyyon profile new work
@@ -221,7 +228,10 @@ $ veyyon profile rm work --yes
 <li><code>--from blank</code> creates an empty agent tree.</li>
 <li><code>rm</code> refuses the default profile, the active profile, and destructive deletes without <code>--yes</code>.</li>
 </ul>
+<p>In the TUI, <code>/profile new &lt;name&gt;</code> opens a picker listing every carry-over item — AGENTS.md, settings, MCP servers, SSH targets, skills, commands, tools, prompts, themes, extensions, keybindings — each individually toggleable (all selected by default). The new profile is seeded from the <strong>active</strong> profile with exactly the chosen items.</p>
 <p>You can still create a profile implicitly by running <code>veyyon --profile &lt;name&gt;</code> once; use <code>profile new</code> when you want seeding without launching the TUI.</p>
+<h2 id="onboarding-import"><a class="header" href="#onboarding-import">Onboarding import</a></h2>
+<p>On first run (and once after upgrading past setup version 2), the setup wizard scans the machine for user-level config written for other tools — skills and <code>CLAUDE.md</code>/<code>AGENTS.md</code> from Claude Code, Codex, Cursor, and similar — and offers each item for import into your default profile. Imports <strong>copy</strong>: skills land in the profile’s <code>skills/</code>, instruction files append to the profile’s <code>AGENTS.md</code> under a source marker (re-imports are idempotent). The originals keep loading ambiently as the machine-wide base layer unless you turn off <code>discovery.importForeignConfig</code>.</p>
 <p>Do not document inline <code>[profiles.&lt;name&gt;]</code> tables or standalone <code>&lt;name&gt;.config.yml</code> files as shipped; settings use <code>config.yml</code> under the active agent dir.</p>
 <h2 id="model-slots-and-roles-per-profile"><a class="header" href="#model-slots-and-roles-per-profile">Model slots and roles (per profile)</a></h2>
 <p>Each profile’s <code>config.yml</code> owns the three model slots and optional roles:</p>
@@ -235,7 +245,7 @@ compaction:
 modelRoles:                         # optional; settings → Models → Roles
   plan: openai/o3
 </code></pre>
-<p><code>default</code> is not a model or role. Switching profiles switches these assignments with the profile.</p>
+<p><strong>Unset slots and roles inherit the live main model.</strong> The compaction model and every model role default to “inherit”: when unset, they resolve to whatever the main model is <em>at use time</em>, so switching with <code>/model</code> changes them instantly. Only an explicit assignment pins a different model. (The advisor role is the one exception — unset, it follows its thinking-model chain; the settings UI labels each role’s unset behavior.) Switching profiles switches all of these assignments with the profile.</p>
 <h2 id="see-also"><a class="header" href="#see-also">See also</a></h2>
 <ul>
 <li><a href="../using/roles-and-profiles.html">Models, roles, and profiles</a></li>
