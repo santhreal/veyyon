@@ -32,11 +32,10 @@ concurrency:
 
 env:
    FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-   # glibc floor for shipped linux native addons. The omp-kata runner image is
-   # Ubuntu 24.04 (glibc 2.39); a plain native build links 2.39 symbol versions
-   # and fails to dlopen on older distros. Building the linux-gnu addons through
-   # cargo-zigbuild against this floor keeps them portable. Bump to raise the
-   # minimum supported glibc.
+   # glibc floor for shipped linux native addons. A stock Ubuntu runner links its
+   # own (newer) glibc symbol versions and would fail to dlopen on older distros.
+   # Building the linux-gnu addons through cargo-zigbuild against this floor keeps
+   # them portable. Bump to raise the minimum supported glibc.
    GLIBC_FLOOR: "2.17"
 
 permissions:
@@ -56,7 +55,7 @@ jobs:
    # ref (or from a tagged main HEAD) is also treated as a release.
    release_metadata:
       name: Resolve release metadata
-      runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-22.04' || 'omp-kata' }}
+      runs-on: ubuntu-22.04
       outputs:
          is-release: ${{ steps.detect.outputs.is-release }}
          release-tag: ${{ steps.detect.outputs.release-tag }}
@@ -108,7 +107,7 @@ jobs:
    # retention window (see build-native action) is the effective TTL.
    native_artifact_lookup:
       name: Look up cached native artifacts
-      runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-22.04' || 'omp-kata' }}
+      runs-on: ubuntu-22.04
       outputs:
          source-hash: ${{ steps.compute.outputs.source-hash }}
          linux-x64-run-id: ${{ steps.find.outputs.linux-x64-run-id }}
@@ -199,7 +198,7 @@ jobs:
    # Fast lint, type check, and browser bundle build (no Rust, no native build needed)
    check:
       name: Lint, type check & web build
-      runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-22.04' || 'omp-kata' }}
+      runs-on: ubuntu-22.04
       steps:
          - uses: actions/checkout@v4
          - uses: ./.github/actions/bun-install
@@ -215,7 +214,7 @@ jobs:
       name: "Native: Linux x64 (${{ matrix.variant }})"
       needs: [release_metadata, native_artifact_lookup]
       if: ${{ needs.release_metadata.outputs.is-release == 'true' || needs.native_artifact_lookup.outputs.linux-x64-run-id == '' }}
-      runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-22.04' || 'omp-kata' }}
+      runs-on: ubuntu-22.04
       strategy:
          fail-fast: false
          matrix:
@@ -237,7 +236,7 @@ jobs:
    # Pre-warm the cross-platform native build cache on `main`, in addition to
    # building the artifacts that ship in releases. Skipped on main when
    # native_artifact_lookup already found a recent run with all artifacts intact.
-   native_cross_platform_kata:
+   native_cross_platform_cross:
       name: "Native: ${{ matrix.platform }} ${{ matrix.arch }}"
       needs: [release_metadata, native_artifact_lookup]
       if: ${{ needs.release_metadata.outputs.is-release == 'true' || (github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.native_artifact_lookup.outputs.cross-platform-run-id == '') }}
@@ -245,8 +244,8 @@ jobs:
          fail-fast: false
          matrix:
             include:
-               - { os: omp-kata, platform: linux, arch: arm64, target: aarch64-unknown-linux-gnu }
-               - { os: omp-kata, platform: win32, arch: x64, target: x86_64-pc-windows-msvc, variant: baseline }
+               - { os: ubuntu-24.04-arm, platform: linux, arch: arm64, target: aarch64-unknown-linux-gnu }
+               - { os: ubuntu-22.04, platform: win32, arch: x64, target: x86_64-pc-windows-msvc, variant: baseline }
       runs-on: ${{ matrix.os }}
       steps:
          - uses: actions/checkout@v4
@@ -283,7 +282,7 @@ jobs:
               save_cache: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
    test_workspace:
       name: Test TS workspace fast
-      runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-22.04' || 'omp-kata' }}
+      runs-on: ubuntu-22.04
       needs: [native_linux_x64, native_artifact_lookup]
       if: ${{ !cancelled() && needs.native_linux_x64.result != 'failure' }}
       timeout-minutes: 20
@@ -313,7 +312,7 @@ jobs:
 
    test_coding_agent_singleton:
       name: Test coding-agent singleton/global-state (TS)
-      runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-22.04' || 'omp-kata' }}
+      runs-on: ubuntu-22.04
       needs: [native_linux_x64, native_artifact_lookup]
       if: ${{ !cancelled() && needs.native_linux_x64.result != 'failure' }}
       timeout-minutes: 20
@@ -345,7 +344,7 @@ jobs:
 
    test_ts_native:
       name: Test TS native/integration packages
-      runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-22.04' || 'omp-kata' }}
+      runs-on: ubuntu-22.04
       needs: [native_linux_x64, native_artifact_lookup]
       if: ${{ !cancelled() && needs.native_linux_x64.result != 'failure' }}
       timeout-minutes: 25
@@ -376,7 +375,7 @@ jobs:
 
    test_coding_agent_ui:
       name: Test coding-agent UI/TUI (TS)
-      runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-22.04' || 'omp-kata' }}
+      runs-on: ubuntu-22.04
       needs: [native_linux_x64, native_artifact_lookup]
       if: ${{ !cancelled() && needs.native_linux_x64.result != 'failure' }}
       timeout-minutes: 25
@@ -407,7 +406,7 @@ jobs:
 
    test_coding_agent_runtime:
       name: Test coding-agent runtime/session (TS)
-      runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-22.04' || 'omp-kata' }}
+      runs-on: ubuntu-22.04
       needs: [native_linux_x64, native_artifact_lookup]
       if: ${{ !cancelled() && needs.native_linux_x64.result != 'failure' }}
       timeout-minutes: 25
@@ -439,7 +438,7 @@ jobs:
 
    test_coding_agent_native:
       name: Test coding-agent native/unit (TS)
-      runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-22.04' || 'omp-kata' }}
+      runs-on: ubuntu-22.04
       needs: [native_linux_x64, native_artifact_lookup]
       if: ${{ !cancelled() && needs.native_linux_x64.result != 'failure' }}
       timeout-minutes: 25
@@ -470,7 +469,7 @@ jobs:
 
    test_smoke:
       name: Test CLI smoke (TS)
-      runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-22.04' || 'omp-kata' }}
+      runs-on: ubuntu-22.04
       needs: [native_linux_x64, native_artifact_lookup]
       if: ${{ !cancelled() && needs.native_linux_x64.result != 'failure' }}
       timeout-minutes: 15
@@ -501,51 +500,25 @@ jobs:
 
    install_methods:
       name: Install method smoke tests
-      runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-22.04' || 'omp-kata' }}
+      runs-on: ubuntu-22.04
       steps:
          - uses: actions/checkout@v4
          - uses: ./.github/actions/ensure-rust-toolchain
            with:
               toolchain: nightly-2026-04-29
-         - name: Detect runner environment
-           id: detect
-           shell: bash
-           run: |
-              # $SCCACHE_BUCKET is injected only on self-hosted omp-kata pods; its
-              # presence selects baked sccache + shared S3. GitHub-hosted runners
-              # (PRs) need sccache-action to export the GHA cache URL/token into the
-              # step env — a bare binary install leaves SCCACHE_GHA_ENABLED set with
-              # no cache URL, so sccache server startup fails ("cache url for ghac
-              # not found"). Mirrors the build-native action's sccache wiring.
-              if [ -n "${SCCACHE_BUCKET:-}" ]; then
-                echo "on_infra=true" >> "$GITHUB_OUTPUT"
-              else
-                echo "on_infra=false" >> "$GITHUB_OUTPUT"
-              fi
-         - name: Ensure baked sccache (omp-kata)
-           if: steps.detect.outputs.on_infra == 'true'
-           uses: ./.github/actions/ensure-sccache
-           with:
-              version: "0.15.0"
-         - name: Setup sccache (GitHub-hosted)
-           if: steps.detect.outputs.on_infra == 'false'
+         - name: Setup sccache
            uses: mozilla-actions/sccache-action@v0.0.10
          - name: Enable sccache for cargo
-           # Conditional backend: self-hosted omp-kata injects a shared S3
-           # (RustFS) sccache via pod env; GitHub-hosted runners keep the GHA
-           # cache. CARGO_INCREMENTAL=0 keeps sccache from silently no-oping.
+           # sccache-action exports the GHA cache URL/token; CARGO_INCREMENTAL=0
+           # keeps sccache from silently no-oping.
            shell: bash
            run: |
               {
                 echo "RUSTC_WRAPPER=sccache"
                 echo "CARGO_INCREMENTAL=0"
+                echo "SCCACHE_GHA_ENABLED=true"
               } >> "$GITHUB_ENV"
-              if [ -n "${SCCACHE_BUCKET:-}" ]; then
-                echo "sccache backend: shared S3 ($SCCACHE_BUCKET @ $SCCACHE_ENDPOINT)"
-              else
-                echo "SCCACHE_GHA_ENABLED=true" >> "$GITHUB_ENV"
-                echo "sccache backend: GitHub Actions cache"
-              fi
+              echo "sccache backend: GitHub Actions cache"
          - uses: ./.github/actions/setup-system-deps
          - uses: ./.github/actions/bun-install
          - name: Install method smoke tests
@@ -554,7 +527,7 @@ jobs:
    release_binary:
       name: "Release binary: ${{ matrix.target_id }}"
       if: ${{ needs.release_metadata.outputs.is-release == 'true' && !cancelled() &&
-         needs.native_linux_x64.result == 'success' && needs.native_cross_platform_kata.result ==
+         needs.native_linux_x64.result == 'success' && needs.native_cross_platform_cross.result ==
          'success' && needs.native_cross_platform_macos.result == 'success' &&
          needs.test_workspace.result == 'success' &&
          needs.test_coding_agent_singleton.result == 'success' &&
@@ -564,7 +537,7 @@ jobs:
          needs.test_coding_agent_native.result == 'success' &&
          needs.test_smoke.result == 'success' && needs.check.result == 'success' &&
          needs.install_methods.result == 'success' }}
-      needs: [release_metadata, check, native_linux_x64, native_cross_platform_kata, native_cross_platform_macos, test_workspace, test_coding_agent_singleton, test_ts_native, test_coding_agent_ui, test_coding_agent_runtime, test_coding_agent_native, test_smoke, install_methods, native_artifact_lookup]
+      needs: [release_metadata, check, native_linux_x64, native_cross_platform_cross, native_cross_platform_macos, test_workspace, test_coding_agent_singleton, test_ts_native, test_coding_agent_ui, test_coding_agent_runtime, test_coding_agent_native, test_smoke, install_methods, native_artifact_lookup]
       strategy:
          fail-fast: false
          matrix:

@@ -1,7 +1,5 @@
-# Public-runner checks for the veyyon harness: lint + type check, the TypeScript
-# test suite, and a keyhog secret scan. Runs on GitHub-hosted runners so it works
-# on the public repo without the self-hosted `omp-kata` runners the release
-# pipeline (ci.yml) uses.
+# Fast checks for the veyyon harness: lint + type check, the TypeScript test
+# suite, and a keyhog secret scan. Runs on GitHub-hosted runners.
 name: Checks
 
 on:
