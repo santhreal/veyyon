@@ -36,11 +36,12 @@ export * from "./latex-block";
 export * from "./latex-to-unicode";
 // SGR mouse report parsing
 export * from "./mouse";
+// Terminal interface and implementations
+export * from "./paint-ground";
 // Mermaid diagram support
 // Input buffering for batch splitting
 export * from "./stdin-buffer";
 export type * from "./symbols";
-// Terminal interface and implementations
 export * from "./terminal";
 // Terminal image support
 export * from "./terminal-capabilities";

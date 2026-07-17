@@ -109,6 +109,16 @@ describe("checkFreshness", () => {
 		expect(result.issues[0].reason).toContain("after its 2026-01-10 verification stamp");
 	});
 
+	it("reports a tracked-but-deleted file as missing instead of crashing", () => {
+		const root = makeRepo();
+		commit(root, "docs/internal/gone.md", "# Gone\n", "2026-01-10");
+		fs.rmSync(path.join(root, "docs/internal/gone.md"));
+		const result = checkFreshness(root, ["docs/internal/gone.md"]);
+		expect(result.missing).toEqual(["docs/internal/gone.md"]);
+		expect(result.filesChecked).toBe(0);
+		expect(result.issues).toEqual([]);
+	});
+
 	it("fails a stamp pointing at a nonexistent commit", () => {
 		const root = makeRepo();
 		commit(

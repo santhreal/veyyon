@@ -70,4 +70,4 @@ is the same scheduling-time signal set as the concurrency group in `ci.yml`, and
 `scripts/ci-concurrency.test.ts` locks both: a bare `omp-kata` literal or a ternary
 missing the release clause fails the suite.
 
-*Verified against `11c84f4` on 2026-07-16.*
+*Verified against `a49ff74` on 2026-07-17.*

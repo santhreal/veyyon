@@ -20,6 +20,21 @@ A larger bundled catalog ships under `modes/theme/defaults/` and is selectable f
 
 Terminal capability detection maps the same hierarchy for truecolor, ANSI-256, ANSI-16, unknown background, and no-color modes. Reduced-motion settings remove decorative animation without hiding state changes.
 
+## Painted ground
+
+`tui.paintGround` (`/settings` → Appearance → Display) controls whether Veyyon sets the
+terminal's own background color (OSC 11) to the theme's ground while it runs, so the UI
+fills the window edge-to-edge instead of floating on the terminal's configured background.
+The original background is restored on exit — including crash exits.
+
+| Value | Behavior |
+| --- | --- |
+| `auto` (default) | Paint only when the terminal's reported background is already close to the theme ground, so no visible seam appears while painting. If the terminal doesn't report its background, inherit it. |
+| `always` | Always paint the theme ground. |
+| `never` | Never touch the terminal background. |
+
+Terminals that don't support OSC 11 ignore the sequence; nothing breaks.
+
 ## What the theme covers
 
 The contract applies to onboarding, composer, menus, dialogs, status line, markdown, tables, diffs, tool output, approvals, progress, and errors — not only the chat pane.
