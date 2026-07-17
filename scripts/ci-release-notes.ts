@@ -19,8 +19,8 @@
  *
  * The lower bound is resolved by `gh release list`. Set
  * `OMP_RELEASE_NOTES_FLOOR=v15.12.4` to override (empty string forces
- * single-version mode, matching the pre-#2596 behavior). `OMP_REPO` /
- * `GITHUB_REPOSITORY` control the queried repo.
+ * single-version mode, matching the pre-#2596 behavior). `VEYYON_REPO`
+ * (or the legacy `OMP_REPO`) / `GITHUB_REPOSITORY` control the queried repo.
  *
  * Intended for the `release_github` CI job: the output is passed to
  * `softprops/action-gh-release` via `body_path:`. The action's
@@ -31,7 +31,7 @@
 import { $, Glob } from "bun";
 
 const changelogGlob = new Glob("packages/*/CHANGELOG.md");
-const REPO = process.env.OMP_REPO ?? process.env.GITHUB_REPOSITORY ?? "can1357/oh-my-pi";
+const REPO = process.env.VEYYON_REPO ?? process.env.OMP_REPO ?? process.env.GITHUB_REPOSITORY ?? "santhreal/veyyon";
 
 // Canonical ordering used by `fix-changelogs`; unknown categories sort
 // alphabetically after these.
