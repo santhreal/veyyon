@@ -273,7 +273,7 @@
         "@types/bun": "^1.3.14",
       },
       "peerDependencies": {
-        "@veyyon/pi-coding-agent": "^16",
+        "@veyyon/pi-coding-agent": "catalog:",
       },
     },
     "packages/tool-render": {
