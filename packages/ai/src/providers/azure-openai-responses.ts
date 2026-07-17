@@ -1,4 +1,4 @@
-import { $env } from "@veyyon/pi-utils";
+import { $env, stripTrailingSlashes } from "@veyyon/pi-utils";
 import * as AIError from "../error";
 import { getEnvApiKey } from "../stream";
 import type {
@@ -283,7 +283,7 @@ function resolveAzureConfig(
 	}
 
 	return {
-		baseUrl: resolvedBaseUrl.replace(/\/+$/, ""),
+		baseUrl: stripTrailingSlashes(resolvedBaseUrl),
 		apiVersion,
 	};
 }

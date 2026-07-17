@@ -1,6 +1,7 @@
 # Personalities
 
-Configure personality via `/settings` or the `personality` key in `config.yml` (below).
+> **Spec — not shipped:** a `/personality` slash command. Configure personality via
+> `/settings` or the `personality` key in `config.yml` (below).
 
 Personalities change **how the agent writes replies**, not which tools it has or what sandbox/approval policy applies.
 

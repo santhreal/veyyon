@@ -21,7 +21,7 @@ see [Repair overview](../repair/overview.md).
 | `apply_patch` / `patch` / `replace` | Mode-specific parsers | Compatibility modes via `edit.mode` |
 
 There is one **hashline edit applier** for anchored edits; `write` is intentionally separate for whole-file
-creation. Both honor the same approval policy.
+creation. Both honor the same approval and sandbox policy.
 
 ## Tools
 
@@ -44,8 +44,8 @@ Set `edit.mode` to `hashline`, `apply_patch`, `patch`, or `replace` in `config.y
 
 ## Safety
 
-Edits honor the approval mode like `bash`. Denied tools are removed from the model's tool
+Edits honor approval mode and sandbox roots like `bash`. Denied tools are removed from the model's tool
 list via `disallowed_tools` / plan mode.
 
-Veyyon uses hashline as the primary write path; `apply_patch` is a compatibility mode. There is no
-single V4A applier that routes every mutation through a `make_update_patch` envelope.
+> **Spec — not shipped:** a single V4A applier that routes every mutation through a `make_update_patch`
+> envelope. Veyyon uses hashline as the primary path; `apply_patch` is a compatibility mode.

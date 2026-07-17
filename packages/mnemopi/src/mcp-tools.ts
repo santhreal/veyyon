@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { DEFAULT_DB_FILENAME, dataDir } from "./config";
-import { BankManager } from "./core/banks";
+import { bankDbPath } from "./core/banks";
 import { BeamMemory, type RecallOptions } from "./core/beam";
 import { addTriple, queryTriples } from "./core/triples";
 
@@ -426,15 +426,11 @@ function resolveBank(args: ToolArguments): string {
 	return stringArg(args, "bank") || process.env.MNEMOPI_MCP_BANK || "default";
 }
 
-function bankDbPath(bank: string): string {
-	return new BankManager(dataDir()).getBankDbPath(bank);
-}
-
 function createBeam(args: ToolArguments, bank = resolveBank(args)): BeamMemory {
 	const sessionId = process.env.MNEMOPI_SESSION_ID || `mcp_${bank}`;
 	return new BeamMemory({
 		sessionId,
-		dbPath: bankDbPath(bank),
+		dbPath: bankDbPath(bank, dataDir()),
 		authorId: optionalStringArg(args, "author_id") ?? process.env.MNEMOPI_AUTHOR_ID ?? null,
 		authorType: optionalStringArg(args, "author_type") ?? process.env.MNEMOPI_AUTHOR_TYPE ?? null,
 		channelId: optionalStringArg(args, "channel_id") ?? process.env.MNEMOPI_CHANNEL_ID ?? sessionId,
@@ -663,7 +659,7 @@ async function handleTripleAdd(args: ToolArguments): Promise<ToolResult> {
 	if (typeof object !== "string") return object;
 	const bank = resolveBank(args);
 	const tripleId = addTriple(subject, predicate, object, {
-		dbPath: bankDbPath(bank),
+		dbPath: bankDbPath(bank, dataDir()),
 		validFrom: optionalStringArg(args, "valid_from"),
 		source: stringArg(args, "source", "conversation"),
 		confidence: numberArg(args, "confidence", 1.0),
@@ -674,7 +670,7 @@ async function handleTripleAdd(args: ToolArguments): Promise<ToolResult> {
 async function handleTripleQuery(args: ToolArguments): Promise<ToolResult> {
 	const bank = resolveBank(args);
 	const results = queryTriples({
-		dbPath: bankDbPath(bank),
+		dbPath: bankDbPath(bank, dataDir()),
 		subject: optionalStringArg(args, "subject"),
 		predicate: optionalStringArg(args, "predicate"),
 		object: optionalStringArg(args, "object"),

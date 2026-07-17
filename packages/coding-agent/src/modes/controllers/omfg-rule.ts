@@ -218,11 +218,11 @@ function parseGeneratedRulePayload(jsonText: string): GeneratedRulePayload | { e
 	}
 
 	const object = parsed as Record<string, unknown>;
-	const rawName = stringField(object, "name");
+	const rawName = trimmedStringField(object, "name");
 	if (!rawName) {
 		return { error: "Generated rule JSON must include a non-empty name" };
 	}
-	const description = stringField(object, "description") ?? stringField(object, "desc");
+	const description = trimmedStringField(object, "description") ?? trimmedStringField(object, "desc");
 	if (!description) {
 		return { error: "Generated rule JSON must include a non-empty description" };
 	}
@@ -237,7 +237,7 @@ function parseGeneratedRulePayload(jsonText: string): GeneratedRulePayload | { e
 		return { error: "Generated rule JSON must include at least one scope" };
 	}
 
-	const body = stringField(object, "body");
+	const body = trimmedStringField(object, "body");
 	if (!body) {
 		return { error: "Generated rule JSON must include a non-empty body" };
 	}
@@ -251,7 +251,7 @@ function parseGeneratedRulePayload(jsonText: string): GeneratedRulePayload | { e
 	};
 }
 
-function stringField(object: Record<string, unknown>, key: string): string | undefined {
+function trimmedStringField(object: Record<string, unknown>, key: string): string | undefined {
 	const value = object[key];
 	if (typeof value !== "string") return undefined;
 	const trimmed = value.trim();

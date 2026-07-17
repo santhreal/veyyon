@@ -34,12 +34,12 @@ function createCompactDiff(expected: string, actual: string, contextLines = 3): 
 
 	for (let i = 0; i < changes.length; i++) {
 		const change = changes[i]!;
-		const lines = splitLines(change.value);
+		const lines = splitLinesDropTrailingEmpty(change.value);
 
 		if (change.added || change.removed) {
 			// Show context before (from previous unchanged chunk)
 			if (i > 0 && !changes[i - 1]!.added && !changes[i - 1]!.removed) {
-				const prevLines = splitLines(changes[i - 1]!.value);
+				const prevLines = splitLinesDropTrailingEmpty(changes[i - 1]!.value);
 				const contextStart = Math.max(0, prevLines.length - contextLines);
 				if (contextStart > 0) {
 					output.push(`@@ -${lineNum - (prevLines.length - contextStart)} @@`);
@@ -57,7 +57,7 @@ function createCompactDiff(expected: string, actual: string, contextLines = 3): 
 
 			// Show context after (from next unchanged chunk)
 			if (i + 1 < changes.length && !changes[i + 1]!.added && !changes[i + 1]!.removed) {
-				const nextLines = splitLines(changes[i + 1]!.value);
+				const nextLines = splitLinesDropTrailingEmpty(changes[i + 1]!.value);
 				const contextEnd = Math.min(nextLines.length, contextLines);
 				for (let j = 0; j < contextEnd; j++) {
 					output.push(` ${nextLines[j]}`);
@@ -186,7 +186,7 @@ function computeDiffStats(expected: string, actual: string): DiffStats {
 		if (!change.added && !change.removed) {
 			continue;
 		}
-		const lines = splitLines(change.value);
+		const lines = splitLinesDropTrailingEmpty(change.value);
 		linesChanged += lines.length;
 		charsChanged += change.value.length;
 	}
@@ -214,7 +214,7 @@ function computeIndentDistanceForDiff(expected: string, actual: string): number 
 	};
 
 	for (const change of changes) {
-		const lines = splitLines(change.value);
+		const lines = splitLinesDropTrailingEmpty(change.value);
 		if (change.removed) {
 			pendingRemoved.push(...lines);
 			continue;
@@ -268,7 +268,7 @@ function restoreWhitespaceOnlyLineDiffs(expected: string, actual: string): strin
 	};
 
 	for (const change of changes) {
-		const lines = splitLines(change.value);
+		const lines = splitLinesDropTrailingEmpty(change.value);
 		if (change.removed) {
 			pendingRemoved.push(...lines);
 			continue;
@@ -292,7 +292,7 @@ function equalsIgnoringWhitespace(a: string, b: string): boolean {
 	return a.replace(/\s+/g, "") === b.replace(/\s+/g, "");
 }
 
-function splitLines(value: string): string[] {
+function splitLinesDropTrailingEmpty(value: string): string[] {
 	return value.split("\n").filter((line, idx, arr) => idx < arr.length - 1 || line);
 }
 

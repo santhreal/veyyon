@@ -54,5 +54,5 @@ own discovery variable, not a shared `VEYYON_OSS_*` pair: `OLLAMA_BASE_URL` (or 
 
 User guides: [Models](../using/models.md), [Configuring providers](../using/configuring-providers.md).
 
-There is no separate `backends.toml` catalog subsystem; Veyyon uses `models.yml` plus the bundled
-catalog.
+> **Spec — not shipped:** a `backends.toml` Tier-B catalog as a separate subsystem. Veyyon uses
+> `models.yml` plus the bundled catalog instead.

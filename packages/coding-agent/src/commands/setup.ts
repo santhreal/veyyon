@@ -4,11 +4,9 @@
 import { APP_NAME } from "@veyyon/pi-utils";
 import { Args, Command, Flags, renderCommandHelp } from "@veyyon/pi-utils/cli";
 import { parseArgs } from "../cli/args";
-import { runSetupCommand, type SetupCommandArgs, type SetupComponent } from "../cli/setup-cli";
+import { runSetupCommand, type SetupCommandArgs, type SetupComponent, VALID_SETUP_COMPONENTS } from "../cli/setup-cli";
 import { runRootCommand } from "../main";
 import { initTheme } from "../modes/theme/theme";
-
-const COMPONENTS: SetupComponent[] = ["python", "speech"];
 
 export interface OnboardingSetupDependencies {
 	runRoot?: typeof runRootCommand;
@@ -32,11 +30,13 @@ export async function runOnboardingSetup(deps: OnboardingSetupDependencies = {})
 export default class Setup extends Command {
 	static description = "Run onboarding setup or install dependencies for optional features";
 
+	static examples = ["veyyon setup", "veyyon setup python", "veyyon setup speech", "veyyon setup speech --check"];
+
 	static args = {
 		component: Args.string({
 			description: "Optional component to install",
 			required: false,
-			options: COMPONENTS,
+			options: VALID_SETUP_COMPONENTS,
 		}),
 	};
 

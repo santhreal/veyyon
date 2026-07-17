@@ -1,17 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { logger } from "@veyyon/pi-utils";
-import { generateId as generateTimedId, sha256Hex16, stableMemoryId } from "../../util/ids";
-import {
-	cjkFtsTerms,
-	containsSpacelessCjk,
-	FACT_MATCH_STOPWORDS,
-	factMatchTokens,
-	ftsQueryTerms,
-	hasCjk,
-	isCjkChar,
-	RECALL_SYNONYMS,
-	recallTokens,
-} from "../../util/regex";
+import { sha256Hex16 } from "../../util/ids";
+import { cjkFtsTerms, containsSpacelessCjk, ftsQueryTerms, hasCjk, isCjkChar, recallTokens } from "../../util/regex";
 import { currentEmbeddingModel, embed } from "../embeddings";
 import { getMnemopiRuntimeOptions, mnemopiDebugEnabled, withMnemopiRuntimeOptions } from "../runtime-options";
 import { buildExactVectorIndex, searchExactVectorIndex } from "../vector-index";
@@ -41,12 +31,8 @@ export interface WorkingFtsRankResult {
 	rank: number;
 }
 
-const DEFAULT_RECENCY_HALFLIFE_HOURS = 72;
 const DEFAULT_WEIGHTS: HybridWeights = [0.5, 0.3, 0.2];
-const TS_CACHE_MAX = 2000;
-const moduleTimestampCache = new Map<string, Date>();
 
-const SPLIT_TOKEN_RE = /[_:/.-]+/g;
 const WORD_RE = /[\p{L}\p{N}_]+/gu;
 function envNumber(name: string, fallback: number): number {
 	const raw = process.env[name];
@@ -62,11 +48,7 @@ function clamp01(value: number): number {
 	return value;
 }
 
-function asFiniteNonNegative(value: number): number {
-	return Number.isFinite(value) && value > 0 ? value : 0;
-}
-
-function tableExists(db: Database, table: string): boolean {
+export function tableExists(db: Database, table: string): boolean {
 	try {
 		return (
 			db
@@ -81,18 +63,6 @@ function tableExists(db: Database, table: string): boolean {
 function rowValue<T>(row: unknown, key: string): T | undefined {
 	if (row && typeof row === "object" && key in row) return (row as Record<string, T>)[key];
 	return undefined;
-}
-
-function timestampCacheFor(beam?: Pick<BeamMemoryState, "caches"> | null): Map<string, Date> {
-	return beam?.caches?.timestampParse ?? moduleTimestampCache;
-}
-
-export function generateId(content: string, now: Date = new Date()): string {
-	return generateTimedId(content, now);
-}
-
-export function generateStableId(content: string, source = ""): string {
-	return stableMemoryId(content, source);
 }
 
 export function normalizeWeights(
@@ -113,140 +83,6 @@ export function normalizeWeights(
 
 export function normalizeImportance(importance: number | null | undefined, fallback = 0.5): number {
 	return clamp01(importance ?? fallback);
-}
-
-export function normalizeDateUtc(dt: Date): Date {
-	const time = dt.getTime();
-	if (!Number.isFinite(time)) throw new RangeError("Invalid Date");
-	return new Date(time);
-}
-
-export function parseIsoDateTimeUtc(value: string): Date {
-	const normalized = value.endsWith("Z") ? value : value.replace(/Z$/, "+00:00");
-	const dt = new Date(normalized);
-	if (!Number.isFinite(dt.getTime())) throw new RangeError(`Invalid ISO datetime: ${value}`);
-	return dt;
-}
-
-export function parseQueryTime(queryTime?: string | Date | null): Date {
-	if (queryTime == null) return new Date();
-	if (queryTime instanceof Date) return normalizeDateUtc(queryTime);
-	try {
-		return parseIsoDateTimeUtc(queryTime);
-	} catch {
-		return parseIsoDateTimeUtc(`${queryTime}T00:00:00`);
-	}
-}
-
-export function parseTimestampFast(
-	ts: string | null | undefined,
-	beam?: Pick<BeamMemoryState, "caches"> | null,
-): Date | null {
-	if (!ts) return null;
-	const cache = timestampCacheFor(beam);
-	const cached = cache.get(ts);
-	if (cached !== undefined) return cached;
-	let parsed: Date;
-	try {
-		parsed = parseIsoDateTimeUtc(ts);
-	} catch {
-		return null;
-	}
-	if (cache.size >= TS_CACHE_MAX) cache.clear();
-	cache.set(ts, parsed);
-	return parsed;
-}
-
-export function recencyDecay(
-	timestamp: string | null | undefined,
-	halflifeHours = DEFAULT_RECENCY_HALFLIFE_HOURS,
-	now: Date = new Date(),
-): number {
-	if (!timestamp) return 0.5;
-	const halflife = asFiniteNonNegative(halflifeHours);
-	if (halflife === 0) return 0.5;
-	const ts = parseTimestampFast(timestamp);
-	if (ts === null) return 0.5;
-	const ageHours = (now.getTime() - ts.getTime()) / 3_600_000;
-	return Math.exp(-ageHours / halflife);
-}
-
-export function temporalBoost(
-	memoryTimestamp: string | null | undefined,
-	queryTime: Date | string,
-	halflifeHours = 24,
-	beam?: Pick<BeamMemoryState, "caches"> | null,
-): number {
-	const ts = parseTimestampFast(memoryTimestamp, beam);
-	if (ts === null) return 0;
-	const query = parseQueryTime(queryTime);
-	const effectiveTs = ts.getTime() > query.getTime() ? query : ts;
-	const halflife = asFiniteNonNegative(halflifeHours);
-	if (halflife === 0) return effectiveTs.getTime() === query.getTime() ? 1 : 0;
-	const hoursDelta = (query.getTime() - effectiveTs.getTime()) / 3_600_000;
-	return Math.exp(-hoursDelta / halflife);
-}
-
-export function lexicalRelevance(queryTokens: readonly string[], content: string, queryLower = ""): number {
-	const contentLower = content.toLowerCase();
-	const queryCjk = new Set(Array.from(queryLower).filter(isCjkChar));
-	if (queryTokens.length === 0 && queryCjk.size === 0) return 0;
-
-	const contentTokens = new Set(recallTokens(contentLower));
-	for (const token of Array.from(contentTokens)) {
-		for (const part of token.split(SPLIT_TOKEN_RE)) {
-			if (part.length >= 3 && !FACT_MATCH_STOPWORDS.has(part) && !/^\d+$/.test(part)) contentTokens.add(part);
-		}
-	}
-	if (contentTokens.size === 0 && queryCjk.size === 0) return 0;
-
-	let exact = 0;
-	let partial = 0;
-	for (const token of queryTokens) {
-		if (contentTokens.has(token)) {
-			exact += 1;
-			continue;
-		}
-		const synonyms = RECALL_SYNONYMS[token] ?? [];
-		if (synonyms.some(syn => contentTokens.has(syn))) {
-			partial += 0.75;
-			continue;
-		}
-		if (
-			token.length >= 4 &&
-			Array.from(contentTokens).some(
-				contentToken => contentToken.length >= 4 && (token.includes(contentToken) || contentToken.includes(token)),
-			)
-		) {
-			partial += 0.4;
-		}
-	}
-
-	const fullMatch = queryLower !== "" && contentLower.includes(queryLower) ? 1 : 0;
-	let score = (exact + partial + fullMatch) / Math.max(queryTokens.length, 1);
-	if (score === 0 && queryCjk.size > 0) {
-		const contentCjk = new Set(Array.from(contentLower).filter(isCjkChar));
-		let overlap = 0;
-		for (const ch of queryCjk) if (contentCjk.has(ch)) overlap += 1;
-		score = overlap / queryCjk.size;
-	}
-	return Math.min(score, 1);
-}
-
-export function strictFactMatches(query: string, factText: string): boolean {
-	const queryLower = query.toLowerCase().trim();
-	const factLower = factText.toLowerCase().trim();
-	if (!queryLower || !factLower) return false;
-	if (factLower.includes(queryLower)) return true;
-	const queryTokens = factMatchTokens(queryLower);
-	const factTokens = factMatchTokens(factLower);
-	if (queryTokens.size === 0 || factTokens.size === 0) return false;
-	const overlap = Array.from(queryTokens).filter(token => factTokens.has(token));
-	if (overlap.length >= 2) return true;
-	const token = overlap[0];
-	if (token === undefined) return false;
-	if (token.length >= 8 && /[./:_-]/.test(token)) return true;
-	return token.length >= 5;
 }
 
 export function buildFtsQuery(query: string): string {

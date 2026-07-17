@@ -11,9 +11,10 @@ import type {
 	OAuthAccessResolution,
 	SimpleStreamOptions,
 } from "@veyyon/pi-ai";
+
 import { streamSimple } from "@veyyon/pi-ai";
 import { replaceTabs, truncateToWidth } from "@veyyon/pi-tui";
-import { formatDuration, getProjectDir } from "@veyyon/pi-utils";
+import { errorMessage, formatDuration, getProjectDir } from "@veyyon/pi-utils";
 import chalk from "chalk";
 import { ModelRegistry } from "../config/model-registry";
 import {
@@ -26,6 +27,7 @@ import {
 import { Settings } from "../config/settings";
 import dryBalanceBenchPrompt from "../prompts/dry-balance-bench.md" with { type: "text" };
 import { discoverAuthStorage, loadCliExtensionProviders } from "../sdk";
+import { normalizePositiveInteger } from "./args";
 
 const DEFAULT_SAMPLE_COUNT = 100;
 const DEFAULT_CONCURRENCY = 32;
@@ -194,20 +196,6 @@ type DryBalanceBenchTarget =
 			account: string;
 			error: string;
 	  };
-
-function normalizePositiveInteger(name: string, value: number | undefined, fallback: number): number {
-	const resolved = value ?? fallback;
-	if (!Number.isInteger(resolved) || resolved <= 0) {
-		throw new Error(`--${name} must be a positive integer`);
-	}
-	return resolved;
-}
-
-function getErrorMessage(error: unknown): string {
-	if (error instanceof Error && error.message) return error.message;
-	const message = String(error);
-	return message ? message : "Unknown error";
-}
 
 function extractAccount(access: {
 	email?: string;
@@ -463,7 +451,7 @@ async function runBenchRequest(
 			tokensPerSecond,
 		};
 	} catch (error) {
-		return { ok: false, account, error: getErrorMessage(error) };
+		return { ok: false, account, error: errorMessage(error) };
 	}
 }
 
@@ -526,7 +514,7 @@ async function runBenchTargets(
 	);
 }
 
-async function createDefaultRuntime(): Promise<DryBalanceRuntime> {
+async function createDryBalanceRuntime(): Promise<DryBalanceRuntime> {
 	const authStorage = await discoverAuthStorage();
 	try {
 		const cwd = getProjectDir();
@@ -605,7 +593,7 @@ async function runOneAttempt(
 		if (!access) return { ok: false, reason: "no OAuth access resolved" };
 		return { ok: true, account: extractAccount(access) };
 	} catch (error) {
-		return { ok: false, reason: getErrorMessage(error) };
+		return { ok: false, reason: errorMessage(error) };
 	}
 }
 
@@ -791,7 +779,7 @@ export async function runDryBalanceCommand(
 		});
 	const streamFn = deps.streamSimple ?? streamSimple;
 	const now = deps.now ?? (() => performance.now());
-	const runtime = await (deps.createRuntime ?? createDefaultRuntime)();
+	const runtime = await (deps.createRuntime ?? createDryBalanceRuntime)();
 	let progress: DryBalanceBenchProgressSink | undefined;
 	let progressClosed = false;
 	const closeProgress = (): void => {

@@ -1,5 +1,6 @@
 import { renderDemotedThinking } from "../dialect/demotion";
 import type { Api, AssistantMessage, Message, Model, ToolCall, ToolResultMessage, UserMessage } from "../types";
+import { normalizeToolCallId as defaultNormalizeToolCallId } from "../utils";
 import { isDemotedThinking, kDemotedThinking } from "../utils/block-symbols";
 
 const enum ToolCallStatus {
@@ -271,8 +272,7 @@ function normalizeAnthropicTargetToolCallId<TApi extends Api>(
 	normalizeToolCallId?: (id: string, model: Model<TApi>, source: AssistantMessage) => string,
 ): string {
 	if (isValidAnthropicToolCallId(id)) return id;
-	const normalized =
-		normalizeToolCallId?.(id, model, source) ?? id.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, MAX_TOOL_CALL_ID_LENGTH);
+	const normalized = normalizeToolCallId?.(id, model, source) ?? defaultNormalizeToolCallId(id);
 	if (isValidAnthropicToolCallId(normalized)) return normalized;
 	return fallbackAnthropicToolCallId(id);
 }

@@ -195,7 +195,7 @@ let cachedDb: Database | null = null;
  * failure (filesystem permissions, etc.); a missing file is created.
  *
  * Exported because the `veyyon grievances` CLI handlers need the migrated
- * handle too — having a second `openDb` in the CLI led to the column
+ * handle too — having a second `openGithubCacheDb` in the CLI led to the column
  * never being added on the manual-push path.
  */
 export function openAutoQaDb(): Database | null {

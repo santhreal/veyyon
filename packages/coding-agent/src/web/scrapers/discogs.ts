@@ -90,7 +90,7 @@ function formatArtists(artists: DiscogsArtist[] | undefined): string {
 /**
  * Format a single track
  */
-function formatTrack(track: DiscogsTrack): string {
+function formatDiscogsTrack(track: DiscogsTrack): string {
 	let line = track.position ? `${track.position}. ` : "- ";
 	line += track.title;
 	if (track.duration) line += ` (${track.duration})`;
@@ -140,7 +140,7 @@ function formatFormats(formats: DiscogsFormat[] | undefined): string {
 /**
  * Format labels with catalog numbers
  */
-function formatLabels(labels: DiscogsLabel[] | undefined): string {
+function formatDiscogsLabels(labels: DiscogsLabel[] | undefined): string {
 	if (!labels?.length) return "";
 	return labels
 		.map(l => {
@@ -153,7 +153,7 @@ function formatLabels(labels: DiscogsLabel[] | undefined): string {
 /**
  * Build markdown for a release
  */
-function buildReleaseMarkdown(release: DiscogsRelease): string {
+function buildDiscogsReleaseMarkdown(release: DiscogsRelease): string {
 	const sections: string[] = [];
 
 	// Title with artist
@@ -168,7 +168,7 @@ function buildReleaseMarkdown(release: DiscogsRelease): string {
 	const format = formatFormats(release.formats);
 	if (format) meta.push(`**Format**: ${format}`);
 
-	const labels = formatLabels(release.labels);
+	const labels = formatDiscogsLabels(release.labels);
 	if (labels) meta.push(`**Label**: ${labels}`);
 
 	if (release.genres?.length) meta.push(`**Genre**: ${release.genres.join(", ")}`);
@@ -183,7 +183,7 @@ function buildReleaseMarkdown(release: DiscogsRelease): string {
 	// Tracklist
 	if (release.tracklist?.length) {
 		sections.push("## Tracklist\n");
-		const tracks = release.tracklist.map(formatTrack);
+		const tracks = release.tracklist.map(formatDiscogsTrack);
 		sections.push(`${tracks.join("\n")}\n`);
 	}
 
@@ -236,7 +236,7 @@ function buildMasterMarkdown(master: DiscogsMaster): string {
 	// Tracklist
 	if (master.tracklist?.length) {
 		sections.push("## Tracklist\n");
-		const tracks = master.tracklist.map(formatTrack);
+		const tracks = master.tracklist.map(formatDiscogsTrack);
 		sections.push(`${tracks.join("\n")}\n`);
 	}
 
@@ -287,7 +287,7 @@ export const handleDiscogs: SpecialHandler = async (
 		if (isRelease) {
 			const release = tryParseJson<DiscogsRelease>(result.content);
 			if (!release) return null;
-			md = buildReleaseMarkdown(release);
+			md = buildDiscogsReleaseMarkdown(release);
 		} else {
 			const master = tryParseJson<DiscogsMaster>(result.content);
 			if (!master) return null;

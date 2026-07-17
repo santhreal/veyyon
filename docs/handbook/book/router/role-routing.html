@@ -46,10 +46,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-24acbed9.js";
+            window.path_to_searchindex_js = "../searchindex-8badf17b.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-9cfd259b.js"></script>
+        <script src="../toc-19dab021.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -221,9 +221,10 @@ wake-now-vs-defer message routing. <code>wait</code> (or <code>send await:true</
 real turn. Gated by <code>isIrcEnabled</code>: available to every subagent and to a top-level session that can
 still spawn subagents.</li>
 </ul>
-<h2 id="no-fixed-role-pipeline"><a class="header" href="#no-fixed-role-pipeline">No fixed role pipeline</a></h2>
-<p>Veyyon does not enforce a staged plan → implement → verify → repair handoff. It uses lighter-weight
-spawn, model-slot, and <code>irc</code> messaging patterns instead; you compose the stages yourself.</p>
+<h2 id="target-pipeline-spec--not-shipped"><a class="header" href="#target-pipeline-spec--not-shipped">Target pipeline (Spec — not shipped)</a></h2>
+<p>A fixed role pipeline (plan → implement → verify → repair) is the target shape. Today Veyyon uses
+lighter-weight spawn, model-slot, and <code>irc</code> messaging patterns instead of a fixed pipeline — there is no
+staged plan/implement/verify/repair handoff enforced by the harness itself.</p>
 <p>Pair role choice with <a href="../models/prompts.html">execution-order prompts</a>: explore → plan → edit → verify.</p>
 
                     </main>

@@ -53,27 +53,6 @@ export function createSessionRuntime(): AutoresearchRuntime {
 	};
 }
 
-export function cloneExperimentState(state: ExperimentState): ExperimentState {
-	return {
-		...state,
-		results: state.results.map(cloneResult),
-		secondaryMetrics: state.secondaryMetrics.map(metric => ({ ...metric })),
-		scopePaths: [...state.scopePaths],
-		offLimits: [...state.offLimits],
-		constraints: [...state.constraints],
-	};
-}
-
-function cloneResult(result: ExperimentResult): ExperimentResult {
-	return {
-		...result,
-		metrics: { ...result.metrics },
-		asi: result.asi ? structuredClone(result.asi) : undefined,
-		modifiedPaths: [...result.modifiedPaths],
-		scopeDeviations: [...result.scopeDeviations],
-	};
-}
-
 export function currentResults(results: ExperimentResult[], segment: number): ExperimentResult[] {
 	return results.filter(result => result.segment === segment);
 }

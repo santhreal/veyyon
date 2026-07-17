@@ -1,7 +1,9 @@
+import { isAbortOrTimeoutError } from "@veyyon/pi-utils";
 import { DEFAULT_MAX_BYTES, OutputSink } from "../../session/streaming-output";
 import type { ToolSession } from "../../tools";
 import { resolveOutputMaxColumns, resolveOutputSinkHeadBytes } from "../../tools/output-meta";
 import { isEvalTimeoutControlEvent } from "../bridge-timeout";
+import { isTimeoutReason } from "../kernel-base";
 import { executeInVmContext, type JsDisplayOutput } from "./context-manager";
 import type { JsStatusEvent } from "./shared/types";
 
@@ -46,20 +48,6 @@ function getExecutionTimeoutMs(options: Pick<JsExecutorOptions, "deadlineMs" | "
 		return Math.max(1, options.deadlineMs - Date.now());
 	}
 	return options.timeoutMs;
-}
-
-function isAbortError(error: unknown): boolean {
-	return (
-		(error instanceof DOMException && (error.name === "AbortError" || error.name === "TimeoutError")) ||
-		(error instanceof Error && (error.name === "AbortError" || error.name === "TimeoutError"))
-	);
-}
-
-function isTimeoutReason(reason: unknown): boolean {
-	return (
-		(reason instanceof DOMException && reason.name === "TimeoutError") ||
-		(reason instanceof Error && reason.name === "TimeoutError")
-	);
 }
 
 function formatJsTimeoutAnnotation(timeoutMs: number | undefined): string {
@@ -135,7 +123,7 @@ export async function executeJs(code: string, options: JsExecutorOptions): Promi
 			displayOutputs,
 		};
 	} catch (error) {
-		if (signal?.aborted || isAbortError(error)) {
+		if (signal?.aborted || isAbortOrTimeoutError(error)) {
 			const timedOut = Boolean(timeoutSignal?.aborted) || isTimeoutReason(options.signal?.reason);
 			if (timedOut) {
 				outputSink.push(formatJsTimeoutAnnotation(legacyTimeoutMs ?? options.idleTimeoutMs));

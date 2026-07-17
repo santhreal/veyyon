@@ -88,7 +88,7 @@ function parseGitLabUrl(url: string): GitLabUrl | null {
 /**
  * Get project ID from namespace/project path
  */
-async function getProjectId(gl: GitLabUrl, timeout: number, signal?: AbortSignal): Promise<number | null> {
+async function fetchGitLabProjectId(gl: GitLabUrl, timeout: number, signal?: AbortSignal): Promise<number | null> {
 	const encodedPath = encodeURIComponent(`${gl.namespace}/${gl.project}`);
 	const apiUrl = `https://gitlab.com/api/v4/projects/${encodedPath}`;
 
@@ -334,7 +334,7 @@ export const handleGitLab: SpecialHandler = async (
 
 	switch (gl.type) {
 		case "blob": {
-			const projectId = await getProjectId(gl, timeout, signal);
+			const projectId = await fetchGitLabProjectId(gl, timeout, signal);
 			if (!projectId) break;
 
 			notes.push(`Fetched raw file via GitLab API`);
@@ -352,7 +352,7 @@ export const handleGitLab: SpecialHandler = async (
 		}
 
 		case "tree": {
-			const projectId = await getProjectId(gl, timeout, signal);
+			const projectId = await fetchGitLabProjectId(gl, timeout, signal);
 			if (!projectId) break;
 
 			notes.push(`Fetched directory tree via GitLab API`);
@@ -364,7 +364,7 @@ export const handleGitLab: SpecialHandler = async (
 		}
 
 		case "issue": {
-			const projectId = await getProjectId(gl, timeout, signal);
+			const projectId = await fetchGitLabProjectId(gl, timeout, signal);
 			if (!projectId) break;
 
 			notes.push(`Fetched issue via GitLab API`);
@@ -376,7 +376,7 @@ export const handleGitLab: SpecialHandler = async (
 		}
 
 		case "merge_request": {
-			const projectId = await getProjectId(gl, timeout, signal);
+			const projectId = await fetchGitLabProjectId(gl, timeout, signal);
 			if (!projectId) break;
 
 			notes.push(`Fetched merge request via GitLab API`);

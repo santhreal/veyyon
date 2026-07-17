@@ -169,14 +169,14 @@ const kStrippedSchema = Symbol("pi.schema.descriptions.stripped");
  */
 function postProcess(schema: Record<string, unknown>): Record<string, unknown> {
 	delete schema.$schema;
-	walk(schema, true);
+	normalizeWireNode(schema, true);
 	normalizeArkPropertyComments(schema);
 	normalizeEmptySchemas(schema);
 	return schema;
 }
 
 function postProcessJsonSchema(schema: Record<string, unknown>): Record<string, unknown> {
-	walk(schema, false);
+	normalizeWireNode(schema, false);
 	normalizeArkPropertyComments(schema);
 	normalizeEmptySchemas(schema);
 	return schema;
@@ -455,9 +455,9 @@ function collapseConstUnionAnyOf(obj: Record<string, unknown>): void {
 	}
 }
 
-function walk(node: unknown, zodCleanup: boolean): void {
+function normalizeWireNode(node: unknown, zodCleanup: boolean): void {
 	if (Array.isArray(node)) {
-		for (const child of node) walk(child, zodCleanup);
+		for (const child of node) normalizeWireNode(child, zodCleanup);
 		return;
 	}
 	if (!node || typeof node !== "object") return;
@@ -492,7 +492,7 @@ function walk(node: unknown, zodCleanup: boolean): void {
 		}
 	}
 
-	for (const k in obj) walk(obj[k], zodCleanup);
+	for (const k in obj) normalizeWireNode(obj[k], zodCleanup);
 }
 
 /**

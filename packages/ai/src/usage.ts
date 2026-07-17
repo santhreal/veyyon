@@ -129,6 +129,32 @@ export function resolveUsedFraction(limit: UsageLimit): number | undefined {
 }
 
 /**
+ * Derive a limit status from a used fraction. The one owner of the usage
+ * warning/exhaustion thresholds: >= 1 exhausted, >= 0.8 warning, else ok;
+ * an unresolvable fraction is unknown.
+ */
+export function usageStatusFromFraction(fraction: number | undefined): NonNullable<UsageLimit["status"]> {
+	if (fraction === undefined) return "unknown";
+	if (fraction >= 1) return "exhausted";
+	if (fraction >= 0.8) return "warning";
+	return "ok";
+}
+
+/** Build a percent-unit UsageAmount from a 0-100 used percentage (clamped). */
+export function percentUsageAmount(usedPercent: number): UsageAmount {
+	const clamped = Math.min(Math.max(usedPercent, 0), 100);
+	const usedFraction = clamped / 100;
+	return {
+		used: clamped,
+		limit: 100,
+		remaining: Math.max(0, 100 - clamped),
+		usedFraction,
+		remainingFraction: Math.max(0, 1 - usedFraction),
+		unit: "percent",
+	};
+}
+
+/**
  * One recorded usage-limit snapshot: a single limit window of one account at
  * a point in time. The usage cache itself is latest-snapshot-only; history
  * rows are appended by the auth storage layer whenever a fresh report is

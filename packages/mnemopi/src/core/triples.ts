@@ -170,7 +170,7 @@ function rowToTriple(row: unknown): TripleRow {
 	return row as TripleRow;
 }
 
-function normalizeContent(item: TripleImportRow): ContentSnapshot {
+function normalizeTripleContent(item: TripleImportRow): ContentSnapshot {
 	const bindings = normalizeImportBindings(item);
 	return {
 		subject: bindings.subject,
@@ -214,7 +214,7 @@ function contentFromRow(row: TripleRow): ContentSnapshot {
 	};
 }
 
-function sameContent(left: ContentSnapshot, right: ContentSnapshot): boolean {
+function sameContentSnapshot(left: ContentSnapshot, right: ContentSnapshot): boolean {
 	for (const field of CONTENT_FIELDS) {
 		if ((left[field] ?? null) !== (right[field] ?? null)) return false;
 	}
@@ -370,7 +370,7 @@ export class TripleStore {
 					this.conn.run("DELETE FROM triples WHERE id = ?", [id]);
 					this.#insertWithId(item, id);
 					stats.overwritten++;
-				} else if (sameContent(normalizeContent(item), existing.get(id) as ContentSnapshot)) {
+				} else if (sameContentSnapshot(normalizeTripleContent(item), existing.get(id) as ContentSnapshot)) {
 					stats.skipped++;
 				} else {
 					try {

@@ -1,6 +1,6 @@
 # Config
 
-Configuration controls models, approvals, memory, MCP, extensions, and TUI behavior. Veyyon loads
+Configuration controls models, sandbox, memory, MCP, extensions, and TUI behavior. Veyyon loads
 layered YAML/JSON from the project and user agent directories.
 
 ## Responsibility
@@ -14,7 +14,7 @@ layered YAML/JSON from the project and user agent directories.
 
 - Primary user file: `~/.veyyon/agent/config.yml` (or profile path under `~/.veyyon/profiles/`)
 - Project overrides: `.veyyon/config.yml`
-- CLI: `veyyon config list|get|set`, `/settings`, `/reload-plugins` (re-read without restart)
+- CLI: `veyyon config list|get|set`, `/settings`; `/reload-plugins` re-reads extension surfaces, other config edits need a restart
 
 Config loading is part of the harness.
 

@@ -4,6 +4,7 @@ import {
 	type AgentMessage,
 	type AgentTelemetryConfig,
 	type AgentTool,
+	type AnyAgentTool,
 	AppendOnlyContextManager,
 	filterProviderReplayMessages,
 	type ThinkingLevel,
@@ -60,7 +61,12 @@ import {
 	loadCustomCommands as loadCustomCommandsInternal,
 } from "./extensibility/custom-commands";
 import { discoverCustomToolPaths, loadCustomTools, type ToolPathWithSource } from "./extensibility/custom-tools";
-import type { CustomTool, CustomToolContext, CustomToolSessionEvent } from "./extensibility/custom-tools/types";
+import type {
+	AnyCustomTool,
+	CustomTool,
+	CustomToolContext,
+	CustomToolSessionEvent,
+} from "./extensibility/custom-tools/types";
 import {
 	discoverAndLoadExtensions,
 	discoverExtensionPaths,
@@ -922,7 +928,7 @@ function customToolToDefinition(tool: CustomTool): ToolDefinition {
 						theme,
 					);
 					// Return empty component if undefined to match Component type requirement
-					return component ?? ({ render: () => [] } as unknown as Component);
+					return component ?? { render: () => [] };
 				}
 			: undefined,
 		[TOOL_DEFINITION_MARKER]: true,
@@ -930,7 +936,7 @@ function customToolToDefinition(tool: CustomTool): ToolDefinition {
 	return definition;
 }
 
-function createCustomToolsExtension(tools: CustomTool[]): ExtensionFactory {
+function createCustomToolsExtension(tools: AnyCustomTool[]): ExtensionFactory {
 	return api => {
 		for (const tool of tools) {
 			api.registerTool(customToolToDefinition(tool));
@@ -1711,7 +1717,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		toolSession.mcpManager = mcpManager;
 		const enableMCP = options.enableMCP ?? true;
 		const deferMCPDiscoveryForUI = enableMCP && !mcpManager && options.hasUI === true;
-		const customTools: CustomTool[] = [];
+		const customTools: AnyCustomTool[] = [];
 		let startDeferredMCPDiscovery:
 			| ((liveSession: AgentSession, activation: DeferredMCPActivation) => void)
 			| undefined;
@@ -1829,12 +1835,12 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		if (settings.get("generate_image.enabled") && imageGenRequested) {
 			const imageGenTools = await logger.time("getImageGenTools", () => getImageGenTools(modelRegistry, model));
 			if (imageGenTools.length > 0) {
-				customTools.push(...(imageGenTools as unknown as CustomTool[]));
+				customTools.push(...imageGenTools);
 			}
 		}
 
 		if (settings.get("speechgen.enabled")) {
-			customTools.push(ttsTool as unknown as CustomTool);
+			customTools.push(ttsTool);
 		}
 
 		// Add web search tools
@@ -2365,10 +2371,11 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		const reloadSshTool = async (): Promise<AgentTool | null> => {
 			if (!requestedToolNameSet.has("ssh")) return null;
 			const { loadSshTool } = await import("./tools/ssh");
-			const sshTool = (await loadSshTool({
+			// SshTool's schema-typed execute is contravariant — widen at the boundary.
+			const sshTool: AnyAgentTool | null = await loadSshTool({
 				...toolSession,
 				cwd: sessionManager.getCwd(),
-			})) as unknown as AgentTool | null;
+			});
 			if (!sshTool) return null;
 			const wrapped = wrapToolWithMetaNotice(sshTool);
 			return new ExtensionToolWrapper(wrapped, extensionRunner) as AgentTool;

@@ -9,6 +9,8 @@ import { initTheme } from "../modes/theme/theme";
 export default class Update extends Command {
 	static description = "Check for and install updates";
 
+	static examples = ["veyyon update", "veyyon update --check", "veyyon update --force", "veyyon update --plugins"];
+
 	static flags = {
 		force: Flags.boolean({ char: "f", description: "Force update", default: false }),
 		check: Flags.boolean({ char: "c", description: "Check for updates without installing", default: false }),

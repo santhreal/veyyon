@@ -5,7 +5,12 @@ import { dbPath as configuredDbPath } from "../config";
 import { closeQuietly } from "../db";
 import type { MemoryInput, Metadata } from "../types";
 import { AnnotationStore } from "./annotations";
-import { BankManager } from "./banks";
+import {
+	BankManager,
+	getBank as getActiveBank,
+	resetBankForTests as resetActiveBankForTests,
+	setBank as setActiveBank,
+} from "./banks";
 import { BeamMemory, initBeam } from "./beam/index";
 import { reconcileEmbeddingModel } from "./beam/store";
 import type { RecallEnhancedOptions, RecallOptions, RecallResult, SleepResult } from "./beam/types";
@@ -259,14 +264,13 @@ function resolveRuntimeOptions(options: MnemopiOptions): ResolvedMnemopiRuntimeO
 }
 
 let defaultInstance: Mnemopi | null = null;
-let defaultBank = "default";
 
 function normalizeDate(value: string | Date | null | undefined): string | null | undefined {
 	if (value instanceof Date) return value.toISOString();
 	return value ?? undefined;
 }
 
-function resolveDbPath(options: MnemopiOptions, bank: string): string | undefined {
+function resolveDbPathOverride(options: MnemopiOptions, bank: string): string | undefined {
 	const explicit = options.dbPath ?? options.db_path;
 	if (explicit !== undefined) return explicit;
 	if (options.db !== undefined) return undefined;
@@ -370,10 +374,10 @@ function buildEpisodicGraph(db: Database, dbPath: string | undefined): EpisodicG
 }
 
 function defaultFor(bank: string | null | undefined = null): Mnemopi {
-	const targetBank = bank ?? defaultBank ?? "default";
+	const targetBank = bank ?? getActiveBank() ?? "default";
 	if (defaultInstance === null || defaultInstance.bank !== targetBank) {
 		defaultInstance?.close();
-		defaultBank = targetBank;
+		setActiveBank(targetBank);
 		defaultInstance = new Mnemopi({ bank: targetBank });
 	}
 	return defaultInstance;
@@ -399,7 +403,7 @@ export class Mnemopi {
 		this.authorId = options.authorId ?? options.author_id ?? null;
 		this.authorType = options.authorType ?? options.author_type ?? null;
 		this.channelId = options.channelId ?? options.channel_id ?? this.sessionId;
-		this.dbPath = resolveDbPath(options, this.bank);
+		this.dbPath = resolveDbPathOverride(options, this.bank);
 		this.runtimeOptions = resolveRuntimeOptions(options);
 
 		this.beam = new BeamMemory({
@@ -564,13 +568,13 @@ export class Mnemopi {
 }
 
 export function setBank(bank: string): void {
-	defaultBank = bank;
+	setActiveBank(bank);
 	defaultInstance?.close();
 	defaultInstance = null;
 }
 
 export function getBank(): string {
-	return defaultBank || "default";
+	return getActiveBank() || "default";
 }
 
 export function getDefaultInstance(bank: string | null = null): Mnemopi {
@@ -664,7 +668,7 @@ export function query(query: string, topK = 5, options: ModuleRecallOptions = {}
 export function resetDefaultInstanceForTests(): void {
 	defaultInstance?.close();
 	defaultInstance = null;
-	defaultBank = "default";
+	resetActiveBankForTests();
 }
 
 export function resetMemoryForTests(): void {

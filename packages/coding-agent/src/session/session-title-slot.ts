@@ -1,3 +1,4 @@
+import { utf8ByteLength } from "@veyyon/pi-utils";
 import {
 	SESSION_TITLE_SLOT_BYTES,
 	SESSION_TITLE_SLOT_ENTRY_TYPE,
@@ -12,10 +13,6 @@ export interface SessionTitleUpdate {
 	title?: string;
 	source?: SessionTitleSource;
 	updatedAt: string;
-}
-
-function byteLength(value: string): number {
-	return utf8Encoder.encode(value).byteLength;
 }
 
 function titleSlotLine(title: string, source: SessionTitleSource | undefined, updatedAt: string, pad: string): string {
@@ -47,7 +44,7 @@ function truncateTitleForSlot(title: string, source: SessionTitleSource | undefi
 	while (low <= high) {
 		const mid = (low + high) >>> 1;
 		const candidate = codePoints.slice(0, mid).join("");
-		if (byteLength(titleSlotLine(candidate, source, updatedAt, "")) <= SESSION_TITLE_SLOT_BYTES) {
+		if (utf8ByteLength(titleSlotLine(candidate, source, updatedAt, "")) <= SESSION_TITLE_SLOT_BYTES) {
 			best = candidate;
 			low = mid + 1;
 		} else {
@@ -112,10 +109,10 @@ export function titleUpdateFromSlot(slot: SessionTitleSlotEntry | undefined): Se
 export function serializeTitleSlot(options: SessionTitleUpdate): string {
 	const title = truncateTitleForSlot(options.title ?? "", options.source, options.updatedAt);
 	const unpadded = titleSlotLine(title, options.source, options.updatedAt, "");
-	const padBytes = SESSION_TITLE_SLOT_BYTES - byteLength(unpadded);
+	const padBytes = SESSION_TITLE_SLOT_BYTES - utf8ByteLength(unpadded);
 	if (padBytes < 0) throw new Error("Session title slot metadata exceeds fixed slot size");
 	const line = titleSlotLine(title, options.source, options.updatedAt, " ".repeat(padBytes));
-	if (byteLength(line) !== SESSION_TITLE_SLOT_BYTES) {
+	if (utf8ByteLength(line) !== SESSION_TITLE_SLOT_BYTES) {
 		throw new Error("Session title slot serialization failed to produce fixed-width output");
 	}
 	return line;

@@ -106,3 +106,5 @@ from the catalog table and `OAuthProvider` from the registry.
 - A `ProviderDefinition` may also be registered at runtime by an extension via
   `registerOAuthProvider` (the `AuthStorage.login` dispatcher handles built-ins
   and extensions through the same path).
+
+*Verified against `11c84f4` on 2026-07-17.*

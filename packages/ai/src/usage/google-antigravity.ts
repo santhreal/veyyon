@@ -1,4 +1,5 @@
 import { getAntigravityUserAgent } from "@veyyon/pi-catalog/wire/gemini-headers";
+import { stripTrailingSlashes } from "@veyyon/pi-utils";
 import * as AIError from "../error";
 import type {
 	CredentialRankingContext,
@@ -9,9 +10,9 @@ import type {
 	UsageLimit,
 	UsageProvider,
 	UsageReport,
-	UsageStatus,
 	UsageWindow,
 } from "../usage";
+import { resolveOAuthAccessToken, usageStatusFromRemainingFraction } from "./shared";
 
 // (Refresh is the sole responsibility of AuthStorage; no provider-direct refresh here.)
 
@@ -68,7 +69,7 @@ function classifyWindow(id: string | undefined, label: string | undefined): Anti
 	return undefined;
 }
 
-function parseResetTime(info: AntigravityQuotaInfo): number | undefined {
+function parseAntigravityResetTime(info: AntigravityQuotaInfo): number | undefined {
 	const resetAt = info.resetTime ? Date.parse(info.resetTime) : undefined;
 	return resetAt !== undefined && Number.isFinite(resetAt) ? resetAt : undefined;
 }
@@ -98,7 +99,7 @@ function inferWindowDescriptors(
 			continue;
 		}
 		const group = groups.get(quotaInferenceKey(info)) ?? [];
-		group.push({ info, resetAt: parseResetTime(info) });
+		group.push({ info, resetAt: parseAntigravityResetTime(info) });
 		groups.set(quotaInferenceKey(info), group);
 	}
 
@@ -138,18 +139,11 @@ function clampFraction(value: number | undefined): number | undefined {
 	return value;
 }
 
-function getUsageStatus(remainingFraction: number | undefined): UsageStatus | undefined {
-	if (remainingFraction === undefined) return "unknown";
-	if (remainingFraction <= 0) return "exhausted";
-	if (remainingFraction <= 0.1) return "warning";
-	return "ok";
-}
-
-function parseWindow(
+function parseAntigravityWindow(
 	info: AntigravityQuotaInfo,
 	descriptor: AntigravityWindowDescriptor | undefined,
 ): UsageWindow | undefined {
-	const resetAt = parseResetTime(info);
+	const resetAt = parseAntigravityResetTime(info);
 	const hasResetAt = resetAt !== undefined;
 	if (!descriptor && !hasResetAt) return undefined;
 	return {
@@ -247,14 +241,6 @@ function normalizeQuotaInfos(info: AntigravityModelInfo): AntigravityQuotaInfo[]
  * an expired token short-circuits the probe rather than POSTing the broker
  * sentinel back to Google.
  */
-function resolveAccessToken(params: UsageFetchParams): string | undefined {
-	const { credential } = params;
-	if (!credential.accessToken) return undefined;
-	if (credential.expiresAt !== undefined && credential.expiresAt <= Date.now()) {
-		return undefined;
-	}
-	return credential.accessToken;
-}
 
 async function fetchAntigravityUsage(params: UsageFetchParams, ctx: UsageFetchContext): Promise<UsageReport | null> {
 	const credential = params.credential;
@@ -262,10 +248,10 @@ async function fetchAntigravityUsage(params: UsageFetchParams, ctx: UsageFetchCo
 
 	const nowMs = Date.now();
 
-	const accessToken = resolveAccessToken(params);
+	const accessToken = resolveOAuthAccessToken(params);
 	if (!accessToken) return null;
 
-	const baseUrl = params.baseUrl?.replace(/\/+$/, "");
+	const baseUrl = params.baseUrl ? stripTrailingSlashes(params.baseUrl) : undefined;
 	const endpoints = baseUrl ? [baseUrl] : [DEFAULT_ENDPOINT, "https://daily-cloudcode-pa.sandbox.googleapis.com"];
 
 	let response: Response | undefined;
@@ -332,7 +318,7 @@ async function fetchAntigravityUsage(params: UsageFetchParams, ctx: UsageFetchCo
 		const inferredDescriptors = inferWindowDescriptors(quotaInfos, nowMs);
 		for (const quotaInfo of quotaInfos) {
 			const amount = buildAmount(quotaInfo);
-			const window = parseWindow(quotaInfo, inferredDescriptors.get(quotaInfo));
+			const window = parseAntigravityWindow(quotaInfo, inferredDescriptors.get(quotaInfo));
 			if (window?.resetsAt) {
 				earliestReset = earliestReset ? Math.min(earliestReset, window.resetsAt) : window.resetsAt;
 			}
@@ -399,7 +385,7 @@ async function fetchAntigravityUsage(params: UsageFetchParams, ctx: UsageFetchCo
 			},
 			window: entry.window,
 			amount: entry.amount,
-			status: getUsageStatus(entry.amount.remainingFraction),
+			status: usageStatusFromRemainingFraction(entry.amount.remainingFraction),
 		});
 	}
 

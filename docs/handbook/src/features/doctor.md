@@ -32,9 +32,19 @@ Opens the debug tools selector in the interactive session.
 
 Operate the mnemopi memory backend from the TUI. See [Memory](./memory.md).
 
-## Checking install health
+## Spec — not shipped: top-level `veyyon doctor`
 
-There is no single `veyyon doctor` command. Diagnostics are spread across a few surfaces:
+Older handbook pages described:
+
+```console
+$ veyyon doctor
+$ veyyon doctor --json
+$ veyyon doctor --summary --all
+```
+
+That full install health reporter (binary, sandbox, auth, terminal capabilities, feature flags, update feed, custom CA env vars) is **not** implemented as a root CLI subcommand today. Any mention of `veyyon doctor` for install health is a target, not current behavior.
+
+**Workaround today**
 
 1. `veyyon --version` and a normal interactive session start.
 2. `veyyon plugin doctor` for extension health.

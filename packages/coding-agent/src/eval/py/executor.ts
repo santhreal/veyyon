@@ -1,5 +1,4 @@
 import * as fs from "node:fs";
-import * as path from "node:path";
 
 import { getProjectDir, logger } from "@veyyon/pi-utils";
 import type { ToolSession } from "../../tools";
@@ -11,8 +10,11 @@ import {
 	executeWithKernelBase,
 	getExecutionDeadlineMs,
 	getRemainingTimeoutMs,
+	interpreterSessionKey,
 	isCancellationError,
 	isTimedOutCancellation,
+	normalizeSessionCwd,
+	requireRemainingTimeoutMs,
 	waitForPromiseWithCancellation,
 } from "../executor-base";
 import type { JsStatusEvent } from "../js/shared/types";
@@ -149,10 +151,6 @@ const sessions = new Map<string, PythonSession>();
 const startingSessions = new Map<string, Promise<PythonSession>>();
 const resettingSessions = new Map<string, Promise<void>>();
 
-function normalizeSessionCwd(cwd: string): string {
-	return path.resolve(cwd);
-}
-
 function normalizeExplicitInterpreter(cwd: string, interpreter: string | undefined): string {
 	if (interpreter === undefined) return "";
 	const resolved = resolveExplicitPythonRuntime(interpreter, cwd, {}).pythonPath;
@@ -161,11 +159,6 @@ function normalizeExplicitInterpreter(cwd: string, interpreter: string | undefin
 	} catch {
 		return resolved;
 	}
-}
-
-function buildSessionKey(sessionId: string, cwd: string, interpreter: string | undefined): string {
-	const normalizedCwd = normalizeSessionCwd(cwd);
-	return `${sessionId}\0${normalizedCwd}\0${normalizeExplicitInterpreter(normalizedCwd, interpreter)}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -180,15 +173,6 @@ class PythonExecutionCancelledError extends Error {
 		this.name = "PythonExecutionCancelledError";
 		this.timedOut = timedOut;
 	}
-}
-
-function requireRemainingTimeoutMs(deadlineMs?: number): number | undefined {
-	const remainingMs = getRemainingTimeoutMs(deadlineMs);
-	if (remainingMs === undefined) return undefined;
-	if (remainingMs <= 0) {
-		throw new PythonExecutionCancelledError(true);
-	}
-	return remainingMs;
 }
 
 // ---------------------------------------------------------------------------
@@ -220,7 +204,7 @@ function createCancelledPythonResult(timedOut: boolean, timeoutMs?: number): Pyt
 // ---------------------------------------------------------------------------
 
 async function startKernel(cwd: string, options: PythonExecutorOptions): Promise<PythonKernel> {
-	requireRemainingTimeoutMs(options.deadlineMs);
+	requireRemainingTimeoutMs(options.deadlineMs, PythonExecutionCancelledError);
 	return await PythonKernel.start({
 		cwd,
 		env: buildManagedKernelEnv(options),
@@ -283,7 +267,7 @@ async function replaceSessionKernel(
 	if (sessions.get(session.sessionKey) !== session) {
 		throw new PythonExecutionCancelledError(false);
 	}
-	requireRemainingTimeoutMs(options.deadlineMs);
+	requireRemainingTimeoutMs(options.deadlineMs, PythonExecutionCancelledError);
 	const next = await startKernel(cwd, options);
 	if (sessions.get(session.sessionKey) !== session) {
 		await next.shutdown().catch(() => undefined);
@@ -423,7 +407,11 @@ async function executePerCall(code: string, cwd: string, options: PythonExecutor
 
 async function executeOnSession(code: string, cwd: string, options: PythonExecutorOptions): Promise<PythonResult> {
 	const sessionId = options.sessionId ?? `session:${cwd}`;
-	const sessionKey = buildSessionKey(sessionId, cwd, options.interpreter);
+	const sessionKey = interpreterSessionKey(
+		sessionId,
+		normalizeSessionCwd(cwd),
+		normalizeExplicitInterpreter(normalizeSessionCwd(cwd), options.interpreter),
+	);
 	if (options.bridge && !options.bridgeSessionId) {
 		options.bridgeSessionId = sessionId;
 	}
@@ -504,7 +492,7 @@ export async function executePython(code: string, options?: PythonExecutorOption
 	};
 
 	try {
-		requireRemainingTimeoutMs(deadlineMs);
+		requireRemainingTimeoutMs(deadlineMs, PythonExecutionCancelledError);
 		if (executionOptions.signal?.aborted) {
 			throw new PythonExecutionCancelledError(
 				isTimedOutCancellation(

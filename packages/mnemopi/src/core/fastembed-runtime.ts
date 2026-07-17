@@ -7,6 +7,7 @@ import {
 	logger,
 	type RuntimeInstallSpec,
 	resolveRuntimeModule,
+	safeFilenameSegment,
 } from "@veyyon/pi-utils";
 import type * as Fastembed from "fastembed";
 import packageManifest from "../../package.json" with { type: "json" };
@@ -39,7 +40,7 @@ const FASTEMBED_SPEC = packageManifest.peerDependencies.fastembed;
 /** Build the deterministic fastembed runtime install plan used by local embeddings. */
 export function fastembedRuntimeInstallPlan(): FastembedRuntimeInstallPlan {
 	return {
-		versionKey: `fastembed-${FASTEMBED_SPEC}_transitive-ort`.replace(/[^A-Za-z0-9._-]/g, "_"),
+		versionKey: safeFilenameSegment(`fastembed-${FASTEMBED_SPEC}_transitive-ort`),
 		install: {
 			dependencies: { fastembed: FASTEMBED_SPEC },
 			trustedDependencies: ["onnxruntime-node"],

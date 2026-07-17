@@ -48,6 +48,8 @@ export const imageSourceSchema = base64ImageSourceSchema.or(urlImageSourceSchema
 const textBlockSchema = type({
 	type: "'text'",
 	text: "string",
+	// Citations (web search etc.); carried opaquely so replayed history keeps them.
+	"citations?": type({ type: "string" }).array().or("null"),
 	"cache_control?": cacheControlSchema,
 });
 

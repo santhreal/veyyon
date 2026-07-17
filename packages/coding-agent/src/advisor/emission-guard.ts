@@ -20,6 +20,7 @@
  * back into advisor context risks the model rephrasing the same useless note
  * to bypass the dedupe ("Stop.", then "Halt." then "Stop now.").
  */
+import { NON_ALNUM_RUNS_RE } from "@veyyon/pi-utils";
 
 /**
  * Case-insensitive, punctuation-folded normalization. Collapses every run of
@@ -30,11 +31,7 @@
  * Exported for tests.
  */
 export function normalizeAdvisorNote(note: string): string {
-	return note
-		.toLowerCase()
-		.normalize("NFKC")
-		.replace(/[^\p{L}\p{N}]+/gu, " ")
-		.trim();
+	return note.toLowerCase().normalize("NFKC").replace(NON_ALNUM_RUNS_RE, " ").trim();
 }
 
 /**

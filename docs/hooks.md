@@ -1,5 +1,9 @@
 # Hooks
 
+> Operator overview: the handbook's [hooks page](handbook/src/features/hooks.md)
+> and [hooks guide](handbook/src/features/hooks-guide.md). This page documents the
+> current hook subsystem code.
+
 This document describes the **current hook subsystem code** in `src/extensibility/hooks/*`.
 
 ## Current status in runtime

@@ -164,6 +164,7 @@ export async function initDb(): Promise<Database> {
 			args_chars INTEGER NOT NULL DEFAULT 0,
 			result_chars INTEGER,
 			is_error INTEGER,
+			repair_status TEXT,
 			UNIQUE(session_file, tool_call_id)
 		);
 
@@ -256,6 +257,14 @@ export async function initDb(): Promise<Database> {
 			CREATE INDEX IF NOT EXISTS idx_user_messages_timestamp_model ON user_messages(timestamp, model, provider);
 		`);
 	}
+	// Schema-repair telemetry: nullable column on tool_calls (NULL = repair did
+	// not act, or the row predates the feature). No re-ingest — pre-feature
+	// sessions carry no repairStatus in their JSONL either.
+	const toolCallColumns = db.prepare("PRAGMA table_info(tool_calls)").all() as { name: string }[];
+	if (toolCallColumns.length > 0 && !toolCallColumns.some(column => column.name === "repair_status")) {
+		db.run("ALTER TABLE tool_calls ADD COLUMN repair_status TEXT");
+	}
+
 	backfillUserMessages(db);
 	backfillToolCalls(db);
 	repairUserMessageLinks(db);
@@ -1503,14 +1512,20 @@ export function updateToolResults(links: ToolResultLink[]): number {
 
 	const stmt = db.prepare(`
 		UPDATE tool_calls
-		SET result_chars = ?, is_error = ?
+		SET result_chars = ?, is_error = ?, repair_status = ?
 		WHERE session_file = ? AND tool_call_id = ? AND result_chars IS NULL
 	`);
 
 	let updated = 0;
 	const apply = db.transaction(() => {
 		for (const link of links) {
-			const result = stmt.run(link.resultChars, link.isError ? 1 : 0, link.sessionFile, link.toolCallId);
+			const result = stmt.run(
+				link.resultChars,
+				link.isError ? 1 : 0,
+				link.repairStatus ?? null,
+				link.sessionFile,
+				link.toolCallId,
+			);
 			updated += result.changes;
 		}
 	});
@@ -1526,6 +1541,8 @@ export function updateToolResults(links: ToolResultLink[]): number {
 const TOOL_AGGREGATE_COLUMNS = `
 	COUNT(*) as calls,
 	SUM(CASE WHEN t.is_error = 1 THEN 1 ELSE 0 END) as errors,
+	SUM(CASE WHEN t.repair_status = 'repaired' THEN 1 ELSE 0 END) as repaired,
+	SUM(CASE WHEN t.repair_status = 'unrepairable' THEN 1 ELSE 0 END) as unrepairable,
 	SUM(t.args_chars) as args_chars,
 	SUM(COALESCE(t.result_chars, 0)) as result_chars,
 	SUM(COALESCE(m.total_tokens, 0) * 1.0 / t.calls_in_turn) as total_tokens_share,
@@ -1540,6 +1557,8 @@ interface ToolAggregateRow {
 	provider?: string;
 	calls: number;
 	errors: number;
+	repaired: number | null;
+	unrepairable: number | null;
 	args_chars: number | null;
 	result_chars: number | null;
 	total_tokens_share: number | null;
@@ -1553,6 +1572,8 @@ function rowToToolUsage(row: ToolAggregateRow): ToolUsageStats {
 		tool: row.tool_name,
 		calls: row.calls,
 		errors: row.errors,
+		repaired: row.repaired ?? 0,
+		unrepairable: row.unrepairable ?? 0,
 		argsChars: row.args_chars ?? 0,
 		resultChars: row.result_chars ?? 0,
 		totalTokensShare: row.total_tokens_share ?? 0,

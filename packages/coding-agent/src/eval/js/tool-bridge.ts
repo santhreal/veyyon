@@ -55,7 +55,7 @@ function normalizeArgs(args: unknown): unknown {
 	return record;
 }
 
-function summarizeToolResult(
+function toolResultStatusEvent(
 	name: string,
 	args: unknown,
 	result: AgentToolResult,
@@ -135,7 +135,7 @@ export async function callSessionTool(name: string, args: unknown, options: Tool
 		);
 		const text = textBlocks.map(block => block.text).join("");
 		const hasError = toolResultHasError(result);
-		options.emitStatus?.(summarizeToolResult(name, normalizedArgs, result, text, hasError));
+		options.emitStatus?.(toolResultStatusEvent(name, normalizedArgs, result, text, hasError));
 		if (result.details === undefined && imageBlocks.length === 0 && !hasError) {
 			return text;
 		}

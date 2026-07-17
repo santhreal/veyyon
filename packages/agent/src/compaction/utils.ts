@@ -4,7 +4,7 @@
 
 import type { Message, ToolCall } from "@veyyon/pi-ai";
 import { type Dialect, getDialectDefinition } from "@veyyon/pi-ai/dialect";
-import { formatGroupedPaths, prompt, stringifyJson } from "@veyyon/pi-utils";
+import { formatGroupedPaths, prompt, stringifyJson, URL_SCHEME_ANYWHERE_RE } from "@veyyon/pi-utils";
 import type { AgentMessage } from "../types";
 import fileOperationsTemplate from "./prompts/file-operations.md" with { type: "text" };
 import summarizationSystemPrompt from "./prompts/summarization-system.md" with { type: "text" };
@@ -83,14 +83,15 @@ export function stripReadSelector(path: string): string {
  * form — are session-scoped or remote resources, not files the post-compaction
  * agent can re-ground on. Keep them out of the `<files>` summary.
  */
-const URL_SCHEME_RE = /[a-z][a-z0-9+.-]*:\/\//i;
-
 /**
  * Whether `path` references a `scheme://` URL (internal URI or web URL) rather
  * than a filesystem path that belongs in the compaction `<files>` summary.
+ * Deliberately unanchored: paths with an embedded selector
+ * (`src/login.ts:conflict://3`) also count. ONE PLACE: grammar owned by
+ * pi-utils regex.ts.
  */
 export function isUrlSchemePath(path: string): boolean {
-	return URL_SCHEME_RE.test(path);
+	return URL_SCHEME_ANYWHERE_RE.test(path);
 }
 
 /**
@@ -331,3 +332,10 @@ function renderToolCalls(calls: ToolCall[]): string {
 // ============================================================================
 
 export const SUMMARIZATION_SYSTEM_PROMPT = prompt.render(summarizationSystemPrompt);
+
+/** Race the caller's signal against a request timeout; `timeoutMs <= 0` disables the watchdog. */
+export function withRequestTimeout(signal: AbortSignal | undefined, timeoutMs: number): AbortSignal | undefined {
+	if (timeoutMs <= 0) return signal;
+	const timeout = AbortSignal.timeout(timeoutMs);
+	return signal ? AbortSignal.any([signal, timeout]) : timeout;
+}

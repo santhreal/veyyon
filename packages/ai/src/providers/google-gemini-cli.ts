@@ -12,7 +12,7 @@ import {
 	getAntigravityUserAgent,
 	getGeminiCliHeaders,
 } from "@veyyon/pi-catalog/wire/gemini-headers";
-import { extractHttpStatusFromError, fetchWithRetry, readSseJson } from "@veyyon/pi-utils";
+import { extractHttpStatusFromError, fetchWithRetry, readSseJson, stripTrailingSlashes } from "@veyyon/pi-utils";
 import { type } from "arktype";
 import * as AIError from "../error";
 import type {
@@ -45,7 +45,7 @@ import {
 	hasMeaningfulGoogleContent,
 	isThinkingPart,
 	MAX_EMPTY_STREAM_RETRIES,
-	mapStopReasonString,
+	mapGoogleFinishReasonString,
 	mapToolChoice,
 	nextToolCallId,
 	pushBlockEndEvent,
@@ -564,7 +564,7 @@ export const streamGoogleGeminiCli: StreamFunction<"google-gemini-cli"> = (
 				} else {
 					// auto mode
 					if (baseUrl) {
-						const cleanUrl = baseUrl.replace(/\/+$/, "");
+						const cleanUrl = stripTrailingSlashes(baseUrl);
 						if (cleanUrl !== ANTIGRAVITY_DAILY_ENDPOINT && cleanUrl !== ANTIGRAVITY_SANDBOX_ENDPOINT) {
 							endpoints = [baseUrl];
 							if (providerState) providerState.lastGoodEndpoint = undefined;
@@ -857,7 +857,7 @@ export const streamGoogleGeminiCli: StreamFunction<"google-gemini-cli"> = (
 
 					if (candidate?.finishReason) {
 						sawFinishReason = true;
-						const mapped = mapStopReasonString(candidate.finishReason);
+						const mapped = mapGoogleFinishReasonString(candidate.finishReason);
 						// Only let a trailing tool call upgrade benign finishes; error finishes
 						// (SAFETY, MALFORMED_FUNCTION_CALL, ...) must surface even with tool calls present.
 						if ((mapped === "stop" || mapped === "length") && output.content.some(b => b.type === "toolCall")) {

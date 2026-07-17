@@ -11,7 +11,7 @@ import type { ToolCallContext } from "@veyyon/pi-agent-core";
 import type { Ellipsis } from "@veyyon/pi-natives";
 import type { Component } from "@veyyon/pi-tui";
 import { getKeybindings, replaceTabs, truncateToWidth } from "@veyyon/pi-tui";
-import { pluralize } from "@veyyon/pi-utils";
+import { collapseWhitespace, pluralize } from "@veyyon/pi-utils";
 import { formatKeyHints, type KeyId } from "../config/keybindings";
 import { settings } from "../config/settings";
 import type { Theme } from "../modes/theme/theme";
@@ -112,7 +112,7 @@ export function getPreviewLines(text: string, maxLines: number, maxLineLen: numb
  * visual lines. Whitespace runs collapse to one space, so tabs are handled too.
  */
 export function previewLine(text: string, maxWidth: number, ellipsis?: Ellipsis): string {
-	return truncateToWidth(text.replace(/\s+/g, " ").trim(), maxWidth, ellipsis);
+	return truncateToWidth(collapseWhitespace(text), maxWidth, ellipsis);
 }
 
 // =============================================================================
@@ -323,7 +323,7 @@ interface ParsedDiagnostic {
 	code?: string;
 }
 
-function sanitizeDiagnosticDisplayText(text: string): string {
+export function sanitizeDiagnosticDisplayText(text: string): string {
 	return replaceTabs(text);
 }
 
@@ -518,14 +518,6 @@ export function getDiffStats(diffText: string): DiffStats {
 	}
 
 	return { added, removed, hunks, lines: lines.length };
-}
-
-export function formatDiffStats(added: number, removed: number, hunks: number, theme: Theme): string {
-	const parts: string[] = [];
-	if (added > 0) parts.push(theme.fg("toolDiffAdded", `+${added}`));
-	if (removed > 0) parts.push(theme.fg("toolDiffRemoved", `-${removed}`));
-	if (hunks > 0) parts.push(theme.fg("dim", `${hunks} hunk${hunks !== 1 ? "s" : ""}`));
-	return parts.join(theme.fg("dim", " / "));
 }
 
 interface DiffSegment {

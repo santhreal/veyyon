@@ -5,13 +5,13 @@ import type {
 	TextGenerationStringOutput,
 	StoppingCriteria as TransformersStoppingCriteria,
 } from "@huggingface/transformers";
-import { getTinyModelsCacheDir, prompt } from "@veyyon/pi-utils";
+import { errorMessage, getTinyModelsCacheDir, prompt, safeFilenameSegment } from "@veyyon/pi-utils";
 import titleSystemPrompt from "../prompts/system/title-system.md" with { type: "text" };
 import {
-	errorMessage,
 	errorText,
 	formatOnnxRuntimeCudaDiagnostics,
 	getTransformersVersionSpec,
+	loadPipelineWithDeviceFallback,
 	loadTransformersRuntime,
 	MemoizedRuntime,
 	replayCachedReady,
@@ -66,7 +66,7 @@ interface TransformersRuntime extends TransformersRuntimeMetadata {
 const pipelines = new Map<TinyLocalModelKey, Promise<TextGenerationPipeline>>();
 
 function getTransformersRuntimeKey(): string {
-	return getTransformersVersionSpec().replace(/[^A-Za-z0-9._-]/g, "_");
+	return safeFilenameSegment(getTransformersVersionSpec());
 }
 let generateQueue = Promise.resolve();
 const transformersRuntime = new MemoizedRuntime<TransformersRuntime>();
@@ -108,67 +108,6 @@ function createStopOnTextCriteria(
 	return new StopOnTextCriteria();
 }
 
-async function loadPipelineOnDevice(
-	transformers: TransformersRuntime,
-	spec: TinyTitleLocalModelSpec,
-	modelKey: TinyLocalModelKey,
-	transport: TinyTitleTransport,
-	requestId: string,
-	device: TinyModelDevice,
-): Promise<TextGenerationPipeline> {
-	return transformers.pipeline("text-generation", spec.repo, {
-		device,
-		dtype: tinyModelDtypeOverride ?? spec.dtype,
-		progress_callback: info => sendProgress(transport, requestId, modelKey, info),
-	});
-}
-
-async function loadPipelineWithDeviceFallback(
-	transformers: TransformersRuntime,
-	spec: TinyTitleLocalModelSpec,
-	modelKey: TinyLocalModelKey,
-	transport: TinyTitleTransport,
-	requestId: string,
-): Promise<{ generator: TextGenerationPipeline; device: TinyModelDevice }> {
-	const devices = tinyModelDeviceLoadOrder(tinyModelDevicePreference);
-	if (devices[0] !== tinyModelDevicePreference.device) {
-		sendLog(transport, "warn", "tiny-model: requested device is unsafe in the worker; using CPU", {
-			modelKey,
-			repo: spec.repo,
-			requestedDevice: tinyModelDevicePreference.device,
-			device: devices[0],
-		});
-	}
-	let cudaDiagnostics: string | null = null;
-	for (let i = 0; i < devices.length; i += 1) {
-		const device = devices[i]!;
-		try {
-			return {
-				generator: await loadPipelineOnDevice(transformers, spec, modelKey, transport, requestId, device),
-				device,
-			};
-		} catch (error) {
-			const deviceDiagnostics = await formatOnnxRuntimeCudaDiagnostics(transformers, device, error);
-			if (deviceDiagnostics) cudaDiagnostics = deviceDiagnostics;
-			if (i === devices.length - 1) {
-				if (cudaDiagnostics) throw new Error(`${errorText(error)}\n${cudaDiagnostics}`);
-				throw error;
-			}
-			const fallbackDevice = devices[i + 1]!;
-			const meta: Record<string, unknown> = {
-				modelKey,
-				repo: spec.repo,
-				device,
-				fallbackDevice,
-				error: errorMessage(error),
-			};
-			if (deviceDiagnostics) meta.cudaDiagnostics = deviceDiagnostics;
-			sendLog(transport, "warn", "tiny-model: accelerated device failed; falling back", meta);
-		}
-	}
-	throw new Error("No tiny model devices configured");
-}
-
 async function loadPipeline(
 	modelKey: TinyLocalModelKey,
 	transport: TinyTitleTransport,
@@ -188,8 +127,22 @@ async function loadPipeline(
 		getTinyTitleRuntimeDir,
 	);
 	const startedAt = performance.now();
-	const loaded = loadPipelineWithDeviceFallback(transformers, spec, modelKey, transport, requestId).then(
-		({ generator, device }) => {
+	const loaded = loadPipelineWithDeviceFallback({
+		label: "tiny-model",
+		noDevicesMessage: "No tiny model devices configured",
+		modelKey,
+		repo: spec.repo,
+		preference: tinyModelDevicePreference,
+		transport,
+		runtimeMetadata: transformers,
+		loadOnDevice: device =>
+			transformers.pipeline("text-generation", spec.repo, {
+				device,
+				dtype: tinyModelDtypeOverride ?? spec.dtype,
+				progress_callback: info => sendProgress(transport, requestId, modelKey, info),
+			}),
+	}).then(
+		({ pipeline: generator, device }) => {
 			sendLog(transport, "debug", "tiny-model: local model loaded", {
 				modelKey,
 				repo: spec.repo,
@@ -214,7 +167,7 @@ async function loadPipeline(
 	return loaded;
 }
 
-function buildPrompt(generator: TextGenerationPipeline, message: string, systemPrompt?: string): string {
+function buildGenerationPrompt(generator: TextGenerationPipeline, message: string, systemPrompt?: string): string {
 	const selectedSystemPrompt = systemPrompt?.trim() || TINY_TITLE_SYSTEM_PROMPT;
 	const chat = [
 		{ role: "system", content: selectedSystemPrompt },
@@ -248,7 +201,7 @@ async function generateTitle(
 	systemPrompt?: string,
 ): Promise<string | null> {
 	const generator = await loadPipeline(modelKey, transport, requestId);
-	const promptText = buildPrompt(generator, message, systemPrompt);
+	const promptText = buildGenerationPrompt(generator, message, systemPrompt);
 	const transformers = await loadTransformersRuntime(
 		transformersRuntime,
 		transport,
@@ -281,7 +234,7 @@ function buildCompletionPrompt(generator: TextGenerationPipeline, promptText: st
  * wrap it as the user turn, decode greedily, and return the raw text for the
  * caller's own parser. Output is capped to keep local inference latency bounded.
  */
-async function generateCompletion(
+async function generateTinyCompletion(
 	transport: TinyTitleTransport,
 	requestId: string,
 	modelKey: TinyLocalModelKey,
@@ -301,21 +254,21 @@ async function generateCompletion(
 	return generated === "" ? null : generated;
 }
 
-function enqueueRequest(
+function enqueueTinyTitleRequest(
 	transport: TinyTitleTransport,
 	request: Extract<TinyTitleWorkerInbound, { type: "generate" | "complete" | "download" }>,
 ): void {
 	generateQueue = generateQueue.then(
 		async () => {
-			await handleQueuedRequest(transport, request);
+			await handleQueuedTinyTitleRequest(transport, request);
 		},
 		async () => {
-			await handleQueuedRequest(transport, request);
+			await handleQueuedTinyTitleRequest(transport, request);
 		},
 	);
 }
 
-async function handleQueuedRequest(
+async function handleQueuedTinyTitleRequest(
 	transport: TinyTitleTransport,
 	request: Extract<TinyTitleWorkerInbound, { type: "generate" | "complete" | "download" }>,
 ): Promise<void> {
@@ -326,7 +279,7 @@ async function handleQueuedRequest(
 			return;
 		}
 		if (request.type === "complete") {
-			const text = await generateCompletion(
+			const text = await generateTinyCompletion(
 				transport,
 				request.id,
 				request.modelKey,
@@ -349,6 +302,6 @@ export function startTinyTitleWorker(transport: TinyTitleTransport): void {
 			transport.send({ type: "pong", id: message.id });
 			return;
 		}
-		enqueueRequest(transport, message);
+		enqueueTinyTitleRequest(transport, message);
 	});
 }

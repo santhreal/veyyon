@@ -28,7 +28,7 @@ import { AgentRegistry, MAIN_AGENT_ID } from "../registry/agent-registry";
 import { getBundledAgent } from "../task/agents";
 import { type ExecutorOptions, runSubagentFollowUpTurn, runSubprocess } from "../task/executor";
 import { generateTaskName } from "../task/name-generator";
-import { AgentOutputManager } from "../task/output-manager";
+import { AgentOutputManager, sanitizeOutputName } from "../task/output-manager";
 import { type AgentDefinition, type AgentProgress, oneLineLabel, type SingleResult } from "../task/types";
 import type { ToolSession } from "../tools";
 import { formatDuration } from "../tools/render-utils";
@@ -167,10 +167,6 @@ export interface VibeWaitOutcome {
 }
 
 /** Normalize a text fragment to one bounded roster/trace line. */
-function firstLine(text: string, max = 100): string {
-	return oneLineLabel(text, max);
-}
-
 /** Merge the monitor's rolling `recentTools` window (newest first) into the per-turn trace (oldest first). */
 function mergeTrace(turn: VibeTurn, progress: AgentProgress): void {
 	turn.toolCount = progress.toolCount;
@@ -260,16 +256,16 @@ export class VibeSessionRegistry {
 			turns: record.turnCount,
 			queued: record.queue.length,
 			turnStartedAt: record.turn?.startedAt,
-			turnMessage: record.turn ? firstLine(record.turn.message, 80) : undefined,
+			turnMessage: record.turn ? oneLineLabel(record.turn.message, 80) : undefined,
 			currentTool: record.live?.currentTool,
-			currentToolArgs: record.live?.currentToolArgs ? firstLine(record.live.currentToolArgs, 60) : undefined,
-			lastIntent: record.live?.lastIntent ? firstLine(record.live.lastIntent, 80) : undefined,
+			currentToolArgs: record.live?.currentToolArgs ? oneLineLabel(record.live.currentToolArgs, 60) : undefined,
+			lastIntent: record.live?.lastIntent ? oneLineLabel(record.live.lastIntent, 80) : undefined,
 			trace: record.turn
 				? record.turn.trace
 						.slice(-6)
-						.map(entry => firstLine(`${entry.tool}${entry.args ? `(${entry.args})` : ""}`, TRACE_LINE_MAX))
+						.map(entry => oneLineLabel(`${entry.tool}${entry.args ? `(${entry.args})` : ""}`, TRACE_LINE_MAX))
 				: [],
-			outputTail: (record.live?.outputTail ?? []).map(line => firstLine(line, 100)),
+			outputTail: (record.live?.outputTail ?? []).map(line => oneLineLabel(line, 100)),
 			lastActivity: record.lastActivity,
 			lastActivityAt: record.lastActivityAt,
 		}));
@@ -297,7 +293,7 @@ export class VibeSessionRegistry {
 		if (!session.agentOutputManager) {
 			session.agentOutputManager = new AgentOutputManager(session.getArtifactsDir ?? (() => null));
 		}
-		const requestedName = args.name?.replace(/[^A-Za-z0-9_-]+/g, "").slice(0, 48);
+		const requestedName = args.name === undefined ? undefined : sanitizeOutputName(args.name);
 		const id = await session.agentOutputManager.allocate(requestedName || generateTaskName());
 
 		const record: VibeRecord = {
@@ -568,13 +564,13 @@ export class VibeSessionRegistry {
 			const gist =
 				progress.lastIntent ??
 				(progress.currentTool ? `${progress.currentTool} ${progress.currentToolArgs ?? ""}` : undefined);
-			if (gist) record.lastActivity = firstLine(gist);
+			if (gist) record.lastActivity = oneLineLabel(gist, 100);
 			record.lastActivityAt = Date.now();
 		};
 
 		const jobId = manager.register(
 			"task",
-			`vibe ${record.cli} ${record.id}: ${firstLine(message, 60)}`,
+			`vibe ${record.cli} ${record.id}: ${oneLineLabel(message, 60)}`,
 			async ({ jobId: ownJobId, signal }) => {
 				record.state = "running";
 				record.turnCount = turnIndex;
@@ -597,7 +593,7 @@ export class VibeSessionRegistry {
 					if (error instanceof VibeTurnError) throw error;
 					this.#finishTurn(session, manager, record, ownJobId);
 					const reason = error instanceof Error ? error.message : String(error);
-					record.lastActivity = firstLine(`turn failed: ${reason}`);
+					record.lastActivity = oneLineLabel(`turn failed: ${reason}`, 100);
 					throw new VibeTurnError(
 						`[vibe:${record.id} cli=${record.cli} turn=${turnIndex}] turn failed: ${reason}`,
 					);
@@ -650,14 +646,15 @@ export class VibeSessionRegistry {
 		this.#finishTurn(session, manager, record, settledJobId);
 		const failed = result.exitCode !== 0 || result.aborted === true;
 		const status = result.aborted ? "aborted" : failed ? "failed" : "completed";
-		record.lastActivity = firstLine(
+		record.lastActivity = oneLineLabel(
 			failed
 				? `turn ${turnIndex} ${status}: ${result.abortReason ?? result.error ?? ""}`
 				: (result.lastIntent ?? result.output),
+			100,
 		);
 
 		const traceLines = turn.trace.map(entry =>
-			firstLine(`${entry.tool}${entry.args ? `(${entry.args})` : ""}`, TRACE_LINE_MAX),
+			oneLineLabel(`${entry.tool}${entry.args ? `(${entry.args})` : ""}`, TRACE_LINE_MAX),
 		);
 		const traceOverflow = Math.max(0, turn.toolCount - turn.trace.length);
 		let response = result.output.trim() || "(no output)";

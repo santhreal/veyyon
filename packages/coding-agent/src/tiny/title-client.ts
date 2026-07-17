@@ -1,8 +1,8 @@
 import { $env, logger } from "@veyyon/pi-utils";
 import { settings } from "../config/settings";
 import {
-	createUnavailableWorker,
-	createWorkerHandle,
+	createRefCountedWorkerHandle,
+	createUnavailableRefCountedWorker,
 	createWorkerSubprocess,
 	logWorkerMessage,
 	type RefCountedWorkerHandle,
@@ -13,7 +13,6 @@ import {
 	spawnWorkerOrUnavailable,
 	workerEnvFromParent,
 } from "../subprocess/worker-client";
-import { safeSend } from "../utils/ipc";
 import { tinyModelDeviceSettingToEnv } from "./device";
 import { tinyModelDtypeSettingToEnv } from "./dtype";
 import {
@@ -139,45 +138,14 @@ export function createTinyTitleSubprocess(): SpawnedSubprocess<TinyTitleWorkerOu
 	});
 }
 
-function wrapSubprocess(
-	spawned: SpawnedSubprocess<TinyTitleWorkerOutbound>,
-): RefCountedWorkerHandle<TinyTitleWorkerInbound, TinyTitleWorkerOutbound> {
-	const { proc } = spawned;
-	return {
-		...createWorkerHandle<TinyTitleWorkerInbound, TinyTitleWorkerOutbound>(spawned, message =>
-			safeSend(proc, message, "tiny-title"),
-		),
-		ref() {
-			try {
-				proc.ref();
-			} catch {
-				// Already gone.
-			}
-		},
-		unref() {
-			try {
-				proc.unref();
-			} catch {
-				// Already gone.
-			}
-		},
-	};
-}
-
-function spawnInlineUnavailableWorker(
-	error: unknown,
-): RefCountedWorkerHandle<TinyTitleWorkerInbound, TinyTitleWorkerOutbound> {
-	return {
-		...createUnavailableWorker<TinyTitleWorkerInbound, TinyTitleWorkerOutbound>(error),
-		ref() {},
-		unref() {},
-	};
-}
-
 function spawnTinyTitleWorker(): RefCountedWorkerHandle<TinyTitleWorkerInbound, TinyTitleWorkerOutbound> {
 	return spawnWorkerOrUnavailable(
-		() => wrapSubprocess(createTinyTitleSubprocess()),
-		spawnInlineUnavailableWorker,
+		() =>
+			createRefCountedWorkerHandle<TinyTitleWorkerInbound, TinyTitleWorkerOutbound>(
+				createTinyTitleSubprocess(),
+				"tiny-title",
+			),
+		createUnavailableRefCountedWorker<TinyTitleWorkerInbound, TinyTitleWorkerOutbound>,
 		"Tiny title worker spawn failed; local titles disabled",
 	);
 }
@@ -442,5 +410,12 @@ export async function smokeTestTinyTitleWorker({
 }: {
 	timeoutMs?: number;
 } = {}): Promise<void> {
-	await smokeTestWorker(wrapSubprocess(createTinyTitleSubprocess()), "tiny title worker", timeoutMs);
+	await smokeTestWorker(
+		createRefCountedWorkerHandle<TinyTitleWorkerInbound, TinyTitleWorkerOutbound>(
+			createTinyTitleSubprocess(),
+			"tiny-title",
+		),
+		"tiny title worker",
+		timeoutMs,
+	);
 }

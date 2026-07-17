@@ -1,5 +1,5 @@
 import { areJsonValuesEqual } from "./equality";
-import { epochNext, once } from "./stamps";
+import { epochNext, markEpochOnce } from "./stamps";
 import { isJsonObject, type JsonObject } from "./types";
 
 export const JSON_SCHEMA_DRAFT_2020_12_URI = "https://json-schema.org/draft/2020-12/schema";
@@ -192,15 +192,15 @@ function schemaMapNeedsDraft202012Upgrade(value: unknown, epoch: number): boolea
  * upgrade pass would have to rewrite. Lets the public entrypoint short-circuit
  * and return the input identity-unchanged when there is nothing to do.
  *
- * Uses `once(value, epoch)` to break cycles without allocating a per-call set.
+ * Uses `markEpochOnce(value, epoch)` to break cycles without allocating a per-call set.
  */
 function schemaNeedsDraft202012UpgradeImpl(value: unknown, epoch: number): boolean {
 	if (Array.isArray(value)) {
-		if (!once(value, epoch)) return false;
+		if (!markEpochOnce(value, epoch)) return false;
 		return value.some(entry => schemaNeedsDraft202012UpgradeImpl(entry, epoch));
 	}
 	if (!isJsonObject(value)) return false;
-	if (!once(value, epoch)) return false;
+	if (!markEpochOnce(value, epoch)) return false;
 
 	for (const key in value) {
 		const entry = value[key];

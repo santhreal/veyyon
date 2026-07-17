@@ -1,6 +1,7 @@
-import { padding, TERMINAL, truncateToWidth, visibleWidth } from "@veyyon/pi-tui";
+import { centerLine, padding, TERMINAL, truncateToWidth, visibleWidth } from "@veyyon/pi-tui";
 import { APP_NAME } from "@veyyon/pi-utils";
 import { sunMark } from "../../components/sun";
+import { silverEscape } from "../../components/welcome";
 import { theme } from "../../theme/theme";
 
 export const SETUP_SPLASH_MS = 2400;
@@ -13,12 +14,6 @@ function clampLine(line: string, width: number): string {
 	return truncated + padding(Math.max(0, width - visibleWidth(truncated)));
 }
 
-function centerLine(line: string, width: number): string {
-	const lineWidth = visibleWidth(line);
-	if (lineWidth >= width) return truncateToWidth(line, width);
-	const left = Math.floor((width - lineWidth) / 2);
-	return padding(left) + line + padding(width - left - lineWidth);
-}
 
 /**
  * Setup splash: the launch signature. On a quiet black field the living ember
@@ -38,9 +33,14 @@ export function renderSetupSplash(width: number, height: number, elapsedMs: numb
 	// applies the same correction internally).
 	const sunCols = Math.max(9, Math.min(32, Math.floor(w * 0.45)));
 	const sunRows = Math.max(5, Math.min(16, Math.round(sunCols / 2.1)));
-	// Ember churns forward as it blooms, so the disc reads as alive, not a static
-	// stamp fading in.
-	const sun = sunMark(sunCols, sunRows, { trueColor: TERMINAL.trueColor, bloom: eased, time: 0.25 + eased * 0.7 });
+	// The sun rises over its horizon as it blooms — the same sunrise the home
+	// plays, in miniature.
+	const sun = sunMark(sunCols, sunRows, {
+		trueColor: TERMINAL.trueColor,
+		bloom: eased,
+		rise: eased,
+		time: 0.25 + eased * 0.7,
+	});
 
 	// Wordmark reveals only once the disc is most of the way open, so the eye lands
 	// on the sun first and the name second — the micro-interaction the harness lives on.
@@ -48,7 +48,9 @@ export function renderSetupSplash(width: number, height: number, elapsedMs: numb
 	const content: string[] = [...sun];
 	if (nameReveal > 0) {
 		content.push("");
-		content.push(theme.bold(theme.fg("accent", APP_NAME)));
+		// The wordmark is the terminal's own font, letterspaced silver — never
+		// glyph art, never ember.
+		content.push(theme.bold(silverEscape(0.55) + APP_NAME.split("").join(" ") + "\x1b[0m"));
 		if (nameReveal > 0.5) content.push(theme.fg("dim", "coding agent"));
 	}
 

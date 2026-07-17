@@ -46,10 +46,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-24acbed9.js";
+            window.path_to_searchindex_js = "../searchindex-8badf17b.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-9cfd259b.js"></script>
+        <script src="../toc-19dab021.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -202,7 +202,7 @@ compose prompt ──► turn begins
         ├─ assemble context (instructions, goal card, recent history, tools)
         ├─ call model
         ├─ dispatch / repair tool calls (edit, exec, MCP, …)
-        ├─ approval-mode gate
+        ├─ approvals + sandbox gate
         └─ final reply ──► turn ends (or Esc abort)
         │
         ▼
@@ -229,7 +229,7 @@ original session is never modified.</p>
 <h2 id="context-pressure-and-compaction"><a class="header" href="#context-pressure-and-compaction">Context pressure and compaction</a></h2>
 <p>Models have a finite token window. As a session grows, the raw transcript may no longer fit. Veyyon compacts history into a smaller, information-preserving summary instead of truncating it.</p>
 <p>Compaction preserves the goal card, active user instructions, recent turns, and a deterministic working-set of files touched. This lets a resumed session show the model what matters without forcing it to read the entire transcript.</p>
-<p>Prefer <code>/compact</code> when you need a summary to retain state. Prefer the <code>/new</code> command when prior transcript is no longer useful and you want a clean session without summarization. See <a href="../reference/slash-commands.html">Slash commands</a>.</p>
+<p>Prefer <code>/compact</code> when you need a summary to retain state. Prefer <code>/new</code> when prior transcript is no longer useful and you want a clean window without summarization.</p>
 <h2 id="where-the-details-live"><a class="header" href="#where-the-details-live">Where the details live</a></h2>
 <ul>
 <li>For session commands and storage, see <a href="../using/sessions.html">Sessions</a>.</li>

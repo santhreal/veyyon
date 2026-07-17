@@ -46,10 +46,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-24acbed9.js";
+            window.path_to_searchindex_js = "../searchindex-8badf17b.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-9cfd259b.js"></script>
+        <script src="../toc-19dab021.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -218,7 +218,7 @@ as <code>commit</code>, <code>grep</code>, and <code>models</code>.</p>
 <tbody>
 <tr><td>Sessions</td><td>JSONL trees, resume, fork, compact</td><td><a href="../using/sessions.html">Sessions</a></td></tr>
 <tr><td>Edit</td><td>Hashline patches (default)</td><td><a href="../edit/engine.html">Edit engine</a></td></tr>
-<tr><td>Approvals</td><td>Approval-mode gating on tool tiers</td><td><a href="./sandbox.html">Approvals</a></td></tr>
+<tr><td>Sandbox</td><td>Approval + filesystem/network bounds</td><td><a href="./sandbox.html">Sandbox</a></td></tr>
 <tr><td>Config</td><td>Layered <code>config.yml</code>, profiles</td><td><a href="./config.html">Config</a></td></tr>
 <tr><td>MCP</td><td>External tool servers</td><td><a href="./mcp.html">MCP</a></td></tr>
 <tr><td>Providers</td><td>Model registry + auth</td><td><a href="./providers.html">Providers</a></td></tr>
@@ -226,8 +226,10 @@ as <code>commit</code>, <code>grep</code>, and <code>models</code>.</p>
 </tbody>
 </table>
 </div>
-<p>Not part of the shipped architecture: a standalone exec-server process, guardian auto-review as a
-subsystem, and a separate backend-catalog subsystem. Everything that ships is covered by the rows above.</p>
+<blockquote>
+<p><strong>Spec — not shipped:</strong> a standalone exec-server process, guardian auto-review as a subsystem, and a
+separate backend-catalog subsystem. Behavior that ships is covered under the rows above.</p>
+</blockquote>
 
                     </main>
 

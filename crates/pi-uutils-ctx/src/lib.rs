@@ -232,6 +232,17 @@ pub fn is_cancelled() -> bool {
 	})
 }
 
+/// Returns the active scope's cancel flag, or `None` when no scope is
+/// installed.
+///
+/// The context is thread-local, so code that fans work out to a thread pool
+/// must capture this handle ON THE SCOPED THREAD and poll the flag from
+/// workers — calling [`is_cancelled`] on a pool thread always reports false.
+#[must_use]
+pub fn cancel_flag() -> Option<Arc<AtomicBool>> {
+	CTX.with(|c| c.borrow().as_ref().map(|ctx| Arc::clone(&ctx.cancel)))
+}
+
 macro_rules! ctx_writer {
 	($name:ident, $field:ident, $doc:literal) => {
 		#[doc = $doc]

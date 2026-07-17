@@ -4,7 +4,9 @@
  * Uses Tavily's agent-focused search API to return structured results with an
  * optional synthesized answer.
  */
+
 import { type ApiKey, type AuthStorage, type FetchImpl, getEnvApiKey, withAuth } from "@veyyon/pi-ai";
+import { asRecord } from "@veyyon/pi-utils";
 import type { SearchResponse, SearchSource } from "../../../web/search/types";
 import { SearchProviderError } from "../../../web/search/types";
 import { clampNumResults, dateToAgeSeconds } from "../utils";
@@ -37,12 +39,7 @@ interface TavilySearchResponse {
 	request_id?: string | null;
 }
 
-function asRecord(value: unknown): Record<string, unknown> | null {
-	if (typeof value !== "object" || value === null) return null;
-	return value as Record<string, unknown>;
-}
-
-function getErrorMessage(value: unknown): string | null {
+function extractErrorDetail(value: unknown): string | null {
 	if (typeof value === "string") {
 		const trimmed = value.trim();
 		return trimmed.length > 0 ? trimmed : null;
@@ -52,24 +49,15 @@ function getErrorMessage(value: unknown): string | null {
 	if (!record) return null;
 
 	for (const key of ["detail", "error", "message"]) {
-		const message = getErrorMessage(record[key]);
+		const message = extractErrorDetail(record[key]);
 		if (message) return message;
 	}
 
 	return null;
 }
 
-/** Find Tavily API key through AuthStorage's unified refresh pipeline. */
-export async function findApiKey(
-	authStorage: AuthStorage,
-	sessionId: string | undefined,
-	signal: AbortSignal | undefined,
-): Promise<string | null> {
-	return (await authStorage.getApiKey("tavily", sessionId, { signal })) ?? null;
-}
-
 /** Exported for testing. Builds the Tavily request body from unified params. */
-export function buildRequestBody(params: TavilySearchParams): Record<string, unknown> {
+export function buildTavilyRequestBody(params: TavilySearchParams): Record<string, unknown> {
 	const numResults = clampNumResults(params.num_results, DEFAULT_NUM_RESULTS, MAX_NUM_RESULTS);
 	// Tavily's `topic` (general/news/finance) and `time_range` are orthogonal
 	// dimensions in the upstream API. Recency is a temporal filter only; it must
@@ -96,7 +84,7 @@ async function callTavilySearch(apiKey: string, params: TavilySearchParams): Pro
 			"Content-Type": "application/json",
 			Authorization: `Bearer ${apiKey}`,
 		},
-		body: JSON.stringify(buildRequestBody(params)),
+		body: JSON.stringify(buildTavilyRequestBody(params)),
 		signal: withHardTimeout(params.signal),
 	});
 
@@ -109,7 +97,7 @@ async function callTavilySearch(apiKey: string, params: TavilySearchParams): Pro
 			message = response.statusText;
 		} else {
 			try {
-				message = getErrorMessage(JSON.parse(errorText)) ?? message;
+				message = extractErrorDetail(JSON.parse(errorText)) ?? message;
 			} catch {
 				// Keep raw text fallback.
 			}

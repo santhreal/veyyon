@@ -1,12 +1,12 @@
 /**
- * Centralized logger for Veyyon.
+ * Centralized logger for omp.
  *
- * Default: rotating `~/.veyyon/logs/veyyon.<DATE>.log`, no console output (writing
+ * Default: rotating `~/.veyyon/logs/omp.<DATE>.log`, no console output (writing
  * to stdout/stderr would corrupt the TUI). Long-running headless services
  * (the auth broker, etc.) call {@link setTransports} to swap in a console
  * transport so a process supervisor (pm2, journald, k8s) captures the logs.
  *
- * Each entry includes `process.pid` so concurrent veyyon instances stay
+ * Each entry includes `process.pid` so concurrent omp instances stay
  * traceable.
  */
 import { AsyncLocalStorage } from "node:async_hooks";
@@ -76,7 +76,7 @@ function getLogFormat(): winston.Logform.Format {
 function makeFileTransport(dir?: string): winston.transport {
 	return new DailyRotateFile({
 		dirname: ensureDir(dir ?? getLogsDir()),
-		filename: "veyyon.%DATE%.log",
+		filename: "omp.%DATE%.log",
 		datePattern: "YYYY-MM-DD",
 		maxSize: "10m",
 		maxFiles: 5,

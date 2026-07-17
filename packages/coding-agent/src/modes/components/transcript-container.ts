@@ -221,7 +221,12 @@ export class TranscriptContainer
 		this.#stableRowsFloor = 0;
 	}
 
-	getRenderStablePrefixRows(): number {
+	getRenderStablePrefixRows(observed: readonly string[]): number {
+		// The accounting covers only the persistent render array itself.
+		if (observed !== this.#lines) {
+			this.#stableRowsFloor = 0;
+			return 0;
+		}
 		const value = Math.min(this.#stableRowsFloor, this.#lines.length);
 		this.#stableRowsFloor = this.#lines.length;
 		return value;

@@ -2,6 +2,9 @@ import { logger, postmortem, Snowflake, workerHostEntry } from "@veyyon/pi-utils
 import {
 	createWorkerHandle,
 	createWorkerSubprocess,
+	errorFromWorkerEvent,
+	logWorkerMessage,
+	raceWithTimeout,
 	resolveWorkerSpawnCmd,
 	workerEnvFromParent,
 } from "../../subprocess/worker-client";
@@ -13,13 +16,14 @@ import { callSessionTool, type JsStatusEvent } from "./tool-bridge";
 import { WorkerCore } from "./worker-core";
 // Coding-agent binary/bundle workers route through the CLI entrypoint with a
 // hidden argv mode, so compiled/npm builds only need one JavaScript entry.
-import type {
-	JsDisplayOutput,
-	RunErrorPayload,
-	SessionSnapshot,
-	Transport,
-	WorkerInbound,
-	WorkerOutbound,
+import {
+	type JsDisplayOutput,
+	jsRunErrorPayload,
+	type RunErrorPayload,
+	type SessionSnapshot,
+	type Transport,
+	type WorkerInbound,
+	type WorkerOutbound,
 } from "./worker-protocol";
 
 export { rewriteImports, wrapCode } from "./shared/rewrite-imports";
@@ -288,7 +292,7 @@ async function acquireSession(sessionKey: string, snapshot: SessionSnapshot, tim
 					logger.warn("JS eval worker init failed; retrying with inline worker (no sync-loop guard)", {
 						error: error instanceof Error ? error.message : String(error),
 					});
-					session.worker = spawnInlineWorker();
+					session.worker = spawnInlineJsEvalWorker();
 				}
 				session.state = "alive";
 			}
@@ -360,7 +364,7 @@ function handleSessionMessage(session: JsSession, msg: WorkerOutbound): void {
 			return;
 		}
 		case "tool-call":
-			void handleToolCall(session, msg);
+			void handleWorkerToolCall(session, msg);
 			return;
 		case "result":
 			settlePending(session, msg);
@@ -375,10 +379,13 @@ function handleSessionMessage(session: JsSession, msg: WorkerOutbound): void {
 	}
 }
 
-async function handleToolCall(session: JsSession, msg: Extract<WorkerOutbound, { type: "tool-call" }>): Promise<void> {
+async function handleWorkerToolCall(
+	session: JsSession,
+	msg: Extract<WorkerOutbound, { type: "tool-call" }>,
+): Promise<void> {
 	const pending = session.pending.get(msg.runId);
 	if (!pending) {
-		safeSend(session, {
+		sendToJsWorker(session, {
 			type: "tool-reply",
 			id: msg.id,
 			reply: { ok: false, error: { message: "Run no longer active" } },
@@ -393,9 +400,13 @@ async function handleToolCall(session: JsSession, msg: Extract<WorkerOutbound, {
 			signal: ctrl.signal,
 			emitStatus: (event: JsStatusEvent) => pending.runState.onDisplay?.({ type: "status", event }),
 		});
-		safeSend(session, { type: "tool-reply", id: msg.id, reply: { ok: true, value } });
+		sendToJsWorker(session, { type: "tool-reply", id: msg.id, reply: { ok: true, value } });
 	} catch (error) {
-		safeSend(session, { type: "tool-reply", id: msg.id, reply: { ok: false, error: toErrorPayload(error) } });
+		sendToJsWorker(session, {
+			type: "tool-reply",
+			id: msg.id,
+			reply: { ok: false, error: jsRunErrorPayload(error) },
+		});
 	} finally {
 		pending.toolCalls.delete(msg.id);
 	}
@@ -437,12 +448,15 @@ async function killSession(session: JsSession, error: Error, options: { force: b
 	await session.worker.terminate().catch(() => undefined);
 }
 
-function safeSend(session: JsSession, msg: WorkerInbound): void {
+function sendToJsWorker(session: JsSession, msg: WorkerInbound): void {
 	if (session.state !== "alive") return;
 	try {
 		session.worker.send(msg);
 	} catch (err) {
-		logger.debug("js worker send failed", { error: err instanceof Error ? err.message : String(err) });
+		// An "alive" session whose pipe rejects sends is silently dropping messages.
+		logger.warn("js worker send failed; message dropped", {
+			error: err instanceof Error ? err.message : String(err),
+		});
 	}
 }
 
@@ -463,37 +477,6 @@ function errorFromPayload(payload: RunErrorPayload): Error {
 	if (payload.name) error.name = payload.name;
 	if (payload.stack) error.stack = payload.stack;
 	return error;
-}
-
-function toErrorPayload(error: unknown): RunErrorPayload {
-	if (error instanceof Error) {
-		return {
-			name: error.name,
-			message: error.message,
-			stack: error.stack,
-			isAbort: error.name === "AbortError" || error.name === "ToolAbortError",
-			isToolError: error instanceof ToolError || error.name === "ToolError",
-		};
-	}
-	return { message: String(error) };
-}
-
-function logWorkerMessage(msg: Extract<WorkerOutbound, { type: "log" }>): void {
-	if (msg.level === "debug") logger.debug(msg.msg, msg.meta);
-	else if (msg.level === "warn") logger.warn(msg.msg, msg.meta);
-	else logger.error(msg.msg, msg.meta);
-}
-
-async function raceWithTimeout<T>(promise: Promise<T>, timeoutMs: number, reason: string): Promise<T> {
-	const timeoutSignal = AbortSignal.timeout(timeoutMs);
-	const { promise: timeoutPromise, reject } = Promise.withResolvers<never>();
-	const onAbort = (): void => reject(new ToolError(reason));
-	timeoutSignal.addEventListener("abort", onAbort, { once: true });
-	try {
-		return await Promise.race([promise, timeoutPromise]);
-	} finally {
-		timeoutSignal.removeEventListener("abort", onAbort);
-	}
 }
 
 function spawnJsWorker(): WorkerHandle {
@@ -518,12 +501,12 @@ function spawnBunWorker(): WorkerHandle {
 		const worker = hostEntry
 			? new Worker(hostEntry, { type: "module", argv: ["__omp_worker_js_eval"] })
 			: new Worker(new URL("./worker-entry.ts", import.meta.url).href, { type: "module" });
-		return wrapBunWorker(worker);
+		return wrapJsEvalBunWorker(worker);
 	} catch (err) {
 		logger.warn("Bun Worker spawn failed; using inline JS eval worker (no sync-loop guard)", {
 			error: err instanceof Error ? err.message : String(err),
 		});
-		return spawnInlineWorker();
+		return spawnInlineJsEvalWorker();
 	}
 }
 
@@ -568,7 +551,7 @@ function spawnJsProcess(): WorkerHandle {
 	};
 }
 
-function wrapBunWorker(worker: Worker): WorkerHandle {
+function wrapJsEvalBunWorker(worker: Worker): WorkerHandle {
 	return {
 		mode: "worker",
 		send(msg) {
@@ -580,7 +563,8 @@ function wrapBunWorker(worker: Worker): WorkerHandle {
 			return () => worker.removeEventListener("message", wrap);
 		},
 		onError(handler) {
-			const onError = (event: ErrorEvent): void => handler(errorFromWorkerEvent(event));
+			const onError = (event: ErrorEvent): void =>
+				handler(errorFromWorkerEvent(event, "Unknown JS eval worker error"));
 			const onMessageError = (event: MessageEvent): void =>
 				handler(new ToolError(`JS eval worker message error: ${String(event.data)}`));
 			const onClose = (): void => handler(new Error("JS eval worker exited"));
@@ -631,18 +615,12 @@ function wrapBunWorker(worker: Worker): WorkerHandle {
 	};
 }
 
-function errorFromWorkerEvent(event: ErrorEvent): Error {
-	if (event.error instanceof Error) return event.error;
-	if (event.message) return new Error(event.message);
-	return new Error("Unknown JS eval worker error");
-}
-
 /**
  * Inline fallback for environments where Bun cannot spawn the worker entry
  * (e.g. some test runners). Preserves behavior but cannot interrupt synchronous
  * infinite loops because user code runs on the main thread.
  */
-function spawnInlineWorker(): WorkerHandle {
+function spawnInlineJsEvalWorker(): WorkerHandle {
 	const hostListeners = new Set<(message: WorkerOutbound) => void>();
 	const workerListeners = new Set<(message: WorkerInbound) => void>();
 	const workerTransport: Transport = {

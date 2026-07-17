@@ -1,5 +1,4 @@
 import { Database } from "bun:sqlite";
-import { createHash } from "node:crypto";
 import {
 	copyFileSync,
 	existsSync,
@@ -14,11 +13,12 @@ import {
 } from "node:fs";
 import { basename, dirname, extname, join } from "node:path";
 import { gunzipSync, gzipSync } from "node:zlib";
+import { looksLikeSqlite } from "@veyyon/pi-utils";
 import { dataDir as configuredDataDir, dbPath as configuredDbPath, type Env } from "../config";
 import { closeQuietly, openDatabase } from "../db";
+import { sha256Hex16 } from "../util/ids";
 
 type SerializableDatabase = Database & { serialize(): Uint8Array };
-const SQLITE_HEADER = new Uint8Array([83, 81, 76, 105, 116, 101, 32, 102, 111, 114, 109, 97, 116, 32, 51, 0]);
 const SQLITE_SIDECAR_SUFFIXES = ["-wal", "-shm", "-journal"] as const;
 let uniqueCounter = 0;
 
@@ -88,10 +88,6 @@ export interface HealthCheckResult {
 function timestampForBackup(now = new Date()): string {
 	const pad = (value: number) => String(value).padStart(2, "0");
 	return `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
-}
-
-function sha256Hex16(bytes: NodeJS.ArrayBufferView): string {
-	return createHash("sha256").update(bytes).digest("hex").slice(0, 16);
 }
 
 function nextUniqueToken(): string {
@@ -177,14 +173,6 @@ export function createBackup(dbPath?: string | null, backupDir?: string | null):
 
 	return { backup_path: backupPath, metadata_path: metadataPath, ...metadata };
 }
-function isSqliteFile(bytes: Uint8Array): boolean {
-	if (bytes.length < SQLITE_HEADER.length) return false;
-	for (let i = 0; i < SQLITE_HEADER.length; i += 1) {
-		if (bytes[i] !== SQLITE_HEADER[i]) return false;
-	}
-	return true;
-}
-
 function writeGzippedSqlDump(sql: string, tempPath: string): void {
 	let db: Database | null = null;
 	try {
@@ -238,7 +226,7 @@ function restoreCurrentDatabaseSnapshot(targetPath: string): void {
 }
 
 function writeRestoreCandidate(uncompressed: Buffer, tempPath: string): void {
-	if (isSqliteFile(uncompressed)) {
+	if (looksLikeSqlite(uncompressed)) {
 		writeFileSync(tempPath, uncompressed, { flag: "wx" });
 		return;
 	}

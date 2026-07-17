@@ -13,5 +13,8 @@ describe("RpcClient.start", () => {
 		});
 
 		await expect(client.start()).rejects.toThrow(/Unknown provider.*__missing_provider__/);
-	});
+		// Cold-spawning the full CLI module graph under full-suite parallelism
+		// can exceed bun's 5s default; RpcClient's own 30s ready deadline still
+		// bounds a genuine hang.
+	}, 60_000);
 });

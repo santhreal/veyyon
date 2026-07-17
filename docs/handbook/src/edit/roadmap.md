@@ -37,5 +37,6 @@ Non-parallel tools take an exclusive lock, so file mutations from one turn are g
 per-path mutation queue that lets independent files edit in parallel while still serializing same-file
 writes matters once subagents edit concurrently. *Lever: robustness.*
 
-Not shipped: a byte-exact write path that preserves a missing trailing newline on the final line. The
-current write model normalizes by appending one; the case is documented and covered by a test.
+> **Spec — not shipped:** A byte-exact write path that preserves a missing trailing newline on the
+> final line. The current write model normalizes by appending one; the case is documented and covered
+> by a test.

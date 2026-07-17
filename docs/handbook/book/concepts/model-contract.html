@@ -46,10 +46,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-24acbed9.js";
+            window.path_to_searchindex_js = "../searchindex-8badf17b.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-9cfd259b.js"></script>
+        <script src="../toc-19dab021.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -329,11 +329,11 @@ under <code>modelRoles</code>:</p>
 <p>For non-interactive runs, pass the prompt and pick an approval mode that matches your trust boundary:</p>
 <pre><code class="language-console">$ veyyon --approval-mode auto-edit "run the unit tests and fix failures"
 </code></pre>
-<p>Use <code>--yolo</code> (auto-approve everything) only in trusted automation, ideally in an externally isolated environment (Docker, a VM, a CI jail), since Veyyon does not sandbox the commands it runs.</p>
+<p>Use <code>--yolo</code> (auto-approve everything) only in trusted automation, ideally with an outer sandbox.</p>
 <h2 id="what-stays-constant"><a class="header" href="#what-stays-constant">What stays constant</a></h2>
 <ul>
 <li>The workflow stays the same: read, edit, verify, and stop when the work is done.</li>
-<li>Edit verification, approvals, and context handling are harness behavior.</li>
+<li>Edit verification, OS isolation, approvals, and context handling are harness behavior.</li>
 <li>You are not locked to any provider; point the harness at any compatible API.</li>
 </ul>
 <h2 id="next"><a class="header" href="#next">Next</a></h2>
@@ -342,7 +342,7 @@ under <code>modelRoles</code>:</p>
 OpenAI-compatible endpoints.</li>
 <li><a href="../using/models.html">Models and providers</a> — choosing and switching models in a session.</li>
 <li><a href="../using/safety.html">Safety</a> — boundaries around tool use and model output.</li>
-<li><a href="./permission-model.html">Permission model</a> — the approval-mode ladder.</li>
+<li><a href="./permission-model.html">Permission model</a> — approval modes + OS sandbox.</li>
 <li><a href="../using/authentication.html">Signing in</a> — interactive and env-var auth paths.</li>
 </ul>
 

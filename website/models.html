@@ -4,9 +4,16 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <meta name="theme-color" content="#000000" />
+<link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+<link rel="apple-touch-icon" href="./apple-touch-icon.png" />
+<meta property="og:site_name" content="Veyyon" />
+<meta property="og:type" content="website" />
+<meta property="og:image" content="https://veyyon.dev/og.png" />
+<meta name="twitter:card" content="summary_large_image" />
 <title>Models — Veyyon</title>
+<meta property="og:title" content="Models — Veyyon" />
+<meta property="og:url" content="https://veyyon.dev/models.html" />
 <meta name="description" content="Three explicit model slots, roles in settings, provider-agnostic BYOK, and local models. No default-chain magic." />
-<link rel="icon" href="./favicon.svg" type="image/svg+xml" />
 <link rel="stylesheet" href="./site.css" />
 </head>
 <body>
@@ -15,15 +22,27 @@
   <div class="wrap nav">
     <a class="brand" href="./">veyyon</a>
     <nav>
-      <a href="./models" aria-current="page">Models</a>
-      <a href="./features">Features</a>
-      <a href="./install">Install</a>
-      <a href="./changelog">Changelog</a>
+      <a href="./models.html" aria-current="page">Models</a>
+      <a href="./features.html">Features</a>
+      <a href="./install.html">Install</a>
+      <a href="./changelog.html">Changelog</a>
       <a href="./docs/">Docs</a>
       <a href="https://github.com/santhreal/veyyon">GitHub</a>
-      <a href="./install" class="btn">Get started</a>
+      <a href="./install.html" class="btn">Get started</a>
     </nav>
+    <details class="nav-menu"><summary>menu</summary>
+      <nav>
+        <a href="./models.html">Models</a>
+        <a href="./features.html">Features</a>
+        <a href="./install.html">Install</a>
+        <a href="./changelog.html">Changelog</a>
+        <a href="./docs/">Docs</a>
+        <a href="https://github.com/santhreal/veyyon">GitHub</a>
+        <a href="./install.html" class="btn">Get started</a>
+      </nav>
+    </details>
   </div>
+  <div class="suntrack" aria-hidden="true"><canvas data-sun="progress" width="14" height="14"></canvas></div>
 </header>
 
 <main class="wrap">
@@ -48,7 +67,7 @@
           <li><b>Interactive model</b> — chosen live with <span class="mono">/model</span> or <span class="mono">--model</span>.</li>
           <li><b>Subagent model</b> — one setting for the model your subagents run on.</li>
           <li><b>Compaction model</b> — one setting for the model that compacts context.</li>
-          <li><b>No default-chain</b> — switching the interactive model never blends into the background slots.</li>
+          <li><b>No hidden routing</b> — a slot you set stays exactly where you put it; an unset slot just inherits your interactive model, and says so. Nothing re-routes quietly.</li>
         </ul>
       </div>
       <pre class="demo" aria-hidden="true"><span class="c"># ~/.veyyon/config.yml</span>
@@ -102,6 +121,8 @@
 
 </main>
 
+<div class="sunset" aria-hidden="true"><canvas data-sun="sunset"></canvas></div>
+
 <footer class="site">
   <div class="wrap foot">
     <div>
@@ -109,10 +130,10 @@
       <div class="attrib">A fork of <a href="https://github.com/can1357/oh-my-pi">oh-my-pi</a> (MIT), by Can Boluk. Built as its own product.</div>
     </div>
     <nav>
-      <a href="./models">Models</a>
-      <a href="./features">Features</a>
-      <a href="./install">Install</a>
-      <a href="./changelog">Changelog</a>
+      <a href="./models.html">Models</a>
+      <a href="./features.html">Features</a>
+      <a href="./install.html">Install</a>
+      <a href="./changelog.html">Changelog</a>
       <a href="./docs/">Docs</a>
       <a href="https://github.com/santhreal/veyyon">GitHub</a>
     </nav>
@@ -120,5 +141,6 @@
 </footer>
 
 <script src="./motion.js" defer></script>
+<script src="./sunmark.js" defer></script>
 </body>
 </html>

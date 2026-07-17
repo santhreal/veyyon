@@ -46,7 +46,7 @@ function resolveClientId(): string {
  * the local callback server is plaintext HTTP. Non-loopback URIs bind a random
  * local port — only the paste-code path can complete in that case.
  */
-function resolveCallbackOptions(): OAuthCallbackFlowOptions {
+function callbackOptionsFromEnv(): OAuthCallbackFlowOptions {
 	const raw = process.env.GITLAB_REDIRECT_URI?.trim();
 	if (!raw) {
 		return {
@@ -90,16 +90,20 @@ function resolveCallbackOptions(): OAuthCallbackFlowOptions {
 	};
 }
 
-function mapTokenResponse(payload: {
-	access_token?: string;
-	refresh_token?: string;
-	expires_in?: number;
-	created_at?: number;
-}): OAuthCredentials {
+export function mapGitLabTokenResponse(
+	payload: {
+		access_token?: string;
+		refresh_token?: string;
+		expires_in?: number;
+		created_at?: number;
+	},
+	provider: string,
+	label: string,
+): OAuthCredentials {
 	if (!payload.access_token || !payload.refresh_token || typeof payload.expires_in !== "number") {
-		throw new AIError.OAuthError("GitLab OAuth token response missing required fields", {
+		throw new AIError.OAuthError(`${label} OAuth token response missing required fields`, {
 			kind: "validation",
-			provider: "gitlab-duo",
+			provider,
 		});
 	}
 
@@ -172,13 +176,15 @@ class GitLabDuoOAuthFlow extends OAuthCallbackFlow {
 		}
 
 		clearGitLabDuoDirectAccessCache();
-		return mapTokenResponse(
+		return mapGitLabTokenResponse(
 			(await response.json()) as {
 				access_token?: string;
 				refresh_token?: string;
 				expires_in?: number;
 				created_at?: number;
 			},
+			"gitlab-duo",
+			"GitLab",
 		);
 	}
 }
@@ -186,7 +192,7 @@ class GitLabDuoOAuthFlow extends OAuthCallbackFlow {
 export async function loginGitLabDuo(callbacks: OAuthLoginCallbacks): Promise<OAuthCredentials> {
 	const pkce = await generatePKCE();
 	const clientId = resolveClientId();
-	const options = resolveCallbackOptions();
+	const options = callbackOptionsFromEnv();
 	const flow = new GitLabDuoOAuthFlow(callbacks, pkce, clientId, options);
 	return flow.login();
 }
@@ -211,12 +217,14 @@ export async function refreshGitLabDuoToken(credentials: OAuthCredentials): Prom
 	}
 
 	clearGitLabDuoDirectAccessCache();
-	return mapTokenResponse(
+	return mapGitLabTokenResponse(
 		(await response.json()) as {
 			access_token?: string;
 			refresh_token?: string;
 			expires_in?: number;
 			created_at?: number;
 		},
+		"gitlab-duo",
+		"GitLab",
 	);
 }

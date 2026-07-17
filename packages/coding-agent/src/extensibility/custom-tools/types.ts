@@ -252,6 +252,14 @@ export interface CustomTool<TParams extends TSchema = TSchema, TDetails = any> {
 	) => Component;
 }
 
+/**
+ * Existential custom tool for heterogeneous collections. `TParams` is
+ * contravariant in `execute`, so a concretely-typed tool is NOT assignable to
+ * `CustomTool<TSchema>`; collections that mix tools of different schemas must
+ * use this alias (mirrors `AnyAgentTool` in @veyyon/pi-agent-core).
+ */
+export type AnyCustomTool = CustomTool<any, any>;
+
 /** Factory function that creates a custom tool or array of tools */
 export type CustomToolFactory = (
 	pi: CustomToolAPI,

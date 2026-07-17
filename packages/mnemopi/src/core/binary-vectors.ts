@@ -62,7 +62,7 @@ function assertSqlIdentifier(name: string): string {
 	return name;
 }
 
-function toFiniteNumber(value: number | string | boolean | null | undefined): number {
+function finiteNumberOrZero(value: number | string | boolean | null | undefined): number {
 	const n = Number(value ?? 0);
 	return Number.isFinite(n) ? n : 0;
 }
@@ -70,7 +70,7 @@ function toFiniteNumber(value: number | string | boolean | null | undefined): nu
 function magnitude(embedding: readonly number[]): number {
 	let sum = 0;
 	for (let i = 0; i < embedding.length; i += 1) {
-		const value = toFiniteNumber(embedding[i]);
+		const value = finiteNumberOrZero(embedding[i]);
 		sum += value * value;
 	}
 	return Math.sqrt(sum);
@@ -111,7 +111,7 @@ export const VEC_TYPE: VecType = getVecType();
 export function quantizeInt8(embedding: readonly number[]): Int8Array {
 	const out = new Int8Array(embedding.length);
 	for (let i = 0; i < embedding.length; i += 1) {
-		const value = Math.max(-1, Math.min(1, toFiniteNumber(embedding[i])));
+		const value = Math.max(-1, Math.min(1, finiteNumberOrZero(embedding[i])));
 		out[i] = value >= 0 ? Math.round(value * 127) : -Math.round(-value * 127);
 	}
 	return out;
@@ -122,7 +122,7 @@ export function maximallyInformativeBinarization(embedding: readonly number[]): 
 	const nBytes = Math.ceil(dim / BITS_PER_BYTE);
 	const out = new Uint8Array(nBytes);
 	for (let i = 0; i < dim; i += 1) {
-		if (toFiniteNumber(embedding[i]) > 0) {
+		if (finiteNumberOrZero(embedding[i]) > 0) {
 			const byteIndex = i >> 3;
 			out[byteIndex] = (out[byteIndex] ?? 0) | (1 << (7 - (i & 7)));
 		}
@@ -228,7 +228,7 @@ export class BinaryVectorStore {
 			.all() as VectorRow[];
 		const results: BinaryVectorSearchResult[] = [];
 		for (const row of rows) {
-			const storedDim = Math.max(0, Math.min(EMBEDDING_DIM, Math.trunc(toFiniteNumber(row.original_dim))));
+			const storedDim = Math.max(0, Math.min(EMBEDDING_DIM, Math.trunc(finiteNumberOrZero(row.original_dim))));
 			const comparedDim = Math.min(queryDim, storedDim);
 			const distance = hammingDistanceForDimension(queryBinary, bytesFromBlob(row.binary_vector), comparedDim);
 			results.push({

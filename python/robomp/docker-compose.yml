@@ -20,7 +20,7 @@ services:
       args:
         # Tag of the pre-built pi-base image produced by `bun run pi:image`
         # (sources: pi root /Dockerfile). Override per-environment as needed.
-        PI_BASE: oh-my-pi/pi:dev
+        PI_BASE: veyyon/pi:dev
     image: robomp:dev
     container_name: robomp
     # Phase B (graceful shutdown): gives the orchestrator at least

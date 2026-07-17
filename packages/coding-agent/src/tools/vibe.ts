@@ -96,7 +96,7 @@ function screensOf(session: ToolSession, ids?: string[]): VibeScreenSnapshot[] {
 	return VibeSessionRegistry.global().screens(session.getAgentId?.() ?? MAIN_AGENT_ID, ids);
 }
 
-function textResult(text: string, details: VibeToolDetails): AgentToolResult<VibeToolDetails> {
+function vibeTextResult(text: string, details: VibeToolDetails): AgentToolResult<VibeToolDetails> {
 	return { content: [{ type: "text", text }], details };
 }
 
@@ -114,7 +114,7 @@ export class VibeSpawnTool implements AgentTool<typeof vibeSpawnSchema, VibeTool
 
 	async execute(_toolCallId: string, params: typeof vibeSpawnSchema.infer): Promise<AgentToolResult<VibeToolDetails>> {
 		const { id, jobId } = await VibeSessionRegistry.global().spawn(this.session, params);
-		return textResult(
+		return vibeTextResult(
 			`Spawned ${params.cli} session \`${id}\` (turn job \`${jobId}\`). The turn result will be delivered when it finishes — keep directing other sessions meanwhile. Continue this one with vibe_send \`${id}\`.`,
 			{ op: "spawn", screens: screensOf(this.session), spawned: { id, cli: params.cli, jobId } },
 		);
@@ -141,7 +141,7 @@ export class VibeSendTool implements AgentTool<typeof vibeSendSchema, VibeToolDe
 				: outcome.mode === "steered"
 					? `Steered \`${outcome.id}\` mid-turn — the running turn sees your message at its next step.`
 					: `\`${outcome.id}\` is mid-turn; your message is queued and runs automatically as the next turn.`;
-		return textResult(ack, { op: "send", screens: screensOf(this.session), send: outcome });
+		return vibeTextResult(ack, { op: "send", screens: screensOf(this.session), send: outcome });
 	}
 }
 
@@ -201,7 +201,7 @@ export class VibeWaitTool implements AgentTool<typeof vibeWaitSchema, VibeToolDe
 			},
 		};
 		if (outcome.settled.length === 0 && outcome.stillRunning.length === 0) {
-			return { ...textResult("No turns in flight to wait for.", details), useless: true };
+			return { ...vibeTextResult("No turns in flight to wait for.", details), useless: true };
 		}
 		const lines: string[] = [];
 		for (const entry of outcome.settled) {
@@ -213,7 +213,7 @@ export class VibeWaitTool implements AgentTool<typeof vibeWaitSchema, VibeToolDe
 		if (outcome.timedOut) {
 			lines.push("Wait window elapsed before any turn settled — re-issue vibe_wait to keep waiting.");
 		}
-		const result = textResult(lines.join("\n").trimEnd(), details);
+		const result = vibeTextResult(lines.join("\n").trimEnd(), details);
 		// A pure "still waiting" frame is noise once a newer wait exists.
 		return outcome.settled.length === 0 ? { ...result, useless: true } : result;
 	}
@@ -234,7 +234,7 @@ export class VibeKillTool implements AgentTool<typeof vibeKillSchema, VibeToolDe
 	async execute(_toolCallId: string, params: typeof vibeKillSchema.infer): Promise<AgentToolResult<VibeToolDetails>> {
 		const outcome = await VibeSessionRegistry.global().kill(this.session, params.session);
 		const cancelNote = outcome.cancelledTurn ? " Its in-flight turn was cancelled." : "";
-		return textResult(
+		return vibeTextResult(
 			`Killed session \`${outcome.id}\`.${cancelNote} Transcript remains at history://${outcome.id}.`,
 			{
 				op: "kill",
@@ -261,7 +261,7 @@ export class VibeListTool implements AgentTool<typeof vibeListSchema, VibeToolDe
 		const screens = screensOf(this.session);
 		const details: VibeToolDetails = { op: "list", screens };
 		if (screens.length === 0) {
-			return textResult("No vibe sessions. Spawn one with vibe_spawn.", details);
+			return vibeTextResult("No vibe sessions. Spawn one with vibe_spawn.", details);
 		}
 		const lines = screens.map(screen => {
 			const parts = [
@@ -273,7 +273,7 @@ export class VibeListTool implements AgentTool<typeof vibeListSchema, VibeToolDe
 			if (screen.lastActivity) parts.push(`last: ${screen.lastActivity}`);
 			return parts.join(" · ");
 		});
-		return textResult(lines.join("\n"), details);
+		return vibeTextResult(lines.join("\n"), details);
 	}
 }
 

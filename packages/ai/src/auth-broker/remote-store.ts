@@ -30,6 +30,7 @@ import type {
 	SnapshotResponse,
 	SnapshotStreamEvent,
 } from "./types";
+import { compareCredentialBlockSnapshots } from "./types";
 
 /**
  * Client-side TTL for the aggregate `/v1/usage` response. The broker dedups
@@ -45,16 +46,6 @@ const MAX_WAIT_MS = 5_000;
 const BACKGROUND_WAIT_MS = 30_000;
 const BACKGROUND_BACKOFF_INITIAL_MS = 500;
 const BACKGROUND_BACKOFF_MAX_MS = 30_000;
-
-function compareCredentialBlockSnapshots(a: CredentialBlockSnapshot, b: CredentialBlockSnapshot): number {
-	const provider = a.providerKey.localeCompare(b.providerKey);
-	if (provider !== 0) return provider;
-	const scope = a.blockScope.localeCompare(b.blockScope);
-	if (scope !== 0) return scope;
-	const blockedUntil = a.blockedUntilMs - b.blockedUntilMs;
-	if (blockedUntil !== 0) return blockedUntil;
-	return (a.updatedAtMs ?? 0) - (b.updatedAtMs ?? 0);
-}
 
 function toCredentialBlockSnapshot(block: StoredCredentialBlock): CredentialBlockSnapshot {
 	return {
@@ -1020,7 +1011,7 @@ function matchUsageReport(reports: UsageReport[], provider: Provider, credential
 		const sameOrg: UsageReport[] = [];
 		let sawReportOrg = false;
 		for (const report of all) {
-			const metaOrg = readMetadataString((report.metadata ?? {}) as Record<string, unknown>, "orgId");
+			const metaOrg = readTrimmedMetadataString((report.metadata ?? {}) as Record<string, unknown>, "orgId");
 			if (metaOrg) {
 				sawReportOrg = true;
 				if (metaOrg.toLowerCase() === orgId) sameOrg.push(report);
@@ -1049,7 +1040,7 @@ function matchUsageReport(reports: UsageReport[], provider: Provider, credential
 		return null;
 	}
 	const candidates = all.filter(
-		report => !readMetadataString((report.metadata ?? {}) as Record<string, unknown>, "orgId"),
+		report => !readTrimmedMetadataString((report.metadata ?? {}) as Record<string, unknown>, "orgId"),
 	);
 	if (candidates.length === 0) return null;
 	if (all.length === 1 && candidates.length === 1) return candidates[0];
@@ -1070,15 +1061,18 @@ function findMatchingReportIndex(reports: UsageReport[], overlay: UsageReport): 
 	// only merge into an org-less report. Within the same org the overlay's
 	// base identity must still match — two Team members' reports share the
 	// org id but must not swallow each other's header ingests.
-	const overlayOrg = readMetadataString(metadata, "orgId")?.toLowerCase();
-	const accountId = readMetadataString(metadata, "accountId")?.toLowerCase();
-	const email = readMetadataString(metadata, "email")?.toLowerCase();
-	const projectId = readMetadataString(metadata, "projectId")?.toLowerCase();
+	const overlayOrg = readTrimmedMetadataString(metadata, "orgId")?.toLowerCase();
+	const accountId = readTrimmedMetadataString(metadata, "accountId")?.toLowerCase();
+	const email = readTrimmedMetadataString(metadata, "email")?.toLowerCase();
+	const projectId = readTrimmedMetadataString(metadata, "projectId")?.toLowerCase();
 	if (overlayOrg) {
 		const sameOrg: { report: UsageReport; index: number }[] = [];
 		let sawReportOrg = false;
 		for (const candidate of all) {
-			const candidateOrg = readMetadataString((candidate.report.metadata ?? {}) as Record<string, unknown>, "orgId");
+			const candidateOrg = readTrimmedMetadataString(
+				(candidate.report.metadata ?? {}) as Record<string, unknown>,
+				"orgId",
+			);
 			if (candidateOrg) {
 				sawReportOrg = true;
 				if (candidateOrg.toLowerCase() === overlayOrg) sameOrg.push(candidate);
@@ -1098,7 +1092,7 @@ function findMatchingReportIndex(reports: UsageReport[], overlay: UsageReport): 
 		return -1;
 	}
 	const candidates = all.filter(
-		candidate => !readMetadataString((candidate.report.metadata ?? {}) as Record<string, unknown>, "orgId"),
+		candidate => !readTrimmedMetadataString((candidate.report.metadata ?? {}) as Record<string, unknown>, "orgId"),
 	);
 	if (candidates.length === 0) return -1;
 	if (all.length === 1 && candidates.length === 1) return candidates[0]!.index;
@@ -1116,18 +1110,20 @@ function reportMatchesIdentity(
 ): boolean {
 	const metadata = (report.metadata ?? {}) as Record<string, unknown>;
 	if (accountId) {
-		const metaAccount = readMetadataString(metadata, "accountId") ?? readMetadataString(metadata, "account_id");
+		const metaAccount =
+			readTrimmedMetadataString(metadata, "accountId") ?? readTrimmedMetadataString(metadata, "account_id");
 		if (metaAccount && metaAccount.toLowerCase() === accountId) return true;
 		for (const limit of report.limits) {
 			if (limit.scope.accountId?.toLowerCase() === accountId) return true;
 		}
 	}
 	if (email) {
-		const metaEmail = readMetadataString(metadata, "email");
+		const metaEmail = readTrimmedMetadataString(metadata, "email");
 		if (metaEmail && metaEmail.toLowerCase() === email) return true;
 	}
 	if (projectId) {
-		const metaProject = readMetadataString(metadata, "projectId") ?? readMetadataString(metadata, "project_id");
+		const metaProject =
+			readTrimmedMetadataString(metadata, "projectId") ?? readTrimmedMetadataString(metadata, "project_id");
 		if (metaProject && metaProject.toLowerCase() === projectId) return true;
 		for (const limit of report.limits) {
 			if (limit.scope.projectId?.toLowerCase() === projectId) return true;
@@ -1136,7 +1132,7 @@ function reportMatchesIdentity(
 	return false;
 }
 
-function readMetadataString(metadata: Record<string, unknown>, key: string): string | undefined {
+function readTrimmedMetadataString(metadata: Record<string, unknown>, key: string): string | undefined {
 	const value = metadata[key];
 	return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
 }

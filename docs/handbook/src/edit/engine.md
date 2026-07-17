@@ -40,6 +40,6 @@ default and the path Veyyon optimizes for.
 - Read/grep anchors: [`docs/tools/read.md`](../../../tools/read.md), [`docs/tools/grep.md`](../../../tools/grep.md)
 - Settings: `edit.mode` in [`docs/settings.md`](../../../settings.md)
 
-There is no `veyyon-edit` Rust crate, no V4A-only write path, and no `make_update_patch` envelope
-routing. General schema-based tool-call repair **is** shipped — see
-[Repair overview](../repair/overview.md).
+> **Spec — not shipped:** a `veyyon-edit` Rust crate, a V4A-only write path, and `make_update_patch`
+> envelope routing. General schema-based tool-call repair **is shipped** — see
+> [Repair overview](../repair/overview.md).

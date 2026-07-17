@@ -4,9 +4,16 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <meta name="theme-color" content="#000000" />
+<link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+<link rel="apple-touch-icon" href="./apple-touch-icon.png" />
+<meta property="og:site_name" content="Veyyon" />
+<meta property="og:type" content="website" />
+<meta property="og:image" content="https://veyyon.dev/og.png" />
+<meta name="twitter:card" content="summary_large_image" />
 <title>Changelog — Veyyon</title>
+<meta property="og:title" content="Changelog — Veyyon" />
+<meta property="og:url" content="https://veyyon.dev/changelog.html" />
 <meta name="description" content="Veyyon release notes — what shipped, version by version." />
-<link rel="icon" href="./favicon.svg" type="image/svg+xml" />
 <link rel="stylesheet" href="./site.css" />
 </head>
 <body>
@@ -15,15 +22,27 @@
   <div class="wrap nav">
     <a class="brand" href="./">veyyon</a>
     <nav>
-      <a href="./models">Models</a>
-      <a href="./features">Features</a>
-      <a href="./install">Install</a>
-      <a href="./changelog" aria-current="page">Changelog</a>
+      <a href="./models.html">Models</a>
+      <a href="./features.html">Features</a>
+      <a href="./install.html">Install</a>
+      <a href="./changelog.html" aria-current="page">Changelog</a>
       <a href="./docs/">Docs</a>
       <a href="https://github.com/santhreal/veyyon">GitHub</a>
-      <a href="./install" class="btn">Get started</a>
+      <a href="./install.html" class="btn">Get started</a>
     </nav>
+    <details class="nav-menu"><summary>menu</summary>
+      <nav>
+        <a href="./models.html">Models</a>
+        <a href="./features.html">Features</a>
+        <a href="./install.html">Install</a>
+        <a href="./changelog.html">Changelog</a>
+        <a href="./docs/">Docs</a>
+        <a href="https://github.com/santhreal/veyyon">GitHub</a>
+        <a href="./install.html" class="btn">Get started</a>
+      </nav>
+    </details>
   </div>
+  <div class="suntrack" aria-hidden="true"><canvas data-sun="progress" width="14" height="14"></canvas></div>
 </header>
 
 <main class="wrap">
@@ -31,10 +50,8 @@
   <div class="page-head">
     <span class="kicker">Changelog</span>
     <h1>What's new.</h1>
-    <p>Veyyon's own releases, newest first — its release line starts at <span class="inline">1.0.0</span>. Below the
-      divider is the release history veyyon inherited from <a href="https://github.com/can1357/oh-my-pi">oh-my-pi</a>,
-      the project it forked. The <span class="inline">/changelog</span> command in the CLI opens this page, and every
-      launch quietly checks for a newer version. The full history lives in the
+    <p>Every shipped release, newest first. The <span class="inline">/changelog</span> command in the CLI opens
+      this page, and every launch quietly checks for a newer version. The full history lives in the
       <a href="https://github.com/santhreal/veyyon/blob/main/packages/coding-agent/CHANGELOG.md">CHANGELOG on GitHub</a>.</p>
   </div>
 
@@ -574,6 +591,8 @@
 
 </main>
 
+<div class="sunset tall" aria-hidden="true"><canvas data-sun="sunset"></canvas></div>
+
 <footer class="site">
   <div class="wrap foot">
     <div>
@@ -581,10 +600,10 @@
       <div class="attrib">A fork of <a href="https://github.com/can1357/oh-my-pi">oh-my-pi</a> (MIT), by Can Boluk. Built as its own product.</div>
     </div>
     <nav>
-      <a href="./models">Models</a>
-      <a href="./features">Features</a>
-      <a href="./install">Install</a>
-      <a href="./changelog">Changelog</a>
+      <a href="./models.html">Models</a>
+      <a href="./features.html">Features</a>
+      <a href="./install.html">Install</a>
+      <a href="./changelog.html">Changelog</a>
       <a href="./docs/">Docs</a>
       <a href="https://github.com/santhreal/veyyon">GitHub</a>
     </nav>
@@ -592,5 +611,6 @@
 </footer>
 
 <script src="./motion.js" defer></script>
+<script src="./sunmark.js" defer></script>
 </body>
 </html>

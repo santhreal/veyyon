@@ -15,6 +15,7 @@ import {
 	formatMoreItems,
 	formatStatusIcon,
 	replaceTabs,
+	sanitizeDiagnosticDisplayText,
 	shortenPath,
 	TRUNCATE_LENGTHS,
 	truncateToWidth,
@@ -629,10 +630,6 @@ interface RawDiagnostic {
 }
 
 type DiagnosticItem = ParsedDiagnostic | RawDiagnostic;
-
-function sanitizeDiagnosticDisplayText(text: string): string {
-	return replaceTabs(text);
-}
 
 function parseDiagnosticLine(line: string): ParsedDiagnostic | null {
 	const match = line.trim().match(/^(.*):(\d+):(\d+)\s+\[(\w+)\]\s*(.*)$/);

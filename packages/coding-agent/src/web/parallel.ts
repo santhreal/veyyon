@@ -1,4 +1,5 @@
 import { type FetchImpl, getEnvApiKey } from "@veyyon/pi-ai";
+import { getStringProperty, isNonNullObject } from "@veyyon/pi-utils";
 import type { AgentStorage } from "../session/agent-storage";
 import { findCredential, withHardTimeout } from "./search/providers/utils";
 
@@ -76,17 +77,8 @@ export class ParallelApiError extends Error {
 	}
 }
 
-function isObject(value: unknown): value is object {
-	return typeof value === "object" && value !== null;
-}
-
 function getOwnValue(value: object, key: string): unknown {
 	return Object.getOwnPropertyDescriptor(value, key)?.value;
-}
-
-function getString(value: object, key: string): string | undefined {
-	const candidate = getOwnValue(value, key);
-	return typeof candidate === "string" ? candidate : undefined;
 }
 
 function getNumber(value: object, key: string): number | undefined {
@@ -97,7 +89,7 @@ function getNumber(value: object, key: string): number | undefined {
 function getObjectArray(value: object, key: string): object[] {
 	const candidate = getOwnValue(value, key);
 	if (!Array.isArray(candidate)) return [];
-	return candidate.filter(isObject);
+	return candidate.filter(isNonNullObject);
 }
 
 function getStringArray(value: object, key: string): string[] {
@@ -107,16 +99,19 @@ function getStringArray(value: object, key: string): string[] {
 }
 
 function extractParallelErrorMessage(payload: unknown): string | null {
-	if (!isObject(payload)) return null;
+	if (!isNonNullObject(payload)) return null;
 
-	const directMessage = getString(payload, "message") ?? getString(payload, "detail") ?? getString(payload, "error");
+	const directMessage =
+		getStringProperty(payload, "message") ??
+		getStringProperty(payload, "detail") ??
+		getStringProperty(payload, "error");
 	if (directMessage && directMessage.trim().length > 0) {
 		return directMessage.trim();
 	}
 
 	const errorObject = getOwnValue(payload, "error");
-	if (isObject(errorObject)) {
-		const nestedMessage = getString(errorObject, "message") ?? getString(errorObject, "detail");
+	if (isNonNullObject(errorObject)) {
+		const nestedMessage = getStringProperty(errorObject, "message") ?? getStringProperty(errorObject, "detail");
 		if (nestedMessage && nestedMessage.trim().length > 0) {
 			return nestedMessage.trim();
 		}
@@ -169,8 +164,8 @@ function parseWarnings(payload: unknown): string[] {
 			warnings.push(item);
 			continue;
 		}
-		if (!isObject(item)) continue;
-		const message = getString(item, "message") ?? getString(item, "warning");
+		if (!isNonNullObject(item)) continue;
+		const message = getStringProperty(item, "message") ?? getStringProperty(item, "warning");
 		if (message) {
 			warnings.push(message);
 		}
@@ -183,9 +178,9 @@ function parseUsageItems(payload: unknown): ParallelUsageItem[] {
 
 	const usageItems: ParallelUsageItem[] = [];
 	for (const item of payload) {
-		if (!isObject(item)) continue;
+		if (!isNonNullObject(item)) continue;
 		usageItems.push({
-			name: getString(item, "name"),
+			name: getStringProperty(item, "name"),
 			count: getNumber(item, "count"),
 		});
 	}
@@ -196,25 +191,25 @@ export function parseParallelSearchPayload(
 	payload: unknown,
 	options?: { parseMetadata?: boolean },
 ): ParallelSearchResult {
-	if (!isObject(payload)) {
+	if (!isNonNullObject(payload)) {
 		throw new ParallelApiError("Parallel search returned an invalid response payload.");
 	}
 
-	const requestId = getString(payload, "search_id") ?? "";
+	const requestId = getStringProperty(payload, "search_id") ?? "";
 	const rawResults = getObjectArray(payload, "results");
 	const sources: ParallelSearchSource[] = [];
 
 	for (const item of rawResults) {
-		const url = getString(item, "url");
+		const url = getStringProperty(item, "url");
 		if (!url) continue;
 
 		const excerpts = getStringArray(item, "excerpts");
 		const snippet = excerpts.length > 0 ? excerpts.join("\n\n") : undefined;
 		sources.push({
-			title: getString(item, "title") ?? url,
+			title: getStringProperty(item, "title") ?? url,
 			url,
 			snippet,
-			publishedDate: getString(item, "publish_date"),
+			publishedDate: getStringProperty(item, "publish_date"),
 			excerpts,
 		});
 	}
@@ -246,33 +241,33 @@ export function getParallelExtractContent(document: ParallelExtractDocument): st
 }
 
 function parseExtractPayload(payload: unknown): ParallelExtractResult {
-	if (!isObject(payload)) {
+	if (!isNonNullObject(payload)) {
 		throw new ParallelApiError("Parallel extract returned an invalid response payload.");
 	}
 
-	const requestId = getString(payload, "extract_id") ?? "";
+	const requestId = getStringProperty(payload, "extract_id") ?? "";
 	const resultItems: ParallelExtractDocument[] = [];
 	for (const item of getObjectArray(payload, "results")) {
-		const url = getString(item, "url");
+		const url = getStringProperty(item, "url");
 		if (!url) continue;
 		resultItems.push({
 			url,
-			title: getString(item, "title"),
-			publishedDate: getString(item, "publish_date"),
+			title: getStringProperty(item, "title"),
+			publishedDate: getStringProperty(item, "publish_date"),
 			excerpts: getStringArray(item, "excerpts"),
-			fullContent: getString(item, "full_content"),
+			fullContent: getStringProperty(item, "full_content"),
 		});
 	}
 
 	const errors: ParallelExtractErrorEntry[] = [];
 	for (const item of getObjectArray(payload, "errors")) {
-		const url = getString(item, "url");
+		const url = getStringProperty(item, "url");
 		if (!url) continue;
 		errors.push({
 			url,
-			errorType: getString(item, "error_type"),
+			errorType: getStringProperty(item, "error_type"),
 			httpStatusCode: getNumber(item, "http_status_code"),
-			content: getString(item, "content"),
+			content: getStringProperty(item, "content"),
 		});
 	}
 

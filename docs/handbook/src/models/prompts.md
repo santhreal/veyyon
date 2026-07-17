@@ -13,5 +13,5 @@ STOP**. Plan mode (`/plan`) and goal mode (`/goal`) add gating on top of the def
 
 Edit tool prompts switch with `edit.mode` (the hashline prompt when hashline is active).
 
-There is no `backends.toml`-driven catalog or per-backend prompt tuning, and `apply_patch` is not the
-default edit surface — Veyyon uses hashline by default.
+> **Spec — not shipped:** a `backends.toml`-driven catalog with per-backend prompt tuning and an
+> `apply_patch`-forms prompt as the default edit surface. Veyyon uses hashline by default.

@@ -1,24 +1,25 @@
 import type { Database } from "bun:sqlite";
 import { createHash } from "node:crypto";
 import { type DatabasePath, openDatabase } from "../db";
+import { toUtcIso } from "../util/datetime";
+import { escapeSqlLike } from "../util/regex";
 
+// The one veracity vocabulary + weight table for the whole package (stores,
+// episodic consolidation, recall scoring). "true"/"false"/"likely_true" are
+// legacy row values older schemas persisted; they carry defined weights so no
+// downstream lookup ever sees undefined.
 export const VERACITY_WEIGHTS = Object.freeze({
 	stated: 1.0,
-	inferred: 0.7,
-	tool: 0.5,
-	imported: 0.6,
+	true: 1.0,
+	likely_true: 1.0,
 	unknown: 0.8,
+	inferred: 0.7,
+	imported: 0.6,
+	tool: 0.5,
+	false: 0,
 });
 
 export type Veracity = keyof typeof VERACITY_WEIGHTS;
-
-export const VERACITY_ALLOWED: Record<Veracity, true> = Object.freeze({
-	stated: true,
-	inferred: true,
-	tool: true,
-	imported: true,
-	unknown: true,
-});
 
 const VERACITY_WARN_VALUE_CAP = 80;
 const TX_DEPTH = Symbol("mnemopi.veracity.txDepth");
@@ -83,13 +84,29 @@ export interface ConsolidationStats {
 	readonly avg_mentions: number;
 }
 
-function isVeracity(value: string): value is Veracity {
-	return Object.hasOwn(VERACITY_ALLOWED, value);
+export function isVeracity(value: string): value is Veracity {
+	return Object.hasOwn(VERACITY_WEIGHTS, value);
 }
 
 function sqliteInTransaction(db: Database): boolean {
 	const txDb = db as TxDatabase;
 	return txDb.inTransaction === true || txDb.in_transaction === true || (txDb[TX_DEPTH] ?? 0) > 0;
+}
+
+function toConsolidatedFact(row: ConsolidatedFactRow): ConsolidatedFact {
+	return {
+		subject: row.subject,
+		predicate: row.predicate,
+		object: row.object,
+		confidence: row.confidence,
+		mention_count: row.mention_count,
+		first_seen: row.first_seen,
+		last_seen: row.last_seen,
+		sources: parseSources(row.sources_json),
+		veracity: row.veracity,
+		superseded: row.superseded_by !== null,
+		id: row.id,
+	};
 }
 
 function parseSources(raw: string | null): string[] {
@@ -105,10 +122,6 @@ function parseSources(raw: string | null): string[] {
 	} catch {
 		return [];
 	}
-}
-
-function nowIso(): string {
-	return new Date().toISOString();
 }
 
 export function computeFactId(subject: string, predicate: string, object: string): string {
@@ -261,7 +274,7 @@ export class VeracityConsolidator {
 			const existing = this.conn
 				.query("SELECT * FROM consolidated_facts WHERE subject = ? AND predicate = ? AND object = ?")
 				.get(subject, predicate, object) as ConsolidatedFactRow | null;
-			const now = nowIso();
+			const now = toUtcIso();
 
 			if (existing !== null) {
 				const newConfidence = this.bayesianUpdate(existing.confidence, veracity);
@@ -348,7 +361,7 @@ export class VeracityConsolidator {
 				);
 				return;
 			}
-			const now = nowIso();
+			const now = toUtcIso();
 			this.conn
 				.query("UPDATE consolidated_facts SET superseded_by = ?, updated_at = ? WHERE id = ?")
 				.run(winningFactId, now, losingId);
@@ -388,19 +401,34 @@ export class VeracityConsolidator {
 							ORDER BY confidence DESC, mention_count DESC
 						`)
 						.all(minConfidence) as ConsolidatedFactRow[]);
-		return rows.map(row => ({
-			subject: row.subject,
-			predicate: row.predicate,
-			object: row.object,
-			confidence: row.confidence,
-			mention_count: row.mention_count,
-			first_seen: row.first_seen,
-			last_seen: row.last_seen,
-			sources: parseSources(row.sources_json),
-			veracity: row.veracity,
-			superseded: row.superseded_by !== null,
-			id: row.id,
-		}));
+		return rows.map(toConsolidatedFact);
+	}
+
+	/**
+	 * Case-insensitive whole-word subject lookup: returns facts whose subject
+	 * equals `word` or contains it as a space-delimited word ("mukund" finds
+	 * subject "Mukund Thiru"). Subjects are stored verbatim from extraction, so
+	 * the exact-match `getConsolidatedFacts(subject)` silently misses on case
+	 * or multi-word subjects when fed single query tokens — recall paths must
+	 * use this instead.
+	 */
+	getConsolidatedFactsBySubjectWord(word: string, minConfidence = 0.5): ConsolidatedFact[] {
+		const lowered = word.toLowerCase();
+		if (lowered.length === 0) return [];
+		const escaped = escapeSqlLike(lowered);
+		const rows = this.conn
+			.query(`
+				SELECT * FROM consolidated_facts
+				WHERE confidence >= ? AND superseded_by IS NULL AND (
+					lower(subject) = ?
+					OR lower(subject) LIKE ? ESCAPE '\\'
+					OR lower(subject) LIKE ? ESCAPE '\\'
+					OR lower(subject) LIKE ? ESCAPE '\\'
+				)
+				ORDER BY confidence DESC, mention_count DESC
+			`)
+			.all(minConfidence, lowered, `${escaped} %`, `% ${escaped}`, `% ${escaped} %`) as ConsolidatedFactRow[];
+		return rows.map(toConsolidatedFact);
 	}
 
 	getHighConfidenceSummary(subject: string, threshold = 0.8): string {
@@ -442,7 +470,7 @@ export class VeracityConsolidator {
 		this.serializedWrite(() => {
 			this.conn
 				.query("UPDATE consolidated_facts SET superseded_by = ?, updated_at = ? WHERE id = ?")
-				.run(winningId, nowIso(), losingId);
+				.run(winningId, toUtcIso(), losingId);
 		});
 	}
 

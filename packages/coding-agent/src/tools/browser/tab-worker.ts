@@ -1,7 +1,6 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-
 import { postmortem, Snowflake, untilAborted } from "@veyyon/pi-utils";
 import type { HTMLElement } from "linkedom";
 import type {
@@ -56,6 +55,7 @@ import type {
 	WorkerInbound,
 	WorkerInitPayload,
 } from "./tab-protocol";
+import { targetIdForPage, targetIdForTarget } from "./target-id";
 
 declare module "puppeteer-core" {
 	interface Frame {
@@ -334,7 +334,7 @@ function redactUrlCredentials(url: string): string {
 	}
 }
 
-function errorPayload(error: unknown): RunErrorPayload {
+function tabRunErrorPayload(error: unknown): RunErrorPayload {
 	if (error instanceof ToolAbortError) {
 		return { name: error.name, message: error.message, stack: error.stack, isToolError: false, isAbort: true };
 	}
@@ -358,23 +358,6 @@ function replyError(payload: RunErrorPayload): Error {
 	if (payload.name) err.name = payload.name;
 	if (payload.stack) err.stack = payload.stack;
 	return err;
-}
-
-async function targetIdForTarget(target: Target): Promise<string> {
-	const raw = target as unknown as { _targetId?: unknown };
-	if (typeof raw._targetId === "string") return raw._targetId;
-	const session = await target.createCDPSession();
-	try {
-		const info = (await session.send("Target.getTargetInfo")) as { targetInfo?: { targetId?: string } };
-		if (info.targetInfo?.targetId) return info.targetInfo.targetId;
-		throw new ToolError("Target id unavailable from CDP target info");
-	} finally {
-		await session.detach().catch(() => undefined);
-	}
-}
-
-async function targetIdForPage(page: Page): Promise<string> {
-	return await targetIdForTarget(page.target());
 }
 
 async function collectObservationEntries(
@@ -694,7 +677,7 @@ export class WorkerCore {
 			this.#targetId = await targetIdForPage(this.#page);
 			this.#transport.send({ type: "ready", info: await this.#currentReadyInfo() });
 		} catch (error) {
-			this.#transport.send({ type: "init-failed", error: errorPayload(error) });
+			this.#transport.send({ type: "init-failed", error: tabRunErrorPayload(error) });
 		}
 	}
 
@@ -795,7 +778,7 @@ export class WorkerCore {
 				type: "result",
 				id: msg.id,
 				ok: false,
-				error: errorPayload(new ToolError("Tab worker is busy")),
+				error: tabRunErrorPayload(new ToolError("Tab worker is busy")),
 			});
 			return;
 		}
@@ -894,7 +877,7 @@ export class WorkerCore {
 				signal.removeEventListener("abort", onCancel);
 			}
 		} catch (error) {
-			this.#transport.send({ type: "result", id: msg.id, ok: false, error: errorPayload(error) });
+			this.#transport.send({ type: "result", id: msg.id, ok: false, error: tabRunErrorPayload(error) });
 		} finally {
 			if (this.#active?.id === msg.id) this.#active = null;
 			runAc.abort(postmortem.markExpectedCleanupError(new ToolAbortError("Browser run ended")));

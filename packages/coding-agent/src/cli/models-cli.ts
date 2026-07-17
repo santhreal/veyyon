@@ -11,6 +11,7 @@
  * `ls`/`find` use the cache when fresh (`online-if-uncached`); only `refresh`
  * forces the network (`online`).
  */
+
 import type { Api, Effort, Model } from "@veyyon/pi-ai";
 import { getSupportedEfforts } from "@veyyon/pi-catalog/model-thinking";
 import { formatNumber, getProjectDir } from "@veyyon/pi-utils";
@@ -20,6 +21,7 @@ import { Settings } from "../config/settings";
 import { discoverAndLoadExtensions, loadExtensions } from "../extensibility/extensions";
 import { discoverAuthStorage } from "../sdk";
 import { EventBus } from "../utils/event-bus";
+import { writeLine } from "./args";
 
 export type ModelsAction = "ls" | "find" | "refresh";
 
@@ -78,10 +80,6 @@ interface ModelJson {
 
 interface ModelsJson {
 	models: ModelJson[];
-}
-
-function writeLine(line = ""): void {
-	process.stdout.write(`${line}\n`);
 }
 
 function writeModelsConfigError(error: Error): void {

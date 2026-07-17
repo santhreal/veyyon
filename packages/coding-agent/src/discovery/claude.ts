@@ -20,6 +20,7 @@ import { type CustomTool, toolCapability } from "../capability/tool";
 import type { LoadContext, LoadResult } from "../capability/types";
 import { settings } from "../config/settings";
 import {
+	CUSTOM_TOOL_SCRIPT_EXT_RE,
 	calculateDepth,
 	createSourceMeta,
 	discoverExtensionModulePaths,
@@ -405,7 +406,7 @@ async function loadTools(ctx: LoadContext): Promise<LoadResult<CustomTool>> {
 
 	const userResult = await loadFilesFromDir<CustomTool>(ctx, userToolsDir, PROVIDER_ID, "user", {
 		transform: (name, _content, path, source) => {
-			const toolName = name.replace(/\.(ts|js|sh|bash|py)$/, "");
+			const toolName = name.replace(CUSTOM_TOOL_SCRIPT_EXT_RE, "");
 			return {
 				name: toolName,
 				path,
@@ -424,7 +425,7 @@ async function loadTools(ctx: LoadContext): Promise<LoadResult<CustomTool>> {
 
 	const projectResult = await loadFilesFromDir<CustomTool>(ctx, projectToolsDir, PROVIDER_ID, "project", {
 		transform: (name, _content, path, source) => {
-			const toolName = name.replace(/\.(ts|js|sh|bash|py)$/, "");
+			const toolName = name.replace(CUSTOM_TOOL_SCRIPT_EXT_RE, "");
 			return {
 				name: toolName,
 				path,

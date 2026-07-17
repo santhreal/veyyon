@@ -8,7 +8,7 @@
  * `authStorage.getApiKey("anthropic", sessionId)` first, then pass the result
  * through {@link buildAnthropicAuthConfig} for header/URL shaping.
  */
-import { $env } from "@veyyon/pi-utils";
+import { $env, stripTrailingSlashes } from "@veyyon/pi-utils";
 import {
 	buildAnthropicHeaders as buildProviderAnthropicHeaders,
 	normalizeAnthropicBaseUrl,
@@ -25,17 +25,17 @@ export interface AnthropicAuthConfig {
 
 const DEFAULT_BASE_URL = "https://api.anthropic.com";
 
-function normalizeBaseUrl(baseUrl: string | undefined): string | undefined {
+function normalizeAnthropicEnvBaseUrl(baseUrl: string | undefined): string | undefined {
 	const trimmed = baseUrl?.trim();
-	return trimmed ? trimmed.replace(/\/+$/, "") : undefined;
+	return trimmed ? stripTrailingSlashes(trimmed) : undefined;
 }
 
 export function resolveAnthropicBaseUrlFromEnv(): string | undefined {
 	if (isFoundryEnabled()) {
-		const foundryBaseUrl = normalizeBaseUrl($env.FOUNDRY_BASE_URL);
+		const foundryBaseUrl = normalizeAnthropicEnvBaseUrl($env.FOUNDRY_BASE_URL);
 		if (foundryBaseUrl) return foundryBaseUrl;
 	}
-	const anthropicBaseUrl = normalizeBaseUrl($env.ANTHROPIC_BASE_URL);
+	const anthropicBaseUrl = normalizeAnthropicEnvBaseUrl($env.ANTHROPIC_BASE_URL);
 	return anthropicBaseUrl || undefined;
 }
 
@@ -60,7 +60,7 @@ export function isOAuthToken(apiKey: string): boolean {
 export function buildAnthropicAuthConfig(apiKey: string, baseUrl?: string): AnthropicAuthConfig {
 	return {
 		apiKey,
-		baseUrl: normalizeBaseUrl(baseUrl) ?? resolveAnthropicBaseUrlFromEnv() ?? DEFAULT_BASE_URL,
+		baseUrl: normalizeAnthropicEnvBaseUrl(baseUrl) ?? resolveAnthropicBaseUrlFromEnv() ?? DEFAULT_BASE_URL,
 		isOAuth: isOAuthToken(apiKey),
 	};
 }

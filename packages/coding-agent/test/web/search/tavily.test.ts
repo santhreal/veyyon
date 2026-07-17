@@ -2,28 +2,28 @@ import { afterEach, describe, expect, it, vi } from "bun:test";
 import type { AuthStorage } from "@veyyon/pi-ai";
 import type { FetchImpl } from "@veyyon/pi-ai/types";
 import {
-	buildRequestBody,
+	buildTavilyRequestBody,
 	searchTavily,
 	type TavilySearchParams,
 } from "@veyyon/pi-coding-agent/web/search/providers/tavily";
 
-describe("Tavily buildRequestBody", () => {
+describe("Tavily buildTavilyRequestBody", () => {
 	afterEach(() => {
 		vi.restoreAllMocks();
 	});
 
 	it("omits topic entirely so Tavily uses its default general index", () => {
-		const body = buildRequestBody({ query: "Bun 1.3 release notes" });
+		const body = buildTavilyRequestBody({ query: "Bun 1.3 release notes" });
 		expect(body).not.toHaveProperty("topic");
 	});
 
 	it("does not send time_range when recency is unset", () => {
-		const body = buildRequestBody({ query: "Bun 1.3 release notes" });
+		const body = buildTavilyRequestBody({ query: "Bun 1.3 release notes" });
 		expect(body).not.toHaveProperty("time_range");
 	});
 
 	it("sends time_range when recency is set, without switching topic to news", () => {
-		const body = buildRequestBody({
+		const body = buildTavilyRequestBody({
 			query: "Bun 1.3 release notes",
 			recency: "week",
 		});
@@ -32,13 +32,13 @@ describe("Tavily buildRequestBody", () => {
 	});
 
 	it.each(["day", "week", "month", "year"] as const)("passes %s through as time_range verbatim", recency => {
-		const body = buildRequestBody({ query: "q", recency });
+		const body = buildTavilyRequestBody({ query: "q", recency });
 		expect(body.time_range).toBe(recency);
 		expect(body).not.toHaveProperty("topic");
 	});
 
 	it("always includes query, max_results, search_depth, and include_answer", () => {
-		const body = buildRequestBody({ query: "q", num_results: 7 });
+		const body = buildTavilyRequestBody({ query: "q", num_results: 7 });
 		expect(body.query).toBe("q");
 		expect(body.max_results).toBe(7);
 		expect(body.search_depth).toBe("basic");

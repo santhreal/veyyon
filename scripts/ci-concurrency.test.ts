@@ -322,3 +322,67 @@ describe("ci.yml concurrency", () => {
 		expect(GhaEval.template(cancelTemplate, ctx)).toBe("true");
 	});
 });
+
+// Release runs must never depend on the private omp-kata fleet: every job that
+// defaults to the self-hosted runner routes to a GitHub-hosted runner when the
+// run is release-shaped (same scheduling-time signals as the concurrency group).
+// Extract every runner expression that can resolve to omp-kata — the `runs-on:`
+// ternaries and the cross-platform matrix `os:` entries — and evaluate each one
+// under every event shape.
+const runnerTemplates: Array<{ where: string; template: string }> = [];
+for (const [i, line] of workflowYaml.split("\n").entries()) {
+	if (!line.includes("omp-kata")) continue;
+	const runsOn = /^\s*runs-on:\s*(\S.*?)\s*$/.exec(line);
+	if (runsOn) {
+		const raw = runsOn[1];
+		const template = raw.startsWith('"') && raw.endsWith('"') ? raw.slice(1, -1) : raw;
+		runnerTemplates.push({ where: `ci.yml:${i + 1} runs-on`, template });
+		continue;
+	}
+	const matrixOs = /\{\s*os:\s*"([^"]+)"/.exec(line);
+	if (matrixOs) runnerTemplates.push({ where: `ci.yml:${i + 1} matrix os`, template: matrixOs[1] });
+}
+
+describe("ci.yml runner routing (releases never depend on omp-kata)", () => {
+	it("found the self-hosted runner expressions (12 runs-on + 2 matrix entries)", () => {
+		expect(runnerTemplates.filter(t => t.where.includes("runs-on")).length).toBe(12);
+		expect(runnerTemplates.filter(t => t.where.includes("matrix os")).length).toBe(2);
+	});
+
+	it("every omp-kata mention is inside an evaluable expression, never a bare literal", () => {
+		for (const { where, template } of runnerTemplates) {
+			expect(template.includes("${{"), `${where} must be an expression`).toBe(true);
+		}
+	});
+
+	for (const [label, ctx, expected] of [
+		[
+			"release push (bump-commit subject)",
+			baseCtx({ event: { head_commit: { message: `${RELEASE_SUBJECT}\n\nbody` } } }),
+			"ubuntu-22.04",
+		],
+		[
+			"workflow_dispatch from a v* tag ref",
+			baseCtx({ ref: "refs/tags/v15.12.6", event_name: "workflow_dispatch" }),
+			"ubuntu-22.04",
+		],
+		["workflow_dispatch from main", baseCtx({ event_name: "workflow_dispatch" }), "ubuntu-22.04"],
+		["ordinary main push", baseCtx({ event: { head_commit: { message: "fix(ux): theme tweak" } } }), "omp-kata"],
+	] as const) {
+		it(`${label} resolves every job to ${expected}`, () => {
+			for (const { where, template } of runnerTemplates) {
+				// Matrix entries never see pull_request events (the job is release/main
+				// only), so their expressions may omit the PR clause; runs-on ternaries
+				// are exercised by the dedicated PR case below.
+				expect(GhaEval.template(template, ctx), where).toBe(expected);
+			}
+		});
+	}
+
+	it("pull_request resolves every runs-on ternary to ubuntu-22.04", () => {
+		const ctx = baseCtx({ ref: "refs/pull/42/merge", event_name: "pull_request", event: {} });
+		for (const { where, template } of runnerTemplates.filter(t => t.where.includes("runs-on"))) {
+			expect(GhaEval.template(template, ctx), where).toBe("ubuntu-22.04");
+		}
+	});
+});

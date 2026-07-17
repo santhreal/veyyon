@@ -46,10 +46,10 @@ export async function classifyUnexpectedStop(
 	const backend = deps.settings.get("providers.unexpectedStopModel");
 	try {
 		if (backend === ONLINE_MEMORY_MODEL_KEY) {
-			return await classifyOnline(text, deps);
+			return await classifyStopOnline(text, deps);
 		}
 		if (isTinyMemoryLocalModelKey(backend)) {
-			return await classifyLocal(text, backend, deps);
+			return await classifyStopLocal(text, backend, deps);
 		}
 		return undefined;
 	} catch (error) {
@@ -61,7 +61,7 @@ export async function classifyUnexpectedStop(
 	}
 }
 
-async function classifyOnline(text: string, deps: ClassifyUnexpectedStopDeps): Promise<boolean | undefined> {
+async function classifyStopOnline(text: string, deps: ClassifyUnexpectedStopDeps): Promise<boolean | undefined> {
 	const resolved = resolveRoleSelectionWithInherit(
 		["tiny", "smol"],
 		deps.settings,
@@ -105,7 +105,7 @@ async function classifyOnline(text: string, deps: ClassifyUnexpectedStopDeps): P
 	return parseUnexpectedStopClassification(outputText);
 }
 
-async function classifyLocal(
+async function classifyStopLocal(
 	text: string,
 	modelKey: string,
 	deps: ClassifyUnexpectedStopDeps,

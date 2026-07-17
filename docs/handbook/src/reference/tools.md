@@ -1,15 +1,15 @@
 # Tools reference
 
 Model-facing tools are advertised to the model per turn. Availability depends on
-settings, approval mode, plan mode, memory backend, and feature flags.
+settings, sandbox, plan mode, memory backend, and feature flags.
 
-For approvals see [Approvals and autonomy](../features/sandbox.md). For MCP tools see [MCP](../features/mcp.md).
+For sandbox and approvals see [Sandbox](../features/sandbox.md). For MCP tools see [MCP](../features/mcp.md).
 Per-tool engineering specs live under [`docs/tools/`](../../../tools/).
 
 ## Core loop
 
 1. Model emits a tool call (JSON arguments per schema).
-2. Veyyon validates arguments; handlers run after approval checks.
+2. Veyyon validates arguments; handlers run after approval/sandbox checks.
 3. Text or structured output returns to the conversation.
 
 General schema repair runs before dispatch on all schema-bearing tool calls; tool-specific
@@ -40,7 +40,7 @@ Hashline flow: `read`/`grep` mint `[path#TAG]` anchors → model copies tags int
 
 | Tool | Purpose |
 | --- | --- |
-| `bash` | Shell commands, gated by the approval mode |
+| `bash` | Shell commands with sandbox + approval |
 | `ssh` | Remote commands via configured hosts |
 | `eval` | JS/Python/Julia/Ruby eval cells (when enabled) |
 | `debug` | Debugger integration |

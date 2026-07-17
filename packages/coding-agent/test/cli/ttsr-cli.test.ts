@@ -11,6 +11,7 @@ import {
 } from "@veyyon/pi-coding-agent/cli/ttsr-cli";
 import { resetSettingsForTest } from "@veyyon/pi-coding-agent/config/settings";
 import { getProjectAgentDir, getProjectDir, removeSyncWithRetries, setProjectDir } from "@veyyon/pi-utils";
+import { compileRulePathGlobs, parseToolScopeToken } from "../../src/capability/rule-scope";
 
 let testTmpDir: string;
 
@@ -501,6 +502,30 @@ describe("omp ttsr", () => {
 	describe("exports", () => {
 		it("TTSR_SOURCES lists all three match sources", () => {
 			expect(TTSR_SOURCES).toEqual(["text", "thinking", "tool"]);
+		});
+	});
+
+	// The scope grammar is shared with the live TTSR engine (capability/rule-scope.ts)
+	// so scan and runtime always agree on which rules apply.
+	describe("scope grammar (capability/rule-scope.ts owner)", () => {
+		it("parses tool, tool:<name>, bare-name, and (<glob>) forms", () => {
+			expect(parseToolScopeToken("tool")).toEqual({ toolName: undefined });
+			expect(parseToolScopeToken("tool:Bash")).toEqual({ toolName: "bash" });
+			expect(parseToolScopeToken("edit")).toEqual({ toolName: "edit" });
+			const scoped = parseToolScopeToken("tool:write(src/**/*.ts)");
+			expect(scoped?.toolName).toBe("write");
+			expect(scoped?.pathPattern).toBe("src/**/*.ts");
+			expect(scoped?.pathGlob?.match("src/a/b.ts")).toBe(true);
+			expect(scoped?.pathGlob?.match("test/a.ts")).toBe(false);
+			expect(parseToolScopeToken("no spaces allowed")).toBeUndefined();
+		});
+
+		it("compiles rule glob lists, dropping blanks", () => {
+			expect(compileRulePathGlobs(undefined)).toBeUndefined();
+			expect(compileRulePathGlobs([" ", ""])).toBeUndefined();
+			const globs = compileRulePathGlobs([" *.md ", "src/**"]);
+			expect(globs).toHaveLength(2);
+			expect(globs?.[0]?.match("README.md")).toBe(true);
 		});
 	});
 });

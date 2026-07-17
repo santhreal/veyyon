@@ -11,7 +11,7 @@ const gitHunkSchema = type({
 	"staged?": type("boolean").describe("use staged changes (default true)"),
 });
 
-function selectHunks(fileHunks: FileHunks, requested?: number[]): DiffHunk[] {
+function selectRequestedHunks(fileHunks: FileHunks, requested?: number[]): DiffHunk[] {
 	if (!requested || requested.length === 0) return fileHunks.hunks;
 	const wanted = new Set(requested.map(value => Math.max(1, Math.floor(value))));
 	return fileHunks.hunks.filter(hunk => wanted.has(hunk.index + 1));
@@ -37,7 +37,7 @@ export function createGitHunkTool(cwd: string): CustomTool<typeof gitHunkSchema>
 					details: { file: params.file, staged, hunks: [] },
 				};
 			}
-			const selected = selectHunks(fileHunks, params.hunks);
+			const selected = selectRequestedHunks(fileHunks, params.hunks);
 			const text = selected.length ? selected.map(hunk => hunk.content).join("\n\n") : "(no matching hunks)";
 			return {
 				content: [{ type: "text", text }],

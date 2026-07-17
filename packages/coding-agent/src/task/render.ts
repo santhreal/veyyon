@@ -4,6 +4,7 @@
  * Provides renderCall and renderResult functions for displaying
  * task execution in the terminal UI.
  */
+
 import path from "node:path";
 import type { Component } from "@veyyon/pi-tui";
 import { Container, Markdown, Text } from "@veyyon/pi-tui";
@@ -35,6 +36,7 @@ import {
 	type SubmitReviewDetails,
 } from "../tools/review";
 import { framedBlock, renderStatusLine } from "../tui";
+import { buildTreePrefix } from "../tui/utils";
 import { repairDoubleEncodedJsonString } from "./repair-args";
 import { subprocessToolRegistry } from "./subprocess-tool-registry";
 import type { AgentProgress, SingleResult, TaskItem, TaskParams, TaskToolDetails, YieldItem } from "./types";
@@ -311,11 +313,7 @@ function extractMissingYieldWarning(output: string): { warning?: string; rest: s
 	return { warning: firstLine, rest };
 }
 
-function buildTreePrefix(ancestors: boolean[], theme: Theme): string {
-	return ancestors.map(hasNext => (hasNext ? `${theme.tree.vertical}  ` : "   ")).join("");
-}
-
-function renderJsonTreeLines(
+function renderTaskJsonTreeLines(
 	value: unknown,
 	theme: Theme,
 	maxDepth: number,
@@ -525,7 +523,7 @@ function renderOutputSection(
 					return lines;
 				}
 
-				const tree = renderJsonTreeLines(parsed, theme, expanded ? 6 : 2, expanded ? 24 : 6);
+				const tree = renderTaskJsonTreeLines(parsed, theme, expanded ? 6 : 2, expanded ? 24 : 6);
 				if (tree.lines.length > 0) {
 					for (const line of tree.lines) {
 						lines.push(`${continuePrefix}  ${line}`);
@@ -567,7 +565,7 @@ function renderOutputSection(
 
 			// Expanded: tree format
 			lines.push(`${continuePrefix}${theme.fg("dim", "Output")}`);
-			const tree = renderJsonTreeLines(parsed, theme, expanded ? 6 : 2, expanded ? 24 : 6);
+			const tree = renderTaskJsonTreeLines(parsed, theme, expanded ? 6 : 2, expanded ? 24 : 6);
 			if (tree.lines.length > 0) {
 				for (const line of tree.lines) {
 					lines.push(`${continuePrefix}  ${line}`);

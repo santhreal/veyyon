@@ -91,6 +91,16 @@ export function parseGitHubCopilotApiKey(apiKeyRaw: string): ParsedGitHubCopilot
 		}
 	} catch {}
 
+	// A plain (non-JSON) string is a raw token; but a JSON-object-shaped key
+	// that failed to parse or has no `token` field is a misconfigured
+	// credential — sending the blob as a bearer token yields an opaque 401,
+	// so fail closed with the actual problem instead.
+	if (apiKeyRaw.trimStart().startsWith("{")) {
+		throw new Error(
+			"GitHub Copilot api key looks like a JSON payload but has no usable `token` field; " +
+				'expected {"token": "...", "enterpriseUrl"?: "...", "apiEndpoint"?: "..."} or a plain token string',
+		);
+	}
 	return { accessToken: apiKeyRaw };
 }
 

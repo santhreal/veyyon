@@ -12,15 +12,16 @@
  */
 
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
 import { configureProviderMaxInFlightRequests } from "@veyyon/pi-ai/stream";
 import {
+	expandTilde,
 	getAgentDbPath,
 	getAgentDir,
 	getLastChangelogVersionPath,
 	getProjectDir,
 	isEnoent,
+	isRecord,
 	logger,
 	MAIN_CONFIG_FILENAMES,
 	procmgr,
@@ -151,10 +152,6 @@ type PathScopedStringArrayEntry = {
 	providers?: unknown;
 };
 
-function expandTilde(p: string): string {
-	return p === "~" ? os.homedir() : p.startsWith("~/") ? path.join(os.homedir(), p.slice(2)) : p;
-}
-
 function normalizePathPrefix(prefix: string): string {
 	return path.resolve(expandTilde(prefix));
 }
@@ -168,10 +165,6 @@ function stringArrayFromUnknown(value: unknown): string[] {
 	if (typeof value === "string") return [value];
 	if (Array.isArray(value)) return value.filter((item): item is string => typeof item === "string");
 	return [];
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
 function modelRoleValueFromUnknown(value: unknown): string | undefined {

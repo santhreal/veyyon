@@ -71,7 +71,7 @@ async function isMastodonInstance(hostname: string, timeout: number, signal?: Ab
 /**
  * Format a date string to readable format
  */
-function formatDate(isoDate: string): string {
+function formatMastodonDate(isoDate: string): string {
 	try {
 		const date = new Date(isoDate);
 		return date.toLocaleDateString("en-US", {
@@ -106,7 +106,7 @@ async function formatStatus(status: MastodonStatus, isReblog = false): Promise<s
 
 	md += `**@${account.acct}**`;
 	if (account.bot) md += " 🤖";
-	md += ` · ${formatDate(status.created_at)}`;
+	md += ` · ${formatMastodonDate(status.created_at)}`;
 	if (status.visibility !== "public") md += ` · ${status.visibility}`;
 	md += "\n\n";
 
@@ -172,7 +172,7 @@ async function formatAccount(account: MastodonAccount): Promise<string> {
 	md += `**Following:** ${formatNumber(account.following_count)} · `;
 	md += `**Posts:** ${formatNumber(account.statuses_count)}\n\n`;
 
-	md += `**Joined:** ${formatDate(account.created_at)}\n`;
+	md += `**Joined:** ${formatMastodonDate(account.created_at)}\n`;
 	md += `**Profile:** ${account.url}\n`;
 
 	// Profile fields (links, pronouns, etc.)
@@ -270,7 +270,7 @@ export const handleMastodon: SpecialHandler = async (
 				if (statuses && statuses.length > 0) {
 					md += "\n---\n\n## Recent Posts\n\n";
 					for (const status of statuses.slice(0, 5)) {
-						md += `### ${formatDate(status.created_at)}\n\n`;
+						md += `### ${formatMastodonDate(status.created_at)}\n\n`;
 						const content = await htmlToBasicMarkdown(status.content);
 						md += `${content}\n\n`;
 						md += `💬 ${status.replies_count} · 🔁 ${status.reblogs_count} · ⭐ ${status.favourites_count}\n\n`;

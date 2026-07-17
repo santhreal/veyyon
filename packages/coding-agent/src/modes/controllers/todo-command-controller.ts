@@ -1,11 +1,16 @@
 import * as fs from "node:fs/promises";
 import {
+	findPhaseFuzzy,
+	findTaskFuzzy,
+	titleCaseSentence,
+	tokenizeQuotedArgs,
+} from "../../slash-commands/helpers/todo";
+import {
 	applyOpsToPhases,
 	getLatestTodoPhasesFromEntries,
 	markdownToPhases,
 	phasesToMarkdown,
 	resolveTodoMarkdownPath,
-	type TodoItem,
 	type TodoPhase,
 	USER_TODO_EDIT_CUSTOM_TYPE,
 } from "../../tools/todo";
@@ -28,37 +33,6 @@ const USAGE = [
 ].join("\n");
 
 // =============================================================================
-// Argument tokenizer (respects double-quoted strings)
-// =============================================================================
-
-function tokenize(input: string): string[] {
-	const tokens: string[] = [];
-	let cur = "";
-	let inQuote = false;
-	for (let i = 0; i < input.length; i++) {
-		const ch = input[i];
-		if (ch === "\\" && i + 1 < input.length) {
-			cur += input[++i];
-			continue;
-		}
-		if (ch === '"') {
-			inQuote = !inQuote;
-			continue;
-		}
-		if (!inQuote && /\s/.test(ch)) {
-			if (cur) {
-				tokens.push(cur);
-				cur = "";
-			}
-			continue;
-		}
-		cur += ch;
-	}
-	if (cur) tokens.push(cur);
-	return tokens;
-}
-
-// =============================================================================
 // Name normalization
 // =============================================================================
 
@@ -73,44 +47,6 @@ function titleCase(s: string): string {
 // =============================================================================
 // Fuzzy matching
 // =============================================================================
-
-function findPhaseFuzzy(phases: TodoPhase[], query: string): TodoPhase | undefined {
-	const q = query.trim().toLowerCase();
-	if (!q) return undefined;
-	// Exact name (case-insensitive)
-	const byName = phases.find(p => p.name.toLowerCase() === q);
-	if (byName) return byName;
-	// Substring (prefer prefix match)
-	const prefixMatches = phases.filter(p => p.name.toLowerCase().startsWith(q));
-	if (prefixMatches.length === 1) return prefixMatches[0];
-	const subMatches = phases.filter(p => p.name.toLowerCase().includes(q));
-	if (subMatches.length === 1) return subMatches[0];
-	return undefined;
-}
-
-function findTaskFuzzy(phases: TodoPhase[], query: string): { task: TodoItem; phase: TodoPhase } | undefined {
-	const q = query.trim().toLowerCase();
-	if (!q) return undefined;
-	// Exact content (case-insensitive)
-	for (const phase of phases) {
-		for (const task of phase.tasks) {
-			if (task.content.toLowerCase() === q) return { task, phase };
-		}
-	}
-	const matches: Array<{ task: TodoItem; phase: TodoPhase }> = [];
-	for (const phase of phases) {
-		for (const task of phase.tasks) {
-			if (task.content.toLowerCase().includes(q)) {
-				matches.push({ task, phase });
-			}
-		}
-	}
-	if (matches.length === 1) return matches[0];
-	// Prefer single in_progress/pending hit when ambiguous
-	const active = matches.filter(m => m.task.status === "in_progress" || m.task.status === "pending");
-	if (active.length === 1) return active[0];
-	return undefined;
-}
 
 // =============================================================================
 // Build system reminder
@@ -256,7 +192,7 @@ export class TodoCommandController {
 	// ------------------------------------------------------------- append
 
 	#append(rest: string): void {
-		const tokens = tokenize(rest);
+		const tokens = tokenizeQuotedArgs(rest);
 		if (tokens.length === 0) {
 			this.ctx.showError("Usage: /todo append [<phase>] <task...>");
 			return;
@@ -480,8 +416,3 @@ export class TodoCommandController {
 }
 
 /** Capitalize first letter only — keeps acronyms / casing in the rest of the sentence intact. */
-function titleCaseSentence(s: string): string {
-	const trimmed = s.trim();
-	if (!trimmed) return trimmed;
-	return trimmed[0].toUpperCase() + trimmed.slice(1);
-}

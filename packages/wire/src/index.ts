@@ -448,6 +448,26 @@ export interface ParsedCollabLink {
 	writeToken?: Uint8Array;
 }
 
+// ONE PLACE: the join-link wire format is parsed on both sides (agent
+// collab/protocol.ts and browser collab-web lib/link.ts); the grammar lives
+// here so it cannot drift between them.
+
+/** Room path of a full/relay link: `/r/<roomId>[.<base64url key material>]`. */
+export const ROOM_PATH_RE = /^\/r\/([A-Za-z0-9_-]{10,64})(?:\.([A-Za-z0-9_-]+))?$/;
+
+/** Bare link (no scheme/host): `<roomId>.<key>` or `<roomId>#<key>`. */
+export const BARE_LINK_RE = /^([A-Za-z0-9_-]{10,64})[#.]([A-Za-z0-9_-]+)$/;
+
+/** base64url alphabet (unpadded). */
+export const B64URL_RE = /^[A-Za-z0-9_-]+$/;
+
+const LOCAL_HOSTNAMES: Record<string, true> = { localhost: true, "127.0.0.1": true, "::1": true, "[::1]": true };
+
+/** Hosts allowed to use ws:// (everything else must be wss://). */
+export function isLocalHostname(hostname: string): boolean {
+	return LOCAL_HOSTNAMES[hostname] === true;
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Relay control messages (TEXT JSON, unencrypted, no session data)
 // ═══════════════════════════════════════════════════════════════════════════

@@ -9,6 +9,12 @@ import { initTheme } from "../modes/theme/theme";
 export default class Grep extends Command {
 	static description = "Test grep tool";
 
+	static examples = [
+		'veyyon grep "import" src/',
+		'veyyon grep "TODO" . --glob "*.ts"',
+		'veyyon grep "function" --files',
+	];
+
 	static args = {
 		pattern: Args.string({ description: "Regex pattern to search for", required: false }),
 		path: Args.string({ description: "Directory or file to search", required: false }),

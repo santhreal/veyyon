@@ -22,7 +22,7 @@ import {
 } from "./fields";
 import { isValidJsonSchema } from "./meta-validator";
 import { type DescriptionSpillFormat, spillToDescription } from "./spill";
-import { enter, epochNext, exit, once, stamp } from "./stamps";
+import { enter, epochNext, exit, markEpochOnce, stamp } from "./stamps";
 import { isJsonObject, isJsonObjectEmpty, type JsonObject } from "./types";
 import { decontaminateZodInstance } from "./zod-decontaminate";
 
@@ -667,11 +667,11 @@ function collapseSameTypeCombinerVariants(schema: JsonObject, combiner: "anyOf" 
  */
 export function stripResidualCombiners(value: unknown, epoch: number = epochNext()): unknown {
 	if (Array.isArray(value)) {
-		if (!once(value, epoch)) return [];
+		if (!markEpochOnce(value, epoch)) return [];
 		return value.map(entry => stripResidualCombiners(entry, epoch));
 	}
 	if (!isJsonObject(value)) return value;
-	if (!once(value, epoch)) return {};
+	if (!markEpochOnce(value, epoch)) return {};
 	const result: JsonObject = {};
 	for (const key in value) {
 		if (Object.hasOwn(value, key)) result[key] = stripResidualCombiners(value[key], epoch);
@@ -776,7 +776,7 @@ function normalizeNullablePropertiesForCloudCodeAssist(
 	epoch: number = epochNext(),
 ): NullableNormalizationResult {
 	if (Array.isArray(value)) {
-		if (!once(value, epoch)) {
+		if (!markEpochOnce(value, epoch)) {
 			return { schema: [], nullable: false };
 		}
 		return {
@@ -787,7 +787,7 @@ function normalizeNullablePropertiesForCloudCodeAssist(
 	if (!isJsonObject(value)) {
 		return { schema: value, nullable: false };
 	}
-	if (!once(value, epoch)) {
+	if (!markEpochOnce(value, epoch)) {
 		return { schema: {}, nullable: false };
 	}
 
@@ -861,13 +861,13 @@ function hasResidualSchemaIncompatibilities(
 	epoch: number = epochNext(),
 ): boolean {
 	if (Array.isArray(value)) {
-		if (!once(value, epoch)) return false;
+		if (!markEpochOnce(value, epoch)) return false;
 		return value.some(entry => hasResidualSchemaIncompatibilities(entry, checks, epoch));
 	}
 	if (!isJsonObject(value)) {
 		return false;
 	}
-	if (!once(value, epoch)) {
+	if (!markEpochOnce(value, epoch)) {
 		return false;
 	}
 
@@ -1489,7 +1489,7 @@ function isUnrepresentableStrictBranch(value: unknown): boolean {
  * `tryEnforceStrictSchema` rather than throwing during enforcement.
  */
 function hasUnrepresentableStrictObjectMap(schema: Record<string, unknown>, epoch: number = epochNext()): boolean {
-	if (!once(schema, epoch)) return false;
+	if (!markEpochOnce(schema, epoch)) return false;
 
 	let hasPatternProperties = false;
 	if (isJsonObject(schema.patternProperties)) {
@@ -1591,7 +1591,7 @@ export function sanitizeSchemaForStrictMode(
 ): Record<string, unknown> {
 	const cached = cache.get(schema);
 	if (cached) return cached;
-	if (!once(schema, epoch)) return {};
+	if (!markEpochOnce(schema, epoch)) return {};
 
 	// Pre-pass: unravel `$ref` with sibling keys by inlining the resolved def.
 	// OpenAI strict mode forbids `{$ref, description, ...}`; the SDK resolves

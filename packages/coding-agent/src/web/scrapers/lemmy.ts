@@ -84,7 +84,7 @@ function indentBlock(text: string, indent: string): string {
 		.join("\n");
 }
 
-function renderComments(comments: LemmyCommentView[]): string {
+function renderLemmyComments(comments: LemmyCommentView[]): string {
 	const childrenByParent = new Map<number, LemmyCommentView[]>();
 
 	const commentIds = new Set(comments.map(view => view.comment.id));
@@ -190,7 +190,7 @@ export const handleLemmy: SpecialHandler = async (
 		}
 
 		if (comments.length > 0) {
-			const threadedComments = renderComments(comments);
+			const threadedComments = renderLemmyComments(comments);
 			if (threadedComments) {
 				md += `---\n\n## Comments\n\n${threadedComments}\n`;
 			}

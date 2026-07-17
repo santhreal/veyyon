@@ -1,7 +1,7 @@
 import type { Message, ToolCall } from "../types";
 import { mintToolCallId, partialSuffixOverlap, partialSuffixOverlapAny } from "./coercion";
 import dialectPrompt from "./gemma.md" with { type: "text" };
-import { assistantTranscriptParts, collectToolResultRun, messageContentText } from "./rendering";
+import { assistantTranscriptParts, collectToolResultRun, gemmaTurn, messageContentText } from "./rendering";
 import type {
 	DialectDefinition,
 	DialectRenderOptions,
@@ -163,17 +163,17 @@ function parseGemmaCall(body: string): ParsedCall | undefined {
 	const head = CALL_HEAD.exec(trimmed);
 	if (!head) return undefined;
 	const braceStart = head[0].length - 1;
-	const end = matchDelim(trimmed, braceStart, "{", "}");
+	const end = matchDelimSkippingStrings(trimmed, braceStart, "{", "}");
 	const argsText = end === -1 ? trimmed.slice(braceStart + 1) : trimmed.slice(braceStart + 1, end);
 	return { name: head[1]!, arguments: parseGemmaArgs(argsText) };
 }
 
 function parseGemmaArgs(text: string): Record<string, unknown> {
 	const out: Record<string, unknown> = {};
-	for (const segment of splitTopLevel(text, ",")) {
+	for (const segment of splitGemmaTopLevel(text, ",")) {
 		const trimmed = segment.trim();
 		if (trimmed.length === 0) continue;
-		const colon = topLevelIndexOf(trimmed, ":");
+		const colon = gemmaTopLevelIndexOf(trimmed, ":");
 		if (colon === -1) continue;
 		const key = trimmed.slice(0, colon).trim();
 		if (!/^[A-Za-z_]\w*$/.test(key)) continue;
@@ -189,15 +189,15 @@ function parseGemmaValue(raw: string): unknown {
 		return close === -1 ? t.slice(STRING.length) : t.slice(STRING.length, close);
 	}
 	if (t.startsWith("[")) {
-		const end = matchDelim(t, 0, "[", "]");
+		const end = matchDelimSkippingStrings(t, 0, "[", "]");
 		const inner = end === -1 ? t.slice(1) : t.slice(1, end);
-		return splitTopLevel(inner, ",")
+		return splitGemmaTopLevel(inner, ",")
 			.map(part => part.trim())
 			.filter(part => part.length > 0)
 			.map(parseGemmaValue);
 	}
 	if (t.startsWith("{")) {
-		const end = matchDelim(t, 0, "{", "}");
+		const end = matchDelimSkippingStrings(t, 0, "{", "}");
 		return parseGemmaArgs(end === -1 ? t.slice(1) : t.slice(1, end));
 	}
 	if (t === "true") return true;
@@ -231,7 +231,7 @@ function findCallClose(text: string): number {
 }
 
 /** Index of the `close` delimiter matching `open` at `openIndex`, skipping strings. */
-function matchDelim(text: string, openIndex: number, open: string, close: string): number {
+function matchDelimSkippingStrings(text: string, openIndex: number, open: string, close: string): number {
 	let depth = 0;
 	let i = openIndex;
 	const n = text.length;
@@ -249,7 +249,7 @@ function matchDelim(text: string, openIndex: number, open: string, close: string
 }
 
 /** Split on `sep` at bracket depth 0, skipping `<|"|>` string spans. */
-function splitTopLevel(text: string, sep: string): string[] {
+function splitGemmaTopLevel(text: string, sep: string): string[] {
 	const parts: string[] = [];
 	let depth = 0;
 	let start = 0;
@@ -274,7 +274,7 @@ function splitTopLevel(text: string, sep: string): string[] {
 }
 
 /** First index of `ch` at bracket depth 0, skipping `<|"|>` string spans. */
-function topLevelIndexOf(text: string, ch: string): number {
+function gemmaTopLevelIndexOf(text: string, ch: string): number {
 	let depth = 0;
 	let i = 0;
 	const n = text.length;
@@ -367,10 +367,6 @@ function parseMaybeJson(text: string): unknown {
 	} catch {
 		return text;
 	}
-}
-
-function gemmaTurn(role: "model" | "system" | "user", body: string): string {
-	return `<|turn>${role}\n${body}<turn|>`;
 }
 
 const definition: DialectDefinition = {

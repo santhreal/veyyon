@@ -25,6 +25,7 @@ import {
 	googleGeminiCliModelManagerOptions,
 	openaiCodexModelManagerOptions,
 	PROVIDER_DESCRIPTORS,
+	toModelSpec,
 } from "@veyyon/pi-catalog/provider-models";
 import {
 	collapseBuiltModelVariants,
@@ -313,7 +314,7 @@ interface CommandApiKeyResolution {
  * `!cmd` runs a shell command and returns trimmed stdout, otherwise env vars are
  * checked first and the input falls back to a literal value.
  */
-function resolveConfigValue(valueConfig: string): string | undefined {
+function resolveConfigValueSync(valueConfig: string): string | undefined {
 	if (valueConfig.startsWith("!")) return resolveCommandConfig(valueConfig.slice(1).trim());
 	const envValue = Bun.env[valueConfig];
 	if (envValue) return envValue;
@@ -335,12 +336,12 @@ function materializeConfigHeaderSources(
 	for (const source of sources) {
 		if (!source) continue;
 		for (const [key, value] of Object.entries(source)) {
-			const next = resolveConfigValue(value);
+			const next = resolveConfigValueSync(value);
 			if (next) resolved[key] = next;
 		}
 	}
 	if (options?.authHeader && options.apiKeyConfig) {
-		const resolvedKey = resolveConfigValue(options.apiKeyConfig);
+		const resolvedKey = resolveConfigValueSync(options.apiKeyConfig);
 		if (resolvedKey) resolved.Authorization = `Bearer ${resolvedKey}`;
 	}
 	return Object.keys(resolved).length > 0 ? resolved : undefined;
@@ -475,10 +476,6 @@ function mergeProviderRemoteCompactionConfig(
  * boundary: sparse compat comes from `compatConfig`, never from the resolved
  * record.
  */
-function toModelSpec<TApi extends Api>(model: Model<TApi>): ModelSpec<TApi> {
-	return { ...model, compat: model.compatConfig } as ModelSpec<TApi>;
-}
-
 /**
  * The patchable subset of `Model` fields shared by `modelOverrides` entries,
  * custom model definitions, and parsed custom-model overlays. `undefined`
@@ -771,7 +768,7 @@ export class ModelRegistry {
 	#resolveCommandBackedApiKey(provider: string): CommandApiKeyResolution {
 		const keyConfig = this.#customProviderApiKeys.get(provider);
 		if (!isCommandConfigValue(keyConfig)) return { configured: false };
-		const value = resolveConfigValue(keyConfig);
+		const value = resolveConfigValueSync(keyConfig);
 		if (value) {
 			this.authStorage.setConfigApiKey(provider, value);
 			return { configured: true, value };
@@ -782,7 +779,7 @@ export class ModelRegistry {
 
 	#installProviderApiKey(provider: string, keyConfig: string): void {
 		this.#customProviderApiKeys.set(provider, keyConfig);
-		const resolved = resolveConfigValue(keyConfig);
+		const resolved = resolveConfigValueSync(keyConfig);
 		if (resolved) {
 			this.authStorage.setConfigApiKey(provider, resolved);
 		} else if (isCommandConfigValue(keyConfig)) {
@@ -815,7 +812,7 @@ export class ModelRegistry {
 		this.authStorage.setFallbackResolver(provider => {
 			const keyConfig = this.#customProviderApiKeys.get(provider);
 			if (!keyConfig) return undefined;
-			return resolveConfigValue(keyConfig);
+			return resolveConfigValueSync(keyConfig);
 		});
 		// Load models synchronously in constructor.
 		this.#loadModels();

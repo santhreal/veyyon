@@ -110,7 +110,7 @@ export function createAbortError(name: "AbortError" | "TimeoutError", message: s
 	return err;
 }
 
-export function throwIfAborted(signal: AbortSignal | undefined, fallbackReason: string): void {
+export function throwIfKernelAborted(signal: AbortSignal | undefined, fallbackReason: string): void {
 	if (!signal?.aborted) return;
 	const reason = signal.reason;
 	if (reason instanceof Error) throw reason;
@@ -539,7 +539,7 @@ export abstract class BaseKernel<TExecuteOptions extends KernelExecuteOptions = 
 				: undefined;
 		if (timer) cleanups.push(() => clearTimeout(timer));
 		try {
-			throwIfAborted(controller.signal, label);
+			throwIfKernelAborted(controller.signal, label);
 			const result = await this.execute(code, {
 				signal: controller.signal,
 				silent: true,

@@ -1,7 +1,7 @@
 # Connectors and Apps
 
-Veyyon does not ship provider-hosted connectors — account-gated app integrations wired through a
-provider's own connector store. Extend it with the integrations below instead.
+> **Spec — not shipped:** provider-hosted **connectors** (`/apps`, `[apps]` config tables,
+> account-gated app tools). Veyyon does not ship this subsystem today.
 
 ## What ships instead
 
@@ -19,8 +19,8 @@ Tool policy uses `tools.approvalMode` and `tools.approval.<tool>` — same machi
 
 ## Roadmap note
 
-If provider-hosted connectors ship, they will add a feature flag, account discovery, and connector
-configuration. Until then, use MCP, plugins, and hooks; `apps` connector tables are not current behavior.
+If provider-hosted connectors ship, they will add a feature flag, account discovery, an `/apps` UI, and
+`[apps]` config. Until then, `apps` tables are not current behavior.
 
 ## See also
 

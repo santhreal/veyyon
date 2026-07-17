@@ -11,7 +11,7 @@ Veyyon removes that waste at the harness layer.
 ## What improves
 
 - Hashline edits anchor on `read`/`grep` snapshot tags for verifiable hunks.
-- `edit`, `write`, and `apply_patch` modes share the same approval gate.
+- `edit`, `write`, and `apply_patch` modes share sandbox and approval gates.
 - Stale anchors fail with recovery hints instead of silent wrong edits.
 - General schema repair coerces almost-right tool calls into shape before dispatch.
 

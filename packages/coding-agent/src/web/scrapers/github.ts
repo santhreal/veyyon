@@ -532,7 +532,7 @@ interface GitHubActionsRun {
 }
 
 /** Combine status + conclusion into a single label, e.g. `completed (failure)`. */
-function statusLabel(status: string, conclusion: string | null | undefined): string {
+function checkStatusLabel(status: string, conclusion: string | null | undefined): string {
 	return conclusion ? `${status} (${conclusion})` : status;
 }
 
@@ -576,7 +576,7 @@ function renderActionsRunMeta(run: GitHubActionsRun): string {
 	let md = `**Workflow:** ${run.name ?? "(unknown)"}\n`;
 	md += `**Run:** #${run.run_number}`;
 	if (run.run_attempt && run.run_attempt > 1) md += ` (attempt ${run.run_attempt})`;
-	md += ` · ${statusLabel(run.status, run.conclusion)}\n`;
+	md += ` · ${checkStatusLabel(run.status, run.conclusion)}\n`;
 	if (run.head_branch) {
 		md += `**Branch:** ${run.head_branch}${run.head_sha ? ` @ ${run.head_sha.slice(0, 7)}` : ""}\n`;
 	}
@@ -640,7 +640,7 @@ async function renderGitHubActionsRun(
 		md += `## Jobs (${jobs.length})\n\n`;
 		for (const job of jobs) {
 			const dur = actionDuration(job.started_at, job.completed_at);
-			md += `### ${escapeCell(job.name)} — ${statusLabel(job.status, job.conclusion)}${dur ? ` (${dur})` : ""}\n\n`;
+			md += `### ${escapeCell(job.name)} — ${checkStatusLabel(job.status, job.conclusion)}${dur ? ` (${dur})` : ""}\n\n`;
 			if (job.conclusion !== "success") {
 				md += renderActionsSteps(job.steps);
 			}
@@ -675,7 +675,7 @@ async function renderGitHubActionsJob(
 		if (job.head_branch) md += `**Branch:** ${job.head_branch}\n`;
 	}
 	const dur = actionDuration(job.started_at, job.completed_at);
-	md += `**Job:** ${escapeCell(job.name)} · ${statusLabel(job.status, job.conclusion)}${dur ? ` · ${dur}` : ""}\n`;
+	md += `**Job:** ${escapeCell(job.name)} · ${checkStatusLabel(job.status, job.conclusion)}${dur ? ` · ${dur}` : ""}\n`;
 	if (job.runner_name) md += `**Runner:** ${job.runner_name}\n`;
 	if (job.html_url) md += `URL: ${job.html_url}\n`;
 	md += `\n---\n\n`;

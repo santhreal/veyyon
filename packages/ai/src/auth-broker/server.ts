@@ -11,8 +11,10 @@
  */
 import { logger } from "@veyyon/pi-utils";
 import { type Type, type } from "arktype";
+import { isAuthorized } from "../auth-gateway/http";
 import type { AuthStorage, StoredCredentialBlock } from "../auth-storage";
 import { parseBind } from "../utils/parse-bind";
+import { sseEvent } from "../utils/sse";
 import { AuthBrokerRefresher, type AuthBrokerRefresherSchedule } from "./refresher";
 import type {
 	CredentialBlockResponse,
@@ -30,13 +32,14 @@ import type {
 	SnapshotStreamSnapshotEvent,
 } from "./types";
 import {
+	compareCredentialBlockSnapshots,
 	DEFAULT_AUTH_BROKER_BIND,
 	DEFAULT_REFRESH_INTERVAL_MS,
 	DEFAULT_REFRESH_SKEW_MS,
 	DEFAULT_SERVER_IDLE_TIMEOUT_S,
 	DEFAULT_STREAM_KEEPALIVE_MS,
 } from "./types";
-import { wireSchemas } from "./wire-schemas";
+import { parseGenerationTag, wireSchemas } from "./wire-schemas";
 
 export interface AuthBrokerServerOptions {
 	/** Underlying credential storage (wraps the local SQLite store on the broker). */
@@ -78,15 +81,6 @@ function json(status: number, body: unknown, headers?: Record<string, string>): 
 
 function empty(status: number, headers?: Record<string, string>): Response {
 	return new Response(null, { status, headers });
-}
-
-function isAuthorized(req: Request, tokens: ReadonlySet<string>): boolean {
-	if (tokens.size === 0) return true;
-	const header = req.headers.get("authorization");
-	if (!header) return false;
-	const match = header.match(/^Bearer\s+(.+)$/i);
-	if (!match) return false;
-	return tokens.has(match[1].trim());
 }
 
 /**
@@ -134,18 +128,6 @@ function snapshotHeaders(generation: number): Record<string, string> {
 		ETag: `"${generation}"`,
 		"Cache-Control": "no-store",
 	};
-}
-
-function parseGenerationTag(header: string | null): number | undefined {
-	if (!header) return undefined;
-	let value = header.trim();
-	if (value.startsWith("W/")) value = value.slice(2).trim();
-	if (value.startsWith('"') && value.endsWith('"') && value.length >= 2) {
-		value = value.slice(1, -1);
-	}
-	const generation = Number(value);
-	if (!Number.isInteger(generation) || generation < 0) return undefined;
-	return generation;
 }
 
 function parseWaitMs(url: URL): number {
@@ -267,14 +249,6 @@ function computeRotatesInMs(
 	return Math.max(0, rotatesAt - serverNowMs);
 }
 
-function compareCredentialBlockSnapshots(a: CredentialBlockSnapshot, b: CredentialBlockSnapshot): number {
-	const provider = a.providerKey.localeCompare(b.providerKey);
-	if (provider !== 0) return provider;
-	const scope = a.blockScope.localeCompare(b.blockScope);
-	if (scope !== 0) return scope;
-	return a.blockedUntilMs - b.blockedUntilMs;
-}
-
 function buildCredentialBlockGroups(
 	blocks: readonly StoredCredentialBlock[],
 	serverNowMs: number,
@@ -384,10 +358,6 @@ function fingerprintEntry(entry: SnapshotEntry): string {
 		entry.credential,
 		entry.blocks ?? [],
 	]);
-}
-
-function sseEvent(event: string, body: unknown): string {
-	return `event: ${event}\ndata: ${JSON.stringify(body)}\n\n`;
 }
 
 function serveSnapshotStream(

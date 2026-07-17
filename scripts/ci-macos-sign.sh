@@ -58,7 +58,7 @@ if [[ ! -f "$ENTITLEMENTS" ]]; then
 fi
 
 WORKDIR="$(mktemp -d)"
-KEYCHAIN="$WORKDIR/omp-signing.keychain-db"
+KEYCHAIN="$WORKDIR/veyyon-signing.keychain-db"
 KEYCHAIN_PASSWORD="$(openssl rand -hex 24)"
 CERT_PATH="$WORKDIR/cert.p12"
 API_KEY_PATH="$WORKDIR/api-key.p8"

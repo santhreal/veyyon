@@ -3,7 +3,7 @@
  *
  * Stores tool definitions per server in agent.db for fast startup.
  */
-import { isRecord, logger } from "@veyyon/pi-utils";
+import { bytesToHex, isRecord, logger } from "@veyyon/pi-utils";
 import type { AgentStorage } from "../session/agent-storage";
 import type { MCPServerConfig, MCPToolDefinition } from "./types";
 
@@ -35,22 +35,13 @@ function stableStringify(value: unknown): string {
 	return JSON.stringify(stableClone(value));
 }
 
-function toHex(buffer: ArrayBuffer): string {
-	const bytes = new Uint8Array(buffer);
-	let output = "";
-	for (const byte of bytes) {
-		output += byte.toString(16).padStart(2, "0");
-	}
-	return output;
-}
-
 async function hashConfig(config: MCPServerConfig): Promise<string> {
 	const stable = stableStringify(config);
 	const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(stable));
-	return toHex(digest);
+	return bytesToHex(digest);
 }
 
-function cacheKey(serverName: string): string {
+function serverCacheKey(serverName: string): string {
 	return `${CACHE_PREFIX}${serverName}`;
 }
 
@@ -58,7 +49,7 @@ export class MCPToolCache {
 	constructor(private storage: AgentStorage) {}
 
 	async get(serverName: string, config: MCPServerConfig): Promise<MCPToolDefinition[] | null> {
-		const key = cacheKey(serverName);
+		const key = serverCacheKey(serverName);
 		const raw = this.storage.getCache(key);
 		if (!raw) return null;
 
@@ -112,6 +103,6 @@ export class MCPToolCache {
 		}
 
 		const expiresAtSec = Math.floor((Date.now() + CACHE_TTL_MS) / 1000);
-		this.storage.setCache(cacheKey(serverName), serialized, expiresAtSec);
+		this.storage.setCache(serverCacheKey(serverName), serialized, expiresAtSec);
 	}
 }

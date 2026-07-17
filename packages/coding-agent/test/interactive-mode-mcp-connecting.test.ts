@@ -1,10 +1,10 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
+import { stripVTControlCharacters } from "node:util";
 import { Agent } from "@veyyon/pi-agent-core";
 import { ModelRegistry } from "@veyyon/pi-coding-agent/config/model-registry";
 import { resetSettingsForTest, Settings } from "@veyyon/pi-coding-agent/config/settings";
 import {
-	formatMCPConnectionStatusMessage,
 	MCP_CONNECTION_STATUS_EVENT_CHANNEL,
 	type McpConnectionStatusEvent,
 } from "@veyyon/pi-coding-agent/mcp/startup-events";
@@ -19,9 +19,10 @@ import { logger, TempDir } from "@veyyon/pi-utils";
 /**
  * Behavioral wiring guard for MCP startup status (mirrors
  * interactive-mode-lsp-startup.test.ts). The SDK emits connection lifecycle
- * events, and InteractiveMode aggregates them into one live status line. This
- * pins the constructor-time subscription and the update path that replaces the
- * stale "Connecting…" banner when servers connect or fail.
+ * events, and InteractiveMode paints the aggregate in the location line's
+ * right zone (progress while connecting, a failure pointer once settled) —
+ * never a floating transcript banner. This pins the constructor-time
+ * subscription and the zone's progression as servers connect or fail.
  */
 describe("InteractiveMode MCP connection status", () => {
 	let authStorage: AuthStorage;
@@ -84,71 +85,84 @@ describe("InteractiveMode MCP connection status", () => {
 		resetSettingsForTest();
 	});
 
+	const zoneText = (width = 140): string =>
+		mode.locationLine
+		.render(width)
+		.map(line => stripVTControlCharacters(line))
+		.join("\n");
+
 	it("routes a mcp:connection-status event through the constructor-registered subscriber, before init()", () => {
-		const showStatusSpy = vi.spyOn(mode, "showStatus").mockImplementation(() => {});
+		eventBus.emit(MCP_CONNECTION_STATUS_EVENT_CHANNEL, {
+			type: "connecting",
+			serverNames: ["sequential", "critic", "shannon"],
+		} satisfies McpConnectionStatusEvent);
 
-		const serverNames = ["sequential", "critic", "shannon"];
-		const event = { type: "connecting", serverNames } satisfies McpConnectionStatusEvent;
-		eventBus.emit(MCP_CONNECTION_STATUS_EVENT_CHANNEL, event);
-
-		expect(showStatusSpy).toHaveBeenCalledWith(
-			formatMCPConnectionStatusMessage({
-				pendingServers: serverNames,
-				connectedServers: [],
-				failedServers: [],
-			}),
-		);
+		expect(zoneText()).toContain("mcp 0/3");
 	});
 
-	it("does not render the mcp:connection-status status when startup.quiet is enabled", () => {
+	it("does not paint the MCP zone when startup.quiet is enabled", () => {
 		session.settings.set("startup.quiet", true);
-		const showStatusSpy = vi.spyOn(mode, "showStatus").mockImplementation(() => {});
 
 		eventBus.emit(MCP_CONNECTION_STATUS_EVENT_CHANNEL, {
 			type: "connecting",
 			serverNames: ["sequential", "critic"],
 		} satisfies McpConnectionStatusEvent);
 
-		expect(showStatusSpy).not.toHaveBeenCalled();
+		expect(zoneText()).not.toContain("mcp");
 	});
 
-	it("updates the live MCP status as servers connect and fail", () => {
-		const showStatusSpy = vi.spyOn(mode, "showStatus").mockImplementation(() => {});
-
+	it("progresses the zone as servers connect, then settles on a failure pointer", () => {
 		eventBus.emit(MCP_CONNECTION_STATUS_EVENT_CHANNEL, {
 			type: "connecting",
 			serverNames: ["alpha", "broken", "slow"],
 		} satisfies McpConnectionStatusEvent);
+		expect(zoneText()).toContain("mcp 0/3");
+
 		eventBus.emit(MCP_CONNECTION_STATUS_EVENT_CHANNEL, {
 			type: "connected",
 			serverName: "alpha",
 		} satisfies McpConnectionStatusEvent);
+		expect(zoneText()).toContain("mcp 1/3");
+
 		eventBus.emit(MCP_CONNECTION_STATUS_EVENT_CHANNEL, {
 			type: "failed",
 			serverName: "broken",
 			error: "missing command",
 		} satisfies McpConnectionStatusEvent);
+		expect(zoneText()).toContain("mcp 1/3");
+
 		eventBus.emit(MCP_CONNECTION_STATUS_EVENT_CHANNEL, {
 			type: "connected",
 			serverName: "slow",
 		} satisfies McpConnectionStatusEvent);
+		// Settled with a failure: the count and the detail pointer, loudly colored,
+		// and the per-server error text never leaks into the quiet zone.
+		const settled = zoneText();
+		expect(settled).toContain("mcp ✗1");
+		expect(settled).toContain("/mcp list");
+		expect(settled).not.toContain("missing command");
+	});
 
-		expect(showStatusSpy.mock.calls.map(call => call[0])).toEqual([
-			"Connecting to MCP servers: alpha, broken, slow…",
-			"MCP: 1 connected; still connecting broken, slow…",
-			"MCP: 1 connected, 1 failed; still connecting slow…",
-			"MCP: 2 connected, 1 failed (broken) — /mcp list for detail",
-		]);
+	it("says nothing once every server connects cleanly", () => {
+		eventBus.emit(MCP_CONNECTION_STATUS_EVENT_CHANNEL, {
+			type: "connecting",
+			serverNames: ["alpha"],
+		} satisfies McpConnectionStatusEvent);
+		eventBus.emit(MCP_CONNECTION_STATUS_EVENT_CHANNEL, {
+			type: "connected",
+			serverName: "alpha",
+		} satisfies McpConnectionStatusEvent);
+
+		expect(zoneText()).not.toContain("mcp");
 	});
 
 	it("rejects a malformed mcp:connection-status payload via the guard instead of letting it throw", () => {
-		const showStatusSpy = vi.spyOn(mode, "showStatus").mockImplementation(() => {});
 		const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
 		const errorSpy = vi.spyOn(logger, "error").mockImplementation(() => {});
 
 		eventBus.emit(MCP_CONNECTION_STATUS_EVENT_CHANNEL, { wrong: "shape" });
 
-		expect(showStatusSpy).not.toHaveBeenCalled();
+		expect(zoneText()).not.toContain("mcp");
 		expect(warnSpy).toHaveBeenCalled();
 		expect(errorSpy).not.toHaveBeenCalled();
 	});

@@ -1,6 +1,6 @@
 # Developing `@veyyon/pi-coding-agent`
 
-This package is the `veyyon` CLI. This file is a **developer's map**: where things live
+This package is the `omp` CLI. This file is a **developer's map**: where things live
 in `src/`, how to run the local loops, and — for each subsystem — which document in
 the repo [`docs/`](../../docs/) tree is the authoritative reference.
 
@@ -20,7 +20,7 @@ Run from `packages/coding-agent/` (or add `--cwd=packages/coding-agent`):
 | Lint only | `bun run lint` |
 | Tests | `bun run test` |
 | Autofix: lint + format prompts | `bun run fix` |
-| Build the `dist/veyyon` binary | `bun run build` |
+| Build the `dist/omp` binary | `bun run build` |
 
 Never invoke `tsc`/`npx tsc` directly — `bun run check` is the typecheck gate. After
 changing the React tool renderers under `collab-web/src/tool-render/`, rebuild them
@@ -146,15 +146,16 @@ Top-level entry modules: `cli.ts`, `main.ts`, `sdk.ts`, `index.ts` (SDK barrel),
 ### Build, release, and porting
 - [releasing.md](../../docs/internal/releasing.md) — cut a release (versioning, `release.ts`, CI)
 - [deployment.md](../../docs/internal/deployment.md) — ship the website + binaries; install endpoints
+- [agent-workflow.md](../../docs/internal/agent-workflow.md) — autonomous agent loop: queue, gates, approval boundary, shipping
 - [macos-signing-notarization.md](../../docs/internal/macos-signing-notarization.md)
 - [porting-from-pi-mono.md](../../docs/internal/porting-from-pi-mono.md)
 
 ### Design and brand
-- [brand.md](../../docs/internal/brand.md) — identity contract (names, palette, voice)
+- [design.md](../../docs/internal/design.md) — identity contract (names, palette, voice)
 - [tui-design-language.md](../../docs/internal/tui-design-language.md) — terminal-UX conventions
 - [retained-patterns.md](../../docs/internal/retained-patterns.md) — coordination + prompt keepers
 
-## Extending veyyon
+## Extending omp
 
 | To add… | Start here |
 |---|---|

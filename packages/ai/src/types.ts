@@ -366,6 +366,35 @@ export interface StreamOptions {
 	 * in the text so far. Range -2.0 to 2.0. Parallel to {@link presencePenalty}.
 	 */
 	frequencyPenalty?: number;
+	/**
+	 * Best-effort deterministic sampling seed (OpenAI chat-completions `seed`;
+	 * the Responses API has no seed field and drops it).
+	 */
+	seed?: number;
+	/**
+	 * Token-id → bias map, -100 to 100 (OpenAI chat-completions `logit_bias`;
+	 * no Responses-API equivalent).
+	 */
+	logitBias?: Record<string, number>;
+	/**
+	 * Output format constraint (OpenAI chat-completions `response_format`:
+	 * text | json_object | json_schema), forwarded verbatim. The Responses API
+	 * expresses this via `text.format` instead and drops this field.
+	 */
+	responseFormat?: unknown;
+	/**
+	 * Whether the model may run tool calls in parallel (`parallel_tool_calls`
+	 * on both OpenAI chat-completions and Responses). Only sent when the
+	 * request offers tools — OpenAI rejects the flag on tool-less requests.
+	 */
+	parallelToolCalls?: boolean;
+	/**
+	 * Stable end-user identifier for usage-policy enforcement / abuse
+	 * tracking. OpenAI-family providers send the modern `safety_identifier`
+	 * field (which replaced `user`). Anthropic callers should use
+	 * `metadata.user_id` instead.
+	 */
+	user?: string;
 	maxTokens?: number;
 	signal?: AbortSignal;
 	apiKey?: string;
@@ -579,10 +608,23 @@ export interface TextSignatureV1 {
 	phase?: "commentary" | "final_answer";
 }
 
+/**
+ * An annotation attached to assistant output text — e.g. a web-search
+ * citation. Carried verbatim in the source provider's wire shape so server
+ * round-trips are lossless; `type` discriminates it (OpenAI Responses:
+ * `url_citation`, `file_citation`, `container_file_citation`, `file_path`;
+ * Anthropic: `web_search_result_location`, `char_location`, `page_location`, …).
+ */
+export interface TextAnnotation {
+	type: string;
+	[key: string]: unknown;
+}
+
 export interface TextContent {
 	type: "text";
 	text: string;
 	textSignature?: string; // e.g., for OpenAI responses, message metadata (legacy id string or TextSignatureV1 JSON)
+	annotations?: TextAnnotation[]; // present only when the provider emitted output-text annotations (web-search citations, …)
 }
 
 export interface ThinkingContent {
@@ -723,6 +765,8 @@ export interface AssistantMessage {
 	upstreamProvider?: string;
 	usage: Usage;
 	stopReason: StopReason;
+	/** The configured stop sequence that ended the turn, for providers that report the matched string (Anthropic `message_delta.stop_sequence`). Null/undefined when the turn ended for any other reason or the provider does not report it. */
+	stopSequence?: string | null;
 	stopDetails?: StopDetails | null;
 	errorMessage?: string;
 	/** Per-tool abort messages used when an aborted assistant turn needs different placeholder results per tool call. */
@@ -763,6 +807,13 @@ export interface ToolResultMessage<TDetails = unknown> {
 	 * Never set together with isError.
 	 */
 	useless?: boolean;
+	/**
+	 * Outcome of schema-based tool-call argument repair for this call. Absent
+	 * when repair did not act (clean arguments, or repair disabled/off for the
+	 * model) — only acted-on outcomes are persisted, keeping the common path
+	 * free of the field.
+	 */
+	repairStatus?: "repaired" | "unrepairable";
 	timestamp: number; // Unix timestamp in milliseconds
 }
 
@@ -908,3 +959,15 @@ export type AssistantMessageEvent =
 			reason: Extract<StopReason, "aborted" | "error">;
 			error: AssistantMessage;
 	  };
+
+/** All-zero {@link Usage} record — the canonical "no tokens counted" value. */
+export function emptyUsage(): Usage {
+	return {
+		input: 0,
+		output: 0,
+		cacheRead: 0,
+		cacheWrite: 0,
+		totalTokens: 0,
+		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+	};
+}

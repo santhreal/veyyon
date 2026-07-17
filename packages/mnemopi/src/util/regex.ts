@@ -156,6 +156,14 @@ export function ftsQueryTerms(query: string): string[] {
 	return terms;
 }
 
+/**
+ * Escape SQL LIKE wildcards (`%`, `_`) and the escape char itself for use with
+ * `LIKE ? ESCAPE '\'`. ONE PLACE for every mnemopi LIKE-pattern builder.
+ */
+export function escapeSqlLike(value: string): string {
+	return value.replace(/[\\%_]/g, m => `\\${m}`);
+}
+
 function isAsciiDigits(value: string): boolean {
 	for (let i = 0; i < value.length; i++) {
 		const code = value.charCodeAt(i);

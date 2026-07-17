@@ -15,6 +15,7 @@ import { glob, type SummaryResult, summarizeCode } from "@veyyon/pi-natives";
 import type { Component } from "@veyyon/pi-tui";
 import { Text } from "@veyyon/pi-tui";
 import {
+	decodeStrictUtf8,
 	getRemoteDir,
 	type ImageMetadata,
 	isProbablyBinary,
@@ -22,6 +23,8 @@ import {
 	logger,
 	prompt,
 	readImageMetadata,
+	safeFilenameSegment,
+	URL_SCHEME_RE,
 	untilAborted,
 } from "@veyyon/pi-utils";
 import { type } from "arktype";
@@ -702,14 +705,9 @@ async function findUniqueSuffixMatch(
 	};
 }
 
-function decodeUtf8Text(bytes: Uint8Array): string | null {
+function decodeNonBinaryUtf8(bytes: Uint8Array): string | null {
 	if (isProbablyBinaryHeader(bytes)) return null;
-
-	try {
-		return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-	} catch {
-		return null;
-	}
+	return decodeStrictUtf8(bytes);
 }
 
 function prependSuffixResolutionNotice(text: string, suffixResolution?: { from: string; to: string }): string {
@@ -1089,7 +1087,7 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 				? sessionFile.slice(0, -6)
 				: path.join(os.tmpdir(), "omp-read-pdf-images");
 		}
-		const basename = path.basename(absolutePdfPath).replace(/[^A-Za-z0-9._-]/g, "_");
+		const basename = safeFilenameSegment(path.basename(absolutePdfPath));
 		return path.join(root, "read-pdf-images", `${basename}-${Bun.hash(absolutePdfPath).toString(36)}`);
 	}
 
@@ -1798,7 +1796,7 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 		}
 
 		const entry = await archive.readFile(archiveSubPath);
-		const text = decodeUtf8Text(entry.bytes);
+		const text = decodeNonBinaryUtf8(entry.bytes);
 		if (text === null) {
 			return toolResult<ReadToolDetails>(details)
 				.text(
@@ -3297,7 +3295,8 @@ export interface ReadRenderArgs {
 	raw?: boolean;
 }
 
-const INTERNAL_URL_LIKE_RE = /^[a-z][a-z0-9+.-]*:\/\//i;
+// ONE PLACE: scheme grammar owned by pi-utils regex.ts.
+const INTERNAL_URL_LIKE_RE = URL_SCHEME_RE;
 
 function splitReadRenderPath(rawPath: string): { path: string; sel?: string } {
 	if (INTERNAL_URL_LIKE_RE.test(rawPath)) {

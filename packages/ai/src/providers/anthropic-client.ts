@@ -81,7 +81,7 @@ export interface AnthropicClientOptions {
 	fetchOptions?: AnthropicFetchOptions;
 }
 
-function createAbortError(): Error {
+function createRequestAbortError(): Error {
 	return new AIError.AbortError("Request was aborted.");
 }
 
@@ -221,13 +221,13 @@ export class AnthropicMessagesClient implements AnthropicMessagesClientLike {
 		const body = JSON.stringify(params);
 
 		for (let attempt = 0; ; attempt++) {
-			if (callerSignal?.aborted) throw createAbortError();
+			if (callerSignal?.aborted) throw createRequestAbortError();
 
 			let response: Response;
 			try {
 				response = await this.#fetchOnce(fetchFn, url, headers, body, timeoutMs, callerSignal);
 			} catch (error) {
-				if (callerSignal?.aborted) throw createAbortError();
+				if (callerSignal?.aborted) throw createRequestAbortError();
 				if (attempt < maxRetries) {
 					await this.#backoff(attempt, undefined, callerSignal);
 					continue;
@@ -289,7 +289,7 @@ export class AnthropicMessagesClient implements AnthropicMessagesClientLike {
 		try {
 			await scheduler.wait(delayMs, { signal });
 		} catch {
-			throw createAbortError();
+			throw createRequestAbortError();
 		}
 	}
 }

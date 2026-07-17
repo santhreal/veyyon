@@ -148,7 +148,7 @@ export interface LoadCustomCommandsOptions {
 /**
  * Load bundled commands (shipped with pi-coding-agent).
  */
-function loadBundledCommands(sharedApi: CustomCommandAPI): LoadedCustomCommand[] {
+function loadBundledCustomCommands(sharedApi: CustomCommandAPI): LoadedCustomCommand[] {
 	const bundled: LoadedCustomCommand[] = [];
 
 	// Add bundled commands here
@@ -193,7 +193,7 @@ export async function loadCustomCommands(options: LoadCustomCommandsOptions = {}
 	};
 
 	// 1. Load bundled commands first (lowest priority - can be overridden)
-	for (const loaded of loadBundledCommands(sharedApi)) {
+	for (const loaded of loadBundledCustomCommands(sharedApi)) {
 		seenNames.add(loaded.command.name);
 		commands.push(loaded);
 	}

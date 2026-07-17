@@ -15,7 +15,16 @@ import {
 } from "@veyyon/pi-catalog/model-thinking";
 import { CATALOG_PROVIDERS, type ProviderCatalogEntry } from "@veyyon/pi-catalog/provider-models";
 import { CODEX_BASE_URL } from "@veyyon/pi-catalog/wire/codex";
-import { $env, $pickenv, getConfigRootDir, isEnoent, logger, withExtraCaFetch } from "@veyyon/pi-utils";
+import {
+	$env,
+	$pickenv,
+	getConfigRootDir,
+	isEnoent,
+	isProcessAlive,
+	logger,
+	stripTrailingSlashes,
+	withExtraCaFetch,
+} from "@veyyon/pi-utils";
 import { getCustomApi } from "./api-registry";
 import { createAuthRetryKeyState, isApiKeyResolver, resolveNextAuthRetryKey } from "./auth-retry";
 import * as AIError from "./error";
@@ -130,7 +139,7 @@ function isOfficialOpenAIApiUrl(baseUrl: string | undefined): boolean {
 /** Strict official-Codex endpoint check; exact origin or a path boundary after {@link CODEX_BASE_URL}. */
 function isOfficialCodexApiUrl(baseUrl: string | undefined): boolean {
 	if (!baseUrl) return true;
-	const lower = baseUrl.toLowerCase().replace(/\/+$/, "");
+	const lower = stripTrailingSlashes(baseUrl.toLowerCase());
 	return lower === CODEX_BASE_URL || lower.startsWith(`${CODEX_BASE_URL}/`);
 }
 
@@ -198,18 +207,6 @@ function providerInFlightSignalPath(provider: string): string {
 
 function providerInFlightLockDir(provider: string): string {
 	return `${providerInFlightDir(provider)}.lock`;
-}
-
-// `process.kill(pid, 0)` may throw for permission/sandbox reasons even when a
-// process exists. Treat non-ESRCH failures as alive; timestamp expiry still
-// reaps leases whose heartbeat stopped.
-function isProcessAlive(pid: number): boolean {
-	try {
-		process.kill(pid, 0);
-		return true;
-	} catch (error) {
-		return (error as NodeJS.ErrnoException).code !== "ESRCH";
-	}
 }
 
 async function readProviderInFlightInfo(infoPath: string): Promise<ProviderInFlightLeaseInfo | null> {

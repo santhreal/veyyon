@@ -20,7 +20,7 @@ type MaybeAssistantMessage = {
 	};
 };
 
-function isAssistantMessage(message: MaybeAssistantMessage | undefined): message is AssistantLikeMessage {
+function isSampledAssistantMessage(message: MaybeAssistantMessage | undefined): message is AssistantLikeMessage {
 	return (
 		message?.role === "assistant" &&
 		typeof message.timestamp === "number" &&
@@ -32,7 +32,7 @@ function isAssistantMessage(message: MaybeAssistantMessage | undefined): message
 function getLastAssistantMessage(messages: ReadonlyArray<MaybeAssistantMessage>): AssistantLikeMessage | null {
 	for (let i = messages.length - 1; i >= 0; i--) {
 		const message = messages[i];
-		if (isAssistantMessage(message)) {
+		if (isSampledAssistantMessage(message)) {
 			return message;
 		}
 	}

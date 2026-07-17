@@ -1,8 +1,8 @@
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { initDb, insertMessageStats, insertToolCalls } from "@veyyon/pi-stats/db";
-import { parseSessionFile } from "@veyyon/pi-stats/parser";
+import { initDb, insertMessageStats, insertToolCalls } from "@veyyon/omp-stats/db";
+import { parseSessionFile } from "@veyyon/omp-stats/parser";
 import { getSessionsDir } from "@veyyon/pi-utils";
 import { installStatsTestIsolation } from "./helpers/temp-agent";
 

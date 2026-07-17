@@ -1,15 +1,9 @@
-import { tryParseJson } from "@veyyon/pi-utils";
+import { getStringProperty, stripTrailingSlashes, tryParseJson } from "@veyyon/pi-utils";
 import type { RenderResult, SpecialHandler } from "./types";
 import { buildResult, htmlToBasicMarkdown, loadPage } from "./types";
 import { asRecord } from "./utils";
 
 type JsonRecord = Record<string, unknown>;
-
-function getString(record: JsonRecord | null, key: string): string | undefined {
-	if (!record) return undefined;
-	const value = record[key];
-	return typeof value === "string" ? value : undefined;
-}
 
 function getRecord(record: JsonRecord | null, key: string): JsonRecord | null {
 	if (!record) return null;
@@ -23,7 +17,7 @@ function getArray(record: JsonRecord | null, key: string): unknown[] | undefined
 }
 
 function extractShortname(pathname: string): string | null {
-	const trimmed = pathname.replace(/\/+$/g, "");
+	const trimmed = stripTrailingSlashes(pathname);
 	const segments = trimmed.split("/").filter(Boolean);
 
 	if (segments.length < 2 || segments[0] !== "TR") return null;
@@ -62,7 +56,7 @@ function extractEditors(editorsPayload: JsonRecord | null): string[] {
 
 	for (const entry of editors) {
 		const record = asRecord(entry);
-		const title = getString(record, "title");
+		const title = getStringProperty(record, "title");
 		if (title) names.push(title);
 	}
 
@@ -97,24 +91,24 @@ export const handleW3c: SpecialHandler = async (
 		const latestPayload = tryParseJson<Record<string, unknown>>(latestResult.content);
 		if (!specPayload || !latestPayload) return null;
 
-		const title = getString(specPayload, "title");
-		const shortnameValue = getString(specPayload, "shortname") ?? shortname;
-		const description = getString(specPayload, "description") ?? getString(specPayload, "abstract");
+		const title = getStringProperty(specPayload, "title");
+		const shortnameValue = getStringProperty(specPayload, "shortname") ?? shortname;
+		const description = getStringProperty(specPayload, "description") ?? getStringProperty(specPayload, "abstract");
 		const abstract = description ? await htmlToBasicMarkdown(description) : undefined;
 
 		const latestVersionUrl =
-			getString(latestPayload, "uri") ??
-			getString(latestPayload, "shortlink") ??
-			getString(specPayload, "shortlink");
+			getStringProperty(latestPayload, "uri") ??
+			getStringProperty(latestPayload, "shortlink") ??
+			getStringProperty(specPayload, "shortlink");
 
-		const latestStatus = getString(latestPayload, "status");
+		const latestStatus = getStringProperty(latestPayload, "status");
 		const normalizedStatus = normalizeStatus(latestStatus);
 
 		const specLinks = getRecord(specPayload, "_links");
-		const historyUrl = getString(getRecord(specLinks, "version-history"), "href");
+		const historyUrl = getStringProperty(getRecord(specLinks, "version-history"), "href");
 
 		const latestLinks = getRecord(latestPayload, "_links");
-		const editorsUrl = getString(getRecord(latestLinks, "editors"), "href");
+		const editorsUrl = getStringProperty(getRecord(latestLinks, "editors"), "href");
 
 		let editors: string[] = [];
 		if (editorsUrl) {

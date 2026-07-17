@@ -47,7 +47,7 @@ const groupedReadDelimitedPath = groupedReadTargets.join(",");
 const groupedReadRepeatedFile = "packages/coding-agent/src/task/render.ts";
 const groupedReadRepeatedRanges = `${groupedReadRepeatedFile}:507-605,1070-1194,1210-1240,1270-1274`;
 
-function textResult(text: string, details?: unknown, isError?: boolean): GalleryResult {
+function galleryTextResult(text: string, details?: unknown, isError?: boolean): GalleryResult {
 	return { content: [{ type: "text", text }], details, isError };
 }
 
@@ -77,21 +77,21 @@ function renderReadGroupFixtureState(state: GalleryFixtureState, width: number, 
 	if (state === "progress") return component.render(width);
 
 	component.updateResult(
-		textResult("Read three focused test ranges.", { displayReadTargets: groupedReadTargets }),
+		galleryTextResult("Read three focused test ranges.", { displayReadTargets: groupedReadTargets }),
 		false,
 		"read-delimited",
 	);
 
 	if (state === "error") {
 		component.updateResult(
-			textResult("Error: selector 1270-1274 is outside the file", undefined, true),
+			galleryTextResult("Error: selector 1270-1274 is outside the file", undefined, true),
 			false,
 			"read-ranges",
 		);
 		return component.render(width);
 	}
 
-	component.updateResult(textResult("Read four render.ts ranges."), false, "read-ranges");
+	component.updateResult(galleryTextResult("Read four render.ts ranges."), false, "read-ranges");
 	return component.render(width);
 }
 
@@ -143,8 +143,8 @@ export const fsFixtures: Record<string, GalleryFixture> = {
 	read_group: {
 		label: "Read Groups",
 		args: {},
-		result: textResult("Rendered grouped read calls."),
-		errorResult: textResult("Rendered grouped read errors.", undefined, true),
+		result: galleryTextResult("Rendered grouped read calls."),
+		errorResult: galleryTextResult("Rendered grouped read errors.", undefined, true),
 		renderState: renderReadGroupFixtureState,
 	},
 

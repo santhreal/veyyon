@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
-import { getDashboardStats } from "@veyyon/pi-stats/aggregator";
-import { initDb, insertMessageStats } from "@veyyon/pi-stats/db";
-import type { MessageStats } from "@veyyon/pi-stats/types";
+import { getDashboardStats } from "@veyyon/omp-stats/aggregator";
+import { initDb, insertMessageStats } from "@veyyon/omp-stats/db";
+import type { MessageStats } from "@veyyon/omp-stats/types";
 import { installStatsTestIsolation } from "./helpers/temp-agent";
 
 installStatsTestIsolation("@pi-stats-db-range-");

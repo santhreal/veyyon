@@ -1,4 +1,5 @@
 import type { AutocompleteItem } from "@veyyon/pi-tui";
+import { lowerBound } from "@veyyon/pi-utils";
 import buckets from "./data/emojis.json" with { type: "json" };
 
 // Bucket layout: `{ "<first-char>": [["<name>", "<emoji>"], ...] }`, with each
@@ -58,21 +59,10 @@ const EMOTICONS: ReadonlyArray<readonly [pattern: string, char: string]> = [
 
 const MAX_SUGGESTIONS = 12;
 
-function lowerBound(arr: readonly Entry[], target: string): number {
-	let lo = 0;
-	let hi = arr.length;
-	while (lo < hi) {
-		const mid = (lo + hi) >>> 1;
-		if (arr[mid]![0] < target) lo = mid + 1;
-		else hi = mid;
-	}
-	return lo;
-}
-
 function lookupExact(name: string): string | undefined {
 	const bucket = BUCKETS[name[0] ?? ""];
 	if (!bucket) return undefined;
-	const i = lowerBound(bucket, name);
+	const i = lowerBound(bucket, entry => entry[0] < name);
 	const hit = bucket[i];
 	return hit && hit[0] === name ? hit[1] : undefined;
 }
@@ -150,7 +140,11 @@ export function getEmojiSuggestions(textBeforeCursor: string): { items: Autocomp
 
 	const bucket = BUCKETS[trigger.query[0]!];
 	if (bucket) {
-		for (let i = lowerBound(bucket, trigger.query); i < bucket.length && items.length < MAX_SUGGESTIONS; i++) {
+		for (
+			let i = lowerBound(bucket, entry => entry[0] < trigger.query);
+			i < bucket.length && items.length < MAX_SUGGESTIONS;
+			i++
+		) {
 			const [name, char] = bucket[i]!;
 			if (!name.startsWith(trigger.query)) break;
 			items.push({

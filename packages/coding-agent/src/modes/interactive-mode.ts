@@ -78,7 +78,6 @@ import { resolveLocalUrlToPath } from "../internal-urls";
 import { LSP_STARTUP_EVENT_CHANNEL, type LspStartupEvent } from "../lsp/startup-events";
 import type { MCPManager } from "../mcp";
 import {
-	formatMCPConnectionStatusMessage,
 	isMcpConnectionStatusEvent,
 	MCP_CONNECTION_STATUS_EVENT_CHANNEL,
 	type McpConnectionStatusEvent,
@@ -132,6 +131,8 @@ import type { AssistantMessageComponent } from "./components/assistant-message";
 import type { BashExecutionComponent } from "./components/bash-execution";
 import { ChatBlock, type ChatBlockHost } from "./components/chat-block";
 import { buildComposerShortcuts, ComposerShortcutsBar } from "./components/composer-shortcuts";
+import { ComposerHairline, ghostSunBar, QuietZoneLine } from "./components/composer-chrome";
+import { renderSunsetField } from "./components/sun";
 import { CustomEditor } from "./components/custom-editor";
 import { ErrorBannerComponent } from "./components/error-banner";
 import type { EvalExecutionComponent } from "./components/eval-execution";
@@ -424,9 +425,14 @@ export class InteractiveMode implements InteractiveModeContext {
 	editor: CustomEditor;
 	editorContainer: Container;
 	composerShortcuts: ComposerShortcutsBar;
+	// Last-applied (busy, hasQueue) chip inputs; -1 = never applied.
+	#composerShortcutsKey = -1;
 	hookWidgetContainerAbove: Container;
 	hookWidgetContainerBelow: Container;
 	statusLine: StatusLineComponent;
+	locationLine: QuietZoneLine;
+	composerHairline: ComposerHairline;
+	capabilityLine: QuietZoneLine;
 
 	isInitialized = false;
 	initialChatRendered = false;
@@ -630,10 +636,12 @@ export class InteractiveMode implements InteractiveModeContext {
 	#observerUiSyncNeedsTodoReconcile = false;
 	#agentRegistryUnsubscribe?: () => void;
 	#agentRegistrySubscriptionTarget?: AgentRegistry;
-	#mcpStatusOrder: string[] = [];
 	#mcpPendingServers = new Set<string>();
 	#mcpConnectedServers = new Set<string>();
 	#mcpFailedServers = new Map<string, string>();
+	/** Ghost-sun position: 0 = risen and resting on the hairline, 1 = fully set. */
+	#ghostSink = 0;
+	#ghostTimer?: NodeJS.Timeout;
 	#welcomeComponent?: WelcomeComponent;
 	/** The welcome card's surrounding spacers, kept so dismissal removes the
 	 *  whole block and leaves no blank rows behind. */
@@ -701,6 +709,10 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.errorBannerContainer = new AnchoredLiveContainer();
 		this.modelCycleContainer = new AnchoredLiveContainer();
 		this.editor = new CustomEditor(getEditorTheme());
+		// The quiet composer: no box, no status crammed in the border — an ember
+		// prompt glyph, a hairline above, and the quiet status lines around it.
+		this.editor.setBorderVisible(false);
+		this.editor.setPlaceholder("ask anything  ·  / for commands");
 		this.editor.setUseTerminalCursor(this.ui.getShowHardwareCursor());
 		this.editor.setAutocompleteMaxVisible(settings.get("autocompleteMaxVisible"));
 		this.editor.onAutocompleteCancel = () => {
@@ -744,12 +756,13 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.#refreshComposerShortcuts();
 		this.statusLine = new StatusLineComponent(session);
 		this.statusLine.setAutoCompactEnabled(session.autoCompactionEnabled);
-		// Lazy provider — the top border rebuild coalesces to at most one
-		// invocation per painted frame instead of firing on every session event
-		// (#4145). The TUI throttles renders at ~30fps, so a long-running eval
-		// spraying events no longer runs `getTopBorder` synchronously in the
-		// hot path where the render never gets to paint the result.
-		this.editor.setTopBorderProvider(availableWidth => this.statusLine.getTopBorder(availableWidth));
+		// Quiet status zones around the borderless composer: location above the
+		// hairline, capability below the prompt — the crammed top-border bar is gone.
+		this.locationLine = new QuietZoneLine(
+			width => this.statusLine.renderQuietLines(width, { locationRight: this.#locationRightZone() }).locationLine,
+		);
+		this.composerHairline = new ComposerHairline();
+		this.capabilityLine = new QuietZoneLine(width => this.statusLine.renderQuietLines(width).capabilityLine);
 
 		this.hideThinkingBlock = settings.get("hideThinkingBlock");
 		this.proseOnlyThinking = settings.get("proseOnlyThinking");
@@ -799,49 +812,72 @@ export class InteractiveMode implements InteractiveModeContext {
 	#handleMcpConnectionStatusEvent(event: McpConnectionStatusEvent): void {
 		if (this.settings.get("startup.quiet")) return;
 		if (event.type === "connecting") {
-			this.#mcpStatusOrder = [];
 			this.#mcpPendingServers.clear();
 			this.#mcpConnectedServers.clear();
 			this.#mcpFailedServers.clear();
 			for (const serverName of event.serverNames) {
-				this.#trackMcpStatusServer(serverName);
 				this.#mcpPendingServers.add(serverName);
 			}
 		} else if (event.type === "connected") {
-			this.#trackMcpStatusServer(event.serverName);
 			this.#mcpPendingServers.delete(event.serverName);
 			this.#mcpFailedServers.delete(event.serverName);
 			this.#mcpConnectedServers.add(event.serverName);
 		} else {
-			this.#trackMcpStatusServer(event.serverName);
 			this.#mcpPendingServers.delete(event.serverName);
 			this.#mcpConnectedServers.delete(event.serverName);
 			this.#mcpFailedServers.set(event.serverName, event.error);
 		}
 
-		const message = formatMCPConnectionStatusMessage({
-			pendingServers: this.#orderedMcpStatusServers(this.#mcpPendingServers),
-			connectedServers: this.#orderedMcpStatusServers(this.#mcpConnectedServers),
-			failedServers: this.#orderedMcpStatusFailures(),
-		});
-		if (message) this.showStatus(message);
+		// Boot health lives on the location line's right side (a fixed quiet home),
+		// not as a floating transcript status.
+		this.ui.requestRender();
 	}
 
-	#trackMcpStatusServer(serverName: string): void {
-		if (!this.#mcpStatusOrder.includes(serverName)) {
-			this.#mcpStatusOrder.push(serverName);
+	/**
+	 * The location line's right zone: MCP boot health when it has something to
+	 * say, and always the ghost sun resting on the hairline at the far edge.
+	 */
+	#locationRightZone(): string | null {
+		const parts: string[] = [];
+		const mcp = this.#mcpZoneText();
+		if (mcp) parts.push(mcp);
+		const ghost = ghostSunBar(TERMINAL.trueColor, this.#ghostSink);
+		if (ghost) parts.push(ghost);
+		return parts.length === 0 ? null : parts.join(theme.fg("dim", "   "));
+	}
+
+	/**
+	 * MCP boot health for the location line's right side: progress while
+	 * servers connect, a failure count once settled. Null when fully healthy —
+	 * a healthy system says nothing.
+	 */
+	#mcpZoneText(): string | null {
+		const pending = this.#mcpPendingServers.size;
+		const failed = this.#mcpFailedServers.size;
+		if (pending > 0) {
+			const total = pending + this.#mcpConnectedServers.size + failed;
+			return theme.fg("dim", `mcp ${this.#mcpConnectedServers.size}/${total}`);
 		}
+		if (failed > 0) return theme.fg("statusLineDirty", `mcp ✗${failed} · /mcp list`);
+		return null;
 	}
 
-	#orderedMcpStatusServers(servers: ReadonlySet<string>): string[] {
-		return this.#mcpStatusOrder.filter(serverName => servers.has(serverName));
-	}
-
-	#orderedMcpStatusFailures(): Array<{ serverName: string; error: string }> {
-		return this.#mcpStatusOrder.flatMap(serverName => {
-			const error = this.#mcpFailedServers.get(serverName);
-			return error === undefined ? [] : [{ serverName, error }];
-		});
+	/**
+	 * Drive the ghost sun toward risen (0) or set (1) in short ease steps. On
+	 * submit the sun sets into the composer hairline; when the agent comes to
+	 * rest it rises again. Self-limiting: the timer stops at the target.
+	 */
+	#transitionGhost(target: 0 | 1): void {
+		clearInterval(this.#ghostTimer);
+		this.#ghostTimer = setInterval(() => {
+			const delta = target > this.#ghostSink ? 0.14 : -0.14;
+			this.#ghostSink = Math.min(1, Math.max(0, this.#ghostSink + delta));
+			if (this.#ghostSink === target) {
+				clearInterval(this.#ghostTimer);
+				this.#ghostTimer = undefined;
+			}
+			this.ui.requestRender();
+		}, 55);
 	}
 
 	playWelcomeIntro(): void {
@@ -956,9 +992,15 @@ export class InteractiveMode implements InteractiveModeContext {
 		// HUDs, just above the editor's hook-widget top margin — so it reads next to
 		// the prompt while keeping the one-line gap above the editor.
 		this.ui.addChild(this.statusContainer);
-		this.ui.addChild(this.statusLine); // Only renders hook statuses (main status in editor border)
+		this.ui.addChild(this.statusLine); // Only renders hook statuses (quiet status lives around the composer)
 		this.ui.addChild(this.hookWidgetContainerAbove);
+		this.ui.addChild(this.locationLine);
+		this.ui.addChild(this.composerHairline);
 		this.ui.addChild(this.editorContainer);
+		// Air between the prompt and the capability line — they are neighbours,
+		// not roommates.
+		this.ui.addChild(new Spacer(1));
+		this.ui.addChild(this.capabilityLine);
 		this.ui.addChild(this.composerShortcuts);
 		this.ui.addChild(this.hookWidgetContainerBelow);
 		this.ui.setFocus(this.editor);
@@ -1314,14 +1356,15 @@ export class InteractiveMode implements InteractiveModeContext {
 	}
 
 	#refreshComposerShortcuts(): void {
-		this.composerShortcuts.setShortcuts(
-			buildComposerShortcuts(this.keybindings, {
-				busy: this.#isAutoSubmitBlocked(),
-				hasDraft: this.editor.getText().trim().length > 0,
-				hasQueue: this.session.queuedMessageCount > 0,
-			}),
-		);
-		// Live refresh: draft/busy/queue transitions call this after init, so the
+		// Called per keystroke via editor.onChange: skip the rebuild + repaint
+		// when neither chip input changed (typing can't affect either).
+		const busy = this.#isAutoSubmitBlocked();
+		const hasQueue = this.session.queuedMessageCount > 0;
+		const key = (busy ? 2 : 0) | (hasQueue ? 1 : 0);
+		if (key === this.#composerShortcutsKey) return;
+		this.#composerShortcutsKey = key;
+		this.composerShortcuts.setShortcuts(buildComposerShortcuts(this.keybindings, { busy, hasQueue }));
+		// Live refresh: busy/queue transitions call this after init, so the
 		// bar needs its own repaint request rather than relying on the initial mount.
 		this.ui.requestComponentRender(this.composerShortcuts);
 	}
@@ -1655,10 +1698,13 @@ export class InteractiveMode implements InteractiveModeContext {
 	}
 
 	updateEditorBorderColor(): void {
+		// The composer is borderless now: the mode/session accent moves to the
+		// prompt gutter glyph — one quiet character that carries the state.
+		let accent: (str: string) => string;
 		if (this.isBashMode) {
-			this.editor.borderColor = theme.getBashModeBorderColor();
+			accent = theme.getBashModeBorderColor();
 		} else if (this.isPythonMode) {
-			this.editor.borderColor = theme.getPythonModeBorderColor();
+			accent = theme.getPythonModeBorderColor();
 		} else {
 			const accentEnabled = !isSettingsInitialized() || settings.get("statusLine.sessionAccent") !== false;
 			const sessionName = accentEnabled ? this.sessionManager.getSessionName() : undefined;
@@ -1667,18 +1713,20 @@ export class InteractiveMode implements InteractiveModeContext {
 				: undefined;
 			const ansi = getSessionAccentAnsi(hex);
 			if (ansi) {
-				this.editor.borderColor = (str: string) => `${ansi}${str}\x1b[39m`;
+				accent = (str: string) => `${ansi}${str}\x1b[39m`;
 			} else {
 				const level = this.session.thinkingLevel ?? ThinkingLevel.Off;
-				this.editor.borderColor = theme.getThinkingBorderColor(level);
+				accent = theme.getThinkingBorderColor(level);
 			}
 		}
 		if (this.focusedAgentId) {
-			// Focused subagent view: faint the outline so the borrowed session is
+			// Focused subagent view: faint the glyph so the borrowed session is
 			// visually distinct from the main one.
-			const base = this.editor.borderColor;
-			this.editor.borderColor = (str: string) => `\x1b[2m${base(str)}\x1b[22m`;
+			const base = accent;
+			accent = (str: string) => `\x1b[2m${base(str)}\x1b[22m`;
 		}
+		this.editor.borderColor = accent;
+		this.editor.setPromptGutter(`${accent("›")} `);
 		this.ui.requestRender();
 	}
 
@@ -3720,6 +3768,7 @@ export class InteractiveMode implements InteractiveModeContext {
 	async shutdown(): Promise<void> {
 		if (this.#isShuttingDown) return;
 		this.#isShuttingDown = true;
+		clearInterval(this.#ghostTimer);
 
 		this.#btwController.dispose();
 		this.#omfgController.dispose();
@@ -3752,7 +3801,16 @@ export class InteractiveMode implements InteractiveModeContext {
 		// This prevents escape sequences from leaking to the parent shell over slow SSH.
 		await this.ui.terminal.drainInput(1000);
 		popTerminalTitle();
+		const exitCols = Math.max(24, Math.min(56, this.ui.terminal.columns - 8));
 		this.stop();
+
+		// The brand bookend: the ceremony opened with the sun rising over the
+		// welcome, so the session closes with it setting. One quiet static frame.
+		if (process.stderr.isTTY) {
+			const sunset = renderSunsetField({ cols: exitCols, rows: 7, time: 0.9, trueColor: TERMINAL.trueColor });
+			for (const line of sunset) process.stderr.write(`${line}\n`);
+			process.stderr.write(`${chalk.dim("the sun sets on this session")}\n`);
+		}
 
 		// Print resumption hint if this is a persisted session
 		const sessionId = this.sessionManager.getSessionId();
@@ -3813,7 +3871,8 @@ export class InteractiveMode implements InteractiveModeContext {
 			this.ui.requestRender();
 		};
 		nextEditor.setShimmerRepaintHandler(() => this.ui.requestComponentRender(this.editor));
-		nextEditor.setTopBorderProvider(availableWidth => this.statusLine.getTopBorder(availableWidth));
+		nextEditor.setBorderVisible(false);
+		nextEditor.setPlaceholder("ask anything  ·  / for commands");
 		nextEditor.setMaxHeight(this.#computeEditorMaxHeight());
 		if (this.historyStorage) {
 			nextEditor.setHistoryStorage(this.historyStorage);
@@ -3986,6 +4045,8 @@ export class InteractiveMode implements InteractiveModeContext {
 	}
 
 	ensureLoadingAnimation(): void {
+		// The sun sets into the composer hairline while the agent works.
+		this.#transitionGhost(1);
 		if (!this.loadingAnimation) {
 			this.#clearWorkingMessageAccentCache();
 			this.statusContainer.disposeChildren();
@@ -4021,6 +4082,8 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.loadingAnimation.stop();
 		this.loadingAnimation = undefined;
 		this.#clearWorkingMessageAccentCache();
+		// The agent has come to rest: the sun rises back over the hairline.
+		this.#transitionGhost(0);
 		if (clearStatusContainer) {
 			this.statusContainer.disposeChildren();
 		}

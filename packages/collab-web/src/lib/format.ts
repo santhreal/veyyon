@@ -1,4 +1,5 @@
 /** Small pure formatting helpers shared across collab-web components. */
+import { shortenPathDisplay } from "@veyyon/pi-utils/path-display";
 
 /** "950", "12.3k", "1.2M" — tolerant of non-finite input. */
 export function fmtTokens(n: number): string {
@@ -52,11 +53,7 @@ export function fmtPercent(p: number | null | undefined): string {
 
 /** Home-relative, middle-elided path: "~/…/packages/collab-web". */
 export function shortenPath(p: string): string {
-	if (typeof p !== "string" || p.length === 0) return "";
-	let out = p.replace(/^\/(?:Users|home)\/[^/]+(?=\/|$)/, "~");
-	const segs = out.split("/");
-	if (segs.length > 4) out = `${segs[0]}/…/${segs.slice(-2).join("/")}`;
-	return out;
+	return shortenPathDisplay(p, { maxSegments: 4 });
 }
 
 /** Tolerant text extraction from string | content-block array | message-like objects. */

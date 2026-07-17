@@ -47,10 +47,10 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-24acbed9.js";
+            window.path_to_searchindex_js = "searchindex-8badf17b.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-9cfd259b.js"></script>
+        <script src="toc-19dab021.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -195,22 +195,22 @@
 <ul>
 <li><strong>Why Veyyon:</strong> value, design map, and benefits you should feel first.</li>
 <li><strong>Install and first session:</strong> install, providers, quickstart, configuration.</li>
-<li><strong>Everyday features:</strong> editing, approvals, models, sessions, themes.</li>
+<li><strong>Everyday features:</strong> editing, sandbox, models, sessions, themes.</li>
 <li><strong>Power features:</strong> plan mode, goals, branching, MCP, plugins, memory, profiles.</li>
 <li><strong>How it works:</strong> deeper engineering account for contributors.</li>
 </ul>
 <p>If you read nothing else: <a href="#what-veyyon-gives-you">What Veyyon gives you</a>, <a href="#getting-started">Getting started</a>, <a href="#editing-and-repair">Editing and repair</a>, <a href="#models-and-providers">Models and providers</a>.</p>
 <h2 id="what-veyyon-is-in-one-paragraph"><a class="header" href="#what-veyyon-is-in-one-paragraph">What Veyyon is, in one paragraph</a></h2>
-<p>Veyyon is a fork of <a href="https://github.com/can1357/oh-my-pi">oh-my-pi</a>: TypeScript and Bun for the CLI, TUI, tools, providers, and session loop; Rust natives for grep, PTY, and <strong>hashline</strong> edits. Install with <code>bun install -g @veyyon/pi-coding-agent</code> or <code>bun dev</code> from source. The command is <strong><code>veyyon</code></strong> (short alias <strong><code>vey</code></strong>). Config and state default to <code>~/.veyyon</code>.</p>
-<p>Shipped today: hashline edits, mnemopi memory, model roles, session trees, MCP, skills, and plan/goal modes.</p>
+<p>Veyyon is a fork of <a href="https://github.com/can1357/oh-my-pi">oh-my-pi</a>: TypeScript and Bun for the CLI, TUI, tools, providers, and session loop; Rust natives for grep, PTY, and <strong>hashline</strong> edits. Install with <code>curl -fsSL https://get.veyyon.dev | sh</code> (or <code>bun install -g @veyyon/pi-coding-agent</code>, or <code>bun dev</code> from source). The command is <strong><code>veyyon</code></strong> (short alias <strong><code>vey</code></strong>). Config and state default to <code>~/.veyyon</code>.</p>
+<p>Shipped today: hashline edits with verification, schema repair on tool calls, explicit model slots with three-knob compaction, mnemopi memory, session trees, MCP, skills, and plan/goal modes.</p>
 <h2 id="why-it-is-different-shipped-vs-planned"><a class="header" href="#why-it-is-different-shipped-vs-planned">Why it is different (shipped vs planned)</a></h2>
 <ul>
 <li><strong>Edits that land.</strong> Hashline and model-tuned edit tools with native verification; fewer retry loops on bad diffs.</li>
 <li><strong>Explicit model slots.</strong> Pick the model you talk to, the model for subagents, and the model for compaction — three plain choices, no <code>default</code>-chain indirection.</li>
-<li><strong>Interface.</strong> Veyyon Dark uses the silver palette; plan/goal modes and tool approval tiers are engine features.</li>
+<li><strong>Honest interface.</strong> Plan/goal modes and tool approval tiers are engine features, and the TUI keeps sandboxing and approvals visible.</li>
 </ul>
-<p><strong>Spec — not shipped:</strong> the full schema-based tool-call repair cascade, a unified single-write-path proof, and self-contained profiles. See <a href="#what-makes-veyyon-different">What makes Veyyon different</a>.</p>
-<h2 id="what-is-built-vs-planned"><a class="header" href="#what-is-built-vs-planned">What is built vs planned</a></h2>
+<p><strong>Spec — not shipped:</strong> the broader tool-call repair cascade (general schema repair on tool calls is shipped), a unified single-write-path proof, and fully self-contained profiles. See <a href="#what-makes-veyyon-different">What makes Veyyon different</a>.</p>
+<h2 id="on-honesty"><a class="header" href="#on-honesty">On honesty</a></h2>
 <p>This book states plainly what is built and what is planned. Pages marked <strong>Spec — not shipped</strong> describe target design not yet in the product. Credits: <a href="#acknowledgements">Acknowledgements</a>.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="why-veyyon"><a class="header" href="#why-veyyon">Why Veyyon</a></h1>
@@ -251,10 +251,11 @@ provider-agnostic configuration, and a TUI that keeps sandboxing and approvals v
 <h2 id="what-you-get-today"><a class="header" href="#what-you-get-today">What you get today</a></h2>
 <ul>
 <li><strong>Edits that land.</strong> Hashline and related edit tools with model-specific prompts; fewer retry loops on bad diffs.</li>
+<li><strong>Three explicit model slots.</strong> The model you talk to, the subagent model, and the compaction model — each set on its own, no <code>default</code> pseudo-model. Optional named roles live in settings, scoped per profile.</li>
 <li><strong>Bring your own key.</strong> Dozens of providers via the bundled catalog; no vendor lock-in.</li>
-<li><strong>Per-role models.</strong> Assign fast, thinking, vision, task, and other roles without reconfiguring every session.</li>
-<li><strong>A real agent loop.</strong> Read, search, edit, bash, LSP, browser, MCP, compaction, and subagents, all inside the approval mode you control.</li>
+<li><strong>A real agent loop.</strong> Read, search, edit, bash, LSP, browser, MCP, compaction, and subagents, all inside approval and sandbox policy you control.</li>
 <li><strong>Session trees.</strong> Branch, fork, and navigate conversation history without losing abandoned paths.</li>
+<li><strong>Cockpit.</strong> Watch every subagent live — a model per agent, drill in, and steer while the work happens.</li>
 <li><strong>Memory.</strong> mnemopi-backed recall across sessions (see <a href="#memory">Memory</a>).</li>
 <li><strong>Lower cost.</strong> Fewer format retries and leaner reads mean fewer tokens for the same outcome.</li>
 </ul>
@@ -262,7 +263,7 @@ provider-agnostic configuration, and a TUI that keeps sandboxing and approvals v
 <ul>
 <li>Developers who want a capable terminal agent on their own keys.</li>
 <li>Teams running open or gateway models with a harness tuned for coding, not chat-only UIs.</li>
-<li>Anyone who wants visible approval boundaries and tool failures that surface instead of hiding.</li>
+<li>Anyone who wants visible sandbox boundaries and honest tool failures.</li>
 </ul>
 <h2 id="where-to-go-next"><a class="header" href="#where-to-go-next">Where to go next</a></h2>
 <ul>
@@ -355,7 +356,7 @@ agent bounces the error back to the model, the model apologizes, and the same ed
 <h2 id="what-improves"><a class="header" href="#what-improves">What improves</a></h2>
 <ul>
 <li>Hashline edits anchor on <code>read</code>/<code>grep</code> snapshot tags for verifiable hunks.</li>
-<li><code>edit</code>, <code>write</code>, and <code>apply_patch</code> modes share the same approval gate.</li>
+<li><code>edit</code>, <code>write</code>, and <code>apply_patch</code> modes share sandbox and approval gates.</li>
 <li>Stale anchors fail with recovery hints instead of silent wrong edits.</li>
 <li>General schema repair coerces almost-right tool calls into shape before dispatch.</li>
 </ul>
@@ -423,7 +424,7 @@ tool contract, it stops and says so rather than degrading silently — a silent
 fallback is treated as a bug.</p>
 <h2 id="what-this-means-in-practice"><a class="header" href="#what-this-means-in-practice">What this means in practice</a></h2>
 <ul>
-<li>File writes and commands run through the approval mode you set.</li>
+<li>File writes and commands run through approval and sandbox policy.</li>
 <li>Tool output records truncation instead of hiding it.</li>
 <li>Bad config fails with context instead of falling back silently.</li>
 <li>Repair abstains when the schema does not prove a safe fix.</li>
@@ -442,15 +443,26 @@ that in a real repository.</p>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="install"><a class="header" href="#install">Install</a></h1>
-<p>Veyyon ships as the npm package <strong><code>@veyyon/pi-coding-agent</code></strong> and installs the <code>veyyon</code>
-executable. It is a TypeScript + Bun agent loop with Rust natives (<code>@veyyon/pi-natives</code>) for hot paths
-(grep, walker, shell/PTY, hashline edits). After install, run <code>veyyon plugin doctor</code>.</p>
+<p>The fastest path is the one-command installer: it downloads a checksum-verified binary from GitHub
+releases, wires your PATH and shell completions, creates the short <code>vey</code> alias, and finishes with a
+doctor self-test.</p>
+<pre><code class="language-console">$ curl -fsSL https://get.veyyon.dev | sh
+$ vey --version
+</code></pre>
+<p>Windows (PowerShell):</p>
+<pre><code class="language-powershell">irm https://veyyon.dev/install.ps1 | iex
+</code></pre>
+<p>Veyyon is a TypeScript + Bun agent loop with Rust natives (<code>@veyyon/pi-natives</code>) for hot paths
+(grep, walker, shell/PTY, hashline edits). Both <code>veyyon</code> and the shorter <code>vey</code> launch it.</p>
 <h2 id="requirements"><a class="header" href="#requirements">Requirements</a></h2>
 <ul>
-<li><strong>Bun</strong> (recommended runtime) or a recent Node.js.</li>
 <li><strong>Git</strong> — most workflows expect a repository.</li>
 </ul>
+<p>There is no OS-level shell sandbox (no Landlock/seccomp/Seatbelt/bubblewrap requirement); the
+approval mode is the safety boundary — see <a href="#sandbox-and-approvals">Approvals and autonomy</a>.</p>
 <h2 id="install-npm--bun"><a class="header" href="#install-npm--bun">Install (npm / Bun)</a></h2>
+<p>If you prefer to run from the package registry, Veyyon ships as <strong><code>@veyyon/pi-coding-agent</code></strong>
+and installs the <code>veyyon</code> executable:</p>
 <pre><code class="language-console">$ bun install -g @veyyon/pi-coding-agent
 $ veyyon --version
 </code></pre>
@@ -460,7 +472,9 @@ $ veyyon --version
 </code></pre>
 <p><code>bun install</code> also builds <code>@veyyon/pi-natives</code>. Config and state default to <code>~/.veyyon</code>.</p>
 <h2 id="after-install"><a class="header" href="#after-install">After install</a></h2>
-<p>The first interactive <code>veyyon</code> opens the setup ceremony (splash → providers → glyphs → theme → outro). Force it again with <code>veyyon setup</code>. Re-open providers inside a session with <code>/setup</code> or <code>/providers</code>. See <a href="#getting-started">Getting started</a>.</p>
+<p>The first interactive <code>veyyon</code> opens the setup ceremony (splash → providers → glyphs → theme →
+outro). Force it again with <code>veyyon setup</code>. Re-open providers inside a session with <code>/setup</code> or
+<code>/providers</code>. See <a href="#getting-started">Getting started</a>.</p>
 <h2 id="build-from-source"><a class="header" href="#build-from-source">Build from source</a></h2>
 <pre><code class="language-console">$ git clone https://github.com/santhreal/veyyon.git
 $ cd veyyon
@@ -469,50 +483,21 @@ $ bun dev --version
 </code></pre>
 <p><code>bun dev</code> runs the in-repo build; use it while evaluating or contributing.</p>
 <h2 id="shell-completions"><a class="header" href="#shell-completions">Shell completions</a></h2>
+<p>The one-command installer wires these for you. From a package install:</p>
 <pre><code class="language-console">$ veyyon completions bash|zsh|fish
 </code></pre>
 <h2 id="verify-the-install"><a class="header" href="#verify-the-install">Verify the install</a></h2>
-<pre><code class="language-console">$ veyyon --version
+<pre><code class="language-console">$ vey --version
 $ veyyon plugin doctor
 $ veyyon plugin doctor --fix
 </code></pre>
 <p><code>veyyon plugin doctor</code> checks plugin health and warns when optional external binaries (<code>sd</code>, <code>sg</code>,
-<code>git</code>) or common API keys are missing. For interactive diagnostics use <code>/debug</code> in the TUI. See
-<a href="#diagnostics-and-health">Diagnostics</a>.</p>
-<h3 id="relocate-the-config-directory"><a class="header" href="#relocate-the-config-directory">Relocate the config directory</a></h3>
-<p>By default Unix uses <code>~/.veyyon</code>. <code>PI_CONFIG_DIR</code> renames the home-relative config directory, and
-<code>PI_CODING_AGENT_DIR</code> relocates the whole agent base (<code>config.yml</code>, <code>agent.db</code>, sessions, and more):</p>
-<pre><code class="language-console">$ export PI_CODING_AGENT_DIR=/path/to/veyyon-agent
-$ veyyon plugin doctor
-</code></pre>
-<p>Layout: <a href="#file-locations-1">File locations</a>.</p>
-<h2 id="first-credentials"><a class="header" href="#first-credentials">First credentials</a></h2>
-<p>On first interactive launch, the setup ceremony (or <code>veyyon setup</code>) walks sign-in and API keys.
-Inside a session, use <code>/setup</code> / <code>/providers</code> to re-open that panel, <code>/login</code> (or <code>/login &lt;provider&gt;</code>)
-for OAuth and key entry, or export the provider’s environment variable and skip the interactive step.
-See <a href="#signing-in">Authentication</a> and <a href="#configuring-providers">Configuring providers</a>.</p>
+<code>git</code>) or common API keys are missing. See <a href="#diagnostics-and-health">Diagnostics</a>.</p>
 <h2 id="uninstall"><a class="header" href="#uninstall">Uninstall</a></h2>
-<p>Remove the global package:</p>
-<pre><code class="language-console">$ bun remove -g @veyyon/pi-coding-agent
-$ # or: npm uninstall -g @veyyon/pi-coding-agent
+<p>Installed with the one-command installer:</p>
+<pre><code class="language-console">$ curl -fsSL https://get.veyyon.dev | sh -s -- --uninstall
 </code></pre>
-<p>Then remove state if you want a clean machine:</p>
-<pre><code class="language-console">$ rm -rf ~/.veyyon          # irreversible: config, secrets, sessions, plugins, skills, logs
-$ # if you relocated the agent base:
-$ rm -rf "$PI_CODING_AGENT_DIR"
-</code></pre>
-<p>Project-local files (<code>AGENTS.md</code>, <code>.veyyon/</code> in a repo) are <strong>not</strong> removed by deleting the
-home directory — clean those per repository if desired.</p>
-<p>To keep projects but wipe only sessions:</p>
-<pre><code class="language-console">$ rm -rf ~/.veyyon/agent/sessions
-</code></pre>
-<h2 id="next"><a class="header" href="#next">Next</a></h2>
-<ul>
-<li><a href="#getting-started">Getting started</a> — first interactive edit with sample terminal output.</li>
-<li><a href="#model-contract">Model contract</a> — choose credentials with the harness boundary in mind.</li>
-<li><a href="#safety-1">Safety</a> — approvals and fail-closed behavior.</li>
-<li><a href="#troubleshooting">Troubleshooting</a> / <a href="#frequently-asked-questions">FAQ</a> — when the doctor is not enough.</li>
-</ul>
+<p>That removes the binary, the <code>vey</code> alias, the global package, and the shell completions.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="signing-in"><a class="header" href="#signing-in">Signing in</a></h1>
 <p>Veyyon authenticates to whichever provider you point it at and calls provider APIs directly with keys
@@ -628,7 +613,13 @@ vey
 <h1 id="getting-started"><a class="header" href="#getting-started">Getting started</a></h1>
 <p>Install Veyyon, complete the first-run ceremony, and land your first approved edit. Budget about five minutes.</p>
 <h2 id="1-install"><a class="header" href="#1-install">1. Install</a></h2>
-<p><strong>npm / Bun (recommended)</strong></p>
+<p><strong>One-command installer (recommended)</strong> — checksum-verified binary from GitHub releases; wires PATH,
+completions, and the short <code>vey</code> alias, then runs a doctor self-test:</p>
+<pre><code class="language-console">$ curl -fsSL https://get.veyyon.dev | sh
+$ vey --version
+</code></pre>
+<p>Windows (PowerShell): <code>irm https://veyyon.dev/install.ps1 | iex</code>.</p>
+<p><strong>npm / Bun</strong></p>
 <pre><code class="language-console">$ bun install -g @veyyon/pi-coding-agent
 $ veyyon --version
 </code></pre>
@@ -639,7 +630,8 @@ $ bun setup
 $ bun dev --version
 </code></pre>
 <p><code>bun setup</code> installs workspace deps and builds <code>@veyyon/pi-natives</code>. Config and state default to <code>~/.veyyon</code>.</p>
-<p>Shell completions: <code>veyyon completions bash|zsh|fish</code>. See <a href="#install">Install</a>.</p>
+<p>Shell completions: <code>veyyon completions bash|zsh|fish</code> (the one-command installer wires them itself).
+See <a href="#install">Install</a>.</p>
 <h2 id="2-first-launch--the-setup-ceremony"><a class="header" href="#2-first-launch--the-setup-ceremony">2. First launch — the setup ceremony</a></h2>
 <p>The first interactive <code>veyyon</code> (or an explicit <code>veyyon setup</code>) opens a fullscreen ceremony:</p>
 <ol>
@@ -701,7 +693,7 @@ $ veyyon
 </table>
 </div>
 <p>Legacy names <code>always-ask</code> (→ <code>ask</code>) and <code>write</code> (→ <code>auto-edit</code>) are still accepted.</p>
-<p>Use <code>/settings</code> or config to tighten policy on unfamiliar repos. Deep dive: <a href="#approvals-and-autonomy">Sandbox</a>, <a href="#safety-1">Safety</a>, <code>docs/approval-mode.md</code>.</p>
+<p>Use <code>/settings</code> or config to tighten policy on unfamiliar repos. Deep dive: <a href="#sandbox-and-approvals">Sandbox</a>, <a href="#safety-1">Safety</a>, <code>docs/approval-mode.md</code>.</p>
 <h2 id="5-three-things-to-try-next"><a class="header" href="#5-three-things-to-try-next">5. Three things to try next</a></h2>
 <ol>
 <li><strong>Multi-file change</strong> — ask for a refactor across modules; watch hashline edits batch paths.</li>
@@ -900,7 +892,7 @@ behavior. See <a href="#configuring-providers">Configuring providers</a> for cop
 <a href="#models-and-providers">Models and providers</a> for day-to-day model selection.</p>
 <h2 id="related-reading"><a class="header" href="#related-reading">Related reading</a></h2>
 <ul>
-<li><a href="#permission-model">Permission model</a> and <a href="#approvals-and-autonomy">Approvals and autonomy</a> for the
+<li><a href="#permission-model">Permission model</a> and <a href="#sandbox-and-approvals">Approvals and autonomy</a> for the
 approval-mode ladder.</li>
 <li>Prefer <code>--approval-mode auto-edit</code> for bounded automation.</li>
 <li><a href="#non-interactive-mode-veyyon---print">Non-interactive mode</a> for scripted <code>veyyon</code> launch patterns.</li>
@@ -917,7 +909,7 @@ compose prompt ──► turn begins
         ├─ assemble context (instructions, goal card, recent history, tools)
         ├─ call model
         ├─ dispatch / repair tool calls (edit, exec, MCP, …)
-        ├─ approval-mode gate
+        ├─ approvals + sandbox gate
         └─ final reply ──► turn ends (or Esc abort)
         │
         ▼
@@ -944,7 +936,7 @@ original session is never modified.</p>
 <h2 id="context-pressure-and-compaction"><a class="header" href="#context-pressure-and-compaction">Context pressure and compaction</a></h2>
 <p>Models have a finite token window. As a session grows, the raw transcript may no longer fit. Veyyon compacts history into a smaller, information-preserving summary instead of truncating it.</p>
 <p>Compaction preserves the goal card, active user instructions, recent turns, and a deterministic working-set of files touched. This lets a resumed session show the model what matters without forcing it to read the entire transcript.</p>
-<p>Prefer <code>/compact</code> when you need a summary to retain state. Prefer the <code>/new</code> command when prior transcript is no longer useful and you want a clean session without summarization. See <a href="#slash-commands-3">Slash commands</a>.</p>
+<p>Prefer <code>/compact</code> when you need a summary to retain state. Prefer <code>/new</code> when prior transcript is no longer useful and you want a clean window without summarization.</p>
 <h2 id="where-the-details-live-4"><a class="header" href="#where-the-details-live-4">Where the details live</a></h2>
 <ul>
 <li>For session commands and storage, see <a href="#sessions">Sessions</a>.</li>
@@ -1004,7 +996,7 @@ escalating to a wider permission. Silent widening of permissions is treated as a
 approval settings, confirm the active <code>tools.approvalMode</code> in <code>/settings</code> (Advanced → Safety).</p>
 <h2 id="where-the-details-live-5"><a class="header" href="#where-the-details-live-5">Where the details live</a></h2>
 <ul>
-<li><a href="#approvals-and-autonomy">Approvals and autonomy</a> — the deep reference.</li>
+<li><a href="#sandbox-and-approvals">Approvals and autonomy</a> — the deep reference.</li>
 <li><a href="#permissions-and-approvals">Permissions and approvals</a> — the approval UX.</li>
 <li><a href="#safety-1">Using Veyyon safely</a> — what surfaces and the checks to run.</li>
 <li><a href="#cli-reference">CLI reference</a> — launch flags.</li>
@@ -1148,20 +1140,20 @@ under <code>modelRoles</code>:</p>
 <p>For non-interactive runs, pass the prompt and pick an approval mode that matches your trust boundary:</p>
 <pre><code class="language-console">$ veyyon --approval-mode auto-edit "run the unit tests and fix failures"
 </code></pre>
-<p>Use <code>--yolo</code> (auto-approve everything) only in trusted automation, ideally in an externally isolated environment (Docker, a VM, a CI jail), since Veyyon does not sandbox the commands it runs.</p>
+<p>Use <code>--yolo</code> (auto-approve everything) only in trusted automation, ideally with an outer sandbox.</p>
 <h2 id="what-stays-constant"><a class="header" href="#what-stays-constant">What stays constant</a></h2>
 <ul>
 <li>The workflow stays the same: read, edit, verify, and stop when the work is done.</li>
-<li>Edit verification, approvals, and context handling are harness behavior.</li>
+<li>Edit verification, OS isolation, approvals, and context handling are harness behavior.</li>
 <li>You are not locked to any provider; point the harness at any compatible API.</li>
 </ul>
-<h2 id="next-1"><a class="header" href="#next-1">Next</a></h2>
+<h2 id="next"><a class="header" href="#next">Next</a></h2>
 <ul>
 <li><a href="#configuring-providers">Configuring providers</a> — Ollama, LM Studio, Anthropic, and custom
 OpenAI-compatible endpoints.</li>
 <li><a href="#models-and-providers">Models and providers</a> — choosing and switching models in a session.</li>
 <li><a href="#safety-1">Safety</a> — boundaries around tool use and model output.</li>
-<li><a href="#permission-model">Permission model</a> — the approval-mode ladder.</li>
+<li><a href="#permission-model">Permission model</a> — approval modes + OS sandbox.</li>
 <li><a href="#signing-in">Signing in</a> — interactive and env-var auth paths.</li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
@@ -1286,7 +1278,7 @@ see <a href="#why-repair-exists">Repair overview</a>.</p>
 </table>
 </div>
 <p>There is one <strong>hashline edit applier</strong> for anchored edits; <code>write</code> is intentionally separate for whole-file
-creation. Both honor the same approval policy.</p>
+creation. Both honor the same approval and sandbox policy.</p>
 <h2 id="tools"><a class="header" href="#tools">Tools</a></h2>
 <div class="table-wrapper">
 <table>
@@ -1310,63 +1302,158 @@ creation. Both honor the same approval policy.</p>
 </ol>
 <p><code>write</code> strips pasted hashline prefixes when appropriate and can mint new tags after whole-file writes.</p>
 <h2 id="safety"><a class="header" href="#safety">Safety</a></h2>
-<p>Edits honor the approval mode like <code>bash</code>. Denied tools are removed from the model’s tool
+<p>Edits honor approval mode and sandbox roots like <code>bash</code>. Denied tools are removed from the model’s tool
 list via <code>disallowed_tools</code> / plan mode.</p>
-<p>Veyyon uses hashline as the primary write path; <code>apply_patch</code> is a compatibility mode. There is no
-single V4A applier that routes every mutation through a <code>make_update_patch</code> envelope.</p>
+<blockquote>
+<p><strong>Spec — not shipped:</strong> a single V4A applier that routes every mutation through a <code>make_update_patch</code>
+envelope. Veyyon uses hashline as the primary path; <code>apply_patch</code> is a compatibility mode.</p>
+</blockquote>
 <div style="break-before: page; page-break-before: always;"></div>
-<h1 id="approvals-and-autonomy"><a class="header" href="#approvals-and-autonomy">Approvals and autonomy</a></h1>
-<p>Veyyon decides when the agent may act on its own and when it must pause for your yes through one
-control: the <strong>approval mode</strong> (<code>tools.approvalMode</code>). There is no separate OS-level command sandbox —
-Veyyon does not confine shell commands with Landlock, seccomp, Seatbelt, or bubblewrap. Autonomy is a
-policy the agent follows, so run write-capable modes only in repositories and on machines you trust.</p>
-<p>For the short mental model see <a href="#permission-model">Permission model</a>; for the approval
-UX walkthrough see <a href="#permissions-and-approvals">Permissions and approvals</a>; for what to verify see
+<h1 id="sandbox-and-approvals"><a class="header" href="#sandbox-and-approvals">Sandbox and approvals</a></h1>
+<blockquote>
+<p><strong>Spec — not shipped:</strong> the OS-enforced sandbox described on this page — Landlock/seccomp on Linux,
+Seatbelt on macOS, bundled <code>bwrap</code>, the <code>read-only</code> / <code>workspace-write</code> / <code>danger-full-access</code> /
+<code>external-sandbox</code> policies, and the <code>-s</code> / <code>--sandbox</code>, <code>--full-auto</code>, and
+<code>--dangerously-bypass-approvals-and-sandbox</code> flags. Veyyon does <strong>not</strong> ship an OS-level command
+sandbox yet. What ships today is the <strong><code>tools.approvalMode</code></strong> autonomy ladder that decides when the
+agent pauses before write and exec tools: <code>plan</code> (read-tier tools only), <code>ask</code> (prompt before
+write/exec), <code>auto-edit</code> (auto write, prompt exec), <code>yolo</code> (auto-approve all). Set it with
+<code>--approval-mode &lt;mode&gt;</code>, <code>--auto-approve</code> (alias <code>--yolo</code>), or <code>tools.approvalMode</code> in <code>config.yml</code>.
+Read the rest of this page as the reference for the target sandbox model.</p>
+</blockquote>
+<p>Veyyon separates two questions: <strong>what a command is allowed to touch</strong> (the sandbox) and <strong>when
+Veyyon must ask you first</strong> (the approval policy). Together they decide whether a tool call runs
+automatically, runs inside a restricted environment, or waits for your yes.</p>
+<p>This page is the deep reference. For the short mental model, see
+<a href="#permission-model">Permission model</a>. For the approval UX walkthrough, see
+<a href="#permissions-and-approvals">Permissions and approvals</a>. For what the sandbox surfaces, see
 <a href="#safety-1">Safety</a>.</p>
-<h2 id="tool-tiers-1"><a class="header" href="#tool-tiers-1">Tool tiers</a></h2>
-<p>Every tool sits in one of three tiers, and the approval mode decides which tiers run without asking:</p>
+<h2 id="two-controls-one-decision"><a class="header" href="#two-controls-one-decision">Two controls, one decision</a></h2>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>Tier</th><th>Examples</th></tr>
+<tr><th>Control</th><th>Question it answers</th><th>Soft or hard?</th></tr>
 </thead>
 <tbody>
-<tr><td><strong>read</strong></td><td><code>read</code>, <code>grep</code>, <code>glob</code>, listing — never modify anything.</td></tr>
-<tr><td><strong>write</strong></td><td><code>edit</code>, <code>write</code> — change files in the workspace.</td></tr>
-<tr><td><strong>exec</strong></td><td><code>bash</code> and other command execution — run arbitrary programs.</td></tr>
+<tr><td><strong>Sandbox policy</strong></td><td>What may this process read, write, and reach on the network?</td><td>Hard boundary (OS-enforced where available).</td></tr>
+<tr><td><strong>Approval policy</strong></td><td>Must a human say yes before this action runs?</td><td>Interaction policy (can pause; cannot widen the sandbox).</td></tr>
 </tbody>
 </table>
 </div>
-<h2 id="the-approval-ladder"><a class="header" href="#the-approval-ladder">The approval ladder</a></h2>
+<p>A command the sandbox forbids <strong>never runs</strong>, regardless of approvals. A command the sandbox permits
+may still pause for your approval. Choose a permissive approval policy only alongside a sandbox you
+trust for the task.</p>
+<h2 id="sandbox-policies"><a class="header" href="#sandbox-policies">Sandbox policies</a></h2>
+<p>The sandbox bounds filesystem and network access for commands the agent runs.</p>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>Mode</th><th>read</th><th>write</th><th>exec</th><th>Use for</th></tr>
+<tr><th>Policy</th><th>Filesystem</th><th>Network</th><th>Best for</th></tr>
 </thead>
 <tbody>
-<tr><td><code>plan</code></td><td>auto</td><td>ask</td><td>ask</td><td>Read-only exploration; plan-mode session semantics.</td></tr>
-<tr><td><code>ask</code></td><td>auto</td><td>ask</td><td>ask</td><td>Everyday work where you approve each change.</td></tr>
-<tr><td><code>auto-edit</code></td><td>auto</td><td>auto</td><td>ask</td><td>Let the agent edit freely but confirm before it runs commands.</td></tr>
-<tr><td><code>yolo</code></td><td>auto</td><td>auto</td><td>auto</td><td>Auto-approve everything — trusted, ideally externally isolated environments only.</td></tr>
+<tr><td><code>read-only</code></td><td>Read anywhere; write nothing.</td><td>Off by default (opt in per policy / permissions).</td><td>Exploring code you do not fully trust.</td></tr>
+<tr><td><code>workspace-write</code></td><td>Read anywhere; write within the workspace and configured writable roots.</td><td>Off by default.</td><td>Everyday coding in a trusted project.</td></tr>
+<tr><td><code>danger-full-access</code></td><td>No filesystem restrictions from Veyyon.</td><td>Unrestricted.</td><td>Disposable environments that truly need full access.</td></tr>
+<tr><td><code>external-sandbox</code></td><td>Full disk access from Veyyon’s point of view, because an <strong>outer</strong> sandbox already contains the process.</td><td>Honors the provided setting.</td><td>Docker, a VM, or a CI job that already sandboxes the runner.</td></tr>
 </tbody>
 </table>
 </div>
-<p>The legacy names <code>always-ask</code> (= <code>ask</code>) and <code>write</code> (= <code>auto-edit</code>) are still accepted.</p>
-<p>Set the mode any of these ways (later wins):</p>
-<pre><code class="language-console">$ veyyon --approval-mode auto-edit            # per launch
-$ veyyon --auto-approve                        # alias: --yolo (= yolo mode)
-$ veyyon --plan-yolo                            # plan now, auto-approve once you leave plan mode
+<p>Set it in <code>config.yml</code>, with <code>-s</code> / <code>--sandbox &lt;policy&gt;</code>, or per run with <code>-c sandbox_policy=...</code>.</p>
+<p>Additional writable roots for a single run:</p>
+<pre><code class="language-console">$ veyyon --print --sandbox workspace-write --add-dir /tmp/veyyon-scratch "…"
 </code></pre>
-<p>Or persist it in <code>config.yml</code>:</p>
-<pre><code class="language-yaml">tools:
-  approvalMode: ask
-</code></pre>
-<h2 id="the-approval-prompt"><a class="header" href="#the-approval-prompt">The approval prompt</a></h2>
-<p>When a mode requires it, Veyyon shows the action before it runs:</p>
+<h3 id="defaults-you-should-expect"><a class="header" href="#defaults-you-should-expect">Defaults you should expect</a></h3>
+<ul>
+<li>Interactive <code>veyyon</code>: prefer a bounded sandbox (<code>workspace-write</code> for normal coding) plus an approval
+policy that still asks for risky work (<code>on-request</code> or <code>untrusted</code>).</li>
+<li>Headless <code>veyyon --print</code>: approvals default to <strong>never</strong> (no TTY to answer), so the <strong>sandbox</strong> is the
+containment. Prefer <code>--sandbox workspace-write</code> (or <code>read-only</code>) explicitly in CI.</li>
+<li>Network egress is <strong>off by default</strong> for <code>read-only</code> and <code>workspace-write</code>. Enabling network is a
+deliberate permission change, not an ambient side effect of “running a command.”</li>
+</ul>
+<h2 id="how-enforcement-works-per-os"><a class="header" href="#how-enforcement-works-per-os">How enforcement works per OS</a></h2>
+<p>Veyyon does not implement a toy “please don’t touch that file” filter as its only defense. It builds
+and applies a <strong>platform sandbox</strong> so a command can only touch what the active policy permits. If
+enforcement cannot be established, Veyyon <strong>fails closed</strong> — that is an error, not a silent
+run-without-confinement.</p>
+<h3 id="linux--landlock-seccomp-and-bubblewrap"><a class="header" href="#linux--landlock-seccomp-and-bubblewrap">Linux — Landlock, seccomp, and bubblewrap</a></h3>
+<p>On Linux the platform sandbox type is <strong>Linux seccomp</strong> (with Landlock / bubblewrap in the helper):</p>
+<ol>
+<li>Veyyon self-invokes a helper (<code>veyyon-linux-sandbox</code>) with the permission profile, policy cwd, and
+command cwd.</li>
+<li>The helper applies the profile: <strong>bubblewrap</strong> provides the mount (and, when needed, network)
+namespace; <strong>seccomp</strong> restricts syscalls; <strong>Landlock</strong> (including a legacy Landlock path) further
+constrains filesystem access when selected.</li>
+<li>A <strong>bundled <code>bwrap</code></strong> is used when the system bubblewrap is missing; Veyyon warns so you can install
+the OS package. If user namespaces are unavailable, you get an explicit warning — sandboxing needs
+them.</li>
+<li><strong>WSL1</strong> cannot create the required user namespaces; use <strong>WSL2</strong> for sandboxed shell commands.
+Veyyon surfaces this instead of pretending confinement worked.</li>
+</ol>
+<p>Managed / proxy-only networking (when configured) requires bubblewrap’s isolated network namespace and
+the helper flag that allows proxy egress only — not a silent hole in the default deny.</p>
+<h3 id="macos--seatbelt"><a class="header" href="#macos--seatbelt">macOS — Seatbelt</a></h3>
+<p>On macOS the platform sandbox type is <strong>Seatbelt</strong>. Veyyon launches the command under a Seatbelt
+profile derived from the permission policy (base profile plus network policy). Filesystem and network
+isolation come from the OS sandbox, not from hope.</p>
+<h3 id="windows--restricted-token-when-enabled"><a class="header" href="#windows--restricted-token-when-enabled">Windows — restricted token (when enabled)</a></h3>
+<p>On Windows, when Windows sandboxing is enabled, Veyyon can use a <strong>restricted-token</strong> sandbox.
+Unsupported configurations fail with an explicit reason rather than falling back to full access.</p>
+<h3 id="external-sandbox"><a class="header" href="#external-sandbox"><code>external-sandbox</code></a></h3>
+<p>Use this when the process is <strong>already</strong> inside Docker, a VM, or another outer jail. Veyyon will not
+double-wrap; it trusts the outer boundary and still honors the network setting you provide. Pair with
+headless approvals carefully — the outer jail is doing the hard work.</p>
+<h2 id="network-egress"><a class="header" href="#network-egress">Network egress</a></h2>
+<p>Network policy is separate from “can the shell start.”</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Mode</th><th>Meaning</th></tr>
+</thead>
+<tbody>
+<tr><td>Restricted (default for bounded sandboxes)</td><td>Outbound network is off unless the permission profile enables it.</td></tr>
+<tr><td>Enabled</td><td>Network is allowed under the active sandbox / proxy rules.</td></tr>
+</tbody>
+</table>
+</div>
+<p>Practical guidance:</p>
+<ul>
+<li>Keep network off for pure local edit/test loops.</li>
+<li>Enable network only when the task needs package downloads, API calls, or live search — and prefer
+asking (<code>untrusted</code> / <code>on-request</code>) the first time in an unfamiliar repo.</li>
+<li>In CI, prefer a runner firewall or <code>external-sandbox</code> plus an explicit allowlist at the job layer;
+do not rely on the model to “be careful.”</li>
+</ul>
+<h2 id="approval-policies"><a class="header" href="#approval-policies">Approval policies</a></h2>
+<p>The approval policy decides when a command or sensitive tool action is shown to you before it runs.
+Set it with <code>-a, --ask-for-approval &lt;policy&gt;</code> or in config.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Policy</th><th>Behavior</th><th>Best for</th></tr>
+</thead>
+<tbody>
+<tr><td><code>untrusted</code></td><td>Only known-safe, read-only commands run automatically; everything else asks.</td><td>Unfamiliar repositories or high-risk work.</td></tr>
+<tr><td><code>on-request</code></td><td>The model decides when to ask; it requests approval for anything it considers risky.</td><td>Everyday coding where you want the model to judge.</td></tr>
+<tr><td><code>granular</code></td><td>Fine-grained per-category control: shell commands, execpolicy prompts, skill scripts, the <code>request_permissions</code> tool, and MCP elicitations are each allowed or auto-rejected.</td><td>Teams that want explicit rules per tool class.</td></tr>
+<tr><td><code>never</code></td><td>Never ask. Denied or failed commands return to the model rather than escalating to you.</td><td>Trusted automation / <code>veyyon --print</code> (the headless default).</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="what-the-approval-prompt-looks-like"><a class="header" href="#what-the-approval-prompt-looks-like">What the approval prompt looks like</a></h3>
 <pre><code class="language-text">Veyyon would like to run a shell command
 
-Command:   npm test
+Command:  npm test
 Directory: /home/you/proj
+Sandbox:   workspace-write
+
+[y] yes   [n] no   [a] always for this session   [p] show policy
+</code></pre>
+<pre><code class="language-text">Veyyon would like to edit a file
+
+File:      src/main.rs
+Sandbox:   workspace-write
+Change:    update the function signature and add a null check
 
 [y] yes   [n] no   [a] always for this session   [p] show policy
 </code></pre>
@@ -1374,32 +1461,93 @@ Directory: /home/you/proj
 <li><code>y</code> — run once.</li>
 <li><code>a</code> — allow this kind of action for the rest of the session.</li>
 <li><code>n</code> — deny; the model is told so it can try another approach.</li>
-<li><code>p</code> — show the active policy.</li>
+<li><code>p</code> — show the active policy details.</li>
 </ul>
-<h2 id="headless-runs"><a class="header" href="#headless-runs">Headless runs</a></h2>
-<p><code>veyyon --print</code> has no TTY to answer prompts, so choose the mode explicitly for the job: <code>--approval-mode ask</code> blocks on anything that would prompt (so the turn stops rather than hangs), while <code>--yolo</code> runs the
-whole task unattended. Use <code>--yolo</code> only when the runner is disposable or externally isolated (Docker, a
-VM, a locked-down CI job), because Veyyon itself does not contain the commands it runs.</p>
-<h2 id="execution-policy-rules-1"><a class="header" href="#execution-policy-rules-1">Execution policy rules</a></h2>
-<p>Command allowlists and prompts also come from <strong>execpolicy</strong> <code>.rules</code> files (user and project). They
-refine which specific commands auto-run within the active mode. Untrusted project directories disable
-project-local rules, config, and hooks until you trust them.</p>
-<h2 id="fail-closed-for-security-controls"><a class="header" href="#fail-closed-for-security-controls">Fail-closed for security controls</a></h2>
-<p>Approval decisions fail closed: a denied or errored command returns to the model rather than escalating
-to a wider permission, and hooks that reject a <code>PermissionRequest</code> block the action. After changing the
-mode, confirm the active <code>tools.approvalMode</code> in <code>/settings</code> (Advanced → Safety).</p>
+<p>Trust/allowlists also come from <strong>execpolicy</strong> <code>.rules</code> files (user and project). In automation you
+can skip loading them with <code>veyyon --print --ignore-rules</code> when you want a hermetic policy (see
+<a href="#non-interactive-mode-veyyon---print">Non-interactive mode</a>).</p>
+<h2 id="how-they-combine-recipes"><a class="header" href="#how-they-combine-recipes">How they combine (recipes)</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Goal</th><th>Sandbox</th><th>Approval</th></tr>
+</thead>
+<tbody>
+<tr><td>Explore an unfamiliar repo</td><td><code>read-only</code></td><td><code>untrusted</code></td></tr>
+<tr><td>Everyday coding</td><td><code>workspace-write</code></td><td><code>on-request</code></td></tr>
+<tr><td>Trusted CI automation</td><td><code>workspace-write</code> or <code>read-only</code></td><td><code>never</code> (exec default) + explicit <code>--sandbox …</code></td></tr>
+<tr><td>Already inside Docker/CI jail</td><td><code>external-sandbox</code></td><td><code>never</code></td></tr>
+<tr><td>Need full disk, still want human gates</td><td><code>danger-full-access</code></td><td><code>untrusted</code></td></tr>
+<tr><td>Disposable env, no humans, no jail</td><td><code>danger-full-access</code></td><td><code>never</code> — <strong>only</strong> if inputs and the machine are disposable</td></tr>
+</tbody>
+</table>
+</div>
+<p>Never pair <code>danger-full-access</code> with <code>never</code> unless the environment is disposable and the inputs are
+fully trusted. That combination removes both containment and human review.</p>
+<h3 id="deprecated---full-auto"><a class="header" href="#deprecated---full-auto">Deprecated: <code>--full-auto</code></a></h3>
+<p>On <code>veyyon --print</code>, <code>--full-auto</code> is a <strong>legacy compatibility trap</strong>. It prints a warning and maps to
+<code>--sandbox workspace-write</code> behavior. Prefer the explicit flag:</p>
+<pre><code class="language-console">$ veyyon --print --sandbox workspace-write "run the unit tests and summarize failures"
+</code></pre>
+<p>Do not document new automation as <code>--full-auto</code>.</p>
+<h3 id="dangerous-escape-hatch"><a class="header" href="#dangerous-escape-hatch">Dangerous escape hatch</a></h3>
+<pre><code class="language-console">$ veyyon --print --dangerously-bypass-approvals-and-sandbox "…"
+</code></pre>
+<p>(<code>--yolo</code> is an alias.) This skips confirmation prompts <strong>and</strong> sandboxing. Intended solely for
+environments that are <strong>externally</strong> sandboxed. Prefer <code>external-sandbox</code> when you can express the
+outer jail cleanly.</p>
+<h2 id="extending-the-boundary-at-runtime"><a class="header" href="#extending-the-boundary-at-runtime">Extending the boundary at runtime</a></h2>
+<p>You can widen read access or escalate without editing <code>config.yml</code> mid-thought:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Action</th><th>Effect</th></tr>
+</thead>
+<tbody>
+<tr><td><code>/sandbox-add-read-dir &lt;absolute_path&gt;</code></td><td>Grant the sandbox read access to a directory for the current session.</td></tr>
+<tr><td><code>/elevate-sandbox</code></td><td>Walk through setting up the elevated agent sandbox when a task needs more than the default.</td></tr>
+<tr><td><code>/approve</code></td><td>Approve a specific pending request.</td></tr>
+<tr><td><code>/reload</code></td><td>Re-read configuration after you edit policies on disk.</td></tr>
+<tr><td><code>-c sandbox_policy=…</code> / <code>-a …</code></td><td>Override for a single run.</td></tr>
+<tr><td><code>--add-dir &lt;DIR&gt;</code></td><td>Extra writable root for this invocation.</td></tr>
+</tbody>
+</table>
+</div>
+<p>Use <a href="#configuration-5">profiles</a> for repeatable combinations (for example a <code>reviewer</code>
+profile with <code>read-only</code> + <code>untrusted</code>).</p>
+<h2 id="fail-closed-behavior-1"><a class="header" href="#fail-closed-behavior-1">Fail-closed behavior</a></h2>
+<p>Security-control failures are operator-visible:</p>
+<ul>
+<li>Missing Linux sandbox helper → error, not unsandboxed execution.</li>
+<li>Seatbelt unavailable off macOS → unsupported operation, not a silent skip.</li>
+<li>Bubblewrap / user-namespace problems → warning or hard failure depending on whether the policy
+<strong>requires</strong> a platform sandbox.</li>
+<li>WSL1 → explicit unsupported message pointing at WSL2.</li>
+</ul>
+<p>Treat a silent fallback to a weaker boundary as a <strong>bug</strong>. After changing sandbox or approval
+settings, confirm the active <code>tools.approvalMode</code> in <code>/settings</code> (Advanced → Safety).</p>
+<h2 id="choosing-settings-checklist"><a class="header" href="#choosing-settings-checklist">Choosing settings (checklist)</a></h2>
+<ol>
+<li>Is the repo trusted? If no → <code>read-only</code> + <code>untrusted</code>.</li>
+<li>Does the task need writes? If yes → <code>workspace-write</code>, keep network off until needed.</li>
+<li>Are you headless? If yes → set <code>--sandbox</code> explicitly; do not rely on interactive approvals.</li>
+<li>Is there an outer jail? If yes → <code>external-sandbox</code> (or <code>--dangerously-bypass-…</code> only when you
+understand the outer jail).</li>
+<li>Would a wrong <code>rm -rf</code> hurt? If yes → never combine full access with <code>never</code>.</li>
+</ol>
 <h2 id="see-also-1"><a class="header" href="#see-also-1">See also</a></h2>
 <ul>
-<li><a href="#permissions-and-approvals">Permissions and approvals</a> — the approval UX in depth.</li>
-<li><a href="#permission-model">Permission model</a> — the one-paragraph model.</li>
-<li><a href="#non-interactive-mode-veyyon---print">Non-interactive mode</a> — choosing a mode for CI.</li>
 <li><a href="#safety-1">Safety</a> — what surfaces and what to verify.</li>
+<li><a href="#permissions-and-approvals">Permissions explainer</a> — approval UX.</li>
+<li><a href="#non-interactive-mode-veyyon---print">Non-interactive mode</a> — CI flags (<code>--ignore-user-config</code>, <code>--ignore-rules</code>, sandbox).</li>
+<li><a href="#cli-reference">CLI reference</a> — launch flags.</li>
+<li><a href="#exit-codes-2">Exit codes</a> — how failures surface in scripts.</li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="permissions-and-approvals"><a class="header" href="#permissions-and-approvals">Permissions and approvals</a></h1>
 <p>Veyyon can run commands and edit files on your behalf. One control shapes that power: the <strong>approval
 mode</strong>, which decides when Veyyon acts on its own and when it pauses to ask you first. This page
-explains the flow and the choices. For the full reference, see <a href="#approvals-and-autonomy">Approvals and autonomy</a>.</p>
+explains the flow and the choices. For the full reference, see <a href="#sandbox-and-approvals">Approvals and autonomy</a>.</p>
 <p>Veyyon does not add an OS-level command sandbox — it does not confine shell commands with Landlock,
 seccomp, Seatbelt, or bubblewrap. The approval mode is the boundary, so run write-capable modes only
 where you trust the repository and the machine.</p>
@@ -1424,7 +1572,7 @@ Change: update the function signature and add a null check
 </code></pre>
 <p><code>y</code> runs the action once. <code>a</code> lets the same kind of action run without asking for the rest of the
 session. <code>n</code> cancels it and tells the model so it can try another approach. <code>p</code> shows the active policy.</p>
-<h2 id="tool-tiers-2"><a class="header" href="#tool-tiers-2">Tool tiers</a></h2>
+<h2 id="tool-tiers-1"><a class="header" href="#tool-tiers-1">Tool tiers</a></h2>
 <p>The mode grants autonomy per tier: <strong>read</strong> tools (<code>read</code>, <code>grep</code>, <code>glob</code>) never change anything,
 <strong>write</strong> tools (<code>edit</code>, <code>write</code>) modify workspace files, and <strong>exec</strong> tools (<code>bash</code>) run programs.</p>
 <h2 id="approval-modes-1"><a class="header" href="#approval-modes-1">Approval modes</a></h2>
@@ -1444,12 +1592,12 @@ session. <code>n</code> cancels it and tells the model so it can try another app
 <p>The legacy names <code>always-ask</code> (= <code>ask</code>) and <code>write</code> (= <code>auto-edit</code>) are still accepted. Set the mode
 with <code>--approval-mode &lt;mode&gt;</code>, <code>--auto-approve</code> / <code>--yolo</code>, <code>--plan-yolo</code>, or <code>tools.approvalMode</code> in
 <code>config.yml</code>.</p>
-<h2 id="headless-runs-1"><a class="header" href="#headless-runs-1">Headless runs</a></h2>
+<h2 id="headless-runs"><a class="header" href="#headless-runs">Headless runs</a></h2>
 <p><code>veyyon --print</code> has no TTY to answer prompts. Pick the mode for the job: <code>--approval-mode ask</code> stops
 the turn rather than hanging on anything that would prompt, and <code>--yolo</code> runs the whole task
 unattended. Use <code>--yolo</code> only when the runner is disposable or externally isolated, because Veyyon does
 not contain the commands it runs.</p>
-<h2 id="execution-policy-rules-2"><a class="header" href="#execution-policy-rules-2">Execution policy rules</a></h2>
+<h2 id="execution-policy-rules-1"><a class="header" href="#execution-policy-rules-1">Execution policy rules</a></h2>
 <p>Beyond the mode, <strong>execpolicy</strong> <code>.rules</code> files (user and project) refine which specific commands
 auto-run. Untrusted project directories disable project-local rules, config, and hooks until you trust
 the directory.</p>
@@ -1472,7 +1620,7 @@ Veyyon acts on its own and when it pauses for your permission. Veyyon does not a
 sandbox, so the mode is the boundary — and its decisions are visible. If Veyyon cannot prove a tool
 call fits the advertised schema it fails closed or asks; silent degradation is treated as a product
 bug.</p>
-<p>Deep policy reference: <a href="#approvals-and-autonomy">Approvals and autonomy</a>. Mental model:
+<p>Deep policy reference: <a href="#sandbox-and-approvals">Approvals and autonomy</a>. Mental model:
 <a href="#permission-model">Permission model</a>. Product framing:
 <a href="#safety-you-can-see">Safety you can see</a>.</p>
 <h2 id="what-you-see"><a class="header" href="#what-you-see">What you see</a></h2>
@@ -1543,10 +1691,10 @@ that is not “working as intended.”</li>
 <li><strong>After</strong> — turn diffs and (for <code>veyyon --print --json</code>) structured events record what ran, what failed,
 and what the final message was.</li>
 </ol>
-<h2 id="next-2"><a class="header" href="#next-2">Next</a></h2>
+<h2 id="next-1"><a class="header" href="#next-1">Next</a></h2>
 <ul>
 <li><a href="#configuration-5">Configuration</a> — set the policies Veyyon will enforce.</li>
-<li><a href="#approvals-and-autonomy">Sandbox and approvals</a> — OS backends, egress, recipes.</li>
+<li><a href="#sandbox-and-approvals">Sandbox and approvals</a> — OS backends, egress, recipes.</li>
 <li><a href="#editing-and-repair">Editing and repair</a> — why refused repairs protect your tree.</li>
 <li><a href="#diagnostics-and-health">Diagnostics</a> — diagnostics options and exit status.</li>
 </ul>
@@ -1723,6 +1871,7 @@ are convenient interactively and risky in automation.</p>
 <li><a href="#configuration-5">Configuration</a> — model defaults and overrides.</li>
 <li><a href="#signing-in">Authentication</a> — login, logout, secret storage.</li>
 </ul>
+<p>Engineering detail: <a href="../../models.html"><code>docs/models.md</code></a>.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="sessions"><a class="header" href="#sessions">Sessions</a></h1>
 <p>A Veyyon session is the unit of interactive work. Start one in the repository you want to modify:</p>
@@ -1740,7 +1889,10 @@ session with <code>/fork</code>.</li>
 <li>Manage saved sessions with <code>/session</code>; garbage-collect old artifacts with <code>veyyon gc</code>.</li>
 <li>Run a bounded non-interactive task by passing a prompt: <code>veyyon "…"</code>.</li>
 </ul>
-<p>Veyyon resumes from the launch picker or <code>/resume</code>, and branches with <code>/branch</code> / <code>/fork</code>.</p>
+<blockquote>
+<p><strong>Spec — not shipped:</strong> top-level <code>veyyon resume</code> / <code>fork</code> / <code>archive</code> verbs. Veyyon resumes from
+the launch picker or <code>/resume</code>, and branches with <code>/branch</code> / <code>/fork</code> (there is no <code>/clone</code>).</p>
+</blockquote>
 <h2 id="long-work"><a class="header" href="#long-work">Long work</a></h2>
 <p>For large tasks, make the desired outcome explicit. The harness should preserve active instructions,
 recent turns, working files, verification facts, and unresolved blockers through compaction. When a
@@ -1843,7 +1995,7 @@ followUpMode: all
 <p>Programmatic clients use <code>turn/followUp</code> to queue a follow-up on an active thread and
 <code>thread/followUps/recall</code> to take every queued follow-up back off the queue (the response returns
 the recalled messages). Queueing an empty message is refused loudly.</p>
-<h2 id="next-3"><a class="header" href="#next-3">Next</a></h2>
+<h2 id="next-2"><a class="header" href="#next-2">Next</a></h2>
 <p>Read <a href="#examples">Examples</a> for concrete prompts and workflows.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="cockpit-monitoring-multi-agent-work"><a class="header" href="#cockpit-monitoring-multi-agent-work">Cockpit: monitoring multi-agent work</a></h1>
@@ -1950,10 +2102,13 @@ to <code>.yml</code> on load.</p>
 </tbody>
 </table>
 </div>
-<p>Remap keys by editing <code>keybindings.yml</code>; <code>/hotkeys</code> shows the current bindings.</p>
+<blockquote>
+<p><strong>Spec — not shipped:</strong> a <code>/keymap</code> interactive remapper and nested <code>[tui.keymap.*]</code> tables. Veyyon
+uses <code>keybindings.yml</code> + <code>/hotkeys</code> instead.</p>
+</blockquote>
 <h2 id="vim-mode"><a class="header" href="#vim-mode">Vim mode</a></h2>
-<p>When enabled in settings, the composer supports Normal/Insert modal editing (<code>i</code>, <code>Esc</code>, motions,
-operators). Toggle via the settings UI if exposed in your build.</p>
+<p>Modal (vim-style) composer editing does not exist. The composer ships with the
+standard binding set in <a href="#keybindings-reference">Keybindings reference</a> only.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="web-search"><a class="header" href="#web-search">Web search</a></h1>
 <p>Web search lets the model look things up while it works, using Veyyon’s own <code>web_search</code>
@@ -1994,7 +2149,7 @@ providers from that chain entirely.</p>
 <h2 id="approvals"><a class="header" href="#approvals">Approvals</a></h2>
 <p>With web search enabled, the tool runs without a per-call approval prompt, because it reads
 public web content rather than touching your machine. If you want the model to never reach
-the web, set <code>web_search.enabled: false</code>. See <a href="#approvals-and-autonomy">Sandbox and approvals</a>.</p>
+the web, set <code>web_search.enabled: false</code>. See <a href="#sandbox-and-approvals">Sandbox and approvals</a>.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="code-review"><a class="header" href="#code-review">Code review</a></h1>
 <blockquote>
@@ -2468,13 +2623,13 @@ $ veyyon exec resume "$THREAD" "continue; finish applying the plan"
 <li>Prefer <code>--sandbox workspace-write</code> or <code>read-only</code> over bypass flags.</li>
 <li>Use <code>--ignore-user-config</code> / <code>--ignore-rules</code> when the runner’s home directory must not affect the job.</li>
 <li><code>--dangerously-bypass-approvals-and-sandbox</code> is for outer jails only — prefer
-<code>external-sandbox</code> when you can express that cleanly (<a href="#approvals-and-autonomy">Sandbox</a>).</li>
+<code>external-sandbox</code> when you can express that cleanly (<a href="#sandbox-and-approvals">Sandbox</a>).</li>
 <li>Never commit API keys into CI logs; use the runner secret store and <code>env_key</code>.</li>
 </ul>
 <h2 id="see-also-2"><a class="header" href="#see-also-2">See also</a></h2>
 <ul>
 <li><a href="#sessions">Sessions</a> — resuming and branching.</li>
-<li><a href="#approvals-and-autonomy">Sandbox and approvals</a> — policies for CI.</li>
+<li><a href="#sandbox-and-approvals">Sandbox and approvals</a> — policies for CI.</li>
 <li><a href="#exit-codes-2">Exit codes</a></li>
 <li><a href="../../sdk.html">ACP / SDK</a> for programmatic control.</li>
 <li><a href="#cli-reference">CLI reference</a></li>
@@ -2503,6 +2658,24 @@ $ veyyon exec resume "$THREAD" "continue; finish applying the plan"
 <li><strong>Custom themes:</strong> drop JSON under <code>~/.veyyon/agent/themes/</code>; schema in <code>docs/theme.md</code>.</li>
 </ul>
 <p>Terminal capability detection maps the same hierarchy for truecolor, ANSI-256, ANSI-16, unknown background, and no-color modes. Reduced-motion settings remove decorative animation without hiding state changes.</p>
+<h2 id="painted-ground"><a class="header" href="#painted-ground">Painted ground</a></h2>
+<p><code>tui.paintGround</code> (<code>/settings</code> → Appearance → Display) controls whether Veyyon sets the
+terminal’s own background color (OSC 11) to the theme’s ground while it runs, so the UI
+fills the window edge-to-edge instead of floating on the terminal’s configured background.
+The original background is restored on exit — including crash exits.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Value</th><th>Behavior</th></tr>
+</thead>
+<tbody>
+<tr><td><code>auto</code> (default)</td><td>Paint only when the terminal’s reported background is already close to the theme ground, so no visible seam appears while painting. If the terminal doesn’t report its background, inherit it.</td></tr>
+<tr><td><code>always</code></td><td>Always paint the theme ground.</td></tr>
+<tr><td><code>never</code></td><td>Never touch the terminal background.</td></tr>
+</tbody>
+</table>
+</div>
+<p>Terminals that don’t support OSC 11 ignore the sequence; nothing breaks.</p>
 <h2 id="what-the-theme-covers"><a class="header" href="#what-the-theme-covers">What the theme covers</a></h2>
 <p>The contract applies to onboarding, composer, menus, dialogs, status line, markdown, tables, diffs, tool output, approvals, progress, and errors — not only the chat pane.</p>
 <h2 id="identity-elsewhere"><a class="header" href="#identity-elsewhere">Identity elsewhere</a></h2>
@@ -2611,7 +2784,7 @@ cycling, and a <code>plan_mode_reasoning_effort</code> config key. Veyyon’s pl
 <h3 id="walkthrough-real-commands"><a class="header" href="#walkthrough-real-commands">Walkthrough (real commands)</a></h3>
 <pre><code class="language-console">$ veyyon
 </code></pre>
-<pre><code class="language-text">/goal set Add a --max-time flag to the print-mode runner and document it in the handbook
+<pre><code class="language-text">/goal set Add workspace-write default for headless runs and document it in the handbook
 </code></pre>
 <p>Work in normal mode; use <code>/goal show</code> for progress. When blocked, <code>/goal pause</code>. When done, the agent should <code>complete</code> via the goal tool or you <code>/goal drop</code>.</p>
 <hr>
@@ -3676,7 +3849,10 @@ if os.path.basename(file_path) == "Cargo.toml":
 <h2 id="running-veyyon-as-an-mcp-server"><a class="header" href="#running-veyyon-as-an-mcp-server">Running Veyyon as an MCP server</a></h2>
 <p>Use the ACP integration or SDK embedding rather than a separate <code>veyyon mcp-server</code> subcommand unless
 your build registers it.</p>
-<p>Veyyon configures MCP through <code>mcp.json</code> and the <code>/mcp</code> command.</p>
+<blockquote>
+<p><strong>Spec — not shipped:</strong> a <code>[mcp_servers.*]</code> config table and a <code>veyyon mcp</code> CLI. Veyyon configures
+MCP through <code>mcp.json</code> and the <code>/mcp</code> command instead.</p>
+</blockquote>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="mcp-server-setup"><a class="header" href="#mcp-server-setup">MCP server setup</a></h1>
 <p>Veyyon can connect to third-party Model Context Protocol (MCP) servers so external tools and data
@@ -3837,8 +4013,10 @@ namespaced tool. Run <code>/mcp verbose</code> to see what was registered.</p>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="connectors-and-apps"><a class="header" href="#connectors-and-apps">Connectors and Apps</a></h1>
-<p>Veyyon does not ship provider-hosted connectors — account-gated app integrations wired through a
-provider’s own connector store. Extend it with the integrations below instead.</p>
+<blockquote>
+<p><strong>Spec — not shipped:</strong> provider-hosted <strong>connectors</strong> (<code>/apps</code>, <code>[apps]</code> config tables,
+account-gated app tools). Veyyon does not ship this subsystem today.</p>
+</blockquote>
 <h2 id="what-ships-instead"><a class="header" href="#what-ships-instead">What ships instead</a></h2>
 <p>Extend Veyyon with tools that are implemented and documented today:</p>
 <div class="table-wrapper">
@@ -3857,8 +4035,8 @@ provider’s own connector store. Extend it with the integrations below instead.
 </div>
 <p>Tool policy uses <code>tools.approvalMode</code> and <code>tools.approval.&lt;tool&gt;</code> — same machinery for bash, MCP, and custom tools (<code>docs/approval-mode.md</code>).</p>
 <h2 id="roadmap-note"><a class="header" href="#roadmap-note">Roadmap note</a></h2>
-<p>If provider-hosted connectors ship, they will add a feature flag, account discovery, and connector
-configuration. Until then, use MCP, plugins, and hooks; <code>apps</code> connector tables are not current behavior.</p>
+<p>If provider-hosted connectors ship, they will add a feature flag, account discovery, an <code>/apps</code> UI, and
+<code>[apps]</code> config. Until then, <code>apps</code> tables are not current behavior.</p>
 <h2 id="see-also-4"><a class="header" href="#see-also-4">See also</a></h2>
 <ul>
 <li><a href="#mcp-server-setup">MCP setup</a></li>
@@ -4164,7 +4342,10 @@ profile as a fresh session. See <a href="#profiles">Profiles</a> for the lifecyc
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="personalities"><a class="header" href="#personalities">Personalities</a></h1>
-<p>Configure personality via <code>/settings</code> or the <code>personality</code> key in <code>config.yml</code> (below).</p>
+<blockquote>
+<p><strong>Spec — not shipped:</strong> a <code>/personality</code> slash command. Configure personality via
+<code>/settings</code> or the <code>personality</code> key in <code>config.yml</code> (below).</p>
+</blockquote>
 <p>Personalities change <strong>how the agent writes replies</strong>, not which tools it has or what sandbox/approval policy applies.</p>
 <h2 id="available-personalities-shipped"><a class="header" href="#available-personalities-shipped">Available personalities (shipped)</a></h2>
 <p>A personality injects a <code>&lt;personality&gt;</code> block into the system prompt when enabled, changing tone only.</p>
@@ -4252,7 +4433,7 @@ config tree (<code>.veyyon/</code>, <code>~/.veyyon/agent/</code>), including MC
 when you need full schemas or edge cases.</p>
 <p>Related references: <a href="#custom-hooks-guide">Hooks guide</a>, <a href="#non-interactive-mode-veyyon---print">Non-interactive mode</a>,
 <a href="#mcp">MCP</a>, <a href="#skills">Skills</a>, <a href="#memory">Memory</a>,
-<a href="#session-branching">Branching</a>, <a href="#approvals-and-autonomy">Sandbox</a>.</p>
+<a href="#session-branching">Branching</a>, <a href="#sandbox-and-approvals">Sandbox</a>.</p>
 <hr>
 <h2 id="automate-a-check-on-every-edit-hooks"><a class="header" href="#automate-a-check-on-every-edit-hooks">Automate a check on every edit (hooks)</a></h2>
 <p>Goal: every time the agent finishes an edit, run a deterministic check and fail closed when it breaks.</p>
@@ -4461,7 +4642,7 @@ model — nothing falls back through a default slot.</p>
 </code></pre>
 <p>Per run, <code>--approval-mode &lt;mode&gt;</code> and <code>--auto-approve</code> / <code>--yolo</code> override the mode. There is no
 separate OS shell sandbox — the approval mode is the only boundary; see
-<a href="#approvals-and-autonomy">Approvals and autonomy</a> and <a href="#safety-1">Safety</a>.</p>
+<a href="#sandbox-and-approvals">Approvals and autonomy</a> and <a href="#safety-1">Safety</a>.</p>
 <h2 id="run-unattended-or-in-ci"><a class="header" href="#run-unattended-or-in-ci">Run unattended or in CI</a></h2>
 <div class="table-wrapper">
 <table>
@@ -4711,7 +4892,7 @@ this page, <code>/experimental</code>, and release notes over raw enum archaeolo
 covers the built in tools, skills, extension data, and external tools through the Model Context Protocol.</p>
 <h2 id="tools-1"><a class="header" href="#tools-1">Tools</a></h2>
 <p>Tools are the actions Veyyon can take: reading a file, searching the tree, editing code, running a
-command, fetching a page, and more. Every tool runs through the same approval model, so a
+command, fetching a page, and more. Every tool runs through the same approval and sandbox model, so a
 tool cannot exceed the boundary you set. Editing tools in particular all flow through one verified write
 path, so a change is checked and recorded the same way no matter which tool made it.</p>
 <h2 id="skills-1"><a class="header" href="#skills-1">Skills</a></h2>
@@ -4735,7 +4916,7 @@ through a hidden hardcoded list and never past the safety boundary you set. You 
 Veyyon can do, and you can always extend it without editing code.</p>
 <h2 id="where-to-go-next-8"><a class="header" href="#where-to-go-next-8">Where to go next</a></h2>
 <ul>
-<li><a href="#configuration-5">Configuration</a> covers the approval mode that gates every tool.</li>
+<li><a href="#configuration-5">Configuration</a> covers approvals and the sandbox that bound every tool.</li>
 <li><a href="#what-makes-veyyon-different">What makes Veyyon different</a> explains the one write path that every editing
 tool shares.</li>
 </ul>
@@ -4914,9 +5095,11 @@ $ veyyon "fix the failing test in auth.rs"
 </table>
 </div>
 <p>Hidden worker selectors and <code>--smoke-test</code> are for CI/packaging, not daily use.</p>
-<p>There are no <code>veyyon app-server</code>, <code>exec-server</code>, <code>execpolicy</code>, or <code>responses-api-proxy</code> subcommands,
-and no top-level <code>resume</code> / <code>fork</code> / <code>archive</code> verbs. Resume and branch from the TUI (<code>/resume</code>,
-<code>/fork</code>, <code>/session</code>) or the launch session picker; for non-interactive resume use <code>veyyon --print --resume &lt;id&gt;</code> / <code>--continue</code>.</p>
+<blockquote>
+<p><strong>Spec — not shipped:</strong> <code>veyyon app-server</code>, <code>exec-server</code>, <code>execpolicy</code>, <code>responses-api-proxy</code>, and
+<code>resume</code> / <code>fork</code> / <code>archive</code> as top-level CLI verbs. Use <code>/resume</code>, <code>/fork</code>, and <code>/session</code> in the
+TUI, or the session picker on launch.</p>
+</blockquote>
 <h2 id="exit-codes-1"><a class="header" href="#exit-codes-1">Exit codes</a></h2>
 <p>See <a href="#exit-codes-2">Exit codes</a>.</p>
 <div style="break-before: page; page-break-before: always;"></div>
@@ -5045,13 +5228,13 @@ group, not a standalone interactive segment picker — see <a href="#cockpit-mon
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="tools-reference"><a class="header" href="#tools-reference">Tools reference</a></h1>
 <p>Model-facing tools are advertised to the model per turn. Availability depends on
-settings, approval mode, plan mode, memory backend, and feature flags.</p>
-<p>For approvals see <a href="#approvals-and-autonomy">Approvals and autonomy</a>. For MCP tools see <a href="#mcp">MCP</a>.
+settings, sandbox, plan mode, memory backend, and feature flags.</p>
+<p>For sandbox and approvals see <a href="#sandbox-and-approvals">Sandbox</a>. For MCP tools see <a href="#mcp">MCP</a>.
 Per-tool engineering specs live under <a href="../../tools"><code>docs/tools/</code></a>.</p>
 <h2 id="core-loop"><a class="header" href="#core-loop">Core loop</a></h2>
 <ol>
 <li>Model emits a tool call (JSON arguments per schema).</li>
-<li>Veyyon validates arguments; handlers run after approval checks.</li>
+<li>Veyyon validates arguments; handlers run after approval/sandbox checks.</li>
 <li>Text or structured output returns to the conversation.</li>
 </ol>
 <p>General schema repair runs before dispatch on all schema-bearing tool calls; tool-specific
@@ -5093,7 +5276,7 @@ leniency (e.g. hashline parsing) is layered on top. See <a href="#why-repair-exi
 <tr><th>Tool</th><th>Purpose</th></tr>
 </thead>
 <tbody>
-<tr><td><code>bash</code></td><td>Shell commands, gated by the approval mode</td></tr>
+<tr><td><code>bash</code></td><td>Shell commands with sandbox + approval</td></tr>
 <tr><td><code>ssh</code></td><td>Remote commands via configured hosts</td></tr>
 <tr><td><code>eval</code></td><td>JS/Python/Julia/Ruby eval cells (when enabled)</td></tr>
 <tr><td><code>debug</code></td><td>Debugger integration</td></tr>
@@ -5449,7 +5632,7 @@ broker host:</p>
 </tbody>
 </table>
 </div>
-<p>There is no <code>VEYYON_REPAIR_LOG</code>, and Veyyon does not emit per-<code>(model,tool,shape)</code> repair telemetry.</p>
+<p>There is no <code>VEYYON_REPAIR_LOG</code>; per-<code>(model,tool,shape)</code> repair telemetry is <strong>Spec — not shipped</strong>.</p>
 <h2 id="terminal-behavior"><a class="header" href="#terminal-behavior">Terminal behavior</a></h2>
 <div class="table-wrapper">
 <table>
@@ -5600,7 +5783,7 @@ prompt ──► │  veyyon (packages/coding-agent)                            
             │  AgentSession turn loop                                      │
             │    │   model stream → tools (read, bash, edit, …)            │
             │    ▼                                                          │
-            │  hashline / handlers ──► filesystem (approval-gated)         │
+            │  hashline / handlers ──► filesystem + sandbox                │
             └──────────────────────────────────────────────────────────────┘
 </code></pre>
 <h2 id="subsystems-that-matter"><a class="header" href="#subsystems-that-matter">Subsystems that matter</a></h2>
@@ -5623,7 +5806,7 @@ prompt ──► │  veyyon (packages/coding-agent)                            
 <ol>
 <li><strong>Prefer one obvious path.</strong> Hashline is the default edit surface; alternate <code>edit.mode</code> values
 exist for compatibility.</li>
-<li><strong>Fail loud.</strong> Invalid config, stale hashline tags, and denied actions surface actionable
+<li><strong>Fail loud.</strong> Invalid config, stale hashline tags, and sandbox violations surface actionable
 errors. No silent fallback to weaker behavior.</li>
 </ol>
 <blockquote>
@@ -5662,7 +5845,7 @@ as <code>commit</code>, <code>grep</code>, and <code>models</code>.</p>
 <tbody>
 <tr><td>Sessions</td><td>JSONL trees, resume, fork, compact</td><td><a href="#sessions">Sessions</a></td></tr>
 <tr><td>Edit</td><td>Hashline patches (default)</td><td><a href="#the-hashline-edit-engine">Edit engine</a></td></tr>
-<tr><td>Approvals</td><td>Approval-mode gating on tool tiers</td><td><a href="#approvals-1">Approvals</a></td></tr>
+<tr><td>Sandbox</td><td>Approval + filesystem/network bounds</td><td><a href="#sandbox">Sandbox</a></td></tr>
 <tr><td>Config</td><td>Layered <code>config.yml</code>, profiles</td><td><a href="#config">Config</a></td></tr>
 <tr><td>MCP</td><td>External tool servers</td><td><a href="#mcp-2">MCP</a></td></tr>
 <tr><td>Providers</td><td>Model registry + auth</td><td><a href="#providers">Providers</a></td></tr>
@@ -5670,26 +5853,27 @@ as <code>commit</code>, <code>grep</code>, and <code>models</code>.</p>
 </tbody>
 </table>
 </div>
-<p>Not part of the shipped architecture: a standalone exec-server process, guardian auto-review as a
-subsystem, and a separate backend-catalog subsystem. Everything that ships is covered by the rows above.</p>
+<blockquote>
+<p><strong>Spec — not shipped:</strong> a standalone exec-server process, guardian auto-review as a subsystem, and a
+separate backend-catalog subsystem. Behavior that ships is covered under the rows above.</p>
+</blockquote>
 <div style="break-before: page; page-break-before: always;"></div>
-<h1 id="approvals-1"><a class="header" href="#approvals-1">Approvals</a></h1>
-<p>Approvals decide when a tool or shell command runs on its own and when Veyyon pauses for the user.
-There is no OS-level command sandbox: Veyyon does not confine commands with Landlock, seccomp,
-Seatbelt, or bubblewrap. The boundary is policy the agent loop enforces before dispatch.</p>
+<h1 id="sandbox"><a class="header" href="#sandbox">Sandbox</a></h1>
+<p>The sandbox bounds what tool and shell commands may read, write, and reach on the host. When Veyyon
+is unsure whether an action is safe, it asks the user instead of assuming.</p>
 <h2 id="responsibility"><a class="header" href="#responsibility">Responsibility</a></h2>
 <ul>
-<li>Map the <strong>approval mode</strong> (<code>tools.approvalMode</code>) to a per-tier decision (read / write / exec) for
-<code>bash</code>, <code>edit</code>, <code>write</code>, and related tools.</li>
-<li>Apply per-tool overrides (<code>tools.approval</code> → <code>allow</code> / <code>deny</code> / <code>prompt</code>) on top of the mode.</li>
-<li>Apply execpolicy <code>.rules</code> (user and project) that allowlist or require prompts for command classes.</li>
-<li>Surface the approval prompt in the TUI before a gated command or edit runs.</li>
+<li>Map approval mode and sandbox policy to concrete restrictions for <code>bash</code>, <code>edit</code>, <code>write</code>, and
+related tools.</li>
+<li>Enforce workspace roots and network policy per session settings.</li>
+<li>Surface permission prompts in the TUI before mutating or risky commands run.</li>
 </ul>
 <h2 id="public-boundary"><a class="header" href="#public-boundary">Public boundary</a></h2>
-<p><code>tools.approvalMode</code> in <code>config.yml</code> and the launch flags (<code>--approval-mode</code>, <code>--auto-approve</code> /
-<code>--yolo</code>, <code>--plan-yolo</code>) resolve to a decision applied to the <code>bash</code>, <code>edit</code>, and <code>write</code> tools, with
-plan-mode guards on top. Commands run <strong>in-process</strong> after policy resolution — there is no standalone
-exec-server process in the shipped product.</p>
+<p>Settings keys such as <code>approvalMode</code>, sandbox-related enums in <code>config.yml</code>, and CLI flags on launch
+(<code>--approval-mode</code> and sandbox overrides) resolve into concrete restrictions applied to the <code>bash</code>,
+<code>edit</code>, and <code>write</code> tools, with plan-mode guards on top.</p>
+<p>There is <strong>no</strong> standalone exec-server process in the shipped product; commands run in-process after
+policy resolution.</p>
 <h2 id="key-concepts"><a class="header" href="#key-concepts">Key concepts</a></h2>
 <div class="table-wrapper">
 <table>
@@ -5697,14 +5881,13 @@ exec-server process in the shipped product.</p>
 <tr><th>Concept</th><th>Meaning</th></tr>
 </thead>
 <tbody>
-<tr><td>Approval mode</td><td>Which tool tiers run without asking (<code>plan</code>, <code>ask</code>, <code>auto-edit</code>, <code>yolo</code>).</td></tr>
-<tr><td>Per-tool policy</td><td><code>tools.approval</code> overrides the mode for a named tool.</td></tr>
-<tr><td>Execpolicy rules</td><td><code>.rules</code> files that refine which specific commands auto-run.</td></tr>
-<tr><td>Plan mode</td><td>Restricts mutating tools until the plan is approved (<code>/plan</code>).</td></tr>
+<tr><td>Approval mode</td><td>When to prompt before tool execution (<code>on-request</code>, <code>never</code>, …)</td></tr>
+<tr><td>Sandbox policy</td><td>Filesystem/network posture for command tools</td></tr>
+<tr><td>Plan mode</td><td>Restricts mutating tools until plan is approved (<code>/plan</code>)</td></tr>
 </tbody>
 </table>
 </div>
-<p>User-facing guide: <a href="#approvals-and-autonomy">Approvals and autonomy</a>.</p>
+<p>User-facing guide: <a href="#sandbox-and-approvals">Sandbox and approvals</a>.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="session-and-turn"><a class="header" href="#session-and-turn">Session and turn</a></h1>
 <p>Sessions are JSONL conversation trees; each <strong>turn</strong> is one user prompt through model streaming,
@@ -5726,7 +5909,7 @@ tool calls, and the final assistant message.</p>
 <p>User guide: <a href="#sessions">Sessions</a>.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="config"><a class="header" href="#config">Config</a></h1>
-<p>Configuration controls models, approvals, memory, MCP, extensions, and TUI behavior. Veyyon loads
+<p>Configuration controls models, sandbox, memory, MCP, extensions, and TUI behavior. Veyyon loads
 layered YAML/JSON from the project and user agent directories.</p>
 <h2 id="responsibility-2"><a class="header" href="#responsibility-2">Responsibility</a></h2>
 <ul>
@@ -5739,7 +5922,7 @@ layered YAML/JSON from the project and user agent directories.</p>
 <ul>
 <li>Primary user file: <code>~/.veyyon/agent/config.yml</code> (or profile path under <code>~/.veyyon/profiles/</code>)</li>
 <li>Project overrides: <code>.veyyon/config.yml</code></li>
-<li>CLI: <code>veyyon config list|get|set</code>, <code>/settings</code>, <code>/reload-plugins</code> (re-read without restart)</li>
+<li>CLI: <code>veyyon config list|get|set</code>, <code>/settings</code>; <code>/reload-plugins</code> re-reads extension surfaces, other config edits need a restart</li>
 </ul>
 <p>Config loading is part of the harness.</p>
 <p>Everyday guide: <a href="#configuration-5">Configuration</a>.</p>
@@ -5969,21 +6152,29 @@ three coarse top-level blocks above are addressable today; the template itself i
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="soundness-and-telemetry"><a class="header" href="#soundness-and-telemetry">Soundness and telemetry</a></h1>
 <blockquote>
-<p><strong>Status: Partial.</strong> Veyyon emits usage and session statistics, and the repair seam is shipped; the
-bounded repair telemetry and proptest soundness guarantees are <strong>Spec — not shipped</strong>.</p>
+<p><strong>Status: Mostly shipped.</strong> Repair outcome telemetry records <code>(model, tool, outcome)</code> end to end;
+the repair shape-fingerprint file sink and generator-based property tests remain <strong>Spec — not
+shipped</strong>.</p>
 </blockquote>
 <h2 id="shipped-observability"><a class="header" href="#shipped-observability">Shipped observability</a></h2>
 <ul>
-<li><code>/stats</code> and <code>veyyon stats</code> — usage dashboards when enabled</li>
+<li><strong>Repair outcome telemetry</strong> — when schema repair acts on a tool call, the outcome is persisted on
+the tool result in the session record (<code>repairStatus: "repaired" | "unrepairable"</code>; absent means
+repair did not act). The stats pipeline lifts it into the <code>tool_calls</code> table and the
+<code>veyyon stats</code> dashboard shows repaired/refused counts per tool and per <code>(tool, model)</code> — fixed
+cardinality by construction: three outcomes, real tool names, real model ids.</li>
+<li><code>/usage</code> and <code>veyyon stats</code> — usage dashboards when enabled</li>
 <li>Session token accounting on the status line (<code>token_*</code>, <code>context_pct</code>, <code>cost</code>)</li>
 <li>Structured logging via the coding-agent logger</li>
+<li>A conformance suite over the repair cascade (<code>test/repair/schema-repair.test.ts</code>) asserting
+repaired arguments strict-validate against the tool schema</li>
 </ul>
 <h2 id="target"><a class="header" href="#target">Target</a></h2>
-<p>When the bounded repair telemetry ships:</p>
+<p>Still spec:</p>
 <ul>
-<li>Every repair attempt records <code>(model, tool, outcome)</code> with fixed cardinality</li>
 <li>Optional file sink for repair shape fingerprints (not metric labels)</li>
-<li>Property tests over parse/repair generators (no panics; repaired JSON strict-validates)</li>
+<li>Randomized property tests over parse/repair generators (no panics; repaired JSON strict-validates
+on arbitrary inputs) — today’s conformance suite is case-based, not generative</li>
 </ul>
 <p>See <a href="#observability">Observability</a> for what exists today.</p>
 <div style="break-before: page; page-break-before: always;"></div>
@@ -6031,9 +6222,11 @@ headers for the next edit.</li>
 <li>Read/grep anchors: <a href="../../tools/read.html"><code>docs/tools/read.md</code></a>, <a href="../../tools/grep.html"><code>docs/tools/grep.md</code></a></li>
 <li>Settings: <code>edit.mode</code> in <a href="../../settings.html"><code>docs/settings.md</code></a></li>
 </ul>
-<p>There is no <code>veyyon-edit</code> Rust crate, no V4A-only write path, and no <code>make_update_patch</code> envelope
-routing. General schema-based tool-call repair <strong>is</strong> shipped — see
+<blockquote>
+<p><strong>Spec — not shipped:</strong> a <code>veyyon-edit</code> Rust crate, a V4A-only write path, and <code>make_update_patch</code>
+envelope routing. General schema-based tool-call repair <strong>is shipped</strong> — see
 <a href="#why-repair-exists">Repair overview</a>.</p>
+</blockquote>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="repair-on-edits"><a class="header" href="#repair-on-edits">Repair on edits</a></h1>
 <blockquote>
@@ -6078,8 +6271,11 @@ format / output tokens.</em></p>
 <p>Non-parallel tools take an exclusive lock, so file mutations from one turn are globally serialized. A
 per-path mutation queue that lets independent files edit in parallel while still serializing same-file
 writes matters once subagents edit concurrently. <em>Lever: robustness.</em></p>
-<p>Not shipped: a byte-exact write path that preserves a missing trailing newline on the final line. The
-current write model normalizes by appending one; the case is documented and covered by a test.</p>
+<blockquote>
+<p><strong>Spec — not shipped:</strong> A byte-exact write path that preserves a missing trailing newline on the
+final line. The current write model normalizes by appending one; the case is documented and covered
+by a test.</p>
+</blockquote>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="the-provider-stack-and-bring-your-own-key"><a class="header" href="#the-provider-stack-and-bring-your-own-key">The provider stack and bring-your-own-key</a></h1>
 <blockquote>
@@ -6126,8 +6322,10 @@ providers:
 own discovery variable, not a shared <code>VEYYON_OSS_*</code> pair: <code>OLLAMA_BASE_URL</code> (or <code>OLLAMA_HOST</code>),
 <code>LLAMA_CPP_BASE_URL</code>, <code>LM_STUDIO_BASE_URL</code> — see <a href="#local-and-self-hosted-providers">Environment variables</a>.</p>
 <p>User guides: <a href="#models-and-providers">Models</a>, <a href="#configuring-providers">Configuring providers</a>.</p>
-<p>There is no separate <code>backends.toml</code> catalog subsystem; Veyyon uses <code>models.yml</code> plus the bundled
-catalog.</p>
+<blockquote>
+<p><strong>Spec — not shipped:</strong> a <code>backends.toml</code> Tier-B catalog as a separate subsystem. Veyyon uses
+<code>models.yml</code> plus the bundled catalog instead.</p>
+</blockquote>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="execution-order-prompts"><a class="header" href="#execution-order-prompts">Execution-order prompts</a></h1>
 <blockquote>
@@ -6142,8 +6340,10 @@ STOP</strong>. Plan mode (<code>/plan</code>) and goal mode (<code>/goal</code>)
 <li>Skills and rules inject additional context via discovery</li>
 </ul>
 <p>Edit tool prompts switch with <code>edit.mode</code> (the hashline prompt when hashline is active).</p>
-<p>There is no <code>backends.toml</code>-driven catalog or per-backend prompt tuning, and <code>apply_patch</code> is not the
-default edit surface — Veyyon uses hashline by default.</p>
+<blockquote>
+<p><strong>Spec — not shipped:</strong> a <code>backends.toml</code>-driven catalog with per-backend prompt tuning and an
+<code>apply_patch</code>-forms prompt as the default edit surface. Veyyon uses hashline by default.</p>
+</blockquote>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="bounded-reads--instant-search"><a class="header" href="#bounded-reads--instant-search">Bounded reads &amp; instant search</a></h1>
 <blockquote>
@@ -6360,9 +6560,10 @@ wake-now-vs-defer message routing. <code>wait</code> (or <code>send await:true</
 real turn. Gated by <code>isIrcEnabled</code>: available to every subagent and to a top-level session that can
 still spawn subagents.</li>
 </ul>
-<h2 id="no-fixed-role-pipeline"><a class="header" href="#no-fixed-role-pipeline">No fixed role pipeline</a></h2>
-<p>Veyyon does not enforce a staged plan → implement → verify → repair handoff. It uses lighter-weight
-spawn, model-slot, and <code>irc</code> messaging patterns instead; you compose the stages yourself.</p>
+<h2 id="target-pipeline-spec--not-shipped"><a class="header" href="#target-pipeline-spec--not-shipped">Target pipeline (Spec — not shipped)</a></h2>
+<p>A fixed role pipeline (plan → implement → verify → repair) is the target shape. Today Veyyon uses
+lighter-weight spawn, model-slot, and <code>irc</code> messaging patterns instead of a fixed pipeline — there is no
+staged plan/implement/verify/repair handoff enforced by the harness itself.</p>
 <p>Pair role choice with <a href="#execution-order-prompts">execution-order prompts</a>: explore → plan → edit → verify.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="observability"><a class="header" href="#observability">Observability</a></h1>
@@ -6415,7 +6616,7 @@ and <a href="#bounded-reads--instant-search">Bounded reads and instant search</a
 <h3 id="veyyon-plugin-doctor-fails-what-do-i-fix"><a class="header" href="#veyyon-plugin-doctor-fails-what-do-i-fix"><code>veyyon plugin doctor</code> fails. What do I fix?</a></h3>
 <p><code>veyyon plugin doctor</code> exits non-zero when a check reports an error, and it prints the failed check and the next action. Fix the line it reports, then run it again. For the full diagnostics surface, see <a href="#diagnostics-and-health">Diagnostics and health</a>.</p>
 <h3 id="does-veyyon-sandbox-the-commands-it-runs"><a class="header" href="#does-veyyon-sandbox-the-commands-it-runs">Does Veyyon sandbox the commands it runs?</a></h3>
-<p>No. Veyyon does not add an OS-level command sandbox — there is no Landlock, seccomp, Seatbelt, or bubblewrap confinement. The boundary is the <strong>approval mode</strong> (<code>tools.approvalMode</code>), which decides which tool tiers run automatically and which pause for your yes. Run write-capable modes only where you trust the repository and the machine. See <a href="#approvals-and-autonomy">Approvals and autonomy</a>.</p>
+<p>No. Veyyon does not add an OS-level command sandbox — there is no Landlock, seccomp, Seatbelt, or bubblewrap confinement. The boundary is the <strong>approval mode</strong> (<code>tools.approvalMode</code>), which decides which tool tiers run automatically and which pause for your yes. Run write-capable modes only where you trust the repository and the machine. See <a href="#sandbox-and-approvals">Approvals and autonomy</a>.</p>
 <h2 id="database-and-session-locking"><a class="header" href="#database-and-session-locking">Database and session locking</a></h2>
 <h3 id="session-file-is-locked-or-another-veyyon-process-is-running"><a class="header" href="#session-file-is-locked-or-another-veyyon-process-is-running">“Session file is locked” or “another Veyyon process is running”</a></h3>
 <p>Veyyon uses file locking to prevent two processes from writing the same session file at once. Only one process may hold a session lock at a time. If you see this error:</p>
@@ -6434,7 +6635,7 @@ and <a href="#bounded-reads--instant-search">Bounded reads and instant search</a
 <p>Veyyon discovers model ids from the provider’s <code>/models</code> endpoint rather than maintaining a hardcoded allowlist. If a model is not listed, the provider endpoint may not expose it, or your key may not have access to it. Check the provider catalog and your key scopes first.</p>
 <h2 id="workflow"><a class="header" href="#workflow">Workflow</a></h2>
 <h3 id="why-did-my-edit-ask-for-approval"><a class="header" href="#why-did-my-edit-ask-for-approval">Why did my edit ask for approval?</a></h3>
-<p>The approval mode decides when Veyyon must ask before acting. In <code>ask</code> (and <code>plan</code>), anything that writes a file or runs a command pauses for your yes. If an edit paused, the current mode classifies it as needing approval. Change the mode with <code>--approval-mode &lt;mode&gt;</code> (<code>plan</code>, <code>ask</code>, <code>auto-edit</code>, <code>yolo</code>), <code>--auto-approve</code> / <code>--yolo</code>, or <code>tools.approvalMode</code> in <code>config.yml</code>. See <a href="#approvals-and-autonomy">Approvals and autonomy</a>.</p>
+<p>The approval policy decides when Veyyon must ask before acting. The default policy asks for anything that changes files or runs commands outside the trusted set. If a file edit paused for approval, it means the current policy classifies that edit as needing your yes. You can change the policy with <code>-a, --ask-for-approval</code> or in <code>config.yml</code>. The sandbox and approval policy work together: the sandbox is the hard boundary, and the approval policy is the interaction layer. See <a href="#sandbox-and-approvals">Sandbox and approvals</a>.</p>
 <h3 id="how-do-i-resume-a-session"><a class="header" href="#how-do-i-resume-a-session">How do I resume a session?</a></h3>
 <p>Run <code>veyyon --continue</code> to continue the most recent session, or <code>veyyon --resume &lt;SESSION_ID&gt;</code> to resume a specific one. The session stores turns, tool activity, and queued follow-ups, so a resumed session should keep its context and any pending work. For branching, forking, or exporting a session, see <a href="#sessions">Sessions</a>.</p>
 <h3 id="what-happened-to-my-queued-follow-up"><a class="header" href="#what-happened-to-my-queued-follow-up">What happened to my queued follow-up?</a></h3>
@@ -6445,7 +6646,7 @@ and <a href="#bounded-reads--instant-search">Bounded reads and instant search</a
 <ul>
 <li><a href="#troubleshooting">Troubleshooting</a> for the guided diagnostic path.</li>
 <li><a href="#models-and-providers">Models and providers</a> for provider keys, endpoints, and model selection.</li>
-<li><a href="#approvals-and-autonomy">Approvals and autonomy</a> for the approval-mode ladder.</li>
+<li><a href="#sandbox-and-approvals">Sandbox and approvals</a> for sandbox and approval policies.</li>
 <li><a href="#sessions">Sessions</a> for resume, fork, branch, and export.</li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
@@ -6468,8 +6669,14 @@ API keys are missing — these are warnings, not hard failures.</p>
 /memory stats
 </code></pre>
 <p>Operate the mnemopi memory backend from the TUI. See <a href="#memory">Memory</a>.</p>
-<h2 id="checking-install-health"><a class="header" href="#checking-install-health">Checking install health</a></h2>
-<p>There is no single <code>veyyon doctor</code> command. Diagnostics are spread across a few surfaces:</p>
+<h2 id="spec--not-shipped-top-level-veyyon-doctor"><a class="header" href="#spec--not-shipped-top-level-veyyon-doctor">Spec — not shipped: top-level <code>veyyon doctor</code></a></h2>
+<p>Older handbook pages described:</p>
+<pre><code class="language-console">$ veyyon doctor
+$ veyyon doctor --json
+$ veyyon doctor --summary --all
+</code></pre>
+<p>That full install health reporter (binary, sandbox, auth, terminal capabilities, feature flags, update feed, custom CA env vars) is <strong>not</strong> implemented as a root CLI subcommand today. Any mention of <code>veyyon doctor</code> for install health is a target, not current behavior.</p>
+<p><strong>Workaround today</strong></p>
 <ol>
 <li><code>veyyon --version</code> and a normal interactive session start.</li>
 <li><code>veyyon plugin doctor</code> for extension health.</li>
@@ -6514,10 +6721,10 @@ and <code>UPSTREAM.md</code>.</p>
 <p>A concise vocabulary of the primitives that shape Veyyon’s runtime behavior.</p>
 <ul>
 <li>
-<p><strong>apply_patch</strong>: Veyyon’s structured edit tool. The model emits a <code>*** Begin Patch … *** End Patch</code> envelope, and the harness applies it through one verified path that checks for a unique match, respects the approval policy, and records the diff. It is delivered as a Freeform tool on the Responses API or as a Function tool with an <code>{input}</code> JSON field on Chat Completions.</p>
+<p><strong>apply_patch</strong>: Veyyon’s structured edit tool. The model emits a <code>*** Begin Patch … *** End Patch</code> envelope, and the harness applies it through one verified path that checks for a unique match, respects the sandbox, and records the diff. It is delivered as a Freeform tool on the Responses API or as a Function tool with an <code>{input}</code> JSON field on Chat Completions.</p>
 </li>
 <li>
-<p><strong>approval mode</strong>: The autonomy control (<code>tools.approvalMode</code>) that decides which tool tiers run automatically and which pause for your yes: <code>plan</code>, <code>ask</code>, <code>auto-edit</code>, <code>yolo</code> (legacy <code>always-ask</code> = <code>ask</code>, <code>write</code> = <code>auto-edit</code>). Veyyon does not add an OS command sandbox, so the mode is the boundary.</p>
+<p><strong>approval policy</strong>: The rule that decides when Veyyon must ask you before running a command. Policies include <code>untrusted</code>, <code>on-request</code>, <code>granular</code>, and <code>never</code>. The approval policy is a soft gate; the sandbox policy is the hard boundary.</p>
 </li>
 <li>
 <p><strong>backend catalog</strong>: The Tier-B data file that maps each model slug to a provider, wire API, and connection facts. Veyyon selects the model contract against this catalog rather than hardcoding provider lists.</p>
@@ -6526,7 +6733,7 @@ and <code>UPSTREAM.md</code>.</p>
 <p><strong>compaction</strong>: The compression layer that summarizes a long trajectory into a smaller, information-preserving form instead of truncating it. Compaction preserves the goal card, recent user messages, and deterministic working-set facts across successive windows.</p>
 </li>
 <li>
-<p><strong>edit / write</strong>: The <code>edit</code> and <code>write</code> tools change files on disk. <code>write</code> creates or replaces a file; <code>edit</code> replaces exact text with new text. Both route through the same verified path as <code>apply_patch</code> and respect the approval policy.</p>
+<p><strong>edit / write</strong>: The <code>edit</code> and <code>write</code> tools change files on disk. <code>write</code> creates or replaces a file; <code>edit</code> replaces exact text with new text. Both route through the same verified path as <code>apply_patch</code> and respect the sandbox.</p>
 </li>
 <li>
 <p><strong>Freeform tool / Function tool</strong>: The two tool shapes Veyyon advertises to a model. A Freeform tool emits a raw grammar-shaped body; a Function tool emits JSON arguments matching a schema. The choice depends on the backend wire API.</p>
@@ -6544,13 +6751,13 @@ and <code>UPSTREAM.md</code>.</p>
 <p><strong>model contract / BYOK</strong>: The model contract is your chosen endpoint, model, and credentials. BYOK (bring-your-own-key) means you supply your own provider or local-endpoint key, so Veyyon calls the API directly without telemetry egress.</p>
 </li>
 <li>
-<p><strong>personality</strong>: A style-only setting that changes how the agent writes replies without altering its tools or permissions. Built-in personalities include <code>pragmatic</code>, <code>friendly</code>, and <code>none</code>.</p>
+<p><strong>personality</strong>: A style-only setting that changes how the agent writes replies without altering its tools, permissions, or sandbox. Built-in personalities include <code>pragmatic</code>, <code>friendly</code>, and <code>none</code>.</p>
 </li>
 <li>
 <p><strong>plugin</strong>: A directory with a <code>.veyyon-plugin/plugin.json</code> manifest that adds skills, MCP servers, apps, hooks, or TUI customizations to Veyyon. Plugins are discovered through marketplaces.</p>
 </li>
 <li>
-<p><strong>profile</strong>: A named configuration group (a per-profile <code>config.yml</code> under the agent directory) that bundles model, provider, approval mode, personality, and other runtime settings. Activate a profile at launch with <code>--profile</code> or at runtime with <code>/profile</code>.</p>
+<p><strong>profile</strong>: A named configuration group (a per-profile <code>config.yml</code> under the agent directory) that bundles model, provider, sandbox, approval policy, personality, and other runtime settings. Activate a profile at launch with <code>--profile</code> or at runtime with <code>/profile</code>.</p>
 </li>
 <li>
 <p><strong>prompt-cache discipline</strong>: The practice of keeping stable prompt prefixes stable and treating cache behavior as measured runtime policy. Veyyon orders context and compacts in ways that preserve prefix stability across turns.</p>
@@ -6563,6 +6770,9 @@ and <code>UPSTREAM.md</code>.</p>
 </li>
 <li>
 <p><strong>rollout</strong>: The append-only JSONL log of a session’s entries. Each entry carries an <code>id</code> and <code>parent_id</code>; a <code>leaf_move</code> line branches the active leaf to any earlier entry without rewriting history.</p>
+</li>
+<li>
+<p><strong>sandbox policy</strong>: The hard boundary on what a command can touch. Policies include <code>read-only</code>, <code>workspace-write</code>, <code>danger-full-access</code>, and <code>external-sandbox</code>. When enforcement cannot be established, Veyyon fails closed.</p>
 </li>
 <li>
 <p><strong>session</strong>: The unit of interactive work in Veyyon. A session records turns, tool activity, approvals, edits, and verification output, and survives context pressure through goal state and compaction.</p>

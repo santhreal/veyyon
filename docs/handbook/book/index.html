@@ -46,10 +46,10 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-24acbed9.js";
+            window.path_to_searchindex_js = "searchindex-8badf17b.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-9cfd259b.js"></script>
+        <script src="toc-19dab021.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -197,22 +197,22 @@
 <ul>
 <li><strong>Why Veyyon:</strong> value, design map, and benefits you should feel first.</li>
 <li><strong>Install and first session:</strong> install, providers, quickstart, configuration.</li>
-<li><strong>Everyday features:</strong> editing, approvals, models, sessions, themes.</li>
+<li><strong>Everyday features:</strong> editing, sandbox, models, sessions, themes.</li>
 <li><strong>Power features:</strong> plan mode, goals, branching, MCP, plugins, memory, profiles.</li>
 <li><strong>How it works:</strong> deeper engineering account for contributors.</li>
 </ul>
 <p>If you read nothing else: <a href="./why/value.html">What Veyyon gives you</a>, <a href="./using/getting-started.html">Getting started</a>, <a href="./using/editing.html">Editing and repair</a>, <a href="./using/models.html">Models and providers</a>.</p>
 <h2 id="what-veyyon-is-in-one-paragraph"><a class="header" href="#what-veyyon-is-in-one-paragraph">What Veyyon is, in one paragraph</a></h2>
-<p>Veyyon is a fork of <a href="https://github.com/can1357/oh-my-pi">oh-my-pi</a>: TypeScript and Bun for the CLI, TUI, tools, providers, and session loop; Rust natives for grep, PTY, and <strong>hashline</strong> edits. Install with <code>bun install -g @veyyon/pi-coding-agent</code> or <code>bun dev</code> from source. The command is <strong><code>veyyon</code></strong> (short alias <strong><code>vey</code></strong>). Config and state default to <code>~/.veyyon</code>.</p>
-<p>Shipped today: hashline edits, mnemopi memory, model roles, session trees, MCP, skills, and plan/goal modes.</p>
+<p>Veyyon is a fork of <a href="https://github.com/can1357/oh-my-pi">oh-my-pi</a>: TypeScript and Bun for the CLI, TUI, tools, providers, and session loop; Rust natives for grep, PTY, and <strong>hashline</strong> edits. Install with <code>curl -fsSL https://get.veyyon.dev | sh</code> (or <code>bun install -g @veyyon/pi-coding-agent</code>, or <code>bun dev</code> from source). The command is <strong><code>veyyon</code></strong> (short alias <strong><code>vey</code></strong>). Config and state default to <code>~/.veyyon</code>.</p>
+<p>Shipped today: hashline edits with verification, schema repair on tool calls, explicit model slots with three-knob compaction, mnemopi memory, session trees, MCP, skills, and plan/goal modes.</p>
 <h2 id="why-it-is-different-shipped-vs-planned"><a class="header" href="#why-it-is-different-shipped-vs-planned">Why it is different (shipped vs planned)</a></h2>
 <ul>
 <li><strong>Edits that land.</strong> Hashline and model-tuned edit tools with native verification; fewer retry loops on bad diffs.</li>
 <li><strong>Explicit model slots.</strong> Pick the model you talk to, the model for subagents, and the model for compaction — three plain choices, no <code>default</code>-chain indirection.</li>
-<li><strong>Interface.</strong> Veyyon Dark uses the silver palette; plan/goal modes and tool approval tiers are engine features.</li>
+<li><strong>Honest interface.</strong> Plan/goal modes and tool approval tiers are engine features, and the TUI keeps sandboxing and approvals visible.</li>
 </ul>
-<p><strong>Spec — not shipped:</strong> the full schema-based tool-call repair cascade, a unified single-write-path proof, and self-contained profiles. See <a href="./why/innovations.html">What makes Veyyon different</a>.</p>
-<h2 id="what-is-built-vs-planned"><a class="header" href="#what-is-built-vs-planned">What is built vs planned</a></h2>
+<p><strong>Spec — not shipped:</strong> the broader tool-call repair cascade (general schema repair on tool calls is shipped), a unified single-write-path proof, and fully self-contained profiles. See <a href="./why/innovations.html">What makes Veyyon different</a>.</p>
+<h2 id="on-honesty"><a class="header" href="#on-honesty">On honesty</a></h2>
 <p>This book states plainly what is built and what is planned. Pages marked <strong>Spec — not shipped</strong> describe target design not yet in the product. Credits: <a href="./acknowledgements.html">Acknowledgements</a>.</p>
 
                     </main>

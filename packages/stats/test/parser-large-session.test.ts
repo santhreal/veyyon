@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { parseSessionFile } from "@veyyon/pi-stats/parser";
+import { parseSessionFile } from "@veyyon/omp-stats/parser";
 import { getSessionsDir } from "@veyyon/pi-utils";
 import { installStatsTestIsolation } from "./helpers/temp-agent";
 

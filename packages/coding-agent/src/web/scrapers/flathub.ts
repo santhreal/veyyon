@@ -46,7 +46,7 @@ function extractAppId(pathname: string): string | null {
 	return null;
 }
 
-function parseNumber(value: unknown): number | null {
+function parseFlathubNumber(value: unknown): number | null {
 	if (typeof value === "number" && Number.isFinite(value)) return value;
 	if (typeof value === "string") {
 		const cleaned = value.replace(/[^0-9.]/g, "");
@@ -71,13 +71,13 @@ function normalizeStringList(value: unknown): string[] {
 }
 
 function extractInstalls(app: FlathubAppStream): number | null {
-	const direct = parseNumber(app.installs);
+	const direct = parseFlathubNumber(app.installs);
 	if (direct !== null) return direct;
 
 	if (!app.metadata) return null;
 	for (const [key, value] of Object.entries(app.metadata)) {
 		if (!key.toLowerCase().includes("install")) continue;
-		const parsed = parseNumber(value);
+		const parsed = parseFlathubNumber(value);
 		if (parsed !== null) return parsed;
 	}
 

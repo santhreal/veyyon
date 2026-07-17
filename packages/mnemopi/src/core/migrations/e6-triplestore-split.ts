@@ -1,6 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { existsSync, writeFileSync } from "node:fs";
-import { closeQuietly, type DatabasePath, openDatabase } from "../../db";
+import { closeQuietly, type DatabasePath, openDatabase, placeholders } from "../../db";
+import { initAnnotationsWithConn } from "../annotations";
 
 export const ANNOTATION_KINDS = ["mentions", "fact", "occurred_on", "has_source"] as const;
 export type AnnotationKind = (typeof ANNOTATION_KINDS)[number];
@@ -32,10 +33,6 @@ interface Classification {
 	total: number;
 }
 
-function placeholders(count: number): string {
-	return Array.from({ length: count }, () => "?").join(",");
-}
-
 function hasTable(db: Database, name: string): boolean {
 	return db.query("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(name) !== null;
 }
@@ -48,23 +45,6 @@ function copyDatabase(source: DatabasePath, destination: string): void {
 	} finally {
 		closeQuietly(db);
 	}
-}
-
-function initAnnotations(db: Database): void {
-	db.run(`
-		CREATE TABLE IF NOT EXISTS annotations (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			memory_id TEXT NOT NULL,
-			kind TEXT NOT NULL,
-			value TEXT NOT NULL,
-			source TEXT,
-			confidence REAL DEFAULT 1.0,
-			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-		)
-	`);
-	db.run("CREATE INDEX IF NOT EXISTS idx_annot_memory_kind ON annotations(memory_id, kind)");
-	db.run("CREATE INDEX IF NOT EXISTS idx_annot_kind_value ON annotations(kind, value)");
-	db.run("CREATE UNIQUE INDEX IF NOT EXISTS idx_annot_unique ON annotations(memory_id, kind, value)");
 }
 
 export function hasPendingMigration(db: Database): boolean {
@@ -195,7 +175,7 @@ export function migrate(
 	try {
 		db.run("BEGIN IMMEDIATE");
 		try {
-			initAnnotations(db);
+			initAnnotationsWithConn(db);
 			const lockedClassification = classifyRows(db);
 			const written = migrateRows(db, lockedClassification.rows);
 			db.run("COMMIT");

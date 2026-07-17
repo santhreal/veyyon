@@ -8,6 +8,8 @@ import { initTheme } from "../modes/theme/theme";
 export default class Stats extends Command {
 	static description = "View usage statistics";
 
+	static examples = ["veyyon stats", "veyyon stats --json", "veyyon stats --summary", "veyyon stats --port 8080"];
+
 	static flags = {
 		port: Flags.integer({ char: "p", description: "Port for the dashboard server", default: 3847 }),
 		json: Flags.boolean({ char: "j", description: "Output stats as JSON", default: false }),

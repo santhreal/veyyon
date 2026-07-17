@@ -1,7 +1,7 @@
 import { Database } from "bun:sqlite";
 import { describe, expect, it } from "bun:test";
-import { closeDb, getRecentRequests, initDb, insertMessageStats } from "@veyyon/pi-stats/db";
-import type { MessageStats } from "@veyyon/pi-stats/types";
+import { closeDb, getRecentRequests, initDb, insertMessageStats } from "@veyyon/omp-stats/db";
+import type { MessageStats } from "@veyyon/omp-stats/types";
 import { getBundledModel } from "@veyyon/pi-catalog/models";
 import { getStatsDbPath } from "@veyyon/pi-utils";
 import { installStatsTestIsolation } from "./helpers/temp-agent";

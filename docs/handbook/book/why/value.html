@@ -46,10 +46,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-24acbed9.js";
+            window.path_to_searchindex_js = "../searchindex-8badf17b.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-9cfd259b.js"></script>
+        <script src="../toc-19dab021.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -202,10 +202,11 @@ provider-agnostic configuration, and a TUI that keeps sandboxing and approvals v
 <h2 id="what-you-get-today"><a class="header" href="#what-you-get-today">What you get today</a></h2>
 <ul>
 <li><strong>Edits that land.</strong> Hashline and related edit tools with model-specific prompts; fewer retry loops on bad diffs.</li>
+<li><strong>Three explicit model slots.</strong> The model you talk to, the subagent model, and the compaction model — each set on its own, no <code>default</code> pseudo-model. Optional named roles live in settings, scoped per profile.</li>
 <li><strong>Bring your own key.</strong> Dozens of providers via the bundled catalog; no vendor lock-in.</li>
-<li><strong>Per-role models.</strong> Assign fast, thinking, vision, task, and other roles without reconfiguring every session.</li>
-<li><strong>A real agent loop.</strong> Read, search, edit, bash, LSP, browser, MCP, compaction, and subagents, all inside the approval mode you control.</li>
+<li><strong>A real agent loop.</strong> Read, search, edit, bash, LSP, browser, MCP, compaction, and subagents, all inside approval and sandbox policy you control.</li>
 <li><strong>Session trees.</strong> Branch, fork, and navigate conversation history without losing abandoned paths.</li>
+<li><strong>Cockpit.</strong> Watch every subagent live — a model per agent, drill in, and steer while the work happens.</li>
 <li><strong>Memory.</strong> mnemopi-backed recall across sessions (see <a href="../features/memory.html">Memory</a>).</li>
 <li><strong>Lower cost.</strong> Fewer format retries and leaner reads mean fewer tokens for the same outcome.</li>
 </ul>
@@ -213,7 +214,7 @@ provider-agnostic configuration, and a TUI that keeps sandboxing and approvals v
 <ul>
 <li>Developers who want a capable terminal agent on their own keys.</li>
 <li>Teams running open or gateway models with a harness tuned for coding, not chat-only UIs.</li>
-<li>Anyone who wants visible approval boundaries and tool failures that surface instead of hiding.</li>
+<li>Anyone who wants visible sandbox boundaries and honest tool failures.</li>
 </ul>
 <h2 id="where-to-go-next"><a class="header" href="#where-to-go-next">Where to go next</a></h2>
 <ul>

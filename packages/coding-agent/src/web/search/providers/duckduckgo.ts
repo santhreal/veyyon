@@ -63,7 +63,7 @@ function decodeHtmlText(value: string): string {
  * the page mixes in practice: redirect wrappers, protocol-relative links,
  * and (rarely) absolute URLs on sponsored or instant answer rows.
  */
-function unwrapResultUrl(href: string): string | undefined {
+function unwrapDdgResultUrl(href: string): string | undefined {
 	if (!href) return undefined;
 	const decoded = href.replace(/&amp;/gi, "&");
 	const wrapMatch = decoded.match(/[?&]uddg=([^&]+)/);
@@ -98,7 +98,7 @@ function parseHtmlResults(html: string): ParsedResult[] {
 		const block = match[1];
 		const title = titleRe.exec(block);
 		if (!title) continue;
-		const url = unwrapResultUrl(title[1]);
+		const url = unwrapDdgResultUrl(title[1]);
 		if (!url) continue;
 		const titleText = decodeHtmlText(title[2]);
 		if (!titleText) continue;

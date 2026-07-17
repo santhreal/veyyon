@@ -48,7 +48,7 @@ interface LobstersStoryResponse {
 /**
  * Render comments recursively
  */
-function renderComments(comments: LobstersComment[], maxDepth = 5): string {
+function renderLobstersComments(comments: LobstersComment[], maxDepth = 5): string {
 	let md = "";
 	for (const comment of comments) {
 		if (comment.indent_level >= maxDepth) continue;
@@ -58,7 +58,7 @@ function renderComments(comments: LobstersComment[], maxDepth = 5): string {
 		md += `${indent}${comment.comment.split("\n").join(`\n${indent}`)}\n\n`;
 
 		if (comment.comments && comment.comments.length > 0) {
-			md += renderComments(comment.comments, maxDepth);
+			md += renderLobstersComments(comment.comments, maxDepth);
 		}
 
 		md += `${indent}---\n\n`;
@@ -105,7 +105,7 @@ export const handleLobsters: SpecialHandler = async (url: string, timeout: numbe
 			// Add comments
 			if (story.comments && story.comments.length > 0) {
 				md += `---\n\n## Comments\n\n`;
-				md += renderComments(story.comments);
+				md += renderLobstersComments(story.comments);
 			}
 
 			return buildResult(md, {

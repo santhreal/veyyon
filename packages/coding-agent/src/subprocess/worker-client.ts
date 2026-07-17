@@ -10,6 +10,8 @@ import {
 	workerHostEntry,
 } from "@veyyon/pi-utils";
 import type { Subprocess } from "bun";
+import { ToolError } from "../tools/tool-errors";
+import { safeSend } from "../utils/ipc";
 
 /**
  * Shared lifecycle scaffolding for the ONNX inference subprocess clients
@@ -405,6 +407,47 @@ export function createUnavailableWorker<
 }
 
 /**
+ * Wrap a {@link SpawnedSubprocess} as a {@link RefCountedWorkerHandle}:
+ * `safeSend`-based IPC keyed by `label`, plus ref()/unref() that tolerate an
+ * already-exited child. The shared shape behind the stt/tts/tiny-title clients.
+ */
+export function createRefCountedWorkerHandle<Inbound, Outbound>(
+	spawned: SpawnedSubprocess<Outbound>,
+	label: string,
+): RefCountedWorkerHandle<Inbound, Outbound> {
+	const { proc } = spawned;
+	return {
+		...createWorkerHandle<Inbound, Outbound>(spawned, message => safeSend(proc, message, label)),
+		ref() {
+			try {
+				proc.ref();
+			} catch {
+				// Already gone.
+			}
+		},
+		unref() {
+			try {
+				proc.unref();
+			} catch {
+				// Already gone.
+			}
+		},
+	};
+}
+
+/** {@link createUnavailableWorker} with no-op ref counting. */
+export function createUnavailableRefCountedWorker<
+	Inbound extends { type: string; id: string },
+	Outbound extends { type: string },
+>(error: unknown): RefCountedWorkerHandle<Inbound, Outbound> {
+	return {
+		...createUnavailableWorker<Inbound, Outbound>(error),
+		ref() {},
+		unref() {},
+	};
+}
+
+/**
  * Spawn a worker handle, falling back to {@link createUnavailableWorker} (after
  * a warning) when the subprocess cannot be created so the feature degrades
  * gracefully instead of throwing into callers.
@@ -423,6 +466,37 @@ export function spawnWorkerOrUnavailable<Handle>(
 }
 
 /** Forward a worker's structured `log` message to the matching logger level. */
+/** Extract an Error from a worker `error` event, with a per-worker-kind fallback message. */
+/**
+ * Race `promise` against a timeout that rejects with `ToolError(reason)`.
+ * `onTimeout` runs before the rejection propagates (e.g. to kill a hung worker).
+ */
+export async function raceWithTimeout<T>(
+	promise: Promise<T>,
+	timeoutMs: number,
+	reason: string,
+	onTimeout?: (reason: string) => Promise<void>,
+): Promise<T> {
+	const timeoutSignal = AbortSignal.timeout(timeoutMs);
+	const { promise: timeoutPromise, reject } = Promise.withResolvers<never>();
+	const onAbort = (): void => reject(new ToolError(reason));
+	timeoutSignal.addEventListener("abort", onAbort, { once: true });
+	try {
+		return await Promise.race([promise, timeoutPromise]);
+	} catch (error) {
+		if (error instanceof ToolError && error.message === reason) await onTimeout?.(reason);
+		throw error;
+	} finally {
+		timeoutSignal.removeEventListener("abort", onAbort);
+	}
+}
+
+export function errorFromWorkerEvent(event: ErrorEvent, fallbackMessage: string): Error {
+	if (event.error instanceof Error) return event.error;
+	if (event.message) return new Error(event.message);
+	return new Error(fallbackMessage);
+}
+
 export function logWorkerMessage(message: WorkerLogMessage): void {
 	if (message.level === "debug") logger.debug(message.msg, message.meta);
 	else if (message.level === "warn") logger.warn(message.msg, message.meta);

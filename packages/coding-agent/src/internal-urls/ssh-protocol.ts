@@ -19,6 +19,8 @@
  * SSH provider via `import "./discovery"` (sdk.ts) / `initializeWithSettings`
  * (main.ts) before any tool resolves.
  */
+
+import { decodeStrictUtf8 } from "@veyyon/pi-utils";
 import * as capability from "../capability";
 import { type SSHHost, sshCapability } from "../capability/ssh";
 import type { SSHConnectionTarget } from "../ssh/connection-manager";
@@ -30,6 +32,7 @@ import {
 	statRemotePath,
 	writeRemoteFile,
 } from "../ssh/file-transfer";
+import { contentTypeForFileExtension } from "./filesystem-resource";
 import type {
 	InternalResource,
 	InternalUrl,
@@ -48,19 +51,13 @@ function contentTypeFor(remotePath: string): InternalResource["contentType"] {
 	const base = slash === -1 ? remotePath : remotePath.slice(slash + 1);
 	const dot = base.lastIndexOf(".");
 	const ext = dot <= 0 ? "" : base.slice(dot).toLowerCase();
-	if (ext === ".md") return "text/markdown";
-	if (ext === ".json") return "application/json";
-	return "text/plain";
+	return contentTypeForFileExtension(ext);
 }
 
 /** Decode the whole buffer as UTF-8 text, or null if it holds a NUL or invalid byte. */
-function decodeUtf8Text(bytes: Uint8Array): string | null {
+function decodeNulFreeUtf8(bytes: Uint8Array): string | null {
 	if (bytes.indexOf(0) !== -1) return null;
-	try {
-		return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-	} catch {
-		return null;
-	}
+	return decodeStrictUtf8(bytes);
 }
 
 /**
@@ -300,7 +297,7 @@ export class SshProtocolHandler implements ProtocolHandler {
 				`ssh://: ${remotePath} exceeds the 1 MiB limit; ssh:// supports text files up to 1 MiB — use an sshfs mount for larger files`,
 			);
 		}
-		const content = decodeUtf8Text(fileResult.bytes);
+		const content = decodeNulFreeUtf8(fileResult.bytes);
 		if (content === null) {
 			throw new Error(
 				`ssh://: ${remotePath} is a binary or non-UTF-8 file; ssh:// supports UTF-8 text only — use the ssh tool or an sshfs mount`,

@@ -101,7 +101,7 @@ export async function parseChangelog(changelogPath: string | undefined): Promise
 /**
  * Compare versions. Returns: -1 if v1 < v2, 0 if v1 === v2, 1 if v1 > v2
  */
-export function compareVersions(v1: ChangelogEntry, v2: ChangelogEntry): number {
+export function compareChangelogEntryVersions(v1: ChangelogEntry, v2: ChangelogEntry): number {
 	if (v1.major !== v2.major) return v1.major - v2.major;
 	if (v1.minor !== v2.minor) return v1.minor - v2.minor;
 	return v1.patch - v2.patch;
@@ -133,7 +133,7 @@ export function getNewEntries(entries: ChangelogEntry[], lastVersion: string): C
 		return [];
 	}
 
-	return entries.filter(entry => compareVersions(entry, parsedLastVersion) > 0);
+	return entries.filter(entry => compareChangelogEntryVersions(entry, parsedLastVersion) > 0);
 }
 
 /**

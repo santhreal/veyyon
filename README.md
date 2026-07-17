@@ -86,51 +86,54 @@ Originally built on [Mario Zechner](https://github.com/mariozechner)'s wonderful
 
 Most harnesses give the agent a Python sandbox and call it done. Ours runs persistent Python and a Bun worker, and either kernel can call back into the agent's own tools — read, search, task — over a loopback bridge. The agent loads a CSV with tool.read from inside Python, charts it from JavaScript, and never leaves the cell.
 
-![Veyyon TUI: a single eval session with `[1/2] pandas describe` (Python) printing a real DataFrame.describe() table, followed by `[2/2] top scorer` (JavaScript) running a reduce. Footer: 'Both kernels ran in one session.'](assets/python.webp)
+![Veyyon TUI: a single eval session with `[1/2] pandas describe` (Python) printing a real DataFrame.describe() table, followed by `[2/2] top scorer` (JavaScript) running a reduce. Footer: 'Both kernels ran in one session.'](https://omp.sh/captures/eval.webp)
 
 ### 02 · LSP wired into every write
 
 Ask for a rename and you get a rename. The call goes through workspace/willRenameFiles, so re-exports, barrel files, and aliased imports update before the file moves. Everything your IDE knows, the agent knows.
 
-![Veyyon TUI: `LSP references` returns five hits across three files for the symbol `formatBytes`, then `LSP rename` applies the change with edits to format.ts/report.ts/cli.ts, then a `Search formatBytes 0 matches` confirmation. Final line: 'Rename complete. Five edits across three files…'.](assets/lspv.webp)
+![Veyyon TUI: `LSP references` returns five hits across three files for the symbol `formatBytes`, then `LSP rename` applies the change with edits to format.ts/report.ts/cli.ts, then a `Search formatBytes 0 matches` confirmation. Final line: 'Rename complete. Five edits across three files…'.](https://omp.sh/captures/lsp.webp)
 
 ### 03 · Drives a real debugger
 
 A C binary segfaults: the agent attaches lldb, steps to the bad pointer, reads the frame. A Go service hangs: it attaches dlv and walks the goroutines. A Python process is wedged: debugpy, pause, inspect, evaluate. Most agents are still sprinkling print statements.
 
+![Veyyon TUI: a live lldb-dap session against a native binary at /tmp/omp-native/demo. Adapter=lldb-dap, Status=stopped, Frame=xorshift32, Instruction pointer 0x10000055C, Location demo.c:6:10. Debug scopes and Debug variables cards show locals (x = 57351) and the agent confirms the math: x went from 7 → 57351 (= 7 ^ (7<<13)).](https://omp.sh/clips/dap-poster.webp)
 
 
 ### 04 · Time-traveling stream rules
 
 Your rules sit dormant until the model goes off-script. A regex match aborts the stream mid-token, injects the rule as a system reminder, and retries from the same point. You get course-correction without paying context tax on every turn. Injections survive compaction, so the fix sticks.
 
-![Veyyon TUI: agent reading src.rs and about to write Box::leak when the request aborts (red `Error: Request was aborted`), an amber `⚠ Injecting rule: box-leak` card injects the rule body `Don't reach for Box::leak in production code paths`, and the agent then course-corrects by proposing `Arc<str>` and asking the user to confirm.](assets/ttsr.webp)
+![Veyyon TUI: agent reading src.rs and about to write Box::leak when the request aborts (red `Error: Request was aborted`), an amber `⚠ Injecting rule: box-leak` card injects the rule body `Don't reach for Box::leak in production code paths`, and the agent then course-corrects by proposing `Arc<str>` and asking the user to confirm.](https://omp.sh/clips/ttsr-poster.webp)
 
 
 ### 05 · First-class subagents
 
 Split a job across workers and get typed results back. task fans out into isolated worktrees, each worker runs its own tool surface, and the final yield is a schema-validated object the parent reads directly. No prose to parse, no merge conflicts between siblings, no orphaned edits.
 
-![Veyyon TUI showing `task` spawning two subagents `ComponentsExports` and `RoutesExports`, the constraints block requiring an IRC DM between peers, the per-subagent status cards with cost and duration, and a final Findings section listing both exports plus an honest 'IRC coordination note' about a one-sided handshake.](assets/task.webp)
+![Veyyon TUI showing `task` spawning two subagents `ComponentsExports` and `RoutesExports`, the constraints block requiring an IRC DM between peers, the per-subagent status cards with cost and duration, and a final Findings section listing both exports plus an honest 'IRC coordination note' about a one-sided handshake.](https://omp.sh/clips/irc-poster.webp)
 
 
 ### 06 · A second model, watching every turn.
 
 Pair a reviewer model to the 'advisor' role and it reads every turn the main agent takes, injecting notes inline — a quiet aside, a concern, or a hard blocker. It runs on its own context and its own model, so it catches what the doer rushed past. The main agent sees the note and course-corrects, or tells you why it won't.
 
+![Veyyon TUI: /advisor status shows the advisor running on openai-codex/gpt-5.5; after the main agent scopes a catch to ENOENT instead of swallowing every error, an amber 'Advisor 1 note (concern)' card warns the fix no longer matches the user's literal acceptance criterion.](https://omp.sh/clips/advisor-poster.webp)
 
 
 ### 07 · Hand someone the link, they're in.
 
 /collab puts your live session on a relay and hands back a link — and a QR. A teammate joins from another terminal with Veyyon join, or just opens it in a browser. Share read-write to pair on the same agent, or /collab view for a read-only link anyone can watch but no one can steer. Frames are sealed client-side; the relay never sees your keys.
 
+![Veyyon TUI: /collab view prints 'Collab session started!' with a `veyyon join` command, a my.omp.sh browser link, the note 'Anyone with this link can watch the session but cannot prompt the agent', and a large scannable QR code.](https://omp.sh/clips/collab-poster.webp)
 
 
 ### 08 · Read a pdf on arxiv, why not?
 
 web_search chains eighteen ranked providers and hands whatever URLs it finds straight to read. Arxiv PDFs, GitHub pages, Stack Overflow threads come back as structured markdown with anchors intact — the same tool surface you use on local files. Cite, follow, quote, never lose where you came from.
 
-![Veyyon TUI: web_search returns 10 ranked Perplexity sources for inference-time compute scaling, the agent picks an arxiv paper, calls read https://arxiv.org/pdf/2604.10739v1, and summarizes the paper's headline result with real numbers.](assets/perplexity.webp)
+![Veyyon TUI: web_search returns 10 ranked Perplexity sources for inference-time compute scaling, the agent picks an arxiv paper, calls read https://arxiv.org/pdf/2604.10739v1, and summarizes the paper's headline result with real numbers.](https://omp.sh/clips/web-poster.webp)
 
 
 ### 09 · Unapologetically native. Even on Windows.
@@ -140,8 +143,6 @@ Other agents shell out to rg, grep, find, and bash. On many machines those binar
 ### 10 · Code review with priorities and a verdict
 
 Get a clear verdict on whether the change ships, with every issue ranked P0 through P3 and scored for confidence. /review spawns dedicated reviewer subagents that sweep branches, single commits, or uncommitted work in parallel. You tackle what blocks release first; nothing important hides in a wall of prose.
-
-![Veyyon TUI: a /review pass over a branch, listing findings ranked P0 through P3 with per-issue confidence scores and a final ships/does-not-ship verdict.](assets/review.webp)
 
 ### 11 · Hashline: edit by content hash
 
@@ -171,23 +172,27 @@ Veyyon reads the working tree through git_overview, git_file_diff, and git_hunk,
 
 Twelve internal schemes — `pr://`, `issue://`, `agent://`, `skill://`, `rule://`, and the rest — resolve transparently inside every FS-shaped tool the agent already calls. `read pr://1428` returns the same shape as `read src/foo.ts`. `search` walks a diff like a directory. `agent://<id>/findings.0.path` pulls a field out of a subagent's output by path.
 
+![Veyyon TUI reading pr://can1357/oh-my-pi/1063 and then /diff/1, showing hunk headers, added lines, and a [MODIFIED] (+12 -0) summary.](https://omp.sh/captures/pr.webp)
 
 ### 18 · Conflict resolution, made easy.
 
 Each merge conflict becomes one URL. The agent writes `@theirs`, `@ours`, or `@base` to `conflict://N` and the file resolves cleanly. Bulk form: `conflict://*`.
 
+![Veyyon TUI: ✓ Read src/session.ts (⚠ 1 conflict), then ✓ Write conflict://1 · 1 line with content @theirs, then a confirmation 'Resolved.'](https://omp.sh/clips/conflict-poster.webp)
 
 
 ### 19 · Preview, then accept.
 
 `ast_edit` returns a _(proposed)_ card with the replacement count. The change is staged. The agent calls `resolve` with a reason; the TUI turns it into an **Accept** card and the disk move happens — atomic, all or nothing.
 
+![Veyyon TUI: ✓ AST Edit: console.log($X) (proposed) 3 replacements · 1 file, then ✓ Accept: 3 replacements in 1 file (AST Edit), followed by 'Applied 3 replacements in src/auth.ts.'](https://omp.sh/clips/codemod-poster.webp)
 
 
 ### 20 · Drives a _real browser_. _Or your Slack?_
 
 Stealth's on by default, so pages see a normal user instead of a headless bot. The same API drives any Electron app in place — point it at Slack and the agent reads your DMs the way it reads the web.
 
+![Veyyon TUI driving the browser tool against DuckDuckGo](https://omp.sh/captures/browser.webp)
 
 ## Whatever the task needs, _it's already in the box_.
 
@@ -384,7 +389,7 @@ The TUI is the default surface. Tool calls render as cards, edits preview before
 
 The same prompt cards surface over ACP, so editors get the picker without writing one.
 
-![Veyyon TUI: the ask tool renders an option picker with three choices, a (Recommended) badge on the first, and 'up/down navigate · enter select · esc cancel' footer.](assets/ask.webp)
+![Veyyon TUI: the ask tool renders an option picker with three choices, a (Recommended) badge on the first, and 'up/down navigate · enter select · esc cancel' footer.](https://omp.sh/captures/ask.webp)
 
 ### SDK — embed in Node
 
@@ -509,7 +514,7 @@ For architecture and contribution guidelines, see [packages/coding-agent/DEVELOP
 | **[@veyyon/pi-coding-agent](packages/coding-agent)**    | Interactive coding agent CLI and SDK                                       |
 | **[@veyyon/pi-tui](packages/tui)**                      | Terminal UI library with differential rendering                            |
 | **[@veyyon/pi-natives](packages/natives)**              | N-API bindings for grep, shell, image, text, syntax highlighting, and more |
-| **[@veyyon/pi-stats](packages/stats)**                 | Local observability dashboard for AI usage statistics                      |
+| **[@veyyon/omp-stats](packages/stats)**                 | Local observability dashboard for AI usage statistics                      |
 | **[@veyyon/pi-utils](packages/utils)**                  | Shared utilities (logging, streams, dirs/env/process helpers)              |
 | **[@veyyon/pi-wire](packages/wire)**                    | Shared collab live-session protocol types and relay constants              |
 | **[@veyyon/hashline](packages/hashline)**               | Line-anchored patch language and applier behind the `edit` tool            |

@@ -8,6 +8,8 @@ import { initTheme } from "../modes/theme/theme";
 export default class Shell extends Command {
 	static description = "Interactive shell console";
 
+	static examples = ["veyyon shell", "veyyon shell --cwd ./tmp", "veyyon shell --timeout 2000"];
+
 	static flags = {
 		cwd: Flags.string({ char: "C", description: "Set working directory for commands" }),
 		timeout: Flags.integer({ char: "t", description: "Timeout per command in milliseconds" }),

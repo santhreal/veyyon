@@ -28,7 +28,13 @@ import { type Skill, skillCapability } from "../capability/skill";
 import { type SlashCommand, slashCommandCapability } from "../capability/slash-command";
 import { type CustomTool, toolCapability } from "../capability/tool";
 import type { LoadContext, LoadResult } from "../capability/types";
-import { buildRuleFromMarkdown, createSourceMeta, loadFilesFromDir, scanSkillsFromDir } from "./helpers";
+import {
+	buildRuleFromMarkdown,
+	CUSTOM_TOOL_SCRIPT_EXT_RE,
+	createSourceMeta,
+	loadFilesFromDir,
+	scanSkillsFromDir,
+} from "./helpers";
 import { listOmpExtensionRoots, type OmpExtensionRoot } from "./omp-extension-roots";
 import { resolvePluginStdioPaths } from "./substitute-plugin-root";
 
@@ -205,7 +211,7 @@ async function loadTools(ctx: LoadContext): Promise<LoadResult<CustomTool>> {
 									: `${toolName} custom tool`;
 							return { name: toolName, path: filePath, description, level: root.level, _source: source };
 						}
-						const toolName = name.replace(/\.(ts|js|sh|bash|py)$/, "");
+						const toolName = name.replace(CUSTOM_TOOL_SCRIPT_EXT_RE, "");
 						return {
 							name: toolName,
 							path: filePath,

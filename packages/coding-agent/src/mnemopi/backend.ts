@@ -1,11 +1,9 @@
-import { rm } from "node:fs/promises";
-import * as path from "node:path";
 import { type ApiKeyResolver, completeSimple } from "@veyyon/pi-ai";
 import { hostMatchesUrl } from "@veyyon/pi-catalog/hosts";
 import type { Mnemopi } from "@veyyon/pi-mnemopi";
 import type * as MnemopiDiagnoseNs from "@veyyon/pi-mnemopi/diagnose";
 import type { DiagnosticSummary } from "@veyyon/pi-mnemopi/diagnose";
-import { logger } from "@veyyon/pi-utils";
+import { logger, removeWithRetries } from "@veyyon/pi-utils";
 import type { ModelRegistry } from "../config/model-registry";
 import { resolveRoleSelectionWithInherit } from "../config/model-resolver";
 import type {
@@ -36,6 +34,7 @@ import {
 	MnemopiSessionState,
 	requireMnemopi,
 	requireMnemopiCore,
+	resolveBankDbPath,
 	setMnemopiSessionState,
 } from "./state";
 
@@ -221,7 +220,7 @@ export const mnemopiBackend: MemoryBackend = {
 		if (options?.signal?.aborted) {
 			return { backend: "mnemopi", query, count: 0, items: [], message: "Search aborted." };
 		}
-		const limit = clampLimit(options?.limit);
+		const limit = clampRecallLimit(options?.limit);
 		const results = (await primary.recallResultsScoped(query)).slice(0, limit);
 		if (options?.signal?.aborted) {
 			return { backend: "mnemopi", query, count: 0, items: [], message: "Search aborted." };
@@ -250,7 +249,7 @@ export const mnemopiBackend: MemoryBackend = {
 		if (!content) return { backend: "mnemopi", stored: 0, message: "Memory content is empty." };
 		const id = primary.rememberScoped(content, {
 			source: input.source || "coding-agent-memory-command",
-			importance: normalizeImportance(input.importance),
+			importance: importanceOrDefault(input.importance),
 			metadata: {
 				session_id: primary.sessionId,
 				cwd,
@@ -315,13 +314,6 @@ function createStatsMemory(config: MnemopiBackendConfig, bank: string): Mnemopi 
 		...providerOptions,
 		reconcile: false,
 	} as ConstructorParameters<typeof Mnemopi>[0]);
-}
-
-function resolveBankDbPath(config: MnemopiBackendConfig, bank: string): string {
-	const sharedBank = config.globalBank ?? config.baseBank ?? "default";
-	if (bank === sharedBank) return config.dbPath;
-	const { BankManager } = requireMnemopiCore();
-	return new BankManager(path.dirname(config.dbPath)).getBankDbPath(bank);
 }
 
 function dedupeStatsTargets(targets: readonly MnemopiStatsTarget[]): MnemopiStatsTarget[] {
@@ -389,12 +381,12 @@ function summarizeMnemopiStatus(
 	};
 }
 
-function clampLimit(limit: number | undefined): number {
+function clampRecallLimit(limit: number | undefined): number {
 	if (!Number.isFinite(limit)) return 10;
 	return Math.max(1, Math.min(50, Math.trunc(limit ?? 10)));
 }
 
-function normalizeImportance(value: number | undefined): number {
+function importanceOrDefault(value: number | undefined): number {
 	if (!Number.isFinite(value)) return 0.75;
 	return Math.max(0, Math.min(1, value ?? 0.75));
 }
@@ -560,11 +552,6 @@ function getMnemopiSessionStateFromParent(options: MemoryBackendStartOptions): M
 	return parent?.aliasOf ?? parent;
 }
 
-export function getMnemopiDbDirForTests(session: AgentSession): string | undefined {
-	const state = getMnemopiSessionState(session);
-	return state ? path.dirname(state.config.dbPath) : undefined;
-}
-
 /**
  * Best-effort removal of a SQLite DB file and its WAL/SHM sidecars.
  *
@@ -585,28 +572,6 @@ async function removeDbFiles(dbPaths: readonly string[]): Promise<void> {
 					logger.warn("Mnemopi: failed to remove DB file after retries", { path: `${dbPath}${suffix}`, code });
 				}
 			});
-		}
-	}
-}
-
-const kRemoveRetries = 40;
-const kRemoveRetryDelayMs = 25;
-const kRetryableRemoveErrorCodes = new Set(["EBUSY", "EPERM", "ENOTEMPTY"]);
-
-async function removeWithRetries(target: string): Promise<void> {
-	for (let attempt = 0; ; attempt++) {
-		try {
-			await rm(target, { force: true });
-			return;
-		} catch (err) {
-			const retryable =
-				typeof err === "object" &&
-				err !== null &&
-				"code" in err &&
-				typeof err.code === "string" &&
-				kRetryableRemoveErrorCodes.has(err.code);
-			if (!retryable || attempt >= kRemoveRetries) throw err;
-			await Bun.sleep(kRemoveRetryDelayMs);
 		}
 	}
 }

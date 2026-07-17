@@ -13,7 +13,7 @@ import { applyCodexResponsesLiteShape } from "@veyyon/pi-ai/providers/openai-cod
 import { createOpenAICodexCompatibilityMetadata } from "@veyyon/pi-ai/providers/openai-codex-responses";
 import { getBundledModels } from "@veyyon/pi-catalog/models";
 import { CODEX_CLIENT_VERSION, OPENAI_HEADER_VALUES, OPENAI_HEADERS } from "@veyyon/pi-catalog/wire/codex";
-import { $env, readSseJson } from "@veyyon/pi-utils";
+import { $env, HTTP_URL_RE, readSseJson } from "@veyyon/pi-utils";
 import packageJson from "../../../../package.json" with { type: "json" };
 import type { SearchResponse, SearchSource } from "../../../web/search/types";
 import { SearchProviderError } from "../../../web/search/types";
@@ -221,7 +221,7 @@ function normalizeExtractedUrl(candidate: string): string | null {
 		break;
 	}
 
-	if (!/^https?:\/\//.test(url)) {
+	if (!HTTP_URL_RE.test(url)) {
 		return null;
 	}
 

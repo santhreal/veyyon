@@ -201,7 +201,7 @@ function recencyToDate(recency: "day" | "week" | "month" | "year"): string {
 	return `${yyyy}-${mm}-${dd}`;
 }
 
-function buildRequestBody(query: string, options: KagiSearchOptions): KagiSearchRequest {
+function buildKagiRequestBody(query: string, options: KagiSearchOptions): KagiSearchRequest {
 	const req: KagiSearchRequest = {
 		query,
 		workflow: "search",
@@ -240,7 +240,7 @@ export async function searchWithKagi(
 	authStorage: AuthStorage,
 ): Promise<KagiSearchResult> {
 	const fetchImpl = options.fetch ?? fetch;
-	const body = JSON.stringify(buildRequestBody(query, options));
+	const body = JSON.stringify(buildKagiRequestBody(query, options));
 
 	const response = await withAuth(
 		authStorage.resolver("kagi", { sessionId: options.sessionId }),

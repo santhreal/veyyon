@@ -11,6 +11,7 @@
  *  - `x-amz-security-token` (only when credentials carry a sessionToken)
  *  - `authorization`
  */
+import { bytesToHex, toStrictUint8Array } from "@veyyon/pi-utils";
 
 export interface AwsCredentials {
 	accessKeyId: string;
@@ -57,43 +58,23 @@ const UNSIGNABLE: Record<string, true> = {
 	"x-amzn-trace-id": true,
 };
 
-/** Coerce a possibly-ArrayBufferLike-backed `Uint8Array` into one over a fresh
- * `ArrayBuffer`, which is what `crypto.subtle.{digest,sign,importKey}` requires
- * under the strict TS DOM typings. No-op when already strict.
- */
-function asStrict(bytes: Uint8Array): Uint8Array<ArrayBuffer> {
-	if (bytes.buffer instanceof ArrayBuffer && bytes.byteOffset === 0 && bytes.byteLength === bytes.buffer.byteLength) {
-		return bytes as Uint8Array<ArrayBuffer>;
-	}
-	const copy = new Uint8Array(bytes.byteLength);
-	copy.set(bytes);
-	return copy;
-}
 const subtle = globalThis.crypto.subtle;
 
-const HEX = "0123456789abcdef";
-export function toHex(bytes: Uint8Array): string {
-	let out = "";
-	for (let i = 0; i < bytes.length; i++) {
-		const b = bytes[i];
-		out += HEX[b >> 4] + HEX[b & 15];
-	}
-	return out;
-}
-
 export async function sha256(data: Uint8Array | string): Promise<Uint8Array> {
-	const bytes = typeof data === "string" ? new TextEncoder().encode(data) : asStrict(data);
+	const bytes = typeof data === "string" ? new TextEncoder().encode(data) : toStrictUint8Array(data);
 	const digest = await subtle.digest("SHA-256", bytes);
 	return new Uint8Array(digest);
 }
 
 export async function sha256Hex(data: Uint8Array | string): Promise<string> {
-	return toHex(await sha256(data));
+	return bytesToHex(await sha256(data));
 }
 
 async function hmac(key: Uint8Array, data: string | Uint8Array): Promise<Uint8Array> {
-	const cryptoKey = await subtle.importKey("raw", asStrict(key), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-	const bytes = typeof data === "string" ? new TextEncoder().encode(data) : asStrict(data);
+	const cryptoKey = await subtle.importKey("raw", toStrictUint8Array(key), { name: "HMAC", hash: "SHA-256" }, false, [
+		"sign",
+	]);
+	const bytes = typeof data === "string" ? new TextEncoder().encode(data) : toStrictUint8Array(data);
 	const sig = await subtle.sign("HMAC", cryptoKey, bytes);
 	return new Uint8Array(sig);
 }
@@ -201,7 +182,7 @@ export async function signRequest(params: SignParams): Promise<SignedHeaders> {
 	const stringToSign = [ALGORITHM, longDate, scope, await sha256Hex(canonicalRequest)].join("\n");
 
 	const signingKey = await getSigningKey(credentials.secretAccessKey, shortDate, region, service);
-	const signature = toHex(await hmac(signingKey, stringToSign));
+	const signature = bytesToHex(await hmac(signingKey, stringToSign));
 
 	const authorization =
 		`${ALGORITHM} Credential=${credentials.accessKeyId}/${scope}, ` +

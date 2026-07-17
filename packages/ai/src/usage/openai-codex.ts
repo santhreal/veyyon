@@ -1,4 +1,6 @@
 import { Buffer } from "node:buffer";
+import { toNumber } from "@veyyon/pi-catalog/utils";
+import { kebabSlug } from "@veyyon/pi-utils";
 import type {
 	CredentialRankingStrategy,
 	UsageAmount,
@@ -10,10 +12,11 @@ import type {
 	UsageResetCredits,
 	UsageWindow,
 } from "../usage";
+import { percentUsageAmount } from "../usage";
 import { isRecord } from "../utils";
 import { normalizeCodexBaseUrl } from "./openai-codex-base-url";
 import { listCodexResetCredits } from "./openai-codex-reset";
-import { toNumber } from "./shared";
+import { usageStatusFromUsedFraction } from "./shared";
 
 const CODEX_USAGE_PATH = "wham/usage";
 const JWT_AUTH_CLAIM = "https://api.openai.com/auth";
@@ -157,7 +160,7 @@ function parseAdditionalRateLimit(payload: unknown): ParsedAdditionalUsage | nul
 	return { limitName, meteredFeature, allowed, limitReached, primary, secondary };
 }
 
-function parseUsagePayload(payload: unknown): ParsedUsage | null {
+function parseCodexUsagePayload(payload: unknown): ParsedUsage | null {
 	if (!isRecord(payload)) return null;
 	const planType = typeof payload.plan_type === "string" ? payload.plan_type : undefined;
 	const rateLimit = isRecord(payload.rate_limit) ? payload.rate_limit : undefined;
@@ -245,32 +248,17 @@ function buildUsageWindow(window: ParsedUsageWindow, key: string, nowMs: number)
 	return { id: key, label: fallbackLabel, ...(resetsAt !== undefined ? { resetsAt } : {}) };
 }
 
-function buildUsageAmount(window: ParsedUsageWindow): UsageAmount {
-	const usedPercent = window.usedPercent;
-	if (usedPercent === undefined) {
-		return { unit: "percent" };
-	}
-	const clamped = Math.min(Math.max(usedPercent, 0), 100);
-	const usedFraction = clamped / 100;
-	return {
-		used: clamped,
-		limit: 100,
-		remaining: Math.max(0, 100 - clamped),
-		usedFraction,
-		remainingFraction: Math.max(0, 1 - usedFraction),
-		unit: "percent",
-	};
+function windowUsageAmount(window: ParsedUsageWindow): UsageAmount {
+	if (window.usedPercent === undefined) return { unit: "percent" };
+	return percentUsageAmount(window.usedPercent);
 }
 
 function buildUsageStatus(usedFraction?: number, limitReached?: boolean): UsageLimit["status"] {
 	if (limitReached) return "exhausted";
-	if (usedFraction === undefined) return "unknown";
-	if (usedFraction >= 1) return "exhausted";
-	if (usedFraction >= 0.9) return "warning";
-	return "ok";
+	return usageStatusFromUsedFraction(usedFraction);
 }
 
-function buildUsageLimit(args: {
+function buildCodexUsageLimit(args: {
 	key: "primary" | "secondary";
 	window: ParsedUsageWindow;
 	accountId?: string;
@@ -279,7 +267,7 @@ function buildUsageLimit(args: {
 	nowMs: number;
 }): UsageLimit {
 	const usageWindow = buildUsageWindow(args.window, args.key, args.nowMs);
-	const amount = buildUsageAmount(args.window);
+	const amount = windowUsageAmount(args.window);
 	return {
 		id: `openai-codex:${args.key}`,
 		label: usageWindow.label,
@@ -297,12 +285,7 @@ function additionalLimitSlug(args: { limitName?: string; meteredFeature?: string
 	const probe = `${args.limitName ?? ""} ${args.meteredFeature ?? ""}`.toLowerCase();
 	if (probe.includes("spark") || probe.includes("bengalfox")) return "spark";
 	const source = (args.meteredFeature ?? args.limitName ?? "extra").toLowerCase();
-	return (
-		source
-			.replace(/^codex[-_]/, "")
-			.replace(/[^a-z0-9]+/g, "-")
-			.replace(/^-+|-+$/g, "") || "extra"
-	);
+	return kebabSlug(source.replace(/^codex[-_]/, "")) || "extra";
 }
 
 function additionalDisplayName(slug: string, limitName?: string): string {
@@ -326,7 +309,7 @@ function buildAdditionalUsageLimit(args: {
 	nowMs: number;
 }): UsageLimit {
 	const usageWindow = buildUsageWindow(args.window, args.key, args.nowMs);
-	const amount = buildUsageAmount(args.window);
+	const amount = windowUsageAmount(args.window);
 	return {
 		id: `openai-codex:${args.slug}:${args.key}`,
 		label: `${usageWindow.label} (${args.displayName})`,
@@ -366,8 +349,8 @@ export function parseCodexRateLimitHeaders(headers: Record<string, string>, now 
 	const secondary = parseWindow("secondary");
 	if (!primary && !secondary) return null;
 	const limits: UsageLimit[] = [];
-	if (primary) limits.push(buildUsageLimit({ key: "primary", window: primary, nowMs: now }));
-	if (secondary) limits.push(buildUsageLimit({ key: "secondary", window: secondary, nowMs: now }));
+	if (primary) limits.push(buildCodexUsageLimit({ key: "primary", window: primary, nowMs: now }));
+	if (secondary) limits.push(buildCodexUsageLimit({ key: "secondary", window: secondary, nowMs: now }));
 	return {
 		provider: "openai-codex",
 		fetchedAt: now,
@@ -422,7 +405,7 @@ export const openaiCodexUsageProvider: UsageProvider = {
 			return null;
 		}
 
-		const parsed = parseUsagePayload(payload);
+		const parsed = parseCodexUsagePayload(payload);
 		const planType =
 			parsed?.planType ??
 			(isRecord(payload) && typeof payload.plan_type === "string" ? payload.plan_type : undefined);
@@ -430,7 +413,7 @@ export const openaiCodexUsageProvider: UsageProvider = {
 		const limits: UsageLimit[] = [];
 		if (parsed?.primary) {
 			limits.push(
-				buildUsageLimit({
+				buildCodexUsageLimit({
 					key: "primary",
 					window: parsed.primary,
 					accountId,
@@ -442,7 +425,7 @@ export const openaiCodexUsageProvider: UsageProvider = {
 		}
 		if (parsed?.secondary) {
 			limits.push(
-				buildUsageLimit({
+				buildCodexUsageLimit({
 					key: "secondary",
 					window: parsed.secondary,
 					accountId,

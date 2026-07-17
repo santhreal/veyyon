@@ -36,7 +36,11 @@ class StableList implements Component, RenderStablePrefix {
 		return this.#lines;
 	}
 
-	getRenderStablePrefixRows(): number {
+	getRenderStablePrefixRows(observed: readonly string[]): number {
+		if (observed !== this.#lines) {
+			this.#stableFloor = 0;
+			return 0;
+		}
 		const value = this.#stableFloor;
 		this.#stableFloor = this.#lines.length;
 		return value;

@@ -107,3 +107,13 @@ export function once<T>(fn: () => T): () => T {
 		return value;
 	};
 }
+
+/**
+ * True for errors named `AbortError` or `TimeoutError` (matched by name so
+ * `DOMException`, plain `Error`, and cross-realm instances all qualify).
+ */
+export function isAbortOrTimeoutError(error: unknown): boolean {
+	if (typeof error !== "object" || error === null) return false;
+	const name = (error as { name?: unknown }).name;
+	return name === "AbortError" || name === "TimeoutError";
+}

@@ -290,7 +290,7 @@ fn resolve_logs_dir(
 
 /// Compute the XDG-state logs dir if the runtime environment matches the
 /// JS-side eligibility rules in `packages/utils/src/dirs.ts`: linux/macos,
-/// `$XDG_STATE_HOME` set, `$XDG_STATE_HOME/omp` exists on disk, and
+/// `$XDG_STATE_HOME` set, `$XDG_STATE_HOME/veyyon` exists on disk, and
 /// `PI_CODING_AGENT_DIR` is unset or pointing at the default agent dir.
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 fn xdg_state_logs_from_env(home: &Path, config_dir_override: Option<&OsStr>) -> Option<PathBuf> {
@@ -313,7 +313,7 @@ fn xdg_state_logs_from_env(_home: &Path, _config_dir_override: Option<&OsStr>) -
 
 /// Pure XDG-eligibility computation extracted for unit testing — no env
 /// reads, no fs reads. `omp_dir_exists` decides whether the candidate
-/// `<xdg_state_home>/omp` actually lives on disk.
+/// `<xdg_state_home>/veyyon` actually lives on disk.
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 fn xdg_state_logs(
 	xdg_state_home: Option<&OsStr>,
@@ -447,9 +447,9 @@ mod tests {
 	}
 
 	#[test]
-	fn resolve_logs_dir_defaults_under_dot_omp() {
+	fn resolve_logs_dir_defaults_under_dot_veyyon() {
 		let dir = resolve_logs_dir(Path::new("/tmp/pi-natives-test-home"), None, None);
-		assert_eq!(dir, PathBuf::from("/tmp/pi-natives-test-home/.omp/logs"));
+		assert_eq!(dir, PathBuf::from("/tmp/pi-natives-test-home/.veyyon/logs"));
 	}
 
 	#[test]
@@ -493,17 +493,17 @@ mod tests {
 		let dir = xdg_state_logs(
 			Some(OsStr::new("/xdg/state")),
 			Some(OsStr::new("")),
-			Path::new("/tmp/pi-natives-test-home/.omp/agent"),
+			Path::new("/tmp/pi-natives-test-home/.veyyon/agent"),
 			|_p| true,
 		);
-		assert_eq!(dir, Some(PathBuf::from("/xdg/state/omp/logs")));
+		assert_eq!(dir, Some(PathBuf::from("/xdg/state/veyyon/logs")));
 	}
 
 	#[test]
 	fn resolve_logs_dir_ignores_empty_pi_config_dir() {
 		let dir =
 			resolve_logs_dir(Path::new("/tmp/pi-natives-test-home"), Some(OsStr::new("")), None);
-		assert_eq!(dir, PathBuf::from("/tmp/pi-natives-test-home/.omp/logs"));
+		assert_eq!(dir, PathBuf::from("/tmp/pi-natives-test-home/.veyyon/logs"));
 	}
 
 	#[test]
@@ -511,9 +511,9 @@ mod tests {
 		let dir = resolve_logs_dir(
 			Path::new("/tmp/pi-natives-test-home"),
 			None,
-			Some(PathBuf::from("/xdg/state/omp/logs")),
+			Some(PathBuf::from("/xdg/state/veyyon/logs")),
 		);
-		assert_eq!(dir, PathBuf::from("/xdg/state/omp/logs"));
+		assert_eq!(dir, PathBuf::from("/xdg/state/veyyon/logs"));
 	}
 
 	#[cfg(any(target_os = "linux", target_os = "macos"))]
@@ -522,19 +522,19 @@ mod tests {
 		let dir = xdg_state_logs(
 			Some(OsStr::new("/xdg/state")),
 			None,
-			Path::new("/tmp/pi-natives-test-home/.omp/agent"),
+			Path::new("/tmp/pi-natives-test-home/.veyyon/agent"),
 			|_p| true,
 		);
-		assert_eq!(dir, Some(PathBuf::from("/xdg/state/omp/logs")));
+		assert_eq!(dir, Some(PathBuf::from("/xdg/state/veyyon/logs")));
 	}
 
 	#[cfg(any(target_os = "linux", target_os = "macos"))]
 	#[test]
-	fn xdg_state_logs_skipped_when_omp_dir_missing() {
+	fn xdg_state_logs_skipped_when_veyyon_dir_missing() {
 		let dir = xdg_state_logs(
 			Some(OsStr::new("/xdg/state")),
 			None,
-			Path::new("/tmp/pi-natives-test-home/.omp/agent"),
+			Path::new("/tmp/pi-natives-test-home/.veyyon/agent"),
 			|_p| false,
 		);
 		assert_eq!(dir, None);
@@ -543,7 +543,7 @@ mod tests {
 	#[cfg(any(target_os = "linux", target_os = "macos"))]
 	#[test]
 	fn xdg_state_logs_skipped_when_xdg_state_home_unset_or_empty() {
-		let default_agent = Path::new("/tmp/pi-natives-test-home/.omp/agent");
+		let default_agent = Path::new("/tmp/pi-natives-test-home/.veyyon/agent");
 		assert_eq!(xdg_state_logs(None, None, default_agent, |_p| true), None);
 		assert_eq!(xdg_state_logs(Some(OsStr::new("")), None, default_agent, |_p| true), None);
 	}
@@ -556,7 +556,7 @@ mod tests {
 		let dir = xdg_state_logs(
 			Some(OsStr::new("/xdg/state")),
 			Some(OsStr::new("/some/custom/agent")),
-			Path::new("/tmp/pi-natives-test-home/.omp/agent"),
+			Path::new("/tmp/pi-natives-test-home/.veyyon/agent"),
 			|_p| true,
 		);
 		assert_eq!(dir, None);
@@ -565,21 +565,21 @@ mod tests {
 	#[cfg(any(target_os = "linux", target_os = "macos"))]
 	#[test]
 	fn xdg_state_logs_honored_when_agent_override_matches_default() {
-		let default_agent = std::path::absolute(Path::new("./.omp/agent")).unwrap();
+		let default_agent = std::path::absolute(Path::new("./.veyyon/agent")).unwrap();
 		let dir = xdg_state_logs(
 			Some(OsStr::new("/xdg/state")),
-			Some(OsStr::new("./.omp/agent")),
+			Some(OsStr::new("./.veyyon/agent")),
 			&default_agent,
 			|_p| true,
 		);
-		assert_eq!(dir, Some(PathBuf::from("/xdg/state/omp/logs")));
+		assert_eq!(dir, Some(PathBuf::from("/xdg/state/veyyon/logs")));
 	}
 
 	#[cfg(any(target_os = "linux", target_os = "macos"))]
 	#[test]
-	fn default_agent_dir_uses_dot_omp_by_default() {
+	fn default_agent_dir_uses_dot_veyyon_by_default() {
 		let dir = default_agent_dir(Path::new("/tmp/pi-natives-test-home"), None);
-		assert_eq!(dir, PathBuf::from("/tmp/pi-natives-test-home/.omp/agent"));
+		assert_eq!(dir, PathBuf::from("/tmp/pi-natives-test-home/.veyyon/agent"));
 	}
 	#[cfg(any(target_os = "linux", target_os = "macos"))]
 	#[test]
@@ -591,16 +591,16 @@ mod tests {
 
 	#[test]
 	fn build_crash_log_path_tags_kind_and_pid() {
-		let dir = Path::new("/tmp/pi-natives-test-home/.omp/logs");
+		let dir = Path::new("/tmp/pi-natives-test-home/.veyyon/logs");
 		let panic_log = build_crash_log_path(dir, CrashKind::Panic, 4242, 1_700_000_000_000);
 		assert_eq!(
 			panic_log,
-			PathBuf::from("/tmp/pi-natives-test-home/.omp/logs/native-panic-4242-1700000000000.log")
+			PathBuf::from("/tmp/pi-natives-test-home/.veyyon/logs/native-panic-4242-1700000000000.log")
 		);
 		let alloc_log = build_crash_log_path(dir, CrashKind::Alloc, 99, 1);
 		assert_eq!(
 			alloc_log,
-			PathBuf::from("/tmp/pi-natives-test-home/.omp/logs/native-alloc-99-1.log")
+			PathBuf::from("/tmp/pi-natives-test-home/.veyyon/logs/native-alloc-99-1.log")
 		);
 	}
 }

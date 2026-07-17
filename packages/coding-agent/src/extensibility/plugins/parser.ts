@@ -105,3 +105,18 @@ export function extractPackageName(specifier: string): string {
 	// Unscoped: name@version -> name
 	return npmSpecifier.replace(/@[^@]+$/, "");
 }
+
+const VALID_PACKAGE_NAME = /^(@[a-z0-9-~][a-z0-9-._~]*\/)?[a-z0-9-~][a-z0-9-._~]*(@[a-z0-9-._^~>=<]+)?$/i;
+
+/** Throw unless `name` (optionally `name@version`) is a safe npm package specifier. */
+export function validatePackageName(name: string): void {
+	// Remove version specifier for validation
+	const baseName = extractPackageName(name);
+	if (!VALID_PACKAGE_NAME.test(baseName)) {
+		throw new Error(`Invalid package name: ${name}`);
+	}
+	// Extra safety: no shell metacharacters
+	if (/[;&|`$(){}[\]<>\\]/.test(name)) {
+		throw new Error(`Invalid characters in package name: ${name}`);
+	}
+}

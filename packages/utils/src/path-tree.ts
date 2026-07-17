@@ -10,11 +10,11 @@
  * token per path segment instead of one per file.
  */
 
-const URL_LIKE_PATH_RE = /^[a-z][a-z0-9+.-]*:\/\//i;
+import { URL_SCHEME_RE } from "./regex";
 
 /** True for `scheme://…` entries that have no meaningful directory structure. */
 export function isUrlLikePath(filePath: string): boolean {
-	return URL_LIKE_PATH_RE.test(filePath);
+	return URL_SCHEME_RE.test(filePath);
 }
 
 export interface PathTreeNode {

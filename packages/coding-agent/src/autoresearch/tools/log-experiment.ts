@@ -1,13 +1,12 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-
 import { Text } from "@veyyon/pi-tui";
 import { type } from "arktype";
 import type { ToolDefinition } from "../../extensibility/extensions";
 import type { Theme } from "../../modes/theme/theme";
 import { replaceTabs, truncateToWidth } from "../../tools/render-utils";
 import * as git from "../../utils/git";
-import { computeRunModifiedPaths, getCurrentAutoresearchBranch, parseWorkDirDirtyPaths } from "../git";
+import { computeRunModifiedPaths, getCurrentAutoresearchBranch, parseWorkDirDirtyPaths, tryReadHeadSha } from "../git";
 import {
 	ensureNumericMetricMap,
 	formatNum,
@@ -416,14 +415,6 @@ function mergeMetrics(
 		merged[name] = value;
 	}
 	return merged;
-}
-
-async function tryReadHeadSha(cwd: string): Promise<string | null> {
-	try {
-		return (await git.head.sha(cwd)) ?? null;
-	} catch {
-		return null;
-	}
 }
 
 function buildLogText(

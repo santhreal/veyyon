@@ -183,25 +183,6 @@ export function findConfigFile(subpath: string, options: GetConfigDirsOptions = 
 	return undefined;
 }
 
-/**
- * Find the first existing config file with metadata.
- */
-export function findConfigFileWithMeta(
-	subpath: string,
-	options: GetConfigDirsOptions = {},
-): Omit<ConfigFileResult<never>, "content"> | undefined {
-	const dirs = getConfigDirs("", { ...options, existingOnly: false });
-
-	for (const { path: base, source, level } of dirs) {
-		const filePath = path.join(base, subpath);
-		if (fs.existsSync(filePath)) {
-			return { path: filePath, source, level };
-		}
-	}
-
-	return undefined;
-}
-
 // =============================================================================
 // Walk-Up Config Discovery (for monorepo scenarios)
 // =============================================================================

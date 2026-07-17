@@ -1,3 +1,5 @@
+import { toNumber } from "@veyyon/pi-catalog/utils";
+import { isRecord, stripTrailingSlashes } from "@veyyon/pi-utils";
 import type {
 	UsageAmount,
 	UsageFetchContext,
@@ -5,16 +7,11 @@ import type {
 	UsageLimit,
 	UsageProvider,
 	UsageReport,
-	UsageStatus,
 	UsageWindow,
 } from "../usage";
-import { toNumber } from "./shared";
+import { usageStatusFromUsedFraction } from "./shared";
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function parseTimestamp(value: unknown): number | undefined {
+function parseEpochMs(value: unknown): number | undefined {
 	const numeric = toNumber(value);
 	if (numeric !== undefined) return numeric < 1_000_000_000_000 ? numeric * 1000 : numeric;
 	if (typeof value !== "string" || !value.trim()) return undefined;
@@ -24,19 +21,19 @@ function parseTimestamp(value: unknown): number | undefined {
 
 function normalizeCursorBaseUrl(baseUrl?: string): string {
 	if (!baseUrl) return "https://api2.cursor.sh";
-	return baseUrl.replace(/\/+$/, "");
+	return stripTrailingSlashes(baseUrl);
 }
 
 function deriveResetsAt(payload: Record<string, unknown>): number | undefined {
 	const endKeys = ["billingCycleEnd", "endOfMonth", "resetsAt", "nextReset"];
 	for (const key of endKeys) {
-		const parsed = parseTimestamp(payload[key]);
+		const parsed = parseEpochMs(payload[key]);
 		if (parsed !== undefined) return parsed;
 	}
 
 	const startKeys = ["startOfMonth", "billingCycleStart", "startOfBillingCycle"];
 	for (const key of startKeys) {
-		const parsed = parseTimestamp(payload[key]);
+		const parsed = parseEpochMs(payload[key]);
 		if (parsed !== undefined) {
 			const date = new Date(parsed);
 			date.setUTCMonth(date.getUTCMonth() + 1);
@@ -93,17 +90,7 @@ export function parseCursorUsage(payload: unknown, fetchedAt = Date.now()): Usag
 				unit,
 			};
 
-			const usedFraction = amount.usedFraction;
-			let status: UsageStatus = "unknown";
-			if (usedFraction !== undefined) {
-				if (usedFraction >= 1) {
-					status = "exhausted";
-				} else if (usedFraction >= 0.9) {
-					status = "warning";
-				} else {
-					status = "ok";
-				}
-			}
+			const status = usageStatusFromUsedFraction(amount.usedFraction);
 
 			limits.push({
 				id: limitId,

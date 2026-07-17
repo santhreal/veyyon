@@ -14,7 +14,7 @@ export function resolveToolEventInput(
 	if (tool.name !== "edit" || typeof tool.resolveEventInput !== "function") return input;
 	let resolved = input;
 	for (const key of ["input", "_input"] as const) {
-		const value = stringField(resolved, key);
+		const value = nonEmptyStringField(resolved, key);
 		if (value === undefined) continue;
 		const nextValue = tool.resolveEventInput(value);
 		if (nextValue === value) continue;
@@ -24,7 +24,7 @@ export function resolveToolEventInput(
 	return resolved;
 }
 
-function stringField(input: Record<string, unknown>, key: string): string | undefined {
+function nonEmptyStringField(input: Record<string, unknown>, key: string): string | undefined {
 	const value = input[key];
 	return typeof value === "string" && value.length > 0 ? value : undefined;
 }
@@ -57,13 +57,13 @@ function extractHashlinePaths(input: string): string[] {
 
 /** Adds derived compatibility fields to tool event input without changing tool execution parameters. */
 export function normalizeToolEventInput(toolName: string, input: Record<string, unknown>): Record<string, unknown> {
-	if (toolName !== "edit" || stringField(input, "path")) return input;
+	if (toolName !== "edit" || nonEmptyStringField(input, "path")) return input;
 
 	// Hashline edit mode: the only authoritative target list is the parsed
 	// `¶PATH#TAG` headers inside the patch. Trusting a passthrough
 	// `_path` here would let a model-supplied field override the real edit
 	// target and bypass extension gates that allowlist by path.
-	const rawInput = stringField(input, "input") ?? stringField(input, "_input");
+	const rawInput = nonEmptyStringField(input, "input") ?? nonEmptyStringField(input, "_input");
 	if (rawInput !== undefined) {
 		const hashlinePaths = extractHashlinePaths(rawInput);
 		if (hashlinePaths.length === 0) return input;
@@ -73,7 +73,7 @@ export function normalizeToolEventInput(toolName: string, input: Record<string, 
 
 	// Replace/patch modes: `path` is the real parameter; some hosts forward
 	// it as `_path` after schema normalization, so propagate it for gates.
-	const directPath = stringField(input, "_path");
+	const directPath = nonEmptyStringField(input, "_path");
 	if (directPath) return { ...input, path: directPath };
 
 	return input;

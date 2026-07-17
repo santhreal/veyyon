@@ -14,7 +14,7 @@ interface LogoutAccountOptions {
 	activeApiKey?: boolean;
 }
 
-function nonEmpty(value: string | undefined): string | undefined {
+function nonEmptyTrimmed(value: string | undefined): string | undefined {
 	const trimmed = value?.trim();
 	return trimmed && trimmed.length > 0 ? trimmed : undefined;
 }
@@ -23,14 +23,14 @@ function oauthLabel(row: StoredAuthCredential): string {
 	const credential = row.credential;
 	if (credential.type !== "oauth") return `API key #${row.id}`;
 	const base =
-		nonEmpty(credential.email) ??
-		nonEmpty(credential.accountId) ??
-		nonEmpty(credential.projectId) ??
-		nonEmpty(credential.enterpriseUrl) ??
+		nonEmptyTrimmed(credential.email) ??
+		nonEmptyTrimmed(credential.accountId) ??
+		nonEmptyTrimmed(credential.projectId) ??
+		nonEmptyTrimmed(credential.enterpriseUrl) ??
 		`OAuth credential #${row.id}`;
 	// Two subscriptions (orgs) can share one email — the org is the only
 	// user-visible way to tell which row a logout will remove.
-	const org = nonEmpty(credential.orgName) ?? nonEmpty(credential.orgId);
+	const org = nonEmptyTrimmed(credential.orgName) ?? nonEmptyTrimmed(credential.orgId);
 	return org && org !== base ? `${base} (${org})` : base;
 }
 
@@ -38,10 +38,10 @@ function oauthDetail(row: StoredAuthCredential, label: string): string {
 	const credential = row.credential;
 	if (credential.type === "api_key") return `stored API key #${row.id}`;
 	const parts: string[] = [];
-	const email = nonEmpty(credential.email);
-	const accountId = nonEmpty(credential.accountId);
-	const projectId = nonEmpty(credential.projectId);
-	const enterpriseUrl = nonEmpty(credential.enterpriseUrl);
+	const email = nonEmptyTrimmed(credential.email);
+	const accountId = nonEmptyTrimmed(credential.accountId);
+	const projectId = nonEmptyTrimmed(credential.projectId);
+	const enterpriseUrl = nonEmptyTrimmed(credential.enterpriseUrl);
 	if (email && email !== label) parts.push(email);
 	if (accountId && accountId !== label) parts.push(`account ${accountId}`);
 	if (projectId && projectId !== label) parts.push(`project ${projectId}`);

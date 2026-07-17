@@ -173,11 +173,3 @@ export async function removeSSHHost(filePath: string, name: string): Promise<voi
 	// Write back
 	await writeSSHConfigFile(filePath, updated);
 }
-
-/**
- * List all host names in a config file.
- */
-export async function listSSHHosts(filePath: string): Promise<string[]> {
-	const config = await readSSHConfigFile(filePath);
-	return Object.keys(config.hosts ?? {});
-}

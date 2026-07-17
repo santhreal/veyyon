@@ -74,14 +74,3 @@ function recordAffected(
 			break;
 	}
 }
-
-/**
- * Format the A/M/D summary described in spec §9.1.
- */
-export function formatApplyCodexPatchSummary(affected: ApplyCodexPatchResult["affected"]): string {
-	const lines = ["Success. Updated the following files:"];
-	for (const p of affected.added) lines.push(`A ${p}`);
-	for (const p of affected.modified) lines.push(`M ${p}`);
-	for (const p of affected.deleted) lines.push(`D ${p}`);
-	return lines.join("\n");
-}

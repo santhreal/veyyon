@@ -72,7 +72,7 @@ $ veyyon
 ```
 
 ```text
-/goal set Add a --max-time flag to the print-mode runner and document it in the handbook
+/goal set Add workspace-write default for headless runs and document it in the handbook
 ```
 
 Work in normal mode; use `/goal show` for progress. When blocked, `/goal pause`. When done, the agent should `complete` via the goal tool or you `/goal drop`.

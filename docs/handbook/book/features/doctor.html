@@ -46,10 +46,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-24acbed9.js";
+            window.path_to_searchindex_js = "../searchindex-8badf17b.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-9cfd259b.js"></script>
+        <script src="../toc-19dab021.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -210,8 +210,14 @@ API keys are missing — these are warnings, not hard failures.</p>
 /memory stats
 </code></pre>
 <p>Operate the mnemopi memory backend from the TUI. See <a href="./memory.html">Memory</a>.</p>
-<h2 id="checking-install-health"><a class="header" href="#checking-install-health">Checking install health</a></h2>
-<p>There is no single <code>veyyon doctor</code> command. Diagnostics are spread across a few surfaces:</p>
+<h2 id="spec--not-shipped-top-level-veyyon-doctor"><a class="header" href="#spec--not-shipped-top-level-veyyon-doctor">Spec — not shipped: top-level <code>veyyon doctor</code></a></h2>
+<p>Older handbook pages described:</p>
+<pre><code class="language-console">$ veyyon doctor
+$ veyyon doctor --json
+$ veyyon doctor --summary --all
+</code></pre>
+<p>That full install health reporter (binary, sandbox, auth, terminal capabilities, feature flags, update feed, custom CA env vars) is <strong>not</strong> implemented as a root CLI subcommand today. Any mention of <code>veyyon doctor</code> for install health is a target, not current behavior.</p>
+<p><strong>Workaround today</strong></p>
 <ol>
 <li><code>veyyon --version</code> and a normal interactive session start.</li>
 <li><code>veyyon plugin doctor</code> for extension health.</li>

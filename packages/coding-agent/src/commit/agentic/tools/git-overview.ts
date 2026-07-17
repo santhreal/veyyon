@@ -5,16 +5,16 @@ import type { CustomTool } from "../../../extensibility/custom-tools/types";
 import * as git from "../../../utils/git";
 import { EXCLUDED_LOCK_FILES } from "../lock-files";
 
-function isExcludedFile(path: string): boolean {
+function isExcludedLockFile(path: string): boolean {
 	const basename = path.split("/").pop() ?? path;
 	return EXCLUDED_LOCK_FILES.has(basename);
 }
 
-function filterExcludedFiles(files: string[]): { filtered: string[]; excluded: string[] } {
+function partitionExcludedFiles(files: string[]): { filtered: string[]; excluded: string[] } {
 	const filtered: string[] = [];
 	const excluded: string[] = [];
 	for (const file of files) {
-		if (isExcludedFile(file)) {
+		if (isExcludedLockFile(file)) {
 			excluded.push(file);
 		} else {
 			filtered.push(file);
@@ -37,10 +37,10 @@ export function createGitOverviewTool(cwd: string, state: CommitAgentState): Cus
 		async execute(_toolCallId, params) {
 			const staged = params.staged ?? true;
 			const allFiles = await git.diff.changedFiles(cwd, { cached: staged });
-			const { filtered: files, excluded } = filterExcludedFiles(allFiles);
+			const { filtered: files, excluded } = partitionExcludedFiles(allFiles);
 			const stat = await git.diff(cwd, { stat: true, cached: staged });
 			const allNumstat = await git.diff.numstat(cwd, { cached: staged });
-			const numstat = allNumstat.filter(entry => !isExcludedFile(entry.path));
+			const numstat = allNumstat.filter(entry => !isExcludedLockFile(entry.path));
 			const scopeResult = extractScopeCandidates(numstat);
 			const untrackedFiles = !staged && params.include_untracked ? await git.ls.untracked(cwd) : undefined;
 			const snapshot: GitOverviewSnapshot = {

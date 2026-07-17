@@ -3,8 +3,10 @@
  *
  * Uses brush-core via native bindings for shell execution.
  */
+
 import { ExponentialYield } from "@veyyon/pi-agent-core/utils/yield";
 import { type MinimizerOptions, Shell, type ShellRunResult } from "@veyyon/pi-natives";
+import { quoteShellArg } from "@veyyon/pi-utils";
 import { isExecutable, type ShellConfig } from "@veyyon/pi-utils/procmgr";
 import { Settings, type ShellMinimizerSettings } from "../config/settings";
 import { OutputSink } from "../session/streaming-output";
@@ -175,10 +177,6 @@ function ensureInteractiveShellArgs(shell: string, args: string[]): string[] {
 	return [...args, "-i"];
 }
 
-function quoteShellArg(value: string): string {
-	return `'${value.replace(/'/g, "'\\''")}'`;
-}
-
 function buildUserShellCommand(shell: string, args: string[], command: string): string {
 	return [shell, ...ensureInteractiveShellArgs(shell, args), command].map(quoteShellArg).join(" ");
 }
@@ -255,7 +253,7 @@ export async function executeBash(command: string, options?: BashExecutorOptions
 		snapshotPath: snapshotPath ?? undefined,
 		minimizer,
 	};
-	const sessionKey = buildSessionKey(shell, prefix, snapshotPath, shellEnv, options?.sessionKey, minimizer);
+	const sessionKey = buildBashSessionKey(shell, prefix, snapshotPath, shellEnv, options?.sessionKey, minimizer);
 	const persistentSessionBroken = brokenShellSessions.has(sessionKey);
 	if (persistentSessionBroken) {
 		shellSessions.delete(sessionKey);
@@ -454,7 +452,7 @@ export async function executeBash(command: string, options?: BashExecutorOptions
 	}
 }
 
-function buildSessionKey(
+function buildBashSessionKey(
 	shell: string,
 	prefix: string | undefined,
 	snapshotPath: string | null,

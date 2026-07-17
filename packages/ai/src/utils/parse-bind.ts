@@ -11,7 +11,7 @@ export interface ParsedBind {
 	port: number;
 }
 
-function parsePort(raw: string, bind: string): number {
+function parseBindPort(raw: string, bind: string): number {
 	if (!/^\d+$/.test(raw)) {
 		throw new AIError.ConfigurationError(`Invalid bind '${bind}'; port must be an integer.`);
 	}
@@ -41,7 +41,7 @@ export function parseBind(raw: string): ParsedBind {
 		throw new AIError.ConfigurationError("Invalid bind; expected 'host:port' or 'port'.");
 	}
 	if (/^\d+$/.test(trimmed)) {
-		return { hostname: "127.0.0.1", port: parsePort(trimmed, raw) };
+		return { hostname: "127.0.0.1", port: parseBindPort(trimmed, raw) };
 	}
 	const lastColon = trimmed.lastIndexOf(":");
 	if (lastColon < 0) {
@@ -52,5 +52,5 @@ export function parseBind(raw: string): ParsedBind {
 	if (hostPart.length === 0) {
 		throw new AIError.ConfigurationError(`Invalid bind '${raw}'; host must not be empty.`);
 	}
-	return { hostname: hostPart, port: parsePort(portPart, raw) };
+	return { hostname: hostPart, port: parseBindPort(portPart, raw) };
 }

@@ -930,6 +930,69 @@ describe("agentLoop with AgentMessage", () => {
 		if (tracedToolCall?.type === "toolCall") {
 			expect(tracedToolCall.intent).toBe("Read one file");
 		}
+		// Repair telemetry: the persisted tool result records the acted-on outcome.
+		const repairedResult = messages.find(message => message.role === "toolResult") as ToolResultMessage | undefined;
+		expect(repairedResult?.repairStatus).toBe("repaired");
+		expect(repairedResult?.isError).toBe(false);
+	});
+
+	it("persists repairStatus=unrepairable on the refused tool result and no repairStatus on clean calls", async () => {
+		const toolSchema = type({ value: "string" });
+		const executed: string[] = [];
+		const tool: AgentTool<typeof toolSchema, { value: string }> = {
+			name: "echo",
+			label: "Echo",
+			description: "Echo tool",
+			parameters: toolSchema,
+			async execute(_toolCallId, params) {
+				executed.push(params.value);
+				return {
+					content: [{ type: "text", text: `echoed: ${params.value}` }],
+					details: { value: params.value },
+				};
+			},
+		};
+
+		const context: AgentContext = { systemPrompt: [""], messages: [], tools: [tool] };
+		const mock = createMockModel({
+			responses: [
+				{
+					content: [
+						{ type: "toolCall", id: "tool-unrep-1", name: "echo", arguments: { garbled: true } },
+						{ type: "toolCall", id: "tool-clean-1", name: "echo", arguments: { value: "fine" } },
+					],
+				},
+				{ content: ["done"] },
+			],
+		});
+		const config: AgentLoopConfig = {
+			model: mock.model,
+			convertToLlm: identityConverter,
+			repairToolCallArguments: (_tool, toolCall) => {
+				const args = toolCall.arguments as Record<string, unknown>;
+				if ("garbled" in args) {
+					return { status: "unrepairable", arguments: {}, hints: ["ambiguous"], reason: "cannot map keys" };
+				}
+				return { status: "clean", arguments: args, hints: [] };
+			},
+		};
+
+		const stream = agentLoop([createUserMessage("run")], context, config, undefined, mock.stream);
+		for await (const _ of stream) {
+			// drain
+		}
+		const messages = await stream.result();
+		const results = messages.filter(message => message.role === "toolResult") as ToolResultMessage[];
+		const refused = results.find(result => result.toolCallId === "tool-unrep-1");
+		const clean = results.find(result => result.toolCallId === "tool-clean-1");
+
+		expect(executed).toEqual(["fine"]);
+		expect(refused?.repairStatus).toBe("unrepairable");
+		expect(refused?.isError).toBe(true);
+		const refusedText = refused?.content.map(block => (block.type === "text" ? block.text : "")).join("\n") ?? "";
+		expect(refusedText).toContain("cannot map keys");
+		expect(clean?.repairStatus).toBeUndefined();
+		expect(clean?.isError).toBe(false);
 	});
 
 	it("runs shared tools in parallel and emits completion-ordered results", async () => {

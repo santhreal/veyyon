@@ -1,7 +1,7 @@
 import * as path from "node:path";
 import { logger, untilAborted } from "@veyyon/pi-utils";
 import type { ConversionResult, Markit, StreamInfo } from "../markit";
-import { ToolAbortError } from "../tools/tool-errors";
+import { ToolAbortError, throwIfAborted } from "../tools/tool-errors";
 import {
 	type MarkitConversionCacheStatus,
 	markitConversionCacheKey,
@@ -113,10 +113,6 @@ function finalizeConversion(markdown?: string): MarkitConversionResult {
 
 function toBuffer(bytes: Uint8Array): Buffer {
 	return Buffer.isBuffer(bytes) ? bytes : Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-}
-
-function throwIfAborted(signal?: AbortSignal): void {
-	if (signal?.aborted) throw new ToolAbortError();
 }
 
 async function runCachedBufferConversion(

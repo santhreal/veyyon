@@ -2,8 +2,8 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { $which, isRecord, logger, pathIsWithin, type WhichOptions } from "@veyyon/pi-utils";
-import { YAML } from "bun";
 import { getConfigDirPaths } from "../config";
+import { configFileSource, readConfigFile } from "../config/config-file";
 import { type ClaudePluginRoot, getPreloadedPluginRoots } from "../discovery/helpers";
 import { BiomeClient } from "./clients/biome-client";
 import { SwiftLintClient } from "./clients/swiftlint-client";
@@ -46,15 +46,7 @@ interface NormalizedConfig {
 	idleTimeoutMs?: number;
 }
 
-function parseConfigContent(content: string, filePath: string): unknown {
-	const extension = path.extname(filePath).toLowerCase();
-	if (extension === ".yaml" || extension === ".yml") {
-		return YAML.parse(content) as unknown;
-	}
-	return JSON.parse(content) as unknown;
-}
-
-function normalizeConfig(value: unknown): NormalizedConfig | null {
+function normalizeLspConfig(value: unknown): NormalizedConfig | null {
 	if (!isRecord(value)) return null;
 
 	const idleTimeoutMs = typeof value.idleTimeoutMs === "number" ? value.idleTimeoutMs : undefined;
@@ -72,7 +64,7 @@ function normalizeConfig(value: unknown): NormalizedConfig | null {
 	return { servers, idleTimeoutMs };
 }
 
-function normalizeStringArray(value: unknown): string[] | null {
+function nonEmptyStringArray(value: unknown): string[] | null {
 	if (!Array.isArray(value)) return null;
 	const items = value.filter((entry): entry is string => typeof entry === "string" && entry.length > 0);
 	return items.length > 0 ? items : null;
@@ -85,9 +77,8 @@ function normalizeExtensionToFileTypes(value: unknown): string[] | null {
 
 function normalizeServerConfig(name: string, config: RawServerConfig): ServerConfig | null {
 	const command = typeof config.command === "string" && config.command.length > 0 ? config.command : null;
-	const fileTypes =
-		normalizeStringArray(config.fileTypes) ?? normalizeExtensionToFileTypes(config.extensionToLanguage);
-	const rootMarkers = normalizeStringArray(config.rootMarkers) ?? (config.extensionToLanguage ? ["."] : null);
+	const fileTypes = nonEmptyStringArray(config.fileTypes) ?? normalizeExtensionToFileTypes(config.extensionToLanguage);
+	const rootMarkers = nonEmptyStringArray(config.rootMarkers) ?? (config.extensionToLanguage ? ["."] : null);
 
 	if (!command || !fileTypes || !rootMarkers) {
 		logger.warn("Ignoring invalid LSP server config (missing required fields).", { name });
@@ -111,16 +102,6 @@ function normalizeServerConfig(name: string, config: RawServerConfig): ServerCon
 		rootMarkers,
 		...(initOptions ? { initOptions } : {}),
 	};
-}
-
-function readConfigFile(filePath: string): NormalizedConfig | null {
-	try {
-		const content = fs.readFileSync(filePath, "utf-8");
-		const parsed = parseConfigContent(content, filePath);
-		return normalizeConfig(parsed);
-	} catch {
-		return null;
-	}
 }
 
 function coerceServerConfigs(servers: Record<string, RawServerConfig>): Record<string, ServerConfig> {
@@ -323,12 +304,6 @@ interface ConfigSource {
 	read(): NormalizedConfig | null;
 }
 
-function fileConfigSource(filePath: string): ConfigSource {
-	return {
-		read: () => readConfigFile(filePath),
-	};
-}
-
 function readMarketplaceLspConfig(root: ClaudePluginRoot): NormalizedConfig | null {
 	const catalogPaths = [
 		path.resolve(root.path, "..", "..", "marketplace.json"),
@@ -347,10 +322,10 @@ function readMarketplaceLspConfig(root: ClaudePluginRoot): NormalizedConfig | nu
 				if (typeof lspServers === "string") {
 					const configPath = path.resolve(root.path, lspServers);
 					if (!pathIsWithin(root.path, configPath)) return null;
-					return readConfigFile(configPath);
+					return readConfigFile(configPath, normalizeLspConfig);
 				}
 				if (isRecord(lspServers)) {
-					return normalizeConfig({ servers: lspServers });
+					return normalizeLspConfig({ servers: lspServers });
 				}
 				return null;
 			}
@@ -376,14 +351,14 @@ function getConfigSources(cwd: string): ConfigSource[] {
 
 	// Project root files (highest priority)
 	for (const filename of filenames) {
-		sources.push(fileConfigSource(path.join(cwd, filename)));
+		sources.push(configFileSource(path.join(cwd, filename), normalizeLspConfig));
 	}
 
 	// Project config directories (.veyyon/, .pi/, .claude/)
 	const projectDirs = getConfigDirPaths("", { user: false, project: true, cwd });
 	for (const dir of projectDirs) {
 		for (const filename of filenames) {
-			sources.push(fileConfigSource(path.join(dir, filename)));
+			sources.push(configFileSource(path.join(dir, filename), normalizeLspConfig));
 		}
 	}
 
@@ -391,7 +366,7 @@ function getConfigSources(cwd: string): ConfigSource[] {
 	const userDirs = getConfigDirPaths("", { user: true, project: false });
 	for (const dir of userDirs) {
 		for (const filename of filenames) {
-			sources.push(fileConfigSource(path.join(dir, filename)));
+			sources.push(configFileSource(path.join(dir, filename), normalizeLspConfig));
 		}
 	}
 
@@ -399,14 +374,14 @@ function getConfigSources(cwd: string): ConfigSource[] {
 	const pluginRoots = getPreloadedPluginRoots();
 	for (const root of pluginRoots) {
 		for (const filename of filenames) {
-			sources.push(fileConfigSource(path.join(root.path, filename)));
+			sources.push(configFileSource(path.join(root.path, filename), normalizeLspConfig));
 		}
 		sources.push(marketplaceConfigSource(root));
 	}
 
 	// User home root files (lowest priority fallback)
 	for (const filename of filenames) {
-		sources.push(fileConfigSource(path.join(os.homedir(), filename)));
+		sources.push(configFileSource(path.join(os.homedir(), filename), normalizeLspConfig));
 	}
 
 	return sources;
@@ -545,23 +520,4 @@ export function getServersForFile(config: LspConfig, filePath: string): Array<[s
 		const bIsLinter = b[1].isLinter ? 1 : 0;
 		return aIsLinter - bIsLinter;
 	});
-}
-
-/**
- * Find the primary server for a file (prefers type-checkers over linters).
- * Used for operations like definition, hover, references that need type intelligence.
- */
-export function getServerForFile(config: LspConfig, filePath: string): [string, ServerConfig] | null {
-	const servers = getServersForFile(config, filePath);
-	return servers.length > 0 ? servers[0] : null;
-}
-
-/**
- * Check if a server has a specific capability
- */
-export function hasCapability(
-	config: ServerConfig,
-	capability: keyof NonNullable<ServerConfig["capabilities"]>,
-): boolean {
-	return config.capabilities?.[capability] === true;
 }

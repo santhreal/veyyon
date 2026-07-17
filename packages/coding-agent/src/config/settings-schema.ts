@@ -303,11 +303,6 @@ export function getDefault<P extends SettingPath>(path: P): SettingValue<P> {
 	return SETTINGS_SCHEMA[path].default as SettingValue<P>;
 }
 
-/** Check if a path has UI metadata (should appear in settings panel) */
-export function hasUi(path: SettingPath): boolean {
-	return "ui" in SETTINGS_SCHEMA[path];
-}
-
 /** Get UI metadata for a path (undefined if no UI) */
 export function getUi(path: SettingPath): AnyUiMetadata | undefined {
 	const def = SETTINGS_SCHEMA[path];

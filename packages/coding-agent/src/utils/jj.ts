@@ -1,6 +1,6 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { $which } from "@veyyon/pi-utils";
+import { commandFailureMessage, ensureCommandAvailable, trimmedNonEmptyLines } from "@veyyon/pi-utils";
 import { LRUCache } from "lru-cache/raw";
 import * as git from "./git";
 
@@ -53,7 +53,7 @@ export class JjCommandError extends Error {
 
 	/** Create an error for a failed checked `jj` command. */
 	constructor(args: readonly string[], result: JjCommandResult) {
-		super(formatCommandFailure(args, result));
+		super(commandFailureMessage("jj", args, result));
 		this.name = "JjCommandError";
 		this.args = [...args];
 		this.result = result;
@@ -63,23 +63,6 @@ export class JjCommandError extends Error {
 // ════════════════════════════════════════════════════════════════════════════
 // Internal: Core execution
 // ════════════════════════════════════════════════════════════════════════════
-
-function ensureAvailable(): void {
-	if (!$which("jj")) {
-		throw new Error("jj is not installed.");
-	}
-}
-
-function formatCommandFailure(
-	args: readonly string[],
-	result: Pick<JjCommandResult, "exitCode" | "stdout" | "stderr">,
-): string {
-	const stderr = result.stderr.trim();
-	if (stderr) return stderr;
-	const stdout = result.stdout.trim();
-	if (stdout) return stdout;
-	return `jj ${args.join(" ")} failed with exit code ${result.exitCode}`;
-}
 
 async function jj(cwd: string, args: readonly string[], options: CommandOptions = {}): Promise<JjCommandResult> {
 	const child = Bun.spawn(["jj", "--no-pager", "--color=never", ...args], {
@@ -109,7 +92,7 @@ async function runChecked(
 	args: readonly string[],
 	options: CommandOptions = {},
 ): Promise<JjCommandResult> {
-	ensureAvailable();
+	ensureCommandAvailable("jj");
 	const result = await jj(cwd, args, options);
 	if (result.exitCode !== 0) {
 		throw new JjCommandError(args, result);
@@ -121,14 +104,7 @@ async function runText(cwd: string, args: readonly string[], options: CommandOpt
 	return (await runChecked(cwd, args, options)).stdout;
 }
 
-function splitLines(text: string): string[] {
-	return text
-		.split("\n")
-		.map(line => line.trim())
-		.filter(Boolean);
-}
-
-function buildDiffArgs(options: DiffOptions): string[] {
+function buildJjDiffArgs(options: DiffOptions): string[] {
 	const args = ["diff"];
 	args.push(options.nameOnly ? "--name-only" : "--git");
 	if (options.files?.length) args.push("--", ...options.files);
@@ -211,12 +187,12 @@ async function repositoryFromRoot(root: string): Promise<JjRepository> {
 /** Run `jj diff --git` for the current workspace commit and return the raw Git-format diff text. */
 export const diff = Object.assign(
 	async function diff(cwd: string, options: DiffOptions = {}): Promise<string> {
-		return runText(cwd, buildDiffArgs(options), { signal: options.signal });
+		return runText(cwd, buildJjDiffArgs(options), { signal: options.signal });
 	},
 	{
 		/** List changed file paths. */
 		async changedFiles(cwd: string, options: Pick<DiffOptions, "files" | "signal"> = {}): Promise<string[]> {
-			return splitLines(await diff(cwd, { ...options, nameOnly: true }));
+			return trimmedNonEmptyLines(await diff(cwd, { ...options, nameOnly: true }));
 		},
 	},
 );

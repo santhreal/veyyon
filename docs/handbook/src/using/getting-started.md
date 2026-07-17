@@ -4,7 +4,17 @@ Install Veyyon, complete the first-run ceremony, and land your first approved ed
 
 ## 1. Install
 
-**npm / Bun (recommended)**
+**One-command installer (recommended)** — checksum-verified binary from GitHub releases; wires PATH,
+completions, and the short `vey` alias, then runs a doctor self-test:
+
+```console
+$ curl -fsSL https://get.veyyon.dev | sh
+$ vey --version
+```
+
+Windows (PowerShell): `irm https://veyyon.dev/install.ps1 | iex`.
+
+**npm / Bun**
 
 ```console
 $ bun install -g @veyyon/pi-coding-agent
@@ -22,7 +32,8 @@ $ bun dev --version
 
 `bun setup` installs workspace deps and builds `@veyyon/pi-natives`. Config and state default to `~/.veyyon`.
 
-Shell completions: `veyyon completions bash|zsh|fish`. See [Install](./install.md).
+Shell completions: `veyyon completions bash|zsh|fish` (the one-command installer wires them itself).
+See [Install](./install.md).
 
 ## 2. First launch — the setup ceremony
 

@@ -8,7 +8,6 @@ import { hasPendingMigration, migrate as migrateTriplestoreSplit } from "../migr
 import {
 	consolidateToEpisodic,
 	degradeEpisodic,
-	detectLanguage,
 	extractAndStoreFacts,
 	getConsolidationLog,
 	getContaminated,
@@ -19,6 +18,7 @@ import {
 	sleep,
 	sleepAllSessions,
 } from "./consolidate";
+import { detectLanguage } from "./helpers";
 import { factRecall, formatContext, recall, recallEnhanced } from "./recall";
 import { initBeam } from "./schema";
 import {
@@ -72,7 +72,7 @@ const DEFAULT_CONFIG: BeamConfig = {
 	proactiveLinking: false,
 };
 
-function normalizeConfig(options: BeamMemoryOptions): BeamConfig {
+function normalizeBeamConfig(options: BeamMemoryOptions): BeamConfig {
 	const configured = options.config ?? {};
 	const useCloud = options.useCloud ?? configured.useCloud ?? DEFAULT_CONFIG.useCloud;
 	const proactiveLinking = options.proactiveLinking ?? configured.proactiveLinking ?? proactiveLinkingEnabled({});
@@ -161,7 +161,7 @@ export class BeamMemory implements BeamMemoryState {
 		this.authorType = options.authorType ?? null;
 		this.channelId = options.channelId ?? this.sessionId;
 		this.dbPath = options.dbPath;
-		this.config = normalizeConfig(options);
+		this.config = normalizeBeamConfig(options);
 		this.useCloud = this.config.useCloud;
 		this.eventEmitter = options.eventEmitter;
 		this.pluginManager = options.pluginManager ?? null;
@@ -255,7 +255,7 @@ export class BeamMemory implements BeamMemoryState {
 	}
 
 	detectLanguage(text: string): string {
-		return detectLanguage(this, text);
+		return detectLanguage(text);
 	}
 
 	extractAndStoreFacts(

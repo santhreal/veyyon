@@ -1,3 +1,4 @@
+import { errorMessage } from "@veyyon/pi-utils";
 import type { ParsedSlashCommand, SlashCommandResult, SlashCommandRuntime } from "../types";
 
 export interface ParsedSubcommand {
@@ -53,10 +54,6 @@ export function parseSubcommand(input: string): ParsedSubcommand {
 	const spaceIdx = trimmed.search(/\s/);
 	if (spaceIdx === -1) return { verb: trimmed.toLowerCase(), rest: "" };
 	return { verb: trimmed.slice(0, spaceIdx).toLowerCase(), rest: trimmed.slice(spaceIdx + 1).trim() };
-}
-
-export function errorMessage(error: unknown): string {
-	return error instanceof Error ? error.message : String(error);
 }
 
 /**

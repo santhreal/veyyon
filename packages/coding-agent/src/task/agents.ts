@@ -141,23 +141,5 @@ export function getBundledAgent(name: string): AgentDefinition | undefined {
 	return loadBundledAgents().find(a => a.name === name);
 }
 
-/**
- * Get all bundled agents as a map keyed by name.
- */
-export function getBundledAgentsMap(): Map<string, AgentDefinition> {
-	const map = new Map<string, AgentDefinition>();
-	for (const agent of loadBundledAgents()) {
-		map.set(agent.name, agent);
-	}
-	return map;
-}
-
-/**
- * Clear the bundled agents cache (for testing).
- */
-export function clearBundledAgentsCache(): void {
-	bundledAgentsCache = null;
-}
-
 // Re-export for backward compatibility
 export const BUNDLED_AGENTS = loadBundledAgents;

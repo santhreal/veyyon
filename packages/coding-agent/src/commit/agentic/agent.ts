@@ -124,7 +124,7 @@ export async function runCommitAgentSession(input: CommitAgentInput): Promise<Co
 					if (assistantMessage.stopReason === "error" && assistantMessage.errorMessage) {
 						process.stdout.write(`● Error: ${assistantMessage.errorMessage}\n`);
 					}
-					const messageText = extractMessageText(event.message?.content ?? []);
+					const messageText = nonBlankMessageText(event.message?.content ?? []);
 					if (messageText) {
 						writeAssistantMessage(messageText);
 					}
@@ -199,7 +199,7 @@ function extractMessagePreview(content: Array<{ type: string; text?: string }>):
 	return truncateToolArg(combined);
 }
 
-function extractMessageText(content: Array<{ type: string; text?: string }>): string | null {
+function nonBlankMessageText(content: Array<{ type: string; text?: string }>): string | null {
 	const textBlocks = content
 		.filter(block => block.type === "text" && typeof block.text === "string")
 		.map(block => block.text ?? "")

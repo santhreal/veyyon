@@ -15,6 +15,7 @@ import type { OAuthAccess } from "@veyyon/pi-ai/auth-storage";
 import type { OAuthProvider } from "@veyyon/pi-ai/oauth/types";
 import { getGitLabDuoModels } from "@veyyon/pi-ai/providers/gitlab-duo";
 import { $env } from "@veyyon/pi-utils";
+import { isKimiK27CodeModelId } from "../src/compat/kimi";
 import { ANTIGRAVITY_PRIMARY_ENDPOINT, fetchAntigravityDiscoveryModels } from "../src/discovery/antigravity";
 import { fetchCodexModels } from "../src/discovery/codex";
 import { buildGitLabDuoWorkflowFallbackModel } from "../src/discovery/gitlab-duo-workflow";
@@ -35,7 +36,6 @@ import {
 	clampFireworksKimiMaxTokens,
 	clampKimiK27CodeMaxTokens,
 	isFireworksKimiK2ModelId,
-	isKimiK27CodeModelId,
 	MODELS_DEV_PROVIDER_DESCRIPTORS,
 	mapModelsDevToModels,
 	projectOpenAIProReasoningAliases,

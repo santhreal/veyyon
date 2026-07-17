@@ -2,7 +2,7 @@ export { truncate } from "@veyyon/pi-utils";
 
 import * as fs from "node:fs/promises";
 import path from "node:path";
-import { isEnoent } from "@veyyon/pi-utils";
+import { HTTP_URL_RE, isEnoent } from "@veyyon/pi-utils";
 import { type Theme, theme } from "../modes/theme/theme";
 import { formatGroupedFiles } from "../tools/grouped-file-output";
 import { formatPathRelativeToCwd, resolveToCwd } from "../tools/path-utils";
@@ -13,9 +13,9 @@ import type {
 	DiagnosticSeverity,
 	DocumentSymbol,
 	Location,
+	Position,
 	SymbolInformation,
 	SymbolKind,
-	TextEdit,
 	WorkspaceEdit,
 } from "./types";
 
@@ -115,27 +115,6 @@ export function sortDiagnostics(diagnostics: Diagnostic[]): Diagnostic[] {
 }
 
 /**
- * Get icon for diagnostic severity.
- */
-export function severityToIcon(severity?: DiagnosticSeverity): string {
-	const currentTheme = theme as Theme | undefined;
-	const fallback = currentTheme?.format?.bullet ?? "*";
-	const status = currentTheme?.status;
-	switch (severity ?? 1) {
-		case 1:
-			return status?.error ?? fallback;
-		case 2:
-			return status?.warning ?? fallback;
-		case 3:
-			return status?.info ?? fallback;
-		case 4:
-			return currentTheme?.format?.bullet ?? fallback;
-		default:
-			return status?.error ?? fallback;
-	}
-}
-
-/**
  * Strip noise from diagnostic messages (clippy URLs, override hints).
  */
 function stripDiagnosticNoise(message: string): string {
@@ -146,7 +125,7 @@ function stripDiagnosticNoise(message: string): string {
 			// Skip "for further information visit <url>" lines
 			if (trimmed.startsWith("for further information visit")) return false;
 			// Skip bare URLs
-			if (/^https?:\/\//.test(trimmed)) return false;
+			if (HTTP_URL_RE.test(trimmed)) return false;
 			return true;
 		})
 		.join("\n")
@@ -275,13 +254,6 @@ export function formatLocation(location: Location, cwd: string): string {
 	return `${file}:${line}:${col}`;
 }
 
-/**
- * Format a position as line:col.
- */
-export function formatPosition(line: number, col: number): string {
-	return `${line}:${col}`;
-}
-
 // =============================================================================
 // WorkspaceEdit Formatting
 // =============================================================================
@@ -325,18 +297,6 @@ export function formatWorkspaceEdit(edit: WorkspaceEdit, cwd: string): string[] 
 	}
 
 	return results;
-}
-
-/**
- * Format a text edit as a preview.
- */
-export function formatTextEdit(edit: TextEdit, maxLength = 50): string {
-	const range = `${edit.range.start.line + 1}:${edit.range.start.character + 1}`;
-	const preview =
-		edit.newText.length > maxLength
-			? `${edit.newText.slice(0, maxLength).replace(/\n/g, "\\n")}…`
-			: edit.newText.replace(/\n/g, "\\n");
-	return `line ${range} ${theme.nav.cursor} "${preview}"`;
 }
 
 // =============================================================================
@@ -392,41 +352,6 @@ export function symbolKindToIcon(kind: SymbolKind): string {
 	const currentTheme = theme as Theme | undefined;
 	const bullet = currentTheme?.format?.bullet ?? "*";
 	return getSymbolKindIcons()[kind] ?? bullet;
-}
-
-/**
- * Get name for symbol kind.
- */
-export function symbolKindToName(kind: SymbolKind): string {
-	const names: Record<number, string> = {
-		1: "File",
-		2: "Module",
-		3: "Namespace",
-		4: "Package",
-		5: "Class",
-		6: "Method",
-		7: "Property",
-		8: "Field",
-		9: "Constructor",
-		10: "Enum",
-		11: "Interface",
-		12: "Function",
-		13: "Variable",
-		14: "Constant",
-		15: "String",
-		16: "Number",
-		17: "Boolean",
-		18: "Array",
-		19: "Object",
-		20: "Key",
-		21: "Null",
-		22: "EnumMember",
-		23: "Struct",
-		24: "Event",
-		25: "Operator",
-		26: "TypeParameter",
-	};
-	return names[kind] ?? "Unknown";
 }
 
 /**
@@ -715,4 +640,9 @@ export async function readLocationContext(filePath: string, line: number, contex
 		}
 		throw error;
 	}
+}
+
+/** LSP position ordering: by line, then character. */
+export function comparePosition(a: Position, b: Position): number {
+	return a.line === b.line ? a.character - b.character : a.line - b.line;
 }

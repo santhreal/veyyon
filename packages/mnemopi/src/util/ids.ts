@@ -10,7 +10,7 @@ function nextIdNonce(): string {
 	return `${idSeed[0]?.toString(36) ?? "0"}:${idSeed[1]?.toString(36) ?? "0"}:${idCounter.toString(36)}`;
 }
 
-export function generateId(content: string, now: Date = new Date()): string {
+export function generateTimedId(content: string, now: Date = new Date()): string {
 	return sha256Hex16(`${content}\0${now.toISOString()}\0${nextIdNonce()}`);
 }
 

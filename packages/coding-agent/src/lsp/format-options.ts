@@ -15,6 +15,7 @@
  *      a 2/4-space convention.
  */
 import { getEditorConfigFormatting } from "@veyyon/pi-utils";
+import { gcd } from "../edit/normalize";
 
 /** Subset of the LSP `FormattingOptions` we send. */
 export interface LspFormattingOptions {
@@ -86,17 +87,6 @@ export function detectIndentFromContent(content: string): DetectedIndent {
 	if (insertSpaces !== undefined) result.insertSpaces = insertSpaces;
 	if (unit > 0 && insertSpaces === true) result.tabSize = unit;
 	return result;
-}
-
-function gcd(a: number, b: number): number {
-	let x = a;
-	let y = b;
-	while (y !== 0) {
-		const t = y;
-		y = x % y;
-		x = t;
-	}
-	return x;
 }
 
 /**

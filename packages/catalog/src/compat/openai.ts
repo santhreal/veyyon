@@ -7,6 +7,7 @@
  * complete alternate views. Request handlers read `model.compat` fields and
  * never detect, resolve, or allocate.
  */
+import { hasLocalLoopbackBaseUrl } from "@veyyon/pi-utils";
 import { isFireworksFastModelId } from "../fireworks-model-id";
 import { hostMatchesUrl, modelMatchesHost } from "../hosts";
 import {
@@ -31,6 +32,7 @@ import type {
 	ResolvedOpenRouterCompat,
 } from "../types";
 import { applyCompatOverrides } from "./apply";
+import { matchesKimiK27CodeFamily } from "./kimi";
 
 /** GLM coding-plan SKUs idle for minutes mid-reasoning; see `streamIdleTimeoutMs`. */
 const GLM_CODING_PLAN_MODEL_PATTERN = /(^|\/)glm-5(?:[.-]|$)/i;
@@ -39,20 +41,6 @@ const GLM_CODING_PLAN_STREAM_IDLE_TIMEOUT_MS = 600_000;
 const DEEPSEEK_REASONING_STREAM_IDLE_TIMEOUT_MS = 300_000;
 /** Kimi K2.6 can spend several minutes reasoning before the first visible token. */
 const KIMI_K26_REASONING_STREAM_IDLE_TIMEOUT_MS = 300_000;
-/**
- * Native Kimi K2.7 Code requires `thinking.type: "enabled"` and rejects
- * disabled thinking. Match the public id, its Fast variant, and the
- * `kimi-code/kimi-for-coding` alias (which keeps the family name).
- * Caller-disabled requests on non-native dialects (Fireworks `openai`,
- * OpenRouter `openrouter`, …) MUST keep their per-dialect disable shape —
- * gating on `isMoonshotKimi` is the caller's responsibility.
- */
-const KIMI_K27_CODE_MODEL_PATTERN = /(?:^|\/)kimi[-._]?k2(?:[._-]?|p)7[-._]?code(?:[-._]?highspeed)?$/i;
-
-function matchesKimiK27CodeFamily(spec: ModelSpec<"openai-completions">): boolean {
-	if (KIMI_K27_CODE_MODEL_PATTERN.test(spec.id)) return true;
-	return spec.id === "kimi-for-coding" && /k2\.?7 code/i.test(spec.name ?? "");
-}
 /** Xiaomi MiMo Pro on api.xiaomimimo.com can stall ~2min before the first event (issue #1770). */
 const XIAOMI_MIMO_STREAM_IDLE_TIMEOUT_MS = 300_000;
 /** Alibaba Coding Plan (coding-intl.dashscope) qwen models idle before the first event (issue #1770). */
@@ -204,30 +192,6 @@ const LOCAL_OPENAI_COMPAT_PROVIDERS = new Set(["llama.cpp", "lm-studio", "vllm",
  * override.
  */
 const PROXY_OPENAI_COMPAT_PROVIDERS = new Set(["litellm"]);
-
-function hasLocalLoopbackBaseUrl(baseUrl: string | undefined): boolean {
-	if (!baseUrl) return false;
-	let hostname: string;
-	try {
-		hostname = new URL(baseUrl).hostname.toLowerCase();
-	} catch {
-		return false;
-	}
-	if (
-		hostname === "localhost" ||
-		hostname === "127.0.0.1" ||
-		hostname === "0.0.0.0" ||
-		hostname === "::1" ||
-		hostname === "[::1]"
-	) {
-		return true;
-	}
-	if (/^10\./.test(hostname)) return true;
-	if (/^192\.168\./.test(hostname)) return true;
-	if (/^172\.(1[6-9]|2[0-9]|3[01])\./.test(hostname)) return true;
-	if (hostname.endsWith(".local")) return true;
-	return false;
-}
 
 /**
  * Build the resolved chat-completions compat record for a model spec.

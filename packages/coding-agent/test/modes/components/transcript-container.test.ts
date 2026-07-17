@@ -531,26 +531,28 @@ describe("TranscriptContainer getRenderStablePrefixRows", () => {
 		container.addChild(new Text("beta", 0, 0));
 
 		// First render only pushed rows; nothing is proven stable yet.
-		expect(container.render(40)).toHaveLength(3); // alpha, separator, beta
-		expect(container.getRenderStablePrefixRows()).toBe(0);
+		const first = container.render(40);
+		expect(first).toHaveLength(3); // alpha, separator, beta
+		expect(container.getRenderStablePrefixRows(first)).toBe(0);
 
 		// Unchanged finalized blocks: the second render reuses every row.
 		const second = container.render(40);
-		expect(container.getRenderStablePrefixRows()).toBe(second.length);
+		expect(container.getRenderStablePrefixRows(second)).toBe(second.length);
 	});
 
 	it("keeps the previous rows stable when a finalized block is appended", () => {
 		const container = new TranscriptContainer();
 		container.addChild(new Text("alpha", 0, 0));
 		container.addChild(new Text("beta", 0, 0));
-		const before = container.render(40).length;
-		container.getRenderStablePrefixRows(); // consume: re-base to the current rows
+		const beforeRows = container.render(40);
+		const before = beforeRows.length;
+		container.getRenderStablePrefixRows(beforeRows); // consume: re-base to the current rows
 
 		container.addChild(new Text("gamma", 0, 0));
 		const grown = container.render(40);
 		expect(grown.length).toBeGreaterThan(before);
 		// Only the appended block's separator + body are new rows.
-		expect(container.getRenderStablePrefixRows()).toBe(before);
+		expect(container.getRenderStablePrefixRows(grown)).toBe(before);
 	});
 
 	it("lowers the report to a mutated early block's start row", () => {
@@ -559,14 +561,15 @@ describe("TranscriptContainer getRenderStablePrefixRows", () => {
 		container.addChild(new Text("alpha", 0, 0));
 		container.addChild(beta);
 		container.addChild(new Text("gamma", 0, 0));
-		expect(container.render(40)).toHaveLength(5);
-		container.getRenderStablePrefixRows(); // consume: re-base to the current rows
+		const initial = container.render(40);
+		expect(initial).toHaveLength(5);
+		container.getRenderStablePrefixRows(initial); // consume: re-base to the current rows
 
 		beta.setText("beta-edited");
-		container.render(40);
+		const edited = container.render(40);
 		// alpha's single row survives; beta's segment (separator + body, start
 		// row 1) and everything below it was re-pushed.
-		expect(container.getRenderStablePrefixRows()).toBe(1);
+		expect(container.getRenderStablePrefixRows(edited)).toBe(1);
 	});
 
 	it("accumulates the minimum across renders between reads", () => {
@@ -575,42 +578,40 @@ describe("TranscriptContainer getRenderStablePrefixRows", () => {
 		container.addChild(new Text("alpha", 0, 0));
 		container.addChild(new Text("beta", 0, 0));
 		container.addChild(gamma);
-		expect(container.render(40)).toHaveLength(5);
-		container.getRenderStablePrefixRows(); // consume: re-base to the current rows
+		const initial = container.render(40);
+		expect(initial).toHaveLength(5);
+		container.getRenderStablePrefixRows(initial); // consume: re-base to the current rows
 
 		// First render after the edit drops the floor to gamma's segment start
 		// (row 3); a second, fully stable render must NOT lift it back — an
 		// out-of-band render between engine frames can only lower the report.
 		gamma.setText("gamma-edited");
 		container.render(40);
-		container.render(40);
-		expect(container.getRenderStablePrefixRows()).toBe(3);
+		const settled = container.render(40);
+		expect(container.getRenderStablePrefixRows(settled)).toBe(3);
 	});
 
 	it("reports 0 after a width change", () => {
 		const container = new TranscriptContainer();
 		container.addChild(new Text("alpha", 0, 0));
 		container.addChild(new Text("beta", 0, 0));
-		container.render(40);
-		container.getRenderStablePrefixRows(); // consume: re-base to the current rows
+		container.getRenderStablePrefixRows(container.render(40)); // consume: re-base to the current rows
 
 		// A width change re-renders every block; no row carries over.
-		container.render(80);
-		expect(container.getRenderStablePrefixRows()).toBe(0);
+		expect(container.getRenderStablePrefixRows(container.render(80))).toBe(0);
 	});
 
 	it("consumes on read: an immediate second read re-bases to the current rows", () => {
 		const container = new TranscriptContainer();
 		container.addChild(new Text("alpha", 0, 0));
 		container.addChild(new Text("beta", 0, 0));
-		container.render(40);
-		container.getRenderStablePrefixRows(); // consume: re-base to the current rows
+		container.getRenderStablePrefixRows(container.render(40)); // consume: re-base to the current rows
 
 		const reflowed = container.render(80);
-		expect(container.getRenderStablePrefixRows()).toBe(0);
+		expect(container.getRenderStablePrefixRows(reflowed)).toBe(0);
 		// The read above re-based the baseline to the just-returned state, so
 		// without any render in between the full array now counts as stable.
-		expect(container.getRenderStablePrefixRows()).toBe(reflowed.length);
+		expect(container.getRenderStablePrefixRows(reflowed)).toBe(reflowed.length);
 	});
 });
 

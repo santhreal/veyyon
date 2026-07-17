@@ -46,7 +46,7 @@ Unless user tells you exactly what to write:
   	? new Worker(hostEntry, { type: "module", argv: ["__omp_worker_<name>"] })
   	: new Worker(new URL("./<worker>.ts", import.meta.url).href, { type: "module" });
   ```
-  When the process was started from the veyyon CLI — source `cli.ts`, npm-bundle `dist/cli.js`, or compiled binary — `workerHostEntry()` is `Bun.main` and the worker re-enters the single entry module, so no per-worker `--compile` entrypoints or bundle entries exist. Outside a CLI host (`bun test`, SDK embedding, standalone `veyyon-stats`) it returns `null` and the direct-module fallback loads the worker source. New worker kinds MUST add their selector to the dispatch table in `cli.ts` and keep the fallback branch.
+  When the process was started from the veyyon CLI — source `cli.ts`, npm-bundle `dist/cli.js`, or compiled binary — `workerHostEntry()` is `Bun.main` and the worker re-enters the single entry module, so no per-worker `--compile` entrypoints or bundle entries exist. Outside a CLI host (`bun test`, SDK embedding, standalone `omp-stats`) it returns `null` and the direct-module fallback loads the worker source. New worker kinds MUST add their selector to the dispatch table in `cli.ts` and keep the fallback branch.
   History: `with { type: "file" }` only copied the entry as a raw asset (workers crashed silently in compiled binaries — issues #1011, #1027), and the later literal-path + extra-entrypoint pattern required keeping spawn literals and two build scripts in sync (issue #1150). The smoke probe below is the live validation of this contract.
   Validate any new worker with the dedicated smoke probe: `veyyon --smoke-test` spawns the stats sync worker and the tiny-model subprocess, pings them, and exits — it's wired into `ci:test:smoke` and `scripts/install-tests/run-ci.sh` so binary, source-link, and tarball installs all exercise it. Add a sibling smoke if the new worker is on a different module graph.
 
@@ -225,7 +225,7 @@ For the bash tool specifically:
 **Commit conventions** (only when the user asks you to commit):
 - Commit in **logical chunks**, one concern per commit — never one giant `git add -A`. Stage only the paths you changed.
 - Subject line is imperative and scoped, e.g. `polish(onboarding): …`, `fix: …`, `ci: …`, `test(agent): …`.
-- Do not add AI/assistant attribution trailers (no `Co-Authored-By: <model>`, no `Generated with …`). Commit as the configured git user only.
+- End every commit body with the trailer `Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>`.
 - The **release** commit is special: its subject **must** be exactly `chore: bump version to vX.Y.Z` — CI keys the never-cancel release concurrency group off that subject (#2564). `bun run release` writes it for you; never hand-craft it.
 
 ## Testing Guidance
@@ -294,15 +294,17 @@ Runs on the self-hosted `omp-kata` runner plus cross-platform runners. On an ord
 per-platform binaries, then publishes: **GitHub release** (all binaries + `.sha256`),
 **npm** packages, and the **Homebrew** formula.
 
-> Availability note: `ci.yml`'s release jobs depend on the self-hosted `omp-kata`
-> runner. If it is offline on the public repo, cross-platform binaries (darwin,
-> linux-arm64, win32) won't build in CI and must be produced another way.
+> Availability note: release-shaped runs (bump-commit push, `v*` tag-ref dispatch,
+> manual dispatch) route every `ci.yml` job to GitHub-hosted runners, so a release
+> never depends on the self-hosted `omp-kata` fleet. Ordinary main pushes keep the
+> fleet; see `docs/internal/releasing.md` §Release runners.
 
 ## Releasing
 
 > Full contributor detail: [`docs/internal/releasing.md`](docs/internal/releasing.md)
-> and [`docs/internal/deployment.md`](docs/internal/deployment.md). This section is the
-> operational summary.
+> and [`docs/internal/deployment.md`](docs/internal/deployment.md); the autonomous-agent
+> loop that feeds releases is [`docs/internal/agent-workflow.md`](docs/internal/agent-workflow.md).
+> This section is the operational summary.
 
 `veyyon` is a source fork of oh-my-pi (see `UPSTREAM.md`). The changelog carries
 upstream's release history; **veyyon's own release process is the flow below**, and a
@@ -373,10 +375,12 @@ Static site under `website/`, deployed to Cloudflare Pages.
 (x64/arm64); Windows uses `install.ps1`. A release that ships only some platforms
 will 404 for the rest — keep the release asset set complete (see the CI note below).
 
-### Known gap: release runners
+### Release runners
 
-`ci.yml`'s release jobs run on the self-hosted `omp-kata` runner. On the public repo
-that runner may be unavailable, in which case cross-platform binaries don't build and
-a release can't publish all assets. Migrating the release matrix to GitHub-hosted
-runners (ubuntu/macos/windows) is the durable fix — until then, a release may need
-binaries produced on per-platform hosts.
+Release-shaped runs (the `chore: bump version to vX.Y.Z` push, a `v*` tag-ref
+dispatch, or any manual dispatch) route **every** `ci.yml` job to GitHub-hosted
+runners, so a release never depends on the self-hosted `omp-kata` fleet being up.
+Ordinary `main` pushes keep the self-hosted fleet for speed and cache warmth.
+`scripts/ci-concurrency.test.ts` locks the routing — a bare `omp-kata` literal or a
+ternary missing the release clause fails the suite. See
+[`docs/internal/releasing.md`](docs/internal/releasing.md) §Release runners.

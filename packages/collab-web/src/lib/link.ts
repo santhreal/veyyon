@@ -10,10 +10,14 @@
 
 import type { ParsedCollabLink } from "@veyyon/pi-wire";
 import {
+	B64URL_RE,
+	BARE_LINK_RE,
 	DEFAULT_RELAY_URL,
 	ENVELOPE_HEADER_LENGTH,
+	isLocalHostname,
 	ROOM_ID_BYTES,
 	ROOM_KEY_BYTES,
+	ROOM_PATH_RE,
 	WRITE_TOKEN_BYTES,
 } from "@veyyon/pi-wire";
 
@@ -21,10 +25,8 @@ export { COLLAB_PROTO } from "@veyyon/pi-wire";
 export type { ParsedCollabLink };
 export { DEFAULT_RELAY_URL, ENVELOPE_HEADER_LENGTH, ROOM_ID_BYTES };
 
-const ROOM_PATH_RE = /^\/r\/([A-Za-z0-9_-]{10,64})(?:\.([A-Za-z0-9_-]+))?$/;
-const BARE_LINK_RE = /^([A-Za-z0-9_-]{10,64})[#.]([A-Za-z0-9_-]+)$/;
-const B64URL_RE = /^[A-Za-z0-9_-]+$/;
-const LOCAL_HOSTNAMES: Record<string, true> = { localhost: true, "127.0.0.1": true, "::1": true, "[::1]": true };
+// ONE PLACE: the link grammar is owned by @veyyon/pi-wire so the agent and
+// the browser app can never drift apart.
 
 // ═══════════════════════════════════════════════════════════════════════════
 // base64url (no Buffer in the browser)
@@ -104,7 +106,7 @@ function normalizeRelayOrigin(relayUrl: string): { origin: string } | { error: s
 		default:
 			return { error: `Unsupported relay URL scheme: ${url.protocol}` };
 	}
-	if (scheme === "ws:" && !LOCAL_HOSTNAMES[url.hostname]) {
+	if (scheme === "ws:" && !isLocalHostname(url.hostname)) {
 		return { error: "relay link must be wss:// (plain ws:// is only allowed for localhost)" };
 	}
 	const port = url.port ? `:${url.port}` : "";

@@ -47,7 +47,7 @@ interface CacheEntry<TApi extends Api = Api> {
 let sharedDb: Database | null = null;
 let sharedDbPath: string | null = null;
 
-function openDb(resolvedPath: string): Database {
+function openModelCacheDb(resolvedPath: string): Database {
 	const db = new Database(resolvedPath, { create: true });
 	// Install the busy handler BEFORE any lock-taking statement. See
 	// https://github.com/can1357/oh-my-pi/issues/2421.
@@ -75,7 +75,7 @@ function getSharedDb(): Database {
 	if (sharedDb) {
 		sharedDb.close();
 	}
-	const db = openDb(resolvedPath);
+	const db = openModelCacheDb(resolvedPath);
 	sharedDb = db;
 	sharedDbPath = resolvedPath;
 	return db;
@@ -83,7 +83,7 @@ function getSharedDb(): Database {
 
 function withModelCacheDb<T>(dbPath: string | undefined, useDb: (db: Database) => T): T {
 	if (!dbPath) return useDb(getSharedDb());
-	const db = openDb(dbPath);
+	const db = openModelCacheDb(dbPath);
 	try {
 		return useDb(db);
 	} finally {

@@ -116,13 +116,6 @@ export function isTtsLocalModelKey(value: string): value is TtsLocalModelKey {
 	return getTtsLocalModelSpec(value) !== undefined;
 }
 
-/** Resolve a model key (or the default) to its Hugging Face repo id. */
-export function resolveTtsRepo(modelKey: string | undefined): string {
-	const spec = (modelKey && getTtsLocalModelSpec(modelKey)) || getTtsLocalModelSpec(DEFAULT_TTS_LOCAL_MODEL_KEY);
-	if (!spec) throw new Error(`No local TTS model registered for key: ${modelKey ?? DEFAULT_TTS_LOCAL_MODEL_KEY}`);
-	return spec.repo;
-}
-
 /**
  * Resolve a requested voice id to a concrete voice the model supports, falling
  * back to the model's default voice (first entry) when the id is unknown or the

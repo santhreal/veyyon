@@ -101,7 +101,7 @@ interface OpenCodeMCPConfig {
 	timeout?: number;
 }
 
-function stringArray(value: unknown): string[] | undefined {
+function stringArrayOrUndefined(value: unknown): string[] | undefined {
 	if (!Array.isArray(value)) return undefined;
 	for (const item of value) {
 		if (typeof item !== "string") return undefined;
@@ -109,7 +109,7 @@ function stringArray(value: unknown): string[] | undefined {
 	return value;
 }
 
-function stringRecord(value: unknown): Record<string, string> | undefined {
+function stringRecordOrUndefined(value: unknown): Record<string, string> | undefined {
 	if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
 
 	const record: Record<string, string> = {};
@@ -124,7 +124,7 @@ function normalizeCommand(
 	commandValue: string | string[] | undefined,
 	argsValue: unknown,
 ): { command: string | undefined; args: string[] | undefined } {
-	const configuredArgs = stringArray(argsValue);
+	const configuredArgs = stringArrayOrUndefined(argsValue);
 	if (Array.isArray(commandValue)) {
 		const [command, ...commandArgs] = commandValue;
 		const args = configuredArgs ? [...commandArgs, ...configuredArgs] : commandArgs;
@@ -202,7 +202,7 @@ function extractMCPServers(
 		}
 
 		const command = normalizeCommand(serverConfig.command, serverConfig.args);
-		const env = stringRecord(serverConfig.environment) ?? stringRecord(serverConfig.env);
+		const env = stringRecordOrUndefined(serverConfig.environment) ?? stringRecordOrUndefined(serverConfig.env);
 
 		items.push({
 			name,

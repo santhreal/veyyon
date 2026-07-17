@@ -34,7 +34,7 @@ export interface SummaryInput {
 /**
  * Generate a commit summary line for the conventional commit header.
  */
-export async function generateSummary({
+export async function generateCommitSummary({
 	model,
 	apiKey,
 	thinkingLevel,

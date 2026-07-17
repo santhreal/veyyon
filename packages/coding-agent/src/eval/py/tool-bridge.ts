@@ -71,7 +71,7 @@ async function callSessionToolPromptOnAbort(name: string, args: unknown, entry: 
 	}
 }
 
-async function startServer(): Promise<BridgeServer> {
+async function startBridgeServer(): Promise<BridgeServer> {
 	const token = crypto.randomUUID();
 	const server = Bun.serve({
 		hostname: "127.0.0.1",
@@ -135,7 +135,7 @@ async function startServer(): Promise<BridgeServer> {
 /** Starts the bridge server lazily and returns its connection info. */
 export async function ensurePyToolBridge(): Promise<PyToolBridgeInfo> {
 	if (!serverPromise) {
-		serverPromise = startServer();
+		serverPromise = startBridgeServer();
 	}
 	try {
 		const server = await serverPromise;

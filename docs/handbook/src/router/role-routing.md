@@ -29,9 +29,10 @@ hard-coded provider assumptions.
   real turn. Gated by `isIrcEnabled`: available to every subagent and to a top-level session that can
   still spawn subagents.
 
-## No fixed role pipeline
+## Target pipeline (Spec — not shipped)
 
-Veyyon does not enforce a staged plan → implement → verify → repair handoff. It uses lighter-weight
-spawn, model-slot, and `irc` messaging patterns instead; you compose the stages yourself.
+A fixed role pipeline (plan → implement → verify → repair) is the target shape. Today Veyyon uses
+lighter-weight spawn, model-slot, and `irc` messaging patterns instead of a fixed pipeline — there is no
+staged plan/implement/verify/repair handoff enforced by the harness itself.
 
 Pair role choice with [execution-order prompts](../models/prompts.md): explore → plan → edit → verify.

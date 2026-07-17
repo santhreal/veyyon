@@ -5,9 +5,8 @@
  * Messages are newline-delimited JSON.
  */
 
-import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { getProjectDir, readJsonl, Snowflake } from "@veyyon/pi-utils";
+import { getProjectDir, pathExists, readJsonl, Snowflake } from "@veyyon/pi-utils";
 import type { Subprocess } from "bun";
 import { hostHasInheritableConsole } from "../../eval/py/spawn-options";
 import type {
@@ -20,6 +19,7 @@ import type {
 	MCPTransport,
 } from "../../mcp/types";
 import { toJsonRpcError } from "../../mcp/types";
+import { isThenable } from "../../utils/ipc";
 import { isMCPTimeoutEnabled, resolveMCPTimeoutMs } from "../timeout";
 
 /** Subprocess argv and platform-derived spawn flags for an MCP stdio server. */
@@ -89,16 +89,7 @@ function getWindowsPathExt(env: Record<string, string | undefined>): string[] {
 	return extensions.length > 0 ? extensions : DEFAULT_WINDOWS_PATHEXT;
 }
 
-async function fileExists(filePath: string): Promise<boolean> {
-	try {
-		await fs.access(filePath);
-		return true;
-	} catch {
-		return false;
-	}
-}
-
-function hasPathSegment(command: string): boolean {
+function commandHasPathSegment(command: string): boolean {
 	return command.includes("/") || command.includes("\\") || path.isAbsolute(command);
 }
 
@@ -117,10 +108,10 @@ async function resolveWindowsCommandPath(
 	const hasExt = hasExecutableExtension(command, extensions);
 	const candidates = hasExt ? [command] : extensions.map(ext => `${command}${ext}`);
 
-	if (hasPathSegment(command)) {
+	if (commandHasPathSegment(command)) {
 		for (const candidate of candidates) {
 			const resolved = path.isAbsolute(candidate) ? candidate : path.resolve(cwd, candidate);
-			if (await fileExists(resolved)) return resolved;
+			if (await pathExists(resolved)) return resolved;
 		}
 		return hasExt ? command : null;
 	}
@@ -138,7 +129,7 @@ async function resolveWindowsCommandPath(
 	for (const dir of searchDirs) {
 		for (const candidate of candidates) {
 			const resolved = path.join(dir, candidate);
-			if (await fileExists(resolved)) return resolved;
+			if (await pathExists(resolved)) return resolved;
 		}
 	}
 	return hasExt ? command : null;
@@ -159,7 +150,7 @@ async function resolveWindowsNpmShimCommand(
 	windowsHide: boolean,
 ): Promise<StdioSpawnCommand | null> {
 	if (!isWindowsBatchCommand(command)) return null;
-	if (!hasPathSegment(command)) return null;
+	if (!commandHasPathSegment(command)) return null;
 	const commandPath = path.resolve(cwd, command);
 	const commandName = path
 		.basename(commandPath)
@@ -195,7 +186,7 @@ async function resolveWindowsNpmShimCommand(
 	if (!target) return null;
 
 	const siblingNode = path.join(path.dirname(commandPath), "node.exe");
-	const nodeCommand = (await fileExists(siblingNode)) ? siblingNode : "node";
+	const nodeCommand = (await pathExists(siblingNode)) ? siblingNode : "node";
 	return {
 		cmd: [nodeCommand, target, ...args],
 		windowsHide,
@@ -281,15 +272,6 @@ export async function resolveStdioSpawnCommand(
 interface FrameSink {
 	write(chunk: string): unknown;
 	flush(): unknown;
-}
-
-/** Narrow a value to a thenable so a rejection handler can be attached. */
-function isThenable(value: unknown): value is PromiseLike<unknown> {
-	return (
-		value != null &&
-		(typeof value === "object" || typeof value === "function") &&
-		typeof (value as { then?: unknown }).then === "function"
-	);
 }
 
 /**
@@ -512,11 +494,7 @@ export class StdioTransport implements MCPTransport {
 		this.onClose?.();
 	}
 
-	async request<T = unknown>(
-		method: string,
-		params?: Record<string, unknown>,
-		options?: MCPRequestOptions,
-	): Promise<T> {
+	async request<T = unknown>(method: string, params?: object, options?: MCPRequestOptions): Promise<T> {
 		if (!this.#connected || !this.#process?.stdin) {
 			throw new Error("Transport not connected");
 		}
@@ -610,7 +588,7 @@ export class StdioTransport implements MCPTransport {
 		return promise;
 	}
 
-	async notify(method: string, params?: Record<string, unknown>): Promise<void> {
+	async notify(method: string, params?: object): Promise<void> {
 		if (!this.#connected || !this.#process?.stdin) {
 			throw new Error("Transport not connected");
 		}

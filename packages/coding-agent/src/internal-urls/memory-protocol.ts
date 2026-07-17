@@ -4,7 +4,7 @@ import { getAgentDir, isEnoent } from "@veyyon/pi-utils";
 import { getMemoryRoot } from "../memories";
 import { getMnemopiSessionState, type MnemopiScopedMemoryHit, type MnemopiSessionState } from "../mnemopi/state";
 import { AgentRegistry } from "../registry/agent-registry";
-import { buildDirectoryResource } from "./filesystem-resource";
+import { buildDirectoryResource, contentTypeForFileExtension } from "./filesystem-resource";
 import { validateRelativePath } from "./skill-protocol";
 import type { InternalResource, InternalUrl, ProtocolHandler, ResolveContext, UrlCompletion } from "./types";
 
@@ -118,7 +118,7 @@ async function tryResolveInRoot(url: InternalUrl, memoryRoot: string): Promise<I
 
 	const content = await Bun.file(realTargetPath).text();
 	const ext = path.extname(realTargetPath).toLowerCase();
-	const contentType: InternalResource["contentType"] = ext === ".md" ? "text/markdown" : "text/plain";
+	const contentType = contentTypeForFileExtension(ext);
 
 	return {
 		url: url.href,

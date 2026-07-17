@@ -168,4 +168,6 @@ export interface ToolResultLink {
 	/** Text characters fed back into context */
 	resultChars: number;
 	isError: boolean;
+	/** Schema-repair outcome persisted on the tool result; absent = repair did not act. */
+	repairStatus?: "repaired" | "unrepairable";
 }

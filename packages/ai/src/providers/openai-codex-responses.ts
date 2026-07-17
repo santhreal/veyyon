@@ -17,6 +17,7 @@ import {
 	logger,
 	parseStreamingJson,
 	readSseJson,
+	stripTrailingSlashes,
 	structuredCloneJSON,
 } from "@veyyon/pi-utils";
 import { type } from "arktype";
@@ -50,6 +51,7 @@ import {
 	normalizeSystemPrompts,
 	sanitizeOpenAIResponsesAssistantFallbackItemsForReplay,
 	sanitizeOpenAIResponsesAssistantHistoryItemsForReplay,
+	TOOL_CALL_ID_UNSAFE_RE,
 } from "../utils";
 import { clearStreamingPartialJson, kStreamingLastParseLen, kStreamingPartialJson } from "../utils/block-symbols";
 import { AssistantMessageEventStream } from "../utils/event-stream";
@@ -1017,11 +1019,11 @@ function updateCodexSessionMetadataFromHeaders(
 }
 
 function extractCodexWebSocketHandshakeHeaders(socket: Bun.WebSocket, openEvent?: Event): Headers | undefined {
-	const eventRecord = openEvent as Record<string, unknown> | undefined;
-	const eventResponse = eventRecord?.response as Record<string, unknown> | undefined;
-	const socketRecord = socket as unknown as Record<string, unknown>;
-	const socketResponse = socketRecord.response as Record<string, unknown> | undefined;
-	const socketHandshake = socketRecord.handshake as Record<string, unknown> | undefined;
+	const eventRecord = (openEvent && asRecord(openEvent)) || undefined;
+	const eventResponse = asRecord(eventRecord?.response) ?? undefined;
+	const socketRecord = asRecord(socket) ?? {};
+	const socketResponse = asRecord(socketRecord.response) ?? undefined;
+	const socketHandshake = asRecord(socketRecord.handshake) ?? undefined;
 	return (
 		toCodexHeaders(eventRecord?.responseHeaders) ??
 		toCodexHeaders(eventRecord?.headers) ??
@@ -1171,7 +1173,7 @@ function resetOutputState(output: AssistantMessage): void {
 	output.stopDetails = undefined;
 }
 
-function createRequestSetup(options: OpenAICodexResponsesOptions | undefined): CodexRequestSetup {
+function createCodexRequestSetup(options: OpenAICodexResponsesOptions | undefined): CodexRequestSetup {
 	const requestAbortController = new AbortController();
 	const requestSignal = options?.signal
 		? AbortSignal.any([options.signal, requestAbortController.signal])
@@ -1470,7 +1472,7 @@ async function openCodexWebSocketTransport(
 			url: toWebSocketUrl(requestContext.url),
 			model: requestContext.transformedBody.model,
 			reasoningEffort: requestContext.transformedBody.reasoning?.effort ?? null,
-			headers: redactHeaders(websocketHeaders),
+			headers: redactCodexHeaders(websocketHeaders),
 			sentTurnStateHeader: websocketHeaders.has(X_CODEX_TURN_STATE_HEADER),
 			sentModelsEtagHeader: websocketHeaders.has(X_MODELS_ETAG_HEADER),
 			requestType: websocketRequest.type,
@@ -1960,10 +1962,12 @@ class CodexStreamProcessor {
 	}
 	#handleOutputItemDone(rawEvent: Record<string, unknown>): void {
 		const { runtime, output, stream } = this;
-		const rawItem = rawEvent.item;
-		if (!rawItem || typeof rawItem !== "object") return;
-		const item = structuredCloneJSON(rawItem) as CodexEventItem;
-		runtime.nativeOutputItems.push(item as unknown as Record<string, unknown>);
+		const rawItem = asRecord(rawEvent.item);
+		if (!rawItem) return;
+		const cloned = structuredCloneJSON(rawItem);
+		// Wire-boundary view: parsed provider JSON asserted to the event-item union.
+		const item = cloned as unknown as CodexEventItem;
+		runtime.nativeOutputItems.push(cloned);
 
 		// Match the finalization to the OPEN ITEM that started this block, not the
 		// singleton current — interleaved items can finish out of order, so the
@@ -2485,7 +2489,7 @@ export const streamOpenAICodexResponses: StreamFunction<"openai-codex-responses"
 			stopReason: "stop",
 			timestamp: Date.now(),
 		};
-		const requestSetup = createRequestSetup(options);
+		const requestSetup = createCodexRequestSetup(options);
 		let processingContext: CodexStreamProcessor | undefined;
 		let requestContext: CodexRequestContext | undefined;
 
@@ -3061,7 +3065,7 @@ function toWebSocketUrl(url: string): string {
 	return parsed.toString();
 }
 
-function headersToRecord(headers: Headers): Record<string, string> {
+function recordFromHeaders(headers: Headers): Record<string, string> {
 	const result: Record<string, string> = {};
 	for (const [key, value] of headers.entries()) {
 		result[key] = value;
@@ -3170,6 +3174,8 @@ class CodexWebSocketConnection {
 		}
 		const { promise, resolve, reject } = Promise.withResolvers<void>();
 		this.#connectPromise = promise;
+		// Bun's WebSocket constructor accepts an options bag (headers), but the
+		// lib type only declares (url, protocols) — cast to the real Bun signature.
 		const socket = new (WebSocket as unknown as new (url: string, opts: Bun.WebSocketOptions) => Bun.WebSocket)(
 			this.#url,
 			{ headers: this.#headers },
@@ -3222,7 +3228,7 @@ class CodexWebSocketConnection {
 			}
 		};
 		socket.onerror = event => {
-			const eventRecord = event as unknown as Record<string, unknown>;
+			const eventRecord = asRecord(event) ?? {};
 			const detail =
 				(typeof eventRecord.message === "string" && eventRecord.message) ||
 				(eventRecord.error instanceof Error && eventRecord.error.message) ||
@@ -3665,7 +3671,7 @@ async function getOrCreateCodexWebSocketConnection(
 	headers: Headers,
 	signal?: AbortSignal,
 ): Promise<CodexWebSocketConnection> {
-	const headerRecord = headersToRecord(headers);
+	const headerRecord = recordFromHeaders(headers);
 	// Join an in-flight handshake instead of tearing it down: closing a
 	// CONNECTING socket rejects the concurrent caller (prewarm racing the first
 	// request) with a fatal "websocket closed before open", which would disable
@@ -3743,7 +3749,7 @@ async function openCodexSseEventStream(
 		logger.debug("[codex] codex request", {
 			url,
 			model: body.model,
-			headers: redactHeaders(headers),
+			headers: redactCodexHeaders(headers),
 			sentTurnStateHeader: headers.has(X_CODEX_TURN_STATE_HEADER),
 			sentModelsEtagHeader: headers.has(X_MODELS_ETAG_HEADER),
 		});
@@ -3869,7 +3875,7 @@ function createCodexHeaders(
 	return headers;
 }
 
-function redactHeaders(headers: Headers): Record<string, string> {
+function redactCodexHeaders(headers: Headers): Record<string, string> {
 	const redacted: Record<string, string> = {};
 	for (const [key, value] of headers.entries()) {
 		const lower = key.toLowerCase();
@@ -3898,7 +3904,7 @@ function redactHeaders(headers: Headers): Record<string, string> {
 
 function resolveCodexResponsesUrl(baseUrl: string | undefined): string {
 	const raw = baseUrl && baseUrl.trim().length > 0 ? baseUrl : CODEX_BASE_URL;
-	const normalized = raw.replace(/\/+$/, "");
+	const normalized = stripTrailingSlashes(raw);
 	if (normalized.endsWith("/codex/responses")) return normalized;
 	if (normalized.endsWith("/codex")) return `${normalized}/responses`;
 	return `${normalized}/codex/responses`;
@@ -3910,8 +3916,8 @@ function convertMessages(model: Model<"openai-codex-responses">, context: Contex
 	const normalizeToolCallId = (id: string): string => {
 		if (!id.includes("|")) return id;
 		const [callId, itemId] = id.split("|");
-		const sanitizedCallId = callId.replace(/[^a-zA-Z0-9_-]/g, "_");
-		let sanitizedItemId = itemId.replace(/[^a-zA-Z0-9_-]/g, "_");
+		const sanitizedCallId = callId.replace(TOOL_CALL_ID_UNSAFE_RE, "_");
+		let sanitizedItemId = itemId.replace(TOOL_CALL_ID_UNSAFE_RE, "_");
 		if (!sanitizedItemId.startsWith("fc")) {
 			sanitizedItemId = `fc_${sanitizedItemId}`;
 		}

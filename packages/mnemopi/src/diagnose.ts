@@ -1,10 +1,10 @@
 import type { Database } from "bun:sqlite";
 import { existsSync } from "node:fs";
 import { dirname } from "node:path";
-
 import { dataDir as configuredDataDir, dbPath as configuredDbPath } from "./config";
 import { initBeam } from "./core/beam";
 import { closeQuietly, openDatabase } from "./db";
+import { toUtcIso } from "./util/datetime";
 
 export interface DiagnosticEntry {
 	readonly ts: string;
@@ -59,11 +59,7 @@ const REQUIRED_COLUMNS: Readonly<Record<string, readonly string[]>> = {
 	annotations: ["id", "memory_id", "kind", "value"],
 };
 
-function nowIso(): string {
-	return new Date().toISOString();
-}
-
-function hasTable(db: Database, table: string): boolean {
+function hasTableOrView(db: Database, table: string): boolean {
 	return (
 		(db
 			.query("SELECT name FROM sqlite_master WHERE type IN ('table', 'view') AND name = ? LIMIT 1")
@@ -76,7 +72,7 @@ function tableColumns(db: Database, table: string): Set<string> {
 }
 
 function safeCount(db: Database, table: string): number | null {
-	if (!hasTable(db, table)) return null;
+	if (!hasTableOrView(db, table)) return null;
 	return (db.query(`SELECT COUNT(*) AS count FROM ${table}`).get() as CountRow).count;
 }
 
@@ -96,7 +92,7 @@ export function inspectDatabase(options: DiagnosticOptions = {}): DiagnosticSumm
 	const path = options.dbPath ?? configuredDbPath();
 	const entries: DiagnosticEntry[] = [];
 	const log = (category: string, check: string, status: string, detail = ""): void => {
-		entries.push({ ts: nowIso(), category, check, status, detail });
+		entries.push({ ts: toUtcIso(), category, check, status, detail });
 	};
 
 	log("env", "bun_version", Bun.version);
@@ -120,10 +116,10 @@ export function inspectDatabase(options: DiagnosticOptions = {}): DiagnosticSumm
 		log("db", "integrity_check", integrity.integrity_check === "ok" ? "OK" : "FAIL", integrity.integrity_check);
 
 		for (const table of REQUIRED_TABLES) {
-			log("schema", `table:${table}`, hasTable(db, table) ? "OK" : "MISSING");
+			log("schema", `table:${table}`, hasTableOrView(db, table) ? "OK" : "MISSING");
 		}
 		for (const table in REQUIRED_COLUMNS) {
-			if (!hasTable(db, table)) continue;
+			if (!hasTableOrView(db, table)) continue;
 			const columns = REQUIRED_COLUMNS[table];
 			if (!columns) continue;
 			const present = tableColumns(db, table);

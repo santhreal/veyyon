@@ -180,3 +180,85 @@ describe("Box render memoization", () => {
 		expect(second[0]).toBe("<B>row       </B>");
 	});
 });
+
+describe("Container stable-prefix report", () => {
+	it("reports rows above the first changed child as stable across a rebuild", () => {
+		const container = new Container();
+		const top = new Probe(["t1", "t2"]);
+		const mid = new Probe(["m1"]);
+		const live = new Probe(["l1"]);
+		container.addChild(top);
+		container.addChild(mid);
+		container.addChild(live);
+		container.getRenderStablePrefixRows(container.render(40)); // observe the baseline
+		// Only the bottom child changes: everything above it is stable.
+		live.setLines(["l1", "l2"]);
+		const rows = container.render(40);
+		expect(container.getRenderStablePrefixRows(rows)).toBe(3);
+		expect(rows).toEqual(["t1", "t2", "m1", "l1", "l2"]);
+	});
+
+	it("propagates a nested child's own stable-prefix report through the parent", () => {
+		// A streaming Text inside a nested container: the parent's report must
+		// cover the outer stable child plus the Text's settled rows, even though
+		// the Text returns a fresh array every append.
+		const inner = new Container();
+		const streaming = new Text("first\nsecond", 1, 0);
+		inner.addChild(streaming);
+		const outer = new Container();
+		outer.addChild(new Probe(["header"]));
+		outer.addChild(inner);
+		outer.getRenderStablePrefixRows(outer.render(20));
+		streaming.setText("first\nsecond third");
+		const rows = outer.render(20);
+		const report = outer.getRenderStablePrefixRows(rows);
+		// header + the Text's committed first wrapped row survive; the report
+		// may not exceed them and must cover at least the header.
+		expect(report).toBeGreaterThanOrEqual(1);
+		const before = outer.render(20);
+		for (let i = 0; i < report; i++) expect(rows[i]).toBe(before[i] as string);
+	});
+
+	it("a middle child changing row count drops stability for everything below it", () => {
+		const container = new Container();
+		const top = new Probe(["t1"]);
+		const mid = new Probe(["m1"]);
+		const bottom = new Probe(["b1"]);
+		container.addChild(top);
+		container.addChild(mid);
+		container.addChild(bottom);
+		container.getRenderStablePrefixRows(container.render(40));
+		mid.setLines(["m1", "m2"]); // grows: shifts every row below
+		const rows = container.render(40);
+		expect(container.getRenderStablePrefixRows(rows)).toBe(1);
+	});
+
+	it("never claims stability for an array a subclass override transformed", () => {
+		// Regression guard for row-transforming overrides (OSC133 zone wrappers,
+		// last-row truncators): the inherited report must self-verify against
+		// the observed array and claim nothing.
+		class Wrapping extends Container {
+			override render(width: number): readonly string[] {
+				const lines = super.render(width);
+				const wrapped = lines.slice();
+				wrapped[0] = `Z${wrapped[0]}`;
+				return wrapped;
+			}
+		}
+		const container = new Wrapping();
+		const child = new Probe(["a", "b"]);
+		container.addChild(child);
+		const first = container.render(40);
+		expect(container.getRenderStablePrefixRows(first)).toBe(0);
+		const second = container.render(40);
+		expect(container.getRenderStablePrefixRows(second)).toBe(0);
+	});
+
+	it("consuming the report re-bases it to the full concatenation", () => {
+		const container = new Container();
+		container.addChild(new Probe(["a", "b", "c"]));
+		const rows = container.render(40);
+		container.getRenderStablePrefixRows(rows);
+		expect(container.getRenderStablePrefixRows(container.render(40))).toBe(3);
+	});
+});

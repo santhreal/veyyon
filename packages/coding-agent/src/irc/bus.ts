@@ -354,8 +354,12 @@ export class IrcBus {
 		try {
 			mainSession.emitIrcRelayObservation(record);
 		} catch (error) {
-			// Display-only forwarding must never affect delivery semantics.
-			logger.debug("IrcBus: main UI relay failed", { to: message.to, error: String(error) });
+			// Display-only forwarding must never affect delivery semantics, but the
+			// user silently losing visibility into relayed traffic is worth a warn.
+			logger.warn("IrcBus: main UI relay failed; message delivered but not shown", {
+				to: message.to,
+				error: String(error),
+			});
 		}
 	}
 }

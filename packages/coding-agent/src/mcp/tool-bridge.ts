@@ -54,7 +54,7 @@ export function isRetriableConnectionError(error: unknown): boolean {
 
 type MCPToolArgs = NonNullable<MCPToolCallParams["arguments"]>;
 
-function normalizeToolArgs(value: unknown): MCPToolArgs {
+function normalizeMcpToolArgs(value: unknown): MCPToolArgs {
 	if (typeof value !== "object" || value === null || Array.isArray(value)) {
 		return {};
 	}
@@ -160,7 +160,7 @@ async function prepareOutboundArgs(
 	inputSchema: MCPToolDefinition["inputSchema"],
 	context: CustomToolContext,
 ): Promise<MCPToolArgs> {
-	const args = omitUnusedOptionalArgs(stripHarnessIntent(normalizeToolArgs(params), inputSchema), inputSchema);
+	const args = omitUnusedOptionalArgs(stripHarnessIntent(normalizeMcpToolArgs(params), inputSchema), inputSchema);
 	return (await resolveOutboundLocalUrlArgs(args, context)) as MCPToolArgs;
 }
 
@@ -209,7 +209,7 @@ function formatMCPContent(content: MCPContent[]): string {
 }
 
 /** Build a CustomToolResult from a callTool response. */
-function buildResult(
+function buildMcpToolResult(
 	result: MCPToolCallResult,
 	serverName: string,
 	mcpToolName: string,
@@ -352,11 +352,11 @@ export class MCPTool implements CustomTool<TSchema, MCPToolDetails> {
 	}
 
 	renderCall(args: unknown, _options: RenderResultOptions, theme: Theme) {
-		return renderMCPCall(normalizeToolArgs(args), theme, this.label);
+		return renderMCPCall(normalizeMcpToolArgs(args), theme, this.label);
 	}
 
 	renderResult(result: CustomToolResult<MCPToolDetails>, options: RenderResultOptions, theme: Theme, args?: unknown) {
-		return renderMCPResult(result, options, theme, normalizeToolArgs(args));
+		return renderMCPResult(result, options, theme, normalizeMcpToolArgs(args));
 	}
 
 	async execute(
@@ -373,7 +373,7 @@ export class MCPTool implements CustomTool<TSchema, MCPToolDetails> {
 
 		try {
 			const result = await callTool(this.connection, this.tool.name, args, { signal });
-			return buildResult(result, this.connection.name, this.tool.name, provider, providerName);
+			return buildMcpToolResult(result, this.connection.name, this.tool.name, provider, providerName);
 		} catch (error) {
 			rethrowIfAborted(error, signal);
 			if (this.reconnect && isRetriableConnectionError(error)) {
@@ -385,7 +385,7 @@ export class MCPTool implements CustomTool<TSchema, MCPToolDetails> {
 					const retryProviderName = newConn._source?.providerName ?? providerName;
 					try {
 						const result = await callTool(newConn, this.tool.name, args, { signal });
-						return buildResult(result, newConn.name, this.tool.name, retryProvider, retryProviderName);
+						return buildMcpToolResult(result, newConn.name, this.tool.name, retryProvider, retryProviderName);
 					} catch (retryError) {
 						rethrowIfAborted(retryError, signal);
 						return buildErrorResult(
@@ -451,11 +451,11 @@ export class DeferredMCPTool implements CustomTool<TSchema, MCPToolDetails> {
 	}
 
 	renderCall(args: unknown, _options: RenderResultOptions, theme: Theme) {
-		return renderMCPCall(normalizeToolArgs(args), theme, this.label);
+		return renderMCPCall(normalizeMcpToolArgs(args), theme, this.label);
 	}
 
 	renderResult(result: CustomToolResult<MCPToolDetails>, options: RenderResultOptions, theme: Theme, args?: unknown) {
-		return renderMCPResult(result, options, theme, normalizeToolArgs(args));
+		return renderMCPResult(result, options, theme, normalizeMcpToolArgs(args));
 	}
 
 	async execute(
@@ -475,7 +475,7 @@ export class DeferredMCPTool implements CustomTool<TSchema, MCPToolDetails> {
 			throwIfAborted(signal);
 			try {
 				const result = await callTool(connection, this.tool.name, args, { signal });
-				return buildResult(
+				return buildMcpToolResult(
 					result,
 					this.serverName,
 					this.tool.name,
@@ -491,7 +491,13 @@ export class DeferredMCPTool implements CustomTool<TSchema, MCPToolDetails> {
 						const retryProviderName = newConn._source?.providerName ?? providerName;
 						try {
 							const result = await callTool(newConn, this.tool.name, args, { signal });
-							return buildResult(result, this.serverName, this.tool.name, retryProvider, retryProviderName);
+							return buildMcpToolResult(
+								result,
+								this.serverName,
+								this.tool.name,
+								retryProvider,
+								retryProviderName,
+							);
 						} catch (retryError) {
 							rethrowIfAborted(retryError, signal);
 							return buildErrorResult(
@@ -516,7 +522,7 @@ export class DeferredMCPTool implements CustomTool<TSchema, MCPToolDetails> {
 				if (newConn) {
 					try {
 						const result = await callTool(newConn, this.tool.name, args, { signal });
-						return buildResult(
+						return buildMcpToolResult(
 							result,
 							this.serverName,
 							this.tool.name,

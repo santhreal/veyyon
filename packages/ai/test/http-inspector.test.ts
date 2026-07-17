@@ -1,6 +1,8 @@
 import { describe, expect, it } from "bun:test";
 import {
 	buildHttp400DumpPayload,
+	type CapturedHttpErrorResponse,
+	finalizeErrorMessage,
 	type RawHttpRequestDump,
 	shouldDumpRejectedRequest,
 } from "@veyyon/pi-ai/utils/http-inspector";
@@ -65,5 +67,37 @@ describe("shouldDumpRejectedRequest", () => {
 
 	it("skips errors without an HTTP status", () => {
 		expect(shouldDumpRejectedRequest(new Error("network reset"))).toBe(false);
+	});
+});
+
+describe("finalizeErrorMessage captured-body formatting", () => {
+	const noBodyError = new HttpError(400, "400 status code (no body)");
+
+	function captured(body: unknown): CapturedHttpErrorResponse {
+		return { status: 400, bodyText: JSON.stringify(body), bodyJson: body };
+	}
+
+	it("labels extras by field name, not by position, when earlier fields are absent", async () => {
+		// No "type": before the labeled-pair fix, param was mislabeled `type=` and code `param=`.
+		const message = await finalizeErrorMessage(
+			noBodyError,
+			undefined,
+			captured({ error: { message: "bad request", param: "temperature", code: "invalid_value" } }),
+		);
+		expect(message).toBe("400 status code: bad request (param=temperature code=invalid_value)");
+	});
+
+	it("skips blank message fields so the fallback chain reaches the outer message", async () => {
+		const message = await finalizeErrorMessage(
+			noBodyError,
+			undefined,
+			captured({ error: { message: "   " }, message: "outer message" }),
+		);
+		expect(message).toBe("400 status code: outer message");
+	});
+
+	it("falls back to a plain-string error value", async () => {
+		const message = await finalizeErrorMessage(noBodyError, undefined, captured({ error: "plain failure" }));
+		expect(message).toBe("400 status code: plain failure");
 	});
 });

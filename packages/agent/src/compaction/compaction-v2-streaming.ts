@@ -22,7 +22,16 @@ import {
 	resolveOpenAIRequestSetup,
 } from "@veyyon/pi-ai/providers/openai-shared";
 import { CODEX_BASE_URL, getCodexAccountId, OPENAI_HEADER_VALUES, OPENAI_HEADERS } from "@veyyon/pi-catalog/wire/codex";
-import { $env, logger, stringifyJson } from "@veyyon/pi-utils";
+import {
+	$env,
+	getFiniteNumberProperty,
+	getStringProperty,
+	isRecord,
+	logger,
+	stringifyJson,
+	stripTrailingSlashes,
+} from "@veyyon/pi-utils";
+import { withRequestTimeout } from "./utils";
 
 // ============================================================================
 // Types & Configuration
@@ -124,7 +133,7 @@ function isOpenAiV2CompatibleModel(model: Model): boolean {
 
 function resolveOpenAiResponsesEndpoint(baseUrl: string | undefined): string {
 	const rawBase = baseUrl && baseUrl.length > 0 ? baseUrl : "https://api.openai.com/v1";
-	const normalizedBase = rawBase.replace(/\/+$/, "");
+	const normalizedBase = stripTrailingSlashes(rawBase);
 	if (normalizedBase.endsWith("/responses")) return normalizedBase;
 	if (normalizedBase.endsWith("/v1")) return `${normalizedBase}/responses`;
 	return `${normalizedBase}/v1/responses`;
@@ -132,13 +141,13 @@ function resolveOpenAiResponsesEndpoint(baseUrl: string | undefined): string {
 
 function resolveOpenAiCodexResponsesEndpoint(baseUrl: string | undefined): string {
 	const rawBase = baseUrl && baseUrl.trim().length > 0 ? baseUrl : CODEX_BASE_URL;
-	const normalizedBase = rawBase.replace(/\/+$/, "");
+	const normalizedBase = stripTrailingSlashes(rawBase);
 	if (normalizedBase.endsWith("/codex/responses")) return normalizedBase;
 	if (normalizedBase.endsWith("/codex")) return `${normalizedBase}/responses`;
 	return `${normalizedBase}/codex/responses`;
 }
 
-function resolveAzureOpenAiBaseUrl(model: Model): string {
+export function resolveAzureOpenAiBaseUrl(model: Model): string {
 	const baseUrl = $env.AZURE_OPENAI_BASE_URL?.trim() || undefined;
 	const resourceName = $env.AZURE_OPENAI_RESOURCE_NAME;
 	const resolvedBaseUrl =
@@ -148,10 +157,10 @@ function resolveAzureOpenAiBaseUrl(model: Model): string {
 			"Azure OpenAI base URL is required. Set AZURE_OPENAI_BASE_URL or AZURE_OPENAI_RESOURCE_NAME, or configure model.baseUrl.",
 		);
 	}
-	return resolvedBaseUrl.replace(/\/+$/, "");
+	return stripTrailingSlashes(resolvedBaseUrl);
 }
 
-function appendAzureApiVersion(endpoint: string): string {
+export function appendAzureApiVersion(endpoint: string): string {
 	if (/[?&]api-version=/.test(endpoint)) return endpoint;
 	const separator = endpoint.includes("?") ? "&" : "?";
 	return `${endpoint}${separator}api-version=${encodeURIComponent($env.AZURE_OPENAI_API_VERSION || DEFAULT_AZURE_API_VERSION)}`;
@@ -202,13 +211,6 @@ export function buildCompactionV2Request(
 // ============================================================================
 // Streaming Request Handler
 // ============================================================================
-
-/** Race the caller's signal against the V2 request timeout. */
-function withRequestTimeout(signal: AbortSignal | undefined, timeoutMs: number): AbortSignal | undefined {
-	if (timeoutMs <= 0) return signal;
-	const timeout = AbortSignal.timeout(timeoutMs);
-	return signal ? AbortSignal.any([signal, timeout]) : timeout;
-}
 
 /** Request V2 compaction over the normal OpenAI Responses streaming endpoint. */
 export async function requestCompactionV2Streaming(
@@ -524,15 +526,15 @@ function parseCompactionV2Usage(event: Record<string, unknown>): CompactionV2Usa
 	const usage = response && isRecord(response.usage) ? response.usage : undefined;
 	if (!usage) return undefined;
 
-	const inputTokens = numberField(usage, "input_tokens");
-	const outputTokens = numberField(usage, "output_tokens");
-	const totalTokens = numberField(usage, "total_tokens");
+	const inputTokens = getFiniteNumberProperty(usage, "input_tokens");
+	const outputTokens = getFiniteNumberProperty(usage, "output_tokens");
+	const totalTokens = getFiniteNumberProperty(usage, "total_tokens");
 	if (inputTokens === undefined || outputTokens === undefined || totalTokens === undefined) return undefined;
 
 	const inputDetails = isRecord(usage.input_tokens_details) ? usage.input_tokens_details : undefined;
 	const outputDetails = isRecord(usage.output_tokens_details) ? usage.output_tokens_details : undefined;
-	const cachedInputTokens = inputDetails ? numberField(inputDetails, "cached_tokens") : undefined;
-	const reasoningOutputTokens = outputDetails ? numberField(outputDetails, "reasoning_tokens") : undefined;
+	const cachedInputTokens = inputDetails ? getFiniteNumberProperty(inputDetails, "cached_tokens") : undefined;
+	const reasoningOutputTokens = outputDetails ? getFiniteNumberProperty(outputDetails, "reasoning_tokens") : undefined;
 	return {
 		inputTokens,
 		outputTokens,
@@ -549,8 +551,8 @@ function formatCompactionV2Failure(event: Record<string, unknown>, type: string)
 		: response && isRecord(response.error)
 			? response.error
 			: undefined;
-	const message = error ? stringField(error, "message") : undefined;
-	const code = error ? (stringField(error, "code") ?? stringField(error, "type")) : undefined;
+	const message = error ? getStringProperty(error, "message") : undefined;
+	const code = error ? (getStringProperty(error, "code") ?? getStringProperty(error, "type")) : undefined;
 	return `V2 compaction stream ${type}${code ? ` (${code})` : ""}${message ? `: ${message}` : ""}`;
 }
 
@@ -601,13 +603,13 @@ export function buildCompactionV2ReplacementHistory(
 
 function isRetainedForCompactionV2(item: Record<string, unknown>): boolean {
 	if (item.type !== "message") return false;
-	const role = stringField(item, "role");
+	const role = getStringProperty(item, "role");
 	return role === "user" || role === "developer" || role === "system";
 }
 
 function shouldKeepCompactionV2HistoryItem(item: Record<string, unknown>): boolean {
 	if (item.type !== "message") return item.type === "compaction";
-	const role = stringField(item, "role");
+	const role = getStringProperty(item, "role");
 	if (role !== "user") return false;
 	return !isContextualUserMessage(item);
 }
@@ -616,7 +618,7 @@ function isContextualUserMessage(item: Record<string, unknown>): boolean {
 	const content = Array.isArray(item.content) ? item.content : [];
 	return content.some(part => {
 		if (!isRecord(part) || part.type !== "input_text") return false;
-		const text = stringField(part, "text")?.trimStart().toLowerCase();
+		const text = getStringProperty(part, "text")?.trimStart().toLowerCase();
 		return !!text && CONTEXTUAL_USER_PREFIXES.some(prefix => text.startsWith(prefix));
 	});
 }
@@ -666,7 +668,7 @@ function messageContentTokenCount(item: Record<string, unknown>): number {
 			continue;
 		}
 		if (part.type === "input_text" || part.type === "output_text") {
-			tokens += approxTokenCount(stringField(part, "text") ?? "");
+			tokens += approxTokenCount(getStringProperty(part, "text") ?? "");
 		}
 	}
 	return tokens;
@@ -690,7 +692,7 @@ function truncateMessageTextToTokenBudget(
 		if (part.type !== "input_text" && part.type !== "output_text") continue;
 		if (remaining === 0) continue;
 
-		const text = stringField(part, "text") ?? "";
+		const text = getStringProperty(part, "text") ?? "";
 		const tokenCount = approxTokenCount(text);
 		if (tokenCount <= remaining) {
 			truncatedContent.push(part);
@@ -748,27 +750,13 @@ export function getCompactionV2PreserveData(
 ): { provider: string; replacementHistory: Array<Record<string, unknown>>; usedTokens: number } | undefined {
 	const candidate = preserveData?.[OPENAI_REMOTE_COMPACTION_PRESERVE_KEY];
 	if (!isRecord(candidate)) return undefined;
-	const provider = stringField(candidate, "provider");
+	const provider = getStringProperty(candidate, "provider");
 	if (!provider) return undefined;
 	if (!Array.isArray(candidate.replacementHistory)) return undefined;
 
 	return {
 		provider,
 		replacementHistory: candidate.replacementHistory as Array<Record<string, unknown>>,
-		usedTokens: numberField(candidate, "usedTokens") ?? 0,
+		usedTokens: getFiniteNumberProperty(candidate, "usedTokens") ?? 0,
 	};
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return !!value && typeof value === "object";
-}
-
-function stringField(record: Record<string, unknown>, field: string): string | undefined {
-	const value = record[field];
-	return typeof value === "string" ? value : undefined;
-}
-
-function numberField(record: Record<string, unknown>, field: string): number | undefined {
-	const value = record[field];
-	return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }

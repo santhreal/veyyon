@@ -1,7 +1,7 @@
 {
   "name": "hello-extension",
   "version": "1.0.0",
-  "description": "Minimal Veyyon extension example",
+  "description": "Minimal oh-my-pi extension example",
   "homepage": "https://veyyon.dev",
   "omp": {
     "extensions": [

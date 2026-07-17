@@ -1,5 +1,5 @@
 import type { TSchema } from "@veyyon/pi-ai";
-import { $env, logger } from "@veyyon/pi-utils";
+import { $env, asRecord, logger, tryParseJson } from "@veyyon/pi-utils";
 import type { CustomTool, CustomToolResult } from "../extensibility/custom-tools/types";
 import { type CallMcpOptions, callMCP } from "../mcp/json-rpc";
 import type { ExaSearchResponse, MCPCallResponse, MCPTool, MCPToolsResponse, MCPToolWrapperConfig } from "./types";
@@ -14,19 +14,6 @@ type MCPWrappedToolDetails = {
 /** Find EXA_API_KEY from Bun.env or .env files */
 export function findApiKey(): string | null {
 	return $env.EXA_API_KEY;
-}
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-	if (typeof value !== "object" || value === null) return null;
-	return value as Record<string, unknown>;
-}
-
-function parseJsonContent(text: string): unknown | null {
-	try {
-		return JSON.parse(text);
-	} catch {
-		return null;
-	}
 }
 
 /**
@@ -54,7 +41,7 @@ function normalizeMcpToolPayload(payload: unknown): unknown {
 				if (!part) continue;
 				const text = part.text;
 				if (typeof text !== "string" || text.trim().length === 0) continue;
-				const parsed = parseJsonContent(text);
+				const parsed = tryParseJson(text);
 				if (parsed !== null) candidates.push(parsed);
 			}
 		}
@@ -150,7 +137,7 @@ export async function callWebsetsTool(
 }
 
 /** Format search results for LLM */
-export function formatSearchResults(data: ExaSearchResponse): string {
+export function formatExaSearchResults(data: ExaSearchResponse): string {
 	const results = data.results ?? [];
 	if (results.length === 0) return "No results found.";
 
@@ -200,10 +187,10 @@ export function formatGenericResponse(data: unknown): string {
 				parts.push(`\n### ${title}`);
 				for (const [k, v] of Object.entries(record)) {
 					if (["title", "name", "id"].includes(k)) continue;
-					parts.push(`- **${k}:** ${formatValue(v)}`);
+					parts.push(`- **${k}:** ${formatExaValue(v)}`);
 				}
 			} else {
-				parts.push(`- ${formatValue(item)}`);
+				parts.push(`- ${formatExaValue(item)}`);
 			}
 		}
 		return parts.join("\n");
@@ -231,7 +218,7 @@ export function formatGenericResponse(data: unknown): string {
 				const formatted = formatGenericResponse(v);
 				if (formatted) lines.push(`- **${k}:**\n${indent(formatted, 2)}`);
 			} else {
-				lines.push(`- **${k}:** ${formatValue(v)}`);
+				lines.push(`- **${k}:** ${formatExaValue(v)}`);
 			}
 		}
 		return lines.join("\n") || "(empty)";
@@ -240,7 +227,7 @@ export function formatGenericResponse(data: unknown): string {
 	return String(data);
 }
 
-function formatValue(v: unknown): string {
+function formatExaValue(v: unknown): string {
 	if (v === null || v === undefined) return "—";
 	if (typeof v === "object") return JSON.stringify(v);
 	return String(v);
@@ -331,7 +318,7 @@ export class MCPWrappedTool implements CustomTool<TSchema, MCPWrappedToolDetails
 				: await callExaTool(this.config.mcpToolName, params as Record<string, unknown>, apiKey);
 
 			if (isSearchResponse(response)) {
-				const formatted = formatSearchResults(response);
+				const formatted = formatExaSearchResults(response);
 				return {
 					content: [{ type: "text" as const, text: formatted }],
 					details: { response, toolName: this.config.name },
@@ -350,21 +337,4 @@ export class MCPWrappedTool implements CustomTool<TSchema, MCPWrappedToolDetails
 			};
 		}
 	}
-}
-
-/**
- * Create a CustomTool by fetching schema from MCP server.
- *
- * Falls back to provided fallback schema if MCP fetch fails.
- */
-export async function createMCPToolFromServer(
-	apiKey: string,
-	config: MCPToolWrapperConfig,
-	fallbackSchema: TSchema,
-	fallbackDescription: string,
-): Promise<MCPWrappedTool> {
-	const mcpTool = await fetchMCPToolSchema(apiKey, config.mcpToolName, config.isWebsetsTool);
-	const schema = mcpTool?.inputSchema ?? fallbackSchema;
-	const description = mcpTool?.description ?? fallbackDescription;
-	return new MCPWrappedTool(config, schema, description);
 }

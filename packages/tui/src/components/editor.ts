@@ -76,41 +76,65 @@ export function wordWrapLine(line: string, maxWidth: number): TextChunk[] {
 
 	const chunks: TextChunk[] = [];
 
-	// Split into tokens (words and whitespace runs)
+	// Split into tokens (words and whitespace runs). Token boundaries are
+	// whitespace transitions, so only the whitespace classification needs to
+	// be grapheme-aware; runs are sliced by index instead of concatenated
+	// grapheme-by-grapheme.
 	const tokens: { text: string; startIndex: number; endIndex: number; isWhitespace: boolean }[] = [];
-	let currentToken = "";
+	let isAscii = true;
+	for (let i = 0; i < line.length; i++) {
+		if (line.charCodeAt(i) >= 0x80) {
+			isAscii = false;
+			break;
+		}
+	}
 	let tokenStart = 0;
 	let inWhitespace = false;
 	let charIndex = 0;
-
-	for (const seg of segmenter.segment(line)) {
-		const grapheme = seg.segment;
-		const graphemeIsWhitespace = getWordNavKind(grapheme) === "whitespace";
-
-		if (currentToken === "") {
-			inWhitespace = graphemeIsWhitespace;
-			tokenStart = charIndex;
-		} else if (graphemeIsWhitespace !== inWhitespace) {
-			// Token type changed - save current token
-			tokens.push({
-				text: currentToken,
-				startIndex: tokenStart,
-				endIndex: charIndex,
-				isWhitespace: inWhitespace,
-			});
-			currentToken = "";
-			tokenStart = charIndex;
-			inWhitespace = graphemeIsWhitespace;
+	if (isAscii) {
+		// ASCII bypass: every char is one single-width grapheme; a charCode
+		// scan replaces the segmenter iteration entirely.
+		while (charIndex < line.length) {
+			const code = line.charCodeAt(charIndex);
+			const graphemeIsWhitespace = code === 0x20 || (code >= 0x09 && code <= 0x0d);
+			if (charIndex === 0) {
+				inWhitespace = graphemeIsWhitespace;
+			} else if (graphemeIsWhitespace !== inWhitespace) {
+				tokens.push({
+					text: line.slice(tokenStart, charIndex),
+					startIndex: tokenStart,
+					endIndex: charIndex,
+					isWhitespace: inWhitespace,
+				});
+				tokenStart = charIndex;
+				inWhitespace = graphemeIsWhitespace;
+			}
+			charIndex++;
 		}
-
-		currentToken += grapheme;
-		charIndex += grapheme.length;
+	} else {
+		for (const seg of segmenter.segment(line)) {
+			const grapheme = seg.segment;
+			const graphemeIsWhitespace = getWordNavKind(grapheme) === "whitespace";
+			if (charIndex === 0) {
+				inWhitespace = graphemeIsWhitespace;
+			} else if (graphemeIsWhitespace !== inWhitespace) {
+				tokens.push({
+					text: line.slice(tokenStart, charIndex),
+					startIndex: tokenStart,
+					endIndex: charIndex,
+					isWhitespace: inWhitespace,
+				});
+				tokenStart = charIndex;
+				inWhitespace = graphemeIsWhitespace;
+			}
+			charIndex += grapheme.length;
+		}
 	}
 
 	// Push final token
-	if (currentToken) {
+	if (charIndex > tokenStart) {
 		tokens.push({
-			text: currentToken,
+			text: line.slice(tokenStart, charIndex),
 			startIndex: tokenStart,
 			endIndex: charIndex,
 			isWhitespace: inWhitespace,
@@ -396,6 +420,7 @@ export class Editor implements Component, Focusable {
 	 *  to the content width rather than reflowed. Cursor glyphs and inline hints are excluded. */
 	decorateText: ((text: string) => string) | undefined;
 	#promptGutter: string | undefined;
+	#placeholder: string | undefined;
 
 	// Store last layout width for cursor navigation
 	#lastLayoutWidth: number = 80;
@@ -524,6 +549,11 @@ export class Editor implements Component, Focusable {
 
 	setPromptGutter(promptGutter: string | undefined): void {
 		this.#promptGutter = promptGutter;
+	}
+
+	/** Ghost text rendered after the cursor only when the input is completely empty. */
+	setPlaceholder(placeholder: string | undefined): void {
+		this.#placeholder = placeholder;
 	}
 
 	/**
@@ -3157,11 +3187,17 @@ export class Editor implements Component, Focusable {
 
 		// Fall back to provider's getInlineHint
 		if (this.#autocompleteProvider?.getInlineHint) {
-			return this.#autocompleteProvider.getInlineHint(
+			const hint = this.#autocompleteProvider.getInlineHint(
 				this.#state.lines,
 				this.#state.cursorLine,
 				this.#state.cursorCol,
 			);
+			if (hint) return hint;
+		}
+
+		// Empty-state placeholder: ghost text only when nothing has been typed.
+		if (this.#placeholder && this.#state.lines.length === 1 && this.#state.lines[0] === "") {
+			return this.#placeholder;
 		}
 
 		return null;

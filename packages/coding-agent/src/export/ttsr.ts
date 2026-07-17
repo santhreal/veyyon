@@ -9,6 +9,7 @@ import * as path from "node:path";
 import { AstMatchStrictness, astMatch } from "@veyyon/pi-natives";
 import { logger } from "@veyyon/pi-utils";
 import type { Rule } from "../capability/rule";
+import { compileRulePathGlobs, parseToolScopeToken, type ToolScopeToken } from "../capability/rule-scope";
 import type { TtsrSettings } from "../config/settings";
 
 export type TtsrMatchSource = "text" | "thinking" | "tool";
@@ -24,11 +25,8 @@ export interface TtsrMatchContext {
 	streamKey?: string;
 }
 
-interface ToolScope {
-	toolName?: string;
-	pathGlob?: Bun.Glob;
-	pathPattern?: string;
-}
+// ONE PLACE: scope grammar owned by capability/rule-scope.ts.
+type ToolScope = ToolScopeToken;
 
 interface TtsrScope {
 	allowText: boolean;
@@ -116,42 +114,6 @@ export class TtsrManager {
 		return compiled;
 	}
 
-	#compileGlobalPathGlobs(globs: Rule["globs"]): Bun.Glob[] | undefined {
-		if (!globs || globs.length === 0) {
-			return undefined;
-		}
-
-		const compiled = globs
-			.map(glob => glob.trim())
-			.filter(glob => glob.length > 0)
-			.map(glob => new Bun.Glob(glob));
-		return compiled.length > 0 ? compiled : undefined;
-	}
-
-	#parseToolScopeToken(token: string): ToolScope | undefined {
-		const match = /^(?:(?<prefix>tool)(?::(?<tool>[a-z0-9_-]+))?|(?<bare>[a-z0-9_-]+))(?:\((?<path>[^)]+)\))?$/i.exec(
-			token,
-		);
-		if (!match) {
-			return undefined;
-		}
-
-		const groups = match.groups;
-		const hasToolPrefix = groups?.prefix !== undefined;
-		const toolName = (groups?.tool ?? (hasToolPrefix ? undefined : groups?.bare))?.trim().toLowerCase();
-		const pathPattern = groups?.path?.trim();
-
-		if (!pathPattern) {
-			return { toolName };
-		}
-
-		return {
-			toolName,
-			pathPattern,
-			pathGlob: new Bun.Glob(pathPattern),
-		};
-	}
-
 	#buildScope(rule: Rule): TtsrScope {
 		if (!rule.scope || rule.scope.length === 0) {
 			return {
@@ -191,7 +153,7 @@ export class TtsrManager {
 				continue;
 			}
 
-			const toolScope = this.#parseToolScopeToken(token);
+			const toolScope = parseToolScopeToken(token);
 			if (!toolScope) {
 				logger.warn("TTSR scope token is invalid, skipping token", {
 					ruleName: rule.name,
@@ -323,7 +285,7 @@ export class TtsrManager {
 			});
 			return false;
 		}
-		const globalPathGlobs = this.#compileGlobalPathGlobs(rule.globs);
+		const globalPathGlobs = compileRulePathGlobs(rule.globs);
 		this.#rules.set(rule.name, {
 			rule,
 			conditions,

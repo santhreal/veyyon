@@ -19,7 +19,8 @@ resume metadata rather than relying on the model to remember everything from raw
 - Manage saved sessions with `/session`; garbage-collect old artifacts with `veyyon gc`.
 - Run a bounded non-interactive task by passing a prompt: `veyyon "…"`.
 
-Veyyon resumes from the launch picker or `/resume`, and branches with `/branch` / `/fork`.
+> **Spec — not shipped:** top-level `veyyon resume` / `fork` / `archive` verbs. Veyyon resumes from
+> the launch picker or `/resume`, and branches with `/branch` / `/fork` (there is no `/clone`).
 
 ## Long work
 

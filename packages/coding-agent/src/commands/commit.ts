@@ -10,6 +10,13 @@ import { initTheme } from "../modes/theme/theme";
 export default class Commit extends Command {
 	static description = "Generate a commit message and update changelogs";
 
+	static examples = [
+		"veyyon commit",
+		"veyyon commit --push",
+		"veyyon commit --dry-run",
+		'veyyon commit -c "release prep" -m gpt-5.2',
+	];
+
 	static flags = {
 		push: Flags.boolean({ description: "Push after committing" }),
 		"dry-run": Flags.boolean({ description: "Preview without committing" }),

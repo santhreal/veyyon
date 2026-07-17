@@ -1,6 +1,6 @@
 # safety-hook
 
-A Veyyon extension that demonstrates `tool_call` blocking. It intercepts `bash` tool calls and returns `{ block: true, reason: "..." }` when the command contains `rm -rf /` with normal whitespace, preventing the tool from executing.
+An `oh-my-pi` extension that demonstrates `tool_call` blocking. It intercepts `bash` tool calls and returns `{ block: true, reason: "..." }` when the command contains `rm -rf /` with normal whitespace, preventing the tool from executing.
 
 ## What it demonstrates
 
@@ -14,12 +14,12 @@ A Veyyon extension that demonstrates `tool_call` blocking. It intercepts `bash` 
 cp -r . ~/.veyyon/agent/extensions/safety-hook
 ```
 
-Restart `veyyon`. The hook is active for all sessions.
+Restart `omp`. The hook is active for all sessions.
 
 Or load once:
 
 ```
-veyyon --extension ./safety-hook
+omp --extension ./safety-hook
 ```
 
 ## How it works

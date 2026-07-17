@@ -14,6 +14,7 @@
  */
 import { logger } from "@veyyon/pi-utils";
 import { areJsonValuesEqual } from "./equality";
+import { isJsonObject } from "./types";
 
 export interface JsonSchemaValidationIssue {
 	path: PropertyKey[];
@@ -63,10 +64,6 @@ function getValueIdentity(ctx: ValidationContext, value: object): number {
 	ctx.nextObjectId.value += 1;
 	ctx.objectIds.set(value, id);
 	return id;
-}
-
-function isJsonObject(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function pushIssue(

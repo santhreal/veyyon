@@ -1,4 +1,5 @@
 import * as AIError from "../../error";
+import { jwtExpiryMs } from "../../utils/jwt";
 import { OAuthCallbackFlow } from "./callback-server";
 import { generatePKCE } from "./pkce";
 import type { OAuthController, OAuthCredentials } from "./types";
@@ -65,7 +66,7 @@ class DevinOAuthFlow extends OAuthCallbackFlow {
 		return {
 			access: token,
 			refresh: token,
-			expires: getTokenExpiry(token),
+			expires: devinTokenExpiry(token),
 			apiEndpoint: DEVIN_API_URL,
 			enterpriseUrl: DEVIN_WEBAPP_URL,
 		};
@@ -108,17 +109,8 @@ export async function exchangeDevinCliToken(
 	return data.token;
 }
 
-function getTokenExpiry(token: string): number {
-	try {
-		const [, payload] = token.split(".");
-		if (payload) {
-			const decoded = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as { exp?: unknown };
-			if (typeof decoded.exp === "number" && Number.isFinite(decoded.exp)) {
-				return decoded.exp * 1000 - 5 * 60 * 1000;
-			}
-		}
-	} catch {
-		// Ignore malformed non-JWT tokens and use a conservative long-lived fallback.
-	}
-	return Date.now() + FALLBACK_EXPIRES_MS;
+function devinTokenExpiry(token: string): number {
+	const expiryMs = jwtExpiryMs(token);
+	// 5-minute skew; malformed non-JWT tokens use a conservative long-lived fallback.
+	return expiryMs !== undefined ? expiryMs - 5 * 60 * 1000 : Date.now() + FALLBACK_EXPIRES_MS;
 }

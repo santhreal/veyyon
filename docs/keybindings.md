@@ -1,5 +1,9 @@
 # Keybindings
 
+> Operator overview (plus Vim mode): the
+> [handbook keybindings page](handbook/src/features/keybindings.md). This page is
+> the full reference.
+
 Run `/hotkeys` inside an `veyyon` session to see the active chords for your current build. The list reflects any remaps loaded from disk and any bindings added by extensions.
 
 ## Customize keybindings

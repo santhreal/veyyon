@@ -1,4 +1,10 @@
-import type { UsageCostHistoryEntry, UsageLimit, UsageProvider, UsageWindow } from "../usage";
+import {
+	type UsageCostHistoryEntry,
+	type UsageLimit,
+	type UsageProvider,
+	type UsageWindow,
+	usageStatusFromFraction,
+} from "../usage";
 
 const OPENCODE_GO_PROVIDER = "opencode-go";
 const HOUR_MS = 60 * 60 * 1000;
@@ -20,12 +26,6 @@ function sumWindowCosts(entries: UsageCostHistoryEntry[], sinceMs: number): { us
 		}
 	}
 	return { used, resetsAt: firstRecordedAt };
-}
-
-function resolveStatus(usedFraction: number): UsageLimit["status"] {
-	if (usedFraction >= 1) return "exhausted";
-	if (usedFraction >= 0.8) return "warning";
-	return "ok";
 }
 
 function buildWindowLimit(
@@ -61,7 +61,7 @@ function buildWindowLimit(
 			remainingFraction: Math.max(0, 1 - usedFraction),
 			unit: "usd",
 		},
-		status: resolveStatus(usedFraction),
+		status: usageStatusFromFraction(usedFraction),
 	};
 }
 

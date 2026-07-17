@@ -1,11 +1,11 @@
 import { describe, expect, it } from "bun:test";
+import { levenshteinDistance } from "@veyyon/pi-utils";
 import {
 	ENTITY_EXTRACTION_STOP_WORDS,
+	entitySimilarity,
 	extractEntitiesRegex,
 	findSimilarEntities,
-	levenshteinDistance,
 	REGEX_EXTRACTION_MAX_INPUT_CHARS,
-	similarity,
 } from "@veyyon/pi-mnemopi/core/entities";
 
 describe("entity utilities", () => {
@@ -20,14 +20,14 @@ describe("entity utilities", () => {
 	});
 
 	it("scores entity names with case-insensitive prefix and substring bonuses", () => {
-		expect(similarity("ABDIAS", "abdias")).toBe(1.0);
-		expect(similarity("Abdias", "Abdias J.")).toBeGreaterThan(0.8);
-		expect(similarity("Abdias", "Abdias Moya")).toBeGreaterThan(0.7);
-		expect(similarity("Abdias", "Abdul")).toBeLessThan(0.8);
-		expect(similarity("Abdias", "Abdul")).toBeGreaterThan(0.3);
-		expect(similarity("Abdias", "Zebra")).toBeLessThan(0.3);
-		expect(similarity("A", "B")).toBe(0.0);
-		expect(similarity("", "abc")).toBe(0.0);
+		expect(entitySimilarity("ABDIAS", "abdias")).toBe(1.0);
+		expect(entitySimilarity("Abdias", "Abdias J.")).toBeGreaterThan(0.8);
+		expect(entitySimilarity("Abdias", "Abdias Moya")).toBeGreaterThan(0.7);
+		expect(entitySimilarity("Abdias", "Abdul")).toBeLessThan(0.8);
+		expect(entitySimilarity("Abdias", "Abdul")).toBeGreaterThan(0.3);
+		expect(entitySimilarity("Abdias", "Zebra")).toBeLessThan(0.3);
+		expect(entitySimilarity("A", "B")).toBe(0.0);
+		expect(entitySimilarity("", "abc")).toBe(0.0);
 	});
 
 	it("extracts names, phrases, mentions, hashtags, and filters contaminated stop-word phrases", () => {

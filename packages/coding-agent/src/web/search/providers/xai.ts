@@ -51,7 +51,7 @@ interface XAIResponsesResponse {
 	usage?: XAIResponsesUsage | null;
 }
 
-function buildRequestBody(params: SearchParams): Record<string, unknown> {
+function buildXaiRequestBody(params: SearchParams): Record<string, unknown> {
 	const body: Record<string, unknown> = {
 		model: XAI_WEB_SEARCH_MODEL,
 		input: [
@@ -94,7 +94,7 @@ function throwXAIResponsesError(status: number, errorText: string): never {
 }
 
 async function callXAIResponses(apiKey: string, params: SearchParams): Promise<XAIResponsesResponse> {
-	const requestBody = buildRequestBody(params);
+	const requestBody = buildXaiRequestBody(params);
 	const response = await postXAIResponses(apiKey, params, requestBody);
 
 	if (!response.ok) {
@@ -193,7 +193,7 @@ function applyResultCap(
 	};
 }
 
-function parseResponse(response: XAIResponsesResponse, resultCap: number): SearchResponse {
+function parseXaiSearchResponse(response: XAIResponsesResponse, resultCap: number): SearchResponse {
 	const sources: SearchSource[] = [];
 	const citations: SearchCitation[] = [];
 	const seenUrls = new Set<string>();
@@ -270,7 +270,7 @@ export async function searchXAI(params: SearchParams): Promise<SearchResponse> {
 		signal: params.signal,
 		missingKeyMessage: 'xAI credentials not found. Set XAI_API_KEY or configure an API key for provider "xai".',
 	});
-	return parseResponse(response, resultCap);
+	return parseXaiSearchResponse(response, resultCap);
 }
 
 /** Search provider for xAI web search. */

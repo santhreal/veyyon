@@ -1866,6 +1866,7 @@ async function executeToolCalls(
 			skipped: false,
 			toolResultMessage: undefined as ToolResultMessage | undefined,
 			resultEmitted: false,
+			repairStatus: undefined as "repaired" | "unrepairable" | undefined,
 		};
 	});
 
@@ -1943,6 +1944,7 @@ async function executeToolCalls(
 			details: result.details,
 			isError,
 			...(result.useless && !isError ? { useless: true } : {}),
+			...(record.repairStatus ? { repairStatus: record.repairStatus } : {}),
 			timestamp: Date.now(),
 		};
 		record.result = result;
@@ -2001,6 +2003,7 @@ async function executeToolCalls(
 					...toolCall,
 					arguments: argsForExecution,
 				});
+				if (repairOutcome.status !== "clean") record.repairStatus = repairOutcome.status;
 				if (repairOutcome.status === "unrepairable") {
 					const hintSuffix =
 						repairOutcome.hints.length > 0

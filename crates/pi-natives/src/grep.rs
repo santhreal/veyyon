@@ -2328,6 +2328,89 @@ mod tests {
 		}
 	}
 
+	/// Full-corpus grep-engine throughput over a real tree (walk + read + regex),
+	/// one query shape per output mode, with a system `rg` differential twin when
+	/// it is installed. Ignored deterministic timing harness; run with:
+	/// PI_NATIVES_GREP_PERF_ROOT=/path/to/large/repo cargo test --profile ci -p
+	/// pi-natives grep::tests::perf_grep_sync_real_corpus -- --ignored
+	/// --nocapture --test-threads=1
+	#[cfg(unix)]
+	#[test]
+	#[ignore = "run with: PI_NATIVES_GREP_PERF_ROOT=/path/to/large/repo cargo test --profile ci \
+	            -p pi-natives grep::tests::perf_grep_sync_real_corpus -- --ignored --nocapture \
+	            --test-threads=1"]
+	fn perf_grep_sync_real_corpus() {
+		use std::time::{Duration, Instant};
+		const MEASURED_ITERATIONS: usize = 5;
+		fn run_bench(name: &str, mut run: impl FnMut() -> usize) {
+			std::hint::black_box(run());
+			let mut timings = [Duration::ZERO; MEASURED_ITERATIONS];
+			for timing in &mut timings {
+				let started = Instant::now();
+				let observed = run();
+				let elapsed = started.elapsed();
+				std::hint::black_box(observed);
+				*timing = elapsed;
+			}
+			timings.sort_unstable();
+			let median_ms = timings[MEASURED_ITERATIONS / 2].as_secs_f64() * 1_000.0;
+			println!("BENCH {name}: {median_ms:.3} ms");
+		}
+		let Some(root) = std::env::var_os("PI_NATIVES_GREP_PERF_ROOT") else {
+			println!(
+				"BENCH perf_grep_sync_real_corpus: SKIPPED — set \
+				 PI_NATIVES_GREP_PERF_ROOT=/path/to/large/repo to run"
+			);
+			return;
+		};
+		let root = PathBuf::from(root);
+		assert!(root.is_dir(), "PI_NATIVES_GREP_PERF_ROOT must name an existing directory");
+		let shapes: [(&str, &str, Option<GrepOutputMode>, &[&str]); 3] = [
+			("rare_literal_content", "zzqqxxjjkkvvbbnnww", None, &["zzqqxxjjkkvvbbnnww"]),
+			(
+				"files_with_matches",
+				"SPDX-License",
+				Some(GrepOutputMode::FilesWithMatches),
+				&["-l", "SPDX-License"],
+			),
+			("regex_word_count", r"\bunreachable\b", Some(GrepOutputMode::Count), &[
+				"-c",
+				r"\bunreachable\b",
+			]),
+		];
+		for (name, pattern, mode, rg_args) in shapes {
+			run_bench(&format!("perf_grep_builtin_{name}"), || {
+				let mut shape = base_grep_config(&root);
+				shape.pattern = pattern.to_string();
+				shape.gitignore = Some(true);
+				shape.hidden = Some(false);
+				shape.mode = mode;
+				let result = grep_sync(shape, None, task::CancelToken::default())
+					.expect("grep_sync should succeed on the corpus");
+				result.files_searched as usize
+			});
+			if std::process::Command::new("rg")
+				.arg("--version")
+				.stdout(std::process::Stdio::null())
+				.status()
+				.is_ok()
+			{
+				run_bench(&format!("perf_grep_system_rg_{name}"), || {
+					let status = std::process::Command::new("rg")
+						.args(rg_args)
+						.arg(&root)
+						.stdout(std::process::Stdio::null())
+						.stderr(std::process::Stdio::null())
+						.status()
+						.expect("system rg should spawn");
+					status.code().unwrap_or(2) as usize
+				});
+			} else {
+				println!("BENCH perf_grep_system_rg_{name}: SKIPPED — no system rg on PATH");
+			}
+		}
+	}
+
 	#[test]
 	fn preserves_unicode_property_escapes() {
 		assert_eq!(sanitize_braces(r"\p{Greek}").as_ref(), r"\p{Greek}");

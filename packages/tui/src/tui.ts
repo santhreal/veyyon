@@ -37,6 +37,7 @@ import {
 	Ellipsis,
 	extractSegments,
 	normalizeTerminalOutput,
+	SGR_SEQUENCE_GLOBAL,
 	sliceByColumn,
 	sliceWithWidth,
 	truncateToWidth,
@@ -257,13 +258,19 @@ function getNativeScrollbackLiveRegionStart(component: Component): number | unde
  *   accumulated count to 0 for that render.
  * - Rows at or beyond the report may have been mutated in place; rows before
  *   it must be the identical string values at the identical indices.
+ * - The reader passes the array it actually received from `render()`. When
+ *   that is not the exact array the implementer's accounting tracks — e.g. a
+ *   subclass override transformed the rows after `super.render()` — the
+ *   implementer MUST report 0. This makes inherited implementations safe
+ *   under row-transforming overrides instead of silently claiming stability
+ *   for rows the reader never saw.
  */
 export interface RenderStablePrefix {
-	getRenderStablePrefixRows(): number;
+	getRenderStablePrefixRows(observed: readonly string[]): number;
 }
 
-function getRenderStablePrefixRows(component: Component): number | undefined {
-	return (component as Component & Partial<RenderStablePrefix>).getRenderStablePrefixRows?.();
+function getRenderStablePrefixRows(component: Component, observed: readonly string[]): number | undefined {
+	return (component as Component & Partial<RenderStablePrefix>).getRenderStablePrefixRows?.(observed);
 }
 
 /**
@@ -473,7 +480,7 @@ export interface OverlayHandle {
 /**
  * Container - a component that contains other components
  */
-export class Container implements Component {
+export class Container implements Component, RenderStablePrefix {
 	children: Component[] = [];
 
 	// Memoized concatenation of the children's latest renders. Children are
@@ -486,6 +493,17 @@ export class Container implements Component {
 	#memoLines: string[] | undefined;
 	#memoChildLines: (readonly string[])[] = [];
 	#memoWidth = -1;
+	// Per-index child identity and row count from the previous render, backing
+	// the stable-prefix computation (a same-reference array from an in-place
+	// mutator can change length; identity keys stability to the same child).
+	#memoChildren: Component[] = [];
+	#memoChildRowCounts: number[] = [];
+	// RenderStablePrefix accumulator (see the interface contract): leading
+	// concatenated rows provably identical to the array state the reader last
+	// observed. Derived per render from leading aligned children that either
+	// returned the same array reference or reported their own stable prefix,
+	// so stability propagates through nested containers up to the engine.
+	#stablePrefixAccum = 0;
 
 	#ignoreTight = false;
 
@@ -547,20 +565,54 @@ export class Container implements Component {
 		width = Math.max(1, width);
 		const children = this.children;
 		const count = children.length;
+		const prevChildren = this.#memoChildren;
+		const prevCounts = this.#memoChildRowCounts;
 		let refs = this.#memoChildLines;
+		const prevRefs = refs;
 		let unchanged = this.#memoLines !== undefined && this.#memoWidth === width && refs.length === count;
 		if (refs.length !== count) {
 			refs = new Array(count);
 			this.#memoChildLines = refs;
 		}
+		// Stability chain, mirroring the engine's per-segment logic: a child's
+		// rows count as stable only while every child above it was fully stable
+		// (identical rows AND identical row count), keyed to the same child at
+		// the same index. A child's own stability report (consumed here — this
+		// container is its only reader) overrides reference equality.
+		let chain = this.#memoLines !== undefined && this.#memoWidth === width;
+		let stableVsPrev = 0;
+		const nextChildren: Component[] = new Array(count);
+		const nextCounts: number[] = new Array(count);
 		for (let i = 0; i < count; i++) {
-			const childLines = children[i]!.render(width);
+			const child = children[i]!;
+			const childLines = child.render(width);
+			const reported = getRenderStablePrefixRows(child, childLines);
+			if (chain && prevChildren[i] === child && prevCounts[i] !== undefined) {
+				const prevCount = prevCounts[i]!;
+				let stableCount = 0;
+				if (reported !== undefined) {
+					stableCount = Number.isFinite(reported)
+						? Math.max(0, Math.min(childLines.length, prevCount, Math.trunc(reported)))
+						: 0;
+				} else if (prevRefs[i] === childLines) {
+					stableCount = childLines.length;
+				}
+				stableVsPrev += stableCount;
+				if (stableCount < childLines.length || prevCount !== childLines.length) chain = false;
+			} else {
+				chain = false;
+			}
 			if (refs[i] !== childLines) {
 				unchanged = false;
 				refs[i] = childLines;
 			}
+			nextChildren[i] = child;
+			nextCounts[i] = childLines.length;
 		}
+		this.#memoChildren = nextChildren;
+		this.#memoChildRowCounts = nextCounts;
 		this.#memoWidth = width;
+		this.#stablePrefixAccum = Math.min(this.#stablePrefixAccum, stableVsPrev);
 		if (unchanged) return this.#memoLines!;
 		const lines: string[] = [];
 		for (let i = 0; i < count; i++) {
@@ -569,6 +621,19 @@ export class Container implements Component {
 		}
 		this.#memoLines = lines;
 		return lines;
+	}
+
+	getRenderStablePrefixRows(observed: readonly string[]): number {
+		// A row-transforming subclass override returns a different array than
+		// this base accounting tracks: claim nothing for it.
+		if (observed !== this.#memoLines) {
+			this.#stablePrefixAccum = 0;
+			return 0;
+		}
+		const report = this.#stablePrefixAccum;
+		// Reading consumes: re-base to the current concatenation in full.
+		this.#stablePrefixAccum = observed.length;
+		return report;
 	}
 }
 
@@ -637,7 +702,8 @@ interface PreparedLine {
 	line: string;
 }
 
-const SGR_SEQUENCE = /\x1b\[[0-9;:]*m/g;
+// ONE PLACE: SGR grammar owned by utils.ts.
+const SGR_SEQUENCE = SGR_SEQUENCE_GLOBAL;
 
 // SGR coalescing. The renderer's component tree emits a styled span as
 // `<set-color>text<reset>`, so adjacent spans produce runs of byte-adjacent
@@ -1076,6 +1142,10 @@ export class TUI extends Container {
 	#composedFrame: string[] = [];
 	// Per-root-child segment ledger backing the stable-prefix computation.
 	#frameSegments: FrameSegment[] = [];
+	// Segment index of the previous compose's topmost native-scrollback seam,
+	// -1 when none: lets an O(dirty) partial compose carry the seam forward
+	// without re-walking the untouched prefix.
+	#frameFirstSeamIndex = -1;
 	#composeWidth = -1;
 	// Cursor markers stripped at ingestion, ascending by frame row.
 	#frameCursorMarkers: { row: number; col: number }[] = [];
@@ -1130,14 +1200,50 @@ export class TUI extends Container {
 		this.#nativeScrollbackLiveRegionStart = undefined;
 		const children = this.children;
 		const previousSegments = this.#frameSegments;
-		const segments: FrameSegment[] = new Array(children.length);
 		// A width change re-renders every child; nothing carries over.
 		let chainStable = this.#composeWidth === width;
 		this.#composeWidth = width;
 		let offset = 0;
 		let stableRows = 0;
+		let seamIndex = -1;
+		let index = 0;
 		const partialRoots = this.#partialComposeRoots;
-		for (let index = 0; index < children.length; index++) {
+		let segments: FrameSegment[];
+		if (chainStable && partialRoots !== null && previousSegments.length === children.length) {
+			// O(dirty) compose: #resolvePartialComposeRoots verified every index
+			// of the ledger against the current child list, and content mutations
+			// route through render requests that would have made this frame a
+			// full one — so every segment before the first requested root is
+			// valid verbatim. Mutate the ledger in place from that index instead
+			// of re-walking and re-allocating a segment per untouched child.
+			segments = previousSegments;
+			let firstDirty = children.length;
+			for (const root of partialRoots) {
+				const at = children.indexOf(root);
+				if (at !== -1 && at < firstDirty) firstDirty = at;
+			}
+			index = firstDirty;
+			if (index < segments.length) {
+				offset = segments[index]!.start;
+			} else if (segments.length > 0) {
+				const last = segments[segments.length - 1]!;
+				offset = last.start + last.rowCount;
+			}
+			stableRows = offset;
+			// Carry the topmost seam when it lives in the skipped prefix
+			// (topmost wins, so nothing below can override it).
+			const prevSeam = this.#frameFirstSeamIndex;
+			if (prevSeam >= 0 && prevSeam < index) {
+				const seg = segments[prevSeam]!;
+				if (seg.liveLocalStart !== undefined) {
+					this.#nativeScrollbackLiveRegionStart = seg.start + seg.liveLocalStart;
+					seamIndex = prevSeam;
+				}
+			}
+		} else {
+			segments = new Array(children.length);
+		}
+		for (; index < children.length; index++) {
 			const child = children[index]!;
 			const previous = previousSegments[index];
 			// Component-scoped frame: a root child outside every requested
@@ -1150,6 +1256,22 @@ export class TUI extends Container {
 			let liveLocalStart: number | undefined;
 			let reported: number | undefined;
 			if (reuse) {
+				// Fast path: nothing above this child moved either, so the previous
+				// segment is valid verbatim — keep the object instead of re-ledgering
+				// it (a long transcript otherwise allocates one segment per untouched
+				// child per frame). Same accounting as the slow path: a byte- and
+				// position-identical segment adds its full row count to the stable
+				// prefix and keeps the chain alive.
+				if (chainStable && previous.start === offset) {
+					if (previous.liveLocalStart !== undefined && this.#nativeScrollbackLiveRegionStart === undefined) {
+						this.#nativeScrollbackLiveRegionStart = previous.start + previous.liveLocalStart;
+						seamIndex = index;
+					}
+					segments[index] = previous;
+					stableRows += previous.rowCount;
+					offset += previous.rowCount;
+					continue;
+				}
 				childLines = previous.lines;
 				liveLocalStart = previous.liveLocalStart;
 			} else {
@@ -1177,7 +1299,7 @@ export class TUI extends Container {
 				// what ends up in the composed frame). Reused segments are
 				// deliberately NOT read — their baseline must stay anchored to
 				// the last render the engine actually observed.
-				reported = getRenderStablePrefixRows(child);
+				reported = getRenderStablePrefixRows(child, childLines);
 			}
 			// Topmost seam wins. Commits are prefix-only: the first child that
 			// reports a live region already bounds everything below it, so a
@@ -1187,6 +1309,7 @@ export class TUI extends Container {
 			// history.
 			if (liveLocalStart !== undefined && this.#nativeScrollbackLiveRegionStart === undefined) {
 				this.#nativeScrollbackLiveRegionStart = offset + liveLocalStart;
+				seamIndex = index;
 			}
 			if (chainStable) {
 				if (previous !== undefined && previous.component === child && previous.start === offset) {
@@ -1219,6 +1342,7 @@ export class TUI extends Container {
 			offset += childLines.length;
 		}
 		this.#frameSegments = segments;
+		this.#frameFirstSeamIndex = seamIndex;
 
 		const frame = this.#composedFrame;
 		// Defensive clamp: stable rows can never exceed what the previous

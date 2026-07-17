@@ -21,7 +21,7 @@ import { streamOpenAICompletions } from "@veyyon/pi-ai/providers/openai-completi
 import { streamOpenAIResponses } from "@veyyon/pi-ai/providers/openai-responses";
 import { buildModel } from "@veyyon/pi-catalog/build";
 import type { Model, ModelSpec } from "@veyyon/pi-catalog/types";
-import { $env, readSseJson } from "@veyyon/pi-utils";
+import { $env, asRecord, joinTextBlocks, readSseJson } from "@veyyon/pi-utils";
 import type {
 	PerplexityRequest,
 	PerplexitySearchResult,
@@ -147,11 +147,6 @@ function mergeOAuthEventSnapshot(
 	}
 
 	return merged;
-}
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-	if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
-	return value as Record<string, unknown>;
 }
 
 function parseJson(text: string): unknown | null {
@@ -679,14 +674,6 @@ async function callPerplexityAsk(
 	};
 }
 
-function assistantText(message: AssistantMessage): string {
-	let text = "";
-	for (const block of message.content) {
-		if (block.type === "text") text += block.text;
-	}
-	return text;
-}
-
 function isPerplexitySearchResult(value: unknown): value is PerplexitySearchResult {
 	const record = asRecord(value);
 	return typeof record?.url === "string" && record.url.length > 0;
@@ -758,7 +745,7 @@ function usageFromAssistant(usage: Usage): SearchResponse["usage"] | undefined {
 function parseStreamedApiResponse(message: AssistantMessage, metadata: PerplexityApiStreamMetadata): SearchResponse {
 	const { sources, citations } = buildApiSources(metadata);
 	const relatedQuestions = relatedQuestionsFromMetadata(metadata);
-	const answer = assistantText(message);
+	const answer = joinTextBlocks(message.content, "");
 
 	return {
 		provider: "perplexity",

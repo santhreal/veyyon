@@ -1,3 +1,4 @@
+import { collapseWhitespace, joinTextBlocks } from "@veyyon/pi-utils";
 import { INTENT_FIELD } from "@veyyon/pi-wire";
 import type { AssistantMessage, ToolCall, ToolResultMessage } from "../types";
 
@@ -44,7 +45,7 @@ function canonicalizeToolCallValue(value: unknown): unknown {
 }
 
 function summarizeText(text: string, limit: number): string {
-	let summary = text.replace(/\s+/g, " ").trim();
+	let summary = collapseWhitespace(text);
 	if (summary.length > limit) {
 		summary = `${summary.slice(0, limit)}…`;
 	}
@@ -55,13 +56,7 @@ function summarizeToolResult(toolResults: readonly ToolResultMessage[], toolCall
 	const result = toolResults.find(candidate => candidate.toolCallId === toolCallId);
 	if (!result) return "";
 
-	const textParts: string[] = [];
-	for (const block of result.content) {
-		if (block.type === "text") {
-			textParts.push(block.text);
-		}
-	}
-	return summarizeText(textParts.join("\n"), RESULT_SUMMARY_LIMIT);
+	return summarizeText(joinTextBlocks(result.content), RESULT_SUMMARY_LIMIT);
 }
 
 /** Detects consecutive identical assistant tool calls across model turns. */

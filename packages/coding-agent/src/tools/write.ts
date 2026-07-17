@@ -11,7 +11,7 @@ import type {
 	ToolTier,
 } from "@veyyon/pi-agent-core";
 import type { Component } from "@veyyon/pi-tui";
-import { isEnoent, isRecord, prompt, untilAborted } from "@veyyon/pi-utils";
+import { isEnoent, isRecord, prompt, URL_SCHEME_RE, untilAborted } from "@veyyon/pi-utils";
 import { type } from "arktype";
 
 import { canonicalSnapshotKey, getFileSnapshotStore } from "../edit/file-snapshot-store";
@@ -393,7 +393,7 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 		// scheme whose handler exposes a `write` hook mutates handler-owned user
 		// data (e.g. vault:// notes) and must take the write tier so always-ask
 		// mode actually prompts.
-		const match = /^([a-z][a-z0-9+.-]*):\/\//i.exec(path.trim());
+		const match = URL_SCHEME_RE.exec(path.trim());
 		const handler = match ? InternalUrlRouter.instance().getHandler(match[1]!.toLowerCase()) : undefined;
 		return handler?.write ? "write" : "read";
 	};
@@ -1158,7 +1158,7 @@ function formatLineCountSuffix(lineCount: number, uiTheme: Theme): string {
 	return uiTheme.fg("dim", ` · ${lineCount} line${lineCount === 1 ? "" : "s"}`);
 }
 
-function normalizeDisplayText(text: unknown): string {
+function coerceDisplayText(text: unknown): string {
 	let displayText = "";
 	if (typeof text === "string") {
 		displayText = text;
@@ -1189,7 +1189,7 @@ function formatStreamingContent(
 ): string {
 	if (!content) return "";
 	const bodyText = cachedRenderedString(cache, uiTheme, expanded, language ?? "", content, () => {
-		const lines = normalizeDisplayText(content).split("\n");
+		const lines = coerceDisplayText(content).split("\n");
 		const totalLines = lines.length;
 		// Collapsed: follow the streaming edge with a bounded tail window so the box
 		// stays short enough not to strand its scrolled-off head above the viewport
@@ -1230,7 +1230,7 @@ function renderContentPreview(
 ): string {
 	if (!content) return "";
 	return cachedRenderedString(cache, uiTheme, expanded, language ?? "", content, () => {
-		const rawLines = normalizeDisplayText(content).split("\n");
+		const rawLines = coerceDisplayText(content).split("\n");
 		const totalLines = rawLines.length;
 		const maxLines = expanded ? totalLines : Math.min(totalLines, WRITE_PREVIEW_LINES);
 		const visibleLines = rawLines.slice(0, maxLines);
@@ -1273,7 +1273,7 @@ export const writeToolRenderer = {
 			},
 			uiTheme,
 		);
-		const content = normalizeDisplayText(args.content);
+		const content = coerceDisplayText(args.content);
 		const streamingCache = createRenderedStringCache();
 		return framedBlock(uiTheme, width => {
 			const body = content
@@ -1307,7 +1307,7 @@ export const writeToolRenderer = {
 		const rawPath =
 			typeof args?.file_path === "string" ? args.file_path : typeof args?.path === "string" ? args.path : "";
 		const filePath = shortenPath(rawPath);
-		const fileContent = normalizeDisplayText(args?.content);
+		const fileContent = coerceDisplayText(args?.content);
 		const lang = rawPath ? getLanguageFromPath(rawPath) : undefined;
 		const langIcon = uiTheme.fg("muted", uiTheme.getLangIcon(lang));
 		// The header shows the cwd-relative path but links to the absolute path the

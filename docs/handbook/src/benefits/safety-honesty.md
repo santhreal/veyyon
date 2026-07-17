@@ -7,7 +7,7 @@ fallback is treated as a bug.
 
 ## What this means in practice
 
-- File writes and commands run through the approval mode you set.
+- File writes and commands run through approval and sandbox policy.
 - Tool output records truncation instead of hiding it.
 - Bad config fails with context instead of falling back silently.
 - Repair abstains when the schema does not prove a safe fix.

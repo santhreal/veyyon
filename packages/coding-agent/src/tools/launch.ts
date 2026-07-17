@@ -433,7 +433,7 @@ function daemonMeta(daemon: DaemonSnapshot, theme: Theme): string[] {
 }
 
 /** Op-specific call context (command line, log filters, wait condition, send payload). */
-function callMeta(args: LaunchRenderArgs): string[] {
+function launchCallMeta(args: LaunchRenderArgs): string[] {
 	const meta: string[] = [];
 	switch (args.op) {
 		case "start":
@@ -469,7 +469,7 @@ export const launchToolRenderer = {
 				spinnerFrame: options.spinnerFrame,
 				title: `Launch ${args.op ?? "…"}`,
 				description: target ? replaceTabs(target) : undefined,
-				meta: callMeta(args),
+				meta: launchCallMeta(args),
 			},
 			theme,
 		);
@@ -503,7 +503,7 @@ export const launchToolRenderer = {
 		} else {
 			switch (op) {
 				case "start": {
-					meta.push(...callMeta(params));
+					meta.push(...launchCallMeta(params));
 					if (daemon) meta.push(...daemonMeta(daemon, theme));
 					if (daemon?.readyMatch) body.push(theme.fg("dim", `log matched: ${replaceTabs(daemon.readyMatch)}`));
 					if (daemon?.state === "failed" && daemon.exitReason)
@@ -522,7 +522,7 @@ export const launchToolRenderer = {
 					break;
 				}
 				case "send":
-					meta.push(...callMeta(params));
+					meta.push(...launchCallMeta(params));
 					if (daemon) meta.push(...daemonMeta(daemon, theme));
 					break;
 				case "stop":
@@ -530,7 +530,7 @@ export const launchToolRenderer = {
 					if (daemon) meta.push(...daemonMeta(daemon, theme));
 					break;
 				case "wait": {
-					meta.push(...callMeta(params));
+					meta.push(...launchCallMeta(params));
 					if (daemon) meta.push(...daemonMeta(daemon, theme));
 					if (details?.matched) body.push(theme.fg("dim", `matched: ${replaceTabs(details.matched)}`));
 					if (details?.timedOut) {

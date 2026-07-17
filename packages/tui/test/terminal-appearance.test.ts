@@ -788,6 +788,210 @@ describe("ProcessTerminal DECRQM + in-band resize (DEC 2026/2048)", () => {
 	});
 });
 
+describe("ProcessTerminal OSC 11 background paint (set/reset)", () => {
+	beforeEach(() => {
+		Object.defineProperty(process.stdin, "isTTY", { value: true, configurable: true });
+		Object.defineProperty(process.stdout, "isTTY", { value: true, configurable: true });
+		Object.defineProperty(process.stdin, "setRawMode", { value: vi.fn(), configurable: true });
+		previousHeadless = setTerminalHeadless(false);
+	});
+
+	afterEach(() => {
+		vi.useRealTimers();
+		vi.restoreAllMocks();
+		setTerminalHeadless(previousHeadless);
+		restoreProperty(process.stdin, "isTTY", stdinIsTtyDescriptor);
+		restoreProperty(process.stdout, "isTTY", stdoutIsTtyDescriptor);
+		restoreProperty(process.stdin, "setRawMode", stdinSetRawModeDescriptor);
+	});
+
+	function setup() {
+		const writes: string[] = [];
+		vi.spyOn(process, "kill").mockReturnValue(true);
+		vi.spyOn(process.stdin, "resume").mockImplementation(() => process.stdin);
+		vi.spyOn(process.stdin, "pause").mockImplementation(() => process.stdin);
+		vi.spyOn(process.stdin, "setEncoding").mockImplementation(() => process.stdin);
+		vi.spyOn(process.stdout, "write").mockImplementation(chunk => {
+			writes.push(typeof chunk === "string" ? chunk : chunk.toString());
+			return true;
+		});
+
+		const terminal = new ProcessTerminal();
+		terminal.start(
+			() => {},
+			() => {},
+		);
+
+		const setCount = () => writes.filter(w => w === "\x1b]11;rgb:00/00/00\x07").length;
+		const resetCount = () => writes.filter(w => w === "\x1b]111\x07").length;
+
+		return { terminal, writes, setCount, resetCount };
+	}
+
+	it("retains the exact reported background hex, including 4-digit channels", () => {
+		const { terminal } = setup();
+
+		// Catppuccin Mocha ground reported as 16-bit channels.
+		process.stdin.emit("data", "\x1b]11;rgb:1e1e/1e1e/2e2e\x07");
+		process.stdin.emit("data", "\x1b[?1;2c");
+
+		expect(terminal.backgroundColor).toBe("#1e1e2e");
+		expect(terminal.appearance).toBe("dark");
+
+		terminal.stop();
+	});
+
+	it("retains 2-digit channel replies verbatim", () => {
+		const { terminal } = setup();
+
+		process.stdin.emit("data", "\x1b]11;rgb:28/2a/36\x07");
+		process.stdin.emit("data", "\x1b[?1;2c");
+
+		expect(terminal.backgroundColor).toBe("#282a36");
+
+		terminal.stop();
+	});
+
+	it("fires onBackgroundColorChange on change, dedups repeats, and replays to late subscribers", () => {
+		const { terminal } = setup();
+		const colors: string[] = [];
+		terminal.onBackgroundColorChange(hex => colors.push(hex));
+
+		process.stdin.emit("data", "\x1b]11;rgb:0000/0000/0000\x07");
+		process.stdin.emit("data", "\x1b[?1;2c");
+		expect(colors).toEqual(["#000000"]);
+
+		// Same color again — deduped, no second fire.
+		process.stdin.emit("data", "\x1b]11;rgb:0000/0000/0000\x07");
+		process.stdin.emit("data", "\x1b[?1;2c");
+		expect(colors).toEqual(["#000000"]);
+
+		// Late subscriber gets the retained value replayed immediately.
+		const late: string[] = [];
+		terminal.onBackgroundColorChange(hex => late.push(hex));
+		expect(late).toEqual(["#000000"]);
+
+		terminal.stop();
+	});
+
+	it("setBackgroundColor writes the OSC 11 set sequence and stop() restores with OSC 111", () => {
+		const { terminal, setCount, resetCount } = setup();
+
+		terminal.setBackgroundColor("#000000");
+		expect(setCount()).toBe(1);
+		expect(resetCount()).toBe(0);
+
+		terminal.stop();
+		expect(resetCount()).toBe(1);
+	});
+
+	it("resetBackgroundColor restores once and is a no-op afterwards (stop() adds no second reset)", () => {
+		const { terminal, resetCount } = setup();
+
+		terminal.setBackgroundColor("#000000");
+		terminal.resetBackgroundColor();
+		expect(resetCount()).toBe(1);
+
+		terminal.resetBackgroundColor();
+		expect(resetCount()).toBe(1);
+
+		terminal.stop();
+		expect(resetCount()).toBe(1);
+	});
+
+	it("never writes OSC 111 when the background was never overridden", () => {
+		const { terminal, resetCount } = setup();
+
+		terminal.resetBackgroundColor();
+		terminal.stop();
+
+		expect(resetCount()).toBe(0);
+	});
+
+	// Unsolicited OSC 11 replies are dropped; a mid-session update arrives as a
+	// Mode 2031 notification that debounces into a fresh query once the startup
+	// DA1 sentinels (keyboard + OSC 11) have drained. Model that real flow.
+	function reQueryWithReply(reply: string): void {
+		process.stdin.emit("data", "\x1b[?997;1n");
+		vi.advanceTimersByTime(100);
+		process.stdin.emit("data", reply);
+		process.stdin.emit("data", "\x1b[?1;2c");
+	}
+
+	it("ignores the self-echo of its own painted color, keeping the pre-paint background and appearance", () => {
+		vi.useFakeTimers();
+		const { terminal } = setup();
+
+		// Light terminal detected before painting; drain both startup sentinels.
+		process.stdin.emit("data", "\x1b]11;rgb:ffff/ffff/ffff\x07");
+		process.stdin.emit("data", "\x1b[?1;2c");
+		process.stdin.emit("data", "\x1b[?1;2c");
+		expect(terminal.backgroundColor).toBe("#ffffff");
+		expect(terminal.appearance).toBe("light");
+
+		terminal.setBackgroundColor("#000000");
+
+		// The Mode 2031 re-query reads back the color WE set — pure echo. It must
+		// not clobber the retained terminal background or flip appearance to
+		// "dark" (which would feed the painted color back into theme detection).
+		reQueryWithReply("\x1b]11;rgb:0000/0000/0000\x07");
+		expect(terminal.backgroundColor).toBe("#ffffff");
+		expect(terminal.appearance).toBe("light");
+
+		terminal.stop();
+	});
+
+	it("still applies a genuinely different reply while painted (external theme switch clobbered the paint)", () => {
+		vi.useFakeTimers();
+		const { terminal } = setup();
+
+		process.stdin.emit("data", "\x1b]11;rgb:ffff/ffff/ffff\x07");
+		process.stdin.emit("data", "\x1b[?1;2c");
+		process.stdin.emit("data", "\x1b[?1;2c");
+
+		terminal.setBackgroundColor("#000000");
+
+		// The user switched their terminal theme: the terminal reset its own
+		// background, so the reply reports a third color. That is real state.
+		reQueryWithReply("\x1b]11;rgb:2828/2a2a/3636\x07");
+		expect(terminal.backgroundColor).toBe("#282a36");
+		expect(terminal.appearance).toBe("dark");
+
+		terminal.stop();
+	});
+
+	it("resumes accepting its former painted color after resetBackgroundColor", () => {
+		vi.useFakeTimers();
+		const { terminal } = setup();
+
+		process.stdin.emit("data", "\x1b]11;rgb:ffff/ffff/ffff\x07");
+		process.stdin.emit("data", "\x1b[?1;2c");
+		process.stdin.emit("data", "\x1b[?1;2c");
+
+		terminal.setBackgroundColor("#000000");
+		terminal.resetBackgroundColor();
+
+		// No longer overridden: a black reply is the terminal's own truth now.
+		reQueryWithReply("\x1b]11;rgb:0000/0000/0000\x07");
+		expect(terminal.backgroundColor).toBe("#000000");
+		expect(terminal.appearance).toBe("dark");
+
+		terminal.stop();
+	});
+
+	it("setBackgroundColor rejects anything that is not #RRGGBB", () => {
+		const { terminal, setCount, resetCount } = setup();
+
+		for (const bad of ["000000", "#00000", "#0000000", "#gggggg", "black", ""]) {
+			expect(() => terminal.setBackgroundColor(bad)).toThrow("setBackgroundColor requires a #RRGGBB color");
+		}
+		// A rejected set must not leave the override armed: stop() has nothing to restore.
+		expect(setCount()).toBe(0);
+		terminal.stop();
+		expect(resetCount()).toBe(0);
+	});
+});
+
 describe("OSC 66 text-sizing capability", () => {
 	it("advertises text sizing only for Kitty", () => {
 		// OSC 66 is a Kitty-only protocol; any other terminal must report the

@@ -143,6 +143,11 @@ function buildStreamOptions(parsed: ParsedFormatRequest, api: Api, signal: Abort
 	if (options.presencePenalty !== undefined && !isCodex) opts.presencePenalty = options.presencePenalty;
 	if (options.frequencyPenalty !== undefined && !isCodex) opts.frequencyPenalty = options.frequencyPenalty;
 	if (options.repetitionPenalty !== undefined && !isCodex) opts.repetitionPenalty = options.repetitionPenalty;
+	if (options.seed !== undefined && !isCodex) opts.seed = options.seed;
+	if (options.logitBias !== undefined && !isCodex) opts.logitBias = options.logitBias;
+	if (options.responseFormat !== undefined && !isCodex) opts.responseFormat = options.responseFormat;
+	if (options.parallelToolCalls !== undefined && !isCodex) opts.parallelToolCalls = options.parallelToolCalls;
+	if (options.user !== undefined) opts.user = options.user;
 	if (options.metadata !== undefined) opts.metadata = options.metadata;
 	if (options.headers !== undefined) opts.headers = { ...(opts.headers ?? {}), ...options.headers };
 	if (options.toolChoice !== undefined) {
@@ -176,27 +181,15 @@ function buildStreamOptions(parsed: ParsedFormatRequest, api: Api, signal: Abort
 		};
 		opts.reasoning ??= effort;
 	}
-	// Fields that don't yet have a matching pi-ai `SimpleStreamOptions` slot.
-	// Surfaced once in debug logs so they show up when wiring a new provider,
-	// but NEVER widened into `options.extra` — every consumer would have to
-	// re-implement the typed parse to read them back out.
-	// TODO(pi-ai): land first-class fields and replace these blocks.
-	if (
-		options.parallelToolCalls !== undefined ||
-		options.previousResponseId !== undefined ||
-		options.seed !== undefined ||
-		options.logitBias !== undefined ||
-		options.user !== undefined ||
-		options.responseFormat !== undefined
-	) {
-		logger.debug("auth-gateway dropped unsupported typed options", {
+	// `previous_response_id` is deliberately NOT forwarded: the gateway always
+	// sends full context, and the openai-responses provider manages its own
+	// response chaining (session-keyed baselines + delta requests) — a
+	// client-supplied id would point into a chain the provider never created.
+	// Loud so operators see the dropped chaining hint.
+	if (options.previousResponseId !== undefined) {
+		logger.debug("auth-gateway dropped previous_response_id (provider manages its own response chain)", {
 			api,
-			parallelToolCalls: options.parallelToolCalls,
 			previousResponseId: options.previousResponseId,
-			seed: options.seed,
-			hasLogitBias: options.logitBias !== undefined,
-			user: options.user,
-			hasResponseFormat: options.responseFormat !== undefined,
 		});
 	}
 	return opts;

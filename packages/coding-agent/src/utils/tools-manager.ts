@@ -18,16 +18,16 @@ function isAbortLikeError(error: unknown): boolean {
 	return error instanceof Error && (error.name === "AbortError" || error.name === "TimeoutError");
 }
 
-function abortReason(signal: AbortSignal): unknown {
+function domAbortReason(signal: AbortSignal): unknown {
 	return signal.reason ?? new DOMException("The operation was aborted.", "AbortError");
 }
 
 async function readBodyChunk(reader: BodyReader, signal: AbortSignal | undefined): Promise<BodyReadResult> {
 	if (!signal) return await reader.read();
-	if (signal.aborted) throw abortReason(signal);
+	if (signal.aborted) throw domAbortReason(signal);
 
 	const abort = Promise.withResolvers<BodyReadResult>();
-	const onAbort = () => abort.reject(abortReason(signal));
+	const onAbort = () => abort.reject(domAbortReason(signal));
 	signal.addEventListener("abort", onAbort, { once: true });
 	try {
 		return await Promise.race([reader.read(), abort.promise]);

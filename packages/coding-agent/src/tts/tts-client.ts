@@ -1,7 +1,7 @@
 import { logger } from "@veyyon/pi-utils";
 import {
-	createUnavailableWorker,
-	createWorkerHandle,
+	createRefCountedWorkerHandle,
+	createUnavailableRefCountedWorker,
 	createWorkerSubprocess,
 	logWorkerMessage,
 	type RefCountedWorkerHandle,
@@ -12,7 +12,6 @@ import {
 	spawnWorkerOrUnavailable,
 } from "../subprocess/worker-client";
 import { tinyWorkerEnv } from "../tiny/title-client";
-import { safeSend } from "../utils/ipc";
 import { isTtsLocalModelKey, type TtsLocalModelKey } from "./models";
 import type { TtsProgressEvent, TtsWorkerInbound, TtsWorkerOutbound } from "./tts-protocol";
 
@@ -145,41 +144,10 @@ export function createTtsSubprocess(): SpawnedSubprocess<TtsWorkerOutbound> {
 	});
 }
 
-function wrapSubprocess(
-	spawned: SpawnedSubprocess<TtsWorkerOutbound>,
-): RefCountedWorkerHandle<TtsWorkerInbound, TtsWorkerOutbound> {
-	const { proc } = spawned;
-	return {
-		...createWorkerHandle<TtsWorkerInbound, TtsWorkerOutbound>(spawned, message => safeSend(proc, message, "tts")),
-		ref() {
-			try {
-				proc.ref();
-			} catch {
-				// Already gone.
-			}
-		},
-		unref() {
-			try {
-				proc.unref();
-			} catch {
-				// Already gone.
-			}
-		},
-	};
-}
-
-function spawnInlineUnavailableWorker(error: unknown): RefCountedWorkerHandle<TtsWorkerInbound, TtsWorkerOutbound> {
-	return {
-		...createUnavailableWorker<TtsWorkerInbound, TtsWorkerOutbound>(error),
-		ref() {},
-		unref() {},
-	};
-}
-
 function spawnTtsWorker(): RefCountedWorkerHandle<TtsWorkerInbound, TtsWorkerOutbound> {
 	return spawnWorkerOrUnavailable(
-		() => wrapSubprocess(createTtsSubprocess()),
-		spawnInlineUnavailableWorker,
+		() => createRefCountedWorkerHandle<TtsWorkerInbound, TtsWorkerOutbound>(createTtsSubprocess(), "tts"),
+		createUnavailableRefCountedWorker<TtsWorkerInbound, TtsWorkerOutbound>,
 		"TTS worker spawn failed; local TTS disabled",
 	);
 }
@@ -230,7 +198,7 @@ export class TtsClient {
 				this.#deletePending(id);
 			}
 		} catch (error) {
-			logger.debug("tts: local synthesis failed", {
+			logger.warn("tts: local synthesis failed; no audio produced", {
 				modelKey,
 				error: error instanceof Error ? error.message : String(error),
 			});
@@ -326,7 +294,7 @@ export class TtsClient {
 				this.#deletePending(id);
 			}
 		} catch (error) {
-			logger.debug("tts: local model download failed", {
+			logger.warn("tts: local model download failed", {
 				modelKey,
 				error: error instanceof Error ? error.message : String(error),
 			});
@@ -471,5 +439,9 @@ export async function smokeTestTtsWorker({
 }: {
 	timeoutMs?: number;
 } = {}): Promise<void> {
-	await smokeTestWorker(wrapSubprocess(createTtsSubprocess()), "tts worker", timeoutMs);
+	await smokeTestWorker(
+		createRefCountedWorkerHandle<TtsWorkerInbound, TtsWorkerOutbound>(createTtsSubprocess(), "tts"),
+		"tts worker",
+		timeoutMs,
+	);
 }

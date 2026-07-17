@@ -50,7 +50,7 @@ export function parseFileDiffs(diff: string): FileDiff[] {
 	return sections;
 }
 
-export function parseDiffHunks(diff: string): FileHunks[] {
+export function parseCommitDiffHunks(diff: string): FileHunks[] {
 	const files = parseFileDiffs(diff);
 	return files.map(file => parseFileHunks(file));
 }

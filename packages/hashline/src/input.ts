@@ -10,7 +10,14 @@
 import * as path from "node:path";
 import { applyEdits } from "./apply";
 import { resolveBlockEdits } from "./block";
-import { HL_FILE_HASH_EXAMPLES, HL_FILE_HASH_LENGTH, HL_FILE_HASH_SEP, HL_FILE_PREFIX, HL_FILE_SUFFIX } from "./format";
+import {
+	HL_FILE_HASH_EXAMPLES,
+	HL_FILE_HASH_LENGTH,
+	HL_FILE_HASH_SEP,
+	HL_FILE_PREFIX,
+	HL_FILE_SUFFIX,
+	UNIFIED_DIFF_HUNK_HEADER_RE,
+} from "./format";
 import { parsePatch, parsePatchStreaming } from "./parser";
 import { Tokenizer } from "./tokenizer";
 import type { ApplyResult, BlockResolver, Edit, FileOp, SplitOptions } from "./types";
@@ -178,7 +185,7 @@ function splitRawSections(input: string, options: SplitOptions = {}): RawSection
 		// Catch unified-diff hunk-header contamination on the first line so
 		// the model sees a focused error.
 		const firstTrimmed = firstLine.trimEnd();
-		if (/^@@\s+[-+]?\d+,\d+\s+[-+]?\d+,\d+\s+@@/.test(firstTrimmed)) {
+		if (UNIFIED_DIFF_HUNK_HEADER_RE.test(firstTrimmed)) {
 			throw new Error(
 				"unified-diff hunk header (`@@ -N,M +N,M @@`) is not valid in hashline. " +
 					`File sections start with \`${HL_FILE_PREFIX}path${HL_FILE_HASH_SEP}HASH${HL_FILE_SUFFIX}\`; use \`replace\`, \`delete\`, or \`insert\` ops.`,

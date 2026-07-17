@@ -7,10 +7,10 @@ import type {
 	UsageLimit,
 	UsageProvider,
 	UsageReport,
-	UsageStatus,
 	UsageWindow,
 } from "../usage";
 import { isRecord } from "../utils";
+import { usageStatusFromUsedFraction } from "./shared";
 
 const DEFAULT_ENDPOINT = "https://api.z.ai";
 const QUOTA_PATH = "/api/monitor/usage/quota/limit";
@@ -94,7 +94,7 @@ function parseLimitItem(value: unknown): ZaiUsageLimitItem | null {
 	};
 }
 
-function buildUsageAmount(args: {
+function zaiUsageAmount(args: {
 	used: number | undefined;
 	limit: number | undefined;
 	remaining: number | undefined;
@@ -118,14 +118,7 @@ function buildUsageAmount(args: {
 	};
 }
 
-function getUsageStatus(usedFraction: number | undefined): UsageStatus | undefined {
-	if (usedFraction === undefined) return undefined;
-	if (usedFraction >= 1) return "exhausted";
-	if (usedFraction >= 0.9) return "warning";
-	return "ok";
-}
-
-function formatDate(value: Date): string {
+function formatZaiQueryTimestamp(value: Date): string {
 	const pad = (input: number) => String(input).padStart(2, "0");
 	return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}+${pad(value.getHours())}:${pad(
 		value.getMinutes(),
@@ -189,8 +182,8 @@ function requestQuotaLabel(parsed: ZaiUsageLimitItem): string {
 
 function buildModelUsageUrl(baseUrl: string, now: Date): string {
 	const start = new Date(now.getTime() - SEVEN_DAYS_MS);
-	const startTime = formatDate(start);
-	const endTime = formatDate(now);
+	const startTime = formatZaiQueryTimestamp(start);
+	const endTime = formatZaiQueryTimestamp(now);
 	return `${baseUrl}${MODEL_USAGE_PATH}?startTime=${encodeURIComponent(startTime)}&endTime=${encodeURIComponent(endTime)}`;
 }
 
@@ -259,7 +252,7 @@ async function fetchZaiUsage(params: UsageFetchParams, ctx: UsageFetchContext): 
 		const parsed = parseLimitItem(rawLimit);
 		if (!parsed) continue;
 		if (parsed.type === "TOKENS_LIMIT") {
-			const amount = buildUsageAmount({
+			const amount = zaiUsageAmount({
 				used: parsed.currentValue,
 				limit: parsed.usage,
 				remaining: parsed.remaining,
@@ -277,12 +270,12 @@ async function fetchZaiUsage(params: UsageFetchParams, ctx: UsageFetchContext): 
 				},
 				window,
 				amount,
-				status: getUsageStatus(amount.usedFraction),
+				status: amount.usedFraction === undefined ? undefined : usageStatusFromUsedFraction(amount.usedFraction),
 			});
 		}
 		if (parsed.type === "TIME_LIMIT") {
 			const window = buildZaiWindow(parsed);
-			const amount = buildUsageAmount({
+			const amount = zaiUsageAmount({
 				used: parsed.currentValue,
 				limit: parsed.usage,
 				remaining: parsed.remaining,
@@ -301,7 +294,7 @@ async function fetchZaiUsage(params: UsageFetchParams, ctx: UsageFetchContext): 
 				},
 				window,
 				amount,
-				status: getUsageStatus(amount.usedFraction),
+				status: amount.usedFraction === undefined ? undefined : usageStatusFromUsedFraction(amount.usedFraction),
 			});
 		}
 	}

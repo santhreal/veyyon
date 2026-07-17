@@ -196,9 +196,12 @@ export class SelectorController {
 							this.ctx.ui.requestRender();
 						},
 						getStatusLinePreview: () => {
-							// Return the rendered status line for inline preview
-							const availableWidth = this.ctx.editor.getTopBorderAvailableWidth(this.ctx.ui.terminal.columns);
-							return this.ctx.statusLine.getTopBorder(availableWidth).content;
+							// Preview the quiet composer chrome (the bordered bar is gone):
+							// location above, capability below — two lines, one honest sample.
+							const { locationLine, capabilityLine } = this.ctx.statusLine.renderQuietLines(
+								this.ctx.ui.terminal.columns,
+							);
+							return [locationLine, capabilityLine].filter((line): line is string => line !== null).join("\n");
 						},
 						onPluginsChanged: async () => {
 							const projectPath = await resolveActiveProjectRegistryPath(this.ctx.sessionManager.getCwd());

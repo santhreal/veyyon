@@ -19,11 +19,14 @@ import type {
 	AssistantMessageEventStream,
 	Context,
 	Message,
+	TextAnnotation,
 	TextContent,
 	ThinkingContent,
 	Tool,
 	ToolCall,
 } from "../types";
+import { sseEvent } from "../utils/sse";
+import { isReasoningEffort, isServiceTier } from "./openai-request-guards";
 import {
 	type OpenAIResponsesFunctionCallItem,
 	type OpenAIResponsesFunctionCallOutputItem,
@@ -39,26 +42,11 @@ export type { ParsedRequest };
 
 // ─── narrow guards ──────────────────────────────────────────────────────────
 
-function isReasoningEffort(value: unknown): value is NonNullable<ParsedRequest["options"]["reasoning"]> {
-	return (
-		value === "minimal" ||
-		value === "low" ||
-		value === "medium" ||
-		value === "high" ||
-		value === "xhigh" ||
-		value === "max"
-	);
-}
-
-function isServiceTier(value: unknown): value is NonNullable<ParsedRequest["options"]["serviceTier"]> {
-	return value === "auto" || value === "default" || value === "flex" || value === "scale" || value === "priority";
-}
-
 function isObj(v: unknown): v is Record<string, unknown> {
 	return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 
-function asString(v: unknown): string | undefined {
+function asOptionalString(v: unknown): string | undefined {
 	return typeof v === "string" ? v : undefined;
 }
 
@@ -165,8 +153,8 @@ function inputContentParts(blocks: OpenAIResponsesInputContent[] | string | unde
 }
 
 type OutputBlockUnion =
-	| { type: "output_text"; text: string }
-	| { type: "text"; text: string }
+	| { type: "output_text"; text: string; annotations?: TextAnnotation[] }
+	| { type: "text"; text: string; annotations?: TextAnnotation[] }
 	| { type: "refusal"; refusal: string };
 
 function outputTextOf(
@@ -179,17 +167,22 @@ function outputTextOf(
 	if (typeof blocks === "string") return blocks.length > 0 ? [textContent(blocks)] : [];
 	if (!blocks) return [];
 	const parts: string[] = [];
+	const annotations: TextAnnotation[] = [];
 	for (const raw of blocks) {
 		const block = raw as OutputBlockUnion;
 		if (block.type === "output_text" || block.type === "text") {
 			parts.push(block.text);
+			if (block.annotations?.length) annotations.push(...block.annotations);
 		} else if (block.type === "refusal") {
 			// Preserve the refusal reason so history replay still carries it.
 			parts.push(`[refusal: ${block.refusal}]`);
 		}
 	}
 	const text = parts.join("");
-	return text.length > 0 ? [textContent(text)] : [];
+	if (text.length === 0) return [];
+	const content = textContent(text);
+	if (annotations.length) content.annotations = annotations;
+	return [content];
 }
 
 // The schema accepts a much wider tool_choice union than the SDK type so the
@@ -275,10 +268,10 @@ function flattenFunctionOutputArray(blocks: readonly unknown[]): string {
 		if (!isObj(raw)) continue;
 		const t = raw.type;
 		if (t === "output_text" || t === "text") {
-			const text = asString(raw.text);
+			const text = asOptionalString(raw.text);
 			if (text) parts.push(text);
 		} else if (t === "refusal") {
-			const refusal = asString(raw.refusal);
+			const refusal = asOptionalString(raw.refusal);
 			if (refusal) parts.push(`[refusal: ${refusal}]`);
 		}
 	}
@@ -536,7 +529,7 @@ type MessageOutputItem = {
 	id: string;
 	role: "assistant";
 	status: "completed";
-	content: Array<{ type: "output_text"; text: string; annotations: never[] }>;
+	content: Array<{ type: "output_text"; text: string; annotations: TextAnnotation[] }>;
 	phase?: AssistantItemPhase;
 };
 
@@ -578,7 +571,7 @@ function buildReasoningItem(part: ThinkingContent): ReasoningOutputItem {
 		try {
 			const sigParsed: unknown = JSON.parse(part.thinkingSignature);
 			if (isObj(sigParsed) && sigParsed.type === "reasoning") {
-				const id = part.itemId ?? asString(sigParsed.id) ?? makeReasoningId();
+				const id = part.itemId ?? asOptionalString(sigParsed.id) ?? makeReasoningId();
 				// Preserve any extra fields (encrypted_content, …) the original carried,
 				// but normalize the summary into the canonical `{type, text}[]` shape.
 				const merged: Record<string, unknown> = { ...sigParsed, type: "reasoning", id };
@@ -605,7 +598,7 @@ function reasoningItemId(part: ThinkingContent): string {
 		try {
 			const sigParsed: unknown = JSON.parse(part.thinkingSignature);
 			if (isObj(sigParsed)) {
-				const id = asString(sigParsed.id);
+				const id = asOptionalString(sigParsed.id);
 				if (id) return id;
 			}
 		} catch {
@@ -660,7 +653,7 @@ function buildOutputItems(message: AssistantMessage): OutputItem[] {
 				};
 				pendingMessageSignature = signature;
 			}
-			pendingMessage.content.push({ type: "output_text", text: part.text, annotations: [] });
+			pendingMessage.content.push({ type: "output_text", text: part.text, annotations: part.annotations ?? [] });
 		} else if (part.type === "thinking") {
 			flushMessage();
 			out.push(buildReasoningItem(part));
@@ -749,7 +742,7 @@ interface OpenMessage {
 	outputIndex: number;
 	contentIndex: number;
 	currentPartText: string;
-	content: Array<{ type: "output_text"; text: string; annotations: never[] }>;
+	content: Array<{ type: "output_text"; text: string; annotations: TextAnnotation[] }>;
 	signature?: MessageSignature;
 }
 interface OpenReasoning {
@@ -770,10 +763,6 @@ interface OpenFunctionCall {
 	customWireName?: string;
 }
 type OpenItem = OpenMessage | OpenReasoning | OpenFunctionCall;
-
-function sseEvent(name: string, data: unknown): string {
-	return `event: ${name}\ndata: ${JSON.stringify(data)}\n\n`;
-}
 
 export function encodeStream(
 	events: AssistantMessageEventStream,
@@ -827,7 +816,7 @@ export function encodeStream(
 					id: itemId,
 					status: "in_progress" as const,
 					role: "assistant" as const,
-					content: [] as Array<{ type: "output_text"; text: string; annotations: never[] }>,
+					content: [] as Array<{ type: "output_text"; text: string; annotations: TextAnnotation[] }>,
 					...(signature?.phase ? { phase: signature.phase } : {}),
 				};
 				emit("response.output_item.added", { output_index: itemOutputIndex, item });
@@ -1042,7 +1031,7 @@ export function encodeStream(
 								if (state.open && state.open.kind !== "function_call") closeOpen();
 								cur = openMessage(signature);
 							}
-							const contentPart = { type: "output_text", text: "", annotations: [] as never[] };
+							const contentPart = { type: "output_text", text: "", annotations: [] as TextAnnotation[] };
 							emit("response.content_part.added", {
 								item_id: cur.itemId,
 								output_index: cur.outputIndex,
@@ -1062,15 +1051,25 @@ export function encodeStream(
 								delta: ev.delta,
 								logprobs: [],
 							});
-							// TODO: when pi-ai surfaces output_text annotations
-							// (web_search citations, …), emit
-							// `response.output_text.annotation.added` here.
 							break;
 						}
 						case "text_end": {
 							if (state.open?.kind !== "message") break;
 							const cur: OpenMessage = state.open;
 							const text = ev.content ?? cur.currentPartText;
+							// pi-ai attaches annotations (web-search citations, …) to the text
+							// block; surface each one before the part closes, as real OpenAI does.
+							const endBlock = ev.partial.content[ev.contentIndex];
+							const annotations = endBlock?.type === "text" ? (endBlock.annotations ?? []) : [];
+							for (const [annotationIndex, annotation] of annotations.entries()) {
+								emit("response.output_text.annotation.added", {
+									item_id: cur.itemId,
+									output_index: cur.outputIndex,
+									content_index: cur.contentIndex,
+									annotation_index: annotationIndex,
+									annotation,
+								});
+							}
 							emit("response.output_text.done", {
 								item_id: cur.itemId,
 								output_index: cur.outputIndex,
@@ -1078,12 +1077,12 @@ export function encodeStream(
 								text,
 								logprobs: [],
 							});
-							cur.content.push({ type: "output_text", text, annotations: [] });
+							cur.content.push({ type: "output_text", text, annotations });
 							emit("response.content_part.done", {
 								item_id: cur.itemId,
 								output_index: cur.outputIndex,
 								content_index: cur.contentIndex,
-								part: { type: "output_text", text, annotations: [] },
+								part: { type: "output_text", text, annotations },
 							});
 							cur.contentIndex += 1;
 							cur.currentPartText = "";

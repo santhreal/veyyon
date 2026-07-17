@@ -2,11 +2,12 @@ import type { Database, SQLQueryBindings } from "bun:sqlite";
 import { logger } from "@veyyon/pi-utils";
 import { transaction } from "../../db";
 import { toUtcIso } from "../../util/datetime";
-import { generateId } from "../../util/ids";
+import { generateTimedId } from "../../util/ids";
 import { currentEmbeddingModel, embeddingsDisabled } from "../embeddings";
 import { EpisodicGraph } from "../episodic-graph";
 import { countExtractedFactCategories, extractFactCategoriesSafe } from "../extraction";
 import { getMnemopiRuntimeOptions, withMnemopiRuntimeOptions } from "../runtime-options";
+import { clampVeracity } from "../veracity-consolidation";
 import { storeExtractedFactCategories } from "./consolidate";
 import { type EmbedItem, scheduleEmbedding, vecAvailable, vecInsert } from "./helpers";
 import type {
@@ -19,7 +20,6 @@ import type {
 	RememberBatchOptions,
 	RememberOptions,
 	TrustTier,
-	Veracity,
 } from "./types";
 
 type Row = Record<string, unknown>;
@@ -47,15 +47,6 @@ type StoreRememberBatchOptions = RememberBatchOptions & {
 	force_veracity?: boolean;
 };
 
-const CANONICAL_VERACITY: Record<string, true> = {
-	true: true,
-	false: true,
-	stated: true,
-	inferred: true,
-	tool: true,
-	imported: true,
-	unknown: true,
-};
 const TRUST_TIERS: Record<string, true> = {
 	STATED: true,
 	DERIVED: true,
@@ -64,7 +55,7 @@ const TRUST_TIERS: Record<string, true> = {
 };
 const SCRATCHPAD_MAX_ITEMS = Number.parseInt(process.env.MNEMOPI_SP_MAX ?? "1000", 10);
 
-function metadataJson(metadata: Metadata | null | undefined): string | null {
+function metadataJsonOrNull(metadata: Metadata | null | undefined): string | null {
 	return metadata == null ? null : JSON.stringify(metadata);
 }
 
@@ -96,12 +87,6 @@ function embeddingText(content: string, options: { embedText?: string; embed_tex
 
 function storedEmbeddingText(content: string, embedText: string): string | null {
 	return embedText === content ? null : embedText;
-}
-
-function clampVeracity(value: unknown): Veracity {
-	if (typeof value !== "string") return "unknown";
-	const normalized = value.trim().toLowerCase();
-	return CANONICAL_VERACITY[normalized] === true ? normalized : "unknown";
 }
 
 function sourceToTrustTier(source: string | null | undefined): TrustTier {
@@ -375,7 +360,7 @@ export function remember(beam: BeamMemoryState, content: string, options: StoreR
 	const importance = options.importance ?? 0.5;
 	const timestamp = options.timestamp ?? toUtcIso();
 	const scope = options.scope ?? "session";
-	const veracity = clampVeracity(options.veracity);
+	const veracity = clampVeracity(options.veracity, "remember.veracity");
 	const trustTier = normalizeTrustTier(options.trustTier, source);
 	const memoryType = options.memoryType ?? "unknown";
 	const validUntil = options.validUntil ?? options.valid_until ?? null;
@@ -432,7 +417,7 @@ export function remember(beam: BeamMemoryState, content: string, options: StoreR
 		return existingId;
 	}
 
-	const memoryId = options.memoryId ?? options.memory_id ?? generateId(content, new Date(timestamp));
+	const memoryId = options.memoryId ?? options.memory_id ?? generateTimedId(content, new Date(timestamp));
 	beam.db
 		.prepare(`
 			INSERT INTO working_memory
@@ -448,7 +433,7 @@ export function remember(beam: BeamMemoryState, content: string, options: StoreR
 			timestamp,
 			beam.sessionId,
 			importance,
-			metadataJson(metadata),
+			metadataJsonOrNull(metadata),
 			validUntil,
 			scope,
 			authorId,
@@ -491,7 +476,7 @@ export function rememberBatch(
 	const timestamp = toUtcIso();
 	const ids: string[] = [];
 	const forceVeracity = options.forceVeracity ?? options.force_veracity ?? false;
-	const defaultVeracity = clampVeracity(options.veracity);
+	const defaultVeracity = clampVeracity(options.veracity, "rememberBatch.veracity");
 	const defaultScope = options.scope ?? "session";
 	const trustTier = normalizeTrustTier(options.trustTier ?? "IMPORTED", "imported");
 
@@ -504,7 +489,7 @@ export function rememberBatch(
 		`);
 		for (const item of items) {
 			const itemTimestamp = item.timestamp ?? timestamp;
-			const memoryId = generateId(item.content, new Date(itemTimestamp));
+			const memoryId = generateTimedId(item.content, new Date(itemTimestamp));
 			ids.push(memoryId);
 			const source = item.source ?? "conversation";
 			const storeItem = item as StoreRememberOptions;
@@ -512,7 +497,7 @@ export function rememberBatch(
 			const itemVeracity = forceVeracity
 				? defaultVeracity
 				: item.veracity !== undefined
-					? clampVeracity(item.veracity)
+					? clampVeracity(item.veracity, "rememberBatch.item.veracity")
 					: defaultVeracity;
 			statement.run(
 				memoryId,
@@ -522,7 +507,7 @@ export function rememberBatch(
 				itemTimestamp,
 				beam.sessionId,
 				item.importance ?? 0.5,
-				metadataJson(item.metadata ?? null),
+				metadataJsonOrNull(item.metadata ?? null),
 				storeItem.authorId ?? storeItem.author_id ?? beam.authorId,
 				storeItem.authorType ?? storeItem.author_type ?? beam.authorType,
 				storeItem.channelId ?? storeItem.channel_id ?? beam.channelId,
@@ -738,7 +723,7 @@ export function forgetWorking(beam: BeamMemoryState, memoryId: string): boolean 
 }
 
 export function scratchpadWrite(beam: BeamMemoryState, content: string): string {
-	const padId = generateId(content);
+	const padId = generateTimedId(content);
 	const timestamp = toUtcIso();
 	beam.db
 		.prepare(`
@@ -865,7 +850,7 @@ export function importFromDict(beam: BeamMemoryState, data: Record<string, unkno
 				sqlBinding(item.recall_count, 0),
 				sqlBinding(item.last_recalled, null),
 				sqlBinding(item.created_at, null),
-				clampVeracity(item.veracity),
+				clampVeracity(item.veracity, "importFromDict.veracity"),
 				sqlBinding(item.consolidated_at, null),
 				sqlBinding(item.memory_type, "unknown"),
 				sqlBinding(item.embed_text, null),
@@ -926,7 +911,7 @@ export function importFromDict(beam: BeamMemoryState, data: Record<string, unkno
 				sqlBinding(item.recall_count, 0),
 				sqlBinding(item.last_recalled, null),
 				sqlBinding(item.created_at, null),
-				clampVeracity(item.veracity),
+				clampVeracity(item.veracity, "importFromDict.veracity"),
 				sqlBinding(item.memory_type, "unknown"),
 				sqlBinding(item.author_id, null),
 				sqlBinding(item.author_type, null),

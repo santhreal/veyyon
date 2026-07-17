@@ -18,11 +18,14 @@ import {
 	type OverlayFocusOwner,
 	type OverlayHandle,
 	type OverlayOptions,
+	TERMINAL,
+	centerLine,
 	visibleWidth,
 } from "@veyyon/pi-tui";
-import { formatDuration } from "../../slash-commands/helpers/format";
+import { formatCoarseDuration } from "../../slash-commands/helpers/format";
 import { theme } from "../theme/theme";
 import { matchesAppInterrupt } from "../utils/keybinding-matchers";
+import { renderEmberField } from "./sun";
 
 /**
  * Slice of `InteractiveModeContext` the pause screen drives. Narrow so tests
@@ -58,11 +61,6 @@ const BODY_LINES = [
 ] as const;
 const RESUME_HINT = "esc · enter · space — resume";
 
-function centerLine(line: string, width: number): string {
-	const pad = Math.max(0, Math.floor((width - visibleWidth(line)) / 2));
-	return pad > 0 ? " ".repeat(pad) + line : line;
-}
-
 /** Live hold clock, seconds-precise: `0:07`, `12:34`, `1:02:03`. */
 function formatClock(ms: number): string {
 	const totalSeconds = Math.max(0, Math.floor(ms / 1000));
@@ -96,10 +94,26 @@ export function renderPauseScreen(width: number, height: number, elapsedMs: numb
 			content.push("");
 			content.push("");
 		}
-		const bar = "█".repeat(BAR_WIDTH);
-		const glyphRow = `${bar}${" ".repeat(BAR_GAP)}${bar}`;
+		const time = elapsedMs / 1000;
+		// The pause bars are cut from the sun's churn — solid ▓/█ silhouettes with
+		// the ember dither living inside them, out of lockstep with each other.
+		const leftBar = renderEmberField({
+			cols: BAR_WIDTH,
+			rows: BAR_ROWS,
+			time,
+			trueColor: TERMINAL.trueColor,
+			base: 0.98,
+		});
+		const rightBar = renderEmberField({
+			cols: BAR_WIDTH,
+			rows: BAR_ROWS,
+			time,
+			trueColor: TERMINAL.trueColor,
+			base: 0.98,
+			seed: BAR_WIDTH + BAR_GAP,
+		});
 		for (let i = 0; i < BAR_ROWS; i++) {
-			content.push(centerLine(theme.fg("accent", glyphRow), width));
+			content.push(centerLine(`${leftBar[i]}${" ".repeat(BAR_GAP)}${rightBar[i]}`, width));
 		}
 		content.push("");
 		content.push(centerLine(theme.bold(theme.fg("accent", TITLE)), width));
@@ -202,7 +216,7 @@ export async function runPauseScreen(host: PauseScreenHost): Promise<void> {
 		overlay.hide();
 		const heldMs = agentPauseGate.resume();
 		if (heldMs !== undefined) {
-			host.showStatus(`Resumed after ${formatDuration(heldMs)} — agents are running again.`);
+			host.showStatus(`Resumed after ${formatCoarseDuration(heldMs)} — agents are running again.`);
 		}
 	}
 }

@@ -15,16 +15,9 @@ export function harmonyRecipient(name: string): string {
 	return name.startsWith("functions.") ? name : `functions.${name}`;
 }
 
-export function stringifyJson(value: unknown): string {
+/** utils stringifyJson with undefined rendered as the JSON literal "null" — prompt bodies need a token, never an empty slot. */
+export function stringifyJsonOrNull(value: unknown): string {
 	return stringifyJsonValue(value) ?? "null";
-}
-
-export function escapeXmlAttr(value: string): string {
-	return value.replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
-}
-
-export function escapeXmlText(value: string): string {
-	return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
 }
 
 export type AssistantTranscriptParts = {
@@ -158,7 +151,7 @@ export function messageContentText(
 	return text;
 }
 
-function isAsciiWhitespace(code: number): boolean {
+export function isAsciiWhitespace(code: number): boolean {
 	return code === 9 || code === 10 || code === 11 || code === 12 || code === 13 || code === 32;
 }
 

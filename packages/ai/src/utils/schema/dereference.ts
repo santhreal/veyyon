@@ -15,7 +15,7 @@ import { isJsonObject, type JsonObject } from "./types";
  * Resolve a JSON-pointer-style `$ref` against the root schema's `$defs`
  * or `definitions` block. Returns `undefined` for external or unresolvable refs.
  */
-function resolveLocalRef(ref: string, root: JsonObject): JsonObject | undefined {
+function resolveDefsRef(ref: string, root: JsonObject): JsonObject | undefined {
 	// Only handle local refs: #/$defs/Name or #/definitions/Name
 	const match = /^#\/(\$defs|definitions)\/(.+)$/.exec(ref);
 	if (!match) return undefined;
@@ -39,7 +39,7 @@ function dereferenceNode(node: unknown, root: JsonObject, visiting: Set<string>)
 	if (typeof ref === "string") {
 		// Break circular references
 		if (visiting.has(ref)) return {};
-		const resolved = resolveLocalRef(ref, root);
+		const resolved = resolveDefsRef(ref, root);
 		if (!resolved) return node; // External ref — leave as-is
 		visiting.add(ref);
 		const inlined = dereferenceNode(resolved, root, visiting);

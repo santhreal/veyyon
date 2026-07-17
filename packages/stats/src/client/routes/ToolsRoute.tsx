@@ -281,6 +281,20 @@ function ToolsTable({ byTool }: { byTool: ToolUsageStats[] }) {
 				),
 			},
 			{
+				key: "repairs",
+				header: "Repairs",
+				numeric: true,
+				render: (item: ToolRowView) => (
+					<span
+						className="font-mono"
+						title="Schema-repaired argument calls / calls refused as unrepairable before execution"
+					>
+						{formatInteger(item.repaired)}
+						{item.unrepairable > 0 ? ` / ${formatInteger(item.unrepairable)} refused` : ""}
+					</span>
+				),
+			},
+			{
 				key: "tokens",
 				header: "Attr. Tokens",
 				numeric: true,
@@ -410,6 +424,20 @@ function ToolModelPanel({ byToolModel }: { byToolModel: ToolModelStats[] }) {
 				numeric: true,
 				render: (item: ToolModelStats & { errorRate: number }) => (
 					<StatusPill variant={errorPillVariant(item.errorRate)}>{formatPercent(item.errorRate)}</StatusPill>
+				),
+			},
+			{
+				key: "repairs",
+				header: "Repairs",
+				numeric: true,
+				render: (item: ToolModelStats & { errorRate: number }) => (
+					<span
+						className="font-mono"
+						title="Schema-repaired argument calls / calls refused as unrepairable before execution"
+					>
+						{formatInteger(item.repaired)}
+						{item.unrepairable > 0 ? ` / ${formatInteger(item.unrepairable)} refused` : ""}
+					</span>
 				),
 			},
 			{

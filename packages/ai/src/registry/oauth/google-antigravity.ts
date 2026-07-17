@@ -113,7 +113,10 @@ async function onboardProjectWithRetries(
 	);
 }
 
-async function discoverProject(accessToken: string, onProgress?: (message: string) => void): Promise<string> {
+async function discoverAntigravityProject(
+	accessToken: string,
+	onProgress?: (message: string) => void,
+): Promise<string> {
 	const headers = {
 		Authorization: `Bearer ${accessToken}`,
 		"Content-Type": "application/json",
@@ -170,7 +173,7 @@ export async function loginAntigravity(ctrl: OAuthController): Promise<OAuthCred
 		scopes: SCOPES,
 		callbackPort: CALLBACK_PORT,
 		callbackPath: CALLBACK_PATH,
-		discoverProject,
+		discoverProject: discoverAntigravityProject,
 	});
 }
 

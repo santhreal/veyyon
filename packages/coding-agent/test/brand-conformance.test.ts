@@ -97,7 +97,7 @@ describe("brand conformance (titanium, the default dark theme)", () => {
 		expect(theme.isLight).toBe(false);
 	});
 
-	// The light theme is titanium's inverse (docs/internal/brand.md, Light
+	// The light theme is titanium's inverse (docs/internal/design.md, Light
 	// ground): one white ground with no tinted panels, dark-silver structure,
 	// ember accent family, semantic trio re-tuned for contrast on white — and
 	// still no blue anywhere.

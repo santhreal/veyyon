@@ -9,20 +9,23 @@ import type {
 } from "@huggingface/transformers";
 import {
 	ensureRuntimeInstalled,
+	errorMessage,
 	getTinyModelsCacheDir,
 	isCompiledBinary,
 	resolveRuntimeModule,
+	safeFilenameSegment,
 } from "@veyyon/pi-utils";
 import packageJson from "../../package.json" with { type: "json" };
 import {
-	errorMessage,
 	errorText,
 	getTransformersVersionSpec,
+	loadPipelineWithDeviceFallback,
 	loadTransformersRuntime,
 	MemoizedRuntime,
 	replayCachedReady,
 	sendLog,
 	sendProgress,
+	type TransformersRuntimeMetadata,
 } from "../subprocess/worker-runtime";
 import { resolveTinyModelDevicePreference, type TinyModelDevice, tinyModelDeviceLoadOrder } from "../tiny/device";
 import { resolveTinyModelDtypeOverride, type TinyModelDtype } from "../tiny/dtype";
@@ -70,7 +73,7 @@ interface AsrCallOptions {
 	[key: string]: unknown;
 }
 
-interface TransformersRuntime {
+interface TransformersRuntime extends TransformersRuntimeMetadata {
 	env: {
 		cacheDir?: string;
 		allowLocalModels?: boolean;
@@ -163,12 +166,12 @@ function getSherpaVersionSpec(): string {
 }
 
 function getSttRuntimeDir(): string {
-	const key = getTransformersVersionSpec().replace(/[^A-Za-z0-9._-]/g, "_");
+	const key = safeFilenameSegment(getTransformersVersionSpec());
 	return path.join(path.dirname(getTinyModelsCacheDir()), "stt-runtime", `transformers-${key}`);
 }
 
 function getSherpaRuntimeDir(): string {
-	const key = getSherpaVersionSpec().replace(/[^A-Za-z0-9._-]/g, "_");
+	const key = safeFilenameSegment(getSherpaVersionSpec());
 	return path.join(path.dirname(getTinyModelsCacheDir()), "stt-runtime", `sherpa-${key}`);
 }
 
@@ -201,59 +204,6 @@ function loadSherpaRuntime(transport: SttTransport, requestId: string, modelKey:
 	});
 }
 
-async function loadPipelineOnDevice(
-	transformers: TransformersRuntime,
-	spec: TransformersSttModelSpec,
-	modelKey: SttModelKey,
-	transport: SttTransport,
-	requestId: string,
-	device: TinyModelDevice,
-): Promise<AutomaticSpeechRecognitionPipeline> {
-	return transformers.pipeline(ASR_TASK, spec.repo, {
-		device,
-		dtype: sttModelDtypeOverride ?? spec.dtype,
-		progress_callback: info => sendProgress(transport, requestId, modelKey, info),
-	});
-}
-
-async function loadPipelineWithDeviceFallback(
-	transformers: TransformersRuntime,
-	spec: TransformersSttModelSpec,
-	modelKey: SttModelKey,
-	transport: SttTransport,
-	requestId: string,
-): Promise<{ pipeline: AutomaticSpeechRecognitionPipeline; device: TinyModelDevice }> {
-	const devices = tinyModelDeviceLoadOrder(sttModelDevicePreference);
-	if (devices[0] !== sttModelDevicePreference.device) {
-		sendLog(transport, "warn", "stt: requested device is unsafe in the worker; using CPU", {
-			modelKey,
-			repo: spec.repo,
-			requestedDevice: sttModelDevicePreference.device,
-			device: devices[0],
-		});
-	}
-	for (let i = 0; i < devices.length; i += 1) {
-		const device = devices[i]!;
-		try {
-			return {
-				pipeline: await loadPipelineOnDevice(transformers, spec, modelKey, transport, requestId, device),
-				device,
-			};
-		} catch (error) {
-			if (i === devices.length - 1) throw error;
-			const fallbackDevice = devices[i + 1]!;
-			sendLog(transport, "warn", "stt: accelerated device failed; falling back", {
-				modelKey,
-				repo: spec.repo,
-				device,
-				fallbackDevice,
-				error: errorMessage(error),
-			});
-		}
-	}
-	throw new Error("No stt model devices configured");
-}
-
 async function loadTransformersModel(
 	spec: TransformersSttModelSpec,
 	modelKey: SttModelKey,
@@ -268,13 +218,21 @@ async function loadTransformersModel(
 		getSttRuntimeDir,
 	);
 	const startedAt = performance.now();
-	const { pipeline, device } = await loadPipelineWithDeviceFallback(
-		transformers,
-		spec,
+	const { pipeline, device } = await loadPipelineWithDeviceFallback({
+		label: "stt",
+		noDevicesMessage: "No stt model devices configured",
 		modelKey,
+		repo: spec.repo,
+		preference: sttModelDevicePreference,
 		transport,
-		requestId,
-	);
+		runtimeMetadata: transformers,
+		loadOnDevice: device =>
+			transformers.pipeline(ASR_TASK, spec.repo, {
+				device,
+				dtype: sttModelDtypeOverride ?? spec.dtype,
+				progress_callback: info => sendProgress(transport, requestId, modelKey, info),
+			}),
+	});
 	sendLog(transport, "debug", "stt: local model loaded", {
 		modelKey,
 		repo: spec.repo,
@@ -404,7 +362,7 @@ async function loadSherpaModel(
 	return { engine: "sherpa", recognizer };
 }
 
-async function loadModel(modelKey: SttModelKey, transport: SttTransport, requestId: string): Promise<LoadedModel> {
+async function loadAsrModel(modelKey: SttModelKey, transport: SttTransport, requestId: string): Promise<LoadedModel> {
 	const spec = getSttModelSpec(modelKey);
 	if (!spec) throw new Error(`Unknown stt model: ${modelKey}`);
 	const cached = replayCachedReady(models, modelKey, transport, requestId, ASR_TASK, spec.repo);
@@ -468,7 +426,7 @@ async function transcribeAudio(
 ): Promise<string> {
 	const spec = getSttModelSpec(modelKey);
 	if (!spec) throw new Error(`Unknown stt model: ${modelKey}`);
-	const model = await loadModel(modelKey, transport, requestId);
+	const model = await loadAsrModel(modelKey, transport, requestId);
 	return runOnModel(() => decodeSegment(model, spec, audio, language));
 }
 
@@ -478,7 +436,7 @@ async function handleBatchRequest(
 ): Promise<void> {
 	try {
 		if (request.type === "download") {
-			await loadModel(request.modelKey, transport, request.id);
+			await loadAsrModel(request.modelKey, transport, request.id);
 			transport.send({ type: "downloaded", id: request.id });
 			return;
 		}
@@ -525,7 +483,7 @@ function startStreamingSession(
 		id: request.id,
 		spec,
 		language: request.language,
-		model: loadModel(request.modelKey, transport, request.id),
+		model: loadAsrModel(request.modelKey, transport, request.id),
 		endpointer: new StreamEndpointer(),
 		segmentQueue: [],
 		pendingPartial: null,

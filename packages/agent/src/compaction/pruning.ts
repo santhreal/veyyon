@@ -1,3 +1,4 @@
+import { getToolResultMessage } from "./messages";
 /**
  * Tool output pruning utilities for compaction.
  */
@@ -120,13 +121,6 @@ function createPrunedNotice(tokens: number): string {
  * correctness regardless of size.
  */
 const MIN_PRUNE_TOKENS = 50;
-
-function getToolResultMessage(entry: SessionEntry): ToolResultMessage | undefined {
-	if (entry.type !== "message") return undefined;
-	const message = entry.message as AgentMessage;
-	if (message.role !== "toolResult") return undefined;
-	return message as ToolResultMessage;
-}
 
 function estimatePrunedSavings(tokens: number, notice: string): number {
 	const noticeTokens = Math.ceil(notice.length / 4);

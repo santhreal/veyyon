@@ -3,6 +3,7 @@
  *
  * Handles `veyyon agents unpack` for writing bundled agent definitions to disk.
  */
+
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { getAgentDir, getProjectDir, isEnoent } from "@veyyon/pi-utils";
@@ -11,6 +12,7 @@ import chalk from "chalk";
 import { theme } from "../modes/theme/theme";
 import { loadBundledAgents } from "../task/agents";
 import type { AgentDefinition } from "../task/types";
+import { writeLine } from "./args";
 
 export type AgentsAction = "unpack";
 
@@ -30,10 +32,6 @@ interface UnpackResult {
 	total: number;
 	written: string[];
 	skipped: string[];
-}
-
-function writeStdout(line: string): void {
-	process.stdout.write(`${line}\n`);
 }
 
 function resolveTargetDir(flags: AgentsCommandArgs["flags"]): string {
@@ -111,15 +109,15 @@ export async function runAgentsCommand(cmd: AgentsCommandArgs): Promise<void> {
 		case "unpack": {
 			const result = await unpackBundledAgents(cmd.flags);
 			if (cmd.flags.json) {
-				writeStdout(JSON.stringify(result, null, 2));
+				writeLine(JSON.stringify(result, null, 2));
 				return;
 			}
 
-			writeStdout(chalk.bold(`Bundled agents: ${result.total}`));
-			writeStdout(chalk.dim(`Target directory: ${result.targetDir}`));
-			writeStdout(chalk.green(`${theme.status.success} Written: ${result.written.length}`));
+			writeLine(chalk.bold(`Bundled agents: ${result.total}`));
+			writeLine(chalk.dim(`Target directory: ${result.targetDir}`));
+			writeLine(chalk.green(`${theme.status.success} Written: ${result.written.length}`));
 			if (result.skipped.length > 0) {
-				writeStdout(
+				writeLine(
 					chalk.yellow(
 						`${theme.status.warning} Skipped existing: ${result.skipped.length} (use --force to overwrite)`,
 					),
@@ -127,10 +125,10 @@ export async function runAgentsCommand(cmd: AgentsCommandArgs): Promise<void> {
 			}
 
 			for (const filePath of result.written) {
-				writeStdout(chalk.dim(`  + ${filePath}`));
+				writeLine(chalk.dim(`  + ${filePath}`));
 			}
 			for (const filePath of result.skipped) {
-				writeStdout(chalk.dim(`  = ${filePath}`));
+				writeLine(chalk.dim(`  = ${filePath}`));
 			}
 			return;
 		}

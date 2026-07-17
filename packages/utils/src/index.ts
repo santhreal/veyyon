@@ -1,5 +1,6 @@
-export { once, untilAborted } from "./abortable";
+export { isAbortOrTimeoutError, once, untilAborted } from "./abortable";
 export * from "./async";
+export * from "./atomic-write";
 export * from "./binary";
 export * from "./color";
 export * from "./dirs";
@@ -11,6 +12,8 @@ export * from "./fs-error";
 export * from "./glob";
 export * from "./json";
 export * from "./json-parse";
+export * from "./levenshtein";
+export * from "./lines";
 export * as logger from "./logger";
 export * from "./loop-phase";
 export * from "./mermaid-ascii";
@@ -19,23 +22,33 @@ export * from "./path";
 export * from "./path-tree";
 export * from "./peek-file";
 export * as postmortem from "./postmortem";
+export * from "./process";
 export * as procmgr from "./procmgr";
 export * as prompt from "./prompt";
 export * as ptree from "./ptree";
 export { AbortError, ChildProcess, Exception, NonZeroExitError } from "./ptree";
+export * from "./regex";
 export * from "./runtime-install";
 export * from "./sanitize-text";
+export * from "./search";
+export * from "./similarity";
 export * from "./snowflake";
 export * from "./stderr-guard";
 export * from "./stream";
 export * from "./strip-ansi";
 export * from "./tab-spacing";
+export * from "./task-result";
 export * from "./temp";
+export * from "./text-blocks";
 export * from "./tls-fetch";
+export * from "./tokens";
 export * from "./type-guards";
+export * from "./url";
 export * from "./which";
 
-function isPlainObject(val: object): val is Record<string, unknown> {
+// Deliberately includes arrays: "safe to hand to structuredClone" — NOT an
+// isRecord/isPlainObject guard (those live in type-guards.ts).
+function isPlainJsonContainer(val: object): val is Record<string, unknown> {
 	return Object.getPrototypeOf(val) === Object.prototype || Array.isArray(val);
 }
 
@@ -46,7 +59,7 @@ export function structuredCloneJSON<T>(value: T): T {
 	}
 
 	// deep clone
-	if (isPlainObject(value)) {
+	if (isPlainJsonContainer(value)) {
 		try {
 			return structuredClone(value);
 		} catch {

@@ -17,7 +17,7 @@ import * as path from "node:path";
 import type { AgentToolResult, AgentToolUpdateCallback } from "@veyyon/pi-agent-core";
 import type { TSchema } from "@veyyon/pi-ai";
 import { Text } from "@veyyon/pi-tui";
-import { getAgentDir, getProjectDir, parseFrontmatter as parseOmpFrontmatter } from "@veyyon/pi-utils";
+import { escapeRegExp, getAgentDir, getProjectDir, parseFrontmatter as parseOmpFrontmatter } from "@veyyon/pi-utils";
 import type { PromptTemplate } from "../config/prompt-templates";
 import { type SettingPath, Settings } from "../config/settings";
 import { EditTool } from "../edit";
@@ -270,13 +270,13 @@ function themedMuted(theme: LegacyThemeLike | undefined, text: string): string {
 	return theme ? theme.fg("toolOutput", text) : text;
 }
 
-function textResult(result: AgentToolResult<unknown> | undefined): string {
+function firstTextBlockText(result: AgentToolResult<unknown> | undefined): string {
 	return result?.content.find(block => block.type === "text")?.text ?? "";
 }
 
 function legacyRenderResult(result: AgentToolResult<unknown>, _options: unknown, themeArg: unknown): Text {
 	const theme = renderTheme(themeArg, undefined);
-	const output = textResult(result);
+	const output = firstTextBlockText(result);
 	return new Text(output ? `\n${themedMuted(theme, output)}` : "", 0, 0);
 }
 
@@ -286,10 +286,6 @@ function lineRangePath(readPath: string, offset: number | undefined, limit: numb
 	if (limit === undefined) return `${readPath}:${start}`;
 	const end = Math.max(start, start + Math.max(1, Math.floor(limit)) - 1);
 	return `${readPath}:${start}-${end}`;
-}
-
-function escapeRegexLiteral(value: string): string {
-	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function joinLegacyGlob(searchPath: string, pattern: string): string {
@@ -497,7 +493,7 @@ export function createGrepToolDefinition(cwd: string, options?: GrepToolOptions)
 		renderResult: legacyRenderResult,
 		execute: (toolCallId, params, signal, onUpdate) => {
 			const rawPattern = stringField(params, "pattern") ?? "";
-			const pattern = booleanField(params, "literal") ? escapeRegexLiteral(rawPattern) : rawPattern;
+			const pattern = booleanField(params, "literal") ? escapeRegExp(rawPattern) : rawPattern;
 			const searchPath = stringField(params, "path") ?? ".";
 			const glob = stringField(params, "glob");
 			const context = numberField(params, "context");

@@ -1,9 +1,8 @@
-import { recencyHalflifeHours } from "../config";
-import { LruCache } from "./lru";
+import { ISO_DATE_RE } from "@veyyon/pi-utils";
 
 const TZ_RE = /(?:Z|[+-]\d\d:?\d\d)$/;
-const DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/;
-const TS_CACHE = new LruCache<string, Date>(2000);
+// ONE PLACE: grammar owned by pi-utils regex.ts.
+const DATE_ONLY_RE = ISO_DATE_RE;
 
 export type QueryTime = string | Date | null | undefined;
 
@@ -23,47 +22,11 @@ export function normalizeDateTimeUtc(value: Date): Date {
 	return new Date(time);
 }
 
-export function parseQueryTime(value: QueryTime): Date {
+export function parseQueryTimeStrict(value: QueryTime): Date {
 	if (value === null || value === undefined) return new Date();
 	return typeof value === "string" ? parseIsoDateTimeUtc(value) : normalizeDateTimeUtc(value);
 }
 
-export function parseTsFast(value: string): Date | undefined {
-	if (!value) return undefined;
-	const cached = TS_CACHE.get(value);
-	if (cached !== undefined) return cached;
-	try {
-		const parsed = parseIsoDateTimeUtc(value);
-		TS_CACHE.set(value, parsed);
-		return parsed;
-	} catch {
-		return undefined;
-	}
-}
-
 export function toUtcIso(value: Date = new Date()): string {
 	return normalizeDateTimeUtc(value).toISOString();
-}
-
-export function recencyDecay(
-	timestamp: string | Date | null | undefined,
-	halflifeHours = recencyHalflifeHours(),
-	now: Date = new Date(),
-): number {
-	if (!timestamp) return 0.5;
-	try {
-		const ts = typeof timestamp === "string" ? parseIsoDateTimeUtc(timestamp) : normalizeDateTimeUtc(timestamp);
-		const ageHours = (now.getTime() - ts.getTime()) / 3_600_000;
-		return Math.exp(-ageHours / halflifeHours);
-	} catch {
-		return 0.5;
-	}
-}
-
-export function temporalBoost(memoryTimestamp: string, queryTime: QueryTime = undefined, halflifeHours = 24): number {
-	let ts = parseTsFast(memoryTimestamp);
-	if (ts === undefined) return 0;
-	const query = parseQueryTime(queryTime);
-	if (ts.getTime() > query.getTime()) ts = query;
-	return Math.exp(-((query.getTime() - ts.getTime()) / 3_600_000) / halflifeHours);
 }

@@ -1,5 +1,6 @@
 import type { AgentMessage } from "@veyyon/pi-agent-core";
 import type { AssistantMessage } from "@veyyon/pi-ai";
+import { isNonNullObject } from "@veyyon/pi-utils";
 import type { SessionEntry } from "./session-entries";
 
 export const TOOL_EXECUTION_START_CUSTOM_TYPE = "tool_execution_start";
@@ -60,12 +61,8 @@ export interface AssistantModelMetadata {
 	model: string;
 }
 
-function isObject(value: unknown): value is Record<string, unknown> {
-	if (typeof value !== "object") return false;
-	return value !== null;
-}
 function isPendingToolCallDiagnostic(value: unknown): value is PendingToolCallDiagnostic {
-	if (!isObject(value) || typeof value.toolName !== "string") return false;
+	if (!isNonNullObject(value) || typeof value.toolName !== "string") return false;
 	if ("toolCallId" in value && typeof value.toolCallId !== "string") return false;
 	if ("intent" in value && typeof value.intent !== "string") return false;
 	if ("assistantTimestamp" in value && typeof value.assistantTimestamp !== "number") return false;
@@ -79,7 +76,7 @@ function readPendingToolCalls(value: unknown): PendingToolCallDiagnostic[] | und
 }
 
 function readSessionExit(entry: SessionEntry): SessionExitData | undefined {
-	if (entry.type !== "custom" || entry.customType !== SESSION_EXIT_CUSTOM_TYPE || !isObject(entry.data)) {
+	if (entry.type !== "custom" || entry.customType !== SESSION_EXIT_CUSTOM_TYPE || !isNonNullObject(entry.data)) {
 		return undefined;
 	}
 	const { reason, kind, recordedAt } = entry.data;
@@ -167,7 +164,7 @@ export function createInterruptedTurnAbortMessage(
 }
 
 function isToolCallContent(value: unknown): value is ToolCallContent {
-	if (!isObject(value)) return false;
+	if (!isNonNullObject(value)) return false;
 	return value.type === "toolCall" && (typeof value.name === "string" || typeof value.id === "string");
 }
 
@@ -185,7 +182,7 @@ function truncateSummaryField(value: string): string {
  * entirely instead of persisting an empty object.
  */
 export function summarizeToolArguments(args: unknown): ToolArgumentSummary | undefined {
-	if (!isObject(args)) return undefined;
+	if (!isNonNullObject(args)) return undefined;
 	const summary: ToolArgumentSummary = {};
 	if (typeof args.command === "string" && args.command.length > 0) {
 		summary.command = truncateSummaryField(args.command);
@@ -199,7 +196,7 @@ export function summarizeToolArguments(args: unknown): ToolArgumentSummary | und
 function readToolExecutionStart(entry: SessionEntry): ToolExecutionStartData | undefined {
 	if (entry.type !== "custom" || entry.customType !== TOOL_EXECUTION_START_CUSTOM_TYPE) return undefined;
 	const data = entry.data;
-	if (!isObject(data)) return undefined;
+	if (!isNonNullObject(data)) return undefined;
 	if (typeof data.toolCallId !== "string" || typeof data.toolName !== "string") return undefined;
 	const startedAt = typeof data.startedAt === "string" ? data.startedAt : entry.timestamp;
 	const result: ToolExecutionStartData = {
@@ -283,7 +280,7 @@ export function collectPendingToolCalls(entries: readonly SessionEntry[]): Pendi
 }
 
 function appendArgumentSummary(parts: string[], args: unknown): void {
-	if (!isObject(args)) return;
+	if (!isNonNullObject(args)) return;
 	const command = args.command;
 	if (typeof command === "string" && command.length > 0) {
 		parts.push(`command \`${command}\``);

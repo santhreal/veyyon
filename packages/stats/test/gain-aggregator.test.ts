@@ -1,9 +1,9 @@
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { initDb, insertMessageStats } from "@veyyon/pi-stats/db";
-import { dedupeProjects, getGainDashboardStats, normalizeProjectPath } from "@veyyon/pi-stats/gain-aggregator";
-import type { MessageStats } from "@veyyon/pi-stats/types";
+import { initDb, insertMessageStats } from "@veyyon/omp-stats/db";
+import { dedupeProjects, getGainDashboardStats, normalizeProjectPath } from "@veyyon/omp-stats/gain-aggregator";
+import type { MessageStats } from "@veyyon/omp-stats/types";
 import { getStatsDbPath } from "@veyyon/pi-utils";
 import { installStatsTestIsolation } from "./helpers/temp-agent";
 

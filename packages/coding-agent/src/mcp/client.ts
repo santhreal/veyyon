@@ -105,11 +105,7 @@ async function initializeConnection(
 		clientInfo: CLIENT_INFO,
 	};
 
-	const result = await transport.request<MCPInitializeResult>(
-		"initialize",
-		params as unknown as Record<string, unknown>,
-		{ signal: options?.signal },
-	);
+	const result = await transport.request<MCPInitializeResult>("initialize", params, { signal: options?.signal });
 
 	if (options?.signal?.aborted) {
 		throw options.signal.reason instanceof Error ? options.signal.reason : new Error("Aborted");
@@ -251,11 +247,7 @@ export async function callTool(
 		arguments: args,
 	};
 
-	return connection.transport.request<MCPToolCallResult>(
-		"tools/call",
-		params as unknown as Record<string, unknown>,
-		options,
-	);
+	return connection.transport.request<MCPToolCallResult>("tools/call", params, options);
 }
 
 /**
@@ -263,13 +255,6 @@ export async function callTool(
  */
 export async function disconnectServer(connection: MCPServerConnection): Promise<void> {
 	await connection.transport.close();
-}
-
-/**
- * Check if a server supports tools.
- */
-export function serverSupportsTools(capabilities: MCPServerCapabilities): boolean {
-	return capabilities.tools !== undefined;
 }
 
 /**
@@ -306,7 +291,7 @@ export async function listResources(
 }
 
 /** True when an error is a JSON-RPC "method not found" (-32601) response. */
-function isMethodNotFoundError(error: unknown): boolean {
+function isJsonRpcMethodNotFound(error: unknown): boolean {
 	const message = error instanceof Error ? error.message : String(error);
 	return message.includes("-32601") || /method not found/i.test(message);
 }
@@ -356,7 +341,7 @@ export async function listResourceTemplates(
 		// A server that doesn't implement the optional templates method answers
 		// -32601; cache an empty list so we neither retry nor let the failure
 		// bubble up and discard the server's concrete resources.
-		if (isMethodNotFoundError(error)) {
+		if (isJsonRpcMethodNotFound(error)) {
 			connection.resourceTemplates = [];
 			return [];
 		}
@@ -376,11 +361,7 @@ export async function readResource(
 	options?: MCPRequestOptions,
 ): Promise<MCPResourceReadResult> {
 	const params: MCPResourceReadParams = { uri };
-	return connection.transport.request<MCPResourceReadResult>(
-		"resources/read",
-		params as unknown as Record<string, unknown>,
-		options,
-	);
+	return connection.transport.request<MCPResourceReadResult>("resources/read", params, options);
 }
 
 /**
@@ -395,11 +376,7 @@ export async function subscribeToResources(
 	const results = await Promise.allSettled(
 		uris.map(uri => {
 			const params: MCPResourceSubscribeParams = { uri };
-			return connection.transport.request(
-				"resources/subscribe",
-				params as unknown as Record<string, unknown>,
-				options,
-			);
+			return connection.transport.request("resources/subscribe", params, options);
 		}),
 	);
 	for (const result of results) {
@@ -421,11 +398,7 @@ export async function unsubscribeFromResources(
 	const results = await Promise.allSettled(
 		uris.map(uri => {
 			const params: MCPResourceSubscribeParams = { uri };
-			return connection.transport.request(
-				"resources/unsubscribe",
-				params as unknown as Record<string, unknown>,
-				options,
-			);
+			return connection.transport.request("resources/unsubscribe", params, options);
 		}),
 	);
 	for (const result of results) {
@@ -496,11 +469,7 @@ export async function getPrompt(
 		params.arguments = args;
 	}
 
-	return connection.transport.request<MCPGetPromptResult>(
-		"prompts/get",
-		params as unknown as Record<string, unknown>,
-		options,
-	);
+	return connection.transport.request<MCPGetPromptResult>("prompts/get", params, options);
 }
 
 /**

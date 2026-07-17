@@ -46,10 +46,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-24acbed9.js";
+            window.path_to_searchindex_js = "../searchindex-8badf17b.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-9cfd259b.js"></script>
+        <script src="../toc-19dab021.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -200,7 +200,7 @@ agent bounces the error back to the model, the model apologizes, and the same ed
 <h2 id="what-improves"><a class="header" href="#what-improves">What improves</a></h2>
 <ul>
 <li>Hashline edits anchor on <code>read</code>/<code>grep</code> snapshot tags for verifiable hunks.</li>
-<li><code>edit</code>, <code>write</code>, and <code>apply_patch</code> modes share the same approval gate.</li>
+<li><code>edit</code>, <code>write</code>, and <code>apply_patch</code> modes share sandbox and approval gates.</li>
 <li>Stale anchors fail with recovery hints instead of silent wrong edits.</li>
 <li>General schema repair coerces almost-right tool calls into shape before dispatch.</li>
 </ul>

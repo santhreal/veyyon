@@ -42,6 +42,7 @@
  *   expect(mock.calls).toHaveLength(2);
  */
 
+import { abortableSleep } from "@veyyon/pi-utils";
 import { registerCustomApi } from "../api-registry";
 import * as AIError from "../error";
 import type {
@@ -57,6 +58,7 @@ import type {
 	ToolCall,
 	Usage,
 } from "../types";
+import { emptyUsage } from "../types";
 import { AssistantMessageEventStream } from "../utils/event-stream";
 
 /** The API string this provider serves. */
@@ -83,6 +85,8 @@ export interface MockResponse {
 	content?: ReadonlyArray<MockContent>;
 	/** Stop reason. Defaults to `"toolUse"` when content has tool calls, else `"stop"`. */
 	stopReason?: StopReason;
+	/** Matched stop sequence to report alongside a `"stop"` reason. */
+	stopSequence?: string | null;
 	/** Structured terminal stop classification, e.g. Anthropic refusal metadata. */
 	stopDetails?: StopDetails | null;
 	/** Error text paired with an explicit `"error"` stop reason. */
@@ -338,7 +342,7 @@ async function runMock(
 
 	if (response.delayMs && response.delayMs > 0) {
 		try {
-			await sleep(response.delayMs, options?.signal);
+			await abortableSleep(response.delayMs, options?.signal);
 		} catch {
 			emitTerminalError(stream, model, startedAt, perfStart, "aborted", "Mock aborted during delay.");
 			return;
@@ -372,7 +376,7 @@ async function runMock(
 	stream.push({ type: "start", partial });
 
 	for (const input of response.content ?? []) {
-		const block = normalizeContent(input, model);
+		const block = normalizeMockContent(input, model);
 		blocks.push(block);
 		const contentIndex = blocks.length - 1;
 
@@ -396,6 +400,7 @@ async function runMock(
 	const reason: StopReason = response.stopReason ?? (hasToolCall ? ("toolUse" as StopReason) : ("stop" as StopReason));
 
 	partial.stopReason = reason;
+	partial.stopSequence = response.stopSequence;
 	partial.stopDetails = response.stopDetails;
 	partial.errorMessage = response.errorMessage;
 	partial.usage = mergeUsage(response.usage);
@@ -412,7 +417,7 @@ async function runMock(
 	stream.push({ type: "done", reason: reason as "stop" | "length" | "toolUse", message: partial });
 }
 
-function normalizeContent(input: MockContent, state: MockModel): TextContent | ThinkingContent | ToolCall {
+function normalizeMockContent(input: MockContent, state: MockModel): TextContent | ThinkingContent | ToolCall {
 	if (typeof input === "string") {
 		return { type: "text", text: input };
 	}
@@ -425,17 +430,6 @@ function normalizeContent(input: MockContent, state: MockModel): TextContent | T
 		} as ToolCall;
 	}
 	return input;
-}
-
-function emptyUsage(): Usage {
-	return {
-		input: 0,
-		output: 0,
-		cacheRead: 0,
-		cacheWrite: 0,
-		totalTokens: 0,
-		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-	} as Usage;
 }
 
 function mergeUsage(partial?: Partial<Omit<Usage, "cost">> & { cost?: Partial<Usage["cost"]> }): Usage {
@@ -487,25 +481,6 @@ function emitTerminalError(
 	};
 	stream.push({ type: "start", partial: failure });
 	stream.push({ type: "error", reason, error: failure });
-}
-
-function sleep(ms: number, signal?: AbortSignal): Promise<void> {
-	const { promise, resolve, reject } = Promise.withResolvers<void>();
-	if (signal?.aborted) {
-		reject(signal.reason);
-		return promise;
-	}
-	const onAbort = () => {
-		clearTimeout(timer);
-		signal?.removeEventListener("abort", onAbort);
-		reject(signal?.reason ?? new AIError.AbortError("aborted"));
-	};
-	const timer = setTimeout(() => {
-		signal?.removeEventListener("abort", onAbort);
-		resolve();
-	}, ms);
-	signal?.addEventListener("abort", onAbort, { once: true });
-	return promise;
 }
 
 function generateToolCallId(state: MockModel): string {

@@ -14,7 +14,7 @@ import {
 	collectToolResultRun,
 	messageContentText,
 	renderToolResponseResults,
-	stringifyJson,
+	stringifyJsonOrNull,
 } from "./rendering";
 import type {
 	DialectDefinition,
@@ -520,7 +520,7 @@ function glmInvocation(call: ToolCall, shape: ToolArgShape | undefined): string 
 	let body = `${TOOL_OPEN}${call.name}`;
 	for (const key in call.arguments) {
 		const value = call.arguments[key];
-		const rendered = shape?.stringArgs.has(key) && typeof value === "string" ? value : stringifyJson(value);
+		const rendered = shape?.stringArgs.has(key) && typeof value === "string" ? value : stringifyJsonOrNull(value);
 		body += `\n${ARG_KEY_OPEN}${key}${ARG_KEY_CLOSE}\n${ARG_VALUE_OPEN}${rendered}${ARG_VALUE_CLOSE}`;
 	}
 	return `${body}\n${TOOL_CLOSE}`;

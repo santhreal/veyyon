@@ -40,7 +40,13 @@ interface Fake {
 	setRevision: (n: number) => void;
 }
 
-function makeSession(opts: { messages: unknown[]; contextWindow?: number; usage?: ContextUsage | undefined }): Fake {
+function makeSession(opts: {
+	messages: unknown[];
+	contextWindow?: number;
+	usage?: ContextUsage | undefined;
+	/** Compaction settings group; when set the stub exposes session.settings.getGroup("compaction"). */
+	compaction?: Record<string, unknown>;
+}): Fake {
 	const contextWindow = opts.contextWindow ?? 200_000;
 	let usage: ContextUsage | undefined = "usage" in opts ? opts.usage : { tokens: 1234, contextWindow, percent: 0.6 };
 	let calls = 0;
@@ -51,6 +57,7 @@ function makeSession(opts: { messages: unknown[]; contextWindow?: number; usage?
 		agent: { state: { tools: [] } },
 		skills: [],
 		model: { id: "test-model", contextWindow },
+		settings: opts.compaction ? { getGroup: () => opts.compaction } : undefined,
 		state: { messages: opts.messages, model: { contextWindow } },
 		sessionManager: {
 			getUsageStatistics: () => ({
@@ -251,6 +258,58 @@ describe("StatusLineComponent context breakdown", () => {
 
 		const plain = comp.getTopBorder(80).content.replaceAll(/\x1b\[[0-9;]*m/g, "");
 		expect(plain).toContain("0.5%/272K");
+	});
+
+	it("renders percent against the auto-compact fire point, not the raw model window", () => {
+		// 200k window, threshold 80% → compaction fires at 160k. The bar answers
+		// "when will auto-compact happen": 80k used = 50% of the fire point, and
+		// the displayed window is the fire point (160K), not the raw 200K.
+		const { session } = makeSession({
+			messages: [userMessage("hi"), assistantMessage("done")],
+			usage: { tokens: 80_000, contextWindow: 200_000, percent: 40 },
+			compaction: {
+				enabled: true,
+				strategy: "handoff",
+				thresholdPercent: 80,
+				thresholdTokens: -1,
+				reserveTokens: undefined,
+			},
+		});
+		const comp = new StatusLineComponent(session);
+		comp.updateSettings({
+			preset: "custom",
+			leftSegments: ["context_pct"],
+			rightSegments: [],
+			separator: "powerline-thin",
+		});
+
+		const plain = comp.getTopBorder(80).content.replaceAll(/\x1b\[[0-9;]*m/g, "");
+		expect(plain).toContain("50.0%/160K");
+		expect(plain).not.toContain("200K");
+	});
+
+	it("renders percent against the raw model window when compaction is disabled", () => {
+		const { session } = makeSession({
+			messages: [userMessage("hi"), assistantMessage("done")],
+			usage: { tokens: 80_000, contextWindow: 200_000, percent: 40 },
+			compaction: {
+				enabled: false,
+				strategy: "handoff",
+				thresholdPercent: 80,
+				thresholdTokens: -1,
+				reserveTokens: undefined,
+			},
+		});
+		const comp = new StatusLineComponent(session);
+		comp.updateSettings({
+			preset: "custom",
+			leftSegments: ["context_pct"],
+			rightSegments: [],
+			separator: "powerline-thin",
+		});
+
+		const plain = comp.getTopBorder(80).content.replaceAll(/\x1b\[[0-9;]*m/g, "");
+		expect(plain).toContain("40.0%/200K");
 	});
 
 	it("renders token usage with an unknown marker when the model window is unavailable", () => {

@@ -111,7 +111,7 @@ function formatName(name?: OrcidName): string | null {
 	return given || family || null;
 }
 
-function formatDate(date?: OrcidSummaryDate): string | null {
+function formatOrcidDate(date?: OrcidSummaryDate): string | null {
 	const year = date?.year?.value;
 	if (!year) return null;
 
@@ -158,8 +158,8 @@ function formatAffiliation(summary: OrcidAffiliationSummary): string | null {
 	const locationParts = [address?.city, address?.region, address?.country].filter(Boolean) as string[];
 	const location = locationParts.length > 0 ? locationParts.join(", ") : null;
 
-	const start = formatDate(summary["start-date"]);
-	const end = formatDate(summary["end-date"]);
+	const start = formatOrcidDate(summary["start-date"]);
+	const end = formatOrcidDate(summary["end-date"]);
 	let dates: string | null = null;
 	if (start && end) {
 		dates = `${start} - ${end}`;

@@ -16,7 +16,7 @@ import type {
 import { resolveModelServiceTier, streamSimple } from "@veyyon/pi-ai";
 import { buildModelProviderPriorityRank } from "@veyyon/pi-catalog/identity";
 import { replaceTabs, truncateToWidth } from "@veyyon/pi-tui";
-import { formatDuration, getProjectDir } from "@veyyon/pi-utils";
+import { errorMessage, formatDuration, getProjectDir } from "@veyyon/pi-utils";
 import chalk from "chalk";
 import type { ApiKeyResolverModel } from "../config/api-key-resolver";
 import { ModelRegistry } from "../config/model-registry";
@@ -36,6 +36,7 @@ import {
 	shouldDisableReasoning,
 	toReasoningEffort,
 } from "../thinking";
+import { normalizePositiveInteger } from "./args";
 
 const DEFAULT_RUNS = 10;
 const DEFAULT_PAR = 4;
@@ -128,19 +129,6 @@ export interface BenchDependencies {
 	streamSimple?: BenchStreamSimple;
 	now?: () => number;
 	stdoutIsTTY?: boolean;
-}
-
-function getErrorMessage(error: unknown): string {
-	if (error instanceof Error && error.message) return error.message;
-	return String(error);
-}
-
-function normalizePositiveInteger(name: string, value: number | undefined, fallback: number): number {
-	if (value === undefined) return fallback;
-	if (!Number.isInteger(value) || value <= 0) {
-		throw new Error(`Expected --${name} to be a positive integer, got ${value}`);
-	}
-	return value;
 }
 
 function closeProviderSessionStates(providerSessionState: Map<string, ProviderSessionState>): void {
@@ -275,7 +263,7 @@ async function runBenchRequest(
 			tokensPerSecond: durationMs > 0 ? (outputTokens * 1000) / durationMs : 0,
 		};
 	} catch (error) {
-		return { ok: false, error: getErrorMessage(error) };
+		return { ok: false, error: errorMessage(error) };
 	} finally {
 		closeProviderSessionStates(providerSessionState);
 	}
@@ -308,7 +296,7 @@ function formatMs(ms: number): string {
 	return formatDuration(Math.max(0, Math.round(ms)));
 }
 
-function formatRunLine(result: BenchRunResult, index: number, total: number): string {
+function formatBenchRunLine(result: BenchRunResult, index: number, total: number): string {
 	const prefix = chalk.dim(`run ${index + 1}/${total}`);
 	if (result.ok) {
 		return `  ${chalk.green("[ok]")} ${prefix} ${chalk.dim("TTFT")} ${formatMs(result.ttftMs)} ${chalk.dim("TPS")} ${result.tokensPerSecond.toFixed(1)}/s ${chalk.dim("tokens")} ${result.outputTokens} ${chalk.dim("total")} ${formatMs(result.durationMs)}`;
@@ -362,7 +350,7 @@ export function formatBenchTable(summary: BenchSummary): string {
 	return `${lines.map((line, index) => (index === 0 ? chalk.dim(line) : line)).join("\n")}\n`;
 }
 
-async function createDefaultRuntime(): Promise<BenchRuntime> {
+async function createBenchRuntime(): Promise<BenchRuntime> {
 	const authStorage = await discoverAuthStorage();
 	try {
 		const cwd = getProjectDir();
@@ -493,7 +481,7 @@ export async function runBenchCommand(command: BenchCommandArgs, deps: BenchDepe
 		throw new Error("Pass at least one model selector, e.g. `veyyon bench opus gpt-5.2`");
 	}
 
-	const runtime = await (deps.createRuntime ?? createDefaultRuntime)();
+	const runtime = await (deps.createRuntime ?? createBenchRuntime)();
 	try {
 		const targets = resolveBenchModels(command.models, runtime.modelRegistry, runtime.settings, writeStderr);
 		// Explicit `--service-tier` (a single value broadcast across families) wins;
@@ -528,7 +516,7 @@ export async function runBenchCommand(command: BenchCommandArgs, deps: BenchDepe
 					error: `No credentials for provider "${model.provider}". Run \`veyyon\` and use /login, or set the provider API key.`,
 				};
 				results.push(failure);
-				if (!json) writeStdout(`${formatRunLine(failure, 0, runs)}\n`);
+				if (!json) writeStdout(`${formatBenchRunLine(failure, 0, runs)}\n`);
 				reports.push(buildModelReport(selector, model, thinking, results));
 				continue;
 			}
@@ -575,7 +563,7 @@ export async function runBenchCommand(command: BenchCommandArgs, deps: BenchDepe
 				if (!json) {
 					while (nextToPrint < runs && results[nextToPrint] !== undefined) {
 						const res = results[nextToPrint];
-						writeStdout(`${formatRunLine(res, nextToPrint, runs)}\n`);
+						writeStdout(`${formatBenchRunLine(res, nextToPrint, runs)}\n`);
 						nextToPrint++;
 					}
 				}

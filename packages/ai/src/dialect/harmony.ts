@@ -1,13 +1,13 @@
 import { parseJsonWithRepair } from "@veyyon/pi-utils";
 import type { Message, ToolCall } from "../types";
-import { asRecord, mintToolCallId, partialSuffixOverlapAny } from "./coercion";
+import { asRecordOrEmpty, mintToolCallId, partialSuffixOverlapAny } from "./coercion";
 import dialectPrompt from "./harmony.md" with { type: "text" };
 import {
 	assistantTranscriptParts,
 	collectToolResultRun,
 	harmonyRecipient,
 	messageContentText,
-	stringifyJson,
+	stringifyJsonOrNull,
 } from "./rendering";
 import type {
 	DialectDefinition,
@@ -226,7 +226,7 @@ export class HarmonyInbandScanner implements InbandScanner {
 		const raw = this.#toolArgs.trim();
 		if (raw.length === 0) return {};
 		try {
-			return asRecord(parseJsonWithRepair<unknown>(raw));
+			return asRecordOrEmpty(parseJsonWithRepair<unknown>(raw));
 		} catch {
 			return {};
 		}
@@ -274,8 +274,8 @@ function parseRecipient(header: string): string {
 }
 
 function renderToolCall(call: ToolCall, options: DialectRenderOptions = {}): string {
-	if (options.example) return stringifyJson(call.arguments);
-	return `${START}assistant${CHANNEL}commentary to=${harmonyRecipient(call.name)}${MESSAGE}${stringifyJson(call.arguments)}${CALL}`;
+	if (options.example) return stringifyJsonOrNull(call.arguments);
+	return `${START}assistant${CHANNEL}commentary to=${harmonyRecipient(call.name)}${MESSAGE}${stringifyJsonOrNull(call.arguments)}${CALL}`;
 }
 
 function renderAssistantToolCalls(calls: readonly ToolCall[], options: DialectRenderOptions = {}): string {

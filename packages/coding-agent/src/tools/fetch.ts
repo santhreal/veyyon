@@ -6,7 +6,16 @@ import type { AgentToolResult } from "@veyyon/pi-agent-core";
 import type { FetchImpl, ImageContent, TextContent } from "@veyyon/pi-ai";
 import { htmlToMarkdown } from "@veyyon/pi-natives";
 import { type Component, Text } from "@veyyon/pi-tui";
-import { $which, ptree, truncate } from "@veyyon/pi-utils";
+import {
+	$which,
+	countNonEmptyLines,
+	errorMessage,
+	HTTP_URL_RE,
+	looksLikeSqlite,
+	ptree,
+	stripTrailingSlashes,
+	truncate,
+} from "@veyyon/pi-utils";
 import { LRUCache } from "lru-cache/raw";
 import type { Settings } from "../config/settings";
 import { readEditableNotebookText } from "../edit/notebook";
@@ -30,7 +39,7 @@ import { applyListLimit } from "./list-limit";
 import { formatStyledArtifactReference, type OutputMeta } from "./output-meta";
 import { isReadableUrlPath, type LineRange, parseLineRanges } from "./path-utils";
 import { formatBytes, formatExpandHint, getDomain, replaceTabs } from "./render-utils";
-import { listTables, looksLikeSqlite, renderTableList } from "./sqlite-reader";
+import { listTables, renderTableList } from "./sqlite-reader";
 import { ToolAbortError, ToolError } from "./tool-errors";
 import { toolResult } from "./tool-result";
 import { clampTimeout } from "./tool-timeouts";
@@ -164,7 +173,7 @@ function buildLlmEndpointCandidates(url: string): string[] {
 			return [`${parsed.origin}/.well-known/llms.txt`, `${parsed.origin}/llms.txt`, `${parsed.origin}/llms.md`];
 		}
 
-		const trimmedPath = parsed.pathname.replace(/\/+$/, "");
+		const trimmedPath = stripTrailingSlashes(parsed.pathname);
 		const segments = trimmedPath.split("/").filter(Boolean);
 		const scopeDepth = parsed.pathname.endsWith("/") ? segments.length : Math.max(segments.length - 1, 1);
 		const endpoints: string[] = [];
@@ -196,7 +205,7 @@ function repairCollapsedScheme(value: string): string {
  */
 function normalizeUrl(url: string): string {
 	url = repairCollapsedScheme(url);
-	if (!url.match(/^https?:\/\//i)) {
+	if (!HTTP_URL_RE.test(url)) {
 		return `https://${url}`;
 	}
 	return url;
@@ -872,10 +881,6 @@ function getArchiveFormatHint(mime: string, extensionHint: string): ArchiveForma
 	return undefined;
 }
 
-function formatErrorMessage(error: unknown): string {
-	return error instanceof Error ? error.message : String(error);
-}
-
 function binaryContentType(mime: string): string {
 	return mime || "application/octet-stream";
 }
@@ -991,7 +996,7 @@ async function tryRenderBinaryPayload(
 				resultNotes,
 			);
 		} catch (error) {
-			resultNotes.push(`Notebook rendering failed: ${formatErrorMessage(error)}`);
+			resultNotes.push(`Notebook rendering failed: ${errorMessage(error)}`);
 			return buildBinaryPayloadResult(
 				url,
 				finalUrl,
@@ -1016,7 +1021,7 @@ async function tryRenderBinaryPayload(
 				resultNotes,
 			);
 		} catch (error) {
-			resultNotes.push(`SQLite rendering failed: ${formatErrorMessage(error)}`);
+			resultNotes.push(`SQLite rendering failed: ${errorMessage(error)}`);
 			return buildBinaryPayloadResult(
 				url,
 				finalUrl,
@@ -1044,7 +1049,7 @@ async function tryRenderBinaryPayload(
 				resultNotes,
 			);
 		} catch (error) {
-			resultNotes.push(`Archive rendering failed: ${formatErrorMessage(error)}`);
+			resultNotes.push(`Archive rendering failed: ${errorMessage(error)}`);
 			return buildBinaryPayloadResult(
 				url,
 				finalUrl,
@@ -1875,10 +1880,6 @@ export async function executeReadUrl(
 // =============================================================================
 
 /** Count non-empty lines */
-function countNonEmptyLines(text: string): number {
-	return text.split("\n").filter(l => l.trim()).length;
-}
-
 function readUrlLinkTarget(input: string): string {
 	try {
 		return parseReadUrlTarget(input)?.path ?? input;

@@ -10,7 +10,7 @@ import {
 	type ToolResultMessage,
 	type Usage,
 } from "@veyyon/pi-ai";
-import { getSessionsDir, isEnoent, readLines } from "@veyyon/pi-utils";
+import { getSessionsDir, isEnoent, readLines, textFromContent } from "@veyyon/pi-utils";
 import type {
 	AgentType,
 	MessageStats,
@@ -63,7 +63,7 @@ function extractFolderFromPath(sessionPath: string): string {
 /**
  * Check if an entry is an assistant message.
  */
-function isAssistantMessage(entry: SessionEntry): entry is SessionMessageEntry {
+function isLinkableAssistantEntry(entry: SessionEntry): entry is SessionMessageEntry {
 	if (entry.type !== "message") return false;
 	const msgEntry = entry as SessionMessageEntry;
 	// Legacy sessions (pre-id tracking) recorded message entries without an `id`.
@@ -93,25 +93,9 @@ function isServiceTierChange(entry: SessionEntry): entry is SessionServiceTierCh
 /**
  * Check if an entry is a tool-result message.
  */
-function isToolResultMessage(entry: SessionEntry): entry is SessionMessageEntry {
+function isToolResultEntry(entry: SessionEntry): entry is SessionMessageEntry {
 	if (entry.type !== "message") return false;
 	return (entry as SessionMessageEntry).message?.role === "toolResult";
-}
-
-/**
- * Extract plain text from a user message content payload.
- */
-function extractUserText(content: unknown): string {
-	if (typeof content === "string") return content;
-	if (!Array.isArray(content)) return "";
-	const parts: string[] = [];
-	for (const block of content) {
-		if (block && typeof block === "object" && (block as { type?: unknown }).type === "text") {
-			const text = (block as { text?: unknown }).text;
-			if (typeof text === "string") parts.push(text);
-		}
-	}
-	return parts.join("");
 }
 
 /**
@@ -120,7 +104,7 @@ function extractUserText(content: unknown): string {
 function extractUserStats(sessionFile: string, folder: string, entry: SessionMessageEntry): UserMessageStats | null {
 	const msg = entry.message as { role: "user"; content?: unknown; synthetic?: boolean };
 	if (msg.role !== "user" || msg.synthetic) return null;
-	const text = extractUserText(msg.content);
+	const text = textFromContent(msg.content, "");
 	if (!text.trim()) return null;
 	const metrics = computeUserMessageMetrics(text);
 	const ts = Date.parse(entry.timestamp);
@@ -280,11 +264,14 @@ function extractToolResultLink(sessionFile: string, entry: SessionMessageEntry):
 			if (block.type === "text" && typeof block.text === "string") resultChars += block.text.length;
 		}
 	}
+	const repairStatus =
+		msg.repairStatus === "repaired" || msg.repairStatus === "unrepairable" ? msg.repairStatus : undefined;
 	return {
 		sessionFile,
 		toolCallId: msg.toolCallId,
 		resultChars,
 		isError: msg.isError === true,
+		...(repairStatus ? { repairStatus } : {}),
 	};
 }
 
@@ -400,12 +387,12 @@ export async function parseSessionFile(sessionPath: string, fromOffset = 0): Pro
 			}
 			continue;
 		}
-		if (isToolResultMessage(entry)) {
+		if (isToolResultEntry(entry)) {
 			const link = extractToolResultLink(sessionPath, entry);
 			if (link) toolResults.push(link);
 			continue;
 		}
-		if (isAssistantMessage(entry)) {
+		if (isLinkableAssistantEntry(entry)) {
 			const msgStats = extractStats(sessionPath, folder, entry, currentServiceTier, agentType);
 			if (msgStats) stats.push(msgStats);
 			toolCalls.push(...extractToolCalls(sessionPath, folder, entry, agentType));
@@ -475,19 +462,41 @@ export async function listAllSessionFiles(): Promise<string[]> {
 }
 
 /**
- * Find a specific entry in a session file.
+ * Find an entry plus its ancestor chain (following `parentId`) in one pass
+ * over the session file. Returns entries oldest-first, ending with the
+ * requested entry, so a request-details view can show the user prompt and
+ * preceding context that led to a response. Capped at `maxEntries` to keep
+ * detail payloads bounded on long sessions (the newest entries win). Returns
+ * an empty array when the file or entry is missing.
  */
-export async function getSessionEntry(sessionPath: string, entryId: string): Promise<SessionEntry | null> {
+export async function getSessionEntryChain(
+	sessionPath: string,
+	entryId: string,
+	maxEntries = 50,
+): Promise<SessionEntry[]> {
+	const byId = new Map<string, SessionEntry>();
 	try {
 		for await (const line of readLines(Bun.file(sessionPath).stream())) {
 			const entry = parseJsonLine(line, 0, line.length);
-			if (entry && "id" in entry && entry.id === entryId) {
-				return entry;
+			if (entry && "id" in entry && typeof entry.id === "string") {
+				byId.set(entry.id, entry);
 			}
 		}
 	} catch (err) {
-		if (isEnoent(err)) return null;
+		if (isEnoent(err)) return [];
 		throw err;
 	}
-	return null;
+	const chain: SessionEntry[] = [];
+	const seen = new Set<string>();
+	let cursor = byId.get(entryId);
+	while (cursor && chain.length < maxEntries) {
+		const id = (cursor as { id?: unknown }).id;
+		if (typeof id !== "string" || seen.has(id)) break;
+		seen.add(id);
+		chain.push(cursor);
+		const parentId = (cursor as { parentId?: string | null }).parentId;
+		cursor = parentId ? byId.get(parentId) : undefined;
+	}
+	chain.reverse();
+	return chain;
 }

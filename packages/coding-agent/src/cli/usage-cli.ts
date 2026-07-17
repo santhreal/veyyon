@@ -7,6 +7,7 @@
  * credentials produced no usage report are listed too, so the output
  * always covers the full credential pool.
  */
+
 import {
 	type AuthStorage,
 	resolveUsedFraction,
@@ -14,11 +15,13 @@ import {
 	type UsageLimit,
 	type UsageReport,
 	type UsageUnit,
+	usageStatusFromFraction,
 } from "@veyyon/pi-ai";
 import { formatDuration, formatNumber, sanitizeText } from "@veyyon/pi-utils";
 import chalk from "chalk";
 import { ModelRegistry } from "../config/model-registry";
 import { discoverAuthStorage } from "../sdk";
+import { formatProviderName } from "../slash-commands/helpers/usage-report";
 
 const BAR_WIDTH = 28;
 
@@ -157,13 +160,9 @@ function collectIdentityStrings(reports: UsageReport[], accounts: UsageAccountId
 
 type LimitStatus = NonNullable<UsageLimit["status"]>;
 
-function resolveStatus(limit: UsageLimit): LimitStatus {
+function resolveLimitStatus(limit: UsageLimit): LimitStatus {
 	if (limit.status && limit.status !== "unknown") return limit.status;
-	const fraction = resolveUsedFraction(limit);
-	if (fraction === undefined) return "unknown";
-	if (fraction >= 1) return "exhausted";
-	if (fraction >= 0.8) return "warning";
-	return "ok";
+	return usageStatusFromFraction(resolveUsedFraction(limit));
 }
 
 const STATUS_COLOR: Record<LimitStatus, (text: string) => string> = {
@@ -175,18 +174,11 @@ const STATUS_COLOR: Record<LimitStatus, (text: string) => string> = {
 
 /** Worst-of aggregation: exhausted > warning > ok > unknown. */
 function aggregateStatus(limits: UsageLimit[]): LimitStatus {
-	const statuses = limits.map(resolveStatus);
+	const statuses = limits.map(resolveLimitStatus);
 	if (statuses.includes("exhausted")) return "exhausted";
 	if (statuses.includes("warning")) return "warning";
 	if (statuses.includes("ok")) return "ok";
 	return "unknown";
-}
-
-function formatProviderName(provider: string): string {
-	return provider
-		.split(/[-_]/g)
-		.map(part => (part ? part[0].toUpperCase() + part.slice(1) : ""))
-		.join(" ");
 }
 
 function formatUnitValue(value: number, unit: UsageUnit): string {
@@ -230,7 +222,7 @@ function renderBar(limit: UsageLimit): string {
 	if (fraction === undefined) return chalk.dim("·".repeat(BAR_WIDTH));
 	const clamped = Math.min(Math.max(fraction, 0), 1);
 	const filled = Math.round(clamped * BAR_WIDTH);
-	const color = STATUS_COLOR[resolveStatus(limit)];
+	const color = STATUS_COLOR[resolveLimitStatus(limit)];
 	return color("█".repeat(filled)) + chalk.dim("░".repeat(BAR_WIDTH - filled));
 }
 
@@ -403,7 +395,7 @@ function formatAccountHeader(
 }
 
 function formatLimitLine(limit: UsageLimit, labelWidth: number, nowMs: number): string[] {
-	const status = resolveStatus(limit);
+	const status = resolveLimitStatus(limit);
 	const title = limitTitle(limit);
 	const padded = title.padEnd(labelWidth);
 	const details: string[] = [describeAmount(limit)];
@@ -616,10 +608,7 @@ function historyAccountLabel(entry: UsageHistoryEntry): string {
 
 function historyStatus(fraction: number | undefined, status: UsageHistoryEntry["status"]): LimitStatus {
 	if (status && status !== "unknown") return status;
-	if (fraction === undefined) return "unknown";
-	if (fraction >= 1) return "exhausted";
-	if (fraction >= 0.8) return "warning";
-	return "ok";
+	return usageStatusFromFraction(fraction);
 }
 
 /** Peak-per-bucket sparkline over [sinceMs, nowMs]; empty buckets render dim dots. */

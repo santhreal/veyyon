@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
 import { parseArgs } from "node:util";
-import { formatDuration, formatNumber, formatPercent } from "@veyyon/pi-utils";
+import { formatCost, formatDuration, formatNumber, formatPercent, normalizePremiumRequests } from "@veyyon/pi-utils";
 import { getDashboardStats, getTotalMessageCount, syncAllSessions } from "./aggregator";
 import { closeDb } from "./db";
 import { startServer } from "./server";
@@ -38,19 +38,6 @@ export type {
 	ToolTimeSeriesPoint,
 	ToolUsageStats,
 } from "./types";
-
-/**
- * Format cost in dollars.
- */
-function formatCost(n: number): string {
-	if (n < 0.01) return `$${n.toFixed(4)}`;
-	if (n < 1) return `$${n.toFixed(3)}`;
-	return `$${n.toFixed(2)}`;
-}
-
-function normalizePremiumRequests(n: number): number {
-	return Math.round((n + Number.EPSILON) * 100) / 100;
-}
 
 /**
  * Print stats summary to console.
@@ -111,10 +98,10 @@ async function main(): Promise<void> {
 
 	if (values.help) {
 		console.log(`
-veyyon-stats - AI Usage Statistics Dashboard
+omp-stats - AI Usage Statistics Dashboard
 
 Usage:
-  veyyon-stats [options]
+  omp-stats [options]
 
 Options:
   -p, --port <port>  Port for the dashboard server (default: 3847)
@@ -123,10 +110,10 @@ Options:
   -h, --help         Show this help message
 
 Examples:
-  veyyon-stats              # Start dashboard server
-  veyyon-stats --json       # Print stats as JSON
-  veyyon-stats --port 8080  # Start on custom port
-  veyyon-stats --sync       # Sync and show summary
+  omp-stats              # Start dashboard server
+  omp-stats --json       # Print stats as JSON
+  omp-stats --port 8080  # Start on custom port
+  omp-stats --sync       # Sync and show summary
 `);
 		return;
 	}

@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Approvals internals - The Veyyon Harness Handbook</title>
+        <title>Sandbox internals - The Veyyon Harness Handbook</title>
 
 
         <!-- Custom HTML head -->
@@ -46,10 +46,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-24acbed9.js";
+            window.path_to_searchindex_js = "../searchindex-8badf17b.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-9cfd259b.js"></script>
+        <script src="../toc-19dab021.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -191,23 +191,22 @@
 
                 <div id="mdbook-content" class="content">
                     <main>
-                        <h1 id="approvals"><a class="header" href="#approvals">Approvals</a></h1>
-<p>Approvals decide when a tool or shell command runs on its own and when Veyyon pauses for the user.
-There is no OS-level command sandbox: Veyyon does not confine commands with Landlock, seccomp,
-Seatbelt, or bubblewrap. The boundary is policy the agent loop enforces before dispatch.</p>
+                        <h1 id="sandbox"><a class="header" href="#sandbox">Sandbox</a></h1>
+<p>The sandbox bounds what tool and shell commands may read, write, and reach on the host. When Veyyon
+is unsure whether an action is safe, it asks the user instead of assuming.</p>
 <h2 id="responsibility"><a class="header" href="#responsibility">Responsibility</a></h2>
 <ul>
-<li>Map the <strong>approval mode</strong> (<code>tools.approvalMode</code>) to a per-tier decision (read / write / exec) for
-<code>bash</code>, <code>edit</code>, <code>write</code>, and related tools.</li>
-<li>Apply per-tool overrides (<code>tools.approval</code> → <code>allow</code> / <code>deny</code> / <code>prompt</code>) on top of the mode.</li>
-<li>Apply execpolicy <code>.rules</code> (user and project) that allowlist or require prompts for command classes.</li>
-<li>Surface the approval prompt in the TUI before a gated command or edit runs.</li>
+<li>Map approval mode and sandbox policy to concrete restrictions for <code>bash</code>, <code>edit</code>, <code>write</code>, and
+related tools.</li>
+<li>Enforce workspace roots and network policy per session settings.</li>
+<li>Surface permission prompts in the TUI before mutating or risky commands run.</li>
 </ul>
 <h2 id="public-boundary"><a class="header" href="#public-boundary">Public boundary</a></h2>
-<p><code>tools.approvalMode</code> in <code>config.yml</code> and the launch flags (<code>--approval-mode</code>, <code>--auto-approve</code> /
-<code>--yolo</code>, <code>--plan-yolo</code>) resolve to a decision applied to the <code>bash</code>, <code>edit</code>, and <code>write</code> tools, with
-plan-mode guards on top. Commands run <strong>in-process</strong> after policy resolution — there is no standalone
-exec-server process in the shipped product.</p>
+<p>Settings keys such as <code>approvalMode</code>, sandbox-related enums in <code>config.yml</code>, and CLI flags on launch
+(<code>--approval-mode</code> and sandbox overrides) resolve into concrete restrictions applied to the <code>bash</code>,
+<code>edit</code>, and <code>write</code> tools, with plan-mode guards on top.</p>
+<p>There is <strong>no</strong> standalone exec-server process in the shipped product; commands run in-process after
+policy resolution.</p>
 <h2 id="key-concepts"><a class="header" href="#key-concepts">Key concepts</a></h2>
 <div class="table-wrapper">
 <table>
@@ -215,14 +214,13 @@ exec-server process in the shipped product.</p>
 <tr><th>Concept</th><th>Meaning</th></tr>
 </thead>
 <tbody>
-<tr><td>Approval mode</td><td>Which tool tiers run without asking (<code>plan</code>, <code>ask</code>, <code>auto-edit</code>, <code>yolo</code>).</td></tr>
-<tr><td>Per-tool policy</td><td><code>tools.approval</code> overrides the mode for a named tool.</td></tr>
-<tr><td>Execpolicy rules</td><td><code>.rules</code> files that refine which specific commands auto-run.</td></tr>
-<tr><td>Plan mode</td><td>Restricts mutating tools until the plan is approved (<code>/plan</code>).</td></tr>
+<tr><td>Approval mode</td><td>When to prompt before tool execution (<code>on-request</code>, <code>never</code>, …)</td></tr>
+<tr><td>Sandbox policy</td><td>Filesystem/network posture for command tools</td></tr>
+<tr><td>Plan mode</td><td>Restricts mutating tools until plan is approved (<code>/plan</code>)</td></tr>
 </tbody>
 </table>
 </div>
-<p>User-facing guide: <a href="../features/sandbox.html">Approvals and autonomy</a>.</p>
+<p>User-facing guide: <a href="../features/sandbox.html">Sandbox and approvals</a>.</p>
 
                     </main>
 

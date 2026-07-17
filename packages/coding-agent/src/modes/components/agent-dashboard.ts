@@ -34,7 +34,7 @@ import {
 	visibleWidth,
 	wrapTextWithAnsi,
 } from "@veyyon/pi-tui";
-import { isEnoent, prompt } from "@veyyon/pi-utils";
+import { isEnoent, joinTextBlocks, prompt } from "@veyyon/pi-utils";
 import { YAML } from "bun";
 import { getConfigDirs } from "../../config";
 import type { ModelRegistry } from "../../config/model-registry";
@@ -147,21 +147,13 @@ function matchAgent(agent: DashboardAgent, query: string): boolean {
 		.every(token => fuzzyMatch(token, text).matches);
 }
 
-function extractAssistantText(messages: AgentMessage[]): string | null {
+function lastAssistantText(messages: AgentMessage[]): string | null {
 	for (let i = messages.length - 1; i >= 0; i--) {
 		const message = messages[i];
 		if (message?.role !== "assistant") continue;
 		const blocks = message.content;
 		if (!Array.isArray(blocks)) continue;
-		const text = blocks
-			.map(block => {
-				if (!block || typeof block !== "object") return "";
-				if (!("type" in block) || (block as { type?: unknown }).type !== "text") return "";
-				const value = (block as { text?: unknown }).text;
-				return typeof value === "string" ? value : "";
-			})
-			.join("\n")
-			.trim();
+		const text = joinTextBlocks(blocks).trim();
 		if (text.length > 0) return text;
 	}
 	return null;
@@ -782,7 +774,7 @@ export class AgentDashboard extends Container {
 
 		try {
 			await session.prompt(userPrompt, { expandPromptTemplates: false });
-			const raw = extractAssistantText(session.state.messages);
+			const raw = lastAssistantText(session.state.messages);
 			if (!raw) {
 				throw new Error("No response returned by agent creation architect.");
 			}

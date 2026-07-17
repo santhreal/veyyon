@@ -2,15 +2,15 @@
 
 A concise vocabulary of the primitives that shape Veyyon's runtime behavior.
 
-- **apply_patch**: Veyyon's structured edit tool. The model emits a `*** Begin Patch … *** End Patch` envelope, and the harness applies it through one verified path that checks for a unique match, respects the approval policy, and records the diff. It is delivered as a Freeform tool on the Responses API or as a Function tool with an `{input}` JSON field on Chat Completions.
+- **apply_patch**: Veyyon's structured edit tool. The model emits a `*** Begin Patch … *** End Patch` envelope, and the harness applies it through one verified path that checks for a unique match, respects the sandbox, and records the diff. It is delivered as a Freeform tool on the Responses API or as a Function tool with an `{input}` JSON field on Chat Completions.
 
-- **approval mode**: The autonomy control (`tools.approvalMode`) that decides which tool tiers run automatically and which pause for your yes: `plan`, `ask`, `auto-edit`, `yolo` (legacy `always-ask` = `ask`, `write` = `auto-edit`). Veyyon does not add an OS command sandbox, so the mode is the boundary.
+- **approval policy**: The rule that decides when Veyyon must ask you before running a command. Policies include `untrusted`, `on-request`, `granular`, and `never`. The approval policy is a soft gate; the sandbox policy is the hard boundary.
 
 - **backend catalog**: The Tier-B data file that maps each model slug to a provider, wire API, and connection facts. Veyyon selects the model contract against this catalog rather than hardcoding provider lists.
 
 - **compaction**: The compression layer that summarizes a long trajectory into a smaller, information-preserving form instead of truncating it. Compaction preserves the goal card, recent user messages, and deterministic working-set facts across successive windows.
 
-- **edit / write**: The `edit` and `write` tools change files on disk. `write` creates or replaces a file; `edit` replaces exact text with new text. Both route through the same verified path as `apply_patch` and respect the approval policy.
+- **edit / write**: The `edit` and `write` tools change files on disk. `write` creates or replaces a file; `edit` replaces exact text with new text. Both route through the same verified path as `apply_patch` and respect the sandbox.
 
 - **Freeform tool / Function tool**: The two tool shapes Veyyon advertises to a model. A Freeform tool emits a raw grammar-shaped body; a Function tool emits JSON arguments matching a schema. The choice depends on the backend wire API.
 
@@ -22,11 +22,11 @@ A concise vocabulary of the primitives that shape Veyyon's runtime behavior.
 
 - **model contract / BYOK**: The model contract is your chosen endpoint, model, and credentials. BYOK (bring-your-own-key) means you supply your own provider or local-endpoint key, so Veyyon calls the API directly without telemetry egress.
 
-- **personality**: A style-only setting that changes how the agent writes replies without altering its tools or permissions. Built-in personalities include `pragmatic`, `friendly`, and `none`.
+- **personality**: A style-only setting that changes how the agent writes replies without altering its tools, permissions, or sandbox. Built-in personalities include `pragmatic`, `friendly`, and `none`.
 
 - **plugin**: A directory with a `.veyyon-plugin/plugin.json` manifest that adds skills, MCP servers, apps, hooks, or TUI customizations to Veyyon. Plugins are discovered through marketplaces.
 
-- **profile**: A named configuration group (a per-profile `config.yml` under the agent directory) that bundles model, provider, approval mode, personality, and other runtime settings. Activate a profile at launch with `--profile` or at runtime with `/profile`.
+- **profile**: A named configuration group (a per-profile `config.yml` under the agent directory) that bundles model, provider, sandbox, approval policy, personality, and other runtime settings. Activate a profile at launch with `--profile` or at runtime with `/profile`.
 
 - **prompt-cache discipline**: The practice of keeping stable prompt prefixes stable and treating cache behavior as measured runtime policy. Veyyon orders context and compacts in ways that preserve prefix stability across turns.
 
@@ -35,6 +35,8 @@ A concise vocabulary of the primitives that shape Veyyon's runtime behavior.
 - **repair cascade**: The ordered set of sound transforms the repair engine applies to a tool call. Each rule returns a coerced value, a rule name for telemetry, and a coaching hint so the model stops re-malforming.
 
 - **rollout**: The append-only JSONL log of a session's entries. Each entry carries an `id` and `parent_id`; a `leaf_move` line branches the active leaf to any earlier entry without rewriting history.
+
+- **sandbox policy**: The hard boundary on what a command can touch. Policies include `read-only`, `workspace-write`, `danger-full-access`, and `external-sandbox`. When enforcement cannot be established, Veyyon fails closed.
 
 - **session**: The unit of interactive work in Veyyon. A session records turns, tool activity, approvals, edits, and verification output, and survives context pressure through goal state and compaction.
 

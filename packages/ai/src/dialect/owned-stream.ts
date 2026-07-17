@@ -44,7 +44,7 @@ type OpenThinking = { index: number; text: string } | undefined;
 
 type StreamingToolCall = ToolCall & StreamingPartialJsonCarrier;
 
-function cloneToolCall(source: StreamingToolCall): StreamingToolCall {
+function cloneCanonicalToolCall(source: StreamingToolCall): StreamingToolCall {
 	const block: StreamingToolCall = {
 		type: "toolCall",
 		id: source.id,
@@ -57,7 +57,7 @@ function cloneToolCall(source: StreamingToolCall): StreamingToolCall {
 	return block;
 }
 
-function syncToolCall(target: StreamingToolCall, source: StreamingToolCall): void {
+function syncCanonicalToolCall(target: StreamingToolCall, source: StreamingToolCall): void {
 	target.id = source.id;
 	target.name = source.name;
 	target.arguments = source.arguments;
@@ -219,7 +219,7 @@ class InbandStreamProjector {
 		this.#toolChannel = "native";
 		this.#closeText();
 		this.#closeThinking();
-		const block = cloneToolCall(source);
+		const block = cloneCanonicalToolCall(source);
 		this.#partial.content.push(block);
 		const index = this.#partial.content.length - 1;
 		this.#nativeBlocks.set(srcIndex, { index, block });
@@ -234,7 +234,7 @@ class InbandStreamProjector {
 			entry = this.#nativeBlocks.get(srcIndex);
 		}
 		if (!entry) return;
-		if (source) syncToolCall(entry.block, source);
+		if (source) syncCanonicalToolCall(entry.block, source);
 		if (this.#emitEvents)
 			this.#out.push({ type: "toolcall_delta", contentIndex: entry.index, delta, partial: this.#partial });
 	}
@@ -243,7 +243,7 @@ class InbandStreamProjector {
 		if (this.#stopped) return;
 		const entry = this.#nativeBlocks.get(srcIndex);
 		if (entry) {
-			syncToolCall(entry.block, toolCall);
+			syncCanonicalToolCall(entry.block, toolCall);
 			if (this.#emitEvents)
 				this.#out.push({
 					type: "toolcall_end",
@@ -261,7 +261,7 @@ class InbandStreamProjector {
 		this.#toolChannel = "native";
 		this.#closeText();
 		this.#closeThinking();
-		const block = cloneToolCall(toolCall);
+		const block = cloneCanonicalToolCall(toolCall);
 		this.#partial.content.push(block);
 		const index = this.#partial.content.length - 1;
 		if (this.#emitEvents) {

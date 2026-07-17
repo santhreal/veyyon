@@ -1,4 +1,5 @@
 import * as AIError from "../../error";
+import { jwtExpiryMs } from "../../utils/jwt";
 import { generatePKCE } from "./pkce";
 import type { OAuthCredentials } from "./types";
 
@@ -97,7 +98,7 @@ export async function loginCursor(
 
 	const { accessToken, refreshToken } = await pollCursorAuth(uuid, verifier);
 
-	const expiresAt = getTokenExpiry(accessToken);
+	const expiresAt = cursorTokenExpiry(accessToken);
 
 	return {
 		access: accessToken,
@@ -129,7 +130,7 @@ export async function refreshCursorToken(apiKeyOrRefreshToken: string): Promise<
 		refreshToken: string;
 	};
 
-	const expiresAt = getTokenExpiry(data.accessToken);
+	const expiresAt = cursorTokenExpiry(data.accessToken);
 
 	return {
 		access: data.accessToken,
@@ -138,34 +139,14 @@ export async function refreshCursorToken(apiKeyOrRefreshToken: string): Promise<
 	};
 }
 
-function getTokenExpiry(token: string): number {
-	try {
-		const parts = token.split(".");
-		if (parts.length !== 3) {
-			return Date.now() + 3600 * 1000;
-		}
-		const payload = parts[1];
-		if (!payload) {
-			return Date.now() + 3600 * 1000;
-		}
-		const decoded = JSON.parse(atob(payload.replace(/-/g, "+").replace(/_/g, "/")));
-		if (decoded && typeof decoded === "object" && typeof decoded.exp === "number") {
-			return decoded.exp * 1000 - 5 * 60 * 1000;
-		}
-	} catch {
-		// Ignore parsing errors
-	}
-	return Date.now() + 3600 * 1000;
+function cursorTokenExpiry(token: string): number {
+	const expiryMs = jwtExpiryMs(token);
+	// 5-minute skew; opaque tokens assume a one-hour lifetime.
+	return expiryMs !== undefined ? expiryMs - 5 * 60 * 1000 : Date.now() + 3600 * 1000;
 }
 
 export function isCursorTokenExpiringSoon(token: string, thresholdSeconds = 300): boolean {
-	try {
-		const [, payload] = token.split(".");
-		if (!payload) return true;
-		const decoded = JSON.parse(atob(payload.replace(/-/g, "+").replace(/_/g, "/")));
-		const currentTime = Math.floor(Date.now() / 1000);
-		return decoded.exp - currentTime < thresholdSeconds;
-	} catch {
-		return true;
-	}
+	const expiryMs = jwtExpiryMs(token);
+	if (expiryMs === undefined) return true;
+	return expiryMs - Date.now() < thresholdSeconds * 1000;
 }

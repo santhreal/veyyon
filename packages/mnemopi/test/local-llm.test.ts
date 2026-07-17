@@ -11,7 +11,7 @@ import {
 	callLocalLlm,
 	callRemoteLlm,
 	chunkMemoriesByBudget,
-	complete,
+	completeWithLocalLlm,
 	llmAvailable,
 	localGgufAvailable,
 	summarizeMemories,
@@ -120,7 +120,7 @@ describe("local LLM TypeScript port", () => {
 		});
 		try {
 			const text = await withMnemopiRuntimeOptions(memory.runtimeOptions, () =>
-				complete("hello", 0.3, { fetch: fetchMock }),
+				completeWithLocalLlm("hello", 0.3, { fetch: fetchMock }),
 			);
 			expect(text).toBe("fn:hello:2048");
 			expect(fetchCalls).toBe(0);
@@ -135,7 +135,7 @@ describe("local LLM TypeScript port", () => {
 		});
 		const memory = new Mnemopi({ llm: model });
 		try {
-			const text = await withMnemopiRuntimeOptions(memory.runtimeOptions, () => complete("hello"));
+			const text = await withMnemopiRuntimeOptions(memory.runtimeOptions, () => completeWithLocalLlm("hello"));
 			expect(text).toBe("model summary");
 		} finally {
 			memory.close();
@@ -153,7 +153,7 @@ describe("local LLM TypeScript port", () => {
 		const memory = new Mnemopi({ llm: false });
 		try {
 			const text = await withMnemopiRuntimeOptions(memory.runtimeOptions, () =>
-				complete("hello", 0.3, { fetch: fetchMock }),
+				completeWithLocalLlm("hello", 0.3, { fetch: fetchMock }),
 			);
 			expect(text).toBeNull();
 			expect(fetchCalls).toBe(0);

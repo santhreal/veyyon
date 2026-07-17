@@ -4,7 +4,7 @@
  * Handles `veyyon q`/`veyyon web-search` subcommands for testing web search providers.
  */
 
-import { APP_NAME, getProjectDir } from "@veyyon/pi-utils";
+import { getProjectDir } from "@veyyon/pi-utils";
 import chalk from "chalk";
 import { applyProviderGlobalsFromSettings } from "../config/provider-globals";
 import { Settings } from "../config/settings";
@@ -25,44 +25,6 @@ export interface SearchCommandArgs {
 const PROVIDERS: Array<SearchProviderId | "auto"> = ["auto", ...SEARCH_PROVIDER_ORDER];
 
 const RECENCY_OPTIONS: SearchCommandArgs["recency"][] = ["day", "week", "month", "year"];
-
-/**
- * Parse web search subcommand arguments.
- * Returns undefined if not a web search command.
- */
-export function parseSearchArgs(args: string[]): SearchCommandArgs | undefined {
-	if (args.length === 0 || (args[0] !== "q" && args[0] !== "web-search")) {
-		return undefined;
-	}
-
-	const result: SearchCommandArgs = {
-		query: "",
-		expanded: true,
-	};
-
-	const positional: string[] = [];
-
-	for (let i = 1; i < args.length; i++) {
-		const arg = args[i];
-		if (arg === "--provider") {
-			result.provider = args[++i] as SearchCommandArgs["provider"];
-		} else if (arg === "--recency") {
-			result.recency = args[++i] as SearchCommandArgs["recency"];
-		} else if (arg === "--limit" || arg === "-l") {
-			result.limit = Number.parseInt(args[++i], 10);
-		} else if (arg === "--compact") {
-			result.expanded = false;
-		} else if (!arg.startsWith("-")) {
-			positional.push(arg);
-		}
-	}
-
-	if (positional.length > 0) {
-		result.query = positional.join(" ");
-	}
-
-	return result;
-}
 
 export async function runSearchCommand(cmd: SearchCommandArgs): Promise<void> {
 	if (!cmd.query) {
@@ -111,27 +73,4 @@ export async function runSearchCommand(cmd: SearchCommandArgs): Promise<void> {
 	if (result.details?.error) {
 		process.exitCode = 1;
 	}
-}
-
-export function printSearchHelp(): void {
-	process.stdout.write(`${chalk.bold(`${APP_NAME} q`)} - Test web search providers
-
-${chalk.bold("Usage:")}
-  ${APP_NAME} q [options] <query>
-  ${APP_NAME} web-search [options] <query>
-
-${chalk.bold("Arguments:")}
-  query      Search query text
-
-${chalk.bold("Options:")}
-  --provider <name>   Provider: ${PROVIDERS.join(", ")}
-  --recency <value>   Recency filter (when supported): ${RECENCY_OPTIONS.join(", ")}
-  -l, --limit <n>     Max results to return
-  --compact           Render condensed output
-  -h, --help          Show this help
-
-${chalk.bold("Examples:")}
-  ${APP_NAME} q --provider=exa "what's the color of the sky"
-  ${APP_NAME} q --provider=brave --recency=week "latest TypeScript 5.7 changes"
-`);
 }

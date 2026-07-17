@@ -1,6 +1,7 @@
 import type { AgentTool } from "@veyyon/pi-agent-core";
 import type { Tool as AiTool } from "@veyyon/pi-ai";
 import { toolWireSchema } from "@veyyon/pi-ai/utils/schema";
+import { NON_ALNUM_RUNS_RE } from "@veyyon/pi-utils";
 
 // ─── Generic Tool Discovery Types ────────────────────────────────────────────
 
@@ -79,7 +80,7 @@ function getSchemaPropertyKeys(tool: Pick<AiTool, "name" | "description" | "para
 	return Object.keys(properties as Record<string, unknown>).sort();
 }
 
-function tokenize(value: string): string[] {
+function tokenizeForIndex(value: string): string[] {
 	return (
 		value
 			.normalize("NFKD")
@@ -92,7 +93,7 @@ function tokenize(value: string): string[] {
 			// Everything that isn't a letter or digit becomes a separator. This subsumes markdown
 			// punctuation (`|*_`#-~>[]()`), box-drawing glyphs (─│┌), em/en dashes, smart quotes,
 			// zero-width spaces, NBSPs, etc.
-			.replace(/[^\p{L}\p{N}]+/gu, " ")
+			.replace(NON_ALNUM_RUNS_RE, " ")
 			.toLowerCase()
 			.trim()
 			.split(/\s+/)
@@ -102,7 +103,7 @@ function tokenize(value: string): string[] {
 
 function addWeightedTokens(termFrequencies: Map<string, number>, value: string | undefined, weight: number): void {
 	if (!value) return;
-	for (const token of tokenize(value)) {
+	for (const token of tokenizeForIndex(value)) {
 		termFrequencies.set(token, (termFrequencies.get(token) ?? 0) + weight);
 	}
 }
@@ -238,7 +239,7 @@ export function searchDiscoverableTools(
 	query: string,
 	limit: number,
 ): DiscoverableToolSearchResult[] {
-	const queryTokens = tokenize(query);
+	const queryTokens = tokenizeForIndex(query);
 	if (queryTokens.length === 0) {
 		throw new Error("Query must contain at least one letter or number.");
 	}

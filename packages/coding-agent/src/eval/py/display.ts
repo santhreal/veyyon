@@ -18,7 +18,7 @@ export type KernelDisplayOutput =
 	| { type: "markdown" }
 	| { type: "status"; event: PythonStatusEvent };
 
-function normalizeDisplayText(text: string): string {
+function ensureTrailingNewline(text: string): string {
 	return text.endsWith("\n") ? text : `${text}\n`;
 }
 
@@ -58,14 +58,14 @@ export async function renderKernelDisplay(content: Record<string, unknown>): Pro
 	// where text/plain is just the repr).
 	if (typeof data["text/markdown"] === "string") {
 		outputs.push({ type: "markdown" });
-		return { text: normalizeDisplayText(String(data["text/markdown"])), outputs };
+		return { text: ensureTrailingNewline(String(data["text/markdown"])), outputs };
 	}
 	if (typeof data["text/plain"] === "string") {
-		return { text: normalizeDisplayText(String(data["text/plain"])), outputs };
+		return { text: ensureTrailingNewline(String(data["text/plain"])), outputs };
 	}
 	if (data["text/html"] !== undefined) {
 		const markdown = (await htmlToBasicMarkdown(String(data["text/html"]))) || "";
-		return { text: markdown ? normalizeDisplayText(markdown) : "", outputs };
+		return { text: markdown ? ensureTrailingNewline(markdown) : "", outputs };
 	}
 	return { text: "", outputs };
 }

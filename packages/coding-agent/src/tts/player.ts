@@ -1,12 +1,3 @@
-/**
- * Cross-platform audio-file playback via the system's built-in players.
- *
- * The selection logic is split into a pure, injectable builder
- * ({@link playerCommandsFor}) so it can be unit-tested without spawning a
- * process or touching PATH, and a thin runtime wrapper ({@link playAudioFile})
- * that walks the resulting fallback chain.
- */
-import * as fs from "node:fs/promises";
 import { $which } from "@veyyon/pi-utils";
 import { getToolPath } from "../utils/tools-manager";
 
@@ -129,9 +120,4 @@ export async function playAudioFile(filePath: string, options: PlayAudioOptions 
 	}
 
 	throw new Error(`Audio playback failed:\n${failures.join("\n")}`);
-}
-
-/** Best-effort temp-file cleanup used by callers after playback. */
-export async function removeTempFile(filePath: string): Promise<void> {
-	await fs.unlink(filePath).catch(() => {});
 }

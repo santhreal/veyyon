@@ -10,13 +10,16 @@
  * `veyyon ttsr list` — show every TTSR-registered rule the current project/user
  * config would load, with its conditions, scope, and source.
  */
+
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { AstMatchStrictness, astMatch, FileType, type GlobMatch, glob } from "@veyyon/pi-natives";
+import { collapseWhitespace, escapeRegExp } from "@veyyon/pi-utils";
 import { getProjectDir } from "@veyyon/pi-utils/dirs";
 import chalk from "chalk";
 import { BUILTIN_DEFAULTS_PROVIDER_ID, type Rule, ruleCapability } from "../capability/rule";
 import { bucketRules } from "../capability/rule-buckets";
+import { compileRulePathGlobs, parseToolScopeToken } from "../capability/rule-scope";
 import { Settings } from "../config/settings";
 import type { TtsrSettings } from "../config/settings-schema";
 import { initializeWithSettings, loadCapability } from "../discovery";
@@ -118,10 +121,8 @@ interface ScanRegexCondition {
 	regex: RegExp;
 }
 
-interface ScanScopePlan {
-	toolName?: string;
-	pathGlob?: Bun.Glob;
-}
+// ONE PLACE: scope grammar owned by capability/rule-scope.ts.
+type ScanScopePlan = import("../capability/rule-scope").ToolScopeToken;
 
 interface ScanRulePlan {
 	rule: Rule;
@@ -157,7 +158,7 @@ async function readSnippet(opts: { snippet?: string; file?: string }): Promise<s
 }
 
 function previewSnippet(text: string): string {
-	const single = text.replace(/\s+/g, " ").trim();
+	const single = collapseWhitespace(text);
 	return single.length > 80 ? `${single.slice(0, 77)}…` : single;
 }
 
@@ -497,38 +498,6 @@ function matchesScanGlob(glob: Bun.Glob, filePaths: string[] | undefined): boole
 	return false;
 }
 
-function compileScanPathGlobs(globs: Rule["globs"]): Bun.Glob[] | undefined {
-	if (!globs || globs.length === 0) {
-		return undefined;
-	}
-	const compiled = globs
-		.map(globPattern => globPattern.trim())
-		.filter(globPattern => globPattern.length > 0)
-		.map(globPattern => new Bun.Glob(globPattern));
-	return compiled.length > 0 ? compiled : undefined;
-}
-
-function parseScanToolScopeToken(token: string): ScanScopePlan | undefined {
-	const match = /^(?:(?<prefix>tool)(?::(?<tool>[a-z0-9_-]+))?|(?<bare>[a-z0-9_-]+))(?:\((?<path>[^)]+)\))?$/i.exec(
-		token,
-	);
-	if (!match) {
-		return undefined;
-	}
-	const groups = match.groups;
-	const hasToolPrefix = groups?.prefix !== undefined;
-	const toolName = (groups?.tool ?? (hasToolPrefix ? undefined : groups?.bare))?.trim().toLowerCase();
-	const pathPattern = groups?.path?.trim();
-	return {
-		toolName,
-		pathGlob: pathPattern ? new Bun.Glob(pathPattern) : undefined,
-	};
-}
-
-function escapeRegexLiteral(value: string): string {
-	return value.replace(/[\\^$.*+?()[\]{}|]/g, "\\$&");
-}
-
 function compileAstPrefilter(pattern: string): RegExp | undefined {
 	if (/\bas\s*\{/.test(pattern)) {
 		return /\bas\b(?:\s|\/\/[^\n]*(?:\n|$)|\/\*[\s\S]*?\*\/)*\{/;
@@ -539,7 +508,7 @@ function compileAstPrefilter(pattern: string): RegExp | undefined {
 		?.filter(token => !ignored.has(token) && !/^[A-Z_]+$/.test(token))
 		.sort((a, b) => b.length - a.length);
 	const token = tokens?.[0];
-	return token ? new RegExp(`\\b${escapeRegexLiteral(token)}\\b`) : undefined;
+	return token ? new RegExp(`\\b${escapeRegExp(token)}\\b`) : undefined;
 }
 
 function compileScanRulePlans(rules: Rule[]): ScanRulePlan[] {
@@ -556,7 +525,7 @@ function compileScanRulePlans(rules: Rule[]): ScanRulePlan[] {
 				scopes.push({});
 				continue;
 			}
-			const scope = parseScanToolScopeToken(token);
+			const scope = parseToolScopeToken(token);
 			if (!scope) {
 				continue;
 			}
@@ -589,7 +558,7 @@ function compileScanRulePlans(rules: Rule[]): ScanRulePlan[] {
 		}
 		return {
 			rule,
-			globalPathGlobs: compileScanPathGlobs(rule.globs),
+			globalPathGlobs: compileRulePathGlobs(rule.globs),
 			defaultToolScope,
 			scopes,
 			regexConditions,

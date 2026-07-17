@@ -12,7 +12,7 @@ import type {
 	TextEdit,
 	WorkspaceEdit,
 } from "./types";
-import { uriToFile } from "./utils";
+import { comparePosition, uriToFile } from "./utils";
 
 // =============================================================================
 // Text Edit Application
@@ -45,9 +45,6 @@ export function applyTextEditsToString(content: string, edits: TextEdit[]): stri
 	return lines.join("\n");
 }
 
-function comparePosition(a: Position, b: Position): number {
-	return a.line === b.line ? a.character - b.character : a.line - b.line;
-}
 function positionsEqual(a: Position, b: Position): boolean {
 	return a.line === b.line && a.character === b.character;
 }

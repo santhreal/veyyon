@@ -236,11 +236,6 @@ async function addSubagentSessions(
 	}
 }
 
-/** Get recent log entries for display (tail-limited to avoid OOM on large files). */
-export async function getLogText(): Promise<string> {
-	return readLastLines(getLogPath(), MAX_LOG_LINES);
-}
-
 const LOG_FILE_PATTERN = new RegExp(`^${APP_NAME}\\.(\\d{4}-\\d{2}-\\d{2})\\.log$`);
 
 export async function createDebugLogSource(): Promise<DebugLogSource> {

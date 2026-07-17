@@ -1,8 +1,8 @@
-import { getSSHConfigPath } from "@veyyon/pi-utils";
+import { errorMessage, getSSHConfigPath } from "@veyyon/pi-utils";
 import { addSSHHost, readSSHConfigFile, removeSSHHost, type SSHHostConfig } from "../../ssh/config-writer";
 import { parseCommandArgs } from "../../utils/command-args";
 import type { ParsedSlashCommand, SlashCommandResult, SlashCommandRuntime } from "../types";
-import { commandConsumed, errorMessage, parseNamedScopeArgs, parseSubcommand, usage } from "./parse";
+import { commandConsumed, parseNamedScopeArgs, parseSubcommand, usage } from "./parse";
 
 interface ParsedSshAddArgs {
 	name?: string;

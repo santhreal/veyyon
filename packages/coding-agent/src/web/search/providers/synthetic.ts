@@ -27,15 +27,6 @@ interface SyntheticSearchResponse {
 	results: SyntheticSearchResult[];
 }
 
-/** Resolve Synthetic API key through the shared auth storage pipeline. */
-export function findApiKey(
-	authStorage: AuthStorage,
-	sessionId?: string,
-	signal?: AbortSignal,
-): Promise<string | undefined> {
-	return authStorage.getApiKey("synthetic", sessionId, { signal });
-}
-
 /** Call Synthetic search API. */
 async function callSyntheticSearch(
 	apiKey: string,

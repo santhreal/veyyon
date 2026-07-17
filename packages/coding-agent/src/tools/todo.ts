@@ -2,7 +2,7 @@ import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallb
 import type { ToolExample } from "@veyyon/pi-ai";
 import type { Component } from "@veyyon/pi-tui";
 import { Text } from "@veyyon/pi-tui";
-import { prompt } from "@veyyon/pi-utils";
+import { NON_ALNUM_RUNS_RE, prompt } from "@veyyon/pi-utils";
 import { type } from "arktype";
 import chalk from "chalk";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
@@ -184,7 +184,7 @@ const TODO_DESCRIPTION_MIN_OVERLAP = 6;
 function normalizeForTodoMatch(value: string): string {
 	return value
 		.toLowerCase()
-		.replace(/[^\p{L}\p{N}]+/gu, " ")
+		.replace(NON_ALNUM_RUNS_RE, " ")
 		.trim();
 }
 

@@ -8,7 +8,7 @@
  */
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { isEnoent, logger } from "@veyyon/pi-utils";
+import { isEnoent, logger, toStrictUint8Array } from "@veyyon/pi-utils";
 import type { SnapshotResponse } from "./types";
 
 const MAGIC = new Uint8Array([0x4f, 0x4d, 0x50, 0x53]); // "OMPS"
@@ -157,8 +157,8 @@ async function decryptCachePayload(data: Uint8Array, token: string, url: string)
 		return null;
 	}
 	const key = await deriveAesKey(token, ["decrypt"]);
-	const iv = asStrict(data.subarray(IV_OFFSET, HEADER_LENGTH));
-	const ciphertext = asStrict(data.subarray(HEADER_LENGTH));
+	const iv = toStrictUint8Array(data.subarray(IV_OFFSET, HEADER_LENGTH));
+	const ciphertext = toStrictUint8Array(data.subarray(HEADER_LENGTH));
 	try {
 		return new Uint8Array(
 			await globalThis.crypto.subtle.decrypt(
@@ -182,15 +182,6 @@ async function decryptCachePayload(data: Uint8Array, token: string, url: string)
 async function deriveAesKey(token: string, usages: Array<"encrypt" | "decrypt">): Promise<CryptoKey> {
 	const digest = await globalThis.crypto.subtle.digest("SHA-256", TEXT_ENCODER.encode(token));
 	return globalThis.crypto.subtle.importKey("raw", digest, AES_ALGORITHM, false, usages);
-}
-
-function asStrict(bytes: Uint8Array): Uint8Array<ArrayBuffer> {
-	if (bytes.buffer instanceof ArrayBuffer && bytes.byteOffset === 0 && bytes.byteLength === bytes.buffer.byteLength) {
-		return bytes as Uint8Array<ArrayBuffer>;
-	}
-	const copy = new Uint8Array(bytes.byteLength);
-	copy.set(bytes);
-	return copy;
 }
 
 function randomHex(byteLength: number): string {

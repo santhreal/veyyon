@@ -8,6 +8,7 @@ import { type ApiKey, type AuthStorage, type FetchImpl, getEnvApiKey, withAuth }
 import { isRecord } from "@veyyon/pi-utils";
 import type { SearchResponse, SearchSource } from "../../../web/search/types";
 import { SearchProviderError } from "../../../web/search/types";
+import { asString } from "../../scrapers/utils";
 import { dateToAgeSeconds } from "../utils";
 import type { SearchParams } from "./base";
 import { SearchProvider } from "./base";
@@ -64,12 +65,6 @@ const ZAI_MCP_CLIENT_INFO = {
 	name: "veyyon-coding-agent",
 	version: "1.0.0",
 };
-
-function asString(value: unknown): string | null {
-	if (typeof value !== "string") return null;
-	const trimmed = value.trim();
-	return trimmed.length > 0 ? trimmed : null;
-}
 
 function parseZaiMcpResponse(rawText: string): unknown {
 	const parsedMessages: unknown[] = [];
@@ -178,15 +173,6 @@ function readJsonRpcPayload(parsed: unknown): JsonRpcPayload {
 	}
 
 	return payload;
-}
-
-/** Resolve Z.AI API credentials through the unified auth storage pipeline. */
-export async function findApiKey(
-	authStorage: AuthStorage,
-	sessionId?: string,
-	signal?: AbortSignal,
-): Promise<string | null> {
-	return (await authStorage.getApiKey("zai", sessionId, { signal })) ?? null;
 }
 
 async function callZaiTool(

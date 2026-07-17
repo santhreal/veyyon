@@ -87,7 +87,7 @@ function protectDbFiles(dbPath: string): void {
 	chmodIfExists(`${dbPath}-shm`, 0o600);
 }
 
-export function openDb(): Database | null {
+export function openGithubCacheDb(): Database | null {
 	if (cachedDb) return cachedDb;
 	if (openAttempted) return null;
 	openAttempted = true;
@@ -159,7 +159,7 @@ let lastSweepAt = 0;
 function sweepIfDue(hardTtlMs: number): void {
 	const now = Date.now();
 	if (now - lastSweepAt < SWEEP_INTERVAL_MS) return;
-	const db = openDb();
+	const db = openGithubCacheDb();
 	if (!db) return;
 	lastSweepAt = now;
 	evictExpired(db, hardTtlMs);
@@ -253,7 +253,7 @@ export function getCached<T = unknown>(
 	includeComments: boolean,
 	authKey: string = DEFAULT_CACHE_AUTH_KEY,
 ): CachedView<T> | null {
-	const db = openDb();
+	const db = openGithubCacheDb();
 	if (!db) return null;
 	try {
 		const row = db
@@ -299,7 +299,7 @@ export interface PutCachedInput<T = unknown> {
 }
 
 export function putCached<T = unknown>(input: PutCachedInput<T>): void {
-	const db = openDb();
+	const db = openGithubCacheDb();
 	if (!db) return;
 	try {
 		const fetchedAt = input.fetchedAt ?? Date.now();
@@ -331,7 +331,7 @@ export function invalidate(
 	includeComments?: boolean,
 	authKey: string = DEFAULT_CACHE_AUTH_KEY,
 ): void {
-	const db = openDb();
+	const db = openGithubCacheDb();
 	if (!db) return;
 	try {
 		if (includeComments === undefined) {
@@ -363,7 +363,7 @@ export function invalidate(
  * be far more expensive than a write-amplified DELETE.
  */
 export function invalidateAllForNumber(number: number, repo?: string): void {
-	const db = openDb();
+	const db = openGithubCacheDb();
 	if (!db) return;
 	try {
 		if (repo === undefined) {
@@ -378,7 +378,7 @@ export function invalidateAllForNumber(number: number, repo?: string): void {
 
 /** Drop every cached row. Test helper. */
 export function clearAll(): void {
-	const db = openDb();
+	const db = openGithubCacheDb();
 	if (!db) return;
 	try {
 		db.prepare("DELETE FROM github_view_cache").run();
@@ -394,7 +394,7 @@ export function clearAll(): void {
  * be identified. Over-invalidation is deliberate (see module header).
  */
 export function invalidateAllForRepo(repo?: string): void {
-	const db = openDb();
+	const db = openGithubCacheDb();
 	if (!db) return;
 	try {
 		if (repo === undefined) {
@@ -571,7 +571,7 @@ export async function getOrFetchView<T>(options: CacheLookupOptions<T>): Promise
 
 	// Enforce the *configured* hard TTL against on-disk rows. This is what
 	// makes `github.cache.hardTtlSec` a real retention cap rather than a soft
-	// suggestion the next `openDb()` call eventually honors.
+	// suggestion the next `openGithubCacheDb()` call eventually honors.
 	sweepIfDue(ttl.hardMs);
 
 	const cached: CachedView<T> | null = getCached<T>(

@@ -1,7 +1,7 @@
 import type { ThinkingLevel } from "@veyyon/pi-agent-core";
 import type { Api, ApiKey, AssistantMessage, Message, Model } from "@veyyon/pi-ai";
 import { completeSimple } from "@veyyon/pi-ai";
-import { prompt } from "@veyyon/pi-utils";
+import { prompt, runWithConcurrency } from "@veyyon/pi-utils";
 import fileObserverSystemPrompt from "../../commit/prompts/file-observer-system.md" with { type: "text" };
 import fileObserverUserPrompt from "../../commit/prompts/file-observer-user.md" with { type: "text" };
 import type { FileDiff, FileObservation } from "../../commit/types";
@@ -156,25 +156,6 @@ function inferFileDescription(file: FileDiff): string {
 	if (content.includes("class ") || content.includes("function ") || content.includes("fn ")) return "implementation";
 	if (content.includes("async ") || content.includes("await")) return "async code";
 	return "source code";
-}
-
-async function runWithConcurrency<T, R>(
-	items: T[],
-	limit: number,
-	worker: (item: T, index: number) => Promise<R>,
-): Promise<R[]> {
-	const results = new Array<R>(items.length);
-	let nextIndex = 0;
-	const runners = Array.from({ length: Math.min(limit, items.length) }, async () => {
-		while (true) {
-			const current = nextIndex;
-			nextIndex += 1;
-			if (current >= items.length) return;
-			results[current] = await worker(items[current] as T, current);
-		}
-	});
-	await Promise.all(runners);
-	return results;
 }
 
 async function withRetry<T>(fn: () => Promise<T>, attempts: number, backoffMs: number): Promise<T> {

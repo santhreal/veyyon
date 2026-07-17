@@ -10,6 +10,7 @@ import {
 	suppressTerminalStderr,
 } from "@veyyon/pi-utils";
 import { setKittyProtocolActive } from "./keys";
+import { OSC11_RESET_BACKGROUND_SEQUENCE, osc11SetBackgroundSequence, oscChannelTo8Bit } from "./paint-ground";
 import { StdinBuffer } from "./stdin-buffer";
 import {
 	isInsideTmux,
@@ -176,6 +177,13 @@ let terminalEverStarted = false;
 // jumps to the viewport home, dropping the parent shell prompt on top of the
 // dead frame after exit.
 let altScreenActive = false;
+
+/**
+ * True while any terminal instance holds an OSC 11 background override. Module
+ * level so the blind emergency-restore path (no live instance) can still reset
+ * the user's terminal background after a crash.
+ */
+let osc11BackgroundOverridden = false;
 let terminalRestoreRegistered = false;
 
 function registerPostmortemTerminalRestore(): void {
@@ -306,6 +314,12 @@ export function emergencyTerminalRestore(): void {
 				terminal.write("\x1b[?1049l");
 				altScreenActive = false;
 			}
+			// stop() already reset an instance-held OSC 11 override; this covers
+			// a crash landing between setBackgroundColor and stop().
+			if (osc11BackgroundOverridden) {
+				terminal.write(OSC11_RESET_BACKGROUND_SEQUENCE);
+				osc11BackgroundOverridden = false;
+			}
 			terminal.showCursor();
 		} else if (terminalEverStarted && !isTerminalHeadless()) {
 			// Blind restore only if we know a terminal was started but lost track of it
@@ -325,9 +339,13 @@ export function emergencyTerminalRestore(): void {
 					// buffer homes the cursor (unconditional CursorRestoreState
 					// with no prior save), corrupting the shell handoff on exit.
 					(altScreenActive ? "\x1b[?1049l" : "") +
+					// Reset an OSC 11 background override so a crash never leaves
+					// the user's terminal recolored to the theme ground.
+					(osc11BackgroundOverridden ? OSC11_RESET_BACKGROUND_SEQUENCE : "") +
 					"\x1b[?25h", // Show cursor
 			);
 			altScreenActive = false;
+			osc11BackgroundOverridden = false;
 			if (process.stdin.setRawMode) {
 				process.stdin.setRawMode(false);
 			}
@@ -406,6 +424,27 @@ export interface Terminal {
 	onAppearanceChange(callback: (appearance: TerminalAppearance) => void): void;
 	/** The last detected terminal appearance, or undefined if not yet known. */
 	get appearance(): TerminalAppearance | undefined;
+	/**
+	 * Exact background color the terminal reported via OSC 11 (`#rrggbb`), or
+	 * undefined if no reply yet. Optional so custom Terminals built against
+	 * older pi-tui versions keep working.
+	 */
+	readonly backgroundColor?: string | undefined;
+	/**
+	 * Register a callback for OSC 11 background-color reports (exact hex, not
+	 * just dark/light). Fires on change and replays an already-known color to
+	 * late subscribers. Optional: older custom Terminals may not implement it.
+	 */
+	onBackgroundColorChange?(callback: (hex: string) => void): void;
+	/**
+	 * Override the terminal's own background color via OSC 11 so the emulator's
+	 * padding margin matches a painted theme ground. Callers must pair with
+	 * {@link resetBackgroundColor}; stop() and the emergency crash restore also
+	 * reset it so the user's terminal is never left recolored. Optional.
+	 */
+	setBackgroundColor?(hex: string): void;
+	/** Reset an overridden terminal background to its default (OSC 111). No-op if never overridden. Optional. */
+	resetBackgroundColor?(): void;
 	/**
 	 * Register a callback fired once per DEC private mode when its DECRQM support
 	 * status resolves. Optional: only real terminals implement capability probing.
@@ -488,6 +527,10 @@ export class ProcessTerminal implements Terminal {
 	#xtermScrollToBottomRestoreModes = new Set<number>();
 	#appearanceCallbacks: Array<(appearance: TerminalAppearance) => void> = [];
 	#appearance: TerminalAppearance | undefined;
+	#backgroundColorCallbacks: Array<(hex: string) => void> = [];
+	#backgroundColorHex: string | undefined;
+	#backgroundOverridden = false;
+	#backgroundOverrideHex: string | undefined;
 	#osc11Pending = false;
 	#osc11QueryQueued = false;
 	#osc11ResponseBuffer = "";
@@ -533,6 +576,44 @@ export class ProcessTerminal implements Terminal {
 
 	get appearance(): TerminalAppearance | undefined {
 		return this.#appearance;
+	}
+
+	get backgroundColor(): string | undefined {
+		return this.#backgroundColorHex;
+	}
+
+	onBackgroundColorChange(callback: (hex: string) => void): void {
+		this.#backgroundColorCallbacks.push(callback);
+		// Replay like onAppearanceChange: the startup OSC 11 reply can land
+		// before the painted-ground consumer subscribes.
+		if (this.#backgroundColorHex) {
+			try {
+				callback(this.#backgroundColorHex);
+			} catch (error) {
+				logger.error("background-color subscriber threw during replay", {
+					error: error instanceof Error ? error.message : String(error),
+				});
+			}
+		}
+	}
+
+	setBackgroundColor(hex: string): void {
+		const sequence = osc11SetBackgroundSequence(hex);
+		if (sequence === null) {
+			throw new Error(`setBackgroundColor requires a #RRGGBB color, got ${JSON.stringify(hex)}`);
+		}
+		this.#safeWrite(sequence);
+		this.#backgroundOverridden = true;
+		this.#backgroundOverrideHex = hex.toLowerCase();
+		osc11BackgroundOverridden = true;
+	}
+
+	resetBackgroundColor(): void {
+		if (!this.#backgroundOverridden) return;
+		this.#safeWrite(OSC11_RESET_BACKGROUND_SEQUENCE);
+		this.#backgroundOverridden = false;
+		this.#backgroundOverrideHex = undefined;
+		osc11BackgroundOverridden = false;
 	}
 
 	onAppearanceChange(callback: (appearance: TerminalAppearance) => void): void {
@@ -1095,13 +1176,32 @@ export class ProcessTerminal implements Terminal {
 	 * Handles 1-, 2-, 3-, and 4-digit XParseColor hex components.
 	 */
 	#handleOsc11Response(rHex: string, gHex: string, bHex: string): void {
-		const normalize = (hex: string): number => {
-			const value = parseInt(hex, 16);
-			if (Number.isNaN(value)) return 0;
-			const max = 16 ** hex.length - 1;
-			return max > 0 ? value / max : 0;
-		};
-		const luminance = 0.299 * normalize(rHex) + 0.587 * normalize(gHex) + 0.114 * normalize(bHex);
+		const r = oscChannelTo8Bit(rHex);
+		const g = oscChannelTo8Bit(gHex);
+		const b = oscChannelTo8Bit(bHex);
+		// Retain the exact reported color (not just the dark/light bit): the
+		// painted-ground decision needs it to judge whether painting the theme
+		// ground over the terminal's own background would produce a visible seam.
+		const hex = `#${((r << 16) | (g << 8) | b).toString(16).padStart(6, "0")}`;
+		// While we have painted the background ourselves, a reply reporting our own
+		// color is a self-echo, not information about the terminal: letting it
+		// through would overwrite the retained pre-paint background (breaking the
+		// painted-ground auto seam decision) and flip appearance to the painted
+		// color's luminance (paint black on a light terminal → "dark" → theme
+		// feedback loop). A reply with any OTHER color means something external
+		// (e.g. a terminal theme switch) clobbered our paint — that is real.
+		if (this.#backgroundOverridden && hex === this.#backgroundOverrideHex) return;
+		if (hex !== this.#backgroundColorHex) {
+			this.#backgroundColorHex = hex;
+			for (const cb of this.#backgroundColorCallbacks) {
+				try {
+					cb(hex);
+				} catch {
+					/* ignore callback errors */
+				}
+			}
+		}
+		const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
 		const mode: TerminalAppearance = luminance < 0.5 ? "dark" : "light";
 		if (mode === this.#appearance) return;
 		this.#appearance = mode;
@@ -1346,6 +1446,9 @@ export class ProcessTerminal implements Terminal {
 
 		// Disable Mode 2031 appearance change notifications
 		this.#safeWrite("\x1b[?2031l");
+
+		// Hand the user's terminal back with its own background color.
+		this.resetBackgroundColor();
 
 		// Restore xterm scroll-to-bottom modes that were set before startup.
 		for (const mode of this.#xtermScrollToBottomRestoreModes) {

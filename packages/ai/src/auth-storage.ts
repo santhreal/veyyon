@@ -11,7 +11,7 @@ import { Database, type Statement } from "bun:sqlite";
 import { createHash } from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { getAgentDbPath, logger } from "@veyyon/pi-utils";
+import { getAgentDbPath, logger, stripTrailingSlashes } from "@veyyon/pi-utils";
 import type { ApiKeyResolver } from "./auth-retry";
 import * as AIError from "./error";
 import { isUsageLimitOutcome } from "./error/rate-limit";
@@ -2688,7 +2688,7 @@ export class AuthStorage {
 	}
 
 	#normalizeUsageBaseUrl(baseUrl?: string): string {
-		return baseUrl?.trim().replace(/\/+$/, "") ?? "";
+		return stripTrailingSlashes(baseUrl?.trim() ?? "");
 	}
 
 	#buildUsageReportCacheKey(request: UsageRequestDescriptor): string {

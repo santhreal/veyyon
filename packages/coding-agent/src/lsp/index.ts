@@ -65,6 +65,7 @@ import {
 } from "./types";
 import {
 	applyCodeAction,
+	comparePosition,
 	dedupeWorkspaceSymbols,
 	extractHoverText,
 	fileToUri,
@@ -186,13 +187,6 @@ export async function warmupLspServers(cwd: string, options?: LspWarmupOptions):
 	}
 
 	return { servers };
-}
-
-/**
- * Get status of currently active LSP servers.
- */
-export function getLspStatus(): LspServerStatus[] {
-	return getActiveClients();
 }
 
 /**
@@ -400,10 +394,6 @@ const REFERENCE_CONTEXT_LIMIT = 50;
 const REFERENCES_RETRY_COUNT = 2;
 const REFERENCES_RETRY_DELAY_MS = 250;
 
-function comparePosition(a: Position, b: Position): number {
-	return a.line === b.line ? a.character - b.character : a.line - b.line;
-}
-
 function rangeContainsPosition(range: Location["range"], position: Position): boolean {
 	return comparePosition(range.start, position) <= 0 && comparePosition(position, range.end) <= 0;
 }
@@ -483,7 +473,7 @@ async function enumerateRenamePairs(
 }
 
 /** True when an LSP error indicates the server doesn't implement the requested method. */
-function isMethodNotFoundError(err: unknown): boolean {
+function isUnsupportedLspMethodError(err: unknown): boolean {
 	if (!(err instanceof Error)) return false;
 	const msg = err.message.toLowerCase();
 	return (
@@ -1834,7 +1824,7 @@ export class LspTool implements AgentTool<typeof lspSchema, LspToolDetails, Them
 					if (err instanceof ToolAbortError || signal?.aborted) {
 						throw err;
 					}
-					if (!isMethodNotFoundError(err)) {
+					if (!isUnsupportedLspMethodError(err)) {
 						const msg = err instanceof Error ? err.message : String(err);
 						serverNotes.push(`  ${serverName}: ${msg}`);
 					}

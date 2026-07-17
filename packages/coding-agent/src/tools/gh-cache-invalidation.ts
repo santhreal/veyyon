@@ -169,7 +169,7 @@ function detectGhMutation(tokens: readonly string[]): { number?: number; repo?: 
  * out of scope; the detector simply falls through when it cannot find a
  * clean `gh issue|pr <subcmd>` triple.
  */
-function tokenize(command: string): string[][] {
+function tokenizeShellSegments(command: string): string[][] {
 	const segments: string[][] = [];
 	let current: string[] = [];
 	let buffer = "";
@@ -247,7 +247,7 @@ function tokenize(command: string): string[][] {
  */
 export function invalidateGithubCacheForBashCommand(command: string): void {
 	if (!command?.includes("gh")) return;
-	const segments = tokenize(command);
+	const segments = tokenizeShellSegments(command);
 	for (const segment of segments) {
 		const hit = detectGhMutation(segment);
 		if (!hit) continue;

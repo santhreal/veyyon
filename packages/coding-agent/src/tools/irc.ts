@@ -542,7 +542,7 @@ function callTitle(args: IrcRenderArgs | undefined, theme: Theme): string {
 	}
 }
 
-function callMeta(args: IrcRenderArgs | undefined): string[] {
+function ircCallMeta(args: IrcRenderArgs | undefined): string[] {
 	const meta: string[] = [];
 	if (args?.op === "send") {
 		if (args.to === "all") meta.push("broadcast");
@@ -561,7 +561,7 @@ function renderErrorResult(
 ): string[] {
 	const text = textContent(result) || "IRC call failed.";
 	return [
-		renderStatusLine({ icon: "error", title: callTitle(args, theme), meta: callMeta(args) }, theme),
+		renderStatusLine({ icon: "error", title: callTitle(args, theme), meta: ircCallMeta(args) }, theme),
 		formatErrorDetail(text, theme),
 	];
 }
@@ -816,7 +816,7 @@ export const ircToolRenderer = {
 
 	renderCall(args: IrcRenderArgs, _options: RenderResultOptions, uiTheme: Theme): Component {
 		const lines = [
-			renderStatusLine({ icon: "pending", title: callTitle(args, uiTheme), meta: callMeta(args) }, uiTheme),
+			renderStatusLine({ icon: "pending", title: callTitle(args, uiTheme), meta: ircCallMeta(args) }, uiTheme),
 		];
 		if (args?.op === "send" && args.message?.trim()) {
 			lines.push(...bodyLines(args.message, false, uiTheme, { indent: "  ", tone: "dim", collapsedLines: 1 }));

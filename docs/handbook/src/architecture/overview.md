@@ -28,11 +28,11 @@ as `commit`, `grep`, and `models`.
 | --- | --- | --- |
 | Sessions | JSONL trees, resume, fork, compact | [Sessions](../using/sessions.md) |
 | Edit | Hashline patches (default) | [Edit engine](../edit/engine.md) |
-| Approvals | Approval-mode gating on tool tiers | [Approvals](./sandbox.md) |
+| Sandbox | Approval + filesystem/network bounds | [Sandbox](./sandbox.md) |
 | Config | Layered `config.yml`, profiles | [Config](./config.md) |
 | MCP | External tool servers | [MCP](./mcp.md) |
 | Providers | Model registry + auth | [Providers](./providers.md) |
 | Memory | mnemopi / local backends | [Memory](../features/memory.md) |
 
-Not part of the shipped architecture: a standalone exec-server process, guardian auto-review as a
-subsystem, and a separate backend-catalog subsystem. Everything that ships is covered by the rows above.
+> **Spec — not shipped:** a standalone exec-server process, guardian auto-review as a subsystem, and a
+> separate backend-catalog subsystem. Behavior that ships is covered under the rows above.

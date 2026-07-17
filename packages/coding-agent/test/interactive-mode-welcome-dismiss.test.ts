@@ -90,28 +90,32 @@ describe("InteractiveMode welcome dismissal (UI-10)", () => {
 			.join("\n");
 	}
 
-	it("centres the welcome card vertically (UI-2): real top margin above the hero", async () => {
-		await mode.init();
+	it("centres the sunrise home vertically (UI-2): real top margin above the hero", async () => {
+		// suppressWelcomeIntro: this contract is the resting composition, not the
+		// bloom — during the bloom the sun is a sliver and the wordmark unrevealed.
+		await mode.init({ suppressWelcomeIntro: true });
 		const lines = frame().split("\n");
-		const cardTop = lines.findIndex(line => line.includes("┌"));
-		// 40 mocked terminal rows and an ~8-row card leave ~26 rows of slack;
-		// 2/5 of it sits above the card, so the hero cannot hug the top edge.
-		expect(cardTop).toBeGreaterThanOrEqual(5);
+		const heroTop = lines.findIndex(line => line.includes("█") || line.includes("v e y y o n"));
+		// 40 mocked terminal rows minus the composer and the sun composition leave
+		// real slack; 2/5 of it sits above the hero, so it cannot hug the top edge.
+		expect(heroTop).toBeGreaterThanOrEqual(4);
 	});
 
 	it("clears the welcome card on the first real keystroke and keeps it gone", async () => {
-		await mode.init();
-		expect(frame()).toContain("veyyon vtest");
+		await mode.init({ suppressWelcomeIntro: true });
+		expect(frame()).toContain("v e y y o n");
+		expect(frame()).toContain("vtest");
 
 		mode.editor.handleInput("h");
-		expect(frame()).not.toContain("veyyon vtest");
+		expect(frame()).not.toContain("v e y y o n");
+		expect(frame()).not.toContain("vtest");
 
-		// Emptying the draft does not resurrect the card; dismissal is one-way.
+		// Emptying the draft does not resurrect the hero; dismissal is one-way.
 		mode.editor.setText("");
-		expect(frame()).not.toContain("veyyon vtest");
+		expect(frame()).not.toContain("v e y y o n");
 
 		// Idempotent: a second dismissal on an already-clean screen is a no-op.
 		mode.dismissWelcome();
-		expect(frame()).not.toContain("veyyon vtest");
+		expect(frame()).not.toContain("v e y y o n");
 	});
 });

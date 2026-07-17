@@ -8,7 +8,7 @@ import path from "node:path";
 import type { AgentEvent, AgentIdentity, AgentTelemetryConfig } from "@veyyon/pi-agent-core";
 import { recordHandoff, resolveTelemetry } from "@veyyon/pi-agent-core";
 import type { Api, Model, ServiceTierByFamily, Usage } from "@veyyon/pi-ai";
-import { logger, popLoopPhase, prompt, pushLoopPhase, untilAborted } from "@veyyon/pi-utils";
+import { isRecord, logger, popLoopPhase, prompt, pushLoopPhase, untilAborted } from "@veyyon/pi-utils";
 import type { Rule } from "../capability/rule";
 import { ModelRegistry } from "../config/model-registry";
 import {
@@ -46,7 +46,7 @@ import type { ConfiguredThinkingLevel } from "../thinking";
 import type { ContextFileEntry, ToolSession } from "../tools";
 import { resolveEvalBackends } from "../tools/eval-backends";
 import { isIrcEnabled } from "../tools/irc";
-import { normalizeSchema } from "../tools/jtd-to-json-schema";
+import { normalizeJtdSchema } from "../tools/jtd-to-json-schema";
 import {
 	buildOutputValidator,
 	type OutputValidator,
@@ -256,11 +256,6 @@ function withAbortTimeout<T>(
 	});
 
 	return wrappedPromise;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	if (!value || typeof value !== "object") return false;
-	return !Array.isArray(value);
 }
 
 function getReportFindingKey(value: unknown): string | null {
@@ -608,7 +603,7 @@ export function finalizeSubprocessOutput(args: FinalizeSubprocessOutputArgs): Fi
 		}
 	} else {
 		const allowFallback = exitCode === 0 && !doneAborted && !signalAborted;
-		const { normalized: normalizedSchema, error: schemaError } = normalizeSchema(outputSchema);
+		const { normalized: normalizedSchema, error: schemaError } = normalizeJtdSchema(outputSchema);
 		const hasOutputSchema = normalizedSchema !== undefined && !schemaError;
 		const fallback = allowFallback ? resolveFallbackCompletion(rawOutput, outputSchema) : null;
 		if (fallback) {
@@ -2428,7 +2423,7 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 				});
 			}
 
-			const { normalized: normalizedOutputSchema } = normalizeSchema(outputSchema);
+			const { normalized: normalizedOutputSchema } = normalizeJtdSchema(outputSchema);
 
 			// Captured by the lifecycle reviver: rebuilding an equivalent session from
 			// the same JSONL file re-invokes createAgentSession with the exact options

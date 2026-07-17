@@ -1,6 +1,6 @@
 # hello-extension
 
-A minimal Veyyon extension that demonstrates the two most common authoring patterns: subscribing to `session_start` to notify on load, and registering a `/hello` slash command that sends a greeting into the conversation. It is intentionally small — use it as a copy-paste starting point for your own extension.
+A minimal `oh-my-pi` extension that demonstrates the two most common authoring patterns: subscribing to `session_start` to notify on load, and registering a `/hello` slash command that sends a greeting into the conversation. It is intentionally small — use it as a copy-paste starting point for your own extension.
 
 ## Install
 
@@ -10,7 +10,7 @@ A minimal Veyyon extension that demonstrates the two most common authoring patte
 cp -r . ~/.veyyon/agent/extensions/hello-extension
 ```
 
-Restart `veyyon`. You will see the startup notification immediately.
+Restart `omp`. You will see the startup notification immediately.
 
 **Option B — point the settings `extensions` array at it:**
 
@@ -23,12 +23,12 @@ extensions:
 **Option C — load once via CLI flag:**
 
 ```
-veyyon --extension ./hello-extension
+omp --extension ./hello-extension
 ```
 
 ## Usage
 
-After loading, type `/hello` or `/hello Ada` in the veyyon prompt. The command sends a visible greeting custom message into the conversation and shows a "Message sent!" notification.
+After loading, type `/hello` or `/hello Ada` in the omp prompt. The command sends a visible greeting custom message into the conversation and shows a "Message sent!" notification.
 
 ## What it demonstrates
 

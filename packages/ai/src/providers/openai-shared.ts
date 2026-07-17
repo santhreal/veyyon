@@ -28,6 +28,7 @@ import {
 	parseStreamingJson,
 	parseStreamingJsonThrottled,
 	stringifyJson,
+	stripTrailingSlashes,
 	structuredCloneJSON,
 } from "@veyyon/pi-utils";
 import * as AIError from "../error";
@@ -45,6 +46,7 @@ import {
 	type StopReason,
 	type StreamOptions,
 	shouldSendServiceTier,
+	type TextAnnotation,
 	type TextContent,
 	type TextSignatureV1,
 	type ThinkingContent,
@@ -58,6 +60,7 @@ import {
 	getOpenAIResponsesHistoryPayload,
 	normalizeResponsesToolCallId,
 	normalizeSystemPrompts,
+	normalizeToolCallId,
 	resolveCacheRetention,
 	sanitizeOpenAIResponsesAssistantFallbackItemsForReplay,
 	sanitizeOpenAIResponsesAssistantHistoryItemsForReplay,
@@ -93,6 +96,7 @@ import type {
 	ResponseInputText,
 	ResponseOutputItem,
 	ResponseOutputMessage,
+	ResponseOutputText,
 	ResponseReasoningItem,
 	ResponseStatus,
 	ResponseStreamEvent,
@@ -158,7 +162,7 @@ export interface OpenAIRequestSetup {
 function normalizeSakanaRequestBaseUrl(baseUrl: string | undefined): string | undefined {
 	const value = baseUrl?.trim();
 	if (!value) return undefined;
-	const normalized = value.replace(/\/+$/, "");
+	const normalized = stripTrailingSlashes(value);
 	return normalized.endsWith("/v1") ? normalized : `${normalized}/v1`;
 }
 
@@ -1144,9 +1148,7 @@ export function normalizeResponsesToolCallIdForTransform(
 	if (isForeignToolCall) {
 		const [callId, itemId] = id.split("|");
 		const normalizeIdPart = (part: string): string => {
-			const sanitized = part.replace(/[^a-zA-Z0-9_-]/g, "_");
-			const truncated = sanitized.length > 64 ? sanitized.slice(0, 64) : sanitized;
-			return truncated.replace(/_+$/, "");
+			return normalizeToolCallId(part).replace(/_+$/, "");
 		};
 		const normalizedCallId = normalizeIdPart(callId);
 		let normalizedItemId = `fc_${Bun.hash(itemId).toString(36)}`;
@@ -1649,7 +1651,13 @@ export function convertResponsesAssistantMessage<TApi extends Api>(
 			const messageItem: ResponsesReplayAssistantMessage = {
 				type: "message",
 				role: "assistant",
-				content: [{ type: "output_text", text: block.text.toWellFormed(), annotations: [] }],
+				content: [
+					{
+						type: "output_text",
+						text: block.text.toWellFormed(),
+						annotations: (block.annotations ?? []) as unknown as ResponseOutputText["annotations"],
+					},
+				],
 				status: "completed",
 				...(msgId ? { id: msgId } : {}),
 				...(parsedSignature?.phase ? { phase: parsedSignature.phase } : {}),
@@ -2407,6 +2415,12 @@ export async function processResponsesStream<TApi extends Api>(
 					"output_text",
 				);
 			}
+		} else if (event.type === "response.output_text.annotation.added") {
+			const entry = lookupOpenItem(event);
+			if (entry?.item.type === "message" && entry.block.type === "text") {
+				entry.block.annotations ??= [];
+				entry.block.annotations.push(event.annotation as TextAnnotation);
+			}
 		} else if (event.type === "response.refusal.delta") {
 			const entry = lookupOpenItem(event);
 			if (entry?.item.type === "message" && entry.block.type === "text") {
@@ -2473,15 +2487,22 @@ export async function processResponsesStream<TApi extends Api>(
 				const block = entry?.block.type === "text" ? entry.block : undefined;
 				const text = finalizeMessageText(item, block?.text ?? "");
 				const textSignature = encodeTextSignatureV1(item.id, item.phase ?? undefined);
+				// The done item's annotations are authoritative (a lossy proxy may have
+				// dropped the incremental annotation.added events).
+				const annotations = (item.content ?? []).flatMap(part =>
+					part.type === "output_text" ? ((part.annotations as unknown as TextAnnotation[] | undefined) ?? []) : [],
+				);
 				let contentIndex: number;
 				if (block) {
 					block.text = text;
 					block.textSignature = textSignature;
+					if (annotations.length) block.annotations = annotations;
 					contentIndex = contentIndexOf(block);
 				} else {
 					// `output_item.added` never arrived (lossy proxy) — synthesize the
 					// block so the final message still carries the authoritative text.
 					const synthesized: TextContent = { type: "text", text, textSignature };
+					if (annotations.length) synthesized.annotations = annotations;
 					output.content.push(synthesized);
 					contentIndex = output.content.length - 1;
 				}

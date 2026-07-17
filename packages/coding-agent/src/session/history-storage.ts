@@ -1,7 +1,7 @@
 import { Database, type Statement } from "bun:sqlite";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { AsyncDrain, getHistoryDbPath, logger } from "@veyyon/pi-utils";
+import { AsyncDrain, getHistoryDbPath, logger, NON_ALNUM_RUNS_RE } from "@veyyon/pi-utils";
 
 export interface HistoryEntry {
 	id: number;
@@ -184,8 +184,9 @@ CREATE TRIGGER IF NOT EXISTS history_ai AFTER INSERT ON history BEGIN
 		try {
 			ftsRows = this.#searchStmt.all(ftsQuery, safeLimit) as HistoryRow[];
 		} catch (error) {
-			// Malformed FTS expression - fall through to substring path.
-			logger.debug("HistoryStorage FTS query failed, using substring only", { error: String(error) });
+			// Substring pass below still covers these matches, but a failing FTS
+			// query usually means a corrupt index — surface it.
+			logger.warn("HistoryStorage FTS query failed, using substring only", { error: String(error) });
 		}
 
 		// 2. Substring fallback (token-AND LIKE). Catches infix matches FTS5's
@@ -293,7 +294,7 @@ END;
 	#tokenize(query: string): string[] {
 		return query
 			.toLowerCase()
-			.split(/[^\p{L}\p{N}]+/u)
+			.split(NON_ALNUM_RUNS_RE)
 			.filter(tok => tok.length > 0);
 	}
 

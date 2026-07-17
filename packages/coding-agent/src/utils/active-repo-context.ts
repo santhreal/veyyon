@@ -28,7 +28,7 @@ function buildContext(cwd: string, repoRoot: string): ActiveRepoContext {
 	};
 }
 
-async function resolveRepository(cwd: string): Promise<GitRepository | null> {
+async function tryResolveRepository(cwd: string): Promise<GitRepository | null> {
 	try {
 		return await repo.resolve(cwd);
 	} catch {
@@ -36,7 +36,7 @@ async function resolveRepository(cwd: string): Promise<GitRepository | null> {
 	}
 }
 
-function resolveRepositorySync(cwd: string): GitRepository | null {
+function tryResolveRepositorySync(cwd: string): GitRepository | null {
 	try {
 		return repo.resolveSync(cwd);
 	} catch {
@@ -132,12 +132,12 @@ function findSingleDirectChildRepoSync(cwd: string): ActiveRepoContext | null {
 
 export async function resolveActiveRepoContext(cwd: string): Promise<ActiveRepoContext | null> {
 	const resolvedCwd = path.resolve(cwd);
-	if (await resolveRepository(resolvedCwd)) return null;
+	if (await tryResolveRepository(resolvedCwd)) return null;
 	return findSingleDirectChildRepo(resolvedCwd);
 }
 
 export function resolveActiveRepoContextSync(cwd: string): ActiveRepoContext | null {
 	const resolvedCwd = path.resolve(cwd);
-	if (resolveRepositorySync(resolvedCwd)) return null;
+	if (tryResolveRepositorySync(resolvedCwd)) return null;
 	return findSingleDirectChildRepoSync(resolvedCwd);
 }

@@ -1,8 +1,16 @@
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
 import * as url from "node:url";
-import { isEnoent, isEnotdir, stripWindowsExtendedLengthPathPrefix } from "@veyyon/pi-utils";
+import {
+	expandTilde,
+	isEnoent,
+	isEnotdir,
+	stripWindowsExtendedLengthPathPrefix,
+	URL_SCHEME_RE,
+} from "@veyyon/pi-utils";
+
+export { expandTilde };
+
 import type { Skill } from "../extensibility/skills";
 import { InternalUrlRouter, type LocalProtocolOptions } from "../internal-urls";
 import { ToolError } from "./tool-errors";
@@ -51,7 +59,8 @@ const INTERNAL_SCHEMES_WITH_SELECTORS: Record<string, true> = {
 // schemes opaque; selector support for them needs a resolver-aware path that
 // tries the exact URI before interpreting any suffix as a read selector.
 const OPAQUE_RESOURCE_SCHEMES: ReadonlySet<string> = new Set(["mcp"]);
-const INTERNAL_URL_SCHEME_RE = /^([a-z][a-z0-9+.-]*):\/\//i;
+// ONE PLACE: scheme grammar owned by pi-utils regex.ts.
+const INTERNAL_URL_SCHEME_RE = URL_SCHEME_RE;
 const NARROW_NO_BREAK_SPACE = "\u202F";
 const TOP_LEVEL_INTERNAL_URL_PREFIXES = [
 	"agent://",
@@ -88,7 +97,7 @@ function tryShellEscapedPath(filePath: string): string {
 	return filePath.replace(/\\([ \t"'(){}[\]])/g, "$1");
 }
 
-function fileExists(filePath: string): boolean {
+function fileExistsSync(filePath: string): boolean {
 	try {
 		fs.accessSync(filePath, fs.constants.F_OK);
 		return true;
@@ -132,18 +141,6 @@ function stripFileUrl(filePath: string): string {
 	} catch {
 		return filePath;
 	}
-}
-
-export function expandTilde(filePath: string, home?: string): string {
-	const h = home ?? os.homedir();
-	if (filePath === "~") return h;
-	if (filePath.startsWith("~/") || filePath.startsWith("~\\")) {
-		return h + filePath.slice(1);
-	}
-	if (filePath.startsWith("~")) {
-		return path.join(h, filePath.slice(1));
-	}
-	return filePath;
 }
 
 export function expandPath(filePath: string): string {
@@ -1094,7 +1091,7 @@ export function resolveReadPath(filePath: string, cwd: string): string {
 	const baseCandidates = shellEscapedVariant !== resolved ? [resolved, shellEscapedVariant] : [resolved];
 
 	for (const baseCandidate of baseCandidates) {
-		if (fileExists(baseCandidate)) {
+		if (fileExistsSync(baseCandidate)) {
 			return baseCandidate;
 		}
 	}
@@ -1102,25 +1099,25 @@ export function resolveReadPath(filePath: string, cwd: string): string {
 	for (const baseCandidate of baseCandidates) {
 		// Try macOS AM/PM variant (narrow no-break space before AM/PM)
 		const amPmVariant = tryMacOSScreenshotPath(baseCandidate);
-		if (amPmVariant !== baseCandidate && fileExists(amPmVariant)) {
+		if (amPmVariant !== baseCandidate && fileExistsSync(amPmVariant)) {
 			return amPmVariant;
 		}
 
 		// Try NFD variant (macOS stores filenames in NFD form)
 		const nfdVariant = tryNFDVariant(baseCandidate);
-		if (nfdVariant !== baseCandidate && fileExists(nfdVariant)) {
+		if (nfdVariant !== baseCandidate && fileExistsSync(nfdVariant)) {
 			return nfdVariant;
 		}
 
 		// Try curly quote variant (macOS uses U+2019 in screenshot names)
 		const curlyVariant = tryCurlyQuoteVariant(baseCandidate);
-		if (curlyVariant !== baseCandidate && fileExists(curlyVariant)) {
+		if (curlyVariant !== baseCandidate && fileExistsSync(curlyVariant)) {
 			return curlyVariant;
 		}
 
 		// Try combined NFD + curly quote (for French macOS screenshots like "Capture d'écran")
 		const nfdCurlyVariant = tryCurlyQuoteVariant(nfdVariant);
-		if (nfdCurlyVariant !== baseCandidate && fileExists(nfdCurlyVariant)) {
+		if (nfdCurlyVariant !== baseCandidate && fileExistsSync(nfdCurlyVariant)) {
 			return nfdCurlyVariant;
 		}
 	}

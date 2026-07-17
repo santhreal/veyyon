@@ -2,6 +2,8 @@ import * as fs from "node:fs";
 import * as fsp from "node:fs/promises";
 import * as Module from "node:module";
 import * as path from "node:path";
+import { readPipe } from "./stream";
+import { isRecord } from "./type-guards";
 
 /**
  * On-demand runtime dependency support for native-heavy optional packages
@@ -29,10 +31,6 @@ const RUNTIME_CONDITIONS: Record<string, true> = { node: true, require: true, de
 
 /** Extension probes appended to a `main`/`exports` target that lacks one. */
 const RUNTIME_EXTENSIONS: readonly string[] = [".js", ".cjs", ".mjs", ".json", ".node"];
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 /**
  * Walk a conditional `exports` target (string, array of fallbacks, or a
@@ -313,11 +311,6 @@ export async function writeRuntimeManifest(runtimeDir: string, install: RuntimeI
 	if (install.overrides && Object.keys(install.overrides).length) manifest.overrides = install.overrides;
 	if (install.trustedDependencies?.length) manifest.trustedDependencies = install.trustedDependencies;
 	await Bun.write(path.join(runtimeDir, "package.json"), `${JSON.stringify(manifest, null, "\t")}\n`);
-}
-
-async function readPipe(stream: ReadableStream<Uint8Array> | null): Promise<string> {
-	if (!stream) return "";
-	return new Response(stream).text();
 }
 
 async function runRuntimeInstall(runtimeDir: string): Promise<void> {

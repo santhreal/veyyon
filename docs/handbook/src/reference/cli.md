@@ -66,10 +66,9 @@ Unknown first tokens route to `launch` as a prompt:
 
 Hidden worker selectors and `--smoke-test` are for CI/packaging, not daily use.
 
-There are no `veyyon app-server`, `exec-server`, `execpolicy`, or `responses-api-proxy` subcommands,
-and no top-level `resume` / `fork` / `archive` verbs. Resume and branch from the TUI (`/resume`,
-`/fork`, `/session`) or the launch session picker; for non-interactive resume use `veyyon --print
---resume <id>` / `--continue`.
+> **Spec — not shipped:** `veyyon app-server`, `exec-server`, `execpolicy`, `responses-api-proxy`, and
+> `resume` / `fork` / `archive` as top-level CLI verbs. Use `/resume`, `/fork`, and `/session` in the
+> TUI, or the session picker on launch.
 
 ## Exit codes
 

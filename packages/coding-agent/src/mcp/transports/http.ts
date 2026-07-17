@@ -24,7 +24,7 @@ const HTTP_SSE_CONNECT_TIMEOUT_MS = 1_000;
  * Best-effort startup deadline for the optional Streamable HTTP GET SSE listener.
  *
  * Returns `0` (disabled) when the operator has explicitly disabled MCP client-side
- * timeouts via `timeout: 0` or `OMP_MCP_TIMEOUT_MS=0`, mirroring the rest of the
+ * timeouts via `timeout: 0` or `VEYYON_MCP_TIMEOUT_MS=0`, mirroring the rest of the
  * MCP timeout surface. Otherwise caps the wait at one second and scales below
  * short request timeouts so connect-time never exceeds the request budget.
  */
@@ -178,11 +178,7 @@ export class HttpTransport implements MCPTransport {
 		}
 	}
 
-	async request<T = unknown>(
-		method: string,
-		params?: Record<string, unknown>,
-		options?: MCPRequestOptions,
-	): Promise<T> {
+	async request<T = unknown>(method: string, params?: object, options?: MCPRequestOptions): Promise<T> {
 		try {
 			return await this.#executeRequest<T>(method, params, options);
 		} catch (error) {
@@ -202,7 +198,7 @@ export class HttpTransport implements MCPTransport {
 
 	async #executeRequest<T>(
 		method: string,
-		params: Record<string, unknown> | undefined,
+		params: object | undefined,
 		options: MCPRequestOptions | undefined,
 	): Promise<T> {
 		if (!this.#connected) {
@@ -412,7 +408,7 @@ export class HttpTransport implements MCPTransport {
 		}
 	}
 
-	async notify(method: string, params?: Record<string, unknown>): Promise<void> {
+	async notify(method: string, params?: object): Promise<void> {
 		if (!this.#connected) {
 			throw new Error("Transport not connected");
 		}

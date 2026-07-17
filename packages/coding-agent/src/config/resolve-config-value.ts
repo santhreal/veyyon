@@ -37,7 +37,7 @@ async function executeCommand(commandConfig: string): Promise<string | undefined
 	}
 
 	const command = commandConfig.slice(1);
-	const promise = runShellCommand(command, 10_000)
+	const promise = runCommandCaptureStdout(command, 10_000)
 		.then(result => {
 			if (result !== undefined) {
 				commandResultCache.set(commandConfig, result);
@@ -52,7 +52,7 @@ async function executeCommand(commandConfig: string): Promise<string | undefined
 	return await promise;
 }
 
-async function runShellCommand(command: string, timeoutMs: number): Promise<string | undefined> {
+async function runCommandCaptureStdout(command: string, timeoutMs: number): Promise<string | undefined> {
 	try {
 		let output = "";
 		const result = await executeShell({ command, timeoutMs }, (err, chunk) => {
@@ -68,27 +68,4 @@ async function runShellCommand(command: string, timeoutMs: number): Promise<stri
 	} catch {
 		return undefined;
 	}
-}
-
-/**
- * Resolve all header values using the same resolution logic as API keys.
- */
-export async function resolveHeaders(
-	headers: Record<string, string> | undefined,
-): Promise<Record<string, string> | undefined> {
-	if (!headers) return undefined;
-	const resolved: Record<string, string> = {};
-	for (const [key, value] of Object.entries(headers)) {
-		const resolvedValue = await resolveConfigValue(value);
-		if (resolvedValue) {
-			resolved[key] = resolvedValue;
-		}
-	}
-	return Object.keys(resolved).length > 0 ? resolved : undefined;
-}
-
-/** Clear the config value command cache. Exported for testing. */
-export function clearConfigValueCache(): void {
-	commandResultCache.clear();
-	commandInFlight.clear();
 }

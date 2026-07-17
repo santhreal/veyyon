@@ -11,7 +11,7 @@ import * as path from "node:path";
 import { getProjectDir, logger } from "@veyyon/pi-utils";
 
 import type { Settings } from "../config/settings";
-import { clearCache as clearFsCache, findRepoRoot, cacheStats as fsCacheStats, invalidate as invalidateFs } from "./fs";
+import { clearCache as clearFsCache, findRepoRoot, invalidate as invalidateFs } from "./fs";
 import type {
 	Capability,
 	CapabilityInfo,
@@ -478,9 +478,7 @@ export function invalidate(filePath: string, cwd?: string): void {
 /**
  * Get cache stats for diagnostics.
  */
-export function cacheStats(): { content: number; dir: number } {
-	return fsCacheStats();
-}
+export { cacheStats } from "./fs";
 
 // =============================================================================
 // Re-exports

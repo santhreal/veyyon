@@ -8,7 +8,7 @@ function Summary({ args, result }: ToolRenderProps): ReactNode {
 	const rec = detailsRecord(result);
 	const target = str(args.path) ?? str(args.url) ?? (rec ? str(rec.imagePath) : null);
 	if (target === null) return <InvalidArg what="image path" />;
-	return <span>{truncate(shortenPath(target))}</span>;
+	return <span>{truncate(shortenPath(target), 100)}</span>;
 }
 
 function Body({ args, result }: ToolRenderProps): ReactNode {

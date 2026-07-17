@@ -26,6 +26,7 @@ import type { LoadContext, LoadResult } from "../capability/types";
 import { expandTilde } from "../tools/path-utils";
 import {
 	buildRuleFromMarkdown,
+	CUSTOM_TOOL_SCRIPT_EXT_RE,
 	createSourceMeta,
 	discoverExtensionModulePaths,
 	expandEnvVarsDeep,
@@ -54,7 +55,7 @@ async function ifNonEmptyDir(...seg: string[]): Promise<string | null> {
 	return null;
 }
 
-async function getConfigDirs(ctx: LoadContext): Promise<Array<{ dir: string; level: "user" | "project" }>> {
+async function ruleConfigDirs(ctx: LoadContext): Promise<Array<{ dir: string; level: "user" | "project" }>> {
 	const result: Array<{ dir: string; level: "user" | "project" }> = [];
 
 	const projectDir = await ifNonEmptyDir(ctx.cwd, PATHS.projectDir);
@@ -331,7 +332,7 @@ async function loadSlashCommands(ctx: LoadContext): Promise<LoadResult<SlashComm
 	const items: SlashCommand[] = [];
 	const warnings: string[] = [];
 
-	for (const { dir, level } of await getConfigDirs(ctx)) {
+	for (const { dir, level } of await ruleConfigDirs(ctx)) {
 		const commandsDir = path.join(dir, "commands");
 		const result = await loadFilesFromDir<SlashCommand>(ctx, commandsDir, PROVIDER_ID, level, {
 			extensions: ["md"],
@@ -363,7 +364,7 @@ async function loadRules(ctx: LoadContext): Promise<LoadResult<Rule>> {
 	const items: Rule[] = [];
 	const warnings: string[] = [];
 
-	for (const { dir, level } of await getConfigDirs(ctx)) {
+	for (const { dir, level } of await ruleConfigDirs(ctx)) {
 		const rulesDir = path.join(dir, "rules");
 		const result = await loadFilesFromDir<Rule>(ctx, rulesDir, PROVIDER_ID, level, {
 			extensions: ["md", "mdc"],
@@ -375,7 +376,7 @@ async function loadRules(ctx: LoadContext): Promise<LoadResult<Rule>> {
 	}
 
 	// Top-level RULES.md is a sticky always-apply rule. Documented in
-	// https://veyyon.dev/docs/context as the file that gets "re-injected near
+	// https://omp.sh/docs/context-files as the file that gets "re-injected near
 	// the current turn so they keep hold across long conversations".
 	// User scope:    ~/.veyyon/agent/RULES.md
 	// Project scope: nearest .veyyon/RULES.md walking up from cwd to repoRoot
@@ -421,7 +422,7 @@ async function loadPrompts(ctx: LoadContext): Promise<LoadResult<Prompt>> {
 	const items: Prompt[] = [];
 	const warnings: string[] = [];
 
-	for (const { dir, level } of await getConfigDirs(ctx)) {
+	for (const { dir, level } of await ruleConfigDirs(ctx)) {
 		const promptsDir = path.join(dir, "prompts");
 		const result = await loadFilesFromDir<Prompt>(ctx, promptsDir, PROVIDER_ID, level, {
 			extensions: ["md"],
@@ -467,7 +468,7 @@ async function loadExtensionModules(ctx: LoadContext): Promise<LoadResult<Extens
 		_source: createSourceMeta(PROVIDER_ID, extPath, level),
 	});
 
-	const configDirs = await getConfigDirs(ctx);
+	const configDirs = await ruleConfigDirs(ctx);
 
 	const [discoveredResults, settingsResults] = await Promise.all([
 		Promise.all(configDirs.map(({ dir }) => discoverExtensionModulePaths(ctx, path.join(dir, "extensions")))),
@@ -561,7 +562,7 @@ async function loadExtensions(ctx: LoadContext): Promise<LoadResult<Extension>> 
 	const items: Extension[] = [];
 	const warnings: string[] = [];
 
-	const configDirs = await getConfigDirs(ctx);
+	const configDirs = await ruleConfigDirs(ctx);
 	const entriesResults = await Promise.all(configDirs.map(({ dir }) => readDirEntries(path.join(dir, "extensions"))));
 
 	const manifestCandidates: Array<{
@@ -628,7 +629,7 @@ async function loadInstructions(ctx: LoadContext): Promise<LoadResult<Instructio
 	const items: Instruction[] = [];
 	const warnings: string[] = [];
 
-	for (const { dir, level } of await getConfigDirs(ctx)) {
+	for (const { dir, level } of await ruleConfigDirs(ctx)) {
 		const instructionsDir = path.join(dir, "instructions");
 		const result = await loadFilesFromDir<Instruction>(ctx, instructionsDir, PROVIDER_ID, level, {
 			extensions: ["md"],
@@ -662,7 +663,7 @@ registerProvider<Instruction>(instructionCapability.id, {
 async function loadHooks(ctx: LoadContext): Promise<LoadResult<Hook>> {
 	const items: Hook[] = [];
 
-	const configDirs = await getConfigDirs(ctx);
+	const configDirs = await ruleConfigDirs(ctx);
 	const hookTypes = ["pre", "post"] as const;
 
 	const typeDirRequests: Array<{
@@ -722,7 +723,7 @@ async function loadTools(ctx: LoadContext): Promise<LoadResult<CustomTool>> {
 	const items: CustomTool[] = [];
 	const warnings: string[] = [];
 
-	const configDirs = await getConfigDirs(ctx);
+	const configDirs = await ruleConfigDirs(ctx);
 	const entriesResults = await Promise.all(configDirs.map(({ dir }) => readDirEntries(path.join(dir, "tools"))));
 
 	const fileLoadPromises: Array<Promise<{ items: CustomTool[]; warnings?: string[] }>> = [];
@@ -774,7 +775,7 @@ async function loadTools(ctx: LoadContext): Promise<LoadResult<CustomTool>> {
 						};
 					}
 					// Executable tool files (.ts, .js, .sh, .bash, .py)
-					const toolName = name.replace(/\.(ts|js|sh|bash|py)$/, "");
+					const toolName = name.replace(CUSTOM_TOOL_SCRIPT_EXT_RE, "");
 					return {
 						name: toolName,
 						path,
@@ -849,7 +850,7 @@ async function loadSettings(ctx: LoadContext): Promise<LoadResult<Settings>> {
 		}
 	};
 
-	for (const { dir, level } of await getConfigDirs(ctx)) {
+	for (const { dir, level } of await ruleConfigDirs(ctx)) {
 		const settingsPath = path.join(dir, "settings.json");
 		const settingsContent = await readFile(settingsPath);
 		if (settingsContent) {

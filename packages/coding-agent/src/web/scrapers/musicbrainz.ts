@@ -82,7 +82,7 @@ function parseEntity(url: URL): { entity: MusicBrainzEntity; mbid: string } | nu
 	return { entity, mbid };
 }
 
-async function fetchJson<T>(apiUrl: string, timeout: number, signal?: AbortSignal): Promise<T | null> {
+async function fetchMusicBrainzJson<T>(apiUrl: string, timeout: number, signal?: AbortSignal): Promise<T | null> {
 	const result = await loadPage(apiUrl, {
 		timeout,
 		signal,
@@ -111,7 +111,7 @@ function formatLifeSpan(life: MusicBrainzLifeSpan | undefined): string | null {
 	return null;
 }
 
-function formatDurationMs(lengthMs: number | undefined): string | null {
+function formatTrackDurationMs(lengthMs: number | undefined): string | null {
 	if (!lengthMs || lengthMs <= 0) return null;
 	return formatMediaDuration(Math.round(lengthMs / 1000));
 }
@@ -127,9 +127,9 @@ function formatArtistCredits(credits: MusicBrainzArtistCredit[] | undefined): st
 	return names.join(", ");
 }
 
-function formatTrack(track: MusicBrainzTrack): string {
+function formatMusicBrainzTrack(track: MusicBrainzTrack): string {
 	const title = track.title || track.recording?.title || "Untitled";
-	const duration = formatDurationMs(track.length ?? track.recording?.length);
+	const duration = formatTrackDurationMs(track.length ?? track.recording?.length);
 	const number = track.number || (track.position ? String(track.position) : null);
 
 	const prefix = number ? `${number}. ` : "- ";
@@ -160,7 +160,7 @@ function buildArtistMarkdown(artist: MusicBrainzArtist): string {
 	return md;
 }
 
-function buildReleaseMarkdown(release: MusicBrainzRelease): string {
+function buildMusicBrainzReleaseMarkdown(release: MusicBrainzRelease): string {
 	let md = `# ${release.title}\n\n`;
 
 	const media = release.media ?? [];
@@ -182,7 +182,7 @@ function buildReleaseMarkdown(release: MusicBrainzRelease): string {
 
 			const tracks = medium.tracks ?? [];
 			if (tracks.length) {
-				const lines = tracks.slice(0, MAX_TRACKS).map(formatTrack).join("\n");
+				const lines = tracks.slice(0, MAX_TRACKS).map(formatMusicBrainzTrack).join("\n");
 				md += `${lines}\n\n`;
 
 				if (tracks.length > MAX_TRACKS) {
@@ -204,7 +204,7 @@ function buildRecordingMarkdown(recording: MusicBrainzRecording): string {
 	const artists = formatArtistCredits(recording["artist-credit"]);
 	if (artists) meta.push(`**Artists**: ${artists}`);
 
-	const length = formatDurationMs(recording.length);
+	const length = formatTrackDurationMs(recording.length);
 	if (length) meta.push(`**Length**: ${length}`);
 
 	if (meta.length) md += `${meta.join("\n")}\n`;
@@ -228,17 +228,17 @@ export const handleMusicBrainz: SpecialHandler = async (
 
 		if (entity === "artist") {
 			const apiUrl = `https://musicbrainz.org/ws/2/artist/${mbid}?fmt=json&inc=url-rels`;
-			const artist = await fetchJson<MusicBrainzArtist>(apiUrl, timeout, signal);
+			const artist = await fetchMusicBrainzJson<MusicBrainzArtist>(apiUrl, timeout, signal);
 			if (!artist) return null;
 			md = buildArtistMarkdown(artist);
 		} else if (entity === "release") {
 			const apiUrl = `https://musicbrainz.org/ws/2/release/${mbid}?fmt=json&inc=recordings`;
-			const release = await fetchJson<MusicBrainzRelease>(apiUrl, timeout, signal);
+			const release = await fetchMusicBrainzJson<MusicBrainzRelease>(apiUrl, timeout, signal);
 			if (!release) return null;
-			md = buildReleaseMarkdown(release);
+			md = buildMusicBrainzReleaseMarkdown(release);
 		} else {
 			const apiUrl = `https://musicbrainz.org/ws/2/recording/${mbid}?fmt=json`;
-			const recording = await fetchJson<MusicBrainzRecording>(apiUrl, timeout, signal);
+			const recording = await fetchMusicBrainzJson<MusicBrainzRecording>(apiUrl, timeout, signal);
 			if (!recording) return null;
 			md = buildRecordingMarkdown(recording);
 		}

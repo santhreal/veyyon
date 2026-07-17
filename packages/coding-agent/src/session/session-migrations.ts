@@ -2,7 +2,7 @@ import { Snowflake } from "@veyyon/pi-utils";
 import { type CompactionEntry, CURRENT_SESSION_VERSION, type FileEntry, type SessionHeader } from "./session-entries";
 
 /** Generate a unique short ID (8 hex chars, collision-checked) */
-export function generateId(byId: { has(id: string): boolean }): string {
+export function generateUniqueEntryId(byId: { has(id: string): boolean }): string {
 	for (let i = 0; i < 100; i++) {
 		const id = crypto.randomUUID().slice(-8);
 		if (!byId.has(id)) return id;
@@ -21,7 +21,7 @@ function migrateV1ToV2(entries: FileEntry[]): void {
 			continue;
 		}
 
-		entry.id = generateId(ids);
+		entry.id = generateUniqueEntryId(ids);
 		entry.parentId = prevId;
 		prevId = entry.id;
 

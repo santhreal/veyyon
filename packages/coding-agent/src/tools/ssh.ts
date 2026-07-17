@@ -96,7 +96,7 @@ function assertValidSshCwd(cwd: string | undefined): void {
 	}
 }
 
-function buildRemoteCommand(command: string, cwd: string | undefined, info: SSHHostInfo): string {
+function commandWithRemoteCwd(command: string, cwd: string | undefined, info: SSHHostInfo): string {
 	if (!cwd) return command;
 
 	if (info.os === "windows" && !info.compatEnabled) {
@@ -186,7 +186,7 @@ export class SshTool implements AgentTool<typeof sshSchema, SSHToolDetails> {
 		assertValidSshCwd(cwd);
 
 		const hostInfo = await ensureHostInfo(hostConfig);
-		const remoteCommand = buildRemoteCommand(command, cwd, hostInfo);
+		const remoteCommand = commandWithRemoteCwd(command, cwd, hostInfo);
 
 		// Clamp to reasonable range: 1s - 3600s (1 hour)
 		const timeoutSec = clampTimeout("ssh", rawTimeout);

@@ -18,7 +18,7 @@ import { type GitSource, parseGitUrl } from "./git-url";
 import { getInstalledPluginsRegistryPath, parsePluginId, readInstalledPluginsRegistry } from "./installed-registry";
 import { installLegacyPiSpecifierShim, loadLegacyPiModule } from "./legacy-pi-compat";
 import { resolvePluginManifestEntries } from "./loader";
-import { extractPackageName, parsePluginSpec } from "./parser";
+import { extractPackageName, parsePluginSpec, validatePackageName } from "./parser";
 import { normalizePluginRuntimeConfig } from "./runtime-config";
 import type {
 	DoctorCheck,
@@ -36,8 +36,6 @@ import type {
 // =============================================================================
 
 /** Valid npm package name pattern (scoped and unscoped, with optional version) */
-const VALID_PACKAGE_NAME = /^(@[a-z0-9-~][a-z0-9-._~]*\/)?[a-z0-9-~][a-z0-9-._~]*(@[a-z0-9-._^~>=<]+)?$/i;
-
 /** Characters that are never valid in any plugin install spec — git or npm. */
 const SHELL_METACHARS = /[;&|`$(){}<>\\\n\r\t]/;
 
@@ -47,18 +45,6 @@ const SHELL_METACHARS = /[;&|`$(){}<>\\\n\r\t]/;
  * {@link validateGitSpec} instead because they contain characters npm rejects
  * (`:`, `/`, `#`, `+`, `@` in non-version positions).
  */
-function validatePackageName(name: string): void {
-	// Remove version specifier for validation
-	const baseName = extractPackageName(name);
-	if (!VALID_PACKAGE_NAME.test(baseName)) {
-		throw new Error(`Invalid package name: ${name}`);
-	}
-	// Extra safety: no shell metacharacters
-	if (/[;&|`$(){}[\]<>\\]/.test(name)) {
-		throw new Error(`Invalid characters in package name: ${name}`);
-	}
-}
-
 /**
  * Validate a git install spec — accepts `:`, `/`, `#`, `+`, `.`, `-`, `_`,
  * `~`, `@` (which would all fail {@link validatePackageName}) but rejects

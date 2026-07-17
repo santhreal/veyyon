@@ -206,7 +206,7 @@ export function jtdToJsonSchema(schema: unknown): unknown {
  * Normalize a schema input that may be a JSON string, object, or null/undefined.
  * Returns { normalized } on success, or { error } if JSON parsing fails.
  */
-export function normalizeSchema(schema: unknown): { normalized?: unknown; error?: string } {
+export function normalizeJtdSchema(schema: unknown): { normalized?: unknown; error?: string } {
 	if (schema === undefined || schema === null) return {};
 	if (typeof schema === "string") {
 		try {

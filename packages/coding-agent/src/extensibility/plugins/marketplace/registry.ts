@@ -12,10 +12,9 @@
  * can fail with EPERM — fallback: unlink target then rename.
  */
 
-import * as fs from "node:fs/promises";
 import * as path from "node:path";
 
-import { getConfigRootDir, getPluginsDir, isEnoent, logger, tryParseJson } from "@veyyon/pi-utils";
+import { atomicWriteJson, getConfigRootDir, getPluginsDir, isEnoent, logger, tryParseJson } from "@veyyon/pi-utils";
 
 import type {
 	InstalledPluginEntry,
@@ -30,48 +29,11 @@ export function getMarketplacesRegistryPath(): string {
 	return path.join(getConfigRootDir(), "marketplaces.json");
 }
 
-export function getInstalledPluginsRegistryPath(): string {
-	return path.join(getPluginsDir(), "installed_plugins.json");
-}
-
 export function getMarketplacesCacheDir(): string {
 	return path.join(getPluginsDir(), "cache", "marketplaces");
 }
 
-export function getPluginsCacheDir(): string {
-	return path.join(getPluginsDir(), "cache", "plugins");
-}
-
 // ── Atomic write ─────────────────────────────────────────────────────
-
-async function atomicWriteJson(filePath: string, data: unknown): Promise<void> {
-	const content = `${JSON.stringify(data, null, 2)}\n`;
-	const tmpPath = `${filePath}.tmp`;
-
-	await Bun.write(tmpPath, content);
-
-	try {
-		await fs.rename(tmpPath, filePath);
-	} catch (err) {
-		// Windows EPERM fallback: unlink target, then rename
-		if ((err as NodeJS.ErrnoException).code === "EPERM") {
-			try {
-				await fs.unlink(filePath);
-			} catch {
-				// Target may not exist — that's fine
-			}
-			await fs.rename(tmpPath, filePath);
-		} else {
-			// Clean up tmp on unexpected errors
-			try {
-				await fs.unlink(tmpPath);
-			} catch {
-				// Best effort
-			}
-			throw err;
-		}
-	}
-}
 
 // ── Marketplaces registry ────────────────────────────────────────────
 
@@ -100,36 +62,14 @@ export async function writeMarketplacesRegistry(filePath: string, reg: Marketpla
 
 // ── Installed plugins registry ───────────────────────────────────────
 
-function emptyInstalledPluginsRegistry(): InstalledPluginsRegistry {
-	return { version: 2, plugins: {} };
-}
-
-export async function readInstalledPluginsRegistry(filePath: string): Promise<InstalledPluginsRegistry> {
-	try {
-		const content = await Bun.file(filePath).text();
-		const data = tryParseJson<InstalledPluginsRegistry>(content);
-		if (
-			!data ||
-			typeof data !== "object" ||
-			typeof data.version !== "number" ||
-			!data.plugins ||
-			typeof data.plugins !== "object" ||
-			Array.isArray(data.plugins)
-		) {
-			logger.warn("Invalid installed plugins registry, returning empty", { path: filePath });
-			return emptyInstalledPluginsRegistry();
-		}
-		// Accept any numeric version — forward compatible reads
-		return { ...data, version: 2 };
-	} catch (err) {
-		if (isEnoent(err)) return emptyInstalledPluginsRegistry();
-		throw err;
-	}
-}
-
-export async function writeInstalledPluginsRegistry(filePath: string, reg: InstalledPluginsRegistry): Promise<void> {
-	await atomicWriteJson(filePath, reg);
-}
+// Read/write and path helpers owned by ../installed-registry (one registry
+// reader for both the plugin manager and the marketplace stack).
+export {
+	getInstalledPluginsRegistryPath,
+	getPluginsCacheDir,
+	readInstalledPluginsRegistry,
+	writeInstalledPluginsRegistry,
+} from "../installed-registry";
 
 // ── Marketplace CRUD ─────────────────────────────────────────────────
 // Pure functions that transform registry state. Caller is responsible for
@@ -185,12 +125,4 @@ export function getInstalledPlugin(reg: InstalledPluginsRegistry, id: string): I
  * Use this before deleting a cached plugin directory to verify it is not still
  * referenced by another scope's registry.
  */
-export function collectReferencedPaths(...registries: InstalledPluginsRegistry[]): Set<string> {
-	return new Set(
-		registries.flatMap(r =>
-			Object.values(r.plugins)
-				.flat()
-				.map(e => e.installPath),
-		),
-	);
-}
+export { collectReferencedPaths } from "../installed-registry";

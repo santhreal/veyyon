@@ -8,6 +8,7 @@ import type {
 	UsageReport,
 	UsageWindow,
 } from "../usage";
+import { resolveOAuthAccessToken } from "./shared";
 
 // (Refresh is the sole responsibility of AuthStorage; no provider-direct refresh here.)
 
@@ -49,7 +50,7 @@ interface RetrieveUserQuotaResponse {
 	}>;
 }
 
-function getProjectId(payload: LoadCodeAssistResponse | undefined): string | undefined {
+function projectIdFromLoadResponse(payload: LoadCodeAssistResponse | undefined): string | undefined {
 	if (!payload) return undefined;
 	if (typeof payload.cloudaicompanionProject === "string") {
 		return payload.cloudaicompanionProject;
@@ -72,7 +73,7 @@ function getModelTier(modelId: string): string | undefined {
 	return undefined;
 }
 
-function parseWindow(resetTime: string | undefined): UsageWindow {
+function parseGeminiQuotaWindow(resetTime: string | undefined): UsageWindow {
 	if (!resetTime) {
 		return {
 			id: "quota",
@@ -116,15 +117,6 @@ function buildAmount(remainingFraction: number | undefined): UsageAmount {
  * carry a freshly-refreshed credential. Returning `undefined` short-circuits
  * the probe rather than POSTing a stale token to Google.
  */
-function resolveAccessToken(params: UsageFetchParams): string | undefined {
-	const { credential } = params;
-	if (credential.type !== "oauth") return undefined;
-	if (!credential.accessToken) return undefined;
-	if (credential.expiresAt !== undefined && credential.expiresAt <= Date.now()) {
-		return undefined;
-	}
-	return credential.accessToken;
-}
 
 async function loadCodeAssist(
 	params: UsageFetchParams,
@@ -201,7 +193,7 @@ export const googleGeminiCliUsageProvider: UsageProvider = {
 		if (credential.type !== "oauth") {
 			return null;
 		}
-		const accessToken = resolveAccessToken(params);
+		const accessToken = resolveOAuthAccessToken(params);
 		if (!accessToken) {
 			return null;
 		}
@@ -209,7 +201,7 @@ export const googleGeminiCliUsageProvider: UsageProvider = {
 		const baseUrl = (params.baseUrl?.trim() || DEFAULT_ENDPOINT).replace(/\/$/, "");
 
 		const loadResponse = await loadCodeAssist(params, ctx, accessToken, baseUrl, credential.projectId);
-		const projectId = credential.projectId ?? getProjectId(loadResponse);
+		const projectId = credential.projectId ?? projectIdFromLoadResponse(loadResponse);
 		const quotaResponse = await fetchQuota(params, ctx, accessToken, baseUrl, projectId);
 		if (!quotaResponse) {
 			return null;
@@ -220,7 +212,7 @@ export const googleGeminiCliUsageProvider: UsageProvider = {
 
 		buckets.forEach((bucket, index) => {
 			const modelId = bucket.modelId;
-			const window = parseWindow(bucket.resetTime);
+			const window = parseGeminiQuotaWindow(bucket.resetTime);
 			const amount = buildAmount(bucket.remainingFraction);
 			const tier = modelId ? getModelTier(modelId) : undefined;
 			const label = modelId ? `Gemini ${modelId}` : "Gemini quota";

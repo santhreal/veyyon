@@ -8,6 +8,7 @@ import type {
 } from "@veyyon/pi-ai";
 import { prompt } from "@veyyon/pi-utils";
 import type { AgentMessage } from "../types";
+import type { SessionEntry } from "./entries";
 import branchSummaryContextPrompt from "./prompts/branch-summary-context.md" with { type: "text" };
 import compactionSummaryContextPrompt from "./prompts/compaction-summary-context.md" with { type: "text" };
 
@@ -238,4 +239,12 @@ export function convertMessageToLlm(message: AgentMessage): Message | undefined 
  */
 export function defaultConvertToLlm(messages: AgentMessage[]): Message[] {
 	return messages.map(convertMessageToLlm).filter(message => message !== undefined);
+}
+
+/** The tool-result message of a session entry, or undefined for anything else. */
+export function getToolResultMessage(entry: SessionEntry): ToolResultMessage | undefined {
+	if (entry.type !== "message") return undefined;
+	const message = entry.message as AgentMessage;
+	if (message.role !== "toolResult") return undefined;
+	return message as ToolResultMessage;
 }

@@ -1,5 +1,7 @@
 import { gunzipSync } from "node:zlib";
 import { create, fromBinary, toBinary } from "@bufbuild/protobuf";
+import { normalizeDevinSessionToken } from "@veyyon/pi-ai/providers/devin";
+import { stripTrailingSlashes } from "@veyyon/pi-utils";
 import type { FetchImpl, ModelSpec } from "../types";
 import { discoveryFetch } from "../utils";
 import {
@@ -12,7 +14,6 @@ const DEVIN_DEFAULT_BASE_URL = "https://server.codeium.com";
 const DEVIN_GET_CLI_MODEL_CONFIGS_PATH = "/exa.api_server_pb.ApiServerService/GetCliModelConfigs";
 const DEVIN_IDE_VERSION = "3.2.23";
 const DEVIN_EXTENSION_VERSION = "1.48.2";
-const DEVIN_SESSION_TOKEN_PREFIX = "devin-session-token$";
 
 const DEFAULT_CONTEXT_WINDOW = 200_000;
 const DEFAULT_MAX_TOKENS = 64_000;
@@ -53,7 +54,7 @@ export async function fetchDevinModels(
 ): Promise<ModelSpec<"devin-agent">[] | null> {
 	const timeoutMs = options.timeoutMs ?? 5_000;
 	const resolvedBaseUrl = options.baseUrl ?? DEVIN_DEFAULT_BASE_URL;
-	const requestUrl = `${resolvedBaseUrl.replace(/\/+$/, "")}${DEVIN_GET_CLI_MODEL_CONFIGS_PATH}`;
+	const requestUrl = `${stripTrailingSlashes(resolvedBaseUrl)}${DEVIN_GET_CLI_MODEL_CONFIGS_PATH}`;
 
 	const controller = new AbortController();
 	const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -94,11 +95,6 @@ export async function fetchDevinModels(
 	} finally {
 		clearTimeout(timer);
 	}
-}
-
-function normalizeDevinSessionToken(apiKey: string | undefined): string {
-	if (!apiKey) return "";
-	return apiKey.startsWith(DEVIN_SESSION_TOKEN_PREFIX) ? apiKey : `${DEVIN_SESSION_TOKEN_PREFIX}${apiKey}`;
 }
 
 /**

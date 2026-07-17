@@ -1,10 +1,11 @@
-import { toError } from "@veyyon/pi-utils";
+import { enoentError, toError, utf8ByteLength } from "@veyyon/pi-utils";
 import type {
 	SessionStorage,
 	SessionStorageStat,
 	SessionStorageWriter,
 	WriteTextAtomicOptions,
 } from "./session-storage";
+import { normalizeByteLimit } from "./session-storage";
 import {
 	overlayTitleSlotContent,
 	overlayTitleSlotPrefix,
@@ -49,28 +50,10 @@ interface EnqueueOptions {
 
 const RESOLVED = Promise.resolve();
 
-function enoent(p: string): NodeJS.ErrnoException {
-	const err = new Error(`ENOENT: no such file, '${p}'`) as NodeJS.ErrnoException;
-	err.code = "ENOENT";
-	err.errno = -2;
-	err.path = p;
-	err.syscall = "open";
-	return err;
-}
-
 function matchesGlob(name: string, pattern: string): boolean {
 	if (pattern === "*") return true;
 	if (pattern.startsWith("*.")) return name.endsWith(pattern.slice(1));
 	return name === pattern;
-}
-
-function byteLength(text: string): number {
-	return Buffer.byteLength(text, "utf-8");
-}
-
-function normalizeByteLimit(maxBytes: number): number {
-	if (!(maxBytes > 0)) return 0;
-	return Math.trunc(maxBytes);
 }
 
 function uniquePaths(paths: readonly string[]): string[] {
@@ -139,14 +122,14 @@ export class IndexedSessionStorage implements SessionStorage {
 	writeTextSync(path: string, content: string): void {
 		const mtimeMs = this.#allocMtimeMs();
 		const title = titleUpdateFromSlot(parseTitleSlotFromContent(content));
-		this.#setIndex(path, byteLength(content), mtimeMs, title ?? null);
+		this.#setIndex(path, utf8ByteLength(content), mtimeMs, title ?? null);
 		this.#enqueuePath(path, () => this.#backend.writeFull(path, content, mtimeMs, title), { trackDrain: true });
 	}
 
 	async updateSessionTitle(path: string, title: SessionTitleUpdate): Promise<void> {
 		await this.#awaitPath(path);
 		const previous = this.#index.get(path);
-		if (!previous) throw enoent(path);
+		if (!previous) throw enoentError(path);
 		const mtimeMs = this.#allocMtimeMs();
 		const next = {
 			...previous,
@@ -176,7 +159,7 @@ export class IndexedSessionStorage implements SessionStorage {
 
 	statSync(path: string): SessionStorageStat {
 		const entry = this.#index.get(path);
-		if (!entry) throw enoent(path);
+		if (!entry) throw enoentError(path);
 		return {
 			size: entry.size,
 			mtimeMs: entry.mtimeMs,
@@ -203,19 +186,19 @@ export class IndexedSessionStorage implements SessionStorage {
 
 	async readText(path: string): Promise<string> {
 		const entry = this.#index.get(path);
-		if (!entry) throw enoent(path);
+		if (!entry) throw enoentError(path);
 		await this.#awaitPath(path);
 		const content = await this.#backend.readFull(path);
-		if (content === null) throw enoent(path);
+		if (content === null) throw enoentError(path);
 		const title = titleUpdateForIndex(entry);
 		return title ? overlayTitleSlotContent(content, title) : content;
 	}
 
 	async readTextSlices(path: string, prefixBytes: number, suffixBytes: number): Promise<[string, string]> {
 		const entry = this.#index.get(path);
-		if (!entry) throw enoent(path);
-		const prefixLimit = normalizeByteLimit(prefixBytes);
-		const suffixLimit = normalizeByteLimit(suffixBytes);
+		if (!entry) throw enoentError(path);
+		const prefixLimit = normalizeByteLimit(prefixBytes, Number.POSITIVE_INFINITY);
+		const suffixLimit = normalizeByteLimit(suffixBytes, Number.POSITIVE_INFINITY);
 		if (prefixLimit === 0 && suffixLimit === 0) return ["", ""];
 		await this.#awaitPath(path);
 		const [prefix, suffix] = await this.#backend.readSlices(path, prefixLimit, suffixLimit);
@@ -228,7 +211,7 @@ export class IndexedSessionStorage implements SessionStorage {
 		const previous = this.#index.get(path);
 		const mtimeMs = this.#allocMtimeMs();
 		const title = titleUpdateFromSlot(parseTitleSlotFromContent(content));
-		this.#setIndex(path, byteLength(content), mtimeMs, title ?? null);
+		this.#setIndex(path, utf8ByteLength(content), mtimeMs, title ?? null);
 		try {
 			await this.#enqueuePath(path, () => this.#backend.writeFull(path, content, mtimeMs, title), {
 				trackDrain: false,
@@ -250,7 +233,7 @@ export class IndexedSessionStorage implements SessionStorage {
 		const previous = this.#index.get(path);
 		const mtimeMs = this.#allocMtimeMs();
 		const title = titleUpdateFromSlot(parseTitleSlotFromContent(content));
-		this.#setIndex(path, byteLength(content), mtimeMs, title ?? null);
+		this.#setIndex(path, utf8ByteLength(content), mtimeMs, title ?? null);
 		try {
 			await this.#enqueuePath(
 				path,
@@ -279,7 +262,7 @@ export class IndexedSessionStorage implements SessionStorage {
 		await this.#awaitPath(src);
 		await this.#awaitPath(dst);
 		const entry = this.#index.get(src);
-		if (!entry) throw enoent(src);
+		if (!entry) throw enoentError(src);
 		const dstPrevious = this.#index.get(dst);
 		this.#index.delete(src);
 		this.#index.set(dst, { ...entry });
@@ -296,7 +279,7 @@ export class IndexedSessionStorage implements SessionStorage {
 	async unlink(path: string): Promise<void> {
 		await this.#awaitPath(path);
 		const previous = this.#index.get(path);
-		if (!previous) throw enoent(path);
+		if (!previous) throw enoentError(path);
 		this.#index.delete(path);
 		try {
 			await this.#enqueuePath(path, () => this.#backend.remove([path]), { trackDrain: false });
@@ -309,7 +292,7 @@ export class IndexedSessionStorage implements SessionStorage {
 	async deleteSessionWithArtifacts(sessionPath: string): Promise<void> {
 		await this.#awaitPath(sessionPath);
 		const sessionEntry = this.#index.get(sessionPath);
-		if (!sessionEntry) throw enoent(sessionPath);
+		if (!sessionEntry) throw enoentError(sessionPath);
 
 		const artifactsDir = sessionPath.slice(0, -6);
 		const prefix = artifactsDir.endsWith("/") ? artifactsDir : `${artifactsDir}/`;
@@ -366,7 +349,7 @@ export class IndexedSessionStorage implements SessionStorage {
 	_appendForWriter(path: string, line: string): number {
 		const mtimeMs = this.#allocMtimeMs();
 		const existing = this.#index.get(path);
-		const size = (existing?.size ?? 0) + byteLength(line);
+		const size = (existing?.size ?? 0) + utf8ByteLength(line);
 		this.#setIndex(path, size, mtimeMs);
 		return mtimeMs;
 	}

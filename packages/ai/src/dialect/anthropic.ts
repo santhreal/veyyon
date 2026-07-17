@@ -1,14 +1,8 @@
-import { parseJsonWithRepair } from "@veyyon/pi-utils";
+import { escapeXmlAttribute, escapeXmlText, parseJsonWithRepair } from "@veyyon/pi-utils";
 import type { Message, ToolCall } from "../types";
 import dialectPrompt from "./anthropic.md" with { type: "text" };
 import { buildArgShapes, buildStringArgsResolver, mintToolCallId, type ToolArgShape } from "./coercion";
-import {
-	escapeXmlAttr,
-	escapeXmlText,
-	renderDelimitedThinking,
-	renderLegacyTextTranscript,
-	stringifyJson,
-} from "./rendering";
+import { renderDelimitedThinking, renderLegacyTextTranscript, stringifyJsonOrNull } from "./rendering";
 import type {
 	DialectDefinition,
 	DialectRenderOptions,
@@ -579,12 +573,12 @@ function renderTranscript(messages: readonly Message[], options: DialectRenderOp
 }
 
 function renderInvoke(call: ToolCall, shape: ToolArgShape | undefined): string {
-	let body = `<invoke name="${escapeXmlAttr(call.name)}">`;
+	let body = `<invoke name="${escapeXmlAttribute(call.name)}">`;
 	for (const key in call.arguments) {
 		const value = call.arguments[key];
 		const isString = shape?.stringArgs.has(key) === true;
-		const rendered = isString && typeof value === "string" ? value : stringifyJson(value);
-		body += `<parameter name="${escapeXmlAttr(key)}">${rendered}</parameter>`;
+		const rendered = isString && typeof value === "string" ? value : stringifyJsonOrNull(value);
+		body += `<parameter name="${escapeXmlAttribute(key)}">${rendered}</parameter>`;
 	}
 	return `${body}</invoke>`;
 }

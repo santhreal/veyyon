@@ -1,3 +1,4 @@
+import { escapeXmlAttribute, escapeXmlText } from "@veyyon/pi-utils";
 import type { Message, ToolCall } from "../types";
 import {
 	ANTHROPIC_THINKING_TAG_PREFIXES,
@@ -6,13 +7,7 @@ import {
 } from "./anthropic";
 import { buildArgShapes, type ToolArgShape } from "./coercion";
 import dialectPrompt from "./minimax.md" with { type: "text" };
-import {
-	escapeXmlAttr,
-	escapeXmlText,
-	renderDelimitedThinking,
-	renderLegacyTextTranscript,
-	stringifyJson,
-} from "./rendering";
+import { renderDelimitedThinking, renderLegacyTextTranscript, stringifyJsonOrNull } from "./rendering";
 import type { DialectDefinition, DialectRenderOptions, DialectToolResult } from "./types";
 
 const MINIMAX_WRAPPER_TAGS: Readonly<Record<string, true>> = { tool_call: true };
@@ -66,12 +61,12 @@ function renderTranscript(messages: readonly Message[], options: DialectRenderOp
 }
 
 function renderInvoke(call: ToolCall, shape: ToolArgShape | undefined): string {
-	let body = `<invoke name="${escapeXmlAttr(call.name)}">`;
+	let body = `<invoke name="${escapeXmlAttribute(call.name)}">`;
 	for (const key in call.arguments) {
 		const value = call.arguments[key];
 		const isString = shape?.stringArgs.has(key) === true;
-		const rendered = isString && typeof value === "string" ? value : stringifyJson(value);
-		body += `<parameter name="${escapeXmlAttr(key)}">${rendered}</parameter>`;
+		const rendered = isString && typeof value === "string" ? value : stringifyJsonOrNull(value);
+		body += `<parameter name="${escapeXmlAttribute(key)}">${rendered}</parameter>`;
 	}
 	return `${body}</invoke>`;
 }

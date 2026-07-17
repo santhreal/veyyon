@@ -1,16 +1,10 @@
 import { afterEach, describe, expect, it } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 
 import { isEnhancedRecallEnabled, isQueryCacheEnabled, QueryCache } from "@veyyon/pi-mnemopi/core/query-cache";
-import {
-	CORE_QUERY_STOP_WORDS,
-	expandQuery,
-	getSynonyms,
-	normalizeQuery,
-	STOP_WORDS,
-} from "@veyyon/pi-mnemopi/core/synonyms";
+import { expandQuery, getSynonyms, normalizeQuery } from "@veyyon/pi-mnemopi/core/synonyms";
 
 const openCaches: QueryCache[] = [];
 
@@ -22,30 +16,6 @@ function cache(options: ConstructorParameters<typeof QueryCache>[0] = {}): Query
 
 afterEach(() => {
 	for (const instance of openCaches.splice(0)) instance.close();
-});
-
-describe("query stop-word lists have one owner", () => {
-	it("CORE_QUERY_STOP_WORDS is the minimal core and a subset of the full list", () => {
-		// beam/recall.ts filters symmetric query↔content overlap with this tighter
-		// 28-word core; the full query STOP_WORDS extends it. Both live in synonyms.ts.
-		expect(CORE_QUERY_STOP_WORDS.size).toBe(28);
-		for (const word of CORE_QUERY_STOP_WORDS) {
-			expect(STOP_WORDS.has(word)).toBe(true);
-		}
-		// core keeps the highest-frequency function words but not extended fillers
-		expect(CORE_QUERY_STOP_WORDS.has("the")).toBe(true);
-		expect(CORE_QUERY_STOP_WORDS.has("actually")).toBe(false);
-		expect(STOP_WORDS.has("actually")).toBe(true);
-	});
-
-	it("recall.ts imports the core instead of re-typing an inline STOP_WORDS set", () => {
-		// Fails if beam/recall.ts reintroduces its own literal `STOP_WORDS = new Set([...])`
-		// — the exact 28-word duplicate this unification removed.
-		const recallPath = join(dirname(import.meta.dir), "src", "core", "beam", "recall.ts");
-		const src = readFileSync(recallPath, "utf8");
-		expect(/\bSTOP_WORDS\s*=\s*new Set\(\[/.test(src)).toBe(false);
-		expect(src.includes("CORE_QUERY_STOP_WORDS")).toBe(true);
-	});
 });
 
 describe("synonym expansion", () => {

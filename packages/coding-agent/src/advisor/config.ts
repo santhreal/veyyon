@@ -1,6 +1,6 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { isEnoent, logger } from "@veyyon/pi-utils";
+import { isEnoent, kebabSlug, logger } from "@veyyon/pi-utils";
 import { type } from "arktype";
 import { YAML } from "bun";
 import { expandAtImports } from "../discovery/at-imports";
@@ -53,11 +53,7 @@ const watchdogYamlSchema = type({
  * survives; callers dedupe collisions.
  */
 export function slugifyAdvisorName(name: string): string {
-	const slug = name
-		.toLowerCase()
-		.replace(/[^a-z0-9]+/g, "-")
-		.replace(/^-+|-+$/g, "");
-	return slug || "advisor";
+	return kebabSlug(name) || "advisor";
 }
 
 const UUID_V7_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;

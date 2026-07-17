@@ -1,7 +1,17 @@
 import * as path from "node:path";
 import { getProjectDir, logger } from "@veyyon/pi-utils";
 import type { ToolSession } from "../../tools";
-import { attachSessionOwner, createCancelledKernelResult, executeWithKernelBase } from "../executor-base";
+import {
+	attachSessionOwner,
+	createCancelledKernelResult,
+	executeWithKernelBase,
+	interpreterSessionKey,
+	isCancellationError,
+	isTimedOutCancellation,
+	normalizeSessionCwd,
+	requireRemainingTimeoutMs,
+	waitForPromiseWithCancellation,
+} from "../executor-base";
 import { ensurePyToolBridge, type PyToolBridgeInfo } from "../py/tool-bridge";
 import type { EvalDisplayOutput, EvalStatusEvent } from "../types";
 import {
@@ -80,10 +90,6 @@ const sessions = new Map<string, JuliaSession>();
 const startingSessions = new Map<string, StartingJuliaSession>();
 const resettingSessions = new Map<string, Promise<void>>();
 
-function normalizeSessionCwd(cwd: string): string {
-	return path.resolve(cwd);
-}
-
 function normalizeExplicitInterpreter(cwd: string, interpreter: string | undefined): string {
 	if (interpreter === undefined) return "";
 	const resolved = resolveExplicitJuliaRuntime(interpreter, cwd, {}).juliaPath;
@@ -94,85 +100,17 @@ function normalizeExplicitInterpreter(cwd: string, interpreter: string | undefin
 	}
 }
 
-function buildSessionKey(sessionId: string, cwd: string, interpreter: string | undefined): string {
-	const normalizedCwd = normalizeSessionCwd(cwd);
-	const normalizedInterpreter = normalizeExplicitInterpreter(normalizedCwd, interpreter);
-	return `${sessionId}::${normalizedCwd}::${normalizedInterpreter}`;
-}
-
-function isCancellationError(error: unknown): boolean {
-	if (error instanceof JuliaExecutionCancelledError) return true;
-	if (error instanceof Error && (error.name === "AbortError" || error.name === "TimeoutError")) return true;
-	if (
-		error &&
-		typeof error === "object" &&
-		"name" in error &&
-		(error.name === "AbortError" || error.name === "TimeoutError")
-	)
-		return true;
-	return false;
-}
-
-function isTimedOutCancellation(error: unknown, signal?: AbortSignal): boolean {
-	if (error instanceof JuliaExecutionCancelledError) return error.timedOut;
-	if (error instanceof Error && error.name === "TimeoutError") return true;
-	if (error && typeof error === "object" && "name" in error && error.name === "TimeoutError") return true;
-	if (signal?.reason instanceof Error && signal.reason.name === "TimeoutError") return true;
-	return false;
-}
-
-function getExecutionDeadlineMs(options?: Pick<JuliaExecutorOptions, "deadlineMs" | "timeoutMs">): number | undefined {
+// Unlike executor-base's getExecutionDeadlineMs, timeoutMs <= 0 means "no deadline" here.
+function jlExecutionDeadlineMs(options?: Pick<JuliaExecutorOptions, "deadlineMs" | "timeoutMs">): number | undefined {
 	if (options?.deadlineMs !== undefined) return options.deadlineMs;
 	if (options?.timeoutMs !== undefined && options.timeoutMs > 0) return Date.now() + options.timeoutMs;
 	return undefined;
 }
 
-function getRemainingTimeoutMs(deadlineMs?: number): number | undefined {
+// Unlike executor-base's getRemainingTimeoutMs, an expired deadline clamps to 0 instead of going negative.
+function jlRemainingTimeoutMs(deadlineMs?: number): number | undefined {
 	if (deadlineMs === undefined) return undefined;
 	return Math.max(0, deadlineMs - Date.now());
-}
-
-function requireRemainingTimeoutMs(deadlineMs?: number): number | undefined {
-	if (deadlineMs === undefined) return undefined;
-	const remaining = getRemainingTimeoutMs(deadlineMs);
-	if (remaining !== undefined && remaining <= 0) {
-		throw new JuliaExecutionCancelledError(true);
-	}
-	return remaining;
-}
-
-async function waitForPromiseWithCancellation<T>(
-	promise: Promise<T>,
-	options: Pick<JuliaExecutorOptions, "signal" | "deadlineMs">,
-): Promise<T> {
-	if (options.signal?.aborted) {
-		throw new JuliaExecutionCancelledError(isTimedOutCancellation(options.signal.reason, options.signal));
-	}
-	const cleanups: Array<() => void> = [];
-	const { promise: cancelPromise, reject } = Promise.withResolvers<never>();
-
-	if (options.signal) {
-		const onAbort = () => {
-			reject(new JuliaExecutionCancelledError(isTimedOutCancellation(options.signal?.reason, options.signal)));
-		};
-		options.signal.addEventListener("abort", onAbort, { once: true });
-		cleanups.push(() => options.signal?.removeEventListener("abort", onAbort));
-	}
-
-	const deadlineMs = options.deadlineMs;
-	if (typeof deadlineMs === "number" && deadlineMs > Date.now()) {
-		const timeout = setTimeout(() => {
-			reject(new JuliaExecutionCancelledError(true));
-		}, deadlineMs - Date.now());
-		timeout.unref?.();
-		cleanups.push(() => clearTimeout(timeout));
-	}
-
-	try {
-		return await Promise.race([promise, cancelPromise]);
-	} finally {
-		for (const cleanup of cleanups) cleanup();
-	}
 }
 
 function formatTimeoutAnnotation(timeoutMs?: number): string | undefined {
@@ -233,7 +171,7 @@ function buildKernelEnv(options: {
 }
 
 async function startKernel(cwd: string, options: JuliaExecutorOptions): Promise<JuliaKernel> {
-	requireRemainingTimeoutMs(options.deadlineMs);
+	requireRemainingTimeoutMs(options.deadlineMs, JuliaExecutionCancelledError);
 	const env: Record<string, string | undefined> = {};
 	const patch = buildKernelEnv(options);
 	if (patch) {
@@ -266,7 +204,7 @@ async function acquireSession(
 	const inFlight = startingSessions.get(sessionKey);
 	if (inFlight) {
 		attachSessionOwner(inFlight, sessionId, options.kernelOwnerId);
-		return await waitForPromiseWithCancellation(inFlight.promise, options);
+		return await waitForPromiseWithCancellation(inFlight.promise, options, JuliaExecutionCancelledError);
 	}
 
 	let startingSession!: StartingJuliaSession;
@@ -294,7 +232,7 @@ async function acquireSession(
 	attachSessionOwner(startingSession, sessionId, options.kernelOwnerId);
 	startingSessions.set(sessionKey, startingSession);
 	try {
-		return await waitForPromiseWithCancellation(startPromise, options);
+		return await waitForPromiseWithCancellation(startPromise, options, JuliaExecutionCancelledError);
 	} finally {
 		if (startingSessions.get(sessionKey) === startingSession) startingSessions.delete(sessionKey);
 	}
@@ -305,14 +243,14 @@ async function replaceSessionKernel(session: JuliaSession, cwd: string, options:
 		sessionKey: session.sessionKey,
 	});
 	const oldKernel = session.kernel;
-	const remaining = getRemainingTimeoutMs(options.deadlineMs);
+	const remaining = jlRemainingTimeoutMs(options.deadlineMs);
 	await oldKernel
 		.shutdown(remaining !== undefined ? { timeoutMs: Math.max(0, remaining) } : undefined)
 		.catch(() => undefined);
 	if (sessions.get(session.sessionKey) !== session) {
 		throw new JuliaExecutionCancelledError(false);
 	}
-	requireRemainingTimeoutMs(options.deadlineMs);
+	requireRemainingTimeoutMs(options.deadlineMs, JuliaExecutionCancelledError);
 	const nextKernel = await startKernel(cwd, options);
 	if (sessions.get(session.sessionKey) !== session) {
 		await nextKernel.shutdown().catch(() => undefined);
@@ -432,6 +370,7 @@ async function ensureKernelAvailable(cwd: string, options: JuliaExecutorOptions)
 	const availability = await waitForPromiseWithCancellation(
 		checkJuliaKernelAvailability(cwd, options.interpreter),
 		options,
+		JuliaExecutionCancelledError,
 	);
 	if (!availability.ok) {
 		throw new Error(availability.reason ?? "Julia kernel unavailable");
@@ -451,7 +390,11 @@ async function ensureToolBridge(options: JuliaExecutorOptions): Promise<void> {
 
 async function executeOnSession(code: string, cwd: string, options: JuliaExecutorOptions): Promise<JuliaResult> {
 	const sessionId = options.sessionId ?? `session:${cwd}`;
-	const sessionKey = buildSessionKey(sessionId, cwd, options.interpreter);
+	const sessionKey = interpreterSessionKey(
+		sessionId,
+		normalizeSessionCwd(cwd),
+		normalizeExplicitInterpreter(normalizeSessionCwd(cwd), options.interpreter),
+	);
 	if (options.bridge && !options.bridgeSessionId) {
 		options.bridgeSessionId = sessionId;
 	}
@@ -476,7 +419,9 @@ async function executeOnSession(code: string, cwd: string, options: JuliaExecuto
 	}
 	const session = await acquireSession(sessionKey, sessionId, cwd, options);
 	if (options.signal?.aborted) {
-		throw new JuliaExecutionCancelledError(isTimedOutCancellation(options.signal.reason, options.signal));
+		throw new JuliaExecutionCancelledError(
+			isTimedOutCancellation(options.signal.reason, JuliaExecutionCancelledError, options.signal),
+		);
 	}
 	if (sessions.get(session.sessionKey) !== session) {
 		throw new JuliaExecutionCancelledError(false);
@@ -491,7 +436,7 @@ async function executeOnSession(code: string, cwd: string, options: JuliaExecuto
 	try {
 		return await executeWithKernel(session.kernel, code, runOptions);
 	} catch (err) {
-		if (isCancellationError(err) || options.signal?.aborted) throw err;
+		if (isCancellationError(err, JuliaExecutionCancelledError) || options.signal?.aborted) throw err;
 		if (session.kernel.isAlive()) throw err;
 		if (sessions.get(session.sessionKey) !== session) {
 			throw new JuliaExecutionCancelledError(false);
@@ -504,17 +449,9 @@ async function executeOnSession(code: string, cwd: string, options: JuliaExecuto
 	}
 }
 
-export async function executeJuliaWithKernel(
-	kernel: JuliaKernel,
-	code: string,
-	options?: JuliaExecutorOptions,
-): Promise<JuliaResult> {
-	return await executeWithKernel(kernel, code, options);
-}
-
 export async function executeJulia(code: string, options?: JuliaExecutorOptions): Promise<JuliaResult> {
 	const cwd = normalizeSessionCwd(options?.cwd ?? getProjectDir());
-	const deadlineMs = getExecutionDeadlineMs(options);
+	const deadlineMs = jlExecutionDeadlineMs(options);
 	const executionOptions: JuliaExecutorOptions = {
 		...(options ?? {}),
 		cwd,
@@ -522,18 +459,24 @@ export async function executeJulia(code: string, options?: JuliaExecutorOptions)
 	};
 
 	try {
-		requireRemainingTimeoutMs(deadlineMs);
+		requireRemainingTimeoutMs(deadlineMs, JuliaExecutionCancelledError);
 		if (executionOptions.signal?.aborted) {
 			throw new JuliaExecutionCancelledError(
-				isTimedOutCancellation(executionOptions.signal.reason, executionOptions.signal),
+				isTimedOutCancellation(
+					executionOptions.signal.reason,
+					JuliaExecutionCancelledError,
+					executionOptions.signal,
+				),
 			);
 		}
 		await ensureKernelAvailable(cwd, executionOptions);
 		await ensureToolBridge(executionOptions);
 		return await executeOnSession(code, cwd, executionOptions);
 	} catch (err) {
-		if (isCancellationError(err) || executionOptions.signal?.aborted) {
-			return createCancelledJuliaResult(isTimedOutCancellation(err, executionOptions.signal));
+		if (isCancellationError(err, JuliaExecutionCancelledError) || executionOptions.signal?.aborted) {
+			return createCancelledJuliaResult(
+				isTimedOutCancellation(err, JuliaExecutionCancelledError, executionOptions.signal),
+			);
 		}
 		throw err;
 	}

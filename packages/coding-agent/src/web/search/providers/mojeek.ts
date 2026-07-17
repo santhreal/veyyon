@@ -81,7 +81,7 @@ function parseHtmlResults(html: string): ParsedResult[] {
 	return results;
 }
 
-function buildSearchUrl(params: SearchParams, numResults: number): string {
+function buildMojeekSearchUrl(params: SearchParams, numResults: number): string {
 	const url = new URL(MOJEEK_SEARCH_URL);
 	url.searchParams.set("q", params.query);
 	url.searchParams.set("t", String(numResults));
@@ -125,7 +125,7 @@ function isRobotPage(page: LoadedHtmlPage): boolean {
 
 async function callMojeekHtml(params: SearchParams, numResults: number): Promise<string> {
 	const signal = withHardTimeout(params.signal);
-	const url = buildSearchUrl(params, numResults);
+	const url = buildMojeekSearchUrl(params, numResults);
 	let page: LoadedHtmlPage;
 	try {
 		page = await browserFetch(url, {

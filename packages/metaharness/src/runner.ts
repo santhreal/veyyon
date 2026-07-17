@@ -2,6 +2,7 @@
 import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { stripTrailingSlashes } from "@veyyon/pi-utils";
 /**
  * Harbor benchmark runner for the local `omp` build.
  *
@@ -19,7 +20,7 @@ import * as path from "node:path";
  *   metaharness harbor --help
  */
 import type { Server } from "bun";
-import { harborRunnerArgs, type LaunchRequest } from "./launch-args";
+import { defaultJobName, harborRunnerArgs, type LaunchRequest } from "./launch-args";
 
 // ────────────────────────────────────────────────────────────────────── config
 
@@ -1254,10 +1255,9 @@ function writeModelsYaml(benchDir: string, cfg: Config): string {
 }
 
 function gatewayHealthOk(url: string): boolean {
-	const hostUrl = url
-		.replace("host.docker.internal", "127.0.0.1")
-		.replace(VMNET_HOST_IP, "127.0.0.1")
-		.replace(/\/+$/, "");
+	const hostUrl = stripTrailingSlashes(
+		url.replace("host.docker.internal", "127.0.0.1").replace(VMNET_HOST_IP, "127.0.0.1"),
+	);
 	const r = spawnSync("curl", ["-s", "--max-time", "4", `${hostUrl}/healthz`], { encoding: "utf8" });
 	return r.status === 0 && (r.stdout ?? "").includes('"ok":true');
 }
@@ -1552,9 +1552,7 @@ async function runBenchmark(cfg: Config): Promise<BenchmarkRun> {
 		);
 	}
 
-	const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-	const modelSlug = (cfg.models[0] ?? "model").replace(/[^a-zA-Z0-9]+/g, "-");
-	const jobName = cfg.jobName ?? `${modelSlug}-${stamp}`;
+	const jobName = cfg.jobName ?? defaultJobName(cfg.models[0] ?? "model");
 	const jobDir = path.join(cfg.jobsDir, jobName);
 	const benchDir = path.join(cfg.jobsDir, "_bench", jobName);
 	fs.mkdirSync(benchDir, { recursive: true });

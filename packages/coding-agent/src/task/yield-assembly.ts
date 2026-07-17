@@ -104,7 +104,7 @@ export function arrayValuedLabels(outputSchema: unknown): ReadonlySet<string> {
 	const labels = new Set<string>();
 	// Use the JTD-converted JSON Schema (matches what validation runs against):
 	// JTD `optionalProperties.findings.elements` becomes `properties.findings`
-	// with `type: "array"`, which raw `normalizeSchema` would not expose.
+	// with `type: "array"`, which raw `normalizeJtdSchema` would not expose.
 	const { jsonSchema } = buildOutputValidator(outputSchema);
 	if (jsonSchema === undefined) return labels;
 	const dereferenced = dereferenceJsonSchema(jsonSchema);

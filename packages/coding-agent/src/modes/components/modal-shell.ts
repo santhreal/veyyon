@@ -11,8 +11,9 @@
  * Product constraint: Veyyon stays transcript + composer; overlays float on
  * top. This is not a full-screen TUI conversion.
  */
-import { padding, truncateToWidth, visibleWidth } from "@veyyon/pi-tui";
+import { padding, TERMINAL, truncateToWidth, visibleWidth } from "@veyyon/pi-tui";
 import { theme } from "../theme/theme";
+import { emberTick } from "./composer-chrome";
 import { bottomBorder, divider, fit, row, topBorder } from "./overlay-box";
 
 /** Leading decoration width before the title text on the top border. */
@@ -385,8 +386,11 @@ export function renderModalShell(input: ModalShellInput): ModalShellResult {
 				: clickableTitle
 			: theme.bold(theme.fg("accent", shown));
 		const frame = (s: string) => theme.fg("borderAccent", s);
+		// The horizon sun tick opens every modal rail — the same motif that leads
+		// the composer hairline, so dialogs feel cut from the same cloth.
 		card.push(
-			frame(box.topLeft + box.horizontal) +
+			frame(box.topLeft) +
+				emberTick(TERMINAL.trueColor, 1) +
 				titleStyled +
 				frame(box.horizontal.repeat(fillWidth)) +
 				closeStyled +

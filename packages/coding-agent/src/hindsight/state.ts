@@ -275,9 +275,8 @@ export class HindsightSessionState {
 			const block = `<memories>\n${this.config.recallPromptPreamble}\nCurrent time: ${formatCurrentTime()} UTC\n\n${formatted}\n</memories>`;
 			return { context: block, ok: true };
 		} catch (err) {
-			if (this.config.debug) {
-				logger.debug("Hindsight: recall failed", { bankId: this.bankId, error: String(err) });
-			}
+			// Recall loss must never be invisible.
+			logger.warn("Hindsight: recall failed; no memories injected", { bankId: this.bankId, error: String(err) });
 			return { context: null, ok: false };
 		}
 	}
@@ -486,7 +485,10 @@ export class HindsightSessionState {
 		try {
 			await this.session.refreshBaseSystemPrompt();
 		} catch (err) {
-			logger.debug(`Hindsight: refreshBaseSystemPrompt after ${reason} failed`, { error: String(err) });
+			// The recalled/loaded context never reaches the system prompt if this fails.
+			logger.warn(`Hindsight: refreshBaseSystemPrompt after ${reason} failed; context not injected`, {
+				error: String(err),
+			});
 		}
 	}
 }

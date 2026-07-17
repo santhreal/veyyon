@@ -1,6 +1,7 @@
 import { getPuppeteerDir, logger, postmortem, Snowflake, workerHostEntry } from "@veyyon/pi-utils";
 import type { Page, Target } from "puppeteer-core";
 import { callSessionTool } from "../../eval/js/tool-bridge";
+import { errorFromWorkerEvent, logWorkerMessage, raceWithTimeout } from "../../subprocess/worker-client";
 import { webpExclusionForModel } from "../../utils/image-loading";
 import type { ToolSession } from "../index";
 import { expandPath } from "../path-utils";
@@ -28,6 +29,7 @@ import type {
 	WorkerInitPayload,
 	WorkerOutbound,
 } from "./tab-protocol";
+import { targetIdForPage, targetIdForTarget } from "./target-id";
 
 // Coding-agent binary/bundle workers route through the CLI entrypoint with a
 // hidden argv mode, so compiled/npm builds only need one JavaScript entry.
@@ -259,7 +261,7 @@ async function acquireTabImpl(
 		logger.warn("Tab worker init failed; retrying with inline tab worker (no sync-loop guard)", {
 			error: error instanceof Error ? error.message : String(error),
 		});
-		worker = await spawnInlineWorker();
+		worker = await spawnInlineTabWorker();
 		try {
 			info = await initializeTabWorker(worker, initPayload, opts.timeoutMs + GRACE_MS);
 		} catch (inlineError) {
@@ -664,7 +666,7 @@ async function dispatchToolCall(
 ): Promise<void> {
 	const pending = tab.pending.get(msg.runId);
 	if (!pending?.session.cwd) {
-		safeSend(tab, {
+		sendToTabWorker(tab, {
 			type: "tool-reply",
 			id: msg.id,
 			reply: {
@@ -688,16 +690,20 @@ async function dispatchToolCall(
 				// already pushes its own helper status via the display channel.
 			},
 		});
-		safeSend(tab, { type: "tool-reply", id: msg.id, reply: { ok: true, value } });
+		sendToTabWorker(tab, { type: "tool-reply", id: msg.id, reply: { ok: true, value } });
 	} catch (error) {
-		safeSend(tab, { type: "tool-reply", id: msg.id, reply: { ok: false, error: toErrorPayload(error) } });
+		sendToTabWorker(tab, {
+			type: "tool-reply",
+			id: msg.id,
+			reply: { ok: false, error: tabReplyErrorPayload(error) },
+		});
 	} finally {
 		pending.toolCalls.delete(msg.id);
 		pending.signal?.removeEventListener("abort", onParentAbort);
 	}
 }
 
-function safeSend(tab: WorkerTabSession, msg: WorkerInbound): void {
+function sendToTabWorker(tab: WorkerTabSession, msg: WorkerInbound): void {
 	if (tab.state !== "alive") return;
 	try {
 		tab.worker.send(msg);
@@ -706,7 +712,7 @@ function safeSend(tab: WorkerTabSession, msg: WorkerInbound): void {
 	}
 }
 
-function toErrorPayload(error: unknown): RunErrorPayload {
+function tabReplyErrorPayload(error: unknown): RunErrorPayload {
 	if (error instanceof Error) {
 		return {
 			name: error.name,
@@ -743,7 +749,7 @@ async function recycleTimedOutWorkerTab(tab: WorkerTabSession, timeoutMs: number
 		worker.onMessage(msg => handleTabMessage(tab, msg));
 	} catch (error) {
 		await worker.terminate().catch(() => undefined);
-		worker = await spawnInlineWorker();
+		worker = await spawnInlineTabWorker();
 		try {
 			const info = await initializeTabWorker(worker, payload, timeoutMs);
 			tab.worker = worker;
@@ -806,23 +812,6 @@ function expandBrowserScreenshotDir(session: ToolSession): string | undefined {
 	return value ? expandPath(value) : undefined;
 }
 
-async function targetIdForPage(page: Page): Promise<string> {
-	return await targetIdForTarget(page.target());
-}
-
-async function targetIdForTarget(target: Target): Promise<string> {
-	const raw = target as unknown as { _targetId?: unknown };
-	if (typeof raw._targetId === "string") return raw._targetId;
-	const session = await target.createCDPSession();
-	try {
-		const info = (await session.send("Target.getTargetInfo")) as { targetInfo?: { targetId?: string } };
-		if (info.targetInfo?.targetId) return info.targetInfo.targetId;
-		throw new ToolError("Target id unavailable from CDP target info");
-	} finally {
-		await session.detach().catch(() => undefined);
-	}
-}
-
 function errorFromPayload(payload: RunErrorPayload): Error {
 	const error = payload.isAbort
 		? new ToolAbortError()
@@ -834,48 +823,22 @@ function errorFromPayload(payload: RunErrorPayload): Error {
 	return error;
 }
 
-function logWorkerMessage(msg: Extract<WorkerOutbound, { type: "log" }>): void {
-	if (msg.level === "debug") logger.debug(msg.msg, msg.meta);
-	else if (msg.level === "warn") logger.warn(msg.msg, msg.meta);
-	else logger.error(msg.msg, msg.meta);
-}
-
-async function raceWithTimeout<T>(
-	promise: Promise<T>,
-	timeoutMs: number,
-	reason: string,
-	onTimeout?: (reason: string) => Promise<void>,
-): Promise<T> {
-	const timeoutSignal = AbortSignal.timeout(timeoutMs);
-	const { promise: timeoutPromise, reject } = Promise.withResolvers<never>();
-	const onAbort = (): void => reject(new ToolError(reason));
-	timeoutSignal.addEventListener("abort", onAbort, { once: true });
-	try {
-		return await Promise.race([promise, timeoutPromise]);
-	} catch (error) {
-		if (error instanceof ToolError && error.message === reason) await onTimeout?.(reason);
-		throw error;
-	} finally {
-		timeoutSignal.removeEventListener("abort", onAbort);
-	}
-}
-
 async function spawnTabWorker(): Promise<WorkerHandle> {
 	try {
 		const hostEntry = workerHostEntry();
 		const worker = hostEntry
 			? new Worker(hostEntry, { type: "module", argv: ["__omp_worker_tab"] })
 			: new Worker(new URL("./tab-worker-entry.ts", import.meta.url).href, { type: "module" });
-		return wrapBunWorker(worker);
+		return wrapTabBunWorker(worker);
 	} catch (err) {
 		logger.warn("Bun Worker spawn failed; using inline tab worker (no sync-loop guard)", {
 			error: err instanceof Error ? err.message : String(err),
 		});
-		return spawnInlineWorker();
+		return spawnInlineTabWorker();
 	}
 }
 
-function wrapBunWorker(worker: Worker): WorkerHandle {
+function wrapTabBunWorker(worker: Worker): WorkerHandle {
 	return {
 		mode: "worker",
 		send(msg, transferList) {
@@ -887,7 +850,7 @@ function wrapBunWorker(worker: Worker): WorkerHandle {
 			return () => worker.removeEventListener("message", wrap);
 		},
 		onError(handler) {
-			const onError = (event: ErrorEvent): void => handler(errorFromWorkerEvent(event));
+			const onError = (event: ErrorEvent): void => handler(errorFromWorkerEvent(event, "Unknown tab worker error"));
 			const onMessageError = (event: MessageEvent): void =>
 				handler(new ToolError(`Tab worker message error: ${String(event.data)}`));
 			worker.addEventListener("error", onError);
@@ -908,7 +871,7 @@ function wrapBunWorker(worker: Worker): WorkerHandle {
  * entry. This preserves normal browser behavior but cannot interrupt synchronous
  * infinite loops because user code runs on the main thread.
  */
-async function spawnInlineWorker(): Promise<WorkerHandle> {
+async function spawnInlineTabWorker(): Promise<WorkerHandle> {
 	const hostListeners = new Set<(message: WorkerOutbound) => void>();
 	const workerListeners = new Set<(message: WorkerInbound) => void>();
 	const workerTransport: Transport = {
@@ -969,10 +932,4 @@ export function initializeTabWorkerForTest(
 	timeoutMs: number,
 ): Promise<ReadyInfo> {
 	return initializeTabWorker(worker, payload, timeoutMs);
-}
-
-function errorFromWorkerEvent(event: ErrorEvent): Error {
-	if (event.error instanceof Error) return event.error;
-	if (event.message) return new Error(event.message);
-	return new Error("Unknown tab worker error");
 }

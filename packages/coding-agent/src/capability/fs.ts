@@ -4,12 +4,8 @@ import * as path from "node:path";
 const contentCache = new Map<string, string | null>();
 const dirCache = new Map<string, fs.Dirent[]>();
 
-function resolvePath(filePath: string): string {
-	return path.resolve(filePath);
-}
-
 export async function readFile(filePath: string): Promise<string | null> {
-	const abs = resolvePath(filePath);
+	const abs = path.resolve(filePath);
 	if (contentCache.has(abs)) {
 		return contentCache.get(abs) ?? null;
 	}
@@ -35,7 +31,7 @@ export async function readFile(filePath: string): Promise<string | null> {
 }
 
 export async function readDirEntries(dirPath: string): Promise<fs.Dirent[]> {
-	const abs = resolvePath(dirPath);
+	const abs = path.resolve(dirPath);
 	if (dirCache.has(abs)) {
 		return dirCache.get(abs) ?? [];
 	}
@@ -50,39 +46,13 @@ export async function readDirEntries(dirPath: string): Promise<fs.Dirent[]> {
 	}
 }
 
-export async function readDir(dirPath: string): Promise<string[]> {
-	const entries = await readDirEntries(dirPath);
-	return entries.map(entry => entry.name);
-}
-
-export async function walkUp(
-	startDir: string,
-	name: string,
-	opts: { file?: boolean; dir?: boolean } = {},
-): Promise<string | null> {
-	const { file = true, dir = true } = opts;
-	let current = resolvePath(startDir);
-
-	while (true) {
-		const entries = await readDirEntries(current);
-		const entry = entries.find(e => e.name === name);
-		if (entry) {
-			if (file && entry.isFile()) return path.join(current, name);
-			if (dir && entry.isDirectory()) return path.join(current, name);
-		}
-		const parent = path.dirname(current);
-		if (parent === current) return null;
-		current = parent;
-	}
-}
-
 /**
  * Walk up from startDir looking for a `.git` entry (file or directory).
  * Returns the directory containing `.git` (the repo root), or null if not in a git repo.
  * Results are based on the cached readDirEntries, so repeated calls are cheap.
  */
 export async function findRepoRoot(startDir: string): Promise<string | null> {
-	let current = resolvePath(startDir);
+	let current = path.resolve(startDir);
 	while (true) {
 		const entries = await readDirEntries(current);
 		if (entries.some(e => e.name === ".git")) {
@@ -107,7 +77,7 @@ export function clearCache(): void {
 }
 
 export function invalidate(filePath: string): void {
-	const abs = resolvePath(filePath);
+	const abs = path.resolve(filePath);
 	contentCache.delete(abs);
 	dirCache.delete(abs);
 	const parent = path.dirname(abs);

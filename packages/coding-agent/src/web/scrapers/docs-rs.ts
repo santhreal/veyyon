@@ -1,7 +1,15 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { gunzipSync } from "node:zlib";
-import { getDocsRsCacheDir, isEnoent, logger, ptree, tryParseJson } from "@veyyon/pi-utils";
+import {
+	getDocsRsCacheDir,
+	isEnoent,
+	logger,
+	ptree,
+	safeFilenameSegmentCollapsed,
+	stripTrailingSlashes,
+	tryParseJson,
+} from "@veyyon/pi-utils";
 import { ToolAbortError } from "../../tools/tool-errors";
 import type { RenderResult, SpecialHandler } from "./types";
 import { buildResult, MAX_BYTES } from "./types";
@@ -64,7 +72,7 @@ function parseDocsRsUrl(url: string): DocsRsTarget | null {
 	const parsed = new URL(url);
 	if (parsed.hostname !== "docs.rs") return null;
 
-	const segments = parsed.pathname.replace(/\/+$/, "").split("/").filter(Boolean);
+	const segments = stripTrailingSlashes(parsed.pathname).split("/").filter(Boolean);
 
 	// Skip /crate/{name}/{version} overview pages — those are docs.rs chrome, not rustdoc
 	if (segments[0] === "crate") return null;
@@ -289,9 +297,7 @@ export function gunzipRustdocJson(compressed: Buffer, maxOutputLength: number = 
 	return gunzipSync(compressed, { maxOutputLength }).toString("utf-8");
 }
 
-function sanitizeCacheSegment(value: string): string {
-	return value.replace(/[^A-Za-z0-9._-]+/g, "_");
-}
+const sanitizeCacheSegment = safeFilenameSegmentCollapsed;
 
 function getDocsRsCacheVersionSegment(version: string, now = new Date()): string {
 	if (version !== "latest") return sanitizeCacheSegment(version);
@@ -487,7 +493,7 @@ function collectInherentMethodLines(implIds: number[], index: Record<string, Rus
 			if (!method?.name || !("function" in method.inner)) continue;
 			const fn_ = method.inner.function as FunctionData;
 			const sig = renderFunctionSig(method.name, fn_);
-			methods.push(`- \`${sig}\`${method.docs ? ` — ${firstLine(method.docs)}` : ""}`);
+			methods.push(`- \`${sig}\`${method.docs ? ` — ${firstLineEllipsized(method.docs)}` : ""}`);
 		}
 	}
 	return methods;
@@ -540,11 +546,11 @@ function renderSingleItem(item: RustdocItem, index: Record<string, RustdocItem>,
 				if ("function" in child.inner) {
 					const fn_ = child.inner.function as FunctionData;
 					const sig = renderFunctionSig(child.name ?? "?", fn_);
-					const line = `- \`${sig}\`${child.docs ? ` — ${firstLine(child.docs)}` : ""}`;
+					const line = `- \`${sig}\`${child.docs ? ` — ${firstLineEllipsized(child.docs)}` : ""}`;
 					if (fn_.has_body) provided.push(line);
 					else required.push(line);
 				} else if ("assoc_type" in child.inner) {
-					const line = `- \`type ${child.name}\`${child.docs ? ` — ${firstLine(child.docs)}` : ""}`;
+					const line = `- \`type ${child.name}\`${child.docs ? ` — ${firstLineEllipsized(child.docs)}` : ""}`;
 					required.push(line);
 				}
 			}
@@ -571,7 +577,7 @@ function renderSingleItem(item: RustdocItem, index: Record<string, RustdocItem>,
 		for (const vId of variants) {
 			const v = index[String(vId)];
 			if (!v?.name) continue;
-			lines.push(`- \`${v.name}\`${v.docs ? ` — ${firstLine(v.docs)}` : ""}`);
+			lines.push(`- \`${v.name}\`${v.docs ? ` — ${firstLineEllipsized(v.docs)}` : ""}`);
 		}
 		if (lines.length) md += `## Variants\n\n${lines.join("\n")}\n\n`;
 	}
@@ -620,7 +626,7 @@ function renderModule(
 		if (!groups[kind]) groups[kind] = [];
 		groups[kind].push({
 			name: displayName,
-			docs: firstLine(item.docs ?? ""),
+			docs: firstLineEllipsized(item.docs ?? ""),
 			decl: renderItemDecl(item),
 		});
 	}
@@ -657,7 +663,7 @@ function renderModule(
 	return md;
 }
 
-function firstLine(s: string): string {
+function firstLineEllipsized(s: string): string {
 	const line = s.split("\n")[0].trim();
 	return line.length > 200 ? `${line.slice(0, 197)}...` : line;
 }

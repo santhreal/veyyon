@@ -3,7 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { isEnoent } from "@veyyon/pi-utils";
 import { AgentRegistry } from "../registry/agent-registry";
-import { buildDirectoryResource } from "./filesystem-resource";
+import { buildDirectoryResource, contentTypeForFileExtension } from "./filesystem-resource";
 import { parseInternalUrl } from "./parse";
 import { validateRelativePath } from "./skill-protocol";
 import type { InternalResource, InternalUrl, ProtocolHandler, ResolveContext, UrlCompletion } from "./types";
@@ -40,13 +40,6 @@ function shortLocalRoot(options: LocalProtocolOptions): string {
 	// so `SessionManager.moveTo()` and the resume-after-move flow keep finding
 	// the same `local://` directory the session wrote pre-move.
 	return path.join(os.tmpdir(), "omp-local", safeSessionId(options));
-}
-
-function getContentType(filePath: string): InternalResource["contentType"] {
-	const ext = path.extname(filePath).toLowerCase();
-	if (ext === ".md") return "text/markdown";
-	if (ext === ".json") return "application/json";
-	return "text/plain";
 }
 
 const LOCAL_TEXT_SNIFF_BYTES = 8 * 1024;
@@ -157,7 +150,7 @@ async function buildFileResource(
 	return {
 		url: url.href,
 		content,
-		contentType: getContentType(resolved.path),
+		contentType: contentTypeForFileExtension(path.extname(resolved.path).toLowerCase()),
 		size: Buffer.byteLength(content, "utf-8"),
 		sourcePath: resolved.path,
 		notes: [LOCAL_WRITE_NOTE],

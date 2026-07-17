@@ -2,7 +2,13 @@ import type { Message, ToolCall } from "../types";
 import { mintToolCallId, partialSuffixOverlapAny } from "./coercion";
 import { FencedThinkingScanner } from "./fenced-thinking";
 import dialectPrompt from "./gemini.md" with { type: "text" };
-import { assistantTranscriptParts, collectToolResultRun, joinUserBodies, messageContentText } from "./rendering";
+import {
+	assistantTranscriptParts,
+	collectToolResultRun,
+	geminiTurn,
+	joinUserBodies,
+	messageContentText,
+} from "./rendering";
 import type {
 	DialectDefinition,
 	DialectRenderOptions,
@@ -270,10 +276,10 @@ function stripComments(body: string): string {
 
 function parsePyArgs(text: string): Record<string, unknown> {
 	const out: Record<string, unknown> = {};
-	for (const segment of splitTopLevel(stripComments(text), ",")) {
+	for (const segment of splitGeminiTopLevel(stripComments(text), ",")) {
 		const trimmed = segment.trim();
 		if (trimmed.length === 0) continue;
-		const eq = topLevelIndexOf(trimmed, "=");
+		const eq = geminiTopLevelIndexOf(trimmed, "=");
 		if (eq === -1) continue; // positional args are not part of the convention
 		const key = trimmed.slice(0, eq).trim();
 		if (!/^[A-Za-z_]\w*$/.test(key)) continue;
@@ -302,7 +308,7 @@ function parsePyValue(raw: string): unknown {
 
 function parseList(t: string): unknown[] {
 	const inner = t.slice(1, t.endsWith("]") ? t.length - 1 : t.length);
-	return splitTopLevel(stripComments(inner), ",")
+	return splitGeminiTopLevel(stripComments(inner), ",")
 		.map(part => part.trim())
 		.filter(part => part.length > 0)
 		.map(parsePyValue);
@@ -311,10 +317,10 @@ function parseList(t: string): unknown[] {
 function parseDict(t: string): Record<string, unknown> {
 	const inner = t.slice(1, t.endsWith("}") ? t.length - 1 : t.length);
 	const out: Record<string, unknown> = {};
-	for (const segment of splitTopLevel(stripComments(inner), ",")) {
+	for (const segment of splitGeminiTopLevel(stripComments(inner), ",")) {
 		const trimmed = segment.trim();
 		if (trimmed.length === 0) continue;
-		const colon = topLevelIndexOf(trimmed, ":");
+		const colon = geminiTopLevelIndexOf(trimmed, ":");
 		if (colon === -1) continue;
 		const keyRaw = trimmed.slice(0, colon).trim();
 		const key = stringPrefixLength(keyRaw) !== undefined ? decodeString(keyRaw) : keyRaw;
@@ -443,7 +449,7 @@ function unescapePythonString(s: string): string {
 }
 
 /** Split on `sep` at bracket depth 0, skipping string literals. */
-function splitTopLevel(text: string, sep: string): string[] {
+function splitGeminiTopLevel(text: string, sep: string): string[] {
 	const parts: string[] = [];
 	let depth = 0;
 	let start = 0;
@@ -472,7 +478,7 @@ function splitTopLevel(text: string, sep: string): string[] {
 }
 
 /** First index of `ch` at bracket depth 0, skipping string literals. */
-function topLevelIndexOf(text: string, ch: string): number {
+function geminiTopLevelIndexOf(text: string, ch: string): number {
 	let depth = 0;
 	let i = 0;
 	const n = text.length;
@@ -554,10 +560,6 @@ function renderTranscript(messages: readonly Message[], options: DialectRenderOp
 	}
 	if (pendingUserPreamble) out += geminiTurn("user", pendingUserPreamble);
 	return out;
-}
-
-function geminiTurn(role: "model" | "user", body: string): string {
-	return `<start_of_turn>${role}\n${body}<end_of_turn>\n`;
 }
 
 function pyValue(value: unknown): string {

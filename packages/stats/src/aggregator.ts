@@ -28,11 +28,11 @@ import {
 	updateToolResults,
 	updateUserMessageLinks,
 } from "./db";
-import { getSessionEntry, listAllSessionFiles, type ParseSessionResult, parseSessionFile } from "./parser";
+import { getSessionEntryChain, listAllSessionFiles, type ParseSessionResult, parseSessionFile } from "./parser";
 import type { SyncWorkerRequest, SyncWorkerResponse } from "./sync-worker";
 // Coding-agent binary/bundle workers route through the CLI entrypoint with a
 // hidden argv mode, so the compiled binary and npm bundle only need one
-// JavaScript entry. Standalone source `veyyon-stats` keeps using this package's
+// JavaScript entry. Standalone source `omp-stats` keeps using this package's
 // own sync-worker source file.
 import type {
 	BehaviorDashboardStats,
@@ -105,7 +105,7 @@ interface WorkerHandle {
  * Create a fresh sync worker. When the process was started from a
  * self-dispatching CLI entry (omp in source, npm-bundle, or compiled form),
  * re-enter that entry with a worker argv selector; otherwise (standalone
- * veyyon-stats, bun test, SDK embedding) load the worker module directly, so this
+ * omp-stats, bun test, SDK embedding) load the worker module directly, so this
  * package keeps zero runtime dependency on `@veyyon/pi-coding-agent`.
  */
 function createSyncWorker(): Worker {
@@ -461,19 +461,18 @@ export async function getRequestDetails(id: number): Promise<RequestDetails | nu
 	const msg = getMessageById(id);
 	if (!msg) return null;
 
-	const entry = await getSessionEntry(msg.sessionFile, msg.entryId);
+	const chain = await getSessionEntryChain(msg.sessionFile, msg.entryId);
+	const entry = chain.at(-1);
 	if (entry?.type !== "message") return null;
 	// The `{ type: string }` catch-all in SessionEntry keeps the literal check
 	// from narrowing; type === "message" is SessionMessageEntry by contract.
 	const messageEntry = entry as SessionMessageEntry;
 
-	// TODO: Get parent/context messages?
-	// For now we return the single entry which contains the assistant response.
-	// The user prompt is likely the parent.
-
 	return {
 		...msg,
-		messages: [entry],
+		// The ancestor chain (user prompt + preceding context), oldest first,
+		// ending with the assistant response itself.
+		messages: chain,
 		output: messageEntry.message,
 	};
 }

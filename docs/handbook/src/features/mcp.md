@@ -59,4 +59,5 @@ Tool names appear namespaced as `mcp__<server>__<tool>`.
 Use the ACP integration or SDK embedding rather than a separate `veyyon mcp-server` subcommand unless
 your build registers it.
 
-Veyyon configures MCP through `mcp.json` and the `/mcp` command.
+> **Spec — not shipped:** a `[mcp_servers.*]` config table and a `veyyon mcp` CLI. Veyyon configures
+> MCP through `mcp.json` and the `/mcp` command instead.

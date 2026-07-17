@@ -15,7 +15,7 @@ import {
 	validateJsonSchemaValue,
 } from "@veyyon/pi-ai/utils/schema";
 import { isRecord } from "@veyyon/pi-utils";
-import { jtdToJsonSchema, normalizeSchema } from "./jtd-to-json-schema";
+import { jtdToJsonSchema, normalizeJtdSchema } from "./jtd-to-json-schema";
 
 /** A validator bound to a specific output schema. */
 export interface OutputValidator {
@@ -44,7 +44,7 @@ export interface BuildOutputValidatorResult {
 	/** Raw JSON Schema produced by `jtdToJsonSchema`. Available alongside the validator so callers can derive related artifacts (strict-mode probe, dereference, hint text). */
 	jsonSchema?: Record<string, unknown>;
 	/**
-	 * Normalized schema (post-`normalizeSchema`). Surfaced so callers can distinguish
+	 * Normalized schema (post-`normalizeJtdSchema`). Surfaced so callers can distinguish
 	 * "no schema provided" (`undefined`) from "intentionally unconstrained" (`true`)
 	 * when both produce no validator.
 	 */
@@ -64,7 +64,7 @@ export interface BuildOutputValidatorResult {
  * - `{ error, normalized? }` when the schema cannot be honored (invalid syntax, `false`, malformed JTD).
  */
 export function buildOutputValidator(schema: unknown): BuildOutputValidatorResult {
-	const { normalized, error: normalizeError } = normalizeSchema(schema);
+	const { normalized, error: normalizeError } = normalizeJtdSchema(schema);
 	if (normalizeError) return { error: normalizeError, normalized };
 	if (normalized === undefined) return {};
 	if (normalized === false) return { error: "boolean false schema rejects all outputs", normalized };

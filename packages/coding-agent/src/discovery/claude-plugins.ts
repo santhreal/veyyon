@@ -6,7 +6,7 @@
  */
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { logger } from "@veyyon/pi-utils";
+import { isRecord, logger } from "@veyyon/pi-utils";
 import { registerProvider } from "../capability";
 import { readFile } from "../capability/fs";
 import { type Hook, hookCapability } from "../capability/hook";
@@ -17,6 +17,7 @@ import { type CustomTool, toolCapability } from "../capability/tool";
 import type { LoadContext, LoadResult } from "../capability/types";
 import {
 	type ClaudePluginRoot,
+	CUSTOM_TOOL_SCRIPT_EXT_RE,
 	createSourceMeta,
 	expandEnvVarsDeep,
 	listClaudePluginRoots,
@@ -53,10 +54,6 @@ async function readPluginManifest(root: ClaudePluginRoot): Promise<ClaudePluginM
 	} catch {
 		return null;
 	}
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
 async function skillsManifestReplacesFallback(root: ClaudePluginRoot): Promise<boolean> {
@@ -350,7 +347,7 @@ async function loadTools(ctx: LoadContext): Promise<LoadResult<CustomTool>> {
 			const toolsDir = path.join(root.path, "tools");
 			return loadFilesFromDir<CustomTool>(ctx, toolsDir, PROVIDER_ID, root.scope, {
 				transform: (name, _content, filePath, source) => {
-					const toolName = name.replace(/\.(ts|js|sh|bash|py)$/, "");
+					const toolName = name.replace(CUSTOM_TOOL_SCRIPT_EXT_RE, "");
 					return {
 						name: toolName,
 						path: filePath,

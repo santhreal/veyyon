@@ -3,7 +3,15 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { getOAuthProviders } from "@veyyon/pi-ai/oauth";
 import { type AutocompleteItem, Spacer } from "@veyyon/pi-tui";
-import { APP_NAME, CHANGELOG_URL, getProjectDir, setProjectDir } from "@veyyon/pi-utils";
+import {
+	APP_NAME,
+	CHANGELOG_URL,
+	collapseWhitespace,
+	errorMessage,
+	getProjectDir,
+	HTTP_URL_RE,
+	setProjectDir,
+} from "@veyyon/pi-utils";
 import { COLLAB_GUEST_ALLOWED_COMMANDS, CollabGuestLink } from "../collab/guest";
 import { CollabHost } from "../collab/host";
 import { expandRoleAlias, getModelMatchPreferences, resolveCliModel } from "../config/model-resolver";
@@ -28,9 +36,9 @@ import { urlHyperlinkAlways } from "../tui";
 import { copyToClipboard } from "../utils/clipboard";
 import { CollabQrCodeComponent } from "./helpers/collab-qrcode";
 import { buildContextReportText } from "./helpers/context-report";
-import { formatDuration } from "./helpers/format";
+import { formatCoarseDuration } from "./helpers/format";
 import { handleMcpAcp } from "./helpers/mcp";
-import { commandConsumed, errorMessage, parseSlashCommand, parseSubcommand, usage } from "./helpers/parse";
+import { commandConsumed, parseSlashCommand, parseSubcommand, usage } from "./helpers/parse";
 import { describeRedeemOutcome, type ResetUsageAccount, toResetUsageAccounts } from "./helpers/reset-usage";
 import { handleSshAcp } from "./helpers/ssh";
 import { handleTodoAcp } from "./helpers/todo";
@@ -69,7 +77,7 @@ function formatFastModeStatus(session: AgentSession): string {
 const AUTOCOMPLETE_DETAIL_LIMIT = 48;
 
 function shortDetail(value: string, limit = AUTOCOMPLETE_DETAIL_LIMIT): string {
-	const singleLine = value.replace(/\s+/g, " ").trim();
+	const singleLine = collapseWhitespace(value);
 	return singleLine.length <= limit ? singleLine : `${singleLine.slice(0, limit - 1)}…`;
 }
 
@@ -79,7 +87,7 @@ function formatTokenCount(value: number): string {
 
 /** Scheme-less display form of a browser deep link: accent + underline, OSC-8 linked to the full URL. */
 function collabWebLinkClickable(webLink: string): string {
-	const display = theme.fg("accent", `\x1b[4m${webLink.replace(/^https?:\/\//, "")}\x1b[24m`);
+	const display = theme.fg("accent", `\x1b[4m${webLink.replace(HTTP_URL_RE, "")}\x1b[24m`);
 	return urlHyperlinkAlways(webLink, display);
 }
 
@@ -967,14 +975,14 @@ const BUILTIN_SLASH_COMMAND_REGISTRY: ReadonlyArray<SlashCommandSpec> = [
 			if (snapshot.running.length > 0) {
 				lines.push("", "Running Jobs");
 				for (const job of snapshot.running) {
-					lines.push(`  [${job.id}] ${job.type} (${job.status}) — ${formatDuration(now - job.startTime)}`);
+					lines.push(`  [${job.id}] ${job.type} (${job.status}) — ${formatCoarseDuration(now - job.startTime)}`);
 					lines.push(`    ${job.label}`);
 				}
 			}
 			if (snapshot.recent.length > 0) {
 				lines.push("", "Recent Jobs");
 				for (const job of snapshot.recent) {
-					lines.push(`  [${job.id}] ${job.type} (${job.status}) — ${formatDuration(now - job.startTime)}`);
+					lines.push(`  [${job.id}] ${job.type} (${job.status}) — ${formatCoarseDuration(now - job.startTime)}`);
 					lines.push(`    ${job.label}`);
 				}
 			}

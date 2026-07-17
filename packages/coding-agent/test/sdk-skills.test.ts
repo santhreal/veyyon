@@ -35,6 +35,15 @@ describe("createAgentSession skills option", () => {
 	let sharedDir: string;
 	let sharedAuthStorage: AuthStorage;
 	let sharedModelRegistry: ModelRegistry;
+	// Undisposed sessions leak process-wide singletons (AsyncJobManager) into
+	// later test files; every opened session is disposed after each test.
+	const openSessions: Array<{ dispose(): Promise<void> }> = [];
+
+	async function openSession(options: Parameters<typeof createAgentSession>[0]) {
+		const result = await createAgentSession(options);
+		openSessions.push(result.session);
+		return result;
+	}
 
 	beforeAll(async () => {
 		sharedDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-sdk-skills-shared-"));
@@ -89,10 +98,16 @@ Loaded via symbolic link.
 		fs.symlinkSync(externalSkillDir, path.join(path.dirname(skillsDir), "symlinked-skill-link"), "dir");
 	});
 
+	afterEach(async () => {
+		for (const session of openSessions.splice(0)) {
+			await session.dispose();
+		}
+	});
+
 	afterEach(cleanupTempHome(() => ({ tempDir, tempHomeDir, originalHome })));
 
 	it("should discover skills by default and expose them on session.skills", async () => {
-		const { session } = await createAgentSession({
+		const { session } = await openSession({
 			cwd: tempDir,
 			agentDir: tempDir,
 			sessionManager: SessionManager.inMemory(),
@@ -106,7 +121,7 @@ Loaded via symbolic link.
 	});
 
 	it("should discover skills when skill directory is a symlink", async () => {
-		const { session } = await createAgentSession({
+		const { session } = await openSession({
 			cwd: tempDir,
 			agentDir: tempDir,
 			sessionManager: SessionManager.inMemory(),
@@ -122,7 +137,7 @@ Loaded via symbolic link.
 		removeSyncWithRetries(path.join(userAgentDir, "skills"));
 		fs.writeFileSync(path.join(userAgentDir, "placeholder.txt"), "placeholder");
 
-		const { session } = await createAgentSession({
+		const { session } = await openSession({
 			cwd: tempDir,
 			agentDir: tempDir,
 			sessionManager: SessionManager.inMemory(),
@@ -133,7 +148,7 @@ Loaded via symbolic link.
 		expect(session.skills.some((s: Skill) => s.name === "test-skill")).toBe(true);
 	});
 	it("should have empty skills when options.skills is empty array (--no-skills)", async () => {
-		const { session } = await createAgentSession({
+		const { session } = await openSession({
 			cwd: tempDir,
 			agentDir: tempDir,
 			sessionManager: SessionManager.inMemory(),
@@ -157,7 +172,7 @@ Loaded via symbolic link.
 			source: "custom" as const,
 		};
 
-		const { session } = await createAgentSession({
+		const { session } = await openSession({
 			cwd: tempDir,
 			agentDir: tempDir,
 			sessionManager: SessionManager.inMemory(),

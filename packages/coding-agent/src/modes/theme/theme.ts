@@ -1056,7 +1056,10 @@ export function getSettingsListTheme(): SettingsListTheme {
 		cursor: theme.fg("accent", `${theme.nav.cursor} `),
 		hint: (text: string) => theme.fg("dim", text),
 		heading: (text: string, dimmed: boolean) =>
-			dimmed ? theme.fg("dim", theme.underline(text)) : theme.fg("muted", theme.bold(theme.underline(text))),
+			// the kicker mark: a small ember diamond over quiet uppercase
+			dimmed
+				? theme.fg("dim", `◆ ${text.toUpperCase()}`)
+				: `${theme.fg("accent", "◆")} ${theme.fg("muted", text.toUpperCase())}`,
 		section: (text: string, active: boolean) =>
 			active ? theme.fg("accent", theme.bold(text)) : theme.fg("muted", text),
 		hovered: (text: string) => theme.bg("selectedBg", text),

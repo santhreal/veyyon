@@ -744,7 +744,6 @@ export interface AgentTool<TParameters extends TSchema = TSchema, TDetails = unk
  * assignable to `AgentTool<TSchema, unknown>` — collections that hold tools of
  * differing detail types must use this alias instead.
  */
-// biome-ignore lint/suspicious/noExplicitAny: existential type over all tool instantiations
 export type AnyAgentTool = AgentTool<any, any, any>;
 
 // AgentContext is like Context but uses AgentTool

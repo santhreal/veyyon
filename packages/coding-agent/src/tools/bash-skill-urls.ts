@@ -1,5 +1,6 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import { URL_SCHEME_RE } from "@veyyon/pi-utils";
 import type { Skill } from "../extensibility/skills";
 import { type LocalProtocolOptions, resolveLocalUrlToPath } from "../internal-urls";
 import { validateRelativePath } from "../internal-urls/skill-protocol";
@@ -127,7 +128,7 @@ function matchSkillName(
 }
 
 function extractScheme(url: string): SupportedInternalScheme | undefined {
-	const match = /^([a-z][a-z0-9+.-]*):\/\//i.exec(url);
+	const match = URL_SCHEME_RE.exec(url);
 	if (!match) return undefined;
 	const scheme = match[1].toLowerCase();
 	if (!SUPPORTED_INTERNAL_SCHEMES.includes(scheme as SupportedInternalScheme)) return undefined;

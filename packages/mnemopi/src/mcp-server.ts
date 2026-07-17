@@ -36,7 +36,7 @@ function ok(id: string | number | null, result: unknown): JsonRpcResponse {
 	return { jsonrpc: "2.0", id, result };
 }
 
-function err(id: string | number | null, code: number, message: string): JsonRpcResponse {
+function jsonRpcError(id: string | number | null, code: number, message: string): JsonRpcResponse {
 	return { jsonrpc: "2.0", id, error: { code, message } };
 }
 
@@ -84,10 +84,10 @@ export async function handleJsonRpc(request: JsonRpcRequest): Promise<JsonRpcRes
 			params.arguments !== null && typeof params.arguments === "object" && !Array.isArray(params.arguments)
 				? (params.arguments as ToolArguments)
 				: {};
-		if (name.length === 0) return err(id, -32602, "tools/call requires params.name");
+		if (name.length === 0) return jsonRpcError(id, -32602, "tools/call requires params.name");
 		return ok(id, await callToolJson(name, args));
 	}
-	return err(id, -32601, `Unknown method: ${method}`);
+	return jsonRpcError(id, -32601, `Unknown method: ${method}`);
 }
 
 export async function runStdio(
@@ -111,7 +111,7 @@ export async function runStdio(
 					try {
 						parsed = JSON.parse(line);
 					} catch {
-						output.write(`${JSON.stringify(err(null, -32700, "Parse error"))}\n`);
+						output.write(`${JSON.stringify(jsonRpcError(null, -32700, "Parse error"))}\n`);
 						newline = buffer.indexOf("\n");
 						continue;
 					}

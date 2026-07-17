@@ -1,5 +1,6 @@
 import type { AgentMessage } from "@veyyon/pi-agent-core";
 import type { ToolCall } from "@veyyon/pi-ai";
+import { joinTextBlocks } from "@veyyon/pi-utils";
 
 /** A fenced code block extracted from assistant markdown. */
 export interface CodeBlock {
@@ -193,11 +194,7 @@ export function extractLastCommand(messages: readonly AgentMessage[]): LastComma
 /** Concatenated visible text of an assistant message, or undefined when empty. */
 function assistantText(msg: AgentMessage): string | undefined {
 	if (msg.role !== "assistant") return undefined;
-	let text = "";
-	for (const content of msg.content) {
-		if (content.type === "text") text += content.text;
-	}
-	return text.trim() || undefined;
+	return joinTextBlocks(msg.content, "").trim() || undefined;
 }
 
 function pluralLines(text: string): string {

@@ -1,4 +1,6 @@
-import { $env } from "@veyyon/pi-utils";
+// (Refresh is the sole responsibility of AuthStorage; no provider-direct refresh here.)
+import { toNumber } from "@veyyon/pi-catalog/utils";
+import { $env, stripTrailingSlashes } from "@veyyon/pi-utils";
 import { getKimiCommonHeaders } from "../registry/oauth/kimi";
 import type {
 	UsageAmount,
@@ -7,12 +9,10 @@ import type {
 	UsageLimit,
 	UsageProvider,
 	UsageReport,
-	UsageStatus,
 	UsageWindow,
 } from "../usage";
 import { isRecord } from "../utils";
-// (Refresh is the sole responsibility of AuthStorage; no provider-direct refresh here.)
-import { toNumber } from "./shared";
+import { usageStatusFromUsedFraction } from "./shared";
 
 const DEFAULT_BASE_URL = "https://api.kimi.com/coding/v1";
 const USAGE_PATH = "usages";
@@ -31,10 +31,10 @@ type KimiUsageRow = {
 	window?: UsageWindow;
 };
 
-function normalizeBaseUrl(baseUrl?: string): string {
+function normalizeKimiUsageBaseUrl(baseUrl?: string): string {
 	const envBase = $env.KIMI_CODE_BASE_URL?.trim();
 	const candidate = baseUrl?.trim() || envBase || DEFAULT_BASE_URL;
-	return candidate.replace(/\/+$/, "");
+	return stripTrailingSlashes(candidate);
 }
 
 function buildUsageUrl(baseUrl: string): string {
@@ -42,7 +42,7 @@ function buildUsageUrl(baseUrl: string): string {
 	return `${normalized}${USAGE_PATH}`;
 }
 
-function parseResetTime(data: Record<string, unknown>, nowMs: number): number | undefined {
+function parseKimiResetTime(data: Record<string, unknown>, nowMs: number): number | undefined {
 	const timeKeys = ["reset_at", "resetAt", "reset_time", "resetTime"] as const;
 	for (const key of timeKeys) {
 		const value = data[key];
@@ -76,11 +76,11 @@ function formatDurationLabel(duration: number, timeUnit: string): string | undef
 	return undefined;
 }
 
-function buildWindow(windowData: Record<string, unknown>, nowMs: number): UsageWindow | undefined {
+function buildKimiUsageWindow(windowData: Record<string, unknown>, nowMs: number): UsageWindow | undefined {
 	const duration = toNumber(windowData.duration);
 	const timeUnit = typeof windowData.timeUnit === "string" ? windowData.timeUnit : "";
 	const label = duration !== undefined && timeUnit ? formatDurationLabel(duration, timeUnit) : undefined;
-	const resetsAt = parseResetTime(windowData, nowMs);
+	const resetsAt = parseKimiResetTime(windowData, nowMs);
 
 	if (duration === undefined && !label && !resetsAt) return undefined;
 	let durationMs: number | undefined;
@@ -108,7 +108,7 @@ function buildUsageRow(data: Record<string, unknown>, defaultLabel: string, nowM
 	}
 
 	if (used === undefined && limit === undefined) return null;
-	const resetsAt = parseResetTime(data, nowMs);
+	const resetsAt = parseKimiResetTime(data, nowMs);
 	return {
 		label:
 			typeof data.name === "string" && data.name
@@ -123,7 +123,7 @@ function buildUsageRow(data: Record<string, unknown>, defaultLabel: string, nowM
 	};
 }
 
-function buildUsageAmount(row: KimiUsageRow): UsageAmount {
+function kimiRowUsageAmount(row: KimiUsageRow): UsageAmount {
 	const amount: UsageAmount = { unit: "unknown" };
 	if (row.limit !== undefined) amount.limit = row.limit;
 	if (row.used !== undefined) amount.used = row.used;
@@ -134,13 +134,6 @@ function buildUsageAmount(row: KimiUsageRow): UsageAmount {
 		amount.remaining = amount.remaining ?? row.limit - row.used;
 	}
 	return amount;
-}
-
-function buildUsageStatus(amount: UsageAmount): UsageStatus {
-	if (amount.usedFraction === undefined) return "unknown";
-	if (amount.usedFraction >= 1) return "exhausted";
-	if (amount.usedFraction >= 0.9) return "warning";
-	return "ok";
 }
 
 function toUsageLimit(row: KimiUsageRow, provider: string, index: number, accountId?: string): UsageLimit {
@@ -154,7 +147,7 @@ function toUsageLimit(row: KimiUsageRow, provider: string, index: number, accoun
 				}
 			: undefined);
 
-	const amount = buildUsageAmount(row);
+	const amount = kimiRowUsageAmount(row);
 	return {
 		id: `${provider}:${index}`,
 		label: row.label,
@@ -166,11 +159,14 @@ function toUsageLimit(row: KimiUsageRow, provider: string, index: number, accoun
 		},
 		window,
 		amount,
-		status: buildUsageStatus(amount),
+		status: usageStatusFromUsedFraction(amount.usedFraction),
 	};
 }
 
-function parseUsagePayload(payload: unknown, nowMs: number): { rows: KimiUsageRow[]; raw: KimiUsagePayload } | null {
+function parseKimiUsagePayload(
+	payload: unknown,
+	nowMs: number,
+): { rows: KimiUsageRow[]; raw: KimiUsagePayload } | null {
 	if (!isRecord(payload)) return null;
 	const data = payload as KimiUsagePayload;
 	const rows: KimiUsageRow[] = [];
@@ -195,7 +191,7 @@ function parseUsagePayload(payload: unknown, nowMs: number): { rows: KimiUsageRo
 				`Limit #${idx + 1}`;
 			const row = buildUsageRow(detail, label, nowMs);
 			if (row) {
-				row.window = buildWindow(windowData, nowMs);
+				row.window = buildKimiUsageWindow(windowData, nowMs);
 				rows.push(row);
 			}
 		});
@@ -227,7 +223,7 @@ export const kimiUsageProvider: UsageProvider = {
 			return null;
 		}
 
-		const baseUrl = normalizeBaseUrl(params.baseUrl);
+		const baseUrl = normalizeKimiUsageBaseUrl(params.baseUrl);
 		const url = buildUsageUrl(baseUrl);
 		let payload: unknown;
 		try {
@@ -248,7 +244,7 @@ export const kimiUsageProvider: UsageProvider = {
 			return null;
 		}
 
-		const parsed = parseUsagePayload(payload, nowMs);
+		const parsed = parseKimiUsagePayload(payload, nowMs);
 		if (!parsed || parsed.rows.length === 0) {
 			ctx.logger?.warn("Kimi usage response invalid", { provider: params.provider });
 			return null;

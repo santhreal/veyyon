@@ -38,8 +38,10 @@ img{max-width:100%;display:block}
 .accent{color:var(--sun-hi)}
 
 /* kicker — mono, spaced, leading diamond */
-.kicker{display:inline-flex;align-items:center;gap:10px;font-family:var(--mono);font-weight:500;
+.kicker{display:inline-flex;align-items:center;gap:12px;font-family:var(--mono);font-weight:500;
   font-size:11.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--silver)}
+.kicker::before{content:"";width:6px;height:6px;background:var(--ember);transform:rotate(45deg);
+  box-shadow:0 0 9px rgba(240,134,46,.45);flex:none}
 
 /* ---------- header ---------- */
 header.site{position:sticky;top:0;z-index:50;background:color-mix(in srgb,var(--bg) 80%,transparent);
@@ -66,7 +68,7 @@ header.site{position:sticky;top:0;z-index:50;background:color-mix(in srgb,var(--
 /* .stage is a pure scroll runway; .stage-pin is a fixed viewport overlay so the
    beats/hero stay dead-centre while scroll only advances the crossfade (sticky
    is fragile — a fixed overlay is guaranteed pinned). */
-.stage{position:relative;height:850vh}
+.stage{position:relative;height:750vh}
 .stage-pin{position:fixed;inset:0;z-index:2;pointer-events:none}
 .stage-pin .btn,.stage-pin a,.stage-pin button{pointer-events:auto}
 #sun{position:fixed;inset:0;width:100%;height:100%;z-index:1;pointer-events:none}
@@ -187,7 +189,7 @@ h3{text-wrap:balance;letter-spacing:-.015em}
 
 /* data table */
 .tbl-wrap{border:1px solid var(--line-2);overflow-x:auto}
-.tbl{width:100%;border-collapse:collapse;font-size:14.5px}
+.tbl{width:100%;min-width:600px;border-collapse:collapse;font-size:14.5px}
 .tbl th,.tbl td{text-align:left;padding:15px 20px;border-bottom:1px solid var(--line)}
 .tbl th{color:var(--silver);font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;font-weight:500}
 .tbl td{color:var(--fg-2)}
@@ -253,22 +255,72 @@ h3{text-wrap:balance;letter-spacing:-.015em}
 .tag.rm{color:var(--muted);border-color:var(--line-2)}
 .tag.sec{color:var(--sun);border-color:color-mix(in srgb,var(--sun) 45%,transparent)}
 .tag.break{color:#e2686a;border-color:color-mix(in srgb,#e2686a 45%,transparent)}
-/* Inherited oh-my-pi history: de-emphasized, neutral pill, no sun accent. */
-.release.upstream{opacity:.8}
-.release.upstream::before{background:var(--line-2);box-shadow:0 0 0 4px var(--bg)}
-.release.upstream .release-head h2 a{color:var(--muted)}
-.release-head .pill.upstream{color:var(--muted);border-color:var(--line-2)}
-.upstream-divider{margin:48px 0 4px;padding:24px 0 0;border-top:1px dashed var(--line-2)}
-.upstream-divider h2{margin:0 0 6px;font-family:var(--mono);font-weight:700;font-size:15px;letter-spacing:.02em;
-  color:var(--muted);text-transform:none}
-.upstream-divider p{margin:0;font-size:13px;line-height:1.6;color:var(--dim);max-width:62ch}
-.upstream-divider p a{color:var(--sun-hi)}
 @media (max-width:560px){.sec{grid-template-columns:1fr;gap:8px}.changelog{padding-left:20px}}
+
+::selection{background:#fb9e44;color:#000}
+
+/* scrollbar — thin, dark, silver thumb */
+html{scrollbar-color:#232327 #000}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-track{background:#000}
+::-webkit-scrollbar-thumb{background:#1e1e22;border:3px solid #000;border-radius:6px}
+::-webkit-scrollbar-thumb:hover{background:#2d2d33}
+
+/* mobile nav — zero-JS disclosure menu; desktop nav is hidden under 860px */
+.nav-menu{display:none;position:relative}
+.nav-menu summary{list-style:none;cursor:pointer;font-family:var(--mono);font-size:12px;
+  letter-spacing:.12em;text-transform:uppercase;color:var(--silver);padding:8px 2px;user-select:none}
+.nav-menu summary::-webkit-details-marker{display:none}
+.nav-menu summary::before{content:"+ ";color:var(--sun-hi)}
+.nav-menu[open] summary::before{content:"− "}
+.nav-menu nav{position:absolute;right:0;top:calc(100% + 8px);z-index:70;display:flex;flex-direction:column;
+  min-width:180px;background:var(--bg);border:1px solid var(--line-2);padding:8px 0}
+.nav-menu nav a{color:var(--fg-2);font-size:14px;font-weight:500;padding:10px 18px}
+.nav-menu nav a:hover{color:var(--silver-hi);background:#050506}
+.nav-menu nav a.btn{margin:8px 12px 4px;justify-content:center;color:var(--fg)}
+
+/* ledger — numbered value-prop rows, hairline-ruled */
+.ledger{border-top:1px solid var(--line)}
+.ledger-row{display:grid;grid-template-columns:72px 1fr;gap:28px;padding:36px 0;border-bottom:1px solid var(--line);
+  transition:background .25s ease}
+.ledger-row:hover{background:#060607}
+.ledger-row:hover .ledger-idx{color:var(--ember)}
+.ledger-row:hover h3{color:var(--silver-hi)}
+.ledger-idx{font-family:var(--mono);font-weight:500;font-size:12px;color:var(--silver);letter-spacing:.1em;padding-top:6px}
+.ledger-row h3{margin:0 0 10px;font-size:19px;font-weight:600;color:var(--fg);letter-spacing:-.015em}
+.ledger-row p{margin:0;color:var(--muted);font-size:15.5px;line-height:1.68;max-width:70ch;text-wrap:pretty}
+.ledger-row p b{color:var(--fg-2);font-weight:600}
+.ledger-row p .inline{color:var(--fg-2)}
+@media(max-width:560px){.ledger-row{grid-template-columns:44px 1fr;gap:16px}}
+
+/* final call-to-action band */
+.cta-band{text-align:center;padding:112px 0 120px}
+.cta-band h2{margin-left:auto;margin-right:auto}
+.cta-band p{margin:0 auto;color:var(--muted);max-width:52ch;font-size:16.5px;line-height:1.6}
+.cta-band .cta{justify-content:center;margin:36px 0 0}
+
+/* ——— the sun as a brand, outside the journey ——— */
+/* header progress sun: the header hairline is the horizon; the sun glides along it */
+.suntrack{position:absolute;left:0;right:0;bottom:0;height:0;pointer-events:none}
+.suntrack canvas{position:absolute;bottom:-6px;left:10px;transform:translateX(-50%);display:block}
+/* the sunset: a blood-orange pixel sky closing the page; the ember horizon line is
+   drawn in-canvas, so the footer's own hairline is dropped when they meet */
+.sunset{position:relative;height:250px;overflow:hidden}
+.sunset.tall{height:430px}
+.sunset canvas{position:absolute;inset:0;display:block}
+.sunset + footer.site{border-top:none}
+@media(max-width:860px){.sunset{height:210px}.sunset.tall{height:330px}}
+/* 404 */
+.night{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;
+  min-height:74vh;text-align:center;padding:64px 24px}
+.night h1{margin:0;font-size:clamp(56px,9vw,96px);font-weight:600;letter-spacing:-.05em}
+.night p{margin:0;color:var(--muted);font-size:17px;max-width:40ch}
+.night .cta{justify-content:center;margin-top:8px}
 
 /* footer */
 footer.site{border-top:1px solid var(--line);padding:52px 0;color:var(--dim);font-size:13.5px}
 .foot{display:flex;justify-content:space-between;align-items:flex-start;gap:24px;flex-wrap:wrap}
-.foot nav{display:flex;gap:24px;font-size:13.5px}
+.foot nav{display:flex;gap:14px 24px;font-size:13.5px;flex-wrap:wrap}
 .foot nav a{color:var(--muted)}
 .attrib{color:var(--dim);margin-top:14px;max-width:46ch;line-height:1.55}
 
@@ -280,11 +332,22 @@ footer.site{border-top:1px solid var(--line);padding:52px 0;color:var(--dim);fon
   .card,.step{border-left:1px solid var(--line)}
   .panel{grid-template-columns:1fr}
   .panel .demo{border-left:none;border-top:1px solid var(--line-2)}
-  .nav nav a:not(.btn){display:none}
+  .nav > nav{display:none}
+  .nav-menu{display:block}
   section{padding:64px 0}
   .hero{padding:72px 0 40px}
   .showcase{margin-top:44px}
-  #sun{opacity:.5}
+  #sun{opacity:.55}
+  /* the journey on small screens: the sun docks top-centre (sun.js), so act II
+     scenes centre beneath it instead of sitting beside it */
+  .scene.left{text-align:center}
+  .scene.left .scene-title,.scene.left .scene-detail{margin-left:auto;margin-right:auto}
+  .scene.left .scene-code{width:auto;max-width:100%;margin-left:auto;margin-right:auto;text-align:left;
+    font-size:11.5px;overflow-x:auto}
+  .term .body{font-size:11px}
+  .hero-inner h1{margin-left:auto;margin-right:auto}
+  .hero-inner .cta{justify-content:center}
+  .hero-inner .lede{margin-left:auto;margin-right:auto}
 }
 
 /* motion — silky reveals + interactions. reveal is added by motion.js only, so

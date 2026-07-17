@@ -15,6 +15,7 @@
  * }
  * ```
  */
+import * as fs from "node:fs/promises";
 
 export interface FsError extends Error {
 	code: string;
@@ -29,6 +30,16 @@ export function isFsError(err: unknown): err is FsError {
 
 export function isEnoent(err: unknown): err is FsError {
 	return isFsError(err) && err.code === "ENOENT";
+}
+
+/** Construct a synthetic ENOENT for paths that never hit the real filesystem (virtual/indexed storage). */
+export function enoentError(path: string, syscall = "open"): FsError {
+	const err = new Error(`ENOENT: no such file, '${path}'`) as FsError;
+	err.code = "ENOENT";
+	err.errno = -2;
+	err.path = path;
+	err.syscall = syscall;
+	return err;
 }
 
 export function isEacces(err: unknown): err is FsError {
@@ -53,4 +64,14 @@ export function isEnotempty(err: unknown): err is FsError {
 
 export function hasFsCode(err: unknown, code: string): err is FsError {
 	return isFsError(err) && err.code === code;
+}
+
+/** True when the path is stat-able; any failure (ENOENT, EACCES, ...) is false. */
+export async function pathExists(target: string): Promise<boolean> {
+	try {
+		await fs.stat(target);
+		return true;
+	} catch {
+		return false;
+	}
 }

@@ -3,7 +3,13 @@ import * as fs from "node:fs";
 import { isBuiltin } from "node:module";
 import * as path from "node:path";
 import * as url from "node:url";
-import { isCompiledBinary, stripWindowsExtendedLengthPathPrefix } from "@veyyon/pi-utils";
+import {
+	escapeRegExp,
+	isCompiledBinary,
+	isRecord,
+	pathExists,
+	stripWindowsExtendedLengthPathPrefix,
+} from "@veyyon/pi-utils";
 import { registerPluginCacheInvalidator } from "../../discovery/helpers";
 
 const IS_COMPILED_BINARY = isCompiledBinary();
@@ -538,19 +544,6 @@ function toGraphImportSpecifier(resolvedPath: string, mtimeTag: string | null): 
 	return `${stripWindowsExtendedLengthPathPrefix(resolvedPath)}?mtime=${mtimeTag}`;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-async function pathExists(p: string): Promise<boolean> {
-	try {
-		await fs.promises.stat(p);
-		return true;
-	} catch {
-		return false;
-	}
-}
-
 function hasSourceModuleExtension(p: string): boolean {
 	const ext = path.extname(p).toLowerCase();
 	return (SOURCE_MODULE_EXTENSIONS as readonly string[]).includes(ext);
@@ -1078,10 +1071,6 @@ async function rewriteExtensionBareImports(
 		return source;
 	}
 	return `${rewritten}${source.slice(lastIndex)}`;
-}
-
-function escapeRegExp(value: string): string {
-	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 // Match source modules in an extension graph: relative imports, package

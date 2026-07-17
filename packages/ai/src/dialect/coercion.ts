@@ -1,3 +1,4 @@
+import { asRecord } from "@veyyon/pi-utils";
 import { toolWireSchema } from "../utils/schema";
 import type { InbandTool } from "./types";
 
@@ -131,6 +132,7 @@ export function normalizeKimiFunctionName(rawId: string): string {
 	return parts[parts.length - 1]?.trim() ?? beforeIndex.trim();
 }
 
-export function asRecord(value: unknown): Record<string, unknown> {
-	return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+/** Record view of `value`, or `{}` — dialect coercion treats unparseable tool arguments as empty args. */
+export function asRecordOrEmpty(value: unknown): Record<string, unknown> {
+	return asRecord(value) ?? {};
 }

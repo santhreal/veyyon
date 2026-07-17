@@ -9,6 +9,7 @@
  * doesn't pay for the full agent boot.
  */
 import { type GeneratedProvider, getBundledModels, getBundledProviders } from "@veyyon/pi-catalog/models";
+import { collapseWhitespace } from "@veyyon/pi-utils";
 import { Command } from "@veyyon/pi-utils/cli";
 import { SessionManager } from "../session/session-manager";
 
@@ -29,10 +30,6 @@ export default class Complete extends Command {
 }
 
 /** Strip control chars that would corrupt the tab-separated line protocol. */
-function clean(text: string): string {
-	return text.replace(/[\t\r\n]+/g, " ").trim();
-}
-
 function completeModels(prefix: string): void {
 	const needle = prefix.toLowerCase();
 	const seen = new Set<string>();
@@ -59,7 +56,7 @@ async function completeSessions(prefix: string): Promise<void> {
 	const lines: string[] = [];
 	for (const session of sessions) {
 		if (prefix && !session.id.startsWith(prefix)) continue;
-		const label = clean(session.title ?? session.firstMessage ?? "").slice(0, 72);
+		const label = collapseWhitespace(session.title ?? session.firstMessage ?? "").slice(0, 72);
 		lines.push(`${session.id}\t${label}`);
 	}
 	if (lines.length > 0) process.stdout.write(`${lines.join("\n")}\n`);

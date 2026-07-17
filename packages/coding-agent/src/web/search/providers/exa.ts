@@ -6,7 +6,9 @@
  * Requests per-result summaries via `contents.summary` and synthesizes
  * them into a combined `answer` string on the SearchResponse.
  */
+
 import { type ApiKey, type AuthStorage, type FetchImpl, getEnvApiKey, withAuth } from "@veyyon/pi-ai";
+import { abortableSleep, asRecord, tryParseJson } from "@veyyon/pi-utils";
 import { getDefault, settings } from "../../../config/settings";
 import { findApiKey, isSearchResponse } from "../../../exa/mcp-client";
 import { parseSSE } from "../../../mcp/json-rpc";
@@ -39,31 +41,6 @@ function rejectWithAbortReason(reject: (reason?: unknown) => void, signal: Abort
 	} catch (error) {
 		reject(error);
 	}
-}
-
-function abortableSleep(ms: number, signal: AbortSignal | undefined): Promise<void> {
-	if (ms <= 0) return Promise.resolve();
-	signal?.throwIfAborted();
-	const { promise, resolve, reject } = Promise.withResolvers<void>();
-	let timer: NodeJS.Timeout | undefined;
-	const cleanup = (): void => {
-		if (timer) {
-			clearTimeout(timer);
-			timer = undefined;
-		}
-		signal?.removeEventListener("abort", onAbort);
-	};
-	const onAbort = (): void => {
-		cleanup();
-		if (signal) rejectWithAbortReason(reject, signal);
-	};
-	timer = setTimeout(() => {
-		cleanup();
-		resolve();
-	}, ms);
-	signal?.addEventListener("abort", onAbort, { once: true });
-	if (signal?.aborted) onAbort();
-	return promise;
 }
 
 function waitUntilDoneOrAborted<T>(promise: Promise<T>, signal: AbortSignal | undefined): Promise<T> {
@@ -140,19 +117,6 @@ interface ExaSearchResponse {
 	costDollars?: { total: number };
 	searchTime?: number;
 }
-function asRecord(value: unknown): Record<string, unknown> | null {
-	if (typeof value !== "object" || value === null) return null;
-	return value as Record<string, unknown>;
-}
-
-function parseJsonContent(text: string): unknown | null {
-	try {
-		return JSON.parse(text) as unknown;
-	} catch {
-		return null;
-	}
-}
-
 function normalizeExaMcpPayload(payload: unknown): unknown {
 	const candidates: unknown[] = [];
 	const root = asRecord(payload);
@@ -170,7 +134,7 @@ function normalizeExaMcpPayload(payload: unknown): unknown {
 				if (!part) continue;
 				const text = part.text;
 				if (typeof text !== "string" || text.trim().length === 0) continue;
-				const parsed = parseJsonContent(text);
+				const parsed = tryParseJson(text);
 				if (parsed !== null) candidates.push(parsed);
 			}
 		}

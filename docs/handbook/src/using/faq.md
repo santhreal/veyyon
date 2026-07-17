@@ -42,7 +42,7 @@ Veyyon discovers model ids from the provider's `/models` endpoint rather than ma
 
 ### Why did my edit ask for approval?
 
-The approval mode decides when Veyyon must ask before acting. In `ask` (and `plan`), anything that writes a file or runs a command pauses for your yes. If an edit paused, the current mode classifies it as needing approval. Change the mode with `--approval-mode <mode>` (`plan`, `ask`, `auto-edit`, `yolo`), `--auto-approve` / `--yolo`, or `tools.approvalMode` in `config.yml`. See [Approvals and autonomy](../features/sandbox.md).
+The approval policy decides when Veyyon must ask before acting. The default policy asks for anything that changes files or runs commands outside the trusted set. If a file edit paused for approval, it means the current policy classifies that edit as needing your yes. You can change the policy with `-a, --ask-for-approval` or in `config.yml`. The sandbox and approval policy work together: the sandbox is the hard boundary, and the approval policy is the interaction layer. See [Sandbox and approvals](../features/sandbox.md).
 
 ### How do I resume a session?
 
@@ -60,5 +60,5 @@ Output is intentionally truncated when it exceeds a tool budget. The truncation 
 
 - [Troubleshooting](./troubleshooting.md) for the guided diagnostic path.
 - [Models and providers](./models.md) for provider keys, endpoints, and model selection.
-- [Approvals and autonomy](../features/sandbox.md) for the approval-mode ladder.
+- [Sandbox and approvals](../features/sandbox.md) for sandbox and approval policies.
 - [Sessions](./sessions.md) for resume, fork, branch, and export.

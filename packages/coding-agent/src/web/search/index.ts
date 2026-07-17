@@ -4,9 +4,10 @@
  * Single tool supporting Anthropic, Perplexity, Exa, Brave, Jina, Kimi, Gemini, Codex, Tavily, Kagi, Z.AI, SearXNG, and Synthetic
  * providers with provider-specific parameters exposed conditionally.
  */
+
 import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/pi-agent-core";
 import type { AuthStorage } from "@veyyon/pi-ai";
-import { prompt } from "@veyyon/pi-utils";
+import { formatCount, prompt } from "@veyyon/pi-utils";
 import { type } from "arktype";
 import { settings } from "../../config/settings";
 import type { CustomTool, CustomToolContext, RenderResultOptions } from "../../extensibility/custom-tools/types";
@@ -50,10 +51,6 @@ export interface SearchQueryParams extends SearchToolParams {
 function truncateText(text: string, maxLen: number): string {
 	if (text.length <= maxLen) return text;
 	return `${text.slice(0, Math.max(0, maxLen - 1))}…`;
-}
-
-function formatCount(label: string, count: number): string {
-	return `${count} ${label}${count === 1 ? "" : "s"}`;
 }
 
 /** Format response for LLM consumption */

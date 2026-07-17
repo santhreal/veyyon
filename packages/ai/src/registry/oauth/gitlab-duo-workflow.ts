@@ -1,6 +1,7 @@
 import * as AIError from "../../error";
 import type { FetchImpl } from "../../types";
 import { OAuthCallbackFlow } from "./callback-server";
+import { mapGitLabTokenResponse } from "./gitlab-duo";
 import { generatePKCE } from "./pkce";
 import type { OAuthCredentials, OAuthLoginCallbacks } from "./types";
 
@@ -12,31 +13,6 @@ const OAUTH_SCOPES = ["api"];
 interface PKCEPair {
 	verifier: string;
 	challenge: string;
-}
-
-function mapTokenResponse(payload: {
-	access_token?: string;
-	refresh_token?: string;
-	expires_in?: number;
-	created_at?: number;
-}): OAuthCredentials {
-	if (!payload.access_token || !payload.refresh_token || typeof payload.expires_in !== "number") {
-		throw new AIError.OAuthError("GitLab Duo Workflow OAuth token response missing required fields", {
-			kind: "validation",
-			provider: "gitlab-duo-workflow",
-		});
-	}
-
-	const createdAtMs =
-		typeof payload.created_at === "number" && Number.isFinite(payload.created_at)
-			? payload.created_at * 1000
-			: Date.now();
-
-	return {
-		access: payload.access_token,
-		refresh: payload.refresh_token,
-		expires: createdAtMs + payload.expires_in * 1000 - 5 * 60 * 1000,
-	};
 }
 
 class GitLabDuoWorkflowOAuthFlow extends OAuthCallbackFlow {
@@ -92,13 +68,15 @@ class GitLabDuoWorkflowOAuthFlow extends OAuthCallbackFlow {
 			);
 		}
 
-		return mapTokenResponse(
+		return mapGitLabTokenResponse(
 			(await response.json()) as {
 				access_token?: string;
 				refresh_token?: string;
 				expires_in?: number;
 				created_at?: number;
 			},
+			"gitlab-duo-workflow",
+			"GitLab Duo Workflow",
 		);
 	}
 }
@@ -135,12 +113,14 @@ export async function refreshGitLabDuoWorkflowToken(
 		);
 	}
 
-	return mapTokenResponse(
+	return mapGitLabTokenResponse(
 		(await response.json()) as {
 			access_token?: string;
 			refresh_token?: string;
 			expires_in?: number;
 			created_at?: number;
 		},
+		"gitlab-duo-workflow",
+		"GitLab Duo Workflow",
 	);
 }

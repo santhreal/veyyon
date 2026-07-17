@@ -8,6 +8,7 @@
  * tests to spy on.
  */
 
+import { stripTrailingSlashes, tryParseJson } from "@veyyon/pi-utils";
 import { isTimeoutError, withTimeoutSignal } from "../utils/fetch-timeout";
 import type { HindsightConfig } from "./config";
 
@@ -223,7 +224,7 @@ export class HindsightApi {
 	#headers: Record<string, string>;
 
 	constructor(options: HindsightApiOptions) {
-		this.#baseUrl = options.baseUrl.replace(/\/+$/, "");
+		this.#baseUrl = stripTrailingSlashes(options.baseUrl);
 		this.#headers = {
 			"User-Agent": options.userAgent ?? DEFAULT_USER_AGENT,
 			"Content-Type": "application/json",
@@ -530,7 +531,7 @@ export class HindsightApi {
 		}
 
 		const text = await response.text();
-		const parsed = text ? safeJsonParse(text) : null;
+		const parsed = text ? tryParseJson(text) : null;
 
 		if (!response.ok) {
 			const details =
@@ -627,13 +628,6 @@ function pruneUndefined(obj: Record<string, unknown>): Record<string, unknown> {
 	return out;
 }
 
-function safeJsonParse(text: string): unknown {
-	try {
-		return JSON.parse(text);
-	} catch {
-		return null;
-	}
-}
 export function createHindsightClient(config: HindsightConfig & { hindsightApiUrl: string }): HindsightApi {
 	return new HindsightApi({
 		baseUrl: config.hindsightApiUrl,

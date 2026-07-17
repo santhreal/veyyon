@@ -1,5 +1,6 @@
 import { type ApiKey, type FetchImpl, withAuth } from "@veyyon/pi-ai";
 import * as AIError from "@veyyon/pi-ai/error";
+import { abortableSleep, stripTrailingSlashes } from "@veyyon/pi-utils";
 
 import { getDiagnostics } from "./diagnostics";
 import { EXTRACTION_SYSTEM_PROMPT, EXTRACTION_USER_TEMPLATE } from "./prompts";
@@ -36,12 +37,6 @@ export interface ExtractionClientOptions {
 	fetch?: FetchImpl;
 }
 
-function sleep(ms: number): Promise<void> {
-	const { promise, resolve } = Promise.withResolvers<void>();
-	setTimeout(resolve, ms);
-	return promise;
-}
-
 function authHeader(apiKey: string): Record<string, string> {
 	const headers: Record<string, string> = { "Content-Type": "application/json" };
 	if (apiKey !== "") {
@@ -60,7 +55,7 @@ export class ExtractionClient {
 	constructor(opts: ExtractionClientOptions = {}) {
 		this.model = opts.model || DEFAULT_EXTRACTION_MODEL;
 		this.apiKey = opts.apiKey ?? process.env.OPENROUTER_API_KEY ?? "";
-		this.baseUrl = (opts.baseUrl || OPENROUTER_BASE_URL).replace(/\/+$/, "");
+		this.baseUrl = stripTrailingSlashes(opts.baseUrl || OPENROUTER_BASE_URL);
 		this.fetchImpl = opts.fetch ?? fetch;
 	}
 
@@ -85,7 +80,7 @@ export class ExtractionClient {
 							const flags = AIError.classify(exc);
 							if (AIError.is(flags, AIError.Flag.UsageLimit) || AIError.is(flags, AIError.Flag.Transient)) {
 								rateLimitError = exc;
-								await sleep(Math.min(RATE_LIMIT_BACKOFF_MAX_MS, RATE_LIMIT_BACKOFF_BASE_MS * 2 ** attempt));
+								await abortableSleep(Math.min(RATE_LIMIT_BACKOFF_MAX_MS, RATE_LIMIT_BACKOFF_BASE_MS * 2 ** attempt));
 								continue;
 							}
 							throw exc;
@@ -100,7 +95,7 @@ export class ExtractionClient {
 			} catch (exc) {
 				lastError = exc;
 			}
-			await sleep(FALLBACK_MODEL_DELAY_MS);
+			await abortableSleep(FALLBACK_MODEL_DELAY_MS);
 		}
 
 		diag.recordFailure("cloud", lastError, "all_models_failed");

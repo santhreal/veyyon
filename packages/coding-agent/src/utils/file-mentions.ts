@@ -10,7 +10,7 @@ import path from "node:path";
 import { formatHashlineHeader, formatNumberedLines, type SnapshotStore } from "@veyyon/hashline";
 import type { AgentMessage } from "@veyyon/pi-agent-core";
 import type { ImageContent } from "@veyyon/pi-ai";
-import { formatAge, formatBytes, isProbablyBinary, readImageMetadata } from "@veyyon/pi-utils";
+import { formatAge, formatBytes, isProbablyBinary, pathExists, readImageMetadata } from "@veyyon/pi-utils";
 import { canonicalSnapshotKey } from "../edit/file-snapshot-store";
 import { normalizeToLF } from "../edit/normalize";
 import type { FileMentionMessage } from "../session/messages";
@@ -46,15 +46,6 @@ function sanitizeMentionPath(rawPath: string): string | null {
 	cleaned = cleaned.replace(TRAILING_PUNCTUATION_REGEX, "");
 	cleaned = cleaned.trim();
 	return cleaned.length > 0 ? cleaned : null;
-}
-
-async function pathExists(filePath: string): Promise<boolean> {
-	try {
-		await Bun.file(filePath).stat();
-		return true;
-	} catch {
-		return false;
-	}
 }
 
 async function resolveMentionPath(filePath: string, cwd: string): Promise<string | null> {

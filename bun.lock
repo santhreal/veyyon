@@ -86,12 +86,12 @@
         "@puppeteer/browsers": "catalog:",
         "@types/turndown": "catalog:",
         "@veyyon/hashline": "catalog:",
+        "@veyyon/omp-stats": "catalog:",
         "@veyyon/pi-agent-core": "catalog:",
         "@veyyon/pi-ai": "catalog:",
         "@veyyon/pi-catalog": "catalog:",
         "@veyyon/pi-mnemopi": "catalog:",
         "@veyyon/pi-natives": "catalog:",
-        "@veyyon/pi-stats": "catalog:",
         "@veyyon/pi-tui": "catalog:",
         "@veyyon/pi-utils": "catalog:",
         "@veyyon/pi-wire": "catalog:",
@@ -235,10 +235,10 @@
       },
     },
     "packages/stats": {
-      "name": "@veyyon/pi-stats",
+      "name": "@veyyon/omp-stats",
       "version": "16.5.2",
       "bin": {
-        "veyyon-stats": "./src/index.ts",
+        "omp-stats": "./src/index.ts",
       },
       "dependencies": {
         "@tailwindcss/node": "catalog:",
@@ -405,6 +405,7 @@
     "@typescript/native-preview": "7.0.0-dev.20260707.2",
     "@veyyon/collab-web": "16.5.2",
     "@veyyon/hashline": "16.5.2",
+    "@veyyon/omp-stats": "16.5.2",
     "@veyyon/pi-agent-core": "16.5.2",
     "@veyyon/pi-ai": "16.5.2",
     "@veyyon/pi-catalog": "16.5.2",
@@ -412,7 +413,6 @@
     "@veyyon/pi-metaharness": "16.5.2",
     "@veyyon/pi-mnemopi": "16.5.2",
     "@veyyon/pi-natives": "16.5.2",
-    "@veyyon/pi-stats": "16.5.2",
     "@veyyon/pi-tui": "16.5.2",
     "@veyyon/pi-utils": "16.5.2",
     "@veyyon/pi-wire": "16.5.2",
@@ -997,6 +997,8 @@
 
     "@veyyon/hashline": ["@veyyon/hashline@workspace:packages/hashline"],
 
+    "@veyyon/omp-stats": ["@veyyon/omp-stats@workspace:packages/stats"],
+
     "@veyyon/pi-agent-core": ["@veyyon/pi-agent-core@workspace:packages/agent"],
 
     "@veyyon/pi-ai": ["@veyyon/pi-ai@workspace:packages/ai"],
@@ -1010,8 +1012,6 @@
     "@veyyon/pi-mnemopi": ["@veyyon/pi-mnemopi@workspace:packages/mnemopi"],
 
     "@veyyon/pi-natives": ["@veyyon/pi-natives@workspace:packages/natives"],
-
-    "@veyyon/pi-stats": ["@veyyon/pi-stats@workspace:packages/stats"],
 
     "@veyyon/pi-tui": ["@veyyon/pi-tui@workspace:packages/tui"],
 

@@ -57,7 +57,7 @@ import { EventLoopKeepalive } from "./utils/yield";
 /**
  * Default convertToLlm: Keep only LLM-compatible replay messages.
  */
-function defaultConvertToLlm(messages: AgentMessage[]): Message[] {
+function defaultLoopConvertToLlm(messages: AgentMessage[]): Message[] {
 	return messages.filter((m): m is Message => {
 		if (m.role === "assistant") return !isProviderRefusalMessage(m);
 		return m.role === "user" || m.role === "toolResult";
@@ -433,7 +433,7 @@ export class Agent {
 		if (opts.initialState?.messages) this.#state.messages = opts.initialState.messages.slice();
 		if (opts.initialState?.pendingToolCalls)
 			this.#state.pendingToolCalls = new Set(opts.initialState.pendingToolCalls);
-		this.#convertToLlm = opts.convertToLlm || defaultConvertToLlm;
+		this.#convertToLlm = opts.convertToLlm || defaultLoopConvertToLlm;
 		this.#transformContext = opts.transformContext;
 		this.#steeringMode = opts.steeringMode || "one-at-a-time";
 		this.#followUpMode = opts.followUpMode || "one-at-a-time";

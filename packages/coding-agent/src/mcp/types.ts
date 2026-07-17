@@ -15,13 +15,13 @@ export interface JsonRpcRequest {
 	jsonrpc: "2.0";
 	id: string | number;
 	method: string;
-	params?: Record<string, unknown>;
+	params?: object;
 }
 
 export interface JsonRpcNotification {
 	jsonrpc: "2.0";
 	method: string;
-	params?: Record<string, unknown>;
+	params?: object;
 }
 
 export interface JsonRpcResponse {
@@ -224,10 +224,10 @@ export interface MCPRequestOptions {
 /** Transport interface - abstracts stdio/http */
 export interface MCPTransport {
 	/** Send a request and wait for response */
-	request<T = unknown>(method: string, params?: Record<string, unknown>, options?: MCPRequestOptions): Promise<T>;
+	request<T = unknown>(method: string, params?: object, options?: MCPRequestOptions): Promise<T>;
 
 	/** Send a notification (no response expected) */
-	notify(method: string, params?: Record<string, unknown>): Promise<void>;
+	notify(method: string, params?: object): Promise<void>;
 
 	/** Close the transport */
 	close(): Promise<void>;

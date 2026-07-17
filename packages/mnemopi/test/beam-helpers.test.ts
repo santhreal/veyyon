@@ -9,29 +9,24 @@ import {
 	detectLanguage,
 	encodeVector,
 	ftsQueryTerms,
-	generateId,
-	generateStableId,
 	inMemoryVecSearch,
-	lexicalRelevance,
 	normalizeImportance,
 	normalizeMetadata,
 	normalizeWeights,
 	recallTokens,
-	recencyDecay,
-	strictFactMatches,
-	temporalBoost,
 	workingMemoryVecSearch,
 } from "@veyyon/pi-mnemopi/core/beam/helpers";
+import { generateTimedId, stableMemoryId } from "@veyyon/pi-mnemopi/util/ids";
 
 describe("beam helper ids, weights, and metadata", () => {
 	it("generates unique timed ids and deterministic stable ids", () => {
 		const now = new Date("2024-01-02T03:04:05.000Z");
 
-		expect(generateId("hello", now)).toHaveLength(16);
-		expect(generateId("hello", now)).not.toBe(generateId("hello", now));
-		expect(generateId("hello", now)).not.toBe(generateId("hello", new Date("2024-01-02T03:04:06.000Z")));
-		expect(generateStableId("hello", "conversation")).toBe(generateStableId("hello", "conversation"));
-		expect(generateStableId("hello", "conversation")).not.toBe(generateStableId("hello", "other"));
+		expect(generateTimedId("hello", now)).toHaveLength(16);
+		expect(generateTimedId("hello", now)).not.toBe(generateTimedId("hello", now));
+		expect(generateTimedId("hello", now)).not.toBe(generateTimedId("hello", new Date("2024-01-02T03:04:06.000Z")));
+		expect(stableMemoryId("hello", "conversation")).toBe(stableMemoryId("hello", "conversation"));
+		expect(stableMemoryId("hello", "conversation")).not.toBe(stableMemoryId("hello", "other"));
 	});
 
 	it("normalizes hybrid weights and clamps importance metadata inputs", () => {
@@ -75,36 +70,13 @@ describe("beam lexical and FTS helpers", () => {
 		expect(buildFtsQuery('say "hello"')).toBe('"say" OR "hello"');
 	});
 
-	it("matches lexical, strict fact, and CJK queries conservatively", () => {
-		const tokens = recallTokens("telemetry api latency");
-		expect(lexicalRelevance(tokens, "telemetry_api_latency_ms should stay below 200", "telemetry api latency")).toBe(
-			1,
-		);
-		expect(
-			lexicalRelevance(recallTokens("purple quantum oatmeal"), "telemetry_api_latency_ms", "purple quantum oatmeal"),
-		).toBe(0);
-		expect(strictFactMatches("where is hermes profile", "Hermes profile URL is https://example.test/hermes")).toBe(
-			true,
-		);
-		expect(
-			strictFactMatches("where is the unrelated thing", "Hermes profile URL is https://example.test/hermes"),
-		).toBe(false);
+	it("detects spaceless CJK queries and expands them into char + bigram FTS terms", () => {
 		expect(containsSpacelessCjk("東京で会う")).toBe(true);
 		expect(cjkFtsTerms("東京東京")).toEqual(["東", "京", '"東京"', '"京東"']);
-		expect(lexicalRelevance([], "明日は東京で会議", "東京")).toBe(1);
 	});
 });
 
 describe("beam temporal and language helpers", () => {
-	it("computes recency decay and temporal boost from UTC timestamps", () => {
-		const now = new Date("2024-01-02T12:00:00.000Z");
-		expect(recencyDecay("2024-01-02T06:00:00.000Z", 6, now)).toBeCloseTo(Math.exp(-1), 12);
-		expect(recencyDecay(null, 6, now)).toBe(0.5);
-		expect(temporalBoost("2024-01-02T06:00:00.000Z", now, 6)).toBeCloseTo(Math.exp(-1), 12);
-		expect(temporalBoost("2024-01-03T06:00:00.000Z", now, 6)).toBe(1);
-		expect(temporalBoost("not-a-date", now, 6)).toBe(0);
-	});
-
 	it("detects supported languages without external dependencies", () => {
 		expect(detectLanguage("Привет, это мой проект и это важно")).toBe("ru");
 		expect(detectLanguage("ich bin sehr gern dabei und das ist gut")).toBe("de");

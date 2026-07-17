@@ -18,6 +18,7 @@ import {
 	normalizePathForComparison,
 	postmortem,
 	setProjectDir,
+	UUID_RE,
 	VERSION,
 } from "@veyyon/pi-utils";
 import chalk from "chalk";
@@ -41,10 +42,16 @@ import {
 import { ModelsConfigFile } from "./config/models-config";
 import { getDefault, type SettingPath, Settings, settings } from "./config/settings";
 import { initializeWithSettings } from "./discovery";
-import { clearPluginRootsAndCaches, injectPluginDirRoots, preloadPluginRoots } from "./discovery/helpers";
+import {
+	clearPluginRootsAndCaches,
+	injectPluginDirRoots,
+	preloadPluginRoots,
+	resolveActiveProjectRegistryPath,
+} from "./discovery/helpers";
 import { injectOmpExtensionCliRoots } from "./discovery/omp-extension-roots";
 import { ExtensionRunner } from "./extensibility/extensions/runner";
 import type { ExtensionUIContext } from "./extensibility/extensions/types";
+import { scheduleMarketplaceAutoUpdate } from "./extensibility/plugins/marketplace-auto-update";
 import { registerDaemonProjectPresence } from "./launch/presence";
 import type { MCPManager } from "./mcp";
 import type { InteractiveMode } from "./modes/interactive-mode";
@@ -444,6 +451,15 @@ async function runInteractiveMode(
 		})
 		.catch(() => {});
 
+	// `marketplace.autoUpdate` (off | notify | auto): background plugin update
+	// check, surfaced through the TUI status line once results arrive.
+	scheduleMarketplaceAutoUpdate({
+		autoUpdate: settings.get("marketplace.autoUpdate"),
+		resolveActiveProjectRegistryPath,
+		clearPluginRootsCache: () => clearPluginRootsAndCaches(),
+		notify: message => mode.showStatus(message),
+	});
+
 	// Cold-launch cleanup: the first paint already clears native history, and this
 	// replay replaces the welcome/startup frame with the resumed/new transcript.
 	// Every in-process session load also uses `clearTerminalHistory`; cold launch
@@ -584,7 +600,8 @@ async function moveMissingCwdSessionIfNeeded(
 	return { status: "moved", manager };
 }
 
-const SESSION_ID_ARG_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// ONE PLACE: session IDs are UUIDs; grammar owned by pi-utils regex.ts.
+const SESSION_ID_ARG_RE = UUID_RE;
 
 export function normalizeContinueSessionArgs(parsed: Args, rawArgs?: readonly string[]): void {
 	if (!parsed.continue || parsed.resume || parsed.fork) return;

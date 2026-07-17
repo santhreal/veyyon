@@ -58,7 +58,7 @@ function decodeJsonStringEscape(ch: string): string {
 	}
 }
 
-function isHexDigit(ch: string): boolean {
+function isHexDigitChar(ch: string): boolean {
 	return (ch >= "0" && ch <= "9") || (ch >= "a" && ch <= "f") || (ch >= "A" && ch <= "F");
 }
 
@@ -177,7 +177,7 @@ class StreamingJsonStringExtractor {
 	}
 
 	#readCandidateUnicode(ch: string): void {
-		if (isHexDigit(ch)) {
+		if (isHexDigitChar(ch)) {
 			this.#candidateUnicode += ch;
 			if (this.#candidateUnicode.length === 5) {
 				this.#candidate += String.fromCharCode(Number.parseInt(this.#candidateUnicode.slice(1), 16));
@@ -259,7 +259,7 @@ class StreamingJsonStringExtractor {
 	}
 
 	#readTargetUnicode(ch: string): void {
-		if (isHexDigit(ch)) {
+		if (isHexDigitChar(ch)) {
 			this.#targetUnicode += ch;
 			if (this.#targetUnicode.length === 5) {
 				this.#appendTarget(String.fromCharCode(Number.parseInt(this.#targetUnicode.slice(1), 16)));

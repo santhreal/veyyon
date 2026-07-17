@@ -72,6 +72,8 @@ export interface SunFieldOptions {
 	paintBackground?: boolean;
 	/** Active ripples that perturb the field (cursor drift, keypress flares). */
 	ripples?: readonly Ripple[];
+	/** 0..1 — scales every cell down the ember ramp (faded ghost marks). Omit for full fire. */
+	intensity?: number;
 }
 
 function clamp01(x: number): number {
@@ -146,6 +148,7 @@ export function renderSunField(o: SunFieldOptions): string[] {
 				val = corona * (0.5 + hash(x, y, 9) * 0.5);
 			}
 			if (base > 0.8) val += Math.sin(time * 1.3) * 0.04; // core shimmer
+			if (o.intensity !== undefined) val *= o.intensity;
 
 			if (val <= 0.12) {
 				if (open) {
@@ -174,6 +177,8 @@ export interface SunMarkOptions {
 	trueColor: boolean;
 	/** 0 = a hot point, 1 = the fully bloomed resting disc. Omit to rest at full. */
 	bloom?: number;
+	/** 0 = fully below the field's bottom edge (the horizon), 1 = risen to centre. */
+	rise?: number;
 	/** Advance for live shimmer/churn; defaults to a fixed resting seed. */
 	time?: number;
 	ripples?: readonly Ripple[];
@@ -193,15 +198,182 @@ export function sunMark(cols: number, rows: number, o: SunMarkOptions): string[]
 	const p = o.bloom === undefined ? 1 : clamp01(o.bloom);
 	const eased = 1 - (1 - p) ** 3; // easeOutCubic
 	const radius = fullR * (0.12 + 0.88 * eased);
+	// The sunrise: at rise 0 the disc rests fully below the field's bottom edge
+	// (the horizon); at rise 1 it has risen to centre. Same easeOutCubic so the
+	// rise and bloom stay in lockstep when driven by one clock.
+	const rise = o.rise === undefined ? 1 : 1 - (1 - clamp01(o.rise)) ** 3;
+	const cy = (rows - 1) / 2 + (1 - rise) * (rows * 0.5 + radius + 1);
 	return renderSunField({
 		cols,
 		rows,
 		cx: cols / 2,
-		cy: (rows - 1) / 2,
+		cy,
 		radius,
 		time: o.time ?? 0.6,
 		trueColor: o.trueColor,
 		ripples: o.ripples,
 		paintBackground: o.paintBackground,
 	});
+}
+
+/** A position on the ember ramp as an fg escape — the sun heating from a low
+ *  coal (0) toward white-hot (1). The cold end starts at band 2 so text stays
+ *  legible; band 0 is near-black ground. */
+export function emberBandEscape(ratio: number, trueColor: boolean): string {
+	const t = Math.min(1, Math.max(0, ratio));
+	const band = Math.min(7, 2 + Math.round(t * 5));
+	return fg(trueColor, band);
+}
+
+/*
+ * The sunset — the ceremony's closing beat, mirroring the website's page
+ * finale: a dithered blood-orange sky eased down toward a hot horizon line,
+ * the sun's arc melting into it, sparks rising off the disc. Sky cells are
+ * background-coloured spaces (true pixels); the sun reuses the same banded
+ * glyph field as the mark, clipped hard at the horizon.
+ */
+const SKY: ReadonlyArray<readonly [number, number, number]> = [
+	[0x06, 0x02, 0x01],
+	[0x0c, 0x03, 0x02],
+	[0x13, 0x06, 0x03],
+	[0x1b, 0x09, 0x04],
+	[0x24, 0x0d, 0x05],
+	[0x2e, 0x12, 0x07],
+	[0x39, 0x18, 0x0a],
+	[0x45, 0x1f, 0x0d],
+	[0x54, 0x28, 0x0f],
+	[0x65, 0x31, 0x12],
+	[0x78, 0x3a, 0x16],
+	[0x8c, 0x45, 0x1b],
+	[0xa1, 0x51, 0x20],
+	[0xb8, 0x5e, 0x25],
+	[0xcf, 0x6b, 0x29],
+	[0xe6, 0x7a, 0x2c],
+];
+
+/** xterm-256 sky approximation, same ordering (52/88/130/166/208 ember ramp). */
+const SKY_256 = [16, 52, 52, 52, 88, 88, 88, 130, 130, 130, 166, 166, 166, 208, 208, 208] as const;
+
+export interface SunsetFieldOptions {
+	/** Field size in cells. */
+	cols: number;
+	rows: number;
+	/** Seconds — drives sky dither and spark drift. */
+	time: number;
+	/** True to emit 24-bit colour; false uses the 256-colour ramps. */
+	trueColor: boolean;
+	/** Horizon row from the top; defaults to ~0.78 of the field. */
+	horizonY?: number;
+}
+
+/**
+ * A rectangular patch of the sun's churn — dithered ember bands with no disc.
+ * The texture the pause bars are cut from; `seed` offsets the dither so two
+ * fields side by side don't churn in lockstep.
+ */
+export function renderEmberField(o: {
+	cols: number;
+	rows: number;
+	time: number;
+	trueColor: boolean;
+	base?: number;
+	seed?: number;
+}): string[] {
+	const { cols, rows, time, trueColor } = o;
+	const base = o.base ?? 0.72;
+	const seed = o.seed ?? 0;
+	const step = Math.floor(time * 3);
+	const out: string[] = [];
+	for (let y = 0; y < rows; y++) {
+		let line = "";
+		let lastBand = -1;
+		for (let x = 0; x < cols; x++) {
+			const val = base + (hash(x + seed, y, step) - 0.5) * 0.45;
+			const band = Math.min(7, Math.max(0, Math.floor(Math.min(1, Math.max(0, val)) * 8)));
+			if (band !== lastBand) {
+				line += fg(trueColor, band);
+				lastBand = band;
+			}
+			line += GLYPH[band];
+		}
+		out.push(line + RESET);
+	}
+	return out;
+}
+
+export function renderSunsetField(o: SunsetFieldOptions): string[] {
+	const { cols, rows, time, trueColor } = o;
+	const horizonY = Math.max(1, Math.min(rows - 1, o.horizonY ?? Math.round(rows * 0.78)));
+	const step = Math.floor(time * 5);
+	const R = Math.max(4, cols * 0.3);
+	const cx = cols / 2;
+	const cy = horizonY + (R * 0.66) / CELL_ASPECT;
+
+	// Sparks rising off the arc: nine at a time, bright early, dim as they cool.
+	const sparks = new Map<number, number>();
+	for (let i = 0; i < 9; i++) {
+		const speed = 0.05 + hash(i, 3, 1) * 0.06;
+		const life = (time * speed + hash(i, 7, 2)) % 1;
+		const ex = Math.round((0.3 + hash(i, 11, 3) * 0.4) * (cols - 1));
+		const ey = Math.round(horizonY - (0.06 + life * 0.6) * horizonY);
+		if (ey >= 0 && ey < horizonY) sparks.set(ey * cols + ex, life > 0.55 ? 4 : 5);
+	}
+
+	const skyBg = (i: number): string =>
+		trueColor ? `\x1b[48;2;${SKY[i][0]};${SKY[i][1]};${SKY[i][2]}m` : `\x1b[48;5;${SKY_256[i]}m`;
+
+	const out: string[] = [];
+	for (let y = 0; y < rows; y++) {
+		if (y > horizonY) {
+			out.push(""); // the ground stays terminal-black and merges with whatever follows
+			continue;
+		}
+		if (y === horizonY) {
+			// the hot pixel line the sun melts into
+			out.push(`${trueColor ? "\x1b[38;2;251;192;109m" : "\x1b[38;5;220m"}${"─".repeat(cols)}${RESET}`);
+			continue;
+		}
+		let line = "";
+		let openFg = -1;
+		let openBg = -1;
+		for (let x = 0; x < cols; x++) {
+			// sky band, eased toward the horizon and dithered (same recipe as the site)
+			const s = (y / horizonY) ** 2;
+			const sj = s + (hash(x, y, step) - 0.5) * 0.13;
+			const sky = sj > 0.02 ? Math.min(SKY.length - 1, Math.floor(sj * SKY.length)) : 0;
+
+			const sparkBand = sparks.get(y * cols + x);
+			// sun cell — the disc dips most of itself below the line; only the arc shows
+			const dx = x - cx;
+			const dy = (y - cy) * CELL_ASPECT;
+			const d = Math.hypot(dx, dy) / R;
+			let band = -1;
+			if (d < 1.02) {
+				const base = 1 - smoothstep(0.72, 1.02, d);
+				const val = base + (hash(x, y, step) - 0.5) * 0.22 * Math.min(1, base + 0.25);
+				if (val > 0.14) band = Math.min(7, Math.floor(Math.min(1, val) * 8));
+			}
+
+			if (band >= 0) {
+				if (openBg !== -1) { line += "\x1b[49m"; openBg = -1; }
+				if (openFg !== band) { line += fg(trueColor, band); openFg = band; }
+				line += GLYPH[band];
+			} else if (sparkBand !== undefined) {
+				if (sky > 0 && openBg !== sky) { line += skyBg(sky); openBg = sky; }
+				if (sky === 0 && openBg !== -1) { line += "\x1b[49m"; openBg = -1; }
+				if (openFg !== sparkBand) { line += fg(trueColor, sparkBand); openFg = sparkBand; }
+				line += "·";
+			} else if (sky > 0) {
+				if (openFg !== -1) { line += RESET; openFg = -1; openBg = -1; }
+				if (openBg !== sky) { line += skyBg(sky); openBg = sky; }
+				line += " ";
+			} else {
+				if (openFg !== -1 || openBg !== -1) { line += RESET; openFg = -1; openBg = -1; }
+				line += " ";
+			}
+		}
+		if (openFg !== -1 || openBg !== -1) line += RESET;
+		out.push(line);
+	}
+	return out;
 }

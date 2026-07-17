@@ -20,6 +20,17 @@ const ACTIONS: PluginAction[] = [
 export default class Plugin extends Command {
 	static description = "Manage plugins (install, uninstall, list, etc.)";
 
+	static examples = [
+		"veyyon plugin install some-pkg",
+		"veyyon plugin install some-pkg[feat1,feat2]   # [*] all features, [] none",
+		"veyyon plugin install github:user/repo#main   # also gitlab:, bitbucket:, codeberg:, sourcehut:",
+		"veyyon plugin install name@marketplace",
+		"veyyon plugin link ./my-plugin",
+		"veyyon plugin doctor",
+		"veyyon plugin config list some-pkg",
+		"veyyon plugin marketplace add <source>",
+	];
+
 	static args = {
 		action: Args.string({
 			description: "Plugin action",

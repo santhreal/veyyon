@@ -33,7 +33,7 @@ export interface ProfileCommandArgs {
 /**
  * One owner for everything a profile can carry over when seeded from another
  * profile. The CLI copies all of it; the TUI `/profile new` picker offers each
- * item individually. IDENTITY_DIRS/IDENTITY_FILES are derived from this table.
+ * item individually. IDENTITY_DIRS is derived from this table.
  */
 export interface ProfileCopyItem {
 	key: string;
@@ -65,7 +65,6 @@ export const PROFILE_COPY_ITEMS: readonly ProfileCopyItem[] = [
 ];
 
 const IDENTITY_DIRS = PROFILE_COPY_ITEMS.flatMap(item => item.dirs ?? []);
-const IDENTITY_FILES = PROFILE_COPY_ITEMS.flatMap(item => item.files ?? []);
 
 async function directorySize(root: string): Promise<number> {
 	let total = 0;

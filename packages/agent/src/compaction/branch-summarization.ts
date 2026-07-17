@@ -164,9 +164,9 @@ export function collectEntriesForBranchSummary(
 
 /**
  * Extract AgentMessage from a session entry.
- * Similar to getMessageFromEntry in compaction.ts but also handles compaction entries.
+ * Similar to getSummarizableMessageFromEntry in compaction.ts but also handles compaction entries.
  */
-function getMessageFromEntry(entry: SessionEntry): AgentMessage | undefined {
+function getSummarizableMessageFromEntry(entry: SessionEntry): AgentMessage | undefined {
 	switch (entry.type) {
 		case "message":
 			// Useless non-error tool results are dropped by serializeConversation()
@@ -259,7 +259,7 @@ export function prepareBranchEntries(entries: SessionEntry[], tokenBudget: numbe
 	// Second pass: walk from newest to oldest, adding messages until token budget
 	for (let i = entries.length - 1; i >= 0; i--) {
 		const entry = entries[i];
-		const message = getMessageFromEntry(entry);
+		const message = getSummarizableMessageFromEntry(entry);
 		if (!message) continue;
 
 		// Extract file ops from assistant messages (tool calls)

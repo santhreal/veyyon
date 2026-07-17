@@ -5,7 +5,15 @@ import * as path from "node:path";
 import type { AgentMessage } from "@veyyon/pi-agent-core";
 import { type ApiKey, completeSimple, Effort, type Model } from "@veyyon/pi-ai";
 import { clampThinkingLevelForModel } from "@veyyon/pi-catalog/model-thinking";
-import { getAgentDbPath, getMemoriesDir, isEnoent, logger, parseJsonlLenient, prompt } from "@veyyon/pi-utils";
+import {
+	getAgentDbPath,
+	getMemoriesDir,
+	isEnoent,
+	logger,
+	parseJsonlLenient,
+	prompt,
+	runWithConcurrency,
+} from "@veyyon/pi-utils";
 
 import type { ModelRegistry } from "../config/model-registry";
 import { getModelMatchPreferences, resolveModelRoleValue } from "../config/model-resolver";
@@ -19,7 +27,7 @@ import stageOneSystemTemplate from "../prompts/memories/stage_one_system.md" wit
 import type { AgentSession } from "../session/agent-session";
 import {
 	claimStage1Jobs,
-	clearMemoryData as clearMemoryDataInDb,
+	clearMemoryTables,
 	closeMemoryDb,
 	enqueueGlobalWatermark,
 	heartbeatGlobalJob,
@@ -296,7 +304,7 @@ export async function buildMemoryToolDeveloperInstructions(
 export async function clearMemoryData(agentDir: string, cwd: string): Promise<void> {
 	const db = openMemoryDb(getAgentDbPath(agentDir));
 	try {
-		clearMemoryDataInDb(db);
+		clearMemoryTables(db);
 	} finally {
 		closeMemoryDb(db);
 	}
@@ -675,7 +683,7 @@ function shouldPersistResponseItemForMemories(message: AgentMessage): boolean {
 	if (role !== "toolResult") return false;
 	const toolName = (message as { toolName?: string }).toolName;
 	if (toolName === "bash" || toolName === "eval" || toolName === "read" || toolName === "grep") {
-		const text = extractMessageText(message);
+		const text = messageTextWithToolCalls(message);
 		return text.length > 0 && text.length <= 32_000;
 	}
 	return false;
@@ -896,7 +904,7 @@ async function runConsolidationModel(options: {
 	const memorySummary = redactSecrets(schemaOutput.memory_summary).trim();
 	const skills = schemaOutput.skills
 		.map(item => {
-			const name = sanitizeSkillName(item.name.trim());
+			const name = skillNameSlug(item.name.trim());
 			const content = redactSecrets(item.content ?? "").trim();
 			if (!name || !content) return null;
 			return {
@@ -1120,7 +1128,7 @@ function redactSecrets(input: string): string {
 	return out;
 }
 
-function sanitizeSkillName(name: string): string {
+function skillNameSlug(name: string): string {
 	return name
 		.toLowerCase()
 		.replace(/[^a-z0-9_-]+/g, "-")
@@ -1178,7 +1186,7 @@ function sanitizeSkillRelativePath(rawPath: string): string | undefined {
 	return parts.join("/");
 }
 
-function extractMessageText(message: AgentMessage): string {
+function messageTextWithToolCalls(message: AgentMessage): string {
 	const content = (message as { content?: unknown }).content;
 	if (typeof content === "string") return content;
 	if (!Array.isArray(content)) return "";
@@ -1376,20 +1384,4 @@ function encodeProjectPath(cwd: string): string {
 
 function unixNow(): number {
 	return Math.floor(Date.now() / 1000);
-}
-
-async function runWithConcurrency<T>(
-	items: T[],
-	concurrency: number,
-	worker: (item: T) => Promise<void>,
-): Promise<void> {
-	const queue = [...items];
-	const workers = new Array(Math.max(1, concurrency)).fill(0).map(async () => {
-		while (queue.length > 0) {
-			const item = queue.shift();
-			if (!item) return;
-			await worker(item);
-		}
-	});
-	await Promise.all(workers);
 }

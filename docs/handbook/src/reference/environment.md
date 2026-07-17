@@ -132,7 +132,7 @@ Most installs never set these. Details: `docs/internal/auth-broker-gateway.md`.
 | --- | --- |
 | `VEYYON_REPAIR_DISABLE` | Truthy disables the shipped tool-call schema repair (see [Repair overview](../repair/overview.md)) at the tool-dispatch seam. |
 
-There is no `VEYYON_REPAIR_LOG`, and Veyyon does not emit per-`(model,tool,shape)` repair telemetry.
+There is no `VEYYON_REPAIR_LOG`; per-`(model,tool,shape)` repair telemetry is **Spec — not shipped**.
 
 ## Terminal behavior
 

@@ -107,7 +107,61 @@ export function pluralize(label: string, count: number): string {
 
 /**
  * Format a ratio as a percentage.
+ * Examples: "12.5%", formatPercent(0.125, 0) -> "13%"
  */
-export function formatPercent(ratio: number): string {
-	return `${(ratio * 100).toFixed(1)}%`;
+export function formatPercent(ratio: number, digits = 1): string {
+	return `${(ratio * 100).toFixed(digits)}%`;
+}
+
+/**
+ * Format a dollar cost with precision scaled to magnitude; an exact zero is
+ * "$0". Pass `digits` to pin the fraction digits instead.
+ * Examples: "$0", "$0.0042", "$0.123", "$1.25", formatCost(0.5, 2) -> "$0.50"
+ */
+export function formatCost(n: number, digits?: number): string {
+	if (n === 0) return "$0";
+	if (digits !== undefined) return `$${n.toFixed(digits)}`;
+	if (n < 0.01) return `$${n.toFixed(4)}`;
+	if (n < 1) return `$${n.toFixed(3)}`;
+	return `$${n.toFixed(2)}`;
+}
+
+/** Round a premium-request count to 2 decimals (fractional requests are billed in hundredths). */
+export function normalizePremiumRequests(n: number): number {
+	return Math.round((n + Number.EPSILON) * 100) / 100;
+}
+
+/**
+ * ASCII kebab slug: lowercase, non-alphanumeric runs collapse to single
+ * hyphens, no leading/trailing hyphens; "" when nothing survives. ONE PLACE
+ * for branch names, remote names, advisor ids, and usage-limit slugs.
+ */
+export function kebabSlug(value: string): string {
+	return value
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/g, "-")
+		.replace(/^-+|-+$/g, "");
+}
+
+const FILENAME_UNSAFE_RE = /[^A-Za-z0-9._-]/g;
+
+/**
+ * Make a string safe as a single filesystem path segment: anything outside
+ * `A-Za-z0-9._-` becomes `_`. ONE PLACE for runtime cache keys and derived
+ * file/dir names.
+ */
+export function safeFilenameSegment(value: string): string {
+	return value.replace(FILENAME_UNSAFE_RE, "_");
+}
+
+// Derived from FILENAME_UNSAFE_RE so the charset cannot fork.
+const FILENAME_UNSAFE_RUNS_RE = new RegExp(`${FILENAME_UNSAFE_RE.source}+`, "g");
+
+/**
+ * Run-collapsing twin of {@link safeFilenameSegment}: each *run* of unsafe
+ * characters becomes a single `_` (`"a//b"` → `"a_b"`, not `"a__b"`). ONE
+ * PLACE for path-derived artifact slugs and cache segments.
+ */
+export function safeFilenameSegmentCollapsed(value: string): string {
+	return value.replace(FILENAME_UNSAFE_RUNS_RE, "_");
 }

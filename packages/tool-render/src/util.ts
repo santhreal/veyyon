@@ -5,14 +5,16 @@
  * (bypasses the Node-heavy package barrel) so this file stays safe to bundle
  * for the browser — see BACKLOG SPEC-ONE-PLACE-AUDIT F6.
  */
+import { truncate } from "@veyyon/pi-utils/format";
+import { collapseWhitespace } from "@veyyon/pi-utils/lines";
+import { shortenPathDisplay } from "@veyyon/pi-utils/path-display";
 import { stripAnsi } from "@veyyon/pi-utils/strip-ansi";
+import { isRecord } from "@veyyon/pi-utils/type-guards";
 import type { ToolResultImage, ToolResultLike } from "./types";
 
-export { stripAnsi };
-
-export function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
-}
+// ONE PLACE: owned by pi-utils type-guards (identical contract; import type-only
+// deps keep the subpath browser-safe).
+export { isRecord, stripAnsi };
 
 /** String passthrough; anything else (including null/undefined) → null. */
 export function str(value: unknown): string | null {
@@ -35,17 +37,9 @@ export function display(value: unknown): string {
 	}
 }
 
-/** Replace `/Users/<x>` / `/home/<x>` prefix with `~` for display. */
-export function shortenPath(p: string): string {
-	for (const prefix of ["/Users/", "/home/"]) {
-		if (p.startsWith(prefix)) {
-			const rest = p.slice(prefix.length);
-			const slash = rest.indexOf("/");
-			return slash < 0 ? "~" : `~${rest.slice(slash)}`;
-		}
-	}
-	return p;
-}
+// ONE PLACE: the browser-safe `~`-substitution is owned by pi-utils
+// path-display; renderers keep the short local name.
+export { shortenPathDisplay as shortenPath };
 
 /**
  * Search scope for display: the current `path` argument (else the legacy
@@ -73,14 +67,10 @@ export function scopePaths(args: Record<string, unknown>): string[] {
 	return [];
 }
 
-export function truncate(s: string, maxLen = 100): string {
-	return s.length <= maxLen ? s : `${s.slice(0, maxLen)}…`;
-}
-
-/** Collapse all whitespace runs to single spaces (for one-line summaries). */
-export function normalizeWs(s: string): string {
-	return s.replace(/\s+/g, " ").trim();
-}
+// ONE PLACE: character truncation is owned by pi-utils format (result length
+// includes the ellipsis, unlike the old local copy which overflowed by one);
+// whitespace collapsing by pi-utils lines. Renderers keep the short local names.
+export { collapseWhitespace as normalizeWs, truncate };
 
 export function replaceTabs(s: string): string {
 	return s.replace(/\t/g, "   ");
@@ -176,7 +166,7 @@ export function detailsRecord(result: ToolResultLike | undefined): Record<string
 export function argsDigest(args: unknown, maxLen = 96): string {
 	if (args == null) return "";
 	if (isRecord(args) && Object.keys(args).length === 0) return "";
-	return truncate(normalizeWs(display(args)), maxLen);
+	return truncate(collapseWhitespace(display(args)), maxLen);
 }
 
 interface HljsLike {

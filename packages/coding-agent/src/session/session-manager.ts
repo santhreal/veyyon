@@ -51,7 +51,7 @@ import {
 } from "./session-entries";
 import { findMostRecentSession, listAllSessions, listSessions, type SessionInfo } from "./session-listing";
 import { loadEntriesFromFile, readTitleSlotFromFile, resolveBlobRefsInEntries } from "./session-loader";
-import { generateId, migrateToCurrentVersion } from "./session-migrations";
+import { generateUniqueEntryId, migrateToCurrentVersion } from "./session-migrations";
 import {
 	computeDefaultSessionDir,
 	readTerminalBreadcrumbEntry,
@@ -230,7 +230,7 @@ class SessionEntryIndex {
 	}
 
 	/**
-	 * The live id→entry map. Read-only for callers (lookups + `generateId`
+	 * The live id→entry map. Read-only for callers (lookups + `generateUniqueEntryId`
 	 * collision checks); never mutate it directly — go through `insert`/`rebuild`.
 	 */
 	entriesById(): Map<string, SessionEntry> {
@@ -821,7 +821,7 @@ export class SessionManager {
 
 	#freshEntryFields(): { id: string; parentId: string | null; timestamp: string } {
 		return {
-			id: generateId(this.#index),
+			id: generateUniqueEntryId(this.#index),
 			parentId: this.#index.leafId(),
 			timestamp: nowIso(),
 		};
@@ -1734,7 +1734,7 @@ export class SessionManager {
 		this.#index.setLeaf(branchFromId);
 		const entry: BranchSummaryEntry = {
 			type: "branch_summary",
-			id: generateId(this.#index),
+			id: generateUniqueEntryId(this.#index),
 			parentId: branchFromId,
 			timestamp: nowIso(),
 			fromId: branchFromId ?? "root",
@@ -1780,7 +1780,7 @@ export class SessionManager {
 		for (const carried of labelsToCarry) {
 			const labelEntry: LabelEntry = {
 				type: "label",
-				id: generateId(new Set([...keptIds, ...labels.map(entry => entry.id)])),
+				id: generateUniqueEntryId(new Set([...keptIds, ...labels.map(entry => entry.id)])),
 				parentId,
 				timestamp: nowIso(),
 				targetId: carried.targetId,

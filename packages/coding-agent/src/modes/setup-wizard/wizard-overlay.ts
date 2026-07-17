@@ -5,11 +5,14 @@ import {
 	padding,
 	routeSgrMouseInput,
 	type SgrMouseEvent,
+	TERMINAL,
 	truncateToWidth,
 	visibleWidth,
+	centerLine,
 } from "@veyyon/pi-tui";
 import { APP_NAME } from "@veyyon/pi-utils";
-import { gradientLogo, VEYYON_LOGO } from "../components/welcome";
+import { sunMark } from "../components/sun";
+import { silverEscape } from "../components/welcome";
 import { theme } from "../theme/theme";
 import type { InteractiveModeContext } from "../types";
 import { renderSetupOutro, SETUP_OUTRO_MS } from "./scenes/outro";
@@ -65,6 +68,8 @@ export class SetupWizardComponent implements Component, OverlayFocusOwner {
 	#disposed = false;
 	/** Screen row where the active scene's body began in the last rendered frame. */
 	#bodyRowStart = 0;
+	#bodyMarginX = SCENE_MARGIN_X;
+	#transitionFrom: string[] | undefined;
 	#sceneFocusTarget: Component | undefined;
 
 	constructor(
@@ -152,7 +157,7 @@ export class SetupWizardComponent implements Component, OverlayFocusOwner {
 		const scene = this.#activeScene;
 		if (!scene) return;
 		if (scene.routeMouse) {
-			scene.routeMouse(event, event.row - this.#bodyRowStart, event.col - SCENE_MARGIN_X);
+			scene.routeMouse(event, event.row - this.#bodyRowStart, event.col - this.#bodyMarginX);
 			return;
 		}
 		if (event.wheel !== null) {
@@ -171,9 +176,9 @@ export class SetupWizardComponent implements Component, OverlayFocusOwner {
 			case "transition": {
 				const elapsed = performance.now() - this.#phaseStartedAt;
 				const progress = Math.min(1, elapsed / SCENE_TRANSITION_MS);
-				const splash = renderSetupSplash(safeWidth, height, SETUP_SPLASH_MS + elapsed);
+				const from = this.#transitionFrom ?? renderSetupSplash(safeWidth, height, SETUP_SPLASH_MS + elapsed);
 				const scene = this.#renderScene(safeWidth, height);
-				lines = dissolveFrames(splash, scene, progress, height);
+				lines = dissolveFrames(from, scene, progress, height);
 				break;
 			}
 			case "outro":
@@ -189,50 +194,43 @@ export class SetupWizardComponent implements Component, OverlayFocusOwner {
 		return this.#fitToScreen(lines, safeWidth, height);
 	}
 
-	/** Segmented ember progress: filled bars up to the current scene, dim ahead. */
-	#renderProgress(): string {
-		const total = this.scenes.length;
-		const current = this.#sceneIndex + 1;
-		const segments: string[] = [];
-		for (let i = 0; i < total; i++) {
-			segments.push(i < current ? theme.fg("accent", "▰") : theme.fg("dim", "▱"));
-		}
-		return `${segments.join(" ")}   ${theme.fg("muted", `Step ${current} of ${total}`)}`;
-	}
-
 	#renderScene(width: number, height: number): string[] {
 		const scene = this.scenes[this.#sceneIndex];
 		const title = this.#activeScene?.title ?? scene?.title ?? "Setup";
 		const subtitle = this.#activeScene?.subtitle;
-		const contentWidth = Math.max(MIN_CONTENT_WIDTH, width - SCENE_MARGIN_X * 2);
-		const logo = gradientLogo(VEYYON_LOGO, 0);
-		// One left rail: the wordmark, progress, title, and body all share the
-		// SCENE_MARGIN_X edge so the header never floats away from the content.
+		// A centred, capped column: free space on both flanks and no full-bleed
+		// lists, so the scene reads as a designed page, not a form dump.
+		const contentWidth = Math.min(76, Math.max(MIN_CONTENT_WIDTH, width - SCENE_MARGIN_X * 2));
+		const marginX = Math.max(SCENE_MARGIN_X, Math.floor((width - contentWidth) / 2));
+		this.#bodyMarginX = marginX;
+		// The sun IS the logo here too — the same mark the splash blooms open,
+		// resting over the wordmark while the steps progress beneath it.
+		const sun = sunMark(15, 5, { trueColor: TERMINAL.trueColor, time: (performance.now() - this.#phaseStartedAt) / 1000 });
+		const dots = this.scenes.map((_, i) => {
+			const glyph = i < this.#sceneIndex ? "█" : i === this.#sceneIndex ? "▓" : "·";
+			return i <= this.#sceneIndex ? theme.fg("accent", glyph) : theme.fg("dim", glyph);
+		});
 		const header = [
 			"",
-			...logo.map(line => indentLine(line, width, SCENE_MARGIN_X)),
-			indentLine(theme.bold(theme.fg("accent", APP_NAME)), width, SCENE_MARGIN_X),
-			indentLine(this.#renderProgress(), width, SCENE_MARGIN_X),
+			...sun.map(line => centerLine(line, width)),
+			centerLine(theme.bold(silverEscape(0.55) + APP_NAME.split("").join(" ") + "\x1b[0m"), width),
+			centerLine(theme.fg("dim", `${dots.join(theme.fg("dim", " "))}  step ${this.#sceneIndex + 1} of ${this.scenes.length}`), width),
 			"",
-			indentLine(theme.bold(title), width, SCENE_MARGIN_X),
+			indentLine(theme.bold(title), width, marginX),
 		];
 		if (subtitle) {
-			header.push(indentLine(theme.fg("muted", subtitle), width, SCENE_MARGIN_X));
+			header.push(indentLine(theme.fg("muted", subtitle), width, marginX));
 		}
 		header.push("");
 		this.#bodyRowStart = header.length;
 
 		const footer = [
 			"",
-			indentLine(
-				theme.fg("dim", "up/down select   ·   enter confirm   ·   esc skip   ·   ctrl+c exit"),
-				width,
-				SCENE_MARGIN_X,
-			),
+			centerLine(theme.fg("dim", "↑↓ select  ·  enter confirm  ·  esc skip  ·  ctrl+c exit"), width),
 		];
 		const maxBodyLines = Math.max(0, height - header.length - footer.length);
 		const body = this.#activeScene?.render(contentWidth).slice(0, maxBodyLines) ?? [];
-		const lines = [...header, ...body.map(line => indentLine(line, width, SCENE_MARGIN_X))];
+		const lines = [...header, ...body.map(line => indentLine(line, width, marginX))];
 		while (lines.length + footer.length < height) {
 			lines.push("");
 		}
@@ -258,6 +256,7 @@ export class SetupWizardComponent implements Component, OverlayFocusOwner {
 			} else if (this.#phase === "transition" && elapsed >= SCENE_TRANSITION_MS) {
 				this.#phase = "scene";
 				this.#phaseStartedAt = performance.now();
+				this.#transitionFrom = undefined;
 				this.ctx.ui.requestRender();
 			} else if (this.#phase === "outro" && elapsed >= SETUP_OUTRO_MS) {
 				this.#complete();
@@ -305,18 +304,24 @@ export class SetupWizardComponent implements Component, OverlayFocusOwner {
 
 	/** Enter the first scene through a dissolve from the splash. */
 	#beginScene(): void {
+		this.#transitionFrom = undefined;
 		this.#mountSceneController("transition");
-	}
-
-	#mountCurrentScene(): void {
-		this.#mountSceneController("scene");
 	}
 
 	#finishScene(): void {
 		if (this.#phase !== "scene" && this.#phase !== "transition") return;
+		// Capture the outgoing frame so the next scene dissolves in from it — the
+		// ceremony flows scene to scene instead of hard-cutting.
+		try {
+			const w = Math.max(1, this.ctx.ui.terminal.columns);
+			const h = Math.max(1, this.ctx.ui.terminal.rows);
+			this.#transitionFrom = this.#renderScene(w, h);
+		} catch {
+			this.#transitionFrom = undefined;
+		}
 		this.#unmountActiveScene();
 		this.#sceneIndex += 1;
-		this.#mountCurrentScene();
+		this.#mountSceneController("transition");
 	}
 
 	#unmountActiveScene(): void {

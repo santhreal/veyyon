@@ -2,23 +2,30 @@
  * Installed plugin registry read/write (Claude Code-compatible shape).
  */
 
-import * as fs from "node:fs/promises";
 import * as path from "node:path";
 
-import { getPluginsDir, isEnoent, logger, tryParseJson } from "@veyyon/pi-utils";
+import { atomicWriteJson, getPluginsDir, isEnoent, logger, tryParseJson } from "@veyyon/pi-utils";
 
+// MUST match ClaudePluginsRegistry shape for parseClaudePluginsRegistry()
+// compatibility: `version: number`, `plugins: Record<string, entry[]>`.
 export interface InstalledPluginsRegistry {
+	/** MUST be 2 — parseClaudePluginsRegistry rejects non-numeric version. */
 	version: 2;
 	plugins: Record<string, InstalledPluginEntry[]>;
 }
 
 export interface InstalledPluginEntry {
 	scope: "user" | "project";
+	/** Absolute path to cached plugin directory. */
 	installPath: string;
 	version: string;
+	/** ISO 8601 date string. */
 	installedAt: string;
+	/** ISO 8601 date string. */
 	lastUpdated: string;
+	/** For git-sourced plugins. */
 	gitCommitSha?: string;
+	/** OMP extension — not in Claude Code's type. CLI/UI concern only in v1. */
 	enabled?: boolean;
 }
 
@@ -45,31 +52,6 @@ export function getInstalledPluginsRegistryPath(): string {
 
 export function getPluginsCacheDir(): string {
 	return path.join(getPluginsDir(), "cache", "plugins");
-}
-
-async function atomicWriteJson(filePath: string, data: unknown): Promise<void> {
-	const content = `${JSON.stringify(data, null, 2)}\n`;
-	const tmpPath = `${filePath}.tmp`;
-	await Bun.write(tmpPath, content);
-	try {
-		await fs.rename(tmpPath, filePath);
-	} catch (err) {
-		if ((err as NodeJS.ErrnoException).code === "EPERM") {
-			try {
-				await fs.unlink(filePath);
-			} catch {
-				// ignore
-			}
-			await fs.rename(tmpPath, filePath);
-		} else {
-			try {
-				await fs.unlink(tmpPath);
-			} catch {
-				// ignore
-			}
-			throw err;
-		}
-	}
 }
 
 function emptyInstalledPluginsRegistry(): InstalledPluginsRegistry {

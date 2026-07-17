@@ -8,11 +8,13 @@
 #   & ([scriptblock]::Create((irm https://veyyon.dev/install.ps1))) -Source -Ref v16.5.2
 #   & ([scriptblock]::Create((irm https://veyyon.dev/install.ps1))) -Source -Ref main
 #   & ([scriptblock]::Create((irm https://veyyon.dev/install.ps1))) -Binary -Ref v16.5.2
+#   & ([scriptblock]::Create((irm https://veyyon.dev/install.ps1))) -Uninstall
 
 param(
     [switch]$Source,
     [switch]$Binary,
-    [string]$Ref
+    [string]$Ref,
+    [switch]$Uninstall
 )
 
 $ErrorActionPreference = "Stop"
@@ -309,7 +311,59 @@ function Install-Binary {
     }
 }
 
+# Mirror of install.sh do_uninstall: remove the binary and `vey` shim from the
+# install dir and bun's global bin, the global bun package, and the PATH entry
+# this installer added. Settings under ~/.veyyon are the user's and stay.
+function Uninstall-Veyyon {
+    $removed = $false
+    $bunBin = Join-Path $env:USERPROFILE ".bun\bin"
+    foreach ($dir in @($InstallDir, $bunBin)) {
+        foreach ($name in @("$BinName.exe", "$BinName.cmd", "$AliasName.cmd", "$AliasName.exe")) {
+            $target = Join-Path $dir $name
+            if (Test-Path $target) {
+                Remove-Item $target -Force
+                Write-Host "OK  removed $target" -ForegroundColor Green
+                $removed = $true
+            }
+        }
+    }
+    if (Test-BunInstalled) {
+        bun remove -g $Package 2>$null | Out-Null
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "OK  removed global $Package" -ForegroundColor Green
+            $removed = $true
+        }
+    }
+    $UserPath = [Environment]::GetEnvironmentVariable("Path", "User")
+    if ($UserPath -like "*$InstallDir*") {
+        $newPath = ($UserPath -split ";" | Where-Object { $_ -and $_ -ne $InstallDir }) -join ";"
+        [Environment]::SetEnvironmentVariable("Path", $newPath, "User")
+        Write-Host "OK  removed $InstallDir from PATH (restart your terminal)" -ForegroundColor Green
+        $removed = $true
+    }
+    if ($removed) {
+        Write-Host "veyyon uninstalled."
+    } else {
+        Write-Host "nothing to uninstall."
+    }
+}
+
+# Test hook, mirroring install.sh's VEYYON_INSTALL_SOURCED: lets
+# scripts/install-tests/functions.test.ps1 dot-source the functions above
+# without running the installer main logic below.
+if ($env:VEYYON_INSTALL_SOURCED -eq "1") {
+    return
+}
+
 # Main logic
+if ($Uninstall) {
+    if ($Source -or $Binary -or $Ref) {
+        throw "-Uninstall cannot be combined with -Source/-Binary/-Ref"
+    }
+    Uninstall-Veyyon
+    return
+}
+
 if ($Ref -and -not $Source -and -not $Binary) {
     $Source = $true
 }

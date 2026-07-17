@@ -1,3 +1,4 @@
+import { stripTrailingSlashes } from "@veyyon/pi-utils";
 import { type } from "arktype";
 import { getBundledModels } from "../models";
 import { toModelSpec } from "../provider-models/bundled-references";
@@ -79,7 +80,7 @@ export async function fetchGeminiModels(
 	}
 
 	const fetchImpl = discoveryFetch(options.fetch);
-	const baseUrl = normalizeBaseUrl(options.baseUrl);
+	const baseUrl = normalizeGeminiBaseUrl(options.baseUrl);
 	const pageSize = normalizePositiveInt(options.pageSize, DEFAULT_PAGE_SIZE);
 	const maxPages = normalizePositiveInt(options.maxPages, DEFAULT_MAX_PAGES);
 
@@ -91,7 +92,7 @@ export async function fetchGeminiModels(
 	let nextPageToken: string | undefined;
 
 	for (let page = 0; page < maxPages; page += 1) {
-		const requestUrl = buildModelsUrl(baseUrl, options.apiKey, pageSize, nextPageToken);
+		const requestUrl = buildGeminiModelsUrl(baseUrl, options.apiKey, pageSize, nextPageToken);
 		let response: Response;
 		try {
 			response = await fetchImpl(requestUrl, {
@@ -139,7 +140,7 @@ export async function fetchGeminiModels(
 	return Array.from(modelsById.values()).sort((left, right) => left.id.localeCompare(right.id));
 }
 
-function buildModelsUrl(baseUrl: string, apiKey: string, pageSize: number, pageToken?: string): URL {
+function buildGeminiModelsUrl(baseUrl: string, apiKey: string, pageSize: number, pageToken?: string): URL {
 	const url = new URL(`${baseUrl}/models`);
 	url.searchParams.set("key", apiKey);
 	url.searchParams.set("pageSize", String(pageSize));
@@ -149,12 +150,12 @@ function buildModelsUrl(baseUrl: string, apiKey: string, pageSize: number, pageT
 	return url;
 }
 
-function normalizeBaseUrl(baseUrl?: string): string {
+function normalizeGeminiBaseUrl(baseUrl?: string): string {
 	const value = (baseUrl ?? GOOGLE_GENERATIVE_AI_BASE_URL).trim();
 	if (!value) {
 		return GOOGLE_GENERATIVE_AI_BASE_URL;
 	}
-	return value.replace(/\/+$/, "");
+	return stripTrailingSlashes(value);
 }
 
 function normalizePositiveInt(value: number | undefined, fallback: number): number;

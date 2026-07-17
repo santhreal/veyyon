@@ -17,7 +17,7 @@
 import { afterEach, beforeEach } from "bun:test";
 import * as os from "node:os";
 import * as path from "node:path";
-import { closeDb } from "@veyyon/pi-stats/db";
+import { closeDb } from "@veyyon/omp-stats/db";
 import { getAgentDir, setAgentDir, TempDir } from "@veyyon/pi-utils";
 
 const XDG_KEYS = ["XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME"] as const;

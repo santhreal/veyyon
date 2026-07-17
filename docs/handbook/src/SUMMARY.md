@@ -34,7 +34,7 @@
 
 - [Features](./features/index.md)
   - [Editing and repair](./using/editing.md)
-  - [Approvals and autonomy](./features/sandbox.md)
+  - [Sandbox and approvals](./features/sandbox.md)
   - [Permissions explainer](./features/permissions-explainer.md)
   - [Safety](./using/safety.md)
   - [Models and providers](./using/models.md)
@@ -86,7 +86,7 @@
 - [The thesis: the harness is the lever](./foundations/thesis.md)
 - [Architecture at a glance](./foundations/architecture.md)
 - [Architecture overview](./architecture/overview.md)
-  - [Approvals internals](./architecture/sandbox.md)
+  - [Sandbox internals](./architecture/sandbox.md)
   - [Session and turn internals](./architecture/session-turn.md)
   - [Config layering](./architecture/config.md)
   - [MCP internals](./architecture/mcp.md)

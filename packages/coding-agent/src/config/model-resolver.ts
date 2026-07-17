@@ -16,18 +16,16 @@
  */
 
 import { ThinkingLevel } from "@veyyon/pi-agent-core";
-import type { Api, Effort, KnownProvider, Model, ModelSpec } from "@veyyon/pi-ai";
+import type { Api, KnownProvider, Model, ModelSpec } from "@veyyon/pi-ai";
 import { buildModel } from "@veyyon/pi-catalog/build";
 import { modelMatchesHost } from "@veyyon/pi-catalog/hosts";
 import { buildModelProviderPriorityRank } from "@veyyon/pi-catalog/identity";
 import { stripThinkingVariantToken } from "@veyyon/pi-catalog/identity/family";
-import { clampThinkingLevelForModel } from "@veyyon/pi-catalog/model-thinking";
 import { modelsAreEqual } from "@veyyon/pi-catalog/models";
 import { DEFAULT_MODEL_PER_PROVIDER } from "@veyyon/pi-catalog/provider-models";
 import { resolveBareVariantAlias, resolveVariantAlias } from "@veyyon/pi-catalog/variant-collapse";
 import { fuzzyMatch } from "@veyyon/pi-tui";
 import { logger } from "@veyyon/pi-utils";
-import chalk from "chalk";
 import MODEL_PRIO from "../priority.json" with { type: "json" };
 import {
 	AUTO_THINKING,
@@ -468,8 +466,6 @@ export interface ModelMatchPreferences {
 
 export type ModelLookupRegistry = Pick<ModelRegistry, "getAvailable">;
 type CliModelRegistry = Pick<ModelRegistry, "getAll">;
-type InitialModelRegistry = Pick<ModelRegistry, "getAvailable" | "find">;
-type RestorableModelRegistry = Pick<ModelRegistry, "getAvailable" | "find" | "getApiKey">;
 
 interface ModelPreferenceContext {
 	modelUsageRank: Map<string, number>;
@@ -1659,152 +1655,6 @@ export function resolveCliModel(options: {
 		warning,
 		error: undefined,
 	};
-}
-
-export interface InitialModelResult {
-	model: Model<Api> | undefined;
-	thinkingLevel?: ThinkingLevel;
-	fallbackMessage: string | undefined;
-}
-
-/**
- * Find the initial model to use based on priority:
- * 1. CLI args (provider + model)
- * 2. First model from scoped models (if not continuing/resuming)
- * 3. Restored from session (if continuing/resuming)
- * 4. Saved default from settings
- * 5. First available model with valid API key
- */
-export async function findInitialModel(options: {
-	cliProvider?: string;
-	cliModel?: string;
-	scopedModels: ScopedModel[];
-	isContinuing: boolean;
-	defaultProvider?: string;
-	defaultModelId?: string;
-	defaultThinkingSelector?: Effort;
-	modelRegistry: InitialModelRegistry;
-}): Promise<InitialModelResult> {
-	const {
-		cliProvider,
-		cliModel,
-		scopedModels,
-		isContinuing,
-		defaultProvider,
-		defaultModelId,
-		defaultThinkingSelector,
-		modelRegistry,
-	} = options;
-
-	let model: Model<Api> | undefined;
-	let thinkingLevel: Effort | undefined;
-
-	// 1. CLI args take priority
-	if (cliProvider && cliModel) {
-		const found = modelRegistry.find(cliProvider, cliModel);
-		if (!found) {
-			console.error(chalk.red(`Model ${cliProvider}/${cliModel} not found`));
-			process.exit(1);
-		}
-		return { model: found, thinkingLevel: undefined, fallbackMessage: undefined };
-	}
-
-	// 2. Use first model from scoped models (skip if continuing/resuming)
-	if (scopedModels.length > 0 && !isContinuing) {
-		const scoped = scopedModels[0];
-		const scopedThinkingSelector =
-			scoped.thinkingLevel === ThinkingLevel.Inherit
-				? defaultThinkingSelector
-				: (scoped.thinkingLevel ?? defaultThinkingSelector);
-		return {
-			model: scoped.model,
-			thinkingLevel:
-				scopedThinkingSelector === ThinkingLevel.Off
-					? ThinkingLevel.Off
-					: clampThinkingLevelForModel(scoped.model, scopedThinkingSelector),
-			fallbackMessage: undefined,
-		};
-	}
-
-	// 3. Try saved default from settings
-	if (defaultProvider && defaultModelId) {
-		const found = modelRegistry.find(defaultProvider, defaultModelId);
-		if (found) {
-			model = found;
-			thinkingLevel = clampThinkingLevelForModel(found, defaultThinkingSelector);
-			return { model, thinkingLevel, fallbackMessage: undefined };
-		}
-	}
-
-	// 4. Try first available model with valid API key
-	const availableModels = modelRegistry.getAvailable();
-
-	const fallback = pickDefaultAvailableModel(availableModels);
-	if (fallback) {
-		return { model: fallback, thinkingLevel: undefined, fallbackMessage: undefined };
-	}
-
-	// 5. No model found
-	return { model: undefined, thinkingLevel: undefined, fallbackMessage: undefined };
-}
-
-/**
- * Restore model from session, with fallback to available models
- */
-export async function restoreModelFromSession(
-	savedProvider: string,
-	savedModelId: string,
-	currentModel: Model<Api> | undefined,
-	shouldPrintMessages: boolean,
-	modelRegistry: RestorableModelRegistry,
-): Promise<{ model: Model<Api> | undefined; fallbackMessage: string | undefined }> {
-	const restoredModel = modelRegistry.find(savedProvider, savedModelId);
-
-	// Check if restored model exists and has a valid API key
-	const hasApiKey = restoredModel ? !!(await modelRegistry.getApiKey(restoredModel)) : false;
-
-	if (restoredModel && hasApiKey) {
-		if (shouldPrintMessages) {
-			console.log(chalk.dim(`Restored model: ${savedProvider}/${savedModelId}`));
-		}
-		return { model: restoredModel, fallbackMessage: undefined };
-	}
-
-	// Model not found or no API key - fall back
-	const reason = !restoredModel ? "model no longer exists" : "no API key available";
-
-	if (shouldPrintMessages) {
-		console.error(chalk.yellow(`Warning: Could not restore model ${savedProvider}/${savedModelId} (${reason}).`));
-	}
-
-	// If we already have a model, use it as fallback
-	if (currentModel) {
-		if (shouldPrintMessages) {
-			console.log(chalk.dim(`Falling back to: ${currentModel.provider}/${currentModel.id}`));
-		}
-		return {
-			model: currentModel,
-			fallbackMessage: `Could not restore model ${savedProvider}/${savedModelId} (${reason}). Using ${currentModel.provider}/${currentModel.id}.`,
-		};
-	}
-
-	// Try to find any available model
-	const availableModels = modelRegistry.getAvailable();
-
-	const fallbackModel = pickDefaultAvailableModel(availableModels);
-	if (fallbackModel) {
-		if (shouldPrintMessages) {
-			console.log(chalk.dim(`Falling back to: ${fallbackModel.provider}/${fallbackModel.id}`));
-		}
-
-		return {
-			model: fallbackModel,
-			fallbackMessage: `Could not restore model ${savedProvider}/${savedModelId} (${reason}). Using ${fallbackModel.provider}/${fallbackModel.id}.`,
-		};
-	}
-
-	// No models available
-	return { model: undefined, fallbackMessage: undefined };
 }
 
 /**

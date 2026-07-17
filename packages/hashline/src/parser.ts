@@ -3,7 +3,7 @@
  * flat list of {@link Edit}s. Sits between the {@link Tokenizer} and the
  * applier.
  */
-import { HL_PAYLOAD_REPLACE, HL_RANGE_SEP } from "./format";
+import { HL_PAYLOAD_REPLACE, HL_RANGE_SEP, UNIFIED_DIFF_HUNK_HEADER_RE } from "./format";
 import {
 	BARE_BODY_AUTO_PIPED_WARNING,
 	DELETE_BLOCK_TAKES_NO_BODY,
@@ -59,7 +59,7 @@ function detectApplyPatchContamination(text: string, _hasPending: boolean): stri
 			`Use \`SWAP N${HL_RANGE_SEP}M:\`, \`DEL N${HL_RANGE_SEP}M\`, or \`INS.PRE|POST|HEAD|TAIL:\` ops.`
 		);
 	}
-	if (/^@@\s+[-+]?\d+,\d+\s+[-+]?\d+,\d+\s+@@/.test(trimmed)) {
+	if (UNIFIED_DIFF_HUNK_HEADER_RE.test(trimmed)) {
 		return (
 			"unified-diff hunk header (`@@ -N,M +N,M @@`) is not valid in hashline. " +
 			`Use \`SWAP N${HL_RANGE_SEP}M:\`, \`DEL N${HL_RANGE_SEP}M\`, or \`INS.PRE|POST|HEAD|TAIL:\` ops.`

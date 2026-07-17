@@ -1,3 +1,4 @@
+export * from "./bundled-references";
 export * from "./descriptor-types";
 export * from "./descriptors";
 export * from "./google";

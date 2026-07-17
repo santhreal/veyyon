@@ -2,7 +2,7 @@ import * as fs from "node:fs/promises";
 import * as net from "node:net";
 import * as os from "node:os";
 import * as path from "node:path";
-import { isEexist, isEnoent, postmortem } from "@veyyon/pi-utils";
+import { canonicalizePath, isEexist, isEnoent, postmortem } from "@veyyon/pi-utils";
 import { resolveWorkerSpawnCmd, workerEnvFromParent } from "../subprocess/worker-client";
 import { daemonBrokerEndpoint, daemonRuntimeDir } from "./paths";
 import {
@@ -42,16 +42,6 @@ export interface DaemonBrokerClient {
 	readonly projectDir: string;
 	request(operation: DaemonOperation, signal?: AbortSignal): Promise<DaemonRpcResult>;
 	close(): void;
-}
-
-async function canonicalProjectDir(projectDir: string): Promise<string> {
-	const resolved = path.resolve(projectDir);
-	try {
-		return await fs.realpath(resolved);
-	} catch (error) {
-		if (isEnoent(error)) return resolved;
-		throw error;
-	}
 }
 
 async function readOrCreateToken(runtimeDir: string): Promise<string> {
@@ -298,7 +288,7 @@ export async function createDaemonBrokerClient(
 	projectDir: string,
 	options: DaemonBrokerClientOptions = {},
 ): Promise<DaemonBrokerClient> {
-	const canonical = await canonicalProjectDir(projectDir);
+	const canonical = await canonicalizePath(projectDir);
 	const runtimeDir = options.runtimeDir ?? daemonRuntimeDir(canonical);
 	const token = await readOrCreateToken(runtimeDir);
 	return new SocketDaemonClient(canonical, runtimeDir, token, options);
@@ -306,7 +296,7 @@ export async function createDaemonBrokerClient(
 
 /** Get the process-shared daemon broker client for one canonical project directory. */
 export async function daemonClientForProject(projectDir: string): Promise<DaemonBrokerClient> {
-	const canonical = await canonicalProjectDir(projectDir);
+	const canonical = await canonicalizePath(projectDir);
 	let pending = sharedClients.get(canonical);
 	if (!pending) {
 		pending = createDaemonBrokerClient(canonical);

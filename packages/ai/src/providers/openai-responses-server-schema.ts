@@ -55,6 +55,8 @@ const inputFileBlockSchema = type({
 const outputTextSchema = type({
 	type: "'output_text'",
 	text: "string",
+	// Web-search citations etc.; carried opaquely so replayed history keeps them.
+	"annotations?": type({ type: "string" }).array(),
 });
 
 const outputRefusalSchema = type({

@@ -7,6 +7,7 @@
  * the discovered token endpoint until the user approves the login.
  */
 
+import { isRecord } from "@veyyon/pi-utils";
 import * as AIError from "../../error";
 import type { FetchImpl } from "../../types";
 import { type OAuthDeviceCodePollResult, pollOAuthDeviceCodeFlow } from "./device-code";
@@ -36,10 +37,6 @@ interface XAIDeviceAuthorization {
 	verificationUriComplete: string;
 	expiresInSeconds: number;
 	intervalSeconds: number;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null;
 }
 
 /**

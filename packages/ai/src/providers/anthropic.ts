@@ -15,6 +15,7 @@ import {
 	parseJsonWithRepair,
 	parseStreamingJsonThrottled,
 	readSseEvents,
+	stripTrailingSlashes,
 } from "@veyyon/pi-utils";
 import { renderDemotedThinking } from "../dialect/demotion";
 import * as AIError from "../error";
@@ -37,6 +38,7 @@ import type {
 	StopReason,
 	StreamFunction,
 	StreamOptions,
+	TextAnnotation,
 	TextContent,
 	ThinkingContent,
 	Tool,
@@ -75,6 +77,7 @@ import type {
 	ToolInputSchema as AnthropicToolInputSchema,
 	Tool as AnthropicWireTool,
 	Usage as AnthropicWireUsage,
+	ContentBlockCitation,
 	ContentBlockParam,
 	FallbackParam,
 	MessageCreateParamsStreaming,
@@ -82,6 +85,7 @@ import type {
 	RawMessageStreamEvent,
 	TextBlockParam,
 } from "./anthropic-wire";
+import { ANTHROPIC_CITATION_TYPES } from "./anthropic-wire";
 import {
 	buildCopilotDynamicHeaders,
 	hasCopilotVisionInput,
@@ -107,7 +111,7 @@ export function normalizeAnthropicBaseUrl(baseUrl?: string): string | undefined 
 	if (!trimmed) {
 		return undefined;
 	}
-	const withoutTrailingSlashes = trimmed.replace(/\/+$/, "");
+	const withoutTrailingSlashes = stripTrailingSlashes(trimmed);
 	return withoutTrailingSlashes.endsWith("/v1") ? withoutTrailingSlashes.slice(0, -3) : withoutTrailingSlashes;
 }
 
@@ -2157,6 +2161,9 @@ const streamAnthropicOnce = (
 								const block: Block = {
 									type: "text",
 									text: "",
+									...(event.content_block.citations?.length
+										? { annotations: event.content_block.citations as TextAnnotation[] }
+										: {}),
 									[kStreamingBlockIndex]: event.index,
 								};
 								output.content.push(block);
@@ -2293,6 +2300,19 @@ const streamAnthropicOnce = (
 								streamedReplayUnsafeContent = true;
 								block.thinkingSignature = block.thinkingSignature || "";
 								block.thinkingSignature += event.delta.signature;
+							} else if (event.delta.type === "citations_delta") {
+								if (openBlock.kind !== "text" || block?.type !== "text") {
+									reportAnthropicEnvelopeAnomaly(`received citations_delta for ${openBlock.kind} block`);
+									continue;
+								}
+								// Web-search / document citations ride the text block verbatim
+								// (TextAnnotation is an opaque type-discriminated pass-through).
+								block.annotations ??= [];
+								block.annotations.push(event.delta.citation as TextAnnotation);
+							} else {
+								reportAnthropicEnvelopeAnomaly(
+									`unhandled content_block_delta type ${(event.delta as { type: string }).type}`,
+								);
 							}
 						} else if (event.type === "content_block_stop") {
 							if (sawTerminalEnvelope) {
@@ -2327,8 +2347,11 @@ const streamAnthropicOnce = (
 							const delta = event.delta;
 							const rawStopReason = delta?.stop_reason;
 							if (rawStopReason) {
-								output.stopReason = mapStopReason(rawStopReason);
+								output.stopReason = mapAnthropicStopReason(rawStopReason);
 								sawTerminalEnvelope = true;
+							}
+							if (delta?.stop_sequence != null) {
+								output.stopSequence = delta.stop_sequence;
 							}
 							if (output.stopReason === "error") {
 								const stopDetails = delta?.stop_details;
@@ -3490,9 +3513,13 @@ export function convertAnthropicMessages(
 			for (const block of msg.content) {
 				if (block.type === "text") {
 					if (block.text.trim().length === 0) continue;
+					// Replay only Anthropic-shaped citations; annotations sourced from
+					// other providers (url_citation, …) would fail Anthropic validation.
+					const citations = (block.annotations ?? []).filter(a => ANTHROPIC_CITATION_TYPES.has(a.type));
 					blocks.push({
 						type: "text",
 						text: block.text.toWellFormed(),
+						...(citations.length ? { citations: citations as ContentBlockCitation[] } : {}),
 					});
 				} else if (block.type === "thinking") {
 					if (hasSignedThinking) {
@@ -3923,7 +3950,7 @@ function hasAnthropicUnionType(schema: Record<string, unknown>): boolean {
 	return Array.isArray(schema.type) || Array.isArray(schema.anyOf);
 }
 
-function hasNullVariant(schema: Record<string, unknown>): boolean {
+function schemaHasNullVariant(schema: Record<string, unknown>): boolean {
 	if (Array.isArray(schema.type) && schema.type.includes("null")) return true;
 	return Array.isArray(schema.anyOf) && schema.anyOf.some(variant => isRecord(variant) && variant.type === "null");
 }
@@ -3948,7 +3975,7 @@ function hasAnthropicSchemaDefiningKeyword(schema: Record<string, unknown>): boo
 
 function makeAnthropicNullableSchema(schema: unknown, budget: AnthropicStrictBudget): unknown | undefined {
 	if (isRecord(schema)) {
-		if (hasNullVariant(schema)) return schema;
+		if (schemaHasNullVariant(schema)) return schema;
 		if (Array.isArray(schema.anyOf)) {
 			return { ...schema, anyOf: [...schema.anyOf, { type: "null" }] };
 		}
@@ -4201,7 +4228,7 @@ function convertTools(
 	});
 }
 
-function mapStopReason(reason: string): StopReason {
+function mapAnthropicStopReason(reason: string): StopReason {
 	switch (reason) {
 		case "end_turn":
 			return "stop";

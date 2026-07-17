@@ -24,7 +24,7 @@ interface LoadedModel {
 let loaded: Promise<LoadedModel> | null = null;
 let loadedKey = "";
 
-async function loadModel(model: MnemopiEmbedModelId, cacheDir: string | undefined): Promise<LoadedModel> {
+async function loadEmbedModel(model: MnemopiEmbedModelId, cacheDir: string | undefined): Promise<LoadedModel> {
 	const { FlagEmbedding } = await loadFastembed();
 	// Cast: `model` arrives as a string from the parent (resolved by
 	// mnemopi's `fastembedModelName`). Cast to the non-CUSTOM overload's
@@ -41,7 +41,7 @@ async function loadModel(model: MnemopiEmbedModelId, cacheDir: string | undefine
 function ensureLoaded(model: MnemopiEmbedModelId, cacheDir: string | undefined): Promise<LoadedModel> {
 	const key = `${model}\u0000${cacheDir ?? ""}`;
 	if (loaded !== null && loadedKey === key) return loaded;
-	const loading = loadModel(model, cacheDir).catch(error => {
+	const loading = loadEmbedModel(model, cacheDir).catch(error => {
 		// Failed loads must not poison the cache — a retry with the same key
 		// should re-attempt the load.
 		if (loaded === loading) {

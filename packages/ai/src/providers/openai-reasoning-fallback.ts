@@ -1,4 +1,4 @@
-import { extractHttpStatusFromError } from "@veyyon/pi-utils";
+import { escapeRegExp, extractHttpStatusFromError, isRecord } from "@veyyon/pi-utils";
 import type { CapturedHttpErrorResponse } from "../utils/http-inspector";
 
 /** @internal */
@@ -62,10 +62,6 @@ export function createOpenAIReasoningEffortFallbackKey(
 	wireModelId: string | undefined,
 ): string {
 	return `${endpoint}:${baseUrl ?? ""}:${wireModelId ?? ""}`;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 /** @internal */
@@ -172,10 +168,6 @@ function isInvalidReasoningEffortError(
 		`(?:invalid|unsupported|not supported)[^\\n]*["'\`]${escapeRegExp(currentEffort)}["'\`]`,
 		"i",
 	).test(message);
-}
-
-function escapeRegExp(value: string): string {
-	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function parseKnownReasoningValues(text: string): Set<string> {

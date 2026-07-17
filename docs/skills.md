@@ -1,5 +1,9 @@
 # Skills
 
+> Operator overview: the [handbook skills page](handbook/src/features/skills.md)
+> and [skills authoring guide](handbook/src/features/skills-authoring.md). This
+> page is the full reference.
+
 Skills are file-backed capability packs discovered at startup and exposed to the model as:
 
 - lightweight metadata in the system prompt (name + description)

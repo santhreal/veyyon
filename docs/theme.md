@@ -1,5 +1,9 @@
 # Theming Reference
 
+> Operator overview (shipped themes, how to switch): the
+> [handbook themes page](handbook/src/using/themes.md). This page is the full
+> engineering reference.
+
 This document describes how theming works in the coding-agent today: schema, loading, runtime behavior, and failure modes.
 
 ## What the theme system controls

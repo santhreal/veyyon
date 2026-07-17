@@ -287,6 +287,10 @@ export interface ToolUsageStats {
 	calls: number;
 	/** Calls whose result came back with `isError`. */
 	errors: number;
+	/** Calls whose arguments were schema-repaired before execution. */
+	repaired: number;
+	/** Calls refused as unrepairable by schema repair. */
+	unrepairable: number;
 	/** Serialized tool-call argument characters. */
 	argsChars: number;
 	/** Text characters of tool results fed back into context. */

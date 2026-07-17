@@ -3,7 +3,6 @@ import { stripVTControlCharacters } from "node:util";
 import { Settings, settings } from "@veyyon/pi-coding-agent/config/settings";
 import {
 	pickWeightedTip,
-	WELCOME_COMPACT_MAX_ROWS,
 	WelcomeComponent,
 } from "@veyyon/pi-coding-agent/modes/components/welcome";
 import { initTheme, theme } from "@veyyon/pi-coding-agent/modes/theme/theme";
@@ -74,7 +73,7 @@ describe("WelcomeComponent tips", () => {
 	});
 });
 
-describe("WelcomeComponent hero layout", () => {
+describe("WelcomeComponent sunrise home layout", () => {
 	beforeAll(async () => {
 		await Settings.init({ inMemory: true });
 		await initTheme(false, "unicode", false, "titanium", "light");
@@ -84,15 +83,47 @@ describe("WelcomeComponent hero layout", () => {
 		vi.restoreAllMocks();
 	});
 
-	it("renders the tip inside the box, above the bottom border, not as a dangling line below it", () => {
+	it("renders the sun, the silver wordmark, and quiet metadata with no box rails", () => {
 		vi.spyOn(Math, "random").mockReturnValue(0.99);
 		const welcome = new WelcomeComponent("1.2.3", "claude-sonnet-4-5", "anthropic");
-		const frame = plain(welcome.render(80));
+		const lines = welcome.render(80);
+		const frame = plain(lines);
 
-		const tipIdx = frame.indexOf("Tip:");
-		const bottomBorderIdx = frame.lastIndexOf("└");
-		expect(tipIdx).toBeGreaterThan(0);
-		expect(bottomBorderIdx).toBeGreaterThan(tipIdx);
+		// The sun is present (dithered block glyphs) and the letterspaced text
+		// wordmark (the terminal's own font, not glyph art) follows it.
+		expect(frame).toContain("█");
+		expect(frame).toContain("v e y y o n");
+		// The sunrise home is an open composition: no card rails or corners.
+		for (const rail of ["│", "┌", "┐", "└", "┘"]) {
+			expect(frame).not.toContain(rail);
+		}
+		// One metadata line carries version, model, and provider together.
+		expect(frame).toContain("v1.2.3 · claude-sonnet-4-5 · anthropic");
+		expect(frame).toContain("Hashline edits that land. Your keys.");
+		// Centred: the wordmark row leads with real left margin at width 80.
+		const wordmarkRow = lines.map(line => stripVTControlCharacters(line)).find(line => line.includes("v e y y o n"));
+		expect(wordmarkRow?.match(/^ */)?.[0].length ?? 0).toBeGreaterThan(10);
+	});
+
+	it("keeps the home free of tips, menu rows, and recents — those live on /welcome", () => {
+		vi.spyOn(Math, "random").mockReturnValue(0.99);
+		const sessions = [{ name: "fix-the-parser", timeAgo: "2h ago" }];
+		const home = plain(new WelcomeComponent("1.2.3", "gpt-5", "openai", sessions).render(80));
+		expect(home).toContain("/welcome");
+		expect(home).not.toContain("Tip:");
+		expect(home).not.toContain("Resume session");
+		expect(home).not.toContain("fix-the-parser");
+
+		const full = new WelcomeComponent("1.2.3", "gpt-5", "openai", sessions, [], true);
+		const fullFrame = plain(full.render(80));
+		expect(fullFrame).toContain("Resume session");
+		expect(fullFrame).toContain("Settings");
+		expect(fullFrame).toContain("fix-the-parser");
+		expect(fullFrame).toContain("Tip:");
+		// The full page is the home plus the menu column — strictly taller.
+		expect(full.render(80).length).toBeGreaterThan(
+			new WelcomeComponent("1.2.3", "gpt-5", "openai", sessions).render(80).length,
+		);
 	});
 
 	it("renders a /login call to action instead of a dead 'Unknown' line when no model is set", () => {
@@ -106,33 +137,23 @@ describe("WelcomeComponent hero layout", () => {
 		expect(frame).not.toContain("Unknown");
 	});
 
-	it("fits the startup card in the compact height budget at every width", () => {
+	it("scales the sun with the terminal and survives narrow widths", () => {
 		vi.spyOn(Math, "random").mockReturnValue(0.99);
-		const sessions = [
-			{ name: "fix-the-parser", timeAgo: "2h ago" },
-			{ name: "theme-work", timeAgo: "1d ago" },
-			{ name: "release-prep", timeAgo: "3d ago" },
-		];
 		for (const width of [40, 60, 80, 120, 200]) {
-			const welcome = new WelcomeComponent("1.2.3", "claude-sonnet-4-5", "anthropic", sessions);
-			const lines = welcome.render(width);
-			expect(lines.length).toBeLessThanOrEqual(WELCOME_COMPACT_MAX_ROWS);
+			const frame = plain(new WelcomeComponent("1.2.3", "gpt-5", "openai").render(width));
+			expect(frame).toContain("█");
+			expect(frame).toContain("v e y y o n");
 		}
-	});
-
-	it("marks a clipped compact tip with an ellipsis instead of cutting mid-sentence", () => {
-		vi.spyOn(Math, "random").mockReturnValue(0.99);
-		// At width 40 the tip budget is ~28 columns and the shortest shipped tip is
-		// 35 chars, so every tip wraps; compact shows only the first line and must
-		// flag the cut.
-		const welcome = new WelcomeComponent("1.2.3", "gpt-5", "openai");
-		const tipLine = welcome
-			.render(40)
-			.map(line => stripVTControlCharacters(line))
-			.find(line => line.includes("Tip: "));
-		if (tipLine === undefined) throw new Error("Expected a Tip: line on the compact card");
-		const content = tipLine.replace(/[│┌┐└┘]/g, "").trimEnd();
-		expect(content.endsWith("…")).toBe(true);
+		// Under the floor the home renders nothing rather than a broken layout.
+		expect(new WelcomeComponent("1.2.3", "gpt-5", "openai").render(20)).toEqual([]);
+		// The sun field is wider on a wider terminal.
+		const sunRows = (w: number) =>
+			new WelcomeComponent("1.2.3", "gpt-5", "openai")
+				.render(w)
+				.map(line => stripVTControlCharacters(line))
+				.filter(line => line.includes("█"));
+		const widest = (rows: string[]) => Math.max(...rows.map(row => row.trimEnd().length));
+		expect(widest(sunRows(160))).toBeGreaterThan(widest(sunRows(48)));
 	});
 
 	it("carries the full selected tip on the wide full card (positive twin)", () => {
@@ -146,23 +167,6 @@ describe("WelcomeComponent hero layout", () => {
 				.split(/\s+/)
 				.at(-1) ?? "";
 		expect(plain(welcome.render(200))).toContain(lastWord);
-	});
-
-	it("points the compact card at /welcome, and the full card carries the menu and recents", () => {
-		vi.spyOn(Math, "random").mockReturnValue(0.99);
-		const sessions = [{ name: "fix-the-parser", timeAgo: "2h ago" }];
-
-		const compact = plain(new WelcomeComponent("1.2.3", "gpt-5", "openai", sessions).render(80));
-		expect(compact).toContain("/welcome");
-		expect(compact).not.toContain("Resume session");
-		expect(compact).not.toContain("fix-the-parser");
-
-		const full = new WelcomeComponent("1.2.3", "gpt-5", "openai", sessions, [], true);
-		const fullFrame = plain(full.render(80));
-		expect(fullFrame).toContain("Resume session");
-		expect(fullFrame).toContain("Settings");
-		expect(fullFrame).toContain("fix-the-parser");
-		expect(full.render(80).length).toBeGreaterThan(WELCOME_COMPACT_MAX_ROWS);
 	});
 
 	it("shows model and provider on a single info line, not two", () => {

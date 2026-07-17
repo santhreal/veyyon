@@ -175,6 +175,45 @@ describe("TUI.requestComponentRender", () => {
 		}
 	});
 
+	it("repaints shifted rows below a middle child that grew on a partial frame", async () => {
+		const term = new VirtualTerminal(40, 8, 1_000);
+		const scheduler = new StressRenderScheduler();
+		const tui = new TUI(term, undefined, { renderScheduler: scheduler });
+		const head = new CountingLines(["head-0", "head-1"]);
+		const middle = new CountingLines(["mid-0"]);
+		const tail = new CountingLines(["tail-0"]);
+		tui.addChild(head);
+		tui.addChild(middle);
+		tui.addChild(tail);
+
+		try {
+			tui.start();
+			await scheduler.drain(term);
+			expect(visible(term)).toEqual(["head-0", "head-1", "mid-0", "tail-0"]);
+			const headRenders = head.renders;
+
+			// The middle child grows: the prefix above it is skipped verbatim,
+			// while the tail below shifts down and must repaint at its new row.
+			middle.set(["mid-0", "mid-1", "mid-2"]);
+			tui.requestComponentRender(middle);
+			await scheduler.drain(term);
+
+			expect(visible(term)).toEqual(["head-0", "head-1", "mid-0", "mid-1", "mid-2", "tail-0"]);
+			expect(head.renders).toBe(headRenders);
+
+			// And shrink back: rows below shift up without ghosts.
+			middle.set(["mid-9"]);
+			tui.requestComponentRender(middle);
+			await scheduler.drain(term);
+
+			expect(visible(term)).toEqual(["head-0", "head-1", "mid-9", "tail-0"]);
+			expect(head.renders).toBe(headRenders);
+		} finally {
+			tui.stop();
+			await term.flush();
+		}
+	});
+
 	it("downgrades to a full compose when a full request shares the frame", async () => {
 		const term = new VirtualTerminal(40, 8, 1_000);
 		const scheduler = new StressRenderScheduler();

@@ -952,7 +952,7 @@ function cssRgb(rgb: Rgb): string {
 	return `rgb(${clampByte(rgb.r)}, ${clampByte(rgb.g)}, ${clampByte(rgb.b)})`;
 }
 
-function parseNumber(raw: string): number | null {
+function parseLatexNumber(raw: string): number | null {
 	const trimmed = raw.trim();
 	if (trimmed === "") return null;
 	const value = Number(trimmed.endsWith("%") ? Number(trimmed.slice(0, -1)) / 100 : trimmed);
@@ -967,7 +967,7 @@ function parseColorComponents(spec: string, expected: number): number[] | null {
 	if (parts.length !== expected) return null;
 	const values: number[] = [];
 	for (const part of parts) {
-		const value = parseNumber(part);
+		const value = parseLatexNumber(part);
 		if (value === null) return null;
 		values.push(value);
 	}
@@ -1031,7 +1031,7 @@ function rgbFromHsv(values: readonly number[], hueScale: number): string | null 
 }
 
 function rgbFromWave(spec: string): string | null {
-	const wavelength = parseNumber(spec);
+	const wavelength = parseLatexNumber(spec);
 	if (wavelength === null || wavelength < 380 || wavelength > 780) return null;
 	let r = 0;
 	let g = 0;
@@ -1118,7 +1118,7 @@ function resolveMixedColor(spec: string): string | null {
 	let current = Bun.color(first, "{rgb}");
 	if (current === null) return null;
 	for (let i = 1; i < parts.length; i += 2) {
-		const percent = parseNumber(parts[i] ?? "");
+		const percent = parseLatexNumber(parts[i] ?? "");
 		if (percent === null) return null;
 		const nextSpec = parts[i + 1] ?? "white";
 		const nextColor = normalizeCssColor(nextSpec, false);

@@ -8,6 +8,7 @@
  *   - recall query composition + truncation under a character budget
  *   - retention transcript framing
  */
+import { HAS_LETTER_OR_DIGIT_RE } from "@veyyon/pi-utils";
 
 export interface HindsightMessage {
 	role: string;
@@ -48,7 +49,8 @@ export function stripMemoryTags(content: string): string {
 // can actually match on. Punctuation/whitespace-only strings (e.g. the lone
 // `.` some providers emit for tool-call-only or thinking-only assistant turns)
 // are dropped before retain/recall touches them — see issue #1806.
-const SUBSTANTIVE_CHAR_RE = /[\p{L}\p{N}]/u;
+// ONE PLACE: predicate owned by pi-utils regex.ts.
+const SUBSTANTIVE_CHAR_RE = HAS_LETTER_OR_DIGIT_RE;
 
 /**
  * True when `content` carries at least one letter or digit. Used by retain

@@ -1,6 +1,6 @@
 import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/pi-agent-core";
 import type { ToolExample } from "@veyyon/pi-ai";
-import { prompt, untilAborted } from "@veyyon/pi-utils";
+import { prompt, stripTrailingSlashes, untilAborted } from "@veyyon/pi-utils";
 import { type } from "arktype";
 import browserDescription from "../prompts/tools/browser.md" with { type: "text" };
 import type { ToolSession } from "../sdk";
@@ -74,7 +74,7 @@ export interface BrowserToolDetails {
 function resolveBrowserKind(params: BrowserParams, session: ToolSession): BrowserKind {
 	const app = params.app;
 	if (app?.cdp_url) {
-		return { kind: "connected", cdpUrl: app.cdp_url.replace(/\/+$/, "") };
+		return { kind: "connected", cdpUrl: stripTrailingSlashes(app.cdp_url) };
 	}
 	if (app?.path) {
 		const exe = resolveToCwd(app.path, session.cwd);
@@ -272,7 +272,7 @@ export class BrowserTool implements AgentTool<typeof browserSchema, BrowserToolD
 		details.viewport = tab.info.viewport;
 		const verb = result.created ? "Opened" : "Reused";
 		const lines = [
-			`${verb} tab ${JSON.stringify(name)} on ${describeBrowser(browser)}`,
+			`${verb} tab ${JSON.stringify(name)} on ${describeBrowserHandle(browser)}`,
 			`URL: ${url}`,
 			title ? `Title: ${title}` : null,
 		].filter((l): l is string => typeof l === "string");
@@ -363,7 +363,7 @@ async function saveBrowserOutputArtifact(session: ToolSession, fullText: string)
 	}
 }
 
-function describeBrowser(handle: BrowserHandle): string {
+function describeBrowserHandle(handle: BrowserHandle): string {
 	if (!("browser" in handle)) {
 		return `cmux browser (${handle.kind.surface ?? "split"})`;
 	}

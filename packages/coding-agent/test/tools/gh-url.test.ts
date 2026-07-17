@@ -10,7 +10,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { invalidateGithubCacheForBashCommand } from "@veyyon/pi-coding-agent/tools/gh-cache-invalidation";
-import { parseIssueUrl, parsePrUrl } from "@veyyon/pi-coding-agent/tools/gh-url";
+import { parseIssueUrl, parsePrUrl, parseRunUrl } from "@veyyon/pi-coding-agent/tools/gh-url";
 import { getCached, putCached, resetForTests } from "@veyyon/pi-coding-agent/tools/github-cache";
 import { removeWithRetries } from "@veyyon/pi-utils";
 
@@ -50,6 +50,24 @@ describe("parseIssueUrl / parsePrUrl (F5)", () => {
 		expect(parseIssueUrl(undefined)).toEqual({});
 		expect(parseIssueUrl("not a url")).toEqual({});
 		expect(parsePrUrl("https://gitlab.com/o/r/pull/5")).toEqual({});
+	});
+});
+
+describe("parseRunUrl", () => {
+	it("parses Actions run URLs with the same tolerances as the PR/issue parsers", () => {
+		expect(parseRunUrl("https://github.com/owner/repo/actions/runs/77")).toEqual({ repo: "owner/repo", runId: 77 });
+		expect(parseRunUrl("https://github.com/owner/repo/actions/runs/77/job/201")).toEqual({
+			repo: "owner/repo",
+			runId: 77,
+		});
+		expect(parseRunUrl("https://github.com/owner/repo/actions/runs/77?check_suite_focus=true")).toEqual({
+			repo: "owner/repo",
+			runId: 77,
+		});
+		expect(parseRunUrl("https://GitHub.com/owner/repo/actions/runs/77")).toEqual({ repo: "owner/repo", runId: 77 });
+		expect(parseRunUrl("https://github.com/ow ner/repo/actions/runs/77")).toEqual({});
+		expect(parseRunUrl("https://github.com/owner/repo/pull/77")).toEqual({});
+		expect(parseRunUrl(undefined)).toEqual({});
 	});
 });
 

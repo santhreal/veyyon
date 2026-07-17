@@ -1,3 +1,4 @@
+import { errorMessage } from "@veyyon/pi-utils";
 import type { TodoPhase } from "../../tools/todo";
 import {
 	applyOpsToPhases,
@@ -8,7 +9,7 @@ import {
 	USER_TODO_EDIT_CUSTOM_TYPE,
 } from "../../tools/todo";
 import type { ParsedSlashCommand, SlashCommandResult, SlashCommandRuntime } from "../types";
-import { commandConsumed, errorMessage, parseSubcommand, usage } from "./parse";
+import { commandConsumed, parseSubcommand, usage } from "./parse";
 
 type TodoMutationVerb = "done" | "drop" | "rm";
 
@@ -17,7 +18,8 @@ interface TodoTaskMatch {
 	phase: TodoPhase;
 }
 
-function tokenize(input: string): string[] {
+/** Split command args on whitespace, respecting double-quoted strings and backslash escapes. */
+export function tokenizeQuotedArgs(input: string): string[] {
 	const tokens: string[] = [];
 	let current = "";
 	let inQuote = false;
@@ -52,13 +54,13 @@ function titleCaseWords(text: string): string {
 		.join(" ");
 }
 
-function titleCaseSentence(text: string): string {
+export function titleCaseSentence(text: string): string {
 	const trimmed = text.trim();
 	if (!trimmed) return trimmed;
 	return trimmed[0].toUpperCase() + trimmed.slice(1);
 }
 
-function findPhaseFuzzy(phases: TodoPhase[], query: string): TodoPhase | undefined {
+export function findPhaseFuzzy(phases: TodoPhase[], query: string): TodoPhase | undefined {
 	const normalizedQuery = query.trim().toLowerCase();
 	if (!normalizedQuery) return undefined;
 	const exact = phases.find(phase => phase.name.toLowerCase() === normalizedQuery);
@@ -70,7 +72,7 @@ function findPhaseFuzzy(phases: TodoPhase[], query: string): TodoPhase | undefin
 	return undefined;
 }
 
-function findTaskFuzzy(phases: TodoPhase[], query: string): TodoTaskMatch | undefined {
+export function findTaskFuzzy(phases: TodoPhase[], query: string): TodoTaskMatch | undefined {
 	const normalizedQuery = query.trim().toLowerCase();
 	if (!normalizedQuery) return undefined;
 	for (const phase of phases) {
@@ -156,7 +158,7 @@ async function handleTodoImportCommand(restArgs: string, runtime: SlashCommandRu
 }
 
 async function handleTodoAppendCommand(restArgs: string, runtime: SlashCommandRuntime): Promise<SlashCommandResult> {
-	const tokens = tokenize(restArgs);
+	const tokens = tokenizeQuotedArgs(restArgs);
 	if (tokens.length === 0) return usage("Usage: /todo append [<phase>] <task...>", runtime);
 
 	const current = currentPhases(runtime);
@@ -186,7 +188,7 @@ async function handleTodoAppendCommand(restArgs: string, runtime: SlashCommandRu
 async function handleTodoStartCommand(restArgs: string, runtime: SlashCommandRuntime): Promise<SlashCommandResult> {
 	if (!restArgs) return usage("Usage: /todo start <task>", runtime);
 	const current = currentPhases(runtime);
-	const query = tokenize(restArgs).join(" ") || restArgs;
+	const query = tokenizeQuotedArgs(restArgs).join(" ") || restArgs;
 	const hit = findTaskFuzzy(current, query);
 	if (!hit) return usage(`No task matched "${restArgs}". Use /todo to list current tasks.`, runtime);
 	const { phases } = applyOpsToPhases(current, [{ op: "start", task: hit.task.content }]);

@@ -15,7 +15,7 @@ interface SwiftLintViolation {
 	type: string;
 }
 
-function parseSeverity(severity: string): DiagnosticSeverity {
+function parseSwiftlintSeverity(severity: string): DiagnosticSeverity {
 	switch (severity) {
 		case "Error":
 			return 1;
@@ -101,7 +101,7 @@ export class SwiftLintClient implements LinterClient {
 						start: { line, character },
 						end: { line, character },
 					},
-					severity: parseSeverity(v.severity),
+					severity: parseSwiftlintSeverity(v.severity),
 					message: v.reason,
 					source: "swiftlint",
 					code: v.rule_id,

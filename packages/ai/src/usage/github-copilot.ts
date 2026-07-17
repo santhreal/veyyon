@@ -18,6 +18,8 @@ import type {
 	UsageWindow,
 } from "../usage";
 import { isRecord } from "../utils";
+import { fetchJsonOrThrow } from "../utils/fetch-json";
+import { usageStatusFromRemainingFraction } from "./shared";
 
 type CopilotQuotaDetail = {
 	entitlement: number;
@@ -72,7 +74,7 @@ function resolveGitHubApiBaseUrl(params: UsageFetchParams): string {
 	return `https://api.${enterpriseUrl}`;
 }
 
-function buildWindow(resetDate: string | undefined): UsageWindow | undefined {
+function buildCopilotMonthlyWindow(resetDate: string | undefined): UsageWindow | undefined {
 	if (!resetDate) return undefined;
 	const resetAt = Date.parse(resetDate);
 	if (!Number.isFinite(resetAt)) return undefined;
@@ -103,10 +105,7 @@ function buildAmount(used: number | undefined, limit: number | undefined, unit: 
 
 function deriveStatus(amount: UsageAmount, unlimited: boolean): UsageStatus {
 	if (unlimited) return "ok";
-	if (amount.remainingFraction === undefined) return "unknown";
-	if (amount.remainingFraction <= 0) return "exhausted";
-	if (amount.remainingFraction <= 0.1) return "warning";
-	return "ok";
+	return usageStatusFromRemainingFraction(amount.remainingFraction);
 }
 
 function parseQuotaDetail(value: unknown): CopilotQuotaDetail | null {
@@ -139,15 +138,6 @@ function parseQuotaDetail(value: unknown): CopilotQuotaDetail | null {
 	};
 }
 
-async function fetchJson(ctx: UsageFetchContext, url: string, init: RequestInit): Promise<unknown> {
-	const response = await ctx.fetch(url, init);
-	if (!response.ok) {
-		const text = await response.text();
-		throw new AIError.ProviderHttpError(`${response.status} ${response.statusText}: ${text}`, response.status);
-	}
-	return response.json();
-}
-
 async function resolveGitHubUsername(
 	ctx: UsageFetchContext,
 	baseUrl: string,
@@ -155,7 +145,7 @@ async function resolveGitHubUsername(
 	signal?: AbortSignal,
 ): Promise<string | undefined> {
 	try {
-		const data = await fetchJson(ctx, `${baseUrl}/user`, {
+		const data = await fetchJsonOrThrow(ctx.fetch, `${baseUrl}/user`, {
 			headers: {
 				Accept: "application/vnd.github+json",
 				Authorization: `Bearer ${token}`,
@@ -182,7 +172,7 @@ async function fetchInternalUsage(
 		Authorization: `Bearer ${token}`,
 		...OPENCODE_HEADERS,
 	};
-	const data = await fetchJson(ctx, `${githubApiBaseUrl}/copilot_internal/user`, { headers, signal });
+	const data = await fetchJsonOrThrow(ctx.fetch, `${githubApiBaseUrl}/copilot_internal/user`, { headers, signal });
 	if (!isRecord(data)) throw new AIError.ProviderHttpError("Invalid Copilot usage response", 200);
 	return data as CopilotUsageResponse;
 }
@@ -194,8 +184,8 @@ async function fetchBillingUsage(
 	token: string,
 	signal?: AbortSignal,
 ): Promise<BillingUsageResponse> {
-	const data = await fetchJson(
-		ctx,
+	const data = await fetchJsonOrThrow(
+		ctx.fetch,
 		`${baseUrl}/users/${encodeURIComponent(username)}/settings/billing/premium_request/usage`,
 		{
 			headers: {
@@ -247,7 +237,7 @@ function normalizeQuotaSnapshots(
 	data: CopilotUsageResponse,
 	accountId?: string,
 ): { limits: UsageLimit[]; window?: UsageWindow } {
-	const window = buildWindow(data.quota_reset_date);
+	const window = buildCopilotMonthlyWindow(data.quota_reset_date);
 	const snapshots = data.quota_snapshots ?? {};
 	const limits: UsageLimit[] = [];
 	const premium = parseQuotaDetail(snapshots.premium_interactions);

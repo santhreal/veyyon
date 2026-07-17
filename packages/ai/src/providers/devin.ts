@@ -28,7 +28,7 @@ import {
 	StopReason,
 } from "@veyyon/pi-catalog/discovery/devin-gen/exa/codeium_common_pb/codeium_common_pb";
 import { calculateCost } from "@veyyon/pi-catalog/models";
-import { logger, parseStreamingJson, parseStreamingJsonThrottled } from "@veyyon/pi-utils";
+import { logger, parseStreamingJson, parseStreamingJsonThrottled, stripTrailingSlashes } from "@veyyon/pi-utils";
 import * as AIError from "../error";
 import type {
 	Api,
@@ -152,7 +152,7 @@ export const streamDevin: StreamFunction<"devin-agent"> = (
 
 		try {
 			const fetchImpl = options?.fetch ?? fetch;
-			const baseUrl = (model.baseUrl || DEVIN_API_URL).replace(/\/+$/, "");
+			const baseUrl = stripTrailingSlashes(model.baseUrl || DEVIN_API_URL);
 			const apiKey = normalizeDevinSessionToken(options?.apiKey);
 			const auth = await fetchDevinAuthMetadata(apiKey, baseUrl, fetchImpl, options?.signal);
 			const chatBaseUrl = auth.baseUrl ?? baseUrl;
@@ -368,7 +368,7 @@ export const streamDevin: StreamFunction<"devin-agent"> = (
 	return stream;
 };
 
-function normalizeDevinSessionToken(apiKey: string | undefined): string {
+export function normalizeDevinSessionToken(apiKey: string | undefined): string {
 	if (!apiKey) return "";
 	return apiKey.startsWith(DEVIN_SESSION_TOKEN_PREFIX) ? apiKey : `${DEVIN_SESSION_TOKEN_PREFIX}${apiKey}`;
 }
@@ -414,7 +414,10 @@ async function fetchDevinAuthMetadata(
 		});
 	}
 	const customBaseUrl = decoded.customApiServerUrl.trim();
-	return { userJwt: decoded.userJwt, ...(customBaseUrl ? { baseUrl: customBaseUrl.replace(/\/+$/, "") } : undefined) };
+	return {
+		userJwt: decoded.userJwt,
+		...(customBaseUrl ? { baseUrl: stripTrailingSlashes(customBaseUrl) } : undefined),
+	};
 }
 
 function decodeDevinUserJwtResponse(payload: Uint8Array) {

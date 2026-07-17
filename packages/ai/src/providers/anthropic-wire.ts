@@ -40,6 +40,7 @@ export type ImageSource = Base64ImageSource | URLImageSource | FileImageSource;
 export type TextBlockParam = {
 	type: "text";
 	text: string;
+	citations?: ContentBlockCitation[] | null;
 	cache_control?: CacheControlEphemeral | null;
 };
 
@@ -272,9 +273,25 @@ export type ResponseMessage = {
 
 // ─── Stream events ──────────────────────────────────────────────────────────
 
+/**
+ * A citation attached to a text block (web search results, document
+ * citations). Shape varies by `type` (`web_search_result_location`,
+ * `char_location`, `page_location`, …); carried opaquely and losslessly.
+ */
+export type ContentBlockCitation = { type: string } & Record<string, unknown>;
+
+/** Citation `type` values the Anthropic API accepts back on request text blocks. */
+export const ANTHROPIC_CITATION_TYPES: ReadonlySet<string> = new Set([
+	"char_location",
+	"page_location",
+	"content_block_location",
+	"web_search_result_location",
+	"search_result_location",
+]);
+
 /** `content_block` payload carried by `content_block_start`. */
 export type ResponseContentBlock =
-	| { type: "text"; text: string }
+	| { type: "text"; text: string; citations?: ContentBlockCitation[] | null }
 	| { type: "thinking"; thinking: string; signature?: string }
 	| { type: "redacted_thinking"; data: string }
 	| { type: "tool_use"; id: string; name: string; input?: Record<string, unknown> | null }
@@ -284,7 +301,8 @@ export type ContentBlockDelta =
 	| { type: "text_delta"; text: string }
 	| { type: "input_json_delta"; partial_json: string }
 	| { type: "thinking_delta"; thinking: string }
-	| { type: "signature_delta"; signature: string };
+	| { type: "signature_delta"; signature: string }
+	| { type: "citations_delta"; citation: ContentBlockCitation };
 
 export type StopDetails = {
 	type: string;

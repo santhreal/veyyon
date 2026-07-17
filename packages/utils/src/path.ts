@@ -1,3 +1,8 @@
+import * as fs from "node:fs/promises";
+import * as os from "node:os";
+import * as path from "node:path";
+import { isEnoent } from "./fs-error";
+
 const WINDOWS_DRIVE_EXTENDED_PREFIX = /^\\\\[?]\\([A-Za-z]:[\\/].*)$/;
 const WINDOWS_UNC_EXTENDED_PREFIX = /^\\\\[?]\\UNC[\\/]([^\\/]+)[\\/](.+)$/i;
 const WINDOWS_DRIVE_EXTENDED_FORWARD_PREFIX = /^\/\/[?]\/([A-Za-z]:\/.*)$/;
@@ -25,4 +30,32 @@ export function stripWindowsExtendedLengthPathPrefix(
 	if (forwardDriveMatch) return forwardDriveMatch[1];
 
 	return filePath;
+}
+
+/**
+ * Expand a leading `~` to the home directory: bare `~`, `~/x`, `~\x`, and the
+ * historical `~x` (joined under home) all expand; anything else is returned
+ * unchanged.
+ */
+export function expandTilde(filePath: string, home?: string): string {
+	const h = home ?? os.homedir();
+	if (filePath === "~") return h;
+	if (filePath.startsWith("~/") || filePath.startsWith("~\\")) {
+		return h + filePath.slice(1);
+	}
+	if (filePath.startsWith("~")) {
+		return path.join(h, filePath.slice(1));
+	}
+	return filePath;
+}
+
+/** `fs.realpath` of the resolved path, falling back to the resolved path when it does not exist yet. */
+export async function canonicalizePath(target: string): Promise<string> {
+	const resolved = path.resolve(target);
+	try {
+		return await fs.realpath(resolved);
+	} catch (error) {
+		if (isEnoent(error)) return resolved;
+		throw error;
+	}
 }

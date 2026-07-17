@@ -77,11 +77,11 @@ export async function initTelemetryExport(): Promise<void> {
 		return;
 	}
 
-	initPromise = registerProvider();
+	initPromise = registerTelemetryProvider();
 	return initPromise;
 }
 
-async function registerProvider(): Promise<void> {
+async function registerTelemetryProvider(): Promise<void> {
 	const [
 		{ AsyncLocalStorageContextManager },
 		{ OTLPTraceExporter },

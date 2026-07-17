@@ -7,7 +7,7 @@ import { Settings } from "@veyyon/pi-coding-agent/config/settings";
 import { startMemoryStartupTask } from "@veyyon/pi-coding-agent/memories";
 import {
 	claimStage1Jobs,
-	clearMemoryData,
+	clearMemoryTables,
 	closeMemoryDb,
 	enqueueGlobalWatermark,
 	markGlobalPhase2Failed,
@@ -256,7 +256,7 @@ describe("memories/storage", () => {
 		expect(rows).toEqual([{ id: "rollout-header-id", cwd: PROJECT_CWD }]);
 	});
 
-	test("clearMemoryData removes thread/output/job state", () => {
+	test("clearMemoryTables removes thread/output/job state", () => {
 		const db = openMemoryDb(dbPath);
 		upsertThreads(db, [
 			{
@@ -275,7 +275,7 @@ describe("memories/storage", () => {
 			"INSERT INTO jobs (kind, job_key, status, retry_remaining, input_watermark, last_success_watermark) VALUES (?, ?, ?, ?, ?, ?)",
 		).run("some_other_job", "x", "pending", 1, 0, 0);
 
-		clearMemoryData(db);
+		clearMemoryTables(db);
 
 		const threadCount = db.prepare("SELECT COUNT(*) AS count FROM threads").get() as { count: number };
 		const outputCount = db.prepare("SELECT COUNT(*) AS count FROM stage1_outputs").get() as { count: number };

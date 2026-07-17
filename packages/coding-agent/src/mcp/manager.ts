@@ -108,10 +108,6 @@ function trackPromise<T>(promise: Promise<T>): TrackedPromise<T> {
 	return tracked;
 }
 
-function delay(ms: number): Promise<void> {
-	return Bun.sleep(ms);
-}
-
 /**
  * Stable, total ordering on MCP tools by name.
  *
@@ -512,7 +508,7 @@ export class MCPManager {
 		if (connectionTasks.length > 0) {
 			await Promise.race([
 				Promise.allSettled(connectionTasks.map(task => task.tracked.promise)),
-				delay(STARTUP_TIMEOUT_MS),
+				Bun.sleep(STARTUP_TIMEOUT_MS),
 			]);
 
 			const cachedTools = new Map<string, MCPToolDefinition[]>();
@@ -1364,20 +1360,4 @@ export class MCPManager {
 
 		return resolved;
 	}
-}
-
-/**
- * Create an MCP manager and discover servers.
- * Convenience function for quick setup.
- */
-export async function createMCPManager(
-	cwd: string,
-	options?: MCPDiscoverOptions,
-): Promise<{
-	manager: MCPManager;
-	result: MCPLoadResult;
-}> {
-	const manager = new MCPManager(cwd);
-	const result = await manager.discoverAndConnect(options);
-	return { manager, result };
 }

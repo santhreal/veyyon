@@ -26,6 +26,7 @@
  */
 
 import type { AuthStorage, FetchImpl } from "@veyyon/pi-ai";
+import { stripTrailingSlashes } from "@veyyon/pi-utils";
 
 import { settings } from "../../../config/settings";
 import type { SearchResponse, SearchSource } from "../../../web/search/types";
@@ -151,7 +152,7 @@ function findAuth(): SearXNGAuth | null {
 }
 
 /** Build the search URL and headers for a SearXNG request */
-function buildRequest(
+function buildSearxngRequest(
 	endpoint: string,
 	params: {
 		query: string;
@@ -163,7 +164,7 @@ function buildRequest(
 	},
 	auth: SearXNGAuth | null,
 ): { url: URL; headers: Record<string, string> } {
-	const base = endpoint.replace(/\/+$/, "");
+	const base = stripTrailingSlashes(endpoint);
 	const url = new URL(`${base}/search`);
 
 	url.searchParams.set("q", params.query);
@@ -211,7 +212,7 @@ async function callSearXNGSearch(
 	},
 	auth: SearXNGAuth | null,
 ): Promise<SearXNGResponse> {
-	const { url, headers } = buildRequest(endpoint, params, auth);
+	const { url, headers } = buildSearxngRequest(endpoint, params, auth);
 
 	const response = await (params.fetch ?? fetch)(url, {
 		headers,

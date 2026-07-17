@@ -4,6 +4,7 @@ import { initBeam } from "@veyyon/pi-mnemopi/core/beam";
 import * as embeddings from "@veyyon/pi-mnemopi/core/embeddings";
 import {
 	clusterBySimilarity,
+	computeHarmonyScore,
 	cosineSimilarity,
 	embed,
 	getResonanceLog,
@@ -90,6 +91,43 @@ describe("SHMR embedding integration", () => {
 		} finally {
 			db.close();
 		}
+	});
+});
+
+describe("SHMR embedding-space identity", () => {
+	it("never ranks stored provider vectors against hash embeddings: outage re-embeds the whole pass in hash space", async () => {
+		// Provider outage while one item carries a stored provider vector and the
+		// other needs a fresh embedding. Cross-space cosine would keep these two
+		// IDENTICAL texts apart (the old silent-mix bug); one-space re-embedding
+		// must cluster them.
+		stubNoProvider();
+		const clusters = await clusterBySimilarity(
+			[
+				{ object: "dark mode preference", embedding: new Float32Array([1, 0, 0]) },
+				{ object: "dark mode preference" },
+				{ object: "unrelated database migration" },
+			],
+			0.9,
+		);
+		expect(clusters.map(cluster => cluster.length).sort()).toEqual([1, 2]);
+		const pair = clusters.find(cluster => cluster.length === 2);
+		expect(pair?.map(item => item.object)).toEqual(["dark mode preference", "dark mode preference"]);
+	});
+
+	it("computes harmony scores with items and beliefs in one space when the provider drops mid-pass", async () => {
+		// Items carry provider vectors; the belief batch hash-embeds (outage).
+		// A cross-space cosine gives a garbage ~0 score for a belief that
+		// restates the cluster; the one-space recompute must score it > 0.
+		stubNoProvider();
+		const cluster = [
+			{ subject: "user", predicate: "prefers", object: "dark mode", embedding: new Float32Array([1, 0, 0]) },
+			{ subject: "user", predicate: "prefers", object: "dark mode", embedding: new Float32Array([1, 0, 0]) },
+		];
+		const score = await computeHarmonyScore(
+			[{ subject: "user", predicate: "prefers", object: "dark mode", confidence: 1 }],
+			cluster,
+		);
+		expect(score).toBeGreaterThan(0.5);
 	});
 });
 

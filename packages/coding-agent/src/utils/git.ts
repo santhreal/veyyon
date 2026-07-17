@@ -1,14 +1,19 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { $which, hasFsCode, isEisdir, isEnoent, isEnotdir, Snowflake } from "@veyyon/pi-utils";
-import type { Subprocess } from "bun";
 import {
-	parseDiffHunks as parseCommitDiffHunks,
-	parseFileDiffs,
-	parseFileHunks,
-	parseNumstat,
-} from "../commit/git/diff";
+	$which,
+	commandFailureMessage,
+	ensureCommandAvailable,
+	hasFsCode,
+	isEisdir,
+	isEnoent,
+	isEnotdir,
+	Snowflake,
+	trimmedNonEmptyLines,
+} from "@veyyon/pi-utils";
+import type { Subprocess } from "bun";
+import { parseCommitDiffHunks, parseFileDiffs, parseFileHunks, parseNumstat } from "../commit/git/diff";
 import type { FileDiff, FileHunks, NumstatEntry } from "../commit/types";
 import { ToolAbortError, ToolError, throwIfAborted } from "../tools/tool-errors";
 
@@ -165,7 +170,7 @@ export class GitCommandError extends Error {
 	readonly result: GitCommandResult;
 
 	constructor(args: readonly string[], result: GitCommandResult) {
-		super(formatCommandFailure(args, result));
+		super(commandFailureMessage("git", args, result));
 		this.name = "GitCommandError";
 		this.args = [...args];
 		this.result = result;
@@ -382,23 +387,6 @@ function buildGitEnv(overrides?: Record<string, string | undefined>): Record<str
 	};
 }
 
-function ensureAvailable(): void {
-	if (!$which("git")) {
-		throw new Error("git is not installed.");
-	}
-}
-
-function formatCommandFailure(
-	args: readonly string[],
-	result: Pick<GitCommandResult, "exitCode" | "stdout" | "stderr">,
-): string {
-	const stderr = result.stderr.trim();
-	if (stderr) return stderr;
-	const stdout = result.stdout.trim();
-	if (stdout) return stdout;
-	return `git ${args.join(" ")} failed with exit code ${result.exitCode}`;
-}
-
 async function git(cwd: string, args: readonly string[], options: CommandOptions = {}): Promise<GitCommandResult> {
 	const commandArgs = withShortLivedGitConfig(options.readOnly ? withNoOptionalLocks(args) : [...args]);
 	const child = Bun.spawn(["git", ...commandArgs], {
@@ -443,7 +431,7 @@ async function runChecked(
 	args: readonly string[],
 	options: CommandOptions = {},
 ): Promise<GitCommandResult> {
-	ensureAvailable();
+	ensureCommandAvailable("git");
 	const result = await git(cwd, args, options);
 	if (result.exitCode !== 0) {
 		throw new GitCommandError(args, result);
@@ -464,7 +452,7 @@ async function tryText(
 	args: readonly string[],
 	options: CommandOptions = {},
 ): Promise<string | undefined> {
-	ensureAvailable();
+	ensureCommandAvailable("git");
 	const result = await git(cwd, args, options);
 	if (result.exitCode !== 0) return undefined;
 	return result.stdout;
@@ -515,13 +503,6 @@ export async function withRepoLock<T>(cwd: string, fn: () => Promise<T>, signal?
 	}
 }
 
-function splitLines(text: string): string[] {
-	return text
-		.split("\n")
-		.map(line => line.trim())
-		.filter(Boolean);
-}
-
 function trimScalar(text: string | undefined): string | undefined {
 	const trimmed = text?.trim();
 	return trimmed || undefined;
@@ -531,7 +512,7 @@ function trimScalar(text: string | undefined): string | undefined {
 // Internal: Argument builders
 // ════════════════════════════════════════════════════════════════════════════
 
-function buildDiffArgs(options: DiffOptions): string[] {
+function buildGitDiffArgs(options: DiffOptions): string[] {
 	const args = ["diff"];
 	if (options.binary) args.push("--binary");
 	if (options.cached) args.push("--cached");
@@ -886,7 +867,7 @@ async function resolveHeadStateReftable(repository: GitRepository, signal?: Abor
 }
 
 function resolveHeadStateReftableSync(repository: GitRepository): GitHeadState | null {
-	ensureAvailable();
+	ensureCommandAvailable("git");
 	const symArgs = withShortLivedGitConfig(withNoOptionalLocks(["symbolic-ref", "HEAD"]));
 	const symResult = Bun.spawnSync(["git", ...symArgs], {
 		cwd: repository.repoRoot,
@@ -929,7 +910,7 @@ function resolveHeadStateReftableSync(repository: GitRepository): GitHeadState |
 
 function readRefSync(repository: GitRepository, targetRef: string): string | null {
 	if (isReftableRepoSync(repository)) {
-		ensureAvailable();
+		ensureCommandAvailable("git");
 		const symArgs = withShortLivedGitConfig(withNoOptionalLocks(["symbolic-ref", targetRef]));
 		const symResult = Bun.spawnSync(["git", ...symArgs], {
 			cwd: repository.repoRoot,
@@ -1142,13 +1123,6 @@ function validateHunkSelectionsFromMap(
 	return errors;
 }
 
-export function validateHunkSelections(
-	rawDiff: string,
-	selections: readonly HunkSelection[],
-): HunkSelectionValidationError[] {
-	return createHunkSelectionValidator(rawDiff)(selections);
-}
-
 function parseStatusPorcelain(text: string): GitStatusSummary {
 	let staged = 0;
 	let unstaged = 0;
@@ -1174,7 +1148,7 @@ function parseStatusPorcelain(text: string): GitStatusSummary {
 /** Run `git diff` with the given options. Returns raw diff text. */
 export const diff = Object.assign(
 	async function diff(cwd: string, options: DiffOptions = {}): Promise<string> {
-		const args = buildDiffArgs(options);
+		const args = buildGitDiffArgs(options);
 		if (options.allowFailure) {
 			return (await git(cwd, args, { env: options.env, readOnly: true, signal: options.signal })).stdout;
 		}
@@ -1186,7 +1160,7 @@ export const diff = Object.assign(
 			cwd: string,
 			options: Pick<DiffOptions, "cached" | "files" | "signal"> = {},
 		): Promise<string[]> {
-			return splitLines(await diff(cwd, { ...options, nameOnly: true }));
+			return trimmedNonEmptyLines(await diff(cwd, { ...options, nameOnly: true }));
 		},
 		/** Parsed per-file add/remove counts. */
 		async numstat(cwd: string, options: Pick<DiffOptions, "cached" | "signal"> = {}): Promise<NumstatEntry[]> {
@@ -1423,11 +1397,13 @@ export async function commitDetails(cwd: string, revision: string, signal?: Abor
 export const log = {
 	/** Recent commit subjects (one-line each). */
 	async subjects(cwd: string, count: number, signal?: AbortSignal): Promise<string[]> {
-		return splitLines(await runText(cwd, ["log", `-n${count}`, "--pretty=format:%s"], { readOnly: true, signal }));
+		return trimmedNonEmptyLines(
+			await runText(cwd, ["log", `-n${count}`, "--pretty=format:%s"], { readOnly: true, signal }),
+		);
 	},
 	/** Recent commits as `<short-sha> <subject>` onelines. */
 	async onelines(cwd: string, count: number, signal?: AbortSignal): Promise<string[]> {
-		return splitLines(
+		return trimmedNonEmptyLines(
 			await runText(cwd, ["log", `-${count}`, "--oneline", "--no-decorate"], { readOnly: true, signal }),
 		);
 	},
@@ -1436,7 +1412,9 @@ export const log = {
 export const revList = {
 	/** Commits in `base..head`, oldest first. */
 	async range(cwd: string, base: string, head: string, signal?: AbortSignal): Promise<string[]> {
-		return splitLines(await runText(cwd, ["rev-list", "--reverse", `${base}..${head}`], { readOnly: true, signal }));
+		return trimmedNonEmptyLines(
+			await runText(cwd, ["rev-list", "--reverse", `${base}..${head}`], { readOnly: true, signal }),
+		);
 	},
 };
 
@@ -1510,7 +1488,7 @@ export const branch = {
 		const args = ["branch"];
 		if (options.all) args.push("-a");
 		args.push("--format=%(refname:short)");
-		return splitLines(await runText(cwd, args, { readOnly: true, signal: options.signal }));
+		return trimmedNonEmptyLines(await runText(cwd, args, { readOnly: true, signal: options.signal }));
 	},
 };
 
@@ -1521,7 +1499,7 @@ export const branch = {
 export const remote = {
 	/** List remote names. */
 	async list(cwd: string, signal?: AbortSignal): Promise<string[]> {
-		return splitLines(await runText(cwd, ["remote"], { readOnly: true, signal }));
+		return trimmedNonEmptyLines(await runText(cwd, ["remote"], { readOnly: true, signal }));
 	},
 
 	/** Get the URL for a remote. */
@@ -1574,7 +1552,7 @@ export const ref = {
 
 	/** Tags pointing at a ref. */
 	async tags(cwd: string, refName = "HEAD", signal?: AbortSignal): Promise<string[]> {
-		return splitLines(
+		return trimmedNonEmptyLines(
 			await runText(
 				cwd,
 				[
@@ -1755,7 +1733,7 @@ export const cherryPick = Object.assign(
 export const stash = {
 	/** Stash working tree + index changes. Returns true when git created a new stash entry. */
 	async push(cwd: string, message?: string): Promise<boolean> {
-		ensureAvailable();
+		ensureCommandAvailable("git");
 		const previousStash = await ref.resolve(cwd, "refs/stash");
 		const args = ["stash", "push", "--include-untracked"];
 		if (message) args.push("-m", message);
@@ -1839,7 +1817,7 @@ export const stash = {
 // ════════════════════════════════════════════════════════════════════════════
 
 export async function clone(url: string, targetDir: string, options: CloneOptions = {}): Promise<void> {
-	ensureAvailable();
+	ensureCommandAvailable("git");
 	const absoluteTarget = path.resolve(targetDir);
 	await fs.promises.mkdir(path.dirname(absoluteTarget), { recursive: true });
 
@@ -1930,7 +1908,7 @@ export const ls = {
 		const args = ["ls-files"];
 		if (options.others) args.push("--others");
 		if (options.excludeStandard) args.push("--exclude-standard");
-		return splitLines(await runText(cwd, args, { readOnly: true, signal: options.signal }));
+		return trimmedNonEmptyLines(await runText(cwd, args, { readOnly: true, signal: options.signal }));
 	},
 
 	/** List untracked files (excludes ignored). */
@@ -1952,7 +1930,7 @@ export const ls = {
 			readOnly: true,
 			signal,
 		});
-		return splitLines(output.stdout);
+		return trimmedNonEmptyLines(output.stdout);
 	},
 };
 
@@ -2178,3 +2156,12 @@ export const github = {
 		return result.stdout;
 	},
 };
+
+/** Current branch name, or "HEAD" when detached or when git state can't be read. */
+export async function currentBranchOrHead(cwd: string): Promise<string> {
+	try {
+		return (await branch.current(cwd)) ?? "HEAD";
+	} catch {
+		return "HEAD";
+	}
+}

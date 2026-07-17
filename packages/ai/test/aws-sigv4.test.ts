@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { formatAmzDate, getSigningKey, signRequest, toHex } from "@veyyon/pi-ai/providers/aws-sigv4";
+import { formatAmzDate, getSigningKey, signRequest } from "@veyyon/pi-ai/providers/aws-sigv4";
+import { bytesToHex } from "@veyyon/pi-utils";
 
 // Canonical AWS SigV4 test vectors. Sourced from the
 // `aws-sig-v4-test-suite` published with the SigV4 spec.
@@ -26,7 +27,7 @@ describe("aws-sigv4 helpers", () => {
 		// Reference value from AWS docs:
 		//   https://docs.aws.amazon.com/IAM/latest/UserGuide/signature-v4-examples.html
 		const key = await getSigningKey(CREDS.secretAccessKey, "20150830", REGION, "iam");
-		expect(toHex(key)).toBe("c4afb1cc5771d871763a393e44b703571b55cc28424d1a5e86da6ed3c154a4b9");
+		expect(bytesToHex(key)).toBe("c4afb1cc5771d871763a393e44b703571b55cc28424d1a5e86da6ed3c154a4b9");
 	});
 });
 

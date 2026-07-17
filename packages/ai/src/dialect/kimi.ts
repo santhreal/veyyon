@@ -1,8 +1,16 @@
 import { parseJsonWithRepair } from "@veyyon/pi-utils";
 import type { Message, ToolCall } from "../types";
-import { asRecord, normalizeKimiFunctionName, partialSuffixOverlapAny } from "./coercion";
+import { asRecordOrEmpty, normalizeKimiFunctionName, partialSuffixOverlapAny } from "./coercion";
 import dialectPrompt from "./kimi.md" with { type: "text" };
-import { assistantTranscriptParts, collectToolResultRun, messageContentText, stringifyJson } from "./rendering";
+import {
+	assistantTranscriptParts,
+	collectToolResultRun,
+	isAsciiWhitespace,
+	kimiCallId,
+	kimiTurn,
+	messageContentText,
+	stringifyJsonOrNull,
+} from "./rendering";
 import type {
 	DialectDefinition,
 	DialectRenderOptions,
@@ -213,7 +221,7 @@ export class KimiInbandScanner implements InbandScanner {
 	#parseArgs(rawArgs: string): Record<string, unknown> {
 		if (rawArgs.length === 0) return {};
 		try {
-			return asRecord(parseJsonWithRepair<unknown>(rawArgs));
+			return asRecordOrEmpty(parseJsonWithRepair<unknown>(rawArgs));
 		} catch {
 			return {};
 		}
@@ -237,7 +245,7 @@ export class KimiInbandScanner implements InbandScanner {
 
 	#skipWhitespace(): void {
 		let i = 0;
-		while (i < this.#buffer.length && isWhitespace(this.#buffer.charCodeAt(i))) i++;
+		while (i < this.#buffer.length && isAsciiWhitespace(this.#buffer.charCodeAt(i))) i++;
 		if (i > 0) this.#buffer = this.#buffer.slice(i);
 	}
 
@@ -254,16 +262,12 @@ export class KimiInbandScanner implements InbandScanner {
 	}
 }
 
-function isWhitespace(cp: number): boolean {
-	return cp === 0x20 || cp === 0x09 || cp === 0x0a || cp === 0x0d || cp === 0x0b || cp === 0x0c;
-}
-
 function renderToolCall(call: ToolCall, _options?: DialectRenderOptions): string {
 	return kimiInvocation(call, 0);
 }
 
 function kimiInvocation(call: ToolCall, index: number): string {
-	return `${KIMI_CALL_BEGIN}${kimiCallId(call.name, call.id, index)}${KIMI_ARG_BEGIN}${stringifyJson(call.arguments)}${KIMI_CALL_END}`;
+	return `${KIMI_CALL_BEGIN}${kimiCallId(call.name, call.id, index)}${KIMI_ARG_BEGIN}${stringifyJsonOrNull(call.arguments)}${KIMI_CALL_END}`;
 }
 
 function renderAssistantToolCalls(calls: readonly ToolCall[], _options?: DialectRenderOptions): string {
@@ -315,15 +319,6 @@ function renderTranscript(messages: readonly Message[], _options?: DialectRender
 		i++;
 	}
 	return out;
-}
-
-function kimiCallId(name: string, id: string, index: number): string {
-	const trimmed = id.trim();
-	return trimmed.startsWith("functions.") ? trimmed : `functions.${name}:${index}`;
-}
-
-function kimiTurn(role: "assistant" | "system" | "user", name: string, body: string): string {
-	return `<|im_${role}|>${name}<|im_middle|>${body}<|im_end|>`;
 }
 
 const definition: DialectDefinition = {

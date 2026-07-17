@@ -9,6 +9,7 @@ import {
 } from "../tiny/models";
 import { shutdownTinyTitleClient, tinyTitleClient } from "../tiny/title-client";
 import type { TinyTitleProgressEvent } from "../tiny/title-protocol";
+import { writeLine } from "./args";
 
 export type TinyModelsAction = "download" | "list";
 
@@ -29,10 +30,6 @@ interface DownloadResult {
 	model: TinyLocalModelKey;
 	ok: boolean;
 	error?: string;
-}
-
-function writeLine(text = ""): void {
-	process.stdout.write(`${text}\n`);
 }
 
 const ACTIONABLE_DOWNLOAD_ERROR_LINE = /PI_TINY_|CUDA|cuDNN|cudnn|libcudnn|tiny-title-runtime|onnxruntime-node/i;

@@ -1,6 +1,5 @@
 // Plugin system exports
 
-export * from "./doctor";
 export * from "./git-url";
 export * from "./installed-registry";
 export * from "./loader";

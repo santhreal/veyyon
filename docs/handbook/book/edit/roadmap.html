@@ -46,10 +46,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-24acbed9.js";
+            window.path_to_searchindex_js = "../searchindex-8badf17b.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-9cfd259b.js"></script>
+        <script src="../toc-19dab021.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -220,8 +220,11 @@ format / output tokens.</em></p>
 <p>Non-parallel tools take an exclusive lock, so file mutations from one turn are globally serialized. A
 per-path mutation queue that lets independent files edit in parallel while still serializing same-file
 writes matters once subagents edit concurrently. <em>Lever: robustness.</em></p>
-<p>Not shipped: a byte-exact write path that preserves a missing trailing newline on the final line. The
-current write model normalizes by appending one; the case is documented and covered by a test.</p>
+<blockquote>
+<p><strong>Spec — not shipped:</strong> A byte-exact write path that preserves a missing trailing newline on the
+final line. The current write model normalizes by appending one; the case is documented and covered
+by a test.</p>
+</blockquote>
 
                     </main>
 

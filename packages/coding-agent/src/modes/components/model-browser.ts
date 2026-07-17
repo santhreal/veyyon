@@ -290,7 +290,7 @@ function formatCostPair(model: Model): string {
  * instead of drifting with the number's width. The ascii preset's `ctx:`
  * label is a prefix form — strip the colon for suffix placement.
  */
-function formatContext(model: Model): string {
+function formatContextWindow(model: Model): string {
 	const ctx = model.contextWindow ?? 0;
 	if (ctx <= 0) return "";
 	return `${formatNumber(ctx).toLowerCase()} ${theme.icon.context.replace(/:$/, "")}`;
@@ -741,7 +741,7 @@ export class ModelBrowser implements Component {
 		// Perf column collapses entirely when no visible row has measurements.
 		const perfCol =
 			perfWidth > 0 ? `${theme.fg("dim", padLeftVisible(this.#perfCell(item, perfMode), perfWidth))}  ` : "";
-		const meta = `${perfCol}${theme.fg("dim", padLeftVisible(formatContext(item.model), ctxWidth))}  ${theme.fg("dim", padLeftVisible(formatCostPair(item.model), costWidth))}`;
+		const meta = `${perfCol}${theme.fg("dim", padLeftVisible(formatContextWindow(item.model), ctxWidth))}  ${theme.fg("dim", padLeftVisible(formatCostPair(item.model), costWidth))}`;
 		const metaWidth = ctxWidth + costWidth + 2 + (perfWidth > 0 ? perfWidth + 2 : 0);
 		const available = Math.max(1, width - metaWidth - 1);
 		left = truncateToWidth(left, available);
@@ -833,7 +833,7 @@ export class ModelBrowser implements Component {
 			for (let i = startIndex; i < endIndex; i++) {
 				const item = this.#visibleItems[i];
 				if (!item) continue;
-				ctxWidth = Math.max(ctxWidth, visibleWidth(formatContext(item.model)));
+				ctxWidth = Math.max(ctxWidth, visibleWidth(formatContextWindow(item.model)));
 				costWidth = Math.max(costWidth, visibleWidth(formatCostPair(item.model)));
 				perfWidth = Math.max(perfWidth, visibleWidth(this.#perfCell(item, perfMode)));
 			}

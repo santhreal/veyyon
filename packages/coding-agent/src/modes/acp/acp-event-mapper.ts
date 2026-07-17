@@ -246,7 +246,7 @@ function mapAssistantMessageUpdate(
 	sessionId: string,
 	options: AcpEventMapperOptions,
 ): SessionNotification[] {
-	if (!isAssistantMessage(event.message)) {
+	if (!hasAssistantRole(event.message)) {
 		return [];
 	}
 
@@ -312,7 +312,7 @@ function mapAssistantMessageEnd(
 	sessionId: string,
 	options: AcpEventMapperOptions,
 ): SessionNotification[] {
-	if (!isAssistantMessage(event.message)) {
+	if (!hasAssistantRole(event.message)) {
 		return [];
 	}
 	const progress = options.getMessageProgress?.(event.message);
@@ -697,7 +697,7 @@ function getContentBlocks(value: unknown): unknown[] | undefined {
 }
 
 function toToolCallContent(value: unknown, options: AcpEventMapperOptions): ToolCallContent | undefined {
-	const type = getContentType(value);
+	const type = contentBlockType(value);
 	if (!type) {
 		return undefined;
 	}
@@ -876,10 +876,10 @@ function hasTerminalContent(content: ToolCallContent[], terminalId: string): boo
 
 function extractReadableText(value: unknown): string | undefined {
 	if (typeof value === "string") {
-		return normalizeText(value);
+		return clampAcpText(value);
 	}
 	if (value instanceof Error) {
-		return normalizeText(value.message);
+		return clampAcpText(value.message);
 	}
 	if (typeof value !== "object" || value === null) {
 		return undefined;
@@ -890,7 +890,7 @@ function extractReadableText(value: unknown): string | undefined {
 		extractStringProperty<ErrorMessageContainer>(value, "errorMessage") ??
 		extractStringProperty<MessageContainer>(value, "message");
 	if (directText) {
-		return normalizeText(directText);
+		return clampAcpText(directText);
 	}
 
 	const contentBlocks = getContentBlocks(value);
@@ -900,7 +900,7 @@ function extractReadableText(value: unknown): string | undefined {
 			.filter((chunk): chunk is string => typeof chunk === "string" && chunk.length > 0)
 			.join("\n");
 		if (text.length > 0) {
-			return normalizeText(text);
+			return clampAcpText(text);
 		}
 		if (hasBinaryContentBlock(contentBlocks)) {
 			return undefined;
@@ -912,8 +912,8 @@ function extractReadableText(value: unknown): string | undefined {
 	if (isTerminalOnlyDetails(value)) {
 		return undefined;
 	}
-	const serialized = safeJsonStringify(value);
-	return normalizeText(serialized);
+	const serialized = tryJsonStringify(value);
+	return clampAcpText(serialized);
 }
 
 function isTerminalOnlyDetails(value: unknown): boolean {
@@ -949,7 +949,7 @@ function extractStructuredText(value: unknown): string | undefined {
 	return limitText(text);
 }
 
-function getContentType(value: unknown): string | undefined {
+function contentBlockType(value: unknown): string | undefined {
 	if (typeof value !== "object" || value === null || !("type" in value)) {
 		return undefined;
 	}
@@ -959,7 +959,7 @@ function getContentType(value: unknown): string | undefined {
 
 function hasBinaryContentBlock(blocks: unknown[]): boolean {
 	return blocks.some(block => {
-		const type = getContentType(block);
+		const type = contentBlockType(block);
 		return type === "image" || type === "audio";
 	});
 }
@@ -980,13 +980,13 @@ function extractNumberProperty<T extends object>(value: unknown, key: keyof T): 
 	return typeof property === "number" && Number.isFinite(property) ? property : undefined;
 }
 
-function isAssistantMessage(value: unknown): boolean {
+function hasAssistantRole(value: unknown): boolean {
 	return (
 		typeof value === "object" && value !== null && "role" in value && (value as TextMessageLike).role === "assistant"
 	);
 }
 
-function normalizeText(text: string | undefined): string | undefined {
+function clampAcpText(text: string | undefined): string | undefined {
 	if (!text) {
 		return undefined;
 	}
@@ -998,7 +998,7 @@ function limitText(text: string): string {
 	return text.length > ACP_TEXT_LIMIT ? `${text.slice(0, ACP_TEXT_LIMIT - 1)}…` : text;
 }
 
-function safeJsonStringify(value: unknown): string | undefined {
+function tryJsonStringify(value: unknown): string | undefined {
 	try {
 		return JSON.stringify(value);
 	} catch {

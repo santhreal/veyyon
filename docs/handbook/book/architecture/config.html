@@ -46,10 +46,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-24acbed9.js";
+            window.path_to_searchindex_js = "../searchindex-8badf17b.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-9cfd259b.js"></script>
+        <script src="../toc-19dab021.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -192,7 +192,7 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="config"><a class="header" href="#config">Config</a></h1>
-<p>Configuration controls models, approvals, memory, MCP, extensions, and TUI behavior. Veyyon loads
+<p>Configuration controls models, sandbox, memory, MCP, extensions, and TUI behavior. Veyyon loads
 layered YAML/JSON from the project and user agent directories.</p>
 <h2 id="responsibility"><a class="header" href="#responsibility">Responsibility</a></h2>
 <ul>
@@ -205,7 +205,7 @@ layered YAML/JSON from the project and user agent directories.</p>
 <ul>
 <li>Primary user file: <code>~/.veyyon/agent/config.yml</code> (or profile path under <code>~/.veyyon/profiles/</code>)</li>
 <li>Project overrides: <code>.veyyon/config.yml</code></li>
-<li>CLI: <code>veyyon config list|get|set</code>, <code>/settings</code>, <code>/reload-plugins</code> (re-read without restart)</li>
+<li>CLI: <code>veyyon config list|get|set</code>, <code>/settings</code>; <code>/reload-plugins</code> re-reads extension surfaces, other config edits need a restart</li>
 </ul>
 <p>Config loading is part of the harness.</p>
 <p>Everyday guide: <a href="../using/configuration.html">Configuration</a>.</p>

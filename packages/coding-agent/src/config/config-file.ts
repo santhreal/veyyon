@@ -360,3 +360,36 @@ export class ConfigFile<T> implements IConfigFile<T> {
 		this.#cache = undefined;
 	}
 }
+
+/**
+ * Shared JSON/YAML config-file plumbing for the file-based tool configs
+ * (`dap.json`/`lsp.yaml`-style loaders). One owner for "parse by extension,
+ * normalize, and expose as a lazy config source".
+ */
+export function parseConfigContent(content: string, filePath: string): unknown {
+	const extension = path.extname(filePath).toLowerCase();
+	if (extension === ".yaml" || extension === ".yml") {
+		return YAML.parse(content) as unknown;
+	}
+	return JSON.parse(content) as unknown;
+}
+
+/** Read + parse + normalize a config file; unreadable or invalid files read as null. */
+export function readConfigFile<T>(filePath: string, normalize: (value: unknown) => T | null): T | null {
+	try {
+		const content = fs.readFileSync(filePath, "utf-8");
+		return normalize(parseConfigContent(content, filePath));
+	} catch {
+		return null;
+	}
+}
+
+/** A lazy config source that re-reads `filePath` on every `read()`. */
+export function configFileSource<T>(
+	filePath: string,
+	normalize: (value: unknown) => T | null,
+): { read: () => T | null } {
+	return {
+		read: () => readConfigFile(filePath, normalize),
+	};
+}

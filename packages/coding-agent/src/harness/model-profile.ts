@@ -7,7 +7,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { Model } from "@veyyon/pi-ai/types";
-import { getAgentDir } from "@veyyon/pi-utils";
+import { getAgentDir, isRecord } from "@veyyon/pi-utils";
 import { YAML } from "bun";
 import type { Settings } from "../config/settings";
 
@@ -27,10 +27,6 @@ let cachedFileProfiles: HarnessProfilesRecord | undefined;
 export function resetHarnessProfileFileCache(): void {
 	cachedAgentDir = undefined;
 	cachedFileProfiles = undefined;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function normalizeProfileEntry(value: unknown): HarnessModelProfile | undefined {

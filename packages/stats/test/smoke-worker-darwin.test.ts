@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
-import { smokeTestSyncWorker } from "@veyyon/pi-stats/aggregator";
+import { smokeTestSyncWorker } from "@veyyon/omp-stats/aggregator";
 import { installStatsTestIsolation } from "./helpers/temp-agent";
 
 installStatsTestIsolation("@pi-stats-smoke-darwin-");

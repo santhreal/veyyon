@@ -46,10 +46,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-24acbed9.js";
+            window.path_to_searchindex_js = "../searchindex-8badf17b.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-9cfd259b.js"></script>
+        <script src="../toc-19dab021.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -261,9 +261,11 @@ $ veyyon "fix the failing test in auth.rs"
 </table>
 </div>
 <p>Hidden worker selectors and <code>--smoke-test</code> are for CI/packaging, not daily use.</p>
-<p>There are no <code>veyyon app-server</code>, <code>exec-server</code>, <code>execpolicy</code>, or <code>responses-api-proxy</code> subcommands,
-and no top-level <code>resume</code> / <code>fork</code> / <code>archive</code> verbs. Resume and branch from the TUI (<code>/resume</code>,
-<code>/fork</code>, <code>/session</code>) or the launch session picker; for non-interactive resume use <code>veyyon --print --resume &lt;id&gt;</code> / <code>--continue</code>.</p>
+<blockquote>
+<p><strong>Spec — not shipped:</strong> <code>veyyon app-server</code>, <code>exec-server</code>, <code>execpolicy</code>, <code>responses-api-proxy</code>, and
+<code>resume</code> / <code>fork</code> / <code>archive</code> as top-level CLI verbs. Use <code>/resume</code>, <code>/fork</code>, and <code>/session</code> in the
+TUI, or the session picker on launch.</p>
+</blockquote>
 <h2 id="exit-codes"><a class="header" href="#exit-codes">Exit codes</a></h2>
 <p>See <a href="./exit-codes.html">Exit codes</a>.</p>
 

@@ -1196,7 +1196,7 @@ function parseExprInner(src: string, ctx: Ctx = ROOT_CTX): Box {
 }
 
 /** Split on top-level `\n` and `\\` row separators (outside braces and environments). */
-function splitLines(src: string): string[] {
+function splitLatexRows(src: string): string[] {
 	const lines: string[] = [];
 	let braceDepth = 0;
 	let envDepth = 0;
@@ -1250,7 +1250,7 @@ function splitLines(src: string): string[] {
  */
 export function latexToBlock(src: string): string[] {
 	if (typeof src !== "string" || src.trim() === "") return [];
-	const rows = splitLines(src.trim())
+	const rows = splitLatexRows(src.trim())
 		.map(line => line.trim())
 		.filter(line => line !== "")
 		.map(line => parseExpr(line));

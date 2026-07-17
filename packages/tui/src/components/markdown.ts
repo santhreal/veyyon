@@ -4,7 +4,7 @@ import { latexToBlock } from "../latex-block";
 import { inlineMathSpanEnd, isBareMathEnvironment, latexToUnicode } from "../latex-to-unicode";
 import type { SymbolTheme } from "../symbols";
 import { TERMINAL } from "../terminal-capabilities";
-import type { Component } from "../tui";
+import type { Component, RenderStablePrefix } from "../tui";
 import {
 	applyBackgroundToLine,
 	Ellipsis,
@@ -13,6 +13,7 @@ import {
 	getSegmenter,
 	padding,
 	replaceTabs,
+	SGR_SEQUENCE_GLOBAL,
 	sgrCarryAfter,
 	truncateToWidth,
 	visibleWidth,
@@ -300,7 +301,9 @@ const TREE_BRANCH_CONNECTOR_RE = /[├┣╠└┗╚╰][─━═]/;
 /** Below this many content cells a hanging wrap degenerates; keep the plain wrap. */
 const MIN_TREE_CONTENT_WIDTH = 8;
 
-const SGR_SEQUENCE_STICKY = /\x1b\[[0-9;:]*m/y;
+// ONE PLACE: SGR grammar owned by utils.ts; sticky flag needs its own object
+// (lastIndex-driven scanning).
+const SGR_SEQUENCE_STICKY = new RegExp(SGR_SEQUENCE_GLOBAL.source, "y");
 
 interface TreeGuidePrefix {
 	/** Index of the first char past the guide run (start of the node text). */
@@ -977,8 +980,37 @@ interface StreamingDiffLineCache extends RenderSignature {
 	text: string;
 	lines: readonly string[];
 }
+/**
+ * Finished terminal rows (styled + indented + wrapped + padded) for the
+ * opening border and completed body lines of the OPEN code fence that ends a
+ * streaming render. Appending text cannot change earlier rows of an open
+ * fence, so each frame reprocesses only the open (not yet newline-terminated)
+ * line and the closing-border placeholder instead of the whole fence body.
+ */
+interface OpenFenceRowCache extends RenderSignature {
+	lang: string | undefined;
+	highlighted: boolean;
+	text: string;
+	rows: readonly string[];
+}
 
-export class Markdown implements Component {
+function renderSignatureEquals(a: RenderSignature, b: RenderSignature): boolean {
+	return (
+		a.width === b.width &&
+		a.paddingX === b.paddingX &&
+		a.paddingY === b.paddingY &&
+		a.codeBlockIndent === b.codeBlockIndent &&
+		a.themeId === b.themeId &&
+		a.defaultTextStyleId === b.defaultTextStyleId &&
+		a.imageProtocol === b.imageProtocol &&
+		a.hyperlinks === b.hyperlinks &&
+		a.textSizing === b.textSizing &&
+		a.bgColorProbe === b.bgColorProbe &&
+		a.headingProbe === b.headingProbe
+	);
+}
+
+export class Markdown implements Component, RenderStablePrefix {
 	#text: string;
 	#paddingX: number; // Left/right padding
 	#paddingY: number; // Top/bottom padding
@@ -1028,7 +1060,16 @@ export class Markdown implements Component {
 	// semantic colors reach native scrollback before rows leave the viewport.
 	#renderingFrozenPrefix = false;
 	#streamingDiffLineCache?: StreamingDiffLineCache;
+	#openFenceRowCache?: OpenFenceRowCache;
 	#activeRenderSignature?: RenderSignature;
+	// RenderStablePrefix accumulator (see the tui interface contract): leading
+	// output rows provably identical to the render array state the reader last
+	// observed. Earned only on the streaming path when the reused prefix line
+	// cache was written by the immediately previous render (#streamPrefixCacheFresh)
+	// — an intervening rewind/full render breaks the lineage the claim rests on.
+	#stablePrefixAccum = 0;
+	#streamPrefixCacheFresh = false;
+	#lastStreamKeptRows = 0;
 
 	#ignoreTight = false;
 
@@ -1062,7 +1103,9 @@ export class Markdown implements Component {
 		// streaming (issue #4353). Mirrors `Text.setText`'s guard.
 		if (text === this.#text) return false;
 		this.#text = text;
-		if (!text.trim()) {
+		// /\S/ stops at the first non-whitespace char; trim() would copy the
+		// whole streaming text per delta just to test blankness.
+		if (!/\S/.test(text)) {
 			// Blank replacement: render() early-returns before #lexTokens can see
 			// the non-append edit, so drop the frozen stream state here or it
 			// outlives the content it indexed.
@@ -1102,6 +1145,18 @@ export class Markdown implements Component {
 	 */
 	getLastRenderSettledRows(): number {
 		return this.#lastRenderSettledRows;
+	}
+
+	getRenderStablePrefixRows(observed: readonly string[]): number {
+		// Only the exact cached render array is covered by this accounting.
+		if (observed !== this.#cachedLines) {
+			this.#stablePrefixAccum = 0;
+			return 0;
+		}
+		const report = this.#stablePrefixAccum;
+		// Reading consumes: the reader now observes the current array in full.
+		this.#stablePrefixAccum = observed.length;
+		return report;
 	}
 
 	// Lex `text` into block tokens, reusing the frozen stable prefix when the text
@@ -1194,16 +1249,20 @@ export class Markdown implements Component {
 		// Recomputed below by the streaming path; every other path (cache-served,
 		// empty text, non-streaming full render) exposes no settled rows.
 		this.#lastRenderSettledRows = 0;
+		this.#lastStreamKeptRows = 0;
 
 		// Calculate available width for content (subtract horizontal padding)
 		const paddingX = this.#ignoreTight ? this.#paddingX : getPaddingX(this.#paddingX);
 		const contentWidth = Math.max(1, width - paddingX * 2);
 
-		// Don't render anything if there's no actual text
-		if (!this.#text || this.#text.trim() === "") {
+		// Don't render anything if there's no actual text. /\S/ stops at the
+		// first non-whitespace char instead of copying the whole streaming text.
+		if (!this.#text || !/\S/.test(this.#text)) {
 			this.#cachedText = this.#text;
 			this.#cachedWidth = width;
 			this.#cachedLines = EMPTY_RENDER_LINES;
+			this.#stablePrefixAccum = 0;
+			this.#streamPrefixCacheFresh = false;
 			return EMPTY_RENDER_LINES;
 		}
 
@@ -1233,6 +1292,8 @@ export class Markdown implements Component {
 				this.#cachedText = this.#text;
 				this.#cachedWidth = width;
 				this.#cachedLines = cached;
+				this.#stablePrefixAccum = 0;
+				this.#streamPrefixCacheFresh = false;
 				return cached;
 			}
 		}
@@ -1260,6 +1321,8 @@ export class Markdown implements Component {
 		this.#cachedText = this.#text;
 		this.#cachedWidth = width;
 		this.#cachedLines = result;
+		this.#stablePrefixAccum = Math.min(this.#stablePrefixAccum, this.#lastStreamKeptRows);
+		if (!this.#transientRenderCache) this.#streamPrefixCacheFresh = false;
 
 		// Update L2 module-level LRU so future instances with the same key skip
 		// the marked.lexer + highlightCode (Rust FFI) work entirely.
@@ -1298,10 +1361,15 @@ export class Markdown implements Component {
 		signature: RenderSignature,
 		contentWidth: number,
 	): string[] {
+		// Read-and-clear freshness: the stability claim below needs the prefix
+		// line cache to have been written by the immediately previous render;
+		// the cache write at the end of this render re-arms it.
+		const cacheFresh = this.#streamPrefixCacheFresh;
+		this.#streamPrefixCacheFresh = false;
 		const frozenText = this.#streamPrefixText;
 		const frozenTokenCount = this.#streamPrefixTokens?.length ?? 0;
 		if (frozenText === undefined || frozenTokenCount === 0 || !normalizedText.startsWith(frozenText)) {
-			return this.#renderContentLines(tokens, 0, tokens.length, contentWidth, signature);
+			return this.#renderTailTokens(tokens, 0, contentWidth, signature);
 		}
 
 		const contentLines: string[] = [];
@@ -1310,6 +1378,13 @@ export class Markdown implements Component {
 		if (reusablePrefix && reusablePrefix.tokenCount <= frozenTokenCount) {
 			contentLines.push(...reusablePrefix.lines);
 			renderedUntil = reusablePrefix.tokenCount;
+			// The previous render's leading rows were exactly this cache's lines
+			// (it wrote them from its own contentLines), so top padding + these
+			// rows are value-identical to the previous returned array — but only
+			// when no other render ran in between (freshness).
+			if (cacheFresh) {
+				this.#lastStreamKeptRows = signature.paddingY + reusablePrefix.lines.length;
+			}
 		}
 
 		if (renderedUntil < frozenTokenCount) {
@@ -1332,6 +1407,7 @@ export class Markdown implements Component {
 			tokenCount: frozenTokenCount,
 			lines: contentLines.slice(),
 		};
+		this.#streamPrefixCacheFresh = true;
 
 		// Settled exposure (hard-monotone): these rows are declared final to
 		// the host, so expose them only while the frozen text still extends
@@ -1347,10 +1423,104 @@ export class Markdown implements Component {
 		}
 
 		if (renderedUntil < tokens.length) {
-			contentLines.push(...this.#renderContentLines(tokens, renderedUntil, tokens.length, contentWidth, signature));
+			contentLines.push(...this.#renderTailTokens(tokens, renderedUntil, contentWidth, signature));
 		}
 
 		return contentLines;
+	}
+
+	/**
+	 * Renders the volatile tail [start, tokens.length). When the tail ends in
+	 * an OPEN code fence — the dominant shape while a model streams code — the
+	 * fence takes an incremental finished-row path (see OpenFenceRowCache);
+	 * everything before it renders through the normal pipeline. Output is
+	 * byte-identical to #renderContentLines over the same range (locked by the
+	 * streamed-vs-fresh render tests).
+	 */
+	#renderTailTokens(tokens: Token[], start: number, contentWidth: number, signature: RenderSignature): string[] {
+		const end = tokens.length;
+		const last = end > start ? tokens[end - 1] : undefined;
+		if (last && this.#isStreamableOpenCodeToken(last)) {
+			const rows = start < end - 1 ? this.#renderContentLines(tokens, start, end - 1, contentWidth, signature) : [];
+			rows.push(...this.#renderOpenCodeFenceRows(last, contentWidth, signature));
+			return rows;
+		}
+		return this.#renderContentLines(tokens, start, end, contentWidth, signature);
+	}
+
+	#isStreamableOpenCodeToken(token: Token): boolean {
+		if (token.type !== "code") return false;
+		const lang = "lang" in token && typeof token.lang === "string" ? token.lang : undefined;
+		// Mermaid fences render as ASCII diagrams via a dedicated resolver path.
+		if (lang === "mermaid" && this.#theme.resolveMermaidAscii) return false;
+		return !this.#codeTokenHasClosingFence(token);
+	}
+
+	#renderOpenCodeFenceRows(token: Token, contentWidth: number, signature: RenderSignature): string[] {
+		const tokenText = "text" in token && typeof token.text === "string" ? token.text : "";
+		const lang = "lang" in token && typeof token.lang === "string" ? token.lang : undefined;
+		const normalizedLang = lang?.toLowerCase();
+		const highlightCode = this.#theme.highlightCode;
+		const highlighted =
+			Boolean(highlightCode) &&
+			(normalizedLang === "diff" || normalizedLang === "patch" || normalizedLang === "udiff");
+		const codeIndent = padding(this.#codeBlockIndent);
+		// Mirrors #renderCodeBodyLines streaming semantics: diff-family fences
+		// line-highlight completed rows; every other language streams with the
+		// plain codeBlock style.
+		const styleLine: (line: string) => readonly string[] =
+			highlighted && highlightCode
+				? codeLine => highlightCode(codeLine, lang)
+				: codeLine => [this.#theme.codeBlock(codeLine)];
+		const finish = (lines: string[]): string[] =>
+			this.#padWrappedRows(this.#wrapRenderedLines(lines, contentWidth), signature);
+
+		const lineEnd = tokenText.lastIndexOf("\n");
+		const completedText = lineEnd >= 0 ? tokenText.slice(0, lineEnd) : undefined;
+
+		let rows: string[];
+		const cache = this.#openFenceRowCache;
+		if (
+			completedText !== undefined &&
+			cache &&
+			renderSignatureEquals(cache, signature) &&
+			cache.lang === lang &&
+			cache.highlighted === highlighted &&
+			completedText.startsWith(cache.text) &&
+			(cache.text.length === completedText.length || completedText.charCodeAt(cache.text.length) === 0x0a)
+		) {
+			rows = cache.rows.slice();
+			if (completedText.length > cache.text.length) {
+				const addedLines: string[] = [];
+				for (const codeLine of completedText.slice(cache.text.length + 1).split("\n")) {
+					for (const styled of styleLine(codeLine)) addedLines.push(`${codeIndent}${styled}`);
+				}
+				rows.push(...finish(addedLines));
+				this.#openFenceRowCache = { ...signature, lang, highlighted, text: completedText, rows: rows.slice() };
+			}
+		} else {
+			const headLines: string[] = [this.#theme.codeBlockBorder(`\`\`\`${lang || ""}`)];
+			if (completedText !== undefined) {
+				for (const codeLine of completedText.split("\n")) {
+					for (const styled of styleLine(codeLine)) headLines.push(`${codeIndent}${styled}`);
+				}
+			}
+			rows = finish(headLines);
+			if (completedText !== undefined) {
+				this.#openFenceRowCache = { ...signature, lang, highlighted, text: completedText, rows: rows.slice() };
+			}
+		}
+
+		// Open (not yet newline-terminated) line + closing-border placeholder:
+		// reprocessed every frame, bounded by one code line.
+		const tailLines: string[] = [];
+		const openText = lineEnd >= 0 ? tokenText.slice(lineEnd + 1) : tokenText;
+		for (const codeLine of openText.split("\n")) {
+			tailLines.push(`${codeIndent}${this.#theme.codeBlock(codeLine)}`);
+		}
+		tailLines.push(this.#theme.codeBlockBorder("```"));
+		rows.push(...finish(tailLines));
+		return rows;
 	}
 
 	#matchingStreamPrefixLineCache(
@@ -1389,6 +1559,10 @@ export class Markdown implements Component {
 			renderedLines.push(...this.#renderToken(token, contentWidth, nextToken?.type));
 		}
 
+		return this.#padWrappedRows(this.#wrapRenderedLines(renderedLines, contentWidth), signature);
+	}
+
+	#wrapRenderedLines(renderedLines: readonly string[], contentWidth: number): string[] {
 		const wrappedLines: string[] = [];
 		for (const line of renderedLines) {
 			// Skip wrapping for image protocol lines and OSC 66 sized headings
@@ -1399,7 +1573,10 @@ export class Markdown implements Component {
 				wrappedLines.push(...wrapTextWithAnsi(line, contentWidth));
 			}
 		}
+		return wrappedLines;
+	}
 
+	#padWrappedRows(wrappedLines: readonly string[], signature: RenderSignature): string[] {
 		const leftMargin = padding(signature.paddingX);
 		const rightMargin = padding(signature.paddingX);
 		const bgFn = this.#defaultTextStyle?.bgColor;

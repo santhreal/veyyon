@@ -124,6 +124,9 @@ export interface DaemonWireRequest {
 /** Response envelope kept raw until matched with its pending operation. */
 export type DaemonWireResponse = { id: string; ok: true; result: unknown } | { id: string; ok: false; error: string };
 
+// Deliberately dependency-free (see the one-place lock test): this protocol
+// module is shared across the tool/client/broker processes and keeps a
+// self-contained guard instead of pulling the pi-utils graph into the worker.
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }

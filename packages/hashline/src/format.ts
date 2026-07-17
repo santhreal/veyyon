@@ -48,6 +48,8 @@ export const HL_RANGE_SEP = ".=";
 /** Separator between a line number and displayed line content in hashline mode. */
 export const HL_LINE_BODY_SEP = ":";
 
+// Deliberate local copy of pi-utils escapeRegExp: @veyyon/hashline publishes
+// standalone (deps: diff, lru-cache only) and must not pull in pi-utils.
 function regexEscape(str: string): string {
 	return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
@@ -139,3 +141,9 @@ export function formatNumberedLines(text: string, startLine = 1): string {
 	const lines = text.split("\n");
 	return lines.map((line, i) => formatNumberedLine(startLine + i, line)).join("\n");
 }
+
+/**
+ * Unified-diff hunk header (`@@ -N,M +N,M @@`) — hashline rejects these with a
+ * focused error. ONE PLACE shared by input pre-validation and the parser.
+ */
+export const UNIFIED_DIFF_HUNK_HEADER_RE = /^@@\s+[-+]?\d+,\d+\s+[-+]?\d+,\d+\s+@@/;

@@ -1,10 +1,124 @@
-import { ENTITY_STOPWORDS } from "./stopwords";
+import { levenshteinDistance } from "@veyyon/pi-utils";
+const ENTITY_EXTRACTION_STOP_WORD_VALUES = [
+	"the",
+	"a",
+	"an",
+	"and",
+	"or",
+	"but",
+	"in",
+	"on",
+	"at",
+	"to",
+	"for",
+	"of",
+	"with",
+	"by",
+	"from",
+	"as",
+	"is",
+	"was",
+	"are",
+	"were",
+	"be",
+	"been",
+	"being",
+	"have",
+	"has",
+	"had",
+	"do",
+	"does",
+	"did",
+	"will",
+	"would",
+	"could",
+	"should",
+	"may",
+	"might",
+	"can",
+	"shall",
+	"i",
+	"you",
+	"he",
+	"she",
+	"it",
+	"we",
+	"they",
+	"me",
+	"him",
+	"her",
+	"us",
+	"them",
+	"my",
+	"your",
+	"his",
+	"its",
+	"our",
+	"their",
+	"this",
+	"that",
+	"these",
+	"those",
+	"here",
+	"there",
+	"where",
+	"when",
+	"what",
+	"which",
+	"who",
+	"whom",
+	"whose",
+	"how",
+	"why",
+	"assistant",
+	"user",
+	"skill",
+	"review",
+	"target",
+	"class",
+	"level",
+	"signals",
+	"phase",
+	"api",
+	"pi",
+	"summary",
+	"added",
+	"active",
+	"not",
+	"whether",
+	"all",
+	"no",
+	"replying",
+	"ai",
+	"memory",
+	"conversation",
+	"fact",
+	"false",
+	"true",
+	"none",
+	"null",
+	"signal",
+	"hermes",
+	"agent",
+	"model",
+	"system",
+	"note",
+	"task",
+	"project",
+	"result",
+	"output",
+	"input",
+	"data",
+	"step",
+	"process",
+	"point",
+	"way",
+	"thing",
+	"time",
+	"work",
+] as const;
 
-// Backed by the canonical entity/mention stopword set in stopwords.ts, which is
-// the union of this list and the annotations.ts noisy-mention list. See
-// stopwords.ts for the divergence it fixed. Re-exported under the historical
-// name so existing importers keep working.
-export const ENTITY_EXTRACTION_STOP_WORDS: ReadonlySet<string> = ENTITY_STOPWORDS;
+export const ENTITY_EXTRACTION_STOP_WORDS: ReadonlySet<string> = new Set(ENTITY_EXTRACTION_STOP_WORD_VALUES);
 /** Maximum raw text size for regex-only entity extraction. */
 export const REGEX_EXTRACTION_MAX_INPUT_CHARS = 50_000;
 
@@ -21,36 +135,7 @@ function chars(value: string): string[] {
 	return Array.from(value);
 }
 
-export function levenshteinDistance(s1: string, s2: string): number {
-	let left = chars(s1);
-	let right = chars(s2);
-	if (left.length < right.length) {
-		const tmp = left;
-		left = right;
-		right = tmp;
-	}
-	if (right.length === 0) return left.length;
-
-	let previousRow = new Array<number>(right.length + 1);
-	let currentRow = new Array<number>(right.length + 1).fill(0);
-	for (let i = 0; i <= right.length; i++) previousRow[i] = i;
-
-	for (let i = 0; i < left.length; i++) {
-		currentRow[0] = i + 1;
-		const c1 = left[i];
-		for (let j = 0; j < right.length; j++) {
-			const insertions = (previousRow[j + 1] ?? 0) + 1;
-			const deletions = (currentRow[j] ?? 0) + 1;
-			const substitutions = (previousRow[j] ?? 0) + (c1 === right[j] ? 0 : 1);
-			currentRow[j + 1] = Math.min(insertions, deletions, substitutions);
-		}
-		const tmp = previousRow;
-		previousRow = currentRow;
-		currentRow = tmp;
-	}
-	return previousRow[right.length] ?? 0;
-}
-export function similarity(s1: string, s2: string): number {
+export function entitySimilarity(s1: string, s2: string): number {
 	const s1Lower = s1.toLowerCase().trim();
 	const s2Lower = s2.toLowerCase().trim();
 	if (s1Lower === s2Lower) return 1.0;
@@ -137,7 +222,7 @@ export function findSimilarEntities(
 			matches.push([known, 1.0]);
 			continue;
 		}
-		const score = similarity(entity, known);
+		const score = entitySimilarity(entity, known);
 		if (score >= threshold) matches.push([known, score]);
 	}
 	matches.sort((left, right) => right[1] - left[1]);

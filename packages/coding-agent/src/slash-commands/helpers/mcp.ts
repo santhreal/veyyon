@@ -1,5 +1,5 @@
 import * as AIError from "@veyyon/pi-ai/error";
-import { getMCPConfigPath, logger } from "@veyyon/pi-utils";
+import { errorMessage, getMCPConfigPath, HTTP_URL_RE, logger } from "@veyyon/pi-utils";
 import { connectToServer, disconnectServer, listPrompts, listResources, listTools } from "../../mcp/client";
 import {
 	addMCPServer,
@@ -15,7 +15,7 @@ import { searchSmitheryRegistry } from "../../mcp/smithery-registry";
 import type { MCPServerConfig, MCPServerConnection } from "../../mcp/types";
 import { parseCommandArgs } from "../../utils/command-args";
 import type { ParsedSlashCommand, SlashCommandResult, SlashCommandRuntime } from "../types";
-import { commandConsumed, errorMessage, parseNamedScopeArgs, parseSubcommand, usage } from "./parse";
+import { commandConsumed, parseNamedScopeArgs, parseSubcommand, usage } from "./parse";
 
 type AcpMcpScope = "user" | "project";
 
@@ -301,7 +301,7 @@ function buildMcpServerConfig(parsed: ParsedMcpAddArgs): MCPServerConfig | undef
 		return { type: "stdio", command: command!, args: args.length > 0 ? args : undefined } as MCPServerConfig;
 	}
 	if (!parsed.url) return undefined;
-	const normalizedUrl = /^https?:\/\//i.test(parsed.url) ? parsed.url : `https://${parsed.url}`;
+	const normalizedUrl = HTTP_URL_RE.test(parsed.url) ? parsed.url : `https://${parsed.url}`;
 	return {
 		type: parsed.transport === "sse" ? "sse" : "http",
 		url: normalizedUrl,

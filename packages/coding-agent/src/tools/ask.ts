@@ -29,7 +29,7 @@ import {
 	truncateToWidth,
 	visibleWidth,
 } from "@veyyon/pi-tui";
-import { prompt, untilAborted } from "@veyyon/pi-utils";
+import { collapseWhitespace, prompt, untilAborted } from "@veyyon/pi-utils";
 import { type as arkType } from "arktype";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import type { ExtensionUISelectItem } from "../extensibility/extensions";
@@ -205,10 +205,6 @@ function clampLineToWidth(line: string, width: number): string {
 	return truncateToWidth(line, width, Ellipsis.Unicode);
 }
 
-function flattenDescription(text: string): string {
-	return text.replace(/\s+/g, " ").trim();
-}
-
 function getSelectOptionDescription(option: ExtensionUISelectItem): string | undefined {
 	return typeof option === "string" ? undefined : option.description;
 }
@@ -332,7 +328,7 @@ function buildCustomInputRows(
 		rows.push({ text: clampLineToWidth(prefix + label, contentWidth), priority: -1 });
 		const description = getSelectOptionDescription(option);
 		if (description) {
-			const flat = flattenDescription(description);
+			const flat = collapseWhitespace(description);
 			if (flat) {
 				rows.push({
 					text: clampLineToWidth(`${CUSTOM_INPUT_DESCRIPTION_INDENT}${flat}`, contentWidth),

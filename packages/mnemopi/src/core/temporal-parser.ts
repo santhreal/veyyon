@@ -1,4 +1,4 @@
-import { parseQueryTime, type QueryTime } from "../util/datetime";
+import { parseQueryTimeStrict, type QueryTime } from "../util/datetime";
 
 export type DatePrecision = "day" | "week" | "month" | "year" | "relative" | "unknown";
 export type ParsedNaturalDate = [eventDate: Date, precision: Exclude<DatePrecision, "unknown">, temporalTags: string[]];
@@ -114,7 +114,7 @@ function finiteDate(value: Date): Date | undefined {
 }
 
 function parseReference(reference?: QueryTime): Date {
-	return parseQueryTime(reference);
+	return parseQueryTimeStrict(reference);
 }
 
 export function resolveRelativeDay(reference: Date, dayNameText: string, qualifier = "this"): Date {

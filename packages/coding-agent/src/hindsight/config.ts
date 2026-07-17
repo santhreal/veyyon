@@ -57,19 +57,19 @@ const DEFAULT_PREAMBLE =
 	"Only use memories that are directly useful to continue this conversation; ignore the rest:";
 
 /** Coerce an env var value into a boolean using the OpenCode plugin's semantics. */
-function envBool(value: string | undefined): boolean | undefined {
+function coerceEnvBool(value: string | undefined): boolean | undefined {
 	if (value === undefined) return undefined;
 	return ["true", "1", "yes"].includes(value.toLowerCase());
 }
 
 /** Coerce an env var value into an int, returning undefined for non-numeric input. */
-function envInt(value: string | undefined): number | undefined {
+function coerceEnvInt(value: string | undefined): number | undefined {
 	if (value === undefined) return undefined;
 	const n = Number.parseInt(value, 10);
 	return Number.isFinite(n) ? n : undefined;
 }
 
-function envString(value: string | undefined): string | undefined {
+function coerceEnvString(value: string | undefined): string | undefined {
 	if (value === undefined) return undefined;
 	const trimmed = value.trim();
 	return trimmed.length === 0 ? undefined : trimmed;
@@ -101,20 +101,20 @@ function pickScoping(value: unknown): HindsightScoping | undefined {
  * `process.env` per case.
  */
 export function loadHindsightConfig(settings: Settings, env: NodeJS.ProcessEnv = process.env): HindsightConfig {
-	const apiUrlEnv = envString(env.HINDSIGHT_API_URL);
-	const apiTokenEnv = envString(env.HINDSIGHT_API_TOKEN);
-	const bankIdEnv = envString(env.HINDSIGHT_BANK_ID);
-	const bankMissionEnv = envString(env.HINDSIGHT_BANK_MISSION);
+	const apiUrlEnv = coerceEnvString(env.HINDSIGHT_API_URL);
+	const apiTokenEnv = coerceEnvString(env.HINDSIGHT_API_TOKEN);
+	const bankIdEnv = coerceEnvString(env.HINDSIGHT_BANK_ID);
+	const bankMissionEnv = coerceEnvString(env.HINDSIGHT_BANK_MISSION);
 	const retainModeEnv = pickRetainMode(env.HINDSIGHT_RETAIN_MODE);
 	const recallBudgetEnv = pickBudget(env.HINDSIGHT_RECALL_BUDGET);
-	const autoRecallEnv = envBool(env.HINDSIGHT_AUTO_RECALL);
-	const autoRetainEnv = envBool(env.HINDSIGHT_AUTO_RETAIN);
+	const autoRecallEnv = coerceEnvBool(env.HINDSIGHT_AUTO_RECALL);
+	const autoRetainEnv = coerceEnvBool(env.HINDSIGHT_AUTO_RETAIN);
 	const scopingEnv = pickScoping(env.HINDSIGHT_SCOPING);
-	const debugEnv = envBool(env.HINDSIGHT_DEBUG);
-	const recallMaxTokensEnv = envInt(env.HINDSIGHT_RECALL_MAX_TOKENS);
-	const recallContextTurnsEnv = envInt(env.HINDSIGHT_RECALL_CONTEXT_TURNS);
-	const recallMaxQueryCharsEnv = envInt(env.HINDSIGHT_RECALL_MAX_QUERY_CHARS);
-	const retainEveryNTurnsEnv = envInt(env.HINDSIGHT_RETAIN_EVERY_N_TURNS);
+	const debugEnv = coerceEnvBool(env.HINDSIGHT_DEBUG);
+	const recallMaxTokensEnv = coerceEnvInt(env.HINDSIGHT_RECALL_MAX_TOKENS);
+	const recallContextTurnsEnv = coerceEnvInt(env.HINDSIGHT_RECALL_CONTEXT_TURNS);
+	const recallMaxQueryCharsEnv = coerceEnvInt(env.HINDSIGHT_RECALL_MAX_QUERY_CHARS);
+	const retainEveryNTurnsEnv = coerceEnvInt(env.HINDSIGHT_RETAIN_EVERY_N_TURNS);
 
 	// Read from settings (each falls back to its schema default).
 	const settingsRetainMode = pickRetainMode(settings.get("hindsight.retainMode"));

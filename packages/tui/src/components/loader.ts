@@ -17,7 +17,9 @@ export type LoaderMessageColorFn = ColorFn & {
 
 /** Animates a spinner and colorized message while asynchronous work is pending. */
 export class Loader extends Text {
-	#frames = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+	// The breathing pixel: the sun's intensity ramp inhaling and exhaling. One
+	// cell, no ornament — the brand compressed into a spinner.
+	#frames = ["·", ":", "░", "▒", "▓", "█", "▓", "▒", "░", ":"];
 	#currentFrame = 0;
 	#intervalId?: NodeJS.Timeout;
 	#ui: TUI | null = null;

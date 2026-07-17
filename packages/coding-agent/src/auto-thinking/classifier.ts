@@ -13,8 +13,8 @@
  * Throws on any failure (no model, no key, unparseable output, abort/timeout);
  * the caller falls back to a concrete level and continues the turn.
  */
-import { type AssistantMessage, completeSimple, Effort, type Model } from "@veyyon/pi-ai";
-import { prompt } from "@veyyon/pi-utils";
+import { completeSimple, Effort, type Model } from "@veyyon/pi-ai";
+import { joinTextBlocks, prompt } from "@veyyon/pi-utils";
 
 import type { ModelRegistry } from "../config/model-registry";
 import { resolveRoleSelectionWithInherit } from "../config/model-resolver";
@@ -59,12 +59,12 @@ export async function classifyDifficulty(
 	const input = preprocessTinyMessage(promptText);
 	const effort =
 		backend === ONLINE_AUTO_THINKING_MODEL_KEY
-			? await classifyOnline(input, deps)
-			: await classifyLocal(input, backend, deps);
+			? await classifyEffortOnline(input, deps)
+			: await classifyEffortLocal(input, backend, deps);
 	return clampAutoThinkingEffort(deps.model, effort);
 }
 
-async function classifyOnline(input: string, deps: ClassifyDifficultyDeps): Promise<Effort> {
+async function classifyEffortOnline(input: string, deps: ClassifyDifficultyDeps): Promise<Effort> {
 	// Unset tiny/smol inherits the live main model (the classification prompt is tiny).
 	const resolved = resolveRoleSelectionWithInherit(
 		["tiny", "smol"],
@@ -103,7 +103,7 @@ async function classifyOnline(input: string, deps: ClassifyDifficultyDeps): Prom
 		throw new Error(`auto-thinking: online classification failed: ${response.errorMessage ?? "unknown error"}`);
 	}
 
-	const text = extractText(response.content);
+	const text = joinTextBlocks(response.content, " ").trim();
 	const effort = parseDifficultyLevel(text);
 	if (!effort) {
 		throw new Error(`auto-thinking: unparseable online classification: ${JSON.stringify(text)}`);
@@ -111,7 +111,7 @@ async function classifyOnline(input: string, deps: ClassifyDifficultyDeps): Prom
 	return effort;
 }
 
-async function classifyLocal(input: string, modelKey: string, deps: ClassifyDifficultyDeps): Promise<Effort> {
+async function classifyEffortLocal(input: string, modelKey: string, deps: ClassifyDifficultyDeps): Promise<Effort> {
 	if (!isTinyMemoryLocalModelKey(modelKey)) {
 		throw new Error(`auto-thinking: unsupported local classifier model: ${modelKey}`);
 	}
@@ -170,12 +170,4 @@ function earliest(candidates: Array<[number, Effort]>): Effort | undefined {
 		if (candidate[0] < best[0]) best = candidate;
 	}
 	return best[1];
-}
-
-function extractText(content: AssistantMessage["content"]): string {
-	return content
-		.filter((block): block is Extract<AssistantMessage["content"][number], { type: "text" }> => block.type === "text")
-		.map(block => block.text)
-		.join(" ")
-		.trim();
 }

@@ -46,15 +46,6 @@ interface TinyFishSearchResponse {
 	results?: TinyFishSearchResult[] | null;
 }
 
-/** Resolve TinyFish API key through the shared auth storage pipeline. */
-export function findApiKey(
-	authStorage: AuthStorage,
-	sessionId?: string,
-	signal?: AbortSignal,
-): Promise<string | undefined> {
-	return authStorage.getApiKey("tinyfish", sessionId, { signal });
-}
-
 async function callTinyFishSearch(apiKey: string, params: TinyFishSearchParams): Promise<TinyFishSearchResponse> {
 	const url = new URL(TINYFISH_SEARCH_URL);
 	url.searchParams.set("query", params.query);

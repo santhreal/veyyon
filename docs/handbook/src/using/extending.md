@@ -6,7 +6,7 @@ covers the built in tools, skills, extension data, and external tools through th
 ## Tools
 
 Tools are the actions Veyyon can take: reading a file, searching the tree, editing code, running a
-command, fetching a page, and more. Every tool runs through the same approval model, so a
+command, fetching a page, and more. Every tool runs through the same approval and sandbox model, so a
 tool cannot exceed the boundary you set. Editing tools in particular all flow through one verified write
 path, so a change is checked and recorded the same way no matter which tool made it.
 
@@ -39,6 +39,6 @@ Veyyon can do, and you can always extend it without editing code.
 
 ## Where to go next
 
-- [Configuration](./configuration.md) covers the approval mode that gates every tool.
+- [Configuration](./configuration.md) covers approvals and the sandbox that bound every tool.
 - [What makes Veyyon different](../why/innovations.md) explains the one write path that every editing
   tool shares.

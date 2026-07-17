@@ -132,6 +132,27 @@ describe("PolyphonicRecallEngine", () => {
 		}
 	});
 
+	it("factVoice recalls facts whose subject differs in case or spans multiple words", () => {
+		const beam = makeBeam();
+		try {
+			const engine = seedPolyphonicFixture(beam);
+			const now = new Date().toISOString();
+			beam.db.run(
+				`INSERT INTO consolidated_facts
+					(id, subject, predicate, object, confidence, mention_count, first_seen, last_seen, sources_json, veracity)
+					VALUES ('cf_macbook', 'MacBook Pro', 'has', '16GB RAM', 0.9, 1, ?, ?, ?, 'likely_true')`,
+				[now, now, JSON.stringify(["m3"])],
+			);
+			// "macbook" lowercases to a word that never equals the stored
+			// "MacBook Pro" subject — the old capitalized exact match returned [].
+			const results = engine.factVoice("what macbook do I have");
+			expect(results.map(r => r.memoryId)).toEqual(["m3"]);
+			expect(results[0]?.metadata?.subject).toBe("MacBook Pro");
+		} finally {
+			closeQuietly(beam.db);
+		}
+	});
+
 	it("filters vector and temporal voices to beam-session or global memories", () => {
 		const beam = makeBeam();
 		try {

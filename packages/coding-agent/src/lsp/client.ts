@@ -193,7 +193,7 @@ export interface WatchedFileChange {
 // LSP Message Protocol
 // =============================================================================
 
-function abortReason(signal: AbortSignal): Error {
+function lspAbortReason(signal: AbortSignal): Error {
 	return signal.reason instanceof Error ? signal.reason : new ToolAbortError();
 }
 
@@ -210,7 +210,7 @@ async function writeMessage(
 	signal?: AbortSignal,
 ): Promise<void> {
 	if (signal?.aborted) {
-		throw abortReason(signal);
+		throw lspAbortReason(signal);
 	}
 	const content = JSON.stringify(message);
 	sink.write(`Content-Length: ${Buffer.byteLength(content, "utf-8")}\r\n\r\n${content}`);
@@ -229,7 +229,7 @@ async function writeMessage(
 		// The underlying flush stays pending in the background; suppress its
 		// eventual settlement so we do not surface an unhandled rejection.
 		flush.catch(() => {});
-		reject(new LspFlushAbortError(abortReason(signal)));
+		reject(new LspFlushAbortError(lspAbortReason(signal)));
 	};
 	signal.addEventListener("abort", onAbort, { once: true });
 	flush.then(

@@ -11,7 +11,7 @@
  * rich context for the orchestrating agent to distribute work across
  * multiple reviewer agents based on diff weight and locality.
  */
-import { prompt } from "@veyyon/pi-utils";
+import { isRecord, prompt } from "@veyyon/pi-utils";
 import type { CustomCommand, CustomCommandAPI } from "../../../../extensibility/custom-commands/types";
 import type { HookCommandContext } from "../../../../extensibility/hooks/types";
 import reviewCustomRequestTemplate from "../../../../prompts/review-custom-request.md" with { type: "text" };
@@ -425,10 +425,6 @@ async function buildPrReviewPrompt(
 	return `Unable to review PR ${ref.repo}#${ref.number}: no diff content available.`;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null;
-}
-
 function getTextContentParts(content: unknown): string[] {
 	if (typeof content === "string") return [content];
 	if (!Array.isArray(content)) return [];
@@ -538,7 +534,7 @@ export class ReviewCommand implements CustomCommand {
 				const baseBranch = await ctx.ui.select("Select base branch to compare against", branches);
 				if (!baseBranch) return undefined;
 
-				const currentBranch = await getCurrentBranch(this.api);
+				const currentBranch = await git.currentBranchOrHead(this.api.cwd);
 				let diffText: string;
 				try {
 					diffText = await git.diff(this.api.cwd, { base: `${baseBranch}...${currentBranch}` });
@@ -638,14 +634,6 @@ async function getGitBranches(api: CustomCommandAPI): Promise<string[]> {
 		return await git.branch.list(api.cwd, { all: true });
 	} catch {
 		return [];
-	}
-}
-
-async function getCurrentBranch(api: CustomCommandAPI): Promise<string> {
-	try {
-		return (await git.branch.current(api.cwd)) ?? "HEAD";
-	} catch {
-		return "HEAD";
 	}
 }
 

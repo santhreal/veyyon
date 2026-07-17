@@ -16,13 +16,19 @@ import { removeSyncWithRetries, Snowflake } from "@veyyon/pi-utils";
 describe("createAgentSession deferred model pattern resolution", () => {
 	let tempDir: string;
 	const authStoragesToClose: AuthStorage[] = [];
+	// Undisposed sessions leak process-wide singletons (AsyncJobManager) into
+	// later test files; sessions without their own try/finally register here.
+	const sessionsToDispose: Array<{ dispose(): Promise<void> }> = [];
 
 	beforeEach(() => {
 		tempDir = path.join(os.tmpdir(), `pi-sdk-model-selection-${Snowflake.next()}`);
 		fs.mkdirSync(tempDir, { recursive: true });
 	});
 
-	afterEach(() => {
+	afterEach(async () => {
+		for (const session of sessionsToDispose.splice(0)) {
+			await session.dispose();
+		}
 		vi.restoreAllMocks();
 		for (const authStorage of authStoragesToClose) {
 			authStorage.close();
@@ -113,6 +119,7 @@ describe("createAgentSession deferred model pattern resolution", () => {
 		const { session, modelFallbackMessage } = await createAgentSession(
 			await buildSessionOptions("runtime-provider/runtime-model"),
 		);
+		sessionsToDispose.push(session);
 
 		expect(session.model).toBeDefined();
 		expect(session.model?.provider).toBe("runtime-provider");
@@ -160,6 +167,7 @@ describe("createAgentSession deferred model pattern resolution", () => {
 		const { session, modelFallbackMessage } = await createAgentSession(
 			await buildSessionOptions("missing-provider/missing-model"),
 		);
+		sessionsToDispose.push(session);
 
 		expect(session.model).toBeUndefined();
 		expect(modelFallbackMessage).toBe('Model "missing-provider/missing-model" not found');
@@ -271,6 +279,7 @@ describe("createAgentSession deferred model pattern resolution", () => {
 			...(await buildSessionOptions("runtime-provider/runtime-reasoning-model")),
 			settings,
 		});
+		sessionsToDispose.push(session);
 
 		expect(session.model?.provider).toBe("runtime-provider");
 		expect(session.model?.id).toBe("runtime-reasoning-model");
@@ -284,6 +293,7 @@ describe("createAgentSession deferred model pattern resolution", () => {
 			...(await buildSessionOptions("runtime-provider/runtime-reasoning-model")),
 			settings,
 		});
+		sessionsToDispose.push(session);
 
 		expect(session.model?.provider).toBe("runtime-provider");
 		expect(session.model?.id).toBe("runtime-reasoning-model");

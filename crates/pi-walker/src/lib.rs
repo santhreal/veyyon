@@ -868,6 +868,13 @@ impl WalkRequest {
 
 	/// Collect regular-file candidates accepted by this request with a
 	/// caller-supplied heartbeat.
+	///
+	/// When the request needs no cache, limit, contents-first ordering, or
+	/// strict directory-error delivery, collection runs on the parallel
+	/// candidate walk (gitignore matching is the dominant CPU cost of a
+	/// filtered walk, and the parallel walk spreads it across the worker
+	/// pool). [`WalkOrder::Path`] results are restored by sorting the
+	/// collected set into the serial walk's depth-first preorder.
 	pub fn collect_file_candidates_with_heartbeat<E, H>(
 		&self,
 		heartbeat: H,
@@ -876,6 +883,41 @@ impl WalkRequest {
 		H: Fn() -> std::result::Result<(), E> + Sync,
 		E: fmt::Display,
 	{
+		let options = self.effective_options();
+		if self.limit.is_none()
+			&& !options.cache
+			&& !options.contents_first
+			&& options.directory_errors == DirectoryErrorMode::SkipSkippable
+			&& should_use_parallel_file_candidate_walk(options)
+		{
+			let candidates = std::sync::Mutex::new(Vec::new());
+			run_file_candidate_parallel(
+				self,
+				&|candidate: &FileCandidate| {
+					candidates
+						.lock()
+						.expect("parallel candidate sink poisoned")
+						.push(candidate.clone());
+					Ok::<_, String>(ParallelWalkControl::Continue)
+				},
+				&|| heartbeat().map_err(|err| err.to_string()),
+				None,
+			)?;
+			let mut candidates = candidates
+				.into_inner()
+				.expect("parallel candidate sink poisoned");
+			if !options.emit_root && options.min_depth == 0 {
+				// The parallel walk always emits a file root at depth 0; the
+				// serial collect honors emit_root there.
+				candidates.retain(|candidate| !candidate.relative.is_empty());
+			}
+			if options.order == WalkOrder::Path {
+				candidates.sort_unstable_by(|left, right| {
+					compare_preorder_relative_paths(&left.relative, &right.relative)
+				});
+			}
+			return Ok(candidates);
+		}
 		Ok(self
 			.collect_file_candidates_with_stats_with_heartbeat(heartbeat)?
 			.0)
@@ -1073,7 +1115,26 @@ impl WalkRequest {
 	where
 		E: Send,
 	{
-		run_file_candidate_parallel(self, &sink, &heartbeat)
+		run_file_candidate_parallel(self, &sink, &heartbeat, None)
+	}
+
+	/// [`WalkRequest::for_each_file_candidate_parallel`] with a callback for
+	/// directory-open errors, for grep-style consumers that must report
+	/// unreadable directories on stderr instead of skipping them silently.
+	///
+	/// `dir_error` may be called concurrently from walker threads and must not
+	/// assume any ordering. It observes, it does not decide: traversal always
+	/// continues past a failed directory.
+	pub fn for_each_file_candidate_parallel_with_dir_errors<E>(
+		&self,
+		sink: impl Fn(&FileCandidate) -> std::result::Result<ParallelWalkControl, E> + Send + Sync,
+		heartbeat: impl Fn() -> std::result::Result<(), E> + Send + Sync,
+		dir_error: impl Fn(DirectoryError<'_>) + Send + Sync,
+	) -> std::result::Result<WalkStatus, WalkError<E>>
+	where
+		E: Send,
+	{
+		run_file_candidate_parallel(self, &sink, &heartbeat, Some(&dir_error))
 	}
 
 	fn collect_with_rank_and_limit<E, H>(
@@ -1236,8 +1297,9 @@ where
 }
 
 struct SerialCandidateVisitor<'a, S> {
-	filter: &'a WalkFilter,
-	sink:   &'a S,
+	filter:    &'a WalkFilter,
+	sink:      &'a S,
+	dir_error: Option<&'a (dyn Fn(DirectoryError<'_>) + Sync)>,
 }
 
 impl<E, S> EntryVisitor for SerialCandidateVisitor<'_, S>
@@ -1267,6 +1329,16 @@ where
 			ParallelWalkControl::Continue => Ok(WalkControl::Continue),
 			ParallelWalkControl::Stop => Ok(WalkControl::Quit),
 		}
+	}
+
+	fn visit_directory_error(
+		&mut self,
+		error: DirectoryError<'_>,
+	) -> std::result::Result<WalkControl, Self::Error> {
+		if let Some(report) = self.dir_error {
+			report(error);
+		}
+		Ok(WalkControl::Continue)
 	}
 
 	fn decide_pre_descend(
@@ -1301,11 +1373,16 @@ struct ParallelWalkShared<'a, E, S, H> {
 	error:     Mutex<Option<E>>,
 	sink:      &'a S,
 	heartbeat: &'a H,
+	dir_error: Option<&'a (dyn Fn(DirectoryError<'_>) + Sync)>,
 }
 
 impl<'a, E, S, H> ParallelWalkShared<'a, E, S, H> {
-	const fn new(sink: &'a S, heartbeat: &'a H) -> Self {
-		Self { stop: AtomicBool::new(false), error: Mutex::new(None), sink, heartbeat }
+	const fn new(
+		sink: &'a S,
+		heartbeat: &'a H,
+		dir_error: Option<&'a (dyn Fn(DirectoryError<'_>) + Sync)>,
+	) -> Self {
+		Self { stop: AtomicBool::new(false), error: Mutex::new(None), sink, heartbeat, dir_error }
 	}
 
 	fn request_stop(&self) {
@@ -1348,6 +1425,7 @@ fn run_file_candidate_parallel<E, S, H>(
 	request: &WalkRequest,
 	sink: &S,
 	heartbeat: &H,
+	dir_error: Option<&(dyn Fn(DirectoryError<'_>) + Sync)>,
 ) -> std::result::Result<WalkStatus, WalkError<E>>
 where
 	E: Send,
@@ -1360,7 +1438,7 @@ where
 	}
 	heartbeat().map_err(WalkError::Interrupted)?;
 	if !should_use_parallel_file_candidate_walk(options) {
-		return run_file_candidate_serial(request, options, sink, heartbeat);
+		return run_file_candidate_serial(request, options, sink, heartbeat, dir_error);
 	}
 
 	options.cache = false;
@@ -1374,7 +1452,7 @@ where
 		matcher: FastIgnore::new(options.use_gitignore),
 	};
 	let root_ignore = context.matcher.root_state(&context.root);
-	let shared = ParallelWalkShared::new(sink, heartbeat);
+	let shared = ParallelWalkShared::new(sink, heartbeat, dir_error);
 
 	if root_entry.file_type == FileType::File && options.min_depth == 0 {
 		emit_parallel_root_file(&context, &shared, &root_entry);
@@ -1413,6 +1491,7 @@ fn run_file_candidate_serial<E, S, H>(
 	mut options: WalkOptions,
 	sink: &S,
 	heartbeat: &H,
+	dir_error: Option<&(dyn Fn(DirectoryError<'_>) + Sync)>,
 ) -> std::result::Result<WalkStatus, WalkError<E>>
 where
 	S: Fn(&FileCandidate) -> std::result::Result<ParallelWalkControl, E> + Sync,
@@ -1423,7 +1502,7 @@ where
 	options.contents_first = false;
 	options.emit_root = true;
 	options.directory_errors = DirectoryErrorMode::Visit;
-	let mut visitor = SerialCandidateVisitor { filter: &request.filter, sink };
+	let mut visitor = SerialCandidateVisitor { filter: &request.filter, sink, dir_error };
 	walk_entries(&request.root, options, &mut visitor, heartbeat)
 }
 
@@ -1550,7 +1629,14 @@ fn walk_parallel_dir<'scope, E, S, H>(
 		derive_ignore_from_entries,
 	) {
 		Ok(ignore_entries) => ignore_entries,
-		Err(ReadDirError::Io(_) | ReadDirError::Walk(WalkError::InvalidData { .. })) => {
+		Err(ReadDirError::Io(error)) => {
+			if let Some(report) = shared.dir_error {
+				report(DirectoryError { path: &dir, error: &error });
+			}
+			recycle_parallel_scratch(scratch);
+			return;
+		},
+		Err(ReadDirError::Walk(WalkError::InvalidData { .. })) => {
 			recycle_parallel_scratch(scratch);
 			return;
 		},
@@ -1770,6 +1856,31 @@ pub fn is_relative_ancestor(parent: &str, child: &str) -> bool {
 	child
 		.strip_prefix(parent)
 		.is_some_and(|suffix| suffix.starts_with('/'))
+}
+
+/// Compare normalized walk-relative paths in the serial walker's
+/// [`WalkOrder::Path`] visit order: within each directory, files emit in
+/// byte-sorted name order first, then each subdirectory's subtree recurses in
+/// name order (`"a.txt"` sorts before `"a/b.rs"` even though `"a"` < `"a.txt"`,
+/// because files precede sibling directories).
+fn compare_preorder_relative_paths(left: &str, right: &str) -> Ordering {
+	let mut lhs = left.split('/').peekable();
+	let mut rhs = right.split('/').peekable();
+	loop {
+		match (lhs.next(), rhs.next()) {
+			(Some(l), Some(r)) => {
+				let l_is_dir = lhs.peek().is_some();
+				let r_is_dir = rhs.peek().is_some();
+				match l_is_dir.cmp(&r_is_dir).then_with(|| l.cmp(r)) {
+					Ordering::Equal => {},
+					other => return other,
+				}
+			},
+			(None, None) => return Ordering::Equal,
+			(Some(_), None) => return Ordering::Greater,
+			(None, Some(_)) => return Ordering::Less,
+		}
+	}
 }
 
 /// Compare normalized walk-relative paths in depth-first,

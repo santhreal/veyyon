@@ -2,7 +2,14 @@ import { Database } from "bun:sqlite";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { gunzipSync, gzipSync } from "node:zlib";
-import { getAgentDir, getBlobsDir, getHistoryDbPath, getModelDbPath, getSessionsDir } from "@veyyon/pi-utils";
+import {
+	errorMessage,
+	getAgentDir,
+	getBlobsDir,
+	getHistoryDbPath,
+	getModelDbPath,
+	getSessionsDir,
+} from "@veyyon/pi-utils";
 import { Settings } from "../config/settings";
 import { getDefault } from "../config/settings-schema";
 import { listSessionsReadOnly, type SessionInfo, type SessionStatus } from "../session/session-listing";
@@ -138,7 +145,7 @@ function numberSetting(value: number | undefined, fallback: unknown, defaultValu
 	return normalizeNumberSetting(fallback, defaultValue);
 }
 
-async function resolveOptions(flags: GcCommandFlags): Promise<ResolvedGcOptions> {
+async function resolveGcOptions(flags: GcCommandFlags): Promise<ResolvedGcOptions> {
 	const agentDir = path.resolve(flags.agentDir ?? getAgentDir());
 	const selected = flags.blobs === true || flags.archive === true || flags.wal === true;
 	const settings =
@@ -182,17 +189,13 @@ function getArchivedSessionsDir(agentDir: string): string {
 	return path.join(path.dirname(getSessionsDir(agentDir)), "archive", "sessions");
 }
 
-function errorMessage(error: unknown): string {
-	return error instanceof Error ? error.message : String(error);
-}
-
 function codeOf(error: unknown): string | undefined {
 	return typeof error === "object" && error !== null && "code" in error
 		? String((error as { code?: unknown }).code)
 		: undefined;
 }
 
-async function pathExists(target: string): Promise<boolean> {
+async function pathExistsStrict(target: string): Promise<boolean> {
 	try {
 		await fs.stat(target);
 		return true;
@@ -488,9 +491,9 @@ async function moveSessionWithArtifacts(candidate: ArchiveCandidate): Promise<vo
 	const legacyDestSession = destSession.endsWith(".gz") ? destSession.slice(0, -".gz".length) : `${destSession}.gz`;
 	const sourceArtifacts = sessionArtifactsPath(sourceSession);
 	const destArtifacts = sessionArtifactsPath(destSession);
-	if (await pathExists(destSession)) throw new Error(`archive destination exists: ${destSession}`);
-	if (await pathExists(legacyDestSession)) throw new Error(`archive destination exists: ${legacyDestSession}`);
-	if ((await pathExists(sourceArtifacts)) && (await pathExists(destArtifacts))) {
+	if (await pathExistsStrict(destSession)) throw new Error(`archive destination exists: ${destSession}`);
+	if (await pathExistsStrict(legacyDestSession)) throw new Error(`archive destination exists: ${legacyDestSession}`);
+	if ((await pathExistsStrict(sourceArtifacts)) && (await pathExistsStrict(destArtifacts))) {
 		throw new Error(`archive artifacts destination exists: ${destArtifacts}`);
 	}
 
@@ -498,7 +501,7 @@ async function moveSessionWithArtifacts(candidate: ArchiveCandidate): Promise<vo
 	try {
 		await gzipSessionFile(sourceSession, destSession);
 		moved.push({ source: sourceSession, destination: destSession, compressed: true });
-		if (await pathExists(sourceArtifacts)) {
+		if (await pathExistsStrict(sourceArtifacts)) {
 			await movePath(sourceArtifacts, destArtifacts);
 			moved.push({ source: sourceArtifacts, destination: destArtifacts });
 		}
@@ -524,7 +527,7 @@ function sqliteNumber(value: number | bigint | null | undefined): number {
 	return 0;
 }
 
-function tableExists(db: Database, table: string): boolean {
+function tableOrViewExists(db: Database, table: string): boolean {
 	const row = db
 		.prepare("SELECT 1 AS present FROM sqlite_master WHERE type IN ('table','view') AND name = ?")
 		.get(table) as { present?: number } | null;
@@ -541,9 +544,9 @@ function deleteHistoryRowsForSessions(dbPath: string, sessionIds: string[]): { d
 	const db = new Database(dbPath);
 	try {
 		db.run("PRAGMA busy_timeout = 5000");
-		if (!tableExists(db, "history")) return { deleted: 0, ftsRebuilt: false };
+		if (!tableOrViewExists(db, "history")) return { deleted: 0, ftsRebuilt: false };
 		if (!historyHasSessionId(db)) return { deleted: 0, ftsRebuilt: false };
-		const hasFts = tableExists(db, "history_fts");
+		const hasFts = tableOrViewExists(db, "history_fts");
 		const deleteStmt = db.prepare("DELETE FROM history WHERE session_id = ?");
 		let deleted = 0;
 		const tx = db.transaction((ids: string[]) => {
@@ -576,7 +579,7 @@ async function cleanupHistoryRowsForArchivedSessions(
 	result: ArchiveGcResult,
 ): Promise<void> {
 	const dbPath = getHistoryDbPath(options.agentDir);
-	if (!(await pathExists(dbPath))) return;
+	if (!(await pathExistsStrict(dbPath))) return;
 
 	const cleanupIds = new Set(archivedSessionIds);
 	try {
@@ -682,7 +685,7 @@ async function checkpointWal(dbPath: string, apply: boolean): Promise<WalCheckpo
 		log: 0,
 		checkpointedFrames: 0,
 	};
-	if (!apply || !(await pathExists(dbPath))) return result;
+	if (!apply || !(await pathExistsStrict(dbPath))) return result;
 
 	const db = new Database(dbPath);
 	let checkpointAttempted = false;
@@ -900,7 +903,7 @@ async function withGcLock<T>(agentDir: string, fn: (lockPath: string) => Promise
 	return result as T;
 }
 
-function formatBytes(bytes: number): string {
+function formatBytesIEC(bytes: number): string {
 	if (bytes < 1024) return `${bytes} B`;
 	if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KiB`;
 	if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MiB`;
@@ -911,7 +914,7 @@ function renderText(result: GcResult): string {
 	const lines = [`GC ${result.apply ? "applied" : "dry-run"} (${result.agentDir})`];
 	if (result.blobs) {
 		lines.push(
-			`blobs: ${result.blobs.deleted}/${result.blobs.wouldDelete} files, ${formatBytes(result.blobs.bytes)}, ${result.blobs.referenced} refs`,
+			`blobs: ${result.blobs.deleted}/${result.blobs.wouldDelete} files, ${formatBytesIEC(result.blobs.bytes)}, ${result.blobs.referenced} refs`,
 		);
 		if (result.blobs.errors.length > 0) lines.push(`blob errors: ${result.blobs.errors.length}`);
 	}
@@ -924,13 +927,13 @@ function renderText(result: GcResult): string {
 	}
 	if (result.wal) {
 		const state = result.wal.checkpointed ? "checkpointed" : "checkpoint dry-run";
-		lines.push(`wal: ${state}, ${formatBytes(result.wal.walBytes)} across ${result.wal.databases.length} dbs`);
+		lines.push(`wal: ${state}, ${formatBytesIEC(result.wal.walBytes)} across ${result.wal.databases.length} dbs`);
 	}
 	return `${lines.join("\n")}\n`;
 }
 
 export async function runGcCommand(args: GcCommandArgs): Promise<GcResult> {
-	const options = await resolveOptions(args.flags);
+	const options = await resolveGcOptions(args.flags);
 	const archiveRoot = getArchivedSessionsDir(options.agentDir);
 	const result = await withGcLock(options.agentDir, async lockPath => {
 		const next: GcResult = { agentDir: options.agentDir, apply: options.apply, lockPath };

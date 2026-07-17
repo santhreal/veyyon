@@ -118,6 +118,7 @@ const repoScriptTests = [
 	"scripts/ci-release-notes.test.ts",
 	"scripts/fix-dts-extensions.test.ts",
 	"scripts/link-omp.test.ts",
+	"scripts/docs-book-pin.test.ts",
 ];
 
 const codingAgentNativePathPatterns = [

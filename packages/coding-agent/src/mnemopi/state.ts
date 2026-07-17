@@ -4,7 +4,7 @@ import type * as MnemopiNs from "@veyyon/pi-mnemopi";
 import type { Mnemopi, RecallResult } from "@veyyon/pi-mnemopi";
 import type * as MnemopiCoreNs from "@veyyon/pi-mnemopi/core";
 import type { LocalModelInitializer } from "@veyyon/pi-mnemopi/core";
-import { logger } from "@veyyon/pi-utils";
+import { escapeRegExp, joinTextBlocks, logger } from "@veyyon/pi-utils";
 import {
 	composeRecallQuery,
 	formatCurrentTime,
@@ -367,12 +367,11 @@ export class MnemopiSessionState {
 					}
 				}
 			} catch (error) {
-				if (this.config.debug) {
-					logger.debug("Mnemopi: scoped recall target failed", {
-						bank: target.bank,
-						error: String(error),
-					});
-				}
+				// Recall loss must never be invisible: a failed bank shrinks results.
+				logger.warn("Mnemopi: scoped recall target failed; results exclude this bank", {
+					bank: target.bank,
+					error: String(error),
+				});
 			}
 		}
 		merged.sort(compareRecallResults);
@@ -510,7 +509,10 @@ export class MnemopiSessionState {
 		try {
 			await this.session.refreshBaseSystemPrompt();
 		} catch (error) {
-			if (this.config.debug) logger.debug("Mnemopi: prompt refresh after recall failed", { error: String(error) });
+			// The recalled context never reaches the system prompt if this fails.
+			logger.warn("Mnemopi: prompt refresh after recall failed; recalled context not injected", {
+				error: String(error),
+			});
 		}
 	}
 
@@ -714,10 +716,6 @@ function normalizeRecallQuery(query: string): string {
 		.replace(/[^a-z0-9]+/g, " ")
 		.trim();
 }
-
-function escapeRegExp(text: string): string {
-	return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
 function createMemory(config: MnemopiBackendConfig, bank: string): Mnemopi {
 	const providerOptions = config.providerOptions as Record<string, unknown>;
 	const { Mnemopi } = requireMnemopi();
@@ -733,7 +731,7 @@ function createMemory(config: MnemopiBackendConfig, bank: string): Mnemopi {
 	} as ConstructorParameters<typeof Mnemopi>[0]);
 }
 
-function resolveBankDbPath(config: MnemopiBackendConfig, bank: string): string {
+export function resolveBankDbPath(config: MnemopiBackendConfig, bank: string): string {
 	const sharedBank = config.globalBank ?? config.baseBank ?? "default";
 	if (bank === sharedBank) return config.dbPath;
 	const { BankManager } = requireMnemopiCore();
@@ -784,7 +782,7 @@ function flattenAgentMessages(messages: AgentMessage[]): Array<{ role: "user" | 
 	const out: Array<{ role: "user" | "assistant"; content: string }> = [];
 	for (const message of messages) {
 		if (!("role" in message) || (message.role !== "user" && message.role !== "assistant")) continue;
-		const content = message.role === "user" ? userText(message.content) : assistantText(message.content);
+		const content = message.role === "user" ? userText(message.content) : assistantTextFromContent(message.content);
 		if (content.trim()) out.push({ role: message.role, content });
 	}
 	return out;
@@ -802,11 +800,6 @@ function userText(content: unknown): string {
 	return parts.join("\n");
 }
 
-function assistantText(content: unknown): string {
-	if (!Array.isArray(content)) return "";
-	const parts: string[] = [];
-	for (const block of content) {
-		if (block.type === "text" && block.text) parts.push(block.text);
-	}
-	return parts.join("\n");
+function assistantTextFromContent(content: unknown): string {
+	return Array.isArray(content) ? joinTextBlocks(content) : "";
 }

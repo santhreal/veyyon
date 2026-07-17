@@ -9,11 +9,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/can1357/oh-my-pi.git",
+    "url": "git+https://github.com/santhreal/veyyon.git",
     "directory": "packages/collab-web"
   },
   "bugs": {
-    "url": "https://github.com/can1357/oh-my-pi/issues"
+    "url": "https://github.com/santhreal/veyyon/issues"
   },
   "keywords": [
     "collab",
@@ -37,6 +37,7 @@
     "fmt": "biome format --write ."
   },
   "dependencies": {
+    "@veyyon/pi-utils": "catalog:",
     "@veyyon/pi-wire": "catalog:",
     "@veyyon/tool-render": "catalog:",
     "lucide-react": "catalog:",

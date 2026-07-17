@@ -5,7 +5,7 @@ description: Use when creating a new veyyon extension. Covers ExtensionAPI, fact
 
 # Authoring Extensions
 
-Extensions are the primary way to add capabilities to Veyyon. A single extension module can register tools the LLM can call, slash commands users can invoke, and event handlers that run throughout the session lifecycle — all from one TypeScript file.
+Extensions are the primary way to add capabilities to `oh-my-pi`. A single extension module can register tools the LLM can call, slash commands users can invoke, and event handlers that run throughout the session lifecycle — all from one TypeScript file.
 
 ## Minimum viable extension
 

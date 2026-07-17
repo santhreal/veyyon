@@ -42,6 +42,16 @@ find_tarball() {
    echo "${matches[0]}"
 }
 
+section "Installer function tests"
+sh scripts/install-tests/functions.test.sh
+if command -v pwsh >/dev/null 2>&1; then
+   pwsh -NoProfile scripts/install-tests/functions.test.ps1
+else
+   # Loud, counted skip — never silent. GitHub-hosted ubuntu images ship pwsh;
+   # this branch fires only on runner images without it.
+   echo "SKIPPED: install.ps1 function tests (pwsh not on PATH on this runner)"
+fi
+
 section "Binary install smoke"
 bun --cwd=packages/natives run build
 bun --cwd=packages/coding-agent run build
@@ -116,18 +126,18 @@ agent_rc=0
 cp "$agent_pkg_backup" "$ROOT_DIR/packages/coding-agent/package.json"
 [ "$agent_rc" -eq 0 ] || exit "$agent_rc"
 
-utils_tgz="$(find_tarball "$TARBALL_DIR"/oh-my-pi-pi-utils-*.tgz)"
-wire_tgz="$(find_tarball "$TARBALL_DIR"/oh-my-pi-pi-wire-*.tgz)"
-natives_tgz="$(find_tarball "$TARBALL_DIR"/oh-my-pi-pi-natives-[0-9]*.tgz)"
-natives_leaf_tgz="$(find_tarball "$TARBALL_DIR"/oh-my-pi-pi-natives-"$host_tag"-*.tgz)"
-hashline_tgz="$(find_tarball "$TARBALL_DIR"/oh-my-pi-hashline-*.tgz)"
-catalog_tgz="$(find_tarball "$TARBALL_DIR"/oh-my-pi-pi-catalog-*.tgz)"
-ai_tgz="$(find_tarball "$TARBALL_DIR"/oh-my-pi-pi-ai-*.tgz)"
-mnemopi_tgz="$(find_tarball "$TARBALL_DIR"/oh-my-pi-pi-mnemopi-*.tgz)"
-snapcompact_tgz="$(find_tarball "$TARBALL_DIR"/oh-my-pi-snapcompact-*.tgz)"
-agent_tgz="$(find_tarball "$TARBALL_DIR"/oh-my-pi-pi-agent-core-*.tgz)"
-tui_tgz="$(find_tarball "$TARBALL_DIR"/oh-my-pi-pi-tui-*.tgz)"
-coding_agent_tgz="$(find_tarball "$TARBALL_DIR"/oh-my-pi-pi-coding-agent-*.tgz)"
+utils_tgz="$(find_tarball "$TARBALL_DIR"/veyyon-pi-utils-*.tgz)"
+wire_tgz="$(find_tarball "$TARBALL_DIR"/veyyon-pi-wire-*.tgz)"
+natives_tgz="$(find_tarball "$TARBALL_DIR"/veyyon-pi-natives-[0-9]*.tgz)"
+natives_leaf_tgz="$(find_tarball "$TARBALL_DIR"/veyyon-pi-natives-"$host_tag"-*.tgz)"
+hashline_tgz="$(find_tarball "$TARBALL_DIR"/veyyon-hashline-*.tgz)"
+catalog_tgz="$(find_tarball "$TARBALL_DIR"/veyyon-pi-catalog-*.tgz)"
+ai_tgz="$(find_tarball "$TARBALL_DIR"/veyyon-pi-ai-*.tgz)"
+mnemopi_tgz="$(find_tarball "$TARBALL_DIR"/veyyon-pi-mnemopi-*.tgz)"
+snapcompact_tgz="$(find_tarball "$TARBALL_DIR"/veyyon-snapcompact-*.tgz)"
+agent_tgz="$(find_tarball "$TARBALL_DIR"/veyyon-pi-agent-core-*.tgz)"
+tui_tgz="$(find_tarball "$TARBALL_DIR"/veyyon-pi-tui-*.tgz)"
+coding_agent_tgz="$(find_tarball "$TARBALL_DIR"/veyyon-pi-coding-agent-*.tgz)"
 
 TARBALL_APP_DIR="$WORK_DIR/tarball-install"
 mkdir -p "$TARBALL_APP_DIR"

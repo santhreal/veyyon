@@ -36,7 +36,7 @@ async function fetchLatestGitHubRelease(
 	try {
 		// /releases/latest only returns non-prerelease, non-draft releases
 		const res = await fetch(`https://api.github.com/repos/${repo}/releases/latest`, {
-			headers: { Accept: "application/vnd.github+json", "User-Agent": "oh-my-pi/version-check" },
+			headers: { Accept: "application/vnd.github+json", "User-Agent": "veyyon/version-check" },
 		});
 		if (!res.ok) return null;
 		const data = (await res.json()) as { tag_name?: string };

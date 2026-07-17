@@ -45,16 +45,7 @@ interface FirecrawlSearchResponse {
 	} | null;
 }
 
-/** Resolve Firecrawl API key through the shared auth storage pipeline. */
-export function findApiKey(
-	authStorage: AuthStorage,
-	sessionId?: string,
-	signal?: AbortSignal,
-): Promise<string | undefined> {
-	return authStorage.getApiKey("firecrawl", sessionId, { signal });
-}
-
-function buildRequestBody(params: FirecrawlSearchParams): Record<string, unknown> {
+function buildFirecrawlRequestBody(params: FirecrawlSearchParams): Record<string, unknown> {
 	const body: Record<string, unknown> = {
 		query: params.query,
 		limit: clampNumResults(params.num_results, DEFAULT_NUM_RESULTS, MAX_NUM_RESULTS),
@@ -73,7 +64,7 @@ async function callFirecrawlSearch(apiKey: string, params: FirecrawlSearchParams
 			"Content-Type": "application/json",
 			Authorization: `Bearer ${apiKey}`,
 		},
-		body: JSON.stringify(buildRequestBody(params)),
+		body: JSON.stringify(buildFirecrawlRequestBody(params)),
 		signal: withHardTimeout(params.signal),
 	});
 

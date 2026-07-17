@@ -1,9 +1,8 @@
-import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { isRecord, logger, WhichCachePolicy } from "@veyyon/pi-utils";
-import { YAML } from "bun";
 import { getConfigDirPaths } from "../config";
+import { configFileSource } from "../config/config-file";
 import { getPreloadedPluginRoots } from "../discovery/helpers";
 import { hasRootMarkers, resolveCommand } from "../lsp/config";
 import DEFAULTS from "./defaults.json" with { type: "json" };
@@ -19,15 +18,7 @@ interface ConfigSource {
 	read(): NormalizedConfig | null;
 }
 
-function parseConfigContent(content: string, filePath: string): unknown {
-	const extension = path.extname(filePath).toLowerCase();
-	if (extension === ".yaml" || extension === ".yml") {
-		return YAML.parse(content) as unknown;
-	}
-	return JSON.parse(content) as unknown;
-}
-
-function normalizeConfig(value: unknown): NormalizedConfig | null {
+function normalizeDapConfig(value: unknown): NormalizedConfig | null {
 	if (!isRecord(value)) return null;
 	if (isRecord(value.adapters)) return { adapters: value.adapters };
 	return { adapters: value };
@@ -57,15 +48,6 @@ function normalizeAdapterConfig(config: unknown): DapAdapterConfig | null {
 		acceptsDirectoryProgram: config.acceptsDirectoryProgram === true,
 		...(connectMode ? { connectMode } : {}),
 	};
-}
-
-function readConfigFile(filePath: string): NormalizedConfig | null {
-	try {
-		const content = fs.readFileSync(filePath, "utf-8");
-		return normalizeConfig(parseConfigContent(content, filePath));
-	} catch {
-		return null;
-	}
 }
 
 function getDefaults(): Record<string, DapAdapterConfig> {
@@ -115,43 +97,37 @@ function mergeAdapters(
 	return merged;
 }
 
-function fileConfigSource(filePath: string): ConfigSource {
-	return {
-		read: () => readConfigFile(filePath),
-	};
-}
-
 function getConfigSources(cwd: string): ConfigSource[] {
 	const filenames = ["dap.json", ".dap.json", "dap.yaml", ".dap.yaml", "dap.yml", ".dap.yml"];
 	const sources: ConfigSource[] = [];
 
 	for (const filename of filenames) {
-		sources.push(fileConfigSource(path.join(cwd, filename)));
+		sources.push(configFileSource(path.join(cwd, filename), normalizeDapConfig));
 	}
 
 	const projectDirs = getConfigDirPaths("", { user: false, project: true, cwd });
 	for (const dir of projectDirs) {
 		for (const filename of filenames) {
-			sources.push(fileConfigSource(path.join(dir, filename)));
+			sources.push(configFileSource(path.join(dir, filename), normalizeDapConfig));
 		}
 	}
 
 	const userDirs = getConfigDirPaths("", { user: true, project: false });
 	for (const dir of userDirs) {
 		for (const filename of filenames) {
-			sources.push(fileConfigSource(path.join(dir, filename)));
+			sources.push(configFileSource(path.join(dir, filename), normalizeDapConfig));
 		}
 	}
 
 	const pluginRoots = getPreloadedPluginRoots();
 	for (const root of pluginRoots) {
 		for (const filename of filenames) {
-			sources.push(fileConfigSource(path.join(root.path, filename)));
+			sources.push(configFileSource(path.join(root.path, filename), normalizeDapConfig));
 		}
 	}
 
 	for (const filename of filenames) {
-		sources.push(fileConfigSource(path.join(os.homedir(), filename)));
+		sources.push(configFileSource(path.join(os.homedir(), filename), normalizeDapConfig));
 	}
 
 	return sources;

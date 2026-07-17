@@ -155,12 +155,12 @@ For non-interactive runs, pass the prompt and pick an approval mode that matches
 $ veyyon --approval-mode auto-edit "run the unit tests and fix failures"
 ```
 
-Use `--yolo` (auto-approve everything) only in trusted automation, ideally in an externally isolated environment (Docker, a VM, a CI jail), since Veyyon does not sandbox the commands it runs.
+Use `--yolo` (auto-approve everything) only in trusted automation, ideally with an outer sandbox.
 
 ## What stays constant
 
 - The workflow stays the same: read, edit, verify, and stop when the work is done.
-- Edit verification, approvals, and context handling are harness behavior.
+- Edit verification, OS isolation, approvals, and context handling are harness behavior.
 - You are not locked to any provider; point the harness at any compatible API.
 
 ## Next
@@ -169,5 +169,5 @@ Use `--yolo` (auto-approve everything) only in trusted automation, ideally in an
   OpenAI-compatible endpoints.
 - [Models and providers](../using/models.md) — choosing and switching models in a session.
 - [Safety](../using/safety.md) — boundaries around tool use and model output.
-- [Permission model](./permission-model.md) — the approval-mode ladder.
+- [Permission model](./permission-model.md) — approval modes + OS sandbox.
 - [Signing in](../using/authentication.md) — interactive and env-var auth paths.

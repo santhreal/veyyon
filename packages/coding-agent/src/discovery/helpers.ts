@@ -18,6 +18,14 @@ import type { Skill, SkillFrontmatter } from "../capability/skill";
 import type { LoadContext, LoadResult, SourceMeta } from "../capability/types";
 import { type ManifestHolder, manifestFromPackageJson } from "../extensibility/manifest-key";
 import { type ConfiguredThinkingLevel, parseConfiguredThinkingLevel } from "../thinking";
+
+/**
+ * ONE PLACE: the executable custom-tool script extensions every discovery
+ * provider (builtin, claude, claude-plugins, omp-plugins) strips to derive the
+ * tool name. Extending tool-file support means changing exactly this regex.
+ */
+export const CUSTOM_TOOL_SCRIPT_EXT_RE = /\.(ts|js|sh|bash|py)$/;
+
 import { normalizeToolNames } from "../tools/builtin-names";
 
 import { buildPluginDirRoot } from "./plugin-dir-roots";

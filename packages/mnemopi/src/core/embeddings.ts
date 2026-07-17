@@ -4,14 +4,19 @@ import { ProviderHttpError } from "@veyyon/pi-ai/error";
 import { hostMatchesUrl } from "@veyyon/pi-catalog/hosts";
 import {
 	$env,
-	$flag,
 	extractHttpStatusFromError,
 	fetchWithRetry,
 	getFastembedCacheDir,
 	logger,
+	stripTrailingSlashes,
 } from "@veyyon/pi-utils";
 import type { EmbeddingModel } from "fastembed";
 import { LRUCache } from "lru-cache/raw";
+import {
+	embeddingApiKey as configEmbeddingApiKey,
+	embeddingsDisabled as configEmbeddingsDisabled,
+	embeddingsViaApi as configEmbeddingsViaApi,
+} from "../config";
 import { ensureFastembedModelSidecars } from "./fastembed-model-cache";
 import { loadFastembed } from "./fastembed-runtime";
 import {
@@ -114,11 +119,7 @@ function inTestRuntime(): boolean {
 }
 
 export function embeddingsDisabled(): boolean {
-	const active = activeEmbeddingOptions();
-	if (active?.disabled !== undefined) {
-		return active.disabled;
-	}
-	return $flag("MNEMOPI_NO_EMBEDDINGS");
+	return activeEmbeddingOptions()?.disabled ?? configEmbeddingsDisabled();
 }
 
 /**
@@ -195,11 +196,7 @@ function capInputs(texts: readonly string[]): readonly string[] {
 }
 
 function embeddingApiKey(): ApiKey {
-	const active = activeEmbeddingOptions();
-	if (active?.apiKey !== undefined) {
-		return active.apiKey;
-	}
-	return $env.MNEMOPI_EMBEDDING_API_KEY || $env.OPENROUTER_API_KEY || $env.OPENAI_API_KEY || "";
+	return activeEmbeddingOptions()?.apiKey ?? configEmbeddingApiKey();
 }
 
 /** A resolver always counts as configured; a static key only when non-empty. */
@@ -248,7 +245,7 @@ export function isApiModel(modelName: string): boolean {
 	if (baseUrl !== undefined && baseUrl !== "" && !hostMatchesUrl(baseUrl, "openrouter")) {
 		return true;
 	}
-	return $flag("MNEMOPI_EMBEDDINGS_VIA_API");
+	return configEmbeddingsViaApi();
 }
 
 const MODEL_DIMS: Record<string, number> = {
@@ -360,7 +357,7 @@ async function embedApi(texts: readonly string[]): Promise<EmbeddingMatrix | nul
 			if (key !== "") {
 				headers.Authorization = `Bearer ${key}`;
 			}
-			const res = await fetchWithRetry(`${baseUrl.replace(/\/+$/, "")}/embeddings`, {
+			const res = await fetchWithRetry(`${stripTrailingSlashes(baseUrl)}/embeddings`, {
 				method: "POST",
 				headers,
 				body,

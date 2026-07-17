@@ -1,8 +1,8 @@
 import { parseJsonWithRepair } from "@veyyon/pi-utils";
 import type { Message, ToolCall } from "../types";
-import { asRecord, mintToolCallId, partialSuffixOverlapAny } from "./coercion";
+import { asRecordOrEmpty, mintToolCallId, partialSuffixOverlapAny } from "./coercion";
 import dialectPrompt from "./qwen3.md" with { type: "text" };
-import { renderChatMlTranscript, renderToolResponseResults, stringifyJson } from "./rendering";
+import { renderChatMlTranscript, renderToolResponseResults, stringifyJsonOrNull } from "./rendering";
 import type {
 	DialectDefinition,
 	DialectRenderOptions,
@@ -186,7 +186,7 @@ export class Qwen3InbandScanner implements InbandScanner {
 					args = {};
 				}
 			}
-			return { name: parsed.name, arguments: asRecord(args) };
+			return { name: parsed.name, arguments: asRecordOrEmpty(args) };
 		} catch {
 			return undefined;
 		}
@@ -201,7 +201,7 @@ export class Qwen3InbandScanner implements InbandScanner {
 }
 
 function renderToolCall(call: ToolCall, _options: DialectRenderOptions = {}): string {
-	return `${TOOL_OPEN}\n${stringifyJson({ name: call.name, arguments: call.arguments })}\n${TOOL_CLOSE}`;
+	return `${TOOL_OPEN}\n${stringifyJsonOrNull({ name: call.name, arguments: call.arguments })}\n${TOOL_CLOSE}`;
 }
 
 function renderAssistantToolCalls(calls: readonly ToolCall[], options: DialectRenderOptions = {}): string {

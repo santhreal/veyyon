@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import * as fs from "node:fs/promises";
-import { isEnoent, logger } from "@veyyon/pi-utils";
+import { isEnoent, isProcessAlive, logger } from "@veyyon/pi-utils";
 
 export interface FileLockOptions {
 	staleMs?: number;
@@ -35,15 +35,6 @@ async function readLockInfo(lockPath: string): Promise<LockInfo | null> {
 		return JSON.parse(content) as LockInfo;
 	} catch {
 		return null;
-	}
-}
-
-function isProcessAlive(pid: number): boolean {
-	try {
-		process.kill(pid, 0);
-		return true;
-	} catch {
-		return false;
 	}
 }
 

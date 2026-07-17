@@ -4,7 +4,8 @@
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { prompt, Snowflake } from "@veyyon/pi-utils";
+import { toNonEmptyString } from "@veyyon/pi-catalog/utils";
+import { prompt, Snowflake, safeFilenameSegmentCollapsed } from "@veyyon/pi-utils";
 import { type } from "arktype";
 import { resolveAgentModelPatterns } from "../config/model-resolver";
 import type { LocalProtocolOptions } from "../internal-urls";
@@ -23,7 +24,7 @@ import {
 	prepareIsolationContext,
 	runIsolatedSubprocess,
 } from "../task/isolation-runner";
-import { AgentOutputManager } from "../task/output-manager";
+import { AgentOutputManager, sanitizeOutputName } from "../task/output-manager";
 import { resolveSpawnPolicy } from "../task/spawn-policy";
 import { type AgentDefinition, type AgentProgress, canSpawnAtDepth, type SingleResult } from "../task/types";
 import { type NestedRepoPatch, parseIsolationMode } from "../task/worktree";
@@ -177,14 +178,9 @@ function renderSubagentPrompt(assignment: string): string {
 	return prompt.render(subagentUserPromptTemplate, { assignment: assignment.trim() });
 }
 
-function trimToUndefined(value: string | undefined): string | undefined {
-	const trimmed = value?.trim();
-	return trimmed ? trimmed : undefined;
-}
-
 function outputIdBase(label: string | undefined, agentName: string): string {
-	const source = trimToUndefined(label) ?? agentName ?? DEFAULT_AGENT_LABEL;
-	const sanitized = source.replace(/[^A-Za-z0-9_-]+/g, "").slice(0, 48);
+	const source = toNonEmptyString(label) ?? agentName ?? DEFAULT_AGENT_LABEL;
+	const sanitized = sanitizeOutputName(source);
 	return sanitized || DEFAULT_AGENT_LABEL;
 }
 
@@ -232,7 +228,7 @@ async function persistNestedPatches(
 	for (let index = 0; index < nestedPatches.length; index++) {
 		const patch = nestedPatches[index];
 		if (!patch) continue;
-		const slug = patch.relativePath.replace(/[^A-Za-z0-9._-]+/g, "_") || `nested-${index}`;
+		const slug = safeFilenameSegmentCollapsed(patch.relativePath) || `nested-${index}`;
 		const out = path.join(artifactsDir, `${agentId}.nested-${index}-${slug}.patch`);
 		await Bun.write(out, patch.patch);
 		written.push(out);
@@ -295,11 +291,11 @@ function emitProgressStatus(emitStatus: ((event: JsStatusEvent) => void) | undef
  * generic `bridge call '__agent__' failed`. See #2006.
  */
 function buildSubagentFailureMessage(agentName: string, result: SingleResult): string {
-	const abortReason = trimToUndefined(result.abortReason);
+	const abortReason = toNonEmptyString(result.abortReason);
 	if (result.aborted && abortReason) return abortReason;
 	return (
-		trimToUndefined(result.error) ??
-		trimToUndefined(result.stderr) ??
+		toNonEmptyString(result.error) ??
+		toNonEmptyString(result.stderr) ??
 		abortReason ??
 		`agent() subagent '${agentName}' failed.`
 	);
@@ -390,7 +386,7 @@ export async function runEvalAgent(args: unknown, options: EvalAgentBridgeOption
 		agent: effectiveAgent,
 		task: renderSubagentPrompt(assignment),
 		assignment,
-		description: trimToUndefined(parsed.label),
+		description: toNonEmptyString(parsed.label),
 		index: 0,
 		id,
 		taskDepth: options.session.taskDepth ?? 0,
@@ -475,7 +471,7 @@ export async function runEvalAgent(args: unknown, options: EvalAgentBridgeOption
 					agentId: id,
 					mergeMode,
 					artifactsDir,
-					description: trimToUndefined(parsed.label),
+					description: toNonEmptyString(parsed.label),
 					buildCommitMessage,
 					buildFailureResult: err => {
 						const message = err instanceof Error ? err.message : String(err);
@@ -486,7 +482,7 @@ export async function runEvalAgent(args: unknown, options: EvalAgentBridgeOption
 							agentSource: effectiveAgent.source,
 							task: renderSubagentPrompt(assignment),
 							assignment,
-							description: trimToUndefined(parsed.label),
+							description: toNonEmptyString(parsed.label),
 							exitCode: 1,
 							output: "",
 							stderr: message,

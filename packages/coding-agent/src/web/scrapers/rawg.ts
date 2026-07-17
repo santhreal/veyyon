@@ -63,7 +63,7 @@ export const handleRawg: SpecialHandler = async (
 		md += `**RAWG:** https://rawg.io/games/${encodeURIComponent(slug)}\n`;
 		md += "\n";
 
-		const description = await extractDescription(game);
+		const description = await extractRawgDescription(game);
 		if (description) {
 			md += `## Description\n\n${description}\n`;
 		}
@@ -91,7 +91,7 @@ function requiresApiKey(game: RawgGameResponse): boolean {
 	return detail.includes("api key") || detail.includes("key is required") || detail.includes("apikey");
 }
 
-async function extractDescription(game: RawgGameResponse): Promise<string | null> {
+async function extractRawgDescription(game: RawgGameResponse): Promise<string | null> {
 	if (game.description_raw) return game.description_raw.trim();
 	if (!game.description) return null;
 

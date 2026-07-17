@@ -180,7 +180,7 @@ interface DebugToolDetails {
 	meta?: OutputMeta;
 }
 
-function formatLocation(snapshot: DapSessionSummary | undefined): string | null {
+function formatDapLocation(snapshot: DapSessionSummary | undefined): string | null {
 	if (!snapshot?.source?.path || snapshot.line === undefined) {
 		return null;
 	}
@@ -200,7 +200,7 @@ function formatSessionSnapshot(snapshot: DapSessionSummary): string[] {
 	if (snapshot.instructionPointerReference) {
 		lines.push(`Instruction pointer: ${snapshot.instructionPointerReference}`);
 	}
-	const location = formatLocation(snapshot);
+	const location = formatDapLocation(snapshot);
 	if (location) lines.push(`Location: ${location}`);
 	if (snapshot.needsConfigurationDone) {
 		lines.push("Configuration: pending configurationDone; set breakpoints, then continue.");
@@ -452,7 +452,7 @@ function formatSessions(sessions: DapSessionSummary[]): string {
 	}
 	return sessions
 		.map(session => {
-			const location = formatLocation(session);
+			const location = formatDapLocation(session);
 			return [
 				`${session.id}: ${session.status}`,
 				`  adapter=${session.adapter}`,
@@ -481,7 +481,7 @@ function buildOutcomeText(outcome: DapContinueOutcome, timeoutSec: number, verb:
 		return lines.join("\n");
 	}
 	if (outcome.state === "stopped") {
-		lines.push(`${verb} stopped at ${formatLocation(outcome.snapshot) ?? "unknown location"}.`);
+		lines.push(`${verb} stopped at ${formatDapLocation(outcome.snapshot) ?? "unknown location"}.`);
 		return lines.join("\n");
 	}
 	if (outcome.state === "terminated") {

@@ -4,7 +4,6 @@ import { getTinyModelsCacheDir } from "@veyyon/pi-utils";
 import { sttClient } from "./asr-client";
 import type { SttProgressStatus } from "./asr-protocol";
 import { resolveSttModelSpec } from "./models";
-import { ensureRecorder } from "./recorder";
 
 export interface DownloadProgress {
 	stage: string;
@@ -127,18 +126,3 @@ export async function downloadSttModel(
 }
 
 // ── Public API ─────────────────────────────────────────────────────
-
-export async function ensureSTTDependencies(options?: EnsureOptions): Promise<void> {
-	await ensureRecorder(progress => options?.onProgress?.(progress), options?.signal);
-	await downloadSttModel(
-		resolveSttModelSpec(options?.modelName).key,
-		progress => {
-			const stage =
-				progress.status === "ready" || progress.status === "done"
-					? `Speech model ${progress.label} ready`
-					: `Downloading speech model ${progress.label}`;
-			options?.onProgress?.({ stage, percent: progress.percent });
-		},
-		{ signal: options?.signal },
-	);
-}

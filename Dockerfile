@@ -10,15 +10,15 @@
 #   pi-runtime      — pi-base + pi source + bun install      (DEFAULT, runnable)
 #
 # Build:
-#     docker build -t oh-my-pi/pi:dev .                          # default = pi-runtime
+#     docker build -t veyyon/pi:dev .                          # default = pi-runtime
 #     docker build --target pi-base -t oh-my-pi/pi-base:dev .    # base for derived images
 #
 # Run:
-#     docker run --rm oh-my-pi/pi:dev --help
-#     docker run --rm -it -v "$PWD":/work oh-my-pi/pi:dev cli    # interactive omp
+#     docker run --rm veyyon/pi:dev --help
+#     docker run --rm -it -v "$PWD":/work veyyon/pi:dev cli    # interactive omp
 #
 # Consume as a base in another Dockerfile (see Dockerfile.robomp):
-#     ARG PI_BASE=oh-my-pi/pi:dev
+#     ARG PI_BASE=veyyon/pi:dev
 #     FROM ${PI_BASE} AS pi-base
 ###############################################################################
 
@@ -158,7 +158,7 @@ RUN printf '%s\n' \
 ############################
 # 4) pi-runtime — pi-base + pi source + bun install (DEFAULT)
 #
-# A self-contained, runnable omp image. `docker run oh-my-pi/pi:dev --help`
+# A self-contained, runnable omp image. `docker run veyyon/pi:dev --help`
 # Just Works without a host checkout.
 ############################
 FROM pi-base AS pi-runtime

@@ -1,15 +1,15 @@
+import { ISO_DATE_RE } from "@veyyon/pi-utils";
 import { normalizedRecallWeights, temporalHalflifeHours } from "../../config";
+import { placeholders } from "../../db";
+import { toUtcIso } from "../../util/datetime";
 import { embedQuery } from "../embeddings";
 import { mmrRerank } from "../mmr";
 import { adjustWeights, classifyIntent } from "../query-intent";
-import {
-	CORE_QUERY_STOP_WORDS,
-	getSynonyms,
-	normalizeQuery,
-	STOP_WORDS as QUERY_STOP_WORDS,
-} from "../synonyms";
+import { getSynonyms, normalizeQuery, STOP_WORDS as QUERY_STOP_WORDS } from "../synonyms";
 import { extractTemporal } from "../temporal-parser";
 import { cosineSimilarity } from "../vector-math";
+import { VERACITY_WEIGHTS } from "../veracity-consolidation";
+import { tableExists } from "./helpers";
 import type { BeamMemoryState, RecallEnhancedOptions, RecallOptions, RecallResult } from "./types";
 
 type DbValue = string | number | null | Uint8Array;
@@ -63,17 +63,6 @@ type RecallMmrItem = {
 	readonly [key: string]: unknown;
 };
 
-const VERACITY_WEIGHTS: Record<string, number> = {
-	stated: 1.0,
-	true: 1.0,
-	likely_true: 1.0,
-	unknown: 0.8,
-	inferred: 0.7,
-	imported: 0.6,
-	tool: 0.5,
-	false: 0,
-};
-
 /**
  * Default per-result content preview cap enforced by {@link recall}. Content
  * longer than this is clipped and the last character replaced with `…` so
@@ -103,11 +92,36 @@ export function clipRecallContent(
 }
 
 const DEFAULT_LIMIT = 500;
-// Symmetric query↔content token-overlap filtering uses the minimal core
-// function-word list owned by synonyms.ts (CORE_QUERY_STOP_WORDS). Keeping the
-// tighter core here (not the full query STOP_WORDS) preserves recall: only the
-// most common function words are dropped so topical tokens survive matching.
-const STOP_WORDS = CORE_QUERY_STOP_WORDS;
+const STOP_WORDS = new Set([
+	"a",
+	"an",
+	"and",
+	"are",
+	"as",
+	"at",
+	"be",
+	"by",
+	"for",
+	"from",
+	"how",
+	"i",
+	"in",
+	"is",
+	"it",
+	"of",
+	"on",
+	"or",
+	"that",
+	"the",
+	"this",
+	"to",
+	"was",
+	"what",
+	"when",
+	"where",
+	"who",
+	"with",
+]);
 
 const FACT_QUERY_FILLER_WORDS = new Set([
 	...QUERY_STOP_WORDS,
@@ -135,20 +149,16 @@ const FACT_QUERY_FILLER_WORDS = new Set([
 const FACT_CLITIC_FRAGMENTS = new Set(["d", "ll", "m", "re", "s", "t", "ve"]);
 const FLAT_FACT_SEARCH_NOISE: Record<string, true> = { entity: true, fact: true };
 
-function nowIso(): string {
-	return new Date().toISOString();
-}
-
-function asNumber(value: unknown, fallback = 0): number {
+function asNumberOr(value: unknown, fallback = 0): number {
 	const n = typeof value === "number" ? value : Number(value);
 	return Number.isFinite(n) ? n : fallback;
 }
 
-function asString(value: unknown): string {
+function asStringOrEmpty(value: unknown): string {
 	return typeof value === "string" ? value : "";
 }
 
-function asNullableString(value: unknown): string | null {
+function asStringOrNull(value: unknown): string | null {
 	return typeof value === "string" ? value : null;
 }
 
@@ -162,7 +172,7 @@ function clamp01(value: number): number {
 	return value;
 }
 
-function tokenize(text: string): string[] {
+function tokenizeRecallText(text: string): string[] {
 	const lowered = text.toLowerCase();
 	const matches = lowered.match(/[\p{L}\p{N}_]+/gu) ?? [];
 	const tokens: string[] = [];
@@ -190,9 +200,9 @@ function recallSynonyms(token: string, useSynonyms: boolean): string[] {
 
 function expandedTokens(query: string, useSynonyms = true): string[] {
 	const seen = new Set<string>();
-	for (const token of tokenize(query)) {
+	for (const token of tokenizeRecallText(query)) {
 		for (const variant of recallSynonyms(token, useSynonyms)) {
-			for (const part of tokenize(variant)) seen.add(part);
+			for (const part of tokenizeRecallText(variant)) seen.add(part);
 		}
 	}
 	return [...seen];
@@ -200,10 +210,10 @@ function expandedTokens(query: string, useSynonyms = true): string[] {
 
 function expandedTokenGroups(query: string, useSynonyms = true): string[][] {
 	const groups: string[][] = [];
-	for (const token of tokenize(query)) {
+	for (const token of tokenizeRecallText(query)) {
 		const seen = new Set<string>();
 		for (const variant of recallSynonyms(token, useSynonyms)) {
-			for (const part of tokenize(variant)) seen.add(part);
+			for (const part of tokenizeRecallText(variant)) seen.add(part);
 		}
 		if (seen.size > 0) groups.push([...seen]);
 	}
@@ -212,15 +222,15 @@ function expandedTokenGroups(query: string, useSynonyms = true): string[][] {
 
 function factExpandedTokenGroups(query: string, content: string): string[][] {
 	const contentLower = content.toLowerCase();
-	const contentTokens = new Set(tokenize(contentLower));
+	const contentTokens = new Set(tokenizeRecallText(contentLower));
 	const groups: string[][] = [];
-	for (const token of tokenize(query)) {
+	for (const token of tokenizeRecallText(query)) {
 		if (FACT_QUERY_FILLER_WORDS.has(token) && (FACT_CLITIC_FRAGMENTS.has(token) || !contentTokens.has(token))) {
 			continue;
 		}
 		const seen = new Set<string>();
 		for (const variant of recallSynonyms(token, true)) {
-			for (const part of tokenize(variant)) {
+			for (const part of tokenizeRecallText(variant)) {
 				if (!FACT_QUERY_FILLER_WORDS.has(part) || (!FACT_CLITIC_FRAGMENTS.has(part) && contentTokens.has(part))) {
 					seen.add(part);
 				}
@@ -261,7 +271,7 @@ function lexicalGroupRelevance(
 	if (queryGroups.length === 0) return 0;
 	const contentLower = content.toLowerCase();
 	if (queryGroups.length > 1 && normalizedQuery.length > 0 && contentLower.includes(normalizedQuery)) return 1;
-	const contentTokens = new Set(tokenize(contentLower));
+	const contentTokens = new Set(tokenizeRecallText(contentLower));
 	let exact = 0;
 	let partial = 0;
 	for (const group of queryGroups) {
@@ -326,7 +336,7 @@ function minimumRelevance(tokens: readonly string[]): number {
 	return 0.22;
 }
 
-function lexicalRelevance(queryTokens: readonly string[], content: string, normalizedQuery: string): number {
+function substringLexicalRelevance(queryTokens: readonly string[], content: string, normalizedQuery: string): number {
 	if (queryTokens.length === 0) return 0;
 	const contentLower = content.toLowerCase();
 	if (queryTokens.length > 1 && normalizedQuery.length > 0 && contentLower.includes(normalizedQuery)) return 1;
@@ -343,7 +353,7 @@ function lexicalRelevance(queryTokens: readonly string[], content: string, norma
 		}
 		return clamp01(0.7 + Math.min(Math.max(count - 1, 0), 3) * 0.1);
 	}
-	const contentTokens = new Set(tokenize(contentLower));
+	const contentTokens = new Set(tokenizeRecallText(contentLower));
 	let exact = 0;
 	let partial = 0;
 	for (const token of queryTokens) {
@@ -366,7 +376,7 @@ function lexicalRelevance(queryTokens: readonly string[], content: string, norma
 }
 
 function recencyDecay(timestamp: unknown, halfLifeHours = 72): number {
-	const raw = asString(timestamp);
+	const raw = asStringOrEmpty(timestamp);
 	if (raw.length === 0) return 0;
 	const parsed = Date.parse(raw);
 	if (!Number.isFinite(parsed)) return 0;
@@ -381,7 +391,7 @@ export function parseQueryTime(value: RecallOptionsInternal["queryTime"]): Date 
 		return value;
 	}
 	if (typeof value === "string") {
-		const normalized = /^\d{4}-\d{2}-\d{2}$/.test(value)
+		const normalized = ISO_DATE_RE.test(value)
 			? `${value}T00:00:00.000Z`
 			: /(?:Z|[+-]\d{2}:?\d{2})$/.test(value)
 				? value
@@ -393,7 +403,7 @@ export function parseQueryTime(value: RecallOptionsInternal["queryTime"]): Date 
 }
 
 export function temporalBoost(timestamp: unknown, queryTime: Date, halfLifeHours: number): number {
-	const raw = asString(timestamp);
+	const raw = asStringOrEmpty(timestamp);
 	if (raw.length === 0) return 0;
 	const parsed = Date.parse(raw);
 	if (!Number.isFinite(parsed)) return 0;
@@ -421,28 +431,13 @@ function ftsQuery(query: string, useSynonyms = true): string {
 	return tokens.map(ftsPhrase).join(" OR ");
 }
 
-function placeholders(count: number): string {
-	return new Array<string>(count).fill("?").join(",");
-}
-
 function queryAll(beam: BeamMemoryState, sql: string, params: readonly DbValue[] = []): Row[] {
 	return beam.db.query(sql).all(...params) as Row[];
 }
 
-function queryGet(beam: BeamMemoryState, sql: string, params: readonly DbValue[] = []): Row | null {
-	return (beam.db.query(sql).get(...params) as Row | null) ?? null;
-}
-
-function tableExists(beam: BeamMemoryState, table: string): boolean {
-	return (
-		queryGet(beam, "SELECT 1 FROM sqlite_master WHERE type IN ('table', 'virtual table') AND name = ?", [table]) !==
-		null
-	);
-}
-
 function factsHaveScopeColumn(beam: BeamMemoryState): boolean {
 	const rows = queryAll(beam, "PRAGMA table_info(facts)");
-	return rows.some(row => asString(row.name) === "scope");
+	return rows.some(row => asStringOrEmpty(row.name) === "scope");
 }
 
 function factVisibilityWhere(beam: BeamMemoryState, tableAlias: string): { where: string; params: DbValue[] } {
@@ -460,7 +455,7 @@ function buildWhere(
 ): { where: string; params: DbValue[] } {
 	const prefix = tableAlias.length === 0 ? "" : `${tableAlias}.`;
 	const clauses = [`(${prefix}valid_until IS NULL OR ${prefix}valid_until > ?)`, `${prefix}superseded_by IS NULL`];
-	const params: DbValue[] = [nowIso()];
+	const params: DbValue[] = [toUtcIso()];
 	const channelId = options.channelId ?? null;
 	const authorId = options.authorId ?? null;
 	const authorType = options.authorType ?? null;
@@ -527,7 +522,7 @@ function ftsRows(
 	limit: number,
 	useSynonyms = true,
 ): Row[] {
-	if (!tableExists(beam, table)) return [];
+	if (!tableExists(beam.db, table)) return [];
 	try {
 		if (table === "fts_working") {
 			return queryAll(beam, "SELECT id, rank FROM fts_working WHERE fts_working MATCH ? ORDER BY rank, id LIMIT ?", [
@@ -551,7 +546,7 @@ function normalizeRanks(rows: readonly Row[], key: string): Map<string | number,
 	let min = Number.POSITIVE_INFINITY;
 	let max = Number.NEGATIVE_INFINITY;
 	for (const row of rows) {
-		const rank = asNumber(row.rank, 0);
+		const rank = asNumberOr(row.rank, 0);
 		if (rank < min) min = rank;
 		if (rank > max) max = rank;
 	}
@@ -559,7 +554,7 @@ function normalizeRanks(rows: readonly Row[], key: string): Map<string | number,
 	for (const row of rows) {
 		const id = row[key] as string | number | undefined;
 		if (id === undefined) continue;
-		out.set(id, 1 - (asNumber(row.rank, 0) - min) / range);
+		out.set(id, 1 - (asNumberOr(row.rank, 0) - min) / range);
 	}
 	return out;
 }
@@ -591,7 +586,7 @@ function vectorSimilarities(
 		queryEmbedding == null ||
 		queryEmbedding.length === 0 ||
 		memoryIds.length === 0 ||
-		!tableExists(beam, "memory_embeddings")
+		!tableExists(beam.db, "memory_embeddings")
 	) {
 		return out;
 	}
@@ -604,7 +599,7 @@ function vectorSimilarities(
 		);
 		for (const row of rows) {
 			const vector = parseEmbedding(row.embedding_json);
-			const id = asString(row.memory_id);
+			const id = asStringOrEmpty(row.memory_id);
 			if (vector !== null && id.length > 0) out.set(id, Math.max(0, cosineSimilarity(queryEmbedding, vector)));
 		}
 	}
@@ -621,7 +616,7 @@ function allVisibleIds(
 		...params,
 		DEFAULT_LIMIT,
 	]);
-	return rows.map(row => asString(row.id)).filter(Boolean);
+	return rows.map(row => asStringOrEmpty(row.id)).filter(Boolean);
 }
 
 function fetchCandidates(
@@ -647,8 +642,8 @@ function fetchCandidates(
 	);
 	const out: MemoryCandidate[] = [];
 	for (const row of rows) {
-		const rowKey = tierLabel === "working" ? asString(row.id) : asNumber(row.rowid);
-		const id = asString(row.id);
+		const rowKey = tierLabel === "working" ? asStringOrEmpty(row.id) : asNumberOr(row.rowid);
+		const id = asStringOrEmpty(row.id);
 		const fts = ftsScores.get(rowKey) ?? 0;
 		const ftsMatched = ftsScores.has(rowKey);
 		const dense = vecScores.get(id) ?? 0;
@@ -694,16 +689,16 @@ function scoreCandidate(
 	weights: readonly [number, number, number],
 	options: RecallOptionsInternal,
 ): RecallResult | null {
-	const content = asString(candidate.row.content);
-	const searchableContent = asString(candidate.row.embed_text) || content;
+	const content = asStringOrEmpty(candidate.row.content);
+	const searchableContent = asStringOrEmpty(candidate.row.embed_text) || content;
 	const lexical =
 		queryGroups.length > 0
 			? lexicalGroupRelevance(queryGroups, searchableContent, normalizedQueryLower)
-			: lexicalRelevance(queryTokens, searchableContent, normalizedQueryLower);
+			: substringLexicalRelevance(queryTokens, searchableContent, normalizedQueryLower);
 	const minRel = minimumRelevance(queryTokens);
 	if (lexical < minRel && candidate.signals.dense < 0.65) return null;
 	const [vecWeight, ftsWeight, importanceWeight] = weights;
-	const importance = asNumber(candidate.row.importance, 0.5);
+	const importance = asNumberOr(candidate.row.importance, 0.5);
 	const decay =
 		options.queryTime == null
 			? recencyDecay(candidate.row.timestamp, 72)
@@ -737,9 +732,9 @@ function scoreCandidate(
 		temporalScore = Math.max(temporalScore, eventBoost);
 		score *= 1 + temporalWeight * temporalScore;
 	}
-	const veracity = asString(candidate.row.veracity) || "unknown";
-	const veracityWeight = VERACITY_WEIGHTS[veracity] ?? VERACITY_WEIGHTS.unknown ?? 0.8;
-	const degradationTier = candidate.tierLabel === "episodic" ? asNumber(candidate.row.tier, 1) : undefined;
+	const veracity = asStringOrEmpty(candidate.row.veracity) || "unknown";
+	const veracityWeight = (VERACITY_WEIGHTS as Record<string, number>)[veracity] ?? VERACITY_WEIGHTS.unknown;
+	const degradationTier = candidate.tierLabel === "episodic" ? asNumberOr(candidate.row.tier, 1) : undefined;
 	if (candidate.tierLabel === "episodic") {
 		const tierWeight = degradationTier === 1 ? 1 : degradationTier === 2 ? 0.85 : 0.7;
 		score *= tierWeight;
@@ -748,10 +743,10 @@ function scoreCandidate(
 	const preview = clipRecallContent(content, options.contentPreviewChars ?? RECALL_CONTENT_PREVIEW_CHARS);
 	const result: RecallResult = {
 		...candidate.row,
-		id: asString(candidate.row.id),
+		id: asStringOrEmpty(candidate.row.id),
 		content: preview.content,
-		source: asNullableString(candidate.row.source),
-		timestamp: asNullableString(candidate.row.timestamp),
+		source: asStringOrNull(candidate.row.source),
+		timestamp: asStringOrNull(candidate.row.timestamp),
 		importance,
 		score: round4(score),
 		rank: candidate.signals.fts,
@@ -764,8 +759,8 @@ function scoreCandidate(
 		importance_score: round4(importance),
 		recency_score: round4(decay),
 		temporal_score: round4(temporalScore),
-		recall_count: asNumber(candidate.row.recall_count, 0),
-		last_recalled: asNullableString(candidate.row.last_recalled),
+		recall_count: asNumberOr(candidate.row.recall_count, 0),
+		last_recalled: asStringOrNull(candidate.row.last_recalled),
 		explanation: explain(candidate.tierLabel, candidate.signals, lexical, temporalScore),
 		voice_scores: {
 			vec: round4(candidate.signals.dense),
@@ -825,10 +820,10 @@ function dedupCrossTierSummaryLinks(beam: BeamMemoryState, results: readonly Rec
 	const dropWorking = new Set<string>();
 	const dropEpisodic = new Set<string>();
 	for (const row of summaryRows) {
-		const episodicId = asString(row.id);
+		const episodicId = asStringOrEmpty(row.id);
 		const episodicScore = episodicScores.get(episodicId);
 		if (episodicScore === undefined) continue;
-		const covered = asString(row.summary_of)
+		const covered = asStringOrEmpty(row.summary_of)
 			.split(",")
 			.map(id => id.trim())
 			.filter(id => id.length > 0 && workingScores.has(id));
@@ -858,7 +853,7 @@ function updateRecallCounts(
 	results: readonly RecallResult[],
 	options: RecallOptionsInternal,
 ): void {
-	const timestamp = nowIso();
+	const timestamp = toUtcIso();
 	for (const tierLabel of ["working", "episodic"] as const) {
 		const ids = results.filter(r => r.tier_label === tierLabel).map(r => r.id);
 		if (ids.length === 0) continue;
@@ -913,7 +908,7 @@ function collectMemoryCandidates(
 				`SELECT rowid, id FROM episodic_memory WHERE id IN (${placeholders(emIds.length)})`,
 				emIds,
 			);
-			emRowids = [...new Set([...emRowids, ...rows.map(row => asNumber(row.rowid)).filter(n => n > 0)])];
+			emRowids = [...new Set([...emRowids, ...rows.map(row => asNumberOr(row.rowid)).filter(n => n > 0)])];
 		}
 	}
 
@@ -996,7 +991,7 @@ function diversifyByCoverage(
 			const row = pool[i];
 			if (row === undefined) continue;
 			let additions = 0;
-			for (const token of tokenize(row.content)) {
+			for (const token of tokenizeRecallText(row.content)) {
 				if (querySet.has(token) && !covered.has(token)) additions += 1;
 			}
 			const score = (row.score ?? 0) + 0.06 * additions;
@@ -1008,7 +1003,7 @@ function diversifyByCoverage(
 		const picked = pool.splice(bestIdx, 1)[0];
 		if (picked === undefined) break;
 		selected.push(picked);
-		for (const token of tokenize(picked.content)) if (querySet.has(token)) covered.add(token);
+		for (const token of tokenizeRecallText(picked.content)) if (querySet.has(token)) covered.add(token);
 	}
 	return selected;
 }
@@ -1106,9 +1101,9 @@ export function formatContext(beam: BeamMemoryState, results: readonly RecallRes
 }
 
 export function factRecall(beam: BeamMemoryState, query: string, topK = 30): FactRecallResult[] {
-	if (topK <= 0 || !tableExists(beam, "facts")) return [];
+	if (topK <= 0 || !tableExists(beam.db, "facts")) return [];
 	let matched: Row[] = [];
-	if (tableExists(beam, "fts_facts")) {
+	if (tableExists(beam.db, "fts_facts")) {
 		try {
 			const visibility = factVisibilityWhere(beam, "facts");
 			matched = queryAll(
@@ -1138,7 +1133,7 @@ export function factRecall(beam: BeamMemoryState, query: string, topK = 30): Fac
 				[`%${token}%`, `%${token}%`, `%${token}%`, ...visibility.params, topK],
 			);
 			for (const row of rows) {
-				const rowid = asNumber(row.rowid);
+				const rowid = asNumberOr(row.rowid);
 				if (rowid > 0 && !seen.has(rowid)) {
 					seen.add(rowid);
 					matched.push({ rowid, rank: 0 });
@@ -1147,7 +1142,7 @@ export function factRecall(beam: BeamMemoryState, query: string, topK = 30): Fac
 		}
 	}
 	if (matched.length === 0) return [];
-	const rowids = matched.map(row => asNumber(row.rowid)).filter(rowid => rowid > 0);
+	const rowids = matched.map(row => asNumberOr(row.rowid)).filter(rowid => rowid > 0);
 	if (rowids.length === 0) return [];
 	const visibility = factVisibilityWhere(beam, "");
 	const ranks = normalizeRanks(matched, "rowid");
@@ -1163,10 +1158,10 @@ export function factRecall(beam: BeamMemoryState, query: string, topK = 30): Fac
 	);
 	return rows
 		.map(row => {
-			const subject = asString(row.subject);
-			const predicate = asString(row.predicate);
-			const object = asString(row.object);
-			const confidence = asNumber(row.confidence, 0.5);
+			const subject = asStringOrEmpty(row.subject);
+			const predicate = asStringOrEmpty(row.predicate);
+			const object = asStringOrEmpty(row.object);
+			const confidence = asNumberOr(row.confidence, 0.5);
 			const content = object.length > 0 ? object : `${subject} ${predicate}`.trim();
 			const searchable = factSearchableText(subject, predicate, object);
 			const queryGroups = factExpandedTokenGroups(query, searchable);
@@ -1174,16 +1169,16 @@ export function factRecall(beam: BeamMemoryState, query: string, topK = 30): Fac
 			const lexical =
 				queryGroups.length > 0
 					? lexicalGroupRelevance(queryGroups, searchable, normalized)
-					: lexicalRelevance(queryTokens, searchable, normalized);
-			const rank = ranks.get(asNumber(row.rowid)) ?? 0;
+					: substringLexicalRelevance(queryTokens, searchable, normalized);
+			const rank = ranks.get(asNumberOr(row.rowid)) ?? 0;
 			const result: FactRecallResult = {
-				id: asString(row.fact_id),
+				id: asStringOrEmpty(row.fact_id),
 				content,
 				score: round4(lexical * (0.7 + confidence * 0.2 + rank * 0.1)),
-				fact_id: asString(row.fact_id),
+				fact_id: asStringOrEmpty(row.fact_id),
 				subject,
 				predicate,
-				timestamp: asNullableString(row.timestamp),
+				timestamp: asStringOrNull(row.timestamp),
 				tier_label: "fact",
 				tier: "fact",
 				source: "facts",

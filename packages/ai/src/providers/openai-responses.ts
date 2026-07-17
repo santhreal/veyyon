@@ -1,5 +1,5 @@
 import { hostMatchesUrl } from "@veyyon/pi-catalog/hosts";
-import { $flag, logger, structuredCloneJSON } from "@veyyon/pi-utils";
+import { $flag, logger, stripTrailingSlashes, structuredCloneJSON } from "@veyyon/pi-utils";
 import * as AIError from "../error";
 import { getEnvApiKey } from "../stream";
 import type {
@@ -406,7 +406,7 @@ const streamOpenAIResponsesOnce = (
 			const builtParams = buildParams(model, context, options, providerSessionState, strictToolsScope);
 			const params = builtParams.params;
 			let activeParams = params;
-			const resolvedBaseUrl = (baseUrl ?? "https://api.openai.com/v1").replace(/\/+$/, "");
+			const resolvedBaseUrl = stripTrailingSlashes(baseUrl ?? "https://api.openai.com/v1");
 			const requestReasoningEffortFallbacks = new Map<string, OpenAIReasoningEffortFallback>();
 			const attemptedReasoningEffortFallbacks = new Set<string>();
 			let pendingReasoningEffortFallback: { key: string; fallback: OpenAIReasoningEffortFallback } | undefined;
@@ -651,6 +651,8 @@ const streamOpenAIResponsesOnce = (
 				onOutputItemDone: item => {
 					// `processResponsesStream` hands over a private clone already; no
 					// second deep copy needed (reasoning items carry multi-KB blobs).
+					// Wire-boundary view: typed SDK item widened to the replay-payload
+					// record shape (interfaces carry no index signature).
 					nativeOutputItems.push(item as unknown as Record<string, unknown>);
 				},
 				onCompleted: () => {
@@ -856,10 +858,11 @@ export function buildParams(
 	if (options?.textVerbosity && isOfficialOpenAIResponsesEndpoint(model)) {
 		params.text = { ...params.text, verbosity: options.textVerbosity };
 	}
-	// TODO: openai responses has no top-level `stop`/`stop_sequences`; surface via reasoning.stop?
-	// `StreamOptions.stopSequences` is intentionally dropped for this provider.
-	// TODO: openai responses has no top-level `frequency_penalty` field as of the current SDK;
-	// `StreamOptions.frequencyPenalty` is intentionally dropped for this provider.
+	// The Responses API has no top-level `stop`/`stop_sequences`,
+	// `frequency_penalty`, `seed`, `logit_bias`, or `response_format` fields as
+	// of the current SDK (structured output is `text.format` instead), so those
+	// StreamOptions are intentionally dropped for this provider. Revisit only
+	// if OpenAI adds the fields.
 
 	let strictToolsApplied = false;
 	if (context.tools) {
@@ -885,6 +888,13 @@ export function buildParams(
 				params.tool_choice = toolChoice;
 			}
 		}
+		if (options?.parallelToolCalls !== undefined && params.tools.length > 0) {
+			// OpenAI rejects `parallel_tool_calls` on requests that offer no tools.
+			params.parallel_tool_calls = options.parallelToolCalls;
+		}
+	}
+	if (options?.user !== undefined) {
+		params.safety_identifier = options.user;
 	}
 
 	const reasoningPolicy = resolveOpenAICompatPolicy(model, {

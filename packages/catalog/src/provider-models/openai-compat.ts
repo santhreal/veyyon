@@ -1,3 +1,5 @@
+import { stripTrailingSlashes } from "@veyyon/pi-utils";
+import { isKimiK27CodeModelId } from "../compat/kimi";
 import {
 	fetchOpenAICompatibleModels,
 	type OpenAICompatibleModelMapperContext,
@@ -14,7 +16,15 @@ import {
 import type { ModelManagerOptions } from "../model-manager";
 import { getBundledModels } from "../models";
 import type { Api, FetchImpl, Model, ModelSpec, OpenAICompat, Provider, ThinkingConfig } from "../types";
-import { discoveryFetch, isAnthropicOAuthToken, isRecord, toBoolean, toNumber, toPositiveNumber } from "../utils";
+import {
+	discoveryFetch,
+	isAnthropicOAuthToken,
+	isRecord,
+	toBoolean,
+	toNonEmptyString,
+	toNumber,
+	toPositiveNumber,
+} from "../utils";
 import { coreWeaveProjectHeaders } from "../wire/coreweave";
 import {
 	COPILOT_API_HEADERS,
@@ -247,7 +257,7 @@ function mapWithBundledReference<TApi extends Api>(
 	};
 }
 
-function normalizeAnthropicBaseUrl(baseUrl: string | undefined, fallback: string): string {
+function normalizeAnthropicCompatBaseUrl(baseUrl: string | undefined, fallback: string): string {
 	const value = baseUrl?.trim();
 	if (!value) {
 		return fallback;
@@ -259,7 +269,7 @@ function toAnthropicDiscoveryBaseUrl(baseUrl: string): string {
 	return baseUrl.endsWith("/v1") ? baseUrl : `${baseUrl}/v1`;
 }
 
-function normalizeOllamaBaseUrl(baseUrl?: string): string {
+function normalizeOllamaCompatBaseUrl(baseUrl?: string): string {
 	const value = baseUrl?.trim();
 	if (!value) {
 		return "http://127.0.0.1:11434/v1";
@@ -588,7 +598,7 @@ function createSimpleAnthropicProviderOptions(
 	config?: SimpleProviderConfig,
 ): ModelManagerOptions<"anthropic-messages"> {
 	const apiKey = config?.apiKey;
-	const baseUrl = normalizeAnthropicBaseUrl(config?.baseUrl, defaultBaseUrlFallback);
+	const baseUrl = normalizeAnthropicCompatBaseUrl(config?.baseUrl, defaultBaseUrlFallback);
 	const discoveryBaseUrl = toAnthropicDiscoveryBaseUrl(baseUrl);
 	const references = createBundledReferenceMap<"anthropic-messages">(providerId);
 	return {
@@ -645,7 +655,7 @@ interface UmansModelInfo {
 }
 
 function normalizeUmansBaseUrl(baseUrl: string | undefined): string {
-	const normalized = normalizeAnthropicBaseUrl(baseUrl, UMANS_BASE_URL);
+	const normalized = normalizeAnthropicCompatBaseUrl(baseUrl, UMANS_BASE_URL);
 	return normalized.endsWith("/v1") ? normalized.slice(0, -3) : normalized;
 }
 
@@ -1553,10 +1563,6 @@ export function clampFireworksKimiMaxTokens(modelId: string, candidate: number |
  */
 export const KIMI_K27_CODE_RECOMMENDED_MAX_TOKENS = 32_768;
 
-export function isKimiK27CodeModelId(modelId: string): boolean {
-	return /(?:^|\/)kimi[-._]?k2(?:[._-]?|p)7[-._]?code(?:[-._]?highspeed)?$/i.test(modelId);
-}
-
 export function clampKimiK27CodeMaxTokens(modelId: string, candidate: number): number;
 export function clampKimiK27CodeMaxTokens(modelId: string, candidate: number | null): number | null;
 export function clampKimiK27CodeMaxTokens(modelId: string, candidate: number | null): number | null {
@@ -2059,7 +2065,7 @@ export interface OpenCodeModelManagerConfig {
 }
 
 function normalizeOpenCodeBasePath(baseUrl: string | undefined, fallbackBasePath: string): string {
-	const value = normalizeAnthropicBaseUrl(baseUrl, fallbackBasePath);
+	const value = normalizeAnthropicCompatBaseUrl(baseUrl, fallbackBasePath);
 	return value.endsWith("/v1") ? value.slice(0, -3) : value;
 }
 
@@ -2141,7 +2147,7 @@ export interface OllamaModelManagerConfig {
 
 export function ollamaModelManagerOptions(config?: OllamaModelManagerConfig): ModelManagerOptions<"openai-responses"> {
 	const apiKey = config?.apiKey;
-	const baseUrl = normalizeOllamaBaseUrl(config?.baseUrl);
+	const baseUrl = normalizeOllamaCompatBaseUrl(config?.baseUrl);
 	const nativeBaseUrl = toOllamaNativeBaseUrl(baseUrl);
 	const references = createBundledReferenceMap<"openai-responses">("ollama" as Parameters<typeof getBundledModels>[0]);
 	const resolveMetadata = createOllamaMetadataResolver(nativeBaseUrl, config?.fetch);
@@ -2282,7 +2288,7 @@ function normalizeZenMuxOpenAiBaseUrl(baseUrl?: string): string {
 function toZenMuxAnthropicBaseUrl(openAiBaseUrl: string): string {
 	try {
 		const parsed = new URL(openAiBaseUrl);
-		const trimmedPath = parsed.pathname.replace(/\/+$/g, "");
+		const trimmedPath = stripTrailingSlashes(parsed.pathname);
 		parsed.pathname = trimmedPath.endsWith("/api/v1")
 			? `${trimmedPath.slice(0, -"/api/v1".length)}/api/anthropic`
 			: "/api/anthropic";
@@ -2446,7 +2452,7 @@ export interface VercelAiGatewayModelManagerConfig {
 }
 
 function normalizeVercelAiGatewayBaseUrls(rawBaseUrl: string | undefined): { baseUrl: string; catalogBaseUrl: string } {
-	const baseUrl = (rawBaseUrl === undefined ? "https://ai-gateway.vercel.sh" : rawBaseUrl.trim()).replace(/\/+$/, "");
+	const baseUrl = stripTrailingSlashes(rawBaseUrl === undefined ? "https://ai-gateway.vercel.sh" : rawBaseUrl.trim());
 	const catalogBaseUrl = baseUrl === "" || baseUrl.endsWith("/v1") ? baseUrl : `${baseUrl}/v1`;
 
 	return {
@@ -2996,7 +3002,7 @@ const SAKANA_RESPONSES_COMPAT: ModelSpec<"openai-responses">["compat"] = {
 
 function normalizeSakanaBaseUrl(baseUrl: string | undefined): string {
 	const value = baseUrl?.trim() || SAKANA_DEFAULT_BASE_URL;
-	const normalized = value.replace(/\/+$/, "");
+	const normalized = stripTrailingSlashes(value);
 	return normalized.endsWith("/v1") ? normalized : `${normalized}/v1`;
 }
 
@@ -3256,13 +3262,13 @@ const LITELLM_UNUSABLE_SENTINEL_IDS: Record<string, true> = {
 };
 
 export function normalizeLiteLLMManagementBaseUrl(baseUrl: string): string {
-	const trimmed = baseUrl.trim().replace(/\/+$/g, "");
+	const trimmed = stripTrailingSlashes(baseUrl.trim());
 	if (!trimmed) {
 		return "";
 	}
 	try {
 		const parsed = new URL(trimmed);
-		const path = parsed.pathname.replace(/\/+$/g, "");
+		const path = stripTrailingSlashes(parsed.pathname);
 		parsed.pathname = path.endsWith("/v1") ? path.slice(0, -3) || "/" : path || "/";
 		const normalized = `${parsed.protocol}//${parsed.host}${parsed.pathname}`;
 		return normalized.endsWith("/") ? normalized.slice(0, -1) : normalized;
@@ -3301,14 +3307,6 @@ function mapLiteLLMOpenAICompatibleModel<TApi extends Api>(
 		...model,
 		name: stripLiteLLMResellerUsageSuffix(model.name),
 	};
-}
-
-function toNonEmptyString(value: unknown): string | undefined {
-	if (typeof value !== "string") {
-		return undefined;
-	}
-	const trimmed = value.trim();
-	return trimmed.length > 0 ? trimmed : undefined;
 }
 
 function extractLiteLLMRichEntries(payload: unknown): LiteLLMRichModelEntry[] | null {

@@ -26,7 +26,7 @@ interface MountCheckOptions {
 
 const readMountPointStats: MountPointStatReader = async filePath => fs.promises.stat(filePath);
 
-async function ensureDir(path: string, mode = 0o700): Promise<void> {
+async function ensurePrivateDir(path: string, mode = 0o700): Promise<void> {
 	try {
 		await fs.promises.mkdir(path, { recursive: true, mode });
 	} catch {
@@ -115,7 +115,7 @@ export async function mountRemote(host: SSHConnectionTarget, remotePath = "/"): 
 	if (!hasSshfs()) return undefined;
 
 	const mountPath = getMountPath(host);
-	await Promise.all([ensureDir(REMOTE_DIR), ensureDir(CONTROL_DIR), ensureDir(mountPath)]);
+	await Promise.all([ensurePrivateDir(REMOTE_DIR), ensurePrivateDir(CONTROL_DIR), ensurePrivateDir(mountPath)]);
 
 	if (await isMounted(mountPath)) {
 		if (!registered) {
@@ -138,21 +138,6 @@ export async function mountRemote(host: SSHConnectionTarget, remotePath = "/"): 
 
 	mountedPaths.add(mountPath);
 	return mountPath;
-}
-
-export async function unmountRemote(host: SSHConnectionTarget): Promise<boolean> {
-	const mountPath = getMountPath(host);
-	if (!(await isMounted(mountPath))) {
-		mountedPaths.delete(mountPath);
-		return false;
-	}
-
-	const success = await unmountPath(mountPath);
-	if (success) {
-		mountedPaths.delete(mountPath);
-	}
-
-	return success;
 }
 
 export async function unmountAll(): Promise<void> {

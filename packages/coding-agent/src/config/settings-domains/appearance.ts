@@ -387,6 +387,18 @@ export const APPEARANCE_SETTINGS = {
 				"Wrap paths and URLs in OSC 8 hyperlinks for terminal-native click-to-open (auto: detect support; off: never; always: unconditional)",
 		},
 	},
+	"tui.paintGround": {
+		type: "enum",
+		values: ["auto", "always", "never"] as const,
+		default: "auto",
+		ui: {
+			tab: "appearance",
+			group: "Display",
+			label: "Paint Theme Ground",
+			description:
+				"Set the terminal background (OSC 11) to the theme's ground color while Veyyon runs, restoring it on exit (auto: only when the terminal background already matches the theme so no seam appears; always: unconditional; never: inherit the terminal background)",
+		},
+	},
 	"tui.tight": {
 		type: "boolean",
 		default: false,

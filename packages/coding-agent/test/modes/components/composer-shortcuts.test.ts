@@ -10,13 +10,12 @@ import { initTheme, theme } from "@veyyon/pi-coding-agent/modes/theme/theme";
 await initTheme(false, "unicode", false, "titanium", "light");
 
 describe("composer contextual shortcuts", () => {
-	it("swaps send for interrupt when busy", () => {
+	it("shows the interrupt chip only while busy", () => {
 		const kb = KeybindingsManager.inMemory();
-		const idle = buildComposerShortcuts(kb, { busy: false, hasDraft: true, hasQueue: false });
-		const busy = buildComposerShortcuts(kb, { busy: true, hasDraft: true, hasQueue: false });
-		expect(idle.some(c => c.label.includes("send"))).toBe(true);
+		const idle = buildComposerShortcuts(kb, { busy: false, hasQueue: false });
+		const busy = buildComposerShortcuts(kb, { busy: true, hasQueue: false });
+		expect(idle.some(c => c.label.includes("interrupt"))).toBe(false);
 		expect(busy.some(c => c.label.includes("interrupt"))).toBe(true);
-		expect(busy.some(c => c.label.includes("send"))).toBe(false);
 	});
 
 	it("renders chip grammar matching ModalShell footers", () => {
@@ -28,19 +27,17 @@ describe("composer contextual shortcuts", () => {
 		expect(plain).toContain("|");
 	});
 
-	it("falls back to the idle '/ commands' chip when neither busy nor drafting", () => {
+	it("keeps the idle composer chipless — no send/commands chrome (deliberate: quiet composer)", () => {
 		const kb = KeybindingsManager.inMemory();
-		const idle = buildComposerShortcuts(kb, { busy: false, hasDraft: false, hasQueue: false });
-		expect(idle.some(c => c.label.includes("commands"))).toBe(true);
-		expect(idle.some(c => c.label.includes("send"))).toBe(false);
-		expect(idle.some(c => c.label.includes("interrupt"))).toBe(false);
+		const idle = buildComposerShortcuts(kb, { busy: false, hasQueue: false });
+		expect(idle).toEqual([]);
 	});
 
 	it("adds the dequeue chip only while the queue is nonempty, in any busy/draft state", () => {
 		const kb = KeybindingsManager.inMemory();
-		const noQueue = buildComposerShortcuts(kb, { busy: false, hasDraft: false, hasQueue: false });
-		const queued = buildComposerShortcuts(kb, { busy: false, hasDraft: false, hasQueue: true });
-		const busyQueued = buildComposerShortcuts(kb, { busy: true, hasDraft: false, hasQueue: true });
+		const noQueue = buildComposerShortcuts(kb, { busy: false, hasQueue: false });
+		const queued = buildComposerShortcuts(kb, { busy: false, hasQueue: true });
+		const busyQueued = buildComposerShortcuts(kb, { busy: true, hasQueue: true });
 		expect(noQueue.some(c => c.label.includes("dequeue"))).toBe(false);
 		expect(queued.some(c => c.label.includes("dequeue"))).toBe(true);
 		expect(busyQueued.some(c => c.label.includes("dequeue"))).toBe(true);
@@ -50,7 +47,7 @@ describe("composer contextual shortcuts", () => {
 	it("never renders the ember accent chrome — chips stay silver/muted (brand: no invented orange chips)", () => {
 		const kb = KeybindingsManager.inMemory();
 		const bar = new ComposerShortcutsBar();
-		bar.setShortcuts(buildComposerShortcuts(kb, { busy: true, hasDraft: false, hasQueue: true }));
+		bar.setShortcuts(buildComposerShortcuts(kb, { busy: true, hasQueue: true }));
 		const raw = bar.render(80).join("\n");
 		// "accent" is silver (the structural chip/key color) in this brand —
 		// ember/sun is a separate, rare role reserved for links/carets and

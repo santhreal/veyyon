@@ -18,10 +18,11 @@
  * (the `/usage reset` command + auto-redeem) and any out-of-band tooling can
  * share one wire contract.
  */
+
+import { toNumber } from "@veyyon/pi-catalog/utils";
 import type { FetchImpl } from "../types";
 import { isRecord } from "../utils";
 import { normalizeCodexBaseUrl } from "./openai-codex-base-url";
-import { toNumber } from "./shared";
 
 const RESET_CREDITS_PATH = "wham/rate-limit-reset-credits";
 const RESET_CREDITS_CONSUME_PATH = "wham/rate-limit-reset-credits/consume";
@@ -86,7 +87,7 @@ function buildUrl(baseUrl: string | undefined, routePath: string): string {
 	return `${normalized}${routePath}`;
 }
 
-function buildHeaders(auth: CodexResetAuth, json: boolean): Record<string, string> {
+function buildCodexResetHeaders(auth: CodexResetAuth, json: boolean): Record<string, string> {
 	const headers: Record<string, string> = {
 		Authorization: `Bearer ${auth.accessToken}`,
 		"User-Agent": "OpenCode-Status-Plugin/1.0",
@@ -128,7 +129,7 @@ export async function listCodexResetCredits(auth: CodexResetAuth): Promise<Codex
 	const url = buildUrl(auth.baseUrl, RESET_CREDITS_PATH);
 	let payload: unknown;
 	try {
-		const response = await auth.fetch(url, { headers: buildHeaders(auth, false), signal: auth.signal });
+		const response = await auth.fetch(url, { headers: buildCodexResetHeaders(auth, false), signal: auth.signal });
 		if (!response.ok) return null;
 		payload = await response.json();
 	} catch {
@@ -158,7 +159,7 @@ export async function consumeCodexResetCredit(
 	const url = buildUrl(auth.baseUrl, RESET_CREDITS_CONSUME_PATH);
 	const response = await auth.fetch(url, {
 		method: "POST",
-		headers: buildHeaders(auth, true),
+		headers: buildCodexResetHeaders(auth, true),
 		body: JSON.stringify({
 			credit_id: auth.creditId,
 			redeem_request_id: redeemRequestId,

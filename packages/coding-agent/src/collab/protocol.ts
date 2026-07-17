@@ -8,6 +8,7 @@
  */
 
 import type { ImageContent, Model } from "@veyyon/pi-ai";
+import { stripTrailingSlashes } from "@veyyon/pi-utils";
 import type {
 	BusChannel,
 	CollabUiRequest,
@@ -18,10 +19,14 @@ import type {
 	AgentSnapshot as WireAgentSnapshot,
 } from "@veyyon/pi-wire";
 import {
+	B64URL_RE,
+	BARE_LINK_RE,
 	DEFAULT_RELAY_URL,
 	ENVELOPE_HEADER_LENGTH,
+	isLocalHostname,
 	ROOM_ID_BYTES,
 	ROOM_KEY_BYTES,
+	ROOM_PATH_RE,
 	WRITE_TOKEN_BYTES,
 } from "@veyyon/pi-wire";
 import type { ContextUsage } from "../extensibility/extensions/types";
@@ -133,14 +138,8 @@ export function rewriteEnvelopePeer(data: Uint8Array, peerId: number): void {
 // Link format: wss://<host[:port]>/r/<roomId>.<base64url-32-byte-key>
 // ═══════════════════════════════════════════════════════════════════════════
 
-const ROOM_PATH_RE = /^\/r\/([A-Za-z0-9_-]{10,64})(?:\.([A-Za-z0-9_-]+))?$/;
-const BARE_LINK_RE = /^([A-Za-z0-9_-]{10,64})[#.]([A-Za-z0-9_-]+)$/;
-const B64URL_RE = /^[A-Za-z0-9_-]+$/;
-const LOCAL_HOSTNAMES: Record<string, true> = { localhost: true, "127.0.0.1": true, "::1": true, "[::1]": true };
-
-function isLocalHostname(hostname: string): boolean {
-	return LOCAL_HOSTNAMES[hostname] === true;
-}
+// ONE PLACE: the link grammar is owned by @veyyon/pi-wire so the agent and
+// the browser app (collab-web lib/link.ts) can never drift apart.
 
 export function generateRoomId(): string {
 	const bytes = new Uint8Array(ROOM_ID_BYTES);
@@ -229,7 +228,7 @@ function normalizeCollabWebBaseUrl(relayUrl: string, webUrl?: string): string {
 	if (url.search || url.hash) {
 		throw new Error("collab.webUrl must not include a query string or fragment");
 	}
-	const path = url.pathname.replace(/\/+$/, "");
+	const path = stripTrailingSlashes(url.pathname);
 	return `${url.origin}${path}`;
 }
 

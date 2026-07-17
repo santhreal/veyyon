@@ -1,8 +1,11 @@
 import { shimmerText } from "../../modes/theme/shimmer";
 import { theme as currentTheme, type Theme } from "../../modes/theme/theme";
 
+/** @deprecated old name kept only for interactive-mode.ts (UI lane, in flight); import formatCoarseDuration. */
+export { formatCoarseDuration as formatDuration };
+
 /** Format a millisecond duration as a coarse-grained human label. */
-export function formatDuration(ms: number): string {
+export function formatCoarseDuration(ms: number): string {
 	const seconds = Math.max(0, Math.round(ms / 1000));
 	if (seconds < 60) return `${seconds}s`;
 	const minutes = Math.round(seconds / 60);

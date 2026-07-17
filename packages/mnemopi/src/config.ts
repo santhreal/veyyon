@@ -1,6 +1,7 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { hostMatchesUrl } from "@veyyon/pi-catalog/hosts";
+import { stripTrailingSlashes } from "@veyyon/pi-utils";
 import {
 	type Env,
 	envBool,
@@ -96,7 +97,9 @@ export function embeddingsViaApi(env: Env = process.env): boolean {
 }
 
 export function embeddingsDisabled(env: Env = process.env): boolean {
-	return envString("MNEMOPI_NO_EMBEDDINGS", "", env) !== "";
+	// Truthy-flag semantics ("1"/"true"/"yes"/"on"); MNEMOPI_NO_EMBEDDINGS=0 does
+	// NOT disable. Must stay aligned with core/embeddings.ts, which delegates here.
+	return envTruthy("MNEMOPI_NO_EMBEDDINGS", env);
 }
 
 /**
@@ -156,10 +159,6 @@ export function sleepBatchSize(env: Env = process.env): number {
 
 export function scratchpadMaxItems(env: Env = process.env): number {
 	return envInt("MNEMOPI_SP_MAX", 1000, env);
-}
-
-export function recencyHalflifeHours(env: Env = process.env): number {
-	return envFloat("MNEMOPI_RECENCY_HALFLIFE", 168, env);
 }
 
 export function tier2Days(env: Env = process.env): number {
@@ -341,7 +340,7 @@ export function llmModelFiles(env: Env = process.env): readonly [repo: string, f
 }
 
 export function llmBaseUrl(env: Env = process.env): string {
-	return envString("MNEMOPI_LLM_BASE_URL", "", env).replace(/\/+$/, "");
+	return stripTrailingSlashes(envString("MNEMOPI_LLM_BASE_URL", "", env));
 }
 
 export function llmApiKey(env: Env = process.env): string {

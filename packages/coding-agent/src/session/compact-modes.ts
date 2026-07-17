@@ -11,6 +11,8 @@
  * ACP hint), the parser, and the engine override all read this table.
  */
 
+import type { CodexCompactionContext } from "@veyyon/pi-ai";
+
 /** Subcommand selecting a one-off compaction mode for manual `/compact`. */
 export type CompactMode = "soft" | "remote" | "snapcompact";
 
@@ -102,4 +104,19 @@ export function parseCompactArgs(args: string): ParsedCompactArgs | { error: str
 		};
 	}
 	return { mode: mode.name, instructions: focus || undefined };
+}
+
+/** Stamp a fresh Codex compaction context for one compaction invocation. */
+export function createCodexCompactionContext(options: {
+	trigger: CodexCompactionContext["trigger"];
+	reason: CodexCompactionContext["reason"];
+	phase: CodexCompactionContext["phase"];
+}): CodexCompactionContext {
+	return {
+		operationId: crypto.randomUUID(),
+		trigger: options.trigger,
+		reason: options.reason,
+		phase: options.phase,
+		strategy: "memento",
+	};
 }

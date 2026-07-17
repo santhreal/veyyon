@@ -46,10 +46,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-24acbed9.js";
+            window.path_to_searchindex_js = "../searchindex-8badf17b.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-9cfd259b.js"></script>
+        <script src="../toc-19dab021.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -192,15 +192,26 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="install"><a class="header" href="#install">Install</a></h1>
-<p>Veyyon ships as the npm package <strong><code>@veyyon/pi-coding-agent</code></strong> and installs the <code>veyyon</code>
-executable. It is a TypeScript + Bun agent loop with Rust natives (<code>@veyyon/pi-natives</code>) for hot paths
-(grep, walker, shell/PTY, hashline edits). After install, run <code>veyyon plugin doctor</code>.</p>
+<p>The fastest path is the one-command installer: it downloads a checksum-verified binary from GitHub
+releases, wires your PATH and shell completions, creates the short <code>vey</code> alias, and finishes with a
+doctor self-test.</p>
+<pre><code class="language-console">$ curl -fsSL https://get.veyyon.dev | sh
+$ vey --version
+</code></pre>
+<p>Windows (PowerShell):</p>
+<pre><code class="language-powershell">irm https://veyyon.dev/install.ps1 | iex
+</code></pre>
+<p>Veyyon is a TypeScript + Bun agent loop with Rust natives (<code>@veyyon/pi-natives</code>) for hot paths
+(grep, walker, shell/PTY, hashline edits). Both <code>veyyon</code> and the shorter <code>vey</code> launch it.</p>
 <h2 id="requirements"><a class="header" href="#requirements">Requirements</a></h2>
 <ul>
-<li><strong>Bun</strong> (recommended runtime) or a recent Node.js.</li>
 <li><strong>Git</strong> — most workflows expect a repository.</li>
 </ul>
+<p>There is no OS-level shell sandbox (no Landlock/seccomp/Seatbelt/bubblewrap requirement); the
+approval mode is the safety boundary — see <a href="../features/sandbox.html">Approvals and autonomy</a>.</p>
 <h2 id="install-npm--bun"><a class="header" href="#install-npm--bun">Install (npm / Bun)</a></h2>
+<p>If you prefer to run from the package registry, Veyyon ships as <strong><code>@veyyon/pi-coding-agent</code></strong>
+and installs the <code>veyyon</code> executable:</p>
 <pre><code class="language-console">$ bun install -g @veyyon/pi-coding-agent
 $ veyyon --version
 </code></pre>
@@ -210,7 +221,9 @@ $ veyyon --version
 </code></pre>
 <p><code>bun install</code> also builds <code>@veyyon/pi-natives</code>. Config and state default to <code>~/.veyyon</code>.</p>
 <h2 id="after-install"><a class="header" href="#after-install">After install</a></h2>
-<p>The first interactive <code>veyyon</code> opens the setup ceremony (splash → providers → glyphs → theme → outro). Force it again with <code>veyyon setup</code>. Re-open providers inside a session with <code>/setup</code> or <code>/providers</code>. See <a href="./getting-started.html">Getting started</a>.</p>
+<p>The first interactive <code>veyyon</code> opens the setup ceremony (splash → providers → glyphs → theme →
+outro). Force it again with <code>veyyon setup</code>. Re-open providers inside a session with <code>/setup</code> or
+<code>/providers</code>. See <a href="./getting-started.html">Getting started</a>.</p>
 <h2 id="build-from-source"><a class="header" href="#build-from-source">Build from source</a></h2>
 <pre><code class="language-console">$ git clone https://github.com/santhreal/veyyon.git
 $ cd veyyon
@@ -219,50 +232,21 @@ $ bun dev --version
 </code></pre>
 <p><code>bun dev</code> runs the in-repo build; use it while evaluating or contributing.</p>
 <h2 id="shell-completions"><a class="header" href="#shell-completions">Shell completions</a></h2>
+<p>The one-command installer wires these for you. From a package install:</p>
 <pre><code class="language-console">$ veyyon completions bash|zsh|fish
 </code></pre>
 <h2 id="verify-the-install"><a class="header" href="#verify-the-install">Verify the install</a></h2>
-<pre><code class="language-console">$ veyyon --version
+<pre><code class="language-console">$ vey --version
 $ veyyon plugin doctor
 $ veyyon plugin doctor --fix
 </code></pre>
 <p><code>veyyon plugin doctor</code> checks plugin health and warns when optional external binaries (<code>sd</code>, <code>sg</code>,
-<code>git</code>) or common API keys are missing. For interactive diagnostics use <code>/debug</code> in the TUI. See
-<a href="../features/doctor.html">Diagnostics</a>.</p>
-<h3 id="relocate-the-config-directory"><a class="header" href="#relocate-the-config-directory">Relocate the config directory</a></h3>
-<p>By default Unix uses <code>~/.veyyon</code>. <code>PI_CONFIG_DIR</code> renames the home-relative config directory, and
-<code>PI_CODING_AGENT_DIR</code> relocates the whole agent base (<code>config.yml</code>, <code>agent.db</code>, sessions, and more):</p>
-<pre><code class="language-console">$ export PI_CODING_AGENT_DIR=/path/to/veyyon-agent
-$ veyyon plugin doctor
-</code></pre>
-<p>Layout: <a href="../reference/file-locations.html">File locations</a>.</p>
-<h2 id="first-credentials"><a class="header" href="#first-credentials">First credentials</a></h2>
-<p>On first interactive launch, the setup ceremony (or <code>veyyon setup</code>) walks sign-in and API keys.
-Inside a session, use <code>/setup</code> / <code>/providers</code> to re-open that panel, <code>/login</code> (or <code>/login &lt;provider&gt;</code>)
-for OAuth and key entry, or export the provider’s environment variable and skip the interactive step.
-See <a href="./authentication.html">Authentication</a> and <a href="./configuring-providers.html">Configuring providers</a>.</p>
+<code>git</code>) or common API keys are missing. See <a href="../features/doctor.html">Diagnostics</a>.</p>
 <h2 id="uninstall"><a class="header" href="#uninstall">Uninstall</a></h2>
-<p>Remove the global package:</p>
-<pre><code class="language-console">$ bun remove -g @veyyon/pi-coding-agent
-$ # or: npm uninstall -g @veyyon/pi-coding-agent
+<p>Installed with the one-command installer:</p>
+<pre><code class="language-console">$ curl -fsSL https://get.veyyon.dev | sh -s -- --uninstall
 </code></pre>
-<p>Then remove state if you want a clean machine:</p>
-<pre><code class="language-console">$ rm -rf ~/.veyyon          # irreversible: config, secrets, sessions, plugins, skills, logs
-$ # if you relocated the agent base:
-$ rm -rf "$PI_CODING_AGENT_DIR"
-</code></pre>
-<p>Project-local files (<code>AGENTS.md</code>, <code>.veyyon/</code> in a repo) are <strong>not</strong> removed by deleting the
-home directory — clean those per repository if desired.</p>
-<p>To keep projects but wipe only sessions:</p>
-<pre><code class="language-console">$ rm -rf ~/.veyyon/agent/sessions
-</code></pre>
-<h2 id="next"><a class="header" href="#next">Next</a></h2>
-<ul>
-<li><a href="./getting-started.html">Getting started</a> — first interactive edit with sample terminal output.</li>
-<li><a href="../concepts/model-contract.html">Model contract</a> — choose credentials with the harness boundary in mind.</li>
-<li><a href="./safety.html">Safety</a> — approvals and fail-closed behavior.</li>
-<li><a href="./troubleshooting.html">Troubleshooting</a> / <a href="./faq.html">FAQ</a> — when the doctor is not enough.</li>
-</ul>
+<p>That removes the binary, the <code>vey</code> alias, the global package, and the shell completions.</p>
 
                     </main>
 

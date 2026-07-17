@@ -1268,6 +1268,7 @@ fn process_file<M: Matcher, W: Write>(
 	opts: &SearchOptions,
 	stats: &mut Stats,
 	out: &mut W,
+	errs: &mut dyn Write,
 ) -> SearchOutcome {
 	let result = if cli.search_zip && !cli.no_search_zip {
 		let builder = DecompressionReaderBuilder::new();
@@ -1288,7 +1289,7 @@ fn process_file<M: Matcher, W: Write>(
 		Ok(any_match) => SearchOutcome { any_match, had_error: false },
 		Err(error) => SearchOutcome {
 			any_match: false,
-			had_error: report_path_error(display, path, error, opts),
+			had_error: report_path_error(display, path, error, opts, errs),
 		},
 	}
 }
@@ -1298,12 +1299,13 @@ fn report_path_error(
 	fallback: &Path,
 	err: io::Error,
 	opts: &SearchOptions,
+	errs: &mut dyn Write,
 ) -> bool {
 	if !opts.no_messages {
 		let name = display
 			.map(|bytes| String::from_utf8_lossy(bytes).into_owned())
 			.unwrap_or_else(|| fallback.display().to_string());
-		let _ = writeln!(pi_uutils_ctx::stderr(), "rg: {name}: {err}");
+		let _ = writeln!(errs, "rg: {name}: {err}");
 	}
 	true
 }
@@ -1351,7 +1353,17 @@ fn search_collected_files<M: Matcher, W: Write>(
 		let display_path = display_path(operand, root, &path);
 		let display_bytes = display_path.as_os_str().as_encoded_bytes().to_vec();
 		let display = (show_names || opts.json).then_some(display_bytes.as_slice());
-		let outcome = process_file(cli, matcher, searcher, &path, display, opts, stats, out);
+		let outcome = process_file(
+			cli,
+			matcher,
+			searcher,
+			&path,
+			display,
+			opts,
+			stats,
+			out,
+			&mut pi_uutils_ctx::stderr(),
+		);
 		any_match |= outcome.any_match;
 		had_error |= outcome.had_error;
 		if pi_uutils_ctx::is_cancelled() {
@@ -1362,11 +1374,170 @@ fn search_collected_files<M: Matcher, W: Write>(
 	SearchOutcome { any_match, had_error }
 }
 
+/// Search every accepted file under `root` on the shared walker pool, one
+/// worker-buffered output block per file so printed matches never interleave.
+///
+/// Only valid for unordered, override-free walks: directory-level `-g` /
+/// explicit-ignore exclusions prune the SERIAL walk via SkipDescend, which the
+/// per-file filter here cannot reproduce (a `!dir/` glob matches the directory,
+/// not its children), and sorted output needs the serial visit order.
 #[allow(
 	clippy::too_many_arguments,
 	reason = "required by standard walk/configure interfaces and search parameters"
 )]
-fn search_dir<M: Matcher, W: Write>(
+fn search_dir_parallel<M: Matcher + Sync, W: Write>(
+	cli: &RgCli,
+	matcher: &M,
+	walk: &RgWalk,
+	operand: &OsStr,
+	root: &Path,
+	show_names: bool,
+	opts: &SearchOptions,
+	stats: &mut Stats,
+	out: &mut W,
+) -> SearchOutcome {
+	use std::sync::atomic::{AtomicBool, Ordering as AtomicOrdering};
+
+	use parking_lot::Mutex;
+	// The uutils ctx (stdout/stderr/cancellation) is thread-local: a write from
+	// a pool thread is silently discarded and is_cancelled() is always false
+	// there. Workers therefore produce pure data — per-file output/stderr byte
+	// blocks sent over a channel — and this ctx-owning thread performs every
+	// write; cancellation is polled through a flag captured here, up front.
+	enum Emit {
+		Out(Vec<u8>),
+		Err(Vec<u8>),
+	}
+	let cancel = pi_uutils_ctx::cancel_flag();
+	let any_match = AtomicBool::new(false);
+	let had_error = AtomicBool::new(false);
+	let shared_stats = Mutex::new(Stats::new());
+	let searcher_pool: Mutex<Vec<Searcher>> = Mutex::new(Vec::new());
+	let (emit_tx, emit_rx) = std::sync::mpsc::channel::<Emit>();
+	let walked = std::thread::scope(|scope| {
+		let walker = scope.spawn({
+			let cancel = &cancel;
+			let any_match = &any_match;
+			let had_error = &had_error;
+			let shared_stats = &shared_stats;
+			let searcher_pool = &searcher_pool;
+			move || {
+				let emit_tx = emit_tx;
+				walk.request.for_each_file_candidate_parallel_with_dir_errors(
+					&|candidate: &pi_walker::FileCandidate| {
+						if opts.quiet && any_match.load(AtomicOrdering::Relaxed) {
+							return Ok(pi_walker::ParallelWalkControl::Stop);
+						}
+						let path = candidate.path.as_path();
+						if !walk
+							.filters
+							.includes(path, pi_walker::FileType::File, candidate.size)
+						{
+							return Ok(pi_walker::ParallelWalkControl::Continue);
+						}
+						// Searcher is not Sync (RefCell line buffers), so each worker
+						// builds its own from the same cli/opts and recycles it
+						// through the pool.
+						let mut searcher = match searcher_pool.lock().pop() {
+							Some(searcher) => searcher,
+							None => match build_searcher(cli, opts, BinaryMode::Automatic) {
+								Ok(searcher) => searcher,
+								Err(err) => {
+									return Err(io::Error::other(format!("rg: {err}")));
+								},
+							},
+						};
+						let display_path = display_path(operand, root, path);
+						let display_bytes = display_path.as_os_str().as_encoded_bytes().to_vec();
+						let display = (show_names || opts.json).then_some(display_bytes.as_slice());
+						let mut buffer = Vec::new();
+						let mut err_buf = Vec::new();
+						let mut file_stats = Stats::new();
+						let outcome = process_file(
+							cli,
+							matcher,
+							&mut searcher,
+							path,
+							display,
+							opts,
+							&mut file_stats,
+							&mut buffer,
+							&mut err_buf,
+						);
+						searcher_pool.lock().push(searcher);
+						*shared_stats.lock() += file_stats;
+						if outcome.any_match {
+							any_match.store(true, AtomicOrdering::Relaxed);
+						}
+						if outcome.had_error {
+							had_error.store(true, AtomicOrdering::Relaxed);
+						}
+						if !buffer.is_empty() {
+							let _ = emit_tx.send(Emit::Out(buffer));
+						}
+						if !err_buf.is_empty() {
+							let _ = emit_tx.send(Emit::Err(err_buf));
+						}
+						Ok::<_, io::Error>(if opts.quiet && any_match.load(AtomicOrdering::Relaxed) {
+							pi_walker::ParallelWalkControl::Stop
+						} else {
+							pi_walker::ParallelWalkControl::Continue
+						})
+					},
+					&|| {
+						if cancel.as_ref().is_some_and(|flag| flag.load(AtomicOrdering::Relaxed)) {
+							Err(io::Error::from(io::ErrorKind::Interrupted))
+						} else {
+							Ok(())
+						}
+					},
+					&|error: pi_walker::DirectoryError<'_>| {
+						had_error.store(true, AtomicOrdering::Relaxed);
+						if !opts.no_messages {
+							let line =
+								format!("rg: {}: {}\n", error.path.display(), error.error).into_bytes();
+							let _ = emit_tx.send(Emit::Err(line));
+						}
+					},
+				)
+			}
+		});
+		for message in emit_rx {
+			match message {
+				Emit::Out(bytes) => {
+					let _ = out.write_all(&bytes);
+				},
+				Emit::Err(bytes) => {
+					let _ = pi_uutils_ctx::stderr().write_all(&bytes);
+				},
+			}
+		}
+		walker.join().expect("parallel rg walker thread should not panic")
+	});
+	*stats += shared_stats.into_inner();
+	match walked {
+		Ok(_) => {},
+		Err(pi_walker::WalkError::Interrupted(_)) if pi_uutils_ctx::is_cancelled() => {
+			had_error.store(true, AtomicOrdering::Relaxed);
+		},
+		Err(err) => {
+			had_error.store(true, AtomicOrdering::Relaxed);
+			if !opts.no_messages {
+				let _ = writeln!(pi_uutils_ctx::stderr(), "rg: {err}");
+			}
+		},
+	}
+	SearchOutcome {
+		any_match: any_match.load(AtomicOrdering::Relaxed),
+		had_error: had_error.load(AtomicOrdering::Relaxed),
+	}
+}
+
+#[allow(
+	clippy::too_many_arguments,
+	reason = "required by standard walk/configure interfaces and search parameters"
+)]
+fn search_dir<M: Matcher + Sync, W: Write>(
 	cli: &RgCli,
 	matcher: &M,
 	searcher: &mut Searcher,
@@ -1391,6 +1562,10 @@ fn search_dir<M: Matcher, W: Write>(
 			return SearchOutcome { any_match: false, had_error: true };
 		},
 	};
+	let unordered = !(cli.sort_files || cli.sort.as_deref() == Some("path"));
+	if unordered && walk.filters.overrides.is_none() && walk.filters.explicit.is_none() {
+		return search_dir_parallel(cli, matcher, &walk, operand, root, show_names, opts, stats, out);
+	}
 	let any_match = std::cell::Cell::new(false);
 	let had_error = std::cell::Cell::new(false);
 	let streamed = match walk.request.for_each_entry_with_heartbeat(
@@ -1419,7 +1594,17 @@ fn search_dir<M: Matcher, W: Write>(
 			let display_path = display_path(operand, root, path);
 			let display_bytes = display_path.as_os_str().as_encoded_bytes().to_vec();
 			let display = (show_names || opts.json).then_some(display_bytes.as_slice());
-			let outcome = process_file(cli, matcher, searcher, path, display, opts, stats, out);
+			let outcome = process_file(
+				cli,
+				matcher,
+				searcher,
+				path,
+				display,
+				opts,
+				stats,
+				out,
+				&mut pi_uutils_ctx::stderr(),
+			);
 			any_match.set(any_match.get() || outcome.any_match);
 			had_error.set(had_error.get() || outcome.had_error);
 			Ok(if opts.quiet && any_match.get() {
@@ -1587,7 +1772,7 @@ fn write_json_summary<W: Write>(out: &mut W, stats: &Stats) -> io::Result<()> {
 	out.write_all(b"\n")
 }
 
-fn execute_search<M: Matcher, W: Write>(
+fn execute_search<M: Matcher + Sync, W: Write>(
 	cli: &RgCli,
 	matcher: &M,
 	paths: &[OsString],
@@ -1680,6 +1865,7 @@ fn execute_search<M: Matcher, W: Write>(
 					opts,
 					&mut stats,
 					out,
+					&mut pi_uutils_ctx::stderr(),
 				);
 				any_match |= outcome.any_match;
 				had_error |= outcome.had_error;
@@ -2058,6 +2244,142 @@ mod tests {
 		// wrapper rewrites it to the user-visible cancelled status (130).
 		assert_eq!(code, 2, "cancelled --files walk should stop before later operands");
 
+		let _ = std::fs::remove_dir_all(&tree);
+	}
+
+	#[test]
+	fn parallel_search_reaches_scope_stdout_without_interleaving_file_blocks() {
+		// The parallel walk runs process_file on pool threads where the
+		// thread-local ctx is absent; worker output must be routed back to the
+		// scoped thread (a discarded write here means empty stdout), and each
+		// file's lines must land as one contiguous block.
+		let tree = unique_tree("parallel-blocks");
+		for index in 0..24 {
+			let dir = tree.join(format!("d{index:02}"));
+			std::fs::create_dir_all(&dir).expect("subdir should be created");
+			std::fs::write(dir.join("f.txt"), "hit one\nhit two\n").expect("fixture written");
+		}
+		let (code, stdout, stderr) = run_rg_in(&["hit", "."], "", &tree);
+		assert_eq!(code, 0, "{stderr}");
+		let lines: Vec<&str> = stdout.lines().collect();
+		assert_eq!(lines.len(), 48, "24 files x 2 matching lines: {stdout:?}");
+		let mut seen_files = Vec::new();
+		for pair in lines.chunks(2) {
+			let file_a = pair[0].split(':').next().expect("path prefix");
+			let file_b = pair[1].split(':').next().expect("path prefix");
+			assert_eq!(file_a, file_b, "a file's match lines must stay contiguous: {pair:?}");
+			assert_eq!(pair[0], format!("{file_a}:hit one"));
+			assert_eq!(pair[1], format!("{file_a}:hit two"));
+			assert!(!seen_files.contains(&file_a), "file block emitted twice: {file_a}");
+			seen_files.push(file_a);
+		}
+		assert_eq!(seen_files.len(), 24);
+		let _ = std::fs::remove_dir_all(&tree);
+	}
+
+	#[cfg(unix)]
+	#[test]
+	fn parallel_search_reports_unreadable_directory_on_scope_stderr() {
+		use std::os::unix::fs::PermissionsExt;
+		let tree = unique_tree("parallel-dir-error");
+		std::fs::write(tree.join("open.txt"), "hit\n").expect("fixture written");
+		let locked = tree.join("locked");
+		std::fs::create_dir_all(&locked).expect("locked dir should be created");
+		std::fs::write(locked.join("hidden.txt"), "hit\n").expect("fixture written");
+		std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000))
+			.expect("permissions should be set");
+		if std::fs::read_dir(&locked).is_ok() {
+			// Running as root: the directory stays readable and the error path
+			// cannot be provoked. Restore and skip loudly.
+			std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755))
+				.expect("permissions should be restored");
+			let _ = std::fs::remove_dir_all(&tree);
+			println!("SKIPPED: euid can read chmod-000 directories (root)");
+			return;
+		}
+		let (code, stdout, stderr) = run_rg_in(&["hit", "."], "", &tree);
+		std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755))
+			.expect("permissions should be restored");
+		assert_eq!(code, 2, "unreadable directory is an error even with matches: {stderr:?}");
+		assert!(stdout.contains("open.txt:hit"), "readable match still printed: {stdout:?}");
+		assert!(
+			stderr.contains("rg: ") && stderr.contains("locked"),
+			"directory error must reach scope stderr from the parallel walk: {stderr:?}"
+		);
+		let _ = std::fs::remove_dir_all(&tree);
+	}
+
+	#[test]
+	fn parallel_quiet_search_exits_zero_with_no_output() {
+		let tree = unique_tree("parallel-quiet");
+		for index in 0..8 {
+			std::fs::write(tree.join(format!("f{index}.txt")), "hit\n").expect("fixture written");
+		}
+		let (code, stdout, stderr) = run_rg_in(&["-q", "hit", "."], "", &tree);
+		assert_eq!(code, 0, "{stderr}");
+		assert!(stdout.is_empty(), "-q must suppress all output: {stdout:?}");
+		let (code, stdout, _) = run_rg_in(&["-q", "no-such-needle", "."], "", &tree);
+		assert_eq!(code, 1);
+		assert!(stdout.is_empty());
+		let _ = std::fs::remove_dir_all(&tree);
+	}
+
+	#[test]
+	fn sort_path_stays_serial_and_byte_ordered() {
+		let tree = unique_tree("sort-path");
+		std::fs::create_dir_all(tree.join("b")).expect("subdir should be created");
+		std::fs::write(tree.join("zz.txt"), "hit\n").expect("fixture written");
+		std::fs::write(tree.join("aa.txt"), "hit\n").expect("fixture written");
+		std::fs::write(tree.join("b/mid.txt"), "hit\n").expect("fixture written");
+		let (code, stdout, stderr) = run_rg_in(&["--sort=path", "hit", "."], "", &tree);
+		assert_eq!(code, 0, "{stderr}");
+		let files: Vec<&str> =
+			stdout.lines().map(|line| line.split(':').next().expect("path prefix")).collect();
+		let mut sorted = files.clone();
+		sorted.sort_unstable();
+		assert_eq!(files, sorted, "--sort=path must emit byte-sorted paths: {stdout:?}");
+		assert_eq!(files.len(), 3);
+		let _ = std::fs::remove_dir_all(&tree);
+	}
+
+	#[test]
+	fn json_summary_aggregates_stats_across_parallel_files() {
+		let tree = unique_tree("parallel-json");
+		for index in 0..6 {
+			std::fs::write(tree.join(format!("f{index}.txt")), "hit\nmiss\n")
+				.expect("fixture written");
+		}
+		let (code, stdout, stderr) = run_rg_in(&["--json", "hit", "."], "", &tree);
+		assert_eq!(code, 0, "{stderr}");
+		let events: Vec<serde_json::Value> = stdout
+			.lines()
+			.map(|line| serde_json::from_str(line).expect("each output line should be JSON"))
+			.collect();
+		let summary = events.last().expect("summary event");
+		assert_eq!(summary["type"], "summary");
+		assert_eq!(summary["data"]["stats"]["searches_with_match"], 6);
+		assert_eq!(summary["data"]["stats"]["matched_lines"], 6);
+		assert_eq!(summary["data"]["stats"]["matches"], 6);
+		// Per-file begin/match/end triples must stay contiguous per file.
+		let mut open_file: Option<String> = None;
+		for event in &events[..events.len() - 1] {
+			let kind = event["type"].as_str().expect("event type");
+			let path = event["data"]["path"]["text"].as_str().unwrap_or_default().to_string();
+			match kind {
+				"begin" => {
+					assert!(open_file.is_none(), "begin inside another file's block: {event}");
+					open_file = Some(path);
+				},
+				"match" | "context" => {
+					assert_eq!(open_file.as_deref(), Some(path.as_str()), "interleaved: {event}");
+				},
+				"end" => {
+					assert_eq!(open_file.take().as_deref(), Some(path.as_str()), "{event}");
+				},
+				other => panic!("unexpected event type {other}"),
+			}
+		}
+		assert!(open_file.is_none(), "unterminated begin block");
 		let _ = std::fs::remove_dir_all(&tree);
 	}
 }

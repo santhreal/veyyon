@@ -53,7 +53,7 @@ function formatAuthors(authors?: CrossrefAuthor[]): string | null {
 	return names.join(", ");
 }
 
-function formatDate(date?: CrossrefDate): string | null {
+function formatCrossrefDate(date?: CrossrefDate): string | null {
 	const parts = date?.["date-parts"]?.[0];
 	if (!parts || parts.length === 0) return null;
 	const [year, month, day] = parts;
@@ -108,11 +108,11 @@ export const handleCrossref: SpecialHandler = async (
 		const journal = message["container-title"]?.[0] || message["short-container-title"]?.[0];
 		const publisher = message.publisher;
 		const published =
-			formatDate(message.published) ||
-			formatDate(message["published-print"]) ||
-			formatDate(message["published-online"]) ||
-			formatDate(message.issued) ||
-			formatDate(message.created);
+			formatCrossrefDate(message.published) ||
+			formatCrossrefDate(message["published-print"]) ||
+			formatCrossrefDate(message["published-online"]) ||
+			formatCrossrefDate(message.issued) ||
+			formatCrossrefDate(message.created);
 		const doiValue = message.DOI || doi;
 		const abstract = await formatAbstract(message.abstract);
 		const type = message.type?.replace(/-/g, " ");

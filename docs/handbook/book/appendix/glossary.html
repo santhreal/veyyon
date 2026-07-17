@@ -46,10 +46,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-24acbed9.js";
+            window.path_to_searchindex_js = "../searchindex-8badf17b.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-9cfd259b.js"></script>
+        <script src="../toc-19dab021.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -195,10 +195,10 @@
 <p>A concise vocabulary of the primitives that shape Veyyon’s runtime behavior.</p>
 <ul>
 <li>
-<p><strong>apply_patch</strong>: Veyyon’s structured edit tool. The model emits a <code>*** Begin Patch … *** End Patch</code> envelope, and the harness applies it through one verified path that checks for a unique match, respects the approval policy, and records the diff. It is delivered as a Freeform tool on the Responses API or as a Function tool with an <code>{input}</code> JSON field on Chat Completions.</p>
+<p><strong>apply_patch</strong>: Veyyon’s structured edit tool. The model emits a <code>*** Begin Patch … *** End Patch</code> envelope, and the harness applies it through one verified path that checks for a unique match, respects the sandbox, and records the diff. It is delivered as a Freeform tool on the Responses API or as a Function tool with an <code>{input}</code> JSON field on Chat Completions.</p>
 </li>
 <li>
-<p><strong>approval mode</strong>: The autonomy control (<code>tools.approvalMode</code>) that decides which tool tiers run automatically and which pause for your yes: <code>plan</code>, <code>ask</code>, <code>auto-edit</code>, <code>yolo</code> (legacy <code>always-ask</code> = <code>ask</code>, <code>write</code> = <code>auto-edit</code>). Veyyon does not add an OS command sandbox, so the mode is the boundary.</p>
+<p><strong>approval policy</strong>: The rule that decides when Veyyon must ask you before running a command. Policies include <code>untrusted</code>, <code>on-request</code>, <code>granular</code>, and <code>never</code>. The approval policy is a soft gate; the sandbox policy is the hard boundary.</p>
 </li>
 <li>
 <p><strong>backend catalog</strong>: The Tier-B data file that maps each model slug to a provider, wire API, and connection facts. Veyyon selects the model contract against this catalog rather than hardcoding provider lists.</p>
@@ -207,7 +207,7 @@
 <p><strong>compaction</strong>: The compression layer that summarizes a long trajectory into a smaller, information-preserving form instead of truncating it. Compaction preserves the goal card, recent user messages, and deterministic working-set facts across successive windows.</p>
 </li>
 <li>
-<p><strong>edit / write</strong>: The <code>edit</code> and <code>write</code> tools change files on disk. <code>write</code> creates or replaces a file; <code>edit</code> replaces exact text with new text. Both route through the same verified path as <code>apply_patch</code> and respect the approval policy.</p>
+<p><strong>edit / write</strong>: The <code>edit</code> and <code>write</code> tools change files on disk. <code>write</code> creates or replaces a file; <code>edit</code> replaces exact text with new text. Both route through the same verified path as <code>apply_patch</code> and respect the sandbox.</p>
 </li>
 <li>
 <p><strong>Freeform tool / Function tool</strong>: The two tool shapes Veyyon advertises to a model. A Freeform tool emits a raw grammar-shaped body; a Function tool emits JSON arguments matching a schema. The choice depends on the backend wire API.</p>
@@ -225,13 +225,13 @@
 <p><strong>model contract / BYOK</strong>: The model contract is your chosen endpoint, model, and credentials. BYOK (bring-your-own-key) means you supply your own provider or local-endpoint key, so Veyyon calls the API directly without telemetry egress.</p>
 </li>
 <li>
-<p><strong>personality</strong>: A style-only setting that changes how the agent writes replies without altering its tools or permissions. Built-in personalities include <code>pragmatic</code>, <code>friendly</code>, and <code>none</code>.</p>
+<p><strong>personality</strong>: A style-only setting that changes how the agent writes replies without altering its tools, permissions, or sandbox. Built-in personalities include <code>pragmatic</code>, <code>friendly</code>, and <code>none</code>.</p>
 </li>
 <li>
 <p><strong>plugin</strong>: A directory with a <code>.veyyon-plugin/plugin.json</code> manifest that adds skills, MCP servers, apps, hooks, or TUI customizations to Veyyon. Plugins are discovered through marketplaces.</p>
 </li>
 <li>
-<p><strong>profile</strong>: A named configuration group (a per-profile <code>config.yml</code> under the agent directory) that bundles model, provider, approval mode, personality, and other runtime settings. Activate a profile at launch with <code>--profile</code> or at runtime with <code>/profile</code>.</p>
+<p><strong>profile</strong>: A named configuration group (a per-profile <code>config.yml</code> under the agent directory) that bundles model, provider, sandbox, approval policy, personality, and other runtime settings. Activate a profile at launch with <code>--profile</code> or at runtime with <code>/profile</code>.</p>
 </li>
 <li>
 <p><strong>prompt-cache discipline</strong>: The practice of keeping stable prompt prefixes stable and treating cache behavior as measured runtime policy. Veyyon orders context and compacts in ways that preserve prefix stability across turns.</p>
@@ -244,6 +244,9 @@
 </li>
 <li>
 <p><strong>rollout</strong>: The append-only JSONL log of a session’s entries. Each entry carries an <code>id</code> and <code>parent_id</code>; a <code>leaf_move</code> line branches the active leaf to any earlier entry without rewriting history.</p>
+</li>
+<li>
+<p><strong>sandbox policy</strong>: The hard boundary on what a command can touch. Policies include <code>read-only</code>, <code>workspace-write</code>, <code>danger-full-access</code>, and <code>external-sandbox</code>. When enforcement cannot be established, Veyyon fails closed.</p>
 </li>
 <li>
 <p><strong>session</strong>: The unit of interactive work in Veyyon. A session records turns, tool activity, approvals, edits, and verification output, and survives context pressure through goal state and compaction.</p>

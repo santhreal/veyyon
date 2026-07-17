@@ -61,7 +61,7 @@ function parseOpenGraph(html: string): OpenGraphData {
 /**
  * Determine content type from URL path
  */
-function getContentType(url: string): string | null {
+function classifySpotifyUrl(url: string): string | null {
 	if (url.includes("/episode/")) return "podcast-episode";
 	if (url.includes("/show/")) return "podcast-show";
 	if (url.includes("/track/")) return "track";
@@ -73,7 +73,7 @@ function getContentType(url: string): string | null {
 /**
  * Format duration from seconds string
  */
-function formatDuration(seconds: string | undefined): string | null {
+function formatTrackDuration(seconds: string | undefined): string | null {
 	if (!seconds) return null;
 	const num = parseInt(seconds, 10);
 	if (Number.isNaN(num)) return null;
@@ -107,7 +107,7 @@ function formatOutput(contentType: string, oEmbed: SpotifyOEmbedResponse, og: Op
 			sections.push(`**Album**: ${og.album}\n`);
 		}
 		if (og.duration) {
-			const formatted = formatDuration(og.duration);
+			const formatted = formatTrackDuration(og.duration);
 			if (formatted) {
 				sections.push(`**Duration**: ${formatted}\n`);
 			}
@@ -154,7 +154,7 @@ export const handleSpotify: SpecialHandler = async (url: string, timeout: number
 		return null;
 	}
 
-	const contentType = getContentType(url);
+	const contentType = classifySpotifyUrl(url);
 	if (!contentType) {
 		return null;
 	}

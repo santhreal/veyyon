@@ -1,3 +1,4 @@
+import * as path from "node:path";
 import { logger } from "@veyyon/pi-utils";
 import { Settings } from "../config/settings";
 import { OutputSink } from "../session/streaming-output";
@@ -87,6 +88,22 @@ export function getExecutionDeadlineMs(options?: { deadlineMs?: number; timeoutM
 export function getRemainingTimeoutMs(deadlineMs?: number): number | undefined {
 	if (deadlineMs === undefined) return undefined;
 	return deadlineMs - Date.now();
+}
+
+/**
+ * Remaining ms until the deadline, throwing the language's cancelled error
+ * (timedOut=true) once the deadline has passed. Undefined deadline means no
+ * timeout.
+ */
+export function requireRemainingTimeoutMs(
+	deadlineMs: number | undefined,
+	cancelledErrorClass: CancelledErrorClass,
+): number | undefined {
+	const remainingMs = getRemainingTimeoutMs(deadlineMs);
+	if (remainingMs !== undefined && remainingMs <= 0) {
+		throw new cancelledErrorClass(true);
+	}
+	return remainingMs;
 }
 
 export function isCancellationError(error: unknown, cancelledErrorClass: CancelledErrorClass): boolean {
@@ -500,4 +517,17 @@ export async function executeWithKernelBase<
 		unregisterBridge?.();
 		abortShield.dispose?.();
 	}
+}
+
+/** Canonical session cwd for kernel-session keying (absolute, resolved). */
+export function normalizeSessionCwd(cwd: string): string {
+	return path.resolve(cwd);
+}
+
+/**
+ * Kernel-session map key. NUL separators: a cwd or interpreter path can
+ * contain any printable delimiter, but never a NUL byte.
+ */
+export function interpreterSessionKey(sessionId: string, normalizedCwd: string, normalizedInterpreter: string): string {
+	return `${sessionId}\0${normalizedCwd}\0${normalizedInterpreter}`;
 }

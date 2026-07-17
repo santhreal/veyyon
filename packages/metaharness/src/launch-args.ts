@@ -82,3 +82,13 @@ export function harborRunnerArgs(
 	argv.push(...(request.extraArgs ?? []));
 	return argv;
 }
+
+/**
+ * ONE PLACE: default job name — `<model-slug>-<utc-stamp>` — shared by the CLI
+ * runner and the server so both launch paths name jobs identically.
+ */
+export function defaultJobName(model: string): string {
+	const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+	const modelSlug = model.replace(/[^a-zA-Z0-9]+/g, "-");
+	return `${modelSlug}-${stamp}`;
+}

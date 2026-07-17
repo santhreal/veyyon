@@ -48,6 +48,9 @@ export async function open(key: CryptoKey, data: Uint8Array): Promise<WireFrame>
 	return JSON.parse(TEXT_DECODER.decode(plaintext)) as WireFrame;
 }
 
+// Local copy of pi-utils toStrictUint8Array: its owner module (pi-utils
+// binary.ts) imports node:buffer, which this browser bundle must not pull in.
+// Only dependency-free pi-utils subpaths (e.g. path-display) are safe here.
 function asStrict(bytes: Uint8Array): Uint8Array<ArrayBuffer> {
 	if (bytes.buffer instanceof ArrayBuffer && bytes.byteOffset === 0 && bytes.byteLength === bytes.buffer.byteLength) {
 		return bytes as Uint8Array<ArrayBuffer>;

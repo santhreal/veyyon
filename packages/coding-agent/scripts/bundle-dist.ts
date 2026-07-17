@@ -3,6 +3,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { isEnoent } from "@veyyon/pi-utils";
+import { formatBytes } from "@veyyon/pi-utils/format";
 import { buildDocsIndexPayload } from "./generate-docs-index";
 
 const packageDir = path.join(import.meta.dir, "..");
@@ -56,11 +57,6 @@ async function ensureShebang(): Promise<void> {
 	if (text.startsWith(shebang)) return;
 	const withoutExisting = text.startsWith("#!") ? text.slice(text.indexOf("\n") + 1) : text;
 	await Bun.write(cliPath, shebang + withoutExisting);
-}
-
-function formatBytes(bytes: number): string {
-	if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`;
-	return `${(bytes / (1024 * 1024)).toFixed(2)}MB`;
 }
 
 async function cleanBundleOutputs(): Promise<void> {

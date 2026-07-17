@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as fsp from "node:fs/promises";
 import * as path from "node:path";
-import { hasFsCode, isEnoent, logger, peekFileEnds, Snowflake, toError } from "@veyyon/pi-utils";
+import { hasFsCode, isEnoent, logger, lowerBound, peekFileEnds, Snowflake, toError } from "@veyyon/pi-utils";
 import { overlayTitleSlotContent, type SessionTitleUpdate, serializeTitleSlot } from "./session-title-slot";
 
 const utf8Decoder = new TextDecoder("utf-8");
@@ -513,23 +513,9 @@ function appendMemoryChunk(entry: MemoryFileEntry, chunk: string): void {
 	entry.cumulativeBytes.push(entry.size);
 }
 
-function normalizeByteLimit(maxBytes: number, size: number): number {
+export function normalizeByteLimit(maxBytes: number, size: number): number {
 	if (!(maxBytes > 0) || size === 0) return 0;
 	return Math.min(Math.trunc(maxBytes), size);
-}
-
-function lowerBound(values: readonly number[], target: number): number {
-	let lo = 0;
-	let hi = values.length;
-	while (lo < hi) {
-		const mid = (lo + hi) >>> 1;
-		if (values[mid] < target) {
-			lo = mid + 1;
-		} else {
-			hi = mid;
-		}
-	}
-	return lo;
 }
 
 function upperBound(values: readonly number[], target: number): number {
@@ -582,7 +568,7 @@ function sliceChunksHead(entry: MemoryFileEntry, maxBytes: number): string {
 	if (limit === 0) return "";
 	if (limit >= entry.size) return materializeMemoryEntry(entry);
 
-	const boundaryIndex = lowerBound(entry.cumulativeBytes, limit);
+	const boundaryIndex = lowerBound(entry.cumulativeBytes, value => value < limit);
 	const chunkStart = boundaryIndex === 0 ? 0 : entry.cumulativeBytes[boundaryIndex - 1];
 	const chunkEnd = entry.cumulativeBytes[boundaryIndex];
 	if (chunkEnd === limit) return joinChunkRange(entry.chunks, 0, boundaryIndex + 1);

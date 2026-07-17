@@ -2,7 +2,7 @@
  * `veyyon install <target>` — top-level convenience over `veyyon plugin install` /
  * `veyyon plugin link`.
  *
- * The docs (veyyon.dev/docs/extensions) advertise
+ * The docs (omp.sh/docs/extension-authoring) advertise
  *
  *   omp install ./my-extension
  *

@@ -27,8 +27,8 @@ export const textPartSchema = type({
 /**
  * OpenAI documents `image_url` as either `{ url: string, detail?: ... }` or —
  * older clients — a bare string. Accept both shapes; downstream we extract a
- * URL. `detail` is accepted for forward-compat but currently dropped (pi-ai's
- * `ImageContent` has no detail field — TODO: plumb through if/when added).
+ * URL. `detail` is accepted for forward-compat but consciously dropped:
+ * pi-ai's `ImageContent` has no detail field, and no consumer has needed one.
  */
 export const imagePartSchema = type({
 	type: "'image_url'",

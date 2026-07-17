@@ -1,13 +1,15 @@
-import {
-	type Api,
-	type ApiKey,
-	type AssistantMessage,
-	completeSimple,
-	type FetchImpl,
-	type Model,
-	withAuth,
-} from "@veyyon/pi-ai";
+import { type Api, type ApiKey, completeSimple, type FetchImpl, type Model, withAuth } from "@veyyon/pi-ai";
 import { ProviderHttpError } from "@veyyon/pi-ai/error";
+import { estimateTextTokens, joinTextBlocks, stripTrailingSlashes } from "@veyyon/pi-utils";
+import {
+	hostLlmContext as configHostLlmContext,
+	hostLlmEnabled as configHostLlmEnabled,
+	llmApiKey as configLlmApiKey,
+	llmBaseUrl as configLlmBaseUrl,
+	llmModel as configLlmModel,
+	sleepPrompt as configSleepPrompt,
+} from "../config";
+import { envBool, envInt, envString } from "../util/env";
 import { type CompleteOptions, callHostLlm, getHostLlmBackend } from "./llm-backends";
 import {
 	getMnemopiRuntimeOptions,
@@ -27,12 +29,6 @@ export const DEFAULT_MODEL_REPO =
 export const DEFAULT_MODEL_FILE =
 	ENV_MODEL_REPO !== "" && ENV_MODEL_FILE !== "" ? ENV_MODEL_FILE : "tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf";
 
-const TRUE_VALUES: Record<string, true> = { "1": true, true: true, yes: true, on: true };
-
-function env(name: string): string {
-	return process.env[name] ?? "";
-}
-
 function activeLlmOptions() {
 	return getMnemopiRuntimeOptions()?.llm;
 }
@@ -44,24 +40,6 @@ function activeCustomCompletion(): MnemopiLlmCompletion | undefined {
 function activePiAiModel(): Model<Api> | undefined {
 	const model = activeLlmOptions()?.model;
 	return isPiAiModel(model) ? model : undefined;
-}
-
-function envBool(name: string, defaultValue: boolean): boolean {
-	const value = env(name).trim().toLowerCase();
-	return value === "" ? defaultValue : TRUE_VALUES[value] === true;
-}
-
-function envInt(name: string, defaultValue: number): number {
-	const parsed = Number.parseInt(env(name), 10);
-	return Number.isFinite(parsed) ? parsed : defaultValue;
-}
-
-function stripTrailingSlash(value: string): string {
-	let end = value.length;
-	while (end > 0 && value.charCodeAt(end - 1) === 47) {
-		end -= 1;
-	}
-	return end === value.length ? value : value.slice(0, end);
 }
 
 function llmEnabled(): boolean {
@@ -95,19 +73,15 @@ function hostLlmEnabled(): boolean {
 	if (active?.baseUrl !== undefined || (typeof active?.model === "string" && active.model !== "")) {
 		return false;
 	}
-	return envBool("MNEMOPI_HOST_LLM_ENABLED", false);
-}
-
-function hostLlmContextTokens(): number {
-	return envInt("MNEMOPI_HOST_LLM_N_CTX", 32000);
+	return configHostLlmEnabled();
 }
 
 function llmBaseUrl(): string {
 	const active = activeLlmOptions();
 	if (active?.baseUrl !== undefined) {
-		return stripTrailingSlash(active.baseUrl);
+		return stripTrailingSlashes(active.baseUrl);
 	}
-	return stripTrailingSlash(env("MNEMOPI_LLM_BASE_URL"));
+	return configLlmBaseUrl();
 }
 
 function llmModelName(): string {
@@ -115,7 +89,7 @@ function llmModelName(): string {
 	if (typeof model === "string") {
 		return model;
 	}
-	return env("MNEMOPI_LLM_MODEL") || "local";
+	return configLlmModel() || "local";
 }
 
 function llmApiKey(): ApiKey {
@@ -123,11 +97,7 @@ function llmApiKey(): ApiKey {
 	if (active?.apiKey !== undefined) {
 		return active.apiKey;
 	}
-	return env("MNEMOPI_LLM_API_KEY");
-}
-
-function sleepPrompt(): string {
-	return env("MNEMOPI_SLEEP_PROMPT").trim();
+	return configLlmApiKey();
 }
 
 function memoryLines(memories: readonly string[]): string {
@@ -139,7 +109,7 @@ function memoryLines(memories: readonly string[]): string {
 
 function formatSleepPrompt(memories: readonly string[], source = ""): string | null {
 	const override = getMnemopiRuntimeOptions()?.llm?.consolidationPrompt;
-	const template = override !== undefined && override !== "" ? override : sleepPrompt();
+	const template = override !== undefined && override !== "" ? override : configSleepPrompt();
 	if (template === "") {
 		return null;
 	}
@@ -197,17 +167,10 @@ export async function callConfiguredCompletion(
 				temperature,
 			},
 		);
-		return assistantText(message).trim() || null;
+		return joinTextBlocks(message.content).trim() || null;
 	} catch {
 		return null;
 	}
-}
-
-function assistantText(message: AssistantMessage): string {
-	return message.content
-		.filter((block): block is Extract<AssistantMessage["content"][number], { type: "text" }> => block.type === "text")
-		.map(block => block.text)
-		.join("\n");
 }
 
 export function buildHostPrompt(memories: readonly string[], source = ""): string {
@@ -241,8 +204,8 @@ async function tryHostLlm(prompt: string, maxTokens: number, temperature: number
 		maxTokens,
 		temperature,
 		timeout: 15,
-		provider: env("MNEMOPI_HOST_LLM_PROVIDER").trim() || null,
-		model: env("MNEMOPI_HOST_LLM_MODEL").trim() || null,
+		provider: envString("MNEMOPI_HOST_LLM_PROVIDER").trim() || null,
+		model: envString("MNEMOPI_HOST_LLM_MODEL").trim() || null,
 	});
 	const text = typeof raw === "string" ? raw.trim() : "";
 	return [true, text === "" ? null : text];
@@ -261,13 +224,9 @@ export function cleanOutput(text: string): string {
 		.trim();
 }
 
-function estimateTokens(text: string): number {
-	return Math.max(1, Math.floor(text.length / 4));
-}
-
 function promptTokenBudget(): number {
 	const overhead = 80;
-	const nCtx = hostBackendWillHandleCall() ? hostLlmContextTokens() : llmContextTokens();
+	const nCtx = hostBackendWillHandleCall() ? configHostLlmContext() : llmContextTokens();
 	const outputReserve = Math.min(llmMaxTokens(), Math.max(128, Math.floor(nCtx / 4)));
 	const safetyMargin = Math.floor(nCtx * 0.2);
 	return Math.max(64, nCtx - overhead - outputReserve - safetyMargin);
@@ -288,12 +247,12 @@ export function chunkMemoriesByBudget(memories: readonly string[], source = ""):
 	if (source !== "") {
 		header += ` Source: ${source}.`;
 	}
-	const headerTokens = estimateTokens(`${header}\n\n`);
-	const formatOverhead = estimateTokens("- \n");
+	const headerTokens = estimateTextTokens(`${header}\n\n`);
+	const formatOverhead = estimateTextTokens("- \n");
 	const available = budget - headerTokens;
 
 	for (const memory of memories) {
-		const memTokens = estimateTokens(memory) + formatOverhead;
+		const memTokens = estimateTextTokens(memory) + formatOverhead;
 		if (memTokens > budget) {
 			continue;
 		}
@@ -453,7 +412,7 @@ export async function summarizeMemories(
 	return chunkSummaries[0] ?? null;
 }
 
-export async function complete(
+export async function completeWithLocalLlm(
 	prompt: string,
 	temperature = 0.3,
 	options: CompleteOptions = {},

@@ -224,7 +224,7 @@ export function addKeyAliases(keys: Set<string>, key: KeyId): void {
 
 const normalizeKeyId = (key: KeyId): KeyId => key.toLowerCase() as KeyId;
 
-function normalizeKeys(keys: KeyId | KeyId[] | undefined): KeyId[] {
+function normalizeKeyIds(keys: KeyId | KeyId[] | undefined): KeyId[] {
 	if (keys === undefined) return [];
 	const keyList = Array.isArray(keys) ? keys : [keys];
 	const seen = new Set<KeyId>();
@@ -260,7 +260,7 @@ export class KeybindingsManager {
 		const userClaims = new Map<KeyId, Set<Keybinding>>();
 		for (const [keybinding, keys] of Object.entries(this.#userBindings)) {
 			if (!(keybinding in this.#definitions)) continue;
-			for (const key of normalizeKeys(keys)) {
+			for (const key of normalizeKeyIds(keys)) {
 				const claimants = userClaims.get(key) ?? new Set<Keybinding>();
 				claimants.add(keybinding as Keybinding);
 				userClaims.set(key, claimants);
@@ -275,7 +275,7 @@ export class KeybindingsManager {
 
 		for (const [id, definition] of Object.entries(this.#definitions)) {
 			const userKeys = this.#userBindings[id];
-			const keys = userKeys === undefined ? normalizeKeys(definition.defaultKeys) : normalizeKeys(userKeys);
+			const keys = userKeys === undefined ? normalizeKeyIds(definition.defaultKeys) : normalizeKeyIds(userKeys);
 			this.#keysById.set(id as Keybinding, keys);
 			const matchKeys = new Set<string>();
 			for (const key of keys) {

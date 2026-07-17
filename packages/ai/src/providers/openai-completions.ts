@@ -3,7 +3,7 @@ import { isKimiModelId } from "@veyyon/pi-catalog/identity";
 import { resolveWireModelId } from "@veyyon/pi-catalog/model-thinking";
 import { calculateCost } from "@veyyon/pi-catalog/models";
 import type { ResolvedOpenAICompat } from "@veyyon/pi-catalog/types";
-import { $env, parseStreamingJson, parseStreamingJsonThrottled } from "@veyyon/pi-utils";
+import { $env, parseStreamingJson, parseStreamingJsonThrottled, stripTrailingSlashes } from "@veyyon/pi-utils";
 import { renderDemotedThinking } from "../dialect/demotion";
 import * as AIError from "../error";
 import { getKimiCommonHeaders } from "../registry/oauth/kimi";
@@ -27,7 +27,7 @@ import type {
 	ToolChoice,
 	ToolResultMessage,
 } from "../types";
-import { normalizeSystemPrompts } from "../utils";
+import { normalizeSystemPrompts, TOOL_CALL_ID_UNSAFE_RE } from "../utils";
 import { createAbortSourceTracker } from "../utils/abort";
 import { isDemotedThinking, kStreamingLastParseLen } from "../utils/block-symbols";
 import { hasVisibleAssistantContent, withEmptyCompletionRetry } from "../utils/empty-completion-retry";
@@ -623,7 +623,7 @@ const streamOpenAICompletionsOnce = (
 				options?.streamFirstEventTimeoutMs ?? getOpenAIStreamFirstEventTimeoutMs(idleTimeoutMs);
 			const requestTimeoutMs =
 				firstEventTimeoutMs !== undefined && firstEventTimeoutMs > 0 ? firstEventTimeoutMs : undefined;
-			const { copilotPremiumRequests, baseUrl, headers, query, requestHeaders } = createRequestSetup(
+			const { copilotPremiumRequests, baseUrl, headers, query, requestHeaders } = createCompletionsRequestSetup(
 				model,
 				context,
 				apiKey,
@@ -644,7 +644,7 @@ const streamOpenAICompletionsOnce = (
 			);
 			const strictToolsScope = getOpenAIStrictToolsScope(model, baseUrl);
 			let disableStrictTools = isStrictToolsDisabledForScope(providerSessionState, strictToolsScope);
-			const trimmedBaseUrl = baseUrl.replace(/\/+$/, "");
+			const trimmedBaseUrl = stripTrailingSlashes(baseUrl);
 			const completionsUrl = query
 				? `${trimmedBaseUrl}/chat/completions?${new URLSearchParams(query)}`
 				: `${trimmedBaseUrl}/chat/completions`;
@@ -1071,7 +1071,7 @@ const streamOpenAICompletionsOnce = (
 				}
 
 				if (choice.finish_reason) {
-					const finishReasonResult = mapStopReason(choice.finish_reason);
+					const finishReasonResult = mapOpenAiFinishReason(choice.finish_reason);
 					output.stopReason = finishReasonResult.stopReason;
 					if (finishReasonResult.errorMessage) {
 						output.errorMessage = finishReasonResult.errorMessage;
@@ -1373,7 +1373,7 @@ const streamOpenAICompletionsOnce = (
 export const streamOpenAICompletions: StreamFunction<"openai-completions"> = (model, context, options) =>
 	withEmptyCompletionRetry(model, context, options, streamOpenAICompletionsOnce);
 
-function createRequestSetup(
+function createCompletionsRequestSetup(
 	model: Model<"openai-completions">,
 	context: Context,
 	apiKey?: string,
@@ -1485,6 +1485,18 @@ function buildParams(
 	if (options?.frequencyPenalty !== undefined) {
 		params.frequency_penalty = options.frequencyPenalty;
 	}
+	if (options?.seed !== undefined) {
+		params.seed = options.seed;
+	}
+	if (options?.logitBias !== undefined) {
+		params.logit_bias = options.logitBias;
+	}
+	if (options?.responseFormat !== undefined) {
+		params.response_format = options.responseFormat as OpenAICompletionsParams["response_format"];
+	}
+	if (options?.user !== undefined) {
+		params.safety_identifier = options.user;
+	}
 	applyOpenAIServiceTier(params, options?.serviceTier, model);
 
 	if (context.tools?.length) {
@@ -1546,6 +1558,11 @@ function buildParams(
 		// before provider dispatch; this guard keeps raw provider callers from
 		// emitting a self-inconsistent OpenAI-compatible payload.
 		delete params.tool_choice;
+	}
+
+	if (options?.parallelToolCalls !== undefined && params.tools?.length) {
+		// OpenAI rejects `parallel_tool_calls` on requests that offer no tools.
+		params.parallel_tool_calls = options.parallelToolCalls;
 	}
 
 	const finalPolicy = resolveOpenAICompatPolicy(model, {
@@ -1687,7 +1704,7 @@ export function convertMessages(
 		if (id.includes("|")) {
 			const [callId] = id.split("|");
 			// Sanitize to allowed chars and truncate to 40 chars (OpenAI limit)
-			return callId.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 40);
+			return callId.replace(TOOL_CALL_ID_UNSAFE_RE, "_").slice(0, 40);
 		}
 
 		if (compat.usesOpenAIToolCallIdLimit) return id.length > 40 ? id.slice(0, 40) : id;
@@ -2218,7 +2235,7 @@ function convertTools(
 const EMPTY_OLLAMA_LENGTH_COMPLETION_MESSAGE =
 	"Model returned no content: prompt filled the context window; raise Ollama num_ctx or shorten the prompt.";
 
-function mapStopReason(reason: ChatCompletionChunk.Choice["finish_reason"] | string): {
+function mapOpenAiFinishReason(reason: ChatCompletionChunk.Choice["finish_reason"] | string): {
 	stopReason: StopReason;
 	errorMessage?: string;
 } {

@@ -9,6 +9,7 @@ import type {
 	Message,
 	RedactedThinkingContent,
 	StopReason,
+	TextAnnotation,
 	TextContent,
 	ThinkingContent,
 	Tool,
@@ -16,6 +17,7 @@ import type {
 	ToolResultMessage,
 	UserMessage,
 } from "../types";
+import { emptyUsage } from "../types";
 import {
 	type AnthropicAssistantContentBlock,
 	type AnthropicMessage,
@@ -80,7 +82,7 @@ function describeUnknownBlock(block: { type: string }): string {
 	return `[${block.type}]`;
 }
 
-function buildSystemPrompt(raw: AnthropicSystem): string[] | undefined {
+function parseAnthropicSystemPrompt(raw: AnthropicSystem): string[] | undefined {
 	if (raw === undefined) return undefined;
 	if (typeof raw === "string") return raw.length > 0 ? [raw] : undefined;
 	const parts = raw.map(block => block.text).filter(text => text.length > 0);
@@ -189,9 +191,12 @@ function walkAssistantContent(
 	}
 	for (const block of blocks) {
 		switch (block.type) {
-			case "text":
-				out.push({ type: "text", text: block.text });
+			case "text": {
+				const tc: TextContent = { type: "text", text: block.text };
+				if (block.citations?.length) tc.annotations = block.citations as TextAnnotation[];
+				out.push(tc);
 				break;
+			}
 			case "thinking": {
 				const tc: ThinkingContent = { type: "thinking", thinking: block.thinking };
 				if (block.signature !== undefined) tc.thinkingSignature = block.signature;
@@ -393,23 +398,12 @@ export function parseRequest(body: unknown, headers?: Headers): ParsedRequest {
 	return {
 		modelId: data.model,
 		context: {
-			systemPrompt: buildSystemPrompt(data.system as AnthropicSystem),
+			systemPrompt: parseAnthropicSystemPrompt(data.system as AnthropicSystem),
 			messages,
 			tools: walkTools(data.tools as AnthropicTool[] | undefined),
 		},
 		stream: data.stream === true,
 		options,
-	};
-}
-
-function emptyUsage(): AssistantMessage["usage"] {
-	return {
-		input: 0,
-		output: 0,
-		cacheRead: 0,
-		cacheWrite: 0,
-		totalTokens: 0,
-		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 	};
 }
 
@@ -446,7 +440,12 @@ function encodeContentBlocks(message: AssistantMessage): Record<string, unknown>
 	for (const c of message.content) {
 		switch (c.type) {
 			case "text":
-				blocks.push({ type: "text", text: c.text });
+				// Citations round-trip verbatim (web search etc.); omitted when absent.
+				blocks.push({
+					type: "text",
+					text: c.text,
+					...(c.annotations?.length ? { citations: c.annotations } : {}),
+				});
 				break;
 			case "thinking": {
 				const b: Record<string, unknown> = { type: "thinking", thinking: c.thinking };
@@ -491,10 +490,7 @@ export function encodeResponse(message: AssistantMessage, requestedModelId: stri
 		model: requestedModelId,
 		content: encodeContentBlocks(message),
 		stop_reason: mapStopReasonOut(message.stopReason),
-		// TODO: surface the matched stop sequence once pi-ai's
-		// `AssistantMessage.stopReason` carries the matched string. Intentionally
-		// `null` for now (Anthropic schema allows it).
-		stop_sequence: null,
+		stop_sequence: message.stopSequence ?? null,
 		usage: encodeUsage(message),
 	};
 }
@@ -566,8 +562,8 @@ export function encodeStream(
 							model: requestedModelId,
 							content: [],
 							stop_reason: null,
-							// TODO: same as encodeResponse — surface matched stop sequence
-							// once pi-ai propagates it.
+							// Always null at message_start — the turn has not stopped yet;
+							// the matched sequence rides the terminal message_delta.
 							stop_sequence: null,
 							usage: partial ? encodeUsage(partial) : ZERO_WIRE_USAGE,
 						},
@@ -626,9 +622,24 @@ export function encodeStream(
 								}),
 							);
 							break;
-						case "text_end":
+						case "text_end": {
+							// Citations attach to the pi-ai text block; surface each as a
+							// citations_delta before the block closes, as real Anthropic does.
+							const textBlock = ev.partial.content[ev.contentIndex];
+							if (textBlock?.type === "text") {
+								for (const citation of textBlock.annotations ?? []) {
+									controller.enqueue(
+										sseFrame("content_block_delta", {
+											type: "content_block_delta",
+											index: ev.contentIndex,
+											delta: { type: "citations_delta", citation },
+										}),
+									);
+								}
+							}
 							closeBlock(ev.contentIndex);
 							break;
+						}
 						case "thinking_start": {
 							ensureStart(ev.partial);
 							open.set(ev.contentIndex, { index: ev.contentIndex, kind: "thinking" });
@@ -699,9 +710,10 @@ export function encodeStream(
 							controller.enqueue(
 								sseFrame("message_delta", {
 									type: "message_delta",
-									// TODO: surface matched stop sequence once pi-ai
-									// propagates it on the `done` event.
-									delta: { stop_reason: mapStopReasonOut(ev.reason), stop_sequence: null },
+									delta: {
+										stop_reason: mapStopReasonOut(ev.reason),
+										stop_sequence: ev.message.stopSequence ?? null,
+									},
 									usage: encodeUsage(ev.message),
 								}),
 							);

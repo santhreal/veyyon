@@ -1,4 +1,3 @@
-import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import {
 	type Agent,
@@ -10,9 +9,6 @@ import {
 	type ClientCapabilities,
 	type CloseSessionRequest,
 	type CloseSessionResponse,
-	type CreateElicitationResponse,
-	type ElicitationContentValue,
-	type ElicitationPropertySchema,
 	type ForkSessionRequest,
 	type ForkSessionResponse,
 	type InitializeRequest,
@@ -29,38 +25,25 @@ import {
 	type PromptResponse,
 	type ResumeSessionRequest,
 	type ResumeSessionResponse,
-	type SessionConfigOption,
 	type SessionInfo,
-	type SessionModeState,
-	type SessionNotification,
-	type SessionUpdate,
 	type SetSessionConfigOptionRequest,
 	type SetSessionConfigOptionResponse,
 	type SetSessionModeRequest,
 	type SetSessionModeResponse,
 	type Usage,
 } from "@agentclientprotocol/sdk";
-import type { AgentToolResult } from "@veyyon/pi-agent-core";
-import type { AssistantMessage, Model } from "@veyyon/pi-ai";
-import { getBlobsDir, isEnoent, logger, VERSION } from "@veyyon/pi-utils";
+import type { AssistantMessage } from "@veyyon/pi-ai";
+import { getBlobsDir, logger, VERSION } from "@veyyon/pi-utils";
 import { disableProvider, enableProvider, reset as resetCapabilities } from "../../capability";
 import { Settings } from "../../config/settings";
 import { clearPluginRootsAndCaches, resolveActiveProjectRegistryPath } from "../../discovery/helpers";
-import {
-	type ExtensionUIContext,
-	type ExtensionUIDialogOptions,
-	getExtensionUISelectOptionLabel,
-} from "../../extensibility/extensions";
 import { runExtensionCompact } from "../../extensibility/extensions/compact-handler";
 import { getSessionSlashCommands } from "../../extensibility/extensions/get-commands-handler";
 import { buildSkillPromptMessage, parseSkillInvocation } from "../../extensibility/skills";
 import { loadSlashCommands } from "../../extensibility/slash-commands";
-import { resolveLocalUrlToPath } from "../../internal-urls";
 import { MCPManager } from "../../mcp/manager";
 import type { MCPServerConfig } from "../../mcp/types";
 import { loadAllExtensions } from "../../modes/components/extensions/state-manager";
-import { theme } from "../../modes/theme/theme";
-import { type PlanApprovalDetails, resolveApprovedPlan } from "../../plan-mode/approved-plan";
 import type { AgentSession, AgentSessionEvent } from "../../session/agent-session";
 import { BlobStore, resolveImageDataSync } from "../../session/blob-store";
 import { isSilentAbort, SKILL_PROMPT_MESSAGE_TYPE, USER_INTERRUPT_LABEL } from "../../session/messages";
@@ -69,38 +52,28 @@ import type { SessionInfo as StoredSessionInfo } from "../../session/session-lis
 import { SessionManager } from "../../session/session-manager";
 import { executeAcpBuiltinSlashCommand } from "../../slash-commands/acp-builtins";
 import { buildAvailableSlashCommands, toAcpAvailableCommands } from "../../slash-commands/available-commands";
-import { DEFAULT_STT_MODEL_KEY, STT_MODEL_OPTIONS } from "../../stt/models";
-import { AUTO_THINKING, parseConfiguredThinkingLevel } from "../../thinking";
-import { normalizeLocalScheme } from "../../tools/path-utils";
-import { runResolveInvocation } from "../../tools/resolve";
-import { ToolError } from "../../tools/tool-errors";
-import {
-	DEFAULT_TTS_LOCAL_MODEL_KEY,
-	DEFAULT_TTS_VOICE,
-	TTS_LOCAL_MODELS,
-	TTS_LOCAL_VOICE_OPTIONS,
-} from "../../tts/models";
-import { canonicalizeMessage } from "../../utils/thinking-display";
 import { createAcpClientBridge } from "./acp-client-bridge";
+import { createAcpExtensionUiContext } from "./acp-elicitation";
+import { extractAssistantMessageText, mapAgentSessionEventToAcpSessionUpdates } from "./acp-event-mapper";
+import { type AcpPlanModeContext, applyModeChange } from "./acp-plan-mode";
 import {
-	buildToolCallStartUpdate,
-	extractAssistantMessageText,
-	mapAgentSessionEventToAcpSessionUpdates,
-	normalizeReplayToolArguments,
-} from "./acp-event-mapper";
+	buildConfigOptions,
+	buildCurrentModeUpdate,
+	buildModeState,
+	MODE_CONFIG_ID,
+	MODEL_CONFIG_ID,
+	pushConfigOptionUpdate,
+	setModelById,
+	setThinkingLevelById,
+	THINKING_CONFIG_ID,
+} from "./acp-session-config";
+import { replaySessionHistory } from "./acp-session-replay";
+import { buildAcpSpeechModelsCatalog, SPEECH_MODELS_LIST_METHOD } from "./acp-speech-catalog";
 import { ACP_TERMINAL_AUTH_FLAG } from "./terminal-auth";
 
-const ACP_DEFAULT_MODE_ID = "default";
-const ACP_PLAN_MODE_ID = "plan";
-const DEFAULT_PLAN_FILE_URL = "local://PLAN.md";
-const APPROVE_OPTION = "Approve and execute";
-const REFINE_OPTION = "Refine plan";
-const MODE_CONFIG_ID = "mode";
-const MODEL_CONFIG_ID = "model";
-const THINKING_CONFIG_ID = "thinking";
-const THINKING_OFF = "off";
+export { createAcpExtensionUiContext } from "./acp-elicitation";
+
 const SESSION_PAGE_SIZE = 50;
-const SPEECH_MODELS_LIST_METHOD = "speech.models.list";
 /**
  * Delay between `session/new` (or `session/load` / `session/resume` /
  * `unstable_session/fork`) returning and the agent firing the first
@@ -179,24 +152,6 @@ type ManagedSessionRecord = {
 	extensionUserMessageTasks: Set<Promise<void>>;
 };
 
-type ReplayableMessage = {
-	role: string;
-	content?: unknown;
-	errorMessage?: string;
-	toolCallId?: string;
-	toolName?: string;
-	details?: unknown;
-	isError?: boolean;
-};
-
-type ReplayableToolItem = {
-	type?: unknown;
-	id?: unknown;
-	name?: unknown;
-	arguments?: unknown;
-	input?: unknown;
-};
-
 type MCPConfigMap = {
 	[name: string]: MCPServerConfig;
 };
@@ -214,247 +169,6 @@ type MCPSourceMap = {
 
 type CreateAcpSession = (cwd: string) => Promise<AgentSession>;
 
-type AcpSpeechOption = {
-	value: string;
-	label: string;
-	description?: string;
-};
-
-type AcpSpeechVoiceOption = {
-	value: string;
-	label: string;
-};
-
-type AcpSpeechTtsModelOption = AcpSpeechOption & {
-	voices: AcpSpeechVoiceOption[];
-};
-
-function buildAcpSpeechModelsCatalog(): Record<string, unknown> {
-	const voices = TTS_LOCAL_VOICE_OPTIONS.map(({ value, label }) => ({ value, label }));
-	return {
-		settings: {
-			speechToTextModel: "stt.modelName",
-			textToSpeechModel: "tts.localModel",
-			textToSpeechVoice: "tts.localVoice",
-			speechVoice: "speech.voice",
-		},
-		defaults: {
-			speechToTextModel: DEFAULT_STT_MODEL_KEY,
-			textToSpeechModel: DEFAULT_TTS_LOCAL_MODEL_KEY,
-			voice: DEFAULT_TTS_VOICE,
-		},
-		speechToText: {
-			setting: "stt.modelName",
-			defaultValue: DEFAULT_STT_MODEL_KEY,
-			models: STT_MODEL_OPTIONS.map(({ value, label, description }) => ({ value, label, description })),
-		},
-		textToSpeech: {
-			modelSetting: "tts.localModel",
-			voiceSetting: "tts.localVoice",
-			speechVoiceSetting: "speech.voice",
-			defaultModel: DEFAULT_TTS_LOCAL_MODEL_KEY,
-			defaultVoice: DEFAULT_TTS_VOICE,
-			models: TTS_LOCAL_MODELS.map(
-				({ key, label, description, voices: modelVoices }): AcpSpeechTtsModelOption => ({
-					value: key,
-					label,
-					description,
-					voices: modelVoices.map(({ id, label: voiceLabel }) => ({ value: id, label: voiceLabel })),
-				}),
-			),
-			voices,
-		},
-	};
-}
-
-/**
- * Bridge a single ExtensionUIContext call to the ACP `unstable_createElicitation`
- * surface. Skills/extensions ask for one value at a time (a chosen option, a
- * confirmation, a piece of text), so every elicitation here uses a one-property
- * `value` schema; the caller narrows the resulting `ElicitationContentValue`
- * back to its concrete primitive type.
- *
- * `dialogOptions.signal` short-circuits the elicitation if it is already
- * aborted and races the in-flight request against the abort event. The SDK
- * exposes no `cancel_elicitation` surface for form-mode elicitations
- * (`unstable_completeElicitation` is URL-mode only), so the ACP request itself
- * keeps running on the client side until the user dismisses it — but
- * resolving the local promise unblocks the caller (matches the RPC mode
- * pattern in `requestRpcEditor`). The abort listener is removed once the
- * elicitation settles so that callers which reuse the same signal across many
- * elicitations (e.g. `ask` multi-select loops) don't accumulate listeners and
- * trip Node's `MaxListeners` warning.
- *
- * `dialogOptions.timeout` mirrors `RpcExtensionUIContext.#createDialogPromise`:
- * when the timer fires before the client responds, `onTimeout` is invoked and
- * the caller's promise resolves to the stub fallback. Late SDK responses that
- * arrive after abort/timeout — both rejections and successful `accept`s —
- * are dropped silently (no `logger.warn`) to keep operator logs clean.
- */
-async function elicitFromAcpClient(
-	connection: AgentSideConnection,
-	sessionId: string,
-	method: "select" | "confirm" | "input",
-	message: string,
-	property: ElicitationPropertySchema,
-	dialogOptions: ExtensionUIDialogOptions | undefined,
-): Promise<ElicitationContentValue | undefined> {
-	const signal = dialogOptions?.signal;
-	if (signal?.aborted) {
-		return undefined;
-	}
-	const { promise, resolve } = Promise.withResolvers<CreateElicitationResponse | undefined>();
-	let settled = false;
-	let timeoutId: NodeJS.Timeout | undefined;
-	const finish = (value: CreateElicitationResponse | undefined) => {
-		if (settled) return;
-		settled = true;
-		if (timeoutId !== undefined) clearTimeout(timeoutId);
-		signal?.removeEventListener("abort", onAbort);
-		resolve(value);
-	};
-	const onAbort = () => finish(undefined);
-	signal?.addEventListener("abort", onAbort, { once: true });
-	if (dialogOptions?.timeout !== undefined) {
-		timeoutId = setTimeout(() => {
-			if (settled) return;
-			try {
-				dialogOptions.onTimeout?.();
-			} catch (error) {
-				// A throwing `onTimeout` must not leave the elicitation promise
-				// pending — settle it via `finish` below regardless.
-				logger.warn("ACP elicitation onTimeout threw", { sessionId, method, error });
-			}
-			finish(undefined);
-		}, dialogOptions.timeout);
-		// A long pending timeout alone shouldn't keep the event loop alive when
-		// the rest of the agent has shut down — matches `job-manager.ts` /
-		// `executor.ts` timer hygiene. Connection + session lifetimes keep the
-		// loop alive on the happy path.
-		timeoutId.unref();
-	}
-	connection
-		.unstable_createElicitation({
-			mode: "form",
-			sessionId,
-			message,
-			requestedSchema: {
-				type: "object",
-				properties: { value: property },
-				required: ["value"],
-			},
-		})
-		.then(finish, error => {
-			// Caller may already have moved on via abort/timeout; suppress noise.
-			if (settled) return;
-			logger.warn("ACP elicitation failed", { sessionId, method, error });
-			finish(undefined);
-		});
-	const response = await promise;
-	if (!isAcceptedElicitation(response) || !response.content) {
-		return undefined;
-	}
-	return response.content.value;
-}
-
-/** Narrows a `CreateElicitationResponse` to the accepted-with-content branch; the SDK's `action: string` catch-all arm otherwise defeats literal narrowing on `action !== "accept"`. */
-function isAcceptedElicitation(
-	response: CreateElicitationResponse | undefined,
-): response is Extract<CreateElicitationResponse, { action: "accept" }> {
-	return response?.action === "accept";
-}
-
-/**
- * Build an {@link ExtensionUIContext} that translates skill/extension UI
- * requests into ACP elicitations against `connection` for the session
- * returned by `getSessionId()`. The id is read lazily at each elicitation
- * because `AgentSession.sessionId` is a getter over `sessionManager` state
- * that mutates when an extension command calls `ctx.newSession` /
- * `ctx.switchSession` — snapshotting it once at factory time would route
- * later elicitations to the pre-switch id. Live reads keep the bridge
- * symmetric with every other `sessionUpdate` call in this file
- * (`record.session.sessionId` is always evaluated at emit time).
- *
- * The non-elicitation surface (custom components, editor, theming,
- * terminal input) remains stubbed — ACP clients render those themselves
- * or not at all. Capability gating respects the client's `initialize`
- * advertisement.
- */
-export function createAcpExtensionUiContext(
-	connection: AgentSideConnection,
-	getSessionId: () => string,
-	clientCapabilities: ClientCapabilities | undefined,
-): ExtensionUIContext {
-	const supportsForm = clientCapabilities?.elicitation?.form != null;
-	return {
-		select: async (title, options, dialogOptions) => {
-			if (!supportsForm) return undefined;
-			const value = await elicitFromAcpClient(
-				connection,
-				getSessionId(),
-				"select",
-				title,
-				{ type: "string", enum: options.map(getExtensionUISelectOptionLabel) },
-				dialogOptions,
-			);
-			return typeof value === "string" ? value : undefined;
-		},
-		confirm: async (title, message, dialogOptions) => {
-			if (!supportsForm) return false;
-			const value = await elicitFromAcpClient(
-				connection,
-				getSessionId(),
-				"confirm",
-				message.trim().length > 0 ? `${title}\n\n${message}` : title,
-				{ type: "boolean" },
-				dialogOptions,
-			);
-			return typeof value === "boolean" ? value : false;
-		},
-		input: async (title, placeholder, dialogOptions) => {
-			if (!supportsForm) return undefined;
-			const value = await elicitFromAcpClient(
-				connection,
-				getSessionId(),
-				"input",
-				title,
-				// ACP's `StringPropertySchema` has no `placeholder` field, so we
-				// surface the placeholder text as `description` — the closest
-				// semantic field a client can render alongside the input.
-				// Empty / whitespace-only placeholders are treated as absent.
-				{ type: "string", ...(placeholder?.trim() ? { description: placeholder } : {}) },
-				dialogOptions,
-			);
-			return typeof value === "string" ? value : undefined;
-		},
-		notify: (message, type) => {
-			logger.debug("ACP extension notification", { message, type });
-		},
-		onTerminalInput: () => () => {},
-		setStatus: () => {},
-		setWorkingMessage: () => {},
-		setWidget: () => {},
-		setFooter: () => {},
-		setHeader: () => {},
-		setTitle: () => {},
-		custom: async () => undefined as never,
-		pasteToEditor: () => {},
-		setEditorText: () => {},
-		getEditorText: () => "",
-		editor: async () => undefined,
-		addAutocompleteProvider: () => {},
-		setEditorComponent: () => {},
-		get theme() {
-			return theme;
-		},
-		getAllThemes: async () => [],
-		getTheme: async () => undefined,
-		setTheme: async () => ({ success: false, error: "Theme changes are unavailable in ACP mode" }),
-		getToolsExpanded: () => false,
-		setToolsExpanded: () => {},
-	};
-}
-
 export class AcpAgent implements Agent {
 	#connection: AgentSideConnection;
 	#initialSession: AgentSession | undefined;
@@ -465,6 +179,11 @@ export class AcpAgent implements Agent {
 	#clientCapabilities: ClientCapabilities | undefined;
 	#cancelCleanupTimeoutMs = ACP_CANCEL_CLEANUP_TIMEOUT_MS;
 	#blobs = new BlobStore(getBlobsDir());
+
+	// Read lazily: `#clientCapabilities` is set during `initialize`, after construction.
+	get #planModeContext(): AcpPlanModeContext {
+		return { connection: this.#connection, clientCapabilities: this.#clientCapabilities };
+	}
 
 	constructor(connection: AgentSideConnection, createSession: CreateAcpSession, initialSession?: AgentSession) {
 		this.#connection = connection;
@@ -540,8 +259,8 @@ export class AcpAgent implements Agent {
 		const record = await this.#createNewSessionRecord(params.cwd, params.mcpServers);
 		const response: NewSessionResponse = {
 			sessionId: record.session.sessionId,
-			configOptions: this.#buildConfigOptions(record.session),
-			modes: this.#buildModeState(record.session),
+			configOptions: buildConfigOptions(record.session),
+			modes: buildModeState(record.session),
 		};
 		this.#scheduleBootstrapUpdates(record.session.sessionId);
 		return response;
@@ -550,10 +269,10 @@ export class AcpAgent implements Agent {
 	async loadSession(params: LoadSessionRequest): Promise<LoadSessionResponse> {
 		this.#assertAbsoluteCwd(params.cwd);
 		const record = await this.#loadManagedSession(params.sessionId, params.cwd, params.mcpServers);
-		await this.#replaySessionHistory(record);
+		await replaySessionHistory(this.#connection, this.#blobs, record.session);
 		const response: LoadSessionResponse = {
-			configOptions: this.#buildConfigOptions(record.session),
-			modes: this.#buildModeState(record.session),
+			configOptions: buildConfigOptions(record.session),
+			modes: buildModeState(record.session),
 		};
 		this.#scheduleBootstrapUpdates(record.session.sessionId);
 		return response;
@@ -580,8 +299,8 @@ export class AcpAgent implements Agent {
 		this.#assertAbsoluteCwd(params.cwd);
 		const record = await this.#resumeManagedSession(params.sessionId, params.cwd, params.mcpServers ?? []);
 		const response: ResumeSessionResponse = {
-			configOptions: this.#buildConfigOptions(record.session),
-			modes: this.#buildModeState(record.session),
+			configOptions: buildConfigOptions(record.session),
+			modes: buildModeState(record.session),
 		};
 		this.#scheduleBootstrapUpdates(record.session.sessionId);
 		return response;
@@ -592,8 +311,8 @@ export class AcpAgent implements Agent {
 		const record = await this.#forkManagedSession(params);
 		const response: ForkSessionResponse = {
 			sessionId: record.session.sessionId,
-			configOptions: this.#buildConfigOptions(record.session),
-			modes: this.#buildModeState(record.session),
+			configOptions: buildConfigOptions(record.session),
+			modes: buildModeState(record.session),
 		};
 		this.#scheduleBootstrapUpdates(record.session.sessionId);
 		return response;
@@ -610,12 +329,12 @@ export class AcpAgent implements Agent {
 
 	async setSessionMode(params: SetSessionModeRequest): Promise<SetSessionModeResponse> {
 		const record = this.#getSessionRecord(params.sessionId);
-		this.#applyModeChange(record.session, params.modeId);
+		applyModeChange(this.#planModeContext, record.session, params.modeId);
 		await this.#connection.sessionUpdate({
 			sessionId: record.session.sessionId,
-			update: this.#buildCurrentModeUpdate(record.session),
+			update: buildCurrentModeUpdate(record.session),
 		});
-		await this.#pushConfigOptionUpdate(record);
+		await pushConfigOptionUpdate(this.#connection, record.session);
 		return {};
 	}
 
@@ -627,13 +346,13 @@ export class AcpAgent implements Agent {
 
 		switch (params.configId) {
 			case MODE_CONFIG_ID:
-				this.#applyModeChange(record.session, params.value);
+				applyModeChange(this.#planModeContext, record.session, params.value);
 				break;
 			case MODEL_CONFIG_ID:
-				await this.#setModelById(record.session, params.value);
+				await setModelById(record.session, params.value);
 				break;
 			case THINKING_CONFIG_ID:
-				this.#setThinkingLevelById(record.session, params.value);
+				setThinkingLevelById(record.session, params.value);
 				break;
 			default:
 				throw new Error(`Unknown ACP config option: ${params.configId}`);
@@ -645,7 +364,7 @@ export class AcpAgent implements Agent {
 		if (params.configId === MODE_CONFIG_ID) {
 			await this.#connection.sessionUpdate({
 				sessionId: record.session.sessionId,
-				update: this.#buildCurrentModeUpdate(record.session),
+				update: buildCurrentModeUpdate(record.session),
 			});
 		}
 
@@ -655,9 +374,9 @@ export class AcpAgent implements Agent {
 		const thinkingHandledBySubscription =
 			params.configId === THINKING_CONFIG_ID && record.lifetimeUnsubscribe !== undefined;
 		if (!thinkingHandledBySubscription) {
-			await this.#pushConfigOptionUpdate(record);
+			await pushConfigOptionUpdate(this.#connection, record.session);
 		}
-		return { configOptions: this.#buildConfigOptions(record.session) };
+		return { configOptions: buildConfigOptions(record.session) };
 	}
 
 	async prompt(params: PromptRequest): Promise<PromptResponse> {
@@ -815,7 +534,7 @@ export class AcpAgent implements Agent {
 				});
 			},
 			notifyConfigChanged: async () => {
-				await this.#pushConfigOptionUpdate(record);
+				await pushConfigOptionUpdate(this.#connection, record.session);
 			},
 		});
 		if (builtinResult !== false) {
@@ -1151,7 +870,7 @@ export class AcpAgent implements Agent {
 			return;
 		}
 		try {
-			await this.#pushConfigOptionUpdate(record);
+			await pushConfigOptionUpdate(this.#connection, record.session);
 		} catch (error) {
 			logger.warn("Failed to push thinking-level config_option_update", {
 				sessionId: record.session.sessionId,
@@ -1507,318 +1226,6 @@ export class AcpAgent implements Agent {
 		};
 	}
 
-	async #pushConfigOptionUpdate(record: ManagedSessionRecord): Promise<void> {
-		await this.#pushConfigOptionUpdateForSession(record.session);
-	}
-
-	async #pushConfigOptionUpdateForSession(session: AgentSession): Promise<void> {
-		await this.#connection.sessionUpdate({
-			sessionId: session.sessionId,
-			update: {
-				sessionUpdate: "config_option_update",
-				configOptions: this.#buildConfigOptions(session),
-			},
-		});
-	}
-
-	#buildConfigOptions(session: AgentSession): SessionConfigOption[] {
-		const currentModeId = this.#getCurrentModeId(session);
-		const modeOptions = this.#getAvailableModes(session).map(mode => ({
-			value: mode.id,
-			name: mode.name,
-			description: mode.description,
-		}));
-		const configOptions: SessionConfigOption[] = [
-			{
-				id: MODE_CONFIG_ID,
-				name: "Mode",
-				category: "mode",
-				type: "select",
-				currentValue: currentModeId,
-				options: modeOptions,
-			},
-		];
-
-		const models = session.getAvailableModels();
-		const currentModel = session.model;
-		if (models.length > 0) {
-			configOptions.push({
-				id: MODEL_CONFIG_ID,
-				name: "Model",
-				category: "model",
-				type: "select",
-				currentValue: currentModel ? this.#toModelId(currentModel) : this.#toModelId(models[0]),
-				options: models.map(model => ({
-					value: this.#toModelId(model),
-					name: model.name,
-					description: `${model.provider}/${model.id}`,
-				})),
-			});
-		}
-
-		configOptions.push({
-			id: THINKING_CONFIG_ID,
-			name: "Thinking",
-			category: "thought_level",
-			type: "select",
-			currentValue: this.#toThinkingConfigValue(
-				session.model?.reasoning ? this.#getConfiguredThinkingLevel(session) : undefined,
-			),
-			options: this.#buildThinkingOptions(session),
-		});
-		return configOptions;
-	}
-
-	#buildThinkingOptions(session: AgentSession): Array<{ value: string; name: string; description?: string }> {
-		return [
-			{ value: THINKING_OFF, name: "Off" },
-			{ value: AUTO_THINKING, name: "Auto", description: "Auto-detect per prompt (low–xhigh)" },
-			...session.getAvailableThinkingLevels().map(level => ({
-				value: level,
-				name: level,
-			})),
-		];
-	}
-	#getConfiguredThinkingLevel(session: AgentSession): string | undefined {
-		const configuredThinkingLevel = (session as { configuredThinkingLevel?: () => string | undefined })
-			.configuredThinkingLevel;
-		return typeof configuredThinkingLevel === "function"
-			? configuredThinkingLevel.call(session)
-			: session.thinkingLevel;
-	}
-
-	#toThinkingConfigValue(value: string | undefined): string {
-		return value && value !== "inherit" ? value : THINKING_OFF;
-	}
-
-	async #setModelById(session: AgentSession, modelId: string): Promise<void> {
-		const model = session.getAvailableModels().find(candidate => this.#toModelId(candidate) === modelId);
-		if (!model) {
-			throw new Error(`Unknown ACP model: ${modelId}`);
-		}
-		await session.setModel(model);
-	}
-
-	#setThinkingLevelById(session: AgentSession, value: string): void {
-		const thinkingLevel = parseConfiguredThinkingLevel(value);
-		if (!thinkingLevel) {
-			throw new Error(`Unknown ACP thinking level: ${value}`);
-		}
-		session.setThinkingLevel(thinkingLevel);
-	}
-
-	#toModelId(model: Model): string {
-		return `${model.provider}/${model.id}`;
-	}
-
-	#getAvailableModes(session: AgentSession): Array<{ id: string; name: string; description: string }> {
-		const modes = [{ id: ACP_DEFAULT_MODE_ID, name: "Default", description: "Standard ACP headless mode" }];
-		if (session.settings.get("plan.enabled")) {
-			modes.push({
-				id: ACP_PLAN_MODE_ID,
-				name: "Plan",
-				description: "Read-only planning mode that drafts a plan to a markdown file before any code changes",
-			});
-		}
-		void session;
-		return modes;
-	}
-
-	#getCurrentModeId(session: AgentSession): string {
-		return session.getPlanModeState()?.enabled ? ACP_PLAN_MODE_ID : ACP_DEFAULT_MODE_ID;
-	}
-
-	#applyModeChange(session: AgentSession, modeId: string): void {
-		const availableModes = this.#getAvailableModes(session);
-		if (!availableModes.some(mode => mode.id === modeId)) {
-			throw new Error(`Unsupported ACP mode: ${modeId}`);
-		}
-		if (modeId === ACP_PLAN_MODE_ID) {
-			const previous = session.getPlanModeState();
-			session.setPlanModeState({
-				enabled: true,
-				planFilePath: previous?.planFilePath ?? DEFAULT_PLAN_FILE_URL,
-				workflow: previous?.workflow ?? "parallel",
-				reentry: previous !== undefined,
-			});
-			// Mirror `InteractiveMode.#enterPlanMode`: register the standing resolve
-			// handler that consumes `resolve { action: "apply" }` from plan-mode.
-			// Without this, the agent's resolve call falls through to the "No
-			// pending action to resolve" error (issue #1869).
-			session.setStandingResolveHandler?.(input => this.#runAcpPlanApprovalResolve(session, input));
-		} else {
-			session.setStandingResolveHandler?.(null);
-			session.setPlanModeState(undefined);
-		}
-	}
-
-	/**
-	 * Standing resolve handler installed while ACP plan mode is active. The agent
-	 * submits the finalized plan via `resolve { action: "apply", extra: { title } }`;
-	 * this handler validates the plan file, normalizes the title, asks the ACP
-	 * client to confirm (via `unstable_createElicitation` when supported), and on
-	 * approval renames the plan to `local://<title>.md`, exits plan mode, and
-	 * notifies the client of both mode surfaces so the agent regains full tools.
-	 *
-	 * Mirrors `InteractiveMode.#runPlanApprovalResolve` for the parts the agent
-	 * sees (same `PlanApprovalDetails` shape, same source tool name `plan_approval`).
-	 * Clients without form-mode elicitation get an auto-approve so plan mode is
-	 * never stranded — the agent always has a way out.
-	 */
-	#runAcpPlanApprovalResolve(session: AgentSession, input: unknown): Promise<AgentToolResult<unknown>> {
-		return runResolveInvocation(input as Parameters<typeof runResolveInvocation>[0], {
-			sourceToolName: "plan_approval",
-			label: "Plan ready for approval",
-			apply: async (_reason, extra) => {
-				const state = session.getPlanModeState();
-				if (!state?.enabled) {
-					throw new ToolError("Plan mode is not active.");
-				}
-				const { planFilePath, planContent, title } = await resolveApprovedPlan({
-					suppliedTitle: extra?.title,
-					statePlanFilePath: state.planFilePath,
-					readPlan: url => this.#readAcpPlanFile(session, url),
-					listPlanFiles: () => this.#listAcpLocalPlanFiles(session),
-				});
-				const approved = await this.#requestAcpPlanApprovalChoice(session.sessionId, title, planContent);
-				const details: PlanApprovalDetails = {
-					planFilePath,
-					title,
-					planExists: true,
-				};
-				if (!approved) {
-					// User chose to refine: leave plan mode active so the agent
-					// keeps the read-only toolset and can iterate on the plan file.
-					return {
-						content: [
-							{
-								type: "text" as const,
-								text: 'Plan refinement requested. Update the plan file, then call `resolve { action: "apply" }` again when ready.',
-							},
-						],
-						details,
-					};
-				}
-				// Approved. Set the plan reference so the next turn injects the plan
-				// content as context (the file keeps its agent-chosen name — no
-				// rename), then exit plan mode so the agent regains full tools.
-				session.setPlanReferencePath(planFilePath);
-				session.setStandingResolveHandler?.(null);
-				session.setPlanModeState(undefined);
-				try {
-					await this.#connection.sessionUpdate({
-						sessionId: session.sessionId,
-						update: this.#buildCurrentModeUpdate(session),
-					});
-					await this.#pushConfigOptionUpdateForSession(session);
-				} catch (error) {
-					logger.warn("Failed to emit mode updates after plan approval", {
-						sessionId: session.sessionId,
-						error,
-					});
-				}
-				return {
-					content: [
-						{
-							type: "text" as const,
-							text: `Plan approved at ${planFilePath}. Plan mode exited; proceed with the implementation.`,
-						},
-					],
-					details,
-				};
-			},
-		});
-	}
-
-	#resolveAcpPlanFilePath(session: AgentSession, planFilePath: string): string {
-		if (planFilePath.startsWith("local:")) {
-			const normalized = normalizeLocalScheme(planFilePath);
-			return resolveLocalUrlToPath(normalized, {
-				getArtifactsDir: () => session.sessionManager.getArtifactsDir(),
-				getSessionId: () => session.sessionManager.getSessionId(),
-			});
-		}
-		return path.resolve(session.sessionManager.getCwd(), planFilePath);
-	}
-
-	async #readAcpPlanFile(session: AgentSession, planFilePath: string): Promise<string | null> {
-		const resolvedPath = this.#resolveAcpPlanFilePath(session, planFilePath);
-		try {
-			return await Bun.file(resolvedPath).text();
-		} catch (error) {
-			if (isEnoent(error)) {
-				return null;
-			}
-			throw error;
-		}
-	}
-
-	/** `local://` URLs of plan files in the session-local root, newest first —
-	 *  the `resolveApprovedPlan` fallback for a dropped `extra.title`. */
-	async #listAcpLocalPlanFiles(session: AgentSession): Promise<string[]> {
-		const localRoot = this.#resolveAcpPlanFilePath(session, "local://");
-		try {
-			const entries = await fs.readdir(localRoot, { withFileTypes: true });
-			const plans = await Promise.all(
-				entries
-					.filter(entry => entry.isFile() && /plan\.md$/i.test(entry.name))
-					.map(async entry => {
-						const stat = await fs.stat(path.join(localRoot, entry.name)).catch(() => null);
-						return { url: `local://${entry.name}`, mtime: stat?.mtimeMs ?? 0 };
-					}),
-			);
-			return plans.sort((a, b) => b.mtime - a.mtime).map(plan => plan.url);
-		} catch {
-			return [];
-		}
-	}
-
-	/**
-	 * Ask the ACP client to confirm plan approval. Returns `true` only on an
-	 * explicit `APPROVE_OPTION` selection. Refine, dismissal (`undefined`), or
-	 * any unrecognized value falls through to refine semantics — the caller
-	 * keeps plan mode active and surfaces guidance text to the agent. Clients
-	 * without `elicitation.form` support auto-approve because there is no
-	 * confirmation surface available; without that, plan mode would strand
-	 * the agent (the bug this method exists to fix).
-	 */
-	async #requestAcpPlanApprovalChoice(sessionId: string, title: string, planContent: string): Promise<boolean> {
-		const supportsForm = this.#clientCapabilities?.elicitation?.form != null;
-		if (!supportsForm) return true;
-		// Include a short preview of the plan so the user has context in the
-		// dialog. Keep the body bounded — Zed renders elicitation messages
-		// inline and a multi-thousand-line plan blows out the dialog.
-		const previewLines = planContent.split("\n").slice(0, 12).join("\n");
-		const ellipsis = planContent.split("\n").length > 12 ? "\n…" : "";
-		const message = `Approve plan "${title}" and start implementation?\n\n${previewLines}${ellipsis}`;
-		const value = await elicitFromAcpClient(
-			this.#connection,
-			sessionId,
-			"select",
-			message,
-			{ type: "string", enum: [APPROVE_OPTION, REFINE_OPTION] },
-			undefined,
-		);
-		// Approve ONLY on the explicit approve selection. Dismissal, cancel,
-		// timeout, or any other non-approve response falls through to refine
-		// semantics so closing the dialog can never grant write access.
-		return value === APPROVE_OPTION;
-	}
-
-	#buildModeState(session: AgentSession): SessionModeState {
-		return {
-			availableModes: this.#getAvailableModes(session),
-			currentModeId: this.#getCurrentModeId(session),
-		};
-	}
-
-	#buildCurrentModeUpdate(session: AgentSession): SessionUpdate {
-		return {
-			sessionUpdate: "current_mode_update",
-			currentModeId: this.#getCurrentModeId(session),
-		};
-	}
-
 	async #buildAvailableCommands(session: AgentSession): Promise<AvailableCommand[]> {
 		return toAcpAvailableCommands(await buildAvailableSlashCommands(session));
 	}
@@ -2013,251 +1420,6 @@ export class AcpAgent implements Agent {
 			throw new Error(`Invalid ACP session cursor: ${cursor}`);
 		}
 		return parsed;
-	}
-
-	async #replaySessionHistory(record: ManagedSessionRecord): Promise<void> {
-		const cwd = record.session.sessionManager.getCwd();
-		const replayedToolCallIds = new Set<string>();
-		const replayedToolCallArgs = new Map<string, unknown>();
-		for (const message of record.session.sessionManager.buildSessionContext().messages as ReplayableMessage[]) {
-			for (const notification of this.#messageToReplayNotifications(
-				record.session.sessionId,
-				message,
-				cwd,
-				replayedToolCallIds,
-				replayedToolCallArgs,
-			)) {
-				await this.#connection.sessionUpdate(notification);
-			}
-		}
-	}
-
-	#messageToReplayNotifications(
-		sessionId: string,
-		message: ReplayableMessage,
-		cwd: string,
-		replayedToolCallIds: Set<string>,
-		replayedToolCallArgs: Map<string, unknown>,
-	): SessionNotification[] {
-		if (message.role === "assistant") {
-			return this.#replayAssistantMessage(sessionId, message, cwd, replayedToolCallIds, replayedToolCallArgs);
-		}
-		if (
-			message.role === "user" ||
-			message.role === "developer" ||
-			message.role === "custom" ||
-			message.role === "hookMessage"
-		) {
-			return this.#wrapReplayContent(
-				sessionId,
-				this.#extractReplayContent(message.content, undefined),
-				"user_message_chunk",
-				crypto.randomUUID(),
-			);
-		}
-		if (
-			message.role === "toolResult" &&
-			typeof message.toolCallId === "string" &&
-			typeof message.toolName === "string"
-		) {
-			return this.#replayToolResult(
-				sessionId,
-				cwd,
-				{
-					...message,
-					toolCallId: message.toolCallId,
-					toolName: message.toolName,
-				},
-				{
-					includeStart: !replayedToolCallIds.has(message.toolCallId),
-					toolArgs: replayedToolCallArgs.get(message.toolCallId),
-				},
-			);
-		}
-		if (
-			message.role === "bashExecution" ||
-			message.role === "pythonExecution" ||
-			message.role === "compactionSummary"
-		) {
-			return this.#wrapReplayContent(
-				sessionId,
-				this.#extractReplayContent(message.content, undefined),
-				"user_message_chunk",
-				crypto.randomUUID(),
-			);
-		}
-		return [];
-	}
-
-	#replayAssistantMessage(
-		sessionId: string,
-		message: ReplayableMessage,
-		cwd: string,
-		replayedToolCallIds: Set<string>,
-		replayedToolCallArgs: Map<string, unknown>,
-	): SessionNotification[] {
-		const notifications: SessionNotification[] = [];
-		const messageId = crypto.randomUUID();
-		if (Array.isArray(message.content)) {
-			for (const item of message.content) {
-				if (typeof item !== "object" || item === null || !("type" in item)) {
-					continue;
-				}
-				if (item.type === "text" && "text" in item && typeof item.text === "string" && item.text.length > 0) {
-					notifications.push({
-						sessionId,
-						update: {
-							sessionUpdate: "agent_message_chunk",
-							content: { type: "text", text: item.text },
-							messageId,
-						},
-					});
-					continue;
-				}
-				if (item.type === "thinking" && "thinking" in item && typeof item.thinking === "string") {
-					const thinking = canonicalizeMessage(item.thinking);
-					if (thinking.length === 0) continue;
-					notifications.push({
-						sessionId,
-						update: {
-							sessionUpdate: "agent_thought_chunk",
-							content: { type: "text", text: thinking },
-							messageId,
-						},
-					});
-					continue;
-				}
-				const toolItem = item as ReplayableToolItem;
-				if (
-					(toolItem.type === "toolCall" || toolItem.type === "tool_use") &&
-					typeof toolItem.id === "string" &&
-					typeof toolItem.name === "string"
-				) {
-					const args = this.#buildReplayAssistantToolArgs(toolItem);
-					const update = buildToolCallStartUpdate({
-						toolCallId: toolItem.id,
-						toolName: toolItem.name,
-						args,
-						status: "completed",
-						cwd,
-					});
-					notifications.push({ sessionId, update });
-					replayedToolCallIds.add(toolItem.id);
-					replayedToolCallArgs.set(toolItem.id, args);
-				}
-			}
-		}
-		if (notifications.length === 0 && message.errorMessage && !isSilentAbort(message)) {
-			notifications.push({
-				sessionId,
-				update: {
-					sessionUpdate: "agent_message_chunk",
-					content: { type: "text", text: message.errorMessage },
-					messageId,
-				},
-			});
-		}
-		return notifications;
-	}
-
-	#buildReplayAssistantToolArgs(item: ReplayableToolItem): unknown {
-		if ("arguments" in item) {
-			return normalizeReplayToolArguments(item.arguments).args;
-		}
-		if (item.type === "tool_use" && "input" in item) {
-			return item.input;
-		}
-		return {};
-	}
-
-	#replayToolResult(
-		sessionId: string,
-		cwd: string,
-		message: Required<Pick<ReplayableMessage, "toolCallId" | "toolName">> & ReplayableMessage,
-		options: { includeStart?: boolean; toolArgs?: unknown } = {},
-	): SessionNotification[] {
-		const args = this.#buildReplayToolArgs(message.details);
-		const startEvent: AgentSessionEvent = {
-			type: "tool_execution_start",
-			toolCallId: message.toolCallId,
-			toolName: message.toolName,
-			args,
-		};
-		const endEvent: AgentSessionEvent = {
-			type: "tool_execution_end",
-			toolCallId: message.toolCallId,
-			toolName: message.toolName,
-			isError: message.isError === true,
-			// Replayed from persisted session state: the on-disk shape is the
-			// tool-result content the session originally recorded, plus the legacy
-			// `errorMessage` field the ACP mapper still coerces into readable text.
-			result: {
-				content: message.content,
-				details: message.details,
-				errorMessage: message.errorMessage,
-			} as unknown as AgentToolResult<unknown>,
-		};
-		const notifications = mapAgentSessionEventToAcpSessionUpdates(endEvent, sessionId, {
-			cwd,
-			getToolArgs: toolCallId => (toolCallId === message.toolCallId ? options.toolArgs : undefined),
-			resolveImageData: (data, _mimeType) => resolveImageDataSync(this.#blobs, data),
-		});
-		if (options.includeStart === false) {
-			return notifications;
-		}
-		return [...mapAgentSessionEventToAcpSessionUpdates(startEvent, sessionId, { cwd }), ...notifications];
-	}
-
-	#buildReplayToolArgs(details: unknown): { path?: string } {
-		if (typeof details !== "object" || details === null || !("path" in details)) {
-			return {};
-		}
-		const value = (details as { path?: unknown }).path;
-		return typeof value === "string" && value.length > 0 ? { path: value } : {};
-	}
-
-	#wrapReplayContent(
-		sessionId: string,
-		content: PromptRequest["prompt"],
-		kind: "agent_message_chunk" | "user_message_chunk",
-		messageId: string,
-	): SessionNotification[] {
-		return content.map(block => ({
-			sessionId,
-			update: {
-				sessionUpdate: kind,
-				content: block,
-				messageId,
-			},
-		}));
-	}
-
-	#extractReplayContent(content: unknown, errorMessage: string | undefined): PromptRequest["prompt"] {
-		const replay: PromptRequest["prompt"] = [];
-		if (Array.isArray(content)) {
-			for (const item of content) {
-				if (typeof item !== "object" || item === null || !("type" in item)) {
-					continue;
-				}
-				if (item.type === "text" && "text" in item && typeof item.text === "string" && item.text.length > 0) {
-					replay.push({ type: "text", text: item.text });
-					continue;
-				}
-				if (
-					item.type === "image" &&
-					"data" in item &&
-					"mimeType" in item &&
-					typeof item.data === "string" &&
-					typeof item.mimeType === "string"
-				) {
-					replay.push({ type: "image", data: item.data, mimeType: item.mimeType });
-				}
-			}
-		}
-		if (replay.length === 0 && errorMessage) {
-			replay.push({ type: "text", text: errorMessage });
-		}
-		return replay;
 	}
 
 	async #configureExtensions(record: ManagedSessionRecord): Promise<void> {

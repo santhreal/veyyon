@@ -4,6 +4,12 @@ import {
 	discoverGitLabDuoWorkflowRuntimeNamespace,
 	type GitLabDuoWorkflowNamespaceSelection,
 } from "@veyyon/pi-catalog/discovery/gitlab-duo-workflow";
+import {
+	getFiniteNumberProperty,
+	getNonBlankStringProperty,
+	HTTP_URL_RE,
+	stripTrailingSlashes,
+} from "@veyyon/pi-utils";
 import * as AIError from "../error";
 import type {
 	Api,
@@ -772,7 +778,11 @@ function mapGitLabDuoWorkflowMcpToolCall(args: Record<string, unknown>): {
 	name: string;
 	arguments: Record<string, unknown>;
 } {
-	const rawName = stringField(args, "toolName") ?? stringField(args, "tool_name") ?? stringField(args, "name") ?? "";
+	const rawName =
+		getNonBlankStringProperty(args, "toolName") ??
+		getNonBlankStringProperty(args, "tool_name") ??
+		getNonBlankStringProperty(args, "name") ??
+		"";
 	const toolName = rawName.startsWith("mcp__omp__") ? rawName.slice("mcp__omp__".length) : rawName;
 	const parsedArgs = parseGitLabDuoWorkflowMcpArguments(args.args ?? args.arguments);
 	if (toolName === "edit" && typeof parsedArgs.input === "string") {
@@ -1517,7 +1527,7 @@ async function fetchGitLabDuoWorkflowAvailableModels(
 		});
 		if (!response.ok) return undefined;
 		const payload: unknown = await response.json();
-		const models = getRecord(getRecord(payload, "data"), "aiChatAvailableModels");
+		const models = nestedRecord(nestedRecord(payload, "data"), "aiChatAvailableModels");
 		return parseGitLabAvailableModelsPayload(models);
 	} catch {
 		// Timeout (AbortSignal.timeout) surfaces as an AbortError here; matches the pre-fix
@@ -1530,9 +1540,9 @@ async function fetchGitLabDuoWorkflowAvailableModels(
 function parseGitLabAvailableModelsPayload(value: unknown): GitLabAvailableModelsPayload | undefined {
 	if (!value || typeof value !== "object") return undefined;
 	return {
-		pinnedModel: parseGitLabAvailableModel(getRecord(value, "pinnedModel")),
-		selectedModel: parseGitLabAvailableModel(getRecord(value, "selectedModel")),
-		defaultModel: parseGitLabAvailableModel(getRecord(value, "defaultModel")),
+		pinnedModel: parseGitLabAvailableModel(nestedRecord(value, "pinnedModel")),
+		selectedModel: parseGitLabAvailableModel(nestedRecord(value, "selectedModel")),
+		defaultModel: parseGitLabAvailableModel(nestedRecord(value, "defaultModel")),
 		selectableModels: parseGitLabAvailableModelArray((value as Record<string, unknown>).selectableModels),
 	};
 }
@@ -2089,7 +2099,7 @@ async function handleGitLabDuoWorkflowSocketMessage(
 	traceGitLabDuoWorkflow("websocket.message", {
 		keys: Object.keys(event),
 		status,
-		hasCheckpoint: Boolean(getRecord(event, "newCheckpoint") ?? getRecord(event, "checkpoint")),
+		hasCheckpoint: Boolean(nestedRecord(event, "newCheckpoint") ?? nestedRecord(event, "checkpoint")),
 		checkpointLength: checkpoint?.contentLength ?? 0,
 	});
 	if (checkpoint) {
@@ -2795,7 +2805,7 @@ function truncateGitLabTraceValue(value: unknown): unknown {
 }
 
 function normalizeGitLabBaseUrl(baseUrl: string): string {
-	return baseUrl.replace(/\/+$/, "") || DEFAULT_GITLAB_BASE_URL;
+	return stripTrailingSlashes(baseUrl) || DEFAULT_GITLAB_BASE_URL;
 }
 
 // Join a GitLab API path onto a base URL while preserving any relative install path
@@ -2808,7 +2818,7 @@ function gitLabApiUrl(baseUrl: string, path: string): URL {
 
 function normalizeGitLabDuoWorkflowServiceBaseUrl(baseUrl: string): string {
 	const trimmed = baseUrl.trim();
-	const absolute = /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+	const absolute = HTTP_URL_RE.test(trimmed) ? trimmed : `https://${trimmed}`;
 	return normalizeGitLabBaseUrl(absolute);
 }
 
@@ -2921,21 +2931,19 @@ function parseJsonRecord(text: string): Record<string, unknown> | null {
 	}
 }
 
-function numberField(record: Record<string, unknown>, key: string): number | undefined {
-	const value = record[key];
-	return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : undefined;
-}
-
-function stringField(record: Record<string, unknown>, key: string): string | undefined {
-	return nonEmptyString(record[key]);
+function nonNegativeNumberField(record: Record<string, unknown>, key: string): number | undefined {
+	const value = getFiniteNumberProperty(record, key);
+	return value !== undefined && value >= 0 ? value : undefined;
 }
 
 function extractGitLabDuoWorkflowCheckpoint(
 	event: Record<string, unknown>,
 ): GitLabDuoWorkflowCheckpointContent | undefined {
-	const action = getRecord(event, "action");
+	const action = nestedRecord(event, "action");
 	const checkpoint =
-		getRecord(action, "newCheckpoint") ?? getRecord(event, "newCheckpoint") ?? getRecord(event, "checkpoint");
+		nestedRecord(action, "newCheckpoint") ??
+		nestedRecord(event, "newCheckpoint") ??
+		nestedRecord(event, "checkpoint");
 	if (!checkpoint) return undefined;
 	const directText =
 		getRecordString(checkpoint, "message") ??
@@ -2972,7 +2980,7 @@ function extractGitLabDuoWorkflowContextUsage(
 	...sources: (Record<string, unknown> | undefined)[]
 ): GitLabDuoWorkflowContextUsage | undefined {
 	for (const source of sources) {
-		const usageMap = getRecord(source, "agent_context_usage");
+		const usageMap = nestedRecord(source, "agent_context_usage");
 		if (!usageMap) continue;
 		const selected = selectGitLabDuoWorkflowContextUsageAgent(usageMap);
 		if (selected) return selected;
@@ -2999,15 +3007,15 @@ function selectGitLabDuoWorkflowContextUsageAgent(
 function readGitLabDuoWorkflowAgentUsage(value: unknown): GitLabDuoWorkflowContextUsage | undefined {
 	if (!value || typeof value !== "object") return undefined;
 	const record = value as Record<string, unknown>;
-	const used = numberField(record, "total_tokens");
-	const window = numberField(record, "max_tokens");
+	const used = nonNegativeNumberField(record, "total_tokens");
+	const window = nonNegativeNumberField(record, "max_tokens");
 	if (used === undefined || window === undefined || window <= 0) return undefined;
 	return { used, window };
 }
 
 function extractGitLabCheckpointEntries(checkpointJson: string): GitLabDuoWorkflowCheckpointContent | undefined {
 	const checkpoint = parseJsonRecord(checkpointJson);
-	const channelValues = getRecord(checkpoint, "channel_values");
+	const channelValues = nestedRecord(checkpoint, "channel_values");
 	const chatLog = channelValues?.ui_chat_log;
 	if (!Array.isArray(chatLog)) return undefined;
 	const entries: GitLabDuoWorkflowCheckpointEntry[] = [];
@@ -3056,9 +3064,9 @@ function getGitLabDuoWorkflowLatestMessageType(chatLog: unknown[]): string | und
 
 function extractGitLabDuoWorkflowAction(event: Record<string, unknown>): GitLabDuoWorkflowActionDescriptor | undefined {
 	const wrappedAction =
-		getRecord(event, "action") ?? getRecord(event, "workflowAction") ?? getRecord(event, "toolCall");
+		nestedRecord(event, "action") ?? nestedRecord(event, "workflowAction") ?? nestedRecord(event, "toolCall");
 	if (wrappedAction) {
-		if (getRecord(wrappedAction, "newCheckpoint")) return undefined;
+		if (nestedRecord(wrappedAction, "newCheckpoint")) return undefined;
 		const name =
 			getRecordString(wrappedAction, "name") ??
 			getRecordString(wrappedAction, "action") ??
@@ -3072,11 +3080,11 @@ function extractGitLabDuoWorkflowAction(event: Record<string, unknown>): GitLabD
 			getRecordString(event, "requestID") ??
 			getRecordString(event, "requestId");
 		const resolvedRequestID = requireGitLabDuoWorkflowRequestID(requestID, name, wrappedAction);
-		const args = getRecord(wrappedAction, "args") ?? getRecord(wrappedAction, "arguments") ?? wrappedAction;
+		const args = nestedRecord(wrappedAction, "args") ?? nestedRecord(wrappedAction, "arguments") ?? wrappedAction;
 		return { requestID: resolvedRequestID, name, args: withGitLabDuoWorkflowToolCallId(args, resolvedRequestID) };
 	}
 	for (const name of GITLAB_DUO_WORKFLOW_ACTION_NAMES) {
-		const args = getRecord(event, name);
+		const args = nestedRecord(event, name);
 		if (args) {
 			const requestID = getRecordString(event, "requestID") ?? getRecordString(event, "requestId");
 			const resolvedRequestID = requireGitLabDuoWorkflowRequestID(requestID, name, event);
@@ -3114,7 +3122,7 @@ function withGitLabDuoWorkflowToolCallId(args: unknown, requestID: string): unkn
 	return { ...record, toolCallId: requestID, tool_call_id: requestID };
 }
 
-function getRecord(value: unknown, key: string): Record<string, unknown> | undefined {
+function nestedRecord(value: unknown, key: string): Record<string, unknown> | undefined {
 	if (!value || typeof value !== "object") return undefined;
 	const nested = (value as Record<string, unknown>)[key];
 	return nested && typeof nested === "object" ? (nested as Record<string, unknown>) : undefined;
@@ -3127,5 +3135,5 @@ function getRecordString(value: unknown, key: string): string | undefined {
 }
 
 function getNestedRecordString(value: unknown, parentKey: string, key: string): string | undefined {
-	return getRecordString(getRecord(value, parentKey), key);
+	return getRecordString(nestedRecord(value, parentKey), key);
 }

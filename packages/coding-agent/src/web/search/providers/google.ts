@@ -1,4 +1,5 @@
 import type { AuthStorage } from "@veyyon/pi-ai";
+import { collapseWhitespace } from "@veyyon/pi-utils";
 import { parseHTML } from "linkedom";
 import type { SearchResponse, SearchSource } from "../../../web/search/types";
 import { SearchProviderError } from "../../../web/search/types";
@@ -35,11 +36,7 @@ interface ParsedResult {
 	snippet?: string;
 }
 
-function normalizeText(value: string | null | undefined): string {
-	return (value ?? "").replace(/\s+/g, " ").trim();
-}
-
-function unwrapResultUrl(href: string): string | undefined {
+function unwrapGoogleResultUrl(href: string): string | undefined {
 	let url: URL;
 	try {
 		url = new URL(href, GOOGLE_HOME_URL);
@@ -67,7 +64,7 @@ function findSnippet(heading: Element): string | undefined {
 	if (!container) return undefined;
 
 	for (const selector of GOOGLE_SNIPPET_SELECTORS) {
-		const text = normalizeText(container.querySelector(selector)?.textContent).replace(/\s*Read more$/i, "");
+		const text = collapseWhitespace(container.querySelector(selector)?.textContent).replace(/\s*Read more$/i, "");
 		if (text) return text;
 	}
 	return undefined;
@@ -80,16 +77,16 @@ function parseHtmlResults(html: string): ParsedResult[] {
 		const anchor = heading.closest("a");
 		const href = anchor?.getAttribute("href");
 		if (!href) continue;
-		const url = unwrapResultUrl(href);
+		const url = unwrapGoogleResultUrl(href);
 		if (!url) continue;
-		const title = normalizeText(heading.textContent);
+		const title = collapseWhitespace(heading.textContent);
 		if (!title) continue;
 		results.push({ title, url, snippet: findSnippet(heading) });
 	}
 	return results;
 }
 
-function buildSearchUrl(params: SearchParams, numResults: number): string {
+function buildGoogleSearchUrl(params: SearchParams, numResults: number): string {
 	const url = new URL(GOOGLE_SEARCH_URL);
 	url.searchParams.set("q", params.query);
 	url.searchParams.set("num", String(numResults));
@@ -117,7 +114,7 @@ function blockReason(page: LoadedHtmlPage): "javascript" | "traffic" | undefined
 
 async function callGoogleHtml(params: SearchParams, numResults: number): Promise<string> {
 	const signal = withHardTimeout(params.signal);
-	const url = buildSearchUrl(params, numResults);
+	const url = buildGoogleSearchUrl(params, numResults);
 	let page: LoadedHtmlPage;
 	try {
 		page = await browserFetch(url, {

@@ -430,3 +430,9 @@ export function parseJsonlLenient<T>(buffer: string): T[] {
 	}
 	return entries ?? [];
 }
+
+/** Drain a subprocess stdio pipe to a string; `""` for an absent pipe. */
+export async function readPipe(stream: ReadableStream<Uint8Array> | null): Promise<string> {
+	if (!stream) return "";
+	return new Response(stream).text();
+}

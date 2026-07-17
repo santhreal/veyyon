@@ -10,8 +10,6 @@ import { type ModalShortcut, renderModalShortcuts } from "./modal-shell";
 export type ComposerContext = {
 	/** Agent is streaming / tools running. */
 	busy: boolean;
-	/** Composer draft is non-empty. */
-	hasDraft: boolean;
 	/** Queue has pending messages. */
 	hasQueue: boolean;
 };

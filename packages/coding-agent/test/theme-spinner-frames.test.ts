@@ -3,6 +3,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { SPINNER_GLYPH_ADVANCE_MS, sharedSpinnerFrame } from "@veyyon/pi-coding-agent/modes/components/tool-execution";
+import { SPINNER_FRAMES } from "@veyyon/pi-coding-agent/modes/theme/symbols";
 import { getThemeByName } from "@veyyon/pi-coding-agent/modes/theme/theme";
 import { getConfigRootDir, getCustomThemesDir, removeWithRetries, setAgentDir } from "@veyyon/pi-utils";
 
@@ -58,9 +59,10 @@ describe("theme symbols.spinnerFrames", () => {
 
 	it("object override sets each spinner type independently and falls back to preset", async () => {
 		const statusFrames = ["A", "B", "C"];
-		// `unicode` preset's activity frames — the default we expect to surface
-		// when only `status` is overridden.
-		const presetActivity = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+		// The unicode preset's activity frames — read from the source of truth,
+		// never re-literal'd here, so the brand ramp can evolve without this test
+		// drifting out of sync.
+		const presetActivity = SPINNER_FRAMES.unicode.activity;
 		await writeCustomTheme("custom-status-only", { spinnerFrames: { status: statusFrames } });
 
 		const theme = await getThemeByName("custom-status-only");

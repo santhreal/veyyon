@@ -185,11 +185,7 @@ export class LegacySseTransport implements MCPTransport {
 		}
 	}
 
-	async request<T = unknown>(
-		method: string,
-		params?: Record<string, unknown>,
-		options?: MCPRequestOptions,
-	): Promise<T> {
+	async request<T = unknown>(method: string, params?: object, options?: MCPRequestOptions): Promise<T> {
 		if (!this.#connected || !this.#endpointUrl) {
 			throw new Error("Transport not connected");
 		}
@@ -247,7 +243,7 @@ export class LegacySseTransport implements MCPTransport {
 		}
 	}
 
-	async notify(method: string, params?: Record<string, unknown>): Promise<void> {
+	async notify(method: string, params?: object): Promise<void> {
 		if (!this.#connected || !this.#endpointUrl) {
 			throw new Error("Transport not connected");
 		}
@@ -279,7 +275,7 @@ export class LegacySseTransport implements MCPTransport {
 	}
 
 	async #postJson(
-		body: JsonRpcRequest | JsonRpcResponse | { jsonrpc: "2.0"; method: string; params: Record<string, unknown> },
+		body: JsonRpcRequest | JsonRpcResponse | { jsonrpc: "2.0"; method: string; params: object },
 		signal?: AbortSignal,
 	): Promise<Response> {
 		const endpointUrl = this.#endpointUrl;

@@ -1,8 +1,11 @@
 /**
  * JSON tree rendering utilities shared across tool renderers.
  */
+
+import { isRecord } from "@veyyon/pi-utils";
 import { INTENT_FIELD } from "@veyyon/pi-wire";
 import type { Theme } from "../modes/theme/theme";
+import { buildTreePrefix } from "../tui/utils";
 import { truncateToWidth } from "./render-utils";
 
 /** Max depth for JSON tree rendering */
@@ -21,10 +24,6 @@ const ARGS_INLINE_MORE = "…";
 const ARGS_INLINE_MORE_WIDTH = Bun.stringWidth(ARGS_INLINE_MORE);
 /** Minimal value footprint (quotes + a couple chars) reserved for each not-yet-rendered key. */
 const ARGS_INLINE_TAIL_VALUE_RESERVE = 4;
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return !!value && typeof value === "object" && !Array.isArray(value);
-}
 
 /**
  * Format a scalar value for inline display.
@@ -92,13 +91,6 @@ export function formatArgsInline(args: Record<string, unknown>, maxWidth: number
 }
 
 /**
- * Build tree prefix for nested rendering.
- */
-function buildTreePrefix(theme: Theme, ancestors: readonly boolean[]): string {
-	return ancestors.map(hasNext => (hasNext ? `${theme.tree.vertical}  ` : "   ")).join("");
-}
-
-/**
  * Render a JSON value as tree lines.
  */
 export function renderJsonTreeLines(
@@ -131,7 +123,7 @@ export function renderJsonTreeLines(
 		}
 
 		const connector = isLast ? theme.tree.last : theme.tree.branch;
-		const prefix = `${buildTreePrefix(theme, ancestors)}${theme.fg("dim", connector)} `;
+		const prefix = `${buildTreePrefix(ancestors, theme)}${theme.fg("dim", connector)} `;
 
 		ancestors.push(!isLast);
 		try {
@@ -143,7 +135,7 @@ export function renderJsonTreeLines(
 				if (typeof val === "string" && val.includes("\n")) {
 					const strLines = val.split("\n");
 					const maxStrLines = Math.min(strLines.length, Math.max(1, maxLines - lines.length - 1));
-					const continuePrefix = buildTreePrefix(theme, ancestors);
+					const continuePrefix = buildTreePrefix(ancestors, theme);
 
 					// First line with label
 					const firstLine = truncateToWidth(strLines[0], maxScalarLen);
@@ -184,13 +176,13 @@ export function renderJsonTreeLines(
 				pushLine(`${prefix}${iconArray} ${header}`);
 				if (val.length === 0) {
 					pushLine(
-						`${buildTreePrefix(theme, ancestors)}${theme.fg("dim", theme.tree.last)} ${theme.fg("dim", "[]")}`,
+						`${buildTreePrefix(ancestors, theme)}${theme.fg("dim", theme.tree.last)} ${theme.fg("dim", "[]")}`,
 					);
 					return;
 				}
 				if (depth >= maxDepth) {
 					pushLine(
-						`${buildTreePrefix(theme, ancestors)}${theme.fg("dim", theme.tree.last)} ${theme.fg("dim", "…")}`,
+						`${buildTreePrefix(ancestors, theme)}${theme.fg("dim", theme.tree.last)} ${theme.fg("dim", "…")}`,
 					);
 					return;
 				}
@@ -210,13 +202,13 @@ export function renderJsonTreeLines(
 			const header = key ? theme.fg("muted", key) : theme.fg("muted", "object");
 			pushLine(`${prefix}${iconObject} ${header}`);
 			if (depth >= maxDepth) {
-				pushLine(`${buildTreePrefix(theme, ancestors)}${theme.fg("dim", theme.tree.last)} ${theme.fg("dim", "…")}`);
+				pushLine(`${buildTreePrefix(ancestors, theme)}${theme.fg("dim", theme.tree.last)} ${theme.fg("dim", "…")}`);
 				return;
 			}
 			const keys = Object.keys(val);
 			if (keys.length === 0) {
 				pushLine(
-					`${buildTreePrefix(theme, ancestors)}${theme.fg("dim", theme.tree.last)} ${theme.fg("dim", "{}")}`,
+					`${buildTreePrefix(ancestors, theme)}${theme.fg("dim", theme.tree.last)} ${theme.fg("dim", "{}")}`,
 				);
 				return;
 			}

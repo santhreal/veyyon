@@ -54,9 +54,15 @@ jobs:
    # `is-release` and address the tag by name — `github.ref` is
    # `refs/heads/main` here, not the tag. A `workflow_dispatch` from a `v*` tag
    # ref (or from a tagged main HEAD) is also treated as a release.
+   #
+   # Runner routing: release-shaped runs (the bump-commit subject, a `v*` tag
+   # ref, or a manual dispatch — the same scheduling-time signals as the
+   # concurrency group above) run every job on GitHub-hosted runners, so a
+   # release NEVER depends on the private omp-kata fleet being up. Ordinary
+   # main pushes keep the self-hosted fleet.
    release_metadata:
       name: Resolve release metadata
-      runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-22.04' || 'omp-kata' }}
+      runs-on: "${{ (github.event_name == 'pull_request' || startsWith(github.event.head_commit.message, 'chore: bump version to ') || startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch') && 'ubuntu-22.04' || 'omp-kata' }}"
       outputs:
          is-release: ${{ steps.detect.outputs.is-release }}
          release-tag: ${{ steps.detect.outputs.release-tag }}
@@ -108,7 +114,7 @@ jobs:
    # retention window (see build-native action) is the effective TTL.
    native_artifact_lookup:
       name: Look up cached native artifacts
-      runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-22.04' || 'omp-kata' }}
+      runs-on: "${{ (github.event_name == 'pull_request' || startsWith(github.event.head_commit.message, 'chore: bump version to ') || startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch') && 'ubuntu-22.04' || 'omp-kata' }}"
       outputs:
          source-hash: ${{ steps.compute.outputs.source-hash }}
          linux-x64-run-id: ${{ steps.find.outputs.linux-x64-run-id }}
@@ -199,7 +205,7 @@ jobs:
    # Fast lint, type check, and browser bundle build (no Rust, no native build needed)
    check:
       name: Lint, type check & web build
-      runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-22.04' || 'omp-kata' }}
+      runs-on: "${{ (github.event_name == 'pull_request' || startsWith(github.event.head_commit.message, 'chore: bump version to ') || startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch') && 'ubuntu-22.04' || 'omp-kata' }}"
       steps:
          - uses: actions/checkout@v4
          - uses: ./.github/actions/bun-install
@@ -215,7 +221,7 @@ jobs:
       name: "Native: Linux x64 (${{ matrix.variant }})"
       needs: [release_metadata, native_artifact_lookup]
       if: ${{ needs.release_metadata.outputs.is-release == 'true' || needs.native_artifact_lookup.outputs.linux-x64-run-id == '' }}
-      runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-22.04' || 'omp-kata' }}
+      runs-on: "${{ (github.event_name == 'pull_request' || startsWith(github.event.head_commit.message, 'chore: bump version to ') || startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch') && 'ubuntu-22.04' || 'omp-kata' }}"
       strategy:
          fail-fast: false
          matrix:
@@ -245,8 +251,8 @@ jobs:
          fail-fast: false
          matrix:
             include:
-               - { os: omp-kata, platform: linux, arch: arm64, target: aarch64-unknown-linux-gnu }
-               - { os: omp-kata, platform: win32, arch: x64, target: x86_64-pc-windows-msvc, variant: baseline }
+               - { os: "${{ (startsWith(github.event.head_commit.message, 'chore: bump version to ') || startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch') && 'ubuntu-22.04' || 'omp-kata' }}", platform: linux, arch: arm64, target: aarch64-unknown-linux-gnu }
+               - { os: "${{ (startsWith(github.event.head_commit.message, 'chore: bump version to ') || startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch') && 'ubuntu-22.04' || 'omp-kata' }}", platform: win32, arch: x64, target: x86_64-pc-windows-msvc, variant: baseline }
       runs-on: ${{ matrix.os }}
       steps:
          - uses: actions/checkout@v4
@@ -283,7 +289,7 @@ jobs:
               save_cache: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
    test_workspace:
       name: Test TS workspace fast
-      runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-22.04' || 'omp-kata' }}
+      runs-on: "${{ (github.event_name == 'pull_request' || startsWith(github.event.head_commit.message, 'chore: bump version to ') || startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch') && 'ubuntu-22.04' || 'omp-kata' }}"
       needs: [native_linux_x64, native_artifact_lookup]
       if: ${{ !cancelled() && needs.native_linux_x64.result != 'failure' }}
       timeout-minutes: 20
@@ -313,7 +319,7 @@ jobs:
 
    test_coding_agent_singleton:
       name: Test coding-agent singleton/global-state (TS)
-      runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-22.04' || 'omp-kata' }}
+      runs-on: "${{ (github.event_name == 'pull_request' || startsWith(github.event.head_commit.message, 'chore: bump version to ') || startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch') && 'ubuntu-22.04' || 'omp-kata' }}"
       needs: [native_linux_x64, native_artifact_lookup]
       if: ${{ !cancelled() && needs.native_linux_x64.result != 'failure' }}
       timeout-minutes: 20
@@ -345,7 +351,7 @@ jobs:
 
    test_ts_native:
       name: Test TS native/integration packages
-      runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-22.04' || 'omp-kata' }}
+      runs-on: "${{ (github.event_name == 'pull_request' || startsWith(github.event.head_commit.message, 'chore: bump version to ') || startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch') && 'ubuntu-22.04' || 'omp-kata' }}"
       needs: [native_linux_x64, native_artifact_lookup]
       if: ${{ !cancelled() && needs.native_linux_x64.result != 'failure' }}
       timeout-minutes: 25
@@ -376,7 +382,7 @@ jobs:
 
    test_coding_agent_ui:
       name: Test coding-agent UI/TUI (TS)
-      runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-22.04' || 'omp-kata' }}
+      runs-on: "${{ (github.event_name == 'pull_request' || startsWith(github.event.head_commit.message, 'chore: bump version to ') || startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch') && 'ubuntu-22.04' || 'omp-kata' }}"
       needs: [native_linux_x64, native_artifact_lookup]
       if: ${{ !cancelled() && needs.native_linux_x64.result != 'failure' }}
       timeout-minutes: 25
@@ -407,7 +413,7 @@ jobs:
 
    test_coding_agent_runtime:
       name: Test coding-agent runtime/session (TS)
-      runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-22.04' || 'omp-kata' }}
+      runs-on: "${{ (github.event_name == 'pull_request' || startsWith(github.event.head_commit.message, 'chore: bump version to ') || startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch') && 'ubuntu-22.04' || 'omp-kata' }}"
       needs: [native_linux_x64, native_artifact_lookup]
       if: ${{ !cancelled() && needs.native_linux_x64.result != 'failure' }}
       timeout-minutes: 25
@@ -439,7 +445,7 @@ jobs:
 
    test_coding_agent_native:
       name: Test coding-agent native/unit (TS)
-      runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-22.04' || 'omp-kata' }}
+      runs-on: "${{ (github.event_name == 'pull_request' || startsWith(github.event.head_commit.message, 'chore: bump version to ') || startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch') && 'ubuntu-22.04' || 'omp-kata' }}"
       needs: [native_linux_x64, native_artifact_lookup]
       if: ${{ !cancelled() && needs.native_linux_x64.result != 'failure' }}
       timeout-minutes: 25
@@ -470,7 +476,7 @@ jobs:
 
    test_smoke:
       name: Test CLI smoke (TS)
-      runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-22.04' || 'omp-kata' }}
+      runs-on: "${{ (github.event_name == 'pull_request' || startsWith(github.event.head_commit.message, 'chore: bump version to ') || startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch') && 'ubuntu-22.04' || 'omp-kata' }}"
       needs: [native_linux_x64, native_artifact_lookup]
       if: ${{ !cancelled() && needs.native_linux_x64.result != 'failure' }}
       timeout-minutes: 15
@@ -501,7 +507,7 @@ jobs:
 
    install_methods:
       name: Install method smoke tests
-      runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-22.04' || 'omp-kata' }}
+      runs-on: "${{ (github.event_name == 'pull_request' || startsWith(github.event.head_commit.message, 'chore: bump version to ') || startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch') && 'ubuntu-22.04' || 'omp-kata' }}"
       steps:
          - uses: actions/checkout@v4
          - uses: ./.github/actions/ensure-rust-toolchain
@@ -645,7 +651,7 @@ jobs:
            run: bun run ci:release:build-binaries
          - name: Sign and notarize macOS binary (Developer ID)
            # Replaces the ad-hoc signature with a Developer ID + hardened-runtime
-           # one (+JIT/library-validation entitlements; omp dlopens its
+           # one (+JIT/library-validation entitlements; veyyon dlopens its
            # runtime-extracted native addon, which has a different Team ID) and
            # notarizes. Auto-skips until the APPLE_* secrets are configured.
            if: matrix.platform == 'darwin' && env.MACOS_SIGNING == 'true'
@@ -708,6 +714,12 @@ jobs:
               pattern: veyyon-binary-*
               path: packages/coding-agent/binaries
               merge-multiple: true
+         # install.sh / install.ps1 verify each download against a sibling
+         # `<asset>.sha256`; without these files every install is UNVERIFIED.
+         - name: Generate sha256 checksums
+           run: |
+              cd packages/coding-agent/binaries
+              for f in veyyon-*; do sha256sum "$f" > "$f.sha256"; done
          - name: Create GitHub Release
            uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
            with:
@@ -805,7 +817,7 @@ jobs:
               NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
            run: bun run ci:release:publish
 
-   # Regenerate the Homebrew tap formula (can1357/homebrew-tap) from the freshly
+   # Regenerate the Homebrew tap formula (santhreal/homebrew-tap) from the freshly
    # published release assets and push it. Gated on release_github_verify so the
    # tap only cuts over to a release whose published binary was verified (matches
    # how release_npm is gated). No-ops when HOMEBREW_TAP_DEPLOY_KEY is unset, so a
@@ -829,7 +841,7 @@ jobs:
            if: env.HAS_TAP_KEY == 'true'
            uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
            with:
-              repository: can1357/homebrew-tap
+              repository: santhreal/homebrew-tap
               ssh-key: ${{ secrets.HOMEBREW_TAP_DEPLOY_KEY }}
               path: homebrew-tap
          - name: Regenerate and push the formula
@@ -837,13 +849,13 @@ jobs:
            env:
               GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
            run: |
-              bun scripts/ci-update-brew-formula.ts "${{ needs.release_metadata.outputs.release-tag }}" --out homebrew-tap/Formula/omp.rb
+              bun scripts/ci-update-brew-formula.ts "${{ needs.release_metadata.outputs.release-tag }}" --out homebrew-tap/Formula/veyyon.rb
               cd homebrew-tap
-              if git diff --quiet -- Formula/omp.rb; then
+              if git diff --quiet -- Formula/veyyon.rb; then
                 echo "formula already up to date for ${{ needs.release_metadata.outputs.release-tag }}"
                 exit 0
               fi
               git -c user.name="github-actions[bot]" \
                   -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
-                  commit -m "omp ${{ needs.release_metadata.outputs.release-tag }}" -- Formula/omp.rb
+                  commit -m "veyyon ${{ needs.release_metadata.outputs.release-tag }}" -- Formula/veyyon.rb
               git push origin HEAD:main

@@ -15,7 +15,7 @@ import {
 	clearAll,
 	getCached,
 	getOrFetchView,
-	openDb,
+	openGithubCacheDb,
 	putCached,
 	resetForTests as resetCacheForTests,
 } from "@veyyon/pi-coding-agent/tools/github-cache";
@@ -110,7 +110,7 @@ describe("github-cache db layer", () => {
 		expect(got?.rendered).toBe("rendered-v2");
 		expect(got?.fetchedAt).toBe(2000);
 
-		const db = openDb();
+		const db = openGithubCacheDb();
 		const rows = db?.prepare("SELECT COUNT(*) AS c FROM github_view_cache").all() as Array<{ c: number }>;
 		expect(rows[0].c).toBe(1);
 	});
@@ -178,7 +178,7 @@ describe("github-cache db layer", () => {
 		});
 		clearAll();
 		expect(getCached(TEST_REPO, "pr", 1, true)).toBeNull();
-		const db = openDb();
+		const db = openGithubCacheDb();
 		expect(db).not.toBeNull();
 	});
 
@@ -189,14 +189,14 @@ describe("github-cache db layer", () => {
 		process.env.OMP_GITHUB_CACHE_DB = path.join(parent, "github-cache.db");
 		resetCacheForTests();
 
-		const db = openDb();
+		const db = openGithubCacheDb();
 
 		expect(db).not.toBeNull();
 		const stat = await fs.stat(parent);
 		expect(stat.mode & 0o777).toBe(0o755);
 	});
 
-	it("preserves rows across openDb() and honors the configured hard TTL via per-lookup sweep", async () => {
+	it("preserves rows across openGithubCacheDb() and honors the configured hard TTL via per-lookup sweep", async () => {
 		const DAY_MS = 86_400_000;
 		const fourteenDaysAgo = Date.now() - 14 * DAY_MS;
 		putCached({
@@ -210,10 +210,10 @@ describe("github-cache db layer", () => {
 			fetchedAt: fourteenDaysAgo,
 		});
 
-		// Reopen the DB. Pre-fix, openDb() called evictExpired() with the 7-day
+		// Reopen the DB. Pre-fix, openGithubCacheDb() called evictExpired() with the 7-day
 		// default and would nuke this row. Post-fix, the row must survive.
 		resetCacheForTests();
-		const reopened = openDb();
+		const reopened = openGithubCacheDb();
 		expect(reopened).not.toBeNull();
 		expect(getCached(TEST_REPO, "issue", 314, true, TEST_AUTH_KEY)?.rendered).toBe("fourteen-days-old");
 

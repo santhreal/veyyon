@@ -33,7 +33,7 @@ interface BrowserRenderContext {
 	previewLines?: number;
 }
 
-function describeBrowser(args: BrowserRenderArgs, details: BrowserToolDetails | undefined): string | undefined {
+function describeBrowserLaunch(args: BrowserRenderArgs, details: BrowserToolDetails | undefined): string | undefined {
 	const cdpUrl = typeof args.app?.cdp_url === "string" ? args.app.cdp_url : "";
 	if (cdpUrl) return `connected ${cdpUrl}`;
 	const appPath = typeof args.app?.path === "string" ? args.app.path : "";
@@ -96,7 +96,7 @@ function renderRunCell(
 	const titleParts: string[] = [tabLabel(args, details)];
 	const url = typeof details?.url === "string" ? details.url : typeof args.url === "string" ? args.url : "";
 	if (url) titleParts.push(shortenPath(url));
-	const browserDesc = describeBrowser(args, details);
+	const browserDesc = describeBrowserLaunch(args, details);
 	if (browserDesc) titleParts.push(browserDesc);
 	const title = titleParts.join(" · ");
 
@@ -165,7 +165,7 @@ function renderOpenOrCloseLine(
 	}
 
 	const meta: string[] = [];
-	const browserDesc = describeBrowser(args, details);
+	const browserDesc = describeBrowserLaunch(args, details);
 	if (browserDesc) meta.push(browserDesc);
 	const url = typeof details?.url === "string" ? details.url : typeof args.url === "string" ? args.url : "";
 	if (url) meta.push(shortenPath(url));

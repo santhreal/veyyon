@@ -41,4 +41,14 @@ describe("GitHub Copilot OAuth helpers", () => {
 			apiEndpoint: "https://api.business.githubcopilot.com",
 		});
 	});
+
+	it("passes plain token strings through untouched", () => {
+		expect(parseGitHubCopilotApiKey("ghu_plain_token")).toEqual({ accessToken: "ghu_plain_token" });
+	});
+
+	it("fails closed on a JSON-shaped key with no usable token instead of sending the blob as a bearer token", () => {
+		expect(() => parseGitHubCopilotApiKey('{"tok": "ghu_typo_field"}')).toThrow(/no usable `token` field/);
+		expect(() => parseGitHubCopilotApiKey('{"token": 42}')).toThrow(/no usable `token` field/);
+		expect(() => parseGitHubCopilotApiKey('{"token": "trunc')).toThrow(/no usable `token` field/);
+	});
 });

@@ -27,3 +27,14 @@ export function parseIssueUrl(value: string | undefined): { repo?: string; issue
 	if (!match) return {};
 	return { repo: match[1], issueNumber: Number(match[2]) };
 }
+
+const RUN_URL_PATTERN = /^https:\/\/github\.com\/([^/\s]+\/[^/\s]+)\/actions\/runs\/(\d+)(?:[/?#].*)?$/i;
+
+/** Parse a GitHub Actions run URL (`.../actions/runs/<id>`), same tolerances as the PR/issue parsers. */
+export function parseRunUrl(value: string | undefined): { repo?: string; runId?: number } {
+	const normalized = value?.trim();
+	if (!normalized) return {};
+	const match = normalized.match(RUN_URL_PATTERN);
+	if (!match) return {};
+	return { repo: match[1], runId: Number(match[2]) };
+}

@@ -15,6 +15,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { engines, version } from "../package.json" with { type: "json" };
+import { UUID_RE } from "./regex";
 
 /** App name (e.g. "veyyon") */
 export const APP_NAME: string = "veyyon";
@@ -972,7 +973,6 @@ export function getSSHConfigPath(scope: "user" | "project", cwd: string = getPro
 let cachedInstallId: string | null = null;
 
 const INSTALL_ID_FILE = "install-id";
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * Persistent per-install UUID stored at `~/.veyyon/install-id`.

@@ -4,7 +4,7 @@
 
 import { scheduler } from "node:timers/promises";
 import { calculateCost } from "@veyyon/pi-catalog/models";
-import { readSseJson } from "@veyyon/pi-utils";
+import { isStrictBase64, readSseJson } from "@veyyon/pi-utils";
 import { renderDemotedThinking } from "../dialect/demotion";
 import * as AIError from "../error";
 import type {
@@ -23,7 +23,7 @@ import type {
 	ToolCall,
 } from "../types";
 import { shouldSendServiceTier } from "../types";
-import { normalizeSystemPrompts } from "../utils";
+import { normalizeSystemPrompts, normalizeToolCallId } from "../utils";
 import { AssistantMessageEventStream } from "../utils/event-stream";
 import type { RawHttpRequestDump } from "../utils/http-inspector";
 import { normalizeSchemaForCCA, normalizeSchemaForGoogle, toolWireSchema } from "../utils/schema";
@@ -115,15 +115,12 @@ export function retainThoughtSignature(existing: string | undefined, incoming: s
 	return existing;
 }
 
-// Thought signatures must be base64 for Google APIs (TYPE_BYTES).
-const base64SignaturePattern = /^[A-Za-z0-9+/]+={0,2}$/;
-
 const SKIP_THOUGHT_SIGNATURE = "skip_thought_signature_validator";
 
+// Thought signatures must be strict base64 for Google APIs (TYPE_BYTES) —
+// predicate owned by pi-utils regex.ts.
 function isValidThoughtSignature(signature: string | undefined): boolean {
-	if (!signature) return false;
-	if (signature.length % 4 !== 0) return false;
-	return base64SignaturePattern.test(signature);
+	return signature !== undefined && isStrictBase64(signature);
 }
 
 /**
@@ -162,10 +159,6 @@ function isGemini3Model(modelId: string): boolean {
 export function convertMessages<T extends GoogleApiType>(model: Model<T>, context: Context): Content[] {
 	const contents: Content[] = [];
 	const emittedToolCallNames = new Map<string, string>();
-
-	const normalizeToolCallId = (id: string): string => {
-		return id.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 64);
-	};
 
 	const transformedMessages = transformMessages(context.messages, model, normalizeToolCallId);
 
@@ -399,7 +392,7 @@ export function mapToolChoice(choice: string): FunctionCallingConfigMode {
 /**
  * Map Gemini FinishReason to our StopReason.
  */
-export function mapStopReason(reason: FinishReason): StopReason {
+export function mapGoogleFinishReason(reason: FinishReason): StopReason {
 	switch (reason) {
 		case "STOP":
 			return "stop";
@@ -430,7 +423,7 @@ export function mapStopReason(reason: FinishReason): StopReason {
 /**
  * Map string finish reason to our StopReason (for raw API responses).
  */
-export function mapStopReasonString(reason: string): StopReason {
+export function mapGoogleFinishReasonString(reason: string): StopReason {
 	switch (reason) {
 		case "STOP":
 			return "stop";
@@ -712,7 +705,7 @@ export async function consumeGoogleStream<T extends GoogleApiType>(args: {
 
 		if (candidate?.finishReason) {
 			sawFinishReason = true;
-			const mapped = mapStopReason(candidate.finishReason);
+			const mapped = mapGoogleFinishReason(candidate.finishReason);
 			// Only let a trailing tool call upgrade benign finishes; SAFETY/MALFORMED_FUNCTION_CALL
 			// and friends must surface as errors even when earlier chunks carried valid tool calls.
 			if ((mapped === "stop" || mapped === "length") && output.content.some(b => b.type === "toolCall")) {

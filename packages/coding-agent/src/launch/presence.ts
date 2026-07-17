@@ -1,6 +1,6 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { isEnoent, postmortem } from "@veyyon/pi-utils";
+import { canonicalizePath, isEnoent, postmortem } from "@veyyon/pi-utils";
 import { daemonRuntimeDir } from "./paths";
 
 const CLIENTS_DIR = "clients";
@@ -10,22 +10,12 @@ export interface DaemonProjectPresence {
 	close(): Promise<void>;
 }
 
-async function canonicalProjectDir(projectDir: string): Promise<string> {
-	const resolved = path.resolve(projectDir);
-	try {
-		return await fs.realpath(resolved);
-	} catch (error) {
-		if (isEnoent(error)) return resolved;
-		throw error;
-	}
-}
-
 /** Register this omp process so project daemons survive while it remains alive. */
 export async function registerDaemonProjectPresence(
 	projectDir: string,
 	runtimeOverride?: string,
 ): Promise<DaemonProjectPresence> {
-	const canonical = await canonicalProjectDir(projectDir);
+	const canonical = await canonicalizePath(projectDir);
 	const runtimeDir = runtimeOverride ?? daemonRuntimeDir(canonical);
 	const clientsDir = path.join(runtimeDir, CLIENTS_DIR);
 	await fs.mkdir(clientsDir, { recursive: true, mode: 0o700 });

@@ -9,8 +9,8 @@ import { isSubcommand, resolveCliArgv } from "@veyyon/pi-coding-agent/cli-comman
 describe("join command is registered as a top-level subcommand", () => {
 	test("CLI runner routes `join <link>` to the join command, not launch", () => {
 		expect(isSubcommand("join")).toBe(true);
-		expect(resolveCliArgv(["join", "wss://share.veyyon.dev/s/abc#key"])).toEqual({
-			argv: ["join", "wss://share.veyyon.dev/s/abc#key"],
+		expect(resolveCliArgv(["join", "wss://my.omp.sh/s/abc#key"])).toEqual({
+			argv: ["join", "wss://my.omp.sh/s/abc#key"],
 		});
 	});
 });

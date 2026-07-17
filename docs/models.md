@@ -1,5 +1,8 @@
 # Model and Provider Configuration (`models.yml` / `models.yaml`)
 
+> Operator overview: the [handbook models page](handbook/src/using/models.md).
+> This page is the full configuration reference.
+
 This document describes how the coding-agent currently loads models, applies overrides, resolves credentials, and chooses models at runtime.
 
 ## What controls model behavior

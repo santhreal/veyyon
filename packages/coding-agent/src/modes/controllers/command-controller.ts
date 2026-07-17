@@ -1275,7 +1275,7 @@ function formatProviderName(provider: string): string {
 		.join(" ");
 }
 
-function formatNumber(value: number, maxFractionDigits = 1): string {
+function formatNumberGrouped(value: number, maxFractionDigits = 1): string {
 	return new Intl.NumberFormat("en-US", { maximumFractionDigits: maxFractionDigits }).format(value);
 }
 
@@ -1437,7 +1437,7 @@ function formatAggregateAmount(limits: UsageLimit[]): string {
 	if (fractions.length === limits.length && fractions.length > 0) {
 		const sum = fractions.reduce((total, value) => total + value, 0);
 		const avgRemaining = Math.max(0, ((limits.length - sum) / limits.length) * 100);
-		return `${formatNumber(avgRemaining)}% free`;
+		return `${formatNumberGrouped(avgRemaining)}% free`;
 	}
 
 	const amounts = limits
@@ -1447,7 +1447,7 @@ function formatAggregateAmount(limits: UsageLimit[]): string {
 		const totalUsed = amounts.reduce((sum, amount) => sum + (amount.used ?? 0), 0);
 		const totalLimit = amounts.reduce((sum, amount) => sum + (amount.limit ?? 0), 0);
 		const remainingPct = totalLimit > 0 ? Math.max(0, 100 - (totalUsed / totalLimit) * 100) : 0;
-		return `${formatNumber(remainingPct)}% free`;
+		return `${formatNumberGrouped(remainingPct)}% free`;
 	}
 
 	// Count unique accounts from limit scopes — not limits.length.

@@ -8,7 +8,7 @@
  */
 import type { AgentMessage } from "@veyyon/pi-agent-core";
 import type { AssistantMessage, ImageContent, TextContent, ToolResultMessage } from "@veyyon/pi-ai";
-import { escapeXmlText } from "@veyyon/pi-utils";
+import { collapseWhitespace, escapeXmlText } from "@veyyon/pi-utils";
 import { INTENT_FIELD } from "@veyyon/pi-wire";
 import type {
 	BashExecutionMessage,
@@ -72,7 +72,7 @@ const PRIMARY_ARG_KEYS = [
 
 /** Collapse whitespace runs and truncate to `max` chars with an ellipsis. */
 function oneLine(text: string, max = PRIMARY_ARG_MAX): string {
-	const flat = text.replace(/\s+/g, " ").trim();
+	const flat = collapseWhitespace(text);
 	return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat;
 }
 

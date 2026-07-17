@@ -1,5 +1,5 @@
 import * as path from "node:path";
-import { getLogsDir, isBunTestRuntime } from "@veyyon/pi-utils";
+import { asRecord, getLogsDir, getNonBlankStringProperty, isBunTestRuntime, isRecord } from "@veyyon/pi-utils";
 import * as AIError from "../error/flags";
 import { isCopilotTransientModelError } from "./retry.js";
 import { formatErrorMessageWithRetryAfter } from "./retry-after.js";
@@ -151,46 +151,35 @@ function formatCapturedHttpError(captured: CapturedHttpErrorResponse | undefined
 	const errorPayload = getObjectProperty(payload, "error") ?? payload;
 	// {"error": "string"} — the error value is a plain string, not a nested object.
 	// Fall back to it when the structured fields ("message", etc.) are absent.
-	const stringError = errorPayload === payload ? getStringProperty(payload, "error") : undefined;
+	const stringError = errorPayload === payload ? getNonBlankStringProperty(payload, "error") : undefined;
 	const message =
-		getStringProperty(errorPayload, "message") ?? getStringProperty(payload, "message") ?? stringError ?? bodyText;
-	const extras = [
-		getStringProperty(errorPayload, "type") ?? getStringProperty(payload, "type"),
-		getStringProperty(errorPayload, "param") ?? getStringProperty(payload, "param"),
-		getStringProperty(errorPayload, "code") ?? getStringProperty(payload, "code"),
-	]
-		.filter(Boolean)
-		.map((value, index) => {
-			if (index === 0) return `type=${value}`;
-			if (index === 1) return `param=${value}`;
-			return `code=${value}`;
-		});
+		getNonBlankStringProperty(errorPayload, "message") ??
+		getNonBlankStringProperty(payload, "message") ??
+		stringError ??
+		bodyText;
+	const extras = (["type", "param", "code"] as const)
+		.map(label => ({
+			label,
+			value: getNonBlankStringProperty(errorPayload, label) ?? getNonBlankStringProperty(payload, label),
+		}))
+		.filter(entry => entry.value !== undefined)
+		.map(entry => `${entry.label}=${entry.value}`);
 	return extras.length > 0 ? `${message} (${extras.join(" ")})` : message;
 }
 
 function parseCapturedErrorPayload(captured: CapturedHttpErrorResponse): Record<string, unknown> | undefined {
-	if (isObject(captured.bodyJson)) {
+	if (isRecord(captured.bodyJson)) {
 		return captured.bodyJson;
 	}
 	if (!captured.bodyText) return undefined;
 	try {
 		const parsed = JSON.parse(captured.bodyText);
-		return isObject(parsed) ? parsed : undefined;
+		return isRecord(parsed) ? parsed : undefined;
 	} catch {
 		return undefined;
 	}
 }
 
 function getObjectProperty(value: Record<string, unknown>, key: string): Record<string, unknown> | undefined {
-	const property = value[key];
-	return isObject(property) ? property : undefined;
-}
-
-function getStringProperty(value: Record<string, unknown>, key: string): string | undefined {
-	const property = value[key];
-	return typeof property === "string" && property.trim().length > 0 ? property : undefined;
-}
-
-function isObject(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
+	return asRecord(value[key]) ?? undefined;
 }

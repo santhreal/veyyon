@@ -1,3 +1,4 @@
+import { stripTrailingSlashes } from "@veyyon/pi-utils";
 import { type } from "arktype";
 import type { ModelSpec } from "../types";
 import { discoveryFetch } from "../utils";
@@ -79,14 +80,14 @@ export interface CodexModelDiscoveryResult {
  */
 export async function fetchCodexModels(options: CodexModelDiscoveryOptions): Promise<CodexModelDiscoveryResult | null> {
 	const fetchFn = discoveryFetch(options.fetchFn);
-	const baseUrl = normalizeBaseUrl(options.baseUrl);
+	const baseUrl = normalizeCodexDiscoveryBaseUrl(options.baseUrl);
 	const paths = normalizePaths(options.paths);
 	const clientVersion = normalizeClientVersion(options.clientVersion) ?? CODEX_CLIENT_VERSION;
-	const headers = buildCodexHeaders(options, clientVersion);
+	const headers = buildCodexDiscoveryHeaders(options, clientVersion);
 
 	let sawSuccessfulResponse = false;
 	for (const path of paths) {
-		const requestUrl = buildModelsUrl(baseUrl, path, clientVersion);
+		const requestUrl = buildCodexModelsUrl(baseUrl, path, clientVersion);
 		let response: Response;
 		try {
 			response = await fetchFn(requestUrl, {
@@ -120,12 +121,12 @@ export async function fetchCodexModels(options: CodexModelDiscoveryOptions): Pro
 	return sawSuccessfulResponse ? { models: [] } : null;
 }
 
-function normalizeBaseUrl(baseUrl: string | undefined): string {
+function normalizeCodexDiscoveryBaseUrl(baseUrl: string | undefined): string {
 	const raw = (baseUrl ?? CODEX_BASE_URL).trim();
 	if (!raw) {
 		return CODEX_BASE_URL;
 	}
-	return raw.replace(/\/+$/, "");
+	return stripTrailingSlashes(raw);
 }
 
 function normalizePaths(paths: readonly string[] | undefined): string[] {
@@ -139,7 +140,7 @@ function normalizePaths(paths: readonly string[] | undefined): string[] {
 	return normalized.length > 0 ? normalized : [...DEFAULT_MODEL_LIST_PATHS];
 }
 
-function buildModelsUrl(baseUrl: string, path: string, clientVersion: string | undefined): string {
+function buildCodexModelsUrl(baseUrl: string, path: string, clientVersion: string | undefined): string {
 	const url = new URL(`${baseUrl}${path}`);
 	if (clientVersion && clientVersion.trim().length > 0) {
 		url.searchParams.set("client_version", clientVersion.trim());
@@ -147,7 +148,7 @@ function buildModelsUrl(baseUrl: string, path: string, clientVersion: string | u
 	return url.toString();
 }
 
-function buildCodexHeaders(options: CodexModelDiscoveryOptions, clientVersion: string): Headers {
+function buildCodexDiscoveryHeaders(options: CodexModelDiscoveryOptions, clientVersion: string): Headers {
 	const headers = new Headers(options.headers);
 	headers.set("Authorization", `Bearer ${options.accessToken}`);
 	if (options.accountId && options.accountId.trim().length > 0) {
@@ -203,24 +204,24 @@ function normalizeCodexModelEntry(entry: unknown, baseUrl: string): NormalizedCo
 	}
 
 	const payload: CodexModelEntry = parsedEntry;
-	const slug = toNonEmptyString(payload.slug) ?? toNonEmptyString(payload.id);
+	const slug = nonEmptyStringOrNull(payload.slug) ?? nonEmptyStringOrNull(payload.id);
 	if (!slug) {
 		return null;
 	}
 
-	const supportedInApi = toBoolean(payload.supported_in_api);
+	const supportedInApi = booleanOrNull(payload.supported_in_api);
 	if (supportedInApi === false) {
 		return null;
 	}
 
-	const name = toNonEmptyString(payload.display_name) ?? slug;
+	const name = nonEmptyStringOrNull(payload.display_name) ?? slug;
 	const contextWindow = toPositiveInt(payload.context_window) ?? DEFAULT_CONTEXT_WINDOW;
 	const maxTokens = Math.min(DEFAULT_MAX_TOKENS, contextWindow);
 	const reasoning = supportsReasoning(payload.default_reasoning_level, payload.supported_reasoning_levels);
 	const input = normalizeInputModalities(payload.input_modalities);
-	const preferWebsockets = toBoolean(payload.prefer_websockets) === true;
-	const useResponsesLite = toBoolean(payload.use_responses_lite) === true;
-	const priority = toFiniteNumber(payload.priority) ?? Number.MAX_SAFE_INTEGER;
+	const preferWebsockets = booleanOrNull(payload.prefer_websockets) === true;
+	const useResponsesLite = booleanOrNull(payload.use_responses_lite) === true;
+	const priority = finiteNumberOrNull(payload.priority) ?? Number.MAX_SAFE_INTEGER;
 
 	return {
 		priority,
@@ -244,7 +245,7 @@ function normalizeCodexModelEntry(entry: unknown, baseUrl: string): NormalizedCo
 }
 
 function supportsReasoning(defaultReasoningLevel: unknown, supportedReasoningLevels: unknown): boolean {
-	const defaultLevel = toNonEmptyString(defaultReasoningLevel)?.toLowerCase();
+	const defaultLevel = nonEmptyStringOrNull(defaultReasoningLevel)?.toLowerCase();
 	if (defaultLevel && defaultLevel !== "none") {
 		return true;
 	}
@@ -258,7 +259,7 @@ function supportsReasoning(defaultReasoningLevel: unknown, supportedReasoningLev
 		if (parsedLevel instanceof type.errors) {
 			continue;
 		}
-		const effort = toNonEmptyString(parsedLevel.effort)?.toLowerCase();
+		const effort = nonEmptyStringOrNull(parsedLevel.effort)?.toLowerCase();
 		if (effort && effort !== "none") {
 			return true;
 		}
@@ -274,7 +275,7 @@ function normalizeInputModalities(inputModalities: unknown): ("text" | "image")[
 
 	const set = new Set<"text" | "image">();
 	for (const modality of inputModalities) {
-		const normalized = toNonEmptyString(modality)?.toLowerCase();
+		const normalized = nonEmptyStringOrNull(modality)?.toLowerCase();
 		if (normalized === "text" || normalized === "image") {
 			set.add(normalized);
 		}
@@ -297,7 +298,7 @@ function getResponseEtag(headers: Headers): string | undefined {
 	return trimmed.length > 0 ? trimmed : undefined;
 }
 
-function toNonEmptyString(value: unknown): string | null {
+function nonEmptyStringOrNull(value: unknown): string | null {
 	if (typeof value !== "string") {
 		return null;
 	}
@@ -315,14 +316,14 @@ function toPositiveInt(value: unknown): number | null {
 	return Math.trunc(value);
 }
 
-function toFiniteNumber(value: unknown): number | null {
+function finiteNumberOrNull(value: unknown): number | null {
 	if (typeof value !== "number" || !Number.isFinite(value)) {
 		return null;
 	}
 	return value;
 }
 
-function toBoolean(value: unknown): boolean | null {
+function booleanOrNull(value: unknown): boolean | null {
 	if (typeof value !== "boolean") {
 		return null;
 	}

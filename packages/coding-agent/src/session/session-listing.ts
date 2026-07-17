@@ -195,7 +195,7 @@ function decodeJsonStringFragment(value: string): string {
 	}
 }
 
-function extractStringProperty(source: string, name: string, startIndex = 0): string | undefined {
+function scanJsonStringProperty(source: string, name: string, startIndex = 0): string | undefined {
 	const propertyIndex = source.indexOf(`"${name}"`, startIndex);
 	if (propertyIndex === -1) return undefined;
 
@@ -238,7 +238,7 @@ function countMessageMarkers(content: string): number {
 		if (typeIndex === -1) break;
 		const colonIndex = content.indexOf(":", typeIndex + 6);
 		if (colonIndex === -1) break;
-		const type = extractStringProperty(content, "type", typeIndex);
+		const type = scanJsonStringProperty(content, "type", typeIndex);
 		if (type === "message") count++;
 		index = colonIndex + 1;
 	}
@@ -250,8 +250,8 @@ function extractFirstDisplayMessageFromPrefix(content: string): string | undefin
 	let index = content.indexOf('"role"');
 
 	while (index !== -1) {
-		const role = extractStringProperty(content, "role", index);
-		const text = extractStringProperty(content, "content", index) ?? extractStringProperty(content, "text", index);
+		const role = scanJsonStringProperty(content, "role", index);
+		const text = scanJsonStringProperty(content, "content", index) ?? scanJsonStringProperty(content, "text", index);
 		if (text) {
 			if (role === "user") return text;
 			if (!fallback && (role === "developer" || role === "assistant")) fallback = text;
@@ -295,16 +295,16 @@ function sessionListHeaderFromRecord(
 }
 
 function parseSessionListHeaderLine(line: string, titleOverride?: string | null): SessionListHeader | undefined {
-	if (extractStringProperty(line, "type") !== "session") return undefined;
-	const id = extractStringProperty(line, "id");
+	if (scanJsonStringProperty(line, "type") !== "session") return undefined;
+	const id = scanJsonStringProperty(line, "id");
 	if (!id) return undefined;
 	return {
 		type: "session",
 		id,
-		cwd: extractStringProperty(line, "cwd"),
-		title: titleOverride === null ? undefined : (titleOverride ?? extractStringProperty(line, "title")),
-		parentSession: extractStringProperty(line, "parentSession"),
-		timestamp: extractStringProperty(line, "timestamp"),
+		cwd: scanJsonStringProperty(line, "cwd"),
+		title: titleOverride === null ? undefined : (titleOverride ?? scanJsonStringProperty(line, "title")),
+		parentSession: scanJsonStringProperty(line, "parentSession"),
+		timestamp: scanJsonStringProperty(line, "timestamp"),
 	};
 }
 
@@ -324,8 +324,8 @@ function parseSessionListHeader(
 	for (const rawLine of content.split(/\r?\n/)) {
 		const line = rawLine.trim();
 		if (!line) continue;
-		if (firstNonEmpty && extractStringProperty(line, "type") === "title") {
-			slotTitle = normalizeTitleOverride(extractStringProperty(line, "title"));
+		if (firstNonEmpty && scanJsonStringProperty(line, "type") === "title") {
+			slotTitle = normalizeTitleOverride(scanJsonStringProperty(line, "title"));
 			firstNonEmpty = false;
 			continue;
 		}

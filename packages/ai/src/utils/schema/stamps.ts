@@ -36,7 +36,7 @@ export function stamp<T extends object, V>(target: T, key: symbol, compute: (tar
  *
  * Usage:
  *   function walk(node, epoch = epochNext()) {
- *     if (!once(node, epoch)) return; // cycle
+ *     if (!markEpochOnce(node, epoch)) return; // cycle
  *     for (const child of node.children) walk(child, epoch);
  *   }
  */
@@ -52,7 +52,7 @@ export function epochNext(): number {
  * it is called for a given (target, epoch) pair and `false` on every
  * subsequent call within the same epoch.
  */
-export function once<T extends object>(target: T, epoch: number): boolean {
+export function markEpochOnce<T extends object>(target: T, epoch: number): boolean {
 	const slot = target as Record<symbol, number | undefined>;
 	const cur = slot[kEpoch];
 	if (cur !== undefined && cur >= epoch) return false;

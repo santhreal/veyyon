@@ -1,4 +1,4 @@
-import { fetchWithRetry, parseStreamingJson } from "@veyyon/pi-utils";
+import { fetchWithRetry, parseStreamingJson, stripTrailingSlashes } from "@veyyon/pi-utils";
 import * as AIError from "../error";
 import { getEnvApiKey } from "../stream";
 import type {
@@ -90,12 +90,12 @@ type InternalToolCallBlock = AssistantMessage["content"][number] & {
 	[kStreamingPartialJson]?: string;
 };
 
-function normalizeBaseUrl(baseUrl?: string): string {
+function normalizeOllamaApiBaseUrl(baseUrl?: string): string {
 	const value = baseUrl?.trim();
 	if (!value) {
 		return "https://ollama.com";
 	}
-	const trimmed = value.endsWith("/") ? value.slice(0, -1) : value;
+	const trimmed = stripTrailingSlashes(value);
 	return trimmed.endsWith("/api") ? trimmed.slice(0, -4) : trimmed;
 }
 
@@ -440,7 +440,7 @@ function mapDoneReason(doneReason: string | undefined, output: AssistantMessage)
 const EMPTY_OLLAMA_LENGTH_COMPLETION_MESSAGE =
 	"Model returned no content: prompt filled the context window; raise Ollama num_ctx or shorten the prompt.";
 
-function hasVisibleAssistantContent(output: AssistantMessage): boolean {
+function hasAnyAssistantContent(output: AssistantMessage): boolean {
 	return output.content.some(block => {
 		if (block.type === "text") return block.text.trim().length > 0;
 		if (block.type === "thinking") return block.thinking.trim().length > 0;
@@ -565,7 +565,7 @@ const streamOllamaOnce = (
 			if (!apiKey) {
 				throw new AIError.MissingApiKeyError(model.provider);
 			}
-			const baseUrl = normalizeBaseUrl(model.baseUrl);
+			const baseUrl = normalizeOllamaApiBaseUrl(model.baseUrl);
 			let body = createChatBody(model, context, options);
 			const replacementPayload = await options.onPayload?.(body, model);
 			if (replacementPayload !== undefined) {
@@ -721,7 +721,7 @@ const streamOllamaOnce = (
 			}
 			endActiveThinkingBlock();
 			endActiveTextBlock();
-			if (output.stopReason === "length" && !hasVisibleAssistantContent(output)) {
+			if (output.stopReason === "length" && !hasAnyAssistantContent(output)) {
 				output.stopReason = "error";
 				output.errorMessage = EMPTY_OLLAMA_LENGTH_COMPLETION_MESSAGE;
 			}

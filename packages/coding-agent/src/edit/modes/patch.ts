@@ -38,10 +38,12 @@ import {
 } from "../diff";
 import {
 	adjustIndentation,
+	applyIndentDelta,
 	convertLeadingTabsToSpaces,
 	countLeadingWhitespace,
 	detectLineEnding,
 	getLeadingWhitespace,
+	isBlankLine,
 	normalizeForFuzzy,
 	normalizeToLF,
 	restoreLineEndings,
@@ -151,10 +153,6 @@ interface HunkVariant {
 	kind: HunkVariantKind;
 }
 
-function isBlankLine(line: string): boolean {
-	return line.trim().length === 0;
-}
-
 function areEqualLines(left: string[], right: string[]): boolean {
 	if (left.length !== right.length) return false;
 	for (let i = 0; i < left.length; i++) {
@@ -189,15 +187,6 @@ function collectIndentDeltas(oldLines: string[], actualLines: string[]): number[
 		deltas.push(countLeadingWhitespace(actualLine) - countLeadingWhitespace(oldLine));
 	}
 	return deltas;
-}
-
-function applyIndentDelta(lines: string[], delta: number, indentChar: string): string[] {
-	return lines.map(line => {
-		if (isBlankLine(line)) return line;
-		if (delta > 0) return indentChar.repeat(delta) + line;
-		const toRemove = Math.min(-delta, countLeadingWhitespace(line));
-		return line.slice(toRemove);
-	});
 }
 
 function canConvertTabsToSpaces(oldLines: string[], actualLines: string[], spacesPerTab: number): boolean {

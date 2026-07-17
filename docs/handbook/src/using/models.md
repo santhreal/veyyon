@@ -197,3 +197,5 @@ are convenient interactively and risky in automation.
 - [Getting started](./getting-started.md) — first key and first task.
 - [Configuration](./configuration.md) — model defaults and overrides.
 - [Authentication](./authentication.md) — login, logout, secret storage.
+
+Engineering detail: [`docs/models.md`](../../../models.md).

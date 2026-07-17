@@ -46,10 +46,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-24acbed9.js";
+            window.path_to_searchindex_js = "../searchindex-8badf17b.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-9cfd259b.js"></script>
+        <script src="../toc-19dab021.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -216,7 +216,7 @@
 <p>Veyyon discovers model ids from the provider’s <code>/models</code> endpoint rather than maintaining a hardcoded allowlist. If a model is not listed, the provider endpoint may not expose it, or your key may not have access to it. Check the provider catalog and your key scopes first.</p>
 <h2 id="workflow"><a class="header" href="#workflow">Workflow</a></h2>
 <h3 id="why-did-my-edit-ask-for-approval"><a class="header" href="#why-did-my-edit-ask-for-approval">Why did my edit ask for approval?</a></h3>
-<p>The approval mode decides when Veyyon must ask before acting. In <code>ask</code> (and <code>plan</code>), anything that writes a file or runs a command pauses for your yes. If an edit paused, the current mode classifies it as needing approval. Change the mode with <code>--approval-mode &lt;mode&gt;</code> (<code>plan</code>, <code>ask</code>, <code>auto-edit</code>, <code>yolo</code>), <code>--auto-approve</code> / <code>--yolo</code>, or <code>tools.approvalMode</code> in <code>config.yml</code>. See <a href="../features/sandbox.html">Approvals and autonomy</a>.</p>
+<p>The approval policy decides when Veyyon must ask before acting. The default policy asks for anything that changes files or runs commands outside the trusted set. If a file edit paused for approval, it means the current policy classifies that edit as needing your yes. You can change the policy with <code>-a, --ask-for-approval</code> or in <code>config.yml</code>. The sandbox and approval policy work together: the sandbox is the hard boundary, and the approval policy is the interaction layer. See <a href="../features/sandbox.html">Sandbox and approvals</a>.</p>
 <h3 id="how-do-i-resume-a-session"><a class="header" href="#how-do-i-resume-a-session">How do I resume a session?</a></h3>
 <p>Run <code>veyyon --continue</code> to continue the most recent session, or <code>veyyon --resume &lt;SESSION_ID&gt;</code> to resume a specific one. The session stores turns, tool activity, and queued follow-ups, so a resumed session should keep its context and any pending work. For branching, forking, or exporting a session, see <a href="./sessions.html">Sessions</a>.</p>
 <h3 id="what-happened-to-my-queued-follow-up"><a class="header" href="#what-happened-to-my-queued-follow-up">What happened to my queued follow-up?</a></h3>
@@ -227,7 +227,7 @@
 <ul>
 <li><a href="./troubleshooting.html">Troubleshooting</a> for the guided diagnostic path.</li>
 <li><a href="./models.html">Models and providers</a> for provider keys, endpoints, and model selection.</li>
-<li><a href="../features/sandbox.html">Approvals and autonomy</a> for the approval-mode ladder.</li>
+<li><a href="../features/sandbox.html">Sandbox and approvals</a> for sandbox and approval policies.</li>
 <li><a href="./sessions.html">Sessions</a> for resume, fork, branch, and export.</li>
 </ul>
 

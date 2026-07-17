@@ -5,7 +5,7 @@
  * `veyyon auth-broker status` (liveness checks). All endpoints except
  * `/v1/healthz` require a bearer token.
  */
-import { readSseEvents } from "@veyyon/pi-utils";
+import { readSseEvents, stripTrailingSlashes } from "@veyyon/pi-utils";
 import { type } from "arktype";
 import type { AuthCredential } from "../auth-storage";
 import type {
@@ -23,7 +23,7 @@ import type {
 	UsageResponse,
 	UsageStaleResponse,
 } from "./types";
-import { wireSchemas } from "./wire-schemas";
+import { parseGenerationTag, wireSchemas } from "./wire-schemas";
 
 export interface AuthBrokerClientOptions {
 	/** Base URL (e.g. `https://broker.tailnet:8765`). Trailing slashes are trimmed. */
@@ -71,18 +71,6 @@ export type FetchSnapshotResult =
 	| { status: 200; snapshot: SnapshotResponse; generation: number }
 	| { status: 304; generation: number };
 
-function parseGenerationTag(header: string | null): number | undefined {
-	if (!header) return undefined;
-	let value = header.trim();
-	if (value.startsWith("W/")) value = value.slice(2).trim();
-	if (value.startsWith('"') && value.endsWith('"') && value.length >= 2) {
-		value = value.slice(1, -1);
-	}
-	const generation = Number(value);
-	if (!Number.isInteger(generation) || generation < 0) return undefined;
-	return generation;
-}
-
 const DEFAULT_TIMEOUT_MS = 10_000;
 const DEFAULT_MAX_RETRIES = 1;
 
@@ -94,7 +82,7 @@ export class AuthBrokerClient {
 	readonly #fetch: typeof fetch;
 
 	constructor(opts: AuthBrokerClientOptions) {
-		this.#baseUrl = opts.url.replace(/\/+$/, "");
+		this.#baseUrl = stripTrailingSlashes(opts.url);
 		this.#token = opts.token;
 		this.#timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 		this.#maxRetries = opts.maxRetries ?? DEFAULT_MAX_RETRIES;

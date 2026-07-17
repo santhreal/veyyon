@@ -105,6 +105,7 @@ import {
 import { calculateCost } from "@veyyon/pi-catalog/models";
 import {
 	$env,
+	joinTextBlocks,
 	parseJsonWithRepair,
 	parseStreamingJson,
 	parseStreamingJsonThrottled,
@@ -2481,13 +2482,9 @@ function cursorUserContentKey(content: string | (TextContent | ImageContent)[]):
 /**
  * Extract text content from an assistant message.
  */
-function extractAssistantMessageText(msg: Message): string {
-	if (msg.role !== "assistant") return "";
-	if (!Array.isArray(msg.content)) return "";
-	return msg.content
-		.filter((c): c is TextContent => c.type === "text")
-		.map(c => c.text)
-		.join("\n");
+function assistantMessageText(msg: Message): string {
+	if (msg.role !== "assistant" || !Array.isArray(msg.content)) return "";
+	return joinTextBlocks(msg.content);
 }
 
 /**
@@ -2553,7 +2550,7 @@ function buildRootPromptMessagesJson(
 			if (content.length === 0) continue;
 			pushJson({ role: "user", content });
 		} else if (msg.role === "assistant") {
-			const text = extractAssistantMessageText(msg);
+			const text = assistantMessageText(msg);
 			if (!text) continue;
 			pushJson({ role: "assistant", content: [{ type: "text", text }] });
 		} else if (msg.role === "toolResult") {
@@ -2626,7 +2623,7 @@ function buildConversationTurns(
 			const stepMsg = messages[i];
 
 			if (stepMsg.role === "assistant") {
-				const text = extractAssistantMessageText(stepMsg);
+				const text = assistantMessageText(stepMsg);
 				if (text) {
 					const step = create(ConversationStepSchema, {
 						message: {
@@ -2769,7 +2766,7 @@ function buildGrpcRequest(
 		if (typeof userContent === "string") {
 			userText = userContent.trim();
 		} else {
-			userText = extractText(userContent);
+			userText = joinTextBlocks(userContent);
 			hasUserImages = hasImages(userContent);
 		}
 	}
@@ -2889,10 +2886,4 @@ function buildGrpcRequest(
 
 function hasImages(content: (TextContent | ImageContent)[]): boolean {
 	return content.some(item => item.type === "image");
-}
-function extractText(content: (TextContent | ImageContent)[]): string {
-	return content
-		.filter((c): c is TextContent => c.type === "text")
-		.map(c => c.text)
-		.join("\n");
 }

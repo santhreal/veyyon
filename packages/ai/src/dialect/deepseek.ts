@@ -1,8 +1,8 @@
 import { parseJsonWithRepair } from "@veyyon/pi-utils";
 import type { Message, ToolCall } from "../types";
-import { asRecord, mintToolCallId, partialSuffixOverlapAny } from "./coercion";
+import { asRecordOrEmpty, mintToolCallId, partialSuffixOverlapAny } from "./coercion";
 import dialectPrompt from "./deepseek.md" with { type: "text" };
-import { assistantTranscriptParts, collectToolResultRun, messageContentText, stringifyJson } from "./rendering";
+import { assistantTranscriptParts, collectToolResultRun, messageContentText, stringifyJsonOrNull } from "./rendering";
 import type {
 	DialectDefinition,
 	DialectRenderOptions,
@@ -451,7 +451,7 @@ export class DeepSeekInbandScanner implements InbandScanner {
 		const trimmed = rawArgs.trim();
 		if (trimmed.length === 0) return {};
 		try {
-			return asRecord(parseJsonWithRepair<unknown>(trimmed));
+			return asRecordOrEmpty(parseJsonWithRepair<unknown>(trimmed));
 		} catch {
 			return {};
 		}
@@ -553,7 +553,7 @@ function coerceDsmlValue(raw: string, isString: boolean): unknown {
 }
 
 function renderToolCall(call: ToolCall, _options: DialectRenderOptions = {}): string {
-	return `${DEEPSEEK_TOOL_CALL_BEGIN}${call.name}${DEEPSEEK_TOOL_SEPARATOR}${stringifyJson(call.arguments)}${DEEPSEEK_TOOL_CALL_END}`;
+	return `${DEEPSEEK_TOOL_CALL_BEGIN}${call.name}${DEEPSEEK_TOOL_SEPARATOR}${stringifyJsonOrNull(call.arguments)}${DEEPSEEK_TOOL_CALL_END}`;
 }
 
 function renderAssistantToolCalls(calls: readonly ToolCall[], options: DialectRenderOptions = {}): string {

@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Approvals and autonomy - The Veyyon Harness Handbook</title>
+        <title>Sandbox and approvals - The Veyyon Harness Handbook</title>
 
 
         <!-- Custom HTML head -->
@@ -46,10 +46,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-24acbed9.js";
+            window.path_to_searchindex_js = "../searchindex-8badf17b.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-9cfd259b.js"></script>
+        <script src="../toc-19dab021.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -191,58 +191,151 @@
 
                 <div id="mdbook-content" class="content">
                     <main>
-                        <h1 id="approvals-and-autonomy"><a class="header" href="#approvals-and-autonomy">Approvals and autonomy</a></h1>
-<p>Veyyon decides when the agent may act on its own and when it must pause for your yes through one
-control: the <strong>approval mode</strong> (<code>tools.approvalMode</code>). There is no separate OS-level command sandbox —
-Veyyon does not confine shell commands with Landlock, seccomp, Seatbelt, or bubblewrap. Autonomy is a
-policy the agent follows, so run write-capable modes only in repositories and on machines you trust.</p>
-<p>For the short mental model see <a href="../concepts/permission-model.html">Permission model</a>; for the approval
-UX walkthrough see <a href="./permissions-explainer.html">Permissions and approvals</a>; for what to verify see
+                        <h1 id="sandbox-and-approvals"><a class="header" href="#sandbox-and-approvals">Sandbox and approvals</a></h1>
+<blockquote>
+<p><strong>Spec — not shipped:</strong> the OS-enforced sandbox described on this page — Landlock/seccomp on Linux,
+Seatbelt on macOS, bundled <code>bwrap</code>, the <code>read-only</code> / <code>workspace-write</code> / <code>danger-full-access</code> /
+<code>external-sandbox</code> policies, and the <code>-s</code> / <code>--sandbox</code>, <code>--full-auto</code>, and
+<code>--dangerously-bypass-approvals-and-sandbox</code> flags. Veyyon does <strong>not</strong> ship an OS-level command
+sandbox yet. What ships today is the <strong><code>tools.approvalMode</code></strong> autonomy ladder that decides when the
+agent pauses before write and exec tools: <code>plan</code> (read-tier tools only), <code>ask</code> (prompt before
+write/exec), <code>auto-edit</code> (auto write, prompt exec), <code>yolo</code> (auto-approve all). Set it with
+<code>--approval-mode &lt;mode&gt;</code>, <code>--auto-approve</code> (alias <code>--yolo</code>), or <code>tools.approvalMode</code> in <code>config.yml</code>.
+Read the rest of this page as the reference for the target sandbox model.</p>
+</blockquote>
+<p>Veyyon separates two questions: <strong>what a command is allowed to touch</strong> (the sandbox) and <strong>when
+Veyyon must ask you first</strong> (the approval policy). Together they decide whether a tool call runs
+automatically, runs inside a restricted environment, or waits for your yes.</p>
+<p>This page is the deep reference. For the short mental model, see
+<a href="../concepts/permission-model.html">Permission model</a>. For the approval UX walkthrough, see
+<a href="./permissions-explainer.html">Permissions and approvals</a>. For what the sandbox surfaces, see
 <a href="../using/safety.html">Safety</a>.</p>
-<h2 id="tool-tiers"><a class="header" href="#tool-tiers">Tool tiers</a></h2>
-<p>Every tool sits in one of three tiers, and the approval mode decides which tiers run without asking:</p>
+<h2 id="two-controls-one-decision"><a class="header" href="#two-controls-one-decision">Two controls, one decision</a></h2>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>Tier</th><th>Examples</th></tr>
+<tr><th>Control</th><th>Question it answers</th><th>Soft or hard?</th></tr>
 </thead>
 <tbody>
-<tr><td><strong>read</strong></td><td><code>read</code>, <code>grep</code>, <code>glob</code>, listing — never modify anything.</td></tr>
-<tr><td><strong>write</strong></td><td><code>edit</code>, <code>write</code> — change files in the workspace.</td></tr>
-<tr><td><strong>exec</strong></td><td><code>bash</code> and other command execution — run arbitrary programs.</td></tr>
+<tr><td><strong>Sandbox policy</strong></td><td>What may this process read, write, and reach on the network?</td><td>Hard boundary (OS-enforced where available).</td></tr>
+<tr><td><strong>Approval policy</strong></td><td>Must a human say yes before this action runs?</td><td>Interaction policy (can pause; cannot widen the sandbox).</td></tr>
 </tbody>
 </table>
 </div>
-<h2 id="the-approval-ladder"><a class="header" href="#the-approval-ladder">The approval ladder</a></h2>
+<p>A command the sandbox forbids <strong>never runs</strong>, regardless of approvals. A command the sandbox permits
+may still pause for your approval. Choose a permissive approval policy only alongside a sandbox you
+trust for the task.</p>
+<h2 id="sandbox-policies"><a class="header" href="#sandbox-policies">Sandbox policies</a></h2>
+<p>The sandbox bounds filesystem and network access for commands the agent runs.</p>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>Mode</th><th>read</th><th>write</th><th>exec</th><th>Use for</th></tr>
+<tr><th>Policy</th><th>Filesystem</th><th>Network</th><th>Best for</th></tr>
 </thead>
 <tbody>
-<tr><td><code>plan</code></td><td>auto</td><td>ask</td><td>ask</td><td>Read-only exploration; plan-mode session semantics.</td></tr>
-<tr><td><code>ask</code></td><td>auto</td><td>ask</td><td>ask</td><td>Everyday work where you approve each change.</td></tr>
-<tr><td><code>auto-edit</code></td><td>auto</td><td>auto</td><td>ask</td><td>Let the agent edit freely but confirm before it runs commands.</td></tr>
-<tr><td><code>yolo</code></td><td>auto</td><td>auto</td><td>auto</td><td>Auto-approve everything — trusted, ideally externally isolated environments only.</td></tr>
+<tr><td><code>read-only</code></td><td>Read anywhere; write nothing.</td><td>Off by default (opt in per policy / permissions).</td><td>Exploring code you do not fully trust.</td></tr>
+<tr><td><code>workspace-write</code></td><td>Read anywhere; write within the workspace and configured writable roots.</td><td>Off by default.</td><td>Everyday coding in a trusted project.</td></tr>
+<tr><td><code>danger-full-access</code></td><td>No filesystem restrictions from Veyyon.</td><td>Unrestricted.</td><td>Disposable environments that truly need full access.</td></tr>
+<tr><td><code>external-sandbox</code></td><td>Full disk access from Veyyon’s point of view, because an <strong>outer</strong> sandbox already contains the process.</td><td>Honors the provided setting.</td><td>Docker, a VM, or a CI job that already sandboxes the runner.</td></tr>
 </tbody>
 </table>
 </div>
-<p>The legacy names <code>always-ask</code> (= <code>ask</code>) and <code>write</code> (= <code>auto-edit</code>) are still accepted.</p>
-<p>Set the mode any of these ways (later wins):</p>
-<pre><code class="language-console">$ veyyon --approval-mode auto-edit            # per launch
-$ veyyon --auto-approve                        # alias: --yolo (= yolo mode)
-$ veyyon --plan-yolo                            # plan now, auto-approve once you leave plan mode
+<p>Set it in <code>config.yml</code>, with <code>-s</code> / <code>--sandbox &lt;policy&gt;</code>, or per run with <code>-c sandbox_policy=...</code>.</p>
+<p>Additional writable roots for a single run:</p>
+<pre><code class="language-console">$ veyyon --print --sandbox workspace-write --add-dir /tmp/veyyon-scratch "…"
 </code></pre>
-<p>Or persist it in <code>config.yml</code>:</p>
-<pre><code class="language-yaml">tools:
-  approvalMode: ask
-</code></pre>
-<h2 id="the-approval-prompt"><a class="header" href="#the-approval-prompt">The approval prompt</a></h2>
-<p>When a mode requires it, Veyyon shows the action before it runs:</p>
+<h3 id="defaults-you-should-expect"><a class="header" href="#defaults-you-should-expect">Defaults you should expect</a></h3>
+<ul>
+<li>Interactive <code>veyyon</code>: prefer a bounded sandbox (<code>workspace-write</code> for normal coding) plus an approval
+policy that still asks for risky work (<code>on-request</code> or <code>untrusted</code>).</li>
+<li>Headless <code>veyyon --print</code>: approvals default to <strong>never</strong> (no TTY to answer), so the <strong>sandbox</strong> is the
+containment. Prefer <code>--sandbox workspace-write</code> (or <code>read-only</code>) explicitly in CI.</li>
+<li>Network egress is <strong>off by default</strong> for <code>read-only</code> and <code>workspace-write</code>. Enabling network is a
+deliberate permission change, not an ambient side effect of “running a command.”</li>
+</ul>
+<h2 id="how-enforcement-works-per-os"><a class="header" href="#how-enforcement-works-per-os">How enforcement works per OS</a></h2>
+<p>Veyyon does not implement a toy “please don’t touch that file” filter as its only defense. It builds
+and applies a <strong>platform sandbox</strong> so a command can only touch what the active policy permits. If
+enforcement cannot be established, Veyyon <strong>fails closed</strong> — that is an error, not a silent
+run-without-confinement.</p>
+<h3 id="linux--landlock-seccomp-and-bubblewrap"><a class="header" href="#linux--landlock-seccomp-and-bubblewrap">Linux — Landlock, seccomp, and bubblewrap</a></h3>
+<p>On Linux the platform sandbox type is <strong>Linux seccomp</strong> (with Landlock / bubblewrap in the helper):</p>
+<ol>
+<li>Veyyon self-invokes a helper (<code>veyyon-linux-sandbox</code>) with the permission profile, policy cwd, and
+command cwd.</li>
+<li>The helper applies the profile: <strong>bubblewrap</strong> provides the mount (and, when needed, network)
+namespace; <strong>seccomp</strong> restricts syscalls; <strong>Landlock</strong> (including a legacy Landlock path) further
+constrains filesystem access when selected.</li>
+<li>A <strong>bundled <code>bwrap</code></strong> is used when the system bubblewrap is missing; Veyyon warns so you can install
+the OS package. If user namespaces are unavailable, you get an explicit warning — sandboxing needs
+them.</li>
+<li><strong>WSL1</strong> cannot create the required user namespaces; use <strong>WSL2</strong> for sandboxed shell commands.
+Veyyon surfaces this instead of pretending confinement worked.</li>
+</ol>
+<p>Managed / proxy-only networking (when configured) requires bubblewrap’s isolated network namespace and
+the helper flag that allows proxy egress only — not a silent hole in the default deny.</p>
+<h3 id="macos--seatbelt"><a class="header" href="#macos--seatbelt">macOS — Seatbelt</a></h3>
+<p>On macOS the platform sandbox type is <strong>Seatbelt</strong>. Veyyon launches the command under a Seatbelt
+profile derived from the permission policy (base profile plus network policy). Filesystem and network
+isolation come from the OS sandbox, not from hope.</p>
+<h3 id="windows--restricted-token-when-enabled"><a class="header" href="#windows--restricted-token-when-enabled">Windows — restricted token (when enabled)</a></h3>
+<p>On Windows, when Windows sandboxing is enabled, Veyyon can use a <strong>restricted-token</strong> sandbox.
+Unsupported configurations fail with an explicit reason rather than falling back to full access.</p>
+<h3 id="external-sandbox"><a class="header" href="#external-sandbox"><code>external-sandbox</code></a></h3>
+<p>Use this when the process is <strong>already</strong> inside Docker, a VM, or another outer jail. Veyyon will not
+double-wrap; it trusts the outer boundary and still honors the network setting you provide. Pair with
+headless approvals carefully — the outer jail is doing the hard work.</p>
+<h2 id="network-egress"><a class="header" href="#network-egress">Network egress</a></h2>
+<p>Network policy is separate from “can the shell start.”</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Mode</th><th>Meaning</th></tr>
+</thead>
+<tbody>
+<tr><td>Restricted (default for bounded sandboxes)</td><td>Outbound network is off unless the permission profile enables it.</td></tr>
+<tr><td>Enabled</td><td>Network is allowed under the active sandbox / proxy rules.</td></tr>
+</tbody>
+</table>
+</div>
+<p>Practical guidance:</p>
+<ul>
+<li>Keep network off for pure local edit/test loops.</li>
+<li>Enable network only when the task needs package downloads, API calls, or live search — and prefer
+asking (<code>untrusted</code> / <code>on-request</code>) the first time in an unfamiliar repo.</li>
+<li>In CI, prefer a runner firewall or <code>external-sandbox</code> plus an explicit allowlist at the job layer;
+do not rely on the model to “be careful.”</li>
+</ul>
+<h2 id="approval-policies"><a class="header" href="#approval-policies">Approval policies</a></h2>
+<p>The approval policy decides when a command or sensitive tool action is shown to you before it runs.
+Set it with <code>-a, --ask-for-approval &lt;policy&gt;</code> or in config.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Policy</th><th>Behavior</th><th>Best for</th></tr>
+</thead>
+<tbody>
+<tr><td><code>untrusted</code></td><td>Only known-safe, read-only commands run automatically; everything else asks.</td><td>Unfamiliar repositories or high-risk work.</td></tr>
+<tr><td><code>on-request</code></td><td>The model decides when to ask; it requests approval for anything it considers risky.</td><td>Everyday coding where you want the model to judge.</td></tr>
+<tr><td><code>granular</code></td><td>Fine-grained per-category control: shell commands, execpolicy prompts, skill scripts, the <code>request_permissions</code> tool, and MCP elicitations are each allowed or auto-rejected.</td><td>Teams that want explicit rules per tool class.</td></tr>
+<tr><td><code>never</code></td><td>Never ask. Denied or failed commands return to the model rather than escalating to you.</td><td>Trusted automation / <code>veyyon --print</code> (the headless default).</td></tr>
+</tbody>
+</table>
+</div>
+<h3 id="what-the-approval-prompt-looks-like"><a class="header" href="#what-the-approval-prompt-looks-like">What the approval prompt looks like</a></h3>
 <pre><code class="language-text">Veyyon would like to run a shell command
 
-Command:   npm test
+Command:  npm test
 Directory: /home/you/proj
+Sandbox:   workspace-write
+
+[y] yes   [n] no   [a] always for this session   [p] show policy
+</code></pre>
+<pre><code class="language-text">Veyyon would like to edit a file
+
+File:      src/main.rs
+Sandbox:   workspace-write
+Change:    update the function signature and add a null check
 
 [y] yes   [n] no   [a] always for this session   [p] show policy
 </code></pre>
@@ -250,26 +343,87 @@ Directory: /home/you/proj
 <li><code>y</code> — run once.</li>
 <li><code>a</code> — allow this kind of action for the rest of the session.</li>
 <li><code>n</code> — deny; the model is told so it can try another approach.</li>
-<li><code>p</code> — show the active policy.</li>
+<li><code>p</code> — show the active policy details.</li>
 </ul>
-<h2 id="headless-runs"><a class="header" href="#headless-runs">Headless runs</a></h2>
-<p><code>veyyon --print</code> has no TTY to answer prompts, so choose the mode explicitly for the job: <code>--approval-mode ask</code> blocks on anything that would prompt (so the turn stops rather than hangs), while <code>--yolo</code> runs the
-whole task unattended. Use <code>--yolo</code> only when the runner is disposable or externally isolated (Docker, a
-VM, a locked-down CI job), because Veyyon itself does not contain the commands it runs.</p>
-<h2 id="execution-policy-rules"><a class="header" href="#execution-policy-rules">Execution policy rules</a></h2>
-<p>Command allowlists and prompts also come from <strong>execpolicy</strong> <code>.rules</code> files (user and project). They
-refine which specific commands auto-run within the active mode. Untrusted project directories disable
-project-local rules, config, and hooks until you trust them.</p>
-<h2 id="fail-closed-for-security-controls"><a class="header" href="#fail-closed-for-security-controls">Fail-closed for security controls</a></h2>
-<p>Approval decisions fail closed: a denied or errored command returns to the model rather than escalating
-to a wider permission, and hooks that reject a <code>PermissionRequest</code> block the action. After changing the
-mode, confirm the active <code>tools.approvalMode</code> in <code>/settings</code> (Advanced → Safety).</p>
+<p>Trust/allowlists also come from <strong>execpolicy</strong> <code>.rules</code> files (user and project). In automation you
+can skip loading them with <code>veyyon --print --ignore-rules</code> when you want a hermetic policy (see
+<a href="./exec.html">Non-interactive mode</a>).</p>
+<h2 id="how-they-combine-recipes"><a class="header" href="#how-they-combine-recipes">How they combine (recipes)</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Goal</th><th>Sandbox</th><th>Approval</th></tr>
+</thead>
+<tbody>
+<tr><td>Explore an unfamiliar repo</td><td><code>read-only</code></td><td><code>untrusted</code></td></tr>
+<tr><td>Everyday coding</td><td><code>workspace-write</code></td><td><code>on-request</code></td></tr>
+<tr><td>Trusted CI automation</td><td><code>workspace-write</code> or <code>read-only</code></td><td><code>never</code> (exec default) + explicit <code>--sandbox …</code></td></tr>
+<tr><td>Already inside Docker/CI jail</td><td><code>external-sandbox</code></td><td><code>never</code></td></tr>
+<tr><td>Need full disk, still want human gates</td><td><code>danger-full-access</code></td><td><code>untrusted</code></td></tr>
+<tr><td>Disposable env, no humans, no jail</td><td><code>danger-full-access</code></td><td><code>never</code> — <strong>only</strong> if inputs and the machine are disposable</td></tr>
+</tbody>
+</table>
+</div>
+<p>Never pair <code>danger-full-access</code> with <code>never</code> unless the environment is disposable and the inputs are
+fully trusted. That combination removes both containment and human review.</p>
+<h3 id="deprecated---full-auto"><a class="header" href="#deprecated---full-auto">Deprecated: <code>--full-auto</code></a></h3>
+<p>On <code>veyyon --print</code>, <code>--full-auto</code> is a <strong>legacy compatibility trap</strong>. It prints a warning and maps to
+<code>--sandbox workspace-write</code> behavior. Prefer the explicit flag:</p>
+<pre><code class="language-console">$ veyyon --print --sandbox workspace-write "run the unit tests and summarize failures"
+</code></pre>
+<p>Do not document new automation as <code>--full-auto</code>.</p>
+<h3 id="dangerous-escape-hatch"><a class="header" href="#dangerous-escape-hatch">Dangerous escape hatch</a></h3>
+<pre><code class="language-console">$ veyyon --print --dangerously-bypass-approvals-and-sandbox "…"
+</code></pre>
+<p>(<code>--yolo</code> is an alias.) This skips confirmation prompts <strong>and</strong> sandboxing. Intended solely for
+environments that are <strong>externally</strong> sandboxed. Prefer <code>external-sandbox</code> when you can express the
+outer jail cleanly.</p>
+<h2 id="extending-the-boundary-at-runtime"><a class="header" href="#extending-the-boundary-at-runtime">Extending the boundary at runtime</a></h2>
+<p>You can widen read access or escalate without editing <code>config.yml</code> mid-thought:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Action</th><th>Effect</th></tr>
+</thead>
+<tbody>
+<tr><td><code>/sandbox-add-read-dir &lt;absolute_path&gt;</code></td><td>Grant the sandbox read access to a directory for the current session.</td></tr>
+<tr><td><code>/elevate-sandbox</code></td><td>Walk through setting up the elevated agent sandbox when a task needs more than the default.</td></tr>
+<tr><td><code>/approve</code></td><td>Approve a specific pending request.</td></tr>
+<tr><td><code>/reload</code></td><td>Re-read configuration after you edit policies on disk.</td></tr>
+<tr><td><code>-c sandbox_policy=…</code> / <code>-a …</code></td><td>Override for a single run.</td></tr>
+<tr><td><code>--add-dir &lt;DIR&gt;</code></td><td>Extra writable root for this invocation.</td></tr>
+</tbody>
+</table>
+</div>
+<p>Use <a href="../using/configuration.html">profiles</a> for repeatable combinations (for example a <code>reviewer</code>
+profile with <code>read-only</code> + <code>untrusted</code>).</p>
+<h2 id="fail-closed-behavior"><a class="header" href="#fail-closed-behavior">Fail-closed behavior</a></h2>
+<p>Security-control failures are operator-visible:</p>
+<ul>
+<li>Missing Linux sandbox helper → error, not unsandboxed execution.</li>
+<li>Seatbelt unavailable off macOS → unsupported operation, not a silent skip.</li>
+<li>Bubblewrap / user-namespace problems → warning or hard failure depending on whether the policy
+<strong>requires</strong> a platform sandbox.</li>
+<li>WSL1 → explicit unsupported message pointing at WSL2.</li>
+</ul>
+<p>Treat a silent fallback to a weaker boundary as a <strong>bug</strong>. After changing sandbox or approval
+settings, confirm the active <code>tools.approvalMode</code> in <code>/settings</code> (Advanced → Safety).</p>
+<h2 id="choosing-settings-checklist"><a class="header" href="#choosing-settings-checklist">Choosing settings (checklist)</a></h2>
+<ol>
+<li>Is the repo trusted? If no → <code>read-only</code> + <code>untrusted</code>.</li>
+<li>Does the task need writes? If yes → <code>workspace-write</code>, keep network off until needed.</li>
+<li>Are you headless? If yes → set <code>--sandbox</code> explicitly; do not rely on interactive approvals.</li>
+<li>Is there an outer jail? If yes → <code>external-sandbox</code> (or <code>--dangerously-bypass-…</code> only when you
+understand the outer jail).</li>
+<li>Would a wrong <code>rm -rf</code> hurt? If yes → never combine full access with <code>never</code>.</li>
+</ol>
 <h2 id="see-also"><a class="header" href="#see-also">See also</a></h2>
 <ul>
-<li><a href="./permissions-explainer.html">Permissions and approvals</a> — the approval UX in depth.</li>
-<li><a href="../concepts/permission-model.html">Permission model</a> — the one-paragraph model.</li>
-<li><a href="./exec.html">Non-interactive mode</a> — choosing a mode for CI.</li>
 <li><a href="../using/safety.html">Safety</a> — what surfaces and what to verify.</li>
+<li><a href="./permissions-explainer.html">Permissions explainer</a> — approval UX.</li>
+<li><a href="./exec.html">Non-interactive mode</a> — CI flags (<code>--ignore-user-config</code>, <code>--ignore-rules</code>, sandbox).</li>
+<li><a href="../reference/cli.html">CLI reference</a> — launch flags.</li>
+<li><a href="../reference/exit-codes.html">Exit codes</a> — how failures surface in scripts.</li>
 </ul>
 
                     </main>

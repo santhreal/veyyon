@@ -1,5 +1,6 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import { stripTrailingSlashes } from "@veyyon/pi-utils";
 import { z } from "zod/v4";
 import type { FetchImpl, ModelSpec } from "../types";
 import { discoveryFetch, isRecord } from "../utils";
@@ -135,7 +136,7 @@ export async function discoverGitLabDuoWorkflowNamespace(
 export async function discoverGitLabDuoWorkflowRuntimeNamespace(
 	config: GitLabDuoWorkflowDiscoveryConfig,
 ): Promise<GitLabDuoWorkflowNamespaceSelection> {
-	const baseUrl = normalizeGitLabBaseUrl(config.baseUrl);
+	const baseUrl = normalizeGitLabDiscoveryBaseUrl(config.baseUrl);
 	const selection = await selectGitLabDuoWorkflowCandidate(config, baseUrl, resolveRuntimeNamespaceCandidate, true);
 	if (selection) {
 		return selection;
@@ -149,7 +150,7 @@ export async function fetchGitLabDuoWorkflowModels(
 	config: GitLabDuoWorkflowDiscoveryConfig,
 ): Promise<readonly ModelSpec<"gitlab-duo-agent">[] | null> {
 	const selection = await discoverGitLabDuoWorkflowNamespace(config);
-	const baseUrl = normalizeGitLabBaseUrl(config.baseUrl);
+	const baseUrl = normalizeGitLabDiscoveryBaseUrl(config.baseUrl);
 	const availability = await fetchAiChatAvailableModels(config, baseUrl, selection.rootNamespaceId);
 	if (!availability) {
 		return null;
@@ -166,7 +167,7 @@ export function buildGitLabDuoWorkflowModelSpec(
 	baseUrl = GITLAB_DEFAULT_BASE_URL,
 	rootNamespaceId?: string,
 ): ModelSpec<"gitlab-duo-agent"> {
-	const normalizedBaseUrl = normalizeGitLabBaseUrl(baseUrl);
+	const normalizedBaseUrl = normalizeGitLabDiscoveryBaseUrl(baseUrl);
 	return {
 		id: model.ref,
 		name: model.name,
@@ -197,7 +198,7 @@ export function buildGitLabDuoWorkflowFallbackModel(
 async function selectGitLabDuoWorkflowNamespace(
 	config: GitLabDuoWorkflowDiscoveryConfig,
 ): Promise<GitLabDuoWorkflowNamespaceSelectionWithModels> {
-	const baseUrl = normalizeGitLabBaseUrl(config.baseUrl);
+	const baseUrl = normalizeGitLabDiscoveryBaseUrl(config.baseUrl);
 	const selection = await selectGitLabDuoWorkflowCandidate(config, baseUrl, candidate =>
 		validateNamespaceCandidate(config, baseUrl, candidate),
 	);
@@ -323,7 +324,7 @@ async function fetchAiChatAvailableModels(
 	if (!payload) {
 		return null;
 	}
-	const data = getRecord(payload, "data");
+	const data = recordAt(payload, "data");
 	const rawModels = data?.aiChatAvailableModels;
 	if (rawModels === null || rawModels === undefined) {
 		return null;
@@ -440,8 +441,8 @@ async function fetchProjectRootNamespaceViaGraphQL(
 	if (!payload) {
 		return null;
 	}
-	const data = getRecord(payload, "data");
-	const project = getRecord(data, "project");
+	const data = recordAt(payload, "data");
+	const project = recordAt(data, "project");
 	return extractExplicitRootNamespaceId(project);
 }
 
@@ -589,10 +590,10 @@ function extractExplicitRootNamespaceId(value: unknown): string | null {
 		return direct;
 	}
 	const rootNamespace =
-		getRecord(value.root_namespace, "") ??
-		getRecord(value.rootNamespace, "") ??
-		getRecord(value.root_ancestor, "") ??
-		getRecord(value.rootAncestor, "");
+		recordAt(value.root_namespace, "") ??
+		recordAt(value.rootNamespace, "") ??
+		recordAt(value.root_ancestor, "") ??
+		recordAt(value.rootAncestor, "");
 	if (rootNamespace) {
 		return (
 			normalizeIdentifier(rootNamespace.id) ??
@@ -600,7 +601,7 @@ function extractExplicitRootNamespaceId(value: unknown): string | null {
 			normalizeIdentifier(rootNamespace.fullPath)
 		);
 	}
-	const namespace = getRecord(value.namespace, "");
+	const namespace = recordAt(value.namespace, "");
 	return namespace ? extractExplicitRootNamespaceId(namespace) : null;
 }
 
@@ -613,10 +614,10 @@ function extractRootNamespaceId(value: unknown): string | null {
 		return direct;
 	}
 	const rootNamespace =
-		getRecord(value.root_namespace, "") ??
-		getRecord(value.rootNamespace, "") ??
-		getRecord(value.root_ancestor, "") ??
-		getRecord(value.rootAncestor, "");
+		recordAt(value.root_namespace, "") ??
+		recordAt(value.rootNamespace, "") ??
+		recordAt(value.root_ancestor, "") ??
+		recordAt(value.rootAncestor, "");
 	const nestedRoot = rootNamespace
 		? (normalizeIdentifier(rootNamespace.id) ??
 			normalizeIdentifier(rootNamespace.full_path) ??
@@ -625,7 +626,7 @@ function extractRootNamespaceId(value: unknown): string | null {
 	if (nestedRoot) {
 		return nestedRoot;
 	}
-	const namespace = getRecord(value.namespace, "");
+	const namespace = recordAt(value.namespace, "");
 	if (namespace) {
 		return (
 			extractRootNamespaceId(namespace) ??
@@ -660,7 +661,7 @@ function hasDuoFeatureFlag(value: unknown): boolean {
 	return value.duo_features_enabled === true || value.duo_core_features_enabled === true;
 }
 
-function getRecord(value: unknown, key: string): Record<string, unknown> | null {
+function recordAt(value: unknown, key: string): Record<string, unknown> | null {
 	const target = key ? (isRecord(value) ? value[key] : undefined) : value;
 	return isRecord(target) ? target : null;
 }
@@ -677,9 +678,9 @@ function toGraphQLRootNamespaceId(rootNamespaceId: string): string {
 	return /^\d+$/.test(rootNamespaceId) ? `gid://gitlab/Group/${rootNamespaceId}` : rootNamespaceId;
 }
 
-function normalizeGitLabBaseUrl(baseUrl: string | undefined): string {
+function normalizeGitLabDiscoveryBaseUrl(baseUrl: string | undefined): string {
 	const raw = baseUrl?.trim() || GITLAB_DEFAULT_BASE_URL;
-	return raw.replace(/\/+$/, "") || GITLAB_DEFAULT_BASE_URL;
+	return stripTrailingSlashes(raw) || GITLAB_DEFAULT_BASE_URL;
 }
 
 function buildGitLabJsonHeaders(apiKey: string): Headers {

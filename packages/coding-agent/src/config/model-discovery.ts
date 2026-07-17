@@ -20,7 +20,7 @@ import {
 	OPENAI_COMPAT_DISCOVERY_DEFAULT_MAX_TOKENS,
 } from "@veyyon/pi-catalog/provider-models/openai-compat";
 import type { ModelSpec, OpenAICompat } from "@veyyon/pi-catalog/types";
-import { isRecord } from "@veyyon/pi-utils";
+import { isRecord, stripTrailingSlashes } from "@veyyon/pi-utils";
 import type { ProviderDiscovery } from "./models-config-schema";
 
 // Default cap on `max_tokens` for auto-discovered models that do not advertise
@@ -47,7 +47,7 @@ export const DISCOVERY_DEFAULT_MAX_TOKENS = OPENAI_COMPAT_DISCOVERY_DEFAULT_MAX_
  * Bun's concurrent GC while it marked the signal's wrapped reason during an
  * unrelated allocation (`JSAbortSignal::visitAdditionalChildren`).
  */
-async function withTimeoutSignal<T>(timeoutMs: number, fn: (signal: AbortSignal) => Promise<T>): Promise<T> {
+async function withScopedTimeoutSignal<T>(timeoutMs: number, fn: (signal: AbortSignal) => Promise<T>): Promise<T> {
 	const controller = new AbortController();
 	const timer = setTimeout(
 		() => controller.abort(new DOMException("The operation timed out.", "TimeoutError")),
@@ -389,7 +389,7 @@ async function discoverOllamaModelMetadata(
 ): Promise<OllamaDiscoveredModelMetadata | null> {
 	const showUrl = `${endpoint}/api/show`;
 	try {
-		const payload = await withTimeoutSignal(150, async signal => {
+		const payload = await withScopedTimeoutSignal(150, async signal => {
 			const response = await ctx.fetch(showUrl, {
 				method: "POST",
 				headers: { ...(headers ?? {}), "Content-Type": "application/json" },
@@ -439,10 +439,10 @@ export async function discoverOllamaModels(
 	providerConfig: DiscoveryProviderConfig,
 	ctx: DiscoveryContext,
 ): Promise<Model<Api>[]> {
-	const endpoint = normalizeOllamaBaseUrl(providerConfig.baseUrl);
+	const endpoint = normalizeOllamaOriginBaseUrl(providerConfig.baseUrl);
 	const tagsUrl = `${endpoint}/api/tags`;
 	const headers = { ...(providerConfig.headers ?? {}) };
-	const payload = await withTimeoutSignal(250, async signal => {
+	const payload = await withScopedTimeoutSignal(250, async signal => {
 		const response = await ctx.fetch(tagsUrl, {
 			headers,
 			signal,
@@ -489,7 +489,7 @@ async function discoverLlamaCppServerMetadata(
 ): Promise<LlamaCppDiscoveredServerMetadata | null> {
 	const propsUrl = `${toLlamaCppNativeBaseUrl(baseUrl)}/props`;
 	try {
-		const payload = await withTimeoutSignal(150, async signal => {
+		const payload = await withScopedTimeoutSignal(150, async signal => {
 			const response = await ctx.fetch(propsUrl, {
 				headers,
 				signal,
@@ -523,7 +523,7 @@ export async function discoverLlamaCppModels(
 	let headers = baseHeaders;
 	const attempt = async (h: Record<string, string>) => {
 		const [payload, metadata] = await Promise.all([
-			withTimeoutSignal(250, async signal => {
+			withScopedTimeoutSignal(250, async signal => {
 				const response = await ctx.fetch(modelsUrl, {
 					headers: h,
 					signal,
@@ -587,7 +587,7 @@ export async function discoverLlamaCppModelRuntimeMetadata(
 	const baseHeaders: Record<string, string> = { ...(model.headers ?? {}) };
 	const attempt = async (headers: Record<string, string>) => {
 		const [entries, serverMetadata] = await Promise.all([
-			withTimeoutSignal(250, async signal => {
+			withScopedTimeoutSignal(250, async signal => {
 				const response = await ctx.fetch(modelsUrl, {
 					headers,
 					signal,
@@ -646,7 +646,7 @@ export async function discoverOpenAIModelsList(
 				? fetchLmStudioNativeModelMetadata(baseUrl, ctx.fetch, { headers: h })
 				: Promise.resolve(null);
 		const [payload, nativeMetadata] = await Promise.all([
-			withTimeoutSignal(10_000, async signal => {
+			withScopedTimeoutSignal(10_000, async signal => {
 				const res = await ctx.fetch(modelsUrl, {
 					headers: h,
 					signal,
@@ -749,7 +749,7 @@ export async function discoverLiteLLMModels(
 			}
 			return response;
 		};
-		const models = await withTimeoutSignal(10_000, signal =>
+		const models = await withScopedTimeoutSignal(10_000, signal =>
 			fetchLiteLLMRichModels({
 				api: providerConfig.api,
 				provider: providerConfig.provider,
@@ -809,7 +809,7 @@ export async function discoverProxyModels(
 	const baseHeaders: Record<string, string> = { ...(providerConfig.headers ?? {}) };
 	let headers = baseHeaders;
 	const attempt = async (h: Record<string, string>) =>
-		withTimeoutSignal(10_000, async signal => {
+		withScopedTimeoutSignal(10_000, async signal => {
 			const res = await ctx.fetch(modelsUrl, {
 				headers: h,
 				signal,
@@ -891,7 +891,7 @@ function normalizeLlamaCppBaseUrl(baseUrl?: string): string {
 	const raw = baseUrl || defaultBaseUrl;
 	try {
 		const parsed = new URL(raw);
-		const trimmedPath = parsed.pathname.replace(/\/+$/g, "");
+		const trimmedPath = stripTrailingSlashes(parsed.pathname);
 		return `${parsed.protocol}//${parsed.host}${trimmedPath}`;
 	} catch {
 		return raw;
@@ -901,7 +901,7 @@ function normalizeLlamaCppBaseUrl(baseUrl?: string): string {
 function toLlamaCppNativeBaseUrl(baseUrl: string): string {
 	try {
 		const parsed = new URL(baseUrl);
-		const trimmedPath = parsed.pathname.replace(/\/+$/g, "");
+		const trimmedPath = stripTrailingSlashes(parsed.pathname);
 		parsed.pathname = trimmedPath.endsWith("/v1") ? trimmedPath.slice(0, -3) || "/" : trimmedPath || "/";
 		const normalized = `${parsed.protocol}//${parsed.host}${parsed.pathname}`;
 		return normalized.endsWith("/") ? normalized.slice(0, -1) : normalized;
@@ -919,7 +919,7 @@ export function normalizeOpenAIModelsListBaseUrl(baseUrl?: string): string {
 	const raw = baseUrl || defaultBaseUrl;
 	try {
 		const parsed = new URL(raw);
-		const trimmedPath = parsed.pathname.replace(/\/+$/g, "");
+		const trimmedPath = stripTrailingSlashes(parsed.pathname);
 		parsed.pathname = trimmedPath.endsWith("/v1") ? trimmedPath || "/v1" : `${trimmedPath}/v1`;
 		return `${parsed.protocol}//${parsed.host}${parsed.pathname}`;
 	} catch {
@@ -927,7 +927,7 @@ export function normalizeOpenAIModelsListBaseUrl(baseUrl?: string): string {
 	}
 }
 
-function normalizeOllamaBaseUrl(baseUrl?: string): string {
+function normalizeOllamaOriginBaseUrl(baseUrl?: string): string {
 	const raw = baseUrl || DEFAULT_OLLAMA_BASE_URL;
 	try {
 		const parsed = new URL(raw);

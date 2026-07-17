@@ -1,9 +1,9 @@
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { getToolDashboardStats, syncAllSessions } from "@veyyon/pi-stats/aggregator";
-import { getToolStats, getToolStatsByModel } from "@veyyon/pi-stats/db";
-import type { ToolUsageStats } from "@veyyon/pi-stats/types";
+import { getToolDashboardStats, syncAllSessions } from "@veyyon/omp-stats/aggregator";
+import { getToolStats, getToolStatsByModel } from "@veyyon/omp-stats/db";
+import type { ToolUsageStats } from "@veyyon/omp-stats/types";
 import { getSessionsDir } from "@veyyon/pi-utils";
 import { installStatsTestIsolation } from "./helpers/temp-agent";
 

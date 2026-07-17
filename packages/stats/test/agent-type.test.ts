@@ -2,10 +2,10 @@ import { Database } from "bun:sqlite";
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { getOverviewStats } from "@veyyon/pi-stats/aggregator";
-import { getStatsByAgentType, initDb, insertMessageStats } from "@veyyon/pi-stats/db";
-import { classifyAgentType } from "@veyyon/pi-stats/parser";
-import type { AgentType, MessageStats } from "@veyyon/pi-stats/types";
+import { getOverviewStats } from "@veyyon/omp-stats/aggregator";
+import { getStatsByAgentType, initDb, insertMessageStats } from "@veyyon/omp-stats/db";
+import { classifyAgentType } from "@veyyon/omp-stats/parser";
+import type { AgentType, MessageStats } from "@veyyon/omp-stats/types";
 import { getConfigRootDir, getSessionsDir, getStatsDbPath } from "@veyyon/pi-utils";
 import { installStatsTestIsolation } from "./helpers/temp-agent";
 

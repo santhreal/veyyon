@@ -1,4 +1,5 @@
 import { type Component, padding, Text, visibleWidth } from "@veyyon/pi-tui";
+import { joinTextBlocks } from "@veyyon/pi-utils";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import type { Theme, ThemeColor } from "../modes/theme/theme";
 import { framedBlock, renderStatusLine } from "../tui";
@@ -148,7 +149,7 @@ function getRunMeta(run: GhRunWatchRunDetails): string[] {
 	return parts;
 }
 
-function formatRunLine(run: GhRunWatchRunDetails, theme: Theme): string {
+function formatGhRunLine(run: GhRunWatchRunDetails, theme: Theme): string {
 	const title = theme.fg("accent", getRunLabel(run));
 	const metaParts = getRunMeta(run);
 	const meta = metaParts.map((part, index) =>
@@ -200,7 +201,7 @@ function getJobStateVisual(
 	};
 }
 
-function renderJobLine(job: GhRunWatchJobDetails, width: number, theme: Theme): string {
+function renderGhJobLine(job: GhRunWatchJobDetails, width: number, theme: Theme): string {
 	const visual = getJobStateVisual(job, theme);
 	const prefix = theme.fg(visual.iconColor, `${visual.iconRaw} `);
 	const durationLabel = job.durationSeconds !== undefined ? `${job.durationSeconds}s` : undefined;
@@ -217,14 +218,14 @@ function renderJobLine(job: GhRunWatchJobDetails, width: number, theme: Theme): 
 }
 
 function renderRunBlock(run: GhRunWatchRunDetails, width: number, theme: Theme): string[] {
-	const lines = [formatRunLine(run, theme)];
+	const lines = [formatGhRunLine(run, theme)];
 	if (run.jobs.length === 0) {
 		lines.push(theme.fg("dim", "waiting for workflow jobs..."));
 		return lines;
 	}
 
 	for (const job of run.jobs) {
-		lines.push(renderJobLine(job, width, theme));
+		lines.push(renderGhJobLine(job, width, theme));
 	}
 	return lines;
 }
@@ -309,21 +310,13 @@ function buildWatchSections(
 	return sections;
 }
 
-function extractText(content: Array<{ type: string; text?: string }>): string {
-	return content
-		.filter(part => part.type === "text")
-		.map(part => part.text)
-		.filter((value): value is string => typeof value === "string" && value.length > 0)
-		.join("\n");
-}
-
 function renderFallbackComponent(
 	result: { content: Array<{ type: string; text?: string }>; isError?: boolean },
 	options: RenderResultOptions,
 	theme: Theme,
 	args: GithubToolRenderArgs,
 ): Component {
-	const text = extractText(result.content);
+	const text = joinTextBlocks(result.content.filter(part => part.text));
 	const title = formatOpTitle(args.op);
 	const meta = buildOpMeta(args);
 	const isError = result.isError === true;

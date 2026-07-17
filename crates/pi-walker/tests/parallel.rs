@@ -140,6 +140,54 @@ fn parallel_candidates_match_serial_with_gitignore_hidden_node_modules_and_glob(
 	);
 }
 
+/// `collect_file_candidates` reroutes onto the parallel walk when the request
+/// is cache-free, unlimited, and skippable-error (the grep shape). The rerouted
+/// collect must reproduce the serial walk's EXACT [`WalkOrder::Path`] sequence:
+/// within each directory, files in name order first, then subdirectory
+/// subtrees in name order (`a.txt` before `a/b.rs`).
+#[test]
+fn rerouted_path_order_collect_matches_serial_sequence_exactly() {
+	let tree = TempTree::new("reroute-path-order");
+	write_file(tree.path().join("a.txt"));
+	write_file(tree.path().join("a/b.rs"));
+	write_file(tree.path().join("a/z/deep.rs"));
+	write_file(tree.path().join("a-first.txt"));
+	write_file(tree.path().join("b/kept.rs"));
+	write_file(tree.path().join("b/dropped.log"));
+	fs::write(tree.path().join("b/.gitignore"), "*.log\n").expect("gitignore should be written");
+
+	let request = |errors: pi_walker::DirectoryErrorMode| {
+		WalkRequest::new(tree.path())
+			.hidden(false)
+			.gitignore(true)
+			.skip_node_modules(true)
+			.cache(false)
+			.order(WalkOrder::Path)
+			.directory_errors(errors)
+			.filter(WalkFilter::files_only())
+	};
+	let ordered = |request: &WalkRequest| {
+		request
+			.collect_file_candidates()
+			.expect("candidate collection should succeed")
+			.into_iter()
+			.map(|candidate| candidate.relative)
+			.collect::<Vec<_>>()
+	};
+
+	let serial = ordered(&request(pi_walker::DirectoryErrorMode::Visit));
+	let rerouted = ordered(&request(pi_walker::DirectoryErrorMode::SkipSkippable));
+	assert_eq!(
+		serial,
+		vec!["a-first.txt", "a.txt", "a/b.rs", "a/z/deep.rs", "b/kept.rs"],
+		"serial Path-order collect should visit files in name order before sibling subtrees"
+	);
+	assert_eq!(
+		rerouted, serial,
+		"rerouted parallel collect should reproduce the serial Path-order sequence exactly"
+	);
+}
+
 fn create_wide_tree(root: &Path, dirs: usize, files_per_dir: usize) {
 	for dir_index in 0..dirs {
 		let dir = root.join(format!("dir-{dir_index:03}"));

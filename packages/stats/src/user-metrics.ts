@@ -5,6 +5,8 @@
  * and standalone testing.
  */
 
+import { countNonEmptyLines } from "@veyyon/pi-utils";
+
 export interface UserMessageMetrics {
 	/** Total characters of analyzed text. */
 	chars: number;
@@ -609,14 +611,6 @@ function stripStructuredContent(text: string): string {
 		.replace(QUOTE_LINE_RE, "")
 		.replace(IMAGE_MARKER_RE, " ")
 		.replace(ANSI_ESCAPE_RE, "");
-}
-
-function countNonEmptyLines(text: string): number {
-	let count = 0;
-	for (const line of text.split("\n")) {
-		if (line.trim().length > 0) count++;
-	}
-	return count;
 }
 
 /**

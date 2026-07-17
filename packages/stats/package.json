@@ -1,18 +1,18 @@
 {
   "type": "module",
-  "name": "@veyyon/pi-stats",
+  "name": "@veyyon/omp-stats",
   "version": "16.5.2",
-  "description": "Local observability dashboard for Veyyon AI usage statistics",
-  "homepage": "https://veyyon.dev",
+  "description": "Local observability dashboard for pi AI usage statistics",
+  "homepage": "https://omp.sh",
   "author": "Can Boluk",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/can1357/oh-my-pi.git",
+    "url": "git+https://github.com/santhreal/veyyon.git",
     "directory": "packages/stats"
   },
   "bugs": {
-    "url": "https://github.com/can1357/oh-my-pi/issues"
+    "url": "https://github.com/santhreal/veyyon/issues"
   },
   "keywords": [
     "ai",
@@ -25,7 +25,7 @@
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "bin": {
-    "veyyon-stats": "./src/index.ts"
+    "omp-stats": "./src/index.ts"
   },
   "scripts": {
     "gen:stats": "bun scripts/generate-client-bundle.ts --generate",

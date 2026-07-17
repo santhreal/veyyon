@@ -14,10 +14,11 @@ provider-agnostic configuration, and a TUI that keeps sandboxing and approvals v
 ## What you get today
 
 - **Edits that land.** Hashline and related edit tools with model-specific prompts; fewer retry loops on bad diffs.
+- **Three explicit model slots.** The model you talk to, the subagent model, and the compaction model — each set on its own, no `default` pseudo-model. Optional named roles live in settings, scoped per profile.
 - **Bring your own key.** Dozens of providers via the bundled catalog; no vendor lock-in.
-- **Per-role models.** Assign fast, thinking, vision, task, and other roles without reconfiguring every session.
-- **A real agent loop.** Read, search, edit, bash, LSP, browser, MCP, compaction, and subagents, all inside the approval mode you control.
+- **A real agent loop.** Read, search, edit, bash, LSP, browser, MCP, compaction, and subagents, all inside approval and sandbox policy you control.
 - **Session trees.** Branch, fork, and navigate conversation history without losing abandoned paths.
+- **Cockpit.** Watch every subagent live — a model per agent, drill in, and steer while the work happens.
 - **Memory.** mnemopi-backed recall across sessions (see [Memory](../features/memory.md)).
 - **Lower cost.** Fewer format retries and leaner reads mean fewer tokens for the same outcome.
 
@@ -25,7 +26,7 @@ provider-agnostic configuration, and a TUI that keeps sandboxing and approvals v
 
 - Developers who want a capable terminal agent on their own keys.
 - Teams running open or gateway models with a harness tuned for coding, not chat-only UIs.
-- Anyone who wants visible approval boundaries and tool failures that surface instead of hiding.
+- Anyone who wants visible sandbox boundaries and honest tool failures.
 
 ## Where to go next
 

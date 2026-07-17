@@ -2,16 +2,63 @@ import type { Database } from "bun:sqlite";
 
 import { dbPath } from "../config";
 import { closeQuietly, openDatabase, transaction } from "../db";
-import { ENTITY_STOPWORDS } from "./stopwords";
+
+const ENTITY_STOP_WORD_VALUES = [
+	"assistant",
+	"user",
+	"skill",
+	"review",
+	"target",
+	"class",
+	"level",
+	"signals",
+	"phase",
+	"api",
+	"pi",
+	"summary",
+	"added",
+	"active",
+	"be",
+	"not",
+	"whether",
+	"all",
+	"no",
+	"replying",
+	"ai",
+	"memory",
+	"mnemopi",
+	"conversation",
+	"fact",
+	"false",
+	"true",
+	"none",
+	"null",
+	"signal",
+	"hermes",
+	"agent",
+	"model",
+	"system",
+	"note",
+	"task",
+	"project",
+	"result",
+	"output",
+	"input",
+	"data",
+	"step",
+	"process",
+	"point",
+	"way",
+	"thing",
+	"time",
+	"work",
+] as const;
 
 const ANNOTATION_KIND_VALUES = ["mentions", "fact", "occurred_on", "has_source"] as const;
 
 export type AnnotationKind = (typeof ANNOTATION_KIND_VALUES)[number] | (string & {});
 
-// Backed by the canonical entity/mention stopword set in stopwords.ts. This
-// module formerly kept its own inline subset that was missing every function
-// word; see stopwords.ts for the divergence it fixed.
-export const ENTITY_STOP_WORDS: ReadonlySet<string> = ENTITY_STOPWORDS;
+export const ENTITY_STOP_WORDS: ReadonlySet<string> = new Set(ENTITY_STOP_WORD_VALUES);
 export const ANNOTATION_KINDS: ReadonlySet<string> = new Set(ANNOTATION_KIND_VALUES);
 export const MIN_FACT_LENGTH = 10;
 
@@ -81,7 +128,7 @@ function normalizeRow(row: AnnotationRow): AnnotationRow {
 	};
 }
 
-function normalizeContent(item: AnnotationInput): StoredAnnotationContent {
+function normalizeAnnotationContent(item: AnnotationInput): StoredAnnotationContent {
 	return {
 		memory_id: item.memory_id,
 		kind: item.kind,
@@ -106,8 +153,8 @@ function isNoisyMention(value: string): boolean {
 	return false;
 }
 
-function sameContent(item: AnnotationInput, existing: StoredAnnotationContent): boolean {
-	const normalized = normalizeContent(item);
+function sameAnnotationContent(item: AnnotationInput, existing: StoredAnnotationContent): boolean {
+	const normalized = normalizeAnnotationContent(item);
 	return (
 		normalized.memory_id === existing.memory_id &&
 		normalized.kind === existing.kind &&
@@ -332,7 +379,7 @@ export class AnnotationStore {
 					stats.overwritten++;
 					continue;
 				}
-				if (sameContent(item, current)) {
+				if (sameAnnotationContent(item, current)) {
 					stats.skipped++;
 					continue;
 				}

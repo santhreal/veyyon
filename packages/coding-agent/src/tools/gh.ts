@@ -10,14 +10,14 @@ import type {
 	ToolApprovalDecision,
 } from "@veyyon/pi-agent-core";
 
-import { getWorktreeDir, hashPath, isEnoent, prompt, untilAborted } from "@veyyon/pi-utils";
+import { getWorktreeDir, hashPath, ISO_DATE_RE, isEnoent, kebabSlug, prompt, untilAborted } from "@veyyon/pi-utils";
 import { type } from "arktype";
 import type { Settings } from "../config/settings";
 import githubDescription from "../prompts/tools/github.md" with { type: "text" };
 import * as git from "../utils/git";
 import type { ToolSession } from ".";
 import { formatShortSha } from "./gh-format";
-import { parseIssueUrl, parsePrUrl } from "./gh-url";
+import { parseIssueUrl, parsePrUrl, parseRunUrl } from "./gh-url";
 import { type CacheStatus, getOrFetchView, invalidateAllForNumber, resolveGithubCacheAuthKey } from "./github-cache";
 import type { OutputMeta } from "./output-meta";
 import { ToolError, throwIfAborted } from "./tool-errors";
@@ -240,7 +240,6 @@ const RUN_WATCH_TAIL_DEFAULT = 15;
 const RUN_WATCH_TAIL_MAX = 200;
 const REVIEW_COMMENTS_PAGE_SIZE = 100;
 const RUN_JOBS_PAGE_SIZE = 100;
-const RUN_URL_PATTERN = /^https:\/\/github\.com\/([^/]+\/[^/]+)\/actions\/runs\/(\d+)(?:\/.*)?$/;
 const RUN_SUCCESS_CONCLUSIONS = new Set(["success", "neutral", "skipped"]);
 const RUN_FAILURE_CONCLUSIONS = new Set(["failure", "timed_out", "cancelled", "action_required", "startup_failure"]);
 const JOB_FAILURE_CONCLUSIONS = new Set(["failure", "timed_out", "cancelled", "action_required"]);
@@ -621,7 +620,7 @@ interface GhFailedJobLog {
 	available: boolean;
 }
 
-function normalizeText(value: string | null | undefined): string {
+function normalizeGhText(value: string | null | undefined): string {
 	return (value ?? "").replaceAll("\r\n", "\n").replaceAll("\r", "\n").replaceAll("\t", "    ").trim();
 }
 
@@ -692,7 +691,8 @@ function appendRepoFlag(args: string[], repo: string | undefined, identifier?: s
 const REPO_API_URL_PREFIX = "https://api.github.com/repos/";
 
 const RELATIVE_DURATION_PATTERN = /^(\d+)\s*(m|h|d|w|mo|y)$/i;
-const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+// ONE PLACE: grammar owned by pi-utils regex.ts.
+const ISO_DATE_PATTERN = ISO_DATE_RE;
 const FIXED_UNIT_MS: Record<string, number> = {
 	m: 60_000,
 	h: 3_600_000,
@@ -902,11 +902,7 @@ function apiRepoToSearchResult(item: GhApiSearchRepoItem): GhSearchRepoResult {
 }
 
 function sanitizeRemoteName(value: string): string {
-	const sanitized = value
-		.toLowerCase()
-		.replace(/[^a-z0-9]+/g, "-")
-		.replace(/^-+/g, "")
-		.replace(/-+$/g, "");
+	const sanitized = kebabSlug(value);
 	return sanitized.length > 0 ? `fork-${sanitized}` : "fork";
 }
 
@@ -1115,7 +1111,7 @@ function formatAuthor(author: GhUser | null | undefined): string | undefined {
 	return undefined;
 }
 
-function formatLabels(labels: GhLabel[] | undefined): string | undefined {
+function formatGhLabels(labels: GhLabel[] | undefined): string | undefined {
 	const names = labels?.map(label => label.name).filter((value): value is string => Boolean(value)) ?? [];
 	if (names.length === 0) return undefined;
 	return names.join(", ");
@@ -1136,15 +1132,12 @@ function parseRunReference(value: string | undefined): GhRunReference {
 		return { runId: Number(run) };
 	}
 
-	const match = run.match(RUN_URL_PATTERN);
-	if (!match) {
+	const { repo, runId } = parseRunUrl(run);
+	if (runId === undefined) {
 		throw new ToolError("run must be a numeric workflow run ID or a full GitHub Actions run URL");
 	}
 
-	return {
-		repo: match[1],
-		runId: Number(match[2]),
-	};
+	return { repo, runId };
 }
 
 /**
@@ -2013,7 +2006,7 @@ function formatCommentsSection(comments: GhComment[] | undefined): string[] {
 		const createdAt = comment.createdAt ? ` · ${comment.createdAt}` : "";
 		lines.push(`### ${author}${createdAt}`);
 		lines.push("");
-		lines.push(normalizeText(comment.body) || "No comment body.");
+		lines.push(normalizeGhText(comment.body) || "No comment body.");
 		if (comment.url) {
 			lines.push("");
 			lines.push(`URL: ${comment.url}`);
@@ -2044,7 +2037,7 @@ function formatReviewsSection(reviews: GhPrReview[] | undefined): string[] {
 			lines.push(`Commit: ${formatShortSha(review.commit.oid)}`);
 		}
 		lines.push("");
-		lines.push(normalizeText(review.body) || "No review body.");
+		lines.push(normalizeGhText(review.body) || "No review body.");
 		lines.push("");
 	}
 
@@ -2076,7 +2069,7 @@ function formatReviewCommentsSection(comments: GhPrReviewComment[] | undefined):
 		pushLine(lines, "Reply to", comment.inReplyToId);
 		pushLine(lines, "URL", comment.url);
 		lines.push("");
-		lines.push(normalizeText(comment.body) || "No review comment body.");
+		lines.push(normalizeGhText(comment.body) || "No review comment body.");
 		lines.push("");
 	}
 
@@ -2088,7 +2081,7 @@ function formatRepoView(data: GhRepoViewData, input: { repo?: string; branch?: s
 	const name = data.nameWithOwner ?? input.repo ?? "GitHub Repository";
 	lines.push(`# ${name}`);
 	lines.push("");
-	lines.push(normalizeText(data.description) || "No description provided.");
+	lines.push(normalizeGhText(data.description) || "No description provided.");
 	lines.push("");
 	pushLine(lines, "URL", data.url);
 	pushLine(lines, "Default branch", data.defaultBranchRef?.name);
@@ -2120,12 +2113,12 @@ function formatIssueView(data: GhIssueViewData, input: { issue: string; repo?: s
 	pushLine(lines, "Author", formatAuthor(data.author));
 	pushLine(lines, "Created", data.createdAt);
 	pushLine(lines, "Updated", data.updatedAt);
-	pushLine(lines, "Labels", formatLabels(data.labels));
+	pushLine(lines, "Labels", formatGhLabels(data.labels));
 	pushLine(lines, "URL", data.url);
 	lines.push("");
 	lines.push("## Body");
 	lines.push("");
-	lines.push(normalizeText(data.body) || "No description provided.");
+	lines.push(normalizeGhText(data.body) || "No description provided.");
 
 	if ((input.comments ?? true) && data.comments) {
 		const commentSection = formatCommentsSection(data.comments);
@@ -2170,12 +2163,12 @@ function formatPrView(data: GhPrViewData, input: { pr?: string; repo?: string; c
 	pushLine(lines, "Merge state", data.mergeStateStatus);
 	pushLine(lines, "Created", data.createdAt);
 	pushLine(lines, "Updated", data.updatedAt);
-	pushLine(lines, "Labels", formatLabels(data.labels));
+	pushLine(lines, "Labels", formatGhLabels(data.labels));
 	pushLine(lines, "URL", data.url);
 	lines.push("");
 	lines.push("## Body");
 	lines.push("");
-	lines.push(normalizeText(data.body) || "No description provided.");
+	lines.push(normalizeGhText(data.body) || "No description provided.");
 
 	const fileSection = formatPrFiles(data.files);
 	if (fileSection.length > 0) {
@@ -2262,7 +2255,7 @@ function formatPrPushResult(options: {
 	return lines.join("\n").trim();
 }
 
-function formatSearchResults(
+function formatGhSearchResults(
 	kind: "issues" | "pull requests",
 	query: string,
 	repo: string | undefined,
@@ -2284,7 +2277,7 @@ function formatSearchResults(
 		pushLine(lines, "  Repo", item.repository?.nameWithOwner);
 		pushLine(lines, "  State", item.state);
 		pushLine(lines, "  Author", formatAuthor(item.author));
-		pushLine(lines, "  Labels", formatLabels(item.labels));
+		pushLine(lines, "  Labels", formatGhLabels(item.labels));
 		pushLine(lines, "  Created", item.createdAt);
 		pushLine(lines, "  Updated", item.updatedAt);
 		pushLine(lines, "  URL", item.url);
@@ -2312,7 +2305,7 @@ function formatSearchCodeResults(query: string, repo: string | undefined, items:
 		pushLine(lines, "  URL", item.url);
 		const fragment = item.textMatches?.find(match => match.fragment)?.fragment;
 		if (fragment) {
-			pushLine(lines, "  Match", normalizeText(fragment).split("\n", 1)[0]);
+			pushLine(lines, "  Match", normalizeGhText(fragment).split("\n", 1)[0]);
 		}
 	}
 
@@ -2321,7 +2314,7 @@ function formatSearchCodeResults(query: string, repo: string | undefined, items:
 
 function formatSearchCommitMessage(message: string | undefined): string | undefined {
 	if (!message) return undefined;
-	const firstLine = normalizeText(message).split("\n", 1)[0];
+	const firstLine = normalizeGhText(message).split("\n", 1)[0];
 	return firstLine || undefined;
 }
 
@@ -2363,7 +2356,7 @@ function formatSearchReposResults(query: string, items: GhSearchRepoResult[]): s
 	for (const item of items) {
 		lines.push("");
 		lines.push(`- ${item.fullName ?? "(unknown repository)"}`);
-		const description = normalizeText(item.description).split("\n", 1)[0];
+		const description = normalizeGhText(item.description).split("\n", 1)[0];
 		if (description) {
 			pushLine(lines, "  Description", description);
 		}
@@ -3331,9 +3324,9 @@ function formatPrCreateResult(options: {
 	pushLine(lines, "Head", options.data?.headRefName ?? options.head);
 	pushLine(lines, "Author", formatAuthor(options.data?.author));
 	pushLine(lines, "Created", options.data?.createdAt);
-	pushLine(lines, "Labels", formatLabels(options.data?.labels));
+	pushLine(lines, "Labels", formatGhLabels(options.data?.labels));
 
-	const bodyText = normalizeText(options.data?.body);
+	const bodyText = normalizeGhText(options.data?.body);
 	if (bodyText) {
 		lines.push("");
 		lines.push("## Body");
@@ -3359,7 +3352,7 @@ async function executeSearchIssues(
 
 	const response = await git.github.json<GhApiSearchResponse<GhApiSearchIssueItem>>(session.cwd, args, signal);
 	const items = (response.items ?? []).map(apiIssueToSearchResult);
-	return buildTextResult(formatSearchResults("issues", displayQuery, repo, items), undefined, undefined, {
+	return buildTextResult(formatGhSearchResults("issues", displayQuery, repo, items), undefined, undefined, {
 		useless: items.length === 0,
 	});
 }
@@ -3379,7 +3372,7 @@ async function executeSearchPrs(
 
 	const response = await git.github.json<GhApiSearchResponse<GhApiSearchIssueItem>>(session.cwd, args, signal);
 	const items = (response.items ?? []).map(apiIssueToSearchResult);
-	return buildTextResult(formatSearchResults("pull requests", displayQuery, repo, items), undefined, undefined, {
+	return buildTextResult(formatGhSearchResults("pull requests", displayQuery, repo, items), undefined, undefined, {
 		useless: items.length === 0,
 	});
 }

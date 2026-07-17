@@ -419,3 +419,17 @@ export function printHelp(): void {
 			`${getExtraHelpText()}\n`,
 	);
 }
+
+/** Resolve an optional positive-integer flag against its fallback; throws with the flag name on anything else. */
+/** Write one line to stdout (shared by the per-binary CLI front-ends). */
+export function writeLine(line = ""): void {
+	process.stdout.write(`${line}\n`);
+}
+
+export function normalizePositiveInteger(name: string, value: number | undefined, fallback: number): number {
+	const resolved = value ?? fallback;
+	if (!Number.isInteger(resolved) || resolved <= 0) {
+		throw new Error(`Expected --${name} to be a positive integer, got ${resolved}`);
+	}
+	return resolved;
+}

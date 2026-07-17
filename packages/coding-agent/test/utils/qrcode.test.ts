@@ -21,7 +21,7 @@ describe("QR encoder", () => {
 	}> = [
 		{ text: "HELLO WORLD", ecl: "M", mask: 0, version: 1, size: 21, hash: "a28227450c6dd5ab" },
 		{
-			text: "https://share.veyyon.dev/#mgAYTZwEnpRQtca0CTgn-Q.gdJU",
+			text: "https://my.omp.sh/#mgAYTZwEnpRQtca0CTgn-Q.gdJU",
 			ecl: "M",
 			mask: 4,
 			version: 4,
@@ -64,7 +64,7 @@ describe("QR encoder", () => {
 
 	it("deterministically selects a penalty-minimizing mask when none is forced", () => {
 		// Auto mask is the lowest-penalty choice; locking it guards the penalty rules.
-		const qr = QrCode.encodeText("https://share.veyyon.dev/#demo", "M");
+		const qr = QrCode.encodeText("https://my.omp.sh/#demo", "M");
 		expect(qr.mask).toBe(1);
 		expect(matrixFingerprint(qr)).toBe("ee820c588fe36d99");
 	});

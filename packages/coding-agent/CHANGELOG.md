@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Added
+
+- Added a `tui.paintGround` setting (Settings › Appearance › Display) that paints the terminal background (OSC 11) with the theme's ground color while Veyyon runs and restores it on exit, including crash exits. `auto` (default) paints only when the terminal's reported background already matches the theme so no seam appears; `always` and `never` override.
+
 ## [16.5.2] - 2026-07-14
 
 ### Breaking Changes

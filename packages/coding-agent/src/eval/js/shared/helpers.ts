@@ -96,7 +96,7 @@ function getMergedEnv(ctx: HelperContext): Record<string, string> {
 
 const INTERNAL_URL_RE = /^([a-z][a-z0-9+.-]*):\/\/(.*)$/i;
 
-function resolvePath(ctx: HelperContext, value: string): string {
+function resolveCwdPath(ctx: HelperContext, value: string): string {
 	if (path.isAbsolute(value)) return path.normalize(value);
 	return path.resolve(ctx.cwd(), value);
 }
@@ -109,7 +109,7 @@ function resolvePath(ctx: HelperContext, value: string): string {
  */
 function resolveHelperPath(ctx: HelperContext, rawPath: string, op: "read" | "write"): string {
 	const match = INTERNAL_URL_RE.exec(rawPath);
-	if (!match) return resolvePath(ctx, rawPath);
+	if (!match) return resolveCwdPath(ctx, rawPath);
 	const scheme = match[1].toLowerCase();
 	const root = ctx.localRoots()[scheme];
 	if (!root) {

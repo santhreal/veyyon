@@ -479,34 +479,6 @@ export async function getAllPluginToolPaths(cwd: string): Promise<string[]> {
 }
 
 /**
- * Get all hook paths from all enabled plugins.
- */
-export async function getAllPluginHookPaths(cwd: string): Promise<string[]> {
-	const plugins = await getEnabledPlugins(cwd);
-	const paths: string[] = [];
-
-	for (const plugin of plugins) {
-		paths.push(...resolvePluginHookPaths(plugin));
-	}
-
-	return paths;
-}
-
-/**
- * Get all command paths from all enabled plugins.
- */
-export async function getAllPluginCommandPaths(cwd: string): Promise<string[]> {
-	const plugins = await getEnabledPlugins(cwd);
-	const paths: string[] = [];
-
-	for (const plugin of plugins) {
-		paths.push(...resolvePluginCommandPaths(plugin));
-	}
-
-	return paths;
-}
-
-/**
  * Get all extension module paths from all enabled plugins.
  */
 export async function getAllPluginExtensionPaths(cwd: string): Promise<string[]> {

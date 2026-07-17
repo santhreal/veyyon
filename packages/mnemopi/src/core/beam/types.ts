@@ -6,7 +6,10 @@ export type Metadata = Record<string, JsonValue>;
 
 export type MemoryScope = "global" | "session" | "channel" | string;
 export type TrustTier = "STATED" | "OBSERVED" | "INFERRED" | "SYSTEM" | string;
-export type Veracity =
+// Row-level veracity as persisted: canonical Veracity (veracity-consolidation.ts)
+// plus anything legacy schemas wrote. Writers clamp via clampVeracity; readers
+// must tolerate arbitrary strings.
+export type StoredVeracity =
 	| "unknown"
 	| "likely_true"
 	| "true"
@@ -134,7 +137,7 @@ export interface RememberOptions {
 	 * remains unchanged; when unset, embeddings and FTS use `content`.
 	 */
 	embedText?: string;
-	veracity?: Veracity;
+	veracity?: StoredVeracity;
 	memoryType?: string;
 	scope?: MemoryScope;
 	trustTier?: TrustTier;
@@ -144,7 +147,7 @@ export interface RememberOptions {
 export interface RememberBatchOptions {
 	extract?: boolean;
 	extractEntities?: boolean;
-	veracity?: Veracity;
+	veracity?: StoredVeracity;
 	memoryType?: string;
 	scope?: MemoryScope;
 	trustTier?: TrustTier;
@@ -196,7 +199,7 @@ export interface MemoryRow {
 	session_id: string;
 	importance: number;
 	metadata_json: string | null;
-	veracity: Veracity;
+	veracity: StoredVeracity;
 	memory_type?: string | null;
 	recall_count?: number;
 	last_recalled?: string | null;

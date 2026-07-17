@@ -20,6 +20,7 @@
  */
 import type { Tool, ToolCall } from "@veyyon/pi-ai/types";
 import { isArkSchema, isZodSchema, toolWireSchema } from "@veyyon/pi-ai/utils/schema";
+import { isRecord } from "@veyyon/pi-utils";
 import { parseJsonWithRepair } from "@veyyon/pi-utils/json-parse";
 
 /** Hard cap on raw JSON bytes accepted for repair attempts. */
@@ -35,10 +36,6 @@ export type ToolCallRepairOutcome =
 export function isToolCallRepairDisabled(): boolean {
 	const value = process.env.VEYYON_REPAIR_DISABLE?.trim().toLowerCase();
 	return value === "1" || value === "true" || value === "yes";
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function asObjectArgs(value: unknown): Record<string, unknown> | undefined {

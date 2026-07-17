@@ -13,7 +13,7 @@ prompt ──► │  veyyon (packages/coding-agent)                            
             │  AgentSession turn loop                                      │
             │    │   model stream → tools (read, bash, edit, …)            │
             │    ▼                                                          │
-            │  hashline / handlers ──► filesystem (approval-gated)         │
+            │  hashline / handlers ──► filesystem + sandbox                │
             └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -32,7 +32,7 @@ prompt ──► │  veyyon (packages/coding-agent)                            
 
 1. **Prefer one obvious path.** Hashline is the default edit surface; alternate `edit.mode` values
    exist for compatibility.
-2. **Fail loud.** Invalid config, stale hashline tags, and denied actions surface actionable
+2. **Fail loud.** Invalid config, stale hashline tags, and sandbox violations surface actionable
    errors. No silent fallback to weaker behavior.
 
 > **Spec — not shipped:** the full ordered repair rule cascade (alias maps, strict unknown-key

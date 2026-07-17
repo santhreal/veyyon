@@ -186,35 +186,35 @@ function rewriteZodNode(node: JsonObject, seen: WeakSet<object>): unknown {
 				: Array.isArray(node.options)
 					? (node.options as unknown[])
 					: [];
-			return { anyOf: arms.map(x => walk(x, seen)) };
+			return { anyOf: arms.map(x => rewriteZodValue(x, seen)) };
 		}
 
 		case "intersection": {
 			return {
-				allOf: [walk(def.left, seen), walk(def.right, seen)],
+				allOf: [rewriteZodValue(def.left, seen), rewriteZodValue(def.right, seen)],
 			};
 		}
 
 		case "array": {
-			return { type: "array", items: walk(def.element, seen) };
+			return { type: "array", items: rewriteZodValue(def.element, seen) };
 		}
 
 		case "set": {
 			const element = def.valueType ?? def.element;
-			return { type: "array", uniqueItems: true, items: walk(element, seen) };
+			return { type: "array", uniqueItems: true, items: rewriteZodValue(element, seen) };
 		}
 
 		case "tuple": {
 			const items = Array.isArray(def.items) ? (def.items as unknown[]) : [];
-			const out: JsonObject = { type: "array", prefixItems: items.map(x => walk(x, seen)) };
+			const out: JsonObject = { type: "array", prefixItems: items.map(x => rewriteZodValue(x, seen)) };
 			const rest = def.rest;
-			if (rest != null) out.items = walk(rest, seen);
+			if (rest != null) out.items = rewriteZodValue(rest, seen);
 			return out;
 		}
 
 		case "record":
 		case "map": {
-			return { type: "object", additionalProperties: walk(def.valueType, seen) };
+			return { type: "object", additionalProperties: rewriteZodValue(def.valueType, seen) };
 		}
 
 		case "object": {
@@ -222,7 +222,7 @@ function rewriteZodNode(node: JsonObject, seen: WeakSet<object>): unknown {
 			const properties: JsonObject = {};
 			const required: string[] = [];
 			for (const key in shape) {
-				const inner = walk(shape[key], seen);
+				const inner = rewriteZodValue(shape[key], seen);
 				properties[key] = inner;
 				if (!isOptionalEntry(shape[key])) required.push(key);
 			}
@@ -242,7 +242,7 @@ function rewriteZodNode(node: JsonObject, seen: WeakSet<object>): unknown {
 		case "lazy":
 		case "pipe":
 		case "transform": {
-			const inner = walk(unwrapInnerSchema(def), seen);
+			const inner = rewriteZodValue(unwrapInnerSchema(def), seen);
 			if (kind === "nullable" && isJsonObject(inner)) {
 				if (typeof inner.type === "string") {
 					return { ...inner, type: [inner.type, "null"] };
@@ -291,16 +291,16 @@ function isOptionalEntry(value: unknown): boolean {
  * self-referential graphs — a revisited node returns as-is.
  */
 export function decontaminateZodInstance(value: unknown): unknown {
-	return walk(value, new WeakSet());
+	return rewriteZodValue(value, new WeakSet());
 }
 
-function walk(value: unknown, seen: WeakSet<object>): unknown {
+function rewriteZodValue(value: unknown, seen: WeakSet<object>): unknown {
 	if (Array.isArray(value)) {
 		if (seen.has(value)) return value;
 		seen.add(value);
 		let changed = false;
 		const out = value.map(entry => {
-			const rewritten = walk(entry, seen);
+			const rewritten = rewriteZodValue(entry, seen);
 			if (rewritten !== entry) changed = true;
 			return rewritten;
 		});
@@ -314,7 +314,7 @@ function walk(value: unknown, seen: WeakSet<object>): unknown {
 		// Rewrite the node itself, then recurse into the rewrite so any nested
 		// Zod-instance children get cleaned in the same pass.
 		const rewritten = rewriteZodNode(value, seen);
-		return rewritten === value ? value : walk(rewritten, seen);
+		return rewritten === value ? value : rewriteZodValue(rewritten, seen);
 	}
 
 	// Plain JSON Schema node: recurse into children, preserving identity when
@@ -323,7 +323,7 @@ function walk(value: unknown, seen: WeakSet<object>): unknown {
 	const out: JsonObject = {};
 	for (const key in value) {
 		const child = value[key];
-		const rewritten = walk(child, seen);
+		const rewritten = rewriteZodValue(child, seen);
 		if (rewritten !== child) changed = true;
 		out[key] = rewritten;
 	}

@@ -37,14 +37,14 @@ import { StreamMarkupHealing, type StreamMarkupHealingEvent } from "./stream-mar
 
 type StreamingToolCall = ToolCall & StreamingPartialJsonCarrier;
 
-function cloneToolCall(source: StreamingToolCall): StreamingToolCall {
+function shallowCloneToolCall(source: StreamingToolCall): StreamingToolCall {
 	const block: StreamingToolCall = { ...source, arguments: source.arguments };
 	const partialJson = getStreamingPartialJson(source);
 	if (partialJson !== undefined) setStreamingPartialJson(block, partialJson);
 	return block;
 }
 
-function syncToolCall(target: StreamingToolCall, source: StreamingToolCall): void {
+function shallowSyncToolCall(target: StreamingToolCall, source: StreamingToolCall): void {
 	Object.assign(target, source);
 	const partialJson = getStreamingPartialJson(source);
 	if (partialJson === undefined) clearStreamingPartialJson(target);
@@ -169,7 +169,7 @@ class LeakedThinkingProjector {
 		this.#apply(this.#healer.flushEvents(), this.#lastTextSignature);
 		this.#closeText();
 		this.#closeThinking();
-		const block = cloneToolCall(source);
+		const block = shallowCloneToolCall(source);
 		this.#partial.content.push(block);
 		const index = this.#partial.content.length - 1;
 		this.#toolBlocks.set(srcIndex, { index, block });
@@ -183,14 +183,14 @@ class LeakedThinkingProjector {
 			entry = this.#toolBlocks.get(srcIndex);
 		}
 		if (!entry) return;
-		if (source) syncToolCall(entry.block, source);
+		if (source) shallowSyncToolCall(entry.block, source);
 		this.#out.push({ type: "toolcall_delta", contentIndex: entry.index, delta, partial: this.#partial });
 	}
 
 	toolEnd(srcIndex: number, toolCall: ToolCall): void {
 		const entry = this.#toolBlocks.get(srcIndex);
 		if (entry) {
-			syncToolCall(entry.block, toolCall);
+			shallowSyncToolCall(entry.block, toolCall);
 			this.#out.push({
 				type: "toolcall_end",
 				contentIndex: entry.index,
@@ -204,7 +204,7 @@ class LeakedThinkingProjector {
 		this.#apply(this.#healer.flushEvents(), this.#lastTextSignature);
 		this.#closeText();
 		this.#closeThinking();
-		const block = cloneToolCall(toolCall);
+		const block = shallowCloneToolCall(toolCall);
 		this.#partial.content.push(block);
 		const index = this.#partial.content.length - 1;
 		this.#out.push({ type: "toolcall_start", contentIndex: index, partial: this.#partial });

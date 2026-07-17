@@ -1,8 +1,13 @@
 import { parseJsonWithRepair, parseStreamingJson } from "@veyyon/pi-utils";
 import type { Message, ToolCall } from "../types";
-import { asRecord, mintToolCallId, partialSuffixOverlapAny } from "./coercion";
+import { asRecordOrEmpty, mintToolCallId, partialSuffixOverlapAny } from "./coercion";
 import dialectPrompt from "./hermes.md" with { type: "text" };
-import { renderChatMlTranscript, renderDelimitedThinking, renderToolResponseResults, stringifyJson } from "./rendering";
+import {
+	renderChatMlTranscript,
+	renderDelimitedThinking,
+	renderToolResponseResults,
+	stringifyJsonOrNull,
+} from "./rendering";
 import type {
 	DialectDefinition,
 	DialectRenderOptions,
@@ -153,7 +158,7 @@ export class HermesInbandScanner implements InbandScanner {
 					args = {};
 				}
 			}
-			return { name: parsed.name, arguments: asRecord(args) };
+			return { name: parsed.name, arguments: asRecordOrEmpty(args) };
 		} catch {
 			return undefined;
 		}
@@ -168,7 +173,7 @@ export class HermesInbandScanner implements InbandScanner {
 }
 
 function renderToolCall(call: ToolCall, _options: DialectRenderOptions = {}): string {
-	return `<tool_call>\n${stringifyJson({ name: call.name, arguments: call.arguments })}\n</tool_call>`;
+	return `<tool_call>\n${stringifyJsonOrNull({ name: call.name, arguments: call.arguments })}\n</tool_call>`;
 }
 
 function renderAssistantToolCalls(calls: readonly ToolCall[], options: DialectRenderOptions = {}): string {

@@ -1,5 +1,6 @@
 import * as net from "node:net";
 import { Process, ProcessStatus } from "@veyyon/pi-natives";
+import { stripTrailingSlashes } from "@veyyon/pi-utils";
 import type { Browser, Page } from "puppeteer-core";
 import { ToolError, throwIfAborted } from "../tool-errors";
 
@@ -33,7 +34,7 @@ export async function findFreeCdpPort(): Promise<number> {
 export async function waitForCdp(cdpUrl: string, timeoutMs: number, signal?: AbortSignal): Promise<void> {
 	const deadline = Date.now() + timeoutMs;
 	let lastErr: unknown;
-	const probeUrl = `${cdpUrl.replace(/\/+$/, "")}/json/version`;
+	const probeUrl = `${stripTrailingSlashes(cdpUrl)}/json/version`;
 	while (Date.now() < deadline) {
 		throwIfAborted(signal);
 		const probeTimeout = AbortSignal.timeout(2000);

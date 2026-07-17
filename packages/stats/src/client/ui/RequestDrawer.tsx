@@ -196,6 +196,13 @@ export function RequestDrawer({ id, onClose }: RequestDrawerProps) {
 
 							{/* JSON blocks */}
 							<div className="stats-drawer-json-blocks">
+								{details.messages.length > 1 && (
+									<JsonBlock
+										data={details.messages.slice(0, -1)}
+										title="Conversation Context"
+										initialCollapsed={true}
+									/>
+								)}
 								<JsonBlock data={details.output} title="Output Payload" initialCollapsed={false} />
 								<JsonBlock data={details} title="Raw Request Metadata" initialCollapsed={true} />
 							</div>

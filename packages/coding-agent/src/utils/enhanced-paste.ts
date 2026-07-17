@@ -53,7 +53,7 @@ function decodeBase64Utf8(value: string): string | undefined {
 	}
 }
 
-function parseMetadata(raw: string): Map<string, string> {
+function parsePasteMetadata(raw: string): Map<string, string> {
 	const metadata = new Map<string, string>();
 	for (const part of raw.split(":")) {
 		const eq = part.indexOf("=");
@@ -70,7 +70,7 @@ export function parseOsc5522Packet(data: string): Osc5522Packet | undefined {
 	const separator = body.indexOf(";");
 	const metadataRaw = separator === -1 ? body : body.slice(0, separator);
 	const payload = separator === -1 ? "" : body.slice(separator + 1);
-	return { metadata: parseMetadata(metadataRaw), payload };
+	return { metadata: parsePasteMetadata(metadataRaw), payload };
 }
 
 function choosePasteMime(mimes: readonly string[]): { kind: PasteReadKind; mimeType: string } | undefined {

@@ -32,3 +32,14 @@ export async function buildDirectoryResource(
 		...(notes ? { notes } : {}),
 	};
 }
+
+/**
+ * Map a lowercased file extension (".md", ".json", ...) to the
+ * InternalResource contentType union. The single owner for every
+ * file-backed internal-urls protocol.
+ */
+export function contentTypeForFileExtension(ext: string): InternalResource["contentType"] {
+	if (ext === ".md") return "text/markdown";
+	if (ext === ".json") return "application/json";
+	return "text/plain";
+}

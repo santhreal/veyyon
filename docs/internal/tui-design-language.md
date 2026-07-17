@@ -4,7 +4,7 @@ The terminal-UX conventions Veyyon follows. Implementation lives in `packages/tu
 
 ## Brand palette in the TUI
 
-First-party themes follow [Brand and identity](./brand.md); the website (`website/site.css` `:root`) is the reference token source.
+First-party themes follow [Design & brand](./design.md); the website (`website/site.css` `:root`) is the reference token source.
 
 | Role | Titanium (default dark) | Veyyon Dark | Light (default light) |
 | --- | --- | --- | --- |

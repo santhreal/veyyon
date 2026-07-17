@@ -12,6 +12,11 @@ const RECENCY: NonNullable<SearchCommandArgs["recency"]>[] = ["day", "week", "mo
 export default class Search extends Command {
 	static description = "Test web search providers";
 
+	static examples = [
+		'veyyon q --provider=exa "what\'s the color of the sky"',
+		'veyyon q --provider=brave --recency=week "latest TypeScript 5.7 changes"',
+	];
+
 	static aliases = ["q"];
 
 	static args = {

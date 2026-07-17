@@ -1,10 +1,13 @@
 import type { SQLQueryBindings } from "bun:sqlite";
-import { generateId, stableMemoryId } from "../../util/ids";
+import { collapseWhitespace } from "@veyyon/pi-utils";
+import { envInt } from "../../util/env";
+import { generateTimedId, stableMemoryId } from "../../util/ids";
+import { escapeSqlLike } from "../../util/regex";
 import { aaakEncode } from "../aaak";
 import { REGEX_EXTRACTION_MAX_INPUT_CHARS } from "../entities";
 import { EpisodicGraph } from "../episodic-graph";
 import { type ExtractedFactCategories, heuristicExtractFacts } from "../extraction";
-import { clampVeracity } from "../veracity-consolidation";
+import { clampVeracity, VERACITY_WEIGHTS, type Veracity } from "../veracity-consolidation";
 import { scheduleEmbedding } from "./helpers";
 import type { BeamMemoryState, BeamStats, JsonValue, MemoriaRetrieveResult, Metadata, SleepResult } from "./types";
 
@@ -35,23 +38,6 @@ const CONTAMINATED_VERACITY: Record<string, true> = {
 	unknown: true,
 	false: true,
 };
-
-const EPISODIC_VERACITY_WEIGHT = {
-	true: 1.0,
-	stated: 1.0,
-	unknown: 0.8,
-	inferred: 0.7,
-	imported: 0.6,
-	tool: 0.5,
-	false: 0.0,
-} as const;
-
-type EpisodicVeracity = keyof typeof EPISODIC_VERACITY_WEIGHT;
-
-function envInt(name: string, defaultValue: number): number {
-	const parsed = Number.parseInt(process.env[name] ?? "", 10);
-	return Number.isFinite(parsed) ? parsed : defaultValue;
-}
 
 const SLEEP_BATCH_SIZE = envInt("MNEMOPI_SLEEP_BATCH", 5000);
 const TIER2_DAYS = envInt("MNEMOPI_TIER2_DAYS", 30);
@@ -95,7 +81,7 @@ function splitSleepItems(beam: BeamMemoryState, source: string, items: readonly 
 	let currentChars = 0;
 
 	for (const item of items) {
-		const contentChars = (rowValue(item, "content") ?? "").length;
+		const contentChars = (rowText(item, "content") ?? "").length;
 		const separatorChars = current.length === 0 ? 0 : SLEEP_SUMMARY_SEPARATOR.length;
 		if (current.length > 0 && currentChars + separatorChars + contentChars > joinedLimit) {
 			chunks.push({ items: current, originalChars: currentChars });
@@ -112,7 +98,7 @@ function splitSleepItems(beam: BeamMemoryState, source: string, items: readonly 
 function buildSleepSummary(beam: BeamMemoryState, source: string, chunk: SleepChunk): SleepSummary {
 	const maxChars = normalizedMaxEpisodeChars(beam);
 	const prefix = `[${source}] `;
-	const joined = chunk.items.map(item => rowValue(item, "content") ?? "").join(SLEEP_SUMMARY_SEPARATOR);
+	const joined = chunk.items.map(item => rowText(item, "content") ?? "").join(SLEEP_SUMMARY_SEPARATOR);
 	const uncapped = `${prefix}${aaakEncode(joined)}`;
 	const truncated = uncapped.length > maxChars;
 	return {
@@ -135,56 +121,35 @@ function json(metadata: Metadata | null | undefined): string {
 	return JSON.stringify(metadata ?? {});
 }
 
-function rowValue(row: Row, key: string): string | null {
+function rowText(row: Row, key: string): string | null {
 	const value = row[key];
 	return value == null ? null : String(value);
 }
 
-function isEpisodicVeracity(value: string): value is EpisodicVeracity {
-	return Object.hasOwn(EPISODIC_VERACITY_WEIGHT, value);
-}
-
-function clampEpisodicVeracity(raw: unknown): EpisodicVeracity {
-	if (raw === null || raw === undefined) return "unknown";
-	const norm = String(raw).trim().toLowerCase();
-	if (norm === "") return "unknown";
-	if (isEpisodicVeracity(norm)) return norm;
-	const clamped = clampVeracity(raw, "consolidateToEpisodic.veracity");
-	return isEpisodicVeracity(clamped) ? clamped : "unknown";
-}
-
-function aggregateEpisodicVeracity(sourceVeracities: readonly string[]): EpisodicVeracity {
-	let winner: EpisodicVeracity | null = null;
+function aggregateEpisodicVeracity(sourceVeracities: readonly string[]): Veracity {
+	let winner: Veracity | null = null;
 	let maxCount = 0;
-	const counts = new Map<EpisodicVeracity, number>();
+	const counts = new Map<Veracity, number>();
 	for (const raw of sourceVeracities) {
-		const value = clampEpisodicVeracity(raw);
+		const value = clampVeracity(raw, "consolidateToEpisodic.veracity");
 		if (value === "unknown") continue;
 		const count = (counts.get(value) ?? 0) + 1;
 		counts.set(value, count);
 		if (
 			count > maxCount ||
-			(count === maxCount && (winner === null || EPISODIC_VERACITY_WEIGHT[value] < EPISODIC_VERACITY_WEIGHT[winner]))
+			(count === maxCount && (winner === null || VERACITY_WEIGHTS[value] < VERACITY_WEIGHTS[winner]))
 		) {
 			winner = value;
 			maxCount = count;
 		}
 	}
-	if (winner !== null) return winner;
-	for (const raw of sourceVeracities) {
-		if (clampEpisodicVeracity(raw) === "unknown") return "unknown";
-	}
-	return "unknown";
-}
-
-function compactWhitespace(text: string): string {
-	return text.replace(/\s+/g, " ").trim();
+	return winner ?? "unknown";
 }
 
 function contextSnippet(content: string, index: number, width = 50): string {
 	const start = Math.max(0, index - width);
 	const end = Math.min(content.length, index + width);
-	return compactWhitespace(content.slice(start, end));
+	return collapseWhitespace(content.slice(start, end));
 }
 
 function sourceSession(beam: BeamMemoryState): string {
@@ -195,9 +160,7 @@ function asRows(value: unknown): Row[] {
 	return Array.isArray(value) ? (value as Row[]) : [];
 }
 
-function escapeLike(value: string): string {
-	return value.replace(/[\\%_]/g, m => `\\${m}`);
-}
+const escapeLike = escapeSqlLike;
 
 function makeQuestionTokens(query: string): string[] {
 	const stop = new Set([
@@ -239,7 +202,7 @@ function makeQuestionTokens(query: string): string[] {
 		.slice(0, 8);
 }
 
-function emitEvent(
+function emitConsolidationEvent(
 	beam: BeamMemoryState,
 	type: string,
 	memoryId: string,
@@ -394,10 +357,10 @@ export function consolidateToEpisodic(
 	importance = 0.6,
 	options: ConsolidateOptions = {},
 ): string {
-	const memoryId = generateId(summary);
+	const memoryId = generateTimedId(summary);
 	const timestamp = isoNow();
 	const scope = options.scope ?? "session";
-	const veracity = clampEpisodicVeracity(options.veracity ?? "unknown");
+	const veracity = clampVeracity(options.veracity ?? "unknown", "consolidateToEpisodic.veracity");
 	const metadata = options.metadata ?? {};
 	beam.db.run(
 		`INSERT INTO episodic_memory
@@ -426,69 +389,11 @@ export function consolidateToEpisodic(
 	extractAndStoreFacts(beam, summary, 0, memoryId);
 	ingestIntoEpisodicGraph(beam, memoryId, summary);
 	scheduleEmbedding(beam, [{ memoryId, content: summary }]);
-	emitEvent(beam, "MEMORY_CONSOLIDATED", memoryId, summary, source, importance, {
+	emitConsolidationEvent(beam, "MEMORY_CONSOLIDATED", memoryId, summary, source, importance, {
 		summary_of: [...sourceWmIds],
 		...metadata,
 	});
 	return memoryId;
-}
-export function detectLanguage(_beam: BeamMemoryState, text: string): string {
-	if (typeof text !== "string" || text.length === 0) return "en";
-	const lower = text.toLowerCase();
-	const russianChars = [...lower].filter(c => "абвгдеёжзийклмнопрстуфхцчшщъыьэюя".includes(c)).length;
-	if (russianChars >= 5) return "ru";
-	if (russianChars >= 2) {
-		const markers = new Set(["я", "ты", "он", "она", "мы", "вы", "они", "не", "на", "что", "как", "это"]);
-		let hits = 0;
-		for (const word of lower.split(/\s+/)) if (markers.has(word)) hits++;
-		if (hits >= 2) return "ru";
-	}
-	if (/[äöüß]/.test(lower)) return "de";
-	const words = new Set(lower.match(/[\p{L}\p{N}_]+/gu) ?? []);
-	let german = 0;
-	for (const marker of [
-		"ich",
-		"du",
-		"wir",
-		"ist",
-		"nicht",
-		"für",
-		"und",
-		"der",
-		"die",
-		"das",
-		"ein",
-		"eine",
-		"habe",
-		"bin",
-		"sind",
-	]) {
-		if (words.has(marker)) german++;
-	}
-	if (german >= 2) return "de";
-	if (/[ñáéíóúü¿¡]/.test(lower)) return "es";
-	let spanish = 0;
-	for (const marker of [
-		"y",
-		"de",
-		"por",
-		"con",
-		"para",
-		"que",
-		"qué",
-		"como",
-		"el",
-		"la",
-		"un",
-		"una",
-		"mi",
-		"tu",
-		"soy",
-		"estoy",
-	]) {
-		if (words.has(marker)) spanish++;
-	}
-	return spanish >= 3 ? "es" : "en";
 }
 type StoreFactStringOptions = {
 	routeHeuristicCategories?: boolean;
@@ -633,7 +538,7 @@ export function extractAndStoreFacts(
 	for (const match of text.matchAll(
 		/\b([A-Z][A-Za-z0-9_-]{2,})\s+(?:is|uses|runs|owns|depends on)\s+([^.!?;]{2,80})/g,
 	)) {
-		insertKg(beam, messageIdx, match[1] ?? "", "related_to", compactWhitespace(match[2] ?? ""), sourceMemoryId);
+		insertKg(beam, messageIdx, match[1] ?? "", "related_to", collapseWhitespace(match[2] ?? ""), sourceMemoryId);
 	}
 	if (/\b(no longer|not|never|don't|do not|isn't|wasn't)\b/i.test(text)) counts.negation++;
 	if (/\b(decided|decision|choose|chose|approved|rejected)\b/i.test(text)) counts.decision++;
@@ -857,8 +762,8 @@ export function degradeEpisodic(beam: BeamMemoryState, dryRun = false): Record<s
 	};
 	if (dryRun) return result;
 	for (const row of tier1Rows) {
-		const id = rowValue(row, "id");
-		const content = rowValue(row, "content") ?? "";
+		const id = rowText(row, "id");
+		const content = rowText(row, "content") ?? "";
 		if (!id) continue;
 		const compressed = content.slice(0, 800);
 		beam.db.run("SAVEPOINT degrade_episodic");
@@ -877,8 +782,8 @@ export function degradeEpisodic(beam: BeamMemoryState, dryRun = false): Record<s
 		}
 	}
 	for (const row of tier2Rows) {
-		const id = rowValue(row, "id");
-		const content = rowValue(row, "content") ?? "";
+		const id = rowText(row, "id");
+		const content = rowText(row, "content") ?? "";
 		if (!id) continue;
 		const compressed = content.length > TIER3_MAX_CHARS ? extractKeySignal(content, TIER3_MAX_CHARS) : content;
 		beam.db.run("SAVEPOINT degrade_episodic");
@@ -909,7 +814,7 @@ export function getContaminated(beam: BeamMemoryState, limit = 50, minImportance
 			)
 			.all(minImportance, limit),
 	);
-	return rows.filter(row => CONTAMINATED_VERACITY[rowValue(row, "veracity") ?? "unknown"] === true);
+	return rows.filter(row => CONTAMINATED_VERACITY[rowText(row, "veracity") ?? "unknown"] === true);
 }
 export function health(
 	beam: BeamMemoryState,
@@ -975,7 +880,7 @@ export function sleep(beam: BeamMemoryState, dryRun = false): SleepResult {
 		return { dry_run: dryRun, status: "no_op", message: "No old working memories to consolidate" };
 	if (!dryRun) {
 		const claimTs = isoNow();
-		const ids = rows.map(row => rowValue(row, "id")).filter((id): id is string => id !== null);
+		const ids = rows.map(row => rowText(row, "id")).filter((id): id is string => id !== null);
 		const placeholders = ids.map(() => "?").join(",");
 		beam.db.run(
 			`UPDATE working_memory SET consolidated_at = ? WHERE id IN (${placeholders}) AND consolidated_at IS NULL`,
@@ -986,7 +891,7 @@ export function sleep(beam: BeamMemoryState, dryRun = false): SleepResult {
 				beam.db
 					.query(`SELECT id FROM working_memory WHERE id IN (${placeholders}) AND consolidated_at = ?`)
 					.all(...ids, claimTs),
-			).map(row => rowValue(row, "id")),
+			).map(row => rowText(row, "id")),
 		);
 		if (claimed.size === 0)
 			return {
@@ -994,12 +899,12 @@ export function sleep(beam: BeamMemoryState, dryRun = false): SleepResult {
 				status: "no_op",
 				message: "All eligible rows claimed by concurrent sleep",
 			};
-		rows = rows.filter(row => claimed.has(rowValue(row, "id")));
+		rows = rows.filter(row => claimed.has(rowText(row, "id")));
 	}
 
 	const grouped = new Map<string, Row[]>();
 	for (const row of rows) {
-		const source = rowValue(row, "source") ?? "unknown";
+		const source = rowText(row, "source") ?? "unknown";
 		const group = grouped.get(source);
 		if (group) group.push(row);
 		else grouped.set(source, [row]);
@@ -1009,12 +914,12 @@ export function sleep(beam: BeamMemoryState, dryRun = false): SleepResult {
 	let summariesCreated = 0;
 	for (const [source, items] of grouped) {
 		for (const chunk of splitSleepItems(beam, source, items)) {
-			const ids = chunk.items.map(item => rowValue(item, "id")).filter((id): id is string => id !== null);
+			const ids = chunk.items.map(item => rowText(item, "id")).filter((id): id is string => id !== null);
 			let scope = "session";
 			let validUntil: string | null = null;
 			for (const item of chunk.items) {
-				if (rowValue(item, "scope") === "global") scope = "global";
-				const itemValidUntil = rowValue(item, "valid_until");
+				if (rowText(item, "scope") === "global") scope = "global";
+				const itemValidUntil = rowText(item, "valid_until");
 				if (itemValidUntil && (validUntil === null || itemValidUntil < validUntil)) validUntil = itemValidUntil;
 			}
 			const sleepSummary = buildSleepSummary(beam, source, chunk);
@@ -1029,7 +934,7 @@ export function sleep(beam: BeamMemoryState, dryRun = false): SleepResult {
 				consolidateToEpisodic(beam, summary, ids, "sleep_consolidation", 0.6, {
 					scope,
 					validUntil,
-					veracity: aggregateEpisodicVeracity(chunk.items.map(item => rowValue(item, "veracity") ?? "unknown")),
+					veracity: aggregateEpisodicVeracity(chunk.items.map(item => rowText(item, "veracity") ?? "unknown")),
 					metadata,
 				});
 			}
@@ -1093,7 +998,7 @@ export function sleepAllSessions(beam: BeamMemoryState, dryRun = false): SleepRe
 	let summaries = 0;
 	let consolidated = 0;
 	for (const row of sessions) {
-		const sessionId = rowValue(row, "session_id") ?? "default";
+		const sessionId = rowText(row, "session_id") ?? "default";
 		const scoped = Object.create(Object.getPrototypeOf(beam)) as BeamMemoryState;
 		Object.assign(scoped, beam, { sessionId, channelId: sessionId });
 		const result = sleep(scoped, dryRun) as Row;

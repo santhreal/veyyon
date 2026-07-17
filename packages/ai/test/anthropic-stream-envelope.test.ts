@@ -162,7 +162,7 @@ function getStrictFlags(params: unknown): boolean[] {
 
 function createTextSuccessEvents(
 	text: string,
-	options: { duplicateMessageStart?: boolean; stopReason?: string } = {},
+	options: { duplicateMessageStart?: boolean; stopReason?: string; stopSequence?: string } = {},
 ): MockAnthropicEvent[] {
 	const events: MockAnthropicEvent[] = [
 		{
@@ -182,7 +182,10 @@ function createTextSuccessEvents(
 		{ type: "content_block_stop", index: 0 },
 		{
 			type: "message_delta",
-			delta: { stop_reason: options.stopReason ?? "end_turn" },
+			delta: {
+				stop_reason: options.stopReason ?? "end_turn",
+				...(options.stopSequence !== undefined ? { stop_sequence: options.stopSequence } : {}),
+			},
 			usage: {
 				input_tokens: 12,
 				output_tokens: 4,
@@ -779,6 +782,39 @@ describe("anthropic stream envelope handling", () => {
 		expect(countEvents(events, "done")).toBe(1);
 		expect(result.stopReason).toBe("length");
 		expect(JSON.parse(JSON.stringify(result.content))).toEqual([{ type: "text", text: "hello" }]);
+	});
+
+	it("surfaces the matched stop sequence on a stop_sequence stop", async () => {
+		vi.spyOn(AnthropicMessages.prototype, "create").mockImplementation(
+			() =>
+				createMockRequest(
+					createTextSuccessEvents("hello", { stopReason: "stop_sequence", stopSequence: "END" }),
+				) as never,
+		);
+
+		const stream = streamAnthropic(model, context, { apiKey: "sk-ant-test" });
+		for await (const _event of stream) {
+			// drain
+		}
+		const result = await stream.result();
+
+		expect(result.stopReason).toBe("stop");
+		expect(result.stopSequence).toBe("END");
+	});
+
+	it("leaves stopSequence unset when the turn ends without one", async () => {
+		vi.spyOn(AnthropicMessages.prototype, "create").mockImplementation(
+			() => createMockRequest(createTextSuccessEvents("hello")) as never,
+		);
+
+		const stream = streamAnthropic(model, context, { apiKey: "sk-ant-test" });
+		for await (const _event of stream) {
+			// drain
+		}
+		const result = await stream.result();
+
+		expect(result.stopReason).toBe("stop");
+		expect(result.stopSequence).toBeUndefined();
 	});
 
 	it("completes the turn instead of failing when the API sends an unknown stop reason", async () => {

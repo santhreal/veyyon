@@ -1,6 +1,8 @@
 import type { HelperDelegate, HelperOptions, Template, TemplateDelegate } from "handlebars";
 import Handlebars from "handlebars";
 
+import { OPENING_XML_TAG_RE } from "./regex";
+
 export type { HelperDelegate, HelperOptions, Template, TemplateDelegate };
 
 export type PromptRenderPhase = "pre-render" | "post-render";
@@ -11,11 +13,11 @@ export interface PromptFormatOptions {
 	normalizeRfc2119?: boolean;
 }
 
-// Opening XML tag (not self-closing, not closing)
-const OPENING_XML = /^<([a-z_-]+)(?:\s+[^>]*)?>$/;
+// Opening XML tag (not self-closing, not closing) — grammar owned by regex.ts.
+const OPENING_XML = OPENING_XML_TAG_RE;
 
 /**
- * Closing XML tag matcher, manual equivalent of `/^<\/([a-z_-]+)>$/` — avoids a
+ * Closing XML tag matcher, manual equivalent of CLOSING_XML_TAG_RE — avoids a
  * RegExp exec (and match array allocation) per `<`-prefixed line. Caller
  * guarantees `s` starts `</`.
  */

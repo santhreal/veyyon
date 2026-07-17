@@ -68,6 +68,72 @@ describe("Text component", () => {
 		expect(plainTail?.includes("\x1b[31m")).toBe(false);
 	});
 
+	it("reports a stable prefix that is byte-identical between consecutive streamed renders", () => {
+		// Engine contract (RenderStablePrefix): every row before the reported
+		// count must hold the identical string value at the identical index in
+		// the previously observed render array.
+		const text = new Text("", 1, 1);
+		let accumulated = "";
+		let observed: readonly string[] = [];
+		const words = "alpha beta gamma delta epsilon zeta".split(" ");
+		for (let t = 0; t < 120; t++) {
+			accumulated += t % 7 === 0 ? `${words[t % words.length]}\n` : `${words[t % words.length]} `;
+			text.setText(accumulated);
+			const rows = text.render(24);
+			const report = text.getRenderStablePrefixRows(rows);
+			expect(report).toBeGreaterThanOrEqual(0);
+			expect(report).toBeLessThanOrEqual(Math.min(rows.length, observed.length || 0));
+			for (let i = 0; i < report; i++) expect(rows[i]).toBe(observed[i] as string);
+			observed = rows;
+		}
+		// Deep into the stream the settled prefix must actually be reported
+		// (paddingY + committed wrapped rows), not perpetually zero.
+		text.setText(`${accumulated}more`);
+		const rows = text.render(24);
+		expect(text.getRenderStablePrefixRows(rows)).toBeGreaterThan(rows.length - 5);
+	});
+
+	it("consuming the stable-prefix report re-bases it to the full current render", () => {
+		const text = new Text("one\ntwo three four five six seven", 1, 1);
+		const rows = text.render(12);
+		text.getRenderStablePrefixRows(rows); // consume whatever the first render left
+		// Nothing changed since the read: the whole array is now observed.
+		expect(text.getRenderStablePrefixRows(text.render(12))).toBe(rows.length);
+	});
+
+	it("reports zero for an array it did not return", () => {
+		// Contract guard for row-transforming subclass overrides: a report may
+		// only cover the exact array the reader received.
+		const text = new Text("one\ntwo", 1, 1);
+		const rows = text.render(12);
+		text.getRenderStablePrefixRows(rows);
+		expect(text.getRenderStablePrefixRows(rows.slice())).toBe(0);
+		// And the mismatch resets the accumulator, never resurrecting a claim.
+		expect(text.getRenderStablePrefixRows(rows)).toBe(0);
+	});
+
+	it("drops the stable-prefix report to zero on non-append edits and width changes", () => {
+		const text = new Text("alpha beta\ngamma delta", 1, 1);
+		text.getRenderStablePrefixRows(text.render(20));
+		// Non-append rewrite: nothing provably carries over.
+		text.setText("zeta\nomega");
+		expect(text.getRenderStablePrefixRows(text.render(20))).toBe(0);
+		// Re-observe, then change width: every row re-pads.
+		text.getRenderStablePrefixRows(text.render(20));
+		expect(text.getRenderStablePrefixRows(text.render(11))).toBe(0);
+	});
+
+	it("accumulates the minimum stable prefix across renders between reads", () => {
+		const text = new Text("first\nsecond", 1, 1);
+		text.getRenderStablePrefixRows(text.render(20));
+		// Append (keeps a prefix), then rewrite (keeps nothing) before the next
+		// read: the report must be the min of the interval, i.e. zero.
+		text.setText("first\nsecond third");
+		text.render(20);
+		text.setText("rewritten\nentirely");
+		expect(text.getRenderStablePrefixRows(text.render(20))).toBe(0);
+	});
+
 	it("renders CRLF and bare-CR content without leaving a stray carriage return", () => {
 		// End-to-end guard through the real render sink: a surviving `\r` would move
 		// the terminal cursor to column 0 and corrupt the row. CRLF and bare CR both

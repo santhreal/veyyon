@@ -10,8 +10,8 @@ import * as git from "../utils/git";
 import { runAgenticCommit } from "./agentic";
 import {
 	extractScopeCandidates,
+	generateCommitSummary,
 	generateConventionalAnalysis,
-	generateSummary,
 	validateAnalysis,
 	validateSummary,
 } from "./analysis";
@@ -212,7 +212,7 @@ async function generateSummaryWithRetry(input: {
 }): Promise<{ summary: string }> {
 	let context = input.userContext;
 	for (let attempt = 0; attempt < 3; attempt += 1) {
-		const result = await generateSummary({
+		const result = await generateCommitSummary({
 			model: input.model,
 			apiKey: input.apiKey,
 			thinkingLevel: input.thinkingLevel,

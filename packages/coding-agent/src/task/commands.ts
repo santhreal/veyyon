@@ -3,8 +3,9 @@
  *
  * Commands are embedded at build time via Bun's import with { type: "text" }.
  */
+
 import * as path from "node:path";
-import { parseFrontmatter, prompt } from "@veyyon/pi-utils";
+import { getStringProperty, parseFrontmatter, prompt } from "@veyyon/pi-utils";
 import { type SlashCommand, slashCommandCapability } from "../capability/slash-command";
 import { loadCapability } from "../discovery";
 // Embed command markdown files at build time
@@ -24,11 +25,6 @@ export interface WorkflowCommand {
 }
 
 /** Extract string value from frontmatter field */
-function getString(frontmatter: Record<string, unknown>, key: string): string {
-	const value = frontmatter[key];
-	return typeof value === "string" ? value : "";
-}
-
 /** Cache for bundled commands */
 let bundledCommandsCache: WorkflowCommand[] | null = null;
 
@@ -51,7 +47,7 @@ export function loadBundledCommands(): WorkflowCommand[] {
 
 		commands.push({
 			name: cmdName,
-			description: getString(frontmatter, "description"),
+			description: getStringProperty(frontmatter, "description") ?? "",
 			instructions: body,
 			source: "bundled",
 			filePath: `embedded:${name}`,
@@ -90,7 +86,7 @@ export async function discoverCommands(cwd: string): Promise<WorkflowCommand[]> 
 
 		commands.push({
 			name: cmd.name,
-			description: getString(frontmatter, "description"),
+			description: getStringProperty(frontmatter, "description") ?? "",
 			instructions: body,
 			source,
 			filePath: cmd.path,

@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import { type Env, polyphonicRecallEnabled } from "../config";
+import { type Env, envDisabled, polyphonicRecallEnabled } from "../config";
 import { closeQuietly, type DatabasePath, openDatabase } from "../db";
 import type { BeamMemoryState, JsonValue, Metadata, RecallResult } from "./beam/types";
 import { EpisodicGraph } from "./episodic-graph";
@@ -87,12 +87,6 @@ const POLYPHONIC_VOICES: readonly PolyphonicVoice[] = ["vector", "graph", "fact"
 export function polyphonicRecallIsEnabled(env: Env = process.env): boolean {
 	return polyphonicRecallEnabled(env);
 }
-function envDisabled(name: string, env: Env = process.env): boolean {
-	const value = env[name];
-	if (value === undefined) return false;
-	return ["0", "false", "no", "off"].includes(value.trim().toLowerCase());
-}
-
 function metadataValue(value: unknown): JsonValue {
 	if (value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
 		return value;
@@ -109,7 +103,7 @@ function metadataValue(value: unknown): JsonValue {
 	return String(value);
 }
 
-function parseMetadata(raw: string | null): Metadata {
+function parseRecallMetadata(raw: string | null): Metadata {
 	if (raw === null || raw.length === 0) return {};
 	try {
 		const parsed = JSON.parse(raw) as unknown;
@@ -326,8 +320,10 @@ export class PolyphonicRecallEngine {
 		if (envDisabled("MNEMOPI_VOICE_FACT")) return [];
 		const byId = new Map<string, VoiceRecallResult>();
 		for (const word of queryWords(query)) {
-			const subject = word[0] === undefined ? word : word[0].toUpperCase() + word.slice(1);
-			for (const fact of this.consolidator.getConsolidatedFacts(subject, 0.5)) {
+			// Whole-word case-insensitive lookup: subjects are stored verbatim from
+			// extraction, so an exact capitalized-word match misses "MacBook" for
+			// query "macbook" and every multi-word subject.
+			for (const fact of this.consolidator.getConsolidatedFactsBySubjectWord(word, 0.5)) {
 				for (const source of fact.sources) {
 					const memoryId = source.trim();
 					if (memoryId.length === 0) continue;
@@ -485,7 +481,7 @@ export class PolyphonicRecallEngine {
 		for (const result of results) {
 			const row = this.lookupMemory(result.memoryId);
 			if (row === null) continue;
-			const rowMetadata = parseMetadata(row.metadata_json);
+			const rowMetadata = parseRecallMetadata(row.metadata_json);
 			const voiceScores = sortedVoiceScores(result.voiceScores);
 			hydrated.push({
 				...row,

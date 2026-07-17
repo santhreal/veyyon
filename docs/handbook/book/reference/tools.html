@@ -46,10 +46,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-24acbed9.js";
+            window.path_to_searchindex_js = "../searchindex-8badf17b.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-9cfd259b.js"></script>
+        <script src="../toc-19dab021.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -193,13 +193,13 @@
                     <main>
                         <h1 id="tools-reference"><a class="header" href="#tools-reference">Tools reference</a></h1>
 <p>Model-facing tools are advertised to the model per turn. Availability depends on
-settings, approval mode, plan mode, memory backend, and feature flags.</p>
-<p>For approvals see <a href="../features/sandbox.html">Approvals and autonomy</a>. For MCP tools see <a href="../features/mcp.html">MCP</a>.
+settings, sandbox, plan mode, memory backend, and feature flags.</p>
+<p>For sandbox and approvals see <a href="../features/sandbox.html">Sandbox</a>. For MCP tools see <a href="../features/mcp.html">MCP</a>.
 Per-tool engineering specs live under <a href="../../../tools/"><code>docs/tools/</code></a>.</p>
 <h2 id="core-loop"><a class="header" href="#core-loop">Core loop</a></h2>
 <ol>
 <li>Model emits a tool call (JSON arguments per schema).</li>
-<li>Veyyon validates arguments; handlers run after approval checks.</li>
+<li>Veyyon validates arguments; handlers run after approval/sandbox checks.</li>
 <li>Text or structured output returns to the conversation.</li>
 </ol>
 <p>General schema repair runs before dispatch on all schema-bearing tool calls; tool-specific
@@ -241,7 +241,7 @@ leniency (e.g. hashline parsing) is layered on top. See <a href="../repair/overv
 <tr><th>Tool</th><th>Purpose</th></tr>
 </thead>
 <tbody>
-<tr><td><code>bash</code></td><td>Shell commands, gated by the approval mode</td></tr>
+<tr><td><code>bash</code></td><td>Shell commands with sandbox + approval</td></tr>
 <tr><td><code>ssh</code></td><td>Remote commands via configured hosts</td></tr>
 <tr><td><code>eval</code></td><td>JS/Python/Julia/Ruby eval cells (when enabled)</td></tr>
 <tr><td><code>debug</code></td><td>Debugger integration</td></tr>

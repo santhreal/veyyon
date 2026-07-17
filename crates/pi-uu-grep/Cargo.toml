@@ -24,6 +24,6 @@ grep-searcher = "0.1"
 ignore = "0.4"
 globset = "0.4"
 serde_json = "1"
+parking_lot.workspace = true
 
 [dev-dependencies]
-parking_lot.workspace = true

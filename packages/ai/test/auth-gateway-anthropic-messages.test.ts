@@ -348,6 +348,9 @@ describe("anthropic-messages encodeResponse", () => {
 		expect(encodeResponse({ ...base, stopReason: "stop" }, "m").stop_reason).toBe("end_turn");
 		expect(encodeResponse({ ...base, stopReason: "length" }, "m").stop_reason).toBe("max_tokens");
 		expect(encodeResponse({ ...base, stopReason: "toolUse" }, "m").stop_reason).toBe("tool_use");
+		const withSequence = encodeResponse({ ...base, stopReason: "stop", stopSequence: "END" }, "m");
+		expect(withSequence.stop_reason).toBe("end_turn");
+		expect(withSequence.stop_sequence).toBe("END");
 		expect(() => encodeResponse({ ...base, stopReason: "error", errorMessage: "upstream failed" }, "m")).toThrow(
 			/upstream failed/,
 		);
@@ -501,6 +504,35 @@ describe("anthropic-messages encodeStream", () => {
 		});
 
 		expect(sse[14]!.data).toEqual({ type: "message_stop" });
+	});
+
+	it("carries the matched stop sequence on the terminal message_delta", async () => {
+		const message: AssistantMessage = {
+			role: "assistant",
+			content: [{ type: "text", text: "until END" }],
+			api: "anthropic-messages",
+			provider: "anthropic",
+			model: "m",
+			usage: emptyUsage(),
+			stopReason: "stop",
+			stopSequence: "END",
+			timestamp: 0,
+		};
+		const events: AssistantMessageEvent[] = [
+			{ type: "start", partial: message },
+			{ type: "text_start", contentIndex: 0, partial: message },
+			{ type: "text_delta", contentIndex: 0, delta: "until END", partial: message },
+			{ type: "text_end", contentIndex: 0, content: "until END", partial: message },
+			{ type: "done", reason: "stop", message },
+		];
+		const sse = await collectSse(encodeStream(makeStream(events), "m"));
+		const delta = sse.find(e => e.event === "message_delta")!.data as {
+			delta: { stop_reason: string; stop_sequence: string | null };
+		};
+		expect(delta.delta.stop_reason).toBe("end_turn");
+		expect(delta.delta.stop_sequence).toBe("END");
+		const start = sse[0]!.data as { message: { stop_sequence: null } };
+		expect(start.message.stop_sequence).toBeNull();
 	});
 
 	it("emits an error event when the upstream stream errors", async () => {

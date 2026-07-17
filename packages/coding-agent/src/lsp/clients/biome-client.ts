@@ -69,7 +69,7 @@ function offsetsToPositions(source: string, offsets: number[]): Map<number, { li
 /**
  * Parse Biome severity to LSP DiagnosticSeverity.
  */
-function parseSeverity(severity: string): DiagnosticSeverity {
+function parseBiomeSeverity(severity: string): DiagnosticSeverity {
 	switch (severity) {
 		case "error":
 			return 1;
@@ -248,7 +248,7 @@ export class BiomeClient implements LinterClient {
 					start: { line: startLine - 1, character: startColumn - 1 },
 					end: { line: endLine - 1, character: endColumn - 1 },
 				},
-				severity: parseSeverity(diag.severity),
+				severity: parseBiomeSeverity(diag.severity),
 				message: diag.description,
 				source: "biome",
 				code: diag.category,

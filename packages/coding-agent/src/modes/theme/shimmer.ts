@@ -86,7 +86,7 @@ interface PaletteCache {
 	[kCompiled]?: CompiledPalette;
 }
 
-function compile(theme: ShimmerTheme, palette: ShimmerPalette): CompiledPalette {
+function compilePalette(theme: ShimmerTheme, palette: ShimmerPalette): CompiledPalette {
 	const p = palette as ShimmerPalette & PaletteCache;
 	const cached = p[kCompiled];
 	if (cached && p[kCompiledFor] === theme) return cached;
@@ -171,7 +171,7 @@ export function shimmerEnabled(): boolean {
  *
  * Performance shape (per call, dominant cost):
  *   - One `Date.now()` read.
- *   - One `compile()` lookup per segment (Symbol-keyed cache slot, hot path
+ *   - One `compilePalette()` lookup per segment (Symbol-keyed cache slot, hot path
  *     skipped after first frame).
  *   - One ANSI open/close pair per **run of same-tier chars**, not per char.
  *   - No per-char allocations beyond the run buffer.
@@ -198,7 +198,7 @@ export function shimmerSegments(segments: readonly ShimmerSegment[], theme: Shim
 	if (mode === "disabled") {
 		let out = "";
 		for (const { text, palette } of perSeg) {
-			const seq = compile(theme, palette).mid;
+			const seq = compilePalette(theme, palette).mid;
 			out += `${seq.open}${text}${seq.close}`;
 		}
 		return out;
@@ -218,7 +218,7 @@ export function shimmerSegments(segments: readonly ShimmerSegment[], theme: Shim
 	let out = "";
 	let index = 0;
 	for (const { text, palette } of perSeg) {
-		const compiled = compile(theme, palette);
+		const compiled = compilePalette(theme, palette);
 		let runTier: Tier | null = null;
 		let runStart = 0;
 		let runEnd = 0;

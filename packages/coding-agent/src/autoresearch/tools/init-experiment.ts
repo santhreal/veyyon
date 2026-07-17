@@ -1,12 +1,11 @@
 import * as path from "node:path";
-
 import { Text } from "@veyyon/pi-tui";
 import { type } from "arktype";
 import type { ToolDefinition } from "../../extensibility/extensions";
 import type { Theme } from "../../modes/theme/theme";
 import { replaceTabs, truncateToWidth } from "../../tools/render-utils";
 import * as git from "../../utils/git";
-import { parseWorkDirDirtyPaths } from "../git";
+import { parseWorkDirDirtyPaths, tryReadHeadSha } from "../git";
 import { dedupeStrings, normalizePathSpec } from "../helpers";
 import { buildExperimentState } from "../state";
 import { openAutoresearchStorage, type SessionRow } from "../storage";
@@ -238,14 +237,6 @@ export function createInitExperimentTool(
 
 function renderInitCall(name: string, theme: Theme): string {
 	return `${theme.fg("toolTitle", theme.bold("init_experiment"))} ${theme.fg("accent", truncateToWidth(replaceTabs(name), 100))}`;
-}
-
-async function tryReadHeadSha(cwd: string): Promise<string | null> {
-	try {
-		return (await git.head.sha(cwd)) ?? null;
-	} catch {
-		return null;
-	}
 }
 
 async function detectPendingChanges(cwd: string): Promise<boolean> {

@@ -919,7 +919,7 @@ function assistantMessageToOtelOutputMessage(message: AssistantMessage): OtelOut
 	return {
 		role: "assistant",
 		parts: assistantContentToOtelParts(message.content),
-		finish_reason: mapStopReason(message.stopReason) ?? message.stopReason ?? "stop",
+		finish_reason: mapStopReasonToOtel(message.stopReason) ?? message.stopReason ?? "stop",
 	};
 }
 
@@ -1195,7 +1195,7 @@ function applyChatResponseAttributes(span: Span, message: AssistantMessage): voi
 		span.setAttribute(PiGenAIAttr.ResponseUpstreamProvider, message.upstreamProvider);
 	}
 	if (message.ttft != null) span.setAttribute(GenAIAttr.ResponseTimeToFirstChunk, message.ttft / 1000);
-	const finishReason = mapStopReason(message.stopReason);
+	const finishReason = mapStopReasonToOtel(message.stopReason);
 	if (finishReason) span.setAttribute(GenAIAttr.ResponseFinishReasons, [finishReason]);
 }
 
@@ -1479,7 +1479,7 @@ const EMPTY_COST: AppliedCostEstimate = Object.freeze({
 	costUnavailableReason: undefined,
 });
 
-function mapStopReason(reason: StopReason | undefined): string | undefined {
+function mapStopReasonToOtel(reason: StopReason | undefined): string | undefined {
 	switch (reason) {
 		case "stop":
 			return "stop";
@@ -1543,7 +1543,7 @@ export async function recordManualChatTelemetry(
 	if (options.stepNumber != null) span.setAttribute(PiGenAIAttr.AgentStepNumber, options.stepNumber);
 	span.setAttribute(GenAIAttr.ResponseModel, options.responseModel ?? options.model.name);
 	if (options.responseId) span.setAttribute(GenAIAttr.ResponseId, options.responseId);
-	const finishReason = mapStopReason(options.finishReason);
+	const finishReason = mapStopReasonToOtel(options.finishReason);
 	if (finishReason) span.setAttribute(GenAIAttr.ResponseFinishReasons, [finishReason]);
 	applyUsageAttributes(span, options.usage);
 	applyGatewayAttributes(span, options.responseHeaders, options.model.baseUrl);

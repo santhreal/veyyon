@@ -154,3 +154,14 @@ export const DEFAULT_STREAM_KEEPALIVE_MS = 20_000;
  * timeout (10s) would close long-lived SSE connections between keepalives.
  */
 export const DEFAULT_SERVER_IDLE_TIMEOUT_S = 255;
+
+/** Deterministic snapshot ordering: provider, scope, blocked-until, then updated-at. */
+export function compareCredentialBlockSnapshots(a: CredentialBlockSnapshot, b: CredentialBlockSnapshot): number {
+	const provider = a.providerKey.localeCompare(b.providerKey);
+	if (provider !== 0) return provider;
+	const scope = a.blockScope.localeCompare(b.blockScope);
+	if (scope !== 0) return scope;
+	const blockedUntil = a.blockedUntilMs - b.blockedUntilMs;
+	if (blockedUntil !== 0) return blockedUntil;
+	return (a.updatedAtMs ?? 0) - (b.updatedAtMs ?? 0);
+}

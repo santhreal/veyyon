@@ -1,3 +1,4 @@
+import { getToolResultMessage } from "./messages";
 /**
  * Context-reducing surgical compaction ("shake").
  *
@@ -11,6 +12,7 @@
  */
 
 import type { TextContent, ToolResultMessage } from "@veyyon/pi-ai";
+import { CLOSING_XML_TAG_RE, OPENING_XML_TAG_RE } from "@veyyon/pi-utils";
 import { countTokens } from "../tokenizer";
 import type { AgentMessage } from "../types";
 import { estimateTokens } from "./compaction";
@@ -86,17 +88,9 @@ export interface BlockShakeRegion {
 
 export type ShakeRegion = ToolResultShakeRegion | BlockShakeRegion;
 
-// Mirror prompt.ts top-level XML detection. Lowercase tag names only —
-// conservative by design (uppercase / mixed-case tags are ignored).
-const OPENING_XML = /^<([a-z_-]+)(?:\s+[^>]*)?>$/;
-const CLOSING_XML = /^<\/([a-z_-]+)>$/;
-
-function getToolResultMessage(entry: SessionEntry): ToolResultMessage | undefined {
-	if (entry.type !== "message") return undefined;
-	const message = entry.message as AgentMessage;
-	if (message.role !== "toolResult") return undefined;
-	return message as ToolResultMessage;
-}
+// Same top-level XML detection as prompt.ts — grammar owned by pi-utils regex.ts.
+const OPENING_XML = OPENING_XML_TAG_RE;
+const CLOSING_XML = CLOSING_XML_TAG_RE;
 
 function toolResultText(message: ToolResultMessage): string {
 	return message.content

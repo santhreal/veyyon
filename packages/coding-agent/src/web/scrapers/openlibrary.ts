@@ -137,7 +137,7 @@ async function fetchWork(workId: string, timeout: number, signal?: AbortSignal):
 	md += `**Open Library:** https://openlibrary.org/works/${workId}\n`;
 	md += "\n";
 
-	const description = extractDescription(work.description);
+	const description = extractOpenLibraryDescription(work.description);
 	if (description) {
 		md += `## Description\n\n${description}\n\n`;
 	}
@@ -202,7 +202,7 @@ async function fetchEdition(editionId: string, timeout: number, signal?: AbortSi
 
 	md += "\n";
 
-	const description = extractDescription(edition.description);
+	const description = extractOpenLibraryDescription(edition.description);
 	if (description) {
 		md += `## Description\n\n${description}\n\n`;
 	}
@@ -329,7 +329,7 @@ async function fetchAuthorNames(authorKeys: string[], timeout: number, signal?: 
 	return names;
 }
 
-function extractDescription(desc: string | { value: string } | undefined): string | null {
+function extractOpenLibraryDescription(desc: string | { value: string } | undefined): string | null {
 	if (!desc) return null;
 	if (typeof desc === "string") return desc;
 	return desc.value || null;

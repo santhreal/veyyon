@@ -64,7 +64,8 @@ describe("pause screen", () => {
 			expect(text).toContain("Main agent, subagents, and advisor");
 			expect(text).toContain("paused for 1:05");
 			expect(text).toContain("esc · enter · space — resume");
-			expect(text).toContain("█".repeat(5));
+			// the big glyph: two solid ▓/█ churn bars (ember field, not flat blocks)
+			expect(text).toMatch(/[▓█]{5}/);
 		});
 
 		it("drops to the compact card on small terminals", () => {

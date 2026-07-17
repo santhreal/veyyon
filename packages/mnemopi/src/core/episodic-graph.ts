@@ -1,6 +1,7 @@
 import type { Database } from "bun:sqlite";
+import { jaccardSimilarity } from "@veyyon/pi-utils";
 import { closeQuietly, type DatabasePath, openDatabase } from "../db";
-import { CONTENT_STOPWORDS } from "./stopwords";
+import { toUtcIso } from "../util/datetime";
 
 export interface Gist {
 	readonly id: string;
@@ -101,10 +102,6 @@ const EXTRACT_FACTS_MAX_CONTENT_LEN = 4096;
 const MAX_FACTS_PER_MEMORY = 5;
 const DEFAULT_LINK_THRESHOLD = 0.35;
 
-function nowIso(): string {
-	return new Date().toISOString();
-}
-
 function unique(values: Iterable<string>, limit = Number.MAX_SAFE_INTEGER): string[] {
 	const seen = new Set<string>();
 	const out: string[] = [];
@@ -186,6 +183,33 @@ function lowerSet(values: readonly (string | null)[]): Set<string> {
 	return out;
 }
 
+const CONTENT_STOPWORDS = new Set([
+	"the",
+	"and",
+	"for",
+	"with",
+	"that",
+	"this",
+	"from",
+	"into",
+	"onto",
+	"about",
+	"was",
+	"were",
+	"are",
+	"is",
+	"has",
+	"have",
+	"had",
+	"she",
+	"he",
+	"they",
+	"them",
+	"their",
+	"our",
+	"new",
+]);
+
 function contentTokenSet(text: string): Set<string> {
 	const out = new Set<string>();
 	for (const match of text.toLocaleLowerCase().matchAll(/[\p{L}\p{N}_-]+/gu)) {
@@ -194,15 +218,6 @@ function contentTokenSet(text: string): Set<string> {
 		out.add(token);
 	}
 	return out;
-}
-
-function jaccard(left: Set<string>, right: Set<string>): number {
-	if (left.size === 0 || right.size === 0) return 0;
-	let intersection = 0;
-	for (const item of left) {
-		if (right.has(item)) intersection++;
-	}
-	return intersection / (left.size + right.size - intersection);
 }
 
 function overlapScore(left: Set<string>, right: Set<string>): number {
@@ -278,7 +293,7 @@ export class EpisodicGraph {
 		return {
 			id: `gist_${memoryId}`,
 			text: this.createSummary(content),
-			timestamp: nowIso(),
+			timestamp: toUtcIso(),
 			participants: this.extractParticipants(content),
 			location: this.extractLocation(content),
 			emotion: this.extractEmotion(content),
@@ -298,7 +313,7 @@ export class EpisodicGraph {
 				subject: cleanSubject,
 				predicate,
 				object: cleanObject,
-				timestamp: nowIso(),
+				timestamp: toUtcIso(),
 				confidence,
 				temporalQualifier: null,
 			});
@@ -446,7 +461,7 @@ export class EpisodicGraph {
 		const gist = this.extractGist(content, memoryId);
 		const facts = extractEntities ? this.extractFacts(content, memoryId) : [];
 		const edges: GraphEdge[] = [];
-		const timestamp = nowIso();
+		const timestamp = toUtcIso();
 
 		const previousMemoryIds = linkExisting ? this.knownMemoryIds(memoryId) : [];
 		this.storeGist(gist, memoryId);
@@ -471,7 +486,8 @@ export class EpisodicGraph {
 			const sourceTokens = contentTokenSet(content);
 			for (const otherId of previousMemoryIds) {
 				const otherContent = this.memoryContent(otherId);
-				const lexicalScore = Math.round(jaccard(sourceTokens, contentTokenSet(otherContent)) * 1000) / 1000;
+				const lexicalScore =
+					Math.round(jaccardSimilarity(sourceTokens, contentTokenSet(otherContent)) * 1000) / 1000;
 				let wroteCtxEdge = false;
 				if (lexicalScore >= minLinkScore) {
 					const edge = {

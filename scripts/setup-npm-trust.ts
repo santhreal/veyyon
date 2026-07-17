@@ -41,7 +41,7 @@ import { packages } from "./ci-release-publish.ts";
 const repoRoot = path.join(import.meta.dir, "..");
 const MIN_NPM = "11.16.0";
 const DEFAULT_WORKFLOW = "ci.yml";
-const FALLBACK_REPO = "can1357/oh-my-pi";
+const FALLBACK_REPO = "santhreal/veyyon";
 const PLACEHOLDER_VERSION = "0.0.0";
 
 interface NativeLeafTarget {

@@ -503,16 +503,6 @@ export async function getHostInfo(hostName: string): Promise<SSHHostInfo | undef
 	return loadHostInfoFromDiskByName(hostName);
 }
 
-export async function getHostInfoForHost(host: SSHConnectionTarget): Promise<SSHHostInfo | undefined> {
-	const cached = hostInfoCache.get(host.name);
-	if (cached) {
-		const resolved = applyCompatOverride(host, cached);
-		if (resolved !== cached) hostInfoCache.set(host.name, resolved);
-		return resolved;
-	}
-	return await loadHostInfoFromDisk(host);
-}
-
 /**
  * Synchronous, probe-free host info lookup for startup paths.
  *
@@ -645,10 +635,6 @@ async function closeConnectionInternal(host: SSHConnectionTarget): Promise<void>
 	if (!supportsSshControlMaster()) return;
 	const target = buildSshTarget(host.username, host.host);
 	await runSshSync(["-O", "exit", ...buildCommonArgs(host), target]);
-}
-
-export async function closeConnection(hostName: string): Promise<void> {
-	await invalidateHostMetadata([hostName]);
 }
 
 export async function closeAllConnections(): Promise<void> {

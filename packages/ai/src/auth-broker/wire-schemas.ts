@@ -323,3 +323,19 @@ export function wireSchemas(): WireSchemas {
 	schemasCache ??= buildWireSchemas();
 	return schemasCache;
 }
+
+/**
+ * Parse the broker generation counter out of an ETag/If-None-Match style
+ * header (tolerates weak `W/` prefixes and quoting). Shared by both wire ends.
+ */
+export function parseGenerationTag(header: string | null): number | undefined {
+	if (!header) return undefined;
+	let value = header.trim();
+	if (value.startsWith("W/")) value = value.slice(2).trim();
+	if (value.startsWith('"') && value.endsWith('"') && value.length >= 2) {
+		value = value.slice(1, -1);
+	}
+	const generation = Number(value);
+	if (!Number.isInteger(generation) || generation < 0) return undefined;
+	return generation;
+}

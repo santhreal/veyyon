@@ -1,3 +1,5 @@
+import { jaccardSimilarity } from "@veyyon/pi-utils";
+
 export interface MmrResult {
 	readonly content?: string;
 	readonly score?: number;
@@ -6,24 +8,17 @@ export interface MmrResult {
 
 export type SimilarityFn = (textA: string, textB: string) => number;
 
-export function jaccardSimilarity(textA: string, textB: string): number {
+/** Jaccard similarity over lowercased whitespace-delimited words. */
+export function wordJaccardSimilarity(textA: string, textB: string): number {
 	const wordsA = new Set(textA.toLowerCase().split(/\s+/).filter(Boolean));
 	const wordsB = new Set(textB.toLowerCase().split(/\s+/).filter(Boolean));
-
-	if (wordsA.size === 0 || wordsB.size === 0) return 0.0;
-
-	let intersection = 0;
-	for (const word of wordsA) {
-		if (wordsB.has(word)) intersection += 1;
-	}
-
-	return intersection / (wordsA.size + wordsB.size - intersection);
+	return jaccardSimilarity(wordsA, wordsB);
 }
 export function mmrRerank<T extends MmrResult>(
 	results: readonly T[],
 	lambdaParam = 0.7,
 	topK = 10,
-	similarityFn: SimilarityFn = jaccardSimilarity,
+	similarityFn: SimilarityFn = wordJaccardSimilarity,
 ): T[] {
 	const limit = Math.max(0, Math.trunc(topK));
 	if (limit <= 0) return [];

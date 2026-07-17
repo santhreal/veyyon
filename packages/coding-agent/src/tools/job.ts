@@ -1,7 +1,7 @@
 import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/pi-agent-core";
 import type { Component } from "@veyyon/pi-tui";
 import { Text } from "@veyyon/pi-tui";
-import { prompt } from "@veyyon/pi-utils";
+import { prompt, stripTaskResultEnvelope } from "@veyyon/pi-utils";
 import { type } from "arktype";
 import type { AsyncJob, AsyncJobManager } from "../async";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
@@ -512,18 +512,6 @@ function statusToColor(status: JobSnapshot["status"]): ToolUIColor {
 		case "running":
 			return "accent";
 	}
-}
-
-/**
- * Task job results are delivered in the model-facing `<task-result>` envelope
- * (prompts/tools/task-summary.md) so the parent agent can parse status and the
- * `agent://` pointer. The wrapper markup is noise to a human — preview the
- * inner <output>/<preview> body instead.
- */
-function stripTaskResultEnvelope(text: string): string {
-	if (!text.startsWith("<task-result")) return text;
-	const body = /<(output|preview)(?:\s[^>]*)?>\n?([\s\S]*?)\n?<\/\1>/.exec(text)?.[2];
-	return body?.trim() || text;
 }
 
 /**

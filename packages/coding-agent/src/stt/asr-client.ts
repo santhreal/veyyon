@@ -1,7 +1,7 @@
 import { logger } from "@veyyon/pi-utils";
 import {
-	createUnavailableWorker,
-	createWorkerHandle,
+	createRefCountedWorkerHandle,
+	createUnavailableRefCountedWorker,
 	createWorkerSubprocess,
 	logWorkerMessage,
 	type RefCountedWorkerHandle,
@@ -12,7 +12,6 @@ import {
 	spawnWorkerOrUnavailable,
 } from "../subprocess/worker-client";
 import { tinyWorkerEnv } from "../tiny/title-client";
-import { safeSend } from "../utils/ipc";
 import type { SttProgressEvent, SttWorkerInbound, SttWorkerOutbound } from "./asr-protocol";
 import type { SttModelKey } from "./models";
 
@@ -82,41 +81,10 @@ export function createSttSubprocess(): SpawnedSubprocess<SttWorkerOutbound> {
 	});
 }
 
-function wrapSubprocess(
-	spawned: SpawnedSubprocess<SttWorkerOutbound>,
-): RefCountedWorkerHandle<SttWorkerInbound, SttWorkerOutbound> {
-	const { proc } = spawned;
-	return {
-		...createWorkerHandle<SttWorkerInbound, SttWorkerOutbound>(spawned, message => safeSend(proc, message, "stt")),
-		ref() {
-			try {
-				proc.ref();
-			} catch {
-				// Already gone.
-			}
-		},
-		unref() {
-			try {
-				proc.unref();
-			} catch {
-				// Already gone.
-			}
-		},
-	};
-}
-
-function spawnInlineUnavailableWorker(error: unknown): RefCountedWorkerHandle<SttWorkerInbound, SttWorkerOutbound> {
-	return {
-		...createUnavailableWorker<SttWorkerInbound, SttWorkerOutbound>(error),
-		ref() {},
-		unref() {},
-	};
-}
-
 function spawnSttWorker(): RefCountedWorkerHandle<SttWorkerInbound, SttWorkerOutbound> {
 	return spawnWorkerOrUnavailable(
-		() => wrapSubprocess(createSttSubprocess()),
-		spawnInlineUnavailableWorker,
+		() => createRefCountedWorkerHandle<SttWorkerInbound, SttWorkerOutbound>(createSttSubprocess(), "stt"),
+		createUnavailableRefCountedWorker<SttWorkerInbound, SttWorkerOutbound>,
 		"stt worker spawn failed; speech-to-text disabled",
 	);
 }
@@ -388,14 +356,14 @@ export class SttClient {
 
 export const sttClient = new SttClient();
 
-export async function shutdownSttClient(): Promise<void> {
-	await sttClient.terminate();
-}
-
 export async function smokeTestSttWorker({
 	timeoutMs = SMOKE_TEST_TIMEOUT_MS,
 }: {
 	timeoutMs?: number;
 } = {}): Promise<void> {
-	await smokeTestWorker(wrapSubprocess(createSttSubprocess()), "stt worker", timeoutMs);
+	await smokeTestWorker(
+		createRefCountedWorkerHandle<SttWorkerInbound, SttWorkerOutbound>(createSttSubprocess(), "stt"),
+		"stt worker",
+		timeoutMs,
+	);
 }

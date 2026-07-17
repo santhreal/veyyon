@@ -1,18 +1,8 @@
 import type { Database, SQLQueryBindings } from "bun:sqlite";
+import { looksLikeSqlite, SQLITE_MAGIC } from "@veyyon/pi-utils";
 import { formatBytes, replaceTabs, truncateToWidth } from "./render-utils";
 import { ToolError } from "./tool-errors";
 
-const SQLITE_MAGIC = new Uint8Array([
-	0x53, 0x51, 0x4c, 0x69, 0x74, 0x65, 0x20, 0x66, 0x6f, 0x72, 0x6d, 0x61, 0x74, 0x20, 0x33, 0x00,
-]);
-
-export function looksLikeSqlite(bytes: Uint8Array): boolean {
-	if (bytes.byteLength < SQLITE_MAGIC.byteLength) return false;
-	for (const [index, byte] of SQLITE_MAGIC.entries()) {
-		if (bytes[index] !== byte) return false;
-	}
-	return true;
-}
 const SQLITE_PATH_PATTERN = /\.(?:sqlite3?|db3?)(?=(?::|\?|$))/gi;
 const DEFAULT_QUERY_LIMIT = 20;
 const DEFAULT_SCHEMA_SAMPLE_LIMIT = 5;
@@ -145,7 +135,7 @@ function stringifySqliteValue(value: unknown): string {
 	}
 }
 
-function padCell(value: string, width: number): string {
+function fitCell(value: string, width: number): string {
 	const truncated = truncateToWidth(sanitizeCell(value), Math.max(width, MIN_COLUMN_WIDTH));
 	const visibleWidth = Bun.stringWidth(truncated);
 	if (visibleWidth >= width) {
@@ -185,7 +175,7 @@ function buildVerticalBlocks(columns: string[], rows: SqliteRow[]): string {
 		.map((row, index) => {
 			const block = [`── Row ${index + 1} ──`];
 			for (const column of columns) {
-				const name = padCell(column, nameWidth);
+				const name = fitCell(column, nameWidth);
 				const value = sanitizeCell(stringifySqliteValue(row[column]));
 				block.push(truncateToWidth(`${name}: ${value}`, MAX_RENDER_WIDTH));
 			}
@@ -228,7 +218,7 @@ function buildAsciiTable(columns: string[], rows: SqliteRow[]): string {
 		totalWidth = widths.reduce((sum, width) => sum + width, 0) + overhead;
 	}
 
-	const header = `| ${columns.map((column, index) => padCell(column, widths[index] ?? MIN_COLUMN_WIDTH)).join(" | ")} |`;
+	const header = `| ${columns.map((column, index) => fitCell(column, widths[index] ?? MIN_COLUMN_WIDTH)).join(" | ")} |`;
 	const divider = `| ${widths.map(width => "-".repeat(Math.max(width, MIN_COLUMN_WIDTH))).join(" | ")} |`;
 	const lines = [header, divider];
 
@@ -239,7 +229,7 @@ function buildAsciiTable(columns: string[], rows: SqliteRow[]): string {
 
 	for (const row of rows) {
 		const cells = columns.map((column, index) =>
-			padCell(stringifySqliteValue(row[column]), widths[index] ?? MIN_COLUMN_WIDTH),
+			fitCell(stringifySqliteValue(row[column]), widths[index] ?? MIN_COLUMN_WIDTH),
 		);
 		lines.push(`| ${cells.join(" | ")} |`);
 	}
@@ -645,16 +635,6 @@ export function getTableSchema(db: Database, table: string): string {
 		throw new ToolError(`SQLite schema for table '${table}' is unavailable`);
 	}
 	return row.sql;
-}
-
-export function getTablePrimaryKey(db: Database, table: string): { column: string; type: string } | null {
-	const primaryKeyColumns = getPrimaryKeyColumns(db, table);
-	if (primaryKeyColumns.length !== 1) {
-		return null;
-	}
-
-	const column = primaryKeyColumns[0]!;
-	return { column: column.name, type: column.type };
 }
 
 export function resolveTableRowLookup(db: Database, table: string): SqliteRowLookup {

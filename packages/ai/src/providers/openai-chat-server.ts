@@ -13,7 +13,6 @@ import type {
 	Context,
 	ImageContent,
 	Message,
-	ServiceTier,
 	StopReason,
 	TextContent,
 	Tool,
@@ -29,25 +28,9 @@ import {
 	type OpenAIChatToolChoice,
 	openaiChatRequestSchema,
 } from "./openai-chat-server-schema";
+import { isReasoningEffort, isServiceTier } from "./openai-request-guards";
 
 export type { ParsedRequest };
-
-type ReasoningEffort = NonNullable<ParsedRequest["options"]["reasoning"]>;
-
-function isReasoningEffort(value: unknown): value is ReasoningEffort {
-	return (
-		value === "minimal" ||
-		value === "low" ||
-		value === "medium" ||
-		value === "high" ||
-		value === "xhigh" ||
-		value === "max"
-	);
-}
-
-function isServiceTier(value: unknown): value is ServiceTier {
-	return value === "auto" || value === "default" || value === "flex" || value === "scale" || value === "priority";
-}
 
 // ---------------------------------------------------------------------------
 // parseRequest

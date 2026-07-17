@@ -184,7 +184,7 @@ export async function* iterateWithIdleTimeout<T>(
 
 	if (abortSignal?.aborted) {
 		closeIterator();
-		throw abortReason(abortSignal);
+		throw aiAbortReason(abortSignal);
 	}
 
 	const withRacy = <T>(promise: Promise<T>) =>
@@ -384,7 +384,7 @@ export async function* iterateWithIdleTimeout<T>(
 				}
 				if (outcome.kind === "abort") {
 					closeIterator();
-					throw abortReason(abortSignal!);
+					throw aiAbortReason(abortSignal!);
 				}
 				if (outcome.kind === "timeout") {
 					if (hasPendingLocalWork()) {
@@ -521,7 +521,7 @@ export async function* iterateWithTerminalGrace<T>(
 	}
 }
 
-function abortReason(signal: AbortSignal): Error {
+function aiAbortReason(signal: AbortSignal): Error {
 	const reason = signal.reason;
 	if (reason instanceof Error) return reason;
 	if (typeof reason === "string") return new AIError.AbortError(reason);

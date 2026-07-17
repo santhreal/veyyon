@@ -1,5 +1,3 @@
-import { CONTENT_STOPWORDS } from "./stopwords";
-
 const UTF8_ENCODER = new TextEncoder();
 
 export interface CompressionStatsInit {
@@ -228,6 +226,33 @@ function mostCommon<K>(counter: Map<K, number>, limit: number): Array<readonly [
 		.sort((left, right) => right[1] - left[1])
 		.slice(0, limit);
 }
+
+const CONTENT_STOPWORDS = new Set([
+	"about",
+	"after",
+	"before",
+	"being",
+	"could",
+	"doing",
+	"every",
+	"having",
+	"might",
+	"other",
+	"should",
+	"their",
+	"there",
+	"these",
+	"those",
+	"through",
+	"under",
+	"where",
+	"which",
+	"while",
+	"would",
+	"mnemopi",
+	"memory",
+	"memories",
+]);
 
 function contentOf(memory: MemoryRecord): string {
 	return typeof memory.content === "string" ? memory.content : "";

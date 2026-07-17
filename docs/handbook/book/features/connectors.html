@@ -46,10 +46,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-24acbed9.js";
+            window.path_to_searchindex_js = "../searchindex-8badf17b.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-9cfd259b.js"></script>
+        <script src="../toc-19dab021.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -192,8 +192,10 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="connectors-and-apps"><a class="header" href="#connectors-and-apps">Connectors and Apps</a></h1>
-<p>Veyyon does not ship provider-hosted connectors — account-gated app integrations wired through a
-provider’s own connector store. Extend it with the integrations below instead.</p>
+<blockquote>
+<p><strong>Spec — not shipped:</strong> provider-hosted <strong>connectors</strong> (<code>/apps</code>, <code>[apps]</code> config tables,
+account-gated app tools). Veyyon does not ship this subsystem today.</p>
+</blockquote>
 <h2 id="what-ships-instead"><a class="header" href="#what-ships-instead">What ships instead</a></h2>
 <p>Extend Veyyon with tools that are implemented and documented today:</p>
 <div class="table-wrapper">
@@ -212,8 +214,8 @@ provider’s own connector store. Extend it with the integrations below instead.
 </div>
 <p>Tool policy uses <code>tools.approvalMode</code> and <code>tools.approval.&lt;tool&gt;</code> — same machinery for bash, MCP, and custom tools (<code>docs/approval-mode.md</code>).</p>
 <h2 id="roadmap-note"><a class="header" href="#roadmap-note">Roadmap note</a></h2>
-<p>If provider-hosted connectors ship, they will add a feature flag, account discovery, and connector
-configuration. Until then, use MCP, plugins, and hooks; <code>apps</code> connector tables are not current behavior.</p>
+<p>If provider-hosted connectors ship, they will add a feature flag, account discovery, an <code>/apps</code> UI, and
+<code>[apps]</code> config. Until then, <code>apps</code> tables are not current behavior.</p>
 <h2 id="see-also"><a class="header" href="#see-also">See also</a></h2>
 <ul>
 <li><a href="../using/mcp-setup.html">MCP setup</a></li>

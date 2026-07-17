@@ -1,22 +1,23 @@
 import { scheduler } from "node:timers/promises";
 import { bareModelId, parseAnthropicModel } from "@veyyon/pi-catalog/identity";
 import { toNumber } from "@veyyon/pi-catalog/utils";
+import { isAbortOrTimeoutError, kebabSlug, stripTrailingSlashes } from "@veyyon/pi-utils";
 import * as AIError from "../error";
 import { claudeCodeVersion } from "../providers/anthropic";
 import {
 	type CredentialRankingContext,
 	type CredentialRankingStrategy,
+	percentUsageAmount,
 	resolveUsedFraction,
-	type UsageAmount,
 	type UsageFetchContext,
 	type UsageFetchParams,
 	type UsageLimit,
 	type UsageProvider,
 	type UsageReport,
-	type UsageStatus,
 	type UsageWindow,
 } from "../usage";
 import { isRecord } from "../utils";
+import { usageStatusFromUsedFraction } from "./shared";
 
 const DEFAULT_ENDPOINT = "https://api.anthropic.com/api/oauth";
 const FIVE_HOURS_MS = 5 * 60 * 60 * 1000;
@@ -36,7 +37,7 @@ const CLAUDE_HEADERS = {
 
 function normalizeClaudeBaseUrl(baseUrl?: string): string {
 	if (!baseUrl?.trim()) return DEFAULT_ENDPOINT;
-	const trimmed = baseUrl.trim().replace(/\/+$/, "");
+	const trimmed = stripTrailingSlashes(baseUrl.trim());
 	const lower = trimmed.toLowerCase();
 	if (lower.endsWith("/api/oauth")) return trimmed;
 	let url: URL;
@@ -45,7 +46,7 @@ function normalizeClaudeBaseUrl(baseUrl?: string): string {
 	} catch {
 		return DEFAULT_ENDPOINT;
 	}
-	let path = url.pathname.replace(/\/+$/, "");
+	let path = stripTrailingSlashes(url.pathname);
 	if (path === "/") path = "";
 	if (path.toLowerCase().endsWith("/v1")) {
 		path = path.slice(0, -3);
@@ -213,18 +214,12 @@ function hasUsageData(payload: ClaudeUsageResponse): boolean {
 	);
 }
 
-function isRetryableStatus(status: number): boolean {
+function isRetryableUsageStatus(status: number): boolean {
 	// Exclude 429: the usage endpoint is informational and rate-limited per
 	// source IP, so retrying a rate_limit_error inside a single fetch can't
 	// succeed and only deepens the throttle (3 attempts per poll). Fall through
 	// to the caller's failure cool-down and retry on the next poll instead.
 	return AIError.isTransientStatus(status) && status !== 429;
-}
-
-function isAbortError(error: unknown, signal?: AbortSignal): boolean {
-	if (signal?.aborted) return true;
-	if (!isRecord(error)) return false;
-	return error.name === "AbortError" || error.name === "TimeoutError";
 }
 
 function retryDelayMs(attempt: number, retryAfter: string | null): number {
@@ -253,7 +248,7 @@ async function waitBeforeRetry(
 		}
 		return !signal?.aborted;
 	} catch (error) {
-		if (isAbortError(error, signal)) return false;
+		if (signal?.aborted || isAbortOrTimeoutError(error)) return false;
 		throw error;
 	}
 }
@@ -275,7 +270,7 @@ async function fetchUsagePayload(
 			lastOrgId = orgId ?? lastOrgId;
 
 			if (!response.ok) {
-				const retryable = isRetryableStatus(response.status);
+				const retryable = isRetryableUsageStatus(response.status);
 				ctx.logger?.warn("Claude usage fetch failed", {
 					status: response.status,
 					statusText: response.statusText,
@@ -301,7 +296,7 @@ async function fetchUsagePayload(
 			});
 			if (!(await waitBeforeRetry(attempt, null, signal, ctx.retryWait))) break;
 		} catch (error) {
-			if (isAbortError(error, signal)) return null;
+			if (signal?.aborted || isAbortOrTimeoutError(error)) return null;
 			ctx.logger?.warn("Claude usage fetch error", {
 				error: String(error),
 				attempt,
@@ -350,34 +345,13 @@ async function fetchProfile(
 		const payload = (await response.json()) as unknown;
 		return isRecord(payload) ? (payload as ClaudeProfile) : null;
 	} catch (error) {
-		if (isAbortError(error, signal)) return null;
+		if (signal?.aborted || isAbortOrTimeoutError(error)) return null;
 		ctx.logger?.debug("Claude profile fetch error", { error: String(error) });
 		return null;
 	}
 }
 
-function buildUsageAmount(utilization: number | undefined): UsageAmount | undefined {
-	if (utilization === undefined) return undefined;
-	const clamped = Math.min(Math.max(utilization, 0), 100);
-	const usedFraction = clamped / 100;
-	return {
-		used: clamped,
-		limit: 100,
-		remaining: Math.max(0, 100 - clamped),
-		usedFraction,
-		remainingFraction: Math.max(0, 1 - usedFraction),
-		unit: "percent",
-	};
-}
-
-function buildUsageStatus(usedFraction: number | undefined): UsageStatus | undefined {
-	if (usedFraction === undefined) return undefined;
-	if (usedFraction >= 1) return "exhausted";
-	if (usedFraction >= 0.9) return "warning";
-	return "ok";
-}
-
-function buildUsageLimit(args: {
+function buildClaudeUsageLimit(args: {
 	id: string;
 	label: string;
 	windowId: string;
@@ -389,7 +363,7 @@ function buildUsageLimit(args: {
 	shared?: boolean;
 }): UsageLimit | null {
 	if (!args.bucket) return null;
-	const amount = buildUsageAmount(args.bucket.utilization);
+	const amount = args.bucket.utilization === undefined ? undefined : percentUsageAmount(args.bucket.utilization);
 	if (!amount) return null;
 	const window: UsageWindow = {
 		id: args.windowId,
@@ -408,16 +382,12 @@ function buildUsageLimit(args: {
 		},
 		window,
 		amount,
-		status: buildUsageStatus(amount.usedFraction),
+		status: amount.usedFraction === undefined ? undefined : usageStatusFromUsedFraction(amount.usedFraction),
 	};
 }
 
 function slugifyClaudeLimitDisplayName(displayName: string): string {
-	return displayName
-		.trim()
-		.toLowerCase()
-		.replace(/[^a-z0-9]+/g, "-")
-		.replace(/^-+|-+$/g, "");
+	return kebabSlug(displayName);
 }
 
 /**
@@ -434,7 +404,7 @@ function buildScopedWeeklyUsageLimits(entries: readonly ParsedApiLimitEntry[]): 
 		const slug = slugifyClaudeLimitDisplayName(entry.displayName);
 		if (!slug || seenSlugs.has(slug)) continue;
 		seenSlugs.add(slug);
-		const limit = buildUsageLimit({
+		const limit = buildClaudeUsageLimit({
 			id: `anthropic:7d:${slug}`,
 			label: `Claude 7 Day (${entry.displayName})`,
 			windowId: "7d",
@@ -454,7 +424,7 @@ export function parseClaudeRateLimitHeaders(headers: Record<string, string>, now
 	const sevenDay = parseUnifiedWindow(headers, "7d");
 	const modelScopedSevenDay = parseUnifiedWindow(headers, "7d_oi");
 	const limits = [
-		buildUsageLimit({
+		buildClaudeUsageLimit({
 			id: "anthropic:5h",
 			label: "Claude 5 Hour",
 			windowId: "5h",
@@ -464,7 +434,7 @@ export function parseClaudeRateLimitHeaders(headers: Record<string, string>, now
 			provider: "anthropic",
 			shared: true,
 		}),
-		buildUsageLimit({
+		buildClaudeUsageLimit({
 			id: "anthropic:7d",
 			label: "Claude 7 Day",
 			windowId: "7d",
@@ -474,7 +444,7 @@ export function parseClaudeRateLimitHeaders(headers: Record<string, string>, now
 			provider: "anthropic",
 			shared: true,
 		}),
-		buildUsageLimit({
+		buildClaudeUsageLimit({
 			id: "anthropic:7d:fable",
 			label: "Claude 7 Day (Fable)",
 			windowId: "7d",
@@ -519,7 +489,7 @@ async function fetchClaudeUsage(params: UsageFetchParams, ctx: UsageFetchContext
 	const sevenDaySonnet = parseBucket(payload.seven_day_sonnet);
 
 	const limits = [
-		buildUsageLimit({
+		buildClaudeUsageLimit({
 			id: "anthropic:5h",
 			label: "Claude 5 Hour",
 			windowId: "5h",
@@ -529,7 +499,7 @@ async function fetchClaudeUsage(params: UsageFetchParams, ctx: UsageFetchContext
 			provider: "anthropic",
 			shared: true,
 		}),
-		buildUsageLimit({
+		buildClaudeUsageLimit({
 			id: "anthropic:7d",
 			label: "Claude 7 Day",
 			windowId: "7d",
@@ -539,7 +509,7 @@ async function fetchClaudeUsage(params: UsageFetchParams, ctx: UsageFetchContext
 			provider: "anthropic",
 			shared: true,
 		}),
-		buildUsageLimit({
+		buildClaudeUsageLimit({
 			id: "anthropic:7d:opus",
 			label: "Claude 7 Day (Opus)",
 			windowId: "7d",
@@ -549,7 +519,7 @@ async function fetchClaudeUsage(params: UsageFetchParams, ctx: UsageFetchContext
 			provider: "anthropic",
 			tier: "opus",
 		}),
-		buildUsageLimit({
+		buildClaudeUsageLimit({
 			id: "anthropic:7d:sonnet",
 			label: "Claude 7 Day (Sonnet)",
 			windowId: "7d",

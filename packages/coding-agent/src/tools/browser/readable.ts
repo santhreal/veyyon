@@ -1,4 +1,5 @@
 import type * as ReadabilityNs from "@mozilla/readability";
+import { toNonEmptyString } from "@veyyon/pi-catalog/utils";
 import type * as LinkedomNs from "linkedom";
 import { htmlToBasicMarkdown } from "../../web/scrapers/types";
 
@@ -12,12 +13,6 @@ export interface ReadableResult {
 	contentLength: number;
 	text?: string;
 	markdown?: string;
-}
-
-/** Trim to non-empty string or undefined. */
-function normalize(text: string | null | undefined): string | undefined {
-	const trimmed = text?.trim();
-	return trimmed || undefined;
 }
 
 let readabilityModule: typeof ReadabilityNs | undefined;
@@ -95,16 +90,16 @@ async function toReadableResult(
 	htmlContent: string | null | undefined,
 	meta: { title?: string | null; byline?: string | null; excerpt?: string | null; length?: number | null },
 ): Promise<ReadableResult | null> {
-	const text = normalize(textContent);
+	const text = toNonEmptyString(textContent);
 	const markdown =
-		format === "markdown" ? (normalize(await htmlToBasicMarkdown(htmlContent ?? "")) ?? text) : undefined;
+		format === "markdown" ? (toNonEmptyString(await htmlToBasicMarkdown(htmlContent ?? "")) ?? text) : undefined;
 	const normalizedText = format === "text" ? text : undefined;
 	if (!normalizedText && !markdown) return null;
 	return {
 		url,
-		title: normalize(meta.title),
-		byline: normalize(meta.byline),
-		excerpt: normalize(meta.excerpt),
+		title: toNonEmptyString(meta.title),
+		byline: toNonEmptyString(meta.byline),
+		excerpt: toNonEmptyString(meta.excerpt),
 		contentLength: meta.length ?? text?.length ?? markdown?.length ?? 0,
 		text: normalizedText,
 		markdown,

@@ -8,7 +8,7 @@ import {
 	wrapTextWithAnsi as nativeWrapTextWithAnsi,
 	type SliceResult,
 } from "@veyyon/pi-natives";
-import { DEFAULT_TAB_WIDTH } from "@veyyon/pi-utils";
+import { collapseWhitespace, DEFAULT_TAB_WIDTH } from "@veyyon/pi-utils";
 
 export { Ellipsis } from "@veyyon/pi-natives";
 
@@ -160,7 +160,12 @@ export function wrapTextWithAnsi(text: string, width: number): string[] {
 	return nativeWrapTextWithAnsi(normalizeWrapInput(text), width, DEFAULT_TAB_WIDTH);
 }
 
-const SGR_SEQUENCE_GLOBAL = /\x1b\[[0-9;:]*m/g;
+/**
+ * Every SGR (color/style) escape sequence. ONE PLACE for the SGR grammar —
+ * callers only use lastIndex-resetting operations (.match/.replace), so the
+ * shared `g`-flagged object is safe.
+ */
+export const SGR_SEQUENCE_GLOBAL = /\x1b\[[0-9;:]*m/g;
 
 /**
  * Everything before the last full SGR reset is dead state — drop it so a
@@ -216,10 +221,9 @@ export function replaceTabs(text: string): string {
  * render one row per item and must never let an embedded newline break the row.
  */
 export function sanitizeSingleLine(text: string): string {
-	return replaceTabs(text)
-		.replace(/[\r\n]+/g, " ")
-		.replace(/\s+/g, " ")
-		.trim();
+	// ONE PLACE: `\s+` already covers tabs and CR/LF, so this is exactly the
+	// pi-utils whitespace-collapse contract.
+	return collapseWhitespace(text);
 }
 
 /**
@@ -474,6 +478,25 @@ function firstCodePointChar(str: string): string {
  */
 export function getWordNavKind(grapheme: string): WordNavKind {
 	if (!grapheme) return "other";
+	const code = grapheme.charCodeAt(0);
+	if (code < 0x80) {
+		// ASCII fast path: same classification as the property regexes below
+		// (\p{White_Space} covers 0x09-0x0d + space; every other printable
+		// ASCII char is \p{P} or \p{S} except alphanumerics and "_"; controls
+		// match nothing). Skips the code-point decode and regex cascade that
+		// dominate word-wrap tokenization on ordinary prompts.
+		if (code === 0x20 || (code >= 0x09 && code <= 0x0d)) return "whitespace";
+		if (
+			(code >= 0x61 && code <= 0x7a) ||
+			(code >= 0x41 && code <= 0x5a) ||
+			(code >= 0x30 && code <= 0x39) ||
+			code === 0x5f
+		) {
+			return "word";
+		}
+		if (code >= 0x21 && code <= 0x7e) return "delimiter";
+		return "other";
+	}
 	const ch = firstCodePointChar(grapheme);
 	if (!ch) return "other";
 	if (WORD_NAV_RE_WHITESPACE.test(ch)) return "whitespace";

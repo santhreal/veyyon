@@ -390,7 +390,7 @@ export class Vocalizer {
 				return;
 			}
 		} catch (error) {
-			logger.debug("vocalizer: stream failed", {
+			logger.warn("vocalizer: stream failed; playback stopped early", {
 				error: error instanceof Error ? error.message : String(error),
 			});
 		}

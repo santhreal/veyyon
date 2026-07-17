@@ -12,14 +12,6 @@ async function getHeadTag(api: CustomCommandAPI): Promise<string | undefined> {
 	}
 }
 
-async function getCurrentBranch(api: CustomCommandAPI): Promise<string> {
-	try {
-		return (await git.branch.current(api.cwd)) ?? "HEAD";
-	} catch {
-		return "HEAD";
-	}
-}
-
 async function getPushRemote(api: CustomCommandAPI, branch: string): Promise<string | undefined> {
 	try {
 		return (
@@ -32,7 +24,7 @@ async function getPushRemote(api: CustomCommandAPI, branch: string): Promise<str
 }
 
 async function getHeadTagContext(api: CustomCommandAPI): Promise<{ branch: string; headTag?: string; remote: string }> {
-	const branch = await getCurrentBranch(api);
+	const branch = await git.currentBranchOrHead(api.cwd);
 	const [headTag, pushRemote] = await Promise.all([getHeadTag(api), getPushRemote(api, branch)]);
 	return {
 		headTag,

@@ -1,3 +1,4 @@
+import { kebabSlug } from "@veyyon/pi-utils";
 import type { ExtensionAPI } from "../extensibility/extensions";
 import * as git from "../utils/git";
 import * as jj from "../utils/jj";
@@ -199,10 +200,7 @@ async function branchExists(api: ExtensionAPI, workDir: string, branchName: stri
 }
 
 function slugifyGoal(goal: string | null): string {
-	const normalized = (goal ?? "")
-		.toLowerCase()
-		.replace(/[^a-z0-9]+/g, "-")
-		.replace(/^-+|-+$/g, "");
+	const normalized = kebabSlug(goal ?? "");
 	const trimmed = normalized.slice(0, BRANCH_NAME_MAX_LENGTH).replace(/-+$/g, "");
 	return trimmed || "session";
 }
@@ -328,4 +326,13 @@ export function computeRunModifiedPaths(
 		}
 	}
 	return { tracked, untracked };
+}
+
+/** HEAD commit sha, or null when unreadable (fresh repo, detached worktree teardown). */
+export async function tryReadHeadSha(cwd: string): Promise<string | null> {
+	try {
+		return (await git.head.sha(cwd)) ?? null;
+	} catch {
+		return null;
+	}
 }

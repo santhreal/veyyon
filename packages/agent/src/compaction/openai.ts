@@ -39,8 +39,11 @@ import {
 } from "@veyyon/pi-ai/utils";
 import { CODEX_BASE_URL, getCodexAccountId, OPENAI_HEADER_VALUES, OPENAI_HEADERS } from "@veyyon/pi-catalog/wire/codex";
 import { $env, logger, stringifyJson } from "@veyyon/pi-utils";
+import { withRequestTimeout } from "./utils";
 
 export * from "./compaction-v2-streaming";
+
+import { appendAzureApiVersion, resolveAzureOpenAiBaseUrl } from "./compaction-v2-streaming";
 
 // ============================================================================
 // Public types
@@ -57,15 +60,6 @@ export const OPENAI_REMOTE_COMPACTION_PRESERVE_KEY = "openaiRemoteCompaction";
  * behind it). On timeout the caller falls back to local summarization.
  */
 export const REMOTE_COMPACTION_TIMEOUT_MS = 180_000;
-
-const DEFAULT_AZURE_API_VERSION = "v1";
-
-/** Race the caller's signal against the request timeout; `timeoutMs <= 0` disables the watchdog. */
-function withRequestTimeout(signal: AbortSignal | undefined, timeoutMs: number): AbortSignal | undefined {
-	if (timeoutMs <= 0) return signal;
-	const timeout = AbortSignal.timeout(timeoutMs);
-	return signal ? AbortSignal.any([signal, timeout]) : timeout;
-}
 
 export type OpenAiRemoteCompactionItem = {
 	type: "compaction" | "compaction_summary";
@@ -141,25 +135,6 @@ function resolveAzureOpenAiCompactEndpoint(model: Model, configuredEndpoint: str
 			? configuredEndpoint
 			: `${resolveAzureOpenAiBaseUrl(model)}/responses/compact`;
 	return appendAzureApiVersion(endpoint);
-}
-
-function resolveAzureOpenAiBaseUrl(model: Model): string {
-	const baseUrl = $env.AZURE_OPENAI_BASE_URL?.trim() || undefined;
-	const resourceName = $env.AZURE_OPENAI_RESOURCE_NAME;
-	const resolvedBaseUrl =
-		baseUrl ?? (resourceName ? `https://${resourceName}.openai.azure.com/openai/v1` : undefined) ?? model.baseUrl;
-	if (!resolvedBaseUrl) {
-		throw new Error(
-			"Azure OpenAI base URL is required. Set AZURE_OPENAI_BASE_URL or AZURE_OPENAI_RESOURCE_NAME, or configure model.baseUrl.",
-		);
-	}
-	return resolvedBaseUrl.replace(/\/+$/, "");
-}
-
-function appendAzureApiVersion(endpoint: string): string {
-	if (/[?&]api-version=/.test(endpoint)) return endpoint;
-	const separator = endpoint.includes("?") ? "&" : "?";
-	return `${endpoint}${separator}api-version=${encodeURIComponent($env.AZURE_OPENAI_API_VERSION || DEFAULT_AZURE_API_VERSION)}`;
 }
 
 function resolveOpenAiCompactModel(model: Model): string {

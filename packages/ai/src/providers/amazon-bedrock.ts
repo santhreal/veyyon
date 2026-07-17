@@ -325,7 +325,7 @@ export const streamBedrock: StreamFunction<"bedrock-converse-stream"> = (
 
 			const commandInput: ConverseStreamRequest = {
 				messages: convertedMessages,
-				system: buildSystemPrompt(context.systemPrompt, model, cacheRetention),
+				system: buildBedrockSystemBlocks(context.systemPrompt, model, cacheRetention),
 				inferenceConfig: {
 					maxTokens: options.maxTokens,
 					temperature: options.temperature,
@@ -480,7 +480,7 @@ export const streamBedrock: StreamFunction<"bedrock-converse-stream"> = (
 						// A sentinel-only request must never surface a tool-use stop:
 						// no real tool exists for the agent to dispatch.
 						output.stopReason =
-							sentinelInjected && ev.stopReason === "tool_use" ? "stop" : mapStopReason(ev.stopReason);
+							sentinelInjected && ev.stopReason === "tool_use" ? "stop" : mapBedrockStopReason(ev.stopReason);
 						if (output.stopReason === "error") {
 							output.errorMessage = `Generation failed with stop reason: ${ev.stopReason ?? "unknown"}`;
 						}
@@ -724,7 +724,7 @@ function supportsThinkingSignature(model: Model<"bedrock-converse-stream">): boo
 	return id.includes("anthropic.claude") || id.includes("anthropic/claude");
 }
 
-function buildSystemPrompt(
+function buildBedrockSystemBlocks(
 	systemPrompt: readonly string[] | undefined,
 	model: Model<"bedrock-converse-stream">,
 	cacheRetention: CacheRetention,
@@ -950,7 +950,7 @@ function planToolConfig(
 	return { toolConfig: { tools: bedrockTools, toolChoice: bedrockToolChoice }, sentinelInjected: false };
 }
 
-function mapStopReason(reason: string | undefined): StopReason {
+function mapBedrockStopReason(reason: string | undefined): StopReason {
 	switch (reason) {
 		case "end_turn":
 		case "stop_sequence":

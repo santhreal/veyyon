@@ -46,10 +46,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-24acbed9.js";
+            window.path_to_searchindex_js = "../searchindex-8badf17b.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-9cfd259b.js"></script>
+        <script src="../toc-19dab021.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -219,10 +219,13 @@ to <code>.yml</code> on load.</p>
 </tbody>
 </table>
 </div>
-<p>Remap keys by editing <code>keybindings.yml</code>; <code>/hotkeys</code> shows the current bindings.</p>
+<blockquote>
+<p><strong>Spec — not shipped:</strong> a <code>/keymap</code> interactive remapper and nested <code>[tui.keymap.*]</code> tables. Veyyon
+uses <code>keybindings.yml</code> + <code>/hotkeys</code> instead.</p>
+</blockquote>
 <h2 id="vim-mode"><a class="header" href="#vim-mode">Vim mode</a></h2>
-<p>When enabled in settings, the composer supports Normal/Insert modal editing (<code>i</code>, <code>Esc</code>, motions,
-operators). Toggle via the settings UI if exposed in your build.</p>
+<p>Modal (vim-style) composer editing does not exist. The composer ships with the
+standard binding set in <a href="../reference/keybindings-ref.html">Keybindings reference</a> only.</p>
 
                     </main>
 

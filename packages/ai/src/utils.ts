@@ -12,8 +12,11 @@ export function normalizeSystemPrompts(systemPrompt: readonly string[] | string 
 	return prompts.map(prompt => prompt.toWellFormed()).filter(prompt => prompt.trim().length > 0);
 }
 
+/** ONE PLACE: characters providers reject in tool-call ids (replace with "_"). */
+export const TOOL_CALL_ID_UNSAFE_RE = /[^a-zA-Z0-9_-]/g;
+
 export function normalizeToolCallId(id: string): string {
-	const sanitized = id.replace(/[^a-zA-Z0-9_-]/g, "_");
+	const sanitized = id.replace(TOOL_CALL_ID_UNSAFE_RE, "_");
 	return sanitized.length > 64 ? sanitized.slice(0, 64) : sanitized;
 }
 

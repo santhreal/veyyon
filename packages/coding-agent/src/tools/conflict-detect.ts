@@ -502,14 +502,14 @@ function locateRegion(
 ): { startIdx: number; endIdx: number } | null {
 	if (expected.length === 0 || expected.length > lines.length) return null;
 	// Fast path: try the recorded position first.
-	if (preferredIdx >= 0 && matchesAt(lines, preferredIdx, expected)) {
+	if (preferredIdx >= 0 && recordedLinesMatchAt(lines, preferredIdx, expected)) {
 		return { startIdx: preferredIdx, endIdx: preferredIdx + expected.length - 1 };
 	}
 	let best: number | null = null;
 	let bestDist = Number.POSITIVE_INFINITY;
 	const limit = lines.length - expected.length;
 	for (let i = 0; i <= limit; i++) {
-		if (!matchesAt(lines, i, expected)) continue;
+		if (!recordedLinesMatchAt(lines, i, expected)) continue;
 		const dist = Math.abs(i - preferredIdx);
 		if (dist < bestDist) {
 			best = i;
@@ -520,7 +520,7 @@ function locateRegion(
 	return { startIdx: best, endIdx: best + expected.length - 1 };
 }
 
-function matchesAt(lines: readonly string[], startIdx: number, expected: readonly string[]): boolean {
+function recordedLinesMatchAt(lines: readonly string[], startIdx: number, expected: readonly string[]): boolean {
 	if (startIdx < 0 || startIdx + expected.length > lines.length) return false;
 	for (let i = 0; i < expected.length; i++) {
 		// Recorded lines are LF-normalized; tolerate CRLF on-disk lines.

@@ -1,8 +1,9 @@
 import { createRequire } from "node:module";
 import type { ProgressInfo, RawAudio } from "@huggingface/transformers";
-import { ensureRuntimeInstalled, getTinyModelsCacheDir, resolveRuntimeModule } from "@veyyon/pi-utils";
+import { ensureRuntimeInstalled, errorMessage, resolveRuntimeModule } from "@veyyon/pi-utils";
 import {
-	errorMessage,
+	type ConfigurableTransformers,
+	configureTransformers,
 	errorText,
 	installSharpStubResolver,
 	MemoizedRuntime,
@@ -55,26 +56,6 @@ interface KokoroRuntime {
 	};
 }
 
-/**
- * The `@huggingface/transformers` instance `kokoro-js` runs on. We only touch its
- * `env` (cache dir + log level) and `LogLevel`; inference goes through Kokoro.
- */
-interface TransformersEnv {
-	env: {
-		cacheDir?: string;
-		allowLocalModels?: boolean;
-		logLevel?: unknown;
-		backends?: {
-			onnx?: {
-				logLevel?: unknown;
-			};
-		};
-	};
-	LogLevel?: {
-		ERROR: unknown;
-	};
-}
-
 const models = new Map<TtsLocalModelKey, Promise<KokoroTtsInstance>>();
 let synthesizeQueue = Promise.resolve();
 const kokoroRuntime = new MemoizedRuntime<KokoroRuntime>();
@@ -107,13 +88,6 @@ function toKokoroDevice(device: TinyModelDevice): KokoroDevice {
 	if (device === "wasm") return "wasm";
 	if (device === "webgpu" || device === "gpu") return "webgpu";
 	return "cpu";
-}
-
-function configureTransformers(transformers: TransformersEnv): void {
-	transformers.env.cacheDir = getTinyModelsCacheDir();
-	transformers.env.allowLocalModels = false;
-	transformers.env.logLevel = transformers.LogLevel?.ERROR ?? "error";
-	if (transformers.env.backends?.onnx) transformers.env.backends.onnx.logLevel = "error";
 }
 
 /**
@@ -153,7 +127,7 @@ function loadKokoroRuntime(
 		const transformersEntry = resolveRuntimeModule(nodeModules, TRANSFORMERS_PACKAGE);
 		if (!transformersEntry) throw new Error(`Unable to resolve ${TRANSFORMERS_PACKAGE} in runtime at ${nodeModules}`);
 		const runtimeRequire = createRequire(kokoroEntry);
-		configureTransformers(runtimeRequire(transformersEntry) as TransformersEnv);
+		configureTransformers(runtimeRequire(transformersEntry) as ConfigurableTransformers);
 		return runtimeRequire(kokoroEntry) as KokoroRuntime;
 	});
 }
@@ -213,7 +187,7 @@ async function loadModelWithDeviceFallback(
 	throw new Error("No TTS devices configured");
 }
 
-async function loadModel(
+async function loadTtsModel(
 	modelKey: TtsLocalModelKey,
 	transport: TtsTransport,
 	requestId: string,
@@ -258,7 +232,7 @@ async function synthesize(
 	text: string,
 	voice: string | undefined,
 ): Promise<{ pcm: Float32Array; sampleRate: number }> {
-	const synthesizer = await loadModel(modelKey, transport, requestId);
+	const synthesizer = await loadTtsModel(modelKey, transport, requestId);
 	const output = await synthesizer.generate(text, { voice: resolveTtsVoice(modelKey, voice) });
 	const spec = getTtsLocalModelSpec(modelKey);
 	const audio = Array.isArray(output.audio) ? output.audio[0] : output.audio;
@@ -266,27 +240,27 @@ async function synthesize(
 	return { pcm: audio, sampleRate: output.sampling_rate || spec?.sampleRate || 24_000 };
 }
 
-function enqueueRequest(
+function enqueueTtsRequest(
 	transport: TtsTransport,
 	request: Extract<TtsWorkerInbound, { type: "synthesize" | "download" }>,
 ): void {
 	synthesizeQueue = synthesizeQueue.then(
 		async () => {
-			await handleQueuedRequest(transport, request);
+			await handleQueuedTtsRequest(transport, request);
 		},
 		async () => {
-			await handleQueuedRequest(transport, request);
+			await handleQueuedTtsRequest(transport, request);
 		},
 	);
 }
 
-async function handleQueuedRequest(
+async function handleQueuedTtsRequest(
 	transport: TtsTransport,
 	request: Extract<TtsWorkerInbound, { type: "synthesize" | "download" }>,
 ): Promise<void> {
 	try {
 		if (request.type === "download") {
-			await loadModel(request.modelKey, transport, request.id);
+			await loadTtsModel(request.modelKey, transport, request.id);
 			transport.send({ type: "downloaded", id: request.id });
 			return;
 		}
@@ -314,7 +288,7 @@ async function handleQueuedRequest(
 async function runStreamSession(transport: TtsTransport, id: string, session: StreamSession): Promise<void> {
 	try {
 		if (session.cancelled) return;
-		const synthesizer = await loadModel(session.modelKey, transport, id);
+		const synthesizer = await loadTtsModel(session.modelKey, transport, id);
 		if (session.cancelled) return;
 		const spec = getTtsLocalModelSpec(session.modelKey);
 		const voice = resolveTtsVoice(session.modelKey, session.voice);
@@ -427,7 +401,7 @@ export function startTtsWorker(transport: TtsTransport): void {
 				cancelStreamSession(message.id);
 				return;
 			default:
-				enqueueRequest(transport, message);
+				enqueueTtsRequest(transport, message);
 				return;
 		}
 	});

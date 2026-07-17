@@ -1,5 +1,10 @@
 # MCP configuration in Veyyon
 
+> Operator overview and setup walkthrough: the handbook's
+> [MCP feature page](handbook/src/features/mcp.md) and
+> [MCP setup guide](handbook/src/using/mcp-setup.md). This page is the full
+> configuration reference.
+
 This guide explains how to add, edit, and validate MCP servers for the Veyyon coding agent.
 
 Source of truth in code:

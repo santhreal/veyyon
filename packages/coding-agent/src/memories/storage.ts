@@ -93,7 +93,7 @@ export function closeMemoryDb(db: Database): void {
 	db.close();
 }
 
-export function clearMemoryData(db: Database): void {
+export function clearMemoryTables(db: Database): void {
 	db.exec(`
 DELETE FROM stage1_outputs;
 DELETE FROM threads;

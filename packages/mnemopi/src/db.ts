@@ -30,7 +30,7 @@ export function openDatabase(path: DatabasePath = dbPath(), options: OpenDatabas
 		strict: options.strict ?? true,
 	});
 	if (options.pragmas !== false) enablePragmas(db, path);
-	if (options.loadExtension !== undefined) loadExtensions(db, options.loadExtension);
+	if (options.loadExtension !== undefined) loadSqliteExtensions(db, options.loadExtension);
 	return db;
 }
 
@@ -40,7 +40,7 @@ export function enablePragmas(db: Database, path?: DatabasePath): void {
 	if (path !== ":memory:") db.exec("PRAGMA journal_mode=WAL");
 }
 
-export function loadExtensions(db: Database, extensions: string | readonly string[]): void {
+export function loadSqliteExtensions(db: Database, extensions: string | readonly string[]): void {
 	if (typeof extensions === "string") {
 		if (extensions) (db as ExtensionDatabase).loadExtension(extensions);
 		return;
@@ -125,4 +125,9 @@ export function closeQuietly(db: Database | undefined | null): void {
 	} catch {
 		// Best-effort cleanup.
 	}
+}
+
+/** SQL positional-parameter list: `placeholders(3)` -> `"?,?,?"`. */
+export function placeholders(count: number): string {
+	return new Array<string>(count).fill("?").join(",");
 }

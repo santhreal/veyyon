@@ -1,3 +1,4 @@
+import { ToolError } from "../../tools/tool-errors";
 import type { JsDisplayOutput } from "./shared/types";
 
 export type { JsDisplayOutput } from "./shared/types";
@@ -44,4 +45,18 @@ export interface Transport {
 	send(msg: WorkerOutbound): void;
 	onMessage(handler: (msg: WorkerInbound) => void): () => void;
 	close(): void;
+}
+
+/** Serialize any thrown value into the wire-format error payload. */
+export function jsRunErrorPayload(error: unknown): RunErrorPayload {
+	if (error instanceof Error) {
+		return {
+			name: error.name,
+			message: error.message,
+			stack: error.stack,
+			isAbort: error.name === "AbortError" || error.name === "ToolAbortError",
+			isToolError: error.name === "ToolError" || error instanceof ToolError,
+		};
+	}
+	return { message: String(error) };
 }

@@ -18,6 +18,7 @@ import {
 	ptree,
 	readSseJson,
 	Snowflake,
+	stripTrailingSlashes,
 	untilAborted,
 } from "@veyyon/pi-utils";
 import { type } from "arktype";
@@ -810,7 +811,7 @@ function getOpenAIBaseUrl(model: Model): string {
 		model.api === "openai-codex-responses" || model.provider === "openai-codex"
 			? CODEX_BASE_URL
 			: DEFAULT_OPENAI_BASE_URL;
-	return (model.baseUrl || fallback).replace(/\/+$/, "");
+	return stripTrailingSlashes(model.baseUrl || fallback);
 }
 
 function getOpenAIResponsesUrl(model: Model): string {

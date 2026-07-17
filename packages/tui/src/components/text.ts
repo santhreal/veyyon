@@ -1,4 +1,4 @@
-import type { Component } from "../tui";
+import type { Component, RenderStablePrefix } from "../tui";
 import {
 	applyBackgroundToLine,
 	getPaddingX,
@@ -13,7 +13,7 @@ import {
 /**
  * Text component - displays multi-line text with word wrapping
  */
-export class Text implements Component {
+export class Text implements Component, RenderStablePrefix {
 	#text: string;
 	#paddingX: number; // Left/right padding
 	#paddingY: number; // Top/bottom padding
@@ -42,6 +42,20 @@ export class Text implements Component {
 	#wrapPrefixRows?: string[];
 	#wrapPrefixCarry = "";
 
+	// Padded twin of the wrap-prefix cache: margin+background+width padding for
+	// the stable wrapped rows. Padding a row is pure in (row, width, bgFn), so
+	// stable rows keep their padded form across appends and only the volatile
+	// tail rows pay visibleWidth/padding each frame.
+	#padPrefixRows: string[] = [];
+	#padPrefixWidth?: number;
+
+	// RenderStablePrefix accumulator: leading output rows provably identical to
+	// the render array state the engine last observed. Each rebuild lowers it
+	// to min(accum, rows this render kept from the previous one); a read
+	// re-bases it to the full current length. Lets the engine skip re-ingesting
+	// a streaming Text's settled rows every frame.
+	#stablePrefixAccum = 0;
+
 	constructor(text: string = "", paddingX: number = 1, paddingY: number = 1, customBgFn?: (text: string) => string) {
 		this.#text = text;
 		this.#paddingX = paddingX;
@@ -69,6 +83,8 @@ export class Text implements Component {
 		this.#cachedText = undefined;
 		this.#cachedWidth = undefined;
 		this.#cachedLines = undefined;
+		this.#padPrefixRows = [];
+		this.#padPrefixWidth = undefined;
 	}
 
 	invalidate(): void {
@@ -79,6 +95,21 @@ export class Text implements Component {
 		this.#wrapPrefixWidth = undefined;
 		this.#wrapPrefixRows = undefined;
 		this.#wrapPrefixCarry = "";
+		this.#padPrefixRows = [];
+		this.#padPrefixWidth = undefined;
+		this.#stablePrefixAccum = 0;
+	}
+
+	getRenderStablePrefixRows(observed: readonly string[]): number {
+		// Only the exact cached render array is covered by this accounting.
+		if (observed !== this.#cachedLines) {
+			this.#stablePrefixAccum = 0;
+			return 0;
+		}
+		const report = this.#stablePrefixAccum;
+		// Reading consumes: the reader now observes the current array in full.
+		this.#stablePrefixAccum = observed.length;
+		return report;
 	}
 
 	/**
@@ -88,7 +119,7 @@ export class Text implements Component {
 	 * baked into the re-wrapped tail, so styling across the reuse boundary
 	 * matches a from-scratch wrap.
 	 */
-	#wrapIncremental(normalized: string, contentWidth: number): string[] {
+	#wrapIncremental(normalized: string, contentWidth: number): { rows: string[]; stableRows: number } {
 		const boundary = normalized.lastIndexOf("\n") + 1; // 0 when single-line
 		const stable = normalized.slice(0, boundary);
 
@@ -110,12 +141,16 @@ export class Text implements Component {
 				prefixRows = prefixRows.concat(wrapTextWithAnsi(carry + grown, contentWidth));
 				carry = sgrCarryAfter(carry, grown);
 			}
-		} else if (boundary > 0) {
-			prefixRows = wrapTextWithAnsi(stable.slice(0, -1), contentWidth);
-			carry = sgrCarryAfter("", stable);
 		} else {
-			prefixRows = [];
-			carry = "";
+			// Non-append edit or width change: the padded twin is stale too.
+			this.#padPrefixRows = [];
+			if (boundary > 0) {
+				prefixRows = wrapTextWithAnsi(stable.slice(0, -1), contentWidth);
+				carry = sgrCarryAfter("", stable);
+			} else {
+				prefixRows = [];
+				carry = "";
+			}
 		}
 
 		this.#wrapPrefixText = stable;
@@ -124,7 +159,10 @@ export class Text implements Component {
 		this.#wrapPrefixCarry = carry;
 
 		const tailRows = wrapTextWithAnsi(carry + normalized.slice(boundary), contentWidth);
-		return prefixRows.length > 0 ? prefixRows.concat(tailRows) : tailRows;
+		return {
+			rows: prefixRows.length > 0 ? prefixRows.concat(tailRows) : tailRows,
+			stableRows: prefixRows.length,
+		};
 	}
 
 	render(width: number): readonly string[] {
@@ -133,12 +171,15 @@ export class Text implements Component {
 			return this.#cachedLines;
 		}
 
-		// Don't render anything if there's no actual text
-		if (!this.#text || this.#text.trim() === "") {
+		// Don't render anything if there's no actual text. /\S/ stops at the
+		// first non-whitespace char; trim() would copy the whole (possibly
+		// still-streaming) string just to test emptiness.
+		if (!this.#text || !/\S/.test(this.#text)) {
 			const result: string[] = [];
 			this.#cachedText = this.#text;
 			this.#cachedWidth = width;
 			this.#cachedLines = result;
+			this.#stablePrefixAccum = 0;
 			return result;
 		}
 
@@ -151,26 +192,38 @@ export class Text implements Component {
 		const paddingX = this.#ignoreTight ? this.#paddingX : getPaddingX(this.#paddingX);
 		const contentWidth = Math.max(1, width - paddingX * 2);
 		// Wrap text (this preserves ANSI codes but does NOT pad)
-		const wrappedLines = this.#wrapIncremental(normalizedText, contentWidth);
+		const { rows: wrappedLines, stableRows } = this.#wrapIncremental(normalizedText, contentWidth);
 
-		// Add margins and background to each line
+		// Add margins and background to each line. Stable rows reuse their
+		// padded form from the previous render; only tail rows are re-padded.
+		if (this.#padPrefixWidth !== width) {
+			this.#padPrefixRows = [];
+			this.#padPrefixWidth = width;
+		}
 		const leftMargin = padding(paddingX);
 		const rightMargin = padding(paddingX);
-		const contentLines: string[] = [];
-
-		for (const line of wrappedLines) {
-			// Add margins
+		const padLine = (line: string): string => {
 			const lineWithMargins = leftMargin + line + rightMargin;
-
 			// Apply background if specified (this also pads to full width)
 			if (this.#customBgFn) {
-				contentLines.push(applyBackgroundToLine(lineWithMargins, width, this.#customBgFn));
-			} else {
-				// No background - just pad to width with spaces
-				const visibleLen = visibleWidth(lineWithMargins);
-				const paddingNeeded = Math.max(0, width - visibleLen);
-				contentLines.push(lineWithMargins + padding(paddingNeeded));
+				return applyBackgroundToLine(lineWithMargins, width, this.#customBgFn);
 			}
+			// No background - just pad to width with spaces
+			const visibleLen = visibleWidth(lineWithMargins);
+			return lineWithMargins + padding(Math.max(0, width - visibleLen));
+		};
+		const paddedPrefix = this.#padPrefixRows;
+		// Rows this render provably keeps from the previous returned array: the
+		// top padding plus the padded rows already materialized before this
+		// render (only valid when some survived — a reset means nothing carries).
+		const keptRows = paddedPrefix.length > 0 ? this.#paddingY + paddedPrefix.length : 0;
+		this.#stablePrefixAccum = Math.min(this.#stablePrefixAccum, keptRows);
+		for (let i = paddedPrefix.length; i < stableRows; i++) {
+			paddedPrefix.push(padLine(wrappedLines[i] ?? ""));
+		}
+		const contentLines: string[] = paddedPrefix.slice(0, stableRows);
+		for (let i = stableRows; i < wrappedLines.length; i++) {
+			contentLines.push(padLine(wrappedLines[i] ?? ""));
 		}
 
 		// Add top/bottom padding (empty lines)

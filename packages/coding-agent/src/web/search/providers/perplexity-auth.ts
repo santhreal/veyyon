@@ -1,4 +1,5 @@
 import type { AuthStorage, OAuthAccess } from "@veyyon/pi-ai";
+import { jwtExpiryMs } from "@veyyon/pi-ai";
 import { $env } from "@veyyon/pi-utils";
 
 export const PERPLEXITY_CHAT_BASE_URL = "https://api.perplexity.ai";
@@ -80,25 +81,6 @@ export async function getApiConfigs(
 	}
 
 	return configs;
-}
-
-/**
- * Decode a Perplexity JWT's `exp` claim, in ms. Returns `undefined` when the
- * token has no `exp` (which is the common case — Perplexity sessions are
- * server-side and effectively non-expiring from the client's POV).
- */
-export function jwtExpiryMs(token: string): number | undefined {
-	const parts = token.split(".");
-	if (parts.length !== 3) return undefined;
-	const payload = parts[1];
-	if (!payload) return undefined;
-	try {
-		const decoded = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as { exp?: unknown };
-		if (typeof decoded.exp !== "number" || !Number.isFinite(decoded.exp)) return undefined;
-		return decoded.exp * 1000;
-	} catch {
-		return undefined;
-	}
 }
 
 /** Collect all available auth methods to try in priority order */

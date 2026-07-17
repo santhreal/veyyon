@@ -97,7 +97,7 @@ async function pollOperation(
 	}
 }
 
-async function discoverProject(accessToken: string, onProgress?: (message: string) => void): Promise<string> {
+async function discoverGeminiCliProject(accessToken: string, onProgress?: (message: string) => void): Promise<string> {
 	const envProjectId = $env.GOOGLE_CLOUD_PROJECT || $env.GOOGLE_CLOUD_PROJECT_ID;
 
 	const headers = {
@@ -231,7 +231,7 @@ export async function loginGeminiCli(ctrl: OAuthController): Promise<OAuthCreden
 		scopes: SCOPES,
 		callbackPort: CALLBACK_PORT,
 		callbackPath: CALLBACK_PATH,
-		discoverProject,
+		discoverProject: discoverGeminiCliProject,
 	});
 }
 

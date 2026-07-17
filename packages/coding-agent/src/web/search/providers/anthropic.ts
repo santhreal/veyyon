@@ -193,7 +193,7 @@ function parsePageAge(pageAge: string | null | undefined): number | undefined {
  * @param response - Raw API response containing content blocks
  * @returns Normalized response with answer, sources, citations, and usage
  */
-function parseResponse(response: AnthropicApiResponse): SearchResponse {
+function parseAnthropicSearchResponse(response: AnthropicApiResponse): SearchResponse {
 	const answerParts: string[] = [];
 	const searchQueries: string[] = [];
 	const sources: SearchSource[] = [];
@@ -318,7 +318,7 @@ export async function searchAnthropic(
 		},
 	);
 
-	const result = parseResponse(response);
+	const result = parseAnthropicSearchResponse(response);
 
 	const numResults = "authStorage" in params ? (params.numSearchResults ?? params.limit) : params.num_results;
 	if (numResults && result.sources.length > numResults) {

@@ -13,7 +13,7 @@ compose prompt ──► turn begins
         ├─ assemble context (instructions, goal card, recent history, tools)
         ├─ call model
         ├─ dispatch / repair tool calls (edit, exec, MCP, …)
-        ├─ approval-mode gate
+        ├─ approvals + sandbox gate
         └─ final reply ──► turn ends (or Esc abort)
         │
         ▼
@@ -54,7 +54,7 @@ Models have a finite token window. As a session grows, the raw transcript may no
 
 Compaction preserves the goal card, active user instructions, recent turns, and a deterministic working-set of files touched. This lets a resumed session show the model what matters without forcing it to read the entire transcript.
 
-Prefer `/compact` when you need a summary to retain state. Prefer the `/new` command when prior transcript is no longer useful and you want a clean session without summarization. See [Slash commands](../reference/slash-commands.md).
+Prefer `/compact` when you need a summary to retain state. Prefer `/new` when prior transcript is no longer useful and you want a clean window without summarization.
 
 ## Where the details live
 

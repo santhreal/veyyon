@@ -12,14 +12,8 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { isEnoent } from "@veyyon/pi-utils";
 import { getActiveSkills } from "../extensibility/skills";
-import { buildDirectoryResource } from "./filesystem-resource";
+import { buildDirectoryResource, contentTypeForFileExtension } from "./filesystem-resource";
 import type { InternalResource, InternalUrl, ProtocolHandler, ResolveContext, UrlCompletion } from "./types";
-
-function getContentType(filePath: string): InternalResource["contentType"] {
-	const ext = path.extname(filePath).toLowerCase();
-	if (ext === ".md") return "text/markdown";
-	return "text/plain";
-}
 
 /**
  * Validate that a path is safe (no traversal, no absolute paths).
@@ -96,7 +90,7 @@ export class SkillProtocolHandler implements ProtocolHandler {
 		return {
 			url: url.href,
 			content,
-			contentType: getContentType(targetPath),
+			contentType: contentTypeForFileExtension(path.extname(targetPath).toLowerCase()),
 			size: Buffer.byteLength(content, "utf-8"),
 			sourcePath: targetPath,
 			notes: [],

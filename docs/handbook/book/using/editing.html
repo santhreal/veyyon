@@ -46,10 +46,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-24acbed9.js";
+            window.path_to_searchindex_js = "../searchindex-8badf17b.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-9cfd259b.js"></script>
+        <script src="../toc-19dab021.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -214,7 +214,7 @@ see <a href="../repair/overview.html">Repair overview</a>.</p>
 </table>
 </div>
 <p>There is one <strong>hashline edit applier</strong> for anchored edits; <code>write</code> is intentionally separate for whole-file
-creation. Both honor the same approval policy.</p>
+creation. Both honor the same approval and sandbox policy.</p>
 <h2 id="tools"><a class="header" href="#tools">Tools</a></h2>
 <div class="table-wrapper">
 <table>
@@ -238,10 +238,12 @@ creation. Both honor the same approval policy.</p>
 </ol>
 <p><code>write</code> strips pasted hashline prefixes when appropriate and can mint new tags after whole-file writes.</p>
 <h2 id="safety"><a class="header" href="#safety">Safety</a></h2>
-<p>Edits honor the approval mode like <code>bash</code>. Denied tools are removed from the model’s tool
+<p>Edits honor approval mode and sandbox roots like <code>bash</code>. Denied tools are removed from the model’s tool
 list via <code>disallowed_tools</code> / plan mode.</p>
-<p>Veyyon uses hashline as the primary write path; <code>apply_patch</code> is a compatibility mode. There is no
-single V4A applier that routes every mutation through a <code>make_update_patch</code> envelope.</p>
+<blockquote>
+<p><strong>Spec — not shipped:</strong> a single V4A applier that routes every mutation through a <code>make_update_patch</code>
+envelope. Veyyon uses hashline as the primary path; <code>apply_patch</code> is a compatibility mode.</p>
+</blockquote>
 
                     </main>
 

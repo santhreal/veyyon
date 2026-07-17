@@ -21,6 +21,10 @@ describe("AsyncJobManager singleton across concurrent top-level sessions", () =>
 	let sharedModelRegistry: ModelRegistry;
 
 	beforeAll(async () => {
+		// A session leaked by an earlier test file would already hold the
+		// process-wide singleton, making our "primary" a non-owner and every
+		// ownership assertion below vacuously wrong. Start from a clean slate.
+		AsyncJobManager.resetForTests();
 		sharedTempDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-sdk-async-singleton-shared-"));
 		sharedAuthStorage = await AuthStorage.create(path.join(sharedTempDir, "auth.db"));
 		sharedModelRegistry = new ModelRegistry(sharedAuthStorage, path.join(sharedTempDir, "models.yml"));

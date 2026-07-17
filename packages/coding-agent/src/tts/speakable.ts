@@ -23,6 +23,7 @@
  * Pure and synchronous — the vocalizer owns timers (idle flush) and the
  * session lifecycle, so this class stays trivially unit-testable.
  */
+import { HAS_LETTER_OR_DIGIT_RE } from "@veyyon/pi-utils";
 
 /** Minimum length before the very first segment may cut at a sentence boundary. */
 const FIRST_SEGMENT_MIN = 12;
@@ -68,7 +69,8 @@ const EMPHASIS_UNDERSCORE_RE = /(^|\s)_+|_+(?=\s|$)/g;
 const HTML_TAG_RE = /<\/?[a-zA-Z][^<>]*>/g;
 const HR_INLINE_RE = /(^|\s)[-*_]{3,}(?=\s|$)/g;
 const PATH_RE = /(^|[\s("'`])((?:~|\.{1,2})?\/?[\w.@+-]+(?:\/[\w.@+-]+){2,}\/?)/g;
-const HAS_SPEAKABLE_RE = /[\p{L}\p{N}]/u;
+// ONE PLACE: predicate owned by pi-utils regex.ts.
+const HAS_SPEAKABLE_RE = HAS_LETTER_OR_DIGIT_RE;
 
 /** "https://github.com/foo/bar?x#y" → "github.com". */
 function speakableUrl(url: string): string {

@@ -14,6 +14,16 @@ import * as fs from "node:fs/promises";
 import { ADVISOR_TRANSCRIPT_STEM } from "../advisor/transcript-recorder";
 
 /**
+ * Sanitize a requested agent-output name into an allocatable id base: strip
+ * everything outside `[A-Za-z0-9_-]` and cap at 48 chars. ONE PLACE for the
+ * charset shared by the vibe runtime and the eval agent bridge; callers apply
+ * their own fallback when the result is empty.
+ */
+export function sanitizeOutputName(value: string): string {
+	return value.replace(/[^A-Za-z0-9_-]+/g, "").slice(0, 48);
+}
+
+/**
  * Manages agent output ID allocation to ensure uniqueness.
  *
  * The first allocation of a given name keeps the name as-is; subsequent

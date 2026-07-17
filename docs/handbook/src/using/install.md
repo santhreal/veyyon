@@ -1,15 +1,34 @@
 # Install
 
-Veyyon ships as the npm package **`@veyyon/pi-coding-agent`** and installs the `veyyon`
-executable. It is a TypeScript + Bun agent loop with Rust natives (`@veyyon/pi-natives`) for hot paths
-(grep, walker, shell/PTY, hashline edits). After install, run `veyyon plugin doctor`.
+The fastest path is the one-command installer: it downloads a checksum-verified binary from GitHub
+releases, wires your PATH and shell completions, creates the short `vey` alias, and finishes with a
+doctor self-test.
+
+```console
+$ curl -fsSL https://get.veyyon.dev | sh
+$ vey --version
+```
+
+Windows (PowerShell):
+
+```powershell
+irm https://veyyon.dev/install.ps1 | iex
+```
+
+Veyyon is a TypeScript + Bun agent loop with Rust natives (`@veyyon/pi-natives`) for hot paths
+(grep, walker, shell/PTY, hashline edits). Both `veyyon` and the shorter `vey` launch it.
 
 ## Requirements
 
-- **Bun** (recommended runtime) or a recent Node.js.
 - **Git** — most workflows expect a repository.
 
+There is no OS-level shell sandbox (no Landlock/seccomp/Seatbelt/bubblewrap requirement); the
+approval mode is the safety boundary — see [Approvals and autonomy](../features/sandbox.md).
+
 ## Install (npm / Bun)
+
+If you prefer to run from the package registry, Veyyon ships as **`@veyyon/pi-coding-agent`**
+and installs the `veyyon` executable:
 
 ```console
 $ bun install -g @veyyon/pi-coding-agent
@@ -27,7 +46,9 @@ $ veyyon --version
 
 ## After install
 
-The first interactive `veyyon` opens the setup ceremony (splash → providers → glyphs → theme → outro). Force it again with `veyyon setup`. Re-open providers inside a session with `/setup` or `/providers`. See [Getting started](./getting-started.md).
+The first interactive `veyyon` opens the setup ceremony (splash → providers → glyphs → theme →
+outro). Force it again with `veyyon setup`. Re-open providers inside a session with `/setup` or
+`/providers`. See [Getting started](./getting-started.md).
 
 ## Build from source
 
@@ -42,6 +63,8 @@ $ bun dev --version
 
 ## Shell completions
 
+The one-command installer wires these for you. From a package install:
+
 ```console
 $ veyyon completions bash|zsh|fish
 ```
@@ -49,63 +72,20 @@ $ veyyon completions bash|zsh|fish
 ## Verify the install
 
 ```console
-$ veyyon --version
+$ vey --version
 $ veyyon plugin doctor
 $ veyyon plugin doctor --fix
 ```
 
 `veyyon plugin doctor` checks plugin health and warns when optional external binaries (`sd`, `sg`,
-`git`) or common API keys are missing. For interactive diagnostics use `/debug` in the TUI. See
-[Diagnostics](../features/doctor.md).
-
-### Relocate the config directory
-
-By default Unix uses `~/.veyyon`. `PI_CONFIG_DIR` renames the home-relative config directory, and
-`PI_CODING_AGENT_DIR` relocates the whole agent base (`config.yml`, `agent.db`, sessions, and more):
-
-```console
-$ export PI_CODING_AGENT_DIR=/path/to/veyyon-agent
-$ veyyon plugin doctor
-```
-
-Layout: [File locations](../reference/file-locations.md).
-
-## First credentials
-
-On first interactive launch, the setup ceremony (or `veyyon setup`) walks sign-in and API keys.
-Inside a session, use `/setup` / `/providers` to re-open that panel, `/login` (or `/login <provider>`)
-for OAuth and key entry, or export the provider's environment variable and skip the interactive step.
-See [Authentication](./authentication.md) and [Configuring providers](./configuring-providers.md).
+`git`) or common API keys are missing. See [Diagnostics](../features/doctor.md).
 
 ## Uninstall
 
-Remove the global package:
+Installed with the one-command installer:
 
 ```console
-$ bun remove -g @veyyon/pi-coding-agent
-$ # or: npm uninstall -g @veyyon/pi-coding-agent
+$ curl -fsSL https://get.veyyon.dev | sh -s -- --uninstall
 ```
 
-Then remove state if you want a clean machine:
-
-```console
-$ rm -rf ~/.veyyon          # irreversible: config, secrets, sessions, plugins, skills, logs
-$ # if you relocated the agent base:
-$ rm -rf "$PI_CODING_AGENT_DIR"
-```
-
-Project-local files (`AGENTS.md`, `.veyyon/` in a repo) are **not** removed by deleting the
-home directory — clean those per repository if desired.
-
-To keep projects but wipe only sessions:
-
-```console
-$ rm -rf ~/.veyyon/agent/sessions
-```
-
-## Next
-
-- [Getting started](./getting-started.md) — first interactive edit with sample terminal output.
-- [Model contract](../concepts/model-contract.md) — choose credentials with the harness boundary in mind.
-- [Safety](./safety.md) — approvals and fail-closed behavior.
-- [Troubleshooting](./troubleshooting.md) / [FAQ](./faq.md) — when the doctor is not enough.
+That removes the binary, the `vey` alias, the global package, and the shell completions.

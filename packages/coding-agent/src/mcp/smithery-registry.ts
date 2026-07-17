@@ -121,7 +121,7 @@ export class SmitheryRegistryError extends Error {
 	}
 }
 
-function clampLimit(limit: number | undefined): number {
+function clampRegistrySearchLimit(limit: number | undefined): number {
 	if (!limit || Number.isNaN(limit)) return 20;
 	if (limit < 1) return 1;
 	if (limit > 100) return 100;
@@ -403,7 +403,7 @@ export async function searchSmitheryRegistry(
 	const query = keyword.trim();
 	if (!query) return [];
 
-	const limit = clampLimit(options?.limit);
+	const limit = clampRegistrySearchLimit(options?.limit);
 	const isSemantic = options?.includeSemantic === true;
 	const pageSize = Math.max(limit * 2, 20);
 	const headers = new Headers();

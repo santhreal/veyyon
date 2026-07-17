@@ -3,7 +3,7 @@ import * as net from "node:net";
 import * as os from "node:os";
 import * as path from "node:path";
 import { Process, type PtyRunResult, PtySession } from "@veyyon/pi-natives";
-import { isEexist, isEnoent, logger, postmortem, sanitizeText } from "@veyyon/pi-utils";
+import { isEexist, isEnoent, logger, postmortem, quoteShellArg, sanitizeText } from "@veyyon/pi-utils";
 import { truncateHead, truncateHeadBytes, truncateTail, truncateTailBytes } from "../session/streaming-output";
 import { workerEnvFromParent } from "../subprocess/worker-client";
 import { daemonBrokerEndpoint } from "./paths";
@@ -79,10 +79,6 @@ interface BrokerLease {
 interface DaemonLogRead {
 	text: string;
 	terminalText: string;
-}
-
-function quoteShellArg(value: string): string {
-	return `'${value.replaceAll("'", `'\\''`)}'`;
 }
 
 function terminalState(state: DaemonSnapshot["state"]): boolean {

@@ -4,12 +4,15 @@ import * as path from "node:path";
 import type { ProgressInfo } from "@huggingface/transformers";
 import {
 	ensureRuntimeInstalled,
+	errorMessage,
 	getTinyModelsCacheDir,
 	installRuntimeModuleResolver,
 	isCompiledBinary,
+	readPipe,
 	resolveRuntimeModule,
 } from "@veyyon/pi-utils";
 import packageJson from "../../package.json" with { type: "json" };
+import { type TinyModelDevice, type TinyModelDevicePreference, tinyModelDeviceLoadOrder } from "../tiny/device";
 
 /**
  * Child-side scaffolding shared by the ONNX inference worker bodies
@@ -43,10 +46,6 @@ const sourceRequire = createRequire(import.meta.url);
 
 export function errorText(error: unknown): string {
 	return error instanceof Error ? (error.stack ?? error.message) : String(error);
-}
-
-export function errorMessage(error: unknown): string {
-	return error instanceof Error ? error.message : String(error);
 }
 
 // ── Structured logging ──────────────────────────────────────────────
@@ -193,11 +192,6 @@ async function missingOnnxRuntimeCudaProviderFiles(binDir: string): Promise<stri
 	return missing;
 }
 
-async function readPipe(stream: ReadableStream<Uint8Array> | null): Promise<string> {
-	if (!stream) return "";
-	return new Response(stream).text();
-}
-
 async function installOnnxRuntimeCudaProviders(packageDir: string, runtimeDir: string, binDir: string): Promise<void> {
 	const script = path.join(packageDir, "script", "install.js");
 	try {
@@ -297,9 +291,14 @@ export function getTransformersVersionSpec(): string {
 // ── Transformers runtime loader ─────────────────────────────────────
 
 /** The subset of the Transformers.js module surface {@link configureTransformers} touches. */
-interface ConfigurableTransformers {
-	env: { cacheDir?: string; allowLocalModels?: boolean; logLevel?: unknown };
-	LogLevel: { ERROR: unknown };
+export interface ConfigurableTransformers {
+	env: {
+		cacheDir?: string;
+		allowLocalModels?: boolean;
+		logLevel?: unknown;
+		backends?: { onnx?: { logLevel?: unknown } };
+	};
+	LogLevel?: { ERROR?: unknown };
 }
 
 export interface TransformersRuntimeMetadata {
@@ -381,6 +380,60 @@ function resolveOnnxRuntimePackageDir(metadata: TransformersRuntimeMetadata): st
 	return manifest ? path.dirname(manifest) : null;
 }
 
+/** Options for the shared accelerated-device fallback loader. */
+export interface DevicePipelineLoadOptions<P> {
+	/** Log prefix, e.g. "stt" or "tiny-model". */
+	label: string;
+	/** Exact message thrown when the device list is empty. */
+	noDevicesMessage: string;
+	modelKey: unknown;
+	repo: string;
+	preference: TinyModelDevicePreference;
+	transport: WorkerLogTransport;
+	/** Runtime metadata used for CUDA diagnostics on accelerated-device failures. */
+	runtimeMetadata: TransformersRuntimeMetadata;
+	loadOnDevice: (device: TinyModelDevice) => Promise<P>;
+}
+
+/**
+ * Try each device from the preference's load order, logging and falling back
+ * on failure; CUDA diagnostics from accelerated-device failures are attached
+ * to the final error.
+ */
+export async function loadPipelineWithDeviceFallback<P>(
+	options: DevicePipelineLoadOptions<P>,
+): Promise<{ pipeline: P; device: TinyModelDevice }> {
+	const { label, modelKey, repo, preference, transport } = options;
+	const devices = tinyModelDeviceLoadOrder(preference);
+	if (devices[0] !== preference.device) {
+		sendLog(transport, "warn", `${label}: requested device is unsafe in the worker; using CPU`, {
+			modelKey,
+			repo,
+			requestedDevice: preference.device,
+			device: devices[0],
+		});
+	}
+	let cudaDiagnostics: string | null = null;
+	for (let i = 0; i < devices.length; i += 1) {
+		const device = devices[i]!;
+		try {
+			return { pipeline: await options.loadOnDevice(device), device };
+		} catch (error) {
+			const deviceDiagnostics = await formatOnnxRuntimeCudaDiagnostics(options.runtimeMetadata, device, error);
+			if (deviceDiagnostics) cudaDiagnostics = deviceDiagnostics;
+			if (i === devices.length - 1) {
+				if (cudaDiagnostics) throw new Error(`${errorText(error)}\n${cudaDiagnostics}`);
+				throw error;
+			}
+			const fallbackDevice = devices[i + 1]!;
+			const meta: Record<string, unknown> = { modelKey, repo, device, fallbackDevice, error: errorMessage(error) };
+			if (deviceDiagnostics) meta.cudaDiagnostics = deviceDiagnostics;
+			sendLog(transport, "warn", `${label}: accelerated device failed; falling back`, meta);
+		}
+	}
+	throw new Error(options.noDevicesMessage);
+}
+
 export async function formatOnnxRuntimeCudaDiagnostics(
 	metadata: TransformersRuntimeMetadata,
 	requestedDevice: string,
@@ -410,10 +463,11 @@ export async function formatOnnxRuntimeCudaDiagnostics(
 	return lines.join("\n");
 }
 
-function configureTransformers<T extends ConfigurableTransformers>(transformers: T): T {
+export function configureTransformers<T extends ConfigurableTransformers>(transformers: T): T {
 	transformers.env.cacheDir = getTinyModelsCacheDir();
 	transformers.env.allowLocalModels = false;
-	transformers.env.logLevel = transformers.LogLevel.ERROR;
+	transformers.env.logLevel = transformers.LogLevel?.ERROR ?? "error";
+	if (transformers.env.backends?.onnx) transformers.env.backends.onnx.logLevel = "error";
 	return transformers;
 }
 

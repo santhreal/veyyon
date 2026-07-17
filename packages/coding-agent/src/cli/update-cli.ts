@@ -4,6 +4,7 @@
  * Handles `veyyon update` to check for and install updates.
  * Uses the installer that owns the active omp executable when it can be detected.
  */
+
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -13,6 +14,7 @@ import { $ } from "bun";
 import chalk from "chalk";
 import { theme } from "../modes/theme/theme";
 import { isTimeoutError, withTimeoutSignal } from "../utils/fetch-timeout";
+import { compareSemverLikeVersions } from "../utils/version";
 
 const REPO = "santhreal/veyyon";
 const PACKAGE = "@veyyon/pi-coding-agent";
@@ -162,7 +164,9 @@ function getMiseDataDir(): string {
 	return path.join(os.homedir(), ".local", "share", "mise");
 }
 
-function normalizePathForComparison(filePath: string): string {
+// Deliberately lexical — no realpath (utils' normalizePathForComparison resolves
+// symlinks; isPathInDirectory layers realpath explicitly where it wants it).
+function normalizePathLexical(filePath: string): string {
 	const normalized = path.normalize(filePath);
 	if (process.platform === "win32") return normalized.toLowerCase();
 	return normalized;
@@ -177,8 +181,8 @@ function tryRealpath(p: string): string | undefined {
 }
 
 function isPathInDirectoryLexical(filePath: string, directoryPath: string): boolean {
-	const normalizedPath = normalizePathForComparison(path.resolve(filePath));
-	const normalizedDirectory = normalizePathForComparison(path.resolve(directoryPath));
+	const normalizedPath = normalizePathLexical(path.resolve(filePath));
+	const normalizedDirectory = normalizePathLexical(path.resolve(directoryPath));
 	const relativePath = path.relative(normalizedDirectory, normalizedPath);
 	return relativePath === "" || (!relativePath.startsWith("..") && !path.isAbsolute(relativePath));
 }
@@ -292,24 +296,6 @@ async function getLatestRelease(): Promise<ReleaseInfo> {
 	};
 }
 
-/**
- * Compare semver versions. Returns:
- * - negative if a < b
- * - 0 if a == b
- * - positive if a > b
- */
-function compareVersions(a: string, b: string): number {
-	const pa = a.split(".").map(Number);
-	const pb = b.split(".").map(Number);
-
-	for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
-		const na = pa[i] || 0;
-		const nb = pb[i] || 0;
-		if (na !== nb) return na - nb;
-	}
-	return 0;
-}
-
 interface BunInstallCachePruneResult {
 	scannedPackages: number;
 	removedEntries: number;
@@ -324,42 +310,6 @@ interface BunCachePackageGroup {
 function stripBunCacheVersionSuffix(name: string): string {
 	const metadataIndex = name.indexOf("@@");
 	return metadataIndex === -1 ? name : name.slice(0, metadataIndex);
-}
-
-function compareSemverIdentifier(a: string, b: string): number {
-	const aNumber = /^\d+$/.test(a);
-	const bNumber = /^\d+$/.test(b);
-	if (aNumber && bNumber) return Number(a) - Number(b);
-	if (aNumber) return -1;
-	if (bNumber) return 1;
-	return a.localeCompare(b);
-}
-
-function compareSemverLikeVersions(a: string, b: string): number {
-	const [aCoreWithPrerelease] = a.split("+", 1);
-	const [bCoreWithPrerelease] = b.split("+", 1);
-	const [aCore, aPrerelease] = aCoreWithPrerelease.split("-", 2);
-	const [bCore, bPrerelease] = bCoreWithPrerelease.split("-", 2);
-	const aParts = aCore.split(".");
-	const bParts = bCore.split(".");
-	for (let i = 0; i < Math.max(aParts.length, bParts.length); i++) {
-		const diff = Number(aParts[i] ?? 0) - Number(bParts[i] ?? 0);
-		if (diff !== 0 && Number.isFinite(diff)) return diff;
-	}
-	if (!aPrerelease && !bPrerelease) return 0;
-	if (!aPrerelease) return 1;
-	if (!bPrerelease) return -1;
-	const aPrereleaseParts = aPrerelease.split(".");
-	const bPrereleaseParts = bPrerelease.split(".");
-	for (let i = 0; i < Math.max(aPrereleaseParts.length, bPrereleaseParts.length); i++) {
-		const aPart = aPrereleaseParts[i];
-		const bPart = bPrereleaseParts[i];
-		if (aPart === undefined) return -1;
-		if (bPart === undefined) return 1;
-		const diff = compareSemverIdentifier(aPart, bPart);
-		if (diff !== 0) return diff;
-	}
-	return 0;
 }
 
 async function readdirIfExists(dir: string): Promise<fs.Dirent[]> {
@@ -942,7 +892,7 @@ export async function runUpdateCommand(opts: { force: boolean; check: boolean })
 		process.exit(1);
 	}
 
-	const comparison = compareVersions(release.version, VERSION);
+	const comparison = compareSemverLikeVersions(release.version, VERSION);
 
 	if (comparison <= 0 && !opts.force) {
 		console.log(chalk.green(`${theme.status.success} Already up to date`));
@@ -978,26 +928,4 @@ export async function runUpdateCommand(opts: { force: boolean; check: boolean })
 		console.error(chalk.red(`Update failed: ${err}`));
 		process.exit(1);
 	}
-}
-
-/**
- * Print update command help.
- */
-export function printUpdateHelp(): void {
-	console.log(`${chalk.bold(`${APP_NAME} update`)} - Check for and install updates
-
-${chalk.bold("Usage:")}
-  ${APP_NAME} update [options]
-
-${chalk.bold("Options:")}
-  -c, --check     Check for updates without installing
-  -f, --force     Force reinstall even if up to date
-  -l, --plugins   Update installed plugins
-
-${chalk.bold("Examples:")}
-  ${APP_NAME} update              Update to latest version
-  ${APP_NAME} update --check      Check if updates are available
-  ${APP_NAME} update --force      Force reinstall
-  ${APP_NAME} update -l           Update installed plugins
-`);
 }

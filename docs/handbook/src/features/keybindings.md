@@ -29,9 +29,10 @@ Engineering detail: [`docs/keybindings.md`](../../../keybindings.md).
 | `/hotkeys` | Show active chords |
 | `/settings` | Settings UI (includes keymap-related options) |
 
-Remap keys by editing `keybindings.yml`; `/hotkeys` shows the current bindings.
+> **Spec — not shipped:** a `/keymap` interactive remapper and nested `[tui.keymap.*]` tables. Veyyon
+> uses `keybindings.yml` + `/hotkeys` instead.
 
 ## Vim mode
 
-When enabled in settings, the composer supports Normal/Insert modal editing (`i`, `Esc`, motions,
-operators). Toggle via the settings UI if exposed in your build.
+Modal (vim-style) composer editing does not exist. The composer ships with the
+standard binding set in [Keybindings reference](../reference/keybindings-ref.md) only.

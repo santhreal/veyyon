@@ -1,12 +1,11 @@
 import type { ThinkingLevel } from "@veyyon/pi-agent-core";
 import type { Api, ApiKey, Model } from "@veyyon/pi-ai";
-import { $env } from "@veyyon/pi-utils";
+import { $env, estimateTextTokens } from "@veyyon/pi-utils";
 import { parseFileDiffs } from "../../commit/git/diff";
 import type { ConventionalAnalysis } from "../../commit/types";
 import { isExcludedFile } from "../../commit/utils/exclusions";
 import { runMapPhase } from "./map-phase";
 import { runReducePhase } from "./reduce-phase";
-import { estimateTokens } from "./utils";
 
 const MIN_FILES_FOR_MAP_REDUCE = 4;
 const MAX_FILE_TOKENS = 50_000;
@@ -41,7 +40,7 @@ export function shouldUseMapReduce(diff: string, settings?: MapReduceSettings): 
 	const files = parseFileDiffs(diff).filter(file => !isExcludedFile(file.filename));
 	const fileCount = files.length;
 	if (fileCount >= minFiles) return true;
-	return files.some(file => estimateTokens(file.content) > maxFileTokens);
+	return files.some(file => estimateTextTokens(file.content) > maxFileTokens);
 }
 
 /**

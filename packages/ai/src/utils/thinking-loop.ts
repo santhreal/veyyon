@@ -36,7 +36,7 @@
  * `completeSimple`) re-sample it a few times and then let a stubborn loop cook
  * through one unguarded pass. Disable detection with `PI_NO_THINKING_LOOP_GUARD=1`.
  */
-import { logger } from "@veyyon/pi-utils";
+import { jaccardSimilarity, logger } from "@veyyon/pi-utils";
 import * as AIError from "../error";
 import type { Api, AssistantMessage, Model, StreamOptions } from "../types";
 import { AssistantMessageEventStream } from "./event-stream";
@@ -226,7 +226,7 @@ export class ThinkingLoopDetector {
 		const fingerprint = trigramShingles(normalized);
 		let cluster = 1;
 		for (const prev of this.#window) {
-			if (jaccard(fingerprint, prev) >= SEGMENT_SIMILARITY) cluster++;
+			if (jaccardSimilarity(fingerprint, prev) >= SEGMENT_SIMILARITY) cluster++;
 		}
 
 		// (b) Progress-lexicon stall: paragraphs that recycle the recent
@@ -538,15 +538,4 @@ function trigramShingles(normalized: string): Set<string> {
 		shingles.add(`${words[i]} ${words[i + 1]} ${words[i + 2]}`);
 	}
 	return shingles;
-}
-
-function jaccard(a: Set<string>, b: Set<string>): number {
-	if (a.size === 0 || b.size === 0) return 0;
-	const [small, large] = a.size < b.size ? [a, b] : [b, a];
-	let intersection = 0;
-	for (const x of small) {
-		if (large.has(x)) intersection++;
-	}
-	const union = a.size + b.size - intersection;
-	return union === 0 ? 0 : intersection / union;
 }

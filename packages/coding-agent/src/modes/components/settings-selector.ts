@@ -726,7 +726,9 @@ export class SettingsSelectorComponent implements Component {
 		const sidebarLines = this.#tabBar.renderVertical(sidebarWidth, `${theme.nav.cursor} `);
 		const searching = this.#searchList !== null;
 		const showPreview = !searching && this.#currentTabId === "appearance";
-		const previewLines = showPreview ? ["", theme.fg("muted", "Preview:"), this.#getStatusPreviewString()] : [];
+		const previewLines = showPreview
+			? ["", theme.fg("muted", "Preview:"), ...this.#getStatusPreviewString().split("\n").filter(line => line.length > 0)]
+			: [];
 
 		// Non-body chrome (borders, search row, footer band) costs ~10 rows —
 		// mirrors renderModalShell's own nonBody() budget below. The sidebar

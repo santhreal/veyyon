@@ -46,10 +46,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-24acbed9.js";
+            window.path_to_searchindex_js = "../searchindex-8badf17b.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-9cfd259b.js"></script>
+        <script src="../toc-19dab021.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -207,7 +207,10 @@ session with <code>/fork</code>.</li>
 <li>Manage saved sessions with <code>/session</code>; garbage-collect old artifacts with <code>veyyon gc</code>.</li>
 <li>Run a bounded non-interactive task by passing a prompt: <code>veyyon "…"</code>.</li>
 </ul>
-<p>Veyyon resumes from the launch picker or <code>/resume</code>, and branches with <code>/branch</code> / <code>/fork</code>.</p>
+<blockquote>
+<p><strong>Spec — not shipped:</strong> top-level <code>veyyon resume</code> / <code>fork</code> / <code>archive</code> verbs. Veyyon resumes from
+the launch picker or <code>/resume</code>, and branches with <code>/branch</code> / <code>/fork</code> (there is no <code>/clone</code>).</p>
+</blockquote>
 <h2 id="long-work"><a class="header" href="#long-work">Long work</a></h2>
 <p>For large tasks, make the desired outcome explicit. The harness should preserve active instructions,
 recent turns, working files, verification facts, and unresolved blockers through compaction. When a

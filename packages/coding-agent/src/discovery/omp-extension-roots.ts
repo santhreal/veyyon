@@ -70,11 +70,6 @@ export function clearOmpExtensionCliRoots(): void {
 	injectedCliRoots = [];
 }
 
-/** Inspect currently-injected CLI roots (read-only). Exposed for diagnostics + tests. */
-export function getInjectedOmpExtensionCliRoots(): readonly OmpExtensionRoot[] {
-	return injectedCliRoots.map(({ path: p, level }) => ({ path: p, level, name: path.basename(p) }));
-}
-
 interface ScopeDirs {
 	project: string;
 	user: string;

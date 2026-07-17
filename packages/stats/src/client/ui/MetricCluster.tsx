@@ -18,9 +18,7 @@ export function MetricCluster({ stats }: MetricClusterProps) {
 			<div className="stats-metric-primary-grid">
 				<div className="stats-metric-card primary">
 					<div className="stats-metric-label">Total Cost</div>
-					<div className="stats-metric-value">
-						{formatCost(stats.totalCost, stats.totalCost > 0 && stats.totalCost < 0.01 ? 4 : 2)}
-					</div>
+					<div className="stats-metric-value">{formatCost(stats.totalCost)}</div>
 				</div>
 				<div className="stats-metric-card primary">
 					<div className="stats-metric-label">Requests</div>

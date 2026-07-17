@@ -5,8 +5,8 @@ import { createRequire } from "node:module";
 import * as path from "node:path";
 import { Writable } from "node:stream";
 import * as util from "node:util";
-
 import * as logger from "@veyyon/pi-utils/logger";
+import { isStrictBase64 } from "@veyyon/pi-utils/regex";
 
 import { createHelpers, type HelperBundle } from "./helpers";
 import { awaitMaybePromise, indirectEval } from "./indirect-eval";
@@ -49,10 +49,6 @@ export interface RuntimeOptions {
 	localRoots?: Record<string, string>;
 }
 
-// Strict base64: characters from the standard alphabet plus optional `=` padding, and a
-// length that is a multiple of four. URL-safe base64 and embedded whitespace are not
-// accepted — the Anthropic API only honors strict base64 in image sources.
-const BASE64_STRICT_RE = /^[A-Za-z0-9+/]+={0,2}$/;
 const DECIMAL_CSV_RE = /^\d{1,3}(?:,\d{1,3})*$/;
 
 const PRELUDE_GLOBAL_KEYS = [
@@ -74,11 +70,6 @@ const PRELUDE_GLOBAL_KEYS = [
 	"write",
 	"env",
 ];
-
-function isStrictBase64(s: string): boolean {
-	if (s.length === 0 || s.length % 4 !== 0) return false;
-	return BASE64_STRICT_RE.test(s);
-}
 
 /**
  * Normalize the `data` field of an `{ type: "image", data, mimeType }` display payload

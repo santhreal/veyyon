@@ -11,6 +11,7 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { stripVTControlCharacters } from "node:util";
 import { resetSettingsForTest, Settings, settings } from "@veyyon/pi-coding-agent/config/settings";
 import { SETTINGS_SCHEMA, TAB_GROUPS } from "@veyyon/pi-coding-agent/config/settings-schema";
 import { getSettingDef, getSettingsForTab } from "@veyyon/pi-coding-agent/modes/components/settings-defs";
@@ -49,6 +50,7 @@ const KEPT_APPEARANCE_PATHS = [
 	"statusLine.separator",
 	"terminal.showImages",
 	"tui.hyperlinks",
+	"tui.paintGround",
 	"display.shimmer",
 	"display.smoothStreaming",
 	"display.showTokenUsage",
@@ -68,7 +70,7 @@ describe("appearance advanced fold — schema", () => {
 		resetSettingsForTest();
 	});
 
-	it("keeps exactly 11 non-advanced rows and 13 demoted rows in appearance, with 3 groups and no Images group", () => {
+	it("keeps exactly 12 non-advanced rows and 13 demoted rows in appearance, with 3 groups and no Images group", () => {
 		const appearanceDefs = getSettingsForTab("appearance");
 		const visible = appearanceDefs.filter(def => !def.advanced);
 		const advanced = appearanceDefs.filter(def => def.advanced);
@@ -94,7 +96,7 @@ describe("appearance advanced fold — schema", () => {
 			"display.collapseCompacted",
 		];
 		for (const key of originalAppearanceKeys) {
-			expect(Object.prototype.hasOwnProperty.call(SETTINGS_SCHEMA, key)).toBe(true);
+			expect(Object.hasOwn(SETTINGS_SCHEMA, key)).toBe(true);
 		}
 	});
 
@@ -168,10 +170,11 @@ describe("appearance advanced fold — panel rendering", () => {
 		expect(rendered).toContain("Session Accent");
 		// Demoted rows below the floating viewport are reachable by scroll; the
 		// fold is open when the early advanced rows paint under the toggle.
-		// (The sticky "Theme" header pinned above — its own section scrolled
-		// out of view — costs one row of the visible window.)
+		// (The sticky kicker header pinned above — its own section scrolled
+		// out of view — costs one row of the visible window. The kicker paints
+		// diamond and label in separate colors, so match on the stripped text.)
 		expect(rendered).toContain("▾ Advanced (13)");
-		expect(rendered).toContain("Theme");
+		expect(stripVTControlCharacters(rendered)).toContain("◆ THEME");
 	});
 
 	it("surfaces a non-default advanced value even while the fold stays collapsed, without inflating the heading count", () => {

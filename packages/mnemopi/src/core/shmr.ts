@@ -1,6 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { createHash } from "node:crypto";
 import { logger } from "@veyyon/pi-utils";
+import { tableExists } from "./beam/helpers";
 import * as embeddings from "./embeddings";
 import { cosineSimilarity } from "./vector-math";
 
@@ -24,6 +25,12 @@ export interface ShmrItem {
 	readonly timestamp?: string;
 	readonly source?: string;
 	readonly embedding?: Vector;
+	/**
+	 * Embedding-space identity of `embedding` (see HASH_EMBEDDING_SPACE /
+	 * `model:<name>`). Unlabeled embeddings are assumed provider-space, the
+	 * only space the persistent store holds.
+	 */
+	readonly embeddingSpace?: string;
 }
 export interface Belief {
 	readonly subject: string;
@@ -117,12 +124,36 @@ function hashEmbedding(text: string): Vector {
 }
 
 /**
+ * Embedding-space identity of the deterministic SHA1 bag-of-words fallback.
+ * Cosine similarity between a hash-space vector and a provider-space vector is
+ * meaningless, so every similarity computation in this module compares vectors
+ * within ONE space and re-embeds (loudly) when spaces would mix.
+ */
+export const HASH_EMBEDDING_SPACE = "hash-sha1-bow";
+
+/** Embedding-space identity of the active provider model. */
+function providerEmbeddingSpace(): string {
+	return `model:${embeddings.currentEmbeddingModel()}`;
+}
+
+function itemText(item: ShmrItem | undefined): string {
+	return item?.object ?? item?.content ?? "";
+}
+
+export interface EmbeddedBatch {
+	vectors: Vector[];
+	/** Space every vector in this batch belongs to (all-or-nothing per batch). */
+	space: string;
+}
+
+/**
  * Embed a batch of texts with the configured embedding provider. Falls back to the
  * deterministic SHA1 bag-of-words hash for the entire batch when no provider is
- * available or the provider fails, so every returned vector shares one space.
+ * available or the provider fails, so every returned vector shares one space —
+ * reported via `space` so callers never compare across spaces.
  */
-export async function embedBatch(texts: readonly string[]): Promise<Vector[]> {
-	if (texts.length === 0) return [];
+export async function embedBatch(texts: readonly string[]): Promise<EmbeddedBatch> {
+	if (texts.length === 0) return { vectors: [], space: providerEmbeddingSpace() };
 	let matrix: embeddings.EmbeddingMatrix | null = null;
 	try {
 		matrix = await embeddings.embed(texts);
@@ -131,42 +162,76 @@ export async function embedBatch(texts: readonly string[]): Promise<Vector[]> {
 			error: String(error),
 		});
 	}
-	if (matrix !== null && matrix.length === texts.length) return matrix;
-	return texts.map(hashEmbedding);
+	if (matrix !== null && matrix.length === texts.length) {
+		return { vectors: matrix, space: providerEmbeddingSpace() };
+	}
+	return { vectors: texts.map(hashEmbedding), space: HASH_EMBEDDING_SPACE };
 }
 
 export async function embed(text: string): Promise<Vector> {
-	const [vector] = await embedBatch([text]);
-	return vector ?? hashEmbedding(text);
+	const { vectors } = await embedBatch([text]);
+	return vectors[0] ?? hashEmbedding(text);
 }
 
 /**
- * Resolve one vector per item: caller-provided embeddings are kept, the rest are
- * batch-embedded in a single provider call (hash fallback when unavailable).
+ * Resolve one vector per item, ALL in one embedding space: caller-provided
+ * embeddings are kept when their space matches, the rest are batch-embedded in
+ * a single provider call. When spaces would mix (a provider outage hash-embeds
+ * the missing items while others carry stored provider vectors), every item is
+ * re-embedded in hash space instead — degraded but internally consistent, and
+ * the degradation is logged loudly. Items without an `embeddingSpace` label are
+ * assumed provider-space: persisted vectors are single-space by
+ * `reconcileEmbeddingModel` (stale-model rows are wiped at store open).
  */
-async function resolveItemVectors(items: readonly ShmrItem[]): Promise<Vector[]> {
+async function resolveItemVectors(items: readonly ShmrItem[]): Promise<EmbeddedBatch> {
 	const vectors: (Vector | undefined)[] = items.map(item => item.embedding);
+	const spaces = new Set<string>();
 	const missingIndices: number[] = [];
 	const missingTexts: string[] = [];
 	for (let i = 0; i < items.length; i++) {
-		if (vectors[i] !== undefined) continue;
+		if (vectors[i] !== undefined) {
+			spaces.add(items[i]?.embeddingSpace ?? providerEmbeddingSpace());
+			continue;
+		}
 		missingIndices.push(i);
-		missingTexts.push(items[i]?.object ?? items[i]?.content ?? "");
+		missingTexts.push(itemText(items[i]));
 	}
 	if (missingIndices.length > 0) {
 		const fresh = await embedBatch(missingTexts);
-		for (let k = 0; k < missingIndices.length; k++) {
-			const index = missingIndices[k];
-			const vector = fresh[k];
-			if (index !== undefined && vector !== undefined) vectors[index] = vector;
+		spaces.add(fresh.space);
+		if (spaces.size === 1) {
+			for (let k = 0; k < missingIndices.length; k++) {
+				const index = missingIndices[k];
+				const vector = fresh.vectors[k];
+				if (index !== undefined && vector !== undefined) vectors[index] = vector;
+			}
 		}
 	}
-	return vectors.map((vector, i) => vector ?? hashEmbedding(items[i]?.object ?? items[i]?.content ?? ""));
+	if (spaces.size > 1) {
+		logger.warn(
+			"mnemopi shmr: embedding spaces would mix in one similarity pass (provider outage while some items carry stored provider vectors); re-embedding every item in hash space so similarity stays meaningful. Recall quality is degraded for this pass.",
+			{ spaces: [...spaces], items: items.length, missing: missingIndices.length },
+		);
+		return { vectors: items.map(item => hashEmbedding(itemText(item))), space: HASH_EMBEDDING_SPACE };
+	}
+	const space = spaces.values().next().value ?? providerEmbeddingSpace();
+	return {
+		vectors: vectors.map((vector, i) => {
+			if (vector !== undefined) return vector;
+			if (space !== HASH_EMBEDDING_SPACE) {
+				throw new Error(
+					`mnemopi shmr: no ${space} vector resolved for item ${i}; refusing a silent hash fallback that would mix embedding spaces`,
+				);
+			}
+			return hashEmbedding(itemText(items[i]));
+		}),
+		space,
+	};
 }
 
 export async function clusterBySimilarity(items: readonly ShmrItem[], threshold: number): Promise<ShmrItem[][]> {
 	if (items.length === 0) return [];
-	const vectors = await resolveItemVectors(items);
+	const { vectors } = await resolveItemVectors(items);
 	const adjacency: number[][] = Array.from({ length: items.length }, () => []);
 	for (let i = 0; i < items.length; i++) {
 		const leftEmbedding = vectors[i];
@@ -295,8 +360,22 @@ function deterministicBeliefs(cluster: readonly ShmrItem[]): Belief[] {
 
 export async function computeHarmonyScore(beliefs: readonly Belief[], cluster: readonly ShmrItem[]): Promise<number> {
 	if (beliefs.length === 0 || cluster.length === 0) return 0;
-	const itemVectors = await resolveItemVectors(cluster);
-	const beliefVectors = await embedBatch(beliefs.map(belief => `${belief.predicate} ${belief.object}`));
+	const beliefTexts = beliefs.map(belief => `${belief.predicate} ${belief.object}`);
+	const itemBatch = await resolveItemVectors(cluster);
+	const beliefBatch = await embedBatch(beliefTexts);
+	let itemVectors = itemBatch.vectors;
+	let beliefVectors = beliefBatch.vectors;
+	if (itemBatch.space !== beliefBatch.space) {
+		// A provider outage between the two calls put items and beliefs in
+		// different spaces; a cross-space cosine would be meaningless, so
+		// recompute both sides in hash space (degraded but consistent).
+		logger.warn(
+			"mnemopi shmr: item and belief embeddings landed in different spaces (provider outage mid-pass); recomputing both sides in hash space so the harmony score stays meaningful. Recall quality is degraded for this pass.",
+			{ itemSpace: itemBatch.space, beliefSpace: beliefBatch.space },
+		);
+		itemVectors = cluster.map(item => hashEmbedding(itemText(item)));
+		beliefVectors = beliefTexts.map(hashEmbedding);
+	}
 	let dim = 0;
 	for (const vector of itemVectors) if (vector.length > dim) dim = vector.length;
 	const centroid = new Float32Array(dim);
@@ -348,10 +427,6 @@ function dbOf(beam: BeamLike): Database {
 	const db = beam.conn ?? beam.db;
 	if (db === undefined) throw new TypeError("SHMR requires a beam with conn or db");
 	return db;
-}
-
-function tableExists(db: Database, table: string): boolean {
-	return db.query("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(table) !== null;
 }
 
 function parseEmbeddingJson(raw: unknown): Vector | null {
@@ -452,10 +527,16 @@ export async function harmonize(
 	const seeded: ShmrItem[] = bare.map((item, i) => {
 		const memoryId = memoryIds[i];
 		const vector = memoryId !== undefined ? precomputed.get(memoryId) : undefined;
+		// Stored vectors are provider-space (reconcileEmbeddingModel wipes any
+		// other model's rows at store open) — the default label, so none needed.
 		return vector === undefined ? item : { ...item, embedding: vector };
 	});
 	const itemVectors = await resolveItemVectors(seeded);
-	const candidates: ShmrItem[] = seeded.map((item, i) => ({ ...item, embedding: itemVectors[i] }));
+	const candidates: ShmrItem[] = seeded.map((item, i) => ({
+		...item,
+		embedding: itemVectors.vectors[i],
+		embeddingSpace: itemVectors.space,
+	}));
 	const clusters = (await clusterBySimilarity(candidates, similarityThreshold)).filter(
 		cluster => cluster.length >= SHMR_MIN_CLUSTER_SIZE,
 	);
@@ -514,14 +595,19 @@ export async function recallBeliefs(beam: BeamLike, query: string, topK = 10): P
 			"SELECT belief_id, subject, predicate, object, confidence, provenance, created_at FROM harmonic_beliefs ORDER BY confidence DESC LIMIT ?",
 		)
 		.all(topK * 2) as BeliefRow[];
-	const vectors = await embedBatch([query, ...rows.map(row => row.object)]);
-	const queryEmbedding = vectors[0] ?? hashEmbedding(query);
+	// Query and rows embed in ONE batch, so they always share a space; a
+	// per-element hash fallback here would silently mix spaces.
+	const { vectors } = await embedBatch([query, ...rows.map(row => row.object)]);
+	const queryEmbedding = vectors[0];
+	if (queryEmbedding === undefined) return [];
 	return rows
-		.map((row, index) => ({
-			row,
-			score:
-				cosineSimilarity(queryEmbedding, vectors[index + 1] ?? hashEmbedding(row.object)) * (row.confidence ?? 0.5),
-		}))
+		.map((row, index) => {
+			const rowVector = vectors[index + 1];
+			return {
+				row,
+				score: rowVector === undefined ? 0 : cosineSimilarity(queryEmbedding, rowVector) * (row.confidence ?? 0.5),
+			};
+		})
 		.sort((a, b) => b.score - a.score)
 		.slice(0, topK)
 		.map(({ row, score }) => ({
