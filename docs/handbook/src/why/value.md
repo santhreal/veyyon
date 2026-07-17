@@ -25,7 +25,7 @@ provider-agnostic configuration, and a TUI that keeps sandboxing and approvals v
 
 - Developers who want a capable terminal agent on their own keys.
 - Teams running open or gateway models with a harness tuned for coding, not chat-only UIs.
-- Anyone who wants visible sandbox boundaries and honest tool failures.
+- Anyone who wants visible sandbox boundaries and tool failures that surface instead of hiding.
 
 ## Where to go next
 

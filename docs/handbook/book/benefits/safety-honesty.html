@@ -3,7 +3,7 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Safety and honesty you can see - The Veyyon Harness Handbook</title>
+        <title>Safety you can see - The Veyyon Harness Handbook</title>
 
 
         <!-- Custom HTML head -->
@@ -46,10 +46,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-5fa9cb6b.js";
+            window.path_to_searchindex_js = "../searchindex-3f869efa.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-b8eaaacb.js"></script>
+        <script src="../toc-19dab021.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -191,12 +191,12 @@
 
                 <div id="mdbook-content" class="content">
                     <main>
-                        <h1 id="safety-and-honesty-you-can-see"><a class="header" href="#safety-and-honesty-you-can-see">Safety and honesty you can see</a></h1>
-<p>Veyyon is useful because it can act. That only works if the boundary is visible and the results are
-honest.</p>
-<p>The harness is designed to fail loudly when it cannot honor a safety rule, a schema, a config file, or a
-tool contract. Silent degradation is treated as a product bug.</p>
-<h2 id="what-improves"><a class="header" href="#what-improves">What improves</a></h2>
+                        <h1 id="safety-you-can-see"><a class="header" href="#safety-you-can-see">Safety you can see</a></h1>
+<p>Veyyon acts on your machine, so the boundary it acts within is visible and its
+failures are loud. When it cannot honor a safety rule, a schema, a config file, or a
+tool contract, it stops and says so rather than degrading silently — a silent
+fallback is treated as a bug.</p>
+<h2 id="what-this-means-in-practice"><a class="header" href="#what-this-means-in-practice">What this means in practice</a></h2>
 <ul>
 <li>File writes and commands run through approval and sandbox policy.</li>
 <li>Tool output records truncation instead of hiding it.</li>
@@ -204,9 +204,10 @@ tool contract. Silent degradation is treated as a product bug.</p>
 <li>Repair abstains when the schema does not prove a safe fix.</li>
 <li>Observability records coarse, bounded signals without logging secrets.</li>
 </ul>
-<h2 id="why-it-matters"><a class="header" href="#why-it-matters">Why it matters</a></h2>
-<p>An agent that silently weakens its boundary is hard to trust. An agent that tells you exactly what it did,
-what it refused, and what it could not prove is much easier to use in a real repository.</p>
+<h2 id="why-it-works-this-way"><a class="header" href="#why-it-works-this-way">Why it works this way</a></h2>
+<p>A boundary that weakens without telling you is hard to work in. Veyyon instead
+surfaces what it did, what it refused, and what it could not prove, so you can act on
+that in a real repository.</p>
 <h2 id="where-the-details-live"><a class="header" href="#where-the-details-live">Where the details live</a></h2>
 <ul>
 <li><a href="../using/configuration.html">Configuration</a> explains the knobs.</li>

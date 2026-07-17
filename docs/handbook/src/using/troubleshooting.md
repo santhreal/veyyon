@@ -34,5 +34,5 @@ and [Bounded reads and instant search](../context/reads-search.md).
 
 ## Where to go next
 
-- [Safety and honesty you can see](../benefits/safety-honesty.md) explains the fail-loud design.
+- [Safety you can see](../benefits/safety-honesty.md) explains the fail-loud design.
 - [Observability](../observability/overview.md) explains runtime signals and exporter configuration.

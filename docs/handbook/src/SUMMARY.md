@@ -11,7 +11,7 @@
   - [Edits that land the first time](./benefits/first-attempt-edits.md)
   - [Lower token cost and faster turns](./benefits/lower-cost.md)
   - [Model choice without lock-in](./benefits/model-choice.md)
-  - [Safety and honesty you can see](./benefits/safety-honesty.md)
+  - [Safety you can see](./benefits/safety-honesty.md)
 
 # Install and first session
 
