@@ -45,15 +45,15 @@ The same minimum-content guard exists again inside `AgentSession.handoff()` and 
 
 - Reads current branch entries (`sessionManager.getBranch()`).
 - Validates minimum message count (`>= 2`).
-- Refuses if a response is still streaming (the TUI `/handoff` and RPC `handoff` command guard on `isStreaming` before calling this; the auto-handoff path runs only after the turn settles). Resetting the agent mid-stream would let the live turn keep emitting into the torn-down session.
+- Streaming guard lives in the callers, not here: the TUI `/handoff` (`handleHandoffCommand` warns `Wait for the current response to finish or abort it before handing off.`) and RPC `handoff` command check `isStreaming` before calling this, and the auto-handoff path runs only after the turn settles. Resetting the agent mid-stream would let the live turn keep emitting into the torn-down session.
 - Creates `#handoffAbortController` and links any caller-provided abort signal to it.
 - Resolves the current model API key through `ModelRegistry`.
 - Builds the handoff request through the **same pipeline a live turn uses** — the cache-preserving side-request path shared with `runEphemeralTurn` (`/btw`, `/omfg`):
   1. Renders the handoff prompt (`renderHandoffPrompt(...)` with optional `additionalFocus`, after obfuscating any focus instructions) and appends it as a trailing agent-attributed `user` message to a snapshot of `agent.state.messages`.
   2. Converts the snapshot with `convertMessagesToLlm(...)` (applies the session `transformContext` — extension context + steering wrap — then `convertToLlm` + obfuscation), exactly as the loop does.
   3. Builds the provider `Context` with `agent.buildSideRequestContext(llmMessages, #baseSystemPrompt)` — normalized tools and `transformProviderContext` (obfuscation + inline snapcompact) matching the loop. The **base** system prompt is pinned here, not a per-turn `before_agent_start` hook override, so the new session does not inherit prompt-specific hook state.
-  4. Builds stream options with `prepareSimpleStreamOptions(...)`: a stable `promptCacheKey` (= the live session id) so the oneshot reads the cache the turn populated, a unique side `sessionId` (`<sid>:side:<snowflake>`) so OpenAI/Codex append-only state never mixes with the live turn, `serviceTier`/payload hooks mirrored from the session, and `preferWebsockets: false`.
-- Calls `generateHandoffFromContext(context, model, { streamOptions, telemetry, thinkingLevel })`.
+  4. Builds stream options with `prepareSimpleStreamOptions(...)`: `promptCacheKey = agent.promptCacheKey ?? agent.sessionId` — exactly the key the live turn routed the provider cache under (it can diverge from `this.sessionId` for tan/subagent/shared sessions) — a unique side `sessionId` (`<sid>:side:<snowflake>`) so OpenAI/Codex append-only state never mixes with the live turn, `serviceTier`/payload hooks mirrored from the session, and `preferWebsockets: false`.
+- Calls `generateHandoffFromContext(context, model, { streamOptions, completeImpl, telemetry, thinkingLevel })`, where `completeImpl` routes the request through the session's side-stream function (`#sideStreamFn`) instead of the default `completeSimple` transport.
 
 ### 2) Generate and capture output
 
@@ -68,9 +68,11 @@ await instrumentedCompleteSimple(
     reasoning: resolveCompactionEffort(model, options.thinkingLevel),
     toolChoice: "none",
   },
-  { telemetry, oneshotKind: "handoff" },
+  { telemetry, oneshotKind: "handoff", completeImpl: options.completeImpl },
 );
 ```
+
+If the first attempt errors and `shouldRetryHandoffWithAutoToolChoice(response)` matches (providers that reject `tool_choice: "none"`), it retries exactly once with `toolChoice: "auto"` before giving up.
 
 (`generateHandoff(messages, …)` remains exported for downstream callers and now builds a basic `Context` from `systemPrompt`/`tools`/`convertToLlm` and delegates to `generateHandoffFromContext`. `AgentSession` no longer uses it because it cannot apply the host's transform pipeline or cache routing.)
 
@@ -78,7 +80,7 @@ Important generation properties:
 
 - The request shares the live provider cache prefix because the `Context` is built by the identical transform + normalization pipeline the loop uses, and routed with the same `promptCacheKey` the turn used.
 - The handoff instruction is a trailing `user` message, not a developer message, so the cached prefix remains aligned with the prior turn (the trailing message is the only divergence point).
-- `toolChoice: "none"` prevents intentional tool dispatch.
+- `toolChoice: "none"` prevents intentional tool dispatch (with the one-shot `"auto"` retry above for providers that reject it).
 - The returned assistant content is filtered to text blocks and joined with `\n`; stray tool-call blocks are ignored if a provider does not honor `toolChoice: "none"`.
 - `stopReason === "error"` throws a generation error.
 
@@ -99,14 +101,16 @@ Cancellation throws `Error("Handoff cancelled")`; a completed generation with no
 
 If text was generated and not aborted:
 
-1. Flush current session writer (`sessionManager.flush()`).
-2. Cancel session-owned async jobs.
-3. Start a brand-new session with `parentSession` pointing at the previous session file when one exists.
-4. Reset in-memory agent state (`agent.reset()`).
-5. Rebind `agent.sessionId` to the new session id.
-6. Rekey/reset Hindsight and Mnemopi memory session tracking for the new session.
-7. Clear the queued next-turn context array (`#pendingNextTurnMessages`) and the scheduled hidden next-turn generation (`#scheduledHiddenNextTurnGeneration`). The agent's steering and follow-up queues are already cleared by `agent.reset()` in step 4.
-8. Reset todo reminder counter.
+1. Emit `session_before_switch` (`reason: "handoff"`) to extensions when handlers exist; a `cancel` result aborts the switch — `handoff()` calls `options.onSwitchCancelled?.()` and returns `undefined` (no new session).
+2. Flush current session writer (`sessionManager.flush()`).
+3. Cancel session-owned async jobs.
+4. Start a brand-new session with `parentSession` pointing at the previous session file when one exists.
+5. Reset in-memory agent state (`agent.reset()`) — but the steering and follow-up queues are captured immediately before the reset (`peekSteeringQueue()`/`peekFollowUpQueue()`) and restored immediately after (`replaceQueues`), so steers/follow-ups issued during handoff generation survive into the new session instead of being dropped.
+6. Rebind `agent.sessionId` to the new session id.
+7. Rekey/reset Hindsight and Mnemopi memory session tracking for the new session.
+8. Clear the queued next-turn context array (`#pendingNextTurnMessages`) and the scheduled hidden next-turn generation (`#scheduledHiddenNextTurnGeneration`).
+9. Reset todo reminder counters and mid-run nudge state.
+10. After injection and context rebuild, emit `session_switch` (`reason: "handoff"`, with `previousSessionFile`) to extensions.
 
 ### 5) Handoff-context injection
 
@@ -213,7 +217,7 @@ Current UI classification:
   - any other thrown error from `handoff()` / `generateHandoff()` / provider request path
   - UI shows `Handoff failed: ...`
 
-Additional nuance: if generation completes but no text is returned, `handoff()` returns `undefined` and controller currently reports **cancelled**, not **failed**.
+Additional nuance: if generation completes but no text is returned, or an extension cancels via `session_before_switch`, `handoff()` returns `undefined` and the controller reports **cancelled**, not **failed**.
 
 ## Short-session and minimum-content guardrails
 
@@ -250,3 +254,5 @@ High-level state flow:
 - Missing generated text is reported as cancellation in controller UX.
 - Manual handoff has no streaming visibility; a cancellable loader is shown until the UI updates after generation completes.
 - Auto-triggered handoffs can write a timestamped `handoff-*.md` artifact when `compaction.handoffSaveToDisk` is enabled; write failure is logged and does not fail the handoff.
+
+*Verified against `7ca44d3` on 2026-07-17.*

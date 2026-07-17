@@ -85,7 +85,8 @@ interface PendingSnapshot {
 /** Minimal context surface the idle-state reconciler mutates. */
 export interface GuestIdleReconcilerCtx {
 	statusLine: { markActivityEnd: () => void };
-	loadingAnimation: { stop: () => void } | undefined;
+	/** One-owner loader clear (stops the loader and rises the ghost sun). */
+	clearWorkingLoader: () => void;
 }
 
 /**
@@ -103,10 +104,7 @@ export interface GuestIdleReconcilerCtx {
 export function reconcileGuestIdleHostState(ctx: GuestIdleReconcilerCtx, isStreaming: boolean): void {
 	if (isStreaming) return;
 	ctx.statusLine.markActivityEnd();
-	if (ctx.loadingAnimation) {
-		ctx.loadingAnimation.stop();
-		ctx.loadingAnimation = undefined;
-	}
+	ctx.clearWorkingLoader();
 }
 
 /** Reconcile a welcome/resync snapshot's host activity state into the guest meter. */
@@ -687,10 +685,7 @@ export class CollabGuestLink {
 		this.#ctx.streamingComponent = undefined;
 		this.#ctx.streamingMessage = undefined;
 		this.#ctx.pendingTools.clear();
-		if (this.#ctx.loadingAnimation) {
-			this.#ctx.loadingAnimation.stop();
-			this.#ctx.loadingAnimation = undefined;
-		}
+		this.#ctx.clearWorkingLoader();
 	}
 
 	async #restoreLocalSession(): Promise<void> {

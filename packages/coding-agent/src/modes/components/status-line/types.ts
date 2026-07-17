@@ -14,10 +14,26 @@ export interface CollabStatus {
 }
 
 export interface StatusLineSegmentOptions {
-	model?: { showThinkingLevel?: boolean };
+	model?: {
+		showThinkingLevel?: boolean;
+		/** Quiet zones: a wide gap between the model name and the effort tail. */
+		roomy?: boolean;
+	};
 	path?: { abbreviate?: boolean; maxLength?: number; stripWorkPrefix?: boolean };
-	git?: { showBranch?: boolean; showStaged?: boolean; showUnstaged?: boolean; showUntracked?: boolean };
+	git?: {
+		showBranch?: boolean;
+		showStaged?: boolean;
+		showUnstaged?: boolean;
+		showUntracked?: boolean;
+		/** Quiet zones: branch + a bare dirty `*`, never the per-kind counts. */
+		compact?: boolean;
+	};
 	time?: { format?: "12h" | "24h"; showSeconds?: boolean };
+	context_pct?: {
+		/** Quiet zones: the gauge warms up the ember ramp as it fills (silver when
+		 *  cool, sun-fire when hot); the error state keeps its semantic red. */
+		emberRamp?: boolean;
+	};
 }
 
 export interface StatusLineSettings {

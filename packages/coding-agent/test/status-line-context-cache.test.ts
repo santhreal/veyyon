@@ -68,6 +68,9 @@ function makeSession(opts: { messages: unknown[]; contextWindow?: number; usage?
 			getSessionName: () => "test",
 		},
 		getAsyncJobSnapshot: () => ({ running: [] }),
+		// Compaction disabled: the context gauge denominates against the raw
+		// model window, which is what these breakdown tests pin.
+		settings: { getGroup: () => ({ enabled: false }) },
 		getContextUsage: () => {
 			calls++;
 			return usage;

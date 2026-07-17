@@ -1,7 +1,8 @@
 # ArkType Guide (for migrating Zod → ArkType in this repo)
 
-Pinned to **arktype 2.2.0** (installed). Verified against the installed `.d.ts` and runtime this
-session. Author types with `import { type } from "arktype"`.
+Pinned to **arktype 2.2.3** (root `package.json` catalog entry; packages consume `"arktype": "catalog:"`).
+Originally verified against the installed `.d.ts` and runtime. Author types with
+`import { type } from "arktype"`.
 
 > **Scope rule (READ FIRST).** Zod stays supported at the **external boundary** — `Tool.parameters`
 > accepts Zod *or* ArkType *or* JSON Schema, and the public `pi.zod` extension API + the Zod-backed
@@ -129,3 +130,5 @@ is a candidate to **stay on Zod** (external-boundary exception) — note it in y
 - Do NOT run build/test/lint/format — the orchestrator runs gates once at the end.
 - Report: files changed, any `.strict`→`"+"`, `.refine`→`.narrow`, `.catch`→morph, and any file you
   intentionally left on Zod (with the reason).
+
+*Verified against `7ca44d3` on 2026-07-17.*

@@ -20,6 +20,12 @@ All exports live under `@veyyon/pi-ai/utils/schema`:
 - `normalizeSchemaForMCP(value)` — MCP inputSchemas before they enter the
   custom-tool registry. `tool-bridge.ts` runs every MCP `inputSchema` through
   this dispatcher.
+- `normalizeSchemaForMoonshot(value)` — Moonshot/Kimi tool schemas on the
+  `openai-completions` transport (keyword whitelist + type-array → nullable
+  rewrite; MFJS `default`/`description` preserved).
+- `sanitizeSchemaForOllama(schema)` — rewrites forms Ollama's Go `/api/chat`
+  tool parser cannot unmarshal (boolean subschemas, type arrays) before send
+  in `providers/ollama.ts`.
 - `sanitizeSchemaForOpenAIResponses(schema)` (alias
   `normalizeSchemaForOpenAIResponses`) — rewrites `oneOf` → `anyOf` for the
   Responses family.
@@ -30,7 +36,9 @@ All exports live under `@veyyon/pi-ai/utils/schema`:
 - `adaptSchemaForStrict(schema, strict)` from `./adapt` — thin composer that
   upgrades draft-07 inputs to 2020-12 and wraps `tryEnforceStrictSchema` for
   provider call sites. `./adapt` also exports the `NO_STRICT` global-bypass
-  flag (env `PI_NO_STRICT`) honored by every provider that emits `strict: true`.
+  flag (env `VEYYON_NO_STRICT`; legacy `OMP_NO_STRICT`/`PI_NO_STRICT` — the
+  utils env bootstrap aliases `VEYYON_*`/`OMP_*` onto the `PI_*` name that
+  `$flag` reads) honored by every provider that emits `strict: true`.
 
 Removed in the unified-flow refactor:
 
@@ -51,6 +59,8 @@ Removed in the unified-flow refactor:
 | `google-generative-ai`, `google-vertex`, Gemini CLI                | `normalizeSchemaForGoogle`                  |
 | Cloud Code Assist Claude (Antigravity + GCA, `claude-*` model ids) | `normalizeSchemaForCCA`                     |
 | MCP `inputSchema` ingestion                                        | `normalizeSchemaForMCP`                     |
+| Moonshot/Kimi on `openai-completions`                              | `normalizeSchemaForMoonshot`                |
+| Ollama `/api/chat`                                                 | `sanitizeSchemaForOllama`                   |
 | `anthropic-messages` (native, not CCA)                             | per-provider whitelist in `anthropic.ts`    |
 
 Gemini CLI / Antigravity CCA MUST run the full `normalizeSchemaForCCA`
@@ -140,13 +150,16 @@ so callers MUST emit `strict: true` only when enforcement actually succeeded.
 `resolveProviderModels` in `packages/catalog/src/model-manager.ts` and
 `readModelCache`/`writeModelCache` in `packages/catalog/src/model-cache.ts`
 cooperate via a `static_fingerprint` column on the `model_cache` SQLite
-table (current cache schema version 6).
+table (current cache schema version 8; a migration adds the column with
+default `''` to older tables).
 
-- `fingerprintStatic(staticModels)` hashes the static catalog slice
-  (`Bun.hash(JSON.stringify(models))` in base36) and memoizes the result
-  by tagging the array with a symbol property. Multiple cold-start arms
-  calling `resolveProviderModels` with the same `staticModels` array pay
-  the JSON+hash cost once.
+- `fingerprintStatic(staticModels, dynamicModelsAuthoritative?)` hashes the
+  static catalog slice (`Bun.hash(JSON.stringify(models))` in base36,
+  prefixed by a merge-logic version tag, currently `merge-v3`, and an
+  `authoritative:` marker when dynamic models are authoritative) and
+  memoizes the result by tagging the array with a symbol property. Multiple
+  cold-start arms calling `resolveProviderModels` with the same
+  `staticModels` array pay the JSON+hash cost once.
 - On cache read, if the network fetch is being skipped, the cached row is
   fresh + authoritative, and the cached `static_fingerprint` matches the
   current one, `resolveProviderModels` returns the cached models verbatim
@@ -171,3 +184,5 @@ and the full merge re-runs.
   `normalizeSchemaForMCP`.
 - `packages/ai/src/utils/schema/CONSTRAINTS.md` — operational contract for
   every normalization rule.
+
+*Verified against `7ca44d3` on 2026-07-17.*

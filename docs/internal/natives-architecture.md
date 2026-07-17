@@ -84,7 +84,7 @@ For compiled binaries, loader behavior is:
    - non-Windows: `~/.local/bin`
 3. Fall back to packaged `native/` and executable directory candidates.
 
-`getNativesDir()` uses `$XDG_DATA_HOME/veyyon/natives` when `$XDG_DATA_HOME/omp` exists; otherwise it uses `~/.veyyon/natives`.
+`getNativesDir()` uses `$XDG_DATA_HOME/veyyon/natives` when `$XDG_DATA_HOME/veyyon` exists; otherwise it uses `~/.veyyon/natives`.
 
 If a populated embedded addon manifest is present, it is also treated as a compiled-binary signal. Current embedded manifests point at a gzip-compressed tar archive (`embedded-addons.<tag>.tar.gz`) that contains one or more matching `.node` files. The loader extracts the archive into the versioned cache directory, validates the selected file by size, and prepends that cache path before normal candidate probing.
 
@@ -109,12 +109,12 @@ Loader failures are explicit:
 - `clipboard`
 - `crash_handler`
 - `fd`
-- `fs_cache`
 - `glob`
 - `glob_util`
 - `grep`
 - `highlight`
 - `html`
+- `iofs` (JS-facing filesystem DTOs; traversal and cache policy live in `pi-walker`)
 - `iso`
 - `keys`
 - `language` (re-exported from `pi_ast`)
@@ -171,3 +171,5 @@ For the contributor-facing crate map covering `pi-natives`, `pi-shell`, `pi-ast`
 - **Version sentinel**: Rust export named from the package version (for example `__piNativesV16_0_3`) that lets the loader reject a `.node` from a different release.
 - **Compiled binary mode**: Runtime mode where the CLI is bundled and native addons are resolved from embedded/cache paths before package-local paths.
 - **Embedded addon**: Build artifact metadata and archive reference generated into `native/embedded-addon.js` so compiled binaries can extract matching `.node` payloads.
+
+*Verified against `7ca44d3` on 2026-07-17.*

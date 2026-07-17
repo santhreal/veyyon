@@ -64,7 +64,9 @@ describe("pause screen", () => {
 			expect(text).toContain("Main agent, subagents, and advisor");
 			expect(text).toContain("paused for 1:05");
 			expect(text).toContain("esc · enter · space — resume");
-			expect(text).toContain("█".repeat(5));
+			// The pause bars are dithered ember fields, not flat blocks: two
+			// burning panes separated by a gap.
+			expect(text).toMatch(/[▒▓█]{2,}/);
 		});
 
 		it("drops to the compact card on small terminals", () => {

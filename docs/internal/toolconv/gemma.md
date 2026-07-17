@@ -101,3 +101,5 @@ The current weather in Tokyo is 15 degrees Celsius and sunny.<turn|>
 - OMP `gemma` dialect implementation: `packages/ai/src/dialect/gemma.ts` (scanner + renderers), `packages/ai/src/dialect/catalog.ts` + `packages/ai/src/dialect/prompt-template.md` (tool catalog), `packages/ai/src/dialect/gemma.md` (format guide).
 - Function calling with Gemma 4: https://ai.google.dev/gemma/docs/capabilities/text/function-calling-gemma4
 - Gemma 4 prompt formatting: https://ai.google.dev/gemma/docs/core/prompt-formatting-gemma4
+
+*Verified against `7ca44d3` on 2026-07-17.*

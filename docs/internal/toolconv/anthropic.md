@@ -628,3 +628,5 @@ Legacy notes: no built-in tools (everything is prompt-defined); Anthropic recomm
 - Streaming messages (SSE events, `input_json_delta`, verbatim tool-use stream) — https://docs.claude.com/en/docs/build-with-claude/streaming
 - Messages API reference (`stop_reason` enum, response shape, `tools`) — https://docs.claude.com/en/api/messages
 - Legacy tool use (archived; verbatim XML tags and prompt) — https://web.archive.org/web/20240528231249/https://docs.anthropic.com/en/docs/legacy-tool-use ; also live localized copies, e.g. https://docs.anthropic.com/de/docs/legacy-tool-use (English path now redirects to the tool-use overview)
+
+*Verified against `7ca44d3` on 2026-07-17.*

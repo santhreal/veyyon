@@ -1,17 +1,21 @@
-# Runbook: release-runner outage
+# Runbook: self-hosted runner outage
 
-`ci.yml`'s release matrix runs on the self-hosted **`omp-kata`** runner. The public-gate checks
-(`checks.yml` — lint, typecheck, tests, secret scan) run on GitHub-hosted runners and are unaffected;
-only the **release build/publish** jobs depend on `omp-kata`.
+`ci.yml` routes **release-shaped runs** (the `chore: bump version to vX.Y.Z` push, a `v*` tag-ref
+dispatch, or any manual dispatch) entirely to **GitHub-hosted runners** — a release does not depend on
+the self-hosted `omp-kata` fleet. Ordinary `main` pushes use `omp-kata` for speed and cache warmth
+(the `runs-on` ternaries in `ci.yml`, locked by `scripts/ci-concurrency.test.ts`). The public-gate
+checks (`checks.yml` — lint, typecheck, tests, secret scan) run on GitHub-hosted runners and are
+unaffected either way.
 
 ## Symptom
 
-A release tag is pushed but the release jobs are queued indefinitely, or they fail to start with a
-"no runner matching labels" / offline-runner error.
+Ordinary main-push CI jobs are queued indefinitely, or fail to start with a
+"no runner matching labels" / offline-runner error. Releases are **not** blocked by this — if a
+release run is stuck, the cause is elsewhere; see [release-recovery.md](release-recovery.md).
 
 ## Diagnose
 
-1. Actions → the release run: a job stuck in **Queued** with no runner picking it up means no
+1. Actions → the stuck run: a job stuck in **Queued** with no runner picking it up means no
    `omp-kata` runner is online.
 2. Settings → Actions → Runners: check whether the self-hosted runner shows **Idle** (healthy) or
    **Offline**.
@@ -20,16 +24,18 @@ A release tag is pushed but the release jobs are queued indefinitely, or they fa
 ## Recover
 
 - **Bring the runner back.** Restart the self-hosted runner service on the `omp-kata` host and confirm
-  it flips to **Idle** in the Runners list. Then re-run the failed release jobs (Actions → the run →
-  **Re-run failed jobs**). The tag does not need to be re-cut.
-- **If the host is unrecoverable in the moment:** the release simply waits. The tag is already on
-  `main`; nothing is lost. Do not cut a new version to force GitHub-hosted runners — that would fork
-  the release line. Restore the runner, then re-run.
-- **Longer-term:** migrating the release matrix to GitHub-hosted runners removes this single point of
-  failure. That is a known gap tracked in [releasing.md](../releasing.md); until it lands, the runner
-  must be online to publish.
+  it flips to **Idle** in the Runners list. Then re-run the stuck jobs (Actions → the run →
+  **Re-run failed jobs**).
+- **If the host is unrecoverable in the moment and a fix must land:** cutting a release is still
+  possible (release runs are GitHub-hosted), and `checks.yml` still gates PRs. Main-push CI simply
+  waits for the runner; nothing is lost.
+- Do **not** edit the `runs-on` ternaries to force GitHub-hosted runners for ordinary pushes as a
+  workaround — `scripts/ci-concurrency.test.ts` locks the routing predicate, and the change would
+  outlive the outage.
 
 ## Verify
 
-The re-run publishes the GitHub release with all `veyyon-*` binaries + `.sha256` files, then follow the
-verification in [release-recovery.md](release-recovery.md).
+Re-run the previously stuck workflow and confirm every job leaves **Queued** and completes. For a
+release, follow the verification in [release-recovery.md](release-recovery.md).
+
+*Verified against `7ca44d3` on 2026-07-17.*

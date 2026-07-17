@@ -189,7 +189,10 @@ Reasoning fields are not interchangeable.
 - Uses `reasoning: { effort, summary }`.
 - Can include `reasoning.encrypted_content` for replay.
 - xAI Grok models may require omitting `reasoning.effort`.
-- Some compat paths inject the GPT-5 `# Juice: 0 !important` developer scaffold.
+- Disabling reasoning goes through the catalog `reasoningDisableMode` policy
+  (`omit`, `lowest-effort`, `openrouter-enabled-false`, Z.AI/Qwen thinking
+  modes) applied by `applyResponsesCompatPolicy`; the old GPT-5
+  `# Juice: 0 !important` developer scaffold is gone.
 
 ### OpenRouter `reasoning`
 
@@ -393,3 +396,5 @@ Before adding a branch or compat field, answer these in order:
 7. Does usage accounting still preserve cache reads/writes, billed input, service
    tier multipliers, and provider-specific counters such as Copilot
    `premiumRequests`?
+
+*Verified against `7ca44d3` on 2026-07-17.*

@@ -10,13 +10,13 @@ import { initTheme, theme } from "@veyyon/pi-coding-agent/modes/theme/theme";
 await initTheme(false, "unicode", false, "titanium", "light");
 
 describe("composer contextual shortcuts", () => {
-	it("swaps send for interrupt when busy", () => {
+	it("surfaces the interrupt chip only while busy", () => {
 		const kb = KeybindingsManager.inMemory();
 		const idle = buildComposerShortcuts(kb, { busy: false, hasDraft: true, hasQueue: false });
 		const busy = buildComposerShortcuts(kb, { busy: true, hasDraft: true, hasQueue: false });
-		expect(idle.some(c => c.label.includes("send"))).toBe(true);
+		// Quiet composer: no idle chrome — the interrupt chip is the live action.
+		expect(idle.length).toBe(0);
 		expect(busy.some(c => c.label.includes("interrupt"))).toBe(true);
-		expect(busy.some(c => c.label.includes("send"))).toBe(false);
 	});
 
 	it("renders chip grammar matching ModalShell footers", () => {
@@ -28,12 +28,10 @@ describe("composer contextual shortcuts", () => {
 		expect(plain).toContain("|");
 	});
 
-	it("falls back to the idle '/ commands' chip when neither busy nor drafting", () => {
+	it("stays empty when neither busy nor queued — the quiet idle contract", () => {
 		const kb = KeybindingsManager.inMemory();
 		const idle = buildComposerShortcuts(kb, { busy: false, hasDraft: false, hasQueue: false });
-		expect(idle.some(c => c.label.includes("commands"))).toBe(true);
-		expect(idle.some(c => c.label.includes("send"))).toBe(false);
-		expect(idle.some(c => c.label.includes("interrupt"))).toBe(false);
+		expect(idle.length).toBe(0);
 	});
 
 	it("adds the dequeue chip only while the queue is nonempty, in any busy/draft state", () => {

@@ -1,6 +1,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { getAgentDir, getProjectDir, isEnoent } from "@veyyon/pi-utils";
+import { manifestFromPackageJson } from "../manifest-key";
 import { extractPackageName } from "./parser";
 import type { InstalledPlugin } from "./types";
 
@@ -80,7 +81,7 @@ export async function installPlugin(packageName: string): Promise<InstalledPlugi
 		name: pkg.name,
 		version: pkg.version,
 		path: path.join(PLUGINS_DIR, "node_modules", actualName),
-		manifest: pkg.omp || pkg.pi || { version: pkg.version },
+		manifest: manifestFromPackageJson(pkg) || { version: pkg.version },
 		enabledFeatures: null,
 		enabled: true,
 	};
@@ -129,7 +130,7 @@ export async function listPlugins(): Promise<InstalledPlugin[]> {
 				name,
 				version: pkg.version,
 				path: pluginPath,
-				manifest: pkg.omp || pkg.pi || { version: pkg.version },
+				manifest: manifestFromPackageJson(pkg) || { version: pkg.version },
 				enabledFeatures: null,
 				enabled: true,
 			});

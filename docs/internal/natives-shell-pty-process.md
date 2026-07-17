@@ -1,12 +1,12 @@
 # Natives Shell, PTY, Process, and Key Internals
 
-This document covers execution/process/terminal primitives in `@veyyon/pi-natives`: `shell`, `pty`, `ps`, and `keys`, using the architecture terms from `docs/natives-architecture.md`.
+This document covers execution/process/terminal primitives in `@veyyon/pi-natives`: `shell`, `pty`, `ps`, and `keys`, using the architecture terms from [`natives-architecture.md`](./natives-architecture.md).
 
 ## Implementation files
 
 - `crates/pi-natives/src/shell.rs`
 - `crates/pi-shell/src/shell.rs`
-- `crates/pi-shell/src/fixup.rs`
+- `crates/pi-shell/src/coreutils.rs` (in-process coreutils builtins)
 - `crates/pi-shell/src/windows.rs` (Windows-only PATH enrichment)
 - `crates/pi-shell/src/process.rs`
 - `crates/pi-natives/src/pty.rs`
@@ -33,10 +33,6 @@ Shell execution modes:
 
 Both stream merged stdout/stderr text through a threadsafe callback and return `{ exitCode?, cancelled, timedOut, minimized? }`.
 
-Related synchronous helper:
-
-- `applyBashFixups(command)` strips safe trailing `| head`/`| tail` pipeline caps and redundant trailing `2>&1` according to `pi_shell::fixup` rules. It returns `{ command, stripped }` and does not execute anything.
-
 `ShellOptions` supports `sessionEnv`, `snapshotPath`, and optional output `minimizer`. `ShellExecuteOptions` supports command-scoped `env`, session-level `sessionEnv`, `snapshotPath`, timeout/signal, and optional minimizer. `ShellRunOptions` supports command, cwd, command-scoped env, timeout, and signal.
 
 ### Session creation and environment model
@@ -46,7 +42,7 @@ Rust creates `brush_core::Shell` with:
 - inherited environment disabled (`do_not_inherit_env: true`), followed by explicit environment reconstruction from host env,
 - profile and rc loading skipped,
 - bash-mode builtins, with `exec` and `suspend` disabled,
-- native `sleep`, `timeout`, and `nohup` builtins registered,
+- native `sleep`, `timeout`, and `nohup` builtins registered, plus in-process coreutils builtins (`ls`, `cat`, `head`, `tail`, `wc`, `sort`, `uniq`, `find`, `grep`, `rg`, `fd`, `mkdir`, `jq`, `diff`, ...) from `pi-shell/src/coreutils.rs` backed by the vendored `uu-*`/`jaq`/`pi-uu-*` crates,
 - skip-list for shell-sensitive vars (`PS1`, `PWD`, `SHLVL`, bash function exports, etc.),
 - a non-exported `env="$env"` fallback so PowerShell-style `$env:NAME` survives brush parameter expansion unless the user shadows `env`.
 
@@ -250,7 +246,6 @@ Layout behavior:
 | `new Shell(options?)`             | `Shell` class                           | Persistent shell session                  |
 | `shell.run(options, onChunk?)`    | `Shell::run`                            | Reuses session on keepalive control flow  |
 | `shell.abort()`                   | `Shell::abort`                          | Aborts active run for that shell instance |
-| `applyBashFixups(command)`        | `applyBashFixups` (`apply_bash_fixups`) | Synchronous command rewrite helper        |
 | `new PtySession()`                | `PtySession` class                      | Stateful PTY session                      |
 | `pty.start(options, onChunk?)`    | `PtySession::start`                     | Interactive PTY run                       |
 | `pty.write(data)`                 | `PtySession::write`                     | Raw stdin passthrough                     |
@@ -279,3 +274,5 @@ Layout behavior:
 - **Shell persistent session**: if a run is cancelled/timed out/errors/non-keepalive control flow, Rust drops the internal session state. Successful normal runs keep the session for reuse.
 - **PTY session**: `core` is always cleared after `start()` finishes, including failure paths.
 - **No explicit JS finalizer-driven kill contract** is exposed by wrappers; cleanup is primarily tied to run completion/cancellation paths. Callers should use `timeoutMs`, `AbortSignal`, `shell.abort()`, or `pty.kill()` for deterministic teardown.
+
+*Verified against `7ca44d3` on 2026-07-17.*

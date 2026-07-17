@@ -811,10 +811,7 @@ export class CommandController {
 			this.ctx.showWarning("Wait for the current response to finish or abort it before forking.");
 			return;
 		}
-		if (this.ctx.loadingAnimation) {
-			this.ctx.loadingAnimation.stop();
-			this.ctx.loadingAnimation = undefined;
-		}
+		this.ctx.clearWorkingLoader();
 		this.ctx.statusContainer.disposeChildren();
 
 		const success = await this.ctx.session.fork();
@@ -1101,10 +1098,7 @@ export class CommandController {
 		beforeFlush?: (outcome: CompactionOutcome) => void | Promise<void>,
 		mode?: CompactMode,
 	): Promise<CompactionOutcome> {
-		if (this.ctx.loadingAnimation) {
-			this.ctx.loadingAnimation.stop();
-			this.ctx.loadingAnimation = undefined;
-		}
+		this.ctx.clearWorkingLoader();
 		this.ctx.statusContainer.disposeChildren();
 
 		const label = isAuto ? "Auto-compacting context... (esc to cancel)" : "Compacting context... (esc to cancel)";
@@ -1184,10 +1178,7 @@ export class CommandController {
 			return;
 		}
 
-		if (this.ctx.loadingAnimation) {
-			this.ctx.loadingAnimation.stop();
-			this.ctx.loadingAnimation = undefined;
-		}
+		this.ctx.clearWorkingLoader();
 		this.ctx.statusContainer.disposeChildren();
 
 		const handoffLoader = new Loader(

@@ -7,6 +7,7 @@ import { type ThemeColor, theme } from "../../../modes/theme/theme";
 import { shortenPath, TRUNCATE_LENGTHS, truncateToWidth } from "../../../tools/render-utils";
 import { getSessionAccentAnsi, getSessionAccentHex } from "../../../utils/session-color";
 import { sanitizeStatusText } from "../../shared";
+import { emberBandEscape } from "../sun";
 import { formatContextUsage, getContextUsageLevel, getContextUsageThemeColor } from "./context-thresholds";
 import type { RenderedSegment, SegmentContext, StatusLineSegment, StatusLineSegmentId } from "./types";
 
@@ -137,7 +138,7 @@ const modelSegment: StatusLineSegment = {
 			tail += ` ${theme.icon.fast}`;
 		}
 		if (!compact && thinkingDisplay) {
-			tail += `${theme.sep.dot}${thinkingDisplay}`;
+			tail += opts.roomy ? `  ·  ${thinkingDisplay}` : `${theme.sep.dot}${thinkingDisplay}`;
 		}
 
 		// `statusLineModel` is aliased to `accent` in many themes, so the badge
@@ -296,6 +297,15 @@ const gitSegment: StatusLineSegment = {
 			content = withIcon(theme.icon.branch, branch);
 		}
 
+		// Compact: branch plus one bare dirty marker — the counts belong on the
+		// full status line, not the quiet composer zone.
+		if (opts.compact) {
+			if (isDirty) content = `${content} ${theme.fg("statusLineDirty", "*")}`;
+			if (!content) return { content: "", visible: false };
+			const colorName = isDirty ? "statusLineGitDirty" : "statusLineGitClean";
+			return { content: theme.fg(colorName, content), visible: true };
+		}
+
 		// Add status indicators
 		if (gitStatus) {
 			const indicators: string[] = [];
@@ -427,8 +437,13 @@ const contextPctSegment: StatusLineSegment = {
 		const autoIcon = ctx.autoCompactEnabled && theme.icon.auto ? ` ${theme.icon.auto}` : "";
 		const text = `${formatContextUsage(pct, window, ctx.contextTokens)}${autoIcon}`;
 
-		const color = getContextUsageThemeColor(getContextUsageLevel(pct ?? 0, window));
-		const content = withIcon(theme.icon.context, theme.fg(color, text));
+		const level = getContextUsageLevel(pct ?? 0, window);
+		// The quiet zone's gauge warms up the ember ramp as it fills — the sun
+		// heating — while the error state keeps its unmistakable semantic red.
+		const content =
+			ctx.options.context_pct?.emberRamp && level !== "error"
+				? withIcon(theme.icon.context, `${emberBandEscape((pct ?? 0) / 100, TERMINAL.trueColor)}${text}\x1b[39m`)
+				: withIcon(theme.icon.context, theme.fg(getContextUsageThemeColor(level), text));
 
 		return { content, visible: true };
 	},

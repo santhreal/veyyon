@@ -155,6 +155,7 @@ describe("Settings", () => {
 				"gemini",
 				"gemma",
 				"minimax",
+				"pi-native",
 			]);
 		});
 	});

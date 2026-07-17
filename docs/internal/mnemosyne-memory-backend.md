@@ -40,6 +40,7 @@ Recalled memory is background context, not instructions. Current user messages a
 | `mnemopi.autoRetain`          | `true`                 | Retain completed turns automatically.                                                                                                                                   |
 | `mnemopi.polyphonicRecall`    | `false`                | Enable 4-voice polyphonic recall (vector, graph, fact, temporal) with reciprocal rank fusion; `MNEMOPI_POLYPHONIC_RECALL` overrides when set.                            |
 | `mnemopi.enhancedRecall`      | `false`                | Enable the tiered query result cache for repeated/similar recall queries; `MNEMOPI_ENHANCED_RECALL` overrides when set.                                                  |
+| `mnemopi.proactiveLinking`    | `false`                | Ingest new memories into the episodic graph as they are stored, linking them to related entities and memories; `MNEMOPI_PROACTIVE_LINKING` overrides when set.           |
 | `mnemopi.retainEveryNTurns`   | `4`                    | Minimum user turns between automatic retain writes.                                                                                                                     |
 | `mnemopi.recallLimit`         | `8`                    | Maximum recalled memories in the prompt block.                                                                                                                          |
 | `mnemopi.recallContextTurns`  | `3`                    | Prior user-bounded turns included in recall queries.                                                                                                                    |
@@ -51,7 +52,7 @@ Recalled memory is background context, not instructions. Current user messages a
 | `mnemopi.embeddingModel`      | variant default        | Explicit embedding model id; overrides `mnemopi.embeddingVariant`. Precedence: this setting > `MNEMOPI_EMBEDDING_MODEL` env > variant default.                          |
 | `mnemopi.embeddingApiUrl`     | env/default            | OpenAI-compatible embedding endpoint passed to `Mnemopi`.                                                                                                             |
 | `mnemopi.embeddingApiKey`     | env/default            | Embedding API key passed to `Mnemopi`.                                                                                                                                |
-| `mnemopi.llmMode`             | `smol`                 | `smol` uses the configured pi-ai smol model, `remote` uses the settings below, and `none` disables LLM calls.                                                           |
+| `mnemopi.llmMode`             | `smol`                 | `smol` uses the online tiny model (the TINY role from `/models`, else `@smol`), `remote` uses the settings below, and `none` disables LLM calls.                        |
 | `mnemopi.llmBaseUrl`          | env/default            | OpenAI-compatible LLM endpoint for `llmMode: remote`.                                                                                                                   |
 | `mnemopi.llmApiKey`           | env/default            | LLM API key for `llmMode: remote`.                                                                                                                                      |
 | `mnemopi.llmModel`            | env/default            | LLM model id for `llmMode: remote`.                                                                                                                                     |
@@ -145,7 +146,7 @@ mnemopi:
   llmMode: smol
 ```
 
-The coding agent resolves its configured smol role and passes a dynamic completion function so every Mnemopi LLM call can fetch the current provider credentials at call time:
+The coding agent resolves the tiny→smol role chain (`resolveRoleSelectionWithInherit(["tiny", "smol"], ...)` — the TINY role from `/models` when set, else `@smol`, else the default model) and passes a dynamic completion function so every Mnemopi LLM call can fetch the current provider credentials at call time; if no model resolves, it logs a warning and continues without an LLM:
 
 ```ts
 new Mnemopi({
@@ -160,3 +161,5 @@ new Mnemopi({
 - `/memory enqueue` forces retention of the current session, flushes pending fact extractions, and runs Mnemopi sleep/consolidation.
 - `/memory stats` and `/memory diagnose` render backend-specific bank statistics/diagnostics when the Mnemopi backend is active.
 - Subagents do not own separate Mnemopi retain loops; they alias the parent state when a parent Mnemopi state exists, and otherwise remain inert.
+
+*Verified against `7ca44d3` on 2026-07-17.*

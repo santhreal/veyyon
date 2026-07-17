@@ -11,7 +11,8 @@
  * Product constraint: Veyyon stays transcript + composer; overlays float on
  * top. This is not a full-screen TUI conversion.
  */
-import { padding, truncateToWidth, visibleWidth } from "@veyyon/pi-tui";
+import { padding, TERMINAL, truncateToWidth, visibleWidth } from "@veyyon/pi-tui";
+import { emberTick } from "./composer-chrome";
 import { theme } from "../theme/theme";
 import { bottomBorder, divider, fit, row, topBorder } from "./overlay-box";
 
@@ -377,7 +378,7 @@ export function renderModalShell(input: ModalShellInput): ModalShellResult {
 		const box = theme.boxSharp;
 		const inner = Math.max(0, modalWidth - 2);
 		const shown = truncateToWidth(` ${title} `, Math.max(0, inner - closeW - 2));
-		const fillWidth = Math.max(0, inner - 1 - visibleWidth(shown) - closeW);
+		const fillWidth = Math.max(0, inner - 2 - visibleWidth(shown) - closeW);
 		const clickableTitle = breadcrumbClickable ? theme.bold(theme.underline(theme.fg("accent", shown))) : "";
 		const titleStyled = breadcrumbClickable
 			? input.breadcrumbHovered
@@ -385,17 +386,21 @@ export function renderModalShell(input: ModalShellInput): ModalShellResult {
 				: clickableTitle
 			: theme.bold(theme.fg("accent", shown));
 		const frame = (s: string) => theme.fg("borderAccent", s);
+		// The title rail carries one ember tick right after the corner — the
+		// website's progress-sun-on-the-header-rule motif. Geometry is identical:
+		// the tick's cells occupy the space the leading rule + title space used.
 		card.push(
-			frame(box.topLeft + box.horizontal) +
+			frame(box.topLeft) +
+				emberTick(TERMINAL.trueColor, 2) +
 				titleStyled +
 				frame(box.horizontal.repeat(fillWidth)) +
 				closeStyled +
 				frame(box.topRight),
 		);
-		closeColStart = leftPad + 1 + 1 + visibleWidth(shown) + fillWidth;
+		closeColStart = leftPad + 1 + 2 + visibleWidth(shown) + fillWidth;
 		closeColEnd = closeColStart + closeW;
 		if (breadcrumbClickable) {
-			breadcrumbColStart = leftPad + 1 + 1;
+			breadcrumbColStart = leftPad + 1 + 2;
 			breadcrumbColEnd = breadcrumbColStart + visibleWidth(shown);
 		}
 	} else {

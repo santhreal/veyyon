@@ -14,13 +14,15 @@
 import { agentPauseGate } from "@veyyon/pi-agent-core";
 import {
 	type Component,
+	centerLine,
 	matchesKey,
 	type OverlayFocusOwner,
 	type OverlayHandle,
 	type OverlayOptions,
-	visibleWidth,
+	TERMINAL,
 } from "@veyyon/pi-tui";
 import { formatDuration } from "../../slash-commands/helpers/format";
+import { renderEmberField } from "./sun";
 import { theme } from "../theme/theme";
 import { matchesAppInterrupt } from "../utils/keybinding-matchers";
 
@@ -58,11 +60,6 @@ const BODY_LINES = [
 ] as const;
 const RESUME_HINT = "esc · enter · space — resume";
 
-function centerLine(line: string, width: number): string {
-	const pad = Math.max(0, Math.floor((width - visibleWidth(line)) / 2));
-	return pad > 0 ? " ".repeat(pad) + line : line;
-}
-
 /** Live hold clock, seconds-precise: `0:07`, `12:34`, `1:02:03`. */
 function formatClock(ms: number): string {
 	const totalSeconds = Math.max(0, Math.floor(ms / 1000));
@@ -96,10 +93,12 @@ export function renderPauseScreen(width: number, height: number, elapsedMs: numb
 			content.push("");
 			content.push("");
 		}
-		const bar = "█".repeat(BAR_WIDTH);
-		const glyphRow = `${bar}${" ".repeat(BAR_GAP)}${bar}`;
+		// The pause bars are two fields of burning ember, not flat blocks.
+		const t = Math.min(1, elapsedMs / 6000);
+		const left = renderEmberField({ cols: BAR_WIDTH, rows: BAR_ROWS, time: t, trueColor: TERMINAL.trueColor });
+		const right = renderEmberField({ cols: BAR_WIDTH, rows: BAR_ROWS, time: t, trueColor: TERMINAL.trueColor, seed: 7 });
 		for (let i = 0; i < BAR_ROWS; i++) {
-			content.push(centerLine(theme.fg("accent", glyphRow), width));
+			content.push(centerLine(`${left[i]}${" ".repeat(BAR_GAP)}${right[i]}`, width));
 		}
 		content.push("");
 		content.push(centerLine(theme.bold(theme.fg("accent", TITLE)), width));

@@ -56,3 +56,5 @@ a real contract or fixes a regression-prone edge.
 Wiring you can't exercise in-process (worker spawn, install flow) is covered by the
 runtime smoke probe (`veyyon --smoke-test`) and the install-test scripts, not by a
 source grep.
+
+*Verified against `7ca44d3` on 2026-07-17.*

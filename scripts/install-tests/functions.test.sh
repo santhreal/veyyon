@@ -33,6 +33,30 @@ else real=$(shasum -a 256 "$payload" | awk '{print $1}'); fi
 ( verify_sha256 "$payload" "$real" >/dev/null 2>&1 ); check "verify_sha256 accepts matching hash" "$?" "0"
 ( verify_sha256 "$payload" "deadbeef" >/dev/null 2>&1 ); check "verify_sha256 fails closed on mismatch" "$?" "1"
 
+# --- verify_release_binary: sidecar fetch paths, curl shadowed per-case ---
+# Shadow functions simulate the ${url}.sha256 fetch without any network.
+url="https://example.invalid/veyyon-linux-x64"
+
+( curl() { printf '%s  veyyon-linux-x64\n' "$real"; }
+  VERIFY=1 verify_release_binary "$payload" "$url" "veyyon-linux-x64" "v0.0.0" >/dev/null 2>&1 )
+check "verify_release_binary accepts a good sidecar" "$?" "0"
+
+( curl() { printf 'deadbeef  veyyon-linux-x64\n'; }
+  VERIFY=1 verify_release_binary "$payload" "$url" "veyyon-linux-x64" "v0.0.0" >/dev/null 2>&1 )
+check "verify_release_binary fails closed on sidecar mismatch" "$?" "1"
+
+( curl() { return 22; }
+  VERIFY=1 verify_release_binary "$payload" "$url" "veyyon-linux-x64" "v0.0.0" >/dev/null 2>&1 )
+check "verify_release_binary fails closed on missing sidecar" "$?" "1"
+
+( curl() { printf '\n'; }
+  VERIFY=1 verify_release_binary "$payload" "$url" "veyyon-linux-x64" "v0.0.0" >/dev/null 2>&1 )
+check "verify_release_binary fails closed on empty sidecar" "$?" "1"
+
+( curl() { return 22; }
+  VERIFY=0 verify_release_binary "$payload" "$url" "veyyon-linux-x64" "v0.0.0" >/dev/null 2>&1 )
+check "verify_release_binary honors --no-verify override" "$?" "0"
+
 # --- link_alias: creates `vey` -> veyyon in the given dir ---
 printf '#!/bin/sh\necho veyyon/0.0.0-test\n' > "$VEYYON_INSTALL_DIR/veyyon"
 chmod +x "$VEYYON_INSTALL_DIR/veyyon"

@@ -146,3 +146,5 @@ wins that task.
   prompt, hardened consolidation prompt) via Mnemopi prompt overrides; the **online path is
   unchanged**.
 - `providers.autoThinkingModel` uses the same shipped local options as `providers.memoryModel`.
+
+*Verified against `a49ff74` on 2026-07-17.*

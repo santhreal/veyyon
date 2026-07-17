@@ -1181,9 +1181,7 @@ export class EventController {
 		this.ctx.statusLine.markActivityEnd();
 		this.#streamingReveal.stop();
 		this.#toolArgsReveal.flushAll();
-		if (this.ctx.loadingAnimation) {
-			this.ctx.loadingAnimation.stop();
-			this.ctx.loadingAnimation = undefined;
+		if (this.ctx.clearWorkingLoader()) {
 			this.ctx.statusContainer.disposeChildren();
 		}
 		if (this.ctx.streamingComponent) {
@@ -1237,10 +1235,7 @@ export class EventController {
 	 * the reference here lets the next `agent_start` recreate and re-attach it.
 	 */
 	#stopWorkingLoader(): void {
-		if (this.ctx.loadingAnimation) {
-			this.ctx.loadingAnimation.stop();
-			this.ctx.loadingAnimation = undefined;
-		}
+		this.ctx.clearWorkingLoader();
 	}
 
 	/**

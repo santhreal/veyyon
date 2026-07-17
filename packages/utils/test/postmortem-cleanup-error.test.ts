@@ -18,7 +18,7 @@ async function runPostmortemProbe(
 			cwd: process.cwd(),
 			stdout: "pipe",
 			stderr: "pipe",
-			env: { ...process.env, OMP_AGENT_DIR: join(root, "agent") },
+			env: { ...process.env, VEYYON_CODING_AGENT_DIR: join(root, "agent") },
 		});
 		// Process-level regressions can hang the child; the watchdog bounds the fixture without slowing green runs.
 		const watchdog = Bun.sleep(2000).then(() => {

@@ -396,6 +396,7 @@ export class Editor implements Component, Focusable {
 	 *  to the content width rather than reflowed. Cursor glyphs and inline hints are excluded. */
 	decorateText: ((text: string) => string) | undefined;
 	#promptGutter: string | undefined;
+	#placeholder: string | undefined;
 
 	// Store last layout width for cursor navigation
 	#lastLayoutWidth: number = 80;
@@ -524,6 +525,11 @@ export class Editor implements Component, Focusable {
 
 	setPromptGutter(promptGutter: string | undefined): void {
 		this.#promptGutter = promptGutter;
+	}
+
+	/** Ghost text shown when the composer is empty (the resting prompt hint). */
+	setPlaceholder(placeholder: string | undefined): void {
+		this.#placeholder = placeholder;
 	}
 
 	/**
@@ -3146,13 +3152,19 @@ export class Editor implements Component, Focusable {
 
 	/**
 	 * Get inline hint text to show as dim ghost text after the cursor.
-	 * Checks selected autocomplete item's hint first, then falls back to provider.
+	 * Checks selected autocomplete item's hint first, then the empty-input
+	 * placeholder, then falls back to the provider.
 	 */
 	#getInlineHint(): string | null {
 		// Check selected autocomplete item for a hint
 		if (this.#autocompleteState && this.#autocompleteList) {
 			const selected = this.#autocompleteList.getSelectedItem();
 			return selected?.hint ?? null;
+		}
+
+		// The placeholder: ghost text over an empty composer.
+		if (this.#placeholder && this.#state.lines.length === 1 && this.#state.lines[0] === "") {
+			return this.#placeholder;
 		}
 
 		// Fall back to provider's getInlineHint

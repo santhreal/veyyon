@@ -105,7 +105,7 @@ rm packages/natives/native/pi_natives.<platform>-<arch>-baseline.node
 bun --cwd=packages/natives run build
 ```
 
-For compiled binaries or Windows staging, delete the versioned addon cache shown in the loader error (normally under `~/.veyyon/natives/<version>` unless `$XDG_DATA_HOME/omp` is used).
+For compiled binaries or Windows staging, delete the versioned addon cache shown in the loader error (normally under `~/.veyyon/natives/<version>`, or `$XDG_DATA_HOME/veyyon/natives/<version>` when `$XDG_DATA_HOME/veyyon` exists).
 
 ### 2) Generated types do not match loaded binary
 
@@ -171,3 +171,5 @@ bench("feature/native", () => {
 
 - If native is slower, do not switch callsites. Keep or remove the export based on whether it has a near-term owner.
 - If native is faster and behavior-compatible, switch callsites and keep a benchmark to catch regressions.
+
+*Verified against `7ca44d3` on 2026-07-17.*

@@ -27,7 +27,7 @@ Sources: [`packages/swarm-extension/README.md`](../../packages/swarm-extension/R
 
 Sources: [`packages/stats/README.md`](../../packages/stats/README.md), [`packages/stats/package.json`](../../packages/stats/package.json), [`packages/coding-agent/src/cli/stats-cli.ts`](../../packages/coding-agent/src/cli/stats-cli.ts).
 
-- Package: `@veyyon/omp-stats`; bin: `omp-stats`; main user path: `veyyon stats`.
+- Package: `@veyyon/pi-stats`; bin: `veyyon-stats`; main user path: `veyyon stats`.
 - Feature: local observability dashboard for AI usage statistics from session JSONL logs.
 - CLI modes: `veyyon stats` starts the dashboard server, opens `http://localhost:3847`, and keeps running; `veyyon stats --port <port>` changes the port; `veyyon stats --summary` prints a console summary; `veyyon stats --json` prints JSON and exits.
 - Programmatic API: exports helpers such as `syncAllSessions()` and `getDashboardStats()` for embedding.
@@ -48,3 +48,5 @@ There is no package README at this path today; the manifest and source headers a
 - Fixtures: each task directory contains `prompt.md`, `input/`, `expected/`, and `metadata.json`; bundled distribution uses `fixtures.tar.gz`.
 - Outputs: JSON result snapshots written to the adapter's `--output` path, plus conversation dumps in a sibling `result.dump/` directory.
 - Side effects/limits: extracts fixture archives to temp space and runs agent sessions against copied fixture inputs.
+
+*Verified against `7ca44d3` on 2026-07-17.*

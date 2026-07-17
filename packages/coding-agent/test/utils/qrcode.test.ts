@@ -10,7 +10,11 @@ function matrixFingerprint(qr: QrCode): string {
 describe("QR encoder", () => {
 	// Golden vectors captured from the encoder after byte-for-byte cross-validation
 	// against the `qrcode` reference library (all versions/EC levels/masks) and a
-	// real jsQR decode. A changed hash means the symbol bytes drifted.
+	// real jsQR decode. A changed hash means the symbol bytes drifted. The v4-M and
+	// auto-mask pins were refreshed after the remainder-bit placement fix (versions
+	// 2-6 carry 7 remainder bits; v1/v7 carry none, so their pins are unchanged);
+	// the refreshed symbols were re-validated by jsQR decode at every forced mask
+	// and by the reference library's independent auto-mask choice.
 	const vectors: ReadonlyArray<{
 		text: string;
 		ecl: QrEcLevel;
@@ -26,7 +30,7 @@ describe("QR encoder", () => {
 			mask: 4,
 			version: 4,
 			size: 33,
-			hash: "4af2f66e1b06a5b1",
+			hash: "abd17d1bde6e10c9",
 		},
 		{
 			text: "https://web.example/collab/#relay.example.com:8443/r/AbCdEfGhIjKlMnOp.0123456789abcdef",
@@ -64,9 +68,10 @@ describe("QR encoder", () => {
 
 	it("deterministically selects a penalty-minimizing mask when none is forced", () => {
 		// Auto mask is the lowest-penalty choice; locking it guards the penalty rules.
+		// Mask 2 matches the `qrcode` reference library's independent choice here.
 		const qr = QrCode.encodeText("https://share.veyyon.dev/#demo", "M");
-		expect(qr.mask).toBe(1);
-		expect(matrixFingerprint(qr)).toBe("ee820c588fe36d99");
+		expect(qr.mask).toBe(2);
+		expect(matrixFingerprint(qr)).toBe("e2e42b557960c20c");
 	});
 
 	it("throws when the payload exceeds version 40 at the chosen EC level", () => {

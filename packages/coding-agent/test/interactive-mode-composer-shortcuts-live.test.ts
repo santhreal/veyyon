@@ -69,16 +69,16 @@ describe("InteractiveMode composer shortcuts live refresh", () => {
 		resetSettingsForTest();
 	});
 
-	it("flips the primary chip between '/ commands' and 'enter send' as the draft goes empty <-> nonempty", () => {
-		expect(renderChips(mode)).toContain("commands");
+	it("stays quiet at idle — no chrome rows, with or without a draft", () => {
+		// The quiet composer: send/commands are discoverable in /help, so the bar
+		// renders nothing until there is a live action (interrupt, dequeue).
+		expect(renderChips(mode)).toBe("");
 
 		mode.editor.setText("hello there");
-		expect(renderChips(mode)).toContain("send");
-		expect(renderChips(mode)).not.toContain("commands");
+		expect(renderChips(mode)).toBe("");
 
 		mode.editor.setText("");
-		expect(renderChips(mode)).toContain("commands");
-		expect(renderChips(mode)).not.toContain("send");
+		expect(renderChips(mode)).toBe("");
 	});
 
 	it("swaps to the interrupt chip on agent_start and back on agent_end, driven by session.isStreaming", async () => {
@@ -92,8 +92,8 @@ describe("InteractiveMode composer shortcuts live refresh", () => {
 
 		streaming = false;
 		await mode.eventController.handleEvent({ type: "agent_end", messages: [] });
-		expect(renderChips(mode)).not.toContain("interrupt");
-		expect(renderChips(mode)).toContain("commands");
+		// Back to rest: the interrupt chip dissolves and the bar is quiet again.
+		expect(renderChips(mode)).toBe("");
 	});
 
 	it("swaps to the interrupt chip while auto-compaction is running, driven by session.isCompacting", async () => {

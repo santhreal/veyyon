@@ -24,7 +24,7 @@ const HTTP_SSE_CONNECT_TIMEOUT_MS = 1_000;
  * Best-effort startup deadline for the optional Streamable HTTP GET SSE listener.
  *
  * Returns `0` (disabled) when the operator has explicitly disabled MCP client-side
- * timeouts via `timeout: 0` or `OMP_MCP_TIMEOUT_MS=0`, mirroring the rest of the
+ * timeouts via `timeout: 0` or `VEYYON_MCP_TIMEOUT_MS=0` (legacy `OMP_MCP_TIMEOUT_MS`), mirroring the rest of the
  * MCP timeout surface. Otherwise caps the wait at one second and scales below
  * short request timeouts so connect-time never exceeds the request budget.
  */

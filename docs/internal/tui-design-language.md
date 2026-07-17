@@ -13,9 +13,9 @@ First-party themes follow [Brand and identity](./brand.md); the website (`websit
 | Structure / brand | Silver `#C6CBD4` | Silver `#B8BDC7` | Dark silver `#5C6470` |
 | Accent | Ember `#F0862E` | Deep blue `#4A84C9` (pre-ember) | Ember `#F0862E` (chrome) / `#B65E14` (links) |
 
-Titanium mirrors the website tokens exactly, and Light is its sanctioned inverse (see `docs/internal/design.md`, "Light ground") — both locked by `test/brand-conformance.test.ts`.
+Titanium mirrors the website tokens exactly, and Light is its sanctioned inverse (see `docs/internal/design.md`, "Light ground") — both locked by `packages/coding-agent/test/brand-conformance.test.ts`.
 
-Theme JSON is validated in `theme.ts` (`themeJsonSchema`). User overrides can live under `~/.veyyon/agent/themes/`. See [Themes and identity](../handbook/src/using/themes.md) and engine doc `docs/theme.md`.
+Theme JSON is validated via `getThemeJsonSchema()` (`color.ts`, applied on load in `theme.ts`; built-in themes bypass validation). User overrides live under `~/.veyyon/agent/themes/` (`getCustomThemesDir()`). See [Themes and identity](../handbook/src/using/themes.md) and engine doc `docs/theme.md`.
 
 ## Layout and width
 
@@ -25,8 +25,10 @@ centered content column — a terminal is a work instrument, and artificial
 margins waste columns on the dense tool output this product lives in.
 
 The one exception is the **hero moment**: the startup welcome card centers
-horizontally at a 72-column maximum (`welcome.ts` `HERO_MAX_WIDTH`) and floats
-on the empty home screen. Once real work starts, everything is full-bleed.
+horizontally on the empty home screen — header lines center on the full terminal
+width (`centerLine` in `welcome.ts`), the `/welcome` menu column centers at a
+56-column maximum (`Math.min(56, termWidth - 4)`), and the card hides entirely
+below 30 columns. Once real work starts, everything is full-bleed.
 
 Overlays (settings, pickers, hubs) size themselves from the modal sizing
 tokens, not ad-hoc widths.
@@ -68,7 +70,7 @@ Call sites route through `packages/coding-agent/src/modes/theme/theme.ts` helper
 | Kind | Budget |
 | --- | --- |
 | Spinner / shimmer | Low effective FPS; no 30 FPS frames for short blinks |
-| Cursor blink | ~600ms period |
+| Cursor blink | Hardware cursor — the terminal's own blink cadence; no software blink loop |
 | Status pulse | Slow, interruptible |
 
 No gratuitous animation on static content.
@@ -104,3 +106,5 @@ The website nav speaks lowercase terse ("docs install models changelog") — a d
 ## Conformance
 
 When touching TUI polish, name the token (spacing, theme color, motion budget). Hardcoded hex or ANSI at call sites outside `theme.ts` is a design-system bug.
+
+*Verified against `7ca44d3` on 2026-07-17.*

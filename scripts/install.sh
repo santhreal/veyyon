@@ -144,6 +144,25 @@ verify_sha256() {
     ok "verified sha256"
 }
 
+# Verify a downloaded release binary against its published .sha256 sidecar.
+# Fail closed: a missing or unparseable sidecar refuses the install unless
+# --no-verify was passed (only needed for old pre-sidecar releases).
+# args: <file> <binary_url> <asset_name> <release_tag>
+verify_release_binary() {
+    file="$1"; url="$2"; asset="$3"; tag="$4"
+    if [ "$VERIFY" -ne 1 ]; then
+        warn "checksum verification skipped (--no-verify)"
+        return 0
+    fi
+    if sum=$(curl -fsSL --connect-timeout 10 --max-time 30 "${url}.sha256" 2>/dev/null); then
+        expected=$(printf '%s' "$sum" | awk '{print $1}')
+        [ -n "$expected" ] || die "published checksum for $asset is empty/unparseable — refusing to install (pass --no-verify to override)"
+        verify_sha256 "$file" "$expected"
+    else
+        die "no published checksum for $asset ($tag) — refusing to install unverified. Current releases publish .sha256 sidecars; for an old pre-sidecar release, pass --no-verify to override."
+    fi
+}
+
 # ---- uninstall ----
 do_uninstall() {
     removed=0
@@ -250,16 +269,7 @@ install_binary() {
     curl -fsSL --connect-timeout 10 --speed-limit 1024 --speed-time 30 "$BINARY_URL" -o "$tmpbin" \
         || die "download failed ($BINARY not published for this release?) — try --source"
 
-    if [ "$VERIFY" -eq 1 ]; then
-        if sum=$(curl -fsSL --connect-timeout 10 --max-time 30 "${BINARY_URL}.sha256" 2>/dev/null); then
-            expected=$(printf '%s' "$sum" | awk '{print $1}')
-            verify_sha256 "$tmpbin" "$expected"
-        else
-            warn "no published checksum for $BINARY — installing UNVERIFIED (pass --no-verify to silence)"
-        fi
-    else
-        warn "checksum verification skipped (--no-verify)"
-    fi
+    verify_release_binary "$tmpbin" "$BINARY_URL" "$BINARY" "$LATEST"
 
     mv "$tmpbin" "$INSTALL_DIR/$BIN_NAME"
     chmod +x "$INSTALL_DIR/$BIN_NAME"

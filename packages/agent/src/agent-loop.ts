@@ -183,6 +183,7 @@ export function resolveOwnedDialectFromEnv(value: string | undefined): Dialect |
 		case "gemini":
 		case "gemma":
 		case "minimax":
+		case "pi-native":
 			return value;
 		default:
 			return undefined;

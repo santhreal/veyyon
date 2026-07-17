@@ -37,7 +37,7 @@ At module initialization, `native/index.js` computes:
     - Windows: `%LOCALAPPDATA%/omp` or `%USERPROFILE%/AppData/Local/omp`.
     - Non-Windows: `~/.local/bin`.
 - **Natives cache root** (`getNativesDir()`):
-  - if `$XDG_DATA_HOME/omp` exists, `$XDG_DATA_HOME/veyyon/natives`;
+  - if `$XDG_DATA_HOME/veyyon` exists, `$XDG_DATA_HOME/veyyon/natives`;
   - otherwise `~/.veyyon/natives`.
 - **Compiled-binary mode** (`detectCompiledBinary`): true if any of:
   - embedded-addon manifest is non-null,
@@ -201,3 +201,5 @@ Normal package/runtime diagnostics include:
 - reinstall hint (`bun install @veyyon/pi-natives`),
 - local rebuild command (`bun --cwd=packages/natives run build`),
 - optional x64 variant build hint (`TARGET_VARIANT=baseline|modern bun --cwd=packages/natives run build`).
+
+*Verified against `7ca44d3` on 2026-07-17.*

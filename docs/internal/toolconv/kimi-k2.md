@@ -180,3 +180,5 @@ Moonshot's hosted API (`platform.moonshot.ai`) exposes both OpenAI- and Anthropi
 - vLLM `kimi_k2` tool parser (markers, regex, name-parsing, `skip_special_tokens`, streaming): https://github.com/vllm-project/vllm/blob/main/vllm/tool_parsers/kimi_k2_tool_parser.py
 - vLLM PR adding the parser: https://github.com/vllm-project/vllm/pull/20789
 - vLLM tool-calling docs: https://docs.vllm.ai/en/latest/features/tool_calling/
+
+*Verified against `7ca44d3` on 2026-07-17.*

@@ -177,3 +177,5 @@ Practical implication:
 - They are not, by themselves, executed as runtime extension modules by the extension loader pipeline.
 
 This boundary is intentional in current implementation and explains why manifest discovery and executable module loading can diverge.
+
+*Verified against `7ca44d3` on 2026-07-17.*

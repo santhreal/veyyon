@@ -30,16 +30,16 @@ Extension loading builds a list of module entry files, imports each module with 
 
 Native `extension-module` discovery comes from:
 
-- Project directory: `<cwd>/.omp/extensions`
+- Project directory: `<cwd>/.veyyon/extensions`
 - User directory: `~/.veyyon/agent/extensions`
-- Native legacy/settings JSON entries: `<cwd>/.omp/settings.json#extensions` and `~/.veyyon/agent/settings.json#extensions`
+- Native legacy/settings JSON entries: `<cwd>/.veyyon/settings.json#extensions` and `~/.veyyon/agent/settings.json#extensions`
 
-The project root is the native provider's `.omp` directory (`SOURCE_PATHS.native.projectDir`), cwd-only; it does not walk ancestors. The user root is the active profile's agent directory via `getAgentDir()`, so under `omp --profile <name>` it becomes `~/.veyyon/profiles/<name>/agent/extensions` (and it honors `PI_CODING_AGENT_DIR`). See [Profiles](../config-usage.md#profiles).
+The project root is the native provider's `.veyyon` directory (`SOURCE_PATHS.native.projectDir`), cwd-only; it does not walk ancestors. The user root is the active profile's agent directory via `getAgentDir()`, so under `veyyon --profile <name>` it becomes `~/.veyyon/profiles/<name>/agent/extensions` (and it honors `VEYYON_CODING_AGENT_DIR` (legacy `PI_CODING_AGENT_DIR`)). See [Profiles](../config-usage.md#profiles).
 
 Notes:
 
-- Native auto-discovery is currently `.omp` based.
-- Legacy `.pi` is still accepted in package manifests (`pi.extensions`) and project override lookup, but `.pi/extensions` is not a native root here.
+- Native auto-discovery is `.veyyon` based (`CONFIG_DIR_NAME`, one owner in `@veyyon/pi-utils` dirs.ts).
+- Package manifests read the `veyyon` key first, then legacy `omp` / `pi` (`MANIFEST_KEYS` in `src/extensibility/manifest-key.ts`). Neither `.omp/` nor `.pi/` directories are native roots.
 
 ### 2) Discovered JS/TS hook factories
 
@@ -51,7 +51,7 @@ Hook-capability loading already applies its own hook-specific disabled ids, so t
 
 After hook discovery, `discoverAndLoadExtensions()` appends extension entry points from enabled installed plugins via `getAllPluginExtensionPaths(cwd)`.
 
-Plugin extension entries come from package `omp.extensions` / `pi.extensions` manifests, including enabled feature entries.
+Plugin extension entries come from package `veyyon.extensions` manifests (legacy `omp.extensions` / `pi.extensions`), including enabled feature entries.
 
 ### 4) Explicitly configured paths
 
@@ -64,13 +64,13 @@ Configured path sources in the main session startup path (`sdk.ts`):
 
 Settings files:
 
-- User: `~/.veyyon/agent/config.yml` (or custom agent dir via `PI_CODING_AGENT_DIR`)
-- Project/native settings capability: `<cwd>/.omp/config.yml` and `<cwd>/.omp/settings.json`
+- User: `~/.veyyon/agent/config.yml` (or custom agent dir via `VEYYON_CODING_AGENT_DIR`, legacy `PI_CODING_AGENT_DIR`)
+- Project/native settings capability: `<cwd>/.veyyon/config.yml` and `<cwd>/.veyyon/settings.json`
 
 Native extension-module discovery also reads legacy JSON extension lists from:
 
 - `~/.veyyon/agent/settings.json`
-- `<cwd>/.omp/settings.json`
+- `<cwd>/.veyyon/settings.json`
 
 Examples:
 
@@ -83,7 +83,7 @@ extensions:
 
 ```json
 {
-  "extensions": ["./.omp/extensions/my-extra"]
+  "extensions": ["./.veyyon/extensions/my-extra"]
 }
 ```
 
@@ -139,13 +139,13 @@ It is used directly as a module entry candidate.
 
 Resolution order:
 
-1. `package.json` in that directory with `omp.extensions` (or legacy `pi.extensions`) -> use declared entries
+1. `package.json` in that directory with `veyyon.extensions` (or legacy `omp.extensions` / `pi.extensions`) -> use declared entries
 2. `index.ts`
 3. `index.js`
 4. Otherwise scan one level for extension entries:
    - direct `*.ts` / `*.js`
    - subdir `index.ts` / `index.js`
-   - subdir `package.json` with `omp.extensions` / `pi.extensions`
+   - subdir `package.json` with `veyyon.extensions` (or legacy keys)
 
 Rules and constraints:
 
@@ -242,7 +242,7 @@ When events run through `ExtensionRunner`, handler exceptions are caught and emi
 
 ```text
 <repo>/
-  .omp/
+  .veyyon/
     settings.json
     extensions/
       checks/
@@ -254,7 +254,7 @@ When events run through `ExtensionRunner`, handler exceptions are caught and emi
 
 ```json
 {
-  "omp": {
+  "veyyon": {
     "extensions": ["./src/check-a.ts", "./src/check-b.js"]
   }
 }
@@ -269,3 +269,5 @@ Legacy manifest key still accepted:
   }
 }
 ```
+
+*Verified against `a49ff74` on 2026-07-17.*

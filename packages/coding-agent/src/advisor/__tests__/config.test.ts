@@ -77,6 +77,26 @@ describe("discoverAdvisorConfigs", () => {
 		expect(invalidOnly?.tools).toBeUndefined();
 	});
 
+	// Regression: the project-level walk probed the dead brand's `.omp/` dir
+	// only, so a `.veyyon/WATCHDOG.yml` (the native project config dir used by
+	// secrets, agents, and extension roots) was silently invisible.
+	it("discovers WATCHDOG.yml inside the project .veyyon/ config dir", async () => {
+		const yaml = ["advisors:", "  - name: Dotdir Advisor"].join("\n");
+		await fsp.mkdir(path.join(tmp, ".veyyon"), { recursive: true });
+		await Bun.write(path.join(tmp, ".veyyon", "WATCHDOG.yml"), yaml);
+
+		const { advisors } = await discoverAdvisorConfigs(tmp, agentDir);
+		expect(advisors.map(a => a.name)).toEqual(["Dotdir Advisor"]);
+	});
+
+	it("does not read the dead brand's .omp/ project dir", async () => {
+		await fsp.mkdir(path.join(tmp, ".omp"), { recursive: true });
+		await Bun.write(path.join(tmp, ".omp", "WATCHDOG.yml"), ["advisors:", "  - name: Legacy Advisor"].join("\n"));
+
+		const { advisors } = await discoverAdvisorConfigs(tmp, agentDir);
+		expect(advisors).toEqual([]);
+	});
+
 	it("ignores a malformed YAML file without throwing", async () => {
 		await Bun.write(path.join(tmp, "WATCHDOG.yml"), "advisors: [unclosed bracket");
 		const result = await discoverAdvisorConfigs(tmp, agentDir);

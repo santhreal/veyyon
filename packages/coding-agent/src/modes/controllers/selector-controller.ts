@@ -196,9 +196,11 @@ export class SelectorController {
 							this.ctx.ui.requestRender();
 						},
 						getStatusLinePreview: () => {
-							// Return the rendered status line for inline preview
-							const availableWidth = this.ctx.editor.getTopBorderAvailableWidth(this.ctx.ui.terminal.columns);
-							return this.ctx.statusLine.getTopBorder(availableWidth).content;
+							// Preview the quiet composer zones (what the operator actually sees),
+							// two rows: location above, capability below.
+							const width = this.ctx.editor.getTopBorderAvailableWidth(this.ctx.ui.terminal.columns);
+							const { locationLine, capabilityLine } = this.ctx.statusLine.renderQuietLines(width);
+							return `${locationLine}\n${capabilityLine}`;
 						},
 						onPluginsChanged: async () => {
 							const projectPath = await resolveActiveProjectRegistryPath(this.ctx.sessionManager.getCwd());

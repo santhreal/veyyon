@@ -331,3 +331,5 @@ When session manager is created with `SessionManager.inMemory()` (`--no-session`
 - `SelectorController.handleResumeSession()` does not check the boolean result from `session.switchSession(...)`; a hook-cancelled switch can still proceed through UI "Resumed session" repaint/status path.
 - `/share` custom-share failures do not degrade to the default encrypted share flow; they terminate the command with error.
 - `/export` argument tokenization is simplistic and does not preserve quoted paths with spaces.
+
+*Verified against `7ca44d3` on 2026-07-17.*

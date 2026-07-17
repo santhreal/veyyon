@@ -192,6 +192,8 @@ export interface InteractiveModeContext {
 	 */
 	lastAssistantUsage: Usage | undefined;
 	loadingAnimation: Loader | undefined;
+	/** Clear the working loader through its one owner (also rises the ghost sun). Returns whether a loader was armed. */
+	clearWorkingLoader(): boolean;
 	autoCompactionLoader: Loader | undefined;
 	retryLoader: Loader | undefined;
 	unsubscribe?: () => void;

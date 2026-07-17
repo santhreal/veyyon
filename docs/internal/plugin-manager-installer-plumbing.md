@@ -1,6 +1,6 @@
 # Plugin manager and installer plumbing
 
-This document describes how `omp plugin` npm/git/link operations mutate plugin state on disk and how installed npm/git/link plugins become runtime capabilities (tools and extensions today, hooks/commands path resolution available). Marketplace installs use separate marketplace registries and cache plumbing; see `docs/marketplace.md`.
+This document describes how `veyyon plugin` npm/git/link operations mutate plugin state on disk and how installed npm/git/link plugins become runtime capabilities (tools and extensions today, hooks/commands path resolution available). Marketplace installs use separate marketplace registries and cache plumbing; see `docs/marketplace.md`.
 
 ## Scope and architecture
 
@@ -9,14 +9,14 @@ There are two plugin-management implementations in the codebase:
 1. **Active path used by CLI commands**: `PluginManager` (`src/extensibility/plugins/manager.ts`)
 2. **Legacy helper module**: installer functions (`src/extensibility/plugins/installer.ts`)
 
-`omp plugin` npm/git/link actions go through `PluginManager`; marketplace actions go through `MarketplaceManager`. `install` classifies each target (`classifyInstallTarget` in `cli/classify-install-target.ts`): `name@marketplace` routes to the marketplace manager, local paths route to `PluginManager.link()`, git and npm specs to `PluginManager.install()`.
+`veyyon plugin` npm/git/link actions go through `PluginManager`; marketplace actions go through `MarketplaceManager`. `install` classifies each target (`classifyInstallTarget` in `cli/classify-install-target.ts`): `name@marketplace` routes to the marketplace manager, local paths route to `PluginManager.link()`, git and npm specs to `PluginManager.install()`.
 
 `installer.ts` still documents important safety checks and filesystem behavior, but it is not the path used by `src/commands/plugin.ts` + `src/cli/plugin-cli.ts`.
 
 ## Lifecycle: from CLI invocation to runtime availability
 
 ```text
-omp plugin <npm/link action> ...
+veyyon plugin <npm/link action> ...
   -> src/commands/plugin.ts
   -> runPluginCommand(...) in src/cli/plugin-cli.ts
   -> PluginManager method (install/list/uninstall/link/...)
@@ -25,7 +25,7 @@ omp plugin <npm/link action> ...
   -> getAllPluginToolPaths(cwd) / getAllPluginExtensionPaths(cwd)
   -> custom tool loader imports tool modules; extension loader imports extension modules
 
-omp plugin install name@marketplace / omp install name@marketplace
+veyyon plugin install name@marketplace / veyyon install name@marketplace
   -> MarketplaceManager
   -> mutate ~/.veyyon/marketplaces.json, ~/.veyyon/plugins/installed_plugins.json, cache dirs
   -> installed marketplace plugin cache is surfaced as plugin roots/capabilities
@@ -52,7 +52,7 @@ Global plugin state lives under `~/.veyyon/plugins`:
 
 Project-local overrides live at:
 
-- `<cwd>/.omp/plugin-overrides.json`
+- `<cwd>/.veyyon/plugin-overrides.json` (loader reads every project config base via `getConfigDirPaths`, so `.claude`/`.codex`/`.gemini` variants are also honored, highest priority first)
 
 Overrides are read-only from manager/loader perspective (no write path here) and can disable plugins or override features/settings for this project.
 
@@ -60,7 +60,7 @@ Marketplace registries live separately:
 
 - `~/.veyyon/marketplaces.json` — configured marketplace catalogs
 - `~/.veyyon/plugins/installed_plugins.json` — user-scoped marketplace installs
-- `<cwd>/.omp/plugins/installed_plugins.json` — project-scoped marketplace installs when available
+- `<project-root>/.veyyon/plugins/installed_plugins.json` — project-scoped marketplace installs (`resolveActiveProjectRegistryPath` walks up from cwd to the nearest project config dir, stopping before the home dir)
 - `~/.veyyon/plugins/cache/{marketplaces,plugins}/` — cached catalogs and plugin directories
 
 ## Plugin spec parsing and metadata interpretation
@@ -81,17 +81,20 @@ Marketplace registries live separately:
 
 ## Manifest source and required fields
 
-Manifest is resolved as:
+Manifest is resolved through the one-owner helper `manifestFromPackageJson()` (`src/extensibility/manifest-key.ts`, `MANIFEST_KEYS = ["veyyon", "omp", "pi"]` — first defined key wins):
 
-1. `package.json.omp`
-2. fallback `package.json.pi`
-3. fallback `{ version: package.version }`
+1. `package.json.veyyon`
+2. legacy `package.json.omp`
+3. legacy `package.json.pi`
+4. fallback `{ version: package.version }` (installer path only)
+
+A source-scan lock test (`test/manifest-key.test.ts`) fails if any extensibility source reads `pkg.omp`/`pkg.pi` inline instead of the helper.
 
 Implications:
 
 - There is no strict schema validation in manager/loader.
-- A package missing `omp`/`pi` is still installable and listable.
-- Runtime plugin loading (`getEnabledPlugins`) skips packages without `omp`/`pi` manifest.
+- A package missing every manifest key is still installable and listable.
+- Runtime plugin loading (`getEnabledPlugins`) skips packages without a manifest key.
 - `manifest.version` is always overwritten from package `version`.
 
 Malformed `package.json` JSON is a hard failure at read time; malformed manifest shape may fail later only when specific fields are consumed.
@@ -115,7 +118,7 @@ Malformed `package.json` JSON is a hard failure at read time; malformed manifest
 
 Because update is install-driven:
 
-- `omp plugin install pkg@newVersion` updates dependency and lockfile version.
+- `veyyon plugin install pkg@newVersion` updates dependency and lockfile version.
 - Existing settings are preserved; state entry is overwritten for version/features/enabled.
 - No separate “check updates” or transactional migration logic exists.
 
@@ -133,7 +136,7 @@ If uninstall command fails, runtime state is not changed.
 
 1. Read plugin dependency map from `~/.veyyon/plugins/package.json`.
 2. Load lockfile runtime config (missing file -> empty defaults).
-3. Load project overrides (`<cwd>/.omp/plugin-overrides.json`, parse/read errors -> empty object with warning).
+3. Load project overrides (`<cwd>/.veyyon/plugin-overrides.json` (+ other project config bases), parse/read errors -> empty object with warning).
 4. For each dependency with a resolvable package.json:
    - build `InstalledPlugin` record
    - merge feature/enable state:
@@ -172,7 +175,7 @@ Caveat: current `PluginManager.link` does not enforce the `cwd` path-boundary ch
 Filtering:
 
 - skip if no plugin package.json
-- skip if manifest (`omp`/`pi`) absent
+- skip if manifest (`veyyon`/`omp`/`pi`) absent
 - skip if globally disabled in lockfile
 - skip if project-disabled
 
@@ -244,14 +247,14 @@ Because CLI uses `PluginManager`, these stricter link guards are not currently o
 
 ## Failure, partial success, and rollback behavior
 
-The plugin manager is not transactional.
+Install is guarded by a snapshot + rollback path (`#rollbackFailedInstall` restores `package.json`, `bun.lock`, and the prior package backup); uninstall and link are not transactional.
 
 | Operation stage                                          | Failure behavior           | Rollback                                                                      |
 | -------------------------------------------------------- | -------------------------- | ----------------------------------------------------------------------------- |
 | `bun install` fails                                      | install aborts with stderr | N/A (no state writes yet)                                                     |
-| Install succeeds, then feature validation fails          | command fails              | No uninstall rollback; dependency may remain in `node_modules`/`package.json` |
+| Install succeeds, then feature validation fails          | command fails              | Rolls back (same `#rollbackFailedInstall` path as extension validation)       |
 | Install succeeds, then extension validation fails        | command fails              | Rolls back: restores `package.json`, removes installed package, restores prior version from backup |
-| Install succeeds, then lockfile write fails              | command fails              | No rollback of installed package                                              |
+| Install succeeds, then runtime lock write fails          | command fails              | Rolls back the installed package (write happens inside the guarded try block) |
 | `bun uninstall` succeeds, lockfile write fails           | command fails              | Package removed, stale runtime state may remain                               |
 | `link` removes old target then symlink creation fails    | command fails              | No restoration of previous link/dir                                           |
 
@@ -259,7 +262,7 @@ Operationally, `doctor --fix` can repair some drift (`bun install`, orphaned con
 
 ## Malformed/missing manifest behavior summary
 
-- Missing `omp`/`pi` field:
+- Missing `veyyon`/`omp`/`pi` field:
   - install/list: tolerated (minimal manifest)
   - runtime enabled-plugin discovery: skipped as non-plugin
 - Missing feature referenced by install spec or `features --set/--enable`: hard error with available feature list
@@ -284,3 +287,5 @@ Operationally, `doctor --fix` can repair some drift (`bun install`, orphaned con
 - [`src/extensibility/plugins/types.ts`](../../packages/coding-agent/src/extensibility/plugins/types.ts) — manifest/runtime/override type contracts
 - [`src/extensibility/custom-tools/loader.ts`](../../packages/coding-agent/src/extensibility/custom-tools/loader.ts) — runtime wiring for plugin-provided tool modules
 - [`src/extensibility/extensions/loader.ts`](../../packages/coding-agent/src/extensibility/extensions/loader.ts) — runtime wiring for plugin-provided extension modules
+
+*Verified against `7ca44d3` on 2026-07-17.*

@@ -62,15 +62,17 @@ Because bundled parsing uses `level: "fatal"`, malformed bundled frontmatter thr
 
 1. Nearest project `.veyyon` agents dir from `findAllNearestProjectConfigDirs("agents", cwd)` (filtered to `.veyyon`; first hit only)
 2. User `.veyyon` agents dir from `getConfigDirs("agents", { project: false })` (filtered to `.veyyon`; first hit only)
-3. Claude plugin roots (`listClaudePluginRoots(home, cwd)`) with `agents/` subdirs — only when `isProviderEnabled("claude-plugins")`; project-scope plugins sort before user-scope
-4. Bundled agents (`loadBundledAgents()`)
+3. OMP extension-package `agents/` dirs (`listOmpExtensionRoots`) — only when `isProviderEnabled("omp-plugins")`; consumed in source-precedence order (CLI roots > project `extensions:` settings > user `extensions:` settings > installed npm/link plugins, marketplace installs excluded by realpath)
+4. Claude marketplace plugin roots (`listClaudePluginRoots(home, cwd)`) with `agents/` subdirs — only when `isProviderEnabled("claude-plugins")`; project-scope plugins sort before user-scope
+5. Bundled agents (`loadBundledAgents()`)
 
 ### Actual source order
 
 1. project `.veyyon/agents`
 2. user `~/.veyyon/agent/agents`
-3. plugin `agents/` dirs (project-scope first, then user-scope)
-4. bundled agents last
+3. OMP extension-package `agents/` dirs (CLI > project settings > user settings > installed plugins)
+4. Claude plugin `agents/` dirs (project-scope first, then user-scope)
+5. bundled agents last
 
 ## Merge and collision rules
 
@@ -182,7 +184,9 @@ So deeper levels cannot spawn further tasks even if the agent definition include
 When parent plan mode is enabled, `TaskTool.#runSpawn` builds an `effectiveAgent` before launching subprocesses:
 
 - prepends the plan-mode subagent system prompt
-- restricts tools to `read`, `search`, `find`, `lsp`, and `web_search`, plus `ast_grep`/`report_finding` when the agent's own tool list declares them (`PLAN_MODE_AGENT_TOOL_ALLOWLIST`)
+- restricts tools to `read`, `grep`, `glob`, `lsp`, and `web_search`, plus `ast_grep`/`report_finding` when the agent's own tool list declares them (`PLAN_MODE_AGENT_TOOL_ALLOWLIST`)
 - clears child spawns
 
 The same `effectiveAgent` is used for subprocess launch, model/thinking overrides, and output-schema selection.
+
+*Verified against `7ca44d3` on 2026-07-17.*

@@ -76,7 +76,7 @@ Flow:
 3. Optionally summarize abandoned entries (hook-provided summary or built-in summarizer)
 4. Compute new leaf target:
    - selecting a **user** message: leaf moves to its parent, and message text is returned for editor prefill
-   - selecting a **custom_message**: same rule as user message (leaf = parent, text prefills editor)
+   - selecting a **custom_message**: same rule as user message (leaf = parent, text prefills editor) — except skill-prompt injections (`customType === SKILL_PROMPT_MESSAGE_TYPE`), which land the leaf on the node itself since their expanded body is not a re-editable user turn
    - selecting any other entry: leaf = selected entry id
 5. Apply leaf move:
    - with summary: `branchWithSummary(newLeafId, ...)`
@@ -221,3 +221,5 @@ Session migrations still run on load:
 - v2→v3 migrates legacy `hookMessage` role to `custom`
 
 Current runtime behavior is version-3 tree semantics after migration.
+
+*Verified against `7ca44d3` on 2026-07-17.*

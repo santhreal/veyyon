@@ -56,7 +56,14 @@ function createContext(options: { terminalProgress?: boolean } = {}) {
 		hideThinkingBlock: false,
 		setWorkingMessage: vi.fn(),
 		clearPinnedError: vi.fn(),
-		loadingAnimation: undefined,
+		loadingAnimation: undefined as { stop(): void } | undefined,
+		clearWorkingLoader(): boolean {
+			const self = this as { loadingAnimation?: { stop(): void } };
+			if (!self.loadingAnimation) return false;
+			self.loadingAnimation.stop();
+			self.loadingAnimation = undefined;
+			return true;
+		},
 		autoCompactionLoader: undefined,
 		retryLoader: undefined,
 		streamingComponent: undefined,

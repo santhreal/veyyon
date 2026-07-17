@@ -23,6 +23,7 @@ Does not cover `/tree` UI rendering behavior beyond semantics that affect sessio
 - [`src/session/session-loader.ts`](../../packages/coding-agent/src/session/session-loader.ts) — file load + blob-ref resolution
 - [`src/session/session-context.ts`](../../packages/coding-agent/src/session/session-context.ts) — `buildSessionContext`
 - [`src/session/session-persistence.ts`](../../packages/coding-agent/src/session/session-persistence.ts) — truncation + image blob externalization
+- [`src/session/session-title-slot.ts`](../../packages/coding-agent/src/session/session-title-slot.ts) — fixed-width title-slot serialization/parsing
 - [`src/session/session-paths.ts`](../../packages/coding-agent/src/session/session-paths.ts) — on-disk layout, dir encoding, terminal breadcrumbs
 - [`src/session/session-listing.ts`](../../packages/coding-agent/src/session/session-listing.ts) — discovery (list/recent/resolve)
 - [`src/session/session-storage.ts`](../../packages/coding-agent/src/session/session-storage.ts) — storage abstractions
@@ -64,7 +65,8 @@ Breadcrumb content is two lines: original cwd, then session file path. `continue
 
 Session files are JSONL: one JSON object per line.
 
-- Line 1 is always the session header (`type: "session"`).
+- Physical line 1 of newly written files is a **fixed-width title slot** (`SESSION_TITLE_SLOT_BYTES = 256` bytes): `{"type":"title","v":1,"title":...,"source":"auto"|"user","updatedAt":...,"pad":"..."}` padded to exactly 256 bytes so the mutable current title can be overwritten in place (`storage.updateSessionTitle` writes the slot at offset 0) without rewriting the file. Titles too long for the slot are code-point-truncated to fit (`session-title-slot.ts`). Legacy files without a slot still load (`readTitleSlotFromFile` returns `undefined`); the slot is added on the next full rewrite.
+- The session header (`type: "session"`) is the first *logical* entry — line 2 of slot-bearing files, line 1 of legacy files. Loaders strip the slot before entry parsing.
 - Remaining lines are `SessionEntry` values.
 - Entries are append-only at runtime; branch navigation moves a pointer (`leafId`) rather than mutating existing entries.
 
@@ -116,6 +118,7 @@ All non-header entries include:
 - `custom`
 - `custom_message`
 - `label`
+- `title_change`
 - `ttsr_injection`
 - `session_init`
 - `mode_change`
@@ -278,6 +281,25 @@ Extension-provided message that does participate in LLM context. `content` can b
 
 `label: undefined` clears a label for `targetId`.
 
+### `title_change`
+
+Append-only audit record of a session title change (`setSessionName`). The mutable *current* title lives in the fixed-width title slot / header; this entry preserves the history.
+
+```json
+{
+  "type": "title_change",
+  "id": "b9c8d7e6",
+  "parentId": "b2c3d4e5",
+  "timestamp": "2026-02-16T10:27:30.000Z",
+  "title": "New title",
+  "previousTitle": "Old title",
+  "source": "user",
+  "trigger": "optional origin marker"
+}
+```
+
+`source` is `"auto"` (generated) or `"user"` (explicit rename); auto titles are ignored once a user title is set. Persistence appends the entry and overwrites the title slot in place; if that fails (or the file has no slot yet), it falls back to a fenced atomic full rewrite (`#persistTitleChangeEntry`).
+
 ### `ttsr_injection`
 
 ```json
@@ -411,7 +433,7 @@ Algorithm:
      - emit path entries starting at `firstKeptEntryId` up to the compaction boundary
      - emit entries after the compaction boundary
 
-`custom`, `session_init`, `service_tier_change`, `mcp_tool_selection`, and `ttsr_injection` entries do not inject model context directly.
+`custom`, `session_init`, `service_tier_change`, `mcp_tool_selection`, `title_change`, and `ttsr_injection` entries do not inject model context directly.
 
 ## Persistence Guarantees and Failure Model
 
@@ -436,7 +458,7 @@ Rationale in code: avoid persisting sessions that never produced an assistant re
 
 - `flush()` drains the async disk chain and the open writer's queued appends (no `fsync`); `flushSync()` performs a synchronous full rewrite for exit paths that cannot await.
 - Atomic full rewrites (`#rewriteAtomically`) delegate to `storage.writeTextAtomic`: temp-write then rename over the target (with an EPERM-safe move-aside fallback).
-- Used for `setSessionName`, `rewriteEntries` (tool-output pruning/supersede passes), and move/fork operations. Load-time migrations and other in-memory divergence (`#rewriteRequired`) instead trigger a synchronous full rewrite (`#rewriteSynchronously`) on the next persist.
+- Used for `rewriteEntries` (tool-output pruning/supersede passes) and move/fork operations. `setSessionName` instead appends a `title_change` entry and overwrites the fixed-width title slot in place, falling back to a fenced atomic rewrite on failure or when the file has no slot yet. Load-time migrations and other in-memory divergence (`#rewriteRequired`) instead trigger a synchronous full rewrite (`#rewriteSynchronously`) on the next persist.
 
 ### Error behavior
 
@@ -463,7 +485,7 @@ On load, blob refs are resolved back to base64 for message/custom_message image 
 `SessionStorage` interface provides all filesystem operations used by `SessionManager`:
 
 - sync: `ensureDirSync`, `existsSync`, `writeTextSync`, `statSync`, `listFilesSync`
-- async: `exists`, `readText`, `readTextSlices`, `writeText`, `writeTextAtomic`, `rename`, `unlink`, `deleteSessionWithArtifacts`, `openWriter`
+- async: `exists`, `readText`, `readTextSlices`, `writeText`, `writeTextAtomic`, `rename`, `unlink`, `deleteSessionWithArtifacts`, `updateSessionTitle`, `openWriter`
 
 Implementations:
 
@@ -495,3 +517,5 @@ Metadata extraction for `getRecentSessions` reads a prefix via `readTextSlices(.
 - Inserts are batched through an async drain queue (~100 ms delay) so prompt capture does not block turn execution
 
 Use session files for conversation graph/state replay; use `HistoryStorage` for prompt history UX.
+
+*Verified against `7ca44d3` on 2026-07-17.*

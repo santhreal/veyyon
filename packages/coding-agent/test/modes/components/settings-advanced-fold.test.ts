@@ -39,7 +39,7 @@ const DEMOTED_APPEARANCE_PATHS = [
 	"task.showResolvedModelBadge",
 ] as const;
 
-// The 11 keys that stay visible in appearance's default (collapsed) view.
+// The 12 keys that stay visible in appearance's default (collapsed) view.
 const KEPT_APPEARANCE_PATHS = [
 	"theme.dark",
 	"theme.light",
@@ -49,6 +49,7 @@ const KEPT_APPEARANCE_PATHS = [
 	"statusLine.separator",
 	"terminal.showImages",
 	"tui.hyperlinks",
+	"tui.paintGround",
 	"display.shimmer",
 	"display.smoothStreaming",
 	"display.showTokenUsage",
@@ -68,7 +69,7 @@ describe("appearance advanced fold — schema", () => {
 		resetSettingsForTest();
 	});
 
-	it("keeps exactly 11 non-advanced rows and 13 demoted rows in appearance, with 3 groups and no Images group", () => {
+	it("keeps exactly 12 non-advanced rows and 13 demoted rows in appearance, with 3 groups and no Images group", () => {
 		const appearanceDefs = getSettingsForTab("appearance");
 		const visible = appearanceDefs.filter(def => !def.advanced);
 		const advanced = appearanceDefs.filter(def => def.advanced);

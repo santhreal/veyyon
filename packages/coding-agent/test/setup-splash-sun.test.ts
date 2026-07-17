@@ -41,12 +41,13 @@ describe("setup splash — the sun-bloom launch signature", () => {
 		expect(counts[0]).toBeLessThan(counts[counts.length - 1]);
 	});
 
-	it("reveals the lowercase wordmark only after the disc has mostly bloomed", () => {
+	it("reveals the letterspaced lowercase wordmark only after the disc has mostly bloomed", () => {
 		const early = strip(renderSetupSplash(W, H, 0).join("\n"));
 		const late = strip(renderSetupSplash(W, H, SETUP_SPLASH_MS).join("\n"));
+		const wordmark = APP_NAME.split("").join(" ");
 		expect(APP_NAME).toBe("veyyon"); // brand invariant: lowercase wordmark
-		expect(early).not.toContain(APP_NAME);
-		expect(late).toContain(APP_NAME);
+		expect(early).not.toContain(wordmark);
+		expect(late).toContain(wordmark);
 	});
 
 	it("always shows the skip hint and never scrolls the body sideways", () => {

@@ -145,7 +145,7 @@ Within a single matching batch, each rule is attached to exactly one sibling too
 
 ## 5. Repeat policy and gap logic
 
-`TtsrManager` tracks `#messageCount` and per-rule `lastInjectedAt`.
+`TtsrManager` tracks `#messageCount` and per-rule `lastInjectedAt`. `repeatMode` and `repeatGap` are manager-level `ttsr.*` settings (defaults `"once"` / `10`), not per-rule fields — one policy applies to every registered rule.
 
 ### `repeatMode: "once"`
 
@@ -236,3 +236,5 @@ During the timer window, state can change (user interruption, mode actions, addi
 - `interruptMode: "never"`: prose-source matches queue a deferred hidden injection after a successful assistant message; tool-source matches fold an in-band `<system-reminder>` into the matched tool call's `toolResult` content via the `afterToolCall` hook (no mid-stream abort, no separate follow-up turn).
 - Tool-source non-interrupting buckets are cleared when the parent assistant message ends with `stopReason === "aborted"` or `"error"`, so rules whose target tool never produced a result remain eligible to re-trigger.
 - Repeat-after-gap depends on turn count increments at `turn_end`; mid-turn chunks do not advance gap counters.
+
+*Verified against `7ca44d3` on 2026-07-17.*

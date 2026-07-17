@@ -7,6 +7,7 @@ import harmonyDefinition from "./harmony";
 import hermesDefinition from "./hermes";
 import kimiDefinition from "./kimi";
 import minimaxDefinition from "./minimax";
+import piNativeDefinition from "./pi-native";
 import qwen3Definition from "./qwen3";
 import type { Dialect, DialectDefinition, InbandScanner, InbandScannerOptions } from "./types";
 import xmlDefinition from "./xml";
@@ -23,6 +24,7 @@ const DIALECT_DEFINITIONS: Record<Dialect, DialectDefinition> = {
 	qwen3: qwen3Definition,
 	gemini: geminiDefinition,
 	gemma: gemmaDefinition,
+	"pi-native": piNativeDefinition,
 };
 
 export function getDialectDefinition(dialect: Dialect): DialectDefinition {

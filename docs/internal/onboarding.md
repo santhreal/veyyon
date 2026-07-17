@@ -62,3 +62,5 @@ Pull requests require a **vouch** — see [CONTRIBUTING.md](../../CONTRIBUTING.m
 short: get vouched via a Discussion first, then open the PR. Put your change under the
 affected package's `## [Unreleased]` changelog section, keep the PR description short
 (what broke, the fix), and make sure `bun run check` and the tests pass.
+
+*Verified against `7ca44d3` on 2026-07-17.*

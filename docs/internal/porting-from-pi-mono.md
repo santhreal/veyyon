@@ -360,7 +360,7 @@ Our fork has architectural decisions that differ from upstream. **Do not port th
 | Upstream                                                         | Our Fork                                                                                          |
 | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
 | `jiti` for TypeScript loading                                    | Native Bun `import()`                                                                              |
-| `pkg.pi` manifest field                                          | `pkg.omp` preferred; fallback to `pkg.pi` remains                                                  |
+| `pkg.pi` manifest field                                          | `pkg.veyyon` preferred; `omp` and `pi` remain accepted as legacy keys (`MANIFEST_KEYS` in `src/extensibility/manifest-key.ts`, first defined wins) |
 | `StringEnum` from `pi-ai`                                        | `Type.Enum` from the `pi.typebox` shim (or author the schema with `pi.zod`); `pi-ai` no longer exports `StringEnum` |
 | `formatSize` from `pi-coding-agent`                              | `formatBytes` from `@veyyon/pi-utils`                                                            |
 | `DefaultResourceLoader` / `DefaultPackageManager` / `SettingsManager` / `createEventBus` | Capability-based discovery (`loadCapability(...)`) plus the `Settings` singleton and `EventBus` |
@@ -385,3 +385,5 @@ These exist in our fork but not upstream. **Never overwrite:**
 - LSP writethrough for format-on-save
 - Bash interception (`checkBashInterception`)
 - Fuzzy path suggestions in read tool
+
+*Verified against `7ca44d3` on 2026-07-17.*
