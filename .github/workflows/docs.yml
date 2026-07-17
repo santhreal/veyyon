@@ -39,7 +39,7 @@ jobs:
         with:
           bun-version: "1.3.14"
       - name: Checker self-tests
-        run: bun test scripts/check-doc-links.test.ts scripts/check-doc-freshness.test.ts
+        run: bun test scripts/check-doc-links.test.ts scripts/check-doc-freshness.test.ts scripts/docs-book-pin.test.ts
       - name: Check internal markdown links
         run: bun scripts/check-doc-links.ts
       - name: Check internal doc verification stamps
@@ -61,3 +61,28 @@ jobs:
         run: bun install --frozen-lockfile
       - name: Docs examples match the real CLI
         run: bun test packages/coding-agent/test/docs-examples.test.ts
+
+  book-staleness:
+    # The rendered handbook (docs/handbook/book) is committed because the
+    # website deploy serves it via the website/docs symlink. Committed build
+    # output goes stale silently; this job fails when the committed book does
+    # not match a fresh `mdbook build` of docs/handbook/src at the pinned
+    # mdbook version (keep the pin in sync with the version contributors use).
+    name: Handbook book freshness
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install mdbook
+        run: |
+          mkdir -p "$HOME/.local/bin"
+          curl -fsSL https://github.com/rust-lang/mdBook/releases/download/v0.5.2/mdbook-v0.5.2-x86_64-unknown-linux-musl.tar.gz \
+            | tar -xz -C "$HOME/.local/bin"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Rebuild handbook
+        run: mdbook build docs/handbook
+      - name: Committed book matches sources
+        run: |
+          if ! git diff --exit-code --stat -- docs/handbook/book; then
+            echo "::error::docs/handbook/book is stale — run 'mdbook build' in docs/handbook (mdbook v0.5.2) and commit the result."
+            exit 1
+          fi

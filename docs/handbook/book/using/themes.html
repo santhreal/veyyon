@@ -46,7 +46,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-24acbed9.js";
+            window.path_to_searchindex_js = "../searchindex-e76f06ca.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-9cfd259b.js"></script>
@@ -214,6 +214,24 @@
 <li><strong>Custom themes:</strong> drop JSON under <code>~/.veyyon/agent/themes/</code>; schema in <code>docs/theme.md</code>.</li>
 </ul>
 <p>Terminal capability detection maps the same hierarchy for truecolor, ANSI-256, ANSI-16, unknown background, and no-color modes. Reduced-motion settings remove decorative animation without hiding state changes.</p>
+<h2 id="painted-ground"><a class="header" href="#painted-ground">Painted ground</a></h2>
+<p><code>tui.paintGround</code> (<code>/settings</code> → Appearance → Display) controls whether Veyyon sets the
+terminal’s own background color (OSC 11) to the theme’s ground while it runs, so the UI
+fills the window edge-to-edge instead of floating on the terminal’s configured background.
+The original background is restored on exit — including crash exits.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Value</th><th>Behavior</th></tr>
+</thead>
+<tbody>
+<tr><td><code>auto</code> (default)</td><td>Paint only when the terminal’s reported background is already close to the theme ground, so no visible seam appears while painting. If the terminal doesn’t report its background, inherit it.</td></tr>
+<tr><td><code>always</code></td><td>Always paint the theme ground.</td></tr>
+<tr><td><code>never</code></td><td>Never touch the terminal background.</td></tr>
+</tbody>
+</table>
+</div>
+<p>Terminals that don’t support OSC 11 ignore the sequence; nothing breaks.</p>
 <h2 id="what-the-theme-covers"><a class="header" href="#what-the-theme-covers">What the theme covers</a></h2>
 <p>The contract applies to onboarding, composer, menus, dialogs, status line, markdown, tables, diffs, tool output, approvals, progress, and errors — not only the chat pane.</p>
 <h2 id="identity-elsewhere"><a class="header" href="#identity-elsewhere">Identity elsewhere</a></h2>
