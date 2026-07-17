@@ -2,17 +2,17 @@
   "type": "module",
   "name": "@veyyon/swarm-extension",
   "version": "16.5.2",
-  "description": "Swarm orchestration extension for omp",
+  "description": "Swarm orchestration extension for veyyon",
   "homepage": "https://veyyon.dev",
   "author": "Derek Rynd",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/can1357/oh-my-pi.git",
+    "url": "git+https://github.com/santhreal/veyyon.git",
     "directory": "packages/swarm-extension"
   },
   "bugs": {
-    "url": "https://github.com/can1357/oh-my-pi/issues"
+    "url": "https://github.com/santhreal/veyyon/issues"
   },
   "keywords": [
     "swarm",
