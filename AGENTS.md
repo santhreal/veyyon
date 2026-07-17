@@ -335,3 +335,43 @@ fields sit at the `16.5.2` fork point until then; the release run flips every pu
 package, the Rust workspace, and the `pi-natives` sentinel to `1.0.0` in one atomic
 commit. Before running it, add a short "First veyyon release" summary under each
 changed package's `## [Unreleased]` so the generated `## [1.0.0]` entry isn't empty.
+
+## Maintenance
+
+Routine operational tasks and where their single source of truth lives.
+
+### Website (veyyon.dev)
+
+Static site under `website/`, deployed to Cloudflare Pages.
+
+- **Build**: `bun run site:build` — regenerates `changelog.html` from the real
+  `packages/coding-agent/CHANGELOG.md` (fork-aware: veyyon releases vs inherited
+  oh-my-pi history), stages the install scripts, and runs a brand check that fails
+  the build on a leaked old product name.
+- **Deploy**: `bun run site:deploy` — builds, then publishes to the `veyyon` Pages
+  project. Needs `CLOUDFLARE_API_TOKEN` (`export CLOUDFLARE_API_TOKEN="$CF_PAGES_API_TOKEN"`;
+  the token lives in `/credentials/.env`). `--dry-run` builds and prints the command
+  without deploying.
+- **Two Pages projects**: `veyyon` serves `veyyon.dev`; `veyyon-get` serves
+  `get.veyyon.dev`, the `curl -fsSL https://get.veyyon.dev | sh` install endpoint.
+  Deploy the latter with `VEYYON_PAGES_PROJECT=veyyon-get bun run site:deploy`.
+- **Handbook**: `website/docs` is a symlink to `docs/handbook/book`; rebuild it with
+  `mdbook build` in `docs/handbook` before deploying if the docs changed.
+- The staged `website/install.sh` / `install.ps1` are build artifacts — the source of
+  truth is `scripts/install.{sh,ps1}`. Edit those, not the copies.
+
+### Install endpoints
+
+`install.sh` resolves the platform, reads `github.com/santhreal/veyyon`
+`releases/latest`, downloads `veyyon-<platform>-<arch>` plus its `.sha256`, and
+**fails closed** on a checksum mismatch. It covers linux (x64/arm64) and darwin
+(x64/arm64); Windows uses `install.ps1`. A release that ships only some platforms
+will 404 for the rest — keep the release asset set complete (see the CI note below).
+
+### Known gap: release runners
+
+`ci.yml`'s release jobs run on the self-hosted `omp-kata` runner. On the public repo
+that runner may be unavailable, in which case cross-platform binaries don't build and
+a release can't publish all assets. Migrating the release matrix to GitHub-hosted
+runners (ubuntu/macos/windows) is the durable fix — until then, a release may need
+binaries produced on per-platform hosts.

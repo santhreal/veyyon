@@ -177,6 +177,8 @@
     "publish": "bun run prepublishOnly && npm publish -ws --access public",
     "publish:dry": "bun run prepublishOnly && npm publish -ws --access public --dry-run",
     "release": "bun scripts/release.ts",
+    "site:build": "node website/build.mjs",
+    "site:deploy": "node website/deploy.mjs",
     "gen:models": "bun --cwd=packages/catalog run gen:models",
     "gen:changelog": "bun scripts/rewrite-changelog.ts",
     "gen:bundle": "bun --cwd=packages/coding-agent run gen:bundle",
