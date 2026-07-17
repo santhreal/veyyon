@@ -116,6 +116,7 @@ const repoScriptTests = [
 	"scripts/ci-concurrency.test.ts",
 	"scripts/ci-build-native.test.ts",
 	"scripts/ci-release-notes.test.ts",
+	"scripts/ci-update-brew-formula.test.ts",
 	"scripts/fix-dts-extensions.test.ts",
 	"scripts/link-omp.test.ts",
 	"scripts/docs-book-pin.test.ts",
