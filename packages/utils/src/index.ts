@@ -11,6 +11,7 @@ export * from "./fs-error";
 export * from "./glob";
 export * from "./json";
 export * from "./json-parse";
+export * from "./levenshtein";
 export * as logger from "./logger";
 export * from "./loop-phase";
 export * from "./mermaid-ascii";
