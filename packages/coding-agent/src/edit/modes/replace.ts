@@ -5,6 +5,7 @@
  * fallback strategies for finding text in files.
  */
 import type { AgentToolResult } from "@veyyon/pi-agent-core";
+import { levenshteinDistance } from "@veyyon/pi-utils";
 import { type } from "arktype";
 import type { FileDiagnosticsResult, WritethroughCallback, WritethroughDeferredHandle } from "../../lsp";
 import type { ToolSession } from "../../tools";
@@ -303,37 +304,9 @@ function findExactMatchOutcome(content: string, target: string): MatchOutcome | 
 // Core Algorithms
 // ═══════════════════════════════════════════════════════════════════════════
 
-/** Compute Levenshtein distance between two strings */
-export function levenshteinDistance(a: string, b: string): number {
-	if (a === b) return 0;
-	const aLen = a.length;
-	const bLen = b.length;
-	if (aLen === 0) return bLen;
-	if (bLen === 0) return aLen;
-
-	let prev = new Array<number>(bLen + 1);
-	let curr = new Array<number>(bLen + 1);
-	for (let j = 0; j <= bLen; j++) {
-		prev[j] = j;
-	}
-
-	for (let i = 1; i <= aLen; i++) {
-		curr[0] = i;
-		const aCode = a.charCodeAt(i - 1);
-		for (let j = 1; j <= bLen; j++) {
-			const cost = aCode === b.charCodeAt(j - 1) ? 0 : 1;
-			const deletion = prev[j] + 1;
-			const insertion = curr[j - 1] + 1;
-			const substitution = prev[j - 1] + cost;
-			curr[j] = Math.min(deletion, insertion, substitution);
-		}
-		const tmp = prev;
-		prev = curr;
-		curr = tmp;
-	}
-
-	return prev[bLen];
-}
+// Canonical implementation lives in @veyyon/pi-utils; re-exported here for
+// existing importers of this module's fuzzy-matching surface.
+export { levenshteinDistance };
 
 /** Compute similarity score between two strings (0 to 1) */
 export function similarity(a: string, b: string): number {
