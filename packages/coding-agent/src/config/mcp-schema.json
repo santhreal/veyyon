@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "mcp-schema.json",
-  "title": "OMP MCP configuration",
-  "description": "Schema for mcp.json, .mcp.json, .omp/mcp.json, and ~/.veyyon/agent/mcp.json used by the OMP coding agent.",
+  "title": "Veyyon MCP configuration",
+  "description": "Schema for mcp.json, .mcp.json, .veyyon/mcp.json, and ~/.veyyon/agent/mcp.json used by the Veyyon coding agent.",
   "type": "object",
   "additionalProperties": false,
   "properties": {
