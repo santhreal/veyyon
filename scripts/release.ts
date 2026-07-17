@@ -215,7 +215,14 @@ async function cmdRelease(versionOrBump: string): Promise<void> {
 	}
 	console.log("  Working directory clean");
 
-	const latestTag = (await git(["describe", "--tags", "--abbrev=0", "--match", "v*"]).text()).trim();
+	// No `v*` tag yet is the expected state for veyyon's first release — it forked
+	// oh-my-pi's source (and its inherited changelog history) but carried over none
+	// of its git tags, and cuts its own release line starting at 1.0.0. Treat the
+	// empty result as a 0.0.0 baseline so `release major` yields 1.0.0 and an
+	// explicit `1.0.0` passes the monotonicity check below, instead of `git
+	// describe` exiting 128 and aborting the whole release.
+	const describe = await git(["describe", "--tags", "--abbrev=0", "--match", "v*"]).nothrow().text();
+	const latestTag = describe.trim() || "0.0.0";
 	let version = versionOrBump;
 	if (version === "major" || version === "minor" || version === "patch") {
 		version = bumpVersion(latestTag, version);

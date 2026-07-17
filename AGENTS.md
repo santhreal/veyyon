@@ -324,3 +324,14 @@ The tagged push is what makes `ci.yml` build the binaries and publish. After it'
 green, `curl -fsSL https://get.veyyon.dev | sh` (which reads
 `github.com/santhreal/veyyon` `releases/latest`) installs the new version. Verify with
 a real install on a clean machine, not just a `cargo`/`bun` build.
+
+### The first veyyon release is `1.0.0`
+
+The repo carries **no `v*` tags** yet — only the inherited oh-my-pi changelog history
+(see the fork notice atop each `CHANGELOG.md`). `release.ts` treats the absence of tags
+as a `0.0.0` baseline, so `bun run release 1.0.0` (equivalently `release major`) cuts
+the first release cleanly instead of aborting on `git describe`. Package `version`
+fields sit at the `16.5.2` fork point until then; the release run flips every public
+package, the Rust workspace, and the `pi-natives` sentinel to `1.0.0` in one atomic
+commit. Before running it, add a short "First veyyon release" summary under each
+changed package's `## [Unreleased]` so the generated `## [1.0.0]` entry isn't empty.
