@@ -364,7 +364,10 @@ fn plain_change(
 		ChangeKind::Removed => (primary, Vec::new()),
 		ChangeKind::Modified => {
 			let peer = peer_root.ok_or_else(|| {
-				IsoError::other(format!("modified change for {} requires a peer root to diff against", rel.display()))
+				IsoError::other(format!(
+					"modified change for {} requires a peer root to diff against",
+					rel.display()
+				))
 			})?;
 			let peer_full = peer.join(rel);
 			let peer_bytes = std::fs::read(&peer_full)
