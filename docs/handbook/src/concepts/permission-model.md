@@ -67,5 +67,5 @@ verify enforcement with `veyyon plugin doctor`.
 ## Where the details live
 
 - [Sandbox and approvals](../features/sandbox.md) for the deep reference and runtime commands.
-- [Using Veyyon safely](../using/safety.md) for the honesty guarantees and the checks to run.
+- [Using Veyyon safely](../using/safety.md) for what surfaces and the checks to run.
 - [CLI reference](../reference/cli.md) for the launch flags.

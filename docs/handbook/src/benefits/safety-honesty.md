@@ -1,12 +1,11 @@
-# Safety and honesty you can see
+# Safety you can see
 
-Veyyon is useful because it can act. That only works if the boundary is visible and the results are
-honest.
+Veyyon acts on your machine, so the boundary it acts within is visible and its
+failures are loud. When it cannot honor a safety rule, a schema, a config file, or a
+tool contract, it stops and says so rather than degrading silently — a silent
+fallback is treated as a bug.
 
-The harness is designed to fail loudly when it cannot honor a safety rule, a schema, a config file, or a
-tool contract. Silent degradation is treated as a product bug.
-
-## What improves
+## What this means in practice
 
 - File writes and commands run through approval and sandbox policy.
 - Tool output records truncation instead of hiding it.
@@ -14,10 +13,11 @@ tool contract. Silent degradation is treated as a product bug.
 - Repair abstains when the schema does not prove a safe fix.
 - Observability records coarse, bounded signals without logging secrets.
 
-## Why it matters
+## Why it works this way
 
-An agent that silently weakens its boundary is hard to trust. An agent that tells you exactly what it did,
-what it refused, and what it could not prove is much easier to use in a real repository.
+A boundary that weakens without telling you is hard to work in. Veyyon instead
+surfaces what it did, what it refused, and what it could not prove, so you can act on
+that in a real repository.
 
 ## Where the details live
 

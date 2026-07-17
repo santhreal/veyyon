@@ -47,10 +47,10 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-5fa9cb6b.js";
+            window.path_to_searchindex_js = "searchindex-3f869efa.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-b8eaaacb.js"></script>
+        <script src="toc-19dab021.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -207,14 +207,14 @@
 <ul>
 <li><strong>Edits that land.</strong> Hashline and model-tuned edit tools with native verification; fewer retry loops on bad diffs.</li>
 <li><strong>Explicit model slots.</strong> Pick the model you talk to, the model for subagents, and the model for compaction — three plain choices, no <code>default</code>-chain indirection.</li>
-<li><strong>Honest interface.</strong> Veyyon Dark uses the silver palette; plan/goal modes and tool approval tiers are engine features.</li>
+<li><strong>Interface.</strong> Veyyon Dark uses the silver palette; plan/goal modes and tool approval tiers are engine features.</li>
 </ul>
 <p><strong>Spec — not shipped:</strong> the full schema-based tool-call repair cascade, a unified single-write-path proof, and self-contained profiles. See <a href="#what-makes-veyyon-different">What makes Veyyon different</a>.</p>
-<h2 id="on-honesty"><a class="header" href="#on-honesty">On honesty</a></h2>
+<h2 id="what-is-built-vs-planned"><a class="header" href="#what-is-built-vs-planned">What is built vs planned</a></h2>
 <p>This book states plainly what is built and what is planned. Pages marked <strong>Spec — not shipped</strong> describe target design not yet in the product. Credits: <a href="#acknowledgements">Acknowledgements</a>.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="why-veyyon"><a class="header" href="#why-veyyon">Why Veyyon</a></h1>
-<p>This section explains why Veyyon exists and what it gives you. Veyyon is a coding agent that runs in your terminal, edits real code, and lets you bring your own model keys. The pages here are the value proposition: what changes, why it is faster and cheaper, and how the design behind it keeps the agent honest.</p>
+<p>This section explains why Veyyon exists and what it gives you. Veyyon is a coding agent that runs in your terminal, edits real code, and lets you bring your own model keys. The pages here are the value proposition: what changes, why it is faster and cheaper, and how the design behind it surfaces what the agent does and refuses.</p>
 <ul>
 <li>
 <p><a href="#what-veyyon-gives-you">What Veyyon gives you</a> introduces the problem Veyyon solves and the concrete benefits you get from a harness built around each model’s strengths.</p>
@@ -235,7 +235,7 @@
 <p><a href="#model-choice-without-lock-in">Model choice without lock-in</a> covers the provider-agnostic engine and per-model profiles that let you point Veyyon at any supported model or API.</p>
 </li>
 <li>
-<p><a href="#safety-and-honesty-you-can-see">Safety and honesty you can see</a> describes the visible sandbox, loud failures, and honest telemetry that make the agent safe to use in real repositories.</p>
+<p><a href="#safety-you-can-see">Safety you can see</a> describes the visible sandbox, loud failures, and bounded telemetry — the behavior that makes the agent safe to use in real repositories.</p>
 </li>
 </ul>
 <p>Where to go next: install Veyyon with <a href="#install">Install</a>, then read the <a href="#core-concepts">Core concepts</a> section to learn how sessions, context, and the harness fit together.</p>
@@ -262,7 +262,7 @@ provider-agnostic configuration, and a TUI that keeps sandboxing and approvals v
 <ul>
 <li>Developers who want a capable terminal agent on their own keys.</li>
 <li>Teams running open or gateway models with a harness tuned for coding, not chat-only UIs.</li>
-<li>Anyone who wants visible sandbox boundaries and honest tool failures.</li>
+<li>Anyone who wants visible sandbox boundaries and tool failures that surface instead of hiding.</li>
 </ul>
 <h2 id="where-to-go-next"><a class="header" href="#where-to-go-next">Where to go next</a></h2>
 <ul>
@@ -416,12 +416,12 @@ differences explicit and uses them.</p>
 <li><a href="#per-model-repair-posture">Per-model posture</a> explains per-model repair posture via harness profiles (bounded repair telemetry is spec, not shipped).</li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
-<h1 id="safety-and-honesty-you-can-see"><a class="header" href="#safety-and-honesty-you-can-see">Safety and honesty you can see</a></h1>
-<p>Veyyon is useful because it can act. That only works if the boundary is visible and the results are
-honest.</p>
-<p>The harness is designed to fail loudly when it cannot honor a safety rule, a schema, a config file, or a
-tool contract. Silent degradation is treated as a product bug.</p>
-<h2 id="what-improves-3"><a class="header" href="#what-improves-3">What improves</a></h2>
+<h1 id="safety-you-can-see"><a class="header" href="#safety-you-can-see">Safety you can see</a></h1>
+<p>Veyyon acts on your machine, so the boundary it acts within is visible and its
+failures are loud. When it cannot honor a safety rule, a schema, a config file, or a
+tool contract, it stops and says so rather than degrading silently — a silent
+fallback is treated as a bug.</p>
+<h2 id="what-this-means-in-practice"><a class="header" href="#what-this-means-in-practice">What this means in practice</a></h2>
 <ul>
 <li>File writes and commands run through approval and sandbox policy.</li>
 <li>Tool output records truncation instead of hiding it.</li>
@@ -429,9 +429,10 @@ tool contract. Silent degradation is treated as a product bug.</p>
 <li>Repair abstains when the schema does not prove a safe fix.</li>
 <li>Observability records coarse, bounded signals without logging secrets.</li>
 </ul>
-<h2 id="why-it-matters-2"><a class="header" href="#why-it-matters-2">Why it matters</a></h2>
-<p>An agent that silently weakens its boundary is hard to trust. An agent that tells you exactly what it did,
-what it refused, and what it could not prove is much easier to use in a real repository.</p>
+<h2 id="why-it-works-this-way"><a class="header" href="#why-it-works-this-way">Why it works this way</a></h2>
+<p>A boundary that weakens without telling you is hard to work in. Veyyon instead
+surfaces what it did, what it refused, and what it could not prove, so you can act on
+that in a real repository.</p>
 <h2 id="where-the-details-live-3"><a class="header" href="#where-the-details-live-3">Where the details live</a></h2>
 <ul>
 <li><a href="#configuration-4">Configuration</a> explains the knobs.</li>
@@ -1020,7 +1021,7 @@ verify enforcement with <code>veyyon plugin doctor</code>.</p>
 <h2 id="where-the-details-live-5"><a class="header" href="#where-the-details-live-5">Where the details live</a></h2>
 <ul>
 <li><a href="#sandbox-and-approvals">Sandbox and approvals</a> for the deep reference and runtime commands.</li>
-<li><a href="#safety-1">Using Veyyon safely</a> for the honesty guarantees and the checks to run.</li>
+<li><a href="#safety-1">Using Veyyon safely</a> for what surfaces and the checks to run.</li>
 <li><a href="#cli-reference">CLI reference</a> for the launch flags.</li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
@@ -1226,7 +1227,7 @@ OpenAI-compatible endpoints.</li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="how-to-read-this-book"><a class="header" href="#how-to-read-this-book">How to read this book</a></h1>
-<p>This handbook has three kinds of chapters. Knowing which is which keeps the record honest.</p>
+<p>This handbook has three kinds of chapters. Knowing which is which keeps the record accurate.</p>
 <h2 id="chapter-status-labels"><a class="header" href="#chapter-status-labels">Chapter status labels</a></h2>
 <p>Every chapter opens with a status line:</p>
 <ul>
@@ -1348,7 +1349,7 @@ Veyyon must ask you first</strong> (the approval policy). Together they decide w
 automatically, runs inside a restricted environment, or waits for your yes.</p>
 <p>This page is the deep reference. For the short mental model, see
 <a href="#permission-model">Permission model</a>. For the approval UX walkthrough, see
-<a href="#permissions-and-approvals">Permissions and approvals</a>. For the honesty guarantees, see
+<a href="#permissions-and-approvals">Permissions and approvals</a>. For what the sandbox surfaces, see
 <a href="#safety-1">Safety</a>.</p>
 <h2 id="two-controls-one-decision"><a class="header" href="#two-controls-one-decision">Two controls, one decision</a></h2>
 <div class="table-wrapper">
@@ -1559,7 +1560,7 @@ understand the outer jail).</li>
 </ol>
 <h2 id="see-also-1"><a class="header" href="#see-also-1">See also</a></h2>
 <ul>
-<li><a href="#safety-1">Safety</a> — honesty guarantees and what to verify.</li>
+<li><a href="#safety-1">Safety</a> — what surfaces and what to verify.</li>
 <li><a href="#permissions-and-approvals">Permissions explainer</a> — approval UX.</li>
 <li><a href="#non-interactive-mode-veyyon---print">Non-interactive mode</a> — CI flags (<code>--ignore-user-config</code>, <code>--ignore-rules</code>, sandbox).</li>
 <li><a href="#cli-reference">CLI reference</a> — launch flags.</li>
@@ -1694,8 +1695,8 @@ or reach on the network. If Veyyon cannot prove the requested behavior fits the 
 fails closed or asks. Silent degradation is treated as a product bug.</p>
 <p>Deep policy reference: <a href="#sandbox-and-approvals">Sandbox and approvals</a>. Mental model:
 <a href="#permission-model">Permission model</a>. Product framing:
-<a href="#safety-and-honesty-you-can-see">Safety and honesty you can see</a>.</p>
-<h2 id="the-honesty-story"><a class="header" href="#the-honesty-story">The honesty story</a></h2>
+<a href="#safety-you-can-see">Safety you can see</a>.</p>
+<h2 id="what-you-see"><a class="header" href="#what-you-see">What you see</a></h2>
 <p>An agent that silently weakens its boundary is hard to trust. Veyyon is designed so you can see:</p>
 <div class="table-wrapper">
 <table>
@@ -6685,7 +6686,7 @@ as increasing a limit, using an offset, or narrowing a search. See <a href="#low
 and <a href="#bounded-reads--instant-search">Bounded reads and instant search</a>.</p>
 <h2 id="where-to-go-next-12"><a class="header" href="#where-to-go-next-12">Where to go next</a></h2>
 <ul>
-<li><a href="#safety-and-honesty-you-can-see">Safety and honesty you can see</a> explains the fail-loud design.</li>
+<li><a href="#safety-you-can-see">Safety you can see</a> explains the fail-loud design.</li>
 <li><a href="#observability">Observability</a> explains runtime signals and exporter configuration.</li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>

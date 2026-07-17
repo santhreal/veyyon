@@ -9,9 +9,9 @@ fails closed or asks. Silent degradation is treated as a product bug.
 
 Deep policy reference: [Sandbox and approvals](../features/sandbox.md). Mental model:
 [Permission model](../concepts/permission-model.md). Product framing:
-[Safety and honesty you can see](../benefits/safety-honesty.md).
+[Safety you can see](../benefits/safety-honesty.md).
 
-## The honesty story
+## What you see
 
 An agent that silently weakens its boundary is hard to trust. Veyyon is designed so you can see:
 

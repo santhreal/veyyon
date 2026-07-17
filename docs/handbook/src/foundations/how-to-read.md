@@ -1,6 +1,6 @@
 # How to read this book
 
-This handbook has three kinds of chapters. Knowing which is which keeps the record honest.
+This handbook has three kinds of chapters. Knowing which is which keeps the record accurate.
 
 ## Chapter status labels
 

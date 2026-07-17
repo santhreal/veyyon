@@ -16,7 +16,7 @@ automatically, runs inside a restricted environment, or waits for your yes.
 
 This page is the deep reference. For the short mental model, see
 [Permission model](../concepts/permission-model.md). For the approval UX walkthrough, see
-[Permissions and approvals](./permissions-explainer.md). For the honesty guarantees, see
+[Permissions and approvals](./permissions-explainer.md). For what the sandbox surfaces, see
 [Safety](../using/safety.md).
 
 ## Two controls, one decision
@@ -235,7 +235,7 @@ settings, confirm the active `tools.approvalMode` in `/settings` (Advanced → S
 
 ## See also
 
-- [Safety](../using/safety.md) — honesty guarantees and what to verify.
+- [Safety](../using/safety.md) — what surfaces and what to verify.
 - [Permissions explainer](./permissions-explainer.md) — approval UX.
 - [Non-interactive mode](./exec.md) — CI flags (`--ignore-user-config`, `--ignore-rules`, sandbox).
 - [CLI reference](../reference/cli.md) — launch flags.

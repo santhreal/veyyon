@@ -22,10 +22,10 @@ Shipped today: hashline edits, mnemopi memory, model roles, session trees, MCP, 
 
 - **Edits that land.** Hashline and model-tuned edit tools with native verification; fewer retry loops on bad diffs.
 - **Explicit model slots.** Pick the model you talk to, the model for subagents, and the model for compaction — three plain choices, no `default`-chain indirection.
-- **Honest interface.** Veyyon Dark uses the silver palette; plan/goal modes and tool approval tiers are engine features.
+- **Interface.** Veyyon Dark uses the silver palette; plan/goal modes and tool approval tiers are engine features.
 
 **Spec — not shipped:** the full schema-based tool-call repair cascade, a unified single-write-path proof, and self-contained profiles. See [What makes Veyyon different](./why/innovations.md).
 
-## On honesty
+## What is built vs planned
 
 This book states plainly what is built and what is planned. Pages marked **Spec — not shipped** describe target design not yet in the product. Credits: [Acknowledgements](./acknowledgements.md).
