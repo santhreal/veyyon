@@ -1,7 +1,7 @@
 {
   "type": "module",
   "name": "@veyyon/pi-mnemopi",
-  "version": "16.5.2",
+  "version": "1.0.0",
   "description": "Local SQLite memory engine for Veyyon agents",
   "homepage": "https://veyyon.dev",
   "author": "Can Boluk",

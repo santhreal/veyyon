@@ -175,7 +175,7 @@ export declare function __veyyonInstallTokioRuntime(): void
  * `packages/natives/native/index.js` (which derives the name from
  * `package.json#version`).
  */
-export declare function __piNativesV16_5_2(): void
+export declare function __piNativesV1_0_0(): void
 
 /**
  * Apply ast-grep rewrite rules to matching files; honors `dryRun` and returns
