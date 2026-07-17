@@ -1,0 +1,24 @@
+# Review routing. A PR touching a path requests review from its owner.
+# See https://docs.github.com/articles/about-code-owners
+
+*                               @santhreal
+
+# TypeScript packages
+/packages/coding-agent/         @santhreal
+/packages/agent/                @santhreal
+/packages/ai/                   @santhreal
+/packages/catalog/              @santhreal
+/packages/tui/                  @santhreal
+/packages/natives/              @santhreal
+/packages/utils/                @santhreal
+
+# Rust crates and native hot paths
+/crates/                        @santhreal
+
+# Release, CI, and installers
+/.github/                       @santhreal
+/scripts/                       @santhreal
+
+# Website and docs
+/website/                       @santhreal
+/docs/                          @santhreal
