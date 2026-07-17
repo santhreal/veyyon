@@ -313,6 +313,20 @@ describe("MarketplaceManager", () => {
 		}
 	});
 
+	it("doctor reports a fresh install (no plugins tree at all) as fully healthy", async () => {
+		const freshRoot = path.join(ctx.tmpDir, "does-not-exist-yet");
+		const spies = mockPluginManagerPaths(freshRoot);
+		try {
+			const checks = await new PluginManager(freshRoot).doctor();
+			expect(checks.map(check => check.status)).toEqual(["ok", "ok", "ok"]);
+			expect(checks.map(check => check.name)).toEqual(["plugins_directory", "package_manifest", "node_modules"]);
+			expect(checks[0].message).toBe("Not created yet (no plugins installed)");
+			expect(checks[2].message).toBe("Not needed (no plugins installed)");
+		} finally {
+			for (const spy of spies) spy.mockRestore();
+		}
+	});
+
 	it("installPlugin keeps same-name local runtime links visible", async () => {
 		await ctx.manager.addMarketplace(FIXTURE_DIR);
 		await ctx.manager.installPlugin("hello-plugin", "test-marketplace");
