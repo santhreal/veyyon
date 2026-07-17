@@ -146,8 +146,9 @@ describe("AgentSession auto-compaction queue resume", () => {
 				await tempDir?.remove();
 			} finally {
 				getRuntimeSignals().length = 0;
-				(globalThis as typeof globalThis & { __veyyonManualCompactGate?: Promise<void> }).__veyyonManualCompactGate =
-					undefined;
+				(
+					globalThis as typeof globalThis & { __veyyonManualCompactGate?: Promise<void> }
+				).__veyyonManualCompactGate = undefined;
 				vi.restoreAllMocks();
 			}
 		}
