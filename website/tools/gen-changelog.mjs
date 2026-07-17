@@ -98,8 +98,13 @@ export function renderInline(text) {
 	return out;
 }
 
-/** Parse the changelog into an ordered (newest-first) list of releases. */
-export function parseReleases(md) {
+/**
+ * Parse the changelog into an ordered (newest-first) list of entries, INCLUDING
+ * the `## [Unreleased]` block (kept as `version: "Unreleased"`). Callers that
+ * only want cut releases use `parseReleases`; the upcoming-release block is read
+ * via `parseUnreleased`.
+ */
+export function parseAllEntries(md) {
 	const lines = md.split("\n");
 	const releases = [];
 	let cur = null;
@@ -144,7 +149,22 @@ export function parseReleases(md) {
 	}
 	flushSection();
 	if (cur) releases.push(cur);
-	return releases.filter(r => r.version.toLowerCase() !== "unreleased");
+	return releases;
+}
+
+/** Parse the changelog into an ordered (newest-first) list of cut releases. */
+export function parseReleases(md) {
+	return parseAllEntries(md).filter(r => r.version.toLowerCase() !== "unreleased");
+}
+
+/**
+ * The `## [Unreleased]` block — veyyon's changes staged for the next release —
+ * or `null` when it has no content. Rendered at the top of the page so there is
+ * always real veyyon news even before the first version is cut.
+ */
+export function parseUnreleased(md) {
+	const u = parseAllEntries(md).find(r => r.version.toLowerCase() === "unreleased");
+	return u && u.sections.length ? u : null;
 }
 
 /** Normalize a CHANGELOG version or a git tag to a bare `X.Y.Z` key. */
@@ -251,17 +271,17 @@ function renderSection(sec) {
 	].join("\n");
 }
 
-export function renderRelease(rel, { isLatest, isUpstream }) {
+export function renderRelease(rel, { isLatest } = {}) {
 	const anchor = `v${rel.version.replace(/\./g, "-")}`;
 	// Publish date (GitHub) wins over the CHANGELOG date when the release is live.
 	const shownDate = rel.published && rel.publishedDate ? rel.publishedDate : rel.date;
 	const date = shownDate ? `<span class="date">${shownDate}</span>` : "";
 	const sections = rel.sections.map(renderSection).join("\n");
-	const cls = `release${isLatest ? " latest" : ""}${isUpstream ? " upstream" : ""}`;
+	const cls = `release${isLatest ? " latest" : ""}`;
 	// A veyyon release finalized in the CHANGELOG but not yet on GitHub is pending
 	// (never presented as installable). `published === null` = lookup skipped, so
 	// no availability marker either way.
-	const isPending = !isUpstream && rel.published === false;
+	const isPending = rel.published === false;
 	const ghLink = rel.published && rel.githubUrl ? `\t\t\t\t<a class="gh-link" href="${rel.githubUrl}">View on GitHub ↗</a>` : "";
 	return [
 		`\t\t<article class="${cls}">`,
@@ -270,7 +290,6 @@ export function renderRelease(rel, { isLatest, isUpstream }) {
 		`\t\t\t\t${date}`,
 		isLatest ? `\t\t\t\t<span class="pill">latest</span>` : "",
 		isPending ? `\t\t\t\t<span class="pill pending">pending release</span>` : "",
-		isUpstream ? `\t\t\t\t<span class="pill upstream">oh-my-pi</span>` : "",
 		ghLink,
 		`\t\t\t</div>`,
 		sections,
@@ -280,27 +299,52 @@ export function renderRelease(rel, { isLatest, isUpstream }) {
 		.join("\n");
 }
 
-/** Banner separating veyyon's own releases from inherited upstream history. */
-export function upstreamDivider() {
+/**
+ * Render the `[Unreleased]` block as the top "Unreleased" card — veyyon's
+ * changes staged for the next release. No version number or GitHub link (nothing
+ * is published yet); a "next release" pill marks it as upcoming.
+ */
+export function renderUnreleased(unreleased) {
+	const sections = unreleased.sections.map(renderSection).join("\n");
 	return [
-		`\t\t<div class="upstream-divider">`,
-		`\t\t\t<h2>Inherited from oh-my-pi</h2>`,
-		`\t\t\t<p>Everything below predates the fork (upstream <a href="https://github.com/can1357/oh-my-pi">can1357/oh-my-pi</a>, MIT). These are not veyyon releases — veyyon's own line starts at 1.0.0.</p>`,
+		`\t\t<article class="release unreleased">`,
+		`\t\t\t<div class="release-head">`,
+		`\t\t\t\t<h2 id="unreleased"><a href="#unreleased">Unreleased</a></h2>`,
+		`\t\t\t\t<span class="pill pending">next release</span>`,
+		`\t\t\t</div>`,
+		sections,
+		`\t\t</article>`,
+	].join("\n");
+}
+
+/**
+ * Provenance note for the pre-fork history. Veyyon forked oh-my-pi at the fork
+ * point; earlier versions are upstream's, not veyyon releases, so the page links
+ * to them instead of replaying them as veyyon changelog cards.
+ */
+export function upstreamNote(forkPointVersion = FORK_POINT_VERSION) {
+	return [
+		`\t\t<div class="upstream-note">`,
+		`\t\t\t<p>Veyyon is a fork of <a href="https://github.com/can1357/oh-my-pi">oh-my-pi</a> ${forkPointVersion} (MIT, by Can Boluk). Everything before the fork is upstream history, not a veyyon release — see <a href="https://github.com/can1357/oh-my-pi/releases">oh-my-pi's releases</a> for it.</p>`,
 		`\t\t</div>`,
 	].join("\n");
 }
 
 /**
- * Build the inner changelog HTML from reconciled releases. Splits at the fork
- * point, shows veyyon's full line plus as much upstream history as the release
- * cap allows, and gives the "latest" pill to the newest *published* veyyon
- * release (or, when the GitHub lookup was skipped, the newest CHANGELOG entry).
+ * Build the inner changelog HTML from reconciled releases. The page shows ONLY
+ * veyyon's own releases (never upstream oh-my-pi release cards): the fork point
+ * splits the list, veyyon's line renders as cards, and everything at/below the
+ * fork point is collapsed into a single provenance note (`upstreamNote`) that
+ * links to oh-my-pi for the pre-fork history. The `[Unreleased]` block renders
+ * first as an "Unreleased" card so there is real veyyon news before 1.0.0 is
+ * cut. The "latest" pill goes to the newest *published* veyyon release (or, when
+ * the GitHub lookup was skipped, the newest veyyon CHANGELOG entry).
  */
-export function buildChangelogHtml(reconciledReleases, { forkPointVersion = FORK_POINT_VERSION, maxReleases = MAX_RELEASES } = {}) {
+export function buildChangelogHtml(reconciledReleases, { unreleased = null, forkPointVersion = FORK_POINT_VERSION, maxReleases = MAX_RELEASES } = {}) {
 	const forkIdx = reconciledReleases.findIndex(r => r.version === forkPointVersion);
-	const veyyon = forkIdx === -1 ? reconciledReleases : reconciledReleases.slice(0, forkIdx);
-	const upstream = forkIdx === -1 ? [] : reconciledReleases.slice(forkIdx);
-	const upstreamShown = upstream.slice(0, Math.max(0, maxReleases - veyyon.length));
+	const veyyonAll = forkIdx === -1 ? reconciledReleases : reconciledReleases.slice(0, forkIdx);
+	const upstreamCount = forkIdx === -1 ? 0 : reconciledReleases.length - forkIdx;
+	const veyyon = veyyonAll.slice(0, maxReleases);
 
 	// "latest" = newest published veyyon release. If none are published (or the
 	// lookup was skipped), fall back to the newest veyyon CHANGELOG entry only
@@ -314,14 +358,13 @@ export function buildChangelogHtml(reconciledReleases, { forkPointVersion = FORK
 	})();
 
 	const parts = [];
+	if (unreleased) parts.push(renderUnreleased(unreleased));
 	for (let i = 0; i < veyyon.length; i++) {
 		parts.push(renderRelease(veyyon[i], { isLatest: i === latestIdx, isUpstream: false }));
 	}
-	if (upstreamShown.length) {
-		parts.push(upstreamDivider());
-		for (const rel of upstreamShown) parts.push(renderRelease(rel, { isLatest: false, isUpstream: true }));
-	}
-	return { html: parts.join("\n"), veyyonCount: veyyon.length, upstreamShownCount: upstreamShown.length, latestIdx };
+	// Upstream (pre-fork) history is credited + linked, never replayed as cards.
+	if (upstreamCount > 0) parts.push(upstreamNote(forkPointVersion));
+	return { html: parts.join("\n"), veyyonCount: veyyon.length, upstreamCount, hasUnreleased: Boolean(unreleased), latestIdx };
 }
 
 /** Splice the built HTML into the page between the CHANGELOG markers. */
@@ -380,13 +423,14 @@ async function main() {
 		console.warn(`changelog: WARNING — ${unmatchedPublished.length} published GitHub release(s) have no CHANGELOG entry: ` + unmatchedPublished.map(r => `v${r.version}`).join(", ") + ". Add them to packages/coding-agent/CHANGELOG.md.");
 	}
 
-	const { html, veyyonCount, upstreamShownCount } = buildChangelogHtml(releases);
+	const unreleased = parseUnreleased(md);
+	const { html, veyyonCount, upstreamCount, hasUnreleased } = buildChangelogHtml(releases, { unreleased });
 	const next = spliceIntoPage(readFileSync(PAGE, "utf8"), html);
 	writeFileSync(PAGE, next);
 
 	const publishedCount = releases.slice(0, veyyonCount).filter(r => r.published).length;
-	const latestVeyyon = releases[0]?.version ?? "none yet";
-	console.log(`changelog: wrote ${veyyonCount} veyyon release(s) (${publishedCount} published, latest ${latestVeyyon}) + ${upstreamShownCount} inherited oh-my-pi entries`);
+	const latestVeyyon = veyyonCount ? releases[0].version : "none cut yet";
+	console.log(`changelog: wrote ${veyyonCount} veyyon release card(s) (${publishedCount} published, latest ${latestVeyyon})` + `${hasUnreleased ? " + an Unreleased block" : ""}; ${upstreamCount} pre-fork oh-my-pi version(s) credited via the upstream note, not shown as cards`);
 }
 
 // Run only when invoked directly (not when imported by the test suite).
