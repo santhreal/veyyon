@@ -827,6 +827,11 @@ export async function changelogPaths(repoRoot: string): Promise<string[]> {
 
 async function changelogDiff(repoRoot: string, since: string, paths: readonly string[]): Promise<string> {
 	if (paths.length === 0) return "";
+	// No baseline revision — the first release before any `clog` ref or `v*` tag
+	// exists (`resolveSince` returns ""). There is no prior state to diff against,
+	// so nothing is promotable from a diff; the release still cuts [Unreleased] via
+	// updateChangelogsForRelease. `git diff "" -- …` would abort with "bad revision ''".
+	if (!since) return "";
 	return git(["diff", "--unified=0", "--no-color", "--no-ext-diff", since, "--", ...paths], repoRoot);
 }
 
