@@ -17,6 +17,7 @@
     ".steps > .step",
     ".tbl-wrap",
     ".thesis > *",
+    ".ledger > .ledger-row",
     "section > .sub",
   ];
 
