@@ -95,7 +95,7 @@ describe("appearance advanced fold — schema", () => {
 			"display.collapseCompacted",
 		];
 		for (const key of originalAppearanceKeys) {
-			expect(Object.prototype.hasOwnProperty.call(SETTINGS_SCHEMA, key)).toBe(true);
+			expect(Object.hasOwn(SETTINGS_SCHEMA, key)).toBe(true);
 		}
 	});
 

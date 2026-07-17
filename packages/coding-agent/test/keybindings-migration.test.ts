@@ -17,13 +17,6 @@ async function writeKeybindingsYaml(agentDir: string, config: KeybindingsConfig)
 	await Bun.write(path.join(agentDir, "keybindings.yml"), YAML.stringify(config, null, 2));
 }
 
-function restoreEnvValue(key: string, value: string | undefined): void {
-	if (value === undefined) {
-		delete process.env[key];
-	} else {
-		process.env[key] = value;
-	}
-}
 describe("KeybindingsManager.create", () => {
 	beforeEach(() => {
 		setKeybindings(KeybindingsManager.inMemory());

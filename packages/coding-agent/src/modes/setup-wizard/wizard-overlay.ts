@@ -179,9 +179,7 @@ export class SetupWizardComponent implements Component, OverlayFocusOwner {
 			case "transition": {
 				const elapsed = performance.now() - this.#phaseStartedAt;
 				const progress = Math.min(1, elapsed / SCENE_TRANSITION_MS);
-				const from =
-					this.#transitionFrom ??
-					renderSetupSplash(safeWidth, height, SETUP_SPLASH_MS + elapsed);
+				const from = this.#transitionFrom ?? renderSetupSplash(safeWidth, height, SETUP_SPLASH_MS + elapsed);
 				const scene = this.#renderScene(safeWidth, height);
 				lines = dissolveFrames(from, scene, progress, height);
 				break;
@@ -245,11 +243,7 @@ export class SetupWizardComponent implements Component, OverlayFocusOwner {
 
 		const footer = [
 			"",
-			indentLine(
-				theme.fg("dim", "↑↓ select  ·  enter confirm  ·  esc skip  ·  ctrl+c exit"),
-				width,
-				marginX,
-			),
+			indentLine(theme.fg("dim", "↑↓ select  ·  enter confirm  ·  esc skip  ·  ctrl+c exit"), width, marginX),
 		];
 		const maxBodyLines = Math.max(0, height - header.length - footer.length);
 		const body = this.#activeScene?.render(contentWidth).slice(0, maxBodyLines) ?? [];

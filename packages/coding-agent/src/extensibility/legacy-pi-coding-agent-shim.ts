@@ -52,7 +52,7 @@ import { loadSkillsFromDir } from "./skills";
 import { Type } from "./typebox";
 
 const TOOL_DEFINITION_MARKER = "__isToolDefinition";
-const LEGACY_BUILTIN_TOOL_MARKER = "__ompLegacyBuiltinTool";
+const LEGACY_BUILTIN_TOOL_MARKER = "__veyyonLegacyBuiltinTool";
 const LEGACY_CODING_TOOL_NAMES = ["read", "bash", "edit", "write"] as const;
 const LEGACY_READ_ONLY_TOOL_NAMES = ["read", "grep", "find", "ls"] as const;
 
@@ -749,7 +749,7 @@ export interface ResourceLoader {
 	getAppendSystemPrompt(): string[];
 	reload(): Promise<void>;
 	/** @internal — used by the shim's createAgentSession to detect its own loaders. */
-	readonly __ompLegacyPiLoader?: true;
+	readonly __veyyonLegacyPiLoader?: true;
 }
 
 /**
@@ -782,7 +782,7 @@ interface AdditionalPromptLoadResult {
 }
 
 export class DefaultResourceLoader implements ResourceLoader {
-	readonly __ompLegacyPiLoader = true as const;
+	readonly __veyyonLegacyPiLoader = true as const;
 	#state: ResolvedLoaderState;
 	#options: DefaultResourceLoaderOptions;
 	#extensionsResult: LoadExtensionsResult = { extensions: [], errors: [], runtime: new ExtensionRuntime() };

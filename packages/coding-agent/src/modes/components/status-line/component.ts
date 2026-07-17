@@ -1365,14 +1365,7 @@ export class StatusLineComponent implements Component {
 			model: { ...effectiveSettings.segmentOptions?.model, roomy: true },
 			context_pct: { ...effectiveSettings.segmentOptions?.context_pct, emberRamp: true },
 		};
-		const ctx = this.#buildSegmentContext(
-			width,
-			quietOptions,
-			includePath,
-			includeContext,
-			includeGit,
-			includePr,
-		);
+		const ctx = this.#buildSegmentContext(width, quietOptions, includePath, includeContext, includeGit, includePr);
 		const LOCATION_IDS: Record<string, true> = { path: true, git: true, pr: true };
 		const CONTEXT_IDS: Record<string, true> = { context_pct: true, context_total: true };
 		const subagentBadge = this.#subagentBadgeText();

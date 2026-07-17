@@ -10,7 +10,7 @@
  *
  * The fix relocates the embeddings stack into a Bun.spawn child process. The
  * agent's main process hands `mnemopi.setLocalModelInitializer` a wrapper that
- * round-trips through `__omp_worker_mnemopi_embed`, and `SIGKILL`s the child
+ * round-trips through `__veyyon_worker_mnemopi_embed`, and `SIGKILL`s the child
  * on dispose so the destructor never runs in either address space. These tests
  * pin the three pieces of that contract so a future refactor cannot quietly
  * re-introduce the crash.

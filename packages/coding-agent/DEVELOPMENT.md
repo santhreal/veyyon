@@ -49,7 +49,7 @@ createAgentSession(...)        ── src/sdk.ts → AgentSession
 ```
 
 `cli.ts` doubles as the worker host: it declares itself via `declareWorkerHostEntry()`
-and dispatches the hidden `__omp_worker_*` argv selectors before loading the command
+and dispatches the hidden `__veyyon_worker_*` argv selectors before loading the command
 registry (see `AGENTS.md` → *Worker scripts*).
 
 ## Source layout (`src/`)

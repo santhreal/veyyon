@@ -1,9 +1,8 @@
-import { padding, TERMINAL, truncateToWidth, visibleWidth } from "@veyyon/pi-tui";
+import { centerLine, padding, TERMINAL, truncateToWidth, visibleWidth } from "@veyyon/pi-tui";
 import { APP_NAME } from "@veyyon/pi-utils";
 import { sunMark } from "../../components/sun";
 import { silverEscape } from "../../components/welcome";
 import { theme } from "../../theme/theme";
-import { centerLine } from "@veyyon/pi-tui";
 
 export const SETUP_SPLASH_MS = 2400;
 export const SETUP_TICK_MS = 33;

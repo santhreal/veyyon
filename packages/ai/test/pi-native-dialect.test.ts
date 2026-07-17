@@ -110,7 +110,7 @@ describe("pi-native scanner: tool-call forms", () => {
 		expect(call?.arguments).toEqual({ path: "src/server/auth.ts", offset: 50 });
 	});
 
-	it("keeps a numeric-looking string-typed element verbatim (spec: <path>4</path> is \"4\")", () => {
+	it('keeps a numeric-looking string-typed element verbatim (spec: <path>4</path> is "4")', () => {
 		const [call] = calls(feed("<call:read>\n<path>4</path>\n</call:read>"));
 		expect(call?.arguments).toEqual({ path: "4" });
 	});
@@ -138,7 +138,7 @@ describe("pi-native scanner: tool-call forms", () => {
 });
 
 describe("pi-native scanner: value model", () => {
-	it("treats attribute quotes as delimiters, not type markers (y=\"4\" is the number 4)", () => {
+	it('treats attribute quotes as delimiters, not type markers (y="4" is the number 4)', () => {
 		const [call] = calls(feed('<call:configure>\n<object y="4">\n<list>x</list>\n</object>\n</call:configure>'));
 		expect(call?.arguments).toEqual({ object: { y: 4, list: ["x"] } });
 	});
@@ -166,9 +166,12 @@ describe("pi-native scanner: value model", () => {
 	});
 
 	it("falls back to JSON coercion and repetition counts without a schema", () => {
-		const events = feed("<call:unknown>\n<n>4</n>\n<name>foo.ts</name>\n<flag>true</flag>\n<item>a</item>\n<item>b</item>\n</call:unknown>", {
-			tools: [] as never,
-		});
+		const events = feed(
+			"<call:unknown>\n<n>4</n>\n<name>foo.ts</name>\n<flag>true</flag>\n<item>a</item>\n<item>b</item>\n</call:unknown>",
+			{
+				tools: [] as never,
+			},
+		);
 		const [call] = calls(events);
 		expect(call?.arguments).toEqual({ n: 4, name: "foo.ts", flag: true, item: ["a", "b"] });
 	});
@@ -222,7 +225,7 @@ describe("pi-native scanner: streaming", () => {
 	});
 
 	it("drops an unterminated call at flush instead of emitting a half call", () => {
-		const events = feed('<call:edit>\nnever closed');
+		const events = feed("<call:edit>\nnever closed");
 		expect(calls(events)).toHaveLength(0);
 	});
 

@@ -7,9 +7,9 @@
  * allowlisted below with the reason they are frozen.
  */
 
-import { Glob } from "bun";
 import { describe, expect, it } from "bun:test";
 import { getOpenRouterHeaders } from "@veyyon/pi-ai";
+import { Glob } from "bun";
 
 const ROOT = `${import.meta.dir}/../../..`;
 

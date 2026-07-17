@@ -322,7 +322,11 @@ export function renderSunsetField(o: SunsetFieldOptions): string[] {
 	for (let y = 0; y < rows; y++) {
 		if (y === horizon) {
 			// The horizon: one hot line the sun melts into.
-			out.push(trueColor ? `\x1b[38;2;251;192;109m${"─".repeat(cols)}${RESET}` : `\x1b[38;5;220m${"─".repeat(cols)}${RESET}`);
+			out.push(
+				trueColor
+					? `\x1b[38;2;251;192;109m${"─".repeat(cols)}${RESET}`
+					: `\x1b[38;5;220m${"─".repeat(cols)}${RESET}`,
+			);
 			continue;
 		}
 		if (y > horizon) {

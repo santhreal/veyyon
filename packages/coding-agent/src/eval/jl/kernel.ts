@@ -222,8 +222,8 @@ function buildInitScript(cwd: string, env?: Record<string, string | undefined>):
 		if (value !== undefined) envPayload[key] = value;
 	}
 	const lines = [
-		`__omp_init_cwd = String(Base64.base64decode("${Buffer.from(cwd).toString("base64")}"))`,
-		"try cd(__omp_init_cwd) catch; end",
+		`__veyyon_init_cwd = String(Base64.base64decode("${Buffer.from(cwd).toString("base64")}"))`,
+		"try cd(__veyyon_init_cwd) catch; end",
 	];
 	for (const key in envPayload) {
 		const k_b64 = Buffer.from(key).toString("base64");
@@ -231,6 +231,6 @@ function buildInitScript(cwd: string, env?: Record<string, string | undefined>):
 		lines.push(`ENV[String(Base64.base64decode("${k_b64}"))] = String(Base64.base64decode("${v_b64}"))`);
 	}
 	// Avoid modifying LOAD_PATH if not necessary, but if needed, prepend cwd
-	lines.push("if !(__omp_init_cwd in LOAD_PATH); pushfirst!(LOAD_PATH, __omp_init_cwd); end");
+	lines.push("if !(__veyyon_init_cwd in LOAD_PATH); pushfirst!(LOAD_PATH, __veyyon_init_cwd); end");
 	return lines.join("\n");
 }

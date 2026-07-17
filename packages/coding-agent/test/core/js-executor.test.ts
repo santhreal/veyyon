@@ -175,7 +175,7 @@ describe("executeJs", () => {
 		expect(result.exitCode).toBe(0);
 		expect(result.output.trim()).toBe("7");
 
-		const marker = await executeJs("return Object.hasOwn(globalThis, '__omp_final_expr__');", {
+		const marker = await executeJs("return Object.hasOwn(globalThis, '__veyyon_final_expr__');", {
 			sessionId,
 			session,
 			sessionFile,
@@ -189,7 +189,7 @@ describe("executeJs", () => {
 	});
 
 	it("ignores user-assigned final expression markers without a rewritten final expression", async () => {
-		const result = await executeJs("globalThis.__omp_final_expr__ = 'manual'; return 'actual';", {
+		const result = await executeJs("globalThis.__veyyon_final_expr__ = 'manual'; return 'actual';", {
 			sessionId,
 			session,
 			sessionFile,
@@ -201,7 +201,7 @@ describe("executeJs", () => {
 
 	it("captures promise-valued final expression before promise callbacks can mutate the marker", async () => {
 		const result = await executeJs(
-			"const pending = Promise.resolve(1).then(value => { globalThis.__omp_final_expr__ = 999; return value; }); pending;",
+			"const pending = Promise.resolve(1).then(value => { globalThis.__veyyon_final_expr__ = 999; return value; }); pending;",
 			{ sessionId, session, sessionFile },
 		);
 
@@ -270,7 +270,7 @@ describe("executeJs", () => {
 			[
 				"const uuid = crypto.randomUUID();",
 				"const digest = await webcrypto.subtle.digest('SHA-256', new TextEncoder().encode('ok'));",
-				"const base = __omp_session__.cwd;",
+				"const base = __veyyon_session__.cwd;",
 				"fs.mkdirSync(base + '/nested', { recursive: true });",
 				"fs.writeFileSync(base + '/nested/value.txt', 'hello');",
 				"await fs.promises.copyFile(base + '/nested/value.txt', base + '/nested/copy.txt');",

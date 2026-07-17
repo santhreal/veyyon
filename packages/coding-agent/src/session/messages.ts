@@ -177,12 +177,20 @@ export interface SkillPromptDetails {
  *  `ui-helpers.addMessageToChat` (renderers), `AgentHubOverlayComponent
  *  #buildTranscriptLines`, `runPrintMode`, and `AcpAgent#replayAssistantMessage`
  *  (fallback error emission) read it via `isSilentAbort`. */
-export const SILENT_ABORT_MARKER = "__omp.silent_abort__";
+export const SILENT_ABORT_MARKER = "__veyyon.silent_abort__";
+
+/** Marker written by pre-fork (oh-my-pi) builds; sessions persisted by them
+ *  must still replay their silent aborts silently. Read-only — never stamped. */
+const LEGACY_SILENT_ABORT_MARKER = "__omp.silent_abort__";
 
 /** Type-guard for silent aborts. Renderers MUST call this helper so structured
  *  `errorId` and legacy persisted marker messages stay in lockstep. */
 export function isSilentAbort(message: Pick<AssistantMessage, "errorId" | "errorMessage">): boolean {
-	return AIError.is(message.errorId, AIError.Flag.SilentAbort) || message.errorMessage === SILENT_ABORT_MARKER;
+	return (
+		AIError.is(message.errorId, AIError.Flag.SilentAbort) ||
+		message.errorMessage === SILENT_ABORT_MARKER ||
+		message.errorMessage === LEGACY_SILENT_ABORT_MARKER
+	);
 }
 
 /** Reason threaded through `AbortController.abort(reason)` when the user aborts

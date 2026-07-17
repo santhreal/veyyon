@@ -68,6 +68,8 @@ const render = (src: string, width = 80): readonly string[] =>
 	new Markdown(src, 0, 0, defaultMarkdownTheme).render(width);
 
 describe("markdown fuzz invariants", () => {
+	// 30s timeouts on the fuzz/deep-nesting loops: on a saturated gate machine
+	// (parallel=4 full run) wall-clock triples vs isolated and races bun's 5s default.
 	it("render never throws on adversarial input", () => {
 		const rand = lcg(0x4d_d0_11_00);
 		for (let iter = 0; iter < 8000; iter++) {
@@ -79,7 +81,7 @@ describe("markdown fuzz invariants", () => {
 				throw new Error(`render(${JSON.stringify(s)}) threw: ${e}`);
 			}
 		}
-	});
+	}, 30_000);
 
 	it("render never throws when the payload is prose spliced with adversarial fragments", () => {
 		const rand = lcg(0x9e_37_79_b9);
@@ -91,7 +93,7 @@ describe("markdown fuzz invariants", () => {
 				throw new Error(`render(${JSON.stringify(s)}) threw: ${e}`);
 			}
 		}
-	});
+	}, 30_000);
 });
 
 describe("markdown deep-nesting DoS", () => {
@@ -110,7 +112,7 @@ describe("markdown deep-nesting DoS", () => {
 				expect(Array.isArray(lines)).toBe(true);
 			}
 		}
-	});
+	}, 30_000);
 
 	// Deep list indentation is the worst case: marked's list tokenizer is
 	// super-linear in nesting, so an uncapped 2000-deep list hangs for minutes.
@@ -128,7 +130,7 @@ describe("markdown deep-nesting DoS", () => {
 		const elapsedMs = performance.now() - t0;
 		expect(Array.isArray(lines)).toBe(true);
 		expect(elapsedMs).toBeLessThan(3000);
-	});
+	}, 30_000);
 
 	// The caps must be invisible to realistic content: shallow nesting renders
 	// exactly as it would without them.
@@ -162,7 +164,7 @@ describe("markdown deep-nesting DoS", () => {
 			// Was ~8.8s before the guard; now dominated by marked's lexer (~0.4s).
 			expect(elapsedMs).toBeLessThan(3000);
 		}
-	});
+	}, 30_000);
 
 	it("still styles realistic (shallow) nested inline formatting", () => {
 		const lines = render("A **bold _em [link](u) `code`_** tail");

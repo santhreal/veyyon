@@ -139,10 +139,10 @@ export function serializeEvalWithEnvelope(fn: string | ((...args: unknown[]) => 
 	return `(() => {
 		try {
 			const __v = (${expr});
-			if (__v && typeof __v.then === "function") return { __ompPromise: true };
-			return { __ompOk: __v === undefined ? null : __v };
+			if (__v && typeof __v.then === "function") return { __veyyonPromise: true };
+			return { __veyyonOk: __v === undefined ? null : __v };
 		} catch (e) {
-			return { __ompErr: (e && (e.stack || e.message)) || String(e) };
+			return { __veyyonErr: (e && (e.stack || e.message)) || String(e) };
 		}
 	})()`;
 }
@@ -155,16 +155,16 @@ export function serializeEvalWithEnvelope(fn: string | ((...args: unknown[]) => 
  */
 export function unwrapEvalEnvelope<TResult>(value: unknown, label: string): TResult {
 	if (value && typeof value === "object") {
-		if ("__ompErr" in value && typeof value.__ompErr === "string") {
-			throw new ToolError(`${label} threw a JavaScript exception:\n${value.__ompErr}`);
+		if ("__veyyonErr" in value && typeof value.__veyyonErr === "string") {
+			throw new ToolError(`${label} threw a JavaScript exception:\n${value.__veyyonErr}`);
 		}
-		if ("__ompPromise" in value && value.__ompPromise === true) {
+		if ("__veyyonPromise" in value && value.__veyyonPromise === true) {
 			throw new ToolError(
 				`${label} returned a Promise, but this surface evaluates synchronously and cannot await it — return a plain value (poll with waitForFunction for async state instead)`,
 			);
 		}
-		if ("__ompOk" in value) {
-			return value.__ompOk as TResult;
+		if ("__veyyonOk" in value) {
+			return value.__veyyonOk as TResult;
 		}
 	}
 	return value as TResult;

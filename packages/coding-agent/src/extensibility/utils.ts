@@ -57,7 +57,7 @@ export class ExtensionExitError extends Error {
 	) {
 		super(
 			`Module called ${alias}(${code === undefined ? "" : String(code)}) during guarded extension/hook loading; ` +
-				`OMP extension/hook modules must not terminate the host process.`,
+				`Veyyon extension/hook modules must not terminate the host process.`,
 		);
 		this.name = "ExtensionExitError";
 		this.code = code;

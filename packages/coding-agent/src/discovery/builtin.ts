@@ -1,7 +1,7 @@
 /**
- * Builtin Provider (.omp)
+ * Builtin Provider (.veyyon)
  *
- * Primary provider for OMP native configs. Supports all capabilities.
+ * Primary provider for Veyyon native configs. Supports all capabilities.
  */
 import * as path from "node:path";
 import { getAgentDir, logger, parseFrontmatter, tryParseJson } from "@veyyon/pi-utils";
@@ -36,7 +36,7 @@ import {
 } from "./helpers";
 
 const PROVIDER_ID = "native";
-const DISPLAY_NAME = "OMP";
+const DISPLAY_NAME = "Veyyon";
 const DESCRIPTION = "Native configuration from ~/.veyyon and .veyyon/";
 const PRIORITY = 100;
 

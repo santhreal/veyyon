@@ -103,14 +103,14 @@ async function runSmokeTest(): Promise<void> {
 	process.stdout.write("smoke-test: ok\n");
 }
 
-const TINY_WORKER_ARG = "__omp_worker_tiny_inference";
-const TAB_WORKER_ARG = "__omp_worker_tab";
-const JS_EVAL_WORKER_ARG = "__omp_worker_js_eval";
-const JS_EVAL_PROCESS_ARG = "__omp_worker_js_eval_process";
-const STT_WORKER_ARG = "__omp_worker_stt";
-const TTS_WORKER_ARG = "__omp_worker_tts";
-const MNEMOPI_EMBED_WORKER_ARG = "__omp_worker_mnemopi_embed";
-const STATS_SYNC_WORKER_ARG = "__omp_worker_stats_sync";
+const TINY_WORKER_ARG = "__veyyon_worker_tiny_inference";
+const TAB_WORKER_ARG = "__veyyon_worker_tab";
+const JS_EVAL_WORKER_ARG = "__veyyon_worker_js_eval";
+const JS_EVAL_PROCESS_ARG = "__veyyon_worker_js_eval_process";
+const STT_WORKER_ARG = "__veyyon_worker_stt";
+const TTS_WORKER_ARG = "__veyyon_worker_tts";
+const MNEMOPI_EMBED_WORKER_ARG = "__veyyon_worker_mnemopi_embed";
+const STATS_SYNC_WORKER_ARG = "__veyyon_worker_stats_sync";
 
 async function runWorkerEntrypoint(arg: string | undefined): Promise<boolean> {
 	if (arg === TINY_WORKER_ARG) {
@@ -336,7 +336,7 @@ export async function runCli(argv: string[]): Promise<void> {
 	// synchronous prefix of `runWorkerEntrypoint`, and Bun flushes the
 	// worker's parked initial messages as soon as the entry module's
 	// top-level evaluation finishes.
-	if (resolvedArgv[0]?.startsWith("__omp_worker_")) {
+	if (resolvedArgv[0]?.startsWith("__veyyon_worker_")) {
 		await runWorkerEntrypoint(resolvedArgv[0]);
 		return;
 	}
@@ -346,7 +346,7 @@ export async function runCli(argv: string[]): Promise<void> {
 	// `@veyyon/pi-utils/env` here would snapshot the wrong agent `.env`.
 	// Gated on `isProcessEntry`: only the real CLI process entry is a valid
 	// worker host. Worker-thread re-entry already returned above at the
-	// `__omp_worker_` dispatch, and importers (`runCli` in profile-CLI tests,
+	// `__veyyon_worker_` dispatch, and importers (`runCli` in profile-CLI tests,
 	// SDK embedding) have `import.meta.main === false` — declaring there would
 	// poison `workerHostEntry()` for the whole test process, forcing eval/stats/
 	// browser workers onto the same-realm inline fallback.

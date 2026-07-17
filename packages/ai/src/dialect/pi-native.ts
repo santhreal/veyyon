@@ -31,7 +31,6 @@ const CALL_OPEN = "<call:";
 const CALL_CLOSE_PREFIX = "</call:";
 const THINK_OPEN = "<think>";
 const THINK_CLOSE = "</think>";
-const NAME_RE = /^[A-Za-z_][A-Za-z0-9_-]*$/;
 
 type State = "outside" | "thinking" | "opentag" | "body";
 
@@ -348,7 +347,10 @@ function parseAttrs(text: string): RawAttr[] | null {
 }
 
 /** Coerce raw attributes by each property's schema (quotes are delimiters, not types). */
-function coerceAttrs(attrs: readonly RawAttr[], properties: Record<string, unknown> | undefined): Record<string, unknown> {
+function coerceAttrs(
+	attrs: readonly RawAttr[],
+	properties: Record<string, unknown> | undefined,
+): Record<string, unknown> {
 	const out: Record<string, unknown> = {};
 	for (const attr of attrs) {
 		if (attr.value === null) {
@@ -472,7 +474,8 @@ function parseElementAt(
 
 	if (selfClosing) {
 		// Object via attrs, or an empty value.
-		if (attrs.length > 0 || (schema !== undefined && isObjectSchema(schema))) return { name, value: coercedAttrs, end: start + tagEnd + 1 };
+		if (attrs.length > 0 || (schema !== undefined && isObjectSchema(schema)))
+			return { name, value: coercedAttrs, end: start + tagEnd + 1 };
 		if (schema !== undefined && isStringOnlySchema(schema)) return { name, value: "", end: start + tagEnd + 1 };
 		return { name, value: schema === undefined ? "" : coerceValue("", schema), end: start + tagEnd + 1 };
 	}

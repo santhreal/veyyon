@@ -1035,7 +1035,7 @@ export function getSettingsListTheme(): SettingsListTheme {
 	// installs where the live binding was never initialized. Fall back to plain
 	// text so the call returns a usable (unstyled) theme instead of crashing with
 	// "undefined is not an object (evaluating 'theme.fg')". See #2998.
-		if (typeof theme === "undefined") {
+	if (typeof theme === "undefined") {
 		return {
 			label: (text: string) => text,
 			value: (text: string) => text,

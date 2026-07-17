@@ -51,8 +51,8 @@ describe("generateCompletion — bash", () => {
 	const out = generateCompletion("bash", spec);
 
 	it("registers the dispatcher and resolves alias arms to the canonical handler", () => {
-		expect(out).toContain("complete -F _omp omp");
-		expect(out).toContain("_omp_cmd_commit");
+		expect(out).toContain("complete -F _veyyon omp");
+		expect(out).toContain("_veyyon_cmd_commit");
 		// worktree + its alias dispatch to the same function
 		expect(out).toContain("worktree|wt)");
 	});
@@ -63,9 +63,9 @@ describe("generateCompletion — bash", () => {
 		expect(out).toContain("--resume|-r)");
 		expect(out).toContain("command omp __complete sessions");
 		// static comma list routes through the comma-aware helper
-		expect(out).toContain('--tools)\n\t\t\t_omp_comma "read bash"');
+		expect(out).toContain('--tools)\n\t\t\t_veyyon_comma "read bash"');
 		// multiple-value models flag also uses the comma helper
-		expect(out).toContain("--models)\n\t\t\t_omp_comma");
+		expect(out).toContain("--models)\n\t\t\t_veyyon_comma");
 	});
 
 	it("offers subcommand names and root flags at the top level", () => {
@@ -73,9 +73,9 @@ describe("generateCompletion — bash", () => {
 	});
 
 	it("completes a subcommand's positional enum and its own flags", () => {
-		expect(out).toContain("_omp_cmd_worktree()");
+		expect(out).toContain("_veyyon_cmd_worktree()");
 		expect(out).toContain('compgen -W "list clear"');
-		expect(out).toContain("_omp_cmd_commit()");
+		expect(out).toContain("_veyyon_cmd_commit()");
 		expect(out).toContain('compgen -W "--push"');
 	});
 });
@@ -85,25 +85,25 @@ describe("generateCompletion — zsh", () => {
 
 	it("emits the compdef header and dual-mode (autoload + eval) tail", () => {
 		expect(out.startsWith("#compdef omp")).toBe(true);
-		expect(out).toContain('if [ "$funcstack[1]" = "_omp" ]; then');
-		expect(out).toContain("compdef _omp omp");
+		expect(out).toContain('if [ "$funcstack[1]" = "_veyyon" ]; then');
+		expect(out).toContain("compdef _veyyon omp");
 	});
 
 	it("maps value sources to the right _arguments actions", () => {
-		expect(out).toContain("'--model[Model to use]:model:_omp_call models'");
-		expect(out).toContain("'--models[Model list]:models:_omp_models_list'");
+		expect(out).toContain("'--model[Model to use]:model:_veyyon_call models'");
+		expect(out).toContain("'--models[Model list]:models:_veyyon_models_list'");
 		expect(out).toContain("'--thinking[Effort]:value:(low high)'");
-		expect(out).toContain("'--tools[Tools]:value:_omp_tools'");
-		expect(out).toContain("'(-r --resume)'{-r,--resume}'[Resume]:session:_omp_call sessions'");
+		expect(out).toContain("'--tools[Tools]:value:_veyyon_tools'");
+		expect(out).toContain("'(-r --resume)'{-r,--resume}'[Resume]:session:_veyyon_call sessions'");
 		expect(out).toContain("'--session-dir[Dir]:dir:_files -/'");
 		// repeatable short+long flag uses the `*{...}` form
 		expect(out).toContain("'*'{-e,--extension}'[Ext]:file:_files'");
 		// the static tool list helper is baked
-		expect(out).toContain("_omp_tools() { _values -s , 'tools' read bash }");
+		expect(out).toContain("_veyyon_tools() { _values -s , 'tools' read bash }");
 	});
 
 	it("dispatches aliased subcommands and completes positional enums", () => {
-		expect(out).toContain("worktree|wt) _omp_cmd_worktree ;;");
+		expect(out).toContain("worktree|wt) _veyyon_cmd_worktree ;;");
 		expect(out).toContain("':action:(list clear)'");
 	});
 });
@@ -112,7 +112,7 @@ describe("generateCompletion — fish", () => {
 	const out = generateCompletion("fish", spec);
 
 	it("declares the no-subcommand predicate over every command token", () => {
-		expect(out).toContain("function __fish_omp_no_subcommand");
+		expect(out).toContain("function __fish_veyyon_no_subcommand");
 		expect(out).toContain("if contains -- $i commit worktree wt");
 	});
 
@@ -214,15 +214,15 @@ describe("omp completions (integration / drift)", () => {
 		expect(stdout).toContain(":value:(off minimal low medium high xhigh max auto)");
 		expect(stdout).toContain(":value:(plan ask auto-edit yolo always-ask write)");
 		// Real subcommands present; dynamic callbacks wired.
-		expect(stdout).toContain("_omp_cmd_commit");
+		expect(stdout).toContain("_veyyon_cmd_commit");
 		expect(stdout).toContain("'completions:");
-		// zsh routes single-value dynamic flags through the _omp_call action, which
+		// zsh routes single-value dynamic flags through the _veyyon_call action, which
 		// itself shells out to `veyyon __complete $kind`.
-		expect(stdout).toContain("_omp_call models");
-		expect(stdout).toContain("_omp_call sessions");
+		expect(stdout).toContain("_veyyon_call models");
+		expect(stdout).toContain("_veyyon_call sessions");
 		expect(stdout).toContain("command veyyon __complete $kind");
 		// Hidden/default commands must NOT surface as completable subcommands.
-		expect(stdout).not.toContain("_omp_cmd_launch");
-		expect(stdout).not.toContain("_omp_cmd___complete");
+		expect(stdout).not.toContain("_veyyon_cmd_launch");
+		expect(stdout).not.toContain("_veyyon_cmd___complete");
 	});
 });

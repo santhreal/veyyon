@@ -26,7 +26,7 @@ export interface HelperContext {
 }
 
 /**
- * The set of functions exposed to user code via `globalThis.__omp_helpers__`. The JS
+ * The set of functions exposed to user code via `globalThis.__veyyon_helpers__`. The JS
  * prelude reads from this bag and attaches short aliases (`read`, `write`, `env`, ...)
  * onto the global scope.
  */

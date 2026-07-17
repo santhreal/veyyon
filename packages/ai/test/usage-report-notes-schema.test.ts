@@ -14,7 +14,7 @@ import { usageReportSchema } from "@veyyon/pi-ai";
 import { wireSchemas } from "@veyyon/pi-ai/auth-broker/wire-schemas";
 import { type } from "arktype";
 
-const DISCLAIMER = "OMP-observed spend only; OpenCode usage outside OMP is not included.";
+const DISCLAIMER = "Veyyon-observed spend only; OpenCode usage outside Veyyon is not included.";
 
 function reportWithNotes() {
 	return {

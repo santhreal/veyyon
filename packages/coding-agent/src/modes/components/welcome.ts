@@ -140,7 +140,9 @@ export class WelcomeComponent implements Component {
 		private modelName: string,
 		private providerName: string,
 		private recentSessions: RecentSession[] = [],
-		private lspServers: LspServerInfo[] = [],
+		// LSP status no longer paints on the welcome hero (see WELCOME_LSP_SLOTS);
+		// this positional slot is retained for call-site API stability and discarded.
+		_lspServers: LspServerInfo[] = [],
 		/** Sunrise header + centred menu column on `/welcome`; the default home is
 		 *  the header alone with one hint line. */
 		private readonly full: boolean = false,
@@ -213,9 +215,10 @@ export class WelcomeComponent implements Component {
 		this.invalidate();
 	}
 
-	setLspServers(servers: LspServerInfo[]): void {
-		this.lspServers = servers;
-		this.invalidate();
+	/** No-op: LSP status no longer paints on the welcome hero (see WELCOME_LSP_SLOTS);
+	 *  retained for call-site API stability. */
+	setLspServers(_servers: LspServerInfo[]): void {
+		// Discarded — LSP status no longer paints on the welcome hero.
 	}
 
 	render(termWidth: number): readonly string[] {

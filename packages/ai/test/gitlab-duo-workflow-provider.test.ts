@@ -2693,7 +2693,7 @@ describe("GitLab Duo Workflow WebSocket state machine", () => {
 					{
 						message_type: "request",
 						content: "Read src/index.ts",
-						tool_info: { name: "mcp__omp__read", args: { path: "src/index.ts" } },
+						tool_info: { name: "mcp__veyyon__read", args: { path: "src/index.ts" } },
 					},
 					{ message_type: "agent", content: "Draft" },
 				],
@@ -2791,12 +2791,12 @@ describe("GitLab Duo Workflow WebSocket state machine", () => {
 					{
 						message_type: "request",
 						content: "Read src/index.ts",
-						tool_info: { name: "mcp__omp__read", args: { path: "src/index.ts" } },
+						tool_info: { name: "mcp__veyyon__read", args: { path: "src/index.ts" } },
 					},
 					{
 						message_type: "tool",
 						content: "file text",
-						tool_info: { name: "mcp__omp__read", args: { path: "src/index.ts" } },
+						tool_info: { name: "mcp__veyyon__read", args: { path: "src/index.ts" } },
 					},
 					{ message_type: "agent", content: "D" },
 				],
@@ -2809,12 +2809,12 @@ describe("GitLab Duo Workflow WebSocket state machine", () => {
 					{
 						message_type: "request",
 						content: "Read src/index.ts",
-						tool_info: { name: "mcp__omp__read", args: { path: "src/index.ts" } },
+						tool_info: { name: "mcp__veyyon__read", args: { path: "src/index.ts" } },
 					},
 					{
 						message_type: "tool",
 						content: "file text",
-						tool_info: { name: "mcp__omp__read", args: { path: "src/index.ts" } },
+						tool_info: { name: "mcp__veyyon__read", args: { path: "src/index.ts" } },
 					},
 					{ message_type: "agent", content: "Done." },
 				],
@@ -3358,12 +3358,12 @@ describe("GitLab Duo Workflow WebSocket state machine", () => {
 					{
 						message_type: "request",
 						content: "Read README.md",
-						tool_info: { name: "mcp__omp__read", args: { path: "README.md" } },
+						tool_info: { name: "mcp__veyyon__read", args: { path: "README.md" } },
 					},
 					{
 						message_type: "tool",
 						content: "README text",
-						tool_info: { name: "mcp__omp__read", args: { path: "README.md" } },
+						tool_info: { name: "mcp__veyyon__read", args: { path: "README.md" } },
 					},
 					{ message_type: "agent", content: "Final answer." },
 				],
@@ -3547,7 +3547,7 @@ describe("GitLab Duo Workflow WebSocket state machine", () => {
 			new MessageEvent("message", {
 				data: JSON.stringify({
 					requestID: "req-mcp-1",
-					runMCPTool: { name: "mcp__omp__read", args: JSON.stringify({ path: "src/index.ts" }) },
+					runMCPTool: { name: "mcp__veyyon__read", args: JSON.stringify({ path: "src/index.ts" }) },
 				}),
 			}),
 		);
@@ -3610,7 +3610,7 @@ describe("GitLab Duo Workflow WebSocket state machine", () => {
 		socket.onmessage?.(
 			new MessageEvent("message", {
 				data: JSON.stringify({
-					runMCPTool: { name: "mcp__omp__read", args: JSON.stringify({ path: "src/index.ts" }) },
+					runMCPTool: { name: "mcp__veyyon__read", args: JSON.stringify({ path: "src/index.ts" }) },
 				}),
 			}),
 		);
@@ -3673,7 +3673,7 @@ describe("GitLab Duo Workflow WebSocket state machine", () => {
 			new MessageEvent("message", {
 				data: JSON.stringify({
 					requestID: "req-a",
-					runMCPTool: { name: "mcp__omp__read", args: JSON.stringify({ path: "a.ts" }) },
+					runMCPTool: { name: "mcp__veyyon__read", args: JSON.stringify({ path: "a.ts" }) },
 				}),
 			}),
 		);
@@ -3766,7 +3766,7 @@ describe("GitLab Duo Workflow WebSocket state machine", () => {
 			new MessageEvent("message", {
 				data: JSON.stringify({
 					requestID: "req-read-1",
-					runMCPTool: { name: "mcp__omp__read", args: JSON.stringify({ path: "README.md" }) },
+					runMCPTool: { name: "mcp__veyyon__read", args: JSON.stringify({ path: "README.md" }) },
 				}),
 			}),
 		);
@@ -3911,7 +3911,7 @@ describe("GitLab Duo Workflow WebSocket state machine", () => {
 			new MessageEvent("message", {
 				data: JSON.stringify({
 					requestID: "req-stall-1",
-					runMCPTool: { name: "mcp__omp__read", args: JSON.stringify({ path: "src/index.ts" }) },
+					runMCPTool: { name: "mcp__veyyon__read", args: JSON.stringify({ path: "src/index.ts" }) },
 				}),
 			}),
 		);
@@ -3995,7 +3995,7 @@ describe("GitLab Duo Workflow WebSocket state machine", () => {
 			new MessageEvent("message", {
 				data: JSON.stringify({
 					requestID: "req-ok-1",
-					runMCPTool: { name: "mcp__omp__read", args: JSON.stringify({ path: "src/index.ts" }) },
+					runMCPTool: { name: "mcp__veyyon__read", args: JSON.stringify({ path: "src/index.ts" }) },
 				}),
 			}),
 		);
@@ -4096,7 +4096,7 @@ describe("GitLab Duo Workflow WebSocket state machine", () => {
 			new MessageEvent("message", {
 				data: JSON.stringify({
 					requestID: "req-read-1",
-					runMCPTool: { name: "mcp__omp__read", args: JSON.stringify({ path: "README.md" }) },
+					runMCPTool: { name: "mcp__veyyon__read", args: JSON.stringify({ path: "README.md" }) },
 				}),
 			}),
 		);
@@ -4153,7 +4153,7 @@ describe("GitLab Duo Workflow WebSocket state machine", () => {
 			new MessageEvent("message", {
 				data: JSON.stringify({
 					requestID: "req-read-2",
-					runMCPTool: { name: "mcp__omp__read", args: JSON.stringify({ path: "README.md" }) },
+					runMCPTool: { name: "mcp__veyyon__read", args: JSON.stringify({ path: "README.md" }) },
 				}),
 			}),
 		);
@@ -4253,7 +4253,7 @@ describe("GitLab Duo Workflow WebSocket state machine", () => {
 			new MessageEvent("message", {
 				data: JSON.stringify({
 					requestID: "req-read-1",
-					runMCPTool: { name: "mcp__omp__read", args: JSON.stringify({ path: "README.md" }) },
+					runMCPTool: { name: "mcp__veyyon__read", args: JSON.stringify({ path: "README.md" }) },
 				}),
 			}),
 		);
@@ -4377,7 +4377,7 @@ describe("GitLab Duo Workflow WebSocket state machine", () => {
 			new MessageEvent("message", {
 				data: JSON.stringify({
 					requestID: "req-srv-1",
-					runMCPTool: { name: "mcp__omp__read", args: JSON.stringify({ path: "README.md" }) },
+					runMCPTool: { name: "mcp__veyyon__read", args: JSON.stringify({ path: "README.md" }) },
 				}),
 			}),
 		);
@@ -4633,7 +4633,7 @@ describe("GitLab Duo Workflow WebSocket state machine", () => {
 			new MessageEvent("message", {
 				data: JSON.stringify({
 					requestID: "req-read-1",
-					runMCPTool: { name: "mcp__omp__read", args: JSON.stringify({ path: "README.md" }) },
+					runMCPTool: { name: "mcp__veyyon__read", args: JSON.stringify({ path: "README.md" }) },
 				}),
 			}),
 		);
@@ -4730,7 +4730,7 @@ describe("GitLab Duo Workflow WebSocket state machine", () => {
 			new MessageEvent("message", {
 				data: JSON.stringify({
 					requestID: "req-read-1",
-					runMCPTool: { name: "mcp__omp__read", args: JSON.stringify({ path: "README.md" }) },
+					runMCPTool: { name: "mcp__veyyon__read", args: JSON.stringify({ path: "README.md" }) },
 				}),
 			}),
 		);

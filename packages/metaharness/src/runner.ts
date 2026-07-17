@@ -985,7 +985,7 @@ function readPkgVersion(): string {
 }
 
 function buildTarball(benchDir: string): string {
-	process.stdout.write(dim("packing local omp (bun pm pack)…\n"));
+	process.stdout.write(dim("packing local veyyon (bun pm pack)…\n"));
 	const r = spawnSync("bun", ["pm", "pack", "--destination", benchDir], {
 		cwd: CODING_AGENT_DIR,
 		encoding: "utf8",

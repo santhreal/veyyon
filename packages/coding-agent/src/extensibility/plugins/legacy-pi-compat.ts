@@ -25,7 +25,7 @@ const IS_COMPILED_BINARY = isCompiledBinary();
 // package — but the compiler still sees every possible edge at build time.
 const BUNDLED_VIRTUAL_SCHEME = "omp-legacy-pi-bundled:";
 const BUNDLED_VIRTUAL_NAMESPACE = "omp-legacy-pi-bundled";
-const BUNDLED_MODULES_GLOBAL = "__ompLegacyPiBundledModules";
+const BUNDLED_MODULES_GLOBAL = "__veyyonLegacyPiBundledModules";
 const TYPEBOX_BUNDLED_MODULE_KEY = "typebox";
 
 type BundledModules = Readonly<Record<string, Readonly<Record<string, unknown>>>>;
@@ -73,7 +73,7 @@ function synthesizeBundledModuleSourceFromModules(moduleKey: string, modules: Bu
 		throw new Error(`omp:legacy-pi-shim: no bundled module registered for ${moduleKey}`);
 	}
 	const lines: string[] = [
-		`const __omp_bundled = globalThis[${JSON.stringify(BUNDLED_MODULES_GLOBAL)}][${JSON.stringify(moduleKey)}];`,
+		`const __veyyon_bundled = globalThis[${JSON.stringify(BUNDLED_MODULES_GLOBAL)}][${JSON.stringify(moduleKey)}];`,
 	];
 	let hasDefault = false;
 	for (const exportName in mod) {
@@ -81,10 +81,10 @@ function synthesizeBundledModuleSourceFromModules(moduleKey: string, modules: Bu
 			hasDefault = true;
 			continue;
 		}
-		lines.push(`export const ${exportName} = __omp_bundled[${JSON.stringify(exportName)}];`);
+		lines.push(`export const ${exportName} = __veyyon_bundled[${JSON.stringify(exportName)}];`);
 	}
 	if (hasDefault) {
-		lines.push("export default __omp_bundled.default;");
+		lines.push("export default __veyyon_bundled.default;");
 	}
 	lines.push("");
 	return lines.join("\n");
