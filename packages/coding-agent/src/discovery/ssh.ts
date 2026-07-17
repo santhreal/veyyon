@@ -147,7 +147,7 @@ async function load(ctx: LoadContext): Promise<LoadResult<SSHHost>> {
 registerProvider(sshCapability.id, {
 	id: PROVIDER_ID,
 	displayName: DISPLAY_NAME,
-	description: "Load SSH hosts from managed omp paths and legacy ssh.json/.ssh.json files",
+	description: "Load SSH hosts from managed veyyon paths and legacy ssh.json/.ssh.json files",
 	priority: 5,
 	load,
 });
