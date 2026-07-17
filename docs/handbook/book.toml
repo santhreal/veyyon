@@ -1,0 +1,20 @@
+[book]
+title = "The Veyyon Harness Handbook"
+description = "How Veyyon turns open models into frontier coding agents. The product, the harness, tool-call repair, the edit format, per-model adaptation, and how to use it."
+authors = ["Veyyon"]
+language = "en"
+src = "src"
+
+[output.html]
+default-theme = "navy"
+preferred-dark-theme = "navy"
+git-repository-url = "https://github.com/santhreal/veyyon"
+edit-url-template = "https://github.com/santhreal/veyyon/edit/main/docs/handbook/{path}"
+additional-css = ["theme/veyyon.css"]
+
+[output.html.fold]
+enable = true
+level = 1
+
+[output.html.search]
+enable = true

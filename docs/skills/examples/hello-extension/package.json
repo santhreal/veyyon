@@ -1,0 +1,11 @@
+{
+  "name": "hello-extension",
+  "version": "1.0.0",
+  "description": "Minimal Veyyon extension example",
+  "homepage": "https://veyyon.dev",
+  "omp": {
+    "extensions": [
+      "./index.ts"
+    ]
+  }
+}

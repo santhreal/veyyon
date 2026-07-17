@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="theme-color" content="#000000" />
+<title>Models — Veyyon</title>
+<meta name="description" content="Three explicit model slots, roles in settings, provider-agnostic BYOK, and local models. No default-chain magic." />
+<link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+<link rel="stylesheet" href="./site.css" />
+</head>
+<body>
+
+<header class="site">
+  <div class="wrap nav">
+    <a class="brand" href="./">veyyon</a>
+    <nav>
+      <a href="./models" aria-current="page">Models</a>
+      <a href="./features">Features</a>
+      <a href="./install">Install</a>
+      <a href="./changelog">Changelog</a>
+      <a href="./docs/">Docs</a>
+      <a href="https://github.com/santhreal/veyyon">GitHub</a>
+      <a href="./install" class="btn">Get started</a>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <div class="page-head">
+    <span class="kicker">Models</span>
+    <h1>Model selection.</h1>
+    <p>Veyyon works with any provider. You bring the key and pick the model. There are three model slots,
+      and each one is set on its own — no <span class="inline">default</span> chain deciding for you.</p>
+  </div>
+
+  <section class="plain">
+    <div class="lead">
+      <span class="kicker">Three slots</span>
+      <h2>Each model set on its own.</h2>
+      <p class="sub">The model you talk to is separate from the ones that run in the background. Leave a
+        background slot unset and it falls back to your interactive model.</p>
+    </div>
+    <div class="panel">
+      <div class="copy">
+        <ul>
+          <li><b>Interactive model</b> — chosen live with <span class="mono">/model</span> or <span class="mono">--model</span>.</li>
+          <li><b>Subagent model</b> — one setting for the model your subagents run on.</li>
+          <li><b>Compaction model</b> — one setting for the model that compacts context.</li>
+          <li><b>No default-chain</b> — switching the interactive model never blends into the background slots.</li>
+        </ul>
+      </div>
+      <pre class="demo" aria-hidden="true"><span class="c"># ~/.veyyon/config.yml</span>
+<span class="k">model</span>: <span class="s">openai/gpt-5</span>            <span class="c"># interactive</span>
+<span class="k">subagent</span>:
+  <span class="k">model</span>: <span class="s">deepseek/deepseek-chat</span>
+<span class="k">compaction</span>:
+  <span class="k">model</span>: <span class="s">openai/gpt-5-mini</span></pre>
+    </div>
+  </section>
+
+  <section>
+    <div class="grid two">
+      <div class="card">
+        <div class="ic"><svg viewBox="0 0 20 20"><path d="M4 6h12M4 10h12M4 14h7"/></svg></div>
+        <h3>Roles, when you want them</h3>
+        <p>Optional named model assignments for specific work types (planning, review). They live in
+          settings, scoped per profile, out of the model picker. <span class="inline">default</span> is not a role or a model.</p>
+      </div>
+      <div class="card">
+        <div class="ic"><svg viewBox="0 0 20 20"><path d="M3 10a7 7 0 0 1 14 0"/><path d="M10 10l4-2"/><circle cx="10" cy="10" r="1.4"/></svg></div>
+        <h3>Compaction, three knobs</h3>
+        <p>Not a maze — a <b>threshold</b>, a <b>type</b> (<span class="inline">handoff</span> or <span class="inline">snap</span>), and a <b>model</b>.
+          Long sessions keep task continuity without a wall of settings.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="lead">
+      <span class="kicker">Providers</span>
+      <h2>Any provider, or a local model.</h2>
+      <p class="sub">Anthropic, OpenAI, Google, Groq, OpenRouter, Mistral, xAI, and Bedrock, plus Ollama,
+        LM Studio, and llama.cpp found automatically. Your key talks to your provider directly.</p>
+    </div>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>If you want</th><th>Try</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td>Hard refactors</td><td class="m">a strong hosted model</td><td>Better first-attempt edits and planning on deep changes.</td></tr>
+          <tr><td>Lower cost per session</td><td class="m">cheaper subagent + compaction models</td><td>Keep your interactive model; spend less on the background work.</td></tr>
+          <tr><td>Faster iteration</td><td class="m">a fast local or small model</td><td>Tight edit-test loops. Hashline recovery still helps weaker models.</td></tr>
+          <tr><td>To stay local</td><td class="m">Ollama · LM Studio</td><td>Keys and weights stay on your machine.</td></tr>
+          <tr><td>CI runs</td><td class="m">a pinned mid-tier model</td><td>Predictable cost. Pair with <span class="inline">--approval-mode auto-edit</span>.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="sub" style="margin-top:22px">Full setup, precedence, and per-model tuning live in the
+      <a href="./docs/using/models.html">handbook</a>.</p>
+  </section>
+
+</main>
+
+<footer class="site">
+  <div class="wrap foot">
+    <div>
+      <span class="brand">veyyon</span>
+      <div class="attrib">A fork of <a href="https://github.com/can1357/oh-my-pi">oh-my-pi</a> (MIT), by Can Boluk. Built as its own product.</div>
+    </div>
+    <nav>
+      <a href="./models">Models</a>
+      <a href="./features">Features</a>
+      <a href="./install">Install</a>
+      <a href="./changelog">Changelog</a>
+      <a href="./docs/">Docs</a>
+      <a href="https://github.com/santhreal/veyyon">GitHub</a>
+    </nav>
+  </div>
+</footer>
+
+<script src="./motion.js" defer></script>
+</body>
+</html>

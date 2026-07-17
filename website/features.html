@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="theme-color" content="#000000" />
+<title>Features — Veyyon</title>
+<meta name="description" content="Editing that lands, sandbox and approvals, memory, session branching, cockpit, MCP, skills, hooks, and more." />
+<link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+<link rel="stylesheet" href="./site.css" />
+</head>
+<body>
+
+<header class="site">
+  <div class="wrap nav">
+    <a class="brand" href="./">veyyon</a>
+    <nav>
+      <a href="./models">Models</a>
+      <a href="./features" aria-current="page">Features</a>
+      <a href="./install">Install</a>
+      <a href="./changelog">Changelog</a>
+      <a href="./docs/">Docs</a>
+      <a href="https://github.com/santhreal/veyyon">GitHub</a>
+      <a href="./install" class="btn">Get started</a>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <div class="page-head">
+    <span class="kicker">Features</span>
+    <h1>What Veyyon includes.</h1>
+    <p>TypeScript and Bun run the agent loop and TUI. Rust handles grep, PTY, and hashline edits. Here's
+      what comes with it.</p>
+  </div>
+
+  <section class="plain">
+    <div class="lead"><span class="kicker">Editing</span><h2>Editing.</h2>
+      <p class="sub">Hashline anchors edits to file content instead of line numbers, and checks them before
+        applying. Weaker models lose fewer turns to malformed diffs.</p></div>
+    <div class="grid">
+      <div class="card"><div class="ic"><svg viewBox="0 0 20 20"><path d="M4 5h9M4 10h6M4 15h9"/><path d="M15 13l1.6 1.6L20 11"/></svg></div><h3>Hashline edits</h3><p>Content-anchored, natively verified edits with fewer retry loops on malformed diffs.</p></div>
+      <div class="card"><div class="ic"><svg viewBox="0 0 20 20"><path d="M6 4v12M14 4v12M4 8h4M12 8h4"/></svg></div><h3>Plan mode &amp; goals</h3><p>Ground, propose, execute — tools gated to non-mutating work until you approve the plan.</p></div>
+      <div class="card"><div class="ic"><svg viewBox="0 0 20 20"><path d="M3 10l4 4 10-9"/></svg></div><h3>Code review</h3><p>A review pass over the agent's own changes before they land, on a model you choose.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="lead"><span class="kicker">Control</span><h2>Sandbox and approvals.</h2>
+      <p class="sub">Approvals and the OS sandbox are two separate layers — one asks before an action, the
+        other enforces limits at the system level.</p></div>
+    <div class="grid">
+      <div class="card"><div class="ic"><svg viewBox="0 0 20 20"><path d="M10 2l7 3v5c0 4-3 6.5-7 8-4-1.5-7-4-7-8V5z"/></svg></div><h3>Sandbox &amp; approvals</h3><p>Read-only, workspace-write, or full access; per-tool approval tiers; fail-closed by default.</p></div>
+      <div class="card"><div class="ic"><svg viewBox="0 0 20 20"><rect x="4" y="8" width="12" height="9" rx="1.5"/><path d="M7 8V6a3 3 0 0 1 6 0v2"/></svg></div><h3>Permissions</h3><p>Landlock, seccomp, and Seatbelt back the workspace boundary — not just a prompt you can click through.</p></div>
+      <div class="card"><div class="ic"><svg viewBox="0 0 20 20"><path d="M3 10h4l2-5 3 10 2-5h3"/></svg></div><h3>Non-interactive exec</h3><p>One-shot runs for CI and scripts, with the same approval model and accurate exit codes.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="lead"><span class="kicker">Context</span><h2>Context and memory.</h2>
+      <p class="sub">Memory, compaction, and session trees keep long sessions coherent across turns and
+        across days.</p></div>
+    <div class="grid">
+      <div class="card"><div class="ic"><svg viewBox="0 0 20 20"><ellipse cx="10" cy="5" rx="6.5" ry="2.6"/><path d="M3.5 5v10c0 1.4 2.9 2.6 6.5 2.6s6.5-1.2 6.5-2.6V5M3.5 10c0 1.4 2.9 2.6 6.5 2.6s6.5-1.2 6.5-2.6"/></svg></div><h3>Memory</h3><p>Durable project memory across sessions — recall in, retain out. Off until you enable it.</p></div>
+      <div class="card"><div class="ic"><svg viewBox="0 0 20 20"><circle cx="5" cy="5" r="2.2"/><circle cx="5" cy="15" r="2.2"/><circle cx="15" cy="9" r="2.2"/><path d="M5 7.2v5.6M7 5h4a2 2 0 0 1 2 2"/></svg></div><h3>Session branching</h3><p>Fork, clone, and label threads with <span class="inline">/tree</span>. Explore without losing the trunk.</p></div>
+      <div class="card"><div class="ic"><svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="7"/><circle cx="10" cy="10" r="2.4"/><path d="M10 3v2.6M10 14.4V17M3 10h2.6M14.4 10H17"/></svg></div><h3>Cockpit</h3><p>Live multi-agent view — a model per subagent, drill in, watch the work as it happens.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="lead"><span class="kicker">Extend</span><h2>Extending Veyyon.</h2>
+      <p class="sub">Open interfaces for the rest of your stack — MCP servers, authored skills, lifecycle
+        hooks, and a real browser.</p></div>
+    <div class="grid">
+      <div class="card"><div class="ic"><svg viewBox="0 0 20 20"><path d="M7 3v4M13 3v4M5 7h10v3a5 5 0 0 1-10 0z"/><path d="M10 15v3"/></svg></div><h3>MCP, skills, hooks</h3><p>Connect MCP servers, author <span class="inline">SKILL.md</span> skills, and run lifecycle hooks around every turn.</p></div>
+      <div class="card"><div class="ic"><svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="7"/><path d="M3 8h14M3 12h14M10 3c2.5 2 2.5 12 0 14M10 3c-2.5 2-2.5 12 0 14"/></svg></div><h3>Browser &amp; web search</h3><p>A real headless browser and multi-provider web search, in the loop when the task needs the web.</p></div>
+      <div class="card"><div class="ic"><svg viewBox="0 0 20 20"><path d="M4 15l5-10 2 6 2-3 3 7"/></svg></div><h3>Doctor &amp; keybindings</h3><p>A self-test that reports what's missing, and Vim-mode keybindings you can remap per profile.</p></div>
+    </div>
+  </section>
+
+  <section class="thesis">
+    <span class="kicker">The thesis</span>
+    <h2>The model is the engine. The <span class="accent">harness</span> is the lever.</h2>
+    <p>Each feature here is about getting more real work out of the model you're running. The
+      <a href="./docs/">handbook</a> covers how each one works.</p>
+  </section>
+
+</main>
+
+<footer class="site">
+  <div class="wrap foot">
+    <div>
+      <span class="brand">veyyon</span>
+      <div class="attrib">A fork of <a href="https://github.com/can1357/oh-my-pi">oh-my-pi</a> (MIT), by Can Boluk. Built as its own product.</div>
+    </div>
+    <nav>
+      <a href="./models">Models</a>
+      <a href="./features">Features</a>
+      <a href="./install">Install</a>
+      <a href="./changelog">Changelog</a>
+      <a href="./docs/">Docs</a>
+      <a href="https://github.com/santhreal/veyyon">GitHub</a>
+    </nav>
+  </div>
+</footer>
+
+<script src="./motion.js" defer></script>
+</body>
+</html>
