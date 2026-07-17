@@ -1,3 +1,4 @@
+import { levenshteinDistance } from "@veyyon/pi-utils";
 import { ENTITY_STOPWORDS } from "./stopwords";
 
 // Backed by the canonical entity/mention stopword set in stopwords.ts, which is
@@ -21,35 +22,10 @@ function chars(value: string): string[] {
 	return Array.from(value);
 }
 
-export function levenshteinDistance(s1: string, s2: string): number {
-	let left = chars(s1);
-	let right = chars(s2);
-	if (left.length < right.length) {
-		const tmp = left;
-		left = right;
-		right = tmp;
-	}
-	if (right.length === 0) return left.length;
-
-	let previousRow = new Array<number>(right.length + 1);
-	let currentRow = new Array<number>(right.length + 1).fill(0);
-	for (let i = 0; i <= right.length; i++) previousRow[i] = i;
-
-	for (let i = 0; i < left.length; i++) {
-		currentRow[0] = i + 1;
-		const c1 = left[i];
-		for (let j = 0; j < right.length; j++) {
-			const insertions = (previousRow[j + 1] ?? 0) + 1;
-			const deletions = (currentRow[j] ?? 0) + 1;
-			const substitutions = (previousRow[j] ?? 0) + (c1 === right[j] ? 0 : 1);
-			currentRow[j + 1] = Math.min(insertions, deletions, substitutions);
-		}
-		const tmp = previousRow;
-		previousRow = currentRow;
-		currentRow = tmp;
-	}
-	return previousRow[right.length] ?? 0;
-}
+// Canonical implementation lives in @veyyon/pi-utils (UTF-16 code-unit
+// granularity — an astral char counts as two edits, acceptable for entity
+// similarity); re-exported for existing importers of this module.
+export { levenshteinDistance };
 export function similarity(s1: string, s2: string): number {
 	const s1Lower = s1.toLowerCase().trim();
 	const s2Lower = s2.toLowerCase().trim();
