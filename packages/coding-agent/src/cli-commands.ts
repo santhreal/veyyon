@@ -8,6 +8,7 @@
  * `launch` — see #1496 for the original "args silently leak to the LLM"
  * regression that motivated the split.
  */
+import { levenshteinDistance } from "@veyyon/pi-utils";
 import type { CommandEntry } from "@veyyon/pi-utils/cli";
 import { flagConsumesValue } from "./cli/flag-tables";
 
@@ -75,6 +76,33 @@ export function reservedTopLevelWordMessage(first: string | undefined, argc = 1)
 }
 
 /**
+ * "Did you mean" for a bare single token that is a near-miss of a registered
+ * subcommand (typo within edit distance 2, or a prefix like `auth` →
+ * `auth-broker`). Without this the token silently falls through to `launch`
+ * and gets sent to the model as a one-word prompt — the same leak class as
+ * #1496/#2935, e.g. `veyyon auth` starting a paid LLM session on the word
+ * "auth". Multi-word invocations are untouched: genuine prompts win there.
+ */
+export function nearMissSubcommandMessage(first: string | undefined, argc = 1): string | undefined {
+	if (argc !== 1 || !first || first.length < 3 || first.startsWith("-") || first.startsWith("@")) return undefined;
+	const candidates: string[] = [];
+	for (const entry of commands) {
+		for (const name of [entry.name, ...(entry.aliases ?? [])]) {
+			if (name.startsWith("__")) continue;
+			if (name.startsWith(first) || levenshteinDistance(first, name) <= 2) {
+				candidates.push(name);
+			}
+		}
+	}
+	if (candidates.length === 0) return undefined;
+	const suggestions = candidates
+		.slice(0, 3)
+		.map(name => `\`veyyon ${name}\``)
+		.join(", ");
+	return `\`veyyon ${first}\` is not a command. Did you mean ${suggestions}? To send "${first}" as a prompt instead, run \`veyyon launch ${first}\`.`;
+}
+
+/**
  * Return true when `first` matches a registered subcommand name or alias.
  *
  * Flags (`-…`) and `@file` arguments are never subcommands; for those the CLI
@@ -128,5 +156,7 @@ export function resolveCliArgv(argv: string[]): ResolvedCliArgv {
 	if (subIndex >= 0) {
 		return { argv: [argv[subIndex], ...argv.slice(0, subIndex), ...argv.slice(subIndex + 1)] };
 	}
+	const nearMissMessage = nearMissSubcommandMessage(first, argv.length);
+	if (nearMissMessage) return { error: nearMissMessage };
 	return { argv: ["launch", ...argv] };
 }
