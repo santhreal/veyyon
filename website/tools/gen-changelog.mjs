@@ -27,6 +27,14 @@ const PAGE = join(HERE, "..", "changelog.html");
 const MAX_RELEASES = 14;
 /** Collapse a section's bullets behind a "show all" toggle past this many. */
 const COLLAPSE_AFTER = 6;
+/**
+ * The oh-my-pi version veyyon forked from. Every changelog entry at this version
+ * and older is inherited upstream history, not a veyyon release; veyyon's own
+ * release line starts at 1.0.0 and its entries are added above the fork point in
+ * the source CHANGELOG. In file order the first `## [16.5.2]` therefore marks the
+ * boundary: releases before it are veyyon's, releases from it down are upstream.
+ */
+const FORK_POINT_VERSION = "16.5.2";
 
 /** Map a changelog section heading to a tag class + short label. */
 function tagFor(section) {
@@ -149,16 +157,18 @@ function renderSection(sec) {
 	].join("\n");
 }
 
-function renderRelease(rel, index) {
+function renderRelease(rel, { isLatest, isUpstream }) {
 	const anchor = `v${rel.version.replace(/\./g, "-")}`;
 	const date = rel.date ? `<span class="date">${rel.date}</span>` : "";
 	const sections = rel.sections.map(renderSection).join("\n");
+	const cls = `release${isLatest ? " latest" : ""}${isUpstream ? " upstream" : ""}`;
 	return [
-		`\t\t<article class="release${index === 0 ? " latest" : ""}">`,
+		`\t\t<article class="${cls}">`,
 		`\t\t\t<div class="release-head">`,
 		`\t\t\t\t<h2 id="${anchor}"><a href="#${anchor}">${rel.version}</a></h2>`,
 		`\t\t\t\t${date}`,
-		index === 0 ? `\t\t\t\t<span class="pill">latest</span>` : "",
+		isLatest ? `\t\t\t\t<span class="pill">latest</span>` : "",
+		isUpstream ? `\t\t\t\t<span class="pill upstream">oh-my-pi</span>` : "",
 		`\t\t\t</div>`,
 		sections,
 		`\t\t</article>`,
@@ -167,11 +177,43 @@ function renderRelease(rel, index) {
 		.join("\n");
 }
 
+/** Banner separating veyyon's own releases from inherited upstream history. */
+function upstreamDivider() {
+	return [
+		`\t\t<div class="upstream-divider">`,
+		`\t\t\t<h2>Inherited from oh-my-pi</h2>`,
+		`\t\t\t<p>Everything below predates the fork (upstream <a href="https://github.com/can1357/oh-my-pi">can1357/oh-my-pi</a>, MIT). These are not veyyon releases — veyyon's own line starts at 1.0.0.</p>`,
+		`\t\t</div>`,
+	].join("\n");
+}
+
 function main() {
 	const md = readFileSync(CHANGELOG, "utf8");
-	const releases = parseReleases(md).slice(0, MAX_RELEASES);
-	if (!releases.length) throw new Error("no releases parsed from CHANGELOG");
-	const body = releases.map(renderRelease).join("\n");
+	const all = parseReleases(md);
+	if (!all.length) throw new Error("no releases parsed from CHANGELOG");
+
+	// File order is newest-first; the first entry at the fork point (and everything
+	// after) is inherited upstream history. Everything before it is veyyon's own.
+	const forkIdx = all.findIndex(r => r.version === FORK_POINT_VERSION);
+	const veyyon = forkIdx === -1 ? all : all.slice(0, forkIdx);
+	const upstream = forkIdx === -1 ? [] : all.slice(forkIdx);
+
+	// Always show veyyon's full line, then fill the remaining budget with upstream
+	// history so the boundary is never hidden by the release cap.
+	const upstreamShown = upstream.slice(0, Math.max(0, MAX_RELEASES - veyyon.length));
+
+	const parts = [];
+	for (let i = 0; i < veyyon.length; i++) {
+		parts.push(renderRelease(veyyon[i], { isLatest: i === 0, isUpstream: false }));
+	}
+	if (upstreamShown.length) {
+		parts.push(upstreamDivider());
+		for (const rel of upstreamShown) {
+			parts.push(renderRelease(rel, { isLatest: false, isUpstream: true }));
+		}
+	}
+	const body = parts.join("\n");
+	const releases = [...veyyon, ...upstreamShown];
 
 	const page = readFileSync(PAGE, "utf8");
 	const start = "<!--CHANGELOG:START-->";
@@ -183,7 +225,10 @@ function main() {
 	}
 	const next = `${page.slice(0, si + start.length)}\n${body}\n\t\t${page.slice(ei)}`;
 	writeFileSync(PAGE, next);
-	console.log(`changelog: wrote ${releases.length} releases (latest ${releases[0].version})`);
+	const latestVeyyon = veyyon[0]?.version ?? "none yet";
+	console.log(
+		`changelog: wrote ${veyyon.length} veyyon release(s) (latest ${latestVeyyon}) + ${upstreamShown.length} inherited oh-my-pi entries`,
+	);
 }
 
 main();
