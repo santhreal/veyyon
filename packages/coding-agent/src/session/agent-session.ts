@@ -8363,7 +8363,7 @@ export class AgentSession {
 			if (!this.model) {
 				throw new Error(
 					"No model selected.\n\n" +
-						`Use /login, set an API key environment variable, or create ${getAgentDbPath()}\n\n` +
+						"Use /login (or `veyyon setup`) to sign in to a provider, or set the provider's API key environment variable.\n\n" +
 						"Then use /model to select a model.",
 				);
 			}
@@ -8373,7 +8373,8 @@ export class AgentSession {
 			if (!apiKey) {
 				throw new Error(
 					`No API key found for ${this.model.provider}.\n\n` +
-						`Use /login, set an API key environment variable, or create ${getAgentDbPath()}`,
+						`Use /login (or \`veyyon setup\`) to sign in to ${this.model.provider}, or set its API key environment variable. ` +
+						`Stored credentials live in ${getAgentDbPath()}.`,
 				);
 			}
 
