@@ -885,10 +885,12 @@ export class PluginManager {
 		// Check 1: Plugins directory exists
 		const pluginsDir = getPluginsDir();
 		const pluginsDirExists = fs.existsSync(pluginsDir);
+		// A missing plugins tree is the normal fresh-install state, not a defect —
+		// report it ok so `plugin doctor` reads healthy before any plugin exists.
 		checks.push({
 			name: "plugins_directory",
-			status: pluginsDirExists ? "ok" : "warning",
-			message: pluginsDirExists ? `Found at ${pluginsDir}` : "Not created yet",
+			status: "ok",
+			message: pluginsDirExists ? `Found at ${pluginsDir}` : "Not created yet (no plugins installed)",
 		});
 
 		// Check 2: package.json exists
@@ -907,8 +909,8 @@ export class PluginManager {
 		}
 		checks.push({
 			name: "package_manifest",
-			status: hasPkgJson ? "ok" : "warning",
-			message: hasPkgJson ? "Found" : "Not created yet",
+			status: "ok",
+			message: hasPkgJson ? "Found" : "Not created yet (no plugins installed)",
 		});
 
 		// Check 3: node_modules exists
@@ -916,8 +918,12 @@ export class PluginManager {
 		const hasNodeModules = fs.existsSync(nodeModulesPath);
 		checks.push({
 			name: "node_modules",
-			status: hasNodeModules ? "ok" : hasPkgJson ? "error" : "warning",
-			message: hasNodeModules ? "Found" : "Missing (run npm install in plugins dir)",
+			status: hasNodeModules ? "ok" : hasPkgJson ? "error" : "ok",
+			message: hasNodeModules
+				? "Found"
+				: hasPkgJson
+					? "Missing (run npm install in plugins dir)"
+					: "Not needed (no plugins installed)",
 		});
 
 		const deps = pkg.dependencies || {};
