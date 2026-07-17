@@ -46,6 +46,9 @@ book first:
 cd docs/handbook && mdbook build
 ```
 
+Use mdbook **v0.5.2** — the `docs.yml` book-freshness gate rebuilds with that pinned
+version and fails CI if the committed `docs/handbook/book/` doesn't match the sources.
+
 ### Deploy
 
 ```
@@ -112,10 +115,9 @@ push triggers `ci.yml`, which builds every platform binary and publishes the Git
 release with all assets + checksums. The install scripts then pick it up through
 `releases/latest` with no further action.
 
-> **Known gap.** `ci.yml`'s release matrix runs on the self-hosted `omp-kata` runner.
-> If that runner is unavailable on the public repo, cross-platform binaries won't
-> build and the release can't publish a complete asset set. Migrating the release
-> matrix to GitHub-hosted ubuntu/macos/windows runners is the durable fix.
+> Release-shaped runs route every `ci.yml` job to GitHub-hosted runners, so a
+> release never depends on the self-hosted fleet — see
+> [releasing.md](./releasing.md) §Release runners.
 
 ## Checklist for a normal site update
 
@@ -124,3 +126,5 @@ release with all assets + checksums. The install scripts then pick it up through
 3. `export CLOUDFLARE_API_TOKEN="$CF_PAGES_API_TOKEN"`.
 4. `bun run site:deploy`.
 5. If `install.sh`/`install.ps1` changed, also deploy `veyyon-get`.
+
+*Verified against `a49ff74` on 2026-07-17.*

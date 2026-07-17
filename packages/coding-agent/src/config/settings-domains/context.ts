@@ -58,8 +58,7 @@ export const CONTEXT_SETTINGS = {
 			tab: "model",
 			group: "Compaction",
 			label: "Compaction Threshold",
-			description:
-				"Auto-compact when context exceeds this percent of the window (-1 = provider default).",
+			description: "Auto-compact when context exceeds this percent of the window (-1 = provider default).",
 			options: [
 				{ value: "default", label: "Default", description: "Legacy reserve-based threshold" },
 				{ value: "10", label: "10%", description: "Extremely early maintenance" },
