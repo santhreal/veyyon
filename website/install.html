@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="theme-color" content="#000000" />
+<title>Install — Veyyon</title>
+<meta name="description" content="Install Veyyon in under a minute. One command, single binary, from GitHub releases." />
+<link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+<link rel="stylesheet" href="./site.css" />
+</head>
+<body>
+
+<header class="site">
+  <div class="wrap nav">
+    <a class="brand" href="./">veyyon</a>
+    <nav>
+      <a href="./models">Models</a>
+      <a href="./features">Features</a>
+      <a href="./install" aria-current="page">Install</a>
+      <a href="./changelog">Changelog</a>
+      <a href="./docs/">Docs</a>
+      <a href="https://github.com/santhreal/veyyon">GitHub</a>
+      <a href="./install" class="btn">Get started</a>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <div class="page-head">
+    <span class="kicker">Install</span>
+    <h1>Install Veyyon.</h1>
+    <p>One command, no build step. Veyyon is a single binary from GitHub releases. Install it, add a key,
+      and open a repo.</p>
+    <div class="install" style="margin:0 0 8px">
+      <span class="p">$</span>
+      <code id="cmd">curl -fsSL https://get.veyyon.dev | sh</code>
+      <button id="copy" aria-label="Copy install command">copy</button>
+    </div>
+  </div>
+
+  <section class="plain">
+    <div class="steps">
+      <div class="step"><h3>Install</h3><p><span class="inline">curl -fsSL https://get.veyyon.dev | sh</span> — or grab a release binary from GitHub.</p></div>
+      <div class="step"><h3>Sign in</h3><p>Add a provider key with <span class="inline">/login &lt;provider&gt;</span>, set its env var, or point at any OpenAI-compatible endpoint.</p></div>
+      <div class="step"><h3>Build</h3><p>Run <span class="inline">vey</span> in a repo, pick your model with <span class="inline">/model</span>, and start.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="lead"><span class="kicker">Platforms</span><h2>macOS, Linux, Windows.</h2>
+      <p class="sub">Prebuilt binaries per platform. The installer wires your PATH, shell completions, and a
+        <span class="inline">vey plugin doctor</span> self-test.</p></div>
+    <div class="grid">
+      <div class="card"><h3>macOS</h3><p>Apple Silicon and Intel. <span class="inline">curl … | sh</span> or a signed release archive.</p></div>
+      <div class="card"><h3>Linux</h3><p>x64 and arm64. XDG-aware paths via <span class="inline">vey config init-xdg</span>.</p></div>
+      <div class="card"><h3>Windows</h3><p>In PowerShell: <span class="inline">irm https://veyyon.dev/install.ps1 | iex</span> — then the same <span class="inline">vey</span> command in your terminal.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="lead"><span class="kicker">Providers</span><h2>Bring a key, or run local.</h2>
+      <p class="sub">Any OpenAI-compatible endpoint works. Local engines are found automatically and need
+        no key.</p></div>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>Provider</th><th>How to sign in</th></tr></thead>
+        <tbody>
+          <tr><td>Anthropic · OpenAI · Google · Groq · xAI</td><td class="m">/login &lt;id&gt; · or set the provider env var</td></tr>
+          <tr><td>OpenRouter · Mistral · Bedrock</td><td class="m">key or the AWS credential chain</td></tr>
+          <tr><td>Ollama · LM Studio · llama.cpp</td><td class="m">auto-discovered, keyless — just run the engine</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="sub" style="margin-top:22px">Full install, XDG, and provider setup live in the
+      <a href="./docs/using/install.html">handbook</a>.</p>
+  </section>
+
+</main>
+
+<footer class="site">
+  <div class="wrap foot">
+    <div>
+      <span class="brand">veyyon</span>
+      <div class="attrib">A fork of <a href="https://github.com/can1357/oh-my-pi">oh-my-pi</a> (MIT), by Can Boluk. Built as its own product.</div>
+    </div>
+    <nav>
+      <a href="./models">Models</a>
+      <a href="./features">Features</a>
+      <a href="./install">Install</a>
+      <a href="./changelog">Changelog</a>
+      <a href="./docs/">Docs</a>
+      <a href="https://github.com/santhreal/veyyon">GitHub</a>
+    </nav>
+  </div>
+</footer>
+
+<script>
+  (function(){var b=document.getElementById('copy'),c=document.getElementById('cmd');
+   if(b&&c)b.addEventListener('click',function(){if(navigator.clipboard)navigator.clipboard.writeText(c.textContent).then(function(){b.textContent='copied';setTimeout(function(){b.textContent='copy'},1300)})})})();
+</script>
+
+<script src="./motion.js" defer></script>
+</body>
+</html>

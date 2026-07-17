@@ -1,0 +1,591 @@
+/* ============================================================================
+   Veyyon Harness Handbook — Linear-style premium-dark theme
+   Silver-on-near-black. No gradients, no glow, no blue/cyan/purple.
+   Self-contained: system font stacks only, no remote fonts or CSS.
+   Retunes mdBook's `navy` base (see book.toml default-theme = "navy").
+   ============================================================================ */
+
+/* ---- Palette tokens (single source of truth for this override) ---------- */
+:root {
+    --vy-surface:        #08090A;   /* content background */
+    --vy-deepest:        #050505;   /* deepest chrome / body edge */
+    --vy-sidebar:        #0B0C0E;   /* sidebar background */
+    --vy-code:           #0F1113;   /* code + quote background */
+    --vy-popup:          #0B0C0E;   /* theme/search popups */
+
+    --vy-fg:             #FAFAFA;   /* body text */
+    --vy-heading:        #FFFFFF;   /* headings */
+    --vy-heading-2:      #E1E4E9;   /* bright silver, sub-emphasis */
+    --vy-muted:          #9CA3AF;   /* secondary text */
+    --vy-muted-2:        #747B86;   /* faint / structural */
+
+    --vy-accent:         #B8BDC7;   /* silver — links, active, rules */
+    --vy-accent-bright:  #E1E4E9;   /* link hover, active nav text */
+
+    --vy-hairline:       #1B1D1F;   /* 1px structural borders */
+    --vy-hairline-2:     #26282B;   /* slightly stronger dividers */
+
+    --vy-radius:         2px;
+
+    --sidebar-width: 18rem;
+    --content-max-width: 46rem;
+    --page-padding: 20px;
+    --menu-bar-height: 50px;
+
+    /* Refined system stacks (offline-safe, no @font-face) */
+    --mono-font: ui-monospace, "SF Mono", "JetBrains Mono", "Menlo",
+                 "Cascadia Code", "Roboto Mono", "Consolas", monospace;
+}
+
+/* Body font: apply a refined system stack without fighting mdBook's var scheme. */
+html, body,
+.content, .menu-title, .chapter, .sidebar {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+                 Ubuntu, "Helvetica Neue", Arial, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+}
+
+/* ---- Retune mdBook custom properties -----------------------------------
+   Apply to :root, html AND .navy so the palette holds regardless of the
+   resolved theme class (navy is our base, but we also neutralize others). */
+:root,
+html,
+html.navy,
+.navy {
+    --bg: var(--vy-surface);
+    --fg: var(--vy-fg);
+
+    --sidebar-bg: var(--vy-sidebar);
+    --sidebar-fg: var(--vy-muted);
+    --sidebar-non-existant: var(--vy-muted-2);
+    --sidebar-active: var(--vy-accent-bright);
+    --sidebar-spacer: var(--vy-hairline);
+    --sidebar-header-border-color: var(--vy-accent);
+
+    --scrollbar: var(--vy-muted-2);
+
+    --links: var(--vy-accent);
+
+    --inline-code-color: var(--vy-accent-bright);
+
+    --overlay-bg: rgba(5, 5, 5, 0.82);
+
+    --theme-popup-bg: var(--vy-popup);
+    --theme-popup-border: var(--vy-hairline-2);
+    --theme-hover: rgba(184, 189, 199, 0.10);
+
+    --quote-bg: var(--vy-code);
+    --quote-border: var(--vy-accent);
+
+    --table-border-color: var(--vy-hairline);
+    --table-header-bg: #101214;
+    --table-alternate-bg: #0B0D0F;
+
+    --searchbar-bg: var(--vy-code);
+    --searchbar-fg: var(--vy-fg);
+    --searchbar-border-color: var(--vy-hairline-2);
+    --searchbar-shadow-color: transparent;
+    --search-mark-bg: rgba(184, 189, 199, 0.28);
+    --searchresults-header-fg: var(--vy-muted);
+    --searchresults-border-color: var(--vy-hairline);
+    --searchresults-li-bg: #0E1012;
+
+    --color-scheme: dark;
+
+    /* Icons (menu-bar glyphs, fold chevrons) — muted silver, no blue tint */
+    --icons: var(--vy-muted-2);
+    --icons-hover: var(--vy-accent-bright);
+
+    /* Kill every leftover blue / purple / orange mdBook accent -------------- */
+    --footnote-highlight: var(--vy-accent);          /* was blue */
+    --warning-border: var(--vy-muted-2);             /* was orange */
+
+    /* GitHub-style alert callouts: note/important -> silver (blue & purple
+       are BANNED); tip/warning/caution keep semantic meaning but calmed. */
+    --blockquote-note-color:      var(--vy-accent);       /* was blue   */
+    --blockquote-important-color: var(--vy-accent-bright);/* was purple */
+    --blockquote-tip-color:       #89d281;               /* muted green */
+    --blockquote-warning-color:   #c9a35a;               /* muted amber, not orange */
+    --blockquote-caution-color:   #c07070;               /* muted red */
+
+    --code-font-size: 0.875em;
+
+    /* Neutralize the built-in copy-button tint toward calm silver */
+    --copy-button-filter: invert(0.72) sepia(0) saturate(0) brightness(1.05);
+    --copy-button-filter-hover: invert(0.9) sepia(0) saturate(0) brightness(1.1);
+}
+
+/* ============================================================================
+   Surfaces & body
+   ============================================================================ */
+html, body {
+    background: var(--vy-deepest);
+    color: var(--vy-fg);
+}
+
+.content {
+    color: var(--vy-fg);
+}
+
+/* Calm contrast: body copy slightly softened, comfortable rhythm */
+.content main {
+    line-height: 1.65;
+    color: rgba(250, 250, 250, 0.92);
+    font-size: 1rem;
+    letter-spacing: 0.002em;
+}
+
+#mdbook-page-wrapper,
+.page {
+    background: var(--vy-deepest);
+}
+
+.content a,
+.content a:visited {
+    color: var(--vy-accent);
+    text-decoration: none;
+    border-bottom: 1px solid transparent;
+    transition: color 0.12s ease, border-color 0.12s ease;
+}
+.content a:hover {
+    color: var(--vy-accent-bright);
+    border-bottom-color: var(--vy-muted-2);
+}
+
+/* ============================================================================
+   Typography — headings
+   ============================================================================ */
+.content h1,
+.content h2,
+.content h3,
+.content h4,
+.content h5,
+.content h6 {
+    color: var(--vy-heading);
+    font-weight: 650;
+    letter-spacing: -0.012em;
+    line-height: 1.25;
+}
+.content h1 { font-size: 2.05rem; margin-block: 1.6rem 1.1rem; }
+.content h2 {
+    font-size: 1.45rem;
+    color: var(--vy-heading);
+    margin-block: 2.4rem 0.9rem;
+    padding-block-end: 0.4rem;
+    border-block-end: 1px solid var(--vy-hairline);
+}
+.content h3 { font-size: 1.18rem; color: var(--vy-heading-2); margin-block: 1.8rem 0.7rem; }
+.content h4 { font-size: 1.02rem; color: var(--vy-heading-2); margin-block: 1.5rem 0.6rem; }
+.content h5,
+.content h6 { font-size: 0.92rem; color: var(--vy-muted); text-transform: uppercase; letter-spacing: 0.06em; }
+
+.content p { margin-block: 0.85rem; }
+
+/* Header anchor link glyph in muted silver, not blue */
+.content .header:hover a.header::before,
+a.header:hover::before {
+    color: var(--vy-muted-2);
+}
+
+/* ============================================================================
+   Rules & blockquotes
+   ============================================================================ */
+.content hr {
+    border: none;
+    border-block-start: 1px solid var(--vy-hairline);
+    margin-block: 2.2rem;
+}
+
+.content blockquote {
+    background: var(--vy-code);
+    border: 1px solid var(--vy-hairline);
+    border-inline-start: 2px solid var(--vy-accent);
+    border-radius: var(--vy-radius);
+    color: rgba(250, 250, 250, 0.9);
+    padding: 0.6rem 1rem;
+    margin-block: 1.2rem;
+}
+
+/* ============================================================================
+   Code
+   ============================================================================ */
+code {
+    font-family: var(--mono-font);
+}
+
+/* Inline code: silver-tinted glyphs on a subtle near-black chip */
+.content :not(pre) > code {
+    background: #101214;
+    border: 1px solid var(--vy-hairline);
+    border-radius: var(--vy-radius);
+    color: var(--vy-accent-bright);
+    padding: 0.12em 0.38em;
+    font-size: 0.88em;
+}
+
+/* Block code: flat #0F1113, hairline border, zero glow */
+pre {
+    background: var(--vy-code) !important;
+    border: 1px solid var(--vy-hairline);
+    border-radius: var(--vy-radius);
+    box-shadow: none;
+}
+pre > code {
+    background: transparent !important;
+    color: var(--vy-fg);
+    font-size: 0.875rem;
+    line-height: 1.6;
+}
+pre > .buttons button {
+    color: var(--vy-muted);
+    background: transparent;
+    border: none;
+}
+pre > .buttons button:hover { color: var(--vy-accent-bright); }
+
+/* ============================================================================
+   Tables
+   ============================================================================ */
+.content table {
+    border-collapse: collapse;
+    border: 1px solid var(--vy-hairline);
+    border-radius: var(--vy-radius);
+    overflow: hidden;
+    margin-block: 1.3rem;
+}
+.content table thead {
+    background: var(--table-header-bg);
+}
+.content table th {
+    color: var(--vy-heading-2);
+    font-weight: 600;
+    text-align: left;
+    border: 1px solid var(--vy-hairline);
+    padding: 0.5rem 0.8rem;
+}
+.content table td {
+    border: 1px solid var(--vy-hairline);
+    padding: 0.5rem 0.8rem;
+    color: rgba(250, 250, 250, 0.9);
+}
+.content table tbody tr:nth-child(2n) {
+    background: var(--table-alternate-bg);
+}
+
+/* ============================================================================
+   Sidebar (table of contents)
+   ============================================================================ */
+.sidebar {
+    background: var(--vy-sidebar);
+    border-inline-end: 1px solid var(--vy-hairline);
+    font-size: 0.9rem;
+}
+.sidebar .sidebar-scrollbox {
+    padding: 14px 12px;
+}
+
+/* Section / part labels: smaller, uppercase, muted silver */
+.part-title,
+.sidebar .part-title {
+    color: var(--vy-muted-2);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-size: 0.72rem;
+    font-weight: 600;
+    margin-block: 1.4rem 0.4rem;
+    padding-inline: 10px;
+}
+
+.chapter li.chapter-item {
+    line-height: 1.4;
+    margin-block-start: 0.15em;
+}
+
+.chapter li a {
+    color: var(--vy-muted);
+    border-radius: var(--vy-radius);
+    padding: 0.32rem 0.55rem;
+    /* 2px silver marker channel, transparent until active */
+    border-inline-start: 2px solid transparent;
+    transition: color 0.12s ease, background 0.12s ease, border-color 0.12s ease;
+}
+.chapter li a:hover {
+    color: var(--vy-heading-2);
+    background: rgba(184, 189, 199, 0.06);
+}
+
+/* Active item: 2px silver left-border + bright silver text, NO filled pill */
+.chapter li a.active {
+    color: var(--vy-accent-bright);
+    background: transparent;
+    border-inline-start: 2px solid var(--vy-accent);
+    font-weight: 550;
+}
+.chapter a.current-header {
+    color: var(--vy-accent-bright);
+}
+
+.chapter-fold-toggle { opacity: 0.55; }
+.chapter-fold-toggle:hover { opacity: 0.9; }
+
+.chapter .spacer {
+    border-block-start: 1px solid var(--vy-hairline);
+    margin-block: 0.8rem;
+}
+
+/* On-this-page mini-toc marker in silver */
+.on-this-page {
+    border-inline-start: 2px solid var(--vy-hairline-2);
+}
+
+/* Sidebar resize handle hairline */
+.sidebar-resize-handle .sidebar-resize-indicator {
+    background: var(--vy-hairline-2);
+}
+
+/* ============================================================================
+   Top menu bar / chrome
+   ============================================================================ */
+#mdbook-menu-bar,
+.menu-bar {
+    background: var(--vy-deepest);
+    color: var(--vy-muted);
+}
+#mdbook-menu-bar.sticky,
+html.sidebar-visible #mdbook-menu-bar {
+    background: var(--vy-deepest);
+    box-shadow: none;
+}
+#mdbook-menu-bar.bordered {
+    border-block-end: 1px solid var(--vy-hairline);
+    box-shadow: none;
+}
+.menu-bar .icon-button,
+.menu-bar a {
+    color: var(--vy-muted);
+    border: none;
+}
+.menu-bar .icon-button:hover,
+.menu-bar a:hover {
+    color: var(--vy-accent-bright);
+}
+.menu-title {
+    color: var(--vy-heading-2);
+    font-weight: 600;
+    letter-spacing: -0.005em;
+}
+
+/* Nav chevrons (prev/next) in muted silver */
+.nav-chapters,
+.nav-chapters:visited,
+.mobile-nav-chapters {
+    color: var(--vy-muted-2);
+}
+.nav-chapters:hover { color: var(--vy-accent-bright); background: transparent; }
+
+/* ============================================================================
+   Search
+   ============================================================================ */
+#mdbook-searchbar {
+    background: var(--vy-code);
+    border: 1px solid var(--vy-hairline-2);
+    border-radius: var(--vy-radius);
+    box-shadow: none;
+    color: var(--vy-fg);
+}
+#mdbook-searchbar.active {
+    border-color: var(--vy-accent);
+}
+#mdbook-searchresults {
+    background: var(--vy-popup);
+    border: 1px solid var(--vy-hairline);
+    border-radius: var(--vy-radius);
+    box-shadow: none;
+}
+.searchresults-header {
+    color: var(--vy-muted);
+    border-block-end: 1px solid var(--vy-hairline);
+}
+#mdbook-searchresults li {
+    background: transparent;
+    border-radius: var(--vy-radius);
+}
+#mdbook-searchresults li:hover,
+#mdbook-searchresults li.selected {
+    background: rgba(184, 189, 199, 0.08);
+}
+mark {
+    background: rgba(184, 189, 199, 0.28);
+    color: var(--vy-heading);
+}
+
+/* ============================================================================
+   Theme popup (paint the picker to match near-black chrome)
+   ============================================================================ */
+.theme-popup {
+    background: var(--vy-popup);
+    border: 1px solid var(--vy-hairline-2);
+    border-radius: var(--vy-radius);
+    box-shadow: none;
+}
+.theme-popup .theme:hover {
+    background: rgba(184, 189, 199, 0.10);
+    color: var(--vy-accent-bright);
+}
+
+/* ============================================================================
+   Focus states — silver, never blue
+   ============================================================================ */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+summary:focus-visible {
+    outline: 2px solid var(--vy-accent);
+    outline-offset: 2px;
+}
+
+::selection {
+    background: rgba(184, 189, 199, 0.24);
+    color: var(--vy-heading);
+}
+
+/* Scrollbars (WebKit) — thin, near-black track, silver-grey thumb */
+* {
+    scrollbar-color: var(--vy-muted-2) transparent;
+}
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+    background: var(--vy-muted-2);
+    border-radius: var(--vy-radius);
+    border: 2px solid var(--vy-deepest);
+}
+
+/* Thin dedicated silver scrollbar inside the sidebar scrollbox */
+.sidebar-scrollbox::-webkit-scrollbar { width: 6px; }
+.sidebar-scrollbox::-webkit-scrollbar-thumb {
+    background: var(--vy-hairline-2);
+    border: none;
+    border-radius: var(--vy-radius);
+}
+.sidebar-scrollbox:hover::-webkit-scrollbar-thumb { background: var(--vy-muted-2); }
+
+/* De-emphasise chapter numbers in the sidebar (silver identity, not counts) */
+.chapter li a strong {
+    color: var(--vy-muted-2);
+    font-weight: 500;
+    margin-inline-end: 0.4em;
+    font-variant-numeric: tabular-nums;
+    font-size: 0.85em;
+}
+
+/* ============================================================================
+   Syntax highlighting — retune tomorrow-night's blue/orange/purple palette
+   to Veyyon silver / muted-green / structural grey. No blue, no orange.
+   (These .hljs rules win over the bundled tomorrow-night-*.css by load order
+   and specificity within the additional-css include.)
+   ============================================================================ */
+.hljs {
+    background: var(--vy-code);
+    color: #D5D8DE;                 /* base token: soft silver-grey */
+}
+
+/* Comments & structural noise — faint silver-grey */
+.hljs-comment,
+.hljs-cdata,
+.hljs-doctype,
+.hljs-pi,
+.hljs-preprocessor,
+.hljs-pragma {
+    color: var(--vy-muted-2);        /* #747B86 */
+    font-style: italic;
+}
+
+/* Keywords / control flow — silver accent (the identity color) */
+.hljs-keyword,
+.hljs-literal,
+.hljs-rule,
+.hljs-decorator,
+.hljs-pseudo,
+.hljs-preprocessor {
+    color: var(--vy-accent);         /* #B8BDC7 */
+    font-weight: 500;
+}
+
+/* Strings, regexp, added lines — muted green */
+.hljs-string,
+.hljs-regexp,
+.hljs-value,
+.hljs-addition,
+.hljs-symbol {
+    color: #89d281;
+}
+
+/* Numbers, constants, hex — bright silver (calm, not orange) */
+.hljs-number,
+.hljs-hexcolor,
+.hljs-constant,
+.hljs-formula {
+    color: #C6CAD2;
+}
+
+/* Function / type / class / section names — bright silver emphasis */
+.hljs-title,
+.hljs-function,
+.hljs-class,
+.hljs-section,
+.hljs-header,
+.hljs-name,
+.hljs-tag {
+    color: var(--vy-accent-bright);  /* #E1E4E9 */
+}
+
+/* Attributes / params / variables / ids — soft body grey */
+.hljs-attr,
+.hljs-attribute,
+.hljs-params,
+.hljs-variable,
+.hljs-id,
+.hljs-sub,
+.hljs-built,
+.hljs-builtin-name {
+    color: #B4B9C2;
+}
+
+/* Types / inheritance — muted silver */
+.hljs-type,
+.hljs-inheritance {
+    color: #9CA3AF;
+}
+
+/* Diff deletions — muted red (semantic) */
+.hljs-deletion {
+    color: #c07070;
+}
+
+.hljs-emphasis { font-style: italic; }
+.hljs-strong   { font-weight: 700; color: var(--vy-heading-2); }
+.hljs-link     { color: var(--vy-accent); }
+
+/* ============================================================================
+   Blockquote alert callouts (GitHub-style) — flat, hairline, no glow
+   ============================================================================ */
+.content blockquote.note,
+.content blockquote.tip,
+.content blockquote.important,
+.content blockquote.warning,
+.content blockquote.caution {
+    box-shadow: none;
+}
+
+/* ============================================================================
+   Print — keep it legible on paper (light bg, dark ink)
+   ============================================================================ */
+@media print {
+    html, body, .content, pre, .hljs {
+        background: #ffffff !important;
+        color: #111 !important;
+    }
+    .content a { color: #333 !important; border: none !important; }
+}

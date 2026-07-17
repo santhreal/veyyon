@@ -1,0 +1,574 @@
+import { afterEach, describe, expect, it, vi } from "bun:test";
+import * as path from "node:path";
+import { scheduler } from "node:timers/promises";
+import { Agent, type AgentMessage, type AgentTool } from "@veyyon/pi-agent-core";
+import { z } from "@veyyon/pi-ai";
+import { createMockModel, type MockModel, type MockResponse } from "@veyyon/pi-ai/providers/mock";
+import { AutoLearnController } from "@veyyon/pi-coding-agent/autolearn/controller";
+import { ModelRegistry } from "@veyyon/pi-coding-agent/config/model-registry";
+import { type SettingPath, Settings } from "@veyyon/pi-coding-agent/config/settings";
+import { AgentSession, type AgentSessionEvent } from "@veyyon/pi-coding-agent/session/agent-session";
+import { AuthStorage } from "@veyyon/pi-coding-agent/session/auth-storage";
+import { convertToLlm } from "@veyyon/pi-coding-agent/session/messages";
+import { SessionManager } from "@veyyon/pi-coding-agent/session/session-manager";
+import { TempDir } from "@veyyon/pi-utils";
+
+const recordToolSchema = z.object({ value: z.string() });
+
+type Harness = {
+	session: AgentSession;
+	authStorage: AuthStorage;
+	tempDir: TempDir;
+};
+type SettingsOverrides = Partial<Record<SettingPath, unknown>>;
+
+const activeHarnesses: Harness[] = [];
+
+const recordTool: AgentTool<typeof recordToolSchema, { value: string }> = {
+	name: "record",
+	label: "Record",
+	description: "Record a value",
+	parameters: recordToolSchema,
+	async execute(_toolCallId, params) {
+		return {
+			content: [{ type: "text", text: `recorded:${params.value}` }],
+			details: { value: params.value },
+		};
+	},
+};
+
+function recordCall(value: string, id: string): MockResponse {
+	return {
+		content: [{ type: "toolCall", id, name: "record", arguments: { value } }],
+		stopReason: "toolUse",
+	};
+}
+
+function emptyStop(): MockResponse {
+	return {
+		content: [],
+		stopReason: "stop",
+		usage: { output: 1, cacheRead: 100 },
+	};
+}
+
+function orphanedToolUseStop(): MockResponse {
+	return {
+		content: [{ type: "thinking", thinking: "I should call a tool next." }],
+		stopReason: "toolUse",
+		usage: { output: 1, cacheRead: 100 },
+	};
+}
+
+function thinkingOnlyStop(): MockResponse {
+	return {
+		content: [{ type: "thinking", thinking: "I should inspect the next file." }],
+		stopReason: "stop",
+		usage: { output: 1, cacheRead: 100 },
+	};
+}
+
+async function createHarness(
+	responses: MockResponse[],
+	settingsOverrides: SettingsOverrides = {},
+	persistSession = false,
+): Promise<Harness & { mock: MockModel }> {
+	const tempDir = TempDir.createSync("@pi-empty-stop-guard-");
+	const authStorage = await AuthStorage.create(path.join(tempDir.path(), "auth.db"));
+	authStorage.setRuntimeApiKey("mock", "test-key");
+
+	const mock = createMockModel({ responses });
+	const modelRegistry = new ModelRegistry(authStorage, path.join(tempDir.path(), "models.yml"));
+	const settings = Settings.isolated({
+		"compaction.enabled": false,
+		"retry.enabled": false,
+		"todo.enabled": false,
+		"todo.eager": "default",
+		"todo.reminders": false,
+		...settingsOverrides,
+	});
+	settings.setModelRole("default", `${mock.provider}/${mock.id}`);
+
+	const sessionManager = persistSession
+		? SessionManager.create(tempDir.path(), tempDir.path())
+		: SessionManager.inMemory(tempDir.path());
+	const tools = [recordTool as AgentTool];
+	const agent = new Agent({
+		getApiKey: () => "test-key",
+		initialState: {
+			model: mock,
+			systemPrompt: ["Test"],
+			tools,
+			messages: [],
+		},
+		convertToLlm,
+		streamFn: mock.stream,
+	});
+
+	const session = new AgentSession({
+		agent,
+		sessionManager,
+		settings,
+		modelRegistry,
+		toolRegistry: new Map(tools.map(tool => [tool.name, tool])),
+	});
+	const harness = { session, authStorage, tempDir };
+	activeHarnesses.push(harness);
+	return { ...harness, mock };
+}
+
+function assistantText(messages: AgentMessage[]): string {
+	return messages
+		.filter((message): message is Extract<AgentMessage, { role: "assistant" }> => message.role === "assistant")
+		.flatMap(message => message.content.flatMap(content => (content.type === "text" ? [content.text] : [])))
+		.join("\n");
+}
+
+function emptyAssistantStops(messages: AgentMessage[]): AgentMessage[] {
+	return messages.filter(
+		message =>
+			message.role === "assistant" &&
+			message.stopReason === "stop" &&
+			!message.content.some(content => {
+				if (content.type === "text") return content.text.trim().length > 0;
+				return content.type === "toolCall";
+			}),
+	);
+}
+function reminderMessages(messages: AgentMessage[]): AgentMessage[] {
+	const isEmptyStopRetryReminder = (text: string): boolean =>
+		text.includes("<system-reminder>") || text.includes("<system-injection>");
+
+	return messages.filter(message => {
+		if (message.role !== "developer") return false;
+		return typeof message.content === "string"
+			? isEmptyStopRetryReminder(message.content)
+			: message.content.some(content => content.type === "text" && isEmptyStopRetryReminder(content.text));
+	});
+}
+
+async function expectPromptCompletes(prompt: Promise<boolean>): Promise<void> {
+	await Promise.race([
+		prompt,
+		Bun.sleep(1_000).then(() => {
+			throw new Error("Expected session prompt to settle after empty-stop retry cap");
+		}),
+	]);
+}
+
+afterEach(async () => {
+	for (const harness of activeHarnesses.splice(0)) {
+		await harness.session.dispose();
+		harness.authStorage.close();
+		harness.tempDir.removeSync();
+	}
+	vi.restoreAllMocks();
+});
+
+describe("AgentSession empty stop guard", () => {
+	it("retries an empty assistant stop after a tool result", async () => {
+		const { session, mock } = await createHarness([
+			recordCall("alpha", "call-record-alpha"),
+			emptyStop(),
+			{ content: ["finished after retry"], stopReason: "stop" },
+		]);
+
+		await session.prompt("record alpha");
+		await session.waitForIdle();
+
+		expect(mock.calls).toHaveLength(3);
+		expect(assistantText(session.agent.state.messages)).toContain("finished after retry");
+		expect(emptyAssistantStops(session.agent.state.messages)).toHaveLength(0);
+		expect(reminderMessages(session.agent.state.messages)).toHaveLength(1);
+
+		const activeBranchMessages = session.sessionManager
+			.getBranch()
+			.filter(entry => entry.type === "message")
+			.map(entry => entry.message as AgentMessage);
+		expect(emptyAssistantStops(activeBranchMessages)).toHaveLength(0);
+		expect(
+			emptyAssistantStops(
+				session.sessionManager
+					.getEntries()
+					.filter(entry => entry.type === "message")
+					.map(entry => entry.message as AgentMessage),
+			),
+		).toHaveLength(1);
+	});
+
+	it("retries a tool-use stop that has no tool call or text", async () => {
+		const { session, mock } = await createHarness([
+			recordCall("orphan", "call-record-orphan"),
+			orphanedToolUseStop(),
+			{ content: ["finished after orphaned tool-use retry"], stopReason: "stop" },
+		]);
+
+		await session.prompt("record orphan");
+		await session.waitForIdle();
+
+		expect(mock.calls).toHaveLength(3);
+		expect(assistantText(session.agent.state.messages)).toContain("finished after orphaned tool-use retry");
+		expect(reminderMessages(session.agent.state.messages)).toHaveLength(1);
+	});
+
+	it("retries a stop that only contains thinking", async () => {
+		const { session, mock } = await createHarness([
+			recordCall("thinking", "call-record-thinking"),
+			thinkingOnlyStop(),
+			{ content: ["finished after thinking-only retry"], stopReason: "stop" },
+		]);
+
+		await session.prompt("record thinking");
+		await session.waitForIdle();
+
+		expect(mock.calls).toHaveLength(3);
+		expect(assistantText(session.agent.state.messages)).toContain("finished after thinking-only retry");
+		expect(reminderMessages(session.agent.state.messages)).toHaveLength(1);
+		expect(emptyAssistantStops(session.agent.state.messages)).toHaveLength(0);
+	});
+
+	it("removes orphaned tool-use stops even when retry cap is hit", async () => {
+		const { session, mock } = await createHarness([
+			recordCall("gamma", "call-record-gamma"),
+			orphanedToolUseStop(),
+			orphanedToolUseStop(),
+			orphanedToolUseStop(),
+			orphanedToolUseStop(),
+		]);
+		await session.prompt("record gamma");
+		await session.waitForIdle();
+		expect(mock.calls).toHaveLength(5);
+		expect(reminderMessages(session.agent.state.messages)).toHaveLength(3);
+		const activeBranchMessages = session.sessionManager
+			.getBranch()
+			.filter(entry => entry.type === "message")
+			.map(entry => entry.message as AgentMessage);
+		const orphanedToolUseStops = activeBranchMessages.filter(
+			message =>
+				message.role === "assistant" &&
+				message.stopReason === "toolUse" &&
+				!message.content.some(content => content.type === "toolCall"),
+		);
+		expect(orphanedToolUseStops).toHaveLength(0);
+	});
+	it("caps empty stop retries at three attempts", async () => {
+		const { session, mock } = await createHarness([
+			recordCall("beta", "call-record-beta"),
+			emptyStop(),
+			emptyStop(),
+			emptyStop(),
+			emptyStop(),
+		]);
+
+		await session.prompt("record beta");
+		await session.waitForIdle();
+
+		expect(mock.calls).toHaveLength(5);
+		expect(reminderMessages(session.agent.state.messages)).toHaveLength(3);
+		expect(emptyAssistantStops(session.agent.state.messages)).toHaveLength(1);
+
+		const activeBranchMessages = session.sessionManager
+			.getBranch()
+			.filter(entry => entry.type === "message")
+			.map(entry => entry.message as AgentMessage);
+		expect(emptyAssistantStops(activeBranchMessages)).toHaveLength(1);
+	});
+
+	it("emits failed auto-retry end when repeated empty stops exhaust the retry cap", async () => {
+		const { session, mock } = await createHarness([emptyStop(), emptyStop(), emptyStop(), emptyStop()]);
+		const retryEndEvents: Array<Extract<AgentSessionEvent, { type: "auto_retry_end" }>> = [];
+		session.subscribe(event => {
+			if (event.type === "auto_retry_end") {
+				retryEndEvents.push(event);
+			}
+		});
+
+		await expectPromptCompletes(session.prompt("answer without tools"));
+		await session.waitForIdle();
+
+		expect(mock.calls).toHaveLength(4);
+		expect(retryEndEvents).toHaveLength(1);
+		expect(retryEndEvents[0]).toMatchObject({
+			type: "auto_retry_end",
+			success: false,
+			attempt: 3,
+		});
+		expect(retryEndEvents[0]?.finalError).toContain("empty stop");
+	});
+
+	it("ends auto-retry state when empty stop retries hit the cap", async () => {
+		vi.spyOn(scheduler, "wait").mockResolvedValue(undefined);
+		const { session, mock } = await createHarness(
+			[{ throw: "503 service unavailable: overloaded_error" }, emptyStop(), emptyStop(), emptyStop(), emptyStop()],
+			{
+				"retry.enabled": true,
+				"retry.baseDelayMs": 5,
+				"retry.maxDelayMs": 5_000,
+				"retry.maxRetries": 2,
+			},
+		);
+		const retryStartEvents: Array<Extract<AgentSessionEvent, { type: "auto_retry_start" }>> = [];
+		const retryEndEvents: Array<Extract<AgentSessionEvent, { type: "auto_retry_end" }>> = [];
+		session.subscribe(event => {
+			if (event.type === "auto_retry_start") {
+				retryStartEvents.push(event);
+			}
+			if (event.type === "auto_retry_end") {
+				retryEndEvents.push(event);
+			}
+		});
+
+		await expectPromptCompletes(session.prompt("recover from transient error"));
+		await session.waitForIdle();
+
+		expect(mock.calls).toHaveLength(5);
+		expect(session.isRetrying).toBe(false);
+		expect(session.retryAttempt).toBe(0);
+		expect(retryStartEvents).toHaveLength(1);
+		expect(retryStartEvents[0]?.attempt).toBe(1);
+		expect(retryEndEvents.filter(event => event.success)).toEqual([]);
+		expect(retryEndEvents).toHaveLength(1);
+		expect(retryEndEvents[0]).toMatchObject({
+			type: "auto_retry_end",
+			success: false,
+			attempt: 1,
+		});
+		expect(retryEndEvents[0]?.finalError).toContain("empty stop");
+		expect(reminderMessages(session.agent.state.messages)).toHaveLength(3);
+		expect(emptyAssistantStops(session.agent.state.messages)).toHaveLength(1);
+
+		mock.push({ content: ["fresh unrelated success"], stopReason: "stop" });
+		await session.prompt("start unrelated turn after cap");
+		await session.waitForIdle();
+
+		expect(mock.calls).toHaveLength(6);
+		expect(retryEndEvents).toHaveLength(1);
+		expect(session.isRetrying).toBe(false);
+		expect(session.retryAttempt).toBe(0);
+		expect(assistantText(session.agent.state.messages)).toContain("fresh unrelated success");
+
+		mock.push({ throw: "503 service unavailable: overloaded_error" });
+		mock.push({ content: ["fresh retry success"], stopReason: "stop" });
+		await expectPromptCompletes(session.prompt("recover with fresh retry budget"));
+		await session.waitForIdle();
+
+		expect(mock.calls).toHaveLength(8);
+		expect(retryStartEvents).toHaveLength(2);
+		expect(retryStartEvents[1]?.attempt).toBe(1);
+		expect(retryEndEvents).toHaveLength(2);
+		expect(retryEndEvents[1]).toMatchObject({
+			type: "auto_retry_end",
+			success: true,
+			attempt: 1,
+		});
+		expect(session.isRetrying).toBe(false);
+		expect(session.retryAttempt).toBe(0);
+	});
+
+	it("preserves auto-retry budget across empty stop continuations", async () => {
+		vi.spyOn(scheduler, "wait").mockResolvedValue(undefined);
+		const { session, mock } = await createHarness(
+			[
+				{ throw: "503 service unavailable: overloaded_error" },
+				emptyStop(),
+				{ throw: "503 service unavailable: overloaded_error" },
+				{ throw: "503 service unavailable: overloaded_error" },
+			],
+			{
+				"retry.enabled": true,
+				"retry.baseDelayMs": 5,
+				"retry.maxDelayMs": 5_000,
+				"retry.maxRetries": 2,
+			},
+		);
+		const retryEndEvents: Array<Extract<AgentSessionEvent, { type: "auto_retry_end" }>> = [];
+		session.subscribe(event => {
+			if (event.type === "auto_retry_end") {
+				retryEndEvents.push(event);
+			}
+		});
+
+		await expectPromptCompletes(session.prompt("recover without replenishing retries"));
+		await session.waitForIdle();
+
+		expect(mock.calls).toHaveLength(4);
+		expect(retryEndEvents.filter(event => event.success)).toEqual([]);
+		expect(retryEndEvents).toHaveLength(1);
+		expect(retryEndEvents[0]).toMatchObject({
+			type: "auto_retry_end",
+			success: false,
+			attempt: 2,
+		});
+		expect(session.isRetrying).toBe(false);
+		expect(reminderMessages(session.agent.state.messages)).toHaveLength(1);
+	});
+
+	it("accepts an auto-learn capture turn that ends with an empty terminal stop", async () => {
+		const { session, mock, tempDir } = await createHarness(
+			[
+				recordCall("learn-alpha", "call-record-learn-alpha"),
+				recordCall("learn-beta", "call-record-learn-beta"),
+				{ content: ["normal turn complete"], stopReason: "stop" },
+				emptyStop(),
+			],
+			{
+				"autolearn.enabled": true,
+				"autolearn.autoContinue": true,
+				"autolearn.minToolCalls": 2,
+			},
+			true,
+		);
+		const retryEndEvents: Array<Extract<AgentSessionEvent, { type: "auto_retry_end" }>> = [];
+		session.subscribe(event => {
+			if (event.type === "auto_retry_end") retryEndEvents.push(event);
+		});
+		new AutoLearnController({ session, settings: session.settings });
+
+		await session.prompt("record enough facts for auto-learn");
+		await session.waitForIdle();
+
+		expect(mock.calls).toHaveLength(4);
+		expect(assistantText(session.agent.state.messages)).toContain("normal turn complete");
+		expect(reminderMessages(session.agent.state.messages)).toHaveLength(0);
+		expect(retryEndEvents.filter(event => event.success === false)).toEqual([]);
+		expect(emptyAssistantStops(session.agent.state.messages)).toHaveLength(0);
+
+		const branchMessagesAfterCapture = session.sessionManager
+			.getBranch()
+			.filter(entry => entry.type === "message")
+			.map(entry => entry.message as AgentMessage);
+		expect(emptyAssistantStops(branchMessagesAfterCapture)).toHaveLength(0);
+		expect(
+			session.sessionManager
+				.getBranch()
+				.some(entry => entry.type === "custom_message" && entry.customType === "autolearn-nudge"),
+		).toBe(false);
+
+		await session.sessionManager.flush();
+		const sessionFile = session.sessionManager.getSessionFile();
+		if (!sessionFile) throw new Error("Expected persistent Auto-Learn test session");
+		const reloadedSession = await SessionManager.open(sessionFile, tempDir.path());
+		const reloadedBranchMessages = reloadedSession
+			.getBranch()
+			.filter(entry => entry.type === "message")
+			.map(entry => entry.message as AgentMessage);
+		expect(emptyAssistantStops(reloadedBranchMessages)).toHaveLength(0);
+		expect(
+			reloadedSession
+				.getBranch()
+				.some(entry => entry.type === "custom_message" && entry.customType === "autolearn-nudge"),
+		).toBe(false);
+
+		const captureCall = mock.calls[3];
+		if (!captureCall) throw new Error("Expected auto-learn capture turn to call the model");
+		const messageHasText = (message: (typeof captureCall.context.messages)[number], text: string): boolean => {
+			const { content } = message;
+			if (typeof content === "string") return content.includes(text);
+			return (
+				Array.isArray(content) &&
+				content.some(block => "text" in block && typeof block.text === "string" && block.text.includes(text))
+			);
+		};
+		const autoLearnNudgeText = "If your previous turn produced anything reusable";
+		expect(captureCall.context.messages.some(message => messageHasText(message, autoLearnNudgeText))).toBe(true);
+
+		mock.push({ content: ["next real turn complete"], stopReason: "stop" });
+		await session.prompt("next real prompt after auto-learn no-op");
+		await session.waitForIdle();
+
+		expect(mock.calls).toHaveLength(5);
+		const nextPromptCall = mock.calls[4];
+		if (!nextPromptCall) throw new Error("Expected next real prompt to call the model");
+		expect(nextPromptCall.context.messages.some(message => messageHasText(message, autoLearnNudgeText))).toBe(false);
+		expect(assistantText(session.agent.state.messages)).toContain("next real turn complete");
+		expect(emptyAssistantStops(session.agent.state.messages)).toHaveLength(0);
+
+		const branchMessagesAfterNextPrompt = session.sessionManager
+			.getBranch()
+			.filter(entry => entry.type === "message")
+			.map(entry => entry.message as AgentMessage);
+		expect(emptyAssistantStops(branchMessagesAfterNextPrompt)).toHaveLength(0);
+		expect(
+			session.sessionManager
+				.getBranch()
+				.some(entry => entry.type === "custom_message" && entry.customType === "autolearn-nudge"),
+		).toBe(false);
+	});
+
+	it("does not let a non-opt-in custom turn inherit auto-learn terminal empty-stop acceptance", async () => {
+		const { session, mock } = await createHarness(
+			[
+				recordCall("learn-alpha", "call-record-learn-alpha"),
+				recordCall("learn-beta", "call-record-learn-beta"),
+				{ content: ["normal turn complete"], stopReason: "stop" },
+				{ content: ["auto-learn captured non-empty text"], stopReason: "stop" },
+				emptyStop(),
+				emptyStop(),
+				emptyStop(),
+				emptyStop(),
+			],
+			{
+				"autolearn.enabled": true,
+				"autolearn.autoContinue": true,
+				"autolearn.minToolCalls": 2,
+			},
+		);
+		const retryEndEvents: Array<Extract<AgentSessionEvent, { type: "auto_retry_end" }>> = [];
+		session.subscribe(event => {
+			if (event.type === "auto_retry_end") retryEndEvents.push(event);
+		});
+		new AutoLearnController({ session, settings: session.settings });
+
+		await session.prompt("record enough facts for auto-learn");
+		await session.waitForIdle();
+
+		expect(mock.calls).toHaveLength(4);
+		expect(assistantText(session.agent.state.messages)).toContain("auto-learn captured non-empty text");
+		expect(reminderMessages(session.agent.state.messages)).toHaveLength(0);
+
+		await expectPromptCompletes(
+			session.sendCustomMessage(
+				{
+					customType: "advisor",
+					content: "check",
+					display: false,
+					attribution: "agent",
+				},
+				{ triggerTurn: true },
+			),
+		);
+		await session.waitForIdle();
+
+		expect(mock.calls).toHaveLength(8);
+		expect(reminderMessages(session.agent.state.messages)).toHaveLength(3);
+		expect(retryEndEvents).toHaveLength(1);
+		expect(retryEndEvents[0]).toMatchObject({
+			type: "auto_retry_end",
+			success: false,
+			attempt: 3,
+		});
+		expect(retryEndEvents[0]?.finalError).toContain("empty stop");
+	});
+
+	it("does not retry normal stop or tool-use turns", async () => {
+		const normal = await createHarness([{ content: ["already done"], stopReason: "stop" }]);
+
+		await normal.session.prompt("answer normally");
+		await normal.session.waitForIdle();
+
+		expect(normal.mock.calls).toHaveLength(1);
+		expect(reminderMessages(normal.session.agent.state.messages)).toHaveLength(0);
+
+		const withTool = await createHarness([
+			recordCall("gamma", "call-record-gamma"),
+			{ content: ["tool path complete"], stopReason: "stop" },
+		]);
+
+		await withTool.session.prompt("record gamma");
+		await withTool.session.waitForIdle();
+
+		expect(withTool.mock.calls).toHaveLength(2);
+		expect(reminderMessages(withTool.session.agent.state.messages)).toHaveLength(0);
+		expect(assistantText(withTool.session.agent.state.messages)).toContain("tool path complete");
+	});
+});

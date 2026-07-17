@@ -1,0 +1,11 @@
+{
+	"extends": "../tsconfig.workspace.json",
+	"include": [
+		"src",
+		"test",
+		"scripts"
+	],
+	"exclude": [
+		"src/export/html/tool-render"
+	]
+}

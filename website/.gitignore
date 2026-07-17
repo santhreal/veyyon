@@ -1,0 +1,4 @@
+# Build artifacts staged by build.mjs (source of truth: ../scripts/).
+install.sh
+install.ps1
+.buildinfo

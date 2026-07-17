@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="theme-color" content="#000000" />
+<title>Veyyon — the harness is the lever</title>
+<meta name="description" content="A terminal coding agent that runs open models, with explicit model selection, edits that apply cleanly, and a visible sandbox." />
+<link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+<link rel="stylesheet" href="./site.css" />
+</head>
+<body>
+
+<canvas id="sun" aria-hidden="true"></canvas>
+
+<header class="site" id="hdr">
+  <div class="wrap nav">
+    <a class="brand" href="./">veyyon</a>
+    <nav>
+      <a href="./models">Models</a>
+      <a href="./features">Features</a>
+      <a href="./install">Install</a>
+      <a href="./changelog">Changelog</a>
+      <a href="./docs/">Docs</a>
+      <a href="https://github.com/santhreal/veyyon">GitHub</a>
+      <a href="./install" class="btn">Get started</a>
+    </nav>
+  </div>
+</header>
+
+<!-- cinematic scroll journey: sun -> the unique idea -> a walk through the product -> it working -->
+<section class="stage" id="stage">
+  <div class="stage-pin">
+    <div class="cue" id="cue"><span>scroll</span></div>
+
+    <!-- act I — the idea, centered beneath the sun. leads with what makes veyyon different. -->
+    <div class="scene center" id="s1"><p class="scene-name">veyyon</p></div>
+    <div class="scene center" id="s2"><p class="scene-lead">The model is just an engine. Everyone rents the same ones.</p></div>
+    <div class="scene center" id="s3"><p class="scene-lead">What you build around it — the harness — is where work is won or lost.</p></div>
+    <div class="scene center" id="s4"><p class="scene-lead">Veyyon tunes the harness to each model, getting more out of a smaller one.</p></div>
+
+    <!-- act II — the product, left-aligned with the sun docked to the right -->
+    <div class="scene left" id="s5"><div class="scene-inner hero-inner">
+      <span class="eyebrow">Terminal coding agent</span>
+      <h1>The harness is the lever.</h1>
+      <div class="cta">
+        <a href="./install" class="btn primary">Get started</a>
+        <a href="./docs/" class="btn">Read the handbook</a>
+      </div>
+      <div class="install"><span class="p">$</span><code id="cmd">curl -fsSL https://get.veyyon.dev | sh</code><button id="copy" aria-label="Copy install command">copy</button></div>
+      <div class="run-hint">then <b>vey</b> in any repo to launch</div>
+    </div></div>
+
+    <div class="scene left" id="s6"><div class="scene-inner">
+      <span class="kicker">Plan mode</span>
+      <h2 class="scene-title">Ground, propose, execute.</h2>
+      <p class="scene-detail">Veyyon reads your code and lays out a plan before it touches anything. Tools stay read-only until you approve — so nothing mutates on a guess, and you always see the shape of the work first.</p>
+    </div></div>
+
+    <div class="scene left" id="s7"><div class="scene-inner">
+      <span class="kicker">Edits that land</span>
+      <h2 class="scene-title">Anchored to content, not line numbers.</h2>
+      <p class="scene-detail">Edits attach to what the code says, then get checked before they apply — so far fewer land malformed. When a patch drifts, the harness repairs it instead of corrupting your file.</p>
+    </div></div>
+
+    <div class="scene left" id="s8"><div class="scene-inner">
+      <span class="kicker">Models</span>
+      <h2 class="scene-title">Three models, chosen by you.</h2>
+      <p class="scene-detail">The model you talk to, the one that runs your subagents, and the one that compacts context — each set on its own. No opaque per-role maze, and <span class="mono">default</span> is never a model.</p>
+      <pre class="scene-code"><span class="k">model</span>: <span class="s">openai/gpt-5.6-sol</span>
+<span class="k">subagent.model</span>: <span class="s">anthropic/claude-haiku-4-5</span>
+<span class="k">compaction.model</span>: <span class="s">openai/gpt-5</span></pre>
+    </div></div>
+
+    <div class="scene left" id="s9"><div class="scene-inner">
+      <span class="kicker">Cockpit</span>
+      <h2 class="scene-title">Watch every agent at once.</h2>
+      <p class="scene-detail">A live multi-agent view: a model per subagent, drill into any one, and follow the work as it happens. Fork, clone, and label threads to explore a path without losing the trunk.</p>
+    </div></div>
+
+    <div class="scene left" id="s10"><div class="scene-inner">
+      <span class="kicker">Extend</span>
+      <h2 class="scene-title">MCP, skills, hooks.</h2>
+      <p class="scene-detail">Bring MCP servers, authored skills, and lifecycle hooks — plus browser, web search, and headless exec for CI. The harness is yours to shape.</p>
+    </div></div>
+
+    <!-- act III — see it work -->
+    <div class="scene" id="s11">
+      <div class="showcase">
+        <div class="term">
+          <div class="bar"><span class="dot"></span><span class="path">~/acme/api</span><span class="rt">openai/gpt-5.6-sol</span></div>
+<div class="body"><span class="pr">›</span> <span class="u">add rate limiting to the upload endpoint</span>
+
+  <span class="tc">◆ plan</span>
+    <span class="tk">├─</span> read   routes/upload.ts
+    <span class="tk">├─</span> grep   "rateLimit"          <span class="ok">ok</span>  <span class="tk">3 matches</span>
+    <span class="tk">└─</span> edit   routes/upload.ts     <span class="ok">ok</span>  <span class="tk">+18 −2</span>
+
+  running tests <span class="tk">…</span>  <span class="ok">ok</span>  <span class="tk">42 passed</span>
+
+  <span class="hint">esc to interrupt              ? shortcuts   / commands</span></div>
+        </div>
+        <a href="./install" class="btn primary" style="margin-top:34px">Get started</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer class="site">
+  <div class="wrap foot">
+    <div>
+      <span class="brand">veyyon</span>
+      <div class="attrib">A fork of <a href="https://github.com/can1357/oh-my-pi">oh-my-pi</a> (MIT), by Can Boluk. Built as its own product.</div>
+    </div>
+    <nav>
+      <a href="./models">Models</a>
+      <a href="./features">Features</a>
+      <a href="./install">Install</a>
+      <a href="./changelog">Changelog</a>
+      <a href="./docs/">Docs</a>
+      <a href="https://github.com/santhreal/veyyon">GitHub</a>
+    </nav>
+  </div>
+</footer>
+
+<script src="./sun.js" defer></script>
+<script src="./motion.js" defer></script>
+<script>
+  (function(){var b=document.getElementById('copy'),c=document.getElementById('cmd');
+   if(b&&c)b.addEventListener('click',function(){if(navigator.clipboard)navigator.clipboard.writeText(c.textContent).then(function(){b.textContent='copied';setTimeout(function(){b.textContent='copy'},1300)})})})();
+</script>
+
+</body>
+</html>
