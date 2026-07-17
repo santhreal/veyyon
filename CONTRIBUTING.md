@@ -1,4 +1,4 @@
-# Contributing to oh-my-pi
+# Contributing to Veyyon
 
 Thanks for your interest in contributing. This project uses a lightweight
 **vouch** system to decide who can open pull requests. Please read this before

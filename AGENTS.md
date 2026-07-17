@@ -16,7 +16,7 @@ This repo contains multiple packages, but **`packages/coding-agent/`** is the pr
 | `packages/coding-agent` | Main CLI application (primary focus)                 |
 | `packages/tui`          | Terminal UI library with differential rendering      |
 | `packages/natives`      | Bindings for native text/image/grep operations       |
-| `packages/stats`        | Local observability dashboard (`omp stats`)          |
+| `packages/stats`        | Local observability dashboard (`veyyon stats`)       |
 | `packages/utils`        | Shared utilities (logger, streams, temp files)       |
 | `crates/pi-natives`     | Rust crate for performance-critical text/grep ops    |
 
@@ -46,9 +46,9 @@ Unless user tells you exactly what to write:
   	? new Worker(hostEntry, { type: "module", argv: ["__omp_worker_<name>"] })
   	: new Worker(new URL("./<worker>.ts", import.meta.url).href, { type: "module" });
   ```
-  When the process was started from the omp CLI — source `cli.ts`, npm-bundle `dist/cli.js`, or compiled binary — `workerHostEntry()` is `Bun.main` and the worker re-enters the single entry module, so no per-worker `--compile` entrypoints or bundle entries exist. Outside a CLI host (`bun test`, SDK embedding, standalone `omp-stats`) it returns `null` and the direct-module fallback loads the worker source. New worker kinds MUST add their selector to the dispatch table in `cli.ts` and keep the fallback branch.
+  When the process was started from the veyyon CLI — source `cli.ts`, npm-bundle `dist/cli.js`, or compiled binary — `workerHostEntry()` is `Bun.main` and the worker re-enters the single entry module, so no per-worker `--compile` entrypoints or bundle entries exist. Outside a CLI host (`bun test`, SDK embedding, standalone `omp-stats`) it returns `null` and the direct-module fallback loads the worker source. New worker kinds MUST add their selector to the dispatch table in `cli.ts` and keep the fallback branch.
   History: `with { type: "file" }` only copied the entry as a raw asset (workers crashed silently in compiled binaries — issues #1011, #1027), and the later literal-path + extra-entrypoint pattern required keeping spawn literals and two build scripts in sync (issue #1150). The smoke probe below is the live validation of this contract.
-  Validate any new worker with the dedicated smoke probe: `omp --smoke-test` spawns the stats sync worker and the tiny-model subprocess, pings them, and exits — it's wired into `ci:test:smoke` and `scripts/install-tests/run-ci.sh` so binary, source-link, and tarball installs all exercise it. Add a sibling smoke if the new worker is on a different module graph.
+  Validate any new worker with the dedicated smoke probe: `veyyon --smoke-test` spawns the stats sync worker and the tiny-model subprocess, pings them, and exits — it's wired into `ci:test:smoke` and `scripts/install-tests/run-ci.sh` so binary, source-link, and tarball installs all exercise it. Add a sibling smoke if the new worker is on a different module graph.
 
 ## Bun Over Node
 
@@ -178,7 +178,7 @@ logger.warn("Theme file invalid, using fallback", { path });
 logger.debug("LSP fallback triggered", { reason });
 ```
 
-Logs go to `~/.veyyon/logs/omp.YYYY-MM-DD.log` with automatic rotation.
+Logs go to `~/.veyyon/logs/veyyon.YYYY-MM-DD.log` with automatic rotation.
 
 ## TUI Sanitization
 
@@ -210,6 +210,23 @@ For the bash tool specifically:
 
 - NEVER commit unless asked.
 - Never use `tsc`/`npx tsc` — always `bun check`.
+
+**Gate scripts** (defined in the root `package.json`; run the narrowest one that covers your change):
+
+| Command | What it does |
+| --- | --- |
+| `bun run check` | Type check TS **and** Rust in parallel (`check:ts` + `check:rs`). The release preflight runs this. |
+| `bun run check:ts` | Biome + workspace `tsc --noEmit` across every package. |
+| `bun run lint` / `lint:ts` | Biome lint (advisory; fix real bugs, don't contort for style). |
+| `bun run test` | Local TS test runner (`scripts/ci-test-ts.ts local`). |
+| `bun run ci:test:ts:workspace` | The exact workspace test bucket CI runs. |
+| `bun run ci:build:native` | Build the `pi_natives` addon — required before tests that touch native paths. |
+
+**Commit conventions** (only when the user asks you to commit):
+- Commit in **logical chunks**, one concern per commit — never one giant `git add -A`. Stage only the paths you changed.
+- Subject line is imperative and scoped, e.g. `polish(onboarding): …`, `fix: …`, `ci: …`, `test(agent): …`.
+- End every commit body with the trailer `Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>`.
+- The **release** commit is special: its subject **must** be exactly `chore: bump version to vX.Y.Z` — CI keys the never-cancel release concurrency group off that subject (#2564). `bun run release` writes it for you; never hand-craft it.
 
 ## Testing Guidance
 
@@ -247,12 +264,63 @@ Location: `packages/*/CHANGELOG.md` (per package).
 - Don't flag changelog section order or formatting in reviews or PRs — `bun run release` runs `fix-changelogs` which normalizes everything automatically.
 
 **Attribution:**
-- Internal (from issues): `Fixed foo bar ([#123](https://github.com/can1357/oh-my-pi/issues/123))`.
-- External contributions: `Added feature X ([#456](https://github.com/can1357/oh-my-pi/pull/456) by [@username](https://github.com/username))`.
+- Internal (from issues): `Fixed foo bar ([#123](https://github.com/santhreal/veyyon/issues/123))`.
+- External contributions: `Added feature X ([#456](https://github.com/santhreal/veyyon/pull/456) by [@username](https://github.com/username))`.
+
+## Continuous Integration
+
+Two workflows run in `.github/workflows/`. Know which one gates your change.
+
+### `checks.yml` — the public gate (every push to `main` + every PR)
+
+Runs on GitHub-hosted runners so it works on the public repo without the self-hosted
+runners the release pipeline needs. Three jobs, all of which must be green:
+
+1. **Lint & type check** — `bun run check:ts` then `bun run lint:ts`.
+2. **TypeScript tests** — `bun run ci:test:ts:workspace`.
+3. **Secret scan (keyhog)** — pinned keyhog binary scans the tree; fails on any *new*
+   secret (the committed `.keyhog-baseline.json` suppresses known public OAuth client
+   IDs and test fixtures). It gates on keyhog's exit-code semantics, not a binary
+   exclude-list — see the header comment in `checks.yml`.
+
+To keep it green before you push: run `bun run check` and the relevant test bucket
+locally. Never weaken a test or the baseline to pass (Laws 6 & 9).
+
+### `ci.yml` — the build + release pipeline (`main` pushes and release tags)
+
+Runs on the self-hosted `omp-kata` runner plus cross-platform runners. On an ordinary
+`main` push it builds/caches the native addons and runs the full test matrix. When
+`HEAD` carries a `v*` release tag (see below), the same run additionally builds the
+per-platform binaries, then publishes: **GitHub release** (all binaries + `.sha256`),
+**npm** packages, and the **Homebrew** formula.
+
+> Availability note: `ci.yml`'s release jobs depend on the self-hosted `omp-kata`
+> runner. If it is offline on the public repo, cross-platform binaries (darwin,
+> linux-arm64, win32) won't build in CI and must be produced another way.
 
 ## Releasing
 
-1. Ensure all changes since last release are in each affected package's `[Unreleased]` section.
-2. Run `bun run release`.
+`veyyon` is a source fork of oh-my-pi (see `UPSTREAM.md`). The changelog carries
+upstream's release history; **veyyon's own release process is the flow below**, and a
+release is only real once it is a tagged commit **and** a published GitHub release that
+`install.sh` can resolve.
 
-The script handles version bump, CHANGELOG finalization, commit, tag, publish, and adding new `[Unreleased]` sections.
+### How a release happens
+
+1. Ensure every change since the last release sits under each affected package's
+   `## [Unreleased]` changelog section (per-package `packages/*/CHANGELOG.md`).
+2. From a clean `main`, run `bun run release <version|major|minor|patch>`.
+
+`scripts/release.ts` then, in order: verifies you're on clean `main` and the version
+is greater than the latest tag → bumps every public `package.json` + root catalog
+`@veyyon/*` entries → bumps the Rust workspace version, `pi-natives` sentinel, and
+regenerates lockfiles → normalizes and finalizes changelogs (`[Unreleased]` → the new
+version, adds a fresh `[Unreleased]`) → runs `bun run check` → commits
+`chore: bump version to vX.Y.Z` → tags and **atomically** pushes `main` + the tag (by
+commit sha, to survive tag-pruning maintenance) → watches CI until the release jobs
+pass. Use `bun run release watch` to re-attach to CI for the current commit.
+
+The tagged push is what makes `ci.yml` build the binaries and publish. After it's
+green, `curl -fsSL https://get.veyyon.dev | sh` (which reads
+`github.com/santhreal/veyyon` `releases/latest`) installs the new version. Verify with
+a real install on a clean machine, not just a `cargo`/`bun` build.
