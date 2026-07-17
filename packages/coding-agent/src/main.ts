@@ -159,7 +159,10 @@ function applyAcpDefaultSettingOverrides(targetSettings: Settings = settings): v
 }
 
 async function readPipedInput(): Promise<string | undefined> {
-	if (process.stdin.isTTY !== false) return undefined;
+	// On a pipe or redirect Bun/Node leave `isTTY` as `undefined`, never `false`
+	// — so this must be a truthy check. (`!== false` made every piped prompt
+	// vanish: `echo hi | veyyon -p` exited 0 with zero output.)
+	if (process.stdin.isTTY) return undefined;
 	// stdin is a pipe: a producer that never writes nor closes would block
 	// startup forever with zero output. Say what we're blocked on after 1s.
 	const notice = setTimeout(() => {
@@ -1103,6 +1106,16 @@ export async function runRootCommand(
 	const pipedInput = isProtocolMode ? undefined : await logger.time("readPipedInput", readPipedInput);
 	const autoPrint = pipedInput !== undefined && !parsedArgs.print && parsedArgs.mode === undefined;
 	const isInteractive = !parsedArgs.print && !autoPrint && parsedArgs.mode === undefined;
+	// Interactive mode reads keystrokes from stdin; without a TTY (cron, CI,
+	// `</dev/null`, an empty pipe) the TUI blocks forever with zero output.
+	// Fail fast with the fix instead of hanging.
+	if (isInteractive && !process.stdin.isTTY) {
+		process.stderr.write(
+			"Interactive mode needs a terminal: stdin is not a TTY and no prompt was piped in.\n" +
+				'Pipe a prompt (`echo "…" | veyyon`), pass one with `-p "…"`, or run veyyon from an interactive terminal.\n',
+		);
+		process.exit(1);
+	}
 	// Interactive mode's modes/components subtree is the largest single chunk of
 	// the boot module graph. Kick its load here so the parse overlaps with
 	// session creation, and so print/rpc/acp runs never pay for it at all
@@ -1391,6 +1404,24 @@ export async function runRootCommand(
 			fileImages: processedFiles?.images,
 			stdinContent: pipedInput,
 		});
+		// Single-shot with nothing to send and no session to replay would exit 0
+		// having printed nothing — a silent no-op. Fail before any session/MCP
+		// work. Resumed sessions are exempt: `veyyon -p -c` legitimately
+		// re-prints the last assistant response.
+		if (
+			!isInteractive &&
+			!isProtocolMode &&
+			initialMessage === undefined &&
+			initialArgs.messages.length === 0 &&
+			!parsedArgs.continue &&
+			!parsedArgs.resume &&
+			!parsedArgs.fork
+		) {
+			process.stderr.write(
+				'No prompt provided: pass a message (`veyyon -p "…"`) or pipe one on stdin (`echo "…" | veyyon -p`).\n',
+			);
+			process.exit(2);
+		}
 
 		const showStartupSplash = shouldShowStartupSplash({
 			configured: settingsInstance.get("startup.showSplash"),
@@ -1499,7 +1530,6 @@ export async function runRootCommand(
 				parsedArgs.join,
 			);
 		} else {
-			// Branch-only single-shot runner: keep print-mode code out of normal interactive startup.
 			stopStartupWatchdog();
 			const runPrintMode: RunPrintMode = (await import("./modes/print-mode")).runPrintMode;
 			await runPrintMode(session, {
