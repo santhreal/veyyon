@@ -62,3 +62,37 @@ describe("resolveCliArgv routes subcommands hidden behind leading global flags",
 		});
 	});
 });
+
+describe("resolveCliArgv near-miss did-you-mean (bare single token)", () => {
+	test("`auth` (prefix of auth-broker/auth-gateway) errors with suggestions and the prompt escape", () => {
+		const resolved = resolveCliArgv(["auth"]);
+		if (!("error" in resolved)) throw new Error(`expected error, got argv ${JSON.stringify(resolved.argv)}`);
+		expect(resolved.error).toContain("`veyyon auth` is not a command");
+		expect(resolved.error).toContain("veyyon auth-broker");
+		expect(resolved.error).toContain("veyyon launch auth");
+	});
+
+	test("`stat` (typo/prefix of stats) errors with the stats suggestion", () => {
+		const resolved = resolveCliArgv(["stat"]);
+		if (!("error" in resolved)) throw new Error(`expected error, got argv ${JSON.stringify(resolved.argv)}`);
+		expect(resolved.error).toContain("veyyon stats");
+	});
+
+	test("a bare token nowhere near any command still forwards to launch", () => {
+		expect(resolveCliArgv(["xylophone"])).toEqual({
+			argv: ["launch", "xylophone"],
+		});
+	});
+
+	test("multi-word invocations never trigger the near-miss error (genuine prompts win)", () => {
+		expect(resolveCliArgv(["auth", "list"])).toEqual({
+			argv: ["launch", "auth", "list"],
+		});
+	});
+
+	test("flags and @file args are never near-miss candidates", () => {
+		expect(resolveCliArgv(["@stats.txt"])).toEqual({
+			argv: ["launch", "@stats.txt"],
+		});
+	});
+});
