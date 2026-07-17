@@ -34,6 +34,8 @@ export interface FreshnessResult {
 	filesChecked: number;
 	stamped: number;
 	unstamped: string[];
+	/** Tracked at HEAD but absent from the working tree (an in-flight rename/delete). */
+	missing: string[];
 	issues: FreshnessIssue[];
 }
 
@@ -53,10 +55,18 @@ function git(root: string, args: string[]): { status: number; stdout: string } {
 }
 
 export function checkFreshness(root: string, files: string[]): FreshnessResult {
-	const result: FreshnessResult = { filesChecked: 0, stamped: 0, unstamped: [], issues: [] };
+	const result: FreshnessResult = { filesChecked: 0, stamped: 0, unstamped: [], missing: [], issues: [] };
 	for (const file of files) {
+		const abs = path.join(root, file);
+		// `git ls-files` reports the index; a file deleted (or renamed away) in the
+		// working tree but not yet committed would crash the read. That is tree
+		// state, not doc staleness — surface it loudly and keep checking the rest.
+		if (!fs.existsSync(abs)) {
+			result.missing.push(file);
+			continue;
+		}
 		result.filesChecked++;
-		const stamp = parseStamp(fs.readFileSync(path.join(root, file), "utf-8"));
+		const stamp = parseStamp(fs.readFileSync(abs, "utf-8"));
 		if (!stamp) {
 			result.unstamped.push(file);
 			continue;
@@ -91,6 +101,9 @@ if (import.meta.main) {
 	);
 	for (const file of result.unstamped) {
 		console.log(`  unverified: ${file}`);
+	}
+	for (const file of result.missing) {
+		console.log(`  MISSING from working tree (tracked at HEAD — in-flight delete/rename?): ${file}`);
 	}
 	if (result.issues.length > 0) {
 		console.error(`\n${result.issues.length} stale/broken stamp(s):`);
