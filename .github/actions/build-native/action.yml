@@ -1,12 +1,8 @@
 name: Build native addon
 description: >
    Build the pi_natives cdylib for one platform/arch/variant and upload it as a
-   hash-tagged artifact. Self-detects the runner via $SCCACHE_BUCKET (injected
-   only on the self-hosted omp-kata pods): on-infra it uses the image's baked
-   toolchains + the RustFS-backed sccache; on GitHub-hosted runners it installs
-   the toolchains and uses Swatinem target/ cache + the GitHub Actions sccache
-   backend. PRs run on GitHub-hosted runners, so the on-infra path only ever
-   serves trusted push/main + release builds.
+   hash-tagged artifact. Runs on GitHub-hosted runners: installs the toolchains,
+   uses the Swatinem target/ cache, and the GitHub Actions sccache backend.
 
 inputs:
    hash:
@@ -39,30 +35,13 @@ inputs:
       required: false
       default: "false"
    save_cache:
-      description: Whether Swatinem/rust-cache should write a cache entry (GitHub-hosted only)
+      description: Whether Swatinem/rust-cache should write a cache entry
       required: false
       default: "false"
 
 runs:
    using: composite
    steps:
-      - name: Detect runner environment
-        id: detect
-        shell: bash
-        run: |
-           # $SCCACHE_BUCKET is injected only on the self-hosted omp-kata runner
-           # pods (envFrom sccache-s3); its presence is the repo's single
-           # "on can.internal infra?" signal. On-infra: baked toolchains, RustFS
-           # sccache, no GitHub target/ cache. Off-infra (GitHub-hosted): install
-           # toolchains, Swatinem target/ cache, GitHub Actions sccache backend.
-           if [ -n "${SCCACHE_BUCKET:-}" ]; then
-             echo "on_infra=true" >> "$GITHUB_OUTPUT"
-             echo "runner: self-hosted omp-kata (baked tools + RustFS sccache)"
-           else
-             echo "on_infra=false" >> "$GITHUB_OUTPUT"
-             echo "runner: GitHub-hosted (install tools + Swatinem cache + GHA sccache)"
-           fi
-
       - name: Resolve build targets
         id: resolve
         shell: bash
@@ -101,34 +80,25 @@ runs:
            echo "Resolved cross_target='$cross_target' bare_target='$bare_target'"
 
       # --- Rust toolchain -----------------------------------------------------
-      - name: Ensure baked Rust toolchain (omp-kata)
-        if: steps.detect.outputs.on_infra == 'true'
-        uses: ./.github/actions/ensure-rust-toolchain
-        with:
-           toolchain: nightly-2026-04-29
-           components: ${{ inputs.rust_checks == 'true' && 'clippy,rustfmt' || '' }}
-           target: ${{ steps.resolve.outputs.bare_target }}
-      - name: Install Rust toolchain (GitHub-hosted)
-        if: steps.detect.outputs.on_infra == 'false'
+      - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@nightly
         with:
            toolchain: nightly-2026-04-29
            components: ${{ inputs.rust_checks == 'true' && 'clippy, rustfmt' || '' }}
            targets: ${{ steps.resolve.outputs.bare_target }}
-      - name: Install Linux build prerequisites (GitHub-hosted)
-        if: steps.detect.outputs.on_infra == 'false' && runner.os == 'Linux'
+      - name: Install Linux build prerequisites
+        if: runner.os == 'Linux'
         shell: bash
         run: |
            sudo apt-get update
            sudo apt-get install -y build-essential
-      - name: Prepend rustup toolchain bin to PATH (GitHub-hosted)
-        if: steps.detect.outputs.on_infra == 'false'
+      - name: Prepend rustup toolchain bin to PATH
         shell: bash
         run: |
            # Homebrew on macOS runners ships rustup-init with shadow proxies for
            # `cargo`/`rustc`/etc. that error out as the installer ("unexpected
            # argument 'metadata' found"). Force the real toolchain binaries to win
-           # on PATH. (ensure-rust-toolchain already does this on omp-kata.)
+           # on PATH.
            toolchain_bin="$(dirname "$(rustup which cargo)")"
            echo "$toolchain_bin" >> "$GITHUB_PATH"
            echo "Prepended $toolchain_bin to PATH"
@@ -164,7 +134,7 @@ runs:
            echo "RUSTFLAGS=$rustflags" >> "$GITHUB_ENV"
            echo "Configured RUSTFLAGS=$rustflags"
 
-      # --- target/ cache (GitHub-hosted only) ---------------------------------
+      # --- target/ cache ------------------------------------------------------
       # Swatinem keys target/ off its restore-time environment, so it must run
       # after RUSTFLAGS is set: if x64 target-cpu were only selected later, cargo
       # would invalidate the restored target/ while rust-cache saw an exact key
@@ -172,10 +142,8 @@ runs:
       # forever). The native source hash is in the shared key too: rust-cache's
       # lockfile scan misses the workspace-root Cargo.toml version Cargo
       # fingerprints, so a version bump could otherwise get an exact hit for
-      # artifacts Cargo must rebuild. On omp-kata the mounted Cargo registry +
-      # RustFS sccache are the reuse layers, so there is no second cache restore.
-      - name: Cache Rust target/ (GitHub-hosted)
-        if: steps.detect.outputs.on_infra == 'false'
+      # artifacts Cargo must rebuild.
+      - name: Cache Rust target/
         uses: Swatinem/rust-cache@v2
         with:
            shared-key: native-${{ inputs.platform }}-${{ inputs.arch }}-${{ inputs.variant || 'default' }}-h${{ inputs.hash }}
@@ -184,41 +152,23 @@ runs:
            cache-workspace-crates: true
 
       # --- sccache ------------------------------------------------------------
-      - name: Ensure baked sccache (omp-kata)
-        if: steps.detect.outputs.on_infra == 'true'
-        uses: ./.github/actions/ensure-sccache
-        with:
-           version: "0.15.0"
-      - name: Setup sccache (GitHub-hosted)
-        if: steps.detect.outputs.on_infra == 'false'
+      - name: Setup sccache
         uses: mozilla-actions/sccache-action@v0.0.10
       - name: Enable sccache for cargo
         # CARGO_INCREMENTAL=0 is required: sccache silently skips caching when
-        # incremental is enabled, turning the wrapper into a no-op. The backend is
-        # conditional: omp-kata reads the shared S3 (RustFS) config from the
-        # inherited pod env; GitHub-hosted runners use the GHA cache backend.
+        # incremental is enabled, turning the wrapper into a no-op.
         shell: bash
         run: |
            {
              echo "RUSTC_WRAPPER=sccache"
              echo "CARGO_INCREMENTAL=0"
+             echo "SCCACHE_GHA_ENABLED=true"
            } >> "$GITHUB_ENV"
-           if [ -n "${SCCACHE_BUCKET:-}" ]; then
-             echo "sccache backend: shared S3 ($SCCACHE_BUCKET @ $SCCACHE_ENDPOINT)"
-           else
-             echo "SCCACHE_GHA_ENABLED=true" >> "$GITHUB_ENV"
-             echo "sccache backend: GitHub Actions cache"
-           fi
+           echo "sccache backend: GitHub Actions cache"
 
       # --- cargo-nextest (native test runner; non-cross builds only) ----------
-      - name: Ensure baked cargo-nextest (omp-kata)
-        if: steps.detect.outputs.on_infra == 'true' && inputs.target == ''
-        uses: ./.github/actions/ensure-cargo-tool
-        with:
-           binary: cargo-nextest
-           crate: cargo-nextest
-      - name: Install cargo-nextest (GitHub-hosted)
-        if: steps.detect.outputs.on_infra == 'false' && inputs.target == ''
+      - name: Install cargo-nextest
+        if: inputs.target == ''
         uses: taiki-e/install-action@v2
         with:
            tool: nextest
@@ -230,43 +180,24 @@ runs:
       # cargo-zigbuild (needs zig); MSVC targets (e.g. x86_64-pc-windows-msvc)
       # build with cargo-xwin (needs clang/lld/llvm). The napi CLI's
       # --cross-compile flag picks the backend; we just install what it needs.
-      # Cross builds only run on push/main + release (omp-kata), so the
-      # GitHub-hosted cross branches exist for portability and never fire here.
-      - name: Ensure baked zig (omp-kata, non-MSVC cross)
-        if: steps.detect.outputs.on_infra == 'true' && steps.resolve.outputs.cross_target != '' && !endsWith(steps.resolve.outputs.cross_target, '-msvc')
-        uses: ./.github/actions/ensure-zig
-        with:
-           version: "0.16.0"
-      - name: Setup zig (GitHub-hosted, non-MSVC cross)
-        if: steps.detect.outputs.on_infra == 'false' && steps.resolve.outputs.cross_target != '' && !endsWith(steps.resolve.outputs.cross_target, '-msvc')
+      - name: Setup zig (non-MSVC cross)
+        if: steps.resolve.outputs.cross_target != '' && !endsWith(steps.resolve.outputs.cross_target, '-msvc')
         uses: mlugg/setup-zig@v2
         with:
            version: 0.16.0
-      - name: Ensure baked cargo-zigbuild (omp-kata, non-MSVC cross)
-        if: steps.detect.outputs.on_infra == 'true' && steps.resolve.outputs.cross_target != '' && !endsWith(steps.resolve.outputs.cross_target, '-msvc')
-        uses: ./.github/actions/ensure-cargo-tool
-        with:
-           binary: cargo-zigbuild
-           crate: cargo-zigbuild
-      - name: Install cargo-zigbuild (GitHub-hosted, non-MSVC cross)
-        if: steps.detect.outputs.on_infra == 'false' && steps.resolve.outputs.cross_target != '' && !endsWith(steps.resolve.outputs.cross_target, '-msvc')
+      - name: Install cargo-zigbuild (non-MSVC cross)
+        if: steps.resolve.outputs.cross_target != '' && !endsWith(steps.resolve.outputs.cross_target, '-msvc')
         uses: taiki-e/install-action@v2
         with:
            tool: cargo-zigbuild
-      - name: Install LLVM tooling (GitHub-hosted, MSVC cross)
-        if: steps.detect.outputs.on_infra == 'false' && endsWith(steps.resolve.outputs.cross_target, '-msvc')
+      - name: Install LLVM tooling (MSVC cross)
+        if: endsWith(steps.resolve.outputs.cross_target, '-msvc')
         shell: bash
         run: |
            sudo apt-get update
            sudo apt-get install -y clang lld llvm
-      - name: Ensure baked cargo-xwin (omp-kata, MSVC cross)
-        if: steps.detect.outputs.on_infra == 'true' && endsWith(steps.resolve.outputs.cross_target, '-msvc')
-        uses: ./.github/actions/ensure-cargo-tool
-        with:
-           binary: cargo-xwin
-           crate: cargo-xwin
-      - name: Install cargo-xwin (GitHub-hosted, MSVC cross)
-        if: steps.detect.outputs.on_infra == 'false' && endsWith(steps.resolve.outputs.cross_target, '-msvc')
+      - name: Install cargo-xwin (MSVC cross)
+        if: endsWith(steps.resolve.outputs.cross_target, '-msvc')
         uses: taiki-e/install-action@v2
         with:
            tool: cargo-xwin
