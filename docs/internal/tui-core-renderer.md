@@ -41,34 +41,37 @@ selection, transcript persists after exit). The engine maintains one ledger:
 - **`windowTopRow` (W)** — the frame row mapped to grid row 0. The visible
   window is frame rows `[W, W + height)`, repainted in place with relative
   cursor moves.
-- **commit boundary** — reported by the component tree per frame
-  (`NativeScrollbackLiveRegion`) as two nested ends:
-  - **byte-stable end (B)** — `commitSafeEnd ?? liveRegionStart ?? frame.length`.
-    Rows below B are asserted never to re-layout and stay under the
-    committed-prefix audit.
-  - **durable end (D)** — `max(B, snapshotSafeEnd ?? B)`. Rows in `[B, D)` may
-    still drift bytes later (a streaming markdown table re-aligning columns) but
-    are *durable* — their current snapshot is permanent content, so dropping them
-    when they scroll off is forbidden. They commit **audit-exempt**: later drift
-    becomes a frozen stale row in history, never a re-anchor.
+- **live-region boundary** — reported by the component tree per frame
+  (`NativeScrollbackLiveRegion.getNativeScrollbackLiveRegionStart()`), a single
+  frame-row index. Rows above the boundary are declared **FINAL** — byte-stable
+  at the current width for the component's lifetime — and commit as exact,
+  **audited** content. Rows at/after the boundary repaint in place inside the
+  window; when they scroll above the window top they *still commit* (the tape
+  records what was on screen) but as **frozen visual snapshots** that are
+  audit-exempt while their source stays live — later drift of the source never
+  re-anchors or recommits them mid-run.
 
-Per ordinary frame: `W = max(C, L − height)`, `C' = max(C, min(D, W))`, and the
-only bytes that ever touch history are the **chunk** `frame[C, C')` written at
-the scrollback seam. The engine also tracks **`auditRows` (A ≤ C)** — the
-byte-stable leading prefix `[0, A)`; the committed-prefix audit (§2) samples only
-that prefix, so the durable suffix `[A, C)` drifting never triggers a re-anchor.
-Scrollback therefore equals `frame[0..C)` — every row exactly once, in order,
-with its content at commit time. There is nothing to guess, nothing to defer,
-and nothing to reconcile: the scroll position is irrelevant because ordinary
-updates never rewrite anything a scrolled reader could be looking at.
+Per ordinary frame: `W = max(C, L − height)` and the only bytes that ever touch
+history are the **chunk** `frame[C, C')` written at the scrollback seam. The
+engine also tracks **`#committedPrefixAuditRows` (A ≤ C)** — rows in `[0, A)`
+are HARD-VERIFIED exact-final bytes; rows in `[A, C)` are the frozen snapshots.
+When the boundary later rises past a frozen snapshot (the block finalized), it
+is strict-scanned exactly once: unchanged rows join the verified zone; a
+divergence re-anchors so the final content lands in history correctly — via an
+erase-and-replay rebuild where enabled, else by recommitting below the stale
+snapshot (duplication, never loss). Scrollback therefore equals `frame[0..C)` —
+every row exactly once, in order, with its content at commit time. There is
+nothing to guess, nothing to defer, and nothing to reconcile: the scroll
+position is irrelevant because ordinary updates never rewrite anything a
+scrolled reader could be looking at.
 
 ### What this costs (the accepted tradeoffs)
 
 - A block that has scrolled past the window top cannot reflow in place. A
-  byte-stable block stays in the live region (below B) until final; a durable
-  block (below D) commits its scroll-off snapshot, so a late layout change of an
-  already-committed row is a frozen stale row in history (duplication never loss),
-  not a dropped row.
+  still-live block's scrolled-off rows commit as frozen snapshots, so a late
+  layout change of an already-committed row is a frozen stale row in history
+  (repaired by the one-time strict scan at finalization — rebuild or
+  duplication, never loss), not a dropped row.
 - A component tree that reports **no seam** gets shell semantics: whatever
   scrolls off is final. Shrinking such a frame into its committed prefix
   re-anchors the window and leaves the stale copy in history (§3).
@@ -81,19 +84,23 @@ updates never rewrite anything a scrolled reader could be looking at.
 
 `#doRender` per frame:
 
-1. Compose the frame (`render(width)`), collecting `liveRegionStart` /
-   `commitSafeEnd` from the root children (absolute row indices).
+1. Compose the frame (`render(width)`), collecting `liveRegionStart` from the
+   root children (absolute row indices; the topmost reporter wins).
 2. **Audit the committed prefix** (`findCommittedPrefixResync`, skipped on
-   geometry frames). Components must never re-layout rows below C, but real
-   flows violate it (a TTSR rewind truncating a streamed block, an image-cap
-   demotion shrinking a committed image) and the violation must not become
-   content loss. The detector samples the prefix *tail* (up to 8 non-blank
-   rows in the last 24, SGR-stripped): an in-place edit or restyle disturbs
-   only the touched rows (≤1 mismatch ⇒ aligned ⇒ ignored — stale styling in
-   history is the accepted artifact), while any insertion/deletion shifts
-   every row below it including the tail (⇒ re-anchor C at the first changed
-   row and recommit from there: history keeps the stale copy and gains a
-   fresh one — **duplication, never loss**).
+   geometry frames). Components must never re-layout declared-final rows, but
+   real flows violate it (a TTSR rewind truncating a streamed block, an
+   image-cap demotion shrinking a committed image) and the violation must not
+   become content loss. The verified zone's check samples the prefix *tail*
+   (up to 8 non-blank rows in the last 24 verified rows, SGR-stripped): an
+   in-place edit or restyle disturbs only the touched rows (≤1 mismatch ⇒
+   aligned ⇒ ignored — stale styling in history is the accepted artifact),
+   while any insertion/deletion shifts every row below it including the tail
+   (⇒ re-anchor at the first changed row). Frozen snapshots past the verified
+   zone are exempt while live and hard-scanned in full, once, when the
+   boundary rises past them. A re-anchor repairs history by **erase-and-replay
+   rebuild** (`divergenceRebuild`, opt-in `PI_TUI_SCROLLBACK_REBUILD`,
+   non-multiplexer) so history holds the content exactly once, else by
+   recommitting from the changed row — **duplication, never loss**.
 3. Classify: **fullPaint** (first paint, `clearScrollback` session replace, or
    geometry change outside a multiplexer — all user gestures) or **update**.
 4. Window math as in §1. Two special rules:
@@ -110,15 +117,19 @@ updates never rewrite anything a scrolled reader could be looking at.
 
 | Emitter | Bytes | When |
 |---|---|---|
-| `#emitFullPaint` | home + `frame[0, C')` + window rows; with `clearScrollback`, ED3 clears history without an ED2 viewport blank | gestures only |
+| `#emitFullPaint` | home + `frame[0, C')` + window rows; with `clearScrollback`, ED3 clears history without an ED2 viewport blank | gestures, plus the opt-in divergence rebuild |
 | `#emitUpdate` scroll-append | `\r\n` + new bottom rows + changed-row range | the rows leaving the screen are exactly the chunk, content untouched since painted |
 | `#emitUpdate` in-window diff | relative move + changed-row range rewrite | nothing scrolls, nothing commits (cursor-only when nothing changed) |
 | `#emitUpdate` seam rewrite | chunk rows + full window rewrite | commit advance, window re-anchor, hidden-gap backfill, mux resize |
 
 **ED3 (`CSI 3 J`) is emitted in exactly one place** — `#emitFullPaint` with
-`clearScrollback: true` — and is reached only by user gestures: session
+`clearScrollback: true` — reached by user gestures: session
 replace/branch/resume (`requestRender(true, { clearScrollback: true })`),
-resize outside a multiplexer, `resetDisplay()` (Ctrl+L). It clears native
+resize outside a multiplexer, `resetDisplay()` (Ctrl+L); plus, when the
+opt-in scrollback rebuild is enabled (`PI_TUI_SCROLLBACK_REBUILD`), the
+`divergenceRebuild` repair path on non-multiplexer terminals (committed
+history diverged from the frame — erase and replay so history holds the
+content exactly once instead of a duplicated block). It clears native
 history without `ED2` first; the replay overwrites every row from home so
 terminals without synchronized output do not expose a blank viewport. A gesture
 pins the user to the tail, so the history snap is acceptable; multiplexers never
@@ -130,61 +141,37 @@ several terminal families snap a scrolled reader to the bottom on those.
 ### The commit-boundary seam (the load-bearing app contract)
 
 `NativeScrollbackLiveRegion` (tui.ts) is how a component keeps mutable rows out
-of history:
+of the audited history. The interface is a **single method**:
 
 - `getNativeScrollbackLiveRegionStart()` — first row that may still mutate
   (everything below it, including root chrome rendered after it, stays in the
-  window).
-- `getNativeScrollbackCommitSafeEnd()` — optional **byte-stable** deeper boundary
-  (B): the append-only prefix of the live region (a streaming assistant message's
-  settled rows), asserted never to re-layout, so it stays under the audit.
-- `getNativeScrollbackSnapshotSafeEnd()` — optional **durable** deeper boundary
-  (D ≥ B): rows whose current snapshot is permanent but may still drift bytes
-  (a streaming markdown table whose columns keep re-aligning). They commit on
-  scroll-off (never dropped) but **audit-exempt** — drift after commit freezes a
-  stale row in history rather than re-anchoring the audit and spraying duplicate
-  snapshots. Without it, a commit-stable block that perpetually re-lays-out an
-  interior row (a table taller than the window) had no byte-stable prefix past
-  the table head, so its scrolled-off rows were committed nowhere and repainted
-  nowhere — silent content loss as the reply streamed.
+  window). Rows above it are declared FINAL and commit as exact, audited
+  content. When several root children report a seam in one frame, the topmost
+  boundary wins.
 
-`TranscriptContainer` implements this for the coding agent: finalized blocks
-freeze (their render is snapshotted, so their content can never drift after
-the engine may have committed it), still-mutating blocks
-(`isTranscriptBlockFinalized?.() === false`) anchor the live region, and
-`deriveLiveCommitState` derives the byte-stable commit-safe end of the first
-live block from two independent signals:
+There is no component-reported deeper boundary: the engine itself guarantees
+no loss, because live rows that scroll above the window top commit as frozen,
+audit-exempt visual snapshots, then get their one-time strict scan when the
+boundary rises past them (§1). Adjacent engine hooks components may implement:
 
-- **append-only detection** — a block observed growing without visibly
-  rewriting an interior row commits its full body; a rewrite suspends this
-  for `VOLATILE_REARM_FRAMES` clean frames.
-- **stable-prefix ratchet** — rows that stayed visibly identical for a full
-  `STABLE_PREFIX_COMMIT_FRAMES` window commit even while the block's tail
-  keeps rewriting (a task tool's static prompt above a ticking progress
-  tree). Without it, one perpetually animating row holds the whole block out
-  of history, so a block taller than the window reads as cut off (head
-  neither committed nor on screen) for the entire run. The ratchet tracks the
-  window-minimum common prefix; a rewrite above the promoted run retreats it
-  to the divergence, and rows that already committed are the engine audit's
-  problem (recommit → duplication, never loss). That retreat also arms a
-  permanent **rewrite floor** at the divergence: a row that mutates *after*
-  surviving a full promotion window is a slow ticker (an agent row's tool/cost
-  counter updating every few seconds), not settling content — without the
-  floor, every quiet stretch re-promoted it and every later tick forced an
-  audit recommit, spraying stale snapshots of the block into scrollback for
-  the whole run. Rows at/after the floor never re-promote while the block
-  lives (the floor index travels with append-shaped insertions above it);
-  one-off re-layouts before any promotion never arm it, and the append-only
-  path commits the full block regardless.
+- `NativeScrollbackCommittedRows.setNativeScrollbackCommittedRows(rows)` — the
+  engine pushes each child's committed-row count down after commits, letting
+  the child drop or seal content it no longer needs to re-render.
+- `NativeScrollbackReplay.prepareNativeScrollbackReplay()` — a component that
+  discards rows after they enter scrollback rehydrates its complete frame here
+  before a destructive full replay.
+- the **render-stability report** — a component that mutates its returned
+  render array in place reports how many leading rows are byte-identical since
+  the last read, letting the engine skip marker extraction, line preparation,
+  and the committed-prefix audit for that prefix. Reading consumes the report
+  (the baseline re-bases), so out-of-band `render()` calls can only lower it.
 
-The byte-stable end gates audited commits; the **durable snapshot end** is the
-separate floor that guarantees no loss. `TranscriptContainer` reports the whole
-body of a still-live **commit-stable** block (`isTranscriptBlockCommitStable?.()
-!== false`) as the snapshot-safe end, so its scrolled-off rows always reach
-history even while its interior re-lays-out. Provisional blocks
-(`isTranscriptBlockCommitStable?.() === false`: a collapsing tool/edit preview
-whose head is a throwaway tail window) report no snapshot-safe end, so their
-head is correctly dropped rather than stranded as stale history.
+`TranscriptContainer` implements the seam for the coding agent: finalized
+blocks freeze (their render is snapshotted, so their content can never drift
+after the engine may have committed it), the first still-mutating block
+(`isTranscriptBlockFinalized?.() === false`) anchors the live region, and
+displaceable snapshot blocks (todo/poll cards, `isDisplaceableBlock`) are
+sealed in place once their rows have entered the tape.
 
 Freezing is unconditional — it is the engine's required guarantee, not a
 per-terminal optimization.
@@ -194,8 +181,8 @@ per-terminal optimization.
 ## 3. Invariants — MUST / NEVER
 
 1. **NEVER add a new `CSI 3 J` (ED3) callsite.** ED3 flows only through
-   `#emitFullPaint({ clearScrollback: true })`, only for gestures, never inside
-   multiplexers.
+   `#emitFullPaint({ clearScrollback: true })` — gestures and the opt-in
+   divergence rebuild — never inside multiplexers.
 2. **NEVER rewrite a committed row.** No emitter may touch frame rows `< C`,
    and `W ≥ C` always (re-showing a committed row on the grid duplicates it
    for a scrolling reader — the historical corruption family). When a
@@ -350,6 +337,7 @@ default-on only for kitty/ghostty (`PI_NO_KITTY_PLACEHOLDERS` /
 | `PI_NOTIFICATIONS=off\|0\|false` | Suppress terminal notifications. |
 | `PI_DEBUG_REDRAW=1` | Log the chosen render intent + ledger state per frame to the debug log. |
 | `PI_TUI_RESIZE_IN_PLACE=1\|0` | Force resize to repaint in place (no alt-screen borrow, no ED3 rewrap) on / off. Default-on for terminals that re-report size on alt-screen toggles (Warp). |
+| `PI_TUI_SCROLLBACK_REBUILD=1\|true` | Opt into the `divergenceRebuild` repair: when committed history diverges from the frame on a non-multiplexer terminal, erase and replay history (ED3 full paint) so content lands exactly once, instead of recommitting below the stale copy. |
 
 Removed with the old engine: `PI_TUI_ED3_SAFE` (no ED3-risk lever exists),
 `PI_CLEAR_ON_SHRINK` (shrinks always clear exactly), `PI_TUI_DEBUG` (per-render
@@ -375,3 +363,5 @@ replay/reduce tooling).
 - [ ] New probe? Typed sentinel owner + split-reply test.
 - [ ] New width path? Routed through the shared native engine, clamped (never
       thrown) in the hot path.
+
+*Verified against `7ca44d3` on 2026-07-17.*

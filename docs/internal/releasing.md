@@ -55,6 +55,12 @@ platform binary and then publishes:
 - the **npm** packages (`@veyyon/*`);
 - the **Homebrew** formula.
 
+Binaries compile with Bun bytecode by default (`PI_BUILD_BYTECODE=0` opts out) —
+~70ms warm startup instead of ~650ms of JS parse per launch, at the cost of a
+larger binary. `packages/coding-agent/scripts/compile-binary.ts` owns the build
+and fails closed if the bundle contains any `import.meta.resolve`/`import.meta.env`
+(they crash Bun bytecode — upstream oven-sh/bun#21097).
+
 Once the release is published, `curl -fsSL https://get.veyyon.dev | sh` installs it
 through `releases/latest` with no further action. Verify with a real install on a
 clean machine, not just a local `bun`/`cargo` build. See [deployment.md](./deployment.md)

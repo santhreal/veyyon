@@ -102,7 +102,14 @@ function createFixture(streamingMessage?: AssistantMessage) {
 		updatePendingMessagesDisplay: vi.fn(),
 		ensureLoadingAnimation: vi.fn(),
 		statusContainer,
-		loadingAnimation: undefined,
+		loadingAnimation: undefined as { stop(): void } | undefined,
+		clearWorkingLoader(): boolean {
+			const self = this as { loadingAnimation?: { stop(): void } };
+			if (!self.loadingAnimation) return false;
+			self.loadingAnimation.stop();
+			self.loadingAnimation = undefined;
+			return true;
+		},
 		autoCompactionLoader: undefined,
 		retryLoader: undefined,
 		editor: {},

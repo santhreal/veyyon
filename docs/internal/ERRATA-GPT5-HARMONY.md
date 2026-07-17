@@ -1,8 +1,17 @@
 # ERRATA — GPT-5 Harmony-Header Leakage
 
-Historical research note, not a current runtime contract. The statistics below
-come from the named local stats database snapshot, not from checked-in tests or
-runtime code.
+Research note. The statistics below come from the named local stats database
+snapshot, not from checked-in tests or runtime code. The detection/recovery
+design this note motivated **is shipped**: `packages/ai/src/utils/harmony-leak.ts`
+implements signal-fusion detection (marker `M`, channel-word `C`, glitch-token
+`G`, script-run `S`, body-cascade `B`, fake-result `R` signals) plus
+truncate-and-resume recovery for hashline-DSL `edit` and `eval` inputs
+(`*** Abort` sentinel); other tools abort-and-retry in the agent loop. Detection
+is on for every `openai-codex` model (`isHarmonyLeakMitigationTarget`). Sections
+of the original research note beyond §2 (detection design §3, reproduction
+experiments §7) were not carried into this repo; where the text below cites
+them, the shipped implementation in `harmony-leak.ts` is the authoritative
+successor.
 
 ## 1. The problem
 
@@ -134,7 +143,9 @@ Chinese gambling SEO (`大发时时彩`, `天天中彩票`), Georgian/Abkhaz jun
 and Thai casino spam — well-known low-quality crawl residue.
 
 This is the same script distribution observed in the controlled
-reproduction (§7.3), independent of the prompt's natural language.
+reproduction (original research note §7.3, not carried into this repo),
+independent of the prompt's natural language. The script classes feed the
+`S` signal's Unicode ranges in `harmony-leak.ts`.
 
 ### 2.7 Failure-mode breakdown for the `edit` tool
 
@@ -142,7 +153,7 @@ The `edit` tool exists in two variants in the corpus:
 
 | Variant                                            | Calls | Recovery                                                                                                                                             |
 | -------------------------------------------------- | ----: | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Patch-DSL (`[PATH#TAG]`/anchor/`SWAP DEL INS` ops) |    27 | **Recoverable** by op-truncation (§3.3)                                                                                                              |
+| Patch-DSL (`[PATH#TAG]`/anchor/`SWAP DEL INS` ops) |    27 | **Recoverable** by op-truncation (shipped as `recoverHarmonyToolCall` in `harmony-leak.ts`)                                                          |
 | JSON-schema (`{path,edits:[…]}`)                   |    11 | **Not recoverable** — contamination is escaped _inside_ JSON strings, parser accepts it cleanly, content would be written verbatim into source files |
 
 For Patch-DSL leaks specifically:
@@ -198,7 +209,7 @@ explained:**
 
 - **The brackets never appear** (§1, §2.5). The mask is what makes the
   leak land in plain text instead of as a real envelope-close.
-- **Counterintuitive grammar dependency** (§7.4). The leak is _worse_ in
+- **Counterintuitive grammar dependency** (original note §7.4). The leak is _worse_ in
   formats closest to OpenAI's training distribution. Off-distribution
   custom grammars dampen the macro-prior basin; the official
   `*** Begin Patch` format is the strongest collapse target.
@@ -207,3 +218,5 @@ The 2023 SolidGoldMagikarp paper documented mechanism (1)+(2)+(4). The
 new piece is (5): when constrained decoding masks the natural collapse
 target, the mass laundered through the un-masked plain-text shadow
 becomes a structurally-invisible exfiltration channel.
+
+*Verified against `7ca44d3` on 2026-07-17.*

@@ -31,21 +31,24 @@ Boundary rule: the TUI engine is message-agnostic. It only knows `Component.rend
 
 `InteractiveMode` constructs `TUI(new ProcessTerminal(), settings.get("showHardwareCursor"))`, applies `tui.maxInlineImages` and Kitty text-sizing settings, then creates persistent containers:
 
-- `chatContainer`
+- `chatContainer` (a `TranscriptContainer`)
 - `pendingMessagesContainer`
-- `statusContainer`
 - `todoContainer`
 - `subagentContainer`
 - `btwContainer`
 - `omfgContainer`
 - `errorBannerContainer`
 - `modelCycleContainer` (ctrl+p model-role cycle chip track)
-- `statusLine`
+- a bottom-anchor fill spacer (sinks the status + composer block to the viewport bottom on the home screen)
+- `statusContainer` (transient loaders; sits below the sticky todo/subagent HUDs, above the editor)
+- `statusLine` (hook statuses only; quiet status renders around the composer)
 - `hookWidgetContainerAbove`
+- the location line and composer hairline
 - `editorContainer` (holds `CustomEditor`)
+- the capability line and composer shortcuts
 - `hookWidgetContainerBelow`
 
-`init()` wires the tree in that order after any startup warnings/welcome/changelog, focuses the editor, registers input handlers via `InputController`, starts TUI, pushes terminal title state, updates the editor border, and requests a forced render.
+(All live containers except `chatContainer` and the plain hook/editor `Container`s are `AnchoredLiveContainer`s.) `init()` wires the tree in that order after any startup warnings/welcome/changelog, focuses the editor, registers input handlers via `InputController`, starts TUI, pushes terminal title state, updates the editor border, and requests a forced render.
 A forced render (`requestRender(true)`) queues a viewport repaint or explicit session replacement; it does **not** throw away previous-line history by default.
 
 ## Terminal lifecycle and stdin normalization
@@ -59,7 +62,7 @@ A forced render (`requestRender(true)`) queues a viewport repaint or explicit se
 5. Queries Kitty keyboard protocol support (`CSI ? u`), then enables protocol flags if supported; otherwise enables modifyOtherKeys fallback after a short timeout.
 6. Queries OSC 11 background color and Mode 2031 appearance notifications for dark/light theme detection.
 7. Queries OSC 99 notification capabilities.
-8. Starts periodic OSC 11 polling only where safe, then probes DEC private modes 2026/2048/2031 via DECRQM.
+8. Probes DEC private modes 2026 (synchronized output), 2048 (in-band resize), 2031, and the xterm scroll-to-bottom modes via DECRQM. (Earlier builds also polled OSC 11 every 30s for terminals without Mode 2031, but each poll wiped the user's active text selection on several terminals — issue #3297 — so mid-session theme tracking now relies on Mode 2031 push notifications only, with a scoped fallback on native Windows Terminal after DECRQM confirms 2031 unsupported.)
 
 `StdinBuffer` behavior:
 
@@ -191,9 +194,10 @@ Escape exits inactive mode by clearing editor text and restoring border color; w
 
 `InputController.handleCtrlZ()`:
 
-1. Registers one-shot `SIGCONT` handler to restart TUI and force render.
-2. Stops TUI before suspend.
-3. Sends `SIGTSTP` to process group.
+1. No-op with a status message on Windows (`process.kill` throws on job-control signals there).
+2. Registers one-shot `SIGCONT` handler to restart TUI and force render.
+3. Stops TUI before suspend.
+4. Sends `SIGSTOP` (not `SIGTSTP`) to the foreground process group (`process.kill(0, "SIGSTOP")`): brush-core's tokio SIGTSTP listener permanently swallows SIGTSTP after the first bash tool call (issue #3461), and pgid 0 keeps launcher shims / pipeline peers consistent with the shell's job-control view. If the signal is refused, the handler is detached and the TUI restarted so the user is not stranded.
 
 ## Cancellation paths
 
@@ -222,3 +226,5 @@ Throttled/debounced paths:
 - Editor autocomplete updates (inside `Editor`) use debounce timers, reducing recompute churn during typing.
 
 The runtime therefore mixes event-driven state transitions with bounded render cadence to keep interactivity responsive without repaint storms.
+
+*Verified against `7ca44d3` on 2026-07-17.*

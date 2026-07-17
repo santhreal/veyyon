@@ -300,7 +300,7 @@ export const UNICODE_SYMBOLS: SymbolMap = {
 	"icon.folder": "",
 	"icon.worktree": "⧉",
 	"icon.search": "⌕",
-	"icon.scratchFolder": "",
+	"icon.scratchFolder": "🗑",
 	"icon.file": "▤",
 	"icon.git": "",
 	"icon.branch": "",
@@ -968,13 +968,15 @@ export type SpinnerType = "status" | "activity" | "thinking";
 
 export const SPINNER_FRAMES: Record<SymbolPreset, Record<SpinnerType, string[]>> = {
 	unicode: {
-		status: ["⣾", "⣽", "⣻", "⢿", "⡿", "⣟", "⣯", "⣷"],
-		activity: ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"],
+		// The breathing pixel: the sun's intensity ramp inhaling and exhaling —
+		// the brand compressed into one quiet cell.
+		status: ["·", ":", "░", "▒", "▓", "█", "▓", "▒", "░", ":"],
+		activity: ["·", ":", "░", "▒", "▓", "█", "▓", "▒", "░", ":"],
 		thinking: ["✻", "✼", "❉", "❊", "✺", "✹", "✸", "✶"],
 	},
 	nerd: {
-		status: ["󱑖", "󱑋", "󱑌", "󱑍", "󱑎", "󱑏", "󱑐", "󱑑", "󱑒", "󱑓", "󱑔", "󱑕"],
-		activity: ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"],
+		status: ["·", ":", "░", "▒", "▓", "█", "▓", "▒", "░", ":"],
+		activity: ["·", ":", "░", "▒", "▓", "█", "▓", "▒", "░", ":"],
 		thinking: ["✻", "✼", "❉", "❊", "✺", "✹", "✸", "✶"],
 	},
 	ascii: {

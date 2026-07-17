@@ -6370,7 +6370,7 @@ export class AgentSession {
 		//
 		// BOUNDED: an owned manager may hold an HTTP/SSE server whose session-
 		// termination DELETE blocks up to the MCP request timeout (30s default,
-		// unbounded when OMP_MCP_TIMEOUT_MS=0), so awaiting `disconnectAll()`
+		// unbounded when VEYYON_MCP_TIMEOUT_MS=0 (legacy OMP_MCP_TIMEOUT_MS)), so awaiting `disconnectAll()`
 		// unbounded would stall /exit and print-mode shutdown on a broken remote
 		// endpoint. Race it against a short deadline — stdio close (the subprocess
 		// reap this targets) completes well within the bound; a slow transport

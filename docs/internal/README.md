@@ -28,12 +28,14 @@ New here? Read [onboarding](onboarding.md) and [testing](testing.md) first.
 | [testing.md](testing.md) | How the suites are organized and what to run. |
 | [releasing.md](releasing.md) | Cutting a release: versioning, changelog, binaries, publish. |
 | [deployment.md](deployment.md) | Website (Cloudflare Pages) and install-script deployment. |
+| [agent-workflow.md](agent-workflow.md) | How an autonomous agent works this repo and ships updates. |
 
 ## Design and brand
 
 | Doc | Covers |
 | --- | --- |
-| [brand.md](brand.md) | Name, palette (the ember sun), and identity rules. |
+| [design.md](design.md) | The full design & brand contract: naming, voice, wordmark, type, color, the sun motif. |
+| [brand.md](brand.md) | Condensed identity contract: name, palette (the ember sun), and identity rules. |
 | [tui-design-language.md](tui-design-language.md) | The terminal-UX conventions Veyyon follows. |
 | [retained-patterns.md](retained-patterns.md) | Coordination and prompt patterns kept from upstream. |
 
@@ -133,6 +135,12 @@ New here? Read [onboarding](onboarding.md) and [testing](testing.md) first.
 | --- | --- |
 | [user-facing-packages.md](user-facing-packages.md) | The published packages and their bins. |
 
+## Tool-call conversion notes
+
+Per-model tool-call wire-format notes live in [toolconv/](toolconv/) (Anthropic, DeepSeek, Gemini, Gemma, Harmony, Kimi, Qwen, GLM, pi-native).
+
 ## Operations
 
 Step-by-step runbooks for when something breaks live in [runbooks/](runbooks/).
+
+*Verified against `7ca44d3` on 2026-07-17.*

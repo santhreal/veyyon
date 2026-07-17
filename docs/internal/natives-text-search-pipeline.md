@@ -2,11 +2,11 @@
 
 This document maps the `@veyyon/pi-natives` text/search/code surface from generated JS/TS exports to Rust N-API modules and back to JS result objects.
 
-Terminology follows `docs/natives-architecture.md`:
+Terminology follows [`natives-architecture.md`](./natives-architecture.md):
 
 - **Generated binding**: public API in `packages/natives/native/index.d.ts`.
 - **Rust module layer**: N-API exports in `crates/pi-natives/src/*`.
-- **Shared scan cache**: `fs_cache`-backed directory-entry cache used by discovery/search flows.
+- **Shared scan cache**: TTL directory-entry cache owned by `pi-walker` (`crates/pi-walker/src/cache.rs`) used by discovery/search flows.
 
 ## Implementation files
 
@@ -14,7 +14,8 @@ Terminology follows `docs/natives-architecture.md`:
 - `crates/pi-natives/src/grep.rs`
 - `crates/pi-natives/src/glob.rs`
 - `crates/pi-natives/src/glob_util.rs`
-- `crates/pi-natives/src/fs_cache.rs`
+- `crates/pi-natives/src/iofs.rs`
+- `crates/pi-walker/src/cache.rs`
 - `crates/pi-natives/src/fd.rs`
 - `crates/pi-natives/src/ast.rs`
 - `crates/pi-natives/src/text.rs`
@@ -30,7 +31,7 @@ Terminology follows `docs/natives-architecture.md`:
 | `hasMatch(content, pattern, ignoreCase?, multiline?)`                           | `hasMatch`                                       | `grep.rs`      |
 | `fuzzyFind(options)`                                                            | `fuzzyFind`                                      | `fd.rs`        |
 | `glob(options, onMatch?)`                                                       | `glob`                                           | `glob.rs`      |
-| `invalidateFsScanCache(path?)`                                                  | `invalidateFsScanCache`                          | `fs_cache.rs`  |
+| `invalidateFsScanCache(path?)`                                                  | `invalidateFsScanCache`                          | `iofs.rs`      |
 | `astGrep(options)`                                                              | `astGrep`                                        | `ast.rs`       |
 | `astMatch(options)`                                                             | `astMatch`                                       | `ast.rs`       |
 | `astEdit(options)`                                                              | `astEdit`                                        | `ast.rs`       |
@@ -64,9 +65,8 @@ Terminology follows `docs/natives-architecture.md`:
 - **Single-file branch**
   - `grep` resolves path, checks metadata is file, and searches that file.
 - **Directory branch**
-  - Optional cache lookup via `fs_cache::get_or_scan` when `cache: true`.
-  - Fresh scan via `fs_cache::force_rescan` when `cache: false`.
-  - Optional empty-result recheck when cached results are older than the empty-result recheck threshold.
+  - Directory walks go through `pi_walker::WalkRequest` (files-only filter, `WalkDetail::Minimal`, `FollowLinks::Never`, `SizeHintPolicy::WhenCheap`) built by `build_grep_walk_request`.
+  - Grep always walks with `.cache(false)` — it does not use the shared TTL scan cache (that cache serves `glob`/`fuzzyFind`).
   - Entry filtering: file-only + optional glob filter (`glob_util`) + optional type filter mapping (`js`, `ts`, `rust`, etc.).
 
 ### Search/collection semantics
@@ -97,24 +97,22 @@ Terminology follows `docs/natives-architecture.md`:
 
 ### Malformed regex handling
 
-`grep.rs` sanitizes braces before regex compile:
+`grep.rs#build_matcher` runs a tolerant compile chain:
 
-- Invalid repetition-like braces are escaped (`{`/`}` -> `\{`/`\}`) when they cannot form `{N}`, `{N,}`, `{N,M}`.
-- This prevents common literal-template fragments (for example `${platform}`) from failing as malformed repetition.
-- After brace sanitization, a compile error reporting an unclosed/unopened group triggers one retry with unescaped parentheses escaped, so literal snippets like `fetchAnthropicProvider(` still search instead of erroring.
-- Remaining invalid regex syntax still returns a regex error.
+1. Braces that cannot form `{N}`, `{N,}`, `{N,M}` are escaped (`{`/`}` -> `\{`/`\}`), so literal-template fragments (for example `${platform}`) do not fail as malformed repetition.
+2. The sanitized pattern is compiled with the Rust regex engine; on failure it is retried with PCRE2, which supports lookaround and backreferences the Rust engine omits.
+3. An unclosed/unopened-group error triggers one retry with unescaped parentheses escaped (so literal snippets like `fetchAnthropicProvider(` still search), tried on both engines.
+4. Final fallback: the original pattern is `regex::escape`d and matched literally; only if that also fails does the call return `Regex error: ...`.
 
 ## 2) File discovery (`glob`) and fuzzy path search (`fuzzyFind`)
 
-`glob` and `fuzzyFind` share `fs_cache` scans; matching logic differs.
+`glob` and `fuzzyFind` share the `pi-walker` TTL scan cache; matching logic differs.
 
 ### `glob` flow
 
 1. Caller passes `GlobOptions` directly. `pattern` and `path` are required in the generated type.
 2. Rust resolves the search path and compiles pattern via `glob_util::compile_glob`.
-3. Entry source:
-   - `cache=true` -> `get_or_scan` + optional stale-empty `force_rescan`.
-   - `cache=false` -> `force_rescan(..., store=false)` (fresh only).
+3. Entry source: a `pi_walker::WalkRequest` with `.cache(config.cache)` and `.empty_recheck(EmptyRecheck::Configured)` — `cache=true` serves from the walker TTL cache (with stale-empty recheck), `cache=false` walks fresh without storing.
 4. Filtering:
    - skip `.git` always;
    - skip `node_modules` unless requested (`includeNodeModules`) or pattern mentions `node_modules`;
@@ -125,7 +123,7 @@ Terminology follows `docs/natives-architecture.md`:
 ### `fuzzyFind` flow
 
 1. Rust implementation lives in `fd.rs`; generated export is `fuzzyFind`.
-2. Shared scan source from `fs_cache` with the same cache/no-cache split and stale-empty recheck policy.
+2. Shared scan source from the `pi-walker` cache with the same cache/no-cache split and stale-empty recheck policy (fd walks with `FollowLinks::Always`).
 3. Scoring:
    - exact / starts-with / contains / subsequence-based fuzzy score;
    - separator/punctuation-normalized scoring path;
@@ -158,30 +156,24 @@ Terminology follows `docs/natives-architecture.md`:
 
 These exports are direct native APIs used by tooling; they are not mediated by a TS wrapper in `packages/natives`.
 
-## 4) Shared scan/cache lifecycle (`fs_cache`)
+## 4) Shared scan/cache lifecycle (`pi-walker` cache)
 
-`fs_cache` stores scan results as normalized relative entries (`path`, `fileType`, optional `mtime` and regular-file `size`) keyed by:
+The scan cache lives in `crates/pi-walker/src/cache.rs`. `collect_entries(root, options, heartbeat)` stores scan results as normalized relative entries (`path`, `fileType`, optional `mtime` and regular-file `size`) keyed by the canonical search root plus the **entire** `WalkOptions` struct (with the `cache` flag normalized out) — so `include_hidden`, `use_gitignore`, `skip_node_modules`, `follow_links`, and scan detail (`Minimal` vs `Full`) all key distinct cache entries.
 
-- canonical search root,
-- `include_hidden`,
-- `use_gitignore`,
-- `skip_node_modules`,
-- scan detail (`Minimal` vs `Full`).
-
-`follow_links` affects a fresh scan but is not currently part of the cache key.
+Tunables are env-configured: `FS_SCAN_CACHE_TTL_MS` (default 1000ms; `0` disables), `FS_SCAN_EMPTY_RECHECK_MS` (default 200ms), and a max-entry cap with oldest-entry eviction.
 
 ### Cache state transitions
 
 1. **Miss / disabled**
-   - TTL is `0` or key absent/expired -> fresh collection.
+   - TTL is `0`, `options.cache` is false, or key absent/expired -> fresh collection (fresh cached scans are stored and return `cache_age_ms: 0`).
 2. **Hit**
    - Entry age is within TTL -> return cached entries + `cache_age_ms`.
 3. **Stale-empty recheck**
-   - If query yields zero matches and cache age exceeds the empty-result threshold, force one rescan.
+   - Requests that opt in via `EmptyRecheck::Configured` (glob, fuzzyFind): if the query yields zero matches and cache age exceeds the empty-result threshold, force one rescan.
 4. **Invalidation**
-   - `invalidateFsScanCache(path?)`:
+   - `invalidateFsScanCache(path?)` (exported from `iofs.rs`, backed by `pi_walker::cache::invalidate_all` / `invalidate_path_string`):
      - no arg: clear all keys;
-     - path arg: remove keys for roots affected by that path.
+     - path arg: remove keys whose cached root contains that path.
 
 ### Stale-result tradeoff
 
@@ -255,7 +247,7 @@ Text functions generally return deterministic transformed output; errors are lim
 | `astGrep` / `astEdit`        | Yes               | No                   | syntax-aware file search/edit                 |
 | `glob`                       | Yes               | Optional             | directory scans + glob filtering              |
 | `fuzzyFind`                  | Yes               | Optional             | directory scans + fuzzy scoring               |
-| `grep` (file/dir path)       | Yes               | Optional in dir mode | ripgrep over files, optional filters/callback |
+| `grep` (file/dir path)       | Yes               | No (`.cache(false)`) | ripgrep over files, optional filters/callback |
 
 ## End-to-end lifecycle summary
 
@@ -265,3 +257,5 @@ Text functions generally return deterministic transformed output; errors are lim
 4. Worker loops periodically call cancel heartbeat; timeout/abort can terminate execution.
 5. Rust shapes outputs into N-API objects (`lineNumber`, `matchCount`, `limitReached`, etc.).
 6. Generated bindings return typed JS objects and optional per-match callbacks for `grep`/`glob`.
+
+*Verified against `7ca44d3` on 2026-07-17.*

@@ -222,3 +222,5 @@ When a server (vLLM/SGLang/Ollama) bridges Harmony to Chat Completions JSON:
 - openai/harmony test fixtures (verbatim rendered streams): `test-data/test_render_functions_with_parameters.txt`, `test-data/test_does_not_drop_if_ongoing_analysis.txt`, `test-data/test_tool_response_parsing.txt`, `test-data/test_streamable_parser.txt`, `test-data/test_browser_and_function_tool.txt` (https://github.com/openai/harmony/tree/main/test-data)
 - vLLM tool calling / gpt-oss parser flags: https://docs.vllm.ai/en/latest/features/tool_calling/
 - SGLang gpt-oss usage (`--tool-call-parser gpt-oss`): https://docs.sglang.io/basic_usage/gpt_oss.html
+
+*Verified against `7ca44d3` on 2026-07-17.*

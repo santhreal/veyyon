@@ -21,10 +21,13 @@ function silenceStdout(): () => string {
 describe("auth-broker import (CLIProxyAPI)", () => {
 	let agentDir = "";
 	let cliproxyDir = "";
-	let originalAgentDir: string | undefined;
+	// `setAgentDir` writes VEYYON_CODING_AGENT_DIR and PI_CODING_AGENT_DIR in
+	// lockstep — snapshot/restore both so the tempdir override cannot leak into
+	// tests that run after this file in the same process.
+	let originalAgentDirEnv: Array<[string, string | undefined]> = [];
 
 	beforeEach(async () => {
-		originalAgentDir = process.env.OMP_AGENT_DIR;
+		originalAgentDirEnv = ["VEYYON_CODING_AGENT_DIR", "PI_CODING_AGENT_DIR"].map(key => [key, process.env[key]]);
 		agentDir = await fs.mkdtemp(path.join(os.tmpdir(), "omp-import-agent-"));
 		cliproxyDir = await fs.mkdtemp(path.join(os.tmpdir(), "omp-import-cliproxy-"));
 		setAgentDir(agentDir);
@@ -32,8 +35,10 @@ describe("auth-broker import (CLIProxyAPI)", () => {
 
 	afterEach(async () => {
 		process.stdout.write = ORIGINAL_STDOUT_WRITE;
-		if (originalAgentDir === undefined) delete process.env.OMP_AGENT_DIR;
-		else process.env.OMP_AGENT_DIR = originalAgentDir;
+		for (const [key, value] of originalAgentDirEnv) {
+			if (value === undefined) delete process.env[key];
+			else process.env[key] = value;
+		}
 		await removeWithRetries(agentDir);
 		await removeWithRetries(cliproxyDir);
 	});

@@ -56,10 +56,10 @@ Normalization points:
 
 Tool-call argument streaming:
 
-- each tool block carries internal `partialJson`
-- every JSON delta appends to `partialJson`
-- `arguments` are reparsed on appended deltas via `parseStreamingJsonThrottled()` (re-parse only after ≥256 new bytes)
-- `toolcall_end` reparses once more, then strips `partialJson`
+- each tool block carries a symbol-keyed buffer `[kStreamingPartialJson]` (`packages/ai/src/utils/block-symbols.ts` — symbol keys keep it out of JSON serialization)
+- every `input_json_delta` appends to that buffer
+- `arguments` are reparsed on appended deltas via `parseStreamingJsonThrottled()` (re-parse only after ≥256 new bytes, tracked by `[kStreamingLastParseLen]`)
+- at finalize (`finalizeStreamBlock`), the buffer is parsed once more with `parseJsonWithRepair`; on failure the best-effort streamed arguments are kept, or — if nothing was recovered — `arguments` becomes a loud `{ __parseError, __rawJson }` record; the buffer is then cleared via `clearStreamingPartialJson`
 
 ## OpenAI Responses family (`openai-responses`, `openai-codex-responses`, `azure-openai-responses`)
 
@@ -76,10 +76,10 @@ Normalization points:
 
 Tool-call argument streaming:
 
-- same `partialJson` accumulation pattern as Anthropic for function-call JSON arguments
+- same symbol-keyed `[kStreamingPartialJson]` accumulation pattern as Anthropic for function-call JSON arguments
 - custom tools stream raw string input and expose final arguments as `{ input: <raw> }`
 - providers that send only `response.function_call_arguments.done` still populate final args
-- tool call IDs are normalized as `"<call_id>|<item_id>"`
+- tool call IDs are normalized as `"<call_id>|<item_id>"` (`encodeResponsesToolCallId` in `openai-shared.ts`; a missing item id gets a stable synthetic `fc_<hash>` part)
 
 ## Google Generative AI (`google-generative-ai`)
 
@@ -127,11 +127,12 @@ Error semantics are split in two stages:
 1. **Model completion semantics** (provider reported finish reason/status)
 2. **Transport/runtime failure** (network/client/parser/abort exceptions)
 
-If provider stream throws or signals failure, each provider wrapper catches and emits terminal `error` event with:
+If provider stream throws or signals failure, each provider wrapper catches and calls the unified `AIError.finalize(error, opts)` (`packages/ai/src/error/finalize.ts`), which builds the full error bundle assigned onto the assistant message:
 
-- `stopReason = "aborted"` when abort signal is set
-- otherwise `stopReason = "error"`
-- `errorMessage = finalizeErrorMessage(error, rawRequestDump)` (`packages/ai/src/utils/http-inspector.ts`), which wraps `formatErrorMessageWithRetryAfter()` and appends any captured HTTP-error body / raw-request dump (the `cursor` wrapper calls `formatErrorMessageWithRetryAfter()` directly)
+- `stopReason = "aborted"` when the caller cancelled (an `abortTracker` distinguishes caller aborts from local aborts like stream timeouts; a bare `signal` is the fallback), otherwise `"error"`
+- `errorId` from `classify`/`classifyMessage` (the typed `AIError` flag id consumed by session retry)
+- `errorStatus` from the error or the captured non-2xx response
+- `errorMessage` from `formatMessage` (`packages/ai/src/error/format.ts`), which appends any captured HTTP-error body / raw-request dump; a local abort reason (e.g. a first-event timeout) supersedes it. Anthropic's wrapper additionally uses `finalizeErrorMessage` from `utils/http-inspector.ts`.
 
 ## Malformed chunk / SSE parse failure behavior
 
@@ -142,7 +143,8 @@ Observed behavior in current implementation:
 - malformed SSE framing or chunk JSON surfaces as an exception or stream `error` event
 - malformed Codex SSE JSON/framing throws from the local SSE reader
 - provider wrapper converts failures into unified terminal `error` events
-- no provider-specific resume/retry inside the stream function itself, except Codex websocket-to-SSE transport fallback before replay-unsafe output is emitted
+- Anthropic's stream loop owns a bounded in-stream retry: transport/rate-limit failures retry only before any streamed content, malformed envelopes/JSON only before replay-unsafe text/tool events are visible; it also arms first-event and idle `StreamTimeoutError` timeouts
+- Codex has a websocket-to-SSE transport fallback before replay-unsafe output is emitted; other providers have no in-stream resume/retry
 - higher-level retries are handled in `AgentSession` auto-retry logic (message-level retry, not stream-chunk replay)
 
 ## Cancellation boundaries
@@ -156,7 +158,7 @@ Cancellation is layered:
 
 Tool execution cancellation is separate from model stream cancellation:
 
-- tool runners use `AbortSignal.any([agentSignal, steeringAbortSignal])`
+- tool runners use `AbortSignal.any([agentSignal, steeringAbortSignal])` (interruptible tools add an IRC abort controller to the same composite)
 - steering interrupts can abort remaining tool execution while preserving already-produced tool results
 
 ## Backpressure boundaries
@@ -214,3 +216,5 @@ Provider-specific (not fully abstracted):
 - [`../../ai/src/providers/amazon-bedrock.ts`](../../packages/ai/src/providers/amazon-bedrock.ts), [`openai-completions.ts`](../../packages/ai/src/providers/openai-completions.ts), [`ollama.ts`](../../packages/ai/src/providers/ollama.ts), [`cursor.ts`](../../packages/ai/src/providers/cursor.ts), [`pi-native-client.ts`](../../packages/ai/src/providers/pi-native-client.ts) — additional built-in stream adapters using the same event contract.
 - [`../../agent/src/agent-loop.ts`](../../packages/agent/src/agent-loop.ts) — provider stream consumption and `message_update` bridging.
 - [`../src/session/agent-session.ts`](../../packages/coding-agent/src/session/agent-session.ts) — session-level handling of streaming updates, abort, retry, and persistence.
+
+*Verified against `7ca44d3` on 2026-07-17.*

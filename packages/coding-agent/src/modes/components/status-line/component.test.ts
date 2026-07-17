@@ -35,6 +35,8 @@ function makeSessionWithLastMessage(lastMessage: unknown, prewalkArmed: boolean 
 		},
 		getPrewalkState: () => (prewalkArmed ? { target: { id: "cheap-model", provider: "openai" } } : undefined),
 		getAsyncJobSnapshot: () => undefined,
+		// Compaction disabled: the gauge denominates against the raw model window.
+		settings: { getGroup: () => ({ enabled: false }) },
 		isAdvisorActive: () => false,
 		isFastModeActive: () => false,
 		configuredThinkingLevel: () => undefined,

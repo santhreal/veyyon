@@ -1,7 +1,9 @@
 import { padding, TERMINAL, truncateToWidth, visibleWidth } from "@veyyon/pi-tui";
 import { APP_NAME } from "@veyyon/pi-utils";
 import { sunMark } from "../../components/sun";
+import { silverEscape } from "../../components/welcome";
 import { theme } from "../../theme/theme";
+import { centerLine } from "@veyyon/pi-tui";
 
 export const SETUP_SPLASH_MS = 2400;
 export const SETUP_TICK_MS = 33;
@@ -13,19 +15,11 @@ function clampLine(line: string, width: number): string {
 	return truncated + padding(Math.max(0, width - visibleWidth(truncated)));
 }
 
-function centerLine(line: string, width: number): string {
-	const lineWidth = visibleWidth(line);
-	if (lineWidth >= width) return truncateToWidth(line, width);
-	const left = Math.floor((width - lineWidth) / 2);
-	return padding(left) + line + padding(width - left - lineWidth);
-}
-
 /**
- * Setup splash: the launch signature. On a quiet black field the living ember
- * sun blooms open from a point (bloom 0→1, eased) while its ember churns, then
- * the lowercase `veyyon` wordmark reveals beneath it as the disc settles. This
- * is the same `sunMark` recipe the welcome card rests on — the sun IS the logo.
- * No starfield, no doubled glyphs, no rainbow.
+ * Setup splash: a miniature sunrise. The sun blooms open and rises over its
+ * own horizon while the ember churns, then the wordmark reveals beneath in
+ * quiet silver — the terminal's own font, letterspaced. The same `sunMark`
+ * recipe the home screen rests on: the sun IS the logo.
  */
 export function renderSetupSplash(width: number, height: number, elapsedMs: number): string[] {
 	const w = Math.max(1, width);
@@ -38,9 +32,15 @@ export function renderSetupSplash(width: number, height: number, elapsedMs: numb
 	// applies the same correction internally).
 	const sunCols = Math.max(9, Math.min(32, Math.floor(w * 0.45)));
 	const sunRows = Math.max(5, Math.min(16, Math.round(sunCols / 2.1)));
-	// Ember churns forward as it blooms, so the disc reads as alive, not a static
-	// stamp fading in.
-	const sun = sunMark(sunCols, sunRows, { trueColor: TERMINAL.trueColor, bloom: eased, time: 0.25 + eased * 0.7 });
+	// Rise completes a beat before the bloom, so the disc lifts over the horizon
+	// first and the ember catches up — the sunrise, not a fade-in.
+	const rise = Math.max(0, Math.min(1, eased * 1.25));
+	const sun = sunMark(sunCols, sunRows, {
+		trueColor: TERMINAL.trueColor,
+		bloom: eased,
+		rise,
+		time: 0.25 + eased * 0.7,
+	});
 
 	// Wordmark reveals only once the disc is most of the way open, so the eye lands
 	// on the sun first and the name second — the micro-interaction the harness lives on.
@@ -48,7 +48,7 @@ export function renderSetupSplash(width: number, height: number, elapsedMs: numb
 	const content: string[] = [...sun];
 	if (nameReveal > 0) {
 		content.push("");
-		content.push(theme.bold(theme.fg("accent", APP_NAME)));
+		content.push(`${silverEscape(0.55)}${theme.bold(APP_NAME.split("").join(" "))}\x1b[39m`);
 		if (nameReveal > 0.5) content.push(theme.fg("dim", "coding agent"));
 	}
 
@@ -60,26 +60,4 @@ export function renderSetupSplash(width: number, height: number, elapsedMs: numb
 	}
 	if (h > 2) lines[h - 2] = clampLine(centerLine(theme.fg("dim", SKIP_HINT), w), w);
 	return lines;
-}
-
-/** Sparse silver dust for outro only — recessive, not a starfield carnival. */
-export function renderStarfield(width: number, height: number, frame: number): string[] {
-	const lines: string[] = [];
-	for (let y = 0; y < height; y++) {
-		let line = "";
-		for (let x = 0; x < width; x++) {
-			const hash = (x * 73856093) ^ (y * 19349663) ^ (frame * 83492791);
-			const bucket = Math.abs(hash) % 220;
-			if (bucket === 0) line += theme.fg("dim", "·");
-			else line += " ";
-		}
-		lines.push(line);
-	}
-	return lines;
-}
-
-export function screenGradientT(x: number, y: number, width: number, height: number, phase: number): number {
-	const span = Math.max(1, width + height - 1);
-	const base = (x + (height - 1 - y)) / span;
-	return (((base + phase) % 1) + 1) % 1;
 }

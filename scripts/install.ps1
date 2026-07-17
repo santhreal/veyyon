@@ -12,7 +12,8 @@
 param(
     [switch]$Source,
     [switch]$Binary,
-    [string]$Ref
+    [string]$Ref,
+    [switch]$NoVerify
 )
 
 $ErrorActionPreference = "Stop"
@@ -271,20 +272,29 @@ function Install-Binary {
     $OutPath = Join-Path $InstallDir "$BinName.exe"
     Invoke-WebRequest -Uri $BinaryUrl -OutFile $OutPath -TimeoutSec 900
 
-    # Verify checksum when the release publishes one — loud, never silent.
-    try {
-        $expected = (Invoke-RestMethod -Uri "$BinaryUrl.sha256" -TimeoutSec 30).Trim().Split(" ")[0].ToLower()
-        if ($expected) {
-            $actual = (Get-FileHash -Path $OutPath -Algorithm SHA256).Hash.ToLower()
-            if ($actual -ne $expected) {
-                Remove-Item $OutPath -ErrorAction SilentlyContinue
-                throw "checksum mismatch for $BinaryAsset (expected $expected, got $actual)"
-            }
-            Write-Host "OK  checksum verified" -ForegroundColor Green
+    # Verify checksum against the release's .sha256 sidecar. Fail closed: a
+    # missing or unparseable sidecar refuses the install unless -NoVerify is
+    # passed (only needed for old pre-sidecar releases).
+    if ($NoVerify) {
+        Write-Host "!  checksum verification skipped (-NoVerify)" -ForegroundColor Yellow
+    } else {
+        $expected = $null
+        try {
+            $expected = (Invoke-RestMethod -Uri "$BinaryUrl.sha256" -TimeoutSec 30).Trim().Split(" ")[0].ToLower()
+        } catch {
+            Remove-Item $OutPath -ErrorAction SilentlyContinue
+            throw "no published checksum for $BinaryAsset ($Latest) - refusing to install unverified. Current releases publish .sha256 sidecars; for an old pre-sidecar release, pass -NoVerify to override."
         }
-    } catch {
-        if ($_.Exception.Message -like "*checksum mismatch*") { throw }
-        Write-Host "!  no published checksum for $BinaryAsset - installing UNVERIFIED" -ForegroundColor Yellow
+        if (-not $expected) {
+            Remove-Item $OutPath -ErrorAction SilentlyContinue
+            throw "published checksum for $BinaryAsset is empty/unparseable - refusing to install (pass -NoVerify to override)"
+        }
+        $actual = (Get-FileHash -Path $OutPath -Algorithm SHA256).Hash.ToLower()
+        if ($actual -ne $expected) {
+            Remove-Item $OutPath -ErrorAction SilentlyContinue
+            throw "checksum mismatch for $BinaryAsset (expected $expected, got $actual)"
+        }
+        Write-Host "OK  checksum verified" -ForegroundColor Green
     }
 
     Install-Alias -Target $OutPath

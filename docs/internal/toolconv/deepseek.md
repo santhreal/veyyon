@@ -381,3 +381,5 @@ reuse the same fullwidth pipe (`｜`, U+FF5C), but the body is an Anthropic-styl
 - vLLM tool-call template for V3.1 (`## Tools` injection + `| tojson`): <https://github.com/vllm-project/vllm/blob/main/examples/tool_chat_template_deepseekv31.jinja>
 - vLLM Tool Calling docs (`deepseek_v3`, `deepseek_v31` parser flags): <https://docs.vllm.ai/en/latest/features/tool_calling/>
 - vLLM Reasoning Outputs docs (`deepseek_r1` reasoning parser; V3.1 thinking default): <https://docs.vllm.ai/en/latest/features/reasoning_outputs/>
+
+*Verified against `7ca44d3` on 2026-07-17.*

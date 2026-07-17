@@ -156,3 +156,5 @@ Failure transitions:
 - Clipboard access depends on OS/session support exposed through `arboard`.
 - macOS appearance and power helpers intentionally return no-op/null behavior on unsupported platforms.
 - ProjFS is not exposed by this media/system native utility surface. Isolation backend selection, including any ProjFS support, lives in the separate `iso` subsystem.
+
+*Verified against `7ca44d3` on 2026-07-17.*

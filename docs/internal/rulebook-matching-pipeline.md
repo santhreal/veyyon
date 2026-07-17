@@ -64,12 +64,12 @@ Consequence: precedence and deduplication are **name-based only**. Two different
 
 ### Native provider (`builtin.ts`)
 
-Loads `.omp` rules from:
+Loads native rules from:
 
-- project: `<cwd>/.omp/rules/*.{md,mdc}` when the cwd `.omp` directory exists
+- project: `<cwd>/.veyyon/rules/*.{md,mdc}` when the cwd `.veyyon` directory exists
 - user: `~/.veyyon/agent/rules/*.{md,mdc}`
 - sticky user rule: `~/.veyyon/agent/RULES.md`
-- sticky project rule: nearest ancestor `.omp/RULES.md` while walking from cwd toward the repository root
+- sticky project rule: nearest ancestor `.veyyon/RULES.md` while walking from cwd toward the repository root
 
 Normalization:
 
@@ -174,7 +174,7 @@ Within a provider, item order comes from `loadFilesFromDir` glob result ordering
 
 Notable source-order differences:
 
-- `native` appends project `.omp/rules`, user `~/.veyyon/agent/rules`, user `RULES.md`, then nearest project `RULES.md`.
+- `native` appends project `.veyyon/rules`, user `~/.veyyon/agent/rules`, user `RULES.md`, then nearest project `.veyyon/RULES.md`.
 - `omp-plugins` appends `rules/` results per configured extension package root.
 - `agents` appends project-walk `.agent`/`.agents` rule dirs before user home dirs.
 - `cursor` appends user then project results.
@@ -265,3 +265,5 @@ Implications:
 2. `globs` metadata is surfaced to prompt/UI and is used as a global path gate for TTSR matching, but it is not used to automatically select rulebook rules for `rule://`.
 3. Rule selection for `rule://` includes rulebook, always-apply, and registered TTSR rules (so a triggered TTSR rule can be re-read), but not rules that registered no condition and carry neither a description nor `alwaysApply`.
 4. Discovery warnings (`loadCapability("rules").warnings`) are produced but `createAgentSession` does not currently surface/log them in this path.
+
+*Verified against `7ca44d3` on 2026-07-17.*

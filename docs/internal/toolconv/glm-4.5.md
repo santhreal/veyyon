@@ -294,3 +294,5 @@ With a server parser active (`--tool-call-parser glm45 --reasoning-parser glm45`
 - SGLang GLM-4.5/4.6 detector (`Glm4MoeDetector`: format docstring, XML→JSON state machine, argument typing): https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/function_call/glm4_moe_detector.py
 - SGLang GLM-4.7 detector (`Glm47MoeDetector`: newline-less / back-to-back calls): https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/function_call/glm47_moe_detector.py
 - vLLM tool-calling docs: https://docs.vllm.ai/en/latest/features/tool_calling/
+
+*Verified against `7ca44d3` on 2026-07-17.*

@@ -87,9 +87,10 @@ Before a session entry is written — incremental append (`#appendToSessionFile`
 
 Key behaviors:
 
-1. **Large string truncation**: oversized strings are cut and suffixed with `"[Session persistence truncated large content]"`; signature fields (`thinkingSignature`, `thoughtSignature`, `textSignature`) are cleared instead of truncated.
-2. **Transient field stripping**: `partialJson` and `jsonlEvents` are removed from persisted entries.
-3. **Image externalization to blobs**:
+1. **Reasoning-signature dedup** (`stripReplayedReasoningSignatures`): assistant thinking blocks whose `thinkingSignature` reasoning item is already carried verbatim in the OpenAI Responses `providerPayload.items` drop the duplicate signature from the serialized line (matched on `encrypted_content`, else item `id`); the in-memory entry is untouched.
+2. **Large string truncation**: strings over `MAX_PERSIST_CHARS` (500k) are cut and suffixed with `"[Session persistence truncated large content]"`. Signed blocks are exempt and persist **verbatim** — a `thinking`/`text`/`toolCall` block with a non-empty `thinkingSignature`/`textSignature`/`thoughtSignature`, a `redactedThinking` block, or a Responses `reasoning` item with `encrypted_content` is returned untouched (truncation would invalidate the signature and 400 the replay). A signature key reached outside those shapes is preserved, never cleared or truncated.
+3. **Transient field stripping**: `jsonlEvents` (raw subprocess streaming events, already saved to artifact files) is removed from persisted entries.
+4. **Image externalization to blobs**:
    - image blocks in `content` arrays are externalized when `data` is not already a blob ref and base64 length is at least threshold (`BLOB_EXTERNALIZE_THRESHOLD = 1024`),
    - provider-style `image_url` data URLs are externalized when they start with `data:image/` and contain `;base64,`,
    - image block `data` is stored as decoded binary bytes,
@@ -243,3 +244,5 @@ The two systems intersect only indirectly: both reduce session JSONL bloat, but 
 - [`src/internal-urls/router.ts`](../../packages/coding-agent/src/internal-urls/router.ts) — internal URL router wiring.
 - [`src/task/output-manager.ts`](../../packages/coding-agent/src/task/output-manager.ts) — session-scoped agent output ID allocation for `agent://`.
 - [`src/task/executor.ts`](../../packages/coding-agent/src/task/executor.ts) — subagent output artifact writes (`<id>.md`) and session JSONL sidecars.
+
+*Verified against `7ca44d3` on 2026-07-17.*

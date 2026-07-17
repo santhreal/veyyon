@@ -122,7 +122,7 @@ async function isDirectory(p: string): Promise<boolean> {
  * are dropped):
  *
  * 1. CLI roots injected via {@link injectOmpExtensionCliRoots}
- * 2. Project `<cwd>/.omp/settings.json#extensions`
+ * 2. Project `<cwd>/.veyyon/settings.json#extensions`
  * 3. User `~/.veyyon/agent/settings.json#extensions`
  * 4. Enabled npm/link plugins installed under `<plugins>/node_modules/` (for
  *    `veyyon install <pkg>` / `veyyon plugin install` / `veyyon plugin link`). Marketplace

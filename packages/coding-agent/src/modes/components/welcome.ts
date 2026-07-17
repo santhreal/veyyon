@@ -1,5 +1,6 @@
 import {
 	type Component,
+	centerLine,
 	Ellipsis,
 	padding,
 	replaceTabs,
@@ -31,21 +32,6 @@ export const WELCOME_LSP_SLOTS = 0;
 
 /** One-line value prop under the wordmark — shipped strengths only. */
 export const VEYYON_VALUE_LINE = "Hashline edits that land. Your keys.";
-
-/** Card width cap — a constrained, centred column (Grok geometry), never full-bleed. */
-const HERO_MAX_WIDTH = 72;
-/** Sun mark size (cells) for the full card's left column. */
-const SUN_W = 18;
-const SUN_H = 8;
-/** Below this inner width the sun is dropped and the identity goes full-width. */
-const SUN_MIN_INNER = 42;
-/** Sun mark size (cells) for the compact card — same disc, quarter the area. */
-const COMPACT_SUN_W = 9;
-const COMPACT_SUN_H = 4;
-/** Below this inner width the compact card drops the sun. */
-const COMPACT_SUN_MIN_INNER = 30;
-/** Hard height contract for the compact card, borders and tip included. */
-export const WELCOME_COMPACT_MAX_ROWS = 8;
 
 /** Action rows: label left, shortcut right. The composer is the primary affordance. */
 const WELCOME_ACTIONS: ReadonlyArray<readonly [label: string, shortcut: string]> = [
@@ -155,8 +141,8 @@ export class WelcomeComponent implements Component {
 		private providerName: string,
 		private recentSessions: RecentSession[] = [],
 		private lspServers: LspServerInfo[] = [],
-		/** Full hero (sun column, action menu, recents). Default is the compact
-		 *  ≤{@link WELCOME_COMPACT_MAX_ROWS}-row card; `/welcome` shows the full one. */
+		/** Sunrise header + centred menu column on `/welcome`; the default home is
+		 *  the header alone with one hint line. */
 		private readonly full: boolean = false,
 	) {}
 
@@ -249,149 +235,83 @@ export class WelcomeComponent implements Component {
 	}
 
 	#renderLines(termWidth: number): string[] {
-		const boxWidth = Math.min(HERO_MAX_WIDTH, Math.max(0, termWidth - 2));
-		if (boxWidth < 24) return [];
-		const inner = boxWidth - 4; // │ + space + content + space + │
-		if (!this.full) return this.#renderCompactLines(termWidth, boxWidth, inner);
-
-		// Two columns, no interior divider: the sun on the left, identity on the right.
-		const sunW = inner >= SUN_MIN_INNER ? SUN_W : 0;
-		const gap = sunW ? 3 : 0;
-		const rightW = Math.max(1, inner - sunW - gap);
-		const sun = sunW ? this.#currentLogoFrame(sunW) : [];
-		const right = this.#rightColumn(rightW);
-
-		const rowsN = Math.max(sun.length, right.length);
-		const sunTop = Math.floor((rowsN - sun.length) / 2);
-		const rightTop = Math.floor((rowsN - right.length) / 2);
-		const body: string[] = [""];
-		for (let i = 0; i < rowsN; i++) {
-			const l = sunW ? (sun[i - sunTop] ?? padding(sunW)) : "";
-			const r = right[i - rightTop] ?? "";
-			body.push(this.#fitToWidth(sunW ? l + padding(gap) + r : r, inner));
+		if (termWidth < 30) return [];
+		const lines = this.#sunriseHeader(termWidth);
+		if (!this.full) {
+			lines.push("");
+			lines.push(
+				centerLine(
+					theme.fg("dim", "more: ") +
+						theme.fg("accent", "/welcome") +
+						theme.fg("dim", "  ·  /resume  ·  /settings"),
+					termWidth,
+				),
+			);
+			return lines;
 		}
-		body.push("");
-		for (const tipLine of this.#renderTip(inner)) {
-			body.push(this.#fitToWidth(tipLine.trimStart(), inner));
+		// /welcome: the sunrise header, then a centred menu column. Open space is
+		// the frame here too — no box on the brand's front porch.
+		const colW = Math.min(56, termWidth - 4);
+		const colPad = padding(Math.max(0, Math.floor((termWidth - colW) / 2)));
+		lines.push("");
+		for (const [label, shortcut] of WELCOME_ACTIONS) lines.push(colPad + this.#menuRow(label, shortcut, colW));
+		const sessions = this.recentSessions.slice(0, WELCOME_SESSION_SLOTS);
+		if (sessions.length > 0) {
+			lines.push("");
+			lines.push(colPad + theme.fg("dim", "Recent"));
+			for (const session of sessions) lines.push(colPad + this.#sessionRow(session, colW));
 		}
-
-		// Plain sharp border — the identity lives inside the card, not on the rail.
-		// Uses the visible `border` silver (not the recessive `borderMuted`) so the
-		// hero card reads as a crisp frame on black, not a barely-there outline.
-		const hChar = theme.boxSharp.horizontal;
-		const bm = (s: string) => theme.fg("border", s);
-		const v = bm(theme.boxSharp.vertical);
-		const top = bm(theme.boxSharp.topLeft + hChar.repeat(boxWidth - 2) + theme.boxSharp.topRight);
-		const bottom = bm(theme.boxSharp.bottomLeft + hChar.repeat(boxWidth - 2) + theme.boxSharp.bottomRight);
-
-		// Centre the card horizontally in the terminal (Grok placement).
-		const leftMargin = padding(Math.max(0, Math.floor((termWidth - boxWidth) / 2)));
-
-		const lines: string[] = [leftMargin + top];
-		for (const row of body) {
-			lines.push(`${leftMargin}${v} ${this.#fitToWidth(row, inner)} ${v}`);
-		}
-		lines.push(leftMargin + bottom);
+		lines.push("");
+		for (const tipLine of this.#renderTip(colW)) lines.push(colPad + tipLine.trimStart());
 		return lines;
 	}
 
 	/**
-	 * Compact card: the same two-column composition at quarter scale — a 4-row
-	 * sun, wordmark, value line, model line, and a `/welcome` pointer — capped at
-	 * {@link WELCOME_COMPACT_MAX_ROWS} rows including borders and tip.
+	 * The sunrise: a grand dithered sun over the silver wordmark, then one quiet
+	 * line of metadata. No box, no rails — open space is the frame, exactly like
+	 * the website's hero. Vertical centring is interactive-mode's topFill.
 	 */
-	#renderCompactLines(termWidth: number, boxWidth: number, inner: number): string[] {
-		const sunW = inner >= COMPACT_SUN_MIN_INNER ? COMPACT_SUN_W : 0;
-		const gap = sunW ? 3 : 0;
-		const rightW = Math.max(1, inner - sunW - gap);
-		const sun = sunW ? this.#currentLogoFrame(sunW, COMPACT_SUN_H) : [];
-
-		const right: string[] = [];
-		right.push(
-			this.#fitToWidth(theme.bold(theme.fg("accent", APP_NAME)) + theme.fg("dim", ` v${this.version}`), rightW),
-		);
-		right.push(this.#fitToWidth(theme.fg("muted", VEYYON_VALUE_LINE), rightW));
-		const model =
-			this.modelName && this.providerName
-				? `${this.modelName} · ${this.providerName}`
-				: this.modelName || this.providerName;
-		right.push(
-			this.#fitToWidth(
-				model ? theme.fg("dim", model) : theme.fg("dim", `no model yet · ${theme.fg("accent", "/login")}`),
-				rightW,
-			),
-		);
-		right.push(
-			this.#fitToWidth(
-				`${theme.fg("dim", "more:")} ${theme.fg("accent", "/welcome")}${theme.fg("dim", " · /resume · /settings")}`,
-				rightW,
-			),
-		);
-
-		const rowsN = Math.max(sun.length, right.length);
-		const sunTop = Math.floor((rowsN - sun.length) / 2);
-		const rightTop = Math.floor((rowsN - right.length) / 2);
-		const body: string[] = [];
-		for (let i = 0; i < rowsN; i++) {
-			const l = sunW ? (sun[i - sunTop] ?? padding(sunW)) : "";
-			const r = right[i - rightTop] ?? "";
-			body.push(this.#fitToWidth(sunW ? l + padding(gap) + r : r, inner));
-		}
-		// Tip: exactly one line in compact. Wrapping breaks at word boundaries, so a
-		// dropped continuation never trips #fitToWidth's overflow ellipsis — mark
-		// the cut explicitly or the tip reads as a complete (garbled) sentence.
-		const tipLines = this.#renderTip(inner);
-		const tipLine = tipLines[0];
-		if (tipLine !== undefined && body.length + 3 <= WELCOME_COMPACT_MAX_ROWS) {
-			const clipped = tipLines.length > 1 ? `${tipLine.trimStart()}${theme.fg("muted", "…")}` : tipLine.trimStart();
-			body.push(this.#fitToWidth(clipped, inner));
-		}
-
-		const hChar = theme.boxSharp.horizontal;
-		const bm = (s: string) => theme.fg("border", s);
-		const v = bm(theme.boxSharp.vertical);
-		const top = bm(theme.boxSharp.topLeft + hChar.repeat(boxWidth - 2) + theme.boxSharp.topRight);
-		const bottom = bm(theme.boxSharp.bottomLeft + hChar.repeat(boxWidth - 2) + theme.boxSharp.bottomRight);
-		const leftMargin = padding(Math.max(0, Math.floor((termWidth - boxWidth) / 2)));
-
-		const lines: string[] = [leftMargin + top];
-		for (const row of body.slice(0, WELCOME_COMPACT_MAX_ROWS - 2)) {
-			lines.push(`${leftMargin}${v} ${this.#fitToWidth(row, inner)} ${v}`);
-		}
-		lines.push(leftMargin + bottom);
-		return lines;
-	}
-
-	/** Identity column: wordmark + version, value line, model, action menu, recents. */
-	#rightColumn(w: number): string[] {
+	#sunriseHeader(termWidth: number): string[] {
 		const lines: string[] = [];
-		lines.push(this.#fitToWidth(theme.bold(theme.fg("accent", APP_NAME)) + theme.fg("dim", ` v${this.version}`), w));
+		// The sun scales with the viewport, never past it: reserve rows for the
+		// wordmark, metadata, hints, and the composer so the disc is never clipped.
+		// (Non-TTY / pre-start contexts report 0 or undefined rows — fall back to
+		// a generous viewport so the cap is inert there.)
+		const rawRows = process.stdout.rows;
+		const termRows = Number.isFinite(rawRows) && (rawRows ?? 0) > 0 ? (rawRows as number) : 60;
+		const sunRowBudget = Math.max(6, termRows - 24);
+		const sunW = Math.max(
+			26,
+			Math.min(60, Math.round(termWidth * 0.36), Math.round(((sunRowBudget - 2) * 2.1) / 0.6)),
+		);
+		// Disc diameter is 0.6·sunW (sunMark); rows restore roundness at the 2.1
+		// cell aspect, with one row of air under the disc.
+		const sunH = Math.min(Math.max(7, Math.round((sunW * 0.6) / 2.1) + 2), sunRowBudget);
+		const sun = this.#currentLogoFrame(sunW, sunH);
+		const sunPad = padding(Math.max(0, Math.floor((termWidth - sunW) / 2)));
+		for (const row of sun) lines.push(sunPad + row);
 		lines.push("");
-		for (const line of wrapTextWithAnsi(VEYYON_VALUE_LINE, w)) {
-			lines.push(this.#fitToWidth(theme.fg("muted", line), w));
+		let shine: ShineConfig | undefined;
+		if (this.#animStart != null) {
+			const p = Math.min(1, (performance.now() - this.#animStart) / INTRO_MS);
+			shine = { strength: 1 - p, pos: p };
 		}
-		// Model line. With a model set it reads `model · provider`; with none it
-		// becomes a quiet call to action rather than a bare "Unknown · Unknown"
-		// (a launch you can't act on is worse than one that tells you the next step).
+		// The wordmark is text, not glyph art — it renders in the terminal's own
+		// font (JetBrains Mono), letterspaced to hold its own under the sun,
+		// silver with the shine sweeping through it.
+		for (const row of gradientLogo([APP_NAME.split("").join(" ")], 0, shine)) {
+			lines.push(centerLine(theme.bold(row), termWidth));
+		}
+		lines.push("");
 		const model =
 			this.modelName && this.providerName
 				? `${this.modelName} · ${this.providerName}`
 				: this.modelName || this.providerName;
-		lines.push(
-			this.#fitToWidth(
-				model ? theme.fg("dim", model) : theme.fg("dim", `no model yet · ${theme.fg("accent", "/login")}`),
-				w,
-			),
-		);
-		lines.push("");
-		for (const [label, shortcut] of WELCOME_ACTIONS) lines.push(this.#menuRow(label, shortcut, w));
-
-		const sessions = this.recentSessions.slice(0, WELCOME_SESSION_SLOTS);
-		if (sessions.length > 0) {
-			lines.push("");
-			lines.push(this.#fitToWidth(theme.fg("dim", "Recent"), w));
-			for (const session of sessions) lines.push(this.#sessionRow(session, w));
-		}
+		const meta = model
+			? theme.fg("dim", `v${this.version} · ${model}`)
+			: theme.fg("dim", `v${this.version} · no model yet · `) + theme.fg("accent", "/login");
+		lines.push(centerLine(meta, termWidth));
+		lines.push(centerLine(theme.fg("muted", VEYYON_VALUE_LINE), termWidth));
 		return lines;
 	}
 
@@ -430,15 +350,20 @@ export class WelcomeComponent implements Component {
 	 * intro it blooms (radius eases open, dither churns) then settles. A pure
 	 * function of elapsed time, so the intro timer drives it by re-rendering.
 	 */
-	#currentLogoFrame(sunW: number, sunH: number = SUN_H): readonly string[] {
+	#currentLogoFrame(sunW: number, sunH: number): readonly string[] {
 		let bloom: number | undefined;
+		let rise: number | undefined;
 		let time = 0.6;
 		if (this.#animStart != null) {
 			const elapsed = performance.now() - this.#animStart;
 			bloom = Math.min(1, elapsed / INTRO_MS);
+			// The opening is a sunrise: the disc climbs over the field's bottom
+			// edge (its horizon) as it blooms. Rise completes a beat before the
+			// bloom so the sun settles onto its resting centre, still growing.
+			rise = Math.min(1, bloom * 1.25);
 			time = 0.2 + (elapsed / 1000) * 1.6;
 		}
-		return sunMark(sunW, sunH, { trueColor: TERMINAL.trueColor, bloom, time });
+		return sunMark(sunW, sunH, { trueColor: TERMINAL.trueColor, bloom, rise, time });
 	}
 }
 

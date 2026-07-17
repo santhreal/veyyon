@@ -247,3 +247,5 @@ Switch/open can still throw on true I/O failures (permission errors, rewrite fai
 - Matching uses `startsWith` on the lowercased session id, lowercased JSONL filename, and lowercased id suffix after the filename timestamp.
 - First match in modified-descending order wins; there is no ambiguity UI if multiple sessions share a prefix.
 - Prefix-listing metadata is intentionally lightweight, so search text may not include messages outside the first 4KB of the session file.
+
+*Verified against `7ca44d3` on 2026-07-17.*

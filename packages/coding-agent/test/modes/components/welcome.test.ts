@@ -3,7 +3,6 @@ import { stripVTControlCharacters } from "node:util";
 import { Settings, settings } from "@veyyon/pi-coding-agent/config/settings";
 import {
 	pickWeightedTip,
-	WELCOME_COMPACT_MAX_ROWS,
 	WelcomeComponent,
 } from "@veyyon/pi-coding-agent/modes/components/welcome";
 import { initTheme, theme } from "@veyyon/pi-coding-agent/modes/theme/theme";
@@ -84,58 +83,71 @@ describe("WelcomeComponent hero layout", () => {
 		vi.restoreAllMocks();
 	});
 
-	it("renders the tip inside the box, above the bottom border, not as a dangling line below it", () => {
+	it("frames the home with open space — no box borders anywhere, at any width", () => {
 		vi.spyOn(Math, "random").mockReturnValue(0.99);
-		const welcome = new WelcomeComponent("1.2.3", "claude-sonnet-4-5", "anthropic");
-		const frame = plain(welcome.render(80));
+		for (const width of [40, 60, 80, 120, 200]) {
+			const frame = plain(new WelcomeComponent("1.2.3", "gpt-5", "openai").render(width));
+			expect(frame).not.toMatch(/[┌┐└┘│]/);
+		}
+	});
 
-		const tipIdx = frame.indexOf("Tip:");
-		const bottomBorderIdx = frame.lastIndexOf("└");
-		expect(tipIdx).toBeGreaterThan(0);
-		expect(bottomBorderIdx).toBeGreaterThan(tipIdx);
+	it("renders the sun over the letterspaced wordmark over one metadata line", () => {
+		vi.spyOn(Math, "random").mockReturnValue(0.99);
+		const lines = new WelcomeComponent("1.2.3", "gpt-5", "openai")
+			.render(120)
+			.map(line => stripVTControlCharacters(line));
+
+		const sunIdx = lines.findIndex(line => /[░▒▓]/.test(line));
+		const wordIdx = lines.findIndex(line => line.includes("v e y y o n"));
+		const metaIdx = lines.findIndex(
+			line => line.includes("v1.2.3") && line.includes("gpt-5") && line.includes("openai"),
+		);
+		const valueIdx = lines.findIndex(line => line.includes("Hashline edits that land"));
+		expect(sunIdx).toBeGreaterThanOrEqual(0);
+		expect(wordIdx).toBeGreaterThan(sunIdx);
+		expect(metaIdx).toBeGreaterThan(wordIdx);
+		expect(valueIdx).toBeGreaterThan(metaIdx);
+		// One shared metadata slot — neither name repeats on a second row.
+		expect(lines.filter(line => line.includes("gpt-5")).length).toBe(1);
+		expect(lines.filter(line => line.includes("openai")).length).toBe(1);
+	});
+
+	it("keeps the home bounded at every width — the sun never clips", () => {
+		vi.spyOn(Math, "random").mockReturnValue(0.99);
+		for (const width of [40, 60, 80, 120, 200]) {
+			const lines = new WelcomeComponent("1.2.3", "gpt-5", "openai").render(width);
+			// Sun budget is capped by the terminal rows (test env: the 60-row
+			// fallback), plus the fixed header tail (wordmark, meta, value, hint).
+			expect(lines.length).toBeLessThanOrEqual(44);
+		}
 	});
 
 	it("renders a /login call to action instead of a dead 'Unknown' line when no model is set", () => {
 		vi.spyOn(Math, "random").mockReturnValue(0.99);
-		const welcome = new WelcomeComponent("1.2.3", "", "");
-		const frame = plain(welcome.render(80));
+		const frame = plain(new WelcomeComponent("1.2.3", "", "").render(80));
 
 		expect(frame).toContain("no model yet");
 		expect(frame).toContain("/login");
-		// The bare fallback string must never reach the screen.
 		expect(frame).not.toContain("Unknown");
 	});
 
-	it("fits the startup card in the compact height budget at every width", () => {
+	it("points the home at /welcome, and the full page carries the menu and recents", () => {
 		vi.spyOn(Math, "random").mockReturnValue(0.99);
-		const sessions = [
-			{ name: "fix-the-parser", timeAgo: "2h ago" },
-			{ name: "theme-work", timeAgo: "1d ago" },
-			{ name: "release-prep", timeAgo: "3d ago" },
-		];
-		for (const width of [40, 60, 80, 120, 200]) {
-			const welcome = new WelcomeComponent("1.2.3", "claude-sonnet-4-5", "anthropic", sessions);
-			const lines = welcome.render(width);
-			expect(lines.length).toBeLessThanOrEqual(WELCOME_COMPACT_MAX_ROWS);
-		}
+		const sessions = [{ name: "fix-the-parser", timeAgo: "2h ago" }];
+
+		const compact = plain(new WelcomeComponent("1.2.3", "gpt-5", "openai", sessions).render(80));
+		expect(compact).toContain("/welcome");
+		expect(compact).toContain("/resume");
+		expect(compact).not.toContain("Resume session");
+		expect(compact).not.toContain("fix-the-parser");
+
+		const full = plain(new WelcomeComponent("1.2.3", "gpt-5", "openai", sessions, [], true).render(80));
+		expect(full).toContain("Resume session");
+		expect(full).toContain("Settings");
+		expect(full).toContain("fix-the-parser");
 	});
 
-	it("marks a clipped compact tip with an ellipsis instead of cutting mid-sentence", () => {
-		vi.spyOn(Math, "random").mockReturnValue(0.99);
-		// At width 40 the tip budget is ~28 columns and the shortest shipped tip is
-		// 35 chars, so every tip wraps; compact shows only the first line and must
-		// flag the cut.
-		const welcome = new WelcomeComponent("1.2.3", "gpt-5", "openai");
-		const tipLine = welcome
-			.render(40)
-			.map(line => stripVTControlCharacters(line))
-			.find(line => line.includes("Tip: "));
-		if (tipLine === undefined) throw new Error("Expected a Tip: line on the compact card");
-		const content = tipLine.replace(/[│┌┐└┘]/g, "").trimEnd();
-		expect(content.endsWith("…")).toBe(true);
-	});
-
-	it("carries the full selected tip on the wide full card (positive twin)", () => {
+	it("carries the full selected tip on the full page (positive twin)", () => {
 		vi.spyOn(Math, "random").mockReturnValue(0.99);
 		const welcome = new WelcomeComponent("1.2.3", "gpt-5", "openai", [], [], true);
 		const tip = welcome.tip;
@@ -148,34 +160,19 @@ describe("WelcomeComponent hero layout", () => {
 		expect(plain(welcome.render(200))).toContain(lastWord);
 	});
 
-	it("points the compact card at /welcome, and the full card carries the menu and recents", () => {
+	it("wraps long tips across lines on the narrow full page instead of clipping them", () => {
 		vi.spyOn(Math, "random").mockReturnValue(0.99);
-		const sessions = [{ name: "fix-the-parser", timeAgo: "2h ago" }];
-
-		const compact = plain(new WelcomeComponent("1.2.3", "gpt-5", "openai", sessions).render(80));
-		expect(compact).toContain("/welcome");
-		expect(compact).not.toContain("Resume session");
-		expect(compact).not.toContain("fix-the-parser");
-
-		const full = new WelcomeComponent("1.2.3", "gpt-5", "openai", sessions, [], true);
-		const fullFrame = plain(full.render(80));
-		expect(fullFrame).toContain("Resume session");
-		expect(fullFrame).toContain("Settings");
-		expect(fullFrame).toContain("fix-the-parser");
-		expect(full.render(80).length).toBeGreaterThan(WELCOME_COMPACT_MAX_ROWS);
-	});
-
-	it("shows model and provider on a single info line, not two", () => {
-		vi.spyOn(Math, "random").mockReturnValue(0.99);
-		// Short names so the combined line fits the narrow hero column unclipped.
-		const welcome = new WelcomeComponent("1.2.3", "gpt-5", "openai");
-		const lines = welcome.render(80).map(line => stripVTControlCharacters(line));
-
-		const infoLineIdx = lines.findIndex(line => line.includes("gpt-5") && line.includes("openai"));
-		expect(infoLineIdx).toBeGreaterThan(0);
-		// Neither name repeats on a separate row — confirms one shared slot, not two.
-		expect(lines.filter(line => line.includes("gpt-5")).length).toBe(1);
-		expect(lines.filter(line => line.includes("openai")).length).toBe(1);
+		const welcome = new WelcomeComponent("1.2.3", "gpt-5", "openai", [], [], true);
+		const tip = welcome.tip;
+		if (!tip) throw new Error("Expected a selected tip");
+		const lastWord =
+			tip
+				.replace(/\s*\[NEW\]$/, "")
+				.split(/\s+/)
+				.at(-1) ?? "";
+		// At width 40 the tip budget is ~30 columns and the shortest shipped tip
+		// is 35 chars, so every tip wraps; the wrap must keep the final word.
+		expect(plain(welcome.render(40))).toContain(lastWord);
 	});
 });
 

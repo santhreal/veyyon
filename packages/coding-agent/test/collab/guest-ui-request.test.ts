@@ -212,7 +212,14 @@ async function makeHarness(opts?: { readOnly?: boolean }): Promise<GuestUiHarnes
 		streamingComponent: undefined,
 		streamingMessage: undefined,
 		pendingTools: new Map(),
-		loadingAnimation: undefined,
+		loadingAnimation: undefined as { stop(): void } | undefined,
+		clearWorkingLoader(): boolean {
+			const self = this as { loadingAnimation?: { stop(): void } };
+			if (!self.loadingAnimation) return false;
+			self.loadingAnimation.stop();
+			self.loadingAnimation = undefined;
+			return true;
+		},
 		statusLine: {
 			setCollabStatus: () => {},
 			invalidate: () => {},

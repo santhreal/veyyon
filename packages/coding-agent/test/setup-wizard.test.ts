@@ -260,7 +260,7 @@ describe("setup wizard mouse routing", () => {
 });
 
 describe("setup wizard scene footer copy", () => {
-	it("uses the up/down · pipe-chip dialect and says esc skip, never a bare 'continue'", async () => {
+	it("uses the arrow-dot hint dialect and says esc skip, never a bare 'continue'", async () => {
 		await initTheme(false, "unicode", false, "titanium", "light");
 		const scene: SetupScene = {
 			id: "scene",
@@ -289,7 +289,7 @@ describe("setup wizard scene footer copy", () => {
 				.render(80)
 				.map(line => stripVTControlCharacters(line))
 				.join("\n");
-			expect(frame).toContain("up/down select  |  enter confirm  |  esc skip  |  ctrl+c exit");
+			expect(frame).toContain("↑↓ select  ·  enter confirm  ·  esc skip  ·  ctrl+c exit");
 			expect(frame).not.toContain("esc continue");
 		} finally {
 			component.dispose();

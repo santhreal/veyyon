@@ -225,6 +225,7 @@ export const CONTEXT_SETTINGS = {
 			"gemini",
 			"gemma",
 			"minimax",
+			"pi-native",
 		] as const,
 		default: "auto",
 		ui: {
@@ -251,6 +252,7 @@ export const CONTEXT_SETTINGS = {
 				{ value: "gemini", label: "Gemini", description: "Use the Gemini owned dialect." },
 				{ value: "gemma", label: "Gemma", description: "Use the Gemma owned dialect." },
 				{ value: "minimax", label: "MiniMax", description: "Use the MiniMax owned dialect." },
+				{ value: "pi-native", label: "pi-native", description: "Use the pi-native <call:NAME> owned dialect." },
 			],
 		},
 	},

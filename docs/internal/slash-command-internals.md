@@ -17,6 +17,7 @@ This document describes how slash commands are discovered, deduplicated, surface
 - [`src/modes/controllers/input-controller.ts`](../../packages/coding-agent/src/modes/controllers/input-controller.ts)
 - [`src/modes/utils/ui-helpers.ts`](../../packages/coding-agent/src/modes/utils/ui-helpers.ts)
 - [`src/modes/controllers/command-controller.ts`](../../packages/coding-agent/src/modes/controllers/command-controller.ts)
+- [`src/slash-commands/builtin-registry.ts`](../../packages/coding-agent/src/slash-commands/builtin-registry.ts)
 
 ## 1) Discovery model
 
@@ -64,7 +65,7 @@ So hidden files/directories are not loaded, ignored paths are skipped, and file 
 Search roots come from `.veyyon` directories:
 
 - project: `<cwd>/.veyyon/commands/*.md`
-- user: `~/.veyyon/agent/commands/*.md`
+- user: `~/.veyyon/agent/commands/*.md` (profile-scoped: `getAgentDir()` points at the active profile's agent dir, e.g. `~/.veyyon/profiles/<name>/agent`)
 
 `getConfigDirs()` returns project first, then user, so **project native commands beat user native commands** when names collide.
 
@@ -135,7 +136,7 @@ Interactive mode combines multiple command sources for autocomplete and command 
 
 At construction time it builds a pending command list from:
 
-- built-ins (`BUILTIN_SLASH_COMMANDS`, includes argument completion and inline hints for selected commands)
+- built-ins (`BUILTIN_SLASH_COMMAND_DEFS` from `src/slash-commands/builtin-registry.ts`; includes argument completion and inline hints for selected commands)
 - extension-registered slash commands (`extensionRunner.getRegisteredCommands(...)`)
 - TypeScript custom commands (`session.customCommands`), mapped to slash command labels
 - optional skill commands (`/skill:<name>`) when `skills.enableSkillCommands` is enabled
@@ -242,3 +243,5 @@ Interactive mode separately hard-handles many built-ins in `InputController` (fo
   - native commands: fatal parse error bubbles
   - non-native commands: warning + fallback key/value parse
 - Extension/custom command handler exceptions are caught and reported via extension error channel (or logger fallback for custom commands without extension runner), and treated as handled (no unintended fallback execution).
+
+*Verified against `7ca44d3` on 2026-07-17.*

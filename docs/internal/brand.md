@@ -25,15 +25,13 @@ Exact, restrained, technical. Name the product **Veyyon**. Prefer short factual 
 
 ## Interface palette
 
-**Titanium** (`titanium.json`) is the shipped **default** dark theme (`theme.dark` defaults to `titanium`). **Veyyon Dark** (`dark.json`) is an alternative on the same brand rules. **Light** (`light.json`) is still the upstream oh-my-pi palette until a silver light theme ships.
+**Titanium** (`titanium.json`, under `src/modes/theme/defaults/`) is the shipped **default** dark theme (`theme.dark` defaults to `titanium`; `theme.light` defaults to `light`). **Veyyon Dark** (`src/modes/theme/dark.json`) is a pre-ember silver-accent alternative. **Light** (`src/modes/theme/light.json`) is now the brand light theme: white ground, silver text, ember accent. A large additional builtin catalog ships alongside them in `defaults/` (`dark-*`/`light-*` ports plus material names like `obsidian`, `basalt`, `pearl`); those are user options, not brand surfaces.
 
 | Theme | Status | Ground | Primary text | Structure | Accent |
 | --- | --- | --- | --- | --- | --- |
 | Titanium (default) | Shipped | Pitch black `#000000` | Silver bright `#E6E9EE` | Silver `#C6CBD4` | Ember `#F0862E` |
-| Veyyon Dark | Shipped | Pitch black `#000000` | `#FAFAFA` | Silver `#B8BDC7` | Deep blue `#4A84C9` (pre-ember; see below) |
-| Light | Shipped (upstream) | Terminal / light gray chrome | Terminal default | Teal `#5a8080` | — |
-
-> **Spec — not shipped:** Veyyon Light with `#FAFAFA` ground-inverse and silver `#B8BDC7` (brand-system target).
+| Veyyon Dark | Shipped | Pitch black `#000000` | Terminal default | Silver `#B8BDC7` | Silver `#B8BDC7` (pre-ember; blue `#4A84C9` remains a secondary color) |
+| Light | Shipped | White `#FFFFFF` | Silver strong `#343B45` | Silver `#5C6470` | Ember `#F0862E` (glow `#FBE9D9`) |
 
 The ground is **pitch black**. On it, two colors do two jobs — the same system the website ships (`website/site.css` `:root` tokens):
 
@@ -44,7 +42,7 @@ Green, amber, and red only when meaning fits (success, warning, error): `#7FB98A
 
 **Every background is pure black `#000000`.** Hierarchy comes from silver hairlines, text weight, and the ember accent — not raised panels or tinted fills. No cyan/purple/rainbow chrome. No gradients. Sharp edges. The only permitted glow is the ember selection tint (`emberGlow`).
 
-Known drift (tracked in `BACKLOG.md`): `dark.json` (Veyyon Dark) predates the ember accent entirely, and the light theme is still the upstream palette.
+Known drift (tracked in `BACKLOG.md`): `dark.json` (Veyyon Dark) predates the ember accent entirely (silver accent, blue secondary).
 
 ## Onboarding and installers
 
@@ -59,3 +57,5 @@ Session welcome is a single hero card (not a dual-column dashboard): wordmark, o
 - **Spec — not shipped**: target design until a release ships it.
 
 See also: [Themes and identity](../handbook/src/using/themes.md), [TUI design language](./tui-design-language.md).
+
+*Verified against `7ca44d3` on 2026-07-17.*

@@ -69,7 +69,14 @@ function makeGuestContext(counts: number[]): InteractiveModeContext {
 		streamingComponent: undefined,
 		streamingMessage: undefined,
 		pendingTools: new Map(),
-		loadingAnimation: undefined,
+		loadingAnimation: undefined as { stop(): void } | undefined,
+		clearWorkingLoader(): boolean {
+			const self = this as { loadingAnimation?: { stop(): void } };
+			if (!self.loadingAnimation) return false;
+			self.loadingAnimation.stop();
+			self.loadingAnimation = undefined;
+			return true;
+		},
 		statusLine: {
 			setSubagentCount: (count: number) => {
 				statusLineCount = count;

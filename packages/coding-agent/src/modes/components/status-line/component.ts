@@ -3,7 +3,7 @@ import * as path from "node:path";
 import type { AgentMessage } from "@veyyon/pi-agent-core";
 import { resolveThresholdTokens } from "@veyyon/pi-agent-core/compaction";
 import type { AssistantMessage, UsageLimit, UsageReport } from "@veyyon/pi-ai";
-import { type Component, truncateToWidth, visibleWidth } from "@veyyon/pi-tui";
+import { type Component, padding, truncateToWidth, visibleWidth } from "@veyyon/pi-tui";
 import { getProjectDir } from "@veyyon/pi-utils";
 import { isCompactionStrategyOff } from "../../../config/compaction-strategy";
 import { settings } from "../../../config/settings";
@@ -1332,6 +1332,104 @@ export class StatusLineComponent implements Component {
 			content,
 			width: visibleWidth(content),
 		};
+	}
+
+	/**
+	 * Quiet composer chrome: the segment set split across two whisper lines with
+	 * free space between them, instead of one crammed bar. Location (path · git)
+	 * lives above the composer's hairline; capability (model · mode) and budget
+	 * (context, session) sit below it, split left/right. Honors the configured
+	 * segments — a segment renders in its zone iff it appears in the preset.
+	 * `extras.locationRight` pins owner-supplied content (MCP health, the ghost
+	 * sun) at the location line's right edge.
+	 */
+	renderQuietLines(
+		width: number,
+		extras?: { locationRight?: string | null },
+	): { locationLine: string | null; capabilityLine: string | null } {
+		const effectiveSettings = this.#resolveSettings();
+		const gitEnabled = this.#gitEnabled();
+		const leftCfg = effectiveSettings.leftSegments;
+		const rightCfg = effectiveSettings.rightSegments;
+		const includePath = hasPathSegment(leftCfg) || hasPathSegment(rightCfg);
+		const includeContext = hasContextSegment(leftCfg) || hasContextSegment(rightCfg);
+		const includeGit = gitEnabled && (hasGitSegment(leftCfg) || hasGitSegment(rightCfg));
+		const includePr = gitEnabled && (hasPrSegment(leftCfg) || hasPrSegment(rightCfg));
+		// The quiet zone reads at a glance: branch + dirty marker, not per-kind
+		// counts; a tighter path budget; a roomy model-effort gap; and the context
+		// gauge warming up the ember ramp instead of flat theme colors.
+		const quietOptions = {
+			...effectiveSettings.segmentOptions,
+			git: { ...effectiveSettings.segmentOptions?.git, compact: true },
+			path: { ...effectiveSettings.segmentOptions?.path, maxLength: 34 },
+			model: { ...effectiveSettings.segmentOptions?.model, roomy: true },
+			context_pct: { ...effectiveSettings.segmentOptions?.context_pct, emberRamp: true },
+		};
+		const ctx = this.#buildSegmentContext(
+			width,
+			quietOptions,
+			includePath,
+			includeContext,
+			includeGit,
+			includePr,
+		);
+		const LOCATION_IDS: Record<string, true> = { path: true, git: true, pr: true };
+		const CONTEXT_IDS: Record<string, true> = { context_pct: true, context_total: true };
+		const subagentBadge = this.#subagentBadgeText();
+		const location: string[] = [];
+		const capLeft: string[] = [];
+		const capRight: string[] = [];
+		const push = (id: StatusLineSegmentId, out: string[]) => {
+			if (subagentBadge && id === "subagents") return;
+			const rendered = renderSegment(id, ctx);
+			if (rendered.visible && rendered.content) out.push(rendered.content);
+		};
+		for (const id of leftCfg) {
+			if (LOCATION_IDS[id]) push(id, location);
+			else if (CONTEXT_IDS[id]) push(id, capRight);
+			else push(id, capLeft);
+		}
+		for (const id of rightCfg) {
+			if (LOCATION_IDS[id]) push(id, location);
+			else push(id, capRight);
+		}
+		const runningBackgroundJobs = this.session.getAsyncJobSnapshot()?.running.length ?? 0;
+		if (runningBackgroundJobs > 0) {
+			capRight.unshift(theme.fg("statusLineSubagents", `${theme.icon.job} ${runningBackgroundJobs}`));
+		}
+		if (subagentBadge) capRight.unshift(subagentBadge);
+
+		const sep = theme.fg("dim", "  ·  ");
+		// One cell of right margin, always — nothing kisses the terminal edge.
+		const budget = Math.max(1, width - 1);
+		let locationLine: string | null = null;
+		if (location.length > 0) {
+			const left = location.join(sep);
+			const right = extras?.locationRight ?? null;
+			if (right && visibleWidth(left) + visibleWidth(right) + 2 <= budget) {
+				locationLine = left + padding(budget - visibleWidth(left) - visibleWidth(right)) + right;
+			} else {
+				locationLine = truncateToWidth(left, budget);
+			}
+		}
+		let capabilityLine: string | null = null;
+		if (capLeft.length > 0 || capRight.length > 0) {
+			const left = capLeft.join(sep);
+			const rightParts = [...capRight];
+			let right = rightParts.join(sep);
+			// Free space between the groups is the design; on narrow terminals the
+			// right group sheds parts before the gap closes below breathing room.
+			while (rightParts.length > 0 && visibleWidth(left) + visibleWidth(right) + 2 > budget) {
+				rightParts.pop();
+				right = rightParts.join(sep);
+			}
+			if (left && right) {
+				capabilityLine = left + padding(budget - visibleWidth(left) - visibleWidth(right)) + right;
+			} else {
+				capabilityLine = truncateToWidth(left || right, budget);
+			}
+		}
+		return { locationLine, capabilityLine };
 	}
 
 	render(width: number): readonly string[] {

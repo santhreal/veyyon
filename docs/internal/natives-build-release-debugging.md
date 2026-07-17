@@ -2,7 +2,7 @@
 
 This runbook describes how `@veyyon/pi-natives` produces `.node` addons, generated declarations, and compiled-binary embedded payloads, and how to debug loader/build failures.
 
-It follows the architecture terms from `docs/natives-architecture.md`:
+It follows the architecture terms from [`natives-architecture.md`](./natives-architecture.md):
 
 - **build-time artifact production** (`scripts/build-native.ts`)
 - **embedded addon manifest generation** (`scripts/embed-native.ts`)
@@ -166,10 +166,10 @@ Generated declarations currently include exports from these Rust modules:
 
 | Area                   | Representative JS exports                                                                               | Rust source                                                                  |
 | ---------------------- | ------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
-| Search/workspace       | `grep`, `search`, `hasMatch`, `fuzzyFind`, `glob`, `listWorkspace`, `invalidateFsScanCache`             | `grep.rs`, `fd.rs`, `glob.rs`, `workspace.rs`, `fs_cache.rs`                 |
+| Search/workspace       | `grep`, `search`, `hasMatch`, `fuzzyFind`, `glob`, `listWorkspace`, `invalidateFsScanCache`             | `grep.rs`, `fd.rs`, `glob.rs`, `workspace.rs`, `iofs.rs`                     |
 | AST/block/summary      | `astGrep`, `astEdit`, `blockRangeAt`, `summarizeCode`                                                   | `ast.rs`, `block.rs`, `summary.rs`                                           |
 | Text/highlight/tokens  | `visibleWidth`, `truncateToWidth`, `highlightCode`, `countTokens`                                       | `text.rs`, `highlight.rs`, `tokens.rs`                                       |
-| Shell/PTY/process/keys | `executeShell`, `Shell`, `PtySession`, `Process`, `parseKey`, `applyBashFixups`                         | `shell.rs`, `pty.rs`, `ps.rs`, `keys.rs`                                     |
+| Shell/PTY/process/keys | `executeShell`, `Shell`, `PtySession`, `Process`, `parseKey`, `matchesKey`                              | `shell.rs`, `pty.rs`, `ps.rs`, `keys.rs`                                     |
 | Media/system/iso       | `encodeSixel`, clipboard, macOS appearance/power, `getWorkProfile`, `isoBackend`, `isoStart`, `isoDiff` | `sixel.rs`, `clipboard.rs`, `appearance.rs`, `power.rs`, `prof.rs`, `iso.rs` |
 
 ## Failure behavior and diagnostics
@@ -291,3 +291,5 @@ Workspaces that hardlinked a `.node` before GC retain access via the kernel inod
 - Stuck lock: `rm /data/cache/pi-natives/<repo-slug>/.lock` (only when no orchestrator process is touching the repo).
 
 Trigger an automatic miss by editing any path in the key set: a single touched byte under `crates/`, `Cargo.lock`, `Cargo.toml`, `rust-toolchain.toml`, or `packages/natives/` shifts the tree hash and forces a fresh build at the next populate.
+
+*Verified against `7ca44d3` on 2026-07-17.*

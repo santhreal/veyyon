@@ -90,28 +90,29 @@ describe("InteractiveMode welcome dismissal (UI-10)", () => {
 			.join("\n");
 	}
 
-	it("centres the welcome card vertically (UI-2): real top margin above the hero", async () => {
-		await mode.init();
+	it("centres the sunrise vertically (UI-2): real top margin above the sun", async () => {
+		await mode.init({ suppressWelcomeIntro: true });
 		const lines = frame().split("\n");
-		const cardTop = lines.findIndex(line => line.includes("┌"));
-		// 40 mocked terminal rows and an ~8-row card leave ~26 rows of slack;
-		// 2/5 of it sits above the card, so the hero cannot hug the top edge.
-		expect(cardTop).toBeGreaterThanOrEqual(5);
+		const sunTop = lines.findIndex(line => /[░▒▓]/.test(line));
+		// 40 mocked terminal rows leave generous slack around the sunrise header;
+		// 2/5 of it sits above the sun, so the hero cannot hug the top edge.
+		expect(sunTop).toBeGreaterThanOrEqual(4);
 	});
 
-	it("clears the welcome card on the first real keystroke and keeps it gone", async () => {
-		await mode.init();
-		expect(frame()).toContain("veyyon vtest");
+	it("clears the sunrise on the first real keystroke and keeps it gone", async () => {
+		await mode.init({ suppressWelcomeIntro: true });
+		// The wordmark is letterspaced text in the terminal's own font.
+		expect(frame()).toContain("v e y y o n");
 
 		mode.editor.handleInput("h");
-		expect(frame()).not.toContain("veyyon vtest");
+		expect(frame()).not.toContain("v e y y o n");
 
-		// Emptying the draft does not resurrect the card; dismissal is one-way.
+		// Emptying the draft does not resurrect the sunrise; dismissal is one-way.
 		mode.editor.setText("");
-		expect(frame()).not.toContain("veyyon vtest");
+		expect(frame()).not.toContain("v e y y o n");
 
 		// Idempotent: a second dismissal on an already-clean screen is a no-op.
 		mode.dismissWelcome();
-		expect(frame()).not.toContain("veyyon vtest");
+		expect(frame()).not.toContain("v e y y o n");
 	});
 });

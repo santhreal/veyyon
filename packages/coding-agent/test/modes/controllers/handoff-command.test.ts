@@ -58,7 +58,14 @@ describe("/handoff command", () => {
 				}),
 				abortHandoff,
 			},
-			loadingAnimation: undefined,
+			loadingAnimation: undefined as { stop(): void } | undefined,
+		clearWorkingLoader(): boolean {
+			const self = this as { loadingAnimation?: { stop(): void } };
+			if (!self.loadingAnimation) return false;
+			self.loadingAnimation.stop();
+			self.loadingAnimation = undefined;
+			return true;
+		},
 			statusContainer,
 			chatContainer,
 			ui: { requestRender, requestComponentRender: vi.fn() },
@@ -102,7 +109,14 @@ describe("/handoff command", () => {
 				getEntries: () => [{ type: "message" }, { type: "message" }],
 			},
 			session: { isStreaming: true, handoff },
-			loadingAnimation: undefined,
+			loadingAnimation: undefined as { stop(): void } | undefined,
+		clearWorkingLoader(): boolean {
+			const self = this as { loadingAnimation?: { stop(): void } };
+			if (!self.loadingAnimation) return false;
+			self.loadingAnimation.stop();
+			self.loadingAnimation = undefined;
+			return true;
+		},
 			statusContainer,
 			ui: { requestRender: vi.fn(), requestComponentRender: vi.fn() },
 			showWarning,

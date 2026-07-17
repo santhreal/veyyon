@@ -67,7 +67,14 @@ function createContext(
 		: undefined;
 	const context = {
 		isInitialized: true,
-		loadingAnimation: undefined,
+		loadingAnimation: undefined as { stop(): void } | undefined,
+		clearWorkingLoader(): boolean {
+			const self = this as { loadingAnimation?: { stop(): void } };
+			if (!self.loadingAnimation) return false;
+			self.loadingAnimation.stop();
+			self.loadingAnimation = undefined;
+			return true;
+		},
 		streamingComponent: undefined,
 		streamingMessage: undefined,
 		pendingTools: new Map<string, unknown>(),

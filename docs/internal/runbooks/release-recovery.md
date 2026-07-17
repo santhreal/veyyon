@@ -34,9 +34,13 @@ binaries.
 Symptom: `curl -fsSL https://get.veyyon.dev | sh` fails, or fails a checksum.
 
 - `install.sh` **fails closed** on a checksum mismatch — that is correct behavior, not a bug to work
-  around. A mismatch means the uploaded `veyyon-<target>` binary and its `.sha256` disagree.
+  around. A mismatch means the uploaded `veyyon-<target>` binary and its `.sha256` sidecar disagree.
+  It also fails closed when the sidecar is **missing or empty** (the `release_github` job generates
+  one per binary); `--no-verify` / `-NoVerify` is the explicit override for old pre-sidecar releases.
+  A missing sidecar on a current release means the "Generate SHA-256 sidecars" step was skipped or
+  its uploads failed — re-run the publish job.
 - Confirm every expected asset is attached to the release: `veyyon-linux-x64`, `veyyon-linux-arm64`,
-  `veyyon-darwin-x64`, `veyyon-darwin-arm64`, `veyyon-windows-x64.exe`, each with a `.sha256`.
+  `veyyon-darwin-x64`, `veyyon-darwin-arm64`, `veyyon-windows-x64.exe`.
 - If assets are missing or wrong, re-run the release build/publish jobs for the tag (step 2.4). CI
   regenerates and re-uploads the assets and checksums.
 - If the release itself is bad and users are already hitting it, follow
@@ -47,3 +51,5 @@ Symptom: `curl -fsSL https://get.veyyon.dev | sh` fails, or fails a checksum.
 1. On a clean machine (or container), run the real install: `curl -fsSL https://get.veyyon.dev | sh`.
 2. `veyyon --version` reports the new version.
 3. `veyyon plugin doctor` is green.
+
+*Verified against `7ca44d3` on 2026-07-17.*

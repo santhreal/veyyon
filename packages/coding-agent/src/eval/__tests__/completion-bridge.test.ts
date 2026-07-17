@@ -388,25 +388,36 @@ describe("completion() through eval runtimes", () => {
 		expect(JSON.parse(result.output.trim())).toEqual({ ok: true, n: 3 });
 	});
 
-	it("exposes completion() in the Python runtime", async () => {
-		const tempDir = TempDir.createSync("@omp-eval-completion-py-");
-		try {
-			const result = await runPythonCompletionInSubprocess({ structured: false, tempDir });
-			expect(result.exitCode).toBe(0);
-			expect(result.output.trim()).toBe("hello from python");
-		} finally {
-			tempDir.removeSync();
-		}
-	});
+	// Cold-spawning the Python runtime races bun's 5s default timeout when this
+	// file runs mid-chunk on a loaded machine; the explicit timeout bounds real
+	// hangs without flaking on spawn latency.
+	it(
+		"exposes completion() in the Python runtime",
+		async () => {
+			const tempDir = TempDir.createSync("@omp-eval-completion-py-");
+			try {
+				const result = await runPythonCompletionInSubprocess({ structured: false, tempDir });
+				expect(result.exitCode).toBe(0);
+				expect(result.output.trim()).toBe("hello from python");
+			} finally {
+				tempDir.removeSync();
+			}
+		},
+		30_000,
+	);
 
-	it("parses structured completion() output in the Python runtime", async () => {
-		const tempDir = TempDir.createSync("@omp-eval-completion-py-struct-");
-		try {
-			const result = await runPythonCompletionInSubprocess({ structured: true, tempDir });
-			expect(result.exitCode).toBe(0);
-			expect(JSON.parse(result.output.trim())).toEqual({ ok: true });
-		} finally {
-			tempDir.removeSync();
-		}
-	});
+	it(
+		"parses structured completion() output in the Python runtime",
+		async () => {
+			const tempDir = TempDir.createSync("@omp-eval-completion-py-struct-");
+			try {
+				const result = await runPythonCompletionInSubprocess({ structured: true, tempDir });
+				expect(result.exitCode).toBe(0);
+				expect(JSON.parse(result.output.trim())).toEqual({ ok: true });
+			} finally {
+				tempDir.removeSync();
+			}
+		},
+		30_000,
+	);
 });

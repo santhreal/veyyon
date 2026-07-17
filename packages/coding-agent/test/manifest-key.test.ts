@@ -51,6 +51,30 @@ describe("manifestFromPackageJson", () => {
 	});
 });
 
+describe("manifest key has one owner", () => {
+	it("no extensibility source reads pkg.omp/pkg.pi manifest keys inline instead of manifestFromPackageJson", () => {
+		// Regression lock: installer.ts and plugins/loader.ts once read
+		// `pkg.omp || pkg.pi` directly, silently ignoring the primary `veyyon`
+		// key for installed/linked plugins. Every manifest read must go through
+		// manifest-key.ts so the key order has exactly one owner.
+		const srcRoot = path.resolve(import.meta.dir, "../src/extensibility");
+		const offenders: string[] = [];
+		const inlineKeyRead = /\.(omp|pi)\s*(\|\||\?\?)\s*\w*\.?(omp|pi)\b/;
+		const walk = (dir: string): void => {
+			for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+				const full = path.join(dir, entry.name);
+				if (entry.isDirectory()) walk(full);
+				else if (entry.name.endsWith(".ts") && entry.name !== "manifest-key.ts") {
+					const source = fs.readFileSync(full, "utf-8");
+					if (inlineKeyRead.test(source)) offenders.push(path.relative(srcRoot, full));
+				}
+			}
+		};
+		walk(srcRoot);
+		expect(offenders).toEqual([]);
+	});
+});
+
 describe("extension loader honors the veyyon manifest key", () => {
 	it("loads a directory extension declared via package.json `veyyon.extensions`", async () => {
 		const tempDir = TempDir.createSync("@pi-manifest-key-");

@@ -1,6 +1,6 @@
 # pi-native tool-call format
 
-The **pi-native** format is the tool-call serialization used by the omp / pi coding agent. Unlike the JSON-in-a-tag conventions (Hermes/Qwen, Harmony) and unlike the fully separate JSON content-block channel (Anthropic Messages API), pi-native serializes each call as an **XML-flavored block** whose tag carries the tool name — `<call:NAME>…</call:NAME>` — and whose arguments are child elements named after the parameters. It is **schema-driven**: the tool's JSON Schema decides how each value is typed (string vs number vs object vs array) and which compact spellings are legal.
+The **pi-native** format is a tool-call serialization **designed for** the omp / pi coding agent. It ships as the `pi-native` dialect in the in-band registry (`packages/ai/src/dialect/pi-native.ts`, registered in `factory.ts` alongside `glm`, `hermes`, `kimi`, `xml`, `anthropic`, `deepseek`, `minimax`, `harmony`, `qwen3`, `gemma`, and `gemini`), selectable via the Tool Calling Mode setting or `PI_DIALECT=pi-native`. Unlike the JSON-in-a-tag conventions (Hermes/Qwen, Harmony) and unlike the fully separate JSON content-block channel (Anthropic Messages API), pi-native serializes each call as an **XML-flavored block** whose tag carries the tool name — `<call:NAME>…</call:NAME>` — and whose arguments are child elements named after the parameters. It is **schema-driven**: the tool's JSON Schema decides how each value is typed (string vs number vs object vs array) and which compact spellings are legal.
 
 This document is a **specification** of the format (it is the contract a renderer must emit and a parser must accept), not a reverse-engineering of trained model weights. It is designed around four goals:
 
@@ -274,3 +274,5 @@ pi-native is specified here; it is not derived from a published model template. 
 
 - Anthropic attribute XML (`<invoke name="…">` / `<parameter name="…">`, "parsed with regular expressions", not required to be valid XML): [`anthropic.md`](./anthropic.md).
 - GLM-4.5 schema-driven, **unquoted** string values vs JSON non-strings, and positional (id-less) call↔result correlation: [`glm-4.5.md`](./glm-4.5.md).
+
+*Verified against `7ca44d3` on 2026-07-17.*

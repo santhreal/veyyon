@@ -38,16 +38,25 @@ interface Fixture {
 	ctx: GuestIdleReconcilerCtx;
 	markActivityEnd: Mock<() => void>;
 	loaderStop: Mock<() => void>;
+	isLoaderArmed: () => boolean;
 }
 
 function makeCtx(hasLoader: boolean): Fixture {
 	const markActivityEnd: Mock<() => void> = mock(() => {});
 	const loaderStop: Mock<() => void> = mock(() => {});
+	// The real one-owner clear no-ops when no loader is armed and drops the
+	// reference after stopping — model both so idempotency stays observable.
+	let loaderArmed = hasLoader;
+	const clearWorkingLoader: Mock<() => void> = mock(() => {
+		if (!loaderArmed) return;
+		loaderStop();
+		loaderArmed = false;
+	});
 	const ctx: GuestIdleReconcilerCtx = {
 		statusLine: { markActivityEnd },
-		loadingAnimation: hasLoader ? { stop: loaderStop } : undefined,
+		clearWorkingLoader,
 	};
-	return { ctx, markActivityEnd, loaderStop };
+	return { ctx, markActivityEnd, loaderStop, isLoaderArmed: () => loaderArmed };
 }
 
 function makeSession(): ConstructorParameters<typeof StatusLineComponent>[0] {
@@ -86,20 +95,20 @@ function makeSession(): ConstructorParameters<typeof StatusLineComponent>[0] {
 
 describe("reconcileGuestIdleHostState", () => {
 	it("closes the active-time window and stops the loader when the host reports idle", () => {
-		const { ctx, markActivityEnd, loaderStop } = makeCtx(true);
+		const { ctx, markActivityEnd, loaderStop, isLoaderArmed } = makeCtx(true);
 		reconcileGuestIdleHostState(ctx, false);
 		expect(markActivityEnd).toHaveBeenCalledTimes(1);
 		expect(loaderStop).toHaveBeenCalledTimes(1);
 		// Loader is cleared so a second reconciliation does not re-stop it.
-		expect(ctx.loadingAnimation).toBeUndefined();
+		expect(isLoaderArmed()).toBe(false);
 	});
 
 	it("is a no-op while the host is still streaming so live turns keep the meter open", () => {
-		const { ctx, markActivityEnd, loaderStop } = makeCtx(true);
+		const { ctx, markActivityEnd, loaderStop, isLoaderArmed } = makeCtx(true);
 		reconcileGuestIdleHostState(ctx, true);
 		expect(markActivityEnd).not.toHaveBeenCalled();
 		expect(loaderStop).not.toHaveBeenCalled();
-		expect(ctx.loadingAnimation).toBeDefined();
+		expect(isLoaderArmed()).toBe(true);
 	});
 
 	it("still closes the active window when no loader is present so the meter stops independently", () => {
@@ -133,7 +142,7 @@ describe("reconcileGuestSnapshotHostState", () => {
 
 		const ctx: GuestSnapshotActivityReconcilerCtx = {
 			statusLine,
-			loadingAnimation: undefined,
+			clearWorkingLoader: () => {},
 		};
 		reconcileGuestSnapshotHostState(ctx, false);
 		const stoppedAt = statusLine.getActiveMs();

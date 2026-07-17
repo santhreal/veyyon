@@ -1035,14 +1035,14 @@ export function getSettingsListTheme(): SettingsListTheme {
 	// installs where the live binding was never initialized. Fall back to plain
 	// text so the call returns a usable (unstyled) theme instead of crashing with
 	// "undefined is not an object (evaluating 'theme.fg')". See #2998.
-	if (typeof theme === "undefined") {
+		if (typeof theme === "undefined") {
 		return {
 			label: (text: string) => text,
 			value: (text: string) => text,
 			description: (text: string) => text,
 			cursor: "> ",
 			hint: (text: string) => text,
-			heading: (text: string) => text,
+			heading: (text: string) => `◆ ${text}`,
 			section: (text: string) => text,
 			hovered: (text: string) => text,
 		};
@@ -1056,7 +1056,10 @@ export function getSettingsListTheme(): SettingsListTheme {
 		cursor: theme.fg("accent", `${theme.nav.cursor} `),
 		hint: (text: string) => theme.fg("dim", text),
 		heading: (text: string, dimmed: boolean) =>
-			dimmed ? theme.fg("dim", theme.underline(text)) : theme.fg("muted", theme.bold(theme.underline(text))),
+			dimmed
+				? theme.fg("dim", theme.underline(text))
+				: // Section headers carry a small ember diamond — the settings kicker.
+					`${theme.fg("accent", "◆")} ${theme.fg("muted", theme.bold(text))}`,
 		section: (text: string, active: boolean) =>
 			active ? theme.fg("accent", theme.bold(text)) : theme.fg("muted", text),
 		hovered: (text: string) => theme.bg("selectedBg", text),
