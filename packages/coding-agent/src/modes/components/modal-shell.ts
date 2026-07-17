@@ -12,8 +12,8 @@
  * top. This is not a full-screen TUI conversion.
  */
 import { padding, TERMINAL, truncateToWidth, visibleWidth } from "@veyyon/pi-tui";
-import { emberTick } from "./composer-chrome";
 import { theme } from "../theme/theme";
+import { emberTick } from "./composer-chrome";
 import { bottomBorder, divider, fit, row, topBorder } from "./overlay-box";
 
 /** Leading decoration width before the title text on the top border. */

@@ -79,10 +79,10 @@ export const opencodeGoUsageProvider: UsageProvider = {
 			provider: OPENCODE_GO_PROVIDER,
 			fetchedAt: nowMs,
 			limits: OPENCODE_GO_LIMITS.map(limit => buildWindowLimit(limit, entries, nowMs)),
-			notes: ["OMP-observed spend only; OpenCode usage outside OMP is not included."],
+			notes: ["Veyyon-observed spend only; OpenCode usage outside Veyyon is not included."],
 			metadata: {
 				planType: "OpenCode Go",
-				source: "omp-observed-request-costs",
+				source: "veyyon-observed-request-costs",
 			},
 		};
 	},

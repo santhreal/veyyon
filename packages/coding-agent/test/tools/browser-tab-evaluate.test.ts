@@ -43,12 +43,12 @@ describe.skipIf(!CHROMIUM_AVAILABLE)("browser tab evaluation", () => {
 			await tool.execute("open", {
 				action: "open",
 				name,
-				url: "data:text/html,<script>globalThis.__ompMainWorld = 42</script>",
+				url: "data:text/html,<script>globalThis.__veyyonMainWorld = 42</script>",
 			});
 			const result = await tool.execute("run", {
 				action: "run",
 				name,
-				code: "return await tab.evaluate(() => globalThis.__ompMainWorld);",
+				code: "return await tab.evaluate(() => globalThis.__veyyonMainWorld);",
 			});
 
 			expect(result.content).toEqual([{ type: "text", text: "42" }]);

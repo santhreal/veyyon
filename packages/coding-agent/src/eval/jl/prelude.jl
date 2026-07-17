@@ -1,14 +1,14 @@
 # OMP Julia prelude helpers (loaded once into the runner's top-level scope).
 
-if !isdefined(Main, :__omp_prelude_loaded)
-    global __omp_prelude_loaded = true
+if !isdefined(Main, :__veyyon_prelude_loaded)
+    global __veyyon_prelude_loaded = true
 end
 
 # -------------------------------------------------------------------------
 # Internal-URL path resolution
 # -------------------------------------------------------------------------
 
-function __omp_url_decode(s::String)
+function __veyyon_url_decode(s::String)
     res = IOBuffer()
     i = 1
     len = ncodeunits(s)
@@ -31,7 +31,7 @@ function __omp_url_decode(s::String)
     return String(take!(res))
 end
 
-function __omp_resolve_path(p::AbstractString)
+function __veyyon_resolve_path(p::AbstractString)
     m = match(r"^([a-z][a-z0-9+.\-]*)://(.*)$"i, p)
     if m === nothing
         return abspath(p)
@@ -48,7 +48,7 @@ function __omp_resolve_path(p::AbstractString)
         error("Protocol paths are not supported by this helper: $p")
     end
     
-    relative = __omp_url_decode(replace(string(m.captures[2]), '\\' => '/'))
+    relative = __veyyon_url_decode(replace(string(m.captures[2]), '\\' => '/'))
     root_path = abspath(string(root))
     if isempty(relative)
         return root_path
@@ -76,7 +76,7 @@ function display_image(base64_str::String, mime_type::String = "image/png")
     return nothing
 end
 
-function __omp_emit_status(op::String, fields::AbstractDict=Dict{String, Any}())
+function __veyyon_emit_status(op::String, fields::AbstractDict=Dict{String, Any}())
     status = Dict{String, Any}("op" => op)
     for (k, v) in fields
         status[string(k)] = v
@@ -94,7 +94,7 @@ end
 # -------------------------------------------------------------------------
 
 function Base.read(path::AbstractString, offset::Integer=1, limit::Union{Integer, Nothing}=nothing)
-    resolved = __omp_resolve_path(string(path))
+    resolved = __veyyon_resolve_path(string(path))
     content = open(resolved, "r") do io
         Base.read(io, String)
     end
@@ -126,7 +126,7 @@ function Base.read(path::AbstractString, offset::Integer=1, limit::Union{Integer
 end
 
 function Base.write(path::AbstractString, content::Any)
-    resolved = __omp_resolve_path(string(path))
+    resolved = __veyyon_resolve_path(string(path))
     mkpath(dirname(resolved))
     open(resolved, "w") do io
         Base.write(io, string(content))
@@ -146,7 +146,7 @@ function Base.write(path::AbstractString, content::Any)
     return resolved
 end
 
-function __omp_apply_query(data, query)
+function __veyyon_apply_query(data, query)
     if query === nothing || isempty(string(query))
         return data
     end
@@ -217,7 +217,7 @@ function __omp_apply_query(data, query)
     return current
 end
 
-function __omp_json_text(value)
+function __veyyon_json_text(value)
     if value === nothing
         return "null"
     end
@@ -228,7 +228,7 @@ function __omp_json_text(value)
     end
 end
 
-function __omp_optional_int(value, default::Int)
+function __veyyon_optional_int(value, default::Int)
     if value === nothing
         return default
     elseif value isa Integer
@@ -246,21 +246,21 @@ function output(ids...; format="raw", query=nothing, offset=nothing, limit=nothi
     if isempty(artifacts_dir)
         session_file = get(ENV, "PI_SESSION_FILE", "")
         if isempty(session_file)
-            __omp_emit_status("output", Dict{String, Any}("error" => "No session file available"))
+            __veyyon_emit_status("output", Dict{String, Any}("error" => "No session file available"))
             error("No session - output artifacts unavailable")
         end
         artifacts_dir = replace(session_file, r"\.[^.]*$" => "")
     end
     if !isdir(artifacts_dir)
-        __omp_emit_status("output", Dict{String, Any}("error" => "Artifacts directory not found", "path" => artifacts_dir))
+        __veyyon_emit_status("output", Dict{String, Any}("error" => "Artifacts directory not found", "path" => artifacts_dir))
         error("No artifacts directory found: $artifacts_dir")
     end
     if isempty(ids)
-        __omp_emit_status("output", Dict{String, Any}("error" => "No IDs provided"))
+        __veyyon_emit_status("output", Dict{String, Any}("error" => "No IDs provided"))
         error("At least one output ID is required")
     end
     if query !== nothing && (offset !== nothing || limit !== nothing)
-        __omp_emit_status("output", Dict{String, Any}("error" => "query cannot be combined with offset/limit"))
+        __veyyon_emit_status("output", Dict{String, Any}("error" => "query cannot be combined with offset/limit"))
         error("query cannot be combined with offset/limit")
     end
 
@@ -286,18 +286,18 @@ function output(ids...; format="raw", query=nothing, offset=nothing, limit=nothi
             json_value = try
                 Main.json_parse(raw)
             catch err
-                __omp_emit_status("output", Dict{String, Any}("id" => output_id, "error" => "Not valid JSON: $(err)"))
+                __veyyon_emit_status("output", Dict{String, Any}("id" => output_id, "error" => "Not valid JSON: $(err)"))
                 error("Output $output_id is not valid JSON: $(err)")
             end
-            result_value = __omp_apply_query(json_value, query)
-            selected = __omp_json_text(result_value)
+            result_value = __veyyon_apply_query(json_value, query)
+            selected = __veyyon_json_text(result_value)
         elseif offset !== nothing || limit !== nothing
-            start_line = max(1, __omp_optional_int(offset, 1))
+            start_line = max(1, __veyyon_optional_int(offset, 1))
             if start_line > total_lines
-                __omp_emit_status("output", Dict{String, Any}("id" => output_id, "error" => "Offset $start_line beyond end ($total_lines lines)"))
+                __veyyon_emit_status("output", Dict{String, Any}("id" => output_id, "error" => "Offset $start_line beyond end ($total_lines lines)"))
                 error("Offset $start_line is beyond end of output ($total_lines lines) for $output_id")
             end
-            effective_limit = limit === nothing ? total_lines - start_line + 1 : __omp_optional_int(limit, total_lines - start_line + 1)
+            effective_limit = limit === nothing ? total_lines - start_line + 1 : __veyyon_optional_int(limit, total_lines - start_line + 1)
             end_line = min(total_lines, start_line + effective_limit - 1)
             selected = join(raw_lines[start_line:end_line], '\n')
             range_info = Dict{String, Any}("start_line" => start_line, "end_line" => end_line, "total_lines" => total_lines)
@@ -337,25 +337,25 @@ function output(ids...; format="raw", query=nothing, offset=nothing, limit=nothi
                 msg *= " (and $(length(available) - 20) more)"
             end
         end
-        __omp_emit_status("output", Dict{String, Any}("not_found" => not_found, "available_count" => length(available)))
+        __veyyon_emit_status("output", Dict{String, Any}("not_found" => not_found, "available_count" => length(available)))
         error(msg)
     end
 
     if length(ids) == 1
         if format == "json"
-            __omp_emit_status("output", Dict{String, Any}("id" => string(ids[1]), "chars" => results[1]["char_count"]))
+            __veyyon_emit_status("output", Dict{String, Any}("id" => string(ids[1]), "chars" => results[1]["char_count"]))
             return results[1]
         end
-        __omp_emit_status("output", Dict{String, Any}("id" => string(ids[1]), "chars" => length(results[1]["content"])))
+        __veyyon_emit_status("output", Dict{String, Any}("id" => string(ids[1]), "chars" => length(results[1]["content"])))
         return results[1]["content"]
     end
 
     if format == "json"
-        __omp_emit_status("output", Dict{String, Any}("count" => length(results), "total_chars" => sum(r["char_count"] for r in results)))
+        __veyyon_emit_status("output", Dict{String, Any}("count" => length(results), "total_chars" => sum(r["char_count"] for r in results)))
         return results
     end
 
-    __omp_emit_status("output", Dict{String, Any}("count" => length(results), "total_chars" => sum(length(r["content"]) for r in results)))
+    __veyyon_emit_status("output", Dict{String, Any}("count" => length(results), "total_chars" => sum(length(r["content"]) for r in results)))
     return results
 end
 
@@ -421,7 +421,7 @@ end
 
 using Downloads
 
-function __omp_call_bridge(name::String, args::Dict{String, Any})
+function __veyyon_call_bridge(name::String, args::Dict{String, Any})
     base_url = get(ENV, "PI_TOOL_BRIDGE_URL", nothing)
     token = get(ENV, "PI_TOOL_BRIDGE_TOKEN", nothing)
     session = get(ENV, "PI_TOOL_BRIDGE_SESSION", nothing)
@@ -490,7 +490,7 @@ function (tc::OmpToolCallable)(args...; kwargs...)
         args_dict[string(k)] = v
     end
     
-    return __omp_call_bridge("tool:" * tc.name, args_dict)
+    return __veyyon_call_bridge("tool:" * tc.name, args_dict)
 end
 
 function Base.getproperty(::OmpToolProxy, sym::Symbol)
@@ -514,7 +514,7 @@ function completion(prompt::String; model="default", system=nothing, schema=noth
     for (k, v) in kwargs
         args_dict[string(k)] = v
     end
-    res = __omp_call_bridge("__completion__", args_dict)
+    res = __veyyon_call_bridge("__completion__", args_dict)
     text = res isa AbstractDict ? get(res, "text", res) : res
     return schema === nothing ? text : Main.json_parse(string(text))
 end
@@ -552,7 +552,7 @@ function agent(prompt::String; agent="task", model=nothing, label=nothing, schem
     if handle_result
         args_dict["handle"] = true
     end
-    res = __omp_call_bridge("__agent__", args_dict)
+    res = __veyyon_call_bridge("__agent__", args_dict)
     text = res isa AbstractDict ? get(res, "text", res) : res
     parsed = schema === nothing ? text : Main.json_parse(string(text))
     if !handle_result
@@ -621,7 +621,7 @@ end
 
 function _concurrency_limit()
     try
-        snap = __omp_call_bridge("__concurrency__", Dict{String, Any}())
+        snap = __veyyon_call_bridge("__concurrency__", Dict{String, Any}())
         limit_val = snap isa AbstractDict ? get(snap, "limit", 0) : snap
         return limit_val isa Number ? max(Int(limit_val), 0) : 0
     catch
@@ -686,16 +686,16 @@ end
 
 struct OmpBudgetProxy end
 
-function __omp_budget_snapshot()
+function __veyyon_budget_snapshot()
     try
-        snap = __omp_call_bridge("__budget__", Dict{String, Any}())
+        snap = __veyyon_call_bridge("__budget__", Dict{String, Any}())
         return snap isa AbstractDict ? snap : Dict{String, Any}()
     catch
         return Dict{String, Any}()
     end
 end
 
-function __omp_budget_int(value, default::Int=0)
+function __veyyon_budget_int(value, default::Int=0)
     if value isa Integer
         return Int(value)
     elseif value isa AbstractFloat
@@ -712,21 +712,21 @@ end
 
 function Base.getproperty(::OmpBudgetProxy, sym::Symbol)
     if sym === :total
-        snap = __omp_budget_snapshot()
+        snap = __veyyon_budget_snapshot()
         return get(snap, "total", nothing)
     elseif sym === :hard
-        snap = __omp_budget_snapshot()
+        snap = __veyyon_budget_snapshot()
         return get(snap, "hard", false) == true
     elseif sym === :spent
-        return () -> __omp_budget_int(get(__omp_budget_snapshot(), "spent", 0), 0)
+        return () -> __veyyon_budget_int(get(__veyyon_budget_snapshot(), "spent", 0), 0)
     elseif sym === :remaining
         return () -> begin
-            snap = __omp_budget_snapshot()
+            snap = __veyyon_budget_snapshot()
             total = get(snap, "total", nothing)
             if total === nothing
                 return Inf
             end
-            return max(0, __omp_budget_int(total, 0) - __omp_budget_int(get(snap, "spent", 0), 0))
+            return max(0, __veyyon_budget_int(total, 0) - __veyyon_budget_int(get(snap, "spent", 0), 0))
         end
     end
     error("Unknown budget metric: $sym")

@@ -255,6 +255,9 @@ describe("latexToBlock DoS guard (deep nesting)", () => {
 	// math is model-authored, so this is a DoS reachable from every `$$…$$`
 	// block in the transcript (markdown.ts calls latexToBlock on it). The guard
 	// must bound work regardless of depth while leaving realistic math untouched.
+	// 30s timeout + 15s bound: on a saturated gate machine (parallel=4 full run)
+	// wall-clock triples vs isolated (~2.5s); the pre-guard hang was minutes, so
+	// the widened bound still catches a DoS regression unambiguously.
 	it("bounds work on a deeply nested fraction chain (no hang, no overflow)", () => {
 		for (const depth of [1000, 50_000, 200_000]) {
 			const frac = `${"\\frac{".repeat(depth)}a${"}{b}".repeat(depth)}`;
@@ -271,9 +274,9 @@ describe("latexToBlock DoS guard (deep nesting)", () => {
 			// proportional to input depth: identical bound for depth 1k and 200k.
 			expect(lines.length).toBeLessThan(MAX_BLOCK_HEIGHT_BOUND);
 			// Linear + bounded: even ~1.2MB of input completes well under the old hang.
-			expect(elapsed).toBeLessThan(3000);
+			expect(elapsed).toBeLessThan(15_000);
 		}
-	});
+	}, 30_000);
 
 	it("bounds deeply nested radicals and groups too", () => {
 		for (const payload of [

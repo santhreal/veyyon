@@ -283,11 +283,11 @@ def transform_cell(source: str) -> str:
 
     Rules
     -----
-    * ``%name args``              -> ``__omp_magic("name", "args")``
-    * ``var = %name args``        -> ``var = __omp_magic("name", "args")``
-    * ``!cmd``                    -> ``__omp_shell("cmd")``
-    * ``var = !cmd``              -> ``var = __omp_shell("cmd")``
-    * ``%%name args\\n<body>``    -> ``__omp_magic_cell("name", "args", "<body>")``
+    * ``%name args``              -> ``__veyyon_magic("name", "args")``
+    * ``var = %name args``        -> ``var = __veyyon_magic("name", "args")``
+    * ``!cmd``                    -> ``__veyyon_shell("cmd")``
+    * ``var = !cmd``              -> ``var = __veyyon_shell("cmd")``
+    * ``%%name args\\n<body>``    -> ``__veyyon_magic_cell("name", "args", "<body>")``
       (cell magic must be the first non-whitespace token of a top-level line and
       consumes the remainder of the cell)
 
@@ -315,7 +315,7 @@ def transform_cell(source: str) -> str:
             body_lines = lines[i + 1 :]
             body = "\n".join(body_lines)
             out.append(
-                f"{indent}__omp_magic_cell({_quote_arg(name)}, {_quote_arg(args)}, {_quote_arg(body)})"
+                f"{indent}__veyyon_magic_cell({_quote_arg(name)}, {_quote_arg(args)}, {_quote_arg(body)})"
             )
             return "\n".join(out)
 
@@ -326,7 +326,7 @@ def transform_cell(source: str) -> str:
             indent = folded[: len(folded) - len(stripped_folded)]
             head, _ = _split_magic_head(stripped_folded[1:])
             name, args = head
-            out.append(f"{indent}__omp_magic({_quote_arg(name)}, {_quote_arg(args)})")
+            out.append(f"{indent}__veyyon_magic({_quote_arg(name)}, {_quote_arg(args)})")
             i += consumed
             continue
 
@@ -335,7 +335,7 @@ def transform_cell(source: str) -> str:
             stripped_folded = folded.lstrip()
             indent = folded[: len(folded) - len(stripped_folded)]
             cmd = stripped_folded[1:].strip()
-            out.append(f"{indent}__omp_shell({_quote_arg(cmd)})")
+            out.append(f"{indent}__veyyon_shell({_quote_arg(cmd)})")
             i += consumed
             continue
 
@@ -346,7 +346,7 @@ def transform_cell(source: str) -> str:
             if rhs.startswith("!"):
                 cmd = rhs[1:].strip()
                 out.append(
-                    f"{m.group('indent')}{m.group('lhs').rstrip()} = __omp_shell({_quote_arg(cmd)})"
+                    f"{m.group('indent')}{m.group('lhs').rstrip()} = __veyyon_shell({_quote_arg(cmd)})"
                 )
                 i += 1
                 continue
@@ -354,7 +354,7 @@ def transform_cell(source: str) -> str:
                 head, _ = _split_magic_head(rhs[1:])
                 name, args = head
                 out.append(
-                    f"{m.group('indent')}{m.group('lhs').rstrip()} = __omp_magic({_quote_arg(name)}, {_quote_arg(args)})"
+                    f"{m.group('indent')}{m.group('lhs').rstrip()} = __veyyon_magic({_quote_arg(name)}, {_quote_arg(args)})"
                 )
                 i += 1
                 continue
@@ -790,14 +790,14 @@ def _run_shell_body(body: str, *, shell_arg: str) -> int:
     return proc.returncode
 
 
-def __omp_magic(name: str, args: str) -> Any:
+def __veyyon_magic(name: str, args: str) -> Any:
     fn = _LINE_MAGICS.get(name)
     if fn is None:
         raise NameError(f"UsageError: Line magic function '%{name}' not found.")
     return fn(args)
 
 
-def __omp_magic_cell(name: str, args: str, body: str) -> Any:
+def __veyyon_magic_cell(name: str, args: str, body: str) -> Any:
     fn = _CELL_MAGICS.get(name)
     if fn is None:
         raise NameError(f"UsageError: Cell magic function '%%{name}' not found.")
@@ -820,7 +820,7 @@ class _ShellResult(list):
         return " ".join(self)
 
 
-def __omp_shell(cmd: str) -> _ShellResult:
+def __veyyon_shell(cmd: str) -> _ShellResult:
     proc = subprocess.Popen(
         cmd,
         shell=True,
@@ -947,7 +947,7 @@ def _emit_display(bundle: dict, *, kind: str = "display") -> None:
     _emit({"type": kind, "id": rid, "bundle": bundle})
 
 
-def __omp_display(value: Any, *, raw: bool = False, kind: str = "display") -> None:
+def __veyyon_display(value: Any, *, raw: bool = False, kind: str = "display") -> None:
     if raw:
         if not isinstance(value, dict):
             raise TypeError("display(..., raw=True) requires a MIME bundle dict")
@@ -998,12 +998,12 @@ os.environ.setdefault("MPLBACKEND", "Agg")
 
 
 def _install_builtins(ns: dict) -> None:
-    ns["display"] = __omp_display
-    ns["__omp_display"] = __omp_display
-    ns["__omp_magic"] = __omp_magic
-    ns["__omp_magic_cell"] = __omp_magic_cell
-    ns["__omp_shell"] = __omp_shell
-    ns["__omp_current_run_id__"] = lambda: _CURRENT_RID.get()
+    ns["display"] = __veyyon_display
+    ns["__veyyon_display"] = __veyyon_display
+    ns["__veyyon_magic"] = __veyyon_magic
+    ns["__veyyon_magic_cell"] = __veyyon_magic_cell
+    ns["__veyyon_shell"] = __veyyon_shell
+    ns["__veyyon_current_run_id__"] = lambda: _CURRENT_RID.get()
 
 
 _install_builtins(_STATE.user_ns)
@@ -1082,12 +1082,12 @@ def _exec_source(source: str, ns: dict) -> None:
     if has_expr and expr_code is not None:
         value = _run_compiled_sync(expr_code, ns, want_value=True)
         if value is not None:
-            __omp_display(value, kind="result")
+            __veyyon_display(value, kind="result")
 
 
 async def _exec_source_async(source: str, ns: dict) -> None:
     """Compile + execute ``source``; if the last node is an expression, route
-    its value through ``__omp_display`` so dataframes/figures render rich.
+    its value through ``__veyyon_display`` so dataframes/figures render rich.
     Top-level ``await`` / ``async for`` / ``async with`` is permitted; awaited
     regions yield to other requests in the runner's persistent event loop."""
     body_code, expr_code, has_expr = _compile_source(source)
@@ -1097,7 +1097,7 @@ async def _exec_source_async(source: str, ns: dict) -> None:
     if has_expr and expr_code is not None:
         value = await _run_compiled_async(expr_code, ns, want_value=True)
         if value is not None:
-            __omp_display(value, kind="result")
+            __veyyon_display(value, kind="result")
 
 
 # ---------------------------------------------------------------------------
@@ -1202,7 +1202,7 @@ async def _handle_request_async(req: dict) -> None:
     token = _CURRENT_RID.set(rid)
     displayed_matplotlib_token = _CURRENT_DISPLAYED_MATPLOTLIB_FIGURE_IDS.set(set())
     _STATE.capture_rid = rid
-    _STATE.user_ns["__omp_run_id__"] = rid
+    _STATE.user_ns["__veyyon_run_id__"] = rid
     _STATE.cancel_requested = False
     _STATE.execution_count += 1
     execution_count = _STATE.execution_count

@@ -103,7 +103,7 @@
 
 ### Changed
 
-- Renamed `__omp_stats_sync_worker` to `__omp_worker_stats_sync`.
+- Renamed `__veyyon_stats_sync_worker` to `__veyyon_worker_stats_sync`.
 
 ## [15.13.1] - 2026-06-15
 
@@ -133,7 +133,7 @@
 ### Changed
 
 - Bundled-model lookups (`getBundledModel`, `GeneratedProvider`) now import from the new `@oh-my-pi/pi-catalog` package instead of the `@oh-my-pi/pi-ai` barrel, which no longer re-exports catalog values
-- The session-sync worker re-enters the host CLI entry (`workerHostEntry()` + `__omp_stats_sync_worker` argv selector) when running inside omp — source, npm bundle, or compiled binary — and keeps loading its own `sync-worker.ts` module directly for standalone `omp-stats`, bun test, and SDK hosts
+- The session-sync worker re-enters the host CLI entry (`workerHostEntry()` + `__veyyon_stats_sync_worker` argv selector) when running inside omp — source, npm bundle, or compiled binary — and keeps loading its own `sync-worker.ts` module directly for standalone `omp-stats`, bun test, and SDK hosts
 
 ## [15.1.6] - 2026-05-19
 

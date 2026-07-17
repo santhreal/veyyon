@@ -3,7 +3,7 @@ import type * as BabelParser from "@babel/parser";
 // Static ESM `import` declarations are not valid inside vm.runInContext (script-mode parsing),
 // and dynamic `import(...)` would otherwise resolve specifiers against the worker module's URL
 // instead of the session cwd. We rewrite both forms so they route through the worker-injected
-// `__omp_import__` helper, which resolves the specifier against the active session cwd. A real
+// `__veyyon_import__` helper, which resolves the specifier against the active session cwd. A real
 // parser keeps imports embedded in string literals, template literals, or comments intact.
 
 type BabelImportDeclaration = {
@@ -107,15 +107,17 @@ async function parseProgram(code: string): Promise<{ program: { body: ReadonlyAr
 // Callee substituted for dynamic `import(...)` calls. Functions handed to puppeteer
 // (`tab.evaluate`, `page.evaluate`, `waitForFunction`, `$$eval`, ...) are serialized with
 // `Function.prototype.toString()` and re-evaluated inside the browser page, where the
-// worker-injected `__omp_import__` global does not exist. The swap therefore guards on the
+// worker-injected `__veyyon_import__` global does not exist. The swap therefore guards on the
 // helper's presence and falls back to native dynamic import, so serialized code keeps
 // working in foreign realms while in-worker code still resolves against the session cwd.
-const DYNAMIC_IMPORT_CALLEE = '(typeof __omp_import__ === "function" ? __omp_import__ : (s, o) => import(s, o))';
+const DYNAMIC_IMPORT_CALLEE = '(typeof __veyyon_import__ === "function" ? __veyyon_import__ : (s, o) => import(s, o))';
 
 function buildOmpImportCall(sourceLiteral: string, optionsLiteral: string | undefined): string {
-	// Route every static import through the worker-injected `__omp_import__` helper so the
+	// Route every static import through the worker-injected `__veyyon_import__` helper so the
 	// specifier resolves against the session cwd (and `with`-attribute imports keep working).
-	return optionsLiteral ? `__omp_import__(${sourceLiteral}, ${optionsLiteral})` : `__omp_import__(${sourceLiteral})`;
+	return optionsLiteral
+		? `__veyyon_import__(${sourceLiteral}, ${optionsLiteral})`
+		: `__veyyon_import__(${sourceLiteral})`;
 }
 
 // Walks every node in `root`, depth-first, invoking `visit` on each one. Skips Babel's
@@ -147,7 +149,7 @@ function buildOptionsLiteral(node: BabelImportDeclaration): string | undefined {
 		const key = attr.key.type === "Identifier" ? attr.key.name : JSON.stringify(attr.key.value);
 		return `${key}: ${JSON.stringify(attr.value.value)}`;
 	});
-	// Native dynamic import takes options as `{ with: { ... } }`. `__omp_import__` forwards the
+	// Native dynamic import takes options as `{ with: { ... } }`. `__veyyon_import__` forwards the
 	// options bag verbatim, so we wrap the attribute pairs accordingly.
 	return `{ with: { ${pairs.join(", ")} } }`;
 }
@@ -196,14 +198,14 @@ export async function rewriteImports(code: string): Promise<string> {
 	type Edit = { start: number; end: number; text: string };
 	const edits: Edit[] = [];
 
-	// Top-level static `import` declarations become `await __omp_import__(...)` calls.
+	// Top-level static `import` declarations become `await __veyyon_import__(...)` calls.
 	for (const node of ast.program.body) {
 		if (node.type !== "ImportDeclaration") continue;
 		const decl = node as unknown as BabelImportDeclaration;
 		edits.push({ start: decl.start, end: decl.end, text: rewriteImportNode(decl) });
 	}
 
-	// Dynamic `import(...)` expressions (anywhere) get their callee swapped for `__omp_import__`
+	// Dynamic `import(...)` expressions (anywhere) get their callee swapped for `__veyyon_import__`
 	// so the specifier resolves against the session cwd instead of the worker module's URL.
 	walkNodes(ast, node => {
 		if (node.type !== "CallExpression") return;
@@ -274,7 +276,7 @@ export async function rewriteModuleSourceSpecifiers(
 	return result;
 }
 
-export async function rewriteDynamicImports(code: string, callee = "__omp_import__"): Promise<string> {
+export async function rewriteDynamicImports(code: string, callee = "__veyyon_import__"): Promise<string> {
 	if (!code.includes("import")) return code;
 	const ast = await parseProgram(code);
 	if (!ast) return code;
@@ -429,18 +431,18 @@ async function returnFinalExpression(code: string): Promise<{ source: string; re
 		const suffix = code.slice(expression.end);
 		const semicolonMatch = statement.match(/;\s*$/);
 		const trimmedStatement = semicolonMatch ? statement.slice(0, semicolonMatch.index) : statement;
-		return { source: `${prefix}__omp_set_final_expr__((${trimmedStatement}));${suffix}`, returned: true };
+		return { source: `${prefix}__veyyon_set_final_expr__((${trimmedStatement}));${suffix}`, returned: true };
 	}
 	if (last?.type === "ReturnStatement") {
 		// Top-level `return value;` is otherwise swallowed: it forces the cell into an async IIFE
-		// wrapper that discards the returned value. Rewrite into `__omp_set_final_expr__((expr))`
+		// wrapper that discards the returned value. Rewrite into `__veyyon_set_final_expr__((expr))`
 		// so the runtime can surface the value to the caller just like a trailing expression.
 		const ret = last as unknown as { start: number; end: number; argument?: { start: number; end: number } | null };
 		if (!ret.argument) return { source: code, returned: false };
 		const prefix = code.slice(0, ret.start);
 		const suffix = code.slice(ret.end);
 		const expr = code.slice(ret.argument.start, ret.argument.end);
-		return { source: `${prefix}__omp_set_final_expr__((${expr}));${suffix}`, returned: true };
+		return { source: `${prefix}__veyyon_set_final_expr__((${expr}));${suffix}`, returned: true };
 	}
 	return { source: code, returned: false };
 }

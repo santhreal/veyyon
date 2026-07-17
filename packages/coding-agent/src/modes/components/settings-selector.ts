@@ -464,25 +464,6 @@ function isAdvancedToggleId(id: string): boolean {
 	return id.startsWith(ADVANCED_TOGGLE_ID_PREFIX);
 }
 
-let cachedSidebarWidth: number | undefined;
-/**
- * Split-sidebar width derived from every group name in the schema (not just
- * the visible tab), so the divider column never moves when switching tabs or
- * when condition-gated groups appear.
- */
-function settingsSidebarWidth(): number {
-	if (cachedSidebarWidth === undefined) {
-		let nameWidth = 0;
-		for (const tab of SETTING_TABS) {
-			for (const def of getSettingsForTab(tab)) {
-				if (def.group) nameWidth = Math.max(nameWidth, visibleWidth(def.group));
-			}
-		}
-		cachedSidebarWidth = Math.min(22, nameWidth) + 4;
-	}
-	return cachedSidebarWidth;
-}
-
 /** Columns between the sidebar and the settings pane: `│` hairline + two spaces. */
 const SIDEBAR_GAP_COLS = 3;
 
@@ -570,7 +551,6 @@ export class SettingsSelectorComponent implements Component {
 	/** First matching item id per tab id, for Tab-key jumps while searching. */
 	#searchFirstMatch = new Map<string, string>();
 	#textInputActive = false;
-	#hasSectionJump = false;
 	/** Per-tab collapsed state for the "Advanced" fold (session-only, defaults collapsed). */
 	#showAdvanced = new Map<SettingTab, boolean>();
 	// Frame geometry from the last render, for mouse hit-testing (the
@@ -1467,11 +1447,6 @@ export class SettingsSelectorComponent implements Component {
 		const defs = getSettingsForTab(tabId);
 
 		const items = this.#buildItemsForDefs(defs, tabId);
-		// Mirror SettingsList's section detection (leading ungrouped items form
-		// an implicit section) so the footer hint only advertises PgUp/PgDn
-		// when the jump actually changes sections.
-		const sectionCount = items.filter(item => item.heading).length + (items.length > 0 && !items[0].heading ? 1 : 0);
-		this.#hasSectionJump = sectionCount >= 2;
 
 		this.#currentList = new SettingsList(
 			items,

@@ -4,11 +4,12 @@
  * is the opposite: a dim hairline, an ember prompt glyph, and two whisper-quiet
  * lines with sweeping space between them — location above, capability below.
  */
+
+import { stripVTControlCharacters } from "node:util";
 import type { Component } from "@veyyon/pi-tui";
 import { TERMINAL } from "@veyyon/pi-tui";
-import { stripVTControlCharacters } from "node:util";
-import { EMBER, renderSunField } from "./sun";
 import { theme } from "../theme/theme";
+import { EMBER, renderSunField } from "./sun";
 
 /**
  * One optional dim line (location above the composer, capability below it).

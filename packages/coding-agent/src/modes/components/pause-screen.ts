@@ -22,9 +22,9 @@ import {
 	TERMINAL,
 } from "@veyyon/pi-tui";
 import { formatDuration } from "../../slash-commands/helpers/format";
-import { renderEmberField } from "./sun";
 import { theme } from "../theme/theme";
 import { matchesAppInterrupt } from "../utils/keybinding-matchers";
+import { renderEmberField } from "./sun";
 
 /**
  * Slice of `InteractiveModeContext` the pause screen drives. Narrow so tests
@@ -96,7 +96,13 @@ export function renderPauseScreen(width: number, height: number, elapsedMs: numb
 		// The pause bars are two fields of burning ember, not flat blocks.
 		const t = Math.min(1, elapsedMs / 6000);
 		const left = renderEmberField({ cols: BAR_WIDTH, rows: BAR_ROWS, time: t, trueColor: TERMINAL.trueColor });
-		const right = renderEmberField({ cols: BAR_WIDTH, rows: BAR_ROWS, time: t, trueColor: TERMINAL.trueColor, seed: 7 });
+		const right = renderEmberField({
+			cols: BAR_WIDTH,
+			rows: BAR_ROWS,
+			time: t,
+			trueColor: TERMINAL.trueColor,
+			seed: 7,
+		});
 		for (let i = 0; i < BAR_ROWS; i++) {
 			content.push(centerLine(`${left[i]}${" ".repeat(BAR_GAP)}${right[i]}`, width));
 		}

@@ -1,6 +1,6 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "bun:test";
-import { stripVTControlCharacters } from "node:util";
 import * as path from "node:path";
+import { stripVTControlCharacters } from "node:util";
 import { Agent } from "@veyyon/pi-agent-core";
 import { ModelRegistry } from "@veyyon/pi-coding-agent/config/model-registry";
 import { resetSettingsForTest, Settings } from "@veyyon/pi-coding-agent/config/settings";

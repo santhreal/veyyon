@@ -1092,14 +1092,14 @@ describe("ExtensionRunner", () => {
 			const extCode = `
 				export default function(pi) {
 					pi.on("session_start", async (_event, ctx) => {
-						globalThis.__ompMemoryStatus = await ctx.memory.status();
+						globalThis.__veyyonMemoryStatus = await ctx.memory.status();
 					});
 				}
 			`;
 			const explicitExtensionPath = path.join(tempDir.path(), "memory-context.ts");
 			fs.writeFileSync(explicitExtensionPath, extCode);
-			const globalState = globalThis as typeof globalThis & { __ompMemoryStatus?: unknown };
-			delete globalState.__ompMemoryStatus;
+			const globalState = globalThis as typeof globalThis & { __veyyonMemoryStatus?: unknown };
+			delete globalState.__veyyonMemoryStatus;
 
 			const result = await loadTestExtensions([explicitExtensionPath]);
 			const runner = new ExtensionRunner(
@@ -1149,12 +1149,12 @@ describe("ExtensionRunner", () => {
 
 			await runner.emit({ type: "session_start" });
 
-			expect(globalState.__ompMemoryStatus).toMatchObject({
+			expect(globalState.__veyyonMemoryStatus).toMatchObject({
 				backend: "mnemopi",
 				active: true,
 				searchable: true,
 			});
-			delete globalState.__ompMemoryStatus;
+			delete globalState.__veyyonMemoryStatus;
 		});
 	});
 

@@ -47,7 +47,7 @@ describe("EvalTool non-serializable tool args", () => {
 			language: "js",
 			code: [
 				"try {",
-				'\tawait __omp_call_tool__("read", { path: () => "x" });',
+				'\tawait __veyyon_call_tool__("read", { path: () => "x" });',
 				'\tconsole.log("no-throw");',
 				"} catch (error) {",
 				'\tconsole.log("caught " + error.name);',

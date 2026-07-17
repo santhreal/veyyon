@@ -1,5 +1,5 @@
-if (!globalThis.__omp_js_prelude_loaded__) {
-	globalThis.__omp_js_prelude_loaded__ = true;
+if (!globalThis.__veyyon_js_prelude_loaded__) {
+	globalThis.__veyyon_js_prelude_loaded__ = true;
 
 	const isNil = value => value === undefined || value === null;
 	const isPlainObject = value => value !== null && typeof value === "object" && !Array.isArray(value);
@@ -36,7 +36,7 @@ if (!globalThis.__omp_js_prelude_loaded__) {
 		}
 		return positionalOptions(name, [value, ...rest], keys, example);
 	};
-	const callHelper = (name, ...args) => globalThis.__omp_helpers__[name](...args);
+	const callHelper = (name, ...args) => globalThis.__veyyon_helpers__[name](...args);
 	const hasScheme = path => typeof path === "string" && /^[A-Za-z][A-Za-z0-9+.-]*:\/\//.test(path);
 	const shouldDelegateRead = path => hasScheme(path) && !path.toLowerCase().startsWith("local://");
 	const withReadLineSelector = (path, options) => {
@@ -49,7 +49,7 @@ if (!globalThis.__omp_js_prelude_loaded__) {
 		return `${path}:${start}-${start + limit - 1}`;
 	};
 	const readToolText = async path => {
-		const res = await globalThis.__omp_call_tool__("read", { path });
+		const res = await globalThis.__veyyon_call_tool__("read", { path });
 		return res && typeof res === "object" && "text" in res ? res.text : res;
 	};
 
@@ -70,7 +70,7 @@ if (!globalThis.__omp_js_prelude_loaded__) {
 		{
 			get(_target, prop) {
 				if (typeof prop !== "string") return undefined;
-				return async args => globalThis.__omp_call_tool__(prop, args ?? {});
+				return async args => globalThis.__veyyon_call_tool__(prop, args ?? {});
 			},
 		},
 	);
@@ -94,7 +94,7 @@ if (!globalThis.__omp_js_prelude_loaded__) {
 
 	const completion = async (prompt, opts, ...rest) => {
 		const o = optionsArg("completion", opts, rest, ["model", "system", "schema"], "{ model, system, schema }");
-		const res = await globalThis.__omp_call_tool__("__completion__", { prompt, ...o });
+		const res = await globalThis.__veyyon_call_tool__("__completion__", { prompt, ...o });
 		const text = res && typeof res === "object" ? res.text : res;
 		return hasOwn(o, "schema") ? JSON.parse(text) : text;
 	};
@@ -108,7 +108,7 @@ if (!globalThis.__omp_js_prelude_loaded__) {
 			"{ agent, model, label, schema, isolated, apply, merge, handle }",
 		);
 		const { handle, ...callArgs } = o;
-		const res = await globalThis.__omp_call_tool__("__agent__", { prompt, ...callArgs, handle: Boolean(handle) });
+		const res = await globalThis.__veyyon_call_tool__("__agent__", { prompt, ...callArgs, handle: Boolean(handle) });
 		const text = res && typeof res === "object" ? res.text : res;
 		const parsed = hasOwn(callArgs, "schema") ? JSON.parse(text) : text;
 		if (!handle) return parsed;
@@ -129,7 +129,7 @@ if (!globalThis.__omp_js_prelude_loaded__) {
 	// reply) means unbounded — run every item at once.
 	const __concurrencyLimit = async () => {
 		try {
-			const r = await globalThis.__omp_call_tool__("__concurrency__", {});
+			const r = await globalThis.__veyyon_call_tool__("__concurrency__", {});
 			const n = Math.trunc(Number(r && typeof r === "object" ? r.limit : r));
 			return Number.isFinite(n) && n > 0 ? n : 0;
 		} catch {
@@ -180,15 +180,15 @@ if (!globalThis.__omp_js_prelude_loaded__) {
 		return current;
 	};
 
-	const log = message => globalThis.__omp_emit_status__("log", { message: String(message) });
+	const log = message => globalThis.__veyyon_emit_status__("log", { message: String(message) });
 
 	const phase = title => {
-		globalThis.__omp_phase__ = String(title);
-		globalThis.__omp_emit_status__("phase", { title: String(title) });
+		globalThis.__veyyon_phase__ = String(title);
+		globalThis.__veyyon_emit_status__("phase", { title: String(title) });
 	};
 
 	const __budgetSnap = async () => {
-		const r = await globalThis.__omp_call_tool__("__budget__", {});
+		const r = await globalThis.__veyyon_call_tool__("__budget__", {});
 		return r && typeof r === "object" ? r : {};
 	};
 
@@ -206,7 +206,7 @@ if (!globalThis.__omp_js_prelude_loaded__) {
 	};
 
 	const display = value => {
-		globalThis.__omp_display__(value);
+		globalThis.__veyyon_display__(value);
 	};
 
 	const formatArgs = args => args.map(arg => (typeof arg === "string" ? arg : arg));
@@ -214,31 +214,31 @@ if (!globalThis.__omp_js_prelude_loaded__) {
 	const consoleTimers = new Map();
 	const consoleCounts = new Map();
 	const consoleBridge = {
-		log: (...args) => globalThis.__omp_log__("log", ...formatArgs(args)),
-		info: (...args) => globalThis.__omp_log__("info", ...formatArgs(args)),
-		warn: (...args) => globalThis.__omp_log__("warn", ...formatArgs(args)),
-		error: (...args) => globalThis.__omp_log__("error", ...formatArgs(args)),
-		debug: (...args) => globalThis.__omp_log__("debug", ...formatArgs(args)),
+		log: (...args) => globalThis.__veyyon_log__("log", ...formatArgs(args)),
+		info: (...args) => globalThis.__veyyon_log__("info", ...formatArgs(args)),
+		warn: (...args) => globalThis.__veyyon_log__("warn", ...formatArgs(args)),
+		error: (...args) => globalThis.__veyyon_log__("error", ...formatArgs(args)),
+		debug: (...args) => globalThis.__veyyon_log__("debug", ...formatArgs(args)),
 		table: (data, columns) =>
 			columns === undefined
-				? globalThis.__omp_table__(data)
-				: globalThis.__omp_table__(data, columns),
-		dir: (value, _options) => globalThis.__omp_log__("log", value),
-		dirxml: (...args) => globalThis.__omp_log__("log", ...formatArgs(args)),
+				? globalThis.__veyyon_table__(data)
+				: globalThis.__veyyon_table__(data, columns),
+		dir: (value, _options) => globalThis.__veyyon_log__("log", value),
+		dirxml: (...args) => globalThis.__veyyon_log__("log", ...formatArgs(args)),
 		trace: (...args) => {
 			const stack = (new Error().stack ?? "").split("\n").slice(2).join("\n");
-			globalThis.__omp_log__("log", args.length > 0 ? `Trace: ${formatArgs(args).join(" ")}` : "Trace", `\n${stack}`);
+			globalThis.__veyyon_log__("log", args.length > 0 ? `Trace: ${formatArgs(args).join(" ")}` : "Trace", `\n${stack}`);
 		},
 		assert: (condition, ...args) => {
 			if (condition) return;
-			if (args.length > 0) globalThis.__omp_log__("error", "Assertion failed:", ...formatArgs(args));
-			else globalThis.__omp_log__("error", "Assertion failed");
+			if (args.length > 0) globalThis.__veyyon_log__("error", "Assertion failed:", ...formatArgs(args));
+			else globalThis.__veyyon_log__("error", "Assertion failed");
 		},
 		group: (...args) => {
-			if (args.length > 0) globalThis.__omp_log__("log", ...formatArgs(args));
+			if (args.length > 0) globalThis.__veyyon_log__("log", ...formatArgs(args));
 		},
 		groupCollapsed: (...args) => {
-			if (args.length > 0) globalThis.__omp_log__("log", ...formatArgs(args));
+			if (args.length > 0) globalThis.__veyyon_log__("log", ...formatArgs(args));
 		},
 		groupEnd: () => {},
 		time: label => {
@@ -248,26 +248,26 @@ if (!globalThis.__omp_js_prelude_loaded__) {
 			const key = String(label ?? "default");
 			const start = consoleTimers.get(key);
 			if (start === undefined) {
-				globalThis.__omp_log__("warn", `Timer '${key}' does not exist`);
+				globalThis.__veyyon_log__("warn", `Timer '${key}' does not exist`);
 				return;
 			}
-			globalThis.__omp_log__("log", `${key}: ${Date.now() - start}ms`, ...formatArgs(args));
+			globalThis.__veyyon_log__("log", `${key}: ${Date.now() - start}ms`, ...formatArgs(args));
 		},
 		timeEnd: label => {
 			const key = String(label ?? "default");
 			const start = consoleTimers.get(key);
 			if (start === undefined) {
-				globalThis.__omp_log__("warn", `Timer '${key}' does not exist`);
+				globalThis.__veyyon_log__("warn", `Timer '${key}' does not exist`);
 				return;
 			}
 			consoleTimers.delete(key);
-			globalThis.__omp_log__("log", `${key}: ${Date.now() - start}ms`);
+			globalThis.__veyyon_log__("log", `${key}: ${Date.now() - start}ms`);
 		},
 		count: label => {
 			const key = String(label ?? "default");
 			const next = (consoleCounts.get(key) ?? 0) + 1;
 			consoleCounts.set(key, next);
-			globalThis.__omp_log__("log", `${key}: ${next}`);
+			globalThis.__veyyon_log__("log", `${key}: ${next}`);
 		},
 		countReset: label => {
 			consoleCounts.delete(String(label ?? "default"));

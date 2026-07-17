@@ -9,7 +9,7 @@ async function runPrelude(
 ): Promise<{ stdout: string; stderr: string; exitCode: number }> {
 	const prelude = PYTHON_PRELUDE.replace(
 		"from __future__ import annotations",
-		"from __future__ import annotations\n__omp_display = lambda *args, **kwargs: None",
+		"from __future__ import annotations\n__veyyon_display = lambda *args, **kwargs: None",
 	);
 	const script = `${prelude}\n${code}`;
 	const proc = Bun.spawn([pythonPath, "-c", script], {

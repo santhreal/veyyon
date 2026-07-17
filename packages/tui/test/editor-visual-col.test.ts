@@ -124,7 +124,9 @@ describe("visual-col mapping — invariants (fuzz)", () => {
 			expect(visualColAtOffset(text, 0)).toBe(0);
 			expect(visualColAtOffset(text, text.length)).toBe(width);
 		}
-	});
+		// 30s timeout: on a saturated gate machine (parallel=4 full run) this
+		// 15k-iter fuzz loop races bun's 5s default despite passing in ~2s isolated.
+	}, 30_000);
 
 	it("col→offset→col round-trips the visual column at every boundary", () => {
 		// Offset round-trip can't be exact when zero-width graphemes (combining
@@ -144,5 +146,5 @@ describe("visual-col mapping — invariants (fuzz)", () => {
 				expect(visualColAtOffset(text, off)).toBe(col);
 			}
 		}
-	});
+	}, 30_000);
 });

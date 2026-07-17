@@ -67,7 +67,7 @@ describe("latex fuzz invariants", () => {
 				throw new Error(`latexToUnicode(${JSON.stringify(s)}) returned ${typeof out}`);
 			}
 		}
-	});
+	}, 30_000);
 
 	it("renderMathInText never throws on adversarial mixed text", () => {
 		const rand = lcg(0x9a2b_7711);
@@ -80,7 +80,7 @@ describe("latex fuzz invariants", () => {
 				throw new Error(`renderMathInText(${JSON.stringify(s)}) threw: ${e}`);
 			}
 		}
-	});
+	}, 30_000);
 
 	it("does not overflow the stack on deeply nested input", () => {
 		// A model can emit arbitrarily nested braces/fractions; the converter must
@@ -106,8 +106,10 @@ describe("latex fuzz invariants", () => {
 				expect(typeof out).toBe("string");
 			}
 		}
-	});
+	}, 30_000);
 
+	// 30s timeouts on these fuzz loops: on a saturated gate machine (parallel=4
+	// full run) wall-clock triples vs isolated and races bun's 5s default.
 	it("optional-argument nesting stays bounded and shallow math is unaffected", () => {
 		// The depth guard degrades a deep optional-arg chain to literal text without
 		// crashing; a huge payload must complete in roughly linear time (the old
@@ -119,5 +121,5 @@ describe("latex fuzz invariants", () => {
 		expect(latexToUnicode("\\sqrt[3]{x}")).toBe("∛x");
 		expect(latexToUnicode("\\sqrt[3]{abc}")).toBe("∛(abc)");
 		expect(latexToUnicode("\\xrightarrow[n\\to\\infty]{f}")).toBe("→ᶠ_(n→∞)");
-	});
+	}, 30_000);
 });

@@ -3,7 +3,7 @@
  * depth-polish coverage for the settings ModalShell (Grok settings_modal
  * parity — see docs/internal/design.md).
  */
-import { beforeAll, beforeEach, describe, expect, it } from "bun:test";
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
 import { resetSettingsForTest, Settings } from "@veyyon/pi-coding-agent/config/settings";
 import { SettingsSelectorComponent } from "@veyyon/pi-coding-agent/modes/components/settings-selector";
@@ -39,6 +39,11 @@ beforeEach(async () => {
 	resetSettingsForTest();
 	await Settings.init({ inMemory: true });
 	geometryStub = stubStdoutGeometry(40);
+});
+
+afterEach(() => {
+	geometryStub?.restore();
+	geometryStub = undefined;
 });
 
 function stubStdoutGeometry(rows: number): { restore(): void } {

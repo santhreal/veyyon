@@ -773,7 +773,7 @@ function mapGitLabDuoWorkflowMcpToolCall(args: Record<string, unknown>): {
 	arguments: Record<string, unknown>;
 } {
 	const rawName = stringField(args, "toolName") ?? stringField(args, "tool_name") ?? stringField(args, "name") ?? "";
-	const toolName = rawName.startsWith("mcp__omp__") ? rawName.slice("mcp__omp__".length) : rawName;
+	const toolName = rawName.startsWith("mcp__veyyon__") ? rawName.slice("mcp__veyyon__".length) : rawName;
 	const parsedArgs = parseGitLabDuoWorkflowMcpArguments(args.args ?? args.arguments);
 	if (toolName === "edit" && typeof parsedArgs.input === "string") {
 		return { name: "edit", arguments: { input: parsedArgs.input } };
@@ -2220,12 +2220,12 @@ function gitLabToolResultToText(toolResult: ToolResultMessage): string {
 
 function buildGitLabMcpToolDefinition(tool: Tool): GitLabMcpToolDefinition {
 	const schema = toolWireSchema(tool);
-	// Register the tool under its BARE name (no `mcp__omp__` prefix). The server does
+	// Register the tool under its BARE name (no `mcp__veyyon__` prefix). The server does
 	// not strip prefixes — it registers `_executable_tools` and binds the model schema
 	// under exactly the wire `name` (sanitize_llm_name only replaces illegal chars), so
 	// the name the model sees, the toolset key it is matched against, and OMP's own
 	// tool docs must all be the same bare name. A prefixed wire name only forced the
-	// model to learn `mcp__omp__read` while OMP docs say `read`, with no upside.
+	// model to learn `mcp__veyyon__read` while OMP docs say `read`, with no upside.
 	// `originalToolName`/`serverName` stay as MCP metadata; they are not the match key.
 	return {
 		name: tool.name,

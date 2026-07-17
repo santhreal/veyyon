@@ -111,7 +111,7 @@ interface WorkerHandle {
 function createSyncWorker(): Worker {
 	const hostEntry = workerHostEntry();
 	if (hostEntry) {
-		return new Worker(hostEntry, { type: "module", argv: ["__omp_worker_stats_sync"] });
+		return new Worker(hostEntry, { type: "module", argv: ["__veyyon_worker_stats_sync"] });
 	}
 	return new Worker(new URL("./sync-worker.ts", import.meta.url).href, { type: "module" });
 }

@@ -8,11 +8,11 @@
 # uses (PI_TOOL_BRIDGE_URL/TOKEN/SESSION). Path helpers honor PI_EVAL_LOCAL_ROOTS
 # so `write("local://x")` lands where `read local://x` resolves.
 #
-# `__omp_*` primitives (emit/present/status/scrub/run_id) are provided by
+# `__veyyon_*` primitives (emit/present/status/scrub/run_id) are provided by
 # runner.rb; this file only consumes them.
 
-unless defined?($__omp_prelude_loaded) && $__omp_prelude_loaded
-  $__omp_prelude_loaded = true
+unless defined?($__veyyon_prelude_loaded) && $__veyyon_prelude_loaded
+  $__veyyon_prelude_loaded = true
 
   require "json"
 
@@ -20,14 +20,14 @@ unless defined?($__omp_prelude_loaded) && $__omp_prelude_loaded
   # Internal-URL path resolution
   # -------------------------------------------------------------------------
 
-  def __omp_url_decode(str)
+  def __veyyon_url_decode(str)
     str.gsub(/%([0-9A-Fa-f]{2})/) { [Regexp.last_match(1)].pack("H2") }.force_encoding(Encoding::UTF_8)
   end
 
   # Map a helper path to a real filesystem path. A `scheme://…` whose scheme has
   # an injected on-disk root (PI_EVAL_LOCAL_ROOTS, e.g. `local://`) is rewritten
   # under that root; plain paths pass through; any other `scheme://` is rejected.
-  def __omp_resolve_path(path)
+  def __veyyon_resolve_path(path)
     return path unless path.is_a?(String)
     m = path.match(%r{\A([a-z][a-z0-9+.\-]*)://(.*)\z}i)
     return path unless m
@@ -41,7 +41,7 @@ unless defined?($__omp_prelude_loaded) && $__omp_prelude_loaded
       end
     root = roots.is_a?(Hash) ? roots[scheme] : nil
     raise "Protocol paths are not supported by this helper: #{path}" if root.nil? || root.to_s.empty?
-    relative = __omp_url_decode(m[2].tr("\\", "/"))
+    relative = __veyyon_url_decode(m[2].tr("\\", "/"))
     root_path = File.absolute_path(root.to_s)
     return root_path if relative.empty?
     if relative.start_with?("/") || relative.split("/").include?("..")
@@ -59,30 +59,30 @@ unless defined?($__omp_prelude_loaded) && $__omp_prelude_loaded
   # -------------------------------------------------------------------------
 
   def display(value)
-    __omp_present(value, "display")
+    __veyyon_present(value, "display")
     nil
   end
 
   # Emit a base64 image as a display output. `mime_type` is "image/png" (default)
   # or "image/jpeg"; the host surfaces it as an inspectable image block.
   def display_image(base64, mime_type: "image/png")
-    __omp_emit_display({ mime_type.to_s => base64.to_s })
+    __veyyon_emit_display({ mime_type.to_s => base64.to_s })
     nil
   end
 
   def env(key = nil, value = nil)
     if key.nil?
       items = ENV.to_h.sort.to_h
-      __omp_emit_status("env", "count" => items.size, "keys" => items.keys.first(20))
+      __veyyon_emit_status("env", "count" => items.size, "keys" => items.keys.first(20))
       return items
     end
     unless value.nil?
       ENV[key.to_s] = value.to_s
-      __omp_emit_status("env", "key" => key.to_s, "value" => value.to_s, "action" => "set")
+      __veyyon_emit_status("env", "key" => key.to_s, "value" => value.to_s, "action" => "set")
       return value
     end
     val = ENV[key.to_s]
-    __omp_emit_status("env", "key" => key.to_s, "value" => val, "action" => "get")
+    __veyyon_emit_status("env", "key" => key.to_s, "value" => val, "action" => "get")
     val
   end
 
@@ -91,7 +91,7 @@ unless defined?($__omp_prelude_loaded) && $__omp_prelude_loaded
   # -------------------------------------------------------------------------
 
   def read(path, offset = 1, limit = nil)
-    resolved = __omp_resolve_path(path)
+    resolved = __veyyon_resolve_path(path)
     data = File.read(resolved.to_s, encoding: Encoding::UTF_8)
     if offset > 1 || !limit.nil?
       lines = data.lines
@@ -99,16 +99,16 @@ unless defined?($__omp_prelude_loaded) && $__omp_prelude_loaded
       finish = limit ? start + limit : lines.length
       data = lines[start...finish].to_a.join
     end
-    __omp_emit_status("read", "path" => resolved.to_s, "chars" => data.length, "preview" => __omp_scrub(data[0, 500].to_s))
+    __veyyon_emit_status("read", "path" => resolved.to_s, "chars" => data.length, "preview" => __veyyon_scrub(data[0, 500].to_s))
     data
   end
 
   def write(path, content)
-    resolved = __omp_resolve_path(path)
+    resolved = __veyyon_resolve_path(path)
     require "fileutils"
     FileUtils.mkdir_p(File.dirname(resolved.to_s))
     File.write(resolved.to_s, content.to_s)
-    __omp_emit_status("write", "path" => resolved.to_s, "chars" => content.to_s.length)
+    __veyyon_emit_status("write", "path" => resolved.to_s, "chars" => content.to_s.length)
     resolved.to_s
   end
 
@@ -116,7 +116,7 @@ unless defined?($__omp_prelude_loaded) && $__omp_prelude_loaded
   # Task/agent output reader
   # -------------------------------------------------------------------------
 
-  def __omp_apply_query(data, query)
+  def __veyyon_apply_query(data, query)
     return data if query.nil? || query.empty?
     q = query.strip
     q = q[1..] if q.start_with?(".")
@@ -170,18 +170,18 @@ unless defined?($__omp_prelude_loaded) && $__omp_prelude_loaded
     if artifacts_dir.nil? || artifacts_dir.empty?
       session_file = ENV["PI_SESSION_FILE"]
       if session_file.nil? || session_file.empty?
-        __omp_emit_status("output", "error" => "No session file available")
+        __veyyon_emit_status("output", "error" => "No session file available")
         raise "No session - output artifacts unavailable"
       end
       artifacts_dir = session_file.sub(/\.[^.]*\z/, "")
     end
     unless File.directory?(artifacts_dir)
-      __omp_emit_status("output", "error" => "Artifacts directory not found", "path" => artifacts_dir)
+      __veyyon_emit_status("output", "error" => "Artifacts directory not found", "path" => artifacts_dir)
       raise "No artifacts directory found: #{artifacts_dir}"
     end
     raise ArgumentError, "At least one output ID is required" if ids.empty?
     if query && (!offset.nil? || !limit.nil?)
-      __omp_emit_status("output", "error" => "query cannot be combined with offset/limit")
+      __veyyon_emit_status("output", "error" => "query cannot be combined with offset/limit")
       raise ArgumentError, "query cannot be combined with offset/limit"
     end
 
@@ -204,10 +204,10 @@ unless defined?($__omp_prelude_loaded) && $__omp_prelude_loaded
           begin
             JSON.parse(raw)
           rescue JSON::ParserError => e
-            __omp_emit_status("output", "id" => output_id, "error" => "Not valid JSON: #{e.message}")
+            __veyyon_emit_status("output", "id" => output_id, "error" => "Not valid JSON: #{e.message}")
             raise "Output #{output_id} is not valid JSON: #{e.message}"
           end
-        result_value = __omp_apply_query(json_value, query)
+        result_value = __veyyon_apply_query(json_value, query)
         selected =
           begin
             result_value.nil? ? "null" : JSON.pretty_generate(result_value)
@@ -217,7 +217,7 @@ unless defined?($__omp_prelude_loaded) && $__omp_prelude_loaded
       elsif !offset.nil? || !limit.nil?
         start_line = [offset || 1, 1].max
         if start_line > total_lines
-          __omp_emit_status("output", "id" => output_id, "error" => "Offset #{start_line} beyond end (#{total_lines} lines)")
+          __veyyon_emit_status("output", "id" => output_id, "error" => "Offset #{start_line} beyond end (#{total_lines} lines)")
           raise "Offset #{start_line} is beyond end of output (#{total_lines} lines) for #{output_id}"
         end
         effective_limit = limit || (total_lines - start_line + 1)
@@ -251,25 +251,25 @@ unless defined?($__omp_prelude_loaded) && $__omp_prelude_loaded
         msg += "\n\nAvailable outputs: #{available.first(20).join(", ")}"
         msg += " (and #{available.length - 20} more)" if available.length > 20
       end
-      __omp_emit_status("output", "not_found" => not_found, "available_count" => available.length)
+      __veyyon_emit_status("output", "not_found" => not_found, "available_count" => available.length)
       raise msg
     end
 
     if ids.length == 1
       if format == "json"
-        __omp_emit_status("output", "id" => ids[0], "chars" => results[0]["char_count"])
+        __veyyon_emit_status("output", "id" => ids[0], "chars" => results[0]["char_count"])
         return results[0]
       end
-      __omp_emit_status("output", "id" => ids[0], "chars" => results[0]["content"].length)
+      __veyyon_emit_status("output", "id" => ids[0], "chars" => results[0]["content"].length)
       return results[0]["content"]
     end
 
     if format == "json"
-      __omp_emit_status("output", "count" => results.length, "total_chars" => results.sum { |r| r["char_count"] })
+      __veyyon_emit_status("output", "count" => results.length, "total_chars" => results.sum { |r| r["char_count"] })
       return results
     end
     combined = results.map { |r| { "id" => r["id"], "content" => r["content"] } }
-    __omp_emit_status("output", "count" => combined.length, "total_chars" => combined.sum { |r| r["content"].length })
+    __veyyon_emit_status("output", "count" => combined.length, "total_chars" => combined.sum { |r| r["content"].length })
     combined
   end
 
@@ -297,7 +297,7 @@ unless defined?($__omp_prelude_loaded) && $__omp_prelude_loaded
       require "uri"
       base, token, session = proxy_env
       uri = URI("#{base}/v1/tool")
-      payload = JSON.generate("session" => session, "run" => $__omp_current_rid, "name" => name, "args" => args)
+      payload = JSON.generate("session" => session, "run" => $__veyyon_current_rid, "name" => name, "args" => args)
       http = Net::HTTP.new(uri.hostname, uri.port)
       http.open_timeout = 10
       http.read_timeout = 7 * 24 * 3600
@@ -380,7 +380,7 @@ unless defined?($__omp_prelude_loaded) && $__omp_prelude_loaded
   end
 
   def tool
-    $__omp_tool_proxy ||= OmpToolProxy.new
+    $__veyyon_tool_proxy ||= OmpToolProxy.new
   end
 
   def completion(prompt, model: "default", system: nil, schema: nil)
@@ -438,7 +438,7 @@ unless defined?($__omp_prelude_loaded) && $__omp_prelude_loaded
   # Concurrency: parallel / pipeline over a bounded pool (task.maxConcurrency).
   # -------------------------------------------------------------------------
 
-  def __omp_concurrency_limit
+  def __veyyon_concurrency_limit
     snap = (OmpBridge.call("__concurrency__", {}) rescue nil) || {}
     n = (snap["limit"] || 0).to_i
     n > 0 ? n : 0
@@ -446,10 +446,10 @@ unless defined?($__omp_prelude_loaded) && $__omp_prelude_loaded
     0
   end
 
-  def __omp_pool_map(items)
+  def __veyyon_pool_map(items)
     arr = items.to_a
     return [] if arr.empty?
-    limit = __omp_concurrency_limit
+    limit = __veyyon_concurrency_limit
     workers = limit > 0 ? [limit, arr.length].min : arr.length
     results = Array.new(arr.length)
     errors = {}
@@ -488,14 +488,14 @@ unless defined?($__omp_prelude_loaded) && $__omp_prelude_loaded
     list.each do |t|
       raise TypeError, "parallel() expects an iterable of zero-arg callables" unless t.respond_to?(:call)
     end
-    __omp_pool_map(list) { |t| t.call }
+    __veyyon_pool_map(list) { |t| t.call }
   end
 
   def pipeline(items, *stages)
     current = items.to_a
     stages.each do |stage|
       raise TypeError, "pipeline() stages must be callables" unless stage.respond_to?(:call)
-      current = __omp_pool_map(current) { |item| stage.call(item) }
+      current = __veyyon_pool_map(current) { |item| stage.call(item) }
     end
     current
   end
@@ -505,13 +505,13 @@ unless defined?($__omp_prelude_loaded) && $__omp_prelude_loaded
   # -------------------------------------------------------------------------
 
   def log(message)
-    __omp_emit_status("log", "message" => message.to_s)
+    __veyyon_emit_status("log", "message" => message.to_s)
     nil
   end
 
   def phase(title)
-    $__omp_current_phase = title.to_s
-    __omp_emit_status("phase", "title" => title.to_s)
+    $__veyyon_current_phase = title.to_s
+    __veyyon_emit_status("phase", "title" => title.to_s)
     nil
   end
 
@@ -548,6 +548,6 @@ unless defined?($__omp_prelude_loaded) && $__omp_prelude_loaded
   end
 
   def budget
-    $__omp_budget ||= OmpBudget.new
+    $__veyyon_budget ||= OmpBudget.new
   end
 end

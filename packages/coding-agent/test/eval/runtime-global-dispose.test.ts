@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { JsRuntime, type RuntimeHooks } from "@veyyon/pi-coding-agent/eval/js/shared/runtime";
 
-const GLOBAL_KEYS = ["__omp_import__", "read"] as const;
+const GLOBAL_KEYS = ["__veyyon_import__", "read"] as const;
 
 type GlobalKey = (typeof GLOBAL_KEYS)[number];
 
@@ -13,7 +13,7 @@ interface GlobalSnapshot {
 function snapshotGlobals(): Record<GlobalKey, GlobalSnapshot> {
 	const globals = globalThis as Record<string, unknown>;
 	return {
-		__omp_import__: { exists: "__omp_import__" in globals, value: globals.__omp_import__ },
+		__veyyon_import__: { exists: "__veyyon_import__" in globals, value: globals.__veyyon_import__ },
 		read: { exists: "read" in globals, value: globals.read },
 	};
 }
@@ -47,10 +47,10 @@ describe("JsRuntime global disposal", () => {
 		const globals = globalThis as Record<string, unknown>;
 		const before = snapshotGlobals();
 		const first = new JsRuntime({ initialCwd: process.cwd(), sessionId: "first" });
-		const firstImport = globals.__omp_import__;
+		const firstImport = globals.__veyyon_import__;
 		const firstRead = globals.read;
 		const second = new JsRuntime({ initialCwd: process.cwd(), sessionId: "second" });
-		const secondImport = globals.__omp_import__;
+		const secondImport = globals.__veyyon_import__;
 
 		try {
 			expect(typeof firstImport).toBe("function");
@@ -60,8 +60,8 @@ describe("JsRuntime global disposal", () => {
 
 			first.dispose();
 
-			expect(globals.__omp_import__).toBe(secondImport);
-			expect(globals.__omp_helpers__).toBe(second.helpers);
+			expect(globals.__veyyon_import__).toBe(secondImport);
+			expect(globals.__veyyon_helpers__).toBe(second.helpers);
 			expect(typeof globals.read).toBe("function");
 
 			second.dispose();
@@ -80,14 +80,14 @@ describe("JsRuntime global disposal", () => {
 		const second = new JsRuntime({ initialCwd: process.cwd(), sessionId: "second-reactivated" });
 
 		try {
-			expect(globals.__omp_helpers__).toBe(second.helpers);
+			expect(globals.__veyyon_helpers__).toBe(second.helpers);
 			first.setCwd(process.cwd());
-			expect(globals.__omp_helpers__).toBe(first.helpers);
+			expect(globals.__veyyon_helpers__).toBe(first.helpers);
 			first.setRunScope({ reactivatedProbe: 7 });
 			expect(globals.reactivatedProbe).toBe(7);
 			expect(await first.run("1 + 6;", undefined, hooks)).toBe(7);
 			second.setCwd(process.cwd());
-			expect(globals.__omp_helpers__).toBe(second.helpers);
+			expect(globals.__veyyon_helpers__).toBe(second.helpers);
 		} finally {
 			delete globals.reactivatedProbe;
 			first.dispose();
@@ -113,7 +113,7 @@ describe("JsRuntime global disposal", () => {
 			// Local cwd may be stamped without stealing the active realm.
 			first.setCwd(pendingCwd);
 			expect(first.cwd).toBe(pendingCwd);
-			expect(globals.__omp_helpers__).toBe(second.helpers);
+			expect(globals.__veyyon_helpers__).toBe(second.helpers);
 			await first.run("1", undefined, hooks).then(
 				() => {
 					throw new Error("expected active runtime rejection");
@@ -127,11 +127,11 @@ describe("JsRuntime global disposal", () => {
 			gate.resolve();
 			await activeSecond;
 			// The deferred cwd must reach this runtime's next run WITHOUT a second
-			// setCwd: the saved __omp_session__ stack entry carries the new value.
-			expect(await first.run("__omp_session__.cwd", undefined, hooks)).toBe(pendingCwd);
+			// setCwd: the saved __veyyon_session__ stack entry carries the new value.
+			expect(await first.run("__veyyon_session__.cwd", undefined, hooks)).toBe(pendingCwd);
 			expect(first.cwd).toBe(pendingCwd);
-			expect(globals.__omp_helpers__).toBe(first.helpers);
-			expect(globals.__omp_session__).toMatchObject({ cwd: pendingCwd });
+			expect(globals.__veyyon_helpers__).toBe(first.helpers);
+			expect(globals.__veyyon_session__).toMatchObject({ cwd: pendingCwd });
 		} finally {
 			gate.resolve();
 			if (activeSecond) await activeSecond.catch(() => undefined);

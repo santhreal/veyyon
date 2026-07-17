@@ -62,7 +62,7 @@ export const DEFAULT_BASH_INTERCEPTOR_RULES: BashInterceptorRule[] = [
 			"^\\s*(?:(?:bun|npm|pnpm|yarn)\\s+(?:run\\s+)?(?:dev|start)(?:\\s|$)|(?:vite|next\\s+dev|nuxt\\s+dev|nodemon|lldb|gdb|tail\\s+-f)(?:\\s|$)|docker\\s+compose\\s+up(?!.*(?:\\s-d(?:\\s|$)|--detach))(?:\\s|$))",
 		tool: "launch",
 		message:
-			"Use the `launch` tool for services, watchers, and debuggers so other omp instances can observe and control them.",
+			"Use the `launch` tool for services, watchers, and debuggers so other veyyon instances can observe and control them.",
 	},
 	{
 		pattern:

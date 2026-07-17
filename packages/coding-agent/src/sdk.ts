@@ -866,7 +866,7 @@ function isCustomTool(tool: CustomTool | ToolDefinition): tool is CustomTool {
 }
 
 function isLegacyBuiltinToolDefinition(tool: CustomTool | ToolDefinition): boolean {
-	return !isCustomTool(tool) && "__ompLegacyBuiltinTool" in tool && tool.__ompLegacyBuiltinTool === true;
+	return !isCustomTool(tool) && "__veyyonLegacyBuiltinTool" in tool && tool.__veyyonLegacyBuiltinTool === true;
 }
 
 /** Matches the truncation applied to per-server instructions inside `rebuildSystemPrompt`. */

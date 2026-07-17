@@ -1427,7 +1427,7 @@ function b() {
 			// Assert the snapshot is an honest prefix of the real output; the full
 			// "start" is asserted on the delivered completion text below.
 			const snapshotBody = getTextOutput(result)
-				.replace(/\n*Backgrounded as job[^]*$/, "")
+				.replace(/\n*Backgrounded as job[\s\S]*$/, "")
 				.replace(/\r/g, "");
 			expect("start\ndone\n".startsWith(snapshotBody)).toBe(true);
 

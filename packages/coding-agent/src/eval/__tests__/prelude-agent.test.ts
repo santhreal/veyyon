@@ -11,11 +11,11 @@ import { JAVASCRIPT_PRELUDE_SOURCE } from "../js/shared/prelude";
  * and the no-`details` fallback (the helper must never throw).
  *
  * The prelude source is executed verbatim in a throwaway VM context with only
- * the host bridge (`__omp_call_tool__`) stubbed — no worker, no kernel — so the
+ * the host bridge (`__veyyon_call_tool__`) stubbed — no worker, no kernel — so the
  * test runs against the real shipped helper, not a re-implementation.
  */
 function loadPrelude(callTool: (name: string, args: unknown) => Promise<unknown>): Record<string, unknown> {
-	const sandbox: Record<string, unknown> = { __omp_call_tool__: callTool };
+	const sandbox: Record<string, unknown> = { __veyyon_call_tool__: callTool };
 	vm.createContext(sandbox);
 	vm.runInContext(JAVASCRIPT_PRELUDE_SOURCE, sandbox);
 	return sandbox;

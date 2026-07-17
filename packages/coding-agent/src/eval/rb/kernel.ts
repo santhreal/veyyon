@@ -222,10 +222,10 @@ function buildInitScript(cwd: string, env?: Record<string, string | undefined>):
 	// JSON string literals are valid Ruby string literals. Emit one
 	// `ENV["k"] = "v"` per key — a `{"k":"v"}` object literal would parse as a
 	// SYMBOL-keyed hash in Ruby (`:"k" => "v"`), which `ENV[]=` rejects.
-	const lines = [`__omp_init_cwd = ${JSON.stringify(cwd)}`, "Dir.chdir(__omp_init_cwd) rescue nil"];
+	const lines = [`__veyyon_init_cwd = ${JSON.stringify(cwd)}`, "Dir.chdir(__veyyon_init_cwd) rescue nil"];
 	for (const key in envPayload) {
 		lines.push(`ENV[${JSON.stringify(key)}] = ${JSON.stringify(envPayload[key])}`);
 	}
-	lines.push("$LOAD_PATH.delete(__omp_init_cwd)", "$LOAD_PATH.unshift(__omp_init_cwd)");
+	lines.push("$LOAD_PATH.delete(__veyyon_init_cwd)", "$LOAD_PATH.unshift(__veyyon_init_cwd)");
 	return lines.join("\n");
 }
