@@ -16,7 +16,7 @@ path = "src/touch.rs"
 clap = { version = "4.5", features = ["wrap_help", "cargo", "color"] }
 filetime = "0.2.23"
 jiff = "0.2.18"
-parse_datetime = "0.14.0"
+parse_datetime = "0.15.0"
 thiserror = "2.0.3"
 uucore = { version = "0.8.0", features = ["libc", "parser"] }
 veyyon-uutils-ctx = { path = "../../veyyon-uutils-ctx" }

@@ -21,7 +21,7 @@ jiff = { version = "0.2", features = [
 	"tzdb-zoneinfo",
 	"tzdb-concatenated",
 ] }
-parse_datetime = "0.14"
+parse_datetime = "0.15"
 regex = "1.11"
 uucore = { version = "0.8.0", features = ["parser"] }
 veyyon-uutils-ctx = { path = "../../veyyon-uutils-ctx" }
