@@ -4,8 +4,5 @@
 		"src",
 		"test",
 		"scripts"
-	],
-	"exclude": [
-		"src/export/html/tool-render"
 	]
 }
