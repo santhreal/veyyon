@@ -43,6 +43,17 @@ export function getEditAnchors(edit: Edit): Anchor[] {
 	return getCursorAnchors(edit.cursor);
 }
 
+/** Every anchor line touched by a set of edits, in edit order with duplicates
+ *  kept. Callers that want a sorted/deduped view post-process this. Sole owner
+ *  of "which lines do these edits anchor against" (see {@link getEditAnchors}). */
+export function collectEditAnchorLines(edits: readonly Edit[]): number[] {
+	const lines: number[] = [];
+	for (const edit of edits) {
+		for (const anchor of getEditAnchors(edit)) lines.push(anchor.line);
+	}
+	return lines;
+}
+
 function trailingPhantomLine(fileLines: readonly string[]): number {
 	// `split("\n")` on a newline-terminated file yields a trailing "" sentinel.
 	// It is addressable for inserts (append-past-end), but it is not real

@@ -7,7 +7,7 @@
  * patcher then returns a mismatch with fresh context instead of guessing.
  */
 import * as Diff from "diff";
-import { applyEdits, getEditAnchors } from "./apply";
+import { applyEdits, collectEditAnchorLines } from "./apply";
 import { RECOVERY_EXTERNAL_WARNING, RECOVERY_LINE_REMAP_WARNING, RECOVERY_SESSION_CHAIN_WARNING } from "./messages";
 import type { SnapshotStore } from "./snapshots";
 import type { Anchor, ApplyResult, Edit } from "./types";
@@ -26,14 +26,6 @@ export interface RecoveryResult {
 	firstChangedLine: number | undefined;
 	/** Warnings collected during recovery, including the user-facing recovery banner. */
 	warnings: string[];
-}
-
-function collectAnchorLines(edits: readonly Edit[]): number[] {
-	const lines: number[] = [];
-	for (const edit of edits) {
-		for (const anchor of getEditAnchors(edit)) lines.push(anchor.line);
-	}
-	return lines;
 }
 
 function buildLineMap(previousText: string, currentText: string): Map<number, number> {
@@ -144,7 +136,7 @@ function validateRemappedAnchorContext(
 ): boolean {
 	const previousLines = previousText.split("\n");
 	const currentLines = currentText.split("\n");
-	const anchorLines = new Set(collectAnchorLines(edits));
+	const anchorLines = new Set(collectEditAnchorLines(edits));
 	// Precompute once per validation pass: which line values are duplicated,
 	// and each anchor's nearest non-anchor context. The per-anchor forms —
 	// indexOf/lastIndexOf full-file scans plus directional walks across

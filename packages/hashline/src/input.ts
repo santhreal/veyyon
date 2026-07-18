@@ -8,7 +8,7 @@
  * actually exists. That's the patcher's job.
  */
 import * as path from "node:path";
-import { applyEdits } from "./apply";
+import { applyEdits, collectEditAnchorLines } from "./apply";
 import { resolveBlockEdits } from "./block";
 import { HL_FILE_HASH_EXAMPLES, HL_FILE_HASH_LENGTH, HL_FILE_HASH_SEP, HL_FILE_PREFIX, HL_FILE_SUFFIX } from "./format";
 import { parsePatch, parsePatchStreaming } from "./parser";
@@ -274,28 +274,9 @@ export class PatchSection {
 		return this.parse().fileOp;
 	}
 
-	/** Warnings emitted during parsing of this section. */
-	get warnings(): readonly string[] {
-		return this.parse().warnings;
-	}
-
 	/** Anchor lines touched by this section, sorted ascending and deduplicated. */
 	collectAnchorLines(): readonly number[] {
-		const lines = new Set<number>();
-		for (const edit of this.edits) {
-			if (edit.kind === "delete") {
-				lines.add(edit.anchor.line);
-				continue;
-			}
-			if (edit.kind === "block") {
-				lines.add(edit.anchor.line);
-				continue;
-			}
-			if (edit.cursor.kind === "before_anchor" || edit.cursor.kind === "after_anchor") {
-				lines.add(edit.cursor.anchor.line);
-			}
-		}
-		return [...lines].sort((a, b) => a - b);
+		return [...new Set(collectEditAnchorLines(this.edits))].sort((a, b) => a - b);
 	}
 
 	/**
