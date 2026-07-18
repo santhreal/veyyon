@@ -89,13 +89,11 @@ const ISRECORD_ALLOWED = new Set([
 	"utils/src/runtime-install.ts",
 ]);
 
-// Remaining local errorMessage copies, owned by in-flight work on these
-// files; import errorMessage from @veyyon/utils when that work lands.
-const ERRORMESSAGE_GRANDFATHERED = new Set([
-	"coding-agent/src/cli/gc-cli.ts",
-	"coding-agent/src/subprocess/worker-runtime.ts",
-	"coding-agent/src/task/worktree.ts",
-]);
+// No production source outside the owner defines a local errorMessage. The
+// three former holdouts (gc-cli.ts, subprocess/worker-runtime.ts,
+// task/worktree.ts) were repointed onto the @veyyon/utils owner; keep this
+// empty so any reintroduced local copy fails the lock immediately.
+const ERRORMESSAGE_GRANDFATHERED = new Set<string>([]);
 
 // Inline `X instanceof Error ? X.message : String(X)` sites remaining after the
 // 2026-07 codemod converted every settled file to errorMessage(). These are
@@ -117,7 +115,6 @@ const INLINE_ERRORMESSAGE_GRANDFATHERED = new Set([
 	"coding-agent/src/autoresearch/tools/log-experiment.ts",
 	"coding-agent/src/cli/auth-broker-cli.ts",
 	"coding-agent/src/cli/auth-gateway-cli.ts",
-	"coding-agent/src/cli/gc-cli.ts",
 	"coding-agent/src/cli/grep-cli.ts",
 	"coding-agent/src/cli/shell-cli.ts",
 	"coding-agent/src/cli/ssh-cli.ts",
@@ -172,7 +169,6 @@ const INLINE_ERRORMESSAGE_GRANDFATHERED = new Set([
 	"coding-agent/src/stt/recorder.ts",
 	"coding-agent/src/stt/stt-controller.ts",
 	"coding-agent/src/subprocess/worker-client.ts",
-	"coding-agent/src/subprocess/worker-runtime.ts",
 	"coding-agent/src/task/executor.ts",
 	"coding-agent/src/task/index.ts",
 	"coding-agent/src/task/worktree.ts",

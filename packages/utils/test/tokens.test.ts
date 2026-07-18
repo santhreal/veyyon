@@ -36,10 +36,11 @@ const PACKAGES_DIR = path.join(import.meta.dir, "../..");
 // not text) — permanently allowed, never a text-copy.
 const ESTIMATE_ALLOWED = new Set(["agent/src/compaction/compaction.ts"]);
 
-const ESTIMATE_GRANDFATHERED = new Set([
-	// Char-based floor(len/4) copy (the CJK under-counter); lane-hot at lock time.
-	"mnemopi/src/core/local-llm.ts",
-]);
+// Every estimateTokens definition now delegates to estimateTokensFromText. The
+// last holdout (mnemopi/src/core/local-llm.ts, a char-based floor(len/4) copy)
+// was repointed onto the owner; keep this empty so a reintroduced hand-rolled
+// estimator fails the lock immediately.
+const ESTIMATE_GRANDFATHERED = new Set<string>([]);
 
 const ESTIMATE_DEF = /function\s+estimateTokens\s*\(/;
 
