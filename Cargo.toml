@@ -315,7 +315,7 @@ brush-parser = "0.3"
 # ──────────────────────────────────────────────────────────────────────────────
 # AST & Tree-Sitter
 # ──────────────────────────────────────────────────────────────────────────────
-ast-grep-core = { version = "0.39", default-features = false, features = [
+ast-grep-core = { version = "0.40", default-features = false, features = [
    "tree-sitter",
 ] }
 tree-sitter = "0.25"
