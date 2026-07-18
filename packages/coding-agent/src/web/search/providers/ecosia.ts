@@ -2,7 +2,7 @@ import type { AuthStorage } from "@veyyon/ai";
 import { parseHTML } from "linkedom";
 import type { SearchResponse, SearchSource } from "../../../web/search/types";
 import { SearchProviderError } from "../../../web/search/types";
-import { clampNumResults } from "../utils";
+import { clampNumResults, collapseWhitespace } from "../utils";
 import type { SearchParams } from "./base";
 import { SearchProvider } from "./base";
 import type { LoadedHtmlPage } from "./browser-page";
@@ -70,12 +70,12 @@ function parseHtmlResults(html: string): ParsedResult[] {
 		if (!heading || !href) continue;
 		const url = resolveResultUrl(href);
 		if (!url) continue;
-		const title = (heading.textContent ?? "").replace(/\s+/g, " ").trim();
+		const title = collapseWhitespace(heading.textContent);
 		if (!title) continue;
 		const description =
 			article.querySelector('[data-test-id="web-result-description"]') ??
 			article.querySelector('[data-test-id="result-description"]');
-		const snippet = (description?.textContent ?? "").replace(/\s+/g, " ").trim();
+		const snippet = collapseWhitespace(description?.textContent);
 		results.push({ title, url, snippet: snippet || undefined });
 	}
 	return results;
