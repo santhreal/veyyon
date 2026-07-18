@@ -100,7 +100,6 @@ const ERRORMESSAGE_GRANDFATHERED = new Set<string>([]);
 // lane-hot files (plus hashline/collab-web, which have no @veyyon/utils dep and
 // keep local ternaries deliberately). Convert a file, remove its entry. Shrink-only.
 const INLINE_ERRORMESSAGE_GRANDFATHERED = new Set([
-	"agent/src/compaction/compaction-v2-streaming.ts",
 	"coding-agent/src/autoresearch/tools/init-experiment.ts",
 	"coding-agent/src/autoresearch/tools/log-experiment.ts",
 	"coding-agent/src/cli/auth-broker-cli.ts",

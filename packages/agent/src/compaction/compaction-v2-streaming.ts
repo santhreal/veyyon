@@ -22,7 +22,7 @@ import {
 	resolveOpenAIRequestSetup,
 } from "@veyyon/ai/providers/openai-shared";
 import { CODEX_BASE_URL, getCodexAccountId, OPENAI_HEADER_VALUES, OPENAI_HEADERS } from "@veyyon/catalog/wire/codex";
-import { $env, logger, scopedTimeoutSignal, stringifyJson, trimTrailingSlashes } from "@veyyon/utils";
+import { $env, errorMessage, logger, scopedTimeoutSignal, stringifyJson, trimTrailingSlashes } from "@veyyon/utils";
 
 // ============================================================================
 // Types & Configuration
@@ -493,7 +493,7 @@ function handleCompactionV2SseEvent(
 	try {
 		event = JSON.parse(data) as Record<string, unknown>;
 	} catch (err) {
-		throw new Error(`V2 compaction stream parse failed: ${err instanceof Error ? err.message : String(err)}`);
+		throw new Error(`V2 compaction stream parse failed: ${errorMessage(err)}`);
 	}
 
 	const type = typeof event.type === "string" ? event.type : eventName;
