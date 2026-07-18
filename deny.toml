@@ -15,8 +15,26 @@ version = 2
 yanked = "deny"
 # RUSTSEC advisories we have reviewed and consciously accept live here, each
 # with a comment explaining why. Empty = no exceptions; a clean tree fails on
-# any unreviewed advisory.
-ignore = []
+# any unreviewed advisory. Keep this list in sync with .cargo/audit.toml, which
+# feeds the parallel cargo-audit job.
+ignore = [
+    # quick-xml DoS advisories reach veyyon ONLY through wayland-scanner's
+    # build-time proc-macro (arboard -> wl-clipboard-rs -> wayland-client ->
+    # wayland-scanner), which parses the trusted wayland protocol XML shipped
+    # inside the crate at build time — never attacker-controlled runtime input,
+    # so the memory-exhaustion / quadratic-parse DoS is unreachable. No upstream
+    # fix path: wayland-scanner 0.31.10 pins quick-xml ^0.39 (every 0.39.x is
+    # affected; patched only in >=0.41.0) and arboard 3.6.1 is the latest release.
+    "RUSTSEC-2026-0194", # quick-xml: quadratic run time on duplicate attribute names
+    "RUSTSEC-2026-0195", # quick-xml: unbounded namespace-declaration allocation
+    # Unmaintained (not vulnerable) transitive crates with no maintained drop-in
+    # reachable without major dependency surgery on their parents. Revisit when a
+    # parent upgrades off them.
+    "RUSTSEC-2025-0141", # bincode is unmaintained
+    "RUSTSEC-2025-0119", # number_prefix is unmaintained
+    "RUSTSEC-2026-0192", # ttf-parser is unmaintained
+    "RUSTSEC-2024-0320", # yaml-rust is unmaintained
+]
 
 [licenses]
 version = 2
@@ -47,12 +65,30 @@ confidence-threshold = 0.8
 name = "ring"
 allow = ["OpenSSL", "ISC", "MIT", "Apache-2.0"]
 
+[[licenses.exceptions]]
+# inferno (flamegraph renderer, pulled in by veyyon-natives) is a Rust port of
+# Brendan Gregg's FlameGraph and inherits its CDDL-1.0 license. It is used as an
+# unmodified dependency; CDDL-1.0 is a file-level weak copyleft that imposes no
+# obligation on veyyon's own MIT/Apache-2.0 source.
+name = "inferno"
+allow = ["CDDL-1.0"]
+
+[[licenses.exceptions]]
+# terminfo (via brush-core, the veyyon-shell command interpreter) is WTFPL,
+# which is public-domain-equivalent and imposes no obligations.
+name = "terminfo"
+allow = ["WTFPL"]
+
 [bans]
 # Duplicate transitive versions: warn, don't fail (see header note).
 multiple-versions = "warn"
-# A `*` version requirement on a real crates.io dependency is banned, but the
-# workspace's own path dependencies legitimately omit versions.
-wildcards = "deny"
+# Wildcard (`*`) version requirements: warn, don't fail. We keep this off "deny"
+# only because the vendored uutils (uu_*) and jaq crate families reflect
+# upstream's own meta-crate layout, which pins its component crates with `*`;
+# those manifests are third-party and read-only, so a hard deny would fail on
+# facts we cannot change. Our own workspace crates use pinned versions or path
+# deps — a `*` appearing in a veyyon-authored manifest is still a review finding.
+wildcards = "warn"
 allow-wildcard-paths = true
 # Crates we never want in the tree at all go here (name + reason).
 deny = []
