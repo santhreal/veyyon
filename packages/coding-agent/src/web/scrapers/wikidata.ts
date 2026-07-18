@@ -1,6 +1,6 @@
-import { tryParseJson } from "@veyyon/pi-utils";
-import type { RenderResult, SpecialHandler } from "./types";
-import { buildResult, formatNumber, loadPage } from "./types";
+import { tryParseJson } from "@veyyon/utils";
+import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
+import { buildResult, formatNumber, loadFailure, loadPage, scraperDegrade, tryParseUrl } from "./types";
 
 /**
  * Common Wikidata property IDs mapped to human-readable names
@@ -95,9 +95,10 @@ export const handleWikidata: SpecialHandler = async (
 	url: string,
 	timeout: number,
 	signal?: AbortSignal,
-): Promise<RenderResult | null> => {
+): Promise<RenderResult | ScraperDegrade | null> => {
 	try {
-		const parsed = new URL(url);
+		const parsed = tryParseUrl(url);
+		if (!parsed) return null;
 		if (!parsed.hostname.includes("wikidata.org")) return null;
 
 		// Extract Q-id from /wiki/Q123 or /entity/Q123
@@ -111,10 +112,10 @@ export const handleWikidata: SpecialHandler = async (
 		const apiUrl = `https://www.wikidata.org/wiki/Special:EntityData/${qid}.json`;
 		const result = await loadPage(apiUrl, { timeout, signal });
 
-		if (!result.ok) return null;
+		if (!result.ok) return scraperDegrade("wikidata", loadFailure(result));
 
 		const data = tryParseJson<{ entities: Record<string, WikidataEntity> }>(result.content);
-		if (!data) return null;
+		if (!data) return scraperDegrade("wikidata", "unexpected response shape");
 
 		const entity = data.entities[qid];
 		if (!entity) return null;
@@ -212,9 +213,9 @@ export const handleWikidata: SpecialHandler = async (
 		}
 
 		return buildResult(md, { url, method: "wikidata", fetchedAt, notes: ["Fetched via Wikidata EntityData API"] });
-	} catch {}
-
-	return null;
+	} catch (error) {
+		return scraperDegrade("wikidata", error);
+	}
 };
 
 /**

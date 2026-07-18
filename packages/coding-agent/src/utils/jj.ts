@@ -1,6 +1,6 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { $which } from "@veyyon/pi-utils";
+import { $which } from "@veyyon/utils";
 import { LRUCache } from "lru-cache/raw";
 import * as git from "./git";
 
@@ -121,13 +121,6 @@ async function runText(cwd: string, args: readonly string[], options: CommandOpt
 	return (await runChecked(cwd, args, options)).stdout;
 }
 
-function splitLines(text: string): string[] {
-	return text
-		.split("\n")
-		.map(line => line.trim())
-		.filter(Boolean);
-}
-
 function buildDiffArgs(options: DiffOptions): string[] {
 	const args = ["diff"];
 	args.push(options.nameOnly ? "--name-only" : "--git");
@@ -216,7 +209,7 @@ export const diff = Object.assign(
 	{
 		/** List changed file paths. */
 		async changedFiles(cwd: string, options: Pick<DiffOptions, "files" | "signal"> = {}): Promise<string[]> {
-			return splitLines(await diff(cwd, { ...options, nameOnly: true }));
+			return git.splitLines(await diff(cwd, { ...options, nameOnly: true }));
 		},
 	},
 );

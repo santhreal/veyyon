@@ -18,9 +18,6 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { scheduler } from "node:timers/promises";
 import { isPromise } from "node:util/types";
-
-import type { InMemorySnapshotStore } from "@veyyon/hashline";
-import { Patch } from "@veyyon/hashline";
 import {
 	type AfterToolCallContext,
 	type AfterToolCallResult,
@@ -42,7 +39,7 @@ import {
 	TERMINAL_TOOL_RESULT_ABORT_REASON,
 	ThinkingLevel,
 	type ToolChoiceDirective,
-} from "@veyyon/pi-agent-core";
+} from "@veyyon/agent-core";
 import {
 	AGGRESSIVE_SHAKE_CONFIG,
 	AUTO_HANDOFF_THRESHOLD_FOCUS,
@@ -73,14 +70,14 @@ import {
 	type SummaryOptions,
 	shouldCompact,
 	shouldUseOpenAiRemoteCompaction,
-} from "@veyyon/pi-agent-core/compaction";
+} from "@veyyon/agent-core/compaction";
 import {
 	DEFAULT_PRUNE_CONFIG,
 	pruneSupersededToolResults,
 	pruneToolOutputs,
 	readToolSupersedeKey,
-} from "@veyyon/pi-agent-core/compaction/pruning";
-import type { ProtectedToolMatcher } from "@veyyon/pi-agent-core/compaction/tool-protection";
+} from "@veyyon/agent-core/compaction/pruning";
+import type { ProtectedToolMatcher } from "@veyyon/agent-core/compaction/tool-protection";
 import type {
 	AssistantMessage,
 	AssistantMessageEvent,
@@ -106,7 +103,7 @@ import type {
 	ToolChoice,
 	Usage,
 	UsageReport,
-} from "@veyyon/pi-ai";
+} from "@veyyon/ai";
 import {
 	calculateRateLimitBackoffMs,
 	clearAnthropicFastModeFallback,
@@ -118,20 +115,24 @@ import {
 	resolveModelServiceTier,
 	serviceTierFamily,
 	streamSimple,
-} from "@veyyon/pi-ai";
-import * as AIError from "@veyyon/pi-ai/error";
-import { resetOpenAICodexHistoryAfterCompaction } from "@veyyon/pi-ai/providers/openai-codex-responses";
-import { toolWireSchema } from "@veyyon/pi-ai/utils/schema";
-import { GeminiHeaderRunDetector, isGeminiThinkingModel } from "@veyyon/pi-ai/utils/thinking-loop";
-import { type RepeatedToolCallDetection, ToolCallLoopGuard } from "@veyyon/pi-ai/utils/tool-call-loop-guard";
-import { isFireworksFastModelId, toFireworksBaseModelId } from "@veyyon/pi-catalog/fireworks-model-id";
-import { getSupportedEfforts } from "@veyyon/pi-catalog/model-thinking";
-import { modelsAreEqual } from "@veyyon/pi-catalog/models";
-import { MacOSPowerAssertion } from "@veyyon/pi-natives";
+} from "@veyyon/ai";
+import * as AIError from "@veyyon/ai/error";
+import { resetOpenAICodexHistoryAfterCompaction } from "@veyyon/ai/providers/openai-codex-responses";
+import { toolWireSchema } from "@veyyon/ai/utils/schema";
+import { GeminiHeaderRunDetector, isGeminiThinkingModel } from "@veyyon/ai/utils/thinking-loop";
+import { type RepeatedToolCallDetection, ToolCallLoopGuard } from "@veyyon/ai/utils/tool-call-loop-guard";
+import { isFireworksFastModelId, toFireworksBaseModelId } from "@veyyon/catalog/fireworks-model-id";
+import { getSupportedEfforts } from "@veyyon/catalog/model-thinking";
+import { modelsAreEqual } from "@veyyon/catalog/models";
+import type { InMemorySnapshotStore } from "@veyyon/hashline";
+import { Patch } from "@veyyon/hashline";
+import { MacOSPowerAssertion } from "@veyyon/natives";
+import * as snapcompact from "@veyyon/snapcompact";
 import {
 	escapeXmlText,
 	extractHttpStatusFromError,
 	extractRetryHint,
+	formatCount,
 	formatDuration,
 	getAgentDbPath,
 	getInstallId,
@@ -143,8 +144,7 @@ import {
 	relativePathWithinRoot,
 	Snowflake,
 	withTimeout,
-} from "@veyyon/pi-utils";
-import * as snapcompact from "@veyyon/snapcompact";
+} from "@veyyon/utils";
 import {
 	ADVISOR_DEFAULT_TOOL_NAMES,
 	AdviseTool,
@@ -1343,7 +1343,7 @@ function buildSessionMetadata(
 		if (typeof accountUuid === "string" && accountUuid.length > 0) {
 			userId.account_uuid = accountUuid;
 			// Claude Code's `device_id` is a stable 64-hex account-scoped install
-			// identifier. Include both omp's persistent install id and the Claude
+			// identifier. Include both veyyon's persistent install id and the Claude
 			// account UUID so two accounts on the same install do not share a device.
 			userId.device_id = deriveClaudeDeviceId(getInstallId(), accountUuid);
 		}
@@ -5504,13 +5504,13 @@ export class AgentSession {
 
 	/**
 	 * Whether the Gemini header-runaway guard applies to the current model: the loop
-	 * guard is on (settings + `PI_NO_THINKING_LOOP_GUARD`), the tool-call reminder is
+	 * guard is on (settings + `VEYYON_NO_THINKING_LOOP_GUARD`), the tool-call reminder is
 	 * enabled, and the active model is a Gemini thinking model.
 	 */
 	#geminiHeaderGuardActive(): boolean {
 		const model = this.model;
 		return (
-			process.env.PI_NO_THINKING_LOOP_GUARD !== "1" &&
+			process.env.VEYYON_NO_THINKING_LOOP_GUARD !== "1" &&
 			this.settings.get("model.loopGuard.enabled") === true &&
 			this.settings.get("model.loopGuard.toolCallReminder") === true &&
 			model !== undefined &&
@@ -6175,7 +6175,7 @@ export class AgentSession {
 	 * `metadata.user_id` shaped like real Claude Code's `getAPIMetadata` output:
 	 * `{ session_id, account_uuid, device_id }`. `account_uuid` is included only
 	 * when an Anthropic OAuth credential with a known account UUID is loaded;
-	 * `device_id` is derived from both the persistent omp install id and that
+	 * `device_id` is derived from both the persistent veyyon install id and that
 	 * account UUID. Resolving live keeps the value in sync with auth-state changes
 	 * (login/logout, token refresh that surfaces a new account UUID) without
 	 * needing to re-call `#syncAgentSessionId()` on every such event.
@@ -6370,7 +6370,7 @@ export class AgentSession {
 		//
 		// BOUNDED: an owned manager may hold an HTTP/SSE server whose session-
 		// termination DELETE blocks up to the MCP request timeout (30s default,
-		// unbounded when VEYYON_MCP_TIMEOUT_MS=0 (legacy OMP_MCP_TIMEOUT_MS)), so awaiting `disconnectAll()`
+		// unbounded when VEYYON_MCP_TIMEOUT_MS=0), so awaiting `disconnectAll()`
 		// unbounded would stall /exit and print-mode shutdown on a broken remote
 		// endpoint. Race it against a short deadline — stdio close (the subprocess
 		// reap this targets) completes well within the bound; a slow transport
@@ -13214,7 +13214,7 @@ export class AgentSession {
 			const elidedPart = elided > 0 ? `${this.#describeElideRescue(elided, elidedTokens, elideSink)} and ` : "";
 			this.emitNotice(
 				"info",
-				`Compaction dead-end recovery: ${elidedPart}dropped ${imagesDropped} attached image${imagesDropped === 1 ? "" : "s"} so maintenance could make progress.`,
+				`Compaction dead-end recovery: ${elidedPart}dropped ${formatCount("attached image", imagesDropped)} so maintenance could make progress.`,
 				"compaction",
 			);
 			return true;
@@ -13224,7 +13224,7 @@ export class AgentSession {
 
 	/** Notice fragment for a dead-end elide tier: what was freed and where it went. */
 	#describeElideRescue(elided: number, tokensFreed: number, sink: string): string {
-		return `elided ${elided} heavy block${elided === 1 ? "" : "s"} (~${tokensFreed.toLocaleString()} tokens) to ${sink}`;
+		return `elided ${formatCount("heavy block", elided)} (~${tokensFreed.toLocaleString()} tokens) to ${sink}`;
 	}
 
 	/**
@@ -16883,7 +16883,7 @@ export class AgentSession {
 	 * @returns Path to exported file
 	 */
 	async exportToHtml(outputPath?: string): Promise<string> {
-		// Public HTML export ships in the omp brand palette (collab-web
+		// Public HTML export ships in the veyyon brand palette (collab-web
 		// pink/purple), matching share.veyyon.dev — not the host's terminal theme.
 		// Callers who want a themed export can pass `palette: "theme"` with
 		// `themeName` directly to `exportSessionToHtml`.
@@ -17009,7 +17009,7 @@ export class AgentSession {
 			})),
 			messages: llmMessages,
 		};
-		const filePath = path.join(os.tmpdir(), `omp-llm-request-${Snowflake.next()}.json`);
+		const filePath = path.join(os.tmpdir(), `veyyon-llm-request-${Snowflake.next()}.json`);
 		await Bun.write(filePath, `${JSON.stringify(payload, null, 2)}\n`);
 		return filePath;
 	}

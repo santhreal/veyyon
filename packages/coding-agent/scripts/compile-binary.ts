@@ -1,3 +1,4 @@
+import * as path from "node:path";
 import { buildDocsIndexPayload } from "./generate-docs-index";
 import { createLegacyPiVirtualModulePlugin } from "./legacy-pi-virtual-module";
 
@@ -22,7 +23,7 @@ export interface CodingAgentCompileOptions {
 	readonly skipBuiltinCodesign?: boolean;
 	/**
 	 * Precompile the bundle to Bun bytecode (default ON, opt out with
-	 * `PI_BUILD_BYTECODE=0`). Skips JS source parsing at every launch —
+	 * `VEYYON_BUILD_BYTECODE=0`). Skips JS source parsing at every launch —
 	 * measured `--version` ~650ms -> ~70ms. Tradeoff: binary grows ~158MB ->
 	 * ~288MB. Requires the embedded mupdf runtime (gen:mupdf) because mupdf's
 	 * top-level await cannot be bytecode-compiled, and the yargs
@@ -99,6 +100,16 @@ function createYargsImportMetaResolvePatchPlugin(): Bun.BunPlugin {
  * graph supplied by an in-memory build plugin rather than generated files.
  */
 export async function compileCodingAgent(options: CodingAgentCompileOptions): Promise<void> {
+	// Compiled binaries can only serve the stats dashboard from the embedded
+	// archive; an empty placeholder compiles fine and 500s at runtime, so fail
+	// the build instead. Callers (build-binary.ts, ci-release-build-binaries.ts)
+	// run `gen:stats` first and reset afterwards.
+	const statsArchivePath = path.join(options.repoRoot, "packages", "stats", "src", "embedded-client.generated.txt");
+	if ((await Bun.file(statsArchivePath).text()).trim().length === 0) {
+		throw new Error(
+			`Embedded stats client archive is empty (${statsArchivePath}). Run \`bun run gen:stats\` before compiling — a binary built without it serves HTTP 500 for every \`veyyon stats\` dashboard request.`,
+		);
+	}
 	const previousCodesignSetting = Bun.env.BUN_NO_CODESIGN_MACHO_BINARY;
 	if (options.skipBuiltinCodesign) {
 		Bun.env.BUN_NO_CODESIGN_MACHO_BINARY = "1";
@@ -109,15 +120,15 @@ export async function compileCodingAgent(options: CodingAgentCompileOptions): Pr
 			root: options.repoRoot,
 			external: [...COMPILED_EXTERNAL_DEPENDENCIES],
 			define: {
-				"process.env.PI_COMPILED": JSON.stringify("true"),
-				"process.env.PI_TINY_TRANSFORMERS_VERSION": JSON.stringify(options.transformersVersion),
-				"process.env.PI_DOCS_EMBED": JSON.stringify((await buildDocsIndexPayload()).payload),
+				"process.env.VEYYON_COMPILED": JSON.stringify("true"),
+				"process.env.VEYYON_TINY_TRANSFORMERS_VERSION": JSON.stringify(options.transformersVersion),
+				"process.env.VEYYON_DOCS_EMBED": JSON.stringify((await buildDocsIndexPayload()).payload),
 			},
 			minify: {
 				identifiers: options.minifyIdentifiers ?? false,
 				keepNames: true,
 			},
-			...((options.bytecode ?? Bun.env.PI_BUILD_BYTECODE !== "0") ? { bytecode: true } : {}),
+			...((options.bytecode ?? Bun.env.VEYYON_BUILD_BYTECODE !== "0") ? { bytecode: true } : {}),
 			plugins: [
 				await createLegacyPiVirtualModulePlugin(),
 				createMupdfStubPlugin(),

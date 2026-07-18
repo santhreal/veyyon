@@ -146,13 +146,13 @@ pub fn base_app(about: String, usage: String) -> Command {
 pub fn get_input(config: &Config) -> UResult<Box<dyn BufRead>> {
 	match &config.to_read {
 		Some(name) => {
-			let file = File::open(pi_uutils_ctx::resolve(Path::new(name)))
+			let file = File::open(veyyon_uutils_ctx::resolve(Path::new(name)))
 				.map_err_context(|| name.maybe_quote().to_string())?;
 			Ok(Box::new(BufReader::with_capacity(DEFAULT_BUF_SIZE, file)))
 		},
 		None => {
 			// pi-uutils: stdin belongs to this invocation, never the host process.
-			Ok(Box::new(BufReader::with_capacity(DEFAULT_BUF_SIZE, pi_uutils_ctx::stdin())))
+			Ok(Box::new(BufReader::with_capacity(DEFAULT_BUF_SIZE, veyyon_uutils_ctx::stdin())))
 		},
 	}
 }
@@ -163,7 +163,7 @@ pub fn handle_input<R: BufRead>(input: &mut R, format: Format, config: Config) -
 
 	let supports_fast_decode_and_encode_ref = supports_fast_decode_and_encode.as_ref();
 	// pi-uutils: all output is scoped to this invocation.
-	let mut stdout_lock = pi_uutils_ctx::stdout().lock();
+	let mut stdout_lock = veyyon_uutils_ctx::stdout().lock();
 	let result = match (format, config.decode) {
 		// Base58 must process the entire input as one big integer; keep the
 		// historical behavior of buffering everything for this format only.

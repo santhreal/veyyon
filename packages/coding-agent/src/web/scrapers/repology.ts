@@ -1,5 +1,14 @@
-import { tryParseJson } from "@veyyon/pi-utils";
-import { buildResult, loadPage, type RenderResult, type SpecialHandler } from "./types";
+import { tryParseJson } from "@veyyon/utils";
+import {
+	buildResult,
+	loadFailure,
+	loadPage,
+	type RenderResult,
+	type ScraperDegrade,
+	type SpecialHandler,
+	scraperDegrade,
+	tryParseUrl,
+} from "./types";
 
 interface RepologyPackage {
 	repo: string;
@@ -106,9 +115,10 @@ export const handleRepology: SpecialHandler = async (
 	url: string,
 	timeout: number,
 	signal?: AbortSignal,
-): Promise<RenderResult | null> => {
+): Promise<RenderResult | ScraperDegrade | null> => {
 	try {
-		const parsed = new URL(url);
+		const parsed = tryParseUrl(url);
+		if (!parsed) return null;
 		if (parsed.hostname !== "repology.org" && parsed.hostname !== "www.repology.org") return null;
 
 		// Extract package name from /project/{name}/versions or /project/{name}/information
@@ -129,10 +139,10 @@ export const handleRepology: SpecialHandler = async (
 			signal,
 		});
 
-		if (!result.ok) return null;
+		if (!result.ok) return scraperDegrade("repology", loadFailure(result));
 
 		const packages = tryParseJson<RepologyPackage[]>(result.content);
-		if (!packages) return null;
+		if (!packages) return scraperDegrade("repology", "unexpected response shape");
 
 		// Empty response means package not found
 		if (!Array.isArray(packages) || packages.length === 0) return null;
@@ -245,7 +255,7 @@ export const handleRepology: SpecialHandler = async (
 		md += `\n---\n\n[View on Repology](${url})\n`;
 
 		return buildResult(md, { url, method: "repology", fetchedAt, notes: ["Fetched via Repology API"] });
-	} catch {}
-
-	return null;
+	} catch (error) {
+		return scraperDegrade("repology", error);
+	}
 };

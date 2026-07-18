@@ -8,7 +8,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { $flag, Snowflake } from "@veyyon/pi-utils";
+import { $flag, Snowflake } from "@veyyon/utils";
 import { $ } from "bun";
 import { Settings } from "../../config/settings";
 import { BaseKernel, getRemainingTimeMs, type KernelStartOptions } from "../kernel-base";
@@ -28,11 +28,11 @@ export type { KernelExecuteResult, KernelRuntimeEnv } from "../kernel-base";
 export { renderKernelDisplay } from "../py/display";
 export type { KernelDisplayOutput };
 
-const TRACE_IPC = $flag("PI_JULIA_IPC_TRACE");
+const TRACE_IPC = $flag("VEYYON_JULIA_IPC_TRACE");
 
 // Cache the runner script on disk so the subprocess loads it normally. Cached
 // per script hash so installs don't race across versions.
-const RUNNER_CACHE_DIR = path.join(os.tmpdir(), "omp-julia-runner");
+const RUNNER_CACHE_DIR = path.join(os.tmpdir(), "veyyon-julia-runner");
 let RUNNER_SCRIPT_PATH: string | null = null;
 
 async function ensureRunnerScript(): Promise<string> {

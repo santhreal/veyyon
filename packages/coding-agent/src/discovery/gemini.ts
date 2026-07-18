@@ -16,7 +16,7 @@
  * - settings: From settings.json
  */
 import * as path from "node:path";
-import { tryParseJson } from "@veyyon/pi-utils";
+import { tryParseJson } from "@veyyon/utils";
 import { registerProvider } from "../capability";
 import { type ContextFile, contextFileCapability } from "../capability/context-file";
 import { type Extension, type ExtensionManifest, extensionCapability } from "../capability/extension";

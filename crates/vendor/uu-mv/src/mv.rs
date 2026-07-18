@@ -8,11 +8,11 @@
 
 // pi-uutils: vendored from uutils/coreutils 0.8.0 and patched to run in-process
 // as a shell builtin. Every filesystem syscall resolves its path operand
-// against the shell working directory via `pi_uutils_ctx::resolve` AT THE CALL
-// SITE, while the original operands are kept for display/error messages (GNU
-// prints operands as typed). All process-global stdio is routed through
-// `pi_uutils_ctx`, `translate!` strings are literalized, and the entry point no
-// longer calls `std::process::exit`.
+// against the shell working directory via `veyyon_uutils_ctx::resolve` AT THE
+// CALL SITE, while the original operands are kept for display/error messages
+// (GNU prints operands as typed). All process-global stdio is routed through
+// `veyyon_uutils_ctx`, `translate!` strings are literalized, and the entry
+// point no longer calls `std::process::exit`.
 
 mod error;
 #[cfg(unix)]
@@ -34,7 +34,6 @@ use std::{
 use clap::{Arg, ArgAction, ArgMatches, Command, builder::ValueParser, error::ErrorKind};
 use fs_extra::dir::get_size as dir_get_size;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
-use pi_uutils_ctx::format_usage;
 #[cfg(all(unix, not(any(target_os = "macos", target_os = "redox"))))]
 use rustc_hash::FxHashMap;
 use rustc_hash::FxHashSet;
@@ -59,6 +58,7 @@ use uucore::{
 	},
 	update_control,
 };
+use veyyon_uutils_ctx::format_usage;
 
 use crate::error::MvError;
 #[cfg(unix)]
@@ -165,8 +165,8 @@ static OPT_SELINUX: &str = "selinux";
 /// recoverable error against the context exit code and writes it to the context
 /// stderr instead of the process globals.
 fn show(err: &dyn UError) {
-	pi_uutils_ctx::set_exit_code(err.code());
-	let _ = writeln!(pi_uutils_ctx::stderr(), "mv: {err}");
+	veyyon_uutils_ctx::set_exit_code(err.code());
+	let _ = writeln!(veyyon_uutils_ctx::stderr(), "mv: {err}");
 }
 
 /// Post-parse core of mv, split out of the upstream `uumain` so the entry point
@@ -201,7 +201,7 @@ fn run_matches(matches: &ArgMatches) -> UResult<()> {
 
 	if let Some(maybe_dir) = &target_dir {
 		// pi-uutils: resolve against the shell working directory before probing.
-		if !pi_uutils_ctx::resolve(Path::new(maybe_dir)).is_dir() {
+		if !veyyon_uutils_ctx::resolve(Path::new(maybe_dir)).is_dir() {
 			return Err(MvError::TargetNotADirectory(maybe_dir.quote().to_string()).into());
 		}
 	}
@@ -232,8 +232,9 @@ fn run_matches(matches: &ArgMatches) -> UResult<()> {
 	mv(&files[..], &opts)
 }
 
-/// In-process builtin entry point. The host installs a [`pi_uutils_ctx`] scope
-/// (stdio + working directory) on a dedicated blocking thread, then calls this.
+/// In-process builtin entry point. The host installs a [`veyyon_uutils_ctx`]
+/// scope (stdio + working directory) on a dedicated blocking thread, then calls
+/// this.
 ///
 /// Unlike uutils' `#[uucore::main] uumain`, this never mutates process-global
 /// signal handlers and never calls `std::process::exit` — clap help/usage/
@@ -245,10 +246,10 @@ pub fn run(args: Vec<OsString>) -> i32 {
 		Err(err) => {
 			let rendered = err.to_string();
 			if err.use_stderr() {
-				let _ = write!(pi_uutils_ctx::stderr(), "{rendered}");
+				let _ = write!(veyyon_uutils_ctx::stderr(), "{rendered}");
 				return 1;
 			}
-			let _ = write!(pi_uutils_ctx::stdout(), "{rendered}");
+			let _ = write!(veyyon_uutils_ctx::stdout(), "{rendered}");
 			return 0;
 		},
 	};
@@ -267,18 +268,18 @@ pub fn run(args: Vec<OsString>) -> i32 {
 		);
 		let rendered = err.to_string();
 		if err.use_stderr() {
-			let _ = write!(pi_uutils_ctx::stderr(), "{rendered}");
+			let _ = write!(veyyon_uutils_ctx::stderr(), "{rendered}");
 			return 1;
 		}
-		let _ = write!(pi_uutils_ctx::stdout(), "{rendered}");
+		let _ = write!(veyyon_uutils_ctx::stdout(), "{rendered}");
 		return 0;
 	}
 
 	match run_matches(&matches) {
-		Ok(()) => pi_uutils_ctx::exit_code(),
+		Ok(()) => veyyon_uutils_ctx::exit_code(),
 		Err(err) => {
 			let code = err.code();
-			let _ = writeln!(pi_uutils_ctx::stderr(), "mv: {err}");
+			let _ = writeln!(veyyon_uutils_ctx::stderr(), "mv: {err}");
 			if code == 0 { 1 } else { code }
 		},
 	}
@@ -456,8 +457,8 @@ fn handle_two_paths(source: &Path, target: &Path, opts: &Options) -> UResult<()>
 
 	// pi-uutils: resolve operands against the shell working directory for the
 	// filesystem probes; keep `source`/`target` for display and errors.
-	let source_fs = pi_uutils_ctx::resolve(source);
-	let target_fs = pi_uutils_ctx::resolve(target);
+	let source_fs = veyyon_uutils_ctx::resolve(source);
+	let target_fs = veyyon_uutils_ctx::resolve(target);
 
 	if source_fs.symlink_metadata().is_err() {
 		return Err(if path_ends_with_terminator(source) {
@@ -540,8 +541,8 @@ fn assert_not_same_file(
 	// pi-uutils: resolve operands against the shell working directory for the
 	// canonicalization/hardlink probes (upstream used `std::path::absolute`,
 	// which anchors on the *process* cwd); keep `source`/`target` for display.
-	let source_abs = pi_uutils_ctx::resolve(source);
-	let target_abs = pi_uutils_ctx::resolve(target);
+	let source_abs = veyyon_uutils_ctx::resolve(source);
+	let target_abs = veyyon_uutils_ctx::resolve(target);
 
 	// we'll compare canonicalized_source and canonicalized_target for same file
 	// detection
@@ -666,7 +667,7 @@ fn move_files_into_dir(files: &[PathBuf], target_dir: &Path, options: &Options) 
 	};
 
 	// pi-uutils: resolve against the shell working directory before probing.
-	if !pi_uutils_ctx::resolve(target_dir).is_dir() {
+	if !veyyon_uutils_ctx::resolve(target_dir).is_dir() {
 		return Err(MvError::NotADirectory(target_dir.quote().to_string()).into());
 	}
 
@@ -694,7 +695,7 @@ fn move_files_into_dir(files: &[PathBuf], target_dir: &Path, options: &Options) 
 
 	for sourcepath in files {
 		// pi-uutils: resolve for the existence probe; display the operand.
-		if pi_uutils_ctx::resolve(sourcepath)
+		if veyyon_uutils_ctx::resolve(sourcepath)
 			.symlink_metadata()
 			.is_err()
 		{
@@ -747,7 +748,7 @@ fn move_files_into_dir(files: &[PathBuf], target_dir: &Path, options: &Options) 
 			hardlink_params.0,
 			hardlink_params.1,
 		) {
-			Err(e) if e.to_string().is_empty() => pi_uutils_ctx::set_exit_code(1),
+			Err(e) if e.to_string().is_empty() => veyyon_uutils_ctx::set_exit_code(1),
 			Err(e) => {
 				let e = e.map_err_context(|| {
 					format!("cannot move {} to {}", sourcepath.quote(), targetpath.quote())
@@ -782,13 +783,13 @@ fn rename(
 
 	// pi-uutils: resolve operands against the shell working directory for the
 	// filesystem checks; keep `from`/`to` for display.
-	let from_fs = pi_uutils_ctx::resolve(from);
-	let to_fs = pi_uutils_ctx::resolve(to);
+	let from_fs = veyyon_uutils_ctx::resolve(from);
+	let to_fs = veyyon_uutils_ctx::resolve(to);
 
 	if to_fs.exists() {
 		if opts.update == UpdateMode::None {
 			if opts.debug {
-				let _ = writeln!(pi_uutils_ctx::stdout(), "skipped {}", to.quote());
+				let _ = writeln!(veyyon_uutils_ctx::stdout(), "skipped {}", to.quote());
 			}
 			return Ok(());
 		}
@@ -806,7 +807,7 @@ fn rename(
 		match opts.overwrite {
 			OverwriteMode::NoClobber => {
 				if opts.debug {
-					let _ = writeln!(pi_uutils_ctx::stdout(), "skipped {}", to.quote());
+					let _ = writeln!(veyyon_uutils_ctx::stdout(), "skipped {}", to.quote());
 				}
 				return Ok(());
 			},
@@ -861,7 +862,7 @@ fn rename(
 
 	#[cfg(all(feature = "selinux", any(target_os = "linux", target_os = "android")))]
 	if let Some(context) = &opts.context {
-		set_selinux_security_context(&pi_uutils_ctx::resolve(to), Some(context))
+		set_selinux_security_context(&veyyon_uutils_ctx::resolve(to), Some(context))
 			.map_err(|e| io::Error::other(e.to_string()))?;
 	}
 
@@ -881,10 +882,10 @@ fn rename(
 
 		match display_manager {
 			Some(pb) => pb.suspend(|| {
-				let _ = writeln!(pi_uutils_ctx::stdout(), "{message}");
+				let _ = writeln!(veyyon_uutils_ctx::stdout(), "{message}");
 			}),
 			None => {
-				let _ = writeln!(pi_uutils_ctx::stdout(), "{message}");
+				let _ = writeln!(veyyon_uutils_ctx::stdout(), "{message}");
 			},
 		}
 	}
@@ -916,8 +917,8 @@ fn rename_with_fallback(
 	// pi-uutils: resolve operands against the shell working directory for the
 	// syscalls performed here; the display-bearing fallbacks below keep the
 	// original operands and resolve at their own call sites.
-	let from_fs = pi_uutils_ctx::resolve(from);
-	let to_fs = pi_uutils_ctx::resolve(to);
+	let from_fs = veyyon_uutils_ctx::resolve(from);
+	let to_fs = veyyon_uutils_ctx::resolve(to);
 
 	fs::rename(&from_fs, &to_fs).or_else(|err| {
 		#[cfg(windows)]
@@ -986,11 +987,11 @@ fn rename_with_fallback(
 /// Replace the destination with a new pipe with the same name as the source.
 #[cfg(unix)]
 fn rename_fifo_fallback(from: &Path, to: &Path) -> io::Result<()> {
-	let to_fs = pi_uutils_ctx::resolve(to);
+	let to_fs = veyyon_uutils_ctx::resolve(to);
 	if to_fs.try_exists()? {
 		fs::remove_file(&to_fs)?;
 	}
-	make_fifo(&to_fs).and_then(|_| fs::remove_file(pi_uutils_ctx::resolve(from)))
+	make_fifo(&to_fs).and_then(|_| fs::remove_file(veyyon_uutils_ctx::resolve(from)))
 }
 
 #[cfg(not(unix))]
@@ -1005,26 +1006,26 @@ fn rename_fifo_fallback(_from: &Path, _to: &Path) -> io::Result<()> {
 fn rename_symlink_fallback(from: &Path, to: &Path) -> io::Result<()> {
 	// `read_link` returns the symlink's *contents* (its literal target), which
 	// must not be resolved; only the from/to operands are filesystem locations.
-	let path_symlink_points_to = fs::read_link(pi_uutils_ctx::resolve(from))?;
-	unix::fs::symlink(path_symlink_points_to, pi_uutils_ctx::resolve(to))?;
+	let path_symlink_points_to = fs::read_link(veyyon_uutils_ctx::resolve(from))?;
+	unix::fs::symlink(path_symlink_points_to, veyyon_uutils_ctx::resolve(to))?;
 	#[cfg(not(any(target_os = "macos", target_os = "redox")))]
 	{
 		let _ = copy_xattrs_if_supported(from, to);
 	}
-	fs::remove_file(pi_uutils_ctx::resolve(from))
+	fs::remove_file(veyyon_uutils_ctx::resolve(from))
 }
 
 #[cfg(windows)]
 fn rename_symlink_fallback(from: &Path, to: &Path) -> io::Result<()> {
-	let path_symlink_points_to = fs::read_link(pi_uutils_ctx::resolve(from))?;
-	let to_fs = pi_uutils_ctx::resolve(to);
+	let path_symlink_points_to = fs::read_link(veyyon_uutils_ctx::resolve(from))?;
+	let to_fs = veyyon_uutils_ctx::resolve(to);
 	if path_symlink_points_to.exists() {
 		if path_symlink_points_to.is_dir() {
 			windows::fs::symlink_dir(&path_symlink_points_to, &to_fs)?;
 		} else {
 			windows::fs::symlink_file(&path_symlink_points_to, &to_fs)?;
 		}
-		fs::remove_file(pi_uutils_ctx::resolve(from))
+		fs::remove_file(veyyon_uutils_ctx::resolve(from))
 	} else {
 		Err(io::Error::new(
 			io::ErrorKind::NotFound,
@@ -1049,7 +1050,7 @@ fn rename_dir_fallback(
 	// We remove the destination directory if it exists to match the
 	// behavior of `fs::rename`. As far as I can tell, `fs_extra`'s
 	// `move_dir` would otherwise behave differently.
-	let to_fs = pi_uutils_ctx::resolve(to);
+	let to_fs = veyyon_uutils_ctx::resolve(to);
 	if to_fs.exists() {
 		fs::remove_dir_all(&to_fs)?;
 	}
@@ -1059,7 +1060,7 @@ fn rename_dir_fallback(
 	//    If finding the total size fails for whatever reason,
 	//    the progress bar wont be shown for this file / dir.
 	//    (Move will probably fail due to permission error later?)
-	let total_size = dir_get_size(pi_uutils_ctx::resolve(from)).ok();
+	let total_size = dir_get_size(veyyon_uutils_ctx::resolve(from)).ok();
 
 	let progress_bar = match (display_manager, total_size) {
 		(Some(display_manager), Some(total_size)) => {
@@ -1072,7 +1073,7 @@ fn rename_dir_fallback(
 	};
 
 	#[cfg(all(unix, not(any(target_os = "macos", target_os = "redox"))))]
-	let xattrs = fsxattr::retrieve_xattrs(pi_uutils_ctx::resolve(from))
+	let xattrs = fsxattr::retrieve_xattrs(veyyon_uutils_ctx::resolve(from))
 		.unwrap_or_else(|_| FxHashMap::default());
 
 	// Use directory copying (with or without hardlink support)
@@ -1089,12 +1090,12 @@ fn rename_dir_fallback(
 	);
 
 	#[cfg(all(unix, not(any(target_os = "macos", target_os = "redox"))))]
-	fsxattr::apply_xattrs(pi_uutils_ctx::resolve(to), xattrs)?;
+	fsxattr::apply_xattrs(veyyon_uutils_ctx::resolve(to), xattrs)?;
 
 	result?;
 
 	// Remove the source directory after successful copy
-	fs::remove_dir_all(pi_uutils_ctx::resolve(from))?;
+	fs::remove_dir_all(veyyon_uutils_ctx::resolve(from))?;
 
 	Ok(())
 }
@@ -1110,7 +1111,7 @@ fn copy_dir_contents(
 	display_manager: Option<&MultiProgress>,
 ) -> io::Result<()> {
 	// Create the destination directory
-	fs::create_dir_all(pi_uutils_ctx::resolve(to))?;
+	fs::create_dir_all(veyyon_uutils_ctx::resolve(to))?;
 
 	// Recursively copy contents
 	#[cfg(unix)]
@@ -1150,10 +1151,10 @@ fn copy_dir_contents_recursive(
 			let message = format!("renamed {} -> {}", from.quote(), to.quote());
 			match display_manager {
 				Some(pb) => pb.suspend(|| {
-					let _ = writeln!(pi_uutils_ctx::stdout(), "{message}");
+					let _ = writeln!(veyyon_uutils_ctx::stdout(), "{message}");
 				}),
 				None => {
-					let _ = writeln!(pi_uutils_ctx::stdout(), "{message}");
+					let _ = writeln!(veyyon_uutils_ctx::stdout(), "{message}");
 				},
 			}
 		}
@@ -1162,7 +1163,7 @@ fn copy_dir_contents_recursive(
 	// pi-uutils: resolve the directory for the read, but rebuild each child
 	// path from the (display) operand directory so recursion + verbose output
 	// keep the operand-relative form; each leaf syscall resolves on its own.
-	let entries = fs::read_dir(pi_uutils_ctx::resolve(from_dir))?;
+	let entries = fs::read_dir(veyyon_uutils_ctx::resolve(from_dir))?;
 
 	for entry in entries {
 		let entry = entry?;
@@ -1174,7 +1175,7 @@ fn copy_dir_contents_recursive(
 			pb.set_message(from_path.to_string_lossy().to_string());
 		}
 
-		if pi_uutils_ctx::resolve(&from_path).is_symlink() {
+		if veyyon_uutils_ctx::resolve(&from_path).is_symlink() {
 			// Handle symlinks first, before checking is_dir() which follows symlinks.
 			// This prevents symlinks to directories from being expanded into full copies.
 			#[cfg(unix)]
@@ -1192,9 +1193,9 @@ fn copy_dir_contents_recursive(
 			}
 
 			print_verbose(&from_path, &to_path);
-		} else if pi_uutils_ctx::resolve(&from_path).is_dir() {
+		} else if veyyon_uutils_ctx::resolve(&from_path).is_dir() {
 			// Recursively copy subdirectory (only real directories, not symlinks)
-			fs::create_dir_all(pi_uutils_ctx::resolve(&to_path))?;
+			fs::create_dir_all(veyyon_uutils_ctx::resolve(&to_path))?;
 
 			print_verbose(&from_path, &to_path);
 
@@ -1223,14 +1224,14 @@ fn copy_dir_contents_recursive(
 			#[cfg(not(unix))]
 			{
 				// Symlinks are already handled above, so this is always a regular file
-				fs::copy(pi_uutils_ctx::resolve(&from_path), pi_uutils_ctx::resolve(&to_path))?;
+				fs::copy(veyyon_uutils_ctx::resolve(&from_path), veyyon_uutils_ctx::resolve(&to_path))?;
 			}
 
 			print_verbose(&from_path, &to_path);
 		}
 
 		if let Some(pb) = progress_bar
-			&& let Ok(metadata) = pi_uutils_ctx::resolve(&from_path).metadata()
+			&& let Ok(metadata) = veyyon_uutils_ctx::resolve(&from_path).metadata()
 		{
 			pb.inc(metadata.len());
 		}
@@ -1253,18 +1254,22 @@ fn copy_file_with_hardlinks_helper(
 	if let Some(existing_target) =
 		hardlink_tracker.check_hardlink(from, to, hardlink_scanner, &hardlink_options)
 	{
-		fs::hard_link(pi_uutils_ctx::resolve(&existing_target), pi_uutils_ctx::resolve(to))?;
+		fs::hard_link(veyyon_uutils_ctx::resolve(&existing_target), veyyon_uutils_ctx::resolve(to))?;
 		return Ok(());
 	}
 
-	if pi_uutils_ctx::resolve(from).is_symlink() {
+	if veyyon_uutils_ctx::resolve(from).is_symlink() {
 		// Copy a symlink file (no-follow).
 		rename_symlink_fallback(from, to)?;
-	} else if is_fifo(pi_uutils_ctx::resolve(from).symlink_metadata()?.file_type()) {
-		make_fifo(&pi_uutils_ctx::resolve(to))?;
+	} else if is_fifo(
+		veyyon_uutils_ctx::resolve(from)
+			.symlink_metadata()?
+			.file_type(),
+	) {
+		make_fifo(&veyyon_uutils_ctx::resolve(to))?;
 	} else {
 		// Copy a regular file.
-		fs::copy(pi_uutils_ctx::resolve(from), pi_uutils_ctx::resolve(to))?;
+		fs::copy(veyyon_uutils_ctx::resolve(from), veyyon_uutils_ctx::resolve(to))?;
 		// Copy xattrs, ignoring ENOTSUP errors (filesystem doesn't support xattrs)
 		#[cfg(all(unix, not(any(target_os = "macos", target_os = "redox"))))]
 		{
@@ -1281,7 +1286,7 @@ fn rename_file_fallback(
 	#[cfg(unix)] hardlink_tracker: Option<&mut HardlinkTracker>,
 	#[cfg(unix)] hardlink_scanner: Option<&HardlinkGroupScanner>,
 ) -> io::Result<()> {
-	let to_fs = pi_uutils_ctx::resolve(to);
+	let to_fs = veyyon_uutils_ctx::resolve(to);
 	// Remove existing target file if it exists
 	if to_fs.is_symlink() {
 		fs::remove_file(&to_fs).map_err(|err| {
@@ -1307,15 +1312,15 @@ fn rename_file_fallback(
 			if let Some(existing_target) = tracker.check_hardlink(from, to, scanner, &hardlink_options)
 			{
 				// Create a hardlink to the first moved file instead of copying
-				fs::hard_link(pi_uutils_ctx::resolve(&existing_target), &to_fs)?;
-				fs::remove_file(pi_uutils_ctx::resolve(from))?;
+				fs::hard_link(veyyon_uutils_ctx::resolve(&existing_target), &to_fs)?;
+				fs::remove_file(veyyon_uutils_ctx::resolve(from))?;
 				return Ok(());
 			}
 		}
 	}
 
 	// Regular file copy
-	fs::copy(pi_uutils_ctx::resolve(from), &to_fs)
+	fs::copy(veyyon_uutils_ctx::resolve(from), &to_fs)
 		.map_err(|err| io::Error::new(err.kind(), "Permission denied"))?;
 
 	// Copy xattrs, ignoring ENOTSUP errors (filesystem doesn't support xattrs)
@@ -1324,7 +1329,7 @@ fn rename_file_fallback(
 		let _ = copy_xattrs_if_supported(from, to);
 	}
 
-	fs::remove_file(pi_uutils_ctx::resolve(from))
+	fs::remove_file(veyyon_uutils_ctx::resolve(from))
 		.map_err(|err| io::Error::new(err.kind(), "Permission denied"))?;
 	Ok(())
 }
@@ -1334,7 +1339,7 @@ fn rename_file_fallback(
 /// which is acceptable when moving files across filesystems.
 #[cfg(all(unix, not(any(target_os = "macos", target_os = "redox"))))]
 fn copy_xattrs_if_supported(from: &Path, to: &Path) -> io::Result<()> {
-	match fsxattr::copy_xattrs(pi_uutils_ctx::resolve(from), pi_uutils_ctx::resolve(to)) {
+	match fsxattr::copy_xattrs(veyyon_uutils_ctx::resolve(from), veyyon_uutils_ctx::resolve(to)) {
 		Ok(()) => Ok(()),
 		Err(e) if e.raw_os_error() == Some(libc::EOPNOTSUPP) => Ok(()),
 		Err(e) => Err(e),
@@ -1342,13 +1347,14 @@ fn copy_xattrs_if_supported(from: &Path, to: &Path) -> io::Result<()> {
 }
 
 fn is_empty_dir(path: &Path) -> bool {
-	fs::read_dir(pi_uutils_ctx::resolve(path)).is_ok_and(|mut contents| contents.next().is_none())
+	fs::read_dir(veyyon_uutils_ctx::resolve(path))
+		.is_ok_and(|mut contents| contents.next().is_none())
 }
 
 /// Check if file is writable, returning the mode for potential reuse.
 #[cfg(unix)]
 fn is_writable(path: &Path) -> (bool, Option<u32>) {
-	if let Ok(metadata) = pi_uutils_ctx::resolve(path).metadata() {
+	if let Ok(metadata) = veyyon_uutils_ctx::resolve(path).metadata() {
 		let mode = metadata.permissions().mode();
 		// Check if user write bit is set
 		((mode & 0o200) != 0, Some(mode))
@@ -1360,7 +1366,7 @@ fn is_writable(path: &Path) -> (bool, Option<u32>) {
 /// Check if file is writable.
 #[cfg(not(unix))]
 fn is_writable(path: &Path) -> (bool, Option<u32>) {
-	if let Ok(metadata) = pi_uutils_ctx::resolve(path).metadata() {
+	if let Ok(metadata) = veyyon_uutils_ctx::resolve(path).metadata() {
 		(!metadata.permissions().readonly(), None)
 	} else {
 		(false, None) // If we can't get metadata, prompt user to be safe
@@ -1371,7 +1377,7 @@ fn is_writable(path: &Path) -> (bool, Option<u32>) {
 fn get_interactive_prompt(to: &Path, cached_mode: Option<u32>) -> String {
 	// Use cached mode if available, otherwise fetch it
 	let mode = cached_mode.or_else(|| {
-		pi_uutils_ctx::resolve(to)
+		veyyon_uutils_ctx::resolve(to)
 			.metadata()
 			.ok()
 			.map(|m| m.permissions().mode())
@@ -1399,7 +1405,7 @@ fn get_interactive_prompt(to: &Path, _cached_mode: Option<u32>) -> String {
 /// of the line is `y`/`Y`.
 fn read_yes() -> bool {
 	use std::io::Read as _;
-	let mut stdin = pi_uutils_ctx::stdin();
+	let mut stdin = veyyon_uutils_ctx::stdin();
 	let mut buf = [0u8; 1];
 	let mut first = None;
 	loop {
@@ -1432,7 +1438,7 @@ fn prompt_overwrite(to: &Path, cached_mode: Option<u32>) -> io::Result<()> {
 	// pi-uutils: mirror uucore's `prompt_yes!` — write "<util>: <prompt> " to
 	// the context stderr, then read the answer from the context stdin.
 	let prompt = get_interactive_prompt(to, cached_mode);
-	let mut err = pi_uutils_ctx::stderr();
+	let mut err = veyyon_uutils_ctx::stderr();
 	let _ = write!(err, "mv: {prompt} ");
 	let _ = err.flush();
 	if !read_yes() {
@@ -1458,7 +1464,7 @@ fn can_delete_file(path: &Path) -> bool {
 		},
 	};
 
-	let resolved = pi_uutils_ctx::resolve(path);
+	let resolved = veyyon_uutils_ctx::resolve(path);
 	let wide_path = resolved
 		.as_os_str()
 		.encode_wide()

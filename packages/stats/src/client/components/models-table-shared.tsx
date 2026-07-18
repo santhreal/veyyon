@@ -10,7 +10,7 @@ import { ChevronDown, ChevronUp } from "lucide-react";
 import { Line } from "react-chartjs-2";
 import type { ChartTheme } from "./chart-shared";
 
-// Detail-table charts share the exact OMP chart chrome as the timeline charts;
+// Detail-table charts share the exact Veyyon chart chrome as the timeline charts;
 // re-export rather than duplicate so the palette has a single source of truth.
 export { CHART_THEMES as TABLE_CHART_THEMES, MODEL_COLORS } from "./chart-shared";
 export type TableChartTheme = ChartTheme;

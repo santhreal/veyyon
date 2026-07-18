@@ -1,18 +1,21 @@
 import { describe, expect, it } from "bun:test";
-import { handleArxiv } from "@veyyon/pi-coding-agent/web/scrapers/arxiv";
-import { handleIacr } from "@veyyon/pi-coding-agent/web/scrapers/iacr";
-import { handlePubMed } from "@veyyon/pi-coding-agent/web/scrapers/pubmed";
-import { handleSemanticScholar } from "@veyyon/pi-coding-agent/web/scrapers/semantic-scholar";
-import type { RenderResult } from "@veyyon/pi-coding-agent/web/scrapers/types";
+import { handleArxiv } from "@veyyon/coding-agent/web/scrapers/arxiv";
+import { handleIacr } from "@veyyon/coding-agent/web/scrapers/iacr";
+import { handlePubMed } from "@veyyon/coding-agent/web/scrapers/pubmed";
+import { handleSemanticScholar } from "@veyyon/coding-agent/web/scrapers/semantic-scholar";
+import type { RenderResult } from "@veyyon/coding-agent/web/scrapers/types";
+import { asRender } from "../../helpers/scrapers";
 
 const SKIP = !Bun.env.WEB_FETCH_INTEGRATION;
 
 describe.skipIf(SKIP)("handleSemanticScholar", () => {
 	it("fetches a known paper", async () => {
 		// "Attention Is All You Need" paper
-		const result = await handleSemanticScholar(
-			"https://www.semanticscholar.org/paper/Attention-is-All-you-Need-Vaswani-Shazeer/204e3073870fae3d05bcbc2f6a8e263d9b72e776",
-			20,
+		const result = asRender(
+			await handleSemanticScholar(
+				"https://www.semanticscholar.org/paper/Attention-is-All-you-Need-Vaswani-Shazeer/204e3073870fae3d05bcbc2f6a8e263d9b72e776",
+				20,
+			),
 		);
 		expect(result).not.toBeNull();
 		expect(result?.method).toBe("semantic-scholar");
@@ -29,7 +32,7 @@ describe.skipIf(SKIP)("handleSemanticScholar", () => {
 	});
 
 	it("handles invalid paper ID format", async () => {
-		const result = await handleSemanticScholar("https://www.semanticscholar.org/paper/invalid", 20);
+		const result = asRender(await handleSemanticScholar("https://www.semanticscholar.org/paper/invalid", 20));
 		expect(result).not.toBeNull();
 		expect(result?.method).toBe("semantic-scholar");
 		expect(result?.content).toContain("Failed to extract paper ID");
@@ -44,7 +47,7 @@ describe.skipIf(SKIP)("handleSemanticScholar", () => {
 		];
 
 		for (const url of urls) {
-			const result = await handleSemanticScholar(url, 20);
+			const result = asRender(await handleSemanticScholar(url, 20));
 			expect(result).not.toBeNull();
 			expect(result?.method).toBe("semantic-scholar");
 			// API may be rate-limited or fail
@@ -59,9 +62,11 @@ describe.skipIf(SKIP)("handleSemanticScholar", () => {
 	});
 
 	it("includes metadata in formatted output", async () => {
-		const result = await handleSemanticScholar(
-			"https://www.semanticscholar.org/paper/Attention-is-All-you-Need-Vaswani-Shazeer/204e3073870fae3d05bcbc2f6a8e263d9b72e776",
-			20,
+		const result = asRender(
+			await handleSemanticScholar(
+				"https://www.semanticscholar.org/paper/Attention-is-All-you-Need-Vaswani-Shazeer/204e3073870fae3d05bcbc2f6a8e263d9b72e776",
+				20,
+			),
 		);
 		expect(result).not.toBeNull();
 		// Only check metadata if API call succeeded (not rate-limited)
@@ -79,9 +84,9 @@ describe.skipIf(SKIP)("handlePubMed", () => {
 
 	const fetchKnownPubMed = async (): Promise<RenderResult | null> => {
 		if (cachedKnownPubMed === undefined) {
-			cachedKnownPubMed = await handlePubMed("https://pubmed.ncbi.nlm.nih.gov/33782455/", 20);
+			cachedKnownPubMed = asRender(await handlePubMed("https://pubmed.ncbi.nlm.nih.gov/33782455/", 20));
 			if (cachedKnownPubMed === null) {
-				cachedKnownPubMed = await handlePubMed("https://pubmed.ncbi.nlm.nih.gov/33782455/", 20);
+				cachedKnownPubMed = asRender(await handlePubMed("https://pubmed.ncbi.nlm.nih.gov/33782455/", 20));
 			}
 		}
 		return cachedKnownPubMed;
@@ -97,7 +102,7 @@ describe.skipIf(SKIP)("handlePubMed", () => {
 	}, 60000);
 
 	it("fetches from ncbi.nlm.nih.gov/pubmed format", async () => {
-		const result = await handlePubMed("https://ncbi.nlm.nih.gov/pubmed/33782455", 20);
+		const result = asRender(await handlePubMed("https://ncbi.nlm.nih.gov/pubmed/33782455", 20));
 		expect(result).not.toBeNull();
 		expect(result?.method).toBe("pubmed");
 	}, 20000);
@@ -126,12 +131,12 @@ describe.skipIf(SKIP)("handlePubMed", () => {
 	});
 
 	it("returns null for invalid PMID format", async () => {
-		const result = await handlePubMed("https://pubmed.ncbi.nlm.nih.gov/invalid/", 20);
+		const result = asRender(await handlePubMed("https://pubmed.ncbi.nlm.nih.gov/invalid/", 20));
 		expect(result).toBeNull();
 	});
 
 	it("handles non-existent PMID gracefully", async () => {
-		const result = await handlePubMed("https://pubmed.ncbi.nlm.nih.gov/99999999999/", 20);
+		const result = asRender(await handlePubMed("https://pubmed.ncbi.nlm.nih.gov/99999999999/", 20));
 		// NCBI API returns a response even for non-existent PMIDs with minimal data
 		expect(result).not.toBeNull();
 		expect(result?.method).toBe("pubmed");
@@ -141,7 +146,7 @@ describe.skipIf(SKIP)("handlePubMed", () => {
 describe.skipIf(SKIP)("handleArxiv", () => {
 	it("fetches a known paper", async () => {
 		// "Attention Is All You Need" paper
-		const result = await handleArxiv("https://arxiv.org/abs/1706.03762", 30000);
+		const result = asRender(await handleArxiv("https://arxiv.org/abs/1706.03762", 30000));
 		expect(result).not.toBeNull();
 		expect(result?.method).toBe("arxiv");
 		expect(result?.contentType).toBe("text/markdown");
@@ -155,7 +160,7 @@ describe.skipIf(SKIP)("handleArxiv", () => {
 	});
 
 	it("handles /pdf/ URLs", async () => {
-		const result = await handleArxiv("https://arxiv.org/pdf/1706.03762", 30000);
+		const result = asRender(await handleArxiv("https://arxiv.org/pdf/1706.03762", 30000));
 		expect(result).not.toBeNull();
 		expect(result?.method).toBe("arxiv");
 		if (!result?.content.includes("Too Many Requests") && !result?.content.includes("Failed to fetch")) {
@@ -165,7 +170,7 @@ describe.skipIf(SKIP)("handleArxiv", () => {
 	});
 
 	it("includes paper metadata", async () => {
-		const result = await handleArxiv("https://arxiv.org/abs/1706.03762", 30000);
+		const result = asRender(await handleArxiv("https://arxiv.org/abs/1706.03762", 30000));
 		expect(result).not.toBeNull();
 		if (!result?.content.includes("Too Many Requests") && !result?.content.includes("Failed to fetch")) {
 			expect(result?.content).toMatch(/Authors:/);
@@ -179,7 +184,7 @@ describe.skipIf(SKIP)("handleArxiv", () => {
 describe.skipIf(SKIP)("handleIacr", () => {
 	it("fetches a known ePrint", async () => {
 		// Using a well-known paper
-		const result = await handleIacr("https://eprint.iacr.org/2023/123", 30000);
+		const result = asRender(await handleIacr("https://eprint.iacr.org/2023/123", 30000));
 		expect(result).not.toBeNull();
 		expect(result?.method).toBe("iacr");
 		expect(result?.contentType).toBe("text/markdown");
@@ -191,7 +196,7 @@ describe.skipIf(SKIP)("handleIacr", () => {
 	});
 
 	it("includes paper metadata", async () => {
-		const result = await handleIacr("https://eprint.iacr.org/2023/123", 30000);
+		const result = asRender(await handleIacr("https://eprint.iacr.org/2023/123", 30000));
 		expect(result).not.toBeNull();
 		if (!result?.content.includes("Too Many Requests") && !result?.content.includes("Failed to fetch")) {
 			expect(result?.content).toContain("ePrint:");
@@ -200,7 +205,7 @@ describe.skipIf(SKIP)("handleIacr", () => {
 	});
 
 	it("handles PDF URLs", async () => {
-		const result = await handleIacr("https://eprint.iacr.org/2023/123.pdf", 30000);
+		const result = asRender(await handleIacr("https://eprint.iacr.org/2023/123.pdf", 30000));
 		expect(result).not.toBeNull();
 		expect(result?.method).toBe("iacr");
 		if (!result?.content.includes("Too Many Requests") && !result?.content.includes("Failed to fetch")) {

@@ -1,4 +1,4 @@
-import { ThinkingLevel } from "@veyyon/pi-agent-core";
+import { ThinkingLevel } from "@veyyon/agent-core";
 import {
 	type Component,
 	Container,
@@ -10,7 +10,7 @@ import {
 	Text,
 	TruncatedText,
 	truncateToWidth,
-} from "@veyyon/pi-tui";
+} from "@veyyon/tui";
 import type { TreeFilterMode } from "../../config/settings-schema";
 import { theme } from "../../modes/theme/theme";
 import { matchesAppInterrupt, matchesSelectDown, matchesSelectUp } from "../../modes/utils/keybinding-matchers";
@@ -501,7 +501,7 @@ class TreeList implements Component {
 			const isSelected = i === this.#selectedIndex;
 
 			// Build line: cursor + prefix + path marker + label + content
-			const cursor = isSelected ? theme.fg("accent", "› ") : "  ";
+			const cursor = isSelected ? theme.fg("accent", `${theme.nav.cursor} `) : "  ";
 
 			// If multiple roots, shift display (roots at 0, not 1)
 			const displayIndent = this.#multipleRoots ? Math.max(0, flatNode.indent - 1) : flatNode.indent;

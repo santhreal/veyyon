@@ -1,4 +1,4 @@
-import type { ImageContent, MessageAttribution, ServiceTierByFamily, TextContent } from "@veyyon/pi-ai";
+import type { ImageContent, MessageAttribution, ServiceTierByFamily, TextContent } from "@veyyon/ai";
 import type { AgentMessage } from "../types";
 
 export interface SessionEntryBase {

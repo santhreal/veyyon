@@ -6,22 +6,22 @@
  * behavior they have in the TUI.
  */
 import { afterEach, beforeEach, expect, it, spyOn } from "bun:test";
-import { Agent, type AgentTool } from "@veyyon/pi-agent-core";
-import { createMockModel, type MockModelOptions } from "@veyyon/pi-ai/providers/mock";
-import { AssistantMessageEventStream } from "@veyyon/pi-ai/utils/event-stream";
-import { getBundledModel } from "@veyyon/pi-catalog/models";
-import { type SettingPath, Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { EditTool } from "@veyyon/pi-coding-agent/edit";
-import { AgentSession } from "@veyyon/pi-coding-agent/session/agent-session";
+import { Agent, type AgentTool } from "@veyyon/agent-core";
+import { createMockModel, type MockModelOptions } from "@veyyon/ai/providers/mock";
+import { AssistantMessageEventStream } from "@veyyon/ai/utils/event-stream";
+import { getBundledModel } from "@veyyon/catalog/models";
+import { type SettingPath, Settings } from "@veyyon/coding-agent/config/settings";
+import { EditTool } from "@veyyon/coding-agent/edit";
+import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 import type {
 	ClientBridge,
 	ClientBridgePermissionOutcome,
 	ClientBridgePermissionToolCall,
-} from "@veyyon/pi-coding-agent/session/client-bridge";
-import { convertToLlm } from "@veyyon/pi-coding-agent/session/messages";
-import { SessionManager } from "@veyyon/pi-coding-agent/session/session-manager";
-import type { ToolSession } from "@veyyon/pi-coding-agent/tools";
-import { TempDir } from "@veyyon/pi-utils";
+} from "@veyyon/coding-agent/session/client-bridge";
+import { convertToLlm } from "@veyyon/coding-agent/session/messages";
+import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import type { ToolSession } from "@veyyon/coding-agent/tools";
+import { TempDir } from "@veyyon/utils";
 import { type } from "arktype";
 
 // ---------------------------------------------------------------------------

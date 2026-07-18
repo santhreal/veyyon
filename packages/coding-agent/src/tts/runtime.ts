@@ -1,5 +1,5 @@
 import * as path from "node:path";
-import { getTinyModelsCacheDir } from "@veyyon/pi-utils";
+import { getTinyModelsCacheDir } from "@veyyon/utils";
 
 export const KOKORO_PACKAGE = "kokoro-js";
 export const KOKORO_VERSION = "1.2.1";

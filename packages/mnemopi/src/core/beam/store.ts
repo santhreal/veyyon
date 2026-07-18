@@ -1,5 +1,5 @@
 import type { Database, SQLQueryBindings } from "bun:sqlite";
-import { logger } from "@veyyon/pi-utils";
+import { errorMessage, logger } from "@veyyon/utils";
 import { transaction } from "../../db";
 import { toUtcIso } from "../../util/datetime";
 import { generateId } from "../../util/ids";
@@ -197,7 +197,7 @@ function addTemporalAnnotations(beam: BeamMemoryState, memoryId: string, timesta
 		// temporal recall — surface it.
 		logger.warn("mnemopi: temporal annotation enrichment failed for stored memory", {
 			memoryId,
-			error: error instanceof Error ? error.message : String(error),
+			error: errorMessage(error),
 		});
 	}
 }
@@ -229,7 +229,7 @@ function proactiveLinkIfEnabled(
 		// link is invisible recall loss — surface it.
 		logger.warn("mnemopi: proactive graph linking failed; memory stored without episodic links", {
 			memoryId,
-			error: error instanceof Error ? error.message : String(error),
+			error: errorMessage(error),
 		});
 	}
 }
@@ -251,7 +251,7 @@ async function runFactExtraction(beam: BeamMemoryState, memoryId: string, conten
 		// extraction means facts silently never became searchable — surface it.
 		logger.warn("mnemopi: background fact extraction failed; no facts stored for memory", {
 			memoryId,
-			error: error instanceof Error ? error.message : String(error),
+			error: errorMessage(error),
 		});
 	}
 }

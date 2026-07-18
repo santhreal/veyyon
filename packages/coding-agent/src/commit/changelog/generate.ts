@@ -1,7 +1,7 @@
-import type { ThinkingLevel } from "@veyyon/pi-agent-core";
-import type { Api, ApiKey, AssistantMessage, Model } from "@veyyon/pi-ai";
-import { completeSimple, validateToolCall } from "@veyyon/pi-ai";
-import { prompt } from "@veyyon/pi-utils";
+import type { ThinkingLevel } from "@veyyon/agent-core";
+import type { Api, ApiKey, AssistantMessage, Model } from "@veyyon/ai";
+import { completeSimple, validateToolCall } from "@veyyon/ai";
+import { prompt } from "@veyyon/utils";
 import { type } from "arktype";
 import changelogSystemPrompt from "../../commit/prompts/changelog-system.md" with { type: "text" };
 import changelogUserPrompt from "../../commit/prompts/changelog-user.md" with { type: "text" };

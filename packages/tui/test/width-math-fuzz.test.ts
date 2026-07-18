@@ -11,7 +11,7 @@
  * Deterministic LCG so a failure reproduces from the printed seed input.
  */
 import { describe, expect, it } from "bun:test";
-import { Ellipsis, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@veyyon/pi-tui";
+import { Ellipsis, truncateToWidth, visibleWidth, wrapTextWithAnsi } from "@veyyon/tui";
 import { buildString, lcg } from "./helpers/adversarial-strings";
 
 // Content on which the two independent width oracles — the Rust-native

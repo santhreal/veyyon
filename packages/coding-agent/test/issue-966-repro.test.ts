@@ -12,7 +12,7 @@ import * as path from "node:path";
 import { $ } from "bun";
 import * as git from "./src/utils/git.ts";
 
-const dir = await fs.mkdtemp(path.join(os.tmpdir(), "omp-issue-966-"));
+const dir = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-issue-966-"));
 try {
 	await $\`git init --initial-branch=main\`.cwd(dir).quiet();
 	await $\`git config user.email tester@example.com\`.cwd(dir).quiet();

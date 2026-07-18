@@ -1,7 +1,7 @@
 /**
  * TUI progress rendering for swarm pipeline status.
  */
-import { formatDuration, truncate } from "@veyyon/pi-utils";
+import { formatDuration, truncate } from "@veyyon/utils";
 import type { AgentState, SwarmState } from "./state";
 
 const STATUS_LABELS: Record<string, string> = {

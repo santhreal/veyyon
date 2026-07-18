@@ -3,9 +3,9 @@
  */
 import * as path from "node:path";
 
-import { type Api, type AssistantMessage, completeSimple, type Model } from "@veyyon/pi-ai";
-import { StreamMarkupHealing } from "@veyyon/pi-ai/utils/stream-markup-healing";
-import { isTerminalHeadless, logger, prompt } from "@veyyon/pi-utils";
+import { type Api, type AssistantMessage, completeSimple, type Model } from "@veyyon/ai";
+import { StreamMarkupHealing } from "@veyyon/ai/utils/stream-markup-healing";
+import { errorMessage, isTerminalHeadless, logger, prompt } from "@veyyon/utils";
 import type { ModelRegistry } from "../config/model-registry";
 
 import { resolveRoleSelectionWithInherit } from "../config/model-resolver";
@@ -128,7 +128,7 @@ export async function generateSessionTitle(
 		logger.warn("title-generator: local tiny model errored; skipping (no online fallback)", {
 			sessionId,
 			model: tinyModel,
-			error: err instanceof Error ? err.message : String(err),
+			error: errorMessage(err),
 		});
 		return null;
 	}
@@ -232,7 +232,7 @@ export async function generateTitleOnline(
 		logger.warn("title-generator: error", {
 			...modelContext,
 			reason: "exception",
-			error: err instanceof Error ? err.message : String(err),
+			error: errorMessage(err),
 		});
 		return null;
 	}

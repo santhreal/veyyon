@@ -73,10 +73,10 @@ const platformTag = `${targetPlatform}-${targetArch}`;
 const candidates: CandidateAddon[] =
 	targetArch === "x64"
 		? [
-				{ variant: "modern", filename: `pi_natives.${platformTag}-modern.node` },
-				{ variant: "baseline", filename: `pi_natives.${platformTag}-baseline.node` },
+				{ variant: "modern", filename: `veyyon_natives.${platformTag}-modern.node` },
+				{ variant: "baseline", filename: `veyyon_natives.${platformTag}-baseline.node` },
 			]
-		: [{ variant: "default", filename: `pi_natives.${platformTag}.node` }];
+		: [{ variant: "default", filename: `veyyon_natives.${platformTag}.node` }];
 
 const available: AvailableAddon[] = [];
 for (const candidate of candidates) {

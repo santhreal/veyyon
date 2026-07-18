@@ -13,12 +13,12 @@ operator-configured providers, and reject malformed provider data at load time.
 
 ## What stays constant
 
-- The workflow stays the same: read, edit, verify, and stop when the work is done.
-- Tool repair, edit verification, sandboxing, approvals, and context handling are harness behavior.
-- You are not locked to any provider; point the harness at any compatible API.
+- Workflow shape: read, edit, verify, stop when done.
+- Tool repair, edit verification, approvals, and context handling are harness behavior.
+- Provider is configuration: endpoint, credentials, and model id.
 
 ## Next
 
-- [Models and providers](./models.md) — day-to-day switching and comparison guidance.
+- [Models and providers](./models.md) — selection, roles, and providers.
 - [Configuring providers](./configuring-providers.md) — copy-paste setups.
 - [Safety](./safety.md) — boundaries around tool use and model output.

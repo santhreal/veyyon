@@ -1,7 +1,7 @@
-import type { ThinkingLevel } from "@veyyon/pi-agent-core";
-import type { Api, ApiKey, Model } from "@veyyon/pi-ai";
-import { completeSimple } from "@veyyon/pi-ai";
-import { prompt } from "@veyyon/pi-utils";
+import type { ThinkingLevel } from "@veyyon/agent-core";
+import type { Api, ApiKey, Model } from "@veyyon/ai";
+import { completeSimple } from "@veyyon/ai";
+import { prompt } from "@veyyon/utils";
 import reduceSystemPrompt from "../../commit/prompts/reduce-system.md" with { type: "text" };
 import reduceUserPrompt from "../../commit/prompts/reduce-user.md" with { type: "text" };
 import type { ConventionalAnalysis, FileObservation } from "../../commit/types";

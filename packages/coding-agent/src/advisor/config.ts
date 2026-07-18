@@ -1,6 +1,6 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { isEnoent, logger } from "@veyyon/pi-utils";
+import { isEnoent, logger } from "@veyyon/utils";
 import { type } from "arktype";
 import { YAML } from "bun";
 import { expandAtImports } from "../discovery/at-imports";

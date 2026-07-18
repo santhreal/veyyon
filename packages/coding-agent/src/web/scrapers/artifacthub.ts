@@ -1,6 +1,6 @@
-import { tryParseJson } from "@veyyon/pi-utils";
-import type { RenderResult, SpecialHandler } from "./types";
-import { buildResult, formatIsoDate, formatNumber, loadPage } from "./types";
+import { tryParseJson } from "@veyyon/utils";
+import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
+import { buildResult, formatIsoDate, formatNumber, loadFailure, loadPage, scraperDegrade, tryParseUrl } from "./types";
 
 interface ArtifactHubMaintainer {
 	name: string;
@@ -58,9 +58,10 @@ export const handleArtifactHub: SpecialHandler = async (
 	url: string,
 	timeout: number,
 	signal?: AbortSignal,
-): Promise<RenderResult | null> => {
+): Promise<RenderResult | ScraperDegrade | null> => {
 	try {
-		const parsed = new URL(url);
+		const parsed = tryParseUrl(url);
+		if (!parsed) return null;
 		if (parsed.hostname !== "artifacthub.io" && parsed.hostname !== "www.artifacthub.io") return null;
 
 		// Extract kind, repo, and package name from /packages/{kind}/{repo}/{name}
@@ -78,10 +79,10 @@ export const handleArtifactHub: SpecialHandler = async (
 			signal,
 		});
 
-		if (!result.ok) return null;
+		if (!result.ok) return scraperDegrade("artifacthub", loadFailure(result));
 
 		const pkg = tryParseJson<ArtifactHubPackage>(result.content);
-		if (!pkg) return null;
+		if (!pkg) return scraperDegrade("artifacthub", "unexpected response shape");
 
 		const displayName = pkg.display_name || pkg.name;
 		const kindLabel = formatKindLabel(kind);
@@ -166,9 +167,9 @@ export const handleArtifactHub: SpecialHandler = async (
 			fetchedAt,
 			notes: [`Fetched via Artifact Hub API (${kindLabel})`],
 		});
-	} catch {}
-
-	return null;
+	} catch (error) {
+		return scraperDegrade("artifacthub", error);
+	}
 };
 
 /**

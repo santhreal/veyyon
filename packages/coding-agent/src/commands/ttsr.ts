@@ -7,8 +7,8 @@ import * as path from "node:path";
  * TTSR matching pipeline and reports which rules would trigger. `veyyon ttsr list`
  * shows every TTSR-registered rule the current project/user config would load.
  */
-import { APP_NAME, CONFIG_DIR_NAME } from "@veyyon/pi-utils";
-import { Args, Command, Flags } from "@veyyon/pi-utils/cli";
+import { APP_NAME, CONFIG_DIR_NAME } from "@veyyon/utils";
+import { Args, Command, Flags } from "@veyyon/utils/cli";
 import {
 	runTtsrCommand,
 	TTSR_ACTIONS,
@@ -21,6 +21,8 @@ import type { TtsrMatchSource } from "../export/ttsr";
 
 export default class Ttsr extends Command {
 	static description = "Inspect and test Time-Traveling Stream Rules (TTSR)";
+
+	static devTool = true;
 
 	static args = {
 		action: Args.string({

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { RingBuffer } from "@veyyon/pi-utils/ring";
+import { RingBuffer } from "@veyyon/utils/ring";
 
 describe("construction", () => {
 	it("starts empty", () => {

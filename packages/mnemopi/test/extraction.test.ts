@@ -5,14 +5,10 @@ import {
 	extractFactsSafe,
 	heuristicExtractFacts,
 	parseFacts,
-} from "@veyyon/pi-mnemopi/core/extraction";
-import { getExtractionStats, resetExtractionStats } from "@veyyon/pi-mnemopi/core/extraction/diagnostics";
-import {
-	CallableLlmBackend,
-	resetHostLlmBackendForTests,
-	setHostLlmBackend,
-} from "@veyyon/pi-mnemopi/core/llm-backends";
-import { type ResolvedMnemopiRuntimeOptions, withMnemopiRuntimeOptions } from "@veyyon/pi-mnemopi/core/runtime-options";
+} from "@veyyon/mnemopi/core/extraction";
+import { getExtractionStats, resetExtractionStats } from "@veyyon/mnemopi/core/extraction/diagnostics";
+import { CallableLlmBackend, resetHostLlmBackendForTests, setHostLlmBackend } from "@veyyon/mnemopi/core/llm-backends";
+import { type ResolvedMnemopiRuntimeOptions, withMnemopiRuntimeOptions } from "@veyyon/mnemopi/core/runtime-options";
 
 const OLD_ENV = { ...process.env };
 function restoreEnv(): void {

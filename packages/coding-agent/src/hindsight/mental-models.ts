@@ -39,7 +39,7 @@
  * followed by a re-seed.
  */
 
-import { logger } from "@veyyon/pi-utils";
+import { logger, truncate } from "@veyyon/utils";
 import type { BankScope } from "./bank";
 import type {
 	HindsightApi,
@@ -294,7 +294,7 @@ export function renderMentalModelsBlock(models: MentalModelSummary[], budgetChar
 		const refreshed = model.last_refreshed_at ? ` _(refreshed ${model.last_refreshed_at})_` : "";
 		const headerLine = `${heading}${refreshed}`;
 		const body = (model.content ?? "").trim();
-		const truncatedBody = truncateTo(body, perModelBudget);
+		const truncatedBody = truncate(body, perModelBudget);
 		if (truncatedBody.length < body.length) truncated = true;
 		const section = `${headerLine}\n${truncatedBody}`;
 		// +2 for the section separator (`\n\n`) when this is not the first.
@@ -321,12 +321,6 @@ export function renderMentalModelsBlock(models: MentalModelSummary[], budgetChar
 		assembled = `<mental_models>\n${PREAMBLE}\n\n${body}${TRUNCATION_MARKER}\n</mental_models>`;
 	}
 	return assembled;
-}
-
-function truncateTo(text: string, maxChars: number): string {
-	if (text.length <= maxChars) return text;
-	if (maxChars <= 1) return "…";
-	return `${text.slice(0, Math.max(0, maxChars - 1))}…`;
 }
 
 /** Inventory line used by the `/memory mm list` command. */

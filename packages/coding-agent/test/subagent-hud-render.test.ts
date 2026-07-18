@@ -7,27 +7,24 @@
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
-import { Agent } from "@veyyon/pi-agent-core";
-import { ModelRegistry } from "@veyyon/pi-coding-agent/config/model-registry";
-import { resetSettingsForTest, Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { InteractiveMode, renderSubagentHudLines } from "@veyyon/pi-coding-agent/modes/interactive-mode";
-import {
-	type ObservableSession,
-	SessionObserverRegistry,
-} from "@veyyon/pi-coding-agent/modes/session-observer-registry";
-import { initTheme } from "@veyyon/pi-coding-agent/modes/theme/theme";
-import { AgentSession } from "@veyyon/pi-coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/pi-coding-agent/session/auth-storage";
-import { SessionManager } from "@veyyon/pi-coding-agent/session/session-manager";
+import { Agent } from "@veyyon/agent-core";
+import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
+import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
+import { InteractiveMode, renderSubagentHudLines } from "@veyyon/coding-agent/modes/interactive-mode";
+import { type ObservableSession, SessionObserverRegistry } from "@veyyon/coding-agent/modes/session-observer-registry";
+import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
+import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import {
 	type AgentProgress,
 	type SubagentLifecyclePayload,
 	type SubagentProgressPayload,
 	TASK_SUBAGENT_LIFECYCLE_CHANNEL,
 	TASK_SUBAGENT_PROGRESS_CHANNEL,
-} from "@veyyon/pi-coding-agent/task";
-import { EventBus } from "@veyyon/pi-coding-agent/utils/event-bus";
-import { TempDir } from "@veyyon/pi-utils";
+} from "@veyyon/coding-agent/task";
+import { EventBus } from "@veyyon/coding-agent/utils/event-bus";
+import { TempDir } from "@veyyon/utils";
 
 function makeSession(overrides: Partial<ObservableSession> & { id: string }): ObservableSession {
 	return {

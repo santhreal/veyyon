@@ -5,8 +5,8 @@ import type {
 	AgentToolContext,
 	AgentToolResult,
 	AgentToolUpdateCallback,
-} from "@veyyon/pi-agent-core";
-import { escapeXmlAttribute, escapeXmlText } from "@veyyon/pi-utils";
+} from "@veyyon/agent-core";
+import { escapeXmlAttribute, escapeXmlText } from "@veyyon/utils";
 import { type } from "arktype";
 import adviseDescription from "../prompts/advisor/advise-tool.md" with { type: "text" };
 

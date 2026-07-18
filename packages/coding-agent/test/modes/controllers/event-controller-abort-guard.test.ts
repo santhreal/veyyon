@@ -13,12 +13,12 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "bun:
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { AssistantMessage } from "@veyyon/pi-ai";
-import { resetSettingsForTest, Settings, settings } from "@veyyon/pi-coding-agent/config/settings";
-import { EventController } from "@veyyon/pi-coding-agent/modes/controllers/event-controller";
-import { initTheme } from "@veyyon/pi-coding-agent/modes/theme/theme";
-import type { InteractiveModeContext } from "@veyyon/pi-coding-agent/modes/types";
-import { TERMINAL } from "@veyyon/pi-tui";
+import type { AssistantMessage } from "@veyyon/ai";
+import { resetSettingsForTest, Settings, settings } from "@veyyon/coding-agent/config/settings";
+import { EventController } from "@veyyon/coding-agent/modes/controllers/event-controller";
+import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
+import { TERMINAL } from "@veyyon/tui";
 
 beforeAll(() => {
 	initTheme();
@@ -26,7 +26,7 @@ beforeAll(() => {
 
 beforeEach(async () => {
 	resetSettingsForTest();
-	const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "omp-abortguard-"));
+	const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-abortguard-"));
 	await Settings.init({ inMemory: true, cwd: tempDir });
 });
 

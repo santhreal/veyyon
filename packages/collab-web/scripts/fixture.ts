@@ -17,7 +17,7 @@ import type {
 	ToolResultMessage,
 	WireModel,
 	WireUsage,
-} from "@veyyon/pi-wire";
+} from "@veyyon/wire";
 
 export const HOST_DISPLAY_NAME = "kai";
 
@@ -397,7 +397,7 @@ export function makeProbeProgress(tick: number): SubagentProgressPayload {
 		task: "probe relay reconnect under packet loss",
 		parentToolCallId: "call-task-01",
 		assignment: "Kill the relay mid-stream and assert the guest resyncs from welcome without duplicate entries.",
-		sessionFile: "/tmp/omp/agents/RelayProbe.jsonl",
+		sessionFile: "/tmp/veyyon/agents/RelayProbe.jsonl",
 		progress: {
 			index: 0,
 			id: "RelayProbe",

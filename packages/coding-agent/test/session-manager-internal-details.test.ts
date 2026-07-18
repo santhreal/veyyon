@@ -12,9 +12,9 @@
  * `__`-prefixed fields not in the allowlist) is preserved verbatim.
  */
 import { describe, expect, it } from "bun:test";
-import { type SkillPromptDetails, stripInternalDetailsFields } from "@veyyon/pi-coding-agent/session/messages";
-import type { CustomMessageEntry } from "@veyyon/pi-coding-agent/session/session-entries";
-import { SessionManager } from "@veyyon/pi-coding-agent/session/session-manager";
+import { type SkillPromptDetails, stripInternalDetailsFields } from "@veyyon/coding-agent/session/messages";
+import type { CustomMessageEntry } from "@veyyon/coding-agent/session/session-entries";
+import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 
 const SKILL_TYPE = "skill-prompt";
 
@@ -39,7 +39,7 @@ describe("SessionManager.appendCustomMessageEntry (allowlist strip + persistence
 				path: "/s.md",
 				args: "bar",
 				lineCount: 10,
-				__queueChipText: "omp-cmd-1-0",
+				__queueChipText: "veyyon-cmd-1-0",
 			},
 			"user",
 		);

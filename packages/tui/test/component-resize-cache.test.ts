@@ -11,8 +11,8 @@
  * Deterministic LCG so a failing width sequence reproduces from the seed.
  */
 import { describe, it } from "bun:test";
-import { Markdown } from "@veyyon/pi-tui/components/markdown";
-import { Text } from "@veyyon/pi-tui/components/text";
+import { Markdown } from "@veyyon/tui/components/markdown";
+import { Text } from "@veyyon/tui/components/text";
 import { buildString, lcg } from "./helpers/adversarial-strings";
 import { defaultMarkdownTheme } from "./test-themes.js";
 

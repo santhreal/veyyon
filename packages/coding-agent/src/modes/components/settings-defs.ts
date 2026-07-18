@@ -7,7 +7,7 @@
  * for which tabs/groups remain visible vs schema-only (no `ui` block).
  */
 
-import { TERMINAL } from "@veyyon/pi-tui";
+import { TERMINAL } from "@veyyon/tui";
 import { Settings } from "../../config/settings";
 import {
 	type AnyUiMetadata,

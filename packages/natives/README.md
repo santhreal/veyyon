@@ -1,4 +1,4 @@
-# @veyyon/pi-natives
+# @veyyon/natives
 
 Native Rust functionality via N-API.
 
@@ -16,7 +16,7 @@ that terminal protocol.
 ## Usage
 
 ```typescript
-import { grep, find, encodeSixel } from "@veyyon/pi-natives";
+import { grep, find, encodeSixel } from "@veyyon/natives";
 
 // Grep for a pattern
 const results = await grep({
@@ -49,11 +49,11 @@ bun run check
 
 ## Architecture
 
-`@veyyon/pi-natives` publishes a small core package plus generated
+`@veyyon/natives` publishes a small core package plus generated
 platform-specific optional dependency packages:
 
 ```
-crates/pi-natives/       # Rust source (workspace member)
+crates/veyyon-natives/       # Rust source (workspace member)
   src/lib.rs             # N-API exports
   src/sixel.rs           # SIXEL terminal-image encoding
   Cargo.toml             # Rust dependencies
@@ -61,11 +61,11 @@ native/                  # Core loader files and local/CI native build outputs
   index.js               # Public native export surface
   loader-state.js        # Platform, ISA variant, and addon resolution
   embedded-addon.js      # Standalone binary embed stub/generated metadata
-  pi_natives.<platform>-<arch>-modern.node   # x64 modern ISA (local/CI artifact)
-  pi_natives.<platform>-<arch>-baseline.node # x64 baseline ISA (local/CI artifact)
-  pi_natives.<platform>-<arch>.node          # non-x64 build artifact
+  veyyon_natives.<platform>-<arch>-modern.node   # x64 modern ISA (local/CI artifact)
+  veyyon_natives.<platform>-<arch>-baseline.node # x64 baseline ISA (local/CI artifact)
+  veyyon_natives.<platform>-<arch>.node          # non-x64 build artifact
 npm/<platform>-<arch>/   # Generated at publish time, not committed
-  package.json           # @veyyon/pi-natives-<platform>-<arch>
+  package.json           # @veyyon/natives-<platform>-<arch>
   *.node                 # Only that platform's addon binary or x64 ISA variants
 src/                     # TypeScript wrappers and generated declarations source
   native.ts

@@ -25,7 +25,7 @@
  * Reference: https://docs.searxng.org/dev/search_api.html
  */
 
-import type { AuthStorage, FetchImpl } from "@veyyon/pi-ai";
+import type { AuthStorage, FetchImpl } from "@veyyon/ai";
 
 import { settings } from "../../../config/settings";
 import type { SearchResponse, SearchSource } from "../../../web/search/types";
@@ -213,19 +213,25 @@ async function callSearXNGSearch(
 ): Promise<SearXNGResponse> {
 	const { url, headers } = buildRequest(endpoint, params, auth);
 
-	const response = await (params.fetch ?? fetch)(url, {
-		headers,
-		signal: withHardTimeout(params.signal),
+	return withHardTimeout(params.signal, async hardSignal => {
+		const response = await (params.fetch ?? fetch)(url, {
+			headers,
+			signal: hardSignal,
+		});
+
+		if (!response.ok) {
+			const errorText = await response.text();
+			const classified = classifyProviderHttpError("searxng", response.status, errorText);
+			if (classified) throw classified;
+			throw new SearchProviderError(
+				"searxng",
+				`SearXNG API error (${response.status}): ${errorText}`,
+				response.status,
+			);
+		}
+
+		return (await response.json()) as SearXNGResponse;
 	});
-
-	if (!response.ok) {
-		const errorText = await response.text();
-		const classified = classifyProviderHttpError("searxng", response.status, errorText);
-		if (classified) throw classified;
-		throw new SearchProviderError("searxng", `SearXNG API error (${response.status}): ${errorText}`, response.status);
-	}
-
-	return (await response.json()) as SearXNGResponse;
 }
 
 /** Execute SearXNG web search. */

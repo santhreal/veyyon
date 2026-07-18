@@ -1,5 +1,5 @@
-import { APP_NAME } from "@veyyon/pi-utils";
-import { Args, Command, Flags } from "@veyyon/pi-utils/cli";
+import { APP_NAME } from "@veyyon/utils";
+import { Args, Command, Flags } from "@veyyon/utils/cli";
 import { runBenchCommand } from "../cli/bench-cli";
 import { SERVICE_TIER_OPENAI_VALUES } from "../config/service-tier";
 

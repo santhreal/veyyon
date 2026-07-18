@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from "bun:test";
-import type { InteractiveModeContext } from "@veyyon/pi-coding-agent/modes/types";
+import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
 import {
 	BUILTIN_SLASH_COMMAND_DEFS,
 	executeBuiltinSlashCommand,
-} from "@veyyon/pi-coding-agent/slash-commands/builtin-registry";
+} from "@veyyon/coding-agent/slash-commands/builtin-registry";
 
 function createRuntime() {
 	const showProviderSetup = vi.fn(async () => {});

@@ -1,6 +1,6 @@
 {
   "type": "module",
-  "name": "@veyyon/pi-utils",
+  "name": "@veyyon/utils",
   "version": "1.0.0",
   "description": "Shared utilities for pi packages",
   "homepage": "https://veyyon.dev",
@@ -8,11 +8,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/can1357/oh-my-pi.git",
+    "url": "git+https://github.com/santhreal/veyyon.git",
     "directory": "packages/utils"
   },
   "bugs": {
-    "url": "https://github.com/can1357/oh-my-pi/issues"
+    "url": "https://github.com/santhreal/veyyon/issues"
   },
   "keywords": [
     "utilities",
@@ -31,7 +31,7 @@
     "fmt": "biome format --write ."
   },
   "dependencies": {
-    "@veyyon/pi-natives": "catalog:",
+    "@veyyon/natives": "catalog:",
     "handlebars": "catalog:",
     "winston": "catalog:",
     "winston-daily-rotate-file": "catalog:"

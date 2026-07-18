@@ -5,9 +5,9 @@
  * task execution in the terminal UI.
  */
 import path from "node:path";
-import type { Component } from "@veyyon/pi-tui";
-import { Container, Markdown, Text } from "@veyyon/pi-tui";
-import { formatNumber, sanitizeText } from "@veyyon/pi-utils";
+import type { Component } from "@veyyon/tui";
+import { Container, Markdown, Text } from "@veyyon/tui";
+import { formatCount, formatNumber, sanitizeText } from "@veyyon/utils";
 import { settings } from "../config/settings";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import { formatContextUsage } from "../modes/components/status-line/context-thresholds";
@@ -993,9 +993,7 @@ function renderAgentProgress(
 			previewLine(sanitizeText(progress.retryState.errorMessage), 60);
 		lines.push(`${continuePrefix}${theme.tree.hook} ${theme.fg("warning", summary)}`);
 	} else if (progress.retryFailure && progress.status !== "running") {
-		const summary = `auto-retry gave up after ${progress.retryFailure.attempt} attempt${
-			progress.retryFailure.attempt === 1 ? "" : "s"
-		}: ${previewLine(sanitizeText(progress.retryFailure.errorMessage), 80)}`;
+		const summary = `auto-retry gave up after ${formatCount("attempt", progress.retryFailure.attempt)}: ${previewLine(sanitizeText(progress.retryFailure.errorMessage), 80)}`;
 		lines.push(`${continuePrefix}${theme.tree.hook} ${theme.fg("error", summary)}`);
 	}
 

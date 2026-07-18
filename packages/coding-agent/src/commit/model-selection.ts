@@ -1,7 +1,8 @@
-import type { ThinkingLevel } from "@veyyon/pi-agent-core";
-import type { Api, ApiKey, Model } from "@veyyon/pi-ai";
+import type { ThinkingLevel } from "@veyyon/agent-core";
+import type { Api, ApiKey, Model } from "@veyyon/ai";
 import type { ApiKeyResolverRegistry } from "../config/api-key-resolver";
 import {
+	fallbackForUnavailableDefault,
 	getModelMatchPreferences,
 	type ModelLookupRegistry,
 	parseModelPattern,
@@ -39,13 +40,30 @@ export async function resolvePrimaryModel(
 	override: string | undefined,
 	settings: Settings,
 	modelRegistry: CommitModelRegistry,
+	warn: (message: string) => void = message => process.stderr.write(`Warning: ${message}\n`),
 ): Promise<ResolvedCommitModel> {
 	const available = modelRegistry.getAvailable();
 	const matchPreferences = getModelMatchPreferences(settings);
 	const resolved = override
 		? resolveModelRoleValue(override, available, { settings, matchPreferences })
 		: resolveRoleSelectionWithInherit(["commit", "smol", ...MODEL_ROLE_IDS], settings, available);
-	const model = resolved?.model;
+	let model = resolved?.model;
+	let thinkingLevel = resolved?.thinkingLevel;
+	if (!model && !override) {
+		// Parity with the interactive/print surface (main.ts): a configured
+		// default whose provider lost auth substitutes LOUDLY instead of
+		// failing here while `-p` succeeds. An explicit --model override stays
+		// authoritative and still fails hard. With no configured default at all
+		// there is nothing to warn about — picking an available model IS the
+		// default resolution (mirrors main.ts's un-warned scopedModels[0] path).
+		const configuredDefault = settings.getModelRole("default");
+		const fallback = fallbackForUnavailableDefault(configuredDefault, available);
+		if (fallback) {
+			if (configuredDefault) warn(fallback.warning);
+			model = fallback.model;
+			thinkingLevel = undefined;
+		}
+	}
 	if (!model) {
 		throw new Error("No model available for commit generation");
 	}
@@ -56,7 +74,7 @@ export async function resolvePrimaryModel(
 	return {
 		model,
 		apiKey: modelRegistry.resolver(model),
-		thinkingLevel: concreteThinkingLevel(resolved?.thinkingLevel),
+		thinkingLevel: concreteThinkingLevel(thinkingLevel),
 	};
 }
 
@@ -65,6 +83,7 @@ export async function resolveSmolModel(
 	modelRegistry: CommitModelRegistry,
 	fallbackModel: Model<Api>,
 	fallbackApiKey: ApiKey,
+	warn: (message: string) => void = message => process.stderr.write(`Warning: ${message}\n`),
 ): Promise<ResolvedCommitModel> {
 	const available = modelRegistry.getAvailable();
 	const resolvedSmol = resolveRoleSelection(["smol"], settings, available);
@@ -77,6 +96,11 @@ export async function resolveSmolModel(
 				thinkingLevel: concreteThinkingLevel(resolvedSmol.thinkingLevel),
 			};
 		}
+		// Law 10: a CONFIGURED smol role being skipped for missing credentials
+		// must be loud, not a quiet substitution down the priority list.
+		warn(
+			`Configured smol model ${resolvedSmol.model.provider}/${resolvedSmol.model.id} has no stored credentials; picking a substitute — run \`veyyon auth\` to sign in.`,
+		);
 	}
 
 	const matchPreferences = getModelMatchPreferences(settings);

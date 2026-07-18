@@ -1,5 +1,5 @@
-import { type ApiKey, type ApiKeyResolver, type AuthStorage, withAuth } from "@veyyon/pi-ai";
-import { $env } from "@veyyon/pi-utils";
+import { type ApiKey, type ApiKeyResolver, type AuthStorage, withAuth } from "@veyyon/ai";
+import { $env } from "@veyyon/utils";
 import type { SearchCitation, SearchResponse, SearchSource, SearchUsage } from "../../../web/search/types";
 import { SearchProviderError } from "../../../web/search/types";
 import { clampNumResults } from "../utils";
@@ -75,6 +75,7 @@ async function postXAIResponses(
 	apiKey: string,
 	params: SearchParams,
 	body: Record<string, unknown>,
+	signal: AbortSignal,
 ): Promise<Response> {
 	return (params.fetch ?? fetch)(XAI_RESPONSES_URL, {
 		method: "POST",
@@ -83,7 +84,7 @@ async function postXAIResponses(
 			Authorization: `Bearer ${apiKey}`,
 		},
 		body: JSON.stringify(body),
-		signal: withHardTimeout(params.signal),
+		signal,
 	});
 }
 
@@ -95,13 +96,15 @@ function throwXAIResponsesError(status: number, errorText: string): never {
 
 async function callXAIResponses(apiKey: string, params: SearchParams): Promise<XAIResponsesResponse> {
 	const requestBody = buildRequestBody(params);
-	const response = await postXAIResponses(apiKey, params, requestBody);
+	return withHardTimeout(params.signal, async hardSignal => {
+		const response = await postXAIResponses(apiKey, params, requestBody, hardSignal);
 
-	if (!response.ok) {
-		throwXAIResponsesError(response.status, await response.text());
-	}
+		if (!response.ok) {
+			throwXAIResponsesError(response.status, await response.text());
+		}
 
-	return (await response.json()) as XAIResponsesResponse;
+		return (await response.json()) as XAIResponsesResponse;
+	});
 }
 
 function addCitationSource(

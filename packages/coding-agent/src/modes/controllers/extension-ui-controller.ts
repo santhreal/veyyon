@@ -1,6 +1,7 @@
-import type { Component, OverlayHandle, TUI } from "@veyyon/pi-tui";
-import { Container, Spacer, Text } from "@veyyon/pi-tui";
-import type { CollabUiRequestDraft, CollabUiSelectItem } from "@veyyon/pi-wire";
+import type { Component, OverlayHandle, TUI } from "@veyyon/tui";
+import { Container, Spacer, Text } from "@veyyon/tui";
+import { errorMessage } from "@veyyon/utils";
+import type { CollabUiRequestDraft, CollabUiSelectItem } from "@veyyon/wire";
 import { KeybindingsManager } from "../../config/keybindings";
 import type {
 	CompactOptions,
@@ -136,9 +137,7 @@ export class ExtensionUiController {
 					.sendCustomMessage(normalized, options)
 					.then(() => this.#applyCustomMessageDisplay(wasStreaming, normalized.display))
 					.catch((err: unknown) => {
-						this.ctx.showError(
-							`Extension sendMessage failed: ${err instanceof Error ? err.message : String(err)}`,
-						);
+						this.ctx.showError(`Extension sendMessage failed: ${errorMessage(err)}`);
 					});
 			},
 			sendUserMessage: this.#sendExtensionUserMessage,
@@ -357,7 +356,7 @@ export class ExtensionUiController {
 					.sendCustomMessage(normalized, options)
 					.then(() => this.#applyCustomMessageDisplay(wasStreaming, normalized.display))
 					.catch((err: unknown) => {
-						const errorText = `Extension sendMessage failed: ${err instanceof Error ? err.message : String(err)}`;
+						const errorText = `Extension sendMessage failed: ${errorMessage(err)}`;
 						this.ctx.showError(errorText);
 					});
 			},
@@ -522,7 +521,7 @@ export class ExtensionUiController {
 						getSystemPrompt: () => this.ctx.session.systemPrompt,
 					});
 				} catch (err) {
-					this.showToolError(registeredTool.definition.name, err instanceof Error ? err.message : String(err));
+					this.showToolError(registeredTool.definition.name, errorMessage(err));
 				}
 			}
 		}
@@ -1133,7 +1132,7 @@ export class ExtensionUiController {
 
 	#sendExtensionUserMessage: SendUserMessageHandler = (content, options) => {
 		this.ctx.session.sendUserMessage(content, options).catch((err: unknown) => {
-			this.ctx.showError(`Extension sendUserMessage failed: ${err instanceof Error ? err.message : String(err)}`);
+			this.ctx.showError(`Extension sendUserMessage failed: ${errorMessage(err)}`);
 		});
 	};
 

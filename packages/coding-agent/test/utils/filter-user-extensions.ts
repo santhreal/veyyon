@@ -1,5 +1,5 @@
 import * as path from "node:path";
-import { getAgentDir, getConfigRootDir, getPluginsDir } from "@veyyon/pi-utils";
+import { getAgentDir, getConfigRootDir, getPluginsDir } from "@veyyon/utils";
 
 // Drop every extension discovered from the user's machine so each test only
 // sees what it wrote into the per-test temp project dir. Production composes
@@ -11,8 +11,8 @@ import { getAgentDir, getConfigRootDir, getPluginsDir } from "@veyyon/pi-utils";
 //    that resolve outside the `agent/extensions/` subtree (e.g. an absolute
 //    or `../`-relative entry pointing somewhere else under `~/.veyyon/`), plus
 //    the legacy non-XDG `~/.veyyon/plugins` tree on hosts without XDG dirs.
-// 2. `getAgentDir()` (`~/.veyyon/agent` or `$PI_CODING_AGENT_DIR`)
-//    Handles `PI_CODING_AGENT_DIR` overrides that relocate the agent dir
+// 2. `getAgentDir()` (`~/.veyyon/agent` or `$VEYYON_CODING_AGENT_DIR`)
+//    Handles `VEYYON_CODING_AGENT_DIR` overrides that relocate the agent dir
 //    (and therefore `agent/extensions/`) out from under the config root.
 // 3. `getPluginsDir()` (XDG-aware: `$XDG_DATA_HOME/veyyon/plugins` or legacy)
 //    Handles installed plugin extensions that live outside `~/.veyyon` when

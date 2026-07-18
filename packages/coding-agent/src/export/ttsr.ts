@@ -6,8 +6,8 @@
  * injected as a system reminder, and the request is retried.
  */
 import * as path from "node:path";
-import { AstMatchStrictness, astMatch } from "@veyyon/pi-natives";
-import { logger } from "@veyyon/pi-utils";
+import { AstMatchStrictness, astMatch } from "@veyyon/natives";
+import { errorMessage, logger } from "@veyyon/utils";
 import type { Rule } from "../capability/rule";
 import type { TtsrSettings } from "../config/settings";
 
@@ -108,7 +108,7 @@ export class TtsrManager {
 				logger.warn("TTSR condition has invalid regex pattern, skipping condition", {
 					ruleName: rule.name,
 					pattern,
-					error: error instanceof Error ? error.message : String(error),
+					error: errorMessage(error),
 				});
 			}
 		}
@@ -462,7 +462,7 @@ export class TtsrManager {
 			logger.warn("TTSR ast match failed, treating as no match", {
 				patterns,
 				lang,
-				error: error instanceof Error ? error.message : String(error),
+				error: errorMessage(error),
 			});
 			return false;
 		}

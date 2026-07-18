@@ -50,21 +50,21 @@ fn overrides() -> impl Iterator<Item = jaq_std::Filter<Native<Val>>> {
 
 	fn debug_msg(v: &Val) {
 		// upstream format: env_logger renders `["DEBUG:", <args>]\n`
-		let _ = writeln!(pi_uutils_ctx::stderr(), "[\"DEBUG:\", {v}]");
+		let _ = writeln!(veyyon_uutils_ctx::stderr(), "[\"DEBUG:\", {v}]");
 	}
 
 	fn stderr_msg(v: &Val) {
 		// like jq, print strings raw and everything else as JSON, no newline
 		if let Some(s) = v.as_str() {
-			let _ = write!(pi_uutils_ctx::stderr(), "{s}");
+			let _ = write!(veyyon_uutils_ctx::stderr(), "{s}");
 		} else {
-			let _ = write!(pi_uutils_ctx::stderr(), "{v}");
+			let _ = write!(veyyon_uutils_ctx::stderr(), "{v}");
 		}
 	}
 
 	let run_funs: [jaq_std::Filter<RunPtr<Val>>; 3] = [
 		("env", jaq_std::v(0), |_, _| {
-			let env = pi_uutils_ctx::env_snapshot()
+			let env = veyyon_uutils_ctx::env_snapshot()
 				.into_iter()
 				.map(|(k, v)| (k.into(), Val::from(v)));
 			box_once(Ok(Val::obj(env.collect())))
@@ -76,9 +76,9 @@ fn overrides() -> impl Iterator<Item = jaq_std::Filter<Native<Val>>> {
 					// upstream prints the input to stdout: raw for strings
 					// (no trailing newline), JSON + newline otherwise
 					if let Some(s) = cv.1.as_str() {
-						let _ = write!(pi_uutils_ctx::stdout(), "{s}");
+						let _ = write!(veyyon_uutils_ctx::stdout(), "{s}");
 					} else {
-						let _ = writeln!(pi_uutils_ctx::stdout(), "{}", cv.1);
+						let _ = writeln!(veyyon_uutils_ctx::stdout(), "{}", cv.1);
 					}
 					halt_with(code as i32, "halt_error")
 				},
@@ -190,12 +190,12 @@ pub(crate) fn run(
 	for item in if cli.null_input { &null } else { &iter } {
 		// host abort/timeout: stdin reads observe the cancel flag themselves,
 		// but file/slurped inputs and long-running filters do not
-		if pi_uutils_ctx::is_cancelled() {
+		if veyyon_uutils_ctx::is_cancelled() {
 			break;
 		}
 		let input = item.map_err(Error::Parse)?;
 		for output in filter.run((ctx.clone(), input)) {
-			if pi_uutils_ctx::is_cancelled() {
+			if veyyon_uutils_ctx::is_cancelled() {
 				return Ok(last);
 			}
 			let output = output.map_err(Error::Jaq)?;

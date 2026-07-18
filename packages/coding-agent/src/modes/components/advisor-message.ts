@@ -1,4 +1,5 @@
-import { type Component, visibleWidth } from "@veyyon/pi-tui";
+import { type Component, visibleWidth } from "@veyyon/tui";
+import { formatCount } from "@veyyon/utils";
 import type { AdvisorMessageDetails, AdvisorSeverity } from "../../advisor";
 import {
 	createCachedComponent,
@@ -54,8 +55,8 @@ export function createAdvisorMessageCard(
 ): Component {
 	const notes = details?.notes ?? [];
 	const blockers = notes.filter(note => note.severity === "blocker").length;
-	const meta: string[] = [`${notes.length} ${notes.length === 1 ? "note" : "notes"}`];
-	if (blockers > 0) meta.push(uiTheme.fg("error", `${blockers} blocker${blockers === 1 ? "" : "s"}`));
+	const meta: string[] = [formatCount("note", notes.length)];
+	if (blockers > 0) meta.push(uiTheme.fg("error", formatCount("blocker", blockers)));
 
 	return createCachedComponent(
 		getExpanded,

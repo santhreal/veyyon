@@ -1,6 +1,6 @@
-import { tryParseJson } from "@veyyon/pi-utils";
-import type { RenderResult, SpecialHandler } from "./types";
-import { buildResult, loadPage } from "./types";
+import { tryParseJson } from "@veyyon/utils";
+import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
+import { buildResult, loadPage, scraperDegrade, tryParseUrl } from "./types";
 
 interface Officer {
 	id: number;
@@ -83,9 +83,10 @@ export const handleOpenCorporates: SpecialHandler = async (
 	url: string,
 	timeout: number,
 	signal?: AbortSignal,
-): Promise<RenderResult | null> => {
+): Promise<RenderResult | ScraperDegrade | null> => {
 	try {
-		const parsed = new URL(url);
+		const parsed = tryParseUrl(url);
+		if (!parsed) return null;
 		if (!parsed.hostname.includes("opencorporates.com")) return null;
 
 		// Extract jurisdiction and company number from /companies/{jurisdiction}/{number}
@@ -286,7 +287,7 @@ export const handleOpenCorporates: SpecialHandler = async (
 			fetchedAt,
 			notes: ["Fetched via OpenCorporates API"],
 		});
-	} catch {}
-
-	return null;
+	} catch (error) {
+		return scraperDegrade("opencorporates", error);
+	}
 };

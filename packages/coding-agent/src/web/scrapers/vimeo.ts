@@ -1,6 +1,6 @@
-import { tryParseJson } from "@veyyon/pi-utils";
+import { tryParseJson } from "@veyyon/utils";
 import type { SpecialHandler } from "./types";
-import { buildResult, formatMediaDuration, loadPage } from "./types";
+import { buildResult, formatMediaDuration, loadFailure, loadPage, scraperDegrade, tryParseUrl } from "./types";
 
 interface VimeoOEmbed {
 	title: string;
@@ -42,7 +42,8 @@ interface VimeoVideoConfig {
  */
 function extractVideoId(url: string): string | null {
 	try {
-		const parsed = new URL(url);
+		const parsed = tryParseUrl(url);
+		if (!parsed) return null;
 
 		// player.vimeo.com/video/{id}
 		if (parsed.hostname === "player.vimeo.com") {
@@ -71,7 +72,8 @@ function extractVideoId(url: string): string | null {
  */
 export const handleVimeo: SpecialHandler = async (url: string, timeout: number, signal?: AbortSignal) => {
 	try {
-		const parsed = new URL(url);
+		const parsed = tryParseUrl(url);
+		if (!parsed) return null;
 		if (!parsed.hostname.includes("vimeo.com")) return null;
 
 		const videoId = extractVideoId(url);
@@ -84,10 +86,10 @@ export const handleVimeo: SpecialHandler = async (url: string, timeout: number, 
 		const oembedUrl = `https://vimeo.com/api/oembed.json?url=${encodeURIComponent(canonicalUrl)}`;
 		const oembedResult = await loadPage(oembedUrl, { timeout, signal });
 
-		if (!oembedResult.ok) return null;
+		if (!oembedResult.ok) return scraperDegrade("vimeo", loadFailure(oembedResult));
 
 		const oembed = tryParseJson<VimeoOEmbed>(oembedResult.content);
-		if (!oembed) return null;
+		if (!oembed) return scraperDegrade("vimeo", "unexpected response shape");
 
 		let md = `# ${oembed.title}\n\n`;
 		md += `**Author:** [${oembed.author_name}](${oembed.author_url})\n`;
@@ -127,7 +129,7 @@ export const handleVimeo: SpecialHandler = async (url: string, timeout: number, 
 		}
 
 		return buildResult(md, { url, method: "vimeo", fetchedAt, notes: ["Fetched via Vimeo oEmbed API"] });
-	} catch {
-		return null;
+	} catch (error) {
+		return scraperDegrade("vimeo", error);
 	}
 };

@@ -1,18 +1,18 @@
 /**
  * Agent discovery from filesystem.
  *
- * Discovers agent definitions from OMP-native task-agent roots:
+ * Discovers agent definitions from veyyon-native task-agent roots:
  *   - ~/.veyyon/agent/agents/*.md (user-level)
  *   - .veyyon/agents/*.md (project-level)
- *   - <ext>/agents/*.md for every OMP extension package wired through
- *     `listOmpExtensionRoots` (CLI `--extension` roots, `extensions:` in
+ *   - <ext>/agents/*.md for every veyyon extension package wired through
+ *     `listVeyyonExtensionRoots` (CLI `--extension` roots, `extensions:` in
  *     settings, and enabled npm/link plugins under `<plugins>/node_modules/`).
  *     Mirrors the same sub-discovery convention applied to `skills/`,
- *     `hooks/`, `tools/`, etc. by `discovery/omp-plugins.ts`.
+ *     `hooks/`, `tools/`, etc. by `discovery/veyyon-plugins.ts`.
  *
  * Claude Code marketplace plugin agents are discovered separately via the
  * claude-plugins provider. Direct cross-harness roots such as .claude/agents
- * are intentionally skipped because their frontmatter schema is not the OMP
+ * are intentionally skipped because their frontmatter schema is not the veyyon
  * task-agent contract.
  *
  * Agent files use markdown with YAML frontmatter.
@@ -20,11 +20,11 @@
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { logger } from "@veyyon/pi-utils";
+import { logger } from "@veyyon/utils";
 import { isProviderEnabled } from "../capability";
 import { findAllNearestProjectConfigDirs, getConfigDirs } from "../config";
 import { listClaudePluginRoots } from "../discovery/helpers";
-import { listOmpExtensionRoots } from "../discovery/omp-extension-roots";
+import { listVeyyonExtensionRoots } from "../discovery/veyyon-extension-roots";
 import { loadBundledAgents, parseAgent } from "./agents";
 import type { AgentDefinition, AgentSource } from "./types";
 
@@ -61,7 +61,7 @@ async function loadAgentsFromDir(dir: string, source: AgentSource): Promise<Agen
 /**
  * Discover agents from filesystem and merge with bundled agents.
  * Precedence (highest wins): project `.veyyon/agents`, user `.veyyon/agents`,
- * OMP extension-package agents in `listOmpExtensionRoots` source order
+ * veyyon extension-package agents in `listVeyyonExtensionRoots` source order
  * (CLI roots > project `extensions:` settings > user `extensions:` settings >
  * installed npm/link plugins), Claude marketplace plugin agents (project
  * scope before user), then bundled.
@@ -90,15 +90,15 @@ export async function discoverAgents(cwd: string, home: string = os.homedir()): 
 	const user = userDirs[0];
 	if (user) orderedDirs.push({ dir: user.path, source: "user" });
 
-	// OMP extension-package agents/ dirs. `listOmpExtensionRoots` returns roots in
+	// veyyon extension-package agents/ dirs. `listVeyyonExtensionRoots` returns roots in
 	// source-precedence order (CLI > project `extensions:` settings > user
 	// `extensions:` settings > installed npm/link plugins, with marketplace
 	// installs already excluded by realpath) — consume that order verbatim so the
 	// `task` agent surface dedups identically to the sibling skills/hooks/tools
-	// surface in `discovery/omp-plugins.ts`. Gate on `omp-plugins` so
+	// surface in `discovery/veyyon-plugins.ts`. Gate on `veyyon-plugins` so
 	// disabledProviders suppresses the whole extension-package surface.
-	const extensionRoots = isProviderEnabled("omp-plugins")
-		? await listOmpExtensionRoots({ cwd: resolvedCwd, home, repoRoot: null })
+	const extensionRoots = isProviderEnabled("veyyon-plugins")
+		? await listVeyyonExtensionRoots({ cwd: resolvedCwd, home, repoRoot: null })
 		: [];
 	for (const root of extensionRoots) {
 		orderedDirs.push({ dir: path.join(root.path, "agents"), source: root.level });

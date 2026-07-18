@@ -3,7 +3,7 @@
  * Uses Biome's CLI with JSON output instead of LSP (which has stale diagnostics issues).
  */
 import path from "node:path";
-import { logger } from "@veyyon/pi-utils";
+import { logger } from "@veyyon/utils";
 import type { Diagnostic, DiagnosticSeverity, LinterClient, ServerConfig } from "../../lsp/types";
 
 // =============================================================================

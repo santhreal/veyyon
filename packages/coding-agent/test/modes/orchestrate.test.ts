@@ -1,12 +1,8 @@
 import { beforeAll, describe, expect, it } from "bun:test";
-import {
-	containsOrchestrate,
-	highlightOrchestrate,
-	ORCHESTRATE_NOTICE,
-} from "@veyyon/pi-coding-agent/modes/orchestrate";
-import { initTheme } from "@veyyon/pi-coding-agent/modes/theme/theme";
-import { containsUltrathink, highlightUltrathink } from "@veyyon/pi-coding-agent/modes/ultrathink";
-import { clearBundledCommandsCache, loadBundledCommands } from "@veyyon/pi-coding-agent/task/commands";
+import { containsOrchestrate, highlightOrchestrate, ORCHESTRATE_NOTICE } from "@veyyon/coding-agent/modes/orchestrate";
+import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { containsUltrathink, highlightUltrathink } from "@veyyon/coding-agent/modes/ultrathink";
+import { clearBundledCommandsCache, loadBundledCommands } from "@veyyon/coding-agent/task/commands";
 
 beforeAll(() => {
 	// highlightOrchestrate/highlightUltrathink read the global theme's color mode.

@@ -8,7 +8,7 @@
  * regression can't silently drop a case again.
  */
 import { describe, expect, it } from "bun:test";
-import { resolveUsedFraction, type UsageLimit } from "@veyyon/pi-ai";
+import { resolveUsedFraction, type UsageLimit } from "@veyyon/ai";
 
 function makeLimit(amount: UsageLimit["amount"]): UsageLimit {
 	return {

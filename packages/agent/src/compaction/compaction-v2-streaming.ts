@@ -7,22 +7,22 @@
  * compaction item as replacement history.
  */
 
-import type { Api, CodexCompactionContext, FetchImpl, Model, ProviderSessionState } from "@veyyon/pi-ai";
-import { isTransientStatus, ProviderHttpError } from "@veyyon/pi-ai/error";
-import { applyCodexResponsesLiteShape } from "@veyyon/pi-ai/providers/openai-codex/request-transformer";
+import type { Api, CodexCompactionContext, FetchImpl, Model, ProviderSessionState } from "@veyyon/ai";
+import { isTransientStatus, ProviderHttpError } from "@veyyon/ai/error";
+import { applyCodexResponsesLiteShape } from "@veyyon/ai/providers/openai-codex/request-transformer";
 import {
 	createOpenAICodexCompactionRequestContext,
 	createOpenAICodexCompatibilityMetadata,
 	type OpenAICodexCompatibilityMetadata,
-} from "@veyyon/pi-ai/providers/openai-codex-responses";
+} from "@veyyon/ai/providers/openai-codex-responses";
 import {
 	getOpenAIPromptCacheKey,
 	getOpenAIResponsesRoutingSessionId,
 	parseAzureDeploymentNameMap,
 	resolveOpenAIRequestSetup,
-} from "@veyyon/pi-ai/providers/openai-shared";
-import { CODEX_BASE_URL, getCodexAccountId, OPENAI_HEADER_VALUES, OPENAI_HEADERS } from "@veyyon/pi-catalog/wire/codex";
-import { $env, logger, stringifyJson } from "@veyyon/pi-utils";
+} from "@veyyon/ai/providers/openai-shared";
+import { CODEX_BASE_URL, getCodexAccountId, OPENAI_HEADER_VALUES, OPENAI_HEADERS } from "@veyyon/catalog/wire/codex";
+import { $env, logger, scopedTimeoutSignal, stringifyJson } from "@veyyon/utils";
 
 // ============================================================================
 // Types & Configuration
@@ -203,13 +203,6 @@ export function buildCompactionV2Request(
 // Streaming Request Handler
 // ============================================================================
 
-/** Race the caller's signal against the V2 request timeout. */
-function withRequestTimeout(signal: AbortSignal | undefined, timeoutMs: number): AbortSignal | undefined {
-	if (timeoutMs <= 0) return signal;
-	const timeout = AbortSignal.timeout(timeoutMs);
-	return signal ? AbortSignal.any([signal, timeout]) : timeout;
-}
-
 /** Request V2 compaction over the normal OpenAI Responses streaming endpoint. */
 export async function requestCompactionV2Streaming(
 	model: Model,
@@ -245,8 +238,11 @@ export async function requestCompactionV2Streaming(
 		: undefined;
 	let lastError: Error | undefined;
 
+	const timeoutMs = options?.timeoutMs ?? V2_COMPACTION_TIMEOUT_MS;
 	for (let attempt = 0; attempt <= V2_COMPACTION_MAX_RETRIES; attempt++) {
-		const timeoutSignal = withRequestTimeout(signal, options?.timeoutMs ?? V2_COMPACTION_TIMEOUT_MS);
+		// Fresh per-attempt deadline; the scoped handle clears its timer on
+		// settle instead of leaving it armed like a bare AbortSignal.timeout.
+		const requestTimeout = timeoutMs > 0 ? scopedTimeoutSignal(timeoutMs, signal) : undefined;
 		try {
 			return await attemptCompactionV2Streaming(
 				endpoint,
@@ -254,7 +250,7 @@ export async function requestCompactionV2Streaming(
 				model,
 				request,
 				fetchImpl,
-				timeoutSignal,
+				requestTimeout?.signal ?? signal,
 				codexMetadata,
 			);
 		} catch (err) {
@@ -274,6 +270,8 @@ export async function requestCompactionV2Streaming(
 			}
 
 			throw error;
+		} finally {
+			requestTimeout?.cancel();
 		}
 	}
 

@@ -3,8 +3,8 @@
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { ImageContent } from "@veyyon/pi-ai";
-import { getProjectDir, isEnoent, readImageMetadata } from "@veyyon/pi-utils";
+import type { ImageContent } from "@veyyon/ai";
+import { errorMessage, getProjectDir, isEnoent, readImageMetadata } from "@veyyon/utils";
 import chalk from "chalk";
 import { CONVERTIBLE_EXTENSIONS } from "../markit";
 import { resolveReadPath } from "../tools/path-utils";
@@ -122,7 +122,7 @@ export async function processFileArguments(fileArgs: string[], options?: Process
 				const content = new TextDecoder().decode(buffer);
 				text += `<file name="${absolutePath}">\n${content}\n</file>\n`;
 			} catch (error: unknown) {
-				const message = error instanceof Error ? error.message : String(error);
+				const message = errorMessage(error);
 				console.error(chalk.red(`Error: Could not read file ${absolutePath}: ${message}`));
 				process.exit(1);
 			}

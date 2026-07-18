@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
-import type { AuthStorage, FetchImpl } from "@veyyon/pi-ai";
-import { PerplexityProvider, searchPerplexity } from "@veyyon/pi-coding-agent/web/search/providers/perplexity";
-import { getAvailableAuthMethods } from "@veyyon/pi-coding-agent/web/search/providers/perplexity-auth";
+import type { AuthStorage, FetchImpl } from "@veyyon/ai";
+import { PerplexityProvider, searchPerplexity } from "@veyyon/coding-agent/web/search/providers/perplexity";
+import { getAvailableAuthMethods } from "@veyyon/coding-agent/web/search/providers/perplexity-auth";
 
 const API_URL = "https://api.perplexity.ai/chat/completions";
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
@@ -74,12 +74,12 @@ describe("Perplexity API-key request shape", () => {
 	const savedKey = process.env.PERPLEXITY_API_KEY;
 	const savedOpenRouterKey = process.env.OPENROUTER_API_KEY;
 	const savedCookies = process.env.PERPLEXITY_COOKIES;
-	const savedResponsesMode = process.env.PI_PERPLEXITY_RESPONSES;
+	const savedResponsesMode = process.env.VEYYON_PERPLEXITY_RESPONSES;
 
 	beforeEach(() => {
 		process.env.PERPLEXITY_API_KEY = "test-key";
 		delete process.env.PERPLEXITY_COOKIES;
-		delete process.env.PI_PERPLEXITY_RESPONSES;
+		delete process.env.VEYYON_PERPLEXITY_RESPONSES;
 	});
 
 	afterEach(() => {
@@ -90,8 +90,8 @@ describe("Perplexity API-key request shape", () => {
 		else process.env.OPENROUTER_API_KEY = savedOpenRouterKey;
 		if (savedCookies === undefined) delete process.env.PERPLEXITY_COOKIES;
 		else process.env.PERPLEXITY_COOKIES = savedCookies;
-		if (savedResponsesMode === undefined) delete process.env.PI_PERPLEXITY_RESPONSES;
-		else process.env.PI_PERPLEXITY_RESPONSES = savedResponsesMode;
+		if (savedResponsesMode === undefined) delete process.env.VEYYON_PERPLEXITY_RESPONSES;
+		else process.env.VEYYON_PERPLEXITY_RESPONSES = savedResponsesMode;
 	});
 
 	it("requests comprehensive defaults: 20 results, high context, related questions", async () => {
@@ -187,7 +187,7 @@ describe("Perplexity API-key request shape", () => {
 		).rejects.toThrow(/credits exhausted/);
 	});
 	it("streams the Responses API and captures Perplexity search result events", async () => {
-		process.env.PI_PERPLEXITY_RESPONSES = "1";
+		process.env.VEYYON_PERPLEXITY_RESPONSES = "1";
 		let body: Record<string, unknown> | undefined;
 		const fetchMock: FetchImpl = async (input, init) => {
 			const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;

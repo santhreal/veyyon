@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { QrCode, type QrEcLevel, renderQrHalfBlocks } from "@veyyon/pi-coding-agent/utils/qrcode";
+import { QrCode, type QrEcLevel, renderQrHalfBlocks } from "@veyyon/coding-agent/utils/qrcode";
 
 function matrixFingerprint(qr: QrCode): string {
 	let bits = "";
@@ -93,7 +93,7 @@ describe("QR encoder", () => {
 
 describe("renderQrHalfBlocks", () => {
 	it("frames the symbol in a light quiet zone wide enough for the margin", () => {
-		const qr = QrCode.encodeText("https://omp.sh/#demo", "M");
+		const qr = QrCode.encodeText("https://veyyon.dev/#demo", "M");
 		const margin = 3;
 		const lines = renderQrHalfBlocks(qr, { margin });
 		// Visible cell width = symbol + both margins.

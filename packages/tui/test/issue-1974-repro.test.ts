@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { type Component, CURSOR_MARKER, type NativeScrollbackLiveRegion, TUI } from "@veyyon/pi-tui";
+import { type Component, CURSOR_MARKER, type NativeScrollbackLiveRegion, TUI } from "@veyyon/tui";
 import { VirtualTerminal } from "./virtual-terminal";
 
 // Regression test for https://github.com/can1357/oh-my-pi/issues/1974
@@ -40,7 +40,7 @@ class LineList implements Component {
 }
 
 /**
- * Minimal append-only live region. Models the real omp setup where
+ * Minimal append-only live region. Models the real veyyon setup where
  * `TranscriptContainer` wraps a streaming `AssistantMessageComponent` whose
  * rendered rows are all declared final (settled) as they stream, so its
  * scrolled-off head commits to pane history mid-stream.
@@ -242,7 +242,7 @@ describe("issue #1974: tmux scrollback rendering", () => {
 	});
 
 	it("does not push chrome below the live block into pane history", async () => {
-		// Models a real omp frame: streamed assistant reply on top, persistent
+		// Models a real veyyon frame: streamed assistant reply on top, persistent
 		// chrome (status line / editor) below. The live region ends mid-frame,
 		// so the renderer must push only sealed rows of the live block into
 		// pane history while keeping the chrome rows transient and confined to

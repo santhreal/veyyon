@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it, mock } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
-import { runOnboardingSetup } from "@veyyon/pi-coding-agent/commands/setup";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { SETTINGS_SCHEMA } from "@veyyon/pi-coding-agent/config/settings-schema";
+import { runOnboardingSetup } from "@veyyon/coding-agent/commands/setup";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import { SETTINGS_SCHEMA } from "@veyyon/coding-agent/config/settings-schema";
+import * as realImportScan from "@veyyon/coding-agent/discovery/import-scan";
 import {
 	ALL_SCENES,
 	CURRENT_SETUP_VERSION,
@@ -11,12 +12,13 @@ import {
 	type SetupScene,
 	type SetupSceneHost,
 	selectSetupScenes,
-} from "@veyyon/pi-coding-agent/modes/setup-wizard";
-import { WebSearchTab } from "@veyyon/pi-coding-agent/modes/setup-wizard/scenes/web-search";
-import { SetupWizardComponent } from "@veyyon/pi-coding-agent/modes/setup-wizard/wizard-overlay";
-import { initTheme, theme } from "@veyyon/pi-coding-agent/modes/theme/theme";
-import type { InteractiveModeContext } from "@veyyon/pi-coding-agent/modes/types";
-import { SEARCH_PROVIDER_OPTIONS, SEARCH_PROVIDER_PREFERENCES } from "@veyyon/pi-coding-agent/web/search/types";
+} from "@veyyon/coding-agent/modes/setup-wizard";
+import { themeSetupScene } from "@veyyon/coding-agent/modes/setup-wizard/scenes/theme";
+import { WebSearchTab } from "@veyyon/coding-agent/modes/setup-wizard/scenes/web-search";
+import { SetupWizardComponent } from "@veyyon/coding-agent/modes/setup-wizard/wizard-overlay";
+import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
+import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
+import { SEARCH_PROVIDER_OPTIONS, SEARCH_PROVIDER_PREFERENCES } from "@veyyon/coding-agent/web/search/types";
 
 function fakeContextWithConfiguredModel(): InteractiveModeContext {
 	return {
@@ -45,6 +47,25 @@ function testScene(id: string, minVersion: number, shouldRun?: () => boolean): S
 afterEach(async () => {
 	await initTheme(false, "unicode", false, "titanium", "light");
 });
+
+// The import-config scene's shouldRun scans the real home for foreign configs
+// (~/.claude etc.), which makes "all scenes selected" assertions depend on the
+// developer's machine. mock.module is process-global in bun and leaks into
+// sibling test files even with an afterAll restore (their imports link while
+// the mock is live), so the mock DELEGATES: explicit-home calls (what
+// import-scan.test.ts and production tests pass) hit the real implementation;
+// only the wizard's no-arg real-home scan is pinned to a deterministic
+// non-empty result. The real function is snapshotted BY VALUE here because
+// mock.module rewrites the namespace's live bindings — delegating through
+// `realImportScan.scanForeignConfig` at call time would recurse into the mock.
+const realScanForeignConfig = realImportScan.scanForeignConfig;
+mock.module("@veyyon/coding-agent/discovery/import-scan", () => ({
+	...realImportScan,
+	scanForeignConfig: async (cwd?: string, home?: string) =>
+		home !== undefined
+			? realScanForeignConfig(cwd, home)
+			: [{ kind: "skill", name: "probe", providerName: "Claude Code", sourcePath: "/nonexistent/probe" }],
+}));
 
 describe("setup wizard scene selection", () => {
 	it("runs all v1 scenes for a new user", async () => {
@@ -193,6 +214,40 @@ describe("setup wizard mouse routing", () => {
 			component.handleInput("\x1b[<35;10;5M"); // pointer motion — swallowed
 			component.handleInput("\x1b[<0;10;5M"); // click in scene — swallowed
 			expect(received).toEqual(["\x1b[A", "\x1b[B"]);
+		} finally {
+			component.dispose();
+		}
+	});
+
+	it("swallows confirm keys while the scene is animating in, so a late splash-skip Enter cannot activate a scene control", () => {
+		const received: string[] = [];
+		const scene: SetupScene = {
+			id: "signin-like",
+			title: "signin-like",
+			minVersion: 1,
+			mount: () => ({
+				title: "signin-like",
+				handleInput: (data: string) => received.push(data),
+				render: () => [],
+				invalidate: () => {},
+			}),
+		};
+		const ctx = {
+			settings: Settings.isolated(),
+			ui: {
+				terminal: { rows: 24 },
+				setFocus: () => {},
+				requestRender: () => {},
+			},
+		} as unknown as InteractiveModeContext;
+		const component = new SetupWizardComponent(ctx, [scene]);
+		try {
+			void component.run();
+			component.handleInput("\r"); // skip the splash
+			component.handleInput("\r"); // lands during the scene-in transition — must be dropped
+			component.handleInput(" "); // ditto for space
+			component.handleInput("\x1b[B"); // navigation keys still pass through
+			expect(received).toEqual(["\x1b[B"]);
 		} finally {
 			component.dispose();
 		}
@@ -419,7 +474,7 @@ describe("setup wizard web search tab", () => {
 	});
 });
 
-describe("omp setup onboarding trigger", () => {
+describe("veyyon setup onboarding trigger", () => {
 	it("starts the normal interactive command with forced setup wizard", async () => {
 		let forceSetupWizard: boolean | undefined;
 		await runOnboardingSetup({
@@ -450,5 +505,77 @@ describe("omp setup onboarding trigger", () => {
 		).rejects.toThrow("exit");
 		expect(exitCode).toBe(1);
 		expect(stderr).toContain("interactive TTY");
+	});
+});
+
+describe("setup wizard scene alignment", () => {
+	it("anchors wordmark, step counter, title, body, and footer on one left column", async () => {
+		await initTheme(false, "unicode", false, "titanium", "light");
+		const scenes = [
+			{
+				id: "align-a",
+				title: "Align check",
+				minVersion: 1,
+				mount: () => ({
+					title: "Align check",
+					render: () => ["BODY-MARKER"],
+					invalidate: () => {},
+				}),
+			},
+			testScene("align-b", 1),
+		];
+		const ctx = {
+			settings: Settings.isolated(),
+			ui: {
+				terminal: { rows: 24 },
+				setFocus: () => {},
+				requestRender: () => {},
+			},
+		} as unknown as InteractiveModeContext;
+		const component = new SetupWizardComponent(ctx, scenes);
+		try {
+			void component.run();
+			component.handleInput("\r"); // splash → scene
+			await Bun.sleep(500); // let the splash→scene dissolve finish
+			const frame = component.render(80).map(line => stripVTControlCharacters(line));
+			const indentOf = (predicate: (line: string) => boolean): number => {
+				const line = frame.find(predicate);
+				expect(line).toBeDefined();
+				return /^ */.exec(line ?? "")?.[0].length ?? 0;
+			};
+			// Every header/body/footer row shares one left anchor — nothing floats
+			// centered above left-aligned content.
+			const wordmark = indentOf(line => line.includes("v e y y o n"));
+			const step = indentOf(line => line.includes("step 1 of 2"));
+			const title = indentOf(line => line.trimStart().startsWith("Align check"));
+			const body = indentOf(line => line.includes("BODY-MARKER"));
+			const footer = indentOf(line => line.includes("enter confirm"));
+			expect(step).toBe(wordmark);
+			expect(title).toBe(wordmark);
+			expect(body).toBe(wordmark);
+			expect(footer).toBe(wordmark);
+		} finally {
+			component.dispose();
+		}
+	});
+});
+
+describe("theme scene rhythm", () => {
+	it("starts curated mode straight at the preview — no leading blank rows", async () => {
+		await initTheme(false, "unicode", false, "titanium", "light");
+		const host = {
+			ctx: { settings: Settings.isolated() },
+			next: () => {},
+			invalidate: () => {},
+		} as unknown as Parameters<(typeof themeSetupScene)["mount"]>[0];
+		const controller = await themeSetupScene.mount(host);
+		try {
+			const lines = controller.render(76).map(line => stripVTControlCharacters(line));
+			// The wizard header already ends in one blank line; a scene that leads
+			// with its own blanks breaks the shared one-blank rhythm.
+			expect(lines[0]?.trim().length).toBeGreaterThan(0);
+		} finally {
+			controller.dispose?.();
+		}
 	});
 });

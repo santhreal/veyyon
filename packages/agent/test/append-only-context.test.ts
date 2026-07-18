@@ -1,8 +1,8 @@
 import { describe, expect, it } from "bun:test";
-import { AppendOnlyContextManager, AppendOnlyLog, StablePrefix } from "@veyyon/pi-agent-core/append-only-context";
-import type { AgentContext, AgentTool } from "@veyyon/pi-agent-core/types";
-import type { Message, Tool, ToolExample } from "@veyyon/pi-ai";
-import { INTENT_FIELD } from "@veyyon/pi-wire";
+import { AppendOnlyContextManager, AppendOnlyLog, StablePrefix } from "@veyyon/agent-core/append-only-context";
+import type { AgentContext, AgentTool } from "@veyyon/agent-core/types";
+import type { Message, Tool, ToolExample } from "@veyyon/ai";
+import { INTENT_FIELD } from "@veyyon/wire";
 import { type } from "arktype";
 
 // ---------------------------------------------------------------------------

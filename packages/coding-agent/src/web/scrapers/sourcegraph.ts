@@ -1,6 +1,6 @@
-import { tryParseJson } from "@veyyon/pi-utils";
-import type { RenderResult, SpecialHandler } from "./types";
-import { buildResult, loadPage } from "./types";
+import { tryParseJson } from "@veyyon/utils";
+import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
+import { buildResult, loadPage, scraperDegrade, tryParseUrl } from "./types";
 
 const GRAPHQL_ENDPOINT = "https://sourcegraph.com/.api/graphql";
 const GRAPHQL_HEADERS = {
@@ -118,7 +118,8 @@ const SEARCH_QUERY = `query Search($query: String!) {
 
 function parseSourcegraphUrl(url: string): SourcegraphTarget | null {
 	try {
-		const parsed = new URL(url);
+		const parsed = tryParseUrl(url);
+		if (!parsed) return null;
 		if (parsed.hostname !== "sourcegraph.com" && parsed.hostname !== "www.sourcegraph.com") return null;
 
 		if (parsed.pathname.startsWith("/search")) {
@@ -304,7 +305,7 @@ export const handleSourcegraph: SpecialHandler = async (
 	url: string,
 	timeout: number,
 	signal?: AbortSignal,
-): Promise<RenderResult | null> => {
+): Promise<RenderResult | ScraperDegrade | null> => {
 	try {
 		const target = parseSourcegraphUrl(url);
 		if (!target) return null;
@@ -315,22 +316,22 @@ export const handleSourcegraph: SpecialHandler = async (
 		switch (target.type) {
 			case "search": {
 				const result = await renderSearch(target.query, timeout, signal);
-				if (!result.ok) return null;
+				if (!result.ok) return scraperDegrade("sourcegraph", "GraphQL request failed");
 				return buildResult(result.content, { url, method: "sourcegraph-search", fetchedAt, notes });
 			}
 			case "file": {
 				const rev = target.rev ?? "HEAD";
 				const result = await renderFile(target.repoName, target.filePath, rev, timeout, signal);
-				if (!result.ok) return null;
+				if (!result.ok) return scraperDegrade("sourcegraph", "GraphQL request failed");
 				return buildResult(result.content, { url, method: "sourcegraph-file", fetchedAt, notes });
 			}
 			case "repo": {
 				const result = await renderRepo(target.repoName, timeout, signal);
-				if (!result.ok) return null;
+				if (!result.ok) return scraperDegrade("sourcegraph", "GraphQL request failed");
 				return buildResult(result.content, { url, method: "sourcegraph-repo", fetchedAt, notes });
 			}
 		}
-	} catch {}
-
-	return null;
+	} catch (error) {
+		return scraperDegrade("sourcegraph", error);
+	}
 };

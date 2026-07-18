@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { buildModelProviderPriorityRank } from "@veyyon/pi-catalog/identity/priority";
+import { buildModelProviderPriorityRank } from "@veyyon/catalog/identity/priority";
 
 describe("model provider priority", () => {
 	test("ranks AIML API with hosted aggregators", () => {

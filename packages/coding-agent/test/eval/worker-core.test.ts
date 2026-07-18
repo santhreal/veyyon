@@ -3,14 +3,15 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { pathToFileURL } from "node:url";
-import { WorkerCore } from "@veyyon/pi-coding-agent/eval/js/worker-core";
+import { WorkerCore } from "@veyyon/coding-agent/eval/js/worker-core";
 import type {
 	SessionSnapshot,
 	Transport,
 	WorkerInbound,
 	WorkerOutbound,
-} from "@veyyon/pi-coding-agent/eval/js/worker-protocol";
-import { postmortem } from "@veyyon/pi-utils";
+} from "@veyyon/coding-agent/eval/js/worker-protocol";
+import { postmortem } from "@veyyon/utils";
+import { hermeticSpawnEnv } from "../helpers/hermetic-spawn-env";
 
 interface WorkerHarness {
 	send(message: WorkerInbound): void;
@@ -371,8 +372,8 @@ describe("WorkerCore", () => {
 	});
 
 	it("keeps the process cwd while another cell is mid-run", async () => {
-		const dirA = await fs.mkdtemp(path.join(os.tmpdir(), "omp-cwd-a-"));
-		const dirB = await fs.mkdtemp(path.join(os.tmpdir(), "omp-cwd-b-"));
+		const dirA = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-cwd-a-"));
+		const dirB = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-cwd-b-"));
 		const chdirs: string[] = [];
 		const hostListeners = new Set<(message: WorkerOutbound) => void>();
 		const workerListeners = new Set<(message: WorkerInbound) => void>();
@@ -519,15 +520,18 @@ console.log("survived concurrent setCwd");
 process.exit(0);
 `;
 
-		const root = await fs.mkdtemp(path.join(os.tmpdir(), "omp-same-realm-"));
+		const root = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-same-realm-"));
 		const probePath = path.join(root, "probe.ts");
+		// Hermetic HOME: the probe asserts clean stderr, and a real-home config
+		// tree can inject startup warnings (e.g. the legacy-layout notice).
+		const { env, cleanup } = hermeticSpawnEnv();
 		try {
 			await Bun.write(probePath, probe);
 			const proc = Bun.spawn([process.execPath, probePath], {
 				cwd: process.cwd(),
 				stdout: "pipe",
 				stderr: "pipe",
-				env: { ...process.env },
+				env,
 			});
 			const watchdog = Bun.sleep(5000).then(() => {
 				proc.kill();
@@ -544,6 +548,7 @@ process.exit(0);
 			expect(stderr).not.toContain("[Uncaught Exception]");
 			expect(stderr).not.toContain("another same-realm JS runtime is running");
 		} finally {
+			cleanup();
 			await fs.rm(root, { recursive: true, force: true });
 		}
 	});

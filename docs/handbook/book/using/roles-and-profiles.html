@@ -10,6 +10,10 @@
         <!-- Veyyon handbook: self-contained head additions. No remote resources. -->
         <meta name="theme-color" content="#050505">
         <meta name="color-scheme" content="dark">
+        <!-- Site favicons live at the deployed root, one level above /docs/. -->
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+        <link rel="icon" href="/favicon.ico" sizes="48x48">
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png">
         <style>
           /* Paint the near-black surface before CSS/JS resolve the theme, so there is
              no light flash on load. Kept in sync with theme/veyyon.css. */
@@ -18,7 +22,7 @@
           *, *::before, *::after { box-sizing: border-box; }
         </style>
 
-        <meta name="description" content="How Veyyon turns open models into frontier coding agents. The product, the harness, tool-call repair, the edit format, per-model adaptation, and how to use it.">
+        <meta name="description" content="Operator handbook for the Veyyon terminal coding agent: install, configuration, tools, approvals, edit formats, providers, and harness structure.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -38,7 +42,7 @@
         <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="../ayu-highlight-3fdfc3ac.css">
 
         <!-- Custom theme stylesheets -->
-        <link rel="stylesheet" href="../theme/veyyon-fc839a17.css">
+        <link rel="stylesheet" href="../theme/veyyon-06f6939e.css">
 
 
         <!-- Provide site root and default themes to javascript -->
@@ -46,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-e76f06ca.js";
+            window.path_to_searchindex_js = "../searchindex-a2447057.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-9cfd259b.js"></script>
+        <script src="../toc-cc1a72e9.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -192,93 +196,102 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="models-roles-and-profiles"><a class="header" href="#models-roles-and-profiles">Models, roles, and profiles</a></h1>
-<p>Veyyon keeps model selection explicit and simple. Three ideas stay separate:</p>
+<h2 id="concepts"><a class="header" href="#concepts">Concepts</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Concept</th><th>Meaning</th></tr>
+</thead>
+<tbody>
+<tr><td><strong>Interactive model</strong></td><td>The model used for the main conversation. Chosen with <code>/model</code> or <code>--model</code>. Persisted under <code>modelRoles.default</code> (legacy key name; not a selectable “role” in the UI).</td></tr>
+<tr><td><strong>Role</strong></td><td>A named model assignment for a kind of work (<code>smol</code>, <code>plan</code>, <code>task</code>, …). Configured in <code>modelRoles</code> / settings → Model → Roles.</td></tr>
+<tr><td><strong>Slot overrides</strong></td><td><code>subagent.model</code> and <code>compaction.model</code> — dedicated destinations that override the corresponding role or inherit the interactive model when unset.</td></tr>
+<tr><td><strong>Profile</strong></td><td>User config tree at <code>~/.veyyon/profiles/&lt;name&gt;/</code> (including <code>default</code>).</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="interactive-model"><a class="header" href="#interactive-model">Interactive model</a></h2>
 <ul>
-<li>the <strong>model you talk to</strong> — chosen live,</li>
-<li><strong>roles</strong> — optional named model assignments, configured in settings and scoped per profile,</li>
-<li><strong>profiles</strong> — separate user config trees.</li>
+<li>Set live with <code>/model</code> or the model picker; set for a run with <code>--model &lt;provider/id&gt;</code>.</li>
+<li>On “set as default” / persist paths, the value is stored as <strong><code>modelRoles.default</code></strong> in the active profile’s <code>config.yml</code>.</li>
+<li>There is no separate top-level <code>model:</code> settings key in the schema. Prefer the picker or <code>modelRoles.default</code> in config.</li>
 </ul>
-<h2 id="three-model-slots"><a class="header" href="#three-model-slots">Three model slots</a></h2>
-<p>Veyyon gives you three explicit model choices. Each is set on its own — there is no <code>default</code> model
-that silently stands in for the others.</p>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Slot</th><th>Runs</th><th>Where you set it</th></tr>
-</thead>
-<tbody>
-<tr><td><strong>Interactive model</strong></td><td>the conversation you are in</td><td><code>/model</code> (live), <code>--model</code>, <code>config.yml</code> <code>model</code></td></tr>
-<tr><td><strong>Subagent model</strong></td><td>task subagents</td><td>settings → Models</td></tr>
-<tr><td><strong>Compaction model</strong></td><td>context compaction</td><td>settings → Models</td></tr>
-</tbody>
-</table>
-</div>
-<p>Leave the subagent or compaction model unset and that slot uses your interactive model.</p>
-<h2 id="picking-the-interactive-model"><a class="header" href="#picking-the-interactive-model">Picking the interactive model</a></h2>
-<p>Use <code>/model</code>, the model carousel, or the CLI (<code>--model</code>). Your choice is saved to the active profile’s
-<code>config.yml</code> and applies to the conversation. This is the only model you choose from the picker.</p>
-<h2 id="subagent-and-compaction-models"><a class="header" href="#subagent-and-compaction-models">Subagent and compaction models</a></h2>
-<p>Set them once in <strong>settings → Models</strong>, or in <code>config.yml</code>:</p>
-<pre><code class="language-yaml">modelRoles:
-  default: anthropic/claude-sonnet-5   # interactive
-subagent:
-  model: anthropic/claude-haiku-4-5
-compaction:
-  model: openai/gpt-5
+<pre><code class="language-yaml"># ~/.veyyon/profiles/default/agent/config.yml
+modelRoles:
+  default: anthropic/claude-sonnet-5   # interactive model (persisted default)
+  smol: openai/gpt-4.1-mini
+  slow: anthropic/claude-opus-4-5:high
+  plan: anthropic/claude-sonnet-5
+  task: deepseek/deepseek-chat
+  advisor: anthropic/claude-sonnet-5:medium
 </code></pre>
-<p>They are plain fields — one model each, no per-role matrix and no indirection. When a task subagent
-spawns, it runs on <code>subagent.model</code>. When context is compacted, it runs on <code>compaction.model</code>.</p>
-<h2 id="roles-optional"><a class="header" href="#roles-optional">Roles (optional)</a></h2>
-<p>A <strong>role</strong> is a named model assignment for a kind of work (<code>task</code>, <code>plan</code>, <code>advisor</code>, …). Roles are
-optional. Edit them in <strong><code>/settings</code> → Model → Roles → Role Models</strong>: pick a role, then use the
-<strong>searchable model selector</strong> (auth / local / no auth shown on each row). Never edit <code>config.yml</code> for
-this — settings writes the active profile’s assignments for you.</p>
-<p><code>default</code> is not a role and not a model. The model you pick with <code>/model</code> is simply your interactive
-model; nothing falls back through a <code>default</code> slot.</p>
-<h3 id="task-subagents"><a class="header" href="#task-subagents">Task subagents</a></h3>
-<p>The main agent spawns <strong>task</strong> subagents for parallel scoped work. They run on <code>subagent.model</code>.
-Task isolation (<code>task.isolation.*</code>) and concurrency (<code>task.maxConcurrency</code>) are settings — not a
-surface you configure every turn.</p>
-<h2 id="compaction-settings"><a class="header" href="#compaction-settings">Compaction settings</a></h2>
-<p>Compaction has exactly three settings, in <strong>settings → Models → Compaction</strong>:</p>
-<ol>
-<li><strong>Auto-compaction threshold</strong> (<code>compaction.thresholdPercent</code>) — when to compact.</li>
-<li><strong>Type</strong> (<code>compaction.strategy</code>) — <code>handoff</code> or <code>snap</code>.</li>
-<li><strong>Model</strong> (<code>compaction.model</code>) — the compaction model above.</li>
-</ol>
-<p>See <a href="../features/memory.html">Memory and compaction</a> for what each type does.</p>
-<h2 id="profiles"><a class="header" href="#profiles">Profiles</a></h2>
-<p>A <strong>profile</strong> relocates <code>~/.veyyon/agent/</code> to <code>~/.veyyon/profiles/&lt;name&gt;/agent/</code> for native Veyyon
-config (settings, sessions, MCP, skills, hooks, and your role assignments and model slots). Activate
-with <code>veyyon --profile &lt;name&gt;</code> or <code>VEYYON_PROFILE</code>.</p>
-<p>Profiles are chosen at process start; <code>/profile &lt;name&gt;</code> in the TUI relaunches Veyyon on the target
-profile as a fresh session. See <a href="../features/profiles.html">Profiles</a> for the lifecycle commands
-(<code>veyyon profile list/new/rm</code>), the <code>/profile new</code> copy picker, and display-name renaming.</p>
-<h2 id="tool-approval"><a class="header" href="#tool-approval">Tool approval</a></h2>
-<p>Behavior is governed by <code>tools.approvalMode</code> (<code>plan</code>, <code>ask</code>, <code>auto-edit</code>, <code>yolo</code>) and per-tool
-<code>tools.approval</code> overrides. Configure in <code>/settings</code> → Safety or <code>--approval-mode</code> on launch.</p>
-<h2 id="where-each-choice-lives"><a class="header" href="#where-each-choice-lives">Where each choice lives</a></h2>
+<p>Role values may include a thinking suffix (<code>:minimal</code>, <code>:low</code>, <code>:medium</code>, <code>:high</code>, <code>:xhigh</code>, <code>:max</code>).</p>
+<h2 id="built-in-roles"><a class="header" href="#built-in-roles">Built-in roles</a></h2>
+<p>From <code>packages/coding-agent/src/config/model-roles.ts</code>:</p>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>You want to</th><th>Where</th></tr>
+<tr><th>Role id</th><th>UI name</th><th>Notes</th></tr>
 </thead>
 <tbody>
-<tr><td>Change the interactive model</td><td><code>/model</code>, <code>config.yml</code> <code>model</code></td></tr>
-<tr><td>Set the subagent model</td><td>settings → Models (<code>subagent.model</code>)</td></tr>
-<tr><td>Set the compaction model</td><td>settings → Models (<code>compaction.model</code>)</td></tr>
-<tr><td>Assign models to roles (optional)</td><td>settings → Models → Roles, per profile</td></tr>
-<tr><td>Separate user config trees</td><td><code>veyyon --profile &lt;name&gt;</code></td></tr>
-<tr><td>Tighten tool prompts</td><td><code>tools.approvalMode</code>, <code>tools.approval</code></td></tr>
+<tr><td><code>default</code></td><td>(hidden)</td><td>Storage key for the interactive model only; not shown in role pickers or default <code>cycleOrder</code></td></tr>
+<tr><td><code>smol</code></td><td>Fast</td><td>Cheap / fast work; <code>--smol</code>, env <code>VEYYON_SMOL_MODEL</code> / <code>VEYYON_SMOL_MODEL</code> if set</td></tr>
+<tr><td><code>slow</code></td><td>Thinking</td><td>Heavier reasoning; <code>--slow</code></td></tr>
+<tr><td><code>vision</code></td><td>Vision</td><td>Multimodal work</td></tr>
+<tr><td><code>plan</code></td><td>Architect</td><td>Plan mode; <code>--plan</code></td></tr>
+<tr><td><code>designer</code></td><td>Designer</td><td>Design-oriented work</td></tr>
+<tr><td><code>commit</code></td><td>Commit</td><td>Commit / changelog generation</td></tr>
+<tr><td><code>tiny</code></td><td>Tiny</td><td>Lightweight background (titles, classifiers); else falls back toward <code>@smol</code></td></tr>
+<tr><td><code>task</code></td><td>Subtask</td><td>Task subagents unless <code>subagent.model</code> is set</td></tr>
+<tr><td><code>advisor</code></td><td>Advisor</td><td>Advisor runtime; unset uses thinking-model chain</td></tr>
 </tbody>
 </table>
 </div>
-<h2 id="see-also"><a class="header" href="#see-also">See also</a></h2>
+<p>Custom role names can appear via <code>modelRoles</code>, <code>modelTags</code>, or <code>cycleOrder</code> entries.</p>
+<p>Unset selectable roles <strong>inherit the live interactive model</strong> at use time (except <code>advisor</code>, which uses its own chain when unset).</p>
+<h2 id="slot-overrides"><a class="header" href="#slot-overrides">Slot overrides</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Setting</th><th>Effect</th></tr>
+</thead>
+<tbody>
+<tr><td><code>subagent.model</code></td><td>Model for task subagents. Unset → inherit interactive. When set, overrides <code>modelRoles.task</code>.</td></tr>
+<tr><td><code>compaction.model</code></td><td>Model for compaction/handoff. Unset → inherit interactive.</td></tr>
+</tbody>
+</table>
+</div>
+<pre><code class="language-yaml">subagent:
+  model: deepseek/deepseek-chat
+compaction:
+  model: openai/gpt-5-mini
+  strategy: handoff
+  thresholdPercent: 80
+</code></pre>
+<h2 id="cycling-roles-ctrlp"><a class="header" href="#cycling-roles-ctrlp">Cycling roles (Ctrl+P)</a></h2>
+<p><code>cycleOrder</code> lists which <strong>roles</strong> the model switcher cycles (<code>app.model.cycleForward</code> / <code>cycleBackward</code>, default chords often Ctrl+P / Shift+Ctrl+P).</p>
 <ul>
-<li><a href="../features/profiles.html">Profiles</a></li>
+<li>Schema default: <code>["smol", "slow"]</code> (see <code>DEFAULT_CYCLE_ORDER</code>).</li>
+<li>The string <code>default</code> is <strong>stripped</strong> from <code>cycleOrder</code> on load; the interactive model is not cycled as a role entry.</li>
+<li>Scoped models (<code>--models</code> / enabled model list) can also drive cycling when configured.</li>
+</ul>
+<pre><code class="language-yaml">cycleOrder:
+  - smol
+  - slow
+  - plan
+</code></pre>
+<h2 id="profiles"><a class="header" href="#profiles">Profiles</a></h2>
+<p>Every profile including <code>default</code>:</p>
+<pre><code class="language-text">~/.veyyon/profiles/&lt;name&gt;/agent/   # config.yml, sessions, MCP, skills, …
+</code></pre>
+<p>Global <code>~/.veyyon/config.yml</code> holds cross-profile keys such as <code>defaultProfile</code>.<br>Activate: <code>--profile</code>, <code>VEYYON_PROFILE</code>, <code>veyyon profile default &lt;name&gt;</code>, TUI <code>/profile</code> (relaunch).<br>See <a href="../features/profiles.html">Profiles</a>, <a href="../reference/file-locations.html">File locations</a>.</p>
+<h2 id="approvals"><a class="header" href="#approvals">Approvals</a></h2>
+<p><code>tools.approvalMode</code>: <code>plan</code> | <code>ask</code> | <code>auto-edit</code> | <code>yolo</code> (schema default <code>yolo</code>).<br>Aliases: <code>always-ask</code> → <code>ask</code>, <code>write</code> → <code>auto-edit</code>.<br>See <a href="../features/sandbox.html">Approvals</a>.</p>
+<h2 id="related"><a class="header" href="#related">Related</a></h2>
+<ul>
 <li><a href="./models.html">Models and providers</a></li>
-<li><a href="../features/memory.html">Memory and compaction</a></li>
-<li><a href="./configuration.html">Configuration</a></li>
+<li><a href="../../settings.html">settings.md Models</a> (repo <code>docs/settings.md</code>)</li>
+<li><a href="../context/compaction-memory.html">Compaction</a></li>
 </ul>
 
                     </main>

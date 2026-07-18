@@ -1,18 +1,18 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
-import { ThinkingLevel } from "@veyyon/pi-agent-core";
-import * as ai from "@veyyon/pi-ai";
-import { Effort, type Model } from "@veyyon/pi-ai";
-import { buildModel } from "@veyyon/pi-catalog/build";
-import { getBundledModel } from "@veyyon/pi-catalog/models";
+import { ThinkingLevel } from "@veyyon/agent-core";
+import * as ai from "@veyyon/ai";
+import { Effort, type Model } from "@veyyon/ai";
+import { buildModel } from "@veyyon/catalog/build";
+import { getBundledModel } from "@veyyon/catalog/models";
 import {
 	classifyDifficulty,
 	parseDifficultyBucket,
 	parseDifficultyLevel,
-} from "@veyyon/pi-coding-agent/auto-thinking/classifier";
-import { ModelRegistry } from "@veyyon/pi-coding-agent/config/model-registry";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { AuthStorage } from "@veyyon/pi-coding-agent/session/auth-storage";
+} from "@veyyon/coding-agent/auto-thinking/classifier";
+import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import {
 	AUTO_THINKING,
 	clampAutoThinkingEffort,
@@ -21,10 +21,10 @@ import {
 	parseEffort,
 	parseThinkingLevel,
 	resolveProvisionalAutoLevel,
-} from "@veyyon/pi-coding-agent/thinking";
-import type { TinyMemoryLocalModelKey } from "@veyyon/pi-coding-agent/tiny/models";
-import { tinyModelClient } from "@veyyon/pi-coding-agent/tiny/title-client";
-import { TempDir } from "@veyyon/pi-utils";
+} from "@veyyon/coding-agent/thinking";
+import type { TinyMemoryLocalModelKey } from "@veyyon/coding-agent/tiny/models";
+import { tinyModelClient } from "@veyyon/coding-agent/tiny/title-client";
+import { TempDir } from "@veyyon/utils";
 
 describe("auto thinking classifier helpers", () => {
 	afterEach(() => {

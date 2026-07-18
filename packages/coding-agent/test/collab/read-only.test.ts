@@ -9,11 +9,11 @@
  * in-memory transport, so the suite stays fast and time-independent.
  */
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test";
-import { importRoomKey } from "@veyyon/pi-coding-agent/collab/crypto";
-import { CollabHost } from "@veyyon/pi-coding-agent/collab/host";
-import { COLLAB_PROTO, type CollabFrame, parseCollabLink } from "@veyyon/pi-coding-agent/collab/protocol";
-import { CollabSocket } from "@veyyon/pi-coding-agent/collab/relay-client";
-import type { InteractiveModeContext } from "@veyyon/pi-coding-agent/modes/types";
+import { importRoomKey } from "@veyyon/coding-agent/collab/crypto";
+import { CollabHost } from "@veyyon/coding-agent/collab/host";
+import { COLLAB_PROTO, type CollabFrame, parseCollabLink } from "@veyyon/coding-agent/collab/protocol";
+import { CollabSocket } from "@veyyon/coding-agent/collab/relay-client";
+import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
 import { installInMemoryRelay, uninstallInMemoryRelay } from "./helpers/in-memory-relay";
 
 // In-memory transport: FakeWebSocket + InMemoryRelay (see ./helpers/in-memory-relay)

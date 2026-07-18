@@ -1,9 +1,9 @@
 # Environment variables
 
-This page covers the day-to-day surface only: identity/profile selection, provider auth, and the
+This page covers the common operator surface: identity/profile selection, provider auth, and the
 handful of `VEYYON_*` variables that are actually read by the runtime today. Veyyon also reads a large
-number of `PI_*` debug/behavior-toggle variables (timing, startup tracing, TUI flags, eval-runtime
-toggles, and more) that are not day-to-day configuration. For the complete, code-grounded reference —
+number of `VEYYON_*` debug/behavior-toggle variables (timing, startup tracing, TUI flags, eval-runtime
+toggles, and more) that are less common configuration. For the complete, code-grounded reference —
 including every provider credential var, precedence chains, and internal toggles — see
 [`docs/environment-variables.md`](../../../environment-variables.md).
 
@@ -14,12 +14,14 @@ active profile is selected by its own variable:
 
 | Variable | Purpose |
 | --- | --- |
-| `VEYYON_CONFIG_DIR` | Overrides the config directory **name** under `$HOME` (default `.veyyon`). Does not accept a full path. Legacy aliases `OMP_CONFIG_DIR` and `PI_CONFIG_DIR` are still accepted (first set wins: Veyyon → OMP → PI). |
-| `VEYYON_CODING_AGENT_DIR` | Full override for the agent directory (default `~/<config-dir-name>/agent`); legacy alias `PI_CODING_AGENT_DIR`. |
-| `VEYYON_PROFILE` | Selects the active named profile (`~/.veyyon/profiles/<name>/agent`). Legacy aliases `OMP_PROFILE` and `PI_PROFILE` are still accepted. |
-| `VEYYON_PACKAGE_DIR` | Override package directory for bundled assets (Nix/Guix). Legacy `OMP_PACKAGE_DIR` / `PI_PACKAGE_DIR`. |
-| `VEYYON_NO_PTY` | Set to `1` to disable PTY-based interactive bash. Legacy `OMP_NO_PTY` / `PI_NO_PTY`. |
-| `VEYYON_NO_TITLE` | Set to disable auto terminal-title updates. Legacy `OMP_NO_TITLE` / `PI_NO_TITLE`. |
+| `VEYYON_CONFIG_DIR` | Overrides the config directory **name** under `$HOME` (default `.veyyon`). Does not accept a full path. |
+| `VEYYON_CODING_AGENT_DIR` | Full override for the agent directory (default `~/<config-dir-name>/profiles/<active-or-default>/agent`). |
+| `VEYYON_PROFILE` | Selects the active named profile (`~/.veyyon/profiles/<name>/agent`). |
+| `VEYYON_PACKAGE_DIR` | Override package directory for bundled assets (Nix/Guix). |
+| `VEYYON_NO_PTY` | Set to `1` to disable PTY-based interactive bash. |
+| `VEYYON_NO_TITLE` | Set to disable auto terminal-title updates. |
+| `VEYYON_WORKTREE_DIR` | Absolute path for agent-managed git worktrees (default profile path `~/.veyyon/profiles/<name>/wt`; also settable via the `worktree.base` setting). `~` is expanded; a relative value is ignored. |
+| `VEYYON_GITHUB_CACHE_DB` | Full path override for the GitHub view cache database (default `~/.veyyon/cache/github-cache.db`). |
 
 On Linux, `veyyon config init-xdg` migrates state under `$XDG_DATA_HOME`/`$XDG_STATE_HOME`/`$XDG_CACHE_HOME`
 when those are set; unmigrated installs stay under `~/.veyyon`. See
@@ -74,7 +76,7 @@ A custom provider uses whatever variable its `[model_providers.<id>].env_key` na
 | `LM_STUDIO_BASE_URL` | LM Studio discovery base URL (defaults to `http://127.0.0.1:1234/v1`). |
 | `LLAMA_CPP_BASE_URL` | llama.cpp discovery base URL (defaults to `http://127.0.0.1:8080`). |
 | `LITELLM_BASE_URL` | LiteLLM proxy base URL fallback (defaults to `http://localhost:4000/v1`). |
-| `PI_EDIT_VARIANT` | Force edit tool variant: `hashline`, `apply_patch`, `patch`, `replace`. |
+| `VEYYON_EDIT_VARIANT` | Force edit tool variant: `hashline`, `apply_patch`, `patch`, `replace`. |
 
 There is no `VEYYON_OSS_BASE_URL`/`VEYYON_OSS_PORT`; each local backend has its own discovery variable
 above.
@@ -94,7 +96,7 @@ into `RequestInit.tls.ca` itself).
 
 | Variable | Purpose |
 | --- | --- |
-| `VEYYON_INSTALL_DIR` | Overrides the install script's target directory (default `~/.local/bin` on Unix, `%LOCALAPPDATA%\veyyon` on Windows). Legacy alias `PI_INSTALL_DIR` is still accepted. |
+| `VEYYON_INSTALL_DIR` | Overrides the install script's target directory (default `~/.local/bin` on Unix, `%LOCALAPPDATA%\veyyon` on Windows). |
 
 There is no `VEYYON_NON_INTERACTIVE` or `VEYYON_INSTALL_URL`; the install scripts (`scripts/install.sh`,
 `scripts/install.ps1`) do not read those names today.
@@ -108,7 +110,7 @@ convention in the current runtime.
 
 | Variable | Purpose |
 | --- | --- |
-| `VEYYON_MCP_TIMEOUT_MS` | Overrides the MCP client request timeout (ms) for every server; `0` disables client-side timeouts. Default `30000`. Legacy alias `OMP_MCP_TIMEOUT_MS`. |
+| `VEYYON_MCP_TIMEOUT_MS` | Overrides the MCP client request timeout (ms) for every server; `0` disables client-side timeouts. Default `30000`. |
 
 See [Configuration](../using/configuration.md) for `bearer_token_env_var` examples.
 
@@ -119,8 +121,8 @@ broker host:
 
 | Variable | Purpose |
 | --- | --- |
-| `VEYYON_AUTH_BROKER_URL` | Base URL of the remote auth-broker; selects broker mode. Legacy alias `OMP_AUTH_BROKER_URL`. |
-| `VEYYON_AUTH_BROKER_TOKEN` | Bearer token sent to the broker. Legacy alias `OMP_AUTH_BROKER_TOKEN`. |
+| `VEYYON_AUTH_BROKER_URL` | Base URL of the remote auth-broker; selects broker mode. |
+| `VEYYON_AUTH_BROKER_TOKEN` | Bearer token sent to the broker. |
 | `VEYYON_AUTH_BROKER_SNAPSHOT_TTL_MS` | Freshness window (ms) for the encrypted local snapshot cache; default `3600000`. |
 | `VEYYON_AUTH_BROKER_SNAPSHOT_CACHE` | Path to the encrypted local snapshot cache. |
 
@@ -140,19 +142,19 @@ There is no `VEYYON_REPAIR_LOG`, and Veyyon does not emit per-`(model,tool,shape
 | --- | --- |
 | `NO_COLOR` | When set (to any value), Veyyon renders without color; hierarchy comes through emphasis, spacing, and glyphs instead. |
 | `TERM` / `COLORTERM` | Read to detect terminal capabilities (truecolor, ANSI-256, ANSI-16) and pick the matching palette mapping. |
-| `PI_HARDWARE_CURSOR` | Truthy enables hardware cursor mode. |
-| `PI_TUI_WRITE_LOG` | When set, logs TUI writes to the given file (debugging). |
+| `VEYYON_HARDWARE_CURSOR` | Truthy enables hardware cursor mode. |
+| `VEYYON_TUI_WRITE_LOG` | When set, logs TUI writes to the given file (debugging). |
 
 There is no `VEYYON_TUI_DISABLE_KEYBOARD_ENHANCEMENT`, `VEYYON_TUI_RECORD_SESSION`, or
 `VEYYON_TUI_SESSION_LOG_PATH`; see
 [`docs/environment-variables.md`](../../../environment-variables.md#9-tui-runtime-flags-shared-package-affects-coding-agent-ux)
-for the real `PI_*`-prefixed TUI flags.
+for the real `VEYYON_*`-prefixed TUI flags.
 
 ## Removed / does not exist
 
 | Name | Status |
 | --- | --- |
-| `VEYYON_HOME` | Never existed. Config location is `VEYYON_CONFIG_DIR` (dirname override, legacy `OMP_CONFIG_DIR`/`PI_CONFIG_DIR`) + optional XDG migration, not a single home-path variable. |
+| `VEYYON_HOME` | Never existed. Config location is `VEYYON_CONFIG_DIR` (dirname override) + optional XDG migration, not a single home-path variable. |
 | `VEYYON_SQLITE_HOME` | Never existed. No separate SQLite-state override; state lives under the resolved agent directory. |
 | `VEYYON_API_KEY` / `VEYYON_ACCESS_TOKEN` | Never existed as a Veyyon-branded credential; use each provider's native key variable. |
 | `VEYYON_AUTHAPI_BASE_URL` | Never existed. The ChatGPT AuthAPI host used by personal-access-token whoami is not overridable via env today. |

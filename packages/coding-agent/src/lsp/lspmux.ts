@@ -1,6 +1,6 @@
 import * as os from "node:os";
 import * as path from "node:path";
-import { $flag, $which, logger } from "@veyyon/pi-utils";
+import { $flag, $which, logger } from "@veyyon/utils";
 import { TOML } from "bun";
 
 /**
@@ -127,7 +127,7 @@ async function checkServerRunning(binaryPath: string): Promise<boolean> {
  * Detect lspmux availability and state.
  * Results are cached for STATE_CACHE_TTL_MS.
  *
- * Set PI_DISABLE_LSPMUX=1 to disable.
+ * Set VEYYON_DISABLE_LSPMUX=1 to disable.
  */
 export async function detectLspmux(): Promise<LspmuxState> {
 	const now = Date.now();
@@ -135,7 +135,7 @@ export async function detectLspmux(): Promise<LspmuxState> {
 		return cachedState;
 	}
 
-	if ($flag("PI_DISABLE_LSPMUX")) {
+	if ($flag("VEYYON_DISABLE_LSPMUX")) {
 		cachedState = { available: false, running: false, binaryPath: null, config: null };
 		cacheTimestamp = now;
 		return cachedState;

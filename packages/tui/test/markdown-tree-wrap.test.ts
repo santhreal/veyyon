@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
-import { Markdown } from "@veyyon/pi-tui/components/markdown";
-import { visibleWidth, wrapTextWithAnsi } from "@veyyon/pi-tui/utils";
+import { Markdown } from "@veyyon/tui/components/markdown";
+import { visibleWidth, wrapTextWithAnsi } from "@veyyon/tui/utils";
 import { Chalk } from "chalk";
 import { defaultMarkdownTheme } from "./test-themes.js";
 

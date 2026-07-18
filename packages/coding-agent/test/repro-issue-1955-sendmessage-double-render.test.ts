@@ -1,20 +1,20 @@
 import { afterEach, beforeAll, describe, expect, test, vi } from "bun:test";
-import type { AgentMessage } from "@veyyon/pi-agent-core";
-import type { ImageContent, TextContent } from "@veyyon/pi-ai";
-import { resetSettingsForTest, Settings } from "@veyyon/pi-coding-agent/config/settings";
+import type { AgentMessage } from "@veyyon/agent-core";
+import type { ImageContent, TextContent } from "@veyyon/ai";
+import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import type {
 	ExtensionActions,
 	ExtensionCommandContextActions,
 	ExtensionContextActions,
 	ExtensionUIContext,
-} from "@veyyon/pi-coding-agent/extensibility/extensions";
-import { ExtensionUiController } from "@veyyon/pi-coding-agent/modes/controllers/extension-ui-controller";
-import { initTheme } from "@veyyon/pi-coding-agent/modes/theme/theme";
-import type { InteractiveModeContext } from "@veyyon/pi-coding-agent/modes/types";
-import { UiHelpers } from "@veyyon/pi-coding-agent/modes/utils/ui-helpers";
-import { buildSessionContext, type SessionContext } from "@veyyon/pi-coding-agent/session/session-context";
-import type { CustomMessageEntry, SessionEntry } from "@veyyon/pi-coding-agent/session/session-entries";
-import { Container } from "@veyyon/pi-tui";
+} from "@veyyon/coding-agent/extensibility/extensions";
+import { ExtensionUiController } from "@veyyon/coding-agent/modes/controllers/extension-ui-controller";
+import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
+import { UiHelpers } from "@veyyon/coding-agent/modes/utils/ui-helpers";
+import { buildSessionContext, type SessionContext } from "@veyyon/coding-agent/session/session-context";
+import type { CustomMessageEntry, SessionEntry } from "@veyyon/coding-agent/session/session-entries";
+import { Container } from "@veyyon/tui";
 
 /**
  * Issue #1955: `sendMessage` with `display: true` renders twice during

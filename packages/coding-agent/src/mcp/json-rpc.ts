@@ -4,7 +4,8 @@
  * Lightweight utilities for calling MCP servers directly via HTTP
  * without maintaining persistent connections.
  */
-import { logger } from "@veyyon/pi-utils";
+import { logger } from "@veyyon/utils";
+import { scopedTimeoutSignal } from "../utils/fetch-timeout";
 
 /** Hard ceiling on a single MCP HTTP request when the caller provides no signal. */
 const MCP_DEFAULT_TIMEOUT_MS = 60_000;
@@ -90,23 +91,31 @@ export async function callMCP<T = unknown>(
 		params: params ?? {},
 	};
 
-	const response = await fetch(url, {
-		method: "POST",
-		headers: {
-			"Content-Type": "application/json",
-			Accept: "application/json, text/event-stream",
-		},
-		body: JSON.stringify(body),
-		signal: options?.signal ?? AbortSignal.timeout(MCP_DEFAULT_TIMEOUT_MS),
-	});
+	// The fence must span the body read as well: an SSE-style MCP response can
+	// stall mid-stream, and only the armed signal interrupts `response.text()`.
+	const requestTimeout = options?.signal ? undefined : scopedTimeoutSignal(MCP_DEFAULT_TIMEOUT_MS);
+	let text: string;
+	try {
+		const response = await fetch(url, {
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+				Accept: "application/json, text/event-stream",
+			},
+			body: JSON.stringify(body),
+			signal: options?.signal ?? requestTimeout?.signal,
+		});
 
-	if (!response.ok) {
-		const errorMsg = `MCP request failed: ${response.status} ${response.statusText}`;
-		logger.error(errorMsg, { url: redactUrlForLog(url), method, params });
-		throw new Error(errorMsg);
+		if (!response.ok) {
+			const errorMsg = `MCP request failed: ${response.status} ${response.statusText}`;
+			logger.error(errorMsg, { url: redactUrlForLog(url), method, params });
+			throw new Error(errorMsg);
+		}
+
+		text = await response.text();
+	} finally {
+		requestTimeout?.cancel();
 	}
-
-	const text = await response.text();
 	const result = parseSSE(text) as JsonRpcResponse<T> | null;
 
 	if (!result) {

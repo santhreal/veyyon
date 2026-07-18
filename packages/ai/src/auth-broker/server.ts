@@ -9,7 +9,7 @@
  * Transport security is delegated to the operator (Tailscale / Wireguard);
  * the server only checks a bearer token against an allow-list per request.
  */
-import { logger } from "@veyyon/pi-utils";
+import { errorMessage, logger } from "@veyyon/utils";
 import { type Type, type } from "arktype";
 import type { AuthStorage, StoredCredentialBlock } from "../auth-storage";
 import { parseBind } from "../utils/parse-bind";
@@ -599,7 +599,7 @@ export function startAuthBroker(opts: AuthBrokerServerOptions): AuthBrokerServer
 						logger.info("auth-broker usage served", { peer, reports: trimmed.length });
 						return json(200, { generatedAt: Date.now(), reports: trimmed });
 					} catch (error) {
-						const message = error instanceof Error ? error.message : String(error);
+						const message = errorMessage(error);
 						logger.warn("auth-broker usage fetch failed", { peer, error: message });
 						return json(502, { error: message });
 					}
@@ -610,7 +610,7 @@ export function startAuthBroker(opts: AuthBrokerServerOptions): AuthBrokerServer
 						logger.info("auth-broker usage cache invalidated", { peer });
 						return json(200, { ok: true });
 					} catch (error) {
-						const message = error instanceof Error ? error.message : String(error);
+						const message = errorMessage(error);
 						logger.warn("auth-broker usage cache invalidation failed", { peer, error: message });
 						return json(500, { error: message });
 					}
@@ -629,7 +629,7 @@ export function startAuthBroker(opts: AuthBrokerServerOptions): AuthBrokerServer
 						});
 						return json(200, body);
 					} catch (error) {
-						const message = error instanceof Error ? error.message : String(error);
+						const message = errorMessage(error);
 						logger.warn("auth-broker refresh failed", { id, peer, error: message });
 						const status = message.includes("No credential with id") ? 404 : 500;
 						return json(status, { error: message });
@@ -678,7 +678,7 @@ export function startAuthBroker(opts: AuthBrokerServerOptions): AuthBrokerServer
 						});
 						return json(200, response);
 					} catch (error) {
-						const message = error instanceof Error ? error.message : String(error);
+						const message = errorMessage(error);
 						logger.warn("auth-broker credential block upsert failed", { id, peer, error: message });
 						const status = message.includes("No credential with id") ? 404 : 500;
 						return json(status, { error: message });
@@ -697,7 +697,7 @@ export function startAuthBroker(opts: AuthBrokerServerOptions): AuthBrokerServer
 						logger.info("auth-broker credential blocks deleted", { id, peer });
 						return json(200, response);
 					} catch (error) {
-						const message = error instanceof Error ? error.message : String(error);
+						const message = errorMessage(error);
 						logger.warn("auth-broker credential blocks delete failed", { id, peer, error: message });
 						const status = message.includes("No credential with id") ? 404 : 500;
 						return json(status, { error: message });
@@ -723,7 +723,7 @@ export function startAuthBroker(opts: AuthBrokerServerOptions): AuthBrokerServer
 						const response: CredentialUploadResponse = { entries };
 						return json(200, response);
 					} catch (error) {
-						const message = error instanceof Error ? error.message : String(error);
+						const message = errorMessage(error);
 						logger.warn("auth-broker upload failed", { provider, peer, error: message });
 						return json(500, { error: message });
 					}

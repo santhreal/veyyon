@@ -1,4 +1,5 @@
 /** `web_search` — provider-backed web search with synthesized answer and sources. */
+import { formatCount } from "@veyyon/utils";
 import type { ReactNode } from "react";
 import { Badge, Badges, InvalidArg, Kv, KvGrid, Note, ResultText, Row } from "../parts";
 import type { ToolRenderer, ToolRenderProps } from "../types";
@@ -99,7 +100,7 @@ function Body({ args, result }: ToolRenderProps): ReactNode {
 					recency && `recency=${recency}`,
 					limit !== null && `limit=${limit}`,
 					numResults !== null && `results=${numResults}`,
-					response && `${sources.length} source${sources.length === 1 ? "" : "s"}`,
+					response && formatCount("source", sources.length),
 				]}
 			/>
 			{(query !== null || providerInfo || usageParts.length > 0) && (

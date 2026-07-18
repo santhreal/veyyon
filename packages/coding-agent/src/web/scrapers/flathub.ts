@@ -1,6 +1,15 @@
-import { tryParseJson } from "@veyyon/pi-utils";
-import type { RenderResult, SpecialHandler } from "./types";
-import { buildResult, formatIsoDate, formatNumber, htmlToBasicMarkdown, loadPage } from "./types";
+import { tryParseJson } from "@veyyon/utils";
+import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
+import {
+	buildResult,
+	formatIsoDate,
+	formatNumber,
+	htmlToBasicMarkdown,
+	loadFailure,
+	loadPage,
+	scraperDegrade,
+	tryParseUrl,
+} from "./types";
 
 interface FlathubScreenshotSize {
 	src?: string;
@@ -134,9 +143,10 @@ export const handleFlathub: SpecialHandler = async (
 	url: string,
 	timeout: number,
 	signal?: AbortSignal,
-): Promise<RenderResult | null> => {
+): Promise<RenderResult | ScraperDegrade | null> => {
 	try {
-		const parsed = new URL(url);
+		const parsed = tryParseUrl(url);
+		if (!parsed) return null;
 		if (parsed.hostname !== "flathub.org" && parsed.hostname !== "www.flathub.org") return null;
 
 		const appId = extractAppId(parsed.pathname);
@@ -144,10 +154,10 @@ export const handleFlathub: SpecialHandler = async (
 
 		const apiUrl = `https://flathub.org/api/v2/appstream/${encodeURIComponent(appId)}`;
 		const result = await loadPage(apiUrl, { timeout, signal, headers: { Accept: "application/json" } });
-		if (!result.ok) return null;
+		if (!result.ok) return scraperDegrade("flathub", loadFailure(result));
 
 		const app = tryParseJson<FlathubAppStream>(result.content);
-		if (!app) return null;
+		if (!app) return scraperDegrade("flathub", "unexpected response shape");
 
 		const fetchedAt = new Date().toISOString();
 		const name = app.name ?? app.id ?? appId;
@@ -217,7 +227,7 @@ export const handleFlathub: SpecialHandler = async (
 			fetchedAt,
 			notes: ["Fetched via Flathub Appstream API"],
 		});
-	} catch {}
-
-	return null;
+	} catch (error) {
+		return scraperDegrade("flathub", error);
+	}
 };

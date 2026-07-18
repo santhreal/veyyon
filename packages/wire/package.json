@@ -1,6 +1,6 @@
 {
   "type": "module",
-  "name": "@veyyon/pi-wire",
+  "name": "@veyyon/wire",
   "version": "1.0.0",
   "description": "Shared wire protocol types for Veyyon packages",
   "homepage": "https://veyyon.dev",
@@ -8,11 +8,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/can1357/oh-my-pi.git",
+    "url": "git+https://github.com/santhreal/veyyon.git",
     "directory": "packages/wire"
   },
   "bugs": {
-    "url": "https://github.com/can1357/oh-my-pi/issues"
+    "url": "https://github.com/santhreal/veyyon/issues"
   },
   "keywords": [
     "wire",

@@ -1,7 +1,8 @@
 import * as path from "node:path";
-import { isEnoent, logger, postmortem, ptree, untilAborted } from "@veyyon/pi-utils";
+import { isEnoent, logger, postmortem, ptree, untilAborted } from "@veyyon/utils";
 import { MessageFramer } from "../jsonrpc/message-framing";
 import { ToolAbortError, throwIfAborted } from "../tools/tool-errors";
+import { scopedTimeoutSignal } from "../utils/fetch-timeout";
 import { applyWorkspaceEdit } from "./edits";
 import { getLspmuxCommand, isLspmuxSupported } from "./lspmux";
 import type {
@@ -997,8 +998,8 @@ export async function notifyWorkspaceWatchedFiles(
 	);
 	if (activeClients.length === 0) return;
 
-	const timeoutSignal = AbortSignal.timeout(WATCHED_FILES_NOTIFY_TIMEOUT_MS);
-	const sendSignal = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
+	const sendTimeout = scopedTimeoutSignal(WATCHED_FILES_NOTIFY_TIMEOUT_MS, signal);
+	const sendSignal = sendTimeout.signal;
 	const results = await Promise.allSettled(
 		activeClients.map(async client => {
 			const clientChanges = changes
@@ -1012,6 +1013,7 @@ export async function notifyWorkspaceWatchedFiles(
 			await sendNotification(client, "workspace/didChangeWatchedFiles", { changes: clientChanges }, sendSignal);
 		}),
 	);
+	sendTimeout.cancel();
 	throwIfAborted(signal);
 	for (const result of results) {
 		if (result.status === "rejected") {

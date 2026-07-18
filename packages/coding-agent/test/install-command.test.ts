@@ -1,5 +1,5 @@
 /**
- * Regression test for #1496 (bug 2): `omp install ./my-extension` used to be
+ * Regression test for #1496 (bug 2): `veyyon install ./my-extension` used to be
  * silently rewritten to `launch install ./my-extension` and forwarded to the
  * LLM as an initial prompt because no top-level `install` subcommand existed.
  *
@@ -15,10 +15,10 @@ import { describe, expect, test } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { commands, isSubcommand, resolveCliArgv } from "@veyyon/pi-coding-agent/cli-commands";
-import { looksLikeLocalPath } from "@veyyon/pi-coding-agent/commands/install";
-import { removeSyncWithRetries } from "@veyyon/pi-utils";
-import { APP_NAME } from "@veyyon/pi-utils/dirs";
+import { commands, isSubcommand, resolveCliArgv } from "@veyyon/coding-agent/cli-commands";
+import { looksLikeLocalPath } from "@veyyon/coding-agent/commands/install";
+import { removeSyncWithRetries } from "@veyyon/utils";
+import { APP_NAME } from "@veyyon/utils/dirs";
 
 describe("install command is registered as a top-level subcommand", () => {
 	test("CLI runner sees `install` as a known command", () => {
@@ -62,7 +62,7 @@ describe("looksLikeLocalPath", () => {
 	});
 
 	test("bare names that exist as a local directory are treated as local", () => {
-		const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "omp-install-test-"));
+		const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-install-test-"));
 		try {
 			fs.mkdirSync(path.join(tempDir, "vendored-ext"));
 			expect(looksLikeLocalPath("vendored-ext", tempDir)).toBe(true);

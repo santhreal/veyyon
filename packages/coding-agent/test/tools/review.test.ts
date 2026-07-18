@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
-import { finalizeSubprocessOutput } from "@veyyon/pi-coding-agent/task/executor";
-import { subprocessToolRegistry } from "@veyyon/pi-coding-agent/task/subprocess-tool-registry";
-import { parseReportFindingDetails, toReviewFinding } from "@veyyon/pi-coding-agent/tools/review";
+import { finalizeSubprocessOutput } from "@veyyon/coding-agent/task/executor";
+import { subprocessToolRegistry } from "@veyyon/coding-agent/task/subprocess-tool-registry";
+import { parseReportFindingDetails, toReviewFinding } from "@veyyon/coding-agent/tools/review";
 
 describe("report_finding subprocess extraction", () => {
 	it("returns undefined for malformed finding details", () => {

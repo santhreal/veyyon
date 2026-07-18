@@ -395,7 +395,7 @@ impl CommandBuilder<'_> {
 				line.push(' ');
 				line.push_str(&arg.to_string_lossy());
 			}
-			let _ = writeln!(pi_uutils_ctx::stderr(), "{line}");
+			let _ = writeln!(veyyon_uutils_ctx::stderr(), "{line}");
 		}
 
 		match &self.options.action {
@@ -407,7 +407,7 @@ impl CommandBuilder<'_> {
 				let mut command = Command::new(entry_point);
 				command
 					.args(&final_args)
-					.current_dir(pi_uutils_ctx::cwd())
+					.current_dir(veyyon_uutils_ctx::cwd())
 					.env_clear()
 					.envs(&self.options.env);
 				match run_command_captured(&mut command) {
@@ -443,7 +443,7 @@ impl CommandBuilder<'_> {
 			},
 			ExecAction::Echo => {
 				let _ = writeln!(
-					pi_uutils_ctx::stdout(),
+					veyyon_uutils_ctx::stdout(),
 					"{}",
 					self
 						.extra_args
@@ -485,11 +485,11 @@ fn run_command_captured(command: &mut Command) -> io::Result<ExitStatus> {
 	});
 
 	if let Some(mut out) = child.stdout.take() {
-		let _ = io::copy(&mut out, &mut pi_uutils_ctx::stdout());
+		let _ = io::copy(&mut out, &mut veyyon_uutils_ctx::stdout());
 	}
 	let status = child.wait();
 	if let Ok(buf) = stderr_thread.join() {
-		let _ = pi_uutils_ctx::stderr().write_all(&buf);
+		let _ = veyyon_uutils_ctx::stderr().write_all(&buf);
 	}
 	status
 }
@@ -716,7 +716,7 @@ fn process_input(
 	while let Some(arg) = args.next()? {
 		// Stop launching new children once the host has cancelled the
 		// command; report what already ran.
-		if pi_uutils_ctx::is_cancelled() {
+		if veyyon_uutils_ctx::is_cancelled() {
 			return Ok(result);
 		}
 		if let Err(ExhaustedCommandSpace { arg, out_of_chars }) = current_builder.add_arg(arg) {
@@ -739,7 +739,7 @@ fn process_input(
 		have_pending_command = true;
 	}
 
-	if pi_uutils_ctx::is_cancelled() {
+	if veyyon_uutils_ctx::is_cancelled() {
 		return Ok(result);
 	}
 
@@ -804,7 +804,7 @@ fn normalize_options<'a>(
 			},
 			_ => {
 				let _ = writeln!(
-					pi_uutils_ctx::stderr(),
+					veyyon_uutils_ctx::stderr(),
 					"WARNING: -L, -n and -I/-i are mutually exclusive, but more than one were given; \
 					 only the last option will be used"
 				);
@@ -968,7 +968,7 @@ fn do_xargs(args: &[&str]) -> Result<CommandResult, XargsError> {
 			ErrorKind::DisplayHelp | ErrorKind::DisplayVersion => {
 				// The help/version text already has a newline, so no extra
 				// newline here.
-				let _ = write!(pi_uutils_ctx::stdout(), "{e}");
+				let _ = write!(veyyon_uutils_ctx::stdout(), "{e}");
 
 				return Ok(CommandResult::Success);
 			},
@@ -1009,7 +1009,7 @@ fn do_xargs(args: &[&str]) -> Result<CommandResult, XargsError> {
 	};
 	// The shell's exported environment lives in the ctx scope, not the host
 	// process environment.
-	let env: HashMap<OsString, OsString> = pi_uutils_ctx::env_snapshot()
+	let env: HashMap<OsString, OsString> = veyyon_uutils_ctx::env_snapshot()
 		.into_iter()
 		.map(|(k, v)| (OsString::from(k), OsString::from(v)))
 		.collect();
@@ -1035,11 +1035,11 @@ fn do_xargs(args: &[&str]) -> Result<CommandResult, XargsError> {
 
 	let args_file: Box<dyn Read> = if let Some(path) = &options.arg_file {
 		Box::new(
-			fs::File::open(pi_uutils_ctx::resolve(path))
+			fs::File::open(veyyon_uutils_ctx::resolve(path))
 				.map_err(|e| format!("Failed to open {path}: {e}"))?,
 		)
 	} else {
-		Box::new(pi_uutils_ctx::stdin())
+		Box::new(veyyon_uutils_ctx::stdin())
 	};
 
 	let args: Box<dyn ArgumentReader> = if let Some(delimiter) = delimiter {
@@ -1067,7 +1067,7 @@ pub fn xargs_main(args: &[&str]) -> i32 {
 		Ok(CommandResult::Success) => 0,
 		Ok(CommandResult::Failure) => 123,
 		Err(e) => {
-			let _ = writeln!(pi_uutils_ctx::stderr(), "Error: {e}");
+			let _ = writeln!(veyyon_uutils_ctx::stderr(), "Error: {e}");
 			if let XargsError::CommandExecution(cx) = e {
 				match cx {
 					CommandExecutionError::UrgentlyFailed => 124,

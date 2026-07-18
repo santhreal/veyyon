@@ -2,9 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { FetchImpl } from "@veyyon/pi-ai/types";
-import { resetSettingsForTest, Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { AuthStorage } from "@veyyon/pi-coding-agent/session/auth-storage";
+import type { FetchImpl } from "@veyyon/ai/types";
+import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
+import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import {
 	buildExaRequestBody,
 	ExaProvider,
@@ -12,8 +12,8 @@ import {
 	resetExaSearchThrottleForTest,
 	searchExa,
 	synthesizeAnswer,
-} from "@veyyon/pi-coding-agent/web/search/providers/exa";
-import { removeWithRetries } from "@veyyon/pi-utils";
+} from "@veyyon/coding-agent/web/search/providers/exa";
+import { removeWithRetries } from "@veyyon/utils";
 
 async function withLocalAuthStorage<T>(run: (authStorage: AuthStorage) => Promise<T>): Promise<T> {
 	const dir = await fs.mkdtemp(path.join(os.tmpdir(), "web-search-exa-auth-"));

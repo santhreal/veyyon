@@ -10,12 +10,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { resetSettingsForTest, Settings } from "@veyyon/pi-coding-agent/config/settings";
-import type { AgentHubRemote } from "@veyyon/pi-coding-agent/modes/components/agent-hub";
-import { AgentTranscriptViewer } from "@veyyon/pi-coding-agent/modes/components/agent-transcript-viewer";
-import { initTheme } from "@veyyon/pi-coding-agent/modes/theme/theme";
-import { AgentRegistry } from "@veyyon/pi-coding-agent/registry/agent-registry";
-import { CURRENT_SESSION_VERSION } from "@veyyon/pi-coding-agent/session/session-entries";
+import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
+import type { AgentHubRemote } from "@veyyon/coding-agent/modes/components/agent-hub";
+import { AgentTranscriptViewer } from "@veyyon/coding-agent/modes/components/agent-transcript-viewer";
+import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";
+import { CURRENT_SESSION_VERSION } from "@veyyon/coding-agent/session/session-entries";
 import {
 	getKittyGraphics,
 	ImageBudget,
@@ -24,8 +24,8 @@ import {
 	setTerminalImageProtocol,
 	TERMINAL,
 	type TUI,
-} from "@veyyon/pi-tui";
-import { removeSyncWithRetries } from "@veyyon/pi-utils";
+} from "@veyyon/tui";
+import { removeSyncWithRetries } from "@veyyon/utils";
 
 const TS = new Date().toISOString();
 

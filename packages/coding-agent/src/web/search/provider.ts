@@ -8,7 +8,7 @@
 // Provider modules are loaded lazily; display metadata lives in types.ts so UI
 // listings can share it without importing provider implementations.
 
-import type { AuthStorage } from "@veyyon/pi-ai";
+import type { AuthStorage } from "@veyyon/ai";
 import type { SearchProvider } from "./providers/base";
 import { SEARCH_PROVIDER_LABELS, SEARCH_PROVIDER_ORDER, SearchProviderError, type SearchProviderId } from "./types";
 

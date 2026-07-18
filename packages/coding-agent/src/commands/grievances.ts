@@ -1,11 +1,13 @@
 /**
  * View, clean, and push reported tool issues from automated QA.
  */
-import { Args, Command, Flags } from "@veyyon/pi-utils/cli";
+import { Args, Command, Flags } from "@veyyon/utils/cli";
 import { cleanGrievances, listGrievances, pushGrievances } from "../cli/grievances-cli";
 
 export default class Grievances extends Command {
 	static description = "View, clean, or push reported tool issues (auto-QA grievances)";
+
+	static devTool = true;
 
 	static args = {
 		// Positional action: "list" (default), "clean", or "push". A positional

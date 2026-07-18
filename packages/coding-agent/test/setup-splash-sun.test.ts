@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from "bun:test";
-import { renderSetupSplash, SETUP_SPLASH_MS } from "@veyyon/pi-coding-agent/modes/setup-wizard/scenes/splash";
-import { initTheme } from "@veyyon/pi-coding-agent/modes/theme/theme";
-import { APP_NAME } from "@veyyon/pi-utils";
+import { renderSetupSplash, SETUP_SPLASH_MS } from "@veyyon/coding-agent/modes/setup-wizard/scenes/splash";
+import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { APP_NAME } from "@veyyon/utils";
 
 beforeAll(async () => {
 	await initTheme(false);
@@ -9,7 +9,6 @@ beforeAll(async () => {
 
 /** Strip SGR escapes so we can assert on glyph geometry. */
 function strip(s: string): string {
-	// biome-ignore lint/suspicious/noControlCharactersInRegex: matching ANSI SGR
 	return s.replace(/\x1b\[[0-9;]*m/g, "");
 }
 

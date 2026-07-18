@@ -1,6 +1,7 @@
-import type { AgentTool } from "@veyyon/pi-agent-core";
-import type { Tool as AiTool } from "@veyyon/pi-ai";
-import { toolWireSchema } from "@veyyon/pi-ai/utils/schema";
+import type { AgentTool } from "@veyyon/agent-core";
+import type { Tool as AiTool } from "@veyyon/ai";
+import { toolWireSchema } from "@veyyon/ai/utils/schema";
+import { formatCount } from "@veyyon/utils";
 
 // ─── Generic Tool Discovery Types ────────────────────────────────────────────
 
@@ -188,8 +189,7 @@ export function filterBySource(tools: DiscoverableTool[], source: DiscoverableTo
 }
 
 export function formatDiscoverableToolServerSummary(server: DiscoverableToolServerSummary): string {
-	const toolLabel = server.toolCount === 1 ? "tool" : "tools";
-	return `${server.name} (${server.toolCount} ${toolLabel})`;
+	return `${server.name} (${formatCount("tool", server.toolCount)})`;
 }
 
 export function selectDiscoverableToolNamesByServer(

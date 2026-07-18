@@ -8,14 +8,14 @@ import {
 	type TtsrCommandArgs,
 	type TtsrScanArgs,
 	type TtsrTestArgs,
-} from "@veyyon/pi-coding-agent/cli/ttsr-cli";
-import { resetSettingsForTest } from "@veyyon/pi-coding-agent/config/settings";
-import { getProjectAgentDir, getProjectDir, removeSyncWithRetries, setProjectDir } from "@veyyon/pi-utils";
+} from "@veyyon/coding-agent/cli/ttsr-cli";
+import { resetSettingsForTest } from "@veyyon/coding-agent/config/settings";
+import { getProjectAgentDir, getProjectDir, removeSyncWithRetries, setProjectDir } from "@veyyon/utils";
 
 let testTmpDir: string;
 
 beforeAll(() => {
-	testTmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "omp-ttsr-tests-"));
+	testTmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-ttsr-tests-"));
 });
 
 afterAll(() => {
@@ -96,7 +96,7 @@ function cleanupTmp(): void {
 	}
 }
 
-describe("omp ttsr", () => {
+describe("veyyon ttsr", () => {
 	afterEach(() => {
 		restoreStreams();
 		cleanupTmp();
@@ -106,7 +106,7 @@ describe("omp ttsr", () => {
 		it("infers tool/edit context when a positional resolves to a .ts file and --source is omitted", async () => {
 			captureStreams();
 			const rulePath = await writeTempRule(": any", ["tool:edit(*.ts)"]);
-			// Simulate `omp ttsr test --rule <rule> src/foo.ts`: the command layer
+			// Simulate `veyyon ttsr test --rule <rule> src/foo.ts`: the command layer
 			// resolves a file positional into `file`, but the CLI handler's own
 			// inference (source from file extension) is exercised when source is
 			// unset. Pass file + filePath so the handler infers tool context.

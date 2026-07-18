@@ -1,12 +1,12 @@
 import { describe, expect, it } from "bun:test";
-import { ProviderHttpError } from "@veyyon/pi-ai/error";
-import { isUsageLimit } from "@veyyon/pi-ai/error/flags";
+import { ProviderHttpError } from "@veyyon/ai/error";
+import { isUsageLimit } from "@veyyon/ai/error/flags";
 import {
 	calculateRateLimitBackoffMs,
 	isUsageLimitOutcome,
 	isUsageLimitStatus,
 	parseRateLimitReason,
-} from "@veyyon/pi-ai/error/rate-limit";
+} from "@veyyon/ai/error/rate-limit";
 
 describe("parseRateLimitReason", () => {
 	it("classifies Google Quota exceeded as QUOTA_EXHAUSTED", () => {

@@ -8,8 +8,12 @@
  * `launch` — see #1496 for the original "args silently leak to the LLM"
  * regression that motivated the split.
  */
-import { levenshteinDistance } from "@veyyon/pi-utils";
-import type { CommandEntry } from "@veyyon/pi-utils/cli";
+// Subpath import, not the barrel: this module is in cli.ts's pre-profile
+// import graph (via profile-bootstrap), and the barrel loads dotenv at import
+// time — before `setProfile` picks the profile agent dir (profile-cli.test.ts).
+
+import type { CommandEntry } from "@veyyon/utils/cli";
+import { levenshteinDistance } from "@veyyon/utils/levenshtein";
 import { flagConsumesValue } from "./cli/flag-tables";
 
 export const commands: CommandEntry[] = [
@@ -82,14 +86,21 @@ export function reservedTopLevelWordMessage(first: string | undefined, argc = 1)
  * and gets sent to the model as a one-word prompt — the same leak class as
  * #1496/#2935, e.g. `veyyon auth` starting a paid LLM session on the word
  * "auth". Multi-word invocations are untouched: genuine prompts win there.
+ * Callers decide what counts as "bare": `resolveCliArgv` passes the sole
+ * positional even when flags surround it (`veyyon updte --print` is the same
+ * leak, just with a flag attached).
  */
 export function nearMissSubcommandMessage(first: string | undefined, argc = 1): string | undefined {
 	if (argc !== 1 || !first || first.length < 3 || first.startsWith("-") || first.startsWith("@")) return undefined;
+	// Short tokens only match at distance 1: at distance 2 a 5-letter English
+	// word collides with unrelated commands ("hello" is 2 edits from "shell"),
+	// which would reject genuine one-word prompts like `veyyon -p hello`.
+	const maxDistance = first.length <= 5 ? 1 : 2;
 	const candidates: string[] = [];
 	for (const entry of commands) {
 		for (const name of [entry.name, ...(entry.aliases ?? [])]) {
 			if (name.startsWith("__")) continue;
-			if (name.startsWith(first) || levenshteinDistance(first, name) <= 2) {
+			if (name.startsWith(first) || levenshteinDistance(first, name) <= maxDistance) {
 				candidates.push(name);
 			}
 		}
@@ -133,6 +144,27 @@ function leadingSubcommandIndex(argv: string[]): number {
 }
 
 /**
+ * The single positional token in argv, if there is exactly one — flags (and
+ * any value they consume) are skipped with the launch parser's contract. Two
+ * or more positionals mean a genuine prompt; an end-of-options `--` is an
+ * explicit "everything after is prompt" and also disqualifies.
+ */
+function solePositional(argv: string[]): string | undefined {
+	let sole: string | undefined;
+	for (let index = 0; index < argv.length; index += 1) {
+		const arg = argv[index];
+		if (arg === "--") return undefined;
+		if (arg.startsWith("-")) {
+			if (flagConsumesValue(arg, argv[index + 1])) index += 1;
+			continue;
+		}
+		if (sole !== undefined) return undefined;
+		sole = arg;
+	}
+	return sole;
+}
+
+/**
  * Decide what the CLI runner should do with raw argv: reject bare reserved
  * management words, pass help/version through untouched, route a recognized
  * subcommand (even behind leading global flags like `--approval-mode=yolo`) to
@@ -156,7 +188,11 @@ export function resolveCliArgv(argv: string[]): ResolvedCliArgv {
 	if (subIndex >= 0) {
 		return { argv: [argv[subIndex], ...argv.slice(0, subIndex), ...argv.slice(subIndex + 1)] };
 	}
-	const nearMissMessage = nearMissSubcommandMessage(first, argv.length);
+	// The near-miss guard covers any invocation whose only positional is the
+	// suspect token — `veyyon updte --print` is the same paid-prompt leak as a
+	// bare `veyyon updte`, just with a flag attached.
+	const sole = solePositional(argv);
+	const nearMissMessage = sole === undefined ? undefined : nearMissSubcommandMessage(sole, 1);
 	if (nearMissMessage) return { error: nearMissMessage };
 	return { argv: ["launch", ...argv] };
 }

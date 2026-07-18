@@ -1,6 +1,6 @@
-# @veyyon/pi-utils
+# @veyyon/utils
 
-Shared utilities for [oh-my-pi](https://github.com/can1357/oh-my-pi) packages. Zero ceremony, Bun-first.
+Shared utilities for [veyyon](https://github.com/santhreal/veyyon) packages. Bun-first.
 
 ## Notable modules
 
@@ -8,7 +8,7 @@ Shared utilities for [oh-my-pi](https://github.com/can1357/oh-my-pi) packages. Z
 | --- | --- |
 | `logger` | Centralized logger writing to `~/.veyyon/logs/` with rotation (TUI-safe — never stdout) |
 | `prompt` | Handlebars-based prompt templating and formatting helpers |
-| `dirs` | Path helpers for omp config directories (`~/.veyyon`, XDG-aware on Linux) |
+| `dirs` | Path helpers for veyyon config directories (`~/.veyyon`, XDG-aware on Linux) |
 | `stream` | `readStream` / `readLines` helpers over `ReadableStream` |
 | `ptree` / `procmgr` | Process trees, `ChildProcess` wrapper, process lifecycle management |
 | `postmortem` | Cleanup callbacks on exit, signals, and fatal exceptions |
@@ -20,17 +20,17 @@ Shared utilities for [oh-my-pi](https://github.com/can1357/oh-my-pi) packages. Z
 | `peek-file` | Read the first N bytes of a file with pooled buffers |
 | `frontmatter`, `glob`, `mime`, `temp`, `format`, `color`, `snowflake`, `tab-spacing`, `path-tree`, `sanitize-text` | Smaller single-purpose helpers |
 
-Import from the root barrel or per-module subpaths (`@veyyon/pi-utils/<module>`).
+Import from the root barrel or per-module subpaths (`@veyyon/utils/<module>`).
 
 ## Install
 
 ```sh
-bun add @veyyon/pi-utils
+bun add @veyyon/utils
 ```
 
 Ships TypeScript source directly (no build step); requires Bun ≥ 1.3.14.
 
 ## References
 
-- [Monorepo README](https://github.com/can1357/oh-my-pi#readme)
+- [Monorepo README](https://github.com/santhreal/veyyon#readme)
 - [CHANGELOG](./CHANGELOG.md)

@@ -5,15 +5,15 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { Agent, type AgentEvent } from "@veyyon/pi-agent-core";
-import { createMockModel } from "@veyyon/pi-ai/providers/mock";
-import { getBundledModel } from "@veyyon/pi-catalog/models";
-import { ModelRegistry } from "@veyyon/pi-coding-agent/config/model-registry";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { AgentSession } from "@veyyon/pi-coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/pi-coding-agent/session/auth-storage";
-import { SessionManager } from "@veyyon/pi-coding-agent/session/session-manager";
-import { removeSyncWithRetries, Snowflake } from "@veyyon/pi-utils";
+import { Agent, type AgentEvent } from "@veyyon/agent-core";
+import { createMockModel } from "@veyyon/ai/providers/mock";
+import { getBundledModel } from "@veyyon/catalog/models";
+import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
+import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { removeSyncWithRetries, Snowflake } from "@veyyon/utils";
 
 function makeEvent(): AgentEvent {
 	return { type: "tool_execution_start", toolCallId: "probe-1", toolName: "probe", args: {} };

@@ -1,5 +1,5 @@
 /**
- * Re-exports from @veyyon/pi-ai.
+ * Re-exports from @veyyon/ai.
  * All credential storage types and the AuthStorage class now live in the ai package.
  */
 
@@ -19,6 +19,6 @@ export type {
 	ResetCreditTarget,
 	SerializedAuthStorage,
 	StoredAuthCredential,
-} from "@veyyon/pi-ai";
-export { AuthStorage, REMOTE_REFRESH_SENTINEL, SqliteAuthCredentialStore } from "@veyyon/pi-ai";
-export type { SnapshotResponse } from "@veyyon/pi-ai/auth-broker/types";
+} from "@veyyon/ai";
+export { AuthStorage, REMOTE_REFRESH_SENTINEL, SqliteAuthCredentialStore } from "@veyyon/ai";
+export type { SnapshotResponse } from "@veyyon/ai/auth-broker/types";

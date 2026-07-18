@@ -7,7 +7,7 @@
  * parent with the expanded skill body dumped into the editor.
  */
 import { describe, expect, it } from "bun:test";
-import { SKILL_PROMPT_MESSAGE_TYPE } from "@veyyon/pi-coding-agent/session/messages";
+import { SKILL_PROMPT_MESSAGE_TYPE } from "@veyyon/coding-agent/session/messages";
 import { assistantMsg, createTestSession, userMsg } from "./utilities";
 
 describe("AgentSession tree navigation onto skill injection", () => {

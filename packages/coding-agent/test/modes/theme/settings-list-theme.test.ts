@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from "bun:test";
-import { getSettingsListTheme, initTheme, theme } from "@veyyon/pi-coding-agent/modes/theme/theme";
+import { getSettingsListTheme, initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
 
 beforeAll(async () => {
 	await initTheme();

@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import type { Tool as AiTool } from "@veyyon/pi-ai";
-import { toolWireSchema } from "@veyyon/pi-ai/utils/schema";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
-import type { ToolSession } from "@veyyon/pi-coding-agent/tools";
-import { EvalTool, getEvalToolDescription } from "@veyyon/pi-coding-agent/tools/eval";
+import type { Tool as AiTool } from "@veyyon/ai";
+import { toolWireSchema } from "@veyyon/ai/utils/schema";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import type { ToolSession } from "@veyyon/coding-agent/tools";
+import { EvalTool, getEvalToolDescription } from "@veyyon/coding-agent/tools/eval";
 
 function makeSession(opts: { spawns?: string | null; backends?: Record<string, boolean> }): ToolSession {
 	const settings = Settings.isolated();
@@ -77,7 +77,7 @@ describe("eval tool description", () => {
 describe("eval tool dynamic schema", () => {
 	// resolveEvalBackends lets PI_* env flags override settings; neutralize them per-test
 	// so the schema is driven purely by the isolated settings (and restore to avoid leaks).
-	const EVAL_ENV_FLAGS = ["PI_PY", "PI_JS", "PI_RB", "PI_JL"] as const;
+	const EVAL_ENV_FLAGS = ["VEYYON_PY", "VEYYON_JS", "VEYYON_RB", "VEYYON_JL"] as const;
 	let savedEnv: Record<string, string | undefined>;
 	beforeEach(() => {
 		savedEnv = {};

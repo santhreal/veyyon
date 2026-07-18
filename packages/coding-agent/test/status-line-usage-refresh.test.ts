@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
-import { resetSettingsForTest, Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { StatusLineComponent } from "@veyyon/pi-coding-agent/modes/components/status-line";
-import { initTheme } from "@veyyon/pi-coding-agent/modes/theme/theme";
-import type { AgentSession } from "@veyyon/pi-coding-agent/session/agent-session";
+import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
+import { StatusLineComponent } from "@veyyon/coding-agent/modes/components/status-line";
+import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 
 async function flushMicrotasks(): Promise<void> {
 	await Promise.resolve();

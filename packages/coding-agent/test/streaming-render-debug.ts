@@ -4,10 +4,10 @@
  * Run with: npx tsx test/streaming-render-debug.ts
  */
 import * as path from "node:path";
-import type { AssistantMessage } from "@veyyon/pi-ai";
-import { AssistantMessageComponent } from "@veyyon/pi-coding-agent/modes/components/assistant-message";
-import { initTheme } from "@veyyon/pi-coding-agent/modes/theme/theme";
-import { ProcessTerminal, TUI } from "@veyyon/pi-tui";
+import type { AssistantMessage } from "@veyyon/ai";
+import { AssistantMessageComponent } from "@veyyon/coding-agent/modes/components/assistant-message";
+import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { ProcessTerminal, TUI } from "@veyyon/tui";
 import { sleep } from "bun";
 
 // Initialize dark theme with full color support

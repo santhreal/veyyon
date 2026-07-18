@@ -37,7 +37,7 @@
  * stateful piece is the {@link CodexAutoRedeemCoordinator} container, whose
  * read-only views are passed in so the predicate itself stays deterministic.
  */
-import type { OAuthAccountIdentity, ResetCreditTarget, UsageReport } from "@veyyon/pi-ai";
+import type { OAuthAccountIdentity, ResetCreditTarget, UsageReport } from "@veyyon/ai";
 import type { CodexAutoRedeemMode } from "../config/settings-schema";
 import { reportMatchesActiveAccount } from "../slash-commands/helpers/active-oauth-account";
 

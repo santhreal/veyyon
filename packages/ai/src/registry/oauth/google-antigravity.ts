@@ -2,7 +2,8 @@
  * Antigravity OAuth flow (Gemini 3, Claude, GPT-OSS via Google Cloud)
  * Uses different OAuth credentials than google-gemini-cli for access to additional models.
  */
-import { getAntigravityUserAgent } from "@veyyon/pi-catalog/wire/gemini-headers";
+import { getAntigravityUserAgent } from "@veyyon/catalog/wire/gemini-headers";
+import { errorMessage } from "@veyyon/utils";
 import * as AIError from "../../error";
 import { runGoogleOAuthLogin } from "./google-oauth-shared";
 import type { OAuthController, OAuthCredentials } from "./types";
@@ -154,10 +155,10 @@ async function discoverProject(accessToken: string, onProgress?: (message: strin
 		const provisionedProject = await onboardProjectWithRetries(endpoint, headers, onboardBody, onProgress);
 		return provisionedProject;
 	} catch (error) {
-		throw new AIError.OAuthError(
-			`Could not discover or provision an Antigravity project. ${error instanceof Error ? error.message : String(error)}`,
-			{ kind: "discovery", cause: error },
-		);
+		throw new AIError.OAuthError(`Could not discover or provision an Antigravity project. ${errorMessage(error)}`, {
+			kind: "discovery",
+			cause: error,
+		});
 	}
 }
 

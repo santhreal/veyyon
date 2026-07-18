@@ -122,14 +122,14 @@ impl ScriptLineProvider {
 				if p.to_string_lossy() == "-" {
 					self.state = State::Active {
 						index:       next_index,
-						reader:      Box::new(BufReader::new(pi_uutils_ctx::stdin())),
+						reader:      Box::new(BufReader::new(veyyon_uutils_ctx::stdin())),
 						input_name:  "<stdin>".to_string(),
 						line_number: 0,
 					};
 				} else {
-					// Patched for pi-uutils-ctx embedding: resolve `-f`
+					// Patched for veyyon-uutils-ctx embedding: resolve `-f`
 					// script files against the shell working directory.
-					let file = File::open(pi_uutils_ctx::resolve(p))
+					let file = File::open(veyyon_uutils_ctx::resolve(p))
 						.map_err_context(|| format!("error opening script file {}", p.quote()))?;
 					self.state = State::Active {
 						index:       next_index,
@@ -170,7 +170,7 @@ impl ScriptLineProvider {
 				input_name: input_name.to_string(),
 				line_number,
 				index: 0,
-				reader: Box::new(BufReader::new(pi_uutils_ctx::stdin())),
+				reader: Box::new(BufReader::new(veyyon_uutils_ctx::stdin())),
 			},
 		}
 	}

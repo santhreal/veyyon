@@ -1,4 +1,4 @@
-import { isRetryableError, isUnexpectedSocketCloseMessage } from "@veyyon/pi-utils";
+import { isRetryableError, isUnexpectedSocketCloseMessage } from "@veyyon/utils";
 import {
 	isRetryableStreamEnvelopeError,
 	isTransientStreamParseError,

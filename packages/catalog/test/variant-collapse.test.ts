@@ -2,17 +2,14 @@ import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { buildModel } from "@veyyon/pi-catalog/build";
-import {
-	ANTIGRAVITY_PRIMARY_ENDPOINT,
-	fetchAntigravityDiscoveryModels,
-} from "@veyyon/pi-catalog/discovery/antigravity";
-import { Effort } from "@veyyon/pi-catalog/effort";
-import { stripThinkingVariantToken } from "@veyyon/pi-catalog/identity/family";
-import { resolveProviderModels } from "@veyyon/pi-catalog/model-manager";
-import { resolveWireModelId } from "@veyyon/pi-catalog/model-thinking";
-import { googleGeminiCliModelManagerOptions } from "@veyyon/pi-catalog/provider-models/google";
-import type { ModelSpec } from "@veyyon/pi-catalog/types";
+import { buildModel } from "@veyyon/catalog/build";
+import { ANTIGRAVITY_PRIMARY_ENDPOINT, fetchAntigravityDiscoveryModels } from "@veyyon/catalog/discovery/antigravity";
+import { Effort } from "@veyyon/catalog/effort";
+import { stripThinkingVariantToken } from "@veyyon/catalog/identity/family";
+import { resolveProviderModels } from "@veyyon/catalog/model-manager";
+import { resolveWireModelId } from "@veyyon/catalog/model-thinking";
+import { googleGeminiCliModelManagerOptions } from "@veyyon/catalog/provider-models/google";
+import type { ModelSpec } from "@veyyon/catalog/types";
 import {
 	ANTIGRAVITY_VARIANT_COLLAPSE_TABLE,
 	collapseEffortVariants,
@@ -24,7 +21,7 @@ import {
 	isVariantCollapsedSpec,
 	resolveBareVariantAlias,
 	resolveVariantAlias,
-} from "@veyyon/pi-catalog/variant-collapse";
+} from "@veyyon/catalog/variant-collapse";
 
 function memberSpec(
 	id: string,

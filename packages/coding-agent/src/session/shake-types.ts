@@ -4,6 +4,7 @@
  * without pulling in the heavy `agent-session` module graph (which would form
  * an import cycle through the slash-command registry).
  */
+import { formatCount } from "@veyyon/utils";
 
 /** Mode selector for `AgentSession.shake`. */
 export type ShakeMode = "elide" | "images";
@@ -27,16 +28,14 @@ export interface ShakeResult {
 export function formatShakeSummary(result: ShakeResult): string {
 	if (result.mode === "images") {
 		const n = result.imagesDropped ?? 0;
-		return n === 0
-			? "No images found in this session."
-			: `Dropped ${n} image${n === 1 ? "" : "s"} from this session.`;
+		return n === 0 ? "No images found in this session." : `Dropped ${formatCount("image", n)} from this session.`;
 	}
 	const parts: string[] = [];
 	if (result.toolResultsDropped > 0) {
-		parts.push(`${result.toolResultsDropped} tool result${result.toolResultsDropped === 1 ? "" : "s"}`);
+		parts.push(formatCount("tool result", result.toolResultsDropped));
 	}
 	if (result.blocksDropped > 0) {
-		parts.push(`${result.blocksDropped} block${result.blocksDropped === 1 ? "" : "s"}`);
+		parts.push(formatCount("block", result.blocksDropped));
 	}
 	if (parts.length === 0) return "Nothing to shake.";
 	return `Shook ${parts.join(" + ")} (~${result.tokensFreed} tokens freed).`;

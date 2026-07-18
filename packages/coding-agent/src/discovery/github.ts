@@ -16,7 +16,7 @@
  * - skills: <name>/SKILL.md in .github/skills/ (GitHub Agent Skills layout)
  */
 import * as path from "node:path";
-import { parseFrontmatter } from "@veyyon/pi-utils";
+import { parseFrontmatter } from "@veyyon/utils";
 import { registerProvider } from "../capability";
 import { type ContextFile, contextFileCapability } from "../capability/context-file";
 import { readFile } from "../capability/fs";
@@ -276,7 +276,7 @@ function copilotCustomInstructionDirs(): string[] {
  * GitHub documents this layout for Copilot Agent Skills and matches the
  * non-recursive shape `scanSkillsFromDir` already expects. `requireDescription`
  * is on to match the Agent Skills spec (name + description are mandatory) and
- * the sibling `native`/`omp-plugins` providers.
+ * the sibling `native`/`veyyon-plugins` providers.
  *
  * @see https://docs.github.com/en/copilot/how-tos/copilot-on-github/customize-copilot/customize-cloud-agent/add-skills
  */

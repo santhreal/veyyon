@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "bun:test";
-import { BeamMemory } from "@veyyon/pi-mnemopi/core/beam";
-import { storeFactStrings } from "@veyyon/pi-mnemopi/core/beam/consolidate";
+import { BeamMemory } from "@veyyon/mnemopi/core/beam";
+import { storeFactStrings } from "@veyyon/mnemopi/core/beam/consolidate";
 
 type TestBeam = BeamMemory;
 

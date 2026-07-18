@@ -21,31 +21,43 @@ import {
 	createMnemopiEmbedSubprocess,
 	MnemopiEmbedClient,
 	type MnemopiEmbedWorkerHandle,
-} from "@veyyon/pi-coding-agent/mnemopi/embed-client";
+} from "@veyyon/coding-agent/mnemopi/embed-client";
 import type {
 	MnemopiEmbedWorkerInbound,
 	MnemopiEmbedWorkerOutbound,
-} from "@veyyon/pi-coding-agent/mnemopi/embed-protocol";
+} from "@veyyon/coding-agent/mnemopi/embed-protocol";
+import { hermeticSpawnEnv } from "./helpers/hermetic-spawn-env";
 
 describe("issue #3031 — mnemopi embeddings live in an isolated subprocess", () => {
 	it("ping/pongs through the spawned worker subprocess and tears it down cleanly", async () => {
 		// `smokeTestMnemopiEmbedWorker` is the runtime probe wired into
-		// `omp --smoke-test`. Run it in a child Bun process instead of this
+		// `veyyon --smoke-test`. Run it in a child Bun process instead of this
 		// Bun-test worker: the test runner owns its own IPC channel and can
 		// starve nested Bun subprocess IPC on some Bun builds.
 		const repoRoot = path.resolve(import.meta.dir, "../../..");
 		const script =
-			'const { smokeTestMnemopiEmbedWorker } = await import("@veyyon/pi-coding-agent/mnemopi/embed-client"); await smokeTestMnemopiEmbedWorker({ timeoutMs: 15000 });';
-		const proc = Bun.spawn([process.execPath, "-e", script], {
-			cwd: repoRoot,
-			stdout: "pipe",
-			stderr: "pipe",
-		});
-		const [stdout, stderr, exitCode] = await Promise.all([
-			new Response(proc.stdout).text(),
-			new Response(proc.stderr).text(),
-			proc.exited,
-		]);
+			'const { smokeTestMnemopiEmbedWorker } = await import("@veyyon/coding-agent/mnemopi/embed-client"); await smokeTestMnemopiEmbedWorker({ timeoutMs: 15000 });';
+		// Hermetic HOME: the probe asserts empty output, and a real-home config
+		// tree can inject startup warnings (e.g. the legacy-layout notice).
+		const { env, cleanup } = hermeticSpawnEnv();
+		let stdout: string;
+		let stderr: string;
+		let exitCode: number;
+		try {
+			const proc = Bun.spawn([process.execPath, "-e", script], {
+				cwd: repoRoot,
+				env,
+				stdout: "pipe",
+				stderr: "pipe",
+			});
+			[stdout, stderr, exitCode] = await Promise.all([
+				new Response(proc.stdout).text(),
+				new Response(proc.stderr).text(),
+				proc.exited,
+			]);
+		} finally {
+			cleanup();
+		}
 		expect(`${stdout}${stderr}`).toBe("");
 		expect(exitCode).toBe(0);
 	}, 30_000);

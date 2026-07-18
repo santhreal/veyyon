@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import type { AgentMessage } from "@veyyon/pi-agent-core";
-import type { SessionEntry, SessionMessageEntry } from "@veyyon/pi-agent-core/compaction";
+import type { AgentMessage } from "@veyyon/agent-core";
+import type { SessionEntry, SessionMessageEntry } from "@veyyon/agent-core/compaction";
 import {
 	DEFAULT_PRUNE_CONFIG,
 	pruneSupersededToolResults,
@@ -9,9 +9,9 @@ import {
 	SUPERSEDED_NOTICE,
 	type SupersedePruneConfig,
 	USELESS_NOTICE,
-} from "@veyyon/pi-agent-core/compaction";
-import type { ProtectedToolContext } from "@veyyon/pi-agent-core/compaction/tool-protection";
-import type { AssistantMessage, TextContent, ToolResultMessage } from "@veyyon/pi-ai";
+} from "@veyyon/agent-core/compaction";
+import type { ProtectedToolContext } from "@veyyon/agent-core/compaction/tool-protection";
+import type { AssistantMessage, TextContent, ToolResultMessage } from "@veyyon/ai";
 
 let idCounter = 0;
 function nextId(): string {

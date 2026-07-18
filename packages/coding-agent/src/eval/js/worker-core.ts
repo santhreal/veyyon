@@ -36,6 +36,15 @@ export type WorkerCoreOptions =
 			 * mutate the host's own cwd on the inline fallback.
 			 */
 			chdir?: (cwd: string) => void;
+			/**
+			 * Required when the isolated realm has postmortem's global
+			 * unhandledRejection handler installed (the dedicated subprocess:
+			 * `isMainThread` is true there). A raw `process.on` listener cannot
+			 * stop postmortem from printing a fatal report and exiting the worker
+			 * first — attribution must run inside postmortem's interceptor chain.
+			 * Worker threads (no postmortem handler) omit this and own the hook.
+			 */
+			interceptUnhandledRejections?: (handler: (reason: unknown) => boolean) => () => void;
 	  }
 	| {
 			mode: "inline";
@@ -115,7 +124,11 @@ export class WorkerCore {
 	 * without a usable stack, while anything else keeps its default fatality.
 	 */
 	#installRejectionGuard(): () => void {
-		if (this.#options.mode === "inline") {
+		if (this.#options.interceptUnhandledRejections) {
+			// Postmortem owns the realm's unhandledRejection hook (inline host, or
+			// the dedicated subprocess where isMainThread is true): attribution
+			// must run inside its interceptor chain or the fatal path preempts us.
+			// Non-consumed rejections keep their default fatality via postmortem.
 			return this.#options.interceptUnhandledRejections(reason => this.#consumeRejection(reason));
 		}
 		const onRejection = (reason: unknown): void => {

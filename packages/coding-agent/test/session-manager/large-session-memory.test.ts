@@ -2,11 +2,11 @@ import { afterEach, describe, expect, it } from "bun:test";
 import * as fsp from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { getBundledModel } from "@veyyon/pi-catalog/models";
-import { listSessions } from "@veyyon/pi-coding-agent/session/session-listing";
-import { loadEntriesFromFile } from "@veyyon/pi-coding-agent/session/session-loader";
-import { SessionManager } from "@veyyon/pi-coding-agent/session/session-manager";
-import { MemorySessionStorage } from "@veyyon/pi-coding-agent/session/session-storage";
+import { getBundledModel } from "@veyyon/catalog/models";
+import { listSessions } from "@veyyon/coding-agent/session/session-listing";
+import { loadEntriesFromFile } from "@veyyon/coding-agent/session/session-loader";
+import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { MemorySessionStorage } from "@veyyon/coding-agent/session/session-storage";
 
 class CountingMemorySessionStorage extends MemorySessionStorage {
 	writeTextSyncCalls = 0;
@@ -88,7 +88,7 @@ describe("large session memory guards", () => {
 	});
 
 	it("streams large session files and keeps only the latest compaction summary", async () => {
-		const tempDir = await fsp.mkdtemp(path.join(os.tmpdir(), "omp-large-session-"));
+		const tempDir = await fsp.mkdtemp(path.join(os.tmpdir(), "veyyon-large-session-"));
 		tempDirs.push(tempDir);
 		const sessionFile = path.join(tempDir, "large.jsonl");
 		const oldSummary = `old-${"x".repeat(5 * 1024 * 1024)}`;
@@ -178,7 +178,7 @@ describe("large session memory guards", () => {
 	});
 
 	it("only elides loaded compactions on the active branch", async () => {
-		const tempDir = await fsp.mkdtemp(path.join(os.tmpdir(), "omp-branch-load-"));
+		const tempDir = await fsp.mkdtemp(path.join(os.tmpdir(), "veyyon-branch-load-"));
 		tempDirs.push(tempDir);
 		const sessionFile = path.join(tempDir, "branched.jsonl");
 		const branchASummary = `branch-a-${"x".repeat(1024)}`;

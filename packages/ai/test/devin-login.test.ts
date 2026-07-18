@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { exchangeDevinCliToken } from "@veyyon/pi-ai/registry/oauth/devin";
-import type { FetchImpl } from "@veyyon/pi-catalog/types";
+import { exchangeDevinCliToken } from "@veyyon/ai/registry/oauth/devin";
+import type { FetchImpl } from "@veyyon/catalog/types";
 
 describe("Devin CLI login", () => {
 	test("exchanges callback code with CLI token JSON endpoint", async () => {

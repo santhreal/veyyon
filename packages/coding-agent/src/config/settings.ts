@@ -12,10 +12,10 @@
  */
 
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
-import { configureProviderMaxInFlightRequests } from "@veyyon/pi-ai/stream";
+import { configureProviderMaxInFlightRequests } from "@veyyon/ai/stream";
 import {
+	expandTilde,
 	getAgentDbPath,
 	getAgentDir,
 	getLastChangelogVersionPath,
@@ -25,7 +25,7 @@ import {
 	MAIN_CONFIG_FILENAMES,
 	procmgr,
 	setWorktreesDir,
-} from "@veyyon/pi-utils";
+} from "@veyyon/utils";
 import { JSONC, YAML } from "bun";
 import { type Settings as SettingsCapabilityItem, settingsCapability } from "../capability/settings";
 import type { ModelRole } from "../config/model-roles";
@@ -150,10 +150,6 @@ type PathScopedStringArrayEntry = {
 	models?: unknown;
 	providers?: unknown;
 };
-
-function expandTilde(p: string): string {
-	return p === "~" ? os.homedir() : p.startsWith("~/") ? path.join(os.homedir(), p.slice(2)) : p;
-}
 
 function normalizePathPrefix(prefix: string): string {
 	return path.resolve(expandTilde(prefix));
@@ -937,7 +933,7 @@ export class Settings {
 			todoObj.eager = todoObj.eager ? "always" : "default";
 		}
 
-		// task.isolation.mode: legacy values from before the pi-iso PAL refactor.
+		// task.isolation.mode: legacy values from before the veyyon-iso PAL refactor.
 		// `worktree` was git worktree → now lives under `rcopy`. `fuse-overlay`
 		// and `fuse-projfs` are now the platform-named `overlayfs` / `projfs`
 		// kinds; the PAL falls back internally when the chosen one isn't

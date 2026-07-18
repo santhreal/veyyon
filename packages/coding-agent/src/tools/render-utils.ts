@@ -7,19 +7,19 @@
 
 import * as os from "node:os";
 import * as path from "node:path";
-import type { ToolCallContext } from "@veyyon/pi-agent-core";
-import type { Ellipsis } from "@veyyon/pi-natives";
-import type { Component } from "@veyyon/pi-tui";
-import { getKeybindings, replaceTabs, truncateToWidth } from "@veyyon/pi-tui";
-import { pluralize } from "@veyyon/pi-utils";
+import type { ToolCallContext } from "@veyyon/agent-core";
+import type { Ellipsis } from "@veyyon/natives";
+import type { Component } from "@veyyon/tui";
+import { getKeybindings, replaceTabs, truncateToWidth } from "@veyyon/tui";
+import { formatCount, pluralize } from "@veyyon/utils";
 import { formatKeyHints, type KeyId } from "../config/keybindings";
 import { settings } from "../config/settings";
 import type { Theme } from "../modes/theme/theme";
 import { Hasher } from "../tui/utils";
 import { formatDimensionNote, type ResizedImage } from "../utils/image-resize";
 
-export { Ellipsis } from "@veyyon/pi-natives";
-export { replaceTabs, truncateToWidth, wrapTextWithAnsi } from "@veyyon/pi-tui";
+export { Ellipsis } from "@veyyon/natives";
+export { replaceTabs, truncateToWidth, wrapTextWithAnsi } from "@veyyon/tui";
 
 // =============================================================================
 // Standardized Display Constants
@@ -135,7 +135,7 @@ export function getDomain(url: string): string {
 // Formatting Utilities
 // =============================================================================
 
-export { formatAge, formatBytes, formatCount, formatDuration, pluralize } from "@veyyon/pi-utils";
+export { formatAge, formatBytes, formatCount, formatDuration, pluralize } from "@veyyon/utils";
 
 // =============================================================================
 // Theme Helper Utilities
@@ -524,7 +524,7 @@ export function formatDiffStats(added: number, removed: number, hunks: number, t
 	const parts: string[] = [];
 	if (added > 0) parts.push(theme.fg("toolDiffAdded", `+${added}`));
 	if (removed > 0) parts.push(theme.fg("toolDiffRemoved", `-${removed}`));
-	if (hunks > 0) parts.push(theme.fg("dim", `${hunks} hunk${hunks !== 1 ? "s" : ""}`));
+	if (hunks > 0) parts.push(theme.fg("dim", formatCount("hunk", hunks)));
 	return parts.join(theme.fg("dim", " / "));
 }
 
@@ -893,7 +893,7 @@ export function formatParseErrorsCountLabel(parseErrors: readonly string[], tota
 	const fullCount = total ?? parseErrors.length;
 	return fullCount > PARSE_ERRORS_LIMIT
 		? `${PARSE_ERRORS_LIMIT} / ${fullCount} parse issues`
-		: `${fullCount} parse issue${fullCount !== 1 ? "s" : ""}`;
+		: formatCount("parse issue", fullCount);
 }
 
 // =============================================================================

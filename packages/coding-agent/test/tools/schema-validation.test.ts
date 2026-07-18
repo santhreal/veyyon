@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
-import { normalizeSchemaForGoogle, toolWireSchema } from "@veyyon/pi-ai";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { createTools, HIDDEN_TOOLS, type ToolSession } from "@veyyon/pi-coding-agent/tools";
+import { normalizeSchemaForGoogle, toolWireSchema } from "@veyyon/ai";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import { createTools, HIDDEN_TOOLS, type ToolSession } from "@veyyon/coding-agent/tools";
 
 /**
  * Problematic JSON Schema features that cause issues with various providers.

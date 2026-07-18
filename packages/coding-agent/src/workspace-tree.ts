@@ -1,6 +1,6 @@
 import * as path from "node:path";
-import { FileType, type GlobMatch, listWorkspace } from "@veyyon/pi-natives";
-import { formatAge, formatBytes } from "@veyyon/pi-utils";
+import { FileType, type GlobMatch, listWorkspace } from "@veyyon/natives";
+import { formatAge, formatBytes } from "@veyyon/utils";
 
 /** Defaults for the workspace tree shown in the system prompt. */
 const WORKSPACE_DEFAULTS = {

@@ -2,17 +2,17 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { ThinkingLevel } from "@veyyon/pi-agent-core";
-import { AuthStorage, Effort, type Model } from "@veyyon/pi-ai";
-import { buildModel } from "@veyyon/pi-catalog/build";
-import { getBundledModel } from "@veyyon/pi-catalog/models";
-import { ModelRegistry } from "@veyyon/pi-coding-agent/config/model-registry";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
-import type { CustomTool } from "@veyyon/pi-coding-agent/extensibility/custom-tools/types";
-import { createAgentSession } from "@veyyon/pi-coding-agent/sdk";
-import { SessionManager } from "@veyyon/pi-coding-agent/session/session-manager";
-import { TOOL_DISCOVERY_AUTO_THRESHOLD } from "@veyyon/pi-coding-agent/tool-discovery/mode";
-import { removeSyncWithRetries, Snowflake } from "@veyyon/pi-utils";
+import { ThinkingLevel } from "@veyyon/agent-core";
+import { AuthStorage, Effort, type Model } from "@veyyon/ai";
+import { buildModel } from "@veyyon/catalog/build";
+import { getBundledModel } from "@veyyon/catalog/models";
+import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import type { CustomTool } from "@veyyon/coding-agent/extensibility/custom-tools/types";
+import { createAgentSession } from "@veyyon/coding-agent/sdk";
+import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { TOOL_DISCOVERY_AUTO_THRESHOLD } from "@veyyon/coding-agent/tool-discovery/mode";
+import { removeSyncWithRetries, Snowflake } from "@veyyon/utils";
 import { type } from "arktype";
 
 function createMcpCustomTool(name: string, serverName: string, mcpToolName: string): CustomTool {

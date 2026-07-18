@@ -1,17 +1,17 @@
 # Configuring providers
 
-Copy-paste setups for bring-your-own-key (BYOK) and local providers. For the day-to-day switching
+Copy-paste setups for bring-your-own-key (BYOK) and local providers. For model selection
 guide, see [Models and providers](./models.md). For the harness/provider boundary, see
 [Model contract](../concepts/model-contract.md).
 
-Custom providers live under `providers:` in `~/.veyyon/agent/models.yml`. Keys are resolved from the
+Custom providers live under `providers:` in `~/.veyyon/profiles/default/agent/models.yml`. Keys are resolved from the
 environment, stored auth, OAuth, or a `models.yml` `apiKey` (see [Providers](../models/providers.md)
 and `docs/providers.md`).
 
 ## Anatomy of a provider entry
 
 ```yaml
-# ~/.veyyon/agent/models.yml
+# ~/.veyyon/profiles/default/agent/models.yml
 providers:
   acme:
     baseUrl: https://api.acme.example/v1
@@ -37,7 +37,7 @@ Notes worth knowing:
 
 - Custom providers are merged **alongside** built-ins; they do not silently replace `openai`.
 - A custom `ollama` / `lm-studio` / `llama.cpp` entry replaces that engine's built-in discovery.
-- A YAML or schema error makes the registry skip the file loudly — validate with `veyyon models`.
+- A YAML or schema error makes the registry skip the file with an error message — validate with `veyyon models`.
 
 After editing, restart the session.
 
@@ -146,10 +146,10 @@ $ veyyon           # then /model and pick an lm-studio/… entry
 
 ## Pinning models for roles and CI
 
-Set background roles under `modelRoles` in `config.yml`:
+Set the interactive model and optional roles in the profile `config.yml` (`modelRoles.default` is the interactive model):
 
 ```yaml
-# ~/.veyyon/agent/config.yml
+# ~/.veyyon/profiles/default/agent/config.yml
 modelRoles:
   default: openai/gpt-5
   smol: openai/gpt-5-mini

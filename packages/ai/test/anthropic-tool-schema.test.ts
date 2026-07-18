@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { normalizeAnthropicToolSchema } from "@veyyon/pi-ai/providers/anthropic";
+import { normalizeAnthropicToolSchema } from "@veyyon/ai/providers/anthropic";
 
 describe("normalizeAnthropicToolSchema — SDK whitelist", () => {
 	describe("number / integer nodes", () => {

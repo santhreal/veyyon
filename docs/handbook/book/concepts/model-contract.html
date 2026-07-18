@@ -10,6 +10,10 @@
         <!-- Veyyon handbook: self-contained head additions. No remote resources. -->
         <meta name="theme-color" content="#050505">
         <meta name="color-scheme" content="dark">
+        <!-- Site favicons live at the deployed root, one level above /docs/. -->
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+        <link rel="icon" href="/favicon.ico" sizes="48x48">
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png">
         <style>
           /* Paint the near-black surface before CSS/JS resolve the theme, so there is
              no light flash on load. Kept in sync with theme/veyyon.css. */
@@ -18,7 +22,7 @@
           *, *::before, *::after { box-sizing: border-box; }
         </style>
 
-        <meta name="description" content="How Veyyon turns open models into frontier coding agents. The product, the harness, tool-call repair, the edit format, per-model adaptation, and how to use it.">
+        <meta name="description" content="Operator handbook for the Veyyon terminal coding agent: install, configuration, tools, approvals, edit formats, providers, and harness structure.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -38,7 +42,7 @@
         <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="../ayu-highlight-3fdfc3ac.css">
 
         <!-- Custom theme stylesheets -->
-        <link rel="stylesheet" href="../theme/veyyon-fc839a17.css">
+        <link rel="stylesheet" href="../theme/veyyon-06f6939e.css">
 
 
         <!-- Provide site root and default themes to javascript -->
@@ -46,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-e76f06ca.js";
+            window.path_to_searchindex_js = "../searchindex-a2447057.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-9cfd259b.js"></script>
+        <script src="../toc-cc1a72e9.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -197,7 +201,7 @@ endpoint exposes model choice, provide the key, and Veyyon calls that API direct
 a local server (Ollama, LM Studio), a direct provider API (OpenAI, Anthropic, Google), or any
 OpenAI-compatible gateway.</p>
 <p>This page is the contract between the harness and the model. For copy-paste provider setup, see
-<a href="../using/configuring-providers.html">Configuring providers</a>. For day-to-day model switching, see
+<a href="../using/configuring-providers.html">Configuring providers</a>. For model switching, see
 <a href="../using/models.html">Models and providers</a>.</p>
 <h2 id="the-three-things-you-bring"><a class="header" href="#the-three-things-you-bring">The three things you bring</a></h2>
 <p>A BYOK (bring-your-own-key) run needs three facts:</p>
@@ -207,16 +211,16 @@ OpenAI-compatible gateway.</p>
 <tr><th>Fact</th><th>What it is</th><th>Where it lives</th></tr>
 </thead>
 <tbody>
-<tr><td><strong>Endpoint</strong></td><td>Base URL and API kind</td><td>A built-in provider, or a custom provider under <code>providers:</code> in <code>~/.veyyon/agent/models.yml</code></td></tr>
+<tr><td><strong>Endpoint</strong></td><td>Base URL and API kind</td><td>A built-in provider, or a custom provider under <code>providers:</code> in <code>~/.veyyon/profiles/default/agent/models.yml</code></td></tr>
 <tr><td><strong>Model</strong></td><td>The model id the endpoint understands</td><td>Pinned with <code>--model</code> / <code>/model</code>, or discovered from the provider</td></tr>
 <tr><td><strong>Key</strong></td><td>Credential the endpoint accepts</td><td>A provider environment variable, <code>/login</code>, or a <code>models.yml</code> <code>apiKey</code></td></tr>
 </tbody>
 </table>
 </div>
-<p>Veyyon does not route your requests through a service of its own for BYOK providers and does not add
-telemetry egress. The key is used only to talk to the provider you chose.</p>
+<p>For BYOK providers, Veyyon calls the configured endpoint with your credentials (no hosted proxy required).
+Optional OpenTelemetry export is separate and only when <code>OTEL_EXPORTER_OTLP_*</code> is set.</p>
 <h3 id="example-shape"><a class="header" href="#example-shape">Example shape</a></h3>
-<pre><code class="language-yaml"># ~/.veyyon/agent/models.yml
+<pre><code class="language-yaml"># ~/.veyyon/profiles/default/agent/models.yml
 providers:
   deepseek:
     baseUrl: https://api.deepseek.com
@@ -241,7 +245,7 @@ $ veyyon --model deepseek/deepseek-chat
 <li>Context compaction, goal cards, session branching, and rollout persistence.</li>
 <li>Per-model prompt order and tool-form selection once a model (or API kind) is known.</li>
 </ul>
-<p>You are not locked to any provider. Point the harness at any compatible API and keep the same
+<p>Provider is configuration (endpoint, credentials, model id). Keep the same
 commands.</p>
 <h2 id="what-the-provider-owns"><a class="header" href="#what-the-provider-owns">What the provider owns</a></h2>
 <p>The provider owns the wire protocol, auth scheme, model list, rate limits, and the tokens it returns.
@@ -250,7 +254,7 @@ Veyyon adapts to that surface through the provider’s <code>api</code> kind:</p
 <li>Chat-Completions-style endpoints (<code>api: openai-completions</code>) talk <code>/chat/completions</code>.</li>
 <li>Responses-style and native provider endpoints use their own request shape.</li>
 <li>Model ids come from the provider’s discovery endpoint when discovery runs. There is no hardcoded
-allowlist for BYOK providers, and discovery fails loud rather than serving a silent empty list.</li>
+allowlist for BYOK providers, and discovery returns an error; it does not invent an empty catalog on failure.</li>
 </ul>
 <p>Everything beyond the built-in catalog is data in <code>models.yml</code> — see
 <a href="../models/providers.html">Providers</a> and <a href="../../../providers.html"><code>docs/providers.md</code></a>.</p>
@@ -280,14 +284,15 @@ the same; only the transport differs.</p>
 </tbody>
 </table>
 </div>
-<p>The form is derived from the provider’s API kind by default; an optional catalog override can pin the
-<code>apply_patch</code> tool to <code>function</code>, <code>freeform</code>, or <code>none</code>. The Function form makes a structured edit tool
-real for chat-wire endpoints (Ollama, LM Studio, DeepSeek, and similar) that historically saw no
-Freeform tool at all. See <a href="../edit/engine.html">The hashline edit engine</a> for the default edit wire format.</p>
+<p>Default edit mode is <strong>hashline</strong> (<code>edit.mode: hashline</code>). When <code>edit.mode</code> is <code>apply_patch</code>, the
+provider wire form is derived from the API kind by default; an optional catalog override can pin the
+tool shape to <code>function</code>, <code>freeform</code>, or <code>none</code>. The Function form keeps structured edits available
+on chat-wire endpoints (Ollama, LM Studio, DeepSeek, and similar). See <a href="../edit/engine.html">The hashline edit engine</a>
+for the default edit wire format.</p>
 <h2 id="harness-vs-provider-a-clear-split"><a class="header" href="#harness-vs-provider-a-clear-split">Harness vs provider: a clear split</a></h2>
 <pre><code class="language-text">┌──────────────────────── harness (veyyon) ─────────────────────┐
 │ session / turn loop                                           │
-│ prompts, tool schemas, edit, sandbox, approvals, compaction   │
+│ prompts, tool schemas, edit, approvals, compaction            │
 └────────────────────────────┬──────────────────────────────────┘
                              │ HTTPS / local HTTP
                              ▼
@@ -301,12 +306,12 @@ Freeform tool at all. See <a href="../edit/engine.html">The hashline edit engine
 <li>Config rejected at load, malformed <code>models.yml</code>, missing key → harness / your config.</li>
 <li>HTTP 401 / 429 / empty model list → provider or key.</li>
 <li>Patch applied but tests red → harness did its job; the change still needs work.</li>
-<li>Sandbox denial → permission model, not the model provider.</li>
+<li>Approval or execpolicy denial → permission model, not the model provider.</li>
 </ul>
 <h2 id="provider-data-at-load-time"><a class="header" href="#provider-data-at-load-time">Provider data at load time</a></h2>
 <p>For BYOK providers, model and provider entries are data in <code>models.yml</code>:</p>
 <ul>
-<li>A YAML or schema error makes the registry skip the custom file loudly; it does not silently drop
+<li>A YAML or schema error makes the registry skip the custom file with an error message; it does not silently drop
 models.</li>
 <li>Custom providers are merged <strong>alongside</strong> the built-in catalog. A custom entry with the same id as an
 implicit local engine (<code>ollama</code>, <code>lm-studio</code>, <code>llama.cpp</code>) replaces that engine’s discovery.</li>
@@ -332,9 +337,9 @@ under <code>modelRoles</code>:</p>
 <p>Use <code>--yolo</code> (auto-approve everything) only in trusted automation, ideally in an externally isolated environment (Docker, a VM, a CI jail), since Veyyon does not sandbox the commands it runs.</p>
 <h2 id="what-stays-constant"><a class="header" href="#what-stays-constant">What stays constant</a></h2>
 <ul>
-<li>The workflow stays the same: read, edit, verify, and stop when the work is done.</li>
+<li>Workflow shape: read, edit, verify, stop when done.</li>
 <li>Edit verification, approvals, and context handling are harness behavior.</li>
-<li>You are not locked to any provider; point the harness at any compatible API.</li>
+<li>Provider is configuration: endpoint, credentials, and model id.</li>
 </ul>
 <h2 id="next"><a class="header" href="#next">Next</a></h2>
 <ul>
@@ -342,7 +347,7 @@ under <code>modelRoles</code>:</p>
 OpenAI-compatible endpoints.</li>
 <li><a href="../using/models.html">Models and providers</a> — choosing and switching models in a session.</li>
 <li><a href="../using/safety.html">Safety</a> — boundaries around tool use and model output.</li>
-<li><a href="./permission-model.html">Permission model</a> — the approval-mode ladder.</li>
+<li><a href="./permission-model.html">Permission model</a> — the approval modes.</li>
 <li><a href="../using/authentication.html">Signing in</a> — interactive and env-var auth paths.</li>
 </ul>
 

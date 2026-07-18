@@ -7,7 +7,7 @@
  * provider-facing compatibility wrapper and model/provider gating.
  */
 
-import { isDeepseekModelIdOrName } from "@veyyon/pi-catalog/identity";
+import { isDeepseekModelIdOrName } from "@veyyon/catalog/identity";
 
 import { createInbandScanner } from "../dialect/factory";
 import { ThinkingInbandScanner } from "../dialect/thinking";

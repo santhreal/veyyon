@@ -2,13 +2,13 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { AgentToolContext } from "@veyyon/pi-agent-core";
-import { getBundledModel } from "@veyyon/pi-catalog/models";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { createAgentSession } from "@veyyon/pi-coding-agent/sdk";
-import type { AgentSession } from "@veyyon/pi-coding-agent/session/agent-session";
-import { SessionManager } from "@veyyon/pi-coding-agent/session/session-manager";
-import { Snowflake } from "@veyyon/pi-utils";
+import type { AgentToolContext } from "@veyyon/agent-core";
+import { getBundledModel } from "@veyyon/catalog/models";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import { createAgentSession } from "@veyyon/coding-agent/sdk";
+import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { Snowflake } from "@veyyon/utils";
 
 // Exercises the real per-tool approval gate (ExtensionToolWrapper) for read/grep/write,
 // proving an `ssh://` target is exec-tier (prompts / is denied without a UI) while the

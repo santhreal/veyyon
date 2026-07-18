@@ -1,3 +1,4 @@
+import { trimTrailingSlashes } from "@veyyon/utils";
 import { type } from "arktype";
 import type { ModelSpec } from "../types";
 import { discoveryFetch } from "../utils";
@@ -125,7 +126,7 @@ function normalizeBaseUrl(baseUrl: string | undefined): string {
 	if (!raw) {
 		return CODEX_BASE_URL;
 	}
-	return raw.replace(/\/+$/, "");
+	return trimTrailingSlashes(raw);
 }
 
 function normalizePaths(paths: readonly string[] | undefined): string[] {

@@ -19,7 +19,7 @@ The runtime has two layers:
 
 If your extension/tool can run in non-interactive mode, guard with `ctx.hasUI` / `pi.hasUI`.
 
-## Core component contract (`@veyyon/pi-tui`)
+## Core component contract (`@veyyon/tui`)
 
 `packages/tui/src/tui.ts` defines:
 
@@ -58,7 +58,7 @@ Your `render(width)` output must be terminal-safe:
 Minimal pattern:
 
 ```ts
-import { replaceTabs, truncateToWidth } from "@veyyon/pi-tui";
+import { replaceTabs, truncateToWidth } from "@veyyon/tui";
 
 render(width: number): readonly string[] {
   return this.lines.map(line => truncateToWidth(replaceTabs(line), width));
@@ -185,17 +185,17 @@ return loader;
 ## Realistic custom component example (extension command)
 
 ```ts
-import type { Component } from "@veyyon/pi-tui";
+import type { Component } from "@veyyon/tui";
 import {
   SelectList,
   matchesKey,
   replaceTabs,
   truncateToWidth,
-} from "@veyyon/pi-tui";
+} from "@veyyon/tui";
 import {
   getSelectListTheme,
   type ExtensionAPI,
-} from "@veyyon/pi-coding-agent";
+} from "@veyyon/coding-agent";
 
 class Picker implements Component {
   list: SelectList;

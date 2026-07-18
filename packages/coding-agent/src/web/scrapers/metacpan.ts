@@ -1,6 +1,6 @@
-import { tryParseJson } from "@veyyon/pi-utils";
-import type { RenderResult, SpecialHandler } from "./types";
-import { buildResult, formatIsoDate, loadPage } from "./types";
+import { tryParseJson } from "@veyyon/utils";
+import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
+import { buildResult, formatIsoDate, loadPage, scraperDegrade, tryParseUrl } from "./types";
 
 interface ModuleResponse {
 	name: string;
@@ -44,9 +44,10 @@ export const handleMetaCPAN: SpecialHandler = async (
 	url: string,
 	timeout: number,
 	signal?: AbortSignal,
-): Promise<RenderResult | null> => {
+): Promise<RenderResult | ScraperDegrade | null> => {
 	try {
-		const parsed = new URL(url);
+		const parsed = tryParseUrl(url);
+		if (!parsed) return null;
 		if (parsed.hostname !== "metacpan.org" && parsed.hostname !== "www.metacpan.org") return null;
 
 		const fetchedAt = new Date().toISOString();
@@ -73,9 +74,9 @@ export const handleMetaCPAN: SpecialHandler = async (
 		}
 
 		return null;
-	} catch {}
-
-	return null;
+	} catch (error) {
+		return scraperDegrade("metacpan", error);
+	}
 };
 
 async function fetchModule(

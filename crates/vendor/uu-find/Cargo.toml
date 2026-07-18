@@ -20,8 +20,8 @@ onig = { version = "6.4", default-features = false }
 uucore = { version = "0.0.30", features = ["entries", "fs", "fsext", "mode"] }
 nix = { version = "0.29", features = ["fs", "user"] }
 argmax = "0.3.1"
-pi-uutils-ctx = { path = "../../pi-uutils-ctx" }
-pi-walker = { path = "../../pi-walker" }
+veyyon-uutils-ctx = { path = "../../veyyon-uutils-ctx" }
+veyyon-walker = { path = "../../veyyon-walker" }
 
 [dev-dependencies]
 tempfile = "3"

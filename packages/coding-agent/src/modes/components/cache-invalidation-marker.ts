@@ -1,6 +1,6 @@
-import type { Usage } from "@veyyon/pi-ai";
-import type { Component } from "@veyyon/pi-tui";
-import { formatNumber } from "@veyyon/pi-utils";
+import type { Usage } from "@veyyon/ai";
+import type { Component } from "@veyyon/tui";
+import { formatNumber } from "@veyyon/utils";
 import { theme } from "../../modes/theme/theme";
 
 /**

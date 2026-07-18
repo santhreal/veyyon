@@ -41,7 +41,7 @@ impl InPlace {
 	/// editing, backup the original file, or follow symlinks.
 	pub fn new(context: ProcessingContext) -> Self {
 		Self {
-			output:          OutputBuffer::new(Box::new(pi_uutils_ctx::stdout())),
+			output:          OutputBuffer::new(Box::new(veyyon_uutils_ctx::stdout())),
 			in_place:        context.in_place,
 			in_place_suffix: context.in_place_suffix,
 			follow_symlinks: context.follow_symlinks,
@@ -54,10 +54,10 @@ impl InPlace {
 	/// The file may be a symbolic link, which will be processed according
 	/// to the context specification.
 	pub fn begin(&mut self, file_name: &Path) -> UResult<&mut OutputBuffer> {
-		// Patched for pi-uutils-ctx embedding: resolve the operand against
+		// Patched for veyyon-uutils-ctx embedding: resolve the operand against
 		// the shell working directory so the in-place temp file lands in the
 		// real target's parent directory, never the host process cwd.
-		let file_name = pi_uutils_ctx::resolve(file_name);
+		let file_name = veyyon_uutils_ctx::resolve(file_name);
 		let resolved = if self.follow_symlinks {
 			fs::canonicalize(&file_name)
 				.map_err_context(|| format!("resolving symlink {}", file_name.quote()))?
@@ -72,7 +72,7 @@ impl InPlace {
 	/// to the context settings.
 	fn begin_resolved(&mut self, file_name: &Path) -> UResult<&mut OutputBuffer> {
 		if !self.in_place {
-			self.output = OutputBuffer::new(Box::new(pi_uutils_ctx::stdout()));
+			self.output = OutputBuffer::new(Box::new(veyyon_uutils_ctx::stdout()));
 			return Ok(&mut self.output);
 		}
 

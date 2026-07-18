@@ -6,7 +6,8 @@
  * - Waves execute sequentially (wave N+1 starts after wave N completes)
  * - For pipeline mode, iterations repeat the full DAG execution
  */
-import type { AgentSource, ModelRegistry, Settings, SingleResult } from "@veyyon/pi-coding-agent";
+import type { AgentSource, ModelRegistry, Settings, SingleResult } from "@veyyon/coding-agent";
+import { errorMessage } from "@veyyon/utils";
 import { executeSwarmAgent } from "./executor";
 import type { SwarmDefinition } from "./schema";
 import type { StateTracker } from "./state";
@@ -111,7 +112,7 @@ export class PipelineController {
 			await this.#stateTracker.appendOrchestratorLog(`Pipeline ${status} (${errors.length} errors)`);
 			return { status, iterations: targetCount, agentResults: allResults, errors };
 		} catch (err) {
-			const error = err instanceof Error ? err.message : String(err);
+			const error = errorMessage(err);
 			await this.#stateTracker.updatePipeline({ status: "failed", completedAt: Date.now() });
 			await this.#stateTracker.appendOrchestratorLog(`Pipeline fatal error: ${error}`);
 			errors.push(error);
@@ -172,7 +173,7 @@ export class PipelineController {
 						});
 						return { agentName, result };
 					} catch (err) {
-						const error = err instanceof Error ? err.message : String(err);
+						const error = errorMessage(err);
 						const failResult: SingleResult = {
 							index: currentIndex,
 							id: `swarm-${this.#def.name}-${agentName}-${iteration}`,

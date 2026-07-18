@@ -7,8 +7,8 @@
  * - Grouped references and symbols
  * - Collapsible/expandable views
  */
-import type { RenderResultOptions } from "@veyyon/pi-agent-core";
-import { type Component, Text } from "@veyyon/pi-tui";
+import type { RenderResultOptions } from "@veyyon/agent-core";
+import { type Component, Text } from "@veyyon/tui";
 import { getLanguageFromPath, highlightCode as highlightThemeCode, type Theme } from "../modes/theme/theme";
 import {
 	formatExpandHint,

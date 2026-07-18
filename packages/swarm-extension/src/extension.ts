@@ -11,8 +11,8 @@
 
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import type { ExtensionAPI, ExtensionCommandContext } from "@veyyon/pi-coding-agent";
-import { formatDuration } from "@veyyon/pi-utils";
+import type { ExtensionAPI, ExtensionCommandContext } from "@veyyon/coding-agent";
+import { errorMessage, formatDuration } from "@veyyon/utils";
 import { buildDependencyGraph, buildExecutionWaves, detectCycles } from "./swarm/dag";
 import { PipelineController } from "./swarm/pipeline";
 import { renderSwarmProgress } from "./swarm/render";
@@ -85,7 +85,7 @@ async function handleRun(yamlPath: string, ctx: ExtensionCommandContext, pi: Ext
 	try {
 		def = parseSwarmYaml(content);
 	} catch (err) {
-		ctx.ui.notify(`YAML error: ${err instanceof Error ? err.message : String(err)}`, "error");
+		ctx.ui.notify(`YAML error: ${errorMessage(err)}`, "error");
 		return;
 	}
 

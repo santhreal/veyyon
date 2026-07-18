@@ -1,8 +1,8 @@
 import { beforeAll, describe, expect, it } from "bun:test";
-import { resetSettingsForTest, Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { ToolExecutionComponent } from "@veyyon/pi-coding-agent/modes/components/tool-execution";
-import { initTheme } from "@veyyon/pi-coding-agent/modes/theme/theme";
-import type { TUI } from "@veyyon/pi-tui";
+import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
+import { ToolExecutionComponent } from "@veyyon/coding-agent/modes/components/tool-execution";
+import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import type { TUI } from "@veyyon/tui";
 
 const uiStub = { requestRender() {}, requestComponentRender() {}, resetDisplay() {} } as unknown as TUI;
 

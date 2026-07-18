@@ -70,10 +70,8 @@ function getContentType(url: string): string | null {
 	return null;
 }
 
-/**
- * Format duration from seconds string
- */
-function formatDuration(seconds: string | undefined): string | null {
+/** Parse a seconds string and render it via the shared media-duration formatter. */
+function formatDurationSeconds(seconds: string | undefined): string | null {
 	if (!seconds) return null;
 	const num = parseInt(seconds, 10);
 	if (Number.isNaN(num)) return null;
@@ -107,7 +105,7 @@ function formatOutput(contentType: string, oEmbed: SpotifyOEmbedResponse, og: Op
 			sections.push(`**Album**: ${og.album}\n`);
 		}
 		if (og.duration) {
-			const formatted = formatDuration(og.duration);
+			const formatted = formatDurationSeconds(og.duration);
 			if (formatted) {
 				sections.push(`**Duration**: ${formatted}\n`);
 			}

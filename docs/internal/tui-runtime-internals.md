@@ -120,7 +120,7 @@ This keeps key parsing/editor mechanics in `packages/tui` and mode semantics in 
 
 Native scrollback always equals the committed frame prefix — rows enter history exactly once, in order, when the seam says they are final. There are no viewport probes and no deferred reconciliation; see [`tui-core-renderer.md`](./tui-core-renderer.md).
 
-Render writes use synchronized output mode (`CSI ? 2026 h/l`) when enabled; capability detection, DECRQM, or `PI_NO_SYNC_OUTPUT` can disable the wrappers while leaving autowrap discipline on.
+Render writes use synchronized output mode (`CSI ? 2026 h/l`) when enabled; capability detection, DECRQM, or `VEYYON_NO_SYNC_OUTPUT` can disable the wrappers while leaving autowrap discipline on.
 
 ## Render safety constraints
 
@@ -146,7 +146,7 @@ Effects:
 
 - A resize is an explicit user gesture: outside multiplexers the engine erases and replays (`ED3` + full paint) so history rewraps at the new geometry; the commit ledger restarts from the replayed frame.
 - Inside terminal multiplexers, resize repaints the visible window in place after a settle debounce (issue #2088); pane history keeps its old wrap, like any shell output, because pane scrollback cannot be erased safely.
-- Terminals that re-report their size when the alternate screen buffer is toggled (Warp reports a height one row different for the alt buffer) take the in-place path too. The non-multiplexer fast path borrows the alternate screen for drag frames, so on these terminals each alt enter/leave emits a fresh resize event, which re-enters the fast path — a self-sustaining loop that floods ED3 full repaints with stable geometry. `resizeRepaintsInPlace()` (covering multiplexers and these terminals; overridable via `PI_TUI_RESIZE_IN_PLACE`) routes them through the in-place repaint, which never touches the alt buffer.
+- Terminals that re-report their size when the alternate screen buffer is toggled (Warp reports a height one row different for the alt buffer) take the in-place path too. The non-multiplexer fast path borrows the alternate screen for drag frames, so on these terminals each alt enter/leave emits a fresh resize event, which re-enters the fast path — a self-sustaining loop that floods ED3 full repaints with stable geometry. `resizeRepaintsInPlace()` (covering multiplexers and these terminals; overridable via `VEYYON_TUI_RESIZE_IN_PLACE`) routes them through the in-place repaint, which never touches the alt buffer.
 - Overlay visibility can depend on terminal dimensions (`OverlayOptions.visible`); focus is corrected when overlays become non-visible after resize.
 
 ## Streaming and incremental UI updates

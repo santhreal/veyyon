@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
-import { repo } from "@veyyon/pi-coding-agent/utils/git";
+import { repo } from "@veyyon/coding-agent/utils/git";
 
 // Builds the on-disk shape of a linked git worktree without invoking git:
 //   <project>/.git/                      ← shared common dir (basename ".git")
@@ -24,7 +24,7 @@ describe("git repo.linkedWorktreeSync", () => {
 	let tempRoot: string;
 
 	beforeEach(() => {
-		tempRoot = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), "omp-linked-worktree-")));
+		tempRoot = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-linked-worktree-")));
 	});
 
 	afterEach(() => {

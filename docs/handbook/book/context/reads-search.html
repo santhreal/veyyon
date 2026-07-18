@@ -10,6 +10,10 @@
         <!-- Veyyon handbook: self-contained head additions. No remote resources. -->
         <meta name="theme-color" content="#050505">
         <meta name="color-scheme" content="dark">
+        <!-- Site favicons live at the deployed root, one level above /docs/. -->
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+        <link rel="icon" href="/favicon.ico" sizes="48x48">
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png">
         <style>
           /* Paint the near-black surface before CSS/JS resolve the theme, so there is
              no light flash on load. Kept in sync with theme/veyyon.css. */
@@ -18,7 +22,7 @@
           *, *::before, *::after { box-sizing: border-box; }
         </style>
 
-        <meta name="description" content="How Veyyon turns open models into frontier coding agents. The product, the harness, tool-call repair, the edit format, per-model adaptation, and how to use it.">
+        <meta name="description" content="Operator handbook for the Veyyon terminal coding agent: install, configuration, tools, approvals, edit formats, providers, and harness structure.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -38,7 +42,7 @@
         <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="../ayu-highlight-3fdfc3ac.css">
 
         <!-- Custom theme stylesheets -->
-        <link rel="stylesheet" href="../theme/veyyon-fc839a17.css">
+        <link rel="stylesheet" href="../theme/veyyon-06f6939e.css">
 
 
         <!-- Provide site root and default themes to javascript -->
@@ -46,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-e76f06ca.js";
+            window.path_to_searchindex_js = "../searchindex-a2447057.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-9cfd259b.js"></script>
+        <script src="../toc-cc1a72e9.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -191,19 +195,15 @@
 
                 <div id="mdbook-content" class="content">
                     <main>
-                        <h1 id="bounded-reads--instant-search"><a class="header" href="#bounded-reads--instant-search">Bounded reads &amp; instant search</a></h1>
-<blockquote>
-<p><strong>Status: Built.</strong> The <code>read</code>, <code>glob</code>, <code>grep</code>, and <code>write</code> tools ship as TypeScript modules in
-<code>packages/coding-agent/src/tools/{read,glob,grep,write}.ts</code>. There is no <code>experimental_tools</code> or
-<code>backends.toml</code> gating — every tool below is always on. This chapter describes their real parameter
-shapes and behavioral contracts.</p>
-</blockquote>
-<p>These tools fight <strong>token blowup</strong> and <strong>latency</strong> — supporting concerns that compound into
-control-flow failures on long trajectories, the long-context runs where a model stops making progress
-because its window is full of raw dumps.</p>
+                        <h1 id="bounded-reads-and-search"><a class="header" href="#bounded-reads-and-search">Bounded reads and search</a></h1>
+<p><code>read</code>, <code>glob</code>, <code>grep</code>, and <code>write</code> ship as TypeScript modules under
+<code>packages/coding-agent/src/tools/{read,glob,grep,write}.ts</code>. They are always available (no
+<code>experimental_tools</code> or <code>backends.toml</code> gate). This page documents parameter shapes and bounds.</p>
+<p>Unbounded <code>cat</code> / <code>find</code> / <code>grep -r</code> via shell can fill the context window. These tools apply
+line/byte/result caps and surface truncation instead of silent dumps.</p>
 <h2 id="the-read-tool-toolsreadts"><a class="header" href="#the-read-tool-toolsreadts">The <code>read</code> tool (<code>tools/read.ts</code>)</a></h2>
-<p>A model that <code>cat</code>s a 20k-line file blows its whole context on one call. The <code>read</code> tool takes a single
-<code>path</code> string (no separate <code>offset</code>/<code>limit</code> arguments) and bounds every read to a budget:</p>
+<p><code>read</code> takes a single <code>path</code> string (no separate <code>offset</code>/<code>limit</code> arguments) and bounds every read
+to a budget:</p>
 <ul>
 <li><strong>One parameter, inline selectors.</strong> <code>read {path}</code>, where <code>path</code> can carry a line-range selector
 appended after a colon: <code>src/foo.ts:50-200</code> (inclusive range), <code>src/foo.ts:50</code> / <code>:50-</code> (from line 50
@@ -216,8 +216,8 @@ bounded by lines.</li>
 <li><strong>Structural summaries for parseable code.</strong> A read with no selector on a parseable source file
 returns declarations with bodies elided (<code>…</code>), and the footer names the recovery selector so the model
 re-issues only the ranges it actually needs instead of re-reading the whole file.</li>
-<li><strong>Truncation is never silent.</strong> A summary footer or a <code>[Showing lines …]</code>-style notice always names the
-exact continuation selector.</li>
+<li><strong>Truncation is explicit.</strong> A summary footer or a <code>[Showing lines …]</code>-style notice names the
+continuation selector.</li>
 <li><strong>Beyond plain text files:</strong> the same tool also reads directories (depth-limited listing), archives
 (<code>.tar</code>, <code>.tar.gz</code>, <code>.zip</code>, via <code>archive.zip:path/inside</code>), SQLite databases (<code>file.db:table</code>, with
 pagination and <code>where</code>/<code>order</code> filters), PDF/Word/PowerPoint/Excel/EPUB (extracted text), Jupyter
@@ -240,9 +240,8 @@ output, or anything the repo ignores. <strong><code>hidden</code> (default <code
 a byte cap. Every truncation is surfaced as an actionable notice.</li>
 <li><strong>Sorted by mtime, newest first</strong> (not lexicographic), grouped under <code># &lt;dir&gt;/</code> headers with
 basenames below; directories get a trailing <code>/</code>.</li>
-<li><strong><code>.git</code> and <code>node_modules</code> are never descended</strong>, and traversal goes through the same filesystem
-abstraction <code>read</code>/<code>grep</code> use, so it is correct inside a sandbox or remote container, not just on the
-host.</li>
+<li><strong><code>.git</code> and <code>node_modules</code> are never descended</strong>. Traversal uses the same filesystem abstraction
+as <code>read</code>/<code>grep</code> (including remote/task workspaces when those backends are active).</li>
 </ul>
 <h2 id="the-grep-tool-toolsgrepts"><a class="header" href="#the-grep-tool-toolsgrepts">The <code>grep</code> tool (<code>tools/grep.ts</code>)</a></h2>
 <p>A model that runs <code>grep -r</code> / <code>rg</code> in the shell can get back tens of thousands of matching lines. The
@@ -284,7 +283,7 @@ capture path (<code>tools/bash-interactive.ts</code>):</p>
 <li><strong>ANSI stripping is Bun-native, not a hand-rolled parser.</strong> <code>sanitizeText()</code> calls Bun’s built-in
 <code>Bun.stripANSI()</code> when an ESC byte is present, then strips C0/C1 control bytes and DEL with a single
 regex pass. The function is a TypeScript replacement for a former Rust native
-(<code>crates/pi-natives/src/text.rs::sanitize_text</code>, noted in the current source comment) — there is no
+(<code>crates/veyyon-natives/src/text.rs::sanitize_text</code>, noted in the current source comment) — there is no
 live Rust ECMA-48 grammar walker in this path today.</li>
 <li><strong>Keep <code>\n</code> and <code>\t</code>, drop the rest.</strong> The control regex covers C0 (excluding tab/newline), <code>\r</code>,
 DEL, and the C1 range; <code>\n</code> and <code>\t</code> are the two explicit exclusions.</li>

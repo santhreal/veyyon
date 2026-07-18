@@ -1,9 +1,9 @@
-import type { AssistantMessage, ImageContent, TextContent } from "@veyyon/pi-ai";
-import * as AIError from "@veyyon/pi-ai/error";
-import { getStreamingPartialJson } from "@veyyon/pi-ai/utils/block-symbols";
-import { type Component, Loader, TERMINAL } from "@veyyon/pi-tui";
-import { logger, prompt } from "@veyyon/pi-utils";
-import { INTENT_FIELD } from "@veyyon/pi-wire";
+import type { AssistantMessage, ImageContent, TextContent } from "@veyyon/ai";
+import * as AIError from "@veyyon/ai/error";
+import { getStreamingPartialJson } from "@veyyon/ai/utils/block-symbols";
+import { type Component, Loader, TERMINAL } from "@veyyon/tui";
+import { logger, prompt } from "@veyyon/utils";
+import { INTENT_FIELD } from "@veyyon/wire";
 import { extractTextContent } from "../../commit/utils";
 import { settings } from "../../config/settings";
 import { getFileSnapshotStore } from "../../edit/file-snapshot-store";

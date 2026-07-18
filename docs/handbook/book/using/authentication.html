@@ -10,6 +10,10 @@
         <!-- Veyyon handbook: self-contained head additions. No remote resources. -->
         <meta name="theme-color" content="#050505">
         <meta name="color-scheme" content="dark">
+        <!-- Site favicons live at the deployed root, one level above /docs/. -->
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+        <link rel="icon" href="/favicon.ico" sizes="48x48">
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png">
         <style>
           /* Paint the near-black surface before CSS/JS resolve the theme, so there is
              no light flash on load. Kept in sync with theme/veyyon.css. */
@@ -18,7 +22,7 @@
           *, *::before, *::after { box-sizing: border-box; }
         </style>
 
-        <meta name="description" content="How Veyyon turns open models into frontier coding agents. The product, the harness, tool-call repair, the edit format, per-model adaptation, and how to use it.">
+        <meta name="description" content="Operator handbook for the Veyyon terminal coding agent: install, configuration, tools, approvals, edit formats, providers, and harness structure.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -38,7 +42,7 @@
         <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="../ayu-highlight-3fdfc3ac.css">
 
         <!-- Custom theme stylesheets -->
-        <link rel="stylesheet" href="../theme/veyyon-fc839a17.css">
+        <link rel="stylesheet" href="../theme/veyyon-06f6939e.css">
 
 
         <!-- Provide site root and default themes to javascript -->
@@ -46,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-e76f06ca.js";
+            window.path_to_searchindex_js = "../searchindex-a2447057.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-9cfd259b.js"></script>
+        <script src="../toc-cc1a72e9.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -193,8 +197,9 @@
                     <main>
                         <h1 id="signing-in"><a class="header" href="#signing-in">Signing in</a></h1>
 <p>Veyyon authenticates to whichever provider you point it at and calls provider APIs directly with keys
-you supply. It has no telemetry egress of its own. Logins are <strong>provider-scoped</strong>: authenticating
-<code>anthropic</code> does not authenticate <code>openai</code>, and each provider tracks its own credentials.</p>
+you supply. Optional OpenTelemetry export runs only when <code>OTEL_EXPORTER_OTLP_*</code> is configured. Logins
+are <strong>provider-scoped</strong>: authenticating <code>anthropic</code> does not authenticate <code>openai</code>, and each provider
+tracks its own credentials.</p>
 <h2 id="sign-in-from-the-tui"><a class="header" href="#sign-in-from-the-tui">Sign in from the TUI</a></h2>
 <p>Use the interactive slash commands inside a session:</p>
 <ul>
@@ -203,7 +208,7 @@ you supply. It has no telemetry egress of its own. Logins are <strong>provider-s
 <li><code>/login &lt;redirect-url&gt;</code> — completes an OAuth flow that needs a pasted callback URL.</li>
 <li><code>/logout</code> — opens the provider selector to remove stored credentials.</li>
 </ul>
-<p>On first run, the setup ceremony (<code>veyyon setup</code>, or <code>/setup</code> / <code>/providers</code> later) walks the same flow.</p>
+<p>On first run, the first-run setup (<code>veyyon setup</code>, or <code>/setup</code> / <code>/providers</code> later) walks the same flow.</p>
 <h2 id="headless-and-remote-hosts"><a class="header" href="#headless-and-remote-hosts">Headless and remote hosts</a></h2>
 <p>For CI, servers, or a shared team credential store, use the auth broker from the shell:</p>
 <pre><code class="language-console">$ veyyon auth-broker login &lt;provider&gt;
@@ -236,7 +241,7 @@ a <code>.env</code> file) is used without an interactive sign-in.</p>
 </table>
 </div>
 <p>The full provider → variable map lives in <a href="../models/providers.html">Providers</a>. <code>.env</code> files are loaded
-from <code>&lt;cwd&gt;/.env</code>, <code>~/.veyyon/agent/.env</code>, <code>~/.veyyon/.env</code>, and <code>~/.env</code>, with earlier sources winning.</p>
+from <code>&lt;cwd&gt;/.env</code>, <code>~/.veyyon/profiles/default/agent/.env</code>, <code>~/.veyyon/.env</code>, and <code>~/.env</code>, with earlier sources winning.</p>
 <h2 id="how-keys-are-resolved"><a class="header" href="#how-keys-are-resolved">How keys are resolved</a></h2>
 <p>When a provider needs a key, Veyyon resolves it in order (first match wins):</p>
 <ol>
@@ -246,12 +251,12 @@ from <code>&lt;cwd&gt;/.env</code>, <code>~/.veyyon/agent/.env</code>, <code>~/.
 <li>A stored OAuth credential (refreshed as needed).</li>
 <li>The provider’s environment variable (including <code>.env</code>).</li>
 </ol>
-<p>Stored credentials live in the auth store at <code>~/.veyyon/agent/agent.db</code> (or the configured auth-broker
-snapshot in broker mode). <code>PI_CODING_AGENT_DIR</code> relocates the agent base, and the auth store moves with
+<p>Stored credentials live in the auth store at <code>~/.veyyon/profiles/default/agent/agent.db</code> (or the configured auth-broker
+snapshot in broker mode). <code>VEYYON_CODING_AGENT_DIR</code> relocates the agent base, and the auth store moves with
 it.</p>
 <h2 id="provider-data-is-data-driven"><a class="header" href="#provider-data-is-data-driven">Provider data is data-driven</a></h2>
 <p>Provider identity (display name, env var, OAuth parameters) and endpoints (base URL, API kind) come
-from the bundled model catalog plus your <code>~/.veyyon/agent/models.yml</code>. A new BYOK provider becomes
+from the bundled model catalog plus your <code>~/.veyyon/profiles/default/agent/models.yml</code>. A new BYOK provider becomes
 selectable by adding a <code>providers:</code> entry — not by changing code. See
 <a href="./configuring-providers.html">Configuring providers</a> and <code>docs/providers.md</code>.</p>
 <p>See also: <a href="./models.html">Models and providers</a> and the <a href="../reference/cli.html">CLI reference</a>.</p>

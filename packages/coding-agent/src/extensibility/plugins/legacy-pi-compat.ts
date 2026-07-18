@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import { isBuiltin } from "node:module";
 import * as path from "node:path";
 import * as url from "node:url";
-import { isCompiledBinary, stripWindowsExtendedLengthPathPrefix } from "@veyyon/pi-utils";
+import { isCompiledBinary, stripWindowsExtendedLengthPathPrefix } from "@veyyon/utils";
 import { registerPluginCacheInvalidator } from "../../discovery/helpers";
 
 const IS_COMPILED_BINARY = isCompiledBinary();
@@ -17,14 +17,14 @@ const IS_COMPILED_BINARY = isCompiledBinary();
 // imports inside runtime-loaded extensions.
 //
 // Compiled builds therefore keep live JS-heap references to the host packages
-// and serve requested surfaces through `omp-legacy-pi-bundled:<key>` synthetic
+// and serve requested surfaces through `veyyon-legacy-pi-bundled:<key>` synthetic
 // modules. `scripts/legacy-pi-virtual-module.ts` derives the static import edges
 // from current package exports inside a Bun build plugin: no generated source
 // or duplicate key list exists on disk. Runtime extension loading stays lazy —
 // the virtual module is evaluated only when an extension requests a host
 // package — but the compiler still sees every possible edge at build time.
-const BUNDLED_VIRTUAL_SCHEME = "omp-legacy-pi-bundled:";
-const BUNDLED_VIRTUAL_NAMESPACE = "omp-legacy-pi-bundled";
+const BUNDLED_VIRTUAL_SCHEME = "veyyon-legacy-pi-bundled:";
+const BUNDLED_VIRTUAL_NAMESPACE = "veyyon-legacy-pi-bundled";
 const BUNDLED_MODULES_GLOBAL = "__veyyonLegacyPiBundledModules";
 const TYPEBOX_BUNDLED_MODULE_KEY = "typebox";
 
@@ -36,7 +36,7 @@ let bundledModulesPromise: Promise<BundledModules> | null = null;
  * Lazy-load the build-supplied host modules and stash them on `globalThis` for
  * the synthetic module source emitted by `synthesizeBundledModuleSource`.
  *
- * `globalThis` is the bridge: each `omp-legacy-pi-bundled:<key>` source string
+ * `globalThis` is the bridge: each `veyyon-legacy-pi-bundled:<key>` source string
  * becomes a separate ES module and cannot close over this file's lexical scope.
  * The dynamic import is intentional conditional build code. Dev/test runs
  * never execute it; binary builds resolve the literal through the in-memory
@@ -44,10 +44,10 @@ let bundledModulesPromise: Promise<BundledModules> | null = null;
  */
 function ensureBundledModulesLoaded(): Promise<BundledModules> {
 	if (!IS_COMPILED_BINARY) {
-		return Promise.reject(new Error("omp:legacy-pi-shim: bundled modules are only available in compiled mode"));
+		return Promise.reject(new Error("veyyon:legacy-pi-shim: bundled modules are only available in compiled mode"));
 	}
 	if (!bundledModulesPromise) {
-		bundledModulesPromise = import("omp-legacy-pi-modules").then(module => {
+		bundledModulesPromise = import("veyyon-legacy-pi-modules").then(module => {
 			Reflect.set(globalThis, BUNDLED_MODULES_GLOBAL, module.BUNDLED_PI_MODULES);
 			return module.BUNDLED_PI_MODULES;
 		});
@@ -70,7 +70,7 @@ function isBundledVirtualSpecifier(value: string): boolean {
 function synthesizeBundledModuleSourceFromModules(moduleKey: string, modules: BundledModules): string {
 	const mod = modules[moduleKey];
 	if (!mod) {
-		throw new Error(`omp:legacy-pi-shim: no bundled module registered for ${moduleKey}`);
+		throw new Error(`veyyon:legacy-pi-shim: no bundled module registered for ${moduleKey}`);
 	}
 	const lines: string[] = [
 		`const __veyyon_bundled = globalThis[${JSON.stringify(BUNDLED_MODULES_GLOBAL)}][${JSON.stringify(moduleKey)}];`,
@@ -92,7 +92,7 @@ function synthesizeBundledModuleSourceFromModules(moduleKey: string, modules: Bu
 
 /**
  * Build the synthetic source served for one
- * `omp-legacy-pi-bundled:<key>` import.
+ * `veyyon-legacy-pi-bundled:<key>` import.
  */
 async function synthesizeBundledModuleSource(moduleKey: string): Promise<string> {
 	const modules = await ensureBundledModulesLoaded();
@@ -121,13 +121,33 @@ const CANONICAL_PI_SCOPE = "@veyyon";
 // Scopes that have historically been used to publish (or alias) the same set
 // of internal pi-* packages. Legacy scopes remain so older plugin peerDeps
 // still pass through the host-bundled package resolution path.
-const PI_SCOPE_ALIASES = ["veyyon", "oh-my-pi", "mariozechner", "earendil-works"] as const;
+const VEYYON_SCOPE_ALIASES = ["veyyon", "oh-my-pi", "mariozechner", "earendil-works"] as const;
 
-// Internal pi-* package basenames bundled inside the omp binary.
-const PI_PACKAGE_NAMES = ["pi-agent-core", "pi-ai", "pi-coding-agent", "pi-natives", "pi-tui", "pi-utils"] as const;
+// Internal package basenames bundled inside the veyyon binary, matched against
+// any of VEYYON_SCOPE_ALIASES above. Both naming eras are listed: the current
+// canonical basenames (used by `@veyyon/*` self-imports after the pi-*→* rename)
+// and the legacy `pi-*` basenames older third-party plugins published against
+// (`@mariozechner/pi-ai`, `@earendil-works/pi-tui`, `@oh-my-pi/pi-coding-agent`).
+// Keep the two lists in lockstep: every bundled package needs both its `@veyyon`
+// basename and its `pi-` legacy alias so neither self-imports nor legacy plugins
+// fall through the shim to a duplicate copy in the plugin's own node_modules.
+const VEYYON_PACKAGE_NAMES = [
+	"agent-core",
+	"pi-agent-core",
+	"ai",
+	"pi-ai",
+	"coding-agent",
+	"pi-coding-agent",
+	"natives",
+	"pi-natives",
+	"tui",
+	"pi-tui",
+	"utils",
+	"pi-utils",
+] as const;
 
-const PI_SCOPE_ALTERNATION = PI_SCOPE_ALIASES.join("|");
-const PI_PACKAGE_ALTERNATION = PI_PACKAGE_NAMES.join("|");
+const VEYYON_SCOPE_ALTERNATION = VEYYON_SCOPE_ALIASES.join("|");
+const VEYYON_PACKAGE_ALTERNATION = VEYYON_PACKAGE_NAMES.join("|");
 
 // Upstream `@mariozechner/*` packages exposed a few subpaths at the package
 // root that we relocated under a different folder. Each entry rewrites
@@ -135,18 +155,18 @@ const PI_PACKAGE_ALTERNATION = PI_PACKAGE_NAMES.join("|");
 // plugins importing the upstream layout still resolve to a real file in our
 // bundled copy. Entries ending in `/` rewrite the whole subtree; add new
 // `pkg/from -> pkg/to` pairs whenever an upstream-only subpath breaks resolution.
-const PI_SUBPATH_REMAPS: ReadonlyMap<string, string> = new Map<string, string>([
+const VEYYON_SUBPATH_REMAPS: ReadonlyMap<string, string> = new Map<string, string>([
 	["pi-ai/utils/oauth", "pi-ai/oauth"],
 	["pi-ai/utils/oauth/", "pi-ai/oauth/"],
 ]);
 
 function remapLegacyPiSubpath(rest: string): string {
-	const exact = PI_SUBPATH_REMAPS.get(rest);
+	const exact = VEYYON_SUBPATH_REMAPS.get(rest);
 	if (exact) {
 		return exact;
 	}
 
-	for (const [from, to] of PI_SUBPATH_REMAPS) {
+	for (const [from, to] of VEYYON_SUBPATH_REMAPS) {
 		if (from.endsWith("/") && rest.startsWith(from)) {
 			return `${to}${rest.slice(from.length)}`;
 		}
@@ -155,9 +175,11 @@ function remapLegacyPiSubpath(rest: string): string {
 	return rest;
 }
 
-const LEGACY_PI_SPECIFIER_FILTER = new RegExp(`^@(?:${PI_SCOPE_ALTERNATION})/(?:${PI_PACKAGE_ALTERNATION})(?:/.*)?$`);
+const LEGACY_PI_SPECIFIER_FILTER = new RegExp(
+	`^@(?:${VEYYON_SCOPE_ALTERNATION})/(?:${VEYYON_PACKAGE_ALTERNATION})(?:/.*)?$`,
+);
 const LEGACY_PI_IMPORT_SPECIFIER_REGEX = new RegExp(
-	`((?:from\\s+|import\\s+|import\\s*\\(\\s*)["'])(@(?:${PI_SCOPE_ALTERNATION})/(?:${PI_PACKAGE_ALTERNATION})(?:/[^"'()\\s]+)?)(["'])`,
+	`((?:from\\s+|import\\s+|import\\s*\\(\\s*)["'])(@(?:${VEYYON_SCOPE_ALTERNATION})/(?:${VEYYON_PACKAGE_ALTERNATION})(?:/[^"'()\\s]+)?)(["'])`,
 	"g",
 );
 const resolvedSpecifierFallbacks = new Map<string, string>();
@@ -199,20 +221,20 @@ const PACKAGE_IMPORT_EXCLUDED = Symbol("packageImportExcluded");
 const TYPEBOX_SPECIFIER_FILTER = /^(?:@sinclair\/typebox|typebox)$/;
 
 // Compat-shim path resolution. In compiled-binary mode every bundled surface
-// is served through the `omp-legacy-pi-bundled:` virtual namespace (see the
+// is served through the `veyyon-legacy-pi-bundled:` virtual namespace (see the
 // bundled-module block above) — bunfs paths are unreachable on Bun 1.3.14+, so the
 // pre-#3423 helpers that derived `/$bunfs/root/...` paths from
 // `import.meta.dir` are gone. Dev / source-link / installed-package modes
 // still need a real filesystem path for the source shims, which
 // `sourceShimPath` computes either from the npm prebuilt `dist/cli.js`
-// bundle (`PI_BUNDLED=true`) or directly from the monorepo source tree.
+// bundle (`VEYYON_BUNDLED=true`) or directly from the monorepo source tree.
 
 /**
  * Compute the package root for the npm prebuilt `dist/cli.js` bundle.
  *
- * `bundle-dist.ts` defines `process.env.PI_BUNDLED="true"`; after bundling,
+ * `bundle-dist.ts` defines `process.env.VEYYON_BUNDLED="true"`; after bundling,
  * `import.meta.dir` points at `<package>/dist`. Do not resolve the package via
- * bare `@veyyon/pi-coding-agent` here: from a global install Bun can pick an
+ * bare `@veyyon/coding-agent` here: from a global install Bun can pick an
  * older cache entry, recreating mixed-runtime plugin loading.
  */
 export function __computeBundledSelfPackageRoot(metaDir: string, pathImpl: typeof path = path): string {
@@ -230,7 +252,7 @@ export function __computeBundledSelfPackageRoot(metaDir: string, pathImpl: typeo
 }
 
 function resolveBundledSelfPackageRoot(): string | undefined {
-	if (!process.env.PI_BUNDLED) return undefined;
+	if (!process.env.VEYYON_BUNDLED) return undefined;
 	return __computeBundledSelfPackageRoot(import.meta.dir);
 }
 
@@ -247,7 +269,7 @@ function sourceShimPath(file: string): string {
  * the source file is missing.
  *
  * In compiled-binary mode the shim is served through the
- * `omp-legacy-pi-bundled:` virtual namespace (issue #3423) — bunfs paths are
+ * `veyyon-legacy-pi-bundled:` virtual namespace (issue #3423) — bunfs paths are
  * unreachable on Bun 1.3.14+, so the virtual specifier is always available and
  * needs no filesystem probe. In dev / source-link / installed-package mode the
  * shim is an on-disk source file; validation mirrors
@@ -279,7 +301,7 @@ const TYPEBOX_SHIM_PATH = __resolveTypeBoxShimPath(IS_COMPILED_BINARY, sourceShi
 // longer satisfies those imports. The override below redirects only the bare
 // pi-ai package root onto a sibling shim that re-exports the canonical surface
 // plus the borrowed `Type` runtime from the Zod-backed TypeBox shim. Subpath
-// imports such as `@veyyon/pi-ai/oauth` continue to resolve directly
+// imports such as `@veyyon/ai/oauth` continue to resolve directly
 // against the bundled pi-ai package.
 const LEGACY_PI_AI_SHIM_PATH = IS_COMPILED_BINARY
 	? bundledModuleVirtualSpecifier(`${CANONICAL_PI_SCOPE}/pi-ai`)
@@ -298,14 +320,14 @@ const LEGACY_PI_CODING_AGENT_SHIM_PATH = IS_COMPILED_BINARY
 
 // Package-root overrides. Shim entries (`pi-ai`, `pi-coding-agent`) always
 // replace the canonical surface so the legacy `Type` runtime and the legacy
-// helpers stay reachable. The bundled host packages (`pi-agent-core`,
-// `pi-natives`, `pi-tui`, `pi-utils`) are added only in compiled-binary mode
+// helpers stay reachable. The bundled host packages (`agent-core`,
+// `natives`, `tui`, `utils`) are added only in compiled-binary mode
 // to route extensions onto the in-process module instance — in dev /
 // source-link / installed-package mode the canonical specifier resolves
 // cleanly through `Bun.resolveSync` and hardcoding a source-tree path would
-// miss installs where the bundled packages live at `node_modules/@veyyon/pi-*`.
+// miss installs where the bundled packages live at `node_modules/@veyyon/*`.
 //
-// Compiled-binary entries are `omp-legacy-pi-bundled:<key>` specifiers handed
+// Compiled-binary entries are `veyyon-legacy-pi-bundled:<key>` specifiers handed
 // to the synthetic onLoad in `installLegacyPiSpecifierShim()` — bunfs paths
 // are unusable on Bun 1.3.14+ (issue #3423). Filesystem-shaped overrides are
 // still validated against on-disk presence so a missing dev-mode shim falls
@@ -313,7 +335,7 @@ const LEGACY_PI_CODING_AGENT_SHIM_PATH = IS_COMPILED_BINARY
 
 /**
  * Drop overrides whose filesystem targets are missing so they can fall
- * through to the canonical-resolution path. Virtual `omp-legacy-pi-bundled:`
+ * through to the canonical-resolution path. Virtual `veyyon-legacy-pi-bundled:`
  * entries always pass — live bundled module references are the source of truth
  * in compiled mode where bunfs paths are unreachable (issue #3423).
  *
@@ -394,6 +416,15 @@ function remapLegacyPiSpecifier(specifier: string): string | null {
 	return `${CANONICAL_PI_SCOPE}/${remappedSubpath}`;
 }
 
+/**
+ * Test seam: expose the scope/basename remap so the legacy-alias filter can be
+ * asserted without loading the native addon or bundling an extension. Returns
+ * `null` when the specifier is not a recognized legacy pi-* alias.
+ */
+export function __remapLegacyPiSpecifier(specifier: string): string | null {
+	return remapLegacyPiSpecifier(specifier);
+}
+
 function getResolvedSpecifier(specifier: string): string {
 	const cached = resolvedSpecifierFallbacks.get(specifier);
 	if (cached) {
@@ -422,7 +453,7 @@ function resolveCanonicalPiSpecifier(remappedSpecifier: string): string {
 }
 
 function toImportSpecifier(resolvedPath: string): string {
-	// Virtual `omp-legacy-pi-bundled:` specifiers are served by the synthetic
+	// Virtual `veyyon-legacy-pi-bundled:` specifiers are served by the synthetic
 	// onLoad in `installLegacyPiSpecifierShim()`; wrapping them as `file://`
 	// would corrupt the scheme.
 	if (isBundledVirtualSpecifier(resolvedPath)) {
@@ -459,7 +490,7 @@ function rewriteLegacyPiImports(source: string): string {
 const TYPEBOX_IMPORT_SPECIFIER_REGEX = /((?:from\s+|import\s+|import\s*\(\s*)["'])(@sinclair\/typebox|typebox)(["'])/g;
 
 /**
- * Rewrite the extension-owned specifiers OMP must host-resolve — legacy
+ * Rewrite the extension-owned specifiers veyyon must host-resolve — legacy
  * `@(scope)/pi-*`, bare TypeBox packages, package `imports` aliases like
  * `#src/*`, and extension-local bare dependencies — to absolute `file://` URLs
  * or compiled-mode virtual specifiers. Relative siblings and built-in modules
@@ -1126,7 +1157,7 @@ async function realpathOrSelfUncached(p: string): Promise<string> {
 
 /**
  * Walk the extension's import graph starting at `entryRealPath`, returning the
- * realpath of every reachable source module OMP must rewrite at load time.
+ * realpath of every reachable source module veyyon must rewrite at load time.
  * Relative imports and package `imports` aliases are always graph-owned.
  * Extension-local bare dependency entries are also included so their relative
  * children receive the reload mtime tag; bare imports inside those dependencies
@@ -1262,7 +1293,7 @@ function installExtensionGraphHook(
 		const filter = new RegExp(`^(?:${alternation})(?:\\?mtime=\\d+)?$`);
 		const hookId = Bun.hash(`${entryRealPath}\0async\0${[...asyncModules.keys()].join("\0")}`).toString(36);
 		Bun.plugin({
-			name: `omp:legacy-pi-ext:${hookId}`,
+			name: `veyyon:legacy-pi-ext:${hookId}`,
 			setup(build) {
 				build.onLoad({ filter, namespace: "file" }, async args => {
 					const queryIndex = args.path.indexOf("?mtime=");
@@ -1291,7 +1322,7 @@ function installExtensionGraphHook(
 		const filter = new RegExp(`^(?:${alternation})(?:\\?mtime=\\d+)?$`);
 		const hookId = Bun.hash(`${entryRealPath}\0sync-cjs\0${[...syncCommonJsModules.keys()].join("\0")}`).toString(36);
 		Bun.plugin({
-			name: `omp:legacy-pi-ext:${hookId}`,
+			name: `veyyon:legacy-pi-ext:${hookId}`,
 			setup(build) {
 				build.onLoad({ filter, namespace: "file" }, args => {
 					const queryIndex = args.path.indexOf("?mtime=");
@@ -1436,11 +1467,11 @@ export function installLegacyPiSpecifierShim(): void {
 	isLegacyPiSpecifierShimInstalled = true;
 
 	Bun.plugin({
-		name: "omp:legacy-pi-shim",
+		name: "veyyon:legacy-pi-shim",
 		setup(build) {
 			build.onResolve({ filter: LEGACY_PI_SPECIFIER_FILTER, namespace: "file" }, resolveLegacyPiSpecifier);
 			build.onResolve({ filter: TYPEBOX_SPECIFIER_FILTER, namespace: "file" }, resolveTypeBoxSpecifier);
-			// Compiled mode serves `omp-legacy-pi-bundled:<key>` imports from
+			// Compiled mode serves `veyyon-legacy-pi-bundled:<key>` imports from
 			// live host module references. No bunfs path leaves this loader.
 			build.onLoad({ filter: /.*/, namespace: BUNDLED_VIRTUAL_NAMESPACE }, async args => {
 				return { contents: await synthesizeBundledModuleSource(args.path), loader: "js" };

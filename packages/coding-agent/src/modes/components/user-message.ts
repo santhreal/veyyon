@@ -1,4 +1,4 @@
-import { Container, Markdown } from "@veyyon/pi-tui";
+import { Container, Markdown } from "@veyyon/tui";
 import { getMarkdownTheme, theme } from "../../modes/theme/theme";
 import { imageReferenceHyperlink, renderPlaceholders } from "../image-references";
 import { highlightMagicKeywords } from "../magic-keywords";

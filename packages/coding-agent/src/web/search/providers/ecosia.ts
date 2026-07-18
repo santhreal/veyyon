@@ -1,4 +1,4 @@
-import type { AuthStorage } from "@veyyon/pi-ai";
+import type { AuthStorage } from "@veyyon/ai";
 import { parseHTML } from "linkedom";
 import type { SearchResponse, SearchSource } from "../../../web/search/types";
 import { SearchProviderError } from "../../../web/search/types";
@@ -98,47 +98,48 @@ function isBlockedPage(page: LoadedHtmlPage): boolean {
 }
 
 async function callEcosiaHtml(params: SearchParams): Promise<string> {
-	const signal = withHardTimeout(params.signal);
-	const url = new URL(ECOSIA_SEARCH_URL);
-	url.searchParams.set("q", params.query);
+	return withHardTimeout(params.signal, async signal => {
+		const url = new URL(ECOSIA_SEARCH_URL);
+		url.searchParams.set("q", params.query);
 
-	let page: LoadedHtmlPage;
-	try {
-		page = await browserFetch(url.href, {
-			fetch: params.fetch,
-			signal,
-			referer: ECOSIA_HOME_URL,
-			browser: {
-				homeUrl: ECOSIA_HOME_URL,
-				ready: {
-					selector: 'article[data-test-id="organic-result"]',
-					timeoutMs: RESULT_RENDER_TIMEOUT_MS,
+		let page: LoadedHtmlPage;
+		try {
+			page = await browserFetch(url.href, {
+				fetch: params.fetch,
+				signal,
+				referer: ECOSIA_HOME_URL,
+				browser: {
+					homeUrl: ECOSIA_HOME_URL,
+					ready: {
+						selector: 'article[data-test-id="organic-result"]',
+						timeoutMs: RESULT_RENDER_TIMEOUT_MS,
+					},
+					shouldFallback: isBlockedPage,
 				},
-				shouldFallback: isBlockedPage,
-			},
-		});
-	} catch (error) {
-		if (error instanceof SearchProviderError || params.signal?.aborted) throw error;
-		if (signal.aborted) {
-			throw new SearchProviderError("ecosia", "Ecosia search timed out.", 504);
+			});
+		} catch (error) {
+			if (error instanceof SearchProviderError || params.signal?.aborted) throw error;
+			if (signal.aborted) {
+				throw new SearchProviderError("ecosia", "Ecosia search timed out.", 504);
+			}
+			const message = error instanceof Error ? error.message : String(error);
+			throw new SearchProviderError("ecosia", `Ecosia search failed: ${message}`, 503);
 		}
-		const message = error instanceof Error ? error.message : String(error);
-		throw new SearchProviderError("ecosia", `Ecosia search failed: ${message}`, 503);
-	}
 
-	if (isBlockedPage(page)) {
-		throw new SearchProviderError(
-			"ecosia",
-			"Ecosia blocked the request with a Cloudflare bot challenge. Ecosia's firewall throttles automated searches from datacenter/shared-egress IPs; try another web search provider such as DuckDuckGo, Brave, or Tavily.",
-			429,
-		);
-	}
-	if (page.status < 200 || page.status >= 300) {
-		const classified = classifyProviderHttpError("ecosia", page.status, page.html);
-		if (classified) throw classified;
-		throw new SearchProviderError("ecosia", `Ecosia HTML error (${page.status})`, page.status);
-	}
-	return page.html;
+		if (isBlockedPage(page)) {
+			throw new SearchProviderError(
+				"ecosia",
+				"Ecosia blocked the request with a Cloudflare bot challenge. Ecosia's firewall throttles automated searches from datacenter/shared-egress IPs; try another web search provider such as DuckDuckGo, Brave, or Tavily.",
+				429,
+			);
+		}
+		if (page.status < 200 || page.status >= 300) {
+			const classified = classifyProviderHttpError("ecosia", page.status, page.html);
+			if (classified) throw classified;
+			throw new SearchProviderError("ecosia", `Ecosia HTML error (${page.status})`, page.status);
+		}
+		return page.html;
+	});
 }
 
 /** Execute an Ecosia web search and parse the server-rendered result page. */

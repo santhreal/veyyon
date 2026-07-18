@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "bun:test";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -7,6 +7,25 @@ import { registerDaemonProjectPresence } from "../../src/launch/presence";
 import type { DaemonSpec } from "../../src/launch/protocol";
 
 const cleanupDirs: string[] = [];
+
+// The broker worker is the veyyon CLI (inherits this process's env) and runs
+// the legacy-layout migration gate at startup; a real ~/.veyyon in the
+// both-layouts conflict state kills it before broker.sock exists. Isolate via
+// the live-read VEYYON_CONFIG_DIR name (bun's os.homedir() ignores runtime
+// HOME mutation).
+const BROKER_CONFIG_DIR_NAME = `.veyyon-launch-test-${crypto.randomUUID()}`;
+let previousConfigDir: string | undefined;
+
+beforeAll(() => {
+	previousConfigDir = process.env.VEYYON_CONFIG_DIR;
+	process.env.VEYYON_CONFIG_DIR = BROKER_CONFIG_DIR_NAME;
+});
+
+afterAll(async () => {
+	if (previousConfigDir === undefined) delete process.env.VEYYON_CONFIG_DIR;
+	else process.env.VEYYON_CONFIG_DIR = previousConfigDir;
+	await fs.rm(path.join(os.homedir(), BROKER_CONFIG_DIR_NAME), { recursive: true, force: true });
+});
 
 async function tempDir(prefix: string): Promise<string> {
 	const dir = await fs.mkdtemp(path.join(os.tmpdir(), prefix));
@@ -51,8 +70,8 @@ afterEach(async () => {
 
 describe("daemon broker", () => {
 	it("shares PTY output and input across project clients", async () => {
-		const projectDir = await tempDir("omp-daemon-project-");
-		const runtimeDir = await tempDir("omp-daemon-runtime-");
+		const projectDir = await tempDir("veyyon-daemon-project-");
+		const runtimeDir = await tempDir("veyyon-daemon-runtime-");
 		const scriptPath = path.join(projectDir, "service.ts");
 		await Bun.write(
 			scriptPath,
@@ -133,9 +152,9 @@ setInterval(() => {}, 1000);
 		}
 	}, 20_000);
 
-	it("stops non-persistent daemons after the last project omp exits", async () => {
-		const projectDir = await tempDir("omp-daemon-exit-project-");
-		const runtimeDir = await tempDir("omp-daemon-exit-runtime-");
+	it("stops non-persistent daemons after the last project veyyon exits", async () => {
+		const projectDir = await tempDir("veyyon-daemon-exit-project-");
+		const runtimeDir = await tempDir("veyyon-daemon-exit-runtime-");
 		const scriptPath = path.join(projectDir, "service.ts");
 		await Bun.write(scriptPath, `process.stdout.write("READY\\n"); setInterval(() => {}, 1000);\n`);
 		const presence = await registerDaemonProjectPresence(projectDir, runtimeDir);
@@ -192,8 +211,8 @@ setInterval(() => {}, 1000);
 	}, 20_000);
 
 	it("keeps detached daemons alive through broker replacement", async () => {
-		const projectDir = await tempDir("omp-daemon-detached-project-");
-		const runtimeDir = await tempDir("omp-daemon-detached-runtime-");
+		const projectDir = await tempDir("veyyon-daemon-detached-project-");
+		const runtimeDir = await tempDir("veyyon-daemon-detached-runtime-");
 		const scriptPath = path.join(projectDir, "service.ts");
 		await Bun.write(scriptPath, `process.stdout.write("READY\\n"); setInterval(() => {}, 1000);\n`);
 		const first = await createDaemonBrokerClient(projectDir, { runtimeDir, idleGraceMs: 5_000 });
@@ -264,8 +283,8 @@ setInterval(() => {}, 1000);
 	// used to report "Ready: <match>" AND "Readiness timed out" with no hint of
 	// which condition failed. The snapshot now names the unmet condition(s).
 	it("names the unmet readiness condition when start times out", async () => {
-		const projectDir = await tempDir("omp-daemon-ready-project-");
-		const runtimeDir = await tempDir("omp-daemon-ready-runtime-");
+		const projectDir = await tempDir("veyyon-daemon-ready-project-");
+		const runtimeDir = await tempDir("veyyon-daemon-ready-runtime-");
 		const scriptPath = path.join(projectDir, "service.ts");
 		await Bun.write(scriptPath, `process.stdout.write("LISTENING\\n"); setInterval(() => {}, 1000);\n`);
 		// Reserve an ephemeral port and release it so nothing accepts connections there.

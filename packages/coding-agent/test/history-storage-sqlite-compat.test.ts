@@ -1,7 +1,7 @@
 import { Database } from "bun:sqlite";
 import { afterEach, beforeEach, expect, it } from "bun:test";
-import { HistoryStorage } from "@veyyon/pi-coding-agent/session/history-storage";
-import { TempDir } from "@veyyon/pi-utils";
+import { HistoryStorage } from "@veyyon/coding-agent/session/history-storage";
+import { TempDir } from "@veyyon/utils";
 import { readTableSql } from "./helpers/sqlite-inspect";
 
 const LEGACY_TIMESTAMP = 1_700_000_000;
@@ -22,7 +22,7 @@ afterEach(async () => {
 });
 
 it("migrates legacy history schema away from unixepoch defaults", async () => {
-	tempDir = TempDir.createSync("@omp-history-storage-legacy-");
+	tempDir = TempDir.createSync("@veyyon-history-storage-legacy-");
 	const dbPath = tempDir.join("history.db");
 	const legacyDb = new Database(dbPath);
 	legacyDb.exec(`

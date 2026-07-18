@@ -6,7 +6,7 @@
  * so named exports must be real `export const` declarations instead of CJS
  * assignments that Bun happens to detect.
  *
- * The contract this test pins down: ESM consumers of `@veyyon/pi-natives`
+ * The contract this test pins down: ESM consumers of `@veyyon/natives`
  * resolve to `native/index.js`, and that file declares every public symbol
  * from `native/index.d.ts` as a real ESM named export.
  */
@@ -37,7 +37,7 @@ function esmExportsName(js: string, name: string): boolean {
 	return re.test(js);
 }
 
-describe("issue 892: pi-natives public surface", () => {
+describe("issue 892: veyyon-natives public surface", () => {
 	it("declares every public .d.ts symbol as an explicit ESM export", async () => {
 		const [js, symbols] = await Promise.all([Bun.file(indexJsPath).text(), readPublicSymbols()]);
 		expect(symbols.length).toBeGreaterThan(0);

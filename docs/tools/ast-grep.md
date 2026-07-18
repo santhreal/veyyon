@@ -6,8 +6,8 @@
 - Entry: `packages/coding-agent/src/tools/ast-grep.ts`
 - Model-facing prompt: `packages/coding-agent/src/prompts/tools/ast-grep.md`
 - Key collaborators:
-  - `crates/pi-natives/src/ast.rs` — native scan, parse, match engine
-  - `crates/pi-ast/src/language/mod.rs` — language aliases and extension inference used by the native wrapper.
+  - `crates/veyyon-natives/src/ast.rs` — native scan, parse, match engine
+  - `crates/veyyon-ast/src/language/mod.rs` — language aliases and extension inference used by the native wrapper.
   - `packages/coding-agent/src/tools/path-utils.ts` — path/glob parsing and multi-path resolution
   - `packages/coding-agent/src/tools/render-utils.ts` — parse-error dedupe and display caps
   - `packages/coding-agent/src/tools/match-line-format.ts` — hashline match rendering
@@ -30,7 +30,7 @@ Pattern grammar and language support exposed to the model:
 - Metavariable names must be uppercase and must stand for whole AST nodes, not partial tokens or string fragments.
 - Reusing the same metavariable requires identical code at each occurrence.
 - Patterns must parse as one valid AST node for the inferred target language.
-- Supported canonical languages come from `SupportLang::all_langs()` in `crates/pi-ast/src/language/mod.rs`: `astro`, `bash`, `c`, `cmake`, `cpp`, `csharp`, `dart`, `clojure`, `css`, `diff`, `dockerfile`, `emacs-lisp`, `elixir`, `erlang`, `go`, `graphql`, `haskell`, `hcl`, `html`, `ini`, `java`, `javascript`, `json`, `just`, `julia`, `kotlin`, `lua`, `make`, `markdown`, `nix`, `objc`, `ocaml`, `odin`, `perl`, `php`, `powershell`, `protobuf`, `python`, `r`, `regex`, `ruby`, `rust`, `scala`, `solidity`, `sql`, `starlark`, `svelte`, `swift`, `toml`, `tlaplus`, `tsx`, `typescript`, `verilog`, `vue`, `xml`, `yaml`, `zig`.
+- Supported canonical languages come from `SupportLang::all_langs()` in `crates/veyyon-ast/src/language/mod.rs`: `astro`, `bash`, `c`, `cmake`, `cpp`, `csharp`, `dart`, `clojure`, `css`, `diff`, `dockerfile`, `emacs-lisp`, `elixir`, `erlang`, `go`, `graphql`, `haskell`, `hcl`, `html`, `ini`, `java`, `javascript`, `json`, `just`, `julia`, `kotlin`, `lua`, `make`, `markdown`, `nix`, `objc`, `ocaml`, `odin`, `perl`, `php`, `powershell`, `protobuf`, `python`, `r`, `regex`, `ruby`, `rust`, `scala`, `solidity`, `sql`, `starlark`, `svelte`, `swift`, `toml`, `tlaplus`, `tsx`, `typescript`, `verilog`, `vue`, `xml`, `yaml`, `zig`.
 
 ## Outputs
 - Single-shot tool result.
@@ -55,7 +55,7 @@ Pattern grammar and language support exposed to the model:
 6. Execution dispatches to either:
    - one native `astGrep(...)` call for a single resolved base, or
    - `runMultiTargetAstGrep(...)`, which calls the native binding once per target, rebases paths back to the common root, sorts globally, then applies `skip` and the wrapper limit.
-7. Native `ast_grep` in `crates/pi-natives/src/ast.rs`:
+7. Native `ast_grep` in `crates/veyyon-natives/src/ast.rs`:
    - normalizes and deduplicates patterns,
    - resolves a `MatchStrictness` (`smart` by default),
    - collects candidate files from a file or gitignore-aware directory scan,
@@ -84,11 +84,11 @@ Pattern grammar and language support exposed to the model:
 
 ## Limits & Caps
 - Wrapper-visible result cap: `DEFAULT_AST_LIMIT = 50` in `packages/coding-agent/src/tools/ast-grep.ts`.
-  - Single-target calls rely on the native default limit of 50 in `crates/pi-natives/src/ast.rs`.
+  - Single-target calls rely on the native default limit of 50 in `crates/veyyon-natives/src/ast.rs`.
   - Multi-target calls fetch `skip + 50 + 1` matches per target, then re-page after global sort.
-- Native `limit` is clamped to at least `1`; omitted `offset` defaults to `0` in `crates/pi-natives/src/ast.rs`.
+- Native `limit` is clamped to at least `1`; omitted `offset` defaults to `0` in `crates/veyyon-natives/src/ast.rs`.
 - Parse issues are rendered with at most `PARSE_ERRORS_LIMIT = 20` lines in `packages/coding-agent/src/tools/render-utils.ts`; `capParseErrors()` also caps `details.parseErrors` to those 20 unique entries, with `details.parseErrorsTotal` holding the pre-cap deduplicated total.
-- Directory scans use `include_hidden: true`, `use_gitignore: true`, and skip `node_modules` unless the glob text explicitly mentions `node_modules` in `crates/pi-natives/src/ast.rs`.
+- Directory scans use `include_hidden: true`, `use_gitignore: true`, and skip `node_modules` unless the glob text explicitly mentions `node_modules` in `crates/veyyon-natives/src/ast.rs`.
 - No hard file-count cap is applied by the wrapper or native `ast_grep`; candidate count is whatever the resolved path/glob expands to after gitignore filtering.
 - Multi-path union deduplicates identical path inputs before resolution in `resolveExplicitSearchPaths()`.
 
@@ -105,5 +105,5 @@ Pattern grammar and language support exposed to the model:
 - `ast_grep` can search mixed-language trees because native compilation happens per discovered language, but the prompt still tells the model to keep calls single-language when possible to reduce parse noise.
 - Pattern compilation is per language present in the candidate set. One pattern can succeed for some languages and generate per-file parse errors for others in the same run.
 - A file with tree-sitter error nodes still gets searched; the syntax warning is additive, not a skip condition.
-- For glob semantics, `*.ts` matches only direct children while `**/*.ts` recurses; this is covered by native tests in `crates/pi-natives/src/ast.rs`.
+- For glob semantics, `*.ts` matches only direct children while `**/*.ts` recurses; this is covered by native tests in `crates/veyyon-natives/src/ast.rs`.
 - Output anchors are intended for follow-up tools, but the exact anchor format depends on session edit mode (`hashline` vs line-number mode).

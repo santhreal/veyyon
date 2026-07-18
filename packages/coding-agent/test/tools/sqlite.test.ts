@@ -3,18 +3,18 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { removeWithRetries } from "@veyyon/pi-utils";
-import "@veyyon/pi-coding-agent/tools/renderers";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { ReadTool } from "@veyyon/pi-coding-agent/tools/read";
+import { removeWithRetries } from "@veyyon/utils";
+import "@veyyon/coding-agent/tools/renderers";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import { ReadTool } from "@veyyon/coding-agent/tools/read";
 import {
 	listTables,
 	parseSqlitePathCandidates,
 	parseSqliteSelector,
 	renderTable,
 	renderTableList,
-} from "@veyyon/pi-coding-agent/tools/sqlite-reader";
-import { WriteTool } from "@veyyon/pi-coding-agent/tools/write";
+} from "@veyyon/coding-agent/tools/sqlite-reader";
+import { WriteTool } from "@veyyon/coding-agent/tools/write";
 
 type ToolTextResult = {
 	content: Array<{ type: string; text?: string }>;
@@ -160,8 +160,8 @@ describe("SQLite tool support", () => {
 		sqlitePath = path.join(tmpDir, "app.sqlite");
 		sqliteDbPath = path.join(tmpDir, "app.db");
 		invalidDbPath = path.join(tmpDir, "thumbs.db");
-		originalEditVariant = Bun.env.PI_EDIT_VARIANT;
-		Bun.env.PI_EDIT_VARIANT = "replace";
+		originalEditVariant = Bun.env.VEYYON_EDIT_VARIANT;
+		Bun.env.VEYYON_EDIT_VARIANT = "replace";
 
 		fixtureBytes = buildFixtureBytes();
 		await fs.writeFile(sqlitePath, fixtureBytes);
@@ -175,9 +175,9 @@ describe("SQLite tool support", () => {
 
 	afterAll(async () => {
 		if (originalEditVariant === undefined) {
-			delete Bun.env.PI_EDIT_VARIANT;
+			delete Bun.env.VEYYON_EDIT_VARIANT;
 		} else {
-			Bun.env.PI_EDIT_VARIANT = originalEditVariant;
+			Bun.env.VEYYON_EDIT_VARIANT = originalEditVariant;
 		}
 		await removeWithRetries(tmpDir);
 	});

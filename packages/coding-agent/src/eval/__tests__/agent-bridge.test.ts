@@ -1,7 +1,7 @@
 import { afterAll, afterEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { TempDir } from "@veyyon/pi-utils";
+import { TempDir } from "@veyyon/utils";
 import { Settings } from "../../config/settings";
 import { AgentProtocolHandler } from "../../internal-urls/agent-protocol";
 import { resetRegisteredArtifactDirsForTests } from "../../internal-urls/registry-helpers";
@@ -479,7 +479,7 @@ describe("agent() through eval runtimes", () => {
 	});
 
 	it("exposes agent() in JavaScript and parses structured output", async () => {
-		using tempDir = TempDir.createSync("@omp-eval-agent-js-");
+		using tempDir = TempDir.createSync("@veyyon-eval-agent-js-");
 		const { session, sessionFile } = makeEvalSession(tempDir, "js-agent");
 		mockAgents();
 		vi.spyOn(taskExecutor, "runSubprocess").mockImplementation(async options =>
@@ -498,7 +498,7 @@ describe("agent() through eval runtimes", () => {
 	});
 
 	it("bounds JavaScript parallel() by the task.maxConcurrency setting while preserving order", async () => {
-		using tempDir = TempDir.createSync("@omp-eval-agent-js-parallel-");
+		using tempDir = TempDir.createSync("@veyyon-eval-agent-js-parallel-");
 		const settings = Settings.isolated({
 			"async.enabled": false,
 			"task.isolation.mode": "none",
@@ -521,7 +521,7 @@ describe("agent() through eval runtimes", () => {
 	});
 
 	it("propagates JavaScript parallel() rejections", async () => {
-		using tempDir = TempDir.createSync("@omp-eval-agent-js-reject-");
+		using tempDir = TempDir.createSync("@veyyon-eval-agent-js-reject-");
 		const { session, sessionFile } = makeEvalSession(tempDir, "js-agent-reject");
 		mockAgents();
 		vi.spyOn(taskExecutor, "runSubprocess").mockImplementation(async options => {
@@ -543,7 +543,7 @@ describe("agent() through eval runtimes", () => {
 	});
 
 	it("exposes agent() in the Python runtime", async () => {
-		using tempDir = TempDir.createSync("@omp-eval-agent-py-");
+		using tempDir = TempDir.createSync("@veyyon-eval-agent-py-");
 		const { session, sessionFile, sessionId } = makeEvalSession(tempDir, "py-agent");
 		mockAgents();
 		vi.spyOn(taskExecutor, "runSubprocess").mockImplementation(async options =>
@@ -567,7 +567,7 @@ describe("agent() through eval runtimes", () => {
 	});
 
 	it("bounds Python parallel() by the task.maxConcurrency setting while preserving order", async () => {
-		using tempDir = TempDir.createSync("@omp-eval-agent-py-parallel-");
+		using tempDir = TempDir.createSync("@veyyon-eval-agent-py-parallel-");
 		const settings = Settings.isolated({
 			"async.enabled": false,
 			"task.isolation.mode": "none",
@@ -594,7 +594,7 @@ describe("agent() through eval runtimes", () => {
 	});
 
 	it("interrupting a Python parallel() fan-out settles the kernel cleanly and preserves session state", async () => {
-		using tempDir = TempDir.createSync("@omp-eval-agent-py-interrupt-");
+		using tempDir = TempDir.createSync("@veyyon-eval-agent-py-interrupt-");
 		const settings = Settings.isolated({
 			"async.enabled": false,
 			"task.isolation.mode": "none",
@@ -679,7 +679,7 @@ describe("agent() through eval runtimes", () => {
 	}, 30_000);
 
 	it("streams enriched agent progress through onStatus before the cell finishes", async () => {
-		using tempDir = TempDir.createSync("@omp-eval-agent-progress-");
+		using tempDir = TempDir.createSync("@veyyon-eval-agent-progress-");
 		const { session, sessionFile } = makeEvalSession(tempDir, "js-agent-progress");
 		mockAgents();
 
@@ -771,7 +771,7 @@ describe("agent() through eval runtimes", () => {
 	});
 
 	it("pauses the idle watchdog while a quiet agent() runs past the budget", async () => {
-		using tempDir = TempDir.createSync("@omp-eval-agent-timeout-pause-");
+		using tempDir = TempDir.createSync("@veyyon-eval-agent-timeout-pause-");
 		const { session } = makeEvalSession(tempDir, "js-agent-timeout-pause");
 		mockAgents();
 
@@ -830,7 +830,7 @@ describe("agent() through eval runtimes", () => {
 	});
 
 	it("keeps timeout paused despite agent() progress snapshots", async () => {
-		using tempDir = TempDir.createSync("@omp-eval-agent-progress-timeout-pause-");
+		using tempDir = TempDir.createSync("@veyyon-eval-agent-progress-timeout-pause-");
 		const { session } = makeEvalSession(tempDir, "js-agent-progress-timeout-pause");
 		mockAgents();
 
@@ -989,7 +989,7 @@ describe("runEvalAgent isolation", () => {
 		await runEvalAgent({ prompt: "plain handle", handle: true }, { session: makeSession() });
 
 		const removedArtifactsDir = rmSpy.mock.calls.some(
-			([target]) => typeof target === "string" && target.includes("omp-eval-agent-"),
+			([target]) => typeof target === "string" && target.includes("veyyon-eval-agent-"),
 		);
 		expect(removedArtifactsDir).toBe(false);
 	});
@@ -1373,7 +1373,7 @@ describe("runEvalAgent isolation", () => {
 
 		expect(result.details.patchPath).toMatch(/\.patch$/);
 		const removedArtifactsDir = rmSpy.mock.calls.some(
-			([target]) => typeof target === "string" && target.includes("omp-eval-agent-"),
+			([target]) => typeof target === "string" && target.includes("veyyon-eval-agent-"),
 		);
 		expect(removedArtifactsDir).toBe(false);
 	});
@@ -1395,7 +1395,7 @@ describe("runEvalAgent isolation", () => {
 		await runEvalAgent({ prompt: "scout", isolated: true }, { session: isolatedSession() });
 
 		const removedArtifactsDir = rmSpy.mock.calls.some(
-			([target]) => typeof target === "string" && target.includes("omp-eval-agent-"),
+			([target]) => typeof target === "string" && target.includes("veyyon-eval-agent-"),
 		);
 		expect(removedArtifactsDir).toBe(true);
 	});
@@ -1417,7 +1417,7 @@ describe("runEvalAgent isolation", () => {
 		await runEvalAgent({ prompt: "scout", isolated: true, handle: true }, { session: isolatedSession() });
 
 		const removedArtifactsDir = rmSpy.mock.calls.some(
-			([target]) => typeof target === "string" && target.includes("omp-eval-agent-"),
+			([target]) => typeof target === "string" && target.includes("veyyon-eval-agent-"),
 		);
 		expect(removedArtifactsDir).toBe(false);
 	});

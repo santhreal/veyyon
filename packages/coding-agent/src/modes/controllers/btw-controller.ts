@@ -1,5 +1,5 @@
-import type { AssistantMessage } from "@veyyon/pi-ai";
-import { prompt } from "@veyyon/pi-utils";
+import type { AssistantMessage } from "@veyyon/ai";
+import { errorMessage, prompt } from "@veyyon/utils";
 import btwUserPrompt from "../../prompts/system/btw-user.md" with { type: "text" };
 import { copyToClipboard } from "../../utils/clipboard";
 import { BtwPanelComponent } from "../components/btw-panel";
@@ -75,7 +75,7 @@ export class BtwController {
 			this.ctx.showStatus("Copied /btw answer to clipboard");
 			return true;
 		} catch (error) {
-			this.ctx.showError(error instanceof Error ? error.message : String(error));
+			this.ctx.showError(errorMessage(error));
 			return true;
 		} finally {
 			this.#copyInFlight = false;
@@ -167,7 +167,7 @@ export class BtwController {
 				request.component.markAborted();
 				return;
 			}
-			request.component.markError(error instanceof Error ? error.message : String(error));
+			request.component.markError(errorMessage(error));
 		}
 	}
 

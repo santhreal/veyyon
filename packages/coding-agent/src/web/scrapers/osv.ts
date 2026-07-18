@@ -1,6 +1,6 @@
-import { tryParseJson } from "@veyyon/pi-utils";
-import type { RenderResult, SpecialHandler } from "./types";
-import { buildResult, formatIsoDate, loadPage } from "./types";
+import { tryParseJson } from "@veyyon/utils";
+import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
+import { buildResult, formatIsoDate, loadFailure, loadPage, scraperDegrade, tryParseUrl } from "./types";
 
 interface OsvSeverity {
 	type: string;
@@ -52,9 +52,10 @@ export const handleOsv: SpecialHandler = async (
 	url: string,
 	timeout: number,
 	signal?: AbortSignal,
-): Promise<RenderResult | null> => {
+): Promise<RenderResult | ScraperDegrade | null> => {
 	try {
-		const parsed = new URL(url);
+		const parsed = tryParseUrl(url);
+		if (!parsed) return null;
 		if (parsed.hostname !== "osv.dev") return null;
 
 		// Extract vulnerability ID from /vulnerability/{id}
@@ -72,10 +73,10 @@ export const handleOsv: SpecialHandler = async (
 			signal,
 		});
 
-		if (!result.ok) return null;
+		if (!result.ok) return scraperDegrade("osv", loadFailure(result));
 
 		const vuln = tryParseJson<OsvVulnerability>(result.content);
-		if (!vuln) return null;
+		if (!vuln) return scraperDegrade("osv", "unexpected response shape");
 
 		let md = `# ${vuln.id}\n\n`;
 
@@ -170,7 +171,7 @@ export const handleOsv: SpecialHandler = async (
 		}
 
 		return buildResult(md, { url, method: "osv", fetchedAt, notes: ["Fetched via OSV API"] });
-	} catch {}
-
-	return null;
+	} catch (error) {
+		return scraperDegrade("osv", error);
+	}
 };

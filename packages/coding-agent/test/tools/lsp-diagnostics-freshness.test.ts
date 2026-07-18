@@ -1,14 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { createLspWritethrough, type FileDiagnosticsResult } from "@veyyon/pi-coding-agent/lsp";
-import * as lspClient from "@veyyon/pi-coding-agent/lsp/client";
-import * as lspConfig from "@veyyon/pi-coding-agent/lsp/config";
-import type { Diagnostic, LspClient, ServerConfig } from "@veyyon/pi-coding-agent/lsp/types";
-import { fileToUri } from "@veyyon/pi-coding-agent/lsp/utils";
-import type { DeferredDiagnosticsEntry, ToolSession } from "@veyyon/pi-coding-agent/tools";
-import { WriteTool } from "@veyyon/pi-coding-agent/tools/write";
-import { type ptree, TempDir } from "@veyyon/pi-utils";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import { createLspWritethrough, type FileDiagnosticsResult } from "@veyyon/coding-agent/lsp";
+import * as lspClient from "@veyyon/coding-agent/lsp/client";
+import * as lspConfig from "@veyyon/coding-agent/lsp/config";
+import type { Diagnostic, LspClient, ServerConfig } from "@veyyon/coding-agent/lsp/types";
+import { fileToUri } from "@veyyon/coding-agent/lsp/utils";
+import type { DeferredDiagnosticsEntry, ToolSession } from "@veyyon/coding-agent/tools";
+import { WriteTool } from "@veyyon/coding-agent/tools/write";
+import { type ptree, TempDir } from "@veyyon/utils";
 
 const TEST_SERVER: ServerConfig = {
 	command: "test-lsp",
@@ -107,7 +107,7 @@ describe("LSP diagnostics freshness", () => {
 	let tempDir: TempDir;
 
 	beforeEach(() => {
-		tempDir = TempDir.createSync("@omp-lsp-freshness-");
+		tempDir = TempDir.createSync("@veyyon-lsp-freshness-");
 	});
 
 	afterEach(() => {
@@ -417,7 +417,7 @@ describe("LSP diagnostics freshness", () => {
 			...TEST_SERVER,
 			rootMarkers: ["package.json", "tsconfig.json", "jsconfig.json"],
 		};
-		const orphanDir = TempDir.createSync("@omp-lsp-orphan-");
+		const orphanDir = TempDir.createSync("@veyyon-lsp-orphan-");
 		try {
 			const filePath = path.join(orphanDir.path(), "scratch.ts");
 			const uri = fileToUri(filePath);

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import type { AssistantMessage } from "@veyyon/pi-ai";
-import { ToolCallLoopGuard } from "@veyyon/pi-ai/utils/tool-call-loop-guard";
-import { INTENT_FIELD } from "@veyyon/pi-wire";
+import type { AssistantMessage } from "@veyyon/ai";
+import { ToolCallLoopGuard } from "@veyyon/ai/utils/tool-call-loop-guard";
+import { INTENT_FIELD } from "@veyyon/wire";
 
 const zeroUsage = {
 	input: 0,

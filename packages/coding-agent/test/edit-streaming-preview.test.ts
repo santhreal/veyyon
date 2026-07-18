@@ -2,9 +2,9 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import { dropIncompleteLastEdit, EDIT_MODE_STRATEGIES } from "@veyyon/coding-agent/edit";
 import { computeFileHash, formatHashlineHeader, InMemorySnapshotStore } from "@veyyon/hashline";
-import { dropIncompleteLastEdit, EDIT_MODE_STRATEGIES } from "@veyyon/pi-coding-agent/edit";
-import { removeWithRetries } from "@veyyon/pi-utils";
+import { removeWithRetries } from "@veyyon/utils";
 
 describe("dropIncompleteLastEdit", () => {
 	test("keeps all entries when partialJson is undefined", () => {

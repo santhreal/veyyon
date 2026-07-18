@@ -24,16 +24,21 @@ export * as procmgr from "./procmgr";
 export * as prompt from "./prompt";
 export * as ptree from "./ptree";
 export { AbortError, ChildProcess, Exception, NonZeroExitError } from "./ptree";
+export * from "./regex";
 export * from "./runtime-install";
 export * from "./sanitize-text";
+export * from "./scoped-timeout";
 export * from "./snowflake";
 export * from "./stderr-guard";
 export * from "./stream";
+export * from "./string-case";
 export * from "./strip-ansi";
 export * from "./tab-spacing";
 export * from "./temp";
 export * from "./tls-fetch";
+export * from "./tokens";
 export * from "./type-guards";
+export * from "./url";
 export * from "./which";
 
 function isPlainObject(val: object): val is Record<string, unknown> {

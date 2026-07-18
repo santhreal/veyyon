@@ -1,5 +1,14 @@
-import type { RenderResult, SpecialHandler } from "./types";
-import { buildResult, formatIsoDate, formatNumber, htmlToBasicMarkdown, loadPage } from "./types";
+import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
+import {
+	buildResult,
+	formatIsoDate,
+	formatNumber,
+	htmlToBasicMarkdown,
+	loadFailure,
+	loadPage,
+	scraperDegrade,
+	tryParseUrl,
+} from "./types";
 
 interface DevToArticle {
 	title: string;
@@ -27,9 +36,10 @@ export const handleDevTo: SpecialHandler = async (
 	url: string,
 	timeout: number,
 	signal?: AbortSignal,
-): Promise<RenderResult | null> => {
+): Promise<RenderResult | ScraperDegrade | null> => {
 	try {
-		const parsed = new URL(url);
+		const parsed = tryParseUrl(url);
+		if (!parsed) return null;
 		if (parsed.hostname !== "dev.to") return null;
 
 		const fetchedAt = new Date().toISOString();
@@ -44,7 +54,7 @@ export const handleDevTo: SpecialHandler = async (
 			const apiUrl = `https://dev.to/api/articles?tag=${encodeURIComponent(tag)}&per_page=20`;
 
 			const result = await loadPage(apiUrl, { timeout, signal });
-			if (!result.ok) return null;
+			if (!result.ok) return scraperDegrade("devto", loadFailure(result));
 
 			const articles = JSON.parse(result.content) as DevToArticle[];
 			if (!articles?.length) return null;
@@ -77,7 +87,7 @@ export const handleDevTo: SpecialHandler = async (
 			const apiUrl = `https://dev.to/api/articles?username=${encodeURIComponent(username)}&per_page=20`;
 
 			const result = await loadPage(apiUrl, { timeout, signal });
-			if (!result.ok) return null;
+			if (!result.ok) return scraperDegrade("devto", loadFailure(result));
 
 			const articles = JSON.parse(result.content) as DevToArticle[];
 			if (!articles?.length) return null;
@@ -110,7 +120,7 @@ export const handleDevTo: SpecialHandler = async (
 			const apiUrl = `https://dev.to/api/articles/${encodeURIComponent(username)}/${encodeURIComponent(slug)}`;
 
 			const result = await loadPage(apiUrl, { timeout, signal });
-			if (!result.ok) return null;
+			if (!result.ok) return scraperDegrade("devto", loadFailure(result));
 
 			const article = JSON.parse(result.content) as DevToArticle;
 			if (!article?.title) return null;
@@ -141,7 +151,7 @@ export const handleDevTo: SpecialHandler = async (
 		}
 
 		return null;
-	} catch {
-		return null;
+	} catch (error) {
+		return scraperDegrade("dev.to", error);
 	}
 };

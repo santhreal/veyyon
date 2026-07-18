@@ -1,0 +1,21 @@
+# diff implemented from scratch on top of the `similar` diffing library, with
+# I/O and path resolution routed through veyyon-uutils-ctx so it can run in-process
+# as a shell builtin. Entry point: `veyyon_uu_diff::run`.
+[package]
+name = "veyyon_uu_diff"
+version = "0.8.0"
+edition = "2024"
+license = "MIT"
+description = "diff ~ similar-backed file comparison (in-process shell builtin)"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+clap = { version = "4", features = ["wrap_help"] }
+veyyon-uutils-ctx = { path = "../veyyon-uutils-ctx" }
+similar = "3.1.0"
+
+[dev-dependencies]
+parking_lot.workspace = true
+tempfile = "3"

@@ -1,31 +1,33 @@
 # The Veyyon handbook
 
-Veyyon runs in your terminal and edits real code. Bring your own model keys; the harness is tuned for coding work, not chat theater.
+Veyyon is a terminal coding agent. You supply provider credentials; the process runs tools and edits files in your working tree.
 
-This handbook is for everyone who uses Veyyon or wants to understand it.
+This handbook covers installation, configuration, features, and harness structure.
 
-- **Why Veyyon:** value, design map, and benefits you should feel first.
-- **Install and first session:** install, providers, quickstart, configuration.
-- **Everyday features:** editing, approvals, models, sessions, themes.
-- **Power features:** plan mode, goals, branching, MCP, plugins, memory, profiles.
-- **How it works:** deeper engineering account for contributors.
+| Section | Contents |
+| --- | --- |
+| [Why](./why/value.md) | Design goals and main mechanisms |
+| [Using](./using/getting-started.md) | Install, providers, quickstart, configuration |
+| [Features](./features/sandbox.md) | Editing, approvals, models, sessions, plan/goal, MCP, plugins, memory, profiles |
+| [Architecture](./foundations/architecture.md) | Internals for contributors |
 
-If you read nothing else: [What Veyyon gives you](./why/value.md), [Getting started](./using/getting-started.md), [Editing and repair](./using/editing.md), [Models and providers](./using/models.md).
+Start here if you are new: [Getting started](./using/getting-started.md), [Editing and repair](./using/editing.md), [Models and providers](./using/models.md).
 
-## What Veyyon is, in one paragraph
+## What Veyyon is
 
-Veyyon is a fork of [oh-my-pi](https://github.com/can1357/oh-my-pi): TypeScript and Bun for the CLI, TUI, tools, providers, and session loop; Rust natives for grep, PTY, and **hashline** edits. Install with `bun install -g @veyyon/pi-coding-agent` or `bun dev` from source. The command is **`veyyon`** (short alias **`vey`**). Config and state default to `~/.veyyon`.
+Veyyon is a fork of [oh-my-pi](https://github.com/can1357/oh-my-pi). The CLI, TUI, tools, providers, and session loop are TypeScript on Bun. Grep, PTY, and hashline apply paths use Rust natives (`@veyyon/natives`).
 
-Shipped today: hashline edits, mnemopi memory, model roles, session trees, MCP, skills, and plan/goal modes.
+- Install: `bun install -g @veyyon/coding-agent` (or `bun setup && bun dev` from a source checkout)
+- Binary: `veyyon` (alias `vey`)
+- Config home: `~/.veyyon`; default profile agent dir: `~/.veyyon/profiles/default/agent/` (other profiles: `~/.veyyon/profiles/<name>/agent/`)
 
-## Why it is different (shipped vs planned)
+Main surfaces: hashline edits, tool loop (read/grep/glob/edit/bash/LSP/MCP/…), optional memory backends, model slots and roles, session trees, skills, plan mode, goal mode, task isolation for subagents.
 
-- **Edits that land.** Hashline and model-tuned edit tools with native verification; fewer retry loops on bad diffs.
-- **Explicit model slots.** Pick the model you talk to, the model for subagents, and the model for compaction — three plain choices, no `default`-chain indirection.
-- **Interface.** Veyyon Dark uses the silver palette; plan/goal modes and tool approval tiers are engine features.
+## Mechanisms (summary)
 
-**Spec — not shipped:** the full schema-based tool-call repair cascade, a unified single-write-path proof, and self-contained profiles. See [What makes Veyyon different](./why/innovations.md).
+- **Hashline edits.** `edit` / `write` apply content-addressed patches with verification before disk write; failures return structured errors to the model.
+- **Model slots.** Interactive model (`/model`), subagent model, and compaction model are separate settings. Optional named roles pin models for specific work kinds.
+- **Approvals.** `tools.approvalMode` gates read / write / exec tiers. There is no OS-level command sandbox (no Landlock, seccomp, Seatbelt, or bubblewrap).
+- **Engine modes.** Plan mode, goal mode, vibe mode, compaction, and task subagents are implemented in the agent loop, not only as prompt text.
 
-## What is built vs planned
-
-This book states plainly what is built and what is planned. Pages marked **Spec — not shipped** describe target design not yet in the product. Credits: [Acknowledgements](./acknowledgements.md).
+Credits and provenance: [Acknowledgements](./acknowledgements.md).

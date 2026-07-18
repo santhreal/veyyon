@@ -20,19 +20,19 @@
  *      marker present.
  */
 import { afterEach, describe, expect, it } from "bun:test";
-import { importRoomKey } from "@veyyon/pi-coding-agent/collab/crypto";
-import { CollabHost } from "@veyyon/pi-coding-agent/collab/host";
+import { importRoomKey } from "@veyyon/coding-agent/collab/crypto";
+import { CollabHost } from "@veyyon/coding-agent/collab/host";
 import {
 	COLLAB_PROTO,
 	type CollabFrame,
 	parseCollabLink,
 	rewriteEnvelopePeer,
 	unpackEnvelope,
-} from "@veyyon/pi-coding-agent/collab/protocol";
-import { CollabSocket } from "@veyyon/pi-coding-agent/collab/relay-client";
-import { MAX_REPLICATED_PAYLOAD_BYTES, shrinkForReplication } from "@veyyon/pi-coding-agent/collab/replication-shrink";
-import type { InteractiveModeContext } from "@veyyon/pi-coding-agent/modes/types";
-import type { SessionEntry } from "@veyyon/pi-coding-agent/session/session-entries";
+} from "@veyyon/coding-agent/collab/protocol";
+import { CollabSocket } from "@veyyon/coding-agent/collab/relay-client";
+import { MAX_REPLICATED_PAYLOAD_BYTES, shrinkForReplication } from "@veyyon/coding-agent/collab/replication-shrink";
+import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
+import type { SessionEntry } from "@veyyon/coding-agent/session/session-entries";
 
 interface RelayData {
 	role: "host" | "guest";
@@ -47,7 +47,7 @@ interface TestRelay {
 }
 
 /**
- * Single-room relay mirroring the omp-collab-relay forwarding contract, with
+ * Single-room relay mirroring the collab-relay forwarding contract, with
  * a configurable `maxPayloadLength` so the test asserts the same close path
  * the public relay (Bun.serve default = 16 MB, proxies often lower) exposes.
  */

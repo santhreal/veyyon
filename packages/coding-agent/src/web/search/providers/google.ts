@@ -1,4 +1,4 @@
-import type { AuthStorage } from "@veyyon/pi-ai";
+import type { AuthStorage } from "@veyyon/ai";
 import { parseHTML } from "linkedom";
 import type { SearchResponse, SearchSource } from "../../../web/search/types";
 import { SearchProviderError } from "../../../web/search/types";
@@ -116,48 +116,49 @@ function blockReason(page: LoadedHtmlPage): "javascript" | "traffic" | undefined
 }
 
 async function callGoogleHtml(params: SearchParams, numResults: number): Promise<string> {
-	const signal = withHardTimeout(params.signal);
-	const url = buildSearchUrl(params, numResults);
-	let page: LoadedHtmlPage;
-	try {
-		page = await browserFetch(url, {
-			fetch: params.fetch,
-			signal,
-			referer: GOOGLE_HOME_URL,
-			browser: {
-				homeUrl: GOOGLE_HOME_URL,
-				ready: { selector: "a h3", timeoutMs: RESULT_RENDER_TIMEOUT_MS },
-				shouldFallback: candidate => blockReason(candidate) !== undefined,
-			},
-		});
-	} catch (error) {
-		if (error instanceof SearchProviderError || params.signal?.aborted) throw error;
-		if (signal.aborted) {
-			throw new SearchProviderError("google", "Google browser search timed out.", 504);
+	return withHardTimeout(params.signal, async signal => {
+		const url = buildSearchUrl(params, numResults);
+		let page: LoadedHtmlPage;
+		try {
+			page = await browserFetch(url, {
+				fetch: params.fetch,
+				signal,
+				referer: GOOGLE_HOME_URL,
+				browser: {
+					homeUrl: GOOGLE_HOME_URL,
+					ready: { selector: "a h3", timeoutMs: RESULT_RENDER_TIMEOUT_MS },
+					shouldFallback: candidate => blockReason(candidate) !== undefined,
+				},
+			});
+		} catch (error) {
+			if (error instanceof SearchProviderError || params.signal?.aborted) throw error;
+			if (signal.aborted) {
+				throw new SearchProviderError("google", "Google browser search timed out.", 504);
+			}
+			const message = error instanceof Error ? error.message : String(error);
+			throw new SearchProviderError("google", `Google browser search failed: ${message}`, 503);
 		}
-		const message = error instanceof Error ? error.message : String(error);
-		throw new SearchProviderError("google", `Google browser search failed: ${message}`, 503);
-	}
 
-	const blocked = blockReason(page);
-	if (blocked === "traffic") {
-		throw new SearchProviderError(
-			"google",
-			"Google blocked the browser search with an automated-traffic challenge. Try another web search provider or retry later.",
-			429,
-		);
-	}
-	if (page.status < 200 || page.status >= 300) {
-		throw new SearchProviderError("google", `Google HTML error (${page.status})`, page.status);
-	}
-	if (blocked === "javascript") {
-		throw new SearchProviderError(
-			"google",
-			"Google returned its JavaScript challenge instead of rendered search results.",
-			429,
-		);
-	}
-	return page.html;
+		const blocked = blockReason(page);
+		if (blocked === "traffic") {
+			throw new SearchProviderError(
+				"google",
+				"Google blocked the browser search with an automated-traffic challenge. Try another web search provider or retry later.",
+				429,
+			);
+		}
+		if (page.status < 200 || page.status >= 300) {
+			throw new SearchProviderError("google", `Google HTML error (${page.status})`, page.status);
+		}
+		if (blocked === "javascript") {
+			throw new SearchProviderError(
+				"google",
+				"Google returned its JavaScript challenge instead of rendered search results.",
+				429,
+			);
+		}
+		return page.html;
+	});
 }
 
 /** Execute a Google web search with fetch-first loading and a headless-browser fallback. */

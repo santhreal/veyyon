@@ -12,10 +12,10 @@
  * This file pins the wire output for the canonical scenarios.
  */
 import { describe, expect, it } from "bun:test";
-import { renderDemotedThinking } from "@veyyon/pi-ai/dialect";
-import { convertMessages } from "@veyyon/pi-ai/providers/openai-completions";
-import type { AssistantMessage, Message, Model, ModelSpec, UserMessage } from "@veyyon/pi-ai/types";
-import { buildModel } from "@veyyon/pi-catalog/build";
+import { renderDemotedThinking } from "@veyyon/ai/dialect";
+import { convertMessages } from "@veyyon/ai/providers/openai-completions";
+import type { AssistantMessage, Message, Model, ModelSpec, UserMessage } from "@veyyon/ai/types";
+import { buildModel } from "@veyyon/catalog/build";
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
 	return value !== null && typeof value === "object" && !Array.isArray(value);

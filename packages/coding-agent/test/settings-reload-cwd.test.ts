@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { resetSettingsForTest, Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { getProjectAgentDir, removeSyncWithRetries, Snowflake } from "@veyyon/pi-utils";
+import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
+import { getProjectAgentDir, removeSyncWithRetries, Snowflake } from "@veyyon/utils";
 import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "./helpers/settings-test-state";
 
 describe("Settings.reloadForCwd", () => {

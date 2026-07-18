@@ -4,7 +4,7 @@
  * Uses the capability system to load MCP servers from multiple sources.
  */
 
-import { getMCPConfigPath } from "@veyyon/pi-utils";
+import { getMCPConfigPath } from "@veyyon/utils";
 import { mcpCapability } from "../capability/mcp";
 import type { SourceMeta } from "../capability/types";
 import type { MCPServer } from "../discovery";

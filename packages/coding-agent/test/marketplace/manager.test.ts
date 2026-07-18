@@ -3,15 +3,15 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
-import { listOmpExtensionRoots } from "@veyyon/pi-coding-agent/discovery/omp-extension-roots";
-import { getEnabledPlugins } from "@veyyon/pi-coding-agent/extensibility/plugins/loader";
-import { PluginManager } from "@veyyon/pi-coding-agent/extensibility/plugins/manager";
+import { listVeyyonExtensionRoots } from "@veyyon/coding-agent/discovery/veyyon-extension-roots";
+import { getEnabledPlugins } from "@veyyon/coding-agent/extensibility/plugins/loader";
+import { PluginManager } from "@veyyon/coding-agent/extensibility/plugins/manager";
 import {
 	MarketplaceManager,
 	readInstalledPluginsRegistry,
-} from "@veyyon/pi-coding-agent/extensibility/plugins/marketplace";
-import * as piUtils from "@veyyon/pi-utils";
-import { CONFIG_DIR_NAME, removeSyncWithRetries } from "@veyyon/pi-utils";
+} from "@veyyon/coding-agent/extensibility/plugins/marketplace";
+import * as piUtils from "@veyyon/utils";
+import { CONFIG_DIR_NAME, removeSyncWithRetries } from "@veyyon/utils";
 
 // Minimal marketplace fixture, built once into a temp dir (see beforeAll). It carries only
 // what these tests assert — one plugin entry plus a plugin.json for the version-fallback path —
@@ -19,7 +19,7 @@ import { CONFIG_DIR_NAME, removeSyncWithRetries } from "@veyyon/pi-utils";
 let FIXTURE_DIR: string;
 
 function buildMinimalFixture(): string {
-	const root = fs.mkdtempSync(path.join(os.tmpdir(), "omp-mgr-fixture-"));
+	const root = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-mgr-fixture-"));
 	const pluginDir = path.join(root, "plugins", "hello-plugin");
 	fs.mkdirSync(path.join(pluginDir, ".claude-plugin"), { recursive: true });
 	fs.mkdirSync(path.join(root, ".claude-plugin"), { recursive: true });
@@ -50,7 +50,7 @@ function buildMinimalFixture(): string {
 		JSON.stringify({
 			name: "hello-plugin",
 			version: "1.0.0",
-			omp: { extensions: ["./extensions"] },
+			veyyon: { extensions: ["./extensions"] },
 		}),
 	);
 	fs.writeFileSync(path.join(pluginDir, "extensions", "index.ts"), "export default {};\n");
@@ -67,7 +67,7 @@ interface TestContext {
 }
 
 function createTestContext(): TestContext {
-	const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "omp-mgr-test-"));
+	const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-mgr-test-"));
 
 	const dirs = {
 		mktRegistry: path.join(tmpDir, "marketplaces.json"),
@@ -98,7 +98,7 @@ function mockPluginManagerPaths(root: string) {
 		spyOn(piUtils, "getPluginsDir").mockReturnValue(root),
 		spyOn(piUtils, "getPluginsNodeModules").mockReturnValue(path.join(root, "node_modules")),
 		spyOn(piUtils, "getPluginsPackageJson").mockReturnValue(path.join(root, "package.json")),
-		spyOn(piUtils, "getPluginsLockfile").mockReturnValue(path.join(root, "omp-plugins.lock.json")),
+		spyOn(piUtils, "getPluginsLockfile").mockReturnValue(path.join(root, "veyyon-plugins.lock.json")),
 		spyOn(piUtils, "getProjectPluginOverridesPath").mockReturnValue(path.join(root, "plugin-overrides.json")),
 	];
 }
@@ -206,7 +206,7 @@ describe("MarketplaceManager", () => {
 		const linkPath = path.join(ctx.tmpDir, "node_modules", "hello-plugin");
 		expect(fs.realpathSync(linkPath)).toBe(fs.realpathSync(instEntry.installPath));
 
-		const runtimeConfig = await Bun.file(path.join(ctx.tmpDir, "omp-plugins.lock.json")).json();
+		const runtimeConfig = await Bun.file(path.join(ctx.tmpDir, "veyyon-plugins.lock.json")).json();
 		expect(runtimeConfig.plugins["hello-plugin"]).toEqual({
 			version: "1.0.0",
 			enabledFeatures: null,
@@ -250,9 +250,9 @@ describe("MarketplaceManager", () => {
 	});
 
 	it("installPlugin exposes marketplace package to the runtime loader", async () => {
-		const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), "omp-mgr-home-"));
+		const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-mgr-home-"));
 		try {
-			const pluginsDir = path.join(tmpHome, CONFIG_DIR_NAME, "plugins");
+			const pluginsDir = path.join(tmpHome, CONFIG_DIR_NAME, "profiles", "default", "plugins");
 			const manager = new MarketplaceManager({
 				marketplacesRegistryPath: path.join(tmpHome, CONFIG_DIR_NAME, "marketplaces.json"),
 				installedRegistryPath: path.join(pluginsDir, "installed_plugins.json"),
@@ -337,7 +337,7 @@ describe("MarketplaceManager", () => {
 			`${JSON.stringify({
 				name: "hello-plugin",
 				version: "9.9.9",
-				omp: { tools: "tools" },
+				veyyon: { tools: "tools" },
 			})}\n`,
 		);
 		fs.mkdirSync(path.join(localPlugin, "tools"), { recursive: true });
@@ -362,10 +362,10 @@ describe("MarketplaceManager", () => {
 		}
 	});
 
-	it("installPlugin keeps marketplace packages out of OMP extension roots", async () => {
-		const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), "omp-mgr-home-"));
+	it("installPlugin keeps marketplace packages out of Veyyon extension roots", async () => {
+		const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-mgr-home-"));
 		try {
-			const pluginsDir = path.join(tmpHome, CONFIG_DIR_NAME, "plugins");
+			const pluginsDir = path.join(tmpHome, CONFIG_DIR_NAME, "profiles", "default", "plugins");
 			const manager = new MarketplaceManager({
 				marketplacesRegistryPath: path.join(tmpHome, CONFIG_DIR_NAME, "marketplaces.json"),
 				installedRegistryPath: path.join(pluginsDir, "installed_plugins.json"),
@@ -376,7 +376,7 @@ describe("MarketplaceManager", () => {
 			await manager.addMarketplace(FIXTURE_DIR);
 			await manager.installPlugin("hello-plugin", "test-marketplace");
 
-			const roots = await listOmpExtensionRoots({ cwd: tmpHome, home: tmpHome, repoRoot: null });
+			const roots = await listVeyyonExtensionRoots({ cwd: tmpHome, home: tmpHome, repoRoot: null });
 			expect(roots.map(root => root.name)).toEqual([]);
 		} finally {
 			fs.rmSync(tmpHome, { recursive: true, force: true });
@@ -384,8 +384,8 @@ describe("MarketplaceManager", () => {
 	});
 
 	it("installPlugin with scope:project exposes the marketplace package to the runtime loader", async () => {
-		const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), "omp-mgr-home-"));
-		const projectAnchor = fs.mkdtempSync(path.join(os.tmpdir(), "omp-mgr-project-"));
+		const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-mgr-home-"));
+		const projectAnchor = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-mgr-project-"));
 		try {
 			const userPluginsDir = path.join(tmpHome, CONFIG_DIR_NAME, "plugins");
 			const projectPluginsDir = path.join(projectAnchor, CONFIG_DIR_NAME, "plugins");
@@ -411,7 +411,7 @@ describe("MarketplaceManager", () => {
 			expect(fs.realpathSync(projectLink)).toBe(
 				fs.realpathSync(path.join(userPluginsDir, "cache", "plugins", "test-marketplace___hello-plugin___1.0.0")),
 			);
-			const projectLock = await Bun.file(path.join(projectPluginsDir, "omp-plugins.lock.json")).json();
+			const projectLock = await Bun.file(path.join(projectPluginsDir, "veyyon-plugins.lock.json")).json();
 			expect(projectLock.plugins["hello-plugin"]).toEqual({
 				version: "1.0.0",
 				enabledFeatures: null,
@@ -420,7 +420,7 @@ describe("MarketplaceManager", () => {
 
 			// User-scope tree stays untouched.
 			expect(fs.existsSync(path.join(userPluginsDir, "node_modules", "hello-plugin"))).toBe(false);
-			expect(fs.existsSync(path.join(userPluginsDir, "omp-plugins.lock.json"))).toBe(false);
+			expect(fs.existsSync(path.join(userPluginsDir, "veyyon-plugins.lock.json"))).toBe(false);
 		} finally {
 			fs.rmSync(tmpHome, { recursive: true, force: true });
 			fs.rmSync(projectAnchor, { recursive: true, force: true });
@@ -601,7 +601,7 @@ describe("MarketplaceManager", () => {
 		expect(second.installPath).toBe(first.installPath);
 		expect(fs.existsSync(second.installPath)).toBe(true);
 
-		const runtimeConfig = await Bun.file(path.join(ctx.tmpDir, "omp-plugins.lock.json")).json();
+		const runtimeConfig = await Bun.file(path.join(ctx.tmpDir, "veyyon-plugins.lock.json")).json();
 		expect(runtimeConfig.plugins["hello-plugin"].enabled).toBe(false);
 
 		const installed = await ctx.manager.listInstalledPlugins();
@@ -632,7 +632,7 @@ describe("MarketplaceManager", () => {
 		expect(fs.existsSync(instEntry.installPath)).toBe(false);
 		expect(fs.existsSync(path.join(ctx.tmpDir, "node_modules", "hello-plugin"))).toBe(false);
 
-		const runtimeConfig = await Bun.file(path.join(ctx.tmpDir, "omp-plugins.lock.json")).json();
+		const runtimeConfig = await Bun.file(path.join(ctx.tmpDir, "veyyon-plugins.lock.json")).json();
 		expect(runtimeConfig.plugins["hello-plugin"]).toBeUndefined();
 
 		const installed = await ctx.manager.listInstalledPlugins();
@@ -657,12 +657,12 @@ describe("MarketplaceManager", () => {
 
 		const installed = await ctx.manager.listInstalledPlugins();
 		expect(installed[0].entries[0].enabled).toBe(false);
-		let runtimeConfig = await Bun.file(path.join(ctx.tmpDir, "omp-plugins.lock.json")).json();
+		let runtimeConfig = await Bun.file(path.join(ctx.tmpDir, "veyyon-plugins.lock.json")).json();
 		expect(runtimeConfig.plugins["hello-plugin"].enabled).toBe(false);
 
 		await ctx.manager.setPluginEnabled("hello-plugin@test-marketplace", true);
 		const updated = await ctx.manager.listInstalledPlugins();
-		runtimeConfig = await Bun.file(path.join(ctx.tmpDir, "omp-plugins.lock.json")).json();
+		runtimeConfig = await Bun.file(path.join(ctx.tmpDir, "veyyon-plugins.lock.json")).json();
 		expect(runtimeConfig.plugins["hello-plugin"].enabled).toBe(true);
 		expect(updated[0].entries[0].enabled).toBe(true);
 	});
@@ -695,7 +695,7 @@ describe("MarketplaceManager", () => {
 	// ── Scope feature ────────────────────────────────────────────────────────
 
 	it("installPlugin scope:project when no projectInstalledRegistryPath → throws", async () => {
-		const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "omp-mgr-noproj-"));
+		const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-mgr-noproj-"));
 		try {
 			const noProjectManager = new MarketplaceManager({
 				marketplacesRegistryPath: path.join(tmp, "marketplaces.json"),

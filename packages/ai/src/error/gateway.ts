@@ -1,3 +1,4 @@
+import { errorMessage } from "@veyyon/utils";
 import { isUsageLimit } from "./flags";
 
 /** A gateway-facing classification of an arbitrary upstream/internal error. */
@@ -21,7 +22,7 @@ export interface GatewayErrorClassification {
  *     all require boundaries so they don't collide with provider field names.
  */
 export function classifyGatewayError(err: unknown): GatewayErrorClassification {
-	const message = err instanceof Error ? err.message : String(err);
+	const message = errorMessage(err);
 
 	// 1. Custom pi-ai errors may attach a numeric `status` property.
 	const statusProp =

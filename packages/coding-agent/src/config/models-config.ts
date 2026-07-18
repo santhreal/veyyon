@@ -2,7 +2,7 @@
  * Custom model/provider config file handle and validation.
  */
 
-import type { Api, ModelSpec } from "@veyyon/pi-ai/types";
+import type { Api, ModelSpec } from "@veyyon/ai/types";
 import { ConfigFile, deferSchema } from "./config-file";
 import {
 	type ModelsConfig,

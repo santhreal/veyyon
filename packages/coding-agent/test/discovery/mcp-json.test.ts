@@ -2,9 +2,9 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { type MCPServer, mcpCapability } from "@veyyon/pi-coding-agent/capability/mcp";
-import { loadCapability } from "@veyyon/pi-coding-agent/discovery";
-import { removeWithRetries } from "@veyyon/pi-utils";
+import { type MCPServer, mcpCapability } from "@veyyon/coding-agent/capability/mcp";
+import { loadCapability } from "@veyyon/coding-agent/discovery";
+import { removeWithRetries } from "@veyyon/utils";
 
 async function loadStandaloneMcpConfig(cwd: string): Promise<MCPServer[]> {
 	const result = await loadCapability<MCPServer>(mcpCapability.id, {
@@ -21,26 +21,26 @@ function envPlaceholder(name: string): string {
 describe("standalone mcp.json oauth env expansion", () => {
 	let tempDir = "";
 	const originalEnv = {
-		PI_OAUTH_TOKEN_URL: process.env.PI_OAUTH_TOKEN_URL,
-		PI_OAUTH_CLIENT_ID: process.env.PI_OAUTH_CLIENT_ID,
-		PI_OAUTH_CLIENT_SECRET: process.env.PI_OAUTH_CLIENT_SECRET,
-		PI_OAUTH_REDIRECT_URI: process.env.PI_OAUTH_REDIRECT_URI,
-		PI_OAUTH_CALLBACK_PATH: process.env.PI_OAUTH_CALLBACK_PATH,
-		PI_MCP_HEADER: process.env.PI_MCP_HEADER,
-		PI_MCP_URL: process.env.PI_MCP_URL,
-		PI_MCP_ENV: process.env.PI_MCP_ENV,
+		VEYYON_OAUTH_TOKEN_URL: process.env.VEYYON_OAUTH_TOKEN_URL,
+		VEYYON_OAUTH_CLIENT_ID: process.env.VEYYON_OAUTH_CLIENT_ID,
+		VEYYON_OAUTH_CLIENT_SECRET: process.env.VEYYON_OAUTH_CLIENT_SECRET,
+		VEYYON_OAUTH_REDIRECT_URI: process.env.VEYYON_OAUTH_REDIRECT_URI,
+		VEYYON_OAUTH_CALLBACK_PATH: process.env.VEYYON_OAUTH_CALLBACK_PATH,
+		VEYYON_MCP_HEADER: process.env.VEYYON_MCP_HEADER,
+		VEYYON_MCP_URL: process.env.VEYYON_MCP_URL,
+		VEYYON_MCP_ENV: process.env.VEYYON_MCP_ENV,
 	};
 
 	beforeEach(async () => {
-		tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "omp-mcp-json-"));
-		process.env.PI_OAUTH_TOKEN_URL = "https://provider.example/token";
-		process.env.PI_OAUTH_CLIENT_ID = "oauth-client-id";
-		process.env.PI_OAUTH_CLIENT_SECRET = "oauth-client-secret";
-		process.env.PI_OAUTH_REDIRECT_URI = "https://public.example/oauth/callback";
-		process.env.PI_OAUTH_CALLBACK_PATH = "/oauth/callback";
-		process.env.PI_MCP_HEADER = "Bearer test-token";
-		process.env.PI_MCP_URL = "https://mcp.example.com";
-		process.env.PI_MCP_ENV = "env-value";
+		tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-mcp-json-"));
+		process.env.VEYYON_OAUTH_TOKEN_URL = "https://provider.example/token";
+		process.env.VEYYON_OAUTH_CLIENT_ID = "oauth-client-id";
+		process.env.VEYYON_OAUTH_CLIENT_SECRET = "oauth-client-secret";
+		process.env.VEYYON_OAUTH_REDIRECT_URI = "https://public.example/oauth/callback";
+		process.env.VEYYON_OAUTH_CALLBACK_PATH = "/oauth/callback";
+		process.env.VEYYON_MCP_HEADER = "Bearer test-token";
+		process.env.VEYYON_MCP_URL = "https://mcp.example.com";
+		process.env.VEYYON_MCP_ENV = "env-value";
 	});
 
 	afterEach(async () => {
@@ -60,21 +60,21 @@ describe("standalone mcp.json oauth env expansion", () => {
 			JSON.stringify({
 				mcpServers: {
 					figma: {
-						url: `${envPlaceholder("PI_MCP_URL")}/mcp`,
-						headers: { Authorization: envPlaceholder("PI_MCP_HEADER") },
-						env: { MCP_VALUE: envPlaceholder("PI_MCP_ENV") },
+						url: `${envPlaceholder("VEYYON_MCP_URL")}/mcp`,
+						headers: { Authorization: envPlaceholder("VEYYON_MCP_HEADER") },
+						env: { MCP_VALUE: envPlaceholder("VEYYON_MCP_ENV") },
 						auth: {
 							type: "oauth",
-							tokenUrl: envPlaceholder("PI_OAUTH_TOKEN_URL"),
-							clientId: envPlaceholder("PI_OAUTH_CLIENT_ID"),
-							clientSecret: envPlaceholder("PI_OAUTH_CLIENT_SECRET"),
+							tokenUrl: envPlaceholder("VEYYON_OAUTH_TOKEN_URL"),
+							clientId: envPlaceholder("VEYYON_OAUTH_CLIENT_ID"),
+							clientSecret: envPlaceholder("VEYYON_OAUTH_CLIENT_SECRET"),
 						},
 						oauth: {
-							clientId: envPlaceholder("PI_OAUTH_CLIENT_ID"),
-							clientSecret: envPlaceholder("PI_OAUTH_CLIENT_SECRET"),
-							redirectUri: envPlaceholder("PI_OAUTH_REDIRECT_URI"),
+							clientId: envPlaceholder("VEYYON_OAUTH_CLIENT_ID"),
+							clientSecret: envPlaceholder("VEYYON_OAUTH_CLIENT_SECRET"),
+							redirectUri: envPlaceholder("VEYYON_OAUTH_REDIRECT_URI"),
 							callbackPort: 4317,
-							callbackPath: envPlaceholder("PI_OAUTH_CALLBACK_PATH"),
+							callbackPath: envPlaceholder("VEYYON_OAUTH_CALLBACK_PATH"),
 						},
 					},
 				},
@@ -109,8 +109,8 @@ describe("standalone mcp.json oauth env expansion", () => {
 					slack: {
 						url: "https://slack.example.com/mcp",
 						oauth: {
-							redirectUri: envPlaceholder("PI_OAUTH_REDIRECT_URI"),
-							callbackPath: envPlaceholder("PI_OAUTH_CALLBACK_PATH"),
+							redirectUri: envPlaceholder("VEYYON_OAUTH_REDIRECT_URI"),
+							callbackPath: envPlaceholder("VEYYON_OAUTH_CALLBACK_PATH"),
 						},
 					},
 				},

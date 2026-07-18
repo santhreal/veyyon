@@ -1,17 +1,17 @@
 import { describe, expect, it } from "bun:test";
-import { normalizeTools } from "@veyyon/pi-agent-core/agent-loop";
-import type { ToolCall, TSchema } from "@veyyon/pi-ai";
+import { normalizeTools } from "@veyyon/agent-core/agent-loop";
+import type { ToolCall, TSchema } from "@veyyon/ai";
 import {
 	adaptSchemaForStrict,
 	toolWireSchema,
 	validateJsonSchemaValue,
 	validateStrictSchemaEnforcement,
-} from "@veyyon/pi-ai/utils/schema";
-import { validateToolCall } from "@veyyon/pi-ai/utils/validation";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
-import type { ToolSession } from "@veyyon/pi-coding-agent/sdk";
-import { type BrowserParams, BrowserTool } from "@veyyon/pi-coding-agent/tools/browser";
-import { INTENT_FIELD } from "@veyyon/pi-wire";
+} from "@veyyon/ai/utils/schema";
+import { validateToolCall } from "@veyyon/ai/utils/validation";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import type { ToolSession } from "@veyyon/coding-agent/sdk";
+import { type BrowserParams, BrowserTool } from "@veyyon/coding-agent/tools/browser";
+import { INTENT_FIELD } from "@veyyon/wire";
 
 function makeSession(): ToolSession {
 	return {

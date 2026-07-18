@@ -2,24 +2,24 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { disableProvider, enableProvider } from "@veyyon/pi-coding-agent/capability";
-import { clearCache as clearFsCache } from "@veyyon/pi-coding-agent/capability/fs";
+import { disableProvider, enableProvider } from "@veyyon/coding-agent/capability";
+import { clearCache as clearFsCache } from "@veyyon/coding-agent/capability/fs";
 import {
-	clearOmpExtensionCliRoots,
-	injectOmpExtensionCliRoots,
-} from "@veyyon/pi-coding-agent/discovery/omp-extension-roots";
-import { discoverAgents } from "@veyyon/pi-coding-agent/task/discovery";
-import { removeWithRetries } from "@veyyon/pi-utils";
+	clearVeyyonExtensionCliRoots,
+	injectVeyyonExtensionCliRoots,
+} from "@veyyon/coding-agent/discovery/veyyon-extension-roots";
+import { discoverAgents } from "@veyyon/coding-agent/task/discovery";
+import { removeWithRetries } from "@veyyon/utils";
 
-const OMP_AGENT_MD = [
+const VEYYON_AGENT_MD = [
 	"---",
-	"name: omp-test-agent",
-	"description: OMP-native test agent.",
+	"name: veyyon-test-agent",
+	"description: Veyyon-native test agent.",
 	"---",
-	"You are an OMP task agent.",
+	"You are a Veyyon task agent.",
 ].join("\n");
 
-const OMP_PLUGIN_AGENT_MD = [
+const VEYYON_PLUGIN_AGENT_MD = [
 	"---",
 	"name: loom-verify-spec",
 	"description: Plugin-shipped verification agent.",
@@ -39,22 +39,22 @@ const CLAUDE_AGENT_MD = [
 ].join("\n");
 
 async function writeOmpPluginAgent(home: string): Promise<void> {
-	const userPluginsRoot = path.join(home, ".veyyon", "plugins");
+	const userPluginsRoot = path.join(home, ".veyyon", "profiles", "default", "plugins");
 	const pluginRoot = path.join(userPluginsRoot, "node_modules", "loom");
 	await fs.mkdir(path.join(pluginRoot, "agents"), { recursive: true });
 	await fs.writeFile(
 		path.join(pluginRoot, "package.json"),
-		JSON.stringify({ name: "loom", version: "1.0.0", omp: { version: "1.0.0" } }),
+		JSON.stringify({ name: "loom", version: "1.0.0", veyyon: { version: "1.0.0" } }),
 	);
 	await fs.writeFile(
 		path.join(userPluginsRoot, "package.json"),
 		JSON.stringify({
-			name: "omp-plugins-root",
+			name: "veyyon-plugins-root",
 			version: "0.0.0",
 			dependencies: { loom: "1.0.0" },
 		}),
 	);
-	await fs.writeFile(path.join(pluginRoot, "agents", "loom-verify-spec.md"), OMP_PLUGIN_AGENT_MD);
+	await fs.writeFile(path.join(pluginRoot, "agents", "loom-verify-spec.md"), VEYYON_PLUGIN_AGENT_MD);
 }
 
 describe("discoverAgents", () => {
@@ -62,21 +62,21 @@ describe("discoverAgents", () => {
 	let projectDir: string;
 
 	beforeEach(async () => {
-		tempHome = await fs.mkdtemp(path.join(os.tmpdir(), "omp-task-agent-discovery-"));
+		tempHome = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-task-agent-discovery-"));
 		projectDir = path.join(tempHome, "project");
 		await fs.mkdir(projectDir, { recursive: true });
 	});
 
 	afterEach(async () => {
-		enableProvider("omp-plugins");
-		clearOmpExtensionCliRoots();
+		enableProvider("veyyon-plugins");
+		clearVeyyonExtensionCliRoots();
 		clearFsCache();
 		await removeWithRetries(tempHome);
 	});
 
-	test("loads OMP agents but skips Claude Code custom agents", async () => {
+	test("loads Veyyon agents but skips Claude Code custom agents", async () => {
 		await fs.mkdir(path.join(projectDir, ".veyyon", "agents"), { recursive: true });
-		await fs.writeFile(path.join(projectDir, ".veyyon", "agents", "omp-test-agent.md"), OMP_AGENT_MD);
+		await fs.writeFile(path.join(projectDir, ".veyyon", "agents", "veyyon-test-agent.md"), VEYYON_AGENT_MD);
 
 		await fs.mkdir(path.join(tempHome, ".claude", "agents"), { recursive: true });
 		await fs.writeFile(path.join(tempHome, ".claude", "agents", "user-cc-test-agent.md"), CLAUDE_AGENT_MD);
@@ -86,12 +86,12 @@ describe("discoverAgents", () => {
 		const { agents, projectAgentsDir } = await discoverAgents(projectDir, tempHome);
 		const names = agents.map(agent => agent.name);
 
-		expect(names).toContain("omp-test-agent");
+		expect(names).toContain("veyyon-test-agent");
 		expect(names).not.toContain("cc-test-agent");
 		expect(projectAgentsDir).toBe(path.join(projectDir, ".veyyon", "agents"));
 	});
 
-	test("loads agents from OMP npm plugins under <home>/.omp/plugins/node_modules", async () => {
+	test("loads agents from Veyyon npm plugins under <home>/.veyyon/plugins/node_modules", async () => {
 		await writeOmpPluginAgent(tempHome);
 
 		const { agents } = await discoverAgents(projectDir, tempHome);
@@ -100,9 +100,9 @@ describe("discoverAgents", () => {
 		expect(names).toContain("loom-verify-spec");
 	});
 
-	test("excludes OMP npm plugin agents when omp-plugins is disabled", async () => {
+	test("excludes Veyyon npm plugin agents when veyyon-plugins is disabled", async () => {
 		await writeOmpPluginAgent(tempHome);
-		disableProvider("omp-plugins");
+		disableProvider("veyyon-plugins");
 
 		const { agents } = await discoverAgents(projectDir, tempHome);
 		const names = agents.map(agent => agent.name);
@@ -111,10 +111,10 @@ describe("discoverAgents", () => {
 	});
 
 	test("CLI extension agents win over project `extensions:` settings on dedup", async () => {
-		// listOmpExtensionRoots returns roots in source-precedence order
+		// listVeyyonExtensionRoots returns roots in source-precedence order
 		// (CLI > project settings > user settings > installed plugins). Agents
 		// must honor that order so the `task` surface dedups identically to
-		// the skills/hooks/tools surface in discovery/omp-plugins.ts.
+		// the skills/hooks/tools surface in discovery/veyyon-plugins.ts.
 		const cliExt = path.join(tempHome, "cli-ext");
 		const projectExt = path.join(tempHome, "project-ext");
 		await fs.mkdir(path.join(cliExt, "agents"), { recursive: true });
@@ -133,7 +133,7 @@ describe("discoverAgents", () => {
 			path.join(projectDir, ".veyyon", "settings.json"),
 			JSON.stringify({ extensions: [projectExt] }),
 		);
-		injectOmpExtensionCliRoots([cliExt], tempHome, projectDir);
+		injectVeyyonExtensionCliRoots([cliExt], tempHome, projectDir);
 
 		const { agents } = await discoverAgents(projectDir, tempHome);
 		const collide = agents.find(agent => agent.name === "collide");

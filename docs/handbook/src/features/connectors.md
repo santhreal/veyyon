@@ -17,10 +17,8 @@ Extend Veyyon with tools that are implemented and documented today:
 
 Tool policy uses `tools.approvalMode` and `tools.approval.<tool>` — same machinery for bash, MCP, and custom tools (`docs/approval-mode.md`).
 
-## Roadmap note
-
-If provider-hosted connectors ship, they will add a feature flag, account discovery, and connector
-configuration. Until then, use MCP, plugins, and hooks; `apps` connector tables are not current behavior.
+Provider-hosted connector stores and `apps` connector tables are not part of the current product surface.
+Use MCP, plugins, hooks, and skills for integrations.
 
 ## See also
 

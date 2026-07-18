@@ -1,5 +1,5 @@
-import { centerLine, padding, TERMINAL, truncateToWidth, visibleWidth } from "@veyyon/pi-tui";
-import { APP_NAME } from "@veyyon/pi-utils";
+import { centerLine, padding, TERMINAL, truncateToWidth, visibleWidth } from "@veyyon/tui";
+import { APP_NAME } from "@veyyon/utils";
 import { renderSunsetField } from "../../components/sun";
 import { silverEscape } from "../../components/welcome";
 import { theme } from "../../theme/theme";

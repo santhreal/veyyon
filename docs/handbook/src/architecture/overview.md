@@ -32,7 +32,6 @@ as `commit`, `grep`, and `models`.
 | Config | Layered `config.yml`, profiles | [Config](./config.md) |
 | MCP | External tool servers | [MCP](./mcp.md) |
 | Providers | Model registry + auth | [Providers](./providers.md) |
-| Memory | mnemopi / local backends | [Memory](../features/memory.md) |
+| Memory | off / local / mnemopi / hindsight | [Memory](../features/memory.md) |
 
-Not part of the shipped architecture: a standalone exec-server process, guardian auto-review as a
-subsystem, and a separate backend-catalog subsystem. Everything that ships is covered by the rows above.
+Not part of the product surface: a standalone exec-server process or a separate backends.toml catalog. The table above is the subsystem map.

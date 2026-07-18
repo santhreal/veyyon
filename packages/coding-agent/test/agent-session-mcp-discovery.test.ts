@@ -2,21 +2,15 @@ import { afterEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import {
-	Agent,
-	type AgentTool,
-	type AgentToolContext,
-	type AgentToolResult,
-	ThinkingLevel,
-} from "@veyyon/pi-agent-core";
-import { Effort, type Model } from "@veyyon/pi-ai";
-import { buildModel } from "@veyyon/pi-catalog/build";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
-import type { CustomTool } from "@veyyon/pi-coding-agent/extensibility/custom-tools/types";
-import { AgentSession } from "@veyyon/pi-coding-agent/session/agent-session";
-import { SessionManager } from "@veyyon/pi-coding-agent/session/session-manager";
-import type { OutputMeta } from "@veyyon/pi-coding-agent/tools/output-meta";
-import { removeSyncWithRetries } from "@veyyon/pi-utils";
+import { Agent, type AgentTool, type AgentToolContext, type AgentToolResult, ThinkingLevel } from "@veyyon/agent-core";
+import { Effort, type Model } from "@veyyon/ai";
+import { buildModel } from "@veyyon/catalog/build";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import type { CustomTool } from "@veyyon/coding-agent/extensibility/custom-tools/types";
+import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import type { OutputMeta } from "@veyyon/coding-agent/tools/output-meta";
+import { removeSyncWithRetries } from "@veyyon/utils";
 import { type } from "arktype";
 
 function createModel(): Model<"openai-responses"> {

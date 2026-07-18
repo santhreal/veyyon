@@ -1,7 +1,8 @@
 import { describe, expect, it } from "bun:test";
-import { handleReddit } from "@veyyon/pi-coding-agent/web/scrapers/reddit";
-import { handleStackOverflow } from "@veyyon/pi-coding-agent/web/scrapers/stackoverflow";
-import { handleTwitter } from "@veyyon/pi-coding-agent/web/scrapers/twitter";
+import { handleReddit } from "@veyyon/coding-agent/web/scrapers/reddit";
+import { handleStackOverflow } from "@veyyon/coding-agent/web/scrapers/stackoverflow";
+import { handleTwitter } from "@veyyon/coding-agent/web/scrapers/twitter";
+import { asRender } from "../../helpers/scrapers";
 
 const SKIP = !Bun.env.WEB_FETCH_INTEGRATION;
 
@@ -9,7 +10,7 @@ describe.skipIf(SKIP)("handleTwitter", () => {
 	it(
 		"handles twitter.com status URLs",
 		async () => {
-			const result = await handleTwitter("https://twitter.com/jack/status/20", 10000);
+			const result = asRender(await handleTwitter("https://twitter.com/jack/status/20", 10000));
 			expect(result).not.toBeNull();
 			expect(result?.method).toMatch(/^twitter/);
 			expect(result?.contentType).toMatch(/^text\/(markdown|plain)$/);
@@ -28,7 +29,7 @@ describe.skipIf(SKIP)("handleTwitter", () => {
 	it(
 		"handles x.com status URLs",
 		async () => {
-			const result = await handleTwitter("https://x.com/elonmusk/status/1", 10000);
+			const result = asRender(await handleTwitter("https://x.com/elonmusk/status/1", 10000));
 			expect(result).not.toBeNull();
 			expect(result?.method).toMatch(/^twitter/);
 			expect(result?.contentType).toMatch(/^text\/(markdown|plain)$/);
@@ -46,7 +47,9 @@ describe.skipIf(SKIP)("handleTwitter", () => {
 		"may fail due to Nitter availability",
 		async () => {
 			// Test that failure returns helpful message instead of null
-			const result = await handleTwitter("https://twitter.com/nonexistent/status/999999999999999999", 10000);
+			const result = asRender(
+				await handleTwitter("https://twitter.com/nonexistent/status/999999999999999999", 10000),
+			);
 			expect(result).not.toBeNull();
 			// Should return blocked message when Nitter fails
 			if (result?.method === "twitter-blocked") {
@@ -60,7 +63,7 @@ describe.skipIf(SKIP)("handleTwitter", () => {
 
 describe.skipIf(SKIP)("handleReddit", () => {
 	it("fetches subreddit", async () => {
-		const result = await handleReddit("https://www.reddit.com/r/programming/", 20000);
+		const result = asRender(await handleReddit("https://www.reddit.com/r/programming/", 20000));
 		expect(result).not.toBeNull();
 		expect(result?.method).toBe("reddit");
 		expect(result?.contentType).toBe("text/markdown");
@@ -71,7 +74,7 @@ describe.skipIf(SKIP)("handleReddit", () => {
 
 	it("fetches individual post", async () => {
 		// Use a more reliable recent post URL
-		const result = await handleReddit("https://www.reddit.com/r/programming/", 20000);
+		const result = asRender(await handleReddit("https://www.reddit.com/r/programming/", 20000));
 		// Individual post may fail if post doesn't exist, check if we get data
 		if (result !== null) {
 			expect(result.method).toBe("reddit");
@@ -85,9 +88,11 @@ describe.skipIf(SKIP)("handleReddit", () => {
 describe.skipIf(SKIP)("handleStackOverflow", () => {
 	it("fetches a known question", async () => {
 		// Use a well-known question that definitely exists
-		const result = await handleStackOverflow(
-			"https://stackoverflow.com/questions/11227809/why-is-processing-a-sorted-array-faster",
-			20000,
+		const result = asRender(
+			await handleStackOverflow(
+				"https://stackoverflow.com/questions/11227809/why-is-processing-a-sorted-array-faster",
+				20000,
+			),
 		);
 		// API may fail or rate limit, check gracefully
 		if (result !== null) {
@@ -102,7 +107,7 @@ describe.skipIf(SKIP)("handleStackOverflow", () => {
 	});
 
 	it("handles other StackExchange sites", async () => {
-		const result = await handleStackOverflow("https://math.stackexchange.com/questions/1000/", 20000);
+		const result = asRender(await handleStackOverflow("https://math.stackexchange.com/questions/1000/", 20000));
 		// API may fail, check gracefully
 		if (result !== null) {
 			expect(result.method).toBe("stackexchange");

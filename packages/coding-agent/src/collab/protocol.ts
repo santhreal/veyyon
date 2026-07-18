@@ -7,7 +7,8 @@
  * control messages that carry no session data.
  */
 
-import type { ImageContent, Model } from "@veyyon/pi-ai";
+import type { ImageContent, Model } from "@veyyon/ai";
+import { trimTrailingSlashes } from "@veyyon/utils";
 import type {
 	BusChannel,
 	CollabUiRequest,
@@ -16,14 +17,14 @@ import type {
 	Participant,
 	SessionState,
 	AgentSnapshot as WireAgentSnapshot,
-} from "@veyyon/pi-wire";
+} from "@veyyon/wire";
 import {
 	DEFAULT_RELAY_URL,
 	ENVELOPE_HEADER_LENGTH,
 	ROOM_ID_BYTES,
 	ROOM_KEY_BYTES,
 	WRITE_TOKEN_BYTES,
-} from "@veyyon/pi-wire";
+} from "@veyyon/wire";
 import type { ContextUsage } from "../extensibility/extensions/types";
 import type { AgentSessionEvent } from "../session/agent-session";
 import type { SessionEntry, SessionHeader } from "../session/session-entries";
@@ -38,8 +39,8 @@ export type {
 	RelayControlMessage,
 	RelayControlToGuest,
 	RelayControlToHost,
-} from "@veyyon/pi-wire";
-export { COLLAB_PROMPT_MESSAGE_TYPE, COLLAB_PROTO } from "@veyyon/pi-wire";
+} from "@veyyon/wire";
+export { COLLAB_PROMPT_MESSAGE_TYPE, COLLAB_PROTO } from "@veyyon/wire";
 export { DEFAULT_RELAY_URL, ENVELOPE_HEADER_LENGTH, ROOM_ID_BYTES };
 
 export type CollabParticipant = Participant;
@@ -229,7 +230,7 @@ function normalizeCollabWebBaseUrl(relayUrl: string, webUrl?: string): string {
 	if (url.search || url.hash) {
 		throw new Error("collab.webUrl must not include a query string or fragment");
 	}
-	const path = url.pathname.replace(/\/+$/, "");
+	const path = trimTrailingSlashes(url.pathname);
 	return `${url.origin}${path}`;
 }
 

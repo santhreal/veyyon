@@ -19,7 +19,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { Filesystem, NotFoundError, type PreflightWriteOptions, type WriteResult } from "@veyyon/hashline";
-import { isEnoent } from "@veyyon/pi-utils";
+import { isEnoent } from "@veyyon/utils";
 import type { FileDiagnosticsResult, WritethroughCallback, WritethroughDeferredHandle } from "../../lsp";
 import { FileChangeType, notifyWorkspaceWatchedFiles } from "../../lsp/client";
 import type { ToolSession } from "../../tools";

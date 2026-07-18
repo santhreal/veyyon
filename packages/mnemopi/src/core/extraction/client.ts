@@ -1,5 +1,6 @@
-import { type ApiKey, type FetchImpl, withAuth } from "@veyyon/pi-ai";
-import * as AIError from "@veyyon/pi-ai/error";
+import { type ApiKey, type FetchImpl, withAuth } from "@veyyon/ai";
+import * as AIError from "@veyyon/ai/error";
+import { withScopedTimeoutSignal } from "@veyyon/utils";
 
 import { getDiagnostics } from "./diagnostics";
 import { EXTRACTION_SYSTEM_PROMPT, EXTRACTION_USER_TEMPLATE } from "./prompts";
@@ -34,12 +35,6 @@ export interface ExtractionClientOptions {
 	apiKey?: ApiKey | null;
 	baseUrl?: string | null;
 	fetch?: FetchImpl;
-}
-
-function sleep(ms: number): Promise<void> {
-	const { promise, resolve } = Promise.withResolvers<void>();
-	setTimeout(resolve, ms);
-	return promise;
 }
 
 function authHeader(apiKey: string): Record<string, string> {
@@ -85,7 +80,7 @@ export class ExtractionClient {
 							const flags = AIError.classify(exc);
 							if (AIError.is(flags, AIError.Flag.UsageLimit) || AIError.is(flags, AIError.Flag.Transient)) {
 								rateLimitError = exc;
-								await sleep(Math.min(RATE_LIMIT_BACKOFF_MAX_MS, RATE_LIMIT_BACKOFF_BASE_MS * 2 ** attempt));
+								await Bun.sleep(Math.min(RATE_LIMIT_BACKOFF_MAX_MS, RATE_LIMIT_BACKOFF_BASE_MS * 2 ** attempt));
 								continue;
 							}
 							throw exc;
@@ -100,7 +95,7 @@ export class ExtractionClient {
 			} catch (exc) {
 				lastError = exc;
 			}
-			await sleep(FALLBACK_MODEL_DELAY_MS);
+			await Bun.sleep(FALLBACK_MODEL_DELAY_MS);
 		}
 
 		diag.recordFailure("cloud", lastError, "all_models_failed");
@@ -114,18 +109,22 @@ export class ExtractionClient {
 		maxTokens: number,
 		apiKey = "",
 	): Promise<string> {
-		const response = await this.fetchImpl(`${this.baseUrl}/chat/completions`, {
-			method: "POST",
-			headers: authHeader(apiKey),
-			body: JSON.stringify({ model, messages, temperature, max_tokens: maxTokens }),
-			signal: AbortSignal.timeout(60000),
+		// The fence spans the body read too: a stalled response stream is only
+		// interrupted by the armed signal, and the timer is cleared on settle.
+		const data = await withScopedTimeoutSignal(60000, async signal => {
+			const response = await this.fetchImpl(`${this.baseUrl}/chat/completions`, {
+				method: "POST",
+				headers: authHeader(apiKey),
+				body: JSON.stringify({ model, messages, temperature, max_tokens: maxTokens }),
+				signal,
+			});
+			if (!response.ok) {
+				throw new Error(`${response.status} ${response.statusText}`.trim());
+			}
+			return (await response.json()) as {
+				choices?: Array<{ message?: { content?: unknown } }>;
+			};
 		});
-		if (!response.ok) {
-			throw new Error(`${response.status} ${response.statusText}`.trim());
-		}
-		const data = (await response.json()) as {
-			choices?: Array<{ message?: { content?: unknown } }>;
-		};
 		this.callCount += 1;
 		const content = data.choices?.[0]?.message?.content;
 		return typeof content === "string" ? content : "";

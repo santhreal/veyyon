@@ -3,15 +3,16 @@
  *
  * Subagents can call this tool incrementally or terminally depending on `type`.
  */
-import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/pi-agent-core";
-import type { TSchema } from "@veyyon/pi-ai/types";
+import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
+import type { TSchema } from "@veyyon/ai/types";
 import {
 	dereferenceJsonSchema,
 	isValidJsonSchema,
 	type JsonSchemaValidationResult,
 	sanitizeSchemaForStrictMode,
 	tryEnforceStrictSchema,
-} from "@veyyon/pi-ai/utils/schema";
+} from "@veyyon/ai/utils/schema";
+import { errorMessage } from "@veyyon/utils";
 import { subprocessToolRegistry } from "../task/subprocess-tool-registry";
 import type { ToolSession } from ".";
 import { buildOutputValidator, formatAllValidationIssues } from "./output-schema-validator";
@@ -288,7 +289,7 @@ export class YieldTool implements AgentTool<TSchema, YieldDetails> {
 			JSON.stringify(parameters);
 			if (!isValidJsonSchema(parameters)) throw new Error("yield parameters schema is invalid");
 		} catch (err) {
-			const errorMsg = err instanceof Error ? err.message : String(err);
+			const errorMsg = errorMessage(err);
 			parameters = wrapYieldParameters(
 				looseRecordSchema(`Structured JSON output (schema processing failed: ${errorMsg})`),
 			);

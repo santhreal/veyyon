@@ -2,11 +2,11 @@
 """
 Edit benchmark: tests the edit tool across models with a simple edit task.
 
-Select the edit variant via the PI_EDIT_VARIANT env var (e.g. `vim`,
+Select the edit variant via the VEYYON_EDIT_VARIANT env var (e.g. `vim`,
 `hashline`, `replace`, `patch`, `apply_patch`) or `--variant`.
 
 Examples:
-        PI_EDIT_VARIANT=vim   scripts/edit-benchmark.py
+        VEYYON_EDIT_VARIANT=vim   scripts/edit-benchmark.py
         scripts/edit-benchmark.py --variant hashline
 """
 
@@ -40,10 +40,10 @@ def _extract_variant_arg() -> str | None:
 
 def _resolve_variant() -> str:
     cli_variant = _extract_variant_arg()
-    variant = cli_variant or os.environ.get("PI_EDIT_VARIANT")
+    variant = cli_variant or os.environ.get("VEYYON_EDIT_VARIANT")
     if not variant:
         raise SystemExit(
-            "edit-benchmark: set PI_EDIT_VARIANT=<variant> or pass --variant <variant>."
+            "edit-benchmark: set VEYYON_EDIT_VARIANT=<variant> or pass --variant <variant>."
         )
     return variant
 
@@ -67,7 +67,7 @@ def build_spec(variant: str) -> BenchmarkSpec:
         description=f"Benchmark edit tool in {variant} mode across models with simple edit tasks.",
         workspace_prefix=f"{variant}-benchmark",
         tools=("edit", "read"),
-        env={"PI_EDIT_VARIANT": variant, "PI_STRICT_EDIT_MODE": "1"},
+        env={"VEYYON_EDIT_VARIANT": variant, "VEYYON_STRICT_EDIT_MODE": "1"},
         initial_prompt=prompt,
         retry_instruction=retry,
     )

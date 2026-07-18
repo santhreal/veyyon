@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import type { Api } from "@veyyon/pi-ai/types";
+import type { Api } from "@veyyon/ai/types";
 import {
 	coerceServiceTierByFamily,
 	getPriorityPremiumRequests,
@@ -7,7 +7,7 @@ import {
 	resolveModelServiceTier,
 	serviceTierFamily,
 	shouldSendServiceTier,
-} from "@veyyon/pi-ai/types";
+} from "@veyyon/ai/types";
 
 const m = (provider: string, api: Api, id: string): { provider: string; api: Api; id: string } => ({
 	provider,

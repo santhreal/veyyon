@@ -5,16 +5,16 @@
  * win in the spread. This guard makes that collision a loud test failure.
  */
 import { describe, expect, it } from "bun:test";
-import { APPEARANCE_SETTINGS } from "@veyyon/pi-coding-agent/config/settings-domains/appearance";
-import { CONTEXT_SETTINGS } from "@veyyon/pi-coding-agent/config/settings-domains/context";
-import { EDITING_SETTINGS } from "@veyyon/pi-coding-agent/config/settings-domains/editing";
-import { GENERAL_SETTINGS } from "@veyyon/pi-coding-agent/config/settings-domains/general";
-import { INTERACTION_SETTINGS } from "@veyyon/pi-coding-agent/config/settings-domains/interaction";
-import { MODEL_SETTINGS } from "@veyyon/pi-coding-agent/config/settings-domains/model";
-import { PROVIDERS_SETTINGS } from "@veyyon/pi-coding-agent/config/settings-domains/providers";
-import { TASKS_SETTINGS } from "@veyyon/pi-coding-agent/config/settings-domains/tasks";
-import { TOOLS_SETTINGS } from "@veyyon/pi-coding-agent/config/settings-domains/tools";
-import { SETTINGS_SCHEMA } from "@veyyon/pi-coding-agent/config/settings-schema";
+import { APPEARANCE_SETTINGS } from "@veyyon/coding-agent/config/settings-domains/appearance";
+import { CONTEXT_SETTINGS } from "@veyyon/coding-agent/config/settings-domains/context";
+import { EDITING_SETTINGS } from "@veyyon/coding-agent/config/settings-domains/editing";
+import { GENERAL_SETTINGS } from "@veyyon/coding-agent/config/settings-domains/general";
+import { INTERACTION_SETTINGS } from "@veyyon/coding-agent/config/settings-domains/interaction";
+import { MODEL_SETTINGS } from "@veyyon/coding-agent/config/settings-domains/model";
+import { PROVIDERS_SETTINGS } from "@veyyon/coding-agent/config/settings-domains/providers";
+import { TASKS_SETTINGS } from "@veyyon/coding-agent/config/settings-domains/tasks";
+import { TOOLS_SETTINGS } from "@veyyon/coding-agent/config/settings-domains/tools";
+import { SETTINGS_SCHEMA } from "@veyyon/coding-agent/config/settings-schema";
 
 const DOMAINS: Record<string, Record<string, unknown>> = {
 	general: GENERAL_SETTINGS,

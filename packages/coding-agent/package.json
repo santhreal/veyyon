@@ -1,6 +1,6 @@
 {
   "type": "module",
-  "name": "@veyyon/pi-coding-agent",
+  "name": "@veyyon/coding-agent",
   "version": "1.0.0",
   "description": "Coding agent CLI with read, bash, edit, write tools and session management",
   "homepage": "https://veyyon.dev",
@@ -11,11 +11,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/can1357/oh-my-pi.git",
+    "url": "git+https://github.com/santhreal/veyyon.git",
     "directory": "packages/coding-agent"
   },
   "bugs": {
-    "url": "https://github.com/can1357/oh-my-pi/issues"
+    "url": "https://github.com/santhreal/veyyon/issues"
   },
   "keywords": [
     "coding-agent",
@@ -61,15 +61,15 @@
     "@puppeteer/browsers": "catalog:",
     "@types/turndown": "catalog:",
     "@veyyon/hashline": "catalog:",
-    "@veyyon/pi-stats": "catalog:",
-    "@veyyon/pi-agent-core": "catalog:",
-    "@veyyon/pi-ai": "catalog:",
-    "@veyyon/pi-catalog": "catalog:",
-    "@veyyon/pi-mnemopi": "catalog:",
-    "@veyyon/pi-natives": "catalog:",
-    "@veyyon/pi-tui": "catalog:",
-    "@veyyon/pi-utils": "catalog:",
-    "@veyyon/pi-wire": "catalog:",
+    "@veyyon/stats": "catalog:",
+    "@veyyon/agent-core": "catalog:",
+    "@veyyon/ai": "catalog:",
+    "@veyyon/catalog": "catalog:",
+    "@veyyon/mnemopi": "catalog:",
+    "@veyyon/natives": "catalog:",
+    "@veyyon/tui": "catalog:",
+    "@veyyon/utils": "catalog:",
+    "@veyyon/wire": "catalog:",
     "@veyyon/snapcompact": "catalog:",
     "@veyyon/tool-render": "catalog:",
     "@xterm/headless": "catalog:",

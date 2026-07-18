@@ -131,7 +131,7 @@ impl HeaderPrinter {
 	pub fn print(&mut self, string: &str) {
 		if self.verbose {
 			let _ = writeln!(
-				pi_uutils_ctx::stdout(),
+				veyyon_uutils_ctx::stdout(),
 				"{}==> {string} <==",
 				if self.first_header { "" } else { "\n" },
 			);

@@ -1,6 +1,6 @@
 import { afterEach, beforeAll, describe, expect, it } from "bun:test";
-import { agentPauseGate } from "@veyyon/pi-agent-core";
-import type { Component } from "@veyyon/pi-tui";
+import { agentPauseGate } from "@veyyon/agent-core";
+import type { Component } from "@veyyon/tui";
 import { Settings } from "../../../config/settings";
 import { getThemeByName, setThemeInstance } from "../../theme/theme";
 import { PauseScreenComponent, type PauseScreenHost, renderPauseScreen, runPauseScreen } from "../pause-screen";

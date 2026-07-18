@@ -1,5 +1,5 @@
 //! Vendored, patched `jaq` CLI (jq-compatible JSON processor), wired to run
-//! in-process as a shell builtin via [`pi_uutils_ctx`].
+//! in-process as a shell builtin via [`veyyon_uutils_ctx`].
 //!
 //! Upstream: <https://github.com/01mf02/jaq>, tag `v2.3.0`,
 //! commit `0ce6e86a5e038a623dc894ad5cc70aaa9142daf2` (MIT).
@@ -9,8 +9,9 @@
 //! upstream:
 //! - `main()` is restructured as [`run`], returning the exit code instead of
 //!   `ExitCode`/`Termination`; no `std::process::exit` anywhere.
-//! - stdio goes through the [`pi_uutils_ctx`] streams; every file path operand
-//!   resolves through `pi_uutils_ctx::resolve` against the shell's cwd.
+//! - stdio goes through the [`veyyon_uutils_ctx`] streams; every file path
+//!   operand resolves through `veyyon_uutils_ctx::resolve` against the shell's
+//!   cwd.
 //! - The ctx streams are never a tty, so `--color` auto mode always resolves to
 //!   plain output; `-C/--color-output` still forces ANSI. Color state is
 //!   thread-local (see `color` in this module) instead of yansi's global
@@ -40,9 +41,9 @@ use jaq_core::{Ctx, RcIter, load};
 use jaq_json::Val;
 use write::{print, with_stdout};
 
-/// In-process builtin entry point. The host installs a [`pi_uutils_ctx`] scope
-/// (stdio + working directory + environment) on a dedicated blocking thread,
-/// then calls this with `argv[0]` = command name (`jq`).
+/// In-process builtin entry point. The host installs a [`veyyon_uutils_ctx`]
+/// scope (stdio + working directory + environment) on a dedicated blocking
+/// thread, then calls this with `argv[0]` = command name (`jq`).
 pub fn run(argv: Vec<std::ffi::OsString>) -> i32 {
 	color::init();
 	color::set(false);
@@ -51,21 +52,21 @@ pub fn run(argv: Vec<std::ffi::OsString>) -> i32 {
 	let cli = match Cli::parse(argv) {
 		Ok(cli) => cli,
 		Err(e) => {
-			let _ = writeln!(pi_uutils_ctx::stderr(), "Error: {e}");
+			let _ = writeln!(veyyon_uutils_ctx::stderr(), "Error: {e}");
 			return 2;
 		},
 	};
 
 	if cli.version {
 		let _ = writeln!(
-			pi_uutils_ctx::stdout(),
+			veyyon_uutils_ctx::stdout(),
 			"{} {}",
 			env!("CARGO_PKG_NAME"),
 			env!("CARGO_PKG_VERSION")
 		);
 		return 0;
 	} else if cli.help {
-		let _ = writeln!(pi_uutils_ctx::stdout(), "{}", include_str!("help.txt"));
+		let _ = writeln!(veyyon_uutils_ctx::stdout(), "{}", include_str!("help.txt"));
 		return 0;
 	}
 
@@ -84,7 +85,7 @@ pub fn run(argv: Vec<std::ffi::OsString>) -> i32 {
 		Ok(exit) => exit,
 		Err(e) => {
 			color::set(cli.color_if(|| false));
-			let _ = write!(pi_uutils_ctx::stderr(), "{e}");
+			let _ = write!(veyyon_uutils_ctx::stderr(), "{e}");
 			e.report()
 		},
 	}
@@ -117,9 +118,9 @@ fn real_main(cli: &Cli) -> Result<i32, Error> {
 	if let Some(test_files) = &cli.run_tests {
 		return Ok(match test_files.last() {
 			Some(file) => {
-				run_tests(io::BufReader::new(std::fs::File::open(pi_uutils_ctx::resolve(file))?))
+				run_tests(io::BufReader::new(std::fs::File::open(veyyon_uutils_ctx::resolve(file))?))
 			},
-			None => run_tests(io::BufReader::new(pi_uutils_ctx::stdin())),
+			None => run_tests(io::BufReader::new(veyyon_uutils_ctx::stdin())),
 		});
 	}
 
@@ -130,7 +131,7 @@ fn real_main(cli: &Cli) -> Result<i32, Error> {
 		Some(filter) => {
 			let (path, code) = match filter {
 				cli::Filter::FromFile(path) => {
-					(path.into(), std::fs::read_to_string(pi_uutils_ctx::resolve(path))?)
+					(path.into(), std::fs::read_to_string(veyyon_uutils_ctx::resolve(path))?)
 				},
 				cli::Filter::Inline(filter) => ("<inline>".into(), filter.clone()),
 			};
@@ -140,7 +141,7 @@ fn real_main(cli: &Cli) -> Result<i32, Error> {
 	ctx.extend(vals);
 
 	let last = if cli.files.is_empty() {
-		let inputs = read::buffered(cli, io::BufReader::new(pi_uutils_ctx::stdin()));
+		let inputs = read::buffered(cli, io::BufReader::new(veyyon_uutils_ctx::stdin()));
 		with_stdout(|out| filter::run(cli, &filter, ctx, inputs, |v| print(out, cli, &v)))?
 	} else {
 		let mut last = None;
@@ -148,7 +149,7 @@ fn real_main(cli: &Cli) -> Result<i32, Error> {
 			// Resolve the operand against the shell's cwd; all later path
 			// operations (open, metadata, in-place temp+rename) use the
 			// resolved path so nothing touches the host process cwd.
-			let resolved = pi_uutils_ctx::resolve(file);
+			let resolved = veyyon_uutils_ctx::resolve(file);
 			let path = resolved.as_path();
 			let file =
 				read::load_file(path).map_err(|e| Error::Io(Some(path.display().to_string()), e))?;
@@ -199,7 +200,7 @@ fn binds(cli: &Cli) -> Result<Vec<(String, Val)>, Error> {
 		Ok((k.to_owned(), lexer.exactly_one(Val::parse).map_err(err)?))
 	});
 	let rawfile = cli.rawfile.iter().map(|(k, path)| {
-		let s = std::fs::read_to_string(pi_uutils_ctx::resolve(path))
+		let s = std::fs::read_to_string(veyyon_uutils_ctx::resolve(path))
 			.map_err(|e| Error::Io(Some(format!("{path:?}")), e));
 		Ok((k.to_owned(), Val::Str(s?.into())))
 	});
@@ -216,7 +217,7 @@ fn binds(cli: &Cli) -> Result<Vec<(String, Val)>, Error> {
 
 	var_val.push(("ARGS".to_string(), args(&positional, &var_val)));
 	// the shell's exported environment, not the host process environment
-	let env = pi_uutils_ctx::env_snapshot()
+	let env = veyyon_uutils_ctx::env_snapshot()
 		.into_iter()
 		.map(|(k, v)| (k.into(), Val::from(v)));
 	var_val.push(("ENV".to_string(), Val::obj(env.collect())));
@@ -308,23 +309,23 @@ fn run_tests(read: impl BufRead) -> i32 {
 
 	let (mut passed, mut total) = (0, 0);
 	for test in tests {
-		if pi_uutils_ctx::is_cancelled() {
+		if veyyon_uutils_ctx::is_cancelled() {
 			break;
 		}
-		let _ = writeln!(pi_uutils_ctx::stdout(), "Testing {}", test.filter);
+		let _ = writeln!(veyyon_uutils_ctx::stdout(), "Testing {}", test.filter);
 		match run_test(test) {
 			Err(e) => {
-				let _ = writeln!(pi_uutils_ctx::stderr(), "{e:?}");
+				let _ = writeln!(veyyon_uutils_ctx::stderr(), "{e:?}");
 			},
 			Ok((expect, obtain)) if expect != obtain => {
-				let _ = writeln!(pi_uutils_ctx::stderr(), "expected {expect}, obtained {obtain}",);
+				let _ = writeln!(veyyon_uutils_ctx::stderr(), "expected {expect}, obtained {obtain}",);
 			},
 			Ok(_) => passed += 1,
 		}
 		total += 1;
 	}
 
-	let _ = writeln!(pi_uutils_ctx::stdout(), "{passed} out of {total} tests passed");
+	let _ = writeln!(veyyon_uutils_ctx::stdout(), "{passed} out of {total} tests passed");
 
 	i32::from(total > passed)
 }

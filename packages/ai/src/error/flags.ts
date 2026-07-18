@@ -1,4 +1,4 @@
-import { isUnexpectedSocketCloseMessage } from "@veyyon/pi-utils";
+import { isUnexpectedSocketCloseMessage } from "@veyyon/utils";
 import type { Api, AssistantMessage } from "../types";
 import { AwsCredentialsError } from "./aws";
 import {

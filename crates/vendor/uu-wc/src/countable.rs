@@ -36,7 +36,7 @@ pub trait WordCountable: Read {
 // wrapped in a BufReader to satisfy the BufRead requirement and reports no
 // inner file (forcing the streaming byte-count path in count_fast).
 #[cfg(not(target_os = "wasi"))]
-impl WordCountable for pi_uutils_ctx::CtxStdin {
+impl WordCountable for veyyon_uutils_ctx::CtxStdin {
 	type Buffered = BufReader<Self>;
 
 	fn buffered(self) -> Self::Buffered {
@@ -49,7 +49,7 @@ impl WordCountable for pi_uutils_ctx::CtxStdin {
 }
 
 #[cfg(target_os = "wasi")]
-impl WordCountable for pi_uutils_ctx::CtxStdin {
+impl WordCountable for veyyon_uutils_ctx::CtxStdin {
 	type Buffered = BufReader<Self>;
 
 	fn buffered(self) -> Self::Buffered {

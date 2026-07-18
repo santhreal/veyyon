@@ -16,11 +16,10 @@ set -e
 # After install, launch with `vey` in any repo.
 
 REPO="santhreal/veyyon"
-PACKAGE="@veyyon/pi-coding-agent"
+PACKAGE="@veyyon/coding-agent"
 BIN_NAME="veyyon"
 ALIAS_NAME="vey"
-# VEYYON_INSTALL_DIR is the modern name; PI_INSTALL_DIR is honored for compatibility.
-INSTALL_DIR="${VEYYON_INSTALL_DIR:-${PI_INSTALL_DIR:-$HOME/.local/bin}}"
+INSTALL_DIR="${VEYYON_INSTALL_DIR:-$HOME/.local/bin}"
 MIN_BUN_VERSION="1.3.14"
 
 MODE=""

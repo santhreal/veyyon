@@ -1,5 +1,6 @@
-import type { ThinkingLevel } from "@veyyon/pi-agent-core";
-import type { Effort, Model } from "@veyyon/pi-ai";
+import type { ThinkingLevel } from "@veyyon/agent-core";
+import type { Effort, Model } from "@veyyon/ai";
+import type { ShapeTarget } from "@veyyon/snapcompact";
 import {
 	type Component,
 	Container,
@@ -25,8 +26,7 @@ import {
 	Text,
 	truncateToWidth,
 	visibleWidth,
-} from "@veyyon/pi-tui";
-import type { ShapeTarget } from "@veyyon/snapcompact";
+} from "@veyyon/tui";
 import type { ModelRegistry } from "../../config/model-registry";
 import { getRoleInfo, ROLE_INHERIT_LABEL, SELECTABLE_MODEL_ROLE_IDS } from "../../config/model-roles";
 import {
@@ -54,6 +54,7 @@ import {
 	hitTestModalChrome,
 	MODAL_SIZING_SETTINGS,
 	type ModalShellGeometry,
+	type ModalShortcut,
 	renderModalShell,
 	SETTINGS_BROWSE_SHORTCUTS,
 	SETTINGS_FILTER_SHORTCUTS,
@@ -467,14 +468,29 @@ function isAdvancedToggleId(id: string): boolean {
 /** Columns between the sidebar and the settings pane: `│` hairline + two spaces. */
 const SIDEBAR_GAP_COLS = 3;
 
+/** Footer chips while keyboard focus rests on the category sidebar. */
+const SETTINGS_SIDEBAR_SHORTCUTS: readonly ModalShortcut[] = [
+	{ label: "up/down category" },
+	{ label: "right/enter settings" },
+	{ label: "/ search" },
+	{ label: "esc close", clickable: true, id: "close" },
+];
+
 function getSettingsTabs(): Tab[] {
+	// Icon-light presets define tab glyphs as "" — then the category name
+	// stands alone. A blank glyph must not leave a stray leading space, and
+	// `short` falls back to the name's initial so narrow tab strips stay legible.
+	const entry = (id: string, icon: string, label: string): Tab => ({
+		id,
+		label: icon ? `${icon} ${label}` : label,
+		short: icon || label.charAt(0),
+	});
 	return [
 		...SETTING_TABS.map(id => {
 			const meta = TAB_METADATA[id];
-			const icon = theme.symbol(meta.icon as Parameters<typeof theme.symbol>[0]);
-			return { id, label: `${icon} ${meta.label}`, short: icon };
+			return entry(id, theme.symbol(meta.icon as Parameters<typeof theme.symbol>[0]), meta.label);
 		}),
-		{ id: "plugins", label: `${theme.icon.package} Plugins`, short: theme.icon.package },
+		entry("plugins", theme.icon.package, "Plugins"),
 	];
 }
 
@@ -569,6 +585,12 @@ export class SettingsSelectorComponent implements Component {
 	#hoveredShortcutId: string | null = null;
 	/** Setting ids whose descriptions are expanded (Right/l). */
 	#expandedIds = new Set<string>();
+	/**
+	 * Keyboard focus rests on the category sidebar (Left from the pane).
+	 * While focused, Up/Down change category without wrapping and Right/Enter
+	 * return to the settings rows — matching the visual left/right layout.
+	 */
+	#sidebarFocused = false;
 
 	/** @deprecated Prefer ModalShell sizing; kept for tests that assert width. */
 	static readonly MODAL_MAX_WIDTH = MODAL_SIZING_SETTINGS.maxWidth;
@@ -644,6 +666,7 @@ export class SettingsSelectorComponent implements Component {
 	#settingsShortcuts() {
 		if (this.#searchList) return SETTINGS_FILTER_SHORTCUTS;
 		if ((this.#searchList ?? this.#currentList)?.hasOpenSubmenu()) return SETTINGS_SUBPANE_SHORTCUTS;
+		if (this.#sidebarFocused) return SETTINGS_SIDEBAR_SHORTCUTS;
 		return SETTINGS_BROWSE_SHORTCUTS;
 	}
 
@@ -703,10 +726,22 @@ export class SettingsSelectorComponent implements Component {
 		// separated by a silver hairline: `sidebar │  pane`.
 		const sidebarWidth = this.#sidebarWidth(contentWidth);
 		const paneWidth = Math.max(20, contentWidth - sidebarWidth - SIDEBAR_GAP_COLS);
-		const sidebarLines = this.#tabBar.renderVertical(sidebarWidth, `${theme.nav.cursor} `);
+		// The cursor brightens while the sidebar itself holds keyboard focus.
+		const sidebarCursor = this.#sidebarFocused ? `${theme.fg("accent", theme.nav.cursor)} ` : `${theme.nav.cursor} `;
+		const sidebarLines = this.#tabBar.renderVertical(sidebarWidth, sidebarCursor);
 		const searching = this.#searchList !== null;
 		const showPreview = !searching && this.#currentTabId === "appearance";
-		const previewLines = showPreview ? ["", theme.fg("muted", "Preview:"), this.#getStatusPreviewString()] : [];
+		// The preview is a live status-line render: clamp every line to the
+		// pane so a wide preview can't punch through the modal's right border.
+		const previewLines = showPreview
+			? [
+					"",
+					theme.fg("muted", "Preview:"),
+					...this.#getStatusPreviewString()
+						.split("\n")
+						.map(line => truncateToWidth(line, paneWidth)),
+				]
+			: [];
 
 		// Non-body chrome (borders, search row, footer band) costs ~10 rows —
 		// mirrors renderModalShell's own nonBody() budget below. The sidebar
@@ -715,7 +750,7 @@ export class SettingsSelectorComponent implements Component {
 		const list = this.#searchList ?? this.#currentList;
 		let listLines: readonly string[] = [];
 		if (list) {
-			list.setMaxVisible(Math.max(8, estimatedBody - (showPreview ? 3 : 0)));
+			list.setMaxVisible(Math.max(8, estimatedBody - previewLines.length));
 			list.setOptions({
 				descriptionMode: "expand",
 				expandedIds: this.#expandedIds,
@@ -858,7 +893,11 @@ export class SettingsSelectorComponent implements Component {
 		// rebuilt tab list discards the submenu, same as Esc + Tab).
 		if (overSidebar) {
 			const tab = this.#tabBar.tabAt(bodyLine, innerCol);
-			if (tab) this.#tabBar.selectTab(tab.id);
+			if (tab) {
+				this.#tabBar.selectTab(tab.id);
+				// A click activates the category and works the pane directly.
+				this.#sidebarFocused = false;
+			}
 			return true;
 		}
 		if (list?.hasOpenSubmenu()) {
@@ -887,6 +926,8 @@ export class SettingsSelectorComponent implements Component {
 
 	/** Swap the tab content for the global search result list. */
 	#startSearch(initialQuery: string): void {
+		// Search results live in the pane; sidebar focus would be stale there.
+		this.#sidebarFocused = false;
 		this.#preSearchTabId = this.#currentTabId;
 		this.#searchInput = new Input();
 		this.#searchInput.prompt = "";
@@ -1590,6 +1631,16 @@ export class SettingsSelectorComponent implements Component {
 		});
 	}
 
+	/** Step the active category up/down, clamped at the ends (no wrap). */
+	#stepCategory(delta: -1 | 1): void {
+		const tabs = getSettingsTabs();
+		const index = tabs.findIndex(tab => tab.id === this.#tabBar.getActiveTab().id);
+		if (index === -1) return;
+		const next = Math.min(tabs.length - 1, Math.max(0, index + delta));
+		const target = tabs[next];
+		if (next !== index && target) this.#tabBar.selectTab(target.id);
+	}
+
 	handleInput(data: string): void {
 		// SGR mouse reports (the fullscreen overlay enables tracking).
 		if (data.startsWith("\x1b[<")) {
@@ -1617,6 +1668,39 @@ export class SettingsSelectorComponent implements Component {
 			return;
 		}
 
+		// Sidebar focus mode: Up/Down step categories without wrapping;
+		// Right/Enter (or Tab) hand focus back to the settings rows. Anything
+		// else (search, hotkeys) falls through to the shared handling below.
+		if (this.#sidebarFocused) {
+			if (matchesKey(data, "up") || data === "k") {
+				this.#stepCategory(-1);
+				return;
+			}
+			if (matchesKey(data, "down") || data === "j") {
+				this.#stepCategory(1);
+				return;
+			}
+			if (
+				matchesKey(data, "right") ||
+				data === "l" ||
+				getKeybindings().matches(data, "tui.select.confirm") ||
+				data === "\n" ||
+				matchesKey(data, "tab")
+			) {
+				this.#sidebarFocused = false;
+				return;
+			}
+			// Already on the leftmost column — swallow so the tab bar never wraps.
+			if (matchesKey(data, "left") || data === "h") return;
+		}
+
+		// Left/Right on a boolean/enum row cycle its value in place — the
+		// gesture everyone tries first in a settings pane. Rows without an
+		// inline value list fall through to the older meanings below
+		// (Right expands the description, Left collapses / focuses the sidebar).
+		if (matchesKey(data, "right") && this.#currentList?.cycleSelected(1)) return;
+		if (matchesKey(data, "left") && this.#currentList?.cycleSelected(-1)) return;
+
 		// Right/l expands the selected setting description; Left/h collapses.
 		if (matchesKey(data, "right") || data === "l") {
 			const id = this.#currentList?.getSelectedItem()?.id;
@@ -1633,8 +1717,10 @@ export class SettingsSelectorComponent implements Component {
 				this.#currentList?.setOptions({ expandedIds: this.#expandedIds, descriptionMode: "expand" });
 				return;
 			}
-			// No expanded desc: Left still switches tabs (legacy).
-			this.#tabBar.handleInput(data);
+			// No expanded desc: Left focuses the category sidebar (it sits to
+			// the visual left). It must never wrap-cycle tabs — Left on the
+			// first category used to jump to the last one and lose the caret.
+			this.#sidebarFocused = true;
 			return;
 		}
 

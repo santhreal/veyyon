@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from "bun:test";
-import { hasMagicKeyword, highlightMagicKeywords } from "@veyyon/pi-coding-agent/modes/magic-keywords";
-import { initTheme } from "@veyyon/pi-coding-agent/modes/theme/theme";
+import { hasMagicKeyword, highlightMagicKeywords } from "@veyyon/coding-agent/modes/magic-keywords";
+import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 
 beforeAll(async () => {
 	// Gradient palettes read the active theme's color mode.

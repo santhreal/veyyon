@@ -1,6 +1,6 @@
-import { type ResolvedThinkingLevel, ThinkingLevel } from "@veyyon/pi-agent-core";
-import { Effort, type Model, THINKING_EFFORTS } from "@veyyon/pi-ai";
-import { clampThinkingLevelForModel, getSupportedEfforts } from "@veyyon/pi-catalog/model-thinking";
+import { type ResolvedThinkingLevel, ThinkingLevel } from "@veyyon/agent-core";
+import { Effort, type Model, THINKING_EFFORTS } from "@veyyon/ai";
+import { clampThinkingLevelForModel, getSupportedEfforts } from "@veyyon/catalog/model-thinking";
 
 /**
  * Metadata used to render thinking selector values in the coding-agent UI.

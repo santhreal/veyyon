@@ -1,5 +1,5 @@
-import * as AIError from "@veyyon/pi-ai/error";
-import { getMCPConfigPath, logger } from "@veyyon/pi-utils";
+import * as AIError from "@veyyon/ai/error";
+import { getMCPConfigPath, logger } from "@veyyon/utils";
 import { connectToServer, disconnectServer, listPrompts, listResources, listTools } from "../../mcp/client";
 import {
 	addMCPServer,
@@ -353,7 +353,7 @@ async function handleSmitherySearchCommand(rest: string, runtime: SlashCommandRu
 		const message = errorMessage(err);
 		if (AIError.is(AIError.classify(err), AIError.Flag.AuthFailed)) {
 			return usage(
-				"Smithery authentication required. Run /mcp smithery-login in the TUI client or add an API key to ~/.veyyon/agent/smithery.json.",
+				"Smithery authentication required. Run /mcp smithery-login in the TUI client or add an API key to ~/.veyyon/profiles/default/agent/smithery.json.",
 				runtime,
 			);
 		}

@@ -1,9 +1,9 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
-import type { AgentTool } from "@veyyon/pi-agent-core";
-import { ToolExecutionComponent } from "@veyyon/pi-coding-agent/modes/components/tool-execution";
-import { initTheme } from "@veyyon/pi-coding-agent/modes/theme/theme";
-import { Text, type TUI } from "@veyyon/pi-tui";
+import type { AgentTool } from "@veyyon/agent-core";
+import { ToolExecutionComponent } from "@veyyon/coding-agent/modes/components/tool-execution";
+import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { Text, type TUI } from "@veyyon/tui";
 
 /**
  * Contract under test (tool-result render memoization):

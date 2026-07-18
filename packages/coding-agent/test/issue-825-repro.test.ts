@@ -19,10 +19,10 @@
  */
 
 import { beforeAll, describe, expect, mock, test } from "bun:test";
-import { AgentBusyError } from "@veyyon/pi-agent-core";
-import { initTheme } from "@veyyon/pi-coding-agent/modes/theme/theme";
-import type { CompactionQueuedMessage, InteractiveModeContext } from "@veyyon/pi-coding-agent/modes/types";
-import { UiHelpers } from "@veyyon/pi-coding-agent/modes/utils/ui-helpers";
+import { AgentBusyError } from "@veyyon/agent-core";
+import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import type { CompactionQueuedMessage, InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
+import { UiHelpers } from "@veyyon/coding-agent/modes/utils/ui-helpers";
 
 beforeAll(() => {
 	initTheme();

@@ -4,20 +4,20 @@ import * as os from "node:os";
 import * as path from "node:path";
 import * as url from "node:url";
 import * as zlib from "node:zlib";
-import type { AgentToolContext } from "@veyyon/pi-agent-core";
-import { AsyncJobManager } from "@veyyon/pi-coding-agent/async";
-import { DEFAULT_BASH_INTERCEPTOR_RULES, Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { EditTool } from "@veyyon/pi-coding-agent/edit";
-import { SessionManager } from "@veyyon/pi-coding-agent/session/session-manager";
-import type { ToolSession } from "@veyyon/pi-coding-agent/tools";
-import { BashTool } from "@veyyon/pi-coding-agent/tools/bash";
-import { JobTool } from "@veyyon/pi-coding-agent/tools/job";
-import { wrapToolWithMetaNotice } from "@veyyon/pi-coding-agent/tools/output-meta";
-import { ReadTool } from "@veyyon/pi-coding-agent/tools/read";
-import * as toolTimeouts from "@veyyon/pi-coding-agent/tools/tool-timeouts";
-import { WriteTool } from "@veyyon/pi-coding-agent/tools/write";
-import { unzip } from "@veyyon/pi-coding-agent/utils/zip";
-import { $which, removeSyncWithRetries, Snowflake } from "@veyyon/pi-utils";
+import type { AgentToolContext } from "@veyyon/agent-core";
+import { AsyncJobManager } from "@veyyon/coding-agent/async";
+import { DEFAULT_BASH_INTERCEPTOR_RULES, Settings } from "@veyyon/coding-agent/config/settings";
+import { EditTool } from "@veyyon/coding-agent/edit";
+import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import type { ToolSession } from "@veyyon/coding-agent/tools";
+import { BashTool } from "@veyyon/coding-agent/tools/bash";
+import { JobTool } from "@veyyon/coding-agent/tools/job";
+import { wrapToolWithMetaNotice } from "@veyyon/coding-agent/tools/output-meta";
+import { ReadTool } from "@veyyon/coding-agent/tools/read";
+import * as toolTimeouts from "@veyyon/coding-agent/tools/tool-timeouts";
+import { WriteTool } from "@veyyon/coding-agent/tools/write";
+import { unzip } from "@veyyon/coding-agent/utils/zip";
+import { $which, removeSyncWithRetries, Snowflake } from "@veyyon/utils";
 import { GlobTool } from "../src/tools/glob";
 import { DEFAULT_FILE_LIMIT, GrepTool, MULTI_FILE_PER_FILE_MATCHES } from "../src/tools/grep";
 
@@ -281,8 +281,8 @@ describe("Coding Agent Tools", () => {
 
 	beforeEach(() => {
 		// Force replace mode for edit tool tests using old_text/new_text
-		originalEditVariant = Bun.env.PI_EDIT_VARIANT;
-		Bun.env.PI_EDIT_VARIANT = "replace";
+		originalEditVariant = Bun.env.VEYYON_EDIT_VARIANT;
+		Bun.env.VEYYON_EDIT_VARIANT = "replace";
 
 		// Create a unique temporary directory for each test
 		testDir = path.join(os.tmpdir(), `coding-agent-test-${Snowflake.next()}`);
@@ -306,9 +306,9 @@ describe("Coding Agent Tools", () => {
 
 		// Restore original edit variant
 		if (originalEditVariant === undefined) {
-			delete Bun.env.PI_EDIT_VARIANT;
+			delete Bun.env.VEYYON_EDIT_VARIANT;
 		} else {
-			Bun.env.PI_EDIT_VARIANT = originalEditVariant;
+			Bun.env.VEYYON_EDIT_VARIANT = originalEditVariant;
 		}
 		AsyncJobManager.resetForTests();
 	});
@@ -1317,12 +1317,12 @@ function b() {
 		});
 
 		it("should persist environment variables between commands", async () => {
-			if (process.platform === "win32" || Bun.env.PI_SHELL_PERSIST !== "1") {
+			if (process.platform === "win32" || Bun.env.VEYYON_SHELL_PERSIST !== "1") {
 				return;
 			}
 
-			await bashTool.execute("test-call-8-env-set", { command: "export PI_TEST_VAR=hello" });
-			const result = await bashTool.execute("test-call-8-env-get", { command: "echo $PI_TEST_VAR" });
+			await bashTool.execute("test-call-8-env-set", { command: "export VEYYON_TEST_VAR=hello" });
+			const result = await bashTool.execute("test-call-8-env-get", { command: "echo $VEYYON_TEST_VAR" });
 			expect(getTextOutput(result)).toContain("hello");
 		});
 
@@ -1663,7 +1663,7 @@ function b() {
 
 			const output = getTextOutput(result);
 			expect(output).not.toContain("# example.txt");
-			// PI_EDIT_VARIANT=replace in beforeEach disables hashlines; expect line-number mode
+			// VEYYON_EDIT_VARIANT=replace in beforeEach disables hashlines; expect line-number mode
 			expect(output).toMatch(/\*2\|match line/);
 		});
 
@@ -2175,8 +2175,8 @@ describe("edit tool CRLF handling", () => {
 
 	beforeEach(() => {
 		// Force replace mode for edit tool tests using old_text/new_text
-		originalEditVariant = Bun.env.PI_EDIT_VARIANT;
-		Bun.env.PI_EDIT_VARIANT = "replace";
+		originalEditVariant = Bun.env.VEYYON_EDIT_VARIANT;
+		Bun.env.VEYYON_EDIT_VARIANT = "replace";
 
 		testDir = path.join(os.tmpdir(), `coding-agent-crlf-test-${Snowflake.next()}`);
 		fs.mkdirSync(testDir, { recursive: true });
@@ -2188,9 +2188,9 @@ describe("edit tool CRLF handling", () => {
 
 		// Restore original edit variant
 		if (originalEditVariant === undefined) {
-			delete Bun.env.PI_EDIT_VARIANT;
+			delete Bun.env.VEYYON_EDIT_VARIANT;
 		} else {
-			Bun.env.PI_EDIT_VARIANT = originalEditVariant;
+			Bun.env.VEYYON_EDIT_VARIANT = originalEditVariant;
 		}
 	});
 

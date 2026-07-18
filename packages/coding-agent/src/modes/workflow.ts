@@ -1,4 +1,4 @@
-import { prompt } from "@veyyon/pi-utils";
+import { prompt } from "@veyyon/utils";
 import workflowNoticeTemplate from "../prompts/system/workflow-notice.md" with { type: "text" };
 import { createGradientHighlighter, type KeywordHighlighter } from "./gradient-highlight";
 import { magicKeywordRegex } from "./magic-keyword-boundary";

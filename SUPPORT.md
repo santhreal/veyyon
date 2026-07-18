@@ -7,5 +7,5 @@
 - **A question or an idea** — open a [Discussion](https://github.com/santhreal/veyyon/discussions).
 - **A security vulnerability** — do **not** open a public issue. Follow
   [SECURITY.md](SECURITY.md).
-- **Contributing** — see [CONTRIBUTING.md](CONTRIBUTING.md); note that pull requests
-  require a vouch.
+- **Contributing** — see [CONTRIBUTING.md](CONTRIBUTING.md). Issues and pull
+  requests are open to everyone.

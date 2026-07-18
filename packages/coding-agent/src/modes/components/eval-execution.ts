@@ -3,8 +3,8 @@
  * Shares the same kernel session as the agent's eval tool.
  */
 
-import { Container, type Loader, Text, type TUI } from "@veyyon/pi-tui";
-import { sanitizeText } from "@veyyon/pi-utils";
+import { Container, type Loader, Text, type TUI } from "@veyyon/tui";
+import { sanitizeText } from "@veyyon/utils";
 import { highlightCode, theme } from "../../modes/theme/theme";
 import type { TruncationMeta } from "../../tools/output-meta";
 import {

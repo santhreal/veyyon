@@ -1,6 +1,6 @@
 /**
  * Browser WebSocket wrapper for collab live-session sharing (vendored mirror
- * of `@veyyon/pi-coding-agent/src/collab/relay-client.ts` semantics).
+ * of `@veyyon/coding-agent/src/collab/relay-client.ts` semantics).
  *
  * Connects to a relay room, seals/opens AES-GCM frames in strict order, and
  * reconnects with exponential backoff on transient drops. Fatal relay close
@@ -8,7 +8,7 @@
  * reconnect.
  */
 
-import type { GuestFrame, HostFrame, RelayControlMessage } from "@veyyon/pi-wire";
+import type { GuestFrame, HostFrame, RelayControlMessage } from "@veyyon/wire";
 import { open, seal } from "./codec";
 import { packEnvelope, unpackEnvelope } from "./link";
 
@@ -163,8 +163,10 @@ export class CollabSocket {
 				if (this.#ws !== ws) return;
 				this.onFrame?.(frame, envelope.peerId);
 			})
-			.catch(() => {
-				// listener threw; keep the receive chain alive
+			.catch(error => {
+				// Keep the receive chain alive, but a throwing frame listener is an
+				// app bug the console must show, not a frame to drop silently.
+				console.warn("collab: frame listener threw; frame dropped", error);
 			});
 	}
 

@@ -1,5 +1,5 @@
 import { performance } from "node:perf_hooks";
-import { logger, takeRecentLoopPhase } from "@veyyon/pi-utils";
+import { logger, takeRecentLoopPhase } from "@veyyon/utils";
 
 export interface LoopWatchdogOptions {
 	/** How far ahead each probe tick is scheduled, in ms. Default 250. */

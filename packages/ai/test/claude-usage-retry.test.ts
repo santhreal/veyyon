@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
-import type { FetchImpl } from "@veyyon/pi-ai/types";
-import type { UsageFetchContext } from "@veyyon/pi-ai/usage";
-import { claudeUsageProvider } from "@veyyon/pi-ai/usage/claude";
+import type { FetchImpl } from "@veyyon/ai/types";
+import type { UsageFetchContext } from "@veyyon/ai/usage";
+import { claudeUsageProvider } from "@veyyon/ai/usage/claude";
 
 const VALID_PAYLOAD = {
 	five_hour: { utilization: 42, resets_at: new Date(Date.now() + 5 * 60_000).toISOString() },

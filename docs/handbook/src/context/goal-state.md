@@ -1,10 +1,8 @@
 # Goal state and long sessions
 
-> **Status:** Durable **goal mode** is shipped in Veyyon: per-session objective, token budget, continuation on idle, and `goal` tool ops. The richer goal card (verification ledger, working-set ledger, reviewer-finding carry-forward, retrieved-detail slots) below is **Spec — not shipped** — expansion layer only.
+Long context fails when the objective is only buried in the transcript. Goal mode keeps a structured objective on the session, injects it outside the raw conversation tail, and pairs with compaction for history.
 
-Long context fails when the agent loses the objective inside a large transcript. Veyyon's shipped answer is **goal mode**: a structured objective injected outside the raw conversation tail, plus compaction for history.
-
-## Shipped goal card (session-backed)
+## Goal card (session-backed)
 
 ```text
 id:
@@ -16,41 +14,16 @@ time_used_seconds:
 created_at / updated_at:
 ```
 
-The harness owns persistence on the session. The model updates via `/goal` commands and the `goal` tool (`create`, `get`, `complete`, `resume`, `drop`). User objective text is escaped before it is injected into the prompt.
+The harness persists this on the session. Updates come from `/goal` commands and the `goal` tool (`create`, `get`, `complete`, `resume`, `drop`). User objective text is escaped before prompt injection.
 
-Token accounting includes input, output, and cache-write deltas relevant to provider billing.
+Token accounting includes input, output, and cache-write deltas used for provider billing.
 
-## Aspirational richer card (Spec — not shipped)
+## Context assembly
 
-```text
-constraints:
-known_decisions:
-blockers:
-completion_criteria:
-current_plan:
-files_read / files_modified / commands_run:
-verification_state:
-reviewer_open_findings:
-context_budget:
-last_material_user_instruction:
-retrieved_detail_handles:
-```
+Each turn combines system rules, goal injection (when active), active instructions, recent transcript, compaction prefix, and other session context. Compaction settings: [Compaction and project memory](./compaction-memory.md). Operator commands: [Plan mode and goals](../features/plan-mode.md).
 
-Do not assume these fields exist in storage or prompts until a release note says otherwise.
+## What goal mode provides
 
-## How it fits the context window (target model)
-
-Each turn should eventually assemble named slots: system rules, goal card, active instructions, fresh tail, compaction prefix, retrieved detail. The 256k-class ceiling is a maximum, not a target. Required slots should fit or the harness should report overflow — not silently drop constraints.
-
-Today, shipped slots are goal injection + compaction + standard session context.
-
-## What goal mode buys today
-
-- Objective visible across turns without rereading the entire transcript.
-- Idle continuation toward the objective when `goal.continuationModes` allows.
-- Token budget steering when `token_budget` is set.
-
-## See also
-
-- [Plan mode and goals](../features/plan-mode.md)
-- [Compaction and project memory](./compaction-memory.md)
+- Objective visible across turns without rereading the full transcript
+- Idle continuation toward the objective when `goal.continuationModes` allows
+- Token budget and pause/complete/drop lifecycle

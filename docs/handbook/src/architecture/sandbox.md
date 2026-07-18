@@ -28,4 +28,4 @@ exec-server process in the shipped product.
 | Execpolicy rules | `.rules` files that refine which specific commands auto-run. |
 | Plan mode | Restricts mutating tools until the plan is approved (`/plan`). |
 
-User-facing guide: [Approvals and autonomy](../features/sandbox.md).
+User-facing guide: [Approvals](../features/sandbox.md).

@@ -1,11 +1,9 @@
 /**
  * Manage configuration settings.
  */
-import { Args, Command, Flags } from "@veyyon/pi-utils/cli";
-import { type ConfigAction, type ConfigCommandArgs, runConfigCommand } from "../cli/config-cli";
+import { Args, Command, Flags } from "@veyyon/utils/cli";
+import { CONFIG_ACTIONS, type ConfigAction, type ConfigCommandArgs, runConfigCommand } from "../cli/config-cli";
 import { initTheme } from "../modes/theme/theme";
-
-const ACTIONS: ConfigAction[] = ["list", "get", "set", "reset", "path", "init-xdg"];
 
 export default class Config extends Command {
 	static description = "Manage configuration settings";
@@ -14,7 +12,7 @@ export default class Config extends Command {
 		action: Args.string({
 			description: "Config action",
 			required: false,
-			options: ACTIONS,
+			options: CONFIG_ACTIONS,
 		}),
 		key: Args.string({
 			description: "Setting key",

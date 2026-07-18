@@ -1,13 +1,13 @@
 # Getting started
 
-Install Veyyon, complete the first-run ceremony, and land your first approved edit. Budget about five minutes.
+Install, first-run setup, first session.
 
 ## 1. Install
 
 **npm / Bun (recommended)**
 
 ```console
-$ bun install -g @veyyon/pi-coding-agent
+$ bun install -g @veyyon/coding-agent
 $ veyyon --version
 ```
 
@@ -20,25 +20,25 @@ $ bun setup
 $ bun dev --version
 ```
 
-`bun setup` installs workspace deps and builds `@veyyon/pi-natives`. Config and state default to `~/.veyyon`.
+`bun setup` installs workspace deps and builds `@veyyon/natives`. Config home: `~/.veyyon`; default profile agent dir: `~/.veyyon/profiles/default/agent/`.
 
 Shell completions: `veyyon completions bash|zsh|fish`. See [Install](./install.md).
 
-## 2. First launch — the setup ceremony
+## 2. First launch
 
-The first interactive `veyyon` (or an explicit `veyyon setup`) opens a fullscreen ceremony:
+First interactive `veyyon` (or `veyyon setup`) runs the setup UI:
 
-1. **Splash** — silver wordmark reveal
-2. **Providers** — sign in to a model provider; optional web search tab
-3. **Glyphs** — Nerd Font / Unicode / ASCII for your terminal
-4. **Theme** — Titanium (default dark), Light, or browse
-5. **Outro** — handoff into the session welcome
+1. Splash
+2. Providers (sign-in / keys; optional web search)
+3. Glyphs (Nerd Font / Unicode / ASCII)
+4. Theme
+5. Session welcome
 
-Re-run the provider panel later with `/setup` or `/providers` inside the TUI. Skip the ceremony with `VEYYON_SKIP_SETUP=1` (or resume an existing session).
+Later: `/setup` or `/providers` in the TUI. Skip with `VEYYON_SKIP_SETUP=1` or by resuming a session.
 
 **API key (example):** set `DEEPSEEK_API_KEY` in the environment, then pick a DeepSeek model in `/model`.
 
-**Custom gateway** — add a provider in `~/.veyyon/agent/models.yml`:
+**Custom gateway** — add a provider in `~/.veyyon/profiles/default/agent/models.yml`:
 
 ```yaml
 providers:
@@ -81,13 +81,13 @@ Add a function add(a, b) in src/lib.rs and a unit test. Run the test.
 
 Typical flow:
 
-1. Veyyon reads relevant files (`read`, `search`, …).
+1. Veyyon reads relevant files (`read`, `grep`, `glob`, …).
 2. It proposes an edit through hashline/`edit`/`write` tools.
 3. When policy requires it, you approve the tool call (`tools.approvalMode` — see [Safety](./safety.md)).
 4. The change lands; diffs appear in the TUI.
 5. If you asked for tests, approve `bash` or `cargo test` as needed.
 
-## 4. Work safely (defaults)
+## 4. Approval mode
 
 Tool approval tiers (`read`, `write`, `exec`) combine with `tools.approvalMode`:
 
@@ -100,13 +100,13 @@ Tool approval tiers (`read`, `write`, `exec`) combine with `tools.approvalMode`:
 
 Legacy names `always-ask` (→ `ask`) and `write` (→ `auto-edit`) are still accepted.
 
-Use `/settings` or config to tighten policy on unfamiliar repos. Deep dive: [Sandbox](../features/sandbox.md), [Safety](./safety.md), `docs/approval-mode.md`.
+Schema default for `tools.approvalMode` is **`yolo`**. Change in `/settings` or config. See [Approvals](../features/sandbox.md), [Safety](./safety.md).
 
-## 5. Three things to try next
+## 5. Further surfaces
 
-1. **Multi-file change** — ask for a refactor across modules; watch hashline edits batch paths.
-2. **Session tree** — `/tree` to jump to an earlier user message and branch in the same session file.
-3. **Switch models** — `/model` for the model you talk to; set the subagent and compaction models in settings. See [Models, roles, and profiles](./roles-and-profiles.md).
+1. **Multi-file change** — refactor across modules; hashline edits batch paths.
+2. **Session tree** — `/tree` jumps to an earlier user message and branches in the same session file.
+3. **Models** — `/model` for the interactive model; set subagent and compaction models in settings. See [Models, roles, and profiles](./roles-and-profiles.md).
 
 ## Where to go next
 

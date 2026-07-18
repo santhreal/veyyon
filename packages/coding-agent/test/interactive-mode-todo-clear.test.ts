@@ -1,18 +1,18 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
-import { Agent } from "@veyyon/pi-agent-core";
-import { ModelRegistry } from "@veyyon/pi-coding-agent/config/model-registry";
-import { resetSettingsForTest, Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { InteractiveMode } from "@veyyon/pi-coding-agent/modes/interactive-mode";
-import { initTheme, theme } from "@veyyon/pi-coding-agent/modes/theme/theme";
-import { AgentSession } from "@veyyon/pi-coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/pi-coding-agent/session/auth-storage";
-import { SessionManager } from "@veyyon/pi-coding-agent/session/session-manager";
-import { TASK_SUBAGENT_LIFECYCLE_CHANNEL } from "@veyyon/pi-coding-agent/task";
-import type { TodoPhase } from "@veyyon/pi-coding-agent/tools/todo";
-import { EventBus } from "@veyyon/pi-coding-agent/utils/event-bus";
-import type { NativeScrollbackLiveRegion } from "@veyyon/pi-tui";
-import { TempDir } from "@veyyon/pi-utils";
+import { Agent } from "@veyyon/agent-core";
+import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
+import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
+import { InteractiveMode } from "@veyyon/coding-agent/modes/interactive-mode";
+import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
+import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
+import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { TASK_SUBAGENT_LIFECYCLE_CHANNEL } from "@veyyon/coding-agent/task";
+import type { TodoPhase } from "@veyyon/coding-agent/tools/todo";
+import { EventBus } from "@veyyon/coding-agent/utils/event-bus";
+import type { NativeScrollbackLiveRegion } from "@veyyon/tui";
+import { TempDir } from "@veyyon/utils";
 
 function renderTodos(mode: InteractiveMode): string {
 	return Bun.stripANSI(mode.todoContainer.render(120).join("\n"));

@@ -1,13 +1,13 @@
 import { describe, expect, it } from "bun:test";
-import { convertAnthropicMessages } from "@veyyon/pi-ai/providers/anthropic";
-import { convertMessages as convertGoogleMessages } from "@veyyon/pi-ai/providers/google-shared";
-import { convertCodexResponsesMessages } from "@veyyon/pi-ai/providers/openai-codex-responses";
-import { convertMessages as convertOpenAICompletionsMessages } from "@veyyon/pi-ai/providers/openai-completions";
-import { appendResponsesToolResultMessages, convertResponsesInputContent } from "@veyyon/pi-ai/providers/openai-shared";
-import { NON_VISION_IMAGE_PLACEHOLDER } from "@veyyon/pi-ai/providers/vision-guard";
-import type { Api, AssistantMessage, Context, Model, ModelSpec, ToolResultMessage, Usage } from "@veyyon/pi-ai/types";
-import { buildModel } from "@veyyon/pi-catalog/build";
-import type { ResolvedOpenAICompat } from "@veyyon/pi-catalog/types";
+import { convertAnthropicMessages } from "@veyyon/ai/providers/anthropic";
+import { convertMessages as convertGoogleMessages } from "@veyyon/ai/providers/google-shared";
+import { convertCodexResponsesMessages } from "@veyyon/ai/providers/openai-codex-responses";
+import { convertMessages as convertOpenAICompletionsMessages } from "@veyyon/ai/providers/openai-completions";
+import { appendResponsesToolResultMessages, convertResponsesInputContent } from "@veyyon/ai/providers/openai-shared";
+import { NON_VISION_IMAGE_PLACEHOLDER } from "@veyyon/ai/providers/vision-guard";
+import type { Api, AssistantMessage, Context, Model, ModelSpec, ToolResultMessage, Usage } from "@veyyon/ai/types";
+import { buildModel } from "@veyyon/catalog/build";
+import type { ResolvedOpenAICompat } from "@veyyon/catalog/types";
 
 const emptyUsage: Usage = {
 	input: 0,

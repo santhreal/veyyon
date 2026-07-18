@@ -2,12 +2,12 @@ import { describe, expect, it, spyOn } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { ResetCreditAccountStatus, ResetCreditRedeemOutcome, ResetCreditTarget, UsageReport } from "@veyyon/pi-ai";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
-import type { AgentSession } from "@veyyon/pi-coding-agent/session/agent-session";
-import type { SessionManager } from "@veyyon/pi-coding-agent/session/session-manager";
-import { executeAcpBuiltinSlashCommand } from "@veyyon/pi-coding-agent/slash-commands/acp-builtins";
-import { removeWithRetries, setProjectDir } from "@veyyon/pi-utils";
+import type { ResetCreditAccountStatus, ResetCreditRedeemOutcome, ResetCreditTarget, UsageReport } from "@veyyon/ai";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import type { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { executeAcpBuiltinSlashCommand } from "@veyyon/coding-agent/slash-commands/acp-builtins";
+import { removeWithRetries, setProjectDir } from "@veyyon/utils";
 
 interface FakeAcpBuiltinSession {
 	fastMode: boolean;
@@ -377,13 +377,13 @@ describe("ACP builtin slash commands", () => {
 	it("dump: outputs transcript with LLM request JSON path when sidecar succeeds", async () => {
 		const { output, runtime } = createRuntime();
 		runtime.session.formatSessionAsText = () => "Session content here";
-		runtime.session.dumpLlmRequestToTmpDir = async () => "/tmp/omp-llm-request-test.json";
+		runtime.session.dumpLlmRequestToTmpDir = async () => "/tmp/veyyon-llm-request-test.json";
 
 		const result = await executeAcpBuiltinSlashCommand("/dump", runtime);
 
 		expect(result).toEqual({ consumed: true });
 		expect(output[0]).toContain("Session content here");
-		expect(output[0]).toContain("LLM request JSON: /tmp/omp-llm-request-test.json");
+		expect(output[0]).toContain("LLM request JSON: /tmp/veyyon-llm-request-test.json");
 		expect(output[0]).toContain("persists on disk");
 	});
 
@@ -743,7 +743,7 @@ describe("wave 3 commands", () => {
 
 	it("/move: relocates the current session instead of switching to an empty target session", async () => {
 		const { output, runtime, session, fakeSessionManager } = createRuntime();
-		const targetDir = await fs.mkdtemp(path.join(os.tmpdir(), "omp-move-target-"));
+		const targetDir = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-move-target-"));
 		const originalProjectDir = process.cwd();
 		const reloadForCwd = spyOn(runtime.settings, "reloadForCwd");
 		let configNotified = 0;
@@ -958,9 +958,9 @@ describe("wave 5 — adapters and polish", () => {
 
 	// /mcp add — verify parsing and output message
 	it("/mcp add foo --url https://example.com --token X --scope project: outputs success or propagates write error", async () => {
-		// Uses project scope so it writes to /tmp/project/.omp/mcp.json which test infra controls.
+		// Uses project scope so it writes to /tmp/project/.veyyon/mcp.json which test infra controls.
 		// We verify the command either reports success or a meaningful error (not a parse error).
-		const mcpModule = await import("@veyyon/pi-coding-agent/mcp/config-writer");
+		const mcpModule = await import("@veyyon/coding-agent/mcp/config-writer");
 		const spy = spyOn(mcpModule, "addMCPServer").mockResolvedValue(undefined);
 		try {
 			const { output, runtime } = createRuntime();
@@ -998,7 +998,7 @@ describe("wave 5 — adapters and polish", () => {
 
 	// /ssh add — spy on addSSHHost
 	it("/ssh add foo --host x --user y --scope user: calls addSSHHost", async () => {
-		const sshModule = await import("@veyyon/pi-coding-agent/ssh/config-writer");
+		const sshModule = await import("@veyyon/coding-agent/ssh/config-writer");
 		const spy = spyOn(sshModule, "addSSHHost").mockResolvedValue(undefined);
 		try {
 			const { output, runtime } = createRuntime();

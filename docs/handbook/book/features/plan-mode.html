@@ -3,13 +3,17 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Plan mode and goals - The Veyyon Harness Handbook</title>
+        <title>Plan mode, goals, and vibe - The Veyyon Harness Handbook</title>
 
 
         <!-- Custom HTML head -->
         <!-- Veyyon handbook: self-contained head additions. No remote resources. -->
         <meta name="theme-color" content="#050505">
         <meta name="color-scheme" content="dark">
+        <!-- Site favicons live at the deployed root, one level above /docs/. -->
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+        <link rel="icon" href="/favicon.ico" sizes="48x48">
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png">
         <style>
           /* Paint the near-black surface before CSS/JS resolve the theme, so there is
              no light flash on load. Kept in sync with theme/veyyon.css. */
@@ -18,7 +22,7 @@
           *, *::before, *::after { box-sizing: border-box; }
         </style>
 
-        <meta name="description" content="How Veyyon turns open models into frontier coding agents. The product, the harness, tool-call repair, the edit format, per-model adaptation, and how to use it.">
+        <meta name="description" content="Operator handbook for the Veyyon terminal coding agent: install, configuration, tools, approvals, edit formats, providers, and harness structure.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -38,7 +42,7 @@
         <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="../ayu-highlight-3fdfc3ac.css">
 
         <!-- Custom theme stylesheets -->
-        <link rel="stylesheet" href="../theme/veyyon-fc839a17.css">
+        <link rel="stylesheet" href="../theme/veyyon-06f6939e.css">
 
 
         <!-- Provide site root and default themes to javascript -->
@@ -46,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-e76f06ca.js";
+            window.path_to_searchindex_js = "../searchindex-a2447057.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-9cfd259b.js"></script>
+        <script src="../toc-cc1a72e9.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -192,50 +196,36 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="plan-mode-and-goals"><a class="header" href="#plan-mode-and-goals">Plan mode and goals</a></h1>
-<p>Veyyon ships <strong>plan mode</strong> and <strong>goal mode</strong> as engine features. They are separate modes with different
-tools and continuation behavior.</p>
-<blockquote>
-<p><strong>Spec — not shipped:</strong> three enforced chat phases, <code>&lt;proposed_plan&gt;</code> cards, <code>Shift+Tab</code> collaboration
-cycling, and a <code>plan_mode_reasoning_effort</code> config key. Veyyon’s plan mode works as described below.</p>
-</blockquote>
-<hr>
-<h2 id="plan-mode-shipped"><a class="header" href="#plan-mode-shipped">Plan mode (shipped)</a></h2>
-<p>Plan mode is read-focused exploration that drafts a <strong>plan file</strong> before you approve implementation.</p>
+<p>Plan mode and goal mode are separate engine modes with different tools and continuation behavior. They cannot be active together (and each conflicts with vibe mode).</p>
+<h2 id="plan-mode"><a class="header" href="#plan-mode">Plan mode</a></h2>
+<p>Read-focused exploration that drafts a <strong>plan file</strong> before implementation.</p>
 <h3 id="enabling"><a class="header" href="#enabling">Enabling</a></h3>
 <ul>
-<li>Setting: <code>plan.enabled</code> (default <code>true</code>; toggle in <code>/settings</code> Advanced → Plan).</li>
-<li>Slash: <code>/plan</code> toggles plan mode; <code>/plan &lt;prompt&gt;</code> enters plan mode and submits the prompt.</li>
-<li>Related: <code>/plan-review</code> reopens plan review while plan mode is active.</li>
+<li>Setting: <code>plan.enabled</code> (default <code>true</code>; <code>/settings</code> Advanced → Plan)</li>
+<li>Slash: <code>/plan</code> toggles plan mode; <code>/plan &lt;prompt&gt;</code> enters plan mode and submits the prompt</li>
+<li><code>/plan-review</code> reopens plan review while plan mode is active</li>
 </ul>
-<p>Plan mode blocks <strong>goal mode</strong> and <strong>vibe mode</strong> (and vice versa).</p>
 <h3 id="behavior"><a class="header" href="#behavior">Behavior</a></h3>
-<p>When plan mode is on:</p>
 <ol>
-<li>Veyyon selects a plan file path (per-session) and sets mode state on the session.</li>
-<li>Active tools are adjusted: <code>resolve</code> is added for plan approval; built-in <code>write</code> may be activated so the agent can draft the plan file.</li>
-<li>The agent explores and writes the plan using read-oriented work plus plan-file <code>write</code>/<code>edit</code> as configured.</li>
-<li>Finalization uses the <strong><code>resolve</code></strong> tool with plan approval semantics (<code>plan_approval</code>), not a <code>&lt;proposed_plan&gt;</code> XML tag.</li>
-<li>Exiting: <code>/plan</code> again (with confirmation if a draft exists) pauses or disables plan mode; session records <code>mode</code> entries in the session file.</li>
+<li>Session selects a plan file path and records plan-mode state.</li>
+<li>Tool surface adjusts: <code>resolve</code> is available for plan approval; plan-file <code>write</code>/<code>edit</code> may be enabled for drafting.</li>
+<li>The agent explores and writes the plan (read-oriented work plus plan-file edits).</li>
+<li>Finalization uses the <strong><code>resolve</code></strong> tool with plan-approval semantics (<code>plan_approval</code>).</li>
+<li>Exit: <code>/plan</code> again (confirmation if a draft exists). Session records <code>mode</code> entries in the session file.</li>
 </ol>
-<p>Plan mode uses the <strong><code>plan</code> model role</strong> when configured.</p>
-<hr>
-<h2 id="goals-shipped"><a class="header" href="#goals-shipped">Goals (shipped)</a></h2>
-<p>Goal mode tracks a <strong>persistent objective</strong> on a saved session and can auto-continue when idle.</p>
+<p>When configured, plan mode uses the <strong><code>plan</code> model role</strong>.</p>
+<h2 id="goal-mode"><a class="header" href="#goal-mode">Goal mode</a></h2>
+<p>A <strong>persistent objective</strong> on a saved session, with optional auto-continuation when idle.</p>
 <h3 id="enabling-1"><a class="header" href="#enabling-1">Enabling</a></h3>
 <ul>
-<li>Setting: <code>goal.enabled</code> (default <code>true</code>).</li>
-<li>Slash commands:
-<ul>
-<li><code>/goal set &lt;objective&gt;</code> — create or replace goal</li>
+<li>Setting: <code>goal.enabled</code> (default <code>true</code>)</li>
+<li><code>/goal set &lt;objective&gt;</code> — create or replace</li>
 <li><code>/goal show</code> — status, tokens, budget</li>
 <li><code>/goal pause</code> / <code>/goal resume</code></li>
-<li><code>/goal drop</code> — remove goal</li>
+<li><code>/goal drop</code> — remove</li>
 <li><code>/goal budget &lt;N|off&gt;</code> — token budget</li>
+<li><code>/guided-goal</code> — interview flow before enabling</li>
 </ul>
-</li>
-<li><code>/guided-goal</code> — interview flow before enabling goal mode</li>
-</ul>
-<p>Goal mode blocks plan mode and vibe mode.</p>
 <h3 id="goal-state"><a class="header" href="#goal-state">Goal state</a></h3>
 <p>Stored on the session. Fields include:</p>
 <pre><code class="language-text">id, objective, status, tokenBudget?, tokensUsed, timeUsedSeconds, createdAt, updatedAt
@@ -243,20 +233,19 @@ cycling, and a <code>plan_mode_reasoning_effort</code> config key. Veyyon’s pl
 <p>Statuses: <code>active</code>, <code>paused</code>, <code>budget-limited</code>, <code>complete</code>, <code>dropped</code>.</p>
 <h3 id="goal-tool"><a class="header" href="#goal-tool">Goal tool</a></h3>
 <p>When goal mode is active, the agent can call the <code>goal</code> tool with ops: <code>create</code>, <code>get</code>, <code>complete</code>, <code>resume</code>, <code>drop</code>. Continuation prompts inject on idle turns per <code>goal.continuationModes</code>.</p>
-<h3 id="walkthrough-real-commands"><a class="header" href="#walkthrough-real-commands">Walkthrough (real commands)</a></h3>
+<h3 id="example"><a class="header" href="#example">Example</a></h3>
 <pre><code class="language-console">$ veyyon
 </code></pre>
-<pre><code class="language-text">/goal set Add a --max-time flag to the print-mode runner and document it in the handbook
+<pre><code class="language-text">/goal set Add a --max-time flag to the print-mode runner and document it
 </code></pre>
-<p>Work in normal mode; use <code>/goal show</code> for progress. When blocked, <code>/goal pause</code>. When done, the agent should <code>complete</code> via the goal tool or you <code>/goal drop</code>.</p>
-<hr>
-<h2 id="spec--not-shipped-goal-card-richness"><a class="header" href="#spec--not-shipped-goal-card-richness">Spec — not shipped (goal card richness)</a></h2>
-<p><a href="../context/goal-state.html">Goal state and long sessions</a> describes a richer goal card (verification ledger, working-set fields, reviewer carry-forward) as a <strong>future expansion layer</strong>. The shipped card is the bounded objective + budget + status model above.</p>
-<h2 id="see-also"><a class="header" href="#see-also">See also</a></h2>
-<ul>
-<li><a href="../using/sessions.html">Sessions</a> — goals require a persisted session</li>
-<li><a href="../context/goal-state.html">Context: goal state</a> — architecture notes</li>
-</ul>
+<p>Use <code>/goal show</code> for progress. Pause with <code>/goal pause</code>. Complete via the goal tool or <code>/goal drop</code>.</p>
+<p>Architecture notes: <a href="../context/goal-state.html">Goal state</a>. Sessions: <a href="../using/sessions.html">Sessions</a>.</p>
+<h2 id="vibe-mode"><a class="header" href="#vibe-mode">Vibe mode</a></h2>
+<p><code>/vibe</code> toggles <strong>vibe mode</strong>. The main agent becomes a director with a reduced tool set
+(<code>read</code>, <code>vibe_spawn</code>, <code>vibe_send</code>, <code>vibe_wait</code>, <code>vibe_kill</code>, <code>vibe_list</code>) and drives worker CLIs
+(<code>fast</code> / <code>good</code> model lanes) instead of editing files itself.</p>
+<p>Mutual exclusion: plan mode, goal mode, and vibe mode cannot run together; the TUI warns if you try
+to enter one while another is active.</p>
 
                     </main>
 

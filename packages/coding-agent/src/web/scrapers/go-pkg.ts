@@ -1,6 +1,6 @@
-import { tryParseJson } from "@veyyon/pi-utils";
-import type { RenderResult, SpecialHandler } from "./types";
-import { buildResult, htmlToBasicMarkdown, loadPage } from "./types";
+import { tryParseJson } from "@veyyon/utils";
+import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
+import { buildResult, htmlToBasicMarkdown, loadPage, scraperDegrade, tryParseUrl } from "./types";
 
 interface GoModuleInfo {
 	Version: string;
@@ -14,9 +14,10 @@ export const handleGoPkg: SpecialHandler = async (
 	url: string,
 	timeout: number,
 	signal?: AbortSignal,
-): Promise<RenderResult | null> => {
+): Promise<RenderResult | ScraperDegrade | null> => {
 	try {
-		const parsed = new URL(url);
+		const parsed = tryParseUrl(url);
+		if (!parsed) return null;
 		if (parsed.hostname !== "pkg.go.dev") return null;
 
 		// Extract module path and version from URL
@@ -260,7 +261,7 @@ export const handleGoPkg: SpecialHandler = async (
 			fetchedAt: new Date().toISOString(),
 			notes,
 		});
-	} catch {
-		return null;
+	} catch (error) {
+		return scraperDegrade("go-pkg", error);
 	}
 };

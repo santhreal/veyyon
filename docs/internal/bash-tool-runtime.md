@@ -77,7 +77,7 @@ Before execution, the tool allocates an artifact path/id (best-effort) for trunc
 PTY eligibility is decided by `canUseInteractiveBashPty(pty, ctx)` (`src/tools/bash-pty-selection.ts`); the local PTY overlay runs only when all are true:
 
 - tool input `pty === true`
-- `VEYYON_NO_PTY !== "1"` (legacy aliases `OMP_NO_PTY` / `PI_NO_PTY`)
+- `VEYYON_NO_PTY !== "1"`
 - tool context has UI (`ctx.hasUI === true` and `ctx.ui` set)
 
 If `pty` is requested but unavailable, the call falls back to non-PTY and appends a `pty requested but unavailable …` notice.

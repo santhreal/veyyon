@@ -7,18 +7,18 @@
 
 // pi-uutils: Patched for in-process embedding in the shell.
 // All I/O is routed through thread-local stream buffers provided by
-// `pi-uutils-ctx`. Command-line arguments are parsed and errors are mapped
+// `veyyon-uutils-ctx`. Command-line arguments are parsed and errors are mapped
 // without process-global termination or stdout/stderr pollution.
 
 use std::{ffi::OsString, io::Write, path::PathBuf};
 
 use clap::{Arg, ArgAction, ArgMatches, Command, builder::ValueParser};
-use pi_uutils_ctx::format_usage;
 use uucore::{
 	display::Quotable,
 	error::{UResult, UUsageError},
 	line_ending::LineEnding,
 };
+use veyyon_uutils_ctx::format_usage;
 
 pub mod options {
 	pub static MULTIPLE: &str = "multiple";
@@ -38,18 +38,18 @@ pub fn run(argv: Vec<OsString>) -> i32 {
 		Err(err) => {
 			let rendered = err.to_string();
 			if err.use_stderr() {
-				let _ = write!(pi_uutils_ctx::stderr(), "{rendered}");
+				let _ = write!(veyyon_uutils_ctx::stderr(), "{rendered}");
 				return 1;
 			}
-			let _ = write!(pi_uutils_ctx::stdout(), "{rendered}");
+			let _ = write!(veyyon_uutils_ctx::stdout(), "{rendered}");
 			return 0;
 		},
 	};
 	match basename_main(&matches) {
-		Ok(()) => pi_uutils_ctx::exit_code(),
+		Ok(()) => veyyon_uutils_ctx::exit_code(),
 		Err(err) => {
 			let code = err.code();
-			let _ = writeln!(pi_uutils_ctx::stderr(), "basename: {err}");
+			let _ = writeln!(veyyon_uutils_ctx::stderr(), "basename: {err}");
 			if code == 0 { 1 } else { code }
 		},
 	}
@@ -87,7 +87,7 @@ fn basename_main(matches: &ArgMatches) -> UResult<()> {
 	//
 	// Main Program Processing
 	//
-	let mut out = pi_uutils_ctx::stdout();
+	let mut out = veyyon_uutils_ctx::stdout();
 	for path in name_args {
 		out.write_all(&basename(path, &suffix)?)?;
 		write!(out, "{line_ending}")?;

@@ -2,12 +2,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { HistoryStorage } from "@veyyon/pi-coding-agent/session/history-storage";
-import { removeWithRetries } from "@veyyon/pi-utils";
+import { HistoryStorage } from "@veyyon/coding-agent/session/history-storage";
+import { removeWithRetries } from "@veyyon/utils";
 
 let tempDir = "";
 
-async function freshStorage(prefix = "omp-history-drain-"): Promise<HistoryStorage> {
+async function freshStorage(prefix = "veyyon-history-drain-"): Promise<HistoryStorage> {
 	tempDir = await fs.mkdtemp(path.join(os.tmpdir(), prefix));
 	const dbPath = path.join(tempDir, "history.db");
 	HistoryStorage.resetInstance();

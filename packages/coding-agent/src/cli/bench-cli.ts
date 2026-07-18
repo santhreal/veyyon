@@ -1,4 +1,4 @@
-import type { ResolvedThinkingLevel } from "@veyyon/pi-agent-core";
+import type { ResolvedThinkingLevel } from "@veyyon/agent-core";
 import type {
 	Api,
 	ApiKeyResolver,
@@ -12,11 +12,11 @@ import type {
 	ServiceTier,
 	ServiceTierByFamily,
 	SimpleStreamOptions,
-} from "@veyyon/pi-ai";
-import { resolveModelServiceTier, streamSimple } from "@veyyon/pi-ai";
-import { buildModelProviderPriorityRank } from "@veyyon/pi-catalog/identity";
-import { replaceTabs, truncateToWidth } from "@veyyon/pi-tui";
-import { formatDuration, getProjectDir } from "@veyyon/pi-utils";
+} from "@veyyon/ai";
+import { resolveModelServiceTier, streamSimple } from "@veyyon/ai";
+import { buildModelProviderPriorityRank } from "@veyyon/catalog/identity";
+import { replaceTabs, truncateToWidth } from "@veyyon/tui";
+import { formatDuration, getProjectDir } from "@veyyon/utils";
 import chalk from "chalk";
 import type { ApiKeyResolverModel } from "../config/api-key-resolver";
 import { ModelRegistry } from "../config/model-registry";

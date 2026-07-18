@@ -6,14 +6,14 @@ import type {
 	AgentToolContext,
 	AgentToolResult,
 	AgentToolUpdateCallback,
-} from "@veyyon/pi-agent-core";
+} from "@veyyon/agent-core";
 import type {
 	CursorMcpCall,
 	CursorShellStreamCallbacks,
 	CursorExecHandlers as ICursorExecHandlers,
 	ToolResultMessage,
-} from "@veyyon/pi-ai";
-import { sanitizeText } from "@veyyon/pi-utils";
+} from "@veyyon/ai";
+import { errorMessage, sanitizeText } from "@veyyon/utils";
 import { resolveToCwd } from "./tools/path-utils";
 
 interface CursorExecBridgeOptions {
@@ -89,7 +89,7 @@ async function executeTool(
 			options.getToolContext?.(),
 		);
 	} catch (error) {
-		const message = error instanceof Error ? error.message : String(error);
+		const message = errorMessage(error);
 		result = buildToolErrorResult(message);
 		isError = true;
 	}
@@ -129,7 +129,7 @@ async function executeDelete(options: CursorExecBridgeOptions, pathArg: string, 
 		const message = `Deleted ${pathArg}${sizeText}`;
 		result = { content: [{ type: "text", text: message }], details: {} };
 	} catch (error) {
-		const message = error instanceof Error ? error.message : String(error);
+		const message = errorMessage(error);
 		result = buildToolErrorResult(message);
 		isError = true;
 	}
@@ -280,7 +280,7 @@ export class CursorExecHandlers implements ICursorExecHandlers {
 		try {
 			result = await tool.execute(toolCallId, toolArgs, undefined, onUpdate, this.options.getToolContext?.());
 		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
+			const message = errorMessage(error);
 			result = buildToolErrorResult(message);
 			isError = true;
 		}

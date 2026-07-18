@@ -1,10 +1,10 @@
 import { describe, expect, it } from "bun:test";
-import { renderDemotedThinking } from "@veyyon/pi-ai/dialect";
-import { convertMessages } from "@veyyon/pi-ai/providers/openai-completions";
-import type { AssistantMessage, Model, ModelSpec, ThinkingContent, ToolCall } from "@veyyon/pi-ai/types";
-import { buildModel } from "@veyyon/pi-catalog/build";
-import { Effort } from "@veyyon/pi-catalog/effort";
-import { getBundledModel } from "@veyyon/pi-catalog/models";
+import { renderDemotedThinking } from "@veyyon/ai/dialect";
+import { convertMessages } from "@veyyon/ai/providers/openai-completions";
+import type { AssistantMessage, Model, ModelSpec, ThinkingContent, ToolCall } from "@veyyon/ai/types";
+import { buildModel } from "@veyyon/catalog/build";
+import { Effort } from "@veyyon/catalog/effort";
+import { getBundledModel } from "@veyyon/catalog/models";
 
 interface OpenAICompletionAssistantWireMessage {
 	role: "assistant";

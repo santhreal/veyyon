@@ -31,7 +31,7 @@ The binary is a Bun single-file executable, so the hardened runtime needs:
 | --- | --- |
 | `com.apple.security.cs.allow-jit` | JavaScriptCore JITs at runtime. |
 | `com.apple.security.cs.allow-unsigned-executable-memory` | JSC executable memory pages. |
-| `com.apple.security.cs.disable-library-validation` | veyyon extracts its native addon (`pi_natives.<triple>.node`) and other optional dylibs to a runtime cache and `dlopen()`s them. They do not share the main binary's Team ID, so without this the hardened runtime aborts with *"mapping process and mapped file have different Team IDs"* — breaking effectively every command. |
+| `com.apple.security.cs.disable-library-validation` | veyyon extracts its native addon (`veyyon_natives.<triple>.node`) and other optional dylibs to a runtime cache and `dlopen()`s them. They do not share the main binary's Team ID, so without this the hardened runtime aborts with *"mapping process and mapped file have different Team IDs"* — breaking effectively every command. |
 
 Without `disable-library-validation`, a signed+notarized binary signs and
 notarizes fine but **fails at first real use**. `scripts/ci-macos-sign.sh` runs

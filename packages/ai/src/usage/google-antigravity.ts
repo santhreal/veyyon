@@ -1,4 +1,5 @@
-import { getAntigravityUserAgent } from "@veyyon/pi-catalog/wire/gemini-headers";
+import { getAntigravityUserAgent } from "@veyyon/catalog/wire/gemini-headers";
+import { trimTrailingSlashes } from "@veyyon/utils";
 import * as AIError from "../error";
 import type {
 	CredentialRankingContext,
@@ -265,7 +266,7 @@ async function fetchAntigravityUsage(params: UsageFetchParams, ctx: UsageFetchCo
 	const accessToken = resolveAccessToken(params);
 	if (!accessToken) return null;
 
-	const baseUrl = params.baseUrl?.replace(/\/+$/, "");
+	const baseUrl = params.baseUrl === undefined ? undefined : trimTrailingSlashes(params.baseUrl);
 	const endpoints = baseUrl ? [baseUrl] : [DEFAULT_ENDPOINT, "https://daily-cloudcode-pa.sandbox.googleapis.com"];
 
 	let response: Response | undefined;

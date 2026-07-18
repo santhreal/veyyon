@@ -4,7 +4,7 @@ import {
 	agentLoopContinue,
 	agentLoopDetailed,
 	TERMINAL_TOOL_RESULT_ABORT_REASON,
-} from "@veyyon/pi-agent-core/agent-loop";
+} from "@veyyon/agent-core/agent-loop";
 import type {
 	AgentContext,
 	AgentEvent,
@@ -13,16 +13,16 @@ import type {
 	AgentTool,
 	AgentToolContext,
 	ToolCallContext,
-} from "@veyyon/pi-agent-core/types";
-import type { AssistantMessage, AssistantMessageEvent, Message, ToolResultMessage } from "@veyyon/pi-ai";
-import { createMockModel, type MockResponse } from "@veyyon/pi-ai/providers/mock";
-import { AssistantMessageEventStream } from "@veyyon/pi-ai/utils/event-stream";
-import { parseJsonWithRepair } from "@veyyon/pi-utils/json-parse";
-import { INTENT_FIELD } from "@veyyon/pi-wire";
+} from "@veyyon/agent-core/types";
+import type { AssistantMessage, AssistantMessageEvent, Message, ToolResultMessage } from "@veyyon/ai";
+import { createMockModel, type MockResponse } from "@veyyon/ai/providers/mock";
+import { AssistantMessageEventStream } from "@veyyon/ai/utils/event-stream";
+import { parseJsonWithRepair } from "@veyyon/utils/json-parse";
+import { INTENT_FIELD } from "@veyyon/wire";
 import { type } from "arktype";
 import { createAssistantMessage, createUserMessage } from "./helpers";
 
-declare module "@veyyon/pi-agent-core/types" {
+declare module "@veyyon/agent-core/types" {
 	interface CustomAgentMessages {
 		advisor: {
 			role: "custom";
@@ -3160,7 +3160,7 @@ describe("agentLoop streaming snapshots", () => {
 
 describe("agentLoop kCursorExecResolved (issue #4348)", () => {
 	it("skips execute for a toolCall block marked as already run by Cursor's exec channel", async () => {
-		const { kCursorExecResolved } = await import("@veyyon/pi-ai/utils/block-symbols");
+		const { kCursorExecResolved } = await import("@veyyon/ai/utils/block-symbols");
 
 		const toolSchema = type({ command: "string" });
 		let executeCalls = 0;
@@ -3251,7 +3251,7 @@ describe("agentLoop kCursorExecResolved (issue #4348)", () => {
 	it("still runs a normal, unmarked toolCall block in the same turn", async () => {
 		// Guards against the filter over-matching: a mixed turn where only
 		// SOME blocks are Cursor-resolved must still execute the unmarked one.
-		const { kCursorExecResolved } = await import("@veyyon/pi-ai/utils/block-symbols");
+		const { kCursorExecResolved } = await import("@veyyon/ai/utils/block-symbols");
 
 		const toolSchema = type({ value: "string" });
 		const executed: string[] = [];

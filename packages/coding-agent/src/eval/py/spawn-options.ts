@@ -44,7 +44,7 @@ export function shouldHideKernelWindow(opts: {
  * Keep eval kernels outside the host's POSIX terminal session.
  *
  * User code can start an interactive shell which calls `tcsetpgrp(3)`. If the
- * kernel shares OMP's session, that shell can replace OMP as the controlling
+ * kernel shares Veyyon's session, that shell can replace Veyyon as the controlling
  * terminal's foreground process group and the host is then stopped by SIGTTIN
  * on its next stdin read. Bun implements `detached: true` with `setsid(2)` on
  * POSIX, making the kernel a session leader with no controlling terminal.
@@ -81,7 +81,7 @@ export function consoleAttachedViaTTY(opts: {
  * A `null` return means "don't trust me, use the TTY fallback".
  *
  * Cached on first call because in practice the console attachment of a
- * long-lived OMP host never changes for the lifetime of the process, and
+ * long-lived Veyyon host never changes for the lifetime of the process, and
  * we don't want to re-dlopen kernel32 on every kernel spawn.
  */
 type ConsoleProbeResult = boolean | null;

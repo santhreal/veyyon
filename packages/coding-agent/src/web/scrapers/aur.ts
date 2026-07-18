@@ -1,6 +1,6 @@
-import { tryParseJson } from "@veyyon/pi-utils";
-import type { RenderResult, SpecialHandler } from "./types";
-import { buildResult, formatIsoDate, formatNumber, loadPage } from "./types";
+import { tryParseJson } from "@veyyon/utils";
+import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
+import { buildResult, formatIsoDate, formatNumber, loadFailure, loadPage, scraperDegrade, tryParseUrl } from "./types";
 
 interface AurPackage {
 	Name: string;
@@ -40,9 +40,10 @@ export const handleAur: SpecialHandler = async (
 	url: string,
 	timeout: number,
 	signal?: AbortSignal,
-): Promise<RenderResult | null> => {
+): Promise<RenderResult | ScraperDegrade | null> => {
 	try {
-		const parsed = new URL(url);
+		const parsed = tryParseUrl(url);
+		if (!parsed) return null;
 		if (parsed.hostname !== "aur.archlinux.org") return null;
 
 		// Extract package name from /packages/{name}
@@ -56,10 +57,10 @@ export const handleAur: SpecialHandler = async (
 		const apiUrl = `https://aur.archlinux.org/rpc/?v=5&type=info&arg=${encodeURIComponent(packageName)}`;
 		const result = await loadPage(apiUrl, { timeout, signal });
 
-		if (!result.ok) return null;
+		if (!result.ok) return scraperDegrade("aur", loadFailure(result));
 
 		const data = tryParseJson<AurResponse>(result.content);
-		if (!data) return null;
+		if (!data) return scraperDegrade("aur", "unexpected response shape");
 
 		if (data.resultcount === 0 || !data.results[0]) return null;
 
@@ -156,7 +157,7 @@ export const handleAur: SpecialHandler = async (
 		md += "```\n";
 
 		return buildResult(md, { url, method: "aur", fetchedAt, notes: ["Fetched via AUR RPC API"] });
-	} catch {}
-
-	return null;
+	} catch (error) {
+		return scraperDegrade("aur", error);
+	}
 };

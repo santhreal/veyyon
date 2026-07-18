@@ -154,7 +154,7 @@ impl FileHandling {
 				self.header_printer.print(display_name.as_str());
 			}
 
-			let mut writer = BufWriter::new(pi_uutils_ctx::stdout().lock());
+			let mut writer = BufWriter::new(veyyon_uutils_ctx::stdout().lock());
 			chunks.print(&mut writer)?;
 			writer.flush()?;
 

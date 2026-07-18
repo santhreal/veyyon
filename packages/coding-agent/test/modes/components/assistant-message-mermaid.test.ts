@@ -1,12 +1,12 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
 import * as path from "node:path";
-import type { AssistantMessage } from "@veyyon/pi-ai";
-import { resetSettingsForTest, Settings } from "@veyyon/pi-coding-agent/config/settings";
-import type { AssistantThinkingRenderer } from "@veyyon/pi-coding-agent/extensibility/extensions";
-import { AssistantMessageComponent } from "@veyyon/pi-coding-agent/modes/components/assistant-message";
-import { clearMermaidCache } from "@veyyon/pi-coding-agent/modes/theme/mermaid-cache";
-import { initTheme } from "@veyyon/pi-coding-agent/modes/theme/theme";
-import { ImageProtocol, setTerminalImageProtocol, TERMINAL, Text } from "@veyyon/pi-tui";
+import type { AssistantMessage } from "@veyyon/ai";
+import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
+import type { AssistantThinkingRenderer } from "@veyyon/coding-agent/extensibility/extensions";
+import { AssistantMessageComponent } from "@veyyon/coding-agent/modes/components/assistant-message";
+import { clearMermaidCache } from "@veyyon/coding-agent/modes/theme/mermaid-cache";
+import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { ImageProtocol, setTerminalImageProtocol, TERMINAL, Text } from "@veyyon/tui";
 
 const originalImageProtocol = TERMINAL.imageProtocol;
 

@@ -1,4 +1,4 @@
-import { getLastChangelogVersionPath, isEnoent, logger } from "@veyyon/pi-utils";
+import { getLastChangelogVersionPath, isEnoent, logger } from "@veyyon/utils";
 
 export interface ChangelogEntry {
 	major: number;
@@ -35,7 +35,7 @@ export interface StartupChangelogSelection {
  * Returns `[]` when `changelogPath` is `undefined` (package directory not
  * resolvable — see `getChangelogPath`) or the file is missing. Callers MUST NOT
  * synthesize a fallback path from the host project's cwd; doing so caused issue
- * #1423 (the host project's `CHANGELOG.md` was rendered as omp's).
+ * #1423 (the host project's `CHANGELOG.md` was rendered as veyyon's).
  */
 export async function parseChangelog(changelogPath: string | undefined): Promise<ChangelogEntry[]> {
 	if (!changelogPath) {
@@ -108,7 +108,7 @@ export function compareVersions(v1: ChangelogEntry, v2: ChangelogEntry): number 
 }
 
 /**
- * Parse an omp changelog marker version into comparable parts.
+ * Parse a veyyon changelog marker version into comparable parts.
  */
 export function parseChangelogVersion(version: string | undefined): ChangelogEntry | undefined {
 	const match = version?.match(/^(\d+)\.(\d+)\.(\d+)$/);
@@ -203,7 +203,7 @@ export function selectStartupChangelog(
 export { getChangelogPath } from "../config";
 
 /**
- * Last omp version whose changelog the user has seen. Stored as a plain-text
+ * Last veyyon version whose changelog the user has seen. Stored as a plain-text
  * marker file (`~/.veyyon/agent/last-changelog-version`) rather than in
  * `config.yml`, so version bumps never dirty user-tracked config files.
  */

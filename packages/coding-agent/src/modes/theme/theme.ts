@@ -6,9 +6,9 @@ import {
 	type HighlightColors as NativeHighlightColors,
 	highlightCode as nativeHighlightCode,
 	supportsLanguage as nativeSupportsLanguage,
-} from "@veyyon/pi-natives";
-import type { EditorTheme, MarkdownTheme, SelectListTheme, SettingsListTheme, SymbolTheme } from "@veyyon/pi-tui";
-import { adjustHsv, colorLuma, getCustomThemesDir, isEnoent, logger } from "@veyyon/pi-utils";
+} from "@veyyon/natives";
+import type { EditorTheme, MarkdownTheme, SelectListTheme, SettingsListTheme, SymbolTheme } from "@veyyon/tui";
+import { adjustHsv, colorLuma, errorMessage, getCustomThemesDir, isEnoent, logger } from "@veyyon/utils";
 import { type } from "arktype";
 import chalk from "chalk";
 import { LRUCache } from "lru-cache/raw";
@@ -126,10 +126,12 @@ async function loadThemeJson(name: string): Promise<ThemeJson> {
 			throw new Error(parsed.summary);
 		}
 	} catch (error) {
-		const errorMessage = error instanceof Error ? error.message : String(error);
+		const parseErrorMessage = errorMessage(error);
 		// Extract color key information if available
-		const missingColorMatch = errorMessage.match(/missing keys: (.+)/i);
-		const missingColors: string[] = missingColorMatch ? missingColorMatch[1].split(",").map(s => s.trim()) : [];
+		const missingColorMatch = parseErrorMessage.match(/missing keys: (.+)/i);
+		const missingColors: string[] = missingColorMatch
+			? missingColorMatch[1].split(",").map((s: string) => s.trim())
+			: [];
 
 		let fullErrorMessage = `Invalid theme "${name}":\n`;
 		if (missingColors.length > 0) {
@@ -138,7 +140,7 @@ async function loadThemeJson(name: string): Promise<ThemeJson> {
 			fullErrorMessage += `\n\nPlease add these colors to your theme's "colors" object.`;
 			fullErrorMessage += `\nSee the built-in themes (dark.json, light.json) for reference values.`;
 		}
-		fullErrorMessage += `\n\nValidation error:\n  - ${errorMessage}`;
+		fullErrorMessage += `\n\nValidation error:\n  - ${parseErrorMessage}`;
 
 		throw new Error(fullErrorMessage);
 	}
@@ -347,7 +349,7 @@ export async function setTheme(
 		// Don't start watcher for fallback theme
 		return {
 			success: false,
-			error: error instanceof Error ? error.message : String(error),
+			error: errorMessage(error),
 		};
 	}
 }
@@ -371,7 +373,7 @@ export async function previewTheme(
 		}
 		return {
 			success: false,
-			error: error instanceof Error ? error.message : String(error),
+			error: errorMessage(error),
 		};
 	}
 }

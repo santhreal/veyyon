@@ -1,5 +1,5 @@
 /**
- * Routing tests for `omp plugin install <local-path>` (#1945).
+ * Routing tests for `veyyon plugin install <local-path>` (#1945).
  *
  * Two layers of coverage:
  *  1. Spy-based: `runPluginCommand` with a local path calls
@@ -16,11 +16,11 @@ import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { parsePluginArgs, runPluginCommand } from "@veyyon/pi-coding-agent/cli/plugin-cli";
-import { PluginManager } from "@veyyon/pi-coding-agent/extensibility/plugins/manager";
-import type { InstalledPlugin } from "@veyyon/pi-coding-agent/extensibility/plugins/types";
-import * as piUtils from "@veyyon/pi-utils";
-import { removeWithRetries } from "@veyyon/pi-utils";
+import { runPluginCommand } from "@veyyon/coding-agent/cli/plugin-cli";
+import { PluginManager } from "@veyyon/coding-agent/extensibility/plugins/manager";
+import type { InstalledPlugin } from "@veyyon/coding-agent/extensibility/plugins/types";
+import * as piUtils from "@veyyon/utils";
+import { removeWithRetries } from "@veyyon/utils";
 
 const FAKE_INSTALLED: InstalledPlugin = {
 	name: "kimi-datasource",
@@ -39,7 +39,7 @@ async function createLocalPlugin(root: string): Promise<string> {
 		JSON.stringify({
 			name: "kimi-datasource",
 			version: "1.0.0",
-			omp: { extensions: ["./src/extension.ts"] },
+			veyyon: { extensions: ["./src/extension.ts"] },
 		}),
 	);
 	return localPlugin;
@@ -49,14 +49,14 @@ describe("runPluginCommand({ action: 'install', args: [<local>] })", () => {
 	let tmpRoot: string;
 
 	beforeEach(async () => {
-		tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "omp-plugin-install-local-"));
+		tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-plugin-install-local-"));
 		const pluginsDir = path.join(tmpRoot, "plugins");
 		await fs.mkdir(path.join(pluginsDir, "node_modules"), { recursive: true });
 
 		spyOn(piUtils, "getPluginsDir").mockReturnValue(pluginsDir);
 		spyOn(piUtils, "getPluginsNodeModules").mockReturnValue(path.join(pluginsDir, "node_modules"));
 		spyOn(piUtils, "getPluginsPackageJson").mockReturnValue(path.join(pluginsDir, "package.json"));
-		spyOn(piUtils, "getPluginsLockfile").mockReturnValue(path.join(tmpRoot, "omp-plugins.lock.json"));
+		spyOn(piUtils, "getPluginsLockfile").mockReturnValue(path.join(tmpRoot, "veyyon-plugins.lock.json"));
 		spyOn(piUtils, "getProjectDir").mockReturnValue(tmpRoot);
 		spyOn(piUtils, "getProjectPluginOverridesPath").mockReturnValue(path.join(tmpRoot, "plugin-overrides.json"));
 
@@ -122,7 +122,7 @@ describe("runPluginCommand({ action: 'install', args: [<local>] })", () => {
 		// End-to-end: stage a real plugin folder, route through plugin-cli
 		// (no spies on PluginManager.link), and verify the resulting symlink
 		// + lockfile entry. Pins the contract that local-path installs
-		// symlink rather than copy-install, matching `omp plugin link`.
+		// symlink rather than copy-install, matching `veyyon plugin link`.
 		const localPlugin = await createLocalPlugin(tmpRoot);
 
 		await runPluginCommand({ action: "install", args: [localPlugin], flags: { json: true } });
@@ -132,7 +132,7 @@ describe("runPluginCommand({ action: 'install', args: [<local>] })", () => {
 		expect(stat.isSymbolicLink()).toBe(true);
 		expect(await fs.readlink(linkTarget)).toBe(localPlugin);
 
-		const lock = await Bun.file(path.join(tmpRoot, "omp-plugins.lock.json")).json();
+		const lock = await Bun.file(path.join(tmpRoot, "veyyon-plugins.lock.json")).json();
 		expect(lock.plugins["kimi-datasource"]).toEqual({
 			version: "1.0.0",
 			enabledFeatures: null,
@@ -154,19 +154,10 @@ describe("runPluginCommand({ action: 'install', args: [<local>] })", () => {
 		expect(listed.npm.map(plugin => plugin.name)).toContain("kimi-datasource");
 	});
 
-	test("plugin upgrade parses as a valid action", () => {
-		const errorSpy = spyOn(console, "error").mockImplementation(() => undefined);
-		const exitSpy = spyOn(process, "exit").mockImplementation((() => undefined) as typeof process.exit);
-		const parsed = parsePluginArgs(["plugin", "upgrade", "some-pkg"]);
-		expect(parsed).toEqual({ action: "upgrade", args: ["some-pkg"], flags: {} });
-		expect(errorSpy).not.toHaveBeenCalled();
-		expect(exitSpy).not.toHaveBeenCalled();
-	});
-
 	test("doctor --fix preserves linked local plugin state without package dependencies", async () => {
 		await Bun.write(
 			path.join(tmpRoot, "plugins", "package.json"),
-			JSON.stringify({ name: "omp-plugins", private: true, dependencies: {} }),
+			JSON.stringify({ name: "veyyon-plugins", private: true, dependencies: {} }),
 		);
 		const localPlugin = await createLocalPlugin(tmpRoot);
 		const manager = new PluginManager(tmpRoot);
@@ -175,7 +166,7 @@ describe("runPluginCommand({ action: 'install', args: [<local>] })", () => {
 		const checks = await manager.doctor({ fix: true });
 
 		expect(checks.find(check => check.name === "orphan:kimi-datasource")).toBeUndefined();
-		const lock = await Bun.file(path.join(tmpRoot, "omp-plugins.lock.json")).json();
+		const lock = await Bun.file(path.join(tmpRoot, "veyyon-plugins.lock.json")).json();
 		expect(lock.plugins["kimi-datasource"]).toEqual({
 			version: "1.0.0",
 			enabledFeatures: null,

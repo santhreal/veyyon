@@ -7,7 +7,7 @@
  * wording, and add-flow logic stay in the per-controller files because they
  * diverge in workflow.
  */
-import { Text } from "@veyyon/pi-tui";
+import { Text } from "@veyyon/tui";
 import type { SourceMeta } from "../../capability/types";
 import { shortenPath } from "../../tools/render-utils";
 import { DynamicBorder } from "../components/dynamic-border";

@@ -1,8 +1,16 @@
 /**
  * PubMed handler for web-fetch
  */
-import { tryParseJson } from "@veyyon/pi-utils";
-import { buildResult, loadPage, type RenderResult, type SpecialHandler } from "./types";
+import { tryParseJson } from "@veyyon/utils";
+import {
+	buildResult,
+	loadPage,
+	type RenderResult,
+	type ScraperDegrade,
+	type SpecialHandler,
+	scraperDegrade,
+	tryParseUrl,
+} from "./types";
 
 const NCBI_HEADERS = {
 	Accept: "application/json, text/plain;q=0.9, */*;q=0.8",
@@ -16,9 +24,10 @@ export const handlePubMed: SpecialHandler = async (
 	url: string,
 	timeout: number,
 	signal?: AbortSignal,
-): Promise<RenderResult | null> => {
+): Promise<RenderResult | ScraperDegrade | null> => {
 	try {
-		const parsed = new URL(url);
+		const parsed = tryParseUrl(url);
+		if (!parsed) return null;
 
 		// Match pubmed.ncbi.nlm.nih.gov/{pmid} or ncbi.nlm.nih.gov/pubmed/{pmid}
 		if (
@@ -205,7 +214,7 @@ export const handlePubMed: SpecialHandler = async (
 			fetchedAt,
 			notes: notes.length > 0 ? notes : ["Fetched via NCBI E-utilities"],
 		});
-	} catch {
-		return null;
+	} catch (error) {
+		return scraperDegrade("pubmed", error);
 	}
 };

@@ -1,7 +1,7 @@
 // Tests for the website changelog generator's parsing + GitHub-release
 // reconciliation. The generator auto-syncs two sources of truth (the repo
 // CHANGELOG and the published GitHub Releases); these assert the reconciliation
-// is honest — a version is "published" only when GitHub says so, finalized-but-
+// reconciliation: a version is "published" only when GitHub says so, finalized-but-
 // unpublished versions are "pending", and a published release missing from the
 // CHANGELOG is surfaced, never silently dropped.
 

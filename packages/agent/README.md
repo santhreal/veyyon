@@ -1,18 +1,18 @@
-# @veyyon/pi-agent
+# @veyyon/agent
 
-Stateful agent with tool execution and event streaming. Built on `@veyyon/pi-ai`.
+Stateful agent with tool execution and event streaming. Built on `@veyyon/ai`.
 
 ## Installation
 
 ```bash
-npm install @veyyon/pi-agent
+npm install @veyyon/agent
 ```
 
 ## Quick Start
 
 ```typescript
-import { Agent } from "@veyyon/pi-agent";
-import { getModel } from "@veyyon/pi-ai";
+import { Agent } from "@veyyon/agent";
+import { getModel } from "@veyyon/ai";
 
 const agent = new Agent({
 	initialState: {
@@ -255,7 +255,7 @@ steering until the current turn completes.
 Extend `AgentMessage` via declaration merging:
 
 ```typescript
-declare module "@veyyon/pi-agent" {
+declare module "@veyyon/agent" {
 	interface CustomAgentMessages {
 		notification: { role: "notification"; text: string; timestamp: number };
 	}
@@ -279,10 +279,10 @@ const agent = new Agent({
 
 ## Tools
 
-Define tools using `AgentTool` with a Zod parameter schema (via `z` from `@veyyon/pi-ai`).
+Define tools using `AgentTool` with a Zod parameter schema (via `z` from `@veyyon/ai`).
 
 ```typescript
-import { z } from "@veyyon/pi-ai";
+import { z } from "@veyyon/ai";
 
 const readFileTool: AgentTool = {
 	name: "read_file",
@@ -328,7 +328,7 @@ Thrown errors are caught by the agent and reported to the LLM as tool errors wit
 For browser apps that proxy through a backend:
 
 ```typescript
-import { Agent, streamProxy } from "@veyyon/pi-agent";
+import { Agent, streamProxy } from "@veyyon/agent";
 
 const agent = new Agent({
 	streamFn: (model, context, options) =>
@@ -345,7 +345,7 @@ const agent = new Agent({
 For direct control without the Agent class:
 
 ```typescript
-import { agentLoop, agentLoopContinue } from "@veyyon/pi-agent";
+import { agentLoop, agentLoopContinue } from "@veyyon/agent";
 
 const context: AgentContext = {
 	systemPrompt: ["You are helpful."],
@@ -445,7 +445,7 @@ fold N summaries with `aggregateAgentRunSummaries` / `aggregateAgentRunCoverage`
 import {
 	aggregateAgentRunSummaries,
 	aggregateAgentRunCoverage,
-} from "@veyyon/pi-agent";
+} from "@veyyon/agent";
 
 const summaries: AgentRunSummary[] = [];
 const coverages: AgentRunCoverage[] = [];

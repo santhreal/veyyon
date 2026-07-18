@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { Box, type BoxBorder, Text } from "@veyyon/pi-tui";
+import { Box, type BoxBorder, Text } from "@veyyon/tui";
 
 const CHARS: BoxBorder["chars"] = {
 	topLeft: "+",

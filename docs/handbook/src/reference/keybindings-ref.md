@@ -106,7 +106,7 @@ Modal (vim-style) composer editing does not exist. There is no `/vim` command or
 ## Customizing (real path: keybindings.yml)
 
 Custom bindings are **shipped** — but the config surface is its own file, not a `tui.keymap` block in
-`config.yml`. Set bindings by action ID in **`~/.veyyon/agent/keybindings.yml`** (YAML map of action ID
+`config.yml`. Set bindings by action ID in **`~/.veyyon/profiles/default/agent/keybindings.yml`** (YAML map of action ID
 → chord or chord list). A single string, a list of chords, or an empty list (disables the action) are
 all valid values:
 
@@ -121,9 +121,4 @@ Action IDs are namespaced (`app.model.cycleForward`, `app.plan.toggle`, `tui.sel
 and `keybindings.json` files migrate automatically to the namespaced `.yml` form on load. Run
 **`/hotkeys`** in a session to see active chords.
 
-> **Spec — not shipped:** a `/keymap` interactive remapper and nested `tui.keymap.<context>` tables
-> inside `config.yml`. The customization surface that actually ships is the flat `keybindings.yml` file
-> above.
-
-For the full action-ID list and Vim mode details, see [Keybindings and Vim mode](../features/keybindings.md)
-and the engineering reference [`docs/keybindings.md`](../../../keybindings.md).
+Customize bindings in the flat `keybindings.yml` under the agent dir (see above). Full action-ID list and Vim mode: [Keybindings and Vim mode](../features/keybindings.md) and repository [`docs/keybindings.md`](../../../keybindings.md).

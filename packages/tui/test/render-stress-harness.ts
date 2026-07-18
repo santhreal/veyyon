@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { stripVTControlCharacters } from "node:util";
-import { ProcessTerminal } from "@veyyon/pi-tui/terminal";
+import { ProcessTerminal } from "@veyyon/tui/terminal";
 import {
 	type Component,
 	CURSOR_MARKER,
@@ -12,7 +12,7 @@ import {
 	type OverlayHandle,
 	type OverlayOptions,
 	TUI,
-} from "@veyyon/pi-tui/tui";
+} from "@veyyon/tui/tui";
 import {
 	Ellipsis,
 	extractSegments,
@@ -21,8 +21,8 @@ import {
 	truncateToWidth,
 	visibleWidth,
 	wrapTextWithAnsi,
-} from "@veyyon/pi-tui/utils";
-import { setTerminalHeadless } from "@veyyon/pi-utils";
+} from "@veyyon/tui/utils";
+import { setTerminalHeadless } from "@veyyon/utils";
 import { StressRenderScheduler } from "./render-stress-scheduler";
 import { VirtualTerminal } from "./virtual-terminal";
 
@@ -66,7 +66,7 @@ const ENV_KEYS = [
 	"GHOSTTY_RESOURCES_DIR",
 	"ALACRITTY_WINDOW_ID",
 	"VTE_VERSION",
-	"PI_NO_SYNC_OUTPUT",
+	"VEYYON_NO_SYNC_OUTPUT",
 	"TERM_PROGRAM",
 	"ITERM_SESSION_ID",
 	"WT_SESSION",
@@ -2257,8 +2257,8 @@ class StressDriver {
 			if (this.#traits.syncOutputDisabled) {
 				this.#fail(
 					final === "h"
-						? "synchronized-output begin emitted while PI_NO_SYNC_OUTPUT is set"
-						: "synchronized-output end emitted while PI_NO_SYNC_OUTPUT is set",
+						? "synchronized-output begin emitted while VEYYON_NO_SYNC_OUTPUT is set"
+						: "synchronized-output end emitted while VEYYON_NO_SYNC_OUTPUT is set",
 					op,
 					before,
 					after,
@@ -3363,7 +3363,7 @@ function scenarioEnv(envMode: EnvMode): Record<EnvKey, string | undefined> {
 		GHOSTTY_RESOURCES_DIR: envMode === "ghostty" ? "/Applications/Ghostty.app/Contents/Resources" : undefined,
 		ALACRITTY_WINDOW_ID: undefined,
 		VTE_VERSION: envMode === "vteNoSync" ? "6800" : undefined,
-		PI_NO_SYNC_OUTPUT: envMode === "vteNoSync" ? "1" : undefined,
+		VEYYON_NO_SYNC_OUTPUT: envMode === "vteNoSync" ? "1" : undefined,
 		TERM_PROGRAM: envMode === "appleTerminal" ? "Apple_Terminal" : envMode === "iterm2" ? "iTerm.app" : undefined,
 		ITERM_SESSION_ID: envMode === "iterm2" ? "w0t0p0" : undefined,
 		// WSL fronted by Windows Terminal: WT propagates WT_SESSION into the
@@ -3554,7 +3554,7 @@ type ScenarioTemplate = Omit<
 function writeReplayLog(scenario: Scenario, operations: readonly OperationLogEntry[]): string {
 	const filePath = path.join(
 		os.tmpdir(),
-		`omp-tui-stress-${scenario.name}-${(scenario.seed >>> 0).toString(16)}-${Date.now().toString(36)}.json`,
+		`veyyon-tui-stress-${scenario.name}-${(scenario.seed >>> 0).toString(16)}-${Date.now().toString(36)}.json`,
 	);
 	fs.writeFileSync(filePath, JSON.stringify(operations, null, 2));
 	return filePath;
@@ -3878,7 +3878,7 @@ export function applyStressEnv(envMode: Scenario["envMode"]): StressEnvSnapshot 
 			GHOSTTY_RESOURCES_DIR: undefined,
 			ALACRITTY_WINDOW_ID: undefined,
 			VTE_VERSION: undefined,
-			PI_NO_SYNC_OUTPUT: undefined,
+			VEYYON_NO_SYNC_OUTPUT: undefined,
 			TERM_PROGRAM: undefined,
 			ITERM_SESSION_ID: undefined,
 			WT_SESSION: undefined,
@@ -3895,7 +3895,7 @@ export function applyStressEnv(envMode: Scenario["envMode"]): StressEnvSnapshot 
 			GHOSTTY_RESOURCES_DIR: undefined,
 			ALACRITTY_WINDOW_ID: undefined,
 			VTE_VERSION: undefined,
-			PI_NO_SYNC_OUTPUT: undefined,
+			VEYYON_NO_SYNC_OUTPUT: undefined,
 			TERM_PROGRAM: undefined,
 			ITERM_SESSION_ID: undefined,
 			WT_SESSION: undefined,

@@ -1,5 +1,5 @@
 import type { DataType } from "@huggingface/transformers";
-import { $env } from "@veyyon/pi-utils";
+import { $env } from "@veyyon/utils";
 
 /** ONNX quantization / precision for local tiny models (transformers.js `dtype`). */
 export type TinyModelDtype = DataType;
@@ -21,7 +21,7 @@ const DTYPE_VALUES: Record<TinyModelDtype, true> = {
 };
 
 /**
- * Validate and canonicalize a `VEYYON_TINY_DTYPE`/`PI_TINY_DTYPE` value. Returns `undefined` when
+ * Validate and canonicalize a `VEYYON_TINY_DTYPE` value. Returns `undefined` when
  * unset/blank so callers fall back to the per-model spec dtype, and throws on an
  * unrecognized value so a misconfiguration fails loudly instead of silently
  * loading a different precision than requested.
@@ -36,12 +36,12 @@ export function normalizeTinyModelDtype(value: string | undefined): TinyModelDty
 }
 
 /**
- * Resolve the `VEYYON_TINY_DTYPE` (legacy `PI_TINY_DTYPE`) override. `undefined` means "use the per-model spec
+ * Resolve the `VEYYON_TINY_DTYPE` override. `undefined` means "use the per-model spec
  * dtype" (currently `q4` for every shipped model); a concrete value overrides the
  * precision for whichever local tiny model loads.
  */
 export function resolveTinyModelDtypeOverride(
-	value: string | undefined = $env.VEYYON_TINY_DTYPE ?? $env.PI_TINY_DTYPE,
+	value: string | undefined = $env.VEYYON_TINY_DTYPE,
 ): TinyModelDtype | undefined {
 	return normalizeTinyModelDtype(value);
 }

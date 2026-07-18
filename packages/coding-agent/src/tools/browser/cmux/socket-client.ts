@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import * as net from "node:net";
+import { errorMessage } from "@veyyon/utils";
 import { ToolError } from "../../tool-errors";
 
 const DEFAULT_CONNECT_TIMEOUT_MS = 10_000;
@@ -122,9 +123,7 @@ export class CmuxSocketClient {
 			this.#connected = false;
 			socket.destroy();
 			if (err instanceof ToolError) throw err;
-			throw new ToolError(
-				`Failed to connect to cmux socket at ${this.#socketPath}: ${err instanceof Error ? err.message : String(err)}`,
-			);
+			throw new ToolError(`Failed to connect to cmux socket at ${this.#socketPath}: ${errorMessage(err)}`);
 		}
 	}
 
@@ -252,7 +251,7 @@ export class CmuxSocketClient {
 		try {
 			payload = JSON.parse(line);
 		} catch (err) {
-			throw new ToolError(`Invalid cmux socket JSON response: ${err instanceof Error ? err.message : String(err)}`);
+			throw new ToolError(`Invalid cmux socket JSON response: ${errorMessage(err)}`);
 		}
 		if (!payload || typeof payload !== "object") {
 			throw new ToolError("Invalid cmux socket response: expected object");

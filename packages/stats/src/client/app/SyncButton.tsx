@@ -1,3 +1,4 @@
+import { formatCount } from "@veyyon/utils";
 import { RefreshCw } from "lucide-react";
 import { useState } from "react";
 import { sync } from "../api";
@@ -34,7 +35,7 @@ export function SyncButton({ onSyncStart, onSyncComplete, className = "" }: Sync
 			};
 			setStatus({
 				type: "success",
-				message: `Synced: ${result.processed} new request${result.processed === 1 ? "" : "s"} found.`,
+				message: `Synced: ${formatCount("new request", result.processed)} found.`,
 			});
 			if (onSyncComplete) {
 				onSyncComplete({ success: true, data: result });

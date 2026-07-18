@@ -41,7 +41,7 @@
 - Backend-specific memory persistence: queued Hindsight, scoped Mnemopi SQLite, or local file backend.
 
 ## Side Effects
-- Filesystem: local memory backend writes under the agent directory; managed skills write to `~/.veyyon/agent/managed-skills/<name>/SKILL.md`.
+- Filesystem: local memory backend writes under the agent directory; managed skills write to `~/.veyyon/profiles/default/agent/managed-skills/<name>/SKILL.md`.
 - Network: Hindsight retention queues server-side work; Mnemopi/local paths do not make a network call from this tool directly.
 - Session state: reads memory backend state, settings, cwd, and session id.
 - Background work: Hindsight retention may flush later.

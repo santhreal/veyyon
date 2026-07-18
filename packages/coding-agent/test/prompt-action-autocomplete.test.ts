@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { KeybindingsManager as AppKeybindingsManager } from "@veyyon/pi-coding-agent/config/keybindings";
-import { createPromptActionAutocompleteProvider } from "@veyyon/pi-coding-agent/modes/prompt-action-autocomplete";
-import { KeybindingsManager, setKeybindings, TUI_KEYBINDINGS } from "@veyyon/pi-tui";
+import { KeybindingsManager as AppKeybindingsManager } from "@veyyon/coding-agent/config/keybindings";
+import { createPromptActionAutocompleteProvider } from "@veyyon/coding-agent/modes/prompt-action-autocomplete";
+import { KeybindingsManager, setKeybindings, TUI_KEYBINDINGS } from "@veyyon/tui";
 
 describe("prompt action autocomplete", () => {
 	beforeEach(() => {
@@ -199,11 +199,11 @@ describe("prompt action autocomplete", () => {
 			moveCursorToLineEnd: () => {},
 		});
 
-		const line = "/btw omp://";
+		const line = "/btw veyyon://";
 		const suggestions = await provider.getSuggestions([line], 0, line.length);
 
 		expect(suggestions).not.toBeNull();
-		expect(suggestions?.prefix).toBe("omp://");
+		expect(suggestions?.prefix).toBe("veyyon://");
 		expect(suggestions?.items.length).toBeGreaterThan(0);
 	});
 
@@ -228,11 +228,11 @@ describe("prompt action autocomplete", () => {
 			moveCursorToLineEnd: () => {},
 		});
 
-		const line = "/mcp omp://";
+		const line = "/mcp veyyon://";
 		const suggestions = await provider.getSuggestions([line], 0, line.length);
 
 		expect(suggestions).not.toBeNull();
-		expect(suggestions?.prefix).toBe("omp://");
+		expect(suggestions?.prefix).toBe("veyyon://");
 		expect(suggestions?.items.length).toBeGreaterThan(0);
 	});
 

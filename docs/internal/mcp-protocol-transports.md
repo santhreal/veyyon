@@ -125,7 +125,7 @@ If read loop exits unexpectedly, `finally` triggers `#handleClose()` which perfo
 
 Per request:
 
-- timeout from `resolveMCPTimeoutMs`: `VEYYON_MCP_TIMEOUT_MS` env override (legacy alias `OMP_MCP_TIMEOUT_MS`), else `config.timeout ?? 30000`; `0` disables
+- timeout from `resolveMCPTimeoutMs`: `VEYYON_MCP_TIMEOUT_MS` env override, else `config.timeout ?? 30000`; `0` disables
 - optional `AbortSignal` from caller
 - abort and timeout both reject the pending promise and clean map entry
 

@@ -1,4 +1,4 @@
-import { getGitHubCopilotBaseUrl, parseGitHubCopilotApiKey } from "@veyyon/pi-catalog/wire/github-copilot";
+import { getGitHubCopilotBaseUrl, parseGitHubCopilotApiKey } from "@veyyon/catalog/wire/github-copilot";
 import type { Message } from "../types";
 /**
  * Infer whether the current request to Copilot is user-initiated or agent-initiated.

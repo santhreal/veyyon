@@ -2,14 +2,14 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } fr
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { AgentTool } from "@veyyon/pi-agent-core";
-import { resetSettingsForTest, Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { EDIT_MODE_STRATEGIES } from "@veyyon/pi-coding-agent/edit";
-import { ToolExecutionComponent } from "@veyyon/pi-coding-agent/modes/components/tool-execution";
-import { theme as activeTheme, initTheme } from "@veyyon/pi-coding-agent/modes/theme/theme";
-import { previewWindowRows } from "@veyyon/pi-coding-agent/tools/render-utils";
-import { TUI, visibleWidth } from "@veyyon/pi-tui";
-import { removeWithRetries } from "@veyyon/pi-utils";
+import type { AgentTool } from "@veyyon/agent-core";
+import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
+import { EDIT_MODE_STRATEGIES } from "@veyyon/coding-agent/edit";
+import { ToolExecutionComponent } from "@veyyon/coding-agent/modes/components/tool-execution";
+import { theme as activeTheme, initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { previewWindowRows } from "@veyyon/coding-agent/tools/render-utils";
+import { TUI, visibleWidth } from "@veyyon/tui";
+import { removeWithRetries } from "@veyyon/utils";
 import { VirtualTerminal } from "../../tui/test/virtual-terminal";
 
 // The streaming edit preview is a fixed-height tail window ("cursor"): the last

@@ -1,4 +1,4 @@
-import { getKeybindings, type KeyId, matchesKey } from "@veyyon/pi-tui";
+import { getKeybindings, type KeyId, matchesKey } from "@veyyon/tui";
 
 /**
  * Match the coding-agent interrupt key.

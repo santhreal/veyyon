@@ -1,7 +1,7 @@
 import * as path from "node:path";
-import type { AgentMessage } from "@veyyon/pi-agent-core";
-import type { Message, UserMessage } from "@veyyon/pi-ai";
-import { logger } from "@veyyon/pi-utils";
+import type { AgentMessage } from "@veyyon/agent-core";
+import type { Message, UserMessage } from "@veyyon/ai";
+import { logger } from "@veyyon/utils";
 import { SessionManager } from "../session/session-manager";
 
 /**

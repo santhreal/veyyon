@@ -1,5 +1,5 @@
 {
-  "name": "@veyyon/pi-natives",
+  "name": "@veyyon/natives",
   "version": "1.0.0",
   "description": "Native Rust bindings for grep, clipboard, image processing, syntax highlighting, PTY, and shell operations via N-API",
   "type": "module",
@@ -8,11 +8,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/can1357/oh-my-pi.git",
+    "url": "git+https://github.com/santhreal/veyyon.git",
     "directory": "packages/natives"
   },
   "bugs": {
-    "url": "https://github.com/can1357/oh-my-pi/issues"
+    "url": "https://github.com/santhreal/veyyon/issues"
   },
   "keywords": [
     "napi",
@@ -49,7 +49,7 @@
     "bun": ">=1.3.14"
   },
   "napi": {
-    "binaryName": "pi_natives",
+    "binaryName": "veyyon_natives",
     "triples": {}
   },
   "files": [

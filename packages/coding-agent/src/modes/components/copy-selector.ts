@@ -7,7 +7,7 @@ import {
 	Text,
 	truncateToWidth,
 	visibleWidth,
-} from "@veyyon/pi-tui";
+} from "@veyyon/tui";
 import { replaceTabs } from "../../tools/render-utils";
 import { highlightCode, theme } from "../theme/theme";
 import type { CopyTarget } from "../utils/copy-targets";

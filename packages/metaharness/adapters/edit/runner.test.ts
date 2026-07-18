@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import type { AgentMessage } from "@veyyon/pi-agent-core";
-import { formatSessionDumpText, SessionManager } from "@veyyon/pi-coding-agent";
-import { TempDir } from "@veyyon/pi-utils";
+import type { AgentMessage } from "@veyyon/agent-core";
+import { formatSessionDumpText, SessionManager } from "@veyyon/coding-agent";
+import { TempDir } from "@veyyon/utils";
 import { generateReport } from "./report";
 import { buildBenchmarkResult, type TaskRunResult, writeConversationDump } from "./runner";
 import type { EditTask } from "@veyyon/typescript-edit-benchmark/tasks";

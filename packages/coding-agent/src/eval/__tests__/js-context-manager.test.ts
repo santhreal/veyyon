@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { TempDir } from "@veyyon/pi-utils";
+import { TempDir } from "@veyyon/utils";
 import { Settings } from "../../config/settings";
 import type { ToolSession } from "../../tools";
 import {
@@ -209,13 +209,13 @@ describe("JavaScript eval worker lifecycle", () => {
 	});
 
 	it("exits a real worker on graceful close even with ref'ed user handles", async () => {
-		using tempDir = TempDir.createSync("@omp-js-worker-real-close-");
+		using tempDir = TempDir.createSync("@veyyon-js-worker-real-close-");
 
 		await waitForRealWorkerExitAfterClose(tempDir.path());
 	});
 
 	it("waits for the worker to close on reset instead of force-terminating it", async () => {
-		using tempDir = TempDir.createSync("@omp-js-worker-close-");
+		using tempDir = TempDir.createSync("@veyyon-js-worker-close-");
 		const stats: FakeWorkerStats = { closeRequests: 0, terminateCalls: 0 };
 		installFakeWorker(stats, { exitOnClose: true, settleRuns: true });
 
@@ -237,7 +237,7 @@ describe("JavaScript eval worker lifecycle", () => {
 	});
 
 	it("terminates when close is acknowledged but the worker does not exit", async () => {
-		using tempDir = TempDir.createSync("@omp-js-worker-close-hung-");
+		using tempDir = TempDir.createSync("@veyyon-js-worker-close-hung-");
 		const stats: FakeWorkerStats = { closeRequests: 0, terminateCalls: 0 };
 		installFakeWorker(stats, { exitOnClose: false, settleRuns: true });
 
@@ -259,7 +259,7 @@ describe("JavaScript eval worker lifecycle", () => {
 	});
 
 	it("force-terminates instead of closing when an in-flight run is aborted", async () => {
-		using tempDir = TempDir.createSync("@omp-js-worker-abort-");
+		using tempDir = TempDir.createSync("@veyyon-js-worker-abort-");
 		const stats: FakeWorkerStats = { closeRequests: 0, terminateCalls: 0 };
 		installFakeWorker(stats, { exitOnClose: true, settleRuns: false });
 
@@ -281,7 +281,7 @@ describe("JavaScript eval worker lifecycle", () => {
 	});
 
 	it("falls back to a Bun Worker when the subprocess cannot spawn", async () => {
-		using tempDir = TempDir.createSync("@omp-js-spawn-fallback-");
+		using tempDir = TempDir.createSync("@veyyon-js-spawn-fallback-");
 		// Exercise the production ladder (process -> worker -> inline), not the
 		// worker-thread test seam the surrounding describe enables.
 		setJsEvalWorkerThreadForTests(false);
@@ -310,7 +310,7 @@ describe("JavaScript eval worker lifecycle", () => {
 	});
 
 	it("falls back to a Bun Worker when the subprocess fails during initialization", async () => {
-		using tempDir = TempDir.createSync("@omp-js-init-fallback-");
+		using tempDir = TempDir.createSync("@veyyon-js-init-fallback-");
 		// Exercise the production ladder (process -> worker -> inline), not the
 		// worker-thread test seam the surrounding describe enables.
 		setJsEvalWorkerThreadForTests(false);
@@ -348,7 +348,7 @@ describe("JavaScript eval worker lifecycle", () => {
 	});
 
 	it("falls back to the inline worker when the spawned worker errors during startup", async () => {
-		using tempDir = TempDir.createSync("@omp-js-worker-error-");
+		using tempDir = TempDir.createSync("@veyyon-js-worker-error-");
 		const stats: FakeWorkerStats = { closeRequests: 0, terminateCalls: 0 };
 		installFakeWorker(stats, { exitOnClose: true, settleRuns: true, errorOnStart: true });
 
@@ -372,7 +372,7 @@ describe.skipIf(process.platform === "win32")("JavaScript eval process isolation
 	});
 
 	it("runs spawned commands in the isolated POSIX process group", async () => {
-		using tempDir = TempDir.createSync("@omp-js-process-isolation-");
+		using tempDir = TempDir.createSync("@veyyon-js-process-isolation-");
 		const session = makeSession(tempDir.path());
 		const evalSessionId = `js-isolation:${crypto.randomUUID()}`;
 		const result = await executeJs(
@@ -400,7 +400,7 @@ describe.skipIf(process.platform === "win32")("JavaScript eval process isolation
 	});
 
 	it("mirrors the session cwd onto the subprocess's real cwd", async () => {
-		using tempDir = TempDir.createSync("@omp-js-process-cwd-");
+		using tempDir = TempDir.createSync("@veyyon-js-process-cwd-");
 		const session = makeSession(tempDir.path());
 		const evalSessionId = `js-cwd:${crypto.randomUUID()}`;
 		const result = await executeJs("return process.cwd();", {
@@ -414,7 +414,7 @@ describe.skipIf(process.platform === "win32")("JavaScript eval process isolation
 	});
 
 	it("still runs cells when the session cwd does not exist", async () => {
-		using tempDir = TempDir.createSync("@omp-js-process-cwd-missing-");
+		using tempDir = TempDir.createSync("@veyyon-js-process-cwd-missing-");
 		const missingCwd = path.join(tempDir.path(), "deleted");
 		const session = makeSession(missingCwd);
 		const result = await executeJs("return String(6 * 7);", {
@@ -427,7 +427,7 @@ describe.skipIf(process.platform === "win32")("JavaScript eval process isolation
 	});
 
 	it("keeps the isolated process alive after a stackless floated rejection", async () => {
-		using tempDir = TempDir.createSync("@omp-js-process-rejection-");
+		using tempDir = TempDir.createSync("@veyyon-js-process-rejection-");
 		const session = makeSession(tempDir.path());
 		const evalSessionId = `js-rejection:${crypto.randomUUID()}`;
 		const rejected = await executeJs(

@@ -10,8 +10,8 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import { usageReportSchema } from "@veyyon/pi-ai";
-import { wireSchemas } from "@veyyon/pi-ai/auth-broker/wire-schemas";
+import { usageReportSchema } from "@veyyon/ai";
+import { wireSchemas } from "@veyyon/ai/auth-broker/wire-schemas";
 import { type } from "arktype";
 
 const DISCLAIMER = "Veyyon-observed spend only; OpenCode usage outside Veyyon is not included.";

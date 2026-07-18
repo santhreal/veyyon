@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { getRoleInfo } from "@veyyon/pi-coding-agent/config/model-roles";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
+import { getRoleInfo } from "@veyyon/coding-agent/config/model-roles";
+import { Settings } from "@veyyon/coding-agent/config/settings";
 
 describe("getRoleInfo", () => {
 	test("returns built-in role info", () => {

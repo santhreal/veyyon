@@ -2,16 +2,16 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { AssistantMessage } from "@veyyon/pi-ai";
-import { getBundledModel } from "@veyyon/pi-catalog/models";
-import type { Rule } from "@veyyon/pi-coding-agent/capability/rule";
-import { ModelRegistry } from "@veyyon/pi-coding-agent/config/model-registry";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { createAgentSession } from "@veyyon/pi-coding-agent/sdk";
-import { SecretObfuscator } from "@veyyon/pi-coding-agent/secrets";
-import { AuthStorage } from "@veyyon/pi-coding-agent/session/auth-storage";
-import { SessionManager } from "@veyyon/pi-coding-agent/session/session-manager";
-import { getSessionsDir, removeSyncWithRetries, Snowflake } from "@veyyon/pi-utils";
+import type { AssistantMessage } from "@veyyon/ai";
+import { getBundledModel } from "@veyyon/catalog/models";
+import type { Rule } from "@veyyon/coding-agent/capability/rule";
+import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import { createAgentSession } from "@veyyon/coding-agent/sdk";
+import { SecretObfuscator } from "@veyyon/coding-agent/secrets";
+import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
+import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { getSessionsDir, removeSyncWithRetries, Snowflake } from "@veyyon/utils";
 
 function createTtsrRule(name: string): Rule {
 	return {

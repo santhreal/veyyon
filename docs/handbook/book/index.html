@@ -10,6 +10,10 @@
         <!-- Veyyon handbook: self-contained head additions. No remote resources. -->
         <meta name="theme-color" content="#050505">
         <meta name="color-scheme" content="dark">
+        <!-- Site favicons live at the deployed root, one level above /docs/. -->
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+        <link rel="icon" href="/favicon.ico" sizes="48x48">
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png">
         <style>
           /* Paint the near-black surface before CSS/JS resolve the theme, so there is
              no light flash on load. Kept in sync with theme/veyyon.css. */
@@ -18,7 +22,7 @@
           *, *::before, *::after { box-sizing: border-box; }
         </style>
 
-        <meta name="description" content="How Veyyon turns open models into frontier coding agents. The product, the harness, tool-call repair, the edit format, per-model adaptation, and how to use it.">
+        <meta name="description" content="Operator handbook for the Veyyon terminal coding agent: install, configuration, tools, approvals, edit formats, providers, and harness structure.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -38,7 +42,7 @@
         <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="ayu-highlight-3fdfc3ac.css">
 
         <!-- Custom theme stylesheets -->
-        <link rel="stylesheet" href="theme/veyyon-fc839a17.css">
+        <link rel="stylesheet" href="theme/veyyon-06f6939e.css">
 
 
         <!-- Provide site root and default themes to javascript -->
@@ -46,10 +50,10 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-e76f06ca.js";
+            window.path_to_searchindex_js = "searchindex-a2447057.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="toc-9cfd259b.js"></script>
+        <script src="toc-cc1a72e9.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -192,28 +196,38 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="the-veyyon-handbook"><a class="header" href="#the-veyyon-handbook">The Veyyon handbook</a></h1>
-<p>Veyyon runs in your terminal and edits real code. Bring your own model keys; the harness is tuned for coding work, not chat theater.</p>
-<p>This handbook is for everyone who uses Veyyon or wants to understand it.</p>
+<p>Veyyon is a terminal coding agent. You supply provider credentials; the process runs tools and edits files in your working tree.</p>
+<p>This handbook covers installation, configuration, features, and harness structure.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Section</th><th>Contents</th></tr>
+</thead>
+<tbody>
+<tr><td><a href="./why/value.html">Why</a></td><td>Design goals and main mechanisms</td></tr>
+<tr><td><a href="./using/getting-started.html">Using</a></td><td>Install, providers, quickstart, configuration</td></tr>
+<tr><td><a href="./features/sandbox.html">Features</a></td><td>Editing, approvals, models, sessions, plan/goal, MCP, plugins, memory, profiles</td></tr>
+<tr><td><a href="./foundations/architecture.html">Architecture</a></td><td>Internals for contributors</td></tr>
+</tbody>
+</table>
+</div>
+<p>Start here if you are new: <a href="./using/getting-started.html">Getting started</a>, <a href="./using/editing.html">Editing and repair</a>, <a href="./using/models.html">Models and providers</a>.</p>
+<h2 id="what-veyyon-is"><a class="header" href="#what-veyyon-is">What Veyyon is</a></h2>
+<p>Veyyon is a fork of <a href="https://github.com/can1357/oh-my-pi">oh-my-pi</a>. The CLI, TUI, tools, providers, and session loop are TypeScript on Bun. Grep, PTY, and hashline apply paths use Rust natives (<code>@veyyon/natives</code>).</p>
 <ul>
-<li><strong>Why Veyyon:</strong> value, design map, and benefits you should feel first.</li>
-<li><strong>Install and first session:</strong> install, providers, quickstart, configuration.</li>
-<li><strong>Everyday features:</strong> editing, approvals, models, sessions, themes.</li>
-<li><strong>Power features:</strong> plan mode, goals, branching, MCP, plugins, memory, profiles.</li>
-<li><strong>How it works:</strong> deeper engineering account for contributors.</li>
+<li>Install: <code>bun install -g @veyyon/coding-agent</code> (or <code>bun setup &amp;&amp; bun dev</code> from a source checkout)</li>
+<li>Binary: <code>veyyon</code> (alias <code>vey</code>)</li>
+<li>Config home: <code>~/.veyyon</code>; default profile agent dir: <code>~/.veyyon/profiles/default/agent/</code> (other profiles: <code>~/.veyyon/profiles/&lt;name&gt;/agent/</code>)</li>
 </ul>
-<p>If you read nothing else: <a href="./why/value.html">What Veyyon gives you</a>, <a href="./using/getting-started.html">Getting started</a>, <a href="./using/editing.html">Editing and repair</a>, <a href="./using/models.html">Models and providers</a>.</p>
-<h2 id="what-veyyon-is-in-one-paragraph"><a class="header" href="#what-veyyon-is-in-one-paragraph">What Veyyon is, in one paragraph</a></h2>
-<p>Veyyon is a fork of <a href="https://github.com/can1357/oh-my-pi">oh-my-pi</a>: TypeScript and Bun for the CLI, TUI, tools, providers, and session loop; Rust natives for grep, PTY, and <strong>hashline</strong> edits. Install with <code>bun install -g @veyyon/pi-coding-agent</code> or <code>bun dev</code> from source. The command is <strong><code>veyyon</code></strong> (short alias <strong><code>vey</code></strong>). Config and state default to <code>~/.veyyon</code>.</p>
-<p>Shipped today: hashline edits, mnemopi memory, model roles, session trees, MCP, skills, and plan/goal modes.</p>
-<h2 id="why-it-is-different-shipped-vs-planned"><a class="header" href="#why-it-is-different-shipped-vs-planned">Why it is different (shipped vs planned)</a></h2>
+<p>Main surfaces: hashline edits, tool loop (read/grep/glob/edit/bash/LSP/MCP/…), optional memory backends, model slots and roles, session trees, skills, plan mode, goal mode, task isolation for subagents.</p>
+<h2 id="mechanisms-summary"><a class="header" href="#mechanisms-summary">Mechanisms (summary)</a></h2>
 <ul>
-<li><strong>Edits that land.</strong> Hashline and model-tuned edit tools with native verification; fewer retry loops on bad diffs.</li>
-<li><strong>Explicit model slots.</strong> Pick the model you talk to, the model for subagents, and the model for compaction — three plain choices, no <code>default</code>-chain indirection.</li>
-<li><strong>Interface.</strong> Veyyon Dark uses the silver palette; plan/goal modes and tool approval tiers are engine features.</li>
+<li><strong>Hashline edits.</strong> <code>edit</code> / <code>write</code> apply content-addressed patches with verification before disk write; failures return structured errors to the model.</li>
+<li><strong>Model slots.</strong> Interactive model (<code>/model</code>), subagent model, and compaction model are separate settings. Optional named roles pin models for specific work kinds.</li>
+<li><strong>Approvals.</strong> <code>tools.approvalMode</code> gates read / write / exec tiers. There is no OS-level command sandbox (no Landlock, seccomp, Seatbelt, or bubblewrap).</li>
+<li><strong>Engine modes.</strong> Plan mode, goal mode, vibe mode, compaction, and task subagents are implemented in the agent loop, not only as prompt text.</li>
 </ul>
-<p><strong>Spec — not shipped:</strong> the full schema-based tool-call repair cascade, a unified single-write-path proof, and self-contained profiles. See <a href="./why/innovations.html">What makes Veyyon different</a>.</p>
-<h2 id="what-is-built-vs-planned"><a class="header" href="#what-is-built-vs-planned">What is built vs planned</a></h2>
-<p>This book states plainly what is built and what is planned. Pages marked <strong>Spec — not shipped</strong> describe target design not yet in the product. Credits: <a href="./acknowledgements.html">Acknowledgements</a>.</p>
+<p>Credits and provenance: <a href="./acknowledgements.html">Acknowledgements</a>.</p>
 
                     </main>
 

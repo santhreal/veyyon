@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
-import { normalizeTools } from "@veyyon/pi-agent-core/agent-loop";
-import type { AgentTool } from "@veyyon/pi-agent-core/types";
-import { INTENT_FIELD } from "@veyyon/pi-wire";
+import { normalizeTools } from "@veyyon/agent-core/agent-loop";
+import type { AgentTool } from "@veyyon/agent-core/types";
+import { INTENT_FIELD } from "@veyyon/wire";
 import { type } from "arktype";
 
 const toolSchema = type({

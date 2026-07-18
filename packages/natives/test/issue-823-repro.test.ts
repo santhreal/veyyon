@@ -3,11 +3,11 @@
  *
  * On WSL (and any host where the user moves the standalone binary away from the
  * build-time native artifacts), the compiled `omp` binary fails to load
- * `pi_natives.linux-x64-*.node`. Root cause: the old loader's
+ * `veyyon_natives.linux-x64-*.node`. Root cause: the old loader's
  * `isCompiledBinary` detection relied on signals that are unreliable in a Bun
  * standalone binary:
- *   - `process.env.PI_COMPILED` — never set, because `bun build --compile
- *     --define PI_COMPILED=true` substitutes the bare identifier, not
+ *   - `process.env.VEYYON_COMPILED` — never set, because `bun build --compile
+ *     --define VEYYON_COMPILED=true` substitutes the bare identifier, not
  *     property accesses on `process.env`.
  *   - CommonJS `__filename` bunfs markers — Bun's compiled binaries kept the
  *     original build-host absolute path there, while `import.meta.url` is the
@@ -40,7 +40,7 @@ import {
 describe("issue 823: standalone-binary native loader path resolution", () => {
 	it("detects compiled-binary mode from embedded-addon presence when env and url markers are absent", () => {
 		// Mirrors what a Bun standalone binary actually sees on linux-x64 / WSL:
-		// - `process.env.PI_COMPILED` is undefined (the build flag does not substitute property accesses).
+		// - `process.env.VEYYON_COMPILED` is undefined (the build flag does not substitute property accesses).
 		// - `import.meta.url` points at `$bunfs` for bundled modules; the old CJS
 		//   loader used `__filename`, which is NOT rewritten.
 		// The embedded-addon module is the authoritative compiled-mode signal: it is `null` in
@@ -54,8 +54,8 @@ describe("issue 823: standalone-binary native loader path resolution", () => {
 					files: [
 						{
 							variant: "modern",
-							filename: "pi_natives.linux-x64-modern.node",
-							filePath: "/$bunfs/root/packages/natives/native/pi_natives.linux-x64-modern.node",
+							filename: "veyyon_natives.linux-x64-modern.node",
+							filePath: "/$bunfs/root/packages/natives/native/veyyon_natives.linux-x64-modern.node",
 						},
 					],
 				},
@@ -73,11 +73,11 @@ describe("issue 823: standalone-binary native loader path resolution", () => {
 			}),
 		).toBe(false);
 
-		// Env override (e.g. user-set PI_COMPILED=1) still wins.
+		// Env override (e.g. user-set VEYYON_COMPILED=1) still wins.
 		expect(
 			detectCompiledBinary({
 				embeddedAddon: null,
-				env: { PI_COMPILED: "1" },
+				env: { VEYYON_COMPILED: "1" },
 				importMetaUrl: "/anywhere",
 			}),
 		).toBe(true);
@@ -106,10 +106,10 @@ describe("issue 823: standalone-binary native loader path resolution", () => {
 			userDataDir,
 		});
 
-		const versionedModern = path.join(versionedDir, "pi_natives.linux-x64-modern.node");
-		const versionedBaseline = path.join(versionedDir, "pi_natives.linux-x64-baseline.node");
-		const userDataModern = path.join(userDataDir, "pi_natives.linux-x64-modern.node");
-		const buildHostModern = path.join(nativeDir, "pi_natives.linux-x64-modern.node");
+		const versionedModern = path.join(versionedDir, "veyyon_natives.linux-x64-modern.node");
+		const versionedBaseline = path.join(versionedDir, "veyyon_natives.linux-x64-baseline.node");
+		const userDataModern = path.join(userDataDir, "veyyon_natives.linux-x64-modern.node");
+		const buildHostModern = path.join(nativeDir, "veyyon_natives.linux-x64-modern.node");
 
 		// Versioned cache and user-data dir candidates must exist for compiled binaries —
 		// these are where the embedded-addon extraction lands (~/.veyyon/natives/<v>) and where
@@ -134,13 +134,13 @@ describe("issue 823: standalone-binary native loader path resolution", () => {
 			versionedDir,
 			userDataDir,
 		});
-		expect(candidates).not.toContain(path.join(versionedDir, "pi_natives.linux-x64-baseline.node"));
-		expect(candidates).not.toContain(path.join(userDataDir, "pi_natives.linux-x64-baseline.node"));
+		expect(candidates).not.toContain(path.join(versionedDir, "veyyon_natives.linux-x64-baseline.node"));
+		expect(candidates).not.toContain(path.join(userDataDir, "veyyon_natives.linux-x64-baseline.node"));
 	});
 
 	it("prefers platform leaf package candidates ahead of core nativeDir candidates on npm installs", () => {
-		const leafPackageDir = "/app/node_modules/@veyyon/pi-natives-linux-x64";
-		const nativeDir = "/app/node_modules/@veyyon/pi-natives/native";
+		const leafPackageDir = "/app/node_modules/@veyyon/natives-linux-x64";
+		const nativeDir = "/app/node_modules/@veyyon/natives/native";
 		const candidates = resolveLoaderCandidates({
 			addonFilenames: getAddonFilenames({ tag: "linux-x64", arch: "x64", variant: "baseline" }),
 			isCompiledBinary: false,
@@ -151,16 +151,16 @@ describe("issue 823: standalone-binary native loader path resolution", () => {
 			userDataDir: "/home/u/.local/bin",
 		});
 
-		const leafBaseline = path.join(leafPackageDir, "pi_natives.linux-x64-baseline.node");
-		const coreBaseline = path.join(nativeDir, "pi_natives.linux-x64-baseline.node");
+		const leafBaseline = path.join(leafPackageDir, "veyyon_natives.linux-x64-baseline.node");
+		const coreBaseline = path.join(nativeDir, "veyyon_natives.linux-x64-baseline.node");
 		expect(candidates).toContain(leafBaseline);
 		expect(candidates.indexOf(leafBaseline)).toBeLessThan(candidates.indexOf(coreBaseline));
 	});
 
 	it("keeps Windows staging ahead of leaf package and core nativeDir candidates", () => {
 		const versionedDir = "/home/u/.omp/natives/15.5.15";
-		const leafPackageDir = "/app/node_modules/@veyyon/pi-natives-win32-x64";
-		const nativeDir = "/app/node_modules/@veyyon/pi-natives/native";
+		const leafPackageDir = "/app/node_modules/@veyyon/natives-win32-x64";
+		const nativeDir = "/app/node_modules/@veyyon/natives/native";
 		const candidates = resolveLoaderCandidates({
 			addonFilenames: getAddonFilenames({ tag: "win32-x64", arch: "x64", variant: "baseline" }),
 			isCompiledBinary: false,
@@ -172,9 +172,9 @@ describe("issue 823: standalone-binary native loader path resolution", () => {
 			userDataDir: "/home/u/AppData/Local/omp",
 		});
 
-		const stagedBaseline = path.join(versionedDir, "pi_natives.win32-x64-baseline.node");
-		const leafBaseline = path.join(leafPackageDir, "pi_natives.win32-x64-baseline.node");
-		const coreBaseline = path.join(nativeDir, "pi_natives.win32-x64-baseline.node");
+		const stagedBaseline = path.join(versionedDir, "veyyon_natives.win32-x64-baseline.node");
+		const leafBaseline = path.join(leafPackageDir, "veyyon_natives.win32-x64-baseline.node");
+		const coreBaseline = path.join(nativeDir, "veyyon_natives.win32-x64-baseline.node");
 		expect(candidates.indexOf(stagedBaseline)).toBeLessThan(candidates.indexOf(leafBaseline));
 		expect(candidates.indexOf(leafBaseline)).toBeLessThan(candidates.indexOf(coreBaseline));
 	});
@@ -206,8 +206,8 @@ describe("issue 823: standalone-binary native loader path resolution", () => {
 
 			const modern = Buffer.from("modern native addon");
 			const baseline = Buffer.from("baseline native addon");
-			const modernFilename = "pi_natives.linux-x64-modern.node";
-			const baselineFilename = "pi_natives.linux-x64-baseline.node";
+			const modernFilename = "veyyon_natives.linux-x64-modern.node";
+			const baselineFilename = "veyyon_natives.linux-x64-baseline.node";
 			await Bun.write(
 				archivePath,
 				await new Bun.Archive(

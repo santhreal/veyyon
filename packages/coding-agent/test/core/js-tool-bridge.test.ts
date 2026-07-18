@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from "bun:test";
-import type { AgentTool, AgentToolResult } from "@veyyon/pi-agent-core";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { callSessionTool } from "@veyyon/pi-coding-agent/eval/js/tool-bridge";
-import type { ToolSession } from "@veyyon/pi-coding-agent/tools";
-import { INTENT_FIELD } from "@veyyon/pi-wire";
+import type { AgentTool, AgentToolResult } from "@veyyon/agent-core";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import { callSessionTool } from "@veyyon/coding-agent/eval/js/tool-bridge";
+import type { ToolSession } from "@veyyon/coding-agent/tools";
+import { INTENT_FIELD } from "@veyyon/wire";
 import { type } from "arktype";
 
 function createTool(

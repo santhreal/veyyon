@@ -1,12 +1,12 @@
 import { beforeAll, describe, expect, type Mock, test, vi } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
-import type { Model } from "@veyyon/pi-ai";
-import { buildModel } from "@veyyon/pi-catalog/build";
-import type { ModelRegistry } from "@veyyon/pi-coding-agent/config/model-registry";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { ModelPickerComponent, type ModelPickerOptions } from "@veyyon/pi-coding-agent/modes/components/model-picker";
-import { getThemeByName, setThemeInstance } from "@veyyon/pi-coding-agent/modes/theme/theme";
-import type { TUI } from "@veyyon/pi-tui";
+import type { Model } from "@veyyon/ai";
+import { buildModel } from "@veyyon/catalog/build";
+import type { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import { ModelPickerComponent, type ModelPickerOptions } from "@veyyon/coding-agent/modes/components/model-picker";
+import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
+import type { TUI } from "@veyyon/tui";
 
 function normalize(lines: readonly string[]): string {
 	return stripVTControlCharacters(lines.join("\n")).replace(/\s+/g, " ").trim();

@@ -1,8 +1,8 @@
 import { describe, expect, it } from "bun:test";
-import { encodeResponse, encodeStream, parseRequest } from "@veyyon/pi-ai/providers/anthropic-messages-server";
-import type { AssistantMessage, AssistantMessageEvent, ToolResultMessage } from "@veyyon/pi-ai/types";
-import { AssistantMessageEventStream } from "@veyyon/pi-ai/utils/event-stream";
-import { Effort } from "@veyyon/pi-catalog/effort";
+import { encodeResponse, encodeStream, parseRequest } from "@veyyon/ai/providers/anthropic-messages-server";
+import type { AssistantMessage, AssistantMessageEvent, ToolResultMessage } from "@veyyon/ai/types";
+import { AssistantMessageEventStream } from "@veyyon/ai/utils/event-stream";
+import { Effort } from "@veyyon/catalog/effort";
 
 function emptyUsage(): AssistantMessage["usage"] {
 	return {

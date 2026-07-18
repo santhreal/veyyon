@@ -1,7 +1,7 @@
-import { tryParseJson } from "@veyyon/pi-utils";
+import { tryParseJson } from "@veyyon/utils";
 import { formatBytes } from "../../tools/render-utils";
-import type { RenderResult, SpecialHandler } from "./types";
-import { buildResult, formatIsoDate, formatNumber, loadPage } from "./types";
+import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
+import { buildResult, formatIsoDate, formatNumber, loadFailure, loadPage, scraperDegrade, tryParseUrl } from "./types";
 
 interface DockerHubRepo {
 	name: string;
@@ -38,9 +38,10 @@ export const handleDockerHub: SpecialHandler = async (
 	url: string,
 	timeout: number,
 	signal?: AbortSignal,
-): Promise<RenderResult | null> => {
+): Promise<RenderResult | ScraperDegrade | null> => {
 	try {
-		const parsed = new URL(url);
+		const parsed = tryParseUrl(url);
+		if (!parsed) return null;
 		if (!parsed.hostname.includes("hub.docker.com")) return null;
 
 		let namespace: string;
@@ -70,10 +71,10 @@ export const handleDockerHub: SpecialHandler = async (
 			loadPage(tagsUrl, { timeout: Math.min(timeout, 10), headers: { Accept: "application/json" }, signal }),
 		]);
 
-		if (!repoResult.ok) return null;
+		if (!repoResult.ok) return scraperDegrade("dockerhub", loadFailure(repoResult));
 
 		const repo = tryParseJson<DockerHubRepo>(repoResult.content);
-		if (!repo) return null;
+		if (!repo) return scraperDegrade("dockerhub", "unexpected response shape");
 
 		// Parse tags
 		let tags: DockerHubTag[] = [];
@@ -132,7 +133,7 @@ export const handleDockerHub: SpecialHandler = async (
 		}
 
 		return buildResult(md, { url, method: "dockerhub", fetchedAt, notes: ["Fetched via Docker Hub API"] });
-	} catch {}
-
-	return null;
+	} catch (error) {
+		return scraperDegrade("dockerhub", error);
+	}
 };

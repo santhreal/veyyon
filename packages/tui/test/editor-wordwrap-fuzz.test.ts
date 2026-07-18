@@ -13,8 +13,8 @@
  * Deterministic LCG so a failing (line, width) pair reproduces from the seed.
  */
 import { describe, expect, it } from "bun:test";
-import { wordWrapLine } from "@veyyon/pi-tui/components/editor";
-import { getSegmenter, visibleWidth } from "@veyyon/pi-tui/utils";
+import { wordWrapLine } from "@veyyon/tui/components/editor";
+import { getSegmenter, visibleWidth } from "@veyyon/tui/utils";
 import { buildString, lcg } from "./helpers/adversarial-strings";
 
 const WIDTHS = [0, 1, 2, 3, 5, 8, 20, -1, Number.NaN, Number.POSITIVE_INFINITY];

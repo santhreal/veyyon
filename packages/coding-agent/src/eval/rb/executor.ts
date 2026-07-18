@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-import { getProjectDir, logger } from "@veyyon/pi-utils";
+import { errorMessage, getProjectDir, logger } from "@veyyon/utils";
 import type { ToolSession } from "../../tools";
 import {
 	attachSessionOwner,
@@ -60,7 +60,7 @@ export interface RubyExecutorOptions {
 	/**
 	 * On-disk roots the prelude helpers substitute for internal-URL schemes
 	 * (e.g. `{ local: "/…/artifacts/local" }`). Exported to the kernel as
-	 * `PI_EVAL_LOCAL_ROOTS` (JSON).
+	 * `VEYYON_EVAL_LOCAL_ROOTS` (JSON).
 	 */
 	localRoots?: Record<string, string>;
 	/**
@@ -400,7 +400,7 @@ async function ensureToolBridge(options: RubyExecutorOptions): Promise<void> {
 		options.bridge = await ensurePyToolBridge();
 	} catch (err) {
 		logger.warn("Failed to start Ruby tool bridge", {
-			error: err instanceof Error ? err.message : String(err),
+			error: errorMessage(err),
 		});
 	}
 }

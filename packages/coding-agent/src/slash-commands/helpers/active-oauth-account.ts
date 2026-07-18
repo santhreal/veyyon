@@ -1,4 +1,4 @@
-import type { UsageLimit, UsageReport } from "@veyyon/pi-ai";
+import type { UsageLimit, UsageReport } from "@veyyon/ai";
 import type { OAuthAccountIdentity } from "../../session/auth-storage";
 
 function normalizeIdentityValue(value: unknown): string | undefined {

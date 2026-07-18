@@ -1,7 +1,8 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { $which, APP_NAME, getToolsDir, logger, ptree, TempDir } from "@veyyon/pi-utils";
+import { $which, APP_NAME, getToolsDir, logger, ptree, TempDir } from "@veyyon/utils";
+import { scopedTimeoutSignal } from "./fetch-timeout";
 import { extractArchive } from "./zip";
 
 const TOOLS_DIR = getToolsDir();
@@ -189,30 +190,38 @@ export function getToolPath(tool: ToolName): string | null {
 
 // Fetch latest release version from GitHub
 async function getLatestVersion(repo: string, signal?: AbortSignal): Promise<string> {
-	let response: Response;
+	// Scoped so the deadline timer is cleared on settle instead of staying
+	// armed like a bare AbortSignal.timeout; the fence spans the body read.
+	const requestTimeout = scopedTimeoutSignal(TOOL_METADATA_TIMEOUT_MS, signal);
 	try {
-		response = await fetch(`https://api.github.com/repos/${repo}/releases/latest`, {
-			headers: { "User-Agent": `${APP_NAME}-coding-agent` },
-			signal: ptree.combineSignals(signal, TOOL_METADATA_TIMEOUT_MS),
-		});
-	} catch (err) {
-		if (err instanceof Error && err.name === "AbortError") {
-			throw new Error("GitHub API request timed out");
+		let response: Response;
+		try {
+			response = await fetch(`https://api.github.com/repos/${repo}/releases/latest`, {
+				headers: { "User-Agent": `${APP_NAME}-coding-agent` },
+				signal: requestTimeout.signal,
+			});
+		} catch (err) {
+			if (err instanceof Error && err.name === "AbortError") {
+				throw new Error("GitHub API request timed out");
+			}
+			throw err;
 		}
-		throw err;
-	}
 
-	if (!response.ok) {
-		throw new Error(`GitHub API error: ${response.status}`);
-	}
+		if (!response.ok) {
+			throw new Error(`GitHub API error: ${response.status}`);
+		}
 
-	const data = (await response.json()) as { tag_name: string };
-	return data.tag_name.replace(/^v/, "");
+		const data = (await response.json()) as { tag_name: string };
+		return data.tag_name.replace(/^v/, "");
+	} finally {
+		requestTimeout.cancel();
+	}
 }
 
 /** Download a tool asset without handing the streaming Response to Bun.write. */
 export async function downloadFile(url: string, dest: string, signal?: AbortSignal): Promise<void> {
-	const downloadSignal = ptree.combineSignals(signal, TOOL_DOWNLOAD_TIMEOUT_MS);
+	const downloadTimeout = scopedTimeoutSignal(TOOL_DOWNLOAD_TIMEOUT_MS, signal);
+	const downloadSignal = downloadTimeout.signal;
 	let response: Response;
 	try {
 		response = await fetch(url, {
@@ -229,6 +238,8 @@ export async function downloadFile(url: string, dest: string, signal?: AbortSign
 			throw new Error(`Download timed out: ${url}`);
 		}
 		throw err;
+	} finally {
+		downloadTimeout.cancel();
 	}
 }
 
@@ -270,7 +281,7 @@ async function downloadTool(tool: ToolName, signal?: AbortSignal): Promise<strin
 	await downloadFile(downloadUrl, archivePath, signal);
 
 	// Extract
-	const tmp = await TempDir.create("@omp-tools-extract-");
+	const tmp = await TempDir.create("@veyyon-tools-extract-");
 
 	try {
 		if (!assetName.endsWith(".tar.gz") && !assetName.endsWith(".zip")) {

@@ -1,5 +1,5 @@
 import * as path from "node:path";
-import { CONFIG_DIR_NAME, prompt } from "@veyyon/pi-utils";
+import { CONFIG_DIR_NAME, errorMessage, prompt } from "@veyyon/utils";
 import type { Rule } from "../../capability/rule";
 import omfgUserPrompt from "../../prompts/system/omfg-user.md" with { type: "text" };
 import { shortenPath } from "../../tools/render-utils";
@@ -124,7 +124,7 @@ export class OmfgController {
 				request.component.markAborted();
 				return;
 			}
-			request.component.markError(error instanceof Error ? error.message : String(error));
+			request.component.markError(errorMessage(error));
 		}
 	}
 

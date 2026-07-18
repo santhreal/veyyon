@@ -1,6 +1,6 @@
 import * as fs from "node:fs/promises";
-import type { ImageContent, Model } from "@veyyon/pi-ai";
-import { formatBytes, readImageMetadata, SUPPORTED_IMAGE_MIME_TYPES } from "@veyyon/pi-utils";
+import type { ImageContent, Model } from "@veyyon/ai";
+import { formatBytes, readImageMetadata, SUPPORTED_IMAGE_MIME_TYPES } from "@veyyon/utils";
 import { resolveReadPath } from "../tools/path-utils";
 import { formatDimensionNote, type ImageResizeOptions, resizeImage } from "./image-resize";
 
@@ -11,7 +11,7 @@ export const SUPPORTED_INPUT_IMAGE_MIME_TYPES = SUPPORTED_IMAGE_MIME_TYPES;
  * Ollama and its local-backend family decode image input through llama.cpp /
  * `stb_image`, which is compiled without WebP support, so a WebP upload fails
  * with an opaque HTTP 400. Detect those models so the resize pipeline encodes
- * to PNG/JPEG instead — the automatic equivalent of `OMP_NO_WEBP=1`.
+ * to PNG/JPEG instead — the automatic equivalent of `VEYYON_NO_WEBP=1`.
  */
 export function modelLacksWebpSupport(
 	model: Pick<Model, "provider" | "api" | "imageInputDecoder"> | undefined,
@@ -30,7 +30,7 @@ export function modelLacksWebpSupport(
 
 /**
  * `true` when `model` cannot decode WebP, otherwise `undefined` so the
- * `OMP_NO_WEBP` env fallback in {@link resizeImage} still applies. Feed straight
+ * `VEYYON_NO_WEBP` env fallback in {@link resizeImage} still applies. Feed straight
  * into {@link ImageResizeOptions.excludeWebP}.
  */
 export function webpExclusionForModel(model: Pick<Model, "provider" | "api"> | undefined): true | undefined {
@@ -44,7 +44,7 @@ export interface LoadImageInputOptions {
 	maxBytes?: number;
 	resolvedPath?: string;
 	detectedMimeType?: string;
-	/** Force non-WebP output (e.g. for Ollama). Leave unset to honor `OMP_NO_WEBP`. */
+	/** Force non-WebP output (e.g. for Ollama). Leave unset to honor `VEYYON_NO_WEBP`. */
 	excludeWebP?: boolean;
 }
 
@@ -55,7 +55,7 @@ export interface LoadImageAttachmentInputOptions {
 	uri: string;
 	autoResize: boolean;
 	maxBytes?: number;
-	/** Force non-WebP output (e.g. for Ollama). Leave unset to honor `OMP_NO_WEBP`. */
+	/** Force non-WebP output (e.g. for Ollama). Leave unset to honor `VEYYON_NO_WEBP`. */
 	excludeWebP?: boolean;
 }
 

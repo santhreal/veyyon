@@ -3,13 +3,17 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Model choice without lock-in - The Veyyon Harness Handbook</title>
+        <title>Model and provider selection - The Veyyon Harness Handbook</title>
 
 
         <!-- Custom HTML head -->
         <!-- Veyyon handbook: self-contained head additions. No remote resources. -->
         <meta name="theme-color" content="#050505">
         <meta name="color-scheme" content="dark">
+        <!-- Site favicons live at the deployed root, one level above /docs/. -->
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+        <link rel="icon" href="/favicon.ico" sizes="48x48">
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png">
         <style>
           /* Paint the near-black surface before CSS/JS resolve the theme, so there is
              no light flash on load. Kept in sync with theme/veyyon.css. */
@@ -18,7 +22,7 @@
           *, *::before, *::after { box-sizing: border-box; }
         </style>
 
-        <meta name="description" content="How Veyyon turns open models into frontier coding agents. The product, the harness, tool-call repair, the edit format, per-model adaptation, and how to use it.">
+        <meta name="description" content="Operator handbook for the Veyyon terminal coding agent: install, configuration, tools, approvals, edit formats, providers, and harness structure.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -38,7 +42,7 @@
         <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="../ayu-highlight-3fdfc3ac.css">
 
         <!-- Custom theme stylesheets -->
-        <link rel="stylesheet" href="../theme/veyyon-fc839a17.css">
+        <link rel="stylesheet" href="../theme/veyyon-06f6939e.css">
 
 
         <!-- Provide site root and default themes to javascript -->
@@ -46,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-e76f06ca.js";
+            window.path_to_searchindex_js = "../searchindex-a2447057.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-9cfd259b.js"></script>
+        <script src="../toc-cc1a72e9.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -191,29 +195,21 @@
 
                 <div id="mdbook-content" class="content">
                     <main>
-                        <h1 id="model-choice-without-lock-in"><a class="header" href="#model-choice-without-lock-in">Model choice without lock-in</a></h1>
-<p>Veyyon’s terminal engine is provider and API agnostic. You can point it at a local server, a direct
-provider API, or a compatible gateway. In every path, the harness adapts to the selected API and model
-instead of forcing every model through one generic shape.</p>
-<h2 id="what-improves"><a class="header" href="#what-improves">What improves</a></h2>
+                        <h1 id="model-and-provider-selection"><a class="header" href="#model-and-provider-selection">Model and provider selection</a></h1>
+<p>The agent loop is provider-neutral. Point it at a local server, a direct provider API, or a compatible gateway. The harness selects wire format, prompts, and tool exposure from the model catalog and settings.</p>
+<h2 id="behavior"><a class="header" href="#behavior">Behavior</a></h2>
 <ul>
-<li>Provider details live in a data catalog, not scattered through code.</li>
-<li>Each backend gets the wire API and edit form it can actually carry.</li>
-<li>Per-model prompt order and tool exposure are assembled from the catalog.</li>
-<li>You can pin a specific model when you want explicit control.</li>
-<li>Provider-agnostic improvements such as tool repair, path repair, edit verification, goal/context handling,
-prompt profiles, and output bounds work with any compatible API you choose.</li>
+<li>Provider and model metadata live in the catalog, not hard-coded per call site</li>
+<li>Per-model prompt section order and tool allowlists can be set via harness profiles</li>
+<li>Explicit pin: <code>/model</code>, <code>--model</code>, and <code>config.yml</code></li>
+<li>Tool repair, edit verification, goal/context handling, and output bounds apply regardless of vendor</li>
 </ul>
-<h2 id="why-it-matters"><a class="header" href="#why-it-matters">Why it matters</a></h2>
-<p>Open models are not interchangeable. A model that is strong at one language or patch shape can be weak at
-another. A generic harness hides those differences and pays for them in retries. Veyyon makes the
-differences explicit and uses them.</p>
-<h2 id="where-the-details-live"><a class="header" href="#where-the-details-live">Where the details live</a></h2>
+<h2 id="details"><a class="header" href="#details">Details</a></h2>
 <ul>
-<li><a href="../using/models.html">Models and providers</a> explains the user-facing model choice.</li>
-<li><a href="../models/providers.html">Providers</a> explains model and provider configuration.</li>
-<li><a href="../models/prompts.html">Execution-order prompts</a> explains the prompt shape.</li>
-<li><a href="../repair/per-model.html">Per-model posture</a> explains per-model repair posture via harness profiles (bounded repair telemetry is spec, not shipped).</li>
+<li><a href="../using/models.html">Models and providers</a></li>
+<li><a href="../models/providers.html">Providers</a></li>
+<li><a href="../models/prompts.html">Execution-order prompts</a></li>
+<li><a href="../repair/per-model.html">Per-model repair posture</a></li>
 </ul>
 
                     </main>
@@ -224,7 +220,7 @@ differences explicit and uses them.</p>
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                             </a>
 
-                            <a rel="next prefetch" href="../benefits/safety-honesty.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../benefits/safety-errors.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                             </a>
 
@@ -238,7 +234,7 @@ differences explicit and uses them.</p>
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                     </a>
 
-                    <a rel="next prefetch" href="../benefits/safety-honesty.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../benefits/safety-errors.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                     </a>
             </nav>

@@ -1,17 +1,17 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
 import { scheduler } from "node:timers/promises";
-import { Agent, type AgentMessage, type AgentTool } from "@veyyon/pi-agent-core";
-import { z } from "@veyyon/pi-ai";
-import { createMockModel, type MockModel, type MockResponse } from "@veyyon/pi-ai/providers/mock";
-import { AutoLearnController } from "@veyyon/pi-coding-agent/autolearn/controller";
-import { ModelRegistry } from "@veyyon/pi-coding-agent/config/model-registry";
-import { type SettingPath, Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { AgentSession, type AgentSessionEvent } from "@veyyon/pi-coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/pi-coding-agent/session/auth-storage";
-import { convertToLlm } from "@veyyon/pi-coding-agent/session/messages";
-import { SessionManager } from "@veyyon/pi-coding-agent/session/session-manager";
-import { TempDir } from "@veyyon/pi-utils";
+import { Agent, type AgentMessage, type AgentTool } from "@veyyon/agent-core";
+import { z } from "@veyyon/ai";
+import { createMockModel, type MockModel, type MockResponse } from "@veyyon/ai/providers/mock";
+import { AutoLearnController } from "@veyyon/coding-agent/autolearn/controller";
+import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
+import { type SettingPath, Settings } from "@veyyon/coding-agent/config/settings";
+import { AgentSession, type AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session";
+import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
+import { convertToLlm } from "@veyyon/coding-agent/session/messages";
+import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { TempDir } from "@veyyon/utils";
 
 const recordToolSchema = z.object({ value: z.string() });
 

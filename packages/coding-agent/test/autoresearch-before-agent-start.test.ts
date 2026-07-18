@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
-import { createAutoresearchExtension } from "@veyyon/pi-coding-agent/autoresearch";
-import { closeAllAutoresearchStorages } from "@veyyon/pi-coding-agent/autoresearch/storage";
+import { createAutoresearchExtension } from "@veyyon/coding-agent/autoresearch";
+import { closeAllAutoresearchStorages } from "@veyyon/coding-agent/autoresearch/storage";
 import type {
 	BeforeAgentStartEvent,
 	BeforeAgentStartEventResult,
@@ -8,9 +8,9 @@ import type {
 	ExtensionContext,
 	ExtensionHandler,
 	SessionStartEvent,
-} from "@veyyon/pi-coding-agent/extensibility/extensions";
-import * as git from "@veyyon/pi-coding-agent/utils/git";
-import { TempDir } from "@veyyon/pi-utils";
+} from "@veyyon/coding-agent/extensibility/extensions";
+import * as git from "@veyyon/coding-agent/utils/git";
+import { TempDir } from "@veyyon/utils";
 
 // Reproduces issue #3665: when the upstream system prompt resolution leaves
 // `event.systemPrompt` unset, the autoresearch handler must still render its
@@ -71,14 +71,14 @@ describe("autoresearch before_agent_start handler", () => {
 
 	beforeEach(() => {
 		dbDir = TempDir.createSync("@pi-autoresearch-bas-test-");
-		process.env.OMP_AUTORESEARCH_DB_DIR = dbDir.path();
+		process.env.VEYYON_AUTORESEARCH_DB_DIR = dbDir.path();
 		cwdDir = TempDir.createSync("@pi-autoresearch-bas-cwd-");
 		vi.spyOn(git.branch, "current").mockResolvedValue("autoresearch/test");
 		vi.spyOn(git.repo, "root").mockResolvedValue(cwdDir.path());
 	});
 
 	afterEach(() => {
-		delete process.env.OMP_AUTORESEARCH_DB_DIR;
+		delete process.env.VEYYON_AUTORESEARCH_DB_DIR;
 		closeAllAutoresearchStorages();
 		cwdDir.removeSync();
 		dbDir.removeSync();

@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
-import { matchesKey } from "@veyyon/pi-tui/keys";
-import { ProcessTerminal } from "@veyyon/pi-tui/terminal";
-import { type Component, TUI } from "@veyyon/pi-tui/tui";
+import { matchesKey } from "@veyyon/tui/keys";
+import { ProcessTerminal } from "@veyyon/tui/terminal";
+import { type Component, TUI } from "@veyyon/tui/tui";
 
 /**
  * Simple key code logger component

@@ -4,22 +4,15 @@
  * Extends the base AgentMessage type with coding-agent specific message types,
  * and provides a transformer to convert them to LLM-compatible messages.
  */
-import type { AgentMessage } from "@veyyon/pi-agent-core";
+import type { AgentMessage } from "@veyyon/agent-core";
 import {
 	type BranchSummaryMessage,
 	type CompactionSummaryMessage,
 	convertMessageToLlm,
-} from "@veyyon/pi-agent-core/compaction/messages";
-import type {
-	AssistantMessage,
-	ImageContent,
-	Message,
-	MessageAttribution,
-	TextContent,
-	UserMessage,
-} from "@veyyon/pi-ai";
-import * as AIError from "@veyyon/pi-ai/error";
-import { prompt } from "@veyyon/pi-utils";
+} from "@veyyon/agent-core/compaction/messages";
+import type { AssistantMessage, ImageContent, Message, MessageAttribution, TextContent, UserMessage } from "@veyyon/ai";
+import * as AIError from "@veyyon/ai/error";
+import { prompt } from "@veyyon/utils";
 import userInterjectionTemplate from "../prompts/steering/user-interjection.md" with { type: "text" };
 
 export {
@@ -28,7 +21,7 @@ export {
 	createBranchSummaryMessage,
 	createCompactionSummaryMessage,
 	createCustomMessage,
-} from "@veyyon/pi-agent-core/compaction/messages";
+} from "@veyyon/agent-core/compaction/messages";
 
 import type { OutputMeta } from "../tools/output-meta";
 import { formatOutputNotice } from "../tools/output-meta";
@@ -638,7 +631,7 @@ export interface FileMentionMessage {
 
 // Extend CustomAgentMessages via declaration merging
 // Legacy hookMessage is kept for migration; new code should use custom.
-declare module "@veyyon/pi-agent-core" {
+declare module "@veyyon/agent-core" {
 	interface CustomAgentMessages {
 		bashExecution: BashExecutionMessage;
 		pythonExecution: PythonExecutionMessage;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { resolveSubscriptionPostAction } from "@veyyon/pi-coding-agent/mcp/manager";
+import { resolveSubscriptionPostAction } from "@veyyon/coding-agent/mcp/manager";
 
 describe("resolveSubscriptionPostAction", () => {
 	it("returns rollback when notifications are disabled", () => {

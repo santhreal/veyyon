@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
-import { complete, stream } from "@veyyon/pi-ai/stream";
-import type { Api, Context, Model, OptionsForApi } from "@veyyon/pi-ai/types";
-import { getBundledModel } from "@veyyon/pi-catalog/models";
+import { complete, stream } from "@veyyon/ai/stream";
+import type { Api, Context, Model, OptionsForApi } from "@veyyon/ai/types";
+import { getBundledModel } from "@veyyon/catalog/models";
 import { e2eApiKey, resolveApiKey } from "./oauth";
 
 // Resolve OAuth tokens at module level (async, runs before tests)

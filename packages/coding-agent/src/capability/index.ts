@@ -8,7 +8,7 @@
  */
 import * as os from "node:os";
 import * as path from "node:path";
-import { getProjectDir, logger } from "@veyyon/pi-utils";
+import { getProjectDir, logger } from "@veyyon/utils";
 
 import type { Settings } from "../config/settings";
 import { clearCache as clearFsCache, findRepoRoot, cacheStats as fsCacheStats, invalidate as invalidateFs } from "./fs";
@@ -45,7 +45,7 @@ const disabledProviders = new Set<string>();
  * another tool's conventions on disk. These are gated behind
  * `discovery.importForeignConfig` (default ON: global CLAUDE.md and external
  * skills load as the machine-wide base layer; the user can opt out to run on
- * veyyon-native config only). veyyon's own providers (native, omp-plugins,
+ * veyyon-native config only). veyyon's own providers (native, veyyon-plugins,
  * builtin, project/user commands, ssh/mcp standards) are never gated by this.
  */
 export const FOREIGN_PROVIDER_IDS: ReadonlySet<string> = new Set([
@@ -289,7 +289,7 @@ export async function loadCapability<T>(capabilityId: string, options: LoadOptio
  */
 export function initializeWithSettings(activeSettings: Settings): void {
 	settings = activeSettings;
-	// Load disabled providers from settings
+	// Load disabled providers from settings.
 	const disabled = settings.get("disabledProviders");
 	disabledProviders.clear();
 	for (const id of disabled) {

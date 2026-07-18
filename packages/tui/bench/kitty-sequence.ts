@@ -1,4 +1,4 @@
-import { matchesKittySequence as nativeMatchesKittySequence } from "@veyyon/pi-natives";
+import { matchesKittySequence as nativeMatchesKittySequence } from "@veyyon/natives";
 import { parseKittySequence } from "../src/keys";
 
 const ITERATIONS = 2000;

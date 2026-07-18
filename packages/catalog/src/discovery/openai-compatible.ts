@@ -1,3 +1,4 @@
+import { trimTrailingSlashes } from "@veyyon/utils";
 import { type } from "arktype";
 import type { Api, FetchImpl, ModelSpec, Provider } from "../types";
 import { discoveryFetch } from "../utils";
@@ -217,7 +218,7 @@ function normalizeBaseUrl(baseUrl: string): string {
 	if (!trimmed) {
 		return "";
 	}
-	return trimmed.endsWith("/") ? trimmed.slice(0, -1) : trimmed;
+	return trimTrailingSlashes(trimmed);
 }
 
 function extractModelEntries(payload: unknown): ParsedOpenAICompatibleModelRecord[] | null {

@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, type Mock, spyOn } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { loadExtensions } from "@veyyon/pi-coding-agent/extensibility/extensions/loader";
-import { loadLegacyPiModule } from "@veyyon/pi-coding-agent/extensibility/plugins/legacy-pi-compat";
-import { TempDir } from "@veyyon/pi-utils";
+import { loadExtensions } from "@veyyon/coding-agent/extensibility/extensions/loader";
+import { loadLegacyPiModule } from "@veyyon/coding-agent/extensibility/plugins/legacy-pi-compat";
+import { TempDir } from "@veyyon/utils";
 import type { BunFile } from "bun";
 
 describe("Extension Loader Graph Read Dedup", () => {

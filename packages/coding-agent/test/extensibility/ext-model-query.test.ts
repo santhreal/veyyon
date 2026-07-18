@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import type { Api, Model } from "@veyyon/pi-ai";
-import { buildModel } from "@veyyon/pi-catalog/build";
-import type { ModelRegistry } from "@veyyon/pi-coding-agent/config/model-registry";
-import type { Settings } from "@veyyon/pi-coding-agent/config/settings";
+import type { Api, Model } from "@veyyon/ai";
+import { buildModel } from "@veyyon/catalog/build";
+import type { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
+import type { Settings } from "@veyyon/coding-agent/config/settings";
 import { createExtensionModelQuery } from "../../src/extensibility/extensions/model-api";
 
 function model(id: string, name: string, provider: string): Model<"anthropic-messages"> {

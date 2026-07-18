@@ -1,5 +1,5 @@
 import type { DeviceType } from "@huggingface/transformers";
-import { $env } from "@veyyon/pi-utils";
+import { $env } from "@veyyon/utils";
 
 export type TinyModelDevice = DeviceType;
 
@@ -42,7 +42,7 @@ export function normalizeTinyModelDevice(value: string | undefined): TinyModelDe
 }
 
 export function resolveTinyModelDevicePreference(
-	value: string | undefined = $env.VEYYON_TINY_DEVICE ?? $env.PI_TINY_DEVICE,
+	value: string | undefined = $env.VEYYON_TINY_DEVICE,
 ): TinyModelDevicePreference {
 	return {
 		device: normalizeTinyModelDevice(value) ?? CPU_DEVICE,

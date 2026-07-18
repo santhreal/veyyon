@@ -1,20 +1,20 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
-import { AgentBusyError, type AgentTelemetryConfig, type Tracer } from "@veyyon/pi-agent-core";
-import { type AssistantMessage, Effort } from "@veyyon/pi-ai";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
-import type { ExtensionActions, LoadExtensionsResult } from "@veyyon/pi-coding-agent/extensibility/extensions/types";
-import type { CreateAgentSessionResult } from "@veyyon/pi-coding-agent/sdk";
-import * as sdkModule from "@veyyon/pi-coding-agent/sdk";
-import type { AgentSession, AgentSessionEvent, PromptOptions } from "@veyyon/pi-coding-agent/session/agent-session";
-import type { AuthStorage } from "@veyyon/pi-coding-agent/session/auth-storage";
+import { AgentBusyError, type AgentTelemetryConfig, type Tracer } from "@veyyon/agent-core";
+import { type AssistantMessage, Effort } from "@veyyon/ai";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import type { ExtensionActions, LoadExtensionsResult } from "@veyyon/coding-agent/extensibility/extensions/types";
+import type { CreateAgentSessionResult } from "@veyyon/coding-agent/sdk";
+import * as sdkModule from "@veyyon/coding-agent/sdk";
+import type { AgentSession, AgentSessionEvent, PromptOptions } from "@veyyon/coding-agent/session/agent-session";
+import type { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import {
 	finalizeSubprocessOutput,
 	runSubprocess,
 	SUBAGENT_WARNING_MISSING_YIELD,
-} from "@veyyon/pi-coding-agent/task/executor";
-import type { AgentDefinition } from "@veyyon/pi-coding-agent/task/types";
-import { EventBus } from "@veyyon/pi-coding-agent/utils/event-bus";
-import { logger } from "@veyyon/pi-utils";
+} from "@veyyon/coding-agent/task/executor";
+import type { AgentDefinition } from "@veyyon/coding-agent/task/types";
+import { EventBus } from "@veyyon/coding-agent/utils/event-bus";
+import { logger } from "@veyyon/utils";
 
 function createAssistantStopMessage(text: string): AssistantMessage {
 	return {
@@ -117,7 +117,7 @@ describe("runSubprocess yield reminders", () => {
 		settings: Settings.isolated(),
 		modelRegistry: {
 			refresh: async () => {},
-		} as unknown as import("@veyyon/pi-coding-agent/config/model-registry").ModelRegistry,
+		} as unknown as import("@veyyon/coding-agent/config/model-registry").ModelRegistry,
 		enableLsp: false,
 	};
 
@@ -192,7 +192,7 @@ describe("runSubprocess yield reminders", () => {
 		const createAgentSessionSpy = mockCreateAgentSession(session);
 		const modelRegistry = {
 			refresh: async () => {},
-		} as unknown as import("@veyyon/pi-coding-agent/config/model-registry").ModelRegistry;
+		} as unknown as import("@veyyon/coding-agent/config/model-registry").ModelRegistry;
 		const refreshSpy = vi.spyOn(modelRegistry, "refresh");
 
 		await runSubprocess({ ...baseOptions, id: "subagent-skip-refresh", modelRegistry });
@@ -452,7 +452,7 @@ describe("runSubprocess yield reminders", () => {
 		const modelRegistry = {
 			refresh: async () => {},
 			getAvailable: () => [{ provider: "openai", id: "gpt-4o", name: "GPT-4o" }],
-		} as unknown as import("@veyyon/pi-coding-agent/config/model-registry").ModelRegistry;
+		} as unknown as import("@veyyon/coding-agent/config/model-registry").ModelRegistry;
 
 		await runSubprocess({
 			...baseOptions,
@@ -575,7 +575,7 @@ describe("runSubprocess yield reminders", () => {
 		const modelRegistry = {
 			authStorage: fakeAuthStorage,
 			refresh: async () => {},
-		} as unknown as import("@veyyon/pi-coding-agent/config/model-registry").ModelRegistry;
+		} as unknown as import("@veyyon/coding-agent/config/model-registry").ModelRegistry;
 
 		await runSubprocess({ ...baseOptions, id: "subagent-registry-only", modelRegistry });
 
@@ -591,7 +591,7 @@ describe("runSubprocess yield reminders", () => {
 		const modelRegistry = {
 			authStorage: registryStorage,
 			refresh: async () => {},
-		} as unknown as import("@veyyon/pi-coding-agent/config/model-registry").ModelRegistry;
+		} as unknown as import("@veyyon/coding-agent/config/model-registry").ModelRegistry;
 
 		const result = await runSubprocess({
 			...baseOptions,
@@ -663,7 +663,7 @@ describe("runSubprocess telemetry propagation", () => {
 		settings: Settings.isolated(),
 		modelRegistry: {
 			refresh: async () => {},
-		} as unknown as import("@veyyon/pi-coding-agent/config/model-registry").ModelRegistry,
+		} as unknown as import("@veyyon/coding-agent/config/model-registry").ModelRegistry,
 		enableLsp: false,
 	};
 

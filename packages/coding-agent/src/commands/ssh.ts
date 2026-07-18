@@ -1,11 +1,9 @@
 /**
  * Manage SSH host configurations.
  */
-import { Args, Command, Flags } from "@veyyon/pi-utils/cli";
-import { runSSHCommand, type SSHAction, type SSHCommandArgs } from "../cli/ssh-cli";
+import { Args, Command, Flags } from "@veyyon/utils/cli";
+import { runSSHCommand, SSH_ACTIONS, type SSHAction, type SSHCommandArgs } from "../cli/ssh-cli";
 import { initTheme } from "../modes/theme/theme";
-
-const ACTIONS: SSHAction[] = ["add", "remove", "list"];
 
 export default class SSH extends Command {
 	static description = "Manage SSH host configurations";
@@ -14,7 +12,7 @@ export default class SSH extends Command {
 		action: Args.string({
 			description: "SSH action",
 			required: false,
-			options: ACTIONS,
+			options: SSH_ACTIONS,
 		}),
 		targets: Args.string({
 			description: "Host name or arguments",

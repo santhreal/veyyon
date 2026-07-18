@@ -4,7 +4,7 @@
  * Calls TinyFish's search API and maps results into the unified
  * SearchResponse shape used by the web search tool.
  */
-import { type ApiKey, type AuthStorage, type FetchImpl, getEnvApiKey, withAuth } from "@veyyon/pi-ai";
+import { type ApiKey, type AuthStorage, type FetchImpl, getEnvApiKey, withAuth } from "@veyyon/ai";
 import type { SearchResponse, SearchSource } from "../../../web/search/types";
 import { SearchProviderError } from "../../../web/search/types";
 import { clampNumResults } from "../utils";
@@ -68,27 +68,29 @@ async function callTinyFishSearch(apiKey: string, params: TinyFishSearchParams):
 		url.searchParams.set("page", String(params.page));
 	}
 
-	const response = await (params.fetch ?? fetch)(url, {
-		method: "GET",
-		headers: {
-			Accept: "application/json",
-			"X-API-Key": apiKey,
-		},
-		signal: withHardTimeout(params.signal),
+	return withHardTimeout(params.signal, async hardSignal => {
+		const response = await (params.fetch ?? fetch)(url, {
+			method: "GET",
+			headers: {
+				Accept: "application/json",
+				"X-API-Key": apiKey,
+			},
+			signal: hardSignal,
+		});
+
+		if (!response.ok) {
+			const errorText = await response.text();
+			const classified = classifyProviderHttpError("tinyfish", response.status, errorText);
+			if (classified) throw classified;
+			throw new SearchProviderError(
+				"tinyfish",
+				`TinyFish API error (${response.status}): ${errorText}`,
+				response.status,
+			);
+		}
+
+		return (await response.json()) as TinyFishSearchResponse;
 	});
-
-	if (!response.ok) {
-		const errorText = await response.text();
-		const classified = classifyProviderHttpError("tinyfish", response.status, errorText);
-		if (classified) throw classified;
-		throw new SearchProviderError(
-			"tinyfish",
-			`TinyFish API error (${response.status}): ${errorText}`,
-			response.status,
-		);
-	}
-
-	return (await response.json()) as TinyFishSearchResponse;
 }
 
 function appendTinyFishSources(sources: SearchSource[], results: readonly TinyFishSearchResult[]): void {

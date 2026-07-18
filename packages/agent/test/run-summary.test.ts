@@ -16,19 +16,19 @@ import type {
 	TimeInput,
 	Tracer,
 } from "@opentelemetry/api";
-import { agentLoop, agentLoopDetailed } from "@veyyon/pi-agent-core/agent-loop";
+import { agentLoop, agentLoopDetailed } from "@veyyon/agent-core/agent-loop";
 import {
 	type AgentRunSummary,
 	aggregateAgentRunCoverage,
 	aggregateAgentRunSummaries,
 	emptyAgentRunCoverage,
 	emptyAgentRunSummary,
-} from "@veyyon/pi-agent-core/run-collector";
-import { EXECUTE_TOOL_STATUS_ATTR, GenAIAttr, PiGenAIAggregateAttr } from "@veyyon/pi-agent-core/telemetry";
-import type { AgentEvent, AgentLoopConfig, AgentMessage, AgentTool } from "@veyyon/pi-agent-core/types";
-import type { AssistantMessage, Message } from "@veyyon/pi-ai";
-import { z } from "@veyyon/pi-ai";
-import { createMockModel } from "@veyyon/pi-ai/providers/mock";
+} from "@veyyon/agent-core/run-collector";
+import { EXECUTE_TOOL_STATUS_ATTR, GenAIAttr, PiGenAIAggregateAttr } from "@veyyon/agent-core/telemetry";
+import type { AgentEvent, AgentLoopConfig, AgentMessage, AgentTool } from "@veyyon/agent-core/types";
+import type { AssistantMessage, Message } from "@veyyon/ai";
+import { z } from "@veyyon/ai";
+import { createMockModel } from "@veyyon/ai/providers/mock";
 import { createUserMessage } from "./helpers";
 
 interface RecordedSpan {

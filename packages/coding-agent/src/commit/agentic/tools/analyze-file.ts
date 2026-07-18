@@ -1,4 +1,4 @@
-import { prompt } from "@veyyon/pi-utils";
+import { prompt } from "@veyyon/utils";
 import { type } from "arktype";
 import analyzeFilePrompt from "../../../commit/agentic/prompts/analyze-file.md" with { type: "text" };
 import type { CommitAgentState } from "../../../commit/agentic/state";

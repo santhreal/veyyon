@@ -12,8 +12,8 @@ import {
 	type TUI,
 	truncateToWidth,
 	visibleWidth,
-} from "@veyyon/pi-tui";
-import { sanitizeText } from "@veyyon/pi-utils";
+} from "@veyyon/tui";
+import { sanitizeText } from "@veyyon/utils";
 import { theme } from "../../modes/theme/theme";
 import type { TruncationMeta } from "../../tools/output-meta";
 import { getSixelLineMask, isSixelPassthroughEnabled, sanitizeWithOptionalSixelPassthrough } from "../../utils/sixel";

@@ -10,6 +10,10 @@
         <!-- Veyyon handbook: self-contained head additions. No remote resources. -->
         <meta name="theme-color" content="#050505">
         <meta name="color-scheme" content="dark">
+        <!-- Site favicons live at the deployed root, one level above /docs/. -->
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+        <link rel="icon" href="/favicon.ico" sizes="48x48">
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png">
         <style>
           /* Paint the near-black surface before CSS/JS resolve the theme, so there is
              no light flash on load. Kept in sync with theme/veyyon.css. */
@@ -18,7 +22,7 @@
           *, *::before, *::after { box-sizing: border-box; }
         </style>
 
-        <meta name="description" content="How Veyyon turns open models into frontier coding agents. The product, the harness, tool-call repair, the edit format, per-model adaptation, and how to use it.">
+        <meta name="description" content="Operator handbook for the Veyyon terminal coding agent: install, configuration, tools, approvals, edit formats, providers, and harness structure.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -38,7 +42,7 @@
         <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="../ayu-highlight-3fdfc3ac.css">
 
         <!-- Custom theme stylesheets -->
-        <link rel="stylesheet" href="../theme/veyyon-fc839a17.css">
+        <link rel="stylesheet" href="../theme/veyyon-06f6939e.css">
 
 
         <!-- Provide site root and default themes to javascript -->
@@ -46,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-e76f06ca.js";
+            window.path_to_searchindex_js = "../searchindex-a2447057.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-9cfd259b.js"></script>
+        <script src="../toc-cc1a72e9.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -192,41 +196,21 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="the-repair-cascade"><a class="header" href="#the-repair-cascade">The repair cascade</a></h1>
-<blockquote>
-<p><strong>Status: Mostly shipped — parse leniency, alias/typo rename, and strict unknown-key rejection all
-run at the tool-dispatch seam with a conformance suite. Per-model posture and telemetry remain
-Spec — not shipped.</strong></p>
-</blockquote>
-<h2 id="shipped-today"><a class="header" href="#shipped-today">Shipped today</a></h2>
-<p>Before argument validation, the agent loop runs argument repair
-(<code>packages/coding-agent/src/repair/schema-repair.ts</code>), in this order:</p>
+<p>Before argument validation, the agent loop runs <code>packages/coding-agent/src/repair/schema-repair.ts</code> in this order:</p>
 <ol>
 <li><strong>Parse leniency</strong> — trailing commas / relaxed JSON; stringified argument blobs.</li>
 <li><strong>Ambiguity guard</strong> — refuse when required string fields have multiple plausible donors.</li>
-<li><strong>Alias/typo key rename</strong> — unknown keys that match a common alias (<code>filepath</code>→<code>path</code>,
-<code>contents</code>→<code>content</code>) or a casing/separator typo of a declared property are renamed to the
-declared name; refuses rather than guesses when a rename would be ambiguous (two unknown keys
-alias to the same property, a single unknown key matches more than one declared property, or the
-alias target already has a value).</li>
-<li><strong>Strict unknown-key rejection</strong> — when the tool’s schema declares <code>additionalProperties: false</code>,
-any key left over after alias resolution is refused rather than silently dropped or passed
-through.</li>
+<li><strong>Alias / typo key rename</strong> — unknown keys that match a common alias (<code>filepath</code> → <code>path</code>, <code>contents</code> → <code>content</code>) or a casing/separator typo of a declared property are renamed to the declared name. Refuse when the rename would be ambiguous (two unknown keys map to the same property, one unknown key matches more than one declared property, or the alias target already has a value).</li>
+<li><strong>Strict unknown-key rejection</strong> — when the tool schema declares <code>additionalProperties: false</code>, any key left after alias resolution is refused rather than dropped or passed through.</li>
 <li><strong>Outcome</strong> — <code>clean</code>, <code>repaired</code> (canonical args + hints), or <code>unrepairable</code> (error tool result, no dispatch).</li>
 </ol>
-<p>Covered by the conformance suite in <code>packages/coding-agent/test/repair/schema-repair.test.ts</code>
-(alias renames, ambiguity refusals, strict-mode refusals, and a regression guard that strict
-rejection never fires on ArkType/Zod-authored tools whose wire schema synthesizes
-<code>additionalProperties: false</code> for closed-object emission, not as an authorial strictness opt-in).</p>
-<h2 id="spec--not-shipped"><a class="header" href="#spec--not-shipped">Spec — not shipped</a></h2>
-<ol>
-<li><strong>Per-tool shape tables</strong> — richer per-tool repair rules beyond the generic alias/strict rules above.</li>
-<li><strong>Per-model posture</strong> — strictness knobs aligned with <a href="../using/models.html#per-model-harness-profiles-mvp">Per-model harness profiles</a>.</li>
-<li><strong>Telemetry</strong> — per-<code>(model,tool,shape)</code> counters (<a href="./soundness.html">Soundness and telemetry</a>).</li>
-</ol>
-<p>The shipped TypeScript module at the single tool-dispatch seam
-(<code>packages/coding-agent/src/repair/schema-repair.ts</code>) is a TS module in <code>packages/coding-agent</code>, not
-a standalone Rust crate. Veyyon extends that capability incrementally at the same seam.</p>
-<p>See <a href="./overview.html">Why repair exists</a> and <a href="../edit/edit-repair.html">Repair on edits</a>.</p>
+<p>Conformance suite: <code>packages/coding-agent/test/repair/schema-repair.test.ts</code> (alias renames, ambiguity refusals, strict-mode refusals, and a guard that strict rejection does not fire on ArkType/Zod wire schemas that synthesize <code>additionalProperties: false</code> for closed-object emission rather than authorial strictness).</p>
+<p>Per-model enable/disable and tool allowlist hints: <a href="./per-model.html">Per-model posture</a>.</p>
+<h2 id="related"><a class="header" href="#related">Related</a></h2>
+<ul>
+<li><a href="./overview.html">Why repair exists</a></li>
+<li><a href="../edit/edit-repair.html">Repair on edits</a></li>
+</ul>
 
                     </main>
 

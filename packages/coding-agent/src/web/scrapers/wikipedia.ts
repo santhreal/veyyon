@@ -1,5 +1,5 @@
-import type { RenderResult, SpecialHandler } from "./types";
-import { buildResult, loadPage } from "./types";
+import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
+import { buildResult, loadPage, scraperDegrade, tryParseUrl } from "./types";
 
 /**
  * Handle Wikipedia URLs via Wikipedia API
@@ -8,9 +8,10 @@ export const handleWikipedia: SpecialHandler = async (
 	url: string,
 	timeout: number,
 	signal?: AbortSignal,
-): Promise<RenderResult | null> => {
+): Promise<RenderResult | ScraperDegrade | null> => {
 	try {
-		const parsed = new URL(url);
+		const parsed = tryParseUrl(url);
+		if (!parsed) return null;
 		// Match *.wikipedia.org
 		const wikiMatch = parsed.hostname.match(/^(\w+)\.wikipedia\.org$/);
 		if (!wikiMatch) return null;
@@ -78,7 +79,7 @@ export const handleWikipedia: SpecialHandler = async (
 		if (!md) return null;
 
 		return buildResult(md, { url, method: "wikipedia", fetchedAt, notes: ["Fetched via Wikipedia API"] });
-	} catch {}
-
-	return null;
+	} catch (error) {
+		return scraperDegrade("wikipedia", error);
+	}
 };

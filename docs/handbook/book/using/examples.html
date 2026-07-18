@@ -10,6 +10,10 @@
         <!-- Veyyon handbook: self-contained head additions. No remote resources. -->
         <meta name="theme-color" content="#050505">
         <meta name="color-scheme" content="dark">
+        <!-- Site favicons live at the deployed root, one level above /docs/. -->
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+        <link rel="icon" href="/favicon.ico" sizes="48x48">
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png">
         <style>
           /* Paint the near-black surface before CSS/JS resolve the theme, so there is
              no light flash on load. Kept in sync with theme/veyyon.css. */
@@ -18,7 +22,7 @@
           *, *::before, *::after { box-sizing: border-box; }
         </style>
 
-        <meta name="description" content="How Veyyon turns open models into frontier coding agents. The product, the harness, tool-call repair, the edit format, per-model adaptation, and how to use it.">
+        <meta name="description" content="Operator handbook for the Veyyon terminal coding agent: install, configuration, tools, approvals, edit formats, providers, and harness structure.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -38,7 +42,7 @@
         <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="../ayu-highlight-3fdfc3ac.css">
 
         <!-- Custom theme stylesheets -->
-        <link rel="stylesheet" href="../theme/veyyon-fc839a17.css">
+        <link rel="stylesheet" href="../theme/veyyon-06f6939e.css">
 
 
         <!-- Provide site root and default themes to javascript -->
@@ -46,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-e76f06ca.js";
+            window.path_to_searchindex_js = "../searchindex-a2447057.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-9cfd259b.js"></script>
+        <script src="../toc-cc1a72e9.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -217,7 +221,7 @@ second model should comment on each turn.</p>
 <h2 id="recover-a-malformed-tool-call"><a class="header" href="#recover-a-malformed-tool-call">Recover a malformed tool call</a></h2>
 <pre><code class="language-text">Use the edit tool with a stale hashline tag and observe the mismatch error.
 </code></pre>
-<p>Malformed tool JSON is repaired when the fix is unambiguous, otherwise it fails loudly with coaching
+<p>Malformed tool JSON is repaired when the fix is unambiguous; otherwise the call returns an error tool result with hints
 rather than dispatching garbage. Hashline returns actionable stale-tag errors. See
 <a href="../repair/overview.html">Repair overview</a>.</p>
 <h2 id="continue-through-long-context"><a class="header" href="#continue-through-long-context">Continue through long context</a></h2>
@@ -230,8 +234,8 @@ enabled. See <a href="../context/compaction-memory.html">Compaction and memory</
 </code></pre>
 <p>Example: <code>bun run test</code> in <code>packages/coding-agent</code> or the project’s documented <code>cargo_full</code> / CI
 script from <code>STANDARD.md</code> when touching Rust natives.</p>
-<h2 id="use-the-hosted-model-contract"><a class="header" href="#use-the-hosted-model-contract">Use the hosted model contract</a></h2>
-<pre><code class="language-text">Point Veyyon at a hosted model and rely on the same behavior contract every provider must satisfy.
+<h2 id="use-the-modelprovider-contract"><a class="header" href="#use-the-modelprovider-contract">Use the model/provider contract</a></h2>
+<pre><code class="language-text">Point Veyyon at a provider model and rely on the same harness contract every provider path must satisfy.
 </code></pre>
 <p>See <a href="../concepts/model-contract.html">Model contract</a> and <a href="../models/providers.html">Providers</a>.</p>
 

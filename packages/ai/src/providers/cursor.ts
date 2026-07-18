@@ -3,7 +3,7 @@ import * as fs from "node:fs/promises";
 import http2 from "node:http2";
 import { create, fromBinary, fromJson, type JsonValue, toBinary, toJson } from "@bufbuild/protobuf";
 import { ValueSchema } from "@bufbuild/protobuf/wkt";
-import type { McpToolDefinition } from "@veyyon/pi-catalog/discovery/cursor-gen/agent_pb";
+import type { McpToolDefinition } from "@veyyon/catalog/discovery/cursor-gen/agent_pb";
 import {
 	AgentClientMessageSchema,
 	AgentConversationTurnStructureSchema,
@@ -101,15 +101,16 @@ import {
 	WriteShellStdinErrorSchema,
 	WriteShellStdinResultSchema,
 	WriteSuccessSchema,
-} from "@veyyon/pi-catalog/discovery/cursor-gen/agent_pb";
-import { calculateCost } from "@veyyon/pi-catalog/models";
+} from "@veyyon/catalog/discovery/cursor-gen/agent_pb";
+import { calculateCost } from "@veyyon/catalog/models";
 import {
 	$env,
+	errorMessage,
 	parseJsonWithRepair,
 	parseStreamingJson,
 	parseStreamingJsonThrottled,
 	sanitizeText,
-} from "@veyyon/pi-utils";
+} from "@veyyon/utils";
 import * as AIError from "../error";
 import type {
 	Api,
@@ -1410,7 +1411,7 @@ export async function resolveExecHandler<TArgs, TResult>(
 		}
 		return { execResult: buildRejected("Tool returned no result") };
 	} catch (error) {
-		const message = error instanceof Error ? error.message : String(error);
+		const message = errorMessage(error);
 		return { execResult: buildError(message) };
 	}
 }

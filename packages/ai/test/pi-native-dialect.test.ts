@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import type { Context, ToolCall } from "@veyyon/pi-ai";
-import { createInbandScanner, getDialectDefinition, type InbandScanEvent } from "@veyyon/pi-ai/dialect";
+import type { Context, ToolCall } from "@veyyon/ai";
+import { createInbandScanner, getDialectDefinition, type InbandScanEvent } from "@veyyon/ai/dialect";
 
 // Spec: docs/internal/toolconv/pi-native.md — the test names cite its sections.
 

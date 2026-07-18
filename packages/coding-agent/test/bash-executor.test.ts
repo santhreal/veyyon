@@ -2,13 +2,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { resetSettingsForTest, Settings, type ShellMinimizerSettings } from "@veyyon/pi-coding-agent/config/settings";
-import { buildMinimizerOptions, executeBash } from "@veyyon/pi-coding-agent/exec/bash-executor";
-import { DEFAULT_MAX_BYTES } from "@veyyon/pi-coding-agent/session/streaming-output";
-import * as shellSnapshot from "@veyyon/pi-coding-agent/utils/shell-snapshot";
-import type { Shell, ShellRunResult } from "@veyyon/pi-natives";
-import * as piNatives from "@veyyon/pi-natives";
-import { removeSyncWithRetries } from "@veyyon/pi-utils";
+import { resetSettingsForTest, Settings, type ShellMinimizerSettings } from "@veyyon/coding-agent/config/settings";
+import { buildMinimizerOptions, executeBash } from "@veyyon/coding-agent/exec/bash-executor";
+import { DEFAULT_MAX_BYTES } from "@veyyon/coding-agent/session/streaming-output";
+import * as shellSnapshot from "@veyyon/coding-agent/utils/shell-snapshot";
+import type { Shell, ShellRunResult } from "@veyyon/natives";
+import * as piNatives from "@veyyon/natives";
+import { removeSyncWithRetries } from "@veyyon/utils";
 
 // Matches the schema default for `tools.artifactHeadBytes` (20 KB) used by
 // OutputSink when bash-executor pulls settings via resolveOutputSinkHeadBytes.
@@ -24,7 +24,7 @@ const KILL_SETTLE_MS = 25; // let the kill signal land before we touch `release`
 const KILL_REACT_MS = 50; // > one poll interval: a survivor would write its marker
 
 function makeTempDir(): string {
-	return fs.mkdtempSync(path.join(os.tmpdir(), "omp-bash-exec-"));
+	return fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-bash-exec-"));
 }
 
 function shellQuote(value: string): string {
@@ -157,19 +157,19 @@ describe("executeBash", () => {
 	});
 
 	it("passes env vars", async () => {
-		const result = await executeBash("echo $PI_TEST_ENV", {
+		const result = await executeBash("echo $VEYYON_TEST_ENV", {
 			cwd: tempDir,
 			timeout: 5000,
-			env: { PI_TEST_ENV: "hello" },
+			env: { VEYYON_TEST_ENV: "hello" },
 		});
 		expect(result.output.trim()).toBe("hello");
 	});
 
 	it("applies non-interactive environment defaults", async () => {
-		const result = await executeBash('echo "$GIT_TERMINAL_PROMPT:$PI_TEST_ENV"', {
+		const result = await executeBash('echo "$GIT_TERMINAL_PROMPT:$VEYYON_TEST_ENV"', {
 			cwd: tempDir,
 			timeout: 5000,
-			env: { PI_TEST_ENV: "hello" },
+			env: { VEYYON_TEST_ENV: "hello" },
 		});
 		expect(result.output.trim()).toBe("0:hello");
 	});
@@ -179,7 +179,7 @@ describe("executeBash", () => {
 			return;
 		}
 
-		const shellDir = fs.mkdtempSync(path.join(os.tmpdir(), "omp-shellpath-"));
+		const shellDir = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-shellpath-"));
 		const marker = path.join(shellDir, "fake-shell-ran");
 		const markerEscaped = marker.replace(/'/g, "'\\''");
 		const fakeShell = path.join(shellDir, "fake-shell");
@@ -233,7 +233,7 @@ exit 64
 		}
 
 		const originalShell = Bun.env.SHELL;
-		const shellDir = fs.mkdtempSync(path.join(os.tmpdir(), "omp-env-shell-"));
+		const shellDir = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-env-shell-"));
 		const marker = path.join(shellDir, "env-shell-ran");
 		const markerEscaped = marker.replace(/'/g, "'\\''");
 		const fakeShell = path.join(shellDir, "fish");
@@ -300,7 +300,7 @@ exit 64
 			return;
 		}
 
-		const shellDir = fs.mkdtempSync(path.join(os.tmpdir(), "omp-zsh-shellpath-"));
+		const shellDir = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-zsh-shellpath-"));
 		fs.writeFileSync(path.join(shellDir, ".zshrc"), "alias pi_shell_alias='printf zsh-alias-ok\\\\n'\n");
 		Settings.instance.set("shellPath", zshPath);
 
@@ -507,12 +507,12 @@ exit 64
 		await Bun.sleep(0);
 		vi.restoreAllMocks();
 
-		await executeBash("export PI_AFTER_ABORT=still_persistent", {
+		await executeBash("export VEYYON_AFTER_ABORT=still_persistent", {
 			cwd: tempDir,
 			timeout: 5000,
 			sessionKey: "settled-native-abort",
 		});
-		const next = await executeBash("printf '%s\n' \"$PI_AFTER_ABORT\"", {
+		const next = await executeBash("printf '%s\n' \"$VEYYON_AFTER_ABORT\"", {
 			cwd: tempDir,
 			timeout: 5000,
 			sessionKey: "settled-native-abort",
@@ -626,8 +626,8 @@ exit 64
 		}
 
 		const sessionKey = "reset-on-abort";
-		await executeBash("export PI_RESET_VAR=alive", { cwd: tempDir, timeout: 5000, sessionKey });
-		const beforeAbort = await executeBash("echo $PI_RESET_VAR", { cwd: tempDir, timeout: 5000, sessionKey });
+		await executeBash("export VEYYON_RESET_VAR=alive", { cwd: tempDir, timeout: 5000, sessionKey });
+		const beforeAbort = await executeBash("echo $VEYYON_RESET_VAR", { cwd: tempDir, timeout: 5000, sessionKey });
 		expect(beforeAbort.output.trim()).toBe("alive");
 
 		const controller = new AbortController();
@@ -652,7 +652,7 @@ exit 64
 		expect(aborted.cancelled).toBe(true);
 
 		// biome-ignore lint/suspicious/noTemplateCurlyInString: this is a bash variable expansion
-		const afterAbort = await executeBash("echo ${PI_RESET_VAR:-unset}", {
+		const afterAbort = await executeBash("echo ${VEYYON_RESET_VAR:-unset}", {
 			cwd: tempDir,
 			timeout: 5000,
 			sessionKey,
@@ -815,7 +815,7 @@ exit 64
 			return;
 		}
 		const snapshotPath = path.join(tempDir, "snapshot.sh");
-		fs.writeFileSync(snapshotPath, "export PI_SNAPSHOT_TEST=from_snapshot\n");
+		fs.writeFileSync(snapshotPath, "export VEYYON_SNAPSHOT_TEST=from_snapshot\n");
 		vi.spyOn(Settings.prototype, "getShellConfig").mockReturnValue({
 			shell: bashPath,
 			args: ["-l", "-c"],
@@ -828,7 +828,7 @@ exit 64
 		vi.spyOn(shellSnapshot, "getOrCreateSnapshot").mockResolvedValue(snapshotPath);
 		const sessionKey = "snapshot-test";
 		await executeBash("true", { cwd: tempDir, timeout: 5000, sessionKey });
-		const result = await executeBash("echo $PI_SNAPSHOT_TEST", { cwd: tempDir, timeout: 5000, sessionKey });
+		const result = await executeBash("echo $VEYYON_SNAPSHOT_TEST", { cwd: tempDir, timeout: 5000, sessionKey });
 		expect(result.output.trim()).toBe("from_snapshot");
 	});
 

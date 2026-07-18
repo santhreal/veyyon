@@ -9,8 +9,9 @@
  * in either process.
  */
 
-import type { StandardEmbeddingModel } from "@veyyon/pi-mnemopi/core";
-import { loadFastembed } from "@veyyon/pi-mnemopi/core/fastembed-runtime";
+import type { StandardEmbeddingModel } from "@veyyon/mnemopi/core";
+import { loadFastembed } from "@veyyon/mnemopi/core/fastembed-runtime";
+import { errorMessage } from "@veyyon/utils";
 import type { MnemopiEmbedModelId, MnemopiEmbedTransport, MnemopiEmbedWorkerInbound } from "./embed-protocol";
 
 interface LoadedModel {
@@ -75,7 +76,7 @@ async function handleEmbed(
 		transport.send({
 			type: "error",
 			id: message.id,
-			error: error instanceof Error ? error.message : String(error),
+			error: errorMessage(error),
 		});
 	}
 }
@@ -91,7 +92,7 @@ async function handleInit(
 		transport.send({
 			type: "error",
 			id: message.id,
-			error: error instanceof Error ? error.message : String(error),
+			error: errorMessage(error),
 		});
 	}
 }

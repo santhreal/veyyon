@@ -1,15 +1,15 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
-import type { AssistantMessage, Model } from "@veyyon/pi-ai";
-import type { AsyncJobRegisterOptions } from "@veyyon/pi-coding-agent/async/job-manager";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { TanCommandController } from "@veyyon/pi-coding-agent/modes/controllers/tan-command-controller";
-import type { InteractiveModeContext } from "@veyyon/pi-coding-agent/modes/types";
-import { AgentRegistry, MAIN_AGENT_ID } from "@veyyon/pi-coding-agent/registry/agent-registry";
-import type { CreateAgentSessionResult } from "@veyyon/pi-coding-agent/sdk";
-import * as sdkModule from "@veyyon/pi-coding-agent/sdk";
-import { SessionManager } from "@veyyon/pi-coding-agent/session/session-manager";
-import { TempDir } from "@veyyon/pi-utils";
+import type { AssistantMessage, Model } from "@veyyon/ai";
+import type { AsyncJobRegisterOptions } from "@veyyon/coding-agent/async/job-manager";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import { TanCommandController } from "@veyyon/coding-agent/modes/controllers/tan-command-controller";
+import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
+import { AgentRegistry, MAIN_AGENT_ID } from "@veyyon/coding-agent/registry/agent-registry";
+import type { CreateAgentSessionResult } from "@veyyon/coding-agent/sdk";
+import * as sdkModule from "@veyyon/coding-agent/sdk";
+import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { TempDir } from "@veyyon/utils";
 
 interface CapturedJobRunContext {
 	jobId: string;
@@ -88,7 +88,7 @@ function createContext(overrides?: {
 	parentPromptCacheKey?: string;
 	register?: (run: CapturedJobRun, options?: AsyncJobRegisterOptions) => string;
 }) {
-	const tempDir = TempDir.createSync("@omp-tan-controller-");
+	const tempDir = TempDir.createSync("@veyyon-tan-controller-");
 	const parentFile = path.join(tempDir.path(), "parent.jsonl");
 	// The clone nests inside the parent's artifact directory, like a subagent.
 	const cloneFile = path.join(parentFile.slice(0, -6), "clone.jsonl");

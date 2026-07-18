@@ -1,11 +1,4 @@
-import {
-	type Component,
-	matchesKey,
-	padding,
-	routeSgrMouseInput,
-	ScrollView,
-	type SgrMouseEvent,
-} from "@veyyon/pi-tui";
+import { type Component, matchesKey, padding, routeSgrMouseInput, ScrollView, type SgrMouseEvent } from "@veyyon/tui";
 import type { LogoutAccount } from "../../slash-commands/helpers/logout";
 import { theme } from "../theme/theme";
 import { matchesSelectCancel, matchesSelectDown, matchesSelectUp } from "../utils/keybinding-matchers";

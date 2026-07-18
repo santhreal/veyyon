@@ -1,8 +1,8 @@
 import { Database } from "bun:sqlite";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { MnemopiOptions } from "@veyyon/pi-mnemopi";
-import { getMemoriesDir, logger } from "@veyyon/pi-utils";
+import type { MnemopiOptions } from "@veyyon/mnemopi";
+import { getMemoriesDir, logger } from "@veyyon/utils";
 import type { Settings } from "../config/settings";
 
 export type MnemopiLlmMode = "none" | "smol" | "remote";

@@ -1,7 +1,7 @@
 import type { Dirent } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { isEnoent } from "@veyyon/pi-utils";
+import { isEnoent, trimTrailingSlashes } from "@veyyon/utils";
 import type { GitSource } from "./git-url";
 
 interface CommandResult {
@@ -40,7 +40,7 @@ function normalizeRepositoryUrl(repository: string): string {
 		const repoPath = parsed.pathname.replace(/^\/+|\/+$/g, "").replace(/\.git$/i, "");
 		return `${parsed.protocol.toLowerCase()}//${parsed.host.toLowerCase()}/${repoPath}`;
 	} catch {
-		return withoutFragment.replace(/\/+$/g, "").replace(/\.git$/i, "");
+		return trimTrailingSlashes(withoutFragment).replace(/\.git$/i, "");
 	}
 }
 

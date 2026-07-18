@@ -1,11 +1,8 @@
 import { describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
-import { KeybindingsManager } from "@veyyon/pi-coding-agent/config/keybindings";
-import {
-	buildComposerShortcuts,
-	ComposerShortcutsBar,
-} from "@veyyon/pi-coding-agent/modes/components/composer-shortcuts";
-import { initTheme, theme } from "@veyyon/pi-coding-agent/modes/theme/theme";
+import { KeybindingsManager } from "@veyyon/coding-agent/config/keybindings";
+import { buildComposerShortcuts, ComposerShortcutsBar } from "@veyyon/coding-agent/modes/components/composer-shortcuts";
+import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
 
 await initTheme(false, "unicode", false, "titanium", "light");
 

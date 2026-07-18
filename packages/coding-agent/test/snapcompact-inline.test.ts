@@ -1,12 +1,12 @@
 import { describe, expect, it, spyOn } from "bun:test";
-import type { Context, ImageContent, Message, TextContent, ToolResultMessage } from "@veyyon/pi-ai";
-import { buildModel } from "@veyyon/pi-catalog/build";
+import type { Context, ImageContent, Message, TextContent, ToolResultMessage } from "@veyyon/ai";
+import { buildModel } from "@veyyon/catalog/build";
 import {
 	estimateInlineSavings,
 	planInlineSwaps,
 	type SnapcompactInlineOptions,
 	SnapcompactInlineTransformer,
-} from "@veyyon/pi-coding-agent/session/snapcompact-inline";
+} from "@veyyon/coding-agent/session/snapcompact-inline";
 import * as snapcompact from "@veyyon/snapcompact";
 
 /**

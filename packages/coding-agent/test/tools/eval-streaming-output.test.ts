@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
-import * as evalIndex from "@veyyon/pi-coding-agent/eval";
-import type { EvalToolDetails } from "@veyyon/pi-coding-agent/eval/types";
-import type { ToolSession } from "@veyyon/pi-coding-agent/tools";
-import { EvalTool } from "@veyyon/pi-coding-agent/tools/eval";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import * as evalIndex from "@veyyon/coding-agent/eval";
+import type { EvalToolDetails } from "@veyyon/coding-agent/eval/types";
+import type { ToolSession } from "@veyyon/coding-agent/tools";
+import { EvalTool } from "@veyyon/coding-agent/tools/eval";
 
 function makeSession(): ToolSession {
 	return {

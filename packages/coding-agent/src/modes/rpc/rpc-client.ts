@@ -5,10 +5,10 @@
  */
 
 import { isPromise } from "node:util/types";
-import type { AgentEvent, AgentMessage, AgentToolResult, ThinkingLevel } from "@veyyon/pi-agent-core";
-import type { CompactionResult } from "@veyyon/pi-agent-core/compaction";
-import type { ImageContent, Model } from "@veyyon/pi-ai";
-import { isRecord, ptree, readJsonl } from "@veyyon/pi-utils";
+import type { AgentEvent, AgentMessage, AgentToolResult, ThinkingLevel } from "@veyyon/agent-core";
+import type { CompactionResult } from "@veyyon/agent-core/compaction";
+import type { ImageContent, Model } from "@veyyon/ai";
+import { errorMessage, isRecord, ptree, readJsonl } from "@veyyon/utils";
 import type { FileSink } from "bun";
 import type { BashResult } from "../../exec/bash-executor";
 import type { AgentSessionEvent, SessionStats } from "../../session/agent-session";
@@ -1022,7 +1022,7 @@ export class RpcClient {
 				type: "host_tool_result",
 				id: request.id,
 				result: {
-					content: [{ type: "text", text: error instanceof Error ? error.message : String(error) }],
+					content: [{ type: "text", text: errorMessage(error) }],
 					details: {},
 				},
 				isError: true,

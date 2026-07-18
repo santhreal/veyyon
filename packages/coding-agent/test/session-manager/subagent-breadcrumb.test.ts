@@ -3,10 +3,10 @@ import * as fs from "node:fs";
 import * as fsp from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { SessionManager } from "@veyyon/pi-coding-agent/session/session-manager";
-import { readTerminalBreadcrumbEntry } from "@veyyon/pi-coding-agent/session/session-paths";
-import { getTerminalId } from "@veyyon/pi-tui";
-import { getConfigRootDir, getTerminalSessionsDir, setAgentDir } from "@veyyon/pi-utils";
+import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { readTerminalBreadcrumbEntry } from "@veyyon/coding-agent/session/session-paths";
+import { getTerminalId } from "@veyyon/tui";
+import { getConfigRootDir, getTerminalSessionsDir, setAgentDir } from "@veyyon/utils";
 
 import { makeAssistantMessage } from "./helpers";
 
@@ -41,14 +41,14 @@ async function writeSubagentSession(parentFile: string, agentId: string, userTex
 describe("SessionManager subagent breadcrumb isolation", () => {
 	let testAgentDir: string;
 	let cwd: string;
-	const originalAgentDir = process.env.PI_CODING_AGENT_DIR;
+	const originalAgentDir = process.env.VEYYON_CODING_AGENT_DIR;
 	const originalTmuxPane = process.env.TMUX_PANE;
 	const fallbackAgentDir = path.join(getConfigRootDir(), "agent");
 
 	beforeEach(async () => {
 		// Deterministic, non-TTY terminal id so breadcrumb read/write is stable.
 		process.env.TMUX_PANE = "%subagent-breadcrumb-test";
-		testAgentDir = await fsp.mkdtemp(path.join(os.tmpdir(), "omp-subagent-crumb-"));
+		testAgentDir = await fsp.mkdtemp(path.join(os.tmpdir(), "veyyon-subagent-crumb-"));
 		setAgentDir(testAgentDir);
 		cwd = path.join(testAgentDir, "project");
 		fs.mkdirSync(cwd, { recursive: true });
@@ -61,7 +61,7 @@ describe("SessionManager subagent breadcrumb isolation", () => {
 			setAgentDir(originalAgentDir);
 		} else {
 			setAgentDir(fallbackAgentDir);
-			delete process.env.PI_CODING_AGENT_DIR;
+			delete process.env.VEYYON_CODING_AGENT_DIR;
 		}
 		await fsp.rm(testAgentDir, { recursive: true, force: true });
 	});

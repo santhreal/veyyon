@@ -1,5 +1,5 @@
-import type { RenderResult, SpecialHandler } from "./types";
-import { buildResult, loadPage } from "./types";
+import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
+import { buildResult, loadFailure, loadPage, scraperDegrade, tryParseUrl } from "./types";
 import { convertWithMarkit, fetchBinary } from "./utils";
 
 /**
@@ -9,9 +9,10 @@ export const handleIacr: SpecialHandler = async (
 	url: string,
 	timeout: number,
 	signal?: AbortSignal,
-): Promise<RenderResult | null> => {
+): Promise<RenderResult | ScraperDegrade | null> => {
 	try {
-		const parsed = new URL(url);
+		const parsed = tryParseUrl(url);
+		if (!parsed) return null;
 		if (parsed.hostname !== "eprint.iacr.org") return null;
 
 		// Extract paper ID from /year/number or /year/number.pdf
@@ -27,7 +28,7 @@ export const handleIacr: SpecialHandler = async (
 		const pageUrl = `https://eprint.iacr.org/${paperId}`;
 		const result = await loadPage(pageUrl, { timeout, signal });
 
-		if (!result.ok) return null;
+		if (!result.ok) return scraperDegrade("iacr", loadFailure(result));
 
 		const { parseHTML } = await import("linkedom");
 		const doc = parseHTML(result.content).document;
@@ -83,7 +84,7 @@ export const handleIacr: SpecialHandler = async (
 			fetchedAt,
 			notes: notes.length ? notes : ["Fetched from IACR ePrint Archive"],
 		});
-	} catch {}
-
-	return null;
+	} catch (error) {
+		return scraperDegrade("iacr", error);
+	}
 };

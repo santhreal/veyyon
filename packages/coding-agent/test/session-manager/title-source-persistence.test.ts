@@ -7,12 +7,12 @@ import {
 	SESSION_TITLE_SLOT_BYTES,
 	type SessionHeader,
 	TITLE_CHANGE_ENTRY_TYPE,
-} from "@veyyon/pi-coding-agent/session/session-entries";
-import { loadEntriesFromFile } from "@veyyon/pi-coding-agent/session/session-loader";
-import { SessionManager } from "@veyyon/pi-coding-agent/session/session-manager";
-import { FileSessionStorage, type WriteTextAtomicOptions } from "@veyyon/pi-coding-agent/session/session-storage";
-import type { SessionTitleUpdate } from "@veyyon/pi-coding-agent/session/session-title-slot";
-import { getConfigRootDir, removeSyncWithRetries, setAgentDir } from "@veyyon/pi-utils";
+} from "@veyyon/coding-agent/session/session-entries";
+import { loadEntriesFromFile } from "@veyyon/coding-agent/session/session-loader";
+import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { FileSessionStorage, type WriteTextAtomicOptions } from "@veyyon/coding-agent/session/session-storage";
+import type { SessionTitleUpdate } from "@veyyon/coding-agent/session/session-title-slot";
+import { getConfigRootDir, removeSyncWithRetries, setAgentDir } from "@veyyon/utils";
 
 import { makeAssistantMessage } from "./helpers";
 
@@ -61,11 +61,11 @@ function getHeader(entries: unknown[]): SessionHeader | undefined {
 describe("session title source persistence", () => {
 	let testAgentDir: string;
 	let cwd: string;
-	const originalAgentDir = process.env.PI_CODING_AGENT_DIR;
+	const originalAgentDir = process.env.VEYYON_CODING_AGENT_DIR;
 	const fallbackAgentDir = path.join(getConfigRootDir(), "agent");
 
 	beforeEach(() => {
-		testAgentDir = fs.mkdtempSync(path.join(os.tmpdir(), "omp-title-source-"));
+		testAgentDir = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-title-source-"));
 		cwd = path.join(testAgentDir, "cwd");
 		fs.mkdirSync(cwd, { recursive: true });
 		setAgentDir(testAgentDir);
@@ -76,7 +76,7 @@ describe("session title source persistence", () => {
 			setAgentDir(originalAgentDir);
 		} else {
 			setAgentDir(fallbackAgentDir);
-			delete process.env.PI_CODING_AGENT_DIR;
+			delete process.env.VEYYON_CODING_AGENT_DIR;
 		}
 		removeSyncWithRetries(testAgentDir);
 	});

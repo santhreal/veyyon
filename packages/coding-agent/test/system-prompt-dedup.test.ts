@@ -7,7 +7,7 @@ import {
 	loadProjectContextFiles,
 	loadSystemPromptFiles,
 	type SystemPromptToolMetadata,
-} from "@veyyon/pi-coding-agent/system-prompt";
+} from "@veyyon/coding-agent/system-prompt";
 import { cleanupTempHome } from "./helpers/temp-home-cleanup";
 
 function escapeRegExp(text: string): string {

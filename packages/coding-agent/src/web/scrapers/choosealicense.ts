@@ -1,6 +1,6 @@
-import { parseFrontmatter } from "@veyyon/pi-utils";
-import type { RenderResult, SpecialHandler } from "./types";
-import { buildResult, loadPage } from "./types";
+import { parseFrontmatter } from "@veyyon/utils";
+import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
+import { buildResult, loadFailure, loadPage, scraperDegrade, tryParseUrl } from "./types";
 import { asString } from "./utils";
 
 const ALLOWED_HOSTS = new Set(["choosealicense.com", "www.choosealicense.com"]);
@@ -46,9 +46,10 @@ export const handleChooseALicense: SpecialHandler = async (
 	url: string,
 	timeout: number,
 	signal?: AbortSignal,
-): Promise<RenderResult | null> => {
+): Promise<RenderResult | ScraperDegrade | null> => {
 	try {
-		const parsed = new URL(url);
+		const parsed = tryParseUrl(url);
+		if (!parsed) return null;
 		if (!ALLOWED_HOSTS.has(parsed.hostname)) return null;
 
 		const licenseMatch = parsed.pathname.match(LICENSE_PATH);
@@ -62,7 +63,7 @@ export const handleChooseALicense: SpecialHandler = async (
 
 		const fetchedAt = new Date().toISOString();
 		const result = await loadPage(rawUrl, { timeout, headers: { Accept: "text/plain" }, signal });
-		if (!result.ok) return null;
+		if (!result.ok) return scraperDegrade("choosealicense", loadFailure(result));
 
 		const { frontmatter, body } = parseFrontmatter(result.content, { source: rawUrl });
 
@@ -89,7 +90,7 @@ export const handleChooseALicense: SpecialHandler = async (
 		}
 
 		return buildResult(md, { url, method: "choosealicense", fetchedAt, notes: ["Fetched via Choose a License"] });
-	} catch {}
-
-	return null;
+	} catch (error) {
+		return scraperDegrade("choosealicense", error);
+	}
 };

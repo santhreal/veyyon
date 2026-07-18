@@ -1,6 +1,6 @@
 # Extension Examples
 
-Example extensions for pi-coding-agent.
+Example extensions for `@veyyon/coding-agent`.
 
 ## Usage
 
@@ -71,7 +71,7 @@ cp permission-gate.ts ~/.veyyon/agent/extensions/
 See [docs/extensions.md](../../../../docs/extensions.md) for full documentation.
 
 ```typescript
-import type { ExtensionAPI } from "@veyyon/pi-coding-agent";
+import type { ExtensionAPI } from "@veyyon/coding-agent";
 
 export default function (pi: ExtensionAPI) {
 	const z = pi.zod;

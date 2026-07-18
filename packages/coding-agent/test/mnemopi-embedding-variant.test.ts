@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { loadMnemopiConfig } from "@veyyon/pi-coding-agent/mnemopi/config";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import { loadMnemopiConfig } from "@veyyon/coding-agent/mnemopi/config";
 
 // `mnemopi.embeddingVariant` selects the concrete local embedding model, while an
 // explicit `mnemopi.embeddingModel` is an advanced override that wins. Scoping is

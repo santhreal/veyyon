@@ -1,7 +1,7 @@
-import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/pi-agent-core";
-import type { Component } from "@veyyon/pi-tui";
-import { Text } from "@veyyon/pi-tui";
-import { prompt } from "@veyyon/pi-utils";
+import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
+import type { Component } from "@veyyon/tui";
+import { Text } from "@veyyon/tui";
+import { prompt } from "@veyyon/utils";
 import { type } from "arktype";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import type { Theme } from "../modes/theme/theme";

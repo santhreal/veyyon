@@ -1,4 +1,4 @@
-import { type MermaidAsciiRenderOptions, renderMermaidAsciiSafe } from "@veyyon/pi-utils";
+import { type MermaidAsciiRenderOptions, renderMermaidAsciiSafe } from "@veyyon/utils";
 
 /**
  * Options controlling how fenced Mermaid source is resolved to terminal ASCII.

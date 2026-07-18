@@ -15,27 +15,27 @@ Source of truth in code:
 Veyyon can discover MCP servers from multiple tools (`.claude/`, `.cursor/`, `.vscode/`, `opencode.json`, and more), but for Veyyon-native configuration you should usually use one of these primary files:
 
 - Project: `.veyyon/mcp.json`
-- User: `~/.veyyon/agent/mcp.json` (or `~/.veyyon/profiles/<name>/agent/mcp.json` when a named profile is active — see [Profiles](#profiles))
+- User: `~/.veyyon/profiles/default/agent/mcp.json` (or `~/.veyyon/profiles/<name>/agent/mcp.json` when a named profile is active — see [Profiles](#profiles))
 
-The native provider also reads `.veyyon/.mcp.json` and `~/.veyyon/agent/.mcp.json` for compatibility, but Veyyon writes to the primary `mcp.json` paths above.
+The native provider also reads `.veyyon/.mcp.json` and `~/.veyyon/profiles/default/agent/.mcp.json` for compatibility, but Veyyon writes to the primary `mcp.json` paths above.
 
 Veyyon also accepts fallback standalone files in the project root:
 
 - `mcp.json`
 - `.mcp.json`
 
-Use `.veyyon/mcp.json` or `~/.veyyon/agent/mcp.json` when you want Veyyon to own the configuration. Use root `mcp.json` / `.mcp.json` only when you want a portable fallback file that other MCP clients may also read.
+Use `.veyyon/mcp.json` or `~/.veyyon/profiles/default/agent/mcp.json` when you want Veyyon to own the configuration. Use root `mcp.json` / `.mcp.json` only when you want a portable fallback file that other MCP clients may also read.
 
 ### Profiles
 
-Named profiles (`veyyon --profile <name>`, the `--alias` shortcut, or `VEYYON_PROFILE` — legacy `OMP_PROFILE`/`PI_PROFILE` still work) isolate user-level MCP config. When a profile is active, the **user** scope resolves to the profile's agent directory instead of the default one:
+Named profiles (`veyyon --profile <name>`, the `--alias` shortcut, or `VEYYON_PROFILE` still work) isolate user-level MCP config. When a profile is active, the **user** scope resolves to the profile's agent directory instead of the default one:
 
-- Default profile: `~/.veyyon/agent/mcp.json`
+- Default profile: `~/.veyyon/profiles/default/agent/mcp.json`
 - Profile `<name>`: `~/.veyyon/profiles/<name>/agent/mcp.json`
 
-Discovery, the `/mcp` commands, and the config writer all follow the active profile, so a profile sees **only** its own user-level servers — never the default profile's `~/.veyyon/agent/mcp.json`. Add a server to a profile by launching under it (`veyyon --profile <name>`) and running `/mcp add` → User level, or by editing `~/.veyyon/profiles/<name>/agent/mcp.json` directly.
+Discovery, the `/mcp` commands, and the config writer all follow the active profile, so a profile sees **only** its own user-level servers — never the default profile's `~/.veyyon/profiles/default/agent/mcp.json`. Add a server to a profile by launching under it (`veyyon --profile <name>`) and running `/mcp add` → User level, or by editing `~/.veyyon/profiles/<name>/agent/mcp.json` directly.
 
-Project-scoped MCP config (`.veyyon/mcp.json`) is keyed to the working directory, not the profile, so it applies under every profile. External-tool configs (`.claude/`, `.cursor/`, etc.) are also profile-independent because they belong to those tools rather than to an Veyyon profile.
+Project-scoped MCP config (`.veyyon/mcp.json`) is keyed to the working directory, not the profile, so it applies under every profile. External-tool configs (`.claude/`, `.cursor/`, etc.) are also profile-independent because they belong to those tools rather than to a Veyyon profile.
 
 MCP follows the same profile rules as the rest of Veyyon-native config; see [Configuration Discovery → Profiles](./config-usage.md#profiles).
 
@@ -50,7 +50,7 @@ Add this line at the top of the file for editor autocomplete and validation:
 }
 ```
 
-Veyyon now writes this automatically when `/mcp add`, `/mcp enable`, `/mcp disable`, `/mcp reauth`, or other config-writing flows create or update an Veyyon-managed MCP file.
+Veyyon now writes this automatically when `/mcp add`, `/mcp enable`, `/mcp disable`, `/mcp reauth`, or other config-writing flows create or update a Veyyon-managed MCP file.
 
 ## File shape
 
@@ -74,7 +74,7 @@ Top-level keys:
 
 - `$schema` — optional JSON Schema URL for tooling
 - `mcpServers` — map of server name to server config
-- `disabledServers` — user-level denylist used to turn off discovered servers by name; runtime loading reads this list from the active profile's user MCP file (`~/.veyyon/agent/mcp.json`, or `~/.veyyon/profiles/<name>/agent/mcp.json` under a named profile)
+- `disabledServers` — user-level denylist used to turn off discovered servers by name; runtime loading reads this list from the active profile's user MCP file (`~/.veyyon/profiles/default/agent/mcp.json`, or `~/.veyyon/profiles/<name>/agent/mcp.json` under a named profile)
 
 Server names must match `^[a-zA-Z0-9_.-]{1,100}$`.
 
@@ -87,7 +87,7 @@ Shared fields for every transport:
 - `auth?: { ... }` — auth metadata used by Veyyon for OAuth/API-key flows
 - `oauth?: { ... }` — explicit OAuth client settings used during auth/reauth
 
-Set `VEYYON_MCP_TIMEOUT_MS=0` (legacy alias: `OMP_MCP_TIMEOUT_MS`) to disable the client-side timeout for every MCP server in the current process. Set it to a positive millisecond value, such as `VEYYON_MCP_TIMEOUT_MS=120000`, to apply one global timeout without editing each server entry.
+Set `VEYYON_MCP_TIMEOUT_MS=0` to disable the client-side timeout for every MCP server in the current process. Set it to a positive millisecond value, such as `VEYYON_MCP_TIMEOUT_MS=120000`, to apply one global timeout without editing each server entry.
 
 ### `stdio` transport
 
@@ -413,7 +413,7 @@ That means this is valid and convenient for local secrets:
 
 ## `disabledServers`
 
-`disabledServers` is read from the user config file (`~/.veyyon/agent/mcp.json`) when a server is discovered from any source and you want Veyyon to ignore it without editing that other tool's config.
+`disabledServers` is read from the user config file (`~/.veyyon/profiles/default/agent/mcp.json`) when a server is discovered from any source and you want Veyyon to ignore it without editing that other tool's config.
 
 Example:
 
@@ -459,11 +459,11 @@ Practical implications:
 
 ## Discovery and precedence
 
-Veyyon does not merge duplicate server definitions across files. Discovery providers are prioritized, and the higher-priority definition wins. Separately, `disabledServers` from `~/.veyyon/agent/mcp.json` can suppress a discovered server by name.
+Veyyon does not merge duplicate server definitions across files. Discovery providers are prioritized, and the higher-priority definition wins. Separately, `disabledServers` from `~/.veyyon/profiles/default/agent/mcp.json` can suppress a discovered server by name.
 
 In practice:
 
-- prefer `.veyyon/mcp.json` or `~/.veyyon/agent/mcp.json` when you want an Veyyon-specific override
+- prefer `.veyyon/mcp.json` or `~/.veyyon/profiles/default/agent/mcp.json` when you want a Veyyon-specific override
 - keep server names unique across tools when possible
 - use `disabledServers` in the user config when a third-party config keeps reintroducing a server you do not want
 

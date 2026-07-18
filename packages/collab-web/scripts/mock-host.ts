@@ -9,7 +9,7 @@
  * of the fixture JSONL — exactly the frames a real `veyyon /collab` host emits.
  */
 
-import type { AgentSnapshot, HostFrame, SessionEntry, SessionState, WireFrame } from "@veyyon/pi-wire";
+import type { AgentSnapshot, HostFrame, SessionEntry, SessionState, WireFrame } from "@veyyon/wire";
 import { generateRoomKey, importRoomKey, open, seal } from "../src/lib/codec";
 import { COLLAB_PROTO, formatCollabLink, generateRoomId, packEnvelope, unpackEnvelope } from "../src/lib/link";
 import {

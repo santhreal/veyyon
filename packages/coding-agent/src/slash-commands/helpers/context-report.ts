@@ -1,3 +1,4 @@
+import { formatCount } from "@veyyon/utils";
 import { computeContextBreakdown } from "../../modes/utils/context-usage";
 import type { SlashCommandRuntime } from "../types";
 import { renderAsciiBar } from "./format";
@@ -40,7 +41,7 @@ export function buildContextReportText(runtime: SlashCommandRuntime): string {
 					const sp = snap.systemPrompt;
 					lines.push(
 						sp.applied
-							? `  System prompt: ${sp.textTokens} text tokens → ${sp.frames} frame${sp.frames === 1 ? "" : "s"} ≈ ${sp.imageTokens} tokens (saves ~${sp.savedTokens})`
+							? `  System prompt: ${sp.textTokens} text tokens → ${formatCount("frame", sp.frames)} ≈ ${sp.imageTokens} tokens (saves ~${sp.savedTokens})`
 							: "  System prompt: stays text (no net savings)",
 					);
 				}

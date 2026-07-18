@@ -10,6 +10,10 @@
         <!-- Veyyon handbook: self-contained head additions. No remote resources. -->
         <meta name="theme-color" content="#050505">
         <meta name="color-scheme" content="dark">
+        <!-- Site favicons live at the deployed root, one level above /docs/. -->
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+        <link rel="icon" href="/favicon.ico" sizes="48x48">
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png">
         <style>
           /* Paint the near-black surface before CSS/JS resolve the theme, so there is
              no light flash on load. Kept in sync with theme/veyyon.css. */
@@ -18,7 +22,7 @@
           *, *::before, *::after { box-sizing: border-box; }
         </style>
 
-        <meta name="description" content="How Veyyon turns open models into frontier coding agents. The product, the harness, tool-call repair, the edit format, per-model adaptation, and how to use it.">
+        <meta name="description" content="Operator handbook for the Veyyon terminal coding agent: install, configuration, tools, approvals, edit formats, providers, and harness structure.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -38,7 +42,7 @@
         <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="../ayu-highlight-3fdfc3ac.css">
 
         <!-- Custom theme stylesheets -->
-        <link rel="stylesheet" href="../theme/veyyon-fc839a17.css">
+        <link rel="stylesheet" href="../theme/veyyon-06f6939e.css">
 
 
         <!-- Provide site root and default themes to javascript -->
@@ -46,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-e76f06ca.js";
+            window.path_to_searchindex_js = "../searchindex-a2447057.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-9cfd259b.js"></script>
+        <script src="../toc-cc1a72e9.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -192,8 +196,8 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="install"><a class="header" href="#install">Install</a></h1>
-<p>Veyyon ships as the npm package <strong><code>@veyyon/pi-coding-agent</code></strong> and installs the <code>veyyon</code>
-executable. It is a TypeScript + Bun agent loop with Rust natives (<code>@veyyon/pi-natives</code>) for hot paths
+<p>Veyyon ships as the npm package <strong><code>@veyyon/coding-agent</code></strong> and installs the <code>veyyon</code>
+executable. It is a TypeScript + Bun agent loop with Rust natives (<code>@veyyon/natives</code>) for hot paths
 (grep, walker, shell/PTY, hashline edits). After install, run <code>veyyon plugin doctor</code>.</p>
 <h2 id="requirements"><a class="header" href="#requirements">Requirements</a></h2>
 <ul>
@@ -201,20 +205,20 @@ executable. It is a TypeScript + Bun agent loop with Rust natives (<code>@veyyon
 <li><strong>Git</strong> — most workflows expect a repository.</li>
 </ul>
 <h2 id="install-npm--bun"><a class="header" href="#install-npm--bun">Install (npm / Bun)</a></h2>
-<pre><code class="language-console">$ bun install -g @veyyon/pi-coding-agent
+<pre><code class="language-console">$ bun install -g @veyyon/coding-agent
 $ veyyon --version
 </code></pre>
 <p>npm works too:</p>
-<pre><code class="language-console">$ npm install -g @veyyon/pi-coding-agent
+<pre><code class="language-console">$ npm install -g @veyyon/coding-agent
 $ veyyon --version
 </code></pre>
-<p><code>bun install</code> also builds <code>@veyyon/pi-natives</code>. Config and state default to <code>~/.veyyon</code>.</p>
+<p><code>bun install</code> also builds <code>@veyyon/natives</code>. Config home: <code>~/.veyyon</code>; default profile agent dir: <code>~/.veyyon/profiles/default/agent/</code>.</p>
 <h2 id="after-install"><a class="header" href="#after-install">After install</a></h2>
-<p>The first interactive <code>veyyon</code> opens the setup ceremony (splash → providers → glyphs → theme → outro). Force it again with <code>veyyon setup</code>. Re-open providers inside a session with <code>/setup</code> or <code>/providers</code>. See <a href="./getting-started.html">Getting started</a>.</p>
+<p>The first interactive <code>veyyon</code> opens the first-run setup (splash → providers → glyphs → theme → outro). Force it again with <code>veyyon setup</code>. Re-open providers inside a session with <code>/setup</code> or <code>/providers</code>. See <a href="./getting-started.html">Getting started</a>.</p>
 <h2 id="build-from-source"><a class="header" href="#build-from-source">Build from source</a></h2>
 <pre><code class="language-console">$ git clone https://github.com/santhreal/veyyon.git
 $ cd veyyon
-$ bun setup      # installs workspace deps and builds @veyyon/pi-natives
+$ bun setup      # installs workspace deps and builds @veyyon/natives
 $ bun dev --version
 </code></pre>
 <p><code>bun dev</code> runs the in-repo build; use it while evaluating or contributing.</p>
@@ -230,31 +234,32 @@ $ veyyon plugin doctor --fix
 <code>git</code>) or common API keys are missing. For interactive diagnostics use <code>/debug</code> in the TUI. See
 <a href="../features/doctor.html">Diagnostics</a>.</p>
 <h3 id="relocate-the-config-directory"><a class="header" href="#relocate-the-config-directory">Relocate the config directory</a></h3>
-<p>By default Unix uses <code>~/.veyyon</code>. <code>PI_CONFIG_DIR</code> renames the home-relative config directory, and
-<code>PI_CODING_AGENT_DIR</code> relocates the whole agent base (<code>config.yml</code>, <code>agent.db</code>, sessions, and more):</p>
-<pre><code class="language-console">$ export PI_CODING_AGENT_DIR=/path/to/veyyon-agent
+<p>By default Unix uses <code>~/.veyyon</code>. <code>VEYYON_CONFIG_DIR</code> renames the
+home-relative config directory; <code>VEYYON_CODING_AGENT_DIR</code> relocates
+the agent base (<code>config.yml</code>, <code>agent.db</code>, sessions, and more):</p>
+<pre><code class="language-console">$ export VEYYON_CODING_AGENT_DIR=/path/to/veyyon-agent
 $ veyyon plugin doctor
 </code></pre>
 <p>Layout: <a href="../reference/file-locations.html">File locations</a>.</p>
 <h2 id="first-credentials"><a class="header" href="#first-credentials">First credentials</a></h2>
-<p>On first interactive launch, the setup ceremony (or <code>veyyon setup</code>) walks sign-in and API keys.
+<p>On first interactive launch, first-run setup (or <code>veyyon setup</code>) walks sign-in and API keys.
 Inside a session, use <code>/setup</code> / <code>/providers</code> to re-open that panel, <code>/login</code> (or <code>/login &lt;provider&gt;</code>)
 for OAuth and key entry, or export the provider’s environment variable and skip the interactive step.
 See <a href="./authentication.html">Authentication</a> and <a href="./configuring-providers.html">Configuring providers</a>.</p>
 <h2 id="uninstall"><a class="header" href="#uninstall">Uninstall</a></h2>
 <p>Remove the global package:</p>
-<pre><code class="language-console">$ bun remove -g @veyyon/pi-coding-agent
-$ # or: npm uninstall -g @veyyon/pi-coding-agent
+<pre><code class="language-console">$ bun remove -g @veyyon/coding-agent
+$ # or: npm uninstall -g @veyyon/coding-agent
 </code></pre>
 <p>Then remove state if you want a clean machine:</p>
 <pre><code class="language-console">$ rm -rf ~/.veyyon          # irreversible: config, secrets, sessions, plugins, skills, logs
 $ # if you relocated the agent base:
-$ rm -rf "$PI_CODING_AGENT_DIR"
+$ rm -rf "$VEYYON_CODING_AGENT_DIR"
 </code></pre>
 <p>Project-local files (<code>AGENTS.md</code>, <code>.veyyon/</code> in a repo) are <strong>not</strong> removed by deleting the
 home directory — clean those per repository if desired.</p>
 <p>To keep projects but wipe only sessions:</p>
-<pre><code class="language-console">$ rm -rf ~/.veyyon/agent/sessions
+<pre><code class="language-console">$ rm -rf ~/.veyyon/profiles/default/agent/sessions
 </code></pre>
 <h2 id="next"><a class="header" href="#next">Next</a></h2>
 <ul>
@@ -268,7 +273,7 @@ home directory — clean those per repository if desired.</p>
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="../benefits/safety-honesty.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../benefits/safety-errors.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                             </a>
 
@@ -282,7 +287,7 @@ home directory — clean those per repository if desired.</p>
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="../benefits/safety-honesty.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../benefits/safety-errors.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                     </a>
 

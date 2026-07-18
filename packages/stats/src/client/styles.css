@@ -1,29 +1,30 @@
 @import "tailwindcss/index.css";
 
 /* ==========================================================================
-   OMP Theme Variables & Color Scheme
+   Veyyon Theme Variables & Color Scheme
    ========================================================================== */
 :root {
   color-scheme: dark;
-  /* OMP brand palette — packages/collab-web/src/styles/tokens.css:
-     deep-purple surfaces (hue 307), pink accent #ed4abf, cyan focus ring #5ad8e6. */
-  --page: oklch(0.16 0.02 307);
-  --surface: oklch(0.19 0.022 307);
-  --surface-2: oklch(0.235 0.026 307);
-  --border: oklch(1 0 0 / 9%);
-  --border-strong: oklch(1 0 0 / 13%);
-  --text: oklch(0.92 0.01 307);
-  --muted: oklch(0.71 0.016 307);
-  --dim: oklch(0.53 0.018 307);
-  --accent: oklch(0.674 0.23 341);          /* brand pink #ed4abf */
-  --accent-fg: oklch(0.2 0.07 341);         /* ink on accent fills */
-  --accent-muted: oklch(0.674 0.23 341 / 18%);
-  --link: oklch(0.817 0.112 205);           /* brand cyan #5ad8e6 */
-  --success: oklch(0.76 0.14 150);
-  --danger: oklch(0.66 0.19 25);
-  --warning: oklch(0.79 0.14 85);
+  /* Veyyon brand palette — mirrors packages/collab-web/src/styles/tokens.css:
+     pitch-black ground, hue-neutral silver ramp, a single ember-sun accent
+     (#f0862e); no purple/cyan/rainbow chrome, no smooth gradients. */
+  --page: oklch(0 0 0);
+  --surface: oklch(0 0 0);
+  --surface-2: oklch(0.205 0.004 250);
+  --border: oklch(0.83 0.007 250 / 14%);
+  --border-strong: oklch(0.83 0.007 250 / 21%);
+  --text: oklch(0.925 0.004 250);
+  --muted: oklch(0.77 0.008 250);
+  --dim: oklch(0.585 0.009 250);
+  --accent: oklch(0.705 0.163 52);          /* ember sun #f0862e */
+  --accent-fg: oklch(0.16 0 0);             /* ink on accent fills */
+  --accent-muted: oklch(0.705 0.163 52 / 18%);
+  --link: oklch(0.705 0.163 52);            /* links carry the ember accent */
+  --success: oklch(0.73 0.075 155);
+  --danger: oklch(0.62 0.12 25);
+  --warning: oklch(0.72 0.09 85);
 
-  /* Bridge the view components' token vocabulary to the OMP base tokens so
+  /* Bridge the view components' token vocabulary to the Veyyon base tokens so
      muted/secondary text and semantic accents resolve instead of silently
      falling back to inherited text color. Re-resolve per theme via var(). */
   --text-primary: var(--text);
@@ -46,42 +47,42 @@
 @media (prefers-color-scheme: light) {
   :root:not([data-theme]) {
     color-scheme: light;
-    --page: oklch(0.985 0.004 307);
+    --page: oklch(0.985 0.002 255);
     --surface: oklch(1 0 0);
-    --surface-2: oklch(0.965 0.006 307);
-    --border: oklch(0 0 0 / 10%);
-    --border-strong: oklch(0 0 0 / 15%);
-    --text: oklch(0.26 0.03 307);
-    --muted: oklch(0.46 0.03 307);
-    --dim: oklch(0.58 0.025 307);
-    --accent: oklch(0.62 0.23 341);
-    --accent-fg: oklch(0.99 0.01 341);
-    --accent-muted: oklch(0.62 0.23 341 / 14%);
-    --link: oklch(0.58 0.13 230);
-    --success: oklch(0.55 0.13 150);
-    --danger: oklch(0.55 0.19 25);
-    --warning: oklch(0.6 0.13 85);
+    --surface-2: oklch(0.965 0.002 255);
+    --border: oklch(0.33 0.017 261 / 12%);
+    --border-strong: oklch(0.33 0.017 261 / 20%);
+    --text: oklch(0.37 0.017 261);
+    --muted: oklch(0.53 0.014 258);
+    --dim: oklch(0.62 0.012 258);
+    --accent: oklch(0.705 0.163 52);
+    --accent-fg: oklch(1 0 0);
+    --accent-muted: oklch(0.705 0.163 52 / 14%);
+    --link: oklch(0.63 0.16 50);
+    --success: oklch(0.63 0.11 152);
+    --danger: oklch(0.57 0.15 25);
+    --warning: oklch(0.62 0.10 80);
   }
 }
 
 /* Explicit theme override (toggle or persisted preference). */
 [data-theme="light"] {
   color-scheme: light;
-  --page: oklch(0.985 0.004 307);
+  --page: oklch(0.985 0.002 255);
   --surface: oklch(1 0 0);
-  --surface-2: oklch(0.965 0.006 307);
-  --border: oklch(0 0 0 / 10%);
-  --border-strong: oklch(0 0 0 / 15%);
-  --text: oklch(0.26 0.03 307);
-  --muted: oklch(0.46 0.03 307);
-  --dim: oklch(0.58 0.025 307);
-  --accent: oklch(0.62 0.23 341);
-  --accent-fg: oklch(0.99 0.01 341);
-  --accent-muted: oklch(0.62 0.23 341 / 14%);
-  --link: oklch(0.58 0.13 230);
-  --success: oklch(0.55 0.13 150);
-  --danger: oklch(0.55 0.19 25);
-  --warning: oklch(0.6 0.13 85);
+  --surface-2: oklch(0.965 0.002 255);
+  --border: oklch(0.33 0.017 261 / 12%);
+  --border-strong: oklch(0.33 0.017 261 / 20%);
+  --text: oklch(0.37 0.017 261);
+  --muted: oklch(0.53 0.014 258);
+  --dim: oklch(0.62 0.012 258);
+  --accent: oklch(0.705 0.163 52);
+  --accent-fg: oklch(1 0 0);
+  --accent-muted: oklch(0.705 0.163 52 / 14%);
+  --link: oklch(0.63 0.16 50);
+  --success: oklch(0.63 0.11 152);
+  --danger: oklch(0.57 0.15 25);
+  --warning: oklch(0.62 0.10 80);
 }
 
 /* ==========================================================================
@@ -1090,7 +1091,7 @@
   background: linear-gradient(
     90deg,
     transparent 0%,
-    rgba(255, 255, 255, 0.05) 50%,
+    rgba(198, 203, 212, 0.05) 50%,
     transparent 100%
   );
   animation: shimmer 1.5s infinite;
@@ -1233,7 +1234,7 @@
 }
 
 /* ==========================================================================
-   Brand mark on the OMP wordmark (both rail + mobile drawer headers)
+   Brand mark on the Veyyon wordmark (both rail + mobile drawer headers)
    ========================================================================== */
 .stats-logo-container {
   display: grid;
@@ -1247,8 +1248,10 @@
   grid-row: 1 / 3;
   width: 16px;
   height: 16px;
-  border-radius: 4px;
-  background: linear-gradient(135deg, #ed4abf 0%, #9b4dff 50%, #5ad8e6 100%); /* OMP brand gradient mark */
+  border-radius: 50%;
+  /* the stepped ember sun (discrete bands, not a smooth gradient), matching
+     website/favicon.svg */
+  background: radial-gradient(circle, #ffca80 0 22%, #fb9e44 22% 44%, #f0862e 44% 66%, #c8590c 66% 100%);
 }
 
 .stats-logo-text,

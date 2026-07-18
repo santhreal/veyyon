@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "bun:test";
-import { getFastembedCacheDir } from "@veyyon/pi-utils";
+import { getFastembedCacheDir } from "@veyyon/utils";
 import "./setup";
 import {
 	available,
@@ -9,9 +9,9 @@ import {
 	resetEmbeddingProviderForTests,
 	setEmbeddingProviderForTests,
 	setLocalModelInitializerForTests,
-} from "@veyyon/pi-mnemopi/core/embeddings";
-import { Mnemopi } from "@veyyon/pi-mnemopi/core/memory";
-import { withMnemopiRuntimeOptions } from "@veyyon/pi-mnemopi/core/runtime-options";
+} from "@veyyon/mnemopi/core/embeddings";
+import { Mnemopi } from "@veyyon/mnemopi/core/memory";
+import { withMnemopiRuntimeOptions } from "@veyyon/mnemopi/core/runtime-options";
 import packageJson from "../package.json" with { type: "json" };
 
 const ENV_KEYS = [

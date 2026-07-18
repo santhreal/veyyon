@@ -2,13 +2,13 @@
  * Shared types and utilities for web-fetch handlers
  */
 import { scheduler } from "node:timers/promises";
-import { ptree } from "@veyyon/pi-utils";
 import type TurndownService from "turndown";
 
 import type { AgentStorage } from "../../session/agent-storage";
 import { ToolAbortError } from "../../tools/tool-errors";
+import { scopedTimeoutSignal } from "../../utils/fetch-timeout";
 
-export { formatNumber } from "@veyyon/pi-utils";
+export { formatNumber } from "@veyyon/utils";
 
 export interface RenderResult {
 	url: string;
@@ -21,12 +21,48 @@ export interface RenderResult {
 	notes: string[];
 }
 
+/**
+ * Loud degrade marker: the handler MATCHED the url but could not scrape it
+ * (upstream HTTP failure, response-shape drift, thrown error). The dispatcher
+ * surfaces the note on the generic-fetch result so the degrade is operator
+ * visible instead of indistinguishable from a URL non-match. Recall is
+ * preserved — the generic fetch still runs — but never silently.
+ */
+export interface ScraperDegrade {
+	readonly scraperDegrade: true;
+	readonly note: string;
+}
+
+export function scraperDegrade(site: string, reason: unknown): ScraperDegrade {
+	const detail = reason instanceof Error ? reason.message : String(reason);
+	return { scraperDegrade: true, note: `${site} scraper failed (${detail}); fell back to a generic fetch` };
+}
+
+/** Describe a failed {@link loadPage} result for a degrade note. */
+export function loadFailure(result: { status?: number; error?: string }): string {
+	if (result.status) return `HTTP ${result.status}`;
+	return result.error ?? "fetch failed";
+}
+
+export function isScraperDegrade(value: unknown): value is ScraperDegrade {
+	return typeof value === "object" && value !== null && (value as ScraperDegrade).scraperDegrade === true;
+}
+
+/** Parse a URL, returning null on invalid input (a non-match, not a degrade). */
+export function tryParseUrl(url: string): URL | null {
+	try {
+		return new URL(url);
+	} catch {
+		return null;
+	}
+}
+
 export type SpecialHandler = (
 	url: string,
 	timeout: number,
 	signal?: AbortSignal,
 	storage?: AgentStorage | null,
-) => Promise<RenderResult | null>;
+) => Promise<RenderResult | ScraperDegrade | null>;
 
 export const MAX_OUTPUT_CHARS = 500_000;
 export const MAX_BYTES = 50 * 1024 * 1024;
@@ -146,11 +182,14 @@ export async function loadPage(url: string, options: LoadPageOptions = {}): Prom
 		}
 
 		const userAgent = USER_AGENTS[attempt];
-		const requestSignal = ptree.combineSignals(signal, timeout * 1000);
+		// Scoped per attempt so the deadline timer is cleared on settle instead
+		// of staying armed like a bare AbortSignal.timeout; the fence spans the
+		// streamed body read below.
+		const requestTimeout = scopedTimeoutSignal(timeout * 1000, signal);
 
 		try {
 			const requestInit: RequestInit = {
-				signal: requestSignal,
+				signal: requestTimeout.signal,
 				method,
 				headers: {
 					"User-Agent": userAgent,
@@ -234,6 +273,8 @@ export async function loadPage(url: string, options: LoadPageOptions = {}): Prom
 			if (attempt === USER_AGENTS.length - 1) {
 				return { content: "", contentType: "", finalUrl: url, ok: false, error: lastError };
 			}
+		} finally {
+			requestTimeout.cancel();
 		}
 	}
 

@@ -2,7 +2,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 
-import { APP_NAME } from "@veyyon/pi-utils/dirs";
+import { APP_NAME } from "@veyyon/utils/dirs";
 
 export async function initXdg(): Promise<void> {
 	if (process.platform !== "linux" && process.platform !== "darwin") {

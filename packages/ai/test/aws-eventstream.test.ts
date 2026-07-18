@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { crc32, decodeEventStream, decodeMessage } from "@veyyon/pi-ai/providers/aws-eventstream";
+import { crc32, decodeEventStream, decodeMessage } from "@veyyon/ai/providers/aws-eventstream";
 
 // ---- Frame builder (mirrors @smithy/eventstream-codec but in-process so the
 // test owns the bytes). The decoder is the production code; we encode here for

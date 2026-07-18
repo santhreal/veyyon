@@ -10,7 +10,7 @@
 import type * as fsTypes from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { isEnoent } from "@veyyon/pi-utils";
+import { isEnoent } from "@veyyon/utils";
 import { getActiveSkills } from "../extensibility/skills";
 import { buildDirectoryResource } from "./filesystem-resource";
 import type { InternalResource, InternalUrl, ProtocolHandler, ResolveContext, UrlCompletion } from "./types";
@@ -18,6 +18,7 @@ import type { InternalResource, InternalUrl, ProtocolHandler, ResolveContext, Ur
 function getContentType(filePath: string): InternalResource["contentType"] {
 	const ext = path.extname(filePath).toLowerCase();
 	if (ext === ".md") return "text/markdown";
+	if (ext === ".json") return "application/json";
 	return "text/plain";
 }
 

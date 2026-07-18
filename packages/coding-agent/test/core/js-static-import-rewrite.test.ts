@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 
-import { rewriteImports, wrapCode } from "@veyyon/pi-coding-agent/eval/js/context-manager";
-import { indirectEval } from "@veyyon/pi-coding-agent/eval/js/shared/indirect-eval";
+import { rewriteImports, wrapCode } from "@veyyon/coding-agent/eval/js/context-manager";
+import { indirectEval } from "@veyyon/coding-agent/eval/js/shared/indirect-eval";
 
 // Test fixtures embed user-supplied `import(...)` syntax that the rewriter must
 // transform. The strings are split so static-analysis heuristics don't read them
@@ -87,7 +87,7 @@ describe("rewriteImports", () => {
 		const out = await rewriteImports(`const load = async () => await ${dyn('("node:path")')}; load;`);
 		const globals = globalThis as Record<string, unknown>;
 		const hasOriginal = "__veyyon_import__" in globals;
-		const originalOmpImport = globals.__veyyon_import__;
+		const originalVeyyonImport = globals.__veyyon_import__;
 		if (hasOriginal) {
 			delete globals.__veyyon_import__;
 		}
@@ -113,7 +113,7 @@ describe("rewriteImports", () => {
 			expect(typeof mod.join).toBe("function");
 		} finally {
 			if (hasOriginal) {
-				globals.__veyyon_import__ = originalOmpImport;
+				globals.__veyyon_import__ = originalVeyyonImport;
 			} else {
 				delete globals.__veyyon_import__;
 			}
@@ -191,30 +191,30 @@ describe("wrapCode cross-cell persistence", () => {
 	it("publishes top-level function declarations and their sibling consts from async-wrapped cells", async () => {
 		const globals = globalThis as Record<string, unknown>;
 		const wrapped = await wrapCode(
-			"async function ompPersistedFn(n) { return (await Promise.resolve(n)) + 1; }\nconst ompPersistedTotal = await ompPersistedFn(41);",
+			"async function veyyonPersistedFn(n) { return (await Promise.resolve(n)) + 1; }\nconst veyyonPersistedTotal = await veyyonPersistedFn(41);",
 		);
 		expect(wrapped.asyncWrapped).toBe(true);
 		try {
 			await indirectEval(wrapped.source);
-			const fn = globals.ompPersistedFn as (n: number) => Promise<number>;
+			const fn = globals.veyyonPersistedFn as (n: number) => Promise<number>;
 			expect(typeof fn).toBe("function");
 			expect(await fn(1)).toBe(2);
-			expect(globals.ompPersistedTotal).toBe(42);
+			expect(globals.veyyonPersistedTotal).toBe(42);
 		} finally {
-			delete globals.ompPersistedFn;
-			delete globals.ompPersistedTotal;
+			delete globals.veyyonPersistedFn;
+			delete globals.veyyonPersistedTotal;
 		}
 	});
 
 	it("publishes explicit top-level var declarations from async-wrapped cells", async () => {
 		const globals = globalThis as Record<string, unknown>;
-		const wrapped = await wrapCode("await Promise.resolve();\nvar ompPersistedVar = 5;");
+		const wrapped = await wrapCode("await Promise.resolve();\nvar veyyonPersistedVar = 5;");
 		expect(wrapped.asyncWrapped).toBe(true);
 		try {
 			await indirectEval(wrapped.source);
-			expect(globals.ompPersistedVar).toBe(5);
+			expect(globals.veyyonPersistedVar).toBe(5);
 		} finally {
-			delete globals.ompPersistedVar;
+			delete globals.veyyonPersistedVar;
 		}
 	});
 });

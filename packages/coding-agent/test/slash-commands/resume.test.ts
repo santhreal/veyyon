@@ -2,20 +2,20 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { InteractiveModeContext } from "@veyyon/pi-coding-agent/modes/types";
-import { resolveResumableSession } from "@veyyon/pi-coding-agent/session/session-listing";
-import { computeDefaultSessionDir } from "@veyyon/pi-coding-agent/session/session-paths";
-import { FileSessionStorage } from "@veyyon/pi-coding-agent/session/session-storage";
-import { executeBuiltinSlashCommand } from "@veyyon/pi-coding-agent/slash-commands/builtin-registry";
-import { getConfigRootDir, setAgentDir } from "@veyyon/pi-utils";
+import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
+import { resolveResumableSession } from "@veyyon/coding-agent/session/session-listing";
+import { computeDefaultSessionDir } from "@veyyon/coding-agent/session/session-paths";
+import { FileSessionStorage } from "@veyyon/coding-agent/session/session-storage";
+import { executeBuiltinSlashCommand } from "@veyyon/coding-agent/slash-commands/builtin-registry";
+import { getConfigRootDir, setAgentDir } from "@veyyon/utils";
 
 let tempDir: string;
-const originalAgentDir = process.env.PI_CODING_AGENT_DIR;
+const originalAgentDir = process.env.VEYYON_CODING_AGENT_DIR;
 const fallbackAgentDir = path.join(getConfigRootDir(), "agent");
 const storage = new FileSessionStorage();
 
 beforeEach(async () => {
-	tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "omp-resume-command-"));
+	tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-resume-command-"));
 	setAgentDir(path.join(tempDir, "agent"));
 });
 
@@ -24,7 +24,7 @@ afterEach(async () => {
 		setAgentDir(originalAgentDir);
 	} else {
 		setAgentDir(fallbackAgentDir);
-		delete process.env.PI_CODING_AGENT_DIR;
+		delete process.env.VEYYON_CODING_AGENT_DIR;
 	}
 	await fs.rm(tempDir, { recursive: true, force: true });
 });

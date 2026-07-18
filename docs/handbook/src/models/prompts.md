@@ -1,9 +1,8 @@
 # Execution-order prompts
 
-> **Status: Built.** The harness assembles system and developer prompts and adapts them per provider.
-
-The harness encodes control-flow discipline in base instructions: **explore → plan → edit → verify →
-STOP**. Plan mode (`/plan`) and goal mode (`/goal`) add gating on top of the default prompt stack.
+The harness assembles system and developer prompts and adapts them per provider. Base instructions
+encode control-flow discipline: **explore → plan → edit → verify → STOP**. Plan mode (`/plan`) and
+goal mode (`/goal`) add gating on top of the default prompt stack.
 
 ## Delivery
 

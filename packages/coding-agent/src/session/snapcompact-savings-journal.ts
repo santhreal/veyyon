@@ -19,8 +19,8 @@
 
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import type { Model } from "@veyyon/pi-ai";
-import { getStatsDbPath, isEnoent, logger } from "@veyyon/pi-utils";
+import type { Model } from "@veyyon/ai";
+import { getStatsDbPath, isEnoent, logger } from "@veyyon/utils";
 
 export interface SnapcompactSavingsRecord {
 	/** Epoch milliseconds when the swap was applied. */

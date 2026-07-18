@@ -1,4 +1,4 @@
-import type { MCPServerCapabilities, MCPServerConnection, MCPTransport } from "@veyyon/pi-coding-agent/mcp/types";
+import type { MCPServerCapabilities, MCPServerConnection, MCPTransport } from "@veyyon/coding-agent/mcp/types";
 
 export function createMockTransport(
 	responses: Map<string, unknown[]>,

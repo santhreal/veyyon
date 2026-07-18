@@ -3,13 +3,17 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Token-lean edit plan - The Veyyon Harness Handbook</title>
+        <title>Edit-path properties - The Veyyon Harness Handbook</title>
 
 
         <!-- Custom HTML head -->
         <!-- Veyyon handbook: self-contained head additions. No remote resources. -->
         <meta name="theme-color" content="#050505">
         <meta name="color-scheme" content="dark">
+        <!-- Site favicons live at the deployed root, one level above /docs/. -->
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+        <link rel="icon" href="/favicon.ico" sizes="48x48">
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png">
         <style>
           /* Paint the near-black surface before CSS/JS resolve the theme, so there is
              no light flash on load. Kept in sync with theme/veyyon.css. */
@@ -18,7 +22,7 @@
           *, *::before, *::after { box-sizing: border-box; }
         </style>
 
-        <meta name="description" content="How Veyyon turns open models into frontier coding agents. The product, the harness, tool-call repair, the edit format, per-model adaptation, and how to use it.">
+        <meta name="description" content="Operator handbook for the Veyyon terminal coding agent: install, configuration, tools, approvals, edit formats, providers, and harness structure.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -38,7 +42,7 @@
         <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="../ayu-highlight-3fdfc3ac.css">
 
         <!-- Custom theme stylesheets -->
-        <link rel="stylesheet" href="../theme/veyyon-fc839a17.css">
+        <link rel="stylesheet" href="../theme/veyyon-06f6939e.css">
 
 
         <!-- Provide site root and default themes to javascript -->
@@ -46,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-e76f06ca.js";
+            window.path_to_searchindex_js = "../searchindex-a2447057.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-9cfd259b.js"></script>
+        <script src="../toc-cc1a72e9.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -191,37 +195,18 @@
 
                 <div id="mdbook-content" class="content">
                     <main>
-                        <h1 id="edit-path-completeness-bomcrlf-multi-edit-hashline"><a class="header" href="#edit-path-completeness-bomcrlf-multi-edit-hashline">Edit-path completeness: BOM/CRLF, multi-edit, hashline</a></h1>
-<p>This chapter covers the correctness properties an edit path must hold no matter which edit format the
-model uses, and where Veyyon stands on each. The shipped edit engine is
-<a href="./engine.html">hashline</a> (<code>@veyyon/hashline</code>, TypeScript); <code>apply_patch</code>, <code>patch</code>, and <code>replace</code> remain
-as compatibility modes.</p>
-<h2 id="bom-and-line-ending-preservation--built"><a class="header" href="#bom-and-line-ending-preservation--built">BOM and line-ending preservation — Built</a></h2>
-<p>An edit must not silently rewrite a file’s encoding. Veyyon strips a leading UTF-8 BOM before matching
-and restores it afterward, and it detects the file’s dominant line ending (CRLF or LF) and restores it
-on write. Matching only ever runs against a normalized-to-LF copy of the body. Without this, a single
-edit rewrites a CRLF file to LF or eats a BOM, which surfaces as a spurious whole-file diff and breaks
-Windows checkouts. <em>Lever: robustness.</em></p>
-<h2 id="multi-edit-in-one-call--built"><a class="header" href="#multi-edit-in-one-call--built">Multi-edit in one call — Built</a></h2>
-<p>The <code>edit</code> tool applies several disjoint changes to a file in one call rather than one round-trip per
-change. Every anchor is matched against the original file, not incrementally, and replacements are
-applied so that a growing earlier edit cannot invalidate a later match. Ambiguous anchors, overlapping
-regions, and no-op edits fail loudly with a message the model can act on, never a silently-wrong edit.
-The tool description coaches the model to keep anchors small but unique and to merge nearby changes,
-which measurably reduces wasted attempts. <em>Lever: edit format.</em></p>
-<h2 id="hashline--the-token-lean-form--built"><a class="header" href="#hashline--the-token-lean-form--built">Hashline — the token-lean form — Built</a></h2>
-<p>The token cost of an edit is dominated by echoing the surrounding text. Hashline removes that cost: the
-model references spans by the <code>[PATH#TAG]</code> snapshot anchors that <code>read</code>, <code>grep</code>, and <code>write</code> already
-emit, then sends only the operations (<code>SWAP</code>, <code>DEL</code>, <code>INS</code>) and the new text. Stale anchors are caught
-by the snapshot tag and drive recovery instead of a wrong edit. Hashline is the default edit mode
-(<code>edit.mode: hashline</code> in <code>config.yml</code>). See <a href="./engine.html">The hashline edit engine</a>. <em>Lever: edit
-format / output tokens.</em></p>
-<h2 id="concurrent-edit-serialization"><a class="header" href="#concurrent-edit-serialization">Concurrent-edit serialization</a></h2>
-<p>Non-parallel tools take an exclusive lock, so file mutations from one turn are globally serialized. A
-per-path mutation queue that lets independent files edit in parallel while still serializing same-file
-writes matters once subagents edit concurrently. <em>Lever: robustness.</em></p>
-<p>Not shipped: a byte-exact write path that preserves a missing trailing newline on the final line. The
-current write model normalizes by appending one; the case is documented and covered by a test.</p>
+                        <h1 id="edit-path-properties"><a class="header" href="#edit-path-properties">Edit-path properties</a></h1>
+<p>Correctness properties of the edit path. The default engine is hashline (<code>@veyyon/hashline</code>); <code>apply_patch</code>, <code>patch</code>, and <code>replace</code> remain as compatibility modes. See <a href="./engine.html">The hashline edit engine</a>.</p>
+<h2 id="bom-and-line-endings"><a class="header" href="#bom-and-line-endings">BOM and line endings</a></h2>
+<p>Edits must not silently rewrite encoding. The path strips a leading UTF-8 BOM before matching and restores it afterward, and restores the file’s dominant line ending (CRLF or LF) on write. Matching runs against a normalized LF body. Without this, one edit can rewrite CRLF to LF or drop a BOM.</p>
+<h2 id="multi-edit-in-one-call"><a class="header" href="#multi-edit-in-one-call">Multi-edit in one call</a></h2>
+<p>The <code>edit</code> tool can apply several disjoint changes in one call. Anchors match against the original file (not incrementally); replacements are ordered so earlier growth does not invalidate later matches. Ambiguous anchors, overlapping regions, and no-ops fail with an actionable error.</p>
+<h2 id="hashline"><a class="header" href="#hashline">Hashline</a></h2>
+<p>Hashline avoids re-echoing surrounding text: the model references spans by <code>[PATH#TAG]</code> snapshot anchors from <code>read</code> / <code>grep</code> / <code>write</code>, then sends operations (<code>SWAP</code>, <code>DEL</code>, <code>INS</code>) and new text. Stale tags fail verification instead of applying a wrong edit. Default: <code>edit.mode: hashline</code> in <code>config.yml</code>.</p>
+<h2 id="concurrency"><a class="header" href="#concurrency">Concurrency</a></h2>
+<p>Non-parallel tools take an exclusive lock so file mutations from one turn are serialized. Same-file concurrent edits from subagents still need care; independent files may proceed under the tool locking rules.</p>
+<h2 id="trailing-newlines"><a class="header" href="#trailing-newlines">Trailing newlines</a></h2>
+<p>The write path normalizes by ensuring a trailing newline on the final line when applying some write forms. Tests cover this behavior; see edit/write tool tests in <code>packages/coding-agent</code>.</p>
 
                     </main>
 

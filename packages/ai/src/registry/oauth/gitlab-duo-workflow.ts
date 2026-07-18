@@ -67,8 +67,8 @@ class GitLabDuoWorkflowOAuthFlow extends OAuthCallbackFlow {
 			url: `${GITLAB_COM_URL}/oauth/authorize?${authParams.toString()}`,
 			instructions:
 				"Complete GitLab login in your browser. This uses GitLab's official VS Code OAuth application. " +
-				"If the redirect opens VS Code instead of returning to OMP, copy the full " +
-				"vscode://gitlab.gitlab-workflow/authentication?... callback URL from VS Code/browser and paste it back into OMP.",
+				"If the redirect opens VS Code instead of returning to Veyyon, copy the full " +
+				"vscode://gitlab.gitlab-workflow/authentication?... callback URL from VS Code/browser and paste it back into Veyyon.",
 		};
 	}
 

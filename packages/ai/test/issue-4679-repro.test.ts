@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
-import { buildAnthropicClientOptions, streamAnthropic } from "@veyyon/pi-ai/providers/anthropic";
-import type { Context, Model, ModelSpec, TJsonSchema, Tool } from "@veyyon/pi-ai/types";
-import { buildModel } from "@veyyon/pi-catalog/build";
+import { buildAnthropicClientOptions, streamAnthropic } from "@veyyon/ai/providers/anthropic";
+import type { Context, Model, ModelSpec, TJsonSchema, Tool } from "@veyyon/ai/types";
+import { buildModel } from "@veyyon/catalog/build";
 
 const STRUCTURED_OUTPUTS_BETA = "structured-outputs-2025-12-15";
 

@@ -4,7 +4,7 @@
  * resolveActiveProjectRegistryPath: walk-up, .git fallback, null return, canonical path.
  * listClaudePluginRoots: project entries shadow user entries for same plugin ID.
  *
- * Note: helpers.ts imports @veyyon/pi-natives (Rust addon via glob).
+ * Note: helpers.ts imports @veyyon/natives (Rust addon via glob).
  * This file imports from helpers.ts directly — the native addon IS present in the
  * test environment (verified: `bun run import-helpers.ts` succeeds).
  */
@@ -16,16 +16,16 @@ import {
 	clearClaudePluginRootsCache,
 	listClaudePluginRoots,
 	resolveActiveProjectRegistryPath,
-} from "@veyyon/pi-coding-agent/discovery/helpers";
-import type { InstalledPluginEntry } from "@veyyon/pi-coding-agent/extensibility/plugins/marketplace";
+} from "@veyyon/coding-agent/discovery/helpers";
+import type { InstalledPluginEntry } from "@veyyon/coding-agent/extensibility/plugins/marketplace";
 import {
 	addInstalledPlugin,
 	buildPluginId,
 	readInstalledPluginsRegistry,
 	writeInstalledPluginsRegistry,
-} from "@veyyon/pi-coding-agent/extensibility/plugins/marketplace";
-import { removeSyncWithRetries } from "@veyyon/pi-utils";
-import { CONFIG_DIR_NAME } from "@veyyon/pi-utils/dirs";
+} from "@veyyon/coding-agent/extensibility/plugins/marketplace";
+import { removeSyncWithRetries } from "@veyyon/utils";
+import { CONFIG_DIR_NAME } from "@veyyon/utils/dirs";
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -45,7 +45,7 @@ describe("resolveActiveProjectRegistryPath", () => {
 	let tmpDir: string;
 
 	beforeEach(() => {
-		tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "omp-proj-scope-"));
+		tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-proj-scope-"));
 	});
 
 	afterEach(() => {
@@ -101,7 +101,7 @@ describe("resolveActiveProjectRegistryPath", () => {
 	it("does not treat ~/.git as a project root (pass-2 home-dir guard)", async () => {
 		// Simulate a dotfiles repo managed with a bare-git technique: ~/.git exists.
 		// resolveActiveProjectRegistryPath must NOT return ~/.veyyon/.../installed_plugins.json.
-		const homeDir = fs.mkdtempSync(path.join(os.tmpdir(), "omp-proj-scope-home-"));
+		const homeDir = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-proj-scope-home-"));
 		vi.spyOn(os, "homedir").mockReturnValue(homeDir);
 		const fakeHomeGit = path.join(homeDir, ".git");
 		await fs.promises.mkdir(fakeHomeGit, { recursive: true });
@@ -136,14 +136,14 @@ describe("resolveActiveProjectRegistryPath", () => {
 describe("listClaudePluginRoots — project shadows user", () => {
 	let tmpHome: string;
 	let tmpProject: string;
-	/** Path where listClaudePluginRoots reads the user OMP registry. */
+	/** Path where listClaudePluginRoots reads the user Veyyon registry. */
 	let userRegPath: string;
 	/** Path where listClaudePluginRoots reads the project registry (resolved from tmpProject). */
 	let projectRegPath: string;
 
 	beforeEach(() => {
-		tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), "omp-shadow-home-"));
-		tmpProject = fs.mkdtempSync(path.join(os.tmpdir(), "omp-shadow-proj-"));
+		tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-shadow-home-"));
+		tmpProject = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-shadow-proj-"));
 
 		// Create .veyyon/ in project so resolveActiveProjectRegistryPath finds it.
 		fs.mkdirSync(path.join(tmpProject, CONFIG_DIR_NAME, "plugins"), { recursive: true });

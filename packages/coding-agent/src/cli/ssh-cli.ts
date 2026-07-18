@@ -4,7 +4,7 @@
  * Handles `veyyon ssh <command>` subcommands for SSH host configuration management.
  */
 
-import { getSSHConfigPath } from "@veyyon/pi-utils";
+import { getSSHConfigPath } from "@veyyon/utils";
 import chalk from "chalk";
 import { addSSHHost, readSSHConfigFile, removeSSHHost, type SSHHostConfig } from "../ssh/config-writer";
 
@@ -13,6 +13,9 @@ import { addSSHHost, readSSHConfigFile, removeSSHHost, type SSHHostConfig } from
 // =============================================================================
 
 export type SSHAction = "add" | "remove" | "list";
+
+/** Canonical action list; the `ssh` command's options validation imports this. */
+export const SSH_ACTIONS: SSHAction[] = ["add", "remove", "list"];
 
 export interface SSHCommandArgs {
 	action: SSHAction;
@@ -158,7 +161,7 @@ async function handleList(cmd: SSHCommandArgs): Promise<void> {
 	}
 
 	if (hasUser) {
-		process.stdout.write(chalk.bold("User SSH Hosts (~/.veyyon/agent/ssh.json):\n"));
+		process.stdout.write(chalk.bold("User SSH Hosts (~/.veyyon/profiles/default/agent/ssh.json):\n"));
 		printHosts(userHosts);
 	}
 }

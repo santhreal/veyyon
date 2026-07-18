@@ -1,7 +1,7 @@
 import * as os from "node:os";
 import * as path from "node:path";
-import type { Message, TextContent } from "@veyyon/pi-ai";
-import { getAgentDir as getDefaultAgentDir, logger, parseJsonlLenient, toError } from "@veyyon/pi-utils";
+import type { Message, TextContent } from "@veyyon/ai";
+import { getAgentDir as getDefaultAgentDir, logger, parseJsonlLenient, toError } from "@veyyon/utils";
 import { computeDefaultSessionDir } from "./session-paths";
 import { FileSessionStorage, type SessionStorage } from "./session-storage";
 

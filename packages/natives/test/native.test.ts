@@ -85,7 +85,7 @@ async function createFifo(fifoPath: string) {
 	throw new Error(await new Response(process.stderr).text());
 }
 
-describe("pi-natives", () => {
+describe("veyyon-natives", () => {
 	beforeAll(async () => {
 		await setupFixtures();
 		return async () => {
@@ -786,7 +786,7 @@ describe("pi-natives", () => {
 
 	describe("MacOSPowerAssertion", () => {
 		it("should create a stoppable power assertion handle", () => {
-			const assertion = MacOSPowerAssertion.start({ reason: "pi-natives test" });
+			const assertion = MacOSPowerAssertion.start({ reason: "veyyon-natives test" });
 			assertion.stop();
 			assertion.stop();
 		});

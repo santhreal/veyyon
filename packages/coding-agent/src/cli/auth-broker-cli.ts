@@ -31,10 +31,10 @@ import {
 	PASTE_CODE_LOGIN_PROVIDERS,
 	PROVIDER_REGISTRY,
 	SqliteAuthCredentialStore,
-} from "@veyyon/pi-ai";
-import { AuthBrokerClient, DEFAULT_AUTH_BROKER_BIND, startAuthBroker } from "@veyyon/pi-ai/auth-broker";
-import { $which, APP_NAME, getAgentDbPath, getConfigRootDir, isEnoent, logger, VERSION } from "@veyyon/pi-utils";
-import { setTransports as setLoggerTransports } from "@veyyon/pi-utils/logger";
+} from "@veyyon/ai";
+import { AuthBrokerClient, DEFAULT_AUTH_BROKER_BIND, startAuthBroker } from "@veyyon/ai/auth-broker";
+import { $which, APP_NAME, getAgentDbPath, getConfigRootDir, isEnoent, logger, VERSION } from "@veyyon/utils";
+import { setTransports as setLoggerTransports } from "@veyyon/utils/logger";
 import { $ } from "bun";
 import chalk from "chalk";
 import { resolveAuthBrokerConfig } from "../session/auth-broker-config";
@@ -225,12 +225,12 @@ async function runLocalLogin(provider: OAuthProvider): Promise<void> {
 			onAuth({ url, launchUrl, instructions }) {
 				process.stdout.write("\nOpen this URL in your browser:\n");
 				// Full URL first so the CLI works from any machine, including SSH
-				// sessions where a `launchUrl` (loopback `/launch` on the OMP
+				// sessions where a `launchUrl` (loopback `/launch` on the veyyon
 				// host) would resolve against the caller's browser and fail.
 				// Headless capture is unaffected: it reads the first URL line.
 				process.stdout.write(`${url}\n`);
 				if (launchUrl && launchUrl !== url) {
-					// Local shortcut for the machine running OMP. Terminals or
+					// Local shortcut for the machine running veyyon. Terminals or
 					// screen-scrapers narrower than the full URL still get an
 					// unbroken copy target here.
 					process.stdout.write(`Local shortcut (this machine only): ${launchUrl}\n`);
@@ -723,7 +723,7 @@ async function runMigrate(flags: AuthBrokerCommandArgs["flags"]): Promise<void> 
 	const brokerConfig = await resolveAuthBrokerConfig();
 	if (!brokerConfig) {
 		throw new Error(
-			"OMP_AUTH_BROKER_URL must be set (or `auth.broker.url` in config.yml). `migrate` uploads local credentials to a configured broker.",
+			"VEYYON_AUTH_BROKER_URL must be set (or `auth.broker.url` in config.yml). `migrate` uploads local credentials to a configured broker.",
 		);
 	}
 	if (flags.fromLocal !== true) {
@@ -876,7 +876,7 @@ async function runMigrate(flags: AuthBrokerCommandArgs["flags"]): Promise<void> 
 async function runStatus(flags: AuthBrokerCommandArgs["flags"]): Promise<void> {
 	const cfg = await resolveAuthBrokerConfig();
 	if (!cfg) {
-		const message = "No auth-broker configured (set OMP_AUTH_BROKER_URL to enable).";
+		const message = "No auth-broker configured (set VEYYON_AUTH_BROKER_URL to enable).";
 		if (flags.json) process.stdout.write(`${JSON.stringify({ ok: false, reason: "not_configured" })}\n`);
 		else process.stdout.write(`${chalk.yellow(message)}\n`);
 		return;

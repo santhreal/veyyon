@@ -1,6 +1,6 @@
 /**
  * Compatibility shim for legacy extensions importing the package root of
- * `@veyyon/pi-coding-agent` (or one of its aliased scopes like
+ * `@veyyon/coding-agent` (or one of its aliased scopes like
  * `@earendil-works/pi-coding-agent` or `@mariozechner/pi-coding-agent`).
  *
  * The coding-agent package's own barrel (`./src/index.ts`) cannot be listed
@@ -9,15 +9,15 @@
  * Routing legacy plugin imports through this sibling shim sidesteps that
  * conflict: bun bundles a distinct entry whose path differs from the CLI
  * entry, while still re-exporting the canonical surface so plugins observe
- * the same module identity as a direct `@veyyon/pi-coding-agent` import.
+ * the same module identity as a direct `@veyyon/coding-agent` import.
  */
 
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import type { AgentToolResult, AgentToolUpdateCallback } from "@veyyon/pi-agent-core";
-import type { TSchema } from "@veyyon/pi-ai";
-import { Text } from "@veyyon/pi-tui";
-import { getAgentDir, getProjectDir, parseFrontmatter as parseOmpFrontmatter } from "@veyyon/pi-utils";
+import type { AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
+import type { TSchema } from "@veyyon/ai";
+import { Text } from "@veyyon/tui";
+import { getAgentDir, getProjectDir, parseFrontmatter as parseOmpFrontmatter } from "@veyyon/utils";
 import type { PromptTemplate } from "../config/prompt-templates";
 import { type SettingPath, Settings } from "../config/settings";
 import { EditTool } from "../edit";
@@ -666,18 +666,18 @@ export const SettingsManager = {
  * import the class at module scope; a missing export takes the whole
  * extension down at parse time (issue #4567).
  *
- * OMP does the same discovery inline inside `createAgentSession()`, so this
+ * veyyon does the same discovery inline inside `createAgentSession()`, so this
  * shim intentionally does NOT re-implement pi's ResourceLoader plumbing.
  * Instead the loader captures the caller's intent (`no*` flags, `*Override`
  * callbacks, `additional*Paths`, `extensionFactories`, `settingsManager`,
  * `eventBus`) plus the discovery results, and the sibling `createAgentSession`
- * override below translates them into OMP's native session options
+ * override below translates them into veyyon's native session options
  * (`disableExtensionDiscovery`, `preloadedExtensionPaths`, `extensions`,
  * `skills`, `promptTemplates`, `contextFiles`, `settings`, `eventBus`,
  * `systemPrompt`) before delegating to `../sdk`.
  *
  * The pi surface it emulates is the intersection actually used by real
- * extensions in the wild — themes are silently dropped (OMP has no
+ * extensions in the wild — themes are silently dropped (veyyon has no
  * session-level themes surface); `extendResources`, `loadProjectTrustExtensions`,
  * and provider-trust hooks are omitted.
  */
@@ -1102,15 +1102,15 @@ export class DefaultResourceLoader implements ResourceLoader {
 }
 
 /**
- * Legacy pi extensions call `createAgentSession({ resourceLoader })`. OMP's
+ * Legacy pi extensions call `createAgentSession({ resourceLoader })`. veyyon's
  * native option surface has no such field — extension / skill / prompt /
  * context-file discovery are configured directly on the session options — so
  * an untranslated call would silently ignore the loader (including its
- * `noExtensions`/`noSkills` opt-outs), re-run OMP's own discovery, and
+ * `noExtensions`/`noSkills` opt-outs), re-run veyyon's own discovery, and
  * happily re-load the calling extension into the subagent. That's exactly
  * the recursion the caller passed the loader to prevent.
  *
- * Translate the loader's captured state into OMP's option fields, then
+ * Translate the loader's captured state into veyyon's option fields, then
  * delegate to the underlying SDK. Explicit fields on `options` override the
  * loader (matches upstream pi semantics — a caller can partially override a
  * shared loader).

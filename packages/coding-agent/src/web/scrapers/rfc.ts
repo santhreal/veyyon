@@ -1,5 +1,14 @@
-import { tryParseJson } from "@veyyon/pi-utils";
-import { buildResult, loadPage, type RenderResult, type SpecialHandler } from "./types";
+import { tryParseJson } from "@veyyon/utils";
+import {
+	buildResult,
+	loadFailure,
+	loadPage,
+	type RenderResult,
+	type ScraperDegrade,
+	type SpecialHandler,
+	scraperDegrade,
+	tryParseUrl,
+} from "./types";
 
 interface RfcMetadata {
 	doc_id: string;
@@ -94,9 +103,10 @@ export const handleRfc: SpecialHandler = async (
 	url: string,
 	timeout: number,
 	signal?: AbortSignal,
-): Promise<RenderResult | null> => {
+): Promise<RenderResult | ScraperDegrade | null> => {
 	try {
-		const parsed = new URL(url);
+		const parsed = tryParseUrl(url);
+		if (!parsed) return null;
 		const rfcNumber = extractRfcNumber(parsed);
 
 		if (!rfcNumber) return null;
@@ -114,7 +124,7 @@ export const handleRfc: SpecialHandler = async (
 		]);
 
 		// We need at least the text content
-		if (!textResult.ok) return null;
+		if (!textResult.ok) return scraperDegrade("rfc", loadFailure(textResult));
 
 		let metadata: RfcMetadata | null = null;
 		if (metaResult.ok) {
@@ -195,7 +205,7 @@ export const handleRfc: SpecialHandler = async (
 			fetchedAt,
 			notes: notes.length ? notes : ["Fetched from RFC Editor"],
 		});
-	} catch {}
-
-	return null;
+	} catch (error) {
+		return scraperDegrade("rfc", error);
+	}
 };

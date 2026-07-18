@@ -102,14 +102,14 @@ const nativeAndIntegrationPackages = ["packages/natives", "packages/tui", "packa
 
 // Packages the CI buckets deliberately skip but a local full run should still
 // cover. mnemopi's embedding suites need a ~270MB fastembed model absent from CI
-// runners (so it flakes/times out there); robomp-web lives under python/robomp
+// runners (so it flakes/times out there); veybot-web lives under python/veybot
 // and is outside every CI TS bucket.
-const localOnlyWorkspacePackages = ["packages/mnemopi", "python/robomp/web"];
+const localOnlyWorkspacePackages = ["packages/mnemopi", "python/veybot/web"];
 
 // Repo-level script tests. CI's `workspace` bucket only runs the merge gates:
 // the concurrency regression (the GHA-config guard) and the .d.ts extension
 // rewrite (guards published-type resolution; hermetic temp-dir suite). A local
-// full run also exercises the release-notes and link-omp tests. (A
+// full run also exercises the release-notes and link-veyyon tests. (A
 // `ci-test-ts.test.ts` entry used to sit here but the file never existed — bun
 // silently ignores unmatched filters when at least one other filter matches.)
 const repoScriptTests = [
@@ -118,7 +118,7 @@ const repoScriptTests = [
 	"scripts/ci-release-notes.test.ts",
 	"scripts/ci-update-brew-formula.test.ts",
 	"scripts/fix-dts-extensions.test.ts",
-	"scripts/link-omp.test.ts",
+	"scripts/link-veyyon.test.ts",
 	"scripts/docs-book-pin.test.ts",
 	"website/tools/gen-changelog.test.ts",
 ];
@@ -159,8 +159,8 @@ const codingAgentRuntimePathPatterns = [
 ];
 
 const codingAgentNativeContentMarkers = [
-	"@veyyon/pi-natives",
-	"pi-natives",
+	"@veyyon/natives",
+	"veyyon-natives",
 	"native",
 	"readImageMetadata",
 	"Bun.spawn",
@@ -195,7 +195,7 @@ const codingAgentSingletonContentPatterns = [
 ];
 
 const codingAgentUiContentMarkers = [
-	"@veyyon/pi-tui",
+	"@veyyon/tui",
 	"InteractiveMode",
 	"InputController",
 	"StatusLine",
@@ -382,7 +382,7 @@ async function commandsForMode(mode: Mode): Promise<TestCommand[]> {
 			];
 		// `local-ts` is the full local TypeScript run that root `bun run test:ts`
 		// drives: every package the old `--workspaces` fan-out covered (the CI
-		// `all` set PLUS mnemopi and robomp-web, which CI omits) and every repo
+		// `all` set PLUS mnemopi and veybot-web, which CI omits) and every repo
 		// script test, routed through this one quiet runner so the whole suite
 		// shares one progress stream and one failure report.
 		case "local-ts":
@@ -405,9 +405,9 @@ async function commandsForMode(mode: Mode): Promise<TestCommand[]> {
 	}
 }
 
-// The omp-kata runner pods inject sccache S3 credentials (`AWS_*`) and config
-// (`SCCACHE_*`) pod-wide via `envFrom`, GitHub Actions injects `GITHUB_TOKEN`,
-// and a host may carry provider API keys. Any of these make env-sensitive code
+// A CI runner or dev host may carry sccache S3 credentials (`AWS_*`) and config
+// (`SCCACHE_*`) in the environment, GitHub Actions injects `GITHUB_TOKEN`, and a
+// host may carry provider API keys. Any of these make env-sensitive code
 // non-deterministic in tests — e.g. leaked AWS creds make `amazon-bedrock` look
 // authenticated and win the provider startup fallback over `anthropic`. Run the
 // suites in a hermetic environment with all credential / cloud-config variables
@@ -494,9 +494,9 @@ function buildChildEnv(): Record<string, string | undefined> {
 // parallel path awaits the child's stdout/stderr pipes, which stay open as
 // long as the wedged process — or any grandchild that inherited them — lives.
 // After this many seconds the child is SIGKILLed and reported as a failure.
-// Override with OMP_TEST_CHUNK_TIMEOUT (seconds).
+// Override with VEYYON_TEST_CHUNK_TIMEOUT (seconds).
 function chunkTimeoutMs(): number {
-	const raw = Number(Bun.env.OMP_TEST_CHUNK_TIMEOUT?.trim());
+	const raw = Number(Bun.env.VEYYON_TEST_CHUNK_TIMEOUT?.trim());
 	if (Number.isFinite(raw) && raw >= 1) return raw * 1000;
 	return 600_000;
 }
@@ -513,11 +513,11 @@ function isCI(): boolean {
 }
 
 // Fan-out width for the local parallel path, clamped to the command count.
-// Defaults to the machine's available parallelism; `OMP_TEST_CONCURRENCY`
+// Defaults to the machine's available parallelism; `VEYYON_TEST_CONCURRENCY`
 // overrides it — a positive integer to pick an exact width (dial down on a
 // memory-constrained laptop), or `all`/`max` to launch every chunk at once.
 function testConcurrency(total: number): number {
-	const raw = Bun.env.OMP_TEST_CONCURRENCY?.trim().toLowerCase();
+	const raw = Bun.env.VEYYON_TEST_CONCURRENCY?.trim().toLowerCase();
 	if (raw === "all" || raw === "max") {
 		return total;
 	}
@@ -693,7 +693,7 @@ export async function runTestCommandsInParallel(commands: TestCommand[], concurr
 	let completed = 0;
 	console.log(
 		`Running ${commands.length} test command(s), up to ${concurrency} in parallel ` +
-			`(OMP_TEST_CONCURRENCY=<n>|all to change).`,
+			`(VEYYON_TEST_CONCURRENCY=<n>|all to change).`,
 	);
 
 	// Incremental, cancellable drain into a mutable sink, so a watchdog-killed
@@ -777,7 +777,7 @@ export async function runTestCommandsInParallel(commands: TestCommand[], concurr
 				command: renderedCommand,
 				exitCode,
 				seconds: (performance.now() - startedAt) / 1000,
-				output: `${stdout.text}${stderr.text}${timedOut ? `\n[watchdog] chunk exceeded ${Math.round(chunkTimeoutMs() / 1000)}s; killed with SIGKILL (OMP_TEST_CHUNK_TIMEOUT to change)\n` : ""}`,
+				output: `${stdout.text}${stderr.text}${timedOut ? `\n[watchdog] chunk exceeded ${Math.round(chunkTimeoutMs() / 1000)}s; killed with SIGKILL (VEYYON_TEST_CHUNK_TIMEOUT to change)\n` : ""}`,
 			};
 			if (quiet) {
 				let msg = `${formatProgressLine(outcome)}\n`;

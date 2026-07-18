@@ -1,5 +1,5 @@
-import type { AgentToolContext } from "@veyyon/pi-agent-core";
-import { type PtyRunResult, PtySession } from "@veyyon/pi-natives";
+import type { AgentToolContext } from "@veyyon/agent-core";
+import { type PtyRunResult, PtySession } from "@veyyon/natives";
 import {
 	type Component,
 	extractPrintableText,
@@ -9,8 +9,8 @@ import {
 	parseKittySequence,
 	truncateToWidth,
 	visibleWidth,
-} from "@veyyon/pi-tui";
-import { sanitizeText } from "@veyyon/pi-utils";
+} from "@veyyon/tui";
+import { errorMessage, sanitizeText } from "@veyyon/utils";
 import type * as XtermModule from "@xterm/headless";
 import type { Terminal as XtermTerminalType } from "@xterm/headless";
 import { Settings } from "../config/settings";
@@ -394,7 +394,7 @@ export async function runInteractiveBashPty(
 				)
 				.then(finalize)
 				.catch(error => {
-					sink.push(`PTY error: ${error instanceof Error ? error.message : String(error)}\n`);
+					sink.push(`PTY error: ${errorMessage(error)}\n`);
 					finalize({ exitCode: undefined, cancelled: false, timedOut: false });
 				});
 			return component;

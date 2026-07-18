@@ -4,8 +4,8 @@
  * Handles `veyyon grep` subcommand for testing grep tool on Windows.
  */
 import * as path from "node:path";
-import { GrepOutputMode, grep } from "@veyyon/pi-natives";
-import { APP_NAME } from "@veyyon/pi-utils";
+import { GrepOutputMode, grep } from "@veyyon/natives";
+
 import chalk from "chalk";
 
 export interface GrepCommandArgs {
@@ -18,58 +18,10 @@ export interface GrepCommandArgs {
 	gitignore: boolean;
 }
 
-/**
- * Parse grep subcommand arguments.
- * Returns undefined if not a grep command.
- */
-export function parseGrepArgs(args: string[]): GrepCommandArgs | undefined {
-	if (args.length === 0 || args[0] !== "grep") {
-		return undefined;
-	}
-
-	const result: GrepCommandArgs = {
-		pattern: "",
-		path: ".",
-		limit: 20,
-		context: 2,
-		mode: GrepOutputMode.Content,
-		gitignore: true,
-	};
-
-	const positional: string[] = [];
-
-	for (let i = 1; i < args.length; i++) {
-		const arg = args[i];
-		if (arg === "--glob" || arg === "-g") {
-			result.glob = args[++i];
-		} else if (arg === "--limit" || arg === "-l") {
-			result.limit = parseInt(args[++i], 10);
-		} else if (arg === "--context" || arg === "-C") {
-			result.context = parseInt(args[++i], 10);
-		} else if (arg === "--files" || arg === "-f") {
-			result.mode = GrepOutputMode.FilesWithMatches;
-		} else if (arg === "--count" || arg === "-c") {
-			result.mode = GrepOutputMode.Count;
-		} else if (arg === "--no-gitignore") {
-			result.gitignore = false;
-		} else if (!arg.startsWith("-")) {
-			positional.push(arg);
-		}
-	}
-
-	if (positional.length >= 1) {
-		result.pattern = positional[0];
-	}
-	if (positional.length >= 2) {
-		result.path = positional[1];
-	}
-
-	return result;
-}
-
 export async function runGrepCommand(cmd: GrepCommandArgs): Promise<void> {
 	if (!cmd.pattern) {
 		console.error(chalk.red("Error: Pattern is required"));
+		console.error(chalk.dim('Usage: veyyon grep <pattern> [path] — e.g. `veyyon grep "TODO" src/`'));
 		process.exit(1);
 	}
 
@@ -128,33 +80,4 @@ export async function runGrepCommand(cmd: GrepCommandArgs): Promise<void> {
 		console.error(chalk.red(`Error: ${err instanceof Error ? err.message : String(err)}`));
 		process.exit(1);
 	}
-}
-
-export function printGrepHelp(): void {
-	console.log(`${chalk.bold(`${APP_NAME} grep`)} - Test grep tool
-
-${chalk.bold("Usage:")}
-  ${APP_NAME} grep <pattern> [path] [options]
-
-${chalk.bold("Arguments:")}
-  pattern   Regex pattern to search for
-  path      Directory or file to search (default: .)
-
-${chalk.bold("Options:")}
-  -g, --glob <pattern>  Filter files by glob pattern
-  -l, --limit <n>       Max matches (default: 20)
-  -C, --context <n>     Context lines (default: 2)
-  -f, --files           Output file names only
-  -c, --count           Output match counts per file
-  -h, --help            Show this help
-  --no-gitignore        Include files excluded by .gitignore
-
-${chalk.bold("Environment:")}
-  PI_WALK_WORKERS=N    Set filesystem walker workers (default 4, 0 = auto)
-
-${chalk.bold("Examples:")}
-  ${APP_NAME} grep "import" src/
-  ${APP_NAME} grep "TODO" . --glob "*.ts"
-  ${APP_NAME} grep "function" --files
-`);
 }

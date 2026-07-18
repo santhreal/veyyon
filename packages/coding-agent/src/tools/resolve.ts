@@ -4,10 +4,10 @@ import type {
 	AgentToolResult,
 	AgentToolUpdateCallback,
 	CustomMessage,
-} from "@veyyon/pi-agent-core";
-import type { Component } from "@veyyon/pi-tui";
-import { Text } from "@veyyon/pi-tui";
-import { prompt, untilAborted } from "@veyyon/pi-utils";
+} from "@veyyon/agent-core";
+import type { Component } from "@veyyon/tui";
+import { Text } from "@veyyon/tui";
+import { errorMessage, prompt, untilAborted } from "@veyyon/utils";
 import { type } from "arktype";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import type { Theme } from "../modes/theme/theme";
@@ -151,7 +151,7 @@ export async function runResolveInvocation(
 				// Requeue hook must not mask the original apply failure.
 			}
 			if (error instanceof ToolError) throw error;
-			const message = error instanceof Error ? error.message : String(error);
+			const message = errorMessage(error);
 			throw new ToolError(`Apply failed: ${message}`);
 		}
 		return {

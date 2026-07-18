@@ -1,18 +1,18 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
-import type { AgentMessage } from "@veyyon/pi-agent-core";
-import { KeybindingsManager } from "@veyyon/pi-coding-agent/config/keybindings";
-import { ExtensionList } from "@veyyon/pi-coding-agent/modes/components/extensions/extension-list";
-import type { Extension } from "@veyyon/pi-coding-agent/modes/components/extensions/types";
-import { HistorySearchComponent } from "@veyyon/pi-coding-agent/modes/components/history-search";
-import { SessionSelectorComponent } from "@veyyon/pi-coding-agent/modes/components/session-selector";
-import { TreeSelectorComponent } from "@veyyon/pi-coding-agent/modes/components/tree-selector";
-import { UserMessageSelectorComponent } from "@veyyon/pi-coding-agent/modes/components/user-message-selector";
-import { initTheme } from "@veyyon/pi-coding-agent/modes/theme/theme";
-import { HistoryStorage } from "@veyyon/pi-coding-agent/session/history-storage";
-import type { SessionTreeNode } from "@veyyon/pi-coding-agent/session/session-entries";
-import type { SessionInfo } from "@veyyon/pi-coding-agent/session/session-listing";
-import { setKeybindings } from "@veyyon/pi-tui";
-import { TempDir } from "@veyyon/pi-utils";
+import type { AgentMessage } from "@veyyon/agent-core";
+import { KeybindingsManager } from "@veyyon/coding-agent/config/keybindings";
+import { ExtensionList } from "@veyyon/coding-agent/modes/components/extensions/extension-list";
+import type { Extension } from "@veyyon/coding-agent/modes/components/extensions/types";
+import { HistorySearchComponent } from "@veyyon/coding-agent/modes/components/history-search";
+import { SessionSelectorComponent } from "@veyyon/coding-agent/modes/components/session-selector";
+import { TreeSelectorComponent } from "@veyyon/coding-agent/modes/components/tree-selector";
+import { UserMessageSelectorComponent } from "@veyyon/coding-agent/modes/components/user-message-selector";
+import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { HistoryStorage } from "@veyyon/coding-agent/session/history-storage";
+import type { SessionTreeNode } from "@veyyon/coding-agent/session/session-entries";
+import type { SessionInfo } from "@veyyon/coding-agent/session/session-listing";
+import { setKeybindings } from "@veyyon/tui";
+import { TempDir } from "@veyyon/utils";
 
 const CTRL_N = "\x0e";
 const CTRL_P = "\x10";
@@ -82,7 +82,7 @@ function createExtension(id: string, displayName: string): Extension {
 }
 
 async function createHistoryStorage(prompts: string[]): Promise<HistoryStorage> {
-	const dir = TempDir.createSync("@omp-history-nav-");
+	const dir = TempDir.createSync("@veyyon-history-nav-");
 	tempDirs.push(dir);
 	HistoryStorage.resetInstance();
 	const storage = HistoryStorage.open(dir.join("history.db"));

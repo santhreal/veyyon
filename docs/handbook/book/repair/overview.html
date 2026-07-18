@@ -10,6 +10,10 @@
         <!-- Veyyon handbook: self-contained head additions. No remote resources. -->
         <meta name="theme-color" content="#050505">
         <meta name="color-scheme" content="dark">
+        <!-- Site favicons live at the deployed root, one level above /docs/. -->
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+        <link rel="icon" href="/favicon.ico" sizes="48x48">
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png">
         <style>
           /* Paint the near-black surface before CSS/JS resolve the theme, so there is
              no light flash on load. Kept in sync with theme/veyyon.css. */
@@ -18,7 +22,7 @@
           *, *::before, *::after { box-sizing: border-box; }
         </style>
 
-        <meta name="description" content="How Veyyon turns open models into frontier coding agents. The product, the harness, tool-call repair, the edit format, per-model adaptation, and how to use it.">
+        <meta name="description" content="Operator handbook for the Veyyon terminal coding agent: install, configuration, tools, approvals, edit formats, providers, and harness structure.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -38,7 +42,7 @@
         <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="../ayu-highlight-3fdfc3ac.css">
 
         <!-- Custom theme stylesheets -->
-        <link rel="stylesheet" href="../theme/veyyon-fc839a17.css">
+        <link rel="stylesheet" href="../theme/veyyon-06f6939e.css">
 
 
         <!-- Provide site root and default themes to javascript -->
@@ -46,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-e76f06ca.js";
+            window.path_to_searchindex_js = "../searchindex-a2447057.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-9cfd259b.js"></script>
+        <script src="../toc-cc1a72e9.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -191,46 +195,34 @@
 
                 <div id="mdbook-content" class="content">
                     <main>
-                        <h1 id="why-repair-exists"><a class="header" href="#why-repair-exists">Why repair exists</a></h1>
-<blockquote>
-<p><strong>Status: Mostly shipped.</strong> Schema-based tool-call repair runs in the agent loop before
-validation, including parse leniency, ambiguity refusal, alias/typo key rename, and strict
-unknown-key rejection. Per-model posture, telemetry, and per-shape backends remain <strong>Spec — not
-shipped</strong> — see <a href="./cascade.html">The repair cascade</a>.</p>
-</blockquote>
-<p>OSS backends malform tool-call arguments in model-specific ways: stringified JSON, truncated JSON,
-trailing commas, ambiguous field names. Each malformation, left alone, costs a whole turn.</p>
-<p><strong>Repair makes recoverable calls land on the first attempt.</strong> It coerces malformed-but-clear JSON
-into an object and re-validates; when a call genuinely cannot be made valid, it fails <strong>loud</strong> back
-to the model with coaching, never dispatched as garbage.</p>
-<h2 id="the-lever"><a class="header" href="#the-lever">The lever</a></h2>
-<p><em>Edit format / first-attempt success.</em> Repair is the safety net under every schema-bearing tool call,
-most importantly the <strong>edit</strong> path, where a malformed call is a failed edit.</p>
-<h2 id="shipped-behavior"><a class="header" href="#shipped-behavior">Shipped behavior</a></h2>
+                        <h1 id="tool-call-repair"><a class="header" href="#tool-call-repair">Tool-call repair</a></h1>
+<p>Models often emit tool arguments that are almost valid JSON or almost match the tool schema: stringified objects, trailing commas, truncated payloads, or misnamed fields. Without a repair step those calls fail validation and cost a full turn.</p>
+<p>Repair runs in the agent loop <strong>before</strong> argument validation. Clear malformations are coerced into a schema-valid object; ambiguous cases are refused and returned to the model as an error tool result (no dispatch).</p>
+<h2 id="behavior"><a class="header" href="#behavior">Behavior</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Step</th><th>What it does</th></tr>
+</thead>
+<tbody>
+<tr><td>Seam</td><td>Runs at tool dispatch, before schema validation</td></tr>
+<tr><td>Fix-if-clear</td><td>Trailing commas, parse sentinels (<code>__parseError</code> / <code>__rawJson</code>), stringified JSON objects</td></tr>
+<tr><td>Refuse-if-ambiguous</td><td>Missing required strings with multiple plausible sources → unrepairable</td></tr>
+<tr><td>Alias / typo rename</td><td>Unknown keys that clearly map to a declared property are renamed; ambiguous renames refuse</td></tr>
+<tr><td>Strict unknown keys</td><td>Schemas with <code>additionalProperties: false</code> refuse leftover keys after alias resolution</td></tr>
+<tr><td>Size bound</td><td>Inputs over 1 MiB refuse repair</td></tr>
+<tr><td>Disable</td><td><code>VEYYON_REPAIR_DISABLE=1</code>, or per-model <code>harness.profiles</code> with <code>repair: false</code></td></tr>
+</tbody>
+</table>
+</div>
+<p>Implementation: <code>packages/coding-agent/src/repair/schema-repair.ts</code><br>Tests: <code>packages/coding-agent/test/repair/schema-repair.test.ts</code></p>
+<h2 id="related"><a class="header" href="#related">Related</a></h2>
 <ul>
-<li><strong>Seam:</strong> argument repair runs in the agent loop, before argument validation.</li>
-<li><strong>Fix-if-clear:</strong> trailing commas, parse sentinels (<code>__parseError</code> / <code>__rawJson</code>), stringified JSON objects.</li>
-<li><strong>Refuse-if-ambiguous:</strong> missing required strings with multiple plausible sources → unrepairable (no invent).</li>
-<li><strong>Alias/typo rename:</strong> unknown keys that clearly alias a declared property are renamed; refuses on
-genuine ambiguity instead of guessing.</li>
-<li><strong>Strict unknown-key rejection:</strong> <code>additionalProperties: false</code> schemas refuse leftover
-unrecognized keys after alias resolution.</li>
-<li><strong>Bounded:</strong> inputs over 1 MiB refuse repair.</li>
-<li><strong>Disable:</strong> <code>VEYYON_REPAIR_DISABLE=1</code> or per-model <code>harness.profiles</code> with <code>repair: false</code>.</li>
+<li><a href="./cascade.html">The repair cascade</a> — ordered rules</li>
+<li><a href="./per-model.html">Per-model posture</a> — harness profiles</li>
+<li><a href="./soundness.html">Soundness and telemetry</a></li>
+<li><a href="../edit/engine.html">The hashline edit engine</a> — edit path (separate from argument repair)</li>
 </ul>
-<h2 id="not-shipped-yet"><a class="header" href="#not-shipped-yet">Not shipped yet</a></h2>
-<ul>
-<li>Per-tool shape tables beyond the generic alias/strict rules</li>
-<li>Per-<code>(model,tool,shape)</code> telemetry store</li>
-<li>Per-model posture knobs</li>
-</ul>
-<p>The shipped rule cascade and its conformance suite live in the TypeScript repair module
-(<code>packages/coding-agent/src/repair/schema-repair.ts</code>, tested by
-<code>packages/coding-agent/test/repair/schema-repair.test.ts</code>) at the tool-dispatch seam — this stays a
-TS module, not a separate Rust crate.</p>
-<p>See <a href="./cascade.html">The repair cascade</a>, <a href="./per-model.html">Per-model posture</a>, and
-<a href="./soundness.html">Soundness and telemetry</a> for the target design. For the shipped edit engine,
-see <a href="../edit/engine.html">The hashline edit engine</a>.</p>
 
                     </main>
 

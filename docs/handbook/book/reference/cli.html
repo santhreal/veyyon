@@ -10,6 +10,10 @@
         <!-- Veyyon handbook: self-contained head additions. No remote resources. -->
         <meta name="theme-color" content="#050505">
         <meta name="color-scheme" content="dark">
+        <!-- Site favicons live at the deployed root, one level above /docs/. -->
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+        <link rel="icon" href="/favicon.ico" sizes="48x48">
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png">
         <style>
           /* Paint the near-black surface before CSS/JS resolve the theme, so there is
              no light flash on load. Kept in sync with theme/veyyon.css. */
@@ -18,7 +22,7 @@
           *, *::before, *::after { box-sizing: border-box; }
         </style>
 
-        <meta name="description" content="How Veyyon turns open models into frontier coding agents. The product, the harness, tool-call repair, the edit format, per-model adaptation, and how to use it.">
+        <meta name="description" content="Operator handbook for the Veyyon terminal coding agent: install, configuration, tools, approvals, edit formats, providers, and harness structure.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -38,7 +42,7 @@
         <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="../ayu-highlight-3fdfc3ac.css">
 
         <!-- Custom theme stylesheets -->
-        <link rel="stylesheet" href="../theme/veyyon-fc839a17.css">
+        <link rel="stylesheet" href="../theme/veyyon-06f6939e.css">
 
 
         <!-- Provide site root and default themes to javascript -->
@@ -46,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-e76f06ca.js";
+            window.path_to_searchindex_js = "../searchindex-a2447057.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-9cfd259b.js"></script>
+        <script src="../toc-cc1a72e9.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -228,7 +232,7 @@ $ veyyon "fix the failing test in auth.rs"
 </thead>
 <tbody>
 <tr><td><code>launch</code></td><td>(default)</td><td>Interactive or prompted session</td></tr>
-<tr><td><code>acp</code></td><td></td><td>Agent Control Protocol server mode</td></tr>
+<tr><td><code>acp</code></td><td></td><td>Agent Client Protocol server mode</td></tr>
 <tr><td><code>agents</code></td><td></td><td>Manage agent definitions</td></tr>
 <tr><td><code>auth-broker</code></td><td></td><td>Shared auth broker (headless login)</td></tr>
 <tr><td><code>auth-gateway</code></td><td></td><td>Auth gateway helper</td></tr>
@@ -236,9 +240,9 @@ $ veyyon "fix the failing test in auth.rs"
 <tr><td><code>commit</code></td><td></td><td>Agentic commit workflow</td></tr>
 <tr><td><code>completions</code></td><td></td><td>Shell completion scripts</td></tr>
 <tr><td><code>config</code></td><td></td><td>List/get/set settings</td></tr>
-<tr><td><code>dry-balance</code></td><td></td><td>Token balance probe</td></tr>
+<tr><td><code>dry-balance</code></td><td></td><td>Dry-run OAuth account balancing</td></tr>
 <tr><td><code>gc</code></td><td></td><td>Garbage-collect session artifacts</td></tr>
-<tr><td><code>grep</code></td><td></td><td>Test grep tool (esp. Windows)</td></tr>
+<tr><td><code>grep</code></td><td></td><td>Grep-tool CLI probe</td></tr>
 <tr><td><code>gallery</code></td><td></td><td>TUI gallery / fixtures</td></tr>
 <tr><td><code>grievances</code></td><td></td><td>Internal grievance reporter</td></tr>
 <tr><td><code>install</code></td><td></td><td>Install / bootstrap</td></tr>
@@ -246,13 +250,13 @@ $ veyyon "fix the failing test in auth.rs"
 <tr><td><code>models</code></td><td></td><td>List models and providers</td></tr>
 <tr><td><code>plugin</code></td><td></td><td>Plugin lifecycle (<code>list</code>, <code>install</code>, …)</td></tr>
 <tr><td><code>read</code></td><td></td><td>Read-tool CLI probe</td></tr>
-<tr><td><code>say</code></td><td></td><td>TTS one-shot</td></tr>
+<tr><td><code>say</code></td><td></td><td>Speak text with local TTS (<code>--voices</code> lists voices)</td></tr>
 <tr><td><code>search</code></td><td><code>q</code></td><td>Web search probe</td></tr>
 <tr><td><code>setup</code></td><td></td><td>First-run setup wizard</td></tr>
 <tr><td><code>shell</code></td><td></td><td>Native shell probe</td></tr>
 <tr><td><code>ssh</code></td><td></td><td>SSH host configuration</td></tr>
 <tr><td><code>tiny-models</code></td><td></td><td>On-device tiny model utilities</td></tr>
-<tr><td><code>token</code></td><td></td><td>Token utilities</td></tr>
+<tr><td><code>token</code></td><td></td><td>Print a provider’s API key or OAuth token</td></tr>
 <tr><td><code>ttsr</code></td><td></td><td>Time-traveling stream rules test</td></tr>
 <tr><td><code>update</code></td><td></td><td>Self-update</td></tr>
 <tr><td><code>usage</code></td><td></td><td>Provider usage limits</td></tr>

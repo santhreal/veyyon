@@ -1,6 +1,7 @@
 import { scheduler } from "node:timers/promises";
-import { bareModelId, parseAnthropicModel } from "@veyyon/pi-catalog/identity";
-import { toNumber } from "@veyyon/pi-catalog/utils";
+import { bareModelId, parseAnthropicModel } from "@veyyon/catalog/identity";
+import { toNumber } from "@veyyon/catalog/utils";
+import { trimTrailingSlashes } from "@veyyon/utils";
 import * as AIError from "../error";
 import { claudeCodeVersion } from "../providers/anthropic";
 import {
@@ -36,7 +37,7 @@ const CLAUDE_HEADERS = {
 
 function normalizeClaudeBaseUrl(baseUrl?: string): string {
 	if (!baseUrl?.trim()) return DEFAULT_ENDPOINT;
-	const trimmed = baseUrl.trim().replace(/\/+$/, "");
+	const trimmed = trimTrailingSlashes(baseUrl.trim());
 	const lower = trimmed.toLowerCase();
 	if (lower.endsWith("/api/oauth")) return trimmed;
 	let url: URL;
@@ -45,7 +46,7 @@ function normalizeClaudeBaseUrl(baseUrl?: string): string {
 	} catch {
 		return DEFAULT_ENDPOINT;
 	}
-	let path = url.pathname.replace(/\/+$/, "");
+	let path = trimTrailingSlashes(url.pathname);
 	if (path === "/") path = "";
 	if (path.toLowerCase().endsWith("/v1")) {
 		path = path.slice(0, -3);

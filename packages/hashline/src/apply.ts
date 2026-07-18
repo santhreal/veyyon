@@ -36,8 +36,10 @@ function getCursorAnchors(cursor: Cursor): Anchor[] {
 	return cursor.kind === "before_anchor" || cursor.kind === "after_anchor" ? [cursor.anchor] : [];
 }
 
-function getEditAnchors(edit: AppliedEdit): Anchor[] {
-	if (edit.kind === "delete") return [edit.anchor];
+/** Anchors an edit asserts against, over the full Edit union (recovery passes
+ *  already-resolved edits, so its `block` arm exists for type-exhaustiveness). */
+export function getEditAnchors(edit: Edit): Anchor[] {
+	if (edit.kind === "delete" || edit.kind === "block") return [edit.anchor];
 	return getCursorAnchors(edit.cursor);
 }
 

@@ -45,7 +45,7 @@ second model should comment on each turn.
 Use the edit tool with a stale hashline tag and observe the mismatch error.
 ```
 
-Malformed tool JSON is repaired when the fix is unambiguous, otherwise it fails loudly with coaching
+Malformed tool JSON is repaired when the fix is unambiguous; otherwise the call returns an error tool result with hints
 rather than dispatching garbage. Hashline returns actionable stale-tag errors. See
 [Repair overview](../repair/overview.md).
 
@@ -67,10 +67,10 @@ Run the package test gate for the area you changed.
 Example: `bun run test` in `packages/coding-agent` or the project's documented `cargo_full` / CI
 script from `STANDARD.md` when touching Rust natives.
 
-## Use the hosted model contract
+## Use the model/provider contract
 
 ```text
-Point Veyyon at a hosted model and rely on the same behavior contract every provider must satisfy.
+Point Veyyon at a provider model and rely on the same harness contract every provider path must satisfy.
 ```
 
 See [Model contract](../concepts/model-contract.md) and [Providers](../models/providers.md).

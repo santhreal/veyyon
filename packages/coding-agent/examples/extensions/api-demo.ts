@@ -5,7 +5,7 @@
  * These features are now exposed directly on the ExtensionAPI, matching
  * the CustomToolAPI interface.
  */
-import type { ExtensionAPI } from "@veyyon/pi-coding-agent";
+import type { ExtensionAPI } from "@veyyon/coding-agent";
 
 export default function (pi: ExtensionAPI) {
 	const { z } = pi.zod;

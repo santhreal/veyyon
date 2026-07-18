@@ -1,18 +1,49 @@
 # Profiles
 
-A **profile** is a named config root that relocates Veyyon's user-level agent directory. It lets you keep separate settings, sessions, MCP config, skills, and hooks for different kinds of work (for example `work` vs `bounty`) while sharing one `veyyon` binary.
+A **profile** is a directory under `~/.veyyon/profiles/<name>/` holding that identity’s settings, sessions, MCP, skills, hooks, logs, plugins, and caches. One binary; multiple profile trees.
 
-For the mental model and roles, see [Roles and profiles](../using/roles-and-profiles.md).
+Roles and profile layout: [Roles and profiles](../using/roles-and-profiles.md).
+
+## Layout
+
+Every profile — **including `default`** — lives under the same tree:
+
+```text
+~/.veyyon/
+  config.yml            # GLOBAL settings (defaultProfile, ...) — not a profile's settings
+  install-id            # per-install UUID, shared by all profiles
+  profiles/
+    default/            # the default profile — a real profile like any other
+      agent/            # settings, sessions, skills, MCP, keybindings, ...
+      logs/  plugins/  cache/  wt/  ...
+    work/
+      agent/
+      ...
+```
+
+See [File locations](../reference/file-locations.md) for the full per-profile tree and the
+one-time migration from the legacy bare-root layout.
+
+## Which profile launches
+
+Resolution order for every `veyyon` / `vey` invocation:
+
+1. `--profile <name>`.
+2. `VEYYON_PROFILE`. An explicitly **empty**
+   `VEYYON_PROFILE=` forces `default`, bypassing step 3.
+3. `defaultProfile` in the global `~/.veyyon/config.yml` — set or show it with
+   `veyyon profile default [name]`.
+4. `default`.
 
 ## What a profile owns (shipped)
 
-When `--profile <name>` is active (or `VEYYON_PROFILE` is set), native Veyyon paths under `~/.veyyon/agent/` resolve to:
+When a profile `<name>` is active, native Veyyon paths resolve under:
 
 ```text
 ~/.veyyon/profiles/<name>/agent/
 ```
 
-That relocation is uniform across settings, sessions, blobs, slash commands, rules, prompts, hooks, tools, extensions, skills, MCP, keybindings, theme, and top-level instruction files (`SYSTEM.md`, `RULES.md`, `AGENTS.md`) discovered from the user agent dir. A named profile does **not** read another profile's `agent/` tree at runtime.
+That resolution is uniform across settings, sessions, blobs, slash commands, rules, prompts, hooks, tools, extensions, skills, MCP, keybindings, theme, and top-level instruction files (`SYSTEM.md`, `RULES.md`, `AGENTS.md`) discovered from the user agent dir. Operational state (logs, plugins, caches, worktrees) resolves under the profile root `~/.veyyon/profiles/<name>/` the same way. A profile never reads another profile's tree at runtime.
 
 **Keybindings:** each profile owns `agent/keybindings.*`. New profiles seeded with `veyyon profile new --from default` copy the default profile's keybindings once. On first launch of an older named profile that has no keybindings file, Veyyon performs the same one-time seed and logs it. There is no live merge from the default profile after that.
 
@@ -23,7 +54,7 @@ Project-level dirs (`<cwd>/.veyyon`, `.claude`, etc.) are **not** profile-scoped
 ## Activating a profile
 
 - **CLI:** `veyyon --profile <name>` (no short form; `-p` is `--print`).
-- **Env:** `VEYYON_PROFILE=<name>` (legacy: `OMP_PROFILE`, `PI_PROFILE`).
+- **Env:** `VEYYON_PROFILE=<name>`.
 - **TUI:** `/profile <name>` ends the current conversation and relaunches Veyyon on that profile (a fresh session — profiles are chosen at process start, so there is no hot-swap). Bare `/profile` lists profiles with the active one marked.
 - **Shell alias:** `veyyon --profile work --alias mywork` installs a managed block in your shell rc (see `cli/profile-alias.ts`).
 
@@ -43,12 +74,14 @@ $ veyyon profile list
 $ veyyon profile new work
 $ veyyon profile new bounty --from blank
 $ veyyon profile rm work --yes
+$ veyyon profile default work
 ```
 
 - `new` creates `~/.veyyon/profiles/<name>/agent/` with the expected identity dirs (`skills/`, `commands/`, …).
 - `--from default` (default) seeds `config.yml`, keybindings, MCP, skills, and other identity files from the default profile. Sessions, blobs, and databases are **not** copied.
 - `--from blank` creates an empty agent tree.
 - `rm` refuses the default profile, the active profile, and destructive deletes without `--yes`.
+- `default [name]` shows or sets the global `defaultProfile` (which profile a bare `vey` launches); `default --clear` removes it.
 
 In the TUI, `/profile new <name>` opens a picker listing every carry-over item — AGENTS.md, settings, MCP servers, SSH targets, skills, commands, tools, prompts, themes, extensions, keybindings — each individually toggleable (all selected by default). The new profile is seeded from the **active** profile with exactly the chosen items.
 
@@ -67,9 +100,10 @@ Each profile's `config.yml` owns the three model slots and optional roles:
 ```yaml
 modelRoles:
   default: openai/gpt-5             # interactive (also set live with /model)
-  plan: openai/o3                   # optional roles; settings → Models → Roles
+  plan: openai/o3
+  smol: deepseek/deepseek-chat
 subagent:
-  model: deepseek/deepseek-chat
+  model: deepseek/deepseek-chat     # optional override of modelRoles.task
 compaction:
   model: openai/gpt-5-mini
   strategy: handoff                 # or snap

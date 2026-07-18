@@ -1,11 +1,11 @@
 import { describe, expect, it } from "bun:test";
-import { streamAzureOpenAIResponses } from "@veyyon/pi-ai/providers/azure-openai-responses";
-import { streamOpenAICompletions } from "@veyyon/pi-ai/providers/openai-completions";
-import { streamOpenAIResponses } from "@veyyon/pi-ai/providers/openai-responses";
-import { streamSimple } from "@veyyon/pi-ai/stream";
-import type { Context, FetchImpl, Model, TextContent } from "@veyyon/pi-ai/types";
-import { buildModel } from "@veyyon/pi-catalog/build";
-import { getBundledModel } from "@veyyon/pi-catalog/models";
+import { streamAzureOpenAIResponses } from "@veyyon/ai/providers/azure-openai-responses";
+import { streamOpenAICompletions } from "@veyyon/ai/providers/openai-completions";
+import { streamOpenAIResponses } from "@veyyon/ai/providers/openai-responses";
+import { streamSimple } from "@veyyon/ai/stream";
+import type { Context, FetchImpl, Model, TextContent } from "@veyyon/ai/types";
+import { buildModel } from "@veyyon/catalog/build";
+import { getBundledModel } from "@veyyon/catalog/models";
 import { waitForDelayOrAbort } from "./helpers";
 
 const openAIResponsesModel = getBundledModel("openai", "gpt-5-mini") as Model<"openai-responses">;
@@ -356,12 +356,12 @@ describe("OpenAI-family first-event timeouts", () => {
 		);
 	});
 
-	it("lets PI_OPENAI_STREAM_IDLE_TIMEOUT_MS widen OpenAI responses first-event request setup", async () => {
-		const previousOpenAIIdleTimeout = Bun.env.PI_OPENAI_STREAM_IDLE_TIMEOUT_MS;
-		const previousGenericFirstEventTimeout = Bun.env.PI_STREAM_FIRST_EVENT_TIMEOUT_MS;
+	it("lets VEYYON_OPENAI_STREAM_IDLE_TIMEOUT_MS widen OpenAI responses first-event request setup", async () => {
+		const previousOpenAIIdleTimeout = Bun.env.VEYYON_OPENAI_STREAM_IDLE_TIMEOUT_MS;
+		const previousGenericFirstEventTimeout = Bun.env.VEYYON_STREAM_FIRST_EVENT_TIMEOUT_MS;
 		const timeoutHeaders: string[] = [];
-		Bun.env.PI_OPENAI_STREAM_IDLE_TIMEOUT_MS = "1500";
-		Bun.env.PI_STREAM_FIRST_EVENT_TIMEOUT_MS = "20";
+		Bun.env.VEYYON_OPENAI_STREAM_IDLE_TIMEOUT_MS = "1500";
+		Bun.env.VEYYON_STREAM_FIRST_EVENT_TIMEOUT_MS = "20";
 		const fetchMock = createDelayedFetch(30, createOpenAIResponsesSuccessResponse, (input, init) => {
 			timeoutHeaders.push(getRequestHeader(input, init, "X-Stainless-Timeout") ?? "");
 		});
@@ -377,23 +377,23 @@ describe("OpenAI-family first-event timeouts", () => {
 			expect(timeoutHeaders).toContain("1");
 		} finally {
 			if (previousOpenAIIdleTimeout === undefined) {
-				delete Bun.env.PI_OPENAI_STREAM_IDLE_TIMEOUT_MS;
+				delete Bun.env.VEYYON_OPENAI_STREAM_IDLE_TIMEOUT_MS;
 			} else {
-				Bun.env.PI_OPENAI_STREAM_IDLE_TIMEOUT_MS = previousOpenAIIdleTimeout;
+				Bun.env.VEYYON_OPENAI_STREAM_IDLE_TIMEOUT_MS = previousOpenAIIdleTimeout;
 			}
 			if (previousGenericFirstEventTimeout === undefined) {
-				delete Bun.env.PI_STREAM_FIRST_EVENT_TIMEOUT_MS;
+				delete Bun.env.VEYYON_STREAM_FIRST_EVENT_TIMEOUT_MS;
 			} else {
-				Bun.env.PI_STREAM_FIRST_EVENT_TIMEOUT_MS = previousGenericFirstEventTimeout;
+				Bun.env.VEYYON_STREAM_FIRST_EVENT_TIMEOUT_MS = previousGenericFirstEventTimeout;
 			}
 		}
 	});
 
-	it("lets PI_OPENAI_STREAM_IDLE_TIMEOUT_MS widen native Ollama first-event request setup", async () => {
-		const previousOpenAIIdleTimeout = Bun.env.PI_OPENAI_STREAM_IDLE_TIMEOUT_MS;
-		const previousGenericFirstEventTimeout = Bun.env.PI_STREAM_FIRST_EVENT_TIMEOUT_MS;
-		Bun.env.PI_OPENAI_STREAM_IDLE_TIMEOUT_MS = "1500";
-		Bun.env.PI_STREAM_FIRST_EVENT_TIMEOUT_MS = "20";
+	it("lets VEYYON_OPENAI_STREAM_IDLE_TIMEOUT_MS widen native Ollama first-event request setup", async () => {
+		const previousOpenAIIdleTimeout = Bun.env.VEYYON_OPENAI_STREAM_IDLE_TIMEOUT_MS;
+		const previousGenericFirstEventTimeout = Bun.env.VEYYON_STREAM_FIRST_EVENT_TIMEOUT_MS;
+		Bun.env.VEYYON_OPENAI_STREAM_IDLE_TIMEOUT_MS = "1500";
+		Bun.env.VEYYON_STREAM_FIRST_EVENT_TIMEOUT_MS = "20";
 		const fetchMock = createDelayedFetch(30, createOllamaChatSuccessResponse);
 
 		try {
@@ -406,24 +406,24 @@ describe("OpenAI-family first-event timeouts", () => {
 			expect(getFirstTextContent(result)).toMatchObject({ type: "text", text: "Hello delayed" });
 		} finally {
 			if (previousOpenAIIdleTimeout === undefined) {
-				delete Bun.env.PI_OPENAI_STREAM_IDLE_TIMEOUT_MS;
+				delete Bun.env.VEYYON_OPENAI_STREAM_IDLE_TIMEOUT_MS;
 			} else {
-				Bun.env.PI_OPENAI_STREAM_IDLE_TIMEOUT_MS = previousOpenAIIdleTimeout;
+				Bun.env.VEYYON_OPENAI_STREAM_IDLE_TIMEOUT_MS = previousOpenAIIdleTimeout;
 			}
 			if (previousGenericFirstEventTimeout === undefined) {
-				delete Bun.env.PI_STREAM_FIRST_EVENT_TIMEOUT_MS;
+				delete Bun.env.VEYYON_STREAM_FIRST_EVENT_TIMEOUT_MS;
 			} else {
-				Bun.env.PI_STREAM_FIRST_EVENT_TIMEOUT_MS = previousGenericFirstEventTimeout;
+				Bun.env.VEYYON_STREAM_FIRST_EVENT_TIMEOUT_MS = previousGenericFirstEventTimeout;
 			}
 		}
 	});
 
-	it("honors PI_OPENAI_STREAM_FIRST_EVENT_TIMEOUT_MS even when caller pins streamIdleTimeoutMs", async () => {
-		const previousOpenAIFirstEventTimeout = Bun.env.PI_OPENAI_STREAM_FIRST_EVENT_TIMEOUT_MS;
-		const previousGenericFirstEventTimeout = Bun.env.PI_STREAM_FIRST_EVENT_TIMEOUT_MS;
+	it("honors VEYYON_OPENAI_STREAM_FIRST_EVENT_TIMEOUT_MS even when caller pins streamIdleTimeoutMs", async () => {
+		const previousOpenAIFirstEventTimeout = Bun.env.VEYYON_OPENAI_STREAM_FIRST_EVENT_TIMEOUT_MS;
+		const previousGenericFirstEventTimeout = Bun.env.VEYYON_STREAM_FIRST_EVENT_TIMEOUT_MS;
 		const timeoutHeaders: string[] = [];
-		Bun.env.PI_OPENAI_STREAM_FIRST_EVENT_TIMEOUT_MS = "1500";
-		Bun.env.PI_STREAM_FIRST_EVENT_TIMEOUT_MS = "20";
+		Bun.env.VEYYON_OPENAI_STREAM_FIRST_EVENT_TIMEOUT_MS = "1500";
+		Bun.env.VEYYON_STREAM_FIRST_EVENT_TIMEOUT_MS = "20";
 		const fetchMock = createDelayedFetch(30, createOpenAIResponsesSuccessResponse, (input, init) => {
 			timeoutHeaders.push(getRequestHeader(input, init, "X-Stainless-Timeout") ?? "");
 		});
@@ -440,14 +440,14 @@ describe("OpenAI-family first-event timeouts", () => {
 			expect(timeoutHeaders).toContain("1");
 		} finally {
 			if (previousOpenAIFirstEventTimeout === undefined) {
-				delete Bun.env.PI_OPENAI_STREAM_FIRST_EVENT_TIMEOUT_MS;
+				delete Bun.env.VEYYON_OPENAI_STREAM_FIRST_EVENT_TIMEOUT_MS;
 			} else {
-				Bun.env.PI_OPENAI_STREAM_FIRST_EVENT_TIMEOUT_MS = previousOpenAIFirstEventTimeout;
+				Bun.env.VEYYON_OPENAI_STREAM_FIRST_EVENT_TIMEOUT_MS = previousOpenAIFirstEventTimeout;
 			}
 			if (previousGenericFirstEventTimeout === undefined) {
-				delete Bun.env.PI_STREAM_FIRST_EVENT_TIMEOUT_MS;
+				delete Bun.env.VEYYON_STREAM_FIRST_EVENT_TIMEOUT_MS;
 			} else {
-				Bun.env.PI_STREAM_FIRST_EVENT_TIMEOUT_MS = previousGenericFirstEventTimeout;
+				Bun.env.VEYYON_STREAM_FIRST_EVENT_TIMEOUT_MS = previousGenericFirstEventTimeout;
 			}
 		}
 	});

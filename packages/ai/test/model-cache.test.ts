@@ -3,9 +3,9 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { Model } from "@veyyon/pi-ai/types";
-import { buildModel } from "@veyyon/pi-catalog/build";
-import { readModelCache, writeModelCache } from "@veyyon/pi-catalog/model-cache";
+import type { Model } from "@veyyon/ai/types";
+import { buildModel } from "@veyyon/catalog/build";
+import { readModelCache, writeModelCache } from "@veyyon/catalog/model-cache";
 import { removeWithRetries } from "../../utils/src/temp";
 
 const TTL_MS = 24 * 60 * 60 * 1000;

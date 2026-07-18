@@ -21,7 +21,7 @@
  *
  * Run: bun run packages/coding-agent/bench/streaming-throughput.bench.ts
  */
-import type { AssistantMessage } from "@veyyon/pi-ai";
+import type { AssistantMessage } from "@veyyon/ai";
 import { BlockUnitCounter, buildDisplayMessage, nextStep } from "../src/modes/controllers/streaming-reveal";
 
 const HIDE_THINKING = false;

@@ -1,13 +1,13 @@
 import { describe, expect, it } from "bun:test";
-import { type Dialect, getDialectDefinition, type InbandScanEvent, ThinkingInbandScanner } from "@veyyon/pi-ai/dialect";
-import { streamGoogleGeminiCli } from "@veyyon/pi-ai/providers/google-gemini-cli";
-import { streamOpenAICompletions } from "@veyyon/pi-ai/providers/openai-completions";
-import { stream } from "@veyyon/pi-ai/stream";
-import type { Context, FetchImpl, Model, TextContent, ThinkingContent, Tool, ToolCall } from "@veyyon/pi-ai/types";
-import { getStreamMarkupHealingPattern, StreamMarkupHealing } from "@veyyon/pi-ai/utils/stream-markup-healing";
-import { buildModel } from "@veyyon/pi-catalog/build";
-import { getBundledModel } from "@veyyon/pi-catalog/models";
-import { INTENT_FIELD } from "@veyyon/pi-wire";
+import { type Dialect, getDialectDefinition, type InbandScanEvent, ThinkingInbandScanner } from "@veyyon/ai/dialect";
+import { streamGoogleGeminiCli } from "@veyyon/ai/providers/google-gemini-cli";
+import { streamOpenAICompletions } from "@veyyon/ai/providers/openai-completions";
+import { stream } from "@veyyon/ai/stream";
+import type { Context, FetchImpl, Model, TextContent, ThinkingContent, Tool, ToolCall } from "@veyyon/ai/types";
+import { getStreamMarkupHealingPattern, StreamMarkupHealing } from "@veyyon/ai/utils/stream-markup-healing";
+import { buildModel } from "@veyyon/catalog/build";
+import { getBundledModel } from "@veyyon/catalog/models";
+import { INTENT_FIELD } from "@veyyon/wire";
 
 interface SseToolCallDelta {
 	index: number;

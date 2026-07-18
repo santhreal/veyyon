@@ -1,5 +1,5 @@
 import { afterEach, beforeAll, describe, expect, it } from "bun:test";
-import { Markdown } from "@veyyon/pi-tui";
+import { Markdown } from "@veyyon/tui";
 import { Settings } from "../../config/settings";
 import { buildSystemPrompt } from "../../system-prompt";
 import { getMarkdownTheme, getThemeByName, setMarkdownMermaidRendering, setThemeInstance } from "./theme";

@@ -16,17 +16,17 @@
  *   `CompactOptions.internalGuidance` instead.
  * - The `session_before_compact` hook event MUST see
  *   `customInstructions: undefined` for internal-guidance compactions.
- * - The native summarizer (invoked via `@veyyon/pi-agent-core/compaction`)
+ * - The native summarizer (invoked via `@veyyon/agent-core/compaction`)
  *   MUST still receive the plan guidance so the summary is directed.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
-import { Agent } from "@veyyon/pi-agent-core";
-import * as compactionModule from "@veyyon/pi-agent-core/compaction";
-import { AssistantMessageEventStream } from "@veyyon/pi-ai/utils/event-stream";
-import { getBundledModel } from "@veyyon/pi-catalog/models";
-import { TempDir } from "@veyyon/pi-utils";
+import { Agent } from "@veyyon/agent-core";
+import * as compactionModule from "@veyyon/agent-core/compaction";
+import { AssistantMessageEventStream } from "@veyyon/ai/utils/event-stream";
+import { getBundledModel } from "@veyyon/catalog/models";
+import { TempDir } from "@veyyon/utils";
 import { ModelRegistry } from "../src/config/model-registry";
 import { Settings } from "../src/config/settings";
 import type { SessionBeforeCompactEvent } from "../src/extensibility/shared-events";

@@ -3,17 +3,17 @@
   "name": "@veyyon/collab-web",
   "version": "16.3.6",
   "private": true,
-  "description": "Browser guest client and local relay tools for omp collab live sessions",
+  "description": "Browser guest client and local relay tools for veyyon collab live sessions",
   "homepage": "https://veyyon.dev",
   "author": "Can Boluk",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/can1357/oh-my-pi.git",
+    "url": "git+https://github.com/santhreal/veyyon.git",
     "directory": "packages/collab-web"
   },
   "bugs": {
-    "url": "https://github.com/can1357/oh-my-pi/issues"
+    "url": "https://github.com/santhreal/veyyon/issues"
   },
   "keywords": [
     "collab",
@@ -37,7 +37,7 @@
     "fmt": "biome format --write ."
   },
   "dependencies": {
-    "@veyyon/pi-wire": "catalog:",
+    "@veyyon/wire": "catalog:",
     "@veyyon/tool-render": "catalog:",
     "lucide-react": "catalog:",
     "marked": "catalog:",

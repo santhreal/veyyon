@@ -8,7 +8,7 @@
  * grow the ring without limit). These lock exact values for both.
  */
 import { describe, expect, it } from "bun:test";
-import { KillRing } from "@veyyon/pi-tui/kill-ring";
+import { KillRing } from "@veyyon/tui/kill-ring";
 
 // Mirror of the module-private cap; the eviction test asserts against it.
 const MAX_ENTRIES = 60;

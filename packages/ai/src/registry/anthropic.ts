@@ -1,4 +1,4 @@
-import { $pickenv } from "@veyyon/pi-utils";
+import { $pickenv } from "@veyyon/utils";
 import { isFoundryEnabled } from "../utils/foundry";
 import type { OAuthCredentials, OAuthLoginCallbacks } from "./oauth/types";
 import type { ProviderDefinition } from "./types";

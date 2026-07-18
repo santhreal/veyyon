@@ -1,6 +1,7 @@
 import * as path from "node:path";
-import type { Component } from "@veyyon/pi-tui";
-import { Container, Text } from "@veyyon/pi-tui";
+import type { Component } from "@veyyon/tui";
+import { Container, Text } from "@veyyon/tui";
+import { formatCount } from "@veyyon/utils";
 import { InternalUrlRouter } from "../../internal-urls";
 import { getLanguageFromPath, theme } from "../../modes/theme/theme";
 import { parseLineRanges, selectorLineRanges, splitPathAndSel } from "../../tools/path-utils";
@@ -597,8 +598,7 @@ export class ReadToolGroupComponent extends Container implements ToolExecutionHa
 
 	#formatConflictBadge(conflictCount: number | undefined): string {
 		if (!conflictCount || conflictCount <= 0) return "";
-		const n = conflictCount;
-		return ` ${theme.fg("warning", `(warn ${n} conflict${n === 1 ? "" : "s"})`)}`;
+		return ` ${theme.fg("warning", `(warn ${formatCount("conflict", conflictCount)})`)}`;
 	}
 
 	/**

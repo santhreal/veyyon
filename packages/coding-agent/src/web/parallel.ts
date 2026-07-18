@@ -1,4 +1,4 @@
-import { type FetchImpl, getEnvApiKey } from "@veyyon/pi-ai";
+import { type FetchImpl, getEnvApiKey } from "@veyyon/ai";
 import type { AgentStorage } from "../session/agent-storage";
 import { findCredential, withHardTimeout } from "./search/providers/utils";
 
@@ -299,25 +299,27 @@ export async function searchWithParallel(
 	}
 
 	const fetchImpl = options.fetch ?? fetch;
-	const response = await fetchImpl(PARALLEL_SEARCH_URL, {
-		method: "POST",
-		headers: getAuthHeaders(apiKey),
-		body: JSON.stringify({
-			objective,
-			search_queries: queries,
-			mode: options.mode === "research" ? "one-shot" : "fast",
-			excerpts: {
-				max_chars_per_result: options.maxCharsPerResult ?? 10_000,
-			},
-		}),
-		signal: withHardTimeout(options.signal),
-	});
-	if (!response.ok) {
-		throw parseParallelErrorResponse(response.status, await response.text());
-	}
+	return withHardTimeout(options.signal, async hardSignal => {
+		const response = await fetchImpl(PARALLEL_SEARCH_URL, {
+			method: "POST",
+			headers: getAuthHeaders(apiKey),
+			body: JSON.stringify({
+				objective,
+				search_queries: queries,
+				mode: options.mode === "research" ? "one-shot" : "fast",
+				excerpts: {
+					max_chars_per_result: options.maxCharsPerResult ?? 10_000,
+				},
+			}),
+			signal: hardSignal,
+		});
+		if (!response.ok) {
+			throw parseParallelErrorResponse(response.status, await response.text());
+		}
 
-	const payload: unknown = await response.json();
-	return parseParallelSearchPayload(payload);
+		const payload: unknown = await response.json();
+		return parseParallelSearchPayload(payload);
+	});
 }
 
 export async function extractWithParallel(
@@ -333,22 +335,24 @@ export async function extractWithParallel(
 	}
 
 	const fetchImpl = options.fetch ?? fetch;
-	const response = await fetchImpl(PARALLEL_EXTRACT_URL, {
-		method: "POST",
-		headers: getAuthHeaders(apiKey),
-		body: JSON.stringify({
-			urls,
-			objective: options.objective,
-			search_queries: options.searchQueries,
-			excerpts: options.excerpts ?? true,
-			full_content: options.fullContent ?? false,
-		}),
-		signal: withHardTimeout(options.signal),
-	});
-	if (!response.ok) {
-		throw parseParallelErrorResponse(response.status, await response.text());
-	}
+	return withHardTimeout(options.signal, async hardSignal => {
+		const response = await fetchImpl(PARALLEL_EXTRACT_URL, {
+			method: "POST",
+			headers: getAuthHeaders(apiKey),
+			body: JSON.stringify({
+				urls,
+				objective: options.objective,
+				search_queries: options.searchQueries,
+				excerpts: options.excerpts ?? true,
+				full_content: options.fullContent ?? false,
+			}),
+			signal: hardSignal,
+		});
+		if (!response.ok) {
+			throw parseParallelErrorResponse(response.status, await response.text());
+		}
 
-	const payload: unknown = await response.json();
-	return parseExtractPayload(payload);
+		const payload: unknown = await response.json();
+		return parseExtractPayload(payload);
+	});
 }

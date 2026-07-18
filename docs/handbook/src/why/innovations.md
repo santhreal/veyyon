@@ -1,51 +1,42 @@
-# What makes Veyyon different
+# Mechanisms
 
-These ideas set Veyyon apart. Each is shipped unless noted as **Spec — not shipped**.
+Compact map of the main harness mechanisms. Operator how-tos live under [Using](../using/getting-started.md) and [Features](../features/sandbox.md).
 
-For a reader-first pass, start with the benefit chapters. This page is the compact design map.
+## Hashline edits
 
-## Hashline-first editing
-
-Open models emit reliable **hashline** patches when the harness matches their training. Veyyon's `edit`
-and `write` tools apply hashline patches with verification before bytes hit disk, so an edit either
-lands exactly or fails loudly with recovery hints.
+`edit` and `write` accept hashline (content-addressed) patches. The natives layer verifies the patch against the current file before writing. On mismatch the tool fails with recovery context for the model.
 
 See [Editing and repair](../using/editing.md) and [The hashline edit engine](../edit/engine.md).
 
-## Tool approval by tier (autonomy ladder)
+## Tool approval tiers
 
-`tools.approvalMode` (`plan`, `ask`, `auto-edit`, `yolo`; legacy `always-ask` / `write` aliases) and
-per-tool `tools.approval` overrides gate read, write, and exec tiers. Bash can force prompts on
-destructive patterns even in permissive modes.
+`tools.approvalMode` is one of `plan`, `ask`, `auto-edit`, `yolo` (legacy aliases: `always-ask` → `ask`, `write` → `auto-edit`). Per-tool `tools.approval` overrides apply on top. Tiers are read, write, and exec. Bash can still force a prompt on destructive patterns depending on execpolicy rules.
 
-See `docs/approval-mode.md` and `/settings` → Advanced → Safety.
+See [Approvals](../features/sandbox.md) and `/settings` → Advanced → Safety. Detail also in `docs/approval-mode.md` in the repo.
 
-## Every model in the harness it fits
+## Model slots and roles
 
-Model selection is three explicit slots — the **interactive** model (chosen with `/model`), the
-**subagent** model, and the **compaction** model (both set in settings). No `default` model stands in
-for the others. Optional named **roles** live in settings, scoped per profile, for anyone who wants
-specific work types pinned to specific models. Prompts and tool exposure adapt per model and per agent
-kind (main vs subagent).
+- **Interactive model** — `/model` / `--model`; persisted as `modelRoles.default`.
+- **Roles** — `smol`, `slow`, `vision`, `plan`, `designer`, `commit`, `tiny`, `task`, `advisor` (+ custom) in `modelRoles`.
+- **Overrides** — `subagent.model` (overrides `modelRoles.task` when set), `compaction.model` (else inherit interactive).
+- **Cycle** — `cycleOrder` (default `smol`, `slow`); `app.model.cycleForward` (often Ctrl+P).
 
-## Provider-agnostic runtime
+Full contract: [Models, roles, and profiles](../using/roles-and-profiles.md).
 
-The agent loop, TUI, session format, MCP, skills, hooks, and extensions are provider-neutral. You configure providers in `~/.veyyon/agent/config.yml` or via `/setup` / `/providers`.
+## Provider-neutral loop
 
-## Control flow in the harness
+The agent loop, TUI, session format, MCP, skills, hooks, and extensions do not hard-code a single vendor. Providers are configured in the active profile’s agent dir (`config.yml`, `/setup`, `/providers`).
 
-Compaction, goal continuation, plan mode, vibe mode, and task subagents are engine features, not persona-only instructions. Goal mode can auto-continue idle sessions toward an objective; plan mode drafts a plan file before mutating the repo.
+## Engine modes
 
-## Spec — not shipped (documented elsewhere)
+Compaction, goal continuation, plan mode, vibe mode, and task subagents are implemented in the session/tool layer. Goal mode can continue an idle session toward a stored objective. Plan mode writes a plan file and restricts mutation until resolve/approval paths complete.
 
-- A full schema-based tool-call repair cascade. General schema repair on tool calls is shipped; the
-  broader cascade is planned. See [Repair overview](../repair/overview.md).
-- Self-contained profiles that own isolated MCP/skills copies per profile. Today profiles relocate the
-  agent directory to `~/.veyyon/profiles/<name>/agent/`.
-- A top-level `veyyon doctor` install-health command. Use `veyyon plugin doctor` and `/debug` today.
+## Profiles
 
-## Where to go next
+Every profile (including `default`) lives at `~/.veyyon/profiles/<name>/agent/` (settings, sessions, MCP, skills, hooks, …). See [Profiles](../features/profiles.md) and [File locations](../reference/file-locations.md).
 
-- [Performance](./performance.md)
-- [The thesis: the harness is the lever](../foundations/thesis.md)
+## Related
+
+- [Design goals](../foundations/thesis.md)
 - [Roles and profiles](../using/roles-and-profiles.md)
+- [Repair](../repair/overview.md)

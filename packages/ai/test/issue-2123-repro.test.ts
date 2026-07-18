@@ -20,10 +20,10 @@
  * the strategy goes with them).
  */
 import { describe, expect, it } from "bun:test";
-import { streamAnthropic } from "@veyyon/pi-ai/providers/anthropic";
-import type { Context, Model, Tool } from "@veyyon/pi-ai/types";
-import { buildModel } from "@veyyon/pi-catalog/build";
-import { Effort } from "@veyyon/pi-catalog/effort";
+import { streamAnthropic } from "@veyyon/ai/providers/anthropic";
+import type { Context, Model, Tool } from "@veyyon/ai/types";
+import { buildModel } from "@veyyon/catalog/build";
+import { Effort } from "@veyyon/catalog/effort";
 
 const OPUS_46_OAUTH: Model<"anthropic-messages"> = buildModel({
 	id: "claude-opus-4-6",

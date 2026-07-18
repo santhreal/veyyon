@@ -6,8 +6,9 @@ import {
 	type FetchImpl,
 	type Model,
 	withAuth,
-} from "@veyyon/pi-ai";
-import { ProviderHttpError } from "@veyyon/pi-ai/error";
+} from "@veyyon/ai";
+import { ProviderHttpError } from "@veyyon/ai/error";
+import { withScopedTimeoutSignal } from "@veyyon/utils";
 import { type CompleteOptions, callHostLlm, getHostLlmBackend } from "./llm-backends";
 import {
 	getMnemopiRuntimeOptions,
@@ -344,30 +345,37 @@ export async function callRemoteLlm(
 		// withAuth re-resolves the key on 401 (force-refresh, then sibling
 		// rotation) when the configured key is a resolver. An empty static key
 		// attempts without an Authorization header (local/proxy setups).
-		const response = await withAuth(llmApiKey(), async key => {
-			const headers: Record<string, string> = { "Content-Type": "application/json" };
-			if (key !== "") {
-				headers.Authorization = `Bearer ${key}`;
-			}
-			const res = await fetchImpl(`${baseUrl}/chat/completions`, {
-				method: "POST",
-				headers,
-				body,
-				signal: AbortSignal.timeout(60000),
+		// One 60s fence spans every auth attempt AND the body read (a stalled
+		// stream is only interrupted by the armed signal); the timer clears on
+		// settle instead of lingering like a bare AbortSignal.timeout.
+		return await withScopedTimeoutSignal(60000, async signal => {
+			const response = await withAuth(llmApiKey(), async key => {
+				const headers: Record<string, string> = { "Content-Type": "application/json" };
+				if (key !== "") {
+					headers.Authorization = `Bearer ${key}`;
+				}
+				const res = await fetchImpl(`${baseUrl}/chat/completions`, {
+					method: "POST",
+					headers,
+					body,
+					signal,
+				});
+				if (res.status === 401) {
+					throw new ProviderHttpError("mnemopi remote LLM request unauthorized (401)", 401, {
+						headers: res.headers,
+					});
+				}
+				return res;
 			});
-			if (res.status === 401) {
-				throw new ProviderHttpError("mnemopi remote LLM request unauthorized (401)", 401, { headers: res.headers });
+			if (!response.ok) {
+				return null;
 			}
-			return res;
+			const data = (await response.json()) as {
+				choices?: Array<{ message?: { content?: unknown } }>;
+			};
+			const content = data.choices?.[0]?.message?.content;
+			return typeof content === "string" ? content : null;
 		});
-		if (!response.ok) {
-			return null;
-		}
-		const data = (await response.json()) as {
-			choices?: Array<{ message?: { content?: unknown } }>;
-		};
-		const content = data.choices?.[0]?.message?.content;
-		return typeof content === "string" ? content : null;
 	} catch {
 		return null;
 	}

@@ -102,7 +102,7 @@ export const shellFixtures: Record<string, GalleryFixture> = {
 	launch_logs: {
 		label: "Launch",
 		renderer: "launch",
-		args: { op: "logs", name: "comp-debug", lines: 100, follow: true, cursor: 233_512, timeout: 30 },
+		args: { op: "logs", name: "cveyyon-debug", lines: 100, follow: true, cursor: 233_512, timeout: 30 },
 		result: {
 			content: [
 				{
@@ -112,7 +112,7 @@ export const shellFixtures: Record<string, GalleryFixture> = {
 						"(lldb) run",
 						"Process 726 launched: '/tmp/compiler'",
 						"frame #0: 0x0000000100012f80 compiler`parse_expression",
-						"[comp-debug: ready; cursor=233797]",
+						"[cveyyon-debug: ready; cursor=233797]",
 					].join("\n"),
 				},
 			],
@@ -168,7 +168,7 @@ export const shellFixtures: Record<string, GalleryFixture> = {
 			details: {
 				language: "python",
 				languages: ["python"],
-				jsonOutputs: [["@ai-sdk/anthropic", "@veyyon/pi-ai", "@veyyon/pi-tui"]],
+				jsonOutputs: [["@ai-sdk/anthropic", "@veyyon/ai", "@veyyon/tui"]],
 				cells: [
 					{
 						index: 0,

@@ -14,7 +14,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { $which } from "@veyyon/pi-utils";
+import { $which } from "@veyyon/utils";
 import { theme } from "../modes/theme/theme";
 import type { GallerySection } from "./gallery-cli";
 
@@ -77,7 +77,7 @@ export async function captureGalleryScreenshots(
 
 	const baseDir = options.out
 		? path.dirname(path.resolve(options.out))
-		: fs.mkdtempSync(path.join(os.tmpdir(), "omp-gallery-"));
+		: fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-gallery-"));
 	await fs.promises.mkdir(baseDir, { recursive: true });
 
 	const outPaths: string[] = [];
@@ -194,7 +194,7 @@ function buildVhsTheme(): string {
 	const foreground = theme.isLight ? "#1a1a1a" : "#d4d4d4";
 	const selection = theme.isLight ? "#c8d6ff" : "#404862";
 	return JSON.stringify({
-		name: "omp-gallery",
+		name: "veyyon-gallery",
 		background,
 		foreground,
 		cursor: foreground,

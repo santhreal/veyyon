@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
-import { GoogleOAuthFlow, type GoogleOAuthFlowConfig } from "@veyyon/pi-ai/oauth/google-oauth-shared";
-import type { OAuthController } from "@veyyon/pi-ai/oauth/types";
-import { extractGoogleValidationUrl } from "@veyyon/pi-ai/utils/google-validation";
+import { GoogleOAuthFlow, type GoogleOAuthFlowConfig } from "@veyyon/ai/oauth/google-oauth-shared";
+import type { OAuthController } from "@veyyon/ai/oauth/types";
+import { extractGoogleValidationUrl } from "@veyyon/ai/utils/google-validation";
 
 const VALIDATION_URL = "https://accounts.google.com/signin/continue?sarp=1&scc=1&plt=AKgnsbtTOKEN";
 

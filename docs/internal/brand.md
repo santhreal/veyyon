@@ -9,9 +9,9 @@ This page is the identity contract for the Veyyon harness (CLI, TUI, packages, c
 | Product name | **Veyyon** (only name — not "Veyyon Code") |
 | Primary command | `veyyon` |
 | Short alias | `vey` |
-| npm scope | `@veyyon/*` (e.g. `@veyyon/pi-coding-agent`) |
-| Config home | `~/.veyyon` (`VEYYON_CONFIG_DIR` / legacy `OMP_CONFIG_DIR` / `PI_CONFIG_DIR`) |
-| Profile env | `VEYYON_PROFILE` (also accepts legacy `OMP_PROFILE` / `PI_PROFILE`) |
+| npm scope | `@veyyon/*` (e.g. `@veyyon/coding-agent`) |
+| Config home | `~/.veyyon` (`VEYYON_CONFIG_DIR`) |
+| Profile env | `VEYYON_PROFILE` |
 
 Veyyon forks [oh-my-pi](https://github.com/can1357/oh-my-pi) (MIT): TypeScript/Bun agent loop and TUI, Rust natives for hot paths (grep, PTY, hashline). Upstream provenance is license and history — not a tagline to paste into Veyyon UI or docs.
 

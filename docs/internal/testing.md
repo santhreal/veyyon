@@ -13,7 +13,7 @@ From the repo root (or `--cwd=packages/coding-agent` for package-local runs):
 | `bun run check:ts` | Biome + `tsc --noEmit` across every package. |
 | `bun run test` | The local TS test runner. |
 | `bun run ci:test:ts:workspace` | The exact workspace bucket CI runs. |
-| `bun run ci:build:native` | Build the `pi_natives` addon — required before tests that touch native paths. |
+| `bun run ci:build:native` | Build the `veyyon_natives` addon — required before tests that touch native paths. |
 
 Native/integration tests need the addon built first (`ci:build:native`); the CI test
 jobs download a prebuilt addon artifact instead.

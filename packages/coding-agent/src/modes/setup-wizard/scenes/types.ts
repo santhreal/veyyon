@@ -1,4 +1,4 @@
-import type { Component, SgrMouseEvent } from "@veyyon/pi-tui";
+import type { Component, SgrMouseEvent } from "@veyyon/tui";
 import type { InteractiveModeContext } from "../../types";
 
 export type SetupSceneResult = "done" | "skipped";

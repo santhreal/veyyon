@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { classifyJsonPrefix, parseJsonWithRepair, parseStreamingJson, repairJson } from "@veyyon/pi-utils/json-parse";
+import { classifyJsonPrefix, parseJsonWithRepair, parseStreamingJson, repairJson } from "@veyyon/utils/json-parse";
 
 describe("JSON repair", () => {
 	it("leaves valid string escapes unchanged", () => {

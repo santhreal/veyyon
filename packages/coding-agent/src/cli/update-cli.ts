@@ -2,20 +2,20 @@
  * Update CLI command handler.
  *
  * Handles `veyyon update` to check for and install updates.
- * Uses the installer that owns the active omp executable when it can be detected.
+ * Uses the installer that owns the active veyyon executable when it can be detected.
  */
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { pipeline } from "node:stream/promises";
-import { $which, APP_NAME, isEnoent, VERSION } from "@veyyon/pi-utils";
+import { $which, APP_NAME, isEnoent, VERSION } from "@veyyon/utils";
 import { $ } from "bun";
 import chalk from "chalk";
 import { theme } from "../modes/theme/theme";
 import { isTimeoutError, withTimeoutSignal } from "../utils/fetch-timeout";
 
 const REPO = "santhreal/veyyon";
-const PACKAGE = "@veyyon/pi-coding-agent";
+const PACKAGE = "@veyyon/coding-agent";
 const HOMEBREW_FORMULA = "santhreal/tap/veyyon";
 const MISE_TOOL = "github:santhreal/veyyon";
 /**
@@ -39,11 +39,11 @@ const BINARY_DOWNLOAD_TIMEOUT_MS = 15 * 60_000;
  * disk; see {@link buildBunInstallArgs} for why this must be installed
  * explicitly rather than inherited as a transitive dependency.
  */
-const NATIVES_PACKAGE = "@veyyon/pi-natives";
+const NATIVES_PACKAGE = "@veyyon/natives";
 
 /**
  * Platform tags the release pipeline publishes as
- * `@veyyon/pi-natives-<tag>` leaves. Mirrors `SUPPORTED_PLATFORMS` in
+ * `@veyyon/natives-<tag>` leaves. Mirrors `SUPPORTED_PLATFORMS` in
  * `packages/natives/native/loader-state.js` and `LEAF_TARGETS` in
  * `packages/natives/scripts/gen-npm-packages.ts`; kept here as the local
  * source of truth so the update path stays free of cross-package imports.
@@ -79,22 +79,6 @@ export interface BinaryReplacementOptions {
 	backupPath: string;
 	expectedVersion: string;
 	verifyInstalledVersion: (expectedVersion: string) => Promise<InstalledVersionVerification>;
-}
-
-/**
- * Parse update subcommand arguments.
- * Returns undefined if not an update command.
- */
-export function parseUpdateArgs(args: string[]): { force: boolean; check: boolean; plugins: boolean } | undefined {
-	if (args.length === 0 || args[0] !== "update") {
-		return undefined;
-	}
-
-	return {
-		force: args.includes("--force") || args.includes("-f"),
-		check: args.includes("--check") || args.includes("-c"),
-		plugins: args.includes("--plugins") || args.includes("-l"),
-	};
 }
 
 async function getBunGlobalBinDir(): Promise<string | undefined> {
@@ -187,10 +171,10 @@ function isPathInDirectory(filePath: string, directoryPath: string): boolean {
 	if (isPathInDirectoryLexical(filePath, directoryPath)) return true;
 	// Layer realpath resolution on top of the lexical guard. On Windows, ~/.bun
 	// is a junction when Bun is installed via Scoop, so `bun pm bin -g` and the
-	// PATH-resolved omp path can refer to the same directory through different
+	// PATH-resolved veyyon path can refer to the same directory through different
 	// strings. path.resolve does not traverse junctions/symlinks; realpath does.
 	// Resolve both the file and its parent directory: the file catches manager
-	// links like Homebrew's `bin/omp -> Cellar/.../bin/omp`; the parent fallback
+	// links like Homebrew's `bin/veyyon -> Cellar/.../bin/veyyon`; the parent fallback
 	// still tolerates fresh install paths where the file does not exist yet.
 	const dirReal = tryRealpath(path.resolve(directoryPath));
 	if (!dirReal) return false;
@@ -219,28 +203,28 @@ type UpdateTarget =
 	| { method: "binary"; path: string };
 
 function resolveUpdateMethod(
-	ompPath: string,
+	veyyonPath: string,
 	bunBinDir: string | undefined,
 	options: UpdateMethodResolutionOptions = {},
 ): UpdateMethod {
 	const { homebrewPrefix, miseBinDirs = [], miseDataDir, npmBinDir } = options;
-	const launcherExtension = path.extname(ompPath).toLowerCase();
+	const launcherExtension = path.extname(veyyonPath).toLowerCase();
 	const isWindowsScriptLauncher =
 		launcherExtension === ".cmd" || launcherExtension === ".ps1" || launcherExtension === ".bat";
-	if (homebrewPrefix && isPathInDirectory(ompPath, path.join(homebrewPrefix, "bin"))) return "brew";
-	if (miseBinDirs.some(dir => isPathInDirectory(ompPath, dir))) return "mise";
-	if (miseDataDir && isPathInDirectory(ompPath, path.join(miseDataDir, "shims"))) return "mise";
-	if (bunBinDir && isPathInDirectory(ompPath, bunBinDir)) return "bun";
-	if ((npmBinDir && isPathInDirectory(ompPath, npmBinDir)) || isWindowsScriptLauncher) return "npm";
+	if (homebrewPrefix && isPathInDirectory(veyyonPath, path.join(homebrewPrefix, "bin"))) return "brew";
+	if (miseBinDirs.some(dir => isPathInDirectory(veyyonPath, dir))) return "mise";
+	if (miseDataDir && isPathInDirectory(veyyonPath, path.join(miseDataDir, "shims"))) return "mise";
+	if (bunBinDir && isPathInDirectory(veyyonPath, bunBinDir)) return "bun";
+	if ((npmBinDir && isPathInDirectory(veyyonPath, npmBinDir)) || isWindowsScriptLauncher) return "npm";
 	return "binary";
 }
 
 export function resolveUpdateMethodForTest(
-	ompPath: string,
+	veyyonPath: string,
 	bunBinDir: string | undefined,
 	options: UpdateMethodResolutionOptions = {},
 ): UpdateMethod {
-	return resolveUpdateMethod(ompPath, bunBinDir, options);
+	return resolveUpdateMethod(veyyonPath, bunBinDir, options);
 }
 async function resolveUpdateTarget(): Promise<UpdateTarget> {
 	const bunBinDir = await getBunGlobalBinDir();
@@ -249,11 +233,16 @@ async function resolveUpdateTarget(): Promise<UpdateTarget> {
 	const miseAvailable = $which("mise") !== undefined;
 	const miseBinDirs = miseAvailable ? await getMiseBinDirs() : [];
 	const miseDataDir = miseAvailable ? getMiseDataDir() : undefined;
-	const ompPath = resolveOmpPath();
+	const veyyonPath = resolveVeyyonPath();
 
-	if (ompPath) {
-		const method = resolveUpdateMethod(ompPath, bunBinDir, { homebrewPrefix, miseBinDirs, miseDataDir, npmBinDir });
-		if (method === "binary") return { method, path: ompPath };
+	if (veyyonPath) {
+		const method = resolveUpdateMethod(veyyonPath, bunBinDir, {
+			homebrewPrefix,
+			miseBinDirs,
+			miseDataDir,
+			npmBinDir,
+		});
+		if (method === "binary") return { method, path: veyyonPath };
 		return { method };
 	}
 
@@ -279,7 +268,15 @@ async function getLatestRelease(): Promise<ReleaseInfo> {
 		throw err;
 	}
 	if (!response.ok) {
-		throw new Error(`Failed to fetch release info: ${response.statusText}`);
+		const hint =
+			response.status === 404
+				? ` — ${PACKAGE} has no published release on the npm registry yet`
+				: response.status === 429
+					? " — the npm registry is rate-limiting this address; retry in a few minutes"
+					: "";
+		throw new Error(
+			`Failed to fetch release info from ${NPM_REGISTRY}${PACKAGE}/latest: HTTP ${response.status} ${response.statusText}${hint}`,
+		);
 	}
 
 	const data = (await response.json()) as { version: string };
@@ -467,7 +464,7 @@ async function removeCacheEntries(paths: string[]): Promise<number> {
  *
  * Bun stores package cache entries as both a package marker directory
  * (`react/19.2.6@@@1`) and a materialized package directory
- * (`react@19.2.6@@@1`). Global `omp` updates can leave one full copy per
+ * (`react@19.2.6@@@1`). Global `veyyon` updates can leave one full copy per
  * release. The marker and materialized entries are removed together so the
  * cache stays internally consistent.
  */
@@ -552,7 +549,9 @@ async function pruneBunCacheAfterGlobalInstall(): Promise<BunInstallCachePruneRe
 	const packageNames = globalNodeModulesDir
 		? await collectInstalledPackageNames(globalNodeModulesDir)
 		: new Set<string>();
-	if (packageNames.size === 0 && !path.basename(cacheDir).toLowerCase().includes("omp")) return undefined;
+	// Old installs may still use an omp-named cache dir; recognize both brands.
+	const cacheBase = path.basename(cacheDir).toLowerCase();
+	if (packageNames.size === 0 && !cacheBase.includes("veyyon") && !cacheBase.includes("omp")) return undefined;
 	return await pruneBunInstallCache(cacheDir, packageNames.size === 0 ? undefined : packageNames);
 }
 
@@ -597,28 +596,28 @@ function getBinaryName(): string {
 }
 
 /**
- * Resolve the path that `omp` maps to in the user's PATH.
+ * Resolve the path that `veyyon` maps to in the user's PATH.
  */
-function resolveOmpPath(): string | undefined {
+function resolveVeyyonPath(): string | undefined {
 	return $which(APP_NAME) ?? undefined;
 }
 
 /**
- * Run the resolved omp binary and check if it reports the expected version.
+ * Run the resolved veyyon binary and check if it reports the expected version.
  */
 async function verifyInstalledVersion(expectedVersion: string): Promise<InstalledVersionVerification> {
-	const ompPath = resolveOmpPath();
-	if (!ompPath) return { ok: false };
+	const veyyonPath = resolveVeyyonPath();
+	if (!veyyonPath) return { ok: false };
 	try {
-		const result = await $`${ompPath} --version`.quiet().nothrow();
-		if (result.exitCode !== 0) return { ok: false, path: ompPath };
+		const result = await $`${veyyonPath} --version`.quiet().nothrow();
+		if (result.exitCode !== 0) return { ok: false, path: veyyonPath };
 		const output = result.text().trim();
-		// Output format: "omp/X.Y.Z"
+		// Output format: "veyyon/X.Y.Z"
 		const match = output.match(/\/(\d+\.\d+\.\d+)/);
 		const actual = match?.[1];
-		return { ok: actual === expectedVersion, actual, path: ompPath };
+		return { ok: actual === expectedVersion, actual, path: veyyonPath };
 	} catch {
-		return { ok: false, path: ompPath };
+		return { ok: false, path: veyyonPath };
 	}
 }
 
@@ -643,7 +642,7 @@ async function printVerification(expectedVersion: string): Promise<void> {
 		return;
 	}
 	console.log(chalk.yellow(`\nWarning: ${formatVerificationFailure(result, expectedVersion)}`));
-	console.log(chalk.yellow(`You may need to reinstall: bun install -g @veyyon/pi-coding-agent`));
+	console.log(chalk.yellow(`You may need to reinstall: bun install -g @veyyon/coding-agent`));
 }
 
 async function unlinkIfExists(filePath: string): Promise<void> {
@@ -748,7 +747,7 @@ function buildVersionedPackageInstallArgs(expectedVersion: string, nativeTag: st
 }
 
 /**
- * Build the bun argv used to globally install a specific omp version.
+ * Build the bun argv used to globally install a specific veyyon version.
  *
  * The version is selected by hitting {@link NPM_REGISTRY} directly in
  * {@link getLatestRelease}, so the install MUST observe the same catalog:
@@ -764,11 +763,11 @@ function buildVersionedPackageInstallArgs(expectedVersion: string, nativeTag: st
  * lookup the version check just performed. See #1686.
  *
  * Also pins {@link NATIVES_PACKAGE} and the platform-specific
- * `@veyyon/pi-natives-<tag>` leaf to `expectedVersion`. `bun install -g`
+ * `@veyyon/natives-<tag>` leaf to `expectedVersion`. `bun install -g`
  * does not reliably refresh transitive `optionalDependencies` when the
  * top-level package is the only one bumped, so the native addon and its
  * version sentinel can drift out of sync with the freshly installed
- * `@veyyon/pi-coding-agent` and the loader aborts at
+ * `@veyyon/coding-agent` and the loader aborts at
  * `validateLoadedBindings` on the next launch
  * (`The .node file on disk is from a different release than this loader`).
  * Listing the natives explicitly forces bun to replace them in lock-step.
@@ -938,7 +937,9 @@ export async function runUpdateCommand(opts: { force: boolean; check: boolean })
 	try {
 		release = await getLatestRelease();
 	} catch (err) {
-		console.error(chalk.red(`Failed to check for updates: ${err}`));
+		// err.message, not `${err}`: the latter stringifies as "Error: …" and
+		// produces a doubled "Failed to check for updates: Error: Failed to …".
+		console.error(chalk.red(`Failed to check for updates: ${err instanceof Error ? err.message : String(err)}`));
 		process.exit(1);
 	}
 
@@ -960,7 +961,7 @@ export async function runUpdateCommand(opts: { force: boolean; check: boolean })
 		return;
 	}
 
-	// Choose update method based on the prioritized omp binary in PATH
+	// Choose update method based on the prioritized veyyon binary in PATH
 	try {
 		const target = await resolveUpdateTarget();
 		if (target.method === "brew") {

@@ -2,16 +2,16 @@ import { afterEach, beforeAll, describe, expect, it, type Mock, vi } from "bun:t
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { AgentMessage } from "@veyyon/pi-agent-core";
-import type { AssistantMessage, Usage } from "@veyyon/pi-ai";
-import type { Rule } from "@veyyon/pi-coding-agent/capability/rule";
-import { OmfgController } from "@veyyon/pi-coding-agent/modes/controllers/omfg-controller";
-import { initTheme } from "@veyyon/pi-coding-agent/modes/theme/theme";
-import type { InteractiveModeContext } from "@veyyon/pi-coding-agent/modes/types";
-import { Container, type TUI } from "@veyyon/pi-tui";
-import { removeWithRetries } from "@veyyon/pi-utils";
+import type { AgentMessage } from "@veyyon/agent-core";
+import type { AssistantMessage, Usage } from "@veyyon/ai";
+import type { Rule } from "@veyyon/coding-agent/capability/rule";
+import { OmfgController } from "@veyyon/coding-agent/modes/controllers/omfg-controller";
+import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
+import { Container, type TUI } from "@veyyon/tui";
+import { removeWithRetries } from "@veyyon/utils";
 
-const PROJECT_OPTION = "This project (.omp/rules)";
+const PROJECT_OPTION = "This project (.veyyon/rules)";
 const GLOBAL_OPTION = "Global — all projects (~/.veyyon/agent/rules)";
 const AMEND_OPTION = "Amend with feedback…";
 

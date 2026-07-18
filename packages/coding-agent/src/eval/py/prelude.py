@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-# OMP prelude helpers (loaded once into the runner namespace)
+# Veyyon prelude helpers (loaded once into the runner namespace)
 if "__veyyon_prelude_loaded__" not in globals():
     __veyyon_prelude_loaded__ = True
     from pathlib import Path
@@ -11,7 +11,7 @@ if "__veyyon_prelude_loaded__" not in globals():
 
     # __veyyon_display is injected by runner.py before the prelude executes; it
     # mirrors IPython's display() semantics with the same MIME bundle output.
-    _omp_display = __veyyon_display  # type: ignore[name-defined]
+    _veyyon_display = __veyyon_display  # type: ignore[name-defined]
 
     _PRESENTABLE_REPRS = (
         "_repr_mimebundle_",
@@ -27,20 +27,20 @@ if "__veyyon_prelude_loaded__" not in globals():
     def display(value):
         """Render a value. Falls back to a JSON+text/plain bundle for plain dict/list/tuple."""
         if any(hasattr(value, attr) for attr in _PRESENTABLE_REPRS):
-            _omp_display(value)
+            _veyyon_display(value)
             return
         if isinstance(value, (dict, list, tuple)):
             try:
                 bundle = {"application/json": value, "text/plain": repr(value)}
-                _omp_display(bundle, raw=True)
+                _veyyon_display(bundle, raw=True)
                 return
             except Exception:
                 pass
-        _omp_display(value)
+        _veyyon_display(value)
 
     def _emit_status(op: str, **data):
         """Emit structured status event for TUI rendering."""
-        _omp_display({"application/x-omp-status": {"op": op, **data}}, raw=True)
+        _veyyon_display({"application/x-veyyon-status": {"op": op, **data}}, raw=True)
 
     def env(key: str | None = None, value: str | None = None):
         """Get/set environment variables."""
@@ -56,12 +56,12 @@ if "__veyyon_prelude_loaded__" not in globals():
         _emit_status("env", key=key, value=val, action="get")
         return val
 
-    _OMP_INTERNAL_URL_RE = re.compile(r"^([a-z][a-z0-9+.-]*)://(.*)$", re.IGNORECASE)
+    _VEYYON_INTERNAL_URL_RE = re.compile(r"^([a-z][a-z0-9+.-]*)://(.*)$", re.IGNORECASE)
 
     def _should_delegate_read(path: str | Path) -> bool:
         return (
             isinstance(path, str)
-            and _OMP_INTERNAL_URL_RE.match(path) is not None
+            and _VEYYON_INTERNAL_URL_RE.match(path) is not None
             and not path.lower().startswith("local://")
         )
 
@@ -79,22 +79,22 @@ if "__veyyon_prelude_loaded__" not in globals():
             return result["text"]
         return result
 
-    def _resolve_omp_path(path: str | Path) -> Path:
+    def _resolve_veyyon_path(path: str | Path) -> Path:
         """Map a helper path to a real filesystem Path.
 
         A `scheme://…` whose scheme has an injected on-disk root (e.g.
-        `local://`, via PI_EVAL_LOCAL_ROOTS) is rewritten under that root so it
+        `local://`, via VEYYON_EVAL_LOCAL_ROOTS) is rewritten under that root so it
         lands where `read local://…` resolves — not a literal `local:/`
         directory under the cwd (which `Path("local://x")` collapses to). Plain
         paths pass through unchanged; any other `scheme://` is rejected."""
         if not isinstance(path, str):
             return Path(path)
-        match = _OMP_INTERNAL_URL_RE.match(path)
+        match = _VEYYON_INTERNAL_URL_RE.match(path)
         if not match:
             return Path(path)
         scheme = match.group(1).lower()
         try:
-            roots = json.loads(os.environ.get("PI_EVAL_LOCAL_ROOTS") or "{}")
+            roots = json.loads(os.environ.get("VEYYON_EVAL_LOCAL_ROOTS") or "{}")
         except (ValueError, TypeError):
             roots = {}
         root = roots.get(scheme) if isinstance(roots, dict) else None
@@ -123,7 +123,7 @@ if "__veyyon_prelude_loaded__" not in globals():
             selector = _read_line_selector(offset, limit)
             tool_path = path if selector is None else f"{path}:{selector}"
             return _read_tool_text(tool_path)
-        p = _resolve_omp_path(path)
+        p = _resolve_veyyon_path(path)
         data = p.read_text(encoding="utf-8")
         lines = data.splitlines(keepends=True)
         if offset > 1 or limit is not None:
@@ -137,7 +137,7 @@ if "__veyyon_prelude_loaded__" not in globals():
 
     def write(path: str | Path, content: str) -> Path:
         """Write file contents (create parents)."""
-        p = _resolve_omp_path(path)
+        p = _resolve_veyyon_path(path)
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(content, encoding="utf-8")
         _emit_status("write", path=str(p), chars=len(content))
@@ -170,12 +170,12 @@ if "__veyyon_prelude_loaded__" not in globals():
             output('explore_0', offset=10, limit=20)  # Lines 10-29
             output('explore_0', 'reviewer_1')  # Read multiple outputs
         """
-        # Prefer PI_ARTIFACTS_DIR so subagents resolve through the parent's
-        # shared artifacts dir; fall back to deriving from PI_SESSION_FILE
+        # Prefer VEYYON_ARTIFACTS_DIR so subagents resolve through the parent's
+        # shared artifacts dir; fall back to deriving from VEYYON_SESSION_FILE
         # for legacy callers / top-level sessions where the two coincide.
-        artifacts_dir = os.environ.get("PI_ARTIFACTS_DIR")
+        artifacts_dir = os.environ.get("VEYYON_ARTIFACTS_DIR")
         if not artifacts_dir:
-            session_file = os.environ.get("PI_SESSION_FILE")
+            session_file = os.environ.get("VEYYON_SESSION_FILE")
             if not session_file:
                 _emit_status("output", error="No session file available")
                 raise RuntimeError("No session - output artifacts unavailable")
@@ -369,9 +369,9 @@ if "__veyyon_prelude_loaded__" not in globals():
         return current
 
     def _tool_proxy_from_env() -> tuple[str, str, str]:
-        base = os.environ.get("PI_TOOL_BRIDGE_URL")
-        token = os.environ.get("PI_TOOL_BRIDGE_TOKEN")
-        session = os.environ.get("PI_TOOL_BRIDGE_SESSION")
+        base = os.environ.get("VEYYON_TOOL_BRIDGE_URL")
+        token = os.environ.get("VEYYON_TOOL_BRIDGE_TOKEN")
+        session = os.environ.get("VEYYON_TOOL_BRIDGE_SESSION")
         if not base or not token or not session:
             raise RuntimeError("tool bridge is unavailable in this kernel")
         return (base.rstrip("/"), token, session)
@@ -454,7 +454,7 @@ if "__veyyon_prelude_loaded__" not in globals():
             return _ToolCallable(name)
 
         def __repr__(self) -> str:
-            session = os.environ.get("PI_TOOL_BRIDGE_SESSION")
+            session = os.environ.get("VEYYON_TOOL_BRIDGE_SESSION")
             return (
                 f"<tool proxy session={session}>"
                 if session

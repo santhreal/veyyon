@@ -1,9 +1,9 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, type Mock, vi } from "bun:test";
-import { resetSettingsForTest, Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { EventController } from "@veyyon/pi-coding-agent/modes/controllers/event-controller";
-import { initTheme } from "@veyyon/pi-coding-agent/modes/theme/theme";
-import type { InteractiveModeContext } from "@veyyon/pi-coding-agent/modes/types";
-import type { AgentSessionEvent } from "@veyyon/pi-coding-agent/session/agent-session";
+import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
+import { EventController } from "@veyyon/coding-agent/modes/controllers/event-controller";
+import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
+import type { AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session";
 
 interface FakeWorkingLoader {
 	stop: Mock<() => void>;

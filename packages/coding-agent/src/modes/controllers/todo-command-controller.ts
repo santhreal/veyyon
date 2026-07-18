@@ -1,4 +1,6 @@
 import * as fs from "node:fs/promises";
+import { titleCaseSentence, titleCaseWords } from "@veyyon/utils";
+import { tokenizeQuotedArgs } from "@veyyon/utils/cli";
 import {
 	applyOpsToPhases,
 	getLatestTodoPhasesFromEntries,
@@ -26,49 +28,6 @@ const USAGE = [
 	"  /todo drop   [<task|phase>]        Mark task/phase/all abandoned",
 	"  /todo rm     [<task|phase>]        Remove task/phase/all",
 ].join("\n");
-
-// =============================================================================
-// Argument tokenizer (respects double-quoted strings)
-// =============================================================================
-
-function tokenize(input: string): string[] {
-	const tokens: string[] = [];
-	let cur = "";
-	let inQuote = false;
-	for (let i = 0; i < input.length; i++) {
-		const ch = input[i];
-		if (ch === "\\" && i + 1 < input.length) {
-			cur += input[++i];
-			continue;
-		}
-		if (ch === '"') {
-			inQuote = !inQuote;
-			continue;
-		}
-		if (!inQuote && /\s/.test(ch)) {
-			if (cur) {
-				tokens.push(cur);
-				cur = "";
-			}
-			continue;
-		}
-		cur += ch;
-	}
-	if (cur) tokens.push(cur);
-	return tokens;
-}
-
-// =============================================================================
-// Name normalization
-// =============================================================================
-
-function titleCase(s: string): string {
-	return s
-		.split(/\s+/)
-		.filter(Boolean)
-		.map(word => word[0].toUpperCase() + word.slice(1))
-		.join(" ");
-}
 
 // =============================================================================
 // Fuzzy matching
@@ -256,7 +215,7 @@ export class TodoCommandController {
 	// ------------------------------------------------------------- append
 
 	#append(rest: string): void {
-		const tokens = tokenize(rest);
+		const tokens = tokenizeQuotedArgs(rest);
 		if (tokens.length === 0) {
 			this.ctx.showError("Usage: /todo append [<phase>] <task...>");
 			return;
@@ -279,7 +238,7 @@ export class TodoCommandController {
 		if (phaseName) {
 			targetPhase = findPhaseFuzzy(next, phaseName);
 			if (!targetPhase) {
-				targetPhase = { name: titleCase(phaseName), tasks: [] };
+				targetPhase = { name: titleCaseWords(phaseName), tasks: [] };
 				next.push(targetPhase);
 			}
 		} else if (next.length > 0) {
@@ -477,11 +436,4 @@ export class TodoCommandController {
 		this.ctx.agent.appendMessage(message);
 		this.ctx.sessionManager.appendMessage(message);
 	}
-}
-
-/** Capitalize first letter only — keeps acronyms / casing in the rest of the sentence intact. */
-function titleCaseSentence(s: string): string {
-	const trimmed = s.trim();
-	if (!trimmed) return trimmed;
-	return trimmed[0].toUpperCase() + trimmed.slice(1);
 }

@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { Effort } from "@veyyon/pi-ai";
-import { clearCustomApis } from "@veyyon/pi-ai/api-registry";
-import { createMockModel, registerMockApi } from "@veyyon/pi-ai/providers/mock";
-import { __providerInFlightForTesting, streamSimple } from "@veyyon/pi-ai/stream";
-import type { Context } from "@veyyon/pi-ai/types";
+import { Effort } from "@veyyon/ai";
+import { clearCustomApis } from "@veyyon/ai/api-registry";
+import { createMockModel, registerMockApi } from "@veyyon/ai/providers/mock";
+import { __providerInFlightForTesting, streamSimple } from "@veyyon/ai/stream";
+import type { Context } from "@veyyon/ai/types";
 import {
 	getDefault,
 	getEnumValues,
@@ -14,9 +14,9 @@ import {
 	resetSettingsForTest,
 	type SettingPath,
 	Settings,
-} from "@veyyon/pi-coding-agent/config/settings";
-import { AgentStorage } from "@veyyon/pi-coding-agent/session/agent-storage";
-import { getProjectAgentDir, TempDir } from "@veyyon/pi-utils";
+} from "@veyyon/coding-agent/config/settings";
+import { AgentStorage } from "@veyyon/coding-agent/session/agent-storage";
+import { getProjectAgentDir, TempDir } from "@veyyon/utils";
 import { YAML } from "bun";
 import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "./helpers/settings-test-state";
 

@@ -11,6 +11,7 @@
  * loading that can be integrated when stream.ts is refactored.
  */
 
+import { errorMessage } from "@veyyon/utils";
 import * as AIError from "../error";
 import type {
 	Api,
@@ -189,9 +190,9 @@ function hasFinalResult(
 
 /**
  * floor used when neither caller option nor env var pins a value. Generic env
- * vars (`PI_STREAM_FIRST_EVENT_TIMEOUT_MS`, `PI_STREAM_IDLE_TIMEOUT_MS`) still
+ * vars (`VEYYON_STREAM_FIRST_EVENT_TIMEOUT_MS`, `VEYYON_STREAM_IDLE_TIMEOUT_MS`) still
  * take precedence unless a provider opts into OpenAI-family idle flooring for
- * local backends that users historically tuned with `PI_OPENAI_STREAM_IDLE_TIMEOUT_MS`.
+ * local backends that users historically tuned with `VEYYON_OPENAI_STREAM_IDLE_TIMEOUT_MS`.
  */
 interface LazyStreamLimits {
 	defaultFirstEventTimeoutMs?: number;
@@ -204,7 +205,7 @@ interface LazyStreamLimits {
 	/**
 	 * Apply OpenAI-family idle timeout precedence in the lazy wrapper. Used by
 	 * local backends whose users historically tune slow prompt-processing gaps
-	 * with `PI_OPENAI_STREAM_IDLE_TIMEOUT_MS`.
+	 * with `VEYYON_OPENAI_STREAM_IDLE_TIMEOUT_MS`.
 	 */
 	openAIIdleEnvFloorsFirstEvent?: boolean;
 }
@@ -311,8 +312,7 @@ function createLazyLoadErrorMessage<TApi extends Api>(
 			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 		},
 		stopReason,
-		errorMessage:
-			stopReason === "aborted" ? "Request was aborted" : error instanceof Error ? error.message : String(error),
+		errorMessage: stopReason === "aborted" ? "Request was aborted" : errorMessage(error),
 		timestamp: Date.now(),
 	};
 }

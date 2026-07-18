@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
-import { convertAnthropicMessages } from "@veyyon/pi-ai/providers/anthropic";
-import type { AssistantMessage, Message, Model, ModelSpec, ToolResultMessage, UserMessage } from "@veyyon/pi-ai/types";
-import { buildModel } from "@veyyon/pi-catalog/build";
+import { convertAnthropicMessages } from "@veyyon/ai/providers/anthropic";
+import type { AssistantMessage, Message, Model, ModelSpec, ToolResultMessage, UserMessage } from "@veyyon/ai/types";
+import { buildModel } from "@veyyon/catalog/build";
 
 // These tests pin the wire-validity contract that was verified end-to-end against the
 // live Anthropic Messages API (claude-opus-4-8):

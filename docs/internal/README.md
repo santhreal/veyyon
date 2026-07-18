@@ -43,7 +43,7 @@ New here? Read [onboarding](onboarding.md) and [testing](testing.md) first.
 
 | Doc | Covers |
 | --- | --- |
-| [natives-architecture.md](natives-architecture.md) | How the `pi-natives` addon is structured and loaded. |
+| [natives-architecture.md](natives-architecture.md) | How the `veyyon-natives` addon is structured and loaded. |
 | [native-crates.md](native-crates.md) | The Rust crate layout under `crates/`. |
 | [natives-binding-contract.md](natives-binding-contract.md) | The JS/TS ↔ native binding contract. |
 | [natives-addon-loader-runtime.md](natives-addon-loader-runtime.md) | Runtime resolution and load of the native addon. |

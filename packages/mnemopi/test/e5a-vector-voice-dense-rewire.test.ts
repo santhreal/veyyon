@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import "./setup";
-import { BeamMemory } from "@veyyon/pi-mnemopi/core/beam";
-import { PolyphonicRecallEngine } from "@veyyon/pi-mnemopi/core/polyphonic-recall";
+import { BeamMemory } from "@veyyon/mnemopi/core/beam";
+import { PolyphonicRecallEngine } from "@veyyon/mnemopi/core/polyphonic-recall";
 
 function seedEmbedding(beam: BeamMemory, memoryId: string, vector: readonly number[]): void {
 	beam.db.run("INSERT OR REPLACE INTO memory_embeddings (memory_id, embedding_json, model) VALUES (?, ?, 'test')", [

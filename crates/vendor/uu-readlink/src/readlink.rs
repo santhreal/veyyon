@@ -7,10 +7,10 @@
 
 // pi-uutils: vendored from uutils/coreutils 0.8.0 and patched to run in-process
 // as a shell builtin. Every filesystem syscall resolves its path operand
-// against the shell working directory via `pi_uutils_ctx::resolve` AT THE CALL
-// SITE, while the original operands are kept for display/error messages (GNU
-// prints operands as typed). All process-global stdio is routed through
-// `pi_uutils_ctx`, `translate!` strings are literalized, POSIXLY_CORRECT is
+// against the shell working directory via `veyyon_uutils_ctx::resolve` AT THE
+// CALL SITE, while the original operands are kept for display/error messages
+// (GNU prints operands as typed). All process-global stdio is routed through
+// `veyyon_uutils_ctx`, `translate!` strings are literalized, POSIXLY_CORRECT is
 // read from the scope environment, and the entry point no longer calls
 // `std::process::exit`.
 
@@ -22,7 +22,6 @@ use std::{
 };
 
 use clap::{Arg, ArgAction, ArgMatches, Command};
-use pi_uutils_ctx::format_usage;
 use uucore::{
 	display::Quotable,
 	error::{FromIo, UResult, UUsageError},
@@ -30,6 +29,7 @@ use uucore::{
 	libc::EINVAL,
 	line_ending::LineEnding,
 };
+use veyyon_uutils_ctx::format_usage;
 
 const OPT_CANONICALIZE: &str = "canonicalize";
 const OPT_CANONICALIZE_MISSING: &str = "canonicalize-missing";
@@ -53,15 +53,15 @@ pub fn run(argv: Vec<OsString>) -> i32 {
 		Err(err) => {
 			let rendered = err.to_string();
 			if err.use_stderr() {
-				let _ = write!(pi_uutils_ctx::stderr(), "{rendered}");
+				let _ = write!(veyyon_uutils_ctx::stderr(), "{rendered}");
 				return 1;
 			}
-			let _ = write!(pi_uutils_ctx::stdout(), "{rendered}");
+			let _ = write!(veyyon_uutils_ctx::stdout(), "{rendered}");
 			return 0;
 		},
 	};
 	match readlink_main(&matches) {
-		Ok(()) => pi_uutils_ctx::exit_code(),
+		Ok(()) => veyyon_uutils_ctx::exit_code(),
 		Err(err) => {
 			let code = err.code();
 			// pi-uutils: silent failures surface as bare exit-code errors that
@@ -69,7 +69,7 @@ pub fn run(argv: Vec<OsString>) -> i32 {
 			// don't emit a dangling "readlink: " prefix.
 			let msg = err.to_string();
 			if !msg.is_empty() {
-				let _ = writeln!(pi_uutils_ctx::stderr(), "readlink: {msg}");
+				let _ = writeln!(veyyon_uutils_ctx::stderr(), "readlink: {msg}");
 			}
 			if code == 0 { 1 } else { code }
 		},
@@ -81,7 +81,8 @@ fn readlink_main(matches: &ArgMatches) -> UResult<()> {
 	let use_zero = matches.get_flag(OPT_ZERO);
 	// pi-uutils: POSIXLY_CORRECT comes from the scope environment (the shell's
 	// exported variables), not the host process environment.
-	let verbose = matches.get_flag(OPT_VERBOSE) || pi_uutils_ctx::var("POSIXLY_CORRECT").is_some();
+	let verbose =
+		matches.get_flag(OPT_VERBOSE) || veyyon_uutils_ctx::var("POSIXLY_CORRECT").is_some();
 
 	// GNU readlink -f/-e/-m follows symlinks first and then applies `..` (physical
 	// resolution). ResolveMode::Logical collapses `..` before following links,
@@ -115,7 +116,7 @@ fn readlink_main(matches: &ArgMatches) -> UResult<()> {
 
 	if no_trailing_delimiter && files.len() > 1 {
 		let _ = writeln!(
-			pi_uutils_ctx::stderr(),
+			veyyon_uutils_ctx::stderr(),
 			"readlink: ignoring --no-newline with multiple arguments"
 		);
 		no_trailing_delimiter = false;
@@ -131,7 +132,7 @@ fn readlink_main(matches: &ArgMatches) -> UResult<()> {
 		// pi-uutils: resolve the operand against the shell working directory;
 		// `p` is kept for display. Resolving before `canonicalize` also keeps
 		// uucore's internal `env::current_dir()` fallback from being consulted.
-		let resolved = pi_uutils_ctx::resolve(p);
+		let resolved = veyyon_uutils_ctx::resolve(p);
 		let path_result = if res_mode == ResolveMode::None {
 			fs::read_link(&resolved)
 		} else {
@@ -153,7 +154,7 @@ fn readlink_main(matches: &ArgMatches) -> UResult<()> {
 					err.map_err_context(|| p.maybe_quote().to_string())
 						.to_string()
 				};
-				let _ = writeln!(pi_uutils_ctx::stderr(), "readlink: {message}");
+				let _ = writeln!(veyyon_uutils_ctx::stderr(), "readlink: {message}");
 				return Err(1.into());
 			},
 		}
@@ -246,7 +247,7 @@ pub fn uu_app() -> Command {
 /// pi-uutils: replacement for upstream's `show` — writes the resolved path
 /// bytes verbatim to the context stdout instead of the process stdout.
 fn show(path: &Path, line_ending: Option<LineEnding>) -> UResult<()> {
-	let mut out = pi_uutils_ctx::stdout();
+	let mut out = veyyon_uutils_ctx::stdout();
 	out.write_all(uucore::os_str_as_bytes(path.as_os_str())?)?;
 	if let Some(line_ending) = line_ending {
 		write!(out, "{line_ending}")?;
@@ -260,7 +261,7 @@ mod tests {
 	use std::{collections::HashMap, io::Write, path::PathBuf, sync::Arc};
 
 	use parking_lot::Mutex;
-	use pi_uutils_ctx::ScopeIo;
+	use veyyon_uutils_ctx::ScopeIo;
 
 	use super::*;
 
@@ -298,7 +299,7 @@ mod tests {
 			.map(OsString::from)
 			.collect();
 
-		let code = pi_uutils_ctx::scope(io, || run(argv));
+		let code = veyyon_uutils_ctx::scope(io, || run(argv));
 
 		let out_str = String::from_utf8(stdout_buf.lock().clone()).unwrap();
 		let err_str = String::from_utf8(stderr_buf.lock().clone()).unwrap();
@@ -321,7 +322,7 @@ mod tests {
 		std::os::unix::fs::symlink("target-file", root.join("link")).unwrap();
 
 		// Relative operand + scope cwd differing from the process cwd: only the
-		// call-site `pi_uutils_ctx::resolve` patch makes this find the link.
+		// call-site `veyyon_uutils_ctx::resolve` patch makes this find the link.
 		let (code, stdout, stderr) = run_in(root, vec!["link"]);
 		assert_eq!(code, 0);
 		assert_eq!(stdout, "target-file\n");

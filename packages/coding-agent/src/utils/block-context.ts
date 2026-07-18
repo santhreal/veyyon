@@ -1,5 +1,5 @@
-import { enclosingBlockBoundaries } from "@veyyon/pi-natives";
-import { logger } from "@veyyon/pi-utils";
+import { enclosingBlockBoundaries } from "@veyyon/natives";
+import { logger } from "@veyyon/utils";
 
 const OPEN_TO_CLOSE: Record<string, string> = {
 	"(": ")",

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { StoredAuthCredential, UsageLimit, UsageReport } from "@veyyon/pi-ai";
+import type { StoredAuthCredential, UsageLimit, UsageReport } from "@veyyon/ai";
 import {
 	limitMatchesActiveAccount,
 	reportMatchesActiveAccount,

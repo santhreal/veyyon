@@ -15,9 +15,9 @@
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { type AgentTool, ThinkingLevel } from "@veyyon/pi-agent-core";
-import { Container, Ellipsis, matchesKey, type OverlayHandle, padding, type TUI, visibleWidth } from "@veyyon/pi-tui";
-import { formatAge, getProjectDir, logger } from "@veyyon/pi-utils";
+import { type AgentTool, ThinkingLevel } from "@veyyon/agent-core";
+import { Container, Ellipsis, matchesKey, type OverlayHandle, padding, type TUI, visibleWidth } from "@veyyon/tui";
+import { formatAge, getProjectDir, logger } from "@veyyon/utils";
 import { ADVISOR_TRANSCRIPT_FILENAME, isAdvisorTranscriptName } from "../../advisor";
 import type { KeyId } from "../../config/keybindings";
 import type { MessageRenderer } from "../../extensibility/extensions/types";
@@ -454,7 +454,8 @@ export class AgentHubOverlayComponent extends Container {
 
 	#renderTable(width: number): string[] {
 		const lines: string[] = [];
-		lines.push(...new DynamicBorder().render(width));
+		// No leading border: the hub mounts in the editor slot, directly under the
+		// location line's divider — a border here stacked two full-width rules.
 		const counts = this.#statusSummary();
 		lines.push(` ${theme.fg("accent", "Agent Hub")}${counts ? theme.fg("dim", `${theme.sep.dot}${counts}`) : ""}`);
 		lines.push(...new DynamicBorder().render(width));

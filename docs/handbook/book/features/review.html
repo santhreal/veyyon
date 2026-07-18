@@ -10,6 +10,10 @@
         <!-- Veyyon handbook: self-contained head additions. No remote resources. -->
         <meta name="theme-color" content="#050505">
         <meta name="color-scheme" content="dark">
+        <!-- Site favicons live at the deployed root, one level above /docs/. -->
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+        <link rel="icon" href="/favicon.ico" sizes="48x48">
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png">
         <style>
           /* Paint the near-black surface before CSS/JS resolve the theme, so there is
              no light flash on load. Kept in sync with theme/veyyon.css. */
@@ -18,7 +22,7 @@
           *, *::before, *::after { box-sizing: border-box; }
         </style>
 
-        <meta name="description" content="How Veyyon turns open models into frontier coding agents. The product, the harness, tool-call repair, the edit format, per-model adaptation, and how to use it.">
+        <meta name="description" content="Operator handbook for the Veyyon terminal coding agent: install, configuration, tools, approvals, edit formats, providers, and harness structure.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -38,7 +42,7 @@
         <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="../ayu-highlight-3fdfc3ac.css">
 
         <!-- Custom theme stylesheets -->
-        <link rel="stylesheet" href="../theme/veyyon-fc839a17.css">
+        <link rel="stylesheet" href="../theme/veyyon-06f6939e.css">
 
 
         <!-- Provide site root and default themes to javascript -->
@@ -46,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-e76f06ca.js";
+            window.path_to_searchindex_js = "../searchindex-a2447057.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-9cfd259b.js"></script>
+        <script src="../toc-cc1a72e9.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -192,201 +196,38 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="code-review"><a class="header" href="#code-review">Code review</a></h1>
-<blockquote>
-<p><strong>Spec — not shipped:</strong> a standalone <code>veyyon review</code> subcommand and the <code>approvals_reviewer</code> /
-<code>auto_review</code> / <code>review_model</code> config keys. What ships today is the interactive <strong><code>/review</code></strong> slash
-command and the passive <strong>advisor</strong> runtime (<code>--advisor</code>, which reviews each turn and injects notes).
-For non-interactive or CI review, drive <code>/review</code> through <code>veyyon --print</code> with a review prompt. The
-<code>/review</code> and advisor sections below are real; the <code>veyyon review</code> CLI and auto-review config are the
-target shape.</p>
-</blockquote>
-<p>Veyyon can review code changes as a first-class task, separate from an ordinary chat
-turn. A review reads a set of changes, reasons about them against review instructions,
-and reports the issues it finds.</p>
-<h2 id="non-interactive-review-spec-veyyon-review"><a class="header" href="#non-interactive-review-spec-veyyon-review">Non-interactive review (spec: <code>veyyon review</code>)</a></h2>
-<p>The <code>veyyon review</code> subcommand below is the target CLI shape. It selects the
-changes to review with mutually exclusive flags:</p>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Flag</th><th>Changes reviewed</th></tr>
-</thead>
-<tbody>
-<tr><td><code>--uncommitted</code></td><td>Staged, unstaged, and untracked changes in the working tree.</td></tr>
-<tr><td><code>--base &lt;BRANCH&gt;</code></td><td>The diff of the current branch against <code>&lt;BRANCH&gt;</code>.</td></tr>
-<tr><td><code>--commit &lt;SHA&gt;</code></td><td>The changes introduced by one commit.</td></tr>
-<tr><td><code>--title &lt;TITLE&gt;</code></td><td>Optional commit title to show in the summary (only with <code>--commit</code>).</td></tr>
-</tbody>
-</table>
-</div>
-<p>You can also pass a positional prompt with custom review instructions; pass <code>-</code> to read
-the instructions from stdin. The change-selection flags and a custom prompt are mutually
-exclusive, so a run either targets a change set or follows a free-form instruction.</p>
-<pre><code class="language-console">$ veyyon review --uncommitted
-$ veyyon review --base main
-$ veyyon review --commit 1a2b3c4 --title "Cache the parsed config"
-$ echo "focus on error handling and missing tests" | veyyon review -
-</code></pre>
-<p>Like <a href="./exec.html"><code>veyyon --print</code></a>, review runs are scriptable and exit non-zero on failure, so
-you can gate CI on them. Prefer <code>--sandbox workspace-write</code> when you need bounded
-automation; <code>--full-auto</code> on exec is deprecated.</p>
-<h3 id="worked-walkthrough-review-uncommitted-work"><a class="header" href="#worked-walkthrough-review-uncommitted-work">Worked walkthrough: review uncommitted work</a></h3>
-<p>Suppose you are mid-change on a config parser and want a second pass before you commit.</p>
+<p>Review surfaces:</p>
 <ol>
-<li>Confirm the working tree has the changes you care about:</li>
+<li><strong><code>/review</code></strong> — bundled interactive review command (branch, commits, or uncommitted work).</li>
+<li><strong>Advisor</strong> — optional second model that comments on main-agent turns.</li>
+<li><strong>Plan review</strong> — <code>/plan-review</code> while plan mode is active.</li>
+<li><strong>Non-interactive</strong> — free-form review prompts under <code>veyyon -p</code>.</li>
 </ol>
-<pre><code class="language-console">$ git status -sb
-## feature/config-cache
- M crates/core/src/config/mod.rs
-?? crates/core/tests/suite/config_cache.rs
+<h2 id="review"><a class="header" href="#review"><code>/review</code></a></h2>
+<p>Bundled custom command (<code>packages/coding-agent/src/extensibility/custom-commands/bundled/review</code>).
+Launches a review flow over a chosen target and uses the review tool surface (<code>report_finding</code>, …).
+See the command help in-session and <code>docs/handbook</code> task guides for example prompts.</p>
+<h2 id="advisor"><a class="header" href="#advisor">Advisor</a></h2>
+<p>The advisor is a second model role that reads each main-agent turn and can inject notes
+(aside, concern, or blocker). Enable with <code>--advisor</code> or the advisor settings/role.
+Uses its own context and model assignment when configured.</p>
+<h2 id="plan-review"><a class="header" href="#plan-review">Plan review</a></h2>
+<p>Inside plan mode, <code>/plan-review</code> reopens review of the current plan file. See <a href="./plan-mode.html">Plan mode</a>.</p>
+<h2 id="non-interactive"><a class="header" href="#non-interactive">Non-interactive</a></h2>
+<pre><code class="language-console">$ veyyon -p "review the uncommitted diff for correctness and missing tests"
+$ veyyon -p --yolo "review this branch against main; list P0/P1 findings only"
 </code></pre>
-<ol start="2">
-<li>Run a review against that working tree:</li>
-</ol>
-<pre><code class="language-console">$ veyyon review --uncommitted
-</code></pre>
-<ol start="3">
-<li>Veyyon loads the staged, unstaged, and untracked diffs, runs the review model, and
-prints a human-readable summary. A typical successful run looks like this:</li>
-</ol>
-<pre><code class="language-text">Overall: the cache path is sound, but the new helper fails closed incorrectly when the
-override file is missing, and the unit test never exercises a malformed TOML value.
-
-Full review comments:
-
-- Missing file should not fail the whole load: crates/core/src/config/mod.rs:214-228
-  When `model_catalog_json` points at a path that does not exist, the loader returns a
-  hard error. Prefer a clear config diagnostic that names the path and continues with the
-  bundled catalog, matching the other override keys.
-
-- Add a malformed-TOML regression: crates/core/tests/suite/config_cache.rs:1-40
-  The new test covers the happy path only. Add a case with a trailing comma (or similar
-  invalid value) and assert the surfaced error names the file and key.
-</code></pre>
-<p>What to notice:</p>
-<ul>
-<li>The summary leads with an overall explanation, then a findings block.</li>
-<li>Each finding has a short title and a <code>path:start-end</code> location, then a body explaining
-the risk and the smallest fix.</li>
-<li>Empty findings still produce a fallback message rather than silent success with no
-output; treat a clean review as an explicit “nothing to report” result when you automate.</li>
-</ul>
-<ol start="4">
-<li>Fix the named issues, then re-run the same command until the review is clean enough to
-commit. For CI, capture the process exit status rather than scraping prose:</li>
-</ol>
-<pre><code class="language-console">$ veyyon review --uncommitted
-$ echo $?
-0
-</code></pre>
-<h3 id="worked-walkthrough-review-a-branch-against-main"><a class="header" href="#worked-walkthrough-review-a-branch-against-main">Worked walkthrough: review a branch against <code>main</code></a></h3>
-<p>Use <code>--base</code> when the interesting surface is “everything this branch introduces,” not
-just the dirty working tree.</p>
-<ol>
-<li>Make sure you are on the feature branch and that <code>main</code> (or your integration branch)
-is reachable:</li>
-</ol>
-<pre><code class="language-console">$ git switch feature/config-cache
-$ git fetch origin main
-</code></pre>
-<ol start="2">
-<li>Review the branch delta:</li>
-</ol>
-<pre><code class="language-console">$ veyyon review --base main
-</code></pre>
-<ol start="3">
-<li>Sample output for a branch that still needs tightening:</li>
-</ol>
-<pre><code class="language-text">Overall: the branch improves cold-start latency, but the cache key ignores the active
-profile, so two profiles can silently share stale catalog data.
-
-Full review comments:
-
-- Include profile in the cache key: crates/core/src/config/mod.rs:88-101
-  `load_catalog_cached` hashes cwd and catalog path only. Two profiles with different
-  `model_catalog_json` overrides can collide. Fold the active profile name (or the
-  resolved override path) into the key.
-
-- Document the invalidation rule: docs/handbook/src/using/models.md:40-52
-  Operators need to know that changing the active profile busts the cache. Add one
-  sentence next to the catalog override docs.
-</code></pre>
-<p>Compared with <code>--uncommitted</code>:</p>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Goal</th><th>Flag</th></tr>
-</thead>
-<tbody>
-<tr><td>Review what you are about to commit or amend</td><td><code>--uncommitted</code></td></tr>
-<tr><td>Review the whole PR / branch delta</td><td><code>--base &lt;BRANCH&gt;</code></td></tr>
-<tr><td>Review a single landed or local commit</td><td><code>--commit &lt;SHA&gt;</code></td></tr>
-</tbody>
-</table>
-</div>
-<p>For pull-request bots, <code>--base origin/main</code> (or your repo’s default branch) is usually
-the right choice. Keep the working tree clean or stash local noise first if you want the
-review to match the pushed commits exactly; otherwise dirty files are not included unless
-you also use <code>--uncommitted</code>.</p>
-<h3 id="custom-instructions"><a class="header" href="#custom-instructions">Custom instructions</a></h3>
-<p>When the default review rubric is too broad, pass a prompt instead of a change-selection
-flag:</p>
-<pre><code class="language-console">$ veyyon review "focus on authz boundaries and secret handling in the diff against main"
-$ echo "ignore style nits; report only correctness and missing tests" | veyyon review -
-</code></pre>
-<p>The prompt form is mutually exclusive with <code>--uncommitted</code>, <code>--base</code>, and <code>--commit</code>. If
-you need both a change set and custom instructions, prefer <code>/review …</code> in the cockpit, or
-phrase the prompt so it names the change set explicitly.</p>
-<h2 id="interactive-review-review"><a class="header" href="#interactive-review-review">Interactive review (<code>/review</code>)</a></h2>
-<p>Inside the cockpit, <code>/review</code> reviews your current changes and surfaces the issues it
-finds without leaving the session. You can pass inline instructions to focus the review,
-for example <code>/review look at the auth changes for missing input validation</code>. The findings
-are reported in the conversation so you can act on them immediately.</p>
-<p><code>/review</code> is the right tool when you are already mid-session and want findings in context.
-<code>veyyon review</code> is the right tool for scripts, git hooks, and CI.</p>
-<h2 id="auto-review-guardian-spec--not-shipped"><a class="header" href="#auto-review-guardian-spec--not-shipped">Auto-review guardian (Spec — not shipped)</a></h2>
-<blockquote>
-<p><strong>Spec — not shipped:</strong> everything in this section is the target shape, not shipped
-behavior. There is no <code>approvals_reviewer</code> / <code>auto_review</code> / <code>review_model</code> config key, no
-continuous auto-review approval path, and no <code>/auto-review</code> or <code>/approve</code> command in the
-shipped registry today. Approvals are governed by <code>tools.approvalMode</code>
-(<code>always-ask</code> / <code>write</code> / <code>yolo</code>) and per-tool policy overrides; see
+<p>Typical targets: uncommitted work, a branch delta, or paths named in the prompt. Exit status
+follows the print-mode run (<code>veyyon --help</code>).</p>
+<h2 id="approvals"><a class="header" href="#approvals">Approvals</a></h2>
+<p>Tool approvals use <code>tools.approvalMode</code> and per-tool policy. See <a href="./sandbox.html">Approvals</a> and
 <a href="../using/safety.html">Safety</a>.</p>
-</blockquote>
-<p>The target design would turn review into a continuous guardian. Instead of you approving
-each sensitive action, an auto-reviewer would inspect the agent’s proposed actions against
-a policy and approve or deny them, selected by setting the approvals reviewer to
-<code>auto_review</code>.</p>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th><code>approvals_reviewer</code> (target)</th><th>Who reviews approvals</th></tr>
-</thead>
-<tbody>
-<tr><td><code>user</code></td><td>You approve prompts interactively (default; shipped today via <code>tools.approvalMode</code>).</td></tr>
-<tr><td><code>auto_review</code></td><td>The guardian would review proposed actions automatically (not shipped).</td></tr>
-</tbody>
-</table>
-</div>
-<p>Target config shape (not read by Veyyon today):</p>
-<pre><code class="language-yaml"># TARGET SHAPE — not implemented. Route approval decisions to the guardian
-# instead of prompting the user.
-approvals_reviewer: auto_review
-
-# Extra policy instructions inserted into the guardian's prompt.
-auto_review:
-  policy: "Deny any command that deletes files outside the workspace."
-</code></pre>
-<p>The model used for auto-review would be configurable through <code>review_model</code>, defaulting to
-a dedicated review model rather than the main session model so the guardian’s judgment is
-independent of the agent it is reviewing.</p>
-<p>When the guardian denies an action, the design calls for a retry path rather than silently
-dropping it: a <code>/auto-review</code> command (also <code>/approve</code>) would let the action proceed once
-without changing the standing policy. None of this exists in the shipped command
-registry.</p>
-<p>See also: <a href="../using/safety.html">Safety</a> for how review fits the shipped approval model
-(<code>tools.approvalMode</code>), <a href="./connectors.html">Connectors and Apps</a> for tool approval tiers, and
-<a href="../reference/slash-commands.html">Slash commands</a> for the full command list.</p>
+<h2 id="related"><a class="header" href="#related">Related</a></h2>
+<ul>
+<li><a href="./sandbox.html">Approvals</a></li>
+<li><a href="./exec.html">Non-interactive mode</a></li>
+<li><a href="../using/roles-and-profiles.html">Roles and profiles</a></li>
+</ul>
 
                     </main>
 

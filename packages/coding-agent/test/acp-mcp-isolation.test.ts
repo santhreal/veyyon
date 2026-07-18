@@ -1,7 +1,7 @@
 /**
  * Regression test for issue #1234.
  *
- * `omp acp` must not auto-discover host `.mcp.json` servers when creating a
+ * `veyyon acp` must not auto-discover host `.mcp.json` servers when creating a
  * session for an ACP client. MCP server ownership belongs entirely to the ACP
  * client (`session/new.mcpServers` → `AcpAgent#configureMcpServers`); letting
  * `createAgentSession` run on-disk discovery in parallel registers host MCP
@@ -13,14 +13,14 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import { ModelRegistry } from "@veyyon/pi-coding-agent/config/model-registry";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { createAcpSessionFactory } from "@veyyon/pi-coding-agent/main";
-import type { CreateAgentSessionOptions, CreateAgentSessionResult } from "@veyyon/pi-coding-agent/sdk";
-import type { AgentSession } from "@veyyon/pi-coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/pi-coding-agent/session/auth-storage";
-import { TempDir } from "@veyyon/pi-utils";
-import { CONFIG_DIR_NAME } from "@veyyon/pi-utils/dirs";
+import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import { createAcpSessionFactory } from "@veyyon/coding-agent/main";
+import type { CreateAgentSessionOptions, CreateAgentSessionResult } from "@veyyon/coding-agent/sdk";
+import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
+import { TempDir } from "@veyyon/utils";
+import { CONFIG_DIR_NAME } from "@veyyon/utils/dirs";
 
 describe("createAcpSessionFactory MCP isolation (issue #1234)", () => {
 	it("forces enableMCP=false even when baseOptions opts in", async () => {

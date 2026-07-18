@@ -5,10 +5,10 @@ import type {
 	AgentToolResult,
 	AgentToolUpdateCallback,
 	ToolApprovalDecision,
-} from "@veyyon/pi-agent-core";
-import type { Component } from "@veyyon/pi-tui";
-import { ImageProtocol, TERMINAL } from "@veyyon/pi-tui";
-import { getProjectDir, isEnoent, logger, prompt } from "@veyyon/pi-utils";
+} from "@veyyon/agent-core";
+import type { Component } from "@veyyon/tui";
+import { ImageProtocol, TERMINAL } from "@veyyon/tui";
+import { getProjectDir, isEnoent, logger, prompt } from "@veyyon/utils";
 import { type } from "arktype";
 import { type BashResult, executeBash } from "../exec/bash-executor";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
@@ -69,7 +69,7 @@ const DEFAULT_AUTO_BACKGROUND_THRESHOLD_MS = 60_000;
  * preserves `bash` tool semantics (`$VAR`, `$(...)`, `source`, POSIX quoting,
  * `-l`) instead of dropping to `cmd.exe` on Windows. The agent host's shell
  * path is used as a proxy for the client's, matching the near-universal
- * ACP deployment shape of an editor spawning omp as a co-hosted subprocess.
+ * ACP deployment shape of an editor spawning veyyon as a co-hosted subprocess.
  */
 export function wrapShellLineForClientTerminal(
 	line: string,
@@ -799,7 +799,7 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 		}
 
 		// A timeout of 0 is an explicit long-running-command contract: the user
-		// must still cancel the call or job, but OMP does not impose a deadline.
+		// must still cancel the call or job, but veyyon does not impose a deadline.
 		const requestedTimeoutSec = rawTimeout;
 		const timeoutDisabled = requestedTimeoutSec === 0;
 		const timeoutSec = timeoutDisabled ? undefined : clampTimeout("bash", requestedTimeoutSec);

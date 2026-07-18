@@ -1,8 +1,14 @@
-import { describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, test } from "bun:test";
 import * as path from "node:path";
-import { RpcClient } from "@veyyon/pi-coding-agent/modes/rpc/rpc-client";
+import { RpcClient } from "@veyyon/coding-agent/modes/rpc/rpc-client";
+import { hermeticSpawnEnv } from "./helpers/hermetic-spawn-env";
 
 const MOCK_AGENT = path.join(import.meta.dir, "fixtures", "mock-rpc-agent.ts");
+
+// See rpc-client.start.test.ts: the spawned CLI must not resolve the real
+// ~/.veyyon (defaultProfile / legacy-layout conflict aborts startup first).
+const spawnEnv = hermeticSpawnEnv({ VEYYON_PROFILE: "", VEYYON_NO_TITLE: "1" });
+afterAll(() => spawnEnv.cleanup());
 
 describe("RpcClient lifecycle (issue #4079 B)", () => {
 	test("start() succeeds a second time after stop() on the same instance", async () => {
@@ -28,7 +34,7 @@ describe("RpcClient lifecycle (issue #4079 B)", () => {
 			cwd: path.join(import.meta.dir, ".."),
 			provider: "__missing_provider__",
 			model: "claude-sonnet-4-5",
-			env: { PI_NO_TITLE: "1" },
+			env: spawnEnv.env as Record<string, string>,
 		});
 
 		await expect(client.start()).rejects.toThrow(/Unknown provider.*__missing_provider__/);

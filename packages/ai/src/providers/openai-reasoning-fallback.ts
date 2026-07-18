@@ -1,4 +1,4 @@
-import { extractHttpStatusFromError } from "@veyyon/pi-utils";
+import { escapeRegExp, extractHttpStatusFromError } from "@veyyon/utils";
 import type { CapturedHttpErrorResponse } from "../utils/http-inspector";
 
 /** @internal */
@@ -172,10 +172,6 @@ function isInvalidReasoningEffortError(
 		`(?:invalid|unsupported|not supported)[^\\n]*["'\`]${escapeRegExp(currentEffort)}["'\`]`,
 		"i",
 	).test(message);
-}
-
-function escapeRegExp(value: string): string {
-	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function parseKnownReasoningValues(text: string): Set<string> {

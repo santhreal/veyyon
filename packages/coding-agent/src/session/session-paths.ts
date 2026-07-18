@@ -1,8 +1,8 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { getTerminalId } from "@veyyon/pi-tui";
-import { getSessionsDir, getTerminalSessionsDir, isEnoent, logger, resolveEquivalentPath } from "@veyyon/pi-utils";
+import { getTerminalId } from "@veyyon/tui";
+import { getSessionsDir, getTerminalSessionsDir, isEnoent, logger, resolveEquivalentPath } from "@veyyon/utils";
 import type { SessionStorage } from "./session-storage";
 
 const migratedSessionRoots = new Set<string>();
@@ -154,8 +154,14 @@ export function writeTerminalBreadcrumb(cwd: string, sessionFile: string): void 
 	const breadcrumbDir = getTerminalSessionsDir();
 	const breadcrumbFile = path.join(breadcrumbDir, terminalId);
 	const content = `${cwd}\n${sessionFile}\n`;
-	// Best-effort — don't break session creation if breadcrumb fails
-	Bun.write(breadcrumbFile, content).catch(() => {});
+	// Best-effort — don't break session creation if breadcrumb fails, but say
+	// so: a lost breadcrumb silently breaks `--continue` for this terminal.
+	Bun.write(breadcrumbFile, content).catch(error => {
+		logger.warn("session: terminal breadcrumb write failed; --continue may not find this session", {
+			breadcrumbFile,
+			error: String(error),
+		});
+	});
 }
 
 export interface TerminalBreadcrumb {

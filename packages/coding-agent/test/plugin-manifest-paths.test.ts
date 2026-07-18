@@ -2,12 +2,9 @@ import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import {
-	resolvePluginExtensionPaths,
-	resolvePluginToolPaths,
-} from "@veyyon/pi-coding-agent/extensibility/plugins/loader";
-import type { InstalledPlugin, PluginManifest } from "@veyyon/pi-coding-agent/extensibility/plugins/types";
-import { removeSyncWithRetries } from "@veyyon/pi-utils";
+import { resolvePluginExtensionPaths, resolvePluginToolPaths } from "@veyyon/coding-agent/extensibility/plugins/loader";
+import type { InstalledPlugin, PluginManifest } from "@veyyon/coding-agent/extensibility/plugins/types";
+import { removeSyncWithRetries } from "@veyyon/utils";
 
 function makePlugin(pluginPath: string, manifest: PluginManifest): InstalledPlugin {
 	return {
@@ -21,16 +18,20 @@ function makePlugin(pluginPath: string, manifest: PluginManifest): InstalledPlug
 }
 
 describe("plugin manifest path resolution", () => {
-	it("resolves a directory tools entry to its index, not the omp.extensions modules", () => {
-		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "omp-manifest-paths-"));
+	it("resolves a directory tools entry to its index, not the veyyon.extensions modules", () => {
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-manifest-paths-"));
 		try {
 			// The package declares both extensions and a directory-based tool entry.
-			// `omp.extensions` and the sub-extension scan are extensions-specific and
+			// `veyyon.extensions` and the sub-extension scan are extensions-specific and
 			// must not hijack the `tools: "."` directory entry (regression: the shared
 			// directory resolver returned the extension module for every key).
 			fs.writeFileSync(
 				path.join(dir, "package.json"),
-				JSON.stringify({ name: "fixture-plugin", version: "1.0.0", omp: { extensions: ["./ext.ts"], tools: "." } }),
+				JSON.stringify({
+					name: "fixture-plugin",
+					version: "1.0.0",
+					veyyon: { extensions: ["./ext.ts"], tools: "." },
+				}),
 			);
 			fs.writeFileSync(path.join(dir, "index.ts"), "export default {};");
 			fs.writeFileSync(path.join(dir, "ext.ts"), "export default function () {};");

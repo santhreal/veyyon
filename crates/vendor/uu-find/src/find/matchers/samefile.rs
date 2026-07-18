@@ -31,7 +31,8 @@ fn get_file_info(path: &Path, follow: bool) -> Result<FileInformation, WalkError
 
 impl SameFileMatcher {
 	pub fn new(path: impl AsRef<Path>, follow: Follow) -> Result<Self, Box<dyn Error>> {
-		let info = get_file_info(&pi_uutils_ctx::resolve(path.as_ref()), follow != Follow::Never)?;
+		let info =
+			get_file_info(&veyyon_uutils_ctx::resolve(path.as_ref()), follow != Follow::Never)?;
 		Ok(Self { info })
 	}
 }

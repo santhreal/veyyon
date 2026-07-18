@@ -18,7 +18,7 @@
  *    UI indefinitely.
  */
 import { describe, expect, it } from "bun:test";
-import { type Component, type RenderTimer, TUI } from "@veyyon/pi-tui";
+import { type Component, type RenderTimer, TUI } from "@veyyon/tui";
 import { VirtualTerminal } from "./virtual-terminal";
 
 const MIN_RENDER_INTERVAL_MS = 1000 / 30;

@@ -97,7 +97,7 @@ CREATE TABLE IF NOT EXISTS runs (
 	job_name TEXT PRIMARY KEY,
 	benchmark TEXT NOT NULL DEFAULT 'harbor',
 	dataset TEXT NOT NULL DEFAULT '',
-	agent TEXT NOT NULL DEFAULT 'omp',
+	agent TEXT NOT NULL DEFAULT 'veyyon',
 	models TEXT NOT NULL DEFAULT '',
 	prewalk TEXT,
 	role TEXT NOT NULL DEFAULT '',
@@ -323,12 +323,10 @@ export class RunStore {
 	 * CLI or a previous manager instance) and backfill them as historical rows.
 	 */
 	discover(): number {
-		let entries: fs.Dirent[] = [];
-		try {
-			entries = fs.readdirSync(this.jobsDir, { withFileTypes: true });
-		} catch {
-			return 0;
-		}
+		// No jobs dir yet just means no runs; a readdir failure on an existing
+		// dir (permissions, I/O) must propagate, not read as "0 discovered".
+		if (!fs.existsSync(this.jobsDir)) return 0;
+		const entries = fs.readdirSync(this.jobsDir, { withFileTypes: true });
 		const known = new Set(
 			(this.#db.query("SELECT job_name FROM runs").all() as Array<{ job_name: string }>).map(r => r.job_name),
 		);
@@ -543,11 +541,11 @@ function readHarborConfig(jobDir: string): { dataset: string; agent: string; mod
 				? raw.dataset
 				: (((raw.datasets as Array<Record<string, unknown>> | undefined)?.[0]?.name as string | undefined) ?? "");
 		const agents = raw.agents as Array<Record<string, unknown>> | undefined;
-		const agent = (agents?.[0]?.name as string | undefined) ?? "omp";
+		const agent = (agents?.[0]?.name as string | undefined) ?? "veyyon";
 		const models = (agents?.[0]?.model_name as string | undefined) ?? "";
 		return { dataset: String(dataset), agent, models };
 	} catch {
-		return { dataset: "", agent: "omp", models: "" };
+		return { dataset: "", agent: "veyyon", models: "" };
 	}
 }
 

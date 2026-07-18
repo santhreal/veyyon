@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-import { prompt } from "@veyyon/pi-utils";
+import { prompt } from "@veyyon/utils";
 /**
  * Format prompt files (mixed XML + Markdown + Handlebars).
  *

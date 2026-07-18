@@ -1,4 +1,5 @@
-import type { ImageContent, TextContent } from "@veyyon/pi-ai";
+import type { ImageContent, TextContent } from "@veyyon/ai";
+import { errorMessage } from "@veyyon/utils";
 import { buildSkillPromptMessage, getSkillSlashCommandName, parseSkillInvocation } from "../extensibility/skills";
 import { type CustomMessage, SKILL_PROMPT_MESSAGE_TYPE, type SkillPromptDetails } from "../session/messages";
 import type { InteractiveModeContext } from "./types";
@@ -85,7 +86,7 @@ export async function invokeSkillCommandFromText(
 		if (options?.propagateErrors) {
 			throw err;
 		}
-		ctx.showError(`Failed to load skill: ${err instanceof Error ? err.message : String(err)}`);
+		ctx.showError(`Failed to load skill: ${errorMessage(err)}`);
 		return true;
 	}
 }

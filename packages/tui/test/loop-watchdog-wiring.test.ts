@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
-import { TUI } from "@veyyon/pi-tui";
-import { LoopWatchdog } from "@veyyon/pi-tui/loop-watchdog";
+import { TUI } from "@veyyon/tui";
+import { LoopWatchdog } from "@veyyon/tui/loop-watchdog";
 import { VirtualTerminal } from "./virtual-terminal";
 
 /**

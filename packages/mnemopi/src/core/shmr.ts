@@ -1,6 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { createHash } from "node:crypto";
-import { logger } from "@veyyon/pi-utils";
+import { logger } from "@veyyon/utils";
+import { tableExists } from "../util/sqlite";
 import * as embeddings from "./embeddings";
 import { cosineSimilarity } from "./vector-math";
 
@@ -348,10 +349,6 @@ function dbOf(beam: BeamLike): Database {
 	const db = beam.conn ?? beam.db;
 	if (db === undefined) throw new TypeError("SHMR requires a beam with conn or db");
 	return db;
-}
-
-function tableExists(db: Database, table: string): boolean {
-	return db.query("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(table) !== null;
 }
 
 function parseEmbeddingJson(raw: unknown): Vector | null {

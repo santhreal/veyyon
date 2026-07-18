@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { postmortem } from "@veyyon/pi-utils";
+import { postmortem } from "@veyyon/utils";
 import { ToolAbortError, throwIfAborted } from "../../src/tools/tool-errors";
 
 describe("tool abort errors", () => {

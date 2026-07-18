@@ -3,7 +3,7 @@
  * {@link UiHelpers} and the input/event controllers, so the live chat surfaces
  * construct components and reset editor state identically.
  */
-import type { AssistantMessage } from "@veyyon/pi-ai";
+import type { AssistantMessage } from "@veyyon/ai";
 import { AssistantMessageComponent } from "../components/assistant-message";
 import type { InteractiveModeContext } from "../types";
 

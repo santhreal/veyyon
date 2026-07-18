@@ -14,11 +14,11 @@
  * redraw — that per-event recompute is what previously froze large sessions.
  */
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { resetSettingsForTest, Settings } from "@veyyon/pi-coding-agent/config/settings";
-import type { ContextUsage } from "@veyyon/pi-coding-agent/extensibility/extensions/types";
-import { StatusLineComponent } from "@veyyon/pi-coding-agent/modes/components/status-line";
-import { initTheme } from "@veyyon/pi-coding-agent/modes/theme/theme";
-import type { AgentSession } from "@veyyon/pi-coding-agent/session/agent-session";
+import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
+import type { ContextUsage } from "@veyyon/coding-agent/extensibility/extensions/types";
+import { StatusLineComponent } from "@veyyon/coding-agent/modes/components/status-line";
+import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 
 beforeAll(async () => {
 	resetSettingsForTest();

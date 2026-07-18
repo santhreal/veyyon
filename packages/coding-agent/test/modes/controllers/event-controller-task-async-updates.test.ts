@@ -14,14 +14,14 @@
  *    background ("running") finalizes and untracks it.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
-import { resetSettingsForTest, Settings } from "@veyyon/pi-coding-agent/config/settings";
-import type { ToolExecutionComponent } from "@veyyon/pi-coding-agent/modes/components/tool-execution";
-import { TranscriptContainer } from "@veyyon/pi-coding-agent/modes/components/transcript-container";
-import { EventController } from "@veyyon/pi-coding-agent/modes/controllers/event-controller";
-import { initTheme } from "@veyyon/pi-coding-agent/modes/theme/theme";
-import type { InteractiveModeContext } from "@veyyon/pi-coding-agent/modes/types";
-import type { TaskToolDetails } from "@veyyon/pi-coding-agent/task/types";
-import type { BashToolDetails } from "@veyyon/pi-coding-agent/tools/bash";
+import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
+import type { ToolExecutionComponent } from "@veyyon/coding-agent/modes/components/tool-execution";
+import { TranscriptContainer } from "@veyyon/coding-agent/modes/components/transcript-container";
+import { EventController } from "@veyyon/coding-agent/modes/controllers/event-controller";
+import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
+import type { TaskToolDetails } from "@veyyon/coding-agent/task/types";
+import type { BashToolDetails } from "@veyyon/coding-agent/tools/bash";
 
 function taskResult(asyncState: "running" | "completed" | "failed" | undefined, text: string) {
 	const details: TaskToolDetails = {

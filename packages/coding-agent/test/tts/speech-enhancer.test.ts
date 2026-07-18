@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
-import * as ai from "@veyyon/pi-ai";
-import { getBundledModel } from "@veyyon/pi-catalog/models";
-import { BlockAccumulator, SpeechEnhancer } from "@veyyon/pi-coding-agent/tts/speech-enhancer";
+import * as ai from "@veyyon/ai";
+import { getBundledModel } from "@veyyon/catalog/models";
+import { BlockAccumulator, SpeechEnhancer } from "@veyyon/coding-agent/tts/speech-enhancer";
 
 afterEach(() => {
 	vi.restoreAllMocks();

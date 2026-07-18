@@ -10,8 +10,8 @@ import {
 	findTrailingSlashCommandStart,
 	midPromptSkillTokenMatches,
 	scoreCommandTextMatch,
-} from "@veyyon/pi-tui/autocomplete";
-import { subsequenceScore } from "@veyyon/pi-tui/fuzzy";
+} from "@veyyon/tui/autocomplete";
+import { subsequenceScore } from "@veyyon/tui/fuzzy";
 
 describe("scoreCommandTextMatch", () => {
 	it("scores an empty prefix as a trivial match", () => {
@@ -122,7 +122,7 @@ describe("built-in command vs skill ranking", () => {
 	// exact or prefix name match must always outrank any skill matched only
 	// through its description (descScore is capped at subsequenceScore * 0.5).
 	async function suggestionValues(prefixLine: string): Promise<string[]> {
-		const { CombinedAutocompleteProvider } = await import("@veyyon/pi-tui/autocomplete");
+		const { CombinedAutocompleteProvider } = await import("@veyyon/tui/autocomplete");
 		const commands = [
 			{
 				name: "skill:bug-bounty-campaign",

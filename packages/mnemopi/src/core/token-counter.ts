@@ -1,3 +1,5 @@
+import { estimateTokensFromText } from "@veyyon/utils";
+
 const PRICING: Readonly<Record<string, number>> = {
 	"claude-sonnet-4": 3.0,
 	"claude-haiku": 0.8,
@@ -15,8 +17,7 @@ export interface CostEstimate {
 }
 
 export function estimateTokens(text: string, _model = "default"): number {
-	if (text.length === 0) return 0;
-	return Math.floor(text.length / 4);
+	return estimateTokensFromText(text);
 }
 export function estimateCost(tokens: number, model = "claude-sonnet-4"): CostEstimate {
 	const rate = PRICING[model] ?? DEFAULT_RATE_PER_1M;

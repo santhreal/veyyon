@@ -1,9 +1,9 @@
 import { describe, expect, it } from "bun:test";
-import { setBedrockProviderModule, streamBedrock } from "@veyyon/pi-ai/providers/register-builtins";
-import type { AssistantMessage, Context, Model } from "@veyyon/pi-ai/types";
-import { AssistantMessageEventStream } from "@veyyon/pi-ai/utils/event-stream";
-import { iterateWithIdleTimeout } from "@veyyon/pi-ai/utils/idle-iterator";
-import { buildModel } from "@veyyon/pi-catalog/build";
+import { setBedrockProviderModule, streamBedrock } from "@veyyon/ai/providers/register-builtins";
+import type { AssistantMessage, Context, Model } from "@veyyon/ai/types";
+import { AssistantMessageEventStream } from "@veyyon/ai/utils/event-stream";
+import { iterateWithIdleTimeout } from "@veyyon/ai/utils/idle-iterator";
+import { buildModel } from "@veyyon/catalog/build";
 
 // Issue #4593: the generic lazy stream watchdog treats "no AssistantMessageEvent"
 // as "provider stalled". During a Cursor exec-channel round-trip the server is

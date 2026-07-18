@@ -3,7 +3,7 @@
  */
 
 import * as os from "node:os";
-import { formatBytes, getProjectDir, VERSION } from "@veyyon/pi-utils";
+import { formatBytes, getProjectDir, VERSION } from "@veyyon/utils";
 
 export interface SystemInfo {
 	os: string;

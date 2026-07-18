@@ -1,6 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { $which, isEnoent } from "@veyyon/pi-utils";
+import { $which, formatCount, isEnoent } from "@veyyon/utils";
 import { isSettingsInitialized, settings } from "../config/settings";
 import { getDefault } from "../config/settings-schema";
 import { parseInternalUrl } from "./parse";
@@ -768,7 +768,7 @@ export class VaultProtocolHandler implements ProtocolHandler {
 			entries.length === 0
 				? "(none)"
 				: entries.map(name => `- [${name}](vault://${encodePathComponent(name)}/)`).join("\n");
-		const content = `# Obsidian Vaults\n\n${entries.length} vault${entries.length === 1 ? "" : "s"} available:\n\n${listing}\n`;
+		const content = `# Obsidian Vaults\n\n${formatCount("vault", entries.length)} available:\n\n${listing}\n`;
 		return {
 			url: parsed.url,
 			content,

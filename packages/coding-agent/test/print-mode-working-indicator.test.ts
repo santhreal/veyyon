@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
-import type { AssistantMessage } from "@veyyon/pi-ai";
-import { runPrintMode } from "@veyyon/pi-coding-agent/modes/print-mode";
-import type { AgentSession } from "@veyyon/pi-coding-agent/session/agent-session";
+import type { AssistantMessage } from "@veyyon/ai";
+import { runPrintMode } from "@veyyon/coding-agent/modes/print-mode";
+import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
 
 function makeAssistantMessage(text: string): AssistantMessage {
 	const timestamp = Date.now();

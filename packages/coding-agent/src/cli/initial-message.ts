@@ -1,4 +1,4 @@
-import type { ImageContent } from "@veyyon/pi-ai";
+import type { ImageContent } from "@veyyon/ai";
 import type { Args } from "./args";
 
 export interface InitialMessageInput {

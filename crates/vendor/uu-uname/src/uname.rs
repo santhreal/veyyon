@@ -16,9 +16,9 @@ use std::{
 };
 
 use clap::{Arg, ArgAction, ArgMatches, Command};
-use pi_uutils_ctx::format_usage;
 use platform_info::{PlatformInfo, PlatformInfoAPI, UNameAPI};
 use uucore::error::{UResult, USimpleError};
+use veyyon_uutils_ctx::format_usage;
 
 pub mod options {
 	pub static ALL: &str = "all";
@@ -131,20 +131,20 @@ pub fn run(argv: Vec<OsString>) -> i32 {
 		Err(err) => {
 			let rendered = err.to_string();
 			if err.use_stderr() {
-				let _ = write!(pi_uutils_ctx::stderr(), "{rendered}");
+				let _ = write!(veyyon_uutils_ctx::stderr(), "{rendered}");
 				return 1;
 			}
-			let _ = write!(pi_uutils_ctx::stdout(), "{rendered}");
+			let _ = write!(veyyon_uutils_ctx::stdout(), "{rendered}");
 			return 0;
 		},
 	};
 	match uname_main(&matches) {
-		Ok(()) => pi_uutils_ctx::exit_code(),
+		Ok(()) => veyyon_uutils_ctx::exit_code(),
 		Err(err) => {
 			let code = err.code();
 			let msg = err.to_string();
 			if !msg.is_empty() {
-				let _ = writeln!(pi_uutils_ctx::stderr(), "uname: {msg}");
+				let _ = writeln!(veyyon_uutils_ctx::stderr(), "uname: {msg}");
 			}
 			if code == 0 { 1 } else { code }
 		},
@@ -167,7 +167,7 @@ fn uname_main(matches: &ArgMatches) -> UResult<()> {
 	// pi-uutils: replacement for upstream's `println_verbatim` — writes the
 	// output bytes verbatim to the context stdout instead of the process
 	// stdout.
-	let mut out = pi_uutils_ctx::stdout();
+	let mut out = veyyon_uutils_ctx::stdout();
 	out.write_all(uucore::os_str_as_bytes(output.display().as_os_str())?)
 		.and_then(|()| out.write_all(b"\n"))
 		.and_then(|()| out.flush())
@@ -258,7 +258,7 @@ mod tests {
 	use std::{collections::HashMap, io::Write, path::PathBuf, sync::Arc};
 
 	use parking_lot::Mutex;
-	use pi_uutils_ctx::ScopeIo;
+	use veyyon_uutils_ctx::ScopeIo;
 
 	use super::*;
 
@@ -296,7 +296,7 @@ mod tests {
 			.map(OsString::from)
 			.collect();
 
-		let code = pi_uutils_ctx::scope(io, || run(argv));
+		let code = veyyon_uutils_ctx::scope(io, || run(argv));
 
 		let out_str = String::from_utf8(stdout_buf.lock().clone()).unwrap();
 		let err_str = String::from_utf8(stderr_buf.lock().clone()).unwrap();

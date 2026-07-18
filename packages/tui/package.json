@@ -1,6 +1,6 @@
 {
   "type": "module",
-  "name": "@veyyon/pi-tui",
+  "name": "@veyyon/tui",
   "version": "1.0.0",
   "description": "Terminal User Interface library with differential rendering for efficient text-based applications",
   "homepage": "https://veyyon.dev",
@@ -11,11 +11,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/can1357/oh-my-pi.git",
+    "url": "git+https://github.com/santhreal/veyyon.git",
     "directory": "packages/tui"
   },
   "bugs": {
-    "url": "https://github.com/can1357/oh-my-pi/issues"
+    "url": "https://github.com/santhreal/veyyon/issues"
   },
   "keywords": [
     "tui",
@@ -37,8 +37,8 @@
     "fmt": "biome format --write ."
   },
   "dependencies": {
-    "@veyyon/pi-natives": "catalog:",
-    "@veyyon/pi-utils": "catalog:",
+    "@veyyon/natives": "catalog:",
+    "@veyyon/utils": "catalog:",
     "lru-cache": "catalog:",
     "marked": "catalog:"
   },

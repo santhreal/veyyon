@@ -6,8 +6,8 @@ import type {
 	AgentToolResult,
 	AgentToolUpdateCallback,
 	ToolApprovalDecision,
-} from "@veyyon/pi-agent-core";
-import { logger, once, prompt, untilAborted } from "@veyyon/pi-utils";
+} from "@veyyon/agent-core";
+import { logger, once, prompt, truncate, untilAborted } from "@veyyon/utils";
 import type { BunFile } from "bun";
 import { type Theme, theme } from "../modes/theme/theme";
 import lspDescription from "../prompts/tools/lsp.md" with { type: "text" };
@@ -16,6 +16,7 @@ import { truncateForPrompt } from "../tools/approval";
 import { formatPathRelativeToCwd, resolveToCwd } from "../tools/path-utils";
 import { ToolAbortError, ToolError, throwIfAborted } from "../tools/tool-errors";
 import { clampTimeout } from "../tools/tool-timeouts";
+import { isTimeoutError, scopedTimeoutSignal } from "../utils/fetch-timeout";
 import {
 	ensureFileOpen,
 	FileChangeType,
@@ -1142,11 +1143,10 @@ async function scheduleDeferredDiagnosticsFetch(args: {
 	signal: AbortSignal;
 	callback: (diagnostics: FileDiagnosticsResult) => void;
 }): Promise<void> {
+	const deferredTimeout = scopedTimeoutSignal(25_000, args.signal);
 	try {
-		const deferredTimeout = AbortSignal.timeout(25_000);
-		const combined = AbortSignal.any([args.signal, deferredTimeout]);
 		const diagnostics = await getDiagnosticsForFile(args.dst, args.cwd, args.servers, {
-			signal: combined,
+			signal: deferredTimeout.signal,
 			minVersions: args.minVersions,
 			expectedDocumentVersions: args.expectedDocumentVersions,
 			timeoutMs: DEFERRED_DIAGNOSTICS_WAIT_TIMEOUT_MS,
@@ -1155,6 +1155,8 @@ async function scheduleDeferredDiagnosticsFetch(args: {
 		args.callback(diagnostics);
 	} catch {
 		// Cancelled or LSP gave up; silently discard.
+	} finally {
+		deferredTimeout.cancel();
 	}
 }
 
@@ -1285,16 +1287,17 @@ async function runLspWritethrough(
 	let timedOut = false;
 	let synced = false;
 	let operationSignal: AbortSignal | undefined;
+	const operationTimeout = scopedTimeoutSignal(5_000, signal);
 	try {
-		const timeoutSignal = AbortSignal.timeout(5_000);
-		timeoutSignal.addEventListener(
+		const opSignal = operationTimeout.signal;
+		operationSignal = opSignal;
+		opSignal.addEventListener(
 			"abort",
 			() => {
-				timedOut = true;
+				if (isTimeoutError(opSignal.reason)) timedOut = true;
 			},
 			{ once: true },
 		);
-		operationSignal = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
 		await untilAborted(operationSignal, async () => {
 			if (useCustomFormatter) {
 				// Custom linters (e.g. Biome CLI) require on-disk input.
@@ -1354,6 +1357,8 @@ async function runLspWritethrough(
 		// announce it on the caller's signal — the dead `operationSignal` would
 		// abort the notify before it ever reaches the server.
 		await notifyWriteCommitted();
+	} finally {
+		operationTimeout.cancel();
 	}
 
 	if (synced && enableDiagnostics) {
@@ -1508,11 +1513,22 @@ export class LspTool implements AgentTool<typeof lspSchema, LspToolDetails, Them
 		_onUpdate?: AgentToolUpdateCallback<LspToolDetails>,
 		_context?: AgentToolContext,
 	): Promise<AgentToolResult<LspToolDetails>> {
-		const { action, file, line, symbol, query, new_name, apply, timeout } = params;
-		const timeoutSec = clampTimeout("lsp", timeout);
-		const timeoutSignal = AbortSignal.timeout(timeoutSec * 1000);
-		const callerSignal = signal;
-		signal = callerSignal ? AbortSignal.any([callerSignal, timeoutSignal]) : timeoutSignal;
+		const timeoutSec = clampTimeout("lsp", params.timeout);
+		const operationTimeout = scopedTimeoutSignal(timeoutSec * 1000, signal);
+		try {
+			return await this.executeWithSignal(params, operationTimeout.signal, signal, timeoutSec);
+		} finally {
+			operationTimeout.cancel();
+		}
+	}
+
+	private async executeWithSignal(
+		params: LspParams,
+		signal: AbortSignal,
+		callerSignal: AbortSignal | undefined,
+		timeoutSec: number,
+	): Promise<AgentToolResult<LspToolDetails>> {
+		const { action, file, line, symbol, query, new_name, apply } = params;
 		throwIfAborted(signal);
 
 		const config = getConfig(this.session.cwd);
@@ -2134,7 +2150,7 @@ export class LspTool implements AgentTool<typeof lspSchema, LspToolDetails, Them
 				// tell parse / shape errors (e.g. nested args dropped, missing field)
 				// apart from genuine server errors without spinning up another debug call.
 				const previewRaw = JSON.stringify(requestParams ?? null);
-				const preview = previewRaw.length > 400 ? `${previewRaw.slice(0, 397)}...` : previewRaw;
+				const preview = truncate(previewRaw, 400, "...");
 				return {
 					content: [
 						{ type: "text", text: `LSP error from ${chosenName} on ${method}: ${msg}\n  params: ${preview}` },
@@ -2240,7 +2256,7 @@ export class LspTool implements AgentTool<typeof lspSchema, LspToolDetails, Them
 
 		if (action === "reload" && (isWorkspace || !resolvedFile)) {
 			// `reload *` is the user's explicit request to re-read config from
-			// disk. Drop the per-cwd cache entry so `.omp/lsp.json`, root markers,
+			// disk. Drop the per-cwd cache entry so `.veyyon/lsp.json`, root markers,
 			// and plugin configs added after the first LSP call become visible —
 			// otherwise `getConfig` returns the first observation for the rest of
 			// the process lifetime (#3546).
@@ -2660,7 +2676,7 @@ export class LspTool implements AgentTool<typeof lspSchema, LspToolDetails, Them
 				// callerSignal aborting → real cancel (re-throw ToolAbortError);
 				// timeoutSignal aborting without callerSignal → emit a ToolError naming the
 				// elapsed budget and server, instead of opaque "Operation aborted".
-				if (timeoutSignal.aborted && !callerSignal?.aborted) {
+				if (isTimeoutError(signal.reason) && !callerSignal?.aborted) {
 					throw new ToolError(
 						`LSP ${action} timed out after ${timeoutSec}s on ${serverName}. The server may still be indexing; try again or pass timeout=<larger>.`,
 					);

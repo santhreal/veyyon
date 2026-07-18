@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { dereferenceJsonSchema } from "@veyyon/pi-ai/utils/schema";
+import { dereferenceJsonSchema } from "@veyyon/ai/utils/schema";
 
 describe("dereferenceJsonSchema", () => {
 	it("returns non-object input unchanged", () => {

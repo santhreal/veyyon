@@ -4,7 +4,7 @@
  * GeminiCLI/VERSION/MODEL (PLATFORM; ARCH; SURFACE)
  */
 export function getGeminiCliUserAgent(modelId = "gemini-3.1-pro-preview"): string {
-	const version = process.env.PI_AI_GEMINI_CLI_VERSION || "0.46.0";
+	const version = process.env.VEYYON_AI_GEMINI_CLI_VERSION || "0.46.0";
 	const platform = process.platform === "win32" ? "win32" : process.platform;
 	const arch = process.arch === "x64" ? "x64" : process.arch;
 	return `GeminiCLI/${version}/${modelId} (${platform}; ${arch}; terminal)`;
@@ -28,7 +28,7 @@ export const ANTIGRAVITY_SYSTEM_INSTRUCTION =
  */
 export let getAntigravityUserAgent = () => {
 	const DEFAULT_ANTIGRAVITY_VERSION = "2.1.4";
-	const version = process.env.PI_AI_ANTIGRAVITY_VERSION || DEFAULT_ANTIGRAVITY_VERSION;
+	const version = process.env.VEYYON_AI_ANTIGRAVITY_VERSION || DEFAULT_ANTIGRAVITY_VERSION;
 	// Map Node.js platform/arch to Antigravity's expected format.
 	// Verified against Antigravity source: _qn() and wqn() in main.js.
 	// process.platform: win32→windows, others pass through (darwin, linux)

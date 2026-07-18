@@ -3,7 +3,7 @@
  *
  * `ExtensionRunner.emit({ type: "session_shutdown" })` uses the generic
  * 30s extension handler timeout, so a single hung handler (in the wild:
- * `omp-discord-presence` waiting on a Discord IPC pipe that never replied)
+ * `veyyon-discord-presence` waiting on a Discord IPC pipe that never replied)
  * holds Ctrl+C teardown hostage for the full window. `session_shutdown` is
  * fire-and-forget by contract — extensions can't observe the result — so it
  * MUST run on a tight, dedicated budget so dispose() returns quickly.
@@ -18,18 +18,18 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { ModelRegistry } from "@veyyon/pi-coding-agent/config/model-registry";
-import { discoverAndLoadExtensions } from "@veyyon/pi-coding-agent/extensibility/extensions/loader";
+import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
+import { discoverAndLoadExtensions } from "@veyyon/coding-agent/extensibility/extensions/loader";
 import {
 	EXTENSION_HANDLER_TIMEOUT_MS,
 	ExtensionRunner,
 	SESSION_SHUTDOWN_HANDLER_TIMEOUT_MS,
 	testSetExtensionHandlerTimeoutMs,
 	testSetSessionShutdownHandlerTimeoutMs,
-} from "@veyyon/pi-coding-agent/extensibility/extensions/runner";
-import { AuthStorage } from "@veyyon/pi-coding-agent/session/auth-storage";
-import { SessionManager } from "@veyyon/pi-coding-agent/session/session-manager";
-import { getProjectAgentDir, logger, TempDir } from "@veyyon/pi-utils";
+} from "@veyyon/coding-agent/extensibility/extensions/runner";
+import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
+import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { getProjectAgentDir, logger, TempDir } from "@veyyon/utils";
 
 const HANG_EXTENSION_SRC = `
 	export default function(pi) {

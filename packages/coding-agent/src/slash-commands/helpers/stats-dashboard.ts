@@ -1,4 +1,4 @@
-import * as stats from "@veyyon/pi-stats";
+import * as stats from "@veyyon/stats";
 import * as openUtils from "../../utils/open";
 
 export const DEFAULT_STATS_DASHBOARD_PORT = 3847;

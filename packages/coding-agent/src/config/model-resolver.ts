@@ -15,18 +15,18 @@
  *   CLI flags, scope globs — onto that pipeline.
  */
 
-import { ThinkingLevel } from "@veyyon/pi-agent-core";
-import type { Api, Effort, KnownProvider, Model, ModelSpec } from "@veyyon/pi-ai";
-import { buildModel } from "@veyyon/pi-catalog/build";
-import { modelMatchesHost } from "@veyyon/pi-catalog/hosts";
-import { buildModelProviderPriorityRank } from "@veyyon/pi-catalog/identity";
-import { stripThinkingVariantToken } from "@veyyon/pi-catalog/identity/family";
-import { clampThinkingLevelForModel } from "@veyyon/pi-catalog/model-thinking";
-import { modelsAreEqual } from "@veyyon/pi-catalog/models";
-import { DEFAULT_MODEL_PER_PROVIDER } from "@veyyon/pi-catalog/provider-models";
-import { resolveBareVariantAlias, resolveVariantAlias } from "@veyyon/pi-catalog/variant-collapse";
-import { fuzzyMatch } from "@veyyon/pi-tui";
-import { logger } from "@veyyon/pi-utils";
+import { ThinkingLevel } from "@veyyon/agent-core";
+import type { Api, Effort, KnownProvider, Model, ModelSpec } from "@veyyon/ai";
+import { buildModel } from "@veyyon/catalog/build";
+import { modelMatchesHost } from "@veyyon/catalog/hosts";
+import { buildModelProviderPriorityRank } from "@veyyon/catalog/identity";
+import { stripThinkingVariantToken } from "@veyyon/catalog/identity/family";
+import { clampThinkingLevelForModel } from "@veyyon/catalog/model-thinking";
+import { modelsAreEqual } from "@veyyon/catalog/models";
+import { DEFAULT_MODEL_PER_PROVIDER } from "@veyyon/catalog/provider-models";
+import { resolveBareVariantAlias, resolveVariantAlias } from "@veyyon/catalog/variant-collapse";
+import { fuzzyMatch } from "@veyyon/tui";
+import { logger } from "@veyyon/utils";
 import chalk from "chalk";
 import MODEL_PRIO from "../priority.json" with { type: "json" };
 import {
@@ -464,10 +464,16 @@ export interface ModelMatchPreferences {
 	providerOrder?: readonly string[];
 	/** Providers to deprioritize when no recent usage or provider priority is available. */
 	deprioritizeProviders?: string[];
+	/**
+	 * Credential check used to break ambiguous matches toward providers the
+	 * user can actually call. A credential-less provider is never the right
+	 * pick when an authenticated one exposes the same model.
+	 */
+	hasConfiguredAuth?: (model: Model<Api>) => boolean;
 }
 
 export type ModelLookupRegistry = Pick<ModelRegistry, "getAvailable">;
-type CliModelRegistry = Pick<ModelRegistry, "getAll">;
+type CliModelRegistry = Pick<ModelRegistry, "getAll"> & Partial<Pick<ModelRegistry, "hasConfiguredAuth">>;
 type InitialModelRegistry = Pick<ModelRegistry, "getAvailable" | "find">;
 type RestorableModelRegistry = Pick<ModelRegistry, "getAvailable" | "find" | "getApiKey">;
 
@@ -477,6 +483,7 @@ interface ModelPreferenceContext {
 	providerPriorityRank: Map<string, number>;
 	deprioritizedProviders: Set<string>;
 	modelOrder: Map<string, number>;
+	hasConfiguredAuth?: (model: Model<Api>) => boolean;
 }
 
 function buildPreferenceContext(
@@ -503,7 +510,14 @@ function buildPreferenceContext(
 		modelOrder.set(formatModelString(availableModels[i]), i);
 	}
 
-	return { modelUsageRank, providerUsageRank, providerPriorityRank, deprioritizedProviders, modelOrder };
+	return {
+		modelUsageRank,
+		providerUsageRank,
+		providerPriorityRank,
+		deprioritizedProviders,
+		modelOrder,
+		hasConfiguredAuth: preferences?.hasConfiguredAuth,
+	};
 }
 
 export function getModelMatchPreferences(
@@ -524,12 +538,21 @@ function mergeModelMatchPreferences(
 		usageOrder: preferences?.usageOrder ?? settingsPreferences.usageOrder,
 		providerOrder: preferences?.providerOrder ?? settingsPreferences.providerOrder,
 		deprioritizeProviders: preferences?.deprioritizeProviders,
+		hasConfiguredAuth: preferences?.hasConfiguredAuth,
 	};
 }
 
 function pickPreferredModel(candidates: Model<Api>[], context: ModelPreferenceContext): Model<Api> {
 	if (candidates.length <= 1) return candidates[0];
 	return [...candidates].sort((a, b) => {
+		if (context.hasConfiguredAuth) {
+			const aAuth = context.hasConfiguredAuth(a);
+			const bAuth = context.hasConfiguredAuth(b);
+			if (aAuth !== bAuth) {
+				return aAuth ? -1 : 1;
+			}
+		}
+
 		const aKey = formatModelString(a);
 		const bKey = formatModelString(b);
 		const aUsage = context.modelUsageRank.get(aKey);
@@ -1309,6 +1332,30 @@ export function resolveRoleSelectionWithInherit(
 }
 
 /**
+ * Single owner of the "configured default model is unavailable" substitution:
+ * when the persisted `default` role points at a model whose provider has no
+ * stored credentials (or that no longer exists), every surface (interactive
+ * session, print mode, commit, …) substitutes the SAME model and surfaces the
+ * SAME operator warning. Callers MUST print the returned warning — silently
+ * swallowing it recreates the silent-fallback bug this exists to kill.
+ * Returns undefined only when no model is available at all.
+ */
+export function fallbackForUnavailableDefault(
+	configuredDefault: string | undefined,
+	availableModels: Model<Api>[],
+): { model: Model<Api>; warning: string } | undefined {
+	const model = availableModels[0];
+	if (!model) return undefined;
+	const subject = configuredDefault
+		? `Configured default model "${configuredDefault}"`
+		: "The configured default model";
+	return {
+		model,
+		warning: `${subject} is unavailable: its provider has no stored credentials or the model no longer exists. Using ${model.provider}/${model.id} instead — run \`veyyon auth\` to sign in or \`/model\` to pick a new default.`,
+	};
+}
+
+/**
  * Resolve the model for the `advisor` role. A configured `modelRoles.advisor`
  * wins outright (a bad override surfaces as no model rather than silently
  * running something else); when unset it falls back to the `slow` priority
@@ -1529,7 +1576,15 @@ export function resolveCliModel(options: {
 	settings?: Settings;
 	preferences?: ModelMatchPreferences;
 }): ResolveCliModelResult {
-	const { cliProvider, cliModel, modelRegistry, settings, preferences } = options;
+	const { cliProvider, cliModel, modelRegistry, settings, preferences: callerPreferences } = options;
+	// Default the ambiguity tie-break to the registry's own credential check so
+	// every CLI resolution path prefers providers the user can actually call.
+	const preferences: ModelMatchPreferences = {
+		...callerPreferences,
+		hasConfiguredAuth:
+			callerPreferences?.hasConfiguredAuth ??
+			(modelRegistry.hasConfiguredAuth ? model => modelRegistry.hasConfiguredAuth!(model) : undefined),
+	};
 
 	if (!cliModel) {
 		return { model: undefined, selector: undefined, warning: undefined, error: undefined };
@@ -1582,11 +1637,20 @@ export function resolveCliModel(options: {
 		// with id "glm-5", because Array.find returns the first catalog hit.
 		let exact = findExactModelReferenceMatch(trimmedModel, availableModels);
 		if (!exact) {
-			// Flat exact id (or full selector) by catalog order: CLI resolution
-			// stays deterministic across runs regardless of usage-based ranking.
-			exact = availableModels.find(
+			// Flat exact id (or full selector), preferring providers with stored
+			// credentials: several providers can expose the same bare id (e.g.
+			// `xai/grok-4.3` and `xai-oauth/grok-4.3`), and picking the first
+			// catalog hit used to select a credential-less provider and die on
+			// "No API key found" while a signed-in provider held the same model.
+			// Within each group (authenticated / not) catalog order still decides,
+			// so resolution stays deterministic across runs.
+			const exactIdMatches = availableModels.filter(
 				model => model.id.toLowerCase() === lower || `${model.provider}/${model.id}`.toLowerCase() === lower,
 			);
+			exact =
+				exactIdMatches.length > 1 && modelRegistry.hasConfiguredAuth
+					? (exactIdMatches.find(model => modelRegistry.hasConfiguredAuth?.(model)) ?? exactIdMatches[0])
+					: exactIdMatches[0];
 		}
 		if (exact) {
 			return {

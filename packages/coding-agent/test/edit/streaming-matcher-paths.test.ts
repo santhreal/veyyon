@@ -11,7 +11,7 @@
  * `{ input: "<hashline payload>" }` and never inspected the section header.
  */
 import { describe, expect, it } from "bun:test";
-import { EDIT_MODE_STRATEGIES } from "@veyyon/pi-coding-agent/edit/streaming";
+import { EDIT_MODE_STRATEGIES } from "@veyyon/coding-agent/edit/streaming";
 
 describe("EDIT_MODE_STRATEGIES.matcherPaths", () => {
 	describe("replace + patch (top-level path)", () => {
@@ -174,12 +174,12 @@ describe("EDIT_MODE_STRATEGIES.matcherEntries", () => {
  * outputs feed `TtsrManager.checkSnapshot` the same way `AgentSession`'s
  * TTSR pipeline does after the fix.
  */
-import { getCapability } from "@veyyon/pi-coding-agent/capability";
-import { BUILTIN_DEFAULTS_PROVIDER_ID, type Rule, ruleCapability } from "@veyyon/pi-coding-agent/capability/rule";
-import type { LoadContext } from "@veyyon/pi-coding-agent/capability/types";
+import { getCapability } from "@veyyon/coding-agent/capability";
+import { BUILTIN_DEFAULTS_PROVIDER_ID, type Rule, ruleCapability } from "@veyyon/coding-agent/capability/rule";
+import type { LoadContext } from "@veyyon/coding-agent/capability/types";
 // Register all discovery providers as a side effect.
-import "@veyyon/pi-coding-agent/discovery";
-import { TtsrManager } from "@veyyon/pi-coding-agent/export/ttsr";
+import "@veyyon/coding-agent/discovery";
+import { TtsrManager } from "@veyyon/coding-agent/export/ttsr";
 
 async function loadBundledTsNoAnyRule(): Promise<Rule> {
 	const cap = getCapability(ruleCapability.id);

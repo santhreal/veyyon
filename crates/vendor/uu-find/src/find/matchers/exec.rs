@@ -6,7 +6,7 @@
 
 use std::{cell::RefCell, error::Error, ffi::OsString, io::Write, path::Path, process::Command};
 
-use pi_uutils_ctx::stderr;
+use veyyon_uutils_ctx::stderr;
 
 use super::{Matcher, MatcherIO, WalkEntry};
 
@@ -80,7 +80,7 @@ impl Matcher for SingleExecMatcher {
 		} else {
 			// GNU runs `-exec` in find's working directory; resolve the
 			// operand-relative `{}` against the shell cwd, not the host cwd.
-			command.current_dir(pi_uutils_ctx::cwd());
+			command.current_dir(veyyon_uutils_ctx::cwd());
 		}
 		match command.status() {
 			Ok(status) => status.success(),
@@ -126,7 +126,7 @@ impl MultiExecMatcher {
 		if !self.exec_in_parent_dir {
 			// `-exec ... +` (non-execdir) dispatches in find's working dir;
 			// resolve the operand-relative paths against the shell cwd.
-			command.current_dir(pi_uutils_ctx::cwd());
+			command.current_dir(veyyon_uutils_ctx::cwd());
 		}
 		command
 	}

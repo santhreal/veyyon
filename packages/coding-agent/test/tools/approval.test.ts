@@ -1,15 +1,15 @@
 import { describe, expect, it } from "bun:test";
-import type { AgentTool, ToolApproval } from "@veyyon/pi-agent-core";
-import { LSP_READONLY_ACTIONS } from "@veyyon/pi-coding-agent/lsp";
+import type { AgentTool, ToolApproval } from "@veyyon/agent-core";
+import { LSP_READONLY_ACTIONS } from "@veyyon/coding-agent/lsp";
 import {
 	type ApprovalMode,
 	formatApprovalPrompt,
 	requiresApproval,
 	resolveApproval,
 	truncateForPrompt,
-} from "@veyyon/pi-coding-agent/tools/approval";
-import { BashTool } from "@veyyon/pi-coding-agent/tools/bash";
-import { DEBUG_READONLY_ACTIONS } from "@veyyon/pi-coding-agent/tools/debug";
+} from "@veyyon/coding-agent/tools/approval";
+import { BashTool } from "@veyyon/coding-agent/tools/bash";
+import { DEBUG_READONLY_ACTIONS } from "@veyyon/coding-agent/tools/debug";
 
 type ApprovalTool = Pick<AgentTool, "name" | "approval" | "formatApprovalDetails">;
 

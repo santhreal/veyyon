@@ -7,8 +7,8 @@ import {
 	resolveDesktopNotifier,
 	sendDesktopNotification,
 	shouldDeliverDesktopNotification,
-} from "@veyyon/pi-tui/desktop-notify";
-import * as utils from "@veyyon/pi-utils";
+} from "@veyyon/tui/desktop-notify";
+import * as utils from "@veyyon/utils";
 
 const LINUX_ENV: NodeJS.ProcessEnv = { DBUS_SESSION_BUS_ADDRESS: "unix:path=/run/user/1000/bus" };
 
@@ -42,11 +42,11 @@ describe("shouldDeliverDesktopNotification", () => {
 		expect(shouldDeliverDesktopNotification("kitty", false, "linux", LINUX_ENV)).toBe(false);
 	});
 
-	it("respects the PI_NO_DESKTOP_NOTIFY=1 opt-out", () => {
+	it("respects the VEYYON_NO_DESKTOP_NOTIFY=1 opt-out", () => {
 		expect(
 			shouldDeliverDesktopNotification("trueColor", true, "linux", {
 				...LINUX_ENV,
-				PI_NO_DESKTOP_NOTIFY: "1",
+				VEYYON_NO_DESKTOP_NOTIFY: "1",
 			}),
 		).toBe(false);
 	});

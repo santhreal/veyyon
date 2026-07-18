@@ -1,5 +1,5 @@
-import type { UsageLimit, UsageReport } from "@veyyon/pi-ai";
-import { sanitizeText } from "@veyyon/pi-utils";
+import type { UsageLimit, UsageReport } from "@veyyon/ai";
+import { formatCount, sanitizeText } from "@veyyon/utils";
 import type { OAuthAccountIdentity } from "../../session/auth-storage";
 import type { SlashCommandRuntime } from "../types";
 import { reportMatchesActiveAccount } from "./active-oauth-account";
@@ -85,7 +85,7 @@ function renderUsageReports(
 							? report.metadata.accountId
 							: "account";
 				lines.push(
-					`- ${resetLabel}: ${savedResets} saved rate-limit reset${savedResets === 1 ? "" : "s"} available — /usage reset to spend`,
+					`- ${resetLabel}: ${formatCount("saved rate-limit reset", savedResets)} available — /usage reset to spend`,
 				);
 				const credits = report.resetCredits?.credits;
 				if (credits) {

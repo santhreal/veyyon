@@ -1,5 +1,5 @@
-import type { AgentMessage } from "@veyyon/pi-agent-core";
-import type { ImageContent, MessageAttribution, ServiceTierByFamily, TextContent } from "@veyyon/pi-ai";
+import type { AgentMessage } from "@veyyon/agent-core";
+import type { ImageContent, MessageAttribution, ServiceTierByFamily, TextContent } from "@veyyon/ai";
 
 export const CURRENT_SESSION_VERSION = 3;
 
@@ -142,7 +142,7 @@ export interface TitleChangeEntry extends SessionEntryBase {
 	trigger?: string;
 }
 
-declare module "@veyyon/pi-agent-core/compaction/entries" {
+declare module "@veyyon/agent-core/compaction/entries" {
 	interface CustomCompactionSessionEntries {
 		titleChange: TitleChangeEntry;
 	}

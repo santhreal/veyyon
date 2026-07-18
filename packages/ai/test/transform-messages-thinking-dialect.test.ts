@@ -1,8 +1,8 @@
 import { describe, expect, it } from "bun:test";
-import { getDialectDefinition, renderDemotedThinking } from "@veyyon/pi-ai/dialect";
-import { transformMessages } from "@veyyon/pi-ai/providers/transform-messages";
-import type { Api, AssistantMessage, Message, Model, ModelSpec, UserMessage } from "@veyyon/pi-ai/types";
-import { buildModel } from "@veyyon/pi-catalog/build";
+import { getDialectDefinition, renderDemotedThinking } from "@veyyon/ai/dialect";
+import { transformMessages } from "@veyyon/ai/providers/transform-messages";
+import type { Api, AssistantMessage, Message, Model, ModelSpec, UserMessage } from "@veyyon/ai/types";
+import { buildModel } from "@veyyon/catalog/build";
 
 /**
  * Cross-provider model switches (e.g. Anthropic → Gemini mid-session) cannot

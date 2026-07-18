@@ -1,6 +1,6 @@
-import { tryParseJson } from "@veyyon/pi-utils";
-import type { RenderResult, SpecialHandler } from "./types";
-import { buildResult, loadPage } from "./types";
+import { tryParseJson } from "@veyyon/utils";
+import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
+import { buildResult, loadFailure, loadPage, scraperDegrade, tryParseUrl } from "./types";
 
 interface BiorxivPaper {
 	biorxiv_doi?: string;
@@ -32,9 +32,10 @@ export const handleBiorxiv: SpecialHandler = async (
 	url: string,
 	timeout: number,
 	signal?: AbortSignal,
-): Promise<RenderResult | null> => {
+): Promise<RenderResult | ScraperDegrade | null> => {
 	try {
-		const parsed = new URL(url);
+		const parsed = tryParseUrl(url);
+		if (!parsed) return null;
 		const hostname = parsed.hostname.toLowerCase();
 
 		// Check if it's bioRxiv or medRxiv
@@ -62,10 +63,10 @@ export const handleBiorxiv: SpecialHandler = async (
 			signal,
 		});
 
-		if (!result.ok) return null;
+		if (!result.ok) return scraperDegrade("biorxiv", loadFailure(result));
 
 		const data = tryParseJson<BiorxivResponse>(result.content);
-		if (!data) return null;
+		if (!data) return scraperDegrade("biorxiv", "unexpected response shape");
 
 		if (!data.collection || data.collection.length === 0) return null;
 
@@ -127,7 +128,7 @@ export const handleBiorxiv: SpecialHandler = async (
 			fetchedAt: new Date().toISOString(),
 			notes: [`Fetched via ${serverName} API`],
 		});
-	} catch {}
-
-	return null;
+	} catch (error) {
+		return scraperDegrade("biorxiv", error);
+	}
 };

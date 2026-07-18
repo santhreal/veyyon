@@ -1,9 +1,9 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
-import type { AssistantMessage } from "@veyyon/pi-ai";
-import { resetSettingsForTest, Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { AssistantMessageComponent } from "@veyyon/pi-coding-agent/modes/components/assistant-message";
-import { initTheme } from "@veyyon/pi-coding-agent/modes/theme/theme";
-import { type Component, Container, Markdown } from "@veyyon/pi-tui";
+import type { AssistantMessage } from "@veyyon/ai";
+import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
+import { AssistantMessageComponent } from "@veyyon/coding-agent/modes/components/assistant-message";
+import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { type Component, Container, Markdown } from "@veyyon/tui";
 
 const W = 100;
 

@@ -1,28 +1,17 @@
-# Lower token cost and faster turns
+# Context size and retries
 
-Veyyon treats cost as a product feature. The cheapest token is the one the model never has to spend.
+Token use and turn count depend on tool output size, compaction, and whether bad edits or tool JSON force retries.
 
-Cost drops when the harness avoids retries, bounds tool output, keeps the working context small, preserves
-cache-friendly continuity, and verifies before spending more turns. These are not separate tricks. They
-compound.
+## Mechanisms
 
-## What improves
+- Bounded `read`, `glob`, and `grep` outputs (truncation is marked in tool results)
+- Compaction (`handoff` or `snap`) compresses older history instead of dropping it silently
+- Goal mode keeps an objective outside the raw transcript tail
+- Edit verification and tool repair reduce failed apply/schema turns
 
-- Bounded `read`, `glob`, and `grep` tools prevent one call from flooding the context.
-- Tool output says exactly when and how it was truncated.
-- Compaction preserves the task state instead of dropping history silently.
-- The deterministic file working set survives compaction.
-- Reviewer hints and verification stop wasted turns before they become expensive loops.
+## Details
 
-## Why it matters
-
-A long coding task fails when the model loses the plot. It also gets expensive when every tool call
-returns more text than the next decision needs. Veyyon keeps the context focused on the files, failures,
-and diffs that still matter.
-
-## Where the details live
-
-- [Performance](../why/performance.md) explains the product-level speed story.
-- [Bounded reads and instant search](../context/reads-search.md) explains the tool-output bounds.
-- [Compaction and project memory](../context/compaction-memory.md) explains long-task context.
-- [Goal state](../context/goal-state.md) explains how the harness keeps long tasks coherent.
+- [Bounded reads and search](../context/reads-search.md)
+- [Compaction and project memory](../context/compaction-memory.md)
+- [Goal state](../context/goal-state.md)
+- [Performance](../why/performance.md)

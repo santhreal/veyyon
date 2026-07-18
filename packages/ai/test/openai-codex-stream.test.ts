@@ -1,13 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import { scheduler } from "node:timers/promises";
-import { streamSimple } from "@veyyon/pi-ai";
+import { streamSimple } from "@veyyon/ai";
 import {
 	getOpenAICodexTransportDetails,
 	getOpenAICodexWebSocketDebugStats,
 	prewarmOpenAICodexResponses,
 	resetOpenAICodexHistoryAfterCompaction,
 	streamOpenAICodexResponses,
-} from "@veyyon/pi-ai/providers/openai-codex-responses";
+} from "@veyyon/ai/providers/openai-codex-responses";
 import type {
 	CodexCompactionRequestContext,
 	Context,
@@ -15,15 +15,15 @@ import type {
 	Model,
 	ModelSpec,
 	ProviderSessionState,
-} from "@veyyon/pi-ai/types";
-import { buildModel } from "@veyyon/pi-catalog/build";
-import * as piUtils from "@veyyon/pi-utils";
+} from "@veyyon/ai/types";
+import { buildModel } from "@veyyon/catalog/build";
+import * as piUtils from "@veyyon/utils";
 
 const { getAgentDir, setAgentDir, TempDir } = piUtils;
 
 const originalAgentDir = getAgentDir();
 const originalWebSocket = global.WebSocket;
-const originalCodexWebSocketV2 = Bun.env.PI_CODEX_WEBSOCKET_V2;
+const originalCodexWebSocketV2 = Bun.env.VEYYON_CODEX_WEBSOCKET_V2;
 const TEST_INSTALLATION_ID = "00000000-0000-4000-8000-000000000001";
 
 function restoreEnv(name: string, value: string | undefined): void {
@@ -41,7 +41,7 @@ beforeEach(() => {
 afterEach(() => {
 	global.WebSocket = originalWebSocket;
 	setAgentDir(originalAgentDir);
-	restoreEnv("PI_CODEX_WEBSOCKET_V2", originalCodexWebSocketV2);
+	restoreEnv("VEYYON_CODEX_WEBSOCKET_V2", originalCodexWebSocketV2);
 	vi.useRealTimers();
 	vi.restoreAllMocks();
 });
@@ -3489,7 +3489,7 @@ describe("openai-codex streaming", () => {
 	it("uses websocket v2 beta header when v2 mode is enabled", async () => {
 		const tempDir = TempDir.createSync("@pi-codex-stream-");
 		setAgentDir(tempDir.path());
-		Bun.env.PI_CODEX_WEBSOCKET_V2 = "1";
+		Bun.env.VEYYON_CODEX_WEBSOCKET_V2 = "1";
 
 		const payload = Buffer.from(
 			JSON.stringify({ "https://api.openai.com/auth": { chatgpt_account_id: "acc_test" } }),

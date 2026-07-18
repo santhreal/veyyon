@@ -1,3 +1,6 @@
+// Subpath import: the pi-utils barrel loads dotenv at import time, which must
+// not happen before profile bootstrap (see process-entry-import.test.ts).
+import * as postmortem from "@veyyon/utils/postmortem";
 import { WorkerCore } from "./worker-core";
 import type { WorkerInbound, WorkerOutbound } from "./worker-protocol";
 
@@ -22,6 +25,11 @@ export function startJsEvalProcess(transport: {
 			// the project instead of the install dir. Worker threads cannot pass
 			// this — `process.chdir` is unavailable there.
 			chdir: cwd => process.chdir(cwd),
+			// This subprocess is a real main thread, so postmortem's global
+			// unhandledRejection handler is live here: cell-rejection attribution
+			// must go through its interceptor chain or the fatal report + exit(1)
+			// kills the worker before the run result crosses IPC.
+			interceptUnhandledRejections: postmortem.interceptUnhandledRejections,
 		},
 	);
 }

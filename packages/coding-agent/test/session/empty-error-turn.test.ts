@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import type { AssistantMessage } from "@veyyon/pi-ai";
-import { isEmptyErrorTurn } from "@veyyon/pi-coding-agent/session/messages";
+import type { AssistantMessage } from "@veyyon/ai";
+import { isEmptyErrorTurn } from "@veyyon/coding-agent/session/messages";
 
 type Turn = Pick<AssistantMessage, "stopReason" | "content">;
 

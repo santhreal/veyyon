@@ -9,9 +9,9 @@
  *      the mapping Fireworks 400s the request.
  */
 
-import { streamOpenAICompletions } from "@veyyon/pi-ai/providers/openai-completions";
-import type { Context, FetchImpl, Model } from "@veyyon/pi-ai/types";
-import { getBundledModel } from "@veyyon/pi-catalog/models";
+import { streamOpenAICompletions } from "@veyyon/ai/providers/openai-completions";
+import type { Context, FetchImpl, Model } from "@veyyon/ai/types";
+import { getBundledModel } from "@veyyon/catalog/models";
 
 const apiKey = process.env.FIREPASS_API_KEY;
 if (!apiKey) {

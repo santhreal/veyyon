@@ -12,6 +12,8 @@
  *   so every provider ends on the branded "Signed in to Veyyon" page, not on
  *   the provider's own screen.
  */
+
+import { errorMessage } from "@veyyon/utils";
 import templateHtml from "./oauth.html" with { type: "text" };
 
 /**
@@ -93,8 +95,6 @@ export function emitOAuthSuccessPage(ctrl: OAuthSuccessPageSink): void {
 		const { url } = serveOAuthSuccessPage({ ok: true });
 		ctrl.onSuccessPage(url);
 	} catch (error) {
-		ctrl.onProgress?.(
-			`Signed in — could not open the local success page: ${error instanceof Error ? error.message : String(error)}`,
-		);
+		ctrl.onProgress?.(`Signed in — could not open the local success page: ${errorMessage(error)}`);
 	}
 }

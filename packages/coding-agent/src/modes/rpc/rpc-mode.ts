@@ -10,9 +10,9 @@
  * - Events: AgentSessionEvent objects streamed as they occur
  * - Extension UI: Extension UI requests are emitted, client responds with extension_ui_response
  */
-import { getOAuthProviders } from "@veyyon/pi-ai/oauth";
-import { isZodSchema, zodToWireSchema } from "@veyyon/pi-ai/utils/schema";
-import { $env, isRecord, readJsonl, Snowflake } from "@veyyon/pi-utils";
+import { getOAuthProviders } from "@veyyon/ai/oauth";
+import { isZodSchema, zodToWireSchema } from "@veyyon/ai/utils/schema";
+import { $env, errorMessage, isRecord, readJsonl, Snowflake } from "@veyyon/utils";
 import { reset as resetCapabilities } from "../../capability";
 import { clearPluginRootsAndCaches, resolveActiveProjectRegistryPath } from "../../discovery/helpers";
 import {
@@ -327,7 +327,7 @@ export function dispatchRpcInputFrame(parsed: unknown, deps: RpcInputFrameDeps):
 			try {
 				deps.output(await deps.handleCommand(command));
 			} catch (err: unknown) {
-				const message = err instanceof Error ? err.message : String(err);
+				const message = errorMessage(err);
 				deps.output(deps.errorResponse(command.id, "bash", message));
 			}
 		})();
@@ -373,7 +373,7 @@ export class RpcInputDispatcher {
 				this.#tasks.delete(task);
 			});
 		} catch (err: unknown) {
-			const message = err instanceof Error ? err.message : String(err);
+			const message = errorMessage(err);
 			this.#deps.output(this.#deps.errorResponse(undefined, "parse", `Failed to parse command: ${message}`));
 		}
 	}
@@ -390,7 +390,7 @@ export class RpcInputDispatcher {
 			const awaited = dispatchRpcInputFrame(command, this.#deps);
 			if (awaited) await awaited;
 		} catch (err: unknown) {
-			const message = err instanceof Error ? err.message : String(err);
+			const message = errorMessage(err);
 			this.#deps.output(this.#deps.errorResponse(command.id, command.type, message));
 		} finally {
 			await this.#afterSerialCommand?.();
@@ -524,7 +524,7 @@ function parseValueDialogResponse(
 }
 
 function shouldEmitRpcTitles(): boolean {
-	const raw = $env.VEYYON_RPC_EMIT_TITLE ?? $env.PI_RPC_EMIT_TITLE;
+	const raw = $env.VEYYON_RPC_EMIT_TITLE;
 	if (!raw) return false;
 	const normalized = raw.trim().toLowerCase();
 	return normalized === "1" || normalized === "true" || normalized === "yes" || normalized === "on";
@@ -611,7 +611,7 @@ export async function runRpcMode(
 	// process.stdout with no newline, which the reader merges with the next JSON line and
 	// breaks JSON.parse. In RPC mode stdout is the JSON protocol channel — nothing else
 	// may write there.
-	process.env.PI_NOTIFICATIONS = "off";
+	process.env.VEYYON_NOTIFICATIONS = "off";
 
 	process.stdout.write(`${JSON.stringify({ type: "ready" })}\n`);
 	const output = (obj: RpcResponse | RpcExtensionUIRequest | object) => {
@@ -799,7 +799,7 @@ export async function runRpcMode(
 		}
 
 		setTitle(title: string): void {
-			// Title updates are low-value noise for most RPC hosts; opt in via VEYYON_RPC_EMIT_TITLE=1 (legacy: PI_RPC_EMIT_TITLE).
+			// Title updates are low-value noise for most RPC hosts; opt in via VEYYON_RPC_EMIT_TITLE=1.
 			if (!emitRpcTitles) return;
 			this.output({
 				type: "extension_ui_request",
@@ -1069,7 +1069,7 @@ export async function runRpcMode(
 					const schemes = hostUriBridge.setSchemes(command.schemes);
 					return success(id, "set_host_uri_schemes", { schemes });
 				} catch (err) {
-					return error(id, "set_host_uri_schemes", err instanceof Error ? err.message : String(err));
+					return error(id, "set_host_uri_schemes", errorMessage(err));
 				}
 			}
 
@@ -1107,7 +1107,7 @@ export async function runRpcMode(
 					const transcript = await readRpcSubagentTranscript(sessionFile, command.fromByte);
 					return success(id, "get_subagent_messages", transcript);
 				} catch (err) {
-					return error(id, "get_subagent_messages", err instanceof Error ? err.message : String(err));
+					return error(id, "get_subagent_messages", errorMessage(err));
 				}
 			}
 
@@ -1328,7 +1328,7 @@ export async function runRpcMode(
 					await session.modelRegistry.refresh();
 					return success(id, "login", { providerId: command.providerId });
 				} catch (err: unknown) {
-					return error(id, "login", err instanceof Error ? err.message : String(err));
+					return error(id, "login", errorMessage(err));
 				}
 			}
 

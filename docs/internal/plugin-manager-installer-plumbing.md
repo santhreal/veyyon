@@ -20,14 +20,14 @@ veyyon plugin <npm/link action> ...
   -> src/commands/plugin.ts
   -> runPluginCommand(...) in src/cli/plugin-cli.ts
   -> PluginManager method (install/list/uninstall/link/...)
-  -> mutate ~/.veyyon/plugins/{package.json,node_modules,omp-plugins.lock.json}
+  -> mutate ~/.veyyon/profiles/default/plugins/{package.json,node_modules,veyyon-plugins.lock.json}
   -> runtime discovery: discoverAndLoadCustomTools(...) and discoverAndLoadExtensions(...)
   -> getAllPluginToolPaths(cwd) / getAllPluginExtensionPaths(cwd)
   -> custom tool loader imports tool modules; extension loader imports extension modules
 
 veyyon plugin install name@marketplace / veyyon install name@marketplace
   -> MarketplaceManager
-  -> mutate ~/.veyyon/marketplaces.json, ~/.veyyon/plugins/installed_plugins.json, cache dirs
+  -> mutate ~/.veyyon/marketplaces.json, ~/.veyyon/profiles/default/plugins/installed_plugins.json, cache dirs
   -> installed marketplace plugin cache is surfaced as plugin roots/capabilities
 ```
 
@@ -41,11 +41,11 @@ veyyon plugin install name@marketplace / veyyon install name@marketplace
 
 ## On-disk model
 
-Global plugin state lives under `~/.veyyon/plugins`:
+Global plugin state lives under `~/.veyyon/profiles/default/plugins`:
 
 - `package.json` — dependency manifest used by `bun install`/`bun uninstall` for npm-installed plugins
 - `node_modules/` — installed npm plugin packages or symlinks
-- `omp-plugins.lock.json` — runtime state for npm/link plugins:
+- `veyyon-plugins.lock.json` — runtime state for npm/link plugins:
   - enabled/disabled per plugin
   - selected feature set per plugin
   - persisted plugin settings
@@ -59,9 +59,9 @@ Overrides are read-only from manager/loader perspective (no write path here) and
 Marketplace registries live separately:
 
 - `~/.veyyon/marketplaces.json` — configured marketplace catalogs
-- `~/.veyyon/plugins/installed_plugins.json` — user-scoped marketplace installs
+- `~/.veyyon/profiles/default/plugins/installed_plugins.json` — user-scoped marketplace installs
 - `<project-root>/.veyyon/plugins/installed_plugins.json` — project-scoped marketplace installs (`resolveActiveProjectRegistryPath` walks up from cwd to the nearest project config dir, stopping before the home dir)
-- `~/.veyyon/plugins/cache/{marketplaces,plugins}/` — cached catalogs and plugin directories
+- `~/.veyyon/profiles/default/plugins/cache/{marketplaces,plugins}/` — cached catalogs and plugin directories
 
 ## Plugin spec parsing and metadata interpretation
 
@@ -103,8 +103,8 @@ Malformed `package.json` JSON is a hard failure at read time; malformed manifest
 
 1. Parse feature bracket syntax from install spec.
 2. Validate the spec: git specs via `validateGitSpec`; npm specs against the package-name regex + shell-metacharacter denylist.
-3. Ensure plugin `package.json` exists (`omp-plugins`, private dependencies map).
-4. Run `bun install <packageSpec>` in `~/.veyyon/plugins`.
+3. Ensure plugin `package.json` exists (`veyyon-plugins`, private dependencies map).
+4. Run `bun install <packageSpec>` in `~/.veyyon/profiles/default/plugins`.
 5. Resolve the installed package name (npm: strip version via `extractPackageName`; git: diff `dependencies` before/after) and read `node_modules/<name>/package.json`.
 6. Resolve manifest and compute `enabledFeatures`:
    - `[*]`: all declared features (or `null` if no feature map)
@@ -134,7 +134,7 @@ If uninstall command fails, runtime state is not changed.
 
 ## List flow (`PluginManager.list`)
 
-1. Read plugin dependency map from `~/.veyyon/plugins/package.json`.
+1. Read plugin dependency map from `~/.veyyon/profiles/default/plugins/package.json`.
 2. Load lockfile runtime config (missing file -> empty defaults).
 3. Load project overrides (`<cwd>/.veyyon/plugin-overrides.json` (+ other project config bases), parse/read errors -> empty object with warning).
 4. For each dependency with a resolvable package.json:
@@ -148,7 +148,7 @@ This is the effective state used by CLI status output and settings/features oper
 
 ## Link flow (`PluginManager.link`)
 
-`link` supports local plugin development by symlinking a local package into `~/.veyyon/plugins/node_modules/<pkg.name>`.
+`link` supports local plugin development by symlinking a local package into `~/.veyyon/profiles/default/plugins/node_modules/<pkg.name>`.
 
 Behavior:
 

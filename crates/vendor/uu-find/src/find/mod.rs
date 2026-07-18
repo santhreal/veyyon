@@ -16,7 +16,7 @@ use std::{
 };
 
 use matchers::{Follow, WalkEntry};
-use pi_uutils_ctx::{stderr, stdout};
+use veyyon_uutils_ctx::{stderr, stdout};
 
 pub struct Config {
 	same_file_system:  bool,
@@ -44,7 +44,7 @@ impl Default for Config {
 			help_requested:    false,
 			version_requested: false,
 			today_start:       false,
-			// Directory information and traversal are handled by pi_walker,
+			// Directory information and traversal are handled by veyyon_walker,
 			// and this configuration field exists as a compatibility item for
 			// GNU findutils.
 			no_leaf_dirs:      false,
@@ -196,35 +196,35 @@ fn finish_find_walk(
 	}
 }
 
-fn walker_follow_links(follow: Follow) -> pi_walker::FollowLinks {
+fn walker_follow_links(follow: Follow) -> veyyon_walker::FollowLinks {
 	match follow {
-		Follow::Never => pi_walker::FollowLinks::Never,
-		Follow::Roots => pi_walker::FollowLinks::Roots,
-		Follow::Always => pi_walker::FollowLinks::Always,
+		Follow::Never => veyyon_walker::FollowLinks::Never,
+		Follow::Roots => veyyon_walker::FollowLinks::Roots,
+		Follow::Always => veyyon_walker::FollowLinks::Always,
 	}
 }
 
-fn build_find_walk_request(config: &Config, root: &Path) -> pi_walker::WalkRequest {
-	pi_walker::WalkRequest::new(root)
+fn build_find_walk_request(config: &Config, root: &Path) -> veyyon_walker::WalkRequest {
+	veyyon_walker::WalkRequest::new(root)
 		.hidden(true)
 		.gitignore(false)
 		.skip_git(false)
 		.skip_node_modules(false)
 		.follow_links(walker_follow_links(config.follow))
-		.detail(pi_walker::WalkDetail::Minimal)
+		.detail(veyyon_walker::WalkDetail::Minimal)
 		.order(if config.sorted_output {
-			pi_walker::WalkOrder::Path
+			veyyon_walker::WalkOrder::Path
 		} else {
-			pi_walker::WalkOrder::Unordered
+			veyyon_walker::WalkOrder::Unordered
 		})
 		.emit_root(true)
 		.depth(config.min_depth, config.max_depth)
 		.visit_order(if config.depth_first {
-			pi_walker::VisitOrder::ContentsFirst
+			veyyon_walker::VisitOrder::ContentsFirst
 		} else {
-			pi_walker::VisitOrder::PreOrder
+			veyyon_walker::VisitOrder::PreOrder
 		})
-		.directory_errors(pi_walker::DirectoryErrorMode::Visit)
+		.directory_errors(veyyon_walker::DirectoryErrorMode::Visit)
 		.same_file_system(config.same_file_system)
 		.cache(false)
 }
@@ -242,7 +242,7 @@ fn process_dir_walk_request(
 	let local_quit = Cell::new(false);
 	let status = request.for_each_entry_with_heartbeat(
 		|| Ok::<(), io::Error>(()),
-		|entry: pi_walker::EntryMeta<'_>| {
+		|entry: veyyon_walker::EntryMeta<'_>| {
 			let walk_entry =
 				WalkEntry::new(entry.absolute_path.as_ref().to_path_buf(), entry.depth, config.follow);
 			let mut current_dir = current_dir.borrow_mut();
@@ -259,36 +259,36 @@ fn process_dir_walk_request(
 			ret.set(ret_value);
 			if should_quit {
 				local_quit.set(true);
-				Ok(pi_walker::WalkDecision::Stop)
+				Ok(veyyon_walker::WalkDecision::Stop)
 			} else if should_skip_current_dir {
-				Ok(pi_walker::WalkDecision::SkipDescend)
+				Ok(veyyon_walker::WalkDecision::SkipDescend)
 			} else {
-				Ok(pi_walker::WalkDecision::Include)
+				Ok(veyyon_walker::WalkDecision::Include)
 			}
 		},
 		|error| {
 			ret.set(1);
 			writeln!(&mut stderr(), "Error: {}: {}", error.path.display(), error.error).unwrap();
-			Ok(pi_walker::WalkDecision::Include)
+			Ok(veyyon_walker::WalkDecision::Include)
 		},
 	);
 	let mut current_dir = current_dir.into_inner();
 	let mut ret_value = ret.get();
 	match status {
-		Ok(pi_walker::WalkStatus::Complete | pi_walker::WalkStatus::Stopped) => {
+		Ok(veyyon_walker::WalkStatus::Complete | veyyon_walker::WalkStatus::Stopped) => {
 			finish_find_walk(deps, matcher, &mut current_dir, &mut ret_value);
 			if local_quit.get() {
 				*quit = true;
 			}
 			ret_value
 		},
-		Err(pi_walker::WalkError::Interrupted(err)) => {
+		Err(veyyon_walker::WalkError::Interrupted(err)) => {
 			ret_value = 1;
 			writeln!(&mut stderr(), "Error: {err}").unwrap();
 			finish_find_walk(deps, matcher, &mut current_dir, &mut ret_value);
 			ret_value
 		},
-		Err(pi_walker::WalkError::InvalidData { path, message }) => {
+		Err(veyyon_walker::WalkError::InvalidData { path, message }) => {
 			ret_value = 1;
 			writeln!(&mut stderr(), "Error: {}: {message}", path.display()).unwrap();
 			finish_find_walk(deps, matcher, &mut current_dir, &mut ret_value);
@@ -304,7 +304,7 @@ fn process_dir(
 	matcher: &dyn matchers::Matcher,
 	quit: &mut bool,
 ) -> i32 {
-	let resolved_root = pi_uutils_ctx::resolve(dir);
+	let resolved_root = veyyon_uutils_ctx::resolve(dir);
 	let operand = Path::new(dir);
 	if config.min_depth > config.max_depth {
 		let mut current_dir = None;

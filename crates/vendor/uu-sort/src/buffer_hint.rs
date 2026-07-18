@@ -30,7 +30,7 @@ fn file_size_hint(files: &[OsString]) -> Option<usize> {
 			continue;
 		}
 
-		let Ok(metadata) = std::fs::metadata(pi_uutils_ctx::resolve(file)) else {
+		let Ok(metadata) = std::fs::metadata(veyyon_uutils_ctx::resolve(file)) else {
 			continue;
 		};
 

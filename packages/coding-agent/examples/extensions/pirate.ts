@@ -5,11 +5,11 @@
  * modify the system prompt based on extension state.
  *
  * Usage:
- * 1. Copy this file to ~/.veyyon/agent/extensions/ (legacy: ~/.pi/agent/extensions/) or your project's .omp/extensions/
+ * 1. Copy this file to ~/.veyyon/agent/extensions/ (legacy: ~/.pi/agent/extensions/) or your project's .veyyon/extensions/
  * 2. Use /pirate to toggle pirate mode
  * 3. When enabled, the agent will respond like a pirate
  */
-import type { ExtensionAPI } from "@veyyon/pi-coding-agent";
+import type { ExtensionAPI } from "@veyyon/coding-agent";
 
 export default function pirateExtension(pi: ExtensionAPI) {
 	let pirateMode = false;

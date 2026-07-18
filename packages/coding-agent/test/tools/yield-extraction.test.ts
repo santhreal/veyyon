@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import "@veyyon/pi-coding-agent/tools/yield";
-import { subprocessToolRegistry } from "@veyyon/pi-coding-agent/task/subprocess-tool-registry";
+import "@veyyon/coding-agent/tools/yield";
+import { subprocessToolRegistry } from "@veyyon/coding-agent/task/subprocess-tool-registry";
 
 describe("yield subprocess extraction", () => {
 	const handler = subprocessToolRegistry.getHandler("yield");

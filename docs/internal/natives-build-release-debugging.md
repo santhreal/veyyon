@@ -1,6 +1,6 @@
 # Natives Build, Release, and Debugging Runbook
 
-This runbook describes how `@veyyon/pi-natives` produces `.node` addons, generated declarations, and compiled-binary embedded payloads, and how to debug loader/build failures.
+This runbook describes how `@veyyon/natives` produces `.node` addons, generated declarations, and compiled-binary embedded payloads, and how to debug loader/build failures.
 
 It follows the architecture terms from [`natives-architecture.md`](./natives-architecture.md):
 
@@ -16,7 +16,7 @@ It follows the architecture terms from [`natives-architecture.md`](./natives-arc
 - `packages/natives/package.json`
 - `packages/natives/native/index.js`
 - `packages/natives/native/loader-state.js`
-- `crates/pi-natives/Cargo.toml`
+- `crates/veyyon-natives/Cargo.toml`
 
 ## Build pipeline overview
 
@@ -26,7 +26,7 @@ It follows the architecture terms from [`natives-architecture.md`](./natives-arc
 
 - `bun scripts/build-native.ts` (`build`) → N-API build, addon install, generated declarations install, explicit ESM export and enum runtime patch.
 - `bun scripts/embed-native.ts` (`gen:native`) → generate `native/embedded-addon.js` plus `native/embedded-addons.<tag>.tar.gz` from built files.
-- `bun scripts/gen-npm-packages.ts` (`gen:npm`) → generate per-platform npm leaf packages (`@veyyon/pi-natives-<platform>-<arch>`, installed as optional dependencies of the core package) under `npm/` from built addon files.
+- `bun scripts/gen-npm-packages.ts` (`gen:npm`) → generate per-platform npm leaf packages (`@veyyon/natives-<platform>-<arch>`, installed as optional dependencies of the core package) under `npm/` from built addon files.
 
 Root scripts include `build:native` as `bun --cwd=packages/natives run build`.
 
@@ -35,7 +35,7 @@ Root scripts include `build:native` as `bun --cwd=packages/natives run build`.
 `build-native.ts` invokes the `@napi-rs/cli` binary directly from `node_modules/.bin` with:
 
 - `napi build`
-- `--manifest-path crates/pi-natives/Cargo.toml`
+- `--manifest-path crates/veyyon-natives/Cargo.toml`
 - `--package-json-path packages/natives/package.json`
 - `--platform`
 - `--no-js`
@@ -44,14 +44,14 @@ Root scripts include `build:native` as `bun --cwd=packages/natives run build`.
 - `-o <isolated temp output dir>`
 - optional `--target <CROSS_TARGET>` plus `--cross-compile` (napi picks the `cargo-zigbuild` or `cargo-xwin` backend from the target) for cross builds
 
-`crates/pi-natives/Cargo.toml` declares `crate-type = ["cdylib"]`; napi-rs emits `.node` artifacts plus generated `index.d.ts` in an isolated temporary output directory under `packages/natives/native/.build/`.
+`crates/veyyon-natives/Cargo.toml` declares `crate-type = ["cdylib"]`; napi-rs emits `.node` artifacts plus generated `index.d.ts` in an isolated temporary output directory under `packages/natives/native/.build/`.
 
 ### 3) Artifact install
 
 After napi-rs succeeds, `build-native.ts`:
 
 1. resolves the built addon in the isolated output directory;
-2. normalizes its name to `pi_natives.<platform>-<arch>(-variant).node` when needed;
+2. normalizes its name to `veyyon_natives.<platform>-<arch>(-variant).node` when needed;
 3. installs the addon into `packages/natives/native/` with temp-file + rename semantics;
 4. copies generated `index.d.ts` into `packages/natives/native/`;
 5. runs `generateEnumExports()` to render explicit named ESM exports for classes/functions and runtime enum objects in the checked-in `native/index.js`.
@@ -77,8 +77,8 @@ Non-x64 uses a single default artifact with no variant suffix.
 
 ### Output filenames
 
-- x64: `pi_natives.<platform>-<arch>-modern.node` or `...-baseline.node`
-- non-x64: `pi_natives.<platform>-<arch>.node`
+- x64: `veyyon_natives.<platform>-<arch>-modern.node` or `...-baseline.node`
+- non-x64: `veyyon_natives.<platform>-<arch>.node`
 
 Runtime x64 candidate order also includes the unsuffixed default filename after the selected variant candidates.
 
@@ -86,8 +86,8 @@ Runtime x64 candidate order also includes the unsuffixed default filename after 
 
 ## Runtime flags
 
-- `PI_NATIVE_VARIANT`: x64 runtime override; valid values are `modern` and `baseline`.
-- `PI_COMPILED`: legacy compiled-mode signal. A populated embedded-addon manifest is also a compiled-mode signal; compiled release builds additionally define `process.env.PI_COMPILED="true"` during `bun build --compile`.
+- `VEYYON_NATIVE_VARIANT`: x64 runtime override; valid values are `modern` and `baseline`.
+- `VEYYON_COMPILED`: legacy compiled-mode signal. A populated embedded-addon manifest is also a compiled-mode signal; compiled release builds additionally define `process.env.VEYYON_COMPILED="true"` during `bun build --compile`.
 
 ## Build-time flags/options
 
@@ -114,8 +114,8 @@ Runtime x64 candidate order also includes the unsuffixed default filename after 
    - x64 cross-build without `TARGET_VARIANT` → hard error;
    - x64 local build without override → detect host AVX2.
 3. **CPU policy**: set `RUSTFLAGS` for the resolved variant unless the caller already provided one.
-4. **Compile**: run napi-rs against `crates/pi-natives` into an isolated output directory.
-5. **Locate artifact**: accept the canonical filename or a single napi-rs-generated `pi_natives.<platform>-<arch>*.node` candidate.
+4. **Compile**: run napi-rs against `crates/veyyon-natives` into an isolated output directory.
+5. **Locate artifact**: accept the canonical filename or a single napi-rs-generated `veyyon_natives.<platform>-<arch>*.node` candidate.
 6. **Install**: copy/rename addon into `packages/natives/native`.
 7. **Install generated declarations**: copy `index.d.ts`.
 8. **Patch exports/enums**: regenerate explicit ESM exports and enum runtime objects.
@@ -142,19 +142,19 @@ Failure exits have explicit error text for invalid variants, failed napi build, 
 Typical local loop:
 
 1. Build addon: `bun --cwd=packages/natives run build`.
-2. Loader resolves platform npm leaf-package candidates (`@veyyon/pi-natives-<platform>-<arch>`, when resolvable), then package-local `native/` and executable-dir fallback candidates.
+2. Loader resolves platform npm leaf-package candidates (`@veyyon/natives-<platform>-<arch>`, when resolvable), then package-local `native/` and executable-dir fallback candidates.
 3. Generated declarations in `native/index.d.ts` describe the public TS API.
 
 ## Shipped/compiled binary workflow
 
-In compiled mode (`PI_COMPILED`, Bun embedded URL markers, or populated embedded manifest):
+In compiled mode (`VEYYON_COMPILED`, Bun embedded URL markers, or populated embedded manifest):
 
 1. Loader computes versioned cache dir: `<getNativesDir()>/<packageVersion>`.
 2. If embedded manifest matches current platform+version, loader extracts the selected file from `embedded-addons.<tag>.tar.gz` into that versioned dir when the cached file is absent or has the wrong size.
 3. Runtime candidate order includes:
    - extracted versioned cache path, if available,
    - versioned cache dir,
-   - legacy compiled-binary dir (`%LOCALAPPDATA%/omp` on Windows, `~/.local/bin` elsewhere),
+   - legacy compiled-binary dir (`%LOCALAPPDATA%/veyyon` on Windows, `~/.local/bin` elsewhere),
    - package/executable directories.
 4. First successfully loaded addon with the expected version sentinel is returned.
 
@@ -198,7 +198,7 @@ Generated declarations currently include exports from these Rust modules:
 | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
 | `Cannot find module` or dynamic library load error for every candidate | Missing release artifact, wrong platform tag, or stale compiled cache                       | Inspect loader error list and `packages/natives/native` filenames | Build correct target/variant; delete stale cache for the package version                              |
 | Export is missing at runtime but present in TypeScript                 | Stale `.node` loaded, generated declarations newer than binary, or Rust export not compiled | Require the actual candidate and inspect `Object.keys(mod)`       | Rebuild native package and remove stale candidate/cache paths                                         |
-| x64 machine loads baseline when modern expected                        | `PI_NATIVE_VARIANT=baseline`, no AVX2 detected, or modern file unavailable                  | Check env and filenames in `native/`                              | Build modern variant (`TARGET_VARIANT=modern ... build`) and ship it                                  |
+| x64 machine loads baseline when modern expected                        | `VEYYON_NATIVE_VARIANT=baseline`, no AVX2 detected, or modern file unavailable                  | Check env and filenames in `native/`                              | Build modern variant (`TARGET_VARIANT=modern ... build`) and ship it                                  |
 | Cross-build produces wrong-labeled binary                              | Mismatch between `CROSS_TARGET` and `TARGET_PLATFORM`/`TARGET_ARCH`, or missing x64 variant | Confirm env tuple and output filename                             | Re-run with consistent env values and explicit x64 `TARGET_VARIANT`                                   |
 | Compiled binary fails after upgrade                                    | Stale extracted cache, embedded archive mismatch, or embedded manifest version mismatch     | Inspect `<getNativesDir()>/<version>` and loader error list       | Delete versioned cache for the package version; regenerate embedded archive/manifest during packaging |
 | `gen:native` fails with `No native addons found`                       | Required platform artifact was not built before embedding                                   | Check expected list in error text                                 | Build at least one expected artifact for the target, then rerun `gen:native`                          |
@@ -221,15 +221,15 @@ bun run gen:native
 bun run gen:native:reset
 ```
 
-## Orchestrator-side content-addressed build cache (robomp)
+## Orchestrator-side content-addressed build cache (veybot)
 
-When `pi-natives` is built inside the robomp orchestrator (`python/robomp/`), workspaces share built artifacts through a content-addressed cache instead of rebuilding from scratch in every per-issue worktree. The cache is **orchestrator-side only** — `bun --cwd=packages/natives run build` itself is unchanged; the cache lives outside the build pipeline and is populated/captured around `ensure_workspace` and post-task success in `python/robomp/src/natives_cache.py`.
+When `veyyon-natives` is built inside the veybot orchestrator (`python/veybot/`), workspaces share built artifacts through a content-addressed cache instead of rebuilding from scratch in every per-issue worktree. The cache is **orchestrator-side only** — `bun --cwd=packages/natives run build` itself is unchanged; the cache lives outside the build pipeline and is populated/captured around `ensure_workspace` and post-task success in `python/veybot/src/natives_cache.py`.
 
 ### What is cached
 
 The complete set of files in `packages/natives/native/` that are pure functions of the cache-key inputs:
 
-- `pi_natives.<platform>-<arch>[-variant].node` (glob `pi_natives.*.node`)
+- `veyyon_natives.<platform>-<arch>[-variant].node` (glob `veyyon_natives.*.node`)
 - `index.d.ts`
 - `index.js`
 - `embedded-addon.js`
@@ -241,7 +241,7 @@ An entry is only considered a hit when the `.node` glob matches AND every compan
 
 The key is `sha256` over `(path \t git-tree-hash \n)` pairs for the following inputs, in this order (order is significant), followed by the target triple:
 
-1. `crates` (whole subtree — pi-natives transitively depends on other workspace crates)
+1. `crates` (whole subtree — veyyon-natives transitively depends on other workspace crates)
 2. `Cargo.lock`
 3. `Cargo.toml`
 4. `rust-toolchain.toml`
@@ -253,7 +253,7 @@ Anything outside this input set (Rust toolchain auto-installed delta, host glibc
 
 ### Layout and ownership
 
-- Root: `/data/cache/pi-natives` (provisioned by `entrypoint.sh` alongside the cargo caches, owned `root:omp`, mode `02770` setgid so cached files inherit `gid=omp` and stay readable by every slot user).
+- Root: `/data/cache/veyyon-natives` (provisioned by `entrypoint.sh` alongside the cargo caches, owned `root:veyyon`, mode `02770` setgid so cached files inherit `gid=veyyon` and stay readable by every slot user).
 - Per-repo subdirectory: `<root>/<repo-slug>/` where the slug is `owner__repo` (mirrors `SandboxManager.pool_path`).
 - Per-entry directory: `<root>/<repo-slug>/<sha256-key>/` containing the cached files plus `manifest.json`.
 - Per-repo lockfile: `<root>/<repo-slug>/.lock` (advisory `fcntl.flock`, exclusive on capture and GC).
@@ -262,7 +262,7 @@ Anything outside this input set (Rust toolchain auto-installed delta, host glibc
 ### Populate and capture semantics
 
 - **Populate** (workspace ← cache) runs inside `ensure_workspace`. On a key hit the `.node` is **hardlinked** into the workspace (zero-copy, shared inode); the companion `index.d.ts` / `index.js` / `embedded-addon.js` are **copied** (independent inodes) because the napi build's `installGeneratedBindings` and `gen-enums.ts` rewrite those files via `open(..., 'w')` — an in-place truncate that would otherwise propagate through a hardlink and corrupt the cache. Cross-device hardlink failures (`EXDEV`) fall back to copy.
-- **Capture** (cache ← workspace) runs from the post-task success path when the build produced a complete artifact set. Capture uses **copy**, not hardlink: hardlinking a slot-owned workspace file would preserve slot UID ownership on the cached inode and defeat the shared-group model. Copying creates a fresh root-owned, `gid=omp` inode via the setgid cache root. Capture is idempotent under the per-repo flock: a concurrent capture for the same key returns the existing entry.
+- **Capture** (cache ← workspace) runs from the post-task success path when the build produced a complete artifact set. Capture uses **copy**, not hardlink: hardlinking a slot-owned workspace file would preserve slot UID ownership on the cached inode and defeat the shared-group model. Copying creates a fresh root-owned, `gid=veyyon` inode via the setgid cache root. Capture is idempotent under the per-repo flock: a concurrent capture for the same key returns the existing entry.
 
 ### Garbage collection
 
@@ -273,22 +273,22 @@ A periodic GC loop runs in `WorkerPool` with two caps per repo. When either cap 
 
 Workspaces that hardlinked a `.node` before GC retain access via the kernel inode refcount — `rmtree` of the cache entry does not delete the file from the workspace.
 
-### Configuration (settings on `robomp.config.Settings`)
+### Configuration (settings on `veybot.config.Settings`)
 
 | Env var                                     | Default                  | Effect                                                                                              |
 | ------------------------------------------- | ------------------------ | --------------------------------------------------------------------------------------------------- |
-| `ROBOMP_NATIVES_CACHE_ENABLED`              | `true`                   | Master switch. When false the populate/capture hooks no-op and every workspace builds from scratch. |
-| `ROBOMP_NATIVES_CACHE_ROOT`                 | `/data/cache/pi-natives` | Cache root directory. Must be `root:omp 02770` for cross-slot reads.                                |
-| `ROBOMP_NATIVES_CACHE_MAX_ENTRIES_PER_REPO` | `8`                      | LRU entry-count cap, per repo slug.                                                                 |
-| `ROBOMP_NATIVES_CACHE_MAX_BYTES`            | `4294967296` (4 GiB)     | LRU byte cap, per repo slug.                                                                        |
-| `ROBOMP_NATIVES_CACHE_GC_INTERVAL_SECONDS`  | `3600`                   | Period of the background GC loop in `WorkerPool`.                                                   |
+| `VEYBOT_NATIVES_CACHE_ENABLED`              | `true`                   | Master switch. When false the populate/capture hooks no-op and every workspace builds from scratch. |
+| `VEYBOT_NATIVES_CACHE_ROOT`                 | `/data/cache/veyyon-natives` | Cache root directory. Must be `root:veyyon 02770` for cross-slot reads.                                |
+| `VEYBOT_NATIVES_CACHE_MAX_ENTRIES_PER_REPO` | `8`                      | LRU entry-count cap, per repo slug.                                                                 |
+| `VEYBOT_NATIVES_CACHE_MAX_BYTES`            | `4294967296` (4 GiB)     | LRU byte cap, per repo slug.                                                                        |
+| `VEYBOT_NATIVES_CACHE_GC_INTERVAL_SECONDS`  | `3600`                   | Period of the background GC loop in `WorkerPool`.                                                   |
 
 ### Manual invalidation
 
-- One key: `rm -rf /data/cache/pi-natives/<repo-slug>/<sha256>`.
-- One repo: `rm -rf /data/cache/pi-natives/<repo-slug>`.
-- Everything: `rm -rf /data/cache/pi-natives/*` (preserve the root so its setgid mode survives).
-- Stuck lock: `rm /data/cache/pi-natives/<repo-slug>/.lock` (only when no orchestrator process is touching the repo).
+- One key: `rm -rf /data/cache/veyyon-natives/<repo-slug>/<sha256>`.
+- One repo: `rm -rf /data/cache/veyyon-natives/<repo-slug>`.
+- Everything: `rm -rf /data/cache/veyyon-natives/*` (preserve the root so its setgid mode survives).
+- Stuck lock: `rm /data/cache/veyyon-natives/<repo-slug>/.lock` (only when no orchestrator process is touching the repo).
 
 Trigger an automatic miss by editing any path in the key set: a single touched byte under `crates/`, `Cargo.lock`, `Cargo.toml`, `rust-toolchain.toml`, or `packages/natives/` shifts the tree hash and forces a fresh build at the next populate.
 

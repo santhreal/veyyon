@@ -1,9 +1,9 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
 import * as path from "node:path";
 import * as url from "node:url";
-import { resetSettingsForTest, Settings, settings } from "@veyyon/pi-coding-agent/config/settings";
-import { LocalProtocolHandler } from "@veyyon/pi-coding-agent/internal-urls/local-protocol";
-import { AgentRegistry } from "@veyyon/pi-coding-agent/registry/agent-registry";
+import { resetSettingsForTest, Settings, settings } from "@veyyon/coding-agent/config/settings";
+import { LocalProtocolHandler } from "@veyyon/coding-agent/internal-urls/local-protocol";
+import { AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";
 import {
 	fileHyperlink,
 	isHyperlinkEnabled,
@@ -11,8 +11,8 @@ import {
 	uriHyperlink,
 	urlHyperlink,
 	urlHyperlinkAlways,
-} from "@veyyon/pi-coding-agent/tui/hyperlink";
-import * as terminalCaps from "@veyyon/pi-tui";
+} from "@veyyon/coding-agent/tui/hyperlink";
+import * as terminalCaps from "@veyyon/tui";
 
 // OSC 8 sequence markers
 const OSC = "\x1b]";

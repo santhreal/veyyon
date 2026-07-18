@@ -12,8 +12,8 @@ import {
 	Text,
 	truncateToWidth,
 	visibleWidth,
-} from "@veyyon/pi-tui";
-import { formatBytes } from "@veyyon/pi-utils";
+} from "@veyyon/tui";
+import { formatBytes } from "@veyyon/utils";
 import { theme } from "../../modes/theme/theme";
 import { matchesAppInterrupt, matchesSelectDown, matchesSelectUp } from "../../modes/utils/keybinding-matchers";
 import type { SessionInfo, SessionStatus } from "../../session/session-listing";
@@ -737,10 +737,10 @@ export interface SessionSelectorOptions {
 	 */
 	getTerminalRows?: () => number;
 	/**
-	 * Fill the whole viewport and pin the footer (hint + bottom border) to the
-	 * last rows, so the footer stops drifting as the list window changes height.
-	 * Set by the standalone `--resume` picker (fullscreen alternate screen); the
-	 * in-editor selector leaves it off and renders compactly.
+	 * Fullscreen alternate-screen idiom (the standalone `--resume` picker and
+	 * the /resume overlay): use the large centered-card sizing. The in-editor
+	 * selector leaves it off and renders with compact margins. Card height
+	 * always tracks the content — a short session list renders a short card.
 	 */
 	fillHeight?: boolean;
 }
@@ -926,6 +926,9 @@ export class SessionSelectorComponent extends Container {
 				closeDialog();
 			},
 			closeDialog,
+			// Destructive dialog: the cursor starts on "No" so a reflexive Enter
+			// (or a buffered keystroke landing after the Del) can't delete a session.
+			{ initialIndex: 1 },
 		);
 		// Swap the SessionList out of the content slot and mount the dialog in its
 		// place: the dialog competes only with the SessionList's rendered budget,
@@ -957,12 +960,19 @@ export class SessionSelectorComponent extends Container {
 		for (const line of this.#contentSlot.render(dims.contentWidth)) body.push(line);
 
 		const scopeLabel = this.#scope === "all" ? "current folder" : "all projects";
+		// Card height tracks the content: the shell pads the body to fill the
+		// area it is given, and handing it the whole terminal stretched a
+		// 2-session list into a full-height card of blank rows (read as broken
+		// layout). Chrome = top border + vPad + footer divider + footer band +
+		// bottom border; vMargin is the centered card's breathing room.
+		const chrome = 3 + sizing.vPad + Math.max(sizing.footerLines, 1);
+		const shellArea = Math.min(termHeight, body.length + chrome + 2 * sizing.vMargin);
 		const shell = renderModalShell({
 			title: "Resume Session",
 			breadcrumb: this.#scope === "all" ? " · all projects" : " · current folder",
 			sizing,
 			areaWidth: width,
-			areaHeight: termHeight,
+			areaHeight: shellArea,
 			body,
 			shortcuts: [
 				{ label: "enter select", clickable: true, id: "confirm" },

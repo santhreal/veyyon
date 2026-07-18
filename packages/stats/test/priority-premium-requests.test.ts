@@ -2,10 +2,10 @@ import { Database } from "bun:sqlite";
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { syncAllSessions } from "@veyyon/pi-stats/aggregator";
-import { closeDb, getOverallStats, getRecentRequests } from "@veyyon/pi-stats/db";
-import { parseSessionFile } from "@veyyon/pi-stats/parser";
-import { getSessionsDir, getStatsDbPath } from "@veyyon/pi-utils";
+import { syncAllSessions } from "@veyyon/stats/aggregator";
+import { closeDb, getOverallStats, getRecentRequests } from "@veyyon/stats/db";
+import { parseSessionFile } from "@veyyon/stats/parser";
+import { getSessionsDir, getStatsDbPath } from "@veyyon/utils";
 import { installStatsTestIsolation } from "./helpers/temp-agent";
 
 installStatsTestIsolation("@pi-stats-priority-");

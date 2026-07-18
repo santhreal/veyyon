@@ -1,11 +1,11 @@
 import { describe, expect, spyOn, test } from "bun:test";
 import { scheduler } from "node:timers/promises";
-import { clearCustomApis } from "@veyyon/pi-ai/api-registry";
-import * as AIError from "@veyyon/pi-ai/error";
-import { createMockModel, type MockContent, registerMockApi } from "@veyyon/pi-ai/providers/mock";
-import { complete, completeSimple, stream, streamSimple } from "@veyyon/pi-ai/stream";
-import type { Api, AssistantMessage, AssistantMessageEvent, Context, Model } from "@veyyon/pi-ai/types";
-import { AssistantMessageEventStream } from "@veyyon/pi-ai/utils/event-stream";
+import { clearCustomApis } from "@veyyon/ai/api-registry";
+import * as AIError from "@veyyon/ai/error";
+import { createMockModel, type MockContent, registerMockApi } from "@veyyon/ai/providers/mock";
+import { complete, completeSimple, stream, streamSimple } from "@veyyon/ai/stream";
+import type { Api, AssistantMessage, AssistantMessageEvent, Context, Model } from "@veyyon/ai/types";
+import { AssistantMessageEventStream } from "@veyyon/ai/utils/event-stream";
 import {
 	GEMINI_HEADER_RUNAWAY_THRESHOLD,
 	GeminiHeaderRunDetector,
@@ -16,8 +16,8 @@ import {
 	THINKING_LOOP_ERROR_MARKER,
 	ThinkingLoopDetector,
 	withGeminiThinkingLoopGuard,
-} from "@veyyon/pi-ai/utils/thinking-loop";
-import { isRetryableError } from "@veyyon/pi-utils";
+} from "@veyyon/ai/utils/thinking-loop";
+import { isRetryableError } from "@veyyon/utils";
 
 function context(): Context {
 	return { systemPrompt: [], messages: [{ role: "user", content: "go", timestamp: 0 }] };

@@ -10,6 +10,10 @@
         <!-- Veyyon handbook: self-contained head additions. No remote resources. -->
         <meta name="theme-color" content="#050505">
         <meta name="color-scheme" content="dark">
+        <!-- Site favicons live at the deployed root, one level above /docs/. -->
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+        <link rel="icon" href="/favicon.ico" sizes="48x48">
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png">
         <style>
           /* Paint the near-black surface before CSS/JS resolve the theme, so there is
              no light flash on load. Kept in sync with theme/veyyon.css. */
@@ -18,7 +22,7 @@
           *, *::before, *::after { box-sizing: border-box; }
         </style>
 
-        <meta name="description" content="How Veyyon turns open models into frontier coding agents. The product, the harness, tool-call repair, the edit format, per-model adaptation, and how to use it.">
+        <meta name="description" content="Operator handbook for the Veyyon terminal coding agent: install, configuration, tools, approvals, edit formats, providers, and harness structure.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -38,7 +42,7 @@
         <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="../ayu-highlight-3fdfc3ac.css">
 
         <!-- Custom theme stylesheets -->
-        <link rel="stylesheet" href="../theme/veyyon-fc839a17.css">
+        <link rel="stylesheet" href="../theme/veyyon-06f6939e.css">
 
 
         <!-- Provide site root and default themes to javascript -->
@@ -46,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-e76f06ca.js";
+            window.path_to_searchindex_js = "../searchindex-a2447057.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-9cfd259b.js"></script>
+        <script src="../toc-cc1a72e9.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -196,15 +200,16 @@
 <strong>compacted history</strong>. Compaction compresses older history instead of truncating it, keeping
 task-critical context.</p>
 <h2 id="context-compaction"><a class="header" href="#context-compaction">Context compaction</a></h2>
-<p>Compaction has exactly three settings (settings → Models → Compaction, or <code>config.yml</code>):</p>
+<p>Primary compaction knobs (settings → Models → Compaction, or <code>config.yml</code>):</p>
 <ul>
 <li><strong>Threshold</strong> (<code>compaction.thresholdPercent</code>) — percent of the
-context window at which auto-compaction runs. Also on demand with <code>/compact</code>.</li>
+context window at which auto-compaction runs. Also on demand with <code>/compact</code>.
+Optional fixed trigger: <code>compaction.thresholdTokens</code> when set <code>&gt; 0</code>.</li>
 <li><strong>Type</strong> (<code>compaction.strategy</code>) — how history is compressed:
 <ul>
 <li><code>handoff</code> — writes a structured handoff summary that preserves the task, pending questions, and
-recent decisions, then continues from it. Best for long task continuity.</li>
-<li><code>snap</code> — archives history via the snapcompact engine (dense image snapshot path).</li>
+recent decisions, then continues from it (LLM transfer path).</li>
+<li><code>snap</code> — archives history via the snapcompact engine (dense image snapshot path; schema default).</li>
 </ul>
 </li>
 <li><strong>Model</strong> (<code>compaction.model</code>) — the model that performs LLM compaction / handoff. Unset uses your
@@ -212,16 +217,11 @@ interactive model. See <a href="../using/roles-and-profiles.html">Models, roles,
 </ul>
 <p><code>/compact &lt;focus&gt;</code> steers a run with an “Additional focus:” directive. Recent user messages are
 retained verbatim up to the type’s budget.</p>
-<h2 id="memory-backends-built"><a class="header" href="#memory-backends-built">Memory backends (built)</a></h2>
+<h2 id="memory-backends"><a class="header" href="#memory-backends">Memory backends</a></h2>
 <p>When <code>memory.backend</code> is <code>mnemopi</code> or <code>local</code>, compaction can request <strong>pre-compaction context</strong>
 from the active memory backend so summaries retain project facts. See <a href="../features/memory.html">Memory</a>.</p>
-<h2 id="goals-partial"><a class="header" href="#goals-partial">Goals (partial)</a></h2>
-<p>Goal cards and budgets are implemented (<code>/goal</code>, <code>/guided-goal</code>).</p>
-<blockquote>
-<p><strong>Spec — not shipped:</strong> the richer goal-card verification ledgers described in
-<a href="./goal-state.html">Goal state and long sessions</a>. The shipped card is the bounded objective + budget +
-status model.</p>
-</blockquote>
+<h2 id="goals"><a class="header" href="#goals">Goals</a></h2>
+<p>Goal cards and budgets: <code>/goal</code>, <code>/guided-goal</code>, and the <code>goal</code> tool. Structure: <a href="./goal-state.html">Goal state and long sessions</a>. Operator surface: <a href="../features/plan-mode.html">Plan mode and goals</a>.</p>
 
                     </main>
 

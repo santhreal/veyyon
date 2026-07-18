@@ -105,7 +105,7 @@ const PASSTHROUGH_HEADER_NAMES: Record<string, true> = {
 	"openai-organization": true,
 	"openai-project": true,
 	"openai-beta": true,
-	// Codex / ChatGPT-OAuth backend headers (see @veyyon/pi-catalog/wire/codex).
+	// Codex / ChatGPT-OAuth backend headers (see @veyyon/catalog/wire/codex).
 	// `session_id` and `conversation_id` thread the upstream session so prompt
 	// caching and per-conversation rate limiting work; `chatgpt-account-id` and
 	// `originator` identify the calling account and client surface.

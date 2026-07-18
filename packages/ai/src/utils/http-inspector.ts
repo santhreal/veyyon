@@ -1,5 +1,12 @@
 import * as path from "node:path";
-import { getLogsDir, isBunTestRuntime } from "@veyyon/pi-utils";
+import {
+	asRecord,
+	errorMessage,
+	getLogsDir,
+	getNonBlankStringProperty,
+	isBunTestRuntime,
+	isRecord,
+} from "@veyyon/utils";
 import * as AIError from "../error/flags";
 import { isCopilotTransientModelError } from "./retry.js";
 import { formatErrorMessageWithRetryAfter } from "./retry-after.js";
@@ -20,6 +27,32 @@ export type CapturedHttpErrorResponse = {
 	bodyText?: string;
 	bodyJson?: unknown;
 };
+
+/**
+ * Capture a non-2xx response body for error reporting. The body is read once;
+ * a JSON body is parsed opportunistically (a non-JSON or unreadable body still
+ * yields a useful capture — the caller is already on an error path, so capture
+ * failures degrade to a status-only record rather than masking the HTTP error).
+ */
+export async function captureHttpErrorResponse(response: Response): Promise<CapturedHttpErrorResponse> {
+	let bodyText: string | undefined;
+	let bodyJson: unknown;
+	try {
+		bodyText = await response.text();
+		if (bodyText.trim().length > 0) {
+			try {
+				bodyJson = JSON.parse(bodyText) as unknown;
+			} catch {
+				// Non-JSON error body: keep the raw text.
+			}
+		} else {
+			bodyText = undefined;
+		}
+	} catch {
+		// Body unreadable (already consumed / stream fault): status-only capture.
+	}
+	return { status: response.status, headers: response.headers, bodyText, bodyJson };
+}
 
 const SENSITIVE_HEADERS = ["authorization", "x-api-key", "api-key", "cookie", "set-cookie", "proxy-authorization"];
 
@@ -69,8 +102,7 @@ export async function appendRawHttpRequestDumpFor400(
 		await Bun.write(filePath, `${JSON.stringify(payload, null, 2)}\n`);
 		return `${message}\nraw-http-request=${filePath}`;
 	} catch (writeError) {
-		const writeMessage = writeError instanceof Error ? writeError.message : String(writeError);
-		return `${message}\nraw-http-request-save-failed=${writeMessage}`;
+		return `${message}\nraw-http-request-save-failed=${errorMessage(writeError)}`;
 	}
 }
 
@@ -148,49 +180,34 @@ function formatCapturedHttpError(captured: CapturedHttpErrorResponse | undefined
 	const payload = parseCapturedErrorPayload(captured);
 	if (!payload) return bodyText;
 
-	const errorPayload = getObjectProperty(payload, "error") ?? payload;
+	const errorPayload = asRecord(payload.error) ?? payload;
 	// {"error": "string"} — the error value is a plain string, not a nested object.
 	// Fall back to it when the structured fields ("message", etc.) are absent.
-	const stringError = errorPayload === payload ? getStringProperty(payload, "error") : undefined;
+	const stringError = errorPayload === payload ? getNonBlankStringProperty(payload, "error") : undefined;
 	const message =
-		getStringProperty(errorPayload, "message") ?? getStringProperty(payload, "message") ?? stringError ?? bodyText;
-	const extras = [
-		getStringProperty(errorPayload, "type") ?? getStringProperty(payload, "type"),
-		getStringProperty(errorPayload, "param") ?? getStringProperty(payload, "param"),
-		getStringProperty(errorPayload, "code") ?? getStringProperty(payload, "code"),
-	]
-		.filter(Boolean)
-		.map((value, index) => {
-			if (index === 0) return `type=${value}`;
-			if (index === 1) return `param=${value}`;
-			return `code=${value}`;
-		});
+		getNonBlankStringProperty(errorPayload, "message") ??
+		getNonBlankStringProperty(payload, "message") ??
+		stringError ??
+		bodyText;
+	const extras = (["type", "param", "code"] as const)
+		.map(field => {
+			const value = getNonBlankStringProperty(errorPayload, field) ?? getNonBlankStringProperty(payload, field);
+			return value === undefined ? undefined : `${field}=${value}`;
+		})
+		.filter((entry): entry is string => entry !== undefined);
 	return extras.length > 0 ? `${message} (${extras.join(" ")})` : message;
 }
 
 function parseCapturedErrorPayload(captured: CapturedHttpErrorResponse): Record<string, unknown> | undefined {
-	if (isObject(captured.bodyJson)) {
+	if (isRecord(captured.bodyJson)) {
 		return captured.bodyJson;
 	}
 	if (!captured.bodyText) return undefined;
 	try {
-		const parsed = JSON.parse(captured.bodyText);
-		return isObject(parsed) ? parsed : undefined;
+		// Data tolerance: an error body is provider-controlled text; non-JSON
+		// falls through to the raw-bodyText rendering above.
+		return asRecord(JSON.parse(captured.bodyText)) ?? undefined;
 	} catch {
 		return undefined;
 	}
-}
-
-function getObjectProperty(value: Record<string, unknown>, key: string): Record<string, unknown> | undefined {
-	const property = value[key];
-	return isObject(property) ? property : undefined;
-}
-
-function getStringProperty(value: Record<string, unknown>, key: string): string | undefined {
-	const property = value[key];
-	return typeof property === "string" && property.trim().length > 0 ? property : undefined;
-}
-
-function isObject(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
 }

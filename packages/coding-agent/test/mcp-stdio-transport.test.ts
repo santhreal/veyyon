@@ -2,12 +2,12 @@ import { afterEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { resolveStdioSpawnCommand, StdioTransport, writeFrame } from "@veyyon/pi-coding-agent/mcp/transports/stdio";
-import { removeWithRetries } from "@veyyon/pi-utils";
+import { resolveStdioSpawnCommand, StdioTransport, writeFrame } from "@veyyon/coding-agent/mcp/transports/stdio";
+import { removeWithRetries } from "@veyyon/utils";
 
 describe("resolveStdioSpawnCommand", () => {
 	it("resolves bare Windows commands through PATHEXT and wraps .cmd shims with cmd.exe", async () => {
-		const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "omp-mcp-stdio-"));
+		const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-mcp-stdio-"));
 		try {
 			const shim = path.join(tempDir, "codegraph.cmd");
 			await Bun.write(shim, "@echo off\r\n");
@@ -40,8 +40,8 @@ describe("resolveStdioSpawnCommand", () => {
 	});
 
 	it("prefers a project-local .cmd shim over a same-named global one when no path segment is given", async () => {
-		const projectDir = await fs.mkdtemp(path.join(os.tmpdir(), "omp-mcp-cwd-"));
-		const globalDir = await fs.mkdtemp(path.join(os.tmpdir(), "omp-mcp-global-"));
+		const projectDir = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-mcp-cwd-"));
+		const globalDir = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-mcp-global-"));
 		try {
 			const localShim = path.join(projectDir, "server.cmd");
 			const globalShim = path.join(globalDir, "server.cmd");
@@ -71,7 +71,7 @@ describe("resolveStdioSpawnCommand", () => {
 	});
 
 	it("keeps PATH-resolved npx.cmd on the cmd.exe path so npm preserves stdio semantics", async () => {
-		const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "omp-mcp-npx-"));
+		const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-mcp-npx-"));
 		try {
 			const shim = path.join(tempDir, "npx.cmd");
 			await Bun.write(
@@ -121,7 +121,7 @@ describe("resolveStdioSpawnCommand", () => {
 	});
 
 	it("still launches non-npx npm .cmd shims through node so stdio stays owned by the server process", async () => {
-		const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "omp-mcp-codegraph-"));
+		const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-mcp-codegraph-"));
 		try {
 			const shim = path.join(tempDir, "codegraph.cmd");
 			const entry = path.join(tempDir, "node_modules", "@colbymchenry", "codegraph", "npm-shim.js");
@@ -172,7 +172,7 @@ describe("resolveStdioSpawnCommand", () => {
 	});
 
 	it("keeps non-node cmd-shim wrappers on the cmd.exe path instead of mislaunching them via node", async () => {
-		const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "omp-mcp-pyshim-"));
+		const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-mcp-pyshim-"));
 		try {
 			const shim = path.join(tempDir, "pyserver.cmd");
 			await Bun.write(
@@ -215,7 +215,7 @@ describe("resolveStdioSpawnCommand", () => {
 	});
 
 	it("escapes percent-delimited args before routing .cmd shims through cmd.exe", async () => {
-		const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "omp-mcp-percent-"));
+		const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-mcp-percent-"));
 		try {
 			const shim = path.join(tempDir, "codegraph.cmd");
 			await Bun.write(shim, "@echo off\r\n");
@@ -248,7 +248,7 @@ describe("resolveStdioSpawnCommand", () => {
 	});
 
 	it("escapes quoted JSON args before routing .cmd shims through cmd.exe", async () => {
-		const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "omp-mcp-quotes-"));
+		const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-mcp-quotes-"));
 		try {
 			const shim = path.join(tempDir, "codegraph.cmd");
 			await Bun.write(shim, "@echo off\r\n");
@@ -288,7 +288,7 @@ describe("resolveStdioSpawnCommand", () => {
 		// sibling so the launch succeeds (see #2174). The test rig pins
 		// PATHEXT to a single lowercase extension so the candidate filename
 		// matches the file we create on the case-sensitive test host.
-		const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "omp-mcp-abs-"));
+		const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-mcp-abs-"));
 		try {
 			const bare = path.join(tempDir, "codegraph");
 			const shim = `${bare}.cmd`;
@@ -392,12 +392,12 @@ describe("resolveStdioSpawnCommand", () => {
 
 	it("keeps console-attached Windows cmd.exe wrapper chains out of CREATE_NO_WINDOW (#3567)", async () => {
 		// The #3544 shape is `cmd.exe` → `node wrapper` → another console
-		// launcher (`cmd.exe /C npx.cmd`, PowerShell, similar). If the OMP host
+		// launcher (`cmd.exe /C npx.cmd`, PowerShell, similar). If the veyyon host
 		// already owns a terminal console, `windowsHide: true` maps to
 		// CREATE_NO_WINDOW and strips that inheritable console from the direct
 		// hidden wrapper. Grandchildren then allocate fresh visible conhost
 		// windows during startup or reconnect loops (#3567). Keep the tree
-		// attached to OMP's console instead.
+		// attached to veyyon's console instead.
 		const result = await resolveStdioSpawnCommand(
 			{ type: "stdio", command: "cmd.exe", args: ["/C", "node .codex\\mcp-wrapper.js"] },
 			{

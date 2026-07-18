@@ -9,11 +9,11 @@
  * Fully mouse-navigable (hover, wheel, click). Session-only switching lives
  * in the compact alt+p picker ({@link ./model-picker}).
  */
-import { ThinkingLevel } from "@veyyon/pi-agent-core";
-import type { Model } from "@veyyon/pi-ai";
-import { getOAuthProviders } from "@veyyon/pi-ai/oauth";
-import { getSupportedEfforts } from "@veyyon/pi-catalog/model-thinking";
-import { getCatalogProviderEntry } from "@veyyon/pi-catalog/provider-models";
+import { ThinkingLevel } from "@veyyon/agent-core";
+import type { Model } from "@veyyon/ai";
+import { getOAuthProviders } from "@veyyon/ai/oauth";
+import { getSupportedEfforts } from "@veyyon/catalog/model-thinking";
+import { getCatalogProviderEntry } from "@veyyon/catalog/provider-models";
 import {
 	type Component,
 	extractPrintableText,
@@ -27,7 +27,8 @@ import {
 	type TUI,
 	truncateToWidth,
 	visibleWidth,
-} from "@veyyon/pi-tui";
+} from "@veyyon/tui";
+import { errorMessage } from "@veyyon/utils";
 import type { ModelRegistry } from "../../config/model-registry";
 import { getKnownRoleIds, getRoleInfo } from "../../config/model-roles";
 import type { Settings } from "../../config/settings";
@@ -281,7 +282,7 @@ export class ModelHubComponent implements Component {
 				.refresh("offline")
 				.then(() => this.#syncFromRegistryState())
 				.catch(error => {
-					this.#configError = error instanceof Error ? error.message : String(error);
+					this.#configError = errorMessage(error);
 				})
 				.finally(() => this.#tui.requestRender());
 		}
@@ -329,7 +330,7 @@ export class ModelHubComponent implements Component {
 			try {
 				availableModels = this.#registry.getAvailable();
 			} catch (error) {
-				this.#configError = error instanceof Error ? error.message : String(error);
+				this.#configError = errorMessage(error);
 				availableModels = [];
 			}
 		}
@@ -697,7 +698,7 @@ export class ModelHubComponent implements Component {
 			// re-reading it here stays purely in-memory.
 			this.#syncFromRegistryState();
 		} catch (error) {
-			this.#configError = error instanceof Error ? error.message : String(error);
+			this.#configError = errorMessage(error);
 		} finally {
 			this.#setProviderRefreshing(providerId, false);
 			this.#tui.requestRender();

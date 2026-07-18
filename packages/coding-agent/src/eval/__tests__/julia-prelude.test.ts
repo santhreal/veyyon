@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "bun:test";
 import * as path from "node:path";
-import { $which, TempDir } from "@veyyon/pi-utils";
+import { $which, TempDir } from "@veyyon/utils";
 import { disposeJuliaKernelSessionsByOwner, executeJulia } from "../jl/executor";
 
 const HAS_JULIA = Boolean($which("julia"));
@@ -12,7 +12,7 @@ describe.skipIf(!HAS_JULIA)("eval Julia prelude helpers", () => {
 	}, 30_000);
 
 	it("supports output ranges, JSON queries, metadata, and ANSI stripping", async () => {
-		using tempDir = TempDir.createSync("@omp-eval-julia-output-");
+		using tempDir = TempDir.createSync("@veyyon-eval-julia-output-");
 		const artifactsDir = path.join(tempDir.path(), "session-artifacts");
 		await Bun.write(path.join(artifactsDir, "alpha.md"), "one\ntwo\nthree\nfour");
 		await Bun.write(path.join(artifactsDir, "json.md"), JSON.stringify({ items: [{ name: "a" }, { name: "b" }] }));
@@ -47,7 +47,7 @@ nothing
 	}, 60_000);
 
 	it("surfaces the exception type and message in the error output, not just stack frames", async () => {
-		using tempDir = TempDir.createSync("@omp-eval-julia-error-");
+		using tempDir = TempDir.createSync("@veyyon-eval-julia-error-");
 		const result = await executeJulia(`println("="^8)\nmissing_var_xyz + 1`, {
 			cwd: tempDir.path(),
 			sessionId: `julia-prelude-error:${crypto.randomUUID()}`,

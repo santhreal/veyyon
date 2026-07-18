@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import type { Tool, ToolCall } from "@veyyon/pi-ai/types";
+import type { Tool, ToolCall } from "@veyyon/ai/types";
 import {
 	adaptSchemaForStrict,
 	enforceStrictSchema,
@@ -10,8 +10,8 @@ import {
 	toolWireSchema,
 	tryEnforceStrictSchema,
 	zodToWireSchema,
-} from "@veyyon/pi-ai/utils/schema";
-import { validateToolArguments } from "@veyyon/pi-ai/utils/validation";
+} from "@veyyon/ai/utils/schema";
+import { validateToolArguments } from "@veyyon/ai/utils/validation";
 import { z } from "zod/v4";
 
 describe("sanitizeSchemaForStrictMode", () => {

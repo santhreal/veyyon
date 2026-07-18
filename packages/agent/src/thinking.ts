@@ -1,4 +1,4 @@
-import { Effort } from "@veyyon/pi-ai";
+import { Effort } from "@veyyon/ai";
 
 /**
  * Agent-local thinking selector.

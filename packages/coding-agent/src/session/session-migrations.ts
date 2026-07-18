@@ -1,4 +1,4 @@
-import { Snowflake } from "@veyyon/pi-utils";
+import { Snowflake } from "@veyyon/utils";
 import { type CompactionEntry, CURRENT_SESSION_VERSION, type FileEntry, type SessionHeader } from "./session-entries";
 
 /** Generate a unique short ID (8 hex chars, collision-checked) */

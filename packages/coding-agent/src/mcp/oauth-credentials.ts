@@ -1,4 +1,4 @@
-import { getActiveProfile } from "@veyyon/pi-utils/dirs";
+import { getActiveProfile } from "@veyyon/utils/dirs";
 import { expandEnvVarsDeep } from "../discovery/helpers";
 import type { AuthStorage } from "../session/auth-storage";
 import {

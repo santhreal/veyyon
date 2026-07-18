@@ -1,4 +1,4 @@
-import { type Component, Container } from "@veyyon/pi-tui";
+import { type Component, Container } from "@veyyon/tui";
 
 /**
  * Capabilities a mounted {@link ChatBlock} may use against its host transcript.

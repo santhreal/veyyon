@@ -1,4 +1,4 @@
-import type { AuthStorage } from "@veyyon/pi-ai";
+import type { AuthStorage } from "@veyyon/ai";
 import type { SearchResponse, SearchSource } from "../../../web/search/types";
 import { SearchProviderError } from "../../../web/search/types";
 import { clampNumResults } from "../utils";
@@ -125,33 +125,35 @@ async function callDuckDuckGoHtml(params: SearchParams): Promise<string> {
 	// Add b: "" parameter as specified in the browser fetch template to match real browser form submission
 	form.set("b", "");
 
-	const page = await browserFetch(DUCKDUCKGO_HTML_URL, {
-		fetch: params.fetch ?? fetch,
-		signal: withHardTimeout(params.signal),
-		referer: "https://html.duckduckgo.com/",
-		init: {
-			method: "POST",
-			body: form.toString(),
-		},
-		headers: { "Content-Type": "application/x-www-form-urlencoded" },
+	return withHardTimeout(params.signal, async hardSignal => {
+		const page = await browserFetch(DUCKDUCKGO_HTML_URL, {
+			fetch: params.fetch ?? fetch,
+			signal: hardSignal,
+			referer: "https://html.duckduckgo.com/",
+			init: {
+				method: "POST",
+				body: form.toString(),
+			},
+			headers: { "Content-Type": "application/x-www-form-urlencoded" },
+		});
+
+		const body = page.html;
+		if (page.status < 200 || page.status >= 300) {
+			const classified = classifyProviderHttpError("duckduckgo", page.status, body);
+			if (classified) throw classified;
+			throw new SearchProviderError("duckduckgo", `DuckDuckGo HTML error (${page.status})`, page.status);
+		}
+
+		if (isAnomalyResponse(body)) {
+			throw new SearchProviderError(
+				"duckduckgo",
+				"DuckDuckGo blocked the request with a bot-detection challenge. DuckDuckGo throttles automated HTML searches from datacenter/shared-egress IPs; configure a credentialed provider such as Brave, Tavily, Exa, or Kagi for reliable web search.",
+				429,
+			);
+		}
+
+		return body;
 	});
-
-	const body = page.html;
-	if (page.status < 200 || page.status >= 300) {
-		const classified = classifyProviderHttpError("duckduckgo", page.status, body);
-		if (classified) throw classified;
-		throw new SearchProviderError("duckduckgo", `DuckDuckGo HTML error (${page.status})`, page.status);
-	}
-
-	if (isAnomalyResponse(body)) {
-		throw new SearchProviderError(
-			"duckduckgo",
-			"DuckDuckGo blocked the request with a bot-detection challenge. DuckDuckGo throttles automated HTML searches from datacenter/shared-egress IPs; configure a credentialed provider such as Brave, Tavily, Exa, or Kagi for reliable web search.",
-			429,
-		);
-	}
-
-	return body;
 }
 
 /** Execute a DuckDuckGo web search via the no-JS HTML frontend. */

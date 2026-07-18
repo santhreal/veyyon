@@ -1,9 +1,10 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { logger, postmortem, Snowflake, untilAborted } from "@veyyon/pi-utils";
+import { logger, postmortem, Snowflake, untilAborted } from "@veyyon/utils";
 import { JsRuntime, type RuntimeHooks } from "../../../eval/js/shared/runtime";
 import { callSessionTool } from "../../../eval/js/tool-bridge";
+import { scopedTimeoutSignal } from "../../../utils/fetch-timeout";
 import { resizeImage } from "../../../utils/image-resize";
 import type { ToolSession } from "../../index";
 import { resolveToCwd } from "../../path-utils";
@@ -531,7 +532,7 @@ export class CmuxTab {
 						context.session.browserScreenshotDir,
 						`screenshot-${new Date().toISOString().replace(/[:.]/g, "-").slice(0, -1)}.${ext}`,
 					)
-				: (returnedPath ?? path.join(os.tmpdir(), `omp-sshots-${Snowflake.next()}.${ext}`)));
+				: (returnedPath ?? path.join(os.tmpdir(), `veyyon-sshots-${Snowflake.next()}.${ext}`)));
 		await fs.promises.mkdir(path.dirname(dest), { recursive: true });
 		await Bun.write(dest, savedBuffer);
 		const info: ScreenshotResult = {
@@ -1314,9 +1315,9 @@ class CmuxBrowserFacade {
 
 export async function runCmuxCode(tab: CmuxTab, opts: RunCmuxCodeOptions): Promise<RunResultOk> {
 	const runAc = new AbortController();
-	const timeoutSignal = AbortSignal.timeout(opts.timeoutMs);
+	const runTimeout = scopedTimeoutSignal(opts.timeoutMs);
 	const signal = AbortSignal.any(
-		opts.signal ? [timeoutSignal, opts.signal, runAc.signal] : [timeoutSignal, runAc.signal],
+		opts.signal ? [runTimeout.signal, opts.signal, runAc.signal] : [runTimeout.signal, runAc.signal],
 	);
 	const output = new RunOutput();
 	const screenshots: ScreenshotResult[] = [];
@@ -1330,7 +1331,7 @@ export async function runCmuxCode(tab: CmuxTab, opts: RunCmuxCodeOptions): Promi
 	// unhandled rejection — the postmortem-fatal path this run guards against.
 	cancelRejection.catch(() => {});
 	const onAbort = (): void => {
-		if (timeoutSignal.aborted) {
+		if (runTimeout.signal.aborted) {
 			reject(new ToolError(`Browser code execution timed out after ${opts.timeoutMs}ms`));
 		} else {
 			reject(
@@ -1393,6 +1394,7 @@ export async function runCmuxCode(tab: CmuxTab, opts: RunCmuxCodeOptions): Promi
 		]);
 		return { displays: output.finish(), returnValue: cloneSafe(returnValue), screenshots };
 	} finally {
+		runTimeout.cancel();
 		signal.removeEventListener("abort", onAbort);
 		runAc.abort(postmortem.markExpectedCleanupError(new ToolAbortError("Browser run ended")));
 		tab.clearRunContext();

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, spyOn } from "bun:test";
-import { Mnemopi } from "@veyyon/pi-mnemopi/core/memory";
-import type { MnemopiLlmCompletion } from "@veyyon/pi-mnemopi/core/runtime-options";
+import { Mnemopi } from "@veyyon/mnemopi/core/memory";
+import type { MnemopiLlmCompletion } from "@veyyon/mnemopi/core/runtime-options";
 
 const instances: Mnemopi[] = [];
 

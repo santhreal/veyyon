@@ -1,38 +1,32 @@
 # Permission model
 
-Veyyon controls what the agent may do on its own with one mechanism: the **approval mode**. It decides
-which tool tiers run automatically and which pause for your yes. There is no separate OS sandbox —
-Veyyon does not confine shell commands with Landlock, seccomp, Seatbelt, or bubblewrap — so the mode is
-the boundary.
+Tool execution is gated by **`tools.approvalMode`**. The process does not apply OS command confinement (Landlock, seccomp, Seatbelt, bubblewrap).
 
 ## Tool tiers
 
-- **read** — `read`, `grep`, `glob`, listing. Never modify anything.
-- **write** — `edit`, `write`. Change workspace files.
-- **exec** — `bash` and other command execution. Run programs.
+- **read** — `read`, `grep`, `glob`, listing
+- **write** — `edit`, `write`
+- **exec** — `bash` and other command execution
 
-## Approval modes
+## Modes
 
-The approval mode is an autonomy ladder set with `tools.approvalMode`, overridable per run with
-`--approval-mode <mode>` (and `--auto-approve` / `--yolo` / `--plan-yolo`).
+Set with `tools.approvalMode`, or per run with `--approval-mode` / `--yolo` / `--plan-yolo`.
 
 | Mode | Auto-approves | Prompts for |
 | --- | --- | --- |
-| `plan` | Read-only; proposes changes without writing | Everything that writes or runs |
-| `ask` | Read-only tools | `write`, `exec` |
-| `auto-edit` | Read + workspace write | `exec` |
-| `yolo` | All tiers | Nothing (unless a per-tool override or bash-safety override applies) |
+| `plan` | read | write, exec |
+| `ask` | read | write, exec |
+| `auto-edit` | read + write | exec |
+| `yolo` | all tiers | nothing (unless per-tool override or bash safety rule) |
 
-The legacy names `always-ask` (→ `ask`) and `write` (→ `auto-edit`) are still accepted.
+Schema default: **`yolo`**. Aliases: `always-ask` → `ask`, `write` → `auto-edit`.
 
 ## Per-tool overrides
 
-Per-tool policy is a second layer: `tools.approval` maps a tool name to `allow`, `deny`, or `prompt`
-and wins over the mode for that tool. For example `veyyon config set tools.approval '{"bash":"prompt"}'`
-always prompts for `bash` even in `yolo`.
+`tools.approval` maps tool name → `allow` | `deny` | `prompt` and wins for that tool.
 
 ```yaml
-# ~/.veyyon/agent/config.yml
+# ~/.veyyon/profiles/default/agent/config.yml
 tools:
   approvalMode: auto-edit
   approval:
@@ -40,21 +34,17 @@ tools:
     read: allow
 ```
 
-## Execution policy rules
+## Execpolicy
 
-Beyond the mode and per-tool policy, **execpolicy** `.rules` files (user and project) refine which
-specific commands auto-run. Untrusted project directories disable project-local rules, config, and
-hooks until you trust the directory.
+User and project `.rules` files refine which shell commands auto-run. Untrusted project directories disable project-local rules, config, and hooks until the directory is trusted.
 
-## Fail-closed behavior
+## On deny
 
-Approval decisions fail closed: a denied or errored command returns to the model rather than
-escalating to a wider permission. Silent widening of permissions is treated as a bug. After changing
-approval settings, confirm the active `tools.approvalMode` in `/settings` (Advanced → Safety).
+Denied or failed policy checks return an error to the model. Permissions are not escalated on error.
 
-## Where the details live
+## Related
 
-- [Approvals and autonomy](../features/sandbox.md) — the deep reference.
-- [Permissions and approvals](../features/permissions-explainer.md) — the approval UX.
-- [Using Veyyon safely](../using/safety.md) — what surfaces and the checks to run.
-- [CLI reference](../reference/cli.md) — launch flags.
+- [Approvals](../features/sandbox.md)
+- [Permissions UX](../features/permissions-explainer.md)
+- [Safety](../using/safety.md)
+- [CLI](../reference/cli.md)

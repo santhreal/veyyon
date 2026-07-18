@@ -1,4 +1,4 @@
-import { logger, ptree } from "@veyyon/pi-utils";
+import { logger, ptree } from "@veyyon/utils";
 import { Settings } from "../config/settings";
 import { OutputSink } from "../session/streaming-output";
 import { resolveOutputMaxColumns, resolveOutputSinkHeadBytes } from "../tools/output-meta";

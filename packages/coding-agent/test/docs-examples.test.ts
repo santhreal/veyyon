@@ -8,14 +8,14 @@ import { describe, expect, it } from "bun:test";
 import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { parseArgs } from "@veyyon/pi-coding-agent/cli/args";
-import { isSubcommand } from "@veyyon/pi-coding-agent/cli-commands";
-import { KEYBINDINGS } from "@veyyon/pi-coding-agent/config/keybindings";
-import { SETTINGS_SCHEMA } from "@veyyon/pi-coding-agent/config/settings-schema";
-import { validateServerConfig } from "@veyyon/pi-coding-agent/mcp/config";
-import { MCP_CONFIG_SCHEMA_URL } from "@veyyon/pi-coding-agent/mcp/types";
-import { BUILTIN_SLASH_COMMAND_DEFS } from "@veyyon/pi-coding-agent/slash-commands/builtin-registry";
-import { BUILTIN_TOOLS, HIDDEN_TOOLS } from "@veyyon/pi-coding-agent/tools";
+import { parseArgs } from "@veyyon/coding-agent/cli/args";
+import { isSubcommand } from "@veyyon/coding-agent/cli-commands";
+import { KEYBINDINGS } from "@veyyon/coding-agent/config/keybindings";
+import { SETTINGS_SCHEMA } from "@veyyon/coding-agent/config/settings-schema";
+import { validateServerConfig } from "@veyyon/coding-agent/mcp/config";
+import { MCP_CONFIG_SCHEMA_URL } from "@veyyon/coding-agent/mcp/types";
+import { BUILTIN_SLASH_COMMAND_DEFS } from "@veyyon/coding-agent/slash-commands/builtin-registry";
+import { BUILTIN_TOOLS, HIDDEN_TOOLS } from "@veyyon/coding-agent/tools";
 import { YAML } from "bun";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "../../..");
@@ -54,7 +54,11 @@ function listMarkdownFiles(): string[] {
 			!file.includes("/__tests__/") &&
 			!file.includes("/fixtures/") &&
 			!file.startsWith("vendor/") &&
-			!EXEMPT_FILES.has(file),
+			!EXEMPT_FILES.has(file) &&
+			// Tracked but deleted in the working tree: a pending deletion in a
+			// shared worktree, not a doc-coherence failure. On a clean checkout
+			// every tracked file exists, so this filter is a no-op there.
+			fs.existsSync(path.join(REPO_ROOT, file)),
 	);
 }
 
@@ -358,17 +362,14 @@ describe("docs examples — config.yml keys exist in the settings schema", () =>
 });
 
 describe("docs examples — documented env vars are consumed in source", () => {
-	const ENV_NAME_RE = /\b(?:VEYYON|OMP|PI)_[A-Z][A-Z0-9_]*\b/g;
+	const ENV_NAME_RE = /\bVEYYON_[A-Z][A-Z0-9_]*\b/g;
 
-	/** Strip the brand prefix so VEYYON_FOO / OMP_FOO / PI_FOO all key as FOO. */
+	/** Strip the VEYYON_ prefix so VEYYON_FOO keys as FOO. */
 	function envSuffix(name: string): string {
-		return name.replace(/^(?:VEYYON|OMP|PI)_/, "");
+		return name.replace(/^VEYYON_/, "");
 	}
 
-	/**
-	 * Every env-var suffix any source file reads or writes, under any of the
-	 * three prefixes (the env mirror makes them interchangeable at runtime).
-	 */
+	/** Every VEYYON_ env-var suffix any source file reads or writes. */
 	function collectSourceEnvSuffixes(): Set<string> {
 		const suffixes = new Set<string>();
 		const globs: Array<[string, string]> = [
@@ -403,7 +404,7 @@ describe("docs examples — documented env vars are consumed in source", () => {
 	 */
 	const NEGATION_RE = /\bno\s+`|never existed|removed|is gone|not shipped|does not exist|belonged to the removed/i;
 
-	it("every VEYYON_/OMP_/PI_ env var named in the docs exists in source", () => {
+	it("every VEYYON_ env var named in the docs exists in source", () => {
 		const sourceSuffixes = collectSourceEnvSuffixes();
 		expect(sourceSuffixes.size).toBeGreaterThan(20);
 		const failures: string[] = [];
@@ -422,7 +423,7 @@ describe("docs examples — documented env vars are consumed in source", () => {
 					continue;
 				}
 				for (const match of lines[i].matchAll(ENV_NAME_RE)) {
-					// `VEYYON_<NAME>` / `PI_FOO_*` placeholders are shape illustrations.
+					// `VEYYON_<NAME>` / `VEYYON_FOO_*` placeholders are shape illustrations.
 					const next = lines[i].slice((match.index ?? 0) + match[0].length);
 					if (next.startsWith("<") || next.startsWith("*")) continue;
 					if (!sourceSuffixes.has(envSuffix(match[0]))) {
@@ -451,6 +452,16 @@ describe("docs examples — documented slash commands exist in the builtin regis
 	for (const command of BUILTIN_SLASH_COMMAND_DEFS) {
 		registered.add(command.name);
 		for (const alias of command.aliases ?? []) registered.add(alias);
+	}
+	// Bundled custom commands (`/review`, `/green`) are shipped alongside the
+	// builtins and typed the same way. Source their names from the loader's
+	// single bundled-command list so this stays in sync as new ones are added.
+	{
+		const loaderSrc = fs.readFileSync(
+			path.join(REPO_ROOT, "packages/coding-agent/src/extensibility/custom-commands/loader.ts"),
+			"utf-8",
+		);
+		for (const m of loaderSrc.matchAll(/path: "bundled:([a-z][a-z0-9_-]*)"/g)) registered.add(m[1]);
 	}
 
 	it("the registry is alive", () => {
@@ -488,8 +499,17 @@ describe("docs examples — tools reference names real tools", () => {
 	// tool's advertised name in that mode, edit/index.ts).
 	const TOOLS_DOC = "docs/handbook/src/reference/tools.md";
 	const TOKEN_RE = /`([a-z][a-z0-9_]*)`/g;
+	// The Edit/write table legitimately backticks the `edit` tool's mode names
+	// (`hashline`, `apply_patch`, `patch`, `replace`) — those are modes, not
+	// tools. Source them from their single owner so this stays in sync.
+	function collectEditModeNames(): string[] {
+		const src = fs.readFileSync(path.join(REPO_ROOT, "packages/coding-agent/src/utils/edit-mode.ts"), "utf-8");
+		const union = src.match(/export type EditMode\s*=\s*([^;]+);/);
+		if (!union) throw new Error("could not find EditMode union in utils/edit-mode.ts");
+		return [...union[1].matchAll(/"([a-z][a-z0-9_]*)"/g)].map(m => m[1]);
+	}
 	// Argument/field names the page legitimately shows that are not tools.
-	const NON_TOOL_TOKENS = new Set(["input"]);
+	const NON_TOOL_TOKENS = new Set(["input", ...collectEditModeNames()]);
 
 	function collectToolNames(): Set<string> {
 		const names = new Set<string>([...Object.keys(BUILTIN_TOOLS), ...Object.keys(HIDDEN_TOOLS), "apply_patch"]);

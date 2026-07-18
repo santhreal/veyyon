@@ -1,3 +1,4 @@
+import { errorMessage } from "@veyyon/utils";
 import type { Api } from "../types";
 import type { AbortSourceTracker } from "../utils/abort";
 import type { CapturedHttpErrorResponse, RawHttpRequestDump } from "../utils/http-inspector";
@@ -50,7 +51,7 @@ export async function finalize(error: unknown, opts: FinalizeOptions = {}): Prom
 		const localReason = opts.abortTracker?.getLocalAbortReason();
 		message = localReason?.message ?? (await formatMessage(error, opts));
 	} catch {
-		message = error instanceof Error ? error.message : String(error);
+		message = errorMessage(error);
 	}
 
 	const id = classifyMessage({

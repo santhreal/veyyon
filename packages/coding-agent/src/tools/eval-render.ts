@@ -9,9 +9,9 @@
  * crashed module load with a TDZ `Cannot access 'evalToolRenderer' before
  * initialization`.
  */
-import type { Component } from "@veyyon/pi-tui";
-import { Markdown, Text } from "@veyyon/pi-tui";
-import { formatNumber } from "@veyyon/pi-utils";
+import type { Component } from "@veyyon/tui";
+import { Markdown, Text } from "@veyyon/tui";
+import { formatCount, formatNumber } from "@veyyon/utils";
 import { settings } from "../config/settings";
 import type { EvalCellResult, EvalLanguage, EvalStatusEvent, EvalToolDetails } from "../eval/types";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
@@ -282,7 +282,7 @@ function formatStatusEvent(event: EvalStatusEvent, theme: Theme): string {
 			if (data.path) parts.push(`to ${shortenPath(String(data.path))}`);
 			break;
 		case "cat":
-			parts.push(`${data.files} file${(data.files as number) !== 1 ? "s" : ""}`);
+			parts.push(formatCount("file", data.files as number));
 			parts.push(`${data.chars} chars`);
 			break;
 		case "ls":
@@ -294,7 +294,7 @@ function formatStatusEvent(event: EvalStatusEvent, theme: Theme): string {
 			} else if (data.action === "get") {
 				parts.push(`${data.key}=${truncateToWidth(String(data.value ?? ""), 30)}`);
 			} else {
-				parts.push(`${data.count} variable${(data.count as number) !== 1 ? "s" : ""}`);
+				parts.push(formatCount("variable", data.count as number));
 			}
 			break;
 		case "git_status":
@@ -310,14 +310,14 @@ function formatStatusEvent(event: EvalStatusEvent, theme: Theme): string {
 			if (data.branch) parts.push(`on ${data.branch}`);
 			break;
 		case "git_log":
-			parts.push(`${data.commits} commit${(data.commits as number) !== 1 ? "s" : ""}`);
+			parts.push(formatCount("commit", data.commits as number));
 			break;
 		case "git_diff":
-			parts.push(`${data.lines} line${(data.lines as number) !== 1 ? "s" : ""}`);
+			parts.push(formatCount("line", data.lines as number));
 			if (data.staged) parts.push("(staged)");
 			break;
 		case "batch":
-			parts.push(`${data.files} file${(data.files as number) !== 1 ? "s" : ""} processed`);
+			parts.push(`${formatCount("file", data.files as number)} processed`);
 			break;
 		case "completion":
 			if (data.model) parts.push(String(data.model));

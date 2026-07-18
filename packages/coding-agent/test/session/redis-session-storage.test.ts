@@ -18,8 +18,8 @@ import { beforeEach, describe, expect, it } from "bun:test";
 import {
 	RedisSessionStorage,
 	type RedisSessionStorageClient,
-} from "@veyyon/pi-coding-agent/session/redis-session-storage";
-import { serializeTitleSlot } from "@veyyon/pi-coding-agent/session/session-title-slot";
+} from "@veyyon/coding-agent/session/redis-session-storage";
+import { serializeTitleSlot } from "@veyyon/coding-agent/session/session-title-slot";
 
 interface FakeRedisCall {
 	method: string;
@@ -178,7 +178,7 @@ describe("RedisSessionStorage", () => {
 
 		expect(storage.existsSync("/sessions/p/a.jsonl")).toBe(true);
 		expect(await storage.readText("/sessions/p/a.jsonl")).toBe("line1\nline2\n");
-		expect(redis.strings.get("omp:sessions:file:/sessions/p/a.jsonl")).toBe("line1\nline2\n");
+		expect(redis.strings.get("veyyon:sessions:file:/sessions/p/a.jsonl")).toBe("line1\nline2\n");
 
 		const stat = storage.statSync("/sessions/p/a.jsonl");
 		expect(stat.size).toBe(12);
@@ -186,8 +186,8 @@ describe("RedisSessionStorage", () => {
 	});
 
 	it("create() warms the metadata index with STRLEN and never GETs full content", async () => {
-		redis.strings.set("omp:sessions:file:/sessions/p/huge.jsonl", "0123456789");
-		redis.hashes.set("omp:sessions:meta", new Map([["/sessions/p/huge.jsonl", String(Date.now())]]));
+		redis.strings.set("veyyon:sessions:file:/sessions/p/huge.jsonl", "0123456789");
+		redis.hashes.set("veyyon:sessions:meta", new Map([["/sessions/p/huge.jsonl", String(Date.now())]]));
 
 		const storage = await RedisSessionStorage.create({ client: redis });
 		expect(storage.statSync("/sessions/p/huge.jsonl").size).toBe(10);
@@ -272,7 +272,7 @@ describe("RedisSessionStorage", () => {
 
 		// Redis has not necessarily caught up yet — drain to force.
 		await storage.drain();
-		expect(redis.strings.get("omp:sessions:file:/sessions/p/session.jsonl")).toBe(
+		expect(redis.strings.get("veyyon:sessions:file:/sessions/p/session.jsonl")).toBe(
 			'{"type":"session"}\n{"type":"message"}\n',
 		);
 
@@ -288,7 +288,7 @@ describe("RedisSessionStorage", () => {
 		await writer.close();
 
 		expect(await storage.readText("/sessions/p/keep.jsonl")).toBe("fresh\n");
-		expect(redis.strings.get("omp:sessions:file:/sessions/p/keep.jsonl")).toBe("fresh\n");
+		expect(redis.strings.get("veyyon:sessions:file:/sessions/p/keep.jsonl")).toBe("fresh\n");
 	});
 
 	it("drain() surfaces writer errors so background failures are observable", async () => {
@@ -314,9 +314,9 @@ describe("RedisSessionStorage", () => {
 		expect(storage.existsSync("/sessions/p/s1/draft.txt")).toBe(false);
 		expect(storage.existsSync("/sessions/p/s1/sub/notes")).toBe(false);
 		expect(storage.existsSync("/sessions/p/other.jsonl")).toBe(true);
-		expect(redis.strings.has("omp:sessions:file:/sessions/p/s1.jsonl")).toBe(false);
-		expect(redis.strings.has("omp:sessions:file:/sessions/p/s1/draft.txt")).toBe(false);
-		expect(redis.strings.has("omp:sessions:file:/sessions/p/other.jsonl")).toBe(true);
+		expect(redis.strings.has("veyyon:sessions:file:/sessions/p/s1.jsonl")).toBe(false);
+		expect(redis.strings.has("veyyon:sessions:file:/sessions/p/s1/draft.txt")).toBe(false);
+		expect(redis.strings.has("veyyon:sessions:file:/sessions/p/other.jsonl")).toBe(true);
 	});
 
 	it("rename moves content and meta atomically inside the index", async () => {
@@ -328,8 +328,8 @@ describe("RedisSessionStorage", () => {
 		expect(storage.existsSync("/sessions/p/orig.jsonl")).toBe(false);
 		expect(await storage.readText("/sessions/p/renamed.jsonl")).toBe("payload\n");
 		expect(storage.statSync("/sessions/p/renamed.jsonl").mtimeMs).toBe(originalMtime);
-		expect(redis.strings.get("omp:sessions:file:/sessions/p/renamed.jsonl")).toBe("payload\n");
-		expect(redis.strings.has("omp:sessions:file:/sessions/p/orig.jsonl")).toBe(false);
+		expect(redis.strings.get("veyyon:sessions:file:/sessions/p/renamed.jsonl")).toBe("payload\n");
+		expect(redis.strings.has("veyyon:sessions:file:/sessions/p/orig.jsonl")).toBe(false);
 	});
 
 	it("rename rolls back the index when Redis RENAME fails", async () => {
@@ -348,10 +348,10 @@ describe("RedisSessionStorage", () => {
 	it("refresh() reloads the metadata index from Redis after out-of-band writes", async () => {
 		const storage = await RedisSessionStorage.create({ client: redis });
 		// Simulate a peer process writing directly to Redis.
-		redis.strings.set("omp:sessions:file:/peer/x.jsonl", "from peer\n");
-		const peerHash = redis.hashes.get("omp:sessions:meta") ?? new Map<string, string>();
+		redis.strings.set("veyyon:sessions:file:/peer/x.jsonl", "from peer\n");
+		const peerHash = redis.hashes.get("veyyon:sessions:meta") ?? new Map<string, string>();
 		peerHash.set("/peer/x.jsonl", String(Date.now() + 5_000));
-		redis.hashes.set("omp:sessions:meta", peerHash);
+		redis.hashes.set("veyyon:sessions:meta", peerHash);
 
 		expect(storage.existsSync("/peer/x.jsonl")).toBe(false);
 		await storage.refresh();
@@ -378,15 +378,15 @@ describe("RedisSessionStorage", () => {
 		redis.calls.length = 0;
 		expect(await storage.readTextSlices("/sessions/p/big.jsonl", 4, 3)).toEqual(["abcd", "hij"]);
 		expect(redis.calls.map(call => call.method)).toEqual(["getrange", "getrange"]);
-		expect(redis.calls[0].args).toEqual(["omp:sessions:file:/sessions/p/big.jsonl", 0, 3]);
-		expect(redis.calls[1].args).toEqual(["omp:sessions:file:/sessions/p/big.jsonl", -3, -1]);
+		expect(redis.calls[0].args).toEqual(["veyyon:sessions:file:/sessions/p/big.jsonl", 0, 3]);
+		expect(redis.calls[1].args).toEqual(["veyyon:sessions:file:/sessions/p/big.jsonl", -3, -1]);
 	});
 
 	it("custom prefix isolates keyspaces", async () => {
 		const storage = await RedisSessionStorage.create({ client: redis, prefix: "proj-a:" });
 		await storage.writeText("/sessions/x.jsonl", "hello\n");
 		expect(redis.strings.has("proj-a:file:/sessions/x.jsonl")).toBe(true);
-		expect(redis.strings.has("omp:sessions:file:/sessions/x.jsonl")).toBe(false);
+		expect(redis.strings.has("veyyon:sessions:file:/sessions/x.jsonl")).toBe(false);
 	});
 
 	it("unlink on a missing key throws ENOENT", async () => {

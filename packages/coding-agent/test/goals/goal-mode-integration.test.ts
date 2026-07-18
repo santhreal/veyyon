@@ -1,20 +1,20 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
-import { Agent } from "@veyyon/pi-agent-core";
-import type { Model } from "@veyyon/pi-ai";
-import { ModelRegistry } from "@veyyon/pi-coding-agent/config/model-registry";
-import { resetSettingsForTest, Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { GoalTool } from "@veyyon/pi-coding-agent/goals/tools/goal-tool";
-import { InteractiveMode } from "@veyyon/pi-coding-agent/modes/interactive-mode";
-import { initTheme } from "@veyyon/pi-coding-agent/modes/theme/theme";
-import { AgentSession } from "@veyyon/pi-coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/pi-coding-agent/session/auth-storage";
-import { normalizeCustomMessagePayload } from "@veyyon/pi-coding-agent/session/messages";
-import { SessionManager } from "@veyyon/pi-coding-agent/session/session-manager";
-import type { DiscoverableTool } from "@veyyon/pi-coding-agent/tool-discovery/tool-index";
-import { createTools, type Tool, type ToolSession } from "@veyyon/pi-coding-agent/tools";
-import type { TodoPhase } from "@veyyon/pi-coding-agent/tools/todo";
-import { TempDir } from "@veyyon/pi-utils";
+import { Agent } from "@veyyon/agent-core";
+import type { Model } from "@veyyon/ai";
+import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
+import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
+import { GoalTool } from "@veyyon/coding-agent/goals/tools/goal-tool";
+import { InteractiveMode } from "@veyyon/coding-agent/modes/interactive-mode";
+import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
+import { normalizeCustomMessagePayload } from "@veyyon/coding-agent/session/messages";
+import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import type { DiscoverableTool } from "@veyyon/coding-agent/tool-discovery/tool-index";
+import { createTools, type Tool, type ToolSession } from "@veyyon/coding-agent/tools";
+import type { TodoPhase } from "@veyyon/coding-agent/tools/todo";
+import { TempDir } from "@veyyon/utils";
 
 function createToolSession(cwd: string, settings: Settings, overrides: Partial<ToolSession> = {}): ToolSession {
 	return {

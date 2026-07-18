@@ -1,8 +1,8 @@
-export { truncate } from "@veyyon/pi-utils";
+export { truncate } from "@veyyon/utils";
 
 import * as fs from "node:fs/promises";
 import path from "node:path";
-import { isEnoent } from "@veyyon/pi-utils";
+import { isEnoent } from "@veyyon/utils";
 import { type Theme, theme } from "../modes/theme/theme";
 import { formatGroupedFiles } from "../tools/grouped-file-output";
 import { formatPathRelativeToCwd, resolveToCwd } from "../tools/path-utils";

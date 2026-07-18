@@ -22,10 +22,10 @@ pub fn run(argv: Vec<OsString>) -> i32 {
 		Err(err) => {
 			let rendered = err.to_string();
 			if err.use_stderr() {
-				let _ = write!(pi_uutils_ctx::stderr(), "{rendered}");
+				let _ = write!(veyyon_uutils_ctx::stderr(), "{rendered}");
 				return 1;
 			}
-			let _ = write!(pi_uutils_ctx::stdout(), "{rendered}");
+			let _ = write!(veyyon_uutils_ctx::stdout(), "{rendered}");
 			return 0;
 		},
 	};
@@ -53,7 +53,7 @@ pub fn run(argv: Vec<OsString>) -> i32 {
 	match tee(&opts) {
 		Ok(()) => 0,
 		Err(err) => {
-			let _ = writeln!(pi_uutils_ctx::stderr(), "tee: {err}");
+			let _ = writeln!(veyyon_uutils_ctx::stderr(), "tee: {err}");
 			1
 		},
 	}
@@ -74,7 +74,7 @@ fn tee(options: &Options) -> Result<()> {
 		match open(name, options.append) {
 			Ok(writer) => writers.push(writer),
 			Err(err) => {
-				let _ = writeln!(pi_uutils_ctx::stderr(), "tee: {}: {err}", name.maybe_quote());
+				let _ = writeln!(veyyon_uutils_ctx::stderr(), "tee: {}: {err}", name.maybe_quote());
 				had_open_errors = true;
 				if matches!(
 					options.output_error.as_ref(),
@@ -87,7 +87,7 @@ fn tee(options: &Options) -> Result<()> {
 	}
 
 	let mut output = MultiWriter::new(writers, options.output_error.clone());
-	let copy_result = copy(pi_uutils_ctx::stdin(), &mut output);
+	let copy_result = copy(veyyon_uutils_ctx::stdin(), &mut output);
 	let flush_result = output.flush();
 	if had_open_errors || copy_result.is_err() || flush_result.is_err() || output.error_occurred() {
 		Err(
@@ -115,7 +115,8 @@ fn copy(mut input: impl Read, mut output: impl Write) -> Result<usize> {
 			},
 			Err(err) if err.kind() == ErrorKind::Interrupted => {},
 			Err(err) => {
-				let _ = writeln!(pi_uutils_ctx::stderr(), "tee: error reading standard input: {err}");
+				let _ =
+					writeln!(veyyon_uutils_ctx::stderr(), "tee: error reading standard input: {err}");
 				return Err(err);
 			},
 		}
@@ -123,7 +124,7 @@ fn copy(mut input: impl Read, mut output: impl Write) -> Result<usize> {
 }
 
 fn open(name: &OsString, append: bool) -> Result<NamedWriter> {
-	let path = pi_uutils_ctx::resolve(name);
+	let path = veyyon_uutils_ctx::resolve(name);
 	let mut options = OpenOptions::new();
 	if append {
 		options.append(true);
@@ -167,8 +168,11 @@ impl MultiWriter {
 						matches!(mode.as_ref(), Some(OutputErrorMode::Warn | OutputErrorMode::Exit))
 							|| !is_pipe;
 					if report {
-						let _ =
-							writeln!(pi_uutils_ctx::stderr(), "tee: {}: {err}", writer.name.maybe_quote());
+						let _ = writeln!(
+							veyyon_uutils_ctx::stderr(),
+							"tee: {}: {err}",
+							writer.name.maybe_quote()
+						);
 						errors += 1;
 					}
 					let exit = matches!(mode.as_ref(), Some(OutputErrorMode::Exit))
@@ -211,14 +215,14 @@ impl Write for Writer {
 	fn write(&mut self, buf: &[u8]) -> Result<usize> {
 		match self {
 			Self::File(file) => file.write(buf),
-			Self::Stdout => pi_uutils_ctx::stdout().write(buf),
+			Self::Stdout => veyyon_uutils_ctx::stdout().write(buf),
 		}
 	}
 
 	fn flush(&mut self) -> Result<()> {
 		match self {
 			Self::File(file) => file.flush(),
-			Self::Stdout => pi_uutils_ctx::stdout().flush(),
+			Self::Stdout => veyyon_uutils_ctx::stdout().flush(),
 		}
 	}
 }

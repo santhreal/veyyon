@@ -1,6 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { getAgentDir, isEnoent, logger } from "@veyyon/pi-utils";
+import { getAgentDir, isEnoent, logger } from "@veyyon/utils";
 import { ArkErrors, type Type } from "arktype";
 import { JSONC, YAML } from "bun";
 

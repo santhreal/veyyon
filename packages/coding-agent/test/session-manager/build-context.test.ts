@@ -1,5 +1,5 @@
 import { describe, expect, it, spyOn } from "bun:test";
-import { buildSessionContext } from "@veyyon/pi-coding-agent/session/session-context";
+import { buildSessionContext } from "@veyyon/coding-agent/session/session-context";
 import type {
 	BranchSummaryEntry,
 	CompactionEntry,
@@ -7,7 +7,7 @@ import type {
 	SessionEntry,
 	SessionMessageEntry,
 	ThinkingLevelChangeEntry,
-} from "@veyyon/pi-coding-agent/session/session-entries";
+} from "@veyyon/coding-agent/session/session-entries";
 import * as snapcompact from "@veyyon/snapcompact";
 
 function msg(id: string, parentId: string | null, role: "user" | "assistant", text: string): SessionMessageEntry {

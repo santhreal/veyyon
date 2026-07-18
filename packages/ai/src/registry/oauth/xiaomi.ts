@@ -8,6 +8,7 @@
  * login opens plan management so users copy the regional `tp-...` key.
  */
 
+import { scopedTimeoutSignal } from "@veyyon/utils";
 import * as AIError from "../../error";
 import type { FetchImpl } from "../../types";
 import type { OAuthController } from "./types";
@@ -73,10 +74,10 @@ async function validateXiaomiApiKey(
 
 	for (const ep of endpoints) {
 		// Fresh timeout per endpoint so SGP→AMS fallback works after a regional
-		// timeout: a shared AbortSignal.timeout would stay aborted and instantly
-		// abort the AMS fetch.
-		const timeoutSignal = AbortSignal.timeout(VALIDATION_TIMEOUT_MS);
-		const requestSignal = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
+		// timeout: a shared deadline would stay aborted and instantly abort the
+		// AMS fetch. Scoped so each attempt's timer is cleared on settle instead
+		// of staying armed like a bare AbortSignal.timeout.
+		const attemptTimeout = scopedTimeoutSignal(VALIDATION_TIMEOUT_MS, signal);
 		try {
 			const response = await fetchImpl(`${ep.baseUrl}/chat/completions`, {
 				method: "POST",
@@ -89,7 +90,7 @@ async function validateXiaomiApiKey(
 					max_tokens: 1,
 					messages: [{ role: "user", content: "ping" }],
 				}),
-				signal: requestSignal,
+				signal: attemptTimeout.signal,
 			});
 
 			if (response.ok) {
@@ -136,6 +137,8 @@ async function validateXiaomiApiKey(
 				throw e;
 			}
 			lastError = e instanceof Error ? e : new Error(String(e));
+		} finally {
+			attemptTimeout.cancel();
 		}
 	}
 	throw (

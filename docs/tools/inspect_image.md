@@ -85,7 +85,7 @@ TUI rendering adds presentation-only truncation from `packages/coding-agent/src/
 - Resize fast path: if the original image is already within `1568x1568` and within `maxBytes / 4` (125 KiB by default), `resizeImage(...)` returns the original bytes unchanged.
 - Resize quality ladder: after the first encode pass, lossy retries use qualities `[70, 60, 50, 40]`.
 - Resize dimension ladder: if quality reduction still misses the byte target, retries scale dimensions by `[1.0, 0.75, 0.5, 0.35, 0.25]` and stop if either dimension would fall below `100` pixels.
-- First resize pass encodes PNG, JPEG, and WebP, then keeps the smallest encoded buffer. Fallback passes encode JPEG and WebP only, again keeping the smaller output. WebP is excluded from both ladders when `OMP_NO_WEBP=1`/`true` (or `excludeWebP` is passed).
+- First resize pass encodes PNG, JPEG, and WebP, then keeps the smallest encoded buffer. Fallback passes encode JPEG and WebP only, again keeping the smaller output. WebP is excluded from both ladders when `VEYYON_NO_WEBP=1`/`true` (or `excludeWebP` is passed).
 - Renderer caps:
   - `INSPECT_QUESTION_PREVIEW_WIDTH = 100`
   - `INSPECT_OUTPUT_COLLAPSED_LINES = 4`

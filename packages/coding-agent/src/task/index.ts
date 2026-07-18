@@ -2,9 +2,9 @@
  * Task tool - Delegate tasks to specialized agents.
  *
  * Discovers agent definitions from:
- *   - Bundled agents (shipped with omp-coding-agent)
+ *   - Bundled agents (shipped with the veyyon coding agent)
  *   - ~/.veyyon/agent/agents/*.md (user-level)
- *   - .omp/agents/*.md (project-level)
+ *   - .veyyon/agents/*.md (project-level)
  *
  * Supports:
  *   - Single agent spawn per call (parallelism = parallel task calls)
@@ -16,9 +16,9 @@
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import path from "node:path";
-import type { AgentTool, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/pi-agent-core";
-import type { Usage } from "@veyyon/pi-ai";
-import { $env, logger, prompt, Snowflake } from "@veyyon/pi-utils";
+import type { AgentTool, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
+import type { Usage } from "@veyyon/ai";
+import { $env, formatCount, logger, pluralize, prompt, Snowflake } from "@veyyon/utils";
 import type { ToolSession } from "..";
 import { resolveAgentModelPatterns } from "../config/model-resolver";
 import { MCPManager } from "../mcp/manager";
@@ -581,7 +581,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 		private readonly session: ToolSession,
 		discoveredAgents: AgentDefinition[],
 	) {
-		this.#blockedAgent = $env.PI_BLOCKED_AGENT;
+		this.#blockedAgent = $env.VEYYON_BLOCKED_AGENT;
 		this.#discoveredAgents = discoveredAgents;
 	}
 
@@ -791,7 +791,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 				content: [
 					{
 						type: "text",
-						text: `Failed to start background task job${failedSchedules.length === 1 ? "" : "s"}: ${failedSchedules.join("; ")}`,
+						text: `Failed to start background task ${pluralize("job", failedSchedules.length)}: ${failedSchedules.join("; ")}`,
 					},
 				],
 				details: { projectAgentsDir: null, results: [], totalDurationMs: 0 },
@@ -800,7 +800,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 
 		const scheduleFailureSummary =
 			failedSchedules.length > 0
-				? ` Failed to schedule ${failedSchedules.length} spawn${failedSchedules.length === 1 ? "" : "s"}: ${failedSchedules.join("; ")}.`
+				? ` Failed to schedule ${formatCount("spawn", failedSchedules.length)}: ${failedSchedules.join("; ")}.`
 				: "";
 		const coordinationHint =
 			started.length === 1
@@ -852,7 +852,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 			content: [
 				{
 					type: "text",
-					text: `Running ${syncLabel} inline; ${started.length} background agent${started.length === 1 ? "" : "s"} spawned...`,
+					text: `Running ${syncLabel} inline; ${formatCount("background agent", started.length)} spawned...`,
 				},
 			],
 			details: buildAsyncDetails(),
@@ -901,7 +901,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 
 		const spawnedSummary =
 			started.length > 0
-				? `Spawned ${started.length} background agent${started.length === 1 ? "" : "s"}.${scheduleFailureSummary} Each result will be delivered when that agent yields.\n${started.map(({ agentId, jobId }) => `- \`${agentId}\` (job \`${jobId}\`)`).join("\n")}\n${coordinationHint}`
+				? `Spawned ${formatCount("background agent", started.length)}.${scheduleFailureSummary} Each result will be delivered when that agent yields.\n${started.map(({ agentId, jobId }) => `- \`${agentId}\` (job \`${jobId}\`)`).join("\n")}\n${coordinationHint}`
 				: scheduleFailureSummary.trim();
 		const text = [merged.contentParts.join("\n\n"), spawnedSummary]
 			.filter(section => section.trim().length > 0)
@@ -1305,7 +1305,7 @@ export class TaskTool implements AgentTool<TaskToolSchemaInstance, TaskToolDetai
 		// Derive artifacts directory
 		const sessionFile = this.session.getSessionFile();
 		const artifactsDir = sessionFile ? sessionFile.slice(0, -6) : null;
-		const tempArtifactsDir = artifactsDir ? null : path.join(os.tmpdir(), `omp-task-${Snowflake.next()}`);
+		const tempArtifactsDir = artifactsDir ? null : path.join(os.tmpdir(), `veyyon-task-${Snowflake.next()}`);
 		const effectiveArtifactsDir = artifactsDir || tempArtifactsDir!;
 
 		const localProtocolOptions: LocalProtocolOptions = this.session.localProtocolOptions ?? {

@@ -2,7 +2,7 @@
  * GitHub Copilot OAuth flow (opencode OAuth app)
  */
 import { scheduler } from "node:timers/promises";
-import { getBundledModels } from "@veyyon/pi-catalog/models";
+import { getBundledModels } from "@veyyon/catalog/models";
 import {
 	COPILOT_API_HEADERS,
 	getGitHubCopilotBaseUrl,
@@ -11,7 +11,7 @@ import {
 	normalizeGitHubCopilotApiEndpoint,
 	normalizeGitHubCopilotEnterpriseDomain,
 	OPENCODE_HEADERS,
-} from "@veyyon/pi-catalog/wire/github-copilot";
+} from "@veyyon/catalog/wire/github-copilot";
 import * as AIError from "../../error";
 import type { FetchImpl } from "../../types";
 import { emitOAuthSuccessPage } from "./success-page";

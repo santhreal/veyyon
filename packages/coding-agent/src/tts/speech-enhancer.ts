@@ -15,12 +15,13 @@
  *   mechanical {@link SpeakableStream} cleanup — speech never blocks on the
  *   model.
  */
-import { type AssistantMessage, completeSimple } from "@veyyon/pi-ai";
-import { logger, prompt } from "@veyyon/pi-utils";
+import { type AssistantMessage, completeSimple } from "@veyyon/ai";
+import { logger, prompt } from "@veyyon/utils";
 import type { ModelRegistry } from "../config/model-registry";
 import { getModelMatchPreferences, resolveModelRoleValue } from "../config/model-resolver";
 import type { Settings } from "../config/settings";
 import speechRewritePrompt from "../prompts/system/speech-rewrite.md" with { type: "text" };
+import { scopedTimeoutSignal } from "../utils/fetch-timeout";
 
 const SYSTEM_PROMPT = prompt.render(speechRewritePrompt);
 // Rewrite budget: a paragraph in, a spoken paragraph (usually shorter) out.
@@ -82,21 +83,26 @@ export class SpeechEnhancer {
 			if (!apiKey) return null;
 			// Resolve metadata after getApiKey so the session-sticky credential is recorded first.
 			const metadata = this.#deps.metadataResolver?.(model.provider);
-			const timeout = AbortSignal.timeout(REWRITE_TIMEOUT_MS);
-			const response = await completeSimple(
-				model,
-				{
-					systemPrompt: [SYSTEM_PROMPT],
-					messages: [{ role: "user", content: boundBlock(block), timestamp: Date.now() }],
-				},
-				{
-					apiKey: registry.resolver(model, sessionId),
-					maxTokens: ANSWER_MAX_TOKENS,
-					disableReasoning: true,
-					metadata,
-					signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
-				},
-			);
+			const timeout = scopedTimeoutSignal(REWRITE_TIMEOUT_MS, signal);
+			let response: Awaited<ReturnType<typeof completeSimple>>;
+			try {
+				response = await completeSimple(
+					model,
+					{
+						systemPrompt: [SYSTEM_PROMPT],
+						messages: [{ role: "user", content: boundBlock(block), timestamp: Date.now() }],
+					},
+					{
+						apiKey: registry.resolver(model, sessionId),
+						maxTokens: ANSWER_MAX_TOKENS,
+						disableReasoning: true,
+						metadata,
+						signal: timeout.signal,
+					},
+				);
+			} finally {
+				timeout.cancel();
+			}
 			if (response.stopReason === "error") {
 				logger.debug("speech-enhancer: rewrite errored", { error: response.errorMessage });
 				return null;

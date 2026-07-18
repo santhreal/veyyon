@@ -1,18 +1,18 @@
 /**
  * End-to-end exercise of the new subprocess-backed Python runner.
  *
- * Gated by `PI_PYTHON_INTEGRATION=1` so CI without a real Python interpreter
+ * Gated by `VEYYON_PYTHON_INTEGRATION=1` so CI without a real Python interpreter
  * (or sandboxes where subprocess spawning is restricted) does not fail.
  */
 import { afterEach, describe, expect, it } from "bun:test";
 import * as path from "node:path";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { disposeAllKernelSessions, executePythonWithKernel } from "@veyyon/pi-coding-agent/eval/py/executor";
-import { PythonKernel } from "@veyyon/pi-coding-agent/eval/py/kernel";
-import { filterEnv, resolvePythonRuntime } from "@veyyon/pi-coding-agent/eval/py/runtime";
-import { TempDir } from "@veyyon/pi-utils";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import { disposeAllKernelSessions, executePythonWithKernel } from "@veyyon/coding-agent/eval/py/executor";
+import { PythonKernel } from "@veyyon/coding-agent/eval/py/kernel";
+import { filterEnv, resolvePythonRuntime } from "@veyyon/coding-agent/eval/py/runtime";
+import { TempDir } from "@veyyon/utils";
 
-const SHOULD_RUN = Bun.env.PI_PYTHON_INTEGRATION === "1";
+const SHOULD_RUN = Bun.env.VEYYON_PYTHON_INTEGRATION === "1";
 const MATPLOTLIB_TEST_CWD = process.cwd();
 
 async function hasMatplotlib(cwd: string): Promise<boolean> {

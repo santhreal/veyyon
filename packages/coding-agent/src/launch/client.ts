@@ -2,7 +2,7 @@ import * as fs from "node:fs/promises";
 import * as net from "node:net";
 import * as os from "node:os";
 import * as path from "node:path";
-import { isEexist, isEnoent, postmortem } from "@veyyon/pi-utils";
+import { isEexist, isEnoent, postmortem } from "@veyyon/utils";
 import { resolveWorkerSpawnCmd, workerEnvFromParent } from "../subprocess/worker-client";
 import { daemonBrokerEndpoint, daemonRuntimeDir } from "./paths";
 import {
@@ -318,7 +318,7 @@ export async function daemonClientForProject(projectDir: string): Promise<Daemon
 	return pending;
 }
 
-/** Close every project broker connection held by this omp process. */
+/** Close every project broker connection held by this veyyon process. */
 export async function closeDaemonClients(): Promise<void> {
 	const pending = [...sharedClients.values()];
 	sharedClients.clear();
@@ -329,8 +329,8 @@ export async function closeDaemonClients(): Promise<void> {
 
 /** Exercise worker-host broker startup and authenticated RPC for distribution smoke tests. */
 export async function smokeTestDaemonBroker(): Promise<void> {
-	const projectDir = await fs.mkdtemp(path.join(os.tmpdir(), "omp-daemon-smoke-project-"));
-	const runtimeDir = await fs.mkdtemp(path.join(os.tmpdir(), "omp-daemon-smoke-run-"));
+	const projectDir = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-daemon-smoke-project-"));
+	const runtimeDir = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-daemon-smoke-run-"));
 	const client = await createDaemonBrokerClient(projectDir, { runtimeDir, idleGraceMs: 5_000 });
 	try {
 		const ping = await client.request({ op: "ping" });

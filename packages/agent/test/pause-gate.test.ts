@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it } from "bun:test";
-import { agentLoop, agentPauseGate } from "@veyyon/pi-agent-core";
-import type { AgentContext, AgentLoopConfig, AgentMessage, AgentTool } from "@veyyon/pi-agent-core/types";
-import type { Message } from "@veyyon/pi-ai";
-import { createMockModel } from "@veyyon/pi-ai/providers/mock";
+import { agentLoop, agentPauseGate } from "@veyyon/agent-core";
+import type { AgentContext, AgentLoopConfig, AgentMessage, AgentTool } from "@veyyon/agent-core/types";
+import type { Message } from "@veyyon/ai";
+import { createMockModel } from "@veyyon/ai/providers/mock";
 import { type } from "arktype";
 import { createUserMessage } from "./helpers";
 

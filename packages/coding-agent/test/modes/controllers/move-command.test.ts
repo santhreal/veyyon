@@ -2,9 +2,9 @@ import { beforeAll, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { CommandController } from "@veyyon/pi-coding-agent/modes/controllers/command-controller";
-import { getThemeByName, setThemeInstance } from "@veyyon/pi-coding-agent/modes/theme/theme";
-import type { InteractiveModeContext } from "@veyyon/pi-coding-agent/modes/types";
+import { CommandController } from "@veyyon/coding-agent/modes/controllers/command-controller";
+import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
+import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
 
 function createMoveContext(sourceDir: string) {
 	const state = { cwd: sourceDir, movedTo: undefined as string | undefined };
@@ -43,8 +43,8 @@ describe("CommandController /move", () => {
 	});
 
 	it("relocates the active session before re-scoping cwd-derived state", async () => {
-		const sourceDir = await fs.mkdtemp(path.join(os.tmpdir(), "omp-move-source-"));
-		const targetDir = await fs.mkdtemp(path.join(os.tmpdir(), "omp-move-target-"));
+		const sourceDir = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-move-source-"));
+		const targetDir = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-move-target-"));
 		try {
 			const { ctx, state, present } = createMoveContext(sourceDir);
 			const controller = new CommandController(ctx);

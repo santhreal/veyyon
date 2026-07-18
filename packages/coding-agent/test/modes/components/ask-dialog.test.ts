@@ -1,10 +1,10 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
-import { KeybindingsManager } from "@veyyon/pi-coding-agent/config/keybindings";
-import type { ExtensionAskDialogQuestion } from "@veyyon/pi-coding-agent/extensibility/extensions/types";
-import { AskDialogComponent } from "@veyyon/pi-coding-agent/modes/components/ask-dialog";
-import { getThemeByName, setThemeInstance } from "@veyyon/pi-coding-agent/modes/theme/theme";
-import { setKeybindings } from "@veyyon/pi-tui";
+import { KeybindingsManager } from "@veyyon/coding-agent/config/keybindings";
+import type { ExtensionAskDialogQuestion } from "@veyyon/coding-agent/extensibility/extensions/types";
+import { AskDialogComponent } from "@veyyon/coding-agent/modes/components/ask-dialog";
+import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
+import { setKeybindings } from "@veyyon/tui";
 
 const DOWN = "\x1b[B";
 const ENTER = "\n";
@@ -410,6 +410,15 @@ describe("AskDialogComponent", () => {
 
 		expect(onPrompt).toHaveBeenCalledTimes(1);
 		expect(onPrompt.mock.calls[0][0]).toBe("Note for Option A: Choose one?");
+
+		// The noted row wears a single "note" marker (glyph + word) — the old
+		// code rendered the literal text "note note".
+		const noted = component
+			.render(80)
+			.map(line => stripVTControlCharacters(line))
+			.find(line => line.includes("Option A"));
+		expect(noted).toContain("note");
+		expect(noted).not.toContain("note note");
 
 		// Verify note is saved by submitting
 		component.handleInput(ENTER);

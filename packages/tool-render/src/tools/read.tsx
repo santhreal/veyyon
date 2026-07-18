@@ -1,4 +1,5 @@
 /** `read` — file/URL/archive reads: path + selector summary, highlighted content, image thumbnails. */
+import { formatCount } from "@veyyon/utils";
 import type { ReactNode } from "react";
 import { Badge, Badges, Kv, KvGrid, PathText, ResultImages, ResultText } from "../parts";
 import type { ToolRenderer, ToolRenderProps } from "../types";
@@ -70,14 +71,10 @@ function Body({ args, result }: ToolRenderProps): ReactNode {
 	const { path } = readArgs(args);
 	const d = readDetails(detailsRecord(result));
 	const conflictBadge = d.conflictCount !== null && d.conflictCount > 0 && (
-		<Badge tone="warn">
-			{d.conflictCount} conflict{d.conflictCount === 1 ? "" : "s"}
-		</Badge>
+		<Badge tone="warn">{formatCount("conflict", d.conflictCount)}</Badge>
 	);
 	const elidedBadge = d.elidedSpans !== null && d.elidedSpans > 0 && (
-		<Badge>
-			{d.elidedSpans} elided span{d.elidedSpans === 1 ? "" : "s"}
-		</Badge>
+		<Badge>{formatCount("elided span", d.elidedSpans)}</Badge>
 	);
 	const truncatedBadge = d.truncated && <Badge tone="warn">truncated</Badge>;
 	const resolved = d.suffixTo ?? d.resolvedPath;

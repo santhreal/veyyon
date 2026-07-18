@@ -8,7 +8,7 @@
  * Deterministic LCG so a failure reproduces from the printed seed input.
  */
 import { describe, expect, it } from "bun:test";
-import { latexToUnicode, renderMathInText } from "@veyyon/pi-tui";
+import { latexToUnicode, renderMathInText } from "@veyyon/tui";
 import { FRAGMENTS, lcg } from "./helpers/adversarial-strings";
 
 // LaTeX-flavored adversarial tokens on top of the generic fragment pool.

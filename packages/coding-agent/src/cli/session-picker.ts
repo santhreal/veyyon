@@ -1,5 +1,5 @@
-import { ProcessTerminal, TUI } from "@veyyon/pi-tui";
-import { logger } from "@veyyon/pi-utils";
+import { ProcessTerminal, TUI } from "@veyyon/tui";
+import { logger } from "@veyyon/utils";
 import { SessionSelectorComponent } from "../modes/components/session-selector";
 import { HistoryStorage } from "../session/history-storage";
 import type { SessionInfo } from "../session/session-listing";

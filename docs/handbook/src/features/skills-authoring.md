@@ -8,7 +8,7 @@ Skills are placed on the filesystem according to the scope where they should app
 
 | Scope | Directory | Purpose |
 | --- | --- | --- |
-| User | `$HOME/.veyyon/agent/skills` | Skills available to the current user (per profile: `$HOME/.veyyon/profiles/<name>/agent/skills`). |
+| User | `$HOME/.veyyon/profiles/<profile>/agent/skills` | Skills available to the current user, per profile (`profiles/default/` when none is selected). |
 | Project | `.veyyon/skills` | Skills shipped with a project, discovered by walking up from the working directory. |
 | Agents layout | `.agents/skills`, `$HOME/.agents/skills` | Skills in the cross-tool agents layout (project walk-up plus user home). |
 | Custom | `skills.customDirectories` | Extra directories you list in settings. |

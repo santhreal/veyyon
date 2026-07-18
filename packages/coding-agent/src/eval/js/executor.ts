@@ -1,6 +1,7 @@
 import { DEFAULT_MAX_BYTES, OutputSink } from "../../session/streaming-output";
 import type { ToolSession } from "../../tools";
 import { resolveOutputMaxColumns, resolveOutputSinkHeadBytes } from "../../tools/output-meta";
+import { scopedTimeoutSignal } from "../../utils/fetch-timeout";
 import { isEvalTimeoutControlEvent } from "../bridge-timeout";
 import { executeInVmContext, type JsDisplayOutput } from "./context-manager";
 import type { JsStatusEvent } from "./shared/types";
@@ -83,14 +84,11 @@ export async function executeJs(code: string, options: JsExecutorOptions): Promi
 		onChunk: chunk => options.onChunk?.(chunk),
 	});
 	const legacyTimeoutMs = getExecutionTimeoutMs(options);
-	const timeoutSignal =
+	const scopedTimeout =
 		typeof legacyTimeoutMs === "number" && Number.isFinite(legacyTimeoutMs) && legacyTimeoutMs > 0
-			? AbortSignal.timeout(legacyTimeoutMs)
+			? scopedTimeoutSignal(legacyTimeoutMs, options.signal)
 			: undefined;
-	const signal =
-		options.signal && timeoutSignal
-			? AbortSignal.any([options.signal, timeoutSignal])
-			: (options.signal ?? timeoutSignal);
+	const signal = scopedTimeout ? scopedTimeout.signal : options.signal;
 	// The eval tool drives cancellation via its own watchdog `signal` and passes
 	// only the runtime-work budget; use it solely as worker cold-start headroom
 	// and never derive a competing fixed timer from it.
@@ -136,7 +134,7 @@ export async function executeJs(code: string, options: JsExecutorOptions): Promi
 		};
 	} catch (error) {
 		if (signal?.aborted || isAbortError(error)) {
-			const timedOut = Boolean(timeoutSignal?.aborted) || isTimeoutReason(options.signal?.reason);
+			const timedOut = isTimeoutReason(signal?.reason) || isTimeoutReason(options.signal?.reason);
 			if (timedOut) {
 				outputSink.push(formatJsTimeoutAnnotation(legacyTimeoutMs ?? options.idleTimeoutMs));
 			}

@@ -1,4 +1,4 @@
-import type { ptree } from "@veyyon/pi-utils";
+import type { ptree } from "@veyyon/utils";
 import { type } from "arktype";
 
 // =============================================================================

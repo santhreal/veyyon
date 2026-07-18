@@ -1,4 +1,4 @@
-import type { FetchImpl } from "@veyyon/pi-ai/types";
+import type { FetchImpl } from "@veyyon/ai/types";
 
 type FetchHandler = (input: string | URL | Request, init?: RequestInit) => Response | Promise<Response>;
 

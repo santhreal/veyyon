@@ -1,22 +1,22 @@
-# Native Rust task execution and cancellation (`pi-natives`)
+# Native Rust task execution and cancellation (`veyyon-natives`)
 
-This document describes how `crates/pi-natives` schedules native work and how cancellation flows from JS options (`timeoutMs`, `AbortSignal`) into Rust execution.
+This document describes how `crates/veyyon-natives` schedules native work and how cancellation flows from JS options (`timeoutMs`, `AbortSignal`) into Rust execution.
 
 ## Implementation files
 
-- `crates/pi-natives/src/task.rs`
-- `crates/pi-natives/src/grep.rs`
-- `crates/pi-natives/src/glob.rs`
-- `crates/pi-natives/src/fd.rs`
-- `crates/pi-natives/src/ast.rs`
-- `crates/pi-natives/src/workspace.rs`
-- `crates/pi-natives/src/shell.rs`
-- `crates/pi-natives/src/pty.rs`
-- `crates/pi-natives/src/html.rs`
-- `crates/pi-natives/src/sixel.rs`
-- `crates/pi-natives/src/clipboard.rs`
-- `crates/pi-natives/src/text.rs`
-- `crates/pi-natives/src/ps.rs`
+- `crates/veyyon-natives/src/task.rs`
+- `crates/veyyon-natives/src/grep.rs`
+- `crates/veyyon-natives/src/glob.rs`
+- `crates/veyyon-natives/src/fd.rs`
+- `crates/veyyon-natives/src/ast.rs`
+- `crates/veyyon-natives/src/workspace.rs`
+- `crates/veyyon-natives/src/shell.rs`
+- `crates/veyyon-natives/src/pty.rs`
+- `crates/veyyon-natives/src/html.rs`
+- `crates/veyyon-natives/src/sixel.rs`
+- `crates/veyyon-natives/src/clipboard.rs`
+- `crates/veyyon-natives/src/text.rs`
+- `crates/veyyon-natives/src/ps.rs`
 
 ## Core primitives (`task.rs`)
 
@@ -80,7 +80,7 @@ Behavior:
 | `fuzzyFind(options)`                    | `fuzzy_find`                | `task::blocking("fuzzy_find", ct, ...)`                        | `CancelToken::new(...)` + heartbeat checks                                                                                           |
 | `astGrep(options)` / `astMatch(options)` / `astEdit(options)` | ast exports                 | blocking worker path                                           | timeout/signal fields are accepted by options and checked cooperatively in worker loops                                              |
 | `listWorkspace(options)`                | `list_workspace`            | `task::blocking("listWorkspace", ct, ...)`                     | `CancelToken::new(options.timeoutMs, options.signal)` + heartbeat checks                                                             |
-| `Shell#run(options, onChunk?)`          | `Shell::run`                | `task::future(env, "shell.run", ...)`                          | JS `CancelToken` is converted into `pi_shell::cancel::CancelToken`; shell races it against command completion and descendant cleanup |
+| `Shell#run(options, onChunk?)`          | `Shell::run`                | `task::future(env, "shell.run", ...)`                          | JS `CancelToken` is converted into `veyyon_shell::cancel::CancelToken`; shell races it against command completion and descendant cleanup |
 | `executeShell(options, onChunk?)`       | `execute_shell`             | `task::future(env, "shell.execute", ...)`                      | same cancel race and 2s graceful window                                                                                              |
 | `PtySession#start(options, onChunk?)`   | `PtySession::start`         | `task::future(env, "pty.start", ...)` + inner `spawn_blocking` | `CancelToken` checked in sync PTY loop via `heartbeat()`                                                                             |
 | `htmlToMarkdown(html, options?)`        | `html_to_markdown`          | `task::blocking("html_to_markdown", (), ...)`                  | none (`()` token)                                                                                                                    |

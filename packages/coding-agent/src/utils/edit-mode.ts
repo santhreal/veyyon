@@ -1,4 +1,4 @@
-import { $env, $flag } from "@veyyon/pi-utils";
+import { $env, $flag } from "@veyyon/utils";
 
 export type EditMode = "replace" | "patch" | "hashline" | "apply_patch";
 
@@ -46,12 +46,12 @@ export function resolveEditMode(session: EditModeSessionLike): EditMode {
 	const modelVariant = session.settings.getEditVariantForModel?.(activeModel);
 	if (modelVariant) return modelVariant;
 
-	const envMode = normalizeEditMode($env.PI_EDIT_VARIANT);
+	const envMode = normalizeEditMode($env.VEYYON_EDIT_VARIANT);
 	if (envMode) return envMode;
 
 	const settingsMode = normalizeEditMode(String(session.settings.get("edit.mode") ?? ""));
 	const mode = settingsMode ?? DEFAULT_EDIT_MODE;
-	if (mode === "hashline" && !$flag("PI_STRICT_EDIT_MODE")) {
+	if (mode === "hashline" && !$flag("VEYYON_STRICT_EDIT_MODE")) {
 		return resolveHashlineExcludedModelMode(activeModel) ?? mode;
 	}
 	return mode;

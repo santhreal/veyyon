@@ -42,6 +42,7 @@ export interface CreateExperimentRequest {
 	goal?: string;
 }
 
+import { errorMessage } from "@veyyon/utils";
 import indexHtml from "./web/index.html";
 
 const REPO_ROOT = path.resolve(import.meta.dir, "..", "..", "..");
@@ -347,7 +348,7 @@ export class ManagerServer {
 			}
 			return Response.json({ error: "not found" }, { status: 404 });
 		} catch (err) {
-			const message = err instanceof Error ? err.message : String(err);
+			const message = errorMessage(err);
 			return Response.json({ error: message }, { status: 400 });
 		}
 	}
@@ -420,7 +421,7 @@ export class ManagerServer {
 			benchmark,
 			jobName,
 			dataset,
-			agent: request.agent ?? "omp",
+			agent: request.agent ?? "veyyon",
 			models: [request.model],
 			prewalk: request.prewalk,
 			config: { ...request },

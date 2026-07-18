@@ -1,6 +1,6 @@
-import { tryParseJson } from "@veyyon/pi-utils";
-import type { RenderResult, SpecialHandler } from "./types";
-import { buildResult, formatIsoDate, formatNumber, loadPage } from "./types";
+import { tryParseJson } from "@veyyon/utils";
+import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
+import { buildResult, formatIsoDate, formatNumber, loadFailure, loadPage, scraperDegrade, tryParseUrl } from "./types";
 
 interface NuGetCatalogEntry {
 	id: string;
@@ -42,9 +42,10 @@ export const handleNuGet: SpecialHandler = async (
 	url: string,
 	timeout: number,
 	signal?: AbortSignal,
-): Promise<RenderResult | null> => {
+): Promise<RenderResult | ScraperDegrade | null> => {
 	try {
-		const parsed = new URL(url);
+		const parsed = tryParseUrl(url);
+		if (!parsed) return null;
 		if (parsed.hostname !== "www.nuget.org" && parsed.hostname !== "nuget.org") return null;
 
 		// Extract package name and optional version from /packages/name or /packages/name/version
@@ -59,10 +60,10 @@ export const handleNuGet: SpecialHandler = async (
 		const apiUrl = `https://api.nuget.org/v3/registration5-gz-semver2/${packageName.toLowerCase()}/index.json`;
 		const result = await loadPage(apiUrl, { timeout, signal });
 
-		if (!result.ok) return null;
+		if (!result.ok) return scraperDegrade("nuget", loadFailure(result));
 
 		const index = tryParseJson<NuGetRegistrationIndex>(result.content);
-		if (!index) return null;
+		if (!index) return scraperDegrade("nuget", "unexpected response shape");
 
 		if (!index.items?.length) return null;
 
@@ -72,9 +73,9 @@ export const handleNuGet: SpecialHandler = async (
 		// If items are not inlined, fetch the page
 		if (!latestPage.items && latestPage["@id"]) {
 			const pageResult = await loadPage(latestPage["@id"], { timeout, signal });
-			if (!pageResult.ok) return null;
+			if (!pageResult.ok) return scraperDegrade("nuget", loadFailure(pageResult));
 			const fetched = tryParseJson<NuGetRegistrationPage>(pageResult.content);
-			if (!fetched) return null;
+			if (!fetched) return scraperDegrade("nuget", "unexpected response shape");
 			latestPage = fetched;
 		}
 
@@ -177,7 +178,7 @@ export const handleNuGet: SpecialHandler = async (
 		}
 
 		return buildResult(md, { url, method: "nuget", fetchedAt, notes: ["Fetched via NuGet API"] });
-	} catch {}
-
-	return null;
+	} catch (error) {
+		return scraperDegrade("nuget", error);
+	}
 };

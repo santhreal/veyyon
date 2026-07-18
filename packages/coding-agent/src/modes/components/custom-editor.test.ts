@@ -1,6 +1,6 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "bun:test";
-import { CURSOR_MARKER } from "@veyyon/pi-tui";
-import { setKittyProtocolActive } from "@veyyon/pi-tui/keys";
+import { CURSOR_MARKER } from "@veyyon/tui";
+import { setKittyProtocolActive } from "@veyyon/tui/keys";
 import { $ } from "bun";
 import { getDefaultPasteImageKeys } from "../../config/keybindings";
 import { getEditorTheme, initTheme, theme } from "../theme/theme";

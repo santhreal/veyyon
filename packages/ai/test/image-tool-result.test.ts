@@ -1,10 +1,10 @@
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import type { Api, Context, Model, Tool, ToolResultMessage } from "@veyyon/pi-ai";
-import { complete } from "@veyyon/pi-ai";
-import type { OptionsForApi } from "@veyyon/pi-ai/types";
-import { getBundledModel } from "@veyyon/pi-catalog/models";
+import type { Api, Context, Model, Tool, ToolResultMessage } from "@veyyon/ai";
+import { complete } from "@veyyon/ai";
+import type { OptionsForApi } from "@veyyon/ai/types";
+import { getBundledModel } from "@veyyon/catalog/models";
 import { z } from "zod/v4";
 import { e2eApiKey, resolveApiKey } from "./oauth";
 

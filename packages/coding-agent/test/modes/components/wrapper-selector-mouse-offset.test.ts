@@ -1,10 +1,10 @@
 import { beforeAll, describe, expect, it } from "bun:test";
-import { Effort } from "@veyyon/pi-ai";
-import { QueueModeSelectorComponent } from "@veyyon/pi-coding-agent/modes/components/queue-mode-selector";
-import { ThemeSelectorComponent } from "@veyyon/pi-coding-agent/modes/components/theme-selector";
-import { ThinkingSelectorComponent } from "@veyyon/pi-coding-agent/modes/components/thinking-selector";
-import { initTheme } from "@veyyon/pi-coding-agent/modes/theme/theme";
-import type { SgrMouseEvent } from "@veyyon/pi-tui";
+import { Effort } from "@veyyon/ai";
+import { QueueModeSelectorComponent } from "@veyyon/coding-agent/modes/components/queue-mode-selector";
+import { ThemeSelectorComponent } from "@veyyon/coding-agent/modes/components/theme-selector";
+import { ThinkingSelectorComponent } from "@veyyon/coding-agent/modes/components/thinking-selector";
+import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import type { SgrMouseEvent } from "@veyyon/tui";
 
 beforeAll(async () => {
 	await initTheme();

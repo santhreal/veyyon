@@ -25,7 +25,7 @@ Veyyon merges LSP config from multiple files, lowest to highest priority:
 | ----------- | --------------------------------------------------------------------------------------------------------------------------- |
 | 5 (lowest)  | `~/lsp.json`, `~/.lsp.json`, `~/lsp.yaml`, `~/.lsp.yaml`, `~/lsp.yml`, `~/.lsp.yml`                                         |
 | 4           | Plugin LSP configs (marketplace / `--plugin-dir` roots)                                                                     |
-| 3           | User config dirs: `~/.veyyon/agent/lsp.*`, `~/.claude/lsp.*`, `~/.codex/lsp.*`, `~/.gemini/lsp.*`                              |
+| 3           | User config dirs: `~/.veyyon/profiles/default/agent/lsp.*` (active agent dir), `~/.claude/lsp.*`, `~/.codex/lsp.*`, `~/.gemini/lsp.*` |
 | 2           | Project config dirs: `<project>/.veyyon/lsp.*`, `<project>/.claude/lsp.*`, `<project>/.codex/lsp.*`, `<project>/.gemini/lsp.*` |
 | 1 (highest) | Project root: `<project>/lsp.*` and `<project>/.lsp.*`                                                                      |
 
@@ -33,7 +33,7 @@ Each location accepts `.json`, `.yaml`, and `.yml` variants, including hidden-fi
 
 **Recommended locations:**
 
-- User-wide preferences → `~/.veyyon/agent/lsp.json`
+- User-wide preferences → `~/.veyyon/profiles/default/agent/lsp.json`
 - Project-specific overrides → `<project>/.veyyon/lsp.json`
 
 > **Note:** Auto-detection is skipped only when at least one config file contributes server overrides. A config file that only sets `idleTimeoutMs` still lets Veyyon auto-detect built-in servers. When server overrides exist, Veyyon merges them with defaults and then loads servers that have matching `rootMarkers`, an available binary, and are not explicitly `disabled`.
@@ -178,7 +178,7 @@ Place the override in `<project>/.veyyon/lsp.json`:
 }
 ```
 
-The user-level config in `~/.veyyon/agent/lsp.json` is unaffected; pylsp is only suppressed in this project.
+The user-level config in `~/.veyyon/profiles/default/agent/lsp.json` is unaffected; pylsp is only suppressed in this project.
 
 ## Built-in server list
 

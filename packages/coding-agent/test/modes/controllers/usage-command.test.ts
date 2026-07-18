@@ -1,8 +1,8 @@
 import { beforeAll, describe, expect, it, vi } from "bun:test";
-import type { UsageReport } from "@veyyon/pi-ai";
-import { CommandController } from "@veyyon/pi-coding-agent/modes/controllers/command-controller";
-import { getThemeByName, setThemeInstance } from "@veyyon/pi-coding-agent/modes/theme/theme";
-import type { InteractiveModeContext } from "@veyyon/pi-coding-agent/modes/types";
+import type { UsageReport } from "@veyyon/ai";
+import { CommandController } from "@veyyon/coding-agent/modes/controllers/command-controller";
+import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
+import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
 
 interface RenderableBlock {
 	render(width: number): string[];
@@ -86,7 +86,9 @@ describe("CommandController /usage", () => {
 						id: "cursor:requests:gpt-4",
 						label: "gpt-4 requests",
 						scope: { provider: "cursor", windowId: "monthly" },
-						window: { id: "monthly", label: "Monthly", resetsAt: now + 86_400_000 },
+						// 25h, not 24h: at exactly +24h any ms elapsed before render floors
+						// the countdown to 23h59m and the "resets in 1d" assertion flakes.
+						window: { id: "monthly", label: "Monthly", resetsAt: now + 90_000_000 },
 						amount: {
 							unit: "requests",
 							used: 150,

@@ -4,7 +4,7 @@
  * import the single definition from `autoresearch/tools/index.ts`.
  */
 import { describe, expect, it } from "bun:test";
-import { EXPERIMENT_TOOL_NAMES } from "@veyyon/pi-coding-agent/autoresearch/tools/index";
+import { EXPERIMENT_TOOL_NAMES } from "@veyyon/coding-agent/autoresearch/tools/index";
 
 describe("EXPERIMENT_TOOL_NAMES (F7)", () => {
 	it("matches the real tool names emitted by each experiment tool factory", () => {
@@ -15,8 +15,8 @@ describe("EXPERIMENT_TOOL_NAMES (F7)", () => {
 		// autoresearch/index.ts and log-experiment.ts both import from
 		// autoresearch/tools/index.ts; re-importing here must yield the same
 		// array reference (module caching), proving there is one definition.
-		const mod1 = await import("@veyyon/pi-coding-agent/autoresearch/tools/index");
-		const mod2 = await import("@veyyon/pi-coding-agent/autoresearch/tools/index");
+		const mod1 = await import("@veyyon/coding-agent/autoresearch/tools/index");
+		const mod2 = await import("@veyyon/coding-agent/autoresearch/tools/index");
 		expect(mod1.EXPERIMENT_TOOL_NAMES).toBe(mod2.EXPERIMENT_TOOL_NAMES);
 	});
 });

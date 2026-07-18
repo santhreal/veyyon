@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it } from "bun:test";
-import type { FetchImpl } from "@veyyon/pi-ai";
-import { extractFacts } from "@veyyon/pi-mnemopi/core/extraction";
-import { type ChatMessage, ExtractionClient } from "@veyyon/pi-mnemopi/core/extraction/client";
-import { getExtractionStats, resetExtractionStats } from "@veyyon/pi-mnemopi/core/extraction/diagnostics";
-import { resetHostLlmBackendForTests } from "@veyyon/pi-mnemopi/core/llm-backends";
+import type { FetchImpl } from "@veyyon/ai";
+import { extractFacts } from "@veyyon/mnemopi/core/extraction";
+import { type ChatMessage, ExtractionClient } from "@veyyon/mnemopi/core/extraction/client";
+import { getExtractionStats, resetExtractionStats } from "@veyyon/mnemopi/core/extraction/diagnostics";
+import { resetHostLlmBackendForTests } from "@veyyon/mnemopi/core/llm-backends";
 
 const OLD_ENV = { ...process.env };
 
@@ -105,16 +105,12 @@ describe("extraction integration", () => {
 	});
 
 	it("uses millisecond-scale rate-limit and fallback backoff delays", async () => {
-		const originalSetTimeout = globalThis.setTimeout;
+		const originalSleep = Bun.sleep;
 		const delays: number[] = [];
-		globalThis.setTimeout = ((handler: Parameters<typeof setTimeout>[0], timeout?: number, ...args: unknown[]) => {
-			delays.push(Number(timeout ?? 0));
-			if (typeof handler === "function") {
-				const callback = handler as (...callbackArgs: unknown[]) => void;
-				queueMicrotask(() => callback(...args));
-			}
-			return 0 as unknown as Timer;
-		}) as typeof setTimeout;
+		Bun.sleep = ((ms: number | Date) => {
+			delays.push(Number(ms));
+			return Promise.resolve();
+		}) as typeof Bun.sleep;
 
 		class RateLimitedClient extends ExtractionClient {
 			override callApi(
@@ -131,7 +127,7 @@ describe("extraction integration", () => {
 			const client = new RateLimitedClient({ model: "primary", apiKey: "sk-test", baseUrl: "http://remote.test" });
 			expect(await client.chat([{ role: "user", content: "Ada prefers deterministic tests." }])).toBe("");
 		} finally {
-			globalThis.setTimeout = originalSetTimeout;
+			Bun.sleep = originalSleep;
 		}
 
 		expect(delays.slice(0, 3)).toEqual([1000, 2000, 4000]);

@@ -2,11 +2,11 @@ import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { getManagedSkillsDir } from "@veyyon/pi-coding-agent/autolearn/managed-skills";
-import "@veyyon/pi-coding-agent/discovery";
-import { loadSkills } from "@veyyon/pi-coding-agent/extensibility/skills";
-import { removeWithRetries } from "@veyyon/pi-utils";
-import { getAgentDir, setAgentDir } from "@veyyon/pi-utils/dirs";
+import { getManagedSkillsDir } from "@veyyon/coding-agent/autolearn/managed-skills";
+import "@veyyon/coding-agent/discovery";
+import { loadSkills } from "@veyyon/coding-agent/extensibility/skills";
+import { removeWithRetries } from "@veyyon/utils";
+import { getAgentDir, setAgentDir } from "@veyyon/utils/dirs";
 
 async function writeSkill(dir: string, name: string, description: string): Promise<void> {
 	const file = path.join(dir, name, "SKILL.md");
@@ -23,9 +23,9 @@ describe("managed-skills discovery", () => {
 	let originalAgentDir: string;
 	beforeEach(async () => {
 		originalAgentDir = getAgentDir();
-		tempHome = await fs.mkdtemp(path.join(os.tmpdir(), "omp-managed-disco-home-"));
+		tempHome = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-managed-disco-home-"));
 		// cwd MUST live under the fake home so loadSkills' ancestor walk is bounded
-		// and cannot pick up ambient /tmp/.omp or /.omp fixtures (full-suite-safe).
+		// and cannot pick up ambient /tmp/.veyyon or /.veyyon fixtures (full-suite-safe).
 		tempCwd = path.join(tempHome, "work");
 		await fs.mkdir(tempCwd, { recursive: true });
 		spyOn(os, "homedir").mockReturnValue(tempHome);
@@ -41,12 +41,12 @@ describe("managed-skills discovery", () => {
 		await removeWithRetries(tempHome);
 	});
 
-	it("surfaces a managed skill tagged with the omp-managed provider", async () => {
+	it("surfaces a managed skill tagged with the veyyon-managed provider", async () => {
 		await writeSkill(managedDir, "foo", "A managed skill.");
 		const { skills } = await loadSkills({ cwd: tempCwd });
 		const foo = skills.find(s => s.name === "foo");
 		expect(foo).toBeDefined();
-		expect(foo?.source).toBe("omp-managed:user");
+		expect(foo?.source).toBe("veyyon-managed:user");
 	});
 
 	it("lets an authored skill win a name collision and drops the managed one", async () => {
@@ -56,7 +56,7 @@ describe("managed-skills discovery", () => {
 		const bars = skills.filter(s => s.name === "bar");
 		expect(bars).toHaveLength(1);
 		expect(bars[0]?.source).toBe("native:user");
-		expect(skills.some(s => s.name === "bar" && s.source === "omp-managed:user")).toBe(false);
+		expect(skills.some(s => s.name === "bar" && s.source === "veyyon-managed:user")).toBe(false);
 	});
 
 	it("lets an authored skill from a NON-native provider win over a managed skill", async () => {
@@ -68,7 +68,7 @@ describe("managed-skills discovery", () => {
 		const bazzes = skills.filter(s => s.name === "baz");
 		expect(bazzes).toHaveLength(1);
 		expect(bazzes[0]?.source).toBe("agents:user");
-		expect(skills.some(s => s.name === "baz" && s.source === "omp-managed:user")).toBe(false);
+		expect(skills.some(s => s.name === "baz" && s.source === "veyyon-managed:user")).toBe(false);
 	});
 
 	it("lets a custom-directory authored skill win over a managed skill", async () => {
@@ -97,7 +97,7 @@ describe("managed-skills discovery", () => {
 		});
 		const dises = skills.filter(s => s.name === "dis");
 		expect(dises).toHaveLength(1);
-		expect(dises[0]?.source).toBe("omp-managed:user");
+		expect(dises[0]?.source).toBe("veyyon-managed:user");
 	});
 
 	it("selects an enabled lower-priority authored skill when a disabled higher-priority provider has the same name (#4648)", async () => {
@@ -152,7 +152,7 @@ describe("managed-skills discovery", () => {
 		const shadowed = skills.filter(s => s.name === "shadowed");
 		expect(shadowed).toHaveLength(1);
 		expect(shadowed[0]?.source).toBe("agents:user");
-		expect(skills.some(s => s.name === "shadowed" && s.source === "omp-managed:user")).toBe(false);
+		expect(skills.some(s => s.name === "shadowed" && s.source === "veyyon-managed:user")).toBe(false);
 	});
 
 	it("skips a managed skill whose on-disk frontmatter name is unsafe", async () => {
@@ -164,12 +164,12 @@ describe("managed-skills discovery", () => {
 		);
 		const { skills } = await loadSkills({ cwd: tempCwd });
 		expect(skills.some(s => s.name.includes("<"))).toBe(false);
-		expect(skills.some(s => s.source === "omp-managed:user")).toBe(false);
+		expect(skills.some(s => s.source === "veyyon-managed:user")).toBe(false);
 	});
 
 	it("is a no-op when the managed dir is absent", async () => {
 		const { skills, warnings } = await loadSkills({ cwd: tempCwd });
-		expect(skills.some(s => s.source === "omp-managed:user")).toBe(false);
+		expect(skills.some(s => s.source === "veyyon-managed:user")).toBe(false);
 		expect(warnings.some(w => w.message.includes("managed-skills"))).toBe(false);
 	});
 });

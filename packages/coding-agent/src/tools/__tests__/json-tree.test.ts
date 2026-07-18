@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { INTENT_FIELD } from "@veyyon/pi-wire";
+import { INTENT_FIELD } from "@veyyon/wire";
 import { formatArgsInline } from "../json-tree";
 
 describe("formatArgsInline", () => {

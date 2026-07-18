@@ -1,12 +1,12 @@
 /**
  * Regression test for `loadCliExtensionProviders`.
  *
- * One-shot CLIs (`omp bench`, dry-balance) build a bare `ModelRegistry` that
+ * One-shot CLIs (`veyyon bench`, dry-balance) build a bare `ModelRegistry` that
  * only knows built-in catalog providers. Before the helper existed they never
  * loaded extensions, so a provider contributed by an extension
  * (`pi.registerProvider(...)`, e.g. a custom OpenAI-compatible gateway under
  * `~/.veyyon/agent/extensions/`) was invisible to model resolution and
- * `omp bench <provider>/<model>` failed with "Model not found".
+ * `veyyon bench <provider>/<model>` failed with "Model not found".
  *
  * Contract under test: after `loadCliExtensionProviders` drains the extension's
  * provider registrations into the registry, a `provider/id` selector for that
@@ -16,12 +16,12 @@
 
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import * as fs from "node:fs/promises";
-import { AuthStorage } from "@veyyon/pi-ai";
-import { ModelRegistry } from "@veyyon/pi-coding-agent/config/model-registry";
-import { getModelMatchPreferences, resolveCliModel } from "@veyyon/pi-coding-agent/config/model-resolver";
-import { resetSettingsForTest, Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { loadCliExtensionProviders } from "@veyyon/pi-coding-agent/sdk";
-import { TempDir } from "@veyyon/pi-utils";
+import { AuthStorage } from "@veyyon/ai";
+import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
+import { getModelMatchPreferences, resolveCliModel } from "@veyyon/coding-agent/config/model-resolver";
+import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
+import { loadCliExtensionProviders } from "@veyyon/coding-agent/sdk";
+import { TempDir } from "@veyyon/utils";
 
 let tmp: TempDir;
 let extPath: string;

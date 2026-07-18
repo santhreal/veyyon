@@ -1,18 +1,15 @@
 # Observability
 
-> **Status: Partial.** Usage stats (`veyyon stats`, `/usage`) exist; OpenTelemetry metric export is **Spec — not
-> shipped**.
+## Interactive and CLI usage
 
-## Shipped
+- Status line token and cost segments during interactive sessions
+- `veyyon stats` (CLI) and `/usage` (TUI) via `@veyyon/stats` when enabled
+- Structured logging in the coding-agent logger
 
-- **Status line** token and cost segments during interactive sessions
-- **`veyyon stats`** (CLI) and `/usage` (TUI) — usage dashboards (`@veyyon/stats` when enabled)
-- **Structured logging** in the coding-agent logger
-- **Repair telemetry:** the repair seam is shipped, but bounded repair counters are not yet active (see [Soundness and telemetry](../repair/soundness.md))
+## OpenTelemetry
 
-## Target telemetry (Spec — not shipped)
+When `OTEL_EXPORTER_OTLP_ENDPOINT` or `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` is set, the process exports agent-loop traces over OTLP/protobuf. See [Soundness and telemetry](../repair/soundness.md) and `packages/coding-agent/src/telemetry-export.ts`.
 
-When OTEL export is wired, metrics should use bounded label sets and fail loud on misconfigured
-exporters.
+## Session debugging
 
-For session-level debugging: `/dump`, `/context`, `/debug`, and `veyyon grep` test harnesses.
+`/dump`, `/context`, `/debug`, and standalone tool CLIs such as `veyyon grep` for inspecting what the agent would see.

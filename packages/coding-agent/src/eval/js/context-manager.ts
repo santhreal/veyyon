@@ -1,4 +1,4 @@
-import { logger, postmortem, Snowflake, workerHostEntry } from "@veyyon/pi-utils";
+import { logger, postmortem, Snowflake, workerHostEntry } from "@veyyon/utils";
 import {
 	createWorkerHandle,
 	createWorkerSubprocess,
@@ -7,6 +7,7 @@ import {
 } from "../../subprocess/worker-client";
 import type { ToolSession } from "../../tools";
 import { ToolAbortError, ToolError } from "../../tools/tool-errors";
+import { raceWithTimeout } from "../../utils/fetch-timeout";
 import { safeSend as safeSendIpc } from "../../utils/ipc";
 import { shouldDetachKernel } from "../py/spawn-options";
 import { callSessionTool, type JsStatusEvent } from "./tool-bridge";
@@ -336,7 +337,7 @@ async function initWorker(session: JsSession, snapshot: SessionSnapshot, timeout
 		// Attach listeners and send init before awaiting ready. The worker now
 		// emits ready only in response to init, so this ordering is race-free.
 		worker.send({ type: "init", snapshot });
-		await raceWithTimeout(readyPromise, timeoutMs, "Timed out initializing JS eval worker");
+		await raceWithTimeout(readyPromise, timeoutMs, () => new ToolError("Timed out initializing JS eval worker"));
 	} catch (error) {
 		// Handshake failed (timeout, init-failed, or worker error): drop both listeners
 		// so the abandoned worker can't keep routing messages into a session the caller
@@ -482,18 +483,6 @@ function logWorkerMessage(msg: Extract<WorkerOutbound, { type: "log" }>): void {
 	if (msg.level === "debug") logger.debug(msg.msg, msg.meta);
 	else if (msg.level === "warn") logger.warn(msg.msg, msg.meta);
 	else logger.error(msg.msg, msg.meta);
-}
-
-async function raceWithTimeout<T>(promise: Promise<T>, timeoutMs: number, reason: string): Promise<T> {
-	const timeoutSignal = AbortSignal.timeout(timeoutMs);
-	const { promise: timeoutPromise, reject } = Promise.withResolvers<never>();
-	const onAbort = (): void => reject(new ToolError(reason));
-	timeoutSignal.addEventListener("abort", onAbort, { once: true });
-	try {
-		return await Promise.race([promise, timeoutPromise]);
-	} finally {
-		timeoutSignal.removeEventListener("abort", onAbort);
-	}
 }
 
 function spawnJsWorker(): WorkerHandle {

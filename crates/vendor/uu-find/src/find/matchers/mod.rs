@@ -420,7 +420,7 @@ fn parse_str_to_newer_args(input: &str) -> Option<(String, String)> {
 /// Creates a file if it doesn't exist.
 /// If it does exist, it will be overwritten.
 fn get_or_create_file(path: &str) -> Result<File, Box<dyn Error>> {
-	let file = File::create(pi_uutils_ctx::resolve(path))?;
+	let file = File::create(veyyon_uutils_ctx::resolve(path))?;
 	Ok(file)
 }
 
@@ -951,9 +951,9 @@ fn parse_files0_args(config: &mut Config) -> Result<(), Box<dyn Error>> {
 	let new_paths = config.new_paths.insert(Vec::new());
 
 	if mode == "-" {
-		pi_uutils_ctx::stdin().read_to_end(&mut buffer)?;
+		veyyon_uutils_ctx::stdin().read_to_end(&mut buffer)?;
 	} else {
-		let mut file = File::open(pi_uutils_ctx::resolve(mode))
+		let mut file = File::open(veyyon_uutils_ctx::resolve(mode))
 			.map_err(|e| format!("cannot open '{}' for reading: {}", mode, e))?;
 		file.read_to_end(&mut buffer)?;
 	}
@@ -971,7 +971,7 @@ fn parse_files0_args(config: &mut Config) -> Result<(), Box<dyn Error>> {
 		.collect();
 	// empty starting point checker
 	if string_segments.iter().any(|s| s.is_empty()) {
-		let _ = writeln!(pi_uutils_ctx::stderr(), "find: invalid zero-length file name");
+		let _ = writeln!(veyyon_uutils_ctx::stderr(), "find: invalid zero-length file name");
 		// remove the empty ones so as to avoid file not found error
 		string_segments.retain(|s| !s.is_empty());
 	}

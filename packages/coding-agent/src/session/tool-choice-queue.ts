@@ -1,4 +1,4 @@
-import type { ToolChoice } from "@veyyon/pi-ai";
+import type { ToolChoice } from "@veyyon/ai";
 
 // ── Callback types ──────────────────────────────────────────────────────────
 

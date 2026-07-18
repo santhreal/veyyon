@@ -1,6 +1,6 @@
-# Porting to pi-natives (N-API) — Field Notes
+# Porting to veyyon-natives (N-API) — Field Notes
 
-This is a practical guide for moving hot paths into `crates/pi-natives` and wiring them through the generated native package entrypoint. It exists to avoid the same failures happening twice.
+This is a practical guide for moving hot paths into `crates/veyyon-natives` and wiring them through the generated native package entrypoint. It exists to avoid the same failures happening twice.
 
 ## When to port
 
@@ -16,21 +16,21 @@ Avoid ports that depend on JS-only state or dynamic imports. N-API exports shoul
 
 ## Current package shape
 
-`@veyyon/pi-natives` no longer has a `packages/natives/src/<module>` TypeScript wrapper layer. The package root points at generated native artifacts:
+`@veyyon/natives` no longer has a `packages/natives/src/<module>` TypeScript wrapper layer. The package root points at generated native artifacts:
 
 - runtime entry/export wrapper: `packages/natives/native/index.js`
 - types entry: `packages/natives/native/index.d.ts`
 - loader helpers: `packages/natives/native/loader-state.js`
 - embedded manifest: `packages/natives/native/embedded-addon.js`
 
-Consumers import directly from `@veyyon/pi-natives`. The generated declarations and explicit ESM exports are produced during `bun --cwd=packages/natives run build`.
+Consumers import directly from `@veyyon/natives`. The generated declarations and explicit ESM exports are produced during `bun --cwd=packages/natives run build`.
 
 ## Anatomy of a native export
 
 **Rust side:**
 
-- Implementation lives in `crates/pi-natives/src/<module>.rs`.
-- If you add a new module, register it in `crates/pi-natives/src/lib.rs`.
+- Implementation lives in `crates/veyyon-natives/src/<module>.rs`.
+- If you add a new module, register it in `crates/veyyon-natives/src/lib.rs`.
 - Export with `#[napi]`; snake_case exports are converted to camelCase automatically. Use explicit JS names only for true aliases/non-default names. Use `#[napi(object)]` for object-shaped structs.
 - For CPU-bound or blocking work, use `task::blocking(tag, cancel_token, work)`.
 - For async work that needs Tokio, use `task::future(env, tag, work)`.
@@ -40,7 +40,7 @@ Consumers import directly from `@veyyon/pi-natives`. The generated declarations 
 
 - `packages/natives/scripts/build-native.ts` runs napi-rs, installs the `.node` artifact, copies generated `index.d.ts`, and regenerates explicit ESM class/function exports plus enum runtime exports in the checked-in `native/index.js`.
 - `packages/natives/native/index.js` is the ESM entrypoint that calls the loader, exposes named exports, and rejects install/compiled `.node` files that do not expose the package-version sentinel.
-- `packages/natives/package.json` exposes only the package root (`@veyyon/pi-natives`) as the import surface. At publish time the binaries are split out: the core ships the loader only (no `.node`), and each platform's `.node` is published as an optional-dependency leaf package `@veyyon/pi-natives-<tag>` (`scripts/ci-release-publish.ts` + `packages/natives/scripts/gen-npm-packages.ts`). This is transparent to importers — you still `import` from `@veyyon/pi-natives`.
+- `packages/natives/package.json` exposes only the package root (`@veyyon/natives`) as the import surface. At publish time the binaries are split out: the core ships the loader only (no `.node`), and each platform's `.node` is published as an optional-dependency leaf package `@veyyon/natives-<tag>` (`scripts/ci-release-publish.ts` + `packages/natives/scripts/gen-npm-packages.ts`). This is transparent to importers — you still `import` from `@veyyon/natives`.
 
 **Consumer side:**
 
@@ -52,7 +52,7 @@ Consumers import directly from `@veyyon/pi-natives`. The generated declarations 
 1. **Add the Rust implementation**
 
 - Put the core logic in a plain Rust function.
-- If it is a new module, add it to `crates/pi-natives/src/lib.rs`.
+- If it is a new module, add it to `crates/veyyon-natives/src/lib.rs`.
 - Expose it with `#[napi]` so the default snake_case -> camelCase mapping stays consistent.
 - Keep signatures owned and simple: `String`, `Vec<String>`, `Uint8Array`, `Either<JsString, Uint8Array>`, or `#[napi(object)]` structs.
 - For CPU-bound or blocking work, use `task::blocking`; for async work, use `task::future`.
@@ -66,7 +66,7 @@ Consumers import directly from `@veyyon/pi-natives`. The generated declarations 
 
 3. **Update consumers**
 
-- Import the new export directly from `@veyyon/pi-natives`.
+- Import the new export directly from `@veyyon/natives`.
 - Replace only callsites where the native implementation is faster/equivalent and preserves behavior.
 - Remove obsolete JS implementation code in the same change when the native path becomes canonical.
 
@@ -89,19 +89,19 @@ Consumers import directly from `@veyyon/pi-natives`. The generated declarations 
 
 The loader probes platform-tagged artifacts in deterministic order. For x64, selected variant candidates are tried before the unsuffixed default fallback:
 
-- `modern`: `pi_natives.<tag>-modern.node`, then `...-baseline.node`, then `pi_natives.<tag>.node`.
-- `baseline`: `pi_natives.<tag>-baseline.node`, then `pi_natives.<tag>.node`.
+- `modern`: `veyyon_natives.<tag>-modern.node`, then `...-baseline.node`, then `veyyon_natives.<tag>.node`.
+- `baseline`: `veyyon_natives.<tag>-baseline.node`, then `veyyon_natives.<tag>.node`.
 
-Non-x64 uses `pi_natives.<tag>.node`.
+Non-x64 uses `veyyon_natives.<tag>.node`.
 
 Compiled binaries also probe `<getNativesDir()>/<version>/...` and a legacy user-data directory before package/executable locations. Windows `node_modules` installs stage leaf/core addons into the same versioned directory before probing. If any earlier candidate is stale, a new export may appear missing unless the version sentinel rejects it first.
 
 **Fix:** remove stale candidate/cache files and rebuild.
 
 ```bash
-rm packages/natives/native/pi_natives.<platform>-<arch>.node
-rm packages/natives/native/pi_natives.<platform>-<arch>-modern.node
-rm packages/natives/native/pi_natives.<platform>-<arch>-baseline.node
+rm packages/natives/native/veyyon_natives.<platform>-<arch>.node
+rm packages/natives/native/veyyon_natives.<platform>-<arch>-modern.node
+rm packages/natives/native/veyyon_natives.<platform>-<arch>-baseline.node
 bun --cwd=packages/natives run build
 ```
 
@@ -114,7 +114,7 @@ This can happen when `native/index.d.ts` was regenerated but the `.node` file be
 Verify the loaded export set from the actual candidate path reported by the loader:
 
 ```bash
-bun -e 'import { createRequire } from "node:module"; const require = createRequire(import.meta.url); const mod = require(process.argv[2]); console.log(Object.keys(mod).sort())' -- /path/from/loader/error/pi_natives.<tag>[-variant].node
+bun -e 'import { createRequire } from "node:module"; const require = createRequire(import.meta.url); const mod = require(process.argv[2]); console.log(Object.keys(mod).sort())' -- /path/from/loader/error/veyyon_natives.<tag>[-variant].node
 ```
 
 Fix the build/candidate mismatch. Do not paper over it with optional consumer checks if the export is required.

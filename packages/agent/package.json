@@ -1,6 +1,6 @@
 {
   "type": "module",
-  "name": "@veyyon/pi-agent-core",
+  "name": "@veyyon/agent-core",
   "version": "1.0.0",
   "description": "General-purpose agent with transport abstraction, state management, and attachment support",
   "homepage": "https://veyyon.dev",
@@ -11,11 +11,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/can1357/oh-my-pi.git",
+    "url": "git+https://github.com/santhreal/veyyon.git",
     "directory": "packages/agent"
   },
   "bugs": {
-    "url": "https://github.com/can1357/oh-my-pi/issues"
+    "url": "https://github.com/santhreal/veyyon/issues"
   },
   "keywords": [
     "ai",
@@ -35,11 +35,11 @@
     "fmt": "biome format --write ."
   },
   "dependencies": {
-    "@veyyon/pi-ai": "catalog:",
-    "@veyyon/pi-catalog": "catalog:",
-    "@veyyon/pi-natives": "catalog:",
-    "@veyyon/pi-utils": "catalog:",
-    "@veyyon/pi-wire": "catalog:",
+    "@veyyon/ai": "catalog:",
+    "@veyyon/catalog": "catalog:",
+    "@veyyon/natives": "catalog:",
+    "@veyyon/utils": "catalog:",
+    "@veyyon/wire": "catalog:",
     "@veyyon/snapcompact": "catalog:",
     "@opentelemetry/api": "catalog:"
   },

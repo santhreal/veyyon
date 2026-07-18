@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
-import { CountdownTimer } from "@veyyon/pi-coding-agent/modes/components/countdown-timer";
-import type { Component, TUI } from "@veyyon/pi-tui";
+import { CountdownTimer } from "@veyyon/coding-agent/modes/components/countdown-timer";
+import type { Component, TUI } from "@veyyon/tui";
 
 describe("CountdownTimer", () => {
 	beforeEach(() => {

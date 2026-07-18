@@ -7,17 +7,17 @@
  * 4px radii, whisper hovers. */
 
 .tv-card {
-	--tv-fg: var(--fg, var(--text, oklch(0.92 0.01 307)));
-	--tv-muted: var(--fg-muted, var(--muted, oklch(0.71 0.016 307)));
-	--tv-faint: var(--fg-faint, var(--dim, oklch(0.53 0.018 307)));
-	--tv-accent: var(--accent, oklch(0.674 0.23 341));
+	--tv-fg: var(--fg, var(--text, oklch(0.965 0.003 250)));
+	--tv-muted: var(--fg-muted, var(--muted, oklch(0.78 0.008 250)));
+	--tv-faint: var(--fg-faint, var(--dim, oklch(0.58 0.01 250)));
+	--tv-accent: var(--accent, oklch(0.705 0.163 52));
 	--tv-ok: var(--ok, var(--success, oklch(0.76 0.14 150)));
 	--tv-err: var(--err, var(--error, oklch(0.66 0.19 25)));
 	--tv-warn: var(--warn, var(--warning, oklch(0.79 0.14 85)));
 	--tv-border: var(--border, oklch(1 0 0 / 9%));
 	--tv-inset: var(--bg-inset, var(--info-bg, oklch(0 0 0 / 22%)));
 	--tv-raised: var(--bg-raised, var(--container-bg, oklch(1 0 0 / 4%)));
-	--tv-ring: var(--ring, oklch(0.817 0.112 205 / 70%));
+	--tv-ring: var(--ring, oklch(0.705 0.163 52 / 70%));
 	--tv-mono: var(--font-mono, ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace);
 
 	border: 1px solid var(--tv-border);

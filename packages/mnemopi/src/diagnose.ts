@@ -1,10 +1,10 @@
 import type { Database } from "bun:sqlite";
 import { existsSync } from "node:fs";
 import { dirname } from "node:path";
-
 import { dataDir as configuredDataDir, dbPath as configuredDbPath } from "./config";
 import { initBeam } from "./core/beam";
 import { closeQuietly, openDatabase } from "./db";
+import { toUtcIso } from "./util/datetime";
 
 export interface DiagnosticEntry {
 	readonly ts: string;
@@ -59,10 +59,6 @@ const REQUIRED_COLUMNS: Readonly<Record<string, readonly string[]>> = {
 	annotations: ["id", "memory_id", "kind", "value"],
 };
 
-function nowIso(): string {
-	return new Date().toISOString();
-}
-
 function hasTable(db: Database, table: string): boolean {
 	return (
 		(db
@@ -96,7 +92,7 @@ export function inspectDatabase(options: DiagnosticOptions = {}): DiagnosticSumm
 	const path = options.dbPath ?? configuredDbPath();
 	const entries: DiagnosticEntry[] = [];
 	const log = (category: string, check: string, status: string, detail = ""): void => {
-		entries.push({ ts: nowIso(), category, check, status, detail });
+		entries.push({ ts: toUtcIso(), category, check, status, detail });
 	};
 
 	log("env", "bun_version", Bun.version);

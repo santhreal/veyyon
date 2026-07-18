@@ -1,4 +1,4 @@
-import { preferredDialect } from "@veyyon/pi-catalog/identity";
+import { preferredDialect } from "@veyyon/catalog/identity";
 import { getDialectDefinition } from "./factory";
 
 /**

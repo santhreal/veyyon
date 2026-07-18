@@ -7,7 +7,7 @@ A minimal Veyyon extension that demonstrates the two most common authoring patte
 **Option A — drop into user extensions directory:**
 
 ```
-cp -r . ~/.veyyon/agent/extensions/hello-extension
+cp -r . ~/.veyyon/profiles/default/agent/extensions/hello-extension
 ```
 
 Restart `veyyon`. You will see the startup notification immediately.
@@ -15,7 +15,7 @@ Restart `veyyon`. You will see the startup notification immediately.
 **Option B — point the settings `extensions` array at it:**
 
 ```yaml
-# ~/.veyyon/agent/config.yml
+# ~/.veyyon/profiles/default/agent/config.yml
 extensions:
   - /path/to/hello-extension
 ```
@@ -36,4 +36,4 @@ After loading, type `/hello` or `/hello Ada` in the veyyon prompt. The command s
 - `pi.on("session_start", ...)` — session lifecycle hook
 - `pi.registerCommand(...)` — slash command registration
 - `ctx.ui.notify(...)` — user-facing notification
-- `package.json` with `omp.extensions` manifest field
+- `package.json` with `veyyon.extensions` manifest field

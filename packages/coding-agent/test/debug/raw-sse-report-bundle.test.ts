@@ -2,11 +2,11 @@ import { afterEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { Model } from "@veyyon/pi-ai";
-import { buildModel } from "@veyyon/pi-catalog/build";
-import { RawSseDebugBuffer } from "@veyyon/pi-coding-agent/debug/raw-sse-buffer";
-import { createReportBundle } from "@veyyon/pi-coding-agent/debug/report-bundle";
-import { getConfigRootDir, removeWithRetries, setAgentDir } from "@veyyon/pi-utils";
+import type { Model } from "@veyyon/ai";
+import { buildModel } from "@veyyon/catalog/build";
+import { RawSseDebugBuffer } from "@veyyon/coding-agent/debug/raw-sse-buffer";
+import { createReportBundle } from "@veyyon/coding-agent/debug/report-bundle";
+import { getConfigRootDir, removeWithRetries, setAgentDir } from "@veyyon/utils";
 
 const model: Model<"anthropic-messages"> = buildModel({
 	id: "claude-test",
@@ -21,7 +21,7 @@ const model: Model<"anthropic-messages"> = buildModel({
 	maxTokens: 8_192,
 });
 
-const originalAgentDir = process.env.PI_CODING_AGENT_DIR;
+const originalAgentDir = process.env.VEYYON_CODING_AGENT_DIR;
 const originalXdgStateHome = process.env.XDG_STATE_HOME;
 const fallbackAgentDir = path.join(getConfigRootDir(), "agent");
 let cleanupRoot: string | undefined;
@@ -36,7 +36,7 @@ afterEach(async () => {
 		setAgentDir(originalAgentDir);
 	} else {
 		setAgentDir(fallbackAgentDir);
-		delete process.env.PI_CODING_AGENT_DIR;
+		delete process.env.VEYYON_CODING_AGENT_DIR;
 	}
 	if (cleanupRoot) {
 		await removeWithRetries(cleanupRoot);
@@ -46,9 +46,9 @@ afterEach(async () => {
 
 describe("raw SSE report bundle", () => {
 	it("includes captured raw SSE text and dropped-record disclosure", async () => {
-		cleanupRoot = await fs.mkdtemp(path.join(os.tmpdir(), "omp-raw-sse-report-"));
+		cleanupRoot = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-raw-sse-report-"));
 		const xdgStateHome = path.join(cleanupRoot, "state");
-		await fs.mkdir(path.join(xdgStateHome, "omp"), { recursive: true });
+		await fs.mkdir(path.join(xdgStateHome, "veyyon"), { recursive: true });
 		process.env.XDG_STATE_HOME = xdgStateHome;
 		setAgentDir(fallbackAgentDir);
 
@@ -64,7 +64,7 @@ describe("raw SSE report bundle", () => {
 			);
 		}
 		const rawSseText = buffer.toRawText();
-		expect(rawSseText).toContain(": omp-debug-dropped records=");
+		expect(rawSseText).toContain(": veyyon-debug-dropped records=");
 		expect(rawSseText).toContain("event: message_delta");
 
 		const result = await createReportBundle({ sessionFile: undefined, rawSseText });

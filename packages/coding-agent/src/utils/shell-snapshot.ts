@@ -8,7 +8,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { logger, postmortem } from "@veyyon/pi-utils";
+import { logger, postmortem } from "@veyyon/utils";
 import fnEnvHelper from "./shell-snapshot-fn-env.sh" with { type: "text" };
 
 const cachedSnapshotPaths = new Map<string, string>();
@@ -235,7 +235,7 @@ export async function getOrCreateSnapshot(
 	// shared on Linux. `mode: 0o700` applies to a fresh mkdir; an existing dir
 	// keeps its mode, so chmod it defensively. Ignore EPERM (dir owned by
 	// another user on a shared box).
-	const snapshotDir = path.join(os.tmpdir(), "omp-shell-snapshots");
+	const snapshotDir = path.join(os.tmpdir(), "veyyon-shell-snapshots");
 	fs.mkdirSync(snapshotDir, { recursive: true, mode: 0o700 });
 	try {
 		fs.chmodSync(snapshotDir, 0o700);

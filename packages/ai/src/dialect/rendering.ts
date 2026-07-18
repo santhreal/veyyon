@@ -1,4 +1,4 @@
-import { stringifyJson as stringifyJsonValue } from "@veyyon/pi-utils";
+import { stringifyJson as stringifyJsonValue } from "@veyyon/utils";
 import type { AssistantMessage, Message, ToolCall, ToolResultMessage } from "../types";
 import type { DialectRenderOptions, DialectToolResult } from "./types";
 

@@ -1,10 +1,10 @@
 import { describe, expect, it } from "bun:test";
-import { resolvePredicateTimeout } from "@veyyon/pi-coding-agent/tools/browser/run-cancellation";
+import { resolvePredicateTimeout } from "@veyyon/coding-agent/tools/browser/run-cancellation";
 import {
 	normalizeSelector,
 	resolveOpTimeouts,
 	resolveWaitTimeout,
-} from "@veyyon/pi-coding-agent/tools/browser/tab-worker";
+} from "@veyyon/coding-agent/tools/browser/tab-worker";
 
 // Regression coverage for the "weird timeouts" failure mode: interactive `tab.*` helpers
 // used to run with the full cell budget as their internal puppeteer timeout, so a stalled

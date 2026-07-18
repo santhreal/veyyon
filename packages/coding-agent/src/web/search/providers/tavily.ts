@@ -4,7 +4,7 @@
  * Uses Tavily's agent-focused search API to return structured results with an
  * optional synthesized answer.
  */
-import { type ApiKey, type AuthStorage, type FetchImpl, getEnvApiKey, withAuth } from "@veyyon/pi-ai";
+import { type ApiKey, type AuthStorage, type FetchImpl, getEnvApiKey, withAuth } from "@veyyon/ai";
 import type { SearchResponse, SearchSource } from "../../../web/search/types";
 import { SearchProviderError } from "../../../web/search/types";
 import { clampNumResults, dateToAgeSeconds } from "../utils";
@@ -90,34 +90,36 @@ export function buildRequestBody(params: TavilySearchParams): Record<string, unk
 }
 
 async function callTavilySearch(apiKey: string, params: TavilySearchParams): Promise<TavilySearchResponse> {
-	const response = await (params.fetch ?? fetch)(TAVILY_SEARCH_URL, {
-		method: "POST",
-		headers: {
-			"Content-Type": "application/json",
-			Authorization: `Bearer ${apiKey}`,
-		},
-		body: JSON.stringify(buildRequestBody(params)),
-		signal: withHardTimeout(params.signal),
-	});
+	return withHardTimeout(params.signal, async hardSignal => {
+		const response = await (params.fetch ?? fetch)(TAVILY_SEARCH_URL, {
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+				Authorization: `Bearer ${apiKey}`,
+			},
+			body: JSON.stringify(buildRequestBody(params)),
+			signal: hardSignal,
+		});
 
-	if (!response.ok) {
-		const errorText = await response.text();
-		const classified = classifyProviderHttpError("tavily", response.status, errorText);
-		if (classified) throw classified;
-		let message = errorText.trim();
-		if (message.length === 0) {
-			message = response.statusText;
-		} else {
-			try {
-				message = getErrorMessage(JSON.parse(errorText)) ?? message;
-			} catch {
-				// Keep raw text fallback.
+		if (!response.ok) {
+			const errorText = await response.text();
+			const classified = classifyProviderHttpError("tavily", response.status, errorText);
+			if (classified) throw classified;
+			let message = errorText.trim();
+			if (message.length === 0) {
+				message = response.statusText;
+			} else {
+				try {
+					message = getErrorMessage(JSON.parse(errorText)) ?? message;
+				} catch {
+					// Keep raw text fallback.
+				}
 			}
+			throw new SearchProviderError("tavily", `Tavily API error (${response.status}): ${message}`, response.status);
 		}
-		throw new SearchProviderError("tavily", `Tavily API error (${response.status}): ${message}`, response.status);
-	}
 
-	return (await response.json()) as TavilySearchResponse;
+		return (await response.json()) as TavilySearchResponse;
+	});
 }
 
 function toSearchResponse(response: TavilySearchResponse, numResults: number): SearchResponse {

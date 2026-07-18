@@ -8,13 +8,13 @@
  * sibling SQLite store and never POSTs the broker sentinel to a Google token
  * endpoint.
  */
-import { type AuthStorage, type FetchImpl, type OAuthAccess, withOAuthAccess } from "@veyyon/pi-ai";
+import { type AuthStorage, type FetchImpl, type OAuthAccess, withOAuthAccess } from "@veyyon/ai";
 import {
 	ANTIGRAVITY_SYSTEM_INSTRUCTION,
 	getAntigravityUserAgent,
 	getGeminiCliHeaders,
-} from "@veyyon/pi-catalog/wire/gemini-headers";
-import { fetchWithRetry } from "@veyyon/pi-utils";
+} from "@veyyon/catalog/wire/gemini-headers";
+import { fetchWithRetry } from "@veyyon/utils";
 
 import type { SearchCitation, SearchResponse, SearchSource } from "../../../web/search/types";
 import { SearchProviderError } from "../../../web/search/types";
@@ -330,8 +330,8 @@ async function callGeminiSearch(
 				requestId: `agent-${crypto.randomUUID()}`,
 			}
 		: {
-				userAgent: "pi-coding-agent",
-				requestId: `pi-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
+				userAgent: "veyyon",
+				requestId: `veyyon-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
 			};
 
 	const normalizedSystemPrompt = systemPrompt?.toWellFormed();
@@ -371,62 +371,64 @@ async function callGeminiSearch(
 		}
 		(requestBody.request as Record<string, unknown>).generationConfig = generationConfig;
 	}
-	const buildInit = (): RequestInit => ({
-		method: "POST",
-		headers: {
-			Authorization: `Bearer ${auth.accessToken}`,
-			"Content-Type": "application/json",
-			Accept: "text/event-stream",
-			...headers,
-		},
-		body: JSON.stringify(requestBody),
-		signal: withHardTimeout(signal),
-	});
+	return withHardTimeout(signal, async hardSignal => {
+		const buildInit = (): RequestInit => ({
+			method: "POST",
+			headers: {
+				Authorization: `Bearer ${auth.accessToken}`,
+				"Content-Type": "application/json",
+				Accept: "text/event-stream",
+				...headers,
+			},
+			body: JSON.stringify(requestBody),
+			signal: hardSignal,
+		});
 
-	let response: Response | undefined;
+		let response: Response | undefined;
 
-	for (let i = 0; i < endpoints.length; i++) {
-		const endpoint = endpoints[i];
-		const isLastEndpoint = i === endpoints.length - 1;
-		try {
-			response = await fetchWithRetry(() => `${endpoint}/v1internal:streamGenerateContent?alt=sse`, {
-				...buildInit(),
-				fetch: fetchImpl,
-				maxAttempts: isLastEndpoint ? MAX_RETRIES + 1 : 1,
-				defaultDelayMs: attempt => BASE_DELAY_MS * 2 ** attempt,
-				maxDelayMs: RATE_LIMIT_BUDGET_MS,
-			});
+		for (let i = 0; i < endpoints.length; i++) {
+			const endpoint = endpoints[i];
+			const isLastEndpoint = i === endpoints.length - 1;
+			try {
+				response = await fetchWithRetry(() => `${endpoint}/v1internal:streamGenerateContent?alt=sse`, {
+					...buildInit(),
+					fetch: fetchImpl,
+					maxAttempts: isLastEndpoint ? MAX_RETRIES + 1 : 1,
+					defaultDelayMs: attempt => BASE_DELAY_MS * 2 ** attempt,
+					maxDelayMs: RATE_LIMIT_BUDGET_MS,
+				});
 
-			if (response.ok) {
+				if (response.ok) {
+					break;
+				}
+
+				if (response.status === 429 || (response.status >= 500 && response.status < 600)) {
+					if (!isLastEndpoint) {
+						continue;
+					}
+				}
 				break;
-			}
-
-			if (response.status === 429 || (response.status >= 500 && response.status < 600)) {
-				if (!isLastEndpoint) {
-					continue;
+			} catch (error) {
+				if (isLastEndpoint) {
+					throw error;
 				}
 			}
-			break;
-		} catch (error) {
-			if (isLastEndpoint) {
-				throw error;
-			}
 		}
-	}
 
-	if (!response?.ok) {
-		const errorText = response ? await response.text() : "Network error";
-		const status = response?.status ?? 502;
-		const classified = classifyProviderHttpError("gemini", status, errorText);
-		if (classified) throw classified;
-		throw new SearchProviderError("gemini", `Gemini Cloud Code API error (${status}): ${errorText}`, status);
-	}
+		if (!response?.ok) {
+			const errorText = response ? await response.text() : "Network error";
+			const status = response?.status ?? 502;
+			const classified = classifyProviderHttpError("gemini", status, errorText);
+			if (classified) throw classified;
+			throw new SearchProviderError("gemini", `Gemini Cloud Code API error (${status}): ${errorText}`, status);
+		}
 
-	if (!response.body) {
-		throw new SearchProviderError("gemini", "Gemini API returned no response body", 500);
-	}
+		if (!response.body) {
+			throw new SearchProviderError("gemini", "Gemini API returned no response body", 500);
+		}
 
-	return parseGeminiSearchStream(response.body, model);
+		return parseGeminiSearchStream(response.body, model);
+	});
 }
 
 async function callGeminiDeveloperSearch(
@@ -467,40 +469,42 @@ async function callGeminiDeveloperSearch(
 		requestBody.generationConfig = generationConfig;
 	}
 
-	const response = await fetchWithRetry(
-		() => `${DEVELOPER_API_ENDPOINT}/models/${model}:streamGenerateContent?alt=sse`,
-		{
-			method: "POST",
-			headers: {
-				"x-goog-api-key": apiKey,
-				"Content-Type": "application/json",
-				Accept: "text/event-stream",
+	return withHardTimeout(signal, async hardSignal => {
+		const response = await fetchWithRetry(
+			() => `${DEVELOPER_API_ENDPOINT}/models/${model}:streamGenerateContent?alt=sse`,
+			{
+				method: "POST",
+				headers: {
+					"x-goog-api-key": apiKey,
+					"Content-Type": "application/json",
+					Accept: "text/event-stream",
+				},
+				body: JSON.stringify(requestBody),
+				signal: hardSignal,
+				fetch: fetchImpl,
+				maxAttempts: MAX_RETRIES + 1,
+				defaultDelayMs: attempt => BASE_DELAY_MS * 2 ** attempt,
+				maxDelayMs: RATE_LIMIT_BUDGET_MS,
 			},
-			body: JSON.stringify(requestBody),
-			signal: withHardTimeout(signal),
-			fetch: fetchImpl,
-			maxAttempts: MAX_RETRIES + 1,
-			defaultDelayMs: attempt => BASE_DELAY_MS * 2 ** attempt,
-			maxDelayMs: RATE_LIMIT_BUDGET_MS,
-		},
-	);
-
-	if (!response.ok) {
-		const errorText = await response.text();
-		const classified = classifyProviderHttpError("gemini", response.status, errorText);
-		if (classified) throw classified;
-		throw new SearchProviderError(
-			"gemini",
-			`Gemini Developer API error (${response.status}): ${errorText}`,
-			response.status,
 		);
-	}
 
-	if (!response.body) {
-		throw new SearchProviderError("gemini", "Gemini API returned no response body", 500);
-	}
+		if (!response.ok) {
+			const errorText = await response.text();
+			const classified = classifyProviderHttpError("gemini", response.status, errorText);
+			if (classified) throw classified;
+			throw new SearchProviderError(
+				"gemini",
+				`Gemini Developer API error (${response.status}): ${errorText}`,
+				response.status,
+			);
+		}
 
-	return parseGeminiSearchStream(response.body, model);
+		if (!response.body) {
+			throw new SearchProviderError("gemini", "Gemini API returned no response body", 500);
+		}
+
+		return parseGeminiSearchStream(response.body, model);
+	});
 }
 
 /**

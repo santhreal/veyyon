@@ -2,18 +2,18 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { AuthStorage, type completeSimple, type ImageContent, type Model } from "@veyyon/pi-ai";
-import { buildModel } from "@veyyon/pi-catalog/build";
-import { ModelRegistry } from "@veyyon/pi-coding-agent/config/model-registry";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { getThemeByName } from "@veyyon/pi-coding-agent/modes/theme/theme";
-import { createAgentSession } from "@veyyon/pi-coding-agent/sdk";
-import { SessionManager } from "@veyyon/pi-coding-agent/session/session-manager";
-import type { ToolSession } from "@veyyon/pi-coding-agent/tools";
-import { InspectImageTool } from "@veyyon/pi-coding-agent/tools/inspect-image";
-import { inspectImageToolRenderer } from "@veyyon/pi-coding-agent/tools/inspect-image-renderer";
-import { toolRenderers } from "@veyyon/pi-coding-agent/tools/renderers";
-import { removeSyncWithRetries, sanitizeText } from "@veyyon/pi-utils";
+import { AuthStorage, type completeSimple, type ImageContent, type Model } from "@veyyon/ai";
+import { buildModel } from "@veyyon/catalog/build";
+import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import { getThemeByName } from "@veyyon/coding-agent/modes/theme/theme";
+import { createAgentSession } from "@veyyon/coding-agent/sdk";
+import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import type { ToolSession } from "@veyyon/coding-agent/tools";
+import { InspectImageTool } from "@veyyon/coding-agent/tools/inspect-image";
+import { inspectImageToolRenderer } from "@veyyon/coding-agent/tools/inspect-image-renderer";
+import { toolRenderers } from "@veyyon/coding-agent/tools/renderers";
+import { removeSyncWithRetries, sanitizeText } from "@veyyon/utils";
 import { type } from "arktype";
 
 const TINY_PNG_BASE64 =
@@ -125,7 +125,7 @@ describe("InspectImageTool", () => {
 	let testDir: string;
 
 	beforeEach(() => {
-		testDir = fs.mkdtempSync(path.join(os.tmpdir(), "omp-inspect-image-"));
+		testDir = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-inspect-image-"));
 	});
 
 	afterEach(() => {

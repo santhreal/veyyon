@@ -3,9 +3,9 @@
 // icon tinting. Construction/registry/lifecycle live in theme.ts; this module
 // owns only the per-instance behavior.
 
-import type { ThinkingLevel } from "@veyyon/pi-agent-core";
-import type { Effort } from "@veyyon/pi-ai";
-import { colorLuma, logger, relativeLuminance } from "@veyyon/pi-utils";
+import type { ThinkingLevel } from "@veyyon/agent-core";
+import type { Effort } from "@veyyon/ai";
+import { colorLuma, logger, relativeLuminance } from "@veyyon/utils";
 import chalk from "chalk";
 import { bgAnsi, type ColorMode, colorToAnsi, fgAnsi, resolveToHex, type ThemeBg, type ThemeColor } from "./color";
 import {

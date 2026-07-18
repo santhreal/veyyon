@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { computeUserMessageMetrics, EMPTY_USER_METRICS } from "@veyyon/pi-stats/user-metrics";
+import { computeUserMessageMetrics, EMPTY_USER_METRICS } from "@veyyon/stats/user-metrics";
 
 describe("computeUserMessageMetrics", () => {
 	it("returns zeros for empty / whitespace-only text", () => {

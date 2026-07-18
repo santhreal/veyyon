@@ -1,3 +1,4 @@
+import { trimTrailingSlashes } from "@veyyon/utils";
 import { type } from "arktype";
 import type { ModelSpec } from "../types";
 import { discoveryFetch, toPositiveNumber } from "../utils";
@@ -246,8 +247,4 @@ function parseAntigravityDiscoveryResponse(value: unknown): AntigravityDiscovery
 		return null;
 	}
 	return parsed;
-}
-
-function trimTrailingSlashes(value: string): string {
-	return value.replace(/\/+$/, "");
 }

@@ -1,4 +1,4 @@
-import { logger } from "@veyyon/pi-utils";
+import { errorMessage, logger } from "@veyyon/utils";
 import {
 	createUnavailableWorker,
 	createWorkerHandle,
@@ -248,7 +248,7 @@ export class SttClient {
 				this.#deletePending(id);
 			}
 		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
+			const message = errorMessage(error);
 			logger.debug("stt: local model download failed", {
 				modelKey,
 				error: message,

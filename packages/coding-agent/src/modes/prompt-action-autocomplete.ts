@@ -7,7 +7,7 @@ import {
 	isSubsequenceMatch,
 	type SlashCommand,
 	subsequenceScore,
-} from "@veyyon/pi-tui";
+} from "@veyyon/tui";
 import { formatKeyHints, type KeybindingsManager } from "../config/keybindings";
 import { isSettingsInitialized, settings } from "../config/settings";
 import { applyEmojiCompletion, getEmojiSuggestions, isEmojiPrefix, tryEmojiInlineReplace } from "./emoji-autocomplete";

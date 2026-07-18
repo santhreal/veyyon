@@ -6,7 +6,8 @@
  * `ssh://` reads/writes round-trip exactly — leading/trailing whitespace, tabs,
  * and final newlines are preserved.
  */
-import { ptree } from "@veyyon/pi-utils";
+import { ptree } from "@veyyon/utils";
+import { scopedTimeoutSignal } from "../utils/fetch-timeout";
 import { buildRemoteCommand, ensureConnection, ensureHostInfo, type SSHConnectionTarget } from "./connection-manager";
 import { quotePosixPath, wrapInPosixShell } from "./utils";
 
@@ -75,14 +76,19 @@ export async function readRemoteFile(
 	const shell = await ensurePosixRemote(target);
 	const command = `head -c ${opts.maxBytes + 1} ${quotePosixPath(remotePath)}`;
 	const args = await buildRemoteCommand(target, wrapInPosixShell(shell, command));
-	using child = ptree.spawn(["ssh", ...args], {
-		signal: ptree.combineSignals(opts.signal, opts.timeoutMs ?? DEFAULT_TIMEOUT_MS),
-	});
-	// Drain stdout before awaiting exit so a full pipe can't deadlock the child.
-	const raw = await child.bytes();
-	await child.exitedCleanly;
-	const truncated = raw.length > opts.maxBytes;
-	return { bytes: truncated ? raw.subarray(0, opts.maxBytes) : raw, truncated };
+	// Scoped so the deadline timer is cleared on settle instead of staying
+	// armed like a bare AbortSignal.timeout.
+	const opTimeout = scopedTimeoutSignal(opts.timeoutMs ?? DEFAULT_TIMEOUT_MS, opts.signal);
+	try {
+		using child = ptree.spawn(["ssh", ...args], { signal: opTimeout.signal });
+		// Drain stdout before awaiting exit so a full pipe can't deadlock the child.
+		const raw = await child.bytes();
+		await child.exitedCleanly;
+		const truncated = raw.length > opts.maxBytes;
+		return { bytes: truncated ? raw.subarray(0, opts.maxBytes) : raw, truncated };
+	} finally {
+		opTimeout.cancel();
+	}
 }
 
 /**
@@ -120,7 +126,7 @@ export async function writeRemoteFile(
 		throw new Error("ssh://: destination is a directory path (trailing '/'); ssh:// write requires a file path");
 	}
 	const dest = quotePosixPath(remotePath);
-	const tmp = quotePosixPath(`${remotePath}.omp-tmp.${crypto.randomUUID()}`);
+	const tmp = quotePosixPath(`${remotePath}.veyyon-tmp.${crypto.randomUUID()}`);
 	// Stage stdin into the temp first (so the remote never blocks on an unread
 	// pipe and a dropped connection lands in the temp, never the destination).
 	// An EXIT trap removes the staged temp on every exit path (staging failure,
@@ -141,11 +147,16 @@ export async function writeRemoteFile(
 		`else mv "$t" ${dest}; fi; ` +
 		`}`;
 	const args = await buildRemoteCommand(target, wrapInPosixShell(shell, command), { allowStdin: true });
-	using child = ptree.spawn(["ssh", ...args], {
-		stdin: content,
-		signal: ptree.combineSignals(opts.signal, opts.timeoutMs ?? DEFAULT_TIMEOUT_MS),
-	});
-	await child.exitedCleanly;
+	const opTimeout = scopedTimeoutSignal(opts.timeoutMs ?? DEFAULT_TIMEOUT_MS, opts.signal);
+	try {
+		using child = ptree.spawn(["ssh", ...args], {
+			stdin: content,
+			signal: opTimeout.signal,
+		});
+		await child.exitedCleanly;
+	} finally {
+		opTimeout.cancel();
+	}
 }
 
 /** Classification of a remote path, used by the read handler's directory dispatch. */
@@ -164,12 +175,15 @@ export async function statRemotePath(
 	const p = quotePosixPath(remotePath);
 	const command = `if [ -d ${p} ]; then echo directory; elif [ -f ${p} ]; then echo file; elif [ -e ${p} ]; then echo other; else echo missing; fi`;
 	const args = await buildRemoteCommand(target, wrapInPosixShell(shell, command));
-	using child = ptree.spawn(["ssh", ...args], {
-		signal: ptree.combineSignals(opts.signal, opts.timeoutMs ?? DEFAULT_TIMEOUT_MS),
-	});
-	const out = new TextDecoder().decode(await child.bytes()).trim();
-	await child.exitedCleanly;
-	return out === "directory" || out === "file" || out === "other" ? out : "missing";
+	const opTimeout = scopedTimeoutSignal(opts.timeoutMs ?? DEFAULT_TIMEOUT_MS, opts.signal);
+	try {
+		using child = ptree.spawn(["ssh", ...args], { signal: opTimeout.signal });
+		const out = new TextDecoder().decode(await child.bytes()).trim();
+		await child.exitedCleanly;
+		return out === "directory" || out === "file" || out === "other" ? out : "missing";
+	} finally {
+		opTimeout.cancel();
+	}
 }
 
 /** A single entry in a remote directory listing. */
@@ -196,11 +210,15 @@ export async function listRemoteDir(
 	const shell = await ensurePosixRemote(target);
 	const command = `LC_ALL=C ls -1Ap -- ${quotePosixPath(remotePath)}`;
 	const args = await buildRemoteCommand(target, wrapInPosixShell(shell, command));
-	using child = ptree.spawn(["ssh", ...args], {
-		signal: ptree.combineSignals(opts.signal, opts.timeoutMs ?? DEFAULT_TIMEOUT_MS),
-	});
-	const text = new TextDecoder().decode(await child.bytes());
-	await child.exitedCleanly;
+	const opTimeout = scopedTimeoutSignal(opts.timeoutMs ?? DEFAULT_TIMEOUT_MS, opts.signal);
+	let text: string;
+	try {
+		using child = ptree.spawn(["ssh", ...args], { signal: opTimeout.signal });
+		text = new TextDecoder().decode(await child.bytes());
+		await child.exitedCleanly;
+	} finally {
+		opTimeout.cancel();
+	}
 	const entries = text
 		.split("\n")
 		.filter(line => line.length > 0)

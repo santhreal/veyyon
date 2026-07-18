@@ -1,8 +1,8 @@
 import { describe, expect, it } from "bun:test";
-import { streamSimple } from "@veyyon/pi-ai/stream";
-import type { Context, FetchImpl, Model, ProviderResponseMetadata } from "@veyyon/pi-ai/types";
-import { normalizeProviderResponse, notifyProviderResponse } from "@veyyon/pi-ai/utils/provider-response";
-import { getBundledModel } from "@veyyon/pi-catalog/models";
+import { streamSimple } from "@veyyon/ai/stream";
+import type { Context, FetchImpl, Model, ProviderResponseMetadata } from "@veyyon/ai/types";
+import { normalizeProviderResponse, notifyProviderResponse } from "@veyyon/ai/utils/provider-response";
+import { getBundledModel } from "@veyyon/catalog/models";
 
 describe("provider response metadata", () => {
 	it("normalizes response status, headers, and request id", () => {

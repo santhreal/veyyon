@@ -31,12 +31,12 @@ pub(crate) fn command_name() -> &'static str {
 }
 
 pub(crate) fn report_error(error: &dyn std::fmt::Display) {
-	let _ = writeln!(pi_uutils_ctx::stderr(), "{}: {error}", command_name());
-	pi_uutils_ctx::set_exit_code(1);
+	let _ = writeln!(veyyon_uutils_ctx::stderr(), "{}: {error}", command_name());
+	veyyon_uutils_ctx::set_exit_code(1);
 }
 
 pub(crate) fn report_warning(message: &str) {
-	let _ = writeln!(pi_uutils_ctx::stderr(), "{}: {message}", command_name());
+	let _ = writeln!(veyyon_uutils_ctx::stderr(), "{}: {message}", command_name());
 }
 
 /// Generate a context-safe standalone checksum wrapper.
@@ -107,10 +107,10 @@ fn run_with_optional_length(
 		Err(err) => {
 			let rendered = err.to_string();
 			if err.use_stderr() {
-				let _ = write!(pi_uutils_ctx::stderr(), "{rendered}");
+				let _ = write!(veyyon_uutils_ctx::stderr(), "{rendered}");
 				return 2;
 			}
-			let _ = write!(pi_uutils_ctx::stdout(), "{rendered}");
+			let _ = write!(veyyon_uutils_ctx::stdout(), "{rendered}");
 			return 0;
 		},
 	};
@@ -130,7 +130,7 @@ fn run_with_optional_length(
 	let tag = matches.get_flag(options::TAG);
 	let format = OutputFormat::from_standalone(text, tag);
 	match checksum_main(Some(algo), length, matches, format) {
-		Ok(()) => pi_uutils_ctx::exit_code(),
+		Ok(()) => veyyon_uutils_ctx::exit_code(),
 		Err(err) => finish_error(bin, err),
 	}
 }
@@ -139,7 +139,7 @@ fn finish_error(bin: &str, err: Box<dyn UError>) -> i32 {
 	let code = err.code();
 	let message = err.to_string();
 	if !message.is_empty() {
-		let _ = writeln!(pi_uutils_ctx::stderr(), "{bin}: {message}");
+		let _ = writeln!(veyyon_uutils_ctx::stderr(), "{bin}: {message}");
 	}
 	if code == 0 { 1 } else { code }
 }

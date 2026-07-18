@@ -5,7 +5,7 @@ import { resolveStdioSpawnCommand, StdioTransport } from "./stdio";
 describe("resolveStdioSpawnCommand", () => {
 	it("hides Windows executable MCP servers when the host has no console", async () => {
 		// Hidden so a console-app child does not allocate a visible window when
-		// OMP is launched without a terminal console (#3536).
+		// veyyon is launched without a terminal console (#3536).
 		await expect(
 			resolveStdioSpawnCommand(
 				{ command: "server.exe", args: ["--stdio"] },
@@ -66,7 +66,7 @@ describe("StdioTransport.connect", () => {
 			args: argv.slice(1),
 			cwd,
 			env: {
-				OMP_STDIO_SPAWN_SHAPE: envValue,
+				VEYYON_STDIO_SPAWN_SHAPE: envValue,
 			},
 		});
 		const spawnSpy = spyOn(Bun, "spawn");
@@ -85,7 +85,7 @@ describe("StdioTransport.connect", () => {
 					cwd,
 					detached: !(process.platform === "darwin" || process.platform === "win32"),
 					env: expect.objectContaining({
-						OMP_STDIO_SPAWN_SHAPE: envValue,
+						VEYYON_STDIO_SPAWN_SHAPE: envValue,
 					}),
 					stderr: "pipe",
 					stdin: "pipe",

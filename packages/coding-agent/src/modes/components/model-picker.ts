@@ -3,8 +3,9 @@
  * hosting just a {@link ModelBrowser} — no provider sidebar.
  * Model entries switch the current session only.
  */
-import type { Model } from "@veyyon/pi-ai";
-import { type Component, padding, routeSgrMouseInput, type SgrMouseEvent, type TUI } from "@veyyon/pi-tui";
+import type { Model } from "@veyyon/ai";
+import { type Component, padding, routeSgrMouseInput, type SgrMouseEvent, type TUI } from "@veyyon/tui";
+import { errorMessage } from "@veyyon/utils";
 import type { ModelRegistry } from "../../config/model-registry";
 import type { Settings } from "../../config/settings";
 import { theme } from "../theme/theme";
@@ -98,7 +99,7 @@ export class ModelPickerComponent implements Component {
 				.refresh("offline")
 				.then(() => this.#syncFromRegistryState())
 				.catch(error => {
-					this.#configError = error instanceof Error ? error.message : String(error);
+					this.#configError = errorMessage(error);
 				})
 				.finally(() => this.#tui.requestRender());
 		}
@@ -117,7 +118,7 @@ export class ModelPickerComponent implements Component {
 			try {
 				models = this.#registry.getAvailable();
 			} catch (error) {
-				this.#configError = error instanceof Error ? error.message : String(error);
+				this.#configError = errorMessage(error);
 				models = [];
 			}
 		}

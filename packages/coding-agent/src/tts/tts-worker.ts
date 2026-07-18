@@ -1,6 +1,8 @@
+import * as fs from "node:fs/promises";
 import { createRequire } from "node:module";
+import * as path from "node:path";
 import type { ProgressInfo, RawAudio } from "@huggingface/transformers";
-import { ensureRuntimeInstalled, getTinyModelsCacheDir, resolveRuntimeModule } from "@veyyon/pi-utils";
+import { ensureRuntimeInstalled, getTinyModelsCacheDir, resolveRuntimeModule } from "@veyyon/utils";
 import {
 	errorMessage,
 	errorText,
@@ -13,7 +15,13 @@ import {
 } from "../subprocess/worker-runtime";
 import { resolveTinyModelDevicePreference, type TinyModelDevice, tinyModelDeviceLoadOrder } from "../tiny/device";
 import { resolveTinyModelDtypeOverride, type TinyModelDtype } from "../tiny/dtype";
-import { getTtsLocalModelSpec, resolveTtsVoice, type TtsLocalModelKey, type TtsLocalModelSpec } from "./models";
+import {
+	getTtsLocalModelSpec,
+	isCorruptModelCacheError,
+	resolveTtsVoice,
+	type TtsLocalModelKey,
+	type TtsLocalModelSpec,
+} from "./models";
 import {
 	getTtsRuntimeDir,
 	KOKORO_PACKAGE,
@@ -213,6 +221,42 @@ async function loadModelWithDeviceFallback(
 	throw new Error("No TTS devices configured");
 }
 
+/**
+ * Wait until the repo cache dir's total byte size stops changing (two equal
+ * samples 300ms apart), bounded at 60s. transformers.js flushes its cache file
+ * asynchronously after the model buffer is handed to onnxruntime, so a load
+ * retry right after a failed fresh download can read a file that is still
+ * being written; sampling for quiescence makes the retry deterministic.
+ */
+async function waitForCacheQuiescence(repoDir: string): Promise<void> {
+	const totalSize = async (): Promise<number> => {
+		let sum = 0;
+		let entries: string[];
+		try {
+			entries = (await fs.readdir(repoDir, { recursive: true })) as string[];
+		} catch {
+			return 0;
+		}
+		for (const entry of entries) {
+			try {
+				const stat = await fs.stat(path.join(repoDir, entry));
+				if (stat.isFile()) sum += stat.size;
+			} catch {
+				// File vanished mid-scan; the next sample settles it.
+			}
+		}
+		return sum;
+	};
+	const deadline = Date.now() + 60_000;
+	let previous = await totalSize();
+	while (Date.now() < deadline) {
+		await new Promise(resolve => setTimeout(resolve, 300));
+		const next = await totalSize();
+		if (next === previous && next > 0) return;
+		previous = next;
+	}
+}
+
 async function loadModel(
 	modelKey: TtsLocalModelKey,
 	transport: TtsTransport,
@@ -225,7 +269,44 @@ async function loadModel(
 
 	const runtime = await loadKokoroRuntime(transport, requestId, modelKey);
 	const startedAt = performance.now();
-	const loaded = loadModelWithDeviceFallback(runtime, spec, modelKey, transport, requestId).then(
+	const loadOnce = () => loadModelWithDeviceFallback(runtime, spec, modelKey, transport, requestId);
+	const loadWithCorruptCacheRecovery = async () => {
+		const repoDir = path.join(getTinyModelsCacheDir(), ...spec.repo.split("/"));
+		// Recovery ladder for corrupt cached weights: attempt 1 is the normal
+		// load; on a parse failure attempt 2 purges the cache and re-downloads;
+		// attempt 3 retries WITHOUT purging, because a fresh download's parse can
+		// race the async cache write and fail while the on-disk file completes
+		// (observed live: retry failed, file landed at the full size, next load
+		// succeeded). Every recovery step is logged loudly.
+		for (let attempt = 1; ; attempt += 1) {
+			try {
+				return await loadOnce();
+			} catch (error) {
+				if (!isCorruptModelCacheError(error) || attempt >= 3) {
+					if (attempt > 1) {
+						throw new Error(
+							`Local TTS model "${spec.repo}" failed to load even after purging its cache and re-downloading. ` +
+								`Check network access, then retry (cache dir: ${repoDir}). Cause: ${errorMessage(error)}`,
+						);
+					}
+					throw error;
+				}
+				if (attempt === 1) {
+					await fs.rm(repoDir, { recursive: true, force: true });
+				}
+				sendLog(
+					transport,
+					"warn",
+					attempt === 1
+						? "tts: cached model weights failed to parse (interrupted download?); purged cache, re-downloading"
+						: "tts: freshly downloaded weights failed to parse; waiting for the cache write to settle, then retrying",
+					{ modelKey, repo: spec.repo, repoDir, attempt, error: errorMessage(error) },
+				);
+				if (attempt === 2) await waitForCacheQuiescence(repoDir);
+			}
+		}
+	};
+	const loaded = loadWithCorruptCacheRecovery().then(
 		({ model, device }) => {
 			sendLog(transport, "debug", "tts: local model loaded", {
 				modelKey,

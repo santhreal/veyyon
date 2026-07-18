@@ -1,5 +1,5 @@
-import type { AgentTool, AgentToolResult } from "@veyyon/pi-agent-core";
-import { logger, untilAborted } from "@veyyon/pi-utils";
+import type { AgentTool, AgentToolResult } from "@veyyon/agent-core";
+import { logger, pluralize, untilAborted } from "@veyyon/utils";
 import { type } from "arktype";
 import { formatCurrentTime, formatMemories } from "../hindsight/content";
 import recallDescription from "../prompts/tools/recall.md" with { type: "text" };
@@ -51,7 +51,7 @@ export class MemoryRecallTool implements AgentTool<typeof memoryRecallSchema> {
 						content: [
 							{
 								type: "text",
-								text: `Found ${results.length} relevant ${results.length === 1 ? "memory" : "memories"} (as of ${formatCurrentTime()} UTC):\n\n${formatted}`,
+								text: `Found ${results.length} relevant ${pluralize("memory", results.length)} (as of ${formatCurrentTime()} UTC):\n\n${formatted}`,
 							},
 						],
 						details: {},
@@ -88,7 +88,7 @@ export class MemoryRecallTool implements AgentTool<typeof memoryRecallSchema> {
 					content: [
 						{
 							type: "text",
-							text: `Found ${results.length} relevant ${results.length === 1 ? "memory" : "memories"} (as of ${formatCurrentTime()} UTC):\n\n${formatted}`,
+							text: `Found ${results.length} relevant ${pluralize("memory", results.length)} (as of ${formatCurrentTime()} UTC):\n\n${formatted}`,
 						},
 					],
 					details: {},

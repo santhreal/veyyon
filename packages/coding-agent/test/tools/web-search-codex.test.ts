@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
-import type { AuthStorage, FetchImpl } from "@veyyon/pi-ai";
-import type { SearchParams } from "@veyyon/pi-coding-agent/web/search/providers/base";
-import { searchCodex } from "@veyyon/pi-coding-agent/web/search/providers/codex";
+import type { AuthStorage, FetchImpl } from "@veyyon/ai";
+import type { SearchParams } from "@veyyon/coding-agent/web/search/providers/base";
+import { searchCodex } from "@veyyon/coding-agent/web/search/providers/codex";
 
 type CapturedRequest = {
 	url: string;
@@ -9,7 +9,7 @@ type CapturedRequest = {
 	body: Record<string, unknown> | null;
 };
 
-const originalCodexSearchModel = process.env.PI_CODEX_WEB_SEARCH_MODEL;
+const originalCodexSearchModel = process.env.VEYYON_CODEX_WEB_SEARCH_MODEL;
 
 function makeSseResponse(model: string): string {
 	return [
@@ -217,14 +217,14 @@ describe("searchCodex model selection", () => {
 		vi.restoreAllMocks();
 		capturedRequest = null;
 		if (originalCodexSearchModel === undefined) {
-			delete process.env.PI_CODEX_WEB_SEARCH_MODEL;
+			delete process.env.VEYYON_CODEX_WEB_SEARCH_MODEL;
 		} else {
-			process.env.PI_CODEX_WEB_SEARCH_MODEL = originalCodexSearchModel;
+			process.env.VEYYON_CODEX_WEB_SEARCH_MODEL = originalCodexSearchModel;
 		}
 	});
 
 	it("uses GPT-5.6 Luna as the first bundled default", async () => {
-		delete process.env.PI_CODEX_WEB_SEARCH_MODEL;
+		delete process.env.VEYYON_CODEX_WEB_SEARCH_MODEL;
 		const result = await searchCodex(makeSearchParams("default codex model", mockCodexFetch("gpt-5.6-luna")));
 
 		expect(capturedRequest).not.toBeNull();
@@ -234,8 +234,8 @@ describe("searchCodex model selection", () => {
 		expect(result.sources).toEqual([{ title: "Example Article", url: "https://example.com/article" }]);
 	});
 
-	it("falls back to the default model when PI_CODEX_WEB_SEARCH_MODEL is blank", async () => {
-		process.env.PI_CODEX_WEB_SEARCH_MODEL = "   ";
+	it("falls back to the default model when VEYYON_CODEX_WEB_SEARCH_MODEL is blank", async () => {
+		process.env.VEYYON_CODEX_WEB_SEARCH_MODEL = "   ";
 		const result = await searchCodex(makeSearchParams("blank codex model", mockCodexFetch("gpt-5.6-luna")));
 
 		expect(capturedRequest).not.toBeNull();
@@ -244,7 +244,7 @@ describe("searchCodex model selection", () => {
 	});
 
 	it("retries the next bundled default when Codex rejects a model for ChatGPT accounts", async () => {
-		delete process.env.PI_CODEX_WEB_SEARCH_MODEL;
+		delete process.env.VEYYON_CODEX_WEB_SEARCH_MODEL;
 		let calls = 0;
 		capturedRequest = null;
 		const fetchMock: FetchImpl = (url, init) => {
@@ -285,7 +285,7 @@ describe("searchCodex model selection", () => {
 	});
 
 	it("encodes explicit gpt-5.6-sol as a Responses-Lite request", async () => {
-		process.env.PI_CODEX_WEB_SEARCH_MODEL = "gpt-5.6-sol";
+		process.env.VEYYON_CODEX_WEB_SEARCH_MODEL = "gpt-5.6-sol";
 		const result = await searchCodex(makeSearchParams("Sol web search", mockCodexFetch("gpt-5.6-sol")));
 
 		expect(capturedRequest).not.toBeNull();
@@ -329,8 +329,8 @@ describe("searchCodex model selection", () => {
 		expect(result.model).toBe("gpt-5.6-sol");
 	});
 
-	it("does not retry default candidates when PI_CODEX_WEB_SEARCH_MODEL is explicitly unsupported", async () => {
-		process.env.PI_CODEX_WEB_SEARCH_MODEL = "gpt-5.5";
+	it("does not retry default candidates when VEYYON_CODEX_WEB_SEARCH_MODEL is explicitly unsupported", async () => {
+		process.env.VEYYON_CODEX_WEB_SEARCH_MODEL = "gpt-5.5";
 		let calls = 0;
 		capturedRequest = null;
 		const fetchMock: FetchImpl = (url, init) => {
@@ -357,7 +357,7 @@ describe("searchCodex model selection", () => {
 	});
 
 	it("forces web_search tool choice and extracts markdown link citations when annotations are absent", async () => {
-		process.env.PI_CODEX_WEB_SEARCH_MODEL = "gpt-5.4";
+		process.env.VEYYON_CODEX_WEB_SEARCH_MODEL = "gpt-5.4";
 		const result = await searchCodex(
 			makeSearchParams("markdown citations", mockCodexFetch("gpt-5.4", makeMarkdownLinkSseResponse("gpt-5.4"))),
 		);
@@ -368,7 +368,7 @@ describe("searchCodex model selection", () => {
 	});
 
 	it("extracts plain text URLs when annotations are absent", async () => {
-		process.env.PI_CODEX_WEB_SEARCH_MODEL = "gpt-5.4";
+		process.env.VEYYON_CODEX_WEB_SEARCH_MODEL = "gpt-5.4";
 		const result = await searchCodex(
 			makeSearchParams("plain url citations", mockCodexFetch("gpt-5.4", makePlainUrlSseResponse("gpt-5.4"))),
 		);
@@ -380,7 +380,7 @@ describe("searchCodex model selection", () => {
 	});
 
 	it("preserves markdown URLs that contain balanced parentheses", async () => {
-		process.env.PI_CODEX_WEB_SEARCH_MODEL = "gpt-5.4";
+		process.env.VEYYON_CODEX_WEB_SEARCH_MODEL = "gpt-5.4";
 		const result = await searchCodex(
 			makeSearchParams(
 				"markdown parentheses citations",
@@ -394,7 +394,7 @@ describe("searchCodex model selection", () => {
 	});
 
 	it("strips trailing prose punctuation from plain text URLs", async () => {
-		process.env.PI_CODEX_WEB_SEARCH_MODEL = "gpt-5.4";
+		process.env.VEYYON_CODEX_WEB_SEARCH_MODEL = "gpt-5.4";
 		const result = await searchCodex(
 			makeSearchParams(
 				"plain url punctuation",

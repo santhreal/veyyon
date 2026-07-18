@@ -2,22 +2,22 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { AuthStorage, SqliteAuthCredentialStore } from "@veyyon/pi-ai";
+import { AuthStorage, SqliteAuthCredentialStore } from "@veyyon/ai";
 import {
 	type AuthBrokerServerHandle,
 	readAuthBrokerSnapshotCache,
 	type SnapshotResponse,
 	startAuthBroker,
 	writeAuthBrokerSnapshotCache,
-} from "@veyyon/pi-ai/auth-broker";
-import { discoverAuthStorage } from "@veyyon/pi-coding-agent/sdk";
-import { removeWithRetries } from "@veyyon/pi-utils";
+} from "@veyyon/ai/auth-broker";
+import { discoverAuthStorage } from "@veyyon/coding-agent/sdk";
+import { removeWithRetries } from "@veyyon/utils";
 
 const ENV_KEYS = [
-	"OMP_AUTH_BROKER_URL",
-	"OMP_AUTH_BROKER_TOKEN",
-	"OMP_AUTH_BROKER_SNAPSHOT_CACHE",
-	"OMP_AUTH_BROKER_SNAPSHOT_TTL_MS",
+	"VEYYON_AUTH_BROKER_URL",
+	"VEYYON_AUTH_BROKER_TOKEN",
+	"VEYYON_AUTH_BROKER_SNAPSHOT_CACHE",
+	"VEYYON_AUTH_BROKER_SNAPSHOT_TTL_MS",
 ] as const;
 const PROVIDER = "unit-auth-broker-cache";
 const TOKEN = "coding-agent-cache-token";
@@ -75,10 +75,10 @@ describe("discoverAuthStorage auth-broker snapshot cache", () => {
 	test("boots from a fresh encrypted cache when the broker is down", async () => {
 		const cachePath = path.join(tempDir, "snapshot.enc");
 		const downUrl = "http://127.0.0.1:1";
-		process.env.OMP_AUTH_BROKER_URL = downUrl;
-		process.env.OMP_AUTH_BROKER_TOKEN = TOKEN;
-		process.env.OMP_AUTH_BROKER_SNAPSHOT_CACHE = cachePath;
-		process.env.OMP_AUTH_BROKER_SNAPSHOT_TTL_MS = "3600000";
+		process.env.VEYYON_AUTH_BROKER_URL = downUrl;
+		process.env.VEYYON_AUTH_BROKER_TOKEN = TOKEN;
+		process.env.VEYYON_AUTH_BROKER_SNAPSHOT_CACHE = cachePath;
+		process.env.VEYYON_AUTH_BROKER_SNAPSHOT_TTL_MS = "3600000";
 		await writeAuthBrokerSnapshotCache({
 			path: cachePath,
 			token: TOKEN,
@@ -109,10 +109,10 @@ describe("discoverAuthStorage auth-broker snapshot cache", () => {
 				bearerTokens: [TOKEN],
 				disableRefresher: true,
 			});
-			process.env.OMP_AUTH_BROKER_URL = handle.url;
-			process.env.OMP_AUTH_BROKER_TOKEN = TOKEN;
-			process.env.OMP_AUTH_BROKER_SNAPSHOT_CACHE = cachePath;
-			process.env.OMP_AUTH_BROKER_SNAPSHOT_TTL_MS = "3600000";
+			process.env.VEYYON_AUTH_BROKER_URL = handle.url;
+			process.env.VEYYON_AUTH_BROKER_TOKEN = TOKEN;
+			process.env.VEYYON_AUTH_BROKER_SNAPSHOT_CACHE = cachePath;
+			process.env.VEYYON_AUTH_BROKER_SNAPSHOT_TTL_MS = "3600000";
 
 			storage = await discoverAuthStorage(tempDir);
 			expect(await storage.getApiKey(PROVIDER)).toBe("broker-api-key");

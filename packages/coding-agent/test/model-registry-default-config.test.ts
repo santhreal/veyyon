@@ -1,17 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { DIR_OVERRIDE_ENV_KEYS, TempDir } from "@veyyon/pi-utils";
-
-// Full-run test files leak profile/config-dir env overrides into process.env;
-// the child must resolve dirs purely from PI_CODING_AGENT_DIR below.
-function stripDirOverrides(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
-	const clean = { ...env };
-	for (const key of DIR_OVERRIDE_ENV_KEYS) {
-		delete clean[key];
-	}
-	return clean;
-}
+import { TempDir } from "@veyyon/utils";
+import { hermeticSpawnEnv } from "./helpers/hermetic-spawn-env";
 
 const packageRoot = path.resolve(import.meta.dir, "..");
 
@@ -171,8 +162,8 @@ function writeModelsJson(fixture: ProviderFixture): void {
 
 function loadDefaultRegistryModel(lookup: ModelLookup): ModelSnapshot | undefined {
 	const script = `
-		import { ModelRegistry } from "@veyyon/pi-coding-agent/config/model-registry";
-		import { AuthStorage } from "@veyyon/pi-coding-agent/session/auth-storage";
+		import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
+		import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 
 		const authStorage = await AuthStorage.create(":memory:");
 		try {
@@ -188,15 +179,21 @@ function loadDefaultRegistryModel(lookup: ModelLookup): ModelSnapshot | undefine
 			authStorage.close();
 		}
 	`;
-	const result = Bun.spawnSync([process.execPath, "-e", script], {
-		cwd: packageRoot,
-		env: {
-			...stripDirOverrides(process.env),
-			PI_CODING_AGENT_DIR: tempDir.path(),
-		},
-		stdout: "pipe",
-		stderr: "pipe",
-	});
+	// Temp HOME, not just a dir override: the real ~/.veyyon/config.yml may name
+	// a defaultProfile, and a startup-resolved profile makes the child IGNORE
+	// VEYYON_CODING_AGENT_DIR (profile derives its own agent dir).
+	const spawnEnv = hermeticSpawnEnv({ VEYYON_CODING_AGENT_DIR: tempDir.path() });
+	let result: ReturnType<typeof Bun.spawnSync>;
+	try {
+		result = Bun.spawnSync([process.execPath, "-e", script], {
+			cwd: packageRoot,
+			env: spawnEnv.env,
+			stdout: "pipe",
+			stderr: "pipe",
+		});
+	} finally {
+		spawnEnv.cleanup();
+	}
 	const stdout = new TextDecoder().decode(result.stdout).trim();
 	const stderr = new TextDecoder().decode(result.stderr).trim();
 	if (result.exitCode !== 0) {

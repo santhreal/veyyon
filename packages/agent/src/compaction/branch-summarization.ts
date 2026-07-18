@@ -5,9 +5,9 @@
  * a summary of the branch being left so context isn't lost.
  */
 
-import type { Api, ApiKey, AssistantMessage, Context, Model, SimpleStreamOptions } from "@veyyon/pi-ai";
-import { preferredDialect } from "@veyyon/pi-catalog/identity";
-import { prompt } from "@veyyon/pi-utils";
+import type { Api, ApiKey, AssistantMessage, Context, Model, SimpleStreamOptions } from "@veyyon/ai";
+import { preferredDialect } from "@veyyon/catalog/identity";
+import { prompt } from "@veyyon/utils";
 import { type AgentTelemetry, instrumentedCompleteSimple } from "../telemetry";
 import type { AgentMessage } from "../types";
 import { estimateTokens } from "./compaction";

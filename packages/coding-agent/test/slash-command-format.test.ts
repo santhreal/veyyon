@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
-import * as settingsModule from "@veyyon/pi-coding-agent/config/settings";
-import type { Theme } from "@veyyon/pi-coding-agent/modes/theme/theme";
-import { renderAsciiBar } from "@veyyon/pi-coding-agent/slash-commands/helpers/format";
+import * as settingsModule from "@veyyon/coding-agent/config/settings";
+import type { Theme } from "@veyyon/coding-agent/modes/theme/theme";
+import { renderAsciiBar } from "@veyyon/coding-agent/slash-commands/helpers/format";
 
 const testTheme = {
 	fg(color: Parameters<Theme["fg"]>[0], text: string): string {

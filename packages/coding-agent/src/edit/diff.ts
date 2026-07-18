@@ -4,6 +4,8 @@
  * Provides diff string generation and the replace-mode edit logic
  * used when not in patch mode.
  */
+
+import { errorMessage } from "@veyyon/utils";
 import * as Diff from "diff";
 import { resolveToCwd } from "../tools/path-utils";
 import { type BlockContextSource, findBlockContextLines } from "../utils/block-context";
@@ -949,7 +951,7 @@ export async function computeEditDiff(
 		try {
 			rawContent = await readEditFileText(absolutePath, path);
 		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
+			const message = errorMessage(error);
 			return { error: message || `Unable to read ${path}` };
 		}
 
@@ -994,6 +996,6 @@ export async function computeEditDiff(
 
 		return generateDiffString(normalizedContent, result.content, undefined, { path });
 	} catch (err) {
-		return { error: err instanceof Error ? err.message : String(err) };
+		return { error: errorMessage(err) };
 	}
 }

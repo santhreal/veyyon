@@ -3,8 +3,8 @@
  */
 
 import { scheduler } from "node:timers/promises";
-import { calculateCost } from "@veyyon/pi-catalog/models";
-import { readSseJson } from "@veyyon/pi-utils";
+import { calculateCost } from "@veyyon/catalog/models";
+import { readSseJson } from "@veyyon/utils";
 import { renderDemotedThinking } from "../dialect/demotion";
 import * as AIError from "../error";
 import type {

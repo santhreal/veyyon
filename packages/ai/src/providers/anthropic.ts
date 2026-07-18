@@ -2,11 +2,11 @@ import * as nodeCrypto from "node:crypto";
 import * as fs from "node:fs";
 import { scheduler } from "node:timers/promises";
 import * as tls from "node:tls";
-import { isOfficialAnthropicApiUrl } from "@veyyon/pi-catalog/compat/anthropic";
-import { mapEffortToAnthropicAdaptiveEffort } from "@veyyon/pi-catalog/model-thinking";
-import { calculateCost, getBundledModel } from "@veyyon/pi-catalog/models";
-import { isAnthropicOAuthToken } from "@veyyon/pi-catalog/utils";
-import { parseGitHubCopilotApiKey } from "@veyyon/pi-catalog/wire/github-copilot";
+import { isOfficialAnthropicApiUrl } from "@veyyon/catalog/compat/anthropic";
+import { mapEffortToAnthropicAdaptiveEffort } from "@veyyon/catalog/model-thinking";
+import { calculateCost, getBundledModel } from "@veyyon/catalog/models";
+import { isAnthropicOAuthToken } from "@veyyon/catalog/utils";
+import { parseGitHubCopilotApiKey } from "@veyyon/catalog/wire/github-copilot";
 import {
 	$env,
 	getInstallId,
@@ -15,7 +15,7 @@ import {
 	parseJsonWithRepair,
 	parseStreamingJsonThrottled,
 	readSseEvents,
-} from "@veyyon/pi-utils";
+} from "@veyyon/utils";
 import { renderDemotedThinking } from "../dialect/demotion";
 import * as AIError from "../error";
 import { getEnvApiKey, OUTPUT_FALLBACK_BUFFER } from "../stream";
@@ -643,8 +643,11 @@ export function generateClaudeCloakingUserId(): string {
 	return `user_${userHash}_account_${accountId}_session_${sessionId}`;
 }
 
-const CLAUDE_DEVICE_ID_INSTALL_HASH_DOMAIN = "omp-claude-device-id-v1:";
-const CLAUDE_DEVICE_ID_ACCOUNT_HASH_DOMAIN = "omp-claude-device-id-v2";
+// Hash-domain constants are frozen at their pre-rebrand values: they are
+// key-derivation inputs, and changing them would rotate every derived Claude
+// device id in the wild.
+const CLAUDE_DEVICE_ID_INSTALL_HASH_DOMAIN = "veyyon-claude-device-id-v1:";
+const CLAUDE_DEVICE_ID_ACCOUNT_HASH_DOMAIN = "veyyon-claude-device-id-v2";
 
 export function deriveClaudeDeviceId(installId: string, accountId?: string): string {
 	const hash = nodeCrypto.createHash("sha256");
@@ -3436,7 +3439,7 @@ function toWellFormedDeep(value: unknown): unknown {
 }
 
 /**
- * Serialize omp {@link Message}s to Anthropic wire messages.
+ * Serialize veyyon {@link Message}s to Anthropic wire messages.
  *
  * `opts.serverSideFallbackEnabled` — when the CURRENT request itself
  * opts into the server-side-fallback beta chain. Only then may a persisted

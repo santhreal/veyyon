@@ -4,7 +4,7 @@
  * Reads a file via Bun and rethrows ENOENT as a user-facing "File not found"
  * error referencing the display path.
  */
-import { isEnoent } from "@veyyon/pi-utils";
+import { isEnoent } from "@veyyon/utils";
 import { isNotebookPath, readEditableNotebookText, serializeEditedNotebookText } from "./notebook";
 
 export async function readEditFileText(absolutePath: string, path: string): Promise<string> {

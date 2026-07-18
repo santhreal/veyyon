@@ -1,12 +1,9 @@
 import { describe, expect, it } from "bun:test";
-import { applyAnthropicUsageExtras } from "@veyyon/pi-ai/providers/anthropic";
-import { parseChunkUsage } from "@veyyon/pi-ai/providers/openai-completions";
-import {
-	calculateOpenAIUsageAccounting,
-	populateResponsesUsageFromResponse,
-} from "@veyyon/pi-ai/providers/openai-shared";
-import type { AssistantMessage, Model, Usage } from "@veyyon/pi-ai/types";
-import { buildModel } from "@veyyon/pi-catalog/build";
+import { applyAnthropicUsageExtras } from "@veyyon/ai/providers/anthropic";
+import { parseChunkUsage } from "@veyyon/ai/providers/openai-completions";
+import { calculateOpenAIUsageAccounting, populateResponsesUsageFromResponse } from "@veyyon/ai/providers/openai-shared";
+import type { AssistantMessage, Model, Usage } from "@veyyon/ai/types";
+import { buildModel } from "@veyyon/catalog/build";
 
 const OPENAI_MODEL: Model<"openai-completions"> = buildModel({
 	id: "gpt-5",

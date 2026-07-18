@@ -1,4 +1,5 @@
-import { CODEX_BASE_URL } from "@veyyon/pi-catalog/wire/codex";
+import { CODEX_BASE_URL } from "@veyyon/catalog/wire/codex";
+import { trimTrailingSlashes } from "@veyyon/utils";
 
 /**
  * Resolve the base URL for ChatGPT account-API requests (`wham/usage`,
@@ -18,7 +19,7 @@ import { CODEX_BASE_URL } from "@veyyon/pi-catalog/wire/codex";
  * other host falls back to {@link CODEX_BASE_URL}.
  */
 export function normalizeCodexBaseUrl(baseUrl?: string): string {
-	const trimmed = baseUrl?.trim().replace(/\/+$/, "");
+	const trimmed = baseUrl === undefined ? undefined : trimTrailingSlashes(baseUrl.trim());
 	if (!trimmed) return CODEX_BASE_URL;
 	let parsed: URL;
 	try {

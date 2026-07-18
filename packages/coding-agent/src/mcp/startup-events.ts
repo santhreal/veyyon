@@ -1,4 +1,4 @@
-import { sanitizeText } from "@veyyon/pi-utils";
+import { sanitizeText } from "@veyyon/utils";
 import { replaceTabs, shortenPath, TRUNCATE_LENGTHS, truncateToWidth } from "../tools/render-utils";
 
 export const MCP_CONNECTION_STATUS_EVENT_CHANNEL = "mcp:connection-status";
@@ -6,7 +6,10 @@ export const MCP_CONNECTION_STATUS_EVENT_CHANNEL = "mcp:connection-status";
 export type McpConnectionStatusEvent =
 	| { type: "connecting"; serverNames: string[] }
 	| { type: "connected"; serverName: string }
-	| { type: "failed"; serverName: string; error: string };
+	// `foreign` marks servers imported from another tool's config (Claude Code,
+	// Codex, …) — the boot health zone downgrades their failures from alarm to
+	// dim, since veyyon merely borrowed them.
+	| { type: "failed"; serverName: string; error: string; foreign?: boolean };
 
 export type McpConnectionStatusSnapshot = {
 	pendingServers: readonly string[];
@@ -66,7 +69,11 @@ export function isMcpConnectionStatusEvent(data: unknown): data is McpConnection
 		case "connected":
 			return typeof data.serverName === "string";
 		case "failed":
-			return typeof data.serverName === "string" && typeof data.error === "string";
+			return (
+				typeof data.serverName === "string" &&
+				typeof data.error === "string" &&
+				(data.foreign === undefined || typeof data.foreign === "boolean")
+			);
 		default:
 			return false;
 	}

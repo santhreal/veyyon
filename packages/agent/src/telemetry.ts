@@ -46,13 +46,13 @@ import {
 	shouldSendServiceTier,
 	type ToolChoice,
 	type Usage,
-} from "@veyyon/pi-ai";
+} from "@veyyon/ai";
 import { AgentRunCollector, type AgentRunCoverage, type AgentRunSummary, type ToolStatus } from "./run-collector";
 import type { AgentTool } from "./types";
 import { EventLoopKeepalive } from "./utils/yield";
 
 /** Default tracer name. Override via {@link AgentTelemetryConfig.tracerName}. */
-export const DEFAULT_TRACER_NAME = "@veyyon/pi-agent-core";
+export const DEFAULT_TRACER_NAME = "@veyyon/agent-core";
 
 /** Env var matching the OTEL semconv content-capture toggle. */
 const CONTENT_CAPTURE_ENV = "OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT";
@@ -1611,7 +1611,7 @@ export interface InstrumentedChatSpanOptions {
 	readonly attributes?: Attributes;
 	/**
 	 * Override for the underlying {@link completeSimple} call. Defaults to
-	 * `completeSimple` from `@veyyon/pi-ai`. Use to retain a test injection
+	 * `completeSimple` from `@veyyon/ai`. Use to retain a test injection
 	 * seam while still going through the chat-span lifecycle.
 	 */
 	readonly completeImpl?: <TApi extends Api>(

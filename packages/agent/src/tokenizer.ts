@@ -1,17 +1,14 @@
-import { countTokens as countTokensNat } from "@veyyon/pi-natives";
+import { countTokens as countTokensNat } from "@veyyon/natives";
+import { estimateTokensFromText } from "@veyyon/utils";
 
-const accurate = process.env.PI_TOKENIZER_ACCURATE === "1" && Bun.env.NODE_ENV !== "test";
-
-function estimateTokens(text: string) {
-	return (Buffer.byteLength(text, "utf-8") + 3) >> 2;
-}
+const accurate = process.env.VEYYON_TOKENIZER_ACCURATE === "1" && Bun.env.NODE_ENV !== "test";
 
 export function countTokens(text: string | string[]): number {
 	if (accurate) {
 		return countTokensNat(text);
 	} else if (Array.isArray(text)) {
-		return text.reduce((sum, t) => sum + estimateTokens(t), 0);
+		return text.reduce((sum, t) => sum + estimateTokensFromText(t), 0);
 	} else {
-		return estimateTokens(text);
+		return estimateTokensFromText(text);
 	}
 }

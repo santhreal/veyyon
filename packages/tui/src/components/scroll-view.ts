@@ -183,7 +183,9 @@ export class ScrollView implements Component {
 		const safeWidth = Number.isFinite(width) ? Math.max(0, Math.trunc(width)) : 0;
 		if (this.#height === 0) return [];
 		const showScrollbar = safeWidth > 0 && this.#shouldRenderScrollbar();
-		const contentWidth = Math.max(0, safeWidth - (showScrollbar ? 1 : 0));
+		// Two columns when the bar shows: one breathing-space gap + the bar
+		// itself — right-aligned content must never kiss the scrollbar glyph.
+		const contentWidth = Math.max(0, safeWidth - (showScrollbar ? 2 : 0));
 		const thumb = showScrollbar ? this.#thumbRange() : undefined;
 		const lines: string[] = [];
 		for (let row = 0; row < this.#height; row++) {
@@ -198,7 +200,7 @@ export class ScrollView implements Component {
 			const barGlyph = thumb && row >= thumb.start && row < thumb.end ? this.#thumbChar : this.#trackChar;
 			const styledBar =
 				thumb && row >= thumb.start && row < thumb.end ? this.#theme.thumb(barGlyph) : this.#theme.track(barGlyph);
-			lines.push(`${content}${styledBar}`);
+			lines.push(`${content} ${styledBar}`);
 		}
 		return lines;
 	}

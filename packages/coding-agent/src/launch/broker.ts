@@ -2,8 +2,8 @@ import * as fs from "node:fs/promises";
 import * as net from "node:net";
 import * as os from "node:os";
 import * as path from "node:path";
-import { Process, type PtyRunResult, PtySession } from "@veyyon/pi-natives";
-import { isEexist, isEnoent, logger, postmortem, sanitizeText } from "@veyyon/pi-utils";
+import { Process, type PtyRunResult, PtySession } from "@veyyon/natives";
+import { errorMessage, isEexist, isEnoent, logger, postmortem, sanitizeText } from "@veyyon/utils";
 import { truncateHead, truncateHeadBytes, truncateTail, truncateTailBytes } from "../session/streaming-output";
 import { workerEnvFromParent } from "../subprocess/worker-client";
 import { daemonBrokerEndpoint } from "./paths";
@@ -188,7 +188,7 @@ class DaemonLog {
 			try {
 				pattern = new RegExp(grep, "u");
 			} catch (error) {
-				throw new Error(`Invalid log regex: ${error instanceof Error ? error.message : String(error)}`);
+				throw new Error(`Invalid log regex: ${errorMessage(error)}`);
 			}
 			text = text
 				.split("\n")
@@ -381,7 +381,7 @@ class DaemonBroker {
 			socket.write(`${JSON.stringify({ id, ok: true, result })}\n`);
 			if (request.operation.op === "shutdown") setTimeout(() => void this.shutdown(), 10);
 		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
+			const message = errorMessage(error);
 			socket.write(`${JSON.stringify({ id, ok: false, error: message })}\n`);
 		}
 	}
@@ -447,7 +447,7 @@ class DaemonBroker {
 			try {
 				new RegExp(spec.ready.log, "u");
 			} catch (error) {
-				throw new Error(`Invalid readiness regex: ${error instanceof Error ? error.message : String(error)}`);
+				throw new Error(`Invalid readiness regex: ${errorMessage(error)}`);
 			}
 		}
 		const stat = await fs.stat(spec.cwd);
@@ -517,7 +517,7 @@ class DaemonBroker {
 			if (record.spec.ready?.port !== undefined) void this.#pollPort(record, generation, record.spec.ready);
 			this.#markReady(record);
 		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
+			const message = errorMessage(error);
 			record.log?.append(`Daemon launch failed: ${message}\n`);
 			await this.#settle(record, generation, undefined, message);
 		}
@@ -559,9 +559,7 @@ class DaemonBroker {
 		}
 		void run
 			.then(result => this.#onPtyExit(record, generation, result))
-			.catch(error =>
-				this.#settle(record, generation, undefined, error instanceof Error ? error.message : String(error)),
-			);
+			.catch(error => this.#settle(record, generation, undefined, errorMessage(error)));
 
 		if (process.platform === "win32") return;
 		const pidPath = path.join(record.dir, "process.pid");
@@ -600,9 +598,7 @@ class DaemonBroker {
 		const stderr = this.#drain(record, generation, process.stderr);
 		void Promise.all([stdout, stderr, process.exited])
 			.then(([, , exitCode]) => this.#settle(record, generation, exitCode))
-			.catch(error =>
-				this.#settle(record, generation, undefined, error instanceof Error ? error.message : String(error)),
-			);
+			.catch(error => this.#settle(record, generation, undefined, errorMessage(error)));
 	}
 
 	async #launchDetached(record: ManagedDaemon, generation: number): Promise<void> {
@@ -621,9 +617,7 @@ class DaemonBroker {
 			process.unref();
 			void process.exited
 				.then(exitCode => this.#settle(record, generation, exitCode))
-				.catch(error =>
-					this.#settle(record, generation, undefined, error instanceof Error ? error.message : String(error)),
-				);
+				.catch(error => this.#settle(record, generation, undefined, errorMessage(error)));
 		} finally {
 			await output.close();
 		}
@@ -805,7 +799,7 @@ class DaemonBroker {
 			try {
 				pattern = new RegExp(operation.pattern, "u");
 			} catch (error) {
-				throw new Error(`Invalid wait regex: ${error instanceof Error ? error.message : String(error)}`);
+				throw new Error(`Invalid wait regex: ${errorMessage(error)}`);
 			}
 		}
 		const condition = (): boolean => {
@@ -915,7 +909,7 @@ class DaemonBroker {
 			.catch(error => {
 				logger.warn("Failed to persist daemon metadata", {
 					name: record.snapshot.name,
-					error: error instanceof Error ? error.message : String(error),
+					error: errorMessage(error),
 				});
 			});
 	}
@@ -976,7 +970,7 @@ class DaemonBroker {
 			} catch (error) {
 				logger.warn("Failed to recover daemon record", {
 					name: entry.name,
-					error: error instanceof Error ? error.message : String(error),
+					error: errorMessage(error),
 				});
 			}
 		}

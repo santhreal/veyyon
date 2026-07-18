@@ -6,8 +6,8 @@
  * dropped (issue #3737).
  */
 import { afterEach, describe, expect, it, vi } from "bun:test";
-import { InputController } from "@veyyon/pi-coding-agent/modes/controllers/input-controller";
-import type { InteractiveModeContext } from "@veyyon/pi-coding-agent/modes/types";
+import { InputController } from "@veyyon/coding-agent/modes/controllers/input-controller";
+import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
 
 interface PromptOptionsLike {
 	streamingBehavior?: "steer" | "followUp";

@@ -1,14 +1,7 @@
 import { afterEach, describe, expect, it, type Mock, mock, spyOn } from "bun:test";
-import { streamPiNative } from "@veyyon/pi-ai/providers/pi-native-client";
-import type {
-	AssistantMessage,
-	AssistantMessageEvent,
-	Context,
-	FetchImpl,
-	Model,
-	ModelSpec,
-} from "@veyyon/pi-ai/types";
-import { buildModel } from "@veyyon/pi-catalog/build";
+import { streamPiNative } from "@veyyon/ai/providers/pi-native-client";
+import type { AssistantMessage, AssistantMessageEvent, Context, FetchImpl, Model, ModelSpec } from "@veyyon/ai/types";
+import { buildModel } from "@veyyon/catalog/build";
 
 function sseBytes(events: AssistantMessageEvent[]): Uint8Array {
 	const encoder = new TextEncoder();
@@ -227,13 +220,13 @@ describe("streamPiNative request shape", () => {
 		}) as FetchImpl;
 
 		await streamPiNative(
-			fakeModel({ headers: { "x-omp-slot": "robomp-1", Authorization: "Bearer model-wins" } }),
+			fakeModel({ headers: { "x-veyyon-slot": "veybot-1", Authorization: "Bearer model-wins" } }),
 			baseContext,
 			{ apiKey: "options-loses", fetch: fetchImpl },
 		).result();
 
 		const headers = captured.init?.headers as Record<string, string>;
-		expect(headers["x-omp-slot"]).toBe("robomp-1");
+		expect(headers["x-veyyon-slot"]).toBe("veybot-1");
 		expect(headers.Authorization).toBe("Bearer model-wins");
 	});
 
@@ -305,9 +298,9 @@ describe("streamPiNative event flow", () => {
 		await expect(stream.result()).rejects.toThrow(/first event/);
 	});
 
-	it("uses PI_STREAM_FIRST_EVENT_TIMEOUT_MS for silent pi-native streams", async () => {
-		const previous = Bun.env.PI_STREAM_FIRST_EVENT_TIMEOUT_MS;
-		Bun.env.PI_STREAM_FIRST_EVENT_TIMEOUT_MS = "20";
+	it("uses VEYYON_STREAM_FIRST_EVENT_TIMEOUT_MS for silent pi-native streams", async () => {
+		const previous = Bun.env.VEYYON_STREAM_FIRST_EVENT_TIMEOUT_MS;
+		Bun.env.VEYYON_STREAM_FIRST_EVENT_TIMEOUT_MS = "20";
 		try {
 			const fetchImpl: FetchImpl = (async () =>
 				new Response(stalledBody(), {
@@ -320,9 +313,9 @@ describe("streamPiNative event flow", () => {
 			await expect(stream.result()).rejects.toThrow(/first event/);
 		} finally {
 			if (previous === undefined) {
-				delete Bun.env.PI_STREAM_FIRST_EVENT_TIMEOUT_MS;
+				delete Bun.env.VEYYON_STREAM_FIRST_EVENT_TIMEOUT_MS;
 			} else {
-				Bun.env.PI_STREAM_FIRST_EVENT_TIMEOUT_MS = previous;
+				Bun.env.VEYYON_STREAM_FIRST_EVENT_TIMEOUT_MS = previous;
 			}
 		}
 	});

@@ -1,5 +1,5 @@
-import type { ExtensionFactory } from "@veyyon/pi-coding-agent";
-import { Container, Text } from "@veyyon/pi-tui";
+import type { ExtensionFactory } from "@veyyon/coding-agent";
+import { Container, Text } from "@veyyon/tui";
 
 const extension: ExtensionFactory = pi => {
 	pi.setLabel("Thinking note");

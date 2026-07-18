@@ -12,13 +12,13 @@ layered YAML/JSON from the project and user agent directories.
 
 ## Public boundary
 
-- Primary user file: `~/.veyyon/agent/config.yml` (or profile path under `~/.veyyon/profiles/`)
+- Primary user file: `~/.veyyon/profiles/default/agent/config.yml` (or profile path under `~/.veyyon/profiles/`)
 - Project overrides: `.veyyon/config.yml`
 - CLI: `veyyon config list|get|set`, `/settings`, `/reload-plugins` (re-read without restart)
 
 Config loading is part of the harness.
 
-Everyday guide: [Configuration](../using/configuration.md).
+Operator guide: [Configuration](../using/configuration.md).
 
 Engineering detail: [`docs/config-usage.md`](../../../config-usage.md),
 [`docs/settings.md`](../../../settings.md).

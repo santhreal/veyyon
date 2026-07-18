@@ -60,12 +60,16 @@ export function formatBytes(bytes: number): string {
 
 /**
  * Truncate a string to maxLen characters, appending an ellipsis if truncated.
- * For display-width-aware truncation (terminals), use truncateToWidth from @veyyon/pi-tui.
+ * Counts and cuts by code point, not UTF-16 code unit, so truncation can never
+ * split an astral character (emoji, rare CJK) into a lone surrogate.
+ * For display-width-aware truncation (terminals), use truncateToWidth from @veyyon/tui.
  */
 export function truncate(str: string, maxLen: number, ellipsis = "…"): string {
 	if (str.length <= maxLen) return str;
+	const chars = [...str];
+	if (chars.length <= maxLen) return str;
 	const sliceLen = Math.max(0, maxLen - ellipsis.length);
-	return `${str.slice(0, sliceLen)}${ellipsis}`;
+	return `${chars.slice(0, sliceLen).join("")}${ellipsis}`;
 }
 
 /**

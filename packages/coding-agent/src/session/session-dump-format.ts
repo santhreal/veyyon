@@ -6,10 +6,10 @@
  * `## Assistant` (with `<thinking>` blocks and `### Tool Call: <name>` + YAML
  * args), `### Tool Result: <name>`, and the execution/summary sections.
  */
-import type { AgentMessage, ThinkingLevel } from "@veyyon/pi-agent-core";
-import type { AssistantMessage, Model, ToolExample, TSchema } from "@veyyon/pi-ai";
-import { renderDelimitedThinking, renderToolInventory } from "@veyyon/pi-ai/dialect";
-import { INTENT_FIELD } from "@veyyon/pi-wire";
+import type { AgentMessage, ThinkingLevel } from "@veyyon/agent-core";
+import type { AssistantMessage, Model, ToolExample, TSchema } from "@veyyon/ai";
+import { renderDelimitedThinking, renderToolInventory } from "@veyyon/ai/dialect";
+import { INTENT_FIELD } from "@veyyon/wire";
 import { YAML } from "bun";
 import { canonicalizeMessage } from "../utils/thinking-display";
 import {

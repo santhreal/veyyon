@@ -1,6 +1,6 @@
-import { tryParseJson } from "@veyyon/pi-utils";
-import type { RenderResult, SpecialHandler } from "./types";
-import { buildResult, formatNumber, loadPage } from "./types";
+import { tryParseJson } from "@veyyon/utils";
+import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
+import { buildResult, formatNumber, loadFailure, loadPage, scraperDegrade, tryParseUrl } from "./types";
 
 interface MarketplaceProperty {
 	key?: string;
@@ -101,9 +101,10 @@ export const handleVscodeMarketplace: SpecialHandler = async (
 	url: string,
 	timeout: number,
 	signal?: AbortSignal,
-): Promise<RenderResult | null> => {
+): Promise<RenderResult | ScraperDegrade | null> => {
 	try {
-		const parsed = new URL(url);
+		const parsed = tryParseUrl(url);
+		if (!parsed) return null;
 		if (!MARKETPLACE_HOSTS.has(parsed.hostname)) return null;
 
 		const itemName = getItemName(parsed);
@@ -134,10 +135,10 @@ export const handleVscodeMarketplace: SpecialHandler = async (
 			},
 		});
 
-		if (!result.ok) return null;
+		if (!result.ok) return scraperDegrade("vscode-marketplace", loadFailure(result));
 
 		const data = tryParseJson<MarketplaceResponse>(result.content);
-		if (!data) return null;
+		if (!data) return scraperDegrade("vscode-marketplace", "unexpected response shape");
 
 		const extension = data.results?.[0]?.extensions?.[0];
 		if (!extension) return null;
@@ -181,7 +182,7 @@ export const handleVscodeMarketplace: SpecialHandler = async (
 			fetchedAt,
 			notes: ["Fetched via VS Code Marketplace API"],
 		});
-	} catch {}
-
-	return null;
+	} catch (error) {
+		return scraperDegrade("vscode-marketplace", error);
+	}
 };

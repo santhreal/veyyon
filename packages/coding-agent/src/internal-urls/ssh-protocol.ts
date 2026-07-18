@@ -19,6 +19,7 @@
  * SSH provider via `import "./discovery"` (sdk.ts) / `initializeWithSettings`
  * (main.ts) before any tool resolves.
  */
+import { formatCount } from "@veyyon/utils";
 import * as capability from "../capability";
 import { type SSHHost, sshCapability } from "../capability/ssh";
 import type { SSHConnectionTarget } from "../ssh/connection-manager";
@@ -121,7 +122,7 @@ function formatHostIndex(hosts: readonly SSHHost[]): string {
 		const desc = host.description ? ` (${host.description})` : "";
 		return `- [${host.name}](ssh://${encodeURIComponent(host.name)}/)${suffix}${desc}`;
 	});
-	return `# SSH hosts\n\n${hosts.length} configured host${hosts.length === 1 ? "" : "s"}:\n\n${lines.join("\n")}\n`;
+	return `# SSH hosts\n\n${formatCount("configured host", hosts.length)}:\n\n${lines.join("\n")}\n`;
 }
 
 /**

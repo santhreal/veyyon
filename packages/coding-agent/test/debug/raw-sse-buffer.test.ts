@@ -1,11 +1,11 @@
 import { describe, expect, it } from "bun:test";
-import type { Model } from "@veyyon/pi-ai";
-import { buildModel } from "@veyyon/pi-catalog/build";
+import type { Model } from "@veyyon/ai";
+import { buildModel } from "@veyyon/catalog/build";
 import {
 	RawSseDebugBuffer,
 	rawSseRecordLines,
 	resolveRawSseDebugBuffer,
-} from "@veyyon/pi-coding-agent/debug/raw-sse-buffer";
+} from "@veyyon/coding-agent/debug/raw-sse-buffer";
 
 const model: Model<"anthropic-messages"> = buildModel({
 	id: "claude-test",
@@ -157,7 +157,7 @@ describe("RawSseDebugBuffer", () => {
 
 		// Dropped records 1..5: each "data: N" is 7 chars → 9 chars/record → 45.
 		const text = buffer.toRawText();
-		expect(text.startsWith(": omp-debug-dropped records=5 chars=45\n\n")).toBe(true);
+		expect(text.startsWith(": veyyon-debug-dropped records=5 chars=45\n\n")).toBe(true);
 
 		// Body data lines, oldest-first, are exactly records 6..1005 — no dropped
 		// record leaks and order survives the head-index window.

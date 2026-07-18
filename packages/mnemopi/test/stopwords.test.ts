@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { CONTENT_STOPWORDS, ENTITY_STOPWORDS } from "@veyyon/pi-mnemopi/core/stopwords";
+import { CONTENT_STOPWORDS, ENTITY_STOPWORDS } from "@veyyon/mnemopi/core/stopwords";
 
 describe("content stopwords are unified in one place", () => {
 	it("is the union of the two former inline lists", () => {

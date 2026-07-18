@@ -1,5 +1,6 @@
-import type { AgentMessage } from "@veyyon/pi-agent-core";
-import type { ToolCall } from "@veyyon/pi-ai";
+import type { AgentMessage } from "@veyyon/agent-core";
+import type { ToolCall } from "@veyyon/ai";
+import { formatCount } from "@veyyon/utils";
 
 /** A fenced code block extracted from assistant markdown. */
 export interface CodeBlock {
@@ -202,7 +203,7 @@ function assistantText(msg: AgentMessage): string | undefined {
 
 function pluralLines(text: string): string {
 	const count = text.length === 0 ? 0 : text.split("\n").length;
-	return `${count} line${count === 1 ? "" : "s"}`;
+	return formatCount("line", count);
 }
 
 function blockHint(block: CodeBlock): string {

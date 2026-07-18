@@ -1,4 +1,4 @@
-import { formatNumber } from "@veyyon/pi-utils";
+import { formatNumber } from "@veyyon/utils";
 import type { ThemeColor } from "../../../modes/theme/theme";
 
 export type ContextUsageLevel = "normal" | "warning" | "purple" | "error";

@@ -10,7 +10,7 @@ import {
 	discoverModels,
 	ModelRegistry,
 	SessionManager,
-} from "@veyyon/pi-coding-agent";
+} from "@veyyon/coding-agent";
 
 // Default: discoverAuthStorage() uses ~/.veyyon/agent/agent.db
 // discoverModels() loads built-in + custom models from ~/.veyyon/agent/models.json

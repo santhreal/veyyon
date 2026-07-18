@@ -10,6 +10,10 @@
         <!-- Veyyon handbook: self-contained head additions. No remote resources. -->
         <meta name="theme-color" content="#050505">
         <meta name="color-scheme" content="dark">
+        <!-- Site favicons live at the deployed root, one level above /docs/. -->
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+        <link rel="icon" href="/favicon.ico" sizes="48x48">
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png">
         <style>
           /* Paint the near-black surface before CSS/JS resolve the theme, so there is
              no light flash on load. Kept in sync with theme/veyyon.css. */
@@ -18,7 +22,7 @@
           *, *::before, *::after { box-sizing: border-box; }
         </style>
 
-        <meta name="description" content="How Veyyon turns open models into frontier coding agents. The product, the harness, tool-call repair, the edit format, per-model adaptation, and how to use it.">
+        <meta name="description" content="Operator handbook for the Veyyon terminal coding agent: install, configuration, tools, approvals, edit formats, providers, and harness structure.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -38,7 +42,7 @@
         <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="../ayu-highlight-3fdfc3ac.css">
 
         <!-- Custom theme stylesheets -->
-        <link rel="stylesheet" href="../theme/veyyon-fc839a17.css">
+        <link rel="stylesheet" href="../theme/veyyon-06f6939e.css">
 
 
         <!-- Provide site root and default themes to javascript -->
@@ -46,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-e76f06ca.js";
+            window.path_to_searchindex_js = "../searchindex-a2447057.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-9cfd259b.js"></script>
+        <script src="../toc-cc1a72e9.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -192,37 +196,20 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="tools-skills-and-extension-data"><a class="header" href="#tools-skills-and-extension-data">Tools, skills, and extension data</a></h1>
-<p>Veyyon does real work through tools, and you can extend what it knows and what it can reach. This page
-covers the built in tools, skills, extension data, and external tools through the Model Context Protocol.</p>
 <h2 id="tools"><a class="header" href="#tools">Tools</a></h2>
-<p>Tools are the actions Veyyon can take: reading a file, searching the tree, editing code, running a
-command, fetching a page, and more. Every tool runs through the same approval model, so a
-tool cannot exceed the boundary you set. Editing tools in particular all flow through one verified write
-path, so a change is checked and recorded the same way no matter which tool made it.</p>
+<p>Built-in tools (read, grep, glob, edit, bash, …) run through the agent loop under <code>tools.approvalMode</code> and related policy. Edit paths share hashline verification. Catalog: <a href="../reference/tools.html">Tools reference</a>.</p>
 <h2 id="skills"><a class="header" href="#skills">Skills</a></h2>
-<p>Skills are reusable capabilities Veyyon can draw on, defined as data rather than baked into the binary.
-Because a skill is data, you can add a skill by dropping in a file, and you can share a skill with
-others. Veyyon validates a skill when it loads and tells you clearly if a skill needs a tool that is not
-available, rather than failing in a way you cannot diagnose.</p>
-<h2 id="plugin-bundles"><a class="header" href="#plugin-bundles">Plugin bundles</a></h2>
-<p>Plugin bundles are the package shape for larger extension sets. Treat plugin installation as available
-only when your <code>veyyon</code> build exposes the matching install, list, and remove commands. Until then, use
-skills and MCP servers for local extension, because those are the shipped operator paths documented on
-this page.</p>
-<h2 id="external-tools-through-the-model-context-protocol"><a class="header" href="#external-tools-through-the-model-context-protocol">External tools through the Model Context Protocol</a></h2>
-<p>Veyyon speaks the Model Context Protocol, so it can use tools served by an external server and can serve
-its own tools to other clients. This lets you connect Veyyon to the wider ecosystem of context servers
-without custom integration work. An external server is added as data, and its tools appear to the model
-exactly where you intend.</p>
-<h2 id="the-principle-behind-extension"><a class="header" href="#the-principle-behind-extension">The principle behind extension</a></h2>
-<p>Everything here follows one principle: capability grows through data and through a clear boundary, never
-through a hidden hardcoded list and never past the safety boundary you set. You can always see what
-Veyyon can do, and you can always extend it without editing code.</p>
-<h2 id="where-to-go-next"><a class="header" href="#where-to-go-next">Where to go next</a></h2>
+<p>Filesystem skill packages (e.g. <code>SKILL.md</code> trees) discovered under project and profile skill dirs. Invalid or unmet dependencies surface load errors. See <a href="../features/skills.html">Skills</a>.</p>
+<h2 id="plugins"><a class="header" href="#plugins">Plugins</a></h2>
+<p><code>veyyon plugin</code> / marketplaces install bundles of skills, MCP, hooks, and related assets. See <a href="../features/plugins.html">Plugins</a>.</p>
+<h2 id="mcp"><a class="header" href="#mcp">MCP</a></h2>
+<p>External tools via Model Context Protocol: client config in <code>mcp.json</code> (user profile and/or project). See <a href="../features/mcp.html">MCP</a>.</p>
+<h2 id="hooks"><a class="header" href="#hooks">Hooks</a></h2>
+<p>TypeScript modules with <code>pi.on(...)</code>, not JSON command tables. See <a href="../features/hooks.html">Hooks</a>.</p>
+<h2 id="related"><a class="header" href="#related">Related</a></h2>
 <ul>
-<li><a href="./configuration.html">Configuration</a> covers the approval mode that gates every tool.</li>
-<li><a href="../why/innovations.html">What makes Veyyon different</a> explains the one write path that every editing
-tool shares.</li>
+<li><a href="./configuration.html">Configuration</a> — approval mode and settings paths</li>
+<li><a href="../why/innovations.html">Mechanisms</a></li>
 </ul>
 
                     </main>

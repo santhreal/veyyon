@@ -444,7 +444,7 @@ export const CONTEXT_SETTINGS = {
 	},
 
 	// Auto-Learn (experimental): post-stop nudge to capture lessons to memory
-	// and mint/enhance isolated managed skills under ~/.veyyon/agent/managed-skills.
+	// and mint/enhance isolated managed skills under ~/.veyyon/profiles/default/agent/managed-skills.
 	// Master flag is default-off → zero footprint; sub-flags gate behaviour.
 	"autolearn.enabled": {
 		type: "boolean",

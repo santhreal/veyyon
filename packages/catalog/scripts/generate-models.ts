@@ -10,11 +10,11 @@ const COPILOT_PREMIUM_MULTIPLIERS: Record<string, number> = {
 };
 
 import * as path from "node:path";
-import { discoverAuthStorage } from "@veyyon/pi-ai/auth-broker/discover";
-import type { OAuthAccess } from "@veyyon/pi-ai/auth-storage";
-import type { OAuthProvider } from "@veyyon/pi-ai/oauth/types";
-import { getGitLabDuoModels } from "@veyyon/pi-ai/providers/gitlab-duo";
-import { $env } from "@veyyon/pi-utils";
+import { discoverAuthStorage } from "@veyyon/ai/auth-broker/discover";
+import type { OAuthAccess } from "@veyyon/ai/auth-storage";
+import type { OAuthProvider } from "@veyyon/ai/oauth/types";
+import { getGitLabDuoModels } from "@veyyon/ai/providers/gitlab-duo";
+import { $env } from "@veyyon/utils";
 import { ANTIGRAVITY_PRIMARY_ENDPOINT, fetchAntigravityDiscoveryModels } from "../src/discovery/antigravity";
 import { fetchCodexModels } from "../src/discovery/codex";
 import { buildGitLabDuoWorkflowFallbackModel } from "../src/discovery/gitlab-duo-workflow";
@@ -379,7 +379,7 @@ async function fetchAntigravityModels(): Promise<ModelSpec<"google-gemini-cli">[
 	const access = await getOAuthAccessFromStorage("google-antigravity");
 	if (!access) {
 		console.log("No Antigravity or Gemini CLI credentials found, will use previous models.");
-		console.log("Tip: If you are logged in under a specific profile, run with OMP_PROFILE=<name>.");
+		console.log("Tip: If you are logged in under a specific profile, run with VEYYON_PROFILE=<name>.");
 		return [];
 	}
 	try {
@@ -424,7 +424,7 @@ async function fetchCodexDiscoveryModels(): Promise<ModelSpec<"openai-codex-resp
 	const access = await getOAuthAccessFromStorage("openai-codex");
 	if (!access) {
 		console.log("No Codex credentials found, will use previous models.");
-		console.log("Tip: If you are logged in under a specific profile, run with OMP_PROFILE=<name>.");
+		console.log("Tip: If you are logged in under a specific profile, run with VEYYON_PROFILE=<name>.");
 		return [];
 	}
 	try {

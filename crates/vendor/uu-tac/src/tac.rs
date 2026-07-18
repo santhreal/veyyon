@@ -7,13 +7,13 @@
 
 // pi-uutils: vendored from uutils/coreutils 0.8.0 and patched to run in-process
 // as a shell builtin. FILE operands resolve against the shell working directory
-// via `pi_uutils_ctx::resolve` at the open/mmap call site (the original operand
-// is kept for error messages), `-`/no-operand read the context stdin, output is
-// written through the context stdout, recoverable per-file errors go to the
-// context stderr with `pi_uutils_ctx::set_exit_code` (upstream `show!`), the
-// `translate!` strings are literalized, and the process-global signal handling
-// plus the stdin mmap/tempfile buffering (which target the process stdin fd)
-// are removed.
+// via `veyyon_uutils_ctx::resolve` at the open/mmap call site (the original
+// operand is kept for error messages), `-`/no-operand read the context stdin,
+// output is written through the context stdout, recoverable per-file errors go
+// to the context stderr with `veyyon_uutils_ctx::set_exit_code` (upstream
+// `show!`), the `translate!` strings are literalized, and the process-global
+// signal handling plus the stdin mmap/tempfile buffering (which target the
+// process stdin fd) are removed.
 
 mod error;
 
@@ -26,8 +26,8 @@ use std::{
 use clap::{Arg, ArgAction, ArgMatches, Command};
 use memchr::memmem;
 use memmap2::Mmap;
-use pi_uutils_ctx::format_usage;
 use uucore::error::UResult;
+use veyyon_uutils_ctx::format_usage;
 
 use crate::error::TacError;
 
@@ -49,20 +49,20 @@ pub fn run(argv: Vec<OsString>) -> i32 {
 		Err(err) => {
 			let rendered = err.to_string();
 			if err.use_stderr() {
-				let _ = write!(pi_uutils_ctx::stderr(), "{rendered}");
+				let _ = write!(veyyon_uutils_ctx::stderr(), "{rendered}");
 				return 1;
 			}
-			let _ = write!(pi_uutils_ctx::stdout(), "{rendered}");
+			let _ = write!(veyyon_uutils_ctx::stdout(), "{rendered}");
 			return 0;
 		},
 	};
 	match tac_main(&matches) {
-		Ok(()) => pi_uutils_ctx::exit_code(),
+		Ok(()) => veyyon_uutils_ctx::exit_code(),
 		Err(err) => {
 			let code = err.code();
 			let msg = err.to_string();
 			if !msg.is_empty() {
-				let _ = writeln!(pi_uutils_ctx::stderr(), "tac: {msg}");
+				let _ = writeln!(veyyon_uutils_ctx::stderr(), "tac: {msg}");
 			}
 			if code == 0 { 1 } else { code }
 		},
@@ -131,8 +131,8 @@ pub fn uu_app() -> Command {
 /// per-file error to the context stderr and accumulates a non-zero exit code
 /// while processing continues with the next operand.
 fn show(err: &TacError) {
-	let _ = writeln!(pi_uutils_ctx::stderr(), "tac: {err}");
-	pi_uutils_ctx::set_exit_code(1);
+	let _ = writeln!(veyyon_uutils_ctx::stderr(), "tac: {err}");
+	veyyon_uutils_ctx::set_exit_code(1);
 }
 
 /// Print lines of a buffer in reverse, with line separator given as a regex.
@@ -159,7 +159,7 @@ fn buffer_tac_regex(
 	before: bool,
 ) -> std::io::Result<()> {
 	// pi-uutils: write through the context stdout instead of the process stdout.
-	let mut out = BufWriter::new(pi_uutils_ctx::stdout());
+	let mut out = BufWriter::new(veyyon_uutils_ctx::stdout());
 
 	// The index of the line separator for the current line.
 	//
@@ -229,7 +229,7 @@ fn buffer_tac_regex(
 /// `"/abc/def"`.
 fn buffer_tac(data: &[u8], before: bool, separator: &OsStr) -> std::io::Result<()> {
 	// pi-uutils: write through the context stdout instead of the process stdout.
-	let mut out = BufWriter::new(pi_uutils_ctx::stdout());
+	let mut out = BufWriter::new(veyyon_uutils_ctx::stdout());
 
 	// The number of bytes in the line separator.
 	let slen = separator.len();
@@ -386,7 +386,7 @@ fn tac(filenames: &[OsString], before: bool, regex: bool, separator: &OsStr) -> 
 			// stdin fd; upstream's stdin mmap / tempfile buffering and the
 			// `stdin_was_closed` signal check do not apply. Read it fully.
 			let mut contents = Vec::new();
-			match pi_uutils_ctx::stdin().read_to_end(&mut contents) {
+			match veyyon_uutils_ctx::stdin().read_to_end(&mut contents) {
 				Ok(_) => {
 					buf = contents;
 					&buf
@@ -399,7 +399,7 @@ fn tac(filenames: &[OsString], before: bool, regex: bool, separator: &OsStr) -> 
 		} else {
 			// pi-uutils: resolve the operand against the shell working
 			// directory at the open site; `filename` is kept for errors.
-			let path = pi_uutils_ctx::resolve(filename);
+			let path = veyyon_uutils_ctx::resolve(filename);
 			let mut file = match File::open(&path) {
 				Ok(f) => f,
 				Err(e) => {
@@ -496,7 +496,7 @@ mod tests {
 	use std::{collections::HashMap, fs, io::Write, path::PathBuf, sync::Arc};
 
 	use parking_lot::Mutex;
-	use pi_uutils_ctx::ScopeIo;
+	use veyyon_uutils_ctx::ScopeIo;
 
 	use super::*;
 
@@ -534,7 +534,7 @@ mod tests {
 			.map(OsString::from)
 			.collect();
 
-		let code = pi_uutils_ctx::scope(io, || run(argv));
+		let code = veyyon_uutils_ctx::scope(io, || run(argv));
 
 		let out_str = String::from_utf8(stdout_buf.lock().clone()).unwrap();
 		let err_str = String::from_utf8(stderr_buf.lock().clone()).unwrap();
@@ -555,7 +555,7 @@ mod tests {
 		fs::write(root.join("input.txt"), b"a\nb\nc\n").unwrap();
 
 		// Relative operand + scope cwd differing from the process cwd: only the
-		// call-site `pi_uutils_ctx::resolve` patch makes this find the file.
+		// call-site `veyyon_uutils_ctx::resolve` patch makes this find the file.
 		let (code, stdout, stderr) = run_with(root, b"", vec!["input.txt"]);
 		assert_eq!(code, 0);
 		assert_eq!(stdout, "c\nb\na\n");

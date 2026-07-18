@@ -12,17 +12,17 @@
  * helper itself is exercised directly.
  */
 import { afterEach, describe, expect, it, vi } from "bun:test";
-import type { AuthStorage, FetchImpl } from "@veyyon/pi-ai";
-import type { AgentStorage } from "@veyyon/pi-coding-agent/session/agent-storage";
-import type { ToolSession } from "@veyyon/pi-coding-agent/tools";
-import { ToolAbortError } from "@veyyon/pi-coding-agent/tools/tool-errors";
-import { WebSearchTool } from "@veyyon/pi-coding-agent/web/search";
-import * as provider from "@veyyon/pi-coding-agent/web/search/provider";
-import { searchAnthropic } from "@veyyon/pi-coding-agent/web/search/providers/anthropic";
-import type { SearchParams } from "@veyyon/pi-coding-agent/web/search/providers/base";
-import { searchBrave } from "@veyyon/pi-coding-agent/web/search/providers/brave";
-import { withHardTimeout } from "@veyyon/pi-coding-agent/web/search/providers/utils";
-import type { SearchProviderId, SearchResponse } from "@veyyon/pi-coding-agent/web/search/types";
+import type { AuthStorage, FetchImpl } from "@veyyon/ai";
+import type { AgentStorage } from "@veyyon/coding-agent/session/agent-storage";
+import type { ToolSession } from "@veyyon/coding-agent/tools";
+import { ToolAbortError } from "@veyyon/coding-agent/tools/tool-errors";
+import { WebSearchTool } from "@veyyon/coding-agent/web/search";
+import * as provider from "@veyyon/coding-agent/web/search/provider";
+import { searchAnthropic } from "@veyyon/coding-agent/web/search/providers/anthropic";
+import type { SearchParams } from "@veyyon/coding-agent/web/search/providers/base";
+import { searchBrave } from "@veyyon/coding-agent/web/search/providers/brave";
+import { withHardTimeout } from "@veyyon/coding-agent/web/search/providers/utils";
+import type { SearchProviderId, SearchResponse } from "@veyyon/coding-agent/web/search/types";
 
 const FAKE_SESSION = {} as ToolSession;
 const fakeStorage = {
@@ -34,25 +34,57 @@ const fakeStorage = {
 } as unknown as AgentStorage;
 
 describe("withHardTimeout", () => {
-	it("returns a signal that aborts on the hard timeout when no caller signal is supplied", async () => {
-		const signal = withHardTimeout(undefined, 10);
-		await Bun.sleep(40);
-		expect(signal.aborted).toBe(true);
+	it("aborts the scoped signal on the hard timeout when no caller signal is supplied", async () => {
+		let captured: AbortSignal | undefined;
+		await withHardTimeout(
+			undefined,
+			async signal => {
+				captured = signal;
+				await Bun.sleep(40);
+			},
+			10,
+		);
+		expect(captured?.aborted).toBe(true);
 	});
 
-	it("forwards a caller signal's abort to the composed signal", () => {
+	it("forwards a caller signal's abort to the composed signal", async () => {
 		const ac = new AbortController();
-		const signal = withHardTimeout(ac.signal, 60_000);
-		ac.abort(new Error("user-cancel"));
-		expect(signal.aborted).toBe(true);
+		await withHardTimeout(
+			ac.signal,
+			async signal => {
+				ac.abort(new Error("user-cancel"));
+				expect(signal.aborted).toBe(true);
+			},
+			60_000,
+		);
 	});
 
 	it("fires the hard timeout even when the caller signal stays open", async () => {
 		const ac = new AbortController();
-		const signal = withHardTimeout(ac.signal, 10);
-		await Bun.sleep(40);
-		expect(signal.aborted).toBe(true);
+		let captured: AbortSignal | undefined;
+		await withHardTimeout(
+			ac.signal,
+			async signal => {
+				captured = signal;
+				await Bun.sleep(40);
+			},
+			10,
+		);
+		expect(captured?.aborted).toBe(true);
 		expect(ac.signal.aborted).toBe(false);
+	});
+
+	it("clears the backing timer once the operation settles (no late abort)", async () => {
+		let captured: AbortSignal | undefined;
+		await withHardTimeout(
+			undefined,
+			async signal => {
+				captured = signal;
+			},
+			10,
+		);
+		await Bun.sleep(40);
+		expect(captured?.aborted).toBe(false);
 	});
 });
 

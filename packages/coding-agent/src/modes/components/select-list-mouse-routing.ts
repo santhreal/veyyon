@@ -1,4 +1,4 @@
-import type { SelectList, SgrMouseEvent } from "@veyyon/pi-tui";
+import type { SelectList, SgrMouseEvent } from "@veyyon/tui";
 
 interface RoutableSelectList {
 	routeMouse?: (event: SgrMouseEvent, line: number, col: number) => void;

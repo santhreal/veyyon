@@ -1,6 +1,6 @@
-import { tryParseJson } from "@veyyon/pi-utils";
-import type { RenderResult, SpecialHandler } from "./types";
-import { buildResult, formatNumber, loadPage } from "./types";
+import { tryParseJson } from "@veyyon/utils";
+import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
+import { buildResult, formatNumber, loadFailure, loadPage, scraperDegrade, tryParseUrl } from "./types";
 
 interface OpenVsxFileLinks {
 	readme?: string;
@@ -29,9 +29,10 @@ export const handleOpenVsx: SpecialHandler = async (
 	url: string,
 	timeout: number,
 	signal?: AbortSignal,
-): Promise<RenderResult | null> => {
+): Promise<RenderResult | ScraperDegrade | null> => {
 	try {
-		const parsed = new URL(url);
+		const parsed = tryParseUrl(url);
+		if (!parsed) return null;
 		if (parsed.hostname !== "open-vsx.org" && parsed.hostname !== "www.open-vsx.org") return null;
 
 		const match = parsed.pathname.match(/^\/extension\/([^/]+)\/([^/]+)(?:\/([^/]+))?\/?$/);
@@ -46,10 +47,10 @@ export const handleOpenVsx: SpecialHandler = async (
 		const apiUrl = version ? `${baseUrl}/${encodeURIComponent(version)}` : baseUrl;
 
 		const result = await loadPage(apiUrl, { timeout, signal });
-		if (!result.ok) return null;
+		if (!result.ok) return scraperDegrade("open-vsx", loadFailure(result));
 
 		const data = tryParseJson<OpenVsxExtension>(result.content);
-		if (!data) return null;
+		if (!data) return scraperDegrade("open-vsx", "unexpected response shape");
 
 		let readme: string | null = null;
 		const readmeUrl = data.files?.readme;
@@ -100,7 +101,7 @@ export const handleOpenVsx: SpecialHandler = async (
 		}
 
 		return buildResult(md, { url, method: "open-vsx", fetchedAt, notes: ["Fetched via Open VSX API"] });
-	} catch {}
-
-	return null;
+	} catch (error) {
+		return scraperDegrade("open-vsx", error);
+	}
 };

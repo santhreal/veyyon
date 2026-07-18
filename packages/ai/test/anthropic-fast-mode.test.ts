@@ -1,8 +1,8 @@
 import { describe, expect, it } from "bun:test";
-import { isFastModeUnsupported } from "@veyyon/pi-ai/error";
-import { clearAnthropicFastModeFallback, streamAnthropic } from "@veyyon/pi-ai/providers/anthropic";
-import type { Context, Model, ProviderSessionState, ServiceTier } from "@veyyon/pi-ai/types";
-import { buildModel } from "@veyyon/pi-catalog/build";
+import { isFastModeUnsupported } from "@veyyon/ai/error";
+import { clearAnthropicFastModeFallback, streamAnthropic } from "@veyyon/ai/providers/anthropic";
+import type { Context, Model, ProviderSessionState, ServiceTier } from "@veyyon/ai/types";
+import { buildModel } from "@veyyon/catalog/build";
 
 function makeAnthropicModel(id: string): Model<"anthropic-messages"> {
 	return buildModel({

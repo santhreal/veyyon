@@ -1,6 +1,6 @@
 # Skills
 
-Skills are reusable capabilities Veyyon can draw on. They are defined as data on the filesystem rather than compiled into the Veyyon binary. This structure lets you add, customize, and share capabilities without editing code.
+Skills are filesystem packages discovered by the agent (project and profile skill dirs). They are not compiled into the binary.
 
 For general information on Veyyon extension capabilities, see [Tools, skills, and extension data](../using/extending.md).
 
@@ -10,10 +10,10 @@ Veyyon loads skills from several locations depending on the desired scope.
 
 | Scope | Location | Description |
 | --- | --- | --- |
-| **User** | `$HOME/.veyyon/agent/skills` | User-installed skills (per profile: `$HOME/.veyyon/profiles/<name>/agent/skills`). |
+| **User** | `$HOME/.veyyon/profiles/<profile>/agent/skills` | User-installed skills for the active profile (`profiles/default/` when none is selected). |
 | **Project** | `.veyyon/skills` | Project skills; discovered by walking up from the working directory, closest ancestor first. |
 | **Agents layout** | `.agent/skills`, `.agents/skills`, `$HOME/.agents/skills` | Skills in the cross-tool agents layout (project walk-up plus user home). |
-| **Managed** | `$HOME/.veyyon/agent/managed-skills` | Auto-learn skills Veyyon writes itself; a same-named authored skill always wins. |
+| **Managed** | `$HOME/.veyyon/profiles/<profile>/agent/managed-skills` | Auto-learn skills Veyyon writes itself; a same-named authored skill always wins. |
 | **Other tools** | `$HOME/.claude/skills`, `.github/skills/<name>/SKILL.md`, … | Foreign-tool skills imported when discovery of other tools' config is on (next section). |
 
 Full provider list, priorities, and dedup rules: [`docs/skills.md`](../../../skills.md).
@@ -21,10 +21,8 @@ Full provider list, priorities, and dedup rules: [`docs/skills.md`](../../../ski
 ## Other tools' skills and config (on by default)
 
 By default Veyyon also discovers skills, context files (`CLAUDE.md`, standalone
-`AGENTS.md`), rules, and MCP servers authored for other AI coding tools —
-Claude, Codex, Gemini, Cursor, opencode, Windsurf, Cline, and similar — found on
-disk. Your global `CLAUDE.md` and existing external skills load as a shared base
-layer, so Veyyon works with the config you already have.
+`AGENTS.md`), rules, and MCP servers for other AI coding tools (Claude, Codex,
+Gemini, Cursor, OpenCode, Windsurf, Cline, and similar) when present on disk.
 
 To run Veyyon on its **own** config only, turn off the single toggle in
 **Settings › Providers › Discovery › Import Other Tools' Config**, or set it in
@@ -39,7 +37,7 @@ When it is off, those foreign sources are skipped entirely — they never appear
 in `/extensions`, in the enable/disable list, or in the model's context. When it is
 on (the default), the per-source toggles under `skills.*` (for example
 `skills.enableClaudeUser`) give finer control. Veyyon's own `AGENTS.md` lives in
-`.veyyon/` (project) and `$HOME/.veyyon/agent` (user); those are always read and
+`.veyyon/` (project) and the profile's agent dir (user); those are always read and
 are not affected by this toggle.
 
 ## Profiles isolate skills

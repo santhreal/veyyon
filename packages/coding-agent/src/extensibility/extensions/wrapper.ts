@@ -1,8 +1,8 @@
 /**
  * Tool wrappers for extensions.
  */
-import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/pi-agent-core";
-import type { ImageContent, Static, TextContent, TSchema } from "@veyyon/pi-ai";
+import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
+import type { ImageContent, Static, TextContent, TSchema } from "@veyyon/ai";
 import type { Settings } from "../../config/settings";
 import type { Theme } from "../../modes/theme/theme";
 import {

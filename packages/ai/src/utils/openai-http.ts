@@ -14,14 +14,14 @@
  *   captured response body for the strict-tools fallback and the responses
  *   chain-state detectors, which regex over `error.message`.
  */
-import { fetchWithRetry, readSseJson, type SseEventObserver } from "@veyyon/pi-utils";
+import { fetchWithRetry, readSseJson, type SseEventObserver } from "@veyyon/utils";
 import * as AIError from "../error";
 import { OpenAIHttpError } from "../error";
 
 export { OpenAIHttpError };
 
 import type { FetchImpl } from "../types";
-import type { CapturedHttpErrorResponse } from "./http-inspector";
+import { captureHttpErrorResponse } from "./http-inspector";
 
 /**
  * Total attempts (initial + retries). Parity with the removed SDK clients'
@@ -91,25 +91,8 @@ export async function postOpenAIStream<TEvent>(init: OpenAIStreamRequestInit): P
 
 /** Decode a non-2xx response into an {@link OpenAIHttpError} without consuming it twice. */
 export async function captureOpenAIHttpError(response: Response): Promise<AIError.OpenAIHttpError> {
-	let bodyText: string | undefined;
-	let bodyJson: unknown;
-	try {
-		bodyText = await response.text();
-		if (bodyText.trim().length > 0) {
-			try {
-				bodyJson = JSON.parse(bodyText);
-			} catch {}
-		} else {
-			bodyText = undefined;
-		}
-	} catch {}
-	const captured: CapturedHttpErrorResponse = {
-		status: response.status,
-		headers: response.headers,
-		bodyText,
-		bodyJson,
-	};
-	const { detail, code } = OpenAIHttpError.parseEnvelope(bodyJson, bodyText);
+	const captured = await captureHttpErrorResponse(response);
+	const { detail, code } = OpenAIHttpError.parseEnvelope(captured.bodyJson, captured.bodyText);
 	// "status code (no body)" matches the SDK's former APIError phrasing;
 	// `finalizeErrorMessage` keys a repair path on that exact wording.
 	const message = detail

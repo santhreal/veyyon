@@ -10,6 +10,7 @@
  * - generateAuthUrl(): Build provider-specific authorization URL
  * - exchangeToken(): Exchange authorization code for tokens
  */
+import { scopedTimeoutSignal } from "@veyyon/utils";
 import * as AIError from "../../error";
 import { renderOAuthResultHtml } from "./success-page";
 import type { OAuthController, OAuthCredentials } from "./types";
@@ -295,7 +296,7 @@ export abstract class OAuthCallbackFlow {
 	 * - {@link LAUNCH_PATH} (`/launch`) — 302 to the pending authorization URL so
 	 *   viewport-safe copy targets can survive TUI truncation.
 	 *
-	 * `callbackPath` wins any collision: an OMP config that pins the provider
+	 * `callbackPath` wins any collision: a Veyyon config that pins the provider
 	 * redirect at `/launch` (via `oauth.callbackPath` or a loopback
 	 * `oauth.redirectUri`) must resolve the callback normally rather than
 	 * self-redirect. `#startCallbackServer` also suppresses `launchUrl` in that
@@ -355,9 +356,15 @@ export abstract class OAuthCallbackFlow {
 	 * Wait for OAuth callback or manual input (whichever comes first).
 	 */
 	#waitForCallback(expectedState: string): Promise<CallbackResult> {
-		const timeoutSignal = AbortSignal.timeout(DEFAULT_TIMEOUT);
-		const signal = this.ctrl.signal ? AbortSignal.any([this.ctrl.signal, timeoutSignal]) : timeoutSignal;
-		if (signal.aborted) return Promise.reject(this.#loginCancelledError());
+		// Scoped so the login-deadline timer is cleared the moment the wait
+		// settles (a bare AbortSignal.timeout stays armed for the full timeout).
+		const waitTimeout = scopedTimeoutSignal(DEFAULT_TIMEOUT, this.ctrl.signal);
+		const signal = waitTimeout.signal;
+		if (signal.aborted) {
+			waitTimeout.cancel();
+			return Promise.reject(this.#loginCancelledError());
+		}
+		const settled = <T>(promise: Promise<T>): Promise<T> => promise.finally(() => waitTimeout.cancel());
 
 		const callback = Promise.withResolvers<CallbackResult>();
 		this.#callbackResolve = callback.resolve;
@@ -390,10 +397,10 @@ export abstract class OAuthCallbackFlow {
 				}
 			})();
 
-			return Promise.race([callbackPromise, manualPromise]);
+			return settled(Promise.race([callbackPromise, manualPromise]));
 		}
 
-		return callbackPromise;
+		return settled(callbackPromise);
 	}
 }
 

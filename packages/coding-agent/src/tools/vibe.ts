@@ -10,10 +10,10 @@
  * terminal), and wait/list draw the "TV wall" — one live screen per worker,
  * stacked, each showing its tool calls and streamed text as it works.
  */
-import type { AgentTool, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/pi-agent-core";
-import type { Component } from "@veyyon/pi-tui";
-import { Text } from "@veyyon/pi-tui";
-import { prompt } from "@veyyon/pi-utils";
+import type { AgentTool, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
+import type { Component } from "@veyyon/tui";
+import { Text } from "@veyyon/tui";
+import { formatCount, prompt } from "@veyyon/utils";
 import { type } from "arktype";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import { shimmerEnabled, shimmerText } from "../modes/theme/shimmer";
@@ -264,10 +264,7 @@ export class VibeListTool implements AgentTool<typeof vibeListSchema, VibeToolDe
 			return textResult("No vibe sessions. Spawn one with vibe_spawn.", details);
 		}
 		const lines = screens.map(screen => {
-			const parts = [
-				`- \`${screen.id}\` [${screen.cli}] ${screen.state}`,
-				`${screen.turns} turn${screen.turns === 1 ? "" : "s"}`,
-			];
+			const parts = [`- \`${screen.id}\` [${screen.cli}] ${screen.state}`, formatCount("turn", screen.turns)];
 			if (screen.queued > 0) parts.push(`${screen.queued} queued`);
 			if (screen.model) parts.push(screen.model);
 			if (screen.lastActivity) parts.push(`last: ${screen.lastActivity}`);

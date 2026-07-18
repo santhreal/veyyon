@@ -10,9 +10,9 @@ import type {
 	AgentToolExecFn,
 	AgentToolResult,
 	AgentToolUpdateCallback,
-} from "@veyyon/pi-agent-core";
-import type { ImageContent, Static, TextContent, TSchema } from "@veyyon/pi-ai";
-import { logger } from "@veyyon/pi-utils";
+} from "@veyyon/agent-core";
+import type { ImageContent, Static, TextContent, TSchema } from "@veyyon/ai";
+import { logger, pluralize } from "@veyyon/utils";
 import { getDefault, type Settings } from "../config/settings";
 import { formatGroupedDiagnosticMessages } from "../lsp/utils";
 import type { Theme } from "../modes/theme/theme";
@@ -447,7 +447,7 @@ export function formatTruncationMetaNotice(truncation: TruncationMeta): string {
 		const headPart = head ? `lines ${head.start}-${head.end}` : "";
 		const tailPart = tail ? `${tail.start}-${tail.end}` : "";
 		if (headPart && tailPart) {
-			notice = `Showing ${headPart} and ${tailPart} of ${totalLines}; ${elidedLines.toLocaleString()} middle line${elidedLines === 1 ? "" : "s"} (${formatBytes(elidedBytes)}) elided`;
+			notice = `Showing ${headPart} and ${tailPart} of ${totalLines}; ${elidedLines.toLocaleString()} middle ${pluralize("line", elidedLines)} (${formatBytes(elidedBytes)}) elided`;
 		} else {
 			notice = `Showing ${truncation.outputLines} of ${totalLines} lines; middle elided`;
 		}

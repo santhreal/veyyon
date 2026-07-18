@@ -55,7 +55,7 @@
 | `viewport` | `{ width: number; height: number; scale?: number }` | No | Requested viewport. For headless launch this becomes the initial viewport; for a page it is applied with `page.setViewport()`. `scale` maps to Puppeteer `deviceScaleFactor`. |
 | `wait_until` | `"load" \| "domcontentloaded" \| "networkidle0" \| "networkidle2"` | No | Navigation wait condition. Defaults to `"load"` where omitted, including `open` navigation and later `tab.goto(...)`. |
 | `dialogs` | `"accept" \| "dismiss"` | No | Installs a page `dialog` handler that auto-accepts or auto-dismisses dialogs. Omitted means no handler. |
-| `app` | `{ path?: string; cdp_url?: string; args?: string[]; target?: string }` | No | Selects browser kind. With no `app`, the cmux backend is used when a cmux socket is available (`CMUX_SOCKET_PATH`, gated by the `browser.cmux` setting / `PI_BROWSER_CMUX` override); otherwise the session `browser.headless` setting applies. `app.path` is resolved against the session cwd and used as the executable path for spawn/attach reuse. `app.cdp_url` connects to an existing CDP endpoint. `args` are appended only when spawning `app.path`. `target` is only used for attached/spawned-app page selection. |
+| `app` | `{ path?: string; cdp_url?: string; args?: string[]; target?: string }` | No | Selects browser kind. With no `app`, the cmux backend is used when a cmux socket is available (`CMUX_SOCKET_PATH`, gated by the `browser.cmux` setting / `VEYYON_BROWSER_CMUX` override); otherwise the session `browser.headless` setting applies. `app.path` is resolved against the session cwd and used as the executable path for spawn/attach reuse. `app.cdp_url` connects to an existing CDP endpoint. `args` are appended only when spawning `app.path`. `target` is only used for attached/spawned-app page selection. |
 
 ### `action: "close"`
 
@@ -92,7 +92,7 @@ The tool returns one result per call; no streaming partial output is emitted fro
 2. `open` resolves browser kind with `resolveBrowserKind()`:
    - `app.cdp_url` → `{ kind: "connected" }` after trimming trailing slashes.
    - `app.path` → `{ kind: "spawned" }` after resolving against session cwd.
-   - otherwise, `resolveCmuxKind()` → `{ kind: "cmux", socketPath, password?, surface? }` when `CMUX_SOCKET_PATH` is set and cmux is enabled (`browser.cmux` setting, overridable by `PI_BROWSER_CMUX`).
+   - otherwise, `resolveCmuxKind()` → `{ kind: "cmux", socketPath, password?, surface? }` when `CMUX_SOCKET_PATH` is set and cmux is enabled (`browser.cmux` setting, overridable by `VEYYON_BROWSER_CMUX`).
    - otherwise → `{ kind: "headless", headless: session.settings.get("browser.headless") }`.
 3. `open` rejects reusing the same tab name across different browser kinds (`sameBrowserKind()`); callers must close first.
 4. `open` acquires a browser handle through `acquireBrowser()` (`packages/coding-agent/src/tools/browser/registry.ts`):
@@ -164,7 +164,7 @@ The tool returns one result per call; no streaming partial output is emitted fro
   - **Headless**: launches local Chromium with Puppeteer, applies stealth patches, and creates a fresh page per tab.
   - **Spawned app (`app.path`)**: reuses an existing CDP-enabled process for that executable when possible; otherwise kills same-path processes, spawns the executable with remote debugging enabled, then attaches. No stealth patches are injected.
   - **Connected browser (`app.cdp_url`)**: attaches to an already-running CDP endpoint. No process ownership; close only disconnects.
-  - **Cmux surface (`browser.cmux`)**: with no `app` and a cmux socket available (`CMUX_SOCKET_PATH`, enabled by the `browser.cmux` setting / `PI_BROWSER_CMUX` override), drives a cmux WKWebView surface over a unix-socket JSON-RPC client instead of Puppeteer. No Bun worker and no stealth patches; `open` opens a split (owning that surface), `run` executes via `runCmuxCode()`, and `close` issues `surface.close` for surfaces it owns (leaving the workspace's last surface open).
+  - **Cmux surface (`browser.cmux`)**: with no `app` and a cmux socket available (`CMUX_SOCKET_PATH`, enabled by the `browser.cmux` setting / `VEYYON_BROWSER_CMUX` override), drives a cmux WKWebView surface over a unix-socket JSON-RPC client instead of Puppeteer. No Bun worker and no stealth patches; `open` opens a split (owning that surface), `run` executes via `runCmuxCode()`, and `close` issues `surface.close` for surfaces it owns (leaving the workspace's last surface open).
 - **Target selection for attached/spawned browsers**
   - With `app.target`, `pickElectronTarget()` returns the first page whose URL or title contains the case-insensitive substring.
   - Without `app.target`, it skips titles/URLs matching `request handler|devtools|background page|background host|service worker` and otherwise falls back to the first page.
@@ -194,7 +194,7 @@ The tool returns one result per call; no streaming partial output is emitted fro
 - Subprocesses / native bindings
   - Headless mode launches Chromium through Puppeteer.
   - `app.path` mode may spawn the target executable via `Bun.spawn()`.
-  - `killExistingByPath()` / `gracefulKillTreeOnce()` use `@veyyon/pi-natives` process inspection/termination.
+  - `killExistingByPath()` / `gracefulKillTreeOnce()` use `@veyyon/natives` process inspection/termination.
   - Worker mode uses Bun `Worker`; fallback mode does not.
 - Session state (transcript, memory, jobs, checkpoints, registries)
   - Browser handles are cached in a process-global `Map` keyed by browser kind in `packages/coding-agent/src/tools/browser/registry.ts`.

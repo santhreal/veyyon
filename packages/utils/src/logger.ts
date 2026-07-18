@@ -190,15 +190,15 @@ export function debug(message: string, context?: Record<string, unknown>): void 
 }
 
 /**
- * Streaming startup markers, enabled by `PI_DEBUG_STARTUP`. Unlike the
- * PI_TIMING tree (printed only after startup completes), these write one
+ * Streaming startup markers, enabled by `VEYYON_DEBUG_STARTUP`. Unlike the
+ * VEYYON_TIMING tree (printed only after startup completes), these write one
  * synchronous stderr line as each phase begins/ends, so a hard hang still
  * shows the last phase that started. `fs.writeSync(2)` is used deliberately:
  * it cannot be reordered or buffered past a synchronous block of the event
  * loop (dlopen, sync fs on a dead mount, spawnSync).
  */
 export function startupMarker(text: string): void {
-	if (!process.env.PI_DEBUG_STARTUP) return;
+	if (!process.env.VEYYON_DEBUG_STARTUP) return;
 	try {
 		fs.writeSync(2, `[startup] ${text}\n`);
 	} catch {
@@ -228,7 +228,7 @@ let gRootSpan: Span | undefined;
 let gRecordTimings = false;
 
 export function timingModeIncludes(option: "full" | "x"): boolean {
-	const value = process.env.PI_TIMING;
+	const value = process.env.VEYYON_TIMING;
 	if (!value) return false;
 	if (value === option) return true;
 	let start = 0;
@@ -509,7 +509,7 @@ function printModuleLoadSummary(loads: Span[], depth: number, lines: string[]): 
 		lines.push(`${grandIndent}  ${node.span.op}: body ${fmtMs(node.body)} (total ${fmtMs(durationOf(node.span))})`);
 	}
 	if (!showAll && byBody.length > MODULE_LOAD_VERBOSE_TOP) {
-		lines.push(`${grandIndent}  … ${byBody.length - MODULE_LOAD_VERBOSE_TOP} more (PI_TIMING=full to show all)`);
+		lines.push(`${grandIndent}  … ${byBody.length - MODULE_LOAD_VERBOSE_TOP} more (VEYYON_TIMING=full to show all)`);
 	}
 
 	const roots = nodes.filter(node => node.parents === 0);
@@ -522,7 +522,7 @@ function printModuleLoadSummary(loads: Span[], depth: number, lines: string[]): 
 	}
 	if (!showAll && treeRoots.length > MODULE_TREE_ROOT_TOP) {
 		lines.push(
-			`${grandIndent}  … ${treeRoots.length - MODULE_TREE_ROOT_TOP} more roots (PI_TIMING=full to show all)`,
+			`${grandIndent}  … ${treeRoots.length - MODULE_TREE_ROOT_TOP} more roots (VEYYON_TIMING=full to show all)`,
 		);
 	}
 }
@@ -581,7 +581,7 @@ function renderModuleTimingNode(
 	ancestors.add(path);
 	if (!showAll && ancestors.size >= MODULE_TREE_MAX_DEPTH) {
 		if (node.children.length > 0) {
-			lines.push(`${indent}  … ${node.children.length} imports deeper (PI_TIMING=full to show all)`);
+			lines.push(`${indent}  … ${node.children.length} imports deeper (VEYYON_TIMING=full to show all)`);
 		}
 		ancestors.delete(path);
 		return;
@@ -592,7 +592,7 @@ function renderModuleTimingNode(
 	}
 	if (!showAll && node.children.length > MODULE_TREE_CHILD_TOP) {
 		lines.push(
-			`${indent}  … ${node.children.length - MODULE_TREE_CHILD_TOP} more imports (PI_TIMING=full to show all)`,
+			`${indent}  … ${node.children.length - MODULE_TREE_CHILD_TOP} more imports (VEYYON_TIMING=full to show all)`,
 		);
 	}
 	ancestors.delete(path);
@@ -633,7 +633,7 @@ export function time<T, A extends unknown[]>(op: string, fn?: (...args: A) => T,
 		return undefined as T;
 	}
 
-	if (!recording && !process.env.PI_DEBUG_STARTUP) {
+	if (!recording && !process.env.VEYYON_DEBUG_STARTUP) {
 		return fn(...args);
 	}
 

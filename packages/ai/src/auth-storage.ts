@@ -11,7 +11,7 @@ import { Database, type Statement } from "bun:sqlite";
 import { createHash } from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { getAgentDbPath, logger } from "@veyyon/pi-utils";
+import { getAgentDbPath, logger, scopedTimeoutSignal } from "@veyyon/utils";
 import type { ApiKeyResolver } from "./auth-retry";
 import * as AIError from "./error";
 import { isUsageLimitOutcome } from "./error/rate-limit";
@@ -508,7 +508,7 @@ export type AuthStorageOptions = {
 	usageLogger?: UsageLogger;
 	/**
 	 * Resolve a config value (API key, header value, etc.) to an actual value.
-	 * - coding-agent injects its resolveConfigValue (supports "!command" syntax via pi-natives)
+	 * - coding-agent injects its resolveConfigValue (supports "!command" syntax via veyyon-natives)
 	 * - Default: checks environment variable first, then treats as literal
 	 */
 	configValueResolver?: (config: string) => Promise<string | undefined>;
@@ -542,7 +542,7 @@ export type AuthStorageOptions = {
 	 *
 	 * Examples:
 	 * - `"local ~/.veyyon/agent/agent.db"`
-	 * - `"broker http://omp.internal:8765"`
+	 * - `"broker http://veyyon.internal:8765"`
 	 */
 	sourceLabel?: string;
 	/**
@@ -564,7 +564,7 @@ export type AuthStorageOptions = {
 
 /**
  * Default config value resolver that checks env vars and treats as literal.
- * Does NOT support "!command" syntax (that requires pi-natives).
+ * Does NOT support "!command" syntax (that requires veyyon-natives).
  */
 async function defaultConfigValueResolver(config: string): Promise<string | undefined> {
 	const envValue = process.env[config];
@@ -653,7 +653,7 @@ const OAUTH_REFRESH_OPERATION_TIMEOUT_MS = 10_000;
 const MAX_PENDING_DISABLED_EVENTS = 32;
 
 // Re-exported from the error module (its new home) to preserve the public
-// `@veyyon/pi-ai` entrypoint and the in-module call sites below.
+// `@veyyon/ai` entrypoint and the in-module call sites below.
 export { isDefinitiveOAuthFailure } from "./error/auth-classify";
 
 /**
@@ -2844,16 +2844,29 @@ export class AuthStorage {
 	}
 
 	async #fetchUsageUncached(request: UsageRequestDescriptor, timeoutMs?: number): Promise<UsageReport | null> {
+		// The scoped handle clears its backing timer once the probe settles
+		// instead of leaving it armed like a bare AbortSignal.timeout.
+		const scopedTimeout =
+			typeof timeoutMs === "number" && Number.isFinite(timeoutMs) && timeoutMs > 0
+				? scopedTimeoutSignal(timeoutMs)
+				: undefined;
+		try {
+			return await this.#fetchUsageUncachedWithSignal(request, scopedTimeout?.signal);
+		} finally {
+			scopedTimeout?.cancel();
+		}
+	}
+
+	async #fetchUsageUncachedWithSignal(
+		request: UsageRequestDescriptor,
+		timeoutSignal: AbortSignal | undefined,
+	): Promise<UsageReport | null> {
 		const resolver = this.#usageProviderResolver;
 		if (!resolver) return null;
 
 		const providerImpl = resolver(request.provider);
 		if (!providerImpl) return null;
 
-		const timeoutSignal =
-			typeof timeoutMs === "number" && Number.isFinite(timeoutMs) && timeoutMs > 0
-				? AbortSignal.timeout(timeoutMs)
-				: undefined;
 		let params: UsageFetchParams = {
 			...request,
 			accountKey: this.#buildUsageCacheIdentity(request.credential),
@@ -3633,8 +3646,12 @@ export class AuthStorage {
 					? this.#buildUsageRequest(row.provider as Provider, { type: "api_key", apiKey: cred.key }, baseUrl)
 					: this.#buildUsageRequestForOauth(row.provider as Provider, cred, baseUrl);
 
-			const timeoutSignal = AbortSignal.timeout(timeoutMs);
-			const probeSignal = options?.signal ? AbortSignal.any([options.signal, timeoutSignal]) : timeoutSignal;
+			// Scoped per-row deadline: cancelled at both loop exits below so the
+			// backing timer never outlives the row's probes (a bare
+			// AbortSignal.timeout stays armed for the full timeout). Every await
+			// in between is individually try/caught, so the exits are exhaustive.
+			const probeTimeout = scopedTimeoutSignal(timeoutMs, options?.signal);
+			const probeSignal = probeTimeout.signal;
 			let params: UsageFetchParams & { signal: AbortSignal } = {
 				...initialRequest,
 				accountKey: this.#buildUsageCacheIdentity(initialRequest.credential),
@@ -3681,6 +3698,7 @@ export class AuthStorage {
 			}
 
 			if (refreshError) {
+				probeTimeout.cancel();
 				base.ok = false;
 				base.reason = refreshError;
 				// Refresh failed → the access token is unusable. Skip both probes;
@@ -3715,6 +3733,7 @@ export class AuthStorage {
 					base.reason = error instanceof Error ? error.message : String(error);
 				}
 			}
+			probeTimeout.cancel();
 
 			if (completionProbe) {
 				const probeCred = this.#buildCompletionProbeCredential(params.credential);
@@ -3724,22 +3743,21 @@ export class AuthStorage {
 						reason: `no bearer bytes available for ${row.credential.type} credential`,
 					};
 				} else {
-					const completionTimeoutSignal = AbortSignal.timeout(completionTimeoutMs);
-					const completionSignal = options?.signal
-						? AbortSignal.any([options.signal, completionTimeoutSignal])
-						: completionTimeoutSignal;
+					const completionTimeout = scopedTimeoutSignal(completionTimeoutMs, options?.signal);
 					try {
 						base.completion = await completionProbe({
 							provider: row.provider as Provider,
 							credentialId: row.id,
 							credential: probeCred,
-							signal: completionSignal,
+							signal: completionTimeout.signal,
 						});
 					} catch (error) {
 						base.completion = {
 							ok: false,
 							reason: error instanceof Error ? error.message : String(error),
 						};
+					} finally {
+						completionTimeout.cancel();
 					}
 				}
 			}
@@ -6125,7 +6143,7 @@ export class SqliteAuthCredentialStore implements AuthCredentialStore {
 			await fs.mkdir(dir, { recursive: true, mode: 0o700 });
 		}
 
-		// Concurrent omp startups can race against WAL recovery and the schema
+		// Concurrent veyyon startups can race against WAL recovery and the schema
 		// init's first lock-taking statement. Bun's default `busy_timeout` is 0,
 		// so retry the open on `SQLITE_BUSY` / `SQLITE_BUSY_RECOVERY` with bounded
 		// exponential backoff before surfacing the failure. See issue #2421.
@@ -6175,7 +6193,7 @@ export class SqliteAuthCredentialStore implements AuthCredentialStore {
 	#initializeSchema(): void {
 		// Install the busy handler BEFORE any lock-taking statement (incl.
 		// `PRAGMA journal_mode=WAL`, which acquires an exclusive lock during WAL
-		// recovery). Without this, concurrent omp startups can crash here with
+		// recovery). Without this, concurrent veyyon startups can crash here with
 		// `SQLITE_BUSY` / `SQLITE_BUSY_RECOVERY`. See issue #2421.
 		this.#db.run("PRAGMA busy_timeout = 5000");
 		this.#db.run(`

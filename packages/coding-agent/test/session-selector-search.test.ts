@@ -1,10 +1,11 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "bun:test";
+import { stripVTControlCharacters } from "node:util";
 import {
 	rankSessionSearchMatches,
 	SessionSelectorComponent,
-} from "@veyyon/pi-coding-agent/modes/components/session-selector";
-import { initTheme } from "@veyyon/pi-coding-agent/modes/theme/theme";
-import type { SessionInfo } from "@veyyon/pi-coding-agent/session/session-listing";
+} from "@veyyon/coding-agent/modes/components/session-selector";
+import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import type { SessionInfo } from "@veyyon/coding-agent/session/session-listing";
 
 /**
  * Contracts of the session picker's incremental search engine: a keystroke
@@ -196,5 +197,47 @@ describe("session picker incremental search", () => {
 
 		expect(calls).toEqual([]);
 		expect(harness.filtered().length).toBe(partial);
+	});
+});
+
+describe("resume card height", () => {
+	it("a short session list renders a short card, not a full-terminal frame", async () => {
+		await initTheme();
+		const sessions = [makeSession("a", { firstMessage: "hello" }), makeSession("b", { firstMessage: "world" })];
+		const selector = new SessionSelectorComponent(
+			sessions,
+			() => {},
+			() => {},
+			() => {},
+			{ getTerminalRows: () => 50, fillHeight: true },
+		);
+		const lines = selector.render(200);
+		// Chrome + 2 sessions is well under half a 50-row terminal; the old
+		// behavior stretched the card to the screen bottom with blank rows.
+		expect(lines.length).toBeGreaterThan(10);
+		expect(lines.length).toBeLessThan(35);
+	});
+});
+
+describe("delete confirmation", () => {
+	it("defaults the cursor to No so a reflexive Enter cannot delete", async () => {
+		await initTheme();
+		const sessions = [makeSession("a", { firstMessage: "hello" })];
+		const selector = new SessionSelectorComponent(
+			sessions,
+			() => {},
+			() => {},
+			() => {},
+			{ getTerminalRows: () => 50, onDelete: async () => true },
+		);
+		selector.render(120);
+		selector.handleInput("\x1b[3~"); // Del on the selected session
+		const plain = selector.render(120).map(line => stripVTControlCharacters(line));
+		const yesRow = plain.find(line => /\bYes\b/.test(line));
+		const noRow = plain.find(line => /\bNo\b/.test(line));
+		expect(yesRow).toBeDefined();
+		expect(noRow).toBeDefined();
+		expect(noRow).toContain("›");
+		expect(yesRow).not.toContain("›");
 	});
 });

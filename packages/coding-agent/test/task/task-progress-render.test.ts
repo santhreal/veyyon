@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
-import type { RenderResultOptions } from "@veyyon/pi-agent-core";
-import type { SettingPath, SettingValue } from "@veyyon/pi-coding-agent/config/settings";
-import { resetSettingsForTest, Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { getThemeByName, setThemeInstance } from "@veyyon/pi-coding-agent/modes/theme/theme";
-import { taskToolRenderer } from "@veyyon/pi-coding-agent/task/renderer";
-import type { AgentProgress, SingleResult, TaskToolDetails } from "@veyyon/pi-coding-agent/task/types";
+import type { RenderResultOptions } from "@veyyon/agent-core";
+import type { SettingPath, SettingValue } from "@veyyon/coding-agent/config/settings";
+import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
+import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
+import { taskToolRenderer } from "@veyyon/coding-agent/task/renderer";
+import type { AgentProgress, SingleResult, TaskToolDetails } from "@veyyon/coding-agent/task/types";
 
 function runningProgress(overrides: Partial<AgentProgress> = {}): AgentProgress {
 	return {

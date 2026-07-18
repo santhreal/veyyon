@@ -5,21 +5,22 @@
  * by providing authorization URL, token URL, and client credentials.
  */
 
-import type { OAuthCallbackFlowOptions } from "@veyyon/pi-ai/oauth/callback-server";
-import { OAuthCallbackFlow } from "@veyyon/pi-ai/oauth/callback-server";
-import type { OAuthController, OAuthCredentials } from "@veyyon/pi-ai/oauth/types";
-import type { FetchImpl } from "@veyyon/pi-ai/types";
-import { getActiveProfile } from "@veyyon/pi-utils/dirs";
+import type { OAuthCallbackFlowOptions } from "@veyyon/ai/oauth/callback-server";
+import { OAuthCallbackFlow } from "@veyyon/ai/oauth/callback-server";
+import type { OAuthController, OAuthCredentials } from "@veyyon/ai/oauth/types";
+import type { FetchImpl } from "@veyyon/ai/types";
+import { truncate } from "@veyyon/utils";
+import { getActiveProfile } from "@veyyon/utils/dirs";
 import type { OAuthCredential } from "../session/auth-storage";
 
-/** Credential-id prefix for OMP-managed MCP OAuth credentials keyed by profile and server URL. */
+/** Credential-id prefix for veyyon-managed MCP OAuth credentials keyed by profile and server URL. */
 const MCP_OAUTH_URL_CREDENTIAL_PREFIX = "mcp_oauth:";
 
 /** Credential-id prefix for profile-scoped MCP OAuth credentials (`mcp_oauth:profile:<profile>:<serverUrl>`). */
 const MCP_OAUTH_PROFILE_CREDENTIAL_PREFIX = `${MCP_OAUTH_URL_CREDENTIAL_PREFIX}profile:`;
 
 /**
- * Deterministic credential id for an MCP server URL scoped to an OMP profile.
+ * Deterministic credential id for an MCP server URL scoped to an veyyon profile.
  *
  * Local profile stores are already separate, but auth-broker storage shares one
  * provider namespace across profiles. Including the profile in the provider key
@@ -32,7 +33,7 @@ export function mcpOAuthCredentialId(serverUrl: string, profile: string | undefi
 	return `${MCP_OAUTH_PROFILE_CREDENTIAL_PREFIX}${profile ?? "default"}:${serverUrl}`;
 }
 
-/** Whether a credential id was minted by OMP's MCP OAuth flows (either era). */
+/** Whether a credential id was minted by veyyon's MCP OAuth flows (either era). */
 export function isManagedMCPOAuthCredentialId(credentialId: string | undefined): credentialId is string {
 	return (
 		!!credentialId &&
@@ -88,7 +89,7 @@ function truncateDetail(raw: string | undefined): string | undefined {
 	if (!raw) return undefined;
 	const firstLine = raw.split(/\r?\n/, 1)[0]?.trim();
 	if (!firstLine) return undefined;
-	return firstLine.length > 200 ? `${firstLine.slice(0, 200)}…` : firstLine;
+	return truncate(firstLine, 200);
 }
 
 /**
@@ -249,7 +250,7 @@ interface ResourceIndicatorFilterOptions {
  * (`https://gateway.example.com/my-service/mcp`): servers can use either form
  * as the audience they require for the grant.
  *
- * Plane is stricter for OMP-synthesized fallback resources (e.g. using the
+ * Plane is stricter for veyyon-synthesized fallback resources (e.g. using the
  * configured server URL `https://mcp.plane.so/http/mcp` as `resource`), so
  * fallback callers opt into `stripSameOriginResource`. Provider-advertised
  * `oauth.resource` values and authorization-URL `?resource=` values keep the
@@ -407,7 +408,7 @@ export class MCPOAuthFlow extends OAuthCallbackFlow {
 		const existingResource = params.get("resource")?.trim();
 		if (existingResource) {
 			// A resource already embedded in the provider's authorization URL is
-			// provider-authored, not OMP's server-URL fallback. Preserve same-host
+			// provider-authored, not veyyon's server-URL fallback. Preserve same-host
 			// values here even when the caller marked its separate
 			// `config.resource` as fallback; gateway-hosted MCP servers can use
 			// origin-only or path-scoped values as the token audience.

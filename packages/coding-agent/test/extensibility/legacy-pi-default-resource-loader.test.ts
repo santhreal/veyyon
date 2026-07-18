@@ -2,15 +2,15 @@ import { afterAll, afterEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
+import { Settings } from "@veyyon/coding-agent/config/settings";
 import {
 	DefaultResourceLoader,
 	createAgentSession as legacyCreateAgentSession,
-} from "@veyyon/pi-coding-agent/extensibility/legacy-pi-coding-agent-shim";
-import type { Skill } from "@veyyon/pi-coding-agent/extensibility/skills";
-import type { CreateAgentSessionOptions, CreateAgentSessionResult } from "@veyyon/pi-coding-agent/sdk";
-import * as sdkModule from "@veyyon/pi-coding-agent/sdk";
-import { removeWithRetries } from "@veyyon/pi-utils";
+} from "@veyyon/coding-agent/extensibility/legacy-pi-coding-agent-shim";
+import type { Skill } from "@veyyon/coding-agent/extensibility/skills";
+import type { CreateAgentSessionOptions, CreateAgentSessionResult } from "@veyyon/coding-agent/sdk";
+import * as sdkModule from "@veyyon/coding-agent/sdk";
+import { removeWithRetries } from "@veyyon/utils";
 
 // Issue #4567: every published version of pi-schedule-prompt (and every pi
 // extension spawning subagents) imports `DefaultResourceLoader` at module
@@ -43,7 +43,7 @@ async function mkTempCwd(prefix: string): Promise<string> {
 
 describe("DefaultResourceLoader.reload() (issue #4567)", () => {
 	it("populates the discovery snapshot honoring no* flags and applying every override", async () => {
-		const tmp = await mkTempCwd("omp-legacy-default-resource-loader-reload-");
+		const tmp = await mkTempCwd("veyyon-legacy-default-resource-loader-reload-");
 		const injected: Skill = {
 			name: "issue-4567-synthesized",
 			description: "injected via skillsOverride",
@@ -99,7 +99,7 @@ describe("DefaultResourceLoader.reload() (issue #4567)", () => {
 		expect(loader.getAgentsFiles().agentsFiles).toEqual([]);
 	});
 	it("loads relative additional skills and prompt templates before override callbacks when discovery is disabled", async () => {
-		const tmp = await mkTempCwd("omp-legacy-default-resource-loader-additional-paths-");
+		const tmp = await mkTempCwd("veyyon-legacy-default-resource-loader-additional-paths-");
 		const skillName = "issue-4567-explicit-skill";
 		const skillDescription = "Loaded from an explicit additionalSkillPaths directory";
 		const skillRoot = path.join(tmp, "extra-skills");
@@ -162,7 +162,7 @@ describe("DefaultResourceLoader.reload() (issue #4567)", () => {
 
 describe("createAgentSession({ resourceLoader }) (issue #4567)", () => {
 	it("translates a DefaultResourceLoader into the SDK's option surface without silently discarding it", async () => {
-		const tmp = await mkTempCwd("omp-legacy-default-resource-loader-session-");
+		const tmp = await mkTempCwd("veyyon-legacy-default-resource-loader-session-");
 
 		let captured: CreateAgentSessionOptions | undefined;
 		const spy = vi

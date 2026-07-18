@@ -36,7 +36,7 @@ async function fetchLatestGitHubRelease(
 	try {
 		// /releases/latest only returns non-prerelease, non-draft releases
 		const res = await fetch(`https://api.github.com/repos/${repo}/releases/latest`, {
-			headers: { Accept: "application/vnd.github+json", "User-Agent": "oh-my-pi/version-check" },
+			headers: { Accept: "application/vnd.github+json", "User-Agent": "veyyon/version-check" },
 		});
 		if (!res.ok) return null;
 		const data = (await res.json()) as { tag_name?: string };
@@ -51,7 +51,7 @@ const SEMVER_RE = /(\d+\.\d+\.\d+)/;
 const checks: VersionCheck[] = [
 	{
 		name: "Gemini CLI",
-		sourcePattern: /PI_AI_GEMINI_CLI_VERSION\s*\|\|\s*"(\d+\.\d+\.\d+)"/,
+		sourcePattern: /VEYYON_AI_GEMINI_CLI_VERSION\s*\|\|\s*"(\d+\.\d+\.\d+)"/,
 		repo: "google-gemini/gemini-cli",
 		parseTag: tag => SEMVER_RE.exec(tag)?.[1] ?? null,
 	},

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import * as path from "node:path";
-import { TempDir } from "@veyyon/pi-utils/temp";
+import { TempDir } from "@veyyon/utils/temp";
 import { createHelpers, type HelperContext } from "../js/shared/helpers";
 
 /**

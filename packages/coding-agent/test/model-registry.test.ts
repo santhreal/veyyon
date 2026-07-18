@@ -3,13 +3,13 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } fr
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { Effort, type FetchImpl, type Model, type OpenAICompat, type ThinkingConfig } from "@veyyon/pi-ai";
-import { buildModel } from "@veyyon/pi-catalog/build";
-import { writeModelCache } from "@veyyon/pi-catalog/model-cache";
-import { ModelRegistry } from "@veyyon/pi-coding-agent/config/model-registry";
-import { resetSettingsForTest, Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { AuthStorage } from "@veyyon/pi-coding-agent/session/auth-storage";
-import { removeSyncWithRetries, Snowflake } from "@veyyon/pi-utils";
+import { Effort, type FetchImpl, type Model, type OpenAICompat, type ThinkingConfig } from "@veyyon/ai";
+import { buildModel } from "@veyyon/catalog/build";
+import { writeModelCache } from "@veyyon/catalog/model-cache";
+import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
+import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
+import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
+import { removeSyncWithRetries, Snowflake } from "@veyyon/utils";
 
 describe("ModelRegistry", () => {
 	let tempDir: string;
@@ -450,7 +450,7 @@ describe("ModelRegistry", () => {
 		});
 
 		test("refresh keeps transport override on built-in provider (#2555 openrouter gateway)", async () => {
-			// Reporter ran `omp` with the auth-gateway broker proxying OpenRouter.
+			// Reporter ran `veyyon` with the auth-gateway broker proxying OpenRouter.
 			// Default model worked; switching via `/model` produced
 			// `404 No route: POST /chat/completions` until restart. Root cause:
 			// background discovery refresh re-fetched the openrouter catalog and

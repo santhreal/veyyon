@@ -7,17 +7,17 @@ import {
 	AppendOnlyContextManager,
 	filterProviderReplayMessages,
 	type ThinkingLevel,
-} from "@veyyon/pi-agent-core";
-import type { Context, CredentialDisabledEvent, Message, Model, SimpleStreamOptions } from "@veyyon/pi-ai";
-import type { Dialect } from "@veyyon/pi-ai/dialect";
+} from "@veyyon/agent-core";
+import type { Context, CredentialDisabledEvent, Message, Model, SimpleStreamOptions } from "@veyyon/ai";
+import type { Dialect } from "@veyyon/ai/dialect";
 import {
 	getOpenAICodexTransportDetails,
 	prewarmOpenAICodexResponses,
-} from "@veyyon/pi-ai/providers/openai-codex-responses";
-import { FALLBACK_DIALECT, preferredDialect } from "@veyyon/pi-catalog/identity";
-import type { Component } from "@veyyon/pi-tui";
-import { $env, $flag, getAgentDir, getProjectDir, logger, postmortem, prompt, Snowflake } from "@veyyon/pi-utils";
-import { INTENT_FIELD } from "@veyyon/pi-wire";
+} from "@veyyon/ai/providers/openai-codex-responses";
+import { FALLBACK_DIALECT, preferredDialect } from "@veyyon/catalog/identity";
+import type { Component } from "@veyyon/tui";
+import { $env, $flag, getAgentDir, getProjectDir, logger, postmortem, prompt, Snowflake } from "@veyyon/utils";
+import { INTENT_FIELD } from "@veyyon/wire";
 import {
 	discoverAdvisorConfigs,
 	discoverWatchdogFiles,
@@ -82,7 +82,7 @@ import {
 	setActiveSkills,
 } from "./extensibility/skills";
 import { type FileSlashCommand, loadSlashCommands as loadSlashCommandsInternal } from "./extensibility/slash-commands";
-import { filterToolsByHarnessProfile } from "./harness/model-profile";
+import { filterToolsByHarnessProfile, resolvePromptSectionOrderForModel } from "./harness/model-profile";
 import type { HindsightSessionState } from "./hindsight/state";
 import { LocalProtocolHandler, type LocalProtocolOptions } from "./internal-urls";
 import type { LspStartupServerInfo } from "./lsp";
@@ -375,7 +375,7 @@ function applyMCPEnvironment(result: { exaApiKeys: string[] }): void {
 export interface CreateAgentSessionOptions {
 	/** Working directory for project-local discovery. Default: getProjectDir() */
 	cwd?: string;
-	/** Global config directory. Default: ~/.veyyon/agent */
+	/** Global config directory. Default: ~/.veyyon/profiles/default/agent */
 	agentDir?: string;
 	/** Spawns to allow. Default: "*" */
 	spawns?: string;
@@ -639,7 +639,7 @@ export {
  *
  * Default: local SQLite store at `<agentDir>/agent.db`.
  *
- * Broker mode: when `OMP_AUTH_BROKER_URL` is set, credentials are pulled from
+ * Broker mode: when `VEYYON_AUTH_BROKER_URL` is set, credentials are pulled from
  * a remote auth-broker over the wire. Refresh tokens never leave the broker;
  * the client receives access tokens with `refresh = "__remote__"` and calls
  * back into the broker through the {@link AuthStorageOptions.refreshOAuthCredential}
@@ -710,7 +710,7 @@ export async function loadSessionExtensions(
  * (`veyyon bench`, dry-balance) build a bare {@link ModelRegistry} that only knows
  * built-in catalog providers; without this, providers contributed by an
  * extension (e.g. a custom OpenAI-compatible provider under
- * `~/.veyyon/agent/extensions/`) never reach model resolution. Mirrors the
+ * `~/.veyyon/profiles/default/agent/extensions/`) never reach model resolution. Mirrors the
  * session / `veyyon models` path: drain the queued provider registrations, then
  * `refreshRuntimeProviders` so dynamically-discovered models exist before
  * selectors are resolved.
@@ -1079,7 +1079,7 @@ function buildMCPPromptCommands(manager: MCPManager): LoadedCustomCommand[] {
  * const { session } = await createAgentSession();
  *
  * // With explicit model
- * import { getModel } from '@veyyon/pi-ai';
+ * import { getModel } from '@veyyon/ai';
  * const { session } = await createAgentSession({
  *   model: getModel('anthropic', 'claude-opus-4-5'),
  *   thinkingLevel: 'high',
@@ -2155,7 +2155,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				modelFallbackMessage =
 					patterns && patterns.length > 0
 						? `No model available matching enabledModels (${patterns.join(", ")}) with usable credentials. Configure auth for an allowed provider or adjust enabledModels.`
-						: "No models available. Use /login or set an API key environment variable. Then use /model to select a model.";
+						: "No models available. Set an API key environment variable, or sign in with /login in an interactive session. Then pick a model with /model (interactive) or --model.";
 			}
 		}
 
@@ -2389,7 +2389,9 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 		const inlineToolDescriptors = shouldInlineToolDescriptors(settings.get("inlineToolDescriptors"), model?.id);
 		const eagerTasks = settings.get("task.eager") !== "default";
 		const eagerTasksAlways = settings.get("task.eager") === "always";
-		const intentField = $flag("PI_INTENT_TRACING", settings.get("tools.intentTracing")) ? INTENT_FIELD : undefined;
+		const intentField = $flag("VEYYON_INTENT_TRACING", settings.get("tools.intentTracing"))
+			? INTENT_FIELD
+			: undefined;
 		const includeWorkspaceTree = settings.get("includeWorkspaceTree") ?? false;
 		const rebuildSystemPrompt = async (
 			toolNames: string[],
@@ -2493,6 +2495,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 				personality: agentKind === "sub" ? "none" : settings.get("personality"),
 				renderMermaid: settings.get("tui.renderMermaid"),
 				activeRepoContext,
+				sectionOrder: resolvePromptSectionOrderForModel(settings, agent?.state.model ?? model),
 			});
 
 			if (options.systemPrompt === undefined) {

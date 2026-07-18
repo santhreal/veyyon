@@ -10,6 +10,10 @@
         <!-- Veyyon handbook: self-contained head additions. No remote resources. -->
         <meta name="theme-color" content="#050505">
         <meta name="color-scheme" content="dark">
+        <!-- Site favicons live at the deployed root, one level above /docs/. -->
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+        <link rel="icon" href="/favicon.ico" sizes="48x48">
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png">
         <style>
           /* Paint the near-black surface before CSS/JS resolve the theme, so there is
              no light flash on load. Kept in sync with theme/veyyon.css. */
@@ -18,7 +22,7 @@
           *, *::before, *::after { box-sizing: border-box; }
         </style>
 
-        <meta name="description" content="How Veyyon turns open models into frontier coding agents. The product, the harness, tool-call repair, the edit format, per-model adaptation, and how to use it.">
+        <meta name="description" content="Operator handbook for the Veyyon terminal coding agent: install, configuration, tools, approvals, edit formats, providers, and harness structure.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -38,7 +42,7 @@
         <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="../ayu-highlight-3fdfc3ac.css">
 
         <!-- Custom theme stylesheets -->
-        <link rel="stylesheet" href="../theme/veyyon-fc839a17.css">
+        <link rel="stylesheet" href="../theme/veyyon-06f6939e.css">
 
 
         <!-- Provide site root and default themes to javascript -->
@@ -46,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-e76f06ca.js";
+            window.path_to_searchindex_js = "../searchindex-a2447057.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-9cfd259b.js"></script>
+        <script src="../toc-cc1a72e9.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -192,11 +196,8 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="goal-state-and-long-sessions"><a class="header" href="#goal-state-and-long-sessions">Goal state and long sessions</a></h1>
-<blockquote>
-<p><strong>Status:</strong> Durable <strong>goal mode</strong> is shipped in Veyyon: per-session objective, token budget, continuation on idle, and <code>goal</code> tool ops. The richer goal card (verification ledger, working-set ledger, reviewer-finding carry-forward, retrieved-detail slots) below is <strong>Spec — not shipped</strong> — expansion layer only.</p>
-</blockquote>
-<p>Long context fails when the agent loses the objective inside a large transcript. Veyyon’s shipped answer is <strong>goal mode</strong>: a structured objective injected outside the raw conversation tail, plus compaction for history.</p>
-<h2 id="shipped-goal-card-session-backed"><a class="header" href="#shipped-goal-card-session-backed">Shipped goal card (session-backed)</a></h2>
+<p>Long context fails when the objective is only buried in the transcript. Goal mode keeps a structured objective on the session, injects it outside the raw conversation tail, and pairs with compaction for history.</p>
+<h2 id="goal-card-session-backed"><a class="header" href="#goal-card-session-backed">Goal card (session-backed)</a></h2>
 <pre><code class="language-text">id:
 objective:
 status:          # active | paused | budget-limited | complete | dropped
@@ -205,35 +206,15 @@ tokens_used:
 time_used_seconds:
 created_at / updated_at:
 </code></pre>
-<p>The harness owns persistence on the session. The model updates via <code>/goal</code> commands and the <code>goal</code> tool (<code>create</code>, <code>get</code>, <code>complete</code>, <code>resume</code>, <code>drop</code>). User objective text is escaped before it is injected into the prompt.</p>
-<p>Token accounting includes input, output, and cache-write deltas relevant to provider billing.</p>
-<h2 id="aspirational-richer-card-spec--not-shipped"><a class="header" href="#aspirational-richer-card-spec--not-shipped">Aspirational richer card (Spec — not shipped)</a></h2>
-<pre><code class="language-text">constraints:
-known_decisions:
-blockers:
-completion_criteria:
-current_plan:
-files_read / files_modified / commands_run:
-verification_state:
-reviewer_open_findings:
-context_budget:
-last_material_user_instruction:
-retrieved_detail_handles:
-</code></pre>
-<p>Do not assume these fields exist in storage or prompts until a release note says otherwise.</p>
-<h2 id="how-it-fits-the-context-window-target-model"><a class="header" href="#how-it-fits-the-context-window-target-model">How it fits the context window (target model)</a></h2>
-<p>Each turn should eventually assemble named slots: system rules, goal card, active instructions, fresh tail, compaction prefix, retrieved detail. The 256k-class ceiling is a maximum, not a target. Required slots should fit or the harness should report overflow — not silently drop constraints.</p>
-<p>Today, shipped slots are goal injection + compaction + standard session context.</p>
-<h2 id="what-goal-mode-buys-today"><a class="header" href="#what-goal-mode-buys-today">What goal mode buys today</a></h2>
+<p>The harness persists this on the session. Updates come from <code>/goal</code> commands and the <code>goal</code> tool (<code>create</code>, <code>get</code>, <code>complete</code>, <code>resume</code>, <code>drop</code>). User objective text is escaped before prompt injection.</p>
+<p>Token accounting includes input, output, and cache-write deltas used for provider billing.</p>
+<h2 id="context-assembly"><a class="header" href="#context-assembly">Context assembly</a></h2>
+<p>Each turn combines system rules, goal injection (when active), active instructions, recent transcript, compaction prefix, and other session context. Compaction settings: <a href="./compaction-memory.html">Compaction and project memory</a>. Operator commands: <a href="../features/plan-mode.html">Plan mode and goals</a>.</p>
+<h2 id="what-goal-mode-provides"><a class="header" href="#what-goal-mode-provides">What goal mode provides</a></h2>
 <ul>
-<li>Objective visible across turns without rereading the entire transcript.</li>
-<li>Idle continuation toward the objective when <code>goal.continuationModes</code> allows.</li>
-<li>Token budget steering when <code>token_budget</code> is set.</li>
-</ul>
-<h2 id="see-also"><a class="header" href="#see-also">See also</a></h2>
-<ul>
-<li><a href="../features/plan-mode.html">Plan mode and goals</a></li>
-<li><a href="./compaction-memory.html">Compaction and project memory</a></li>
+<li>Objective visible across turns without rereading the full transcript</li>
+<li>Idle continuation toward the objective when <code>goal.continuationModes</code> allows</li>
+<li>Token budget and pause/complete/drop lifecycle</li>
 </ul>
 
                     </main>

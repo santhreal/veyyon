@@ -6,7 +6,7 @@ import {
 	clearAwsCredentialCache,
 	resolveAwsCredentials,
 	tokenizeCredentialProcessCommand,
-} from "@veyyon/pi-ai/providers/aws-credentials";
+} from "@veyyon/ai/providers/aws-credentials";
 import { removeWithRetries } from "../../utils/src/temp";
 
 // `credential_process` integration coverage. Drives a real `Bun.spawn`

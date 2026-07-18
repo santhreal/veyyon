@@ -175,7 +175,7 @@
 
 ### Added
 
-- Added `generateHandoffFromContext(context, model, options)` to `@veyyon/pi-agent-core/compaction`: runs the handoff oneshot against a fully-built provider `Context` (system prompt, normalized tools, transformed history, trailing handoff prompt) with `streamOptions` mirroring the live turn's cache routing, so a host that owns the transform pipeline can make the handoff request share the prompt cache the main turn populated. `generateHandoff(messages, …)` is unchanged and now delegates to it.
+- Added `generateHandoffFromContext(context, model, options)` to `@veyyon/agent-core/compaction`: runs the handoff oneshot against a fully-built provider `Context` (system prompt, normalized tools, transformed history, trailing handoff prompt) with `streamOptions` mirroring the live turn's cache routing, so a host that owns the transform pipeline can make the handoff request share the prompt cache the main turn populated. `generateHandoff(messages, …)` is unchanged and now delegates to it.
 - Added an optional `systemPrompt` argument to `Agent.buildSideRequestContext(llmMessages, systemPrompt?)`, defaulting to the live agent prompt; callers can pin a different prompt (e.g. handoff generation, which uses the base prompt rather than a per-turn `before_agent_start` hook override).
 
 ### Changed
@@ -270,7 +270,7 @@
 ### Fixed
 
 - Fixed transient provider errors after streamed tool-call arguments so incomplete tool calls are marked as interrupted output instead of eligible for automatic retry ([#2683](https://github.com/can1357/oh-my-pi/issues/2683)).
-- Fixed `@veyyon/pi-agent-core` telemetry content capture crashing every chat turn with `TypeError: systemPrompt.map is not a function` when `captureMessageContent` is enabled (`OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT=true`). `ChatRequestSnapshot.systemPrompt` now accepts `string | readonly string[]` and the telemetry serializers normalize a bare string to a single-element array — previously the full-system serializer called `.map` on a string (the `.length` guard passed, so it threw) and the request-message serializer iterated the string into one `system` message per character.
+- Fixed `@veyyon/agent-core` telemetry content capture crashing every chat turn with `TypeError: systemPrompt.map is not a function` when `captureMessageContent` is enabled (`OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT=true`). `ChatRequestSnapshot.systemPrompt` now accepts `string | readonly string[]` and the telemetry serializers normalize a bare string to a single-element array — previously the full-system serializer called `.map` on a string (the `.length` guard passed, so it threw) and the request-message serializer iterated the string into one `system` message per character.
 
 ## [16.0.0] - 2026-06-15
 
@@ -305,7 +305,7 @@
 
 ### Breaking Changes
 
-- Removed `harmony-leak` exports from the `@veyyon/pi-agent-core` package entrypoint
+- Removed `harmony-leak` exports from the `@veyyon/agent-core` package entrypoint
 - Replaced the experimental `promptToolCalls` agent/loop option with `toolCallSyntax`, selecting an explicit in-band tool-call grammar instead of a boolean GLM-only mode.
 
 ### Added
@@ -434,7 +434,7 @@
 ### Changed
 
 - Editorial pass over the compaction prompts: fixed garbled grammar and missing articles, RFC-keyed prohibitions, deduped restated instructions; parsed markers (`<read-files>`/`<modified-files>`/`<previous-summary>`) and all output-format headings left byte-identical
-- Catalog imports moved to the new `@veyyon/pi-catalog` package: subpath imports (`calculateCost`, Codex wire constants) plus catalog values previously taken from the `@veyyon/pi-ai` root (`getBundledModel`, `clampThinkingLevelForModel`), which pi-ai no longer re-exports; type-only `Model`/`Api`/`Effort` imports from pi-ai are unchanged
+- Catalog imports moved to the new `@veyyon/catalog` package: subpath imports (`calculateCost`, Codex wire constants) plus catalog values previously taken from the `@veyyon/ai` root (`getBundledModel`, `clampThinkingLevelForModel`), which pi-ai no longer re-exports; type-only `Model`/`Api`/`Effort` imports from pi-ai are unchanged
 
 ## [15.10.8] - 2026-06-09
 
@@ -518,8 +518,8 @@
 
 ### Added
 
-- Added `getReadToolPath(context)` to `@veyyon/pi-agent-core/compaction/tool-protection` to extract a paired `read` tool call's `path` for embedders building read-targeted protection matchers
-- Added `getReadToolPath(context)` to `@veyyon/pi-agent-core/compaction/tool-protection`: the shared primitive that extracts a paired `read` tool call's `path` argument, so embedders can build their own read-targeted compaction protection matchers (e.g. plan-file reads) the same way `isSkillReadToolResult` does.
+- Added `getReadToolPath(context)` to `@veyyon/agent-core/compaction/tool-protection` to extract a paired `read` tool call's `path` for embedders building read-targeted protection matchers
+- Added `getReadToolPath(context)` to `@veyyon/agent-core/compaction/tool-protection`: the shared primitive that extracts a paired `read` tool call's `path` argument, so embedders can build their own read-targeted compaction protection matchers (e.g. plan-file reads) the same way `isSkillReadToolResult` does.
 
 ## [15.8.2] - 2026-06-03
 
@@ -547,7 +547,7 @@
 
 ### Added
 
-- Added `shake` compaction primitives (`collectShakeRegions`, `applyShakeRegion`, `applyShakeRegions`, `summarizeShakeRegions`, `DEFAULT_SHAKE_CONFIG`, `AGGRESSIVE_SHAKE_CONFIG`, plus the `ShakeRegion`/`ShakeConfig`/`ShakeSummaryItem`/`ShakeSummaryComplete`/`ProtectedToolMatcher` types) under `@veyyon/pi-agent-core/compaction`. These detect heavy context regions — whole tool-call results plus large fenced/XML blocks — and either elide them with placeholders or extractively compress them through an injected completion backend (no LLM summary cut-point). The compressor is provider-agnostic: callers wire it to a local on-device model. Pure detection/mutation; no I/O.
+- Added `shake` compaction primitives (`collectShakeRegions`, `applyShakeRegion`, `applyShakeRegions`, `summarizeShakeRegions`, `DEFAULT_SHAKE_CONFIG`, `AGGRESSIVE_SHAKE_CONFIG`, plus the `ShakeRegion`/`ShakeConfig`/`ShakeSummaryItem`/`ShakeSummaryComplete`/`ProtectedToolMatcher` types) under `@veyyon/agent-core/compaction`. These detect heavy context regions — whole tool-call results plus large fenced/XML blocks — and either elide them with placeholders or extractively compress them through an injected completion backend (no LLM summary cut-point). The compressor is provider-agnostic: callers wire it to a local on-device model. Pure detection/mutation; no I/O.
 
 ### Fixed
 
@@ -573,7 +573,7 @@
 
 ### Fixed
 
-- Fixed compaction summarizer throws losing the provider's HTTP status. `generateSummary`, `generateHandoff`, `generateShortSummary`, and `generateTurnPrefixSummary` now route their `stopReason === "error"` throws through a `createSummarizationError` helper that copies `AssistantMessage.errorStatus` onto the thrown `Error` as `.status`, letting downstream consumers (e.g. `AgentSession.#isCompactionAuthFailure` in `@veyyon/pi-coding-agent`) branch on real provider 401/403s without regex-scraping the message body.
+- Fixed compaction summarizer throws losing the provider's HTTP status. `generateSummary`, `generateHandoff`, `generateShortSummary`, and `generateTurnPrefixSummary` now route their `stopReason === "error"` throws through a `createSummarizationError` helper that copies `AssistantMessage.errorStatus` onto the thrown `Error` as `.status`, letting downstream consumers (e.g. `AgentSession.#isCompactionAuthFailure` in `@veyyon/coding-agent`) branch on real provider 401/403s without regex-scraping the message body.
 
 ## [15.5.0] - 2026-05-26
 
@@ -619,12 +619,12 @@
 
 ### Breaking Changes
 
-- Removed the `@veyyon/pi-agent-core/compaction/handoff` exports from the package surface, including `extractHandoffDocument`, `createHandoffContext`, and `createHandoffFileName`
+- Removed the `@veyyon/agent-core/compaction/handoff` exports from the package surface, including `extractHandoffDocument`, `createHandoffContext`, and `createHandoffFileName`
 - Removed legacy telemetry constants from the public enum surface (including `AGGREGATE_ATTR`, `GenAIAttr.System`, and old `gen_ai.*` extension keys such as `gen_ai.request.service_tier`/cost/tool status/handoff fields) and replaced them with `OpenAIAttr`, `PiGenAIAttr`, and `PiGenAIAggregateAttr`
 
 ### Added
 
-- Added `generateHandoff(messages, model, apiKey, options)` to `@veyyon/pi-agent-core/compaction` to generate a handoff document by calling the model directly, using live system/tool context and optional metadata
+- Added `generateHandoff(messages, model, apiKey, options)` to `@veyyon/agent-core/compaction` to generate a handoff document by calling the model directly, using live system/tool context and optional metadata
 - Added generation filtering so the returned handoff document now includes only text content blocks from the model output
 - Added support for defining `AgentTool` schemas with Zod, with legacy TypeBox schemas still supported when generating tool schemas for model calls
 - Added `OpenAIAttr`, `PiGenAIAttr`, and `PiGenAIAggregateAttr` exports so consumers can reference the new `openai.*` and `pi.gen_ai.*` telemetry attribute keys directly
@@ -641,7 +641,7 @@
 - Added `AgentTelemetryConfig` hooks (`onSpanStart`, `onSpanEnd`, `costEstimator`), `agent` identity, `attributes` envelope merged onto every span, `captureMessageContent` toggle (defaults to the `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT` env var) emitting OTEL-shaped `gen_ai.input.messages` / `gen_ai.output.messages` / `gen_ai.system_instructions` / `gen_ai.tool.call.arguments` / `gen_ai.tool.call.result`, and tracer/tracerName override surfaces.
 - Added `Agent#setTelemetry(config)` so consumers can swap or disable instrumentation between invocations.
 - Added `@opentelemetry/api` as a runtime dependency; SDK setup (exporters, samplers, processors) remains the host's responsibility per standard OTEL conventions. When no SDK is registered, helpers fall through to no-op spans with zero overhead.
-- Added compaction APIs under `@veyyon/pi-agent-core/compaction`, including context compaction, branch summarization, handoff prompt/context helpers, pruning, token budgeting, prompt templates, and OpenAI `/responses/compact` helpers.
+- Added compaction APIs under `@veyyon/agent-core/compaction`, including context compaction, branch summarization, handoff prompt/context helpers, pruning, token budgeting, prompt templates, and OpenAI `/responses/compact` helpers.
 
 ### Changed
 
@@ -988,7 +988,7 @@
 
 ### Changed
 
-- Switched from local `@veyyon/pi-ai` to upstream `@mariozechner/pi-ai` package
+- Switched from local `@veyyon/ai` to upstream `@mariozechner/pi-ai` package
 
 ### Added
 
@@ -1089,7 +1089,7 @@ Initial release under @oh-my-pi scope. See previous releases at [badlogic/pi-mon
 - **`AppMessage` renamed to `AgentMessage`**: All references to `AppMessage` have been renamed to `AgentMessage` for consistency.
 - **`CustomMessages` renamed to `CustomAgentMessages`**: The declaration merging interface has been renamed.
 - **`UserMessageWithAttachments` and `Attachment` types removed**: Attachment handling is now the responsibility of the `convertToLlm` function.
-- **Agent loop moved from `@veyyon/pi-ai`**: The `agentLoop`, `agentLoopContinue`, and related types have moved to this package. Import from `@veyyon/pi-agent` instead.
+- **Agent loop moved from `@veyyon/ai`**: The `agentLoop`, `agentLoopContinue`, and related types have moved to this package. Import from `@veyyon/agent` instead.
 
 ### Added
 

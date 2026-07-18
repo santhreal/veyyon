@@ -5,20 +5,20 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { AgentMessage, AgentTool } from "@veyyon/pi-agent-core";
-import type { ImageContent, TextContent } from "@veyyon/pi-ai";
-import { ModelRegistry } from "@veyyon/pi-coding-agent/config/model-registry";
-import { discoverAndLoadExtensions } from "@veyyon/pi-coding-agent/extensibility/extensions/loader";
+import type { AgentMessage, AgentTool } from "@veyyon/agent-core";
+import type { ImageContent, TextContent } from "@veyyon/ai";
+import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
+import { discoverAndLoadExtensions } from "@veyyon/coding-agent/extensibility/extensions/loader";
 import {
 	EXTENSION_HANDLER_TIMEOUT_MS,
 	ExtensionRunner,
 	testSetExtensionHandlerTimeoutMs,
-} from "@veyyon/pi-coding-agent/extensibility/extensions/runner";
-import { ExtensionToolWrapper } from "@veyyon/pi-coding-agent/extensibility/extensions/wrapper";
-import { Type } from "@veyyon/pi-coding-agent/extensibility/typebox";
-import { AuthStorage } from "@veyyon/pi-coding-agent/session/auth-storage";
-import { SessionManager } from "@veyyon/pi-coding-agent/session/session-manager";
-import { getProjectAgentDir, logger, TempDir } from "@veyyon/pi-utils";
+} from "@veyyon/coding-agent/extensibility/extensions/runner";
+import { ExtensionToolWrapper } from "@veyyon/coding-agent/extensibility/extensions/wrapper";
+import { Type } from "@veyyon/coding-agent/extensibility/typebox";
+import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
+import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { getProjectAgentDir, logger, TempDir } from "@veyyon/utils";
 
 describe("ExtensionRunner", () => {
 	let tempDir: TempDir;

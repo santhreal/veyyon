@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import type { AgentMessage } from "@veyyon/pi-agent-core";
+import type { AgentMessage } from "@veyyon/agent-core";
 import {
 	buildCopyTargets,
 	type CopySource,
@@ -7,7 +7,7 @@ import {
 	extractCodeBlocks,
 	extractLastCommand,
 	extractQuoteBlocks,
-} from "@veyyon/pi-coding-agent/modes/utils/copy-targets";
+} from "@veyyon/coding-agent/modes/utils/copy-targets";
 
 function source(overrides: Partial<CopySource>): CopySource {
 	return {

@@ -1,7 +1,7 @@
-import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/pi-agent-core";
-import type { ToolExample } from "@veyyon/pi-ai";
-import type { Component } from "@veyyon/pi-tui";
-import { prompt } from "@veyyon/pi-utils";
+import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
+import type { ToolExample } from "@veyyon/ai";
+import type { Component } from "@veyyon/tui";
+import { prompt } from "@veyyon/utils";
 import { type } from "arktype";
 import type { SSHHost } from "../capability/ssh";
 import { sshCapability } from "../capability/ssh";

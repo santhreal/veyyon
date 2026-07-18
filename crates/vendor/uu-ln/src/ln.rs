@@ -7,13 +7,13 @@
 
 // pi-uutils: vendored from uutils/coreutils 0.8.0 and patched to run in-process
 // as a shell builtin. Every filesystem syscall resolves its path operand
-// against the shell working directory via `pi_uutils_ctx::resolve` AT THE CALL
-// SITE, while the original operands are kept for display/error messages (GNU
-// prints operands as typed) — and, crucially, for the CONTENT of symbolic
+// against the shell working directory via `veyyon_uutils_ctx::resolve` AT THE
+// CALL SITE, while the original operands are kept for display/error messages
+// (GNU prints operands as typed) — and, crucially, for the CONTENT of symbolic
 // links, which stays exactly as typed like GNU ln (only the location where the
 // link is created gets resolved). All process-global stdio and the `-i` prompt
-// are routed through `pi_uutils_ctx`, `translate!` strings are literalized, and
-// the entry point no longer calls `std::process::exit`.
+// are routed through `veyyon_uutils_ctx`, `translate!` strings are literalized,
+// and the entry point no longer calls `std::process::exit`.
 
 #[cfg(any(unix, target_os = "redox"))]
 use std::os::unix::fs::symlink;
@@ -29,7 +29,6 @@ use std::{
 };
 
 use clap::{Arg, ArgAction, ArgMatches, Command};
-use pi_uutils_ctx::format_usage;
 use thiserror::Error;
 use uucore::{
 	backup_control::{self, BackupMode},
@@ -39,6 +38,7 @@ use uucore::{
 		MissingHandling, ResolveMode, canonicalize, make_path_relative_to, paths_refer_to_same_file,
 	},
 };
+use veyyon_uutils_ctx::format_usage;
 
 pub struct Settings {
 	overwrite:      OverwriteMode,
@@ -112,7 +112,7 @@ static ARG_FILES: &str = "files";
 fn show_error(msg: impl std::fmt::Display) {
 	let rendered = msg.to_string();
 	if !rendered.is_empty() {
-		let _ = writeln!(pi_uutils_ctx::stderr(), "ln: {rendered}");
+		let _ = writeln!(veyyon_uutils_ctx::stderr(), "ln: {rendered}");
 	}
 }
 
@@ -122,7 +122,7 @@ fn show_error(msg: impl std::fmt::Display) {
 /// of the line is `y`/`Y`.
 fn read_yes() -> bool {
 	use std::io::Read as _;
-	let mut stdin = pi_uutils_ctx::stdin();
+	let mut stdin = veyyon_uutils_ctx::stdin();
 	let mut buf = [0u8; 1];
 	let mut first = None;
 	loop {
@@ -146,7 +146,7 @@ fn read_yes() -> bool {
 /// "ln: \<prompt\> " to the context stderr, then reads the answer from the
 /// context stdin.
 fn prompt_yes(prompt: impl std::fmt::Display) -> bool {
-	let mut err = pi_uutils_ctx::stderr();
+	let mut err = veyyon_uutils_ctx::stderr();
 	let _ = write!(err, "ln: {prompt} ");
 	let _ = err.flush();
 	read_yes()
@@ -163,15 +163,15 @@ pub fn run(argv: Vec<OsString>) -> i32 {
 		Err(err) => {
 			let rendered = err.to_string();
 			if err.use_stderr() {
-				let _ = write!(pi_uutils_ctx::stderr(), "{rendered}");
+				let _ = write!(veyyon_uutils_ctx::stderr(), "{rendered}");
 				return 1;
 			}
-			let _ = write!(pi_uutils_ctx::stdout(), "{rendered}");
+			let _ = write!(veyyon_uutils_ctx::stdout(), "{rendered}");
 			return 0;
 		},
 	};
 	match ln_main(&matches) {
-		Ok(()) => pi_uutils_ctx::exit_code(),
+		Ok(()) => veyyon_uutils_ctx::exit_code(),
 		Err(err) => {
 			let code = err.code();
 			// pi-uutils: `SomeLinksFailed` renders to an empty message
@@ -179,7 +179,7 @@ pub fn run(argv: Vec<OsString>) -> i32 {
 			// emit a dangling "ln: " prefix for it.
 			let msg = err.to_string();
 			if !msg.is_empty() {
-				let _ = writeln!(pi_uutils_ctx::stderr(), "ln: {msg}");
+				let _ = writeln!(veyyon_uutils_ctx::stderr(), "ln: {msg}");
 			}
 			if code == 0 { 1 } else { code }
 		},
@@ -374,7 +374,7 @@ fn exec(files: &[PathBuf], settings: &Settings) -> UResult<()> {
 		}
 		let last_file = &PathBuf::from(files.last().unwrap());
 		// pi-uutils: probe the destination via the resolved path.
-		if files.len() > 2 || pi_uutils_ctx::resolve(last_file).is_dir() {
+		if files.len() > 2 || veyyon_uutils_ctx::resolve(last_file).is_dir() {
 			// 3rd form: create links in the last argument.
 			return link_files_in_dir(&files[0..files.len() - 1], last_file, settings);
 		}
@@ -399,7 +399,7 @@ fn exec(files: &[PathBuf], settings: &Settings) -> UResult<()> {
 fn link_files_in_dir(files: &[PathBuf], target_dir: &Path, settings: &Settings) -> UResult<()> {
 	// pi-uutils: resolved target directory for every syscall below; the
 	// operand keeps its as-typed spelling for display and link-name building.
-	let target_dir_fs = pi_uutils_ctx::resolve(target_dir);
+	let target_dir_fs = veyyon_uutils_ctx::resolve(target_dir);
 	if !target_dir_fs.is_dir() {
 		return Err(LnError::TargetIsNotADirectory(target_dir.to_owned()).into());
 	}
@@ -481,9 +481,9 @@ fn relative_path<'a>(src: &'a Path, dst: &Path) -> Cow<'a, Path> {
 	// link text against the shell working directory (uucore's canonicalize
 	// would otherwise fall back to the process cwd for relative paths).
 	if let Ok(src_abs) =
-		canonicalize(pi_uutils_ctx::resolve(src), MissingHandling::Missing, ResolveMode::Physical)
+		canonicalize(veyyon_uutils_ctx::resolve(src), MissingHandling::Missing, ResolveMode::Physical)
 		&& let Ok(dst_abs) = canonicalize(
-			pi_uutils_ctx::resolve(dst.parent().unwrap()),
+			veyyon_uutils_ctx::resolve(dst.parent().unwrap()),
 			MissingHandling::Missing,
 			ResolveMode::Physical,
 		) {
@@ -505,8 +505,8 @@ fn link(src: &Path, dst: &Path, settings: &Settings) -> UResult<()> {
 	// syscall below. `src`/`dst`/`source` keep the as-typed spelling for
 	// display — and `source` is what gets stored as the symlink CONTENT, so it
 	// must never be resolved.
-	let src_fs = pi_uutils_ctx::resolve(src);
-	let dst_fs = pi_uutils_ctx::resolve(dst);
+	let src_fs = veyyon_uutils_ctx::resolve(src);
+	let dst_fs = veyyon_uutils_ctx::resolve(dst);
 
 	if dst_fs.is_symlink() || dst_fs.exists() {
 		// pi-uutils: probe numbered backups from the resolved destination so
@@ -567,7 +567,7 @@ fn link(src: &Path, dst: &Path, settings: &Settings) -> UResult<()> {
 	} else {
 		// pi-uutils: hard links dereference their target, so the resolved
 		// source is what the syscalls get.
-		let source_fs = pi_uutils_ctx::resolve(&source);
+		let source_fs = veyyon_uutils_ctx::resolve(&source);
 		let p = if settings.logical && source_fs.is_symlink() {
 			fs::canonicalize(&source_fs)
 				.map_err_context(|| format!("failed to access {}", source.quote()))?
@@ -602,7 +602,7 @@ fn link(src: &Path, dst: &Path, settings: &Settings) -> UResult<()> {
 
 	if settings.verbose {
 		// pi-uutils: verbose output goes to the context stdout.
-		let mut out = pi_uutils_ctx::stdout();
+		let mut out = veyyon_uutils_ctx::stdout();
 		write!(out, "{} -> {}", dst.quote(), source.quote())?;
 		match backup_path {
 			Some(path) => {
@@ -627,7 +627,7 @@ pub fn symlink<P1: AsRef<Path>, P2: AsRef<Path>>(src: P1, dst: P2) -> std::io::R
 	// pi-uutils: the dir/file probe resolves the target against the shell
 	// working directory (upstream consults the process cwd); the stored link
 	// content is still the caller's as-typed `src`.
-	if pi_uutils_ctx::resolve(src.as_ref()).is_dir() {
+	if veyyon_uutils_ctx::resolve(src.as_ref()).is_dir() {
 		symlink_dir(src, dst)
 	} else {
 		symlink_file(src, dst)
@@ -647,7 +647,7 @@ mod tests {
 	use std::{collections::HashMap, io::Write, path::PathBuf, sync::Arc};
 
 	use parking_lot::Mutex;
-	use pi_uutils_ctx::ScopeIo;
+	use veyyon_uutils_ctx::ScopeIo;
 
 	use super::*;
 
@@ -685,7 +685,7 @@ mod tests {
 			.map(OsString::from)
 			.collect();
 
-		let code = pi_uutils_ctx::scope(io, || run(argv));
+		let code = veyyon_uutils_ctx::scope(io, || run(argv));
 
 		let out_str = String::from_utf8(stdout_buf.lock().clone()).unwrap();
 		let err_str = String::from_utf8(stderr_buf.lock().clone()).unwrap();
@@ -711,7 +711,7 @@ mod tests {
 		let (_dir, root) = canonical_tempdir();
 
 		// Relative operands + scope cwd differing from the process cwd: only
-		// the call-site `pi_uutils_ctx::resolve` patch places the link in the
+		// the call-site `veyyon_uutils_ctx::resolve` patch places the link in the
 		// tempdir — while the CONTENT must stay exactly as typed.
 		let (code, stdout, stderr) = run_in(root.clone(), vec!["-s", "target", "link"]);
 		assert_eq!((code, stdout.as_str(), stderr.as_str()), (0, "", ""));

@@ -6,18 +6,18 @@
  *
  * Extension files are discovered from:
  * - ~/.veyyon/agent/extensions/ (legacy: ~/.pi/agent/extensions/)
- * - <cwd>/.omp/extensions/ (legacy: <cwd>/.pi/extensions/)
+ * - <cwd>/.veyyon/extensions/ (legacy: <cwd>/.pi/extensions/)
  * - Paths specified in settings.json "extensions" array
  * - Paths passed via --extension CLI flag
  *
  * An extension is a TypeScript file that exports a default function:
  *   export default function (pi: ExtensionAPI) { ... }
  */
-import { createAgentSession, SessionManager } from "@veyyon/pi-coding-agent";
+import { createAgentSession, SessionManager } from "@veyyon/coding-agent";
 
 // Extensions are loaded from disk, not passed inline to createAgentSession.
 // Use the discovery mechanism:
-//   1. Place extension files in ~/.veyyon/agent/extensions/ or .omp/extensions/
+//   1. Place extension files in ~/.veyyon/agent/extensions/ or .veyyon/extensions/
 //   2. Add paths to settings.json: { "extensions": ["./my-extension.ts"] }
 //   3. Use --extension flag: pi --extension ./my-extension.ts
 
@@ -38,7 +38,7 @@ console.log();
 
 // Example extension file (./my-logging-extension.ts):
 /*
-import type { ExtensionAPI } from "@veyyon/pi-coding-agent";
+import type { ExtensionAPI } from "@veyyon/coding-agent";
 
 export default function (pi: ExtensionAPI) {
 	const { z } = pi.zod;

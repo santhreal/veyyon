@@ -9,8 +9,8 @@
  * reaching `estimateTokens` twice must never re-tokenize its content.
  */
 import { describe, expect, test, vi } from "bun:test";
-import { estimateTokens } from "@veyyon/pi-agent-core/compaction";
-import type { AssistantMessage } from "@veyyon/pi-ai";
+import { estimateTokens } from "@veyyon/agent-core/compaction";
+import type { AssistantMessage } from "@veyyon/ai";
 
 function assistantMessage(content: AssistantMessage["content"]): AssistantMessage {
 	return {

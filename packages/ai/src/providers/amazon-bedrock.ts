@@ -7,10 +7,10 @@
  * Bun's native `HTTPS_PROXY` support.
  */
 
-import type { Effort } from "@veyyon/pi-catalog/effort";
-import { mapEffortToAnthropicAdaptiveEffort, requireSupportedEffort } from "@veyyon/pi-catalog/model-thinking";
-import { calculateCost } from "@veyyon/pi-catalog/models";
-import { $env, $flag, fetchWithRetry, parseStreamingJson, parseStreamingJsonThrottled } from "@veyyon/pi-utils";
+import type { Effort } from "@veyyon/catalog/effort";
+import { mapEffortToAnthropicAdaptiveEffort, requireSupportedEffort } from "@veyyon/catalog/model-thinking";
+import { calculateCost } from "@veyyon/catalog/models";
+import { $env, $flag, fetchWithRetry, parseStreamingJson, parseStreamingJsonThrottled } from "@veyyon/utils";
 import { renderDemotedThinking } from "../dialect/demotion";
 import * as AIError from "../error";
 import type {

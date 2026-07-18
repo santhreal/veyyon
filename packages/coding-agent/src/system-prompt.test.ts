@@ -2,7 +2,7 @@ import { describe, expect, it, spyOn } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { APP_NAME, DIR_OVERRIDE_ENV_KEYS } from "@veyyon/pi-utils";
+import { APP_NAME, DIR_OVERRIDE_ENV_KEYS } from "@veyyon/utils";
 import { buildSystemPrompt } from "./system-prompt";
 
 interface ProbeRunResult {
@@ -19,7 +19,7 @@ async function runProbeScenario(options: {
 	descendantHoldsStdout?: boolean;
 	validOutput?: string;
 }): Promise<ProbeRunResult> {
-	const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "omp-gpu-probe-"));
+	const tempRoot = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-gpu-probe-"));
 	try {
 		const binDir = path.join(tempRoot, "bin");
 		const cacheRoot = path.join(tempRoot, "cache");
@@ -29,7 +29,7 @@ async function runProbeScenario(options: {
 		const lspciPath = path.join(binDir, "lspci");
 		await Bun.write(
 			lspciPath,
-			'#!/usr/bin/env sh\nprintf x >> "$OMP_GPU_PROBE_COUNT"\nif [ -n "$OMP_GPU_PROBE_VALID_OUTPUT" ]; then printf "%s\\n" "$OMP_GPU_PROBE_VALID_OUTPUT"; fi\nif [ "$OMP_GPU_PROBE_DESCENDANT_HOLDS_STDOUT" = "true" ]; then sleep "$OMP_GPU_PROBE_SLEEP" & exit 0; fi\nif [ "$OMP_GPU_PROBE_HOLD_STDOUT_OPEN" = "true" ]; then sleep "$OMP_GPU_PROBE_SLEEP" & wait "$!"; fi\nif [ -n "$OMP_GPU_PROBE_SLEEP" ]; then exec sleep "$OMP_GPU_PROBE_SLEEP"; fi\nexit 0\n',
+			'#!/usr/bin/env sh\nprintf x >> "$VEYYON_GPU_PROBE_COUNT"\nif [ -n "$VEYYON_GPU_PROBE_VALID_OUTPUT" ]; then printf "%s\\n" "$VEYYON_GPU_PROBE_VALID_OUTPUT"; fi\nif [ "$VEYYON_GPU_PROBE_DESCENDANT_HOLDS_STDOUT" = "true" ]; then sleep "$VEYYON_GPU_PROBE_SLEEP" & exit 0; fi\nif [ "$VEYYON_GPU_PROBE_HOLD_STDOUT_OPEN" = "true" ]; then sleep "$VEYYON_GPU_PROBE_SLEEP" & wait "$!"; fi\nif [ -n "$VEYYON_GPU_PROBE_SLEEP" ]; then exec sleep "$VEYYON_GPU_PROBE_SLEEP"; fi\nexit 0\n',
 		);
 		await fs.chmod(lspciPath, 0o755);
 
@@ -54,12 +54,12 @@ const buildOptions = {
 	activeRepoContext: null,
 };
 const startedAt = performance.now();
-for (let index = 0; index < Number(process.env.OMP_GPU_PROBE_RUNS ?? "1"); index += 1) {
+for (let index = 0; index < Number(process.env.VEYYON_GPU_PROBE_RUNS ?? "1"); index += 1) {
 	await buildSystemPrompt(buildOptions);
 }
 const cacheFile = Bun.file(getGpuCachePath());
 const cached = await cacheFile.exists() ? await cacheFile.json() : null;
-const countFile = Bun.file(process.env.OMP_GPU_PROBE_COUNT ?? "");
+const countFile = Bun.file(process.env.VEYYON_GPU_PROBE_COUNT ?? "");
 const count = await countFile.exists() ? (await countFile.text()).length : 0;
 console.log(JSON.stringify({ elapsedMs: Math.round(performance.now() - startedAt), cached, count }));
 `,
@@ -69,8 +69,8 @@ console.log(JSON.stringify({ elapsedMs: Math.round(performance.now() - startedAt
 			...process.env,
 			PATH: `${binDir}:${process.env.PATH ?? ""}`,
 			XDG_CACHE_HOME: cacheRoot,
-			OMP_GPU_PROBE_COUNT: probeCountPath,
-			OMP_GPU_PROBE_RUNS: String(options.runs),
+			VEYYON_GPU_PROBE_COUNT: probeCountPath,
+			VEYYON_GPU_PROBE_RUNS: String(options.runs),
 		};
 		// Strip inherited dirs-resolver overrides so XDG_CACHE_HOME above wins and
 		// the test cannot touch the developer/CI profile's real gpu_cache.json.
@@ -78,24 +78,24 @@ console.log(JSON.stringify({ elapsedMs: Math.round(performance.now() - startedAt
 			delete env[key];
 		}
 		if (options.sleepSeconds === undefined) {
-			delete env.OMP_GPU_PROBE_SLEEP;
+			delete env.VEYYON_GPU_PROBE_SLEEP;
 		} else {
-			env.OMP_GPU_PROBE_SLEEP = String(options.sleepSeconds);
+			env.VEYYON_GPU_PROBE_SLEEP = String(options.sleepSeconds);
 		}
 		if (options.holdStdoutOpen) {
-			env.OMP_GPU_PROBE_HOLD_STDOUT_OPEN = "true";
+			env.VEYYON_GPU_PROBE_HOLD_STDOUT_OPEN = "true";
 		} else {
-			delete env.OMP_GPU_PROBE_HOLD_STDOUT_OPEN;
+			delete env.VEYYON_GPU_PROBE_HOLD_STDOUT_OPEN;
 		}
 		if (options.descendantHoldsStdout) {
-			env.OMP_GPU_PROBE_DESCENDANT_HOLDS_STDOUT = "true";
+			env.VEYYON_GPU_PROBE_DESCENDANT_HOLDS_STDOUT = "true";
 		} else {
-			delete env.OMP_GPU_PROBE_DESCENDANT_HOLDS_STDOUT;
+			delete env.VEYYON_GPU_PROBE_DESCENDANT_HOLDS_STDOUT;
 		}
 		if (options.validOutput !== undefined) {
-			env.OMP_GPU_PROBE_VALID_OUTPUT = options.validOutput;
+			env.VEYYON_GPU_PROBE_VALID_OUTPUT = options.validOutput;
 		} else {
-			delete env.OMP_GPU_PROBE_VALID_OUTPUT;
+			delete env.VEYYON_GPU_PROBE_VALID_OUTPUT;
 		}
 
 		const childStartedAt = performance.now();
@@ -233,5 +233,43 @@ describe("non-Linux system prompt CPU model", () => {
 			cpus.mockRestore();
 			Object.defineProperty(process, "platform", { value: originalPlatform });
 		}
+	});
+});
+
+describe("system prompt section order", () => {
+	const baseOptions = {
+		contextFiles: [],
+		skills: [],
+		rules: [],
+		workspaceTree: {
+			rootPath: import.meta.dir,
+			rendered: "",
+			truncated: false,
+			totalLines: 0,
+			agentsMdFiles: [],
+		},
+		activeRepoContext: null,
+	};
+
+	it("reorders the default template's banner sections via sectionOrder", async () => {
+		const result = await buildSystemPrompt({
+			...baseOptions,
+			sectionOrder: ["delivery-contract", "tool-policy"],
+		});
+		const prompt = result.systemPrompt[0];
+		expect(prompt.indexOf("DELIVERY CONTRACT")).toBeGreaterThan(-1);
+		expect(prompt.indexOf("DELIVERY CONTRACT")).toBeLessThan(prompt.indexOf("TOOL POLICY"));
+		expect(prompt.indexOf("TOOL POLICY")).toBeLessThan(prompt.indexOf("ROLE"));
+		expect(prompt.startsWith("<system-conventions>")).toBe(true);
+	});
+
+	it("ignores sectionOrder for custom prompt templates", async () => {
+		const result = await buildSystemPrompt({
+			...baseOptions,
+			resolvedCustomPrompt: "Custom base prompt",
+			sectionOrder: ["delivery-contract"],
+		});
+		expect(result.systemPrompt[0]).toContain("Custom base prompt");
+		expect(result.systemPrompt[0]).not.toContain("DELIVERY CONTRACT");
 	});
 });

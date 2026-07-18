@@ -1,6 +1,6 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
-import type { AgentToolContext, AgentToolResult } from "@veyyon/pi-agent-core";
-import type { TUI } from "@veyyon/pi-tui";
+import type { AgentToolContext, AgentToolResult } from "@veyyon/agent-core";
+import type { TUI } from "@veyyon/tui";
 import type { ExtensionUIDialogOptions, ExtensionUISelectItem } from "../src/extensibility/extensions";
 import { HookSelectorComponent } from "../src/modes/components/hook-selector";
 import { getThemeByName, setThemeInstance } from "../src/modes/theme/theme";

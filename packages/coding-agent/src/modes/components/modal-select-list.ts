@@ -10,7 +10,7 @@ import {
 	SelectList,
 	type SelectListTheme,
 	type SgrMouseEvent,
-} from "@veyyon/pi-tui";
+} from "@veyyon/tui";
 import {
 	computeModalDims,
 	hitTestModalChrome,

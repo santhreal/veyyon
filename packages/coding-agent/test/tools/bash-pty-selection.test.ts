@@ -1,10 +1,8 @@
 import { afterEach, describe, expect, it } from "bun:test";
-import { canUseInteractiveBashPty } from "@veyyon/pi-coding-agent/tools/bash-pty-selection";
+import { canUseInteractiveBashPty } from "@veyyon/coding-agent/tools/bash-pty-selection";
 
 const originalPlatform = process.platform;
-const originalNoPty = Bun.env.PI_NO_PTY;
-const originalVeyyonNoPty = Bun.env.VEYYON_NO_PTY;
-const originalOmpNoPty = Bun.env.OMP_NO_PTY;
+const originalNoPty = Bun.env.VEYYON_NO_PTY;
 
 function setPlatform(platform: NodeJS.Platform): void {
 	Object.defineProperty(process, "platform", {
@@ -22,16 +20,9 @@ function restorePlatform(): void {
 	});
 }
 
-function clearNoPtyAliases(): void {
-	delete Bun.env.PI_NO_PTY;
+function setNoPty(value: string | undefined): void {
 	delete Bun.env.VEYYON_NO_PTY;
-	delete Bun.env.OMP_NO_PTY;
-}
-
-function setNoPty(value: string | undefined, key: "PI_NO_PTY" | "VEYYON_NO_PTY" | "OMP_NO_PTY" = "PI_NO_PTY"): void {
-	clearNoPtyAliases();
-	if (value === undefined) return;
-	Bun.env[key] = value;
+	if (value !== undefined) Bun.env.VEYYON_NO_PTY = value;
 }
 
 function interactiveContext() {
@@ -41,10 +32,10 @@ function interactiveContext() {
 describe("bash PTY selection", () => {
 	afterEach(() => {
 		restorePlatform();
-		clearNoPtyAliases();
-		if (originalNoPty !== undefined) Bun.env.PI_NO_PTY = originalNoPty;
-		if (originalVeyyonNoPty !== undefined) Bun.env.VEYYON_NO_PTY = originalVeyyonNoPty;
-		if (originalOmpNoPty !== undefined) Bun.env.OMP_NO_PTY = originalOmpNoPty;
+		delete Bun.env.VEYYON_NO_PTY;
+		delete Bun.env.OMP_NO_PTY;
+		delete Bun.env.PI_NO_PTY;
+		if (originalNoPty !== undefined) Bun.env.VEYYON_NO_PTY = originalNoPty;
 	});
 
 	it("allows interactive PTY on Windows when requested with UI", () => {
@@ -68,8 +59,16 @@ describe("bash PTY selection", () => {
 
 	it("disables interactive PTY when VEYYON_NO_PTY=1", () => {
 		setPlatform("linux");
-		setNoPty("1", "VEYYON_NO_PTY");
+		setNoPty("1");
 		expect(canUseInteractiveBashPty(true, interactiveContext())).toBe(false);
+	});
+
+	it("ignores the removed OMP_NO_PTY / PI_NO_PTY legacy aliases", () => {
+		setPlatform("linux");
+		setNoPty(undefined);
+		Bun.env.OMP_NO_PTY = "1";
+		Bun.env.PI_NO_PTY = "1";
+		expect(canUseInteractiveBashPty(true, interactiveContext())).toBe(true);
 	});
 
 	it("disables interactive PTY when pty is false", () => {

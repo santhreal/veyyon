@@ -1,4 +1,4 @@
-# Developing `@veyyon/pi-coding-agent`
+# Developing `@veyyon/coding-agent`
 
 This package is the `veyyon` CLI. This file is a **developer's map**: where things live
 in `src/`, how to run the local loops, and — for each subsystem — which document in
@@ -138,7 +138,7 @@ Top-level entry modules: `cli.ts`, `main.ts`, `sdk.ts`, `index.ts` (SDK barrel),
 - [tui.md](../../docs/tui.md), [tui-core-renderer.md](../../docs/internal/tui-core-renderer.md), [tui-runtime-internals.md](../../docs/internal/tui-runtime-internals.md)
 - [theme.md](../../docs/theme.md)
 
-### Natives (`crates/pi-natives`, `packages/natives`)
+### Natives (`crates/veyyon-natives`, `packages/natives`)
 - [natives-architecture.md](../../docs/internal/natives-architecture.md), [natives-addon-loader-runtime.md](../../docs/internal/natives-addon-loader-runtime.md), [natives-binding-contract.md](../../docs/internal/natives-binding-contract.md)
 - [natives-text-search-pipeline.md](../../docs/internal/natives-text-search-pipeline.md), [natives-shell-pty-process.md](../../docs/internal/natives-shell-pty-process.md), [natives-media-system-utils.md](../../docs/internal/natives-media-system-utils.md)
 - [natives-build-release-debugging.md](../../docs/internal/natives-build-release-debugging.md), [natives-rust-task-cancellation.md](../../docs/internal/natives-rust-task-cancellation.md), [porting-to-natives.md](../../docs/internal/porting-to-natives.md)

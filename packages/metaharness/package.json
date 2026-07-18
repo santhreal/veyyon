@@ -1,15 +1,15 @@
 {
 	"type": "module",
 	"private": true,
-	"name": "@veyyon/pi-metaharness",
+	"name": "@veyyon/metaharness",
 	"version": "0.0.1",
 	"description": "Unified benchmark runners plus Harbor run storage, REST/SSE APIs, and a live web dashboard",
-	"homepage": "https://omp.sh",
+	"homepage": "https://veyyon.dev",
 	"author": "Can Boluk",
 	"license": "MIT",
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/can1357/oh-my-pi.git",
+		"url": "git+https://github.com/santhsecurity/veyyon.git",
 		"directory": "packages/metaharness"
 	},
 	"bin": {
@@ -26,11 +26,11 @@
 	},
 	"dependencies": {
 		"@veyyon/hashline": "catalog:",
-		"@veyyon/pi-agent-core": "catalog:",
-		"@veyyon/pi-ai": "catalog:",
-		"@veyyon/pi-catalog": "catalog:",
-		"@veyyon/pi-coding-agent": "catalog:",
-		"@veyyon/pi-utils": "catalog:",
+		"@veyyon/agent-core": "catalog:",
+		"@veyyon/ai": "catalog:",
+		"@veyyon/catalog": "catalog:",
+		"@veyyon/coding-agent": "catalog:",
+		"@veyyon/utils": "catalog:",
 		"@veyyon/typescript-edit-benchmark": "workspace:*",
 		"clsx": "^2.1.1",
 		"d3-scale": "^4.0.2",

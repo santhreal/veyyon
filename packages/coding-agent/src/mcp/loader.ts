@@ -3,7 +3,7 @@
  *
  * Integrates MCP tool discovery with the custom tools system.
  */
-import { logger } from "@veyyon/pi-utils";
+import { errorMessage, logger } from "@veyyon/utils";
 import type { LoadedCustomTool } from "../extensibility/custom-tools/types";
 import { AgentStorage } from "../session/agent-storage";
 import type { AuthStorage } from "../session/auth-storage";
@@ -76,7 +76,7 @@ export async function discoverAndLoadMCPTools(cwd: string, options?: MCPToolsLoa
 		});
 	} catch (error) {
 		// If discovery fails entirely, return empty result
-		const message = error instanceof Error ? error.message : String(error);
+		const message = errorMessage(error);
 		return {
 			manager,
 			tools: [],

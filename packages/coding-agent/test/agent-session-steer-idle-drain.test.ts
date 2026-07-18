@@ -1,15 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
-import { Agent } from "@veyyon/pi-agent-core";
-import type { AssistantMessage, ToolResultMessage } from "@veyyon/pi-ai";
-import { createMockModel } from "@veyyon/pi-ai/providers/mock";
-import { getBundledModel } from "@veyyon/pi-catalog/models";
-import { ModelRegistry } from "@veyyon/pi-coding-agent/config/model-registry";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { AgentSession } from "@veyyon/pi-coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/pi-coding-agent/session/auth-storage";
-import { SessionManager } from "@veyyon/pi-coding-agent/session/session-manager";
-import { TempDir } from "@veyyon/pi-utils";
+import { Agent } from "@veyyon/agent-core";
+import type { AssistantMessage, ToolResultMessage } from "@veyyon/ai";
+import { createMockModel } from "@veyyon/ai/providers/mock";
+import { getBundledModel } from "@veyyon/catalog/models";
+import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
+import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { TempDir } from "@veyyon/utils";
 
 /**
  * Regression: a steer can land on an idle session — the submit path checks

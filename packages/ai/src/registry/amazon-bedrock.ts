@@ -1,4 +1,4 @@
-import { $env } from "@veyyon/pi-utils";
+import { $env } from "@veyyon/utils";
 import type { ProviderDefinition } from "./types";
 
 export const amazonBedrockProvider = {

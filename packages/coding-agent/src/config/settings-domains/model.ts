@@ -1,4 +1,4 @@
-import { THINKING_EFFORTS } from "@veyyon/pi-ai";
+import { THINKING_EFFORTS } from "@veyyon/ai";
 import { AUTO_THINKING, getConfiguredThinkingLevelMetadata, getThinkingLevelMetadata } from "../../thinking";
 import {
 	SERVICE_TIER_ANTHROPIC_OPTIONS,

@@ -6,7 +6,7 @@
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { getAgentDir } from "@veyyon/pi-utils";
+import { errorMessage, getAgentDir } from "@veyyon/utils";
 
 export interface CustomShareResult {
 	/** URL to display/open (optional - script may handle everything itself) */
@@ -59,7 +59,7 @@ export async function loadCustomShare(): Promise<LoadedCustomShare | null> {
 
 		return { path: scriptPath, fn };
 	} catch (err) {
-		const message = err instanceof Error ? err.message : String(err);
+		const message = errorMessage(err);
 		throw new Error(`Failed to load share script: ${message}`);
 	}
 }

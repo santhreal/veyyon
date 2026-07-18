@@ -1,7 +1,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import type { AgentState } from "@veyyon/pi-agent-core";
-import { APP_NAME, isEnoent } from "@veyyon/pi-utils";
+import type { AgentState } from "@veyyon/agent-core";
+import { APP_NAME, isEnoent } from "@veyyon/utils";
 import { getResolvedThemeColors, getThemeExportColors } from "../../modes/theme/theme";
 import type { SessionEntry, SessionHeader } from "../../session/session-entries";
 import { loadEntriesFromFile } from "../../session/session-loader";
@@ -39,7 +39,7 @@ export interface ExportOptions {
 	outputPath?: string;
 	/**
 	 * Which color palette the export ships with.
-	 * - `"web"` (default) — the omp brand identity (collab-web pink/purple),
+	 * - `"web"` (default) — the veyyon brand identity (collab-web pink/purple),
 	 *   so public HTML exports and the `/s/<id>` share viewer match the live
 	 *   `share.veyyon.dev` client. See `web-palette.ts`.
 	 * - `"theme"` — derive from `themeName` (or the active TUI theme), preserving
@@ -120,7 +120,7 @@ function deriveExportColors(baseColor: string): { pageBg: string; cardBg: string
  *
  * Two call shapes:
  *   • `generateThemeVars("web" | "theme", themeName?)` — explicit palette.
- *     `"web"` (the default for public artifacts) returns the fixed omp brand
+ *     `"web"` (the default for public artifacts) returns the fixed veyyon brand
  *     palette from `web-palette.ts` — collab-web pink/purple identity, shared
  *     with the live `share.veyyon.dev` client, so exports and the share viewer render
  *     identically to it. `"theme"` derives from the TUI theme via

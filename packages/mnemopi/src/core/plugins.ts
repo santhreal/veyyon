@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { errorMessage, logger } from "@veyyon/utils";
 
 export const DEFAULT_PLUGIN_DIR = join(homedir(), ".hermes", "mnemopi", "plugins");
 
@@ -214,7 +215,12 @@ export class FilterPlugin extends MnemopiPlugin {
 		for (const rule of this.rules) {
 			try {
 				if (!rule(item)) return false;
-			} catch {
+			} catch (error) {
+				// Fail closed (block the memory), but say why: a rule that throws
+				// on every item would otherwise silently block everything.
+				logger.warn("mnemopi: filter rule threw; treating memory as blocked", {
+					error: errorMessage(error),
+				});
 				return false;
 			}
 		}
@@ -327,36 +333,33 @@ export class PluginManager {
 		return [];
 	}
 	notifyRemember(memory: MemoryDict): void {
-		for (const instance of this.instances.values())
-			if (instance.enabled) {
-				try {
-					instance.onRemember(memory);
-				} catch {}
-			}
+		this.notify("onRemember", instance => instance.onRemember(memory));
 	}
 	notifyRecall(memory: MemoryDict): void {
-		for (const instance of this.instances.values())
-			if (instance.enabled) {
-				try {
-					instance.onRecall(memory);
-				} catch {}
-			}
+		this.notify("onRecall", instance => instance.onRecall(memory));
 	}
 	notifyConsolidate(summary: MemoryDict): void {
-		for (const instance of this.instances.values())
-			if (instance.enabled) {
-				try {
-					instance.onConsolidate(summary);
-				} catch {}
-			}
+		this.notify("onConsolidate", instance => instance.onConsolidate(summary));
 	}
 	notifyInvalidate(memoryId: string): void {
-		for (const instance of this.instances.values())
-			if (instance.enabled) {
-				try {
-					instance.onInvalidate(memoryId);
-				} catch {}
+		this.notify("onInvalidate", instance => instance.onInvalidate(memoryId));
+	}
+
+	/** A plugin's throwing hook must not break memory operations, but a broken
+	 *  plugin failing invisibly forever is a Law-10 bug — warn per failure. */
+	private notify(hook: string, call: (instance: MnemopiPlugin) => void): void {
+		for (const [name, instance] of this.instances) {
+			if (!instance.enabled) continue;
+			try {
+				call(instance);
+			} catch (error) {
+				logger.warn("mnemopi: plugin hook failed; continuing without it", {
+					plugin: name,
+					hook,
+					error: errorMessage(error),
+				});
 			}
+		}
 	}
 }
 

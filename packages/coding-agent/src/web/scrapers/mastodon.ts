@@ -1,6 +1,14 @@
-import { tryParseJson } from "@veyyon/pi-utils";
-import type { RenderResult, SpecialHandler } from "./types";
-import { buildResult, formatNumber, htmlToBasicMarkdown, loadPage } from "./types";
+import { tryParseJson } from "@veyyon/utils";
+import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
+import {
+	buildResult,
+	formatNumber,
+	htmlToBasicMarkdown,
+	loadFailure,
+	loadPage,
+	scraperDegrade,
+	tryParseUrl,
+} from "./types";
 
 interface MastodonAccount {
 	id: string;
@@ -194,9 +202,10 @@ export const handleMastodon: SpecialHandler = async (
 	url: string,
 	timeout: number,
 	signal?: AbortSignal,
-): Promise<RenderResult | null> => {
+): Promise<RenderResult | ScraperDegrade | null> => {
 	try {
-		const parsed = new URL(url);
+		const parsed = tryParseUrl(url);
+		if (!parsed) return null;
 
 		// Check for @user/postid or @user pattern
 		const postMatch = parsed.pathname.match(/^\/@([^/]+)\/(\d+)$/);
@@ -223,10 +232,10 @@ export const handleMastodon: SpecialHandler = async (
 				signal,
 			});
 
-			if (!result.ok) return null;
+			if (!result.ok) return scraperDegrade("mastodon", loadFailure(result));
 
 			const status = tryParseJson<MastodonStatus>(result.content);
-			if (!status) return null;
+			if (!status) return scraperDegrade("mastodon", "unexpected status response shape");
 
 			const md = await formatStatus(status);
 
@@ -250,10 +259,10 @@ export const handleMastodon: SpecialHandler = async (
 				signal,
 			});
 
-			if (!result.ok) return null;
+			if (!result.ok) return scraperDegrade("mastodon", loadFailure(result));
 
 			const account = tryParseJson<MastodonAccount>(result.content);
-			if (!account) return null;
+			if (!account) return scraperDegrade("mastodon", "unexpected account response shape");
 
 			// Fetch recent statuses
 			const statusesUrl = `https://${instance}/api/v1/accounts/${account.id}/statuses?limit=5&exclude_replies=true`;
@@ -286,7 +295,11 @@ export const handleMastodon: SpecialHandler = async (
 				notes: [`Fetched via Mastodon API (${instance})`],
 			});
 		}
-	} catch {}
+	} catch (error) {
+		// Reached only after the instance probe confirmed a Mastodon server, so
+		// a throw here is a real scrape failure, not a non-match.
+		return scraperDegrade("mastodon", error);
+	}
 
 	return null;
 };

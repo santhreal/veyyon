@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { resetSettingsForTest, Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { AgentStorage } from "@veyyon/pi-coding-agent/session/agent-storage";
-import { getProjectAgentDir, TempDir } from "@veyyon/pi-utils";
+import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
+import { AgentStorage } from "@veyyon/coding-agent/session/agent-storage";
+import { getProjectAgentDir, TempDir } from "@veyyon/utils";
 import { YAML } from "bun";
 import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "./helpers/settings-test-state";
 

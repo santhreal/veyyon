@@ -1,6 +1,6 @@
 import * as path from "node:path";
 import * as readline from "node:readline";
-import { RpcClient } from "@veyyon/pi-coding-agent/modes/rpc/rpc-client";
+import { RpcClient } from "@veyyon/coding-agent/modes/rpc/rpc-client";
 
 /**
  * Interactive example of using coding-agent via RpcClient.

@@ -10,9 +10,9 @@
  * OpenRouter never saw `providers.openrouterVariant`, breaking sticky routing
  * and OpenRouter response-cache hits across advisor calls.
  */
-import type { StreamFn } from "@veyyon/pi-agent-core";
-import { type SimpleStreamOptions, streamSimple } from "@veyyon/pi-ai";
-import { isAnthropicFableOrMythosModel } from "@veyyon/pi-catalog/identity";
+import type { StreamFn } from "@veyyon/agent-core";
+import { type SimpleStreamOptions, streamSimple } from "@veyyon/ai";
+import { isAnthropicFableOrMythosModel } from "@veyyon/catalog/identity";
 import { type Settings, validateProviderMaxInFlightRequests } from "../config/settings";
 
 function timeoutSecondsToMs(value: number): number | undefined {

@@ -1,9 +1,11 @@
 import { describe, expect, it } from "bun:test";
 import {
 	buildHttp400DumpPayload,
+	captureHttpErrorResponse,
+	finalizeErrorMessage,
 	type RawHttpRequestDump,
 	shouldDumpRejectedRequest,
-} from "@veyyon/pi-ai/utils/http-inspector";
+} from "@veyyon/ai/utils/http-inspector";
 
 class HttpError extends Error {
 	constructor(
@@ -65,5 +67,77 @@ describe("shouldDumpRejectedRequest", () => {
 
 	it("skips errors without an HTTP status", () => {
 		expect(shouldDumpRejectedRequest(new Error("network reset"))).toBe(false);
+	});
+});
+
+describe("captureHttpErrorResponse", () => {
+	it("parses a JSON error body into bodyJson and keeps the raw text", async () => {
+		const captured = await captureHttpErrorResponse(new Response('{"error":{"message":"quota"}}', { status: 429 }));
+		expect(captured.status).toBe(429);
+		expect(captured.bodyText).toBe('{"error":{"message":"quota"}}');
+		expect(captured.bodyJson).toEqual({ error: { message: "quota" } });
+	});
+
+	it("keeps a non-JSON body as text with bodyJson undefined", async () => {
+		const captured = await captureHttpErrorResponse(new Response("<html>bad gateway</html>", { status: 502 }));
+		expect(captured.bodyText).toBe("<html>bad gateway</html>");
+		expect(captured.bodyJson).toBeUndefined();
+	});
+
+	it("normalizes an empty body to bodyText undefined", async () => {
+		const captured = await captureHttpErrorResponse(new Response("", { status: 500 }));
+		expect(captured.status).toBe(500);
+		expect(captured.bodyText).toBeUndefined();
+		expect(captured.bodyJson).toBeUndefined();
+	});
+
+	it("degrades to a status-only capture when the body was already consumed", async () => {
+		const response = new Response("gone", { status: 503 });
+		await response.text();
+		const captured = await captureHttpErrorResponse(response);
+		expect(captured.status).toBe(503);
+		expect(captured.bodyText).toBeUndefined();
+		expect(captured.bodyJson).toBeUndefined();
+	});
+});
+
+describe("finalizeErrorMessage captured-body rendering", () => {
+	async function finalize(bodyText: string): Promise<string> {
+		return finalizeErrorMessage(new Error("boom"), undefined, {
+			status: 400,
+			bodyText,
+			bodyJson: JSON.parse(bodyText),
+		});
+	}
+
+	it("labels extras by field name even when earlier fields are absent", async () => {
+		// Regression: extras were labeled by post-filter index, so a body without
+		// `type` rendered param as `type=` and code as `param=`.
+		const message = await finalize('{"error":{"message":"bad param","param":"messages","code":"invalid"}}');
+		expect(message).toBe("boom\nbad param (param=messages code=invalid)");
+	});
+
+	it("labels the full type/param/code triple in order", async () => {
+		const message = await finalize(
+			'{"error":{"message":"bad","type":"invalid_request_error","param":"messages","code":"invalid"}}',
+		);
+		expect(message).toBe("boom\nbad (type=invalid_request_error param=messages code=invalid)");
+	});
+
+	it('renders a plain-string error body ({"error":"..."})', async () => {
+		expect(await finalize('{"error":"model overloaded"}')).toBe("boom\nmodel overloaded");
+	});
+
+	it("treats a blank message as absent and falls through to the raw body", async () => {
+		expect(await finalize('{"error":{"message":"   "}}')).toBe('boom\n{"error":{"message":"   "}}');
+	});
+
+	it("replaces a status-code-only message with the captured body", async () => {
+		const message = await finalizeErrorMessage(new Error("400 status code (no body)"), undefined, {
+			status: 400,
+			bodyText: '{"error":{"message":"quota exceeded"}}',
+			bodyJson: { error: { message: "quota exceeded" } },
+		});
+		expect(message).toBe("400 status code: quota exceeded");
 	});
 });

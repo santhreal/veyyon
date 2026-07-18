@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { __resetExtraCaCache } from "@veyyon/pi-utils";
+import { __resetExtraCaCache } from "@veyyon/utils";
 import { fetchOpenAICompatibleModels } from "../src/discovery/openai-compatible";
 
 describe("discovery null limits", () => {
@@ -48,7 +48,7 @@ describe("discovery extra-CA fallback fetch", () => {
 		__resetExtraCaCache();
 		originalEnv = Bun.env.NODE_EXTRA_CA_CERTS;
 		originalFetch = globalThis.fetch;
-		tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "omp-discovery-ca-"));
+		tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-discovery-ca-"));
 	});
 
 	afterEach(async () => {

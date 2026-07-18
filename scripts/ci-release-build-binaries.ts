@@ -145,19 +145,26 @@ async function buildBinary(target: BinaryTarget): Promise<void> {
 async function generateBundle(): Promise<void> {
 	if (isDryRun) {
 		console.log("DRY RUN bun run gen:mupdf");
+		console.log("DRY RUN bun run gen:stats");
 		return;
 	}
 	await runCommand(["bun", "run", "gen:mupdf"], repoRoot);
+	// Compiled binaries ship no dashboard sources; without the embedded stats
+	// archive `veyyon stats` 500s on every request (the empty placeholder
+	// builds fine and only fails at runtime).
+	await runCommand(["bun", "run", "gen:stats"], repoRoot);
 }
 
 async function resetArtifacts(): Promise<void> {
 	if (isDryRun) {
 		console.log("DRY RUN bun run gen:native:reset");
 		console.log("DRY RUN bun run gen:mupdf:reset");
+		console.log("DRY RUN bun run gen:stats:reset");
 		return;
 	}
 	await runCommand(["bun", "run", "gen:native:reset"], repoRoot);
 	await runCommand(["bun", "run", "gen:mupdf:reset"], repoRoot);
+	await runCommand(["bun", "run", "gen:stats:reset"], repoRoot);
 }
 
 async function main(): Promise<void> {

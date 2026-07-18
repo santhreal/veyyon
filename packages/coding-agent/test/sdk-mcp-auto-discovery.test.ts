@@ -2,13 +2,13 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, mock,
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { AuthStorage } from "@veyyon/pi-ai";
-import { getBundledModel } from "@veyyon/pi-catalog/models";
-import { ModelRegistry } from "@veyyon/pi-coding-agent/config/model-registry";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { createAgentSession } from "@veyyon/pi-coding-agent/sdk";
-import { SessionManager } from "@veyyon/pi-coding-agent/session/session-manager";
-import { getAgentDir, removeSyncWithRetries, Snowflake, setAgentDir } from "@veyyon/pi-utils";
+import { AuthStorage } from "@veyyon/ai";
+import { getBundledModel } from "@veyyon/catalog/models";
+import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import { createAgentSession } from "@veyyon/coding-agent/sdk";
+import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { getAgentDir, removeSyncWithRetries, Snowflake, setAgentDir } from "@veyyon/utils";
 import { MANY_TOOL_COUNT } from "./fixtures/many-tools-mcp";
 
 // Contracts for deferred (hasUI) MCP discovery follow-ups:

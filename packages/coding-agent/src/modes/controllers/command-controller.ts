@@ -1,7 +1,7 @@
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { CompactionCancelledError, type CompactionOutcome } from "@veyyon/pi-agent-core/compaction";
+import { CompactionCancelledError, type CompactionOutcome } from "@veyyon/agent-core/compaction";
 import {
 	getEnvApiKey,
 	getProviderDetails,
@@ -9,9 +9,9 @@ import {
 	resolveUsedFraction,
 	type UsageLimit,
 	type UsageReport,
-} from "@veyyon/pi-ai";
-import { Loader, Markdown, type OverlayHandle, padding, Spacer, Text, visibleWidth } from "@veyyon/pi-tui";
-import { APP_NAME, CHANGELOG_URL, formatDuration, Snowflake, sanitizeText } from "@veyyon/pi-utils";
+} from "@veyyon/ai";
+import { Loader, Markdown, type OverlayHandle, padding, Spacer, Text, visibleWidth } from "@veyyon/tui";
+import { APP_NAME, CHANGELOG_URL, formatDuration, Snowflake, sanitizeText } from "@veyyon/utils";
 import { shouldEnableAppendOnlyContext } from "../../config/append-only-context-mode";
 import { type LoadedCustomShare, loadCustomShare } from "../../export/custom-share";
 import { shareSession } from "../../export/share";
@@ -385,7 +385,8 @@ export class CommandController {
 		}
 
 		if (!usageReports || usageReports.length === 0) {
-			this.ctx.showWarning("No usage data available.");
+			// A fresh account with nothing billed yet is a normal state, not a fault.
+			this.ctx.showStatus("No usage recorded yet for this account's providers.");
 			return;
 		}
 
@@ -1266,7 +1267,7 @@ function formatProviderName(provider: string): string {
 		.join(" ");
 }
 
-function formatNumber(value: number, maxFractionDigits = 1): string {
+function formatDecimal(value: number, maxFractionDigits = 1): string {
 	return new Intl.NumberFormat("en-US", { maximumFractionDigits: maxFractionDigits }).format(value);
 }
 
@@ -1428,7 +1429,7 @@ function formatAggregateAmount(limits: UsageLimit[]): string {
 	if (fractions.length === limits.length && fractions.length > 0) {
 		const sum = fractions.reduce((total, value) => total + value, 0);
 		const avgRemaining = Math.max(0, ((limits.length - sum) / limits.length) * 100);
-		return `${formatNumber(avgRemaining)}% free`;
+		return `${formatDecimal(avgRemaining)}% free`;
 	}
 
 	const amounts = limits
@@ -1438,7 +1439,7 @@ function formatAggregateAmount(limits: UsageLimit[]): string {
 		const totalUsed = amounts.reduce((sum, amount) => sum + (amount.used ?? 0), 0);
 		const totalLimit = amounts.reduce((sum, amount) => sum + (amount.limit ?? 0), 0);
 		const remainingPct = totalLimit > 0 ? Math.max(0, 100 - (totalUsed / totalLimit) * 100) : 0;
-		return `${formatNumber(remainingPct)}% free`;
+		return `${formatDecimal(remainingPct)}% free`;
 	}
 
 	// Count unique accounts from limit scopes — not limits.length.
@@ -1574,7 +1575,7 @@ export function renderUsageReports(
 			lines.push(`  ${uiTheme.fg("accent", "in use by this session:")} ${activeAccountLabel}`);
 		}
 
-		// Provider-wide disclaimers (e.g. "OMP-observed spend only") render once
+		// Provider-wide disclaimers (e.g. "Veyyon-observed spend only") render once
 		// above the per-account sections instead of duplicating onto every limit.
 		const providerNotes = [...new Set(providerReports.flatMap(report => report.notes ?? []))];
 		if (providerNotes.length > 0) {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { resolveCmuxKind } from "@veyyon/pi-coding-agent/tools/browser";
+import { resolveCmuxKind } from "@veyyon/coding-agent/tools/browser";
 
 describe("resolveCmuxKind", () => {
 	it("returns a cmux kind from environment socket settings", () => {
@@ -29,13 +29,13 @@ describe("resolveCmuxKind", () => {
 		expect(resolveCmuxKind(null, {})).toBeNull();
 	});
 
-	it("PI_BROWSER_CMUX=0 disables cmux even when the socket environment is present", () => {
-		expect(resolveCmuxKind(null, { CMUX_SOCKET_PATH: "/tmp/cmux.sock", PI_BROWSER_CMUX: "0" })).toBeNull();
+	it("VEYYON_BROWSER_CMUX=0 disables cmux even when the socket environment is present", () => {
+		expect(resolveCmuxKind(null, { CMUX_SOCKET_PATH: "/tmp/cmux.sock", VEYYON_BROWSER_CMUX: "0" })).toBeNull();
 	});
 
-	it("PI_BROWSER_CMUX=1 enables cmux over a disabled setting", () => {
+	it("VEYYON_BROWSER_CMUX=1 enables cmux over a disabled setting", () => {
 		expect(
-			resolveCmuxKind({ settingEnabled: false }, { CMUX_SOCKET_PATH: "/tmp/cmux.sock", PI_BROWSER_CMUX: "1" }),
+			resolveCmuxKind({ settingEnabled: false }, { CMUX_SOCKET_PATH: "/tmp/cmux.sock", VEYYON_BROWSER_CMUX: "1" }),
 		).toEqual({
 			kind: "cmux",
 			socketPath: "/tmp/cmux.sock",

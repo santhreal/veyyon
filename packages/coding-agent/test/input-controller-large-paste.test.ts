@@ -1,4 +1,4 @@
-import { removeWithRetries } from "@veyyon/pi-utils";
+import { removeWithRetries } from "@veyyon/utils";
 /**
  * Large-paste menu: when a paste reaches the configured `paste.largeMenuThreshold` line count,
  * the editor's `onLargePaste` hook routes through `InputController.handleLargePaste`, which offers
@@ -10,8 +10,8 @@ import { afterEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { InputController } from "@veyyon/pi-coding-agent/modes/controllers/input-controller";
-import type { InteractiveModeContext } from "@veyyon/pi-coding-agent/modes/types";
+import { InputController } from "@veyyon/coding-agent/modes/controllers/input-controller";
+import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
 
 function createContext(options?: { threshold?: number; choice?: string; artifactsDir?: string }) {
 	const insertPaste = vi.fn();
@@ -127,7 +127,7 @@ describe("InputController.presentLargePasteMenu file attachment", () => {
 	});
 
 	it("saves the paste to local:// and inserts a clean local://attachment reference", async () => {
-		dir = await fs.mkdtemp(path.join(os.tmpdir(), "omp-paste-test-"));
+		dir = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-paste-test-"));
 		const { controller, spies } = createContext({ choice: "Attach as local file", artifactsDir: dir });
 
 		await controller.presentLargePasteMenu("line one\nline two", 2);
@@ -140,7 +140,7 @@ describe("InputController.presentLargePasteMenu file attachment", () => {
 	});
 
 	it("does not overwrite an existing attachment file", async () => {
-		dir = await fs.mkdtemp(path.join(os.tmpdir(), "omp-paste-test-"));
+		dir = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-paste-test-"));
 		await Bun.write(path.join(dir, "local", "attachment-1"), "previous");
 		const { controller, spies } = createContext({ choice: "Attach as local file", artifactsDir: dir });
 

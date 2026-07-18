@@ -1,5 +1,5 @@
-import type { AgentMessage } from "@veyyon/pi-agent-core";
-import { logger } from "@veyyon/pi-utils";
+import type { AgentMessage } from "@veyyon/agent-core";
+import { errorMessage, logger } from "@veyyon/utils";
 
 export interface YieldDispatcher<P> {
 	/** Drop entries already delivered through another path. Called per-entry at flush time. */
@@ -23,10 +23,6 @@ interface StoredDispatcher {
 	isStale?: (entry: unknown) => boolean;
 	build: (survivors: unknown[]) => AgentMessage | null;
 	skipIdleFlush?: boolean;
-}
-
-function formatError(error: unknown): string {
-	return error instanceof Error ? error.message : String(error);
 }
 
 export class YieldQueue {
@@ -91,7 +87,7 @@ export class YieldQueue {
 				try {
 					this.#options.injectStreaming?.(message);
 				} catch (error) {
-					logger.warn("Yield queue streaming dispatch failed", { kind, error: formatError(error) });
+					logger.warn("Yield queue streaming dispatch failed", { kind, error: errorMessage(error) });
 				}
 			} else {
 				idleMessages.push(message);
@@ -101,7 +97,7 @@ export class YieldQueue {
 			try {
 				await this.#options.injectIdle(idleMessages);
 			} catch (error) {
-				logger.warn("Yield queue idle dispatch failed", { error: formatError(error) });
+				logger.warn("Yield queue idle dispatch failed", { error: errorMessage(error) });
 			}
 		}
 	}
@@ -146,7 +142,7 @@ export class YieldQueue {
 			});
 		} catch (error) {
 			this.#idleFlushPending = false;
-			logger.warn("Yield queue idle flush scheduling failed", { error: formatError(error) });
+			logger.warn("Yield queue idle flush scheduling failed", { error: errorMessage(error) });
 		}
 	}
 
@@ -165,7 +161,7 @@ export class YieldQueue {
 				try {
 					stale = dispatcher.isStale(entry);
 				} catch (error) {
-					logger.warn("Yield queue stale check failed", { kind, error: formatError(error) });
+					logger.warn("Yield queue stale check failed", { kind, error: errorMessage(error) });
 					continue;
 				}
 				if (stale) continue;
@@ -176,7 +172,7 @@ export class YieldQueue {
 		try {
 			return dispatcher.build(survivors);
 		} catch (error) {
-			logger.warn("Yield queue build failed", { kind, error: formatError(error) });
+			logger.warn("Yield queue build failed", { kind, error: errorMessage(error) });
 			return null;
 		}
 	}

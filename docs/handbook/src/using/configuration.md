@@ -1,9 +1,6 @@
 # Configuration
 
-Veyyon is configurable without being fussy. Defaults are sensible; change only what you care about.
-This page is organized by **goal**, not by alphabetized key name. For provider setup see
-[Models and providers](./models.md) and [Authentication](./authentication.md). For the full settings
-catalog, precedence rules, and every key's type and default, see `docs/settings.md`.
+Settings by goal. Provider setup: [Models and providers](./models.md), [Authentication](./authentication.md). Full key catalog: repository `docs/settings.md`.
 
 ## Where settings live
 
@@ -12,7 +9,7 @@ Settings are YAML mappings. Persistent settings live in `config.yml`; custom mod
 
 | Scope | Path | Notes |
 | --- | --- | --- |
-| Global | `~/.veyyon/agent/config.yml` | The main persistent file. `/settings` and `veyyon config set` write here. |
+| Global | `~/.veyyon/profiles/default/agent/config.yml` | The main persistent file. `/settings` and `veyyon config set` write here. |
 | Project | `<repo>/.veyyon/config.yml` | Loaded when the cwd has a non-empty config dir. Edit by hand. |
 | CLI overlay | any file passed with `--config <file>` | Process-local, repeatable, never persisted. |
 
@@ -27,7 +24,7 @@ Read and write from a shell with `veyyon config`:
 ```console
 $ veyyon config list                    # all settings with effective values
 $ veyyon config get tools.approvalMode
-$ veyyon config set compaction.type snap
+$ veyyon config set compaction.strategy snap
 $ veyyon config path                     # print the active agent directory
 ```
 
@@ -40,25 +37,27 @@ Three explicit model slots, each set on its own:
 
 | Goal | What to set |
 | --- | --- |
-| Choose the model you talk to | `--model` / `/model` (saved as `model`) |
+| Choose the model you talk to | `--model` / `/model` (persisted as `modelRoles.default`) |
 | Model for spawned subagents | `subagent.model` |
 | Model for context compaction | `compaction.model` |
 | Named model assignments (optional) | `modelRoles`, per profile (settings → Models → Roles) |
 | Add a local or BYOK provider | a `providers:` entry in `models.yml` (see [Models](./models.md)) |
 
 ```yaml
-# ~/.veyyon/agent/config.yml
-model: openai/gpt-5               # interactive
+# ~/.veyyon/profiles/default/agent/config.yml
+modelRoles:
+  default: openai/gpt-5           # interactive model (persisted default)
+  smol: openai/gpt-4.1-mini
+  task: deepseek/deepseek-chat
 subagent:
-  model: deepseek/deepseek-chat
+  model: deepseek/deepseek-chat   # optional; overrides modelRoles.task
 compaction:
-  model: openai/gpt-5-mini
+  model: openai/gpt-5-mini        # optional; else inherit interactive
 ```
 
-`/model` changes only the interactive model. `/status` shows every effective model. `default` is not a
-model — nothing falls back through a default slot.
+`/model` changes the interactive model (persists to `modelRoles.default` when saved as default). `/status` shows effective models. Role list and Ctrl+P cycling: [Models, roles, and profiles](./roles-and-profiles.md).
 
-## Stay safe (approvals and sandbox)
+## Stay safe (approvals)
 
 | Goal | What to set |
 | --- | --- |
@@ -76,27 +75,27 @@ tools:
 
 Per run, `--approval-mode <mode>` and `--auto-approve` / `--yolo` override the mode. There is no
 separate OS shell sandbox — the approval mode is the only boundary; see
-[Approvals and autonomy](../features/sandbox.md) and [Safety](./safety.md).
+[Approvals](../features/sandbox.md) and [Safety](./safety.md).
 
 ## Run unattended or in CI
 
 | Goal | What to pass |
 | --- | --- |
 | Non-interactive one-shot | `veyyon --approval-mode auto-edit "…"` (prompt as arg or piped stdin) |
-| Auto-approve everything (trusted only) | `--yolo` |
+| Force `tools.approvalMode: yolo` for the run | `--yolo` |
 | Temporary settings for one run | `--config ./ci-settings.yml` (repeatable) |
 
 Lifecycle automation inside sessions uses [hooks](../features/hooks.md).
 
 ## Control context, memory, and compaction
 
-Compaction summarizes older history instead of truncating it. It has exactly three settings:
+Compaction compresses older history instead of truncating it. Common keys:
 
 | Goal | What to set |
 | --- | --- |
-| Auto-compaction threshold | `compaction.thresholdPercent` |
-| Compaction type | `compaction.strategy`: `handoff` or `snap` |
-| Compaction model | `compaction.model` (unset = your interactive model) |
+| Auto-compaction threshold | `compaction.thresholdPercent` (also `compaction.thresholdTokens`) |
+| Compaction type | `compaction.strategy`: `handoff` or `snap` (schema default `snap`) |
+| Compaction model | `compaction.model` (unset = interactive model) |
 | Cross-session memory backend | `memory.backend`: `off` (default), `local`, `hindsight`, `mnemopi` |
 
 ```yaml
@@ -129,30 +128,22 @@ bash:
 Plan mode and agent definitions can narrow the tool set further. Enforcement removes the tool from both
 the model-visible set and the dispatch registry.
 
-## Use profiles for different kinds of work
+## Profiles
 
-A **profile** relocates the user agent directory so you can keep separate settings, sessions, MCP, and
-skills for different work (for example `work` vs `bounty`) while sharing one `veyyon` binary. With
-`--profile <name>` active, `~/.veyyon/agent/…` resolves to `~/.veyyon/profiles/<name>/agent/…`.
+Each profile is `~/.veyyon/profiles/<name>/agent/` (including `default`). Activate with `--profile <name>` (`-p` is `--print`, not profile), `VEYYON_PROFILE`, or TUI `/profile` (relaunch).
 
 ```console
 $ veyyon --profile work
 $ # edit ~/.veyyon/profiles/work/agent/config.yml
 ```
 
-Activate with `--profile <name>` (no short form — `-p` is `--print`), or `VEYYON_PROFILE=<name>` (legacy `OMP_PROFILE` /
-`PI_PROFILE`). Profiles are chosen at process start; there is no `/profile` switch mid-session. See
-[Profiles](../features/profiles.md).
-
-> **Spec — not shipped:** self-contained `<name>.config.yml` profile files (a full environment per
-> file, `[profiles.<name>]` tables). Veyyon relocates the agent directory and reads `config.yml` under
-> it.
+See [Profiles](../features/profiles.md), [File locations](../reference/file-locations.md).
 
 ## Wire MCP servers and hooks
 
 MCP servers are configured as JSON, not in `config.yml`:
 
-In `~/.veyyon/agent/mcp.json` (JSON is strict — no comments):
+In `~/.veyyon/profiles/default/agent/mcp.json` (JSON is strict — no comments):
 
 ```json
 {
@@ -166,13 +157,12 @@ In `~/.veyyon/agent/mcp.json` (JSON is strict — no comments):
 }
 ```
 
-Hooks are discovered from `hooks/pre/*` and `hooks/post/*` under a config dir. Recipes:
-[Task guides](./task-guides.md). Schemas: [MCP](../features/mcp.md), [Hooks](../features/hooks.md).
+Hooks: TypeScript modules under project/profile hook paths (`pi.on(...)`). See [Hooks](../features/hooks.md), [Task guides](./task-guides.md). MCP: [MCP](../features/mcp.md).
 
-## Where to go next
+## Related
 
-- [Getting started](./getting-started.md) runs Veyyon with the defaults.
-- [Task guides](./task-guides.md) for hooks, MCP/skills, and memory/branching recipes.
-- [Safety](./safety.md) for how approval mode and the sandbox affect real tool use.
-- [Extending](./extending.md) for tools, skills, and extension data.
-- [CLI reference](../reference/cli.md) for flags.
+- [Getting started](./getting-started.md)
+- [Task guides](./task-guides.md)
+- [Safety](./safety.md) — `tools.approvalMode` (default `yolo`)
+- [Extending](./extending.md)
+- [CLI](../reference/cli.md)

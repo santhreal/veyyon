@@ -1,18 +1,18 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
 import * as path from "node:path";
-import { Agent } from "@veyyon/pi-agent-core";
-import { type Api, type AssistantMessage, Effort, type Model } from "@veyyon/pi-ai";
-import { getBundledModel } from "@veyyon/pi-catalog/models";
-import { ModelRegistry } from "@veyyon/pi-coding-agent/config/model-registry";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { type CreateAgentSessionResult, createAgentSession } from "@veyyon/pi-coding-agent/sdk";
-import { AgentSession } from "@veyyon/pi-coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/pi-coding-agent/session/auth-storage";
-import { getRestorableSessionModels } from "@veyyon/pi-coding-agent/session/session-context";
-import { EPHEMERAL_MODEL_CHANGE_ROLE } from "@veyyon/pi-coding-agent/session/session-entries";
-import { SessionManager } from "@veyyon/pi-coding-agent/session/session-manager";
-import { AUTO_THINKING } from "@veyyon/pi-coding-agent/thinking";
-import { TempDir } from "@veyyon/pi-utils";
+import { Agent } from "@veyyon/agent-core";
+import { type Api, type AssistantMessage, Effort, type Model } from "@veyyon/ai";
+import { getBundledModel } from "@veyyon/catalog/models";
+import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import { type CreateAgentSessionResult, createAgentSession } from "@veyyon/coding-agent/sdk";
+import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
+import { getRestorableSessionModels } from "@veyyon/coding-agent/session/session-context";
+import { EPHEMERAL_MODEL_CHANGE_ROLE } from "@veyyon/coding-agent/session/session-entries";
+import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { AUTO_THINKING } from "@veyyon/coding-agent/thinking";
+import { TempDir } from "@veyyon/utils";
 
 describe("AgentSession model persistence", () => {
 	let tempDir: TempDir;
@@ -469,7 +469,7 @@ describe("AgentSession model persistence", () => {
 			role: "assistant",
 			content: [],
 			stopReason: "aborted",
-			errorMessage: "Previous OMP process exited before completing the turn.",
+			errorMessage: "Previous veyyon process exited before completing the turn.",
 		});
 		expect(
 			messages.some(

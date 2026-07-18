@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
-import { streamOpenAIResponses } from "@veyyon/pi-ai/providers/openai-responses";
-import type { Context, FetchImpl, Model, ModelSpec } from "@veyyon/pi-ai/types";
-import { buildModel } from "@veyyon/pi-catalog/build";
-import { getBundledModel } from "@veyyon/pi-catalog/models";
+import { streamOpenAIResponses } from "@veyyon/ai/providers/openai-responses";
+import type { Context, FetchImpl, Model, ModelSpec } from "@veyyon/ai/types";
+import { buildModel } from "@veyyon/catalog/build";
+import { getBundledModel } from "@veyyon/catalog/models";
 
 // Non-reasoning model on api.openai.com (canonical path)
 const gpt4oMiniModel = getBundledModel("openai", "gpt-4o-mini") as Model<"openai-responses">;

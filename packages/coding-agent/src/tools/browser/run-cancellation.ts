@@ -1,4 +1,4 @@
-import { untilAborted } from "@veyyon/pi-utils";
+import { untilAborted } from "@veyyon/utils";
 import { ToolError, throwIfAborted } from "../tool-errors";
 
 /**

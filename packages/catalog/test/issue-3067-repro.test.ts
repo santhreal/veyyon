@@ -1,8 +1,8 @@
 import { describe, expect, it } from "bun:test";
-import { buildModel } from "@veyyon/pi-catalog/build";
-import { Effort } from "@veyyon/pi-catalog/effort";
-import { resolveWireModelId } from "@veyyon/pi-catalog/model-thinking";
-import type { ModelSpec } from "@veyyon/pi-catalog/types";
+import { buildModel } from "@veyyon/catalog/build";
+import { Effort } from "@veyyon/catalog/effort";
+import { resolveWireModelId } from "@veyyon/catalog/model-thinking";
+import type { ModelSpec } from "@veyyon/catalog/types";
 import modelsJson from "../src/models.json";
 
 describe("issue #3067 — bundled Antigravity Claude 4.6 wire-id routing", () => {

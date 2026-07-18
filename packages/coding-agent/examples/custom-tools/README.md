@@ -1,6 +1,6 @@
 # Custom Tools Examples
 
-Example custom tools for omp-coding-agent.
+Example custom tools for the veyyon coding agent.
 
 ## Examples
 
@@ -10,32 +10,20 @@ Each example uses the `subdirectory/index.ts` structure required for tool discov
 
 Minimal example showing the basic structure of a custom tool.
 
-### todo/
-
-Full-featured example demonstrating:
-
-- `onSession` for state reconstruction from session history
-- Custom `renderCall` and `renderResult`
-- Proper branching support via details storage
-- State management without external files
-
 ## Usage
 
+Custom tools are discovered from the tools directories (`~/.veyyon/agent/tools`
+for the user, `.veyyon/tools` in a project):
+
 ```bash
-# Test directly (can point to any .ts file)
-omp --tool examples/custom-tools/todo/index.ts
-
-# Or copy entire folder to tools directory for persistent use
-cp -r todo ~/.veyyon/agent/tools/
+# Copy the example folder to a tools directory
+cp -r hello ~/.veyyon/agent/tools/
 ```
 
-Then in omp:
+Then in veyyon:
 
 ```
-> add a todo "test custom tools"
-> list todos
-> toggle todo #1
-> clear todos
+> use the hello tool to greet Ada
 ```
 
 ## Writing Custom Tools
@@ -47,8 +35,8 @@ See [docs/custom-tools.md](../../../../docs/custom-tools.md) for full documentat
 **Factory pattern:**
 
 ```typescript
-import { Text } from "@veyyon/pi-tui";
-import type { CustomToolFactory } from "@veyyon/pi-coding-agent";
+import { Text } from "@veyyon/tui";
+import type { CustomToolFactory } from "@veyyon/coding-agent";
 
 const factory: CustomToolFactory = (pi) => ({
 	name: "my_tool",

@@ -1,8 +1,8 @@
 import { describe, expect, it } from "bun:test";
-import { buildOpenAICompat } from "@veyyon/pi-catalog/compat/openai";
-import { DEFAULT_MODEL_PER_PROVIDER } from "@veyyon/pi-catalog/provider-models";
-import { zhipuCodingPlanModelManagerOptions } from "@veyyon/pi-catalog/provider-models/openai-compat";
-import type { FetchImpl, ModelSpec } from "@veyyon/pi-catalog/types";
+import { buildOpenAICompat } from "@veyyon/catalog/compat/openai";
+import { DEFAULT_MODEL_PER_PROVIDER } from "@veyyon/catalog/provider-models";
+import { zhipuCodingPlanModelManagerOptions } from "@veyyon/catalog/provider-models/openai-compat";
+import type { FetchImpl, ModelSpec } from "@veyyon/catalog/types";
 
 /**
  * Resolver-branch coverage for the `isZhipu` path added by the

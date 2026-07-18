@@ -600,12 +600,8 @@
 	width: 16px;
 	height: 16px;
 	flex: none;
-	background: var(--brand-mark-gradient);
-	border-radius: 4px;
-}
-
-.sh-lockup-pi {
-	color: var(--accent);
+	background: var(--brand-mark);
+	border-radius: 50%;
 }
 
 .sh-connect-sub {

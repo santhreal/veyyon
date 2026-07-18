@@ -3,9 +3,9 @@
  *
  * Shows how to select a specific model and thinking level.
  */
-import { ThinkingLevel } from "@veyyon/pi-agent-core";
-import { getModel } from "@veyyon/pi-ai";
-import { createAgentSession, discoverAuthStorage, discoverModels } from "@veyyon/pi-coding-agent";
+import { ThinkingLevel } from "@veyyon/agent-core";
+import { getModel } from "@veyyon/ai";
+import { createAgentSession, discoverAuthStorage, discoverModels } from "@veyyon/coding-agent";
 
 // Set up auth storage and model registry
 const authStorage = await discoverAuthStorage();

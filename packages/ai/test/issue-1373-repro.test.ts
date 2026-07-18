@@ -1,8 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { streamBedrock } from "@veyyon/pi-ai/providers/amazon-bedrock";
-import type { Context, Model } from "@veyyon/pi-ai/types";
-import { buildModel } from "@veyyon/pi-catalog/build";
-import { Effort } from "@veyyon/pi-catalog/effort";
+import { streamBedrock } from "@veyyon/ai/providers/amazon-bedrock";
+import type { Context, Model } from "@veyyon/ai/types";
+import { buildModel } from "@veyyon/catalog/build";
+import { Effort } from "@veyyon/catalog/effort";
 
 const originalSkipAuth = process.env.AWS_BEDROCK_SKIP_AUTH;
 

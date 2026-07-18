@@ -78,7 +78,7 @@ header.site{position:sticky;top:0;z-index:50;background:color-mix(in srgb,var(--
 .scene{position:absolute;left:0;right:0;z-index:2;opacity:0;pointer-events:none;padding:0 var(--pad)}
 .scene.center{top:66%;transform:translateY(-50%);text-align:center}
 .scene.left{top:50%;transform:translateY(-50%)}
-/* act III — the terminal, working, as the final beat of the walk */
+/* terminal demo section */
 #s11{top:50%;transform:translateY(-50%);text-align:center}
 #s11 .showcase{margin:0 auto;max-width:660px;width:100%;text-align:left}
 .scene-inner{width:100%;max-width:var(--maxw);margin:0 auto}
@@ -258,7 +258,7 @@ h3{text-wrap:balance;letter-spacing:-.015em}
 .tag.fix{color:var(--silver);border-color:var(--line-2)}
 .tag.rm{color:var(--muted);border-color:var(--line-2)}
 .tag.sec{color:var(--sun);border-color:color-mix(in srgb,var(--sun) 45%,transparent)}
-.tag.break{color:#e2686a;border-color:color-mix(in srgb,#e2686a 45%,transparent)}
+.tag.break{color:var(--red);border-color:color-mix(in srgb,var(--red) 45%,transparent)}
 .upstream-note{margin-top:34px;padding-top:24px;border-top:1px solid var(--line)}
 .upstream-note p{margin:0;color:var(--dim);font-size:13.5px;line-height:1.65}
 .upstream-note a{color:var(--sun-hi)}

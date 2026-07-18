@@ -5,16 +5,16 @@
 // https://opensource.org/licenses/MIT.
 
 //! Vendored, patched `xargs` from uutils/findutils, wired to run in-process as
-//! a brush shell builtin via [`pi_uutils_ctx`].
+//! a brush shell builtin via [`veyyon_uutils_ctx`].
 //!
 //! Upstream: <https://github.com/uutils/findutils>, tag `0.8.0`,
 //! commit `b94b5f0122b918e33de59776f264761fec5fa94a`.
 
 pub mod xargs;
 
-/// In-process builtin entry point. The host installs a [`pi_uutils_ctx`] scope
-/// (stdio + working directory + environment) on a dedicated blocking thread,
-/// then calls this.
+/// In-process builtin entry point. The host installs a [`veyyon_uutils_ctx`]
+/// scope (stdio + working directory + environment) on a dedicated blocking
+/// thread, then calls this.
 ///
 /// Unlike findutils' real `main` (which `std::process::exit`s on the result of
 /// `xargs_main`), this returns the exit code so it is safe to run inside the

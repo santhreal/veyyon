@@ -10,6 +10,10 @@
         <!-- Veyyon handbook: self-contained head additions. No remote resources. -->
         <meta name="theme-color" content="#050505">
         <meta name="color-scheme" content="dark">
+        <!-- Site favicons live at the deployed root, one level above /docs/. -->
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+        <link rel="icon" href="/favicon.ico" sizes="48x48">
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png">
         <style>
           /* Paint the near-black surface before CSS/JS resolve the theme, so there is
              no light flash on load. Kept in sync with theme/veyyon.css. */
@@ -18,7 +22,7 @@
           *, *::before, *::after { box-sizing: border-box; }
         </style>
 
-        <meta name="description" content="How Veyyon turns open models into frontier coding agents. The product, the harness, tool-call repair, the edit format, per-model adaptation, and how to use it.">
+        <meta name="description" content="Operator handbook for the Veyyon terminal coding agent: install, configuration, tools, approvals, edit formats, providers, and harness structure.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -38,7 +42,7 @@
         <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="../ayu-highlight-3fdfc3ac.css">
 
         <!-- Custom theme stylesheets -->
-        <link rel="stylesheet" href="../theme/veyyon-fc839a17.css">
+        <link rel="stylesheet" href="../theme/veyyon-06f6939e.css">
 
 
         <!-- Provide site root and default themes to javascript -->
@@ -46,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-e76f06ca.js";
+            window.path_to_searchindex_js = "../searchindex-a2447057.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-9cfd259b.js"></script>
+        <script src="../toc-cc1a72e9.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -192,10 +196,7 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="configuration"><a class="header" href="#configuration">Configuration</a></h1>
-<p>Veyyon is configurable without being fussy. Defaults are sensible; change only what you care about.
-This page is organized by <strong>goal</strong>, not by alphabetized key name. For provider setup see
-<a href="./models.html">Models and providers</a> and <a href="./authentication.html">Authentication</a>. For the full settings
-catalog, precedence rules, and every key’s type and default, see <code>docs/settings.md</code>.</p>
+<p>Settings by goal. Provider setup: <a href="./models.html">Models and providers</a>, <a href="./authentication.html">Authentication</a>. Full key catalog: repository <code>docs/settings.md</code>.</p>
 <h2 id="where-settings-live"><a class="header" href="#where-settings-live">Where settings live</a></h2>
 <p>Settings are YAML mappings. Persistent settings live in <code>config.yml</code>; custom model providers live in
 <code>models.yml</code>; MCP servers live in <code>mcp.json</code>.</p>
@@ -205,7 +206,7 @@ catalog, precedence rules, and every key’s type and default, see <code>docs/se
 <tr><th>Scope</th><th>Path</th><th>Notes</th></tr>
 </thead>
 <tbody>
-<tr><td>Global</td><td><code>~/.veyyon/agent/config.yml</code></td><td>The main persistent file. <code>/settings</code> and <code>veyyon config set</code> write here.</td></tr>
+<tr><td>Global</td><td><code>~/.veyyon/profiles/default/agent/config.yml</code></td><td>The main persistent file. <code>/settings</code> and <code>veyyon config set</code> write here.</td></tr>
 <tr><td>Project</td><td><code>&lt;repo&gt;/.veyyon/config.yml</code></td><td>Loaded when the cwd has a non-empty config dir. Edit by hand.</td></tr>
 <tr><td>CLI overlay</td><td>any file passed with <code>--config &lt;file&gt;</code></td><td>Process-local, repeatable, never persisted.</td></tr>
 </tbody>
@@ -217,7 +218,7 @@ catalog, precedence rules, and every key’s type and default, see <code>docs/se
 <p>Read and write from a shell with <code>veyyon config</code>:</p>
 <pre><code class="language-console">$ veyyon config list                    # all settings with effective values
 $ veyyon config get tools.approvalMode
-$ veyyon config set compaction.type snap
+$ veyyon config set compaction.strategy snap
 $ veyyon config path                     # print the active agent directory
 </code></pre>
 <p><code>/settings</code> does the same inside a live session. Keys must match a schema path exactly
@@ -230,7 +231,7 @@ $ veyyon config path                     # print the active agent directory
 <tr><th>Goal</th><th>What to set</th></tr>
 </thead>
 <tbody>
-<tr><td>Choose the model you talk to</td><td><code>--model</code> / <code>/model</code> (saved as <code>model</code>)</td></tr>
+<tr><td>Choose the model you talk to</td><td><code>--model</code> / <code>/model</code> (persisted as <code>modelRoles.default</code>)</td></tr>
 <tr><td>Model for spawned subagents</td><td><code>subagent.model</code></td></tr>
 <tr><td>Model for context compaction</td><td><code>compaction.model</code></td></tr>
 <tr><td>Named model assignments (optional)</td><td><code>modelRoles</code>, per profile (settings → Models → Roles)</td></tr>
@@ -238,16 +239,18 @@ $ veyyon config path                     # print the active agent directory
 </tbody>
 </table>
 </div>
-<pre><code class="language-yaml"># ~/.veyyon/agent/config.yml
-model: openai/gpt-5               # interactive
+<pre><code class="language-yaml"># ~/.veyyon/profiles/default/agent/config.yml
+modelRoles:
+  default: openai/gpt-5           # interactive model (persisted default)
+  smol: openai/gpt-4.1-mini
+  task: deepseek/deepseek-chat
 subagent:
-  model: deepseek/deepseek-chat
+  model: deepseek/deepseek-chat   # optional; overrides modelRoles.task
 compaction:
-  model: openai/gpt-5-mini
+  model: openai/gpt-5-mini        # optional; else inherit interactive
 </code></pre>
-<p><code>/model</code> changes only the interactive model. <code>/status</code> shows every effective model. <code>default</code> is not a
-model — nothing falls back through a default slot.</p>
-<h2 id="stay-safe-approvals-and-sandbox"><a class="header" href="#stay-safe-approvals-and-sandbox">Stay safe (approvals and sandbox)</a></h2>
+<p><code>/model</code> changes the interactive model (persists to <code>modelRoles.default</code> when saved as default). <code>/status</code> shows effective models. Role list and Ctrl+P cycling: <a href="./roles-and-profiles.html">Models, roles, and profiles</a>.</p>
+<h2 id="stay-safe-approvals"><a class="header" href="#stay-safe-approvals">Stay safe (approvals)</a></h2>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -268,7 +271,7 @@ model — nothing falls back through a default slot.</p>
 </code></pre>
 <p>Per run, <code>--approval-mode &lt;mode&gt;</code> and <code>--auto-approve</code> / <code>--yolo</code> override the mode. There is no
 separate OS shell sandbox — the approval mode is the only boundary; see
-<a href="../features/sandbox.html">Approvals and autonomy</a> and <a href="./safety.html">Safety</a>.</p>
+<a href="../features/sandbox.html">Approvals</a> and <a href="./safety.html">Safety</a>.</p>
 <h2 id="run-unattended-or-in-ci"><a class="header" href="#run-unattended-or-in-ci">Run unattended or in CI</a></h2>
 <div class="table-wrapper">
 <table>
@@ -277,23 +280,23 @@ separate OS shell sandbox — the approval mode is the only boundary; see
 </thead>
 <tbody>
 <tr><td>Non-interactive one-shot</td><td><code>veyyon --approval-mode auto-edit "…"</code> (prompt as arg or piped stdin)</td></tr>
-<tr><td>Auto-approve everything (trusted only)</td><td><code>--yolo</code></td></tr>
+<tr><td>Force <code>tools.approvalMode: yolo</code> for the run</td><td><code>--yolo</code></td></tr>
 <tr><td>Temporary settings for one run</td><td><code>--config ./ci-settings.yml</code> (repeatable)</td></tr>
 </tbody>
 </table>
 </div>
 <p>Lifecycle automation inside sessions uses <a href="../features/hooks.html">hooks</a>.</p>
 <h2 id="control-context-memory-and-compaction"><a class="header" href="#control-context-memory-and-compaction">Control context, memory, and compaction</a></h2>
-<p>Compaction summarizes older history instead of truncating it. It has exactly three settings:</p>
+<p>Compaction compresses older history instead of truncating it. Common keys:</p>
 <div class="table-wrapper">
 <table>
 <thead>
 <tr><th>Goal</th><th>What to set</th></tr>
 </thead>
 <tbody>
-<tr><td>Auto-compaction threshold</td><td><code>compaction.thresholdPercent</code></td></tr>
-<tr><td>Compaction type</td><td><code>compaction.strategy</code>: <code>handoff</code> or <code>snap</code></td></tr>
-<tr><td>Compaction model</td><td><code>compaction.model</code> (unset = your interactive model)</td></tr>
+<tr><td>Auto-compaction threshold</td><td><code>compaction.thresholdPercent</code> (also <code>compaction.thresholdTokens</code>)</td></tr>
+<tr><td>Compaction type</td><td><code>compaction.strategy</code>: <code>handoff</code> or <code>snap</code> (schema default <code>snap</code>)</td></tr>
+<tr><td>Compaction model</td><td><code>compaction.model</code> (unset = interactive model)</td></tr>
 <tr><td>Cross-session memory backend</td><td><code>memory.backend</code>: <code>off</code> (default), <code>local</code>, <code>hindsight</code>, <code>mnemopi</code></td></tr>
 </tbody>
 </table>
@@ -320,24 +323,15 @@ bash:
 </code></pre>
 <p>Plan mode and agent definitions can narrow the tool set further. Enforcement removes the tool from both
 the model-visible set and the dispatch registry.</p>
-<h2 id="use-profiles-for-different-kinds-of-work"><a class="header" href="#use-profiles-for-different-kinds-of-work">Use profiles for different kinds of work</a></h2>
-<p>A <strong>profile</strong> relocates the user agent directory so you can keep separate settings, sessions, MCP, and
-skills for different work (for example <code>work</code> vs <code>bounty</code>) while sharing one <code>veyyon</code> binary. With
-<code>--profile &lt;name&gt;</code> active, <code>~/.veyyon/agent/…</code> resolves to <code>~/.veyyon/profiles/&lt;name&gt;/agent/…</code>.</p>
+<h2 id="profiles"><a class="header" href="#profiles">Profiles</a></h2>
+<p>Each profile is <code>~/.veyyon/profiles/&lt;name&gt;/agent/</code> (including <code>default</code>). Activate with <code>--profile &lt;name&gt;</code> (<code>-p</code> is <code>--print</code>, not profile), <code>VEYYON_PROFILE</code>, or TUI <code>/profile</code> (relaunch).</p>
 <pre><code class="language-console">$ veyyon --profile work
 $ # edit ~/.veyyon/profiles/work/agent/config.yml
 </code></pre>
-<p>Activate with <code>--profile &lt;name&gt;</code> (no short form — <code>-p</code> is <code>--print</code>), or <code>VEYYON_PROFILE=&lt;name&gt;</code> (legacy <code>OMP_PROFILE</code> /
-<code>PI_PROFILE</code>). Profiles are chosen at process start; there is no <code>/profile</code> switch mid-session. See
-<a href="../features/profiles.html">Profiles</a>.</p>
-<blockquote>
-<p><strong>Spec — not shipped:</strong> self-contained <code>&lt;name&gt;.config.yml</code> profile files (a full environment per
-file, <code>[profiles.&lt;name&gt;]</code> tables). Veyyon relocates the agent directory and reads <code>config.yml</code> under
-it.</p>
-</blockquote>
+<p>See <a href="../features/profiles.html">Profiles</a>, <a href="../reference/file-locations.html">File locations</a>.</p>
 <h2 id="wire-mcp-servers-and-hooks"><a class="header" href="#wire-mcp-servers-and-hooks">Wire MCP servers and hooks</a></h2>
 <p>MCP servers are configured as JSON, not in <code>config.yml</code>:</p>
-<p>In <code>~/.veyyon/agent/mcp.json</code> (JSON is strict — no comments):</p>
+<p>In <code>~/.veyyon/profiles/default/agent/mcp.json</code> (JSON is strict — no comments):</p>
 <pre><code class="language-json">{
   "mcpServers": {
     "database": {
@@ -348,15 +342,14 @@ it.</p>
   }
 }
 </code></pre>
-<p>Hooks are discovered from <code>hooks/pre/*</code> and <code>hooks/post/*</code> under a config dir. Recipes:
-<a href="./task-guides.html">Task guides</a>. Schemas: <a href="../features/mcp.html">MCP</a>, <a href="../features/hooks.html">Hooks</a>.</p>
-<h2 id="where-to-go-next"><a class="header" href="#where-to-go-next">Where to go next</a></h2>
+<p>Hooks: TypeScript modules under project/profile hook paths (<code>pi.on(...)</code>). See <a href="../features/hooks.html">Hooks</a>, <a href="./task-guides.html">Task guides</a>. MCP: <a href="../features/mcp.html">MCP</a>.</p>
+<h2 id="related"><a class="header" href="#related">Related</a></h2>
 <ul>
-<li><a href="./getting-started.html">Getting started</a> runs Veyyon with the defaults.</li>
-<li><a href="./task-guides.html">Task guides</a> for hooks, MCP/skills, and memory/branching recipes.</li>
-<li><a href="./safety.html">Safety</a> for how approval mode and the sandbox affect real tool use.</li>
-<li><a href="./extending.html">Extending</a> for tools, skills, and extension data.</li>
-<li><a href="../reference/cli.html">CLI reference</a> for flags.</li>
+<li><a href="./getting-started.html">Getting started</a></li>
+<li><a href="./task-guides.html">Task guides</a></li>
+<li><a href="./safety.html">Safety</a> — <code>tools.approvalMode</code> (default <code>yolo</code>)</li>
+<li><a href="./extending.html">Extending</a></li>
+<li><a href="../reference/cli.html">CLI</a></li>
 </ul>
 
                     </main>

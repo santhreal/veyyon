@@ -15,9 +15,9 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { loadExtensions } from "@veyyon/pi-coding-agent/extensibility/extensions";
-import { EventBus } from "@veyyon/pi-coding-agent/utils/event-bus";
-import { removeWithRetries } from "@veyyon/pi-utils";
+import { loadExtensions } from "@veyyon/coding-agent/extensibility/extensions";
+import { EventBus } from "@veyyon/coding-agent/utils/event-bus";
+import { removeWithRetries } from "@veyyon/utils";
 
 describe("loadExtensions per-session binding (#2190 review fix)", () => {
 	let tmp: string;

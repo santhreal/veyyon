@@ -1,17 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
-import { Agent, type AgentTool, type AsideMessage } from "@veyyon/pi-agent-core";
-import type { AssistantMessage, TextContent, ToolCall } from "@veyyon/pi-ai";
-import { getBundledModel } from "@veyyon/pi-catalog/models";
-import { ModelRegistry } from "@veyyon/pi-coding-agent/config/model-registry";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { AgentSession, type AgentSessionEvent } from "@veyyon/pi-coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/pi-coding-agent/session/auth-storage";
-import type { CustomMessage } from "@veyyon/pi-coding-agent/session/messages";
-import { SessionManager } from "@veyyon/pi-coding-agent/session/session-manager";
-import type { ToolSession } from "@veyyon/pi-coding-agent/tools";
-import { TodoTool } from "@veyyon/pi-coding-agent/tools/todo";
-import { TempDir } from "@veyyon/pi-utils";
+import { Agent, type AgentTool, type AsideMessage } from "@veyyon/agent-core";
+import type { AssistantMessage, TextContent, ToolCall } from "@veyyon/ai";
+import { getBundledModel } from "@veyyon/catalog/models";
+import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import { AgentSession, type AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session";
+import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
+import type { CustomMessage } from "@veyyon/coding-agent/session/messages";
+import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import type { ToolSession } from "@veyyon/coding-agent/tools";
+import { TodoTool } from "@veyyon/coding-agent/tools/todo";
+import { TempDir } from "@veyyon/utils";
 
 /**
  * Regression coverage for issue #3651 and its redesign: the mid-run todo

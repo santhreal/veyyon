@@ -1,5 +1,5 @@
 import * as path from "node:path";
-import { getProjectDir, logger } from "@veyyon/pi-utils";
+import { errorMessage, getProjectDir, logger } from "@veyyon/utils";
 import type { ToolSession } from "../../tools";
 import { attachSessionOwner, createCancelledKernelResult, executeWithKernelBase } from "../executor-base";
 import { ensurePyToolBridge, type PyToolBridgeInfo } from "../py/tool-bridge";
@@ -201,15 +201,15 @@ function buildKernelEnvPatch(options: {
 	localRoots?: Record<string, string>;
 }): Record<string, string | undefined> {
 	const patch: Record<string, string | undefined> = {};
-	if (options.sessionFile) patch.PI_SESSION_FILE = options.sessionFile;
-	if (options.artifactsDir) patch.PI_ARTIFACTS_DIR = options.artifactsDir;
+	if (options.sessionFile) patch.VEYYON_SESSION_FILE = options.sessionFile;
+	if (options.artifactsDir) patch.VEYYON_ARTIFACTS_DIR = options.artifactsDir;
 	if (options.bridge) {
-		patch.PI_TOOL_BRIDGE_URL = options.bridge.url;
-		patch.PI_TOOL_BRIDGE_TOKEN = options.bridge.token;
-		patch.PI_TOOL_BRIDGE_SESSION = options.bridgeSessionId ?? "";
+		patch.VEYYON_TOOL_BRIDGE_URL = options.bridge.url;
+		patch.VEYYON_TOOL_BRIDGE_TOKEN = options.bridge.token;
+		patch.VEYYON_TOOL_BRIDGE_SESSION = options.bridgeSessionId ?? "";
 	}
 	if (options.localRoots) {
-		patch.PI_EVAL_LOCAL_ROOTS = JSON.stringify(options.localRoots);
+		patch.VEYYON_EVAL_LOCAL_ROOTS = JSON.stringify(options.localRoots);
 	}
 	return patch;
 }
@@ -444,7 +444,7 @@ async function ensureToolBridge(options: JuliaExecutorOptions): Promise<void> {
 		options.bridge = await ensurePyToolBridge();
 	} catch (err) {
 		logger.warn("Failed to start Julia tool bridge", {
-			error: err instanceof Error ? err.message : String(err),
+			error: errorMessage(err),
 		});
 	}
 }

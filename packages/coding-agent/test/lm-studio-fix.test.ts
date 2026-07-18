@@ -2,10 +2,10 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { FetchImpl } from "@veyyon/pi-ai/types";
-import { ModelRegistry } from "@veyyon/pi-coding-agent/config/model-registry";
-import { AuthStorage } from "@veyyon/pi-coding-agent/session/auth-storage";
-import { removeSyncWithRetries, Snowflake } from "@veyyon/pi-utils";
+import type { FetchImpl } from "@veyyon/ai/types";
+import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
+import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
+import { removeSyncWithRetries, Snowflake } from "@veyyon/utils";
 
 describe("ModelRegistry LM Studio Fixes", () => {
 	let tempDir: string;

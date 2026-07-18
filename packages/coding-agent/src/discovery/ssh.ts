@@ -1,11 +1,11 @@
 /**
  * SSH JSON Provider
  *
- * Discovers SSH hosts from managed omp config paths and legacy root ssh.json files.
+ * Discovers SSH hosts from managed veyyon config paths and legacy root ssh.json files.
  * Priority: 5 (low, project/user config discovery)
  */
 import * as path from "node:path";
-import { getSSHConfigPath, tryParseJson } from "@veyyon/pi-utils";
+import { getSSHConfigPath, tryParseJson } from "@veyyon/utils";
 import { registerProvider } from "../capability";
 import { readFile } from "../capability/fs";
 import { type SSHHost, sshCapability } from "../capability/ssh";

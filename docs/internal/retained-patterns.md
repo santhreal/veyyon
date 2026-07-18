@@ -17,7 +17,7 @@ These are genuinely good patterns. Refactors must preserve behavior.
 1. **Handoff / compaction prompt** — `packages/agent/src/compaction/compaction.ts`
    (`renderHandoffPrompt`, `generateHandoffFromContext`), called from
    `packages/coding-agent/src/session/agent-session.ts`. Preserves task continuity across compaction
-   when `compaction.type` is `handoff` (the other user-facing type is `snap`; see
+   when `compaction.strategy` is `handoff` (the other user-facing type is `snap`; see
    [Compaction & project memory](../handbook/src/context/compaction-memory.md)). Engineering detail:
    [`docs/internal/handoff-generation-pipeline.md`](./handoff-generation-pipeline.md).
 2. **Subagent spawn model** — `packages/coding-agent/src/task/executor.ts` (spawn, per-model

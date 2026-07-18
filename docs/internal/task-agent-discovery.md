@@ -56,21 +56,21 @@ Because bundled parsing uses `level: "fatal"`, malformed bundled frontmatter thr
 
 ## Filesystem and plugin discovery
 
-`discoverAgents(cwd, home)` (`src/task/discovery.ts`) merges agents from OMP-native roots and Claude plugin roots before appending bundled definitions. Cross-harness roots such as `.claude/agents`, `.codex/agents`, and `.gemini/agents` are intentionally skipped — their frontmatter schema is not the OMP task-agent contract (`TASK_AGENT_CONFIG_SOURCE = ".veyyon"` filters both dir lists).
+`discoverAgents(cwd, home)` (`src/task/discovery.ts`) merges agents from Veyyon-native roots and Claude plugin roots before appending bundled definitions. Cross-harness roots such as `.claude/agents`, `.codex/agents`, and `.gemini/agents` are intentionally skipped — their frontmatter schema is not the Veyyon task-agent contract (`TASK_AGENT_CONFIG_SOURCE = ".veyyon"` filters both dir lists).
 
 ### Discovery inputs
 
 1. Nearest project `.veyyon` agents dir from `findAllNearestProjectConfigDirs("agents", cwd)` (filtered to `.veyyon`; first hit only)
 2. User `.veyyon` agents dir from `getConfigDirs("agents", { project: false })` (filtered to `.veyyon`; first hit only)
-3. OMP extension-package `agents/` dirs (`listOmpExtensionRoots`) — only when `isProviderEnabled("omp-plugins")`; consumed in source-precedence order (CLI roots > project `extensions:` settings > user `extensions:` settings > installed npm/link plugins, marketplace installs excluded by realpath)
+3. Veyyon extension-package `agents/` dirs (`listVeyyonExtensionRoots`) — only when `isProviderEnabled("veyyon-plugins")`; consumed in source-precedence order (CLI roots > project `extensions:` settings > user `extensions:` settings > installed npm/link plugins, marketplace installs excluded by realpath)
 4. Claude marketplace plugin roots (`listClaudePluginRoots(home, cwd)`) with `agents/` subdirs — only when `isProviderEnabled("claude-plugins")`; project-scope plugins sort before user-scope
 5. Bundled agents (`loadBundledAgents()`)
 
 ### Actual source order
 
 1. project `.veyyon/agents`
-2. user `~/.veyyon/agent/agents`
-3. OMP extension-package `agents/` dirs (CLI > project settings > user settings > installed plugins)
+2. user `~/.veyyon/profiles/default/agent/agents`
+3. Veyyon extension-package `agents/` dirs (CLI > project settings > user settings > installed plugins)
 4. Claude plugin `agents/` dirs (project-scope first, then user-scope)
 5. bundled agents last
 
@@ -165,7 +165,7 @@ If denied: immediate `Cannot spawn '...'. Allowed: ...` response.
 
 ### Blocked self-recursion env guard
 
-`PI_BLOCKED_AGENT` is read at tool construction. If request matches, execution is rejected with recursion-prevention message.
+`VEYYON_BLOCKED_AGENT` is read at tool construction. If request matches, execution is rejected with recursion-prevention message.
 
 ### Recursion-depth gating (task tool availability inside child sessions)
 

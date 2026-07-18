@@ -1,6 +1,6 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
-import { renderResult } from "@veyyon/pi-coding-agent/lsp/render";
-import * as themeModule from "@veyyon/pi-coding-agent/modes/theme/theme";
+import { renderResult } from "@veyyon/coding-agent/lsp/render";
+import * as themeModule from "@veyyon/coding-agent/modes/theme/theme";
 
 beforeAll(async () => {
 	await themeModule.initTheme(false, undefined, undefined, "dark", "light");

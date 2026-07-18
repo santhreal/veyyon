@@ -11,7 +11,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { $flag, isBunTestRuntime, logger, Snowflake } from "@veyyon/pi-utils";
+import { $flag, isBunTestRuntime, logger, Snowflake } from "@veyyon/utils";
 import { $ } from "bun";
 import { Settings } from "../../config/settings";
 import { BaseKernel, getRemainingTimeMs, type KernelRuntimeEnv, type KernelStartOptions } from "../kernel-base";
@@ -31,11 +31,11 @@ export type { KernelExecuteResult, KernelRuntimeEnv, KernelShutdownResult } from
 export type { KernelDisplayOutput, PythonStatusEvent } from "../py/display";
 export { renderKernelDisplay } from "../py/display";
 
-const TRACE_IPC = $flag("PI_RUBY_IPC_TRACE");
+const TRACE_IPC = $flag("VEYYON_RUBY_IPC_TRACE");
 
 // Cache the runner script on disk so the subprocess loads it normally. Cached
 // per script hash so installs don't race across versions.
-const RUNNER_CACHE_DIR = path.join(os.tmpdir(), "omp-ruby-runner");
+const RUNNER_CACHE_DIR = path.join(os.tmpdir(), "veyyon-ruby-runner");
 let RUNNER_SCRIPT_PATH: string | null = null;
 
 async function ensureRunnerScript(): Promise<string> {
@@ -83,7 +83,7 @@ export interface RubyKernelAvailability {
 const availabilityCache = new Map<string, Promise<RubyKernelAvailability>>();
 
 export async function checkRubyKernelAvailability(cwd: string, interpreter?: string): Promise<RubyKernelAvailability> {
-	if (isBunTestRuntime() || $flag("PI_RUBY_SKIP_CHECK")) {
+	if (isBunTestRuntime() || $flag("VEYYON_RUBY_SKIP_CHECK")) {
 		return { ok: true };
 	}
 	const resolvedCwd = path.resolve(cwd);
@@ -163,7 +163,7 @@ export class RubyKernel extends BaseKernel<KernelExecuteOptions> {
 
 		// Reuse the interpreter the availability probe selected. The fallback
 		// computes a runtime only for the skip-check fast path (test runtime /
-		// PI_RUBY_SKIP_CHECK), where no candidate was probed.
+		// VEYYON_RUBY_SKIP_CHECK), where no candidate was probed.
 		let runtime = availability.runtime;
 		if (!runtime) {
 			const { env: shellEnv } = (await Settings.init()).getShellConfig();

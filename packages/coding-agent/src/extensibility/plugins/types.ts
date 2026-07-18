@@ -1,5 +1,5 @@
 // =============================================================================
-// Plugin Manifest Types (from package.json omp/pi field)
+// Plugin Manifest Types (from the package.json veyyon manifest field; legacy omp/pi)
 // =============================================================================
 
 /**
@@ -22,7 +22,7 @@ export interface PluginFeature {
 }
 
 /**
- * Plugin manifest from package.json omp or pi field.
+ * Plugin manifest from the package.json veyyon (legacy omp/pi) field.
  */
 export interface PluginManifest {
 	/** Plugin display name (defaults to package name) */
@@ -106,7 +106,7 @@ export interface InstalledPlugin {
 	version: string;
 	/** Absolute path to package directory */
 	path: string;
-	/** Parsed omp/pi manifest */
+	/** Parsed veyyon (legacy omp/pi) manifest */
 	manifest: PluginManifest;
 	/**
 	 * Enabled features:
@@ -119,7 +119,7 @@ export interface InstalledPlugin {
 }
 
 // =============================================================================
-// Runtime Config Types (stored in omp-plugins.lock.json)
+// Runtime Config Types (stored in veyyon-plugins.lock.json)
 // =============================================================================
 
 /**
@@ -135,7 +135,7 @@ export interface PluginRuntimeState {
 }
 
 /**
- * Runtime configuration persisted to omp-plugins.lock.json.
+ * Runtime configuration persisted to veyyon-plugins.lock.json.
  * Tracks plugin states and settings across sessions.
  */
 export interface PluginRuntimeConfig {

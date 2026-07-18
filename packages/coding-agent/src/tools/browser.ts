@@ -1,6 +1,6 @@
-import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/pi-agent-core";
-import type { ToolExample } from "@veyyon/pi-ai";
-import { prompt, untilAborted } from "@veyyon/pi-utils";
+import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
+import type { ToolExample } from "@veyyon/ai";
+import { prompt, trimTrailingSlashes, untilAborted } from "@veyyon/utils";
 import { type } from "arktype";
 import browserDescription from "../prompts/tools/browser.md" with { type: "text" };
 import type { ToolSession } from "../sdk";
@@ -74,7 +74,7 @@ export interface BrowserToolDetails {
 function resolveBrowserKind(params: BrowserParams, session: ToolSession): BrowserKind {
 	const app = params.app;
 	if (app?.cdp_url) {
-		return { kind: "connected", cdpUrl: app.cdp_url.replace(/\/+$/, "") };
+		return { kind: "connected", cdpUrl: trimTrailingSlashes(app.cdp_url) };
 	}
 	if (app?.path) {
 		const exe = resolveToCwd(app.path, session.cwd);

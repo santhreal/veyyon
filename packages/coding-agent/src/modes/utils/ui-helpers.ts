@@ -1,8 +1,8 @@
-import type { AgentMessage } from "@veyyon/pi-agent-core";
-import type { AssistantMessage, ImageContent, Message, Usage } from "@veyyon/pi-ai";
-import { getStreamingPartialJson } from "@veyyon/pi-ai/utils/block-symbols";
-import { type Component, Spacer, Text, TruncatedText } from "@veyyon/pi-tui";
-import { APP_NAME } from "@veyyon/pi-utils";
+import type { AgentMessage } from "@veyyon/agent-core";
+import type { AssistantMessage, ImageContent, Message, Usage } from "@veyyon/ai";
+import { getStreamingPartialJson } from "@veyyon/ai/utils/block-symbols";
+import { type Component, Spacer, Text, TruncatedText } from "@veyyon/tui";
+import { APP_NAME, formatCount } from "@veyyon/utils";
 import type { AdvisorMessageDetails } from "../../advisor";
 import { COLLAB_PROMPT_MESSAGE_TYPE, type CollabPromptDetails } from "../../collab/protocol";
 import { settings } from "../../config/settings";
@@ -503,7 +503,7 @@ export class UiHelpers {
 							theme.fg(
 								"dim",
 								theme.italic(
-									`${strippedToolCalls} tool call${strippedToolCalls === 1 ? "" : "s"} elided — no result on this branch`,
+									`${formatCount("tool call", strippedToolCalls)} elided — no result on this branch`,
 								),
 							),
 							1,

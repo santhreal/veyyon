@@ -1,18 +1,18 @@
 {
   "type": "module",
-  "name": "@veyyon/pi-catalog",
+  "name": "@veyyon/catalog",
   "version": "1.0.0",
-  "description": "Model catalog for omp: bundled model database, provider discovery descriptors, model identity, classification, and equivalence",
+  "description": "Model catalog for veyyon: bundled model database, provider discovery descriptors, model identity, classification, and equivalence",
   "homepage": "https://veyyon.dev",
   "author": "Can Boluk",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/can1357/oh-my-pi.git",
+    "url": "git+https://github.com/santhreal/veyyon.git",
     "directory": "packages/catalog"
   },
   "bugs": {
-    "url": "https://github.com/can1357/oh-my-pi/issues"
+    "url": "https://github.com/santhreal/veyyon/issues"
   },
   "keywords": [
     "ai",
@@ -34,12 +34,12 @@
   },
   "dependencies": {
     "@bufbuild/protobuf": "catalog:",
-    "@veyyon/pi-utils": "catalog:",
+    "@veyyon/utils": "catalog:",
     "arktype": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {
-    "@veyyon/pi-ai": "catalog:",
+    "@veyyon/ai": "catalog:",
     "@types/bun": "catalog:"
   },
   "engines": {

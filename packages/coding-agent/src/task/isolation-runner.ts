@@ -19,7 +19,8 @@
  * before mutation); steps 2 and 3 are per-spawn.
  */
 import * as path from "node:path";
-import type * as natives from "@veyyon/pi-natives";
+import type * as natives from "@veyyon/natives";
+import { errorMessage } from "@veyyon/utils";
 import type { ToolSession } from "../tools";
 import { generateCommitMessage } from "../utils/commit-message-generator";
 import * as git from "../utils/git";
@@ -176,7 +177,7 @@ export async function runIsolatedSubprocess(opts: IsolatedRunOptions): Promise<S
 				// Agent succeeded but branch commit failed — clean up stale branch
 				const branchName = `${TASK_BRANCH_PREFIX}${opts.agentId}`;
 				await git.branch.tryDelete(opts.context.repoRoot, branchName);
-				const msg = mergeErr instanceof Error ? mergeErr.message : String(mergeErr);
+				const msg = errorMessage(mergeErr);
 				try {
 					const patchResult = await writeIsolationPatch(
 						isolationDir,
@@ -191,7 +192,7 @@ export async function runIsolatedSubprocess(opts: IsolatedRunOptions): Promise<S
 						error: `Merge failed: ${msg}`,
 					};
 				} catch (patchErr) {
-					const patchMsg = patchErr instanceof Error ? patchErr.message : String(patchErr);
+					const patchMsg = errorMessage(patchErr);
 					return { ...result, error: `Merge failed: ${msg}; patch capture failed: ${patchMsg}` };
 				}
 			}
@@ -205,7 +206,7 @@ export async function runIsolatedSubprocess(opts: IsolatedRunOptions): Promise<S
 					nestedPatches: patchResult.nestedPatches,
 				};
 			} catch (patchErr) {
-				const msg = patchErr instanceof Error ? patchErr.message : String(patchErr);
+				const msg = errorMessage(patchErr);
 				return { ...result, error: `Patch capture failed: ${msg}` };
 			}
 		}
@@ -361,7 +362,7 @@ export async function mergeIsolatedChanges(opts: IsolationMergeOptions): Promise
 		}
 		return { summary, changesApplied, hadAnyChanges, mergedBranchForNestedPatches: false };
 	} catch (mergeErr) {
-		const msg = mergeErr instanceof Error ? mergeErr.message : String(mergeErr);
+		const msg = errorMessage(mergeErr);
 		return {
 			summary: `\n\n<system-notification>Merge phase failed: ${msg}\nTask outputs are preserved but changes were not applied.</system-notification>`,
 			changesApplied: false,

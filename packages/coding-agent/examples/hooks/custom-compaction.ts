@@ -10,11 +10,11 @@
  * which can be cheaper/faster than the main conversation model.
  *
  * Usage:
- *   omp --hook examples/hooks/custom-compaction.ts
+ *   veyyon --hook examples/hooks/custom-compaction.ts
  */
-import { complete, getModel } from "@veyyon/pi-ai";
-import type { HookAPI } from "@veyyon/pi-coding-agent";
-import { convertToLlm, serializeConversation } from "@veyyon/pi-coding-agent";
+import { complete, getModel } from "@veyyon/ai";
+import type { HookAPI } from "@veyyon/coding-agent";
+import { convertToLlm, serializeConversation } from "@veyyon/coding-agent";
 
 export default function (pi: HookAPI) {
 	pi.on("session_before_compact", async (event, ctx) => {

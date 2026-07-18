@@ -2,17 +2,17 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { resetSettingsForTest, Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { EditTool } from "@veyyon/pi-coding-agent/edit";
-import type { ToolSession } from "@veyyon/pi-coding-agent/tools";
+import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
+import { EditTool } from "@veyyon/coding-agent/edit";
+import type { ToolSession } from "@veyyon/coding-agent/tools";
 import {
 	probeLiteralPathExists,
 	resolveToCwd,
 	splitPathAndSel,
 	splitPathAndSelPreferringLiteral,
-} from "@veyyon/pi-coding-agent/tools/path-utils";
-import { ReadTool } from "@veyyon/pi-coding-agent/tools/read";
-import { removeWithRetries } from "@veyyon/pi-utils";
+} from "@veyyon/coding-agent/tools/path-utils";
+import { ReadTool } from "@veyyon/coding-agent/tools/read";
+import { removeWithRetries } from "@veyyon/utils";
 import { GrepTool } from "../../src/tools/grep";
 
 function getText(result: { content: Array<{ type: string; text?: string }> }): string {
@@ -345,7 +345,7 @@ describe("leading-colon path recovery (issue #5508)", () => {
 	}
 
 	it("strips a leading colon before an absolute path in resolveToCwd", () => {
-		expect(resolveToCwd(":/tmp/omp-colon-test.txt", tmpDir)).toBe("/tmp/omp-colon-test.txt");
+		expect(resolveToCwd(":/tmp/veyyon-colon-test.txt", tmpDir)).toBe("/tmp/veyyon-colon-test.txt");
 	});
 
 	it("strips a leading colon before `./` and `../` relative paths in resolveToCwd", () => {

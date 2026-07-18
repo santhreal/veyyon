@@ -8,13 +8,13 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { AgentSideConnection, InitializeRequest } from "@agentclientprotocol/sdk";
-import type { Model } from "@veyyon/pi-ai";
-import { buildModel } from "@veyyon/pi-catalog/build";
-import { AcpAgent } from "@veyyon/pi-coding-agent/modes/acp/acp-agent";
-import { ACP_TERMINAL_AUTH_FLAG, prepareAcpTerminalAuthArgs } from "@veyyon/pi-coding-agent/modes/acp/terminal-auth";
-import type { AgentSession } from "@veyyon/pi-coding-agent/session/agent-session";
-import { SessionManager } from "@veyyon/pi-coding-agent/session/session-manager";
-import { getConfigRootDir, setAgentDir, VERSION } from "@veyyon/pi-utils";
+import type { Model } from "@veyyon/ai";
+import { buildModel } from "@veyyon/catalog/build";
+import { AcpAgent } from "@veyyon/coding-agent/modes/acp/acp-agent";
+import { ACP_TERMINAL_AUTH_FLAG, prepareAcpTerminalAuthArgs } from "@veyyon/coding-agent/modes/acp/terminal-auth";
+import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { getConfigRootDir, setAgentDir, VERSION } from "@veyyon/utils";
 import { type } from "arktype";
 import { expectAcpStructure } from "./helpers/acp-schema";
 
@@ -126,7 +126,7 @@ class FakeAgentSession {
 }
 
 const cleanupRoots: string[] = [];
-const originalAgentDir = process.env.PI_CODING_AGENT_DIR;
+const originalAgentDir = process.env.VEYYON_CODING_AGENT_DIR;
 const fallbackAgentDir = path.join(getConfigRootDir(), "agent");
 
 afterEach(async () => {
@@ -134,7 +134,7 @@ afterEach(async () => {
 		setAgentDir(originalAgentDir);
 	} else {
 		setAgentDir(fallbackAgentDir);
-		delete process.env.PI_CODING_AGENT_DIR;
+		delete process.env.VEYYON_CODING_AGENT_DIR;
 	}
 	for (const root of cleanupRoots.splice(0)) {
 		await fs.promises.rm(root, { recursive: true, force: true });
@@ -142,7 +142,7 @@ afterEach(async () => {
 });
 
 async function createAgent(): Promise<AcpAgent> {
-	const root = await fs.promises.mkdtemp(path.join(os.tmpdir(), "omp-acp-init-"));
+	const root = await fs.promises.mkdtemp(path.join(os.tmpdir(), "veyyon-acp-init-"));
 	cleanupRoots.push(root);
 	const agentDir = path.join(root, "agent");
 	const cwd = path.join(root, "cwd");

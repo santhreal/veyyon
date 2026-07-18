@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { JsRuntime, type RuntimeHooks } from "@veyyon/pi-coding-agent/eval/js/shared/runtime";
-import type { JsDisplayOutput } from "@veyyon/pi-coding-agent/eval/js/shared/types";
+import { JsRuntime, type RuntimeHooks } from "@veyyon/coding-agent/eval/js/shared/runtime";
+import type { JsDisplayOutput } from "@veyyon/coding-agent/eval/js/shared/types";
 
 function collect(): {
 	runtime: JsRuntime;

@@ -324,7 +324,7 @@ async function fetchOllamaNativeModels(
  * Ollama's cloud catalog reports for stock models.
  */
 const OLLAMA_FALLBACK_CONTEXT_WINDOW = 128_000;
-/** Cap max output tokens at a value that matches OMP's other openai-responses defaults. */
+/** Cap max output tokens at a value that matches Veyyon's other openai-responses defaults. */
 const OLLAMA_DEFAULT_MAX_TOKENS = 8192;
 
 interface OllamaResolvedMetadata {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
-import type { SessionStatus } from "@veyyon/pi-coding-agent/session/session-listing";
-import { SessionManager } from "@veyyon/pi-coding-agent/session/session-manager";
-import { MemorySessionStorage } from "@veyyon/pi-coding-agent/session/session-storage";
+import type { SessionStatus } from "@veyyon/coding-agent/session/session-listing";
+import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { MemorySessionStorage } from "@veyyon/coding-agent/session/session-storage";
 
 const SESSION_DIR = "/sessions/status-proj";
 

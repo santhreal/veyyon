@@ -2368,7 +2368,10 @@ export class Markdown implements Component {
 		const separatorLine = `${t.teeRight}${h}${separatorCells.join(`${h}${t.cross}${h}`)}${h}${t.teeLeft}`;
 		lines.push(separatorLine);
 
-		// Render rows with wrapping
+		// Render rows with wrapping. Inter-row rules are drawn only where a cell
+		// wraps to multiple lines (they group the wrapped row visually); a grid
+		// line after every single-line row doubles table height for nothing.
+		let prevRowWrapped = false;
 		for (let rowIndex = 0; rowIndex < token.rows.length; rowIndex++) {
 			const row = token.rows[rowIndex];
 			const rowCellLines: string[][] = row.map((cell, i) => {
@@ -2377,16 +2380,17 @@ export class Markdown implements Component {
 			});
 			const rowLineCount = Math.max(...rowCellLines.map(c => c.length));
 
+			if (rowIndex > 0 && (prevRowWrapped || rowLineCount > 1)) {
+				lines.push(separatorLine);
+			}
+			prevRowWrapped = rowLineCount > 1;
+
 			for (let lineIdx = 0; lineIdx < rowLineCount; lineIdx++) {
 				const rowParts = rowCellLines.map((cellLines, colIdx) => {
 					const text = cellLines[lineIdx] || "";
 					return text + padding(Math.max(0, columnWidths[colIdx] - visibleWidth(text)));
 				});
 				lines.push(`${v} ${rowParts.join(` ${v} `)} ${v}`);
-			}
-
-			if (rowIndex < token.rows.length - 1) {
-				lines.push(separatorLine);
 			}
 		}
 

@@ -15,14 +15,14 @@
  *   with `{ summary, shortSummary? }`.
  */
 
-import { ProviderHttpError } from "@veyyon/pi-ai/error";
-import { applyCodexResponsesLiteShape } from "@veyyon/pi-ai/providers/openai-codex/request-transformer";
+import { ProviderHttpError } from "@veyyon/ai/error";
+import { applyCodexResponsesLiteShape } from "@veyyon/ai/providers/openai-codex/request-transformer";
 import {
 	createOpenAICodexCompactionRequestContext,
 	createOpenAICodexCompatibilityMetadata,
-} from "@veyyon/pi-ai/providers/openai-codex-responses";
-import { parseAzureDeploymentNameMap, parseTextSignature } from "@veyyon/pi-ai/providers/openai-shared";
-import { transformMessages } from "@veyyon/pi-ai/providers/transform-messages";
+} from "@veyyon/ai/providers/openai-codex-responses";
+import { parseAzureDeploymentNameMap, parseTextSignature } from "@veyyon/ai/providers/openai-shared";
+import { transformMessages } from "@veyyon/ai/providers/transform-messages";
 import type {
 	Api,
 	AssistantMessage,
@@ -31,14 +31,14 @@ import type {
 	Message,
 	Model,
 	ProviderSessionState,
-} from "@veyyon/pi-ai/types";
+} from "@veyyon/ai/types";
 import {
 	getOpenAIResponsesHistoryItems,
 	getOpenAIResponsesHistoryPayload,
 	normalizeResponsesToolCallId,
-} from "@veyyon/pi-ai/utils";
-import { CODEX_BASE_URL, getCodexAccountId, OPENAI_HEADER_VALUES, OPENAI_HEADERS } from "@veyyon/pi-catalog/wire/codex";
-import { $env, logger, stringifyJson } from "@veyyon/pi-utils";
+} from "@veyyon/ai/utils";
+import { CODEX_BASE_URL, getCodexAccountId, OPENAI_HEADER_VALUES, OPENAI_HEADERS } from "@veyyon/catalog/wire/codex";
+import { $env, logger, scopedTimeoutSignal, stringifyJson } from "@veyyon/utils";
 
 export * from "./compaction-v2-streaming";
 
@@ -59,13 +59,6 @@ export const OPENAI_REMOTE_COMPACTION_PRESERVE_KEY = "openaiRemoteCompaction";
 export const REMOTE_COMPACTION_TIMEOUT_MS = 180_000;
 
 const DEFAULT_AZURE_API_VERSION = "v1";
-
-/** Race the caller's signal against the request timeout; `timeoutMs <= 0` disables the watchdog. */
-function withRequestTimeout(signal: AbortSignal | undefined, timeoutMs: number): AbortSignal | undefined {
-	if (timeoutMs <= 0) return signal;
-	const timeout = AbortSignal.timeout(timeoutMs);
-	return signal ? AbortSignal.any([signal, timeout]) : timeout;
-}
 
 export type OpenAiRemoteCompactionItem = {
 	type: "compaction" | "compaction_summary";
@@ -541,31 +534,41 @@ export async function requestOpenAiRemoteCompaction(
 		}
 	}
 
-	const response = await (opts?.fetch ?? fetch)(endpoint, {
-		method: "POST",
-		headers,
-		body: stringifyJson(request),
-		signal: withRequestTimeout(signal, opts?.timeoutMs ?? REMOTE_COMPACTION_TIMEOUT_MS),
-	});
-
-	if (!response.ok) {
-		const errorText = await response.text().catch(() => "");
-		logger.warn("OpenAI remote compaction failed", {
-			endpoint,
-			status: response.status,
-			statusText: response.statusText,
-			errorText,
+	// The fence spans the body read too — a middlebox can drop the connection
+	// after headers and only the armed signal interrupts `response.json()`. The
+	// scoped handle clears its timer on settle; `timeoutMs <= 0` disables it.
+	const timeoutMs = opts?.timeoutMs ?? REMOTE_COMPACTION_TIMEOUT_MS;
+	const requestTimeout = timeoutMs > 0 ? scopedTimeoutSignal(timeoutMs, signal) : undefined;
+	let data: { output?: unknown[] } | undefined;
+	try {
+		const response = await (opts?.fetch ?? fetch)(endpoint, {
+			method: "POST",
+			headers,
+			body: stringifyJson(request),
+			signal: requestTimeout?.signal ?? signal,
 		});
-		throw new ProviderHttpError(
-			`Remote compaction failed (${response.status} ${response.statusText})`,
-			response.status,
-			{
-				headers: response.headers,
-			},
-		);
-	}
 
-	const data = (await response.json()) as { output?: unknown[] } | undefined;
+		if (!response.ok) {
+			const errorText = await response.text().catch(() => "");
+			logger.warn("OpenAI remote compaction failed", {
+				endpoint,
+				status: response.status,
+				statusText: response.statusText,
+				errorText,
+			});
+			throw new ProviderHttpError(
+				`Remote compaction failed (${response.status} ${response.statusText})`,
+				response.status,
+				{
+					headers: response.headers,
+				},
+			);
+		}
+
+		data = (await response.json()) as { output?: unknown[] } | undefined;
+	} finally {
+		requestTimeout?.cancel();
+	}
 	const rawOutput = data?.output ?? [];
 	const replacementHistory = rawOutput.filter(
 		(item): item is Record<string, unknown> =>
@@ -596,10 +599,10 @@ export async function requestOpenAiRemoteCompaction(
 /**
  * Generic remote-compaction POST. Two wire shapes are auto-selected by
  * endpoint suffix so a single `compaction.remoteEndpoint` setting can point at
- * either a purpose-built omp summarizer (`{systemPrompt, prompt}` → `{summary}`)
+ * either a purpose-built veyyon summarizer (`{systemPrompt, prompt}` → `{summary}`)
  * or any OpenAI-compatible chat-completions server (`/chat/completions`,
  * `/v1/chat/completions`, …) as reported for llama.cpp / vLLM / etc. in
- * issue #4630: without this, the omp payload was rejected with
+ * issue #4630: without this, the veyyon payload was rejected with
  * HTTP 400 `"'messages' is required"`, compaction silently fell back to
  * local summarization, and context grew unbounded.
  *
@@ -638,59 +641,68 @@ export async function requestRemoteCompaction(
 			}
 		: { systemPrompt: request.systemPrompt, prompt: request.prompt };
 
-	const response = await (opts?.fetch ?? fetch)(endpoint, {
-		method: "POST",
-		headers,
-		body: stringifyJson(body),
-		signal: withRequestTimeout(signal, opts?.timeoutMs ?? REMOTE_COMPACTION_TIMEOUT_MS),
-	});
-
-	if (!response.ok) {
-		const errorText = await response.text().catch(() => "");
-		logger.warn("Remote compaction failed", {
-			endpoint,
-			status: response.status,
-			statusText: response.statusText,
-			errorText,
+	// The fence spans the body read too — a middlebox can drop the connection
+	// after headers and only the armed signal interrupts `response.json()`. The
+	// scoped handle clears its timer on settle; `timeoutMs <= 0` disables it.
+	const timeoutMs = opts?.timeoutMs ?? REMOTE_COMPACTION_TIMEOUT_MS;
+	const requestTimeout = timeoutMs > 0 ? scopedTimeoutSignal(timeoutMs, signal) : undefined;
+	try {
+		const response = await (opts?.fetch ?? fetch)(endpoint, {
+			method: "POST",
+			headers,
+			body: stringifyJson(body),
+			signal: requestTimeout?.signal ?? signal,
 		});
-		throw new ProviderHttpError(
-			`Remote compaction failed (${response.status} ${response.statusText})`,
-			response.status,
-			{
-				headers: response.headers,
-			},
-		);
-	}
 
-	if (isChatCompletions) {
-		type ChatCompletionsResponse = {
-			choices?: Array<{
-				message?: {
-					content?: string | Array<{ type?: string; text?: string }> | null;
-				};
-			}>;
-		};
-		const data = (await response.json()) as ChatCompletionsResponse | undefined;
-		const choice = data?.choices?.[0]?.message?.content;
-		let summary: string | undefined;
-		if (typeof choice === "string") {
-			summary = choice;
-		} else if (Array.isArray(choice)) {
-			summary = choice
-				.filter((part): part is { type?: string; text: string } => typeof part?.text === "string")
-				.map(part => part.text)
-				.join("");
+		if (!response.ok) {
+			const errorText = await response.text().catch(() => "");
+			logger.warn("Remote compaction failed", {
+				endpoint,
+				status: response.status,
+				statusText: response.statusText,
+				errorText,
+			});
+			throw new ProviderHttpError(
+				`Remote compaction failed (${response.status} ${response.statusText})`,
+				response.status,
+				{
+					headers: response.headers,
+				},
+			);
 		}
-		if (typeof summary !== "string" || summary.length === 0) {
-			throw new Error("Remote compaction response missing choices[0].message.content");
+
+		if (isChatCompletions) {
+			type ChatCompletionsResponse = {
+				choices?: Array<{
+					message?: {
+						content?: string | Array<{ type?: string; text?: string }> | null;
+					};
+				}>;
+			};
+			const data = (await response.json()) as ChatCompletionsResponse | undefined;
+			const choice = data?.choices?.[0]?.message?.content;
+			let summary: string | undefined;
+			if (typeof choice === "string") {
+				summary = choice;
+			} else if (Array.isArray(choice)) {
+				summary = choice
+					.filter((part): part is { type?: string; text: string } => typeof part?.text === "string")
+					.map(part => part.text)
+					.join("");
+			}
+			if (typeof summary !== "string" || summary.length === 0) {
+				throw new Error("Remote compaction response missing choices[0].message.content");
+			}
+			return { summary };
 		}
-		return { summary };
-	}
 
-	const data = (await response.json()) as RemoteCompactionResponse | undefined;
-	if (!data || typeof data.summary !== "string") {
-		throw new Error("Remote compaction response missing summary");
-	}
+		const data = (await response.json()) as RemoteCompactionResponse | undefined;
+		if (!data || typeof data.summary !== "string") {
+			throw new Error("Remote compaction response missing summary");
+		}
 
-	return data;
+		return data;
+	} finally {
+		requestTimeout?.cancel();
+	}
 }

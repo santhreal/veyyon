@@ -7,7 +7,10 @@
  */
 import inspector from "node:inspector";
 import { isMainThread } from "node:worker_threads";
-import { logger } from ".";
+// Import submodules directly, not the "." barrel: the barrel re-exports env.ts,
+// whose import-time dotenv load must stay behind the profile bootstrap for
+// consumers that import postmortem early (e.g. the JS eval process entry).
+import * as logger from "./logger";
 import { restoreTerminalStderr } from "./stderr-guard";
 
 // Cleanup reasons, in order of priority/meaning.
@@ -90,10 +93,22 @@ export function isIpcSendEpipe(err: Error): boolean {
 	return code === "EPIPE" && syscall === "send";
 }
 
+/**
+ * Detect an EPIPE from writing to our own stdout/stderr (`syscall: "write"`):
+ * the downstream consumer (`veyyon … | head`) closed the pipe after taking what
+ * it wanted. Standard Unix teardown, not a crash — the fatal handlers exit
+ * quietly instead of dumping `[Uncaught Exception] Error: EPIPE`.
+ */
+export function isStdioWriteEpipe(err: Error): boolean {
+	const code = (err as { code?: unknown }).code;
+	const syscall = (err as { syscall?: unknown }).syscall;
+	return code === "EPIPE" && syscall === "write";
+}
+
 // Well-known key marking an error as an *expected* teardown artifact (e.g. a
 // browser run-scope abort at normal run end). `Symbol.for` so the marker
 // survives duplicate module instances across bundles/realms.
-const EXPECTED_CLEANUP = Symbol.for("omp.expectedCleanupError");
+const EXPECTED_CLEANUP = Symbol.for("veyyon.expectedCleanupError");
 
 /**
  * Mark an error as expected cleanup fallout so the global fatal handlers
@@ -167,6 +182,11 @@ if (isMainThread) {
 				logger.warn("Ignoring expected cleanup exception", { err });
 				return;
 			}
+			if (isStdioWriteEpipe(err)) {
+				logger.info("stdout/stderr pipe closed by consumer; exiting quietly", { err });
+				await runCleanup(Reason.EXIT);
+				process.exit(0);
+			}
 			// fd 2 may be redirected to the log while a TUI owns the terminal
 			// (stderr-guard); re-point it at the real terminal so the fatal
 			// report is visible. Terminal modes are restored moments later by
@@ -195,6 +215,12 @@ if (isMainThread) {
 			if (isExpectedCleanupError(reason)) {
 				logger.warn("Ignoring expected cleanup rejection", { err });
 				return;
+			}
+			// Async stdout/stderr writes surface consumer-closed pipes here.
+			if (isStdioWriteEpipe(err)) {
+				logger.info("stdout/stderr pipe closed by consumer; exiting quietly", { err });
+				await runCleanup(Reason.EXIT);
+				process.exit(0);
 			}
 			for (const interceptor of rejectionInterceptors) {
 				try {

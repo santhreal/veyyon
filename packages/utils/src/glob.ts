@@ -1,6 +1,7 @@
 import * as path from "node:path";
 import { Glob } from "bun";
 import { getProjectDir } from "./dirs";
+import { scopedTimeoutSignal } from "./scoped-timeout";
 
 export interface GlobPathsOptions {
 	/** Base directory for glob patterns. Defaults to getProjectDir(). */
@@ -148,41 +149,46 @@ export async function globPaths(patterns: string | string[], options: GlobPathsO
 	const base = cwd ?? getProjectDir();
 	const allResults: string[] = [];
 
-	// Combine timeout and abort signals
-	const timeoutSignal = timeoutMs ? AbortSignal.timeout(timeoutMs) : undefined;
-	const combinedSignal =
-		signal && timeoutSignal ? AbortSignal.any([signal, timeoutSignal]) : (signal ?? timeoutSignal);
+	// Combine timeout and abort signals; the scoped handle clears its backing
+	// timer once the walk settles instead of leaving it armed like a bare
+	// AbortSignal.timeout.
+	const scopedTimeout = timeoutMs ? scopedTimeoutSignal(timeoutMs, signal) : undefined;
+	const combinedSignal = scopedTimeout?.signal ?? signal;
 
-	for (const pattern of patternArray) {
-		const glob = new Glob(pattern);
-		const scanOptions = {
-			cwd: base,
-			dot,
-			onlyFiles,
-			throwErrorOnBrokenSymlink: false,
-		};
+	try {
+		for (const pattern of patternArray) {
+			const glob = new Glob(pattern);
+			const scanOptions = {
+				cwd: base,
+				dot,
+				onlyFiles,
+				throwErrorOnBrokenSymlink: false,
+			};
 
-		for await (const entry of glob.scan(scanOptions)) {
-			if (combinedSignal?.aborted) {
-				const reason = combinedSignal.reason;
-				if (reason instanceof Error) throw reason;
-				throw new DOMException("Aborted", "AbortError");
-			}
+			for await (const entry of glob.scan(scanOptions)) {
+				if (combinedSignal?.aborted) {
+					const reason = combinedSignal.reason;
+					if (reason instanceof Error) throw reason;
+					throw new DOMException("Aborted", "AbortError");
+				}
 
-			// Check exclusion patterns
-			const normalized = entry.replace(/\\/g, "/");
-			let excluded = false;
-			for (const excludePattern of effectiveExclude) {
-				const excludeGlob = new Glob(excludePattern);
-				if (excludeGlob.match(normalized)) {
-					excluded = true;
-					break;
+				// Check exclusion patterns
+				const normalized = entry.replace(/\\/g, "/");
+				let excluded = false;
+				for (const excludePattern of effectiveExclude) {
+					const excludeGlob = new Glob(excludePattern);
+					if (excludeGlob.match(normalized)) {
+						excluded = true;
+						break;
+					}
+				}
+				if (!excluded) {
+					allResults.push(normalized);
 				}
 			}
-			if (!excluded) {
-				allResults.push(normalized);
-			}
 		}
+	} finally {
+		scopedTimeout?.cancel();
 	}
 
 	return allResults;

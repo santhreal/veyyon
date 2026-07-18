@@ -13,7 +13,9 @@ import { useGuestSnapshot } from "./lib/use-guest";
 import type { ToolRenderHost } from "./tool-render";
 import "./components/shell/shell.css";
 
-const NAME_KEY = "omp.collab.name";
+const NAME_KEY = "veyyon.collab.name";
+// Pre-rebrand key; read-only migration source so an existing name survives the rename.
+const LEGACY_NAME_KEY = "omp.collab.name";
 
 interface Creds {
 	link: string;
@@ -22,7 +24,7 @@ interface Creds {
 
 function storedName(): string {
 	try {
-		return localStorage.getItem(NAME_KEY) ?? "guest";
+		return localStorage.getItem(NAME_KEY) ?? localStorage.getItem(LEGACY_NAME_KEY) ?? "guest";
 	} catch {
 		return "guest";
 	}
@@ -149,7 +151,7 @@ function Session({ client, onLeave, onRejoin }: SessionProps): ReactNode {
 
 	const title = snap.header?.title ?? snap.state?.sessionName ?? "session";
 	useEffect(() => {
-		document.title = `${title} · omp collab`;
+		document.title = `${title} · veyyon collab`;
 	}, [title]);
 
 	const drawerAgent = selectedId != null ? snap.agents.find(a => a.id === selectedId) : undefined;

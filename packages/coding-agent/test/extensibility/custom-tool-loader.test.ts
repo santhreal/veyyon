@@ -14,7 +14,7 @@ afterEach(async () => {
 });
 
 async function writeTool(name: string, source: string): Promise<string> {
-	tempRoot ??= await fs.mkdtemp(path.join(os.tmpdir(), "omp-custom-tool-loader-"));
+	tempRoot ??= await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-custom-tool-loader-"));
 	const filePath = path.join(tempRoot, name);
 	await Bun.write(filePath, source);
 	return filePath;

@@ -3,12 +3,7 @@
  *
  * File-based templates that inject content when invoked with /templatename.
  */
-import {
-	createAgentSession,
-	discoverPromptTemplates,
-	type PromptTemplate,
-	SessionManager,
-} from "@veyyon/pi-coding-agent";
+import { createAgentSession, discoverPromptTemplates, type PromptTemplate, SessionManager } from "@veyyon/coding-agent";
 
 // Discover templates from cwd/.pi/prompts/ and ~/.pi/agent/prompts/
 const discovered = await discoverPromptTemplates();

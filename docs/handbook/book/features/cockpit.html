@@ -10,6 +10,10 @@
         <!-- Veyyon handbook: self-contained head additions. No remote resources. -->
         <meta name="theme-color" content="#050505">
         <meta name="color-scheme" content="dark">
+        <!-- Site favicons live at the deployed root, one level above /docs/. -->
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+        <link rel="icon" href="/favicon.ico" sizes="48x48">
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png">
         <style>
           /* Paint the near-black surface before CSS/JS resolve the theme, so there is
              no light flash on load. Kept in sync with theme/veyyon.css. */
@@ -18,7 +22,7 @@
           *, *::before, *::after { box-sizing: border-box; }
         </style>
 
-        <meta name="description" content="How Veyyon turns open models into frontier coding agents. The product, the harness, tool-call repair, the edit format, per-model adaptation, and how to use it.">
+        <meta name="description" content="Operator handbook for the Veyyon terminal coding agent: install, configuration, tools, approvals, edit formats, providers, and harness structure.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -38,7 +42,7 @@
         <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="../ayu-highlight-3fdfc3ac.css">
 
         <!-- Custom theme stylesheets -->
-        <link rel="stylesheet" href="../theme/veyyon-fc839a17.css">
+        <link rel="stylesheet" href="../theme/veyyon-06f6939e.css">
 
 
         <!-- Provide site root and default themes to javascript -->
@@ -46,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-e76f06ca.js";
+            window.path_to_searchindex_js = "../searchindex-a2447057.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-9cfd259b.js"></script>
+        <script src="../toc-cc1a72e9.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -191,14 +195,10 @@
 
                 <div id="mdbook-content" class="content">
                     <main>
-                        <h1 id="cockpit-monitoring-multi-agent-work"><a class="header" href="#cockpit-monitoring-multi-agent-work">Cockpit: monitoring multi-agent work</a></h1>
-<p>Veyyon’s interactive TUI is the primary cockpit. Today it shows one session at a time with a
-configurable status line, session tree navigation, background jobs, and optional swarm orchestration.
-A full IRC-style live multi-agent dashboard (model-per-subagent, drill-in panels) is not shipped yet.</p>
-<h2 id="status-line-built"><a class="header" href="#status-line-built">Status line (built)</a></h2>
-<p>The bottom status bar summarizes model, path, git, tokens, cost, context, subagents, and related
-session state. Configure it in <strong>Settings → Appearance → Status Line</strong>, reached via <code>/statusline</code>
-(jumps straight to this group) or <code>/settings</code>, or in <code>config.yml</code>:</p>
+                        <h1 id="multi-agent-monitoring"><a class="header" href="#multi-agent-monitoring">Multi-agent monitoring</a></h1>
+<p>The interactive TUI is the main surface for one session. Status line, session tree, background jobs, <code>/cockpit</code>, and optional swarm orchestration cover multi-agent work.</p>
+<h2 id="status-line"><a class="header" href="#status-line">Status line</a></h2>
+<p>Configure under <strong>Settings → Appearance → Status Line</strong> (<code>/statusline</code> jumps to this group), or in <code>config.yml</code>:</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -213,59 +213,34 @@ session state. Configure it in <strong>Settings → Appearance → Status Line</
 </tbody>
 </table>
 </div>
-<p>There are 24 built-in segment IDs (<code>StatusLineSegmentId</code>): <code>pi</code>, <code>model</code>, <code>mode</code> (plan/goal/loop
-indicators), <code>path</code>, <code>git</code>, <code>pr</code>, <code>subagents</code>, <code>token_in</code>, <code>token_out</code>, <code>token_total</code>,
-<code>token_rate</code>, <code>cost</code>, <code>context_pct</code>, <code>context_total</code>, <code>time_spent</code>, <code>time</code>, <code>session</code>, <code>hostname</code>,
-<code>cache_read</code>, <code>cache_write</code>, <code>cache_hit</code>, <code>session_name</code>, <code>usage</code>, and <code>collab</code>.</p>
-<p><strong>Shipped today:</strong> <code>/statusline</code> opens Settings pre-focused on the Status Line group (preset,
-separator, and toggles), and <code>preset: custom</code> + <code>leftSegments</code>/<code>rightSegments</code> in <code>config.yml</code> give
-full control over which of the 24 IDs appear and in what order.</p>
-<blockquote>
-<p><strong>Spec — not shipped:</strong> an in-TUI interactive picker that lets you toggle/reorder individual
-segment IDs without hand-editing <code>config.yml</code> (no per-segment checkbox/drag UI exists), a terminal
-title composer (<code>/title</code>), and terminal pets (<code>/pets</code>).</p>
-</blockquote>
-<h2 id="session-tree-and-branching-built"><a class="header" href="#session-tree-and-branching-built">Session tree and branching (built)</a></h2>
+<p>Built-in segment IDs include: <code>pi</code> (legacy product mark segment), <code>model</code>, <code>mode</code>, <code>path</code>, <code>git</code>, <code>pr</code>, <code>subagents</code>, <code>token_in</code>, <code>token_out</code>, <code>token_total</code>, <code>token_rate</code>, <code>cost</code>, <code>context_pct</code>, <code>context_total</code>, <code>time_spent</code>, <code>time</code>, <code>session</code>, <code>hostname</code>, <code>cache_read</code>, <code>cache_write</code>, <code>cache_hit</code>, <code>session_name</code>, <code>usage</code>, <code>collab</code>.</p>
+<h2 id="session-tree-and-agents"><a class="header" href="#session-tree-and-agents">Session tree and agents</a></h2>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>Command</th><th>What it does</th></tr>
+<tr><th>Command</th><th>Effect</th></tr>
 </thead>
 <tbody>
-<tr><td><code>/tree</code></td><td>Browse the session entry tree and jump or label entries</td></tr>
-<tr><td><code>/branch</code></td><td>Pick an earlier user message and branch a new session file from it</td></tr>
-<tr><td><code>/fork</code></td><td>Duplicate the entire current session into a new file (no entry picker)</td></tr>
+<tr><td><code>/tree</code></td><td>Browse the session entry tree; jump or label entries</td></tr>
+<tr><td><code>/branch</code></td><td>Branch a new session file from an earlier user message</td></tr>
+<tr><td><code>/fork</code></td><td>Duplicate the current session into a new file</td></tr>
 <tr><td><code>/session info</code></td><td>Session metadata and stats</td></tr>
-<tr><td><code>/agents</code></td><td>Configure task subagent definitions (bundled/project/user)</td></tr>
-<tr><td><code>/cockpit</code></td><td>Live multi-agent monitor: status, model per agent, drill-in transcript</td></tr>
+<tr><td><code>/agents</code></td><td>Task subagent definitions (bundled/project/user)</td></tr>
+<tr><td><code>/cockpit</code></td><td>Live multi-agent monitor: status, model per agent, drill-in transcript (alias <code>/hub</code>; keybinding <code>app.agents.hub</code>)</td></tr>
 <tr><td><code>/jobs</code></td><td>List background async tool jobs</td></tr>
 </tbody>
 </table>
 </div>
-<p>Session files are append-only JSONL trees under <code>~/.veyyon/agent/sessions/</code>. See
-<a href="../using/sessions.html">Sessions</a>.</p>
-<h2 id="inter-agent-messaging-built"><a class="header" href="#inter-agent-messaging-built">Inter-agent messaging (built)</a></h2>
-<p>Subagents and the main agent can use the <code>irc</code> tool (<code>send</code>, <code>wait</code>, <code>inbox</code>, <code>list</code>) over a
-process-global mailbox. <code>/btw</code> runs an ephemeral side question; <code>/tan</code> and <code>/omfg</code> spawn background
-agents for tangential work.</p>
-<h2 id="swarm-extension-built"><a class="header" href="#swarm-extension-built">Swarm extension (built)</a></h2>
-<p><code>@veyyon/swarm-extension</code> runs multi-agent DAG workflows from YAML: <code>pipeline</code>, <code>parallel</code>, or
-<code>sequential</code> modes. Each agent is a full subagent with normal tools.</p>
-<p><strong>Standalone:</strong> <code>veyyon-swarm path/to/swarm.yaml</code> (bin from <code>@veyyon/swarm-extension</code>).</p>
-<p><strong>In the TUI:</strong> add the package to <code>extensions</code>, then:</p>
-<pre><code>/swarm run path/to/swarm.yaml
+<p>Session files are append-only JSONL under the active profile’s agent <code>sessions/</code> directory. See <a href="../using/sessions.html">Sessions</a>.</p>
+<h2 id="inter-agent-messaging"><a class="header" href="#inter-agent-messaging">Inter-agent messaging</a></h2>
+<p>Subagents and the main agent use the <code>irc</code> tool (<code>send</code>, <code>wait</code>, <code>inbox</code>, <code>list</code>) over a process-global mailbox. <code>/btw</code> is an ephemeral side question; <code>/tan</code> and <code>/omfg</code> spawn background agents for tangential work.</p>
+<h2 id="swarm-extension"><a class="header" href="#swarm-extension">Swarm extension</a></h2>
+<p><code>@veyyon/swarm-extension</code> runs multi-agent DAG workflows from YAML (<code>pipeline</code>, <code>parallel</code>, or <code>sequential</code>). Standalone: <code>veyyon-swarm path/to/swarm.yaml</code>. In the TUI, add the package to <code>extensions</code>, then:</p>
+<pre><code class="language-text">/swarm run path/to/swarm.yaml
 /swarm status &lt;name&gt;
 /swarm help
 </code></pre>
-<p>State and logs persist under <code>&lt;workspace&gt;/.swarm_&lt;name&gt;/</code> (<code>state/pipeline.json</code>, <code>logs/*.log</code>).</p>
-<h2 id="irc-style-live-cockpit"><a class="header" href="#irc-style-live-cockpit">IRC-style live cockpit</a></h2>
-<p><strong>Shipped:</strong> <code>/cockpit</code> (alias <code>/hub</code>) opens the Agent Hub overlay: every registered agent except Main,
-with status, unread IRC count, model badge, and drill-in transcript chat. Same surface as the
-<code>app.agents.hub</code> keybinding.</p>
-<p><strong>Spec — not shipped:</strong> full IRC-style dashboard with channel tabs, terminal title composer, and an
-interactive per-segment status-line picker (<code>/statusline</code> opens settings, not a picker — see
-above). Use <code>/cockpit</code>, <code>/jobs</code>, <code>/tree</code>, swarm status files, and the <code>irc</code> tool for multi-agent
-visibility today.</p>
+<p>State and logs: <code>&lt;workspace&gt;/.swarm_&lt;name&gt;/</code> (<code>state/pipeline.json</code>, <code>logs/*.log</code>).</p>
 
                     </main>
 

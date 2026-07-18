@@ -6,7 +6,7 @@ import {
 	TINY_MODEL_DTYPE_SETTING_OPTIONS,
 	TINY_MODEL_DTYPE_SETTING_VALUES,
 	tinyModelDtypeSettingToEnv,
-} from "@veyyon/pi-coding-agent/tiny/dtype";
+} from "@veyyon/coding-agent/tiny/dtype";
 
 describe("tiny model dtype selection", () => {
 	it("returns undefined when unset so callers keep the per-model spec dtype", () => {
@@ -26,7 +26,7 @@ describe("tiny model dtype selection", () => {
 	});
 });
 
-describe("tiny model dtype setting → PI_TINY_DTYPE mapping", () => {
+describe("tiny model dtype setting → VEYYON_TINY_DTYPE mapping", () => {
 	it("returns undefined for the default sentinel so the worker keeps each model's spec dtype", () => {
 		expect(tinyModelDtypeSettingToEnv(TINY_MODEL_DTYPE_DEFAULT)).toBeUndefined();
 		expect(tinyModelDtypeSettingToEnv(undefined)).toBeUndefined();

@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "Veyyon extension example: block rm -rf / via tool_call hook",
   "homepage": "https://veyyon.dev",
-  "omp": {
+  "veyyon": {
     "extensions": [
       "./index.ts"
     ]

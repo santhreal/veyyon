@@ -1,6 +1,6 @@
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
-import { getProjectDir, prompt } from "@veyyon/pi-utils";
+import { getProjectDir, prompt } from "@veyyon/utils";
 import {
 	isValidManagedSkillName,
 	MANAGED_SKILLS_PROVIDER_ID,
@@ -144,7 +144,7 @@ export async function loadSkills(options: LoadSkillsOptions = {}): Promise<LoadS
 	// Fall-through gate for third-party CLI providers (claude-plugins, opencode,
 	// gemini, github, ...) that share user intent with the named third-party
 	// source toggles but don't have a dedicated control of their own. Only the
-	// third-party toggles count here: the OMP-native providers (`agents`,
+	// third-party toggles count here: the Veyyon-native providers (`agents`,
 	// `native`) get explicit branches in `isSourceEnabled` below, so folding
 	// them into the fallback would re-enable unrelated third-party CLIs whenever
 	// the user kept the default `.agent[s]/skills` toggles on while turning off
@@ -154,7 +154,7 @@ export async function loadSkills(options: LoadSkillsOptions = {}): Promise<LoadS
 
 	function isSourceEnabled(source: SourceMeta): boolean {
 		const { provider, level } = source;
-		// Managed skills (auto-learn) are OMP-native and discovered unconditionally
+		// Managed skills (auto-learn) are Veyyon-native and discovered unconditionally
 		// — third-party CLI toggles must never silently hide them (cf. #2401). The
 		// master `enabled` flag above still gates them.
 		if (provider === MANAGED_SKILLS_PROVIDER_ID) return true;

@@ -12,7 +12,7 @@
  * Usage: `installInMemoryRelay()` in `beforeAll`/`beforeEach`,
  * `uninstallInMemoryRelay()` in the matching `afterAll`/`afterEach`.
  */
-import { rewriteEnvelopePeer, unpackEnvelope } from "@veyyon/pi-coding-agent/collab/protocol";
+import { rewriteEnvelopePeer, unpackEnvelope } from "@veyyon/coding-agent/collab/protocol";
 
 /** Active relay the fake transport routes through; set between install/uninstall. */
 let activeRelay: InMemoryRelay | null = null;

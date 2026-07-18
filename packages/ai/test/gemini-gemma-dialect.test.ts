@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import type { ToolCall } from "@veyyon/pi-ai";
-import { createInbandScanner, type Dialect, getDialectDefinition, type InbandScanEvent } from "@veyyon/pi-ai/dialect";
+import type { ToolCall } from "@veyyon/ai";
+import { createInbandScanner, type Dialect, getDialectDefinition, type InbandScanEvent } from "@veyyon/ai/dialect";
 
 function scan(dialect: Dialect, text: string, charByChar = false): InbandScanEvent[] {
 	const scanner = createInbandScanner(dialect);

@@ -2,6 +2,7 @@
  * Anthropic OAuth flow (Claude Pro/Max)
  */
 
+import { withScopedTimeoutSignal } from "@veyyon/utils";
 import * as AIError from "../../error";
 import { claudeCodeVersion } from "../../providers/anthropic";
 import type { FetchImpl } from "../../types";
@@ -47,25 +48,29 @@ async function postJson(
 	fetchImpl: FetchImpl,
 	extraHeaders?: Record<string, string>,
 ): Promise<string> {
-	const response = await fetchImpl(url, {
-		method: "POST",
-		headers: {
-			// No Accept header: CC omits it on OAuth token requests.
-			...extraHeaders,
-			"Content-Type": "application/json",
-		},
-		body: JSON.stringify(body),
-		signal: AbortSignal.timeout(30_000),
-	});
+	// The fence spans the body read and its timer is cleared on settle
+	// (a bare AbortSignal.timeout stays armed for the full 30s).
+	return await withScopedTimeoutSignal(30_000, async signal => {
+		const response = await fetchImpl(url, {
+			method: "POST",
+			headers: {
+				// No Accept header: CC omits it on OAuth token requests.
+				...extraHeaders,
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify(body),
+			signal,
+		});
 
-	const responseBody = await response.text();
-	if (!response.ok) {
-		throw new AIError.ProviderHttpError(
-			`HTTP request failed. status=${response.status}; url=${url}; body=${responseBody}`,
-			response.status,
-		);
-	}
-	return responseBody;
+		const responseBody = await response.text();
+		if (!response.ok) {
+			throw new AIError.ProviderHttpError(
+				`HTTP request failed. status=${response.status}; url=${url}; body=${responseBody}`,
+				response.status,
+			);
+		}
+		return responseBody;
+	});
 }
 
 /**
@@ -138,24 +143,29 @@ function extractAccountFromTokenResponse(data: AnthropicTokenResponse): Anthropi
 
 async function fetchBootstrapIdentity(accessToken: string, fetchImpl: FetchImpl): Promise<AnthropicIdentity> {
 	const url = `${BOOTSTRAP_URL}?entrypoint=cli&model=${encodeURIComponent(CLAUDE_CODE_BOOTSTRAP_MODEL)}`;
-	const response = await fetchImpl(url, {
-		method: "GET",
-		headers: {
-			Accept: "application/json, text/plain, */*",
-			Authorization: `Bearer ${accessToken}`,
-			"Content-Type": "application/json",
-			"User-Agent": CLAUDE_CODE_BOOTSTRAP_USER_AGENT,
-			"anthropic-beta": "oauth-2025-04-20",
-		},
-		signal: AbortSignal.timeout(30_000),
+	// The fence spans the body read and its timer is cleared on settle
+	// (a bare AbortSignal.timeout stays armed for the full 30s).
+	const responseBody = await withScopedTimeoutSignal(30_000, async signal => {
+		const response = await fetchImpl(url, {
+			method: "GET",
+			headers: {
+				Accept: "application/json, text/plain, */*",
+				Authorization: `Bearer ${accessToken}`,
+				"Content-Type": "application/json",
+				"User-Agent": CLAUDE_CODE_BOOTSTRAP_USER_AGENT,
+				"anthropic-beta": "oauth-2025-04-20",
+			},
+			signal,
+		});
+		const body = await response.text();
+		if (!response.ok) {
+			throw new AIError.ProviderHttpError(
+				`HTTP request failed. status=${response.status}; url=${url}; body=${body}`,
+				response.status,
+			);
+		}
+		return body;
 	});
-	const responseBody = await response.text();
-	if (!response.ok) {
-		throw new AIError.ProviderHttpError(
-			`HTTP request failed. status=${response.status}; url=${url}; body=${responseBody}`,
-			response.status,
-		);
-	}
 	let data: AnthropicBootstrapResponse;
 	try {
 		data = JSON.parse(responseBody) as AnthropicBootstrapResponse;

@@ -8,12 +8,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { Markit } from "@veyyon/pi-coding-agent/markit";
-import type { ToolSession } from "@veyyon/pi-coding-agent/tools";
-import { ReadTool } from "@veyyon/pi-coding-agent/tools/read";
-import * as markit from "@veyyon/pi-coding-agent/utils/markit";
-import { __resetDirsFromEnvForTests, removeSyncWithRetries, Snowflake, setAgentDir } from "@veyyon/pi-utils";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import { Markit } from "@veyyon/coding-agent/markit";
+import type { ToolSession } from "@veyyon/coding-agent/tools";
+import { ReadTool } from "@veyyon/coding-agent/tools/read";
+import * as markit from "@veyyon/coding-agent/utils/markit";
+import { __resetDirsFromEnvForTests, removeSyncWithRetries, Snowflake, setAgentDir } from "@veyyon/utils";
 
 function restoreEnv(key: string, value: string | undefined): void {
 	if (value === undefined) {
@@ -111,9 +111,9 @@ describe("read PDF with a line-range selector", () => {
 	});
 
 	it("reuses cached converted markdown across full and selector reads of an unchanged PDF", async () => {
-		const originalPiCodingAgentDir = process.env.PI_CODING_AGENT_DIR;
-		const originalOmpProfile = process.env.OMP_PROFILE;
-		const originalPiProfile = process.env.PI_PROFILE;
+		const originalPiCodingAgentDir = process.env.VEYYON_CODING_AGENT_DIR;
+		const originalVeyyonProfile = process.env.VEYYON_PROFILE;
+		const originalPiProfile = process.env.VEYYON_PROFILE;
 		setAgentDir(path.join(testDir, "agent"));
 		try {
 			const convert = vi
@@ -140,9 +140,9 @@ describe("read PDF with a line-range selector", () => {
 
 			expect(convert).toHaveBeenCalledTimes(1);
 		} finally {
-			restoreEnv("PI_CODING_AGENT_DIR", originalPiCodingAgentDir);
-			restoreEnv("OMP_PROFILE", originalOmpProfile);
-			restoreEnv("PI_PROFILE", originalPiProfile);
+			restoreEnv("VEYYON_CODING_AGENT_DIR", originalPiCodingAgentDir);
+			restoreEnv("VEYYON_PROFILE", originalVeyyonProfile);
+			restoreEnv("VEYYON_PROFILE", originalPiProfile);
 			__resetDirsFromEnvForTests();
 		}
 	});

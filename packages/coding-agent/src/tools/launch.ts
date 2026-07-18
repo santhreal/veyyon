@@ -4,11 +4,11 @@ import type {
 	AgentToolResult,
 	AgentToolUpdateCallback,
 	ToolApprovalDecision,
-} from "@veyyon/pi-agent-core";
-import type { ToolExample } from "@veyyon/pi-ai";
-import type { Component } from "@veyyon/pi-tui";
-import { Text } from "@veyyon/pi-tui";
-import { prompt, sanitizeText } from "@veyyon/pi-utils";
+} from "@veyyon/agent-core";
+import type { ToolExample } from "@veyyon/ai";
+import type { Component } from "@veyyon/tui";
+import { Text } from "@veyyon/tui";
+import { prompt, sanitizeText } from "@veyyon/utils";
 import { type } from "arktype";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import { daemonClientForProject } from "../launch/client";

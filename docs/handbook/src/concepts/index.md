@@ -1,14 +1,12 @@
 # Core concepts
 
-This chapter is the mental model for how Veyyon runs. Read it when you need the vocabulary behind
-sessions, permissions, and the BYOK model boundary. Day-to-day commands live in [Using Veyyon](../using/getting-started.md);
-feature guides live under [Features](../features/index.md).
+Vocabulary for sessions, permissions, and the model/provider boundary. Operator commands:
+[Using Veyyon](../using/getting-started.md). Feature guides: [Features](../features/index.md).
 
 ## What this chapter covers
 
-Veyyon is a terminal coding harness. The CLI is **`veyyon`**. You point it at a model endpoint with a key you
-supply, and the harness drives a loop of read, edit, verify, and stop. The concepts below explain the
-units of that loop and the contracts that keep it predictable across providers.
+The CLI is **`veyyon`**. It calls a configured model endpoint with your credentials and runs a tool loop
+(read, edit, verify, stop). The pages below define the units and contracts of that loop.
 
 | Page | What it defines |
 | --- | --- |
@@ -19,7 +17,7 @@ units of that loop and the contracts that keep it predictable across providers.
 ## Foundations that pair with these pages
 
 Before or after this chapter, the foundations pages give the design spine without repeating the
-day-to-day workflow:
+operator workflow:
 
 - [Core concepts (foundations)](../foundations/core-concepts.md) defines session, thread, turn, rollout
   JSONL, and the state database in more detail.
@@ -40,14 +38,14 @@ day-to-day workflow:
                   └─ model id                     (discovered or pinned)
 ```
 
-The harness stays the same when you change providers. You change the endpoint, the key, and optionally
-the model id. Tool repair, edit verification, sandboxing, and context compaction remain harness
-behavior. See [Configuring providers](../using/configuring-providers.md) for copy-paste setups and
-[Models and providers](../using/models.md) for day-to-day model selection.
+Changing providers changes endpoint, credentials, and model id. Tool repair, edit verification,
+approvals, and context compaction remain harness behavior. See
+[Configuring providers](../using/configuring-providers.md) and
+[Models and providers](../using/models.md).
 
 ## Related reading
 
-- [Permission model](./permission-model.md) and [Approvals and autonomy](../features/sandbox.md) for the
-  approval-mode ladder.
+- [Permission model](./permission-model.md) and [Approvals](../features/sandbox.md) for the
+  approval modes.
 - Prefer `--approval-mode auto-edit` for bounded automation.
 - [Non-interactive mode](../features/exec.md) for scripted `veyyon` launch patterns.

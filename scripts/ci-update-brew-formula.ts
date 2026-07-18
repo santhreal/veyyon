@@ -11,9 +11,9 @@
 
 import { $ } from "bun";
 
-// Which repo's releases the formula downloads from. `VEYYON_REPO` (legacy
-// `OMP_REPO`) / the CI-set `GITHUB_REPOSITORY` override the default.
-const REPO = process.env.VEYYON_REPO ?? process.env.OMP_REPO ?? process.env.GITHUB_REPOSITORY ?? "santhreal/veyyon";
+// Which repo's releases the formula downloads from. `VEYYON_REPO` overrides;
+// otherwise the CI-set `GITHUB_REPOSITORY`, then the default.
+const REPO = process.env.VEYYON_REPO ?? process.env.GITHUB_REPOSITORY ?? "santhreal/veyyon";
 const HOMEPAGE = "https://veyyon.dev";
 const DESC = "Veyyon — terminal coding agent";
 

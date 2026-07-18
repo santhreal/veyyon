@@ -4,8 +4,8 @@
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<meta name="color-scheme" content="light dark" />
-		<meta name="theme-color" media="(prefers-color-scheme: light)" content="#faf7fc" />
-		<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0f0b14" />
+		<meta name="theme-color" media="(prefers-color-scheme: light)" content="#ffffff" />
+		<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#000000" />
 
 		<title>Veyyon collab — live agent session in your browser</title>
 		<meta
@@ -70,7 +70,7 @@
 	</head>
 	<body>
 		<div id="root"></div>
-		<script>(function(){try{var s=localStorage.getItem("omp-collab-theme");var sys=matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";var t=(s==="light"||s==="dark")?s:sys;document.documentElement.dataset.theme=t;document.documentElement.style.colorScheme=t;}catch(e){}})();</script>
+		<script>(function(){try{var s=localStorage.getItem("veyyon-collab-theme");var sys=matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light";var t=(s==="light"||s==="dark")?s:sys;document.documentElement.dataset.theme=t;document.documentElement.style.colorScheme=t;}catch(e){}})();</script>
 		<script type="module" src="./src/main.tsx"></script>
 	</body>
 </html>

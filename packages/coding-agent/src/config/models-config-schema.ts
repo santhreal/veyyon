@@ -270,7 +270,7 @@ function buildModelsConfigSchemas() {
 		"modelOverrides?": { "[string]": ModelOverrideSchema },
 		"disableStrictTools?": "boolean",
 		/**
-		 * Streaming transport override. When set to `"pi-native"`, omp dispatches
+		 * Streaming transport override. When set to `"pi-native"`, veyyon dispatches
 		 * every model under this provider via the auth-gateway's
 		 * `POST /v1/pi/stream` endpoint instead of the per-provider SDK. The
 		 * provider's `baseUrl` must point at a compatible `veyyon auth-gateway`

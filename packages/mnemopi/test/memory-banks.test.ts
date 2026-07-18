@@ -13,7 +13,7 @@ import {
 	resetBankForTests,
 	setBank,
 	ValueError,
-} from "@veyyon/pi-mnemopi/core/banks";
+} from "@veyyon/mnemopi/core/banks";
 
 describe("BankManager", () => {
 	it("creates, lists, renames, stats, and deletes isolated bank directories", () => {

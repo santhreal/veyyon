@@ -1,5 +1,5 @@
-import type { AgentToolResult } from "@veyyon/pi-agent-core";
-import type { ImageContent, TextContent } from "@veyyon/pi-ai";
+import type { AgentToolResult } from "@veyyon/agent-core";
+import type { ImageContent, TextContent } from "@veyyon/ai";
 import type { OutputSummary, TruncationResult } from "../session/streaming-output";
 import type { OutputMeta, TruncationOptions, TruncationSummaryOptions, TruncationTextOptions } from "./output-meta";
 import { outputMeta } from "./output-meta";

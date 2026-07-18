@@ -1,4 +1,4 @@
-import type { AgentToolResult } from "@veyyon/pi-agent-core";
+import type { AgentToolResult } from "@veyyon/agent-core";
 import type { ExtensionAPI, ExtensionContext } from "../extensibility/extensions";
 import type { SessionEntry } from "../session/session-entries";
 import type { TruncationResult } from "../session/streaming-output";

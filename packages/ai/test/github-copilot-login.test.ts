@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
-import { getOAuthApiKey } from "@veyyon/pi-ai/registry/oauth";
-import { loginGitHubCopilot } from "@veyyon/pi-ai/registry/oauth/github-copilot";
+import { getOAuthApiKey } from "@veyyon/ai/registry/oauth";
+import { loginGitHubCopilot } from "@veyyon/ai/registry/oauth/github-copilot";
 
 const FAST_POLL_OPTIONS = { pollIntervalFloorMs: 0, pollIntervalScaleMs: 1 } as const;
 

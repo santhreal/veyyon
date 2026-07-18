@@ -1,7 +1,7 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
-import { ToolExecutionComponent } from "@veyyon/pi-coding-agent/modes/components/tool-execution";
-import { initTheme } from "@veyyon/pi-coding-agent/modes/theme/theme";
-import { type Component, TUI } from "@veyyon/pi-tui";
+import { ToolExecutionComponent } from "@veyyon/coding-agent/modes/components/tool-execution";
+import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { type Component, TUI } from "@veyyon/tui";
 import { StressRenderScheduler } from "../../tui/test/render-stress-scheduler";
 import { VirtualTerminal } from "../../tui/test/virtual-terminal";
 

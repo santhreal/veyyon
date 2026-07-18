@@ -4,8 +4,8 @@
  * The script is derived entirely from the declarative command/flag metadata
  * (see `cli/completion-gen.ts`), so it never drifts from the actual CLI surface.
  */
-import { APP_NAME, VERSION } from "@veyyon/pi-utils";
-import { Args, type CliConfig, Command, type CommandCtor } from "@veyyon/pi-utils/cli";
+import { APP_NAME, VERSION } from "@veyyon/utils";
+import { Args, type CliConfig, Command, type CommandCtor } from "@veyyon/utils/cli";
 import { buildSpec, generateCompletion, type Shell } from "../cli/completion-gen";
 import { commands } from "../cli-commands";
 
@@ -33,6 +33,9 @@ export default class Completions extends Command {
 	async run(): Promise<void> {
 		const shell = this.argv[0];
 		if (!isShell(shell)) {
+			if (shell) {
+				process.stderr.write(`Error: unsupported shell "${shell}"\n`);
+			}
 			process.stderr.write(`Usage: ${APP_NAME} completions <${SHELLS.join("|")}>\n`);
 			process.exitCode = 1;
 			return;

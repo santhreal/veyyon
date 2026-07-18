@@ -2,22 +2,22 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import * as capability from "@veyyon/pi-coding-agent/capability";
-import type { CapabilityResult } from "@veyyon/pi-coding-agent/capability/types";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { resetActiveSkillsForTests, setActiveSkills } from "@veyyon/pi-coding-agent/extensibility/skills";
+import * as capability from "@veyyon/coding-agent/capability";
+import type { CapabilityResult } from "@veyyon/coding-agent/capability/types";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import { resetActiveSkillsForTests, setActiveSkills } from "@veyyon/coding-agent/extensibility/skills";
 import {
 	type InternalResource,
 	type InternalUrl,
 	InternalUrlRouter,
 	LocalProtocolHandler,
 	type ProtocolHandler,
-} from "@veyyon/pi-coding-agent/internal-urls";
-import { AgentRegistry } from "@veyyon/pi-coding-agent/registry/agent-registry";
-import * as sshFileTransfer from "@veyyon/pi-coding-agent/ssh/file-transfer";
-import type { ToolSession } from "@veyyon/pi-coding-agent/tools";
-import { ReadTool } from "@veyyon/pi-coding-agent/tools/read";
-import { removeWithRetries } from "@veyyon/pi-utils";
+} from "@veyyon/coding-agent/internal-urls";
+import { AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";
+import * as sshFileTransfer from "@veyyon/coding-agent/ssh/file-transfer";
+import type { ToolSession } from "@veyyon/coding-agent/tools";
+import { ReadTool } from "@veyyon/coding-agent/tools/read";
+import { removeWithRetries } from "@veyyon/utils";
 import { GlobTool } from "../../src/tools/glob";
 import { GrepTool } from "../../src/tools/grep";
 
@@ -320,13 +320,13 @@ describe("GrepTool internal URL resolution", () => {
 		);
 	});
 
-	it("expands omp:// root to grep embedded documentation files", async () => {
+	it("expands veyyon:// root to grep embedded documentation files", async () => {
 		const session = createSession();
 		const tool = new GrepTool(session);
 
 		const result = await tool.execute("test-call", {
 			pattern: "Grep file contents with a regex across files",
-			path: "omp://",
+			path: "veyyon://",
 		});
 
 		const text = getResultText(result);
@@ -334,13 +334,13 @@ describe("GrepTool internal URL resolution", () => {
 		expect(text).toContain("Grep file contents with a regex across files");
 	});
 
-	it("expands omp://docs to grep embedded documentation files", async () => {
+	it("expands veyyon://docs to grep embedded documentation files", async () => {
 		const session = createSession();
 		const tool = new GrepTool(session);
 
 		const result = await tool.execute("test-call", {
 			pattern: "Read files, directories, archives",
-			path: "omp://docs",
+			path: "veyyon://docs",
 		});
 
 		const text = getResultText(result);

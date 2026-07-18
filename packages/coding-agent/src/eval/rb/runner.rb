@@ -1,5 +1,5 @@
 # frozen_string_literal: false
-# OMP Ruby runner — subprocess wrapper used by the coding-agent host.
+# Veyyon Ruby runner — subprocess wrapper used by the coding-agent host.
 #
 # Mirrors the Python runner (eval/py/runner.py): a persistent Ruby process that
 # speaks NDJSON over stdin/stdout. The host writes one JSON request per line
@@ -126,10 +126,10 @@ end
 def __veyyon_emit_status(op, data = {})
   status = { "op" => op.to_s }
   data.each { |k, v| status[k.to_s] = v }
-  __veyyon_emit_display({ "application/x-omp-status" => status }, "display")
+  __veyyon_emit_display({ "application/x-veyyon-status" => status }, "display")
 end
 
-OMP_IMAGE_MIMES = %w[image/png image/jpeg].freeze
+VEYYON_IMAGE_MIMES = %w[image/png image/jpeg].freeze
 
 # True when `str` already looks like base64 text (ASCII, base64 alphabet, length
 # a multiple of 4). Raw image blobs (PNG/JPEG bytes) contain high bytes, so they
@@ -171,7 +171,7 @@ def __veyyon_normalize_bundle(hash)
   hash.each do |key, val|
     k = key.to_s
     bundle[k] =
-      if OMP_IMAGE_MIMES.include?(k)
+      if VEYYON_IMAGE_MIMES.include?(k)
         __veyyon_image_payload(val)
       elsif val.is_a?(String)
         __veyyon_scrub(val)
@@ -190,14 +190,16 @@ def __veyyon_finalize_bundle(bundle, value)
 end
 
 # Rich-display resolution for non-collection objects. Honors the repo
-# `to_omp_mime` convention first, then the IRuby protocol
+# `to_veyyon_mime` convention first (`to_omp_mime` accepted as the legacy
+# pre-rebrand name), then the IRuby protocol
 # (`to_iruby_mimebundle` -> [data, metadata], `to_iruby` -> [mime, data]) so plot
 # and image objects (gruff, rubyplot, gnuplotrb, chunky_png, daru, ...) render
 # inline — the Ruby analog of IPython's _repr_*_ methods. Returns nil when the
 # value advertises no rich representation.
 def __veyyon_rich_mime_bundle(value)
-  if value.respond_to?(:to_omp_mime)
-    mime = (value.to_omp_mime rescue nil)
+  mime_method = %i[to_veyyon_mime to_omp_mime].find { |m| value.respond_to?(m) }
+  if mime_method
+    mime = (value.public_send(mime_method) rescue nil)
     return __veyyon_finalize_bundle(__veyyon_normalize_bundle(mime), value) if mime.is_a?(Hash) && !mime.empty?
   end
   if value.respond_to?(:to_iruby_mimebundle)
@@ -243,7 +245,7 @@ end
 
 # Build a Jupyter-style MIME bundle for a value. Strings render as plain text,
 # Hash/Array render as JSON (plus a text/plain repr) so the model sees structure.
-# Other objects may expose a rich representation via `to_omp_mime` or the IRuby
+# Other objects may expose a rich representation via `to_veyyon_mime` or the IRuby
 # protocol (`to_iruby`/`to_iruby_mimebundle`); otherwise they fall back to inspect.
 def __veyyon_mime_bundle(value)
   case value
@@ -275,7 +277,7 @@ end
 # User stdout/stderr proxies — emit typed frames for the current request.
 # ---------------------------------------------------------------------------
 
-class OmpStreamProxy
+class VeyyonStreamProxy
   def initialize(kind, io, fileno)
     @kind = kind
     @io = io
@@ -412,13 +414,13 @@ end
 # Per-request runtime (cwd + managed env) + auto-result suppression
 # ---------------------------------------------------------------------------
 
-OMP_MANAGED_ENV_KEYS = %w[
-  PI_SESSION_FILE
-  PI_ARTIFACTS_DIR
-  PI_TOOL_BRIDGE_URL
-  PI_TOOL_BRIDGE_TOKEN
-  PI_TOOL_BRIDGE_SESSION
-  PI_EVAL_LOCAL_ROOTS
+VEYYON_MANAGED_ENV_KEYS = %w[
+  VEYYON_SESSION_FILE
+  VEYYON_ARTIFACTS_DIR
+  VEYYON_TOOL_BRIDGE_URL
+  VEYYON_TOOL_BRIDGE_TOKEN
+  VEYYON_TOOL_BRIDGE_SESSION
+  VEYYON_EVAL_LOCAL_ROOTS
 ].freeze
 
 def __veyyon_apply_request_runtime(req)
@@ -430,7 +432,7 @@ def __veyyon_apply_request_runtime(req)
   end
   env = req["env"]
   if env.is_a?(Hash)
-    OMP_MANAGED_ENV_KEYS.each do |key|
+    VEYYON_MANAGED_ENV_KEYS.each do |key|
       next unless env.key?(key)
       value = env[key]
       if value.is_a?(String)
@@ -445,7 +447,7 @@ end
 # Last value-bearing AST node types we should NOT auto-display (statements /
 # definitions, mirroring IPython's "only display a trailing expression"). Falls
 # back to displaying any non-nil value when the AST is unavailable.
-OMP_NON_DISPLAY_NODES = %i[
+VEYYON_NON_DISPLAY_NODES = %i[
   LASGN IASGN GASGN CVASGN DASGN OP_ASGN OP_CDECL CDECL MASGN CASGN
   DEFN DEFS CLASS MODULE SCLASS ALIAS UNDEF
 ].freeze
@@ -473,7 +475,7 @@ def __veyyon_should_display_result?(src)
     end
   last = __veyyon_ast_last(node)
   return true if last.nil?
-  !OMP_NON_DISPLAY_NODES.include?(last.type)
+  !VEYYON_NON_DISPLAY_NODES.include?(last.type)
 end
 
 # ---------------------------------------------------------------------------
@@ -550,8 +552,8 @@ end
 # ---------------------------------------------------------------------------
 
 def __veyyon_main
-  $stdout = OmpStreamProxy.new("stdout", STDOUT, 1)
-  $stderr = OmpStreamProxy.new("stderr", STDERR, 2)
+  $stdout = VeyyonStreamProxy.new("stdout", STDOUT, 1)
+  $stderr = VeyyonStreamProxy.new("stderr", STDERR, 2)
   __veyyon_install_idle_sigint
   __veyyon_start_parent_watchdog
   __veyyon_start_capture_drain($__veyyon_stdout_capture_read, "stdout")

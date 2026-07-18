@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
-import * as themeModule from "@veyyon/pi-coding-agent/modes/theme/theme";
-import * as nativesModule from "@veyyon/pi-natives";
-import { MacOSAppearance } from "@veyyon/pi-natives";
+import * as themeModule from "@veyyon/coding-agent/modes/theme/theme";
+import * as nativesModule from "@veyyon/natives";
+import { MacOSAppearance } from "@veyyon/natives";
 
 const originalPlatform = process.platform;
 const originalColorfgbg = Bun.env.COLORFGBG;

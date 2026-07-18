@@ -1,8 +1,8 @@
-import type { AgentToolContext, ToolCallContext } from "@veyyon/pi-agent-core";
+import type { AgentToolContext, ToolCallContext } from "@veyyon/agent-core";
 import type { CustomToolContext } from "../extensibility/custom-tools/types";
 import type { ExtensionUIContext } from "../extensibility/extensions/types";
 
-declare module "@veyyon/pi-agent-core" {
+declare module "@veyyon/agent-core" {
 	interface AgentToolContext extends CustomToolContext {
 		ui?: ExtensionUIContext;
 		hasUI?: boolean;

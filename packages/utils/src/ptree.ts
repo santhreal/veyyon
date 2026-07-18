@@ -7,7 +7,7 @@
  * - Convenience helpers: captureText / execText, AbortSignal, timeouts.
  */
 
-import { Process } from "@veyyon/pi-natives";
+import { Process } from "@veyyon/natives";
 import type { Spawn, Subprocess } from "bun";
 
 type InMask = "pipe" | "ignore" | Buffer | Uint8Array | null;
@@ -363,12 +363,18 @@ export async function exec(cmd: string[], opts?: ExecOptions): Promise<ExecResul
 
 // ── Signal combinators ───────────────────────────────────────────────────────
 
-type SignalValue = AbortSignal | number | null | undefined;
+type SignalValue = AbortSignal | null | undefined;
 
-/** Combine AbortSignals and timeout values into a single signal. */
+/**
+ * Combine AbortSignals into a single signal.
+ *
+ * Deliberately signal-only: it used to also accept timeout numbers, which
+ * minted a bare `AbortSignal.timeout` whose backing timer no caller could
+ * clear — the API shape itself forced a timer leak. For a deadline, use
+ * `scopedTimeoutSignal(timeoutMs, parent)` from ./scoped-timeout and cancel
+ * it when the operation settles.
+ */
 export function combineSignals(...signals: SignalValue[]): AbortSignal | undefined {
-	let timeout: number | undefined;
-
 	let n = 0;
 	for (let i = 0; i < signals.length; i++) {
 		const s = signals[i];
@@ -376,13 +382,7 @@ export function combineSignals(...signals: SignalValue[]): AbortSignal | undefin
 			if (s.aborted) return s;
 			if (i !== n) signals[n] = s;
 			n++;
-		} else if (typeof s === "number" && s > 0) {
-			timeout = timeout === undefined ? s : Math.min(timeout, s);
 		}
-	}
-	if (timeout !== undefined) {
-		signals[n] = AbortSignal.timeout(timeout);
-		n++;
 	}
 	switch (n) {
 		case 0:

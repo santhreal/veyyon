@@ -7,7 +7,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { $env, $which, getPythonEnvDir } from "@veyyon/pi-utils";
+import { $env, $which, getPythonEnvDir } from "@veyyon/utils";
 import { BASE_ENV_ALLOWLIST, CASE_INSENSITIVE_ENV, createEnvFilter, SECRET_ENV_DENYLIST } from "../runtime-env";
 
 // Python-specific runtime-state vars not shared by the other language
@@ -43,7 +43,7 @@ const WINDOWS_ENV_ALLOWLIST = [
 	"WINDIR",
 ];
 
-const DEFAULT_ENV_ALLOW_PREFIXES = ["LC_", "XDG_", "PI_"];
+const DEFAULT_ENV_ALLOW_PREFIXES = ["LC_", "XDG_", "VEYYON_"];
 
 function resolvePathKey(env: Record<string, string | undefined>): string {
 	if (!CASE_INSENSITIVE_ENV) return "PATH";

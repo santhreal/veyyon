@@ -5,14 +5,14 @@
  */
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { scheduler } from "node:timers/promises";
-import { calculateCost } from "@veyyon/pi-catalog/models";
+import { calculateCost } from "@veyyon/catalog/models";
 import {
 	ANTIGRAVITY_SYSTEM_INSTRUCTION,
 	getAntigravityModelWireProfile,
 	getAntigravityUserAgent,
 	getGeminiCliHeaders,
-} from "@veyyon/pi-catalog/wire/gemini-headers";
-import { extractHttpStatusFromError, fetchWithRetry, readSseJson } from "@veyyon/pi-utils";
+} from "@veyyon/catalog/wire/gemini-headers";
+import { extractHttpStatusFromError, fetchWithRetry, readSseJson, trimTrailingSlashes } from "@veyyon/utils";
 import { type } from "arktype";
 import * as AIError from "../error";
 import type {
@@ -320,7 +320,7 @@ export {
 	getAntigravityUserAgent,
 	getGeminiCliHeaders,
 	getGeminiCliUserAgent,
-} from "@veyyon/pi-catalog/wire/gemini-headers";
+} from "@veyyon/catalog/wire/gemini-headers";
 
 // Retry configuration
 const MAX_RETRIES = 3;
@@ -564,7 +564,7 @@ export const streamGoogleGeminiCli: StreamFunction<"google-gemini-cli"> = (
 				} else {
 					// auto mode
 					if (baseUrl) {
-						const cleanUrl = baseUrl.replace(/\/+$/, "");
+						const cleanUrl = trimTrailingSlashes(baseUrl);
 						if (cleanUrl !== ANTIGRAVITY_DAILY_ENDPOINT && cleanUrl !== ANTIGRAVITY_SANDBOX_ENDPOINT) {
 							endpoints = [baseUrl];
 							if (providerState) providerState.lastGoodEndpoint = undefined;

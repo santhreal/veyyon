@@ -1,15 +1,15 @@
 /**
- * OpenAI Responses HTTP wire-format ↔ omp Context bridge for the auth-gateway.
+ * OpenAI Responses HTTP wire-format ↔ veyyon Context bridge for the auth-gateway.
  *
  * Inbound: parses `POST /v1/responses` request bodies into a {@link ParsedRequest}.
- * Outbound: encodes omp's {@link AssistantMessage} (and event stream) back into
+ * Outbound: encodes veyyon's {@link AssistantMessage} (and event stream) back into
  * the documented `response.*` SSE taxonomy or the non-streaming JSON shape.
  *
  * Spec: https://platform.openai.com/docs/api-reference/responses
  * Inverse direction (source-of-truth for item shapes): ../../providers/openai-responses.ts
  */
 
-import { logger } from "@veyyon/pi-utils";
+import { logger } from "@veyyon/utils";
 import { type } from "arktype";
 import { resolvePromptCacheKey } from "../auth-gateway/http";
 import type { AuthGatewayStreamControl, AuthGatewayParsedRequest as ParsedRequest } from "../auth-gateway/types";
@@ -492,7 +492,7 @@ export function parseRequest(body: unknown, headers?: Headers): ParsedRequest {
 	if (data.previous_response_id !== undefined) options.previousResponseId = data.previous_response_id;
 	if (data.user !== undefined) options.user = data.user;
 	if (isObj(data.metadata)) options.metadata = data.metadata;
-	// `store` is a stateful-storage hint that omp's gateway doesn't honour;
+	// `store` is a stateful-storage hint that veyyon's gateway doesn't honour;
 	// silently accepted by the schema. No typed slot — drop.
 
 	return {
@@ -1174,7 +1174,7 @@ export function encodeStream(
 									name: cur.name,
 								});
 							} else {
-								// Standard JSON tool: arguments object on the omp side, the
+								// Standard JSON tool: arguments object on the veyyon side, the
 								// wire wants the JSON string the model emitted (= streamed deltas).
 								const argsJson = cur.argsText || JSON.stringify(tc.arguments ?? {});
 								cur.argsText = argsJson;

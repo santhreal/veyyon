@@ -1,13 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
-import type { ModelRegistry } from "@veyyon/pi-coding-agent/config/model-registry";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
-import type { LoadExtensionsResult } from "@veyyon/pi-coding-agent/extensibility/extensions/types";
-import type { CreateAgentSessionResult } from "@veyyon/pi-coding-agent/sdk";
-import * as sdkModule from "@veyyon/pi-coding-agent/sdk";
-import type { AgentSession, AgentSessionEvent, PromptOptions } from "@veyyon/pi-coding-agent/session/agent-session";
-import { runSubprocess } from "@veyyon/pi-coding-agent/task/executor";
-import type { AgentDefinition } from "@veyyon/pi-coding-agent/task/types";
-import { EventBus } from "@veyyon/pi-coding-agent/utils/event-bus";
+import type { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import type { LoadExtensionsResult } from "@veyyon/coding-agent/extensibility/extensions/types";
+import type { CreateAgentSessionResult } from "@veyyon/coding-agent/sdk";
+import * as sdkModule from "@veyyon/coding-agent/sdk";
+import type { AgentSession, AgentSessionEvent, PromptOptions } from "@veyyon/coding-agent/session/agent-session";
+import { runSubprocess } from "@veyyon/coding-agent/task/executor";
+import type { AgentDefinition } from "@veyyon/coding-agent/task/types";
+import { EventBus } from "@veyyon/coding-agent/utils/event-bus";
 
 /**
  * Contract: when `task.maxRuntimeMs` is set, a subagent whose inference call

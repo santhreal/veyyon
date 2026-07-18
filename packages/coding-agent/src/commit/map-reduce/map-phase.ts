@@ -1,12 +1,13 @@
-import type { ThinkingLevel } from "@veyyon/pi-agent-core";
-import type { Api, ApiKey, AssistantMessage, Message, Model } from "@veyyon/pi-ai";
-import { completeSimple } from "@veyyon/pi-ai";
-import { prompt } from "@veyyon/pi-utils";
+import type { ThinkingLevel } from "@veyyon/agent-core";
+import type { Api, ApiKey, AssistantMessage, Message, Model } from "@veyyon/ai";
+import { completeSimple } from "@veyyon/ai";
+import { prompt } from "@veyyon/utils";
 import fileObserverSystemPrompt from "../../commit/prompts/file-observer-system.md" with { type: "text" };
 import fileObserverUserPrompt from "../../commit/prompts/file-observer-user.md" with { type: "text" };
 import type { FileDiff, FileObservation } from "../../commit/types";
 import { isExcludedFile } from "../../commit/utils/exclusions";
 import { toReasoningEffort } from "../../thinking";
+import { withScopedTimeoutSignal } from "../../utils/fetch-timeout";
 import { truncateToTokenLimit } from "./utils";
 
 const MAX_FILE_TOKENS = 50_000;
@@ -68,12 +69,14 @@ export async function runMapPhase({
 
 		const response = await withRetry(
 			() =>
-				completeSimple(model, request, {
-					apiKey,
-					maxTokens: 400,
-					reasoning: toReasoningEffort(thinkingLevel),
-					signal: AbortSignal.timeout(timeoutMs),
-				}),
+				withScopedTimeoutSignal(timeoutMs, timeoutSignal =>
+					completeSimple(model, request, {
+						apiKey,
+						maxTokens: 400,
+						reasoning: toReasoningEffort(thinkingLevel),
+						signal: timeoutSignal,
+					}),
+				),
 			maxRetries,
 			retryBackoffMs,
 		);

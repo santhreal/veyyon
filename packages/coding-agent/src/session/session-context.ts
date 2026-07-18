@@ -1,5 +1,5 @@
-import type { AgentMessage } from "@veyyon/pi-agent-core";
-import { coerceServiceTierByFamily, type ProviderPayload, type ServiceTierByFamily } from "@veyyon/pi-ai";
+import type { AgentMessage } from "@veyyon/agent-core";
+import { coerceServiceTierByFamily, type ProviderPayload, type ServiceTierByFamily } from "@veyyon/ai";
 import * as snapcompact from "@veyyon/snapcompact";
 import {
 	createBranchSummaryMessage,

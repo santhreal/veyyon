@@ -1,14 +1,14 @@
 import { afterAll, afterEach, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { TempDir } from "@veyyon/pi-utils";
+import { TempDir } from "@veyyon/utils";
 import { AgentRegistry } from "../../registry/agent-registry";
 import type { AgentSession } from "../../session/agent-session";
 import { ArtifactManager } from "../../session/artifacts";
 import { AgentProtocolHandler } from "../agent-protocol";
 import { resetRegisteredArtifactDirsForTests } from "../registry-helpers";
 
-const tempDir = TempDir.createSync("omp-nested-agent-repro-");
+const tempDir = TempDir.createSync("veyyon-nested-agent-repro-");
 afterEach(() => {
 	AgentRegistry.resetGlobalForTests();
 	resetRegisteredArtifactDirsForTests();

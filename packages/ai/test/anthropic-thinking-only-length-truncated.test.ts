@@ -1,8 +1,8 @@
 import { describe, expect, it } from "bun:test";
-import { convertAnthropicMessages } from "@veyyon/pi-ai/providers/anthropic";
-import { transformMessages } from "@veyyon/pi-ai/providers/transform-messages";
-import type { AssistantMessage, Message, Model, UserMessage } from "@veyyon/pi-ai/types";
-import { buildModel } from "@veyyon/pi-catalog/build";
+import { convertAnthropicMessages } from "@veyyon/ai/providers/anthropic";
+import { transformMessages } from "@veyyon/ai/providers/transform-messages";
+import type { AssistantMessage, Message, Model, UserMessage } from "@veyyon/ai/types";
+import { buildModel } from "@veyyon/catalog/build";
 
 /**
  * Regression test for: "messages.X.content.Y: `thinking` or `redacted_thinking` blocks in

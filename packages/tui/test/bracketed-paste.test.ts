@@ -7,7 +7,7 @@
  * byte cap only fires on alternate callers that bypass StdinBuffer.
  */
 import { describe, expect, it } from "bun:test";
-import { BracketedPasteHandler } from "@veyyon/pi-tui/bracketed-paste";
+import { BracketedPasteHandler } from "@veyyon/tui/bracketed-paste";
 
 const PASTE_START = "\x1b[200~";
 const PASTE_END = "\x1b[201~";

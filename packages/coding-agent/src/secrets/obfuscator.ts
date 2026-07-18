@@ -1,5 +1,5 @@
-import type { AgentMessage } from "@veyyon/pi-agent-core";
-import type { AssistantMessage, Context, ImageContent, Message, TextContent } from "@veyyon/pi-ai";
+import type { AgentMessage } from "@veyyon/agent-core";
+import type { AssistantMessage, Context, ImageContent, Message, TextContent } from "@veyyon/ai";
 import type { SessionContext } from "../session/session-context";
 import { compileSecretRegex } from "./regex";
 

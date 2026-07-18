@@ -25,9 +25,9 @@ import {
 	REMOTE_REFRESH_SENTINEL,
 	SqliteAuthCredentialStore,
 	type StoredAuthCredential,
-} from "@veyyon/pi-ai/auth-storage";
-import type { UsageReport } from "@veyyon/pi-ai/usage";
-import * as claudeUsage from "@veyyon/pi-ai/usage/claude";
+} from "@veyyon/ai/auth-storage";
+import type { UsageReport } from "@veyyon/ai/usage";
+import * as claudeUsage from "@veyyon/ai/usage/claude";
 import { removeWithRetries } from "../../utils/src/temp";
 
 const EMAIL = "shared@example.com";

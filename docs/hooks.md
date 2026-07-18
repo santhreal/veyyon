@@ -1,10 +1,8 @@
 # Hooks
 
-This document describes the **current hook subsystem code** in `src/extensibility/hooks/*`.
+Hook subsystem code lives under `src/extensibility/hooks/*`. Runtime loading uses the extension runner:
 
-## Current status in runtime
-
-The default CLI runtime initializes the **extension runner** path. In current startup flow:
+## Runtime loading
 
 - `--hook` is treated as an alias for `--extension` (CLI paths are merged into `additionalExtensionPaths`)
 - JS/TS hook factories discovered through `hookCapability` (for example `.veyyon/hooks/pre/*.ts`) are loaded as extension modules so their `pi.on(...)` handlers bind to the runtime event bus
@@ -26,7 +24,7 @@ So this file documents the legacy hook subsystem implementation itself (types/lo
 A hook module must default-export a factory:
 
 ```ts
-import type { HookAPI } from "@veyyon/pi-coding-agent/extensibility/hooks";
+import type { HookAPI } from "@veyyon/coding-agent/extensibility/hooks";
 
 export default function hook(pi: HookAPI): void {
   pi.on("tool_call", async (event, ctx) => {
@@ -257,7 +255,7 @@ Hook status text set via `ctx.ui.setStatus(key, text)` is:
 ### Block unsafe bash commands
 
 ```ts
-import type { HookAPI } from "@veyyon/pi-coding-agent/extensibility/hooks";
+import type { HookAPI } from "@veyyon/coding-agent/extensibility/hooks";
 
 export default function (pi: HookAPI): void {
   pi.on("tool_call", async (event, ctx) => {
@@ -275,7 +273,7 @@ export default function (pi: HookAPI): void {
 ### Redact tool output on post-execution
 
 ```ts
-import type { HookAPI } from "@veyyon/pi-coding-agent/extensibility/hooks";
+import type { HookAPI } from "@veyyon/coding-agent/extensibility/hooks";
 
 export default function (pi: HookAPI): void {
   pi.on("tool_result", async (event) => {
@@ -297,7 +295,7 @@ export default function (pi: HookAPI): void {
 ### Modify model context per LLM call
 
 ```ts
-import type { HookAPI } from "@veyyon/pi-coding-agent/extensibility/hooks";
+import type { HookAPI } from "@veyyon/coding-agent/extensibility/hooks";
 
 export default function (pi: HookAPI): void {
   pi.on("context", async (event) => {
@@ -312,7 +310,7 @@ export default function (pi: HookAPI): void {
 ### Register slash command with command-safe context methods
 
 ```ts
-import type { HookAPI } from "@veyyon/pi-coding-agent/extensibility/hooks";
+import type { HookAPI } from "@veyyon/coding-agent/extensibility/hooks";
 
 export default function (pi: HookAPI): void {
   pi.registerCommand("handoff", {
@@ -338,11 +336,11 @@ export default function (pi: HookAPI): void {
 
 ## Export surface
 
-`src/extensibility/hooks/index.ts` and the package subpath `@veyyon/pi-coding-agent/extensibility/hooks` export:
+`src/extensibility/hooks/index.ts` and the package subpath `@veyyon/coding-agent/extensibility/hooks` export:
 
 - loading APIs (`discoverAndLoadHooks`, `loadHooks`)
 - runner and wrapper (`HookRunner`, `HookToolWrapper`)
 - all hook types
 - `execCommand` re-export
 
-The package root (`@veyyon/pi-coding-agent`) does not re-export `HookAPI`; import legacy hook types from the hooks subpath.
+The package root (`@veyyon/coding-agent`) does not re-export `HookAPI`; import legacy hook types from the hooks subpath.

@@ -34,7 +34,7 @@ Unknown first tokens route to `launch` as a prompt:
 | Command | Aliases | Purpose |
 | --- | --- | --- |
 | `launch` | (default) | Interactive or prompted session |
-| `acp` | | Agent Control Protocol server mode |
+| `acp` | | Agent Client Protocol server mode |
 | `agents` | | Manage agent definitions |
 | `auth-broker` | | Shared auth broker (headless login) |
 | `auth-gateway` | | Auth gateway helper |
@@ -42,9 +42,9 @@ Unknown first tokens route to `launch` as a prompt:
 | `commit` | | Agentic commit workflow |
 | `completions` | | Shell completion scripts |
 | `config` | | List/get/set settings |
-| `dry-balance` | | Token balance probe |
+| `dry-balance` | | Dry-run OAuth account balancing |
 | `gc` | | Garbage-collect session artifacts |
-| `grep` | | Test grep tool (esp. Windows) |
+| `grep` | | Grep-tool CLI probe |
 | `gallery` | | TUI gallery / fixtures |
 | `grievances` | | Internal grievance reporter |
 | `install` | | Install / bootstrap |
@@ -52,13 +52,13 @@ Unknown first tokens route to `launch` as a prompt:
 | `models` | | List models and providers |
 | `plugin` | | Plugin lifecycle (`list`, `install`, …) |
 | `read` | | Read-tool CLI probe |
-| `say` | | TTS one-shot |
+| `say` | | Speak text with local TTS (`--voices` lists voices) |
 | `search` | `q` | Web search probe |
 | `setup` | | First-run setup wizard |
 | `shell` | | Native shell probe |
 | `ssh` | | SSH host configuration |
 | `tiny-models` | | On-device tiny model utilities |
-| `token` | | Token utilities |
+| `token` | | Print a provider's API key or OAuth token |
 | `ttsr` | | Time-traveling stream rules test |
 | `update` | | Self-update |
 | `usage` | | Provider usage limits |

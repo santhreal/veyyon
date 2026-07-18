@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { SettingsList, type SettingsListTheme } from "@veyyon/pi-tui/components/settings-list";
-import { KeybindingsManager, setKeybindings, TUI_KEYBINDINGS } from "@veyyon/pi-tui/keybindings";
+import { SettingsList, type SettingsListTheme } from "@veyyon/tui/components/settings-list";
+import { KeybindingsManager, setKeybindings, TUI_KEYBINDINGS } from "@veyyon/tui/keybindings";
 
 const testTheme: SettingsListTheme = {
 	label: (text: string) => text,
@@ -105,7 +105,7 @@ describe("SettingsList", () => {
 			() => {},
 		);
 
-		expect(list.render(16)[0]).toBe("→ Mode  123456");
+		expect(list.render(16)[0]).toBe("→ Mode  ‹ 1234");
 	});
 
 	it("renders a non-string currentValue without crashing the row", () => {
@@ -124,7 +124,7 @@ describe("SettingsList", () => {
 			() => {},
 		);
 
-		expect(list.render(40)[0]).toBe("→ Advisor Sync Backlog  1");
+		expect(list.render(40)[0]).toBe("→ Advisor Sync Backlog  ‹ 1 ›");
 	});
 
 	it("filters settings with printable search text", () => {
@@ -620,7 +620,8 @@ describe("SettingsList", () => {
 			() => {},
 		);
 		const line = list.render(16)[0];
-		expect(line).toBe("→ Mode  123456");
+		// The selected cyclable row wears the ‹ › cycling affordance.
+		expect(line).toBe("→ Mode  ‹ 1234");
 
 		// Cursor + label columns (0..7) are select-only, not the value gutter.
 		expect(list.isValueColumnHit(0, 0)).toBe(false);

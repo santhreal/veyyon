@@ -1,12 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import type { Model } from "@veyyon/pi-ai";
-import { buildModel } from "@veyyon/pi-catalog/build";
+import type { Model } from "@veyyon/ai";
+import { buildModel } from "@veyyon/catalog/build";
 import {
 	resolveCliModel,
 	resolveModelFromSettings,
 	resolveModelRoleValue,
-} from "@veyyon/pi-coding-agent/config/model-resolver";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
+} from "@veyyon/coding-agent/config/model-resolver";
+import { Settings } from "@veyyon/coding-agent/config/settings";
 
 function model(provider: string, id: string): Model<"anthropic-messages"> {
 	return buildModel({

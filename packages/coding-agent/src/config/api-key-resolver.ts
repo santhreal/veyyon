@@ -1,5 +1,5 @@
-import { type Api, type ApiKeyResolver, type AuthStorage, isUsageLimitOutcome, type Model } from "@veyyon/pi-ai";
-import * as AIError from "@veyyon/pi-ai/error";
+import { type Api, type ApiKeyResolver, type AuthStorage, isUsageLimitOutcome, type Model } from "@veyyon/ai";
+import * as AIError from "@veyyon/ai/error";
 
 /** Model slice accepted by the model-form `resolver(model, sessionId)` overload. */
 export type ApiKeyResolverModel = Pick<Model<Api>, "provider" | "baseUrl" | "id">;

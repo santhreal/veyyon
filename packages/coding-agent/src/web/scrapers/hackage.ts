@@ -1,6 +1,6 @@
-import { tryParseJson } from "@veyyon/pi-utils";
-import type { RenderResult, SpecialHandler } from "./types";
-import { buildResult, loadPage } from "./types";
+import { tryParseJson } from "@veyyon/utils";
+import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
+import { buildResult, loadFailure, loadPage, scraperDegrade, tryParseUrl } from "./types";
 
 interface HackageVersionMap {
 	[version: string]: string;
@@ -76,9 +76,10 @@ export const handleHackage: SpecialHandler = async (
 	url: string,
 	timeout: number,
 	signal?: AbortSignal,
-): Promise<RenderResult | null> => {
+): Promise<RenderResult | ScraperDegrade | null> => {
 	try {
-		const parsed = new URL(url);
+		const parsed = tryParseUrl(url);
+		if (!parsed) return null;
 		if (parsed.hostname !== "hackage.haskell.org") return null;
 
 		// Match /package/{name} or /package/{name}-{version}
@@ -96,10 +97,10 @@ export const handleHackage: SpecialHandler = async (
 			signal,
 		});
 
-		if (!versionResult.ok) return null;
+		if (!versionResult.ok) return scraperDegrade("hackage", loadFailure(versionResult));
 
 		const versionMap = tryParseJson<HackageVersionMap>(versionResult.content);
-		if (!versionMap) return null;
+		if (!versionMap) return scraperDegrade("hackage", "unexpected response shape");
 		const latestVersion = Object.keys(versionMap).sort(compareVersions).at(-1);
 		if (!latestVersion) return null;
 
@@ -111,7 +112,7 @@ export const handleHackage: SpecialHandler = async (
 			signal,
 		});
 
-		if (!cabalResult.ok) return null;
+		if (!cabalResult.ok) return scraperDegrade("hackage", loadFailure(cabalResult));
 
 		const pkg = parseCabal(cabalResult.content);
 
@@ -134,7 +135,7 @@ export const handleHackage: SpecialHandler = async (
 		}
 
 		return buildResult(md, { url, method: "hackage", fetchedAt, notes: ["Fetched via Hackage API"] });
-	} catch {}
-
-	return null;
+	} catch (error) {
+		return scraperDegrade("hackage", error);
+	}
 };

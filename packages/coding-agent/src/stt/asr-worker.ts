@@ -7,12 +7,7 @@ import type {
 	AutomaticSpeechRecognitionPipeline,
 	ProgressInfo,
 } from "@huggingface/transformers";
-import {
-	ensureRuntimeInstalled,
-	getTinyModelsCacheDir,
-	isCompiledBinary,
-	resolveRuntimeModule,
-} from "@veyyon/pi-utils";
+import { ensureRuntimeInstalled, getTinyModelsCacheDir, isCompiledBinary, resolveRuntimeModule } from "@veyyon/utils";
 import packageJson from "../../package.json" with { type: "json" };
 import {
 	errorMessage,

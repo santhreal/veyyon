@@ -5,7 +5,7 @@ import {
 	getHostLlmBackend,
 	resetHostLlmBackendForTests,
 	setHostLlmBackend,
-} from "@veyyon/pi-mnemopi/core/llm-backends";
+} from "@veyyon/mnemopi/core/llm-backends";
 
 afterEach(() => resetHostLlmBackendForTests());
 

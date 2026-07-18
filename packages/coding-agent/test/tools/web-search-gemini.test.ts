@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "bun:test";
-import type { AuthStorage } from "@veyyon/pi-ai";
-import type { FetchImpl } from "@veyyon/pi-ai/types";
-import { GeminiProvider, searchGemini } from "@veyyon/pi-coding-agent/web/search/providers/gemini";
+import type { AuthStorage } from "@veyyon/ai";
+import type { FetchImpl } from "@veyyon/ai/types";
+import { GeminiProvider, searchGemini } from "@veyyon/coding-agent/web/search/providers/gemini";
 
 const SSE_RESPONSE =
 	'data: {"response":{"candidates":[{"content":{"role":"model","parts":[{"text":"Gemini answer"}]}}],"modelVersion":"gemini-2.5-flash"}}\n\n';

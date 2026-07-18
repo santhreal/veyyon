@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { TUI } from "@veyyon/pi-tui";
+import { TUI } from "@veyyon/tui";
 import { VirtualTerminal } from "./virtual-terminal";
 
 describe("TUI start listeners", () => {

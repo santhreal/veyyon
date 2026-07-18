@@ -6,7 +6,7 @@ import {
 	type SgrMouseEvent,
 	truncateToWidth,
 	visibleWidth,
-} from "@veyyon/pi-tui";
+} from "@veyyon/tui";
 import {
 	enableAutoTheme,
 	getAvailableThemes,
@@ -137,12 +137,11 @@ class ThemeSceneController implements SetupSceneController {
 	}
 
 	render(width: number): readonly string[] {
-		const lines = [
-			this.#mode === "all" ? theme.fg("dim", "Browsing all themes · Esc returns to curated choices") : "",
-			"",
-			...renderThemePreview(width),
-			"",
-		];
+		// Curated mode has no hint row — start straight at the preview so every
+		// scene keeps the same one-blank rhythm under the wizard header.
+		const lines =
+			this.#mode === "all" ? [theme.fg("dim", "Browsing all themes · Esc returns to curated choices"), ""] : [];
+		lines.push(...renderThemePreview(width), "");
 		if (this.#loadingAllThemes) {
 			this.#listRowStart = -1;
 			lines.push(theme.fg("dim", "Loading themes…"));

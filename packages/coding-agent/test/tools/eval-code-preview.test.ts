@@ -1,9 +1,9 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { resetSettingsForTest, Settings } from "@veyyon/pi-coding-agent/config/settings";
-import type { EvalToolDetails } from "@veyyon/pi-coding-agent/eval/types";
-import { getThemeByName, setThemeInstance, type Theme } from "@veyyon/pi-coding-agent/modes/theme/theme";
-import { evalToolRenderer } from "@veyyon/pi-coding-agent/tools/eval";
-import { previewWindowRows } from "@veyyon/pi-coding-agent/tools/render-utils";
+import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
+import type { EvalToolDetails } from "@veyyon/coding-agent/eval/types";
+import { getThemeByName, setThemeInstance, type Theme } from "@veyyon/coding-agent/modes/theme/theme";
+import { evalToolRenderer } from "@veyyon/coding-agent/tools/eval";
+import { previewWindowRows } from "@veyyon/coding-agent/tools/render-utils";
 
 /**
  * Defends the bounded code-window contract for eval cells: collapsed views cap

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import type { Api, ModelSpec, Provider } from "@veyyon/pi-catalog/types";
+import type { Api, ModelSpec, Provider } from "@veyyon/catalog/types";
 import { applyCanonicalLimitFallback } from "../scripts/generated-policies";
 
 function spec(overrides: {

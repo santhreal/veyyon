@@ -1,10 +1,10 @@
 import { beforeAll, describe, expect, it } from "bun:test";
-import type { Usage } from "@veyyon/pi-ai/types";
+import type { Usage } from "@veyyon/ai/types";
 import {
 	CacheInvalidationMarkerComponent,
 	detectCacheInvalidation,
-} from "@veyyon/pi-coding-agent/modes/components/cache-invalidation-marker";
-import { initTheme } from "@veyyon/pi-coding-agent/modes/theme/theme";
+} from "@veyyon/coding-agent/modes/components/cache-invalidation-marker";
+import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 
 function usage(parts: { input?: number; cacheRead?: number; cacheWrite?: number; output?: number }): Usage {
 	const input = parts.input ?? 0;

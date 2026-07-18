@@ -2,7 +2,7 @@
 
 Veyyon's interface is built around near-black, near-white, and a persistent **Veyyon silver** accent (`#C6CBD4`).
 
-## Shipped themes
+## Bundled themes
 
 | File | Name | Notes |
 | --- | --- | --- |
@@ -15,8 +15,8 @@ A larger bundled catalog ships under `modes/theme/defaults/` and is selectable f
 ## Changing theme
 
 - **Settings UI:** `/settings` → Appearance → theme (or the theme picker on first run).
-- **Config:** `theme` in `~/.veyyon/agent/config.yml` (profile-specific when using `--profile`).
-- **Custom themes:** drop JSON under `~/.veyyon/agent/themes/`; schema in `docs/theme.md`.
+- **Config:** `theme` in `~/.veyyon/profiles/default/agent/config.yml` (profile-specific when using `--profile`).
+- **Custom themes:** drop JSON under `~/.veyyon/profiles/default/agent/themes/`; schema in `docs/theme.md`.
 
 Terminal capability detection maps the same hierarchy for truecolor, ANSI-256, ANSI-16, unknown background, and no-color modes. Reduced-motion settings remove decorative animation without hiding state changes.
 
@@ -42,5 +42,5 @@ The contract applies to onboarding, composer, menus, dialogs, status line, markd
 ## Identity elsewhere
 
 - CLI binary: `veyyon`
-- Config root: `~/.veyyon` (`PI_CONFIG_DIR` overrides the directory name; XDG paths after `veyyon config init-xdg`)
+- Config root: `~/.veyyon` (`VEYYON_CONFIG_DIR`; XDG paths after `veyyon config init-xdg`)
 - npm packages: `@veyyon/*`

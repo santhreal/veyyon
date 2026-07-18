@@ -1,0 +1,78 @@
+# syntax=docker/dockerfile:1.7-labs
+###############################################################################
+# veybot — GitHub triage+fix bot orchestrator.
+#
+# Extends `base` (from /Dockerfile, default target veyyon:dev) and adds
+# the veybot Python package + a Vite-built SolidJS dashboard bundle. The veyyon
+# toolchain (python + bun + rustup launcher + veyyon-natives + veyyon_rpc wheel +
+# /usr/local/bin/veyyon shim) all comes from VEYYON_BASE; this file only layers what's
+# veybot-specific.
+#
+# Build (from veyyon root):
+#     bun run docker:build                              # build veyyon:dev first
+#     docker build -f Dockerfile.veybot -t veybot:dev .
+#
+# Compose (recommended):
+#     docker compose --project-directory python/veybot build
+###############################################################################
+
+ARG VEYYON_BASE=veyyon:dev
+ARG BUN_VERSION=1.3.14
+
+############################
+# 1) web-builder — Bun + Vite, builds the SolidJS dashboard bundle.
+############################
+FROM oven/bun:${BUN_VERSION}-slim AS web-builder
+WORKDIR /work
+# Root manifests + the web workspace manifest are enough for `bun install
+# --filter veybot-web` to hydrate just the dashboard's node_modules.
+COPY package.json bun.lock ./
+COPY python/veybot/web/package.json ./python/veybot/web/package.json
+# Root package.json declares patchedDependencies, so the patch file must be
+# present before any root-level `bun install` (even a filtered one).
+COPY patches/*.patch ./patches/
+RUN bun install --filter veybot-web
+COPY --exclude=node_modules --exclude=dist python/veybot/web/ ./python/veybot/web/
+RUN bun --cwd=python/veybot/web run build
+
+############################
+# 2) runtime — base + veybot src + web bundle + pip install
+############################
+FROM ${VEYYON_BASE} AS runtime
+
+# veybot runs against the host veyyon checkout mounted at /work/veyyon read-only.
+ENV VEYYON_ROOT=/work/veyyon
+
+WORKDIR /app
+
+# veybot itself. Drop the Vite-built dashboard into the package tree before
+# `pip install` so it lands in the installed wheel (`static/**/*` is declared
+# as package-data in pyproject.toml).
+COPY python/veybot/pyproject.toml ./
+COPY python/veybot/src/ ./src/
+COPY --from=web-builder /work/python/veybot/web/dist/ ./src/static/
+
+RUN pip install --no-cache-dir \
+        "fastapi>=0.112" "uvicorn[standard]>=0.30" "httpx>=0.27" \
+        "pydantic>=2.6" "pydantic-settings>=2.2" "python-dotenv>=1.0" \
+        "click>=8.1" \
+    && pip install --no-cache-dir --no-deps .
+
+# Host agent config is mounted read-only under /srv/agent-home-stage with
+# host-controlled permissions. The entrypoint copies it into root-owned
+# world-readable files under /srv/agent-home; the agent subprocess runs with
+# HOME=/srv/agent-home, so ~/.veyyon and ~/.agent resolve there without exposing
+# mutable host mounts.
+RUN mkdir -p /srv/agent-home/.agent /srv/agent-home/.veyyon/agent \
+    && mkdir -p /srv/agent-home-stage/.agent /srv/agent-home-stage/.veyyon/agent \
+    && printf '[install]\nbackend = "copyfile"\n' > /srv/agent-home/.bunfig.toml
+
+COPY python/veybot/entrypoint.sh /usr/local/bin/veybot-entrypoint
+RUN chmod +x /usr/local/bin/veybot-entrypoint
+
+VOLUME ["/data"]
+EXPOSE 8080
+EXPOSE 8081
+
+ENTRYPOINT ["/usr/bin/tini", "--", "/usr/local/bin/veybot-entrypoint"]
+CMD ["python", "-m", "veybot", "serve"]

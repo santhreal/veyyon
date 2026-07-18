@@ -1,8 +1,8 @@
 /**
  * Adapter from coding-agent schema repair to the agent loop hook.
  */
-import type { AgentTool, AgentToolCall, ToolCallRepairResult } from "@veyyon/pi-agent-core";
-import type { Model } from "@veyyon/pi-ai/types";
+import type { AgentTool, AgentToolCall, ToolCallRepairResult } from "@veyyon/agent-core";
+import type { Model } from "@veyyon/ai/types";
 import type { Settings } from "../config/settings";
 import { isRepairEnabledForModel } from "../harness/model-profile";
 import { formatRepairCoachingHints, isToolCallRepairDisabled, repairToolCallArguments } from "./schema-repair";

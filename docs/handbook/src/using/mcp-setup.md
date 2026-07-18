@@ -14,7 +14,7 @@ MCP servers are configured as **JSON** in `mcp.json`, not in `config.yml`:
 | Scope | Path |
 | --- | --- |
 | Project | `.veyyon/mcp.json` |
-| User | `~/.veyyon/agent/mcp.json` (profile: `~/.veyyon/profiles/<name>/agent/mcp.json`) |
+| User | `~/.veyyon/profiles/default/agent/mcp.json` (profile: `~/.veyyon/profiles/<name>/agent/mcp.json`) |
 
 Veyyon also discovers MCP entries from Claude, Cursor, VS Code, and OpenCode configs. The easiest way
 to add a server is `/mcp add` in the TUI, which writes to `mcp.json` for you.
@@ -127,7 +127,7 @@ global `tools.approvalMode` plus per-tool `tools.approval`. To require a prompt 
 tools, set a per-tool policy:
 
 ```yaml
-# ~/.veyyon/agent/config.yml
+# ~/.veyyon/profiles/default/agent/config.yml
 tools:
   approval:
     mcp__sqlite__query: prompt
@@ -167,7 +167,7 @@ $ curl -i https://analytics.example.com/mcp
 ### Timeout
 
 If `/mcp` shows the server but tool calls time out, raise the per-server `timeout` (milliseconds), or
-set `VEYYON_MCP_TIMEOUT_MS` (legacy `OMP_MCP_TIMEOUT_MS`) for the whole process:
+set `VEYYON_MCP_TIMEOUT_MS` for the whole process:
 
 ```json
 { "mcpServers": { "analytics": { "type": "http", "url": "…", "timeout": 60000 } } }
@@ -187,6 +187,6 @@ namespaced tool. Run `/mcp verbose` to see what was registered.
 
 ## Where to go next
 
-- [MCP](../features/mcp.md) for the full feature overview, including running Veyyon as an MCP server.
+- [MCP](../features/mcp.md) for the feature overview (MCP client; ACP is separate).
 - [Configuration](./configuration.md) for config file layout and precedence.
 - [Tools, skills, and extension data](./extending.md) for other ways to extend Veyyon.

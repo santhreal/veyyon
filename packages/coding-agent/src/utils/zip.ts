@@ -7,7 +7,7 @@
 // build ZIP/tar, or call `Bun.Archive`, anywhere else.
 import * as path from "node:path";
 import * as zlib from "node:zlib";
-import { formatBytes } from "@veyyon/pi-utils";
+import { errorMessage, formatBytes } from "@veyyon/utils";
 import { ToolError } from "../tools/tool-errors";
 
 /** A ZIP archive decoded to a `path → bytes` map of its file members. */
@@ -568,7 +568,7 @@ function decodeZipMember(compressed: Uint8Array, compression: number, declaredSi
 	try {
 		return inflateRaw(compressed, declaredSize);
 	} catch (error) {
-		throw new ToolError(error instanceof Error ? error.message : String(error));
+		throw new ToolError(errorMessage(error));
 	}
 }
 
@@ -594,14 +594,14 @@ async function readTarEntries(bytes: Uint8Array): Promise<ArchiveIndexEntry[]> {
 	try {
 		archive = new Bun.Archive(bytes);
 	} catch (error) {
-		throw new ToolError(error instanceof Error ? error.message : String(error));
+		throw new ToolError(errorMessage(error));
 	}
 
 	let files: Map<string, File>;
 	try {
 		files = await archive.files();
 	} catch (error) {
-		throw new ToolError(error instanceof Error ? error.message : String(error));
+		throw new ToolError(errorMessage(error));
 	}
 
 	const entries: ArchiveIndexEntry[] = [];

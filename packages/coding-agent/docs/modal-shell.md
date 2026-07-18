@@ -56,7 +56,7 @@ Sun/ember (`#f0862e` / `#fb9e44`) is reserved for caret, focus ring, and links e
 
 ## Hosting
 
-Prefer `SelectorController.showModalSelector` / fullscreen overlay (`fullscreen: true`) so underpaint clears. Editor-slot hosts remain only where scrollback or ceremony requires (agent-hub, login, large wizards).
+Prefer `SelectorController.showModalSelector` / fullscreen overlay (`fullscreen: true`) so underpaint clears. Editor-slot hosts remain only where scrollback or long multi-step flows require (agent-hub, login, large wizards).
 
 ## Surfaces on ModalShell
 

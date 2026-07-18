@@ -1,16 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
 import { scheduler } from "node:timers/promises";
-import { Agent, type AgentMessage } from "@veyyon/pi-agent-core";
-import * as compactionModule from "@veyyon/pi-agent-core/compaction";
-import type { AssistantMessage, ImageContent, ToolResultMessage } from "@veyyon/pi-ai";
-import { getBundledModel } from "@veyyon/pi-catalog/models";
-import { ModelRegistry } from "@veyyon/pi-coding-agent/config/model-registry";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { AgentSession, type AgentSessionEvent } from "@veyyon/pi-coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/pi-coding-agent/session/auth-storage";
-import { SessionManager } from "@veyyon/pi-coding-agent/session/session-manager";
-import { TempDir } from "@veyyon/pi-utils";
+import { Agent, type AgentMessage } from "@veyyon/agent-core";
+import * as compactionModule from "@veyyon/agent-core/compaction";
+import type { AssistantMessage, ImageContent, ToolResultMessage } from "@veyyon/ai";
+import { getBundledModel } from "@veyyon/catalog/models";
+import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import { AgentSession, type AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session";
+import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
+import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { TempDir } from "@veyyon/utils";
 
 const usage = {
 	input: 16,

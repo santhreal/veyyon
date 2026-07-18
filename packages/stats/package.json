@@ -1,6 +1,6 @@
 {
   "type": "module",
-  "name": "@veyyon/pi-stats",
+  "name": "@veyyon/stats",
   "version": "1.0.0",
   "description": "Local observability dashboard for Veyyon AI usage statistics",
   "homepage": "https://veyyon.dev",
@@ -8,11 +8,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/can1357/oh-my-pi.git",
+    "url": "git+https://github.com/santhsecurity/veyyon.git",
     "directory": "packages/stats"
   },
   "bugs": {
-    "url": "https://github.com/can1357/oh-my-pi/issues"
+    "url": "https://github.com/santhsecurity/veyyon/issues"
   },
   "keywords": [
     "ai",
@@ -39,9 +39,9 @@
     "fmt": "biome format --write ."
   },
   "dependencies": {
-    "@veyyon/pi-ai": "catalog:",
-    "@veyyon/pi-catalog": "catalog:",
-    "@veyyon/pi-utils": "catalog:",
+    "@veyyon/ai": "catalog:",
+    "@veyyon/catalog": "catalog:",
+    "@veyyon/utils": "catalog:",
     "@tailwindcss/node": "catalog:",
     "chart.js": "catalog:",
     "date-fns": "catalog:",

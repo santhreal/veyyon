@@ -1,4 +1,4 @@
-import { $flag } from "@veyyon/pi-utils";
+import { $flag } from "@veyyon/utils";
 import type { ToolSession } from ".";
 
 export interface EvalBackendsAllowance {
@@ -19,16 +19,16 @@ export function readEvalBackendsAllowance(session: ToolSession): EvalBackendsAll
 }
 
 /**
- * Materialize the active eval backend allowance: PI_PY / PI_JS / PI_RB / PI_JL
+ * Materialize the active eval backend allowance: VEYYON_PY / VEYYON_JS / VEYYON_RB / VEYYON_JL
  * env flags override the per-key settings; otherwise settings win (py/js default
  * on, rb/jl default off).
  */
 export function resolveEvalBackends(session: ToolSession): EvalBackendsAllowance {
 	const settings = readEvalBackendsAllowance(session);
 	return {
-		python: $flag("PI_PY", settings.python),
-		js: $flag("PI_JS", settings.js),
-		ruby: $flag("PI_RB", settings.ruby),
-		julia: $flag("PI_JL", settings.julia),
+		python: $flag("VEYYON_PY", settings.python),
+		js: $flag("VEYYON_JS", settings.js),
+		ruby: $flag("VEYYON_RB", settings.ruby),
+		julia: $flag("VEYYON_JL", settings.julia),
 	};
 }

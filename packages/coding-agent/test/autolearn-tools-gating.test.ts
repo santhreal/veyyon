@@ -2,16 +2,16 @@ import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { getManagedSkillsDir } from "@veyyon/pi-coding-agent/autolearn/managed-skills";
-import { type SettingPath, Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { resetActiveSkillsForTests, type Skill, setActiveSkills } from "@veyyon/pi-coding-agent/extensibility/skills";
-import type { HindsightSessionState } from "@veyyon/pi-coding-agent/hindsight/state";
-import type { MnemopiSessionState } from "@veyyon/pi-coding-agent/mnemopi/state";
-import { createTools, type ToolSession } from "@veyyon/pi-coding-agent/tools";
-import { LearnTool } from "@veyyon/pi-coding-agent/tools/learn";
-import { ManageSkillTool } from "@veyyon/pi-coding-agent/tools/manage-skill";
-import { removeWithRetries } from "@veyyon/pi-utils";
-import { getAgentDir, setAgentDir } from "@veyyon/pi-utils/dirs";
+import { getManagedSkillsDir } from "@veyyon/coding-agent/autolearn/managed-skills";
+import { type SettingPath, Settings } from "@veyyon/coding-agent/config/settings";
+import { resetActiveSkillsForTests, type Skill, setActiveSkills } from "@veyyon/coding-agent/extensibility/skills";
+import type { HindsightSessionState } from "@veyyon/coding-agent/hindsight/state";
+import type { MnemopiSessionState } from "@veyyon/coding-agent/mnemopi/state";
+import { createTools, type ToolSession } from "@veyyon/coding-agent/tools";
+import { LearnTool } from "@veyyon/coding-agent/tools/learn";
+import { ManageSkillTool } from "@veyyon/coding-agent/tools/manage-skill";
+import { removeWithRetries } from "@veyyon/utils";
+import { getAgentDir, setAgentDir } from "@veyyon/utils/dirs";
 import { type } from "arktype";
 
 function makeSession(
@@ -111,7 +111,7 @@ describe("manage_skill execute", () => {
 
 	beforeEach(async () => {
 		originalAgentDir = getAgentDir();
-		tempHome = await fs.mkdtemp(path.join(os.tmpdir(), "omp-manage-skill-"));
+		tempHome = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-manage-skill-"));
 		spyOn(os, "homedir").mockReturnValue(tempHome);
 		setAgentDir(path.join(tempHome, ".veyyon", "agent"));
 	});
@@ -204,7 +204,7 @@ describe("learn execute", () => {
 
 	beforeEach(async () => {
 		originalAgentDir = getAgentDir();
-		tempHome = await fs.mkdtemp(path.join(os.tmpdir(), "omp-learn-"));
+		tempHome = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-learn-"));
 		spyOn(os, "homedir").mockReturnValue(tempHome);
 		setAgentDir(path.join(tempHome, ".veyyon", "agent"));
 		remembered = [];

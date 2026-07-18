@@ -1,4 +1,4 @@
-import { DEFAULT_SHARE_URL } from "@veyyon/pi-wire";
+import { DEFAULT_SHARE_URL } from "@veyyon/wire";
 import { DEFAULT_RELAY_URL } from "../../collab/protocol";
 import { DEFAULT_STT_MODEL_KEY, STT_MODEL_OPTIONS, STT_MODEL_VALUES } from "../../stt/models";
 import { STT_SUBMIT_TRIGGER_OPTIONS, STT_SUBMIT_TRIGGER_VALUES } from "../../stt/submit-trigger";

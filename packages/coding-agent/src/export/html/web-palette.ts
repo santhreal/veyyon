@@ -1,12 +1,13 @@
 /**
- * Web/export palette — the omp brand identity shared by the collab-web live
+ * Web/export palette — the veyyon brand identity shared by the collab-web live
  * client (`share.veyyon.dev/`) and every public HTML export / share viewer (`/s/<id>`).
  *
  * Why this exists separately from `modes/theme/dark.json`: the `dark` theme is
  * the **default TUI theme** — its amber accent (`#febc38`) drives the terminal
  * status line, syntax highlighting, thinking levels, and bash/python mode
- * colors for every omp user. The public web artifacts want the collab-web
- * pink/purple identity instead, so they pin this palette rather than inheriting
+ * colors for every veyyon user. The public web artifacts want the collab-web
+ * black/silver/ember identity instead (pitch-black ground, silver structure,
+ * the single ember-sun accent), so they pin this palette rather than inheriting
  * the TUI's. Editing `dark.json` to repurpose it for the web would repaint
  * every terminal; this file keeps the two surfaces decoupled.
  *
@@ -31,105 +32,107 @@
  */
 export const WEB_EXPORT_PALETTE = {
 	// --- collab-web-native aliases (tv- bridge) ---
-	"--bg": "#0f0b14",
-	"--bg-raised": "#16111c",
-	"--bg-inset": "#09060c",
-	"--bg-overlay": "#211b28",
-	"--fg": "#e6e3ea",
-	"--fg-muted": "#a49faa",
-	"--fg-faint": "#6e6974",
-	"--accent": "#ed4abf",
-	"--accent-muted": "oklch(0.674 0.23 341 / 18%)",
-	"--ok": "#68ca80",
-	"--err": "#f05653",
-	"--warn": "#e4b33f",
-	"--ring": "oklch(0.817 0.112 205 / 70%)",
+	// Pitch-black ground everywhere; hierarchy comes from silver hairlines,
+	// text weight, and the ember accent — never tinted/raised fills.
+	"--bg": "#000000",
+	"--bg-raised": "#000000",
+	"--bg-inset": "#000000",
+	"--bg-overlay": "#000000",
+	"--fg": "#f6f7f9",
+	"--fg-muted": "#b4bac4",
+	"--fg-faint": "#7c828d",
+	"--accent": "#f0862e", // ember sun
+	"--accent-muted": "oklch(0.705 0.163 52 / 16%)",
+	"--ok": "#7fb98a",
+	"--err": "#c96f6e",
+	"--warn": "#c9a24b",
+	"--ring": "oklch(0.705 0.163 52 / 70%)", // ember focus ring
 	"--font-mono": 'ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Mono", Menlo, Consolas, monospace',
 
 	// --- legacy export names (template.css / template.js) ---
-	// surfaces — map onto the collab-web purple ramp
-	"--body-bg": "#0f0b14", // = --bg
-	"--container-bg": "#16111c", // = --bg-raised
-	"--info-bg": "#09060c", // = --bg-inset (recessed wells: code blocks, tool output)
+	// surfaces — all pitch black, matching the collab-web tokens
+	"--body-bg": "#000000", // = --bg
+	"--container-bg": "#000000", // = --bg-raised
+	"--info-bg": "#000000", // = --bg-inset (recessed wells: code blocks, tool output)
 	// text
-	"--text": "#e6e3ea", // = --fg
-	"--muted": "#a49faa", // = --fg-muted
-	"--dim": "#6e6974", // = --fg-faint
-	"--thinkingText": "#a49faa",
-	// hairlines — white-alpha, matching collab-web's --border/--border-strong
-	"--border": "oklch(1 0 0 / 9%)",
-	"--borderMuted": "oklch(1 0 0 / 6%)",
-	// accent + brand purple (the gradient's mid stop) for secondary highlights
-	"--borderAccent": "#945ff9",
-	"--selectedBg": "#2d2535",
+	"--text": "#f6f7f9", // = --fg
+	"--muted": "#b4bac4", // = --fg-muted
+	"--dim": "#7c828d", // = --fg-faint
+	"--thinkingText": "#b4bac4",
+	// hairlines — silver-alpha, matching collab-web's --border/--border-strong
+	"--border": "rgba(198, 203, 212, 0.12)",
+	"--borderMuted": "rgba(198, 203, 212, 0.08)",
+	// accent border + the one permitted tinted surface (ember glow selection)
+	"--borderAccent": "#f0862e", // ember
+	"--selectedBg": "#241510", // ember glow
 	// status — semantic, used sparingly (cancelled / exit-code / success dots)
-	"--success": "#68ca80", // = --ok
-	"--error": "#f05653", // = --err
-	"--warning": "#e4b33f", // = --warn
+	"--success": "#7fb98a", // = --ok
+	"--error": "#c96f6e", // = --err
+	"--warning": "#c9a24b", // = --warn
 	// message bubbles
-	"--userMessageBg": "oklch(0.674 0.23 341 / 6%)", // accent-tinted, like template.css user-message
-	"--userMessageText": "#e6e3ea",
-	"--customMessageBg": "#211b28", // = --bg-overlay
-	"--customMessageText": "#a49faa", // = --fg-muted
-	"--customMessageLabel": "#b281d6", // lilac, matching dark.json's label hue
+	"--userMessageBg": "oklch(0.705 0.163 52 / 6%)", // faint ember tint distinguishes user turns
+	"--userMessageText": "#f6f7f9",
+	"--customMessageBg": "#000000", // = --bg-overlay
+	"--customMessageText": "#b4bac4", // = --fg-muted
+	"--customMessageLabel": "#c6cbd4", // silver — labels are structure
 	// tool surfaces
-	"--toolPendingBg": "#16111c",
-	"--toolSuccessBg": "#09060c",
-	"--toolErrorBg": "oklch(0.66 0.19 25 / 14%)",
-	"--toolTitle": "#e6e3ea",
-	"--toolOutput": "#a49faa", // = --fg-muted
+	"--toolPendingBg": "#000000",
+	"--toolSuccessBg": "#000000",
+	"--toolErrorBg": "oklch(0.62 0.12 25 / 14%)", // faint red error well
+	"--toolTitle": "#f6f7f9",
+	"--toolOutput": "#b4bac4", // = --fg-muted
 	// markdown
-	"--mdHeading": "#ed4abf", // accent — headings carry the brand
-	"--mdLink": "#5ad8e5", // ring cyan — links distinct from the pink accent
-	"--mdLinkUrl": "#6e6974", // = --fg-faint
-	"--mdCode": "#e6e3ea",
-	"--mdCodeBlock": "#e6e3ea",
-	"--mdCodeBlockBorder": "oklch(1 0 0 / 9%)",
-	"--mdQuote": "#a49faa",
-	"--mdQuoteBorder": "oklch(1 0 0 / 13%)",
-	"--mdHr": "oklch(1 0 0 / 9%)",
-	"--mdListBullet": "#ed4abf", // accent — bullets carry the brand
+	"--mdHeading": "#e6e9ee", // silver-hi — headings are structure
+	"--mdLink": "#f0862e", // ember — links carry the accent
+	"--mdLinkUrl": "#7c828d", // = --fg-faint
+	"--mdCode": "#f6f7f9",
+	"--mdCodeBlock": "#f6f7f9",
+	"--mdCodeBlockBorder": "rgba(198, 203, 212, 0.12)",
+	"--mdQuote": "#b4bac4",
+	"--mdQuoteBorder": "rgba(198, 203, 212, 0.21)",
+	"--mdHr": "rgba(198, 203, 212, 0.12)",
+	"--mdListBullet": "#f0862e", // ember — bullets carry the accent
 	// diff
-	"--toolDiffAdded": "#68ca80",
-	"--toolDiffRemoved": "#f05653",
-	"--toolDiffContext": "#6e6974",
-	// syntax — cool-neutral with pink/purple accents for keywords/types
-	"--syntaxComment": "#6e6974", // = --fg-faint
-	"--syntaxKeyword": "#945ff9", // brand purple
-	"--syntaxFunction": "#e4b33f", // warn amber (analog of dark.json's DCDCAA)
-	"--syntaxVariable": "#5ad8e5", // ring cyan
-	"--syntaxString": "#68ca80", // ok green
-	"--syntaxNumber": "#ed4abf", // accent
-	"--syntaxType": "#b281d6", // lilac
-	"--syntaxOperator": "#e6e3ea",
-	"--syntaxPunctuation": "#a49faa",
-	// thinking-level ramp — purple → lilac, matching the brand gradient
-	"--thinkingOff": "#6e6974",
-	"--thinkingMinimal": "#6e6974",
-	"--thinkingLow": "#945ff9",
-	"--thinkingMedium": "#b281d6",
-	"--thinkingHigh": "#ed4abf",
-	"--thinkingXhigh": "#e4b33f",
+	"--toolDiffAdded": "#7fb98a",
+	"--toolDiffRemoved": "#c96f6e",
+	"--toolDiffContext": "#7c828d",
+	// syntax — silver-neutral base with ember/amber/green accents (no cyan/purple)
+	"--syntaxComment": "#7c828d", // = --fg-faint
+	"--syntaxKeyword": "#f0862e", // ember
+	"--syntaxFunction": "#c9a24b", // amber
+	"--syntaxVariable": "#c6cbd4", // silver
+	"--syntaxString": "#7fb98a", // green
+	"--syntaxNumber": "#fb9e44", // ember-hi
+	"--syntaxType": "#e6e9ee", // silver-hi
+	"--syntaxOperator": "#f6f7f9",
+	"--syntaxPunctuation": "#b4bac4",
+	// thinking-level ramp — escalates dim → silver → amber → ember → ember-hi
+	"--thinkingOff": "#7c828d",
+	"--thinkingMinimal": "#7c828d",
+	"--thinkingLow": "#b4bac4",
+	"--thinkingMedium": "#c9a24b",
+	"--thinkingHigh": "#f0862e",
+	"--thinkingXhigh": "#fb9e44",
 	// mode tints (sidebar/role tags) — not surfaced in the export tree but
 	// emitted for completeness so template.js role classes resolve cleanly
-	"--bashMode": "#5ad8e5",
-	"--pythonMode": "#e4b33f",
+	"--bashMode": "#7fb98a", // green
+	"--pythonMode": "#c9a24b", // amber
 	// status-line tokens are TUI-only; not consumed by the export template, but
 	// emitted so any future surface that reads them inherits the brand.
-	"--statusLineBg": "#0f0b14",
-	"--statusLineSep": "#6e6974",
-	"--statusLineModel": "#ed4abf",
-	"--statusLinePath": "#5ad8e5",
-	"--statusLineGitClean": "#68ca80",
-	"--statusLineGitDirty": "#e4b33f",
-	"--statusLineContext": "#a49faa",
-	"--statusLineSpend": "#5ad8e5",
-	"--statusLineStaged": "#68ca80",
-	"--statusLineDirty": "#e4b33f",
-	"--statusLineUntracked": "#945ff9",
-	"--statusLineOutput": "#b281d6",
-	"--statusLineCost": "#b281d6",
-	"--statusLineSubagents": "#ed4abf",
+	"--statusLineBg": "#000000",
+	"--statusLineSep": "#7c828d",
+	"--statusLineModel": "#f0862e", // ember
+	"--statusLinePath": "#c6cbd4", // silver
+	"--statusLineGitClean": "#7fb98a", // green
+	"--statusLineGitDirty": "#c9a24b", // amber
+	"--statusLineContext": "#b4bac4",
+	"--statusLineSpend": "#c6cbd4", // silver
+	"--statusLineStaged": "#7fb98a", // green
+	"--statusLineDirty": "#c9a24b", // amber
+	"--statusLineUntracked": "#c96f6e", // red
+	"--statusLineOutput": "#b4bac4",
+	"--statusLineCost": "#c6cbd4", // silver
+	"--statusLineSubagents": "#f0862e", // ember
 } as const satisfies Record<string, string>;
 
 /** Serialize the palette as `--key: value;` declarations for `:root { … }`. */

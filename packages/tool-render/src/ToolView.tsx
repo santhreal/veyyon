@@ -2,7 +2,7 @@
  * Tool card chrome + per-tool dispatch. Works in the collab-web app and inside
  * the `<vey-tool-view>` web component embedded in HTML session exports.
  */
-import { INTENT_FIELD } from "@veyyon/pi-wire";
+import { INTENT_FIELD } from "@veyyon/wire";
 import type { ReactNode } from "react";
 import { useState } from "react";
 import { resolveToolRenderer } from "./registry";

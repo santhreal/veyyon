@@ -302,7 +302,7 @@ export const PROVIDERS_SETTINGS = {
 			group: "Tiny Model",
 			label: "Tiny Model Device",
 			description:
-				"ONNX execution provider for local tiny models (titles + memory). Default uses CPU-only inference. The VEYYON_TINY_DEVICE env var (legacy: PI_TINY_DEVICE) overrides this.",
+				"ONNX execution provider for local tiny models (titles + memory). Default uses CPU-only inference. The VEYYON_TINY_DEVICE env var overrides this.",
 			options: TINY_MODEL_DEVICE_SETTING_OPTIONS,
 		},
 	},
@@ -315,7 +315,7 @@ export const PROVIDERS_SETTINGS = {
 			group: "Tiny Model",
 			label: "Tiny Model Precision",
 			description:
-				"ONNX quantization/precision for local tiny models. Default uses each model's shipped dtype (q4); lower precision is faster, higher is more faithful. The VEYYON_TINY_DTYPE env var (legacy: PI_TINY_DTYPE) overrides this.",
+				"ONNX quantization/precision for local tiny models. Default uses each model's shipped dtype (q4); lower precision is faster, higher is more faithful. The VEYYON_TINY_DTYPE env var overrides this.",
 			options: TINY_MODEL_DTYPE_SETTING_OPTIONS,
 		},
 	},
@@ -667,7 +667,7 @@ export const PROVIDERS_SETTINGS = {
 	// feature fails closed (see report-tool-issue.ts's `resolvePushConfig` —
 	// an empty/missing endpoint short-circuits to no-op) instead of guessing
 	// an upstream `qa.omp.sh`-style URL or an unowned Veyyon domain. Set this
-	// or `PI_AUTO_QA_PUSH_URL` explicitly to opt in.
+	// or `VEYYON_AUTO_QA_PUSH_URL` explicitly to opt in.
 	"dev.autoqaPush.endpoint": {
 		type: "string",
 		default: undefined,

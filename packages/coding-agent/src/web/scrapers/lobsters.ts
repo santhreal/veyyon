@@ -1,6 +1,6 @@
-import { tryParseJson } from "@veyyon/pi-utils";
+import { tryParseJson } from "@veyyon/utils";
 import type { SpecialHandler } from "./types";
-import { buildResult, formatIsoDate, loadPage } from "./types";
+import { buildResult, formatIsoDate, loadFailure, loadPage, scraperDegrade, tryParseUrl } from "./types";
 
 // =============================================================================
 // Lobste.rs Types
@@ -71,7 +71,8 @@ function renderComments(comments: LobstersComment[], maxDepth = 5): string {
  */
 export const handleLobsters: SpecialHandler = async (url: string, timeout: number, signal?: AbortSignal) => {
 	try {
-		const parsed = new URL(url);
+		const parsed = tryParseUrl(url);
+		if (!parsed) return null;
 		if (!parsed.hostname.includes("lobste.rs")) return null;
 
 		const fetchedAt = new Date().toISOString();
@@ -83,10 +84,10 @@ export const handleLobsters: SpecialHandler = async (url: string, timeout: numbe
 		if (storyMatch) {
 			jsonUrl = `https://lobste.rs/s/${storyMatch[1]}.json`;
 			const result = await loadPage(jsonUrl, { timeout, signal });
-			if (!result.ok) return null;
+			if (!result.ok) return scraperDegrade("lobsters", loadFailure(result));
 
 			const story = tryParseJson<LobstersStoryResponse>(result.content);
-			if (!story) return null;
+			if (!story) return scraperDegrade("lobsters", "unexpected response shape");
 
 			md = `# ${story.title}\n\n`;
 			md += `**${story.submitter_user}** · ${story.score} points · ${story.comment_count} comments`;
@@ -133,10 +134,10 @@ export const handleLobsters: SpecialHandler = async (url: string, timeout: numbe
 			if (!jsonUrl) return null;
 
 			const result = await loadPage(jsonUrl, { timeout, signal });
-			if (!result.ok) return null;
+			if (!result.ok) return scraperDegrade("lobsters", loadFailure(result));
 
 			const stories = tryParseJson<LobstersStory[]>(result.content);
-			if (!stories) return null;
+			if (!stories) return scraperDegrade("lobsters", "unexpected response shape");
 			const listingStories = stories.slice(0, 20);
 
 			const title =
@@ -169,7 +170,10 @@ export const handleLobsters: SpecialHandler = async (url: string, timeout: numbe
 				notes: ["Fetched via Lobste.rs JSON API"],
 			});
 		}
-	} catch {}
+	} catch (error) {
+		return scraperDegrade("lobsters", error);
+	}
 
+	// Known host but unrecognized path shape: not a match.
 	return null;
 };

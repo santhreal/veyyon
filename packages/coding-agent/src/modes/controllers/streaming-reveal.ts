@@ -1,5 +1,5 @@
-import type { AssistantMessage } from "@veyyon/pi-ai";
-import { type Component, getSegmenter } from "@veyyon/pi-tui";
+import type { AssistantMessage } from "@veyyon/ai";
+import { type Component, getSegmenter } from "@veyyon/tui";
 import { LRUCache } from "lru-cache/raw";
 import { formatThinkingForDisplay, hasDisplayableThinking } from "../../utils/thinking-display";
 import type { AssistantMessageComponent } from "../components/assistant-message";

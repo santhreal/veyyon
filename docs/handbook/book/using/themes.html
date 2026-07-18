@@ -10,6 +10,10 @@
         <!-- Veyyon handbook: self-contained head additions. No remote resources. -->
         <meta name="theme-color" content="#050505">
         <meta name="color-scheme" content="dark">
+        <!-- Site favicons live at the deployed root, one level above /docs/. -->
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+        <link rel="icon" href="/favicon.ico" sizes="48x48">
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png">
         <style>
           /* Paint the near-black surface before CSS/JS resolve the theme, so there is
              no light flash on load. Kept in sync with theme/veyyon.css. */
@@ -18,7 +22,7 @@
           *, *::before, *::after { box-sizing: border-box; }
         </style>
 
-        <meta name="description" content="How Veyyon turns open models into frontier coding agents. The product, the harness, tool-call repair, the edit format, per-model adaptation, and how to use it.">
+        <meta name="description" content="Operator handbook for the Veyyon terminal coding agent: install, configuration, tools, approvals, edit formats, providers, and harness structure.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -38,7 +42,7 @@
         <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="../ayu-highlight-3fdfc3ac.css">
 
         <!-- Custom theme stylesheets -->
-        <link rel="stylesheet" href="../theme/veyyon-fc839a17.css">
+        <link rel="stylesheet" href="../theme/veyyon-06f6939e.css">
 
 
         <!-- Provide site root and default themes to javascript -->
@@ -46,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-e76f06ca.js";
+            window.path_to_searchindex_js = "../searchindex-a2447057.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-9cfd259b.js"></script>
+        <script src="../toc-cc1a72e9.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -193,7 +197,7 @@
                     <main>
                         <h1 id="themes-and-identity"><a class="header" href="#themes-and-identity">Themes and identity</a></h1>
 <p>Veyyon’s interface is built around near-black, near-white, and a persistent <strong>Veyyon silver</strong> accent (<code>#C6CBD4</code>).</p>
-<h2 id="shipped-themes"><a class="header" href="#shipped-themes">Shipped themes</a></h2>
+<h2 id="bundled-themes"><a class="header" href="#bundled-themes">Bundled themes</a></h2>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -210,8 +214,8 @@
 <h2 id="changing-theme"><a class="header" href="#changing-theme">Changing theme</a></h2>
 <ul>
 <li><strong>Settings UI:</strong> <code>/settings</code> → Appearance → theme (or the theme picker on first run).</li>
-<li><strong>Config:</strong> <code>theme</code> in <code>~/.veyyon/agent/config.yml</code> (profile-specific when using <code>--profile</code>).</li>
-<li><strong>Custom themes:</strong> drop JSON under <code>~/.veyyon/agent/themes/</code>; schema in <code>docs/theme.md</code>.</li>
+<li><strong>Config:</strong> <code>theme</code> in <code>~/.veyyon/profiles/default/agent/config.yml</code> (profile-specific when using <code>--profile</code>).</li>
+<li><strong>Custom themes:</strong> drop JSON under <code>~/.veyyon/profiles/default/agent/themes/</code>; schema in <code>docs/theme.md</code>.</li>
 </ul>
 <p>Terminal capability detection maps the same hierarchy for truecolor, ANSI-256, ANSI-16, unknown background, and no-color modes. Reduced-motion settings remove decorative animation without hiding state changes.</p>
 <h2 id="painted-ground"><a class="header" href="#painted-ground">Painted ground</a></h2>
@@ -237,7 +241,7 @@ The original background is restored on exit — including crash exits.</p>
 <h2 id="identity-elsewhere"><a class="header" href="#identity-elsewhere">Identity elsewhere</a></h2>
 <ul>
 <li>CLI binary: <code>veyyon</code></li>
-<li>Config root: <code>~/.veyyon</code> (<code>PI_CONFIG_DIR</code> overrides the directory name; XDG paths after <code>veyyon config init-xdg</code>)</li>
+<li>Config root: <code>~/.veyyon</code> (<code>VEYYON_CONFIG_DIR</code>; XDG paths after <code>veyyon config init-xdg</code>)</li>
 <li>npm packages: <code>@veyyon/*</code></li>
 </ul>
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { repairDoubleEncodedJsonString, repairTaskParams } from "@veyyon/pi-coding-agent/task/repair-args";
-import type { TaskParams } from "@veyyon/pi-coding-agent/task/types";
+import { repairDoubleEncodedJsonString, repairTaskParams } from "@veyyon/coding-agent/task/repair-args";
+import type { TaskParams } from "@veyyon/coding-agent/task/types";
 
 describe("repairDoubleEncodedJsonString", () => {
 	it("decodes a uniformly double-encoded prose value", () => {

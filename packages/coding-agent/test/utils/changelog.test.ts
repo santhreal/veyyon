@@ -14,7 +14,7 @@ import { Buffer } from "node:buffer";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { removeWithRetries } from "@veyyon/pi-utils";
+import { removeWithRetries } from "@veyyon/utils";
 import {
 	type ChangelogEntry,
 	RECENT_CHANGELOG_ENTRY_LIMIT,
@@ -43,7 +43,7 @@ function release(major: number, minor: number, patch: number, body: string): Cha
 }
 
 async function withTempAgentDir<T>(callback: (agentDir: string) => Promise<T>): Promise<T> {
-	const agentDir = await fs.mkdtemp(path.join(os.tmpdir(), "omp-changelog-marker-"));
+	const agentDir = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-changelog-marker-"));
 	try {
 		const result = await callback(agentDir);
 		return result;
@@ -205,9 +205,9 @@ describe.skipIf(!hasPtyHarness)("interactive startup changelog PTY smoke", () =>
 							XDG_CONFIG_HOME: path.join(root, "xdg-config"),
 							XDG_STATE_HOME: path.join(root, "xdg-state"),
 							XDG_DATA_HOME: path.join(root, "xdg-data"),
-							PI_CODING_AGENT_DIR: agentDir,
-							PI_PACKAGE_DIR: packageDir,
-							PI_NO_TITLE: "1",
+							VEYYON_CODING_AGENT_DIR: agentDir,
+							VEYYON_PACKAGE_DIR: packageDir,
+							VEYYON_NO_TITLE: "1",
 							NO_COLOR: "1",
 							TERM: "xterm-256color",
 						},

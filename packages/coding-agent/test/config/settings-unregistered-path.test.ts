@@ -11,7 +11,7 @@
  * not-yet-registered key cannot take the whole TUI down at launch.
  */
 import { describe, expect, it } from "bun:test";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
+import { Settings } from "@veyyon/coding-agent/config/settings";
 
 describe("Settings read on an unregistered dotted path", () => {
 	it("returns undefined instead of throwing for a dotted path not in the schema", async () => {

@@ -1,13 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
 import { scheduler } from "node:timers/promises";
-import { convertAnthropicMessages, streamAnthropic } from "@veyyon/pi-ai/providers/anthropic";
+import { convertAnthropicMessages, streamAnthropic } from "@veyyon/ai/providers/anthropic";
 import {
 	AnthropicMessages,
 	type AnthropicMessagesClientLike,
 	type AnthropicRequestOptions,
-} from "@veyyon/pi-ai/providers/anthropic-client";
-import type { AssistantMessageEvent, Context, Model, ModelSpec, ProviderSessionState } from "@veyyon/pi-ai/types";
-import { buildModel } from "@veyyon/pi-catalog/build";
+} from "@veyyon/ai/providers/anthropic-client";
+import type { AssistantMessageEvent, Context, Model, ModelSpec, ProviderSessionState } from "@veyyon/ai/types";
+import { buildModel } from "@veyyon/catalog/build";
 
 const model: Model<"anthropic-messages"> = buildModel({
 	id: "claude-sonnet-4-5",

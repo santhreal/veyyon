@@ -9,7 +9,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/can1357/oh-my-pi.git",
+    "url": "git+https://github.com/santhreal/veyyon.git",
     "directory": "packages/typescript-edit-benchmark"
   },
   "exports": {
@@ -34,14 +34,14 @@
     "@babel/traverse": "catalog:",
     "@babel/types": "catalog:",
     "@veyyon/hashline": "catalog:",
-    "@veyyon/pi-agent-core": "catalog:",
-    "@veyyon/pi-coding-agent": "catalog:",
-    "@veyyon/pi-utils": "catalog:",
+    "@veyyon/agent-core": "catalog:",
+    "@veyyon/coding-agent": "catalog:",
+    "@veyyon/utils": "catalog:",
     "diff": "catalog:",
     "prettier": "catalog:",
     "regexp-tree": "catalog:",
-    "@veyyon/pi-ai": "catalog:",
-    "@veyyon/pi-tui": "catalog:"
+    "@veyyon/ai": "catalog:",
+    "@veyyon/tui": "catalog:"
   },
   "devDependencies": {
     "@types/babel__generator": "catalog:",

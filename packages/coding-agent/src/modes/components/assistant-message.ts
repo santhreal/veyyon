@@ -1,6 +1,6 @@
-import type { AssistantMessage, ImageContent } from "@veyyon/pi-ai";
-import { Container, Image, type ImageBudget, ImageProtocol, Markdown, Spacer, TERMINAL, Text } from "@veyyon/pi-tui";
-import { formatNumber } from "@veyyon/pi-utils";
+import type { AssistantMessage, ImageContent } from "@veyyon/ai";
+import { Container, Image, type ImageBudget, ImageProtocol, Markdown, Spacer, TERMINAL, Text } from "@veyyon/tui";
+import { formatNumber } from "@veyyon/utils";
 import chalk from "chalk";
 import type { AssistantThinkingRenderer } from "../../extensibility/extensions/types";
 import { getMarkdownTheme, theme } from "../../modes/theme/theme";

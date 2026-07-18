@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { calculateContextTokens, calculatePromptTokens } from "@veyyon/pi-agent-core/compaction";
-import type { Usage } from "@veyyon/pi-ai";
+import { calculateContextTokens, calculatePromptTokens } from "@veyyon/agent-core/compaction";
+import type { Usage } from "@veyyon/ai";
 
 function usage(overrides: Partial<Usage>): Usage {
 	return {

@@ -1,5 +1,5 @@
 /**
- * Regression: OMP-native user-level config discovery must follow the active
+ * Regression: Veyyon-native user-level config discovery must follow the active
  * profile. A profile relocates the agent directory to ~/.veyyon/profiles/<name>/agent;
  * the native provider used to read user config (commands, skills, rules, etc.)
  * from the literal home (~/.veyyon/agent) via `ctx.home`, leaking the default
@@ -8,7 +8,7 @@
  *
  * Covers two code paths: getConfigDirs() (slash commands) and a direct
  * getAgentDir() join (skills). `os.homedir()` is mocked so the old code path
- * (ctx.home + ".omp/agent") points at the tempdir decoys below; without the fix
+ * (ctx.home + ".veyyon/agent") points at the tempdir decoys below; without the fix
  * each test would load the default-profile fixture instead of the profile one.
  *
  * MCP has its own regression in mcp-profile.test.ts (separate paths array).
@@ -17,13 +17,13 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { clearCache as clearFsCache } from "@veyyon/pi-coding-agent/capability/fs";
-import { type Skill, skillCapability } from "@veyyon/pi-coding-agent/capability/skill";
-import { type SlashCommand, slashCommandCapability } from "@veyyon/pi-coding-agent/capability/slash-command";
-import { loadCapability } from "@veyyon/pi-coding-agent/discovery";
-import { getConfigRootDir, removeWithRetries, setAgentDir } from "@veyyon/pi-utils";
+import { clearCache as clearFsCache } from "@veyyon/coding-agent/capability/fs";
+import { type Skill, skillCapability } from "@veyyon/coding-agent/capability/skill";
+import { type SlashCommand, slashCommandCapability } from "@veyyon/coding-agent/capability/slash-command";
+import { loadCapability } from "@veyyon/coding-agent/discovery";
+import { getConfigRootDir, removeWithRetries, setAgentDir } from "@veyyon/utils";
 
-const originalAgentDirEnv = process.env.PI_CODING_AGENT_DIR;
+const originalAgentDirEnv = process.env.VEYYON_CODING_AGENT_DIR;
 const fallbackAgentDir = path.join(getConfigRootDir(), "agent");
 
 async function writeFile(filePath: string, content: string): Promise<void> {
@@ -46,9 +46,9 @@ describe("native user-level config discovery follows the active profile", () => 
 
 	beforeEach(async () => {
 		originalHome = process.env.HOME;
-		tempHome = await fs.mkdtemp(path.join(os.tmpdir(), "omp-profile-iso-home-"));
-		projectDir = await fs.mkdtemp(path.join(os.tmpdir(), "omp-profile-iso-project-"));
-		profileAgentDir = await fs.mkdtemp(path.join(os.tmpdir(), "omp-profile-iso-agent-"));
+		tempHome = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-profile-iso-home-"));
+		projectDir = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-profile-iso-project-"));
+		profileAgentDir = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-profile-iso-agent-"));
 		process.env.HOME = tempHome;
 		vi.spyOn(os, "homedir").mockReturnValue(tempHome);
 		setAgentDir(profileAgentDir);
@@ -70,7 +70,7 @@ describe("native user-level config discovery follows the active profile", () => 
 			setAgentDir(originalAgentDirEnv);
 		} else {
 			setAgentDir(fallbackAgentDir);
-			delete process.env.PI_CODING_AGENT_DIR;
+			delete process.env.VEYYON_CODING_AGENT_DIR;
 		}
 		if (originalHome === undefined) delete process.env.HOME;
 		else process.env.HOME = originalHome;

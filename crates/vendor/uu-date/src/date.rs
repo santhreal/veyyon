@@ -15,9 +15,9 @@
 // feature is not vendored, and the locale.rs default-format probe — which
 // calls the process-global setlocale(3) — is replaced by upstream's 24-hour
 // fallback format). File operands (`--file`, `--reference`) resolve against
-// the shell working directory via `pi_uutils_ctx::resolve` AT THE CALL SITE
+// the shell working directory via `veyyon_uutils_ctx::resolve` AT THE CALL SITE
 // while the original operands are kept for display/error messages, stdio is
-// routed through `pi_uutils_ctx`, and the entry point no longer calls
+// routed through `veyyon_uutils_ctx`, and the entry point no longer calls
 // `std::process::exit`. Time-zone handling stays process-global: jiff reads
 // the host TZ environment variable and tzdb (same behavior as upstream).
 
@@ -39,12 +39,12 @@ use jiff::{
 	fmt::strtime::{self, BrokenDownTime, Config, PosixCustom},
 	tz::{Offset, TimeZone, TimeZoneDatabase},
 };
-use pi_uutils_ctx::format_usage;
 use uucore::{
 	display::Quotable,
 	error::{FromIo, UResult, USimpleError},
 	parser::shortcut_value_parser::ShortcutValueParser,
 };
+use veyyon_uutils_ctx::format_usage;
 
 // Options
 const DATE: &str = "date";
@@ -328,7 +328,7 @@ fn rewrite_bsd_invocation(argv: &[OsString]) -> Option<Result<Vec<OsString>, Str
 			"-r" => {
 				if let Some(value) = toks.get(i + 1)
 					&& is_bsd_epoch_reference(value)
-					&& std::fs::symlink_metadata(pi_uutils_ctx::resolve(Path::new(&argv[i + 1])))
+					&& std::fs::symlink_metadata(veyyon_uutils_ctx::resolve(Path::new(&argv[i + 1])))
 						.is_err_and(|err| err.kind() == std::io::ErrorKind::NotFound)
 				{
 					detected = true;
@@ -457,7 +457,7 @@ fn bsd_to_gnu_argv(
 			&& toks
 				.get(i + 1)
 				.is_some_and(|value| is_bsd_epoch_reference(value))
-			&& std::fs::symlink_metadata(pi_uutils_ctx::resolve(Path::new(&argv[i + 1])))
+			&& std::fs::symlink_metadata(veyyon_uutils_ctx::resolve(Path::new(&argv[i + 1])))
 				.is_err_and(|err| err.kind() == std::io::ErrorKind::NotFound)
 		{
 			rewritten.push(OsString::from("-d"));
@@ -536,7 +536,7 @@ pub fn run(argv: Vec<OsString>) -> i32 {
 		None => argv,
 		Some(Ok(rewritten)) => rewritten,
 		Some(Err(msg)) => {
-			let _ = writeln!(pi_uutils_ctx::stderr(), "date: {msg}");
+			let _ = writeln!(veyyon_uutils_ctx::stderr(), "date: {msg}");
 			return 1;
 		},
 	};
@@ -545,20 +545,20 @@ pub fn run(argv: Vec<OsString>) -> i32 {
 		Err(err) => {
 			let rendered = err.to_string();
 			if err.use_stderr() {
-				let _ = write!(pi_uutils_ctx::stderr(), "{rendered}");
+				let _ = write!(veyyon_uutils_ctx::stderr(), "{rendered}");
 				return 1;
 			}
-			let _ = write!(pi_uutils_ctx::stdout(), "{rendered}");
+			let _ = write!(veyyon_uutils_ctx::stdout(), "{rendered}");
 			return 0;
 		},
 	};
 	match date_main(&matches) {
-		Ok(()) => pi_uutils_ctx::exit_code(),
+		Ok(()) => veyyon_uutils_ctx::exit_code(),
 		Err(err) => {
 			let code = err.code();
 			let msg = err.to_string();
 			if !msg.is_empty() {
-				let _ = writeln!(pi_uutils_ctx::stderr(), "date: {msg}");
+				let _ = writeln!(veyyon_uutils_ctx::stderr(), "date: {msg}");
 			}
 			if code == 0 { 1 } else { code }
 		},
@@ -702,7 +702,7 @@ fn date_main(matches: &ArgMatches) -> UResult<()> {
 				};
 				if settings.debug {
 					let _ = writeln!(
-						pi_uutils_ctx::stderr(),
+						veyyon_uutils_ctx::stderr(),
 						"date: warning: using midnight as starting time: 00:00:00"
 					);
 				}
@@ -767,14 +767,14 @@ fn date_main(matches: &ArgMatches) -> UResult<()> {
 		},
 		// pi-uutils: `-f -` reads the context stdin, not the process stdin.
 		DateSource::Stdin => parse_dates_from_reader(
-			pi_uutils_ctx::stdin(),
+			veyyon_uutils_ctx::stdin(),
 			&now,
 			DebugOptions::new(settings.debug, true),
 		),
 		DateSource::File(path) => {
 			// pi-uutils: resolve the DATEFILE operand against the shell working
 			// directory; `path` is kept for display.
-			let resolved = pi_uutils_ctx::resolve(path);
+			let resolved = veyyon_uutils_ctx::resolve(path);
 			if resolved.is_dir() {
 				return Err(USimpleError::new(
 					2,
@@ -788,7 +788,7 @@ fn date_main(matches: &ArgMatches) -> UResult<()> {
 		DateSource::FileMtime(path) => {
 			// pi-uutils: resolve the --reference FILE against the shell working
 			// directory; `path` is kept for display.
-			let metadata = std::fs::metadata(pi_uutils_ctx::resolve(path))
+			let metadata = std::fs::metadata(veyyon_uutils_ctx::resolve(path))
 				.map_err_context(|| path.as_os_str().maybe_quote().to_string())?;
 			let mtime = metadata.modified()?;
 			let ts = Timestamp::try_from(mtime)
@@ -813,14 +813,14 @@ fn date_main(matches: &ArgMatches) -> UResult<()> {
 
 	let format_string = make_format_string(&settings);
 	// pi-uutils: buffered context stdout instead of the process stdout.
-	let mut stdout = BufWriter::new(pi_uutils_ctx::stdout());
+	let mut stdout = BufWriter::new(veyyon_uutils_ctx::stdout());
 
 	// Format all the dates
 	let config = Config::new().custom(PosixCustom::new()).lenient(true);
 	for date in dates {
 		// pi-uutils: a DATEFILE/stdin stream can be arbitrarily long; observe
 		// host cancellation between lines.
-		if pi_uutils_ctx::is_cancelled() {
+		if veyyon_uutils_ctx::is_cancelled() {
 			break;
 		}
 		match date {
@@ -847,8 +847,8 @@ fn date_main(matches: &ArgMatches) -> UResult<()> {
 				// pi-uutils: upstream `show!` — report the bad line to the
 				// context stderr, record the failure exit code, and keep
 				// processing the remaining lines.
-				let _ = writeln!(pi_uutils_ctx::stderr(), "date: invalid date '{input}'");
-				pi_uutils_ctx::set_exit_code(1);
+				let _ = writeln!(veyyon_uutils_ctx::stderr(), "date: invalid date '{input}'");
+				veyyon_uutils_ctx::set_exit_code(1);
 			},
 		}
 	}
@@ -1232,14 +1232,14 @@ fn parse_date<S: AsRef<str> + Clone>(
 	let input_str = s.as_ref();
 
 	if dbg_opts.debug {
-		let _ = writeln!(pi_uutils_ctx::stderr(), "date: input string: {input_str}");
+		let _ = writeln!(veyyon_uutils_ctx::stderr(), "date: input string: {input_str}");
 	}
 
 	// First, try to parse any timezone abbreviations
 	if let Some(zoned) = try_parse_with_abbreviation(input_str, now) {
 		if dbg_opts.debug {
 			// pi-uutils: context stderr instead of `stderr().lock()`.
-			let mut err = pi_uutils_ctx::stderr();
+			let mut err = veyyon_uutils_ctx::stderr();
 			let _ = writeln!(
 				err,
 				"date: parsed date part: (Y-M-D) {}",
@@ -1264,7 +1264,7 @@ fn parse_date<S: AsRef<str> + Clone>(
 			if dbg_opts.debug {
 				// Show final parsed date and time
 				// pi-uutils: context stderr instead of `stderr().lock()`.
-				let mut err = pi_uutils_ctx::stderr();
+				let mut err = veyyon_uutils_ctx::stderr();
 				let _ = writeln!(
 					err,
 					"date: parsed date part: (Y-M-D) {}",
@@ -1344,7 +1344,7 @@ mod tests {
 	use std::{collections::HashMap, io::Write, path::PathBuf, sync::Arc};
 
 	use parking_lot::Mutex;
-	use pi_uutils_ctx::ScopeIo;
+	use veyyon_uutils_ctx::ScopeIo;
 
 	use super::*;
 
@@ -1382,7 +1382,7 @@ mod tests {
 			.map(OsString::from)
 			.collect();
 
-		let code = pi_uutils_ctx::scope(io, || run(argv));
+		let code = veyyon_uutils_ctx::scope(io, || run(argv));
 
 		let out_str = String::from_utf8(stdout_buf.lock().clone()).unwrap();
 		let err_str = String::from_utf8(stderr_buf.lock().clone()).unwrap();
@@ -1488,7 +1488,7 @@ mod tests {
 		std::fs::write(root.join("dates.txt"), "2026-01-02 03:04:05\n@0\n").unwrap();
 
 		// Relative operand + scope cwd differing from the process cwd: only the
-		// call-site `pi_uutils_ctx::resolve` patch makes this find the file.
+		// call-site `veyyon_uutils_ctx::resolve` patch makes this find the file.
 		let (code, stdout, stderr) = run_in(root, vec!["-u", "-f", "dates.txt", "+%F"]);
 		assert_eq!(code, 0);
 		assert_eq!(stdout, "2026-01-02\n1970-01-01\n");

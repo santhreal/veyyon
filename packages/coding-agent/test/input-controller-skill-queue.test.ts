@@ -7,23 +7,23 @@
  */
 import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from "bun:test";
 import * as path from "node:path";
-import { Agent } from "@veyyon/pi-agent-core";
-import type { ImageContent, TextContent } from "@veyyon/pi-ai";
-import { getBundledModel } from "@veyyon/pi-catalog/models";
-import { ModelRegistry } from "@veyyon/pi-coding-agent/config/model-registry";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
-import type { Skill } from "@veyyon/pi-coding-agent/extensibility/skills";
-import { EventController } from "@veyyon/pi-coding-agent/modes/controllers/event-controller";
-import { InputController } from "@veyyon/pi-coding-agent/modes/controllers/input-controller";
-import { getThemeByName, setThemeInstance } from "@veyyon/pi-coding-agent/modes/theme/theme";
-import type { CompactionQueuedMessage, InteractiveModeContext } from "@veyyon/pi-coding-agent/modes/types";
-import { UiHelpers } from "@veyyon/pi-coding-agent/modes/utils/ui-helpers";
-import { AgentSession, type AgentSessionEvent } from "@veyyon/pi-coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/pi-coding-agent/session/auth-storage";
-import { SKILL_PROMPT_MESSAGE_TYPE, type SkillPromptDetails } from "@veyyon/pi-coding-agent/session/messages";
-import { SessionManager } from "@veyyon/pi-coding-agent/session/session-manager";
-import { Container } from "@veyyon/pi-tui";
-import { TempDir } from "@veyyon/pi-utils";
+import { Agent } from "@veyyon/agent-core";
+import type { ImageContent, TextContent } from "@veyyon/ai";
+import { getBundledModel } from "@veyyon/catalog/models";
+import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import type { Skill } from "@veyyon/coding-agent/extensibility/skills";
+import { EventController } from "@veyyon/coding-agent/modes/controllers/event-controller";
+import { InputController } from "@veyyon/coding-agent/modes/controllers/input-controller";
+import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
+import type { CompactionQueuedMessage, InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
+import { UiHelpers } from "@veyyon/coding-agent/modes/utils/ui-helpers";
+import { AgentSession, type AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session";
+import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
+import { SKILL_PROMPT_MESSAGE_TYPE, type SkillPromptDetails } from "@veyyon/coding-agent/session/messages";
+import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { Container } from "@veyyon/tui";
+import { TempDir } from "@veyyon/utils";
 
 type StubEditor = {
 	setText: (text: string) => void;

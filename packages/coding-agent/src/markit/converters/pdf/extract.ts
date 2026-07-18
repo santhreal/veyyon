@@ -11,7 +11,7 @@
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { getAgentDir } from "@veyyon/pi-utils";
+import { errorMessage, getAgentDir } from "@veyyon/utils";
 import type * as mupdf from "mupdf";
 import { type EmbeddedMupdfModuleFiles, loadEmbeddedMupdfModuleFiles } from "../../../utils/mupdf-wasm-embed";
 import type { ImageRegion, PageContent, Segment, TextBox } from "./types";
@@ -63,7 +63,7 @@ async function loadMupdf(): Promise<typeof mupdf> {
 			} catch (err) {
 				throw new Error(
 					`Failed to materialize the embedded mupdf runtime under ${path.join(getAgentDir(), "cache", "mupdf")}: ` +
-						`${err instanceof Error ? err.message : String(err)}. ` +
+						`${errorMessage(err)}. ` +
 						`PDF conversion needs a writable agent cache dir — check permissions/disk space, or remove the dir to force a rewrite.`,
 					{ cause: err },
 				);

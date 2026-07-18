@@ -1,4 +1,4 @@
-import { logger } from "@veyyon/pi-utils";
+import { formatCount, logger } from "@veyyon/utils";
 import type { AgentSession } from "../session/agent-session";
 import { type BankScope, ensureBankExists } from "./bank";
 import type { HindsightApi, MemoryItemInput } from "./client";
@@ -178,10 +178,9 @@ export class HindsightRetainQueue {
 	}
 
 	#notifyRetainFailure(count: number, errorText: string): void {
-		const noun = count === 1 ? "memory" : "memories";
 		this.#state.session.emitNotice(
 			"warning",
-			`Memory retention failed for ${count} ${noun}: ${errorText}`,
+			`Memory retention failed for ${formatCount("memory", count)}: ${errorText}`,
 			"Hindsight",
 		);
 	}

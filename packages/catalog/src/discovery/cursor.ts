@@ -327,7 +327,7 @@ function pickModelDisplayName(model: CursorModelDetailsValue, fallbackId: string
  * Infers input modalities for Cursor models without a bundled reference.
  *
  * `GetUsableModels` carries no per-model modality metadata, so classification
- * falls back to the model family: families that are multimodal in OMP's own
+ * falls back to the model family: families that are multimodal in Veyyon's own
  * native catalogs accept images, everything else stays text-only. Mirrors
  * `inferInputFromGeminiId` in ./gemini.ts.
  */

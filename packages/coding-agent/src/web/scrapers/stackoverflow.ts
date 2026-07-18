@@ -1,6 +1,14 @@
-import { tryParseJson } from "@veyyon/pi-utils";
-import type { RenderResult, SpecialHandler } from "./types";
-import { buildResult, formatIsoDate, htmlToBasicMarkdown, loadPage } from "./types";
+import { tryParseJson } from "@veyyon/utils";
+import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
+import {
+	buildResult,
+	formatIsoDate,
+	htmlToBasicMarkdown,
+	loadFailure,
+	loadPage,
+	scraperDegrade,
+	tryParseUrl,
+} from "./types";
 
 interface SOQuestion {
 	title: string;
@@ -61,9 +69,10 @@ export const handleStackOverflow: SpecialHandler = async (
 	url: string,
 	timeout: number,
 	signal?: AbortSignal,
-): Promise<RenderResult | null> => {
+): Promise<RenderResult | ScraperDegrade | null> => {
 	try {
-		const parsed = new URL(url);
+		const parsed = tryParseUrl(url);
+		if (!parsed) return null;
 		const site = getSiteParam(parsed.hostname);
 		if (!site) return null;
 
@@ -78,7 +87,7 @@ export const handleStackOverflow: SpecialHandler = async (
 		const apiUrl = `https://api.stackexchange.com/2.3/questions/${questionId}?order=desc&sort=votes&site=${site}&filter=withbody`;
 		const qResult = await loadPage(apiUrl, { timeout, signal });
 
-		if (!qResult.ok) return null;
+		if (!qResult.ok) return scraperDegrade("stackoverflow", loadFailure(qResult));
 
 		const qData = tryParseJson<{ items: SOQuestion[] }>(qResult.content);
 		if (!qData?.items?.length) return null;
@@ -114,7 +123,7 @@ export const handleStackOverflow: SpecialHandler = async (
 			fetchedAt,
 			notes: [`Fetched via Stack Exchange API (site=${site})`],
 		});
-	} catch {}
-
-	return null;
+	} catch (error) {
+		return scraperDegrade("stackoverflow", error);
+	}
 };

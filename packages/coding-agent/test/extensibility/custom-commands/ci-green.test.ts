@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
-import * as piCodingAgent from "@veyyon/pi-coding-agent";
-import { GreenCommand } from "@veyyon/pi-coding-agent/extensibility/custom-commands/bundled/ci-green";
-import type { CustomCommandAPI } from "@veyyon/pi-coding-agent/extensibility/custom-commands/types";
-import type { HookCommandContext } from "@veyyon/pi-coding-agent/extensibility/hooks/types";
-import type * as TypeBox from "@veyyon/pi-coding-agent/extensibility/typebox";
-import * as git from "@veyyon/pi-coding-agent/utils/git";
+import * as piCodingAgent from "@veyyon/coding-agent";
+import { GreenCommand } from "@veyyon/coding-agent/extensibility/custom-commands/bundled/ci-green";
+import type { CustomCommandAPI } from "@veyyon/coding-agent/extensibility/custom-commands/types";
+import type { HookCommandContext } from "@veyyon/coding-agent/extensibility/hooks/types";
+import type * as TypeBox from "@veyyon/coding-agent/extensibility/typebox";
+import * as git from "@veyyon/coding-agent/utils/git";
 import * as arktype from "arktype";
 import * as zod from "zod/v4";
 

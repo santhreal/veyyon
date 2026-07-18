@@ -1,4 +1,4 @@
-import { $env } from "@veyyon/pi-utils";
+import { $env, trimTrailingSlashes } from "@veyyon/utils";
 import { getKimiCommonHeaders } from "../registry/oauth/kimi";
 import type {
 	UsageAmount,
@@ -34,7 +34,7 @@ type KimiUsageRow = {
 function normalizeBaseUrl(baseUrl?: string): string {
 	const envBase = $env.KIMI_CODE_BASE_URL?.trim();
 	const candidate = baseUrl?.trim() || envBase || DEFAULT_BASE_URL;
-	return candidate.replace(/\/+$/, "");
+	return trimTrailingSlashes(candidate);
 }
 
 function buildUsageUrl(baseUrl: string): string {

@@ -1,23 +1,16 @@
 # How to read this book
 
-This handbook has three kinds of chapters. Knowing which is which keeps the record accurate.
+## Structure
 
-## Chapter status labels
+- **Using** — install, config, and operator workflows.
+- **Features** — one topic per page (approvals, plan mode, profiles, …).
+- **Reference** — CLI flags, slash commands, keybindings, env vars.
+- **Architecture / repair / edit** — how the harness implements those surfaces.
 
-Every chapter opens with a status line:
-
-- **Built & verified**, the feature is shipped and works end to end.
-- **In progress**, partially built; the chapter says exactly what works and what does not yet.
-- **Spec — not shipped**, a mechanism with a clear target shape, documented with the failure mode it
-  fixes. Spec chapters do not claim the work is done.
+Cross-links point at the page that owns a concept; prefer that page over repeating the full contract elsewhere.
 
 ## Conventions
 
-- **Provenance.** When a technique is adapted from prior art, the source and its license are named
-  briefly and collected in [Acknowledgements](../acknowledgements.md). Veyyon adapts MIT/Apache
-  code with attribution and studies proprietary code clean-room.
-- **Numbers have sources.** A quoted measurement names who measured it. Veyyon's own numbers are
-  marked as such; cited third-party numbers are marked as theirs.
-- **The lever.** Each optimization names which thesis lever it moves, *edit format*, *control flow*,
-  or a supporting concern (*cost*, *robustness*, *coherence*). If it doesn't move a lever, it doesn't
-  belong.
+- **Paths and keys** are written as the product uses them (`~/.veyyon/profiles/default/agent/config.yml`, `tools.approvalMode`).
+- **Prior art** is named with license when a technique is adapted; see [Acknowledgements](../acknowledgements.md).
+- **Measurements** state the source (this project’s benchmarks vs third-party). If a number has no method, it does not belong in reference material.

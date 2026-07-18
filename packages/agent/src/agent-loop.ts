@@ -18,16 +18,16 @@ import {
 	type TSchema,
 	toolWireSchema,
 	validateToolArguments,
-} from "@veyyon/pi-ai";
+} from "@veyyon/ai";
 import {
 	type Dialect,
 	encodeInbandToolHistory,
 	renderInbandToolPrompt,
 	renderToolExamples,
 	wrapInbandToolStream,
-} from "@veyyon/pi-ai/dialect";
-import * as AIError from "@veyyon/pi-ai/error";
-import { type CursorExecResolvedCarrier, kCursorExecResolved } from "@veyyon/pi-ai/utils/block-symbols";
+} from "@veyyon/ai/dialect";
+import * as AIError from "@veyyon/ai/error";
+import { type CursorExecResolvedCarrier, kCursorExecResolved } from "@veyyon/ai/utils/block-symbols";
 import {
 	createHarmonyAuditEvent,
 	detectHarmonyLeakInAssistantMessage,
@@ -37,10 +37,10 @@ import {
 	isHarmonyLeakMitigationTarget,
 	recoverHarmonyToolCall,
 	signalListLabel,
-} from "@veyyon/pi-ai/utils/harmony-leak";
-import { preferredDialect } from "@veyyon/pi-catalog/identity";
-import { logger, sanitizeText, structuredCloneJSON } from "@veyyon/pi-utils";
-import { INTENT_FIELD } from "@veyyon/pi-wire";
+} from "@veyyon/ai/utils/harmony-leak";
+import { preferredDialect } from "@veyyon/catalog/identity";
+import { formatCount, logger, sanitizeText, structuredCloneJSON } from "@veyyon/utils";
+import { INTENT_FIELD } from "@veyyon/wire";
 import { agentPauseGate } from "./pause";
 import { type AgentRunCoverage, type AgentRunSummary, ToolCallBlockedError } from "./run-collector";
 import {
@@ -158,13 +158,13 @@ class HarmonyLeakInterruption extends Error {
 }
 /**
  * Resolve the effective owned dialect for a request: the configured value (or
- * per-model resolver) wins, then the `PI_DIALECT` env override, else native
+ * per-model resolver) wins, then the `VEYYON_DIALECT` env override, else native
  * tool calling. The single owner of this precedence — both the agent loop and
  * side-channel requests go through here.
  */
 export function resolveConfiguredDialect(configured: ConfiguredDialect | undefined, model: Model): Dialect | undefined {
 	const resolved = typeof configured === "function" ? configured(model) : configured;
-	return resolved ?? resolveOwnedDialectFromEnv(Bun.env.PI_DIALECT);
+	return resolved ?? resolveOwnedDialectFromEnv(Bun.env.VEYYON_DIALECT);
 }
 
 export function resolveOwnedDialectFromEnv(value: string | undefined): Dialect | undefined {
@@ -320,7 +320,7 @@ function coerceToolResult(raw: unknown): { result: AgentToolResult<unknown>; mal
 	if (invalidBlocks > 0) {
 		content.push({
 			type: "text",
-			text: `Tool returned an invalid result: ${invalidBlocks} content block${invalidBlocks === 1 ? "" : "s"} had an unsupported shape.`,
+			text: `Tool returned an invalid result: ${formatCount("content block", invalidBlocks)} had an unsupported shape.`,
 		});
 	}
 	const isError = explicitError || invalidBlocks > 0;
@@ -647,7 +647,7 @@ function injectIntentIntoSchema(
 /**
  * Cross-request cache for {@link normalizeTools} (P7, BACKLOG perf hotspots).
  * `toolWireSchema`/`stripSchemaDescriptions` are already stamped per-tool (see
- * `@veyyon/pi-ai/utils/schema/stamps`), so the expensive schema conversion
+ * `@veyyon/ai/utils/schema/stamps`), so the expensive schema conversion
  * itself is not repeated — but every call still re-runs the outer `.map()`
  * (object spreads, `injectIntentIntoSchema`, `renderToolExamples`) even when
  * `tools` and the flags are unchanged. Callers like `takeSnapshot` in
@@ -669,7 +669,7 @@ export function normalizeTools(
 	pruneDescriptions = false,
 ): Context["tools"] {
 	if (!tools) return tools;
-	injectIntent = injectIntent && Bun.env.PI_NO_INTENT !== "1";
+	injectIntent = injectIntent && Bun.env.VEYYON_NO_INTENT !== "1";
 	const cacheKey = `${injectIntent}|${exampleDialect ?? ""}|${pruneDescriptions}`;
 	const cached = normalizedToolsCache.get(tools);
 	if (cached && cached.key === cacheKey) return cached.result;
@@ -1300,8 +1300,8 @@ async function streamAssistantResponse(
 	}
 
 	// Owned tool calling: take tool calls away from the provider and run them
-	// through the selected in-band prompt dialect. `PI_DIALECT=1` still
-	// force-enables GLM; `PI_DIALECT=<dialect>` force-enables that dialect.
+	// through the selected in-band prompt dialect. `VEYYON_DIALECT=1` still
+	// force-enables GLM; `VEYYON_DIALECT=<dialect>` force-enables that dialect.
 	let promptToolWireTools: Context["tools"];
 	if (ownedDialect && llmContext.tools && llmContext.tools.length > 0) {
 		promptToolWireTools = llmContext.tools;

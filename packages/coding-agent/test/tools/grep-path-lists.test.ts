@@ -2,25 +2,22 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "bun:test"
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { AgentMessage } from "@veyyon/pi-agent-core";
-import { validateToolArguments } from "@veyyon/pi-ai/utils/validation";
-import { resetSettingsForTest, Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { canonicalSnapshotKey } from "@veyyon/pi-coding-agent/edit/file-snapshot-store";
-import type { RenderResultOptions } from "@veyyon/pi-coding-agent/extensibility/custom-tools/types";
-import { AgentTranscriptViewer } from "@veyyon/pi-coding-agent/modes/components/agent-transcript-viewer";
-import { TreeSelectorComponent } from "@veyyon/pi-coding-agent/modes/components/tree-selector";
-import type {
-	ObservableSession,
-	SessionObserverRegistry,
-} from "@veyyon/pi-coding-agent/modes/session-observer-registry";
-import type { Theme } from "@veyyon/pi-coding-agent/modes/theme/theme";
-import { initTheme } from "@veyyon/pi-coding-agent/modes/theme/theme";
-import { AgentRegistry } from "@veyyon/pi-coding-agent/registry/agent-registry";
-import type { SessionEntry, SessionTreeNode } from "@veyyon/pi-coding-agent/session/session-entries";
-import { ToolChoiceQueue } from "@veyyon/pi-coding-agent/session/tool-choice-queue";
-import { createTools, type ToolSession } from "@veyyon/pi-coding-agent/tools";
-import { Text } from "@veyyon/pi-tui";
-import { removeWithRetries } from "@veyyon/pi-utils";
+import type { AgentMessage } from "@veyyon/agent-core";
+import { validateToolArguments } from "@veyyon/ai/utils/validation";
+import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
+import { canonicalSnapshotKey } from "@veyyon/coding-agent/edit/file-snapshot-store";
+import type { RenderResultOptions } from "@veyyon/coding-agent/extensibility/custom-tools/types";
+import { AgentTranscriptViewer } from "@veyyon/coding-agent/modes/components/agent-transcript-viewer";
+import { TreeSelectorComponent } from "@veyyon/coding-agent/modes/components/tree-selector";
+import type { ObservableSession, SessionObserverRegistry } from "@veyyon/coding-agent/modes/session-observer-registry";
+import type { Theme } from "@veyyon/coding-agent/modes/theme/theme";
+import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";
+import type { SessionEntry, SessionTreeNode } from "@veyyon/coding-agent/session/session-entries";
+import { ToolChoiceQueue } from "@veyyon/coding-agent/session/tool-choice-queue";
+import { createTools, type ToolSession } from "@veyyon/coding-agent/tools";
+import { Text } from "@veyyon/tui";
+import { removeWithRetries } from "@veyyon/utils";
 import { grepToolRenderer } from "../../src/tools/grep";
 
 function createTestSession(cwd: string, overrides: Partial<ToolSession> = {}): ToolSession {

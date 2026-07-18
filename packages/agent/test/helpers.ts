@@ -1,4 +1,4 @@
-import type { AssistantMessage, Usage, UserMessage } from "@veyyon/pi-ai";
+import type { AssistantMessage, Usage, UserMessage } from "@veyyon/ai";
 
 export function createUserMessage(text: string): UserMessage {
 	return { role: "user", content: text, timestamp: Date.now() };

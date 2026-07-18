@@ -1,4 +1,4 @@
-import { logger, toError } from "@veyyon/pi-utils";
+import { logger, toError } from "@veyyon/utils";
 import {
 	IndexedSessionStorage,
 	type SessionStorageBackend,
@@ -30,7 +30,7 @@ export interface RedisSessionStorageOptions {
 	/** A connected `bun:redis` RedisClient (or any compatible adapter). */
 	client: RedisSessionStorageClient;
 	/**
-	 * Key prefix applied to every Redis key this storage owns. Default `omp:sessions:`.
+	 * Key prefix applied to every Redis key this storage owns. Default `veyyon:sessions:`.
 	 * Trailing colon is preserved verbatim — set to a project-scoped prefix to share
 	 * one Redis instance between multiple agents.
 	 */
@@ -42,12 +42,8 @@ export interface RedisSessionStorageOptions {
 	scanCount?: number;
 }
 
-// Kept as "omp:" (not renamed to "veyyon:") for back-compat: this is a Redis
-// key namespace, not a user-facing string. Renaming it would orphan every
-// session key already written under the old prefix in deployments upgrading
-// in place, with no migration path. Override via `prefix` if a clean
-// namespace is needed for a new deployment.
-const DEFAULT_PREFIX = "omp:sessions:";
+// Override via `prefix` when a deployment needs its own key namespace.
+const DEFAULT_PREFIX = "veyyon:sessions:";
 const DEFAULT_SCAN_COUNT = 500;
 
 function encodeTitleMeta(title: SessionTitleUpdate): string {

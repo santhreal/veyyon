@@ -6,9 +6,9 @@
  * internals, which massively overcounts.
  */
 import { describe, expect, it, vi } from "bun:test";
-import type { AgentMessage } from "@veyyon/pi-agent-core";
-import * as compactionModule from "@veyyon/pi-agent-core/compaction";
-import { arkToWireSchema } from "@veyyon/pi-ai/utils/schema";
+import type { AgentMessage } from "@veyyon/agent-core";
+import * as compactionModule from "@veyyon/agent-core/compaction";
+import { arkToWireSchema } from "@veyyon/ai/utils/schema";
 import {
 	type ContextBreakdown,
 	computeNonMessageBreakdown,
@@ -16,7 +16,7 @@ import {
 	computeStoredMessagesTokens,
 	estimateToolSchemaTokens,
 	renderContextUsage,
-} from "@veyyon/pi-coding-agent/modes/utils/context-usage";
+} from "@veyyon/coding-agent/modes/utils/context-usage";
 import { type } from "arktype";
 
 describe("estimateToolSchemaTokens", () => {

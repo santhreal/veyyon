@@ -13,7 +13,7 @@
  *    prompt re-processing on llama.cpp.
  *
  * The prior assistant turn had streamed `reasoning_content` deltas (Qwen3
- * thinking output). The OMP-side `Context` preserved those as a
+ * thinking output). The Veyyon-side `Context` preserved those as a
  * `{ type: "thinking", thinkingSignature: "reasoning_content" }` block on the
  * assistant message, but `convertMessages` dropped the field when re-serializing
  * for the next request because the llama.cpp compat profile carried none of the
@@ -40,14 +40,11 @@
  * This file pins the wire output across the relevant axes.
  */
 import { describe, expect, it } from "bun:test";
-import { renderDemotedThinking } from "@veyyon/pi-ai/dialect";
-import { convertMessages } from "@veyyon/pi-ai/providers/openai-completions";
-import {
-	applyChatCompletionsReasoningParams,
-	type OpenAICompletionsParams,
-} from "@veyyon/pi-ai/providers/openai-shared";
-import type { AssistantMessage, Message, Model, ModelSpec, ThinkingContent, UserMessage } from "@veyyon/pi-ai/types";
-import { buildModel } from "@veyyon/pi-catalog/build";
+import { renderDemotedThinking } from "@veyyon/ai/dialect";
+import { convertMessages } from "@veyyon/ai/providers/openai-completions";
+import { applyChatCompletionsReasoningParams, type OpenAICompletionsParams } from "@veyyon/ai/providers/openai-shared";
+import type { AssistantMessage, Message, Model, ModelSpec, ThinkingContent, UserMessage } from "@veyyon/ai/types";
+import { buildModel } from "@veyyon/catalog/build";
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
 	return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -431,7 +428,7 @@ describe("llama.cpp warm-prefix preservation (#3528)", () => {
 
 	it("leaves qwenPreserveThinking off for cloud Qwen hosts", () => {
 		// Alibaba's Dashscope and Qwen Portal own the slot lifecycle on the
-		// cloud side; OMP isn't responsible for KV-cache invalidation there,
+		// cloud side; Veyyon isn't responsible for KV-cache invalidation there,
 		// and `preserve_thinking` is opt-in per the Alibaba docs. Stay
 		// minimal on the wire unless the user opts in via `compat`.
 		const dashscope = llamaCppQwenModel({

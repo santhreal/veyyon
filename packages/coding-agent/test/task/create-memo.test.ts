@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { TaskTool } from "@veyyon/pi-coding-agent/task";
-import * as discoveryModule from "@veyyon/pi-coding-agent/task/discovery";
-import type { ToolSession } from "@veyyon/pi-coding-agent/tools";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import { TaskTool } from "@veyyon/coding-agent/task";
+import * as discoveryModule from "@veyyon/coding-agent/task/discovery";
+import type { ToolSession } from "@veyyon/coding-agent/tools";
 
 const TEST_AGENTS = [
 	{
@@ -46,7 +46,7 @@ describe("TaskTool.create discovery memo", () => {
 			.mockResolvedValue({ agents: TEST_AGENTS, projectAgentsDir: null });
 
 		await TaskTool.create(createSession("/tmp"));
-		await TaskTool.create(createSession("/tmp/omp-memo-other"));
+		await TaskTool.create(createSession("/tmp/veyyon-memo-other"));
 
 		expect(spy).toHaveBeenCalledTimes(2);
 	});

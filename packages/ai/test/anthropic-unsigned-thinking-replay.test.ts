@@ -1,8 +1,8 @@
 import { describe, expect, it } from "bun:test";
-import { renderDemotedThinking } from "@veyyon/pi-ai/dialect";
-import { convertAnthropicMessages, streamAnthropic } from "@veyyon/pi-ai/providers/anthropic";
-import type { AssistantMessage, Message, Model, ModelSpec, ToolResultMessage, UserMessage } from "@veyyon/pi-ai/types";
-import { buildModel } from "@veyyon/pi-catalog/build";
+import { renderDemotedThinking } from "@veyyon/ai/dialect";
+import { convertAnthropicMessages, streamAnthropic } from "@veyyon/ai/providers/anthropic";
+import type { AssistantMessage, Message, Model, ModelSpec, ToolResultMessage, UserMessage } from "@veyyon/ai/types";
+import { buildModel } from "@veyyon/catalog/build";
 
 /**
  * Regression: Anthropic-compatible reasoning endpoints often emit `thinking`

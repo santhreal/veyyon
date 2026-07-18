@@ -1,20 +1,16 @@
-# Soundness and telemetry
+# Observability for repair and sessions
 
-> **Status: Partial.** Veyyon emits usage and session statistics, and the repair seam is shipped; the
-> bounded repair telemetry and proptest soundness guarantees are **Spec — not shipped**.
+## Usage and sessions
 
-## Shipped observability
+- `/usage` in the TUI and `veyyon stats` on the CLI — token and usage views
+- Status line token accounting (`token_*`, `context_pct`, `cost`)
+- Coding-agent structured logger
 
-- `/stats` and `veyyon stats` — usage dashboards when enabled
-- Session token accounting on the status line (`token_*`, `context_pct`, `cost`)
-- Structured logging via the coding-agent logger
+## OpenTelemetry
 
-## Target
+When `OTEL_EXPORTER_OTLP_ENDPOINT` or `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` is set, the process registers an OTLP/protobuf trace exporter and exports agent-loop spans (`invoke_agent`, `chat`, `execute_tool`, …). Standard `OTEL_*` env vars apply (`OTEL_SERVICE_NAME`, headers, `OTEL_SDK_DISABLED`, `OTEL_TRACES_EXPORTER=none`). Transport is `http/protobuf` only. See `packages/coding-agent/src/telemetry-export.ts`.
 
-When the bounded repair telemetry ships:
+## Related
 
-- Every repair attempt records `(model, tool, outcome)` with fixed cardinality
-- Optional file sink for repair shape fingerprints (not metric labels)
-- Property tests over parse/repair generators (no panics; repaired JSON strict-validates)
-
-See [Observability](../observability/overview.md) for what exists today.
+- [Observability](../observability/overview.md)
+- [Repair cascade](./cascade.md)

@@ -10,8 +10,8 @@ import {
 	renderModalShortcuts,
 	SETTINGS_BROWSE_SHORTCUTS,
 	withCompact,
-} from "@veyyon/pi-coding-agent/modes/components/modal-shell";
-import { initTheme } from "@veyyon/pi-coding-agent/modes/theme/theme";
+} from "@veyyon/coding-agent/modes/components/modal-shell";
+import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 
 await initTheme(false, "unicode", false, "titanium", "light");
 

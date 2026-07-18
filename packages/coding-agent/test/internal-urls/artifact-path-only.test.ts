@@ -2,14 +2,14 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { ArtifactProtocolHandler } from "@veyyon/pi-coding-agent/internal-urls/artifact-protocol";
-import { parseInternalUrl } from "@veyyon/pi-coding-agent/internal-urls/parse";
+import { ArtifactProtocolHandler } from "@veyyon/coding-agent/internal-urls/artifact-protocol";
+import { parseInternalUrl } from "@veyyon/coding-agent/internal-urls/parse";
 import {
 	registerArtifactsDir,
 	resetRegisteredArtifactDirsForTests,
-} from "@veyyon/pi-coding-agent/internal-urls/registry-helpers";
-import { InternalUrlRouter } from "@veyyon/pi-coding-agent/internal-urls/router";
-import { resolveToolSearchScope } from "@veyyon/pi-coding-agent/tools/path-utils";
+} from "@veyyon/coding-agent/internal-urls/registry-helpers";
+import { InternalUrlRouter } from "@veyyon/coding-agent/internal-urls/router";
+import { resolveToolSearchScope } from "@veyyon/coding-agent/tools/path-utils";
 
 /**
  * Path-only callers (search/grep, bash URL expansion) only need the artifact's

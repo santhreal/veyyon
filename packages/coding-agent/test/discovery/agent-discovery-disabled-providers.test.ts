@@ -6,11 +6,11 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { disableProvider, enableProvider } from "@veyyon/pi-coding-agent/capability";
-import { clearCache as clearFsCache } from "@veyyon/pi-coding-agent/capability/fs";
-import { clearClaudePluginRootsCache } from "@veyyon/pi-coding-agent/discovery/helpers";
-import { discoverAgents } from "@veyyon/pi-coding-agent/task/discovery";
-import { removeSyncWithRetries } from "@veyyon/pi-utils";
+import { disableProvider, enableProvider } from "@veyyon/coding-agent/capability";
+import { clearCache as clearFsCache } from "@veyyon/coding-agent/capability/fs";
+import { clearClaudePluginRootsCache } from "@veyyon/coding-agent/discovery/helpers";
+import { discoverAgents } from "@veyyon/coding-agent/task/discovery";
+import { removeSyncWithRetries } from "@veyyon/utils";
 
 const PLUGIN_AGENT_MD = [
 	"---",

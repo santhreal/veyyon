@@ -1,7 +1,7 @@
 # session-stats
 
 Ad-hoc analyses over the local agent session corpus
-(`~/.veyyon/agent/sessions/`). SQLite-backed; data is synced once into the same
+(`~/.veyyon/profiles/default/agent/sessions/`). SQLite-backed; data is synced once into the same
 `~/.veyyon/stats.db` that `packages/stats` uses, then queried by short Python
 scripts.
 
@@ -9,7 +9,7 @@ scripts.
 
 ```
 scripts/session-stats/
-  sync.py          # walks ~/.veyyon/agent/sessions/ and populates ss_* tables
+  sync.py          # walks ~/.veyyon/profiles/default/agent/sessions/ and populates ss_* tables
   analyze.py       # tools | edits | followups subcommands over the synced db
   audit.ts         # LLM-assisted token-usage audit (no sync needed)
   audit-prompt.md  # system prompt for the audit classifier
@@ -95,8 +95,8 @@ per-session cost, per-tool traffic (estimated arg/result tokens plus a
 reads of the same file, the largest single tool results, compactions, and
 edit-failure churn.
 
-The LLM phase (default `anthropic/claude-sonnet-4-6` via `@veyyon/pi-ai`,
-credentials resolved through omp's auth storage — stored key, OAuth, or env
+The LLM phase (default `anthropic/claude-sonnet-4-6` via `@veyyon/ai`,
+credentials resolved through veyyon's auth storage — stored key, OAuth, or env
 var) classifies the costliest sessions: multi-topic sessions that should have
 been split or handed off, task spawns that were wasteful or failed to transfer
 context, and the biggest waste sources with concrete fixes. A final aggregate

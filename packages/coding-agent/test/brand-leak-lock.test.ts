@@ -8,7 +8,7 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import { getOpenRouterHeaders } from "@veyyon/pi-ai";
+import { getOpenRouterHeaders } from "@veyyon/ai";
 import { Glob } from "bun";
 
 const ROOT = `${import.meta.dir}/../../..`;

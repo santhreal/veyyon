@@ -1,17 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
-import * as evalIndex from "@veyyon/pi-coding-agent/eval";
-import * as pyKernel from "@veyyon/pi-coding-agent/eval/py/kernel";
-import type { ToolSession } from "@veyyon/pi-coding-agent/tools";
-import { EvalTool } from "@veyyon/pi-coding-agent/tools/eval";
-import { resolveEvalBackends } from "@veyyon/pi-coding-agent/tools/eval-backends";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import * as evalIndex from "@veyyon/coding-agent/eval";
+import * as pyKernel from "@veyyon/coding-agent/eval/py/kernel";
+import type { ToolSession } from "@veyyon/coding-agent/tools";
+import { EvalTool } from "@veyyon/coding-agent/tools/eval";
+import { resolveEvalBackends } from "@veyyon/coding-agent/tools/eval-backends";
 
 let originalPiPy: string | undefined;
 let originalPiJs: string | undefined;
 let originalPiRb: string | undefined;
 let originalPiJl: string | undefined;
 
-function restoreEnv(name: "PI_PY" | "PI_JS" | "PI_RB" | "PI_JL", value: string | undefined): void {
+function restoreEnv(name: "VEYYON_PY" | "VEYYON_JS" | "VEYYON_RB" | "VEYYON_JL", value: string | undefined): void {
 	if (value === undefined) {
 		delete Bun.env[name];
 		return;
@@ -43,22 +43,22 @@ const mockResult = {
 
 describe("EvalTool language dispatch", () => {
 	beforeEach(() => {
-		originalPiPy = Bun.env.PI_PY;
-		originalPiJs = Bun.env.PI_JS;
-		originalPiRb = Bun.env.PI_RB;
-		originalPiJl = Bun.env.PI_JL;
-		delete Bun.env.PI_PY;
-		delete Bun.env.PI_JS;
-		delete Bun.env.PI_RB;
-		delete Bun.env.PI_JL;
+		originalPiPy = Bun.env.VEYYON_PY;
+		originalPiJs = Bun.env.VEYYON_JS;
+		originalPiRb = Bun.env.VEYYON_RB;
+		originalPiJl = Bun.env.VEYYON_JL;
+		delete Bun.env.VEYYON_PY;
+		delete Bun.env.VEYYON_JS;
+		delete Bun.env.VEYYON_RB;
+		delete Bun.env.VEYYON_JL;
 	});
 
 	afterEach(() => {
 		vi.restoreAllMocks();
-		restoreEnv("PI_PY", originalPiPy);
-		restoreEnv("PI_JS", originalPiJs);
-		restoreEnv("PI_RB", originalPiRb);
-		restoreEnv("PI_JL", originalPiJl);
+		restoreEnv("VEYYON_PY", originalPiPy);
+		restoreEnv("VEYYON_JS", originalPiJs);
+		restoreEnv("VEYYON_RB", originalPiRb);
+		restoreEnv("VEYYON_JL", originalPiJl);
 	});
 
 	it('dispatches to the JS backend when cell.language === "js"', async () => {
@@ -130,7 +130,7 @@ describe("EvalTool language dispatch", () => {
 	});
 
 	it("uses settings for eval backends whose env flag is unset", () => {
-		Bun.env.PI_PY = "1";
+		Bun.env.VEYYON_PY = "1";
 		const settings = Settings.isolated();
 		settings.set("eval.py", false);
 		settings.set("eval.js", false);
@@ -143,8 +143,8 @@ describe("EvalTool language dispatch", () => {
 		});
 	});
 
-	it("lets PI_JS disable js execution even when eval.js is enabled", async () => {
-		Bun.env.PI_JS = "0";
+	it("lets VEYYON_JS disable js execution even when eval.js is enabled", async () => {
+		Bun.env.VEYYON_JS = "0";
 		const settings = Settings.isolated();
 		settings.set("eval.js", true);
 		const tool = new EvalTool(makeSession(settings));
@@ -154,6 +154,6 @@ describe("EvalTool language dispatch", () => {
 				language: "js",
 				code: "const x = 1;",
 			}),
-		).rejects.toThrow(/PI_JS=0/);
+		).rejects.toThrow(/VEYYON_JS=0/);
 	});
 });

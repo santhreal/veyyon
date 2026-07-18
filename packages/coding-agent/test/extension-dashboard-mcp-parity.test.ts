@@ -15,11 +15,11 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { resetSettingsForTest, Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { initializeWithSettings, reset as resetDiscoveryCache } from "@veyyon/pi-coding-agent/discovery";
-import { readMCPConfigFile, setMcpServerEnabled, setServerDisabled } from "@veyyon/pi-coding-agent/mcp/config-writer";
-import { loadAllExtensions } from "@veyyon/pi-coding-agent/modes/components/extensions/state-manager";
-import { __resetDirsFromEnvForTests, getMCPConfigPath, removeWithRetries, setAgentDir } from "@veyyon/pi-utils";
+import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
+import { initializeWithSettings, reset as resetDiscoveryCache } from "@veyyon/coding-agent/discovery";
+import { readMCPConfigFile, setMcpServerEnabled, setServerDisabled } from "@veyyon/coding-agent/mcp/config-writer";
+import { loadAllExtensions } from "@veyyon/coding-agent/modes/components/extensions/state-manager";
+import { __resetDirsFromEnvForTests, getMCPConfigPath, removeWithRetries, setAgentDir } from "@veyyon/utils";
 
 describe("loadAllExtensions MCP parity with /mcp list (issue #3827)", () => {
 	let projectDir = "";
@@ -27,8 +27,8 @@ describe("loadAllExtensions MCP parity with /mcp list (issue #3827)", () => {
 
 	beforeEach(async () => {
 		resetSettingsForTest();
-		projectDir = await fs.mkdtemp(path.join(os.tmpdir(), "omp-3827-project-"));
-		userAgentDir = await fs.mkdtemp(path.join(os.tmpdir(), "omp-3827-user-"));
+		projectDir = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-3827-project-"));
+		userAgentDir = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-3827-user-"));
 
 		// Redirect user-scoped mcp.json (resolved via getAgentDir() at the call
 		// site) into the per-test temp directory so neither the discovery loader

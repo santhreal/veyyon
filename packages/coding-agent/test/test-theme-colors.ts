@@ -1,4 +1,4 @@
-import { initTheme, theme } from "@veyyon/pi-coding-agent/modes/theme/theme";
+import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
 
 // Initialize with dark theme explicitly
 Bun.env.COLORTERM = "truecolor";

@@ -5,7 +5,7 @@
  * Endpoint: POST https://api.synthetic.new/v2/search
  */
 
-import { type ApiKey, type AuthStorage, type FetchImpl, getEnvApiKey, withAuth } from "@veyyon/pi-ai";
+import { type ApiKey, type AuthStorage, type FetchImpl, getEnvApiKey, withAuth } from "@veyyon/ai";
 import type { SearchResponse, SearchSource } from "../../../web/search/types";
 import { SearchProviderError } from "../../../web/search/types";
 import type { SearchParams } from "./base";
@@ -43,28 +43,30 @@ async function callSyntheticSearch(
 	signal?: AbortSignal,
 	fetchImpl: FetchImpl = fetch,
 ): Promise<SyntheticSearchResponse> {
-	const response = await fetchImpl(SYNTHETIC_SEARCH_URL, {
-		method: "POST",
-		headers: {
-			"Content-Type": "application/json",
-			Authorization: `Bearer ${apiKey}`,
-		},
-		body: JSON.stringify({ query }),
-		signal: withHardTimeout(signal),
+	return withHardTimeout(signal, async hardSignal => {
+		const response = await fetchImpl(SYNTHETIC_SEARCH_URL, {
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+				Authorization: `Bearer ${apiKey}`,
+			},
+			body: JSON.stringify({ query }),
+			signal: hardSignal,
+		});
+
+		if (!response.ok) {
+			const errorText = await response.text();
+			const classified = classifyProviderHttpError("synthetic", response.status, errorText);
+			if (classified) throw classified;
+			throw new SearchProviderError(
+				"synthetic",
+				`Synthetic API error (${response.status}): ${errorText}`,
+				response.status,
+			);
+		}
+
+		return (await response.json()) as SyntheticSearchResponse;
 	});
-
-	if (!response.ok) {
-		const errorText = await response.text();
-		const classified = classifyProviderHttpError("synthetic", response.status, errorText);
-		if (classified) throw classified;
-		throw new SearchProviderError(
-			"synthetic",
-			`Synthetic API error (${response.status}): ${errorText}`,
-			response.status,
-		);
-	}
-
-	return (await response.json()) as SyntheticSearchResponse;
 }
 
 /** Execute Synthetic web search. */

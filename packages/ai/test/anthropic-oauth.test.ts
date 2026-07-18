@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
-import { claudeCodeVersion } from "@veyyon/pi-ai/providers/anthropic";
-import { AnthropicOAuthFlow, refreshAnthropicToken } from "@veyyon/pi-ai/registry/oauth/anthropic";
+import { claudeCodeVersion } from "@veyyon/ai/providers/anthropic";
+import { AnthropicOAuthFlow, refreshAnthropicToken } from "@veyyon/ai/registry/oauth/anthropic";
 import {
 	buildAnthropicAuthConfig,
 	buildAnthropicSearchHeaders,
 	buildAnthropicUrl,
-} from "@veyyon/pi-ai/utils/anthropic-auth";
+} from "@veyyon/ai/utils/anthropic-auth";
 import { withEnv } from "./helpers";
 
 afterEach(() => {

@@ -7,7 +7,7 @@
  * surviving message's `TextContent` parts are joined with newlines.
  */
 
-import type { AssistantMessage } from "@veyyon/pi-ai";
+import type { AssistantMessage } from "@veyyon/ai";
 import type { SessionEntry } from "../session/session-entries";
 import { type HindsightMessage, hasSubstantiveContent } from "./content";
 

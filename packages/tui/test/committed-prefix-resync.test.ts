@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { findCommittedPrefixResync } from "@veyyon/pi-tui";
+import { findCommittedPrefixResync } from "@veyyon/tui";
 
 // Regression coverage for the committed-prefix resync seam that decides where the
 // engine re-anchors #committedRows after a component violates the declared-final

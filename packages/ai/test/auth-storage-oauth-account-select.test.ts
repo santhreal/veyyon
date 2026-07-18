@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { type AuthCredentialStore, AuthStorage, SqliteAuthCredentialStore } from "@veyyon/pi-ai/auth-storage";
-import * as oauthUtils from "@veyyon/pi-ai/registry/oauth";
+import { type AuthCredentialStore, AuthStorage, SqliteAuthCredentialStore } from "@veyyon/ai/auth-storage";
+import * as oauthUtils from "@veyyon/ai/registry/oauth";
 
 const PROVIDER = "unit-oauth-select";
 

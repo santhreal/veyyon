@@ -13,7 +13,7 @@
  *   node website/tools/gen-changelog.mjs --no-github     # CHANGELOG only (offline)
  *   node website/tools/gen-changelog.mjs --repo owner/name
  *
- * Reconciliation makes the page honest: a version is shown with a "View on
+ * Reconciliation: a version is shown with a "View on
  * GitHub" link and its real publish date only once GitHub has actually
  * published it; a version finalized in the CHANGELOG but not yet published is
  * marked `pending` (never presented as installable). A published release with
@@ -72,7 +72,7 @@ export function rebrand(text) {
 			.replace(/\s*\(\[#\d+\]\(https?:\/\/[^)]*oh-my-pi[^)]*\)[^)]*\)/g, "")
 			// Drop bare upstream issue/PR links, keeping nothing.
 			.replace(/\[#\d+\]\(https?:\/\/[^)]*oh-my-pi[^)]*\)/g, "")
-			// Internal URI scheme was renamed omp:// → veyyon:// (omp:// is a legacy alias).
+			// Internal URI scheme was renamed omp:// → veyyon://.
 			.replace(/\bomp:\/\//g, "veyyon://")
 			// Release binary assets were `omp-<platform>-<arch>` → `veyyon-…`.
 			.replace(/\bomp-(windows|linux|darwin|macos)\b/g, "veyyon-$1")

@@ -5,7 +5,7 @@
  * takes two positional arguments `(instructions, options)`. This helper splits the
  * union so the same adapter can be reused by print-mode, rpc-mode, and the executor.
  */
-import type { Model } from "@veyyon/pi-ai";
+import type { Model } from "@veyyon/ai";
 import type { CompactOptions } from "./types";
 
 interface CompactableSession {

@@ -34,10 +34,10 @@ pub fn run(argv: Vec<OsString>) -> i32 {
 		Err(err) => {
 			let rendered = err.to_string();
 			if err.use_stderr() {
-				let _ = write!(pi_uutils_ctx::stderr(), "{rendered}");
+				let _ = write!(veyyon_uutils_ctx::stderr(), "{rendered}");
 				return 1;
 			}
-			let _ = write!(pi_uutils_ctx::stdout(), "{rendered}");
+			let _ = write!(veyyon_uutils_ctx::stdout(), "{rendered}");
 			return 0;
 		},
 	};
@@ -56,10 +56,10 @@ pub fn run(argv: Vec<OsString>) -> i32 {
 	};
 
 	match paste(files, serial, delimiters, line_ending) {
-		Ok(()) => pi_uutils_ctx::exit_code(),
+		Ok(()) => veyyon_uutils_ctx::exit_code(),
 		Err(err) => {
 			let code = err.code();
-			let _ = writeln!(pi_uutils_ctx::stderr(), "paste: {err}");
+			let _ = writeln!(veyyon_uutils_ctx::stderr(), "paste: {err}");
 			if code == 0 { 1 } else { code }
 		},
 	}
@@ -69,7 +69,7 @@ pub fn uu_app() -> Command {
 	Command::new("paste")
 		.version(uucore::crate_version!())
 		.about("Merge lines of files")
-		.override_usage(pi_uutils_ctx::format_usage("paste [OPTION]... [FILE]..."))
+		.override_usage(veyyon_uutils_ctx::format_usage("paste [OPTION]... [FILE]..."))
 		.infer_long_args(true)
 		.arg(
 			Arg::new(options::SERIAL)
@@ -113,7 +113,7 @@ fn paste(
 ) -> UResult<()> {
 	let delimiters = parse_delimiters(delimiters)?;
 	// pi-uutils: all `-` operands share the scoped stdin and consume it in order.
-	let stdin = Rc::new(RefCell::new(BufReader::new(pi_uutils_ctx::stdin())));
+	let stdin = Rc::new(RefCell::new(BufReader::new(veyyon_uutils_ctx::stdin())));
 	let mut sources = Vec::with_capacity(filenames.len());
 	for filename in filenames {
 		if filename == "-" {
@@ -121,7 +121,7 @@ fn paste(
 		} else {
 			// pi-uutils: resolve filesystem access against shell cwd, while retaining
 			// the user's spelling in diagnostics.
-			let file = File::open(pi_uutils_ctx::resolve(&filename)).map_err(|err| {
+			let file = File::open(veyyon_uutils_ctx::resolve(&filename)).map_err(|err| {
 				USimpleError::new(1, format!("{}: {}", filename.to_string_lossy(), strip_errno(&err)))
 			})?;
 			sources.push(InputSource::File(BufReader::new(file)));
@@ -129,7 +129,7 @@ fn paste(
 	}
 
 	let source_count = sources.len();
-	let mut stdout = pi_uutils_ctx::stdout();
+	let mut stdout = veyyon_uutils_ctx::stdout();
 	if !serial && source_count == 1 {
 		return write_single_input_source(&mut stdout, sources.pop().unwrap(), line_ending);
 	}
@@ -305,7 +305,7 @@ impl<'a> DelimiterState<'a> {
 
 enum InputSource {
 	File(BufReader<File>),
-	StandardInput(Rc<RefCell<BufReader<pi_uutils_ctx::CtxStdin>>>),
+	StandardInput(Rc<RefCell<BufReader<veyyon_uutils_ctx::CtxStdin>>>),
 }
 
 impl InputSource {

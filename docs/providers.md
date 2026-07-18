@@ -11,7 +11,7 @@ This page covers how providers become available, how credentials are resolved, t
 At startup the model registry assembles its catalog from four sources, in order:
 
 1. The bundled model catalog (every built-in provider and its known models).
-2. Custom provider and model entries from `~/.veyyon/agent/models.yml`.
+2. Custom provider and model entries from `~/.veyyon/profiles/default/agent/models.yml`.
 3. Runtime-discovered models for providers that support discovery (local engines and discovery-enabled gateways).
 4. Providers and models registered by extensions.
 
@@ -35,7 +35,7 @@ When a provider needs an API key, `veyyon` resolves it in this order (first matc
 5. **Provider environment variable** — including values loaded from `.env` files (see [the env-var table](#environment-variables-and-env-files)).
 6. **`models.yml` fallback resolver** — keys for custom providers not otherwise registered.
 
-Stored credentials live in the auth store at `~/.veyyon/agent/agent.db` for local auth, or in the configured auth-broker snapshot when running in broker mode. (`VEYYON_CODING_AGENT_DIR`, legacy `PI_CODING_AGENT_DIR`, relocates the `~/.veyyon/agent` base, and the auth store moves with it.)
+Stored credentials live in the auth store at `~/.veyyon/profiles/default/agent/agent.db` for local auth (or the active profile's `agent.db`), or in the configured auth-broker snapshot when running in broker mode. `VEYYON_CODING_AGENT_DIR` relocates the entire agent directory, and the auth store moves with it.
 
 ### OAuth vs API key, and provider-scoped logins
 
@@ -55,7 +55,7 @@ When a model has no credentials, `veyyon` tells you to run `/login` or set the p
 A custom provider's `apiKey` is resolved as **environment-variable-name-or-literal**: if the value names an existing environment variable, that variable's value is used; otherwise the string itself is the key. Prefixing the value with `!` runs it as a shell command and uses the trimmed stdout (see [Model and Provider Configuration](./models.md) for the full value syntax).
 
 ```yaml
-# ~/.veyyon/agent/models.yml
+# ~/.veyyon/profiles/default/agent/models.yml
 providers:
   my-gateway:
     baseUrl: https://gateway.example.com/v1
@@ -139,11 +139,11 @@ OAuth-backed providers such as `anthropic`, `github-copilot`, `cursor`, `ollama-
 
 1. The process environment inherited by `veyyon` (already-set variables always win).
 2. `<cwd>/.env`
-3. `~/.veyyon/agent/.env`
+3. `~/.veyyon/profiles/default/agent/.env`
 4. `~/.veyyon/.env`
 5. `~/.env`
 
-A variable already present in the process environment is never overwritten by a `.env` file. Among the files, a value set in `<cwd>/.env` wins over `~/.veyyon/agent/.env`, which wins over `~/.veyyon/.env`, which wins over `~/.env`. So a shell-exported `OPENAI_API_KEY` beats every `.env` file, and a project's `<cwd>/.env` beats your home `~/.env`.
+A variable already present in the process environment is never overwritten by a `.env` file. Among the files, a value set in `<cwd>/.env` wins over `~/.veyyon/profiles/default/agent/.env`, which wins over `~/.veyyon/.env`, which wins over `~/.env`. So a shell-exported `OPENAI_API_KEY` beats every `.env` file, and a project's `<cwd>/.env` beats your home `~/.env`.
 
 Project-local `.env` is the simplest way to make one repository use a project-specific gateway, key, or local endpoint:
 
@@ -158,8 +158,7 @@ OLLAMA_BASE_URL=http://127.0.0.1:11434
 - blank lines and lines starting with `#` are ignored;
 - keys must match `[A-Za-z_][A-Za-z0-9_]*` (shell-identifier shape) — other names are dropped;
 - values may be wrapped in single or double quotes, which are stripped;
-- values containing a NUL byte are dropped;
-- an `OMP_`-prefixed key is also mirrored to the matching `PI_`-prefixed name.
+- values containing a NUL byte are dropped.
 
 ## Built-in local engines
 
@@ -183,7 +182,7 @@ Install and run these engines with their own tooling (`ollama serve`, `llama-ser
 Use the `disabledProviders` setting to remove a provider's models from selection:
 
 ```yaml
-# ~/.veyyon/agent/config.yml or <project>/.veyyon/config.yml
+# ~/.veyyon/profiles/default/agent/config.yml or <project>/.veyyon/config.yml
 disabledProviders:
   - anthropic
   - openai
@@ -217,7 +216,7 @@ disabledProviders:
 Settings arrays are **replaced** wholesale by the higher-precedence layer, not merged or appended. If the global file disables three providers and the project file disables one, the project sees only the project list:
 
 ```yaml
-# ~/.veyyon/agent/config.yml
+# ~/.veyyon/profiles/default/agent/config.yml
 disabledProviders:
   - anthropic
   - openai
@@ -283,7 +282,7 @@ Watch the related names. The Google Gemini **API** models use the model provider
 
 ## Custom providers in `models.yml`
 
-Custom providers live in `~/.veyyon/agent/models.yml` under `providers:`. A provider ID defined there participates in the same selection, credential resolution, and `disabledProviders` rules as built-in providers.
+Custom providers live in `~/.veyyon/profiles/default/agent/models.yml` under `providers:`. A provider ID defined there participates in the same selection, credential resolution, and `disabledProviders` rules as built-in providers.
 
 Minimal OpenAI-compatible provider:
 

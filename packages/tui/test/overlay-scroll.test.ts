@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { type Component, CURSOR_MARKER, type Focusable, type OverlayFocusOwner, TUI } from "@veyyon/pi-tui";
+import { type Component, CURSOR_MARKER, type Focusable, type OverlayFocusOwner, TUI } from "@veyyon/tui";
 import { VirtualTerminal } from "./virtual-terminal";
 
 class LineComponent implements Component {
@@ -173,7 +173,7 @@ describe("TUI overlays", () => {
 		// A resize on Warp takes the in-place path (no ED3), so neutralize the
 		// ambient terminal identity to keep the direct-terminal resize/scrollback
 		// assertions below deterministic on any dev machine.
-		for (const key of ["TERM_PROGRAM", "PI_TUI_RESIZE_IN_PLACE"]) {
+		for (const key of ["TERM_PROGRAM", "VEYYON_TUI_RESIZE_IN_PLACE"]) {
 			savedTerminalEnv[key] = Bun.env[key];
 			delete Bun.env[key];
 		}

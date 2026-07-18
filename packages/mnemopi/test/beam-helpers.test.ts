@@ -21,7 +21,7 @@ import {
 	strictFactMatches,
 	temporalBoost,
 	workingMemoryVecSearch,
-} from "@veyyon/pi-mnemopi/core/beam/helpers";
+} from "@veyyon/mnemopi/core/beam/helpers";
 
 describe("beam helper ids, weights, and metadata", () => {
 	it("generates unique timed ids and deterministic stable ids", () => {
@@ -172,5 +172,27 @@ describe("beam vector fallback helpers", () => {
 		} finally {
 			db.close();
 		}
+	});
+
+	it("returns empty on a DB without embedding tables instead of masking errors", () => {
+		// Law-10 gate contract: table absence is a checked, loud-by-design empty
+		// result; anything else (broken handle, corrupt schema) must propagate.
+		const db = new Database(":memory:");
+		try {
+			expect(inMemoryVecSearch(db, [1, 0], 2)).toEqual([]);
+			expect(workingMemoryVecSearch(db, [1, 0], 10, new Date())).toEqual([]);
+			expect(inMemoryVecSearch(db, [], 2)).toEqual([]);
+		} finally {
+			db.close();
+		}
+	});
+
+	it("propagates real DB failures instead of returning empty", () => {
+		const db = new Database(":memory:");
+		db.close();
+		// A closed handle is a broken DB, not an uninitialized one: the old
+		// blanket catch would have rendered this as "no results".
+		expect(() => inMemoryVecSearch(db, [1, 0], 2)).toThrow();
+		expect(() => workingMemoryVecSearch(db, [1, 0], 10, new Date())).toThrow();
 	});
 });

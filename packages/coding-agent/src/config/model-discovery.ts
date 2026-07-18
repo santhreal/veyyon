@@ -5,22 +5,23 @@
  * `discoverModelsByProviderType` with a `DiscoveryContext`; built-in provider
  * discovery lives in pi-catalog's provider-models.
  */
-import { type ApiKey, type FetchImpl, withAuth } from "@veyyon/pi-ai";
-import type { Api, Model, RemoteCompactionConfig } from "@veyyon/pi-ai/types";
-import { buildModel } from "@veyyon/pi-catalog/build";
+import { type ApiKey, type FetchImpl, withAuth } from "@veyyon/ai";
+import type { Api, Model, RemoteCompactionConfig } from "@veyyon/ai/types";
+import { buildModel } from "@veyyon/catalog/build";
 import {
 	getBundledModelReferenceIndex,
 	resolveModelReference,
 	stripBracketedModelIdAffixes,
-} from "@veyyon/pi-catalog/identity";
+} from "@veyyon/catalog/identity";
 import {
 	fetchLiteLLMRichModels,
 	fetchLmStudioNativeModelMetadata,
 	OPENAI_COMPAT_DISCOVERY_DEFAULT_CONTEXT_WINDOW,
 	OPENAI_COMPAT_DISCOVERY_DEFAULT_MAX_TOKENS,
-} from "@veyyon/pi-catalog/provider-models/openai-compat";
-import type { ModelSpec, OpenAICompat } from "@veyyon/pi-catalog/types";
-import { isRecord } from "@veyyon/pi-utils";
+} from "@veyyon/catalog/provider-models/openai-compat";
+import type { ModelSpec, OpenAICompat } from "@veyyon/catalog/types";
+import { isRecord } from "@veyyon/utils";
+import { withScopedTimeoutSignal } from "../utils/fetch-timeout";
 import type { ProviderDiscovery } from "./models-config-schema";
 
 // Default cap on `max_tokens` for auto-discovered models that do not advertise
@@ -34,31 +35,6 @@ import type { ProviderDiscovery } from "./models-config-schema";
 // "socket connection was closed unexpectedly").
 export const DISCOVERY_DEFAULT_CONTEXT_WINDOW = OPENAI_COMPAT_DISCOVERY_DEFAULT_CONTEXT_WINDOW;
 export const DISCOVERY_DEFAULT_MAX_TOKENS = OPENAI_COMPAT_DISCOVERY_DEFAULT_MAX_TOKENS;
-
-/**
- * Run `fn` with an abort signal that fires after `timeoutMs`, clearing the
- * backing timer the instant the operation settles.
- *
- * Unlike the built-in abort-signal timeout API, the timer never outlives the
- * request: on the success path it is cancelled before `fn` resolves, so the
- * signal is never aborted and no pending callback lingers on the heap. A leaked
- * abort-signal timeout (e.g. discovery against a mocked fetch that resolves
- * instantly) fires seconds later and sets its abort `reason` — which crashed
- * Bun's concurrent GC while it marked the signal's wrapped reason during an
- * unrelated allocation (`JSAbortSignal::visitAdditionalChildren`).
- */
-async function withTimeoutSignal<T>(timeoutMs: number, fn: (signal: AbortSignal) => Promise<T>): Promise<T> {
-	const controller = new AbortController();
-	const timer = setTimeout(
-		() => controller.abort(new DOMException("The operation timed out.", "TimeoutError")),
-		timeoutMs,
-	);
-	try {
-		return await fn(controller.signal);
-	} finally {
-		clearTimeout(timer);
-	}
-}
 
 const DEFAULT_OLLAMA_BASE_URL = "http://127.0.0.1:11434";
 const OLLAMA_HOST_DEFAULT_PORT = "11434";
@@ -389,7 +365,7 @@ async function discoverOllamaModelMetadata(
 ): Promise<OllamaDiscoveredModelMetadata | null> {
 	const showUrl = `${endpoint}/api/show`;
 	try {
-		const payload = await withTimeoutSignal(150, async signal => {
+		const payload = await withScopedTimeoutSignal(150, async signal => {
 			const response = await ctx.fetch(showUrl, {
 				method: "POST",
 				headers: { ...(headers ?? {}), "Content-Type": "application/json" },
@@ -442,7 +418,7 @@ export async function discoverOllamaModels(
 	const endpoint = normalizeOllamaBaseUrl(providerConfig.baseUrl);
 	const tagsUrl = `${endpoint}/api/tags`;
 	const headers = { ...(providerConfig.headers ?? {}) };
-	const payload = await withTimeoutSignal(250, async signal => {
+	const payload = await withScopedTimeoutSignal(250, async signal => {
 		const response = await ctx.fetch(tagsUrl, {
 			headers,
 			signal,
@@ -489,7 +465,7 @@ async function discoverLlamaCppServerMetadata(
 ): Promise<LlamaCppDiscoveredServerMetadata | null> {
 	const propsUrl = `${toLlamaCppNativeBaseUrl(baseUrl)}/props`;
 	try {
-		const payload = await withTimeoutSignal(150, async signal => {
+		const payload = await withScopedTimeoutSignal(150, async signal => {
 			const response = await ctx.fetch(propsUrl, {
 				headers,
 				signal,
@@ -523,7 +499,7 @@ export async function discoverLlamaCppModels(
 	let headers = baseHeaders;
 	const attempt = async (h: Record<string, string>) => {
 		const [payload, metadata] = await Promise.all([
-			withTimeoutSignal(250, async signal => {
+			withScopedTimeoutSignal(250, async signal => {
 				const response = await ctx.fetch(modelsUrl, {
 					headers: h,
 					signal,
@@ -587,7 +563,7 @@ export async function discoverLlamaCppModelRuntimeMetadata(
 	const baseHeaders: Record<string, string> = { ...(model.headers ?? {}) };
 	const attempt = async (headers: Record<string, string>) => {
 		const [entries, serverMetadata] = await Promise.all([
-			withTimeoutSignal(250, async signal => {
+			withScopedTimeoutSignal(250, async signal => {
 				const response = await ctx.fetch(modelsUrl, {
 					headers,
 					signal,
@@ -646,7 +622,7 @@ export async function discoverOpenAIModelsList(
 				? fetchLmStudioNativeModelMetadata(baseUrl, ctx.fetch, { headers: h })
 				: Promise.resolve(null);
 		const [payload, nativeMetadata] = await Promise.all([
-			withTimeoutSignal(10_000, async signal => {
+			withScopedTimeoutSignal(10_000, async signal => {
 				const res = await ctx.fetch(modelsUrl, {
 					headers: h,
 					signal,
@@ -749,7 +725,7 @@ export async function discoverLiteLLMModels(
 			}
 			return response;
 		};
-		const models = await withTimeoutSignal(10_000, signal =>
+		const models = await withScopedTimeoutSignal(10_000, signal =>
 			fetchLiteLLMRichModels({
 				api: providerConfig.api,
 				provider: providerConfig.provider,
@@ -809,7 +785,7 @@ export async function discoverProxyModels(
 	const baseHeaders: Record<string, string> = { ...(providerConfig.headers ?? {}) };
 	let headers = baseHeaders;
 	const attempt = async (h: Record<string, string>) =>
-		withTimeoutSignal(10_000, async signal => {
+		withScopedTimeoutSignal(10_000, async signal => {
 			const res = await ctx.fetch(modelsUrl, {
 				headers: h,
 				signal,

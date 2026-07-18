@@ -1,8 +1,8 @@
 import { describe, expect, it } from "bun:test";
-import type { ThinkingLevel } from "@veyyon/pi-agent-core";
-import { buildModel } from "@veyyon/pi-catalog/build";
-import type { ScopedModel } from "@veyyon/pi-coding-agent/config/model-resolver";
-import { buildModelScopeNotification } from "@veyyon/pi-coding-agent/main";
+import type { ThinkingLevel } from "@veyyon/agent-core";
+import { buildModel } from "@veyyon/catalog/build";
+import type { ScopedModel } from "@veyyon/coding-agent/config/model-resolver";
+import { buildModelScopeNotification } from "@veyyon/coding-agent/main";
 
 function scopedModel(id: string): ScopedModel {
 	return {

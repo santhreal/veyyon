@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import type { FileDiagnosticsResult } from "@veyyon/pi-coding-agent/lsp";
-import { DiagnosticsLedger, diagnosticIdentity } from "@veyyon/pi-coding-agent/lsp/diagnostics-ledger";
+import type { FileDiagnosticsResult } from "@veyyon/coding-agent/lsp";
+import { DiagnosticsLedger, diagnosticIdentity } from "@veyyon/coding-agent/lsp/diagnostics-ledger";
 
 const FILE_A = "/repo/src/a.ts";
 const FILE_B = "/repo/src/b.ts";

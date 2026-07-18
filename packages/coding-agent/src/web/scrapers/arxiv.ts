@@ -1,5 +1,5 @@
-import type { RenderResult, SpecialHandler } from "./types";
-import { buildResult, loadPage } from "./types";
+import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
+import { buildResult, loadFailure, loadPage, scraperDegrade, tryParseUrl } from "./types";
 import { convertWithMarkit, fetchBinary } from "./utils";
 
 /**
@@ -9,9 +9,10 @@ export const handleArxiv: SpecialHandler = async (
 	url: string,
 	timeout: number,
 	signal?: AbortSignal,
-): Promise<RenderResult | null> => {
+): Promise<RenderResult | ScraperDegrade | null> => {
 	try {
-		const parsed = new URL(url);
+		const parsed = tryParseUrl(url);
+		if (!parsed) return null;
 		if (parsed.hostname !== "arxiv.org") return null;
 
 		// Extract paper ID from various URL formats
@@ -27,7 +28,7 @@ export const handleArxiv: SpecialHandler = async (
 		const apiUrl = `https://export.arxiv.org/api/query?id_list=${paperId}`;
 		const result = await loadPage(apiUrl, { timeout, signal });
 
-		if (!result.ok) return null;
+		if (!result.ok) return scraperDegrade("arxiv", loadFailure(result));
 
 		// Parse the Atom feed response
 		const { parseHTML } = await import("linkedom");
@@ -77,7 +78,7 @@ export const handleArxiv: SpecialHandler = async (
 			fetchedAt,
 			notes: notes.length ? notes : ["Fetched via arXiv API"],
 		});
-	} catch {}
-
-	return null;
+	} catch (error) {
+		return scraperDegrade("arxiv", error);
+	}
 };

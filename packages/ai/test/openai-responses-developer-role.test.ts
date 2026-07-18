@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 
-import { buildOpenAIResponsesCompat } from "@veyyon/pi-catalog/compat/openai";
+import { buildOpenAIResponsesCompat } from "@veyyon/catalog/compat/openai";
 
 describe("resolveOpenAIResponsesCompat supportsDeveloperRole", () => {
 	it("returns true for openai provider with official API base URL", () => {

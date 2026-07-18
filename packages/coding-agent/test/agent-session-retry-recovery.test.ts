@@ -1,20 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
 import { scheduler } from "node:timers/promises";
-import { Agent } from "@veyyon/pi-agent-core";
-import type { ApiKeyResolveContext, AssistantMessage, AssistantRetryRecovery, Usage } from "@veyyon/pi-ai";
-import { createMockModel } from "@veyyon/pi-ai/providers/mock";
-import * as aiStream from "@veyyon/pi-ai/stream";
-import { getBundledModel } from "@veyyon/pi-catalog/models";
-import { ModelRegistry } from "@veyyon/pi-coding-agent/config/model-registry";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { resolveAssistantErrorPresentation } from "@veyyon/pi-coding-agent/modes/utils/transcript-render-helpers";
-import { AgentSession, type AgentSessionEvent } from "@veyyon/pi-coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/pi-coding-agent/session/auth-storage";
-import { SILENT_ABORT_MARKER } from "@veyyon/pi-coding-agent/session/messages";
-import type { SessionMessageEntry } from "@veyyon/pi-coding-agent/session/session-entries";
-import { SessionManager } from "@veyyon/pi-coding-agent/session/session-manager";
-import { TempDir } from "@veyyon/pi-utils";
+import { Agent } from "@veyyon/agent-core";
+import type { ApiKeyResolveContext, AssistantMessage, AssistantRetryRecovery, Usage } from "@veyyon/ai";
+import { createMockModel } from "@veyyon/ai/providers/mock";
+import * as aiStream from "@veyyon/ai/stream";
+import { getBundledModel } from "@veyyon/catalog/models";
+import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import { resolveAssistantErrorPresentation } from "@veyyon/coding-agent/modes/utils/transcript-render-helpers";
+import { AgentSession, type AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session";
+import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
+import { SILENT_ABORT_MARKER } from "@veyyon/coding-agent/session/messages";
+import type { SessionMessageEntry } from "@veyyon/coding-agent/session/session-entries";
+import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { TempDir } from "@veyyon/utils";
 
 type AutoRetryEndEvent = Extract<AgentSessionEvent, { type: "auto_retry_end" }>;
 

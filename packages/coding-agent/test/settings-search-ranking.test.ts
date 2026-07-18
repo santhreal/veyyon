@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
-import { SETTING_TABS } from "@veyyon/pi-coding-agent/config/settings-schema";
-import { getSettingsForTab } from "@veyyon/pi-coding-agent/modes/components/settings-defs";
-import { fuzzyRank, getSettingItemFilterText, type SettingItem } from "@veyyon/pi-tui";
+import { SETTING_TABS } from "@veyyon/coding-agent/config/settings-schema";
+import { getSettingsForTab } from "@veyyon/coding-agent/modes/components/settings-defs";
+import { fuzzyRank, getSettingItemFilterText, type SettingItem } from "@veyyon/tui";
 
 /**
  * Search over the REAL settings surface, using the same filter text the

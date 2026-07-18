@@ -7,13 +7,13 @@
  * SQLite store, never POSTs the broker sentinel to an OpenAI token endpoint.
  */
 import * as os from "node:os";
-import { type AuthStorage, type FetchImpl, type Model, type OAuthAccess, withOAuthAccess } from "@veyyon/pi-ai";
-import { decodeJwt } from "@veyyon/pi-ai/oauth/openai-codex";
-import { applyCodexResponsesLiteShape } from "@veyyon/pi-ai/providers/openai-codex/request-transformer";
-import { createOpenAICodexCompatibilityMetadata } from "@veyyon/pi-ai/providers/openai-codex-responses";
-import { getBundledModels } from "@veyyon/pi-catalog/models";
-import { CODEX_CLIENT_VERSION, OPENAI_HEADER_VALUES, OPENAI_HEADERS } from "@veyyon/pi-catalog/wire/codex";
-import { $env, readSseJson } from "@veyyon/pi-utils";
+import { type AuthStorage, type FetchImpl, type Model, type OAuthAccess, withOAuthAccess } from "@veyyon/ai";
+import { decodeJwt } from "@veyyon/ai/oauth/openai-codex";
+import { applyCodexResponsesLiteShape } from "@veyyon/ai/providers/openai-codex/request-transformer";
+import { createOpenAICodexCompatibilityMetadata } from "@veyyon/ai/providers/openai-codex-responses";
+import { getBundledModels } from "@veyyon/catalog/models";
+import { CODEX_CLIENT_VERSION, OPENAI_HEADER_VALUES, OPENAI_HEADERS } from "@veyyon/catalog/wire/codex";
+import { $env, readSseJson } from "@veyyon/utils";
 import packageJson from "../../../../package.json" with { type: "json" };
 import type { SearchResponse, SearchSource } from "../../../web/search/types";
 import { SearchProviderError } from "../../../web/search/types";
@@ -59,7 +59,7 @@ function getBundledCodexModels(): CodexSearchModel[] {
 }
 
 function getConfiguredModel(): CodexModelCandidate | undefined {
-	const configuredModel = $env.PI_CODEX_WEB_SEARCH_MODEL?.trim();
+	const configuredModel = $env.VEYYON_CODEX_WEB_SEARCH_MODEL?.trim();
 	if (!configuredModel) return undefined;
 
 	const catalogModel = getBundledCodexModels().find(model => model.id === configuredModel);
@@ -405,134 +405,136 @@ async function callCodexSearch(
 	}
 
 	const fetchImpl = options.fetch ?? fetch;
-	const response = await fetchImpl(url, {
-		method: "POST",
-		headers,
-		body: JSON.stringify(body),
-		signal: withHardTimeout(options.signal),
-	});
+	return withHardTimeout(options.signal, async hardSignal => {
+		const response = await fetchImpl(url, {
+			method: "POST",
+			headers,
+			body: JSON.stringify(body),
+			signal: hardSignal,
+		});
 
-	if (!response.ok) {
-		const errorText = await response.text();
-		const classified = classifyProviderHttpError("codex", response.status, errorText);
-		if (classified) throw classified;
-		throw new SearchProviderError("codex", `Codex API error (${response.status}): ${errorText}`, response.status);
-	}
+		if (!response.ok) {
+			const errorText = await response.text();
+			const classified = classifyProviderHttpError("codex", response.status, errorText);
+			if (classified) throw classified;
+			throw new SearchProviderError("codex", `Codex API error (${response.status}): ${errorText}`, response.status);
+		}
 
-	if (!response.body) {
-		throw new SearchProviderError("codex", "Codex API returned no response body", 500);
-	}
+		if (!response.body) {
+			throw new SearchProviderError("codex", "Codex API returned no response body", 500);
+		}
 
-	// Parse SSE stream
-	const answerParts: string[] = [];
-	const streamedAnswerParts: string[] = [];
-	const sources: SearchSource[] = [];
-	let model = requestedModel;
-	let requestId = "";
-	let usage: { inputTokens: number; outputTokens: number; totalTokens: number } | undefined;
+		// Parse SSE stream
+		const answerParts: string[] = [];
+		const streamedAnswerParts: string[] = [];
+		const sources: SearchSource[] = [];
+		let model = requestedModel;
+		let requestId = "";
+		let usage: { inputTokens: number; outputTokens: number; totalTokens: number } | undefined;
 
-	for await (const rawEvent of readSseJson<Record<string, unknown>>(response.body, options.signal)) {
-		const eventType = typeof rawEvent.type === "string" ? rawEvent.type : "";
-		if (!eventType) continue;
+		for await (const rawEvent of readSseJson<Record<string, unknown>>(response.body, options.signal)) {
+			const eventType = typeof rawEvent.type === "string" ? rawEvent.type : "";
+			if (!eventType) continue;
 
-		if (eventType === "response.output_text.delta") {
-			const delta = typeof rawEvent.delta === "string" ? rawEvent.delta : "";
-			if (delta) {
-				streamedAnswerParts.push(delta);
-			}
-		} else if (eventType === "response.output_item.done") {
-			const item = rawEvent.item as CodexResponseItem | undefined;
-			if (!item) continue;
+			if (eventType === "response.output_text.delta") {
+				const delta = typeof rawEvent.delta === "string" ? rawEvent.delta : "";
+				if (delta) {
+					streamedAnswerParts.push(delta);
+				}
+			} else if (eventType === "response.output_item.done") {
+				const item = rawEvent.item as CodexResponseItem | undefined;
+				if (!item) continue;
 
-			// Handle text message content and extract sources from annotations
-			if (item.type === "message" && item.content) {
-				for (const part of item.content) {
-					if (part.type === "output_text" && part.text) {
-						answerParts.push(part.text);
+				// Handle text message content and extract sources from annotations
+				if (item.type === "message" && item.content) {
+					for (const part of item.content) {
+						if (part.type === "output_text" && part.text) {
+							answerParts.push(part.text);
 
-						// Extract sources from url_citation annotations
-						if (part.annotations) {
-							for (const annotation of part.annotations) {
-								if (annotation.type === "url_citation" && annotation.url) {
-									// Deduplicate by URL
-									addSource(sources, { title: annotation.title ?? annotation.url, url: annotation.url });
+							// Extract sources from url_citation annotations
+							if (part.annotations) {
+								for (const annotation of part.annotations) {
+									if (annotation.type === "url_citation" && annotation.url) {
+										// Deduplicate by URL
+										addSource(sources, { title: annotation.title ?? annotation.url, url: annotation.url });
+									}
 								}
 							}
 						}
 					}
 				}
-			}
 
-			// Handle reasoning summary as part of answer
-			if (item.type === "reasoning" && item.summary) {
-				for (const part of item.summary) {
-					if (part.type === "summary_text" && part.text) {
-						answerParts.push(part.text);
+				// Handle reasoning summary as part of answer
+				if (item.type === "reasoning" && item.summary) {
+					for (const part of item.summary) {
+						if (part.type === "summary_text" && part.text) {
+							answerParts.push(part.text);
+						}
 					}
 				}
-			}
-		} else if (eventType === "response.completed" || eventType === "response.done") {
-			const resp = (rawEvent as { response?: CodexResponse }).response;
-			if (resp) {
-				if (resp.model) model = resp.model;
-				if (resp.id) requestId = resp.id;
-				if (resp.usage) {
-					const cachedTokens = resp.usage.input_tokens_details?.cached_tokens ?? 0;
-					usage = {
-						inputTokens: (resp.usage.input_tokens ?? 0) - cachedTokens,
-						outputTokens: resp.usage.output_tokens ?? 0,
-						totalTokens: resp.usage.total_tokens ?? 0,
-					};
+			} else if (eventType === "response.completed" || eventType === "response.done") {
+				const resp = (rawEvent as { response?: CodexResponse }).response;
+				if (resp) {
+					if (resp.model) model = resp.model;
+					if (resp.id) requestId = resp.id;
+					if (resp.usage) {
+						const cachedTokens = resp.usage.input_tokens_details?.cached_tokens ?? 0;
+						usage = {
+							inputTokens: (resp.usage.input_tokens ?? 0) - cachedTokens,
+							outputTokens: resp.usage.output_tokens ?? 0,
+							totalTokens: resp.usage.total_tokens ?? 0,
+						};
+					}
 				}
+			} else if (eventType === "error") {
+				const code = (rawEvent as { code?: string }).code ?? "";
+				const message = (rawEvent as { message?: string }).message ?? "Unknown error";
+				throw new SearchProviderError("codex", `Codex error (${code}): ${message}`, 500);
+			} else if (eventType === "response.failed") {
+				const resp = (rawEvent as { response?: { error?: { message?: string } } }).response;
+				const errorMessage = resp?.error?.message ?? "Request failed";
+				throw new SearchProviderError("codex", `Codex request failed: ${errorMessage}`, 500);
 			}
-		} else if (eventType === "error") {
-			const code = (rawEvent as { code?: string }).code ?? "";
-			const message = (rawEvent as { message?: string }).message ?? "Unknown error";
-			throw new SearchProviderError("codex", `Codex error (${code}): ${message}`, 500);
-		} else if (eventType === "response.failed") {
-			const resp = (rawEvent as { response?: { error?: { message?: string } } }).response;
-			const errorMessage = resp?.error?.message ?? "Request failed";
-			throw new SearchProviderError("codex", `Codex request failed: ${errorMessage}`, 500);
 		}
-	}
 
-	const finalAnswer = answerParts.join("\n\n").trim();
-	const streamedAnswer = streamedAnswerParts.join("").trim();
-	// Throw to advance the chain whenever Codex emitted nothing but image
-	// placeholder prose — including the case where the streamed delta itself
-	// is the placeholder (the model occasionally streams the same text it
-	// publishes as the final output_text).
-	const finalIsPlaceholder = finalAnswer.length > 0 && isImagePlaceholderAnswer(finalAnswer);
-	const streamedIsPlaceholder = streamedAnswer.length > 0 && isImagePlaceholderAnswer(streamedAnswer);
-	const hasFinalText = finalAnswer.length > 0 && !finalIsPlaceholder;
-	const hasStreamedText = streamedAnswer.length > 0 && !streamedIsPlaceholder;
-	if (!hasFinalText && !hasStreamedText && sources.length === 0) {
-		throw new SearchProviderError("codex", "Codex returned image-only response", 502);
-	}
-	const answer = hasFinalText ? finalAnswer : hasStreamedText ? streamedAnswer : "";
-
-	// Fallback: when Codex omits url_citation annotations, scrape markdown links
-	// and bare URLs from the synthesized answer so callers still receive sources.
-	if (sources.length === 0 && answer.length > 0) {
-		for (const source of extractTextSources(answer)) {
-			addSource(sources, source);
+		const finalAnswer = answerParts.join("\n\n").trim();
+		const streamedAnswer = streamedAnswerParts.join("").trim();
+		// Throw to advance the chain whenever Codex emitted nothing but image
+		// placeholder prose — including the case where the streamed delta itself
+		// is the placeholder (the model occasionally streams the same text it
+		// publishes as the final output_text).
+		const finalIsPlaceholder = finalAnswer.length > 0 && isImagePlaceholderAnswer(finalAnswer);
+		const streamedIsPlaceholder = streamedAnswer.length > 0 && isImagePlaceholderAnswer(streamedAnswer);
+		const hasFinalText = finalAnswer.length > 0 && !finalIsPlaceholder;
+		const hasStreamedText = streamedAnswer.length > 0 && !streamedIsPlaceholder;
+		if (!hasFinalText && !hasStreamedText && sources.length === 0) {
+			throw new SearchProviderError("codex", "Codex returned image-only response", 502);
 		}
-	}
+		const answer = hasFinalText ? finalAnswer : hasStreamedText ? streamedAnswer : "";
 
-	return {
-		answer,
-		sources,
-		model,
-		requestId,
-		usage,
-	};
+		// Fallback: when Codex omits url_citation annotations, scrape markdown links
+		// and bare URLs from the synthesized answer so callers still receive sources.
+		if (sources.length === 0 && answer.length > 0) {
+			for (const source of extractTextSources(answer)) {
+				addSource(sources, source);
+			}
+		}
+
+		return {
+			answer,
+			sources,
+			model,
+			requestId,
+			usage,
+		};
+	});
 }
 
 /**
  * Executes a web search using OpenAI Codex's built-in web search tool.
  *
  * Default-model behavior:
- * - If `PI_CODEX_WEB_SEARCH_MODEL` is set, use it exactly once and surface any
+ * - If `VEYYON_CODEX_WEB_SEARCH_MODEL` is set, use it exactly once and surface any
  *   upstream error verbatim.
  * - Otherwise prefer ChatGPT-account-safe bundled defaults (GPT-5.6 Luna,
  *   Terra, Sol, GPT-5.5, …) and retry the next candidate only when Codex

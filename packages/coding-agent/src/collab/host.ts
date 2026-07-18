@@ -11,8 +11,8 @@
 
 import { timingSafeEqual } from "node:crypto";
 import * as fs from "node:fs/promises";
-import type { ImageContent, TextContent } from "@veyyon/pi-ai";
-import { logger } from "@veyyon/pi-utils";
+import type { ImageContent, TextContent } from "@veyyon/ai";
+import { logger } from "@veyyon/utils";
 import type {
 	BusChannel,
 	CollabUiRequest,
@@ -20,7 +20,7 @@ import type {
 	CollabUiResponseValue,
 	AgentEvent as WireAgentEvent,
 	SessionEntry as WireSessionEntry,
-} from "@veyyon/pi-wire";
+} from "@veyyon/wire";
 import type { InteractiveModeContext } from "../modes/types";
 import { AgentLifecycleManager } from "../registry/agent-lifecycle";
 import { type AgentRef, AgentRegistry } from "../registry/agent-registry";

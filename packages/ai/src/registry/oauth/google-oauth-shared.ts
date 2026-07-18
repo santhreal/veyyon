@@ -4,6 +4,8 @@
  * Both providers use the same authorization-code flow shape; only the client
  * credentials, scopes, endpoint constants, and project-discovery logic differ.
  */
+
+import { errorMessage } from "@veyyon/utils";
 import * as AIError from "../../error";
 import { extractGoogleValidationUrl, formatGoogleValidationRequiredMessage } from "../../utils/google-validation";
 import { OAuthCallbackFlow } from "./callback-server";
@@ -99,7 +101,7 @@ export class GoogleOAuthFlow extends OAuthCallbackFlow {
 		try {
 			projectId = await this.config.discoverProject(tokenData.access_token, this.ctrl.onProgress);
 		} catch (err) {
-			const validationUrl = extractGoogleValidationUrl(err instanceof Error ? err.message : String(err));
+			const validationUrl = extractGoogleValidationUrl(errorMessage(err));
 			if (!validationUrl) throw err;
 			throw new AIError.OAuthError(formatGoogleValidationRequiredMessage(validationUrl, "sign in again", email), {
 				kind: "validation",

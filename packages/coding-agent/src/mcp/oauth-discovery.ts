@@ -4,8 +4,10 @@
  * Automatically detects OAuth requirements from MCP server responses
  * and extracts authentication endpoints.
  */
-import * as AIError from "@veyyon/pi-ai/error";
-import type { FetchImpl } from "@veyyon/pi-ai/types";
+
+import * as AIError from "@veyyon/ai/error";
+import type { FetchImpl } from "@veyyon/ai/types";
+import { trimTrailingSlashes } from "@veyyon/utils";
 
 export interface OAuthEndpoints {
 	authorizationUrl: string;
@@ -288,7 +290,7 @@ export function analyzeAuthError(error: Error, serverUrl?: string): AuthDetectio
 function normalizeIssuerUrl(value: string): string | undefined {
 	try {
 		const u = new URL(value);
-		const path = u.pathname.replace(/\/+$/, "");
+		const path = trimTrailingSlashes(u.pathname);
 		return `${u.protocol}//${u.host}${path}`;
 	} catch {
 		return undefined;

@@ -29,21 +29,16 @@
  */
 
 import { afterEach, describe, expect, it, spyOn, vi } from "bun:test";
-import type { CmuxKind } from "@veyyon/pi-coding-agent/tools/browser/cmux/rpc";
-import { CmuxSocketClient } from "@veyyon/pi-coding-agent/tools/browser/cmux/socket-client";
-import { acquireBrowser } from "@veyyon/pi-coding-agent/tools/browser/registry";
-import {
-	acquireTab,
-	getTabsMapForTest,
-	releaseTab,
-	runInTab,
-} from "@veyyon/pi-coding-agent/tools/browser/tab-supervisor";
-import type { ToolSession } from "@veyyon/pi-coding-agent/tools/index";
+import type { CmuxKind } from "@veyyon/coding-agent/tools/browser/cmux/rpc";
+import { CmuxSocketClient } from "@veyyon/coding-agent/tools/browser/cmux/socket-client";
+import { acquireBrowser } from "@veyyon/coding-agent/tools/browser/registry";
+import { acquireTab, getTabsMapForTest, releaseTab, runInTab } from "@veyyon/coding-agent/tools/browser/tab-supervisor";
+import type { ToolSession } from "@veyyon/coding-agent/tools/index";
 
 function makeKind(socketSuffix: string): CmuxKind {
 	return {
 		kind: "cmux",
-		socketPath: `/tmp/omp-test-${socketSuffix}.sock`,
+		socketPath: `/tmp/veyyon-test-${socketSuffix}.sock`,
 		surface: `surface-${socketSuffix}`,
 	};
 }

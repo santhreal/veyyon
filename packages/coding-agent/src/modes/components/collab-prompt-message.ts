@@ -1,5 +1,5 @@
-import type { TextContent } from "@veyyon/pi-ai";
-import { Container, Markdown, Text } from "@veyyon/pi-tui";
+import type { TextContent } from "@veyyon/ai";
+import { Container, Markdown, Text } from "@veyyon/tui";
 import type { CollabPromptDetails } from "../../collab/protocol";
 import type { CustomMessage } from "../../session/messages";
 import { getMarkdownTheme, theme } from "../theme/theme";

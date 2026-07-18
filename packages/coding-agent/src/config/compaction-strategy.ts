@@ -61,8 +61,8 @@ export function toAgentCompactionSettings(
 		strategy?: string;
 		model?: string;
 	},
-): import("@veyyon/pi-agent-core/compaction").CompactionSettings {
+): import("@veyyon/agent-core/compaction").CompactionSettings {
 	const raw = settings.strategy;
 	const strategy = raw === "snap" ? "snapcompact" : raw;
-	return { ...settings, strategy } as import("@veyyon/pi-agent-core/compaction").CompactionSettings;
+	return { ...settings, strategy } as import("@veyyon/agent-core/compaction").CompactionSettings;
 }

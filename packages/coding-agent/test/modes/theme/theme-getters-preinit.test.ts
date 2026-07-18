@@ -5,7 +5,7 @@ import {
 	getSettingsListTheme,
 	getSymbolTheme,
 	theme,
-} from "@veyyon/pi-coding-agent/modes/theme/theme";
+} from "@veyyon/coding-agent/modes/theme/theme";
 
 /**
  * Contract for issue #2998: the exported theme-getter functions must not crash

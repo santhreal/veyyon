@@ -1,5 +1,5 @@
-import type { TSchema } from "@veyyon/pi-ai";
-import { $env, logger } from "@veyyon/pi-utils";
+import type { TSchema } from "@veyyon/ai";
+import { $env, asRecord, logger } from "@veyyon/utils";
 import type { CustomTool, CustomToolResult } from "../extensibility/custom-tools/types";
 import { type CallMcpOptions, callMCP } from "../mcp/json-rpc";
 import type { ExaSearchResponse, MCPCallResponse, MCPTool, MCPToolsResponse, MCPToolWrapperConfig } from "./types";
@@ -14,11 +14,6 @@ type MCPWrappedToolDetails = {
 /** Find EXA_API_KEY from Bun.env or .env files */
 export function findApiKey(): string | null {
 	return $env.EXA_API_KEY;
-}
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-	if (typeof value !== "object" || value === null) return null;
-	return value as Record<string, unknown>;
 }
 
 function parseJsonContent(text: string): unknown | null {

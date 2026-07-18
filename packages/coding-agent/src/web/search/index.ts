@@ -4,9 +4,9 @@
  * Single tool supporting Anthropic, Perplexity, Exa, Brave, Jina, Kimi, Gemini, Codex, Tavily, Kagi, Z.AI, SearXNG, and Synthetic
  * providers with provider-specific parameters exposed conditionally.
  */
-import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/pi-agent-core";
-import type { AuthStorage } from "@veyyon/pi-ai";
-import { prompt } from "@veyyon/pi-utils";
+import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
+import type { AuthStorage } from "@veyyon/ai";
+import { formatCount, prompt, truncate } from "@veyyon/utils";
 import { type } from "arktype";
 import { settings } from "../../config/settings";
 import type { CustomTool, CustomToolContext, RenderResultOptions } from "../../extensibility/custom-tools/types";
@@ -46,16 +46,6 @@ export interface SearchQueryParams extends SearchToolParams {
 	provider?: SearchProviderId | "auto";
 }
 
-/** Truncate text for tool output */
-function truncateText(text: string, maxLen: number): string {
-	if (text.length <= maxLen) return text;
-	return `${text.slice(0, Math.max(0, maxLen - 1))}…`;
-}
-
-function formatCount(label: string, count: number): string {
-	return `${count} ${label}${count === 1 ? "" : "s"}`;
-}
-
 /** Format response for LLM consumption */
 function formatForLLM(response: SearchResponse): string {
 	const parts: string[] = [];
@@ -73,7 +63,7 @@ function formatForLLM(response: SearchResponse): string {
 		const agePart = age ? ` (${age})` : "";
 		parts.push(`[${i + 1}] ${src.title}${agePart}\n    ${src.url}`);
 		if (src.snippet) {
-			parts.push(`    ${truncateText(src.snippet, 240)}`);
+			parts.push(`    ${truncate(src.snippet, 240)}`);
 		}
 	}
 
@@ -84,7 +74,7 @@ function formatForLLM(response: SearchResponse): string {
 			const title = citation.title || citation.url;
 			parts.push(`[${i + 1}] ${title}\n    ${citation.url}`);
 			if (citation.citedText) {
-				parts.push(`    ${truncateText(citation.citedText, 240)}`);
+				parts.push(`    ${truncate(citation.citedText, 240)}`);
 			}
 		}
 	}
@@ -100,7 +90,7 @@ function formatForLLM(response: SearchResponse): string {
 	if (response.searchQueries && response.searchQueries.length > 0) {
 		parts.push(`Search queries: ${response.searchQueries.length}`);
 		for (const query of response.searchQueries.slice(0, 3)) {
-			parts.push(`- ${truncateText(query, 120)}`);
+			parts.push(`- ${truncate(query, 120)}`);
 		}
 	}
 
@@ -241,7 +231,7 @@ async function executeSearch(
  * Execute a web search query for CLI/testing workflows.
  *
  * `authStorage` may be omitted; in that case we discover one via the standard
- * factory (`discoverAuthStorage`), which honours `OMP_AUTH_BROKER_URL` and
+ * factory (`discoverAuthStorage`), which honours `VEYYON_AUTH_BROKER_URL` and
  * otherwise opens the local SQLite credential store.
  */
 export async function runSearchQuery(

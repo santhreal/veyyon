@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
-import * as desktopNotify from "@veyyon/pi-tui/desktop-notify";
-import { ProcessTerminal } from "@veyyon/pi-tui/terminal";
+import * as desktopNotify from "@veyyon/tui/desktop-notify";
+import { ProcessTerminal } from "@veyyon/tui/terminal";
 import {
 	getTerminalInfo,
 	isInsideTmux,
@@ -10,16 +10,16 @@ import {
 	setOsc99Supported,
 	TERMINAL,
 	wrapTmuxPassthrough,
-} from "@veyyon/pi-tui/terminal-capabilities";
-import { setTerminalHeadless } from "@veyyon/pi-utils";
+} from "@veyyon/tui/terminal-capabilities";
+import { setTerminalHeadless } from "@veyyon/utils";
 
 const stdinIsTtyDescriptor = Object.getOwnPropertyDescriptor(process.stdin, "isTTY");
 const stdoutIsTtyDescriptor = Object.getOwnPropertyDescriptor(process.stdout, "isTTY");
 const stdinSetRawModeDescriptor = Object.getOwnPropertyDescriptor(process.stdin, "setRawMode");
-const originalOsc99Probe = Bun.env.PI_TUI_OSC99_PROBE;
+const originalOsc99Probe = Bun.env.VEYYON_TUI_OSC99_PROBE;
 const originalTmux = Bun.env.TMUX;
 const originalZellij = Bun.env.ZELLIJ;
-const originalPiNotifications = Bun.env.PI_NOTIFICATIONS;
+const originalPiNotifications = Bun.env.VEYYON_NOTIFICATIONS;
 const mutableTerminal = TERMINAL as unknown as { notifyProtocol: NotifyProtocol };
 const originalNotifyProtocol = mutableTerminal.notifyProtocol;
 
@@ -74,10 +74,10 @@ describe("terminal notifications", () => {
 		// assertions never see a stray inherited TMUX leaking the DCS wrap in.
 		delete Bun.env.TMUX;
 		delete Bun.env.ZELLIJ;
-		// `PI_NOTIFICATIONS=off` is set in this workspace's CI env, which would
+		// `VEYYON_NOTIFICATIONS=off` is set in this workspace's CI env, which would
 		// short-circuit `sendNotification` before it writes anything. Clear it
 		// so the delivery-path assertions actually observe stdout writes.
-		delete Bun.env.PI_NOTIFICATIONS;
+		delete Bun.env.VEYYON_NOTIFICATIONS;
 	});
 
 	afterEach(() => {
@@ -85,10 +85,10 @@ describe("terminal notifications", () => {
 		setTerminalHeadless(previousHeadless);
 		setOsc99Supported(false);
 		mutableTerminal.notifyProtocol = originalNotifyProtocol;
-		restoreEnv("PI_TUI_OSC99_PROBE", originalOsc99Probe);
+		restoreEnv("VEYYON_TUI_OSC99_PROBE", originalOsc99Probe);
 		restoreEnv("TMUX", originalTmux);
 		restoreEnv("ZELLIJ", originalZellij);
-		restoreEnv("PI_NOTIFICATIONS", originalPiNotifications);
+		restoreEnv("VEYYON_NOTIFICATIONS", originalPiNotifications);
 		restoreProperty(process.stdin, "isTTY", stdinIsTtyDescriptor);
 		restoreProperty(process.stdout, "isTTY", stdoutIsTtyDescriptor);
 		restoreProperty(process.stdin, "setRawMode", stdinSetRawModeDescriptor);
@@ -135,11 +135,11 @@ describe("terminal notifications", () => {
 	});
 
 	it("queries and confirms OSC 99 support before rich notifications", () => {
-		Bun.env.PI_TUI_OSC99_PROBE = "1";
+		Bun.env.VEYYON_TUI_OSC99_PROBE = "1";
 		mutableTerminal.notifyProtocol = NotifyProtocol.Osc99;
 		const { terminal, writes, received } = setupProcessTerminal();
 		try {
-			const query = writes.find(w => w.startsWith("\x1b]99;i=omp-probe-") && w.endsWith("\x1b\\\x1b[c"));
+			const query = writes.find(w => w.startsWith("\x1b]99;i=veyyon-probe-") && w.endsWith("\x1b\\\x1b[c"));
 			expect(query).toBeDefined();
 			const id = query!.match(/i=([^:;]+):p=\?/u)?.[1];
 			expect(id).toBeDefined();
@@ -154,7 +154,7 @@ describe("terminal notifications", () => {
 	});
 
 	it("marks OSC 99 unsupported when the DA1 sentinel wins", () => {
-		Bun.env.PI_TUI_OSC99_PROBE = "1";
+		Bun.env.VEYYON_TUI_OSC99_PROBE = "1";
 		mutableTerminal.notifyProtocol = NotifyProtocol.Osc99;
 		const { terminal, received } = setupProcessTerminal();
 		try {
@@ -292,13 +292,13 @@ describe("terminal notifications", () => {
 	});
 
 	it("under tmux, the OSC 99 capability probe is wrapped in DCS passthrough", () => {
-		Bun.env.PI_TUI_OSC99_PROBE = "1";
+		Bun.env.VEYYON_TUI_OSC99_PROBE = "1";
 		Bun.env.TMUX = "/tmp/tmux-1000/default,1234,0";
 		mutableTerminal.notifyProtocol = NotifyProtocol.Osc99;
 		const { terminal, writes } = setupProcessTerminal();
 		try {
 			const probe = writes.find(
-				w => w.startsWith("\x1bPtmux;\x1b\x1b]99;i=omp-probe-") && w.endsWith("\x1b\x1b\\\x1b\\\x1b[c"),
+				w => w.startsWith("\x1bPtmux;\x1b\x1b]99;i=veyyon-probe-") && w.endsWith("\x1b\x1b\\\x1b\\\x1b[c"),
 			);
 			expect(probe).toBeDefined();
 		} finally {

@@ -1,10 +1,10 @@
-import { ThinkingLevel } from "@veyyon/pi-agent-core";
-import { PASTE_CODE_LOGIN_PROVIDERS } from "@veyyon/pi-ai";
-import { getOAuthProviders } from "@veyyon/pi-ai/oauth";
-import type { OAuthProvider } from "@veyyon/pi-ai/oauth/types";
-import type { Component, OverlayHandle } from "@veyyon/pi-tui";
-import { Loader, Spacer, setTuiTight, Text } from "@veyyon/pi-tui";
-import { getAgentDbPath, getProjectDir, normalizePathForComparison } from "@veyyon/pi-utils";
+import { ThinkingLevel } from "@veyyon/agent-core";
+import { PASTE_CODE_LOGIN_PROVIDERS } from "@veyyon/ai";
+import { getOAuthProviders } from "@veyyon/ai/oauth";
+import type { OAuthProvider } from "@veyyon/ai/oauth/types";
+import type { Component, OverlayHandle } from "@veyyon/tui";
+import { Loader, Spacer, setTuiTight, Text } from "@veyyon/tui";
+import { getAgentDbPath, getProjectDir, normalizePathForComparison } from "@veyyon/utils";
 import { formatModelSelectorValue } from "../../config/model-resolver";
 import { getRoleInfo } from "../../config/model-roles";
 import { settings } from "../../config/settings";
@@ -975,7 +975,8 @@ export class SelectorController {
 		// scroll + click-to-resume) for its lifetime, leaving the transcript
 		// untouched underneath. Anchored top-left at full size so a mouse row maps
 		// directly to a rendered line (the overlay paints from screen row 0), and
-		// `fillHeight` pads the body so the footer pins to the screen bottom.
+		// `fillHeight` selects the large centered-card sizing (card height
+		// itself tracks the session list, so a short list stays a short card).
 		let overlayHandle: OverlayHandle | undefined;
 		const done = () => {
 			overlayHandle?.hide();

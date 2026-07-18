@@ -1,6 +1,6 @@
-import { tryParseJson } from "@veyyon/pi-utils";
-import type { RenderResult, SpecialHandler } from "./types";
-import { buildResult, formatNumber, loadPage } from "./types";
+import { tryParseJson } from "@veyyon/utils";
+import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
+import { buildResult, formatNumber, loadFailure, loadPage, scraperDegrade, tryParseUrl } from "./types";
 
 /**
  * Handle Packagist URLs via JSON API
@@ -9,9 +9,10 @@ export const handlePackagist: SpecialHandler = async (
 	url: string,
 	timeout: number,
 	signal?: AbortSignal,
-): Promise<RenderResult | null> => {
+): Promise<RenderResult | ScraperDegrade | null> => {
 	try {
-		const parsed = new URL(url);
+		const parsed = tryParseUrl(url);
+		if (!parsed) return null;
 		if (parsed.hostname !== "packagist.org" && parsed.hostname !== "www.packagist.org") return null;
 
 		// Extract vendor/package from /packages/{vendor}/{name}
@@ -26,7 +27,7 @@ export const handlePackagist: SpecialHandler = async (
 		const apiUrl = `https://packagist.org/packages/${vendor}/${packageName}.json`;
 		const result = await loadPage(apiUrl, { timeout, signal });
 
-		if (!result.ok) return null;
+		if (!result.ok) return scraperDegrade("packagist", loadFailure(result));
 
 		const data = tryParseJson<{
 			package: {
@@ -67,7 +68,7 @@ export const handlePackagist: SpecialHandler = async (
 				favers?: number;
 			};
 		}>(result.content);
-		if (!data) return null;
+		if (!data) return scraperDegrade("packagist", "unexpected response shape");
 
 		const pkg = data.package;
 		if (!pkg) return null;
@@ -154,7 +155,7 @@ export const handlePackagist: SpecialHandler = async (
 		}
 
 		return buildResult(md, { url, method: "packagist", fetchedAt, notes: ["Fetched via Packagist API"] });
-	} catch {}
-
-	return null;
+	} catch (error) {
+		return scraperDegrade("packagist", error);
+	}
 };

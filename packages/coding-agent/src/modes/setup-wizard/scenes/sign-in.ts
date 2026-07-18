@@ -1,16 +1,9 @@
-import type { AuthStorage } from "@veyyon/pi-ai";
-import { PASTE_CODE_LOGIN_PROVIDERS } from "@veyyon/pi-ai";
-import { getOAuthProviders } from "@veyyon/pi-ai/oauth";
-import type { OAuthProvider } from "@veyyon/pi-ai/oauth/types";
-import {
-	type Component,
-	type Focusable,
-	Input,
-	matchesKey,
-	type SgrMouseEvent,
-	wrapTextWithAnsi,
-} from "@veyyon/pi-tui";
-import { getAgentDbPath } from "@veyyon/pi-utils";
+import type { AuthStorage } from "@veyyon/ai";
+import { PASTE_CODE_LOGIN_PROVIDERS } from "@veyyon/ai";
+import { getOAuthProviders } from "@veyyon/ai/oauth";
+import type { OAuthProvider } from "@veyyon/ai/oauth/types";
+import { type Component, type Focusable, Input, matchesKey, type SgrMouseEvent, wrapTextWithAnsi } from "@veyyon/tui";
+import { getAgentDbPath } from "@veyyon/utils";
 import { copyToClipboard } from "../../../utils/clipboard";
 import { OAuthSelectorComponent } from "../../components/oauth-selector";
 import { theme } from "../../theme/theme";
@@ -147,11 +140,14 @@ export class SignInTab implements SetupTab {
 			lines.push(...this.#selector.render(width));
 		}
 
+		// A short URL renders inline under the link; a long one renders exactly
+		// once BELOW the code prompt (pushing a 2-line teaser here and the full
+		// URL later printed its first two lines twice).
 		const urlLines = this.#authUrl ? wrapTextWithAnsi(theme.fg("dim", this.#authUrl), width) : [];
 		if (this.#authUrl) {
 			lines.push(
 				theme.fg("accent", `Browser login: ${loginUrlLink(this.#authUrl)} ${loginCopyHint()}`),
-				...urlLines.slice(0, 2),
+				...(urlLines.length <= 2 ? urlLines : []),
 			);
 			if (this.#authLaunchUrl) {
 				lines.push(theme.fg("dim", `Local shortcut (this machine only): ${this.#authLaunchUrl}`));
@@ -202,7 +198,7 @@ export class SignInTab implements SetupTab {
 				onAuth: info => {
 					// Store the full authorization URL as the primary copy/display
 					// target: it works from any machine, including SSH boxes where
-					// the OMP-hosted `launchUrl` would resolve against the user's
+					// the veyyon-hosted `launchUrl` would resolve against the user's
 					// local browser and fail. The wizard render uses
 					// `wrapTextWithAnsi`, so long URLs wrap across lines rather
 					// than getting truncated — the RFC 7636 §4.3 PKCE-downgrade

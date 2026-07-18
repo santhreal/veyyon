@@ -1,7 +1,7 @@
+import type { AgentTelemetryConfig, AgentTool } from "@veyyon/agent-core";
+import type { FetchImpl, ImageContent, Model, ServiceTierByFamily, ToolChoice } from "@veyyon/ai";
 import type { InMemorySnapshotStore } from "@veyyon/hashline";
-import type { AgentTelemetryConfig, AgentTool } from "@veyyon/pi-agent-core";
-import type { FetchImpl, ImageContent, Model, ServiceTierByFamily, ToolChoice } from "@veyyon/pi-ai";
-import { logger } from "@veyyon/pi-utils";
+import { logger } from "@veyyon/utils";
 import type { AsyncJobManager } from "../async/job-manager";
 import type { Rule } from "../capability/rule";
 import type { PromptTemplate } from "../config/prompt-templates";
@@ -127,7 +127,7 @@ export interface ToolSession {
 	 */
 	extensionPaths?: string[];
 	/**
-	 * Pre-discovered custom-tool source paths from `.omp/tools/`, `.claude/tools/`,
+	 * Pre-discovered custom-tool source paths from `.veyyon/tools/`, `.claude/tools/`,
 	 * plugins, etc. Forwarded to subagents so they skip the FS scan but still
 	 * re-bind tools to their own session-scoped `CustomToolAPI`.
 	 */

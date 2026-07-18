@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as url from "node:url";
-import { $which, logger } from "@veyyon/pi-utils";
+import { $which, errorMessage, logger } from "@veyyon/utils";
 
 const URL_SCHEME_PATTERN = /^[a-zA-Z][a-zA-Z\d+.-]*:/;
 
@@ -101,7 +101,7 @@ export function openPath(urlOrPath: string): void {
 		logger.warn("Failed to open external URL/path", {
 			command: cmd[0],
 			target: urlOrPath,
-			error: error instanceof Error ? error.message : String(error),
+			error: errorMessage(error),
 		});
 		return;
 	}

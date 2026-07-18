@@ -6,7 +6,7 @@ import {
 	type NativeScrollbackReplay,
 	type RenderStablePrefix,
 	type ViewportTailProvider,
-} from "@veyyon/pi-tui";
+} from "@veyyon/tui";
 
 /**
  * A transcript block that is still mutating (a foreground tool awaiting its

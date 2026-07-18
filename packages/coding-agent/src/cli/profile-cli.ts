@@ -14,11 +14,16 @@ import {
 	type ProfileInfo,
 	profileExists,
 	removeWithRetries,
-} from "@veyyon/pi-utils";
+	resolveGlobalDefaultProfile,
+	writeGlobalDefaultProfile,
+} from "@veyyon/utils";
 import chalk from "chalk";
 import { seedKeybindingsFromAgentDir } from "../config/keybindings";
 
-export type ProfileAction = "list" | "new" | "rm";
+export type ProfileAction = "list" | "new" | "rm" | "default";
+
+/** Canonical action list; the `profile` command's options validation imports this. */
+export const PROFILE_ACTIONS: ProfileAction[] = ["list", "new", "rm", "default"];
 
 export type ProfileSeedSource = "default" | "blank" | string;
 
@@ -28,6 +33,7 @@ export interface ProfileCommandArgs {
 	from?: ProfileSeedSource;
 	yes?: boolean;
 	json?: boolean;
+	clear?: boolean;
 }
 
 /**
@@ -284,12 +290,14 @@ export async function runProfileCommand(args: ProfileCommandArgs): Promise<void>
 		case "list": {
 			const profiles = listProfiles();
 			const active = getActiveProfile() ?? "default";
+			const launchDefault = resolveGlobalDefaultProfile() ?? "default";
 			if (args.json) {
 				const rows = await Promise.all(
 					profiles.map(async profile => ({
 						...profile,
 						displayName: await readProfileDisplayName(profile.name === "default" ? undefined : profile.name),
 						active: profile.name === active,
+						launchDefault: profile.name === launchDefault,
 						bytes: await directorySize(profile.rootDir),
 					})),
 				);
@@ -299,7 +307,10 @@ export async function runProfileCommand(args: ProfileCommandArgs): Promise<void>
 			for (const profile of profiles) {
 				const marker = profile.name === active ? chalk.green("*") : " ";
 				const display = await readProfileDisplayName(profile.name === "default" ? undefined : profile.name);
-				const label = display && display !== profile.name ? `${profile.name} (${display})` : profile.name;
+				let label = display && display !== profile.name ? `${profile.name} (${display})` : profile.name;
+				if (profile.name === launchDefault) {
+					label += ` ${chalk.dim("[launch default]")}`;
+				}
 				console.log(`${marker} ${label}\t${profile.rootDir}`);
 			}
 			return;
@@ -328,6 +339,47 @@ export async function runProfileCommand(args: ProfileCommandArgs): Promise<void>
 				return;
 			}
 			console.log(chalk.green(`Removed profile at ${rootDir}`));
+			return;
+		}
+		case "default": {
+			if (args.clear) {
+				const filePath = writeGlobalDefaultProfile(undefined);
+				if (args.json) {
+					console.log(JSON.stringify({ defaultProfile: null, file: filePath }, null, 2));
+					return;
+				}
+				console.log(`Cleared defaultProfile — a bare launch uses the default profile (${filePath})`);
+				return;
+			}
+			if (!args.name) {
+				const current = resolveGlobalDefaultProfile();
+				if (args.json) {
+					console.log(JSON.stringify({ defaultProfile: current ?? null }, null, 2));
+					return;
+				}
+				console.log(
+					current
+						? `defaultProfile: ${current}`
+						: "defaultProfile is unset — a bare launch uses the default profile",
+				);
+				return;
+			}
+			const normalized = normalizeProfileName(args.name);
+			if (normalized !== undefined && !profileExists(normalized)) {
+				throw new Error(
+					`Profile "${normalized}" does not exist. Create it first: veyyon profile new ${normalized}`,
+				);
+			}
+			const filePath = writeGlobalDefaultProfile(normalized);
+			if (args.json) {
+				console.log(JSON.stringify({ defaultProfile: normalized ?? null, file: filePath }, null, 2));
+				return;
+			}
+			console.log(
+				normalized
+					? chalk.green(`defaultProfile set to "${normalized}" (${filePath})`)
+					: `Cleared defaultProfile — a bare launch uses the default profile (${filePath})`,
+			);
 			return;
 		}
 		default: {

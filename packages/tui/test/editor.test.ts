@@ -3,12 +3,12 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { stripVTControlCharacters } from "node:util";
-import { CURSOR_MARKER } from "@veyyon/pi-tui";
-import { CombinedAutocompleteProvider } from "@veyyon/pi-tui/autocomplete";
-import { Editor } from "@veyyon/pi-tui/components/editor";
-import { KeybindingsManager, setKeybindings, TUI_KEYBINDINGS } from "@veyyon/pi-tui/keybindings";
-import { setKittyProtocolActive } from "@veyyon/pi-tui/keys";
-import { visibleWidth } from "@veyyon/pi-tui/utils";
+import { CURSOR_MARKER } from "@veyyon/tui";
+import { CombinedAutocompleteProvider } from "@veyyon/tui/autocomplete";
+import { Editor } from "@veyyon/tui/components/editor";
+import { KeybindingsManager, setKeybindings, TUI_KEYBINDINGS } from "@veyyon/tui/keybindings";
+import { setKittyProtocolActive } from "@veyyon/tui/keys";
+import { visibleWidth } from "@veyyon/tui/utils";
 import { defaultEditorTheme } from "./test-themes";
 
 describe("Editor component", () => {
@@ -2335,7 +2335,7 @@ describe("Editor component", () => {
 		// terminals render the precomposed syllable at 2 cells, so without
 		// normalization the cursor column drifts past the visible filename
 		// and subsequent input renders into the wrong row. The earlier fix
-		// landed on the legacy `Input` component; OMP's interactive prompt
+		// landed on the legacy `Input` component; Veyyon's interactive prompt
 		// uses `Editor`, so the fix has to live here too.
 
 		it("normalizes NFD Korean bracketed-paste to NFC", () => {
@@ -2575,5 +2575,30 @@ describe("Editor component", () => {
 			editor.setVolatileText("single line");
 			expect(editor.getText()).toBe("single line");
 		});
+	});
+});
+
+describe("Placeholder ghost text", () => {
+	it("renders the placeholder over an empty composer and clears it on first input", () => {
+		const editor = new Editor(defaultEditorTheme);
+		editor.setPlaceholder("ask anything  ·  / for commands");
+
+		const empty = editor.render(80).map(line => stripVTControlCharacters(line));
+		expect(empty.some(line => line.includes("ask anything  ·  / for commands"))).toBe(true);
+
+		editor.handleInput("h");
+		const typed = editor.render(80).map(line => stripVTControlCharacters(line));
+		expect(typed.some(line => line.includes("ask anything"))).toBe(false);
+		expect(typed.some(line => line.includes("h"))).toBe(true);
+	});
+
+	it("restores the placeholder when the composer becomes empty again", () => {
+		const editor = new Editor(defaultEditorTheme);
+		editor.setPlaceholder("ask anything  ·  / for commands");
+
+		editor.handleInput("h");
+		editor.handleInput("\x7f"); // backspace
+		const cleared = editor.render(80).map(line => stripVTControlCharacters(line));
+		expect(cleared.some(line => line.includes("ask anything  ·  / for commands"))).toBe(true);
 	});
 });

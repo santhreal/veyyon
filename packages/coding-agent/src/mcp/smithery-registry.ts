@@ -1,4 +1,4 @@
-import { logger } from "@veyyon/pi-utils";
+import { logger } from "@veyyon/utils";
 import { isTimeoutError, withTimeoutSignal } from "../utils/fetch-timeout";
 import type { MCPServerConfig } from "./types";
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { clearRenderCache, Markdown } from "@veyyon/pi-tui/components/markdown";
+import { clearRenderCache, Markdown } from "@veyyon/tui/components/markdown";
 import { defaultMarkdownTheme } from "./test-themes.js";
 
 // E2 contract: the streaming incremental lexer (lex(prefix) ++ lex(tail), reusing

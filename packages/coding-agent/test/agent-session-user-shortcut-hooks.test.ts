@@ -1,16 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
-import { Agent } from "@veyyon/pi-agent-core";
-import { getBundledModel } from "@veyyon/pi-catalog/models";
-import { ModelRegistry } from "@veyyon/pi-coding-agent/config/model-registry";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
-import * as pythonExecutor from "@veyyon/pi-coding-agent/eval/py/executor";
-import * as bashExecutor from "@veyyon/pi-coding-agent/exec/bash-executor";
-import type { ExtensionRunner } from "@veyyon/pi-coding-agent/extensibility/extensions";
-import { AgentSession } from "@veyyon/pi-coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/pi-coding-agent/session/auth-storage";
-import { SessionManager } from "@veyyon/pi-coding-agent/session/session-manager";
-import { TempDir } from "@veyyon/pi-utils";
+import { Agent } from "@veyyon/agent-core";
+import { getBundledModel } from "@veyyon/catalog/models";
+import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import * as pythonExecutor from "@veyyon/coding-agent/eval/py/executor";
+import * as bashExecutor from "@veyyon/coding-agent/exec/bash-executor";
+import type { ExtensionRunner } from "@veyyon/coding-agent/extensibility/extensions";
+import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
+import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { TempDir } from "@veyyon/utils";
 
 describe("AgentSession user shortcut hooks", () => {
 	let tempDir: TempDir;

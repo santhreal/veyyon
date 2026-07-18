@@ -17,19 +17,19 @@
  */
 
 import { afterEach, describe, expect, it, spyOn } from "bun:test";
-import type { CmuxKind } from "@veyyon/pi-coding-agent/tools/browser/cmux/rpc";
-import { CmuxSocketClient } from "@veyyon/pi-coding-agent/tools/browser/cmux/socket-client";
-import { acquireBrowser, getBrowsersMapForTest } from "@veyyon/pi-coding-agent/tools/browser/registry";
+import type { CmuxKind } from "@veyyon/coding-agent/tools/browser/cmux/rpc";
+import { CmuxSocketClient } from "@veyyon/coding-agent/tools/browser/cmux/socket-client";
+import { acquireBrowser, getBrowsersMapForTest } from "@veyyon/coding-agent/tools/browser/registry";
 import {
 	acquireTab,
 	getTabsMapForTest,
 	releaseTab,
 	releaseTabsForOwner,
-} from "@veyyon/pi-coding-agent/tools/browser/tab-supervisor";
-import { ToolAbortError } from "@veyyon/pi-coding-agent/tools/tool-errors";
+} from "@veyyon/coding-agent/tools/browser/tab-supervisor";
+import { ToolAbortError } from "@veyyon/coding-agent/tools/tool-errors";
 
 function makeKind(socketSuffix: string): CmuxKind {
-	return { kind: "cmux", socketPath: `/tmp/omp-test-${socketSuffix}.sock`, surface: `surface-${socketSuffix}` };
+	return { kind: "cmux", socketPath: `/tmp/veyyon-test-${socketSuffix}.sock`, surface: `surface-${socketSuffix}` };
 }
 
 async function drainAllTabs(): Promise<void> {

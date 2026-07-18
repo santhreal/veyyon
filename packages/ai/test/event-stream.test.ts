@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
-import * as AIError from "@veyyon/pi-ai/error";
-import type { AssistantMessage } from "@veyyon/pi-ai/types";
-import { AssistantMessageEventStream } from "@veyyon/pi-ai/utils/event-stream";
+import * as AIError from "@veyyon/ai/error";
+import type { AssistantMessage } from "@veyyon/ai/types";
+import { AssistantMessageEventStream } from "@veyyon/ai/utils/event-stream";
 
 function createPartial(text = ""): AssistantMessage {
 	return {

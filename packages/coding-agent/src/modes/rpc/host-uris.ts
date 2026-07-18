@@ -1,4 +1,4 @@
-import { Snowflake } from "@veyyon/pi-utils";
+import { Snowflake } from "@veyyon/utils";
 import { InternalUrlRouter } from "../../internal-urls";
 import type {
 	InternalResource,

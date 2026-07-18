@@ -5,12 +5,12 @@
  * Tool selection persists across session reloads and respects branch navigation.
  *
  * Usage:
- * 1. Copy this file to ~/.veyyon/agent/extensions/ (legacy: ~/.pi/agent/extensions/) or your project's .omp/extensions/
+ * 1. Copy this file to ~/.veyyon/agent/extensions/ (legacy: ~/.pi/agent/extensions/) or your project's .veyyon/extensions/
  * 2. Use /tools to open the tool selector
  */
-import type { ExtensionAPI, ExtensionContext } from "@veyyon/pi-coding-agent";
-import { getSettingsListTheme } from "@veyyon/pi-coding-agent";
-import { Container, type SettingItem, SettingsList } from "@veyyon/pi-tui";
+import type { ExtensionAPI, ExtensionContext } from "@veyyon/coding-agent";
+import { getSettingsListTheme } from "@veyyon/coding-agent";
+import { Container, type SettingItem, SettingsList } from "@veyyon/tui";
 
 // State persisted to session
 interface ToolsState {

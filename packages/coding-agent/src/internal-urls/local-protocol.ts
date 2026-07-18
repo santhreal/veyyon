@@ -1,7 +1,7 @@
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { isEnoent } from "@veyyon/pi-utils";
+import { formatBytes, formatCount, isEnoent } from "@veyyon/utils";
 import { AgentRegistry } from "../registry/agent-registry";
 import { buildDirectoryResource } from "./filesystem-resource";
 import { parseInternalUrl } from "./parse";
@@ -39,7 +39,7 @@ function shortLocalRoot(options: LocalProtocolOptions): string {
 	// Derive the short root from the stable session id, never the artifact path,
 	// so `SessionManager.moveTo()` and the resume-after-move flow keep finding
 	// the same `local://` directory the session wrote pre-move.
-	return path.join(os.tmpdir(), "omp-local", safeSessionId(options));
+	return path.join(os.tmpdir(), "veyyon-local", safeSessionId(options));
 }
 
 function getContentType(filePath: string): InternalResource["contentType"] {
@@ -84,17 +84,8 @@ const BINARY_FILE_EXTENSIONS = new Set([
 	".zip",
 ]);
 
-function formatLocalByteSize(bytes: number): string {
-	if (bytes < 1024) return `${bytes} B`;
-	const kib = bytes / 1024;
-	if (kib < 1024) return `${kib.toFixed(1)} KiB`;
-	const mib = kib / 1024;
-	if (mib < 1024) return `${mib.toFixed(1)} MiB`;
-	return `${(mib / 1024).toFixed(1)} GiB`;
-}
-
 function buildNonTextLocalResource(url: InternalUrl, filePath: string, size: number, reason: string): InternalResource {
-	const content = `[Cannot read binary local:// file '${url.href}' (${formatLocalByteSize(size)}): ${reason}. This resource is not text. Use a metadata/key-frame/video-specific workflow instead.]`;
+	const content = `[Cannot read binary local:// file '${url.href}' (${formatBytes(size)}): ${reason}. This resource is not text. Use a metadata/key-frame/video-specific workflow instead.]`;
 	return {
 		url: url.href,
 		content,
@@ -106,7 +97,7 @@ function buildNonTextLocalResource(url: InternalUrl, filePath: string, size: num
 }
 
 function buildLargeLocalTextResource(url: InternalUrl, filePath: string, size: number): InternalResource {
-	const content = `[Cannot materialize local:// file '${url.href}' as an internal text resource (${formatLocalByteSize(size)} exceeds ${formatLocalByteSize(LOCAL_TEXT_RESOURCE_MAX_BYTES)}). Use the read tool's filesystem path handling or a line selector so content is streamed with file-size safeguards.]`;
+	const content = `[Cannot materialize local:// file '${url.href}' as an internal text resource (${formatBytes(size)} exceeds ${formatBytes(LOCAL_TEXT_RESOURCE_MAX_BYTES)}). Use the read tool's filesystem path handling or a line selector so content is streamed with file-size safeguards.]`;
 	return {
 		url: url.href,
 		content,
@@ -196,7 +187,7 @@ async function buildListing(url: InternalUrl, localRoot: string): Promise<Intern
 		`# Local\n\n` +
 		`Session-scoped scratch space for large intermediate data, subagent handoffs, and reusable planning artifacts.\n\n` +
 		`Root: ${localRoot}\n\n` +
-		`${files.length} file${files.length === 1 ? "" : "s"} available:\n\n` +
+		`${formatCount("file", files.length)} available:\n\n` +
 		`${listing}\n`;
 
 	return {
@@ -249,7 +240,7 @@ export function resolveLocalRoot(options: LocalProtocolOptions, platform: NodeJS
 		return candidate;
 	}
 
-	return path.join(os.tmpdir(), "omp-local", safeSessionId(options));
+	return path.join(os.tmpdir(), "veyyon-local", safeSessionId(options));
 }
 
 /** Resolve a local:// URL to an on-disk path under the active session's local root. */

@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import * as PiCodingAgent from "@veyyon/pi-coding-agent";
-import { loadCustomCommands } from "@veyyon/pi-coding-agent/extensibility/custom-commands/loader";
-import { loadCustomTools } from "@veyyon/pi-coding-agent/extensibility/custom-tools/loader";
-import { loadExtensions } from "@veyyon/pi-coding-agent/extensibility/extensions/loader";
-import { loadHooks } from "@veyyon/pi-coding-agent/extensibility/hooks/loader";
-import { TempDir } from "@veyyon/pi-utils";
+import * as PiCodingAgent from "@veyyon/coding-agent";
+import { loadCustomCommands } from "@veyyon/coding-agent/extensibility/custom-commands/loader";
+import { loadCustomTools } from "@veyyon/coding-agent/extensibility/custom-tools/loader";
+import { loadExtensions } from "@veyyon/coding-agent/extensibility/extensions/loader";
+import { loadHooks } from "@veyyon/coding-agent/extensibility/hooks/loader";
+import { TempDir } from "@veyyon/utils";
 
 declare global {
 	var __veyyonHostPiForLoaderIdentityTest: typeof PiCodingAgent | undefined;

@@ -1,9 +1,9 @@
 import { afterAll, afterEach, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
-import type { Api, AssistantMessage, Model } from "@veyyon/pi-ai";
-import * as ai from "@veyyon/pi-ai";
-import { Effort } from "@veyyon/pi-ai";
-import { TempDir } from "@veyyon/pi-utils";
+import type { Api, AssistantMessage, Model } from "@veyyon/ai";
+import * as ai from "@veyyon/ai";
+import { Effort } from "@veyyon/ai";
+import { TempDir } from "@veyyon/utils";
 import { $ } from "bun";
 import type { ModelRegistry } from "../../config/model-registry";
 import { Settings } from "../../config/settings";
@@ -355,7 +355,7 @@ describe("completion() through eval runtimes", () => {
 	});
 
 	it("exposes completion() in the JavaScript runtime", async () => {
-		using tempDir = TempDir.createSync("@omp-eval-completion-js-");
+		using tempDir = TempDir.createSync("@veyyon-eval-completion-js-");
 		const sessionFile = path.join(tempDir.path(), "session.jsonl");
 		const sessionId = `js-completion:${crypto.randomUUID()}`;
 		vi.spyOn(ai, "completeSimple").mockResolvedValue(assistant({ text: "hello from smol" }));
@@ -372,7 +372,7 @@ describe("completion() through eval runtimes", () => {
 	});
 
 	it("parses structured completion() output in the JavaScript runtime", async () => {
-		using tempDir = TempDir.createSync("@omp-eval-completion-js-struct-");
+		using tempDir = TempDir.createSync("@veyyon-eval-completion-js-struct-");
 		const sessionFile = path.join(tempDir.path(), "session.jsonl");
 		const sessionId = `js-completion-struct:${crypto.randomUUID()}`;
 		vi.spyOn(ai, "completeSimple").mockResolvedValue(
@@ -392,7 +392,7 @@ describe("completion() through eval runtimes", () => {
 	// file runs mid-chunk on a loaded machine; the explicit timeout bounds real
 	// hangs without flaking on spawn latency.
 	it("exposes completion() in the Python runtime", async () => {
-		const tempDir = TempDir.createSync("@omp-eval-completion-py-");
+		const tempDir = TempDir.createSync("@veyyon-eval-completion-py-");
 		try {
 			const result = await runPythonCompletionInSubprocess({ structured: false, tempDir });
 			expect(result.exitCode).toBe(0);
@@ -403,7 +403,7 @@ describe("completion() through eval runtimes", () => {
 	}, 30_000);
 
 	it("parses structured completion() output in the Python runtime", async () => {
-		const tempDir = TempDir.createSync("@omp-eval-completion-py-struct-");
+		const tempDir = TempDir.createSync("@veyyon-eval-completion-py-struct-");
 		try {
 			const result = await runPythonCompletionInSubprocess({ structured: true, tempDir });
 			expect(result.exitCode).toBe(0);

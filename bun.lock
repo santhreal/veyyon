@@ -20,16 +20,16 @@
       },
     },
     "packages/agent": {
-      "name": "@veyyon/pi-agent-core",
+      "name": "@veyyon/agent-core",
       "version": "1.0.0",
       "dependencies": {
         "@opentelemetry/api": "catalog:",
-        "@veyyon/pi-ai": "catalog:",
-        "@veyyon/pi-catalog": "catalog:",
-        "@veyyon/pi-natives": "catalog:",
-        "@veyyon/pi-utils": "catalog:",
-        "@veyyon/pi-wire": "catalog:",
+        "@veyyon/ai": "catalog:",
+        "@veyyon/catalog": "catalog:",
+        "@veyyon/natives": "catalog:",
         "@veyyon/snapcompact": "catalog:",
+        "@veyyon/utils": "catalog:",
+        "@veyyon/wire": "catalog:",
       },
       "devDependencies": {
         "@opentelemetry/context-async-hooks": "catalog:",
@@ -38,13 +38,13 @@
       },
     },
     "packages/ai": {
-      "name": "@veyyon/pi-ai",
+      "name": "@veyyon/ai",
       "version": "1.0.0",
       "dependencies": {
         "@bufbuild/protobuf": "catalog:",
-        "@veyyon/pi-catalog": "catalog:",
-        "@veyyon/pi-utils": "catalog:",
-        "@veyyon/pi-wire": "catalog:",
+        "@veyyon/catalog": "catalog:",
+        "@veyyon/utils": "catalog:",
+        "@veyyon/wire": "catalog:",
         "arktype": "catalog:",
         "zod": "catalog:",
       },
@@ -54,21 +54,21 @@
       },
     },
     "packages/catalog": {
-      "name": "@veyyon/pi-catalog",
+      "name": "@veyyon/catalog",
       "version": "1.0.0",
       "dependencies": {
         "@bufbuild/protobuf": "catalog:",
-        "@veyyon/pi-utils": "catalog:",
+        "@veyyon/utils": "catalog:",
         "arktype": "catalog:",
         "zod": "catalog:",
       },
       "devDependencies": {
         "@types/bun": "catalog:",
-        "@veyyon/pi-ai": "catalog:",
+        "@veyyon/ai": "catalog:",
       },
     },
     "packages/coding-agent": {
-      "name": "@veyyon/pi-coding-agent",
+      "name": "@veyyon/coding-agent",
       "version": "1.0.0",
       "bin": {
         "veyyon": "src/cli.ts",
@@ -85,18 +85,18 @@
         "@opentelemetry/sdk-trace-node": "catalog:",
         "@puppeteer/browsers": "catalog:",
         "@types/turndown": "catalog:",
+        "@veyyon/agent-core": "catalog:",
+        "@veyyon/ai": "catalog:",
+        "@veyyon/catalog": "catalog:",
         "@veyyon/hashline": "catalog:",
-        "@veyyon/pi-agent-core": "catalog:",
-        "@veyyon/pi-ai": "catalog:",
-        "@veyyon/pi-catalog": "catalog:",
-        "@veyyon/pi-mnemopi": "catalog:",
-        "@veyyon/pi-natives": "catalog:",
-        "@veyyon/pi-stats": "catalog:",
-        "@veyyon/pi-tui": "catalog:",
-        "@veyyon/pi-utils": "catalog:",
-        "@veyyon/pi-wire": "catalog:",
+        "@veyyon/mnemopi": "catalog:",
+        "@veyyon/natives": "catalog:",
         "@veyyon/snapcompact": "catalog:",
+        "@veyyon/stats": "catalog:",
         "@veyyon/tool-render": "catalog:",
+        "@veyyon/tui": "catalog:",
+        "@veyyon/utils": "catalog:",
+        "@veyyon/wire": "catalog:",
         "@xterm/headless": "catalog:",
         "arktype": "catalog:",
         "chalk": "catalog:",
@@ -131,8 +131,8 @@
       "name": "@veyyon/collab-web",
       "version": "16.3.6",
       "dependencies": {
-        "@veyyon/pi-wire": "catalog:",
         "@veyyon/tool-render": "catalog:",
+        "@veyyon/wire": "catalog:",
         "lucide-react": "catalog:",
         "marked": "catalog:",
         "react": "catalog:",
@@ -156,19 +156,19 @@
       },
     },
     "packages/metaharness": {
-      "name": "@veyyon/pi-metaharness",
+      "name": "@veyyon/metaharness",
       "version": "0.0.1",
       "bin": {
         "metaharness": "src/server.ts",
       },
       "dependencies": {
+        "@veyyon/agent-core": "catalog:",
+        "@veyyon/ai": "catalog:",
+        "@veyyon/catalog": "catalog:",
+        "@veyyon/coding-agent": "catalog:",
         "@veyyon/hashline": "catalog:",
-        "@veyyon/pi-agent-core": "catalog:",
-        "@veyyon/pi-ai": "catalog:",
-        "@veyyon/pi-catalog": "catalog:",
-        "@veyyon/pi-coding-agent": "catalog:",
-        "@veyyon/pi-utils": "catalog:",
         "@veyyon/typescript-edit-benchmark": "workspace:*",
+        "@veyyon/utils": "catalog:",
         "clsx": "^2.1.1",
         "d3-scale": "^4.0.2",
         "d3-shape": "^3.2.0",
@@ -188,15 +188,15 @@
       },
     },
     "packages/mnemopi": {
-      "name": "@veyyon/pi-mnemopi",
+      "name": "@veyyon/mnemopi",
       "version": "1.0.0",
       "bin": {
         "mnemopi": "src/cli.ts",
       },
       "dependencies": {
-        "@veyyon/pi-ai": "catalog:",
-        "@veyyon/pi-catalog": "catalog:",
-        "@veyyon/pi-utils": "catalog:",
+        "@veyyon/ai": "catalog:",
+        "@veyyon/catalog": "catalog:",
+        "@veyyon/utils": "catalog:",
         "lru-cache": "catalog:",
       },
       "devDependencies": {
@@ -214,7 +214,7 @@
       ],
     },
     "packages/natives": {
-      "name": "@veyyon/pi-natives",
+      "name": "@veyyon/natives",
       "version": "1.0.0",
       "devDependencies": {
         "@napi-rs/cli": "catalog:",
@@ -225,26 +225,26 @@
       "name": "@veyyon/snapcompact",
       "version": "1.0.0",
       "dependencies": {
-        "@veyyon/pi-ai": "catalog:",
-        "@veyyon/pi-natives": "catalog:",
-        "@veyyon/pi-utils": "catalog:",
-        "@veyyon/pi-wire": "catalog:",
+        "@veyyon/ai": "catalog:",
+        "@veyyon/natives": "catalog:",
+        "@veyyon/utils": "catalog:",
+        "@veyyon/wire": "catalog:",
       },
       "devDependencies": {
         "@types/bun": "catalog:",
       },
     },
     "packages/stats": {
-      "name": "@veyyon/pi-stats",
+      "name": "@veyyon/stats",
       "version": "1.0.0",
       "bin": {
         "veyyon-stats": "./src/index.ts",
       },
       "dependencies": {
         "@tailwindcss/node": "catalog:",
-        "@veyyon/pi-ai": "catalog:",
-        "@veyyon/pi-catalog": "catalog:",
-        "@veyyon/pi-utils": "catalog:",
+        "@veyyon/ai": "catalog:",
+        "@veyyon/catalog": "catalog:",
+        "@veyyon/utils": "catalog:",
         "chart.js": "catalog:",
         "date-fns": "catalog:",
         "lucide-react": "catalog:",
@@ -264,24 +264,24 @@
       "name": "@veyyon/swarm-extension",
       "version": "1.0.0",
       "bin": {
-        "omp-swarm": "src/cli.ts",
+        "veyyon-swarm": "src/cli.ts",
       },
       "dependencies": {
-        "@veyyon/pi-utils": "workspace:*",
+        "@veyyon/utils": "workspace:*",
       },
       "devDependencies": {
         "@types/bun": "^1.3.14",
       },
       "peerDependencies": {
-        "@veyyon/pi-coding-agent": "catalog:",
+        "@veyyon/coding-agent": "catalog:",
       },
     },
     "packages/tool-render": {
       "name": "@veyyon/tool-render",
       "version": "1.0.0",
       "dependencies": {
-        "@veyyon/pi-utils": "catalog:",
-        "@veyyon/pi-wire": "catalog:",
+        "@veyyon/utils": "catalog:",
+        "@veyyon/wire": "catalog:",
         "react": "catalog:",
       },
       "devDependencies": {
@@ -294,11 +294,11 @@
       },
     },
     "packages/tui": {
-      "name": "@veyyon/pi-tui",
+      "name": "@veyyon/tui",
       "version": "1.0.0",
       "dependencies": {
-        "@veyyon/pi-natives": "catalog:",
-        "@veyyon/pi-utils": "catalog:",
+        "@veyyon/natives": "catalog:",
+        "@veyyon/utils": "catalog:",
         "lru-cache": "catalog:",
         "marked": "catalog:",
       },
@@ -315,12 +315,12 @@
         "@babel/parser": "catalog:",
         "@babel/traverse": "catalog:",
         "@babel/types": "catalog:",
+        "@veyyon/agent-core": "catalog:",
+        "@veyyon/ai": "catalog:",
+        "@veyyon/coding-agent": "catalog:",
         "@veyyon/hashline": "catalog:",
-        "@veyyon/pi-agent-core": "catalog:",
-        "@veyyon/pi-ai": "catalog:",
-        "@veyyon/pi-coding-agent": "catalog:",
-        "@veyyon/pi-tui": "catalog:",
-        "@veyyon/pi-utils": "catalog:",
+        "@veyyon/tui": "catalog:",
+        "@veyyon/utils": "catalog:",
         "diff": "catalog:",
         "prettier": "catalog:",
         "regexp-tree": "catalog:",
@@ -332,10 +332,10 @@
       },
     },
     "packages/utils": {
-      "name": "@veyyon/pi-utils",
+      "name": "@veyyon/utils",
       "version": "1.0.0",
       "dependencies": {
-        "@veyyon/pi-natives": "catalog:",
+        "@veyyon/natives": "catalog:",
         "handlebars": "catalog:",
         "winston": "catalog:",
         "winston-daily-rotate-file": "catalog:",
@@ -345,14 +345,14 @@
       },
     },
     "packages/wire": {
-      "name": "@veyyon/pi-wire",
+      "name": "@veyyon/wire",
       "version": "1.0.0",
       "devDependencies": {
         "@types/bun": "catalog:",
       },
     },
-    "python/robomp/web": {
-      "name": "robomp-web",
+    "python/veybot/web": {
+      "name": "veybot-web",
       "version": "0.1.0",
       "dependencies": {
         "solid-js": "catalog:",
@@ -403,22 +403,22 @@
     "@types/react-dom": "^19.2.3",
     "@types/turndown": "5.0.6",
     "@typescript/native-preview": "7.0.0-dev.20260707.2",
+    "@veyyon/agent-core": "1.0.0",
+    "@veyyon/ai": "1.0.0",
+    "@veyyon/catalog": "1.0.0",
+    "@veyyon/coding-agent": "1.0.0",
     "@veyyon/collab-web": "1.0.0",
     "@veyyon/hashline": "1.0.0",
-    "@veyyon/pi-agent-core": "1.0.0",
-    "@veyyon/pi-ai": "1.0.0",
-    "@veyyon/pi-catalog": "1.0.0",
-    "@veyyon/pi-coding-agent": "1.0.0",
-    "@veyyon/pi-metaharness": "1.0.0",
-    "@veyyon/pi-mnemopi": "1.0.0",
-    "@veyyon/pi-natives": "1.0.0",
-    "@veyyon/pi-stats": "1.0.0",
-    "@veyyon/pi-tui": "1.0.0",
-    "@veyyon/pi-utils": "1.0.0",
-    "@veyyon/pi-wire": "1.0.0",
+    "@veyyon/metaharness": "1.0.0",
+    "@veyyon/mnemopi": "1.0.0",
+    "@veyyon/natives": "1.0.0",
     "@veyyon/snapcompact": "1.0.0",
+    "@veyyon/stats": "1.0.0",
     "@veyyon/swarm-extension": "1.0.0",
     "@veyyon/tool-render": "1.0.0",
+    "@veyyon/tui": "1.0.0",
+    "@veyyon/utils": "1.0.0",
+    "@veyyon/wire": "1.0.0",
     "@xterm/headless": "^6.0.0",
     "arktype": "2.2.3",
     "chalk": "^5.6.2",
@@ -993,39 +993,39 @@
 
     "@typescript/vfs": ["@typescript/vfs@1.6.4", "", { "dependencies": { "debug": "^4.4.3" }, "peerDependencies": { "typescript": "*" } }, "sha512-PJFXFS4ZJKiJ9Qiuix6Dz/OwEIqHD7Dme1UwZhTK11vR+5dqW2ACbdndWQexBzCx+CPuMe5WBYQWCsFyGlQLlQ=="],
 
+    "@veyyon/agent-core": ["@veyyon/agent-core@workspace:packages/agent"],
+
+    "@veyyon/ai": ["@veyyon/ai@workspace:packages/ai"],
+
+    "@veyyon/catalog": ["@veyyon/catalog@workspace:packages/catalog"],
+
+    "@veyyon/coding-agent": ["@veyyon/coding-agent@workspace:packages/coding-agent"],
+
     "@veyyon/collab-web": ["@veyyon/collab-web@workspace:packages/collab-web"],
 
     "@veyyon/hashline": ["@veyyon/hashline@workspace:packages/hashline"],
 
-    "@veyyon/pi-agent-core": ["@veyyon/pi-agent-core@workspace:packages/agent"],
+    "@veyyon/metaharness": ["@veyyon/metaharness@workspace:packages/metaharness"],
 
-    "@veyyon/pi-ai": ["@veyyon/pi-ai@workspace:packages/ai"],
+    "@veyyon/mnemopi": ["@veyyon/mnemopi@workspace:packages/mnemopi"],
 
-    "@veyyon/pi-catalog": ["@veyyon/pi-catalog@workspace:packages/catalog"],
-
-    "@veyyon/pi-coding-agent": ["@veyyon/pi-coding-agent@workspace:packages/coding-agent"],
-
-    "@veyyon/pi-metaharness": ["@veyyon/pi-metaharness@workspace:packages/metaharness"],
-
-    "@veyyon/pi-mnemopi": ["@veyyon/pi-mnemopi@workspace:packages/mnemopi"],
-
-    "@veyyon/pi-natives": ["@veyyon/pi-natives@workspace:packages/natives"],
-
-    "@veyyon/pi-stats": ["@veyyon/pi-stats@workspace:packages/stats"],
-
-    "@veyyon/pi-tui": ["@veyyon/pi-tui@workspace:packages/tui"],
-
-    "@veyyon/pi-utils": ["@veyyon/pi-utils@workspace:packages/utils"],
-
-    "@veyyon/pi-wire": ["@veyyon/pi-wire@workspace:packages/wire"],
+    "@veyyon/natives": ["@veyyon/natives@workspace:packages/natives"],
 
     "@veyyon/snapcompact": ["@veyyon/snapcompact@workspace:packages/snapcompact"],
+
+    "@veyyon/stats": ["@veyyon/stats@workspace:packages/stats"],
 
     "@veyyon/swarm-extension": ["@veyyon/swarm-extension@workspace:packages/swarm-extension"],
 
     "@veyyon/tool-render": ["@veyyon/tool-render@workspace:packages/tool-render"],
 
+    "@veyyon/tui": ["@veyyon/tui@workspace:packages/tui"],
+
     "@veyyon/typescript-edit-benchmark": ["@veyyon/typescript-edit-benchmark@workspace:packages/typescript-edit-benchmark"],
+
+    "@veyyon/utils": ["@veyyon/utils@workspace:packages/utils"],
+
+    "@veyyon/wire": ["@veyyon/wire@workspace:packages/wire"],
 
     "@xmldom/xmldom": ["@xmldom/xmldom@0.8.13", "", {}, "sha512-KRYzxepc14G/CEpEGc3Yn+JKaAeT63smlDr+vjB8jRfgTBBI9wRj/nkQEO+ucV8p8I9bfKLWp37uHgFrbntPvw=="],
 
@@ -1463,8 +1463,6 @@
 
     "roarr": ["roarr@2.15.4", "", { "dependencies": { "boolean": "^3.0.1", "detect-node": "^2.0.4", "globalthis": "^1.0.1", "json-stringify-safe": "^5.0.1", "semver-compare": "^1.0.0", "sprintf-js": "^1.1.2" } }, "sha512-CHhPh+UNHD2GTXNYhPWLnU8ONHdI+5DI+4EYIAOaiD63rHeYlZvyh8P+in5999TTSFgUYuKUAjzRI4mdh/p+2A=="],
 
-    "robomp-web": ["robomp-web@workspace:python/robomp/web"],
-
     "rolldown": ["rolldown@1.1.5", "", { "dependencies": { "@oxc-project/types": "=0.139.0", "@rolldown/pluginutils": "^1.0.0" }, "optionalDependencies": { "@rolldown/binding-android-arm64": "1.1.5", "@rolldown/binding-darwin-arm64": "1.1.5", "@rolldown/binding-darwin-x64": "1.1.5", "@rolldown/binding-freebsd-x64": "1.1.5", "@rolldown/binding-linux-arm-gnueabihf": "1.1.5", "@rolldown/binding-linux-arm64-gnu": "1.1.5", "@rolldown/binding-linux-arm64-musl": "1.1.5", "@rolldown/binding-linux-ppc64-gnu": "1.1.5", "@rolldown/binding-linux-s390x-gnu": "1.1.5", "@rolldown/binding-linux-x64-gnu": "1.1.5", "@rolldown/binding-linux-x64-musl": "1.1.5", "@rolldown/binding-openharmony-arm64": "1.1.5", "@rolldown/binding-wasm32-wasi": "1.1.5", "@rolldown/binding-win32-arm64-msvc": "1.1.5", "@rolldown/binding-win32-x64-msvc": "1.1.5" }, "bin": { "rolldown": "./bin/cli.mjs" } }, "sha512-t9z29cJjXf/vxQ8dyhCSpt6H6aSwHTk8cT5I3iy6SMXuFpk5mB6PL6XfC8PCwrPTx93udwKUm9HRteAlTGBLiA=="],
 
     "safe-buffer": ["safe-buffer@5.1.2", "", {}, "sha512-Gd2UZBJDkXlY7GbJxfsE8/nvKkUEU1G38c1siN6QP6a9PT9MmHB8GnpscSmMJSoF8LOIrt8ud/wPtojys4G6+g=="],
@@ -1578,6 +1576,8 @@
     "util-deprecate": ["util-deprecate@1.0.2", "", {}, "sha512-EPD5q1uXyFxJpCrLnCc1nHnq3gOa6DZBocAIiI2TaSCA7VCJ1UJDMagCzIkXNsUYfD1daK//LTEQ8xiIbrHtcw=="],
 
     "vali-date": ["vali-date@1.0.0", "", {}, "sha512-sgECfZthyaCKW10N0fm27cg8HYTFK5qMWgypqkXMQ4Wbl/zZKx7xZICgcoxIIE+WFAP/MBL2EFwC/YvLxw3Zeg=="],
+
+    "veybot-web": ["veybot-web@workspace:python/veybot/web"],
 
     "vite": ["vite@8.1.4", "", { "dependencies": { "lightningcss": "^1.32.0", "picomatch": "^4.0.5", "postcss": "^8.5.16", "rolldown": "~1.1.4", "tinyglobby": "^0.2.17" }, "optionalDependencies": { "fsevents": "~2.3.3" }, "peerDependencies": { "@types/node": "^20.19.0 || >=22.12.0", "@vitejs/devtools": "^0.3.0", "esbuild": "^0.27.0 || ^0.28.0", "jiti": ">=1.21.0", "less": "^4.0.0", "sass": "^1.70.0", "sass-embedded": "^1.70.0", "stylus": ">=0.54.8", "sugarss": "^5.0.0", "terser": "^5.16.0", "tsx": "^4.8.1", "yaml": "^2.4.2" }, "optionalPeers": ["@types/node", "@vitejs/devtools", "esbuild", "jiti", "less", "sass", "sass-embedded", "stylus", "sugarss", "terser", "tsx", "yaml"], "bin": { "vite": "bin/vite.js" } }, "sha512-bTT9PsdWO+MQMNG9ZXIP/qM9wGh37DFxTV/sPq9cFpHr3w4jkgef032PkAL9jAqhk3Nz8NQw3O8n6/xFkqO4QQ=="],
 

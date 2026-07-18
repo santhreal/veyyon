@@ -9,11 +9,11 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { clearCache } from "@veyyon/pi-coding-agent/capability/fs";
-import type { Skill } from "@veyyon/pi-coding-agent/capability/skill";
-import type { LoadContext, LoadResult } from "@veyyon/pi-coding-agent/capability/types";
-import { scanSkillsFromDir } from "@veyyon/pi-coding-agent/discovery/helpers";
-import { removeSyncWithRetries } from "@veyyon/pi-utils";
+import { clearCache } from "@veyyon/coding-agent/capability/fs";
+import type { Skill } from "@veyyon/coding-agent/capability/skill";
+import type { LoadContext, LoadResult } from "@veyyon/coding-agent/capability/types";
+import { scanSkillsFromDir } from "@veyyon/coding-agent/discovery/helpers";
+import { removeSyncWithRetries } from "@veyyon/utils";
 
 function writeSkill(dir: string, name: string, description: string): void {
 	const skillDir = path.join(dir, name);
@@ -46,7 +46,7 @@ describe("monorepo skill discovery", () => {
 		removeSyncWithRetries(tempDir);
 	});
 
-	test("finds skills in ancestor .omp/skills/ directories", async () => {
+	test("finds skills in ancestor .veyyon/skills/ directories", async () => {
 		// Root has a skill
 		writeSkill(path.join(repoRoot, ".veyyon", "skills"), "root-skill", "From repo root");
 		// Sub-project has a skill

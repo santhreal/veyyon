@@ -5,12 +5,12 @@ import {
 	externalizeImageData,
 	parseBlobRef,
 	resolveImageData,
-} from "@veyyon/pi-coding-agent/session/blob-store";
-import { TempDir } from "@veyyon/pi-utils";
+} from "@veyyon/coding-agent/session/blob-store";
+import { TempDir } from "@veyyon/utils";
 
 describe("BlobStore image display paths", () => {
 	it("creates an extension-bearing sidecar for image blobs while keeping canonical refs extensionless", async () => {
-		using tempDir = TempDir.createSync("@omp-blob-store-image-link-");
+		using tempDir = TempDir.createSync("@veyyon-blob-store-image-link-");
 		const store = new BlobStore(tempDir.path());
 		const data = Buffer.from("image-bytes");
 
@@ -23,7 +23,7 @@ describe("BlobStore image display paths", () => {
 	});
 
 	it("externalizes image data with a mime-derived display extension", async () => {
-		using tempDir = TempDir.createSync("@omp-blob-store-image-link-");
+		using tempDir = TempDir.createSync("@veyyon-blob-store-image-link-");
 		const store = new BlobStore(tempDir.path());
 		const data = Buffer.from("image-bytes");
 

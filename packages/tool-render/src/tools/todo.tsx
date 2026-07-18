@@ -1,4 +1,5 @@
 /** `todo` — phased task-list ops and the resulting board. */
+import { formatCount } from "@veyyon/utils";
 import type { ReactNode } from "react";
 import { Badges, ResultText, Row } from "../parts";
 import type { ToolRenderer, ToolRenderProps } from "../types";
@@ -92,14 +93,14 @@ function opRow(entry: unknown, key: number): ReactNode {
 	if (task !== null) parts.push(task);
 	if (phase !== null) parts.push(phase);
 	if (Array.isArray(entry.items) && entry.items.length > 0) {
-		parts.push(`${entry.items.length} item${entry.items.length === 1 ? "" : "s"}`);
+		parts.push(formatCount("item", entry.items.length));
 	}
 	if (Array.isArray(entry.list) && entry.list.length > 0) {
 		let tasks = 0;
 		for (const phaseEntry of entry.list) {
 			if (isRecord(phaseEntry) && Array.isArray(phaseEntry.items)) tasks += phaseEntry.items.length;
 		}
-		parts.push(`${entry.list.length} phase${entry.list.length === 1 ? "" : "s"} · ${tasks} tasks`);
+		parts.push(`${formatCount("phase", entry.list.length)} · ${tasks} tasks`);
 	}
 	return (
 		<Row key={key} k={str(entry.op) ?? "update"}>

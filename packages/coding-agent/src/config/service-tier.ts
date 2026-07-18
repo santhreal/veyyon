@@ -1,4 +1,4 @@
-import type { ServiceTier, ServiceTierByFamily } from "@veyyon/pi-ai";
+import type { ServiceTier, ServiceTierByFamily } from "@veyyon/ai";
 import type { SubmenuOption } from "./settings-schema";
 
 /**

@@ -10,6 +10,10 @@
         <!-- Veyyon handbook: self-contained head additions. No remote resources. -->
         <meta name="theme-color" content="#050505">
         <meta name="color-scheme" content="dark">
+        <!-- Site favicons live at the deployed root, one level above /docs/. -->
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+        <link rel="icon" href="/favicon.ico" sizes="48x48">
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png">
         <style>
           /* Paint the near-black surface before CSS/JS resolve the theme, so there is
              no light flash on load. Kept in sync with theme/veyyon.css. */
@@ -18,7 +22,7 @@
           *, *::before, *::after { box-sizing: border-box; }
         </style>
 
-        <meta name="description" content="How Veyyon turns open models into frontier coding agents. The product, the harness, tool-call repair, the edit format, per-model adaptation, and how to use it.">
+        <meta name="description" content="Operator handbook for the Veyyon terminal coding agent: install, configuration, tools, approvals, edit formats, providers, and harness structure.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -38,7 +42,7 @@
         <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="../ayu-highlight-3fdfc3ac.css">
 
         <!-- Custom theme stylesheets -->
-        <link rel="stylesheet" href="../theme/veyyon-fc839a17.css">
+        <link rel="stylesheet" href="../theme/veyyon-06f6939e.css">
 
 
         <!-- Provide site root and default themes to javascript -->
@@ -46,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-e76f06ca.js";
+            window.path_to_searchindex_js = "../searchindex-a2447057.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-9cfd259b.js"></script>
+        <script src="../toc-cc1a72e9.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -192,20 +196,20 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="diagnostics-and-health"><a class="header" href="#diagnostics-and-health">Diagnostics and health</a></h1>
-<p>Veyyon’s <strong>shipped</strong> diagnostics today are scoped to <strong>plugins</strong> and <strong>interactive debug</strong> — not a
-full install-wide <code>veyyon doctor</code> command yet.</p>
-<h2 id="plugin-doctor-shipped"><a class="header" href="#plugin-doctor-shipped">Plugin doctor (shipped)</a></h2>
+<p>Diagnostics are split across plugin doctor, TUI <code>/debug</code>, and memory commands. There is no single
+<code>veyyon doctor</code> binary that covers install, auth, and plugins in one pass.</p>
+<h2 id="plugin-doctor"><a class="header" href="#plugin-doctor">Plugin doctor</a></h2>
 <pre><code class="language-console">$ veyyon plugin doctor
 $ veyyon plugin doctor --fix
 </code></pre>
 <p>Checks plugin installation health. With <code>--fix</code>, it attempts automatic repairs where implemented.</p>
 <p>Additional plugin-environment checks warn when optional external binaries (<code>sd</code>, <code>sg</code>, <code>git</code>) or common
 API keys are missing — these are warnings, not hard failures.</p>
-<h2 id="tui-debug-shipped"><a class="header" href="#tui-debug-shipped">TUI debug (shipped)</a></h2>
+<h2 id="tui-debug"><a class="header" href="#tui-debug">TUI debug</a></h2>
 <pre><code class="language-text">/debug
 </code></pre>
 <p>Opens the debug tools selector in the interactive session.</p>
-<h2 id="memory-diagnostics-shipped"><a class="header" href="#memory-diagnostics-shipped">Memory diagnostics (shipped)</a></h2>
+<h2 id="memory-diagnostics"><a class="header" href="#memory-diagnostics">Memory diagnostics</a></h2>
 <pre><code class="language-text">/memory diagnose
 /memory stats
 </code></pre>

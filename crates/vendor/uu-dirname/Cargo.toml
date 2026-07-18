@@ -1,5 +1,5 @@
 # Vendored from uutils/coreutils tag 0.8.0 (src/uu/dirname), patched to expose
-# an in-process entrypoint using pi-uutils-ctx streams.
+# an in-process entrypoint using veyyon-uutils-ctx streams.
 [package]
 name = "uu_dirname"
 version = "0.8.0"
@@ -13,7 +13,7 @@ path = "src/dirname.rs"
 [dependencies]
 clap = { version = "4.5", features = ["wrap_help", "cargo", "color"] }
 uucore = { version = "0.8.0" }
-pi-uutils-ctx = { path = "../../pi-uutils-ctx" }
+veyyon-uutils-ctx = { path = "../../veyyon-uutils-ctx" }
 
 [dev-dependencies]
 parking_lot = "0.12"

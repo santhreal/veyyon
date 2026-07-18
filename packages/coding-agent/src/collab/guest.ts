@@ -16,9 +16,9 @@
  * transcript behavior are native by construction.
  */
 import * as path from "node:path";
-import type { ThinkingLevel } from "@veyyon/pi-agent-core";
-import type { ImageContent } from "@veyyon/pi-ai";
-import { getConfigRootDir, logger } from "@veyyon/pi-utils";
+import type { ThinkingLevel } from "@veyyon/agent-core";
+import type { ImageContent } from "@veyyon/ai";
+import { getConfigRootDir, logger } from "@veyyon/utils";
 import type { AgentHubRemote, AgentHubRemoteTranscript } from "../modes/components/agent-hub";
 import type { InteractiveModeContext } from "../modes/types";
 import { AgentRegistry } from "../registry/agent-registry";

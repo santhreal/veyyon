@@ -124,7 +124,7 @@ impl<'a> StyleManager<'a> {
 		let indicator = self.indicator_for_raw_code(path)?;
 		let should_skip = indicator == Indicator::SymbolicLink
 			&& self.ln_color_from_target
-			&& pi_uutils_ctx::resolve(path.path()).exists();
+			&& veyyon_uutils_ctx::resolve(path.path()).exists();
 
 		if should_skip {
 			return None;
@@ -327,14 +327,14 @@ impl<'a> StyleManager<'a> {
 		if path.must_dereference && path.metadata().is_none() {
 			return None;
 		}
-		let mut target = pi_uutils_ctx::resolve(path.path()).read_link().ok()?;
+		let mut target = veyyon_uutils_ctx::resolve(path.path()).read_link().ok()?;
 		if target.is_relative()
 			&& let Some(parent) = path.path().parent()
 		{
 			target = parent.join(target);
 		}
 
-		match fs::metadata(pi_uutils_ctx::resolve(&target)) {
+		match fs::metadata(veyyon_uutils_ctx::resolve(&target)) {
 			Ok(metadata) => {
 				let style = self
 					.colors
@@ -358,7 +358,7 @@ impl<'a> StyleManager<'a> {
 
 		let mut existence_cache: Option<bool> = None;
 		let mut entry_exists = || -> bool {
-			*existence_cache.get_or_insert_with(|| pi_uutils_ctx::resolve(path.path()).exists())
+			*existence_cache.get_or_insert_with(|| veyyon_uutils_ctx::resolve(path.path()).exists())
 		};
 
 		let Some(file_type) = path.file_type() else {
@@ -563,10 +563,11 @@ pub(crate) fn color_name(
 		return style_manager.apply_style_for_path(path, name, wrap);
 	}
 
-	let md_option: Option<Metadata> = path
-		.metadata()
-		.cloned()
-		.or_else(|| pi_uutils_ctx::resolve(&path.p_buf).symlink_metadata().ok());
+	let md_option: Option<Metadata> = path.metadata().cloned().or_else(|| {
+		veyyon_uutils_ctx::resolve(&path.p_buf)
+			.symlink_metadata()
+			.ok()
+	});
 
 	style_manager.apply_style_based_on_metadata(path, md_option.as_ref(), name, wrap)
 }
@@ -578,7 +579,7 @@ pub(crate) enum LsColorsParseError {
 }
 
 pub(crate) fn validate_ls_colors_env() -> Result<(), LsColorsParseError> {
-	let Some(ls_colors) = pi_uutils_ctx::var("LS_COLORS") else {
+	let Some(ls_colors) = veyyon_uutils_ctx::var("LS_COLORS") else {
 		return Ok(());
 	};
 
@@ -756,7 +757,7 @@ fn parse_indicator_codes() -> (FxHashMap<Indicator, String>, bool) {
 
 	// LS_COLORS validity is checked before enabling color output, so parse
 	// entries directly here for raw indicator overrides.
-	if let Some(ls_colors) = pi_uutils_ctx::var("LS_COLORS") {
+	if let Some(ls_colors) = veyyon_uutils_ctx::var("LS_COLORS") {
 		for entry in ls_colors.split(':') {
 			if entry.is_empty() {
 				continue;

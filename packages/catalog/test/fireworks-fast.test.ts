@@ -1,6 +1,39 @@
 import { describe, expect, it } from "bun:test";
-import { FIREWORKS_FAST_SUFFIX, isFireworksFastModelId, toFireworksBaseModelId } from "../src/fireworks-model-id";
+import {
+	FIREWORKS_FAST_SUFFIX,
+	isFireworksFastModelId,
+	toFirepassPublicModelId,
+	toFirepassWireModelId,
+	toFireworksBaseModelId,
+	toFireworksPublicModelId,
+	toFireworksWireModelId,
+} from "../src/fireworks-model-id";
 import { buildFireworksFastSeed } from "../src/provider-models/openai-compat";
+
+describe("fireworks wire/public id translation", () => {
+	it("round-trips version dots through the p-encoded wire form", () => {
+		expect(toFireworksWireModelId("kimi-k2.6")).toBe("accounts/fireworks/models/kimi-k2p6");
+		expect(toFireworksPublicModelId("accounts/fireworks/models/kimi-k2p6")).toBe("kimi-k2.6");
+		expect(toFireworksPublicModelId(toFireworksWireModelId("glm-5.1"))).toBe("glm-5.1");
+	});
+
+	it("only rewrites digit-p-digit, not letter p", () => {
+		expect(toFireworksWireModelId("deepseek-prover")).toBe("accounts/fireworks/models/deepseek-prover");
+		expect(toFireworksPublicModelId("accounts/fireworks/models/deepseek-prover")).toBe("deepseek-prover");
+	});
+
+	it("is idempotent when given an already-wire-form id", () => {
+		expect(toFireworksWireModelId("accounts/fireworks/models/kimi-k2p6")).toBe("accounts/fireworks/models/kimi-k2p6");
+	});
+
+	it("firepass ids use the routers namespace with the same p-encoding", () => {
+		expect(toFirepassWireModelId("kimi-k2.6-turbo")).toBe("accounts/fireworks/routers/kimi-k2p6-turbo");
+		expect(toFirepassPublicModelId("accounts/fireworks/routers/kimi-k2p6-turbo")).toBe("kimi-k2.6-turbo");
+		expect(toFirepassWireModelId("accounts/fireworks/routers/kimi-k2p6-turbo")).toBe(
+			"accounts/fireworks/routers/kimi-k2p6-turbo",
+		);
+	});
+});
 
 describe("fireworks fast id helpers", () => {
 	it("detects the -fast serving-path suffix", () => {

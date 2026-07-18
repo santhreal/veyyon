@@ -13,14 +13,14 @@
  * one-entry block).
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "bun:test";
-import type { AssistantMessage } from "@veyyon/pi-ai";
-import { resetSettingsForTest, Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { ReadToolGroupComponent } from "@veyyon/pi-coding-agent/modes/components/read-tool-group";
-import { EventController } from "@veyyon/pi-coding-agent/modes/controllers/event-controller";
-import { initTheme } from "@veyyon/pi-coding-agent/modes/theme/theme";
-import type { InteractiveModeContext } from "@veyyon/pi-coding-agent/modes/types";
-import type { AgentSessionEvent } from "@veyyon/pi-coding-agent/session/agent-session";
-import { Container } from "@veyyon/pi-tui";
+import type { AssistantMessage } from "@veyyon/ai";
+import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
+import { ReadToolGroupComponent } from "@veyyon/coding-agent/modes/components/read-tool-group";
+import { EventController } from "@veyyon/coding-agent/modes/controllers/event-controller";
+import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
+import type { AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session";
+import { Container } from "@veyyon/tui";
 
 beforeAll(async () => {
 	await initTheme(false, undefined, undefined, "dark", "light");

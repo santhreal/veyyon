@@ -1,6 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { $which, getRemoteDir, postmortem } from "@veyyon/pi-utils";
+import { $which, getRemoteDir, postmortem } from "@veyyon/utils";
 import { $ } from "bun";
 import {
 	getControlDir,
@@ -10,10 +10,9 @@ import {
 } from "./connection-manager";
 import { buildSshTarget, sanitizeHostName } from "./utils";
 
-const REMOTE_DIR = getRemoteDir();
-const CONTROL_DIR = getControlDir();
-const CONTROL_PATH = getControlPathTemplate();
-
+// Dirs are resolved per call, never frozen at module load: the dirs resolver
+// is rebuilt after profile/agent `.env` files apply (refreshDirsFromEnv),
+// which happens AFTER this module imports.
 const mountedPaths = new Set<string>();
 
 type MountPointStatReader = (filePath: string) => Promise<{ dev: number }>;
@@ -40,7 +39,7 @@ function getMountName(host: SSHConnectionTarget): string {
 }
 
 function getMountPath(host: SSHConnectionTarget): string {
-	return path.join(REMOTE_DIR, getMountName(host));
+	return path.join(getRemoteDir(), getMountName(host));
 }
 
 function buildSshfsArgs(host: SSHConnectionTarget): string[] {
@@ -58,7 +57,14 @@ function buildSshfsArgs(host: SSHConnectionTarget): string[] {
 	];
 
 	if (supportsSshControlMaster()) {
-		args.push("-o", "ControlMaster=auto", "-o", `ControlPath=${CONTROL_PATH}`, "-o", "ControlPersist=3600");
+		args.push(
+			"-o",
+			"ControlMaster=auto",
+			"-o",
+			`ControlPath=${getControlPathTemplate()}`,
+			"-o",
+			"ControlPersist=3600",
+		);
 	}
 
 	if (host.port) {
@@ -115,7 +121,7 @@ export async function mountRemote(host: SSHConnectionTarget, remotePath = "/"): 
 	if (!hasSshfs()) return undefined;
 
 	const mountPath = getMountPath(host);
-	await Promise.all([ensureDir(REMOTE_DIR), ensureDir(CONTROL_DIR), ensureDir(mountPath)]);
+	await Promise.all([ensureDir(getRemoteDir()), ensureDir(getControlDir()), ensureDir(mountPath)]);
 
 	if (await isMounted(mountPath)) {
 		if (!registered) {

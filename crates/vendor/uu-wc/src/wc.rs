@@ -21,7 +21,6 @@ use std::{
 };
 
 use clap::{Arg, ArgAction, ArgMatches, Command, builder::ValueParser};
-use pi_uutils_ctx::format_usage;
 use thiserror::Error;
 use unicode_width::UnicodeWidthChar;
 use utf8::{BufReadDecoder, BufReadDecoderError};
@@ -32,6 +31,7 @@ use uucore::{
 	parser::shortcut_value_parser::ShortcutValueParser,
 	quoting_style::{self, QuotingStyle},
 };
+use veyyon_uutils_ctx::format_usage;
 
 use crate::{
 	count_fast::{count_bytes_chars_and_lines_fast, count_bytes_fast},
@@ -277,7 +277,7 @@ impl<'a> Input<'a> {
 	/// to determine the widths of the columns that will ultimately be printed.
 	fn try_as_files0(&self) -> UResult<Option<Vec<Input<'static>>>> {
 		match self {
-			Self::Path(path) => match fs::metadata(pi_uutils_ctx::resolve(path)) {
+			Self::Path(path) => match fs::metadata(veyyon_uutils_ctx::resolve(path)) {
 				Ok(meta) if meta.is_file() && meta.len() <= (10 << 20) => {
 					Ok(Some(files0_iter_file(path)?.collect::<Result<Vec<_>, _>>()?))
 				},
@@ -377,8 +377,9 @@ fn run_matches(matches: &ArgMatches) -> UResult<()> {
 	wc(&inputs, &settings)
 }
 
-/// In-process builtin entry point. The host installs a [`pi_uutils_ctx`] scope
-/// (stdio + working directory) on a dedicated blocking thread, then calls this.
+/// In-process builtin entry point. The host installs a [`veyyon_uutils_ctx`]
+/// scope (stdio + working directory) on a dedicated blocking thread, then calls
+/// this.
 ///
 /// Unlike uutils' macro-generated `uumain` entry point, this never calls
 /// `std::process::exit` — clap help/usage/version output is rendered to the
@@ -390,18 +391,18 @@ pub fn run(args: Vec<OsString>) -> i32 {
 		Err(err) => {
 			let rendered = err.to_string();
 			if err.use_stderr() {
-				let _ = write!(pi_uutils_ctx::stderr(), "{rendered}");
+				let _ = write!(veyyon_uutils_ctx::stderr(), "{rendered}");
 				return 1;
 			}
-			let _ = write!(pi_uutils_ctx::stdout(), "{rendered}");
+			let _ = write!(veyyon_uutils_ctx::stdout(), "{rendered}");
 			return 0;
 		},
 	};
 	match run_matches(&matches) {
-		Ok(()) => pi_uutils_ctx::exit_code(),
+		Ok(()) => veyyon_uutils_ctx::exit_code(),
 		Err(err) => {
 			let code = err.code();
-			let _ = writeln!(pi_uutils_ctx::stderr(), "wc: {err}");
+			let _ = writeln!(veyyon_uutils_ctx::stderr(), "wc: {err}");
 			if code == 0 { 1 } else { code }
 		},
 	}
@@ -670,7 +671,7 @@ fn word_count_from_reader_specialized<
 	let mut reader = BufReadDecoder::new(reader.buffered());
 	let mut in_word = false;
 	let mut current_len = 0;
-	let posixly_correct = pi_uutils_ctx::var("POSIXLY_CORRECT").is_some();
+	let posixly_correct = veyyon_uutils_ctx::var("POSIXLY_CORRECT").is_some();
 	while let Some(chunk) = reader.next_strict() {
 		match chunk {
 			Ok(text) => {
@@ -709,8 +710,8 @@ enum CountResult {
 /// return an error: ([`WordCount`], `Option<io::Error>`).
 fn word_count_from_input(input: &Input<'_>, settings: &Settings) -> CountResult {
 	let (total, maybe_err) = match input {
-		Input::Stdin(_) => word_count_from_reader(pi_uutils_ctx::stdin(), settings),
-		Input::Path(path) => match File::open(pi_uutils_ctx::resolve(path)) {
+		Input::Stdin(_) => word_count_from_reader(veyyon_uutils_ctx::stdin(), settings),
+		Input::Path(path) => match File::open(veyyon_uutils_ctx::resolve(path)) {
 			Ok(f) => word_count_from_reader(f, settings),
 			Err(err) => return CountResult::Failure(err),
 		},
@@ -756,7 +757,7 @@ fn compute_number_width(inputs: &Inputs, settings: &Settings) -> usize {
 				match input {
 					Input::Stdin(_) => minimum_width = MINIMUM_WIDTH,
 					Input::Path(path) => {
-						if let Ok(meta) = fs::metadata(pi_uutils_ctx::resolve(path)) {
+						if let Ok(meta) = fs::metadata(veyyon_uutils_ctx::resolve(path)) {
 							if meta.is_file() {
 								total += meta.len();
 							} else {
@@ -784,14 +785,14 @@ type InputIterItem<'a> = Result<Input<'a>, Box<dyn UError>>;
 /// To be used with `--files0-from=-`, this applies a filter on the results of
 /// [`files0_iter`] to translate '-' into the appropriate error.
 fn files0_iter_stdin<'a>() -> impl Iterator<Item = InputIterItem<'a>> {
-	files0_iter(pi_uutils_ctx::stdin(), STDIN_REPR.into()).map(|i| match i {
+	files0_iter(veyyon_uutils_ctx::stdin(), STDIN_REPR.into()).map(|i| match i {
 		Ok(Input::Stdin(_)) => Err(WcError::StdinReprNotAllowed.into()),
 		_ => i,
 	})
 }
 
 fn files0_iter_file<'a>(path: &Path) -> UResult<impl Iterator<Item = InputIterItem<'a>>> {
-	match File::open(pi_uutils_ctx::resolve(path)) {
+	match File::open(veyyon_uutils_ctx::resolve(path)) {
 		Ok(f) => Ok(files0_iter(f, path.into())),
 		Err(e) => Err(e.map_err_context(|| {
 			format!(
@@ -919,8 +920,8 @@ pub(crate) fn wc_simd_allowed(policy: &SimdPolicy) -> bool {
 macro_rules! record_error {
 	($err:expr) => {{
 		let e = $err;
-		pi_uutils_ctx::set_exit_code(e.code());
-		let _ = writeln!(pi_uutils_ctx::stderr(), "wc: {e}");
+		veyyon_uutils_ctx::set_exit_code(e.code());
+		let _ = writeln!(veyyon_uutils_ctx::stderr(), "wc: {e}");
 	}};
 }
 
@@ -955,23 +956,25 @@ fn wc(inputs: &Inputs, settings: &Settings) -> UResult<()> {
 		let runtime_disabled = !features.disabled_runtime.is_empty();
 
 		if enabled_empty && !runtime_disabled {
-			let _ =
-				writeln!(pi_uutils_ctx::stderr(), "debug: hardware support unavailable on this CPU");
+			let _ = writeln!(
+				veyyon_uutils_ctx::stderr(),
+				"debug: hardware support unavailable on this CPU"
+			);
 		} else if runtime_disabled {
 			let _ = writeln!(
-				pi_uutils_ctx::stderr(),
+				veyyon_uutils_ctx::stderr(),
 				"debug: hardware support disabled by GLIBC_TUNABLES ({})",
 				disabled.join(", ")
 			);
 		} else if !enabled_empty && disabled_empty {
 			let _ = writeln!(
-				pi_uutils_ctx::stderr(),
+				veyyon_uutils_ctx::stderr(),
 				"debug: using hardware support (features: {})",
 				enabled.join(", ")
 			);
 		} else {
 			let _ = writeln!(
-				pi_uutils_ctx::stderr(),
+				veyyon_uutils_ctx::stderr(),
 				"debug: hardware support limited by GLIBC_TUNABLES (disabled: {}; enabled: {})",
 				disabled.join(", "),
 				enabled.join(", ")
@@ -1017,7 +1020,7 @@ fn wc(inputs: &Inputs, settings: &Settings) -> UResult<()> {
 		}
 		// Print deferred error after stats to match GNU wc output order
 		if let Some(err) = deferred_error {
-			let _ = pi_uutils_ctx::stdout().flush();
+			let _ = veyyon_uutils_ctx::stdout().flush();
 			record_error!(err);
 		}
 	}
@@ -1041,7 +1044,7 @@ fn print_stats(
 	title: Option<&OsStr>,
 	number_width: usize,
 ) -> io::Result<()> {
-	let mut stdout = pi_uutils_ctx::stdout().lock();
+	let mut stdout = veyyon_uutils_ctx::stdout().lock();
 
 	let maybe_cols = [
 		(settings.show_lines, result.lines),

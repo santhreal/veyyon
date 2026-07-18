@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "bun:test";
-import type { ImageContent } from "@veyyon/pi-ai";
-import { InputController } from "@veyyon/pi-coding-agent/modes/controllers/input-controller";
-import type { InteractiveModeContext } from "@veyyon/pi-coding-agent/modes/types";
-import { USER_INTERRUPT_LABEL } from "@veyyon/pi-coding-agent/session/messages";
+import type { ImageContent } from "@veyyon/ai";
+import { InputController } from "@veyyon/coding-agent/modes/controllers/input-controller";
+import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
+import { USER_INTERRUPT_LABEL } from "@veyyon/coding-agent/session/messages";
 
 function createContext(options?: {
 	queuedMessageCount?: number;

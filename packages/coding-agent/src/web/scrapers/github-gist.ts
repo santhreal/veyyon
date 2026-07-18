@@ -1,6 +1,6 @@
 import { fetchGitHubApi } from "./github";
-import type { RenderResult, SpecialHandler } from "./types";
-import { buildResult } from "./types";
+import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
+import { buildResult, scraperDegrade, tryParseUrl } from "./types";
 
 /**
  * Handle GitHub Gist URLs via GitHub API
@@ -9,9 +9,10 @@ export const handleGitHubGist: SpecialHandler = async (
 	url: string,
 	timeout: number,
 	signal?: AbortSignal,
-): Promise<RenderResult | null> => {
+): Promise<RenderResult | ScraperDegrade | null> => {
 	try {
-		const parsed = new URL(url);
+		const parsed = tryParseUrl(url);
+		if (!parsed) return null;
 		if (parsed.hostname !== "gist.github.com") return null;
 
 		// Extract gist ID from /username/gistId or just /gistId
@@ -52,7 +53,7 @@ export const handleGitHubGist: SpecialHandler = async (
 		}
 
 		return buildResult(md, { url, method: "github-gist", fetchedAt, notes: ["Fetched via GitHub API"] });
-	} catch {}
-
-	return null;
+	} catch (error) {
+		return scraperDegrade("github-gist", error);
+	}
 };

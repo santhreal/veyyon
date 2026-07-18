@@ -1,7 +1,7 @@
 /**
  * View usage statistics dashboard.
  */
-import { Command, Flags } from "@veyyon/pi-utils/cli";
+import { Command, Flags } from "@veyyon/utils/cli";
 import { runStatsCommand, type StatsCommandArgs } from "../cli/stats-cli";
 import { initTheme } from "../modes/theme/theme";
 

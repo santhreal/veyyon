@@ -16,7 +16,7 @@
  * Deterministic LCG so any fuzz failure reproduces from the printed input.
  */
 import { describe, expect, it } from "bun:test";
-import { getSegmenter, moveWordLeft, moveWordRight } from "@veyyon/pi-tui/utils";
+import { getSegmenter, moveWordLeft, moveWordRight } from "@veyyon/tui/utils";
 import { lcg } from "./helpers/adversarial-strings";
 
 /** The set of valid grapheme-cluster boundaries of `text` (indices, incl. 0 and length). */

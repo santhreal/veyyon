@@ -1,4 +1,5 @@
-import { isRecord, ptree } from "@veyyon/pi-utils";
+import { isRecord } from "@veyyon/utils";
+import { scopedTimeoutSignal } from "../../utils/fetch-timeout";
 
 export { isRecord };
 
@@ -64,7 +65,10 @@ async function readResponseWithLimit(response: Response, maxBytes: number, signa
  * Fetch binary content from a URL
  */
 export async function fetchBinary(url: string, timeout: number = 20, signal?: AbortSignal): Promise<BinaryFetchResult> {
-	const requestSignal = ptree.combineSignals(signal, timeout * 1000);
+	// Scoped so the deadline timer is cleared on settle instead of staying
+	// armed like a bare AbortSignal.timeout; the fence spans the body read.
+	const requestTimeout = scopedTimeoutSignal(timeout * 1000, signal);
+	const requestSignal = requestTimeout.signal;
 	try {
 		const response = await fetch(url, {
 			signal: requestSignal,
@@ -90,8 +94,10 @@ export async function fetchBinary(url: string, timeout: number = 20, signal?: Ab
 		return { ok: true, buffer, contentDisposition };
 	} catch (err) {
 		if (signal?.aborted) throw new ToolAbortError();
-		if (requestSignal?.aborted) return { ok: false, error: "aborted" };
+		if (requestSignal.aborted) return { ok: false, error: "aborted" };
 		return { ok: false, error: err instanceof Error ? err.message : "Failed to fetch binary" };
+	} finally {
+		requestTimeout.cancel();
 	}
 }
 
@@ -104,6 +110,10 @@ export async function convertWithMarkit(
 	timeout: number = 20,
 	signal?: AbortSignal,
 ): Promise<{ content: string; ok: boolean; error?: string }> {
-	const conversionSignal = ptree.combineSignals(signal, timeout * 1000);
-	return convertBufferWithMarkit(buffer, extension, conversionSignal);
+	const conversionTimeout = scopedTimeoutSignal(timeout * 1000, signal);
+	try {
+		return await convertBufferWithMarkit(buffer, extension, conversionTimeout.signal);
+	} finally {
+		conversionTimeout.cancel();
+	}
 }

@@ -17,6 +17,7 @@
  * - `issue://owner/repo?state=closed&limit=20` — list options pass through to
  *   `gh`.
  */
+import { formatCount } from "@veyyon/utils";
 import type { Settings } from "../config/settings";
 import { AgentRegistry } from "../registry/agent-registry";
 import {
@@ -430,10 +431,7 @@ async function fetchAndRenderPrDiff(
 			content,
 			contentType: "text/plain",
 			size: Buffer.byteLength(content, "utf-8"),
-			notes: [
-				freshness,
-				`Full diff for pr://${repo}/${parsed.number} (${files.length} file${files.length === 1 ? "" : "s"})`,
-			],
+			notes: [freshness, `Full diff for pr://${repo}/${parsed.number} (${formatCount("file", files.length)})`],
 		};
 	}
 
@@ -441,7 +439,7 @@ async function fetchAndRenderPrDiff(
 		const index = parsed.index ?? 0;
 		if (index < 1 || index > files.length) {
 			throw new Error(
-				`pr://${repo}/${parsed.number}/diff/${index} is out of range; PR has ${files.length} file${files.length === 1 ? "" : "s"}. Use pr://${repo}/${parsed.number}/diff to list available indices.`,
+				`pr://${repo}/${parsed.number}/diff/${index} is out of range; PR has ${formatCount("file", files.length)}. Use pr://${repo}/${parsed.number}/diff to list available indices.`,
 			);
 		}
 		const file = files[index - 1];
@@ -463,7 +461,7 @@ async function fetchAndRenderPrDiff(
 	}
 
 	// mode === "list"
-	const header = `# Pull Request Diff: ${repo}#${parsed.number} (${files.length} file${files.length === 1 ? "" : "s"})`;
+	const header = `# Pull Request Diff: ${repo}#${parsed.number} (${formatCount("file", files.length)})`;
 	const body =
 		files.length === 0
 			? "_No file changes._"

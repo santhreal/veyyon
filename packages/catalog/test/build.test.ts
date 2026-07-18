@@ -3,14 +3,14 @@ import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { buildModel } from "@veyyon/pi-catalog/build";
-import { isOfficialAnthropicApiUrl } from "@veyyon/pi-catalog/compat/anthropic";
-import { buildOpenAICompat, buildOpenAIResponsesCompat } from "@veyyon/pi-catalog/compat/openai";
-import { writeModelCache } from "@veyyon/pi-catalog/model-cache";
-import { resolveProviderModels } from "@veyyon/pi-catalog/model-manager";
-import { getBundledModel } from "@veyyon/pi-catalog/models";
-import { openrouterModelManagerOptions } from "@veyyon/pi-catalog/provider-models/openai-compat";
-import type { ModelSpec } from "@veyyon/pi-catalog/types";
+import { buildModel } from "@veyyon/catalog/build";
+import { isOfficialAnthropicApiUrl } from "@veyyon/catalog/compat/anthropic";
+import { buildOpenAICompat, buildOpenAIResponsesCompat } from "@veyyon/catalog/compat/openai";
+import { writeModelCache } from "@veyyon/catalog/model-cache";
+import { resolveProviderModels } from "@veyyon/catalog/model-manager";
+import { getBundledModel } from "@veyyon/catalog/models";
+import { openrouterModelManagerOptions } from "@veyyon/catalog/provider-models/openai-compat";
+import type { ModelSpec } from "@veyyon/catalog/types";
 
 function completionsSpec(overrides: Partial<ModelSpec<"openai-completions">> = {}): ModelSpec<"openai-completions"> {
 	return {

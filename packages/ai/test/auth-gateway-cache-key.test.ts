@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { resolvePromptCacheKey } from "@veyyon/pi-ai/auth-gateway/http";
+import { resolvePromptCacheKey } from "@veyyon/ai/auth-gateway/http";
 
 describe("resolvePromptCacheKey", () => {
 	it("prefers body.prompt_cache_key over everything else", () => {

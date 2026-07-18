@@ -1,6 +1,6 @@
-import { tryParseJson } from "@veyyon/pi-utils";
+import { tryParseJson } from "@veyyon/utils";
 import type { RenderResult, SpecialHandler } from "./types";
-import { buildResult, loadPage } from "./types";
+import { buildResult, loadPage, tryParseUrl } from "./types";
 
 interface LemmyCreator {
 	name: string;
@@ -131,7 +131,8 @@ export const handleLemmy: SpecialHandler = async (
 	signal?: AbortSignal,
 ): Promise<RenderResult | null> => {
 	try {
-		const parsed = new URL(url);
+		const parsed = tryParseUrl(url);
+		if (!parsed) return null;
 		const match = parsed.pathname.match(/^\/(post|comment)\/(\d+)/);
 		if (!match) return null;
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { CompressionStats, DetectedPattern, MemoryCompressor, PatternDetector } from "@veyyon/pi-mnemopi/core/patterns";
+import { CompressionStats, DetectedPattern, MemoryCompressor, PatternDetector } from "@veyyon/mnemopi/core/patterns";
 
 describe("memory compression", () => {
 	it("reports savings and zero-size stats", () => {

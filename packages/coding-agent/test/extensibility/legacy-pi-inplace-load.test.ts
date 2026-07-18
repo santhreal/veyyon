@@ -6,8 +6,8 @@ import * as url from "node:url";
 import {
 	__rewriteLegacyExtensionSourceForTests,
 	loadLegacyPiModule,
-} from "@veyyon/pi-coding-agent/extensibility/plugins/legacy-pi-compat";
-import { removeWithRetries } from "@veyyon/pi-utils";
+} from "@veyyon/coding-agent/extensibility/plugins/legacy-pi-compat";
+import { removeWithRetries } from "@veyyon/utils";
 
 // Issue #1674: legacy Pi extensions load browser-UI assets (HTML/CSS) at module
 // init via `readFileSync(join(__dirname, "ui.html"))`. The compat layer must run
@@ -25,7 +25,7 @@ afterAll(async () => {
 });
 
 async function writePackage(files: Record<string, string>): Promise<string> {
-	const dir = await fs.mkdtemp(path.join(os.tmpdir(), "omp-legacy-inplace-"));
+	const dir = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-legacy-inplace-"));
 	tempRoots.push(dir);
 	for (const rel in files) {
 		const abs = path.join(dir, rel);

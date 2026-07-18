@@ -4,9 +4,9 @@
  * Commands are sent as JSON lines on stdin.
  * Responses and events are emitted as JSON lines on stdout.
  */
-import type { AgentMessage, AgentToolResult, ThinkingLevel } from "@veyyon/pi-agent-core";
-import type { CompactionResult } from "@veyyon/pi-agent-core/compaction";
-import type { Effort, ImageContent, Model, ToolExample } from "@veyyon/pi-ai";
+import type { AgentMessage, AgentToolResult, ThinkingLevel } from "@veyyon/agent-core";
+import type { CompactionResult } from "@veyyon/agent-core/compaction";
+import type { Effort, ImageContent, Model, ToolExample } from "@veyyon/ai";
 import type { BashResult } from "../../exec/bash-executor";
 import type { ContextUsage } from "../../extensibility/extensions/types";
 import type { AgentSessionEvent, SessionStats } from "../../session/agent-session";

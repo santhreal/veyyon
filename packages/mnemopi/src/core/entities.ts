@@ -1,4 +1,4 @@
-import { levenshteinDistance } from "@veyyon/pi-utils";
+import { levenshteinDistance } from "@veyyon/utils";
 import { ENTITY_STOPWORDS } from "./stopwords";
 
 // Backed by the canonical entity/mention stopword set in stopwords.ts, which is
@@ -22,7 +22,7 @@ function chars(value: string): string[] {
 	return Array.from(value);
 }
 
-// Canonical implementation lives in @veyyon/pi-utils (UTF-16 code-unit
+// Canonical implementation lives in @veyyon/utils (UTF-16 code-unit
 // granularity — an astral char counts as two edits, acceptable for entity
 // similarity); re-exported for existing importers of this module.
 export { levenshteinDistance };

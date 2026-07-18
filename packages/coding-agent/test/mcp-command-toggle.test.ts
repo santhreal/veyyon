@@ -2,10 +2,10 @@ import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from "bu
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { SourceMeta } from "@veyyon/pi-coding-agent/capability/types";
-import type { MCPServerConfig } from "@veyyon/pi-coding-agent/mcp/types";
-import { MCPCommandController } from "@veyyon/pi-coding-agent/modes/controllers/mcp-command-controller";
-import { initTheme } from "@veyyon/pi-coding-agent/modes/theme/theme";
+import type { SourceMeta } from "@veyyon/coding-agent/capability/types";
+import type { MCPServerConfig } from "@veyyon/coding-agent/mcp/types";
+import { MCPCommandController } from "@veyyon/coding-agent/modes/controllers/mcp-command-controller";
+import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import {
 	getConfigRootDir,
 	getMCPConfigPath,
@@ -13,22 +13,22 @@ import {
 	removeWithRetries,
 	setAgentDir,
 	setProjectDir,
-} from "@veyyon/pi-utils";
+} from "@veyyon/utils";
 
 const originalProjectDir = getProjectDir();
-const originalAgentDir = process.env.PI_CODING_AGENT_DIR;
+const originalAgentDir = process.env.VEYYON_CODING_AGENT_DIR;
 const fallbackAgentDir = path.join(getConfigRootDir(), "agent");
 
 function restoreAgentDir(): void {
 	if (originalAgentDir) {
 		setAgentDir(originalAgentDir);
-		process.env.PI_CODING_AGENT_DIR = originalAgentDir;
-		Bun.env.PI_CODING_AGENT_DIR = originalAgentDir;
+		process.env.VEYYON_CODING_AGENT_DIR = originalAgentDir;
+		Bun.env.VEYYON_CODING_AGENT_DIR = originalAgentDir;
 		return;
 	}
 	setAgentDir(fallbackAgentDir);
-	delete process.env.PI_CODING_AGENT_DIR;
-	delete Bun.env.PI_CODING_AGENT_DIR;
+	delete process.env.VEYYON_CODING_AGENT_DIR;
+	delete Bun.env.VEYYON_CODING_AGENT_DIR;
 }
 
 function createController() {
@@ -94,8 +94,8 @@ describe("/mcp enable and disable", () => {
 	});
 
 	beforeEach(async () => {
-		projectDir = await fs.mkdtemp(path.join(os.tmpdir(), "omp-mcp-toggle-project-"));
-		agentDir = await fs.mkdtemp(path.join(os.tmpdir(), "omp-mcp-toggle-agent-"));
+		projectDir = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-mcp-toggle-project-"));
+		agentDir = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-mcp-toggle-agent-"));
 		setProjectDir(projectDir);
 		setAgentDir(agentDir);
 	});

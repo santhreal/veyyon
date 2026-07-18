@@ -360,7 +360,7 @@ All notable changes to this package will be documented in this file.
 - Added automatic line-ending and BOM normalization on read, with original encoding shape restored on write
 - Added follow-up helpers `buildCompactDiffPreview` and `streamHashLines` for compact diff previews and chunked streaming of numbered lines
 - Added stale-file-hash recovery that replays edits against snapshots and merges results onto current file content when direct hash validation fails
-- Initial standalone release. Extracted from `@veyyon/pi-coding-agent`.
+- Initial standalone release. Extracted from `@veyyon/coding-agent`.
 
 ### Fixed
 

@@ -3,11 +3,11 @@
  *
  * Converts MCP tool definitions to CustomTool format for the agent.
  */
-import type { AgentToolUpdateCallback } from "@veyyon/pi-agent-core";
-import type { TSchema } from "@veyyon/pi-ai";
-import { normalizeSchemaForMCP } from "@veyyon/pi-ai/utils/schema";
-import { untilAborted } from "@veyyon/pi-utils";
-import { INTENT_FIELD } from "@veyyon/pi-wire";
+import type { AgentToolUpdateCallback } from "@veyyon/agent-core";
+import type { TSchema } from "@veyyon/ai";
+import { normalizeSchemaForMCP } from "@veyyon/ai/utils/schema";
+import { errorMessage, untilAborted } from "@veyyon/utils";
+import { INTENT_FIELD } from "@veyyon/wire";
 import type { SourceMeta } from "../capability/types";
 import type {
 	CustomTool,
@@ -241,7 +241,7 @@ function buildErrorResult(
 	provider?: string,
 	providerName?: string,
 ): CustomToolResult<MCPToolDetails> {
-	const message = error instanceof Error ? error.message : String(error);
+	const message = errorMessage(error);
 	return {
 		content: [{ type: "text", text: `MCP error: ${message}` }],
 		details: { serverName, mcpToolName, isError: true, provider, providerName },

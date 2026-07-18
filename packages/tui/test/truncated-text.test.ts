@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
-import { TruncatedText } from "@veyyon/pi-tui/components/truncated-text";
-import { visibleWidth } from "@veyyon/pi-tui/utils";
+import { TruncatedText } from "@veyyon/tui/components/truncated-text";
+import { visibleWidth } from "@veyyon/tui/utils";
 import { Chalk } from "chalk";
 
 // Force full color in CI so ANSI assertions are deterministic

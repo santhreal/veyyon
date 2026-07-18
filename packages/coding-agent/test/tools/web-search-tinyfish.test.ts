@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
-import type { AuthStorage, FetchImpl } from "@veyyon/pi-ai";
-import { searchTinyFish } from "@veyyon/pi-coding-agent/web/search/providers/tinyfish";
-import { SearchProviderError } from "@veyyon/pi-coding-agent/web/search/types";
+import type { AuthStorage, FetchImpl } from "@veyyon/ai";
+import { searchTinyFish } from "@veyyon/coding-agent/web/search/providers/tinyfish";
+import { SearchProviderError } from "@veyyon/coding-agent/web/search/types";
 
 const TEST_KEY = "test-tinyfish-key";
 

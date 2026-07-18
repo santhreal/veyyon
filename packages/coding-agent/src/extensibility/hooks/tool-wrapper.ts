@@ -1,8 +1,9 @@
 /**
  * Tool wrapper - wraps tools with hook callbacks for interception.
  */
-import type { AgentTool, AgentToolContext, AgentToolUpdateCallback } from "@veyyon/pi-agent-core";
-import type { Static, TSchema } from "@veyyon/pi-ai";
+import type { AgentTool, AgentToolContext, AgentToolUpdateCallback } from "@veyyon/agent-core";
+import type { Static, TSchema } from "@veyyon/ai";
+import { errorMessage } from "@veyyon/utils";
 import { normalizeToolEventInput, resolveToolEventInput } from "../tool-event-input";
 import { applyToolProxy } from "../tool-proxy";
 import type { HookRunner } from "./runner";
@@ -106,7 +107,7 @@ export class HookToolWrapper<TParameters extends TSchema = TSchema, TDetails = u
 						this.tool.name,
 						resolveToolEventInput(this.tool, params as Record<string, unknown>),
 					),
-					content: [{ type: "text", text: err instanceof Error ? err.message : String(err) }],
+					content: [{ type: "text", text: errorMessage(err) }],
 					details: undefined,
 					isError: true,
 				});

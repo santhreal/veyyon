@@ -8,8 +8,8 @@ import {
 	TERMINAL,
 	truncateToWidth,
 	visibleWidth,
-} from "@veyyon/pi-tui";
-import { APP_NAME } from "@veyyon/pi-utils";
+} from "@veyyon/tui";
+import { APP_NAME } from "@veyyon/utils";
 import { sunMark } from "../components/sun";
 import { silverEscape } from "../components/welcome";
 import { theme } from "../theme/theme";
@@ -137,6 +137,16 @@ export class SetupWizardComponent implements Component, OverlayFocusOwner {
 			}
 			return;
 		}
+		// While the scene is still animating in (the splash auto-advances after
+		// SETUP_SPLASH_MS), swallow confirm keys: a late "press enter to skip"
+		// Enter must not activate the first control of a scene the user hasn't
+		// seen — it used to launch the first provider's OAuth browser flow.
+		if (
+			this.#phase === "transition" &&
+			(matchesKey(data, "enter") || matchesKey(data, "return") || matchesKey(data, "space"))
+		) {
+			return;
+		}
 		this.#activeScene?.handleInput?.(data);
 	}
 
@@ -199,9 +209,12 @@ export class SetupWizardComponent implements Component, OverlayFocusOwner {
 		return this.#fitToScreen(lines, safeWidth, height);
 	}
 
-	/** Step dots: solid for steps done, an ember core for the current, dots ahead. */
+	/** Step dots: solid for steps done, an ember core for the current, dots ahead.
+	 *  Empty for a single-scene wizard — a lone current-step dot next to
+	 *  "step 1 of 1" reads as a stray glyph, not progress. */
 	#renderProgress(): string {
 		const total = this.scenes.length;
+		if (total <= 1) return "";
 		const current = this.#sceneIndex + 1;
 		const dots: string[] = [];
 		for (let i = 0; i < total; i++) {
@@ -226,13 +239,13 @@ export class SetupWizardComponent implements Component, OverlayFocusOwner {
 		const sun = sunMark(15, 5, { trueColor: TERMINAL.trueColor });
 		// One centered column: the sun, the wordmark in the terminal's own font,
 		// the step dots, then the scene — nothing floats, everything breathes.
+		const progress = this.#renderProgress();
 		const header = [
 			"",
 			...sun.map(line => indentLine(line, width, marginX)),
 			indentLine(`${silverEscape(0.55)}${theme.bold(APP_NAME.split("").join(" "))}\x1b[39m`, width, marginX),
 			"",
-			indentLine(this.#renderProgress(), width, marginX),
-			"",
+			...(progress ? [indentLine(progress, width, marginX), ""] : []),
 			indentLine(theme.bold(title), width, marginX),
 		];
 		if (subtitle) {

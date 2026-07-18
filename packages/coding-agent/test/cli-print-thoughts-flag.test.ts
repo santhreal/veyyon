@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { parseArgs } from "@veyyon/pi-coding-agent/cli/args";
+import { parseArgs } from "@veyyon/coding-agent/cli/args";
 
 describe("parseArgs — --print-thoughts flag", () => {
 	it("parses --print-thoughts as a boolean flag", () => {

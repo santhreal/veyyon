@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { getThemeByName } from "@veyyon/pi-coding-agent/modes/theme/theme";
-import { sanitizeText } from "@veyyon/pi-utils";
+import { getThemeByName } from "@veyyon/coding-agent/modes/theme/theme";
+import { sanitizeText } from "@veyyon/utils";
 import { globToolRenderer } from "../../src/tools/glob";
 
 describe("globToolRenderer", () => {

@@ -86,8 +86,8 @@ Side-channel artifacts:
 
 1. `EvalTool.execute()` in `packages/coding-agent/src/tools/eval.ts` receives `params.cells` already validated by the Zod schema — no string parsing step.
 2. For each cell, `execute()` maps `cell.language` to an `EvalLanguage` (`"py"` → `"python"`, `"js"` → `"js"`) and calls `resolveBackend(session, language)`:
-   - `python` is gated on `resolveEvalBackends(session).python` (the `eval.py` setting, overridden by the `PI_PY` env flag) and `pythonBackend.isAvailable(session)`.
-   - `js` is gated on `resolveEvalBackends(session).js` (the `eval.js` setting, overridden by the `PI_JS` env flag).
+   - `python` is gated on `resolveEvalBackends(session).python` (the `eval.py` setting, overridden by the `VEYYON_PY` env flag) and `pythonBackend.isAvailable(session)`.
+   - `js` is gated on `resolveEvalBackends(session).js` (the `eval.js` setting, overridden by the `VEYYON_JS` env flag).
    - A disabled or unavailable requested backend throws `ToolError`; there is no auto-fallback or sniffing.
 3. The tool allocates an `OutputSink`, a `TailBuffer`, per-cell result objects, and a `sessionAbortController`. `session.trackEvalExecution?.(...)` can wrap the whole run for external cancellation tracking.
 4. It resolves the executor session id from `session.getEvalSessionId?.()`, falling back to `defaultEvalSessionId(session)`. Subagents inherit the parent's id so both sides share the same JS VM and Python kernel for each backend.
@@ -163,7 +163,7 @@ Implemented in `packages/coding-agent/src/eval/py/executor.ts`, `packages/coding
 - The Python prelude defines helpers with the same surface as JS where practical, including `tool.<name>(args)`, `completion(...)`, and `agent(...)` through a per-run loopback bridge
 - Synchronous statement blocks run in the default executor with ContextVar state copied in; the GIL still serializes bytecode execution, but awaited regions can interleave with sibling cells
 - Kernel `display` / `result` frames map to:
-  - `application/x-omp-status` → status event
+  - `application/x-veyyon-status` → status event
   - `image/png` → image output
   - `application/json` → JSON output
   - `text/markdown` → markdown output
@@ -257,8 +257,8 @@ A single tool call can mix Python and JS cells. Persistence is per language runt
 - Zod validation rejects malformed `cells` arrays before `execute()` runs (missing `language`/`code`, out-of-range `timeout`, empty `cells`).
 - Missing session without proxy executor throws `ToolError("Eval tool requires a session when not using proxy executor")`.
 - Disabled/unavailable backends throw `ToolError` from `resolveBackend()`:
-  - `eval.py = false` (or `PI_PY=0`) and a `py` cell is requested
-  - `eval.js = false` (or `PI_JS=0`) and a `js` cell is requested
+  - `eval.py = false` (or `VEYYON_PY=0`) and a `py` cell is requested
+  - `eval.js = false` (or `VEYYON_JS=0`) and a `js` cell is requested
   - Python kernel unavailable and a `py` cell is requested
 - JS runtime exceptions are converted into text output plus `exitCode: 1`; cancellations return `cancelled: true` and may append `Command timed out`.
 - Python execution errors from the kernel become text output and `exitCode: 1`; later cells are skipped.
@@ -279,7 +279,7 @@ A single tool call can mix Python and JS cells. Persistence is per language runt
 - `EvalTool.customFormat` no longer exists. Tool calls flow through the standard JSON schema; there is no Lark-constrained sampling path.
 - `tool.<name>()` exists in both JS and Python. Python calls route through a per-run loopback bridge keyed by the current cell id.
 - `read()` delegates non-`local://` scheme URIs to `tool.read`, resolves `local://` under its injected root, and resolves plain paths against the session cwd or an absolute filesystem path; `resolveRegularFile()` rejects directory paths. `write()` accepts `local://` and plain paths but rejects any other `scheme://` via `resolveHelperPath()` (`Protocol paths are not supported by write()`).
-- Python helper `output(...)` depends on `PI_ARTIFACTS_DIR` or `PI_SESSION_FILE`; it fails outside a session-backed run.
+- Python helper `output(...)` depends on `VEYYON_ARTIFACTS_DIR` or `VEYYON_SESSION_FILE`; it fails outside a session-backed run.
 - `display()` can produce text and structured outputs from the same value; the renderer prefers markdown over `text/plain` when both exist.
 - JS static imports are rewritten only at top level. Nested imports stay invalid and surface normal JS syntax/runtime errors.
 - `EvalTool` is `concurrency = "exclusive"` within one agent session, but parent and subagent sessions can run eval concurrently when they share an inherited executor id.

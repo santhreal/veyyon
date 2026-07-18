@@ -4,18 +4,18 @@
 // file that was distributed with this source code.
 
 //! Vendored, patched `sed` from uutils/sed, wired to run in-process as a
-//! shell builtin via [`pi_uutils_ctx`].
+//! shell builtin via [`veyyon_uutils_ctx`].
 //!
 //! Upstream: <https://github.com/uutils/sed>
 //! Pinned commit: `b37e23fa987888572e02e4e9b6906b3ede749bc6` (default-branch
 //! HEAD, 2026-07-10, version 0.1.1).
 //!
 //! Patches applied for in-process embedding:
-//! - all stdio goes through the `pi_uutils_ctx` streams,
+//! - all stdio goes through the `veyyon_uutils_ctx` streams,
 //! - every path operand resolves against the shell working directory via
-//!   `pi_uutils_ctx::resolve`,
+//!   `veyyon_uutils_ctx::resolve`,
 //! - no `std::process::exit`: `q`/`Q` exit codes flow through
-//!   `pi_uutils_ctx::set_exit_code`, clap errors are rendered manually,
+//!   `veyyon_uutils_ctx::set_exit_code`, clap errors are rendered manually,
 //! - the `s///e` shell escape spawns with the shell's cwd and piped stdio,
 //! - output is never assumed to be a terminal (no `-l` width auto-detect, no
 //!   tty-triggered unbuffered mode).
@@ -24,7 +24,7 @@ pub mod sed;
 
 use std::{ffi::OsString, io::Write};
 
-/// In-process builtin entry point. The host installs a [`pi_uutils_ctx`]
+/// In-process builtin entry point. The host installs a [`veyyon_uutils_ctx`]
 /// scope (stdio + working directory + environment) on a dedicated blocking
 /// thread, then calls this.
 ///
@@ -41,25 +41,25 @@ pub fn run(argv: Vec<OsString>) -> i32 {
 		Err(e) => {
 			let rendered = e.to_string();
 			if e.use_stderr() {
-				let _ = write!(pi_uutils_ctx::stderr(), "{rendered}");
+				let _ = write!(veyyon_uutils_ctx::stderr(), "{rendered}");
 				return 1;
 			}
-			let _ = write!(pi_uutils_ctx::stdout(), "{rendered}");
+			let _ = write!(veyyon_uutils_ctx::stdout(), "{rendered}");
 			return 0;
 		},
 	};
 
 	// Upstream prints help and exits 1 when invoked without any argument.
 	if !matches.args_present() {
-		let _ = write!(pi_uutils_ctx::stdout(), "{}", sed::uu_app().render_help());
+		let _ = write!(veyyon_uutils_ctx::stdout(), "{}", sed::uu_app().render_help());
 		return 1;
 	}
 
 	match sed::sed_main(&matches) {
-		Ok(()) => pi_uutils_ctx::exit_code(),
+		Ok(()) => veyyon_uutils_ctx::exit_code(),
 		Err(e) => {
 			let code = e.code();
-			let _ = writeln!(pi_uutils_ctx::stderr(), "sed: {e}");
+			let _ = writeln!(veyyon_uutils_ctx::stderr(), "sed: {e}");
 			if code == 0 { 1 } else { code }
 		},
 	}
@@ -100,7 +100,7 @@ mod tests {
 		}
 	}
 
-	/// Drive `run()` under a pi-uutils-ctx scope with `cwd` as the shell
+	/// Drive `run()` under a veyyon-uutils-ctx scope with `cwd` as the shell
 	/// working directory; returns (exit code, stdout, stderr).
 	fn run_sed_in(cwd: PathBuf, stdin: &[u8], args: &[&str]) -> (i32, String, String) {
 		let stdout = SharedBuf::default();
@@ -109,8 +109,8 @@ mod tests {
 			.chain(args.iter().copied())
 			.map(OsString::from)
 			.collect();
-		let code = pi_uutils_ctx::scope(
-			pi_uutils_ctx::ScopeIo {
+		let code = veyyon_uutils_ctx::scope(
+			veyyon_uutils_ctx::ScopeIo {
 				stdin: Box::new(io::Cursor::new(stdin.to_vec())),
 				stdin_fd: None,
 				stdin_is_search_input: false,

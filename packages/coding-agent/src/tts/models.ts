@@ -135,3 +135,16 @@ export function resolveTtsVoice(modelKey: string | undefined, voice: string | un
 	const match = spec.voices.find(v => v.id === voice);
 	return match ? match.id : fallback;
 }
+
+/**
+ * An interrupted first download leaves a truncated weight file in the
+ * transformers.js cache; the Hub loader trusts any present file, so every later
+ * load fails at onnx parse time until the cache is purged. Both sides of the
+ * worker boundary need this shape: the worker purges and re-downloads, and the
+ * client restarts the worker process (corrupt bytes stay memoized in-process,
+ * so only a fresh process recovers even after the purge lands a good file).
+ */
+export function isCorruptModelCacheError(error: unknown): boolean {
+	const message = error instanceof Error ? error.message : String(error);
+	return /protobuf parsing failed|load model from .+ failed/i.test(message);
+}

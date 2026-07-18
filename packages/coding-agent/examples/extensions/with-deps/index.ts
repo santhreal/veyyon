@@ -4,7 +4,7 @@
  *
  * Requires: npm install in this directory
  */
-import type { ExtensionAPI } from "@veyyon/pi-coding-agent";
+import type { ExtensionAPI } from "@veyyon/coding-agent";
 import ms from "ms";
 
 export default function (pi: ExtensionAPI) {

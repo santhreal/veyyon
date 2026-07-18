@@ -3,8 +3,8 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { mkdirSync } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { computeMnemopiBankScope, extendRecallWithLegacyBanks } from "@veyyon/pi-coding-agent/mnemopi/config";
-import { removeWithRetries, TempDir } from "@veyyon/pi-utils";
+import { computeMnemopiBankScope, extendRecallWithLegacyBanks } from "@veyyon/coding-agent/mnemopi/config";
+import { removeWithRetries, TempDir } from "@veyyon/utils";
 
 // Set up a fixture filesystem we can reuse across the two regression
 // suites — same shape as `~/.veyyon/memories/mnemopi/` on a real install.
@@ -60,7 +60,7 @@ describe("computeMnemopiBankScope (#2412)", () => {
 	it("returns the same per-project bank for one cwd regardless of git state", async () => {
 		const baseDir = await TempDir.create("@mnemopi-stable-bank-");
 		try {
-			const project = baseDir.join("projects", "omp-workstation");
+			const project = baseDir.join("projects", "veyyon-workstation");
 			await fs.mkdir(project, { recursive: true });
 			const withoutGit = computeMnemopiBankScope(undefined, project, "per-project").bank;
 

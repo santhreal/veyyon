@@ -1,11 +1,5 @@
-import {
-	type Component,
-	matchesKey,
-	padding,
-	routeSgrMouseInput,
-	ScrollView,
-	type SgrMouseEvent,
-} from "@veyyon/pi-tui";
+import { type Component, matchesKey, padding, routeSgrMouseInput, ScrollView, type SgrMouseEvent } from "@veyyon/tui";
+import { formatCount } from "@veyyon/utils";
 import type { ResetUsageAccount } from "../../slash-commands/helpers/reset-usage";
 import { theme } from "../theme/theme";
 import { matchesSelectCancel, matchesSelectDown, matchesSelectUp } from "../utils/keybinding-matchers";
@@ -84,9 +78,7 @@ export class ResetUsageSelectorComponent implements Component {
 			if (!account) continue;
 			const isSelected = i === this.#selectedIndex;
 			const redeemable = account.availableCount > 0;
-			const countLabel = account.error
-				? account.error
-				: `${account.availableCount} saved reset${account.availableCount === 1 ? "" : "s"}`;
+			const countLabel = account.error ? account.error : formatCount("saved reset", account.availableCount);
 			const countText = account.error
 				? theme.fg("error", countLabel)
 				: redeemable

@@ -1,18 +1,18 @@
 import { describe, expect, it } from "bun:test";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
-import type { BuiltinToolLoadMode, ToolSession } from "@veyyon/pi-coding-agent/tools";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import type { BuiltinToolLoadMode, ToolSession } from "@veyyon/coding-agent/tools";
 import {
 	BUILTIN_TOOLS,
 	computeEssentialBuiltinNames,
 	createTools,
 	DEFAULT_ESSENTIAL_TOOL_NAMES,
 	filterInitialToolsForDiscoveryAll,
-} from "@veyyon/pi-coding-agent/tools";
-import { AskTool } from "@veyyon/pi-coding-agent/tools/ask";
-import { GithubTool } from "@veyyon/pi-coding-agent/tools/gh";
-import { IrcTool } from "@veyyon/pi-coding-agent/tools/irc";
-import { JobTool } from "@veyyon/pi-coding-agent/tools/job";
-import { SshTool } from "@veyyon/pi-coding-agent/tools/ssh";
+} from "@veyyon/coding-agent/tools";
+import { AskTool } from "@veyyon/coding-agent/tools/ask";
+import { GithubTool } from "@veyyon/coding-agent/tools/gh";
+import { IrcTool } from "@veyyon/coding-agent/tools/irc";
+import { JobTool } from "@veyyon/coding-agent/tools/job";
+import { SshTool } from "@veyyon/coding-agent/tools/ssh";
 
 const allToolsSettings = Settings.isolated({
 	"astGrep.enabled": true,

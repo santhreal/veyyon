@@ -8,7 +8,7 @@ use std::{
 };
 
 use parking_lot::Mutex;
-use pi_uutils_ctx::ScopeIo;
+use veyyon_uutils_ctx::ScopeIo;
 
 fn run_in(cwd: PathBuf, args: Vec<String>) -> (i32, String, String) {
 	let stdout_buf = Arc::new(Mutex::new(Vec::new()));
@@ -42,7 +42,7 @@ fn run_in(cwd: PathBuf, args: Vec<String>) -> (i32, String, String) {
 	let argv = std::iter::once(OsString::from("find"))
 		.chain(args.into_iter().map(OsString::from))
 		.collect();
-	let code = pi_uutils_ctx::scope(io, || uu_find::run(argv));
+	let code = veyyon_uutils_ctx::scope(io, || uu_find::run(argv));
 
 	(
 		code,

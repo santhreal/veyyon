@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
-import { isInvalidThinkingSignatureError, maybeAddReplayUnsignedThinkingHint } from "@veyyon/pi-ai/providers/anthropic";
-import type { Model, ModelSpec } from "@veyyon/pi-ai/types";
-import { buildModel } from "@veyyon/pi-catalog/build";
+import { isInvalidThinkingSignatureError, maybeAddReplayUnsignedThinkingHint } from "@veyyon/ai/providers/anthropic";
+import type { Model, ModelSpec } from "@veyyon/ai/types";
+import { buildModel } from "@veyyon/catalog/build";
 
 /**
  * Regression for #4297 — an unmarked custom `anthropic-messages` signing proxy

@@ -156,8 +156,8 @@ interface ResolverRegistration {
 	stubs: Record<string, string>;
 }
 
-const REGISTRY = Symbol.for("omp.runtimeModuleResolver.registry");
-const PATCHED = Symbol.for("omp.runtimeModuleResolver.patched");
+const REGISTRY = Symbol.for("veyyon.runtimeModuleResolver.registry");
+const PATCHED = Symbol.for("veyyon.runtimeModuleResolver.patched");
 
 /**
  * The registration list lives on `globalThis` so a bundled copy and a

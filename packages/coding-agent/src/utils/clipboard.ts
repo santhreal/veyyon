@@ -1,6 +1,6 @@
-import type { ClipboardImage } from "@veyyon/pi-natives";
-import * as native from "@veyyon/pi-natives";
-import { logger } from "@veyyon/pi-utils";
+import type { ClipboardImage } from "@veyyon/natives";
+import * as native from "@veyyon/natives";
+import { logger } from "@veyyon/utils";
 
 /**
  * Run a subprocess and capture its stdout without blocking the event loop.

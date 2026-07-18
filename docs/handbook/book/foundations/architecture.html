@@ -10,6 +10,10 @@
         <!-- Veyyon handbook: self-contained head additions. No remote resources. -->
         <meta name="theme-color" content="#050505">
         <meta name="color-scheme" content="dark">
+        <!-- Site favicons live at the deployed root, one level above /docs/. -->
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+        <link rel="icon" href="/favicon.ico" sizes="48x48">
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png">
         <style>
           /* Paint the near-black surface before CSS/JS resolve the theme, so there is
              no light flash on load. Kept in sync with theme/veyyon.css. */
@@ -18,7 +22,7 @@
           *, *::before, *::after { box-sizing: border-box; }
         </style>
 
-        <meta name="description" content="How Veyyon turns open models into frontier coding agents. The product, the harness, tool-call repair, the edit format, per-model adaptation, and how to use it.">
+        <meta name="description" content="Operator handbook for the Veyyon terminal coding agent: install, configuration, tools, approvals, edit formats, providers, and harness structure.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -38,7 +42,7 @@
         <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="../ayu-highlight-3fdfc3ac.css">
 
         <!-- Custom theme stylesheets -->
-        <link rel="stylesheet" href="../theme/veyyon-fc839a17.css">
+        <link rel="stylesheet" href="../theme/veyyon-06f6939e.css">
 
 
         <!-- Provide site root and default themes to javascript -->
@@ -46,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-e76f06ca.js";
+            window.path_to_searchindex_js = "../searchindex-a2447057.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-9cfd259b.js"></script>
+        <script src="../toc-cc1a72e9.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -205,7 +209,7 @@ prompt ──► │  veyyon (packages/coding-agent)                            
             │  hashline / handlers ──► filesystem (approval-gated)         │
             └──────────────────────────────────────────────────────────────┘
 </code></pre>
-<h2 id="subsystems-that-matter"><a class="header" href="#subsystems-that-matter">Subsystems that matter</a></h2>
+<h2 id="subsystems"><a class="header" href="#subsystems">Subsystems</a></h2>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -216,26 +220,17 @@ prompt ──► │  veyyon (packages/coding-agent)                            
 <tr><td>Sessions</td><td>Session trees, compaction</td><td><a href="../context/compaction-memory.html">Compaction &amp; memory</a></td></tr>
 <tr><td>MCP</td><td>MCP client integration</td><td><a href="../architecture/mcp.html">MCP</a></td></tr>
 <tr><td>Config</td><td>Settings and profiles</td><td><a href="../architecture/config.html">Config</a></td></tr>
-<tr><td>Memory</td><td>mnemopi / local memory</td><td><a href="../features/memory.html">Memory</a></td></tr>
+<tr><td>Memory</td><td>off / local / mnemopi / hindsight</td><td><a href="../features/memory.html">Memory</a></td></tr>
 <tr><td>Goals</td><td>Goal cards and budgets</td><td><a href="../context/goal-state.html">Goal state</a></td></tr>
 </tbody>
 </table>
 </div>
 <h2 id="design-rules"><a class="header" href="#design-rules">Design rules</a></h2>
 <ol>
-<li><strong>Prefer one obvious path.</strong> Hashline is the default edit surface; alternate <code>edit.mode</code> values
-exist for compatibility.</li>
-<li><strong>Fail loud.</strong> Invalid config, stale hashline tags, and denied actions surface actionable
-errors. No silent fallback to weaker behavior.</li>
+<li><strong>One primary edit path.</strong> Hashline is the default edit surface; alternate <code>edit.mode</code> values exist for compatibility.</li>
+<li><strong>Explicit failures.</strong> Invalid config, stale hashline tags, and denied actions return actionable errors to the operator or model. Denied tools do not auto-escalate permissions.</li>
 </ol>
-<blockquote>
-<p><strong>Spec — not shipped:</strong> the full ordered repair rule cascade (alias maps, strict unknown-key
-rejection, per-<code>(model,tool,shape)</code> telemetry), an app-server or exec-server daemon, and a Tier-B
-<code>backends.toml</code> catalog as a separate subsystem. Provider and model configuration is documented in
-<a href="../models/providers.html">Providers</a> against the shipped provider registry. Basic schema repair on
-tool calls is shipped today as a TypeScript module at the tool-dispatch seam
-(<code>packages/coding-agent/src/repair/schema-repair.ts</code>) — see <a href="../repair/overview.html">Repair</a>.</p>
-</blockquote>
+<p>Tool-call argument repair (alias maps, strict unknown-key rejection, parse leniency) runs at the dispatch seam in <code>packages/coding-agent/src/repair/schema-repair.ts</code>. See <a href="../repair/overview.html">Repair</a>. Providers and models: <a href="../models/providers.html">Providers</a>.</p>
 
                     </main>
 

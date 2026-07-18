@@ -7,8 +7,8 @@ import {
 	filterEnv,
 	resolveExplicitPythonRuntime,
 	resolvePythonRuntime,
-} from "@veyyon/pi-coding-agent/eval/py/runtime";
-import * as piUtils from "@veyyon/pi-utils";
+} from "@veyyon/coding-agent/eval/py/runtime";
+import * as piUtils from "@veyyon/utils";
 
 describe("Python gateway environment filtering", () => {
 	it("filters sensitive and unknown variables from shell env", () => {
@@ -18,7 +18,7 @@ describe("Python gateway environment filtering", () => {
 			OPENAI_API_KEY: "secret",
 			ANTHROPIC_API_KEY: "also-secret",
 			UNSAFE_TOKEN: "nope",
-			PI_CUSTOM: "1",
+			VEYYON_CUSTOM: "1",
 			LC_ALL: "en_US.UTF-8",
 			LD_LIBRARY_PATH: "/opt/conda/lib",
 		};
@@ -27,7 +27,7 @@ describe("Python gateway environment filtering", () => {
 
 		expect(filtered.PATH).toBe("/bin");
 		expect(filtered.HOME).toBe("/home/test");
-		expect(filtered.PI_CUSTOM).toBe("1");
+		expect(filtered.VEYYON_CUSTOM).toBe("1");
 		expect(filtered.LC_ALL).toBe("en_US.UTF-8");
 		expect(filtered.LD_LIBRARY_PATH).toBe("/opt/conda/lib");
 		expect(filtered.OPENAI_API_KEY).toBeUndefined();

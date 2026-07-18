@@ -13,8 +13,8 @@ import {
 	type JsonSchemaValidationIssue,
 	type JsonSchemaValidationResult,
 	validateJsonSchemaValue,
-} from "@veyyon/pi-ai/utils/schema";
-import { isRecord } from "@veyyon/pi-utils";
+} from "@veyyon/ai/utils/schema";
+import { isRecord } from "@veyyon/utils";
 import { jtdToJsonSchema, normalizeSchema } from "./jtd-to-json-schema";
 
 /** A validator bound to a specific output schema. */

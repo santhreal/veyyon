@@ -1,12 +1,14 @@
 /**
  * Show what the read tool will return for a path, URL, or internal URI.
  */
-import { Args, Command } from "@veyyon/pi-utils/cli";
+import { Args, Command } from "@veyyon/utils/cli";
 import { type ReadCommandArgs, runReadCommand } from "../cli/read-cli";
 import { initTheme } from "../modes/theme/theme";
 
 export default class Read extends Command {
 	static description = "Show what the read tool will return for a path, URL, or internal URI";
+
+	static devTool = true;
 
 	static args = {
 		path: Args.string({

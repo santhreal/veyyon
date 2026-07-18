@@ -1,32 +1,15 @@
 # Testing and verification
 
-Veyyon's docs make product claims only when the harness has a way to prove them. This chapter explains the
-shape of that proof so the detailed pages are easier to read.
+Product behavior is covered by tests that assert concrete outcomes, not only non-empty results.
 
-## What a proof looks like
+## Examples of what tests check
 
-A proving test asserts behavior, not just shape. For a file edit, that means the exact file bytes, the diff,
-the error text, and the approval path when relevant.
+- **Hashline edit path** — round-trip: generated patches apply to the intended content; mismatches fail with the expected error surface.
+- **Tool-call repair** — unit and conformance cases in `packages/coding-agent/test/repair/schema-repair.test.ts` (clean / repaired / unrepairable, alias ambiguity, strict `additionalProperties`).
+- **Tool-output bounds** — truncation limits behave as configured and remain visible to the model.
+- **Architecture gates** — layering, re-exports, and related repo checks (see project CI / `STANDARD.md` where applicable).
 
-## Where the main proof lives
+## Related
 
-- The hashline edit path uses round-trip tests so generated patches apply to the intended content.
-- Tool-output bounds are tested with real limits so truncation is visible and actionable.
-- Architecture gates protect layering, re-exports, weak tests, uncovered tools, unfinished markers, and vendored
-  trees.
-
-> **Spec — not shipped:** the full schema-based repair cascade is a planned proof surface. Its target
-> shape is exact-value unit tests plus large property tests that validate repaired calls against the
-> schema, including whether ambiguous input is rejected. That work is not shipped yet.
-
-## How to read status labels
-
-The status label at the top of a deep-dive chapter names the implemented surface and the proof. When a
-chapter says work is in progress, it names the part that works and the part still gated by measurement or
-operator surface.
-
-## Where to go next
-
-- [The repair cascade](../repair/cascade.md) shows the planned repair rules and their proof style (Spec).
-- [The hashline edit engine](../edit/engine.md) shows edit invariants.
-- Fleet verification gates are defined in the Santh `STANDARD.md` document (not duplicated here).
+- [The repair cascade](../repair/cascade.md)
+- [The hashline edit engine](../edit/engine.md)

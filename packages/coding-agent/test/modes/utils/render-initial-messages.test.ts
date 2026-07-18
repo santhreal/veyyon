@@ -5,24 +5,24 @@
  * `sessionManager.buildSessionContext()` — the LLM-context builder — must not be
  * consulted for display.
  *
- * Also guards the cold-launch terminal cleanup: `omp` / `omp -c` leave the
+ * Also guards the cold-launch terminal cleanup: `veyyon` / `veyyon -c` leave the
  * previous run's transcript in native scrollback because the TUI's initial
  * paint preserves it, so the cold-launch render must request a
  * scrollback-clearing repaint (`clearTerminalHistory`).
  */
 
 import { afterEach, beforeAll, beforeEach, describe, expect, it, type Mock, vi } from "bun:test";
-import type { AgentMessage } from "@veyyon/pi-agent-core";
-import type { AssistantMessage, ImageContent, Usage } from "@veyyon/pi-ai";
-import { kStreamingPartialJson } from "@veyyon/pi-ai/utils/block-symbols";
-import { resetSettingsForTest, Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { initTheme } from "@veyyon/pi-coding-agent/modes/theme/theme";
-import type { InteractiveModeContext } from "@veyyon/pi-coding-agent/modes/types";
-import { UiHelpers } from "@veyyon/pi-coding-agent/modes/utils/ui-helpers";
-import type { SessionContext } from "@veyyon/pi-coding-agent/session/session-context";
-import { SessionManager } from "@veyyon/pi-coding-agent/session/session-manager";
-import { type Component, Container, Image, ImageProtocol, setTerminalImageProtocol, TERMINAL } from "@veyyon/pi-tui";
-import { TempDir } from "@veyyon/pi-utils";
+import type { AgentMessage } from "@veyyon/agent-core";
+import type { AssistantMessage, ImageContent, Usage } from "@veyyon/ai";
+import { kStreamingPartialJson } from "@veyyon/ai/utils/block-symbols";
+import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
+import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
+import { UiHelpers } from "@veyyon/coding-agent/modes/utils/ui-helpers";
+import type { SessionContext } from "@veyyon/coding-agent/session/session-context";
+import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { type Component, Container, Image, ImageProtocol, setTerminalImageProtocol, TERMINAL } from "@veyyon/tui";
+import { TempDir } from "@veyyon/utils";
 
 beforeAll(() => {
 	initTheme();

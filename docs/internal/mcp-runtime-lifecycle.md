@@ -95,7 +95,7 @@ For each discovered server in `connectServers()`:
 - performs MCP `initialize`,
 - for HTTP/SSE, starts the optional background SSE listener before `notifications/initialized`,
 - sends `notifications/initialized`,
-- uses timeout (`VEYYON_MCP_TIMEOUT_MS` — legacy alias `OMP_MCP_TIMEOUT_MS` — `config.timeout`, or 30s default; `0` disables the client-side timeout),
+- uses timeout (`VEYYON_MCP_TIMEOUT_MS` — `config.timeout`, or 30s default; `0` disables the client-side timeout),
 - closes transport on init failure.
 
 ### Fast startup gate + deferred fallback

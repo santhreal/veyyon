@@ -1,5 +1,6 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import { errorMessage } from "@veyyon/utils";
 import type { Skill } from "../extensibility/skills";
 import { type LocalProtocolOptions, resolveLocalUrlToPath } from "../internal-urls";
 import { validateRelativePath } from "../internal-urls/skill-protocol";
@@ -79,7 +80,7 @@ export function resolveSkillUrlToPath(url: string, skills: readonly Skill[]): st
 	try {
 		validateRelativePath(relativePath);
 	} catch (err) {
-		const message = err instanceof Error ? err.message : String(err);
+		const message = errorMessage(err);
 		throw new ToolError(message);
 	}
 
@@ -212,7 +213,7 @@ async function resolveInternalUrlToPath(
 	try {
 		resource = await internalRouter.resolve(url, { cwd, pathOnly: true });
 	} catch (error) {
-		const message = error instanceof Error ? error.message : String(error);
+		const message = errorMessage(error);
 		throw new ToolError(`Failed to resolve ${scheme}:// URL in bash command: ${url}\n${message}`);
 	}
 

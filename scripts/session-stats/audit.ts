@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * Token-usage audit over the local omp session corpus (~/.veyyon/agent/sessions/).
+ * Token-usage audit over the local veyyon session corpus (~/.veyyon/agent/sessions/).
  *
  * Phase 1 (scan, no LLM): walks recent sessions, sums *real* per-request usage
  * (input/output/cacheRead/cacheWrite + nominal cost recorded in each assistant
@@ -9,7 +9,7 @@
  * failures, compactions).
  *
  * Phase 2 (classify): for the costliest sessions, builds a compact digest and
- * asks a small model (default: anthropic/claude-sonnet-4-6 via @veyyon/pi-ai)
+ * asks a small model (default: anthropic/claude-sonnet-4-6 via @veyyon/ai)
  * to judge:
  *   a) session hygiene — multiple topics in one chat, missed handoff points,
  *   b) task-spawn quality — wasteful spawns, context-transfer failures,
@@ -22,13 +22,12 @@
  *   bun scripts/session-stats/audit.ts --folder Projects-pi --max-llm 6
  *   bun scripts/session-stats/audit.ts --json out.json
  *
- * Auth: resolves an API key for the classifier provider through omp's auth
+ * Auth: resolves an API key for the classifier provider through veyyon's auth
  * storage (~/.veyyon/agent/agent.db: stored key, OAuth, or env var fallback).
  */
 
 import type { Dirent } from "node:fs";
 import * as fs from "node:fs/promises";
-import * as os from "node:os";
 import * as path from "node:path";
 import { parseArgs } from "node:util";
 import {
@@ -39,14 +38,14 @@ import {
 	SqliteAuthCredentialStore,
 	type Tool,
 	type ToolCall,
-} from "@veyyon/pi-ai";
-import { type GeneratedProvider, getBundledModel } from "@veyyon/pi-catalog/models";
-import { getAgentDbPath, isEnoent } from "@veyyon/pi-utils";
+} from "@veyyon/ai";
+import { type GeneratedProvider, getBundledModel } from "@veyyon/catalog/models";
+import { getAgentDbPath, getConfigRootDir, getSessionsDir, isEnoent } from "@veyyon/utils";
 import SYSTEM_PROMPT from "./audit-prompt.md" with { type: "text" };
 
-const SESSIONS_ROOT = path.join(os.homedir(), ".veyyon", "agent", "sessions");
+const SESSIONS_ROOT = getSessionsDir();
 const DEFAULT_MODEL = "anthropic/claude-sonnet-4-6";
-const CACHE_PATH = path.join(os.homedir(), ".veyyon", "stats-audit-cache.json");
+const CACHE_PATH = path.join(getConfigRootDir(), "stats-audit-cache.json");
 
 // --------------------------------------------------------------------------
 // CLI
@@ -1009,7 +1008,7 @@ async function openClassifier(modelSpec: string): Promise<Classifier> {
 	await storage.reload();
 	const apiKey = await storage.getApiKey(provider);
 	if (!apiKey) {
-		throw new Error(`no credentials for provider "${provider}" (omp login or env var required)`);
+		throw new Error(`no credentials for provider "${provider}" (veyyon login or env var required)`);
 	}
 	return { model, apiKey };
 }

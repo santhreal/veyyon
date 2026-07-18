@@ -1,13 +1,13 @@
 import { describe, expect, it } from "bun:test";
-import { encodeStream, formatError, parseRequest } from "@veyyon/pi-ai/providers/pi-native-server";
+import { encodeStream, formatError, parseRequest } from "@veyyon/ai/providers/pi-native-server";
 import type {
 	AssistantMessage,
 	AssistantMessageEvent,
 	AssistantMessageEventStream,
 	Context,
 	Usage,
-} from "@veyyon/pi-ai/types";
-import { Effort } from "@veyyon/pi-catalog/effort";
+} from "@veyyon/ai/types";
+import { Effort } from "@veyyon/catalog/effort";
 
 function makeEventStream(events: AssistantMessageEvent[], final: AssistantMessage): AssistantMessageEventStream {
 	async function* iter() {
@@ -192,7 +192,7 @@ describe("pi-native parseRequest", () => {
 });
 describe("pi-native encodeStream", () => {
 	it("ships every AssistantMessageEvent verbatim, terminated by [DONE]", async () => {
-		// Pi-native is omp-talks-to-omp: the client feeds parsed events directly
+		// Pi-native is veyyon-talks-to-veyyon: the client feeds parsed events directly
 		// into `AssistantMessageEventStream.push()`, so the wire IS the canonical
 		// event type. No partial-stripping, no per-event re-shaping.
 		const finalMessage = baseAssistant({

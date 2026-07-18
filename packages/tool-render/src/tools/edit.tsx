@@ -1,4 +1,5 @@
 /** `edit` / `apply_patch` — hashline patch application rendered as colored diffs. */
+import { formatCount } from "@veyyon/utils";
 import type { ReactNode } from "react";
 import { Badge, DiffBlock, InvalidArg, Kv, KvGrid, Note, Output, PathText, ResultText } from "../parts";
 import type { ToolRenderer, ToolRenderProps } from "../types";
@@ -119,9 +120,7 @@ function Summary({ args, result }: ToolRenderProps): ReactNode {
 			{opCount > 0 && (
 				<>
 					{" "}
-					<Badge>
-						{opCount} op{opCount === 1 ? "" : "s"}
-					</Badge>
+					<Badge>{formatCount("op", opCount)}</Badge>
 				</>
 			)}
 			{stats !== null && stats.added > 0 && (

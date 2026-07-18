@@ -5,7 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <meta name="theme-color" content="#000000" />
 <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+<link rel="icon" href="./favicon.ico" sizes="48x48" />
 <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
+<link rel="manifest" href="./site.webmanifest" />
 <meta property="og:site_name" content="Veyyon" />
 <meta property="og:type" content="website" />
 <meta property="og:image" content="https://veyyon.dev/og.png" />
@@ -13,7 +15,7 @@
 <title>Features — Veyyon</title>
 <meta property="og:title" content="Features — Veyyon" />
 <meta property="og:url" content="https://veyyon.dev/features.html" />
-<meta name="description" content="Editing that lands, sandbox and approvals, memory, session branching, cockpit, MCP, skills, hooks, and more." />
+<meta name="description" content="Hashline edits, approval modes, models and roles, sessions, MCP, skills, hooks, plan mode. Terminal coding agent." />
 <link rel="stylesheet" href="./site.css" />
 </head>
 <body>
@@ -49,77 +51,70 @@
 
   <div class="page-head">
     <span class="kicker">Features</span>
-    <h1>What Veyyon includes.</h1>
-    <p>TypeScript and Bun run the agent loop and the TUI; Rust handles grep, the PTY, and the hashline edit
-      engine. Everything below exists for one reason: to get more finished work out of the model you already
-      run — and to show you exactly what it did along the way.</p>
+    <h1>What the binary includes</h1>
+    <p>Agent loop and TUI: TypeScript on Bun. Grep, PTY/shell, hashline apply: Rust natives
+      (<span class="inline">@veyyon/natives</span>). Operator detail: handbook under <span class="inline">docs/</span>.</p>
   </div>
 
   <section class="plain">
-    <div class="lead"><span class="kicker">Editing</span><h2>Edits that land.</h2>
-      <p class="sub">Most agent loops lose turns to malformed patches: line-numbered diffs that drifted,
-        hunks that no longer match, partial writes. Veyyon anchors edits to the content of the file and
-        verifies before it writes, so the loop spends its turns on the task instead of on recovery.</p></div>
+    <div class="lead"><span class="kicker">Editing</span><h2>Hashline and plan mode</h2>
+      <p class="sub"><span class="inline">edit</span> / <span class="inline">write</span> use content-hash anchors;
+        verification runs before disk write. Schema repair may rewrite tool JSON before validation.
+        Plan mode drafts a plan file; <span class="inline">resolve</span> handles plan approval.</p></div>
     <div class="panel">
       <div class="copy">
         <ul>
-          <li><b>Hashline edits</b> — hunks anchor to what the code says, not to where it happened to sit. A file that changed since the model read it does not silently corrupt.</li>
-          <li><b>Verified before write</b> — every hunk is checked against the real file before it applies; a drifted patch is repaired against the content, not force-applied.</li>
-          <li><b>Plan mode &amp; goals</b> — the agent grounds, proposes, then executes. Tools stay read-only until you approve the plan.</li>
-          <li><b>Code review</b> — a review pass over the agent's own changes before they land, on a model you choose.</li>
+          <li><b>Hashline</b> — anchors from prior reads; stale tags fail with recovery context.</li>
+          <li><b>Tool-call repair</b> — parse leniency, alias rename, strict unknown keys at dispatch.</li>
+          <li><b>Plan / goal modes</b> — engine modes; <span class="inline">/plan</span>, <span class="inline">/goal</span>.</li>
+          <li><b>Review</b> — <span class="inline">/review</span> and optional advisor role.</li>
         </ul>
       </div>
-      <pre class="demo" aria-hidden="true"><span class="c"># an edit, anchored and verified</span>
+      <pre class="demo" aria-hidden="true"><span class="c"># hashline edit path</span>
 edit routes/upload.ts
-  anchor  <span class="s">"export async function upload("</span>   <span class="g">ok</span>
-  hunk 1/2                                     <span class="g">ok</span>
-  hunk 2/2  drifted → repaired on content     <span class="g">ok</span>
-applied <span class="g">+18 −2</span> · verified before write</pre>
+  anchor from read snapshot tag
+  verify → write or error tool result</pre>
     </div>
   </section>
 
   <section>
-    <div class="lead"><span class="kicker">Control</span><h2>Sandbox and approvals.</h2>
-      <p class="sub">Approvals and the sandbox are two separate layers. Approvals ask you before an action;
-        the sandbox enforces limits at the OS level whether or not a prompt was ever shown. The default
-        posture is fail-closed.</p></div>
+    <div class="lead"><span class="kicker">Control</span><h2>Approvals (no OS sandbox)</h2>
+      <p class="sub"><span class="inline">tools.approvalMode</span> gates tool tiers. There is no Landlock,
+        seccomp, or Seatbelt confinement. Schema default is <span class="inline">yolo</span> (auto-approve all tiers).</p></div>
     <div class="grid">
-      <div class="card"><div class="ic"><svg viewBox="0 0 20 20"><path d="M10 2l7 3v5c0 4-3 6.5-7 8-4-1.5-7-4-7-8V5z"/></svg></div><h3>Three access tiers</h3><p>Read-only for exploration, workspace-write for normal work, full access when you mean it. The tier is a real boundary, not a label.</p></div>
-      <div class="card"><div class="ic"><svg viewBox="0 0 20 20"><rect x="4" y="8" width="12" height="9" rx="1.5"/><path d="M7 8V6a3 3 0 0 1 6 0v2"/></svg></div><h3>Enforced by the OS</h3><p>Landlock, seccomp, and Seatbelt back the workspace boundary. Files outside the workspace are unreachable, not merely unapproved.</p></div>
-      <div class="card"><div class="ic"><svg viewBox="0 0 20 20"><path d="M3 10h4l2-5 3 10 2-5h3"/></svg></div><h3>Non-interactive exec</h3><p>One-shot runs for CI and scripts carry the same approval model and return honest exit codes, so pipelines can trust the result.</p></div>
+      <div class="card"><div class="ic"><svg viewBox="0 0 20 20"><path d="M10 2l7 3v5c0 4-3 6.5-7 8-4-1.5-7-4-7-8V5z"/></svg></div><h3>Tiers</h3><p>read / write / exec. Modes: <span class="inline">plan</span>, <span class="inline">ask</span>, <span class="inline">auto-edit</span>, <span class="inline">yolo</span>. Aliases: <span class="inline">always-ask</span>→ask, <span class="inline">write</span>→auto-edit.</p></div>
+      <div class="card"><div class="ic"><svg viewBox="0 0 20 20"><rect x="4" y="8" width="12" height="9" rx="1.5"/><path d="M7 8V6a3 3 0 0 1 6 0v2"/></svg></div><h3>Execpolicy</h3><p>User and project <span class="inline">.rules</span> refine which commands auto-run. Untrusted project dirs disable project rules/hooks until trusted.</p></div>
+      <div class="card"><div class="ic"><svg viewBox="0 0 20 20"><path d="M3 10h4l2-5 3 10 2-5h3"/></svg></div><h3>Non-interactive</h3><p><span class="inline">veyyon --print</span> (<span class="inline">-p</span>). No TTY for prompts; set <span class="inline">--approval-mode</span> or <span class="inline">--yolo</span>. Exit status follows the run.</p></div>
     </div>
   </section>
 
   <section>
-    <div class="lead"><span class="kicker">Context</span><h2>Context and memory.</h2>
-      <p class="sub">Long sessions fail when the thread is lost — the model forgets the decision it made an
-        hour ago, or the context fills and the summary throws the wrong things away. Veyyon treats context as
-        a first-class surface: a compaction model you choose, durable memory you opt into, and sessions you
-        can branch.</p></div>
+    <div class="lead"><span class="kicker">Context</span><h2>Compaction, memory, sessions</h2>
+      <p class="sub"><span class="inline">compaction.strategy</span>: <span class="inline">handoff</span> | <span class="inline">snap</span>
+        (default <span class="inline">snap</span>). Memory backends opt-in. Session trees: branch / fork / tree.</p></div>
     <div class="grid">
-      <div class="card"><div class="ic"><svg viewBox="0 0 20 20"><ellipse cx="10" cy="5" rx="6.5" ry="2.6"/><path d="M3.5 5v10c0 1.4 2.9 2.6 6.5 2.6s6.5-1.2 6.5-2.6V5M3.5 10c0 1.4 2.9 2.6 6.5 2.6s6.5-1.2 6.5-2.6"/></svg></div><h3>Memory</h3><p>Durable project memory across sessions — the agent recalls what it learned about your repo and retains what matters. Off until you enable it, inspectable always.</p></div>
-      <div class="card"><div class="ic"><svg viewBox="0 0 20 20"><circle cx="5" cy="5" r="2.2"/><circle cx="5" cy="15" r="2.2"/><circle cx="15" cy="9" r="2.2"/><path d="M5 7.2v5.6M7 5h4a2 2 0 0 1 2 2"/></svg></div><h3>Session branching</h3><p>Fork, clone, and label threads with <span class="inline">/tree</span>. Try an approach on a branch, keep the trunk intact, and merge the winner back into your flow.</p></div>
-      <div class="card"><div class="ic"><svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="7"/><circle cx="10" cy="10" r="2.4"/><path d="M10 3v2.6M10 14.4V17M3 10h2.6M14.4 10H17"/></svg></div><h3>Cockpit</h3><p>A live multi-agent view — a model per subagent, drill into any thread, watch the work as it happens instead of reconstructing it afterward.</p></div>
+      <div class="card"><div class="ic"><svg viewBox="0 0 20 20"><ellipse cx="10" cy="5" rx="6.5" ry="2.6"/><path d="M3.5 5v10c0 1.4 2.9 2.6 6.5 2.6s6.5-1.2 6.5-2.6V5M3.5 10c0 1.4 2.9 2.6 6.5 2.6s6.5-1.2 6.5-2.6"/></svg></div><h3>Memory</h3><p>Optional backends store project facts across sessions. Disabled until enabled; content is inspectable on disk.</p></div>
+      <div class="card"><div class="ic"><svg viewBox="0 0 20 20"><circle cx="5" cy="5" r="2.2"/><circle cx="5" cy="15" r="2.2"/><circle cx="15" cy="9" r="2.2"/><path d="M5 7.2v5.6M7 5h4a2 2 0 0 1 2 2"/></svg></div><h3>Session branching</h3><p>Session files are trees. <span class="inline">/tree</span> jumps, labels, and branches; <span class="inline">/fork</span> and <span class="inline">/branch</span> write a new session file without rewriting the original.</p></div>
+      <div class="card"><div class="ic"><svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="7"/><circle cx="10" cy="10" r="2.4"/><path d="M10 3v2.6M10 14.4V17M3 10h2.6M14.4 10H17"/></svg></div><h3>Cockpit</h3><p>TUI surface for concurrent subagents: per-agent model, thread focus, and live tool activity for the parent session.</p></div>
     </div>
   </section>
 
   <section>
-    <div class="lead"><span class="kicker">Extend</span><h2>Extending Veyyon.</h2>
-      <p class="sub">The harness is yours to shape. Open interfaces carry your tools, your knowledge, and your
-        policies into every turn — and the same agent runs headless in CI when the work leaves your
-        terminal.</p></div>
+    <div class="lead"><span class="kicker">Extend</span><h2>Extensions surface</h2>
+      <p class="sub">MCP servers, skills, TypeScript extensions, browser, and web search attach to the same agent
+        loop. Non-interactive runs use <span class="inline">veyyon --print</span>.</p></div>
     <div class="grid">
-      <div class="card"><div class="ic"><svg viewBox="0 0 20 20"><path d="M7 3v4M13 3v4M5 7h10v3a5 5 0 0 1-10 0z"/><path d="M10 15v3"/></svg></div><h3>MCP, skills, hooks</h3><p>Connect MCP servers for tools, author <span class="inline">SKILL.md</span> skills for procedures, and run lifecycle hooks around every turn to enforce your own rules.</p></div>
-      <div class="card"><div class="ic"><svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="7"/><path d="M3 8h14M3 12h14M10 3c2.5 2 2.5 12 0 14M10 3c-2.5 2-2.5 12 0 14"/></svg></div><h3>Browser &amp; web search</h3><p>A real headless browser and multi-provider web search come built in, so tasks that need the live web don't stall on stale training data.</p></div>
-      <div class="card"><div class="ic"><svg viewBox="0 0 20 20"><path d="M4 15l5-10 2 6 2-3 3 7"/></svg></div><h3>Doctor &amp; keybindings</h3><p><span class="inline">vey plugin doctor</span> self-tests your setup and says plainly what is missing. Vim-mode keybindings remap per profile, so the harness fits your hands.</p></div>
+      <div class="card"><div class="ic"><svg viewBox="0 0 20 20"><path d="M7 3v4M13 3v4M5 7h10v3a5 5 0 0 1-10 0z"/><path d="M10 15v3"/></svg></div><h3>MCP, skills, hooks</h3><p>MCP servers register tools. <span class="inline">SKILL.md</span> files register procedures. Extensions register tools, commands, and <span class="inline">pi.on</span> lifecycle handlers.</p></div>
+      <div class="card"><div class="ic"><svg viewBox="0 0 20 20"><circle cx="10" cy="10" r="7"/><path d="M3 8h14M3 12h14M10 3c2.5 2 2.5 12 0 14M10 3c-2.5 2-2.5 12 0 14"/></svg></div><h3>Browser &amp; web search</h3><p>Built-in headless browser tool and multi-provider web search for live page content and search results.</p></div>
+      <div class="card"><div class="ic"><svg viewBox="0 0 20 20"><path d="M4 15l5-10 2 6 2-3 3 7"/></svg></div><h3>Doctor &amp; keybindings</h3><p><span class="inline">veyyon plugin doctor</span> checks install health. Keybindings: <span class="inline">keybindings.yml</span> under the active agent dir; vim mode is a setting.</p></div>
     </div>
   </section>
 
   <section class="thesis">
-    <span class="kicker">The thesis</span>
-    <h2>The model is the engine. The <span class="accent">harness</span> is the lever.</h2>
-    <p>Each feature here is about getting more real work out of the model you're running. The
-      <a href="./docs/">handbook</a> covers how each one works.</p>
+    <span class="kicker">Reference</span>
+    <h2>Operator detail lives in the handbook</h2>
+    <p>Settings, tools, modes, and layout are documented under
+      <a href="./docs/">docs/</a>. Source: <a href="https://github.com/santhreal/veyyon">github.com/santhreal/veyyon</a>.</p>
   </section>
 
 </main>

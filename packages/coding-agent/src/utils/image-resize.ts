@@ -1,4 +1,4 @@
-import type { ImageContent } from "@veyyon/pi-ai";
+import type { ImageContent } from "@veyyon/ai";
 
 export interface ImageResizeOptions {
 	maxWidth?: number;
@@ -121,12 +121,12 @@ function readImageHeaderDimensions(buffer: Uint8Array): ImageHeaderDimensions | 
 }
 
 /**
- * Read `VEYYON_NO_WEBP` / `OMP_NO_WEBP` per-call so runtime toggles take effect.
+ * Read `VEYYON_NO_WEBP` per-call so runtime toggles take effect.
  * Only `"1"` and `"true"` (case-insensitive) enable exclusion — an empty string
  * or `"0"` MUST be treated as disabled.
  */
 function isWebPExcluded(): boolean {
-	const raw = Bun.env.VEYYON_NO_WEBP ?? Bun.env.OMP_NO_WEBP;
+	const raw = Bun.env.VEYYON_NO_WEBP;
 	if (raw === undefined) return false;
 	const v = raw.toLowerCase();
 	return v === "1" || v === "true";
@@ -155,7 +155,7 @@ Buffer.prototype.toBase64 = function (this: Buffer) {
  *  4. If still too large, walk a dimension-scale ladder × quality ladder.
  *  5. If still too large, return the smallest variant produced.
  *
- * Set OMP_NO_WEBP to exclude WebP from encoding (llama.cpp STB doesn't decode it).
+ * Set VEYYON_NO_WEBP to exclude WebP from encoding (llama.cpp STB doesn't decode it).
  *
  * Backed by `Bun.Image`: a chainable native pipeline that runs decode/transform/encode
  * off the JS thread when the terminal (`.bytes()`) is awaited.
@@ -230,7 +230,7 @@ export async function resizeImage(img: ImageContent, options?: ImageResizeOption
 
 		// First-attempt encoder: try PNG and JPEG (+ WebP if not excluded) — return smallest.
 		// PNG wins for line art / few-color UI; JPEG wins for photographic content;
-		// WebP usually beats JPEG by 25–35% but is disabled when OMP_NO_WEBP is set
+		// WebP usually beats JPEG by 25–35% but is disabled when VEYYON_NO_WEBP is set
 		// because many local inference backends (llama.cpp STB) don't decode it.
 		async function encodeSmallest(
 			width: number,
@@ -263,7 +263,7 @@ export async function resizeImage(img: ImageContent, options?: ImageResizeOption
 
 		// Lossy encoder for quality/dimension fallback ladders. PNG is excluded since
 		// it's lossless and doesn't respond to quality parameters. WebP is included
-		// unless OMP_NO_WEBP is set (llama.cpp STB incompatibility).
+		// unless VEYYON_NO_WEBP is set (llama.cpp STB incompatibility).
 		async function encodeLossy(
 			width: number,
 			height: number,

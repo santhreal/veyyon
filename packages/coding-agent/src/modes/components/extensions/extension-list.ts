@@ -5,7 +5,7 @@
  * that toggles the entire provider. All items below are dimmed when the
  * master switch is off.
  */
-import { type Component, matchesKey, padding, truncateToWidth, visibleWidth } from "@veyyon/pi-tui";
+import { type Component, matchesKey, padding, truncateToWidth, visibleWidth } from "@veyyon/tui";
 import { isProviderEnabled } from "../../../discovery";
 import { theme } from "../../../modes/theme/theme";
 import { matchesSelectDown, matchesSelectUp } from "../../utils/keybinding-matchers";

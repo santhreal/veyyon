@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
-import type { AuthStorage } from "@veyyon/pi-ai";
-import type { FetchImpl } from "@veyyon/pi-ai/types";
+import type { AuthStorage } from "@veyyon/ai";
+import type { FetchImpl } from "@veyyon/ai/types";
 import {
 	buildRequestBody,
 	searchTavily,
 	type TavilySearchParams,
-} from "@veyyon/pi-coding-agent/web/search/providers/tavily";
+} from "@veyyon/coding-agent/web/search/providers/tavily";
 
 describe("Tavily buildRequestBody", () => {
 	afterEach(() => {

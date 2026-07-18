@@ -1,0 +1,159 @@
+<!doctype html>
+<!-- OG card source for packages/collab-web/public/og-image.png (1200x630).
+     Regenerate: render this file at exactly 1200x630 and screenshot to
+     public/og-image.png (see the render note in BACKLOG / package scripts).
+     Canonical Veyyon brand: pitch-black ground, silver structure, the single
+     ember-sun accent — no purple/cyan, no smooth gradients. -->
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>veyyon collab — og card</title>
+<style>
+  @font-face {
+    font-family: "Inter";
+    font-weight: 400 600;
+    src: local("Inter"),
+      url("../../website/fonts/Inter-Regular.woff2") format("woff2");
+  }
+  @font-face {
+    font-family: "JBM";
+    font-weight: 400 700;
+    src: url("../../website/fonts/JetBrainsMono-Regular.woff2") format("woff2");
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    width: 1200px; height: 630px; overflow: hidden;
+    background: #000000; color: #f6f7f9;
+    font-family: "Inter", system-ui, sans-serif;
+    position: relative;
+  }
+  /* faint silver grid, like a plotted surface */
+  .grid {
+    position: absolute; inset: 0;
+    background-image:
+      linear-gradient(rgba(198,203,212,.05) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(198,203,212,.05) 1px, transparent 1px);
+    background-size: 48px 48px;
+    -webkit-mask-image: radial-gradient(120% 90% at 20% 30%, #000 40%, transparent 80%);
+            mask-image: radial-gradient(120% 90% at 20% 30%, #000 40%, transparent 80%);
+  }
+  .pad { position: absolute; inset: 56px 64px; }
+
+  /* top bar */
+  .top { display: flex; align-items: center; justify-content: space-between; }
+  .brand { display: flex; align-items: center; gap: 14px; }
+  .sun {
+    width: 22px; height: 22px; border-radius: 50%;
+    background: radial-gradient(circle, #ffca80 0 22%, #fb9e44 22% 44%, #f0862e 44% 66%, #c8590c 66% 100%);
+  }
+  .brand-name { font-family: "JBM", monospace; font-size: 21px; font-weight: 700;
+    letter-spacing: .26em; text-transform: uppercase; color: #e6e9ee; }
+  .brand-name .sep { color: #7c828d; margin: 0 .5em; font-weight: 400; }
+  .brand-name .sub { color: #c6cbd4; font-weight: 400; }
+  .host { font-family: "JBM", monospace; font-size: 18px; letter-spacing: .28em;
+    text-transform: uppercase; color: #7c828d; }
+  .rule { position: absolute; left: 64px; right: 64px; top: 104px; height: 1px;
+    background: rgba(198,203,212,.14); }
+
+  /* left column */
+  .col { position: absolute; left: 64px; top: 144px; width: 560px; }
+  .kicker { font-family: "JBM", monospace; font-size: 19px; letter-spacing: .32em;
+    text-transform: uppercase; color: #b4bac4; margin-bottom: 24px; }
+  .kicker b { color: #f0862e; font-weight: 700; }
+  h1 { margin: 0; font-size: 68px; line-height: .99; font-weight: 600;
+    letter-spacing: -.03em; color: #f6f7f9; }
+  h1 em { font-style: italic; color: #f0862e; }
+  h1 .dot { color: #f0862e; }
+  p { margin: 26px 0 0; font-size: 21px; line-height: 1.5; color: #b4bac4;
+    max-width: 500px; }
+  .cmd { margin-top: 28px; display: inline-flex; align-items: center; gap: 12px;
+    font-family: "JBM", monospace; font-size: 19px; color: #e6e9ee;
+    border: 1px solid rgba(198,203,212,.21); border-radius: 8px;
+    padding: 13px 18px; }
+  .cmd .chev { color: #f0862e; }
+  .cmd .arrow { color: #7c828d; }
+  .cmd .key { color: #f0862e; }
+  .cmd .dim { color: #7c828d; }
+
+  /* right terminal mock */
+  .term {
+    position: absolute; right: 64px; top: 144px; width: 470px; height: 424px;
+    display: flex; flex-direction: column;
+    background: #000000; border: 1px solid rgba(198,203,212,.21);
+    border-radius: 12px; overflow: hidden;
+    box-shadow: 0 18px 48px rgba(0,0,0,.6);
+    font-size: 16px;
+  }
+  .term-top { display: flex; align-items: center; justify-content: space-between;
+    padding: 16px 18px; border-bottom: 1px solid rgba(198,203,212,.12); }
+  .term-title { display: flex; align-items: center; gap: 10px;
+    font-family: "JBM", monospace; font-size: 16px; color: #c6cbd4; }
+  .term-title .glyph { width: 9px; height: 9px; border-radius: 50%;
+    background: #7c828d; }
+  .live { display: inline-flex; align-items: center; gap: 7px;
+    font-family: "JBM", monospace; font-size: 13px; letter-spacing: .12em;
+    text-transform: uppercase; color: #f0862e;
+    border: 1px solid rgba(240,134,46,.45); border-radius: 999px;
+    padding: 4px 10px; }
+  .live .pip { width: 7px; height: 7px; border-radius: 50%; background: #f0862e; }
+  .term-body { flex: 1; padding: 18px 20px; font-family: "JBM", monospace;
+    font-size: 15px; line-height: 1.5; }
+  .prompt .who { color: #f0862e; }
+  .prompt .arr { color: #7c828d; margin: 0 8px; }
+  .prompt .q { color: #f6f7f9; }
+  .say { color: #b4bac4; margin-top: 14px; }
+  .say code { color: #e6e9ee; }
+  .tool { display: flex; align-items: center; justify-content: space-between;
+    margin-top: 14px; border: 1px solid rgba(198,203,212,.12); border-radius: 8px;
+    padding: 11px 14px; color: #c6cbd4; }
+  .tool .lhs { display: flex; align-items: center; gap: 10px; }
+  .tool .ok { color: #7fb98a; }
+  .tool .run { color: #f0862e; }
+  .tool .meta { color: #7c828d; font-size: 14px; }
+  .found { color: #f6f7f9; margin-top: 14px; }
+  .caret { display: inline-block; width: 8px; height: 16px; margin-left: 2px;
+    background: #f0862e; vertical-align: text-bottom; }
+  .term-foot { display: flex; align-items: center; justify-content: space-between;
+    padding: 13px 18px; border-top: 1px solid rgba(198,203,212,.12);
+    font-family: "JBM", monospace; font-size: 14px; color: #7c828d; }
+</style>
+</head>
+<body>
+  <div class="grid"></div>
+  <div class="top">
+    <div class="brand">
+      <div class="sun"></div>
+      <div class="brand-name">veyyon<span class="sep">·</span><span class="sub">collab</span></div>
+    </div>
+    <div class="host">my.veyyon.dev</div>
+  </div>
+  <div class="rule"></div>
+
+  <div class="col">
+    <div class="kicker"><b>§ 02</b>&nbsp;&nbsp;Live session sharing</div>
+    <h1>Your agent,<br /><em>live</em> in any<br />browser<span class="dot">.</span></h1>
+    <p>Guests watch the transcript stream, inspect tool calls, and prompt the host
+      agent. End-to-end encrypted — the key never leaves the link.</p>
+    <div class="cmd">
+      <span class="chev">›</span><span>/collab</span>
+      <span class="arrow">→</span><span>my.veyyon.dev/<span class="key">#room#key</span></span>
+    </div>
+  </div>
+
+  <div class="term">
+    <div class="term-top">
+      <div class="term-title"><span class="glyph"></span>veyyon collab — guest</div>
+      <div class="live"><span class="pip"></span>Live</div>
+    </div>
+    <div class="term-body">
+      <div class="prompt"><span class="who">guest@web</span><span class="arr">›</span><span class="q">why is the relay dropping frames?</span></div>
+      <div class="say">Checking the backpressure path in <code>socket.ts</code> — the send queue caps at 4 frames before…</div>
+      <div class="tool"><span class="lhs"><span class="ok">✓</span>read <code>src/lib/socket.ts</code></span><span class="meta">142 lines</span></div>
+      <div class="tool"><span class="lhs"><span class="run">↻</span>edit <code>src/lib/socket.ts</code></span><span class="meta">running…</span></div>
+      <div class="found">Found it — the relay isn't dropping frames, the guest socket<span class="caret"></span></div>
+    </div>
+    <div class="term-foot"><span>3 guests · e2e encrypted</span><span>host: dev@veyyon</span></div>
+  </div>
+</body>
+</html>

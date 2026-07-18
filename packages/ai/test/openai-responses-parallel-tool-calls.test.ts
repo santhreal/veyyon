@@ -13,10 +13,10 @@
 // `output_item.done` event must be routed by `output_index`/`item_id`, not by
 // arrival order.
 import { describe, expect, test } from "bun:test";
-import type { ResponseStreamEvent } from "@veyyon/pi-ai/providers/openai-responses-wire";
-import { processResponsesStream } from "@veyyon/pi-ai/providers/openai-shared";
-import type { AssistantMessage, Model } from "@veyyon/pi-ai/types";
-import { buildModel } from "@veyyon/pi-catalog/build";
+import type { ResponseStreamEvent } from "@veyyon/ai/providers/openai-responses-wire";
+import { processResponsesStream } from "@veyyon/ai/providers/openai-shared";
+import type { AssistantMessage, Model } from "@veyyon/ai/types";
+import { buildModel } from "@veyyon/catalog/build";
 
 function makeModel(): Model<"openai-responses"> {
 	return buildModel({

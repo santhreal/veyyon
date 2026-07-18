@@ -14,7 +14,7 @@ import {
 	type ReadableSpan,
 	SimpleSpanProcessor,
 } from "@opentelemetry/sdk-trace-base";
-import { agentLoop } from "@veyyon/pi-agent-core/agent-loop";
+import { agentLoop } from "@veyyon/agent-core/agent-loop";
 import {
 	type AgentTelemetryConfig,
 	type ChatUsageEvent,
@@ -27,12 +27,12 @@ import {
 	recordManualChatTelemetry,
 	resolveTelemetry,
 	type TelemetryHookContext,
-} from "@veyyon/pi-agent-core/telemetry";
-import type { AgentContext, AgentEvent, AgentLoopConfig, AgentMessage, AgentTool } from "@veyyon/pi-agent-core/types";
-import type { Message } from "@veyyon/pi-ai";
-import { z } from "@veyyon/pi-ai";
-import { createMockModel } from "@veyyon/pi-ai/providers/mock";
-import type { EventStream } from "@veyyon/pi-ai/utils/event-stream";
+} from "@veyyon/agent-core/telemetry";
+import type { AgentContext, AgentEvent, AgentLoopConfig, AgentMessage, AgentTool } from "@veyyon/agent-core/types";
+import type { Message } from "@veyyon/ai";
+import { z } from "@veyyon/ai";
+import { createMockModel } from "@veyyon/ai/providers/mock";
+import type { EventStream } from "@veyyon/ai/utils/event-stream";
 import { createUserMessage } from "./helpers";
 
 const MOCK_IDENT = { id: "mock-model", provider: "mock-provider" } as const;

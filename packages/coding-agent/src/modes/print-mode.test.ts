@@ -5,7 +5,7 @@
  * reasoning history), which previously produced multi-GB transcripts.
  */
 import { describe, expect, it } from "bun:test";
-import type { AssistantMessage } from "@veyyon/pi-ai";
+import type { AssistantMessage } from "@veyyon/ai";
 import type { AgentSessionEvent } from "../session/agent-session";
 import { printableEvent } from "./print-mode";
 

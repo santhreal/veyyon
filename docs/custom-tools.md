@@ -8,7 +8,7 @@ A custom tool is a TypeScript/JavaScript module that exports a factory. The fact
 
 - **Custom tool**: callable by the model during a turn (`execute` + Zod parameter schema).
 - **Extension**: lifecycle/event framework that can register tools and intercept/modify events.
-- **Hook**: external pre/post command scripts.
+- **Hook**: TypeScript module that registers handlers with `pi.on(...)` (same event bus as extensions; `--hook` aliases `--extension`).
 - **Skill**: static guidance/context package, not executable tool code.
 
 If you need the model to call code directly, use a custom tool.
@@ -45,11 +45,11 @@ CustomTool.execute(toolCallId, params, onUpdate, ctx, signal)
 `discoverAndLoadCustomTools(configuredPaths, cwd, builtInToolNames)` merges:
 
 1. Capability providers (`toolCapability`), including:
-   - Native Veyyon config (`~/.veyyon/agent/tools`, `.veyyon/tools`) — the user dir is profile-aware: under a named profile it resolves to `~/.veyyon/profiles/<name>/agent/tools`
+   - Native Veyyon config (`~/.veyyon/profiles/default/agent/tools`, `.veyyon/tools`) — the user dir is profile-aware: under a named profile it resolves to `~/.veyyon/profiles/<name>/agent/tools`
    - Claude config (`~/.claude/tools`, `.claude/tools`)
    - Codex config (`~/.codex/tools`, `.codex/tools`)
    - Claude marketplace plugin cache provider
-2. Installed plugin manifests (`~/.veyyon/plugins/node_modules/*` via plugin loader)
+2. Installed plugin manifests (`~/.veyyon/profiles/default/plugins/node_modules/*` via plugin loader)
 3. Explicit configured paths passed to the loader
 
 ### Important behavior
@@ -64,7 +64,7 @@ CustomTool.execute(toolCallId, params, onUpdate, ctx, signal)
 A custom tool module must export a function (default export preferred):
 
 ```ts
-import type { CustomToolFactory } from "@veyyon/pi-coding-agent";
+import type { CustomToolFactory } from "@veyyon/coding-agent";
 
 const factory: CustomToolFactory = (pi) => ({
   name: "repo_stats",
@@ -128,7 +128,7 @@ From `types.ts` and `loader.ts`:
 - `logger`: shared file logger
 - `typebox`: zod-backed compatibility shim for legacy TypeBox-style schemas
 - `zod`: injected `zod/v4` module (canonical for new schemas)
-- `pi`: injected `@veyyon/pi-coding-agent` exports
+- `pi`: injected `@veyyon/coding-agent` exports
 - `pushPendingAction(action)`: register a preview action for hidden `resolve` tool (`docs/internal/resolve-tool-runtime.md`)
   Loader starts with a no-op UI context and requires host code to call `setUIContext(...)` when real UI is ready.
 

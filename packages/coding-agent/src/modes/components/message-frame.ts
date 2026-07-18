@@ -8,9 +8,9 @@
  * the first N lines when not expanded; extension messages render in full.
  */
 
-import type { TextContent } from "@veyyon/pi-ai";
-import type { Box, Component } from "@veyyon/pi-tui";
-import { Markdown, Spacer, Text } from "@veyyon/pi-tui";
+import type { TextContent } from "@veyyon/ai";
+import type { Box, Component } from "@veyyon/tui";
+import { Markdown, Spacer, Text } from "@veyyon/tui";
 import { getMarkdownTheme, type Theme, theme } from "../../modes/theme/theme";
 
 /** Message shape consumed by the shared frame. */

@@ -5,9 +5,9 @@
  * API docs: https://www.discogs.com/developers
  */
 
-import { tryParseJson } from "@veyyon/pi-utils";
-import type { RenderResult, SpecialHandler } from "./types";
-import { buildResult, loadPage } from "./types";
+import { tryParseJson } from "@veyyon/utils";
+import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
+import { buildResult, loadFailure, loadPage, scraperDegrade, tryParseUrl } from "./types";
 
 interface DiscogsArtist {
 	name: string;
@@ -253,9 +253,10 @@ export const handleDiscogs: SpecialHandler = async (
 	url: string,
 	timeout: number,
 	signal?: AbortSignal,
-): Promise<RenderResult | null> => {
+): Promise<RenderResult | ScraperDegrade | null> => {
 	try {
-		const parsed = new URL(url);
+		const parsed = tryParseUrl(url);
+		if (!parsed) return null;
 		if (!parsed.hostname.includes("discogs.com")) return null;
 
 		// Match release or master URLs
@@ -281,16 +282,16 @@ export const handleDiscogs: SpecialHandler = async (
 			},
 		});
 
-		if (!result.ok) return null;
+		if (!result.ok) return scraperDegrade("discogs", loadFailure(result));
 
 		let md: string;
 		if (isRelease) {
 			const release = tryParseJson<DiscogsRelease>(result.content);
-			if (!release) return null;
+			if (!release) return scraperDegrade("discogs", "unexpected response shape");
 			md = buildReleaseMarkdown(release);
 		} else {
 			const master = tryParseJson<DiscogsMaster>(result.content);
-			if (!master) return null;
+			if (!master) return scraperDegrade("discogs", "unexpected response shape");
 			md = buildMasterMarkdown(master);
 		}
 
@@ -300,7 +301,7 @@ export const handleDiscogs: SpecialHandler = async (
 			fetchedAt,
 			notes: [`Fetched via Discogs API (${isRelease ? "release" : "master"})`],
 		});
-	} catch {}
-
-	return null;
+	} catch (error) {
+		return scraperDegrade("discogs", error);
+	}
 };

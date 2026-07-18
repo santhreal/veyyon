@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { ApplyPatchError, applyPatch } from "@veyyon/pi-coding-agent/edit";
-import { removeSyncWithRetries } from "@veyyon/pi-utils";
+import { ApplyPatchError, applyPatch } from "@veyyon/coding-agent/edit";
+import { removeSyncWithRetries } from "@veyyon/utils";
 
 describe("applyPatch adversarial inputs", () => {
 	let tempDir: string;

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { parseFrontmatter } from "@veyyon/pi-utils";
+import { parseFrontmatter } from "@veyyon/utils";
 
 describe("parseFrontmatter", () => {
 	const parse = (content: string) => parseFrontmatter(content, { source: "tests:frontmatter", level: "off" });

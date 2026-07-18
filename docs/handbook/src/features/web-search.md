@@ -1,8 +1,7 @@
 # Web search
 
-Web search lets the model look things up while it works, using Veyyon's own `web_search`
-tool. It is useful for current library versions, API details, and error messages that need a
-reference the model was not trained on.
+The `web_search` tool runs a multi-provider search and returns ranked results (and, for some
+providers, answer-plus-citations). Use it for current docs, package versions, and online references.
 
 ## Configuration
 
@@ -11,7 +10,7 @@ Two settings control the tool:
 | Setting | Behavior |
 | --- | --- |
 | `web_search.enabled` | Boolean, default `true`. When `false`, the `web_search` tool is not offered to the model at all. |
-| `providers.webSearch` | Which search backend to use. Default `auto` picks the best available; you can pin a specific provider or exclude providers with `providers.webSearchExclude`. |
+| `providers.webSearch` | Which search backend to use. Default `auto` walks the configured provider chain; pin a provider id or use `providers.webSearchExclude` to drop providers. |
 
 Both are in **settings → Tools / Providers**, or in `config.yml`:
 

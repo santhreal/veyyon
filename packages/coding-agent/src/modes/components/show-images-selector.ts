@@ -1,4 +1,4 @@
-import type { SelectItem, SgrMouseEvent } from "@veyyon/pi-tui";
+import type { SelectItem, SgrMouseEvent } from "@veyyon/tui";
 import { getSelectListTheme } from "../../modes/theme/theme";
 import { ModalSelectListComponent } from "./modal-select-list";
 

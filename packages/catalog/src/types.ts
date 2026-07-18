@@ -1,8 +1,8 @@
 import type { Effort } from "./effort";
 
-// Re-exported from @veyyon/pi-utils so the whole workspace shares one
+// Re-exported from @veyyon/utils so the whole workspace shares one
 // `fetch`-compatible signature (tls-fetch's wrappers produce/accept it).
-export type { FetchImpl } from "@veyyon/pi-utils";
+export type { FetchImpl } from "@veyyon/utils";
 export type { KnownProvider } from "./provider-models/descriptors";
 
 export type KnownApi =
@@ -594,7 +594,7 @@ export interface ResolvedOpenAIResponsesCompat extends ResolvedOpenAISharedCompa
 
 /**
  * OpenRouter is a pseudo API: runtime dispatch can use either Responses
- * (default) or Chat Completions (`PI_OPENROUTER_RESPONSES=0`) with the same
+ * (default) or Chat Completions (`VEYYON_OPENROUTER_RESPONSES=0`) with the same
  * model object, so its resolved compat must satisfy both handlers.
  */
 export type ResolvedOpenRouterCompat = ResolvedOpenAICompat & ResolvedOpenAIResponsesCompat;
@@ -713,7 +713,7 @@ export interface Model<TApi extends Api = Api> {
 	input: ("text" | "image")[];
 	/**
 	 * Decoder family used for image inputs when it has narrower format support
-	 * than OMP's general image pipeline. `stb` local backends reject WebP.
+	 * than Veyyon's general image pipeline. `stb` local backends reject WebP.
 	 */
 	imageInputDecoder?: "stb";
 	/**
@@ -745,7 +745,7 @@ export interface Model<TApi extends Api = Api> {
 	 * the wire field is suppressed.
 	 *
 	 * Use this for proxies (notably Ollama) that forward to a backend whose true
-	 * output limit OMP cannot discover — sending the wrong value triggers 400s
+	 * output limit Veyyon cannot discover — sending the wrong value triggers 400s
 	 * from the upstream provider.
 	 */
 	omitMaxOutputTokens?: boolean;
@@ -758,7 +758,7 @@ export interface Model<TApi extends Api = Api> {
 	 * (or compatible) host; `headers.Authorization` (or `apiKey` resolved by
 	 * the registry) carries the gateway bearer.
 	 *
-	 * Used by containerized omp installs (e.g. robomp slots) to route every
+	 * Used by containerized veyyon installs (e.g. veybot slots) to route every
 	 * LLM call through a sidecar gateway that holds the real provider
 	 * credentials. The model's other metadata (pricing, context window,
 	 * thinking config, …) still resolves locally; only the streaming

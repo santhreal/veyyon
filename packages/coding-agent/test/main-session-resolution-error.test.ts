@@ -9,11 +9,11 @@ import { describe, expect, it, vi } from "bun:test";
 import * as fsp from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { Args } from "@veyyon/pi-coding-agent/cli/args";
-import type { Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { createSessionManager, SessionResolutionError, writeStartupNotice } from "@veyyon/pi-coding-agent/main";
-import * as sessionListingModule from "@veyyon/pi-coding-agent/session/session-listing";
-import { SessionManager } from "@veyyon/pi-coding-agent/session/session-manager";
+import type { Args } from "@veyyon/coding-agent/cli/args";
+import type { Settings } from "@veyyon/coding-agent/config/settings";
+import { createSessionManager, SessionResolutionError, writeStartupNotice } from "@veyyon/coding-agent/main";
+import * as sessionListingModule from "@veyyon/coding-agent/session/session-listing";
+import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 
 function buildResumeArgs(resume: string, sessionDir?: string): Args {
 	return {
@@ -124,7 +124,7 @@ describe("createSessionManager — missing session (#2084)", () => {
 	});
 
 	it("rejects --resume with unknown id instead of falling back to latest persisted session", async () => {
-		const cwd = await fsp.mkdtemp(path.join(os.tmpdir(), "omp-resume-unknown-id-"));
+		const cwd = await fsp.mkdtemp(path.join(os.tmpdir(), "veyyon-resume-unknown-id-"));
 		const sessionDir = path.join(cwd, "sessions");
 		const missingId = "019ea530-ffff-7000-8000-000000000000";
 		try {
@@ -147,7 +147,7 @@ describe("createSessionManager — missing session (#2084)", () => {
 	});
 
 	it("rejects --continue followed by an unknown session id instead of falling back to latest", async () => {
-		const cwd = await fsp.mkdtemp(path.join(os.tmpdir(), "omp-continue-unknown-id-"));
+		const cwd = await fsp.mkdtemp(path.join(os.tmpdir(), "veyyon-continue-unknown-id-"));
 		const sessionDir = path.join(cwd, "sessions");
 		const missingId = "019ea530-ffff-7000-8000-000000000000";
 		try {

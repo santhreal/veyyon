@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import * as AIError from "@veyyon/pi-ai/error";
+import * as AIError from "@veyyon/ai/error";
 
 describe("AIError.classify — structural provider errors", () => {
 	it("classifies an Anthropic connection timeout as timeout + transient (no regex)", () => {

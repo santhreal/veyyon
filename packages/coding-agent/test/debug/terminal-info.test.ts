@@ -3,8 +3,8 @@ import {
 	collectTerminalState,
 	formatTerminalState,
 	type TerminalStateInfo,
-} from "@veyyon/pi-coding-agent/debug/terminal-info";
-import { TERMINAL } from "@veyyon/pi-tui";
+} from "@veyyon/coding-agent/debug/terminal-info";
+import { TERMINAL } from "@veyyon/tui";
 
 const sample: TerminalStateInfo = {
 	detectedId: "kitty",

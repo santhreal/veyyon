@@ -1,16 +1,16 @@
 import { afterEach, describe, expect, test, vi } from "bun:test";
-import type { AgentMessage, AgentTool } from "@veyyon/pi-agent-core";
+import type { AgentMessage, AgentTool } from "@veyyon/agent-core";
 import {
 	AUTO_HANDOFF_THRESHOLD_FOCUS,
 	generateHandoff,
 	generateHandoffFromContext,
 	renderHandoffPrompt,
-} from "@veyyon/pi-agent-core/compaction";
-import { ThinkingLevel } from "@veyyon/pi-agent-core/thinking";
-import type { AssistantMessage, Model, ToolCall } from "@veyyon/pi-ai";
-import * as ai from "@veyyon/pi-ai";
-import { Effort, z } from "@veyyon/pi-ai";
-import { getBundledModel } from "@veyyon/pi-catalog/models";
+} from "@veyyon/agent-core/compaction";
+import { ThinkingLevel } from "@veyyon/agent-core/thinking";
+import type { AssistantMessage, Model, ToolCall } from "@veyyon/ai";
+import * as ai from "@veyyon/ai";
+import { Effort, z } from "@veyyon/ai";
+import { getBundledModel } from "@veyyon/catalog/models";
 
 function createAssistantMessage(content: AssistantMessage["content"]): AssistantMessage {
 	return {

@@ -22,7 +22,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { $env, isEnoent, logger } from "@veyyon/pi-utils";
+import { $env, isEnoent, logger, scopedTimeoutSignal } from "@veyyon/utils";
 import * as AIError from "../error";
 import type { FetchImpl } from "../types";
 import { raceWithSignal } from "../utils/abort";
@@ -80,11 +80,15 @@ export async function resolveAwsCredentials(opts: CredentialResolveOptions = {})
 
 	const fetchImpl = opts.fetch ?? (globalThis.fetch as FetchImpl);
 	const promise = (async () => {
+		// Scoped so the shared-resolve timer is cleared on settle instead of
+		// staying armed like a bare AbortSignal.timeout.
+		const resolveTimeout = scopedTimeoutSignal(SHARED_RESOLVE_TIMEOUT_MS);
 		try {
-			const creds = await resolveFresh(profile, region, AbortSignal.timeout(SHARED_RESOLVE_TIMEOUT_MS), fetchImpl);
+			const creds = await resolveFresh(profile, region, resolveTimeout.signal, fetchImpl);
 			cache.set(cacheKey, { creds, expiresAt: creds.expiresAt ?? Number.POSITIVE_INFINITY });
 			return creds;
 		} finally {
+			resolveTimeout.cancel();
 			inflight.delete(cacheKey);
 		}
 	})();
@@ -524,8 +528,10 @@ async function readImdsCredentials(
 	parentSignal: AbortSignal | undefined,
 	fetchImpl: FetchImpl,
 ): Promise<ResolvedCredentials | undefined> {
-	const timeout = AbortSignal.timeout(IMDS_TIMEOUT_MS);
-	const signal = parentSignal ? AbortSignal.any([parentSignal, timeout]) : timeout;
+	// Scoped so the 1s probe timer is cleared on settle instead of staying
+	// armed like a bare AbortSignal.timeout; the fence spans every body read.
+	const imdsTimeout = scopedTimeoutSignal(IMDS_TIMEOUT_MS, parentSignal);
+	const signal = imdsTimeout.signal;
 	try {
 		const tokenRes = await fetchImpl(`http://${IMDS_HOST}/latest/api/token`, {
 			method: "PUT",
@@ -567,6 +573,8 @@ async function readImdsCredentials(
 		return out;
 	} catch {
 		return undefined;
+	} finally {
+		imdsTimeout.cancel();
 	}
 }
 

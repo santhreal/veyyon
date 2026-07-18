@@ -5,8 +5,8 @@ import type {
 	ProviderPayload,
 	TextContent,
 	ToolResultMessage,
-} from "@veyyon/pi-ai";
-import { prompt } from "@veyyon/pi-utils";
+} from "@veyyon/ai";
+import { prompt } from "@veyyon/utils";
 import type { AgentMessage } from "../types";
 import branchSummaryContextPrompt from "./prompts/branch-summary-context.md" with { type: "text" };
 import compactionSummaryContextPrompt from "./prompts/compaction-summary-context.md" with { type: "text" };

@@ -8,15 +8,15 @@
  * pin a banner.
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "bun:test";
-import type { AssistantMessage } from "@veyyon/pi-ai";
-import * as AIError from "@veyyon/pi-ai/error";
-import { resetSettingsForTest, Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { AssistantMessageComponent } from "@veyyon/pi-coding-agent/modes/components/assistant-message";
-import { ErrorBannerComponent } from "@veyyon/pi-coding-agent/modes/components/error-banner";
-import { EventController } from "@veyyon/pi-coding-agent/modes/controllers/event-controller";
-import { initTheme } from "@veyyon/pi-coding-agent/modes/theme/theme";
-import type { InteractiveModeContext } from "@veyyon/pi-coding-agent/modes/types";
-import type { AgentSessionEvent } from "@veyyon/pi-coding-agent/session/agent-session";
+import type { AssistantMessage } from "@veyyon/ai";
+import * as AIError from "@veyyon/ai/error";
+import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
+import { AssistantMessageComponent } from "@veyyon/coding-agent/modes/components/assistant-message";
+import { ErrorBannerComponent } from "@veyyon/coding-agent/modes/components/error-banner";
+import { EventController } from "@veyyon/coding-agent/modes/controllers/event-controller";
+import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
+import type { AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session";
 
 function makeAssistantMessage(overrides: Partial<AssistantMessage> = {}): AssistantMessage {
 	return {

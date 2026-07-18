@@ -51,14 +51,14 @@ subcommand (`commit`, `grep`, `models`, `exec`, …).
 | `packages/natives` | JS bindings for the Rust native addon. |
 | `packages/utils` | Shared utilities (logger, streams, env, dirs). |
 | `packages/stats` | Local observability dashboard (`veyyon stats`). |
-| `crates/pi-natives` (+ siblings) | Rust hot paths: grep, PTY, shell, text/AST. |
+| `crates/veyyon-natives` (+ siblings) | Rust hot paths: grep, PTY, shell, text/AST. |
 
 ## Cross-cutting rules
 
 These are enforced conventions, documented in [`AGENTS.md`](AGENTS.md):
 
 - **Layering** — domain logic never imports CLI/transport/UI. Catalog *values* come
-  from `@veyyon/pi-catalog`, not the `@veyyon/pi-ai` barrel.
+  from `@veyyon/catalog`, not the `@veyyon/ai` barrel.
 - **No silent fallbacks** — a control that can't do its job fails loudly, not quietly.
 - **Bun first** — Bun APIs (`Bun.file`, Bun Shell, `bun:sqlite`, single-file
   `--compile`, the worker-reentry model) over `node:*` where they fit.

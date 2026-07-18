@@ -1,6 +1,7 @@
 import * as path from "node:path";
-import type { AgentMessage } from "@veyyon/pi-agent-core";
-import type { AssistantMessage } from "@veyyon/pi-ai";
+import type { AgentMessage } from "@veyyon/agent-core";
+import type { AssistantMessage } from "@veyyon/ai";
+import { getNonBlankStringProperty } from "@veyyon/utils";
 import type { Rule } from "../../capability/rule";
 import { buildRuleFromMarkdown, createSourceMeta } from "../../discovery/helpers";
 import { TtsrManager, type TtsrMatchContext } from "../../export/ttsr";
@@ -252,10 +253,7 @@ function parseGeneratedRulePayload(jsonText: string): GeneratedRulePayload | { e
 }
 
 function stringField(object: Record<string, unknown>, key: string): string | undefined {
-	const value = object[key];
-	if (typeof value !== "string") return undefined;
-	const trimmed = value.trim();
-	return trimmed.length > 0 ? trimmed : undefined;
+	return getNonBlankStringProperty(object, key)?.trim();
 }
 
 function stringArrayField(object: Record<string, unknown>, key: string): string[] | undefined {

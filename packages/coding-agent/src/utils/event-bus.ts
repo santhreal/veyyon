@@ -1,4 +1,4 @@
-import { logger } from "@veyyon/pi-utils";
+import { logger } from "@veyyon/utils";
 
 export class EventBus {
 	readonly #listeners = new Map<string, Set<(data: unknown) => void>>();

@@ -1,5 +1,5 @@
-import type { Effort } from "@veyyon/pi-ai";
-import type { SelectItem, SgrMouseEvent } from "@veyyon/pi-tui";
+import type { Effort } from "@veyyon/ai";
+import type { SelectItem, SgrMouseEvent } from "@veyyon/tui";
 import { getSelectListTheme } from "../../modes/theme/theme";
 import { getThinkingLevelMetadata } from "../../thinking";
 import { ModalSelectListComponent } from "./modal-select-list";

@@ -6,7 +6,7 @@
  * tear the UI down. The standalone TUI auto-renders on input, so no manual
  * render wiring is needed beyond `addChild`/`setFocus`/`start`.
  */
-import { ProcessTerminal, type SelectItem, SelectList, TUI } from "@veyyon/pi-tui";
+import { ProcessTerminal, type SelectItem, SelectList, TUI } from "@veyyon/tui";
 import { getSelectListTheme } from "../modes/theme/theme";
 
 /**

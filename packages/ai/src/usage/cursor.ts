@@ -1,3 +1,4 @@
+import { isRecord } from "@veyyon/utils";
 import type {
 	UsageAmount,
 	UsageFetchContext,
@@ -9,10 +10,6 @@ import type {
 	UsageWindow,
 } from "../usage";
 import { toNumber } from "./shared";
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 function parseTimestamp(value: unknown): number | undefined {
 	const numeric = toNumber(value);

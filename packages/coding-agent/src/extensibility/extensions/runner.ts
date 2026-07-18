@@ -1,10 +1,10 @@
 /**
  * Extension runner - executes extensions and manages their lifecycle.
  */
-import type { AgentMessage } from "@veyyon/pi-agent-core";
-import type { CredentialDisabledEvent, ImageContent, Model, ProviderResponseMetadata } from "@veyyon/pi-ai";
-import type { KeyId } from "@veyyon/pi-tui";
-import { logger } from "@veyyon/pi-utils";
+import type { AgentMessage } from "@veyyon/agent-core";
+import type { CredentialDisabledEvent, ImageContent, Model, ProviderResponseMetadata } from "@veyyon/ai";
+import type { KeyId } from "@veyyon/tui";
+import { errorMessage, logger } from "@veyyon/utils";
 import type { ModelRegistry } from "../../config/model-registry";
 import type { Settings } from "../../config/settings";
 import type { LocalProtocolOptions } from "../../internal-urls/local-protocol";
@@ -316,7 +316,7 @@ export class ExtensionRunner {
 				this.emit({ type: "credential_disabled", ...event }).catch((error: unknown) => {
 					logger.warn("credential_disabled handler threw during initialize flush", {
 						provider: event.provider,
-						error: error instanceof Error ? error.message : String(error),
+						error: errorMessage(error),
 					});
 				});
 			}
@@ -602,7 +602,7 @@ export class ExtensionRunner {
 			}
 			return handlerResult as TResult | undefined;
 		} catch (err) {
-			const message = err instanceof Error ? err.message : String(err);
+			const message = errorMessage(err);
 			const stack = err instanceof Error ? err.stack : undefined;
 			this.emitError({
 				extensionPath: ext.path,
@@ -773,7 +773,7 @@ export class ExtensionRunner {
 						}
 					}
 				} catch (err) {
-					const message = err instanceof Error ? err.message : String(err);
+					const message = errorMessage(err);
 					const stack = err instanceof Error ? err.stack : undefined;
 					this.emitError({
 						extensionPath: ext.path,

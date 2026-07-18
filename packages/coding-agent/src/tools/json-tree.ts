@@ -1,7 +1,8 @@
 /**
  * JSON tree rendering utilities shared across tool renderers.
  */
-import { INTENT_FIELD } from "@veyyon/pi-wire";
+import { isRecord } from "@veyyon/utils";
+import { INTENT_FIELD } from "@veyyon/wire";
 import type { Theme } from "../modes/theme/theme";
 import { truncateToWidth } from "./render-utils";
 
@@ -21,10 +22,6 @@ const ARGS_INLINE_MORE = "…";
 const ARGS_INLINE_MORE_WIDTH = Bun.stringWidth(ARGS_INLINE_MORE);
 /** Minimal value footprint (quotes + a couple chars) reserved for each not-yet-rendered key. */
 const ARGS_INLINE_TAIL_VALUE_RESERVE = 4;
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return !!value && typeof value === "object" && !Array.isArray(value);
-}
 
 /**
  * Format a scalar value for inline display.

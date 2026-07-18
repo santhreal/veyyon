@@ -13,10 +13,10 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { resetSettingsForTest, Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { EditTool, type EditToolDetails } from "@veyyon/pi-coding-agent/edit";
-import type { ToolSession } from "@veyyon/pi-coding-agent/tools";
-import { removeWithRetries } from "@veyyon/pi-utils";
+import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
+import { EditTool, type EditToolDetails } from "@veyyon/coding-agent/edit";
+import type { ToolSession } from "@veyyon/coding-agent/tools";
+import { removeWithRetries } from "@veyyon/utils";
 
 function makeApplyPatchSession(cwd: string): ToolSession {
 	return {
@@ -36,7 +36,7 @@ let tempDir: string;
 
 beforeEach(async () => {
 	resetSettingsForTest();
-	tempDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "omp-apply-patch-multi-"));
+	tempDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "veyyon-apply-patch-multi-"));
 	await Settings.init({ inMemory: true, cwd: tempDir });
 });
 

@@ -8,9 +8,9 @@ import type {
 	AgentToolResult,
 	AgentToolUpdateCallback,
 	ToolApprovalDecision,
-} from "@veyyon/pi-agent-core";
+} from "@veyyon/agent-core";
 
-import { getWorktreeDir, hashPath, isEnoent, prompt, untilAborted } from "@veyyon/pi-utils";
+import { getWorktreeDir, hashPath, isEnoent, prompt, untilAborted } from "@veyyon/utils";
 import { type } from "arktype";
 import type { Settings } from "../config/settings";
 import githubDescription from "../prompts/tools/github.md" with { type: "text" };
@@ -1062,6 +1062,23 @@ async function ensurePrRemote(
 	};
 }
 
+/**
+ * Read branch-scoped PR-checkout metadata. New checkouts write `veyyonPr*`
+ * keys; `ompPr*` is consulted as the pre-rebrand fallback so branches checked
+ * out by older builds keep their push metadata.
+ */
+async function getBranchPrMeta(
+	repoRoot: string,
+	localBranch: string,
+	key: "PrHeadRef" | "PrUrl" | "PrMaintainerCanModify" | "PrIsCrossRepository",
+	signal?: AbortSignal,
+): Promise<string | undefined> {
+	return (
+		(await git.config.getBranch(repoRoot, localBranch, `veyyon${key}`, signal)) ??
+		(await git.config.getBranch(repoRoot, localBranch, `omp${key}`, signal))
+	);
+}
+
 async function resolvePrBranchPushTarget(
 	repoRoot: string,
 	localBranch: string,
@@ -1074,21 +1091,16 @@ async function resolvePrBranchPushTarget(
 	maintainerCanModify?: boolean;
 	isCrossRepository: boolean;
 }> {
-	const headRef = await git.config.getBranch(repoRoot, localBranch, "ompPrHeadRef", signal);
+	const headRef = await getBranchPrMeta(repoRoot, localBranch, "PrHeadRef", signal);
 	if (!headRef) {
 		throw new ToolError(`branch ${localBranch} has no PR push metadata; check it out via op: pr_checkout first`);
 	}
 
 	const pushRemote = await git.config.getBranch(repoRoot, localBranch, "pushRemote", signal);
 	const remote = await git.config.getBranch(repoRoot, localBranch, "remote", signal);
-	const prUrl = await git.config.getBranch(repoRoot, localBranch, "ompPrUrl", signal);
-	const maintainerCanModifyValue = await git.config.getBranch(
-		repoRoot,
-		localBranch,
-		"ompPrMaintainerCanModify",
-		signal,
-	);
-	const isCrossRepositoryValue = await git.config.getBranch(repoRoot, localBranch, "ompPrIsCrossRepository", signal);
+	const prUrl = await getBranchPrMeta(repoRoot, localBranch, "PrUrl", signal);
+	const maintainerCanModifyValue = await getBranchPrMeta(repoRoot, localBranch, "PrMaintainerCanModify", signal);
+	const isCrossRepositoryValue = await getBranchPrMeta(repoRoot, localBranch, "PrIsCrossRepository", signal);
 
 	const remoteName = pushRemote ?? remote;
 	if (!remoteName) {
@@ -3108,19 +3120,19 @@ async function checkoutPullRequest(
 			await git.config.setBranch(repoRoot, localBranch, "remote", remote.name, signal);
 			await git.config.setBranch(repoRoot, localBranch, "merge", `refs/heads/${headRefName}`, signal);
 			await git.config.setBranch(repoRoot, localBranch, "pushRemote", remote.name, signal);
-			await git.config.setBranch(repoRoot, localBranch, "ompPrHeadRef", headRefName, signal);
-			await git.config.setBranch(repoRoot, localBranch, "ompPrUrl", data.url ?? "", signal);
+			await git.config.setBranch(repoRoot, localBranch, "veyyonPrHeadRef", headRefName, signal);
+			await git.config.setBranch(repoRoot, localBranch, "veyyonPrUrl", data.url ?? "", signal);
 			await git.config.setBranch(
 				repoRoot,
 				localBranch,
-				"ompPrIsCrossRepository",
+				"veyyonPrIsCrossRepository",
 				String(Boolean(data.isCrossRepository)),
 				signal,
 			);
 			await git.config.setBranch(
 				repoRoot,
 				localBranch,
-				"ompPrMaintainerCanModify",
+				"veyyonPrMaintainerCanModify",
 				String(Boolean(data.maintainerCanModify)),
 				signal,
 			);

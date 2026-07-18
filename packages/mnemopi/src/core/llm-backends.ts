@@ -1,4 +1,4 @@
-import type { FetchImpl } from "@veyyon/pi-ai";
+import type { FetchImpl } from "@veyyon/ai";
 
 export interface CompleteOptions {
 	maxTokens?: number;

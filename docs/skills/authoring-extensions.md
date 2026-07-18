@@ -10,7 +10,7 @@ Extensions are the primary way to add capabilities to Veyyon. A single extension
 ## Minimum viable extension
 
 ```ts
-import type { ExtensionAPI } from "@veyyon/pi-coding-agent";
+import type { ExtensionAPI } from "@veyyon/coding-agent";
 
 export default function (pi: ExtensionAPI) {
   pi.on("session_start", async (_event, ctx) => {
@@ -19,14 +19,14 @@ export default function (pi: ExtensionAPI) {
 }
 ```
 
-That is a working extension. Drop it into `~/.veyyon/agent/extensions/hello.ts` and restart veyyon to see the notification.
+That is a working extension. Drop it into `~/.veyyon/profiles/default/agent/extensions/hello.ts` (or the active profile's agent dir) and restart veyyon to see the notification.
 
 ## Full example
 
 The following extension registers a slash command, a tool, and a session-start hook:
 
 ```ts
-import type { ExtensionAPI } from "@veyyon/pi-coding-agent";
+import type { ExtensionAPI } from "@veyyon/coding-agent";
 
 export default function myExtension(pi: ExtensionAPI) {
   const z = pi.zod;
@@ -79,9 +79,9 @@ veyyon loads extension modules from these sources:
 
 1. Native `.veyyon` locations discovered through the capability system:
    - `<cwd>/.veyyon/extensions/`
-   - `~/.veyyon/agent/extensions/`
-   - legacy extension paths listed in `.veyyon/settings.json#extensions` or `~/.veyyon/agent/settings.json#extensions`
-2. Installed plugins under `~/.veyyon/plugins/node_modules` (`veyyon plugin install` npm/git specs, or `veyyon plugin link`) via their `veyyon.extensions` manifests (legacy `omp.extensions`/`pi.extensions` still accepted). Marketplace cache installs do not feed extension modules — they surface skills/commands/hooks/tools/MCP only.
+   - `~/.veyyon/profiles/default/agent/extensions/`
+   - legacy extension paths listed in `.veyyon/settings.json#extensions` or `~/.veyyon/profiles/default/agent/settings.json#extensions`
+2. Installed plugins under `~/.veyyon/profiles/default/plugins/node_modules` (`veyyon plugin install` npm/git specs, or `veyyon plugin link`) via their `veyyon.extensions` manifests (legacy `omp.extensions`/`pi.extensions` still accepted). Marketplace cache installs do not feed extension modules — they surface skills/commands/hooks/tools/MCP only.
 3. Explicit configured paths passed by the CLI (`veyyon --extension ./my-ext.ts`, also `-e`; `--hook` is treated as an alias) and by the `extensions:` setting in config.
 
 The runtime de-duplicates by resolved absolute path — first seen wins.
@@ -94,7 +94,7 @@ When a path points to a directory, veyyon resolves the entry point in this order
 
 When scanning an `extensions/` directory, veyyon also loads direct `*.ts`/`*.js` files and one-level subdirectories that have `index.ts`, `index.js`, or a manifest.
 
-Extension packages can also bundle sibling capability directories. When a package is loaded through `extensions:` or `--extension`/`-e`, the `omp-plugins` provider discovers its `skills/`, `hooks/pre|post/`, `tools/`, `commands/`, `rules/`, `prompts/`, and `.mcp.json`.
+Extension packages can also bundle sibling capability directories. When a package is loaded through `extensions:` or `--extension`/`-e`, the `veyyon-plugins` provider discovers its `skills/`, `hooks/pre|post/`, `tools/`, `commands/`, `rules/`, `prompts/`, and `.mcp.json`.
 
 ## package.json manifest
 
@@ -102,7 +102,7 @@ To package an extension as an installable plugin, add a `veyyon` field to `packa
 
 ```json
 {
-  "name": "my-omp-extension",
+  "name": "my-veyyon-extension",
   "veyyon": {
     "extensions": ["./src/main.ts"]
   }
@@ -216,7 +216,7 @@ Full event catalog: see [extension authoring guide](../extensions.md).
 |---|---|
 | Tools + commands + events in one module | **Extension** (`ExtensionAPI`) |
 | Pure event interception (policy, redaction) | **Extension** or **Hook** (both work; extension is preferred) |
-| Legacy hook module already exists | **Hook** (`HookAPI` from `@veyyon/pi-coding-agent/extensibility/hooks`) |
+| Legacy hook module already exists | **Hook** (`HookAPI` from `@veyyon/coding-agent/extensibility/hooks`) |
 | Registering a provider, shortcut, or CLI flag | **Extension only** |
 | Shipping as a marketplace plugin | **Extension** (use `package.json` manifest) |
 
@@ -224,10 +224,10 @@ Extensions are a strict superset of hooks. New authoring should use `ExtensionAP
 
 ## Debugging
 
-veyyon writes structured logs to a rotating file under `~/.veyyon/logs/` (debug level is always on; nothing is written to the console, which would corrupt the TUI). Tail today's log to see extension load diagnostics:
+veyyon writes structured logs to a rotating file under the active profile logs dir (`~/.veyyon/profiles/<name>/logs/`; debug level is always on; nothing is written to the console, which would corrupt the TUI). Tail today's log to see extension load diagnostics:
 
 ```
-tail -f ~/.veyyon/logs/veyyon.$(date +%F).log
+tail -f ~/.veyyon/profiles/default/logs/veyyon.$(date +%F).log
 ```
 
 Failed extension loads are logged with their path and error. Loaded extensions may also emit their own debug logs via `pi.logger`.
@@ -235,7 +235,7 @@ Failed extension loads are logged with their path and error. Loaded extensions m
 To temporarily disable a specific extension module by name without removing the file:
 
 ```yaml
-# ~/.veyyon/agent/config.yml
+# ~/.veyyon/profiles/default/agent/config.yml
 disabledExtensions:
   - extension-module:my-ext
 ```

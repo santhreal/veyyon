@@ -1,5 +1,5 @@
 import * as path from "node:path";
-import { isEnoent, logger } from "@veyyon/pi-utils";
+import { isEnoent, logger } from "@veyyon/utils";
 import { YAML } from "bun";
 import type { SecretEntry } from "./obfuscator";
 import { compileSecretRegex } from "./regex";

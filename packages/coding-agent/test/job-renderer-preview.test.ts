@@ -5,10 +5,10 @@
  * passes through unchanged.
  */
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { resetSettingsForTest, Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { initTheme, theme } from "@veyyon/pi-coding-agent/modes/theme/theme";
-import { jobToolRenderer } from "@veyyon/pi-coding-agent/tools/job";
-import { prompt } from "@veyyon/pi-utils";
+import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
+import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
+import { jobToolRenderer } from "@veyyon/coding-agent/tools/job";
+import { prompt } from "@veyyon/utils";
 import taskSummaryTemplate from "../src/prompts/tools/task-summary.md" with { type: "text" };
 
 function renderLines(resultText: string): string {

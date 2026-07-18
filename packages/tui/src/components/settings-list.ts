@@ -540,7 +540,11 @@ export class SettingsList implements Component {
 		const labelPadded = item.label + padding(Math.max(0, maxLabelWidth - visibleWidth(item.label)));
 		const separator = "  ";
 		const valueMaxWidth = rowWidth - prefixWidth - maxLabelWidth - visibleWidth(separator) - 2;
-		const valuePlain = truncateToWidth(String(item.currentValue ?? ""), valueMaxWidth, Ellipsis.Omit);
+		// The selected boolean/enum row shows ‹ value › so the Left/Right
+		// cycling gesture is discoverable, not a hidden power feature.
+		const cyclable = isSelected && !item.submenu && item.values !== undefined && item.values.length > 0;
+		const rawValue = cyclable ? `‹ ${item.currentValue} ›` : String(item.currentValue ?? "");
+		const valuePlain = truncateToWidth(rawValue, valueMaxWidth, Ellipsis.Omit);
 		const hovered = !isSelected && this.#theme.hovered !== undefined && item.id === this.#hoveredItemId;
 		// De-emphasized rows (outside the active section) render as plain text
 		// under one dim wash so inner label/value colors don't fight it.
@@ -854,6 +858,21 @@ export class SettingsList implements Component {
 			if (this.#sectionFocus) this.#sectionFocus = false;
 			else this.#activateItem();
 		}
+	}
+
+	/**
+	 * Cycle the selected row's value by delta — the Left/Right settings gesture.
+	 * Returns false when the row has no inline value list (heading, submenu,
+	 * text input), so the caller can give the key its fallback meaning.
+	 */
+	cycleSelected(delta: 1 | -1): boolean {
+		const item = this.#filteredItems[this.#selectedIndex];
+		if (!item || item.heading || item.submenu || !item.values || item.values.length === 0) return false;
+		const currentIndex = item.values.indexOf(item.currentValue);
+		const nextIndex = (currentIndex + delta + item.values.length) % item.values.length;
+		item.currentValue = item.values[nextIndex];
+		this.#onChange(item.id, item.currentValue);
+		return true;
 	}
 
 	#activateItem(): void {

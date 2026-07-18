@@ -3,29 +3,28 @@ import * as nodeFs from "node:fs";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import * as pluginCli from "@veyyon/pi-coding-agent/cli/plugin-cli";
-import * as updateCli from "@veyyon/pi-coding-agent/cli/update-cli";
+import * as pluginCli from "@veyyon/coding-agent/cli/plugin-cli";
+import * as updateCli from "@veyyon/coding-agent/cli/update-cli";
 import {
 	buildBunInstallArgs,
 	buildHomebrewUpdateArgs,
 	buildMiseForceInstallArgs,
 	buildMiseUpgradeArgs,
 	buildNpmInstallArgs,
-	parseUpdateArgs,
 	pruneBunInstallCache,
 	replaceBinaryForUpdate,
 	resolveBunGlobalNodeModulesDirFromLocations,
 	resolveUpdateMethodForTest,
 	sweepStaleBackups,
-} from "@veyyon/pi-coding-agent/cli/update-cli";
-import Update from "@veyyon/pi-coding-agent/commands/update";
-import { removeWithRetries } from "@veyyon/pi-utils";
-import type { CliConfig } from "@veyyon/pi-utils/cli";
+} from "@veyyon/coding-agent/cli/update-cli";
+import Update from "@veyyon/coding-agent/commands/update";
+import { removeWithRetries } from "@veyyon/utils";
+import type { CliConfig } from "@veyyon/utils/cli";
 
 const tempDirs: string[] = [];
 
 async function makeTempDir(): Promise<string> {
-	const dir = await fs.mkdtemp(path.join(os.tmpdir(), "omp-update-test-"));
+	const dir = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-update-test-"));
 	tempDirs.push(dir);
 	return dir;
 }
@@ -35,7 +34,7 @@ afterEach(async () => {
 	await Promise.all(tempDirs.splice(0).map(dir => removeWithRetries(dir)));
 });
 const TEST_CONFIG: CliConfig = {
-	bin: "omp",
+	bin: "veyyon",
 	version: "0.0.0-test",
 	commands: new Map(),
 };
@@ -64,20 +63,15 @@ describe("update command plugin dispatch", () => {
 	});
 });
 
-describe("parseUpdateArgs", () => {
-	it("preserves the legacy plugin update shorthand", () => {
-		expect(parseUpdateArgs(["update", "-l"])).toEqual({ force: false, check: false, plugins: true });
-	});
-});
 describe("update-cli install target detection", () => {
-	it("uses bun update when prioritized omp is inside bun global bin", () => {
-		const method = resolveUpdateMethodForTest("/Users/test/.bun/bin/omp", "/Users/test/.bun/bin");
+	it("uses bun update when prioritized veyyon is inside bun global bin", () => {
+		const method = resolveUpdateMethodForTest("/Users/test/.bun/bin/veyyon", "/Users/test/.bun/bin");
 
 		expect(method).toBe("bun");
 	});
 
-	it("uses npm update when prioritized omp is inside an npm global bin", () => {
-		const method = resolveUpdateMethodForTest("/Users/test/.npm-global/bin/omp", undefined, {
+	it("uses npm update when prioritized veyyon is inside an npm global bin", () => {
+		const method = resolveUpdateMethodForTest("/Users/test/.npm-global/bin/veyyon", undefined, {
 			npmBinDir: "/Users/test/.npm-global/bin",
 		});
 
@@ -85,40 +79,40 @@ describe("update-cli install target detection", () => {
 	});
 
 	it("uses npm update for Windows npm command shims even when no package-manager bin dirs were detected", () => {
-		const method = resolveUpdateMethodForTest("C:\\Users\\test\\AppData\\Roaming\\npm\\omp.cmd", undefined);
+		const method = resolveUpdateMethodForTest("C:\\Users\\test\\AppData\\Roaming\\npm\\veyyon.cmd", undefined);
 
 		expect(method).toBe("npm");
 	});
 
-	it("uses binary update when prioritized omp is outside bun global bin", () => {
-		const method = resolveUpdateMethodForTest("/Users/test/.local/bin/omp", "/Users/test/.bun/bin");
+	it("uses binary update when prioritized veyyon is outside bun global bin", () => {
+		const method = resolveUpdateMethodForTest("/Users/test/.local/bin/veyyon", "/Users/test/.bun/bin");
 
 		expect(method).toBe("binary");
 	});
 
 	it("uses binary update when bun global bin cannot be resolved", () => {
-		const method = resolveUpdateMethodForTest("/Users/test/.local/bin/omp", undefined);
+		const method = resolveUpdateMethodForTest("/Users/test/.local/bin/veyyon", undefined);
 
 		expect(method).toBe("binary");
 	});
 
-	it("uses Homebrew update when prioritized omp resolves into the Homebrew formula", async () => {
+	it("uses Homebrew update when prioritized veyyon resolves into the Homebrew formula", async () => {
 		const dir = await makeTempDir();
-		const prefix = path.join(dir, "opt", "omp");
+		const prefix = path.join(dir, "opt", "veyyon");
 		const linkedBin = path.join(dir, "bin");
 		await fs.mkdir(path.join(prefix, "bin"), { recursive: true });
 		await fs.mkdir(linkedBin, { recursive: true });
-		await Bun.write(path.join(prefix, "bin", "omp"), "binary");
-		await fs.symlink(path.join(prefix, "bin", "omp"), path.join(linkedBin, "omp"));
+		await Bun.write(path.join(prefix, "bin", "veyyon"), "binary");
+		await fs.symlink(path.join(prefix, "bin", "veyyon"), path.join(linkedBin, "veyyon"));
 
-		const method = resolveUpdateMethodForTest(path.join(linkedBin, "omp"), "/Users/test/.bun/bin", {
+		const method = resolveUpdateMethodForTest(path.join(linkedBin, "veyyon"), "/Users/test/.bun/bin", {
 			homebrewPrefix: prefix,
 		});
 
 		expect(method).toBe("brew");
 	});
 
-	it("uses mise update when prioritized omp is in an active mise bin path", () => {
+	it("uses mise update when prioritized veyyon is in an active mise bin path", () => {
 		const method = resolveUpdateMethodForTest(
 			"/Users/test/.local/share/mise/installs/github-santhreal-veyyon/latest/bin/veyyon",
 			undefined,
@@ -130,7 +124,7 @@ describe("update-cli install target detection", () => {
 		expect(method).toBe("mise");
 	});
 
-	it("uses mise update when prioritized omp is a mise shim", () => {
+	it("uses mise update when prioritized veyyon is a mise shim", () => {
 		const method = resolveUpdateMethodForTest("/Users/test/.local/share/mise/shims/veyyon", undefined, {
 			miseDataDir: "/Users/test/.local/share/mise",
 		});
@@ -155,15 +149,15 @@ describe("update-cli package manager commands", () => {
 
 		expect(args.slice(0, 2)).toEqual(["install", "-g"]);
 		expect(args).toContain("--registry=https://registry.npmjs.org/");
-		expect(args).toContain("@veyyon/pi-coding-agent@16.3.15");
-		expect(args).toContain("@veyyon/pi-natives@16.3.15");
-		expect(args).toContain("@veyyon/pi-natives-win32-x64@16.3.15");
+		expect(args).toContain("@veyyon/coding-agent@16.3.15");
+		expect(args).toContain("@veyyon/natives@16.3.15");
+		expect(args).toContain("@veyyon/natives-win32-x64@16.3.15");
 	});
 });
 
 describe("update-cli bun install command", () => {
 	it("pins the official npm registry and bypasses the manifest cache so a stale mirror or snapshot cannot mask a freshly published version", () => {
-		// Regression: omp queries https://registry.npmjs.org/<pkg>/latest directly.
+		// Regression: veyyon queries https://registry.npmjs.org/<pkg>/latest directly.
 		// The install MUST hit the same registry, otherwise:
 		//   - a lagging mirror (corp proxy, Taobao, …) rejects the version with
 		//     `No version matching "X" (but package exists)`,
@@ -177,21 +171,21 @@ describe("update-cli bun install command", () => {
 			"-g",
 			"--no-cache",
 			"--registry=https://registry.npmjs.org/",
-			"@veyyon/pi-coding-agent@15.7.6",
+			"@veyyon/coding-agent@15.7.6",
 		]);
 	});
 
 	it("pins the native addon core and the platform-specific leaf to the same version so the loader sentinel cannot drift on supported tags", () => {
 		// Regression: bun install -g <pkg>@<v> would update only the top-level
-		// package, leaving @veyyon/pi-natives and @veyyon/pi-natives-<tag>
+		// package, leaving @veyyon/natives and @veyyon/natives-<tag>
 		// at their previous version. The next launch then loaded a stale .node
 		// file and aborted at validateLoadedBindings with `The .node file on
 		// disk is from a different release than this loader`. See
 		// https://github.com/can1357/oh-my-pi/issues/1824.
 		for (const tag of ["linux-x64", "linux-arm64", "darwin-x64", "darwin-arm64", "win32-x64"]) {
 			const args = buildBunInstallArgs("15.9.0", tag);
-			expect(args).toContain("@veyyon/pi-natives@15.9.0");
-			expect(args).toContain(`@veyyon/pi-natives-${tag}@15.9.0`);
+			expect(args).toContain("@veyyon/natives@15.9.0");
+			expect(args).toContain(`@veyyon/natives-${tag}@15.9.0`);
 		}
 	});
 
@@ -202,8 +196,8 @@ describe("update-cli bun install command", () => {
 		// pipeline doesn't publish, otherwise bun aborts with EBADPLATFORM
 		// and hides the real diagnostic from `loadNative`'s aggregated error.
 		const args = buildBunInstallArgs("15.9.0", "linux-arm");
-		expect(args).toContain("@veyyon/pi-natives@15.9.0");
-		expect(args.some(arg => arg.startsWith("@veyyon/pi-natives-"))).toBe(false);
+		expect(args).toContain("@veyyon/natives@15.9.0");
+		expect(args.some(arg => arg.startsWith("@veyyon/natives-"))).toBe(false);
 	});
 
 	it("derives global node_modules from supported bun global locations", () => {
@@ -233,11 +227,11 @@ describe("update-cli bun cache pruning", () => {
 		await Bun.write(path.join(dir, "@veyyon", "pi-utils", "15.8.0@@@1"), "");
 		await Bun.write(
 			path.join(dir, "@veyyon", "pi-utils@15.7.6@@@1", "package.json"),
-			JSON.stringify({ name: "@veyyon/pi-utils", version: "15.7.6" }),
+			JSON.stringify({ name: "@veyyon/utils", version: "15.7.6" }),
 		);
 		await Bun.write(
 			path.join(dir, "@veyyon", "pi-utils@15.8.0@@@1", "package.json"),
-			JSON.stringify({ name: "@veyyon/pi-utils", version: "15.8.0" }),
+			JSON.stringify({ name: "@veyyon/utils", version: "15.8.0" }),
 		);
 		await Bun.write(path.join(dir, "chalk", "4.1.2@@@1"), "");
 		await Bun.write(path.join(dir, "chalk", "5.6.2@@@1"), "");
@@ -250,7 +244,7 @@ describe("update-cli bun cache pruning", () => {
 			JSON.stringify({ name: "chalk", version: "5.6.2" }),
 		);
 
-		const result = await pruneBunInstallCache(dir, new Set(["react", "@veyyon/pi-utils"]));
+		const result = await pruneBunInstallCache(dir, new Set(["react", "@veyyon/utils"]));
 
 		expect(result).toEqual({ scannedPackages: 2, removedEntries: 4 });
 		expect(await Bun.file(path.join(dir, "react", "18.3.1@@@1")).exists()).toBe(false);
@@ -306,7 +300,7 @@ describe("update-cli bun cache pruning", () => {
 describe("update-cli binary replacement", () => {
 	it("restores the previous binary when the replacement fails verification", async () => {
 		const dir = await makeTempDir();
-		const targetPath = path.join(dir, "omp");
+		const targetPath = path.join(dir, "veyyon");
 		const tempPath = `${targetPath}.new`;
 		const backupPath = `${targetPath}.bak`;
 		await Bun.write(targetPath, "old binary");
@@ -329,7 +323,7 @@ describe("update-cli binary replacement", () => {
 
 	it("keeps the replacement only after it reports the expected version", async () => {
 		const dir = await makeTempDir();
-		const targetPath = path.join(dir, "omp");
+		const targetPath = path.join(dir, "veyyon");
 		const tempPath = `${targetPath}.new`;
 		const backupPath = `${targetPath}.bak`;
 		await Bun.write(targetPath, "old binary");
@@ -355,7 +349,7 @@ describe("update-cli binary replacement on locked backups", () => {
 		// the running process image, so unlinking it throws EPERM. That cleanup
 		// failure must not turn a verified swap into "Update failed" (issue #845).
 		const dir = await makeTempDir();
-		const targetPath = path.join(dir, "omp.exe");
+		const targetPath = path.join(dir, "veyyon.exe");
 		const tempPath = `${targetPath}.new`;
 		const backupPath = `${targetPath}.1700000000000.4242.bak`;
 		await Bun.write(targetPath, "old binary");
@@ -394,7 +388,7 @@ describe("update-cli binary replacement on locked backups", () => {
 describe("update-cli stale backup sweep", () => {
 	it("reclaims timestamped and legacy backups while leaving unrelated .bak files", async () => {
 		const dir = await makeTempDir();
-		const targetPath = path.join(dir, "omp.exe");
+		const targetPath = path.join(dir, "veyyon.exe");
 		await Bun.write(targetPath, "current binary");
 		await Bun.write(`${targetPath}.bak`, "legacy backup");
 		await Bun.write(`${targetPath}.1700000000000.4242.bak`, "timestamped backup");
@@ -411,5 +405,31 @@ describe("update-cli stale backup sweep", () => {
 		expect(await Bun.file(`${targetPath}.1800000000000.99.bak`).exists()).toBe(false);
 		expect(await Bun.file(path.join(dir, "notes.bak")).exists()).toBe(true);
 		expect(await Bun.file(`${targetPath}.config.bak`).exists()).toBe(true);
+	});
+});
+
+describe("update-cli release-info errors", () => {
+	it("404 from the registry names the URL, status, and unpublished-package hint without a doubled Error prefix", async () => {
+		spyOn(globalThis, "fetch").mockResolvedValue(new Response("Not Found", { status: 404, statusText: "Not Found" }));
+		const errors: string[] = [];
+		spyOn(console, "error").mockImplementation((...args: unknown[]) => {
+			errors.push(args.map(String).join(" "));
+		});
+		spyOn(console, "log").mockImplementation(() => {});
+		const exitSentinel = new Error("process.exit sentinel");
+		const exitSpy = spyOn(process, "exit").mockImplementation((() => {
+			throw exitSentinel;
+		}) as never);
+
+		await expect(updateCli.runUpdateCommand({ force: false, check: true })).rejects.toBe(exitSentinel);
+
+		expect(exitSpy).toHaveBeenCalledWith(1);
+		const combined = errors.join("\n");
+		expect(combined).toContain("Failed to check for updates");
+		expect(combined).toContain("registry.npmjs.org");
+		expect(combined).toContain("HTTP 404");
+		expect(combined).toContain("no published release");
+		// `${err}` used to stringify the Error and double the prefix.
+		expect(combined).not.toContain("Error: Failed to fetch");
 	});
 });

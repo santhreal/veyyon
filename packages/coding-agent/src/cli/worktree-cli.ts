@@ -16,7 +16,7 @@
  */
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { getWorktreesDir, isEnoent } from "@veyyon/pi-utils";
+import { formatCount, getWorktreesDir, isEnoent } from "@veyyon/utils";
 import chalk from "chalk";
 import * as git from "../utils/git";
 
@@ -92,7 +92,7 @@ export async function clearWorktrees(options: ClearWorktreesOptions): Promise<vo
 			for (const target of targets) {
 				console.log(`${chalk.yellow("would remove")}  ${target.path}`);
 			}
-			console.log(chalk.dim(`\n${targets.length} dir${targets.length === 1 ? "" : "s"} would be removed.`));
+			console.log(chalk.dim(`\n${formatCount("dir", targets.length)} would be removed.`));
 		}
 		return;
 	}

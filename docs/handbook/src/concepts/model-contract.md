@@ -6,7 +6,7 @@ a local server (Ollama, LM Studio), a direct provider API (OpenAI, Anthropic, Go
 OpenAI-compatible gateway.
 
 This page is the contract between the harness and the model. For copy-paste provider setup, see
-[Configuring providers](../using/configuring-providers.md). For day-to-day model switching, see
+[Configuring providers](../using/configuring-providers.md). For model switching, see
 [Models and providers](../using/models.md).
 
 ## The three things you bring
@@ -15,17 +15,17 @@ A BYOK (bring-your-own-key) run needs three facts:
 
 | Fact | What it is | Where it lives |
 | --- | --- | --- |
-| **Endpoint** | Base URL and API kind | A built-in provider, or a custom provider under `providers:` in `~/.veyyon/agent/models.yml` |
+| **Endpoint** | Base URL and API kind | A built-in provider, or a custom provider under `providers:` in `~/.veyyon/profiles/default/agent/models.yml` |
 | **Model** | The model id the endpoint understands | Pinned with `--model` / `/model`, or discovered from the provider |
 | **Key** | Credential the endpoint accepts | A provider environment variable, `/login`, or a `models.yml` `apiKey` |
 
-Veyyon does not route your requests through a service of its own for BYOK providers and does not add
-telemetry egress. The key is used only to talk to the provider you chose.
+For BYOK providers, Veyyon calls the configured endpoint with your credentials (no hosted proxy required).
+Optional OpenTelemetry export is separate and only when `OTEL_EXPORTER_OTLP_*` is set.
 
 ### Example shape
 
 ```yaml
-# ~/.veyyon/agent/models.yml
+# ~/.veyyon/profiles/default/agent/models.yml
 providers:
   deepseek:
     baseUrl: https://api.deepseek.com
@@ -54,7 +54,7 @@ These behaviors stay constant no matter which endpoint you point at:
 - Context compaction, goal cards, session branching, and rollout persistence.
 - Per-model prompt order and tool-form selection once a model (or API kind) is known.
 
-You are not locked to any provider. Point the harness at any compatible API and keep the same
+Provider is configuration (endpoint, credentials, model id). Keep the same
 commands.
 
 ## What the provider owns
@@ -65,7 +65,7 @@ Veyyon adapts to that surface through the provider's `api` kind:
 - Chat-Completions-style endpoints (`api: openai-completions`) talk `/chat/completions`.
 - Responses-style and native provider endpoints use their own request shape.
 - Model ids come from the provider's discovery endpoint when discovery runs. There is no hardcoded
-  allowlist for BYOK providers, and discovery fails loud rather than serving a silent empty list.
+  allowlist for BYOK providers, and discovery returns an error; it does not invent an empty catalog on failure.
 
 Everything beyond the built-in catalog is data in `models.yml` — see
 [Providers](../models/providers.md) and [`docs/providers.md`](../../../providers.md).
@@ -94,17 +94,18 @@ the same; only the transport differs.
 | **Freeform** | A custom / grammar tool. The raw body is the tool payload (for example a full `*** Begin Patch` envelope). | Responses-style |
 | **Function** | A JSON-schema function tool. Arguments are a JSON object (for example `{"input": "<envelope>"}`). | Chat Completions |
 
-The form is derived from the provider's API kind by default; an optional catalog override can pin the
-`apply_patch` tool to `function`, `freeform`, or `none`. The Function form makes a structured edit tool
-real for chat-wire endpoints (Ollama, LM Studio, DeepSeek, and similar) that historically saw no
-Freeform tool at all. See [The hashline edit engine](../edit/engine.md) for the default edit wire format.
+Default edit mode is **hashline** (`edit.mode: hashline`). When `edit.mode` is `apply_patch`, the
+provider wire form is derived from the API kind by default; an optional catalog override can pin the
+tool shape to `function`, `freeform`, or `none`. The Function form keeps structured edits available
+on chat-wire endpoints (Ollama, LM Studio, DeepSeek, and similar). See [The hashline edit engine](../edit/engine.md)
+for the default edit wire format.
 
 ## Harness vs provider: a clear split
 
 ```text
 ┌──────────────────────── harness (veyyon) ─────────────────────┐
 │ session / turn loop                                           │
-│ prompts, tool schemas, edit, sandbox, approvals, compaction   │
+│ prompts, tool schemas, edit, approvals, compaction            │
 └────────────────────────────┬──────────────────────────────────┘
                              │ HTTPS / local HTTP
                              ▼
@@ -119,13 +120,13 @@ If something fails, ask which side owns it:
 - Config rejected at load, malformed `models.yml`, missing key → harness / your config.
 - HTTP 401 / 429 / empty model list → provider or key.
 - Patch applied but tests red → harness did its job; the change still needs work.
-- Sandbox denial → permission model, not the model provider.
+- Approval or execpolicy denial → permission model, not the model provider.
 
 ## Provider data at load time
 
 For BYOK providers, model and provider entries are data in `models.yml`:
 
-- A YAML or schema error makes the registry skip the custom file loudly; it does not silently drop
+- A YAML or schema error makes the registry skip the custom file with an error message; it does not silently drop
   models.
 - Custom providers are merged **alongside** the built-in catalog. A custom entry with the same id as an
   implicit local engine (`ollama`, `lm-studio`, `llama.cpp`) replaces that engine's discovery.
@@ -159,9 +160,9 @@ Use `--yolo` (auto-approve everything) only in trusted automation, ideally in an
 
 ## What stays constant
 
-- The workflow stays the same: read, edit, verify, and stop when the work is done.
+- Workflow shape: read, edit, verify, stop when done.
 - Edit verification, approvals, and context handling are harness behavior.
-- You are not locked to any provider; point the harness at any compatible API.
+- Provider is configuration: endpoint, credentials, and model id.
 
 ## Next
 
@@ -169,5 +170,5 @@ Use `--yolo` (auto-approve everything) only in trusted automation, ideally in an
   OpenAI-compatible endpoints.
 - [Models and providers](../using/models.md) — choosing and switching models in a session.
 - [Safety](../using/safety.md) — boundaries around tool use and model output.
-- [Permission model](./permission-model.md) — the approval-mode ladder.
+- [Permission model](./permission-model.md) — the approval modes.
 - [Signing in](../using/authentication.md) — interactive and env-var auth paths.

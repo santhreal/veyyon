@@ -59,9 +59,9 @@ describe("python prelude", () => {
 			const result = await runPrelude(
 				[`print(read("artifact://21", 3, 2))`, `print(read("mcp://server/resource", 10, 5))`].join("\n"),
 				{
-					PI_TOOL_BRIDGE_URL: server.url.toString(),
-					PI_TOOL_BRIDGE_TOKEN: "test-token",
-					PI_TOOL_BRIDGE_SESSION: "test-session",
+					VEYYON_TOOL_BRIDGE_URL: server.url.toString(),
+					VEYYON_TOOL_BRIDGE_TOKEN: "test-token",
+					VEYYON_TOOL_BRIDGE_SESSION: "test-session",
 				},
 			);
 

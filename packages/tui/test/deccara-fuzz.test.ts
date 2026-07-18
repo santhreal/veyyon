@@ -12,7 +12,7 @@
  * Deterministic LCG so a failing frame reproduces from the printed seed.
  */
 import { describe, expect, it } from "bun:test";
-import { analyzeBgFillLine, DECSACE_DEFAULT, DECSACE_RECT, planDeccaraFills } from "@veyyon/pi-tui";
+import { analyzeBgFillLine, DECSACE_DEFAULT, DECSACE_RECT, planDeccaraFills } from "@veyyon/tui";
 import { lcg } from "./helpers/adversarial-strings";
 
 // SGR / text fragments spanning the parser's branches: background colors (the

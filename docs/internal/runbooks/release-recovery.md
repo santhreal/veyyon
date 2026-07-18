@@ -21,8 +21,8 @@ Symptom: the tag is on `origin/main` but there is no matching GitHub release, or
 binaries.
 
 1. Check CI: `bun run release watch` re-attaches to the release run, or open the Actions tab.
-2. If the run never started, the release runner is likely down — see
-   [runner-outage.md](runner-outage.md).
+2. If the run never started, open the Actions tab and check for a queued job or a workflow
+   syntax error. Release jobs use GitHub-hosted runners, so a missing runner is never the cause.
 3. If the run failed on the macOS signing step, the `APPLE_*` secrets are missing or invalid — see
    [secret-rotation.md](secret-rotation.md) and [macOS signing](../macos-signing-notarization.md).
 4. After fixing the cause, re-trigger the release jobs by re-running the failed CI workflow for that

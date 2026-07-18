@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it } from "bun:test";
-import { type BeamMemoryState, initBeam, type RecallResult } from "@veyyon/pi-mnemopi/core/beam";
-import { orchestrateRecall } from "@veyyon/pi-mnemopi/core/orchestrator";
-import { PolyphonicRecallEngine } from "@veyyon/pi-mnemopi/core/polyphonic-recall";
-import { closeQuietly, openDatabase } from "@veyyon/pi-mnemopi/db";
+import { type BeamMemoryState, initBeam, type RecallResult } from "@veyyon/mnemopi/core/beam";
+import { orchestrateRecall } from "@veyyon/mnemopi/core/orchestrator";
+import { PolyphonicRecallEngine } from "@veyyon/mnemopi/core/polyphonic-recall";
+import { closeQuietly, openDatabase } from "@veyyon/mnemopi/db";
 
 interface FakeBeam extends BeamMemoryState {
 	linearCalls: number;

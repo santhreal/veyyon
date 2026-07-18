@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import type { Tool } from "@veyyon/pi-ai/types";
-import { validateToolArguments } from "@veyyon/pi-ai/utils/validation";
+import type { Tool } from "@veyyon/ai/types";
+import { validateToolArguments } from "@veyyon/ai/utils/validation";
 import { type } from "arktype";
 
 describe("Eval-tool language whitespace normalization", () => {

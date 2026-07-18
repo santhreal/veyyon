@@ -1,5 +1,5 @@
-import { type Component, matchesKey, parseSgrMouse, replaceTabs, ScrollView, truncateToWidth } from "@veyyon/pi-tui";
-import { sanitizeText } from "@veyyon/pi-utils";
+import { type Component, matchesKey, parseSgrMouse, replaceTabs, ScrollView, truncateToWidth } from "@veyyon/tui";
+import { sanitizeText } from "@veyyon/utils";
 import { bottomBorder, divider, row, topBorder } from "../modes/components/overlay-box";
 import { theme } from "../modes/theme/theme";
 import { copyToClipboard } from "../utils/clipboard";
@@ -222,7 +222,7 @@ export class RawSseViewerComponent implements Component {
 			lines.push(
 				theme.fg(
 					"warning",
-					`: omp-debug-dropped records=${snapshot.droppedRecords} chars=${snapshot.droppedChars}`,
+					`: veyyon-debug-dropped records=${snapshot.droppedRecords} chars=${snapshot.droppedChars}`,
 				),
 			);
 			lines.push("");
@@ -233,7 +233,7 @@ export class RawSseViewerComponent implements Component {
 				lines.push(sanitizeFrameLine(line, innerWidth));
 			}
 			if (record.kind === "event" && record.truncated) {
-				lines.push(theme.fg("warning", `: omp-debug-event-truncated originalChars=${record.originalChars}`));
+				lines.push(theme.fg("warning", `: veyyon-debug-event-truncated originalChars=${record.originalChars}`));
 			}
 			lines.push("");
 		}

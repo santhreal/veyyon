@@ -1,3 +1,4 @@
+import { errorMessage } from "@veyyon/utils";
 import { getToolDefinitions, handleToolCall, type ToolArguments, type ToolDefinition } from "./mcp-tools";
 
 export interface JsonRpcRequest {
@@ -57,7 +58,7 @@ export async function callToolJson(name: string, args: ToolArguments = {}): Prom
 		const result = await handleToolCall(name, args);
 		return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
 	} catch (error) {
-		const message = error instanceof Error ? error.message : String(error);
+		const message = errorMessage(error);
 		return {
 			content: [{ type: "text", text: JSON.stringify({ status: "error", message }, null, 2) }],
 			isError: true,

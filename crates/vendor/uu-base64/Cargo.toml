@@ -1,5 +1,5 @@
 # Vendored from uutils/coreutils tag 0.8.0 (src/uu/base64), patched to expose
-# an in-process entrypoint using pi-uutils-ctx streams. Shared implementation is
+# an in-process entrypoint using veyyon-uutils-ctx streams. Shared implementation is
 # in ../uu-base32; see source comments for `pi-uutils:` patch markers.
 [package]
 name = "uu_base64"
@@ -15,7 +15,7 @@ path = "src/base64.rs"
 clap = { version = "4.5", features = ["wrap_help", "cargo", "color"] }
 uucore = { version = "0.8.0", features = ["encoding"] }
 uu_base32 = { path = "../uu-base32" }
-pi-uutils-ctx = { path = "../../pi-uutils-ctx" }
+veyyon-uutils-ctx = { path = "../../veyyon-uutils-ctx" }
 
 [dev-dependencies]
 parking_lot = "0.12"

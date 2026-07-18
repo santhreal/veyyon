@@ -13,8 +13,8 @@ import type {
 	AgentToolUpdateCallback,
 	ThinkingLevel,
 	ToolApproval,
-} from "@veyyon/pi-agent-core";
-import type { CompactionResult } from "@veyyon/pi-agent-core/compaction";
+} from "@veyyon/agent-core";
+import type { CompactionResult } from "@veyyon/agent-core/compaction";
 import type {
 	Api,
 	AssistantMessageEvent,
@@ -28,10 +28,10 @@ import type {
 	Static,
 	TextContent,
 	TSchema,
-} from "@veyyon/pi-ai";
-import type { OAuthCredentials, OAuthLoginCallbacks } from "@veyyon/pi-ai/oauth/types";
-import type { AutocompleteItem, AutocompleteProvider, Component, EditorTheme, KeyId, TUI } from "@veyyon/pi-tui";
-import type { logger as PiLogger } from "@veyyon/pi-utils";
+} from "@veyyon/ai";
+import type { OAuthCredentials, OAuthLoginCallbacks } from "@veyyon/ai/oauth/types";
+import type { AutocompleteItem, AutocompleteProvider, Component, EditorTheme, KeyId, TUI } from "@veyyon/tui";
+import type { logger as PiLogger } from "@veyyon/utils";
 import type { Type as arktype } from "arktype";
 import type * as zod from "zod/v4";
 import type { KeybindingsManager } from "../../config/keybindings";
@@ -1041,7 +1041,7 @@ export interface ExtensionAPI {
 	/** Injected zod/v4 module for canonical extension tool parameter schemas. */
 	zod: typeof zod;
 
-	/** Injected pi-coding-agent exports for accessing SDK utilities */
+	/** Injected coding-agent exports for accessing SDK utilities */
 	pi: typeof PiCodingAgent;
 
 	// =========================================================================

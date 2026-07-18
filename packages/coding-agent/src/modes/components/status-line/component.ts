@@ -1,10 +1,10 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { AgentMessage } from "@veyyon/pi-agent-core";
-import { resolveThresholdTokens } from "@veyyon/pi-agent-core/compaction";
-import type { AssistantMessage, UsageLimit, UsageReport } from "@veyyon/pi-ai";
-import { type Component, padding, truncateToWidth, visibleWidth } from "@veyyon/pi-tui";
-import { getProjectDir } from "@veyyon/pi-utils";
+import type { AgentMessage } from "@veyyon/agent-core";
+import { resolveThresholdTokens } from "@veyyon/agent-core/compaction";
+import type { AssistantMessage, UsageLimit, UsageReport } from "@veyyon/ai";
+import { type Component, padding, truncateToWidth, visibleWidth } from "@veyyon/tui";
+import { getProjectDir, scopedTimeoutSignal, withScopedTimeoutSignal } from "@veyyon/utils";
 import { isCompactionStrategyOff } from "../../../config/compaction-strategy";
 import { settings } from "../../../config/settings";
 import type { AgentSession } from "../../../session/agent-session";
@@ -712,10 +712,8 @@ export class StatusLineComponent implements Component {
 				// hard-terminates on the git command deadline instead of stalling
 				// the status-line indefinitely (#4234). Requires `gh repo set-default`;
 				// non-zero exit still falls through to the null cache below.
-				const result = await git.github.run(
-					lookupCwd,
-					["pr", "view", "--json", "number,url"],
-					AbortSignal.timeout(git.GIT_COMMAND_TIMEOUT_MS),
+				const result = await withScopedTimeoutSignal(git.GIT_COMMAND_TIMEOUT_MS, signal =>
+					git.github.run(lookupCwd, ["pr", "view", "--json", "number,url"], signal),
 				);
 				if (this.#disposed) return;
 				if (result.exitCode !== 0) {
@@ -817,7 +815,7 @@ export class StatusLineComponent implements Component {
 			this.#usageInFlight = false;
 			return;
 		}
-		const signal = AbortSignal.timeout(STATUS_USAGE_REFRESH_TIMEOUT_MS);
+		const { signal, cancel } = scopedTimeoutSignal(STATUS_USAGE_REFRESH_TIMEOUT_MS);
 		let reportsPromise: Promise<unknown> | undefined;
 		try {
 			reportsPromise = fetcher.call(session, signal);
@@ -829,6 +827,7 @@ export class StatusLineComponent implements Component {
 				this.#observeLateUsageRefresh(session, reportsPromise);
 			}
 		} finally {
+			cancel();
 			if (this.session === session) this.#usageInFlight = false;
 		}
 	}

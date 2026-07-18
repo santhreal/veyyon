@@ -1,41 +1,23 @@
-# Edit-path completeness: BOM/CRLF, multi-edit, hashline
+# Edit-path properties
 
-This chapter covers the correctness properties an edit path must hold no matter which edit format the
-model uses, and where Veyyon stands on each. The shipped edit engine is
-[hashline](./engine.md) (`@veyyon/hashline`, TypeScript); `apply_patch`, `patch`, and `replace` remain
-as compatibility modes.
+Correctness properties of the edit path. The default engine is hashline (`@veyyon/hashline`); `apply_patch`, `patch`, and `replace` remain as compatibility modes. See [The hashline edit engine](./engine.md).
 
-## BOM and line-ending preservation — Built
+## BOM and line endings
 
-An edit must not silently rewrite a file's encoding. Veyyon strips a leading UTF-8 BOM before matching
-and restores it afterward, and it detects the file's dominant line ending (CRLF or LF) and restores it
-on write. Matching only ever runs against a normalized-to-LF copy of the body. Without this, a single
-edit rewrites a CRLF file to LF or eats a BOM, which surfaces as a spurious whole-file diff and breaks
-Windows checkouts. *Lever: robustness.*
+Edits must not silently rewrite encoding. The path strips a leading UTF-8 BOM before matching and restores it afterward, and restores the file’s dominant line ending (CRLF or LF) on write. Matching runs against a normalized LF body. Without this, one edit can rewrite CRLF to LF or drop a BOM.
 
-## Multi-edit in one call — Built
+## Multi-edit in one call
 
-The `edit` tool applies several disjoint changes to a file in one call rather than one round-trip per
-change. Every anchor is matched against the original file, not incrementally, and replacements are
-applied so that a growing earlier edit cannot invalidate a later match. Ambiguous anchors, overlapping
-regions, and no-op edits fail loudly with a message the model can act on, never a silently-wrong edit.
-The tool description coaches the model to keep anchors small but unique and to merge nearby changes,
-which measurably reduces wasted attempts. *Lever: edit format.*
+The `edit` tool can apply several disjoint changes in one call. Anchors match against the original file (not incrementally); replacements are ordered so earlier growth does not invalidate later matches. Ambiguous anchors, overlapping regions, and no-ops fail with an actionable error.
 
-## Hashline — the token-lean form — Built
+## Hashline
 
-The token cost of an edit is dominated by echoing the surrounding text. Hashline removes that cost: the
-model references spans by the `[PATH#TAG]` snapshot anchors that `read`, `grep`, and `write` already
-emit, then sends only the operations (`SWAP`, `DEL`, `INS`) and the new text. Stale anchors are caught
-by the snapshot tag and drive recovery instead of a wrong edit. Hashline is the default edit mode
-(`edit.mode: hashline` in `config.yml`). See [The hashline edit engine](./engine.md). *Lever: edit
-format / output tokens.*
+Hashline avoids re-echoing surrounding text: the model references spans by `[PATH#TAG]` snapshot anchors from `read` / `grep` / `write`, then sends operations (`SWAP`, `DEL`, `INS`) and new text. Stale tags fail verification instead of applying a wrong edit. Default: `edit.mode: hashline` in `config.yml`.
 
-## Concurrent-edit serialization
+## Concurrency
 
-Non-parallel tools take an exclusive lock, so file mutations from one turn are globally serialized. A
-per-path mutation queue that lets independent files edit in parallel while still serializing same-file
-writes matters once subagents edit concurrently. *Lever: robustness.*
+Non-parallel tools take an exclusive lock so file mutations from one turn are serialized. Same-file concurrent edits from subagents still need care; independent files may proceed under the tool locking rules.
 
-Not shipped: a byte-exact write path that preserves a missing trailing newline on the final line. The
-current write model normalizes by appending one; the case is documented and covered by a test.
+## Trailing newlines
+
+The write path normalizes by ensuring a trailing newline on the final line when applying some write forms. Tests cover this behavior; see edit/write tool tests in `packages/coding-agent`.

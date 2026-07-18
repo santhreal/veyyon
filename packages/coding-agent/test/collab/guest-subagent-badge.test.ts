@@ -1,19 +1,19 @@
 import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
-import { generateRoomKey, importRoomKey } from "@veyyon/pi-coding-agent/collab/crypto";
-import { CollabGuestLink } from "@veyyon/pi-coding-agent/collab/guest";
+import { generateRoomKey, importRoomKey } from "@veyyon/coding-agent/collab/crypto";
+import { CollabGuestLink } from "@veyyon/coding-agent/collab/guest";
 import {
 	type AgentSnapshot,
 	COLLAB_PROTO,
 	type CollabFrame,
 	formatCollabLink,
-} from "@veyyon/pi-coding-agent/collab/protocol";
-import { CollabSocket } from "@veyyon/pi-coding-agent/collab/relay-client";
+} from "@veyyon/coding-agent/collab/protocol";
+import { CollabSocket } from "@veyyon/coding-agent/collab/relay-client";
 import {
 	countRunningSubagentBadgeAgents,
 	getRunningSubagentBadgeRegistry,
-} from "@veyyon/pi-coding-agent/modes/running-subagent-badge";
-import type { InteractiveModeContext } from "@veyyon/pi-coding-agent/modes/types";
-import { AgentRegistry } from "@veyyon/pi-coding-agent/registry/agent-registry";
+} from "@veyyon/coding-agent/modes/running-subagent-badge";
+import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
+import { AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";
 import { installInMemoryRelay, uninstallInMemoryRelay } from "./helpers/in-memory-relay";
 
 // In-memory transport: shared FakeWebSocket + InMemoryRelay harness (see

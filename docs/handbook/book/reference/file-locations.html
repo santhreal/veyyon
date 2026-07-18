@@ -10,6 +10,10 @@
         <!-- Veyyon handbook: self-contained head additions. No remote resources. -->
         <meta name="theme-color" content="#050505">
         <meta name="color-scheme" content="dark">
+        <!-- Site favicons live at the deployed root, one level above /docs/. -->
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+        <link rel="icon" href="/favicon.ico" sizes="48x48">
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png">
         <style>
           /* Paint the near-black surface before CSS/JS resolve the theme, so there is
              no light flash on load. Kept in sync with theme/veyyon.css. */
@@ -18,7 +22,7 @@
           *, *::before, *::after { box-sizing: border-box; }
         </style>
 
-        <meta name="description" content="How Veyyon turns open models into frontier coding agents. The product, the harness, tool-call repair, the edit format, per-model adaptation, and how to use it.">
+        <meta name="description" content="Operator handbook for the Veyyon terminal coding agent: install, configuration, tools, approvals, edit formats, providers, and harness structure.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -38,7 +42,7 @@
         <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="../ayu-highlight-3fdfc3ac.css">
 
         <!-- Custom theme stylesheets -->
-        <link rel="stylesheet" href="../theme/veyyon-fc839a17.css">
+        <link rel="stylesheet" href="../theme/veyyon-06f6939e.css">
 
 
         <!-- Provide site root and default themes to javascript -->
@@ -46,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-e76f06ca.js";
+            window.path_to_searchindex_js = "../searchindex-a2447057.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-9cfd259b.js"></script>
+        <script src="../toc-cc1a72e9.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -192,42 +196,86 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="file-locations"><a class="header" href="#file-locations">File locations</a></h1>
-<p>Everything Veyyon stores lives under the config home — <code>~/.veyyon</code> on Unix by default, or the Veyyon
-application directory on Windows. Override the directory name with <code>PI_CONFIG_DIR</code>; on Linux the XDG
-layout is available after <code>veyyon config migrate</code>.</p>
-<h2 id="layout"><a class="header" href="#layout">Layout</a></h2>
+<p>Everything Veyyon stores lives under the config home — <code>~/.veyyon</code> by default on every platform.
+Override the directory name with <code>VEYYON_CONFIG_DIR</code>;
+on Linux/macOS the XDG layout is available after <code>veyyon config init-xdg</code>.</p>
+<h2 id="the-config-home-veyyon"><a class="header" href="#the-config-home-veyyon">The config home (<code>~/.veyyon/</code>)</a></h2>
+<p>The root itself holds only <strong>global, cross-profile</strong> state. Everything else is per-profile:</p>
 <div class="table-wrapper">
 <table>
 <thead>
 <tr><th>Path</th><th>Contents</th></tr>
 </thead>
 <tbody>
-<tr><td><code>config.yml</code></td><td>Your configuration (<code>config.yaml</code> also accepted). See <a href="../using/configuration.html">Configuration</a>.</td></tr>
-<tr><td><code>auth.json</code></td><td>The managed OpenAI/ChatGPT credential (in <code>file</code> credential-store mode).</td></tr>
-<tr><td><code>local.age</code></td><td>The encrypted managed-secrets store (general secrets, including BYOK provider keys).</td></tr>
-<tr><td><code>veyyon_auth.age</code></td><td>The encrypted auth-token store (in <code>secrets</code> credential-store mode).</td></tr>
-<tr><td><code>sessions/</code></td><td>Saved session rollouts (JSONL), one per thread.</td></tr>
-<tr><td><code>archived_sessions/</code></td><td>Sessions moved aside by <code>veyyon gc</code>.</td></tr>
-<tr><td><code>logs/</code></td><td>Log files, including the login log.</td></tr>
-<tr><td><code>history.jsonl</code></td><td>Composer input history.</td></tr>
-<tr><td><code>plugins/</code></td><td>Installed plugins.</td></tr>
-<tr><td><code>skills/</code></td><td>Installed and local skills.</td></tr>
-<tr><td><code>hooks/</code></td><td>Lifecycle hook configuration.</td></tr>
-<tr><td><code>agents/</code></td><td>Agent definitions.</td></tr>
-<tr><td><code>attachments/</code>, <code>avatars/</code></td><td>Session attachments and account avatars.</td></tr>
+<tr><td><code>config.yml</code></td><td><strong>Global</strong> settings that apply across profiles — today <code>defaultProfile</code> (which profile a bare <code>vey</code> launches). Not to be confused with a profile’s own <code>config.yml</code> (below).</td></tr>
+<tr><td><code>install-id</code></td><td>Persistent per-install UUID. Shared by every profile.</td></tr>
+<tr><td><code>profiles/</code></td><td>One directory per profile, including <code>profiles/default/</code> — see below.</td></tr>
 </tbody>
 </table>
 </div>
-<h2 id="credential-storage-modes"><a class="header" href="#credential-storage-modes">Credential storage modes</a></h2>
-<p>Where credentials land depends on <code>cli_auth_credentials_store_mode</code> in <code>config.yml</code>:</p>
-<ul>
-<li><code>file</code> — <code>auth.json</code>, mode <code>0600</code>, written atomically.</li>
-<li><code>keyring</code> — the OS keyring (with the encrypted <code>secrets</code> backend as one keyring option).</li>
-<li><code>auto</code> — keyring when available, falling back to the file.</li>
-<li><code>ephemeral</code> — in-memory only; nothing is written to disk.</li>
-</ul>
-<p>BYOK provider keys always go to the encrypted managed-secrets store (<code>local.age</code>), never to plaintext
-<code>config.yml</code>; see <a href="../using/authentication.html">Signing in</a>.</p>
+<h2 id="profiles-veyyonprofilesname"><a class="header" href="#profiles-veyyonprofilesname">Profiles (<code>~/.veyyon/profiles/&lt;name&gt;/</code>)</a></h2>
+<p>Every profile — including <code>default</code> — is a directory under <code>profiles/</code> with the same shape.
+A profile owns two layers:</p>
+<p><strong>Profile root</strong> (<code>profiles/&lt;name&gt;/</code>) — operational state:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Path</th><th>Contents</th></tr>
+</thead>
+<tbody>
+<tr><td><code>logs/</code></td><td>Log files (<code>veyyon.YYYY-MM-DD.log</code>).</td></tr>
+<tr><td><code>plugins/</code></td><td>Installed plugins (<code>node_modules/</code>, manifest, lockfile).</td></tr>
+<tr><td><code>wt/</code></td><td>Agent-managed git worktrees (PR checkouts, task isolation).</td></tr>
+<tr><td><code>cache/</code></td><td>Caches: GitHub view cache, fastembed models, auth-broker snapshot.</td></tr>
+<tr><td><code>natives/</code>, <code>puppeteer/</code>, <code>python-env/</code></td><td>Downloaded native binaries, Puppeteer browser cache, managed Python venv.</td></tr>
+<tr><td><code>stats.db</code>, <code>autoqa.db</code>, <code>gpu_cache.json</code></td><td>Usage stats, auto-QA state, GPU probe cache.</td></tr>
+<tr><td><code>reports/</code>, <code>remote/</code>, <code>remote-host/</code>, <code>ssh-control/</code>, <code>autoresearch/</code></td><td>Reports, remote mounts, SSH control sockets, autoresearch state.</td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>Agent dir</strong> (<code>profiles/&lt;name&gt;/agent/</code>) — identity and conversation state:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Path</th><th>Contents</th></tr>
+</thead>
+<tbody>
+<tr><td><code>config.yml</code></td><td>This profile’s settings (<code>config.yaml</code> also accepted). See <a href="../using/configuration.html">Configuration</a>.</td></tr>
+<tr><td><code>agent.db</code></td><td>Settings + auth storage (SQLite).</td></tr>
+<tr><td><code>sessions/</code></td><td>Saved session transcripts, one per thread.</td></tr>
+<tr><td><code>blobs/</code></td><td>Content-addressed attachment/blob store.</td></tr>
+<tr><td><code>history.db</code>, <code>models.db</code></td><td>Composer history, model cache.</td></tr>
+<tr><td><code>skills/</code>, <code>commands/</code>, <code>prompts/</code>, <code>tools/</code>, <code>themes/</code>, <code>modules/</code></td><td>Skills, slash commands, prompt templates, custom tools, themes, Python modules.</td></tr>
+<tr><td><code>mcp.json</code>, <code>ssh.json</code></td><td>MCP server and SSH target config.</td></tr>
+<tr><td><code>keybindings.yml</code></td><td>This profile’s keybindings (<code>keybindings.yaml</code> accepted; legacy <code>keybindings.json</code> migrates on load).</td></tr>
+<tr><td><code>SYSTEM.md</code>, <code>RULES.md</code>, <code>AGENTS.md</code></td><td>User-level instruction files.</td></tr>
+<tr><td><code>memories/</code>, <code>terminal-sessions/</code></td><td>Memory store, terminal session state.</td></tr>
+<tr><td><code>cache/</code></td><td>Agent-scoped caches (tiny title models, document conversions).</td></tr>
+</tbody>
+</table>
+</div>
+<p>Overriding the agent dir directly (<code>VEYYON_CODING_AGENT_DIR</code>) applies to the default profile only;
+a named profile always derives its own agent dir.</p>
+<h3 id="which-profile-launches"><a class="header" href="#which-profile-launches">Which profile launches</a></h3>
+<p>Resolution order for every <code>veyyon</code> / <code>vey</code> invocation:</p>
+<ol>
+<li><code>--profile &lt;name&gt;</code> on the command line.</li>
+<li><code>VEYYON_PROFILE</code>. An explicitly <strong>empty</strong>
+<code>VEYYON_PROFILE=</code> forces the <code>default</code> profile, bypassing step 3.</li>
+<li><code>defaultProfile</code> in the <strong>global</strong> <code>~/.veyyon/config.yml</code> — set it with
+<code>veyyon profile default &lt;name&gt;</code>.</li>
+<li>The <code>default</code> profile.</li>
+</ol>
+<p>The name <code>default</code> always addresses <code>profiles/default/</code> and cannot be removed.</p>
+<h3 id="legacy-layout-migration"><a class="header" href="#legacy-layout-migration">Legacy layout migration</a></h3>
+<p>Before this layout, the default profile lived bare in the config root (<code>~/.veyyon/agent/</code>,
+<code>~/.veyyon/logs/</code>, …). On first launch Veyyon migrates that state into <code>profiles/default/</code>
+once, and refuses to guess if both layouts are present — the error names the exact
+directories to reconcile.</p>
+<h2 id="credential-storage"><a class="header" href="#credential-storage">Credential storage</a></h2>
+<p>Auth tokens live in the profile’s <code>agent.db</code> (or the OS keyring, depending on the configured
+credential store). BYOK provider keys never land in plaintext <code>config.yml</code>; see
+<a href="../using/authentication.html">Signing in</a>.</p>
 <h2 id="project-local-files"><a class="header" href="#project-local-files">Project-local files</a></h2>
 <p>Alongside your project (not under the config home):</p>
 <div class="table-wrapper">
@@ -237,7 +285,7 @@ layout is available after <code>veyyon config migrate</code>.</p>
 </thead>
 <tbody>
 <tr><td><code>AGENTS.md</code></td><td>Project instructions Veyyon auto-loads. See <a href="../using/extending.html">AGENTS.md</a>.</td></tr>
-<tr><td><code>.veyyon/</code></td><td>Optional per-project overrides and data.</td></tr>
+<tr><td><code>.veyyon/</code></td><td>Optional per-project overrides and data (<code>mcp.json</code>, <code>ssh.json</code>, <code>modules/</code>, <code>prompts/</code>). Follows the working directory — never profile-scoped.</td></tr>
 </tbody>
 </table>
 </div>

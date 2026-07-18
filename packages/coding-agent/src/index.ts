@@ -3,9 +3,9 @@ import { HookEditorComponent, HookInputComponent, HookSelectorComponent } from "
 // Core session management
 
 // Re-export TUI components for custom tool rendering
-export { Container, Markdown, Spacer, Text } from "@veyyon/pi-tui";
+export { Container, Markdown, Spacer, Text } from "@veyyon/tui";
 // Logging
-export { getAgentDir, logger, VERSION } from "@veyyon/pi-utils";
+export { getAgentDir, logger, VERSION } from "@veyyon/utils";
 export * as zod from "zod/v4";
 export { z } from "zod/v4";
 export * from "./config/keybindings";

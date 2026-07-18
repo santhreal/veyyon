@@ -1,20 +1,20 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
 import { stripVTControlCharacters } from "node:util";
-import { Agent } from "@veyyon/pi-agent-core";
-import { ModelRegistry } from "@veyyon/pi-coding-agent/config/model-registry";
-import { resetSettingsForTest, Settings } from "@veyyon/pi-coding-agent/config/settings";
+import { Agent } from "@veyyon/agent-core";
+import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
+import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import {
 	MCP_CONNECTION_STATUS_EVENT_CHANNEL,
 	type McpConnectionStatusEvent,
-} from "@veyyon/pi-coding-agent/mcp/startup-events";
-import { InteractiveMode } from "@veyyon/pi-coding-agent/modes/interactive-mode";
-import { initTheme } from "@veyyon/pi-coding-agent/modes/theme/theme";
-import { AgentSession } from "@veyyon/pi-coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/pi-coding-agent/session/auth-storage";
-import { SessionManager } from "@veyyon/pi-coding-agent/session/session-manager";
-import { EventBus } from "@veyyon/pi-coding-agent/utils/event-bus";
-import { logger, TempDir } from "@veyyon/pi-utils";
+} from "@veyyon/coding-agent/mcp/startup-events";
+import { InteractiveMode } from "@veyyon/coding-agent/modes/interactive-mode";
+import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
+import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { EventBus } from "@veyyon/coding-agent/utils/event-bus";
+import { logger, TempDir } from "@veyyon/utils";
 
 /**
  * Behavioral wiring guard for MCP startup status (mirrors

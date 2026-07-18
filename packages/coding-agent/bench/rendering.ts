@@ -1,8 +1,8 @@
 import { initTheme } from "../src/modes/theme/theme";
 import { truncateToVisualLines } from "../src/modes/components/visual-truncate";
 import { WelcomeComponent } from "../src/modes/components/welcome";
-import type { AssistantMessage } from "@veyyon/pi-ai";
-import { Editor } from "@veyyon/pi-tui";
+import type { AssistantMessage } from "@veyyon/ai";
+import { Editor } from "@veyyon/tui";
 import { AssistantMessageComponent } from "../src/modes/components/assistant-message";
 import { TranscriptContainer } from "../src/modes/components/transcript-container";
 import { Settings } from "../src/config/settings";

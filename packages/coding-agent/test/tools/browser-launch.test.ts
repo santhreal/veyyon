@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { stealthIgnoreDefaultArgsForTest } from "@veyyon/pi-coding-agent/tools/browser/launch";
+import { stealthIgnoreDefaultArgsForTest } from "@veyyon/coding-agent/tools/browser/launch";
 
 const AUTOMATION_FLAG = "--enable-automation";
 

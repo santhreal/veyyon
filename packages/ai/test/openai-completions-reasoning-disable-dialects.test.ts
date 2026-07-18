@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
-import { streamOpenAICompletions } from "@veyyon/pi-ai/providers/openai-completions";
-import type { Context, FetchImpl, Model, ModelSpec, OpenAICompat, Tool } from "@veyyon/pi-ai/types";
-import { buildModel } from "@veyyon/pi-catalog/build";
+import { streamOpenAICompletions } from "@veyyon/ai/providers/openai-completions";
+import type { Context, FetchImpl, Model, ModelSpec, OpenAICompat, Tool } from "@veyyon/ai/types";
+import { buildModel } from "@veyyon/catalog/build";
 
 // Each Chat Completions reasoning dialect carries "thinking is on" on a
 // different wire field. The `disableReasoningOnForcedToolChoice` /

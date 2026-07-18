@@ -1,11 +1,12 @@
-import type { AuthStorage } from "@veyyon/pi-ai";
+import type { AuthStorage } from "@veyyon/ai";
+import { scopedTimeoutSignal } from "../../../utils/fetch-timeout";
 import { formatSearchProviderFailures, getSearchProvider, isSearchProviderExcluded } from "../provider";
 import type { SearchProviderId, SearchResponse, SearchSource } from "../types";
 import { SearchProviderError } from "../types";
 import { clampNumResults } from "../utils";
 import type { SearchParams } from "./base";
 import { SearchProvider } from "./base";
-import { withHardTimeout } from "./utils";
+import { SEARCH_HARD_TIMEOUT_MS } from "./utils";
 
 /**
  * Credential-free engines the Public Web aggregate fans out to. Order is the
@@ -128,9 +129,12 @@ export async function searchPublicWeb(
 
 	// Each engine composes its own per-request ceiling on top of the shared
 	// hard deadline; the straggler controller lets the aggregate cancel
-	// still-running engines once it decides to return.
+	// still-running engines once it decides to return. The hard-deadline timer
+	// is cancelled once the aggregate settles (straggler.abort() below ends
+	// every engine, so nothing outlives it).
 	const straggler = new AbortController();
-	const signal = AbortSignal.any([withHardTimeout(params.signal), straggler.signal]);
+	const hardTimeout = scopedTimeoutSignal(SEARCH_HARD_TIMEOUT_MS, params.signal);
+	const signal = AbortSignal.any([hardTimeout.signal, straggler.signal]);
 
 	const responses: (SearchResponse | undefined)[] = new Array(engineIds.length);
 	const failures: { provider: { id: SearchProviderId; label: string }; error: unknown }[] = [];
@@ -147,11 +151,15 @@ export async function searchPublicWeb(
 		}),
 	);
 
-	await Promise.race([all, Bun.sleep(softMs)]);
-	if (!responses.some(response => response !== undefined) && failures.length < engineIds.length) {
-		await Promise.race([all, firstSuccess.promise, Bun.sleep(Math.max(0, hardMs - softMs))]);
+	try {
+		await Promise.race([all, Bun.sleep(softMs)]);
+		if (!responses.some(response => response !== undefined) && failures.length < engineIds.length) {
+			await Promise.race([all, firstSuccess.promise, Bun.sleep(Math.max(0, hardMs - softMs))]);
+		}
+	} finally {
+		straggler.abort();
+		hardTimeout.cancel();
 	}
-	straggler.abort();
 
 	// Merge in engine-priority order (not settlement order) so ranking
 	// tiebreaks stay deterministic.

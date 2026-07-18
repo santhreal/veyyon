@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { BeamMemory } from "@veyyon/pi-mnemopi/core/beam";
+import { BeamMemory } from "@veyyon/mnemopi/core/beam";
 
 // Real embeddings (fastembed + onnxruntime-node, ~270MB) install on demand via
 // `bun install` on first use. These tests never exercise embeddings — the

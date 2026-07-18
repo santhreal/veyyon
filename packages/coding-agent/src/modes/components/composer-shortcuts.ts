@@ -2,7 +2,7 @@
  * Contextual shortcut chip band under the composer (Grok ShortcutsBar dialect).
  * Same chip renderer as ModalShell footers — one grammar for overlays and session.
  */
-import { type Component, padding, visibleWidth } from "@veyyon/pi-tui";
+import { type Component, padding, visibleWidth } from "@veyyon/tui";
 import type { KeybindingsManager } from "../../config/keybindings";
 import { appKey } from "./keybinding-hints";
 import { type ModalShortcut, renderModalShortcuts } from "./modal-shell";
@@ -23,7 +23,7 @@ export type ComposerContext = {
 export function buildComposerShortcuts(keybindings: KeybindingsManager, ctx: ComposerContext): ModalShortcut[] {
 	// A quiet composer: no chrome when idle. `enter` to send, `/` for commands
 	// and `alt+m` for the model are self-evident and discoverable in `/help` —
-	// crowding the prompt with them is exactly the omp clutter we removed.
+	// crowding the prompt with them is exactly the pre-rebrand clutter we removed.
 	// Chips appear only when there is a live action to surface: an interrupt
 	// while the agent is streaming, or a queued message to dequeue.
 	const chips: ModalShortcut[] = [];

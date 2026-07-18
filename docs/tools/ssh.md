@@ -48,7 +48,7 @@ Failure behavior:
 ## Flow
 1. `loadSshTool()` in `packages/coding-agent/src/tools/ssh.ts` calls `loadCapability(sshCapability.id, { cwd: session.cwd })` to discover hosts.
 2. `packages/coding-agent/src/discovery/ssh.ts` loads host entries from, in this order: project managed ssh config, user managed ssh config, `ssh.json` in the repo root, `.ssh.json` in the repo root.
-3. `getSSHConfigPath("project")` and `getSSHConfigPath("user")` in `packages/utils/src/dirs.ts` resolve those managed files to `.veyyon/ssh.json` in the project and `~/.veyyon/agent/ssh.json` in the user config dir. This tool does not read `~/.ssh/config`.
+3. `getSSHConfigPath("project")` and `getSSHConfigPath("user")` in `packages/utils/src/dirs.ts` resolve those managed files to `.veyyon/ssh.json` in the project and `~/.veyyon/profiles/default/agent/ssh.json` in the user config dir. This tool does not read `~/.ssh/config`.
 4. Capability loading deduplicates by host name with first item winning; provider order is priority-sorted and the SSH JSON provider registers at priority `5`.
 5. `loadHosts()` in `packages/coding-agent/src/tools/ssh.ts` builds `hostsByName` and drops later duplicates again with `if (!hostsByName.has(host.name))`.
 6. Tool description text is built from `packages/coding-agent/src/prompts/tools/ssh.md` plus an `Available hosts:` list. Each host entry calls `getCachedHostInfoSync()` to show detected shell/OS when cached; otherwise it renders `detecting...`.
@@ -85,7 +85,7 @@ Failure behavior:
 - Subprocesses / native bindings
   - Requires `ssh` on `PATH`; spawns it for connection checks, master startup, probing, and command execution.
   - May call `sshfs`, `mountpoint`, `fusermount`/`fusermount3`, or `umount`.
-  - Sanitizes streamed text with `@veyyon/pi-natives` text sanitization.
+  - Sanitizes streamed text with `@veyyon/natives` text sanitization.
 - Session state (transcript, memory, jobs, checkpoints, registries)
   - Uses session artifact allocation when available.
   - Registers postmortem cleanup hooks for SSH master connections and sshfs mounts.

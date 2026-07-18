@@ -5,8 +5,8 @@ import {
 	getCustomApi,
 	registerCustomApi,
 	unregisterCustomApis,
-} from "@veyyon/pi-ai/api-registry";
-import type { AssistantMessageEventStream } from "@veyyon/pi-ai/types";
+} from "@veyyon/ai/api-registry";
+import type { AssistantMessageEventStream } from "@veyyon/ai/types";
 
 afterEach(() => {
 	clearCustomApis();

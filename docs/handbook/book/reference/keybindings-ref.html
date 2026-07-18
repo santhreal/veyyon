@@ -10,6 +10,10 @@
         <!-- Veyyon handbook: self-contained head additions. No remote resources. -->
         <meta name="theme-color" content="#050505">
         <meta name="color-scheme" content="dark">
+        <!-- Site favicons live at the deployed root, one level above /docs/. -->
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+        <link rel="icon" href="/favicon.ico" sizes="48x48">
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png">
         <style>
           /* Paint the near-black surface before CSS/JS resolve the theme, so there is
              no light flash on load. Kept in sync with theme/veyyon.css. */
@@ -18,7 +22,7 @@
           *, *::before, *::after { box-sizing: border-box; }
         </style>
 
-        <meta name="description" content="How Veyyon turns open models into frontier coding agents. The product, the harness, tool-call repair, the edit format, per-model adaptation, and how to use it.">
+        <meta name="description" content="Operator handbook for the Veyyon terminal coding agent: install, configuration, tools, approvals, edit formats, providers, and harness structure.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -38,7 +42,7 @@
         <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="../ayu-highlight-3fdfc3ac.css">
 
         <!-- Custom theme stylesheets -->
-        <link rel="stylesheet" href="../theme/veyyon-fc839a17.css">
+        <link rel="stylesheet" href="../theme/veyyon-06f6939e.css">
 
 
         <!-- Provide site root and default themes to javascript -->
@@ -46,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-e76f06ca.js";
+            window.path_to_searchindex_js = "../searchindex-a2447057.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-9cfd259b.js"></script>
+        <script src="../toc-cc1a72e9.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -329,7 +333,7 @@
 <code>toggle_vim_mode</code> action; the composer uses the standard bindings above.</p>
 <h2 id="customizing-real-path-keybindingsyml"><a class="header" href="#customizing-real-path-keybindingsyml">Customizing (real path: keybindings.yml)</a></h2>
 <p>Custom bindings are <strong>shipped</strong> — but the config surface is its own file, not a <code>tui.keymap</code> block in
-<code>config.yml</code>. Set bindings by action ID in <strong><code>~/.veyyon/agent/keybindings.yml</code></strong> (YAML map of action ID
+<code>config.yml</code>. Set bindings by action ID in <strong><code>~/.veyyon/profiles/default/agent/keybindings.yml</code></strong> (YAML map of action ID
 → chord or chord list). A single string, a list of chords, or an empty list (disables the action) are
 all valid values:</p>
 <pre><code class="language-yaml">app.model.cycleForward: Ctrl+P
@@ -340,13 +344,7 @@ app.clipboard.copyLine: [Ctrl+C, Alt+C]
 <code>global</code>/<code>clear_terminal</code>-style context keys shown in older drafts of this page. Older flat legacy names
 and <code>keybindings.json</code> files migrate automatically to the namespaced <code>.yml</code> form on load. Run
 <strong><code>/hotkeys</code></strong> in a session to see active chords.</p>
-<blockquote>
-<p><strong>Spec — not shipped:</strong> a <code>/keymap</code> interactive remapper and nested <code>tui.keymap.&lt;context&gt;</code> tables
-inside <code>config.yml</code>. The customization surface that actually ships is the flat <code>keybindings.yml</code> file
-above.</p>
-</blockquote>
-<p>For the full action-ID list and Vim mode details, see <a href="../features/keybindings.html">Keybindings and Vim mode</a>
-and the engineering reference <a href="../../../keybindings.html"><code>docs/keybindings.md</code></a>.</p>
+<p>Customize bindings in the flat <code>keybindings.yml</code> under the agent dir (see above). Full action-ID list and Vim mode: <a href="../features/keybindings.html">Keybindings and Vim mode</a> and repository <a href="../../../keybindings.html"><code>docs/keybindings.md</code></a>.</p>
 
                     </main>
 

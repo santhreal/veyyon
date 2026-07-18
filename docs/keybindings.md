@@ -4,7 +4,7 @@ Run `/hotkeys` inside an `veyyon` session to see the active chords for your curr
 
 ## Customize keybindings
 
-User remaps live in `~/.veyyon/agent/keybindings.yml`. The file is a YAML mapping whose keys are keybinding action IDs and whose values are either one chord string or an array of chord strings. It is not read from `~/.veyyon/agent/config.yml`, and there is no nested `keybindings` object.
+User remaps live in `~/.veyyon/profiles/default/agent/keybindings.yml` (or the active profile's agent dir). The file is a YAML mapping whose keys are keybinding action IDs and whose values are either one chord string or an array of chord strings. It is not read from `config.yml`, and there is no nested `keybindings` object. Legacy `keybindings.json` is migrated to `keybindings.yml` on load.
 
 ```yaml
 app.model.cycleForward: Ctrl+P

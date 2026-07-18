@@ -1,8 +1,8 @@
 /**
  * Generate and optionally push a commit with changelog updates.
  */
-import { postmortem } from "@veyyon/pi-utils";
-import { Command, Flags } from "@veyyon/pi-utils/cli";
+import { postmortem } from "@veyyon/utils";
+import { Command, Flags } from "@veyyon/utils/cli";
 import { runCommitCommand } from "../commit";
 import type { CommitCommandArgs } from "../commit/types";
 import { initTheme } from "../modes/theme/theme";
@@ -41,6 +41,8 @@ export default class Commit extends Command {
 		// `main.ts` so the CLI returns to the shell instead of stranding the user
 		// on Ctrl+C (issue #1041).
 		await runCommitCommand(cmd);
-		await postmortem.quit(0);
+		// Preserve a failure code set by the commit flow (e.g. "not a git
+		// repository"): quit(0) would clobber it and report success to the shell.
+		await postmortem.quit(typeof process.exitCode === "number" ? process.exitCode : 0);
 	}
 }

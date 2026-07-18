@@ -1,3 +1,6 @@
+import * as os from "node:os";
+import * as path from "node:path";
+
 const WINDOWS_DRIVE_EXTENDED_PREFIX = /^\\\\[?]\\([A-Za-z]:[\\/].*)$/;
 const WINDOWS_UNC_EXTENDED_PREFIX = /^\\\\[?]\\UNC[\\/]([^\\/]+)[\\/](.+)$/i;
 const WINDOWS_DRIVE_EXTENDED_FORWARD_PREFIX = /^\/\/[?]\/([A-Za-z]:\/.*)$/;
@@ -24,5 +27,22 @@ export function stripWindowsExtendedLengthPathPrefix(
 	const forwardDriveMatch = WINDOWS_DRIVE_EXTENDED_FORWARD_PREFIX.exec(filePath);
 	if (forwardDriveMatch) return forwardDriveMatch[1];
 
+	return filePath;
+}
+
+/**
+ * Expand a leading `~` to the home directory. Handles `~`, `~/x`, `~\x`
+ * (Windows), and the bare `~name` form (joined under home). Everything else is
+ * returned unchanged.
+ */
+export function expandTilde(filePath: string, home?: string): string {
+	const h = home ?? os.homedir();
+	if (filePath === "~") return h;
+	if (filePath.startsWith("~/") || filePath.startsWith("~\\")) {
+		return h + filePath.slice(1);
+	}
+	if (filePath.startsWith("~")) {
+		return path.join(h, filePath.slice(1));
+	}
 	return filePath;
 }

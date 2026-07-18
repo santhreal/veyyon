@@ -1,8 +1,8 @@
 /**
  * Show provider usage limits for every authenticated account.
  */
-import { APP_NAME } from "@veyyon/pi-utils";
-import { Args, Command, Flags } from "@veyyon/pi-utils/cli";
+import { APP_NAME } from "@veyyon/utils";
+import { Args, Command, Flags } from "@veyyon/utils/cli";
 import { runUsageCommand } from "../cli/usage-cli";
 
 export default class Usage extends Command {

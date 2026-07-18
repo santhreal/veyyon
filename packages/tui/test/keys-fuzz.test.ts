@@ -18,7 +18,7 @@ import {
 	parseKey,
 	parseKittySequence,
 	setKittyProtocolActive,
-} from "@veyyon/pi-tui/keys";
+} from "@veyyon/tui/keys";
 import { FRAGMENTS, lcg } from "./helpers/adversarial-strings";
 
 // Key-flavored byte fragments layered on the generic adversarial pool: CSI-u,

@@ -1,5 +1,5 @@
 import { scheduler } from "node:timers/promises";
-import { isRetryableError } from "@veyyon/pi-utils";
+import { isRetryableError } from "@veyyon/utils";
 import { isCopilotTransientModelError, status } from "../error/flags";
 import { getHeadersFromError, getRetryAfterMsFromHeaders } from "./retry-after";
 

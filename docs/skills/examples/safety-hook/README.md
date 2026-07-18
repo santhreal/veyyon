@@ -11,7 +11,7 @@ A Veyyon extension that demonstrates `tool_call` blocking. It intercepts `bash` 
 ## Install
 
 ```
-cp -r . ~/.veyyon/agent/extensions/safety-hook
+cp -r . ~/.veyyon/profiles/default/agent/extensions/safety-hook
 ```
 
 Restart `veyyon`. The hook is active for all sessions.

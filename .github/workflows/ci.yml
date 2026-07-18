@@ -3,12 +3,6 @@ name: CI
 on:
    push:
       branches: [main]
-      # Vouch bookkeeping commits (mitchellh/vouch writes VOUCHED.td back to
-      # main on !vouch/!denounce/!unvouch) only edit the vouch list and need no
-      # build. Skip CI when a main push changes nothing but the vouch file; a
-      # push that also touches anything else still runs the full matrix.
-      paths-ignore:
-         - .github/VOUCHED.td
    pull_request:
       branches: [main]
    workflow_dispatch:
@@ -22,7 +16,7 @@ on:
 # the cheap branch-wide `CI-refs/heads/main` group meant a later main push
 # silently cancelled the in-flight release and left the tag without a GitHub
 # Release or npm publish (#2564). Detect release runs at workflow-scheduling
-# time via the release-script commit subject (`chore: bump version to vX.Y.Z`),
+# time via the release-script commit subject (`chore: bump version to X.Y.Z`),
 # via `v*` tag-ref dispatches, and via manual dispatches whose tag-on-HEAD
 # status is only known after checkout; scope them to a per-sha group with no
 # cancellation. Every other event keeps branch-wide cancellation for PR/main churn.
@@ -97,7 +91,7 @@ jobs:
    # then look for any prior successful main run that already uploaded the
    # native artifacts for this hash. Two independent outputs:
    #   * `linux-x64-run-id` — set when the linux x64 canary
-   #     (`pi-natives-linux-x64-modern-h<hash>`) is present on a prior main run,
+   #     (`veyyon-natives-linux-x64-modern-h<hash>`) is present on a prior main run,
    #     so native-dependent TS test jobs and `native_linux_x64` can reuse it.
    #   * `cross-platform-run-id` — set when ALL cross-platform native artifacts
    #     also have non-expired artifacts on that same prior run, so
@@ -138,14 +132,14 @@ jobs:
               # Canary for native_linux_x64: presence of the modern artifact
               # implies the baseline sibling is also there (they upload from the
               # same job).
-              linux_canary="pi-natives-linux-x64-modern-h${hash}"
+              linux_canary="veyyon-natives-linux-x64-modern-h${hash}"
               # Required set for cross-platform reuse — names must match the
               # `actions/upload-artifact` `name:` template in build-native action.
               cross_platform_required=(
-                "pi-natives-linux-arm64-h${hash}"
-                "pi-natives-darwin-x64-baseline-h${hash}"
-                "pi-natives-darwin-arm64-h${hash}"
-                "pi-natives-win32-x64-baseline-h${hash}"
+                "veyyon-natives-linux-arm64-h${hash}"
+                "veyyon-natives-darwin-x64-baseline-h${hash}"
+                "veyyon-natives-darwin-arm64-h${hash}"
+                "veyyon-natives-win32-x64-baseline-h${hash}"
               )
               linux_x64_run_id=""
               cross_platform_run_id=""
@@ -302,7 +296,7 @@ jobs:
          - name: Download native addons
            uses: actions/download-artifact@v4
            with:
-              pattern: pi-natives-linux-x64-*-h${{ needs.native_artifact_lookup.outputs.source-hash }}
+              pattern: veyyon-natives-linux-x64-*-h${{ needs.native_artifact_lookup.outputs.source-hash }}
               path: packages/natives/native
               merge-multiple: true
               run-id: ${{ steps.source.outputs.artifact-run-id }}
@@ -332,7 +326,7 @@ jobs:
          - name: Download native addons
            uses: actions/download-artifact@v4
            with:
-              pattern: pi-natives-linux-x64-*-h${{ needs.native_artifact_lookup.outputs.source-hash }}
+              pattern: veyyon-natives-linux-x64-*-h${{ needs.native_artifact_lookup.outputs.source-hash }}
               path: packages/natives/native
               merge-multiple: true
               run-id: ${{ steps.source.outputs.artifact-run-id }}
@@ -365,7 +359,7 @@ jobs:
          - name: Download native addons
            uses: actions/download-artifact@v4
            with:
-              pattern: pi-natives-linux-x64-*-h${{ needs.native_artifact_lookup.outputs.source-hash }}
+              pattern: veyyon-natives-linux-x64-*-h${{ needs.native_artifact_lookup.outputs.source-hash }}
               path: packages/natives/native
               merge-multiple: true
               run-id: ${{ steps.source.outputs.artifact-run-id }}
@@ -396,7 +390,7 @@ jobs:
          - name: Download native addons
            uses: actions/download-artifact@v4
            with:
-              pattern: pi-natives-linux-x64-*-h${{ needs.native_artifact_lookup.outputs.source-hash }}
+              pattern: veyyon-natives-linux-x64-*-h${{ needs.native_artifact_lookup.outputs.source-hash }}
               path: packages/natives/native
               merge-multiple: true
               run-id: ${{ steps.source.outputs.artifact-run-id }}
@@ -426,7 +420,7 @@ jobs:
          - name: Download native addons
            uses: actions/download-artifact@v4
            with:
-              pattern: pi-natives-linux-x64-*-h${{ needs.native_artifact_lookup.outputs.source-hash }}
+              pattern: veyyon-natives-linux-x64-*-h${{ needs.native_artifact_lookup.outputs.source-hash }}
               path: packages/natives/native
               merge-multiple: true
               run-id: ${{ steps.source.outputs.artifact-run-id }}
@@ -459,7 +453,7 @@ jobs:
          - name: Download native addons
            uses: actions/download-artifact@v4
            with:
-              pattern: pi-natives-linux-x64-*-h${{ needs.native_artifact_lookup.outputs.source-hash }}
+              pattern: veyyon-natives-linux-x64-*-h${{ needs.native_artifact_lookup.outputs.source-hash }}
               path: packages/natives/native
               merge-multiple: true
               run-id: ${{ steps.source.outputs.artifact-run-id }}
@@ -490,7 +484,7 @@ jobs:
          - name: Download native addons
            uses: actions/download-artifact@v4
            with:
-              pattern: pi-natives-linux-x64-*-h${{ needs.native_artifact_lookup.outputs.source-hash }}
+              pattern: veyyon-natives-linux-x64-*-h${{ needs.native_artifact_lookup.outputs.source-hash }}
               path: packages/natives/native
               merge-multiple: true
               run-id: ${{ steps.source.outputs.artifact-run-id }}
@@ -609,7 +603,7 @@ jobs:
          - name: Download native addon(s)
            uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
            with:
-              pattern: pi-natives-${{ matrix.platform }}-${{ matrix.arch }}*-h${{ needs.native_artifact_lookup.outputs.source-hash }}
+              pattern: veyyon-natives-${{ matrix.platform }}-${{ matrix.arch }}*-h${{ needs.native_artifact_lookup.outputs.source-hash }}
               path: packages/natives/native
               merge-multiple: true
          - name: Build release binary
@@ -618,7 +612,7 @@ jobs:
            run: bun run ci:release:build-binaries
          - name: Sign and notarize macOS binary (Developer ID)
            # Replaces the ad-hoc signature with a Developer ID + hardened-runtime
-           # one (+JIT/library-validation entitlements; omp dlopens its
+           # one (+JIT/library-validation entitlements; veyyon dlopens its
            # runtime-extracted native addon, which has a different Team ID) and
            # notarizes. Auto-skips until the APPLE_* secrets are configured.
            if: matrix.platform == 'darwin' && env.MACOS_SIGNING == 'true'
@@ -818,8 +812,8 @@ jobs:
               key: bun-${{ runner.os }}-${{ hashFiles('**/bun.lock') }}
          - if: env.HAS_NPM == 'true'
            run: bun install --frozen-lockfile
-         # The pi-coding-agent prepack executes workspace code (bundle-dist
-         # imports the pi-utils barrel, which loads the pi-natives addon), so
+         # The @veyyon/coding-agent prepack executes workspace code (bundle-dist
+         # imports the @veyyon/utils barrel, which loads the veyyon-natives addon), so
          # this job needs the linux x64 native addons just like `test` does.
          # Release runs always rebuild natives in this same run, so the
          # default run-id resolves the artifacts.
@@ -827,7 +821,7 @@ jobs:
            if: env.HAS_NPM == 'true'
            uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
            with:
-              pattern: pi-natives-linux-x64-*-h${{ needs.native_artifact_lookup.outputs.source-hash }}
+              pattern: veyyon-natives-linux-x64-*-h${{ needs.native_artifact_lookup.outputs.source-hash }}
               path: packages/natives/native
               merge-multiple: true
          - name: Publish to npm
@@ -848,8 +842,8 @@ jobs:
    # only cuts over to a release whose published binary was verified (matches how
    # release_npm is gated). No-ops unless BOTH the HOMEBREW_TAP_DEPLOY_KEY secret
    # and the HOMEBREW_TAP_REPO repo var are set, so a release never blocks on tap
-   # access and can never push to a repo that wasn't explicitly configured (e.g.
-   # upstream's can1357/homebrew-tap).
+   # access and can never push to a repo that wasn't explicitly configured (so a
+   # misconfigured run can never push to a tap that isn't veyyon's own).
    release_brew:
       name: Update Homebrew tap
       if: ${{ needs.release_metadata.outputs.is-release == 'true' && !cancelled() &&

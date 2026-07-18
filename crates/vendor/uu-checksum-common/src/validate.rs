@@ -175,7 +175,7 @@ fn print_cksum_report(res: &ChecksumResult) {
 #[inline]
 fn log_no_properly_formatted(filename: impl Display) {
 	let _ = writeln!(
-		pi_uutils_ctx::stderr(),
+		veyyon_uutils_ctx::stderr(),
 		"{}: {filename}: no properly formatted checksum lines found",
 		command_name()
 	);
@@ -185,7 +185,7 @@ fn log_no_properly_formatted(filename: impl Display) {
 #[inline]
 fn log_no_file_verified(filename: impl Display) {
 	let _ =
-		writeln!(pi_uutils_ctx::stderr(), "{}: {filename}: no file was verified", command_name());
+		writeln!(veyyon_uutils_ctx::stderr(), "{}: {filename}: no file was verified", command_name());
 }
 
 /// Represents the different outcomes that can happen to a file
@@ -533,11 +533,11 @@ fn get_file_to_check(
 	let filename_bytes = os_str_as_bytes(filename).map_err(|e| LineCheckError::UError(e.into()))?;
 
 	if filename == "-" {
-		Ok(Box::new(pi_uutils_ctx::stdin())) // Use stdin if "-" is specified in the checksum file
+		Ok(Box::new(veyyon_uutils_ctx::stdin())) // Use stdin if "-" is specified in the checksum file
 	} else {
 		let failed_open = || {
 			write_file_report(
-				pi_uutils_ctx::stdout(),
+				veyyon_uutils_ctx::stdout(),
 				filename_bytes,
 				FileChecksumResult::CantOpen,
 				"",
@@ -551,7 +551,7 @@ fn get_file_to_check(
 					.to_string()
 			}));
 		};
-		match File::open(pi_uutils_ctx::resolve(filename)) {
+		match File::open(veyyon_uutils_ctx::resolve(filename)) {
 			Ok(f) => {
 				if f
 					.metadata()
@@ -581,7 +581,7 @@ fn get_file_to_check(
 
 /// Returns a reader to the list of checksums
 fn get_input_file(filename: &OsStr) -> UResult<Box<dyn Read>> {
-	match File::open(pi_uutils_ctx::resolve(filename)) {
+	match File::open(veyyon_uutils_ctx::resolve(filename)) {
 		Ok(f) => {
 			if f.metadata()?.is_dir() {
 				Err(io::Error::other(format!("{}: Is a directory", filename.maybe_quote())).into())
@@ -689,7 +689,7 @@ fn compute_and_check_digest_from_file(
 				}));
 
 				write_file_report(
-					pi_uutils_ctx::stdout(),
+					veyyon_uutils_ctx::stdout(),
 					filename,
 					FileChecksumResult::CantOpen,
 					prefix,
@@ -706,7 +706,7 @@ fn compute_and_check_digest_from_file(
 		DigestOutput::U16(n) => n.to_be_bytes() == expected_checksum,
 	};
 	write_file_report(
-		pi_uutils_ctx::stdout(),
+		veyyon_uutils_ctx::stdout(),
 		filename,
 		FileChecksumResult::from_bool(checksum_correct),
 		prefix,
@@ -845,13 +845,13 @@ fn process_checksum_file(
 
 	let file: Box<dyn Read> = if input_is_stdin {
 		// Use stdin if "-" is specified
-		Box::new(pi_uutils_ctx::stdin())
+		Box::new(veyyon_uutils_ctx::stdin())
 	} else {
 		match get_input_file(filename_input) {
 			Ok(f) => f,
 			Err(e) => {
 				// Could not read the file, show the error and continue to the next file
-				let _ = writeln!(pi_uutils_ctx::stderr(), "{}: {e}", command_name());
+				let _ = writeln!(veyyon_uutils_ctx::stderr(), "{}: {e}", command_name());
 				return Err(FileCheckError::CantOpenChecksumFile);
 			},
 		}
@@ -910,7 +910,7 @@ fn process_checksum_file(
 						"Unknown algorithm"
 					};
 					let _ = writeln!(
-						pi_uutils_ctx::stderr(),
+						veyyon_uutils_ctx::stderr(),
 						"{}: {}: line {}: improperly formatted {} checksum line",
 						command_name(),
 						filename_input.maybe_quote(),

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { KeybindingsManager } from "@veyyon/pi-coding-agent/config/keybindings";
+import { KeybindingsManager } from "@veyyon/coding-agent/config/keybindings";
 import {
 	__resetProfileSnapshotForTests,
 	getActiveProfile,
@@ -11,9 +11,10 @@ import {
 	listProfiles,
 	profileExists,
 	removeWithRetries,
+	resolveGlobalDefaultProfile,
 	setProfile,
-} from "@veyyon/pi-utils";
-import { Snowflake } from "@veyyon/pi-utils/snowflake";
+} from "@veyyon/utils";
+import { Snowflake } from "@veyyon/utils/snowflake";
 import { YAML } from "bun";
 import { createProfile, removeProfile, runProfileCommand } from "../src/cli/profile-cli";
 
@@ -24,9 +25,9 @@ describe("profile lifecycle CLI", () => {
 
 	beforeEach(() => {
 		originalProfile = getActiveProfile();
-		originalConfigDir = process.env.PI_CONFIG_DIR;
+		originalConfigDir = process.env.VEYYON_CONFIG_DIR;
 		configDir = `.veyyon-profile-lifecycle-${Snowflake.next()}`;
-		process.env.PI_CONFIG_DIR = configDir;
+		process.env.VEYYON_CONFIG_DIR = configDir;
 		setProfile(undefined);
 		process.exitCode = 0;
 	});
@@ -34,8 +35,8 @@ describe("profile lifecycle CLI", () => {
 	afterEach(async () => {
 		vi.restoreAllMocks();
 		setProfile(undefined);
-		if (originalConfigDir === undefined) delete process.env.PI_CONFIG_DIR;
-		else process.env.PI_CONFIG_DIR = originalConfigDir;
+		if (originalConfigDir === undefined) delete process.env.VEYYON_CONFIG_DIR;
+		else process.env.VEYYON_CONFIG_DIR = originalConfigDir;
 		if (originalProfile) setProfile(originalProfile);
 		__resetProfileSnapshotForTests();
 		process.exitCode = 0;
@@ -55,7 +56,7 @@ describe("profile lifecycle CLI", () => {
 	});
 
 	it("creates a profile seeded from default config and keybindings", async () => {
-		const defaultAgentDir = path.join(os.homedir(), configDir, "agent");
+		const defaultAgentDir = path.join(os.homedir(), configDir, "profiles", "default", "agent");
 		await fs.mkdir(defaultAgentDir, { recursive: true });
 		await Bun.write(path.join(defaultAgentDir, "config.yml"), YAML.stringify({ theme: "dark" }, null, 2));
 		await Bun.write(
@@ -88,7 +89,7 @@ describe("profile lifecycle CLI", () => {
 	});
 
 	it("does not copy sessions or blobs when seeding from default", async () => {
-		const defaultAgentDir = path.join(os.homedir(), configDir, "agent");
+		const defaultAgentDir = path.join(os.homedir(), configDir, "profiles", "default", "agent");
 		await fs.mkdir(path.join(defaultAgentDir, "sessions"), { recursive: true });
 		await fs.mkdir(path.join(defaultAgentDir, "blobs"), { recursive: true });
 		await Bun.write(path.join(defaultAgentDir, "sessions", "old.jsonl"), '{"id":"old"}\n');
@@ -111,7 +112,7 @@ describe("profile lifecycle CLI", () => {
 	});
 
 	it("copies exactly the selected items when seeding with an item set", async () => {
-		const defaultAgentDir = path.join(os.homedir(), configDir, "agent");
+		const defaultAgentDir = path.join(os.homedir(), configDir, "profiles", "default", "agent");
 		await fs.mkdir(path.join(defaultAgentDir, "skills", "demo"), { recursive: true });
 		await fs.mkdir(path.join(defaultAgentDir, "commands"), { recursive: true });
 		await Bun.write(path.join(defaultAgentDir, "AGENTS.md"), "# agents\n");
@@ -131,7 +132,7 @@ describe("profile lifecycle CLI", () => {
 	});
 
 	it("clears the copied display name so two profiles never share one", async () => {
-		const defaultAgentDir = path.join(os.homedir(), configDir, "agent");
+		const defaultAgentDir = path.join(os.homedir(), configDir, "profiles", "default", "agent");
 		await fs.mkdir(defaultAgentDir, { recursive: true });
 		await Bun.write(
 			path.join(defaultAgentDir, "config.yml"),
@@ -163,23 +164,23 @@ describe("profile keybindings isolation", () => {
 
 	beforeEach(() => {
 		originalProfile = getActiveProfile();
-		originalConfigDir = process.env.PI_CONFIG_DIR;
+		originalConfigDir = process.env.VEYYON_CONFIG_DIR;
 		configDir = `.veyyon-profile-kb-${Snowflake.next()}`;
-		process.env.PI_CONFIG_DIR = configDir;
+		process.env.VEYYON_CONFIG_DIR = configDir;
 		setProfile(undefined);
 	});
 
 	afterEach(async () => {
 		setProfile(undefined);
-		if (originalConfigDir === undefined) delete process.env.PI_CONFIG_DIR;
-		else process.env.PI_CONFIG_DIR = originalConfigDir;
+		if (originalConfigDir === undefined) delete process.env.VEYYON_CONFIG_DIR;
+		else process.env.VEYYON_CONFIG_DIR = originalConfigDir;
 		if (originalProfile) setProfile(originalProfile);
 		__resetProfileSnapshotForTests();
 		await removeWithRetries(path.join(os.homedir(), configDir));
 	});
 
 	it("keeps keybindings isolated between profiles after seed-once", async () => {
-		const defaultAgentDir = path.join(os.homedir(), configDir, "agent");
+		const defaultAgentDir = path.join(os.homedir(), configDir, "profiles", "default", "agent");
 		await fs.mkdir(defaultAgentDir, { recursive: true });
 		await Bun.write(
 			path.join(defaultAgentDir, "keybindings.yml"),
@@ -201,5 +202,102 @@ describe("profile keybindings isolation", () => {
 		setProfile("b");
 		const managerB = KeybindingsManager.create(getAgentDir(), { seedFromDefault: false });
 		expect(managerB.getKeys("app.session.fork")).toEqual(["alt+b"]);
+	});
+});
+
+describe("profile default command", () => {
+	let configDir = "";
+	let originalProfile: string | undefined;
+	let originalConfigDir: string | undefined;
+
+	beforeEach(() => {
+		originalProfile = getActiveProfile();
+		originalConfigDir = process.env.VEYYON_CONFIG_DIR;
+		configDir = `.veyyon-profile-default-${Snowflake.next()}`;
+		process.env.VEYYON_CONFIG_DIR = configDir;
+		setProfile(undefined);
+		process.exitCode = 0;
+	});
+
+	afterEach(async () => {
+		vi.restoreAllMocks();
+		setProfile(undefined);
+		if (originalConfigDir === undefined) delete process.env.VEYYON_CONFIG_DIR;
+		else process.env.VEYYON_CONFIG_DIR = originalConfigDir;
+		if (originalProfile) setProfile(originalProfile);
+		__resetProfileSnapshotForTests();
+		process.exitCode = 0;
+		await removeWithRetries(path.join(os.homedir(), configDir));
+	});
+
+	it("sets, shows, and clears the global default profile", async () => {
+		await createProfile("work", "blank");
+		const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+		await runProfileCommand({ action: "default", name: "work" });
+		expect(resolveGlobalDefaultProfile()).toBe("work");
+		// The write lands in the GLOBAL config root, not a profile.
+		const globalConfig = path.join(os.homedir(), configDir, "config.yml");
+		expect(await Bun.file(globalConfig).text()).toContain("defaultProfile: work");
+
+		logSpy.mockClear();
+		await runProfileCommand({ action: "default", json: true });
+		expect(JSON.parse(String(logSpy.mock.calls[0]?.[0]))).toEqual({ defaultProfile: "work" });
+
+		await runProfileCommand({ action: "default", clear: true });
+		expect(resolveGlobalDefaultProfile()).toBeUndefined();
+	});
+
+	it("refuses a nonexistent profile", async () => {
+		await expect(runProfileCommand({ action: "default", name: "missing" })).rejects.toThrow(
+			'Profile "missing" does not exist',
+		);
+		expect(resolveGlobalDefaultProfile()).toBeUndefined();
+	});
+});
+
+describe("profile list launch-default marker", () => {
+	let configDir = "";
+	let originalProfile: string | undefined;
+	let originalConfigDir: string | undefined;
+
+	beforeEach(() => {
+		originalProfile = getActiveProfile();
+		originalConfigDir = process.env.VEYYON_CONFIG_DIR;
+		configDir = `.veyyon-profile-launchdef-${Snowflake.next()}`;
+		process.env.VEYYON_CONFIG_DIR = configDir;
+		setProfile(undefined);
+		process.exitCode = 0;
+	});
+
+	afterEach(async () => {
+		vi.restoreAllMocks();
+		setProfile(undefined);
+		if (originalConfigDir === undefined) delete process.env.VEYYON_CONFIG_DIR;
+		else process.env.VEYYON_CONFIG_DIR = originalConfigDir;
+		if (originalProfile) setProfile(originalProfile);
+		__resetProfileSnapshotForTests();
+		process.exitCode = 0;
+		await removeWithRetries(path.join(os.homedir(), configDir));
+	});
+
+	it("marks the global launch default in list output and JSON", async () => {
+		await createProfile("work", "blank");
+		await runProfileCommand({ action: "default", name: "work" });
+		const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+		await runProfileCommand({ action: "list" });
+		const text = logSpy.mock.calls.map(call => String(call[0] ?? "")).join("\n");
+		expect(text).toContain("[launch default]");
+		expect(text.split("\n").find(line => line.includes("[launch default]"))).toContain("work");
+
+		logSpy.mockClear();
+		await runProfileCommand({ action: "list", json: true });
+		const rows = JSON.parse(logSpy.mock.calls.map(call => String(call[0] ?? "")).join("\n")) as {
+			name: string;
+			launchDefault: boolean;
+		}[];
+		expect(rows.find(row => row.name === "work")?.launchDefault).toBe(true);
+		expect(rows.find(row => row.name === "default")?.launchDefault).toBe(false);
 	});
 });

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { ScrollView } from "@veyyon/pi-tui/components/scroll-view";
-import { Ellipsis, visibleWidth } from "@veyyon/pi-tui/utils";
+import { ScrollView } from "@veyyon/tui/components/scroll-view";
+import { Ellipsis, visibleWidth } from "@veyyon/tui/utils";
 
 const theme = {
 	track: () => "T",
@@ -14,10 +14,12 @@ describe("ScrollView", () => {
 		expect(view.render(10)).toEqual(["one", "two", ""]);
 	});
 
+	// The bar band is two columns: a breathing-space gap + the bar glyph, so
+	// right-aligned content never touches the scrollbar.
 	it("renders a right-edge scrollbar when content overflows", () => {
 		const view = new ScrollView(["alpha", "beta", "gamma", "delta", "omega"], { height: 3, theme });
 
-		expect(view.render(6)).toEqual(["alphaB", "beta T", "gammaT"]);
+		expect(view.render(6)).toEqual(["alp… B", "beta T", "gam… T"]);
 	});
 
 	it("scrolls and clamps offsets", () => {
@@ -26,7 +28,7 @@ describe("ScrollView", () => {
 		view.scroll(10);
 
 		expect(view.getScrollOffset()).toBe(2);
-		expect(view.render(6)).toEqual(["threeT", "four T", "five B"]);
+		expect(view.render(6)).toEqual(["thr… T", "four T", "five B"]);
 
 		view.scroll(-10);
 
@@ -49,7 +51,7 @@ describe("ScrollView", () => {
 		const view = new ScrollView(["gamma", "delta"], { height: 2, totalRows: 4, theme });
 		view.setScrollOffset(2);
 
-		expect(view.render(6)).toEqual(["gammaT", "deltaB"]);
+		expect(view.render(6)).toEqual(["gam… T", "del… B"]);
 	});
 
 	it("does not render a scrollbar when width is zero", () => {

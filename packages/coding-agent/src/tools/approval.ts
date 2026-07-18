@@ -6,9 +6,9 @@
  * - compare a tool capability tier against the active autonomy / approval mode,
  * - format the generic approval prompt body.
  */
-import type { AgentTool, ToolApprovalDecision, ToolTier } from "@veyyon/pi-agent-core";
+import type { AgentTool, ToolApprovalDecision, ToolTier } from "@veyyon/agent-core";
 
-export type { ToolApproval, ToolApprovalDecision, ToolTier } from "@veyyon/pi-agent-core";
+export type { ToolApproval, ToolApprovalDecision, ToolTier } from "@veyyon/agent-core";
 
 export type ApprovalPolicy = "allow" | "deny" | "prompt";
 

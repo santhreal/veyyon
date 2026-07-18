@@ -1,13 +1,13 @@
 import { afterEach, describe, expect, it } from "bun:test";
-import type { AuthStorage } from "@veyyon/pi-ai";
-import { SelectorController } from "@veyyon/pi-coding-agent/modes/controllers/selector-controller";
+import type { AuthStorage } from "@veyyon/ai";
+import { SelectorController } from "@veyyon/coding-agent/modes/controllers/selector-controller";
 import {
 	resolveProviderCandidates,
 	resolveProviderChain,
 	setExcludedSearchProviders,
 	setPreferredSearchProvider,
-} from "@veyyon/pi-coding-agent/web/search/provider";
-import { SEARCH_PROVIDER_ORDER } from "@veyyon/pi-coding-agent/web/search/types";
+} from "@veyyon/coding-agent/web/search/provider";
+import { SEARCH_PROVIDER_ORDER } from "@veyyon/coding-agent/web/search/types";
 
 const authStorage = {} as AuthStorage;
 const originalBraveApiKey = process.env.BRAVE_API_KEY;

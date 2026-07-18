@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
-import { armPreResponseTimeout } from "@veyyon/pi-ai/utils/idle-iterator";
+import { armPreResponseTimeout } from "@veyyon/ai/utils/idle-iterator";
 
 /**
  * Regression for the issue #2422 follow-up: the streaming providers (Codex SSE,

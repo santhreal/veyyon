@@ -2,7 +2,7 @@
  * Tool output pruning utilities for compaction.
  */
 
-import type { ToolResultMessage } from "@veyyon/pi-ai";
+import type { ToolResultMessage } from "@veyyon/ai";
 import type { AgentMessage, AgentToolCall } from "../types";
 import { estimateTokens } from "./compaction";
 import type { SessionEntry, SessionMessageEntry } from "./entries";

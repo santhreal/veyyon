@@ -1,7 +1,7 @@
 import { Database, type Statement } from "bun:sqlite";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { AsyncDrain, getHistoryDbPath, logger } from "@veyyon/pi-utils";
+import { AsyncDrain, getHistoryDbPath, logger } from "@veyyon/utils";
 
 export interface HistoryEntry {
 	id: number;

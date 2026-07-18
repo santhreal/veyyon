@@ -5,7 +5,7 @@
  * cleaned content.
  */
 
-import { type AuthStorage, type FetchImpl, getEnvApiKey } from "@veyyon/pi-ai";
+import { type AuthStorage, type FetchImpl, getEnvApiKey } from "@veyyon/ai";
 import type { SearchResponse, SearchSource } from "../../../web/search/types";
 import { SearchProviderError } from "../../../web/search/types";
 import type { SearchParams } from "./base";
@@ -43,23 +43,25 @@ async function callJinaSearch(
 	fetchImpl: FetchImpl = fetch,
 ): Promise<JinaSearchResponse> {
 	const requestUrl = `${JINA_SEARCH_URL}/${encodeURIComponent(query)}`;
-	const response = await fetchImpl(requestUrl, {
-		headers: {
-			Accept: "application/json",
-			Authorization: `Bearer ${apiKey}`,
-		},
-		signal: withHardTimeout(signal),
+	return withHardTimeout(signal, async hardSignal => {
+		const response = await fetchImpl(requestUrl, {
+			headers: {
+				Accept: "application/json",
+				Authorization: `Bearer ${apiKey}`,
+			},
+			signal: hardSignal,
+		});
+
+		if (!response.ok) {
+			const errorText = await response.text();
+			const classified = classifyProviderHttpError("jina", response.status, errorText);
+			if (classified) throw classified;
+			throw new SearchProviderError("jina", `Jina API error (${response.status}): ${errorText}`, response.status);
+		}
+
+		const payload = (await response.json()) as { data?: JinaSearchResponse } | null;
+		return Array.isArray(payload?.data) ? payload.data : [];
 	});
-
-	if (!response.ok) {
-		const errorText = await response.text();
-		const classified = classifyProviderHttpError("jina", response.status, errorText);
-		if (classified) throw classified;
-		throw new SearchProviderError("jina", `Jina API error (${response.status}): ${errorText}`, response.status);
-	}
-
-	const payload = (await response.json()) as { data?: JinaSearchResponse } | null;
-	return Array.isArray(payload?.data) ? payload.data : [];
 }
 
 /** Execute Jina web search. */

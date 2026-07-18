@@ -1,6 +1,6 @@
-import { tryParseJson } from "@veyyon/pi-utils";
-import type { RenderResult, SpecialHandler } from "./types";
-import { buildResult, formatNumber, loadPage } from "./types";
+import { tryParseJson } from "@veyyon/utils";
+import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
+import { buildResult, formatNumber, loadFailure, loadPage, scraperDegrade, tryParseUrl } from "./types";
 
 const API_BASE = "https://public.api.bsky.app/xrpc";
 
@@ -151,9 +151,10 @@ export const handleBluesky: SpecialHandler = async (
 	url: string,
 	timeout: number,
 	signal?: AbortSignal,
-): Promise<RenderResult | null> => {
+): Promise<RenderResult | ScraperDegrade | null> => {
 	try {
-		const parsed = new URL(url);
+		const parsed = tryParseUrl(url);
+		if (!parsed) return null;
 		if (!["bsky.app", "www.bsky.app"].includes(parsed.hostname)) {
 			return null;
 		}
@@ -183,7 +184,7 @@ export const handleBluesky: SpecialHandler = async (
 					signal,
 				});
 
-				if (!result.ok) return null;
+				if (!result.ok) return scraperDegrade("bluesky", loadFailure(result));
 
 				const data = JSON.parse(result.content) as { thread: ThreadViewPost };
 				const thread = data.thread;
@@ -227,7 +228,7 @@ export const handleBluesky: SpecialHandler = async (
 				signal,
 			});
 
-			if (!result.ok) return null;
+			if (!result.ok) return scraperDegrade("bluesky", loadFailure(result));
 
 			const profile = JSON.parse(result.content) as BlueskyProfile;
 
@@ -256,7 +257,10 @@ export const handleBluesky: SpecialHandler = async (
 
 			return buildResult(md, { url, method: "bluesky-api", fetchedAt, notes: ["Fetched via AT Protocol API"] });
 		}
-	} catch {}
+	} catch (error) {
+		return scraperDegrade("bluesky", error);
+	}
 
+	// Known host but unrecognized path shape: not a match.
 	return null;
 };

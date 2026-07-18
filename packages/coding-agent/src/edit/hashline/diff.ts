@@ -29,6 +29,7 @@ import {
 	type SnapshotStore,
 	stripBom,
 } from "@veyyon/hashline";
+import { errorMessage } from "@veyyon/utils";
 import { resolveToCwd } from "../../tools/path-utils";
 import { generateDiffString } from "../diff";
 import { canonicalSnapshotKey } from "../file-snapshot-store";
@@ -54,7 +55,7 @@ async function readSectionText(absolutePath: string, sectionPath: string): Promi
 	try {
 		return await readEditFileText(absolutePath, sectionPath);
 	} catch (error) {
-		const message = error instanceof Error ? error.message : String(error);
+		const message = errorMessage(error);
 		throw new Error(message || `Unable to read ${sectionPath}`);
 	}
 }
@@ -333,7 +334,7 @@ export async function computeHashlineSectionDiff(
 		}
 		return generateDiffString(normalized, result.text, undefined, { path: section.path });
 	} catch (err) {
-		return { error: err instanceof Error ? err.message : String(err) };
+		return { error: errorMessage(err) };
 	}
 }
 
@@ -347,7 +348,7 @@ export async function computeHashlineDiff(
 	try {
 		patch = HashlinePatch.parse(input.input, { cwd });
 	} catch (err) {
-		return { error: err instanceof Error ? err.message : String(err) };
+		return { error: errorMessage(err) };
 	}
 	if (patch.sections.length !== 1) {
 		return { error: "Streaming diff preview supports exactly one hashline section." };

@@ -1,5 +1,5 @@
 import * as fs from "node:fs/promises";
-import { isEnoent, logger, ptree } from "@veyyon/pi-utils";
+import { isEnoent, logger, ptree } from "@veyyon/utils";
 import { NON_INTERACTIVE_ENV } from "../exec/non-interactive-env";
 import { MessageFramer } from "../jsonrpc/message-framing";
 import { ToolAbortError } from "../tools/tool-errors";

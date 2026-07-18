@@ -1,6 +1,6 @@
-import { tryParseJson } from "@veyyon/pi-utils";
-import type { RenderResult, SpecialHandler } from "./types";
-import { buildResult, loadPage } from "./types";
+import { tryParseJson } from "@veyyon/utils";
+import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
+import { buildResult, loadPage, scraperDegrade, tryParseUrl } from "./types";
 
 interface OpenLibraryAuthor {
 	name?: string;
@@ -72,9 +72,10 @@ export const handleOpenLibrary: SpecialHandler = async (
 	url: string,
 	timeout: number,
 	signal?: AbortSignal,
-): Promise<RenderResult | null> => {
+): Promise<RenderResult | ScraperDegrade | null> => {
 	try {
-		const parsed = new URL(url);
+		const parsed = tryParseUrl(url);
+		if (!parsed) return null;
 		if (!parsed.hostname.includes("openlibrary.org")) return null;
 
 		const fetchedAt = new Date().toISOString();
@@ -98,9 +99,9 @@ export const handleOpenLibrary: SpecialHandler = async (
 		if (!md) return null;
 
 		return buildResult(md, { url, method: "openlibrary", fetchedAt, notes: ["Fetched via Open Library API"] });
-	} catch {}
-
-	return null;
+	} catch (error) {
+		return scraperDegrade("openlibrary", error);
+	}
 };
 
 async function fetchWork(workId: string, timeout: number, signal?: AbortSignal): Promise<string | null> {

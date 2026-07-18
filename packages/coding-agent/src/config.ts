@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { CONFIG_DIR_NAME, getConfigAgentDirName, getProjectDir } from "@veyyon/pi-utils";
+import { CONFIG_DIR_NAME, getConfigAgentDirName, getProjectDir } from "@veyyon/utils";
 import { expandTilde } from "./tools/path-utils";
 
 export * from "./config/config-file";
@@ -41,20 +41,19 @@ export function walkUpForPackageDir(startDir: string): string | undefined {
 /**
  * Get the base directory for resolving optional package assets (docs, examples, CHANGELOG.md).
  *
- * Honors `VEYYON_PACKAGE_DIR` (preferred), then legacy `OMP_PACKAGE_DIR` /
- * `PI_PACKAGE_DIR` (useful for Nix/Guix store paths); otherwise walks up from
- * `import.meta.dir` looking for a `package.json`.
+ * Honors `VEYYON_PACKAGE_DIR` (useful for Nix/Guix store paths); otherwise walks
+ * up from `import.meta.dir` looking for a `package.json`.
  * Returns `undefined` when no owning package is locatable — notably inside
  * `bun --compile` binaries where `import.meta.dir` resolves to `/$bunfs/root`
  * and the walk hits the filesystem root with nothing found.
  *
  * Callers MUST treat `undefined` as "no package assets available" and skip the
  * lookup. NEVER fall back to the user's `cwd` here: that conflates the host
- * project with omp's own assets and was the source of issue #1423 (the host
- * project's `CHANGELOG.md` rendered as omp's startup changelog).
+ * project with veyyon's own assets and was the source of issue #1423 (the host
+ * project's `CHANGELOG.md` rendered as veyyon's startup changelog).
  */
 export function getPackageDir(): string | undefined {
-	const envDir = process.env.VEYYON_PACKAGE_DIR ?? process.env.OMP_PACKAGE_DIR ?? process.env.PI_PACKAGE_DIR;
+	const envDir = process.env.VEYYON_PACKAGE_DIR;
 	if (envDir) {
 		return expandTilde(envDir);
 	}
@@ -62,7 +61,7 @@ export function getPackageDir(): string | undefined {
 }
 
 /**
- * Path to omp's own `CHANGELOG.md`, or `undefined` when the package directory
+ * Path to veyyon's own `CHANGELOG.md`, or `undefined` when the package directory
  * cannot be resolved (e.g. inside `bun --compile` binaries that don't bundle
  * package assets). Callers MUST skip changelog parsing when this is undefined;
  * see issue #1423.
@@ -78,7 +77,7 @@ export function getChangelogPath(): string | undefined {
 
 /**
  * Config directory bases in priority order (highest first).
- * User-level: ~/.veyyon/agent (profile-aware via getConfigAgentDirName), ~/.claude, ~/.codex, ~/.gemini
+ * User-level: ~/.veyyon/profiles/default/agent (profile-aware via getConfigAgentDirName), ~/.claude, ~/.codex, ~/.gemini
  * Project-level: .veyyon, .claude, .codex, .gemini
  */
 const USER_CONFIG_BASES = priorityList.map(({ dir, globalAgentDir }) => ({
@@ -98,7 +97,7 @@ export interface ConfigDirEntry {
 }
 
 export interface GetConfigDirsOptions {
-	/** Include user-level directories (~/.veyyon/agent/...). Default: true */
+	/** Include user-level directories (~/.veyyon/profiles/default/agent/...). Default: true */
 	user?: boolean;
 	/** Include project-level directories (.veyyon/...). Default: true */
 	project?: boolean;
@@ -118,7 +117,7 @@ export interface GetConfigDirsOptions {
  * @example
  * // Get all command directories
  * getConfigDirs("commands")
- * // → [{ path: "~/.veyyon/agent/commands", source: ".veyyon", level: "user" }, ...]
+ * // → [{ path: "~/.veyyon/profiles/default/agent/commands", source: ".veyyon", level: "user" }, ...]
  *
  * @example
  * // Get only existing project skill directories

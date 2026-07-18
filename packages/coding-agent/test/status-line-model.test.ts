@@ -1,8 +1,8 @@
 import { beforeAll, describe, expect, it } from "bun:test";
-import { ThinkingLevel } from "@veyyon/pi-agent-core";
-import type { SegmentContext } from "@veyyon/pi-coding-agent/modes/components/status-line/segments";
-import { renderSegment } from "@veyyon/pi-coding-agent/modes/components/status-line/segments";
-import { initTheme, theme } from "@veyyon/pi-coding-agent/modes/theme/theme";
+import { ThinkingLevel } from "@veyyon/agent-core";
+import type { SegmentContext } from "@veyyon/coding-agent/modes/components/status-line/segments";
+import { renderSegment } from "@veyyon/coding-agent/modes/components/status-line/segments";
+import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
 
 beforeAll(async () => {
 	await initTheme();
