@@ -138,7 +138,7 @@ fn filter_ci_trace(input: &str) -> String {
 		filtered.push('\n');
 	}
 
-	primitives::head_tail_lines(&primitives::dedup_consecutive_lines(&filtered), 120, 80)
+	primitives::head_tail_dedup_capped(&filtered, 120, 80)
 }
 
 // ── Release list filter ───────────────────────────────────────────────

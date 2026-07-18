@@ -44,7 +44,7 @@ pub fn filter(ctx: &MinimizerCtx<'_>, input: &str, exit_code: i32) -> MinimizerO
 		"docker" => filter_docker(ctx, &cleaned, exit_code),
 		"kubectl" => filter_kubectl(ctx, &cleaned, exit_code),
 		"helm" => filter_helm(ctx, &cleaned, exit_code),
-		_ => head_tail_dedup(&cleaned),
+		_ => primitives::head_tail_dedup(&cleaned),
 	};
 
 	if text == input {
@@ -72,7 +72,7 @@ fn filter_docker(ctx: &MinimizerCtx<'_>, input: &str, exit_code: i32) -> String 
 	// compact_build_or_progress would strip legitimate lines that happen to
 	// contain progress substrings (e.g. a container named "my-Downloading-app").
 	if is_docker_lifecycle_command(ctx) {
-		return head_tail_dedup(input);
+		return primitives::head_tail_dedup(input);
 	}
 	// docker-compose up / docker compose up (attached mode) streams container
 	// logs, not build progress.  Lines like "Downloading", "Waiting",
@@ -117,11 +117,9 @@ fn filter_kubectl(ctx: &MinimizerCtx<'_>, input: &str, exit_code: i32) -> String
 			}
 			compact_table(input, 20)
 		},
-		Some("describe") => {
-			primitives::head_tail_lines(&primitives::dedup_consecutive_lines(input), 120, 80)
-		},
+		Some("describe") => primitives::head_tail_dedup_capped(input, 120, 80),
 		Some("apply" | "delete" | "rollout" | "scale" | "create" | "wait" | "label" | "annotate") => {
-			head_tail_dedup(input)
+			primitives::head_tail_dedup(input)
 		},
 		_ => compact_build_or_progress(input),
 	}
@@ -450,7 +448,7 @@ fn filter_helm(ctx: &MinimizerCtx<'_>, input: &str, exit_code: i32) -> String {
 		Some("list" | "ls" | "status") => compact_table(&cleaned, 20),
 		Some("install" | "upgrade" | "lint") => compact_build_or_progress(&cleaned),
 		Some("template") => input.to_string(),
-		_ => head_tail_dedup(&cleaned),
+		_ => primitives::head_tail_dedup(&cleaned),
 	}
 }
 
@@ -761,7 +759,7 @@ fn compact_build_or_progress(input: &str) -> String {
 		out.push_str(line.trim_end());
 		out.push('\n');
 	}
-	head_tail_dedup(&out)
+	primitives::head_tail_dedup(&out)
 }
 
 fn is_progress_line(line: &str) -> bool {
@@ -806,10 +804,6 @@ fn drop_repeated_blank_lines(input: &str) -> String {
 		out.push('\n');
 	}
 	out
-}
-
-fn head_tail_dedup(input: &str) -> String {
-	primitives::head_tail_lines(&primitives::dedup_consecutive_lines(input), 120, 80)
 }
 
 #[cfg(test)]

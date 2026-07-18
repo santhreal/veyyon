@@ -94,7 +94,7 @@ fn filter_build_like(label: &str, input: &str, exit_code: i32) -> String {
 	if out.trim().is_empty() {
 		compact_general(input)
 	} else {
-		primitives::head_tail_lines(&primitives::dedup_consecutive_lines(&out), 140, 80)
+		primitives::head_tail_dedup_capped(&out, 140, 80)
 	}
 }
 
@@ -136,7 +136,7 @@ fn filter_test(input: &str, exit_code: i32) -> String {
 		return filter_build_like("dotnet test", input, exit_code);
 	}
 
-	primitives::head_tail_lines(&primitives::dedup_consecutive_lines(&out), 180, 100)
+	primitives::head_tail_dedup_capped(&out, 180, 100)
 }
 
 fn filter_format(input: &str) -> String {
@@ -166,7 +166,7 @@ fn filter_format(input: &str) -> String {
 	if out.is_empty() {
 		compact_general(input)
 	} else {
-		primitives::head_tail_lines(&primitives::dedup_consecutive_lines(&out), 140, 80)
+		primitives::head_tail_dedup_capped(&out, 140, 80)
 	}
 }
 

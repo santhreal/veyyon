@@ -202,10 +202,20 @@ pub fn command_has_any_token(command: &str, tokens: &[&str]) -> bool {
 	})
 }
 
-/// Dedup consecutive lines then apply a 120-head / 80-tail cap.
+/// Dedup consecutive lines, then keep a head+tail window.
+///
+/// Canonical owner for the "collapse consecutive dupes, then keep head+tail"
+/// shape used across the command filters; callers pass their own caps (they
+/// vary per command).
+#[must_use]
+pub fn head_tail_dedup_capped(input: &str, head: usize, tail: usize) -> String {
+	head_tail_lines(&dedup_consecutive_lines(input), head, tail)
+}
+
+/// Dedup consecutive lines then apply the default 120-head / 80-tail cap.
 #[must_use]
 pub fn head_tail_dedup(input: &str) -> String {
-	head_tail_lines(&dedup_consecutive_lines(input), 120, 80)
+	head_tail_dedup_capped(input, 120, 80)
 }
 
 #[must_use]

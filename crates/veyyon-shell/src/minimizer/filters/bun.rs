@@ -309,7 +309,7 @@ fn filter_bun_build(input: &str, exit_code: i32) -> MinimizerOutput {
 	let text = if out.trim().is_empty() {
 		primitives::head_tail_lines(&cleaned, 120, 80)
 	} else {
-		primitives::head_tail_lines(&primitives::dedup_consecutive_lines(&out), 120, 80)
+		primitives::head_tail_dedup_capped(&out, 120, 80)
 	};
 	if text == input {
 		MinimizerOutput::passthrough(input)

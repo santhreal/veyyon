@@ -46,7 +46,7 @@ pub fn filter(ctx: &MinimizerCtx<'_>, input: &str, exit_code: i32) -> MinimizerO
 				filter_psql(&cleaned, exit_code)
 			}
 		},
-		_ => head_tail_dedup(&cleaned, 80, 40),
+		_ => primitives::head_tail_dedup_capped(&cleaned, 80, 40),
 	};
 
 	if text == input {
@@ -897,7 +897,7 @@ fn filter_psql(input: &str, exit_code: i32) -> String {
 	if exit_code == 0 {
 		preserve_important_lines(input, &compacted)
 	} else {
-		preserve_important_lines(input, &head_tail_dedup(&compacted, 80, 40))
+		preserve_important_lines(input, &primitives::head_tail_dedup_capped(&compacted, 80, 40))
 	}
 }
 
@@ -1225,10 +1225,6 @@ fn is_important_line(line: &str) -> bool {
 
 fn contains_line(lines: &[String], needle: &str) -> bool {
 	lines.iter().any(|line| line == needle)
-}
-
-fn head_tail_dedup(input: &str, head: usize, tail: usize) -> String {
-	primitives::head_tail_lines(&primitives::dedup_consecutive_lines(input), head, tail)
 }
 
 fn join_lines(lines: Vec<String>) -> String {

@@ -95,7 +95,7 @@ fn filter_go_test(input: &str, exit_code: i32) -> String {
 		return compact_general(input);
 	}
 
-	primitives::head_tail_lines(&primitives::dedup_consecutive_lines(&out), 140, 80)
+	primitives::head_tail_dedup_capped(&out, 140, 80)
 }
 
 /// Success-path aggregation: count package and test markers (re-derived for
