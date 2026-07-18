@@ -14,7 +14,7 @@ path = "src/seq.rs"
 [dependencies]
 bigdecimal = "0.4"
 clap = { version = "4.5", features = ["wrap_help", "cargo", "color"] }
-num-bigint = "0.4"
+num-bigint = "0.5"
 num-traits = "0.2"
 thiserror = "2.0.3"
 # pi-uutils: upstream also enables "signals" (SIGPIPE probing) — dropped, the
