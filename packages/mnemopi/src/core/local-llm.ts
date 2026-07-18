@@ -1,12 +1,4 @@
-import {
-	type Api,
-	type ApiKey,
-	type AssistantMessage,
-	completeSimple,
-	type FetchImpl,
-	type Model,
-	withAuth,
-} from "@veyyon/ai";
+import { type Api, type ApiKey, assistantText, completeSimple, type FetchImpl, type Model, withAuth } from "@veyyon/ai";
 import { ProviderHttpError } from "@veyyon/ai/error";
 import { withScopedTimeoutSignal } from "@veyyon/utils";
 import { type CompleteOptions, callHostLlm, getHostLlmBackend } from "./llm-backends";
@@ -202,13 +194,6 @@ export async function callConfiguredCompletion(
 	} catch {
 		return null;
 	}
-}
-
-function assistantText(message: AssistantMessage): string {
-	return message.content
-		.filter((block): block is Extract<AssistantMessage["content"][number], { type: "text" }> => block.type === "text")
-		.map(block => block.text)
-		.join("\n");
 }
 
 export function buildHostPrompt(memories: readonly string[], source = ""): string {

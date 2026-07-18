@@ -105,6 +105,7 @@ import type {
 	UsageReport,
 } from "@veyyon/ai";
 import {
+	assistantText,
 	calculateRateLimitBackoffMs,
 	clearAnthropicFastModeFallback,
 	deriveClaudeDeviceId,
@@ -447,14 +448,6 @@ const USER_DIRECTED_PROMPT_RE = /\b(?:you|your|we|our)\b/i;
 const USER_RESPONSE_CUE_RE =
 	/^(?:please\s+)?(?:confirm|reply|choose|pick|decide|advise)\b|^(?:please\s+)?answer\b|^(?:please\s+)?(?:let\s+me\s+know|tell\s+me)\b/i;
 
-function assistantText(message: AssistantMessage): string {
-	return message.content
-		.filter((content): content is TextContent => content.type === "text")
-		.map(content => content.text)
-		.join("\n")
-		.trim();
-}
-
 interface PromptLine {
 	text: string;
 	hadPromptLabel: boolean;
@@ -487,7 +480,9 @@ function isResponseCueLine(line: string): boolean {
 }
 
 function isAwaitingUserAnswer(message: AssistantMessage): boolean {
-	const text = assistantText(message);
+	// Trim is load-bearing: a trailing newline would make split().at(-1) an empty
+	// last line. The shared @veyyon/ai assistantText leaves trimming to the caller.
+	const text = assistantText(message).trim();
 	if (!text) return false;
 	const lastLine = text.split(/\r?\n/).at(-1)?.trim();
 	return lastLine !== undefined && (isQuestionPromptLine(lastLine) || isResponseCueLine(lastLine));
