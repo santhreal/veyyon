@@ -11631,10 +11631,7 @@ export class AgentSession {
 			return false;
 		}
 
-		const text = assistantMessage.content
-			.filter((content): content is TextContent => content.type === "text")
-			.map(content => content.text)
-			.join("\n");
+		const text = assistantText(assistantMessage);
 		if (!/\S/.test(text)) {
 			this.#unexpectedStopRetryCount = 0;
 			return false;
@@ -15661,10 +15658,7 @@ export class AgentSession {
 			for (const c of streaming.content) {
 				if (c.type === "thinking") preservedBlocks.push(c);
 			}
-			const streamingText = streaming.content
-				.filter((c): c is TextContent => c.type === "text")
-				.map(c => c.text)
-				.join("");
+			const streamingText = assistantText(streaming, "");
 			if (streamingText) {
 				preservedBlocks.push({ type: "text", text: streamingText });
 			}
