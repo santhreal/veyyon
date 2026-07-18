@@ -153,15 +153,21 @@ pub struct Match {
 
 /// Result of searching content.
 #[napi(object)]
+#[derive(Default)]
 pub struct SearchResult {
 	/// All matches found.
-	pub matches:       Vec<Match>,
+	pub matches: Vec<Match>,
 	/// Total number of matches (may exceed `matches.len()` due to offset/limit).
-	pub match_count:   u32,
+	pub match_count: u32,
 	/// Whether the limit was reached.
 	pub limit_reached: bool,
 	/// Error message, if any.
-	pub error:         Option<String>,
+	pub error: Option<String>,
+	/// Set when the pattern could not compile as a regex on either engine and
+	/// was demoted to a literal search of the escaped text. Holds the original
+	/// compile error. Callers MUST surface this — a literal fallback silently
+	/// loses regex recall otherwise. `None` on a normal regex compile.
+	pub pattern_treated_as_literal: Option<String>,
 }
 
 /// A single match in a grep result.
@@ -186,20 +192,26 @@ pub struct GrepMatch {
 
 /// Result of searching files.
 #[napi(object)]
+#[derive(Default)]
 pub struct GrepResult {
 	/// Matches or per-file counts, depending on output mode.
-	pub matches:            Vec<GrepMatch>,
+	pub matches:                    Vec<GrepMatch>,
 	/// Total matches across all files, or matched file count in filesWithMatches
 	/// mode.
-	pub total_matches:      u32,
+	pub total_matches:              u32,
 	/// Number of files with at least one match.
-	pub files_with_matches: u32,
+	pub files_with_matches:         u32,
 	/// Number of files searched.
-	pub files_searched:     u32,
+	pub files_searched:             u32,
 	/// Whether the limit/offset stopped the search early.
-	pub limit_reached:      Option<bool>,
+	pub limit_reached:              Option<bool>,
 	/// Number of files skipped because they exceed the size limit.
-	pub skipped_oversized:  Option<u32>,
+	pub skipped_oversized:          Option<u32>,
+	/// Set when the pattern could not compile as a regex on either engine and
+	/// was demoted to a literal search of the escaped text. Holds the original
+	/// compile error. Callers MUST surface this — a literal fallback silently
+	/// loses regex recall otherwise. `None` on a normal regex compile.
+	pub pattern_treated_as_literal: Option<String>,
 }
 
 enum TypeFilter {
@@ -784,7 +796,13 @@ fn push_content_matches(
 }
 
 const fn empty_search_result(error: Option<String>) -> SearchResult {
-	SearchResult { matches: Vec::new(), match_count: 0, limit_reached: false, error }
+	SearchResult {
+		matches: Vec::new(),
+		match_count: 0,
+		limit_reached: false,
+		error,
+		pattern_treated_as_literal: None,
+	}
 }
 
 /// Internal configuration for grep, extracted from options.
@@ -1019,17 +1037,30 @@ fn build_pcre_matcher(
 	builder.build(pattern)
 }
 
-fn build_matcher(pattern: &str, ignore_case: bool, multiline: bool) -> Result<CompiledMatcher> {
+/// Compile `pattern` into a matcher.
+///
+/// The second tuple element is the *literal-demotion notice*: `None` when the
+/// pattern compiled as a real regex (possibly after the paren-escape retry),
+/// and `Some(error)` when BOTH engines rejected it and it was demoted to a
+/// literal search of the escaped text. Callers MUST surface a `Some` notice to
+/// the operator/agent — a silent literal fallback hides recall loss (a pattern
+/// the user wrote as a regex quietly matching only its literal bytes). See
+/// [`GrepResult::pattern_treated_as_literal`].
+fn build_matcher(
+	pattern: &str,
+	ignore_case: bool,
+	multiline: bool,
+) -> Result<(CompiledMatcher, Option<String>)> {
 	let sanitized = sanitize_braces(pattern);
 	let err = match build_regex_matcher(sanitized.as_ref(), ignore_case, multiline) {
-		Ok(matcher) => return Ok(CompiledMatcher::Rust(matcher)),
+		Ok(matcher) => return Ok((CompiledMatcher::Rust(matcher), None)),
 		Err(err) => err,
 	};
 
 	// PCRE2 supports features the Rust regex engine deliberately omits, such
 	// as lookaround and backreferences.
 	if let Ok(matcher) = build_pcre_matcher(sanitized.as_ref(), ignore_case, multiline) {
-		return Ok(CompiledMatcher::Pcre(matcher));
+		return Ok((CompiledMatcher::Pcre(matcher), None));
 	}
 
 	// Targeted retry: a stray `(`/`)` in an otherwise valid regex (e.g.
@@ -1040,18 +1071,21 @@ fn build_matcher(pattern: &str, ignore_case: bool, multiline: bool) -> Result<Co
 		let escaped = escape_unescaped_parentheses(sanitized.as_ref());
 		if escaped.as_ref() != sanitized.as_ref() {
 			if let Ok(matcher) = build_regex_matcher(escaped.as_ref(), ignore_case, multiline) {
-				return Ok(CompiledMatcher::Rust(matcher));
+				return Ok((CompiledMatcher::Rust(matcher), None));
 			}
 			if let Ok(matcher) = build_pcre_matcher(escaped.as_ref(), ignore_case, multiline) {
-				return Ok(CompiledMatcher::Pcre(matcher));
+				return Ok((CompiledMatcher::Pcre(matcher), None));
 			}
 		}
 	}
 
 	// Final fallback: both engines rejected the pattern, so match it literally
-	// instead of failing the whole search.
+	// instead of failing the whole search. This is recall-preserving for agent
+	// code-snippet patterns, but it is NOT silent — the returned notice is
+	// surfaced up to the CLI/agent so the operator knows the pattern was not
+	// honored as a regex.
 	build_regex_matcher(&regex::escape(pattern), ignore_case, multiline)
-		.map(CompiledMatcher::Rust)
+		.map(|matcher| (CompiledMatcher::Rust(matcher), Some(message.clone())))
 		.map_err(|_| Error::from_reason(format!("Regex error: {message}")))
 }
 
@@ -1837,8 +1871,8 @@ fn search_sync(content: &[u8], options: SearchOptions) -> SearchResult {
 	let ignore_case = options.ignore_case.unwrap_or(false);
 	let multiline = options.multiline.unwrap_or(false);
 	let mode = parse_output_mode(options.mode);
-	let matcher = match build_matcher(&options.pattern, ignore_case, multiline) {
-		Ok(matcher) => matcher,
+	let (matcher, literal_notice) = match build_matcher(&options.pattern, ignore_case, multiline) {
+		Ok(built) => built,
 		Err(err) => return empty_search_result(Some(err.to_string())),
 	};
 
@@ -1867,10 +1901,11 @@ fn search_sync(content: &[u8], options: SearchOptions) -> SearchResult {
 	};
 
 	SearchResult {
-		matches:       result.matches.into_iter().map(to_public_match).collect(),
-		match_count:   crate::utils::clamp_u32(result.match_count),
+		matches: result.matches.into_iter().map(to_public_match).collect(),
+		match_count: crate::utils::clamp_u32(result.match_count),
 		limit_reached: result.limit_reached,
-		error:         None,
+		error: None,
+		pattern_treated_as_literal: literal_notice,
 	}
 }
 
@@ -1881,10 +1916,16 @@ pub(crate) fn grep_sync(
 ) -> Result<GrepResult> {
 	let ignore_case = options.ignore_case.unwrap_or(false);
 	let multiline = options.multiline.unwrap_or(false);
-	match build_matcher(&options.pattern, ignore_case, multiline)? {
-		CompiledMatcher::Rust(matcher) => grep_sync_with_matcher(options, on_match, ct, &matcher),
-		CompiledMatcher::Pcre(matcher) => grep_sync_with_matcher(options, on_match, ct, &matcher),
-	}
+	let (matcher, literal_notice) = build_matcher(&options.pattern, ignore_case, multiline)?;
+	let mut result = match matcher {
+		CompiledMatcher::Rust(matcher) => grep_sync_with_matcher(options, on_match, ct, &matcher)?,
+		CompiledMatcher::Pcre(matcher) => grep_sync_with_matcher(options, on_match, ct, &matcher)?,
+	};
+	// Surface a literal demotion to the operator/agent (Law 10: no silent
+	// fallback). The edge-case early returns above never demote, so setting it
+	// once here on the real result is sufficient.
+	result.pattern_treated_as_literal = literal_notice;
+	Ok(result)
 }
 
 fn grep_sync_with_matcher<M: Matcher + Sync>(
@@ -1927,28 +1968,14 @@ fn grep_sync_with_matcher<M: Matcher + Sync>(
 	};
 
 	if !metadata.is_file() && !metadata.is_dir() {
-		return Ok(GrepResult {
-			matches:            Vec::new(),
-			total_matches:      0,
-			files_with_matches: 0,
-			files_searched:     0,
-			limit_reached:      None,
-			skipped_oversized:  None,
-		});
+		return Ok(GrepResult::default());
 	}
 
 	if metadata.is_file() {
 		if let Some(filter) = type_filter.as_ref()
 			&& !matches_type_filter(&search_path, filter)
 		{
-			return Ok(GrepResult {
-				matches:            Vec::new(),
-				total_matches:      0,
-				files_with_matches: 0,
-				files_searched:     0,
-				limit_reached:      None,
-				skipped_oversized:  None,
-			});
+			return Ok(GrepResult::default());
 		}
 
 		let mut buffer = Vec::new();
@@ -1957,25 +1984,11 @@ fn grep_sync_with_matcher<M: Matcher + Sync>(
 			Ok(ReadFile::Oversized) => match read_file_prefix(&search_path, &mut buffer) {
 				Ok(ReadFile::Read) => &buffer,
 				_ => {
-					return Ok(GrepResult {
-						matches:            Vec::new(),
-						total_matches:      0,
-						files_with_matches: 0,
-						files_searched:     0,
-						limit_reached:      None,
-						skipped_oversized:  Some(1),
-					});
+					return Ok(GrepResult { skipped_oversized: Some(1), ..Default::default() });
 				},
 			},
 			Ok(ReadFile::Skipped) | Err(_) => {
-				return Ok(GrepResult {
-					matches:            Vec::new(),
-					total_matches:      0,
-					files_with_matches: 0,
-					files_searched:     0,
-					limit_reached:      None,
-					skipped_oversized:  None,
-				});
+				return Ok(GrepResult::default());
 			},
 		};
 
@@ -1984,19 +1997,12 @@ fn grep_sync_with_matcher<M: Matcher + Sync>(
 				.is_match(bytes.as_slice())
 				.map_err(|err| Error::from_reason(format!("Search failed: {err}")))?;
 			if !matched {
-				return Ok(GrepResult {
-					matches:            Vec::new(),
-					total_matches:      0,
-					files_with_matches: 0,
-					files_searched:     1,
-					limit_reached:      None,
-					skipped_oversized:  None,
-				});
+				return Ok(GrepResult { files_searched: 1, ..Default::default() });
 			}
 
 			let path_string = search_path.to_string_lossy().into_owned();
 			return Ok(GrepResult {
-				matches:            vec![GrepMatch {
+				matches: vec![GrepMatch {
 					path:           path_string,
 					line_number:    0,
 					line:           String::new(),
@@ -2005,11 +2011,10 @@ fn grep_sync_with_matcher<M: Matcher + Sync>(
 					truncated:      None,
 					match_count:    None,
 				}],
-				total_matches:      1,
+				total_matches: 1,
 				files_with_matches: 1,
-				files_searched:     1,
-				limit_reached:      None,
-				skipped_oversized:  None,
+				files_searched: 1,
+				..Default::default()
 			});
 		}
 
@@ -2017,14 +2022,7 @@ fn grep_sync_with_matcher<M: Matcher + Sync>(
 			.map_err(|err| Error::from_reason(format!("Search failed: {err}")))?;
 
 		if search.match_count == 0 {
-			return Ok(GrepResult {
-				matches:            Vec::new(),
-				total_matches:      0,
-				files_with_matches: 0,
-				files_searched:     1,
-				limit_reached:      None,
-				skipped_oversized:  None,
-			});
+			return Ok(GrepResult { files_searched: 1, ..Default::default() });
 		}
 
 		let path_string = search_path.to_string_lossy().into_owned();
@@ -2066,7 +2064,7 @@ fn grep_sync_with_matcher<M: Matcher + Sync>(
 			files_with_matches: 1,
 			files_searched: 1,
 			limit_reached: if limit_reached { Some(true) } else { None },
-			skipped_oversized: None,
+			..Default::default()
 		});
 	}
 
@@ -2105,6 +2103,7 @@ fn grep_sync_with_matcher<M: Matcher + Sync>(
 		} else {
 			None
 		},
+		..Default::default()
 	})
 }
 
@@ -2177,7 +2176,7 @@ pub fn has_match(
 		},
 	};
 
-	let matcher =
+	let (matcher, _) =
 		build_matcher(pattern_ref, ignore_case.unwrap_or(false), multiline.unwrap_or(false))?;
 	Ok(matcher.is_match(content_slice).unwrap_or(false))
 }
@@ -2382,8 +2381,13 @@ mod tests {
 			("+++", &b"a+++b"[..], &b"ab"[..]),
 			("fail)", &b"(1 fail)"[..], &b"failure"[..]),
 		] {
-			let matcher = super::build_matcher(pattern, false, false)
+			let (matcher, notice) = super::build_matcher(pattern, false, false)
 				.unwrap_or_else(|e| panic!("`{pattern}` should fall back to literal, got: {e}"));
+			assert!(
+				notice.is_some(),
+				"`{pattern}` was demoted to a literal search, so build_matcher must return a notice \
+				 (Law 10: no silent fallback)"
+			);
 			assert!(matcher.is_match(hay).unwrap(), "`{pattern}` should match {hay:?}");
 			assert!(!matcher.is_match(miss).unwrap(), "`{pattern}` should not match {miss:?}");
 		}
@@ -2392,8 +2396,9 @@ mod tests {
 	#[test]
 	fn stray_parenthesis_preserves_surrounding_regex() {
 		// The targeted retry escapes the stray `(` but keeps `.*` as a regex.
-		let matcher =
+		let (matcher, notice) =
 			super::build_matcher("foo.*(bar", false, false).expect("retry with escaped paren");
+		assert!(notice.is_none(), "the escaped-paren retry is a real regex, not a literal demotion");
 		assert!(matcher.is_match(b"fooXYZ(bar").unwrap());
 		assert!(!matcher.is_match(b"foobar").unwrap());
 	}
@@ -2402,7 +2407,8 @@ mod tests {
 	fn valid_regex_is_not_escaped() {
 		// A parseable pattern stays a regex: `fo+` matches repeats, which the
 		// literal `fo+` never would.
-		let matcher = super::build_matcher("fo+", false, false).expect("valid regex");
+		let (matcher, notice) = super::build_matcher("fo+", false, false).expect("valid regex");
+		assert!(notice.is_none(), "a valid regex compiles without a literal-demotion notice");
 		assert!(matcher.is_match(b"foooo").unwrap());
 		assert!(!matcher.is_match(b"bar").unwrap());
 	}
@@ -2759,7 +2765,7 @@ mod tests {
 
 	#[cfg(unix)]
 	fn sequential_reference_result(root: &Path, params: super::SearchParams) -> super::GrepResult {
-		let matcher = super::build_matcher("needle", false, false).expect("build test matcher");
+		let (matcher, _) = super::build_matcher("needle", false, false).expect("build test matcher");
 		let (results, skipped_oversized, files_searched) = super::run_sequential_grep(
 			root,
 			&matcher,
@@ -2784,6 +2790,7 @@ mod tests {
 			limit_reached: limit_reached.then_some(true),
 			skipped_oversized: (skipped_oversized > 0)
 				.then(|| crate::utils::clamp_u32(skipped_oversized)),
+			..Default::default()
 		}
 	}
 
@@ -2802,7 +2809,7 @@ mod tests {
 	fn parallel_streaming_content_matches_sequential_with_context_and_gitignore() {
 		let root = TempDirGuard::new();
 		populate_parallel_parity_tree(root.path());
-		let matcher = super::build_matcher("needle", false, false).expect("build test matcher");
+		let (matcher, _) = super::build_matcher("needle", false, false).expect("build test matcher");
 		let params = unlimited_params(super::OutputMode::Content, 1);
 
 		let parallel = super::run_streaming_grep(
@@ -2969,7 +2976,7 @@ mod tests {
 		let root = TempDirGuard::new();
 		write_file(&root.path().join("a.txt"), "needle a1\nneedle a2\n");
 		write_file(&root.path().join("z.txt"), "needle z\n");
-		let matcher = super::build_matcher("needle", false, false).expect("build test matcher");
+		let (matcher, _) = super::build_matcher("needle", false, false).expect("build test matcher");
 		let params = content_search_params(1, None);
 
 		let (results, skipped_oversized, files_searched) = super::run_streaming_grep(
@@ -2999,7 +3006,7 @@ mod tests {
 		write_file(&root.path().join("a.txt"), "needle a1\nneedle a2\n");
 		write_file(&root.path().join("b.txt"), "needle b1\nneedle b2\n");
 		write_file(&root.path().join("c.txt"), "needle c1\nneedle c2\n");
-		let matcher = super::build_matcher("needle", false, false).expect("build test matcher");
+		let (matcher, _) = super::build_matcher("needle", false, false).expect("build test matcher");
 		let params = content_search_params(3, Some(1));
 
 		let (results, skipped_oversized, files_searched) = super::run_streaming_grep(
@@ -3039,7 +3046,7 @@ mod tests {
 		for path in &expected_paths {
 			write_file(&root.path().join(path), "needle\n");
 		}
-		let matcher = super::build_matcher("needle", false, false).expect("build test matcher");
+		let (matcher, _) = super::build_matcher("needle", false, false).expect("build test matcher");
 		let params = content_search_params(budget, None);
 
 		let (results, skipped_oversized, files_searched) = super::run_streaming_grep(

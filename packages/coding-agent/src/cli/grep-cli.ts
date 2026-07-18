@@ -46,6 +46,19 @@ export async function runGrepCommand(cmd: GrepCommandArgs): Promise<void> {
 			gitignore: cmd.gitignore,
 		});
 
+		// The pattern did not compile as a regex on either engine, so it was
+		// searched literally. Say so loudly (Law 10: no silent fallback) — matches
+		// reflect exact text, not the intended pattern.
+		if (result.patternTreatedAsLiteral) {
+			console.log(
+				chalk.yellow(
+					`Warning: pattern did not compile as a regex (${result.patternTreatedAsLiteral}); searched literally instead.`,
+				),
+			);
+			console.log(chalk.yellow("Matches reflect the exact text — fix the regex or escape it for a literal search."));
+			console.log("");
+		}
+
 		console.log(chalk.green(`Total matches: ${result.totalMatches}`));
 		console.log(chalk.green(`Files with matches: ${result.filesWithMatches}`));
 		console.log(chalk.green(`Files searched: ${result.filesSearched}`));

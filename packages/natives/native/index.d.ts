@@ -169,8 +169,8 @@ export declare function __veyyonInstallTokioRuntime(): void
  * `<sym> is not a function` crash from a locked-file update (the canonical
  * Windows `bun install -g` failure mode) into a clear load-time error.
  *
- * Bump policy: `__veyyonNativesV{major}_{minor}_{patch}` — non-alphanumerics in
- * the version string are mapped to `_` to keep it a valid JS identifier.
+ * Bump policy: `__veyyonNativesV{major}_{minor}_{patch}` — non-alphanumerics
+ * in the version string are mapped to `_` to keep it a valid JS identifier.
  * MUST stay in sync with `VERSION_SENTINEL_EXPORT` in
  * `packages/natives/native/index.js` (which derives the name from
  * `package.json#version`).
@@ -804,6 +804,13 @@ export interface GrepResult {
   limitReached?: boolean
   /** Number of files skipped because they exceed the size limit. */
   skippedOversized?: number
+  /**
+   * Set when the pattern could not compile as a regex on either engine and
+   * was demoted to a literal search of the escaped text. Holds the original
+   * compile error. Callers MUST surface this — a literal fallback silently
+   * loses regex recall otherwise. `None` on a normal regex compile.
+   */
+  patternTreatedAsLiteral?: string
 }
 
 /**
@@ -1387,6 +1394,13 @@ export interface SearchResult {
   limitReached: boolean
   /** Error message, if any. */
   error?: string
+  /**
+   * Set when the pattern could not compile as a regex on either engine and
+   * was demoted to a literal search of the escaped text. Holds the original
+   * compile error. Callers MUST surface this — a literal fallback silently
+   * loses regex recall otherwise. `None` on a normal regex compile.
+   */
+  patternTreatedAsLiteral?: string
 }
 
 export declare function setHangulCompatJamoWidthOverride(value: number): void

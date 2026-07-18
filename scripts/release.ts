@@ -19,16 +19,35 @@ function git(args: readonly string[]) {
 	return $`git -c core.fsmonitor=false -c core.untrackedCache=false -c fetch.pruneTags=false ${args}`;
 }
 
+// The `owner/repo` slug parsed from `origin`, cached. Every `gh` call in this
+// script passes it as `-R` so the release watcher targets THIS repo. Without it,
+// `gh` auto-resolves the repo from the remotes, and a checkout that also has an
+// `upstream` remote (veyyon forks oh-my-pi) resolves to the fork's base — the
+// watcher would then poll the wrong repo's runs and never see our release CI.
+let _originRepoSlug: string | undefined;
+async function originRepoSlug(): Promise<string> {
+	if (_originRepoSlug) return _originRepoSlug;
+	const url = (await git(["remote", "get-url", "origin"]).text()).trim();
+	const match = url.match(/github\.com[/:]([^/]+)\/(.+?)(?:\.git)?$/);
+	if (!match) {
+		throw new Error(`Cannot parse a GitHub owner/repo from origin URL: ${url}`);
+	}
+	_originRepoSlug = `${match[1]}/${match[2]}`;
+	return _originRepoSlug;
+}
+
 // =============================================================================
 // Shared functions
 // =============================================================================
 
 async function watchCI(): Promise<boolean> {
 	const commitSha = (await git(["rev-parse", "HEAD"]).text()).trim();
-	console.log(`  Commit: ${commitSha.slice(0, 8)}`);
+	const repo = await originRepoSlug();
+	console.log(`  Commit: ${commitSha.slice(0, 8)} (${repo})`);
 
 	while (true) {
-		const runsOutput = await $`gh run list --commit ${commitSha} --json databaseId,status,conclusion,name`.text();
+		const runsOutput =
+			await $`gh run list -R ${repo} --commit ${commitSha} --json databaseId,status,conclusion,name`.text();
 		const runs: Array<{ databaseId: number; status: string; conclusion: string | null; name: string }> =
 			JSON.parse(runsOutput);
 
@@ -43,7 +62,7 @@ async function watchCI(): Promise<boolean> {
 		const inProgressRuns = runs.filter(r => r.status === "in_progress" || r.status === "queued");
 
 		for (const run of inProgressRuns) {
-			const jobsOutput = await $`gh run view ${run.databaseId} --json jobs`.quiet().nothrow().text();
+			const jobsOutput = await $`gh run view -R ${repo} ${run.databaseId} --json jobs`.quiet().nothrow().text();
 			try {
 				const { jobs } = JSON.parse(jobsOutput) as {
 					jobs: Array<{ name: string; databaseId: number; status: string; conclusion: string | null }>;
@@ -68,7 +87,7 @@ async function watchCI(): Promise<boolean> {
 			for (const f of failedJobs) {
 				console.error(`  - ${f.workflow} / ${f.job} (job ${f.jobId}): ${f.conclusion}`);
 				// Tail the failed job's log
-				const log = await $`gh run view --job ${f.jobId} --log-failed`.quiet().nothrow().text();
+				const log = await $`gh run view -R ${repo} --job ${f.jobId} --log-failed`.quiet().nothrow().text();
 				if (log.trim()) {
 					const lines = log.trimEnd().split("\n");
 					const tail = lines.slice(-20).join("\n");
@@ -90,14 +109,17 @@ async function watchCI(): Promise<boolean> {
 			for (const r of failed) {
 				console.error(`  - ${r.name}: ${r.conclusion}`);
 				// Fetch failed jobs and tail their logs
-				const jobsOutput = await $`gh run view ${r.databaseId} --json jobs`.quiet().nothrow().text();
+				const jobsOutput = await $`gh run view -R ${repo} ${r.databaseId} --json jobs`.quiet().nothrow().text();
 				try {
 					const { jobs } = JSON.parse(jobsOutput) as {
 						jobs: Array<{ name: string; databaseId: number; status: string; conclusion: string | null }>;
 					};
 					for (const job of jobs) {
 						if (job.conclusion !== "success" && job.conclusion !== "skipped") {
-							const log = await $`gh run view --job ${job.databaseId} --log-failed`.quiet().nothrow().text();
+							const log = await $`gh run view -R ${repo} --job ${job.databaseId} --log-failed`
+								.quiet()
+								.nothrow()
+								.text();
 							if (log.trim()) {
 								const lines = log.trimEnd().split("\n");
 								const tail = lines.slice(-20).join("\n");
