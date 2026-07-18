@@ -1,8 +1,0 @@
-{
-	"extends": "../../../../../../tsconfig.base.json",
-	"compilerOptions": {
-		"lib": ["ES2024", "DOM", "DOM.Iterable", "DOM.AsyncIterable"],
-		"types": ["react", "react-dom", "assets"]
-	},
-	"include": ["."]
-}
