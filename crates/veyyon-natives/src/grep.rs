@@ -2373,13 +2373,17 @@ mod tests {
 
 	#[test]
 	fn invalid_regex_falls_back_to_literal() {
-		// Patterns that are not valid regex syntax (unclosed class, dangling
-		// quantifier, stray `)`) must degrade to a literal search rather than
-		// erroring.
+		// Patterns whose syntax neither engine accepts and that the paren-escape
+		// retry cannot salvage (unclosed class, dangling quantifier, backreference
+		// — rejected by the Rust engine as unsupported and by PCRE2 as a reference
+		// to a non-existent subpattern) must degrade to a literal search rather
+		// than erroring. A stray `(`/`)` is deliberately NOT here: it is repaired
+		// by the retry into a real regex, so it returns no notice — see
+		// `stray_parenthesis_preserves_surrounding_regex`.
 		for (pattern, hay, miss) in [
 			("foo[bar", &b"x foo[bar y"[..], &b"foobar"[..]),
 			("+++", &b"a+++b"[..], &b"ab"[..]),
-			("fail)", &b"(1 fail)"[..], &b"failure"[..]),
+			(r"\1", &br"a \1 b"[..], &b"a1b"[..]),
 		] {
 			let (matcher, notice) = super::build_matcher(pattern, false, false)
 				.unwrap_or_else(|e| panic!("`{pattern}` should fall back to literal, got: {e}"));
