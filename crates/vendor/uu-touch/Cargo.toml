@@ -18,7 +18,7 @@ filetime = "0.2.23"
 jiff = "0.2.18"
 parse_datetime = "0.14.0"
 thiserror = "2.0.3"
-uucore = { version = "0.8.0", features = ["libc", "parser"] }
+uucore = { version = "0.9.0", features = ["libc", "parser"] }
 veyyon-uutils-ctx = { path = "../../veyyon-uutils-ctx" }
 
 [target.'cfg(unix)'.dependencies]

@@ -23,7 +23,7 @@ jiff = { version = "0.2", features = [
 ] }
 parse_datetime = "0.14"
 regex = "1.11"
-uucore = { version = "0.8.0", features = ["parser"] }
+uucore = { version = "0.9.0", features = ["parser"] }
 veyyon-uutils-ctx = { path = "../../veyyon-uutils-ctx" }
 
 # pi-uutils: rustix is kept only for `clock_getres` (--resolution); the

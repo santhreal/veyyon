@@ -15,7 +15,7 @@ path = "src/rm.rs"
 [dependencies]
 thiserror = "2.0.3"
 clap = { version = "4.5", features = ["wrap_help", "cargo", "color"] }
-uucore = { version = "0.8.0", features = ["fs", "parser"] }
+uucore = { version = "0.9.0", features = ["fs", "parser"] }
 indicatif = "0.18.0"
 veyyon-uutils-ctx = { path = "../../veyyon-uutils-ctx" }
 

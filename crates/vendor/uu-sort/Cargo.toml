@@ -28,7 +28,7 @@ self_cell = "1.0.4"
 tempfile = "3.15.0"
 thiserror = "2.0.3"
 foldhash = "0.2.0"
-uucore = { version = "0.8.0", features = [
+uucore = { version = "0.9.0", features = [
   "fs",
   "parser-size",
   "version-cmp",

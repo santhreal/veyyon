@@ -15,5 +15,5 @@ path = "src/cut.rs"
 bstr = "1.12.0"
 clap = { version = "4.5", features = ["wrap_help", "cargo", "color"] }
 memchr = "2.7.4"
-uucore = { version = "0.8.0", features = ["ranges"] }
+uucore = { version = "0.9.0", features = ["ranges"] }
 veyyon-uutils-ctx = { path = "../../veyyon-uutils-ctx" }

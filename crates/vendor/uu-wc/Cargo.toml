@@ -16,7 +16,7 @@ path = "src/wc.rs"
 bytecount = { version = "0.6.8", features = ["runtime-dispatch-simd"] }
 clap = { version = "4.5", features = ["wrap_help", "cargo", "color"] }
 thiserror = "2.0.3"
-uucore = { version = "0.8.0", features = [
+uucore = { version = "0.9.0", features = [
   "hardware",
   "parser",
   "pipes",

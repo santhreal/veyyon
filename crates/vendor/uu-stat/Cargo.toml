@@ -15,7 +15,7 @@ path = "src/stat.rs"
 [dependencies]
 clap = { version = "4.5", features = ["wrap_help", "cargo", "color"] }
 thiserror = "2.0.3"
-uucore = { version = "0.8.0", features = ["entries", "libc", "fs", "fsext", "time"] }
+uucore = { version = "0.9.0", features = ["entries", "libc", "fs", "fsext", "time"] }
 veyyon-uutils-ctx = { path = "../../veyyon-uutils-ctx" }
 
 [dev-dependencies]

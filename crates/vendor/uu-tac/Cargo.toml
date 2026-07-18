@@ -18,7 +18,7 @@ memchr = "2.7.4"
 memmap2 = "0.9"
 regex = "1.11"
 thiserror = "2.0.3"
-uucore = "0.8.0"
+uucore = "0.9.0"
 veyyon-uutils-ctx = { path = "../../veyyon-uutils-ctx" }
 
 [dev-dependencies]

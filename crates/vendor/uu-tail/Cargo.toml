@@ -14,7 +14,7 @@ path = "src/tail.rs"
 [dependencies]
 clap = { version = "4.5", features = ["wrap_help", "cargo", "color"] }
 memchr = "2.7.2"
-uucore = { version = "0.8.0", features = ["fs", "parser-size", "signals"] }
+uucore = { version = "0.9.0", features = ["fs", "parser-size", "signals"] }
 veyyon-uutils-ctx = { path = "../../veyyon-uutils-ctx" }
 uu_tac = { path = "../uu-tac" }
 

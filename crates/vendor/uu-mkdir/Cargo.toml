@@ -14,7 +14,7 @@ path = "src/mkdir.rs"
 
 [dependencies]
 clap = { version = "4.5", features = ["wrap_help", "cargo", "color"] }
-uucore = { version = "0.8.0", features = ["fs", "mode", "fsxattr"] }
+uucore = { version = "0.9.0", features = ["fs", "mode", "fsxattr"] }
 veyyon-uutils-ctx = { path = "../../veyyon-uutils-ctx" }
 
 [target.'cfg(unix)'.dependencies]

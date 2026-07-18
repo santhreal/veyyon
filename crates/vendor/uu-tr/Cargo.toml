@@ -15,5 +15,5 @@ path = "src/tr.rs"
 bytecount = { version = "0.6.8", features = ["runtime-dispatch-simd"] }
 clap = { version = "4.5", features = ["wrap_help", "cargo", "color"] }
 nom = "8.0.0"
-uucore = "0.8.0"
+uucore = "0.9.0"
 veyyon-uutils-ctx = { path = "../../veyyon-uutils-ctx" }

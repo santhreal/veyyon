@@ -16,5 +16,5 @@ clap = { version = "4.5", features = ["wrap_help", "cargo", "color"] }
 base64-simd = "0.8"
 hex = "0.4.3"
 os_display = "0.1.4"
-uucore = { version = "0.8.0", features = ["checksum", "encoding", "sum", "hardware"] }
+uucore = { version = "0.9.0", features = ["checksum", "encoding", "sum", "hardware"] }
 veyyon-uutils-ctx = { path = "../../veyyon-uutils-ctx" }

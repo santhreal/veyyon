@@ -14,7 +14,7 @@ path = "src/truncate.rs"
 
 [dependencies]
 clap = { version = "4.5", features = ["wrap_help", "cargo", "color"] }
-uucore = { version = "0.8.0", features = ["parser-size"] }
+uucore = { version = "0.9.0", features = ["parser-size"] }
 veyyon-uutils-ctx = { path = "../../veyyon-uutils-ctx" }
 
 [dev-dependencies]

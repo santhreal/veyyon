@@ -19,7 +19,7 @@ num-traits = "0.2"
 thiserror = "2.0.3"
 # pi-uutils: upstream also enables "signals" (SIGPIPE probing) — dropped, the
 # in-process builtin has no process-global signal handling.
-uucore = { version = "0.8.0", features = [
+uucore = { version = "0.9.0", features = [
 	"extendedbigdecimal",
 	"fast-inc",
 	"format",

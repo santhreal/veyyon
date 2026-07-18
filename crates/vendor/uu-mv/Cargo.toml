@@ -19,7 +19,7 @@ indicatif = "0.18.0"
 libc = "0.2.172"
 rustc-hash = "2.1.1"
 thiserror = "2.0.3"
-uucore = { version = "0.8.0", features = [
+uucore = { version = "0.9.0", features = [
   "backup-control",
   "fs",
   "fsxattr",

@@ -14,7 +14,7 @@ path = "src/uname.rs"
 [dependencies]
 platform-info = "2.0.3"
 clap = { version = "4.5", features = ["wrap_help", "cargo", "color"] }
-uucore = "0.8.0"
+uucore = "0.9.0"
 veyyon-uutils-ctx = { path = "../../veyyon-uutils-ctx" }
 
 [dev-dependencies]
