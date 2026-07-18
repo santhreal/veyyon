@@ -2,10 +2,15 @@
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-07-18
+
 ### Added
 
 - `veyyon say --voices` lists every local TTS model and voice (with the current selection marked), and `--model` now validates against the catalog at parse time instead of failing later with an opaque synthesis error.
 - `veyyon say` reads piped stdin when no text argument or `--file` is given (`git log -1 --format=%s | veyyon say`).
+- Added `VEYYON_STACK=1` to opt fatal CLI errors into the full inspected render; by default they now print the message and cause chain instead of a raw bundled-source frame dump.
+- `veyyon --help` now lists internal tool-testing surfaces (`gallery`, `grep`, `search`, `read`, `ttsr`, `grievances`, `dry-balance`) under a separate DIAGNOSTIC COMMANDS section so the main command list reads as the product surface.
+- Harness profiles accept `promptSectionOrder` to reorder the default system prompt's banner sections (`role`, `runtime`, `tool-policy`, `execution-workflow`, `delivery-contract`) per model; a list with an unknown name is rejected whole with a warning.
 
 ### Changed
 
@@ -16,7 +21,6 @@
 
 - `veyyon plugin uninstall <name>` of a plugin that was never installed now fails with exit 1 and "Plugin `<name>` is not installed" instead of printing a false "Uninstalled" success (`bun uninstall` exits 0 for a non-dependency).
 - Internal operation-timeout timers (LSP requests and diagnostics, glob walks, the debug and tts tools, MCP JSON-RPC calls, browser code runs, JS eval, credential probes) are now cancelled the moment their operation settles instead of staying armed until the deadline — the accumulated live timers were the trigger for a Bun concurrent-GC crash and wasted heap on every busy session.
-
 - Site scrapers (crates.io, GitHub, npm, PyPI, docs.rs, and ~65 more) that matched a URL but failed to scrape it (API error, response-shape drift, thrown exception) used to return the same null as a URL non-match, so fetch silently fell back to the generic HTML path with no trace of why. Failures now surface as a note on the fetch result ("crates-io scraper failed (HTTP 500); fell back to a generic fetch"), a handler exception can no longer take down the whole fetch, and probe-style handlers (Mastodon, Lemmy, Discourse) still stay quiet when a probe merely proves the site isn't theirs.
 - Piping veyyon output into a consumer that closes the pipe early (`veyyon ttsr list | head`) no longer crashes with `[Uncaught Exception] Error: EPIPE` and exit 1 — the CLI now treats a consumer-closed stdout as normal teardown and exits 0 quietly.
 - `veyyon say` error paths (missing `--file`, nothing speakable, synthesis failure) now exit 1 — they used to print the error but exit 0, so scripts could not detect failure. A missing `--file` also gets a contextual message instead of a raw ENOENT.
@@ -24,18 +28,6 @@
 - The did-you-mean guard for typo'd subcommands now also fires when flags are attached (`veyyon updte --print`, `veyyon --print updte`): a near-miss token that is the argv's only positional errors with suggestions instead of being sent to the model as a paid one-word prompt. Multi-word prompts, `@file` arguments, and everything after `--` are untouched.
 
 > **Fork notice.** Veyyon is a source fork of oh-my-pi ([can1357/oh-my-pi](https://github.com/can1357/oh-my-pi), MIT). Every version entry **at or below `16.5.2`** is inherited upstream oh-my-pi release history — not a veyyon release (see [UPSTREAM.md](../../UPSTREAM.md)). Veyyon's own release line starts at **`1.0.0`**.
-
-## [1.0.0] - 2026-07-17
-
-### Added
-
-- Added a `tui.paintGround` setting (Settings › Appearance › Display) that paints the terminal background (OSC 11) with the theme's ground color while Veyyon runs and restores it on exit, including crash exits. `auto` (default) paints only when the terminal's reported background already matches the theme so no seam appears; `always` and `never` override.
-- Added `VEYYON_STACK=1` to opt fatal CLI errors into the full inspected render; by default they now print the message and cause chain instead of a raw bundled-source frame dump.
-- `veyyon --help` now lists internal tool-testing surfaces (`gallery`, `grep`, `search`, `read`, `ttsr`, `grievances`, `dry-balance`) under a separate DIAGNOSTIC COMMANDS section so the main command list reads as the product surface.
-- Harness profiles accept `promptSectionOrder` to reorder the default system prompt's banner sections (`role`, `runtime`, `tool-policy`, `execution-workflow`, `delivery-contract`) per model; a list with an unknown name is rejected whole with a warning.
-
-### Fixed
-
 - `veyyon commit` now resolves an unavailable configured default model the same way the interactive session does: it substitutes an available model with a loud warning instead of failing with "No model available"; a configured smol model skipped for missing credentials also warns.
 - `veyyon commit` outside a git repository fails fast with a clear error and exit code 1 instead of dumping git's usage text, and a failure exit code set by the commit flow is no longer clobbered to 0.
 - Floating rejections from JS eval cells in the dedicated eval subprocess are attributed to the owning cell again instead of killing the worker (the global crash handler's fatal path preempted the eval runner's rejection guard).
@@ -11317,6 +11309,12 @@ Initial release under @oh-my-pi scope. See previous releases at [badlogic/pi-mon
 - Fixed Task tool progress display showing repeated nearly-identical lines during streaming
 - Fixed Task tool subprocess model selection ignoring agent's configured model and falling back to settings default. The `--model` flag now accepts `provider/model` format directly.
 - Fixed Task tool showing "done + succeeded" when aborted; now correctly displays "⊘ aborted" status
+
+## [1.0.0] - 2026-07-17
+
+### Added
+
+- Added a `tui.paintGround` setting (Settings › Appearance › Display) that paints the terminal background (OSC 11) with the theme's ground color while Veyyon runs and restores it on exit, including crash exits. `auto` (default) paints only when the terminal's reported background already matches the theme so no seam appears; `always` and `never` override.
 
 ## [0.50.1] - 2026-01-26
 
