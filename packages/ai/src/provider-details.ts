@@ -1,3 +1,4 @@
+import { trimTrailingSlashes } from "@veyyon/utils";
 import { getOpenAICodexTransportDetails, type OpenAICodexTransportDetails } from "./providers/openai-codex-responses";
 import type { Api, Model, Provider, ProviderSessionState } from "./types";
 
@@ -60,7 +61,7 @@ export function getProviderDetails(context: ProviderDetailsContext): ProviderDet
 function formatEndpoint(baseUrl: string): string {
 	try {
 		const parsed = new URL(baseUrl);
-		const path = parsed.pathname.replace(/\/$/, "");
+		const path = trimTrailingSlashes(parsed.pathname);
 		return `${parsed.origin}${path || "/"}`;
 	} catch {
 		return baseUrl;

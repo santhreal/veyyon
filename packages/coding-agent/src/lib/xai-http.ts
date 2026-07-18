@@ -1,7 +1,7 @@
 // Ported from NousResearch/hermes-agent (MIT) — tools/xai_http.py.
 
 import { getBundledModels } from "@veyyon/catalog/models";
-import { $env } from "@veyyon/utils";
+import { $env, trimTrailingSlashes } from "@veyyon/utils";
 import type { ModelRegistry } from "../config/model-registry";
 
 const DEFAULT_BASE_URL = "https://api.x.ai/v1";
@@ -60,16 +60,16 @@ function resolveXAIBaseURL(modelRegistry: ModelRegistry, provider: XAIProvider, 
 			);
 			const providerDefault = bundled?.baseUrl ?? DEFAULT_BASE_URL;
 			if (merged.baseUrl !== providerDefault) {
-				return merged.baseUrl.replace(/\/$/, "");
+				return trimTrailingSlashes(merged.baseUrl);
 			}
 		}
 	}
 	const providerBaseUrl = modelRegistry.getProviderBaseUrl(provider);
 	if (providerBaseUrl) {
-		const normalized = providerBaseUrl.replace(/\/$/, "");
+		const normalized = trimTrailingSlashes(providerBaseUrl);
 		if (normalized !== DEFAULT_BASE_URL) return normalized;
 	}
-	return ($env.XAI_BASE_URL || DEFAULT_BASE_URL).replace(/\/$/, "");
+	return trimTrailingSlashes($env.XAI_BASE_URL || DEFAULT_BASE_URL);
 }
 
 /**

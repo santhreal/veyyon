@@ -1,4 +1,4 @@
-import { tryParseJson } from "@veyyon/utils";
+import { trimTrailingSlashes, tryParseJson } from "@veyyon/utils";
 import type { RenderResult, SpecialHandler } from "./types";
 import { buildResult, formatIsoDate, htmlToBasicMarkdown, loadPage, tryParseUrl } from "./types";
 
@@ -43,7 +43,7 @@ const MAX_POSTS = 20;
 
 function normalizeBasePath(basePath: string): string {
 	if (!basePath || basePath === "/") return "";
-	return basePath.replace(/\/$/, "");
+	return trimTrailingSlashes(basePath);
 }
 
 function parseTopicPath(pathname: string): { basePath: string; topicId: string } | null {

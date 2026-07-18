@@ -6,6 +6,7 @@
 
 import { toBoolean, toNumber } from "@veyyon/catalog/utils";
 import { OPENCODE_HEADERS } from "@veyyon/catalog/wire/github-copilot";
+import { trimTrailingSlashes } from "@veyyon/utils";
 import * as AIError from "../error";
 import type {
 	UsageAmount,
@@ -59,12 +60,12 @@ type BillingUsageResponse = {
 };
 
 function resolveGitHubApiBaseUrl(params: UsageFetchParams): string {
-	const baseUrl = params.baseUrl?.replace(/\/$/, "");
+	const baseUrl = params.baseUrl ? trimTrailingSlashes(params.baseUrl) : undefined;
 	if (baseUrl && !baseUrl.includes("githubcopilot.com")) return baseUrl;
 	const enterpriseUrl = params.credential.enterpriseUrl?.trim();
 	if (!enterpriseUrl) return "https://api.github.com";
 	if (enterpriseUrl.startsWith("http://") || enterpriseUrl.startsWith("https://")) {
-		return enterpriseUrl.replace(/\/$/, "");
+		return trimTrailingSlashes(enterpriseUrl);
 	}
 	if (enterpriseUrl.startsWith("api.")) {
 		return `https://${enterpriseUrl}`;

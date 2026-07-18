@@ -1,3 +1,4 @@
+import { trimTrailingSlashes } from "@veyyon/utils";
 import { getGeminiCliHeaders } from "../providers/google-gemini-cli";
 import type {
 	UsageAmount,
@@ -206,7 +207,7 @@ export const googleGeminiCliUsageProvider: UsageProvider = {
 			return null;
 		}
 
-		const baseUrl = (params.baseUrl?.trim() || DEFAULT_ENDPOINT).replace(/\/$/, "");
+		const baseUrl = trimTrailingSlashes(params.baseUrl?.trim() || DEFAULT_ENDPOINT);
 
 		const loadResponse = await loadCodeAssist(params, ctx, accessToken, baseUrl, credential.projectId);
 		const projectId = credential.projectId ?? getProjectId(loadResponse);
