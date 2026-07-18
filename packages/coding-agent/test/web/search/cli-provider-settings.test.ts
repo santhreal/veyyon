@@ -100,7 +100,10 @@ afterEach(async () => {
 	resetSettingsForTest();
 	setPreferredSearchProvider("auto");
 	setExcludedSearchProviders([]);
-	process.exitCode = originalExitCode;
+	// Bun retains the last numeric process.exitCode across an undefined
+	// reassignment, so a captured-undefined original must coerce to 0 or a
+	// mid-test failure code would leak into the runner's exit status.
+	process.exitCode = originalExitCode ?? 0;
 	for (const key of WEB_SEARCH_ENV_KEYS) {
 		restoreEnv(key, originalEnv[key]);
 	}
