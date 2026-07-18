@@ -98,17 +98,30 @@ describe("non-TTY stdin contract (e2e)", () => {
 		expect(stderr).toContain("`veyyon config`");
 	}, 60_000);
 
-	it("`-p` with a piped prompt consumes it (reaches print mode) instead of silently exiting 0", async () => {
+	it("`-p` with a piped prompt consumes it (reaches the runner) instead of silently exiting 0", async () => {
 		const { done } = spawnCli(["-p"], new Blob(["Reply with exactly: ok\n"]));
 		const { stdout, stderr, exitCode } = await done;
 
-		// No credentials in the isolated agent dir, so the prompt itself fails —
-		// but the piped text must reach print mode: "Working..." is written
-		// before the initial prompt is sent, and the run must NOT succeed
-		// silently. Before the fix this exited 0 with zero output.
-		expect(stderr).toContain("Working...");
+		// The old bug: readPipedInput gated on `isTTY !== false`, so the pipe was
+		// silently discarded and the run exited 0 with zero output. Proof the pipe
+		// was consumed is environment-independent — it does NOT depend on the host
+		// having credentials, so this e2e stays hermetic whether or not the CI/dev
+		// environment exports a provider key: the "No prompt provided" gate fires
+		// ONLY when nothing reached the runner (checked before any model/session
+		// work), so a consumed prompt never trips it, and the run fails loudly
+		// rather than succeeding silently.
 		expect(exitCode).not.toBe(0);
+		expect(stderr).not.toContain("No prompt provided");
 		expect(stdout + stderr).not.toBe("");
+
+		// Whether a model resolved on this host decides WHICH loud failure follows.
+		// With no model available, the run stops at the no-models gate before print
+		// mode; with a model, it reaches print mode and "Working..." is written to
+		// stderr before the first prompt send. When it did reach print mode, assert
+		// that indicator so the print-mode path keeps its coverage.
+		if (!stderr.includes("No models available")) {
+			expect(stderr).toContain("Working...");
+		}
 	}, 120_000);
 
 	it("`-p` with no prompt anywhere errors with usage guidance instead of a silent 0-exit no-op", async () => {

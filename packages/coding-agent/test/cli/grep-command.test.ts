@@ -1,10 +1,11 @@
 /**
  * `veyyon grep` standalone command: content/count/files modes, glob filtering,
- * limit, and error exit codes over a real fixture tree, plus a characterization
- * lock on the engine's literal fallback for unparseable regexes (tracked in
- * BACKLOG GREP-LITERAL-FALLBACK-INVISIBLE — the fallback is deliberate but
- * currently invisible; this suite pins today's behavior so a future fix that
- * surfaces the demotion shows up as an intentional test change).
+ * limit, and error exit codes over a real fixture tree, plus a positive
+ * assertion that the engine's literal fallback for unparseable regexes is
+ * announced loudly (Law 10: no silent fallback — tracked in BACKLOG
+ * GREP-LITERAL-FALLBACK-INVISIBLE, now fixed). The demotion was previously
+ * silent; the CLI now prints a notice so the operator knows matches are literal
+ * text, not the regex they wrote.
  */
 import { describe, expect, it } from "bun:test";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
@@ -108,10 +109,10 @@ describe("veyyon grep", () => {
 		expect(stdout).toContain("sub/gamma.txt:1: fetchProvider(");
 	}, 30_000);
 
-	// Characterization: an unparseable regex is demoted to a literal search and
-	// reports 0 matches with exit 0 — no notice that the pattern was not used as
-	// a regex. See BACKLOG GREP-LITERAL-FALLBACK-INVISIBLE for the planned fix.
-	it("an unparseable regex currently falls back to a silent literal search", async () => {
+	// An unparseable regex (`[unclosed`) is demoted to a literal search. Recall is
+	// preserved — the literal text is still found — but the demotion is announced
+	// loudly, not silent (Law 10). See BACKLOG GREP-LITERAL-FALLBACK-INVISIBLE.
+	it("announces when an unparseable regex is demoted to a literal search", async () => {
 		const root = makeFixtureTree();
 		const literal = makeFixtureTree();
 		writeFileSync(path.join(literal, "delta.txt"), "prefix [unclosed suffix\n");
@@ -119,10 +120,15 @@ describe("veyyon grep", () => {
 		const miss = await runGrep(["[unclosed", root]);
 		expect(miss.exitCode).toBe(0);
 		expect(miss.stdout).toContain("Total matches: 0");
+		// The demotion is surfaced even when nothing matched.
+		expect(miss.stdout).toMatch(/did not compile as a regex/i);
+		expect(miss.stdout).toMatch(/searched literally/i);
 
 		const hit = await runGrep(["[unclosed", literal]);
 		expect(hit.exitCode).toBe(0);
 		expect(hit.stdout).toContain("Total matches: 1");
 		expect(hit.stdout).toContain("delta.txt:1: prefix [unclosed suffix");
+		// Same loud notice on the hit path.
+		expect(hit.stdout).toMatch(/did not compile as a regex/i);
 	}, 30_000);
 });

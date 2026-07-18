@@ -1110,6 +1110,11 @@ export class GrepTool implements AgentTool<typeof searchSchema, GrepToolDetails>
 					limitReached: false,
 				};
 				let skippedOversizedCount = 0;
+				// Set when native grep could not compile the pattern as a regex on
+				// either engine and demoted it to a literal search (Law 10: the
+				// demotion must not be silent). Same pattern across every sub-search,
+				// so the first non-empty notice is authoritative.
+				let literalFallbackError: string | undefined;
 				try {
 					if (searchablePaths.length > 0) {
 						if (exactFilePaths || multiTargets) {
@@ -1146,6 +1151,7 @@ export class GrepTool implements AgentTool<typeof searchSchema, GrepToolDetails>
 									undefined,
 								);
 								skippedOversizedCount += targetResult.skippedOversized ?? 0;
+								literalFallbackError ??= targetResult.patternTreatedAsLiteral ?? undefined;
 								limitReached = limitReached || Boolean(targetResult.limitReached);
 								totalMatches += targetResult.totalMatches;
 								filesSearched += targetResult.filesSearched;
@@ -1193,6 +1199,7 @@ export class GrepTool implements AgentTool<typeof searchSchema, GrepToolDetails>
 								undefined,
 							);
 							skippedOversizedCount = result.skippedOversized ?? 0;
+							literalFallbackError ??= result.patternTreatedAsLiteral ?? undefined;
 						}
 					}
 				} catch (err) {
@@ -1365,8 +1372,15 @@ export class GrepTool implements AgentTool<typeof searchSchema, GrepToolDetails>
 				const missingPathsForNote = missingPaths.filter(p => !archiveUnreadablePaths.has(p));
 				const missingPathsNote =
 					missingPathsForNote.length > 0 ? `Skipped missing paths: ${missingPathsForNote.join(", ")}` : undefined;
+				// The pattern did not compile as a regex on either engine, so native
+				// grep matched it literally instead of failing. Surface that loudly —
+				// a silent literal demotion hides the recall gap (regex metacharacters
+				// were matched as plain text). Listed first: it reframes every result.
+				const literalFallbackNote = literalFallbackError
+					? `Pattern did not compile as a regex (${literalFallbackError}); searched for it literally instead. Matches reflect the exact text, not the intended pattern — fix the regex or escape it if a literal search was intended.`
+					: undefined;
 				const warningNote =
-					[missingPathsNote, archiveNote, oversizedNote, oversizedScanNote]
+					[literalFallbackNote, missingPathsNote, archiveNote, oversizedNote, oversizedScanNote]
 						.filter((s): s is string => Boolean(s))
 						.join("\n") || undefined;
 				if (selectedMatches.length === 0) {

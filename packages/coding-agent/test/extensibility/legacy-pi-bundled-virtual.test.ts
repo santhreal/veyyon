@@ -52,8 +52,12 @@ describe("legacy-pi bundled virtual module synthesizer (issue #3423)", () => {
 	});
 
 	it("throws when asked to synthesize a key the bundled modules do not cover", () => {
+		// The bundled registry is keyed on the canonical `@veyyon/*` package
+		// names (see legacy-pi-virtual-module.ts: keys are `manifest.name/...`),
+		// so the lookup — and the error — echo the requested key verbatim with no
+		// `pi-` normalization (matched by the five passing cases above).
 		expect(() => __synthesizeLegacyPiBundledSourceWithModules("@veyyon/not-bundled", modules)).toThrow(
-			/no bundled module registered for @veyyon\/pi-not-bundled/,
+			/no bundled module registered for @veyyon\/not-bundled/,
 		);
 	});
 

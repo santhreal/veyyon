@@ -367,9 +367,19 @@ export function __buildLegacyPiPackageRootOverrides(
 	isCompiled: boolean,
 	bundledModuleKeys: Iterable<string> = [],
 ): Record<string, string> {
+	// Key each shim on BOTH naming eras (see VEYYON_PACKAGE_NAMES). A legacy
+	// alias like `@earendil-works/pi-ai` canonicalizes to `@veyyon/pi-ai`,
+	// but a plugin published against the post-rename canonical scope imports
+	// `@veyyon/ai` directly — `remapLegacyPiSpecifier` canonicalizes the scope
+	// yet preserves the basename, so `ai`/`coding-agent` never fold onto the
+	// `pi-*` keys. Without the canonical-basename entries those imports fall
+	// through to the real `@veyyon/ai`, which no longer exports the legacy
+	// `Type`/`StringEnum`/catalog surface (SyntaxError at extension load).
 	const candidates: Record<string, string> = {
 		[`${CANONICAL_PI_SCOPE}/pi-ai`]: LEGACY_PI_AI_SHIM_PATH,
+		[`${CANONICAL_PI_SCOPE}/ai`]: LEGACY_PI_AI_SHIM_PATH,
 		[`${CANONICAL_PI_SCOPE}/pi-coding-agent`]: LEGACY_PI_CODING_AGENT_SHIM_PATH,
+		[`${CANONICAL_PI_SCOPE}/coding-agent`]: LEGACY_PI_CODING_AGENT_SHIM_PATH,
 	};
 	if (isCompiled) {
 		for (const key of bundledModuleKeys) {
@@ -436,6 +446,37 @@ function getResolvedSpecifier(specifier: string): string {
 	return resolved;
 }
 
+// Canonical basenames a legacy `pi-*` alias collapses to: the entries in
+// VEYYON_PACKAGE_NAMES whose `pi-<name>` alias is also present. Derived (not
+// hand-listed) so the two eras stay in lockstep with a single source list.
+const CANONICAL_PI_BASENAMES: ReadonlySet<string> = new Set(
+	VEYYON_PACKAGE_NAMES.filter(name => !name.startsWith("pi-") && VEYYON_PACKAGE_NAMES.includes(`pi-${name}` as never)),
+);
+
+// Match the `pi-`-aliased basename in a canonical `@veyyon/pi-<pkg>[/subpath]`
+// specifier so filesystem resolution can target the real published package.
+const CANONICAL_PI_ALIAS_REGEX = new RegExp(`^(${CANONICAL_PI_SCOPE.replace("/", "\\/")}\\/)pi-([^/]+)(\\/.*)?$`);
+
+/**
+ * Collapse a `@veyyon/pi-<pkg>` alias down to its canonical `@veyyon/<pkg>`
+ * form for filesystem resolution. In the dev monorepo both names symlink to the
+ * same workspace folder, but a real `node_modules` install only ships the
+ * canonical `@veyyon/<pkg>` — the `pi-` alias is a source-tree-only artifact.
+ * Resolving the canonical name is therefore correct in both layouts. Only known
+ * bundled basenames are collapsed; anything else passes through untouched.
+ */
+function canonicalizePiPackageSpecifier(specifier: string): string {
+	const match = CANONICAL_PI_ALIAS_REGEX.exec(specifier);
+	if (!match) {
+		return specifier;
+	}
+	const [, scopePrefix, basename, subpath] = match;
+	if (!CANONICAL_PI_BASENAMES.has(basename)) {
+		return specifier;
+	}
+	return `${scopePrefix}${basename}${subpath ?? ""}`;
+}
+
 /**
  * Resolve a canonical `@veyyon/*` specifier to a filesystem path, preferring
  * a bundled compat shim when one is registered for the package root.
@@ -449,7 +490,10 @@ function resolveCanonicalPiSpecifier(remappedSpecifier: string): string {
 	if (override) {
 		return override;
 	}
-	return getResolvedSpecifier(remappedSpecifier);
+	// Non-shim packages resolve against the real published `@veyyon/<pkg>`, not
+	// the `pi-` dev-monorepo alias — so a node_modules install (which ships only
+	// the canonical name) resolves identically (issue #1474).
+	return getResolvedSpecifier(canonicalizePiPackageSpecifier(remappedSpecifier));
 }
 
 function toImportSpecifier(resolvedPath: string): string {

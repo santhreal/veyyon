@@ -3,6 +3,7 @@ import { stripVTControlCharacters } from "node:util";
 import { Settings, settings } from "@veyyon/coding-agent/config/settings";
 import { pickWeightedTip, WelcomeComponent } from "@veyyon/coding-agent/modes/components/welcome";
 import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
+import { TERMINAL } from "@veyyon/tui";
 
 function plain(lines: readonly string[]): string {
 	return lines.map(line => stripVTControlCharacters(line)).join("\n");
@@ -206,6 +207,13 @@ describe("WelcomeComponent degraded sun path (SUN-4)", () => {
 
 	it("plays the bloom timer when animations are enabled (positive twin)", () => {
 		settings.set("display.shimmer", "classic");
+		// The animated path is gated on `TERMINAL.trueColor` too (welcome.ts
+		// playIntro): a non-truecolor terminal takes the static degraded path and
+		// schedules no timer. CI runs on a non-truecolor TTY, so force truecolor
+		// here to assert the animated path deterministically rather than depend on
+		// the host terminal's capability. Restore it so no other test is affected.
+		const originalTrueColor = TERMINAL.trueColor;
+		Object.assign(TERMINAL, { trueColor: true });
 		const welcome = new WelcomeComponent("1.2.3", "gpt-5", "openai");
 		const intervalSpy = vi.spyOn(globalThis, "setInterval");
 		welcome.playIntro(() => {});
@@ -213,6 +221,7 @@ describe("WelcomeComponent degraded sun path (SUN-4)", () => {
 			expect(intervalSpy).toHaveBeenCalledTimes(1);
 		} finally {
 			welcome.stopIntro();
+			Object.assign(TERMINAL, { trueColor: originalTrueColor });
 		}
 	});
 });
