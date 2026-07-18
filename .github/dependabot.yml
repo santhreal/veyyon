@@ -1,0 +1,69 @@
+# Dependency-update automation for veyyon. Complements security.yml (which only
+# audits advisories) by actually opening the bump PRs. Three ecosystems, weekly,
+# with minor+patch grouped into one PR each to keep the queue small; majors come
+# as individual PRs so their breaking changes get reviewed in isolation.
+version: 2
+updates:
+  # JS/TS graph — the bun workspace root (package.json workspaces: packages/*,
+  # python/veybot/web, plus the pinned catalog). Dependabot reads bun.lock.
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "javascript"
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      js-minor-patch:
+        applies-to: version-updates
+        update-types:
+          - "minor"
+          - "patch"
+    ignore:
+      # First-party workspace packages are versioned by scripts/release.ts, not
+      # by dependency bumps — never let dependabot touch the @veyyon/* catalog pins.
+      - dependency-name: "@veyyon/*"
+
+  # Rust graph — the cargo workspace root (members: crates/veyyon-*, crates/vendor/*).
+  # Vendored crates are path deps, not registry deps, so dependabot leaves them
+  # alone; it only proposes updates to real registry dependencies.
+  - package-ecosystem: "cargo"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "rust"
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      cargo-minor-patch:
+        applies-to: version-updates
+        update-types:
+          - "minor"
+          - "patch"
+
+  # GitHub Actions pinned across .github/workflows and .github/actions.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "ci"
+    commit-message:
+      prefix: "chore(ci)"
+    groups:
+      actions-all:
+        applies-to: version-updates
+        update-types:
+          - "minor"
+          - "patch"
