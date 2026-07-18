@@ -1,5 +1,5 @@
 import type { SQLQueryBindings } from "bun:sqlite";
-import { errorMessage, logger } from "@veyyon/utils";
+import { collapseWhitespace, errorMessage, logger } from "@veyyon/utils";
 import { envInt } from "../../util/env";
 import { generateId, stableMemoryId } from "../../util/ids";
 import { aaakEncode } from "../aaak";
@@ -175,7 +175,7 @@ function aggregateEpisodicVeracity(sourceVeracities: readonly string[]): Episodi
 }
 
 function compactWhitespace(text: string): string {
-	return text.replace(/\s+/g, " ").trim();
+	return collapseWhitespace(text);
 }
 
 function contextSnippet(content: string, index: number, width = 50): string {
