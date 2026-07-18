@@ -40,16 +40,100 @@ async function originRepoSlug(): Promise<string> {
 // Shared functions
 // =============================================================================
 
+// The workflow (ci.yml `name:`) that carries the release chain
+// (release_binary → release_github → release_github_verify → release_npm). The
+// release outcome is gated on THIS workflow only: a sibling workflow
+// (Security, Docs, Checks) that fails on the same commit must neither mask a
+// successful publish nor abort the watch before the release chain finishes.
+const RELEASE_WORKFLOW_NAME = "CI";
+
+export interface WorkflowRun {
+	databaseId: number;
+	status: string; // "queued" | "in_progress" | "completed"
+	conclusion: string | null; // "success" | "failure" | "cancelled" | "skipped" | null
+	name: string; // workflow display name
+}
+
+export interface ReleaseGate {
+	// "pending": the release workflow is still running (or not started) — keep watching.
+	// "passed":  the release workflow finished green — the publish is done.
+	// "failed":  the release workflow finished non-green — the release failed.
+	state: "pending" | "passed" | "failed";
+	// Runs of the release-bearing workflow. When NO run matches the release
+	// workflow name (e.g. `release watch` on a non-release commit, or a fork
+	// that renamed the workflow) this falls back to ALL runs so the watcher
+	// still gates on something rather than reporting a vacuous pass.
+	releaseRuns: WorkflowRun[];
+	// Completed non-release runs that did NOT succeed. Surfaced loudly to the
+	// operator but they do NOT gate the release outcome.
+	siblingFailures: WorkflowRun[];
+	usedFallback: boolean;
+}
+
+// A completed run/job counts as a failure for any terminal conclusion that is
+// not success and not skipped (failure, cancelled, timed_out, action_required,
+// startup_failure, …). `null` only appears while still pending.
+function isFailureConclusion(conclusion: string | null): boolean {
+	return conclusion !== null && conclusion !== "success" && conclusion !== "skipped";
+}
+
+/**
+ * Decide the release outcome from the raw list of workflow runs for a commit.
+ * Pure (no IO) so it can be unit-tested against synthetic run sets; watchCI
+ * layers the gh log-tailing IO on top of this decision.
+ */
+export function decideReleaseGate(runs: WorkflowRun[], releaseWorkflow: string = RELEASE_WORKFLOW_NAME): ReleaseGate {
+	const matching = runs.filter(r => r.name === releaseWorkflow);
+	const usedFallback = matching.length === 0;
+	const releaseRuns = usedFallback ? runs : matching;
+	const siblingRuns = usedFallback ? [] : runs.filter(r => r.name !== releaseWorkflow);
+
+	const siblingFailures = siblingRuns.filter(r => r.status === "completed" && isFailureConclusion(r.conclusion));
+
+	let state: ReleaseGate["state"];
+	if (releaseRuns.some(r => r.status === "completed" && isFailureConclusion(r.conclusion))) {
+		state = "failed";
+	} else if (releaseRuns.length > 0 && releaseRuns.every(r => r.status === "completed")) {
+		state = "passed";
+	} else {
+		state = "pending";
+	}
+
+	return { state, releaseRuns, siblingFailures, usedFallback };
+}
+
 async function watchCI(): Promise<boolean> {
 	const commitSha = (await git(["rev-parse", "HEAD"]).text()).trim();
 	const repo = await originRepoSlug();
 	console.log(`  Commit: ${commitSha.slice(0, 8)} (${repo})`);
 
+	// Tail the last 20 lines of every failed job in a run (best-effort).
+	const reportFailedJobs = async (databaseId: number, workflow: string): Promise<void> => {
+		const jobsOutput = await $`gh run view -R ${repo} ${databaseId} --json jobs`.quiet().nothrow().text();
+		let jobs: Array<{ name: string; databaseId: number; status: string; conclusion: string | null }> = [];
+		try {
+			({ jobs } = JSON.parse(jobsOutput));
+		} catch {
+			return;
+		}
+		for (const job of jobs) {
+			if (job.status !== "completed" || !isFailureConclusion(job.conclusion)) continue;
+			console.error(`  - ${workflow} / ${job.name} (job ${job.databaseId}): ${job.conclusion ?? "unknown"}`);
+			const log = await $`gh run view -R ${repo} --job ${job.databaseId} --log-failed`.quiet().nothrow().text();
+			if (log.trim()) {
+				const tail = log.trimEnd().split("\n").slice(-20).join("\n");
+				console.error(`\n--- Last 20 lines of ${job.name} (job ${job.databaseId}) ---\n${tail}\n`);
+			}
+		}
+	};
+
+	// Only surface each sibling-workflow failure once across polls.
+	const warnedSiblings = new Set<string>();
+
 	while (true) {
 		const runsOutput =
 			await $`gh run list -R ${repo} --commit ${commitSha} --json databaseId,status,conclusion,name`.text();
-		const runs: Array<{ databaseId: number; status: string; conclusion: string | null; name: string }> =
-			JSON.parse(runsOutput);
+		const runs: WorkflowRun[] = JSON.parse(runsOutput);
 
 		if (runs.length === 0) {
 			console.log("  Waiting for CI to start...");
@@ -57,85 +141,63 @@ async function watchCI(): Promise<boolean> {
 			continue;
 		}
 
-		// Check job-level status for in-progress runs (fail fast on first job failure)
-		const failedJobs: Array<{ workflow: string; job: string; jobId: number; conclusion: string }> = [];
-		const inProgressRuns = runs.filter(r => r.status === "in_progress" || r.status === "queued");
+		const gate = decideReleaseGate(runs);
 
-		for (const run of inProgressRuns) {
+		// Fail fast within the release workflow: a completed-but-failed job in a
+		// still-running release run means the chain cannot publish, so stop early
+		// and tail the failure. Sibling runs are deliberately NOT scanned here.
+		const releaseInProgress = gate.releaseRuns.filter(r => r.status === "in_progress" || r.status === "queued");
+		for (const run of releaseInProgress) {
 			const jobsOutput = await $`gh run view -R ${repo} ${run.databaseId} --json jobs`.quiet().nothrow().text();
 			try {
 				const { jobs } = JSON.parse(jobsOutput) as {
-					jobs: Array<{ name: string; databaseId: number; status: string; conclusion: string | null }>;
+					jobs: Array<{ name: string; status: string; conclusion: string | null }>;
 				};
-				for (const job of jobs) {
-					if (job.status === "completed" && job.conclusion !== "success" && job.conclusion !== "skipped") {
-						failedJobs.push({
-							workflow: run.name,
-							job: job.name,
-							jobId: job.databaseId,
-							conclusion: job.conclusion ?? "unknown",
-						});
-					}
+				if (jobs.some(j => j.status === "completed" && isFailureConclusion(j.conclusion))) {
+					console.error("\nRelease CI job failed:");
+					await reportFailedJobs(run.databaseId, run.name);
+					return false;
 				}
 			} catch {
-				// Ignore parse errors
+				// Ignore parse errors; the run-level check below still gates.
 			}
 		}
 
-		if (failedJobs.length > 0) {
-			console.error("\nCI job failed:");
-			for (const f of failedJobs) {
-				console.error(`  - ${f.workflow} / ${f.job} (job ${f.jobId}): ${f.conclusion}`);
-				// Tail the failed job's log
-				const log = await $`gh run view -R ${repo} --job ${f.jobId} --log-failed`.quiet().nothrow().text();
-				if (log.trim()) {
-					const lines = log.trimEnd().split("\n");
-					const tail = lines.slice(-20).join("\n");
-					console.error(`\n--- Last 20 lines of ${f.job} ---\n${tail}\n`);
-				}
-			}
-			return false;
+		// Report newly-completed sibling failures loudly, but keep watching the
+		// release chain — they do not gate the publish.
+		for (const sibling of gate.siblingFailures) {
+			const key = `${sibling.name}#${sibling.databaseId}`;
+			if (warnedSiblings.has(key)) continue;
+			warnedSiblings.add(key);
+			console.error(`\n⚠ Non-release workflow failed (does NOT block publish, but fix it): ${sibling.name}`);
+			await reportFailedJobs(sibling.databaseId, sibling.name);
 		}
 
-		// Check workflow-level status
-		const pending = runs.filter(r => r.status !== "completed");
-		const failed = runs.filter(r => r.status === "completed" && r.conclusion !== "success");
-		const passed = runs.filter(r => r.status === "completed" && r.conclusion === "success");
+		const releasePending = gate.releaseRuns.filter(r => r.status !== "completed").length;
+		const releasePassed = gate.releaseRuns.filter(r => r.status === "completed" && r.conclusion === "success").length;
+		console.log(
+			`  release: ${releasePassed} passed, ${releasePending} pending` +
+				(gate.siblingFailures.length ? ` | ${gate.siblingFailures.length} sibling workflow(s) failing` : "") +
+				(gate.usedFallback ? " (no CI workflow matched; gating on all runs)" : ""),
+		);
 
-		console.log(`  ${passed.length} passed, ${pending.length} pending, ${failed.length} failed`);
-
-		if (failed.length > 0) {
-			console.error("\nCI failed:");
-			for (const r of failed) {
-				console.error(`  - ${r.name}: ${r.conclusion}`);
-				// Fetch failed jobs and tail their logs
-				const jobsOutput = await $`gh run view -R ${repo} ${r.databaseId} --json jobs`.quiet().nothrow().text();
-				try {
-					const { jobs } = JSON.parse(jobsOutput) as {
-						jobs: Array<{ name: string; databaseId: number; status: string; conclusion: string | null }>;
-					};
-					for (const job of jobs) {
-						if (job.conclusion !== "success" && job.conclusion !== "skipped") {
-							const log = await $`gh run view -R ${repo} --job ${job.databaseId} --log-failed`
-								.quiet()
-								.nothrow()
-								.text();
-							if (log.trim()) {
-								const lines = log.trimEnd().split("\n");
-								const tail = lines.slice(-20).join("\n");
-								console.error(`\n--- Last 20 lines of ${job.name} (job ${job.databaseId}) ---\n${tail}\n`);
-							}
-						}
-					}
-				} catch {
-					// Ignore parse errors
-				}
+		if (gate.state === "failed") {
+			console.error("\nRelease CI failed:");
+			for (const r of gate.releaseRuns.filter(r => r.status === "completed" && isFailureConclusion(r.conclusion))) {
+				await reportFailedJobs(r.databaseId, r.name);
 			}
 			return false;
 		}
 
-		if (pending.length === 0) {
-			console.log("  All CI checks passed!\n");
+		if (gate.state === "passed") {
+			if (gate.siblingFailures.length > 0) {
+				console.log(
+					`  Release chain passed. NOTE: ${gate.siblingFailures.length} non-release workflow(s) are red — ` +
+						`${gate.siblingFailures.map(s => s.name).join(", ")} — fix them, they don't block the publish.\n`,
+				);
+			} else {
+				console.log("  All CI checks passed!\n");
+			}
 			return true;
 		}
 
@@ -426,23 +488,27 @@ async function cmdRelease(versionOrBump: string): Promise<void> {
 // Main
 // =============================================================================
 
-const arg = process.argv[2];
+// Guard the CLI dispatch so importing this module (e.g. from release-watch.test.ts
+// to unit-test decideReleaseGate) does not execute the release/watch commands.
+if (import.meta.main) {
+	const arg = process.argv[2];
 
-if (!arg) {
-	console.error("Usage:");
-	console.error("  bun scripts/release.ts <version|major|minor|patch>   Full release");
-	console.error("  bun scripts/release.ts watch                         Watch CI for current commit");
-	process.exit(1);
-}
+	if (!arg) {
+		console.error("Usage:");
+		console.error("  bun scripts/release.ts <version|major|minor|patch>   Full release");
+		console.error("  bun scripts/release.ts watch                         Watch CI for current commit");
+		process.exit(1);
+	}
 
-if (arg === "watch") {
-	await cmdWatch();
-} else if (arg === "major" || arg === "minor" || arg === "patch" || /^\d+\.\d+\.\d+$/.test(arg)) {
-	await cmdRelease(arg);
-} else {
-	console.error(`Unknown command or invalid version: ${arg}`);
-	console.error("Usage:");
-	console.error("  bun scripts/release.ts <version|major|minor|patch>   Full release");
-	console.error("  bun scripts/release.ts watch                         Watch CI for current commit");
-	process.exit(1);
+	if (arg === "watch") {
+		await cmdWatch();
+	} else if (arg === "major" || arg === "minor" || arg === "patch" || /^\d+\.\d+\.\d+$/.test(arg)) {
+		await cmdRelease(arg);
+	} else {
+		console.error(`Unknown command or invalid version: ${arg}`);
+		console.error("Usage:");
+		console.error("  bun scripts/release.ts <version|major|minor|patch>   Full release");
+		console.error("  bun scripts/release.ts watch                         Watch CI for current commit");
+		process.exit(1);
+	}
 }
