@@ -55,7 +55,11 @@ describe("veyyon commit command lifecycle (issue #1041)", () => {
 			await command.run();
 			expect(quitSpy).toHaveBeenCalledWith(1);
 		} finally {
-			process.exitCode = originalExitCode;
+			// Bun keeps the last numeric process.exitCode even when reassigned
+			// undefined (unlike Node), so restoring a captured-undefined original
+			// would leak this test's `1` into the runner's own exit code. Coerce
+			// to 0 so a clean pre-test state stays a clean exit.
+			process.exitCode = originalExitCode ?? 0;
 		}
 	});
 
@@ -100,7 +104,9 @@ describe("veyyon commit outside a git repository", () => {
 		} finally {
 			stderrSpy.mockRestore();
 			setProjectDir(originalProjectDir);
-			process.exitCode = originalExitCode;
+			// See the note above: reassigning undefined does not clear a numeric
+			// exit code under bun, so coerce a captured-undefined original to 0.
+			process.exitCode = originalExitCode ?? 0;
 			await fs.rm(tempDir, { recursive: true, force: true });
 		}
 	});

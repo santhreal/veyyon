@@ -39,7 +39,10 @@ afterEach(async () => {
 	stdoutSpy = undefined;
 	stderrSpy?.mockRestore();
 	stderrSpy = undefined;
-	process.exitCode = originalExitCode;
+	// Bun keeps the last numeric process.exitCode even when reassigned
+	// undefined, so coerce a captured-undefined original to 0 to avoid leaking
+	// a test's failure code into the runner's exit status.
+	process.exitCode = originalExitCode ?? 0;
 	restoreSettingsTestState(settingsState);
 	settingsState = undefined;
 	await fs.rm(root, { recursive: true, force: true });
