@@ -12,15 +12,9 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { isEnoent } from "@veyyon/utils";
 import { getActiveSkills } from "../extensibility/skills";
+import { getContentType } from "./content-type";
 import { buildDirectoryResource } from "./filesystem-resource";
 import type { InternalResource, InternalUrl, ProtocolHandler, ResolveContext, UrlCompletion } from "./types";
-
-function getContentType(filePath: string): InternalResource["contentType"] {
-	const ext = path.extname(filePath).toLowerCase();
-	if (ext === ".md") return "text/markdown";
-	if (ext === ".json") return "application/json";
-	return "text/plain";
-}
 
 /**
  * Validate that a path is safe (no traversal, no absolute paths).
