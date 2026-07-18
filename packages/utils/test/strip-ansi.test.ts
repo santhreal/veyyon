@@ -1,8 +1,8 @@
 /**
  * SPEC-ONE-PLACE-AUDIT F6: single canonical `stripAnsi` (CSI+OSC superset)
- * imported by `tiny/message-preproc.ts` and the coding-agent
- * `export/html/tool-render/util.ts`, replacing two divergent copies (one
- * SGR-only, two byte-identical CSI+OSC forks).
+ * imported by `tiny/message-preproc.ts` and the browser-bundled
+ * `@veyyon/tool-render` (via `src/util.ts`), replacing two divergent copies
+ * (one SGR-only, two byte-identical CSI+OSC forks).
  */
 import { describe, expect, it } from "bun:test";
 import { stripAnsi } from "@veyyon/utils/strip-ansi";
