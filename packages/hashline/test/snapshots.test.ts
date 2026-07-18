@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { computeFileHash, InMemorySnapshotStore } from "@veyyon/hashline";
+import { computeFileHash, InMemorySnapshotStore, type Snapshot, SnapshotStore } from "@veyyon/hashline";
 
 const PATH = "/tmp/__hashline-snapshots__.ts";
 const OTHER = "/tmp/__hashline-other__.ts";
@@ -151,5 +151,50 @@ describe("InMemorySnapshotStore", () => {
 			expect(store.byContent(PATH, COLLIDE_A)?.seenLines).toEqual(new Set([1, 2]));
 			expect(store.byContent(PATH, COLLIDE_B)).toBeNull();
 		});
+	});
+});
+
+describe("InMemorySnapshotStore.recordSeenLines", () => {
+	it("merges lines into the version matching path+hash", () => {
+		const store = new InMemorySnapshotStore();
+		const hash = store.record(PATH, "a\nb\nc\n", [1]);
+		store.recordSeenLines(PATH, hash, [2, 3]);
+		const snap = store.byHash(PATH, hash);
+		expect(snap).not.toBeNull();
+		expect([...(snap?.seenLines ?? [])].sort((x, y) => x - y)).toEqual([1, 2, 3]);
+	});
+
+	it("is a no-op (no throw) when no version matches the hash", () => {
+		const store = new InMemorySnapshotStore();
+		store.record(PATH, "a\nb\n", [1]);
+		expect(() => store.recordSeenLines(PATH, "FFFF", [9])).not.toThrow();
+	});
+});
+
+// A degenerate store that holds nothing and cannot enumerate its contents. It
+// deliberately does NOT override findByHash, exercising the base class default
+// that disables hash-based path recovery.
+class StatelessNullStore extends SnapshotStore {
+	head(): Snapshot | null {
+		return null;
+	}
+	byHash(): Snapshot | null {
+		return null;
+	}
+	byContent(): Snapshot | null {
+		return null;
+	}
+	record(_path: string, fullText: string): string {
+		return computeFileHash(fullText);
+	}
+	recordSeenLines(): void {}
+	invalidate(): void {}
+	relocate(): void {}
+	clear(): void {}
+}
+
+describe("SnapshotStore base default", () => {
+	it("findByHash returns no matches (recovery disabled unless a subclass enumerates)", () => {
+		expect(new StatelessNullStore().findByHash("ABCD")).toEqual([]);
 	});
 });
