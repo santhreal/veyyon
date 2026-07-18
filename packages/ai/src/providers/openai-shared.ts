@@ -2999,3 +2999,18 @@ export function buildResponsesDeltaInput<TItem extends ResponseInputItem | Input
 	}
 	return current.input.slice(index) as TItem[];
 }
+
+/**
+ * The OpenAI-compatible error envelope, shared by the OpenAI Responses and
+ * Chat Completions server modules — both emit byte-identical `{ error: {
+ * message, type } }` bodies, so the shape lives here once to keep the two
+ * `formatError` implementations from drifting. Anthropic and pi-native use
+ * their own envelopes (top-level `type: "error"`, no-store cache header) and
+ * deliberately do NOT share this.
+ */
+export function formatOpenAiError(status: number, type: string, message: string): Response {
+	return new Response(JSON.stringify({ error: { message, type } }), {
+		status,
+		headers: { "Content-Type": "application/json" },
+	});
+}

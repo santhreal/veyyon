@@ -33,7 +33,7 @@ import {
 	type OpenAIResponsesTool,
 	openaiResponsesRequestSchema,
 } from "./openai-responses-server-schema";
-import { encodeTextSignatureV1, parseTextSignature } from "./openai-shared";
+import { encodeTextSignatureV1, formatOpenAiError, parseTextSignature } from "./openai-shared";
 
 export type { ParsedRequest };
 
@@ -517,10 +517,7 @@ function findToolNameById(messages: Message[], callId: string): string {
 // ─── formatError ────────────────────────────────────────────────────────────
 
 export function formatError(status: number, type: string, message: string): Response {
-	return new Response(JSON.stringify({ error: { message, type } }), {
-		status,
-		headers: { "Content-Type": "application/json" },
-	});
+	return formatOpenAiError(status, type, message);
 }
 
 // ─── output item builders (shared by streaming + non-streaming encoders) ────

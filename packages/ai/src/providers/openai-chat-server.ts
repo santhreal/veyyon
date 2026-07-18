@@ -30,6 +30,7 @@ import {
 	type OpenAIChatToolChoice,
 	openaiChatRequestSchema,
 } from "./openai-chat-server-schema";
+import { formatOpenAiError } from "./openai-shared";
 
 export type { ParsedRequest };
 
@@ -716,8 +717,5 @@ export function encodeStream(
  * Matches the shape the official SDK auto-parses into `APIError`.
  */
 export function formatError(status: number, type: string, message: string): Response {
-	return new Response(JSON.stringify({ error: { message, type } }), {
-		status,
-		headers: { "Content-Type": "application/json" },
-	});
+	return formatOpenAiError(status, type, message);
 }
