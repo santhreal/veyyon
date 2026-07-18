@@ -1,5 +1,5 @@
 /** `glob` (legacy `find`) — glob-based file finder; results are paths sorted by mtime. */
-import { formatCount } from "@veyyon/utils";
+import { formatCount } from "@veyyon/utils/format";
 import type { ReactNode } from "react";
 import { Badge, Badges, InvalidArg, Note, ResultText } from "../parts";
 import type { ToolRenderer, ToolRenderProps } from "../types";
