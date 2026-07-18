@@ -1,6 +1,7 @@
 import { type Api, type ApiKey, assistantText, completeSimple, type FetchImpl, type Model, withAuth } from "@veyyon/ai";
 import { ProviderHttpError } from "@veyyon/ai/error";
-import { withScopedTimeoutSignal } from "@veyyon/utils";
+import { estimateTokensFromText, withScopedTimeoutSignal } from "@veyyon/utils";
+import { envInt } from "../util/env";
 import { type CompleteOptions, callHostLlm, getHostLlmBackend } from "./llm-backends";
 import {
 	getMnemopiRuntimeOptions,
@@ -42,11 +43,6 @@ function activePiAiModel(): Model<Api> | undefined {
 function envBool(name: string, defaultValue: boolean): boolean {
 	const value = env(name).trim().toLowerCase();
 	return value === "" ? defaultValue : TRUE_VALUES[value] === true;
-}
-
-function envInt(name: string, defaultValue: number): number {
-	const parsed = Number.parseInt(env(name), 10);
-	return Number.isFinite(parsed) ? parsed : defaultValue;
 }
 
 function stripTrailingSlash(value: string): string {
@@ -247,10 +243,6 @@ export function cleanOutput(text: string): string {
 		.trim();
 }
 
-function estimateTokens(text: string): number {
-	return Math.max(1, Math.floor(text.length / 4));
-}
-
 function promptTokenBudget(): number {
 	const overhead = 80;
 	const nCtx = hostBackendWillHandleCall() ? hostLlmContextTokens() : llmContextTokens();
@@ -274,12 +266,12 @@ export function chunkMemoriesByBudget(memories: readonly string[], source = ""):
 	if (source !== "") {
 		header += ` Source: ${source}.`;
 	}
-	const headerTokens = estimateTokens(`${header}\n\n`);
-	const formatOverhead = estimateTokens("- \n");
+	const headerTokens = estimateTokensFromText(`${header}\n\n`);
+	const formatOverhead = estimateTokensFromText("- \n");
 	const available = budget - headerTokens;
 
 	for (const memory of memories) {
-		const memTokens = estimateTokens(memory) + formatOverhead;
+		const memTokens = estimateTokensFromText(memory) + formatOverhead;
 		if (memTokens > budget) {
 			continue;
 		}
