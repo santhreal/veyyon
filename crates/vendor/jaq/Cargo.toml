@@ -13,7 +13,7 @@ jaq-core = "2.1.1"
 jaq-std = "2.1.0"
 jaq-json = "1.1.1"
 
-codesnake = "0.2"
+codesnake = "0.3"
 hifijson = "0.2.0"
 memmap2 = "0.9"
 tempfile = "3.3.0"
