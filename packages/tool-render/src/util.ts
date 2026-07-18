@@ -5,6 +5,7 @@
  * (bypasses the Node-heavy package barrel) so this file stays safe to bundle
  * for the browser — see BACKLOG SPEC-ONE-PLACE-AUDIT F6.
  */
+import { collapseWhitespace } from "@veyyon/utils/collapse-whitespace";
 import { stripAnsi } from "@veyyon/utils/strip-ansi";
 import { isRecord } from "@veyyon/utils/type-guards";
 import type { ToolResultImage, ToolResultLike } from "./types";
@@ -78,7 +79,7 @@ export function truncate(s: string, maxLen = 100): string {
 
 /** Collapse all whitespace runs to single spaces (for one-line summaries). */
 export function normalizeWs(s: string): string {
-	return s.replace(/\s+/g, " ").trim();
+	return collapseWhitespace(s);
 }
 
 export function replaceTabs(s: string): string {

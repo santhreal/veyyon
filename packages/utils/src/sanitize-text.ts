@@ -38,19 +38,6 @@ function sanitizeWellFormedText(text: string): string {
 }
 
 /**
- * Collapse every run of whitespace (spaces, tabs, newlines, CR) to a single
- * space and trim the ends. `null`/`undefined` yield an empty string.
- *
- * The one repo-wide owner of the `(x ?? "").replace(/\s+/g, " ").trim()`
- * idiom that flattens multi-line or messily-spaced text onto a single line —
- * HTML-scraped result text, transcript previews, status-line headers, commit
- * summaries. Import this instead of re-inlining the regex.
- */
-export function collapseWhitespace(value: string | null | undefined): string {
-	return (value ?? "").replace(/\s+/g, " ").trim();
-}
-
-/**
  * Escape the three XML-significant characters (`&`, `<`, `>`) in text destined
  * for an XML/markup element body. Allocation-conscious: returns the input
  * unchanged (same reference) when nothing needs escaping. Quotes are left as-is
