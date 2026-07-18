@@ -6,8 +6,8 @@
  * and must not reuse this name.
  *
  * Dependency-free by design: imported both from Node/Bun contexts and from
- * browser-bundled renderers (`export/html/tool-render`), so this file must
- * never pull in Node built-ins.
+ * browser-bundled renderers (`@veyyon/tool-render`, via its `src/util.ts`), so
+ * this file must never pull in Node built-ins.
  */
 const ANSI_RE = /\x1b(?:\[[0-9;?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\))/g;
 
