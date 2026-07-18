@@ -2,43 +2,6 @@
 
 ## [Unreleased]
 
-## [1.0.1] - 2026-07-18
-
-### Added
-
-- `veyyon say --voices` lists every local TTS model and voice (with the current selection marked), and `--model` now validates against the catalog at parse time instead of failing later with an opaque synthesis error.
-- `veyyon say` reads piped stdin when no text argument or `--file` is given (`git log -1 --format=%s | veyyon say`).
-- Added `VEYYON_STACK=1` to opt fatal CLI errors into the full inspected render; by default they now print the message and cause chain instead of a raw bundled-source frame dump.
-- `veyyon --help` now lists internal tool-testing surfaces (`gallery`, `grep`, `search`, `read`, `ttsr`, `grievances`, `dry-balance`) under a separate DIAGNOSTIC COMMANDS section so the main command list reads as the product surface.
-- Harness profiles accept `promptSectionOrder` to reorder the default system prompt's banner sections (`role`, `runtime`, `tool-policy`, `execution-workflow`, `delivery-contract`) per model; a list with an unknown name is rejected whole with a warning.
-
-### Changed
-
-- `veyyon gc` sizes now use the product-wide byte format (`1.5KB`, binary units) instead of its own `1.5 KiB` style.
-- `veyyon config list --json` and `config get --json` now emit an explicit `"value": null` for unset settings instead of dropping the key entirely (JSON.stringify eats `undefined`), so machine consumers always see the full shape.
-
-### Fixed
-
-- `veyyon plugin uninstall <name>` of a plugin that was never installed now fails with exit 1 and "Plugin `<name>` is not installed" instead of printing a false "Uninstalled" success (`bun uninstall` exits 0 for a non-dependency).
-- Internal operation-timeout timers (LSP requests and diagnostics, glob walks, the debug and tts tools, MCP JSON-RPC calls, browser code runs, JS eval, credential probes) are now cancelled the moment their operation settles instead of staying armed until the deadline — the accumulated live timers were the trigger for a Bun concurrent-GC crash and wasted heap on every busy session.
-- Site scrapers (crates.io, GitHub, npm, PyPI, docs.rs, and ~65 more) that matched a URL but failed to scrape it (API error, response-shape drift, thrown exception) used to return the same null as a URL non-match, so fetch silently fell back to the generic HTML path with no trace of why. Failures now surface as a note on the fetch result ("crates-io scraper failed (HTTP 500); fell back to a generic fetch"), a handler exception can no longer take down the whole fetch, and probe-style handlers (Mastodon, Lemmy, Discourse) still stay quiet when a probe merely proves the site isn't theirs.
-- Piping veyyon output into a consumer that closes the pipe early (`veyyon ttsr list | head`) no longer crashes with `[Uncaught Exception] Error: EPIPE` and exit 1 — the CLI now treats a consumer-closed stdout as normal teardown and exits 0 quietly.
-- `veyyon say` error paths (missing `--file`, nothing speakable, synthesis failure) now exit 1 — they used to print the error but exit 0, so scripts could not detect failure. A missing `--file` also gets a contextual message instead of a raw ENOENT.
-- An interrupted first TTS model download no longer breaks `veyyon say` forever. A truncated weight file in the tiny-models cache used to fail every later load ("Protobuf parsing failed") until the cache was deleted by hand; the worker now purges and re-downloads corrupt weights, and the client restarts the worker subprocess and replays the stream — one-shot synthesis (the agent `tts` tool) retries the same way (the corrupt bytes stay memoized in the failed process, so only a fresh one recovers). Recovery is transparent when no audio was delivered yet, retried once, and logged loudly.
-- The did-you-mean guard for typo'd subcommands now also fires when flags are attached (`veyyon updte --print`, `veyyon --print updte`): a near-miss token that is the argv's only positional errors with suggestions instead of being sent to the model as a paid one-word prompt. Multi-word prompts, `@file` arguments, and everything after `--` are untouched.
-
-> **Fork notice.** Veyyon is a source fork of oh-my-pi ([can1357/oh-my-pi](https://github.com/can1357/oh-my-pi), MIT). Every version entry **at or below `16.5.2`** is inherited upstream oh-my-pi release history — not a veyyon release (see [UPSTREAM.md](../../UPSTREAM.md)). Veyyon's own release line starts at **`1.0.0`**.
-- `veyyon commit` now resolves an unavailable configured default model the same way the interactive session does: it substitutes an available model with a loud warning instead of failing with "No model available"; a configured smol model skipped for missing credentials also warns.
-- `veyyon commit` outside a git repository fails fast with a clear error and exit code 1 instead of dumping git's usage text, and a failure exit code set by the commit flow is no longer clobbered to 0.
-- Floating rejections from JS eval cells in the dedicated eval subprocess are attributed to the owning cell again instead of killing the worker (the global crash handler's fatal path preempted the eval runner's rejection guard).
-- Profile agent `.env` values are loaded before CLI command modules import environment state again (an eager barrel import in the pre-profile graph snapshotted the default agent's `.env`).
-- `veyyon plugin upgrade`, `plugin marketplace`, and `plugin discover` work again: the command's action list had drifted from the handler's and rejected them at the argv boundary.
-- `veyyon stats -j` keeps stdout as a pure JSON document; the sync progress lines moved to stderr so `veyyon stats -j | jq` parses.
-- `veyyon search` and `veyyon gallery` emit plain text when stdout is a pipe or redirect (or `NO_COLOR` is set) instead of raw truecolor escapes.
-- Running `veyyon <typo'd subcommand>` without a terminal now says the positional args were treated as a prompt, gives the exact `-p` rerun, and suggests the nearest subcommand — instead of the misleading "no prompt was piped in".
-- `veyyon update --check` failures name the registry URL and HTTP status, add a hint for unpublished packages and rate limits, and no longer double the "Error:" prefix.
-- `veyyon say` and `veyyon setup` model-download progress no longer floods a redirected stderr/stdout with carriage-return rewrite frames; non-TTY streams get one plain line per file per 25% step.
-
 ## [16.5.2] - 2026-07-14
 
 ### Breaking Changes
@@ -11309,6 +11272,43 @@ Initial release under @oh-my-pi scope. See previous releases at [badlogic/pi-mon
 - Fixed Task tool progress display showing repeated nearly-identical lines during streaming
 - Fixed Task tool subprocess model selection ignoring agent's configured model and falling back to settings default. The `--model` flag now accepts `provider/model` format directly.
 - Fixed Task tool showing "done + succeeded" when aborted; now correctly displays "⊘ aborted" status
+
+## [1.0.1] - 2026-07-18
+
+### Added
+
+- `veyyon say --voices` lists every local TTS model and voice (with the current selection marked), and `--model` now validates against the catalog at parse time instead of failing later with an opaque synthesis error.
+- `veyyon say` reads piped stdin when no text argument or `--file` is given (`git log -1 --format=%s | veyyon say`).
+- Added `VEYYON_STACK=1` to opt fatal CLI errors into the full inspected render; by default they now print the message and cause chain instead of a raw bundled-source frame dump.
+- `veyyon --help` now lists internal tool-testing surfaces (`gallery`, `grep`, `search`, `read`, `ttsr`, `grievances`, `dry-balance`) under a separate DIAGNOSTIC COMMANDS section so the main command list reads as the product surface.
+- Harness profiles accept `promptSectionOrder` to reorder the default system prompt's banner sections (`role`, `runtime`, `tool-policy`, `execution-workflow`, `delivery-contract`) per model; a list with an unknown name is rejected whole with a warning.
+
+### Changed
+
+- `veyyon gc` sizes now use the product-wide byte format (`1.5KB`, binary units) instead of its own `1.5 KiB` style.
+- `veyyon config list --json` and `config get --json` now emit an explicit `"value": null` for unset settings instead of dropping the key entirely (JSON.stringify eats `undefined`), so machine consumers always see the full shape.
+
+### Fixed
+
+- `veyyon plugin uninstall <name>` of a plugin that was never installed now fails with exit 1 and "Plugin `<name>` is not installed" instead of printing a false "Uninstalled" success (`bun uninstall` exits 0 for a non-dependency).
+- Internal operation-timeout timers (LSP requests and diagnostics, glob walks, the debug and tts tools, MCP JSON-RPC calls, browser code runs, JS eval, credential probes) are now cancelled the moment their operation settles instead of staying armed until the deadline — the accumulated live timers were the trigger for a Bun concurrent-GC crash and wasted heap on every busy session.
+- Site scrapers (crates.io, GitHub, npm, PyPI, docs.rs, and ~65 more) that matched a URL but failed to scrape it (API error, response-shape drift, thrown exception) used to return the same null as a URL non-match, so fetch silently fell back to the generic HTML path with no trace of why. Failures now surface as a note on the fetch result ("crates-io scraper failed (HTTP 500); fell back to a generic fetch"), a handler exception can no longer take down the whole fetch, and probe-style handlers (Mastodon, Lemmy, Discourse) still stay quiet when a probe merely proves the site isn't theirs.
+- Piping veyyon output into a consumer that closes the pipe early (`veyyon ttsr list | head`) no longer crashes with `[Uncaught Exception] Error: EPIPE` and exit 1 — the CLI now treats a consumer-closed stdout as normal teardown and exits 0 quietly.
+- `veyyon say` error paths (missing `--file`, nothing speakable, synthesis failure) now exit 1 — they used to print the error but exit 0, so scripts could not detect failure. A missing `--file` also gets a contextual message instead of a raw ENOENT.
+- An interrupted first TTS model download no longer breaks `veyyon say` forever. A truncated weight file in the tiny-models cache used to fail every later load ("Protobuf parsing failed") until the cache was deleted by hand; the worker now purges and re-downloads corrupt weights, and the client restarts the worker subprocess and replays the stream — one-shot synthesis (the agent `tts` tool) retries the same way (the corrupt bytes stay memoized in the failed process, so only a fresh one recovers). Recovery is transparent when no audio was delivered yet, retried once, and logged loudly.
+- The did-you-mean guard for typo'd subcommands now also fires when flags are attached (`veyyon updte --print`, `veyyon --print updte`): a near-miss token that is the argv's only positional errors with suggestions instead of being sent to the model as a paid one-word prompt. Multi-word prompts, `@file` arguments, and everything after `--` are untouched.
+
+> **Fork notice.** Veyyon is a source fork of oh-my-pi ([can1357/oh-my-pi](https://github.com/can1357/oh-my-pi), MIT). Every version entry **at or below `16.5.2`** is inherited upstream oh-my-pi release history — not a veyyon release (see [UPSTREAM.md](../../UPSTREAM.md)). Veyyon's own release line starts at **`1.0.0`**.
+- `veyyon commit` now resolves an unavailable configured default model the same way the interactive session does: it substitutes an available model with a loud warning instead of failing with "No model available"; a configured smol model skipped for missing credentials also warns.
+- `veyyon commit` outside a git repository fails fast with a clear error and exit code 1 instead of dumping git's usage text, and a failure exit code set by the commit flow is no longer clobbered to 0.
+- Floating rejections from JS eval cells in the dedicated eval subprocess are attributed to the owning cell again instead of killing the worker (the global crash handler's fatal path preempted the eval runner's rejection guard).
+- Profile agent `.env` values are loaded before CLI command modules import environment state again (an eager barrel import in the pre-profile graph snapshotted the default agent's `.env`).
+- `veyyon plugin upgrade`, `plugin marketplace`, and `plugin discover` work again: the command's action list had drifted from the handler's and rejected them at the argv boundary.
+- `veyyon stats -j` keeps stdout as a pure JSON document; the sync progress lines moved to stderr so `veyyon stats -j | jq` parses.
+- `veyyon search` and `veyyon gallery` emit plain text when stdout is a pipe or redirect (or `NO_COLOR` is set) instead of raw truecolor escapes.
+- Running `veyyon <typo'd subcommand>` without a terminal now says the positional args were treated as a prompt, gives the exact `-p` rerun, and suggests the nearest subcommand — instead of the misleading "no prompt was piped in".
+- `veyyon update --check` failures name the registry URL and HTTP status, add a hint for unpublished packages and rate limits, and no longer double the "Error:" prefix.
+- `veyyon say` and `veyyon setup` model-download progress no longer floods a redirected stderr/stdout with carriage-return rewrite frames; non-TTY streams get one plain line per file per 25% step.
 
 ## [1.0.0] - 2026-07-17
 
