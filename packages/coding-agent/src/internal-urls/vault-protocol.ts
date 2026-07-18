@@ -3,6 +3,7 @@ import * as path from "node:path";
 import { $which, formatCount, isEnoent } from "@veyyon/utils";
 import { isSettingsInitialized, settings } from "../config/settings";
 import { getDefault } from "../config/settings-schema";
+import { getContentType } from "./content-type";
 import { parseInternalUrl } from "./parse";
 import { validateRelativePath } from "./skill-protocol";
 import type { InternalResource, InternalUrl, ProtocolHandler, ResolveContext, WriteContext } from "./types";
@@ -111,13 +112,6 @@ const cachedVaultInfo = new Map<string, string>();
 function toVaultValidationError(error: unknown): Error {
 	const message = error instanceof Error ? error.message : String(error);
 	return new Error(message.replace("skill://", "vault://"));
-}
-
-function getContentType(filePath: string): ContentType {
-	const ext = path.extname(filePath).toLowerCase();
-	if (ext === ".md") return "text/markdown";
-	if (ext === ".json") return "application/json";
-	return "text/plain";
 }
 
 function ensureWithinRoot(targetPath: string, rootPath: string): void {

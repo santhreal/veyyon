@@ -3,6 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { formatBytes, formatCount, isEnoent } from "@veyyon/utils";
 import { AgentRegistry } from "../registry/agent-registry";
+import { getContentType } from "./content-type";
 import { buildDirectoryResource } from "./filesystem-resource";
 import { parseInternalUrl } from "./parse";
 import { validateRelativePath } from "./skill-protocol";
@@ -40,13 +41,6 @@ function shortLocalRoot(options: LocalProtocolOptions): string {
 	// so `SessionManager.moveTo()` and the resume-after-move flow keep finding
 	// the same `local://` directory the session wrote pre-move.
 	return path.join(os.tmpdir(), "veyyon-local", safeSessionId(options));
-}
-
-function getContentType(filePath: string): InternalResource["contentType"] {
-	const ext = path.extname(filePath).toLowerCase();
-	if (ext === ".md") return "text/markdown";
-	if (ext === ".json") return "application/json";
-	return "text/plain";
 }
 
 const LOCAL_TEXT_SNIFF_BYTES = 8 * 1024;
