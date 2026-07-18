@@ -101,14 +101,6 @@ const ERRORMESSAGE_GRANDFATHERED = new Set<string>([]);
 // keep local ternaries deliberately). Convert a file, remove its entry. Shrink-only.
 const INLINE_ERRORMESSAGE_GRANDFATHERED = new Set([
 	"agent/src/compaction/compaction-v2-streaming.ts",
-	"ai/src/auth-gateway/server.ts",
-	"ai/src/auth-storage.ts",
-	"ai/src/providers/anthropic-messages-server.ts",
-	"ai/src/providers/anthropic.ts",
-	"ai/src/providers/gitlab-duo-workflow.ts",
-	"ai/src/providers/openai-codex-responses.ts",
-	"ai/src/providers/openai-responses-server.ts",
-	"ai/src/providers/pi-native-server.ts",
 	"coding-agent/src/autoresearch/tools/init-experiment.ts",
 	"coding-agent/src/autoresearch/tools/log-experiment.ts",
 	"coding-agent/src/cli/auth-broker-cli.ts",

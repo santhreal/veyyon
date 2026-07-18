@@ -11,7 +11,7 @@ import { Database, type Statement } from "bun:sqlite";
 import { createHash } from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { getAgentDbPath, logger, scopedTimeoutSignal, trimTrailingSlashes } from "@veyyon/utils";
+import { errorMessage, getAgentDbPath, logger, scopedTimeoutSignal, trimTrailingSlashes } from "@veyyon/utils";
 import type { ApiKeyResolver } from "./auth-retry";
 import * as AIError from "./error";
 import { isUsageLimitOutcome } from "./error/rate-limit";
@@ -3692,7 +3692,7 @@ export class AuthStorage {
 							accountKey: this.#buildUsageCacheIdentity(refreshedCredential),
 						};
 					} catch (error) {
-						refreshError = `oauth refresh failed: ${error instanceof Error ? error.message : String(error)}`;
+						refreshError = `oauth refresh failed: ${errorMessage(error)}`;
 					}
 				}
 			}
@@ -3730,7 +3730,7 @@ export class AuthStorage {
 					}
 				} catch (error) {
 					base.ok = false;
-					base.reason = error instanceof Error ? error.message : String(error);
+					base.reason = errorMessage(error);
 				}
 			}
 			probeTimeout.cancel();
@@ -3754,7 +3754,7 @@ export class AuthStorage {
 					} catch (error) {
 						base.completion = {
 							ok: false,
-							reason: error instanceof Error ? error.message : String(error),
+							reason: errorMessage(error),
 						};
 					} finally {
 						completionTimeout.cancel();
@@ -4883,7 +4883,7 @@ export class AuthStorage {
 				enterpriseUrl: selection.credential.enterpriseUrl,
 				orgId: selection.credential.orgId,
 				orgName: selection.credential.orgName,
-				error: error instanceof Error ? error.message : String(error),
+				error: errorMessage(error),
 			};
 		}
 	}

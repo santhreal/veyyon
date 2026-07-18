@@ -19,7 +19,7 @@
  */
 
 import { Effort } from "@veyyon/catalog/effort";
-import { extractHttpStatusFromError, extractRetryHint, logger } from "@veyyon/utils";
+import { errorMessage, extractHttpStatusFromError, extractRetryHint, logger } from "@veyyon/utils";
 import type { ApiKeyResolver } from "../auth-retry";
 import type { AuthStorage } from "../auth-storage";
 import * as AIError from "../error";
@@ -235,7 +235,7 @@ async function refreshGatewayApiKeyAfterAuthError(
 	format: string,
 	peer: string,
 ): Promise<string | undefined> {
-	const message = error instanceof Error ? error.message : String(error);
+	const message = errorMessage(error);
 	const status = extractHttpStatusFromError(error);
 	if (AIError.isUsageLimit(error) || isUsageLimitOutcome(status, message)) {
 		const retryAfterMs = extractRetryHint(undefined, message);
@@ -385,7 +385,7 @@ async function handleFormatEndpoint(
 		parsed = route.module.parseRequest(body, req.headers);
 	} catch (error) {
 		if (controller.signal.aborted) return clientClosedResponse(route);
-		const message = error instanceof Error ? error.message : String(error);
+		const message = errorMessage(error);
 		return route.module.formatError(400, "invalid_request_error", message);
 	}
 	// Merge gateway-captured passthrough headers under the parser's own
@@ -557,7 +557,7 @@ async function handlePiNative(bootOpts: AuthGatewayBootOptions, req: Request, pe
 		parsed = piNative.parseRequest(body, req.headers);
 	} catch (error) {
 		if (controller.signal.aborted) return aborted();
-		const message = error instanceof Error ? error.message : String(error);
+		const message = errorMessage(error);
 		return piNative.formatError(400, "invalid_request_error", message);
 	}
 

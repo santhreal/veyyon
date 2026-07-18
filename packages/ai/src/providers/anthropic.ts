@@ -9,6 +9,7 @@ import { isAnthropicOAuthToken } from "@veyyon/catalog/utils";
 import { parseGitHubCopilotApiKey } from "@veyyon/catalog/wire/github-copilot";
 import {
 	$env,
+	errorMessage,
 	getInstallId,
 	isEnoent,
 	logger,
@@ -861,7 +862,7 @@ async function resizeAnthropicManyImageBlock(block: ImageContent): Promise<Image
 	} catch (error) {
 		logger.warn("anthropic: failed to resize oversized image for many-image request", {
 			mimeType: block.mimeType,
-			error: error instanceof Error ? error.message : String(error),
+			error: errorMessage(error),
 		});
 		return block;
 	}
@@ -1394,7 +1395,7 @@ async function* iterateAnthropicEvents(
 			}
 			yield event;
 		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
+			const message = errorMessage(error);
 			reportAnthropicEnvelopeAnomaly(
 				`could not parse SSE event ${sse.event}: ${message}; skipping frame; data=${sse.data}`,
 			);
@@ -1928,7 +1929,7 @@ const streamAnthropicOnce = (
 						// Non-fatal: keep the best-effort arguments recovered by the throttled streaming
 						// parser instead of failing the turn on malformed/truncated tool-argument JSON.
 						reportAnthropicEnvelopeAnomaly(
-							`tool_use ${block.id} arguments are not valid JSON: ${parseError instanceof Error ? parseError.message : String(parseError)}`,
+							`tool_use ${block.id} arguments are not valid JSON: ${errorMessage(parseError)}`,
 						);
 						const recoveredKeys = Object.keys(block.arguments ?? {});
 						if (recoveredKeys.length === 0) {
@@ -1938,7 +1939,7 @@ const streamAnthropicOnce = (
 									? finalJson
 									: `${finalJson.slice(0, maxLen)}… [truncated ${finalJson.length - maxLen} chars]`;
 							block.arguments = {
-								__parseError: parseError instanceof Error ? parseError.message : String(parseError),
+								__parseError: errorMessage(parseError),
 								__rawJson: truncatedJson,
 							};
 						}
@@ -2453,9 +2454,7 @@ const streamAnthropicOnce = (
 						!forceDemoteUnsignedThinking &&
 						firstTokenTime === undefined &&
 						!streamedReplayUnsafeContent &&
-						isInvalidThinkingSignatureError(
-							streamFailure instanceof Error ? streamFailure.message : String(streamFailure),
-						)
+						isInvalidThinkingSignatureError(errorMessage(streamFailure))
 					) {
 						logger.warn(
 							"anthropic: signing proxy detected (Invalid signature in thinking block), demoting unsigned thinking and retrying",
@@ -2463,7 +2462,7 @@ const streamAnthropicOnce = (
 								provider: model.provider,
 								model: model.id,
 								baseUrl,
-								error: streamFailure instanceof Error ? streamFailure.message : String(streamFailure),
+								error: errorMessage(streamFailure),
 							},
 						);
 						if (providerSessionState) {
@@ -2491,7 +2490,7 @@ const streamAnthropicOnce = (
 					) {
 						logger.debug("anthropic: fast mode unsupported, retrying without speed", {
 							model: model.id,
-							error: streamFailure instanceof Error ? streamFailure.message : String(streamFailure),
+							error: errorMessage(streamFailure),
 						});
 						if (providerSessionState) {
 							providerSessionState.fastModeDisabled = true;

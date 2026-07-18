@@ -4,7 +4,7 @@ import {
 	discoverGitLabDuoWorkflowRuntimeNamespace,
 	type GitLabDuoWorkflowNamespaceSelection,
 } from "@veyyon/catalog/discovery/gitlab-duo-workflow";
-import { scopedTimeoutSignal } from "@veyyon/utils";
+import { errorMessage, scopedTimeoutSignal } from "@veyyon/utils";
 import * as AIError from "../error";
 import type {
 	Api,
@@ -925,7 +925,7 @@ function hasGitLabDuoWorkflowExplicitNamespace(options: GitLabDuoWorkflowOptions
 }
 
 export function gitLabDuoWorkflowErrorText(error: unknown): string {
-	return error instanceof Error ? error.message : String(error);
+	return errorMessage(error);
 }
 
 // Scoped absolute deadline for one REST setup fetch (`fetch`, `direct_access`, etc.).

@@ -12,6 +12,7 @@ import {
 	$env,
 	$flag,
 	asRecord,
+	errorMessage,
 	fetchWithRetry,
 	getInstallId,
 	logger,
@@ -1074,7 +1075,7 @@ function notifyCodexWebSocketMalformed(
 	error: unknown,
 ): void {
 	const text = typeof data === "string" ? data : "";
-	const reason = error instanceof Error ? error.message : String(error);
+	const reason = errorMessage(error);
 	const raw: string[] = [`: ws ← (parse-error: ${reason})`];
 	if (text) raw.push(`data: ${text}`);
 	notifyRawSseEvent(observer, { event: "parse_error", data: text, raw });
@@ -2363,7 +2364,7 @@ class CodexStreamProcessor {
 
 		CODEX_DEBUG &&
 			logger.debug("[codex] retrying codex provider stream error", {
-				error: error instanceof Error ? error.message : String(error),
+				error: errorMessage(error),
 				retry: this.runtime.providerRetryAttempt,
 				retryBudget: CODEX_MAX_RETRIES,
 				transport: this.runtime.transport,
@@ -2551,10 +2552,10 @@ export const streamOpenAICodexResponses: StreamFunction<"openai-codex-responses"
 				// Last resort — the failure handler itself threw (exotic error object or
 				// request-dump formatting). Never leave the stream un-ended.
 				logger.error("Codex stream failure handler threw", {
-					error: failureError instanceof Error ? failureError.message : String(failureError),
+					error: errorMessage(failureError),
 				});
 				output.stopReason = "error";
-				output.errorMessage ??= error instanceof Error ? error.message : String(error);
+				output.errorMessage ??= errorMessage(error);
 				stream.push({ type: "error", reason: "error", error: output });
 			}
 			stream.end();
@@ -3342,9 +3343,7 @@ class CodexWebSocketConnection {
 			try {
 				socket.send(requestPayload);
 			} catch (error) {
-				throw new CodexWebSocketTransportError(
-					`websocket send failed: ${error instanceof Error ? error.message : String(error)}`,
-				);
+				throw new CodexWebSocketTransportError(`websocket send failed: ${errorMessage(error)}`);
 			}
 			let sawFirstEvent = false;
 			const { idleTimeoutMs, firstEventTimeoutMs } = timeouts;
@@ -3549,9 +3548,7 @@ class CodexWebSocketConnection {
 				this.#lastPingAt = Date.now();
 			} catch (error) {
 				this.#failQueue(
-					new CodexWebSocketTransportError(
-						`websocket ping failed: ${error instanceof Error ? error.message : String(error)}`,
-					),
+					new CodexWebSocketTransportError(`websocket ping failed: ${errorMessage(error)}`),
 					"ping-failed",
 				);
 			}

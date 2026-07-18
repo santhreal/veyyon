@@ -26,6 +26,7 @@
  *   4xx/5xx: { error: { type, message } }
  */
 
+import { errorMessage } from "@veyyon/utils";
 import type { AuthGatewayStreamControl } from "../auth-gateway/types";
 import * as AIError from "../error";
 import type { AssistantMessageEventStream, Context, SimpleStreamOptions } from "../types";
@@ -198,7 +199,7 @@ export function encodeStream(
 					// instead of hanging on the dropped connection. Shape matches the
 					// canonical `error` event minus the unrecoverable `error:
 					// AssistantMessage` payload (we don't have a usable one here).
-					const message = err instanceof Error ? err.message : String(err);
+					const message = errorMessage(err);
 					controller.enqueue(
 						SSE_ENCODER.encode(
 							`data: ${JSON.stringify({ type: "error", reason: "error", errorMessage: message })}\n\n`,

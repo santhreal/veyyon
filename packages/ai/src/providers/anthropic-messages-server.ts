@@ -1,5 +1,5 @@
 import { Effort } from "@veyyon/catalog/effort";
-import { logger } from "@veyyon/utils";
+import { errorMessage, logger } from "@veyyon/utils";
 import { type } from "arktype";
 import { captureRequestHeaders, resolvePromptCacheKey } from "../auth-gateway/http";
 import * as AIError from "../error";
@@ -738,7 +738,7 @@ export function encodeStream(
 					controller.enqueue(
 						sseFrame("error", {
 							type: "error",
-							error: { type: "api_error", message: err instanceof Error ? err.message : String(err) },
+							error: { type: "api_error", message: errorMessage(err) },
 						}),
 					);
 					controller.close();

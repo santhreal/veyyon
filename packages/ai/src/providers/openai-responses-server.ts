@@ -9,7 +9,7 @@
  * Inverse direction (source-of-truth for item shapes): ../../providers/openai-responses.ts
  */
 
-import { logger } from "@veyyon/utils";
+import { errorMessage, logger } from "@veyyon/utils";
 import { type } from "arktype";
 import { resolvePromptCacheKey } from "../auth-gateway/http";
 import type { AuthGatewayStreamControl, AuthGatewayParsedRequest as ParsedRequest } from "../auth-gateway/types";
@@ -1268,7 +1268,7 @@ export function encodeStream(
 									status: "failed",
 									model: requestedModelId,
 									output: [],
-									error: { message: err instanceof Error ? err.message : String(err) },
+									error: { message: errorMessage(err) },
 									incomplete_details: null,
 								},
 							}),
