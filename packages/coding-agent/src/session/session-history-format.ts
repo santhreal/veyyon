@@ -8,7 +8,7 @@
  */
 import type { AgentMessage } from "@veyyon/agent-core";
 import type { AssistantMessage, ImageContent, TextContent, ToolResultMessage } from "@veyyon/ai";
-import { escapeXmlText, formatCount, truncate } from "@veyyon/utils";
+import { collapseWhitespace, escapeXmlText, formatCount, truncate } from "@veyyon/utils";
 import { INTENT_FIELD } from "@veyyon/wire";
 import type {
 	BashExecutionMessage,
@@ -72,7 +72,7 @@ const PRIMARY_ARG_KEYS = [
 
 /** Collapse whitespace runs and truncate to `max` chars with an ellipsis. */
 function oneLine(text: string, max = PRIMARY_ARG_MAX): string {
-	return truncate(text.replace(/\s+/g, " ").trim(), max);
+	return truncate(collapseWhitespace(text), max);
 }
 
 /** Join the text blocks of a string-or-blocks content field. Images become `[image]`. */

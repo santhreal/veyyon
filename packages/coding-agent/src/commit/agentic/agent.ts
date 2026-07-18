@@ -1,7 +1,7 @@
 import type { ThinkingLevel } from "@veyyon/agent-core";
 import type { Api, Model } from "@veyyon/ai";
 import { Markdown } from "@veyyon/tui";
-import { prompt } from "@veyyon/utils";
+import { collapseWhitespace, prompt } from "@veyyon/utils";
 import { INTENT_FIELD } from "@veyyon/wire";
 import chalk from "chalk";
 import typesDescriptionPrompt from "../../commit/prompts/types-description.md" with { type: "text" };
@@ -195,7 +195,7 @@ function extractMessagePreview(content: Array<{ type: string; text?: string }>):
 		.map(block => block.text?.trim())
 		.filter((value): value is string => Boolean(value));
 	if (textBlocks.length === 0) return null;
-	const combined = textBlocks.join(" ").replace(/\s+/g, " ").trim();
+	const combined = collapseWhitespace(textBlocks.join(" "));
 	return truncateToolArg(combined);
 }
 

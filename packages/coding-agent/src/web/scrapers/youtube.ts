@@ -1,7 +1,7 @@
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { ptree, Snowflake, truncate } from "@veyyon/utils";
+import { collapseWhitespace, ptree, Snowflake, truncate } from "@veyyon/utils";
 import { settings } from "../../config/settings";
 import type { AgentStorage } from "../../session/agent-storage";
 import { throwIfAborted } from "../../tools/tool-errors";
@@ -94,7 +94,7 @@ function cleanVttToText(vtt: string): string {
 		}
 	}
 
-	return textLines.join(" ").replace(/\s+/g, " ").trim();
+	return collapseWhitespace(textLines.join(" "));
 }
 
 /**

@@ -5,7 +5,7 @@ import { formatHashlineHeader } from "@veyyon/hashline";
 import { type AstReplaceChange, type AstReplaceFileChange, astEdit } from "@veyyon/natives";
 import type { Component } from "@veyyon/tui";
 import { replaceTabs, Text } from "@veyyon/tui";
-import { $envpos, prompt, untilAborted } from "@veyyon/utils";
+import { $envpos, collapseWhitespace, prompt, untilAborted } from "@veyyon/utils";
 import { type } from "arktype";
 import { canonicalSnapshotKey, getFileSnapshotStore } from "../edit/file-snapshot-store";
 import { normalizeToLF } from "../edit/normalize";
@@ -573,7 +573,7 @@ function buildChangeBody(groups: string[][], expanded: boolean, budget: number, 
  * CR/LF, so a multi-line tab-indented pattern would otherwise punch raw tabs
  * into the status line; collapse all whitespace runs to single spaces. */
 function patternPreview(pat: string | undefined): string | undefined {
-	const collapsed = pat?.replace(/\s+/g, " ").trim();
+	const collapsed = collapseWhitespace(pat);
 	return collapsed || undefined;
 }
 

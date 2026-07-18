@@ -1,3 +1,8 @@
+// `collapseWhitespace` now lives in @veyyon/utils as the repo-wide owner of the
+// collapse-and-trim idiom; re-exported here so the HTML-scraping providers keep
+// importing it from `../utils` unchanged.
+export { collapseWhitespace } from "@veyyon/utils";
+
 /** Calculate age in seconds from an ISO date string. Returns undefined on invalid input. */
 export function dateToAgeSeconds(dateStr: string | null | undefined): number | undefined {
 	if (!dateStr) return undefined;
@@ -14,16 +19,4 @@ export function dateToAgeSeconds(dateStr: string | null | undefined): number | u
 export function clampNumResults(value: number | undefined, defaultVal: number, maxVal: number): number {
 	if (!value || Number.isNaN(value)) return defaultVal;
 	return Math.min(maxVal, Math.max(1, value));
-}
-
-/**
- * Collapse every run of whitespace (spaces, tabs, newlines) to a single space
- * and trim the ends. The canonical cleanup for text scraped out of provider
- * result HTML, where markup indentation and line wraps leak into the extracted
- * text. `null`/`undefined` normalize to "". Single owner for the HTML-scraping
- * search providers (google, startpage, mojeek, ecosia, …) — do not re-inline
- * `(x ?? "").replace(/\s+/g, " ").trim()`.
- */
-export function collapseWhitespace(value: string | null | undefined): string {
-	return (value ?? "").replace(/\s+/g, " ").trim();
 }

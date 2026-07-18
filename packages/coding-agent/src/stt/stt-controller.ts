@@ -1,7 +1,7 @@
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { logger, Snowflake } from "@veyyon/utils";
+import { collapseWhitespace, logger, Snowflake } from "@veyyon/utils";
 import { settings } from "../config/settings";
 import { type SttStreamHandle, sttClient } from "./asr-client";
 import { downloadSttModel, isSttModelCached } from "./downloader";
@@ -184,7 +184,7 @@ export class STTController {
 	/** Segment text gets a leading space once a prior segment is committed, so
 	 *  phrases join naturally; the first phrase is inserted at the cursor as-is. */
 	#prefixed(text: string): string {
-		const normalized = text.replace(/\s+/g, " ").trim();
+		const normalized = collapseWhitespace(text);
 		if (!normalized) return "";
 		return this.#streamCommitted ? ` ${normalized}` : normalized;
 	}

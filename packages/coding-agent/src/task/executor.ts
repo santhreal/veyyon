@@ -8,7 +8,7 @@ import path from "node:path";
 import type { AgentEvent, AgentIdentity, AgentTelemetryConfig } from "@veyyon/agent-core";
 import { recordHandoff, resolveTelemetry } from "@veyyon/agent-core";
 import type { Api, Model, ServiceTierByFamily, Usage } from "@veyyon/ai";
-import { logger, popLoopPhase, prompt, pushLoopPhase, untilAborted } from "@veyyon/utils";
+import { collapseWhitespace, logger, popLoopPhase, prompt, pushLoopPhase, untilAborted } from "@veyyon/utils";
 import type { Rule } from "../capability/rule";
 import { ModelRegistry } from "../config/model-registry";
 import {
@@ -104,7 +104,7 @@ export function buildBudgetNotice(requests: number, budget: number): string {
 
 /** Flatten whitespace and clip salvage text for the cancelled-child summary line. */
 function formatSalvageSnippet(text: string, maxLength = 500): string {
-	const flattened = text.replace(/\s+/g, " ").trim();
+	const flattened = collapseWhitespace(text);
 	return flattened.length > maxLength ? `${flattened.slice(0, maxLength - 1)}…` : flattened;
 }
 
