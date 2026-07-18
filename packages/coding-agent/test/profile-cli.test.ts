@@ -108,7 +108,6 @@ describe("global --profile flag", () => {
 		const writeSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
 		setProfile(undefined);
 		process.env.VEYYON_PROFILE = "work";
-		delete process.env.VEYYON_PROFILE;
 
 		await runCli(["--version"]);
 
@@ -298,7 +297,6 @@ describe("global --profile flag", () => {
 				VEYYON_PROFILE: "..",
 				NO_COLOR: "1",
 			};
-			delete childEnv.VEYYON_PROFILE;
 			delete childEnv.VEYYON_CODING_AGENT_DIR;
 
 			const proc = Bun.spawn([process.execPath, probePath], {
