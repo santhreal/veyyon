@@ -1,8 +1,9 @@
 name: "bun install (shared cache)"
 description: >
-   Ensure bun is on PATH, then run `bun install --frozen-lockfile` with the
-   actions/cache-backed package store. bun setup is skipped when the runner
-   already ships it and only fetched on runners that lack it.
+   Ensure bun is on PATH, run `bun install --frozen-lockfile` with the
+   actions/cache-backed package store, then materialize the gitignored source
+   codegen so the tree is runnable from source. bun setup is skipped when the
+   runner already ships it and only fetched on runners that lack it.
 
 runs:
    using: composite
@@ -52,3 +53,17 @@ runs:
            echo "::warning title=bun install retry::shared bun store install failed; retrying with a clean job-local cache"
            retry_cache="$(mktemp -d "${RUNNER_TEMP:-/tmp}/bun-cache-retry.XXXXXX")"
            bun install --frozen-lockfile --cache-dir="$retry_cache"
+
+      - name: Generate source codegen
+        shell: bash
+        run: |
+           # coding-agent's src/export/html/index.ts imports
+           # ./tool-views.generated.js (a gitignored codegen artifact bundled
+           # from collab-web/src/tool-render). `bun install` alone does not
+           # produce it — bun skips the root `prepare` on a no-op frozen install
+           # — so every source-running job (`ci:test:smoke`, the coding-agent
+           # test matrix) died with "Cannot find module './tool-views.generated.js'".
+           # Materialize it here, in the one shared setup step, so the tree is
+           # runnable from source. Fast (~30ms) and deterministic; fail loud if
+           # codegen breaks rather than shipping a stale/missing bundle.
+           bun --cwd=packages/coding-agent run gen:tool-views
