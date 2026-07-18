@@ -1,4 +1,4 @@
-import { scopedTimeoutSignal } from "@veyyon/utils";
+import { scopedTimeoutSignal, trimTrailingSlashes } from "@veyyon/utils";
 import * as AIError from "../error";
 import type { FetchImpl } from "../types";
 
@@ -31,7 +31,7 @@ type ModelListValidationOptions = {
 const VALIDATION_TIMEOUT_MS = 15_000;
 
 function normalizeAnthropicCompatibleBaseUrl(baseUrl: string): string {
-	const trimmed = baseUrl.trim().replace(/\/+$/, "");
+	const trimmed = trimTrailingSlashes(baseUrl.trim());
 	return trimmed.endsWith("/v1") ? trimmed.slice(0, -3) : trimmed;
 }
 

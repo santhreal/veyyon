@@ -1,4 +1,4 @@
-import { isRecord } from "@veyyon/utils";
+import { isRecord, trimTrailingSlashes } from "@veyyon/utils";
 import type {
 	UsageAmount,
 	UsageFetchContext,
@@ -21,7 +21,7 @@ function parseTimestamp(value: unknown): number | undefined {
 
 function normalizeCursorBaseUrl(baseUrl?: string): string {
 	if (!baseUrl) return "https://api2.cursor.sh";
-	return baseUrl.replace(/\/+$/, "");
+	return trimTrailingSlashes(baseUrl);
 }
 
 function deriveResetsAt(payload: Record<string, unknown>): number | undefined {

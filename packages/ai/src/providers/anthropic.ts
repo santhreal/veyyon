@@ -15,6 +15,7 @@ import {
 	parseJsonWithRepair,
 	parseStreamingJsonThrottled,
 	readSseEvents,
+	trimTrailingSlashes,
 } from "@veyyon/utils";
 import { renderDemotedThinking } from "../dialect/demotion";
 import * as AIError from "../error";
@@ -107,7 +108,7 @@ export function normalizeAnthropicBaseUrl(baseUrl?: string): string | undefined 
 	if (!trimmed) {
 		return undefined;
 	}
-	const withoutTrailingSlashes = trimmed.replace(/\/+$/, "");
+	const withoutTrailingSlashes = trimTrailingSlashes(trimmed);
 	return withoutTrailingSlashes.endsWith("/v1") ? withoutTrailingSlashes.slice(0, -3) : withoutTrailingSlashes;
 }
 

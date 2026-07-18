@@ -5,7 +5,7 @@
  * `veyyon auth-broker status` (liveness checks). All endpoints except
  * `/v1/healthz` require a bearer token.
  */
-import { readSseEvents, scopedTimeoutSignal } from "@veyyon/utils";
+import { readSseEvents, scopedTimeoutSignal, trimTrailingSlashes } from "@veyyon/utils";
 import { type } from "arktype";
 import type { AuthCredential } from "../auth-storage";
 import type {
@@ -94,7 +94,7 @@ export class AuthBrokerClient {
 	readonly #fetch: typeof fetch;
 
 	constructor(opts: AuthBrokerClientOptions) {
-		this.#baseUrl = opts.url.replace(/\/+$/, "");
+		this.#baseUrl = trimTrailingSlashes(opts.url);
 		this.#token = opts.token;
 		this.#timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 		this.#maxRetries = opts.maxRetries ?? DEFAULT_MAX_RETRIES;
