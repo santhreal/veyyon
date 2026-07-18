@@ -688,7 +688,7 @@ fn docker_format_requests_table(format: &str) -> bool {
 }
 
 fn filter_logs(input: &str) -> String {
-	let without_empty_runs = drop_repeated_blank_lines(input);
+	let without_empty_runs = primitives::collapse_blank_runs(input, true);
 	crate::minimizer::filters::system::compact_log_lines(
 		&without_empty_runs,
 		120,
@@ -698,7 +698,7 @@ fn filter_logs(input: &str) -> String {
 }
 
 fn filter_docker_logs(input: &str) -> String {
-	let without_empty_runs = drop_repeated_blank_lines(input);
+	let without_empty_runs = primitives::collapse_blank_runs(input, true);
 	crate::minimizer::filters::system::compact_log_lines(&without_empty_runs, 120, 80, log_dedup_key)
 }
 
@@ -786,24 +786,6 @@ fn is_compose_container_status_line(line: &str) -> bool {
 		&& ["Creating", "Created", "Starting", "Started", "Waiting", "Healthy", "Running"]
 			.iter()
 			.any(|status| line.contains(status))
-}
-
-fn drop_repeated_blank_lines(input: &str) -> String {
-	let mut out = String::new();
-	let mut saw_blank = false;
-	for line in input.lines() {
-		if line.trim().is_empty() {
-			if !saw_blank {
-				out.push('\n');
-			}
-			saw_blank = true;
-			continue;
-		}
-		saw_blank = false;
-		out.push_str(line);
-		out.push('\n');
-	}
-	out
 }
 
 #[cfg(test)]
