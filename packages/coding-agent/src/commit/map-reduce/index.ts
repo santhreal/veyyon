@@ -1,6 +1,6 @@
-import type { ThinkingLevel } from "@veyyon/pi-agent-core";
-import type { Api, ApiKey, Model } from "@veyyon/pi-ai";
-import { $env } from "@veyyon/pi-utils";
+import type { ThinkingLevel } from "@veyyon/agent-core";
+import type { Api, ApiKey, Model } from "@veyyon/ai";
+import { $env } from "@veyyon/utils";
 import { parseFileDiffs } from "../../commit/git/diff";
 import type { ConventionalAnalysis } from "../../commit/types";
 import { isExcludedFile } from "../../commit/utils/exclusions";
@@ -34,7 +34,7 @@ export interface MapReduceInput {
 }
 
 export function shouldUseMapReduce(diff: string, settings?: MapReduceSettings): boolean {
-	if ($env.PI_COMMIT_MAP_REDUCE?.toLowerCase() === "false") return false;
+	if ($env.VEYYON_COMMIT_MAP_REDUCE?.toLowerCase() === "false") return false;
 	if (settings?.enabled === false) return false;
 	const minFiles = settings?.minFiles ?? MIN_FILES_FOR_MAP_REDUCE;
 	const maxFileTokens = settings?.maxFileTokens ?? MAX_FILE_TOKENS;

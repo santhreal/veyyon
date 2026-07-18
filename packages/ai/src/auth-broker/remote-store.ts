@@ -8,7 +8,7 @@
  * runs isn't required.
  */
 import { scheduler } from "node:timers/promises";
-import { logger } from "@veyyon/pi-utils";
+import { logger } from "@veyyon/utils";
 import {
 	type AuthCredential,
 	type AuthCredentialSnapshotEntry,

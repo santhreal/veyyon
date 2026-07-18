@@ -22,7 +22,7 @@
  * keeps the schema in charge of acceptance — we never invent values, only
  * massage shapes the LLM almost got right.
  */
-import { structuredCloneJSON } from "@veyyon/pi-utils";
+import { structuredCloneJSON } from "@veyyon/utils";
 import { type Type, type } from "arktype";
 import type { ZodType } from "zod/v4";
 import type { $ZodIssue as ZodIssue } from "zod/v4/core";

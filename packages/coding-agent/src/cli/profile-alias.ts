@@ -1,6 +1,6 @@
 import * as os from "node:os";
 import * as path from "node:path";
-import { normalizeProfileName } from "@veyyon/pi-utils/dirs";
+import { normalizeProfileName } from "@veyyon/utils/dirs";
 
 export type ProfileAliasShell = "bash" | "zsh" | "fish" | "powershell" | "pwsh";
 
@@ -19,9 +19,9 @@ export interface ProfileAliasCommand {
 	powerShell: string;
 }
 
-// Marker comments in shell rc files intentionally keep the historical
-// "omp profile alias" text so blocks installed by older builds are still
-// found and upserted; only the wrapped command is the current binary.
+// New alias blocks are written with "veyyon profile alias" markers; blocks
+// installed by pre-rebrand builds used "omp profile alias" markers and are
+// still found and upgraded in place on the next upsert.
 const DEFAULT_ALIAS_COMMAND: ProfileAliasCommand = {
 	display: "veyyon",
 	posix: "veyyon",
@@ -257,7 +257,7 @@ function resolveShellConfigPath(
 			// a hard-coded ~/.config would be silently ignored when the user relocates
 			// their XDG config root, leaving the alias unsourced after a restart.
 			const configHome = env.XDG_CONFIG_HOME ? toPosix(env.XDG_CONFIG_HOME) : posixJoinUnc(posixHome, ".config");
-			return posixJoinUnc(configHome, "fish", "conf.d", "omp-profiles.fish");
+			return posixJoinUnc(configHome, "fish", "conf.d", "veyyon-profiles.fish");
 		}
 		case "pwsh":
 			return platform === "win32"
@@ -275,8 +275,8 @@ function renderAliasBlock(
 	command: ProfileAliasCommand,
 ): { block: string; command: string } {
 	const profiledCommand = `${command.display} --profile=${profile}`;
-	const start = `# >>> omp profile alias: ${aliasName} >>>`;
-	const end = `# <<< omp profile alias: ${aliasName} <<<`;
+	const start = `# >>> veyyon profile alias: ${aliasName} >>>`;
+	const end = `# <<< veyyon profile alias: ${aliasName} <<<`;
 	let body: string;
 	switch (shell) {
 		case "fish":
@@ -298,8 +298,9 @@ function renderAliasBlock(
 }
 
 function upsertBlock(content: string, aliasName: string, block: string): string {
-	const start = `# >>> omp profile alias: ${aliasName} >>>`;
-	const end = `# <<< omp profile alias: ${aliasName} <<<`;
+	// An existing managed block for this alias is upgraded in place.
+	const start = `# >>> veyyon profile alias: ${aliasName} >>>`;
+	const end = `# <<< veyyon profile alias: ${aliasName} <<<`;
 	const startIndex = content.indexOf(start);
 	if (startIndex !== -1) {
 		const endIndex = content.indexOf(end, startIndex + start.length);

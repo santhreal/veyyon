@@ -4,7 +4,7 @@
  * Demonstrates ctx.ui.setStatus() for displaying persistent status text in the footer.
  * Shows turn progress with themed colors.
  */
-import type { HookAPI } from "@veyyon/pi-coding-agent";
+import type { HookAPI } from "@veyyon/coding-agent";
 
 export default function (pi: HookAPI) {
 	let turnCount = 0;

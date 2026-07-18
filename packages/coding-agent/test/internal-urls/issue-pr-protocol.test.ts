@@ -1,7 +1,7 @@
 /**
  * `issue://` / `pr://` protocol handler tests.
  *
- * Every test isolates `OMP_GITHUB_CACHE_DB` to a temp file and resets the
+ * Every test isolates `VEYYON_GITHUB_CACHE_DB` to a temp file and resets the
  * cache + router singletons. `git.github.json` / `git.github.text` are spied
  * per-test and restored in `afterEach`.
  */
@@ -9,11 +9,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { InternalUrlRouter } from "@veyyon/pi-coding-agent/internal-urls";
-import { resetForTests as resetCacheForTests } from "@veyyon/pi-coding-agent/tools/github-cache";
-import * as git from "@veyyon/pi-coding-agent/utils/git";
-import { removeWithRetries } from "@veyyon/pi-utils";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import { InternalUrlRouter } from "@veyyon/coding-agent/internal-urls";
+import { resetForTests as resetCacheForTests } from "@veyyon/coding-agent/tools/github-cache";
+import * as git from "@veyyon/coding-agent/utils/git";
+import { removeWithRetries } from "@veyyon/utils";
 
 let tempDir: string;
 let originalEnv: string | undefined;
@@ -21,8 +21,8 @@ let originalEnv: string | undefined;
 let originalGhToken: string | undefined;
 beforeEach(async () => {
 	tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "issue-pr-protocol-"));
-	originalEnv = process.env.OMP_GITHUB_CACHE_DB;
-	process.env.OMP_GITHUB_CACHE_DB = path.join(tempDir, "github-cache.db");
+	originalEnv = process.env.VEYYON_GITHUB_CACHE_DB;
+	process.env.VEYYON_GITHUB_CACHE_DB = path.join(tempDir, "github-cache.db");
 	originalGhToken = process.env.GH_TOKEN;
 	process.env.GH_TOKEN = "test-token";
 	resetCacheForTests();
@@ -33,9 +33,9 @@ afterEach(async () => {
 	resetCacheForTests();
 	InternalUrlRouter.resetForTests();
 	if (originalEnv === undefined) {
-		delete process.env.OMP_GITHUB_CACHE_DB;
+		delete process.env.VEYYON_GITHUB_CACHE_DB;
 	} else {
-		process.env.OMP_GITHUB_CACHE_DB = originalEnv;
+		process.env.VEYYON_GITHUB_CACHE_DB = originalEnv;
 	}
 	if (originalGhToken === undefined) {
 		delete process.env.GH_TOKEN;

@@ -127,7 +127,7 @@ fn rewrite_bsd_invocation(argv: &[OsString]) -> Option<Result<Vec<OsString>, Str
 /// this renders clap help/usage/version to the context streams and never calls
 /// `std::process::exit`, so it is safe inside the long-lived host shell
 /// process. The default (non-follow) path reads stdin/files through
-/// [`pi_uutils_ctx`].
+/// [`veyyon_uutils_ctx`].
 pub fn run(args: Vec<OsString>) -> i32 {
 	// pi-uutils: translate BSD-style `tail -r` before GNU clap parsing; see
 	// `rewrite_bsd_invocation`.
@@ -135,7 +135,7 @@ pub fn run(args: Vec<OsString>) -> i32 {
 		None => args,
 		Some(Ok(tac_args)) => return uu_tac::run(tac_args),
 		Some(Err(msg)) => {
-			let _ = writeln!(pi_uutils_ctx::stderr(), "tail: {msg}");
+			let _ = writeln!(veyyon_uutils_ctx::stderr(), "tail: {msg}");
 			return 1;
 		},
 	};
@@ -144,23 +144,23 @@ pub fn run(args: Vec<OsString>) -> i32 {
 		Err(ArgsError::Clap(err)) => {
 			let rendered = err.to_string();
 			if err.use_stderr() {
-				let _ = write!(pi_uutils_ctx::stderr(), "{rendered}");
+				let _ = write!(veyyon_uutils_ctx::stderr(), "{rendered}");
 				return 1;
 			}
-			let _ = write!(pi_uutils_ctx::stdout(), "{rendered}");
+			let _ = write!(veyyon_uutils_ctx::stdout(), "{rendered}");
 			return 0;
 		},
 		Err(ArgsError::Other(err)) => {
 			let code = err.code();
-			let _ = writeln!(pi_uutils_ctx::stderr(), "tail: {err}");
+			let _ = writeln!(veyyon_uutils_ctx::stderr(), "tail: {err}");
 			return if code == 0 { 1 } else { code };
 		},
 	};
 	match tail_main(&settings) {
-		Ok(()) => pi_uutils_ctx::exit_code(),
+		Ok(()) => veyyon_uutils_ctx::exit_code(),
 		Err(err) => {
 			let code = err.code();
-			let _ = writeln!(pi_uutils_ctx::stderr(), "tail: {err}");
+			let _ = writeln!(veyyon_uutils_ctx::stderr(), "tail: {err}");
 			if code == 0 { 1 } else { code }
 		},
 	}
@@ -191,9 +191,9 @@ fn uu_tail(settings: &Settings) -> UResult<()> {
 	// Print debug info about the follow implementation being used
 	if settings.debug && settings.follow.is_some() {
 		if observer.use_polling {
-			let _ = writeln!(pi_uutils_ctx::stderr(), "tail: using polling mode");
+			let _ = writeln!(veyyon_uutils_ctx::stderr(), "tail: using polling mode");
 		} else {
-			let _ = writeln!(pi_uutils_ctx::stderr(), "tail: using notification mode");
+			let _ = writeln!(veyyon_uutils_ctx::stderr(), "tail: using notification mode");
 		}
 	}
 
@@ -241,14 +241,14 @@ fn tail_file(
 ) -> UResult<()> {
 	// pi-uutils: resolve the operand against the shell working directory for
 	// filesystem access; keep `path`/`input.display_name` for display + observer.
-	let fs_path = pi_uutils_ctx::resolve(path);
+	let fs_path = veyyon_uutils_ctx::resolve(path);
 	let md = fs_path.metadata();
 	if let Err(ref e) = md
 		&& e.kind() == ErrorKind::NotFound
 	{
-		pi_uutils_ctx::set_exit_code(1);
+		veyyon_uutils_ctx::set_exit_code(1);
 		let _ = writeln!(
-			pi_uutils_ctx::stderr(),
+			veyyon_uutils_ctx::stderr(),
 			"tail: cannot open '{}' for reading: No such file or directory",
 			input.display_name
 		);
@@ -257,12 +257,12 @@ fn tail_file(
 	}
 
 	if fs_path.is_dir() {
-		pi_uutils_ctx::set_exit_code(1);
+		veyyon_uutils_ctx::set_exit_code(1);
 
 		header_printer.print_input(input);
 
 		let _ = writeln!(
-			pi_uutils_ctx::stderr(),
+			veyyon_uutils_ctx::stderr(),
 			"tail: error reading '{}': Is a directory",
 			input.display_name
 		);
@@ -273,7 +273,7 @@ fn tail_file(
 				"; giving up on this name"
 			};
 			let _ = writeln!(
-				pi_uutils_ctx::stderr(),
+				veyyon_uutils_ctx::stderr(),
 				"tail: {}: cannot follow end of this type of file{}",
 				input.display_name,
 				msg
@@ -320,8 +320,8 @@ fn tail_file(
 				observer.add_bad_path(path, input.display_name.as_str(), false)?;
 				let err =
 					e.map_err_context(|| format!("cannot open '{}' for reading", input.display_name));
-				let _ = writeln!(pi_uutils_ctx::stderr(), "tail: {err}");
-				pi_uutils_ctx::set_exit_code(err.code());
+				let _ = writeln!(veyyon_uutils_ctx::stderr(), "tail: {err}");
+				veyyon_uutils_ctx::set_exit_code(err.code());
 			},
 			Err(e) => {
 				observer.add_bad_path(path, input.display_name.as_str(), false)?;
@@ -390,7 +390,7 @@ fn tail_stdin(
 	// bad-fd detection, /dev/fd/0 fifo seek) don't apply; always take the
 	// streaming (pipe) path.
 	header_printer.print_input(input);
-	let mut reader = BufReader::new(pi_uutils_ctx::stdin());
+	let mut reader = BufReader::new(veyyon_uutils_ctx::stdin());
 	unbounded_tail(&mut reader, settings)?;
 	Ok(())
 }
@@ -569,7 +569,7 @@ fn bounded_tail(file: &mut File, settings: &Settings) -> UResult<()> {
 }
 
 fn unbounded_tail<T: Read>(reader: &mut BufReader<T>, settings: &Settings) -> UResult<()> {
-	let mut writer = BufWriter::new(pi_uutils_ctx::stdout().lock());
+	let mut writer = BufWriter::new(veyyon_uutils_ctx::stdout().lock());
 	match &settings.mode {
 		FilterMode::Lines(Signum::Negative(count), sep) => {
 			let mut chunks = chunks::LinesChunkBuffer::new(*sep, *count);
@@ -651,7 +651,7 @@ where
 	R: Read + ?Sized,
 {
 	// Print the target section of the file.
-	let stdout = pi_uutils_ctx::stdout();
+	let stdout = veyyon_uutils_ctx::stdout();
 	let mut stdout = stdout.lock();
 	if let Some(limit) = limit {
 		let mut reader = file.take(limit);
@@ -696,7 +696,7 @@ mod tests {
 	fn run_in(cwd: PathBuf, args: Vec<&str>) -> (i32, String, String) {
 		let stdout_buf = Arc::new(Mutex::new(Vec::new()));
 		let stderr_buf = Arc::new(Mutex::new(Vec::new()));
-		let io = pi_uutils_ctx::ScopeIo {
+		let io = veyyon_uutils_ctx::ScopeIo {
 			stdin: Box::new(io::empty()),
 			stdin_fd: None,
 			stdin_is_search_input: false,
@@ -710,7 +710,7 @@ mod tests {
 			.chain(args)
 			.map(OsString::from)
 			.collect();
-		let code = pi_uutils_ctx::scope(io, || run(argv));
+		let code = veyyon_uutils_ctx::scope(io, || run(argv));
 
 		(
 			code,
@@ -838,7 +838,7 @@ mod tests {
 		file.flush().expect("flush");
 		drop(file);
 
-		let io = pi_uutils_ctx::ScopeIo {
+		let io = veyyon_uutils_ctx::ScopeIo {
 			stdin:                 Box::new(io::empty()),
 			stdin_fd:              None,
 			stdin_is_search_input: false,
@@ -849,7 +849,7 @@ mod tests {
 			cancel:                Arc::new(AtomicBool::new(false)),
 		};
 
-		let code = pi_uutils_ctx::scope(io, || {
+		let code = veyyon_uutils_ctx::scope(io, || {
 			crate::run(vec![OsString::from("tail"), OsString::from(&path)])
 		});
 

@@ -1,6 +1,6 @@
 import * as path from "node:path";
-
-import { Text } from "@veyyon/pi-tui";
+import { Text } from "@veyyon/tui";
+import { formatCount } from "@veyyon/utils";
 import { type } from "arktype";
 import type { ToolDefinition } from "../../extensibility/extensions";
 import type { Theme } from "../../modes/theme/theme";
@@ -167,7 +167,7 @@ export function createInitExperimentTool(
 
 			const lines: string[] = [];
 			if (abandonedRuns > 0) {
-				lines.push(`Abandoned ${abandonedRuns} pending run${abandonedRuns === 1 ? "" : "s"} before reconfiguring.`);
+				lines.push(`Abandoned ${formatCount("pending run", abandonedRuns)} before reconfiguring.`);
 			}
 			if (harnessCommitted && session.baselineCommit) {
 				lines.push(`Committed harness setup at ${session.baselineCommit.slice(0, 12)}.`);

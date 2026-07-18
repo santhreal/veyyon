@@ -1,5 +1,17 @@
 import { describe, expect, it } from "bun:test";
-import { colorLuma, hslToHex, relativeLuminance } from "@veyyon/pi-utils/color";
+import {
+	adjustHsv,
+	colorLuma,
+	hexToHsv,
+	hexToRgb,
+	hslToHex,
+	hsvToHex,
+	hsvToRgb,
+	relativeLuminance,
+	rgbToHex,
+	rgbToHsv,
+	shiftHue,
+} from "@veyyon/utils/color";
 
 describe("relativeLuminance (WCAG, linearized sRGB)", () => {
 	it("hits the extremes", () => {
@@ -37,6 +49,79 @@ describe("colorLuma (perceptual classification)", () => {
 	it("returns undefined for malformed input", () => {
 		expect(colorLuma("nope")).toBeUndefined();
 		expect(colorLuma(-1)).toBeUndefined();
+	});
+});
+
+describe("hex/RGB conversion", () => {
+	it("parses #RRGGBB, #RGB shorthand, and bare hex", () => {
+		expect(hexToRgb("#4ade80")).toEqual({ r: 0x4a, g: 0xde, b: 0x80 });
+		expect(hexToRgb("#fa3")).toEqual({ r: 0xff, g: 0xaa, b: 0x33 });
+		expect(hexToRgb("4ade80")).toEqual({ r: 0x4a, g: 0xde, b: 0x80 });
+	});
+
+	it("rgbToHex clamps and rounds out-of-range channels", () => {
+		expect(rgbToHex({ r: 74, g: 222, b: 128 })).toBe("#4ade80");
+		expect(rgbToHex({ r: -5, g: 300, b: 127.6 })).toBe("#00ff80");
+	});
+});
+
+describe("HSV conversion", () => {
+	it("maps primaries to their hue angles", () => {
+		expect(rgbToHsv({ r: 255, g: 0, b: 0 })).toEqual({ h: 0, s: 1, v: 1 });
+		expect(rgbToHsv({ r: 0, g: 255, b: 0 })).toEqual({ h: 120, s: 1, v: 1 });
+		expect(rgbToHsv({ r: 0, g: 0, b: 255 })).toEqual({ h: 240, s: 1, v: 1 });
+		expect(rgbToHsv({ r: 0, g: 0, b: 0 })).toEqual({ h: 0, s: 0, v: 0 });
+	});
+
+	it("hsvToRgb covers every 60-degree sextant", () => {
+		expect(hsvToRgb({ h: 0, s: 1, v: 1 })).toEqual({ r: 255, g: 0, b: 0 });
+		expect(hsvToRgb({ h: 60, s: 1, v: 1 })).toEqual({ r: 255, g: 255, b: 0 });
+		expect(hsvToRgb({ h: 120, s: 1, v: 1 })).toEqual({ r: 0, g: 255, b: 0 });
+		expect(hsvToRgb({ h: 180, s: 1, v: 1 })).toEqual({ r: 0, g: 255, b: 255 });
+		expect(hsvToRgb({ h: 240, s: 1, v: 1 })).toEqual({ r: 0, g: 0, b: 255 });
+		expect(hsvToRgb({ h: 300, s: 1, v: 1 })).toEqual({ r: 255, g: 0, b: 255 });
+	});
+
+	it("normalizes out-of-range hues, including negatives", () => {
+		expect(hsvToRgb({ h: 360, s: 1, v: 1 })).toEqual(hsvToRgb({ h: 0, s: 1, v: 1 }));
+		expect(hsvToRgb({ h: -120, s: 1, v: 1 })).toEqual(hsvToRgb({ h: 240, s: 1, v: 1 }));
+	});
+
+	it("round-trips hex -> HSV -> hex exactly for representable colors", () => {
+		for (const hex of ["#4ade80", "#ff0000", "#00ff88", "#123456", "#c0ffee"]) {
+			expect(hsvToHex(hexToHsv(hex))).toBe(hex);
+		}
+	});
+});
+
+describe("hue shifting and adjustment", () => {
+	it("shiftHue rotates around the wheel and wraps negatives", () => {
+		expect(shiftHue("#ff0000", 120)).toBe("#00ff00");
+		expect(shiftHue("#ff0000", -120)).toBe("#0000ff");
+		expect(shiftHue("#4ade80", 360)).toBe("#4ade80");
+	});
+
+	it("adjustHsv shifts hue additively and scales s/v with clamping", () => {
+		expect(adjustHsv("#ff0000", { h: 120 })).toBe("#00ff00");
+		expect(adjustHsv("#ff0000", { s: 0 })).toBe("#ffffff");
+		expect(adjustHsv("#ff0000", { v: 0.5 })).toBe("#800000");
+		expect(adjustHsv("#ff0000", { s: 99, v: 99 })).toBe("#ff0000"); // clamped to 1
+		expect(adjustHsv("#00ff00", { h: -120 })).toBe("#ff0000"); // negative wrap
+	});
+});
+
+describe("256-color palette parsing", () => {
+	it("maps color-cube indices to their step values", () => {
+		// index 196 = 16 + 36*5 = pure red column of the cube
+		expect(colorLuma(196)).toBeCloseTo((0.2126 * 255) / 255, 5);
+		// index 16 is cube black, index 231 is cube white
+		expect(colorLuma(16)).toBeCloseTo(0, 5);
+		expect(colorLuma(231)).toBeCloseTo(1, 5);
+	});
+
+	it("maps grayscale-ramp indices linearly from 8 to 238", () => {
+		expect(colorLuma(232)).toBeCloseTo(8 / 255, 5);
+		expect(colorLuma(255)).toBeCloseTo(238 / 255, 5);
 	});
 });
 

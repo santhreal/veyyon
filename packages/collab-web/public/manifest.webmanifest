@@ -1,7 +1,7 @@
 {
-	"name": "omp collab",
-	"short_name": "omp collab",
-	"description": "Live guest client for omp collab sessions: streaming transcript, tool cards, subagent panel, and a composer that prompts the host agent — end-to-end encrypted.",
+	"name": "veyyon collab",
+	"short_name": "veyyon collab",
+	"description": "Live guest client for veyyon collab sessions: streaming transcript, tool cards, subagent panel, and a composer that prompts the host agent — end-to-end encrypted.",
 	"start_url": "/",
 	"scope": "/",
 	"display": "standalone",

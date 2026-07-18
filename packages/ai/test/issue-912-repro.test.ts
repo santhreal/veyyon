@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
-import { stream } from "@veyyon/pi-ai/stream";
-import type { Context, Model } from "@veyyon/pi-ai/types";
-import { buildModel } from "@veyyon/pi-catalog/build";
+import { stream } from "@veyyon/ai/stream";
+import type { Context, Model } from "@veyyon/ai/types";
+import { buildModel } from "@veyyon/catalog/build";
 
 function makeCopilotResponsesModel(baseUrl: string): Model<"openai-responses"> {
 	return buildModel({

@@ -1,4 +1,4 @@
-import type { AssistantMessage, Message } from "@veyyon/pi-ai";
+import type { AssistantMessage, Message } from "@veyyon/ai";
 
 /** Detects API-level provider refusals that are terminal errors, not dialogue to replay. */
 export function isProviderRefusalMessage(message: AssistantMessage): boolean {

@@ -1,7 +1,7 @@
-import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/pi-agent-core";
-import type { Component } from "@veyyon/pi-tui";
-import { Text } from "@veyyon/pi-tui";
-import { prompt } from "@veyyon/pi-utils";
+import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
+import type { Component } from "@veyyon/tui";
+import { Text } from "@veyyon/tui";
+import { formatCount, prompt } from "@veyyon/utils";
 import { type } from "arktype";
 import type { AsyncJob, AsyncJobManager } from "../async";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
@@ -600,7 +600,7 @@ export const jobToolRenderer = {
 		if (counts.failed > 0) meta.push(uiTheme.fg("error", `${counts.failed} failed`));
 		if (counts.cancelled > 0) meta.push(uiTheme.fg("warning", `${counts.cancelled} cancelled`));
 		if (agents.length > 0 && jobs.length > 0) {
-			meta.push(uiTheme.fg("accent", `${agents.length} agent${agents.length === 1 ? "" : "s"}`));
+			meta.push(uiTheme.fg("accent", `${formatCount("agent", agents.length)}`));
 		}
 
 		const headerIcon: ToolUIStatus =
@@ -608,7 +608,7 @@ export const jobToolRenderer = {
 		const jobsNoun = jobs.length === 1 ? "job" : "jobs";
 		const description =
 			jobs.length === 0
-				? `${agents.length} running agent${agents.length === 1 ? "" : "s"} — no jobs`
+				? `${formatCount("running agent", agents.length)} — no jobs`
 				: counts.running > 0
 					? counts.running === jobs.length
 						? `waiting on ${jobs.length} ${jobsNoun}`

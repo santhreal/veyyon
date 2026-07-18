@@ -1,13 +1,10 @@
+import { escapeRegExp } from "@veyyon/utils";
+
 /** Characters that bind a magic keyword into an identifier or path segment. */
 const LEFT_BOUNDARY = String.raw`(?<![\p{L}\p{N}_./\\-])(?<!::)`;
 
 /** Characters that cannot immediately follow a standalone magic keyword. */
 const RIGHT_BOUNDARY = String.raw`(?![\p{L}\p{N}_/\\-])(?!\.[\p{L}\p{N}_-])(?!\()`;
-
-/** Escape a literal string for safe insertion into a RegExp source. */
-function escapeRegExp(value: string): string {
-	return value.replace(/[\\^$.*+?()[\]{}|]/g, "\\$&");
-}
 
 /**
  * Build a case-sensitive magic-keyword matcher for prose punctuation boundaries.

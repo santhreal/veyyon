@@ -1,26 +1,26 @@
 /**
- * Regression test for #2935: the plugins docs advertise `omp list` / `omp remove`
- * as top-level commands, but only `omp install` is registered. Before the fix,
+ * Regression test for #2935: the plugins docs advertise `veyyon list` / `veyyon remove`
+ * as top-level commands, but only `veyyon install` is registered. Before the fix,
  * `resolveCliArgv(["list"])` rewrote the bare verb to `["launch", "list"]`, so
- * `omp list` silently started an interactive agent session with "list" as the
+ * `veyyon list` silently started an interactive agent session with "list" as the
  * initial LLM prompt instead of managing plugins (the real command is
- * `omp plugin list`). Same footgun for `omp remove`.
+ * `veyyon plugin list`). Same footgun for `veyyon remove`.
  *
  * These tests pin the chosen bugfix: a bare, single-arg documented plugin verb
- * yields a helpful hint pointing at the real `omp plugin <action>` command
+ * yields a helpful hint pointing at the real `veyyon plugin <action>` command
  * rather than leaking the word to the model — while multi-word invocations that
  * merely happen to begin with one of these verbs still fall through to `launch`
  * so genuine prompts are unaffected.
  *
- * Imported via a relative path (not the `@veyyon/pi-coding-agent` alias) so the
+ * Imported via a relative path (not the `@veyyon/coding-agent` alias) so the
  * assertions exercise this checkout's `cli-commands.ts` directly.
  */
 import { describe, expect, test } from "bun:test";
-import { APP_NAME } from "@veyyon/pi-utils/dirs";
+import { APP_NAME } from "@veyyon/utils/dirs";
 import { isSubcommand, resolveCliArgv } from "../src/cli-commands";
 
 describe("documented-but-unregistered plugin verbs do not leak to launch (#2935)", () => {
-	test("bare `omp list` hints at `omp plugin list` instead of launching with 'list' as the prompt", () => {
+	test("bare `veyyon list` hints at `veyyon plugin list` instead of launching with 'list' as the prompt", () => {
 		const result = resolveCliArgv(["list"]);
 		// Must NOT be the old silent-launch behavior.
 		expect(result).not.toEqual({ argv: ["launch", "list"] });
@@ -30,7 +30,7 @@ describe("documented-but-unregistered plugin verbs do not leak to launch (#2935)
 		expect("error" in result && result.error).toContain(`${APP_NAME} plugin list`);
 	});
 
-	test("bare `omp remove` hints at `omp plugin uninstall` instead of launching with 'remove' as the prompt", () => {
+	test("bare `veyyon remove` hints at `veyyon plugin uninstall` instead of launching with 'remove' as the prompt", () => {
 		const result = resolveCliArgv(["remove"]);
 		expect(result).not.toEqual({ argv: ["launch", "remove"] });
 		expect(result).not.toHaveProperty("argv");

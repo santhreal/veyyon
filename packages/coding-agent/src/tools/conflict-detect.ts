@@ -18,6 +18,7 @@
  * merely start with `<` or `=` never match.
  */
 
+import { formatCount } from "@veyyon/utils";
 import type { ToolSession } from "./index";
 import { ToolError } from "./tool-errors";
 
@@ -811,5 +812,5 @@ function appendBody(out: string[], section: readonly string[]): void {
 	const shown = section.slice(0, PREVIEW_SIDE_LINES);
 	for (const line of shown) out.push(line);
 	const hidden = section.length - shown.length;
-	if (hidden > 0) out.push(`… (${hidden} more line${hidden === 1 ? "" : "s"})`);
+	if (hidden > 0) out.push(`… (${formatCount("more line", hidden)})`);
 }

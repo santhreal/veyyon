@@ -1,6 +1,6 @@
 import * as path from "node:path";
 import { createInterface } from "node:readline/promises";
-import { $env, getProjectDir, isEnoent, prompt } from "@veyyon/pi-utils";
+import { $env, getProjectDir, isEnoent, prompt } from "@veyyon/utils";
 import { applyChangelogProposals } from "../../commit/changelog";
 import { detectChangelogBoundaries } from "../../commit/changelog/detect";
 import { parseUnreleasedSection } from "../../commit/changelog/parse";
@@ -27,6 +27,13 @@ interface CommitExecutionContext {
 
 export async function runAgenticCommit(args: CommitCommandArgs): Promise<void> {
 	const cwd = getProjectDir();
+	// Fail fast outside a repository: otherwise the first `git diff --cached`
+	// surfaces as a raw GitCommandError with git's full usage dump.
+	if ((await git.repo.root(cwd)) === null) {
+		process.stderr.write(`Error: ${cwd} is not inside a git repository — \`veyyon commit\` needs one.\n`);
+		process.exitCode = 1;
+		return;
+	}
 	const [settings, authStorage] = await Promise.all([Settings.init({ cwd }), discoverAuthStorage()]);
 
 	process.stdout.write("● Resolving model...\n");
@@ -88,7 +95,7 @@ export async function runAgenticCommit(args: CommitCommandArgs): Promise<void> {
 	} else {
 		process.stdout.write("  └─ (none found)\n");
 	}
-	const forceFallback = $env.PI_COMMIT_TEST_FALLBACK?.toLowerCase() === "true";
+	const forceFallback = $env.VEYYON_COMMIT_TEST_FALLBACK?.toLowerCase() === "true";
 	if (forceFallback) {
 		process.stdout.write("● Forcing fallback commit generation...\n");
 		const fallbackProposal = generateFallbackProposal(numstat);
@@ -177,7 +184,7 @@ async function completeAgentCommitState(
 ): Promise<void> {
 	let usedFallback = false;
 	if (!commitState.proposal && !commitState.splitProposal) {
-		if ($env.PI_COMMIT_NO_FALLBACK?.toLowerCase() !== "true") {
+		if ($env.VEYYON_COMMIT_NO_FALLBACK?.toLowerCase() !== "true") {
 			process.stdout.write("● Agent did not provide proposal, using fallback...\n");
 			commitState.proposal = generateFallbackProposal(ctx.numstat);
 			usedFallback = true;

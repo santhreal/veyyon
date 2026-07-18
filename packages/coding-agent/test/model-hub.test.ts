@@ -1,20 +1,20 @@
 import { afterEach, beforeAll, describe, expect, type Mock, test, vi } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
-import { ThinkingLevel } from "@veyyon/pi-agent-core";
-import type { Model } from "@veyyon/pi-ai";
-import { buildModel } from "@veyyon/pi-catalog/build";
-import { getBundledModel } from "@veyyon/pi-catalog/models";
-import type { ModelRegistry } from "@veyyon/pi-coding-agent/config/model-registry";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
+import { ThinkingLevel } from "@veyyon/agent-core";
+import type { Model } from "@veyyon/ai";
+import { buildModel } from "@veyyon/catalog/build";
+import { getBundledModel } from "@veyyon/catalog/models";
+import type { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
+import { Settings } from "@veyyon/coding-agent/config/settings";
 import {
 	type ModelHubCallbacks,
 	ModelHubComponent,
 	type ModelHubOptions,
 	resetProviderAutoRefreshGuard,
-} from "@veyyon/pi-coding-agent/modes/components/model-hub";
-import { getThemeByName, setThemeInstance } from "@veyyon/pi-coding-agent/modes/theme/theme";
-import { AUTO_THINKING } from "@veyyon/pi-coding-agent/thinking";
-import type { TUI } from "@veyyon/pi-tui";
+} from "@veyyon/coding-agent/modes/components/model-hub";
+import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
+import { AUTO_THINKING } from "@veyyon/coding-agent/thinking";
+import type { TUI } from "@veyyon/tui";
 
 function normalize(lines: readonly string[]): string {
 	return stripVTControlCharacters(lines.join("\n")).replace(/\s+/g, " ").trim();

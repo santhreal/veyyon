@@ -6,7 +6,7 @@
  * through the shared {@link AuthStorage} broker (Bearer token), and responses
  * are categorized result buckets rather than the legacy flat object array.
  */
-import { type AuthStorage, type FetchImpl, withAuth } from "@veyyon/pi-ai";
+import { type AuthStorage, type FetchImpl, withAuth } from "@veyyon/ai";
 import { withHardTimeout } from "./search/providers/utils";
 
 const KAGI_SEARCH_URL = "https://kagi.com/api/v1/search";
@@ -242,63 +242,65 @@ export async function searchWithKagi(
 	const fetchImpl = options.fetch ?? fetch;
 	const body = JSON.stringify(buildRequestBody(query, options));
 
-	const response = await withAuth(
-		authStorage.resolver("kagi", { sessionId: options.sessionId }),
-		async apiKey => {
-			const res = await fetchImpl(KAGI_SEARCH_URL, {
-				method: "POST",
-				headers: {
-					Authorization: `Bearer ${apiKey}`,
-					"Content-Type": "application/json",
-					Accept: "application/json",
-				},
-				body,
-				signal: withHardTimeout(options.signal),
-			});
+	return withHardTimeout(options.signal, async hardSignal => {
+		const response = await withAuth(
+			authStorage.resolver("kagi", { sessionId: options.sessionId }),
+			async apiKey => {
+				const res = await fetchImpl(KAGI_SEARCH_URL, {
+					method: "POST",
+					headers: {
+						Authorization: `Bearer ${apiKey}`,
+						"Content-Type": "application/json",
+						Accept: "application/json",
+					},
+					body,
+					signal: hardSignal,
+				});
 
-			if (!res.ok) {
-				throw parseKagiErrorResponse(res.status, await res.text());
-			}
+				if (!res.ok) {
+					throw parseKagiErrorResponse(res.status, await res.text());
+				}
 
-			return res;
-		},
-		{
-			signal: options.signal,
-			missingKeyMessage: "Kagi credentials not found. Set KAGI_API_KEY or login with 'veyyon /login kagi'.",
-		},
-	);
+				return res;
+			},
+			{
+				signal: options.signal,
+				missingKeyMessage: "Kagi credentials not found. Set KAGI_API_KEY or login with 'veyyon /login kagi'.",
+			},
+		);
 
-	const payload = (await response.json()) as KagiSearchResponse;
-	if (payload.error && payload.error.length > 0) {
-		const first = payload.error[0];
-		throw createKagiApiError(first.code ?? response.status, extractKagiErrorMessage(payload) ?? first.message);
-	}
+		const payload = (await response.json()) as KagiSearchResponse;
+		if (payload.error && payload.error.length > 0) {
+			const first = payload.error[0];
+			throw createKagiApiError(first.code ?? response.status, extractKagiErrorMessage(payload) ?? first.message);
+		}
 
-	const data = payload.data;
-	const sources: KagiSearchSource[] = [];
-	const relatedQuestions: string[] = [];
+		const data = payload.data;
+		const sources: KagiSearchSource[] = [];
+		const relatedQuestions: string[] = [];
 
-	collectSources(sources, data?.search);
-	collectSources(sources, data?.video, "[Video]");
-	collectSources(sources, data?.news, "[News]");
-	collectSources(sources, data?.infobox, "[Info]");
+		collectSources(sources, data?.search);
+		collectSources(sources, data?.video, "[Video]");
+		collectSources(sources, data?.news, "[News]");
+		collectSources(sources, data?.infobox, "[Info]");
 
-	for (const item of data?.adjacent_question ?? []) {
-		const q = questionOf(item);
-		if (q) relatedQuestions.push(q);
-	}
-	for (const item of data?.related_search ?? []) {
-		const q = questionOf(item);
-		if (q) relatedQuestions.push(q);
-	}
+		for (const item of data?.adjacent_question ?? []) {
+			const q = questionOf(item);
+			if (q) relatedQuestions.push(q);
+		}
+		for (const item of data?.related_search ?? []) {
+			const q = questionOf(item);
+			if (q) relatedQuestions.push(q);
+		}
 
-	const directAnswer = data?.direct_answer?.[0];
-	const answer = directAnswer ? (directAnswer.snippet ?? directAnswer.title) : undefined;
+		const directAnswer = data?.direct_answer?.[0];
+		const answer = directAnswer ? (directAnswer.snippet ?? directAnswer.title) : undefined;
 
-	return {
-		requestId: payload.meta?.trace ?? payload.meta?.id ?? "",
-		sources,
-		relatedQuestions,
-		answer,
-	};
+		return {
+			requestId: payload.meta?.trace ?? payload.meta?.id ?? "",
+			sources,
+			relatedQuestions,
+			answer,
+		};
+	});
 }

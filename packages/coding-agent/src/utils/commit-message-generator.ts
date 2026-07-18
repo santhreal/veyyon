@@ -2,10 +2,10 @@
  * Generate commit messages from diffs using a smol, fast model.
  * Follows the same pattern as title-generator.ts.
  */
-import type { ThinkingLevel } from "@veyyon/pi-agent-core";
-import type { Api, Model } from "@veyyon/pi-ai";
-import { completeSimple } from "@veyyon/pi-ai";
-import { logger, prompt } from "@veyyon/pi-utils";
+import type { ThinkingLevel } from "@veyyon/agent-core";
+import type { Api, Model } from "@veyyon/ai";
+import { completeSimple } from "@veyyon/ai";
+import { errorMessage, logger, prompt } from "@veyyon/utils";
 
 import type { ModelRegistry } from "../config/model-registry";
 import { getModelMatchPreferences, resolveModelRoleValue } from "../config/model-resolver";
@@ -139,7 +139,7 @@ export async function generateCommitMessage(
 		} catch (err) {
 			logger.debug("commit-msg-generator: error", {
 				model: candidate.model.id,
-				error: err instanceof Error ? err.message : String(err),
+				error: errorMessage(err),
 			});
 		}
 	}

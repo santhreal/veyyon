@@ -2,17 +2,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { Agent, type AgentTool } from "@veyyon/pi-agent-core";
-import { Effort } from "@veyyon/pi-ai";
-import { getBundledModel } from "@veyyon/pi-catalog/models";
-import * as autoThinkingClassifier from "@veyyon/pi-coding-agent/auto-thinking/classifier";
-import { ModelRegistry } from "@veyyon/pi-coding-agent/config/model-registry";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { AgentSession } from "@veyyon/pi-coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/pi-coding-agent/session/auth-storage";
-import { SessionManager } from "@veyyon/pi-coding-agent/session/session-manager";
-import { AUTO_THINKING } from "@veyyon/pi-coding-agent/thinking";
-import { removeWithRetries } from "@veyyon/pi-utils";
+import { Agent, type AgentTool } from "@veyyon/agent-core";
+import { Effort } from "@veyyon/ai";
+import { getBundledModel } from "@veyyon/catalog/models";
+import * as autoThinkingClassifier from "@veyyon/coding-agent/auto-thinking/classifier";
+import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
+import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { AUTO_THINKING } from "@veyyon/coding-agent/thinking";
+import { removeWithRetries } from "@veyyon/utils";
 import { type } from "arktype";
 
 const mockTaskTool: AgentTool = {
@@ -61,7 +61,7 @@ describe("AgentSession magic keyword settings", () => {
 	let authStorage: AuthStorage | undefined;
 
 	beforeEach(async () => {
-		root = await fs.mkdtemp(path.join(os.tmpdir(), "omp-magic-keywords-"));
+		root = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-magic-keywords-"));
 	});
 
 	afterEach(async () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import type { AssistantMessage, Usage } from "@veyyon/pi-ai";
+import type { AssistantMessage, Usage } from "@veyyon/ai";
 import { assistantUsageIsBilled } from "./transcript-render-helpers";
 
 function usage(overrides: Partial<Usage> = {}): Usage {

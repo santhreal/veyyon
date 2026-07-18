@@ -1,24 +1,24 @@
 /**
  * Regression test for #3680: third-party extension / hook modules that call
- * `process.exit()` at the top level must not terminate the host OMP process.
+ * `process.exit()` at the top level must not terminate the host veyyon process.
  *
  * The harness intercepts the load via `withExitGuard`; this test pins that the
- * intercepted error surfaces as a per-module load failure (so OMP keeps going)
+ * intercepted error surfaces as a per-module load failure (so veyyon keeps going)
  * instead of crashing the test runner.
  */
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { loadExtensions } from "@veyyon/pi-coding-agent/extensibility/extensions/loader";
-import { loadHooks } from "@veyyon/pi-coding-agent/extensibility/hooks/loader";
-import { ExtensionExitError, withExitGuard } from "@veyyon/pi-coding-agent/extensibility/utils";
-import { TempDir } from "@veyyon/pi-utils";
+import { loadExtensions } from "@veyyon/coding-agent/extensibility/extensions/loader";
+import { loadHooks } from "@veyyon/coding-agent/extensibility/hooks/loader";
+import { ExtensionExitError, withExitGuard } from "@veyyon/coding-agent/extensibility/utils";
+import { TempDir } from "@veyyon/utils";
 
 describe("extension/hook loader process.exit guard (#3680)", () => {
 	let project: TempDir | undefined;
 
 	beforeEach(() => {
-		project = TempDir.createSync("@omp-exit-guard-");
+		project = TempDir.createSync("@veyyon-exit-guard-");
 	});
 
 	afterEach(() => {

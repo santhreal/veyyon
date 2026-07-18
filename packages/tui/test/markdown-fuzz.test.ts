@@ -16,7 +16,7 @@
  * Deterministic LCG so any failure reproduces from the printed seed input.
  */
 import { describe, expect, it } from "bun:test";
-import { Markdown } from "@veyyon/pi-tui/components/markdown";
+import { Markdown } from "@veyyon/tui/components/markdown";
 import { buildString, FRAGMENTS, lcg } from "./helpers/adversarial-strings";
 import { defaultMarkdownTheme } from "./test-themes.js";
 

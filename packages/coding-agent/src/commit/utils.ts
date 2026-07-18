@@ -1,4 +1,4 @@
-import type { AssistantMessage, ToolCall } from "@veyyon/pi-ai";
+import type { AssistantMessage, ToolCall } from "@veyyon/ai";
 import type { ChangelogCategory, ConventionalAnalysis, ConventionalDetail } from "./types";
 
 export function extractToolCall(message: AssistantMessage, name: string): ToolCall | undefined {

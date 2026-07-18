@@ -1,4 +1,4 @@
-import type { KnownProvider } from "@veyyon/pi-catalog";
+import type { KnownProvider } from "@veyyon/catalog";
 import { aimlApiProvider } from "./aimlapi";
 import { alibabaCodingPlanProvider } from "./alibaba-coding-plan";
 import { amazonBedrockProvider } from "./amazon-bedrock";

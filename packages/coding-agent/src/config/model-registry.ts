@@ -1,6 +1,6 @@
 import { execSync } from "node:child_process";
 import * as path from "node:path";
-import { registerCustomApi, unregisterCustomApis } from "@veyyon/pi-ai/api-registry";
+import { registerCustomApi, unregisterCustomApis } from "@veyyon/ai/api-registry";
 import type {
 	Api,
 	Context,
@@ -9,28 +9,24 @@ import type {
 	RemoteCompactionConfig,
 	SimpleStreamOptions,
 	ThinkingConfig,
-} from "@veyyon/pi-ai/types";
-import type { AssistantMessageEventStream } from "@veyyon/pi-ai/utils/event-stream";
-import { buildModel } from "@veyyon/pi-catalog/build";
-import { isVertexExpressOpenAIUrl } from "@veyyon/pi-catalog/hosts";
-import { readModelCache } from "@veyyon/pi-catalog/model-cache";
-import {
-	createModelManager,
-	type ModelManagerOptions,
-	type ModelRefreshStrategy,
-} from "@veyyon/pi-catalog/model-manager";
-import { getBundledModels, getBundledProviders } from "@veyyon/pi-catalog/models";
+} from "@veyyon/ai/types";
+import type { AssistantMessageEventStream } from "@veyyon/ai/utils/event-stream";
+import { buildModel } from "@veyyon/catalog/build";
+import { isVertexExpressOpenAIUrl } from "@veyyon/catalog/hosts";
+import { readModelCache } from "@veyyon/catalog/model-cache";
+import { createModelManager, type ModelManagerOptions, type ModelRefreshStrategy } from "@veyyon/catalog/model-manager";
+import { getBundledModels, getBundledProviders } from "@veyyon/catalog/models";
 import {
 	googleAntigravityModelManagerOptions,
 	googleGeminiCliModelManagerOptions,
 	openaiCodexModelManagerOptions,
 	PROVIDER_DESCRIPTORS,
-} from "@veyyon/pi-catalog/provider-models";
+} from "@veyyon/catalog/provider-models";
 import {
 	collapseBuiltModelVariants,
 	getVariantAliasSources,
 	resolveVariantAlias,
-} from "@veyyon/pi-catalog/variant-collapse";
+} from "@veyyon/catalog/variant-collapse";
 
 const SPECIAL_MODEL_MANAGER_PROVIDER_IDS: readonly string[] = [
 	"google-antigravity",
@@ -61,11 +57,11 @@ const RUNTIME_DYNAMIC_MODEL_FETCH_TIMEOUT_MS = 15_000;
 const BUILT_IN_DISCOVERY_CACHE_TTL_MS = 2 * 60 * 60 * 1000;
 const BUILT_IN_DISCOVERY_NON_AUTHORITATIVE_RETRY_MS = 5 * 60 * 1000;
 
-import type { ApiKeyResolver, FetchImpl } from "@veyyon/pi-ai";
-import { registerOAuthProvider, unregisterOAuthProviders } from "@veyyon/pi-ai/oauth";
-import type { OAuthCredentials, OAuthLoginCallbacks } from "@veyyon/pi-ai/oauth/types";
-import { getBundledModelReferenceIndex, resolveModelReference } from "@veyyon/pi-catalog/identity";
-import { isBunTestRuntime, isRecord, logger, wrapFetchForExtraCa } from "@veyyon/pi-utils";
+import type { ApiKeyResolver, FetchImpl } from "@veyyon/ai";
+import { registerOAuthProvider, unregisterOAuthProviders } from "@veyyon/ai/oauth";
+import type { OAuthCredentials, OAuthLoginCallbacks } from "@veyyon/ai/oauth/types";
+import { getBundledModelReferenceIndex, resolveModelReference } from "@veyyon/catalog/identity";
+import { errorMessage, isBunTestRuntime, isRecord, logger, wrapFetchForExtraCa } from "@veyyon/utils";
 import { parseModelString, resolveProviderModelReference } from "../config/model-resolver";
 import type { AuthStorage, OAuthCredential } from "../session/auth-storage";
 import { type ApiKeyResolverModel, type ApiKeyResolverOptions, createApiKeyResolver } from "./api-key-resolver";
@@ -837,7 +833,7 @@ export class ModelRegistry {
 		const refreshPromise = this.refresh(strategy)
 			.catch(error => {
 				logger.warn("background model refresh failed", {
-					error: error instanceof Error ? error.message : String(error),
+					error: errorMessage(error),
 				});
 			})
 			.finally(() => {
@@ -1481,7 +1477,7 @@ export class ModelRegistry {
 				this.#lastDiscoveryWarnings.delete(providerId);
 				return models.map(toModelSpec);
 			} catch (error) {
-				discoveryError = error instanceof Error ? error.message : String(error);
+				discoveryError = errorMessage(error);
 				return null;
 			}
 		};
@@ -1620,7 +1616,7 @@ export class ModelRegistry {
 		} catch (error) {
 			logger.debug("OAuth refresh failed during model discovery preflight", {
 				provider: providerId,
-				error: error instanceof Error ? error.message : String(error),
+				error: errorMessage(error),
 			});
 			return peekedKey;
 		}
@@ -1758,7 +1754,7 @@ export class ModelRegistry {
 		} catch (error) {
 			logger.warn("model discovery failed for provider", {
 				provider: options.providerId,
-				error: error instanceof Error ? error.message : String(error),
+				error: errorMessage(error),
 			});
 			return { models: [], authoritativeProviders: new Set() };
 		}

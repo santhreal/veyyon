@@ -167,7 +167,7 @@ Especially watch for:
 
 `discoverWatchdogFiles(cwd, agentDir)` loads every readable candidate from these locations:
 
-1. user level: `<active agent dir>/WATCHDOG.md` (`~/.veyyon/agent/WATCHDOG.md` by default; relocated by `VEYYON_CODING_AGENT_DIR` (legacy `PI_CODING_AGENT_DIR`))
+1. user level: `<active agent dir>/WATCHDOG.md` (`~/.veyyon/profiles/default/agent/WATCHDOG.md` by default; relocated by `VEYYON_CODING_AGENT_DIR` / profile)
 2. project levels while walking from `cwd` upward to the git repository root, or to the home directory when no repo root is found:
    - `<dir>/WATCHDOG.md`
    - `<dir>/.veyyon/WATCHDOG.md`

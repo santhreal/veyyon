@@ -1,19 +1,19 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { type EditMode, type EditModeSessionLike, resolveEditMode } from "@veyyon/pi-coding-agent/utils/edit-mode";
+import { type EditMode, type EditModeSessionLike, resolveEditMode } from "@veyyon/coding-agent/utils/edit-mode";
 
-const originalEditVariant = Bun.env.PI_EDIT_VARIANT;
-const originalStrictEditMode = Bun.env.PI_STRICT_EDIT_MODE;
+const originalEditVariant = Bun.env.VEYYON_EDIT_VARIANT;
+const originalStrictEditMode = Bun.env.VEYYON_STRICT_EDIT_MODE;
 
 function restoreEnv(): void {
 	if (originalEditVariant === undefined) {
-		delete Bun.env.PI_EDIT_VARIANT;
+		delete Bun.env.VEYYON_EDIT_VARIANT;
 	} else {
-		Bun.env.PI_EDIT_VARIANT = originalEditVariant;
+		Bun.env.VEYYON_EDIT_VARIANT = originalEditVariant;
 	}
 	if (originalStrictEditMode === undefined) {
-		delete Bun.env.PI_STRICT_EDIT_MODE;
+		delete Bun.env.VEYYON_STRICT_EDIT_MODE;
 	} else {
-		Bun.env.PI_STRICT_EDIT_MODE = originalStrictEditMode;
+		Bun.env.VEYYON_STRICT_EDIT_MODE = originalStrictEditMode;
 	}
 }
 
@@ -33,8 +33,8 @@ function createSession(args: {
 
 describe("resolveEditMode", () => {
 	beforeEach(() => {
-		delete Bun.env.PI_EDIT_VARIANT;
-		delete Bun.env.PI_STRICT_EDIT_MODE;
+		delete Bun.env.VEYYON_EDIT_VARIANT;
+		delete Bun.env.VEYYON_STRICT_EDIT_MODE;
 	});
 
 	afterEach(() => {
@@ -42,19 +42,19 @@ describe("resolveEditMode", () => {
 	});
 
 	test("falls back from hashline to replace for Kimi models", () => {
-		delete Bun.env.PI_EDIT_VARIANT;
+		delete Bun.env.VEYYON_EDIT_VARIANT;
 
 		expect(resolveEditMode(createSession({ activeModel: "openrouter/moonshotai/Kimi-K2-Instruct" }))).toBe("replace");
 	});
 
 	test("does not exclude non-Kimi Moonshot models", () => {
-		delete Bun.env.PI_EDIT_VARIANT;
+		delete Bun.env.VEYYON_EDIT_VARIANT;
 
 		expect(resolveEditMode(createSession({ activeModel: "moonshot/moonshot-v1-128k" }))).toBe("hashline");
 	});
 
 	test("keeps explicit model variants ahead of the Kimi fallback", () => {
-		delete Bun.env.PI_EDIT_VARIANT;
+		delete Bun.env.VEYYON_EDIT_VARIANT;
 
 		expect(
 			resolveEditMode(
@@ -63,8 +63,8 @@ describe("resolveEditMode", () => {
 		).toBe("hashline");
 	});
 
-	test("keeps PI_EDIT_VARIANT ahead of the Kimi fallback", () => {
-		Bun.env.PI_EDIT_VARIANT = "hashline";
+	test("keeps VEYYON_EDIT_VARIANT ahead of the Kimi fallback", () => {
+		Bun.env.VEYYON_EDIT_VARIANT = "hashline";
 
 		expect(resolveEditMode(createSession({ activeModel: "openrouter/moonshotai/Kimi-K2-Instruct" }))).toBe(
 			"hashline",
@@ -72,7 +72,7 @@ describe("resolveEditMode", () => {
 	});
 
 	test("only falls back when the resolved mode is hashline", () => {
-		delete Bun.env.PI_EDIT_VARIANT;
+		delete Bun.env.VEYYON_EDIT_VARIANT;
 
 		expect(
 			resolveEditMode(
@@ -82,8 +82,8 @@ describe("resolveEditMode", () => {
 	});
 
 	test("keeps strict edit mode ahead of the Kimi fallback", () => {
-		delete Bun.env.PI_EDIT_VARIANT;
-		Bun.env.PI_STRICT_EDIT_MODE = "1";
+		delete Bun.env.VEYYON_EDIT_VARIANT;
+		Bun.env.VEYYON_STRICT_EDIT_MODE = "1";
 
 		expect(resolveEditMode(createSession({ activeModel: "openrouter/moonshotai/Kimi-K2-Instruct" }))).toBe(
 			"hashline",

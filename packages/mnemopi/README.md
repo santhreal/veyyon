@@ -1,9 +1,9 @@
-# @veyyon/pi-mnemopi
+# @veyyon/mnemopi
 
 Local SQLite memory engine for Veyyon agents.
 
 This package is the Bun/TypeScript port of the Mnemosyne memory engine, originally built for
-[Oh My Pi](https://github.com/can1357/oh-my-pi). It provides:
+[veyyon](https://github.com/santhreal/veyyon). It provides:
 
 - `Mnemopi`, a small facade for remember/recall/stats/sleep workflows.
 - `BeamMemory`, the lower-level working/episodic memory engine.
@@ -15,7 +15,7 @@ The package does not bundle or download a local GGUF LLM. LLM paths are host-bac
 ## Basic use
 
 ```ts
-import { Mnemopi } from "@veyyon/pi-mnemopi";
+import { Mnemopi } from "@veyyon/mnemopi";
 
 const memory = new Mnemopi({ dbPath: "./mnemopi.db", bank: "project" });
 const id = memory.remember("The deployment target is stable-cluster.", {
@@ -35,8 +35,8 @@ memory.close();
 `Mnemopi` accepts LLM and embedding options directly. `MNEMOPI_*` environment variables remain fallbacks/defaults when the matching constructor option is omitted.
 
 ```ts
-import { Mnemopi } from "@veyyon/pi-mnemopi";
-import type { Model } from "@veyyon/pi-ai";
+import { Mnemopi } from "@veyyon/mnemopi";
+import type { Model } from "@veyyon/ai";
 
 const ftsOnly = new Mnemopi({ noEmbeddings: true });
 

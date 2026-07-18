@@ -222,11 +222,11 @@ impl Observer {
 					`sudo sysctl fs.inotify.max_user_instances=64`
 					*/
 					let _ = writeln!(
-						pi_uutils_ctx::stderr(),
+						veyyon_uutils_ctx::stderr(),
 						"tail: {} cannot be used, reverting to polling: Too many open files",
 						text::BACKEND
 					);
-					pi_uutils_ctx::set_exit_code(1);
+					veyyon_uutils_ctx::set_exit_code(1);
 					self.use_polling = true;
 					watcher = Box::new(notify::PollWatcher::new(tx_clone, watcher_config).unwrap());
 				},
@@ -315,14 +315,14 @@ impl Observer {
                             // behavior and is the usual truncation operation for log files.
                             if !old_md.is_tailable() {
                                 let _ = writeln!(
-                                    pi_uutils_ctx::stderr(),
+                                    veyyon_uutils_ctx::stderr(),
                                     "tail: {} has become accessible",
                                     display_name.quote()
                                 );
                                 self.files.update_reader(event_path)?;
                             } else if pd.reader.is_none() {
                                 let _ = writeln!(
-                                    pi_uutils_ctx::stderr(),
+                                    veyyon_uutils_ctx::stderr(),
                                     "tail: {} has appeared;  following new file",
                                     display_name.quote()
                                 );
@@ -330,14 +330,14 @@ impl Observer {
                             } else if event.kind == EventKind::Modify(ModifyKind::Name(RenameMode::To))
                             || (self.use_polling && !old_md.file_id_eq(&new_md)) {
                                 let _ = writeln!(
-                                    pi_uutils_ctx::stderr(),
+                                    veyyon_uutils_ctx::stderr(),
                                     "tail: {} has been replaced;  following new file",
                                     display_name.quote()
                                 );
                                 self.files.update_reader(event_path)?;
                             } else if old_md.got_truncated(&new_md)? {
                                 let _ = writeln!(
-                                    pi_uutils_ctx::stderr(),
+                                    veyyon_uutils_ctx::stderr(),
                                     "tail: {}: file truncated",
                                     display_name
                                 );
@@ -349,7 +349,7 @@ impl Observer {
                                 self.files.reset_reader(event_path);
                             } else {
                                 let _ = writeln!(
-                                    pi_uutils_ctx::stderr(),
+                                    veyyon_uutils_ctx::stderr(),
                                     "tail: {} has been replaced with an untailable file",
                                     display_name.quote()
                                 );
@@ -357,7 +357,7 @@ impl Observer {
                         }
                     } else if is_tailable {
                         let _ = writeln!(
-                            pi_uutils_ctx::stderr(),
+                            veyyon_uutils_ctx::stderr(),
                             "tail: {} has appeared;  following new file",
                             display_name.quote()
                         );
@@ -366,7 +366,7 @@ impl Observer {
                     } else if settings.retry {
                         if self.follow_descriptor() {
                             let _ = writeln!(
-                                pi_uutils_ctx::stderr(),
+                                veyyon_uutils_ctx::stderr(),
                                 "tail: {} has been replaced with an untailable file; giving up on this name",
                                 display_name.quote()
                             );
@@ -377,7 +377,7 @@ impl Observer {
                             }
                         } else {
                             let _ = writeln!(
-                                pi_uutils_ctx::stderr(),
+                                veyyon_uutils_ctx::stderr(),
                                 "tail: {} has been replaced with an untailable file",
                                 display_name.quote()
                             );
@@ -398,18 +398,18 @@ impl Observer {
                         if let Some(old_md) = self.files.get_mut_metadata(event_path)
                             && old_md.is_tailable() && self.files.get(event_path).reader.is_some() {
                                 let _ = writeln!(
-                                    pi_uutils_ctx::stderr(),
+                                    veyyon_uutils_ctx::stderr(),
                                     "tail: {} has become inaccessible: No such file or directory",
                                     display_name.quote()
                                 );
                             }
                         if event_path.is_orphan() && !self.orphans.contains(event_path) {
                             let _ = writeln!(
-                                pi_uutils_ctx::stderr(),
+                                veyyon_uutils_ctx::stderr(),
                                 "tail: directory containing watched file was removed"
                             );
                             let _ = writeln!(
-                                pi_uutils_ctx::stderr(),
+                                veyyon_uutils_ctx::stderr(),
                                 "tail: {} cannot be used, reverting to polling",
                                 text::BACKEND
                             );
@@ -418,7 +418,7 @@ impl Observer {
                         }
                     } else {
                         let _ = writeln!(
-                            pi_uutils_ctx::stderr(),
+                            veyyon_uutils_ctx::stderr(),
                             "tail: {}: No such file or directory",
                             display_name
                         );
@@ -516,7 +516,7 @@ pub fn follow(mut observer: Observer, settings: &Settings) -> UResult<()> {
 					let md = new_path.metadata().unwrap();
 					if md.is_tailable() && pd.reader.is_none() {
 						let _ = writeln!(
-							pi_uutils_ctx::stderr(),
+							veyyon_uutils_ctx::stderr(),
 							"tail: {} has appeared;  following new file",
 							pd.display_name.quote()
 						);

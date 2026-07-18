@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import type { AssistantMessage, Context, ToolCall, ToolResultMessage, Usage } from "@veyyon/pi-ai";
+import type { AssistantMessage, Context, ToolCall, ToolResultMessage, Usage } from "@veyyon/ai";
 import {
 	createInbandScanner,
 	type Dialect,
@@ -9,7 +9,7 @@ import {
 	type InbandScanEvent,
 	parseInbandToolMessage,
 	renderInbandToolPrompt,
-} from "@veyyon/pi-ai/dialect";
+} from "@veyyon/ai/dialect";
 
 const TOOLS = [
 	{

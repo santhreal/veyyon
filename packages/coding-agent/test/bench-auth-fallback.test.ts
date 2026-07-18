@@ -7,9 +7,9 @@ import type {
 	AssistantMessageEventStream,
 	Model,
 	SimpleStreamOptions,
-} from "@veyyon/pi-ai";
-import { type BenchModelRegistry, type BenchSummary, runBenchCommand } from "@veyyon/pi-coding-agent/cli/bench-cli";
-import type { Settings } from "@veyyon/pi-coding-agent/config/settings";
+} from "@veyyon/ai";
+import { type BenchModelRegistry, type BenchSummary, runBenchCommand } from "@veyyon/coding-agent/cli/bench-cli";
+import type { Settings } from "@veyyon/coding-agent/config/settings";
 
 function fakeModel(provider: string, id: string): Model<Api> {
 	return {
@@ -103,10 +103,11 @@ describe("bench credential-aware provider selection", () => {
 
 		const { summary, stderr } = await runBench("openai/gpt-oss-20b", registry);
 
+		// Resolution itself now breaks the ambiguity toward the authenticated
+		// provider (no post-hoc redirect), so no redirect warning is emitted.
 		expect(summary.models[0].model).toBe("openrouter/openai/gpt-oss-20b");
 		expect(summary.failures).toBe(0);
-		expect(stderr).toContain('no credentials for "groq"');
-		expect(stderr).toContain("openrouter/openai/gpt-oss-20b");
+		expect(stderr).not.toContain('no credentials for "groq"');
 	});
 
 	it("does not redirect across providers whose local ids differ", async () => {

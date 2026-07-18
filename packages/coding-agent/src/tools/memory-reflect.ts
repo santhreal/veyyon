@@ -1,5 +1,5 @@
-import type { AgentTool, AgentToolResult } from "@veyyon/pi-agent-core";
-import { logger, untilAborted } from "@veyyon/pi-utils";
+import type { AgentTool, AgentToolResult } from "@veyyon/agent-core";
+import { logger, untilAborted } from "@veyyon/utils";
 import { type } from "arktype";
 import { ensureBankExists } from "../hindsight/bank";
 import reflectDescription from "../prompts/tools/reflect.md" with { type: "text" };

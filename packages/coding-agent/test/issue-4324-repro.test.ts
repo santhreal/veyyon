@@ -11,11 +11,12 @@
  * after `onExit`, it drains the pipe, keeps the last 16 KiB in a bounded ring,
  * and appends that tail to the `Error` surfaced to `onError` handlers. These
  * tests pin that contract so the exit-code-7 crash (and the next one) actually
- * shows up in `~/.veyyon/logs/omp.log` without regressing idle-worker shutdown.
+ * shows up in `~/.veyyon/logs/veyyon.log` without regressing idle-worker shutdown.
  */
 import { describe, expect, it } from "bun:test";
 import * as path from "node:path";
-import { createWorkerSubprocess, type SpawnedSubprocess } from "@veyyon/pi-coding-agent/subprocess/worker-client";
+import { createWorkerSubprocess, type SpawnedSubprocess } from "@veyyon/coding-agent/subprocess/worker-client";
+import { hermeticSpawnEnv } from "./helpers/hermetic-spawn-env";
 
 interface FakeWorkerOutbound {
 	type: "pong";
@@ -86,24 +87,34 @@ describe("issue #4324 — worker subprocess stderr survives to the exit error", 
 		const workerScript =
 			"const p = process.ppid; const lock = new Int32Array(new SharedArrayBuffer(4)); while (process.ppid === p) Atomics.wait(lock, 0, 0, 100);";
 		const wrapperScript = `
-			const { createWorkerSubprocess } = await import("@veyyon/pi-coding-agent/subprocess/worker-client");
+			const { createWorkerSubprocess } = await import("@veyyon/coding-agent/subprocess/worker-client");
 			createWorkerSubprocess({
 				spawnCommand: { cmd: [process.execPath, "-e", ${JSON.stringify(workerScript)}] },
 				env: {},
 				exitLabel: "idle subprocess",
 			});
 		`;
-		const proc = Bun.spawn([process.execPath, "-e", wrapperScript], {
-			cwd: repoRoot,
-			stdout: "pipe",
-			stderr: "pipe",
-			env: { ...process.env, BUN_ENV: "development", NODE_ENV: "development" },
-		});
-		const [stdout, stderr, exitCode] = await Promise.all([
-			new Response(proc.stdout).text(),
-			new Response(proc.stderr).text(),
-			proc.exited,
-		]);
+		// Hermetic HOME: the wrapper asserts empty output, and a real-home config
+		// tree can inject startup warnings (e.g. the legacy-layout notice).
+		const { env, cleanup } = hermeticSpawnEnv({ BUN_ENV: "development", NODE_ENV: "development" });
+		let stdout: string;
+		let stderr: string;
+		let exitCode: number;
+		try {
+			const proc = Bun.spawn([process.execPath, "-e", wrapperScript], {
+				cwd: repoRoot,
+				stdout: "pipe",
+				stderr: "pipe",
+				env,
+			});
+			[stdout, stderr, exitCode] = await Promise.all([
+				new Response(proc.stdout).text(),
+				new Response(proc.stderr).text(),
+				proc.exited,
+			]);
+		} finally {
+			cleanup();
+		}
 		expect(stdout).toBe("");
 		expect(stderr).toBe("");
 		expect(exitCode).toBe(0);

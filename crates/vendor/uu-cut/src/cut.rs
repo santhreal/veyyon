@@ -15,7 +15,6 @@ use std::{
 use bstr::io::BufReadExt;
 use clap::{Arg, ArgAction, ArgMatches, Command, builder::ValueParser};
 use matcher::{ExactMatcher, Matcher, WhitespaceMatcher};
-use pi_uutils_ctx::format_usage;
 use uucore::{
 	display::Quotable,
 	error::{FromIo, UResult, USimpleError},
@@ -23,6 +22,7 @@ use uucore::{
 	os_str_as_bytes,
 	ranges::Range,
 };
+use veyyon_uutils_ctx::format_usage;
 
 use self::searcher::Searcher;
 
@@ -453,7 +453,7 @@ where
 	I: IntoIterator<Item = &'a OsString>,
 {
 	let mut stdin_read = false;
-	let mut out = BufWriter::new(pi_uutils_ctx::stdout());
+	let mut out = BufWriter::new(veyyon_uutils_ctx::stdout());
 
 	for filename in filenames {
 		if filename == "-" {
@@ -462,19 +462,19 @@ where
 			}
 			let result = match mode {
 				Mode::Bytes(ranges, opts) | Mode::Characters(ranges, opts) => {
-					cut_bytes(pi_uutils_ctx::stdin(), &mut out, ranges, opts)
+					cut_bytes(veyyon_uutils_ctx::stdin(), &mut out, ranges, opts)
 				},
 				Mode::Fields(ranges, opts) => {
-					cut_fields(pi_uutils_ctx::stdin(), &mut out, ranges, opts)
+					cut_fields(veyyon_uutils_ctx::stdin(), &mut out, ranges, opts)
 				},
 			};
 			if let Err(err) = result {
-				let _ = writeln!(pi_uutils_ctx::stderr(), "cut: {err}");
-				pi_uutils_ctx::set_exit_code(1);
+				let _ = writeln!(veyyon_uutils_ctx::stderr(), "cut: {err}");
+				veyyon_uutils_ctx::set_exit_code(1);
 			}
 			stdin_read = true;
 		} else {
-			let result = File::open(pi_uutils_ctx::resolve(Path::new(filename)))
+			let result = File::open(veyyon_uutils_ctx::resolve(Path::new(filename)))
 				.map_err_context(|| filename.maybe_quote().to_string())
 				.and_then(|file| match mode {
 					Mode::Bytes(ranges, opts) | Mode::Characters(ranges, opts) => {
@@ -483,15 +483,15 @@ where
 					Mode::Fields(ranges, opts) => cut_fields(file, &mut out, ranges, opts),
 				});
 			if let Err(err) = result {
-				let _ = writeln!(pi_uutils_ctx::stderr(), "cut: {err}");
-				pi_uutils_ctx::set_exit_code(1);
+				let _ = writeln!(veyyon_uutils_ctx::stderr(), "cut: {err}");
+				veyyon_uutils_ctx::set_exit_code(1);
 			}
 		}
 	}
 
 	if let Err(err) = out.flush().map_err_context(|| "write error".to_string()) {
-		let _ = writeln!(pi_uutils_ctx::stderr(), "cut: {err}");
-		pi_uutils_ctx::set_exit_code(1);
+		let _ = writeln!(veyyon_uutils_ctx::stderr(), "cut: {err}");
+		veyyon_uutils_ctx::set_exit_code(1);
 	}
 }
 
@@ -562,7 +562,7 @@ mod options {
 // pi-uutils: replace the terminating uucore entry macro and localization-aware
 // clap handler with an in-process entry point and literal English messages.
 /// Run `cut` against the streams and working directory installed by
-/// `pi-uutils-ctx`.
+/// `veyyon-uutils-ctx`.
 pub fn run(argv: Vec<OsString>) -> i32 {
 	// GNU cut accepts `-d=` as a delimiter spelling. Clap otherwise parses it
 	// as an empty value assigned to `-d`.
@@ -581,19 +581,19 @@ pub fn run(argv: Vec<OsString>) -> i32 {
 		Err(err) => {
 			let rendered = err.to_string();
 			if err.use_stderr() {
-				let _ = write!(pi_uutils_ctx::stderr(), "{rendered}");
+				let _ = write!(veyyon_uutils_ctx::stderr(), "{rendered}");
 				return 1;
 			}
-			let _ = write!(pi_uutils_ctx::stdout(), "{rendered}");
+			let _ = write!(veyyon_uutils_ctx::stdout(), "{rendered}");
 			return 0;
 		},
 	};
 
 	match cut_main(&matches) {
-		Ok(()) => pi_uutils_ctx::exit_code(),
+		Ok(()) => veyyon_uutils_ctx::exit_code(),
 		Err(err) => {
 			let code = err.code();
-			let _ = writeln!(pi_uutils_ctx::stderr(), "cut: {err}");
+			let _ = writeln!(veyyon_uutils_ctx::stderr(), "cut: {err}");
 			if code == 0 { 1 } else { code }
 		},
 	}

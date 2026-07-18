@@ -1,7 +1,7 @@
 import { vi } from "bun:test";
-import { resetSettingsForTest } from "@veyyon/pi-coding-agent/config/settings";
-import { isTuiTight, setTuiTight } from "@veyyon/pi-tui";
-import { getAgentDir, getProjectDir, setAgentDir, setProjectDir } from "@veyyon/pi-utils";
+import { resetSettingsForTest } from "@veyyon/coding-agent/config/settings";
+import { isTuiTight, setTuiTight } from "@veyyon/tui";
+import { getAgentDir, getProjectDir, setAgentDir, setProjectDir } from "@veyyon/utils";
 
 export interface SettingsTestState {
 	agentDir: string;
@@ -37,7 +37,7 @@ export function restoreSettingsTestState(state: SettingsTestState | undefined): 
 	setProjectDir(state.projectDir);
 	setAgentDir(state.agentDir);
 	setTuiTight(state.tuiTight);
-	restoreEnvValue("PI_CODING_AGENT_DIR", state.env.PI_CODING_AGENT_DIR);
+	restoreEnvValue("VEYYON_CODING_AGENT_DIR", state.env.VEYYON_CODING_AGENT_DIR);
 }
 
 function restoreEnv(snapshot: Record<string, string | undefined>): void {

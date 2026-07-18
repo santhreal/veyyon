@@ -4,7 +4,7 @@
  * The room key lives only in the link fragment; the relay sees opaque bytes.
  * Sealed layout: `[12B IV][ciphertext+tag]`.
  */
-import { ROOM_KEY_BYTES, WRITE_TOKEN_BYTES } from "@veyyon/pi-wire";
+import { ROOM_KEY_BYTES, WRITE_TOKEN_BYTES } from "@veyyon/wire";
 import type { CollabFrame } from "./protocol";
 
 const AES_ALGORITHM = "AES-GCM";

@@ -1,7 +1,7 @@
 /**
  * Shared type definitions consumed by both the server-side stats code and the
  * standalone client bundle. Keep this file free of any imports from server-only
- * packages (e.g. `@veyyon/pi-ai`, `bun:sqlite`) so the client can import it
+ * packages (e.g. `@veyyon/ai`, `bun:sqlite`) so the client can import it
  * without dragging server dependencies into its bundle.
  */
 

@@ -1,8 +1,8 @@
 import { describe, expect, it } from "bun:test";
-import { agentLoop } from "@veyyon/pi-agent-core/agent-loop";
-import type { AgentContext, AgentLoopConfig, AgentMessage, AgentTool } from "@veyyon/pi-agent-core/types";
-import type { AssistantMessage, Context, Message, TextContent, ToolResultMessage } from "@veyyon/pi-ai";
-import { createMockModel } from "@veyyon/pi-ai/providers/mock";
+import { agentLoop } from "@veyyon/agent-core/agent-loop";
+import type { AgentContext, AgentLoopConfig, AgentMessage, AgentTool } from "@veyyon/agent-core/types";
+import type { AssistantMessage, Context, Message, TextContent, ToolResultMessage } from "@veyyon/ai";
+import { createMockModel } from "@veyyon/ai/providers/mock";
 import { type } from "arktype";
 import { createUserMessage } from "./helpers";
 
@@ -219,9 +219,9 @@ describe("agentLoop with owned in-band tool calls", () => {
 		expect(resultsText).toContain("echoed:hi");
 	});
 
-	it("uses PI_DIALECT=minimax when config.dialect is unset", async () => {
-		const before = Bun.env.PI_DIALECT;
-		Bun.env.PI_DIALECT = "minimax";
+	it("uses VEYYON_DIALECT=minimax when config.dialect is unset", async () => {
+		const before = Bun.env.VEYYON_DIALECT;
+		Bun.env.VEYYON_DIALECT = "minimax";
 		try {
 			const echoArgs: Array<{ msg: string }> = [];
 			const toolSchema = type({ msg: "string" });
@@ -263,8 +263,8 @@ describe("agentLoop with owned in-band tool calls", () => {
 			expect(captured[0].tools).toBeUndefined();
 			expect((captured[0].systemPrompt ?? []).join("\n")).toContain("<minimax:tool_call>");
 		} finally {
-			if (before === undefined) delete Bun.env.PI_DIALECT;
-			else Bun.env.PI_DIALECT = before;
+			if (before === undefined) delete Bun.env.VEYYON_DIALECT;
+			else Bun.env.VEYYON_DIALECT = before;
 		}
 	});
 

@@ -1,5 +1,5 @@
-import { isDashscopeCompatibleModeUrl } from "@veyyon/pi-catalog/hosts";
-import { isQwenModelId } from "@veyyon/pi-catalog/identity";
+import { isDashscopeCompatibleModeUrl } from "@veyyon/catalog/hosts";
+import { isQwenModelId } from "@veyyon/catalog/identity";
 
 import type { ImageContent, Model, TextContent } from "../types";
 

@@ -10,7 +10,7 @@
  * `parked` ↔ `idle`.
  */
 
-import { logger } from "@veyyon/pi-utils";
+import { logger } from "@veyyon/utils";
 import type { AgentSession } from "../session/agent-session";
 import { type AgentRef, AgentRegistry, MAIN_AGENT_ID, type RegistryEvent } from "./agent-registry";
 

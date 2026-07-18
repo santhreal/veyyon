@@ -1,6 +1,7 @@
-import { getPuppeteerDir, logger, postmortem, Snowflake, workerHostEntry } from "@veyyon/pi-utils";
+import { getPuppeteerDir, logger, postmortem, Snowflake, workerHostEntry } from "@veyyon/utils";
 import type { Page, Target } from "puppeteer-core";
 import { callSessionTool } from "../../eval/js/tool-bridge";
+import { raceWithTimeout } from "../../utils/fetch-timeout";
 import { webpExclusionForModel } from "../../utils/image-loading";
 import type { ToolSession } from "../index";
 import { expandPath } from "../path-utils";
@@ -472,8 +473,8 @@ async function runInTabWithSnapshot(
 			return await raceWithTimeout(
 				promise,
 				opts.timeoutMs + GRACE_MS,
-				"Browser code execution hung past grace; tab killed",
-				async reason => await forceKillTab(name, reason),
+				() => new ToolError("Browser code execution hung past grace; tab killed"),
+				{ onTimeout: async () => await forceKillTab(name, "Browser code execution hung past grace; tab killed") },
 			);
 		} catch (error) {
 			if (error instanceof ToolError && error.message.startsWith("Browser code execution timed out after ")) {
@@ -795,7 +796,7 @@ async function waitForClosed(tab: WorkerTabSession): Promise<void> {
 		if (msg.type === "closed") resolve();
 	});
 	try {
-		await raceWithTimeout(promise, GRACE_MS, "Timed out closing browser tab worker");
+		await raceWithTimeout(promise, GRACE_MS, () => new ToolError("Timed out closing browser tab worker"));
 	} finally {
 		unsubscribe();
 	}
@@ -838,26 +839,6 @@ function logWorkerMessage(msg: Extract<WorkerOutbound, { type: "log" }>): void {
 	if (msg.level === "debug") logger.debug(msg.msg, msg.meta);
 	else if (msg.level === "warn") logger.warn(msg.msg, msg.meta);
 	else logger.error(msg.msg, msg.meta);
-}
-
-async function raceWithTimeout<T>(
-	promise: Promise<T>,
-	timeoutMs: number,
-	reason: string,
-	onTimeout?: (reason: string) => Promise<void>,
-): Promise<T> {
-	const timeoutSignal = AbortSignal.timeout(timeoutMs);
-	const { promise: timeoutPromise, reject } = Promise.withResolvers<never>();
-	const onAbort = (): void => reject(new ToolError(reason));
-	timeoutSignal.addEventListener("abort", onAbort, { once: true });
-	try {
-		return await Promise.race([promise, timeoutPromise]);
-	} catch (error) {
-		if (error instanceof ToolError && error.message === reason) await onTimeout?.(reason);
-		throw error;
-	} finally {
-		timeoutSignal.removeEventListener("abort", onAbort);
-	}
 }
 
 async function spawnTabWorker(): Promise<WorkerHandle> {
@@ -956,7 +937,11 @@ async function initializeTabWorker(
 	});
 	try {
 		worker.send({ type: "init", payload });
-		return await raceWithTimeout(promise, timeoutMs, "Timed out initializing browser tab worker");
+		return await raceWithTimeout(
+			promise,
+			timeoutMs,
+			() => new ToolError("Timed out initializing browser tab worker"),
+		);
 	} finally {
 		unlisten();
 		unlistenError();

@@ -1,6 +1,6 @@
-import { tryParseJson } from "@veyyon/pi-utils";
+import { tryParseJson } from "@veyyon/utils";
 import type { RenderResult, SpecialHandler } from "./types";
-import { buildResult, formatIsoDate, htmlToBasicMarkdown, loadPage } from "./types";
+import { buildResult, formatIsoDate, htmlToBasicMarkdown, loadPage, tryParseUrl } from "./types";
 
 interface DiscourseUser {
 	username?: string;
@@ -106,7 +106,8 @@ export const handleDiscourse: SpecialHandler = async (
 	signal?: AbortSignal,
 ): Promise<RenderResult | null> => {
 	try {
-		const parsed = new URL(url);
+		const parsed = tryParseUrl(url);
+		if (!parsed) return null;
 		const topicMatch = parseTopicPath(parsed.pathname);
 		const postMatch = topicMatch ? null : parsePostPath(parsed.pathname);
 		if (!topicMatch && !postMatch) return null;

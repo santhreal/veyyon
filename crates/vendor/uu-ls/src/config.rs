@@ -349,8 +349,8 @@ fn extract_time(options: &clap::ArgMatches) -> MetadataTimeField {
 /// Some env variables can be passed
 /// For now, we are only verifying if empty or not and known for `TERM`
 fn is_color_compatible_term() -> bool {
-	let term = pi_uutils_ctx::var("TERM").map(OsString::from);
-	let colorterm = pi_uutils_ctx::var("COLORTERM").map(OsString::from);
+	let term = veyyon_uutils_ctx::var("TERM").map(OsString::from);
+	let colorterm = veyyon_uutils_ctx::var("COLORTERM").map(OsString::from);
 
 	// Search function in the TERM struct to manage the wildcards
 	let term_matches = |term: &OsStr| -> bool {
@@ -528,12 +528,12 @@ fn extract_quoting_style(
 		(QuotingStyle::Literal { show_control }, None)
 	} else {
 		// If set, the QUOTING_STYLE environment variable specifies a default style.
-		if let Some(style) = pi_uutils_ctx::var("QUOTING_STYLE") {
+		if let Some(style) = veyyon_uutils_ctx::var("QUOTING_STYLE") {
 			match match_quoting_style_name(style.as_str(), show_control) {
 				Some(pair) => return pair,
 				None => {
 					let _ = writeln!(
-						pi_uutils_ctx::stderr(),
+						veyyon_uutils_ctx::stderr(),
 						"ls: Ignoring invalid value of environment variable QUOTING_STYLE: '{}'",
 						style
 					);
@@ -610,7 +610,7 @@ fn parse_width(width_match: Option<&String>) -> Result<u16, LsError> {
 			columns
 		} else {
 			let _ = writeln!(
-				pi_uutils_ctx::stderr(),
+				veyyon_uutils_ctx::stderr(),
 				"ls: ignoring invalid width in environment variable COLUMNS: {}",
 				columns.quote()
 			);
@@ -622,7 +622,7 @@ fn parse_width(width_match: Option<&String>) -> Result<u16, LsError> {
 
 	let ret = match width_match {
 		Some(x) => parse_width_from_args(x)?,
-		None => match pi_uutils_ctx::var("COLUMNS").map(OsString::from) {
+		None => match veyyon_uutils_ctx::var("COLUMNS").map(OsString::from) {
 			Some(columns) => parse_width_from_env(columns),
 			None => calculate_term_size(),
 		},
@@ -704,10 +704,10 @@ impl Config {
 			SizeFormat::Bytes
 		};
 
-		let env_var_blocksize = pi_uutils_ctx::var("BLOCKSIZE").map(OsString::from);
-		let env_var_block_size = pi_uutils_ctx::var("BLOCK_SIZE").map(OsString::from);
-		let env_var_ls_block_size = pi_uutils_ctx::var("LS_BLOCK_SIZE").map(OsString::from);
-		let env_var_posixly_correct = pi_uutils_ctx::var("POSIXLY_CORRECT").map(OsString::from);
+		let env_var_blocksize = veyyon_uutils_ctx::var("BLOCKSIZE").map(OsString::from);
+		let env_var_block_size = veyyon_uutils_ctx::var("BLOCK_SIZE").map(OsString::from);
+		let env_var_ls_block_size = veyyon_uutils_ctx::var("LS_BLOCK_SIZE").map(OsString::from);
+		let env_var_posixly_correct = veyyon_uutils_ctx::var("POSIXLY_CORRECT").map(OsString::from);
 		let mut is_env_var_blocksize = false;
 
 		let raw_block_size = if let Some(opt_block_size) = opt_block_size {
@@ -809,7 +809,7 @@ impl Config {
 				ignore_patterns.push(p);
 			} else {
 				let _ = writeln!(
-					pi_uutils_ctx::stderr(),
+					veyyon_uutils_ctx::stderr(),
 					"ls: warning: Invalid pattern for ignore: {}",
 					pattern.quote()
 				);
@@ -826,7 +826,7 @@ impl Config {
 					ignore_patterns.push(p);
 				} else {
 					let _ = writeln!(
-						pi_uutils_ctx::stderr(),
+						veyyon_uutils_ctx::stderr(),
 						"ls: warning: Invalid pattern for hide: {}",
 						pattern.quote()
 					);
@@ -908,20 +908,20 @@ impl Config {
 		if needs_color && let Err(err) = validate_ls_colors_env() {
 			if let LsColorsParseError::UnrecognizedPrefix(prefix) = &err {
 				let _ = writeln!(
-					pi_uutils_ctx::stderr(),
+					veyyon_uutils_ctx::stderr(),
 					"ls: warning: unrecognized prefix: {}",
 					prefix.quote()
 				);
 			}
 			let _ = writeln!(
-				pi_uutils_ctx::stderr(),
+				veyyon_uutils_ctx::stderr(),
 				"ls: warning: unparsable value for LS_COLORS environment variable"
 			);
 			needs_color = false;
 		}
 
 		let color = if needs_color {
-			Some(match pi_uutils_ctx::var("LS_COLORS") {
+			Some(match veyyon_uutils_ctx::var("LS_COLORS") {
 				Some(s) => LsColors::from_string(&s),
 				None => LsColors::default(),
 			})
@@ -960,7 +960,7 @@ impl Config {
 			options
 				.get_one::<String>(options::format::TAB_SIZE)
 				.and_then(|size| size.parse::<usize>().ok())
-				.or_else(|| pi_uutils_ctx::var("TABSIZE").and_then(|s| s.parse().ok()))
+				.or_else(|| veyyon_uutils_ctx::var("TABSIZE").and_then(|s| s.parse().ok()))
 		}
 		.unwrap_or(SPACES_IN_TAB);
 
@@ -1015,7 +1015,7 @@ fn parse_time_style(options: &clap::ArgMatches) -> Result<(String, Option<String
 	if let Some(field) = options
 		.get_one::<String>(options::TIME_STYLE)
 		.map(Cow::from)
-		.or_else(|| pi_uutils_ctx::var("TIME_STYLE").map(Cow::from))
+		.or_else(|| veyyon_uutils_ctx::var("TIME_STYLE").map(Cow::from))
 	{
 		//If both FULL_TIME and TIME_STYLE are present
 		//The one added last is dominant
@@ -1030,8 +1030,8 @@ fn parse_time_style(options: &clap::ArgMatches) -> Result<(String, Option<String
 				// else just strip the prefix and continue (even "posix+FORMAT" is
 				// supported).
 				// TODO: This needs to be moved to uucore and handled by icu?
-				if pi_uutils_ctx::var("LC_TIME").as_deref() == Some("POSIX")
-					|| pi_uutils_ctx::var("LC_ALL").as_deref() == Some("POSIX")
+				if veyyon_uutils_ctx::var("LC_TIME").as_deref() == Some("POSIX")
+					|| veyyon_uutils_ctx::var("LC_ALL").as_deref() == Some("POSIX")
 				{
 					return ok(LOCALE_FORMAT);
 				}

@@ -1,6 +1,6 @@
-import { tryParseJson } from "@veyyon/pi-utils";
-import type { RenderResult, SpecialHandler } from "./types";
-import { buildResult, htmlToBasicMarkdown, loadPage } from "./types";
+import { tryParseJson } from "@veyyon/utils";
+import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
+import { buildResult, htmlToBasicMarkdown, loadPage, scraperDegrade, tryParseUrl } from "./types";
 import { asRecord } from "./utils";
 
 type JsonRecord = Record<string, unknown>;
@@ -73,9 +73,10 @@ export const handleW3c: SpecialHandler = async (
 	url: string,
 	timeout: number,
 	signal?: AbortSignal,
-): Promise<RenderResult | null> => {
+): Promise<RenderResult | ScraperDegrade | null> => {
 	try {
-		const parsed = new URL(url);
+		const parsed = tryParseUrl(url);
+		if (!parsed) return null;
 		if (parsed.hostname !== "www.w3.org" && parsed.hostname !== "w3.org") return null;
 
 		const shortname = extractShortname(parsed.pathname);
@@ -150,7 +151,7 @@ export const handleW3c: SpecialHandler = async (
 			fetchedAt,
 			notes: ["Fetched via W3C API"],
 		});
-	} catch {}
-
-	return null;
+	} catch (error) {
+		return scraperDegrade("w3c", error);
+	}
 };

@@ -14,13 +14,13 @@
  * asserting `#onBranchChange` never fires post-dispose.
  */
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "bun:test";
-import { resetSettingsForTest, Settings } from "@veyyon/pi-coding-agent/config/settings";
-import type { StatusLineSettings } from "@veyyon/pi-coding-agent/modes/components/status-line";
-import { StatusLineComponent } from "@veyyon/pi-coding-agent/modes/components/status-line";
-import { initTheme } from "@veyyon/pi-coding-agent/modes/theme/theme";
-import type { GitRefHead } from "@veyyon/pi-coding-agent/utils/git";
-import * as git from "@veyyon/pi-coding-agent/utils/git";
-import { getProjectDir, setProjectDir } from "@veyyon/pi-utils";
+import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
+import type { StatusLineSettings } from "@veyyon/coding-agent/modes/components/status-line";
+import { StatusLineComponent } from "@veyyon/coding-agent/modes/components/status-line";
+import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import type { GitRefHead } from "@veyyon/coding-agent/utils/git";
+import * as git from "@veyyon/coding-agent/utils/git";
+import { getProjectDir, setProjectDir } from "@veyyon/utils";
 
 const originalProjectDir = getProjectDir();
 

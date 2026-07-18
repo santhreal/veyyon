@@ -21,11 +21,11 @@ import {
 	type ThinkingBudgets,
 	type ToolChoice,
 	type ToolResultMessage,
-} from "@veyyon/pi-ai";
-import type { HarmonyAuditEvent } from "@veyyon/pi-ai/utils/harmony-leak";
-import { preferredDialect } from "@veyyon/pi-catalog/identity";
-import { getBundledModel } from "@veyyon/pi-catalog/models";
-import { logger } from "@veyyon/pi-utils";
+} from "@veyyon/ai";
+import type { HarmonyAuditEvent } from "@veyyon/ai/utils/harmony-leak";
+import { preferredDialect } from "@veyyon/catalog/identity";
+import { getBundledModel } from "@veyyon/catalog/models";
+import { errorMessage, logger } from "@veyyon/utils";
 import {
 	abortReasonText,
 	agentLoop,
@@ -1362,13 +1362,13 @@ export class Agent {
 				if (isPromise(result)) {
 					result.catch(err => {
 						logger.warn("Agent listener rejected", {
-							error: err instanceof Error ? err.message : String(err),
+							error: errorMessage(err),
 						});
 					});
 				}
 			} catch (err) {
 				logger.warn("Agent listener threw", {
-					error: err instanceof Error ? err.message : String(err),
+					error: errorMessage(err),
 				});
 			}
 		}

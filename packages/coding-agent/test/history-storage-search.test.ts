@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
-import { HistoryStorage } from "@veyyon/pi-coding-agent/session/history-storage";
-import { TempDir } from "@veyyon/pi-utils";
+import { HistoryStorage } from "@veyyon/coding-agent/session/history-storage";
+import { TempDir } from "@veyyon/utils";
 
 let tempDir: TempDir | null = null;
 
 async function freshStorage(): Promise<HistoryStorage> {
-	tempDir = TempDir.createSync("@omp-history-search-");
+	tempDir = TempDir.createSync("@veyyon-history-search-");
 	HistoryStorage.resetInstance();
 	return HistoryStorage.open(tempDir.join("history.db"));
 }

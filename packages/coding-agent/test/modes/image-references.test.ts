@@ -3,7 +3,7 @@ import {
 	type PlaceholderKind,
 	renderPlaceholders,
 	shiftImageMarkers,
-} from "@veyyon/pi-coding-agent/modes/image-references";
+} from "@veyyon/coding-agent/modes/image-references";
 
 function capture(text: string): {
 	out: string;

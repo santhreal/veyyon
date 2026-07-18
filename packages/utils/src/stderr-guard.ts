@@ -13,7 +13,7 @@
  * Fix (mirrors openai/codex#24459): while the TUI owns the terminal, dup fd 2
  * aside and dup2 a redirect target over it; restore the saved fd whenever
  * terminal ownership is released (external editor, Ctrl+Z suspend, shutdown,
- * crash restore). Unlike codex we redirect to the omp log file — not
+ * crash restore). Unlike codex we redirect to the veyyon log file — not
  * /dev/null — so the diagnostics stay greppable and Bun native-crash reports
  * (which abort before any JS cleanup can restore fd 2) are preserved.
  *
@@ -80,7 +80,7 @@ function stderrSharesStdoutTerminal(): boolean {
 let savedStderrFd: number | null = null;
 
 export interface SuppressTerminalStderrOptions {
-	/** Redirect target path; defaults to today's omp log file, then /dev/null. */
+	/** Redirect target path; defaults to today's veyyon log file, then /dev/null. */
 	redirectPath?: string;
 	/** Bypass the macOS + same-terminal gate. Tests only. */
 	force?: boolean;

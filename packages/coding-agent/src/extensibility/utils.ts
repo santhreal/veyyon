@@ -77,7 +77,7 @@ let exitGuardOriginalReallyExit: typeof process.reallyExit | null = null;
  * Guards the dynamic-import and factory-invocation sites that load third-party
  * extension / hook modules — a `process.exit(0)` or `process.reallyExit(0)` in
  * a stranger's script (e.g. a Codex hook script that happens to live next to
- * OMP-shaped modules) would otherwise kill OMP during startup with no error
+ * Veyyon-shaped modules) would otherwise kill veyyon during startup with no error
  * surface, since `try/catch` cannot intercept a synchronous exit.
  *
  * Nested and concurrent guard windows are safe: only the outermost guard

@@ -1,7 +1,7 @@
 /**
  * report_tool_issue — automated QA tool for tracking unexpected tool behavior.
  *
- * Enabled by default; gated behind PI_AUTO_QA=1 / `dev.autoqa` so a user
+ * Enabled by default; gated behind VEYYON_AUTO_QA=1 / `dev.autoqa` so a user
  * who flips the setting off short-circuits injection entirely.
  * Always injected into every agent (including subagents) regardless of tool selection.
  * Records grievances to a local SQLite database; never throws.
@@ -16,14 +16,14 @@
  * `dev.autoqaPush.endpoint` — unset by default (no bundled endpoint; see
  * `settings-schema.ts`), so push is a no-op until an operator sets it. Each
  * insert schedules a background flush that POSTs pending rows and deletes
- * them on HTTP 2xx. `PI_AUTO_QA_PUSH=1` forces push in non-interactive
+ * them on HTTP 2xx. `VEYYON_AUTO_QA_PUSH=1` forces push in non-interactive
  * environments where the consent dialog never fires. Tool execution is
  * never blocked on the network and never throws.
  */
 import { Database } from "bun:sqlite";
-import type { AgentTool } from "@veyyon/pi-agent-core";
-import type { FetchImpl } from "@veyyon/pi-ai";
-import { $env, $flag, getAutoQaDbDir, getInstallId, logger, VERSION } from "@veyyon/pi-utils";
+import type { AgentTool } from "@veyyon/agent-core";
+import type { FetchImpl } from "@veyyon/ai";
+import { $env, $flag, getAutoQaDbDir, getInstallId, logger, scopedTimeoutSignal, VERSION } from "@veyyon/utils";
 import { type } from "arktype";
 import type { Settings } from "..";
 import type { ToolSession } from "./index";
@@ -42,7 +42,7 @@ function buildReportToolIssueParams(activeBuiltinNames: readonly string[]) {
 }
 
 export function isAutoQaEnabled(settings?: Settings): boolean {
-	return $flag("PI_AUTO_QA", !!settings?.get("dev.autoqa"));
+	return $flag("VEYYON_AUTO_QA", !!settings?.get("dev.autoqa"));
 }
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -188,7 +188,7 @@ let cachedDb: Database | null = null;
 
 /**
  * Open (or return the cached handle for) the auto-QA SQLite database at
- * `~/.veyyon/agent/autoqa.db`. Idempotently runs schema creation, the
+ * `~/.veyyon/autoqa.db` (XDG-aware via `getAutoQaDbDir`). Idempotently runs schema creation, the
  * `pushed`-column migration, and index setup so every consumer — tool
  * execute path, manual `veyyon grievances push`, future debug scripts —
  * sees the same prepared schema. Returns `null` only on a hard open
@@ -315,16 +315,16 @@ function resolvePushConfig(settings: Settings | undefined, bypassConsent: boolea
 	// Consent IS the push opt-in for the auto-flush path. `bypassConsent`
 	// covers explicit user-driven pushes (`veyyon grievances push`) where the
 	// user clearly intends to ship regardless of dialog state. The
-	// `PI_AUTO_QA_PUSH` env flag stays as a CI/headless override too.
+	// `VEYYON_AUTO_QA_PUSH` env flag stays as a CI/headless override too.
 	if (!bypassConsent) {
 		const consented = settings?.get("dev.autoqa.consent") === "granted";
-		if (!consented && !$flag("PI_AUTO_QA_PUSH")) return null;
+		if (!consented && !$flag("VEYYON_AUTO_QA_PUSH")) return null;
 	}
 
-	const endpoint = envOverrideString("PI_AUTO_QA_PUSH_URL") ?? settings?.get("dev.autoqaPush.endpoint");
+	const endpoint = envOverrideString("VEYYON_AUTO_QA_PUSH_URL") ?? settings?.get("dev.autoqaPush.endpoint");
 	if (!endpoint || endpoint.trim().length === 0) return null;
 
-	const token = envOverrideString("PI_AUTO_QA_PUSH_TOKEN") ?? settings?.get("dev.autoqaPush.token");
+	const token = envOverrideString("VEYYON_AUTO_QA_PUSH_TOKEN") ?? settings?.get("dev.autoqaPush.token");
 	return { endpoint: endpoint.trim(), token: token && token.length > 0 ? token : undefined };
 }
 
@@ -368,12 +368,15 @@ async function performFlush(db: Database, config: PushConfig, options: FlushOpti
 		if (config.token) headers.authorization = `Bearer ${config.token}`;
 
 		let response: Response;
+		// Scoped rather than bare AbortSignal.timeout: a bare timeout leaves its
+		// backing timer armed for the full window after the fetch settles.
+		const flushTimeout = scopedTimeoutSignal(FLUSH_TIMEOUT_MS);
 		try {
 			response = await fetchImpl(config.endpoint, {
 				method: "POST",
 				headers,
 				body,
-				signal: AbortSignal.timeout(FLUSH_TIMEOUT_MS),
+				signal: flushTimeout.signal,
 			});
 		} catch (error) {
 			lastFailureAt = Date.now();
@@ -384,6 +387,8 @@ async function performFlush(db: Database, config: PushConfig, options: FlushOpti
 				pushedSoFar: totalPushed,
 			});
 			return { pushed: totalPushed, ok: false };
+		} finally {
+			flushTimeout.cancel();
 		}
 
 		if (!response.ok) {

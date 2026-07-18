@@ -7,10 +7,10 @@
  */
 
 import { beforeAll, describe, expect, it } from "bun:test";
-import { createCompactionSummaryMessage } from "@veyyon/pi-agent-core/compaction";
-import type { ImageContent } from "@veyyon/pi-ai";
-import { CompactionSummaryMessageComponent } from "@veyyon/pi-coding-agent/modes/components/compaction-summary-message";
-import { initTheme } from "@veyyon/pi-coding-agent/modes/theme/theme";
+import { createCompactionSummaryMessage } from "@veyyon/agent-core/compaction";
+import type { ImageContent } from "@veyyon/ai";
+import { CompactionSummaryMessageComponent } from "@veyyon/coding-agent/modes/components/compaction-summary-message";
+import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 
 beforeAll(() => {
 	initTheme();

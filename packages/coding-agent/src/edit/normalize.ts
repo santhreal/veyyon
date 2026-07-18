@@ -6,7 +6,7 @@
  * existing consumers see one stable surface.
  */
 
-import { padding } from "@veyyon/pi-tui";
+import { padding } from "@veyyon/tui";
 
 export {
 	type BomResult,

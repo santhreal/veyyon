@@ -8,12 +8,12 @@
  * LLM HTTP request; this file exercises the new contract.
  */
 import { describe, expect, it } from "bun:test";
-import type { StreamFn } from "@veyyon/pi-agent-core";
-import type { AssistantMessage, Model } from "@veyyon/pi-ai";
-import { AssistantMessageEventStream } from "@veyyon/pi-ai/utils/event-stream";
-import { getBundledModel } from "@veyyon/pi-catalog/models";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { wrapStreamFnWithProviderConcurrency } from "@veyyon/pi-coding-agent/task/provider-concurrency";
+import type { StreamFn } from "@veyyon/agent-core";
+import type { AssistantMessage, Model } from "@veyyon/ai";
+import { AssistantMessageEventStream } from "@veyyon/ai/utils/event-stream";
+import { getBundledModel } from "@veyyon/catalog/models";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import { wrapStreamFnWithProviderConcurrency } from "@veyyon/coding-agent/task/provider-concurrency";
 
 interface Deferred {
 	promise: Promise<void>;

@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { AutocompleteItem } from "@veyyon/pi-tui";
-import { logger, prompt } from "@veyyon/pi-utils";
+import type { AutocompleteItem } from "@veyyon/tui";
+import { errorMessage, logger, prompt } from "@veyyon/utils";
 import type { ExtensionContext, ExtensionFactory } from "../extensibility/extensions";
 import * as git from "../utils/git";
 import commandResumeTemplate from "./command-resume.md" with { type: "text" };
@@ -431,10 +431,7 @@ export const createAutoresearchExtension: ExtensionFactory = api => {
 				await git.clean(ctx.cwd);
 				ctx.ui.notify(`Reset worktree to baseline ${session.baselineCommit.slice(0, 12)}.`, "info");
 			} catch (err) {
-				ctx.ui.notify(
-					`Failed to reset worktree to baseline: ${err instanceof Error ? err.message : String(err)}`,
-					"error",
-				);
+				ctx.ui.notify(`Failed to reset worktree to baseline: ${errorMessage(err)}`, "error");
 			}
 		} else if (shouldResetTree) {
 			ctx.ui.notify("No baseline commit recorded — skipped worktree reset.", "warning");
@@ -479,7 +476,7 @@ function removeLegacyArtifacts(workDir: string): void {
 		} catch (err) {
 			logger.warn("Failed to remove legacy autoresearch artifact", {
 				path: target,
-				error: err instanceof Error ? err.message : String(err),
+				error: errorMessage(err),
 			});
 		}
 	}

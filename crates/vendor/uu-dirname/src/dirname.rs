@@ -3,13 +3,13 @@
 // For the full copyright and license information, please view the LICENSE
 // file that was distributed with this source code.
 
-// pi-uutils: modified for in-process embedding using pi-uutils-ctx streams.
+// pi-uutils: modified for in-process embedding using veyyon-uutils-ctx streams.
 
 use std::{borrow::Cow, ffi::OsString, io::Write};
 
 use clap::{Arg, ArgAction, ArgMatches, Command};
-use pi_uutils_ctx::format_usage;
 use uucore::error::{UResult, UUsageError};
+use veyyon_uutils_ctx::format_usage;
 
 mod options {
 	pub const ZERO: &str = "zero";
@@ -106,18 +106,18 @@ pub fn run(argv: Vec<OsString>) -> i32 {
 		Err(err) => {
 			let rendered = err.to_string();
 			if err.use_stderr() {
-				let _ = write!(pi_uutils_ctx::stderr(), "{rendered}");
+				let _ = write!(veyyon_uutils_ctx::stderr(), "{rendered}");
 				return 1;
 			}
-			let _ = write!(pi_uutils_ctx::stdout(), "{rendered}");
+			let _ = write!(veyyon_uutils_ctx::stdout(), "{rendered}");
 			return 0;
 		},
 	};
 	match dirname_main(&matches) {
-		Ok(()) => pi_uutils_ctx::exit_code(),
+		Ok(()) => veyyon_uutils_ctx::exit_code(),
 		Err(err) => {
 			let code = err.code();
-			let _ = writeln!(pi_uutils_ctx::stderr(), "dirname: {err}");
+			let _ = writeln!(veyyon_uutils_ctx::stderr(), "dirname: {err}");
 			if code == 0 { 1 } else { code }
 		},
 	}
@@ -140,7 +140,7 @@ fn dirname_main(matches: &ArgMatches) -> UResult<()> {
 		b"\n" as &[u8]
 	};
 
-	let mut stdout = pi_uutils_ctx::stdout();
+	let mut stdout = veyyon_uutils_ctx::stdout();
 
 	for path in &dirnames {
 		let path_bytes = uucore::os_str_as_bytes(path.as_os_str())?;
@@ -185,7 +185,7 @@ mod tests {
 	use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
 	use parking_lot::Mutex;
-	use pi_uutils_ctx::ScopeIo;
+	use veyyon_uutils_ctx::ScopeIo;
 
 	use super::*;
 
@@ -223,7 +223,7 @@ mod tests {
 			.map(OsString::from)
 			.collect();
 
-		let code = pi_uutils_ctx::scope(io, || run(argv));
+		let code = veyyon_uutils_ctx::scope(io, || run(argv));
 
 		let out_str = String::from_utf8(stdout_buf.lock().clone()).unwrap();
 		let err_str = String::from_utf8(stderr_buf.lock().clone()).unwrap();

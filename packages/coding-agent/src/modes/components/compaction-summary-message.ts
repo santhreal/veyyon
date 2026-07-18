@@ -1,4 +1,5 @@
-import { Box, type Component, Markdown } from "@veyyon/pi-tui";
+import { Box, type Component, Markdown } from "@veyyon/tui";
+import { formatCount } from "@veyyon/utils";
 import { getMarkdownTheme, theme } from "../../modes/theme/theme";
 import type { BranchSummaryMessage, CompactionSummaryMessage, CustomMessage } from "../../session/messages";
 
@@ -112,8 +113,7 @@ export class CompactionSummaryMessageComponent implements Component {
 	#detailMarkdown(): string {
 		const tokenStr = this.message.tokensBefore.toLocaleString();
 		const frameCount = this.message.images?.length ?? 0;
-		const frameNote =
-			frameCount > 0 ? `\n\n_${frameCount} snapcompact frame${frameCount === 1 ? "" : "s"} attached_` : "";
+		const frameNote = frameCount > 0 ? `\n\n_${formatCount("snapcompact frame", frameCount)} attached_` : "";
 		const warningNote = this.message.warning ? `\n\n${theme.icon.warning} **Warning:** ${this.message.warning}` : "";
 		return `**Compacted from ${tokenStr} tokens**${warningNote}\n\n${this.message.summary}${frameNote}`;
 	}

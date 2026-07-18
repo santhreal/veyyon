@@ -194,10 +194,10 @@ fn re_or_saved_re<'a>(
 fn shell_command(cmd: &str) -> std::process::Command {
 	let mut c = std::process::Command::new("/bin/sh");
 	c.arg("-c").arg(cmd);
-	// Patched for pi-uutils-ctx embedding: run relative to the shell's cwd,
+	// Patched for veyyon-uutils-ctx embedding: run relative to the shell's cwd,
 	// not the host process cwd. `output()` already keeps the child's stdio
 	// away from the host's (stdin closed, stdout/stderr captured).
-	c.current_dir(pi_uutils_ctx::cwd());
+	c.current_dir(veyyon_uutils_ctx::cwd());
 	c
 }
 
@@ -205,8 +205,8 @@ fn shell_command(cmd: &str) -> std::process::Command {
 fn shell_command(cmd: &str) -> std::process::Command {
 	let mut c = std::process::Command::new("cmd.exe");
 	c.arg("/C").arg(cmd);
-	// Patched for pi-uutils-ctx embedding: see the unix variant above.
-	c.current_dir(pi_uutils_ctx::cwd());
+	// Patched for veyyon-uutils-ctx embedding: see the unix variant above.
+	c.current_dir(veyyon_uutils_ctx::cwd());
 	c
 }
 
@@ -497,10 +497,10 @@ fn process_file(
 
 	// Loop over the input lines as pattern space.
 	'lines: while let Some(mut pattern) = reader.get_line()? {
-		// Patched for pi-uutils-ctx embedding: mmap-backed input never
+		// Patched for veyyon-uutils-ctx embedding: mmap-backed input never
 		// touches the (cancel-aware) stdin reader, so poll the host cancel
 		// flag here to keep long file runs abortable.
-		if pi_uutils_ctx::is_cancelled() {
+		if veyyon_uutils_ctx::is_cancelled() {
 			break;
 		}
 		context.line_number += 1;
@@ -645,13 +645,13 @@ fn process_file(
 				},
 				'q' => {
 					// Quit after printing the pattern space.
-					pi_uutils_ctx::set_exit_code(*extract_variant!(command, Number) as i32);
+					veyyon_uutils_ctx::set_exit_code(*extract_variant!(command, Number) as i32);
 					context.stop_processing = true;
 					break;
 				},
 				'Q' => {
 					// Quit immediatelly.
-					pi_uutils_ctx::set_exit_code(*extract_variant!(command, Number) as i32);
+					veyyon_uutils_ctx::set_exit_code(*extract_variant!(command, Number) as i32);
 					context.stop_processing = true;
 					context.quiet = true;
 					break;
@@ -768,7 +768,7 @@ pub fn process_all_files(
 	files: Vec<PathBuf>,
 	context: &mut ProcessingContext,
 ) -> UResult<()> {
-	// Patched for pi-uutils-ctx embedding: the context streams are never a
+	// Patched for veyyon-uutils-ctx embedding: the context streams are never a
 	// terminal, so upstream's stdout-tty check for auto-unbuffered output is
 	// dropped; `-u` alone controls flushing.
 

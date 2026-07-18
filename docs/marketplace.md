@@ -1,6 +1,6 @@
 # Marketplace plugin system
 
-The marketplace system lets you discover, install, and manage plugins from Git, local, or direct-catalog sources. It is compatible with the Claude Code plugin registry format.
+Discover, install, and manage plugins from Git, local, or catalog sources. Catalog layout is compatible with the Claude Code plugin registry format.
 
 ## Quick start
 
@@ -13,13 +13,13 @@ In the TUI, `/marketplace` with no arguments opens the interactive plugin browse
 
 ## Concepts
 
-A **marketplace** is a Git repository (or local directory) containing a catalog file at `.omp-plugin/marketplace.json` (preferred) or `.claude-plugin/marketplace.json` (Claude Code-compatible fallback). The catalog lists available plugins with their sources, descriptions, and metadata.
+A **marketplace** is a Git repository (or local directory) containing a catalog file at `.veyyon-plugin/marketplace.json` (preferred) or `.claude-plugin/marketplace.json` (Claude Code-compatible fallback). The catalog lists available plugins with their sources, descriptions, and metadata.
 
 A **plugin** is a directory containing Claude/Veyyon plugin content such as skills, commands, agents, hooks, tools, MCP servers, or LSP servers. Extension modules (`package.json` `veyyon.extensions` entry points; legacy `omp`/`pi` keys still accepted) are not loaded from marketplace installs — they only load for npm-installed or `veyyon plugin link`ed plugins. Plugins are identified by `name@marketplace` (e.g. `code-review@claude-plugins-official`).
 
 **Scopes**: marketplace plugins can be installed at two scopes:
 
-- **user** (default) -- available in all projects, stored in `~/.veyyon/plugins/installed_plugins.json`
+- **user** (default) -- available in all projects under the active profile, stored in `~/.veyyon/profiles/<profile>/plugins/installed_plugins.json` (default profile: `profiles/default/plugins/`)
 - **project** -- available only in the active project, stored in the nearest project `.veyyon/plugins/installed_plugins.json`
 
 Enabled project-scoped installs shadow enabled user-scoped installs of the same plugin. A disabled project install does not shadow the user install.
@@ -83,11 +83,11 @@ When you run `/marketplace add <source>`, the system classifies the source:
 | `git@...` / `ssh://...`         | Git repository                                     | `git@github.com:org/repo.git`          |
 | `./path` or `~/path` or `/path` | Local directory                                    | `./my-marketplace`                     |
 
-Git and local sources must contain a catalog at `.omp-plugin/marketplace.json` (preferred) or `.claude-plugin/marketplace.json` (Claude Code-compatible fallback). Direct catalog URLs cache only the JSON catalog; plugins in URL-sourced catalogs cannot use relative string sources like `"./plugins/foo"`.
+Git and local sources must contain a catalog at `.veyyon-plugin/marketplace.json` (preferred) or `.claude-plugin/marketplace.json` (Claude Code-compatible fallback). Direct catalog URLs cache only the JSON catalog; plugins in URL-sourced catalogs cannot use relative string sources like `"./plugins/foo"`.
 
 ## Catalog format (marketplace.json)
 
-A marketplace catalog lives at `.omp-plugin/marketplace.json` in the repository root. When veyyon is the only intended consumer, prefer this path. To remain Claude Code-compatible (veyyon loads the same shape from either path), publish at `.claude-plugin/marketplace.json` instead — veyyon uses it as a fallback when `.omp-plugin/marketplace.json` is absent. A repository may ship both: veyyon reads the `.omp-plugin/` copy, Claude Code reads the `.claude-plugin/` copy. Same catalog format either way:
+A marketplace catalog lives at `.veyyon-plugin/marketplace.json` in the repository root. When veyyon is the only intended consumer, prefer this path. To remain Claude Code-compatible (veyyon loads the same shape from either path), publish at `.claude-plugin/marketplace.json` instead — veyyon uses it as a fallback when `.veyyon-plugin/marketplace.json` is absent. A repository may ship both: veyyon reads the `.veyyon-plugin/` copy, Claude Code reads the `.claude-plugin/` copy. Same catalog format either way:
 
 ```json
 {

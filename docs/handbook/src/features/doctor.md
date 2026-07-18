@@ -1,9 +1,9 @@
 # Diagnostics and health
 
-Veyyon's **shipped** diagnostics today are scoped to **plugins** and **interactive debug** — not a
-full install-wide `veyyon doctor` command yet.
+Diagnostics are split across plugin doctor, TUI `/debug`, and memory commands. There is no single
+`veyyon doctor` binary that covers install, auth, and plugins in one pass.
 
-## Plugin doctor (shipped)
+## Plugin doctor
 
 ```console
 $ veyyon plugin doctor
@@ -15,7 +15,7 @@ Checks plugin installation health. With `--fix`, it attempts automatic repairs w
 Additional plugin-environment checks warn when optional external binaries (`sd`, `sg`, `git`) or common
 API keys are missing — these are warnings, not hard failures.
 
-## TUI debug (shipped)
+## TUI debug
 
 ```text
 /debug
@@ -23,7 +23,7 @@ API keys are missing — these are warnings, not hard failures.
 
 Opens the debug tools selector in the interactive session.
 
-## Memory diagnostics (shipped)
+## Memory diagnostics
 
 ```text
 /memory diagnose

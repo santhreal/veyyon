@@ -1,9 +1,10 @@
 #!/usr/bin/env bun
 
 import { parseArgs } from "node:util";
-import { formatDuration, formatNumber, formatPercent } from "@veyyon/pi-utils";
+import { formatDuration, formatNumber, formatPercent } from "@veyyon/utils";
 import { getDashboardStats, getTotalMessageCount, syncAllSessions } from "./aggregator";
 import { closeDb } from "./db";
+import { formatCostTiered as formatCost, normalizePremiumRequests } from "./format";
 import { startServer } from "./server";
 
 export {
@@ -42,16 +43,6 @@ export type {
 /**
  * Format cost in dollars.
  */
-function formatCost(n: number): string {
-	if (n < 0.01) return `$${n.toFixed(4)}`;
-	if (n < 1) return `$${n.toFixed(3)}`;
-	return `$${n.toFixed(2)}`;
-}
-
-function normalizePremiumRequests(n: number): number {
-	return Math.round((n + Number.EPSILON) * 100) / 100;
-}
-
 /**
  * Print stats summary to console.
  */

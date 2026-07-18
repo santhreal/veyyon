@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { coalesceAdjacentSgr } from "@veyyon/pi-tui";
+import { coalesceAdjacentSgr } from "@veyyon/tui";
 import { VirtualTerminal } from "./virtual-terminal";
 
 const SGR = /\x1b\[([0-9;:]*)m/g;

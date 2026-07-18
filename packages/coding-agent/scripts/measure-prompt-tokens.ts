@@ -1,8 +1,8 @@
-import { countTokens } from "@veyyon/pi-agent-core";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { estimateToolSchemaTokens } from "@veyyon/pi-coding-agent/modes/utils/context-usage";
-import { buildSystemPrompt } from "@veyyon/pi-coding-agent/system-prompt";
-import { createTools, type Tool, type ToolSession } from "@veyyon/pi-coding-agent/tools";
+import { countTokens } from "@veyyon/agent-core";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import { estimateToolSchemaTokens } from "@veyyon/coding-agent/modes/utils/context-usage";
+import { buildSystemPrompt } from "@veyyon/coding-agent/system-prompt";
+import { createTools, type Tool, type ToolSession } from "@veyyon/coding-agent/tools";
 
 function bytes(s: string): number {
 	return Buffer.byteLength(s, "utf-8");

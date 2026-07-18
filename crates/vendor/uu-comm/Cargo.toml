@@ -1,5 +1,5 @@
 # Vendored from uutils/coreutils tag 0.8.0 (src/uu/comm), patched for
-# in-process embedding through pi-uutils-ctx.
+# in-process embedding through veyyon-uutils-ctx.
 [package]
 name = "uu_comm"
 version = "0.8.0"
@@ -13,4 +13,4 @@ path = "src/comm.rs"
 [dependencies]
 clap = { version = "4.5", features = ["wrap_help", "cargo", "color"] }
 uucore = "0.8.0"
-pi-uutils-ctx = { path = "../../pi-uutils-ctx" }
+veyyon-uutils-ctx = { path = "../../veyyon-uutils-ctx" }

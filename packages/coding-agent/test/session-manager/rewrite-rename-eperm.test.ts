@@ -2,9 +2,9 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fsp from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { recoverOrphanedBackups } from "@veyyon/pi-coding-agent/session/session-listing";
-import { SessionManager } from "@veyyon/pi-coding-agent/session/session-manager";
-import { FileSessionStorage, MemorySessionStorage } from "@veyyon/pi-coding-agent/session/session-storage";
+import { recoverOrphanedBackups } from "@veyyon/coding-agent/session/session-listing";
+import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { FileSessionStorage, MemorySessionStorage } from "@veyyon/coding-agent/session/session-storage";
 
 class FsCodeError extends Error {
 	code: string;
@@ -45,7 +45,7 @@ describe("SessionManager rewrite EPERM replacement fallback", () => {
 	let sessionDir: string;
 
 	beforeEach(async () => {
-		sessionDir = await fsp.mkdtemp(path.join(os.tmpdir(), "omp-eperm-"));
+		sessionDir = await fsp.mkdtemp(path.join(os.tmpdir(), "veyyon-eperm-"));
 	});
 
 	afterEach(async () => {
@@ -81,7 +81,7 @@ describe("SessionManager rewrite EPERM rollback failure", () => {
 	let sessionDir: string;
 
 	beforeEach(async () => {
-		sessionDir = await fsp.mkdtemp(path.join(os.tmpdir(), "omp-eperm-"));
+		sessionDir = await fsp.mkdtemp(path.join(os.tmpdir(), "veyyon-eperm-"));
 	});
 
 	afterEach(async () => {
@@ -140,7 +140,7 @@ describe("FileSessionStorage.writeTextAtomic commitGuard cleanup", () => {
 	let sessionDir: string;
 
 	beforeEach(async () => {
-		sessionDir = await fsp.mkdtemp(path.join(os.tmpdir(), "omp-guard-cleanup-"));
+		sessionDir = await fsp.mkdtemp(path.join(os.tmpdir(), "veyyon-guard-cleanup-"));
 	});
 
 	afterEach(async () => {

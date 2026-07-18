@@ -2,7 +2,7 @@
 
 Tool-calling convention of Google's **Gemma 4** open-weights family (`google/gemma-4-*-it`). It is a clean break from the prompt-engineered Pythonic `tool_code` form used by Gemma 3 and hosted Gemini (see `gemini.md`): Gemma 4 introduces **dedicated special tokens** and a compact **token-delimited brace syntax**. Calls and responses each get their own paired markers, and every string value is wrapped in a `<|"|>` token rather than ASCII quotes. The model emits one call as `<|tool_call>call:NAME{key:value,…}<tool_call|>`; the developer parses it, runs the tool, and appends `<|tool_response>response:NAME{output:…}<tool_response|>`.
 
-Verified against the OMP `gemma` dialect (`packages/ai/src/dialect/gemma.ts`): the streaming scanner that parses these blocks and the `renderAssistantToolCalls` / `renderToolResults` / `renderTranscript` renderers that produce them. The example streams below match that implementation; the worked model id is `google/gemma-4-E2B-it`.
+Verified against the Veyyon `gemma` dialect (`packages/ai/src/dialect/gemma.ts`): the streaming scanner that parses these blocks and the `renderAssistantToolCalls` / `renderToolResults` / `renderTranscript` renderers that produce them. The example streams below match that implementation; the worked model id is `google/gemma-4-E2B-it`.
 
 ## Special tokens
 
@@ -57,7 +57,7 @@ Value grammar inside `{…}`:
 | list | `[v,v,…]` | `tags:[<|"|>a<|"|>,<|"|>b<|"|>]` |
 | nested object | `{k:v,…}` | `config:{theme:<|"|>dark<|"|>}` |
 
-The OMP parser is the streaming `GemmaInbandScanner` (`packages/ai/src/dialect/gemma.ts`), not a flat regex. For each `<|tool_call>` block it:
+The Veyyon parser is the streaming `GemmaInbandScanner` (`packages/ai/src/dialect/gemma.ts`), not a flat regex. For each `<|tool_call>` block it:
 
 1. finds the matching `<tool_call|>` close, skipping any `<|"|>…<|"|>` string span so a `<tool_call|>` sequence that appears inside a string value does not end the block early;
 2. matches the `call:NAME{` head, then takes the brace body up to its depth-matched `}`;
@@ -98,7 +98,7 @@ The current weather in Tokyo is 15 degrees Celsius and sunny.<turn|>
 
 ## Sources
 
-- OMP `gemma` dialect implementation: `packages/ai/src/dialect/gemma.ts` (scanner + renderers), `packages/ai/src/dialect/catalog.ts` + `packages/ai/src/dialect/prompt-template.md` (tool catalog), `packages/ai/src/dialect/gemma.md` (format guide).
+- Veyyon `gemma` dialect implementation: `packages/ai/src/dialect/gemma.ts` (scanner + renderers), `packages/ai/src/dialect/catalog.ts` + `packages/ai/src/dialect/prompt-template.md` (tool catalog), `packages/ai/src/dialect/gemma.md` (format guide).
 - Function calling with Gemma 4: https://ai.google.dev/gemma/docs/capabilities/text/function-calling-gemma4
 - Gemma 4 prompt formatting: https://ai.google.dev/gemma/docs/core/prompt-formatting-gemma4
 

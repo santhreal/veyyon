@@ -1,11 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
-import {
-	Agent,
-	type AgentMessage,
-	type AgentTool,
-	AppendOnlyContextManager,
-	type StreamFn,
-} from "@veyyon/pi-agent-core";
+import { Agent, type AgentMessage, type AgentTool, AppendOnlyContextManager, type StreamFn } from "@veyyon/agent-core";
 import {
 	type Api,
 	type Context,
@@ -17,21 +11,21 @@ import {
 	registerCustomApi,
 	type SimpleStreamOptions,
 	type TextContent,
-} from "@veyyon/pi-ai";
-import { AssistantMessageEventStream } from "@veyyon/pi-ai/utils/event-stream";
-import { buildModel } from "@veyyon/pi-catalog/build";
-import { ModelRegistry } from "@veyyon/pi-coding-agent/config/model-registry";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
-import * as memoryBackend from "@veyyon/pi-coding-agent/memory-backend";
-import type { MemoryBackend } from "@veyyon/pi-coding-agent/memory-backend/types";
-import { type MnemopiSessionState, setMnemopiSessionState } from "@veyyon/pi-coding-agent/mnemopi/state";
-import { createAgentSession, type ExtensionFactory } from "@veyyon/pi-coding-agent/sdk";
-import { obfuscateProviderContext, SecretObfuscator } from "@veyyon/pi-coding-agent/secrets";
-import { AgentSession, type AgentSessionEvent } from "@veyyon/pi-coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/pi-coding-agent/session/auth-storage";
-import { convertToLlm, wrapSteeringForModel } from "@veyyon/pi-coding-agent/session/messages";
-import { SessionManager } from "@veyyon/pi-coding-agent/session/session-manager";
-import { TempDir } from "@veyyon/pi-utils";
+} from "@veyyon/ai";
+import { AssistantMessageEventStream } from "@veyyon/ai/utils/event-stream";
+import { buildModel } from "@veyyon/catalog/build";
+import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import * as memoryBackend from "@veyyon/coding-agent/memory-backend";
+import type { MemoryBackend } from "@veyyon/coding-agent/memory-backend/types";
+import { type MnemopiSessionState, setMnemopiSessionState } from "@veyyon/coding-agent/mnemopi/state";
+import { createAgentSession, type ExtensionFactory } from "@veyyon/coding-agent/sdk";
+import { obfuscateProviderContext, SecretObfuscator } from "@veyyon/coding-agent/secrets";
+import { AgentSession, type AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session";
+import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
+import { convertToLlm, wrapSteeringForModel } from "@veyyon/coding-agent/session/messages";
+import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { TempDir } from "@veyyon/utils";
 import { createAssistantMessage } from "./helpers/agent-session-setup";
 
 function createAgent(): Agent {
@@ -66,15 +60,15 @@ function getConvertedUserText(message: Message | undefined): string {
 }
 
 async function withNativeDialectEnv<T>(fn: () => Promise<T>): Promise<T> {
-	const previous = Bun.env.PI_DIALECT;
-	delete Bun.env.PI_DIALECT;
+	const previous = Bun.env.VEYYON_DIALECT;
+	delete Bun.env.VEYYON_DIALECT;
 	try {
 		return await fn();
 	} finally {
 		if (previous === undefined) {
-			delete Bun.env.PI_DIALECT;
+			delete Bun.env.VEYYON_DIALECT;
 		} else {
-			Bun.env.PI_DIALECT = previous;
+			Bun.env.VEYYON_DIALECT = previous;
 		}
 	}
 }

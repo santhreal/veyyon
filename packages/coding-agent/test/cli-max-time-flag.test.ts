@@ -1,12 +1,14 @@
 import { describe, expect, it, vi } from "bun:test";
+import * as fs from "node:fs/promises";
+import * as os from "node:os";
 import * as path from "node:path";
-import { parseArgs } from "@veyyon/pi-coding-agent/cli/args";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { runRootCommand } from "@veyyon/pi-coding-agent/main";
-import type { CreateAgentSessionOptions } from "@veyyon/pi-coding-agent/sdk";
-import { AuthStorage } from "@veyyon/pi-coding-agent/session/auth-storage";
-import { TempDir } from "@veyyon/pi-utils";
-import { APP_NAME } from "@veyyon/pi-utils/dirs";
+import { parseArgs } from "@veyyon/coding-agent/cli/args";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import { runRootCommand } from "@veyyon/coding-agent/main";
+import type { CreateAgentSessionOptions } from "@veyyon/coding-agent/sdk";
+import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
+import { TempDir } from "@veyyon/utils";
+import { APP_NAME } from "@veyyon/utils/dirs";
 import { runCli } from "../src/cli";
 
 describe("parseArgs — --max-time flag", () => {
@@ -62,10 +64,21 @@ describe("parseArgs — --max-time flag", () => {
 			return true;
 		});
 
+		// runCli runs the legacy-layout migration gate against ~/<configDirName>
+		// before arg validation; on a machine whose real ~/.veyyon is in the
+		// both-layouts conflict state that exits 1 and the usage error under
+		// test never runs. bun's os.homedir() ignores runtime HOME mutation, so
+		// isolation goes through the live-read VEYYON_CONFIG_DIR name instead.
+		const configDirName = `.veyyon-max-time-test-${crypto.randomUUID()}`;
+		const previousConfigDir = process.env.VEYYON_CONFIG_DIR;
+		process.env.VEYYON_CONFIG_DIR = configDirName;
 		try {
 			await runCli(["--max-time", "5d", "--print", "hello"]);
 			observedExitCode = process.exitCode;
 		} finally {
+			if (previousConfigDir === undefined) delete process.env.VEYYON_CONFIG_DIR;
+			else process.env.VEYYON_CONFIG_DIR = previousConfigDir;
+			await fs.rm(path.join(os.homedir(), configDirName), { recursive: true, force: true });
 			vi.restoreAllMocks();
 			process.exitCode = previousExitCode ?? 0;
 		}
@@ -79,7 +92,7 @@ describe("parseArgs — --max-time flag", () => {
 	});
 
 	it("converts maxTime to an absolute session deadline", async () => {
-		using tempDir = TempDir.createSync("@omp-max-time-");
+		using tempDir = TempDir.createSync("@veyyon-max-time-");
 		const authStorage = await AuthStorage.create(path.join(tempDir.path(), "auth.db"));
 		const settings = Settings.isolated({});
 		let observedOptions: CreateAgentSessionOptions | undefined;

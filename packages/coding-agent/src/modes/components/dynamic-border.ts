@@ -1,4 +1,4 @@
-import type { Component } from "@veyyon/pi-tui";
+import type { Component } from "@veyyon/tui";
 import { fgOrPlain, theme } from "../../modes/theme/theme";
 
 /**

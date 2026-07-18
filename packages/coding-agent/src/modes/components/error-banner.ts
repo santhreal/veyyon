@@ -1,4 +1,4 @@
-import { Container, Spacer, Text } from "@veyyon/pi-tui";
+import { Container, Spacer, Text } from "@veyyon/tui";
 import { getPreviewLines, TRUNCATE_LENGTHS } from "../../tools/render-utils";
 import { theme } from "../theme/theme";
 import { DynamicBorder } from "./dynamic-border";

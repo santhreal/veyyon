@@ -6,7 +6,7 @@
  * non-negative integer at both entry points, and that valid counts still work.
  */
 import { describe, expect, it } from "bun:test";
-import { Spacer } from "@veyyon/pi-tui/components/spacer";
+import { Spacer } from "@veyyon/tui/components/spacer";
 
 describe("Spacer", () => {
 	it("renders exactly N blank lines for valid counts", () => {

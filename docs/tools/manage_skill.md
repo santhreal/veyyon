@@ -36,7 +36,7 @@
 - `delete`: remove an existing managed skill; helper fails if it does not exist.
 
 ## Side Effects
-- Filesystem: writes or deletes files under `~/.veyyon/agent/managed-skills`.
+- Filesystem: writes or deletes files under `~/.veyyon/profiles/default/agent/managed-skills`.
 - Network: none.
 - Session state: only reads `autolearn.enabled` during tool creation.
 - Background work: none.
@@ -56,5 +56,5 @@
 - Unsafe roots, symlinked directories/files, hard-linked files, missing update/delete targets, and existing create targets throw helper errors.
 
 ## Notes
-- Managed skills are generated under `~/.veyyon/agent/managed-skills` and never edit user-authored skills.
+- Managed skills are generated under `~/.veyyon/profiles/default/agent/managed-skills` and never edit user-authored skills.
 - Do not include YAML frontmatter in `body`; `writeManagedSkill(...)` generates `name` and sanitized `description` frontmatter.

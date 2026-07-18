@@ -1,8 +1,8 @@
 /**
  * `veyyon auth-gateway` — run a forward proxy that injects auth from the broker.
  */
-import { APP_NAME } from "@veyyon/pi-utils";
-import { Args, Command, Flags, renderCommandHelp } from "@veyyon/pi-utils/cli";
+import { APP_NAME } from "@veyyon/utils";
+import { Args, Command, Flags, renderCommandHelp } from "@veyyon/utils/cli";
 import {
 	AUTH_GATEWAY_ACTIONS,
 	type AuthGatewayAction,

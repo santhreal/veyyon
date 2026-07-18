@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
-import { postmortem } from "@veyyon/pi-utils";
+import { postmortem } from "@veyyon/utils";
 import { JsRuntime, type RuntimeHooks } from "../../src/eval/js/shared/runtime";
 import { bindBrowserRunFacade, markHandled, waitForBrowserRun } from "../../src/tools/browser/run-cancellation";
 import { ToolAbortError } from "../../src/tools/tool-errors";

@@ -3,7 +3,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { parseArgs } from "node:util";
-import { TempDir } from "@veyyon/pi-utils";
+import { errorMessage, TempDir } from "@veyyon/utils";
 import { loadTasksFromDir } from "@veyyon/typescript-edit-benchmark/tasks";
 import { generateJsonReport } from "./report";
 import { type BenchmarkConfig, runBenchmark } from "./runner";
@@ -91,7 +91,7 @@ export async function main(argv = process.argv.slice(2)): Promise<void> {
 
 if (import.meta.main) {
 	main().catch(error => {
-		process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+		process.stderr.write(`${errorMessage(error)}\n`);
 		process.exitCode = 1;
 	});
 }

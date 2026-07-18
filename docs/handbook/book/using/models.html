@@ -10,6 +10,10 @@
         <!-- Veyyon handbook: self-contained head additions. No remote resources. -->
         <meta name="theme-color" content="#050505">
         <meta name="color-scheme" content="dark">
+        <!-- Site favicons live at the deployed root, one level above /docs/. -->
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+        <link rel="icon" href="/favicon.ico" sizes="48x48">
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png">
         <style>
           /* Paint the near-black surface before CSS/JS resolve the theme, so there is
              no light flash on load. Kept in sync with theme/veyyon.css. */
@@ -18,7 +22,7 @@
           *, *::before, *::after { box-sizing: border-box; }
         </style>
 
-        <meta name="description" content="How Veyyon turns open models into frontier coding agents. The product, the harness, tool-call repair, the edit format, per-model adaptation, and how to use it.">
+        <meta name="description" content="Operator handbook for the Veyyon terminal coding agent: install, configuration, tools, approvals, edit formats, providers, and harness structure.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -38,7 +42,7 @@
         <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="../ayu-highlight-3fdfc3ac.css">
 
         <!-- Custom theme stylesheets -->
-        <link rel="stylesheet" href="../theme/veyyon-fc839a17.css">
+        <link rel="stylesheet" href="../theme/veyyon-06f6939e.css">
 
 
         <!-- Provide site root and default themes to javascript -->
@@ -46,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-e76f06ca.js";
+            window.path_to_searchindex_js = "../searchindex-a2447057.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-9cfd259b.js"></script>
+        <script src="../toc-cc1a72e9.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -192,18 +196,14 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="models-and-providers"><a class="header" href="#models-and-providers">Models and providers</a></h1>
-<p>This page is the day-to-day guide for choosing and switching models. Veyyon is provider/API agnostic:
-you choose the endpoint, choose the model when that endpoint exposes model choice, supply the key, and
-Veyyon calls that API directly. The endpoint can be a local server, a direct provider API, or a
-compatible gateway.</p>
+<p>Select endpoints and model ids; the agent calls the configured provider API with your credentials (local server, hosted API, or OpenAI-compatible gateway).</p>
 <ul>
 <li>Contract (what the harness owns vs the provider): <a href="../concepts/model-contract.html">Model contract</a></li>
 <li>Copy-paste provider setups: <a href="./configuring-providers.html">Configuring providers</a></li>
 <li>Built-in provider stack internals: <a href="../models/providers.html">Provider stack and BYOK</a></li>
 </ul>
-<h2 id="bring-your-own-key"><a class="header" href="#bring-your-own-key">Bring your own key</a></h2>
-<p>When you use a non-managed BYOK provider, Veyyon does not route your requests through a service of its
-own and does not add telemetry egress. It uses your key only to talk to the provider you chose.</p>
+<h2 id="api-keys-byok"><a class="header" href="#api-keys-byok">API keys (BYOK)</a></h2>
+<p>For non-managed providers the process sends the key to the provider endpoint you configured (no hosted proxy required).</p>
 <p>Set the key through:</p>
 <ul>
 <li>The provider’s environment variable (see <a href="../models/providers.html">Providers</a> for the full map), or</li>
@@ -213,7 +213,7 @@ own and does not add telemetry egress. It uses your key only to talk to the prov
 <p>See <a href="./authentication.html">Signing in</a> for storage modes and <a href="./configuring-providers.html">Configuring providers</a>
 for full <code>models.yml</code> examples.</p>
 <h3 id="minimal-byok-shape"><a class="header" href="#minimal-byok-shape">Minimal BYOK shape</a></h3>
-<pre><code class="language-yaml"># ~/.veyyon/agent/models.yml
+<pre><code class="language-yaml"># ~/.veyyon/profiles/default/agent/models.yml
 providers:
   deepseek:
     baseUrl: https://api.deepseek.com
@@ -245,7 +245,7 @@ selectable when it is not in <code>disabledProviders</code> <strong>and</strong>
 </table>
 </div>
 <p>Once a provider is available, model ids come from its discovery endpoint — there is no hardcoded BYOK
-allowlist. Discovery fails loud rather than serving a silent empty list.</p>
+allowlist. Failed discovery returns an error; it does not invent an empty catalog.</p>
 <h2 id="local-models-ollama-and-lm-studio"><a class="header" href="#local-models-ollama-and-lm-studio">Local models: Ollama and LM Studio</a></h2>
 <p>Both are discovered automatically once the engine is running; no <code>models.yml</code> entry and no key are
 required.</p>
@@ -277,84 +277,68 @@ external binaries and keys.</p>
 /model deepseek/deepseek-chat
 /status
 </code></pre>
-<h2 id="model-selection-three-explicit-slots"><a class="header" href="#model-selection-three-explicit-slots">Model selection: three explicit slots</a></h2>
-<p>Veyyon separates the model you talk to from the models that work in the background. There are three
-explicit slots, each set on its own — no <code>default</code> model stands in for the others:</p>
-<ul>
-<li><strong>Interactive model</strong> — the conversation you are in. Chosen with <code>/model</code> (or <code>--model</code> for a run).</li>
-<li><strong>Subagent model</strong> — task subagents. Set once in settings (<code>subagent.model</code>).</li>
-<li><strong>Compaction model</strong> — context compaction. Set once in settings (<code>compaction.model</code>).</li>
-</ul>
-<p>Leave a background slot unset and it uses the interactive model. Switching the interactive model
-mid-session never blends through a fallback chain into the background slots. <code>/status</code> shows all
-effective models.</p>
-<pre><code class="language-yaml"># ~/.veyyon/agent/config.yml
-model: openai/gpt-5               # interactive
+<h2 id="model-selection"><a class="header" href="#model-selection">Model selection</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Piece</th><th>Purpose</th><th>Config</th></tr>
+</thead>
+<tbody>
+<tr><td><strong>Interactive model</strong></td><td>Main conversation</td><td><code>/model</code>, <code>--model</code>; persisted as <code>modelRoles.default</code></td></tr>
+<tr><td><strong>Roles</strong></td><td>Named assignments (<code>smol</code>, <code>slow</code>, <code>plan</code>, <code>task</code>, <code>advisor</code>, …)</td><td><code>modelRoles</code> / settings → Model → Roles</td></tr>
+<tr><td><strong>Subagent override</strong></td><td>Task subagents</td><td><code>subagent.model</code> (overrides <code>modelRoles.task</code> when set; else inherit interactive)</td></tr>
+<tr><td><strong>Compaction override</strong></td><td>Compaction / handoff</td><td><code>compaction.model</code> (else inherit interactive)</td></tr>
+</tbody>
+</table>
+</div>
+<pre><code class="language-yaml"># ~/.veyyon/profiles/default/agent/config.yml
+modelRoles:
+  default: openai/gpt-5          # interactive (persisted default)
+  smol: openai/gpt-4.1-mini
+  slow: anthropic/claude-opus-4-5:high
+  plan: anthropic/claude-sonnet-5
+  task: deepseek/deepseek-chat
 subagent:
-  model: deepseek/deepseek-chat
+  model: deepseek/deepseek-chat  # optional hard override for task agents
 compaction:
   model: openai/gpt-5-mini
 </code></pre>
-<h3 id="roles-optional"><a class="header" href="#roles-optional">Roles (optional)</a></h3>
-<p>If you want named model assignments for specific work types (planning, review, …), configure <strong>roles</strong>
-in settings → Models → Roles. Roles are optional, scoped per profile, and live in settings — not the
-model picker. <code>default</code> is not a role or a model. See
-<a href="./roles-and-profiles.html">Models, roles, and profiles</a>.</p>
-<h2 id="the-harness-adapts-to-the-model"><a class="header" href="#the-harness-adapts-to-the-model">The harness adapts to the model</a></h2>
-<p>A model does not run in a generic harness. Prompt order, repair enablement, and tool exposure can be
-tuned per model via <strong>harness profiles (MVP)</strong> and model roles. You choose the model; Veyyon applies
-defaults that match how that model behaves. See <a href="../models/prompts.html">Execution-order prompts</a> and
+<p>Ctrl+P (default binding) cycles roles listed in <code>cycleOrder</code> (schema default <code>smol</code>, <code>slow</code> — not <code>default</code>). Full role list and aliases: <a href="./roles-and-profiles.html">Models, roles, and profiles</a>.</p>
+<h2 id="per-model-harness-settings"><a class="header" href="#per-model-harness-settings">Per-model harness settings</a></h2>
+<p>Prompt order, repair enablement, and tool exposure can be set per model id through <strong>harness profiles</strong>
+and model roles. See <a href="../models/prompts.html">Execution-order prompts</a> and
 <a href="../concepts/model-contract.html">Model contract</a>.</p>
-<h3 id="per-model-harness-profiles-mvp"><a class="header" href="#per-model-harness-profiles-mvp">Per-model harness profiles (MVP)</a></h3>
-<p>Optional overrides in <code>config.yml</code> or <code>~/.veyyon/agent/harness-profiles.yml</code>:</p>
+<h3 id="harness-profiles"><a class="header" href="#harness-profiles">Harness profiles</a></h3>
+<p>Optional overrides in <code>config.yml</code> or <code>~/.veyyon/profiles/default/agent/harness-profiles.yml</code>:</p>
 <pre><code class="language-yaml">harness:
   profiles:
     "openai/gpt-4.1":
       repair: true
       tools: ["read", "edit", "grep", "bash", "write"]
+      promptSectionOrder: ["tool-policy", "delivery-contract"]
 </code></pre>
-<p>Keys: exact <code>provider/model-id</code> or <code>provider/*</code>. See <a href="../repair/per-model.html">Per-model repair posture</a>.
-Full <code>backends.toml</code> posture tables remain <strong>Spec</strong>.</p>
+<p>Keys: exact <code>provider/model-id</code> or <code>provider/*</code>. See <a href="../repair/per-model.html">Per-model repair posture</a>.</p>
 <h2 id="switching-providers"><a class="header" href="#switching-providers">Switching providers</a></h2>
-<p>Switching providers does not change how you work. Set the key for the new provider, choose its model,
-and continue. Your workflow, tools, sandbox, and approvals stay the same. There is no lock-in, because
-there is nothing holding you to one vendor.</p>
+<p>Set credentials for the new provider and select a model id from that catalog. Tool surface and <code>tools.approvalMode</code> are independent of provider id.</p>
 <pre><code class="language-console">$ export OPENROUTER_API_KEY=...
 $ veyyon --model openrouter/anthropic/claude-sonnet-4
 </code></pre>
-<h2 id="comparison-guidance-how-to-choose"><a class="header" href="#comparison-guidance-how-to-choose">Comparison guidance: how to choose</a></h2>
-<p>Use this as a starting heuristic, not a benchmark claim. Always verify against your own tasks.</p>
+<h2 id="model-selection-notes"><a class="header" href="#model-selection-notes">Model selection notes</a></h2>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>Priority</th><th>Prefer</th><th>Why</th></tr>
+<tr><th>Constraint</th><th>Typical choice</th></tr>
 </thead>
 <tbody>
-<tr><td>Strongest agentic coding / tool use</td><td>Frontier hosted model you already trust</td><td>Best first-attempt edits and planning on hard refactors</td></tr>
-<tr><td>Cost of long sessions</td><td>Cheaper model for the subagent and compaction slots</td><td>Keeps interactive quality; shrinks background spend</td></tr>
-<tr><td>Latency / iteration speed</td><td>Fast local or flash-tier cloud model</td><td>Tight edit-test loops; hashline recovery still helps weaker models</td></tr>
-<tr><td>Air-gapped / private code</td><td>Ollama or LM Studio</td><td>Keys and weights stay on your machine</td></tr>
-<tr><td>CI automation</td><td>Stable mid-tier cloud id pinned with <code>--model</code></td><td>Predictable cost; pair with <code>--approval-mode auto-edit</code></td></tr>
-<tr><td>Mixed team</td><td>Strong interactive model + a cheaper subagent model</td><td>Reviewer stays strong while workers stay cheap</td></tr>
+<tr><td>Tool-heavy refactors</td><td>Hosted model with tool calling</td></tr>
+<tr><td>Long sessions / subagents</td><td>Cheaper id on <code>subagent.model</code> / <code>compaction.model</code></td></tr>
+<tr><td>Low latency</td><td>Local or flash-tier cloud</td></tr>
+<tr><td>Offline / private code</td><td>Ollama, LM Studio, llama.cpp</td></tr>
+<tr><td>CI</td><td>Pin exact <code>provider/id</code> with <code>--model</code></td></tr>
 </tbody>
 </table>
 </div>
-<p>Rough capability vs cost/latency trade-off:</p>
-<pre><code class="language-text">capability
-    ^
-    |  frontier hosted
-    |        *
-    |              mid-tier hosted
-    |                   *
-    |                        local 30B+
-    |                             *
-    |                                  small local / flash
-    |                                       *
-    +----------------------------------------&gt; cost / latency
-         (pay more / wait more)     (cheap / fast)
-</code></pre>
-<p>Pin models explicitly in CI and shared profiles (<code>--model</code>, <code>modelRoles</code>). Floating “latest” aliases
-are convenient interactively and risky in automation.</p>
+<p>Pin models in CI and shared profiles (<code>--model</code>, <code>modelRoles</code>). Floating “latest” aliases change under you.</p>
 <h2 id="where-to-go-next"><a class="header" href="#where-to-go-next">Where to go next</a></h2>
 <ul>
 <li><a href="./configuring-providers.html">Configuring providers</a> — full copy-paste setups.</li>

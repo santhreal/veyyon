@@ -1,100 +1,105 @@
 # Models, roles, and profiles
 
-Veyyon keeps model selection explicit and simple. Three ideas stay separate:
+## Concepts
 
-- the **model you talk to** — chosen live,
-- **roles** — optional named model assignments, configured in settings and scoped per profile,
-- **profiles** — separate user config trees.
+| Concept | Meaning |
+| --- | --- |
+| **Interactive model** | The model used for the main conversation. Chosen with `/model` or `--model`. Persisted under `modelRoles.default` (legacy key name; not a selectable “role” in the UI). |
+| **Role** | A named model assignment for a kind of work (`smol`, `plan`, `task`, …). Configured in `modelRoles` / settings → Model → Roles. |
+| **Slot overrides** | `subagent.model` and `compaction.model` — dedicated destinations that override the corresponding role or inherit the interactive model when unset. |
+| **Profile** | User config tree at `~/.veyyon/profiles/<name>/` (including `default`). |
 
-## Three model slots
+## Interactive model
 
-Veyyon gives you three explicit model choices. Each is set on its own — there is no `default` model
-that silently stands in for the others.
-
-| Slot | Runs | Where you set it |
-| --- | --- | --- |
-| **Interactive model** | the conversation you are in | `/model` (live), `--model`, `config.yml` `model` |
-| **Subagent model** | task subagents | settings → Models |
-| **Compaction model** | context compaction | settings → Models |
-
-Leave the subagent or compaction model unset and that slot uses your interactive model.
-
-## Picking the interactive model
-
-Use `/model`, the model carousel, or the CLI (`--model`). Your choice is saved to the active profile's
-`config.yml` and applies to the conversation. This is the only model you choose from the picker.
-
-## Subagent and compaction models
-
-Set them once in **settings → Models**, or in `config.yml`:
+- Set live with `/model` or the model picker; set for a run with `--model <provider/id>`.
+- On “set as default” / persist paths, the value is stored as **`modelRoles.default`** in the active profile’s `config.yml`.
+- There is no separate top-level `model:` settings key in the schema. Prefer the picker or `modelRoles.default` in config.
 
 ```yaml
+# ~/.veyyon/profiles/default/agent/config.yml
 modelRoles:
-  default: anthropic/claude-sonnet-5   # interactive
-subagent:
-  model: anthropic/claude-haiku-4-5
-compaction:
-  model: openai/gpt-5
+  default: anthropic/claude-sonnet-5   # interactive model (persisted default)
+  smol: openai/gpt-4.1-mini
+  slow: anthropic/claude-opus-4-5:high
+  plan: anthropic/claude-sonnet-5
+  task: deepseek/deepseek-chat
+  advisor: anthropic/claude-sonnet-5:medium
 ```
 
-They are plain fields — one model each, no per-role matrix and no indirection. When a task subagent
-spawns, it runs on `subagent.model`. When context is compacted, it runs on `compaction.model`.
+Role values may include a thinking suffix (`:minimal`, `:low`, `:medium`, `:high`, `:xhigh`, `:max`).
 
-## Roles (optional)
+## Built-in roles
 
-A **role** is a named model assignment for a kind of work (`task`, `plan`, `advisor`, …). Roles are
-optional. Edit them in **`/settings` → Model → Roles → Role Models**: pick a role, then use the
-**searchable model selector** (auth / local / no auth shown on each row). Never edit `config.yml` for
-this — settings writes the active profile’s assignments for you.
+From `packages/coding-agent/src/config/model-roles.ts`:
 
-`default` is not a role and not a model. The model you pick with `/model` is simply your interactive
-model; nothing falls back through a `default` slot.
+| Role id | UI name | Notes |
+| --- | --- | --- |
+| `default` | (hidden) | Storage key for the interactive model only; not shown in role pickers or default `cycleOrder` |
+| `smol` | Fast | Cheap / fast work; `--smol`, env `VEYYON_SMOL_MODEL` / `VEYYON_SMOL_MODEL` if set |
+| `slow` | Thinking | Heavier reasoning; `--slow` |
+| `vision` | Vision | Multimodal work |
+| `plan` | Architect | Plan mode; `--plan` |
+| `designer` | Designer | Design-oriented work |
+| `commit` | Commit | Commit / changelog generation |
+| `tiny` | Tiny | Lightweight background (titles, classifiers); else falls back toward `@smol` |
+| `task` | Subtask | Task subagents unless `subagent.model` is set |
+| `advisor` | Advisor | Advisor runtime; unset uses thinking-model chain |
 
-### Task subagents
+Custom role names can appear via `modelRoles`, `modelTags`, or `cycleOrder` entries.
 
-The main agent spawns **task** subagents for parallel scoped work. They run on `subagent.model`.
-Task isolation (`task.isolation.*`) and concurrency (`task.maxConcurrency`) are settings — not a
-surface you configure every turn.
+Unset selectable roles **inherit the live interactive model** at use time (except `advisor`, which uses its own chain when unset).
 
-## Compaction settings
+## Slot overrides
 
-Compaction has exactly three settings, in **settings → Models → Compaction**:
+| Setting | Effect |
+| --- | --- |
+| `subagent.model` | Model for task subagents. Unset → inherit interactive. When set, overrides `modelRoles.task`. |
+| `compaction.model` | Model for compaction/handoff. Unset → inherit interactive. |
 
-1. **Auto-compaction threshold** (`compaction.thresholdPercent`) — when to compact.
-2. **Type** (`compaction.strategy`) — `handoff` or `snap`.
-3. **Model** (`compaction.model`) — the compaction model above.
+```yaml
+subagent:
+  model: deepseek/deepseek-chat
+compaction:
+  model: openai/gpt-5-mini
+  strategy: handoff
+  thresholdPercent: 80
+```
 
-See [Memory and compaction](../features/memory.md) for what each type does.
+## Cycling roles (Ctrl+P)
+
+`cycleOrder` lists which **roles** the model switcher cycles (`app.model.cycleForward` / `cycleBackward`, default chords often Ctrl+P / Shift+Ctrl+P).
+
+- Schema default: `["smol", "slow"]` (see `DEFAULT_CYCLE_ORDER`).
+- The string `default` is **stripped** from `cycleOrder` on load; the interactive model is not cycled as a role entry.
+- Scoped models (`--models` / enabled model list) can also drive cycling when configured.
+
+```yaml
+cycleOrder:
+  - smol
+  - slow
+  - plan
+```
 
 ## Profiles
 
-A **profile** relocates `~/.veyyon/agent/` to `~/.veyyon/profiles/<name>/agent/` for native Veyyon
-config (settings, sessions, MCP, skills, hooks, and your role assignments and model slots). Activate
-with `veyyon --profile <name>` or `VEYYON_PROFILE`.
+Every profile including `default`:
 
-Profiles are chosen at process start; `/profile <name>` in the TUI relaunches Veyyon on the target
-profile as a fresh session. See [Profiles](../features/profiles.md) for the lifecycle commands
-(`veyyon profile list/new/rm`), the `/profile new` copy picker, and display-name renaming.
+```text
+~/.veyyon/profiles/<name>/agent/   # config.yml, sessions, MCP, skills, …
+```
 
-## Tool approval
+Global `~/.veyyon/config.yml` holds cross-profile keys such as `defaultProfile`.  
+Activate: `--profile`, `VEYYON_PROFILE`, `veyyon profile default <name>`, TUI `/profile` (relaunch).  
+See [Profiles](../features/profiles.md), [File locations](../reference/file-locations.md).
 
-Behavior is governed by `tools.approvalMode` (`plan`, `ask`, `auto-edit`, `yolo`) and per-tool
-`tools.approval` overrides. Configure in `/settings` → Safety or `--approval-mode` on launch.
+## Approvals
 
-## Where each choice lives
+`tools.approvalMode`: `plan` | `ask` | `auto-edit` | `yolo` (schema default `yolo`).  
+Aliases: `always-ask` → `ask`, `write` → `auto-edit`.  
+See [Approvals](../features/sandbox.md).
 
-| You want to | Where |
-| --- | --- |
-| Change the interactive model | `/model`, `config.yml` `model` |
-| Set the subagent model | settings → Models (`subagent.model`) |
-| Set the compaction model | settings → Models (`compaction.model`) |
-| Assign models to roles (optional) | settings → Models → Roles, per profile |
-| Separate user config trees | `veyyon --profile <name>` |
-| Tighten tool prompts | `tools.approvalMode`, `tools.approval` |
+## Related
 
-## See also
-
-- [Profiles](../features/profiles.md)
 - [Models and providers](./models.md)
-- [Memory and compaction](../features/memory.md)
-- [Configuration](./configuration.md)
+- [settings.md Models](../../settings.md) (repo `docs/settings.md`)
+- [Compaction](../context/compaction-memory.md)

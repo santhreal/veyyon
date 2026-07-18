@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
-import * as git from "@veyyon/pi-coding-agent/utils/git";
+import * as git from "@veyyon/coding-agent/utils/git";
 import type { Subprocess } from "bun";
 
 type SpawnOptions = Bun.SpawnOptions.SpawnOptions<
@@ -55,7 +55,7 @@ describe("git subprocess config", () => {
 		const spawnCalls: SpawnCall[] = [];
 		vi.spyOn(Bun, "spawn").mockImplementation(createSpawnMock(spawnCalls));
 
-		expect(await git.status.summary("/work/pi")).toEqual({ staged: 0, unstaged: 0, untracked: 0 });
+		expect(await git.status.summary("/work/veyyon")).toEqual({ staged: 0, unstaged: 0, untracked: 0 });
 		expect(spawnCalls).toHaveLength(1);
 		expect(spawnCalls[0]?.cmd).toEqual([
 			"git",
@@ -73,7 +73,7 @@ describe("git subprocess config", () => {
 		const spawnCalls: SpawnCall[] = [];
 		vi.spyOn(Bun, "spawn").mockImplementation(createSpawnMock(spawnCalls));
 
-		await git.stage.files("/work/pi", ["tracked.txt"]);
+		await git.stage.files("/work/veyyon", ["tracked.txt"]);
 
 		expect(spawnCalls).toHaveLength(1);
 		expect(spawnCalls[0]?.cmd).toEqual([
@@ -92,7 +92,7 @@ describe("git subprocess config", () => {
 		const spawnCalls: SpawnCall[] = [];
 		vi.spyOn(Bun, "spawn").mockImplementation(createSpawnMock(spawnCalls));
 
-		await git.push("/work/pi", { remote: "fork", refspec: "HEAD:refs/heads/feature" });
+		await git.push("/work/veyyon", { remote: "fork", refspec: "HEAD:refs/heads/feature" });
 
 		// `--no-follow-tags` must override a user's `push.followTags = true`:
 		// implicit tag pushes are rejected on remotes the user cannot tag
@@ -118,7 +118,7 @@ describe("git subprocess config", () => {
 
 		process.env.GPG_TTY = "/dev/pts/42";
 		try {
-			await git.commit("/work/pi", "fix: preserve signing tty");
+			await git.commit("/work/veyyon", "fix: preserve signing tty");
 		} finally {
 			if (originalGpgTty === undefined) {
 				delete process.env.GPG_TTY;
@@ -138,7 +138,7 @@ describe("git subprocess config", () => {
 
 		delete process.env.GPG_TTY;
 		try {
-			await git.commit("/work/pi", "fix: allow gui pinentry");
+			await git.commit("/work/veyyon", "fix: allow gui pinentry");
 		} finally {
 			if (originalGpgTty !== undefined) {
 				process.env.GPG_TTY = originalGpgTty;

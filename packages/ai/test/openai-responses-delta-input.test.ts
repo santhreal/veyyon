@@ -1,12 +1,12 @@
 import { describe, expect, it } from "bun:test";
-import { buildResponsesDeltaInput } from "@veyyon/pi-ai/providers/openai-shared";
+import { buildResponsesDeltaInput } from "@veyyon/ai/providers/openai-shared";
 import {
 	kStreamingArgumentsDone,
 	kStreamingBlockIndex,
 	kStreamingBlockKind,
 	kStreamingLastParseLen,
 	kStreamingPartialJson,
-} from "@veyyon/pi-ai/utils/block-symbols";
+} from "@veyyon/ai/utils/block-symbols";
 import type { ResponseInputItem } from "../src/providers/openai-responses-wire";
 
 // Both stateful callers store the previous request/response through

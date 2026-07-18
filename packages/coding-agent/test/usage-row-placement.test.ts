@@ -7,14 +7,14 @@
  * flushes it after the turn's tools are placed.
  */
 import { beforeAll, describe, expect, it, vi } from "bun:test";
-import type { AgentMessage } from "@veyyon/pi-agent-core";
-import { ReadToolGroupComponent } from "@veyyon/pi-coding-agent/modes/components/read-tool-group";
-import { initTheme } from "@veyyon/pi-coding-agent/modes/theme/theme";
-import type { InteractiveModeContext } from "@veyyon/pi-coding-agent/modes/types";
-import { UiHelpers } from "@veyyon/pi-coding-agent/modes/utils/ui-helpers";
-import type { SessionContext } from "@veyyon/pi-coding-agent/session/session-context";
-import { Container } from "@veyyon/pi-tui";
-import { formatNumber } from "@veyyon/pi-utils";
+import type { AgentMessage } from "@veyyon/agent-core";
+import { ReadToolGroupComponent } from "@veyyon/coding-agent/modes/components/read-tool-group";
+import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
+import { UiHelpers } from "@veyyon/coding-agent/modes/utils/ui-helpers";
+import type { SessionContext } from "@veyyon/coding-agent/session/session-context";
+import { Container } from "@veyyon/tui";
+import { formatNumber } from "@veyyon/utils";
 
 // 4242 → "4.2K": distinctive enough not to collide with a read group's render.
 const USAGE_INPUT = 4242;

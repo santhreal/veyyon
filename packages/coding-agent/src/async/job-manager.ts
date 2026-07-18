@@ -1,4 +1,4 @@
-import { logger } from "@veyyon/pi-utils";
+import { errorMessage, logger } from "@veyyon/utils";
 
 const DELIVERY_RETRY_BASE_MS = 500;
 const DELIVERY_RETRY_MAX_MS = 30_000;
@@ -211,7 +211,7 @@ export class AsyncJobManager {
 			} catch (error) {
 				logger.warn("Async job progress callback failed", {
 					jobId: id,
-					error: error instanceof Error ? error.message : String(error),
+					error: errorMessage(error),
 				});
 			}
 		};
@@ -236,11 +236,11 @@ export class AsyncJobManager {
 				this.#scheduleEviction(id);
 			} catch (error) {
 				if (job.status === "cancelled") {
-					job.errorText = error instanceof Error ? error.message : String(error);
+					job.errorText = errorMessage(error);
 					this.#scheduleEviction(id);
 					return;
 				}
-				const errorText = error instanceof Error ? error.message : String(error);
+				const errorText = errorMessage(error);
 				job.status = "failed";
 				job.errorText = errorText;
 				this.#enqueueDelivery(id, errorText);
@@ -659,7 +659,7 @@ export class AsyncJobManager {
 				await this.#onJobComplete(delivery.jobId, delivery.text, this.#jobs.get(delivery.jobId));
 			} catch (error) {
 				delivery.attempt += 1;
-				delivery.lastError = error instanceof Error ? error.message : String(error);
+				delivery.lastError = errorMessage(error);
 				delivery.nextAttemptAt = Date.now() + this.#getRetryDelay(delivery.attempt);
 				if (!this.isDeliverySuppressed(delivery.jobId)) {
 					this.#deliveries.push(delivery);

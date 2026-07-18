@@ -1,8 +1,8 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
-import { ToolExecutionComponent } from "@veyyon/pi-coding-agent/modes/components/tool-execution";
-import { initTheme } from "@veyyon/pi-coding-agent/modes/theme/theme";
-import type { TUI } from "@veyyon/pi-tui";
+import { ToolExecutionComponent } from "@veyyon/coding-agent/modes/components/tool-execution";
+import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import type { TUI } from "@veyyon/tui";
 
 // Contract under test: live tool previews that render a pending/running status
 // must keep the spinner glyph tied to the shared tool-frame ticker. This covers

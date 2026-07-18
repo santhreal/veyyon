@@ -1,3 +1,5 @@
+import { formatCount } from "@veyyon/utils";
+
 export type LoopLimitConfig =
 	| {
 			kind: "iterations";
@@ -166,27 +168,27 @@ export function isLoopDurationExpired(limit: LoopLimitRuntime | undefined, nowMs
 
 export function describeLoopLimit(config: LoopLimitConfig): string {
 	if (config.kind === "iterations") {
-		return `${config.iterations} ${config.iterations === 1 ? "iteration" : "iterations"}`;
+		return formatCount("iteration", config.iterations);
 	}
-	return formatDuration(config.durationMs);
+	return formatWholeUnitDuration(config.durationMs);
 }
 
 export function describeLoopLimitRuntime(limit: LoopLimitRuntime): string {
 	if (limit.kind === "iterations") {
-		return `${limit.remaining} of ${limit.initial} ${limit.initial === 1 ? "iteration" : "iterations"} remaining`;
+		return `${limit.remaining} of ${formatCount("iteration", limit.initial)} remaining`;
 	}
-	return `${formatDuration(limit.durationMs)} limit`;
+	return `${formatWholeUnitDuration(limit.durationMs)} limit`;
 }
 
-function formatDuration(durationMs: number): string {
+function formatWholeUnitDuration(durationMs: number): string {
 	if (durationMs % 3_600_000 === 0) {
 		const hours = durationMs / 3_600_000;
-		return `${hours} ${hours === 1 ? "hour" : "hours"}`;
+		return formatCount("hour", hours);
 	}
 	if (durationMs % 60_000 === 0) {
 		const minutes = durationMs / 60_000;
-		return `${minutes} ${minutes === 1 ? "minute" : "minutes"}`;
+		return formatCount("minute", minutes);
 	}
 	const seconds = durationMs / 1_000;
-	return `${seconds} ${seconds === 1 ? "second" : "seconds"}`;
+	return formatCount("second", seconds);
 }

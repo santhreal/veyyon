@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
-import { createAutoresearchExtension } from "@veyyon/pi-coding-agent/autoresearch";
+import { createAutoresearchExtension } from "@veyyon/coding-agent/autoresearch";
 import {
 	buildExperimentState,
 	computeConfidence,
@@ -7,16 +7,16 @@ import {
 	findBaselineRunNumber,
 	findBestKeptMetric,
 	reconstructControlState,
-} from "@veyyon/pi-coding-agent/autoresearch/state";
-import { AutoresearchStorage, closeAllAutoresearchStorages } from "@veyyon/pi-coding-agent/autoresearch/storage";
-import type { ExperimentResult } from "@veyyon/pi-coding-agent/autoresearch/types";
+} from "@veyyon/coding-agent/autoresearch/state";
+import { AutoresearchStorage, closeAllAutoresearchStorages } from "@veyyon/coding-agent/autoresearch/storage";
+import type { ExperimentResult } from "@veyyon/coding-agent/autoresearch/types";
 import type {
 	ExtensionAPI,
 	ExtensionCommandContext,
 	RegisteredCommand,
-} from "@veyyon/pi-coding-agent/extensibility/extensions";
-import * as git from "@veyyon/pi-coding-agent/utils/git";
-import { TempDir } from "@veyyon/pi-utils";
+} from "@veyyon/coding-agent/extensibility/extensions";
+import * as git from "@veyyon/coding-agent/utils/git";
+import { TempDir } from "@veyyon/utils";
 
 afterEach(() => {
 	vi.restoreAllMocks();
@@ -517,12 +517,12 @@ describe("autoresearch slash command", () => {
 
 	beforeEach(() => {
 		dbOverride = TempDir.createSync("@pi-autoresearch-cmd-");
-		process.env.OMP_AUTORESEARCH_DB_DIR = dbOverride.path();
+		process.env.VEYYON_AUTORESEARCH_DB_DIR = dbOverride.path();
 		cleanups.push(dbOverride);
 	});
 
 	afterEach(() => {
-		delete process.env.OMP_AUTORESEARCH_DB_DIR;
+		delete process.env.VEYYON_AUTORESEARCH_DB_DIR;
 		closeAllAutoresearchStorages();
 		for (const dir of cleanups.splice(0)) {
 			dir.removeSync();
@@ -584,12 +584,12 @@ describe("autoresearch tool-call hook", () => {
 
 	beforeEach(() => {
 		dbOverride = TempDir.createSync("@pi-autoresearch-hook-");
-		process.env.OMP_AUTORESEARCH_DB_DIR = dbOverride.path();
+		process.env.VEYYON_AUTORESEARCH_DB_DIR = dbOverride.path();
 		cleanups.push(dbOverride);
 	});
 
 	afterEach(() => {
-		delete process.env.OMP_AUTORESEARCH_DB_DIR;
+		delete process.env.VEYYON_AUTORESEARCH_DB_DIR;
 		closeAllAutoresearchStorages();
 		for (const dir of cleanups.splice(0)) {
 			dir.removeSync();

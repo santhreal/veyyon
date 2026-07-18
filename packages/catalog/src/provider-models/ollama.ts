@@ -1,4 +1,4 @@
-import { fetchWithRetry } from "@veyyon/pi-utils";
+import { fetchWithRetry, trimTrailingSlashes } from "@veyyon/utils";
 import { Effort } from "../effort";
 import { isGlm52ReasoningEffortModelId } from "../identity/family";
 import type { ModelManagerOptions } from "../model-manager";
@@ -28,16 +28,12 @@ const OLLAMA_CLOUD_GLM_52_THINKING: ThinkingConfig = {
 	efforts: [Effort.High, Effort.Max],
 };
 
-function trimTrailingSlash(value: string): string {
-	return value.endsWith("/") ? value.slice(0, -1) : value;
-}
-
 export function normalizeOllamaCloudBaseUrl(baseUrl?: string): string {
 	const value = baseUrl?.trim();
 	if (!value) {
 		return "https://ollama.com";
 	}
-	const trimmed = trimTrailingSlash(value);
+	const trimmed = trimTrailingSlashes(value);
 	return trimmed.endsWith("/api") ? trimmed.slice(0, -4) : trimmed;
 }
 

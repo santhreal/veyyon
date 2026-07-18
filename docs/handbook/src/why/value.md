@@ -1,34 +1,25 @@
-# What Veyyon gives you
+# Overview
 
-Veyyon runs in your terminal and edits real code on your keys. The harness is built so capable models waste fewer turns on bad edits and opaque scaffolding.
+Veyyon is a local terminal coding agent: the loop, tools, and credentials stay on your machine. You pick models through the bundled provider catalog (subscription sign-in or BYOK).
 
-## The problem Veyyon solves
+## What the harness does
 
-Most coding agents wrap every model in the same generic scaffolding. A model trained for one edit shape
-is forced into another. The result is wasted turns, malformed tool calls, diffs that fail to apply, and
-token bills that climb with every retry. The weights are often capable; the scaffolding holds them back.
+| Area | Behavior |
+| --- | --- |
+| Edits | Hashline-oriented `edit` / `write` with verification before disk write |
+| Tools | read, grep, glob, bash, LSP, DAP, browser, MCP, task subagents, … |
+| Approvals | `tools.approvalMode` gates read / write / exec (no OS process sandbox) |
+| Models | Interactive, subagent, and compaction slots; optional roles per profile |
+| Sessions | Branchable session trees; resume and fork |
+| Memory | Memory backends when `memory.backend` is not `off` |
+| Config | `~/.veyyon` (or profile-relocated agent dir); project files under cwd |
 
-Veyyon (oh-my-pi lineage) cuts that waste: **hashline** edits tuned per model, native search and read paths,
-provider-agnostic configuration, and a TUI that keeps sandboxing and approvals visible.
+## Lineage
 
-## What you get today
+Built from [oh-my-pi](https://github.com/can1357/oh-my-pi) and [Pi](https://github.com/badlogic/pi-mono). See [Acknowledgements](../acknowledgements.md).
 
-- **Edits that land.** Hashline and related edit tools with model-specific prompts; fewer retry loops on bad diffs.
-- **Bring your own key.** Dozens of providers via the bundled catalog; no vendor lock-in.
-- **Per-role models.** Assign fast, thinking, vision, task, and other roles without reconfiguring every session.
-- **A real agent loop.** Read, search, edit, bash, LSP, browser, MCP, compaction, and subagents, all inside the approval mode you control.
-- **Session trees.** Branch, fork, and navigate conversation history without losing abandoned paths.
-- **Memory.** mnemopi-backed recall across sessions (see [Memory](../features/memory.md)).
-- **Lower cost.** Fewer format retries and leaner reads mean fewer tokens for the same outcome.
+## Next
 
-## Who Veyyon is for
-
-- Developers who want a capable terminal agent on their own keys.
-- Teams running open or gateway models with a harness tuned for coding, not chat-only UIs.
-- Anyone who wants visible approval boundaries and tool failures that surface instead of hiding.
-
-## Where to go next
-
-- [Edits that land the first time](../benefits/first-attempt-edits.md)
-- [What makes Veyyon different](./innovations.md)
+- [Mechanisms](./innovations.md)
 - [Getting started](../using/getting-started.md)
+- [Editing and repair](../using/editing.md)

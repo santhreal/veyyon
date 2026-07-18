@@ -11,11 +11,11 @@
  *
  * Activated when a {@link Model} has `transport: "pi-native"` set; the
  * dispatch hook lives in `streamSimple()` (see `../stream.ts`). Used by
- * containerized omp deployments (robomp slots, the swarm extension) that
+ * containerized veyyon deployments (robomp slots, the swarm extension) that
  * route every LLM call through a credential-holding sidecar so the slot
  * itself stays credential-free.
  */
-import { readSseJson } from "@veyyon/pi-utils";
+import { readSseJson } from "@veyyon/utils";
 import * as AIError from "../error";
 import type {
 	Api,
@@ -49,8 +49,8 @@ const NON_WIRE_KEYS = new Set<keyof SimpleStreamOptions>([
 	"cursorOnToolResult",
 	"providerSessionState",
 ]);
-const PI_NATIVE_STREAM_IDLE_TIMEOUT_ERROR = "pi-native stream stalled while waiting for the next event";
-const PI_NATIVE_STREAM_FIRST_EVENT_TIMEOUT_ERROR = "pi-native stream timed out while waiting for the first event";
+const VEYYON_NATIVE_STREAM_IDLE_TIMEOUT_ERROR = "pi-native stream stalled while waiting for the next event";
+const VEYYON_NATIVE_STREAM_FIRST_EVENT_TIMEOUT_ERROR = "pi-native stream timed out while waiting for the first event";
 
 function isPiNativeProgressEvent(event: unknown): boolean {
 	if (typeof event !== "object" || event === null || !("type" in event)) return true;
@@ -200,12 +200,14 @@ export function streamPiNative<TApi extends Api>(
 			const watchedSource = iterateWithIdleTimeout(source, {
 				idleTimeoutMs,
 				firstItemTimeoutMs: firstEventTimeoutMs,
-				errorMessage: PI_NATIVE_STREAM_IDLE_TIMEOUT_ERROR,
-				firstItemErrorMessage: PI_NATIVE_STREAM_FIRST_EVENT_TIMEOUT_ERROR,
+				errorMessage: VEYYON_NATIVE_STREAM_IDLE_TIMEOUT_ERROR,
+				firstItemErrorMessage: VEYYON_NATIVE_STREAM_FIRST_EVENT_TIMEOUT_ERROR,
 				onIdle: () =>
-					abortTracker.abortLocally(new AIError.StreamTimeoutError(PI_NATIVE_STREAM_IDLE_TIMEOUT_ERROR)),
+					abortTracker.abortLocally(new AIError.StreamTimeoutError(VEYYON_NATIVE_STREAM_IDLE_TIMEOUT_ERROR)),
 				onFirstItemTimeout: () =>
-					abortTracker.abortLocally(new AIError.StreamTimeoutError(PI_NATIVE_STREAM_FIRST_EVENT_TIMEOUT_ERROR)),
+					abortTracker.abortLocally(
+						new AIError.StreamTimeoutError(VEYYON_NATIVE_STREAM_FIRST_EVENT_TIMEOUT_ERROR),
+					),
 				isProgressItem: isPiNativeProgressEvent,
 			});
 			let sawTerminal = false;

@@ -1,10 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
-import CommitCommand from "@veyyon/pi-coding-agent/commands/commit";
-import * as commitModule from "@veyyon/pi-coding-agent/commit";
-import * as themeModule from "@veyyon/pi-coding-agent/modes/theme/theme";
-import { postmortem } from "@veyyon/pi-utils";
+import * as fs from "node:fs/promises";
+import * as os from "node:os";
+import * as path from "node:path";
+import CommitCommand from "@veyyon/coding-agent/commands/commit";
+import * as commitModule from "@veyyon/coding-agent/commit";
+import * as themeModule from "@veyyon/coding-agent/modes/theme/theme";
+import { getProjectDir, postmortem, setProjectDir } from "@veyyon/utils";
 
-describe("omp commit command lifecycle (issue #1041)", () => {
+describe("veyyon commit command lifecycle (issue #1041)", () => {
 	afterEach(() => {
 		vi.restoreAllMocks();
 	});
@@ -19,7 +22,7 @@ describe("omp commit command lifecycle (issue #1041)", () => {
 		const quitSpy = vi.spyOn(postmortem, "quit").mockResolvedValue(undefined);
 
 		const command = new CommitCommand([], {
-			bin: "omp",
+			bin: "veyyon",
 			version: "0.0.0-test",
 			commands: new Map(),
 		});
@@ -33,6 +36,29 @@ describe("omp commit command lifecycle (issue #1041)", () => {
 		expect(quitSpy).toHaveBeenCalledWith(0);
 	});
 
+	it("passes a failure exitCode set by the pipeline through to quit", async () => {
+		vi.spyOn(themeModule, "initTheme").mockResolvedValue(undefined);
+		const originalExitCode = process.exitCode;
+		vi.spyOn(commitModule, "runCommitCommand").mockImplementation(async () => {
+			// e.g. the "not inside a git repository" fail-fast guard.
+			process.exitCode = 1;
+		});
+		const quitSpy = vi.spyOn(postmortem, "quit").mockResolvedValue(undefined);
+
+		const command = new CommitCommand([], {
+			bin: "veyyon",
+			version: "0.0.0-test",
+			commands: new Map(),
+		});
+
+		try {
+			await command.run();
+			expect(quitSpy).toHaveBeenCalledWith(1);
+		} finally {
+			process.exitCode = originalExitCode;
+		}
+	});
+
 	it("does not convert commit pipeline failures into exit 0", async () => {
 		const initThemeSpy = vi.spyOn(themeModule, "initTheme").mockResolvedValue(undefined);
 		const runCommitSpy = vi
@@ -41,7 +67,7 @@ describe("omp commit command lifecycle (issue #1041)", () => {
 		const quitSpy = vi.spyOn(postmortem, "quit").mockResolvedValue(undefined);
 
 		const command = new CommitCommand([], {
-			bin: "omp",
+			bin: "veyyon",
 			version: "0.0.0-test",
 			commands: new Map(),
 		});
@@ -51,5 +77,31 @@ describe("omp commit command lifecycle (issue #1041)", () => {
 		expect(initThemeSpy).toHaveBeenCalledTimes(1);
 		expect(runCommitSpy).toHaveBeenCalledTimes(1);
 		expect(quitSpy).not.toHaveBeenCalled();
+	});
+});
+
+describe("veyyon commit outside a git repository", () => {
+	it("fails fast with a clean error and exit code 1, not a raw GitCommandError", async () => {
+		const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-commit-no-repo-"));
+		const originalProjectDir = getProjectDir();
+		const originalExitCode = process.exitCode;
+		const stderrChunks: string[] = [];
+		const stderrSpy = vi.spyOn(process.stderr, "write").mockImplementation(chunk => {
+			stderrChunks.push(String(chunk));
+			return true;
+		});
+		try {
+			setProjectDir(tempDir);
+			await commitModule.runCommitCommand({ push: false, dryRun: true, noChangelog: true });
+			const stderr = stderrChunks.join("");
+			expect(stderr).toContain("is not inside a git repository");
+			expect(stderr).not.toContain("GitCommandError");
+			expect(process.exitCode).toBe(1);
+		} finally {
+			stderrSpy.mockRestore();
+			setProjectDir(originalProjectDir);
+			process.exitCode = originalExitCode;
+			await fs.rm(tempDir, { recursive: true, force: true });
+		}
 	});
 });

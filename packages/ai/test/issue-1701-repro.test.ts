@@ -1,11 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
-import { streamAzureOpenAIResponses } from "@veyyon/pi-ai/providers/azure-openai-responses";
-import { streamOpenAICodexResponses } from "@veyyon/pi-ai/providers/openai-codex-responses";
-import { streamOpenAICompletions } from "@veyyon/pi-ai/providers/openai-completions";
-import { streamOpenAIResponses } from "@veyyon/pi-ai/providers/openai-responses";
-import type { Context, Model, Tool, ToolChoice } from "@veyyon/pi-ai/types";
-import { buildModel } from "@veyyon/pi-catalog/build";
-import * as piUtils from "@veyyon/pi-utils";
+import { streamAzureOpenAIResponses } from "@veyyon/ai/providers/azure-openai-responses";
+import { streamOpenAICodexResponses } from "@veyyon/ai/providers/openai-codex-responses";
+import { streamOpenAICompletions } from "@veyyon/ai/providers/openai-completions";
+import { streamOpenAIResponses } from "@veyyon/ai/providers/openai-responses";
+import type { Context, Model, Tool, ToolChoice } from "@veyyon/ai/types";
+import { buildModel } from "@veyyon/catalog/build";
+import * as piUtils from "@veyyon/utils";
 import { z } from "zod/v4";
 
 const TEST_INSTALLATION_ID = "00000000-0000-4000-8000-000000000001";

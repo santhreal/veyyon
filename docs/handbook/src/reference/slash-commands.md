@@ -78,16 +78,10 @@ picker. Commands below are the **builtin** set; extensions may add more.
 | --- | --- |
 | `/btw` | Ephemeral side question |
 | `/tan`, `/omfg` | Background agent spawns |
-| `/vibe` | Vibe-mode subagents |
+| `/vibe` | Toggle vibe mode (director + `vibe_*` worker tools) |
 | `/retry` | Retry failed turn |
 | `/debug` | Debug overlays |
 | `/queue` | Queue follow-up message |
 | `/drop` | Drop queued message |
 
-Extension packages (e.g. **swarm**) register their own additional commands when installed.
-
-> **Spec — not shipped:** `/pets`, `/title`, `/personality`, `/permissions`,
-> `/import`, `/archive`, `/delete`, `/diff`, `/init`, `/mention`, `/vim`, `/keymap`,
-> `/apps`, `/ide`, `/whoami`, `/memories`. Use `/settings`, `/memory`, `/hotkeys`, and
-> status-line presets instead. `/statusline` (shipped) jumps into the Status Line settings
-> group, not a standalone interactive segment picker — see [Cockpit](../features/cockpit.md).
+Extension packages (for example swarm) register additional commands when installed. The live set is whatever the session registers; use `/help` or the command palette in the TUI. Status line: `/statusline` opens the Status Line settings group (see [Multi-agent monitoring](../features/cockpit.md)). Keybindings: `/hotkeys`. Memory: `/memory` and settings under the active memory backend.

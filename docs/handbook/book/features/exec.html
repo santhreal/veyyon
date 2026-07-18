@@ -10,6 +10,10 @@
         <!-- Veyyon handbook: self-contained head additions. No remote resources. -->
         <meta name="theme-color" content="#050505">
         <meta name="color-scheme" content="dark">
+        <!-- Site favicons live at the deployed root, one level above /docs/. -->
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+        <link rel="icon" href="/favicon.ico" sizes="48x48">
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png">
         <style>
           /* Paint the near-black surface before CSS/JS resolve the theme, so there is
              no light flash on load. Kept in sync with theme/veyyon.css. */
@@ -18,7 +22,7 @@
           *, *::before, *::after { box-sizing: border-box; }
         </style>
 
-        <meta name="description" content="How Veyyon turns open models into frontier coding agents. The product, the harness, tool-call repair, the edit format, per-model adaptation, and how to use it.">
+        <meta name="description" content="Operator handbook for the Veyyon terminal coding agent: install, configuration, tools, approvals, edit formats, providers, and harness structure.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -38,7 +42,7 @@
         <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="../ayu-highlight-3fdfc3ac.css">
 
         <!-- Custom theme stylesheets -->
-        <link rel="stylesheet" href="../theme/veyyon-fc839a17.css">
+        <link rel="stylesheet" href="../theme/veyyon-06f6939e.css">
 
 
         <!-- Provide site root and default themes to javascript -->
@@ -46,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-e76f06ca.js";
+            window.path_to_searchindex_js = "../searchindex-a2447057.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-9cfd259b.js"></script>
+        <script src="../toc-cc1a72e9.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -192,26 +196,15 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="non-interactive-mode-veyyon---print"><a class="header" href="#non-interactive-mode-veyyon---print">Non-interactive mode (<code>veyyon --print</code>)</a></h1>
-<blockquote>
-<p><strong>Spec — not shipped:</strong> a <code>veyyon exec</code> subcommand. Non-interactive mode is the <strong><code>--print</code></strong> launch
-flag (short <code>-p</code>): <code>veyyon -p "prompt"</code>. JSON output is <code>--json</code>, and resume is <code>--resume</code> /
-<code>--continue</code>. The <code>veyyon exec resume</code> / <code>veyyon exec review</code> subcommand forms and several flags
-(<code>--output-schema</code>, <code>--oss</code>) below are the target shape; run <code>veyyon --help</code> for the current flag set.
-The JSON event schema and the recipe shapes are accurate.</p>
-</blockquote>
-<p><code>veyyon --print</code> (short <code>-p</code>) runs Veyyon without the interactive cockpit: give it one prompt, it does
-the work and exits. It is how you drive Veyyon from scripts, CI, git hooks, and other programs.</p>
+<p><code>--print</code> (short <code>-p</code>) runs Veyyon without the interactive TUI: one prompt, tools run under the active approval mode, then exit. Use this from scripts, CI, and other programs.</p>
 <pre><code class="language-console">$ veyyon -p "add a unit test for parse_config and run it"
 $ echo "summarize the diff on this branch" | veyyon -p
 $ veyyon -p - &lt;&lt;'EOF'
 Review src/auth.rs for missing error handling.
 EOF
 </code></pre>
-<p>The prompt can be an argument or read from stdin. If stdin is piped <strong>and</strong> a prompt argument is also
-provided, stdin is appended as a <code>&lt;stdin&gt;</code> block.</p>
-<p>Run <code>veyyon --help</code> for the generated, always-current flag set. This page documents the intended
-integration surface and recipes.</p>
-<h2 id="flag-reference"><a class="header" href="#flag-reference">Flag reference</a></h2>
+<p>The prompt may be a CLI argument or stdin. If both are present, stdin is appended as a <code>&lt;stdin&gt;</code> block.</p>
+<p>Run <code>veyyon --help</code> for the generated flag set. Common options:</p>
 <h3 id="session-and-config"><a class="header" href="#session-and-config">Session and config</a></h3>
 <div class="table-wrapper">
 <table>
@@ -219,263 +212,37 @@ integration surface and recipes.</p>
 <tr><th>Option</th><th>Effect</th></tr>
 </thead>
 <tbody>
-<tr><td><code>--strict-config</code></td><td>Error when <code>config.yml</code> contains fields this version does not recognize.</td></tr>
-<tr><td><code>--skip-git-repo-check</code></td><td>Allow running outside a Git repository.</td></tr>
-<tr><td><code>--ephemeral</code></td><td>Do not persist the session under <code>VEYYON_HOME/sessions</code>.</td></tr>
-<tr><td><code>--ignore-user-config</code></td><td>Do not load <code>$VEYYON_HOME/config.yml</code>. Auth still uses <code>VEYYON_HOME</code>.</td></tr>
-<tr><td><code>--ignore-rules</code></td><td>Do not load user or project execpolicy <code>.rules</code> files.</td></tr>
-<tr><td><code>--profile &lt;name&gt;</code></td><td>Activate a profile: relocate the agent dir to <code>$VEYYON_HOME/profiles/&lt;name&gt;/agent/</code> (see <a href="./profiles.html">Profiles</a>). Note: <code>-p</code> is <code>--print</code>, not <code>--profile</code>.</td></tr>
-<tr><td><code>-c key=value</code></td><td>Override any config value for this run (repeatable).</td></tr>
-<tr><td><code>-C, --cd &lt;DIR&gt;</code></td><td>Working root for the agent.</td></tr>
-<tr><td><code>--add-dir &lt;DIR&gt;</code></td><td>Extra writable root alongside the workspace (repeatable).</td></tr>
-<tr><td><code>--system-prompt &lt;TEXT&gt;</code></td><td>Replace the default system prompt (context files / skills still append).</td></tr>
-<tr><td><code>--append-system-prompt &lt;TEXT&gt;</code></td><td>Append to the effective system prompt.</td></tr>
+<tr><td><code>--strict-config</code></td><td>Error when <code>config.yml</code> contains unknown fields</td></tr>
+<tr><td><code>--skip-git-repo-check</code></td><td>Allow running outside a Git repository</td></tr>
+<tr><td><code>--ephemeral</code></td><td>Do not persist the session under the agent sessions dir</td></tr>
+<tr><td><code>--ignore-user-config</code></td><td>Do not load user <code>config.yml</code> (auth still uses the agent dir)</td></tr>
+<tr><td><code>--ignore-rules</code></td><td>Do not load user or project execpolicy <code>.rules</code> files</td></tr>
+<tr><td><code>--profile &lt;name&gt;</code></td><td>Activate a named profile (<code>-p</code> is <code>--print</code>, not profile)</td></tr>
+<tr><td><code>-c key=value</code></td><td>Override a config value for this run (repeatable)</td></tr>
+<tr><td><code>--cwd &lt;DIR&gt;</code></td><td>Working directory for the session</td></tr>
+<tr><td><code>--add-dir &lt;DIR&gt;</code></td><td>Extra writable root (repeatable)</td></tr>
 </tbody>
 </table>
 </div>
-<h3 id="model-and-local-oss"><a class="header" href="#model-and-local-oss">Model and local OSS</a></h3>
+<h3 id="output-and-models"><a class="header" href="#output-and-models">Output and models</a></h3>
 <div class="table-wrapper">
 <table>
 <thead>
 <tr><th>Option</th><th>Effect</th></tr>
 </thead>
 <tbody>
-<tr><td><code>-m, --model &lt;MODEL&gt;</code></td><td>Pin the conversation model for the run.</td></tr>
-<tr><td><code>--oss</code></td><td>Use the open-source / local provider path.</td></tr>
-<tr><td><code>--local-provider &lt;ollama|lmstudio&gt;</code></td><td>Which local provider to use with <code>--oss</code>.</td></tr>
+<tr><td><code>--json</code></td><td>Machine-readable event stream on stdout</td></tr>
+<tr><td><code>--model</code> / role flags</td><td>Model selection for the run</td></tr>
+<tr><td><code>--approval-mode</code> / <code>--yolo</code></td><td>Approval policy for the run</td></tr>
 </tbody>
 </table>
 </div>
-<h3 id="sandbox-and-trust"><a class="header" href="#sandbox-and-trust">Sandbox and trust</a></h3>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Option</th><th>Effect</th></tr>
-</thead>
-<tbody>
-<tr><td><code>-s, --sandbox &lt;policy&gt;</code></td><td>Sandbox policy for model-generated shell commands (<code>read-only</code>, <code>workspace-write</code>, <code>danger-full-access</code>, …).</td></tr>
-<tr><td><code>--dangerously-bypass-approvals-and-sandbox</code></td><td>Skip confirmations <strong>and</strong> sandboxing. Alias: <code>--yolo</code>. Only for externally sandboxed environments.</td></tr>
-<tr><td><code>--dangerously-bypass-hook-trust</code></td><td>Run enabled hooks without persisted hook trust for this invocation.</td></tr>
-</tbody>
-</table>
-</div>
-<p>Headless exec defaults approval policy to <strong><code>never</code></strong> (no TTY to answer). The sandbox is therefore
-your containment — set it explicitly in CI.</p>
-<h4 id="--full-auto-is-deprecated"><a class="header" href="#--full-auto-is-deprecated"><code>--full-auto</code> is deprecated</a></h4>
-<p><code>--full-auto</code> is a <strong>legacy compatibility trap</strong>. It still parses on <code>veyyon --print</code>, prints:</p>
-<pre><code class="language-text">warning: `--full-auto` is deprecated; use `--sandbox workspace-write` instead.
-</code></pre>
-<p>and maps onto workspace-write sandbox behavior. Do not use it in new scripts:</p>
-<pre><code class="language-console"># preferred
-$ veyyon --print --sandbox workspace-write "run unit tests and fix failures"
-
-# deprecated (warns)
-$ veyyon --print --full-auto "run unit tests and fix failures"
-</code></pre>
-<h3 id="output"><a class="header" href="#output">Output</a></h3>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Option</th><th>Effect</th></tr>
-</thead>
-<tbody>
-<tr><td><code>--json</code></td><td>Emit a JSONL event stream on stdout (one event per line). Alias: <code>--experimental-json</code>. <strong>Stable integration surface.</strong></td></tr>
-<tr><td><code>-o, --output-last-message &lt;FILE&gt;</code></td><td>Write just the final assistant message to a file.</td></tr>
-<tr><td><code>--output-schema &lt;FILE&gt;</code></td><td>Constrain the final message to a JSON Schema so downstream code can parse a known shape.</td></tr>
-<tr><td><code>--color &lt;auto|always|never&gt;</code></td><td>ANSI color in the human-readable stream (default <code>auto</code>).</td></tr>
-<tr><td><code>-i, --image &lt;FILE&gt;</code></td><td>Attach an image to the prompt (repeatable / comma-separated).</td></tr>
-</tbody>
-</table>
-</div>
-<p>Combine them: <code>--json</code> for the full trace, <code>--output-schema</code> when you need a fixed answer shape, <code>-o</code>
-when you only care about the final text.</p>
-<h2 id="subcommands"><a class="header" href="#subcommands">Subcommands</a></h2>
-<h3 id="veyyon-exec-resume"><a class="header" href="#veyyon-exec-resume"><code>veyyon exec resume</code></a></h3>
-<p>Resume a previous session by id or pick the most recent.</p>
-<pre><code class="language-console">$ veyyon exec resume &lt;SESSION_ID&gt; "continue from the failing test"
-$ veyyon exec resume --last "try the next approach"
-$ veyyon exec resume --last --all "…"        # do not filter sessions by cwd
-$ veyyon exec resume --last -i shot.png "what is in this screenshot?"
-</code></pre>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Option / arg</th><th>Effect</th></tr>
-</thead>
-<tbody>
-<tr><td><code>SESSION_ID</code></td><td>Conversation/session id (UUID) or thread name. UUIDs win if the value parses.</td></tr>
-<tr><td><code>--last</code></td><td>Resume the newest recorded session without specifying an id. If <code>--last</code> is set and there is no separate prompt arg, the positional is treated as the <strong>prompt</strong>, not an id.</td></tr>
-<tr><td><code>--all</code></td><td>Show / consider all sessions (disables cwd filtering).</td></tr>
-<tr><td><code>-i, --image &lt;FILE&gt;</code></td><td>Images to attach to the prompt sent after resume.</td></tr>
-<tr><td><code>PROMPT</code></td><td>Prompt after resume; <code>-</code> reads stdin.</td></tr>
-</tbody>
-</table>
-</div>
-<h3 id="veyyon-exec-review"><a class="header" href="#veyyon-exec-review"><code>veyyon exec review</code></a></h3>
-<p>Run a code review against the current repository (non-interactive).</p>
-<pre><code class="language-console">$ veyyon exec review --uncommitted
-$ veyyon exec review --base main
-$ veyyon exec review --commit abcdef1 --title "fix auth timeout"
-$ veyyon exec review "Focus on unsafe blocks and unwrap()"
-</code></pre>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Option / arg</th><th>Effect</th></tr>
-</thead>
-<tbody>
-<tr><td><code>--uncommitted</code></td><td>Review staged, unstaged, and untracked changes. Conflicts with <code>--base</code> / <code>--commit</code> / prompt-only modes as defined by the CLI.</td></tr>
-<tr><td><code>--base &lt;BRANCH&gt;</code></td><td>Review changes against the given base branch.</td></tr>
-<tr><td><code>--commit &lt;SHA&gt;</code></td><td>Review the changes introduced by a commit.</td></tr>
-<tr><td><code>--title &lt;TITLE&gt;</code></td><td>Optional commit title for the review summary (requires <code>--commit</code>).</td></tr>
-<tr><td><code>PROMPT</code></td><td>Custom review instructions; <code>-</code> reads stdin.</td></tr>
-</tbody>
-</table>
-</div>
-<p>For a richer interactive review workflow, see <a href="./review.html">Review</a>.</p>
-<h2 id="--json-event-schema"><a class="header" href="#--json-event-schema"><code>--json</code> event schema</a></h2>
-<p>Events are <strong>JSON Lines</strong> (<code>type</code> tag). Top-level <code>ThreadEvent</code> variants:</p>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th><code>type</code></th><th>When</th></tr>
-</thead>
-<tbody>
-<tr><td><code>thread.started</code></td><td>First event; includes <code>thread_id</code> (use with <code>resume</code>).</td></tr>
-<tr><td><code>turn.started</code></td><td>A new prompt turn began.</td></tr>
-<tr><td><code>turn.completed</code></td><td>Turn finished; includes <code>usage</code> token counts.</td></tr>
-<tr><td><code>turn.failed</code></td><td>Turn failed; includes <code>error.message</code>.</td></tr>
-<tr><td><code>item.started</code> / <code>item.updated</code> / <code>item.completed</code></td><td>Lifecycle for an item in the thread.</td></tr>
-<tr><td><code>error</code></td><td>Unrecoverable stream error.</td></tr>
-</tbody>
-</table>
-</div>
-<p>Item payloads (<code>item</code> → <code>type</code>, snake_case) include:</p>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Item <code>type</code></th><th>Meaning</th></tr>
-</thead>
-<tbody>
-<tr><td><code>agent_message</code></td><td>Assistant text (or JSON string when <code>--output-schema</code> constrained the final message).</td></tr>
-<tr><td><code>reasoning</code></td><td>Reasoning summary text.</td></tr>
-<tr><td><code>command_execution</code></td><td>Shell command, aggregated output, optional <code>exit_code</code>, <code>status</code>.</td></tr>
-<tr><td><code>file_change</code></td><td>Patch apply: list of path/<code>kind</code> (<code>add</code>|<code>delete</code>|<code>update</code>) + <code>status</code>.</td></tr>
-<tr><td><code>mcp_tool_call</code></td><td>MCP invocation lifecycle.</td></tr>
-<tr><td><code>collab_tool_call</code></td><td>Collab tool lifecycle.</td></tr>
-<tr><td><code>web_search</code></td><td>Web search request/results.</td></tr>
-<tr><td><code>todo_list</code></td><td>Agent plan / todo updates.</td></tr>
-<tr><td><code>error</code></td><td>Non-fatal item-level error.</td></tr>
-</tbody>
-</table>
-</div>
-<p>Example lines:</p>
-<pre><code class="language-json">{"type":"thread.started","thread_id":"01234567-89ab-cdef-0123-456789abcdef"}
-{"type":"turn.started"}
-{"type":"item.completed","item":{"id":"item_3","type":"file_change","changes":[{"path":"src/lib.rs","kind":"update"}],"status":"completed"}}
-{"type":"item.completed","item":{"id":"item_4","type":"agent_message","text":"Done."}}
-{"type":"turn.completed","usage":{"input_tokens":1200,"cached_input_tokens":800,"output_tokens":200,"reasoning_output_tokens":0}}
-</code></pre>
-<p>Pipe into <code>jq</code>:</p>
-<pre><code class="language-console">$ veyyon --print --json "…" | tee run.jsonl \
-    | jq -r 'select(.type=="item.completed" and .item.type=="agent_message") | .item.text'
-</code></pre>
-<h2 id="exit-codes"><a class="header" href="#exit-codes">Exit codes</a></h2>
-<p><code>veyyon --print</code> follows the handbook <a href="../reference/exit-codes.html">exit code contract</a>:</p>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Code</th><th>Meaning</th></tr>
-</thead>
-<tbody>
-<tr><td><code>0</code></td><td>Success.</td></tr>
-<tr><td><code>1</code></td><td>Veyyon error (config, auth, missing session, unrecoverable runtime) — or fallback when a child ended without a reportable status.</td></tr>
-<tr><td><code>2</code></td><td>Usage / clap parse error.</td></tr>
-<tr><td><code>N</code></td><td>Child process exit code passed through when applicable.</td></tr>
-<tr><td><code>128 + signal</code></td><td>Child killed by signal (POSIX shell convention).</td></tr>
-</tbody>
-</table>
-</div>
-<p>A failure is <strong>never</strong> reported as <code>0</code>, so <code>veyyon --print … &amp;&amp; next-step</code> is safe in a pipeline.</p>
-<h2 id="ci-and-automation-recipes"><a class="header" href="#ci-and-automation-recipes">CI and automation recipes</a></h2>
-<h3 id="1-hermetic-unit-test-fix-loop"><a class="header" href="#1-hermetic-unit-test-fix-loop">1. Hermetic unit-test fix loop</a></h3>
-<pre><code class="language-console">$ veyyon --print --sandbox workspace-write \
-    --ignore-user-config \
-    --ephemeral \
-    --skip-git-repo-check \
-    -m gpt-5-mini \
-    "Run cargo test -p mycrate. Fix compile and test failures only. Stop when green."
-</code></pre>
-<h3 id="2-pr-review-bot-with-json-artifact"><a class="header" href="#2-pr-review-bot-with-json-artifact">2. PR review bot with JSON artifact</a></h3>
-<pre><code class="language-console">$ veyyon exec review --base origin/main --json \
-    | tee review.jsonl
-
-$ jq -r 'select(.type=="item.completed" and .item.type=="agent_message") | .item.text' \
-    review.jsonl &gt; review.md
-</code></pre>
-<p>Or constrain the final message:</p>
-<pre><code class="language-console">$ cat &gt; /tmp/review-schema.json &lt;&lt;'EOF'
-{
-  "type": "object",
-  "required": ["findings", "verdict"],
-  "properties": {
-    "verdict": { "enum": ["approve", "request_changes", "comment"] },
-    "findings": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "required": ["severity", "path", "summary"],
-        "properties": {
-          "severity": { "enum": ["P0", "P1", "P2"] },
-          "path": { "type": "string" },
-          "summary": { "type": "string" }
-        }
-      }
-    }
-  }
-}
-EOF
-
-$ veyyon --print --sandbox read-only --json \
-    --output-schema /tmp/review-schema.json \
-    -o review-out.json \
-    "Review the staged diff; return JSON matching the schema."
-</code></pre>
-<h3 id="3-pre-commit-hook-staged-diff-only"><a class="header" href="#3-pre-commit-hook-staged-diff-only">3. Pre-commit hook (staged diff only)</a></h3>
-<pre><code class="language-bash">#!/usr/bin/env bash
-set -euo pipefail
-veyyon --print --sandbox workspace-write --ephemeral --json \
-  "Review the staged diff. Fail the turn if you find a P0 bug; otherwise summarize." \
-  | tee /tmp/veyyon-pre-commit.jsonl \
-  | jq -e 'select(.type=="turn.failed") | length == 0' &gt;/dev/null
-</code></pre>
-<h3 id="4-batch-refactor-across-a-path"><a class="header" href="#4-batch-refactor-across-a-path">4. Batch refactor across a path</a></h3>
-<pre><code class="language-console">$ veyyon --print --sandbox workspace-write -C "$REPO" \
-    --add-dir /tmp/veyyon-scratch \
-    "Rename FooConfig -&gt; AppConfig under src/config/. Update call sites. Run cargo check."
-</code></pre>
-<h3 id="5-resume-a-long-ci-job"><a class="header" href="#5-resume-a-long-ci-job">5. Resume a long CI job</a></h3>
-<pre><code class="language-console">$ THREAD=$(veyyon --print --json --ephemeral "start the migration plan" \
-    | jq -r 'select(.type=="thread.started") | .thread_id')
-# … later …
-$ veyyon exec resume "$THREAD" "continue; finish applying the plan"
-</code></pre>
-<p>(Omit <code>--ephemeral</code> if you need the session on disk for <code>resume</code>.)</p>
-<h2 id="safety-notes-for-automation"><a class="header" href="#safety-notes-for-automation">Safety notes for automation</a></h2>
+<p>Headless runs have no TTY for approval prompts: choose a mode that does not block (<code>--yolo</code> only on disposable runners) or expect the turn to stop when a prompt would be required. See <a href="./sandbox.html">Approvals</a>.</p>
+<h2 id="related"><a class="header" href="#related">Related</a></h2>
 <ul>
-<li>Prefer <code>--sandbox workspace-write</code> or <code>read-only</code> over bypass flags.</li>
-<li>Use <code>--ignore-user-config</code> / <code>--ignore-rules</code> when the runner’s home directory must not affect the job.</li>
-<li><code>--dangerously-bypass-approvals-and-sandbox</code> is for outer jails only — prefer
-<code>external-sandbox</code> when you can express that cleanly (<a href="./sandbox.html">Sandbox</a>).</li>
-<li>Never commit API keys into CI logs; use the runner secret store and <code>env_key</code>.</li>
-</ul>
-<h2 id="see-also"><a class="header" href="#see-also">See also</a></h2>
-<ul>
-<li><a href="../using/sessions.html">Sessions</a> — resuming and branching.</li>
-<li><a href="./sandbox.html">Sandbox and approvals</a> — policies for CI.</li>
-<li><a href="../reference/exit-codes.html">Exit codes</a></li>
-<li><a href="../../../sdk.html">ACP / SDK</a> for programmatic control.</li>
-<li><a href="../reference/cli.html">CLI reference</a></li>
+<li><a href="./sandbox.html">Approvals</a></li>
+<li><a href="../using/safety.html">Safety</a></li>
+<li><a href="../reference/cli.html">CLI</a></li>
 </ul>
 
                     </main>

@@ -6,7 +6,7 @@
  * external skills are the machine-wide base layer. The single /settings toggle
  * `discovery.importForeignConfig` (default ON) controls this; opting out runs
  * veyyon on native config only. veyyon's own providers (`native`,
- * `omp-plugins`, generic transport providers) are never gated.
+ * `veyyon-plugins`, generic transport providers) are never gated.
  *
  * The gate lives in ONE place — `isProviderEnabled` — which the capability
  * collection filter (`filterProviders`) and every UI enabled-flag consult, so
@@ -20,19 +20,19 @@ import {
 	initializeWithSettings,
 	isForeignConfigImportEnabled,
 	isProviderEnabled,
-} from "@veyyon/pi-coding-agent/capability";
-import { skillCapability } from "@veyyon/pi-coding-agent/capability/skill";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
+} from "@veyyon/coding-agent/capability";
+import { skillCapability } from "@veyyon/coding-agent/capability/skill";
+import { Settings } from "@veyyon/coding-agent/config/settings";
 
 // Ensure the skill discovery providers (claude/codex/agents/native/...) are
 // registered on the global capability registry.
-import "@veyyon/pi-coding-agent/discovery";
+import "@veyyon/coding-agent/discovery";
 
 function applyImportSetting(value: boolean): void {
 	initializeWithSettings(Settings.isolated({ "discovery.importForeignConfig": value }));
 }
 
-const NATIVE_PROVIDERS = ["native", "omp-plugins"];
+const NATIVE_PROVIDERS = ["native", "veyyon-plugins"];
 const FOREIGN_SAMPLES = ["claude", "codex", "agents", "agents-md", "cursor", "gemini"];
 
 afterEach(() => {

@@ -17,7 +17,7 @@ prompt ──► │  veyyon (packages/coding-agent)                            
             └──────────────────────────────────────────────────────────────┘
 ```
 
-## Subsystems that matter
+## Subsystems
 
 | Subsystem | Responsibility | Chapter |
 | --- | --- | --- |
@@ -25,19 +25,12 @@ prompt ──► │  veyyon (packages/coding-agent)                            
 | Sessions | Session trees, compaction | [Compaction & memory](../context/compaction-memory.md) |
 | MCP | MCP client integration | [MCP](../architecture/mcp.md) |
 | Config | Settings and profiles | [Config](../architecture/config.md) |
-| Memory | mnemopi / local memory | [Memory](../features/memory.md) |
+| Memory | off / local / mnemopi / hindsight | [Memory](../features/memory.md) |
 | Goals | Goal cards and budgets | [Goal state](../context/goal-state.md) |
 
 ## Design rules
 
-1. **Prefer one obvious path.** Hashline is the default edit surface; alternate `edit.mode` values
-   exist for compatibility.
-2. **Fail loud.** Invalid config, stale hashline tags, and denied actions surface actionable
-   errors. No silent fallback to weaker behavior.
+1. **One primary edit path.** Hashline is the default edit surface; alternate `edit.mode` values exist for compatibility.
+2. **Explicit failures.** Invalid config, stale hashline tags, and denied actions return actionable errors to the operator or model. Denied tools do not auto-escalate permissions.
 
-> **Spec — not shipped:** the full ordered repair rule cascade (alias maps, strict unknown-key
-> rejection, per-`(model,tool,shape)` telemetry), an app-server or exec-server daemon, and a Tier-B
-> `backends.toml` catalog as a separate subsystem. Provider and model configuration is documented in
-> [Providers](../models/providers.md) against the shipped provider registry. Basic schema repair on
-> tool calls is shipped today as a TypeScript module at the tool-dispatch seam
-> (`packages/coding-agent/src/repair/schema-repair.ts`) — see [Repair](../repair/overview.md).
+Tool-call argument repair (alias maps, strict unknown-key rejection, parse leniency) runs at the dispatch seam in `packages/coding-agent/src/repair/schema-repair.ts`. See [Repair](../repair/overview.md). Providers and models: [Providers](../models/providers.md).

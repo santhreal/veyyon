@@ -1,4 +1,4 @@
-import type { ToolResultMessage } from "@veyyon/pi-wire";
+import type { ToolResultMessage } from "@veyyon/wire";
 import type { ReactNode } from "react";
 import { memo } from "react";
 import { messageText } from "../../lib/format";

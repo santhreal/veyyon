@@ -3,10 +3,10 @@
 Editing reliably is the core of a coding agent. Veyyon's **default** edit surface is **hashline**:
 numbered lines from `read`/`grep`, snapshot tags, and `edit` with `SWAP`/`DEL`/`INS` operations.
 
-For design background see [Edits that land the first time](../benefits/first-attempt-edits.md) and
+For edit/repair design see [Edit path and tool arguments](../benefits/first-attempt-edits.md) and
 [The hashline edit engine](../edit/engine.md).
 
-## Why this matters
+## Failure modes
 
 Models often emit slightly wrong tool JSON or stale line anchors. Hashline detects stale `[path#TAG]`
 tags and returns recovery hints. **General schema repair** runs on all tool calls before validation —
@@ -32,7 +32,7 @@ creation. Both honor the same approval policy.
 | `apply_patch` | V4A envelope | When `edit.mode: apply_patch` |
 
 Set `edit.mode` to `hashline`, `apply_patch`, `patch`, or `replace` in `config.yml`, or
-`PI_EDIT_VARIANT` for one-shot overrides.
+`VEYYON_EDIT_VARIANT` for one-shot overrides.
 
 ## Hashline workflow
 

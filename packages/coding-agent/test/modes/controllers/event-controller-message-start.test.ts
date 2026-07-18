@@ -1,12 +1,12 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
-import type { TextContent, UserMessage } from "@veyyon/pi-ai";
-import { TranscriptContainer } from "@veyyon/pi-coding-agent/modes/components/transcript-container";
-import { EventController } from "@veyyon/pi-coding-agent/modes/controllers/event-controller";
-import { initTheme } from "@veyyon/pi-coding-agent/modes/theme/theme";
-import type { InteractiveModeContext } from "@veyyon/pi-coding-agent/modes/types";
-import { UiHelpers } from "@veyyon/pi-coding-agent/modes/utils/ui-helpers";
-import type { CustomMessage } from "@veyyon/pi-coding-agent/session/messages";
-import type { Component } from "@veyyon/pi-tui";
+import type { TextContent, UserMessage } from "@veyyon/ai";
+import { TranscriptContainer } from "@veyyon/coding-agent/modes/components/transcript-container";
+import { EventController } from "@veyyon/coding-agent/modes/controllers/event-controller";
+import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
+import { UiHelpers } from "@veyyon/coding-agent/modes/utils/ui-helpers";
+import type { CustomMessage } from "@veyyon/coding-agent/session/messages";
+import type { Component } from "@veyyon/tui";
 
 beforeAll(() => {
 	initTheme();

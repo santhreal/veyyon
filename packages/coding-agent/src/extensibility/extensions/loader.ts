@@ -4,10 +4,10 @@
 import type * as fs1 from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import type { ThinkingLevel } from "@veyyon/pi-agent-core";
-import type { ImageContent, Model, TextContent, TSchema } from "@veyyon/pi-ai";
-import type { KeyId } from "@veyyon/pi-tui";
-import { hasFsCode, isEacces, isEnoent, logger } from "@veyyon/pi-utils";
+import type { ThinkingLevel } from "@veyyon/agent-core";
+import type { ImageContent, Model, TextContent, TSchema } from "@veyyon/ai";
+import type { KeyId } from "@veyyon/tui";
+import { errorMessage, hasFsCode, isEacces, isEnoent, logger } from "@veyyon/utils";
 import { Type } from "arktype";
 import * as zodModule from "zod/v4";
 import { type ExtensionModule, extensionModuleCapability } from "../../capability/extension-module";
@@ -309,7 +309,7 @@ async function loadExtension(
 
 		return { extension, error: null };
 	} catch (err) {
-		const message = err instanceof Error ? err.message : String(err);
+		const message = errorMessage(err);
 		return { extension: null, error: `Failed to load extension: ${message}` };
 	}
 }

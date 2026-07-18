@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
-import { resetSettingsForTest, Settings } from "@veyyon/pi-coding-agent/config/settings";
-import * as toolsManager from "@veyyon/pi-coding-agent/utils/tools-manager";
-import * as parallelModule from "@veyyon/pi-coding-agent/web/parallel";
-import { handleYouTube } from "@veyyon/pi-coding-agent/web/scrapers/youtube";
+import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
+import * as toolsManager from "@veyyon/coding-agent/utils/tools-manager";
+import * as parallelModule from "@veyyon/coding-agent/web/parallel";
+import { handleYouTube } from "@veyyon/coding-agent/web/scrapers/youtube";
+import { asRender } from "../../helpers/scrapers";
 
 describe("handleYouTube with Parallel extract", () => {
 	beforeEach(async () => {
@@ -36,7 +37,7 @@ describe("handleYouTube with Parallel extract", () => {
 			warnings: [],
 			usage: [],
 		});
-		const result = await handleYouTube("https://youtu.be/dQw4w9WgXcQ", 10);
+		const result = asRender(await handleYouTube("https://youtu.be/dQw4w9WgXcQ", 10));
 		expect(result?.method).toBe("parallel");
 		expect(result?.finalUrl).toBe("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
 		expect(result?.contentType).toBe("text/markdown");

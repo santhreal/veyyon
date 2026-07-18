@@ -2,7 +2,7 @@
 
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { isEnoent } from "@veyyon/pi-utils";
+import { formatBytes, isEnoent } from "@veyyon/utils";
 import { buildDocsIndexPayload } from "./generate-docs-index";
 
 const packageDir = path.join(import.meta.dir, "..");
@@ -11,15 +11,15 @@ const cliPath = path.join(outDir, "cli.js");
 const shebang = "#!/usr/bin/env bun\n";
 
 // Native / optional / platform-specific deps are loaded from installed files.
-// `omp-legacy-pi-modules` exists only in compiled binaries via the build plugin;
+// `veyyon-legacy-pi-modules` exists only in compiled binaries via the build plugin;
 // the npm bundle never executes that `isCompiledBinary()` branch.
 const ALWAYS_EXTERNAL = [
 	"mupdf",
-	"@veyyon/pi-natives",
+	"@veyyon/natives",
 	"@huggingface/transformers",
 	"fastembed",
 	"onnxruntime-node",
-	"omp-legacy-pi-modules",
+	"veyyon-legacy-pi-modules",
 ];
 
 // Heavy, lazily-used third-party leaf deps. Each is a declared `dependency`, so the
@@ -58,13 +58,8 @@ async function ensureShebang(): Promise<void> {
 	await Bun.write(cliPath, shebang + withoutExisting);
 }
 
-function formatBytes(bytes: number): string {
-	if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)}KB`;
-	return `${(bytes / (1024 * 1024)).toFixed(2)}MB`;
-}
-
 async function cleanBundleOutputs(): Promise<void> {
-	// dist/ is shared with the dev binary (dist/omp); only remove this
+	// dist/ is shared with the dev binary (dist/vey); only remove this
 	// script's own outputs (entry bundle + copied native assets).
 	let entries: string[];
 	try {
@@ -97,8 +92,8 @@ async function main(): Promise<void> {
 			target: "bun",
 			external: [...ALWAYS_EXTERNAL, ...RUNTIME_EXTERNAL],
 			define: {
-				"process.env.PI_BUNDLED": JSON.stringify("true"),
-				"process.env.PI_DOCS_EMBED": JSON.stringify((await buildDocsIndexPayload()).payload),
+				"process.env.VEYYON_BUNDLED": JSON.stringify("true"),
+				"process.env.VEYYON_DOCS_EMBED": JSON.stringify((await buildDocsIndexPayload()).payload),
 			},
 			minify: {
 				whitespace: true,

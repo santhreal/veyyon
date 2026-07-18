@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "bun:test";
-import type { AgentMessage, AgentTelemetryConfig } from "@veyyon/pi-agent-core";
-import type { AssistantMessage } from "@veyyon/pi-ai";
-import type { TUI } from "@veyyon/pi-tui";
+import type { AgentMessage, AgentTelemetryConfig } from "@veyyon/agent-core";
+import type { AssistantMessage } from "@veyyon/ai";
+import type { TUI } from "@veyyon/tui";
 import { type } from "arktype";
 import type { ModelRegistry } from "../../config/model-registry";
 import type { Settings } from "../../config/settings";

@@ -10,6 +10,10 @@
         <!-- Veyyon handbook: self-contained head additions. No remote resources. -->
         <meta name="theme-color" content="#050505">
         <meta name="color-scheme" content="dark">
+        <!-- Site favicons live at the deployed root, one level above /docs/. -->
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+        <link rel="icon" href="/favicon.ico" sizes="48x48">
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png">
         <style>
           /* Paint the near-black surface before CSS/JS resolve the theme, so there is
              no light flash on load. Kept in sync with theme/veyyon.css. */
@@ -18,7 +22,7 @@
           *, *::before, *::after { box-sizing: border-box; }
         </style>
 
-        <meta name="description" content="How Veyyon turns open models into frontier coding agents. The product, the harness, tool-call repair, the edit format, per-model adaptation, and how to use it.">
+        <meta name="description" content="Operator handbook for the Veyyon terminal coding agent: install, configuration, tools, approvals, edit formats, providers, and harness structure.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -38,7 +42,7 @@
         <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="../ayu-highlight-3fdfc3ac.css">
 
         <!-- Custom theme stylesheets -->
-        <link rel="stylesheet" href="../theme/veyyon-fc839a17.css">
+        <link rel="stylesheet" href="../theme/veyyon-06f6939e.css">
 
 
         <!-- Provide site root and default themes to javascript -->
@@ -46,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-e76f06ca.js";
+            window.path_to_searchindex_js = "../searchindex-a2447057.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-9cfd259b.js"></script>
+        <script src="../toc-cc1a72e9.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -192,158 +196,38 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="feature-flags"><a class="header" href="#feature-flags">Feature flags</a></h1>
-<blockquote>
-<p><strong>Spec — not shipped:</strong> a standalone <code>veyyon features</code> subcommand, the <code>--enable-feature</code> /
-<code>--disable-feature</code> launch flags, and a <code>[features]</code> config table. Today feature listing is a
-<strong><code>plugin</code></strong> subcommand — <code>veyyon plugin features</code> — experimental toggles are driven from
-<code>/experimental</code> in the TUI, and persistent toggles live in the <code>features</code> map of <code>config.yml</code>.</p>
-</blockquote>
-<p>Veyyon gates optional and in-progress capabilities behind named feature flags. A flag lets
-you turn a capability on or off without a new build, and it lets the project ship a
-capability in stages before it becomes a default. Each flag has a stage that tells you how
-finished it is.</p>
+<p>Veyyon gates optional behavior in two places: <code>features.*</code> keys in the settings schema, and
+per-plugin feature gates managed with the <strong>plugin</strong> subcommand.</p>
+<h2 id="settings-schema-flags-features"><a class="header" href="#settings-schema-flags-features">Settings-schema flags (<code>features.*</code>)</a></h2>
+<p>Registered flags live in <code>config.yml</code> under dotted <code>features.*</code> keys and appear in
+<strong>Settings › Interaction</strong> in the TUI. Unknown keys are rejected.</p>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>Stage</th><th>Meaning</th></tr>
+<tr><th>Key</th><th>Default</th><th>Effect</th></tr>
 </thead>
 <tbody>
-<tr><td><code>under development</code></td><td>Incomplete; on only for development.</td></tr>
-<tr><td><code>experimental</code></td><td>Usable but may change; off by default.</td></tr>
-<tr><td><code>stable</code></td><td>Finished and on by default (unless noted).</td></tr>
-<tr><td><code>deprecated</code></td><td>Still works but slated for removal.</td></tr>
-<tr><td><code>removed</code></td><td>No longer available; the flag is inert.</td></tr>
+<tr><td><code>features.unexpectedStopDetection</code></td><td>off</td><td>Use a small model to detect when the assistant says it will continue but stops without tool calls, and automatically prompt it to continue.</td></tr>
 </tbody>
 </table>
 </div>
-<h2 id="listing-and-toggling"><a class="header" href="#listing-and-toggling">Listing and toggling</a></h2>
-<p><code>veyyon plugin features</code> prints every known feature with its stage and whether it is
-currently enabled for your configuration. That list is <strong>broader than the product surface</strong>:
-many entries are internal switches used for migrations, protocol experiments, or staged
-rollout. Treat most of them as engineering cruft unless this page (or <code>/experimental</code>)
-presents them as user-facing.</p>
-<pre><code class="language-console">$ veyyon plugin features
-</code></pre>
-<p>Persistent toggles write the <code>features</code> config map:</p>
 <pre><code class="language-yaml">features:
-  memories: true
-  prevent_idle_sleep: true
+  unexpectedStopDetection: true
 </code></pre>
-<p>For a single run, override the config value with <code>-c features.&lt;name&gt;=true|false</code>:</p>
-<pre><code class="language-console">$ veyyon -c features.memories=true "summarize prior decisions in this repo"
+<p>Per-run override:</p>
+<pre><code class="language-console">$ veyyon -c features.unexpectedStopDetection=true "long refactor; keep going until done"
 </code></pre>
-<p>Inside the cockpit, <code>/experimental</code> opens a view for experimental toggles on the running
-session. Persistent changes belong in the <code>features</code> config map.</p>
-<p>Unknown feature keys are rejected rather than silently accepted.</p>
-<h2 id="user-facing-toggles"><a class="header" href="#user-facing-toggles">User-facing toggles</a></h2>
-<p>Documented here: flags operators and end users actually turn for product behavior. Omit
-the long tail of internal keys (<code>item_ids</code>, <code>deferred_executor</code>, removed protocol shims,
-sandbox migration leftovers, and similar). If <code>veyyon plugin features</code> shows a name that is
-not below, assume it is internal unless a release note says otherwise.</p>
-<h3 id="session-intelligence"><a class="header" href="#session-intelligence">Session intelligence</a></h3>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Key</th><th>Stage</th><th>Default</th><th>What it does</th></tr>
-</thead>
-<tbody>
-<tr><td><code>memories</code></td><td>experimental</td><td>off</td><td>Generate and reuse cross-session memories (<code>/memories</code>, <code>[memories]</code>).</td></tr>
-<tr><td><code>goals</code></td><td>stable</td><td>on</td><td>Long-running goal tracking (<code>/goal</code>, goal tools).</td></tr>
-<tr><td><code>workspace_dependencies</code></td><td>stable</td><td>on</td><td>Scan Cargo/Rust workspace roots for extra project context.</td></tr>
-<tr><td><code>personality</code></td><td>stable</td><td>on</td><td>Personality / tone controls in the product UI.</td></tr>
-<tr><td><code>fast_mode</code></td><td>stable</td><td>on</td><td>Fast-mode collaboration preset.</td></tr>
-<tr><td><code>mentions_v2</code></td><td>stable</td><td>on</td><td>Updated @-mention behavior in the cockpit.</td></tr>
-</tbody>
-</table>
-</div>
-<h3 id="automation-and-tools"><a class="header" href="#automation-and-tools">Automation and tools</a></h3>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Key</th><th>Stage</th><th>Default</th><th>What it does</th></tr>
-</thead>
-<tbody>
-<tr><td><code>hooks</code></td><td>stable</td><td>on</td><td>Lifecycle hooks (<code>[hooks]</code> / <code>hooks.json</code>).</td></tr>
-<tr><td><code>unified_exec</code></td><td>stable</td><td>on (non-Windows)</td><td>Unified exec path for shell tool runs.</td></tr>
-<tr><td><code>shell_tool</code></td><td>stable</td><td>on</td><td>Expose the shell tool surface.</td></tr>
-<tr><td><code>skill_mcp_dependency_install</code></td><td>stable</td><td>on</td><td>Assist installing MCP dependencies declared by skills.</td></tr>
-<tr><td><code>tool_suggest</code></td><td>stable</td><td>on</td><td>Suggest tools when the model may need them.</td></tr>
-<tr><td><code>sleep_tool</code></td><td>under development</td><td>off</td><td>Model-callable <code>sleep</code> (input-interruptible).</td></tr>
-</tbody>
-</table>
-</div>
-<blockquote>
-<p><strong>Spec — not shipped:</strong> there is no <code>guardian_approval</code> flag and no guardian / auto-review
-approval path in the shipped flag registry or config schema. See
-<a href="./review.html#auto-review-guardian-spec--not-shipped">Auto-review guardian (Spec — not shipped)</a>.</p>
-</blockquote>
-<h3 id="apps-plugins-and-collaboration"><a class="header" href="#apps-plugins-and-collaboration">Apps, plugins, and collaboration</a></h3>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Key</th><th>Stage</th><th>Default</th><th>What it does</th></tr>
-</thead>
-<tbody>
-<tr><td><code>apps</code></td><td>stable</td><td>on</td><td>Apps / connectors surface.</td></tr>
-<tr><td><code>plugins</code></td><td>stable</td><td>on</td><td>Plugin loading and management.</td></tr>
-<tr><td><code>plugin_sharing</code></td><td>stable</td><td>on</td><td>Share / distribute plugins.</td></tr>
-<tr><td><code>multi_agent</code></td><td>stable</td><td>on</td><td>Multi-agent collaboration runtime.</td></tr>
-<tr><td><code>multi_agent_v2</code></td><td>under development</td><td>off</td><td>Next multi-agent runtime and role-model overrides.</td></tr>
-<tr><td><code>enable_mcp_apps</code></td><td>under development</td><td>off</td><td>MCP-backed apps path.</td></tr>
-</tbody>
-</table>
-</div>
-<h3 id="browser-media-and-realtime"><a class="header" href="#browser-media-and-realtime">Browser, media, and realtime</a></h3>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Key</th><th>Stage</th><th>Default</th><th>What it does</th></tr>
-</thead>
-<tbody>
-<tr><td><code>in_app_browser</code></td><td>stable</td><td>on</td><td>In-app browser surface (requirements may still apply).</td></tr>
-<tr><td><code>browser_use</code></td><td>stable</td><td>on</td><td>Browser-use tool path.</td></tr>
-<tr><td><code>browser_use_external</code></td><td>stable</td><td>on</td><td>External browser-use variant.</td></tr>
-<tr><td><code>computer_use</code></td><td>stable</td><td>on</td><td>Computer-use tool path.</td></tr>
-<tr><td><code>image_generation</code></td><td>stable</td><td>on</td><td>Image generation tools.</td></tr>
-<tr><td><code>realtime_conversation</code></td><td>under development</td><td>off</td><td>Experimental realtime voice conversation in the TUI.</td></tr>
-<tr><td><code>prevent_idle_sleep</code></td><td>experimental (platform-gated)</td><td>off</td><td>Keep the machine awake while a thread runs (<code>/experimental</code>).</td></tr>
-</tbody>
-</table>
-</div>
-<h3 id="network-and-auth-storage"><a class="header" href="#network-and-auth-storage">Network and auth storage</a></h3>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Key</th><th>Stage</th><th>Default</th><th>What it does</th></tr>
-</thead>
-<tbody>
-<tr><td><code>network_proxy</code></td><td>experimental</td><td>off</td><td>Extra network proxy restrictions for sandboxed sessions that already have network; enable from <code>/experimental</code> and restart.</td></tr>
-<tr><td><code>secret_auth_storage</code></td><td>stable</td><td>on for Windows</td><td>Prefer secret/auth storage backend wiring for credentials.</td></tr>
-<tr><td><code>enable_request_compression</code></td><td>stable</td><td>on</td><td>Compress outbound provider requests when supported.</td></tr>
-<tr><td><code>tool_call_mcp_elicitation</code></td><td>stable</td><td>on</td><td>MCP elicitation during tool calls.</td></tr>
-</tbody>
-</table>
-</div>
-<h3 id="deprecated-still-toggles-avoid-new-dependence"><a class="header" href="#deprecated-still-toggles-avoid-new-dependence">Deprecated (still toggles, avoid new dependence)</a></h3>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Key</th><th>Notes</th></tr>
-</thead>
-<tbody>
-<tr><td><code>web_search_request</code> / <code>web_search_cached</code></td><td>Deprecated web-search wiring; prefer current search docs.</td></tr>
-<tr><td><code>use_legacy_landlock</code></td><td>Deprecated Linux sandbox path; leave off unless you are debugging a migration.</td></tr>
-</tbody>
-</table>
-</div>
-<h2 id="what-not-to-document-as-a-product-feature"><a class="header" href="#what-not-to-document-as-a-product-feature">What not to document as a product feature</a></h2>
-<p><code>veyyon plugin features</code> also surfaces removed or under-development keys that are not product
-features: protocol experiments (<code>responses_websockets*</code>, <code>item_ids</code>),
-removed sandboxes (<code>experimental_windows_sandbox</code>, <code>use_linux_sandbox_bwrap</code>), dead tool
-search shims, and similar. Enabling them will not give you a supported workflow. Prefer
-this page, <code>/experimental</code>, and release notes over raw enum archaeology.</p>
-<p>See also: <a href="../using/configuration.html">Configuration</a> for the <code>features</code> config map and
-<a href="../reference/slash-commands.html">Slash commands</a>.</p>
+<h2 id="plugin-feature-gates"><a class="header" href="#plugin-feature-gates">Plugin feature gates</a></h2>
+<p>Plugins can declare named features that you toggle per plugin:</p>
+<pre><code class="language-console">$ veyyon plugin features &lt;plugin&gt;                 # list a plugin's features
+$ veyyon plugin features &lt;plugin&gt; --enable f1,f2  # turn features on
+$ veyyon plugin features &lt;plugin&gt; --disable f1    # turn features off
+$ veyyon plugin features &lt;plugin&gt; --set f1,f2     # replace the enabled set
+</code></pre>
+<p>See <a href="./plugins.html">Plugins</a> for installation and management.</p>
+<h2 id="related"><a class="header" href="#related">Related</a></h2>
+<p>Tool approvals are not feature flags — they use <code>tools.approvalMode</code> and per-tool policy.
+See <a href="./sandbox.html">Approvals</a>.</p>
 
                     </main>
 

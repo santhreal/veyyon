@@ -1,6 +1,6 @@
 /**
  * Collab link + wire-envelope handling (browser-safe vendored mirror of the
- * link/envelope half of `@veyyon/pi-coding-agent/src/collab/protocol.ts`;
+ * link/envelope half of `@veyyon/coding-agent/src/collab/protocol.ts`;
  * base64url goes through atob/btoa instead of Buffer).
  *
  * Link format: `wss://<host[:port]>/r/<roomId>.<base64url-32-byte-key>`
@@ -8,16 +8,16 @@
  * sends peerId 0; the relay rewrites it to the sender's id.
  */
 
-import type { ParsedCollabLink } from "@veyyon/pi-wire";
+import type { ParsedCollabLink } from "@veyyon/wire";
 import {
 	DEFAULT_RELAY_URL,
 	ENVELOPE_HEADER_LENGTH,
 	ROOM_ID_BYTES,
 	ROOM_KEY_BYTES,
 	WRITE_TOKEN_BYTES,
-} from "@veyyon/pi-wire";
+} from "@veyyon/wire";
 
-export { COLLAB_PROTO } from "@veyyon/pi-wire";
+export { COLLAB_PROTO } from "@veyyon/wire";
 export type { ParsedCollabLink };
 export { DEFAULT_RELAY_URL, ENVELOPE_HEADER_LENGTH, ROOM_ID_BYTES };
 

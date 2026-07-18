@@ -5,10 +5,10 @@
  */
 
 import path from "node:path";
-import type { AgentEvent, AgentIdentity, AgentTelemetryConfig } from "@veyyon/pi-agent-core";
-import { recordHandoff, resolveTelemetry } from "@veyyon/pi-agent-core";
-import type { Api, Model, ServiceTierByFamily, Usage } from "@veyyon/pi-ai";
-import { logger, popLoopPhase, prompt, pushLoopPhase, untilAborted } from "@veyyon/pi-utils";
+import type { AgentEvent, AgentIdentity, AgentTelemetryConfig } from "@veyyon/agent-core";
+import { recordHandoff, resolveTelemetry } from "@veyyon/agent-core";
+import type { Api, Model, ServiceTierByFamily, Usage } from "@veyyon/ai";
+import { logger, popLoopPhase, prompt, pushLoopPhase, untilAborted } from "@veyyon/utils";
 import type { Rule } from "../capability/rule";
 import { ModelRegistry } from "../config/model-registry";
 import {
@@ -356,7 +356,7 @@ export interface ExecutorOptions {
 	preloadedExtensionPaths?: string[];
 	/**
 	 * Parent's discovered custom-tool source paths. Forwarded to skip the
-	 * `.omp/tools/` FS scan in the subagent; the subagent then re-binds each
+	 * `.veyyon/tools/` FS scan in the subagent; the subagent then re-binds each
 	 * tool against its own `CustomToolAPI` (cwd, exec, pushPendingAction, UI).
 	 */
 	preloadedCustomToolPaths?: ToolPathWithSource[];

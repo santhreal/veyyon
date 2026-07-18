@@ -1,9 +1,9 @@
 import { describe, expect, it } from "bun:test";
-import { Effort, type FetchImpl } from "@veyyon/pi-ai";
-import { streamSimple } from "@veyyon/pi-ai/stream";
-import type { Context, Model } from "@veyyon/pi-ai/types";
-import { buildModel } from "@veyyon/pi-catalog/build";
-import type { ModelSpec } from "@veyyon/pi-catalog/types";
+import { Effort, type FetchImpl } from "@veyyon/ai";
+import { streamSimple } from "@veyyon/ai/stream";
+import type { Context, Model } from "@veyyon/ai/types";
+import { buildModel } from "@veyyon/catalog/build";
+import type { ModelSpec } from "@veyyon/catalog/types";
 
 interface CapturedRequestBody {
 	model?: string;

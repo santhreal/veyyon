@@ -1,4 +1,4 @@
-import { $env, logger } from "@veyyon/pi-utils";
+import { $env, errorMessage, logger } from "@veyyon/utils";
 import { settings } from "../config/settings";
 import {
 	createUnavailableWorker,
@@ -77,7 +77,7 @@ function readTinyModelSetting(path: "providers.tinyModelDevice" | "providers.tin
 }
 
 /**
- * Decide which tiny device/dtype env vars (`VEYYON_TINY_*` primary, `PI_TINY_*` legacy) to overlay onto the worker
+ * Decide which tiny device/dtype env vars (`VEYYON_TINY_*`) to overlay onto the worker
  * env. A present env var wins (left untouched); otherwise the mapped persisted
  * setting is used. Returns only the keys to add — never the default sentinel.
  * Pure for testability; see {@link tinyWorkerEnv} for the spawn-time glue.
@@ -89,20 +89,16 @@ export function tinyWorkerEnvOverlay(
 	dtypeSetting: string | undefined,
 ): Record<string, string> {
 	const overlay: Record<string, string> = {};
-	if (!env.VEYYON_TINY_DEVICE && !env.PI_TINY_DEVICE) {
+	if (!env.VEYYON_TINY_DEVICE) {
 		const device = tinyModelDeviceSettingToEnv(deviceSetting);
 		if (device) {
-			// Write both names in lockstep so the child resolves the same value
-			// whichever alias it reads (VEYYON_* primary, PI_* legacy).
 			overlay.VEYYON_TINY_DEVICE = device;
-			overlay.PI_TINY_DEVICE = device;
 		}
 	}
-	if (!env.VEYYON_TINY_DTYPE && !env.PI_TINY_DTYPE) {
+	if (!env.VEYYON_TINY_DTYPE) {
 		const dtype = tinyModelDtypeSettingToEnv(dtypeSetting);
 		if (dtype) {
 			overlay.VEYYON_TINY_DTYPE = dtype;
-			overlay.PI_TINY_DTYPE = dtype;
 		}
 	}
 	return overlay;
@@ -111,7 +107,7 @@ export function tinyWorkerEnvOverlay(
 /**
  * Env handed to the tiny-model subprocess — and reused verbatim by the STT and
  * TTS workers, which share the same device/dtype resolution. The
- * `PI_TINY_DEVICE` / `PI_TINY_DTYPE` env vars win; otherwise the persisted
+ * `VEYYON_TINY_DEVICE` / `VEYYON_TINY_DTYPE` env vars win; otherwise the persisted
  * `providers.tinyModelDevice` / `providers.tinyModelDtype` settings are mapped
  * onto those vars so the subprocess's env-based resolution picks them up.
  * Resolved once at spawn (pipelines are cached for the lifetime of the
@@ -240,7 +236,7 @@ export class TinyTitleClient {
 		} catch (error) {
 			logger.debug("tiny-title: local generation failed", {
 				modelKey,
-				error: error instanceof Error ? error.message : String(error),
+				error: errorMessage(error),
 			});
 			return null;
 		}
@@ -276,7 +272,7 @@ export class TinyTitleClient {
 		} catch (error) {
 			logger.debug("tiny-model: local completion failed", {
 				modelKey,
-				error: error instanceof Error ? error.message : String(error),
+				error: errorMessage(error),
 			});
 			return null;
 		}
@@ -307,7 +303,7 @@ export class TinyTitleClient {
 				this.#deletePending(id);
 			}
 		} catch (error) {
-			const message = error instanceof Error ? error.message : String(error);
+			const message = errorMessage(error);
 			logger.debug("tiny-title: local model download failed", {
 				modelKey,
 				error: message,

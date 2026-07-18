@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
-import { OAuthCallbackFlow } from "@veyyon/pi-ai/registry/oauth/callback-server";
-import type { OAuthAuthInfo, OAuthCredentials } from "@veyyon/pi-ai/registry/oauth/types";
+import { OAuthCallbackFlow } from "@veyyon/ai/registry/oauth/callback-server";
+import type { OAuthAuthInfo, OAuthCredentials } from "@veyyon/ai/registry/oauth/types";
 
 /**
  * Regression harness for #4418 — the `/launch` route the callback server hosts
@@ -144,7 +144,7 @@ describe("OAuthCallbackFlow /launch route", () => {
 				},
 				signal: abort.signal,
 			},
-			// Caller pins the provider redirect at `/launch` — an OMP config
+			// Caller pins the provider redirect at `/launch` — a Veyyon config
 			// setting `oauth.callbackPath: "/launch"` or a matching
 			// `oauth.redirectUri`. Callback resolution MUST win the route
 			// collision, and no self-redirecting launchUrl should be advertised.

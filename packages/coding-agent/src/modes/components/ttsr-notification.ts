@@ -1,4 +1,4 @@
-import { Box, Container, Spacer, Text } from "@veyyon/pi-tui";
+import { Box, Container, Spacer, Text } from "@veyyon/tui";
 import type { Rule } from "../../capability/rule";
 import { theme } from "../../modes/theme/theme";
 

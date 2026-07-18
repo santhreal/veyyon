@@ -1,8 +1,8 @@
-import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/pi-agent-core";
-import type { ToolExample } from "@veyyon/pi-ai";
-import type { Component } from "@veyyon/pi-tui";
-import { Text } from "@veyyon/pi-tui";
-import { prompt } from "@veyyon/pi-utils";
+import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
+import type { ToolExample } from "@veyyon/ai";
+import type { Component } from "@veyyon/tui";
+import { Text } from "@veyyon/tui";
+import { formatCount, prompt } from "@veyyon/utils";
 import { type } from "arktype";
 import chalk from "chalk";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
@@ -839,7 +839,7 @@ export const todoToolRenderer = {
 						if (e.task) parts.push(e.task);
 						if (e.phase) parts.push(e.phase);
 						if (Array.isArray(e.items) && e.items.length) {
-							parts.push(`${e.items.length} item${e.items.length === 1 ? "" : "s"}`);
+							parts.push(`${formatCount("item", e.items.length)}`);
 						}
 						return parts.join(" ");
 					});

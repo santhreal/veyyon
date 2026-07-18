@@ -113,8 +113,8 @@ export function __resetProxyCache(): void {
 }
 
 /**
- * Normalizes provider id (e.g. github-copilot -> PI_PROXY_GITHUB_COPILOT) and looks it up.
- * If not found, falls back to PI_PROXY. Results are memoized because env values are static
+ * Normalizes provider id (e.g. github-copilot -> VEYYON_PROXY_GITHUB_COPILOT) and looks it up.
+ * If not found, falls back to VEYYON_PROXY. Results are memoized because env values are static
  * for the lifetime of the process and this function is called for every outgoing request.
  */
 export function getProxyForProvider(provider: string): string | undefined {
@@ -123,8 +123,8 @@ export function getProxyForProvider(provider: string): string | undefined {
 	}
 
 	const normalized = provider.toUpperCase().replace(/[^A-Z0-9]/g, "_");
-	const envKey = `PI_PROXY_${normalized}`;
-	const value = Bun.env[envKey] || Bun.env.PI_PROXY;
+	const envKey = `VEYYON_PROXY_${normalized}`;
+	const value = Bun.env[envKey] || Bun.env.VEYYON_PROXY;
 	proxyCache.set(provider, value);
 	return value;
 }

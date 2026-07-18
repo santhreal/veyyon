@@ -1,8 +1,8 @@
 /**
  * Centralized path helpers for veyyon config directories.
  *
- * Uses PI_CONFIG_DIR (default ".veyyon") for the config root and
- * PI_CODING_AGENT_DIR to override the agent directory.
+ * Uses VEYYON_CONFIG_DIR (default ".veyyon") for the config root and
+ * VEYYON_CODING_AGENT_DIR to override the agent directory.
  *
  * On Linux, if XDG_DATA_HOME / XDG_STATE_HOME / XDG_CACHE_HOME environment
  * variables are set, paths are redirected to XDG-compliant locations under
@@ -14,6 +14,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { YAML } from "bun";
 import { engines, version } from "../package.json" with { type: "json" };
 
 /** App name (e.g. "veyyon") */
@@ -31,6 +32,9 @@ export const CONFIG_DIR_NAME: string = ".veyyon";
 /** Ordered main settings filenames: canonical write target first, legacy-compatible YAML fallback second. */
 export const MAIN_CONFIG_FILENAMES = ["config.yml", "config.yaml"] as const;
 
+/** Basename of the per-install UUID file at the config root (see {@link getInstallId}). */
+const INSTALL_ID_FILE = "install-id";
+
 /** Version (e.g. "1.0.0") */
 export const VERSION: string = version;
 
@@ -38,7 +42,7 @@ export const VERSION: string = version;
 export const MIN_BUN_VERSION: string = engines.bun.replace(/[^0-9.]/g, "");
 
 const PROFILE_NAME_RE = /^[a-z0-9][a-z0-9._-]{0,63}$/;
-const PROFILE_ENV_KEYS = ["VEYYON_PROFILE", "OMP_PROFILE", "PI_PROFILE"] as const;
+const PROFILE_ENV_KEYS = ["VEYYON_PROFILE"] as const;
 
 /**
  * Names Windows treats as reserved device aliases. Matches the basename
@@ -55,7 +59,7 @@ const WINDOWS_RESERVED_BASENAME_RE = /^(?:CON|PRN|AUX|NUL|COM[0-9]|LPT[0-9])(?:\
  * default (empty string, whitespace, or the explicit "default" sentinel) and
  * throws for syntactically invalid or platform-reserved names.
  *
- * Exported so consumers of `@veyyon/pi-utils/dirs` (CLI bootstrap, tests,
+ * Exported so consumers of `@veyyon/utils/dirs` (CLI bootstrap, tests,
  * downstream tools) can validate user input without re-deriving the rules.
  */
 export function normalizeProfileName(profile: string | undefined): string | undefined {
@@ -78,16 +82,13 @@ export function normalizeProfileName(profile: string | undefined): string | unde
 }
 
 /**
- * Resolve the active profile from profile env vars. `VEYYON_PROFILE` is the
- * canonical variable; `OMP_PROFILE` is the legacy compatibility name;
- * `PI_PROFILE` is consulted only when both are undefined. An explicitly-empty
- * `VEYYON_PROFILE` or `OMP_PROFILE` therefore selects the default profile
- * rather than silently inheriting a lower-priority var. Delegates
+ * Resolve the active profile from the `VEYYON_PROFILE` env var. An
+ * explicitly-empty value selects the default profile. Delegates
  * validation/normalization to {@link normalizeProfileName} (which throws on a
  * syntactically invalid value).
  */
-export function resolveProfileEnv(primary: string | undefined, secondary: string | undefined): string | undefined {
-	return normalizeProfileName(primary !== undefined ? primary : secondary);
+export function resolveProfileEnv(value: string | undefined): string | undefined {
+	return normalizeProfileName(value);
 }
 
 function pickProcessEnv(...keys: readonly string[]): string | undefined {
@@ -98,11 +99,11 @@ function pickProcessEnv(...keys: readonly string[]): string | undefined {
 	return undefined;
 }
 
-/** Env keys accepted for the agent-dir override; `VEYYON_` wins, `PI_` is the legacy alias. */
-const AGENT_DIR_ENV_KEYS = ["VEYYON_CODING_AGENT_DIR", "PI_CODING_AGENT_DIR"] as const;
+/** Env key accepted for the agent-dir override. */
+const AGENT_DIR_ENV_KEYS = ["VEYYON_CODING_AGENT_DIR"] as const;
 
-/** Env keys accepted for the config-dir-name override; `VEYYON_` wins, `OMP_`/`PI_` are legacy aliases. */
-const CONFIG_DIR_ENV_KEYS = ["VEYYON_CONFIG_DIR", "OMP_CONFIG_DIR", "PI_CONFIG_DIR"] as const;
+/** Env key accepted for the config-dir-name override. */
+const CONFIG_DIR_ENV_KEYS = ["VEYYON_CONFIG_DIR"] as const;
 
 /**
  * Every env key that redirects veyyon directory resolution (agent dir,
@@ -122,9 +123,8 @@ function readAgentDirEnv(): string | undefined {
 }
 
 /**
- * One owner for writing the agent-dir override. Both keys are kept in lockstep
- * (like the VEYYON_/OMP_/PI_PROFILE triple in `setProfile`) so child processes
- * reading either name see the same value; `undefined` clears both.
+ * One owner for writing the agent-dir override so child processes reading the
+ * key see the same value; `undefined` clears it.
  */
 function writeAgentDirEnv(dir: string | undefined): void {
 	for (const key of AGENT_DIR_ENV_KEYS) {
@@ -133,7 +133,7 @@ function writeAgentDirEnv(dir: string | undefined): void {
 	}
 }
 
-/** Resolve the active profile from `VEYYON_PROFILE`, `OMP_PROFILE`, and `PI_PROFILE`. */
+/** Resolve the active profile from `VEYYON_PROFILE`. */
 export function resolveProfileFromEnv(): string | undefined {
 	for (const key of PROFILE_ENV_KEYS) {
 		const value = process.env[key];
@@ -153,12 +153,12 @@ function getProfileFromEnv(): string | undefined {
 }
 
 /**
- * Module-load profile resolution. Unlike {@link getProfileFromEnv}, an invalid
- * VEYYON_PROFILE/OMP_PROFILE/PI_PROFILE value does NOT throw here — a bad env var must not
- * crash a bare `import` of this module with an uncaught stack trace before the
- * CLI's error handling is in scope. The default profile is used instead; the
- * CLI re-validates the env (see `runCli` in coding-agent/src/cli.ts) so the
- * user still gets a clean "Invalid profile" message.
+ * Module-load profile resolution. Unlike {@link resolveStartupProfile}, an
+ * invalid VEYYON_PROFILE value or broken global config
+ * does NOT throw here — a bad value must not crash a bare `import` of this
+ * module with an uncaught stack trace before the CLI's error handling is in
+ * scope. The default profile is used instead; the CLI re-validates (see
+ * `runCli` in coding-agent/src/cli.ts) so the user still gets a clean error.
  */
 function readProfileFromEnvSafe(): string | undefined {
 	try {
@@ -168,21 +168,147 @@ function readProfileFromEnvSafe(): string | undefined {
 	}
 }
 
+/** Module-load-safe {@link resolveStartupProfile}: env (safe) first, then the global defaultProfile (safe). */
+function resolveStartupProfileSafe(): string | undefined {
+	if (profileEnvIsSet()) return readProfileFromEnvSafe();
+	return readGlobalDefaultProfileSafe();
+}
+
 function getBaseConfigRoot(): string {
 	return path.join(os.homedir(), getConfigDirName());
 }
 
+/** The default profile's directory name under `profiles/`. */
+export const DEFAULT_PROFILE_DIR_NAME = "default";
+
+/**
+ * Every profile — including the default — lives under `profiles/<name>`.
+ * The bare config root holds only global, cross-profile state (the global
+ * `config.yml`, `install-id`, and `profiles/` itself); see
+ * {@link migrateLegacyDefaultProfileLayout} for the one-time move off the
+ * legacy bare-root layout.
+ */
 function getProfileConfigRoot(profile: string | undefined): string {
-	const root = getBaseConfigRoot();
-	return profile ? path.join(root, "profiles", profile) : root;
+	return path.join(getBaseConfigRoot(), "profiles", profile ?? DEFAULT_PROFILE_DIR_NAME);
 }
 
-function readPiProfileFromEnvSafe(): string | undefined {
+/**
+ * Read `defaultProfile` from the GLOBAL config file (`~/.veyyon/config.yml` /
+ * `config.yaml` at the config root — distinct from any profile's own settings
+ * file under `profiles/<name>/agent/`). Returns `undefined` when no global
+ * config exists or the key is unset; throws on unreadable YAML or an invalid
+ * profile name so the CLI can surface a clean error naming the file.
+ */
+export function resolveGlobalDefaultProfile(): string | undefined {
+	const root = getBaseConfigRoot();
+	for (const filename of MAIN_CONFIG_FILENAMES) {
+		const filePath = path.join(root, filename);
+		let text: string;
+		try {
+			text = fs.readFileSync(filePath, "utf8");
+		} catch {
+			continue;
+		}
+		let parsed: unknown;
+		try {
+			parsed = YAML.parse(text);
+		} catch (error) {
+			throw new Error(
+				`Global config ${filePath} is not valid YAML: ${error instanceof Error ? error.message : String(error)}. ` +
+					`Fix or remove the file (it holds only cross-profile keys like defaultProfile).`,
+			);
+		}
+		if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return undefined;
+		const value = (parsed as Record<string, unknown>).defaultProfile;
+		if (value === undefined || value === null) return undefined;
+		if (typeof value !== "string") {
+			throw new Error(`Global config ${filePath}: defaultProfile must be a string profile name.`);
+		}
+		try {
+			return normalizeProfileName(value);
+		} catch (error) {
+			throw new Error(`Global config ${filePath}: ${error instanceof Error ? error.message : String(error)}`);
+		}
+	}
+	return undefined;
+}
+
+/**
+ * Set or clear `defaultProfile` in the GLOBAL config file, preserving every
+ * other key. Pass a profile name to set (validated; "default" clears, since
+ * the default profile needs no override) or `undefined` to clear. Returns the
+ * file written.
+ */
+export function writeGlobalDefaultProfile(profile: string | undefined): string {
+	const normalized = normalizeProfileName(profile);
+	const root = getBaseConfigRoot();
+	// Reuse an existing global config file (either accepted name); default to
+	// the canonical filename for a fresh write.
+	let filePath = path.join(root, MAIN_CONFIG_FILENAMES[0]);
+	let existing: Record<string, unknown> = {};
+	for (const filename of MAIN_CONFIG_FILENAMES) {
+		const candidate = path.join(root, filename);
+		let text: string;
+		try {
+			text = fs.readFileSync(candidate, "utf8");
+		} catch {
+			continue;
+		}
+		let parsed: unknown;
+		try {
+			parsed = YAML.parse(text);
+		} catch (error) {
+			throw new Error(
+				`Global config ${candidate} is not valid YAML: ${error instanceof Error ? error.message : String(error)}. ` +
+					`Fix or remove the file before changing defaultProfile.`,
+			);
+		}
+		if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+			existing = parsed as Record<string, unknown>;
+		}
+		filePath = candidate;
+		break;
+	}
+	if (normalized === undefined) delete existing.defaultProfile;
+	else existing.defaultProfile = normalized;
+	fs.mkdirSync(root, { recursive: true });
+	if (Object.keys(existing).length === 0) {
+		// Nothing left — remove the file rather than leaving an empty stub.
+		try {
+			fs.unlinkSync(filePath);
+		} catch {}
+		return filePath;
+	}
+	fs.writeFileSync(filePath, YAML.stringify(existing, null, 2));
+	return filePath;
+}
+
+/** Module-load-safe variant of {@link resolveGlobalDefaultProfile}: a broken global config must not crash a bare import; the CLI re-validates loudly. */
+function readGlobalDefaultProfileSafe(): string | undefined {
 	try {
-		return normalizeProfileName(process.env.PI_PROFILE);
+		return resolveGlobalDefaultProfile();
 	} catch {
 		return undefined;
 	}
+}
+
+/**
+ * Whether any profile env var is present in the environment — including an
+ * explicitly EMPTY `VEYYON_PROFILE=`, which deliberately forces the default
+ * profile past the global `defaultProfile` setting.
+ */
+export function profileEnvIsSet(): boolean {
+	return PROFILE_ENV_KEYS.some(key => process.env[key] !== undefined);
+}
+
+/**
+ * Startup profile resolution shared by module load (safe) and the CLI
+ * (strict): an env var — even empty — wins; otherwise the global
+ * `defaultProfile`; otherwise the default profile.
+ */
+export function resolveStartupProfile(): string | undefined {
+	if (profileEnvIsSet()) return resolveProfileFromEnv();
+	return resolveGlobalDefaultProfile();
 }
 
 function getProfileAgentDir(profile: string): string {
@@ -267,15 +393,15 @@ export async function directoryExists(dir: string): Promise<boolean> {
 	}
 }
 
-/** Get the config directory name relative to home (e.g. ".veyyon" or VEYYON_CONFIG_DIR / PI_CONFIG_DIR override). */
+/** Get the config directory name relative to home (e.g. ".veyyon" or VEYYON_CONFIG_DIR override). */
 export function getConfigDirName(): string {
 	return pickProcessEnv(...CONFIG_DIR_ENV_KEYS) || CONFIG_DIR_NAME;
 }
 
-/** Get the config agent directory name relative to home (e.g. ".veyyon/agent" or PI_CONFIG_DIR + "/agent"). */
+/** Get the config agent directory name relative to home (e.g. ".veyyon/profiles/default/agent"). */
 export function getConfigAgentDirName(): string {
-	const profile = getActiveProfile();
-	return profile ? path.join(getConfigDirName(), "profiles", profile, "agent") : `${getConfigDirName()}/agent`;
+	const profile = getActiveProfile() ?? DEFAULT_PROFILE_DIR_NAME;
+	return path.join(getConfigDirName(), "profiles", profile, "agent");
 }
 
 // =============================================================================
@@ -312,13 +438,13 @@ class DirResolver {
 		const isDefault = this.agentDir === defaultAgent;
 
 		// XDG is a Linux convention. On supported platforms, default profile state
-		// resolves under $XDG_*_HOME/omp once `veyyon config init-xdg` has migrated
+		// resolves under $XDG_*_HOME/veyyon once `veyyon config init-xdg` has migrated
 		// the user's data. Named profiles follow a stricter rule: the XDG choice
 		// is keyed on the profile-specific XDG path, never the base app root.
 		//
 		// Why: if we consulted the base app root for named profiles too, the same
 		// profile could resolve to `~/.veyyon/profiles/<name>` on first activation
-		// (when no $XDG_*_HOME/omp exists yet) and then silently move to
+		// (when no $XDG_*_HOME/veyyon exists yet) and then silently move to
 		// `$XDG_*_HOME/veyyon/profiles/<name>` the moment the base appeared, orphaning
 		// the earlier state. Pinning on the profile path means a profile's location
 		// is decided at first activation and stays put until the user explicitly
@@ -388,58 +514,62 @@ class DirResolver {
 }
 
 /**
- * Decide which `PI_CODING_AGENT_DIR` value to capture as the pre-profile
+ * Decide which `VEYYON_CODING_AGENT_DIR` value to capture as the pre-profile
  * baseline. A value equal to a profile's derived agent dir is profile-derived
  * (propagated by a parent's `setProfile`), so it must NOT be snapshotted as the
  * default-mode baseline — otherwise default mode would resolve to the profile's
- * agent dir. The profile source can be the active profile or a lower-priority
- * `PI_PROFILE` that was bypassed because `OMP_PROFILE` explicitly selected the
- * default profile. Returns `undefined` in those cases so reset falls back to the
+ * agent dir. Returns `undefined` in that case so reset falls back to the
  * standard `~/.veyyon/agent`.
  */
-function resolvePreProfileAgentDir(
-	profile: string | undefined,
-	agentDirEnv: string | undefined,
-	profileAgentDirSource: string | undefined = profile,
-): string | undefined {
-	return isProfileDerivedAgentDir(profile ?? profileAgentDirSource, agentDirEnv) ? undefined : agentDirEnv;
+function resolvePreProfileAgentDir(profile: string | undefined, agentDirEnv: string | undefined): string | undefined {
+	return isProfileDerivedAgentDir(profile, agentDirEnv) ? undefined : agentDirEnv;
 }
 
-let activeProfile = readProfileFromEnvSafe();
+let activeProfile = resolveStartupProfileSafe();
 
 /**
  * Resolve the agent-dir override for the current `activeProfile` from the live
  * environment. A named profile derives its own agent dir (no override); default
- * mode honors a non-profile `PI_CODING_AGENT_DIR` (see
+ * mode honors a non-profile `VEYYON_CODING_AGENT_DIR` (see
  * {@link resolvePreProfileAgentDir}). Shared by the module-load resolver and
  * {@link refreshDirsFromEnv} so both apply identical logic.
  */
 function resolveActiveAgentDirOverride(): string | undefined {
-	return activeProfile
-		? undefined
-		: resolvePreProfileAgentDir(undefined, readAgentDirEnv(), readPiProfileFromEnvSafe());
+	return activeProfile ? undefined : resolvePreProfileAgentDir(undefined, readAgentDirEnv());
 }
+
+// Non-CLI entry points (SDK/library imports) never pass through the CLI's
+// migrateLegacyDefaultProfileLayout() call. Reading the new layout while the
+// user's data still sits in the legacy bare root would silently resolve to an
+// empty tree, so surface it loudly here. Import must stay non-throwing; the
+// CLI migrates (or fails closed) right after startup profile resolution.
+try {
+	if (activeProfile === undefined && fs.existsSync(path.join(getBaseConfigRoot(), "agent"))) {
+		process.emitWarning(
+			`Legacy veyyon layout detected at ${path.join(getBaseConfigRoot(), "agent")} — the default profile now lives at ` +
+				`${getProfileConfigRoot(undefined)}. Run the veyyon CLI once to migrate (it moves the legacy tree, or names ` +
+				`the conflict if both layouts exist).`,
+			{ code: "VEYYON_LEGACY_LAYOUT" },
+		);
+	}
+} catch {}
 
 let dirs = new DirResolver({
 	agentDirOverride: resolveActiveAgentDirOverride(),
 	profile: activeProfile,
 });
 /**
- * Snapshot of `PI_CODING_AGENT_DIR` from before the first named-profile
+ * Snapshot of `VEYYON_CODING_AGENT_DIR` from before the first named-profile
  * activation. Reset paths restore this value (or its absence) instead of
  * unconditionally deleting the env var. Without the snapshot, a process started
- * with `PI_CODING_AGENT_DIR=/custom` then `setProfile("work")` then
+ * with `VEYYON_CODING_AGENT_DIR=/custom` then `setProfile("work")` then
  * `setProfile(undefined)` would silently lose `/custom` and fall back to
  * `~/.veyyon/agent`. Captured at module load — ignoring a profile-derived value
  * inherited from a parent's `setProfile` (see {@link resolvePreProfileAgentDir})
  * — and refreshed on `setAgentDir`, since that call is the user explicitly
  * redefining the baseline.
  */
-let preProfileAgentDirEnv: string | undefined = resolvePreProfileAgentDir(
-	activeProfile,
-	readAgentDirEnv(),
-	activeProfile ?? readPiProfileFromEnvSafe(),
-);
+let preProfileAgentDirEnv: string | undefined = resolvePreProfileAgentDir(activeProfile, readAgentDirEnv());
 // Anchor home for the resolver. Captured at module load to stay stable across
 // test mocks of `os.homedir()`. `getPluginsDir(home)` compares against this so
 // production callers (`home === RESOLVER_HOME`) hit the XDG-aware resolver while
@@ -449,7 +579,7 @@ const RESOLVER_HOME = os.homedir();
 /**
  * Rebuild the dirs resolver from the current environment, reusing the profile
  * resolved at module load. Directory-affecting keys (XDG_*_HOME and, in default
- * mode, `PI_CODING_AGENT_DIR`) loaded from a profile/agent `.env` only reach
+ * mode, `VEYYON_CODING_AGENT_DIR`) loaded from a profile/agent `.env` only reach
  * `process.env` *after* this module froze the resolver at import time, so
  * `env.ts` calls this once after applying its `.env` files. The agent `.env`
  * location derives from the profile name + home before this runs, so the
@@ -467,9 +597,18 @@ export function refreshDirsFromEnv(): void {
 // Root directories
 // =============================================================================
 
-/** Get the config root directory (~/.veyyon). */
+/** Get the active profile's config root (~/.veyyon/profiles/<name>). */
 export function getConfigRootDir(): string {
 	return dirs.configRoot;
+}
+
+/**
+ * Get the GLOBAL config home (~/.veyyon) — the cross-profile root holding the
+ * global `config.yml`, `install-id`, and `profiles/`. Distinct from
+ * {@link getConfigRootDir}, which is the active profile's own root.
+ */
+export function getGlobalConfigRootDir(): string {
+	return getBaseConfigRoot();
 }
 
 /** Set the coding agent directory. Creates a fresh resolver, invalidating all cached paths. */
@@ -484,7 +623,7 @@ export function setAgentDir(dir: string): void {
 }
 
 /**
- * Test-only: reset the pre-profile `PI_CODING_AGENT_DIR` snapshot to whatever
+ * Test-only: reset the pre-profile `VEYYON_CODING_AGENT_DIR` snapshot to whatever
  * the current environment looks like. Cross-suite test pollution can otherwise
  * leak a stale snapshot through `setAgentDir` and corrupt `setProfile(undefined)`
  * restore semantics. Production code MUST NOT call this — the snapshot's
@@ -492,11 +631,7 @@ export function setAgentDir(dir: string): void {
  * no business clearing it.
  */
 export function __resetProfileSnapshotForTests(): void {
-	preProfileAgentDirEnv = resolvePreProfileAgentDir(
-		activeProfile,
-		readAgentDirEnv(),
-		activeProfile ?? readPiProfileFromEnvSafe(),
-	);
+	preProfileAgentDirEnv = resolvePreProfileAgentDir(activeProfile, readAgentDirEnv());
 }
 
 /**
@@ -506,7 +641,7 @@ export function __resetProfileSnapshotForTests(): void {
  * back.
  */
 export function __resetDirsFromEnvForTests(): void {
-	activeProfile = readProfileFromEnvSafe();
+	activeProfile = resolveStartupProfileSafe();
 	__resetProfileSnapshotForTests();
 	refreshDirsFromEnv();
 }
@@ -516,18 +651,16 @@ export function setProfile(profile: string | undefined): void {
 	const next = normalizeProfileName(profile);
 	if (next && !activeProfile) {
 		// First activation of a named profile in this process: snapshot the
-		// current PI_CODING_AGENT_DIR so a later reset can restore the user's
+		// current VEYYON_CODING_AGENT_DIR so a later reset can restore the user's
 		// explicit override. Subsequent profile switches keep the original
 		// snapshot — the "pre-profile" baseline is the state before profiles
 		// entered the picture, not the state between two activations.
-		preProfileAgentDirEnv = resolvePreProfileAgentDir(undefined, readAgentDirEnv(), readPiProfileFromEnvSafe());
+		preProfileAgentDirEnv = resolvePreProfileAgentDir(undefined, readAgentDirEnv());
 	}
 	activeProfile = next;
 	if (activeProfile) {
 		dirs = new DirResolver({ profile: activeProfile });
 		process.env.VEYYON_PROFILE = activeProfile;
-		process.env.OMP_PROFILE = activeProfile;
-		process.env.PI_PROFILE = activeProfile;
 		writeAgentDirEnv(dirs.agentDir);
 	} else {
 		for (const key of PROFILE_ENV_KEYS) {
@@ -557,16 +690,16 @@ export interface ProfileInfo {
 
 /** Enumerate the default profile plus every named profile under `profiles/`. */
 export function listProfiles(): ProfileInfo[] {
-	const baseRoot = getBaseConfigRoot();
+	const defaultRoot = getProfileConfigRoot(undefined);
 	const profiles: ProfileInfo[] = [
 		{
-			name: "default",
-			rootDir: baseRoot,
-			agentDir: path.join(baseRoot, "agent"),
+			name: DEFAULT_PROFILE_DIR_NAME,
+			rootDir: defaultRoot,
+			agentDir: path.join(defaultRoot, "agent"),
 		},
 	];
 
-	const profilesDir = path.join(baseRoot, "profiles");
+	const profilesDir = path.join(getBaseConfigRoot(), "profiles");
 	let entries: fs.Dirent[] = [];
 	try {
 		entries = fs.readdirSync(profilesDir, { withFileTypes: true });
@@ -577,7 +710,9 @@ export function listProfiles(): ProfileInfo[] {
 	for (const entry of entries) {
 		if (!entry.isDirectory()) continue;
 		try {
-			normalizeProfileName(entry.name);
+			// `default` normalizes to undefined — already covered by the fixed
+			// first entry above, so skip its directory to avoid a duplicate row.
+			if (normalizeProfileName(entry.name) === undefined) continue;
 		} catch {
 			continue;
 		}
@@ -593,13 +728,72 @@ export function listProfiles(): ProfileInfo[] {
 	return profiles;
 }
 
-/** Whether a profile root exists on disk (`default` checks `~/.veyyon/agent`). */
+/** Whether a profile root exists on disk (`default` checks `~/.veyyon/profiles/default/agent`). */
 export function profileExists(profile: string | undefined): boolean {
 	const normalized = normalizeProfileName(profile);
 	if (!normalized) {
-		return fs.existsSync(path.join(getBaseConfigRoot(), "agent"));
+		return fs.existsSync(path.join(getProfileConfigRoot(undefined), "agent"));
 	}
 	return fs.existsSync(getProfileConfigRoot(normalized));
+}
+
+// =============================================================================
+// Legacy bare-root layout migration
+// =============================================================================
+
+/**
+ * Root entries that stay GLOBAL (cross-profile) under the new layout. Every
+ * other entry in the config root belongs to the legacy default profile and is
+ * moved into `profiles/default/` by {@link migrateLegacyDefaultProfileLayout}.
+ */
+const GLOBAL_ROOT_ENTRIES = new Set<string>(["profiles", INSTALL_ID_FILE, ...MAIN_CONFIG_FILENAMES]);
+
+export interface LegacyLayoutMigrationResult {
+	migrated: boolean;
+	/** Entries moved into `profiles/default/` (empty when nothing to migrate). */
+	movedEntries: string[];
+	targetDir: string;
+}
+
+/**
+ * One-time move of the legacy bare-root default profile
+ * (`~/.veyyon/agent`, `~/.veyyon/logs`, …) into `~/.veyyon/profiles/default/`.
+ *
+ * - Nothing to do when no legacy `agent/` dir exists (fresh install, or
+ *   already migrated).
+ * - FAILS CLOSED when both the legacy `agent/` dir and `profiles/default/`
+ *   exist: two candidate default profiles is a state we must never guess
+ *   about, so the error names both directories and how to reconcile.
+ * - Otherwise moves every non-global root entry (same-filesystem rename) and
+ *   reports what moved so the caller can print one loud notice.
+ *
+ * Must run before anything reads or writes profile paths (the CLI calls it
+ * right after startup profile resolution, before `.env` loading).
+ */
+export function migrateLegacyDefaultProfileLayout(): LegacyLayoutMigrationResult {
+	const root = getBaseConfigRoot();
+	const legacyAgentDir = path.join(root, "agent");
+	const targetDir = path.join(root, "profiles", DEFAULT_PROFILE_DIR_NAME);
+	if (!fs.existsSync(legacyAgentDir)) {
+		return { migrated: false, movedEntries: [], targetDir };
+	}
+	if (fs.existsSync(targetDir)) {
+		throw new Error(
+			`Both the legacy default-profile layout (${legacyAgentDir}) and the new one (${targetDir}) exist. ` +
+				`Veyyon cannot guess which is current. Merge or remove one — typically: move the contents of ` +
+				`${legacyAgentDir} (and sibling state dirs like logs/, plugins/, cache/) into ${targetDir}, ` +
+				`then delete the legacy copies — and relaunch.`,
+		);
+	}
+	fs.mkdirSync(targetDir, { recursive: true });
+	const movedEntries: string[] = [];
+	for (const entry of fs.readdirSync(root)) {
+		if (GLOBAL_ROOT_ENTRIES.has(entry)) continue;
+		fs.renameSync(path.join(root, entry), path.join(targetDir, entry));
+		movedEntries.push(entry);
+	}
+	movedEntries.sort((a, b) => a.localeCompare(b));
+	return { migrated: true, movedEntries, targetDir };
 }
 /** Get the agent config directory (~/.veyyon/agent). */
 export function getAgentDir(): string {
@@ -620,49 +814,50 @@ export function getReportsDir(): string {
 	return dirs.rootSubdir("reports", "state");
 }
 
-/** Get the logs directory (~/.veyyon/logs). */
+/** Get the logs directory (~/.veyyon/profiles/<name>/logs). */
 export function getLogsDir(): string {
 	return dirs.rootSubdir("logs", "state");
 }
 
-/** Get the path to a dated log file (~/.veyyon/logs/veyyon.YYYY-MM-DD.log). */
+/** Get the path to a dated log file (~/.veyyon/profiles/<name>/logs/veyyon.YYYY-MM-DD.log). */
 export function getLogPath(date = new Date()): string {
 	return path.join(getLogsDir(), `${APP_NAME}.${date.toISOString().slice(0, 10)}.log`);
 }
 
 /**
- * Get the plugins directory (~/.veyyon/plugins or its XDG equivalent).
+ * Get the plugins directory for the active profile
+ * (`~/.veyyon/profiles/<name>/plugins`, or its XDG equivalent).
  *
  * No-arg form (production callers) goes through the XDG-aware DirResolver so
  * reads and writes always agree. The optional `home` parameter is for test
  * isolation: when it differs from `os.homedir()` it short-circuits the resolver
- * and returns `<home>/<configDir>/plugins` so tests with a temp HOME get a
- * deterministic path. Passing `os.homedir()` explicitly is identical to the
- * no-arg form — XDG semantics are preserved.
+ * and returns `<home>/<configDir>/profiles/<profile>/plugins`. Passing
+ * `os.homedir()` explicitly is identical to the no-arg form — XDG semantics are
+ * preserved.
  */
 export function getPluginsDir(home?: string): string {
 	if (home !== undefined && home !== RESOLVER_HOME) {
-		return path.join(home, getConfigDirName(), "plugins");
+		return path.join(home, getConfigDirName(), "profiles", getActiveProfile() ?? DEFAULT_PROFILE_DIR_NAME, "plugins");
 	}
 	return dirs.rootSubdir("plugins", "data");
 }
 
-/** Where npm installs packages (~/.veyyon/plugins/node_modules). */
+/** Where npm installs packages (profile plugins dir / node_modules). */
 export function getPluginsNodeModules(home?: string): string {
 	return path.join(getPluginsDir(home), "node_modules");
 }
 
-/** Plugin manifest (~/.veyyon/plugins/package.json). */
+/** Plugin package.json under the profile plugins dir. */
 export function getPluginsPackageJson(home?: string): string {
 	return path.join(getPluginsDir(home), "package.json");
 }
 
-/** Plugin lock file (~/.veyyon/plugins/veyyon-plugins.lock.json). */
+/** Plugin lock file under the profile plugins dir. */
 export function getPluginsLockfile(home?: string): string {
 	return path.join(getPluginsDir(home), "veyyon-plugins.lock.json");
 }
 
-/** Get the remote mount directory (~/.veyyon/remote). */
+/** Get the remote mount directory (~/.veyyon/profiles/<name>/remote). */
 export function getRemoteDir(): string {
 	return dirs.rootSubdir("remote", "data");
 }
@@ -691,7 +886,7 @@ let worktreesDirOverride: string | undefined;
  * Relocate the base directory for agent-managed worktrees (PR checkouts, task
  * isolation, and `veyyon worktree` cleanup all read the same base). Driven by the
  * `worktree.base` setting in coding-agent; pass `undefined`/empty to clear and
- * fall back to `VEYYON_WORKTREE_DIR` / `OMP_WORKTREE_DIR` or the `~/.veyyon/wt` default.
+ * fall back to `VEYYON_WORKTREE_DIR` or the profile `wt/` default.
  *
  * `~` is expanded and a relative path is rejected (see {@link resolveWorktreeBase}).
  * Returns the absolute path that took effect, or `undefined` if the input was
@@ -705,14 +900,14 @@ export function setWorktreesDir(dir: string | undefined): string | undefined {
 
 /**
  * Get the agent-managed worktrees directory. Resolution order: the
- * `VEYYON_WORKTREE_DIR` / `OMP_WORKTREE_DIR` env var, then the {@link setWorktreesDir} override (the
- * `worktree.base` setting), then the `~/.veyyon/wt` default. The env var and the
+ * `VEYYON_WORKTREE_DIR` env var, then the {@link setWorktreesDir} override (the
+ * `worktree.base` setting), then the profile `wt/` default. The env var and the
  * override are both `~`-expanded and must be absolute; a relative value is
  * ignored and resolution falls through.
  */
 export function getWorktreesDir(): string {
 	return (
-		resolveWorktreeBase(pickProcessEnv("VEYYON_WORKTREE_DIR", "OMP_WORKTREE_DIR")) ??
+		resolveWorktreeBase(pickProcessEnv("VEYYON_WORKTREE_DIR")) ??
 		worktreesDirOverride ??
 		dirs.rootSubdir("wt", "data")
 	);
@@ -723,7 +918,7 @@ export function getSshControlDir(): string {
 	return dirs.rootSubdir("ssh-control", "state");
 }
 
-/** Get the remote host info directory (~/.veyyon/remote-host). */
+/** Get the remote host info directory (profile `remote-host/`). */
 export function getRemoteHostDir(): string {
 	return dirs.rootSubdir("remote-host", "data");
 }
@@ -756,7 +951,7 @@ export function getAutoQaDbDir(): string {
  * Stable 7-character hex digest of an absolute filesystem path.
  *
  * Used to pack the project identity into a single short fs-safe segment
- * (e.g. PR-checkout and task-isolation worktree dirs under `~/.veyyon/wt/`).
+ * (e.g. PR-checkout and task-isolation worktree dirs under profile `wt/`).
  * Bun.hash is non-cryptographic — collision space is ~2^28, which is fine
  * for naming a handful of repos on a single machine. Same input on the
  * same Bun runtime yields the same output.
@@ -765,7 +960,7 @@ export function hashPath(absPath: string): string {
 	return Bun.hash(path.resolve(absPath)).toString(16).padStart(16, "0").slice(-7);
 }
 
-/** Get the path to a single worktree directory (~/.veyyon/wt/<segment>). */
+/** Get the path to a single worktree directory (profile `wt/<segment>`). */
 export function getWorktreeDir(segment: string): string {
 	return path.join(getWorktreesDir(), segment);
 }
@@ -776,33 +971,33 @@ export function getGpuCachePath(): string {
 }
 
 /**
- * Get the GitHub view cache database path (~/.veyyon/cache/github-cache.db).
- * Honors the `VEYYON_GITHUB_CACHE_DB` / `OMP_GITHUB_CACHE_DB` env var when set so tests can isolate the
+ * Get the GitHub view cache database path (profile `cache/github-cache.db`).
+ * Honors the `VEYYON_GITHUB_CACHE_DB` env var when set so tests can isolate the
  * cache file without touching the rest of the config root.
  */
 export function getGithubCacheDbPath(): string {
-	const override = pickProcessEnv("VEYYON_GITHUB_CACHE_DB", "OMP_GITHUB_CACHE_DB");
+	const override = pickProcessEnv("VEYYON_GITHUB_CACHE_DB");
 	if (override) return override;
 	return dirs.rootSubdir(path.join("cache", "github-cache.db"), "cache");
 }
 
 /**
- * Get the encrypted auth-broker snapshot cache path (~/.veyyon/cache/auth-broker-snapshot.enc).
- * Honors the `VEYYON_AUTH_BROKER_SNAPSHOT_CACHE` / `OMP_AUTH_BROKER_SNAPSHOT_CACHE` env var when set so tests and
+ * Get the encrypted auth-broker snapshot cache path (profile `cache/auth-broker-snapshot.enc`).
+ * Honors the `VEYYON_AUTH_BROKER_SNAPSHOT_CACHE` env var when set so tests and
  * operators can isolate or relocate the cache file.
  */
 export function getAuthBrokerSnapshotCachePath(): string {
-	const override = pickProcessEnv("VEYYON_AUTH_BROKER_SNAPSHOT_CACHE", "OMP_AUTH_BROKER_SNAPSHOT_CACHE");
+	const override = pickProcessEnv("VEYYON_AUTH_BROKER_SNAPSHOT_CACHE");
 	if (override) return override;
 	return dirs.rootSubdir(path.join("cache", "auth-broker-snapshot.enc"), "cache");
 }
 
-/** Get the local FastEmbed model cache directory (~/.veyyon/cache/fastembed). */
+/** Get the local FastEmbed model cache directory (profile `cache/fastembed`). */
 export function getFastembedCacheDir(): string {
 	return dirs.rootSubdir(path.join("cache", "fastembed"), "cache");
 }
 
-/** Get the on-demand fastembed runtime install root (~/.veyyon/cache/fastembed-runtime). */
+/** Get the on-demand fastembed runtime install root (profile `cache/fastembed-runtime`). */
 export function getFastembedRuntimeDir(): string {
 	return dirs.rootSubdir(path.join("cache", "fastembed-runtime"), "cache");
 }
@@ -921,7 +1116,7 @@ export function getCrashLogPath(agentDir?: string): string {
 	return dirs.agentSubdir(agentDir, "veyyon-crash.log", "state");
 }
 
-/** Get the debug log path (~/.veyyon/agent/omp-debug.log). */
+/** Get the debug log path (~/.veyyon/agent/veyyon-debug.log). */
 export function getDebugLogPath(agentDir?: string): string {
 	return dirs.agentSubdir(agentDir, `${APP_NAME}-debug.log`, "state");
 }
@@ -971,7 +1166,6 @@ export function getSSHConfigPath(scope: "user" | "project", cwd: string = getPro
 
 let cachedInstallId: string | null = null;
 
-const INSTALL_ID_FILE = "install-id";
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**

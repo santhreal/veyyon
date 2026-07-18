@@ -5,7 +5,7 @@ description: Use when creating a new veyyon marketplace. Covers marketplace.json
 
 # Authoring Marketplaces
 
-A marketplace is a Git repository (or local directory) that contains a catalog file at either `.omp-plugin/marketplace.json` (preferred for omp-specific catalogs) or `.claude-plugin/marketplace.json` (Claude Code-compatible; used as the fallback). Anyone can author one. Users add it with `/marketplace add owner/repo` and then install individual plugins from it.
+A marketplace is a Git repository (or local directory) that contains a catalog file at either `.veyyon-plugin/marketplace.json` (preferred for veyyon-specific catalogs) or `.claude-plugin/marketplace.json` (Claude Code-compatible; used as the fallback). Anyone can author one. Users add it with `/marketplace add owner/repo` and then install individual plugins from it.
 
 ## Minimum viable marketplace
 
@@ -43,7 +43,7 @@ Push to GitHub. Users install with:
 
 ## marketplace.json schema
 
-The catalog file lives at either `.omp-plugin/marketplace.json` or `.claude-plugin/marketplace.json` in the repository root. veyyon prefers the `.omp-plugin/` path and falls back to the Claude path; a repository may publish both to expose tool-specific catalogs from a single source tree.
+The catalog file lives at either `.veyyon-plugin/marketplace.json` or `.claude-plugin/marketplace.json` in the repository root. veyyon prefers the `.veyyon-plugin/` path and falls back to the Claude path; a repository may publish both to expose tool-specific catalogs from a single source tree.
 
 ### Top-level fields
 
@@ -102,7 +102,7 @@ The catalog file lives at either `.omp-plugin/marketplace.json` or `.claude-plug
       "category": "devops",
       "source": {
         "source": "github",
-        "repo": "acme-corp/omp-deploy-plugin",
+        "repo": "acme-corp/veyyon-deploy-plugin",
         "ref": "main"
       }
     }
@@ -183,7 +183,7 @@ Declares the plugin as an npm package. `version` is optional:
 ```json
 "source": {
   "source": "npm",
-  "package": "@acme/omp-plugin",
+  "package": "@acme/veyyon-plugin",
   "version": "1.2.0"
 }
 ```
@@ -225,7 +225,7 @@ veyyon plugin install name@marketplace-name
 
 Scope behavior:
 
-- **user** (default) — installed in `~/.veyyon/plugins/installed_plugins.json`, available in all projects
+- **user** (default) — installed in `~/.veyyon/profiles/default/plugins/installed_plugins.json`, available in all projects
 - **project** — installed in `<project>/.veyyon/plugins/installed_plugins.json`, available only in that project
 
 Project-scoped installs shadow user-scoped installs of the same plugin name.
@@ -245,7 +245,7 @@ Invalid: `-bad-start`, `bad-end-`, `.dot-start`, `Under_score`, `HAS_CAPS`
 
 ## Publishing workflow
 
-1. Create `marketplace.json` at `.omp-plugin/marketplace.json` (omp-only) or `.claude-plugin/marketplace.json` (shared with Claude Code) in a new Git repo.
+1. Create `marketplace.json` at `.veyyon-plugin/marketplace.json` (veyyon-only) or `.claude-plugin/marketplace.json` (shared with Claude Code) in a new Git repo.
 2. Add plugin entries pointing to subdirectories (or external sources).
 3. Push to GitHub.
 4. Share the `owner/repo` string. Users add it with `/marketplace add owner/repo`.

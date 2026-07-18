@@ -5,7 +5,7 @@ import {
 	type OpenAIGatewayRoutingParams,
 	type ResolveOpenAIOutputTokenInput,
 	resolveOpenAIOutputTokenParam,
-} from "@veyyon/pi-ai/providers/openai-shared";
+} from "@veyyon/ai/providers/openai-shared";
 
 const OPENAI_MAX_OUTPUT_TOKENS = 64_000;
 

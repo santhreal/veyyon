@@ -1,3 +1,5 @@
+import { getNonBlankStringProperty as stringField } from "@veyyon/utils";
+
 const HASHLINE_FILE_PREFIX = "¶";
 const HASHLINE_FILE_TAG_RE = /#[0-9a-fA-F]{4}$/u;
 
@@ -22,11 +24,6 @@ export function resolveToolEventInput(
 		resolved[key] = nextValue;
 	}
 	return resolved;
-}
-
-function stringField(input: Record<string, unknown>, key: string): string | undefined {
-	const value = input[key];
-	return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
 function normalizeHashlineHeaderPath(body: string): string | undefined {

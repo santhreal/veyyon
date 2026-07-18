@@ -7,8 +7,8 @@
  * owner instead of a parallel session-id registry.
  */
 
-import type { AgentMessage } from "@veyyon/pi-agent-core";
-import { logger } from "@veyyon/pi-utils";
+import type { AgentMessage } from "@veyyon/agent-core";
+import { logger } from "@veyyon/utils";
 import { onHindsightScopeChanged, type Settings } from "../config/settings";
 import type { MemoryBackend, MemoryBackendStartOptions } from "../memory-backend/types";
 import type { AgentSession } from "../session/agent-session";

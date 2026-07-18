@@ -1,5 +1,5 @@
 /**
- * Shared chart primitives for the dashboard timeline charts: the OMP color
+ * Shared chart primitives for the dashboard timeline charts: the Veyyon color
  * palette, light/dark chart chrome, legend/tooltip + scale plumbing, dataset
  * styling, and the top-N-by-model / aggregate bucketing used by the cost and
  * behavior series.
@@ -7,37 +7,38 @@
 
 import { format } from "date-fns";
 
-// OMP brand palette (packages/collab-web/src/styles/tokens.css): pink/purple/cyan.
-// Categorical series lead with the brand gradient hues (pink -> purple -> cyan).
+// Veyyon categorical palette: the ember sun leads, then silver and the semantic
+// hues, kept distinguishable while staying on-brand — no cyan/purple/rainbow
+// (see docs/internal/brand.md, packages/collab-web/src/styles/tokens.css).
 export const MODEL_COLORS = [
-	"#ed4abf", // brand pink (accent)
-	"#9b4dff", // brand violet
-	"#5ad8e6", // brand cyan
-	"#62d394", // green
-	"#c77dff", // light purple
-	"#ff8fd1", // light pink
-	"#f5c14b", // amber
-	"#ff6b7d", // rose
+	"#f0862e", // ember sun (accent)
+	"#c6cbd4", // silver
+	"#7fb98a", // green
+	"#c9a24b", // amber
+	"#c96f6e", // red
+	"#fb9e44", // ember-hi
+	"#8891a0", // cool slate
+	"#9e5a2a", // deep ember / bronze
 ];
 
 export const CHART_THEMES = {
 	dark: {
-		legendLabel: "#a89fb3",
-		tooltipBackground: "#241a2e",
-		tooltipTitle: "#eae5ef",
-		tooltipBody: "#a89fb3",
-		tooltipBorder: "rgba(255, 255, 255, 0.12)",
-		grid: "rgba(255, 255, 255, 0.06)",
-		tick: "#867a93",
+		legendLabel: "#b4bac4",
+		tooltipBackground: "#000000",
+		tooltipTitle: "#e6e9ee",
+		tooltipBody: "#b4bac4",
+		tooltipBorder: "rgba(198, 203, 212, 0.21)",
+		grid: "rgba(198, 203, 212, 0.10)",
+		tick: "#7c828d",
 	},
 	light: {
-		legendLabel: "#5a5462",
+		legendLabel: "#5c6470",
 		tooltipBackground: "#ffffff",
-		tooltipTitle: "#241a2e",
-		tooltipBody: "#5a5462",
-		tooltipBorder: "rgba(20, 12, 28, 0.15)",
-		grid: "rgba(20, 12, 28, 0.08)",
-		tick: "#6a6275",
+		tooltipTitle: "#343b45",
+		tooltipBody: "#5c6470",
+		tooltipBorder: "rgba(52, 59, 69, 0.18)",
+		grid: "rgba(52, 59, 69, 0.10)",
+		tick: "#6a717c",
 	},
 } as const;
 

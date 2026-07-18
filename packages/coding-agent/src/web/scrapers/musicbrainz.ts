@@ -2,9 +2,9 @@
  * MusicBrainz URL handler for artists, releases, and recordings
  */
 
-import { tryParseJson } from "@veyyon/pi-utils";
-import type { RenderResult, SpecialHandler } from "./types";
-import { buildResult, formatMediaDuration, loadPage } from "./types";
+import { tryParseJson } from "@veyyon/utils";
+import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
+import { buildResult, formatMediaDuration, loadPage, scraperDegrade, tryParseUrl } from "./types";
 
 type MusicBrainzEntity = "artist" | "release" | "recording";
 
@@ -216,9 +216,10 @@ export const handleMusicBrainz: SpecialHandler = async (
 	url: string,
 	timeout: number,
 	signal?: AbortSignal,
-): Promise<RenderResult | null> => {
+): Promise<RenderResult | ScraperDegrade | null> => {
 	try {
-		const parsed = new URL(url);
+		const parsed = tryParseUrl(url);
+		if (!parsed) return null;
 		const parsedEntity = parseEntity(parsed);
 		if (!parsedEntity) return null;
 
@@ -244,7 +245,7 @@ export const handleMusicBrainz: SpecialHandler = async (
 		}
 
 		return buildResult(md, { url, method: "musicbrainz-api", fetchedAt, notes: ["Fetched via MusicBrainz API"] });
-	} catch {}
-
-	return null;
+	} catch (error) {
+		return scraperDegrade("musicbrainz", error);
+	}
 };

@@ -1,5 +1,5 @@
 /**
- * ACP stdout-hygiene smoke: launching `omp acp` must not leak any banner,
+ * ACP stdout-hygiene smoke: launching `veyyon acp` must not leak any banner,
  * progress text, or stray non-JSON bytes onto stdout — that channel is owned
  * by the JSON-RPC protocol. We spawn the CLI as a subprocess, send a single
  * `initialize` frame, and assert the first stdout line parses cleanly as a
@@ -20,7 +20,7 @@ let activeProc: AcpProc | undefined;
 
 /**
  * Tear the child down hard. SIGTERM first so the process gets a chance to
- * unwind, but force-kill quickly if it hasn't reaped — `omp acp` blocks on
+ * unwind, but force-kill quickly if it hasn't reaped — `veyyon acp` blocks on
  * stdin reads and won't notice SIGTERM until we close the pipes. We bound
  * the entire shutdown to ~2s so a stuck child never trips Bun's 5s hook
  * timeout (which is what produced the "afterEach hook timed out" flakes).
@@ -103,7 +103,7 @@ async function readFirstFrame(stream: ReadableStream<Uint8Array>): Promise<strin
 
 describe("ACP stdout hygiene", () => {
 	it("emits a JSON-RPC initialize response as the first bytes on stdout", async () => {
-		const root = await fs.promises.mkdtemp(path.join(os.tmpdir(), "omp-acp-stdout-"));
+		const root = await fs.promises.mkdtemp(path.join(os.tmpdir(), "veyyon-acp-stdout-"));
 		cleanupRoots.push(root);
 		const xdg = path.join(root, "xdg");
 		const agentDir = path.join(root, "agent");
@@ -113,8 +113,9 @@ describe("ACP stdout hygiene", () => {
 		// NOTE: we intentionally do NOT override HOME. Bun keys its transpile
 		// cache at `$HOME/.bun/install/cache`; pointing HOME at a fresh tmp
 		// dir forces a full re-transpile of the CLI's module graph on every
-		// run (~12s cold vs ~0.4s warm). XDG_* and PI_CODING_AGENT_DIR
-		// already isolate PI's on-disk state for this smoke test.
+		// run (~12s cold vs ~0.4s warm). VEYYON_CONFIG_DIR redirects the whole
+		// config root (XDG is ignored once an agent-dir override is set) and
+		// VEYYON_CODING_AGENT_DIR isolates the agent state.
 		const proc = Bun.spawn(["bun", cliEntry, "acp"], {
 			cwd: repoRoot,
 			stdin: "pipe",
@@ -124,8 +125,9 @@ describe("ACP stdout hygiene", () => {
 				...process.env,
 				XDG_DATA_HOME: xdg,
 				XDG_CONFIG_HOME: xdg,
-				PI_CODING_AGENT_DIR: agentDir,
-				PI_NO_TITLE: "1",
+				VEYYON_CONFIG_DIR: path.relative(os.homedir(), path.join(root, "config")),
+				VEYYON_CODING_AGENT_DIR: agentDir,
+				VEYYON_NO_TITLE: "1",
 				NO_COLOR: "1",
 			},
 		});

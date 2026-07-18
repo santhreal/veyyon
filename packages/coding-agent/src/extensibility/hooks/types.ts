@@ -1,6 +1,6 @@
-import type { ImageContent, Message, Model, TextContent } from "@veyyon/pi-ai";
-import type { Component, TUI } from "@veyyon/pi-tui";
-import type { logger as PiLogger } from "@veyyon/pi-utils";
+import type { ImageContent, Message, Model, TextContent } from "@veyyon/ai";
+import type { Component, TUI } from "@veyyon/tui";
+import type { logger as PiLogger } from "@veyyon/utils";
 import type { Type } from "arktype";
 import type * as zod from "zod/v4";
 import type { ModelRegistry } from "../../config/model-registry";

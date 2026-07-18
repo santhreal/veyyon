@@ -26,8 +26,8 @@
 		"fmt": "biome format --write ."
 	},
 	"dependencies": {
-		"@veyyon/pi-utils": "catalog:",
-		"@veyyon/pi-wire": "catalog:",
+		"@veyyon/utils": "catalog:",
+		"@veyyon/wire": "catalog:",
 		"react": "catalog:"
 	},
 	"devDependencies": {

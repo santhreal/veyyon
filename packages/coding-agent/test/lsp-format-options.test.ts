@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { detectIndentFromContent, resolveFormatOptions } from "@veyyon/pi-coding-agent/lsp/format-options";
-import { getProjectDir, removeWithRetries, Snowflake, setProjectDir } from "@veyyon/pi-utils";
+import { detectIndentFromContent, resolveFormatOptions } from "@veyyon/coding-agent/lsp/format-options";
+import { getProjectDir, removeWithRetries, Snowflake, setProjectDir } from "@veyyon/utils";
 
 /**
  * Regression coverage for issue #2329 — the LSP format-on-write path used to
@@ -61,7 +61,7 @@ describe("resolveFormatOptions", () => {
 
 	beforeEach(async () => {
 		previousProjectDir = getProjectDir();
-		tempDir = path.join(os.tmpdir(), "pi-coding-agent-format-options", Snowflake.next());
+		tempDir = path.join(os.tmpdir(), "veyyon-format-options", Snowflake.next());
 		await fs.mkdir(tempDir, { recursive: true });
 		setProjectDir(tempDir);
 	});

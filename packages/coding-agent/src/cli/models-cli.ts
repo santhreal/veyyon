@@ -11,9 +11,9 @@
  * `ls`/`find` use the cache when fresh (`online-if-uncached`); only `refresh`
  * forces the network (`online`).
  */
-import type { Api, Effort, Model } from "@veyyon/pi-ai";
-import { getSupportedEfforts } from "@veyyon/pi-catalog/model-thinking";
-import { formatNumber, getProjectDir } from "@veyyon/pi-utils";
+import type { Api, Effort, Model } from "@veyyon/ai";
+import { getSupportedEfforts } from "@veyyon/catalog/model-thinking";
+import { formatNumber, getProjectDir } from "@veyyon/utils";
 import chalk from "chalk";
 import { ModelRegistry } from "../config/model-registry";
 import { Settings } from "../config/settings";
@@ -213,7 +213,9 @@ function renderProviderModels(
 	}
 
 	if (available.length === 0) {
-		writeLine("No models available. Set API keys in environment variables.");
+		writeLine(
+			"No models available. Set an API key environment variable, or sign in with /login in an interactive session.",
+		);
 		return;
 	}
 	if (filtered.length === 0) {

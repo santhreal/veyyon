@@ -1,3 +1,4 @@
+import { errorMessage } from "@veyyon/utils";
 /**
  * Convert JSON Type Definition (JTD) to JSON Schema.
  *
@@ -212,7 +213,7 @@ export function normalizeSchema(schema: unknown): { normalized?: unknown; error?
 		try {
 			return { normalized: JSON.parse(schema) };
 		} catch (err) {
-			return { error: err instanceof Error ? err.message : String(err) };
+			return { error: errorMessage(err) };
 		}
 	}
 	return { normalized: schema };

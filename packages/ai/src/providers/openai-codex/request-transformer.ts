@@ -1,6 +1,6 @@
-import { Effort } from "@veyyon/pi-catalog/effort";
-import { supportsAllTurnsReasoningContext, supportsCodexReasoningSummary } from "@veyyon/pi-catalog/identity";
-import { requireSupportedEffort } from "@veyyon/pi-catalog/model-thinking";
+import { Effort } from "@veyyon/catalog/effort";
+import { supportsAllTurnsReasoningContext, supportsCodexReasoningSummary } from "@veyyon/catalog/identity";
+import { requireSupportedEffort } from "@veyyon/catalog/model-thinking";
 import type { Model } from "../../types";
 import { mapOpenAIReasoningEffort } from "../openai-shared";
 

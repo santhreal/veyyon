@@ -4,7 +4,7 @@
  * Note: command execution is async to avoid blocking the TUI.
  */
 
-import { executeShell } from "@veyyon/pi-natives";
+import { executeShell } from "@veyyon/natives";
 
 /** Cache for successful shell command results (persists for process lifetime). */
 const commandResultCache = new Map<string, string>();

@@ -1,10 +1,10 @@
 import { describe, expect, it } from "bun:test";
-import { Effort } from "@veyyon/pi-ai";
-import { buildModel } from "@veyyon/pi-catalog/build";
-import { resolveAgentModelPatterns, resolveModelOverride } from "@veyyon/pi-coding-agent/config/model-resolver";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { getBundledAgent } from "@veyyon/pi-coding-agent/task/agents";
-import { AUTO_THINKING } from "@veyyon/pi-coding-agent/thinking";
+import { Effort } from "@veyyon/ai";
+import { buildModel } from "@veyyon/catalog/build";
+import { resolveAgentModelPatterns, resolveModelOverride } from "@veyyon/coding-agent/config/model-resolver";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import { getBundledAgent } from "@veyyon/coding-agent/task/agents";
+import { AUTO_THINKING } from "@veyyon/coding-agent/thinking";
 
 describe("bundled agent parsing", () => {
 	it("lets reviewer inherit thinking effort from its model role", () => {

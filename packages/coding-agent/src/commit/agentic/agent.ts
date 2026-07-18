@@ -1,8 +1,8 @@
-import type { ThinkingLevel } from "@veyyon/pi-agent-core";
-import type { Api, Model } from "@veyyon/pi-ai";
-import { Markdown } from "@veyyon/pi-tui";
-import { prompt } from "@veyyon/pi-utils";
-import { INTENT_FIELD } from "@veyyon/pi-wire";
+import type { ThinkingLevel } from "@veyyon/agent-core";
+import type { Api, Model } from "@veyyon/ai";
+import { Markdown } from "@veyyon/tui";
+import { prompt } from "@veyyon/utils";
+import { INTENT_FIELD } from "@veyyon/wire";
 import chalk from "chalk";
 import typesDescriptionPrompt from "../../commit/prompts/types-description.md" with { type: "text" };
 import type { ModelRegistry } from "../../config/model-registry";

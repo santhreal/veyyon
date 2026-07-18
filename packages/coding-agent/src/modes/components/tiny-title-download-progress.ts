@@ -1,5 +1,5 @@
-import { type Component, truncateToWidth, visibleWidth } from "@veyyon/pi-tui";
-import { formatBytes } from "@veyyon/pi-utils";
+import { type Component, truncateToWidth, visibleWidth } from "@veyyon/tui";
+import { formatBytes } from "@veyyon/utils";
 import { getTinyTitleModelSpec, type TinyTitleLocalModelKey } from "../../tiny/models";
 import type { TinyTitleProgressEvent } from "../../tiny/title-protocol";
 import { theme } from "../theme/theme";

@@ -1,4 +1,5 @@
 import type { AgentStorage } from "../../../session/agent-storage";
+import { scopedTimeoutSignal } from "../../../utils/fetch-timeout";
 import { SearchProviderError, type SearchProviderId, type SearchSource } from "../../../web/search/types";
 import { dateToAgeSeconds } from "../utils";
 
@@ -56,9 +57,11 @@ export function findCredential(
 export const SEARCH_HARD_TIMEOUT_MS = 60_000;
 
 /**
- * Compose a caller-supplied {@link AbortSignal} with a hard timeout so an
- * outbound `fetch()` is guaranteed to settle within `ms` even when the
- * runtime fails to propagate cancellation to the underlying transport.
+ * Run a provider request under a caller signal composed with a hard timeout,
+ * so the outbound `fetch()` (and the body read after it) is guaranteed to
+ * settle within `ms` even when the runtime fails to propagate cancellation to
+ * the underlying transport. The backing timer is cleared the moment `fn`
+ * settles, so no armed timeout outlives the request.
  *
  * Bun's WinHTTP backend on Windows is known to ignore `AbortSignal` once a
  * TCP/TLS connection stalls (oven-sh/bun#15275, oven-sh/bun#18536); without
@@ -68,9 +71,17 @@ export const SEARCH_HARD_TIMEOUT_MS = 60_000;
  * @param signal - Caller cancellation signal, if any.
  * @param ms - Hard timeout in milliseconds. Defaults to {@link SEARCH_HARD_TIMEOUT_MS}.
  */
-export function withHardTimeout(signal: AbortSignal | undefined, ms: number = SEARCH_HARD_TIMEOUT_MS): AbortSignal {
-	const timeout = AbortSignal.timeout(ms);
-	return signal ? AbortSignal.any([signal, timeout]) : timeout;
+export async function withHardTimeout<T>(
+	signal: AbortSignal | undefined,
+	fn: (signal: AbortSignal) => Promise<T>,
+	ms: number = SEARCH_HARD_TIMEOUT_MS,
+): Promise<T> {
+	const timeout = scopedTimeoutSignal(ms, signal);
+	try {
+		return await fn(timeout.signal);
+	} finally {
+		timeout.cancel();
+	}
 }
 
 /**

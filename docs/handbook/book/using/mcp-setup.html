@@ -10,6 +10,10 @@
         <!-- Veyyon handbook: self-contained head additions. No remote resources. -->
         <meta name="theme-color" content="#050505">
         <meta name="color-scheme" content="dark">
+        <!-- Site favicons live at the deployed root, one level above /docs/. -->
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+        <link rel="icon" href="/favicon.ico" sizes="48x48">
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png">
         <style>
           /* Paint the near-black surface before CSS/JS resolve the theme, so there is
              no light flash on load. Kept in sync with theme/veyyon.css. */
@@ -18,7 +22,7 @@
           *, *::before, *::after { box-sizing: border-box; }
         </style>
 
-        <meta name="description" content="How Veyyon turns open models into frontier coding agents. The product, the harness, tool-call repair, the edit format, per-model adaptation, and how to use it.">
+        <meta name="description" content="Operator handbook for the Veyyon terminal coding agent: install, configuration, tools, approvals, edit formats, providers, and harness structure.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -38,7 +42,7 @@
         <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="../ayu-highlight-3fdfc3ac.css">
 
         <!-- Custom theme stylesheets -->
-        <link rel="stylesheet" href="../theme/veyyon-fc839a17.css">
+        <link rel="stylesheet" href="../theme/veyyon-06f6939e.css">
 
 
         <!-- Provide site root and default themes to javascript -->
@@ -46,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-e76f06ca.js";
+            window.path_to_searchindex_js = "../searchindex-a2447057.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-9cfd259b.js"></script>
+        <script src="../toc-cc1a72e9.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -206,7 +210,7 @@ transport, authenticate, and fix the most common connection problems.</p>
 </thead>
 <tbody>
 <tr><td>Project</td><td><code>.veyyon/mcp.json</code></td></tr>
-<tr><td>User</td><td><code>~/.veyyon/agent/mcp.json</code> (profile: <code>~/.veyyon/profiles/&lt;name&gt;/agent/mcp.json</code>)</td></tr>
+<tr><td>User</td><td><code>~/.veyyon/profiles/default/agent/mcp.json</code> (profile: <code>~/.veyyon/profiles/&lt;name&gt;/agent/mcp.json</code>)</td></tr>
 </tbody>
 </table>
 </div>
@@ -298,7 +302,7 @@ TUI with <code>/mcp reauth &lt;name&gt;</code>:</p>
 <p>Every tool an MCP server exposes appears namespaced as <code>mcp__&lt;server&gt;__&lt;tool&gt;</code> and is governed by the
 global <code>tools.approvalMode</code> plus per-tool <code>tools.approval</code>. To require a prompt for a specific server’s
 tools, set a per-tool policy:</p>
-<pre><code class="language-yaml"># ~/.veyyon/agent/config.yml
+<pre><code class="language-yaml"># ~/.veyyon/profiles/default/agent/config.yml
 tools:
   approval:
     mcp__sqlite__query: prompt
@@ -331,7 +335,7 @@ tools:
 </code></pre>
 <h3 id="timeout"><a class="header" href="#timeout">Timeout</a></h3>
 <p>If <code>/mcp</code> shows the server but tool calls time out, raise the per-server <code>timeout</code> (milliseconds), or
-set <code>VEYYON_MCP_TIMEOUT_MS</code> (legacy <code>OMP_MCP_TIMEOUT_MS</code>) for the whole process:</p>
+set <code>VEYYON_MCP_TIMEOUT_MS</code> for the whole process:</p>
 <pre><code class="language-json">{ "mcpServers": { "analytics": { "type": "http", "url": "…", "timeout": 60000 } } }
 </code></pre>
 <h3 id="authentication-failure"><a class="header" href="#authentication-failure">Authentication failure</a></h3>
@@ -344,7 +348,7 @@ may require additional headers.</p>
 namespaced tool. Run <code>/mcp verbose</code> to see what was registered.</p>
 <h2 id="where-to-go-next"><a class="header" href="#where-to-go-next">Where to go next</a></h2>
 <ul>
-<li><a href="../features/mcp.html">MCP</a> for the full feature overview, including running Veyyon as an MCP server.</li>
+<li><a href="../features/mcp.html">MCP</a> for the feature overview (MCP client; ACP is separate).</li>
 <li><a href="./configuration.html">Configuration</a> for config file layout and precedence.</li>
 <li><a href="./extending.html">Tools, skills, and extension data</a> for other ways to extend Veyyon.</li>
 </ul>

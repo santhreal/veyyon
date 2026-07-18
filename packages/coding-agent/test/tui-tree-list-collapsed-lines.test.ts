@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { renderTreeList } from "@veyyon/pi-coding-agent/tui/tree-list";
+import { renderTreeList } from "@veyyon/coding-agent/tui/tree-list";
 
 const stubTheme = {
 	fg: (_color: string, text: string) => text,

@@ -34,9 +34,9 @@
  * that surface reasoning as visible prose. On a hit the failed turn is emitted as
  * an empty retryable stream-stall error; result-awaiting callers (`complete`,
  * `completeSimple`) re-sample it a few times and then let a stubborn loop cook
- * through one unguarded pass. Disable detection with `PI_NO_THINKING_LOOP_GUARD=1`.
+ * through one unguarded pass. Disable detection with `VEYYON_NO_THINKING_LOOP_GUARD=1`.
  */
-import { logger } from "@veyyon/pi-utils";
+import { logger } from "@veyyon/utils";
 import * as AIError from "../error";
 import type { Api, AssistantMessage, Model, StreamOptions } from "../types";
 import { AssistantMessageEventStream } from "./event-stream";
@@ -450,7 +450,7 @@ export function withGeminiThinkingLoopGuard<
 	options: O | undefined,
 	dispatch: (options: O | undefined) => AssistantMessageEventStream,
 ): AssistantMessageEventStream {
-	if (process.env.PI_NO_THINKING_LOOP_GUARD === "1" || !isLoopGuardedModel(model, options)) {
+	if (process.env.VEYYON_NO_THINKING_LOOP_GUARD === "1" || !isLoopGuardedModel(model, options)) {
 		return dispatch(options);
 	}
 	const controller = new AbortController();

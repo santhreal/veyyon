@@ -1,8 +1,8 @@
 import { describe, expect, it } from "bun:test";
-import { convertMessages } from "@veyyon/pi-ai/providers/openai-completions";
-import type { AssistantMessage, Model, ModelSpec } from "@veyyon/pi-ai/types";
-import { buildModel } from "@veyyon/pi-catalog/build";
-import { getBundledModel } from "@veyyon/pi-catalog/models";
+import { convertMessages } from "@veyyon/ai/providers/openai-completions";
+import type { AssistantMessage, Model, ModelSpec } from "@veyyon/ai/types";
+import { buildModel } from "@veyyon/catalog/build";
+import { getBundledModel } from "@veyyon/catalog/models";
 
 interface OpenAICompletionAssistantWireMessage {
 	role: "assistant";

@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import * as fsp from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { head } from "@veyyon/pi-coding-agent/utils/git";
+import { head } from "@veyyon/coding-agent/utils/git";
 
 function makeEintrError(targetPath: string): NodeJS.ErrnoException {
 	const err = new Error(`EINTR: interrupted system call, open '${targetPath}'`) as NodeJS.ErrnoException;

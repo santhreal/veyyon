@@ -5,15 +5,17 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <meta name="theme-color" content="#000000" />
 <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
+<link rel="icon" href="./favicon.ico" sizes="48x48" />
 <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
+<link rel="manifest" href="./site.webmanifest" />
 <meta property="og:site_name" content="Veyyon" />
 <meta property="og:type" content="website" />
 <meta property="og:image" content="https://veyyon.dev/og.png" />
 <meta name="twitter:card" content="summary_large_image" />
-<title>Veyyon — the harness is the lever</title>
-<meta property="og:title" content="Veyyon — the harness is the lever" />
+<title>Veyyon — terminal coding agent</title>
+<meta property="og:title" content="Veyyon — terminal coding agent" />
 <meta property="og:url" content="https://veyyon.dev/" />
-<meta name="description" content="A terminal coding agent that turns capable open models into frontier work. Explicit model selection, edits that land, honest by design." />
+<meta name="description" content="Local terminal coding agent. Your provider keys, hashline edits, tool loop, approval modes, multi-provider catalog. CLI/TUI." />
 <link rel="stylesheet" href="./site.css" />
 </head>
 <body>
@@ -54,56 +56,58 @@
 
     <!-- act I — the idea, centered beneath the sun. leads with what makes veyyon different. -->
     <div class="scene center" id="s1"><p class="scene-name">veyyon</p></div>
-    <div class="scene center" id="s2"><p class="scene-lead">The model is just an engine. Everyone rents the same ones.</p></div>
-    <div class="scene center" id="s3"><p class="scene-lead">What you build around it — the harness — is where work is won or lost.</p></div>
-    <div class="scene center" id="s4"><p class="scene-lead">Veyyon tunes the harness to each model. The same engine does more real work.</p></div>
+    <div class="scene center" id="s2"><p class="scene-lead">Same model weights can succeed or fail depending on tools, edit format, and control flow.</p></div>
+    <div class="scene center" id="s3"><p class="scene-lead">The agent harness owns those layers: schemas, patches, approvals, context.</p></div>
+    <div class="scene center" id="s4"><p class="scene-lead">Veyyon is that harness as a local CLI/TUI on your machine.</p></div>
 
     <!-- act II — the product, left-aligned with the sun docked to the right -->
     <div class="scene left" id="s5"><div class="scene-inner hero-inner">
       <span class="eyebrow">Terminal coding agent</span>
-      <h1>The harness is the lever.</h1>
+      <h1>CLI/TUI agent on your machine.</h1>
       <div class="cta">
-        <a href="./install.html" class="btn primary">Get started</a>
-        <a href="./docs/" class="btn">Read the handbook</a>
+        <a href="./install.html" class="btn primary">Install</a>
+        <a href="./docs/" class="btn">Handbook</a>
       </div>
       <div class="install"><span class="p">$</span><code id="cmd">curl -fsSL https://get.veyyon.dev | sh</code><button id="copy" aria-label="Copy install command">copy</button></div>
-      <div class="run-hint">then <b>vey</b> in any repo to launch</div>
+      <div class="run-hint">then <b>veyyon</b> or <b>vey</b> in a repository</div>
     </div></div>
 
     <div class="scene left" id="s6"><div class="scene-inner">
       <span class="kicker">Plan mode</span>
-      <h2 class="scene-title">Ground, propose, execute.</h2>
-      <p class="scene-detail">Veyyon reads your code and lays out a plan before it touches anything. Tools stay read-only until you approve — so nothing mutates on a guess, and you always see the shape of the work first.</p>
+      <h2 class="scene-title">Plan file, then resolve.</h2>
+      <p class="scene-detail">Plan mode restricts mutation while the agent explores and writes a plan file. Implementation continues after <span class="mono">resolve</span> / approval paths complete. See handbook: Plan mode.</p>
     </div></div>
 
     <div class="scene left" id="s7"><div class="scene-inner">
-      <span class="kicker">Edits that land</span>
-      <h2 class="scene-title">Anchored to content, not line numbers.</h2>
-      <p class="scene-detail">Edits attach to what the code says, then get checked before they apply — so far fewer land malformed. When a patch drifts, the harness repairs it instead of corrupting your file.</p>
+      <span class="kicker">Hashline</span>
+      <h2 class="scene-title">Content-addressed edits.</h2>
+      <p class="scene-detail"><span class="mono">edit</span> / <span class="mono">write</span> use hashline anchors from prior reads. The applier verifies before disk write; stale tags fail with recovery context. Tool-call JSON repair runs before validation.</p>
     </div></div>
 
     <div class="scene left" id="s8"><div class="scene-inner">
       <span class="kicker">Models</span>
-      <h2 class="scene-title">Three models, chosen by you.</h2>
-      <p class="scene-detail">The model you talk to, the one that runs your subagents, and the one that compacts context — each set on its own. No opaque per-role maze, and <span class="mono">default</span> is never a model.</p>
-      <pre class="scene-code"><span class="k">model</span>: <span class="s">openai/gpt-5</span>
+      <h2 class="scene-title">Interactive model, roles, overrides.</h2>
+      <p class="scene-detail">Interactive model: <span class="mono">/model</span>, persisted as <span class="mono">modelRoles.default</span>. Optional roles (<span class="mono">smol</span>, <span class="mono">plan</span>, …). <span class="mono">subagent.model</span> and <span class="mono">compaction.model</span> override when set.</p>
+      <pre class="scene-code"><span class="k">modelRoles</span>:
+  <span class="k">default</span>: <span class="s">openai/gpt-5</span>
+  <span class="k">smol</span>: <span class="s">openai/gpt-4.1-mini</span>
 <span class="k">subagent.model</span>: <span class="s">anthropic/claude-haiku-4-5</span>
 <span class="k">compaction.model</span>: <span class="s">openai/gpt-5-mini</span></pre>
     </div></div>
 
     <div class="scene left" id="s9"><div class="scene-inner">
-      <span class="kicker">Cockpit</span>
-      <h2 class="scene-title">Watch every agent at once.</h2>
-      <p class="scene-detail">A live multi-agent view: a model per subagent, drill into any one, and follow the work as it happens. Fork, clone, and label threads to explore a path without losing the trunk.</p>
+      <span class="kicker">Sessions</span>
+      <h2 class="scene-title">Status line, tree, subagents.</h2>
+      <p class="scene-detail">Session JSONL trees support branch and fork. <span class="mono">/cockpit</span> lists agents; <span class="mono">task</span> can isolate workers. Status line segments are configurable.</p>
     </div></div>
 
     <div class="scene left" id="s10"><div class="scene-inner">
-      <span class="kicker">Extend</span>
+      <span class="kicker">Extensions</span>
       <h2 class="scene-title">MCP, skills, hooks.</h2>
-      <p class="scene-detail">Bring MCP servers, authored skills, and lifecycle hooks — plus browser, web search, and headless exec for CI. The harness is yours to shape.</p>
+      <p class="scene-detail">MCP servers in <span class="mono">mcp.json</span>, filesystem skills, TypeScript hooks via <span class="mono">pi.on(...)</span>, browser and web_search tools, <span class="mono">veyyon --print</span> for scripts.</p>
     </div></div>
 
-    <!-- act III — see it work -->
+    <!-- terminal demo -->
     <div class="scene" id="s11">
       <div class="showcase">
         <div class="term">
@@ -127,107 +131,103 @@
 
 <main>
 
-  <!-- the value props, in depth — the substance behind each beat of the walk -->
+  <!-- mechanisms -->
   <section class="plain">
     <div class="wrap">
-      <div class="lead"><span class="kicker">Why veyyon</span>
-        <h2>Six ways the harness earns its keep.</h2>
-        <p class="sub">Every part of veyyon exists to get more real work out of the model you already run.
-          What each one does, and why it matters.</p></div>
+      <div class="lead"><span class="kicker">Components</span>
+        <h2>Main mechanisms</h2>
+        <p class="sub">What the binary implements. Details live in the handbook under <span class="mono">docs/handbook/</span>.</p></div>
       <div class="ledger">
         <div class="ledger-row"><span class="ledger-idx">01</span>
-          <div><h3>Edits that land</h3>
-            <p>Hashline anchors every edit to the <b>content</b> of your file, not to line numbers, and each
-              hunk is verified before it applies. When a patch drifts, the harness repairs it in place instead
-              of corrupting the file or spending a turn on a retry. Fewer malformed diffs, fewer wasted turns —
-              and a smaller model stops tripping over its own output.</p></div>
+          <div><h3>Hashline edits</h3>
+            <p>Edits reference content-hash anchors from <span class="inline">read</span> / <span class="inline">grep</span>.
+              Verification runs before write. Stale tags return tool errors. Separate schema repair may rewrite tool JSON
+              before validation.</p></div>
         </div>
         <div class="ledger-row"><span class="ledger-idx">02</span>
-          <div><h3>A plan before anything mutates</h3>
-            <p>Plan mode gates every tool to read-only work while the agent grounds itself in your code and
-              lays out what it intends to do. You approve the shape of the work first, then it executes. You
-              always see the plan before the diff — nothing changes on a guess.</p></div>
+          <div><h3>Plan mode</h3>
+            <p>Engine mode that drafts a plan file and uses <span class="inline">resolve</span> for plan approval before
+              normal mutation resumes. Toggle with <span class="inline">/plan</span>; setting <span class="inline">plan.enabled</span>.</p></div>
         </div>
         <div class="ledger-row"><span class="ledger-idx">03</span>
-          <div><h3>Three model slots, each chosen by you</h3>
-            <p>The model you talk to, the model your subagents run, and the model that compacts context are
-              three separate settings, in the open. There's no <span class="inline">default</span> slot quietly
-              blending them: switch your interactive model and the background slots stay exactly where you
-              put them.</p></div>
+          <div><h3>Models and roles</h3>
+            <p>Interactive model via <span class="inline">/model</span>, stored as <span class="inline">modelRoles.default</span>.
+              Optional roles (<span class="inline">smol</span>, <span class="inline">slow</span>, <span class="inline">plan</span>, …).
+              <span class="inline">subagent.model</span> and <span class="inline">compaction.model</span> override when set.
+              Schema default for <span class="inline">tools.approvalMode</span> is <span class="inline">yolo</span>.</p></div>
         </div>
         <div class="ledger-row"><span class="ledger-idx">04</span>
-          <div><h3>Long sessions that keep the thread</h3>
-            <p>Compaction is three knobs: a <b>threshold</b> (with a per-model default), a <b>type</b>
-              (<span class="inline">handoff</span> or <span class="inline">snap</span>), and a <b>model</b> — not a
-              wall of settings. Memory is durable and opt-in. Sessions fork, clone, and label with
-              <span class="inline">/tree</span>, so exploring a path never costs you the trunk.</p></div>
+          <div><h3>Compaction and sessions</h3>
+            <p><span class="inline">compaction.strategy</span> is <span class="inline">handoff</span> or <span class="inline">snap</span>
+              (default <span class="inline">snap</span>). Threshold via <span class="inline">compaction.thresholdPercent</span>.
+              Sessions are append-only JSONL; <span class="inline">/tree</span>, <span class="inline">/branch</span>,
+              <span class="inline">/fork</span> navigate the tree. Memory backends are opt-in
+              (<span class="inline">memory.backend</span>).</p></div>
         </div>
         <div class="ledger-row"><span class="ledger-idx">05</span>
-          <div><h3>A boundary the OS enforces</h3>
-            <p>Approvals ask; the sandbox enforces. Landlock, seccomp, and Seatbelt back read-only,
-              workspace-write, and full-access tiers, failing closed by default — so the boundary holds even
-              when nobody is watching.</p></div>
+          <div><h3>Approvals (not OS sandbox)</h3>
+            <p><span class="inline">tools.approvalMode</span>: <span class="inline">plan</span>,
+              <span class="inline">ask</span>, <span class="inline">auto-edit</span>, <span class="inline">yolo</span>
+              (schema default <span class="inline">yolo</span>). No Landlock/seccomp/Seatbelt confinement.
+              Task isolation (<span class="inline">task.isolation</span>) is optional CoW for subagent worktrees.</p></div>
         </div>
         <div class="ledger-row"><span class="ledger-idx">06</span>
-          <div><h3>Every agent in view</h3>
-            <p>The cockpit shows your whole fleet live: a model per subagent, status as it changes, and a
-              drill-in for any thread. Multi-agent work becomes something you watch and steer, not a blind
-              fan-out you audit after the fact.</p></div>
+          <div><h3>Subagents and status</h3>
+            <p><span class="inline">task</span> spawns workers; <span class="inline">/cockpit</span> lists agents;
+              status line segments are configurable. See handbook multi-agent and task docs.</p></div>
         </div>
       </div>
-      <a class="section-link" href="./features.html">Every feature, in detail</a>
+      <a class="section-link" href="./features.html">Feature list</a>
     </div>
   </section>
 
-  <!-- how it works — the loop, the stack, the seams -->
   <section>
     <div class="wrap">
-      <div class="lead"><span class="kicker">How it works</span>
-        <h2>A typed agent loop over native hot paths.</h2>
-        <p class="sub">No magic in the middle: a disciplined loop, a fast core, and interfaces you can
-          build on.</p></div>
+      <div class="lead"><span class="kicker">Implementation</span>
+        <h2>Stack and loop</h2>
+        <p class="sub">Code paths, not metaphors.</p></div>
       <div class="values">
         <div>
-          <span class="kicker">The loop</span>
-          <h3>Ground, propose, act, verify.</h3>
-          <p>The agent reads your repo before it plans, plans before it mutates, and runs your tests when it
-            is done. A review pass can check its own changes, on a model you choose, before anything lands.</p>
+          <span class="kicker">Loop</span>
+          <h3>AgentSession tool loop</h3>
+          <p>Model stream → tools (read, bash, edit, …) → results → next turn. Plan/goal/vibe modes change
+            tools and prompts in the engine. <span class="inline">/review</span> and advisor are separate surfaces.</p>
         </div>
         <div>
-          <span class="kicker">The stack</span>
-          <h3>TypeScript and Bun, Rust where it counts.</h3>
-          <p>The agent loop and the TUI are TypeScript on Bun. Rust owns the hot paths — repo walking, grep,
-            the PTY, and the edit engine — so the interface stays responsive mid-task.</p>
+          <span class="kicker">Stack</span>
+          <h3>Bun/TypeScript + Rust natives</h3>
+          <p>CLI, TUI, providers, and session loop are TypeScript on Bun. Grep, PTY/shell, hashline apply,
+            and related hot paths use <span class="inline">@veyyon/natives</span>.</p>
         </div>
         <div>
-          <span class="kicker">Open seams</span>
-          <h3>Built to be extended.</h3>
-          <p>MCP servers, <span class="inline">SKILL.md</span> skills, and lifecycle hooks plug into every turn.
-            A real headless browser and multi-provider web search are built in, and headless exec runs the
-            same agent in CI.</p>
+          <span class="kicker">Extension points</span>
+          <h3>MCP, skills, hooks</h3>
+          <p>User/project MCP JSON, filesystem skills, TypeScript hooks, plugins. Non-interactive:
+            <span class="inline">veyyon --print</span>.</p>
         </div>
       </div>
     </div>
   </section>
 
-  <!-- the model layer in one view -->
   <section>
     <div class="wrap">
-      <div class="lead"><span class="kicker">The model layer</span>
-        <h2>Any provider. Your keys. Explicit slots.</h2>
-        <p class="sub">Anthropic, OpenAI, Google, Groq, xAI, OpenRouter, Mistral, and Bedrock — plus Ollama,
-          LM Studio, and llama.cpp found automatically, keyless. Your key talks to your provider directly.</p></div>
+      <div class="lead"><span class="kicker">Models</span>
+        <h2>Providers and config</h2>
+        <p class="sub">Catalog providers (Anthropic, OpenAI, Google, Groq, OpenRouter, …) and local discovery
+          (Ollama, LM Studio, llama.cpp). Credentials stay on the host for BYOK paths.</p></div>
       <div class="panel">
         <div class="copy">
           <ul>
-            <li><b>Interactive model</b> — the one you talk to. Switch live with <span class="mono">/model</span>, or launch with <span class="mono">--model</span>.</li>
-            <li><b>Subagent model</b> — one setting; every background agent runs on it. Keep it cheap on purpose.</li>
-            <li><b>Compaction model</b> — one setting; context shrinks on a model that fits the job and the bill.</li>
-            <li><b>Roles, optional</b> — named assignments for work types, scoped per profile, edited in settings — never in the picker.</li>
+            <li><b>Interactive</b> — <span class="mono">/model</span>, <span class="mono">--model</span>; stored as <span class="mono">modelRoles.default</span>.</li>
+            <li><b>Roles</b> — <span class="mono">smol</span>, <span class="mono">slow</span>, <span class="mono">plan</span>, <span class="mono">task</span>, <span class="mono">advisor</span>, … via <span class="mono">modelRoles</span>.</li>
+            <li><b>Overrides</b> — <span class="mono">subagent.model</span>, <span class="mono">compaction.model</span>.</li>
+            <li><b>Cycle</b> — <span class="mono">cycleOrder</span> (default <span class="mono">smol</span>, <span class="mono">slow</span>).</li>
           </ul>
         </div>
-        <pre class="demo" aria-hidden="true"><span class="c"># ~/.veyyon/config.yml</span>
-<span class="k">model</span>: <span class="s">openai/gpt-5</span>            <span class="c"># interactive — or /model live</span>
+        <pre class="demo" aria-hidden="true"><span class="c"># ~/.veyyon/profiles/default/agent/config.yml</span>
+<span class="k">modelRoles</span>:
+  <span class="k">default</span>: <span class="s">openai/gpt-5</span>
+  <span class="k">smol</span>: <span class="s">openai/gpt-4.1-mini</span>
 <span class="k">subagent</span>:
   <span class="k">model</span>: <span class="s">deepseek/deepseek-chat</span>
 <span class="k">compaction</span>:
@@ -241,25 +241,22 @@
   <section class="thesis">
     <div class="wrap">
       <span class="kicker">About</span>
-      <h2>What Veyyon is.</h2>
-      <p>Veyyon is a fork of <a href="https://github.com/can1357/oh-my-pi">oh-my-pi</a> (MIT) by Can Boluk,
-        credited on every page. It's a coding agent you run in your own terminal, on your own repo, with
-        whatever model you configure. It doesn't train models or rank them; it's the harness around the model —
-        prompts, editing, tools, context — and that's the part it works on. Everything is configurable in the
-        <a href="./docs/">handbook</a>, and the <a href="./changelog.html">changelog</a> is generated from the
-        real CHANGELOG and the published GitHub releases.</p>
+      <h2>What Veyyon is</h2>
+      <p>Fork of <a href="https://github.com/can1357/oh-my-pi">oh-my-pi</a> (MIT) and
+        <a href="https://github.com/badlogic/pi-mono">Pi</a>. Local terminal coding agent: CLI/TUI, your
+        provider credentials, tool loop, hashline edits, approval modes. Does not train weights. Config and
+        docs: <a href="./docs/">handbook</a>. Releases: <a href="./changelog.html">changelog</a>.</p>
     </div>
   </section>
 
-  <!-- quickstart -->
   <section>
     <div class="wrap">
       <div class="lead"><span class="kicker">Quickstart</span>
-        <h2>Running in a minute.</h2></div>
+        <h2>Install and run</h2></div>
       <div class="steps">
-        <div class="step"><h3>Install</h3><p><span class="inline">curl -fsSL https://get.veyyon.dev | sh</span> — or grab a release binary from GitHub. PATH, completions, and a doctor self-test are all handled.</p></div>
-        <div class="step"><h3>Sign in</h3><p><span class="inline">/login &lt;provider&gt;</span> or set the provider env var. Any OpenAI-compatible endpoint works; local engines are found automatically and need no key.</p></div>
-        <div class="step"><h3>Build</h3><p><span class="inline">vey</span> in any repo, <span class="inline">/model</span> to pick your model, and start with a plan.</p></div>
+        <div class="step"><h3>Install</h3><p><span class="inline">curl -fsSL https://get.veyyon.dev | sh</span> or <span class="inline">bun install -g @veyyon/coding-agent</span>. Binary: <span class="inline">veyyon</span> / <span class="inline">vey</span>.</p></div>
+        <div class="step"><h3>Auth</h3><p><span class="inline">/login &lt;provider&gt;</span> or set the provider API key env var. Local Ollama/LM Studio/llama.cpp discovery when the daemon is running.</p></div>
+        <div class="step"><h3>Run</h3><p><span class="inline">veyyon</span> in a repo; <span class="inline">/model</span> selects the interactive model. Config default: <span class="inline">~/.veyyon/profiles/default/agent/</span>.</p></div>
       </div>
     </div>
   </section>
@@ -268,13 +265,13 @@
   <section class="cta-band">
     <div class="wrap">
       <span class="kicker">Get started</span>
-      <h2>One command away.</h2>
-      <p>Bring a key from any provider — or none at all, if your models run local. The first session takes a
-        minute.</p>
+      <h2>Install, auth, run</h2>
+      <p>Installer or <span class="inline">bun install -g @veyyon/coding-agent</span>. Provider key or local
+        daemon. Then <span class="inline">veyyon</span> in a repository.</p>
       <div class="cta">
         <a href="./install.html" class="btn primary">Install veyyon</a>
         <a href="./docs/" class="btn">Read the handbook</a>
-        <a href="https://github.com/santhreal/veyyon" class="btn">Star on GitHub</a>
+        <a href="https://github.com/santhreal/veyyon" class="btn">GitHub</a>
       </div>
     </div>
   </section>

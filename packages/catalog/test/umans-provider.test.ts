@@ -2,14 +2,14 @@ import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { Effort } from "@veyyon/pi-catalog/effort";
-import { resolveProviderModels } from "@veyyon/pi-catalog/model-manager";
+import { Effort } from "@veyyon/catalog/effort";
+import { resolveProviderModels } from "@veyyon/catalog/model-manager";
 import {
 	MODELS_DEV_PROVIDER_DESCRIPTORS,
 	mapModelsDevToModels,
 	umansModelManagerOptions,
-} from "@veyyon/pi-catalog/provider-models/openai-compat";
-import type { FetchImpl, ModelSpec } from "@veyyon/pi-catalog/types";
+} from "@veyyon/catalog/provider-models/openai-compat";
+import type { FetchImpl, ModelSpec } from "@veyyon/catalog/types";
 import modelsJson from "../src/models.json";
 
 interface BundledModel {

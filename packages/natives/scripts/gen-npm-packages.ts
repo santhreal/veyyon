@@ -59,8 +59,8 @@ const packageDirDefault = path.join(import.meta.dir, "..");
 
 function expectedAddonFilenames(tag: string): string[] {
 	return tag.endsWith("-x64")
-		? [`pi_natives.${tag}-baseline.node`, `pi_natives.${tag}-modern.node`, `pi_natives.${tag}.node`]
-		: [`pi_natives.${tag}.node`];
+		? [`veyyon_natives.${tag}-baseline.node`, `veyyon_natives.${tag}-modern.node`, `veyyon_natives.${tag}.node`]
+		: [`veyyon_natives.${tag}.node`];
 }
 
 function discoverAddonFiles(nativeDir: string, tag: string): Promise<string[]> {
@@ -72,9 +72,9 @@ function discoverAddonFiles(nativeDir: string, tag: string): Promise<string[]> {
 }
 
 function selectPrimaryAddonFile(tag: string, files: readonly string[]): string {
-	const baseline = `pi_natives.${tag}-baseline.node`;
+	const baseline = `veyyon_natives.${tag}-baseline.node`;
 	if (files.includes(baseline)) return baseline;
-	const defaultFile = `pi_natives.${tag}.node`;
+	const defaultFile = `veyyon_natives.${tag}.node`;
 	if (files.includes(defaultFile)) return defaultFile;
 	return files[0];
 }
@@ -87,7 +87,7 @@ export function buildLeafManifest({ tag, os, cpu, files, version }: BuildLeafMan
 	}
 	const main = selectPrimaryAddonFile(tag, addonFiles);
 	return {
-		name: `@veyyon/pi-natives-${tag}`,
+		name: `@veyyon/natives-${tag}`,
 		version,
 		os: [os],
 		cpu: [cpu],
@@ -96,7 +96,7 @@ export function buildLeafManifest({ tag, os, cpu, files, version }: BuildLeafMan
 		license: "MIT",
 		repository: {
 			type: "git",
-			url: "git+https://github.com/can1357/oh-my-pi.git",
+			url: "git+https://github.com/santhreal/veyyon.git",
 			directory: "packages/natives",
 		},
 		engines: {
@@ -106,7 +106,7 @@ export function buildLeafManifest({ tag, os, cpu, files, version }: BuildLeafMan
 }
 
 function buildReadme(tag: string, manifest: LeafManifest): string {
-	return `# ${manifest.name}\n\nPlatform native addon package for \`@veyyon/pi-natives\` on ${tag}.\n\nThis package is generated during release and installed as an optional dependency of the core package.\n`;
+	return `# ${manifest.name}\n\nPlatform native addon package for \`@veyyon/natives\` on ${tag}.\n\nThis package is generated during release and installed as an optional dependency of the core package.\n`;
 }
 
 function selectTargets(tags: readonly string[] | undefined): readonly LeafTarget[] {

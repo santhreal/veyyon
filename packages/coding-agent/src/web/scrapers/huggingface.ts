@@ -1,6 +1,6 @@
-import { tryParseJson } from "@veyyon/pi-utils";
+import { tryParseJson } from "@veyyon/utils";
 import type { SpecialHandler } from "./types";
-import { buildResult, formatNumber, loadPage } from "./types";
+import { buildResult, formatNumber, loadFailure, loadPage, scraperDegrade, tryParseUrl } from "./types";
 
 interface HfModelData {
 	modelId: string;
@@ -68,7 +68,8 @@ function parseHuggingFaceUrl(url: string): {
 	id: string; // Full ID (org/name or just name)
 } | null {
 	try {
-		const parsed = new URL(url);
+		const parsed = tryParseUrl(url);
+		if (!parsed) return null;
 		if (parsed.hostname !== "huggingface.co") return null;
 
 		const parts = parsed.pathname.split("/").filter(Boolean);
@@ -125,10 +126,10 @@ export const handleHuggingFace: SpecialHandler = async (url: string, timeout: nu
 					loadPage(readmeUrl, { timeout: Math.min(timeout, 5), signal }),
 				]);
 
-				if (!apiResult.ok) return null;
+				if (!apiResult.ok) return scraperDegrade("huggingface", loadFailure(apiResult));
 
 				const model = tryParseJson<HfModelData>(apiResult.content);
-				if (!model) return null;
+				if (!model) return scraperDegrade("huggingface", "unexpected response shape");
 
 				let md = `# ${model.modelId}\n\n`;
 
@@ -177,10 +178,10 @@ export const handleHuggingFace: SpecialHandler = async (url: string, timeout: nu
 					loadPage(readmeUrl, { timeout: Math.min(timeout, 5), signal }),
 				]);
 
-				if (!apiResult.ok) return null;
+				if (!apiResult.ok) return scraperDegrade("huggingface", loadFailure(apiResult));
 
 				const dataset = tryParseJson<HfDatasetData>(apiResult.content);
-				if (!dataset) return null;
+				if (!dataset) return scraperDegrade("huggingface", "unexpected response shape");
 
 				let md = `# ${dataset.id}\n\n`;
 				if (dataset.description) md += `${dataset.description}\n\n`;
@@ -228,10 +229,10 @@ export const handleHuggingFace: SpecialHandler = async (url: string, timeout: nu
 					loadPage(readmeUrl, { timeout: Math.min(timeout, 5), signal }),
 				]);
 
-				if (!apiResult.ok) return null;
+				if (!apiResult.ok) return scraperDegrade("huggingface", loadFailure(apiResult));
 
 				const space = tryParseJson<HfSpaceData>(apiResult.content);
-				if (!space) return null;
+				if (!space) return scraperDegrade("huggingface", "unexpected response shape");
 
 				let md = `# ${space.id}\n\n`;
 				if (space.title) md += `${space.title}\n\n`;
@@ -294,10 +295,10 @@ export const handleHuggingFace: SpecialHandler = async (url: string, timeout: nu
 				// Fall back to user API
 				const userApiUrl = `https://huggingface.co/api/users/${parsed.id}`;
 				const userResult = await loadPage(userApiUrl, { timeout, signal });
-				if (!userResult.ok) return null;
+				if (!userResult.ok) return scraperDegrade("huggingface", loadFailure(userResult));
 
 				const user = tryParseJson<HfUserData>(userResult.content);
-				if (!user) return null;
+				if (!user) return scraperDegrade("huggingface", "unexpected response shape");
 
 				let md = `# ${user.user || parsed.id}\n\n`;
 				if (user.fullname) md += `**Name:** ${user.fullname}\n`;
@@ -315,7 +316,7 @@ export const handleHuggingFace: SpecialHandler = async (url: string, timeout: nu
 			default:
 				return null;
 		}
-	} catch {
-		return null;
+	} catch (error) {
+		return scraperDegrade("huggingface", error);
 	}
 };

@@ -1,4 +1,5 @@
 /** `ast_edit` — structural AST rewrites: per-op pattern/replacement pairs, replacement counts, diffs. */
+import { formatCount } from "@veyyon/utils";
 import type { ReactNode } from "react";
 import { Badge, CodeBlock, DiffBlock, InvalidArg, Note, Output, PathText, ResultText, Row } from "../parts";
 import type { ToolRenderer, ToolRenderProps } from "../types";
@@ -82,14 +83,8 @@ function Summary({ args, result }: ToolRenderProps): ReactNode {
 		<>
 			{first ? <PathText path={first} /> : <InvalidArg what="paths" />}
 			{paths.length > 1 && <span className="tv-faint">+{paths.length - 1} more</span>}
-			<Badge tone="accent">
-				{opCount} op{opCount === 1 ? "" : "s"}
-			</Badge>
-			{total != null && (
-				<Badge tone={total > 0 ? "ok" : "warn"}>
-					{total} replacement{total === 1 ? "" : "s"}
-				</Badge>
-			)}
+			<Badge tone="accent">{formatCount("op", opCount)}</Badge>
+			{total != null && <Badge tone={total > 0 ? "ok" : "warn"}>{formatCount("replacement", total)}</Badge>}
 			{details?.limitReached && <Badge tone="warn">limit</Badge>}
 		</>
 	);
@@ -141,14 +136,10 @@ function Body({ args, result }: ToolRenderProps): ReactNode {
 				<span className="tv-badges">
 					{details.totalReplacements != null && (
 						<Badge tone={details.totalReplacements > 0 ? "ok" : "warn"}>
-							{details.totalReplacements} replacement{details.totalReplacements === 1 ? "" : "s"}
+							{formatCount("replacement", details.totalReplacements)}
 						</Badge>
 					)}
-					{details.filesTouched != null && (
-						<Badge>
-							{details.filesTouched} file{details.filesTouched === 1 ? "" : "s"}
-						</Badge>
-					)}
+					{details.filesTouched != null && <Badge>{formatCount("file", details.filesTouched)}</Badge>}
 					{details.filesSearched != null && <Badge>searched {details.filesSearched}</Badge>}
 					{details.scopePath && <Badge>in {shortenPath(details.scopePath)}</Badge>}
 					{details.limitReached && <Badge tone="warn">limit reached</Badge>}

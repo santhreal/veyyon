@@ -1,11 +1,12 @@
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
 import * as url from "node:url";
-import { isEnoent, isEnotdir, stripWindowsExtendedLengthPathPrefix } from "@veyyon/pi-utils";
+import { expandTilde, isEnoent, isEnotdir, stripWindowsExtendedLengthPathPrefix } from "@veyyon/utils";
 import type { Skill } from "../extensibility/skills";
 import { InternalUrlRouter, type LocalProtocolOptions } from "../internal-urls";
 import { ToolError } from "./tool-errors";
+
+export { expandTilde };
 
 const UNICODE_SPACES = /[\u00A0\u2000-\u200A\u202F\u205F\u3000]/g;
 // A single line-range chunk: `N`, `N-M`, `N+K`, or open-ended `N-`. `..` is
@@ -37,7 +38,7 @@ const INTERNAL_SCHEMES_WITH_SELECTORS: Record<string, true> = {
 	issue: true,
 	local: true,
 	memory: true,
-	omp: true,
+	veyyon: true,
 	pr: true,
 	rule: true,
 	skill: true,
@@ -132,18 +133,6 @@ function stripFileUrl(filePath: string): string {
 	} catch {
 		return filePath;
 	}
-}
-
-export function expandTilde(filePath: string, home?: string): string {
-	const h = home ?? os.homedir();
-	if (filePath === "~") return h;
-	if (filePath.startsWith("~/") || filePath.startsWith("~\\")) {
-		return h + filePath.slice(1);
-	}
-	if (filePath.startsWith("~")) {
-		return path.join(h, filePath.slice(1));
-	}
-	return filePath;
 }
 
 export function expandPath(filePath: string): string {

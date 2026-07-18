@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { buildNonInteractiveEnv } from "@veyyon/pi-coding-agent/exec/non-interactive-env";
+import { buildNonInteractiveEnv } from "@veyyon/coding-agent/exec/non-interactive-env";
 
 describe("buildNonInteractiveEnv", () => {
 	it("defaults Windows child-process encoding to UTF-8 when inherited env is unset", () => {
@@ -62,7 +62,7 @@ describe("buildNonInteractiveEnv", () => {
 });
 
 it("keeps launch .env.local values out of child shell config", async () => {
-	const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "omp-env-local-"));
+	const tmp = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-env-local-"));
 	try {
 		await Bun.write(
 			path.join(tmp, ".env.local"),
@@ -75,14 +75,14 @@ it("keeps launch .env.local values out of child shell config", async () => {
 			"console.log(JSON.stringify({",
 			"	deployment: env.CONVEX_DEPLOYMENT ?? null,",
 			"	url: env.CONVEX_URL ?? null,",
-			"	inherited: env.OMP_TEST_INHERITED_MARKER ?? null,",
+			"	inherited: env.VEYYON_TEST_INHERITED_MARKER ?? null,",
 			"}));",
 		].join("\n");
 		const proc = Bun.spawn([process.execPath, "--no-install", "--eval", script], {
 			cwd: tmp,
 			env: {
 				HOME: process.env.HOME ?? "",
-				OMP_TEST_INHERITED_MARKER: "keep-me",
+				VEYYON_TEST_INHERITED_MARKER: "keep-me",
 				PATH: process.env.PATH ?? "",
 				SHELL: process.env.SHELL ?? "/bin/bash",
 			},

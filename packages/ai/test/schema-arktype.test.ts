@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
-import type { Tool } from "@veyyon/pi-ai/types";
-import { isArkSchema, toolWireSchema } from "@veyyon/pi-ai/utils/schema";
-import { validateToolArguments } from "@veyyon/pi-ai/utils/validation";
+import type { Tool } from "@veyyon/ai/types";
+import { isArkSchema, toolWireSchema } from "@veyyon/ai/utils/schema";
+import { validateToolArguments } from "@veyyon/ai/utils/validation";
 import { type } from "arktype";
 import { z } from "zod/v4";
 

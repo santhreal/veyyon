@@ -30,7 +30,7 @@ binary back does not lose sessions or config:
    `curl -fsSL https://get.veyyon.dev | sh -s -- --binary --ref vX.Y.Z` (release asset download; note
    a bare `--ref` without `--binary` implies `--source` — it clones and builds that ref).
 2. If the bad version wrote config keys the old binary rejects, remove or rename those keys — the error
-   names the file and line. Leave `sessions/` and `archived_sessions/` in place.
+   names the file and line. Leave agent-dir `sessions/` and SQLite stores in place.
 3. `veyyon plugin doctor` to confirm health.
 
 ## Ship the fix

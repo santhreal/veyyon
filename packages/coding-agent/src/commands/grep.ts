@@ -1,13 +1,15 @@
 /**
- * Test grep tool.
+ * Run the grep tool standalone and show exactly what the agent would see.
  */
-import { GrepOutputMode } from "@veyyon/pi-natives";
-import { Args, Command, Flags } from "@veyyon/pi-utils/cli";
+import { GrepOutputMode } from "@veyyon/natives";
+import { Args, Command, Flags } from "@veyyon/utils/cli";
 import { type GrepCommandArgs, runGrepCommand } from "../cli/grep-cli";
 import { initTheme } from "../modes/theme/theme";
 
 export default class Grep extends Command {
-	static description = "Test grep tool";
+	static description = "Run the grep tool standalone and show exactly what the agent would see";
+
+	static devTool = true;
 
 	static args = {
 		pattern: Args.string({ description: "Regex pattern to search for", required: false }),

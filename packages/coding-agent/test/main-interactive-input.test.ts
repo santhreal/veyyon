@@ -2,11 +2,11 @@ import { afterEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { applyResolvedSystemPromptInputs, submitInteractiveInput } from "@veyyon/pi-coding-agent/main";
-import type { SubmittedUserInput } from "@veyyon/pi-coding-agent/modes/types";
-import type { CreateAgentSessionOptions } from "@veyyon/pi-coding-agent/sdk";
-import { discoverTitleSystemPromptFile } from "@veyyon/pi-coding-agent/system-prompt";
-import { removeWithRetries } from "@veyyon/pi-utils";
+import { applyResolvedSystemPromptInputs, submitInteractiveInput } from "@veyyon/coding-agent/main";
+import type { SubmittedUserInput } from "@veyyon/coding-agent/modes/types";
+import type { CreateAgentSessionOptions } from "@veyyon/coding-agent/sdk";
+import { discoverTitleSystemPromptFile } from "@veyyon/coding-agent/system-prompt";
+import { removeWithRetries } from "@veyyon/utils";
 
 const cleanupDirs: string[] = [];
 
@@ -25,8 +25,8 @@ function createInput(overrides: Partial<SubmittedUserInput> = {}): SubmittedUser
 }
 
 describe("discoverTitleSystemPromptFile", () => {
-	it("discovers TITLE_SYSTEM.md from the project omp config directory", async () => {
-		const projectDir = await fs.mkdtemp(path.join(os.tmpdir(), "omp-title-system-"));
+	it("discovers TITLE_SYSTEM.md from the project veyyon config directory", async () => {
+		const projectDir = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-title-system-"));
 		cleanupDirs.push(projectDir);
 		const configDir = path.join(projectDir, ".veyyon");
 		await fs.mkdir(configDir, { recursive: true });

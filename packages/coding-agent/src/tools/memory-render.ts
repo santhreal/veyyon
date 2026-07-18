@@ -9,8 +9,8 @@
  * a status line with a couple of dim bullets reads far cleaner than boxing a
  * one-line memory note.
  */
-import type { Component } from "@veyyon/pi-tui";
-import { Text } from "@veyyon/pi-tui";
+import type { Component } from "@veyyon/tui";
+import { Text } from "@veyyon/tui";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import type { Theme } from "../modes/theme/theme";
 import { Ellipsis, renderStatusLine, truncateToWidth } from "../tui";

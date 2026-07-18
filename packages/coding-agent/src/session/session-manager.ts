@@ -1,8 +1,9 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { ImageContent, Message, MessageAttribution, ServiceTierByFamily, TextContent, Usage } from "@veyyon/pi-ai";
+import type { ImageContent, Message, MessageAttribution, ServiceTierByFamily, TextContent, Usage } from "@veyyon/ai";
 import {
 	directoryExists,
+	errorMessage,
 	getBlobsDir,
 	getProjectDir,
 	getSessionsDir,
@@ -10,7 +11,7 @@ import {
 	logger,
 	stringifyJson,
 	toError,
-} from "@veyyon/pi-utils";
+} from "@veyyon/utils";
 import { ArtifactManager } from "./artifacts";
 import { type BlobPutOptions, type BlobPutResult, BlobStore } from "./blob-store";
 import {
@@ -1124,9 +1125,7 @@ export class SessionManager {
 					try {
 						await fs.promises.rename(newArtifactsDir, oldArtifactsDir);
 					} catch (rollbackErr) {
-						throw new Error(
-							`Failed to move artifacts and rollback: ${rollbackErr instanceof Error ? rollbackErr.message : String(rollbackErr)}`,
-						);
+						throw new Error(`Failed to move artifacts and rollback: ${errorMessage(rollbackErr)}`);
 					}
 				}
 
@@ -1134,9 +1133,7 @@ export class SessionManager {
 					try {
 						await fs.promises.rename(newSessionFile, oldSessionFile);
 					} catch (rollbackErr) {
-						throw new Error(
-							`Failed to move session file and rollback: ${rollbackErr instanceof Error ? rollbackErr.message : String(rollbackErr)}`,
-						);
+						throw new Error(`Failed to move session file and rollback: ${errorMessage(rollbackErr)}`);
 					}
 				}
 

@@ -1,5 +1,5 @@
 # Vendored from uutils/coreutils tag 0.8.0 (src/uu/seq), patched to route I/O
-# through pi-uutils-ctx so it can run in-process as a shell builtin. See
+# through veyyon-uutils-ctx so it can run in-process as a shell builtin. See
 # src/seq.rs for the patch markers (`pi-uutils:` comments).
 [package]
 name = "uu_seq"
@@ -26,7 +26,7 @@ uucore = { version = "0.8.0", features = [
 	"parser",
 	"quoting-style",
 ] }
-pi-uutils-ctx = { path = "../../pi-uutils-ctx" }
+veyyon-uutils-ctx = { path = "../../veyyon-uutils-ctx" }
 
 [dev-dependencies]
 parking_lot = "0.12"

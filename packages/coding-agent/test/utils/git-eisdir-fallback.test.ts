@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { removeWithRetries } from "@veyyon/pi-utils";
+import { removeWithRetries } from "@veyyon/utils";
 import { $ } from "bun";
 import * as git from "../../src/utils/git";
 
@@ -11,7 +11,7 @@ describe("git reference directory fallback", () => {
 	let commitSha: string;
 
 	beforeAll(async () => {
-		repoDir = await fs.mkdtemp(path.join(os.tmpdir(), "omp-ref-fallback-"));
+		repoDir = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-ref-fallback-"));
 		const initResult = await $`git init --initial-branch=main`.cwd(repoDir).quiet();
 		if (initResult.exitCode !== 0) throw new Error("git init failed");
 		await $`git config user.name "Test User"`.cwd(repoDir).quiet();

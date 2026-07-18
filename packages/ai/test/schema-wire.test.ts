@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { normalizeAnthropicToolSchema } from "@veyyon/pi-ai/providers/anthropic";
-import type { Tool } from "@veyyon/pi-ai/types";
+import { normalizeAnthropicToolSchema } from "@veyyon/ai/providers/anthropic";
+import type { Tool } from "@veyyon/ai/types";
 import {
 	adaptSchemaForStrict,
 	decontaminateZodInstance,
@@ -12,7 +12,7 @@ import {
 	stripToolDescriptions,
 	toolWireSchema,
 	zodToWireSchema,
-} from "@veyyon/pi-ai/utils/schema";
+} from "@veyyon/ai/utils/schema";
 import { type } from "arktype";
 import { z } from "zod/v4";
 

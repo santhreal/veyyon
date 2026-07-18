@@ -3,13 +3,17 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Why Veyyon - The Veyyon Harness Handbook</title>
+        <title>Design and mechanisms - The Veyyon Harness Handbook</title>
 
 
         <!-- Custom HTML head -->
         <!-- Veyyon handbook: self-contained head additions. No remote resources. -->
         <meta name="theme-color" content="#050505">
         <meta name="color-scheme" content="dark">
+        <!-- Site favicons live at the deployed root, one level above /docs/. -->
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+        <link rel="icon" href="/favicon.ico" sizes="48x48">
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png">
         <style>
           /* Paint the near-black surface before CSS/JS resolve the theme, so there is
              no light flash on load. Kept in sync with theme/veyyon.css. */
@@ -18,7 +22,7 @@
           *, *::before, *::after { box-sizing: border-box; }
         </style>
 
-        <meta name="description" content="How Veyyon turns open models into frontier coding agents. The product, the harness, tool-call repair, the edit format, per-model adaptation, and how to use it.">
+        <meta name="description" content="Operator handbook for the Veyyon terminal coding agent: install, configuration, tools, approvals, edit formats, providers, and harness structure.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -38,7 +42,7 @@
         <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="../ayu-highlight-3fdfc3ac.css">
 
         <!-- Custom theme stylesheets -->
-        <link rel="stylesheet" href="../theme/veyyon-fc839a17.css">
+        <link rel="stylesheet" href="../theme/veyyon-06f6939e.css">
 
 
         <!-- Provide site root and default themes to javascript -->
@@ -46,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-e76f06ca.js";
+            window.path_to_searchindex_js = "../searchindex-a2447057.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-9cfd259b.js"></script>
+        <script src="../toc-cc1a72e9.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -191,32 +195,17 @@
 
                 <div id="mdbook-content" class="content">
                     <main>
-                        <h1 id="why-veyyon"><a class="header" href="#why-veyyon">Why Veyyon</a></h1>
-<p>This section explains why Veyyon exists and what it gives you. Veyyon is a coding agent that runs in your terminal, edits real code, and lets you bring your own model keys. The pages here are the value proposition: what changes, why it is faster and cheaper, and how the design behind it surfaces what the agent does and refuses.</p>
+                        <h1 id="design-and-mechanisms"><a class="header" href="#design-and-mechanisms">Design and mechanisms</a></h1>
 <ul>
-<li>
-<p><a href="./value.html">What Veyyon gives you</a> introduces the problem Veyyon solves and the concrete benefits you get from a harness built around each model’s strengths.</p>
-</li>
-<li>
-<p><a href="./innovations.html">What makes Veyyon different</a> is the short design map behind those benefits: hashline-first editing, per-model harnesses, tiered tool approval, and stop-when-green control flow.</p>
-</li>
-<li>
-<p><a href="./performance.html">Performance</a> shows how fewer retries, an edit format that open models emit reliably, and a lightweight harness add up to faster turns and lower cost.</p>
-</li>
-<li>
-<p><a href="../benefits/first-attempt-edits.html">Edits that land the first time</a> explains how Veyyon repairs malformed tool calls and normalizes diffs so a change does not bounce back for a retry.</p>
-</li>
-<li>
-<p><a href="../benefits/lower-cost.html">Lower token cost and faster turns</a> details how bounded tools, compaction, and early verification keep the context focused on what still matters.</p>
-</li>
-<li>
-<p><a href="../benefits/model-choice.html">Model choice without lock-in</a> covers the provider-agnostic engine and per-model profiles that let you point Veyyon at any supported model or API.</p>
-</li>
-<li>
-<p><a href="../benefits/safety-honesty.html">Safety you can see</a> describes the visible sandbox, loud failures, and bounded telemetry — the behavior that makes the agent safe to use in real repositories.</p>
-</li>
+<li><a href="./value.html">Overview</a> — what the product is and what the harness does</li>
+<li><a href="./innovations.html">Mechanisms</a> — hashline, approvals, model slots, profiles, engine modes</li>
+<li><a href="./performance.html">Performance</a> — retries, edit format, and tool bounds</li>
+<li><a href="../benefits/first-attempt-edits.html">Edit path and tool arguments</a></li>
+<li><a href="../benefits/lower-cost.html">Context size and retries</a></li>
+<li><a href="../benefits/model-choice.html">Model and provider selection</a></li>
+<li><a href="../benefits/safety-errors.html">Approvals and errors</a></li>
 </ul>
-<p>Where to go next: install Veyyon with <a href="../using/install.html">Install</a>, then read the <a href="../concepts/index.html">Core concepts</a> section to learn how sessions, context, and the harness fit together.</p>
+<p>Install: <a href="../using/install.html">Install</a>. Concepts: <a href="../concepts/index.html">Core concepts</a>.</p>
 
                     </main>
 

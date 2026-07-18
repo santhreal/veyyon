@@ -1,10 +1,10 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
-import { KeybindingsManager } from "@veyyon/pi-coding-agent/config/keybindings";
-import type { HookSelectorSlider } from "@veyyon/pi-coding-agent/modes/components/hook-selector";
-import { PlanReviewOverlay } from "@veyyon/pi-coding-agent/modes/components/plan-review-overlay";
-import { getThemeByName, setThemeInstance, theme } from "@veyyon/pi-coding-agent/modes/theme/theme";
-import { setKeybindings } from "@veyyon/pi-tui";
+import { KeybindingsManager } from "@veyyon/coding-agent/config/keybindings";
+import type { HookSelectorSlider } from "@veyyon/coding-agent/modes/components/hook-selector";
+import { PlanReviewOverlay } from "@veyyon/coding-agent/modes/components/plan-review-overlay";
+import { getThemeByName, setThemeInstance, theme } from "@veyyon/coding-agent/modes/theme/theme";
+import { setKeybindings } from "@veyyon/tui";
 
 const UP = "\x1b[A";
 const DOWN = "\x1b[B";

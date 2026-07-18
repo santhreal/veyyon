@@ -1,4 +1,4 @@
-import { type Component, padding, Text, visibleWidth } from "@veyyon/pi-tui";
+import { type Component, padding, Text, visibleWidth } from "@veyyon/tui";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import type { Theme, ThemeColor } from "../modes/theme/theme";
 import { framedBlock, renderStatusLine } from "../tui";

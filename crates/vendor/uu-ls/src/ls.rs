@@ -25,7 +25,6 @@ use clap::{
 	builder::{NonEmptyStringValueParser, PossibleValue, ValueParser},
 };
 use lscolors::Colorable;
-use pi_uutils_ctx::{CtxStdout, format_usage};
 #[cfg(unix)]
 use rustc_hash::FxHashMap;
 use rustc_hash::FxHashSet;
@@ -41,6 +40,7 @@ use uucore::{
 	parser::shortcut_value_parser::ShortcutValueParser,
 	version_cmp::version_cmp,
 };
+use veyyon_uutils_ctx::{CtxStdout, format_usage};
 
 mod colors;
 mod config;
@@ -67,7 +67,7 @@ enum LsError {
         ErrorKind::NotFound => format!("cannot access {}: No such file or directory", .0.quote()),
         ErrorKind::PermissionDenied => match .1.raw_os_error().unwrap_or(1) {
             1 => format!("cannot access {}: Operation not permitted", .0.quote()),
-            _ => if pi_uutils_ctx::resolve(.0).is_dir() {
+            _ => if veyyon_uutils_ctx::resolve(.0).is_dir() {
                 format!("cannot open directory {}: Permission denied", .0.quote())
             } else {
                 format!("cannot open file {}: Permission denied", .0.quote())
@@ -113,15 +113,16 @@ impl UError for LsError {
 /// Writes the recoverable error to the context stderr and accumulates its
 /// exit code (mirroring uucore's recoverable-error reporting), so it continues.
 pub(crate) fn show_ls_error(err: LsError) {
-	pi_uutils_ctx::set_exit_code(err.code());
-	let _ = writeln!(pi_uutils_ctx::stderr(), "ls: {err}");
+	veyyon_uutils_ctx::set_exit_code(err.code());
+	let _ = writeln!(veyyon_uutils_ctx::stderr(), "ls: {err}");
 }
 
-/// In-process builtin entry point. The host installs a [`pi_uutils_ctx`] scope
-/// (stdio + working directory + environment) on a dedicated blocking thread,
-/// then calls this. Unlike uutils' `#[uucore::main] uumain`, this never calls
-/// `std::process::exit` and renders clap help/usage/version to the context
-/// streams, so it is safe to run inside the long-lived host shell process.
+/// In-process builtin entry point. The host installs a [`veyyon_uutils_ctx`]
+/// scope (stdio + working directory + environment) on a dedicated blocking
+/// thread, then calls this. Unlike uutils' `#[uucore::main] uumain`, this never
+/// calls `std::process::exit` and renders clap help/usage/version to the
+/// context streams, so it is safe to run inside the long-lived host shell
+/// process.
 pub fn run(args: Vec<OsString>) -> i32 {
 	// Detect a raw `--dired`/`-D` operand before clap parsing (it can be masked
 	// by `--hyperlink` via overrides_with); see `dired::is_dired_arg_present`.
@@ -132,10 +133,10 @@ pub fn run(args: Vec<OsString>) -> i32 {
 		Err(err) => {
 			let rendered = err.to_string();
 			if err.use_stderr() {
-				let _ = write!(pi_uutils_ctx::stderr(), "{rendered}");
+				let _ = write!(veyyon_uutils_ctx::stderr(), "{rendered}");
 				return 2;
 			}
-			let _ = write!(pi_uutils_ctx::stdout(), "{rendered}");
+			let _ = write!(veyyon_uutils_ctx::stdout(), "{rendered}");
 			return 0;
 		},
 	};
@@ -144,7 +145,7 @@ pub fn run(args: Vec<OsString>) -> i32 {
 		Ok(config) => config,
 		Err(err) => {
 			let code = err.code();
-			let _ = writeln!(pi_uutils_ctx::stderr(), "ls: {err}");
+			let _ = writeln!(veyyon_uutils_ctx::stderr(), "ls: {err}");
 			return if code == 0 { 1 } else { code };
 		},
 	};
@@ -154,10 +155,10 @@ pub fn run(args: Vec<OsString>) -> i32 {
 		.map_or_else(|| vec![Path::new(".")], |v| v.map(Path::new).collect());
 
 	match list(locs, &config) {
-		Ok(()) => pi_uutils_ctx::exit_code(),
+		Ok(()) => veyyon_uutils_ctx::exit_code(),
 		Err(err) => {
 			let code = err.code();
-			let _ = writeln!(pi_uutils_ctx::stderr(), "ls: {err}");
+			let _ = writeln!(veyyon_uutils_ctx::stderr(), "ls: {err}");
 			if code == 0 { 1 } else { code }
 		},
 	}
@@ -944,7 +945,7 @@ impl<'a> PathData<'a> {
 			Dereference::Args => command_line,
 			Dereference::DirArgs => {
 				if command_line {
-					if let Ok(md) = pi_uutils_ctx::resolve(&p_buf).metadata() {
+					if let Ok(md) = veyyon_uutils_ctx::resolve(&p_buf).metadata() {
 						md.is_dir()
 					} else {
 						false
@@ -963,7 +964,7 @@ impl<'a> PathData<'a> {
 		let security_context: OnceCell<Box<str>> = OnceCell::new();
 
 		let de: RefCell<Option<DirEntry>> = if let Some(de) = dir_entry {
-			if must_dereference && let Ok(md_pb) = pi_uutils_ctx::resolve(&p_buf).metadata() {
+			if must_dereference && let Ok(md_pb) = veyyon_uutils_ctx::resolve(&p_buf).metadata() {
 				ft.get_or_init(|| Some(md_pb.file_type()));
 				md.get_or_init(|| Some(md_pb));
 			}
@@ -993,7 +994,7 @@ impl<'a> PathData<'a> {
 				match get_metadata_with_deref_opt(self.path(), self.must_dereference) {
 					Err(err) => {
 						// FIXME: A bit tricky to propagate the result here
-						let _ = pi_uutils_ctx::stdout().flush();
+						let _ = veyyon_uutils_ctx::stdout().flush();
 						let errno = err.raw_os_error().unwrap_or(1i32);
 						// a bad fd will throw an error when dereferenced,
 						// but GNU will not throw an error until a bad fd "dir"
@@ -1001,7 +1002,7 @@ impl<'a> PathData<'a> {
 						// back the non-dereferenced metadata upon an EBADF
 						if self.must_dereference
 							&& errno == 9i32
-							&& let Ok(file) = pi_uutils_ctx::resolve(self.path()).read_link()
+							&& let Ok(file) = veyyon_uutils_ctx::resolve(self.path()).read_link()
 						{
 							return file.symlink_metadata().ok();
 						}
@@ -1109,7 +1110,7 @@ pub fn list(locs: Vec<&Path>, config: &Config) -> UResult<()> {
 	let now = SystemTime::now();
 
 	let mut state = ListState {
-		out: BufWriter::new(pi_uutils_ctx::stdout()),
+		out: BufWriter::new(veyyon_uutils_ctx::stdout()),
 		style_manager: config.color.as_ref().map(StyleManager::new),
 		#[cfg(unix)]
 		uid_cache: FxHashMap::default(),
@@ -1150,7 +1151,7 @@ pub fn list(locs: Vec<&Path>, config: &Config) -> UResult<()> {
 		let show_dir_contents = if let Some(ft) = path_data.file_type() {
 			!config.directory && ft.is_dir()
 		} else {
-			pi_uutils_ctx::set_exit_code(1);
+			veyyon_uutils_ctx::set_exit_code(1);
 			false
 		};
 
@@ -1179,7 +1180,7 @@ pub fn list(locs: Vec<&Path>, config: &Config) -> UResult<()> {
 		let needs_blank_line = pos != 0 || !files.is_empty();
 		// Do read_dir call here to match GNU semantics by printing
 		// read_dir errors before directory headings, names and totals
-		let read_dir = match fs::read_dir(pi_uutils_ctx::resolve(path_data.path())) {
+		let read_dir = match fs::read_dir(veyyon_uutils_ctx::resolve(path_data.path())) {
 			Err(err) => {
 				// flush stdout buffer before the error to preserve formatting and order
 				state.out.flush()?;
@@ -1194,7 +1195,7 @@ pub fn list(locs: Vec<&Path>, config: &Config) -> UResult<()> {
 		};
 
 		state.listed_ancestors.insert(FileInformation::from_path(
-			pi_uutils_ctx::resolve(path_data.path()),
+			veyyon_uutils_ctx::resolve(path_data.path()),
 			path_data.must_dereference,
 		)?);
 
@@ -1210,7 +1211,7 @@ pub fn list(locs: Vec<&Path>, config: &Config) -> UResult<()> {
 
 		// Only runs if it must list recursively.
 		while let Some(dir_data) = state.stack.pop() {
-			let read_dir = match fs::read_dir(pi_uutils_ctx::resolve(&dir_data.0)) {
+			let read_dir = match fs::read_dir(veyyon_uutils_ctx::resolve(&dir_data.0)) {
 				Err(err) => {
 					// flush stdout buffer before the error to preserve formatting and order
 					state.out.flush()?;
@@ -1423,12 +1424,14 @@ fn depth_first_list(
 			.rev()
 		{
 			// Try to open only to report any errors in order to match GNU semantics.
-			if let Err(err) = fs::read_dir(pi_uutils_ctx::resolve(e.path())) {
+			if let Err(err) = fs::read_dir(veyyon_uutils_ctx::resolve(e.path())) {
 				state.out.flush()?;
 				show_ls_error(LsError::IOErrorContext(e.path().to_path_buf(), err, e.command_line));
 			} else {
-				let fi =
-					FileInformation::from_path(pi_uutils_ctx::resolve(e.path()), e.must_dereference)?;
+				let fi = FileInformation::from_path(
+					veyyon_uutils_ctx::resolve(e.path()),
+					e.must_dereference,
+				)?;
 				if state.listed_ancestors.insert(fi) {
 					// Push to stack, but with a less aggressive growth curve.
 					let (cap, len) = (state.stack.capacity(), state.stack.len());
@@ -1447,7 +1450,7 @@ fn depth_first_list(
 }
 
 fn get_metadata_with_deref_opt(p_buf: &Path, dereference: bool) -> std::io::Result<Metadata> {
-	let resolved = pi_uutils_ctx::resolve(p_buf);
+	let resolved = veyyon_uutils_ctx::resolve(p_buf);
 	if dereference {
 		resolved.metadata()
 	} else {
@@ -1539,12 +1542,15 @@ fn get_security_context<'a>(
 
 	#[cfg(all(feature = "selinux", any(target_os = "linux", target_os = "android")))]
 	if config.selinux_supported {
-		match selinux::SecurityContext::of_path(pi_uutils_ctx::resolve(path), must_dereference, false)
-		{
+		match selinux::SecurityContext::of_path(
+			veyyon_uutils_ctx::resolve(path),
+			must_dereference,
+			false,
+		) {
 			Err(_r) => {
 				// TODO: show the actual reason why it failed
 				let _ = writeln!(
-					pi_uutils_ctx::stderr(),
+					veyyon_uutils_ctx::stderr(),
 					"ls: warning: failed to get security context of: {}",
 					path.quote()
 				);
@@ -1560,7 +1566,7 @@ fn get_security_context<'a>(
 					Ok(s) => s.to_string(),
 					Err(e) => {
 						let _ = writeln!(
-							pi_uutils_ctx::stderr(),
+							veyyon_uutils_ctx::stderr(),
 							"ls: warning: getting security context of: {}: {}",
 							path.quote(),
 							e
@@ -1579,7 +1585,7 @@ fn get_security_context<'a>(
 		// For SMACK, use the path to get the label
 		// If must_dereference is true, we follow the symlink
 		let target_path = if must_dereference {
-			fs::canonicalize(pi_uutils_ctx::resolve(path)).unwrap_or_else(|_| path.to_path_buf())
+			fs::canonicalize(veyyon_uutils_ctx::resolve(path)).unwrap_or_else(|_| path.to_path_buf())
 		} else {
 			path.to_path_buf()
 		};

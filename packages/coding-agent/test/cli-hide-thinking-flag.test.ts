@@ -1,8 +1,8 @@
 import { describe, expect, it } from "bun:test";
-import { ThinkingLevel } from "@veyyon/pi-agent-core";
-import { Effort } from "@veyyon/pi-ai";
-import { parseArgs } from "@veyyon/pi-coding-agent/cli/args";
-import { AUTO_THINKING } from "@veyyon/pi-coding-agent/thinking";
+import { ThinkingLevel } from "@veyyon/agent-core";
+import { Effort } from "@veyyon/ai";
+import { parseArgs } from "@veyyon/coding-agent/cli/args";
+import { AUTO_THINKING } from "@veyyon/coding-agent/thinking";
 
 describe("parseArgs — --hide-thinking flag", () => {
 	it("parses --hide-thinking as a boolean flag", () => {

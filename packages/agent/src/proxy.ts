@@ -12,15 +12,15 @@ import {
 	type SimpleStreamOptions,
 	type StopReason,
 	type ToolCall,
-} from "@veyyon/pi-ai";
+} from "@veyyon/ai";
 import {
 	clearStreamingPartialJson,
 	kStreamingPartialJson,
 	type StreamingPartialJsonCarrier,
 	setStreamingPartialJson,
-} from "@veyyon/pi-ai/utils/block-symbols";
-import { calculateCost } from "@veyyon/pi-catalog/models";
-import { parseStreamingJson, readSseJson } from "@veyyon/pi-utils";
+} from "@veyyon/ai/utils/block-symbols";
+import { calculateCost } from "@veyyon/catalog/models";
+import { errorMessage, parseStreamingJson, readSseJson } from "@veyyon/utils";
 
 // Event stream adapter for proxy SSE events
 export class ProxyMessageEventStream extends EventStream<AssistantMessageEvent, AssistantMessage> {
@@ -186,10 +186,9 @@ export function streamProxy(model: Model, context: Context, options: ProxyStream
 
 			stream.end();
 		} catch (error) {
-			const errorMessage = error instanceof Error ? error.message : String(error);
 			const reason = options.signal?.aborted ? "aborted" : "error";
 			partial.stopReason = reason;
-			partial.errorMessage = errorMessage;
+			partial.errorMessage = errorMessage(error);
 			scrubPartialJson(partial);
 			stream.push({
 				type: "error",

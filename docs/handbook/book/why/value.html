@@ -3,13 +3,17 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>What Veyyon gives you - The Veyyon Harness Handbook</title>
+        <title>Overview - The Veyyon Harness Handbook</title>
 
 
         <!-- Custom HTML head -->
         <!-- Veyyon handbook: self-contained head additions. No remote resources. -->
         <meta name="theme-color" content="#050505">
         <meta name="color-scheme" content="dark">
+        <!-- Site favicons live at the deployed root, one level above /docs/. -->
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+        <link rel="icon" href="/favicon.ico" sizes="48x48">
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png">
         <style>
           /* Paint the near-black surface before CSS/JS resolve the theme, so there is
              no light flash on load. Kept in sync with theme/veyyon.css. */
@@ -18,7 +22,7 @@
           *, *::before, *::after { box-sizing: border-box; }
         </style>
 
-        <meta name="description" content="How Veyyon turns open models into frontier coding agents. The product, the harness, tool-call repair, the edit format, per-model adaptation, and how to use it.">
+        <meta name="description" content="Operator handbook for the Veyyon terminal coding agent: install, configuration, tools, approvals, edit formats, providers, and harness structure.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -38,7 +42,7 @@
         <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="../ayu-highlight-3fdfc3ac.css">
 
         <!-- Custom theme stylesheets -->
-        <link rel="stylesheet" href="../theme/veyyon-fc839a17.css">
+        <link rel="stylesheet" href="../theme/veyyon-06f6939e.css">
 
 
         <!-- Provide site root and default themes to javascript -->
@@ -46,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-e76f06ca.js";
+            window.path_to_searchindex_js = "../searchindex-a2447057.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-9cfd259b.js"></script>
+        <script src="../toc-cc1a72e9.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -191,35 +195,32 @@
 
                 <div id="mdbook-content" class="content">
                     <main>
-                        <h1 id="what-veyyon-gives-you"><a class="header" href="#what-veyyon-gives-you">What Veyyon gives you</a></h1>
-<p>Veyyon runs in your terminal and edits real code on your keys. The harness is built so capable models waste fewer turns on bad edits and opaque scaffolding.</p>
-<h2 id="the-problem-veyyon-solves"><a class="header" href="#the-problem-veyyon-solves">The problem Veyyon solves</a></h2>
-<p>Most coding agents wrap every model in the same generic scaffolding. A model trained for one edit shape
-is forced into another. The result is wasted turns, malformed tool calls, diffs that fail to apply, and
-token bills that climb with every retry. The weights are often capable; the scaffolding holds them back.</p>
-<p>Veyyon (oh-my-pi lineage) cuts that waste: <strong>hashline</strong> edits tuned per model, native search and read paths,
-provider-agnostic configuration, and a TUI that keeps sandboxing and approvals visible.</p>
-<h2 id="what-you-get-today"><a class="header" href="#what-you-get-today">What you get today</a></h2>
+                        <h1 id="overview"><a class="header" href="#overview">Overview</a></h1>
+<p>Veyyon is a local terminal coding agent: the loop, tools, and credentials stay on your machine. You pick models through the bundled provider catalog (subscription sign-in or BYOK).</p>
+<h2 id="what-the-harness-does"><a class="header" href="#what-the-harness-does">What the harness does</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Area</th><th>Behavior</th></tr>
+</thead>
+<tbody>
+<tr><td>Edits</td><td>Hashline-oriented <code>edit</code> / <code>write</code> with verification before disk write</td></tr>
+<tr><td>Tools</td><td>read, grep, glob, bash, LSP, DAP, browser, MCP, task subagents, …</td></tr>
+<tr><td>Approvals</td><td><code>tools.approvalMode</code> gates read / write / exec (no OS process sandbox)</td></tr>
+<tr><td>Models</td><td>Interactive, subagent, and compaction slots; optional roles per profile</td></tr>
+<tr><td>Sessions</td><td>Branchable session trees; resume and fork</td></tr>
+<tr><td>Memory</td><td>Memory backends when <code>memory.backend</code> is not <code>off</code></td></tr>
+<tr><td>Config</td><td><code>~/.veyyon</code> (or profile-relocated agent dir); project files under cwd</td></tr>
+</tbody>
+</table>
+</div>
+<h2 id="lineage"><a class="header" href="#lineage">Lineage</a></h2>
+<p>Built from <a href="https://github.com/can1357/oh-my-pi">oh-my-pi</a> and <a href="https://github.com/badlogic/pi-mono">Pi</a>. See <a href="../acknowledgements.html">Acknowledgements</a>.</p>
+<h2 id="next"><a class="header" href="#next">Next</a></h2>
 <ul>
-<li><strong>Edits that land.</strong> Hashline and related edit tools with model-specific prompts; fewer retry loops on bad diffs.</li>
-<li><strong>Bring your own key.</strong> Dozens of providers via the bundled catalog; no vendor lock-in.</li>
-<li><strong>Per-role models.</strong> Assign fast, thinking, vision, task, and other roles without reconfiguring every session.</li>
-<li><strong>A real agent loop.</strong> Read, search, edit, bash, LSP, browser, MCP, compaction, and subagents, all inside the approval mode you control.</li>
-<li><strong>Session trees.</strong> Branch, fork, and navigate conversation history without losing abandoned paths.</li>
-<li><strong>Memory.</strong> mnemopi-backed recall across sessions (see <a href="../features/memory.html">Memory</a>).</li>
-<li><strong>Lower cost.</strong> Fewer format retries and leaner reads mean fewer tokens for the same outcome.</li>
-</ul>
-<h2 id="who-veyyon-is-for"><a class="header" href="#who-veyyon-is-for">Who Veyyon is for</a></h2>
-<ul>
-<li>Developers who want a capable terminal agent on their own keys.</li>
-<li>Teams running open or gateway models with a harness tuned for coding, not chat-only UIs.</li>
-<li>Anyone who wants visible approval boundaries and tool failures that surface instead of hiding.</li>
-</ul>
-<h2 id="where-to-go-next"><a class="header" href="#where-to-go-next">Where to go next</a></h2>
-<ul>
-<li><a href="../benefits/first-attempt-edits.html">Edits that land the first time</a></li>
-<li><a href="./innovations.html">What makes Veyyon different</a></li>
+<li><a href="./innovations.html">Mechanisms</a></li>
 <li><a href="../using/getting-started.html">Getting started</a></li>
+<li><a href="../using/editing.html">Editing and repair</a></li>
 </ul>
 
                     </main>

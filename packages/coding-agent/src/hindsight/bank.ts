@@ -21,7 +21,7 @@
  */
 
 import * as path from "node:path";
-import { logger } from "@veyyon/pi-utils";
+import { logger } from "@veyyon/utils";
 import * as git from "../utils/git";
 import type { HindsightApi } from "./client";
 import type { HindsightConfig } from "./config";

@@ -3,9 +3,9 @@ import type {
 	ChatCompletionAssistantMessageParam,
 	ChatCompletionMessageParam,
 	ChatCompletionToolMessageParam,
-} from "@veyyon/pi-ai/providers/openai-chat-wire";
-import { convertMessages } from "@veyyon/pi-ai/providers/openai-completions";
-import { transformMessages } from "@veyyon/pi-ai/providers/transform-messages";
+} from "@veyyon/ai/providers/openai-chat-wire";
+import { convertMessages } from "@veyyon/ai/providers/openai-completions";
+import { transformMessages } from "@veyyon/ai/providers/transform-messages";
 import type {
 	Api,
 	AssistantMessage,
@@ -16,8 +16,8 @@ import type {
 	ToolCall,
 	ToolResultMessage,
 	UserMessage,
-} from "@veyyon/pi-ai/types";
-import { buildModel } from "@veyyon/pi-catalog/build";
+} from "@veyyon/ai/types";
+import { buildModel } from "@veyyon/catalog/build";
 
 /**
  * Regression test for: "each tool_use must have a single result. Found multiple tool_result blocks with id"

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "bun:test";
-import { HttpTransport } from "@veyyon/pi-coding-agent/mcp/transports/http";
+import { HttpTransport } from "@veyyon/coding-agent/mcp/transports/http";
 
 const encoder = new TextEncoder();
 const REQUEST_TIMEOUT_MS = 50;

@@ -10,6 +10,10 @@
         <!-- Veyyon handbook: self-contained head additions. No remote resources. -->
         <meta name="theme-color" content="#050505">
         <meta name="color-scheme" content="dark">
+        <!-- Site favicons live at the deployed root, one level above /docs/. -->
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+        <link rel="icon" href="/favicon.ico" sizes="48x48">
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png">
         <style>
           /* Paint the near-black surface before CSS/JS resolve the theme, so there is
              no light flash on load. Kept in sync with theme/veyyon.css. */
@@ -18,7 +22,7 @@
           *, *::before, *::after { box-sizing: border-box; }
         </style>
 
-        <meta name="description" content="How Veyyon turns open models into frontier coding agents. The product, the harness, tool-call repair, the edit format, per-model adaptation, and how to use it.">
+        <meta name="description" content="Operator handbook for the Veyyon terminal coding agent: install, configuration, tools, approvals, edit formats, providers, and harness structure.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -38,7 +42,7 @@
         <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="../ayu-highlight-3fdfc3ac.css">
 
         <!-- Custom theme stylesheets -->
-        <link rel="stylesheet" href="../theme/veyyon-fc839a17.css">
+        <link rel="stylesheet" href="../theme/veyyon-06f6939e.css">
 
 
         <!-- Provide site root and default themes to javascript -->
@@ -46,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-e76f06ca.js";
+            window.path_to_searchindex_js = "../searchindex-a2447057.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-9cfd259b.js"></script>
+        <script src="../toc-cc1a72e9.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -192,277 +196,38 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="custom-hooks-guide"><a class="header" href="#custom-hooks-guide">Custom hooks guide</a></h1>
-<blockquote>
-<p><strong>Spec — not shipped:</strong> this guide documents the target hook model — subprocess command hooks
-configured in JSON/YAML and driven by <code>PreToolUse</code> / <code>PostToolUse</code> / matcher / trust-level semantics
-(the same shape as Claude Code). Veyyon loads hooks as <strong>TypeScript modules</strong> that call <code>pi.on(...)</code>,
-not from JSON and not as external subprocess commands. Read this page as the compatibility reference
-for the target model; to write a hook that runs today, author a TS module.</p>
-</blockquote>
-<p>Hooks let you run logic at specific points in Veyyon’s lifecycle. You can use them to guard tool calls, enrich context after a tool runs, log events, or enforce local policy.</p>
-<p>For a full reference of events, fields, and output formats, see <a href="./hooks.html">Hooks</a>.</p>
-<h2 id="what-hooks-are"><a class="header" href="#what-hooks-are">What hooks are</a></h2>
-<p>A hook is a command that Veyyon runs when a lifecycle event occurs. The hook receives event details as JSON on stdin and can respond on stdout to approve, block, modify, or annotate the event. Most hooks can use a regular expression matcher so they only run when the context matches, for example only for Bash tool calls or only for compact events.</p>
-<p>Use hooks for tasks like:</p>
+<p>Hooks run at points in the session lifecycle (before/after tools, session start, compaction, and related events). They are <strong>TypeScript modules</strong> that default-export a factory and register handlers with <code>pi.on(...)</code>.</p>
+<p>Reference: <a href="./hooks.html">Hooks</a> and repository <code>docs/hooks.md</code>.</p>
+<h2 id="minimal-example"><a class="header" href="#minimal-example">Minimal example</a></h2>
+<p>Place a file under a discovered hooks directory (for example <code>.veyyon/hooks/policy.ts</code>):</p>
+<pre><code class="language-ts">import type { HookAPI } from "@veyyon/coding-agent/extensibility/hooks";
+
+export default function (pi: HookAPI): void {
+	pi.on("tool_call", async (event) =&gt; {
+		if (event.toolName === "bash") {
+			const cmd = String(event.input.command ?? "");
+			if (/\brm\s+-rf\b/.test(cmd)) {
+				return { block: true, reason: "destructive rm blocked by project hook" };
+			}
+		}
+	});
+}
+</code></pre>
+<p>Load via discovery or pass the path with <code>--extension</code> / <code>--hook</code>.</p>
+<h2 id="typical-uses"><a class="header" href="#typical-uses">Typical uses</a></h2>
 <ul>
-<li>Blocking or approving specific tools before they run.</li>
-<li>Adding policy warnings to the context after a tool runs.</li>
-<li>Injecting project-specific instructions when a session starts.</li>
-<li>Logging or auditing tool usage outside the TUI.</li>
+<li>Block or annotate specific tools before they run</li>
+<li>Inject project policy text when a session starts</li>
+<li>Audit tool usage outside the TUI</li>
+<li>Register project-local slash commands</li>
 </ul>
-<h2 id="the-ten-lifecycle-events"><a class="header" href="#the-ten-lifecycle-events">The ten lifecycle events</a></h2>
-<p>Hooks can attach to ten events. Eight of them support a matcher.</p>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Event</th><th>Matcher target</th><th>When it fires</th></tr>
-</thead>
-<tbody>
-<tr><td><code>PreToolUse</code></td><td>Tool name</td><td>Before Veyyon executes a tool.</td></tr>
-<tr><td><code>PermissionRequest</code></td><td>Tool name</td><td>When Veyyon asks for permission to run a tool.</td></tr>
-<tr><td><code>PostToolUse</code></td><td>Tool name</td><td>After a tool finishes.</td></tr>
-<tr><td><code>PreCompact</code></td><td>Compaction trigger</td><td>Before compacting the conversation.</td></tr>
-<tr><td><code>PostCompact</code></td><td>Compaction trigger</td><td>After compacting the conversation.</td></tr>
-<tr><td><code>SessionStart</code></td><td>Startup source</td><td>When a session starts.</td></tr>
-<tr><td><code>SubagentStart</code></td><td>Subagent type</td><td>When a subagent starts.</td></tr>
-<tr><td><code>SubagentStop</code></td><td>Subagent type</td><td>When a subagent finishes.</td></tr>
-<tr><td><code>UserPromptSubmit</code></td><td>None</td><td>When you submit a prompt.</td></tr>
-<tr><td><code>Stop</code></td><td>None</td><td>When Veyyon exits.</td></tr>
-</tbody>
-</table>
-</div>
-<p><code>UserPromptSubmit</code> and <code>Stop</code> do not support matchers. The other events can use a regex to decide whether the hook should run.</p>
-<h2 id="regex-matchers"><a class="header" href="#regex-matchers">Regex matchers</a></h2>
-<p>A matcher is a regular expression that filters the event. The hook only runs when the matcher matches the target value for that event.</p>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Event</th><th>Matcher target</th><th>Example values</th></tr>
-</thead>
-<tbody>
-<tr><td><code>PreToolUse</code>, <code>PermissionRequest</code>, <code>PostToolUse</code></td><td>Tool name</td><td><code>^Bash$</code>, <code>^Grep$</code>, <code>^WriteFile$</code></td></tr>
-<tr><td><code>PreCompact</code>, <code>PostCompact</code></td><td>Compaction trigger</td><td><code>^context-limit$</code></td></tr>
-<tr><td><code>SessionStart</code></td><td>Startup source</td><td><code>^startup$</code>, <code>^resume$</code>, <code>^clear$</code>, <code>^compact$</code></td></tr>
-<tr><td><code>SubagentStart</code>, <code>SubagentStop</code></td><td>Subagent type</td><td><code>^security-auditor$</code></td></tr>
-</tbody>
-</table>
-</div>
-<p>Match patterns are anchored where you want them. <code>^Bash$</code> runs only for the Bash tool, not <code>BashBackground</code> or <code>ReadOnlyBash</code>.</p>
-<h2 id="authoring-a-command-hook"><a class="header" href="#authoring-a-command-hook">Authoring a command hook</a></h2>
-<p>A command hook has this schema:</p>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Field</th><th>Type</th><th>Description</th></tr>
-</thead>
-<tbody>
-<tr><td><code>type</code></td><td>string</td><td>Must be <code>"command"</code>.</td></tr>
-<tr><td><code>command</code></td><td>string</td><td>The shell command to run.</td></tr>
-<tr><td><code>commandWindows</code></td><td>string</td><td>Optional Windows override.</td></tr>
-<tr><td><code>timeout</code></td><td>integer</td><td>Optional timeout in seconds, default 600.</td></tr>
-<tr><td><code>async</code></td><td>boolean</td><td>Optional. Runs the hook without blocking.</td></tr>
-<tr><td><code>statusMessage</code></td><td>string</td><td>Optional message shown in the TUI while the hook runs.</td></tr>
-</tbody>
-</table>
-</div>
-<h3 id="in-configyml-spec-model"><a class="header" href="#in-configyml-spec-model">In config.yml (spec model)</a></h3>
-<pre><code class="language-yaml">hooks:
-  PreToolUse:
-    - matcher: "^Bash$"
-      hooks:
-        - type: command
-          command: "python3 ~/.veyyon/hooks/audit_bash.py"
-          timeout: 30
-          statusMessage: "Auditing Bash command..."
-</code></pre>
-<h3 id="in-hooksjson"><a class="header" href="#in-hooksjson">In hooks.json</a></h3>
-<pre><code class="language-json">{
-  "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "^Bash$",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python3 ~/.veyyon/hooks/audit_bash.py",
-            "timeout": 30,
-            "statusMessage": "Auditing Bash command..."
-          }
-        ]
-      }
-    ]
-  }
-}
-</code></pre>
-<h2 id="stdin-and-stdout-payload-formats"><a class="header" href="#stdin-and-stdout-payload-formats">Stdin and stdout payload formats</a></h2>
-<h3 id="input"><a class="header" href="#input">Input</a></h3>
-<p>Veyyon writes a JSON object to the hook’s stdin. All events share these fields:</p>
-<pre><code class="language-json">{
-  "sessionId": "uuid",
-  "turnId": "turn-id",
-  "agentId": "agent-id",
-  "agentType": "agent-type",
-  "transcriptPath": "/path/to/transcript.jsonl",
-  "cwd": "/path/to/cwd",
-  "hookEventName": "PreToolUse",
-  "model": "model-name",
-  "permissionMode": "permission-mode"
-}
-</code></pre>
-<p>Event-specific fields are added on top. For example, <code>PreToolUse</code> includes <code>toolName</code>, <code>toolInput</code>, and <code>toolUseId</code>. See the <a href="./hooks.html">Hooks</a> reference for the full list.</p>
-<h3 id="output"><a class="header" href="#output">Output</a></h3>
-<p>The hook prints to stdout:</p>
+<h2 id="events"><a class="header" href="#events">Events</a></h2>
+<p>Event names and payloads are defined in <code>packages/coding-agent/src/extensibility/hooks/types.ts</code>. Common surfaces include tool call, permission-related gates (via the approval path), session lifecycle, and compaction. See <code>docs/hooks.md</code> for the typed list and return shapes (<code>block</code>, reasons, message injection).</p>
+<h2 id="related"><a class="header" href="#related">Related</a></h2>
 <ul>
-<li>Empty stdout: Veyyon continues as if the hook did not intervene.</li>
-<li>Non-JSON stdout: Veyyon treats the text as <code>additionalContext</code> and appends it to the LLM context.</li>
-<li>JSON stdout: Veyyon parses it as a structured response.</li>
+<li><a href="./hooks.html">Hooks</a></li>
+<li><a href="./sandbox.html">Approvals</a></li>
 </ul>
-<p>Shared optional fields on JSON responses:</p>
-<pre><code class="language-json">{
-  "continue": true,
-  "stopReason": "Optional reason",
-  "suppressOutput": false,
-  "systemMessage": "Optional message shown in the TUI"
-}
-</code></pre>
-<p><strong>Do not use <code>continue: false</code> on <code>PreToolUse</code> or <code>PermissionRequest</code>.</strong> Those events reject it as unsupported. Block a <code>PreToolUse</code> call with one of:</p>
-<pre><code class="language-json">{
-  "decision": "block",
-  "reason": "Forbidden destructive command detected."
-}
-</code></pre>
-<pre><code class="language-json">{
-  "hookSpecificOutput": {
-    "hookEventName": "PreToolUse",
-    "permissionDecision": "deny",
-    "permissionDecisionReason": "Forbidden destructive command detected."
-  }
-}
-</code></pre>
-<p><code>PostToolUse</code> and other events have different fields; see <a href="./hooks.html">Hooks</a> for the full matrix.</p>
-<h2 id="verification-scripts"><a class="header" href="#verification-scripts">Verification scripts</a></h2>
-<p>Write and test hooks outside the TUI first. A simple test harness is to run the script with a sample JSON payload:</p>
-<pre><code class="language-bash"># test_pre_hook.sh
-python3 - &lt;&lt;'PY'
-import json, sys
-payload = json.load(sys.stdin)
-if payload.get("toolName") == "Bash":
-    tool_input = payload.get("toolInput", {})
-    command = tool_input.get("command", "")
-    if "rm -rf /" in command:
-        print(json.dumps({
-            "decision": "block",
-            "reason": "Refusing destructive command.",
-            "systemMessage": "Blocked a destructive Bash command."
-        }))
-        sys.exit(0)
-print("")
-PY
-</code></pre>
-<p>Run it manually with a sample payload:</p>
-<pre><code class="language-bash">cat &lt;&lt;'JSON' | bash test_pre_hook.sh
-{
-  "hookEventName": "PreToolUse",
-  "toolName": "Bash",
-  "toolInput": { "command": "rm -rf /" }
-}
-JSON
-</code></pre>
-<p>If the output is valid JSON and the behavior matches your intent, register the hook and trust it using <code>/hooks</code> or by recording its hash.</p>
-<h2 id="trust-levels"><a class="header" href="#trust-levels">Trust levels</a></h2>
-<p>Veyyon assigns each hook a trust level before it runs:</p>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Level</th><th>Meaning</th></tr>
-</thead>
-<tbody>
-<tr><td><strong>Managed</strong></td><td>Loaded from administrator-enforced layers like <code>/etc/veyyon/config.yml</code> or MDM profiles. Always trusted.</td></tr>
-<tr><td><strong>Trusted</strong></td><td>User or project hooks whose hash matches a recorded trusted hash in the <code>hooks.state</code> config section.</td></tr>
-<tr><td><strong>Modified</strong></td><td>Previously trusted, but the command or matcher changed.</td></tr>
-<tr><td><strong>Untrusted</strong></td><td>Newly discovered hooks with no trust record.</td></tr>
-</tbody>
-</table>
-</div>
-<p>Untrusted hooks do not run. Veyyon also disables project-local config, hooks, and execution policies in untrusted directories. You can review and trust hooks inside the TUI with the <code>/hooks</code> command. You can bypass trust verification entirely with <code>--dangerously-bypass-hook-trust</code>, but only for local testing.</p>
-<h2 id="worked-example-pretooluse-guard"><a class="header" href="#worked-example-pretooluse-guard">Worked example: PreToolUse guard</a></h2>
-<p>This hook blocks Bash commands that contain a destructive pattern.</p>
-<p><code>.veyyon/hooks.json</code>:</p>
-<pre><code class="language-json">{
-  "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "^Bash$",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python3 .veyyon/hooks/block_destructive.py",
-            "timeout": 10,
-            "statusMessage": "Checking Bash command..."
-          }
-        ]
-      }
-    ]
-  }
-}
-</code></pre>
-<p><code>.veyyon/hooks/block_destructive.py</code>:</p>
-<pre><code class="language-python">import json, sys
-
-payload = json.load(sys.stdin)
-if payload.get("toolName") != "Bash":
-    sys.exit(0)
-
-command = payload.get("toolInput", {}).get("command", "")
-forbidden = ["rm -rf /", "mkfs.", ":(){ :|:&amp; };:", "&gt; /dev/sda"]
-if any(pattern in command for pattern in forbidden):
-    print(json.dumps({
-        "decision": "block",
-        "reason": "Forbidden destructive command detected.",
-        "systemMessage": "This Bash command was blocked by a local hook."
-    }))
-    sys.exit(0)
-</code></pre>
-<p>When a Bash command matches the forbidden list, Veyyon blocks the tool using the <code>decision</code>/<code>reason</code> pair and shows the optional <code>systemMessage</code> in the TUI.</p>
-<h2 id="worked-example-posttooluse-enrichment"><a class="header" href="#worked-example-posttooluse-enrichment">Worked example: PostToolUse enrichment</a></h2>
-<p>This hook adds a project note after the <code>Read</code> tool runs, so the model sees the note in the next turn.</p>
-<p><code>.veyyon/hooks.json</code>:</p>
-<pre><code class="language-json">{
-  "hooks": {
-    "PostToolUse": [
-      {
-        "matcher": "^Read$",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python3 .veyyon/hooks/read_notes.py",
-            "timeout": 10
-          }
-        ]
-      }
-    ]
-  }
-}
-</code></pre>
-<p><code>.veyyon/hooks/read_notes.py</code>:</p>
-<pre><code class="language-python">import json, sys, os
-
-payload = json.load(sys.stdin)
-if payload.get("toolName") != "Read":
-    sys.exit(0)
-
-file_path = payload.get("toolInput", {}).get("path", "")
-if os.path.basename(file_path) == "Cargo.toml":
-    print(json.dumps({
-        "hookSpecificOutput": {
-            "hookEventName": "PostToolUse",
-            "additionalContext": "When editing Cargo.toml, remember to run `cargo check` afterward."
-        }
-    }))
-</code></pre>
-<p>The <code>additionalContext</code> text is appended to the model context after the Read tool completes, so it influences the next assistant response.</p>
-<h2 id="managing-hooks-with-the-hooks-command"><a class="header" href="#managing-hooks-with-the-hooks-command">Managing hooks with the <code>/hooks</code> command</a></h2>
-<p>Open the hook browser at any time by typing <code>/hooks</code> in the TUI. The browser shows events and their handlers, lets you enable or disable trusted hooks, and lets you trust new or modified hooks. You can also trust hooks by recording their hash in the <code>hooks.state</code> config section in your user config, but <code>/hooks</code> is the fastest way to review and approve hook changes.</p>
 
                     </main>
 

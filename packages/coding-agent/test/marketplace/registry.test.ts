@@ -7,7 +7,7 @@ import type {
 	InstalledPluginsRegistry,
 	MarketplaceRegistryEntry,
 	MarketplacesRegistry,
-} from "@veyyon/pi-coding-agent/extensibility/plugins/marketplace";
+} from "@veyyon/coding-agent/extensibility/plugins/marketplace";
 import {
 	addInstalledPlugin,
 	addMarketplaceEntry,
@@ -22,11 +22,11 @@ import {
 	removeMarketplaceEntry,
 	writeInstalledPluginsRegistry,
 	writeMarketplacesRegistry,
-} from "@veyyon/pi-coding-agent/extensibility/plugins/marketplace";
-import { removeSyncWithRetries } from "@veyyon/pi-utils";
+} from "@veyyon/coding-agent/extensibility/plugins/marketplace";
+import { removeSyncWithRetries } from "@veyyon/utils";
 
 // Inline the parseClaudePluginsRegistry validation logic to avoid pulling
-// in discovery/helpers.ts which transitively imports @veyyon/pi-natives.
+// in discovery/helpers.ts which transitively imports @veyyon/natives.
 // Matches the exact checks in helpers.ts parseClaudePluginsRegistry().
 function validateClaudeRegistryFormat(content: string): Record<string, unknown> | null {
 	let data: Record<string, unknown>;
@@ -202,7 +202,7 @@ describe("registry file I/O", () => {
 	let installedPath: string;
 
 	beforeEach(() => {
-		tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "omp-mkt-test-"));
+		tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-mkt-test-"));
 		marketplacesPath = path.join(tmpDir, "marketplaces.json");
 		installedPath = path.join(tmpDir, "installed_plugins.json");
 	});

@@ -1,11 +1,11 @@
 /**
- * HTTP client for the omp auth-broker server.
+ * HTTP client for the veyyon auth-broker server.
  *
  * Used by {@link RemoteAuthCredentialStore} (snapshot pulls) and by
  * `veyyon auth-broker status` (liveness checks). All endpoints except
  * `/v1/healthz` require a bearer token.
  */
-import { readSseEvents } from "@veyyon/pi-utils";
+import { readSseEvents, scopedTimeoutSignal } from "@veyyon/utils";
 import { type } from "arktype";
 import type { AuthCredential } from "../auth-storage";
 import type {
@@ -130,8 +130,7 @@ export class AuthBrokerClient {
 		if (response.status === 304) {
 			return { status: 304, generation: etagGeneration ?? opts.ifGenerationGt ?? 0 };
 		}
-		const text = await response.text();
-		const raw = this.#parseJson(text, response.status);
+		const raw = this.#parseJson(response.text, response.status);
 		const validated = wireSchemas().snapshotResponseSchema(raw);
 		if (validated instanceof type.errors) {
 			throw new AuthBrokerError("Auth broker response failed schema validation", {
@@ -295,8 +294,7 @@ export class AuthBrokerClient {
 		opts: { schema: (input: unknown) => unknown; auth?: boolean; body?: unknown; signal?: AbortSignal },
 	): Promise<t> {
 		const response = await this.#fetchRaw(method, path, opts);
-		const text = await response.text();
-		const raw = this.#parseJson(text, response.status);
+		const raw = this.#parseJson(response.text, response.status);
 		const validated = opts.schema(raw);
 		if (validated instanceof type.errors) {
 			throw new AuthBrokerError("Auth broker response failed schema validation", {
@@ -329,7 +327,7 @@ export class AuthBrokerClient {
 			headers?: Record<string, string>;
 			timeoutMs?: number;
 		},
-	): Promise<Response> {
+	): Promise<{ status: number; headers: Headers; text: string }> {
 		const auth = opts.auth ?? true;
 		const url = `${this.#baseUrl}${path}`;
 		const headers: Record<string, string> = { Accept: "application/json", ...(opts.headers ?? {}) };
@@ -348,14 +346,16 @@ export class AuthBrokerClient {
 
 		let lastError: unknown;
 		for (let attempt = 0; attempt <= this.#maxRetries; attempt += 1) {
-			const timeoutSignal = AbortSignal.timeout(opts.timeoutMs ?? this.#timeoutMs);
-			const signal = opts.signal ? AbortSignal.any([opts.signal, timeoutSignal]) : timeoutSignal;
+			// Per-attempt deadline. The scoped handle clears its timer on settle
+			// (a bare AbortSignal.timeout stays armed), and the fence spans the
+			// body read — a stalled stream is only interrupted by the armed signal.
+			const requestTimeout = scopedTimeoutSignal(opts.timeoutMs ?? this.#timeoutMs, opts.signal);
 			try {
 				const response = await this.#fetch(url, {
 					method,
 					headers,
 					body: payload,
-					signal,
+					signal: requestTimeout.signal,
 				});
 				if (!response.ok && response.status !== 304) {
 					const text = await response.text();
@@ -364,7 +364,8 @@ export class AuthBrokerClient {
 						body: text,
 					});
 				}
-				return response;
+				const text = await response.text();
+				return { status: response.status, headers: response.headers, text };
 			} catch (error) {
 				lastError = error;
 				// Caller-driven abort wins over retry — the caller said stop.
@@ -376,6 +377,8 @@ export class AuthBrokerClient {
 					throw error;
 				}
 				if (attempt >= this.#maxRetries) break;
+			} finally {
+				requestTimeout.cancel();
 			}
 		}
 		throw new AuthBrokerError(`Auth broker request failed after ${this.#maxRetries + 1} attempt(s)`, {

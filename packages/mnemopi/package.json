@@ -1,6 +1,6 @@
 {
   "type": "module",
-  "name": "@veyyon/pi-mnemopi",
+  "name": "@veyyon/mnemopi",
   "version": "1.0.0",
   "description": "Local SQLite memory engine for Veyyon agents",
   "homepage": "https://veyyon.dev",
@@ -11,11 +11,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/can1357/oh-my-pi.git",
+    "url": "git+https://github.com/santhreal/veyyon.git",
     "directory": "packages/mnemopi"
   },
   "bugs": {
-    "url": "https://github.com/can1357/oh-my-pi/issues"
+    "url": "https://github.com/santhreal/veyyon/issues"
   },
   "keywords": [
     "memory",
@@ -39,9 +39,9 @@
     "fmt": "biome format --write ."
   },
   "dependencies": {
-    "@veyyon/pi-ai": "catalog:",
-    "@veyyon/pi-catalog": "catalog:",
-    "@veyyon/pi-utils": "catalog:",
+    "@veyyon/ai": "catalog:",
+    "@veyyon/catalog": "catalog:",
+    "@veyyon/utils": "catalog:",
     "lru-cache": "catalog:"
   },
   "peerDependencies": {

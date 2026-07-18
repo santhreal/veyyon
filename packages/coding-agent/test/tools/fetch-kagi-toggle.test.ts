@@ -2,15 +2,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { type SettingPath, Settings } from "@veyyon/pi-coding-agent/config/settings";
-import type { ToolSession } from "@veyyon/pi-coding-agent/tools";
-import { ReadTool } from "@veyyon/pi-coding-agent/tools/read";
-import * as imageResize from "@veyyon/pi-coding-agent/utils/image-resize";
-import * as toolsManager from "@veyyon/pi-coding-agent/utils/tools-manager";
-import * as scrapers from "@veyyon/pi-coding-agent/web/scrapers/types";
-import * as scraperUtils from "@veyyon/pi-coding-agent/web/scrapers/utils";
-import * as natives from "@veyyon/pi-natives";
-import { ptree, removeSyncWithRetries, Snowflake } from "@veyyon/pi-utils";
+import { type SettingPath, Settings } from "@veyyon/coding-agent/config/settings";
+import type { ToolSession } from "@veyyon/coding-agent/tools";
+import { ReadTool } from "@veyyon/coding-agent/tools/read";
+import * as imageResize from "@veyyon/coding-agent/utils/image-resize";
+import * as toolsManager from "@veyyon/coding-agent/utils/tools-manager";
+import * as scrapers from "@veyyon/coding-agent/web/scrapers/types";
+import * as scraperUtils from "@veyyon/coding-agent/web/scrapers/utils";
+import * as natives from "@veyyon/natives";
+import { ptree, removeSyncWithRetries, Snowflake } from "@veyyon/utils";
 import { asGlobalFetch } from "../helpers/fetch-mock";
 
 const withMissingSystemPython = () => {

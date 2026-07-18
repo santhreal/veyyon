@@ -27,7 +27,7 @@ import {
 	ScrollView,
 	truncateToWidth,
 	visibleWidth,
-} from "@veyyon/pi-tui";
+} from "@veyyon/tui";
 import { getMarkdownTheme, theme } from "../theme/theme";
 import {
 	matchesAppExternalEditor,

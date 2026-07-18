@@ -10,6 +10,10 @@
         <!-- Veyyon handbook: self-contained head additions. No remote resources. -->
         <meta name="theme-color" content="#050505">
         <meta name="color-scheme" content="dark">
+        <!-- Site favicons live at the deployed root, one level above /docs/. -->
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+        <link rel="icon" href="/favicon.ico" sizes="48x48">
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png">
         <style>
           /* Paint the near-black surface before CSS/JS resolve the theme, so there is
              no light flash on load. Kept in sync with theme/veyyon.css. */
@@ -18,7 +22,7 @@
           *, *::before, *::after { box-sizing: border-box; }
         </style>
 
-        <meta name="description" content="How Veyyon turns open models into frontier coding agents. The product, the harness, tool-call repair, the edit format, per-model adaptation, and how to use it.">
+        <meta name="description" content="Operator handbook for the Veyyon terminal coding agent: install, configuration, tools, approvals, edit formats, providers, and harness structure.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -38,7 +42,7 @@
         <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="../ayu-highlight-3fdfc3ac.css">
 
         <!-- Custom theme stylesheets -->
-        <link rel="stylesheet" href="../theme/veyyon-fc839a17.css">
+        <link rel="stylesheet" href="../theme/veyyon-06f6939e.css">
 
 
         <!-- Provide site root and default themes to javascript -->
@@ -46,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-e76f06ca.js";
+            window.path_to_searchindex_js = "../searchindex-a2447057.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-9cfd259b.js"></script>
+        <script src="../toc-cc1a72e9.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -209,17 +213,17 @@
 </li>
 </ol>
 <h2 id="config-schema-updates"><a class="header" href="#config-schema-updates">Config schema updates</a></h2>
-<p>Veyyon reads your settings from <code>config.yml</code> under the config home and validates them against the versioned config schema. If a new release requires a new key or renames an existing one, the binary tells you exactly which file and line are affected.</p>
+<p>Profile settings live in <code>~/.veyyon/profiles/&lt;name&gt;/agent/config.yml</code> (default profile: <code>profiles/default/agent/config.yml</code>). Global cross-profile keys (for example <code>defaultProfile</code>) live in <code>~/.veyyon/config.yml</code>. The binary validates settings against the schema and reports file, key, and line on failure.</p>
 <h3 id="common-schema-changes"><a class="header" href="#common-schema-changes">Common schema changes</a></h3>
 <ul>
-<li><strong>New required keys</strong> are added when a new feature is on by default. The error message names the missing key and the section it belongs in. Add it to <code>config.yml</code> or disable the related feature if you do not need it.</li>
+<li><strong>New required keys</strong> are added when a new feature is on by default. The error message names the missing key and the section it belongs in. Add it to the profile <code>config.yml</code> or disable the related feature if you do not need it.</li>
 <li><strong>Renamed fields</strong> are reported as unknown keys. The old name is usually accepted during a short migration window, but you should rename it to the current spelling.</li>
 <li><strong>Removed fields</strong> are ignored unless you run with <code>--strict-config</code>, in which case unknown keys are treated as errors. Use <code>--strict-config</code> in CI to keep your config clean; leave it off during normal use so upgrades do not immediately break.</li>
 </ul>
 <h3 id="updating-your-config"><a class="header" href="#updating-your-config">Updating your config</a></h3>
 <ol>
 <li>
-<p>Open <code>~/.veyyon/config.yml</code> in an editor.</p>
+<p>Edit <code>~/.veyyon/profiles/default/agent/config.yml</code> (or the active profile agent dir). Use <code>~/.veyyon/config.yml</code> only for global keys such as <code>defaultProfile</code>.</p>
 </li>
 <li>
 <p>Run the new binary once to see any validation errors:</p>
@@ -228,7 +232,7 @@ veyyon plugin doctor
 </code></pre>
 </li>
 <li>
-<p>Fix each reported line. If you are unsure what a key does, see the sample configuration that ships with Veyyon or read <a href="./configuration.html">Configuration</a>.</p>
+<p>Fix each reported line. If you are unsure what a key does, see <a href="./configuration.html">Configuration</a> and <a href="../reference/file-locations.html">File locations</a>.</p>
 </li>
 <li>
 <p>After editing, run <code>veyyon plugin doctor</code> again to confirm the file loads cleanly.</p>
@@ -236,26 +240,26 @@ veyyon plugin doctor
 </ol>
 <p>You do not need to rewrite the whole file. Most upgrades only add or rename a few keys, and the rest of your settings stay the same.</p>
 <h2 id="session-and-state-data"><a class="header" href="#session-and-state-data">Session and state data</a></h2>
-<p>Veyyon keeps your session data in two places under the config home:</p>
+<p>Session data lives under the <strong>profile agent dir</strong> (<code>~/.veyyon/profiles/default/agent/</code> by default):</p>
 <ul>
-<li><code>sessions/</code> contains the append-only rollout files, one per session, in JSONL format. These are the source of truth for conversation history, branching, and undo.</li>
-<li>A local SQLite state database mirrors key events for fast lookups and diagnostics. It is rebuilt from the rollout files if it is missing or out of sync.</li>
+<li><code>sessions/</code> — append-only JSONL rollouts (conversation history, branching).</li>
+<li>SQLite stores under the agent dir (for example <code>history.db</code>, <code>agent.db</code>) mirror lookups; they can be rebuilt from rollouts when missing.</li>
 </ul>
 <p>This means you usually do not need a manual database migration. When you start the new binary, it reads the rollout files and updates the state database as needed. If you see a warning about a stale state database, the binary repairs it automatically on startup.</p>
 <h3 id="if-you-need-to-force-a-state-rebuild"><a class="header" href="#if-you-need-to-force-a-state-rebuild">If you need to force a state rebuild</a></h3>
 <ol>
 <li>Close Veyyon.</li>
 <li>Remove the state database file (see <a href="../reference/file-locations.html">File locations</a> for the exact path on your platform).</li>
-<li>Restart Veyyon. The state database is rebuilt from <code>sessions/</code> and <code>archived_sessions/</code>.</li>
+<li>Restart Veyyon. Indexes rebuild from agent-dir <code>sessions/</code> rollouts.</li>
 </ol>
-<p>Never delete <code>sessions/</code> or <code>archived_sessions/</code> to fix a state problem. Those are the durable history; the state database is only a cache.</p>
+<p>Never delete <code>sessions/</code> to fix a state problem. Rollouts are the durable history; SQLite stores under the agent dir are caches/indexes.</p>
 <h2 id="rolling-back-a-binary"><a class="header" href="#rolling-back-a-binary">Rolling back a binary</a></h2>
 <p>If the new binary does not work for you, you can go back to the previous version without losing data.</p>
 <ol>
 <li>Close all Veyyon processes.</li>
 <li>Restore the previous binary from your system package manager, the release archive, or your own backup.</li>
-<li>Restore your <code>config.yml</code> from the backup you made before upgrading, if the new version modified it in ways the old version cannot read.</li>
-<li>Leave <code>sessions/</code>, <code>archived_sessions/</code>, and the state database in place. Rollout files are forward-compatible for recent releases, and the old binary will rebuild the state database if needed.</li>
+<li>Restore profile <code>config.yml</code> (and global <code>~/.veyyon/config.yml</code> if you changed it) from the backup you made before upgrading, if the new version modified settings the old version cannot read.</li>
+<li>Leave agent-dir <code>sessions/</code>, archives, and SQLite stores in place. Rollout files are forward-compatible for recent releases; the old binary can rebuild indexes when needed.</li>
 <li>Start Veyyon and run <code>veyyon plugin doctor</code> to confirm the environment is healthy.</li>
 </ol>
 <p>If you used a new feature that wrote settings the old binary does not recognize, remove or rename those keys before starting the old binary. The error message will point you to the right lines.</p>
@@ -270,11 +274,7 @@ keys; it exits non-zero when a check reports an error. Start a normal interactiv
 <p>Treat every failed check as actionable. Fix the reported line, then re-run. If a check fails after a
 rollback, compare your <code>config.yml</code> against the backup from before the upgrade. See
 <a href="./troubleshooting.html">Troubleshooting</a> for the common failure modes and
-<a href="../features/doctor.html">Diagnostics and health</a> for the full diagnostics surface.</p>
-<blockquote>
-<p><strong>Spec — not shipped:</strong> a top-level <code>veyyon doctor</code> install-health command with <code>--summary</code> /
-<code>--json</code> reports. Use <code>veyyon plugin doctor</code> and the TUI <code>/debug</code> today.</p>
-</blockquote>
+<a href="../features/doctor.html">Diagnostics and health</a> for the full diagnostics surface (<code>veyyon plugin doctor</code>, TUI <code>/debug</code>).</p>
 <h2 id="where-to-go-next"><a class="header" href="#where-to-go-next">Where to go next</a></h2>
 <ul>
 <li><a href="./configuration.html">Configuration</a> explains the settings that change between releases.</li>

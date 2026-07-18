@@ -1,13 +1,10 @@
 import { describe, expect, it } from "bun:test";
-import {
-	createOpenAICodexAuthorizationUrl,
-	formatOpenAICodexTokenEndpointError,
-} from "@veyyon/pi-ai/oauth/openai-codex";
-import { type RequestBody, transformRequestBody } from "@veyyon/pi-ai/providers/openai-codex/request-transformer";
-import { CodexApiError, parseCodexError } from "@veyyon/pi-ai/providers/openai-codex/response-handler";
-import { convertOpenAICodexResponsesTools } from "@veyyon/pi-ai/providers/openai-codex-responses";
-import type { Tool } from "@veyyon/pi-ai/types";
-import { OPENAI_HEADER_VALUES } from "@veyyon/pi-catalog/wire/codex";
+import { createOpenAICodexAuthorizationUrl, formatOpenAICodexTokenEndpointError } from "@veyyon/ai/oauth/openai-codex";
+import { type RequestBody, transformRequestBody } from "@veyyon/ai/providers/openai-codex/request-transformer";
+import { CodexApiError, parseCodexError } from "@veyyon/ai/providers/openai-codex/response-handler";
+import { convertOpenAICodexResponsesTools } from "@veyyon/ai/providers/openai-codex-responses";
+import type { Tool } from "@veyyon/ai/types";
+import { OPENAI_HEADER_VALUES } from "@veyyon/catalog/wire/codex";
 import { createCodexModel } from "./helpers";
 
 const DEFAULT_PROMPT_PREFIX =

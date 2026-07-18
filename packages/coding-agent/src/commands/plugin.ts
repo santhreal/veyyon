@@ -1,21 +1,9 @@
 /**
  * Manage plugins (install, uninstall, list, etc.).
  */
-import { Args, Command, Flags } from "@veyyon/pi-utils/cli";
-import { type PluginAction, type PluginCommandArgs, runPluginCommand } from "../cli/plugin-cli";
+import { Args, Command, Flags } from "@veyyon/utils/cli";
+import { PLUGIN_ACTIONS, type PluginAction, type PluginCommandArgs, runPluginCommand } from "../cli/plugin-cli";
 import { initTheme } from "../modes/theme/theme";
-
-const ACTIONS: PluginAction[] = [
-	"install",
-	"uninstall",
-	"list",
-	"link",
-	"doctor",
-	"features",
-	"config",
-	"enable",
-	"disable",
-];
 
 export default class Plugin extends Command {
 	static description = "Manage plugins (install, uninstall, list, etc.)";
@@ -24,7 +12,7 @@ export default class Plugin extends Command {
 		action: Args.string({
 			description: "Plugin action",
 			required: false,
-			options: ACTIONS,
+			options: PLUGIN_ACTIONS,
 		}),
 		targets: Args.string({
 			description: "Packages, paths, or plugin names",

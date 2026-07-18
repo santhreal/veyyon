@@ -5,12 +5,12 @@
  * rule of the same name overrides a bundled default (first-wins dedup).
  */
 import { describe, expect, it } from "bun:test";
-import { getCapability } from "@veyyon/pi-coding-agent/capability";
-import { BUILTIN_DEFAULTS_PROVIDER_ID, type Rule, ruleCapability } from "@veyyon/pi-coding-agent/capability/rule";
-import type { LoadContext } from "@veyyon/pi-coding-agent/capability/types";
+import { getCapability } from "@veyyon/coding-agent/capability";
+import { BUILTIN_DEFAULTS_PROVIDER_ID, type Rule, ruleCapability } from "@veyyon/coding-agent/capability/rule";
+import type { LoadContext } from "@veyyon/coding-agent/capability/types";
 // Register all discovery providers as a side effect.
-import "@veyyon/pi-coding-agent/discovery";
-import { TtsrManager, type TtsrMatchContext } from "@veyyon/pi-coding-agent/export/ttsr";
+import "@veyyon/coding-agent/discovery";
+import { TtsrManager, type TtsrMatchContext } from "@veyyon/coding-agent/export/ttsr";
 
 function ruleProvider() {
 	const cap = getCapability(ruleCapability.id);

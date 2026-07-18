@@ -1,7 +1,7 @@
 import { fileURLToPath } from "node:url";
-import type { ImageContent } from "@veyyon/pi-ai";
-import { addKeyAliases, canonicalKeyId, Editor, type KeyId, parseKey, parseKittySequence } from "@veyyon/pi-tui";
-import { BracketedPasteHandler } from "@veyyon/pi-tui/bracketed-paste";
+import type { ImageContent } from "@veyyon/ai";
+import { addKeyAliases, canonicalKeyId, Editor, type KeyId, parseKey, parseKittySequence } from "@veyyon/tui";
+import { BracketedPasteHandler } from "@veyyon/tui/bracketed-paste";
 import type { AppKeybinding } from "../../config/keybindings";
 import { isSettingsInitialized, settings } from "../../config/settings";
 import { imageReferenceHyperlink, PLACEHOLDER_REGEX, renderPlaceholders } from "../image-references";

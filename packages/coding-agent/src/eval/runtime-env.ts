@@ -4,7 +4,7 @@
  */
 import * as os from "node:os";
 import * as path from "node:path";
-import { $which } from "@veyyon/pi-utils";
+import { $which } from "@veyyon/utils";
 
 export const CASE_INSENSITIVE_ENV = process.platform === "win32";
 
@@ -60,15 +60,15 @@ export const BASE_ENV_ALLOWLIST = [
 /**
  * Union of internal PI tokens and provider API keys that must never reach an
  * eval sandbox, even under a broad allow-prefix (e.g. the `PI_` prefix admits
- * `PI_SESSION`/`PI_TOKEN` unless explicitly denied here). Single authoritative
+ * `VEYYON_SESSION`/`VEYYON_TOKEN` unless explicitly denied here). Single authoritative
  * source for py/rb/jl — see BACKLOG SPEC-ONE-PLACE-AUDIT F3.
  */
 export const SECRET_ENV_DENYLIST = [
-	"PI_API_KEY",
-	"PI_TOKEN",
-	"PI_PASSWORD",
-	"PI_SESSION",
-	"PI_TOOL_BRIDGE_TOKEN",
+	"VEYYON_API_KEY",
+	"VEYYON_TOKEN",
+	"VEYYON_PASSWORD",
+	"VEYYON_SESSION",
+	"VEYYON_TOOL_BRIDGE_TOKEN",
 	"OPENAI_API_KEY",
 	"ANTHROPIC_API_KEY",
 	"GOOGLE_API_KEY",

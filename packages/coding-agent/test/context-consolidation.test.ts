@@ -1,18 +1,18 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
-import { Agent, type AgentMessage } from "@veyyon/pi-agent-core";
-import { estimateTokens } from "@veyyon/pi-agent-core/compaction/compaction";
-import type { AssistantMessage, Message, Model } from "@veyyon/pi-ai";
-import { createMockModel } from "@veyyon/pi-ai/providers/mock";
-import { ModelRegistry } from "@veyyon/pi-coding-agent/config/model-registry";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { StatusLineComponent } from "@veyyon/pi-coding-agent/modes/components/status-line";
-import { initTheme } from "@veyyon/pi-coding-agent/modes/theme/theme";
-import { computeContextBreakdown } from "@veyyon/pi-coding-agent/modes/utils/context-usage";
-import { AgentSession } from "@veyyon/pi-coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/pi-coding-agent/session/auth-storage";
-import { SessionManager } from "@veyyon/pi-coding-agent/session/session-manager";
-import { TempDir } from "@veyyon/pi-utils";
+import { Agent, type AgentMessage } from "@veyyon/agent-core";
+import { estimateTokens } from "@veyyon/agent-core/compaction/compaction";
+import type { AssistantMessage, Message, Model } from "@veyyon/ai";
+import { createMockModel } from "@veyyon/ai/providers/mock";
+import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import { StatusLineComponent } from "@veyyon/coding-agent/modes/components/status-line";
+import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { computeContextBreakdown } from "@veyyon/coding-agent/modes/utils/context-usage";
+import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
+import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { TempDir } from "@veyyon/utils";
 
 describe("Context usage consolidation", () => {
 	let sharedDir: TempDir;

@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
+import { ghostSunBar } from "../../../src/modes/components/composer-chrome";
 import { renderSunField, type SunFieldOptions, sunMark } from "../../../src/modes/components/sun";
 
 /** Strip SGR escapes so we can assert on the glyph geometry. */
 function strip(s: string): string {
-	// biome-ignore lint/suspicious/noControlCharactersInRegex: matching ANSI SGR
 	return s.replace(/\x1b\[[0-9;]*m/g, "");
 }
 
@@ -173,5 +173,34 @@ describe("sunMark (the launch-signature recipe)", () => {
 		const joined = sunMark(16, 7, { trueColor: false }).join("");
 		expect(joined).toContain("\x1b[38;5;");
 		expect(joined).not.toContain("\x1b[38;2;");
+	});
+});
+
+describe("ghostSunBar (the resting mark on the composer horizon)", () => {
+	test("at rest it is a smooth symmetric dome, never a dither slice", () => {
+		const bar = ghostSunBar(true, 0);
+		expect(bar).not.toBeNull();
+		const glyphs = strip(bar as string);
+		expect(glyphs).toBe("▁▃▆█▆▃▁");
+		// The old implementation sliced the dithered sun field, which painted
+		// `·░▒▒▒░··` — one row of ordered dither reads as terminal corruption.
+		expect(glyphs).not.toMatch(/[·:░▒▓]/);
+	});
+
+	test("sinking shrinks the dome monotonically and ends in null", () => {
+		let prev = strip(ghostSunBar(true, 0) as string).replace(/ /g, "").length;
+		for (const sink of [0.25, 0.5, 0.75]) {
+			const bar = ghostSunBar(true, sink);
+			const cells = bar === null ? 0 : strip(bar).replace(/ /g, "").length;
+			expect(cells).toBeLessThan(prev);
+			prev = cells;
+		}
+		expect(ghostSunBar(true, 1)).toBeNull();
+	});
+
+	test("non-truecolor terminals get the 256-colour ember ramp, same silhouette", () => {
+		const bar = ghostSunBar(false, 0);
+		expect(strip(bar as string)).toBe("▁▃▆█▆▃▁");
+		expect(bar).toContain("\x1b[38;5;");
 	});
 });

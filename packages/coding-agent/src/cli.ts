@@ -15,16 +15,17 @@ try {
  * lightweight CLI runner from pi-utils.
  */
 import { parentPort } from "node:worker_threads";
-import type { CliConfig } from "@veyyon/pi-utils/cli";
+import type { CliConfig } from "@veyyon/utils/cli";
 import {
 	APP_NAME,
 	getActiveProfile,
 	MIN_BUN_VERSION,
-	resolveProfileFromEnv,
+	migrateLegacyDefaultProfileLayout,
+	resolveStartupProfile,
 	setProfile,
 	VERSION,
-} from "@veyyon/pi-utils/dirs";
-import { declareWorkerHostEntry, installWorkerInbox } from "@veyyon/pi-utils/worker-host";
+} from "@veyyon/utils/dirs";
+import { declareWorkerHostEntry, installWorkerInbox } from "@veyyon/utils/worker-host";
 import { installProfileAlias, resolveProfileAliasCommandFromProcess } from "./cli/profile-alias";
 import { extractProfileFlags } from "./cli/profile-bootstrap";
 import { DAEMON_BROKER_WORKER_ARG } from "./launch/protocol";
@@ -43,17 +44,17 @@ process.title = APP_NAME;
 // (`B:\~BUN\root\cli.js`) but registers the main path with forward slashes
 // (`B:/~BUN/root/cli.js`), so Bun's internal match fails. `bun build --compile`
 // CLI builds are unaffected. A compiled binary's entry module is by definition
-// the process entry, so the define-folded PI_COMPILED marker stands in.
-const isProcessEntry = import.meta.main || process.env.PI_COMPILED === "true";
+// the process entry, so the define-folded VEYYON_COMPILED marker stands in.
+const isProcessEntry = import.meta.main || process.env.VEYYON_COMPILED === "true";
 
 // Worker-host entry declaration (Worker threads and worker subprocesses
 // re-enter `Bun.main` with a hidden argv selector instead of loading separate
 // worker entrypoints) happens inside `runCli` after profile bootstrap:
-// `@veyyon/pi-utils/env` eagerly loads `.env` from the agent directory at
+// `@veyyon/utils/env` eagerly loads `.env` from the agent directory at
 // import time, so it must not be imported before `setProfile` runs.
 
 async function showHelp(config: CliConfig): Promise<void> {
-	const { renderRootHelp } = await import("@veyyon/pi-utils/cli");
+	const { renderRootHelp } = await import("@veyyon/utils/cli");
 	const { getExtraHelpText } = await import("./cli/args");
 	renderRootHelp(config);
 	const extra = getExtraHelpText();
@@ -72,7 +73,7 @@ async function showHelp(config: CliConfig): Promise<void> {
  * tarball installs all exercise it on every CI run.
  */
 async function runSmokeTest(): Promise<void> {
-	const { smokeTestSyncWorker, startServer } = await import("@veyyon/pi-stats");
+	const { smokeTestSyncWorker, startServer } = await import("@veyyon/stats");
 	const { smokeTestTinyTitleWorker } = await import("./tiny/title-client");
 	const { smokeTestSttWorker } = await import("./stt/asr-client");
 	const { smokeTestTtsWorker } = await import("./tts/tts-client");
@@ -178,7 +179,7 @@ async function runWorkerEntrypoint(arg: string | undefined): Promise<boolean> {
 			pending.push(event);
 		};
 		scope.onmessage = buffer;
-		await import("@veyyon/pi-stats/sync-worker");
+		await import("@veyyon/stats/sync-worker");
 		const handler = scope.onmessage;
 		if (handler && handler !== buffer) {
 			for (const event of pending) handler.call(scope, event);
@@ -294,18 +295,27 @@ export async function runCli(argv: string[]): Promise<void> {
 	try {
 		const extracted = extractProfileFlags(resolvedArgv);
 		resolvedArgv = extracted.argv;
+		// One-time legacy-layout migration (bare-root default profile →
+		// profiles/default). Must run before any profile path is read or
+		// written — notably before `@veyyon/utils/env` loads the agent `.env`.
+		const migration = migrateLegacyDefaultProfileLayout();
+		if (migration.migrated) {
+			process.stderr.write(
+				`Migrated default profile to ${migration.targetDir} (moved: ${migration.movedEntries.join(", ")})\n`,
+			);
+		}
 		if (extracted.profile !== undefined) {
 			setProfile(extracted.profile);
 		} else {
-			// No explicit --profile: activate any OMP_PROFILE/PI_PROFILE inherited
-			// from the environment. Module-load resolution deliberately swallows an
-			// invalid value to avoid an uncaught throw before this try/catch is in
-			// scope (see `readProfileFromEnvSafe` in dirs.ts), and callers may set
-			// OMP_PROFILE after importing this module (profile aliases/tests). Surfacing
-			// validation here turns `OMP_PROFILE=.. omp --version` into a clean error;
-			// calling setProfile keeps every later path helper on the env-selected
-			// profile instead of the default agent directory.
-			setProfile(resolveProfileFromEnv());
+			// No explicit --profile: resolve from the profile env var
+			// (VEYYON_PROFILE — an explicitly empty value
+			// forces the default profile) and then the global `defaultProfile`
+			// setting. Module-load resolution deliberately swallows an invalid
+			// value to avoid an uncaught throw before this try/catch is in scope
+			// (see `resolveStartupProfileSafe` in dirs.ts); re-resolving here
+			// surfaces a clean error and keeps every later path helper on the
+			// selected profile.
+			setProfile(resolveStartupProfile());
 		}
 		if (extracted.aliasName !== undefined) {
 			const profile = extracted.profile ?? getActiveProfile();
@@ -343,7 +353,7 @@ export async function runCli(argv: string[]): Promise<void> {
 
 	// Declare this module as the worker-host entry now that the active profile
 	// is resolved. The worker-host module is side-effect-free; importing
-	// `@veyyon/pi-utils/env` here would snapshot the wrong agent `.env`.
+	// `@veyyon/utils/env` here would snapshot the wrong agent `.env`.
 	// Gated on `isProcessEntry`: only the real CLI process entry is a valid
 	// worker host. Worker-thread re-entry already returned above at the
 	// `__veyyon_worker_` dispatch, and importers (`runCli` in profile-CLI tests,
@@ -357,23 +367,51 @@ export async function runCli(argv: string[]): Promise<void> {
 		return;
 	}
 	const [{ run }, { commands, resolveCliArgv }] = await Promise.all([
-		import("@veyyon/pi-utils/cli"),
+		import("@veyyon/utils/cli"),
 		import("./cli-commands"),
 	]);
 	// --help and --version are handled by run() directly, don't rewrite those.
 	// Everything else that isn't a known subcommand routes to "launch".
 	const resolved = resolveCliArgv(resolvedArgv);
 	if ("error" in resolved) {
-		process.stderr.write(`error: ${resolved.error}\n`);
+		process.stderr.write(`Error: ${resolved.error}\n`);
 		process.exitCode = 1;
 		return;
 	}
 	return run({ bin: APP_NAME, version: VERSION, argv: resolved.argv, commands, help: showHelp });
 }
 
+/**
+ * Render an error escaping `runCli` for the operator. `Bun.inspect` on an
+ * Error embeds source-context excerpts around each frame — in the compiled
+ * binary those are raw minified lines from the 654k-line bundled cli.js,
+ * burying the actual message. Default output is the message plus its cause
+ * chain and a hint; `VEYYON_STACK=1` opts into the full inspected render.
+ */
+export function formatCliFatal(err: unknown, opts: { stack: boolean; colors: boolean }): string {
+	if (opts.stack) return `${Bun.inspect(err, { colors: opts.colors })}\n`;
+	let out: string;
+	if (err instanceof Error) {
+		out = `${err.name && err.name !== "Error" ? err.name : "Error"}: ${err.message || "(no message)"}`;
+		let cause: unknown = err.cause;
+		while (cause !== undefined && cause !== null) {
+			if (cause instanceof Error) {
+				out += `\n  caused by: ${cause.name && cause.name !== "Error" ? `${cause.name}: ` : ""}${cause.message}`;
+				cause = cause.cause;
+			} else {
+				out += `\n  caused by: ${String(cause)}`;
+				break;
+			}
+		}
+	} else {
+		out = `Error: ${String(err)}`;
+	}
+	return `${out}\n  (set VEYYON_STACK=1 for the full stack trace)\n`;
+}
+
 // Floating call instead of top-level await: TLA forces `--bytecode` (CJS
 // lowering) builds to fail, and the entrypoint needs nothing after this.
-// The catch mirrors what an unhandled TLA rejection produced: error dump to
+// The catch mirrors what an unhandled TLA rejection produced: error report to
 // stderr, exit code 1. Success paths resolve without touching the exit code.
 // Guarded so importing `runCli` (profile CLI tests, SDK embedding) does not
 // launch the agent as a side effect. Worker threads re-enter this module as
@@ -381,7 +419,12 @@ export async function runCli(argv: string[]): Promise<void> {
 // is admitted via `!Bun.isMainThread`.
 if (isProcessEntry || !Bun.isMainThread) {
 	runCli(process.argv.slice(2)).catch((err: unknown) => {
-		process.stderr.write(`${Bun.inspect(err, { colors: process.stderr.isTTY === true })}\n`);
+		process.stderr.write(
+			formatCliFatal(err, {
+				stack: process.env.VEYYON_STACK === "1",
+				colors: process.stderr.isTTY === true,
+			}),
+		);
 		process.exit(1);
 	});
 }

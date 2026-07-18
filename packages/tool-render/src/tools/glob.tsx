@@ -1,4 +1,5 @@
 /** `glob` (legacy `find`) — glob-based file finder; results are paths sorted by mtime. */
+import { formatCount } from "@veyyon/utils";
 import type { ReactNode } from "react";
 import { Badge, Badges, InvalidArg, Note, ResultText } from "../parts";
 import type { ToolRenderer, ToolRenderProps } from "../types";
@@ -39,11 +40,7 @@ function Body({ args, result }: ToolRenderProps): ReactNode {
 					args.gitignore === false && <Badge>no-gitignore</Badge>,
 					args.hidden === false && <Badge>no-hidden</Badge>,
 					timeout !== null && <Badge>timeout {timeout}s</Badge>,
-					fileCount !== null && (
-						<Badge tone="accent">
-							{fileCount} file{fileCount === 1 ? "" : "s"}
-						</Badge>
-					),
+					fileCount !== null && <Badge tone="accent">{formatCount("file", fileCount)}</Badge>,
 					scopePath !== null && <Badge>in {shortenPath(scopePath)}</Badge>,
 					truncated && (
 						<Badge tone="warn">{resultLimit !== null ? `truncated at ${resultLimit}` : "truncated"}</Badge>

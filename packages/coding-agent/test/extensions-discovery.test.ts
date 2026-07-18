@@ -1,15 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { type ExtensionModule, extensionModuleCapability } from "@veyyon/pi-coding-agent/capability/extension-module";
-import { resetSettingsForTest, Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { getCapability, initializeWithSettings } from "@veyyon/pi-coding-agent/discovery";
+import { type ExtensionModule, extensionModuleCapability } from "@veyyon/coding-agent/capability/extension-module";
+import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
+import { getCapability, initializeWithSettings } from "@veyyon/coding-agent/discovery";
 import {
 	discoverAndLoadExtensions,
 	discoverExtensionPaths,
 	loadExtensions,
-} from "@veyyon/pi-coding-agent/extensibility/extensions/loader";
-import { getProjectAgentDir, TempDir } from "@veyyon/pi-utils";
+} from "@veyyon/coding-agent/extensibility/extensions/loader";
+import { getProjectAgentDir, TempDir } from "@veyyon/utils";
 import { filterUserScoped } from "./utils/filter-user-extensions";
 
 describe("extensions discovery", () => {
@@ -324,7 +324,7 @@ describe("extensions discovery", () => {
 		fs.writeFileSync(path.join(realDir, "index.ts"), extensionCodeWithTool("ctk-tool"));
 		fs.writeFileSync(
 			path.join(realDir, "package.json"),
-			JSON.stringify({ name: "ctk", omp: { extensions: ["./index.ts"] } }),
+			JSON.stringify({ name: "ctk", veyyon: { extensions: ["./index.ts"] } }),
 		);
 		fs.symlinkSync(realDir, path.join(extensionsDir, "ctk"), "dir");
 
@@ -469,7 +469,7 @@ describe("extensions discovery", () => {
 				name: "pi-extension-with-deps",
 				version: "1.0.0",
 				type: "module",
-				omp: { extensions: ["./index.ts"] },
+				veyyon: { extensions: ["./index.ts"] },
 			}),
 		);
 

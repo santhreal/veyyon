@@ -1,7 +1,7 @@
 /**
  * Leading global option flags must not hide a subcommand from the CLI runner.
  *
- * #2970: `omp --approval-mode=yolo acp` was rewritten to
+ * #2970: `veyyon --approval-mode=yolo acp` was rewritten to
  * `launch --approval-mode=yolo acp`, swallowing `acp` as a launch prompt so the
  * yolo override never reached the ACP command path. The resolver now skips
  * leading global flags (using the launch parser's value-consumption contract)
@@ -9,7 +9,7 @@
  * flags.
  */
 import { describe, expect, test } from "bun:test";
-import { resolveCliArgv } from "@veyyon/pi-coding-agent/cli-commands";
+import { resolveCliArgv } from "@veyyon/coding-agent/cli-commands";
 
 describe("resolveCliArgv routes subcommands hidden behind leading global flags", () => {
 	test("`--approval-mode=yolo acp` dispatches the acp subcommand with the flag preserved", () => {
@@ -93,6 +93,55 @@ describe("resolveCliArgv near-miss did-you-mean (bare single token)", () => {
 	test("flags and @file args are never near-miss candidates", () => {
 		expect(resolveCliArgv(["@stats.txt"])).toEqual({
 			argv: ["launch", "@stats.txt"],
+		});
+	});
+
+	test("a near-miss token with only flags attached still errors (`updte --print` leak)", () => {
+		const resolved = resolveCliArgv(["updte", "--print"]);
+		if (!("error" in resolved)) throw new Error(`expected error, got argv ${JSON.stringify(resolved.argv)}`);
+		expect(resolved.error).toContain("`veyyon updte` is not a command");
+		expect(resolved.error).toContain("veyyon update");
+	});
+
+	test("flag order does not matter: `--print updte` errors the same way", () => {
+		const resolved = resolveCliArgv(["--print", "updte"]);
+		if (!("error" in resolved)) throw new Error(`expected error, got argv ${JSON.stringify(resolved.argv)}`);
+		expect(resolved.error).toContain("veyyon update");
+	});
+
+	test("a near-miss token plus a second positional stays a genuine prompt", () => {
+		expect(resolveCliArgv(["updte", "everything"])).toEqual({
+			argv: ["launch", "updte", "everything"],
+		});
+	});
+
+	test("a near-miss token plus an @file arg stays a genuine prompt", () => {
+		expect(resolveCliArgv(["updte", "@notes.md"])).toEqual({
+			argv: ["launch", "updte", "@notes.md"],
+		});
+	});
+
+	test("`-- updte` (explicit end-of-options) is always a prompt", () => {
+		expect(resolveCliArgv(["--", "updte"])).toEqual({
+			argv: ["launch", "--", "updte"],
+		});
+	});
+
+	test("a value-consuming flag's value is not the sole positional", () => {
+		// `stat` is --model's value, so nothing near-miss fires and this stays a prompt-less launch.
+		expect(resolveCliArgv(["--model", "stat"])).toEqual({
+			argv: ["launch", "--model", "stat"],
+		});
+	});
+
+	test("a genuine one-word prompt does not false-positive on a distance-2 command", () => {
+		// "hello" is 2 edits from "shell"; short tokens only match at distance 1,
+		// so `veyyon -p hello` must stay a prompt.
+		expect(resolveCliArgv(["--print", "hello"])).toEqual({
+			argv: ["launch", "--print", "hello"],
+		});
+		expect(resolveCliArgv(["hello"])).toEqual({
+			argv: ["launch", "hello"],
 		});
 	});
 });

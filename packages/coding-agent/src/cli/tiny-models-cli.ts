@@ -1,4 +1,4 @@
-import { formatBytes } from "@veyyon/pi-utils";
+import { formatBytes } from "@veyyon/utils";
 import chalk from "chalk";
 import {
 	DEFAULT_TINY_TITLE_LOCAL_MODEL_KEY,
@@ -11,6 +11,9 @@ import { shutdownTinyTitleClient, tinyTitleClient } from "../tiny/title-client";
 import type { TinyTitleProgressEvent } from "../tiny/title-protocol";
 
 export type TinyModelsAction = "download" | "list";
+
+/** Canonical action list; the `tiny-models` command's options validation imports this. */
+export const TINY_MODELS_ACTIONS: TinyModelsAction[] = ["download", "list"];
 
 export interface TinyModelsCommandArgs {
 	action: TinyModelsAction;
@@ -35,7 +38,7 @@ function writeLine(text = ""): void {
 	process.stdout.write(`${text}\n`);
 }
 
-const ACTIONABLE_DOWNLOAD_ERROR_LINE = /PI_TINY_|CUDA|cuDNN|cudnn|libcudnn|tiny-title-runtime|onnxruntime-node/i;
+const ACTIONABLE_DOWNLOAD_ERROR_LINE = /VEYYON_TINY_|CUDA|cuDNN|cudnn|libcudnn|tiny-title-runtime|onnxruntime-node/i;
 
 function downloadErrorSummary(error: string | undefined): string | undefined {
 	const lines =

@@ -1,5 +1,5 @@
 //! Behavioral contract tests driving [`crate::run`] under a
-//! [`pi_uutils_ctx::scope`], the way the shell host invokes the builtin.
+//! [`veyyon_uutils_ctx::scope`], the way the shell host invokes the builtin.
 
 use std::{
 	collections::HashMap,
@@ -42,7 +42,7 @@ fn run_jq_in(
 ) -> (i32, String, String) {
 	let out = Buf::default();
 	let err = Buf::default();
-	let io_ = pi_uutils_ctx::ScopeIo {
+	let io_ = veyyon_uutils_ctx::ScopeIo {
 		stdin: Box::new(io::Cursor::new(stdin.as_bytes().to_vec())),
 		stdin_fd: None,
 		stdin_is_search_input: false,
@@ -54,7 +54,7 @@ fn run_jq_in(
 	};
 	let mut argv = vec![OsString::from("jq")];
 	argv.extend(args.iter().map(OsString::from));
-	let code = pi_uutils_ctx::scope(io_, || crate::run(argv));
+	let code = veyyon_uutils_ctx::scope(io_, || crate::run(argv));
 	(code, out.take_string(), err.take_string())
 }
 

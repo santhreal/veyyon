@@ -17,13 +17,13 @@
  *         `errorMessage` is NOT set (TTSR existing behavior unchanged).
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
-import type { AssistantMessage } from "@veyyon/pi-ai";
-import * as AIError from "@veyyon/pi-ai/error";
-import { resetSettingsForTest, Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { EventController } from "@veyyon/pi-coding-agent/modes/controllers/event-controller";
-import type { InteractiveModeContext } from "@veyyon/pi-coding-agent/modes/types";
-import type { AgentSessionEvent } from "@veyyon/pi-coding-agent/session/agent-session";
-import { SILENT_ABORT_MARKER, USER_INTERRUPT_LABEL } from "@veyyon/pi-coding-agent/session/messages";
+import type { AssistantMessage } from "@veyyon/ai";
+import * as AIError from "@veyyon/ai/error";
+import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
+import { EventController } from "@veyyon/coding-agent/modes/controllers/event-controller";
+import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
+import type { AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session";
+import { SILENT_ABORT_MARKER, USER_INTERRUPT_LABEL } from "@veyyon/coding-agent/session/messages";
 
 function makeAssistantMessage(overrides: Partial<AssistantMessage> = {}): AssistantMessage {
 	return {

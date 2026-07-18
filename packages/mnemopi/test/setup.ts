@@ -1,10 +1,10 @@
 import { afterEach, beforeEach } from "bun:test";
 
-import * as Beam from "@veyyon/pi-mnemopi/core/beam";
-import * as Embeddings from "@veyyon/pi-mnemopi/core/embeddings";
-import type { CompleteOptions, LlmBackend } from "@veyyon/pi-mnemopi/core/llm-backends";
-import * as LlmBackends from "@veyyon/pi-mnemopi/core/llm-backends";
-import * as Memory from "@veyyon/pi-mnemopi/core/memory";
+import * as Beam from "@veyyon/mnemopi/core/beam";
+import * as Embeddings from "@veyyon/mnemopi/core/embeddings";
+import type { CompleteOptions, LlmBackend } from "@veyyon/mnemopi/core/llm-backends";
+import * as LlmBackends from "@veyyon/mnemopi/core/llm-backends";
+import * as Memory from "@veyyon/mnemopi/core/memory";
 
 type ResettableModule = Record<string, unknown>;
 

@@ -167,7 +167,7 @@ fn read_n_bytes(input: impl Read, n: u64) -> io::Result<u64> {
 	let mut reader = input.take(n);
 
 	// Write those bytes to `stdout`.
-	let stdout = pi_uutils_ctx::stdout();
+	let stdout = veyyon_uutils_ctx::stdout();
 	let mut stdout = stdout.lock();
 
 	let bytes_written = io::copy(&mut reader, &mut stdout).map_err(wrap_in_stdout_error)?;
@@ -185,7 +185,7 @@ fn read_n_lines(input: &mut impl io::BufRead, n: u64, separator: u8) -> io::Resu
 	let mut reader = take_lines(input, n, separator);
 
 	// Write those bytes to `stdout`.
-	let stdout = pi_uutils_ctx::stdout();
+	let stdout = veyyon_uutils_ctx::stdout();
 	let stdout = stdout.lock();
 	let mut writer = BufWriter::with_capacity(BUF_SIZE, stdout);
 
@@ -206,7 +206,7 @@ fn catch_too_large_numbers_in_backwards_bytes_or_lines(n: u64) -> Option<usize> 
 fn read_but_last_n_bytes(mut input: impl Read, n: u64) -> io::Result<u64> {
 	let mut bytes_written: u64 = 0;
 	if let Some(n) = catch_too_large_numbers_in_backwards_bytes_or_lines(n) {
-		let stdout = pi_uutils_ctx::stdout();
+		let stdout = veyyon_uutils_ctx::stdout();
 		let mut stdout = stdout.lock();
 
 		bytes_written = copy_all_but_n_bytes(&mut input, &mut stdout, n)
@@ -223,7 +223,7 @@ fn read_but_last_n_bytes(mut input: impl Read, n: u64) -> io::Result<u64> {
 }
 
 fn read_but_last_n_lines(mut input: impl Read, n: u64, separator: u8) -> io::Result<u64> {
-	let stdout = pi_uutils_ctx::stdout();
+	let stdout = veyyon_uutils_ctx::stdout();
 	let mut stdout = stdout.lock();
 	if n == 0 {
 		return io::copy(&mut input, &mut stdout).map_err(wrap_in_stdout_error);
@@ -393,13 +393,13 @@ fn uu_head(options: &HeadOptions) -> UResult<()> {
 		let res = if file == "-" {
 			if (options.files.len() > 1 && !options.quiet) || options.verbose {
 				if !first {
-					let _ = writeln!(pi_uutils_ctx::stdout());
+					let _ = writeln!(veyyon_uutils_ctx::stdout());
 				}
-				let _ = writeln!(pi_uutils_ctx::stdout(), "==> standard input <==");
+				let _ = writeln!(veyyon_uutils_ctx::stdout(), "==> standard input <==");
 			}
 			// pi-uutils: stdin is routed through the context as a plain reader,
 			// so always take the streaming (non-seekable) path.
-			let mut stdin = io::BufReader::with_capacity(BUF_SIZE, pi_uutils_ctx::stdin());
+			let mut stdin = io::BufReader::with_capacity(BUF_SIZE, veyyon_uutils_ctx::stdin());
 			match options.mode {
 				Mode::FirstBytes(n) => read_n_bytes(&mut stdin, n),
 				Mode::AllButLastBytes(n) => read_but_last_n_bytes(&mut stdin, n),
@@ -412,14 +412,14 @@ fn uu_head(options: &HeadOptions) -> UResult<()> {
 		} else {
 			// pi-uutils: resolve the operand against the shell working directory
 			// for filesystem access; keep `file` for display/headers.
-			let fs_path = pi_uutils_ctx::resolve(Path::new(file));
+			let fs_path = veyyon_uutils_ctx::resolve(Path::new(file));
 			if fs_path.is_dir() {
 				let _ = writeln!(
-					pi_uutils_ctx::stderr(),
+					veyyon_uutils_ctx::stderr(),
 					"head: error reading {}: Is a directory",
 					file.quote()
 				);
-				pi_uutils_ctx::set_exit_code(1);
+				veyyon_uutils_ctx::set_exit_code(1);
 				first = false;
 				continue;
 			}
@@ -427,22 +427,22 @@ fn uu_head(options: &HeadOptions) -> UResult<()> {
 				Ok(f) => f,
 				Err(err) => {
 					let _ = writeln!(
-						pi_uutils_ctx::stderr(),
+						veyyon_uutils_ctx::stderr(),
 						"head: cannot open {} for reading: {err}",
 						file.quote()
 					);
-					pi_uutils_ctx::set_exit_code(1);
+					veyyon_uutils_ctx::set_exit_code(1);
 					first = false;
 					continue;
 				},
 			};
 			if (options.files.len() > 1 && !options.quiet) || options.verbose {
 				if !first {
-					let _ = writeln!(pi_uutils_ctx::stdout());
+					let _ = writeln!(veyyon_uutils_ctx::stdout());
 				}
-				let _ = write!(pi_uutils_ctx::stdout(), "==> ");
-				let _ = pi_uutils_ctx::stdout().write_all(file.as_encoded_bytes());
-				let _ = writeln!(pi_uutils_ctx::stdout(), " <==");
+				let _ = write!(veyyon_uutils_ctx::stdout(), "==> ");
+				let _ = veyyon_uutils_ctx::stdout().write_all(file.as_encoded_bytes());
+				let _ = writeln!(veyyon_uutils_ctx::stdout(), " <==");
 			}
 			head_file(&mut file_handle, options).map(|_| ())
 		};
@@ -471,7 +471,7 @@ pub fn run(argv: Vec<OsString>) -> i32 {
 	let args: Vec<OsString> = match arg_iterate(argv.into_iter()) {
 		Ok(iter) => iter.collect(),
 		Err(err) => {
-			let _ = writeln!(pi_uutils_ctx::stderr(), "head: {err}");
+			let _ = writeln!(veyyon_uutils_ctx::stderr(), "head: {err}");
 			return 1;
 		},
 	};
@@ -480,25 +480,25 @@ pub fn run(argv: Vec<OsString>) -> i32 {
 		Err(err) => {
 			let rendered = err.to_string();
 			if err.use_stderr() {
-				let _ = write!(pi_uutils_ctx::stderr(), "{rendered}");
+				let _ = write!(veyyon_uutils_ctx::stderr(), "{rendered}");
 				return 1;
 			}
-			let _ = write!(pi_uutils_ctx::stdout(), "{rendered}");
+			let _ = write!(veyyon_uutils_ctx::stdout(), "{rendered}");
 			return 0;
 		},
 	};
 	let options = match HeadOptions::get_from(&matches) {
 		Ok(options) => options,
 		Err(err) => {
-			let _ = writeln!(pi_uutils_ctx::stderr(), "head: {}", HeadError::MatchOption(err));
+			let _ = writeln!(veyyon_uutils_ctx::stderr(), "head: {}", HeadError::MatchOption(err));
 			return 1;
 		},
 	};
 	match uu_head(&options) {
-		Ok(()) => pi_uutils_ctx::exit_code(),
+		Ok(()) => veyyon_uutils_ctx::exit_code(),
 		Err(err) => {
 			let code = err.code();
-			let _ = writeln!(pi_uutils_ctx::stderr(), "head: {err}");
+			let _ = writeln!(veyyon_uutils_ctx::stderr(), "head: {err}");
 			if code == 0 { 1 } else { code }
 		},
 	}

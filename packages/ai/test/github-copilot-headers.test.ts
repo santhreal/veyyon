@@ -5,9 +5,9 @@ import {
 	getCopilotPremiumMultiplier,
 	hasCopilotVisionInput,
 	inferCopilotInitiator,
-} from "@veyyon/pi-ai/providers/github-copilot-headers";
-import type { Message } from "@veyyon/pi-ai/types";
-import { getBundledModel } from "@veyyon/pi-catalog/models";
+} from "@veyyon/ai/providers/github-copilot-headers";
+import type { Message } from "@veyyon/ai/types";
+import { getBundledModel } from "@veyyon/catalog/models";
 
 describe("inferCopilotInitiator", () => {
 	it("returns 'user' when there are no messages", () => {

@@ -2,13 +2,13 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { readImageMetadata, removeSyncWithRetries } from "@veyyon/pi-utils";
+import { readImageMetadata, removeSyncWithRetries } from "@veyyon/utils";
 
 describe("readImageMetadata", () => {
 	let testDir: string;
 
 	beforeEach(() => {
-		testDir = fs.mkdtempSync(path.join(os.tmpdir(), "omp-image-input-"));
+		testDir = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-image-input-"));
 	});
 
 	afterEach(() => {

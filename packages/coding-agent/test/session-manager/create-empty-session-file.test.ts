@@ -3,19 +3,19 @@ import * as fs from "node:fs";
 import * as fsp from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { SessionHeader } from "@veyyon/pi-coding-agent/session/session-entries";
-import { loadEntriesFromFile } from "@veyyon/pi-coding-agent/session/session-loader";
-import { SessionManager } from "@veyyon/pi-coding-agent/session/session-manager";
-import { getConfigRootDir, setAgentDir } from "@veyyon/pi-utils";
+import type { SessionHeader } from "@veyyon/coding-agent/session/session-entries";
+import { loadEntriesFromFile } from "@veyyon/coding-agent/session/session-loader";
+import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { getConfigRootDir, setAgentDir } from "@veyyon/utils";
 
 describe("SessionManager.createEmptySessionFile", () => {
 	let testAgentDir: string;
 	let cwd: string;
-	const originalAgentDir = process.env.PI_CODING_AGENT_DIR;
+	const originalAgentDir = process.env.VEYYON_CODING_AGENT_DIR;
 	const fallbackAgentDir = path.join(getConfigRootDir(), "agent");
 
 	beforeEach(async () => {
-		testAgentDir = await fsp.mkdtemp(path.join(os.tmpdir(), "omp-empty-session-"));
+		testAgentDir = await fsp.mkdtemp(path.join(os.tmpdir(), "veyyon-empty-session-"));
 		setAgentDir(testAgentDir);
 		cwd = path.join(testAgentDir, "project");
 		fs.mkdirSync(cwd, { recursive: true });
@@ -26,7 +26,7 @@ describe("SessionManager.createEmptySessionFile", () => {
 			setAgentDir(originalAgentDir);
 		} else {
 			setAgentDir(fallbackAgentDir);
-			delete process.env.PI_CODING_AGENT_DIR;
+			delete process.env.VEYYON_CODING_AGENT_DIR;
 		}
 		await fsp.rm(testAgentDir, { recursive: true, force: true });
 	});

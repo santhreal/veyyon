@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import type { ApiKeyResolveContext, OAuthAccess, OAuthAccessSource } from "@veyyon/pi-ai";
+import type { ApiKeyResolveContext, OAuthAccess, OAuthAccessSource } from "@veyyon/ai";
 import {
 	AUTH_RETRY_MAX_ATTEMPTS,
 	isApiKeyResolver,
@@ -7,8 +7,8 @@ import {
 	resolveApiKeyOnce,
 	withAuth,
 	withOAuthAccess,
-} from "@veyyon/pi-ai";
-import { ProviderHttpError } from "@veyyon/pi-ai/error";
+} from "@veyyon/ai";
+import { ProviderHttpError } from "@veyyon/ai/error";
 
 function authError(status = 401): Error & { status: number } {
 	return Object.assign(new Error(`${status} authentication_error`), { status });

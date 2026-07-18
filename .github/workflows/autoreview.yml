@@ -1,0 +1,56 @@
+# santh-bot autoreview: qodo-ai/pr-agent runs an AI review, description, and
+# improvement pass on every PR — the same standard as the Santh monorepo's
+# qodo-review workflow. Gated on the QODO_API_KEY repo secret: when it is
+# absent the workflow logs a loud warning and skips rather than failing red,
+# so forks and secret-less environments stay green without a silent no-op.
+name: Autoreview
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: "autoreview-${{ github.event.pull_request.number }}"
+  cancel-in-progress: true
+
+jobs:
+  preflight:
+    name: Check autoreview credentials
+    runs-on: ubuntu-latest
+    # Draft PRs get no review until marked ready; syncs on a draft are skipped.
+    if: github.event.pull_request.draft == false
+    outputs:
+      has_key: ${{ steps.check.outputs.has_key }}
+    steps:
+      - name: Detect QODO_API_KEY
+        id: check
+        env:
+          QODO_API_KEY: ${{ secrets.QODO_API_KEY }}
+        run: |
+          if [ -n "$QODO_API_KEY" ]; then
+            echo "has_key=true" >> "$GITHUB_OUTPUT"
+            echo "QODO_API_KEY present — santh-bot autoreview will run."
+          else
+            echo "has_key=false" >> "$GITHUB_OUTPUT"
+            echo "::warning title=santh-bot autoreview skipped::QODO_API_KEY repo secret is not set. Add it (Settings → Secrets → Actions) to enable the AI review/describe/improve pass."
+          fi
+
+  review:
+    name: santh-bot review
+    runs-on: ubuntu-latest
+    needs: preflight
+    if: needs.preflight.outputs.has_key == 'true'
+    steps:
+      - name: PR Agent review
+        uses: qodo-ai/pr-agent@main
+        env:
+          OPENAI_KEY: ${{ secrets.QODO_API_KEY }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          github_action_config.auto_review: "true"
+          github_action_config.auto_describe: "true"
+          github_action_config.auto_improve: "true"

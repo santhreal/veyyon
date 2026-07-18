@@ -1,11 +1,11 @@
 import * as path from "node:path";
+import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
+import type { ToolExample } from "@veyyon/ai";
 import { formatHashlineHeader } from "@veyyon/hashline";
-import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/pi-agent-core";
-import type { ToolExample } from "@veyyon/pi-ai";
-import { type AstFindMatch, astGrep } from "@veyyon/pi-natives";
-import type { Component } from "@veyyon/pi-tui";
-import { Text } from "@veyyon/pi-tui";
-import { prompt, untilAborted } from "@veyyon/pi-utils";
+import { type AstFindMatch, astGrep } from "@veyyon/natives";
+import type { Component } from "@veyyon/tui";
+import { Text } from "@veyyon/tui";
+import { prompt, untilAborted } from "@veyyon/utils";
 import { type } from "arktype";
 import { recordFileSnapshot, recordSeenLinesFromBody } from "../edit/file-snapshot-store";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";

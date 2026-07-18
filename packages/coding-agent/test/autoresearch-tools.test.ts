@@ -1,22 +1,22 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { ImageContent, TextContent } from "@veyyon/pi-ai";
-import { createSessionRuntime } from "@veyyon/pi-coding-agent/autoresearch/state";
+import type { ImageContent, TextContent } from "@veyyon/ai";
+import { createSessionRuntime } from "@veyyon/coding-agent/autoresearch/state";
 import {
 	type AutoresearchStorage,
 	closeAllAutoresearchStorages,
 	openAutoresearchStorage,
 	type SessionRow,
-} from "@veyyon/pi-coding-agent/autoresearch/storage";
-import { createInitExperimentTool } from "@veyyon/pi-coding-agent/autoresearch/tools/init-experiment";
-import { createLogExperimentTool } from "@veyyon/pi-coding-agent/autoresearch/tools/log-experiment";
-import { createRunExperimentTool } from "@veyyon/pi-coding-agent/autoresearch/tools/run-experiment";
-import { createUpdateNotesTool } from "@veyyon/pi-coding-agent/autoresearch/tools/update-notes";
-import type { ASIData, LogDetails, NumericMetricMap, RunDetails } from "@veyyon/pi-coding-agent/autoresearch/types";
-import type { ExtensionAPI, ExtensionContext } from "@veyyon/pi-coding-agent/extensibility/extensions";
-import * as git from "@veyyon/pi-coding-agent/utils/git";
-import { TempDir } from "@veyyon/pi-utils";
+} from "@veyyon/coding-agent/autoresearch/storage";
+import { createInitExperimentTool } from "@veyyon/coding-agent/autoresearch/tools/init-experiment";
+import { createLogExperimentTool } from "@veyyon/coding-agent/autoresearch/tools/log-experiment";
+import { createRunExperimentTool } from "@veyyon/coding-agent/autoresearch/tools/run-experiment";
+import { createUpdateNotesTool } from "@veyyon/coding-agent/autoresearch/tools/update-notes";
+import type { ASIData, LogDetails, NumericMetricMap, RunDetails } from "@veyyon/coding-agent/autoresearch/types";
+import type { ExtensionAPI, ExtensionContext } from "@veyyon/coding-agent/extensibility/extensions";
+import * as git from "@veyyon/coding-agent/utils/git";
+import { TempDir } from "@veyyon/utils";
 import { $ } from "bun";
 
 afterEach(() => {
@@ -168,11 +168,11 @@ describe("init_experiment", () => {
 
 	beforeEach(() => {
 		dbOverride = makeTempDir("@pi-autoresearch-init-db-");
-		process.env.OMP_AUTORESEARCH_DB_DIR = dbOverride.path();
+		process.env.VEYYON_AUTORESEARCH_DB_DIR = dbOverride.path();
 	});
 
 	afterEach(async () => {
-		delete process.env.OMP_AUTORESEARCH_DB_DIR;
+		delete process.env.VEYYON_AUTORESEARCH_DB_DIR;
 		closeAllAutoresearchStorages();
 		await Bun.sleep(0);
 		await dbOverride.remove();
@@ -348,11 +348,11 @@ describe("run_experiment", () => {
 
 	beforeEach(() => {
 		dbOverride = makeTempDir("@pi-autoresearch-run-db-");
-		process.env.OMP_AUTORESEARCH_DB_DIR = dbOverride.path();
+		process.env.VEYYON_AUTORESEARCH_DB_DIR = dbOverride.path();
 	});
 
 	afterEach(async () => {
-		delete process.env.OMP_AUTORESEARCH_DB_DIR;
+		delete process.env.VEYYON_AUTORESEARCH_DB_DIR;
 		closeAllAutoresearchStorages();
 		await Bun.sleep(0);
 		await dbOverride.remove();
@@ -439,11 +439,11 @@ describe("log_experiment", () => {
 
 	beforeEach(() => {
 		dbOverride = makeTempDir("@pi-autoresearch-log-db-");
-		process.env.OMP_AUTORESEARCH_DB_DIR = dbOverride.path();
+		process.env.VEYYON_AUTORESEARCH_DB_DIR = dbOverride.path();
 	});
 
 	afterEach(async () => {
-		delete process.env.OMP_AUTORESEARCH_DB_DIR;
+		delete process.env.VEYYON_AUTORESEARCH_DB_DIR;
 		closeAllAutoresearchStorages();
 		await Bun.sleep(0);
 		await dbOverride.remove();
@@ -843,11 +843,11 @@ describe("update_notes", () => {
 
 	beforeEach(() => {
 		dbOverride = makeTempDir("@pi-autoresearch-notes-db-");
-		process.env.OMP_AUTORESEARCH_DB_DIR = dbOverride.path();
+		process.env.VEYYON_AUTORESEARCH_DB_DIR = dbOverride.path();
 	});
 
 	afterEach(async () => {
-		delete process.env.OMP_AUTORESEARCH_DB_DIR;
+		delete process.env.VEYYON_AUTORESEARCH_DB_DIR;
 		closeAllAutoresearchStorages();
 		await Bun.sleep(0);
 		await dbOverride.remove().catch(() => {});

@@ -1,12 +1,12 @@
 import { describe, expect, it } from "bun:test";
-import { convertOpenAICodexResponsesTools } from "@veyyon/pi-ai/providers/openai-codex-responses";
-import type { Model, Tool, ToolCall } from "@veyyon/pi-ai/types";
-import { enforceStrictSchema } from "@veyyon/pi-ai/utils/schema";
-import { validateToolArguments } from "@veyyon/pi-ai/utils/validation";
-import { buildModel } from "@veyyon/pi-catalog/build";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
-import type { ToolSession } from "@veyyon/pi-coding-agent/tools";
-import { YieldTool } from "@veyyon/pi-coding-agent/tools/yield";
+import { convertOpenAICodexResponsesTools } from "@veyyon/ai/providers/openai-codex-responses";
+import type { Model, Tool, ToolCall } from "@veyyon/ai/types";
+import { enforceStrictSchema } from "@veyyon/ai/utils/schema";
+import { validateToolArguments } from "@veyyon/ai/utils/validation";
+import { buildModel } from "@veyyon/catalog/build";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import type { ToolSession } from "@veyyon/coding-agent/tools";
+import { YieldTool } from "@veyyon/coding-agent/tools/yield";
 import { arrayValuedLabels } from "../../src/task/yield-assembly";
 
 function createSession(overrides: Partial<ToolSession> = {}): ToolSession {

@@ -1,4 +1,4 @@
-import { fetchWithRetry, parseStreamingJson } from "@veyyon/pi-utils";
+import { fetchWithRetry, parseStreamingJson } from "@veyyon/utils";
 import * as AIError from "../error";
 import { getEnvApiKey } from "../stream";
 import type {
@@ -18,7 +18,11 @@ import { normalizeSystemPrompts } from "../utils";
 import { clearStreamingPartialJson, kStreamingPartialJson } from "../utils/block-symbols";
 import { withEmptyCompletionRetry } from "../utils/empty-completion-retry";
 import { AssistantMessageEventStream } from "../utils/event-stream";
-import type { CapturedHttpErrorResponse, RawHttpRequestDump } from "../utils/http-inspector";
+import {
+	type CapturedHttpErrorResponse,
+	captureHttpErrorResponse,
+	type RawHttpRequestDump,
+} from "../utils/http-inspector";
 import {
 	armPreResponseTimeout,
 	getOpenAIStreamFirstEventTimeoutMs,
@@ -326,25 +330,6 @@ function createChatBody(model: Model<"ollama-chat">, context: Context, options: 
 
 function shouldRetryOllamaResponse(response: Response, bodyText: string): boolean {
 	return response.status < 500 || !AIError.LLAMA_CPP_TOOL_CALL_PARSE_PATTERN.test(bodyText);
-}
-
-async function captureHttpErrorResponse(response: Response): Promise<CapturedHttpErrorResponse> {
-	let bodyText: string | undefined;
-	let bodyJson: unknown;
-	try {
-		bodyText = await response.text();
-		if (bodyText.trim()) {
-			try {
-				bodyJson = JSON.parse(bodyText) as unknown;
-			} catch {}
-		}
-	} catch {}
-	return {
-		status: response.status,
-		headers: response.headers,
-		bodyText,
-		bodyJson,
-	};
 }
 
 async function* iterateNdjson(stream: ReadableStream<Uint8Array>): AsyncGenerator<OllamaChatChunk> {

@@ -1,16 +1,16 @@
 import { beforeAll, describe, expect, it, vi } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
-import type { AgentToolContext } from "@veyyon/pi-agent-core";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
+import type { AgentToolContext } from "@veyyon/agent-core";
+import { Settings } from "@veyyon/coding-agent/config/settings";
 import type {
 	ExtensionAskDialogQuestion,
 	ExtensionAskDialogResult,
 	ExtensionUISelectItem,
-} from "@veyyon/pi-coding-agent/extensibility/extensions";
-import { getThemeByName, initTheme } from "@veyyon/pi-coding-agent/modes/theme/theme";
-import type { ToolSession } from "@veyyon/pi-coding-agent/tools";
-import { AskTool, askToolRenderer } from "@veyyon/pi-coding-agent/tools/ask";
-import { ToolAbortError } from "@veyyon/pi-coding-agent/tools/tool-errors";
+} from "@veyyon/coding-agent/extensibility/extensions";
+import { getThemeByName, initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import type { ToolSession } from "@veyyon/coding-agent/tools";
+import { AskTool, askToolRenderer } from "@veyyon/coding-agent/tools/ask";
+import { ToolAbortError } from "@veyyon/coding-agent/tools/tool-errors";
 import { type } from "arktype";
 
 function createSession(overrides: Partial<ToolSession> = {}): ToolSession {

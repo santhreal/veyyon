@@ -1,4 +1,4 @@
-import type { ToolResultMessage } from "@veyyon/pi-ai";
+import type { ToolResultMessage } from "@veyyon/ai";
 import type { AgentToolCall } from "../types";
 import type { SessionEntry } from "./entries";
 

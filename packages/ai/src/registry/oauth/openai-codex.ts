@@ -2,7 +2,8 @@
  * OpenAI Codex (ChatGPT OAuth) flow — browser and device-code flows.
  */
 
-import { OPENAI_HEADER_VALUES } from "@veyyon/pi-catalog/wire/codex";
+import { OPENAI_HEADER_VALUES } from "@veyyon/catalog/wire/codex";
+import { withScopedTimeoutSignal } from "@veyyon/utils";
 import * as AIError from "../../error";
 import type { FetchImpl } from "../../types";
 import { isRecord } from "../../utils";
@@ -161,32 +162,36 @@ async function exchangeCodeForToken(
 	redirectUri: string,
 	fetchImpl: FetchImpl = fetch,
 ): Promise<OAuthCredentials> {
-	const tokenResponse = await fetchImpl(TOKEN_URL, {
-		method: "POST",
-		headers: { "Content-Type": "application/x-www-form-urlencoded" },
-		body: new URLSearchParams({
-			grant_type: "authorization_code",
-			client_id: CLIENT_ID,
-			code,
-			code_verifier: verifier,
-			redirect_uri: redirectUri,
-		}),
-		signal: AbortSignal.timeout(TOKEN_REQUEST_TIMEOUT_MS),
+	// The fence spans the body read and its timer is cleared on settle
+	// (a bare AbortSignal.timeout stays armed for the full timeout).
+	const tokenData = await withScopedTimeoutSignal(TOKEN_REQUEST_TIMEOUT_MS, async signal => {
+		const tokenResponse = await fetchImpl(TOKEN_URL, {
+			method: "POST",
+			headers: { "Content-Type": "application/x-www-form-urlencoded" },
+			body: new URLSearchParams({
+				grant_type: "authorization_code",
+				client_id: CLIENT_ID,
+				code,
+				code_verifier: verifier,
+				redirect_uri: redirectUri,
+			}),
+			signal,
+		});
+
+		if (!tokenResponse.ok) {
+			const bodyText = await tokenResponse.text();
+			throw new AIError.OAuthError(
+				`Token exchange failed: ${formatOpenAICodexTokenEndpointError(tokenResponse.status, bodyText)}`,
+				{ kind: "token-exchange", status: tokenResponse.status },
+			);
+		}
+
+		return (await tokenResponse.json()) as {
+			access_token?: string;
+			refresh_token?: string;
+			expires_in?: number;
+		};
 	});
-
-	if (!tokenResponse.ok) {
-		const bodyText = await tokenResponse.text();
-		throw new AIError.OAuthError(
-			`Token exchange failed: ${formatOpenAICodexTokenEndpointError(tokenResponse.status, bodyText)}`,
-			{ kind: "token-exchange", status: tokenResponse.status },
-		);
-	}
-
-	const tokenData = (await tokenResponse.json()) as {
-		access_token?: string;
-		refresh_token?: string;
-		expires_in?: number;
-	};
 
 	if (!tokenData.access_token || !tokenData.refresh_token || typeof tokenData.expires_in !== "number") {
 		throw new AIError.OAuthError("Token response missing required fields", { kind: "validation" });
@@ -210,7 +215,7 @@ async function exchangeCodeForToken(
  * Login with OpenAI Codex OAuth
  */
 export type OpenAICodexLoginOptions = OAuthController & {
-	/** Optional originator value for OpenAI Codex OAuth. Default matches OMP Codex request headers. */
+	/** Optional originator value for OpenAI Codex OAuth. Default matches Veyyon Codex request headers. */
 	originator?: string;
 };
 
@@ -231,25 +236,29 @@ export async function loginOpenAICodex(options: OpenAICodexLoginOptions): Promis
 export async function loginOpenAICodexDevice(ctrl: OAuthController): Promise<OAuthCredentials> {
 	ctrl.onProgress?.("Initiating device authorization…");
 
-	const initResponse = await fetch(DEVICE_USERCODE_URL, {
-		method: "POST",
-		headers: { "Content-Type": "application/json" },
-		body: JSON.stringify({ client_id: CLIENT_ID }),
-		signal: AbortSignal.timeout(TOKEN_REQUEST_TIMEOUT_MS),
-	});
-
-	if (!initResponse.ok) {
-		throw new AIError.OAuthError(`Device authorization initiation failed: ${initResponse.status}`, {
-			kind: "device-auth",
-			status: initResponse.status,
+	// The fence spans the body read and its timer is cleared on settle
+	// (a bare AbortSignal.timeout stays armed for the full timeout).
+	const initData = await withScopedTimeoutSignal(TOKEN_REQUEST_TIMEOUT_MS, async signal => {
+		const initResponse = await fetch(DEVICE_USERCODE_URL, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ client_id: CLIENT_ID }),
+			signal,
 		});
-	}
 
-	const initData = (await initResponse.json()) as {
-		device_auth_id?: string;
-		user_code?: string;
-		interval?: string | number;
-	};
+		if (!initResponse.ok) {
+			throw new AIError.OAuthError(`Device authorization initiation failed: ${initResponse.status}`, {
+				kind: "device-auth",
+				status: initResponse.status,
+			});
+		}
+
+		return (await initResponse.json()) as {
+			device_auth_id?: string;
+			user_code?: string;
+			interval?: string | number;
+		};
+	});
 
 	if (!initData.device_auth_id || !initData.user_code) {
 		throw new AIError.OAuthError("Device authorization response missing required fields", { kind: "validation" });
@@ -277,32 +286,40 @@ export async function loginOpenAICodexDevice(ctrl: OAuthController): Promise<OAu
 			throw new AIError.LoginCancelledError("Device authorization cancelled");
 		}
 
-		const pollResponse = await fetch(DEVICE_TOKEN_URL, {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({
-				device_auth_id: initData.device_auth_id,
-				user_code: userCode,
-			}),
-			signal: AbortSignal.timeout(TOKEN_REQUEST_TIMEOUT_MS),
-		});
+		// The fence spans the body read and its timer is cleared on settle
+		// (a bare AbortSignal.timeout stays armed for the full timeout).
+		// `null` = authorization still pending, keep polling.
+		const pollData = await withScopedTimeoutSignal(TOKEN_REQUEST_TIMEOUT_MS, async signal => {
+			const pollResponse = await fetch(DEVICE_TOKEN_URL, {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					device_auth_id: initData.device_auth_id,
+					user_code: userCode,
+				}),
+				signal,
+			});
 
-		// 403/404 = authorization pending, keep polling
-		if (pollResponse.status === 403 || pollResponse.status === 404) {
+			// 403/404 = authorization pending, keep polling
+			if (pollResponse.status === 403 || pollResponse.status === 404) {
+				return null;
+			}
+
+			if (!pollResponse.ok) {
+				throw new AIError.OAuthError(`Device token polling failed: ${pollResponse.status}`, {
+					kind: "polling",
+					status: pollResponse.status,
+				});
+			}
+
+			return (await pollResponse.json()) as {
+				authorization_code?: string;
+				code_verifier?: string;
+			};
+		});
+		if (pollData === null) {
 			continue;
 		}
-
-		if (!pollResponse.ok) {
-			throw new AIError.OAuthError(`Device token polling failed: ${pollResponse.status}`, {
-				kind: "polling",
-				status: pollResponse.status,
-			});
-		}
-
-		const pollData = (await pollResponse.json()) as {
-			authorization_code?: string;
-			code_verifier?: string;
-		};
 
 		if (!pollData.authorization_code || !pollData.code_verifier) {
 			throw new AIError.OAuthError("Device token response missing authorization_code or code_verifier", {
@@ -323,30 +340,34 @@ export async function loginOpenAICodexDevice(ctrl: OAuthController): Promise<OAu
  * Refresh OpenAI Codex OAuth token
  */
 export async function refreshOpenAICodexToken(refreshToken: string): Promise<OAuthCredentials> {
-	const response = await fetch(TOKEN_URL, {
-		method: "POST",
-		headers: { "Content-Type": "application/x-www-form-urlencoded" },
-		body: new URLSearchParams({
-			grant_type: "refresh_token",
-			refresh_token: refreshToken,
-			client_id: CLIENT_ID,
-		}),
-		signal: AbortSignal.timeout(TOKEN_REQUEST_TIMEOUT_MS),
+	// The fence spans the body read and its timer is cleared on settle
+	// (a bare AbortSignal.timeout stays armed for the full timeout).
+	const tokenData = await withScopedTimeoutSignal(TOKEN_REQUEST_TIMEOUT_MS, async signal => {
+		const response = await fetch(TOKEN_URL, {
+			method: "POST",
+			headers: { "Content-Type": "application/x-www-form-urlencoded" },
+			body: new URLSearchParams({
+				grant_type: "refresh_token",
+				refresh_token: refreshToken,
+				client_id: CLIENT_ID,
+			}),
+			signal,
+		});
+
+		if (!response.ok) {
+			const bodyText = await response.text();
+			throw new AIError.OAuthError(
+				`OpenAI Codex token refresh failed: ${formatOpenAICodexTokenEndpointError(response.status, bodyText)}`,
+				{ kind: "token-refresh", status: response.status },
+			);
+		}
+
+		return (await response.json()) as {
+			access_token?: string;
+			refresh_token?: string;
+			expires_in?: number;
+		};
 	});
-
-	if (!response.ok) {
-		const bodyText = await response.text();
-		throw new AIError.OAuthError(
-			`OpenAI Codex token refresh failed: ${formatOpenAICodexTokenEndpointError(response.status, bodyText)}`,
-			{ kind: "token-refresh", status: response.status },
-		);
-	}
-
-	const tokenData = (await response.json()) as {
-		access_token?: string;
-		refresh_token?: string;
-		expires_in?: number;
-	};
 
 	if (!tokenData.access_token || !tokenData.refresh_token || typeof tokenData.expires_in !== "number") {
 		throw new AIError.OAuthError("Token response missing required fields", { kind: "validation" });

@@ -4,20 +4,20 @@
  * paid for. Regression guard for issue #2190.
  */
 import { afterEach, describe, expect, it, vi } from "bun:test";
-import { ThinkingLevel } from "@veyyon/pi-agent-core";
-import type { Model } from "@veyyon/pi-ai";
-import { getBundledModel } from "@veyyon/pi-catalog/models";
-import type { Rule } from "@veyyon/pi-coding-agent/capability/rule";
-import type { ModelRegistry } from "@veyyon/pi-coding-agent/config/model-registry";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
-import type { ToolPathWithSource } from "@veyyon/pi-coding-agent/extensibility/custom-tools";
-import type { LoadExtensionsResult } from "@veyyon/pi-coding-agent/extensibility/extensions/types";
-import type { CreateAgentSessionResult } from "@veyyon/pi-coding-agent/sdk";
-import * as sdkModule from "@veyyon/pi-coding-agent/sdk";
-import type { AgentSession, AgentSessionEvent, PromptOptions } from "@veyyon/pi-coding-agent/session/agent-session";
-import { runSubprocess } from "@veyyon/pi-coding-agent/task/executor";
-import type { AgentDefinition } from "@veyyon/pi-coding-agent/task/types";
-import { EventBus } from "@veyyon/pi-coding-agent/utils/event-bus";
+import { ThinkingLevel } from "@veyyon/agent-core";
+import type { Model } from "@veyyon/ai";
+import { getBundledModel } from "@veyyon/catalog/models";
+import type { Rule } from "@veyyon/coding-agent/capability/rule";
+import type { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import type { ToolPathWithSource } from "@veyyon/coding-agent/extensibility/custom-tools";
+import type { LoadExtensionsResult } from "@veyyon/coding-agent/extensibility/extensions/types";
+import type { CreateAgentSessionResult } from "@veyyon/coding-agent/sdk";
+import * as sdkModule from "@veyyon/coding-agent/sdk";
+import type { AgentSession, AgentSessionEvent, PromptOptions } from "@veyyon/coding-agent/session/agent-session";
+import { runSubprocess } from "@veyyon/coding-agent/task/executor";
+import type { AgentDefinition } from "@veyyon/coding-agent/task/types";
+import { EventBus } from "@veyyon/coding-agent/utils/event-bus";
 
 function createMockSession(onPrompt: (params: { emit: (event: AgentSessionEvent) => void }) => void): AgentSession {
 	const listeners: Array<(event: AgentSessionEvent) => void> = [];
@@ -111,7 +111,7 @@ describe("runSubprocess parent-discovery pass-through (issue #2190)", () => {
 		const spy = vi.spyOn(sdkModule, "createAgentSession").mockResolvedValue(createSessionResult(session));
 
 		const rules: Rule[] = [{ name: "rule-a" } as unknown as Rule];
-		const preloadedExtensionPaths = ["/abs/parent/.omp/extensions/foo.ts"];
+		const preloadedExtensionPaths = ["/abs/parent/.veyyon/extensions/foo.ts"];
 		const preloadedCustomToolPaths: ToolPathWithSource[] = [
 			{ path: "tools/x.ts", source: { provider: "config", providerName: "Config", level: "project" } },
 		];

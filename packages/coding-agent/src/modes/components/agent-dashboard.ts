@@ -16,7 +16,7 @@
  */
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import type { AgentMessage } from "@veyyon/pi-agent-core";
+import type { AgentMessage } from "@veyyon/agent-core";
 import {
 	type Component,
 	Container,
@@ -33,8 +33,8 @@ import {
 	truncateToWidth,
 	visibleWidth,
 	wrapTextWithAnsi,
-} from "@veyyon/pi-tui";
-import { isEnoent, prompt } from "@veyyon/pi-utils";
+} from "@veyyon/tui";
+import { errorMessage, isEnoent, prompt } from "@veyyon/utils";
 import { YAML } from "bun";
 import { getConfigDirs } from "../../config";
 import type { ModelRegistry } from "../../config/model-registry";
@@ -469,7 +469,7 @@ export class AgentDashboard extends Container {
 			this.#activeTabIndex = 0;
 			this.#selectedIndex = 0;
 			this.#scrollOffset = 0;
-			this.#loadError = error instanceof Error ? error.message : String(error);
+			this.#loadError = errorMessage(error);
 		} finally {
 			this.#loading = false;
 			this.#rebuildAndRender();
@@ -721,7 +721,7 @@ export class AgentDashboard extends Container {
 			this.#createSpec = spec;
 			this.#notice = null;
 		} catch (error) {
-			this.#createError = error instanceof Error ? error.message : String(error);
+			this.#createError = errorMessage(error);
 		} finally {
 			this.#createGenerating = false;
 			this.#rebuildAndRender();
@@ -1190,7 +1190,7 @@ export class AgentDashboard extends Container {
 			}
 			if (matchesKey(data, "enter") || matchesKey(data, "return") || data === "\n") {
 				void this.#saveGeneratedAgent().catch(error => {
-					this.#createError = error instanceof Error ? error.message : String(error);
+					this.#createError = errorMessage(error);
 					this.#rebuildAndRender();
 				});
 				return;

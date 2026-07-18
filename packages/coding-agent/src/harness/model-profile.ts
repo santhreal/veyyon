@@ -6,16 +6,23 @@
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { Model } from "@veyyon/pi-ai/types";
-import { getAgentDir } from "@veyyon/pi-utils";
+import type { Model } from "@veyyon/ai/types";
+import { getAgentDir, logger } from "@veyyon/utils";
 import { YAML } from "bun";
 import type { Settings } from "../config/settings";
+import { PROMPT_SECTION_NAMES, type PromptSectionName } from "../prompt-sections";
 
 export interface HarnessModelProfile {
 	/** When false, schema repair is skipped for this model. Default: true. */
 	repair?: boolean;
 	/** When set, only these tool names are exposed to the model (MVP hint / filter). */
 	tools?: readonly string[];
+	/**
+	 * Reorder the default system-prompt template's banner sections for this model.
+	 * Names come from PROMPT_SECTION_NAMES; listed sections lead, the rest follow
+	 * in template order. Unknown names are rejected at load time with a warning.
+	 */
+	promptSectionOrder?: readonly PromptSectionName[];
 }
 
 type HarnessProfilesRecord = Record<string, HarnessModelProfile>;
@@ -33,14 +40,39 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+const PROMPT_SECTION_NAME_SET: ReadonlySet<string> = new Set(PROMPT_SECTION_NAMES);
+
+function normalizePromptSectionOrder(value: unknown): readonly PromptSectionName[] | undefined {
+	if (!Array.isArray(value)) return undefined;
+	const order: PromptSectionName[] = [];
+	for (const entry of value) {
+		if (typeof entry !== "string") continue;
+		if (!PROMPT_SECTION_NAME_SET.has(entry)) {
+			// Reject the whole list: a typo'd section silently dropped would apply a
+			// different order than the operator wrote.
+			logger.warn(
+				`harness profile promptSectionOrder has unknown section "${entry}" (valid: ${PROMPT_SECTION_NAMES.join(", ")}); ignoring the list`,
+			);
+			return undefined;
+		}
+		if (!order.includes(entry as PromptSectionName)) order.push(entry as PromptSectionName);
+	}
+	return order.length > 0 ? order : undefined;
+}
+
 function normalizeProfileEntry(value: unknown): HarnessModelProfile | undefined {
 	if (!isRecord(value)) return undefined;
 	const repair = typeof value.repair === "boolean" ? value.repair : undefined;
 	const tools = Array.isArray(value.tools)
 		? value.tools.filter((entry): entry is string => typeof entry === "string" && entry.length > 0)
 		: undefined;
-	if (repair === undefined && (!tools || tools.length === 0)) return undefined;
-	return { ...(repair !== undefined ? { repair } : {}), ...(tools && tools.length > 0 ? { tools } : {}) };
+	const promptSectionOrder = normalizePromptSectionOrder(value.promptSectionOrder);
+	if (repair === undefined && (!tools || tools.length === 0) && !promptSectionOrder) return undefined;
+	return {
+		...(repair !== undefined ? { repair } : {}),
+		...(tools && tools.length > 0 ? { tools } : {}),
+		...(promptSectionOrder ? { promptSectionOrder } : {}),
+	};
 }
 
 function normalizeProfilesRecord(raw: unknown): HarnessProfilesRecord {
@@ -113,6 +145,14 @@ export function isRepairEnabledForModel(settings: Settings, model: Model | undef
 	const profile = resolveHarnessProfileForModel(settings, model);
 	if (profile?.repair === false) return false;
 	return true;
+}
+
+/** Resolve the per-model system-prompt section order, if configured. */
+export function resolvePromptSectionOrderForModel(
+	settings: Settings,
+	model: Model | undefined,
+): readonly PromptSectionName[] | undefined {
+	return resolveHarnessProfileForModel(settings, model)?.promptSectionOrder;
 }
 
 /** Apply optional per-model tool allowlist from harness profile. */

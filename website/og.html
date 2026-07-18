@@ -6,25 +6,28 @@
 <head>
 <meta charset="utf-8" />
 <title>og card</title>
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
 <style>
+  /* Self-hosted brand fonts (same faces as site.css: InterV + JetBrains Mono),
+     no remote CDN — keeps the card on-brand and offline-renderable. */
+  @font-face{font-family:"InterV";src:url(./fonts/Inter-SemiBold.woff2) format("woff2");font-weight:600;font-display:swap}
+  @font-face{font-family:"JBM";src:url(./fonts/JetBrainsMono-Medium.woff2) format("woff2");font-weight:500;font-display:swap}
+  @font-face{font-family:"JBM";src:url(./fonts/JetBrainsMono-Bold.woff2) format("woff2");font-weight:700;font-display:swap}
   html,body{margin:0;background:#000;height:100%;overflow:hidden}
   .sunset{position:absolute;inset:0}
   .sunset canvas{position:absolute;inset:0;display:block}
   .card{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;
-    padding-top:110px;font-family:'Inter',system-ui,sans-serif}
-  .word{font-size:118px;font-weight:600;letter-spacing:-.055em;color:#e8e8e8;line-height:1}
-  .tag{margin-top:22px;font-family:'IBM Plex Mono',monospace;font-size:19px;letter-spacing:.32em;
-    text-transform:uppercase;color:#9d9da6}
+    padding-top:110px;font-family:"InterV",system-ui,sans-serif}
+  .word{font-family:"InterV",system-ui,sans-serif;font-size:118px;font-weight:600;
+    letter-spacing:-.055em;color:#e6e9ee;line-height:1}
+  .tag{margin-top:22px;font-family:"JBM",ui-monospace,monospace;font-size:19px;letter-spacing:.32em;
+    text-transform:uppercase;color:#b4bac4}
 </style>
 </head>
 <body>
 <div class="sunset"><canvas data-sun="sunset"></canvas></div>
 <div class="card">
   <div class="word">veyyon</div>
-  <div class="tag">the harness is the lever</div>
+  <div class="tag">terminal coding agent</div>
 </div>
 <script src="./sunmark.js" defer></script>
 </body>

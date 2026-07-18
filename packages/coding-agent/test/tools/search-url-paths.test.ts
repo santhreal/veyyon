@@ -2,10 +2,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { createTools, type ToolSession } from "@veyyon/pi-coding-agent/tools";
-import * as scrapers from "@veyyon/pi-coding-agent/web/scrapers/types";
-import { removeWithRetries } from "@veyyon/pi-utils";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import { createTools, type ToolSession } from "@veyyon/coding-agent/tools";
+import * as scrapers from "@veyyon/coding-agent/web/scrapers/types";
+import { removeWithRetries } from "@veyyon/utils";
 
 function createSession(testDir: string): ToolSession {
 	const sessionFile = path.join(testDir, "session.jsonl");

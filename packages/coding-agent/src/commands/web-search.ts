@@ -1,16 +1,18 @@
 /**
- * Test web search providers.
+ * Run a web search through a configured provider and show the raw results.
  */
-import { Args, Command, Flags } from "@veyyon/pi-utils/cli";
-import { runSearchCommand, type SearchCommandArgs } from "../cli/web-search-cli";
-import { SEARCH_PROVIDER_ORDER } from "../web/search/provider";
-
-const PROVIDERS: Array<string> = ["auto", ...SEARCH_PROVIDER_ORDER];
-
-const RECENCY: NonNullable<SearchCommandArgs["recency"]>[] = ["day", "week", "month", "year"];
+import { Args, Command, Flags } from "@veyyon/utils/cli";
+import {
+	runSearchCommand,
+	SEARCH_PROVIDERS,
+	SEARCH_RECENCY_OPTIONS,
+	type SearchCommandArgs,
+} from "../cli/web-search-cli";
 
 export default class Search extends Command {
-	static description = "Test web search providers";
+	static description = "Run a web search through a configured provider and show the raw results";
+
+	static devTool = true;
 
 	static aliases = ["q"];
 
@@ -19,8 +21,8 @@ export default class Search extends Command {
 	};
 
 	static flags = {
-		provider: Flags.string({ description: "Search provider", options: PROVIDERS }),
-		recency: Flags.string({ description: "Recency filter", options: RECENCY }),
+		provider: Flags.string({ description: "Search provider", options: SEARCH_PROVIDERS }),
+		recency: Flags.string({ description: "Recency filter", options: SEARCH_RECENCY_OPTIONS }),
 		limit: Flags.integer({ char: "l", description: "Max results to return" }),
 		compact: Flags.boolean({ description: "Render condensed output" }),
 	};

@@ -3,8 +3,8 @@ import {
 	readImageFromClipboard,
 	readMacFileUrlsFromClipboard,
 	readTextFromClipboard,
-} from "@veyyon/pi-coding-agent/utils/clipboard";
-import * as native from "@veyyon/pi-natives";
+} from "@veyyon/coding-agent/utils/clipboard";
+import * as native from "@veyyon/natives";
 import type { Subprocess } from "bun";
 
 type SpawnOptions = Bun.SpawnOptions.SpawnOptions<

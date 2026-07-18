@@ -1,10 +1,10 @@
 import { describe, expect, it } from "bun:test";
-import { streamAzureOpenAIResponses } from "@veyyon/pi-ai/providers/azure-openai-responses";
-import { streamOpenAICompletions } from "@veyyon/pi-ai/providers/openai-completions";
-import { streamOpenAIResponses } from "@veyyon/pi-ai/providers/openai-responses";
-import type { Context, FetchImpl, Model, ProviderSessionState } from "@veyyon/pi-ai/types";
-import { buildModel } from "@veyyon/pi-catalog/build";
-import { Effort } from "@veyyon/pi-catalog/effort";
+import { streamAzureOpenAIResponses } from "@veyyon/ai/providers/azure-openai-responses";
+import { streamOpenAICompletions } from "@veyyon/ai/providers/openai-completions";
+import { streamOpenAIResponses } from "@veyyon/ai/providers/openai-responses";
+import type { Context, FetchImpl, Model, ProviderSessionState } from "@veyyon/ai/types";
+import { buildModel } from "@veyyon/catalog/build";
+import { Effort } from "@veyyon/catalog/effort";
 
 const testContext: Context = {
 	messages: [{ role: "user", content: "hello", timestamp: 0 }],

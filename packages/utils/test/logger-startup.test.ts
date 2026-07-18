@@ -1,11 +1,11 @@
 import { describe, expect, it, spyOn } from "bun:test";
 import * as fs from "node:fs";
-import * as logger from "@veyyon/pi-utils/logger";
+import * as logger from "@veyyon/utils/logger";
 
-/** Run `fn` with PI_DEBUG_STARTUP set, capturing `[startup]` stderr markers. */
+/** Run `fn` with VEYYON_DEBUG_STARTUP set, capturing `[startup]` stderr markers. */
 function withMarkerCapture<T>(fn: () => T): { result: T; markers: string[] } {
-	const prev = process.env.PI_DEBUG_STARTUP;
-	process.env.PI_DEBUG_STARTUP = "1";
+	const prev = process.env.VEYYON_DEBUG_STARTUP;
+	process.env.VEYYON_DEBUG_STARTUP = "1";
 	const markers: string[] = [];
 	const writeSpy = spyOn(fs, "writeSync").mockImplementation(((_fd: number, data: string) => {
 		const text = String(data);
@@ -17,18 +17,18 @@ function withMarkerCapture<T>(fn: () => T): { result: T; markers: string[] } {
 	} finally {
 		writeSpy.mockRestore();
 		if (prev === undefined) {
-			delete process.env.PI_DEBUG_STARTUP;
+			delete process.env.VEYYON_DEBUG_STARTUP;
 		} else {
-			process.env.PI_DEBUG_STARTUP = prev;
+			process.env.VEYYON_DEBUG_STARTUP = prev;
 		}
 	}
 }
 
-describe("PI_DEBUG_STARTUP streaming markers", () => {
-	// Contract: with PI_DEBUG_STARTUP set, every logger.time phase leaves a
+describe("VEYYON_DEBUG_STARTUP streaming markers", () => {
+	// Contract: with VEYYON_DEBUG_STARTUP set, every logger.time phase leaves a
 	// synchronous `:start` marker before running — so a phase that hangs the
 	// process forever is still identified by the last marker on stderr. This
-	// must work without startTiming() (markers are independent of PI_TIMING).
+	// must work without startTiming() (markers are independent of VEYYON_TIMING).
 	it("brackets a phase with start/done markers", () => {
 		const { result, markers } = withMarkerCapture(() => logger.time("phase:test", () => 42));
 		expect(result).toBe(42);
@@ -51,9 +51,9 @@ describe("PI_DEBUG_STARTUP streaming markers", () => {
 		expect(markers).toEqual(["[startup] phase:point"]);
 	});
 
-	it("emits nothing when PI_DEBUG_STARTUP is unset", () => {
-		const prev = process.env.PI_DEBUG_STARTUP;
-		delete process.env.PI_DEBUG_STARTUP;
+	it("emits nothing when VEYYON_DEBUG_STARTUP is unset", () => {
+		const prev = process.env.VEYYON_DEBUG_STARTUP;
+		delete process.env.VEYYON_DEBUG_STARTUP;
 		const writes: string[] = [];
 		const writeSpy = spyOn(fs, "writeSync").mockImplementation(((_fd: number, data: string) => {
 			writes.push(String(data));
@@ -63,7 +63,7 @@ describe("PI_DEBUG_STARTUP streaming markers", () => {
 			expect(logger.time("phase:silent", () => "ok")).toBe("ok");
 		} finally {
 			writeSpy.mockRestore();
-			if (prev !== undefined) process.env.PI_DEBUG_STARTUP = prev;
+			if (prev !== undefined) process.env.VEYYON_DEBUG_STARTUP = prev;
 		}
 		expect(writes.filter(w => w.startsWith("[startup]"))).toEqual([]);
 	});

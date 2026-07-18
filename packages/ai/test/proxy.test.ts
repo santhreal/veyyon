@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as net from "node:net";
-import * as AIError from "@veyyon/pi-ai/error";
-import type { FetchImpl } from "@veyyon/pi-ai/types";
+import * as AIError from "@veyyon/ai/error";
+import type { FetchImpl } from "@veyyon/ai/types";
 import {
 	__resetProxyCache,
 	connectProxiedSocket,
@@ -9,7 +9,7 @@ import {
 	isLocalOrMetadataHost,
 	shouldBypassProxy,
 	wrapFetchForProxy,
-} from "@veyyon/pi-ai/utils/proxy";
+} from "@veyyon/ai/utils/proxy";
 
 const PROXY = "http://127.0.0.1:24560";
 
@@ -62,7 +62,7 @@ async function waitForSocketClose(socket: net.Socket): Promise<void> {
 	await closed.promise;
 }
 
-const isProxyEnvKey = (k: string): boolean => k.startsWith("PI_PROXY") || k === "NO_PROXY" || k === "no_proxy";
+const isProxyEnvKey = (k: string): boolean => k.startsWith("VEYYON_PROXY") || k === "NO_PROXY" || k === "no_proxy";
 
 // Snapshot + clear every proxy-related env var so each test starts clean and
 // leaves nothing behind for later files. The resolver cache must also be
@@ -94,24 +94,24 @@ afterEach(() => {
 });
 
 describe("getProxyForProvider", () => {
-	it("reads the provider-specific PI_PROXY_<PROVIDER> variable", () => {
-		Bun.env.PI_PROXY_SAKANA = PROXY;
+	it("reads the provider-specific VEYYON_PROXY_<PROVIDER> variable", () => {
+		Bun.env.VEYYON_PROXY_SAKANA = PROXY;
 		expect(getProxyForProvider("sakana")).toBe(PROXY);
 	});
 
 	it("normalizes hyphenated provider ids to underscores", () => {
-		Bun.env.PI_PROXY_GITHUB_COPILOT = PROXY;
+		Bun.env.VEYYON_PROXY_GITHUB_COPILOT = PROXY;
 		expect(getProxyForProvider("github-copilot")).toBe(PROXY);
 	});
 
-	it("falls back to the generic PI_PROXY when no provider-specific var is set", () => {
-		Bun.env.PI_PROXY = PROXY;
+	it("falls back to the generic VEYYON_PROXY when no provider-specific var is set", () => {
+		Bun.env.VEYYON_PROXY = PROXY;
 		expect(getProxyForProvider("prov-fallback")).toBe(PROXY);
 	});
 
 	it("prefers the provider-specific var over the generic fallback", () => {
-		Bun.env.PI_PROXY = "http://fallback:1";
-		Bun.env.PI_PROXY_PREC_PROV = PROXY;
+		Bun.env.VEYYON_PROXY = "http://fallback:1";
+		Bun.env.VEYYON_PROXY_PREC_PROV = PROXY;
 		expect(getProxyForProvider("prec-prov")).toBe(PROXY);
 	});
 
@@ -208,7 +208,7 @@ describe("wrapFetchForProxy", () => {
 	}
 
 	it("injects init.proxy for a proxied host when configured", async () => {
-		Bun.env.PI_PROXY_WRAP_INJECT = PROXY;
+		Bun.env.VEYYON_PROXY_WRAP_INJECT = PROXY;
 		const { fetch, calls } = makeCapture();
 		await wrapFetchForProxy(fetch, "wrap-inject")("https://api.sakana.ai/v1/responses");
 		expect(calls).toHaveLength(1);
@@ -216,7 +216,7 @@ describe("wrapFetchForProxy", () => {
 	});
 
 	it("does not inject a proxy for a bypassed (loopback) host", async () => {
-		Bun.env.PI_PROXY_WRAP_BYPASS = PROXY;
+		Bun.env.VEYYON_PROXY_WRAP_BYPASS = PROXY;
 		const { fetch, calls } = makeCapture();
 		await wrapFetchForProxy(fetch, "wrap-bypass")("http://127.0.0.1:11434/api/chat");
 		expect(calls[0].proxy).toBeUndefined();
@@ -229,14 +229,14 @@ describe("wrapFetchForProxy", () => {
 	});
 
 	it("does not route one provider's request through another provider's proxy", async () => {
-		Bun.env.PI_PROXY_SAKANA = PROXY;
+		Bun.env.VEYYON_PROXY_SAKANA = PROXY;
 		const { fetch, calls } = makeCapture();
 		await wrapFetchForProxy(fetch, "wrap-other")("https://api.openai.com/v1");
 		expect(calls[0].proxy).toBeUndefined();
 	});
 
 	it("passes through an unparseable URL without throwing", async () => {
-		Bun.env.PI_PROXY_WRAP_BADURL = PROXY;
+		Bun.env.VEYYON_PROXY_WRAP_BADURL = PROXY;
 		const { fetch, calls } = makeCapture();
 		await wrapFetchForProxy(fetch, "wrap-badurl")("not a url");
 		expect(calls).toHaveLength(1);

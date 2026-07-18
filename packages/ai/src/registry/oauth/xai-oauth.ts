@@ -7,6 +7,7 @@
  * the discovered token endpoint until the user approves the login.
  */
 
+import { scopedTimeoutSignal } from "@veyyon/utils";
 import * as AIError from "../../error";
 import type { FetchImpl } from "../../types";
 import { type OAuthDeviceCodePollResult, pollOAuthDeviceCodeFlow } from "./device-code";
@@ -74,55 +75,62 @@ async function xaiOAuthDiscovery(
 	timeoutMs: number = DISCOVERY_TIMEOUT_MS,
 	fetchOverride?: FetchImpl,
 ): Promise<XAIOAuthDiscovery> {
-	const fetchImpl = fetchOverride ?? fetch;
-	let response: Response;
+	// The scoped fence spans the body reads below and its timer is cleared
+	// on settle (a bare AbortSignal.timeout stays armed for the full timeout).
+	const requestTimeout = scopedTimeoutSignal(timeoutMs);
 	try {
-		response = await fetchImpl(XAI_OAUTH_DISCOVERY_URL, {
-			method: "GET",
-			headers: { Accept: "application/json" },
-			signal: AbortSignal.timeout(timeoutMs),
-		});
-	} catch (error) {
-		throw new AIError.OAuthError(
-			`xAI OIDC discovery failed: ${error instanceof Error ? error.message : String(error)}`,
-			{
+		const fetchImpl = fetchOverride ?? fetch;
+		let response: Response;
+		try {
+			response = await fetchImpl(XAI_OAUTH_DISCOVERY_URL, {
+				method: "GET",
+				headers: { Accept: "application/json" },
+				signal: requestTimeout.signal,
+			});
+		} catch (error) {
+			throw new AIError.OAuthError(
+				`xAI OIDC discovery failed: ${error instanceof Error ? error.message : String(error)}`,
+				{
+					kind: "discovery",
+					provider: "xai",
+					cause: error,
+				},
+			);
+		}
+		if (response.status !== 200) {
+			throw new AIError.OAuthError(`xAI OIDC discovery returned status ${response.status}.`, {
 				kind: "discovery",
 				provider: "xai",
-				cause: error,
-			},
-		);
+				status: response.status,
+			});
+		}
+		let payload: unknown;
+		try {
+			payload = await response.json();
+		} catch (error) {
+			throw new AIError.OAuthError(
+				`xAI OIDC discovery returned invalid JSON: ${error instanceof Error ? error.message : String(error)}`,
+				{ kind: "validation", provider: "xai", cause: error },
+			);
+		}
+		if (!isRecord(payload)) {
+			throw new AIError.OAuthError("xAI OIDC discovery response was not a JSON object.", {
+				kind: "validation",
+				provider: "xai",
+			});
+		}
+		const tokenEndpoint = typeof payload.token_endpoint === "string" ? payload.token_endpoint.trim() : "";
+		if (!tokenEndpoint) {
+			throw new AIError.OAuthError("xAI OIDC discovery response was missing token_endpoint.", {
+				kind: "validation",
+				provider: "xai",
+			});
+		}
+		validateXAIEndpoint(tokenEndpoint, "token_endpoint");
+		return { token_endpoint: tokenEndpoint };
+	} finally {
+		requestTimeout.cancel();
 	}
-	if (response.status !== 200) {
-		throw new AIError.OAuthError(`xAI OIDC discovery returned status ${response.status}.`, {
-			kind: "discovery",
-			provider: "xai",
-			status: response.status,
-		});
-	}
-	let payload: unknown;
-	try {
-		payload = await response.json();
-	} catch (error) {
-		throw new AIError.OAuthError(
-			`xAI OIDC discovery returned invalid JSON: ${error instanceof Error ? error.message : String(error)}`,
-			{ kind: "validation", provider: "xai", cause: error },
-		);
-	}
-	if (!isRecord(payload)) {
-		throw new AIError.OAuthError("xAI OIDC discovery response was not a JSON object.", {
-			kind: "validation",
-			provider: "xai",
-		});
-	}
-	const tokenEndpoint = typeof payload.token_endpoint === "string" ? payload.token_endpoint.trim() : "";
-	if (!tokenEndpoint) {
-		throw new AIError.OAuthError("xAI OIDC discovery response was missing token_endpoint.", {
-			kind: "validation",
-			provider: "xai",
-		});
-	}
-	validateXAIEndpoint(tokenEndpoint, "token_endpoint");
-	return { token_endpoint: tokenEndpoint };
 }
 
 /**
@@ -236,53 +244,62 @@ async function requestXAIDeviceAuthorization(
 	fetchImpl: FetchImpl,
 	signal?: AbortSignal,
 ): Promise<XAIDeviceAuthorization> {
-	let response: Response;
+	// The scoped fence spans the body reads below and its timer is cleared
+	// on settle (a bare AbortSignal.timeout stays armed for the full timeout).
+	const requestTimeout = scopedTimeoutSignal(TOKEN_REQUEST_TIMEOUT_MS, signal);
 	try {
-		const timeoutSignal = AbortSignal.timeout(TOKEN_REQUEST_TIMEOUT_MS);
-		response = await fetchImpl(XAI_OAUTH_DEVICE_CODE_URL, {
-			method: "POST",
-			headers: {
-				"Content-Type": "application/x-www-form-urlencoded",
-				Accept: "application/json",
-			},
-			body: new URLSearchParams({
-				client_id: XAI_OAUTH_CLIENT_ID,
-				scope: XAI_OAUTH_SCOPE,
-			}),
-			signal: signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal,
-		});
-	} catch (error) {
-		if (signal?.aborted) throw new AIError.LoginCancelledError();
-		throw new AIError.OAuthError(
-			`xAI device-code request failed: ${error instanceof Error ? error.message : String(error)}`,
-			{ kind: "device-auth", provider: "xai", cause: error },
-		);
-	}
-
-	if (!response.ok) {
-		let detail = "";
+		let response: Response;
 		try {
-			detail = (await response.text()).trim();
-		} catch {
-			// Ignore body-read failures; the status code is the diagnostic.
+			response = await fetchImpl(XAI_OAUTH_DEVICE_CODE_URL, {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/x-www-form-urlencoded",
+					Accept: "application/json",
+				},
+				body: new URLSearchParams({
+					client_id: XAI_OAUTH_CLIENT_ID,
+					scope: XAI_OAUTH_SCOPE,
+				}),
+				signal: requestTimeout.signal,
+			});
+		} catch (error) {
+			if (signal?.aborted) throw new AIError.LoginCancelledError();
+			throw new AIError.OAuthError(
+				`xAI device-code request failed: ${error instanceof Error ? error.message : String(error)}`,
+				{ kind: "device-auth", provider: "xai", cause: error },
+			);
 		}
-		throw new AIError.OAuthError(`xAI device-code request failed: ${response.status}${detail ? ` ${detail}` : ""}`, {
-			kind: "device-auth",
-			provider: "xai",
-			status: response.status,
-		});
-	}
 
-	let payload: unknown;
-	try {
-		payload = await response.json();
-	} catch (error) {
-		throw new AIError.OAuthError(
-			`xAI device-code response returned invalid JSON: ${error instanceof Error ? error.message : String(error)}`,
-			{ kind: "validation", provider: "xai", cause: error },
-		);
+		if (!response.ok) {
+			let detail = "";
+			try {
+				detail = (await response.text()).trim();
+			} catch {
+				// Ignore body-read failures; the status code is the diagnostic.
+			}
+			throw new AIError.OAuthError(
+				`xAI device-code request failed: ${response.status}${detail ? ` ${detail}` : ""}`,
+				{
+					kind: "device-auth",
+					provider: "xai",
+					status: response.status,
+				},
+			);
+		}
+
+		let payload: unknown;
+		try {
+			payload = await response.json();
+		} catch (error) {
+			throw new AIError.OAuthError(
+				`xAI device-code response returned invalid JSON: ${error instanceof Error ? error.message : String(error)}`,
+				{ kind: "validation", provider: "xai", cause: error },
+			);
+		}
+		return parseXAIDeviceAuthorization(payload);
+	} finally {
+		requestTimeout.cancel();
 	}
-	return parseXAIDeviceAuthorization(payload);
 }
 
 async function pollXAIDeviceToken(
@@ -291,67 +308,73 @@ async function pollXAIDeviceToken(
 	fetchImpl: FetchImpl,
 	signal?: AbortSignal,
 ): Promise<OAuthDeviceCodePollResult<OAuthCredentials>> {
-	let response: Response;
+	// The scoped fence spans the body reads below and its timer is cleared
+	// on settle (a bare AbortSignal.timeout stays armed for the full timeout).
+	const requestTimeout = scopedTimeoutSignal(TOKEN_REQUEST_TIMEOUT_MS, signal);
 	try {
-		const timeoutSignal = AbortSignal.timeout(TOKEN_REQUEST_TIMEOUT_MS);
-		response = await fetchImpl(tokenEndpoint, {
-			method: "POST",
-			headers: {
-				"Content-Type": "application/x-www-form-urlencoded",
-				Accept: "application/json",
-			},
-			body: new URLSearchParams({
-				grant_type: "urn:ietf:params:oauth:grant-type:device_code",
-				client_id: XAI_OAUTH_CLIENT_ID,
-				device_code: deviceCode,
-			}),
-			signal: signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal,
-		});
-	} catch (error) {
-		if (signal?.aborted) throw new AIError.LoginCancelledError();
-		throw new AIError.OAuthError(
-			`xAI device-code token polling failed: ${error instanceof Error ? error.message : String(error)}`,
-			{ kind: "polling", provider: "xai", cause: error },
-		);
-	}
+		let response: Response;
+		try {
+			response = await fetchImpl(tokenEndpoint, {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/x-www-form-urlencoded",
+					Accept: "application/json",
+				},
+				body: new URLSearchParams({
+					grant_type: "urn:ietf:params:oauth:grant-type:device_code",
+					client_id: XAI_OAUTH_CLIENT_ID,
+					device_code: deviceCode,
+				}),
+				signal: requestTimeout.signal,
+			});
+		} catch (error) {
+			if (signal?.aborted) throw new AIError.LoginCancelledError();
+			throw new AIError.OAuthError(
+				`xAI device-code token polling failed: ${error instanceof Error ? error.message : String(error)}`,
+				{ kind: "polling", provider: "xai", cause: error },
+			);
+		}
 
-	let payload: unknown;
-	try {
-		payload = await response.json();
-	} catch (error) {
-		throw new AIError.OAuthError(
-			`xAI device-code token polling returned invalid JSON: ${
-				error instanceof Error ? error.message : String(error)
-			}`,
-			{ kind: "polling", provider: "xai", status: response.status, cause: error },
-		);
-	}
+		let payload: unknown;
+		try {
+			payload = await response.json();
+		} catch (error) {
+			throw new AIError.OAuthError(
+				`xAI device-code token polling returned invalid JSON: ${
+					error instanceof Error ? error.message : String(error)
+				}`,
+				{ kind: "polling", provider: "xai", status: response.status, cause: error },
+			);
+		}
 
-	if (response.ok) {
-		return {
-			status: "complete",
-			value: parseXAITokenResponse(payload, "xAI device-code token response"),
-		};
-	}
-	if (!isRecord(payload)) {
-		throw new AIError.OAuthError(`xAI device-code token polling failed: ${response.status}`, {
+		if (response.ok) {
+			return {
+				status: "complete",
+				value: parseXAITokenResponse(payload, "xAI device-code token response"),
+			};
+		}
+		if (!isRecord(payload)) {
+			throw new AIError.OAuthError(`xAI device-code token polling failed: ${response.status}`, {
+				kind: "polling",
+				provider: "xai",
+				status: response.status,
+			});
+		}
+
+		const errorCode = typeof payload.error === "string" ? payload.error : "";
+		if (errorCode === "authorization_pending") return { status: "pending" };
+		if (errorCode === "slow_down") return { status: "slow_down" };
+
+		const errorDescription = typeof payload.error_description === "string" ? payload.error_description : "";
+		const detail = errorDescription || errorCode || String(response.status);
+		throw new AIError.OAuthError(`xAI device-code token polling failed: ${detail}`, {
 			kind: "polling",
 			provider: "xai",
 			status: response.status,
 		});
+	} finally {
+		requestTimeout.cancel();
 	}
-
-	const errorCode = typeof payload.error === "string" ? payload.error : "";
-	if (errorCode === "authorization_pending") return { status: "pending" };
-	if (errorCode === "slow_down") return { status: "slow_down" };
-
-	const errorDescription = typeof payload.error_description === "string" ? payload.error_description : "";
-	const detail = errorDescription || errorCode || String(response.status);
-	throw new AIError.OAuthError(`xAI device-code token polling failed: ${detail}`, {
-		kind: "polling",
-		provider: "xai",
-		status: response.status,
-	});
 }
 
 /** Log in to xAI Grok with the RFC 8628 device authorization grant. */
@@ -398,38 +421,46 @@ export async function refreshXAIOAuthToken(refreshToken: string, fetchOverride?:
 		refresh_token: refreshToken,
 	});
 
-	const response = await fetchImpl(tokenEndpoint, {
-		method: "POST",
-		headers: {
-			"Content-Type": "application/x-www-form-urlencoded",
-			Accept: "application/json",
-		},
-		body,
-		signal: AbortSignal.timeout(TOKEN_REQUEST_TIMEOUT_MS),
-	});
-
-	if (!response.ok) {
-		let detail = "";
-		try {
-			detail = (await response.text()).trim();
-		} catch {
-			// Ignore body-read failures; the status code is the diagnostic.
-		}
-		throw new AIError.OAuthError(`xAI token refresh failed: ${response.status}${detail ? ` ${detail}` : ""}`, {
-			kind: "token-refresh",
-			provider: "xai",
-			status: response.status,
-		});
-	}
-
-	let payload: unknown;
+	// The scoped fence covers only the refresh request (discovery has its own),
+	// spans the body reads, and clears its timer on settle (a bare
+	// AbortSignal.timeout stays armed for the full timeout).
+	const requestTimeout = scopedTimeoutSignal(TOKEN_REQUEST_TIMEOUT_MS);
 	try {
-		payload = await response.json();
-	} catch (error) {
-		throw new AIError.OAuthError(
-			`xAI token refresh returned invalid JSON: ${error instanceof Error ? error.message : String(error)}`,
-			{ kind: "validation", provider: "xai", cause: error },
-		);
+		const response = await fetchImpl(tokenEndpoint, {
+			method: "POST",
+			headers: {
+				"Content-Type": "application/x-www-form-urlencoded",
+				Accept: "application/json",
+			},
+			body,
+			signal: requestTimeout.signal,
+		});
+
+		if (!response.ok) {
+			let detail = "";
+			try {
+				detail = (await response.text()).trim();
+			} catch {
+				// Ignore body-read failures; the status code is the diagnostic.
+			}
+			throw new AIError.OAuthError(`xAI token refresh failed: ${response.status}${detail ? ` ${detail}` : ""}`, {
+				kind: "token-refresh",
+				provider: "xai",
+				status: response.status,
+			});
+		}
+
+		let payload: unknown;
+		try {
+			payload = await response.json();
+		} catch (error) {
+			throw new AIError.OAuthError(
+				`xAI token refresh returned invalid JSON: ${error instanceof Error ? error.message : String(error)}`,
+				{ kind: "validation", provider: "xai", cause: error },
+			);
+		}
+		return parseXAITokenResponse(payload, "xAI token refresh response", refreshToken);
+	} finally {
+		requestTimeout.cancel();
 	}
-	return parseXAITokenResponse(payload, "xAI token refresh response", refreshToken);
 }

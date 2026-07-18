@@ -1,14 +1,14 @@
-# @veyyon/pi-wire
+# @veyyon/wire
 
-Shared TypeScript wire contracts for omp collab live sessions.
+Shared TypeScript wire contracts for veyyon collab live sessions.
 
-The package contains only JSON-safe protocol shapes and constants. It has no runtime dependencies and is consumed by the host CLI (`@veyyon/pi-coding-agent`).
+The package contains only JSON-safe protocol shapes and constants. It has no runtime dependencies and is consumed by the host CLI (`@veyyon/coding-agent`).
 
 ## Exports
 
 ```ts
-import type { GuestFrame, HostFrame, SessionEntry } from "@veyyon/pi-wire";
-import { COLLAB_PROTO, DEFAULT_RELAY_URL, ENVELOPE_HEADER_LENGTH } from "@veyyon/pi-wire";
+import type { GuestFrame, HostFrame, SessionEntry } from "@veyyon/wire";
+import { COLLAB_PROTO, DEFAULT_RELAY_URL, ENVELOPE_HEADER_LENGTH } from "@veyyon/wire";
 ```
 
 Key groups:

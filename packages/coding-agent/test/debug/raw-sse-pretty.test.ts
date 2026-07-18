@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { expandPrettyDataLines } from "@veyyon/pi-coding-agent/debug/raw-sse";
+import { expandPrettyDataLines } from "@veyyon/coding-agent/debug/raw-sse";
 
 // Wide enough that `truncateToWidth` would clip the payload in the viewer; matches
 // what real Codex `response.output_item.done` frames look like on the wire.

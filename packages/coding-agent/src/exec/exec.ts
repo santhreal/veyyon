@@ -1,7 +1,7 @@
 /**
  * Shared command execution utilities for hooks and custom tools.
  */
-import { ptree } from "@veyyon/pi-utils";
+import { ptree } from "@veyyon/utils";
 
 /**
  * Options for executing shell commands.

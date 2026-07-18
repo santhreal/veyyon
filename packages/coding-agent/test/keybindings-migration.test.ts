@@ -2,10 +2,10 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { KeybindingsManager } from "@veyyon/pi-coding-agent/config/keybindings";
-import { matchesAppFollowUp } from "@veyyon/pi-coding-agent/modes/utils/keybinding-matchers";
-import { type KeybindingsConfig, setKeybindings } from "@veyyon/pi-tui";
-import { __resetDirsFromEnvForTests, removeWithRetries, setProfile } from "@veyyon/pi-utils";
+import { KeybindingsManager } from "@veyyon/coding-agent/config/keybindings";
+import { matchesAppFollowUp } from "@veyyon/coding-agent/modes/utils/keybinding-matchers";
+import { type KeybindingsConfig, setKeybindings } from "@veyyon/tui";
+import { __resetDirsFromEnvForTests, removeWithRetries, setProfile } from "@veyyon/utils";
 import { YAML } from "bun";
 
 function ctrl(key: string): string {
@@ -201,7 +201,7 @@ describe("KeybindingsManager.create", () => {
 
 	it("seeds default keybindings into a named profile on first create when missing", async () => {
 		const rootDir = await fs.mkdtemp(path.join(os.tmpdir(), "pi-keybindings-profile-"));
-		const defaultAgentDir = path.join(rootDir, "agent");
+		const defaultAgentDir = path.join(rootDir, "profiles", "default", "agent");
 		const profileAgentDir = path.join(rootDir, "profiles", "work", "agent");
 
 		await writeKeybindingsYaml(defaultAgentDir, {
@@ -209,9 +209,9 @@ describe("KeybindingsManager.create", () => {
 		});
 		await fs.mkdir(profileAgentDir, { recursive: true });
 
-		const originalConfigDir = process.env.PI_CONFIG_DIR;
+		const originalConfigDir = process.env.VEYYON_CONFIG_DIR;
 		try {
-			process.env.PI_CONFIG_DIR = path.relative(os.homedir(), rootDir);
+			process.env.VEYYON_CONFIG_DIR = path.relative(os.homedir(), rootDir);
 			__resetDirsFromEnvForTests();
 			setProfile("work");
 
@@ -219,8 +219,8 @@ describe("KeybindingsManager.create", () => {
 			expect(manager.getKeys("app.session.fork")).toEqual(["ctrl+f"]);
 			expect(await Bun.file(path.join(profileAgentDir, "keybindings.yml")).exists()).toBe(true);
 		} finally {
-			if (originalConfigDir === undefined) delete process.env.PI_CONFIG_DIR;
-			else process.env.PI_CONFIG_DIR = originalConfigDir;
+			if (originalConfigDir === undefined) delete process.env.VEYYON_CONFIG_DIR;
+			else process.env.VEYYON_CONFIG_DIR = originalConfigDir;
 			setProfile(undefined);
 			__resetDirsFromEnvForTests();
 			await removeWithRetries(rootDir);
@@ -235,9 +235,9 @@ describe("KeybindingsManager.create", () => {
 		await writeKeybindingsYaml(defaultAgentDir, { "app.session.fork": "ctrl+f" });
 		await fs.mkdir(profileAgentDir, { recursive: true });
 
-		const originalConfigDir = process.env.PI_CONFIG_DIR;
+		const originalConfigDir = process.env.VEYYON_CONFIG_DIR;
 		try {
-			process.env.PI_CONFIG_DIR = path.relative(os.homedir(), rootDir);
+			process.env.VEYYON_CONFIG_DIR = path.relative(os.homedir(), rootDir);
 			__resetDirsFromEnvForTests();
 			setProfile("work");
 
@@ -250,8 +250,8 @@ describe("KeybindingsManager.create", () => {
 			const manager = KeybindingsManager.create();
 			expect(manager.getKeys("app.session.fork")).toEqual(["alt+f"]);
 		} finally {
-			if (originalConfigDir === undefined) delete process.env.PI_CONFIG_DIR;
-			else process.env.PI_CONFIG_DIR = originalConfigDir;
+			if (originalConfigDir === undefined) delete process.env.VEYYON_CONFIG_DIR;
+			else process.env.VEYYON_CONFIG_DIR = originalConfigDir;
 			setProfile(undefined);
 			__resetDirsFromEnvForTests();
 			await removeWithRetries(rootDir);

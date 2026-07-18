@@ -5,7 +5,7 @@
  * SGR-only, two byte-identical CSI+OSC forks).
  */
 import { describe, expect, it } from "bun:test";
-import { stripAnsi } from "@veyyon/pi-utils/strip-ansi";
+import { stripAnsi } from "@veyyon/utils/strip-ansi";
 
 describe("stripAnsi", () => {
 	it("strips SGR color/style sequences", () => {

@@ -1,5 +1,5 @@
 # Vendored from uutils/coreutils tag 0.8.0 (src/uu/yes), patched to route
-# output through pi-uutils-ctx, handle a closed consumer (broken pipe) as a
+# output through veyyon-uutils-ctx, handle a closed consumer (broken pipe) as a
 # clean in-process exit, and poll the scope cancel flag so it can run
 # in-process as a shell builtin. See src/yes.rs for the patch markers
 # (`pi-uutils:` comments).
@@ -17,7 +17,7 @@ path = "src/yes.rs"
 clap = { version = "4.5", features = ["wrap_help", "cargo", "color"] }
 itertools = "0.14.0"
 uucore = "0.8.0"
-pi-uutils-ctx = { path = "../../pi-uutils-ctx" }
+veyyon-uutils-ctx = { path = "../../veyyon-uutils-ctx" }
 
 [dev-dependencies]
 parking_lot = "0.12"

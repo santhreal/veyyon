@@ -1,8 +1,8 @@
 /**
  * Regression for https://github.com/can1357/oh-my-pi/issues/3238.
  *
- * On macOS x64 (Intel), `omp stats` builds only the `modern`
- * (`pi_natives.darwin-x64-modern.node`) variant when the host has AVX2,
+ * On macOS x64 (Intel), `veyyon stats` builds only the `modern`
+ * (`veyyon_natives.darwin-x64-modern.node`) variant when the host has AVX2,
  * because `scripts/host-detect.ts` uses `Bun.spawnSync("sysctl", …)` from a
  * normal shell context and correctly resolves AVX2 → modern.
  *
@@ -15,7 +15,7 @@
  *
  * `detectAvx2Support` returned `false`, `resolveCpuVariant` selected
  * `baseline`, and `getAddonFilenames("baseline")` searched only
- * `pi_natives.darwin-x64-baseline.node` + `pi_natives.darwin-x64.node` —
+ * `veyyon_natives.darwin-x64-baseline.node` + `veyyon_natives.darwin-x64.node` —
  * neither of which exists on a modern-only on-disk build. The main thread,
  * which ran the same detector before spawning the worker, picked `modern`
  * fine; only the worker failed.
@@ -26,7 +26,7 @@
  *      subprocesses inherit `process.env` at spawn, so they read the cache
  *      and skip detection entirely — sidestepping the worker-context spawn
  *      flakiness.
- *   2. The user-facing `PI_NATIVE_VARIANT` override always wins, including
+ *   2. The user-facing `VEYYON_NATIVE_VARIANT` override always wins, including
  *      over a stale cache value.
  *   3. Non-x64 architectures still return `null` and never poison the cache.
  *   4. The `darwin-x64` candidate list always carries `modern` ahead of
@@ -88,7 +88,7 @@ describe("issue 3238: variant resolution across worker contexts", () => {
 		expect(result.cacheEnvValue).toBe("baseline");
 	});
 
-	it("honors PI_NATIVE_VARIANT override above both cache and detection", () => {
+	it("honors VEYYON_NATIVE_VARIANT override above both cache and detection", () => {
 		let detectorCalls = 0;
 		const result = selectCpuVariant({
 			arch: "x64",
@@ -108,7 +108,7 @@ describe("issue 3238: variant resolution across worker contexts", () => {
 		expect(result.cacheEnvKey).toBeUndefined();
 	});
 
-	it("ignores garbage values in PI_NATIVE_VARIANT and in the cache", () => {
+	it("ignores garbage values in VEYYON_NATIVE_VARIANT and in the cache", () => {
 		const result = selectCpuVariant({
 			arch: "x64",
 			override: "garbage" as unknown as "modern",
@@ -147,7 +147,7 @@ describe("issue 3238: variant resolution across worker contexts", () => {
 		}).variant;
 		expect(variant).toBe("modern");
 		const filenames = getAddonFilenames({ tag: "darwin-x64", arch: "x64", variant });
-		expect(filenames[0]).toBe("pi_natives.darwin-x64-modern.node");
-		expect(filenames).toContain("pi_natives.darwin-x64-baseline.node");
+		expect(filenames[0]).toBe("veyyon_natives.darwin-x64-modern.node");
+		expect(filenames).toContain("veyyon_natives.darwin-x64-baseline.node");
 	});
 });

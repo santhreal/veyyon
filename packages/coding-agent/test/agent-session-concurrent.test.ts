@@ -7,22 +7,22 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { scheduler } from "node:timers/promises";
-import { Agent, AgentBusyError, type AgentMessage, type AgentTool } from "@veyyon/pi-agent-core";
-import type { AssistantMessage, Message, ToolCall } from "@veyyon/pi-ai";
-import { createMockModel } from "@veyyon/pi-ai/providers/mock";
-import { AssistantMessageEventStream } from "@veyyon/pi-ai/utils/event-stream";
-import { getBundledModel } from "@veyyon/pi-catalog/models";
-import { AsyncJobManager } from "@veyyon/pi-coding-agent/async";
-import type { Rule } from "@veyyon/pi-coding-agent/capability/rule";
-import { ModelRegistry } from "@veyyon/pi-coding-agent/config/model-registry";
-import { type SettingPath, Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { TtsrManager } from "@veyyon/pi-coding-agent/export/ttsr";
-import type { ExtensionRunner } from "@veyyon/pi-coding-agent/extensibility/extensions";
-import { AgentSession } from "@veyyon/pi-coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/pi-coding-agent/session/auth-storage";
-import { convertToLlm } from "@veyyon/pi-coding-agent/session/messages";
-import { SessionManager } from "@veyyon/pi-coding-agent/session/session-manager";
-import { removeSyncWithRetries, Snowflake } from "@veyyon/pi-utils";
+import { Agent, AgentBusyError, type AgentMessage, type AgentTool } from "@veyyon/agent-core";
+import type { AssistantMessage, Message, ToolCall } from "@veyyon/ai";
+import { createMockModel } from "@veyyon/ai/providers/mock";
+import { AssistantMessageEventStream } from "@veyyon/ai/utils/event-stream";
+import { getBundledModel } from "@veyyon/catalog/models";
+import { AsyncJobManager } from "@veyyon/coding-agent/async";
+import type { Rule } from "@veyyon/coding-agent/capability/rule";
+import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
+import { type SettingPath, Settings } from "@veyyon/coding-agent/config/settings";
+import { TtsrManager } from "@veyyon/coding-agent/export/ttsr";
+import type { ExtensionRunner } from "@veyyon/coding-agent/extensibility/extensions";
+import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
+import { convertToLlm } from "@veyyon/coding-agent/session/messages";
+import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { removeSyncWithRetries, Snowflake } from "@veyyon/utils";
 import { type } from "arktype";
 import { createAssistantMessage } from "./helpers/agent-session-setup";
 
@@ -779,7 +779,7 @@ describe("AgentSession concurrent prompt guard", () => {
 	// agent's own `isStreaming` had flipped, but #promptWithMessage's finally had
 	// not yet decremented the prompt-in-flight counter), and the next prompt
 	// threw AgentBusyError. Surfaced as `RpcCommandError: prompt: Agent is
-	// already processing` from omp-rpc clients (robomp triage reminder path).
+	// already processing` from veyyon-rpc clients (veybot triage reminder path).
 	it("subscriber may prompt() synchronously from agent_end without AgentBusyError", async () => {
 		const model = getBundledModel("anthropic", "claude-sonnet-4-5")!;
 		const mock = createMockModel({ handler: () => ({ content: ["Done"] }) });

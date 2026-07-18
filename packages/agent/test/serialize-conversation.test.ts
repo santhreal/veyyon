@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { serializeConversation, serializeConversationForSummary } from "@veyyon/pi-agent-core/compaction";
-import type { AssistantMessage, Message, ToolResultMessage, Usage } from "@veyyon/pi-ai";
+import { serializeConversation, serializeConversationForSummary } from "@veyyon/agent-core/compaction";
+import type { AssistantMessage, Message, ToolResultMessage, Usage } from "@veyyon/ai";
 
 const ZERO_USAGE: Usage = {
 	input: 0,

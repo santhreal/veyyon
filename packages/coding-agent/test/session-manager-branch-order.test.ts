@@ -10,7 +10,7 @@
  * the newest-role selection so a re-reversed branch fails loudly.
  */
 import { describe, expect, it } from "bun:test";
-import { SessionManager } from "@veyyon/pi-coding-agent/session/session-manager";
+import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 
 describe("SessionManager branch ordering", () => {
 	it("getBranch() returns entries root→leaf with the newest entry last", () => {

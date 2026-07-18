@@ -1,8 +1,8 @@
 import { beforeAll, describe, expect, it } from "bun:test";
-import { getThemeByName, initTheme } from "@veyyon/pi-coding-agent/modes/theme/theme";
-import { previewWindowRows } from "@veyyon/pi-coding-agent/tools/render-utils";
-import { sshToolRenderer } from "@veyyon/pi-coding-agent/tools/ssh";
-import { sanitizeText } from "@veyyon/pi-utils";
+import { getThemeByName, initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { previewWindowRows } from "@veyyon/coding-agent/tools/render-utils";
+import { sshToolRenderer } from "@veyyon/coding-agent/tools/ssh";
+import { sanitizeText } from "@veyyon/utils";
 
 beforeAll(async () => {
 	await initTheme();

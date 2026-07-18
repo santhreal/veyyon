@@ -10,6 +10,10 @@
         <!-- Veyyon handbook: self-contained head additions. No remote resources. -->
         <meta name="theme-color" content="#050505">
         <meta name="color-scheme" content="dark">
+        <!-- Site favicons live at the deployed root, one level above /docs/. -->
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+        <link rel="icon" href="/favicon.ico" sizes="48x48">
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png">
         <style>
           /* Paint the near-black surface before CSS/JS resolve the theme, so there is
              no light flash on load. Kept in sync with theme/veyyon.css. */
@@ -18,7 +22,7 @@
           *, *::before, *::after { box-sizing: border-box; }
         </style>
 
-        <meta name="description" content="How Veyyon turns open models into frontier coding agents. The product, the harness, tool-call repair, the edit format, per-model adaptation, and how to use it.">
+        <meta name="description" content="Operator handbook for the Veyyon terminal coding agent: install, configuration, tools, approvals, edit formats, providers, and harness structure.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -38,7 +42,7 @@
         <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="../ayu-highlight-3fdfc3ac.css">
 
         <!-- Custom theme stylesheets -->
-        <link rel="stylesheet" href="../theme/veyyon-fc839a17.css">
+        <link rel="stylesheet" href="../theme/veyyon-06f6939e.css">
 
 
         <!-- Provide site root and default themes to javascript -->
@@ -46,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-e76f06ca.js";
+            window.path_to_searchindex_js = "../searchindex-a2447057.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-9cfd259b.js"></script>
+        <script src="../toc-cc1a72e9.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -192,89 +196,31 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="safety"><a class="header" href="#safety">Safety</a></h1>
-<p>Veyyon is allowed to act on your machine, so the boundary has to be explicit — and visible.</p>
-<p>Commands and file writes run through the <strong>approval mode</strong> (<code>tools.approvalMode</code>), which decides when
-Veyyon acts on its own and when it pauses for your permission. Veyyon does not add an OS command
-sandbox, so the mode is the boundary — and its decisions are visible. If Veyyon cannot prove a tool
-call fits the advertised schema it fails closed or asks; silent degradation is treated as a product
-bug.</p>
-<p>Deep policy reference: <a href="../features/sandbox.html">Approvals and autonomy</a>. Mental model:
-<a href="../concepts/permission-model.html">Permission model</a>. Product framing:
-<a href="../benefits/safety-honesty.html">Safety you can see</a>.</p>
-<h2 id="what-you-see"><a class="header" href="#what-you-see">What you see</a></h2>
-<p>An agent that silently weakens its boundary is hard to trust. Veyyon is designed so you can see:</p>
+<p>Commands and file writes go through <strong>approval mode</strong> (<code>tools.approvalMode</code>). There is no OS command sandbox (Landlock, seccomp, Seatbelt, bubblewrap). Policy details: <a href="../features/sandbox.html">Approvals</a>. Concepts: <a href="../concepts/permission-model.html">Permission model</a>. Summary: <a href="../benefits/safety-errors.html">Approvals and errors</a>.</p>
+<p>Task subagents can use <strong>filesystem isolation</strong> (CoW worktree backends via <code>task.isolation.*</code>) so their edits land in a private tree until merged. That is change-control for subagents, not an OS process sandbox. See task tool docs / <code>task.isolation</code> in settings.</p>
+<h2 id="operator-visible-cases"><a class="header" href="#operator-visible-cases">Operator-visible cases</a></h2>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>Situation</th><th>What you should see</th></tr>
+<tr><th>Situation</th><th>Result</th></tr>
 </thead>
 <tbody>
-<tr><td>Command or edit needs permission</td><td>An approval prompt with command/path and cwd.</td></tr>
-<tr><td>Approval is denied</td><td>A clear denial / tool failure — not a partial side effect.</td></tr>
-<tr><td>Tool call is malformed but repairable</td><td>The call is repaired; the model gets coaching on the correct shape.</td></tr>
-<tr><td>Tool call is ambiguous or unrepairable</td><td>Refusal + coaching; <strong>no</strong> guessed dispatch.</td></tr>
-<tr><td>Output was truncated</td><td>Truncation is recorded, not hidden.</td></tr>
-<tr><td>Config / provider data is bad</td><td>Load fails with file and value context — no silent empty catalog.</td></tr>
+<tr><td>Command or edit needs permission</td><td>Approval prompt with command/path and cwd</td></tr>
+<tr><td>Approval denied</td><td>Denial / tool failure; no partial escalation of rights</td></tr>
+<tr><td>Tool JSON malformed but unambiguous</td><td>Schema repair, then validation/dispatch</td></tr>
+<tr><td>Tool JSON ambiguous or unrepairable</td><td>Error tool result to the model; no dispatch</td></tr>
+<tr><td>Tool output truncated</td><td>Truncation recorded in the tool result</td></tr>
+<tr><td>Config / provider data invalid</td><td>Load fails with path and context</td></tr>
 </tbody>
 </table>
 </div>
-<p>Tool calls follow the same rule as shell. A recoverable malformed call can be repaired against the
-advertised schema; an unrepairable call is reported back to the model with coaching and is not
-dispatched as garbage. Output truncation, disabled safety nets, bad configuration, and missing
-provider data are operator-visible conditions.</p>
-<h2 id="what-veyyon-refuses"><a class="header" href="#what-veyyon-refuses">What Veyyon refuses</a></h2>
-<p>Veyyon would rather miss a fix than invent one:</p>
+<h2 id="headless"><a class="header" href="#headless">Headless</a></h2>
+<p><code>veyyon --print</code> has no TTY for prompts. Set <code>--approval-mode</code> / <code>--yolo</code> explicitly for the job. Reserve full auto-approve for disposable runners. See <a href="../features/exec.html">Non-interactive mode</a>.</p>
+<h2 id="related"><a class="header" href="#related">Related</a></h2>
 <ul>
-<li><strong>Ambiguous argument repair</strong> — if two repairs are plausible, the call fails instead of guessing.</li>
-<li><strong>Stale patch hunks</strong> — update context that no longer matches the file is rejected before write.</li>
-<li><strong>Non-unique exact edits</strong> — <code>oldText</code> that matches many places is rejected with a count and coaching.</li>
-<li><strong>Weakening its own boundary</strong> — no “approve this one silently” fallback; a denied action returns to the model.</li>
-<li><strong>Destructive Git as a way to “clean uncertainty”</strong> — treat a dirty worktree as normal active
-context; inspect with <code>git status --short</code>, <code>git diff</code>, and <code>git diff --cached</code>. Do not ask Veyyon
-to clear uncertainty with <code>git reset --hard</code>, <code>git checkout --</code>, <code>git restore</code>, or <code>git clean</code>.</li>
-</ul>
-<h2 id="approvals-you-can-see"><a class="header" href="#approvals-you-can-see">Approvals you can see</a></h2>
-<p>When a command or edit needs approval, the prompt shows what is about to run and where. You can allow
-once, allow for the session, deny, or inspect the policy. Denied actions return to the model so it can
-change approach — they do not silently become success.</p>
-<p>In headless <code>veyyon --print</code> there is no interactive prompt, so choose the approval mode for the job:
-<code>--approval-mode ask</code> stops the turn rather than hanging, and <code>--yolo</code> runs unattended. Veyyon does not
-sandbox the commands it runs, so reserve <code>--yolo</code> for disposable or externally isolated runners. See
-<a href="../features/exec.html">Non-interactive mode</a>.</p>
-<h2 id="trust-allowlists-and-rules"><a class="header" href="#trust-allowlists-and-rules">Trust, allowlists, and rules</a></h2>
-<p>If you decline directory trust during onboarding, Veyyon exits with next-step advice instead of a silent quit: project-local config, hooks, and exec policies stay unloaded until you trust the workspace. You can re-run and accept trust, or explore in a read-only posture with <code>veyyon --approval-mode plan</code>.</p>
-<p>On first-run welcome, if a newer install is already known from the update cache, Veyyon shows an <strong>Update available</strong> badge while the background version probe refreshes.</p>
-<ul>
-<li>Keep approvals enabled when working in repositories you do not fully trust.</li>
-<li>Prefer exact workspace roots and explicit provider config over ambient shell state.</li>
-<li>Execpolicy <code>.rules</code> files (user and project) can allowlist or require prompts for command classes.
-Use <code>--no-rules</code> to skip loading them for a hermetic run.</li>
-</ul>
-<h2 id="what-to-check"><a class="header" href="#what-to-check">What to check</a></h2>
-<ul>
-<li>Run <code>veyyon plugin doctor</code> after install and after changing provider or approval configuration. It
-exits non-zero when a check fails — treat that as a real setup problem.</li>
-<li>Confirm the active <code>tools.approvalMode</code> (<code>/settings</code> → Advanced → Safety, approval <code>p</code>, or the exec
-startup line).</li>
-<li>Reserve <code>--yolo</code> for disposable or externally isolated machines, since Veyyon does not contain the
-commands it runs.</li>
-<li>Treat a silent fallback as a bug: if an approval gate or credentials disappeared without a message,
-that is not “working as intended.”</li>
-</ul>
-<h2 id="risk-surfaced-in-the-loop"><a class="header" href="#risk-surfaced-in-the-loop">Risk surfaced in the loop</a></h2>
-<p>Risk is not only a startup checkbox:</p>
-<ol>
-<li><strong>Before</strong> — policy + sandbox chosen; doctor can verify readiness.</li>
-<li><strong>During</strong> — approvals, sandbox denials, repair refusals, and truncated outputs appear in the turn.</li>
-<li><strong>After</strong> — turn diffs and (for <code>veyyon --print --json</code>) structured events record what ran, what failed,
-and what the final message was.</li>
-</ol>
-<h2 id="next"><a class="header" href="#next">Next</a></h2>
-<ul>
-<li><a href="./configuration.html">Configuration</a> — set the policies Veyyon will enforce.</li>
-<li><a href="../features/sandbox.html">Sandbox and approvals</a> — OS backends, egress, recipes.</li>
-<li><a href="./editing.html">Editing and repair</a> — why refused repairs protect your tree.</li>
-<li><a href="../features/doctor.html">Diagnostics</a> — diagnostics options and exit status.</li>
+<li><a href="../features/sandbox.html">Approvals</a></li>
+<li><a href="./configuration.html">Configuration</a></li>
+<li><a href="../repair/overview.html">Repair</a></li>
 </ul>
 
                     </main>

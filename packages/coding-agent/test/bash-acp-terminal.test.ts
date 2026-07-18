@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, mock, spyOn } from "bun:test";
-import type { ClientBridge, ClientBridgeTerminalHandle } from "@veyyon/pi-coding-agent/session/client-bridge";
-import type { ToolSession } from "@veyyon/pi-coding-agent/tools";
-import { BashTool } from "@veyyon/pi-coding-agent/tools/bash";
+import type { ClientBridge, ClientBridgeTerminalHandle } from "@veyyon/coding-agent/session/client-bridge";
+import type { ToolSession } from "@veyyon/coding-agent/tools";
+import { BashTool } from "@veyyon/coding-agent/tools/bash";
 
 function makeSession(bridge: ClientBridge): ToolSession {
 	return {

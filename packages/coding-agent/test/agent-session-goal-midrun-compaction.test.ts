@@ -1,20 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
-import { Agent, type AgentMessage, type AgentTool } from "@veyyon/pi-agent-core";
-import * as compactionModule from "@veyyon/pi-agent-core/compaction";
-import { AssistantMessageEventStream } from "@veyyon/pi-ai/utils/event-stream";
-import { getBundledModel } from "@veyyon/pi-catalog/models";
-import { ModelRegistry } from "@veyyon/pi-coding-agent/config/model-registry";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { ExtensionRuntime, loadExtensionFromFactory } from "@veyyon/pi-coding-agent/extensibility/extensions/loader";
-import { ExtensionRunner } from "@veyyon/pi-coding-agent/extensibility/extensions/runner";
-import type { GoalModeState } from "@veyyon/pi-coding-agent/goals/state";
-import { AgentSession } from "@veyyon/pi-coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/pi-coding-agent/session/auth-storage";
-import { convertToLlm } from "@veyyon/pi-coding-agent/session/messages";
-import { SessionManager } from "@veyyon/pi-coding-agent/session/session-manager";
-import { EventBus } from "@veyyon/pi-coding-agent/utils/event-bus";
-import { TempDir } from "@veyyon/pi-utils";
+import { Agent, type AgentMessage, type AgentTool } from "@veyyon/agent-core";
+import * as compactionModule from "@veyyon/agent-core/compaction";
+import { AssistantMessageEventStream } from "@veyyon/ai/utils/event-stream";
+import { getBundledModel } from "@veyyon/catalog/models";
+import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import { ExtensionRuntime, loadExtensionFromFactory } from "@veyyon/coding-agent/extensibility/extensions/loader";
+import { ExtensionRunner } from "@veyyon/coding-agent/extensibility/extensions/runner";
+import type { GoalModeState } from "@veyyon/coding-agent/goals/state";
+import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
+import { convertToLlm } from "@veyyon/coding-agent/session/messages";
+import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { EventBus } from "@veyyon/coding-agent/utils/event-bus";
+import { TempDir } from "@veyyon/utils";
 import { type } from "arktype";
 
 function activeGoalState(): GoalModeState {

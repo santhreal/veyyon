@@ -1,6 +1,6 @@
 # SDK
 
-The SDK is the in-process integration surface for `@veyyon/pi-coding-agent`.
+The SDK is the in-process integration surface for `@veyyon/coding-agent`.
 Use it when you want direct access to agent state, event streaming, tool wiring, and session control from your own Bun/Node process.
 
 If you need cross-language/process isolation, use RPC mode instead.
@@ -8,12 +8,12 @@ If you need cross-language/process isolation, use RPC mode instead.
 ## Installation
 
 ```bash
-bun add @veyyon/pi-coding-agent
+bun add @veyyon/coding-agent
 ```
 
 ## Entry points
 
-`@veyyon/pi-coding-agent` exports the SDK APIs from the package root (and also via `@veyyon/pi-coding-agent/sdk`).
+`@veyyon/coding-agent` exports the SDK APIs from the package root (and also via `@veyyon/coding-agent/sdk`).
 
 Core exports for embedders:
 
@@ -29,7 +29,7 @@ Core exports for embedders:
 ## Quick start (auto-discovery defaults)
 
 ```ts
-import { createAgentSession } from "@veyyon/pi-coding-agent";
+import { createAgentSession } from "@veyyon/coding-agent";
 
 const { session, modelFallbackMessage } = await createAgentSession();
 
@@ -58,7 +58,7 @@ await session.dispose();
 If omitted, it resolves:
 
 - `cwd`: `getProjectDir()`
-- `agentDir`: `~/.veyyon/agent` via `getAgentDir()` — profile-aware: under a named profile (`--profile <name>` / `VEYYON_PROFILE`) this resolves to `~/.veyyon/profiles/<name>/agent`
+- `agentDir`: active profile agent dir via `getAgentDir()` (default `~/.veyyon/profiles/default/agent`; named profile `~/.veyyon/profiles/<name>/agent`)
 - `authStorage`: `discoverAuthStorage(agentDir)`
 - `modelRegistry`: `new ModelRegistry(authStorage)` + background `refreshInBackground()` when the registry is not provided
 - `settings`: `await Settings.init({ cwd, agentDir })`
@@ -87,7 +87,7 @@ Typically you must provide only what you want to control:
 ### File-backed (default)
 
 ```ts
-import { createAgentSession, SessionManager } from "@veyyon/pi-coding-agent";
+import { createAgentSession, SessionManager } from "@veyyon/coding-agent";
 
 const { session } = await createAgentSession({
   sessionManager: SessionManager.create(process.cwd()),
@@ -103,7 +103,7 @@ console.log(session.sessionFile); // absolute .jsonl path
 ### In-memory
 
 ```ts
-import { createAgentSession, SessionManager } from "@veyyon/pi-coding-agent";
+import { createAgentSession, SessionManager } from "@veyyon/coding-agent";
 
 const { session } = await createAgentSession({
   sessionManager: SessionManager.inMemory(),
@@ -119,7 +119,7 @@ console.log(session.sessionFile); // undefined
 ### Resume/open/list helpers
 
 ```ts
-import { SessionManager } from "@veyyon/pi-coding-agent";
+import { SessionManager } from "@veyyon/coding-agent";
 
 const recent = await SessionManager.continueRecent(process.cwd());
 const listed = await SessionManager.list(process.cwd());
@@ -138,7 +138,7 @@ import {
   discoverAuthStorage,
   ModelRegistry,
   SessionManager,
-} from "@veyyon/pi-coding-agent";
+} from "@veyyon/coding-agent";
 
 const authStorage = await discoverAuthStorage();
 const modelRegistry = new ModelRegistry(authStorage);
@@ -332,7 +332,7 @@ import {
   ModelRegistry,
   SessionManager,
   Settings,
-} from "@veyyon/pi-coding-agent";
+} from "@veyyon/coding-agent";
 
 const authStorage = await discoverAuthStorage();
 const modelRegistry = new ModelRegistry(authStorage);

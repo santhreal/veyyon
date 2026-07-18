@@ -5,7 +5,7 @@
  */
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { getAgentDir, getProjectDir, isEnoent } from "@veyyon/pi-utils";
+import { getAgentDir, getProjectDir, isEnoent } from "@veyyon/utils";
 import { YAML } from "bun";
 import chalk from "chalk";
 import { theme } from "../modes/theme/theme";
@@ -13,6 +13,9 @@ import { loadBundledAgents } from "../task/agents";
 import type { AgentDefinition } from "../task/types";
 
 export type AgentsAction = "unpack";
+
+/** Canonical action list; the `agents` command's options validation imports this. */
+export const AGENTS_ACTIONS: AgentsAction[] = ["unpack"];
 
 export interface AgentsCommandArgs {
 	action: AgentsAction;

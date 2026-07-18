@@ -10,6 +10,10 @@
         <!-- Veyyon handbook: self-contained head additions. No remote resources. -->
         <meta name="theme-color" content="#050505">
         <meta name="color-scheme" content="dark">
+        <!-- Site favicons live at the deployed root, one level above /docs/. -->
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+        <link rel="icon" href="/favicon.ico" sizes="48x48">
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png">
         <style>
           /* Paint the near-black surface before CSS/JS resolve the theme, so there is
              no light flash on load. Kept in sync with theme/veyyon.css. */
@@ -18,7 +22,7 @@
           *, *::before, *::after { box-sizing: border-box; }
         </style>
 
-        <meta name="description" content="How Veyyon turns open models into frontier coding agents. The product, the harness, tool-call repair, the edit format, per-model adaptation, and how to use it.">
+        <meta name="description" content="Operator handbook for the Veyyon terminal coding agent: install, configuration, tools, approvals, edit formats, providers, and harness structure.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -38,7 +42,7 @@
         <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="../ayu-highlight-3fdfc3ac.css">
 
         <!-- Custom theme stylesheets -->
-        <link rel="stylesheet" href="../theme/veyyon-fc839a17.css">
+        <link rel="stylesheet" href="../theme/veyyon-06f6939e.css">
 
 
         <!-- Provide site root and default themes to javascript -->
@@ -46,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-e76f06ca.js";
+            window.path_to_searchindex_js = "../searchindex-a2447057.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-9cfd259b.js"></script>
+        <script src="../toc-cc1a72e9.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -201,37 +205,24 @@ when you need full schemas or edge cases.</p>
 <h2 id="automate-a-check-on-every-edit-hooks"><a class="header" href="#automate-a-check-on-every-edit-hooks">Automate a check on every edit (hooks)</a></h2>
 <p>Goal: every time the agent finishes an edit, run a deterministic check and fail closed when it breaks.</p>
 <p>The shipped hook model is a <strong>TypeScript module</strong> discovered under <code>.veyyon/hooks/</code> (project) or
-<code>~/.veyyon/agent/hooks/</code> (user). The module exports a factory that registers handlers with <code>pi.on(...)</code>.</p>
+<code>~/.veyyon/profiles/default/agent/hooks/</code> (user). The module exports a factory that registers handlers with <code>pi.on(...)</code>.</p>
 <pre><code class="language-ts">// .veyyon/hooks/post-edit-check.ts
 export default (pi) =&gt; {
-  pi.on("PostToolUse", async (event) =&gt; {
-    if (!/^(edit|write)$/.test(event.tool)) return;
-    // run your check (spawn a test/linter) and block on failure
+  pi.on("tool_result", async (event) =&gt; {
+    if (!/^(edit|write)$/.test(event.toolName)) return;
+    // run your check (spawn a test/linter); return { block, reason } from tool_call to deny
   });
 };
 </code></pre>
 <p>The Bun runtime imports the module at startup; restart (or <code>/reload-plugins</code>) to pick up changes. See
 <a href="../features/hooks-guide.html">Hooks guide</a> for the event names and handler contract.</p>
-<blockquote>
-<p><strong>Spec — not shipped:</strong> JSON <code>hooks.json</code> / <code>config.yml</code> <code>hooks:</code> tables and the
-<code>{ type: "command" }</code> subprocess model with <code>PreToolUse</code> / <code>PostToolUse</code> matchers. Veyyon runs
-TS <code>pi.on(...)</code> modules, not external subprocess commands.</p>
-</blockquote>
 <hr>
 <h2 id="run-a-bounded-task-from-a-script-or-ci"><a class="header" href="#run-a-bounded-task-from-a-script-or-ci">Run a bounded task from a script or CI</a></h2>
-<p>Use a one-shot prompt when the trigger lives outside the agent (pre-commit, CI, <code>entr</code>, <code>watchexec</code>):</p>
-<pre><code class="language-console">$ veyyon --approval-mode auto-edit \
+<p>Use <code>veyyon --print</code> (<code>-p</code>) when the trigger lives outside the agent (pre-commit, CI, <code>entr</code>, <code>watchexec</code>):</p>
+<pre><code class="language-console">$ veyyon -p --approval-mode auto-edit \
     "Run the focused tests for the files changed in the last commit and fail if any regress"
 </code></pre>
-<p>The prompt can be an argument or piped on stdin. Pick <code>auto-edit</code> for unattended write access with an
-exec prompt, or <code>--yolo</code> to auto-approve everything in a trusted, ideally externally-sandboxed
-environment. Keep the smoke set small; put heavy suites in CI.</p>
-<blockquote>
-<p><strong>Spec — not shipped:</strong> a dedicated <code>veyyon exec</code> subcommand with <code>--json</code> event streams, <code>-o</code>
-final-message capture, and <code>veyyon review --uncommitted</code>. See
-<a href="../features/exec.html">Non-interactive mode</a> for the current scripted surface, and use <code>/review</code> in
-the TUI for a review pass.</p>
-</blockquote>
+<p>The prompt can be an argument or piped on stdin. <code>auto-edit</code> auto-approves writes and still prompts on exec; <code>--yolo</code> auto-approves all tiers (use only on disposable runners). JSON event streams: <code>--json</code>. For review, pass a review prompt to <code>-p</code>, or use the passive advisor (<code>--advisor</code>) in the TUI. See <a href="../features/exec.html">Non-interactive mode</a>.</p>
 <hr>
 <h2 id="give-the-agent-a-new-tool-mcp-or-skills"><a class="header" href="#give-the-agent-a-new-tool-mcp-or-skills">Give the agent a new tool (MCP or skills)</a></h2>
 <p>Goal: teach Veyyon a capability you do not want to bake into the binary.</p>
@@ -251,7 +242,7 @@ the TUI for a review pass.</p>
 <p>Add it from the TUI, which writes <code>mcp.json</code> for you:</p>
 <pre><code class="language-text">/mcp add
 </code></pre>
-<p>Or edit <code>~/.veyyon/agent/mcp.json</code> (user) / <code>.veyyon/mcp.json</code> (project) directly:</p>
+<p>Or edit <code>~/.veyyon/profiles/default/agent/mcp.json</code> (user) / <code>.veyyon/mcp.json</code> (project) directly:</p>
 <pre><code class="language-json">{
   "mcpServers": {
     "database": {
@@ -268,7 +259,7 @@ server needs OAuth, run <code>/mcp reauth &lt;name&gt;</code>. Details: <a href=
 <a href="./mcp-setup.html">MCP setup</a>.</p>
 <h3 id="path-2-author-a-skill"><a class="header" href="#path-2-author-a-skill">Path 2: author a skill</a></h3>
 <p>Create a skill directory in user or project scope, for example
-<code>~/.veyyon/agent/skills/audit-config/SKILL.md</code> (or <code>.veyyon/skills/…</code> in a repo):</p>
+<code>~/.veyyon/profiles/default/agent/skills/audit-config/SKILL.md</code> (or <code>.veyyon/skills/…</code> in a repo):</p>
 <pre><code class="language-markdown">---
 name: audit-config
 description: Audit Veyyon config.yml for unsafe approval and tool-policy combinations.
@@ -293,7 +284,7 @@ prompting and local scripts; prefer MCP when the capability is a long-lived exte
 hand.</p>
 <h3 id="memory-carry-guidance-into-new-threads"><a class="header" href="#memory-carry-guidance-into-new-threads">Memory: carry guidance into new threads</a></h3>
 <p>Cross-session memory is off by default. Turn on a backend with <code>memory.backend</code> in <code>config.yml</code>:</p>
-<pre><code class="language-yaml"># ~/.veyyon/agent/config.yml
+<pre><code class="language-yaml"># ~/.veyyon/profiles/default/agent/config.yml
 memory:
   backend: mnemopi        # off (default), local, hindsight, mnemopi
 </code></pre>
@@ -309,17 +300,16 @@ where conventions matter; leave it <code>off</code> for throwaway scratch sessio
 <tbody>
 <tr><td>Inspect the tree / jump to a prior turn</td><td><code>/tree</code></td></tr>
 <tr><td>Copy history into a new session from a user message</td><td><code>/fork</code></td></tr>
-<tr><td>Duplicate the current leaf immediately</td><td><code>/clone</code></td></tr>
 </tbody>
 </table>
 </div>
-<p>Typical flow: reach a decision point, <code>/fork</code> or <code>/clone</code> to try an alternate approach, and keep the
-branch worth keeping. Full behavior: <a href="../features/branching.html">Branching</a> and <a href="./sessions.html">Sessions</a>.</p>
+<p>Typical flow: reach a decision point, <code>/fork</code> to try an alternate approach, continue on the
+branch that works. Full behavior: <a href="../features/branching.html">Branching</a> and <a href="./sessions.html">Sessions</a>.</p>
 <h3 id="memory-vs-branching"><a class="header" href="#memory-vs-branching">Memory vs branching</a></h3>
 <ul>
-<li><strong>Memory</strong> shares durable, consolidated knowledge across different sessions and days.</li>
-<li><strong>Branching</strong> shares live transcript context within or beside the current problem.</li>
-<li>Use both: branch to explore, then let memory capture the decision you kept.</li>
+<li><strong>Memory</strong> stores durable facts across sessions when a backend is enabled.</li>
+<li><strong>Branching</strong> forks live transcript context for the current problem.</li>
+<li>Branch to explore; use memory for decisions that should outlive one session.</li>
 </ul>
 <hr>
 <h2 id="see-also"><a class="header" href="#see-also">See also</a></h2>

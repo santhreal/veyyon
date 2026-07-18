@@ -1,6 +1,6 @@
 # Mnemopi memory backend
 
-Veyyon can use `@veyyon/pi-mnemopi` as a local long-term memory backend.
+Veyyon can use `@veyyon/mnemopi` as a local long-term memory backend.
 
 Set:
 
@@ -65,9 +65,9 @@ The coding-agent wrapper applies scoping on top of the underlying `Mnemopi` pack
 - `per-project` writes to and recalls from a bank derived from the current working directory alone — its basename plus a stable hash of its absolute path, independent of the surrounding git layout.
 - `per-project-tagged` writes to the project-local bank and recalls from both the project-local bank and the shared global bank, with duplicate recall results merged.
 
-The combined project-plus-global behavior lives in the wrapper. The `@veyyon/pi-mnemopi` package itself still exposes banks and constructor options directly, including `bank` for selecting a bank name. Project-local banks other than the shared bank are stored as sibling bank databases managed by Mnemopi's `BankManager`.
+The combined project-plus-global behavior lives in the wrapper. The `@veyyon/mnemopi` package itself still exposes banks and constructor options directly, including `bank` for selecting a bank name. Project-local banks other than the shared bank are stored as sibling bank databases managed by Mnemopi's `BankManager`.
 
-**Per-profile scoping:** `memory.backend`, every `mnemopi.*` setting, and the resulting SQLite database all resolve from the active profile (`VEYYON_PROFILE`, aliases `OMP_PROFILE`/`PI_PROFILE`). Profile `alpha` and profile `beta` get disjoint `mnemopi.dbPath` values under their own `~/.veyyon/profiles/<name>/agent/memories/mnemopi/` directory, so a memory saved under one profile is never recalled under another. Switching `VEYYON_PROFILE` mid-process is not supported — the active profile resolves once per process; restart to pick up a change.
+**Per-profile scoping:** `memory.backend`, every `mnemopi.*` setting, and the resulting SQLite database all resolve from the active profile (`VEYYON_PROFILE`). Profile `alpha` and profile `beta` get disjoint `mnemopi.dbPath` values under their own `~/.veyyon/profiles/<name>/agent/memories/mnemopi/` directory, so a memory saved under one profile is never recalled under another. Switching `VEYYON_PROFILE` mid-process is not supported — the active profile resolves once per process; restart to pick up a change.
 
 ## LLM and embeddings
 

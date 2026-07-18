@@ -2,19 +2,20 @@ import { Database } from "bun:sqlite";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { formatHashlineHeader, formatNumberedLine, formatNumberedLines } from "@veyyon/hashline";
 import type {
 	AgentTool,
 	AgentToolContext,
 	AgentToolResult,
 	AgentToolUpdateCallback,
 	ToolTier,
-} from "@veyyon/pi-agent-core";
-import type { ImageContent, TextContent } from "@veyyon/pi-ai";
-import { glob, type SummaryResult, summarizeCode } from "@veyyon/pi-natives";
-import type { Component } from "@veyyon/pi-tui";
-import { Text } from "@veyyon/pi-tui";
+} from "@veyyon/agent-core";
+import type { ImageContent, TextContent } from "@veyyon/ai";
+import { formatHashlineHeader, formatNumberedLine, formatNumberedLines } from "@veyyon/hashline";
+import { glob, type SummaryResult, summarizeCode } from "@veyyon/natives";
+import type { Component } from "@veyyon/tui";
+import { Text } from "@veyyon/tui";
 import {
+	formatCount,
 	getRemoteDir,
 	type ImageMetadata,
 	isProbablyBinary,
@@ -23,7 +24,7 @@ import {
 	prompt,
 	readImageMetadata,
 	untilAborted,
-} from "@veyyon/pi-utils";
+} from "@veyyon/utils";
 import { type } from "arktype";
 import { LRUCache } from "lru-cache/raw";
 import {
@@ -161,8 +162,6 @@ const MAX_ARTIFACT_RAW_INLINE_BYTES = DEFAULT_MAX_BYTES;
  * covers `bash`/`ssh`/`python`/`js eval` and `read` uniformly.
  */
 const PROSE_SUMMARY_EXTENSIONS = new Set([".md", ".txt"]);
-// Remote mount path prefix (sshfs mounts) - skip fuzzy matching to avoid hangs
-const REMOTE_MOUNT_PREFIX = getRemoteDir() + path.sep;
 
 async function readBracketContextFullLines(absolutePath: string, fileSize: number): Promise<string[] | undefined> {
 	if (fileSize > SNAPSHOT_MAX_BYTES) return undefined;
@@ -173,8 +172,11 @@ async function readBracketContextFullLines(absolutePath: string, fileSize: numbe
 	}
 }
 
+// Remote mount path prefix (sshfs mounts) - skip fuzzy matching to avoid
+// hangs. Resolved per call, not frozen at module load: the dirs resolver is
+// rebuilt after profile/agent `.env` files apply, AFTER this module imports.
 function isRemoteMountPath(absolutePath: string): boolean {
-	return absolutePath.startsWith(REMOTE_MOUNT_PREFIX);
+	return absolutePath.startsWith(getRemoteDir() + path.sep);
 }
 
 function prependLineNumbers(text: string, startNum: number): string {
@@ -1087,7 +1089,7 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 			const sessionFile = this.session.getSessionFile();
 			root = sessionFile?.endsWith(".jsonl")
 				? sessionFile.slice(0, -6)
-				: path.join(os.tmpdir(), "omp-read-pdf-images");
+				: path.join(os.tmpdir(), "veyyon-read-pdf-images");
 		}
 		const basename = path.basename(absolutePdfPath).replace(/[^A-Za-z0-9._-]/g, "_");
 		return path.join(root, "read-pdf-images", `${basename}-${Bun.hash(absolutePdfPath).toString(36)}`);
@@ -3505,11 +3507,10 @@ export const readToolRenderer = {
 			title += `:${startLine}${endLine ? `-${endLine}` : ""}`;
 		}
 		if (details?.summary) {
-			title += ` (summary: ${details.summary.elidedSpans} elided span${details.summary.elidedSpans === 1 ? "" : "s"})`;
+			title += ` (summary: ${formatCount("elided span", details.summary.elidedSpans)})`;
 		}
 		if (details?.conflictCount && details.conflictCount > 0) {
-			const n = details.conflictCount;
-			title += ` ${uiTheme.fg("warning", `(warn ${n} conflict${n === 1 ? "" : "s"})`)}`;
+			title += ` ${uiTheme.fg("warning", `(warn ${formatCount("conflict", details.conflictCount)})`)}`;
 		}
 		const rawRequested = args?.raw === true || isRawSelector(parseSel(renderPath.sel));
 		const isMarkdown = details?.contentType === "text/markdown" && !rawRequested;

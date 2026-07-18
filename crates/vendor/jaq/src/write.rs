@@ -120,7 +120,7 @@ pub fn print(w: &mut (impl Write + ?Sized), cli: &Cli, val: &Val) -> io::Result<
 /// stream never is, so output is always buffered and flushed at the end
 /// (flush errors are dropped, matching upstream's `BufWriter` drop).
 pub fn with_stdout<T>(f: impl FnOnce(&mut dyn Write) -> T) -> T {
-	let mut out = io::BufWriter::new(pi_uutils_ctx::stdout());
+	let mut out = io::BufWriter::new(veyyon_uutils_ctx::stdout());
 	let res = f(&mut out);
 	let _ = out.flush();
 	res

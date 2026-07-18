@@ -8,7 +8,7 @@ import {
 	type SgrMouseEvent,
 	truncateToWidth,
 	visibleWidth,
-} from "@veyyon/pi-tui";
+} from "@veyyon/tui";
 import type { HistoryEntry, HistoryStorage } from "../../session/history-storage";
 import { theme } from "../theme/theme";
 import {

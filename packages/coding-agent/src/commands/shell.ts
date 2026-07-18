@@ -1,7 +1,7 @@
 /**
  * Interactive shell console.
  */
-import { Command, Flags } from "@veyyon/pi-utils/cli";
+import { Command, Flags } from "@veyyon/utils/cli";
 import { runShellCommand, type ShellCommandArgs } from "../cli/shell-cli";
 import { initTheme } from "../modes/theme/theme";
 

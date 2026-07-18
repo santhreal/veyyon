@@ -12,24 +12,24 @@
  * frame is observable.
  */
 import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
-import { generateRoomKey, importRoomKey } from "@veyyon/pi-coding-agent/collab/crypto";
-import { CollabGuestLink } from "@veyyon/pi-coding-agent/collab/guest";
-import { CollabHost } from "@veyyon/pi-coding-agent/collab/host";
+import { generateRoomKey, importRoomKey } from "@veyyon/coding-agent/collab/crypto";
+import { CollabGuestLink } from "@veyyon/coding-agent/collab/guest";
+import { CollabHost } from "@veyyon/coding-agent/collab/host";
 import {
 	COLLAB_PROTO,
 	type CollabFrame,
 	type CollabSessionState,
 	formatCollabLink,
 	parseCollabLink,
-} from "@veyyon/pi-coding-agent/collab/protocol";
-import { CollabSocket } from "@veyyon/pi-coding-agent/collab/relay-client";
+} from "@veyyon/coding-agent/collab/protocol";
+import { CollabSocket } from "@veyyon/coding-agent/collab/relay-client";
 import type {
 	ExtensionAskDialogQuestion,
 	ExtensionUIDialogOptions,
 	ExtensionUISelectItem,
-} from "@veyyon/pi-coding-agent/extensibility/extensions/types";
-import { ExtensionUiController } from "@veyyon/pi-coding-agent/modes/controllers/extension-ui-controller";
-import type { InteractiveModeContext, InteractiveSelectorDialogOptions } from "@veyyon/pi-coding-agent/modes/types";
+} from "@veyyon/coding-agent/extensibility/extensions/types";
+import { ExtensionUiController } from "@veyyon/coding-agent/modes/controllers/extension-ui-controller";
+import type { InteractiveModeContext, InteractiveSelectorDialogOptions } from "@veyyon/coding-agent/modes/types";
 import { installInMemoryRelay, uninstallInMemoryRelay } from "./helpers/in-memory-relay";
 
 // In-memory transport: shared FakeWebSocket + InMemoryRelay harness (see

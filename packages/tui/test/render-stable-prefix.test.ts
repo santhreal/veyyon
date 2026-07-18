@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { type Component, CURSOR_MARKER, type RenderStablePrefix, TUI } from "@veyyon/pi-tui";
+import { type Component, CURSOR_MARKER, type RenderStablePrefix, TUI } from "@veyyon/tui";
 import { StressRenderScheduler } from "./render-stress-scheduler";
 import { VirtualTerminal } from "./virtual-terminal";
 

@@ -2,13 +2,13 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { type OAuthCredential, type UsageProvider, withAuth } from "@veyyon/pi-ai";
-import * as oauth from "@veyyon/pi-ai/oauth";
-import type { OAuthCredentials, OAuthProviderId } from "@veyyon/pi-ai/oauth/types";
-import { getBundledModel } from "@veyyon/pi-catalog/models";
-import { ModelRegistry } from "@veyyon/pi-coding-agent/config/model-registry";
-import { AuthStorage } from "@veyyon/pi-coding-agent/session/auth-storage";
-import { removeSyncWithRetries, Snowflake } from "@veyyon/pi-utils";
+import { type OAuthCredential, type UsageProvider, withAuth } from "@veyyon/ai";
+import * as oauth from "@veyyon/ai/oauth";
+import type { OAuthCredentials, OAuthProviderId } from "@veyyon/ai/oauth/types";
+import { getBundledModel } from "@veyyon/catalog/models";
+import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
+import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
+import { removeSyncWithRetries, Snowflake } from "@veyyon/utils";
 import { createApiKeyResolver } from "../src/config/api-key-resolver";
 
 describe("AuthStorage account rotation", () => {

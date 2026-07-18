@@ -1,11 +1,11 @@
 import { describe, expect, test, vi } from "bun:test";
-import { streamOllama } from "@veyyon/pi-ai/providers/ollama";
-import type { Context, Tool } from "@veyyon/pi-ai/types";
-import { buildModel } from "@veyyon/pi-catalog/build";
-import { Effort } from "@veyyon/pi-catalog/effort";
-import { clampThinkingLevelForModel } from "@veyyon/pi-catalog/model-thinking";
-import { ollamaModelManagerOptions } from "@veyyon/pi-catalog/provider-models/openai-compat";
-import type { FetchImpl, ModelSpec } from "@veyyon/pi-catalog/types";
+import { streamOllama } from "@veyyon/ai/providers/ollama";
+import type { Context, Tool } from "@veyyon/ai/types";
+import { buildModel } from "@veyyon/catalog/build";
+import { Effort } from "@veyyon/catalog/effort";
+import { clampThinkingLevelForModel } from "@veyyon/catalog/model-thinking";
+import { ollamaModelManagerOptions } from "@veyyon/catalog/provider-models/openai-compat";
+import type { FetchImpl, ModelSpec } from "@veyyon/catalog/types";
 
 interface OllamaRequestBody {
 	tools?: Array<{ function: { name: string } }>;

@@ -11,7 +11,7 @@ use crate::{Cli, Val};
 /// The path is resolved against the shell's working directory: as an
 /// in-process builtin, the host process cwd is unrelated to the shell's.
 pub fn load_file(path: impl AsRef<Path>) -> io::Result<Box<dyn core::ops::Deref<Target = [u8]>>> {
-	let path = pi_uutils_ctx::resolve(path.as_ref());
+	let path = veyyon_uutils_ctx::resolve(path.as_ref());
 	let file = std::fs::File::open(&path)?;
 	match unsafe { memmap2::Mmap::map(&file) } {
 		Ok(mmap) => Ok(Box::new(mmap)),

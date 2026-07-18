@@ -75,7 +75,7 @@ impl NamedWriter {
 
 /// Flush buffered content to the files and drop the writers, returning
 /// descriptive errors.
-// Patched for pi-uutils-ctx embedding: the registry is drained (not just
+// Patched for veyyon-uutils-ctx embedding: the registry is drained (not just
 // iterated) so open files do not outlive the invocation on a reused thread.
 pub fn flush_all() -> UResult<()> {
 	FLUSH_LIST.with(|cell| {

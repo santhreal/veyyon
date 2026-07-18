@@ -1,4 +1,4 @@
-import { logger } from "@veyyon/pi-utils";
+import { errorMessage, logger } from "@veyyon/utils";
 
 /**
  * Narrow a value to a thenable so a rejection handler can be attached.
@@ -32,7 +32,7 @@ export function safeSend(proc: { send(message: unknown): unknown }, message: unk
 		if (isThenable(result)) result.then(undefined, () => {});
 	} catch (error) {
 		logger.debug(`${label}: send to subprocess failed`, {
-			error: error instanceof Error ? error.message : String(error),
+			error: errorMessage(error),
 		});
 	}
 }

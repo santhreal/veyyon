@@ -2,7 +2,7 @@ import { Database } from "bun:sqlite";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { gunzipSync, gzipSync } from "node:zlib";
-import { getAgentDir, getBlobsDir, getHistoryDbPath, getModelDbPath, getSessionsDir } from "@veyyon/pi-utils";
+import { formatBytes, getAgentDir, getBlobsDir, getHistoryDbPath, getModelDbPath, getSessionsDir } from "@veyyon/utils";
 import { Settings } from "../config/settings";
 import { getDefault } from "../config/settings-schema";
 import { listSessionsReadOnly, type SessionInfo, type SessionStatus } from "../session/session-listing";
@@ -898,13 +898,6 @@ async function withGcLock<T>(agentDir: string, fn: (lockPath: string) => Promise
 	if (closeError) throw closeError;
 	if (unlinkError) throw unlinkError;
 	return result as T;
-}
-
-function formatBytes(bytes: number): string {
-	if (bytes < 1024) return `${bytes} B`;
-	if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KiB`;
-	if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MiB`;
-	return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GiB`;
 }
 
 function renderText(result: GcResult): string {

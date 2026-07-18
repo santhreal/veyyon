@@ -1,13 +1,13 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "bun:test";
-import type { AssistantMessage, Usage } from "@veyyon/pi-ai";
-import { resetSettingsForTest, Settings, settings } from "@veyyon/pi-coding-agent/config/settings";
-import { TranscriptContainer } from "@veyyon/pi-coding-agent/modes/components/transcript-container";
-import { EventController } from "@veyyon/pi-coding-agent/modes/controllers/event-controller";
-import { defaultThemes } from "@veyyon/pi-coding-agent/modes/theme/defaults";
-import { getResolvedThemeColors, initTheme } from "@veyyon/pi-coding-agent/modes/theme/theme";
-import type { InteractiveModeContext } from "@veyyon/pi-coding-agent/modes/types";
-import type { AgentSessionEvent } from "@veyyon/pi-coding-agent/session/agent-session";
-import type { TUI } from "@veyyon/pi-tui";
+import type { AssistantMessage, Usage } from "@veyyon/ai";
+import { resetSettingsForTest, Settings, settings } from "@veyyon/coding-agent/config/settings";
+import { TranscriptContainer } from "@veyyon/coding-agent/modes/components/transcript-container";
+import { EventController } from "@veyyon/coding-agent/modes/controllers/event-controller";
+import { defaultThemes } from "@veyyon/coding-agent/modes/theme/defaults";
+import { getResolvedThemeColors, initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
+import type { AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session";
+import type { TUI } from "@veyyon/tui";
 
 const THINKING_MARKER = "REASONING TRACE MARKER";
 const ANSWER_MARKER = "FINAL ANSWER MARKER";

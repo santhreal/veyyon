@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, it } from "bun:test";
-import { type BeamMemoryState, initBeam } from "@veyyon/pi-mnemopi/core/beam";
+import { type BeamMemoryState, initBeam } from "@veyyon/mnemopi/core/beam";
 import {
 	PolyphonicRecallEngine,
 	polyphonicRecall,
 	polyphonicRecallIsEnabled,
-} from "@veyyon/pi-mnemopi/core/polyphonic-recall";
-import { closeQuietly, openDatabase } from "@veyyon/pi-mnemopi/db";
+} from "@veyyon/mnemopi/core/polyphonic-recall";
+import { closeQuietly, openDatabase } from "@veyyon/mnemopi/db";
 
 function makeBeam(): BeamMemoryState {
 	const db = openDatabase(":memory:", { create: true, readwrite: true });
@@ -240,5 +240,28 @@ describe("PolyphonicRecallEngine", () => {
 		} finally {
 			closeQuietly(beam.db);
 		}
+	});
+
+	it("voices return empty on an uninitialized DB instead of masking errors", () => {
+		// Law-10 gate contract: missing Beam tables are a checked, loud-by-design
+		// empty result; anything else must propagate (no blanket catch).
+		const db = openDatabase(":memory:", { create: true, readwrite: true });
+		try {
+			const engine = new PolyphonicRecallEngine({ db, sessionId: "s", channelId: "s" });
+			expect(engine.vectorVoice([1, 0])).toEqual([]);
+			// A temporal-looking query, so the voice reaches the table gate.
+			expect(engine.temporalVoice("what happened yesterday")).toEqual([]);
+		} finally {
+			closeQuietly(db);
+		}
+	});
+
+	it("voices propagate a broken DB handle instead of returning empty", () => {
+		const db = openDatabase(":memory:", { create: true, readwrite: true });
+		const engine = new PolyphonicRecallEngine({ db, sessionId: "s", channelId: "s" });
+		db.close();
+		// The old blanket catch rendered a closed handle as "no results".
+		expect(() => engine.vectorVoice([1, 0])).toThrow();
+		expect(() => engine.temporalVoice("what happened yesterday")).toThrow();
 	});
 });

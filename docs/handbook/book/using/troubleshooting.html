@@ -10,6 +10,10 @@
         <!-- Veyyon handbook: self-contained head additions. No remote resources. -->
         <meta name="theme-color" content="#050505">
         <meta name="color-scheme" content="dark">
+        <!-- Site favicons live at the deployed root, one level above /docs/. -->
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+        <link rel="icon" href="/favicon.ico" sizes="48x48">
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png">
         <style>
           /* Paint the near-black surface before CSS/JS resolve the theme, so there is
              no light flash on load. Kept in sync with theme/veyyon.css. */
@@ -18,7 +22,7 @@
           *, *::before, *::after { box-sizing: border-box; }
         </style>
 
-        <meta name="description" content="How Veyyon turns open models into frontier coding agents. The product, the harness, tool-call repair, the edit format, per-model adaptation, and how to use it.">
+        <meta name="description" content="Operator handbook for the Veyyon terminal coding agent: install, configuration, tools, approvals, edit formats, providers, and harness structure.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -38,7 +42,7 @@
         <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="../ayu-highlight-3fdfc3ac.css">
 
         <!-- Custom theme stylesheets -->
-        <link rel="stylesheet" href="../theme/veyyon-fc839a17.css">
+        <link rel="stylesheet" href="../theme/veyyon-06f6939e.css">
 
 
         <!-- Provide site root and default themes to javascript -->
@@ -46,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-e76f06ca.js";
+            window.path_to_searchindex_js = "../searchindex-a2447057.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-9cfd259b.js"></script>
+        <script src="../toc-cc1a72e9.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -192,30 +196,22 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="troubleshooting"><a class="header" href="#troubleshooting">Troubleshooting</a></h1>
-<p>Most Veyyon failures should tell you what failed and what to change. This page gives the public reading
-path for the common cases.</p>
-<h2 id="install-or-startup-fails"><a class="header" href="#install-or-startup-fails">Install or startup fails</a></h2>
-<p>Run:</p>
+<p>Common failure paths.</p>
+<h2 id="install-or-startup"><a class="header" href="#install-or-startup">Install or startup</a></h2>
 <pre><code class="language-shell">veyyon --version
 veyyon plugin doctor
 </code></pre>
-<p><code>veyyon plugin doctor</code> checks extension health and warns about missing optional binaries or provider
-keys. Treat a non-zero result as actionable: fix the line it reports, then run the command again.</p>
-<h2 id="a-provider-does-not-work"><a class="header" href="#a-provider-does-not-work">A provider does not work</a></h2>
-<p>Check the provider key first. The supported environment variables are listed in
-<a href="./models.html">Models and providers</a>. Confirm that the configured base URL and API key are correct for your chosen provider.</p>
-<h2 id="a-command-or-edit-is-blocked"><a class="header" href="#a-command-or-edit-is-blocked">A command or edit is blocked</a></h2>
-<p>Check <a href="./configuration.html">Configuration</a>. The approval policy decides when Veyyon must ask before acting,
-and the sandbox policy decides what a command may read, write, or reach. Veyyon should fail closed when a
-safety decision is unclear.</p>
-<h2 id="output-looks-truncated"><a class="header" href="#output-looks-truncated">Output looks truncated</a></h2>
-<p>Truncation is intentional when output exceeds a tool budget. The output should include the next action, such
-as increasing a limit, using an offset, or narrowing a search. See <a href="../benefits/lower-cost.html">Lower token cost and faster turns</a>
-and <a href="../context/reads-search.html">Bounded reads and instant search</a>.</p>
-<h2 id="where-to-go-next"><a class="header" href="#where-to-go-next">Where to go next</a></h2>
+<p><code>veyyon plugin doctor</code> reports extension health and missing optional binaries/keys. Non-zero exit: fix the reported check and re-run.</p>
+<h2 id="provider-errors"><a class="header" href="#provider-errors">Provider errors</a></h2>
+<p>Check API key / auth store / <code>models.yml</code> for that provider id, base URL, and scopes. See <a href="./models.html">Models and providers</a>.</p>
+<h2 id="command-or-edit-blocked-or-prompting"><a class="header" href="#command-or-edit-blocked-or-prompting">Command or edit blocked or prompting</a></h2>
+<p>Policy is <strong><code>tools.approvalMode</code></strong> and <code>tools.approval</code> (plus execpolicy <code>.rules</code>). There is no OS command sandbox. Schema default is <strong><code>yolo</code></strong>. See <a href="../features/sandbox.html">Approvals</a> and <a href="./configuration.html">Configuration</a>.</p>
+<h2 id="truncated-tool-output"><a class="header" href="#truncated-tool-output">Truncated tool output</a></h2>
+<p>Tool results truncate at configured budgets; the result text should state that truncation occurred and how to continue (limit, offset, narrower query). See <a href="../benefits/lower-cost.html">Context size and retries</a>, <a href="../context/reads-search.html">Bounded reads and search</a>.</p>
+<h2 id="related"><a class="header" href="#related">Related</a></h2>
 <ul>
-<li><a href="../benefits/safety-honesty.html">Safety you can see</a> explains the fail-loud design.</li>
-<li><a href="../observability/overview.html">Observability</a> explains runtime signals and exporter configuration.</li>
+<li><a href="../benefits/safety-errors.html">Approvals and errors</a></li>
+<li><a href="../observability/overview.html">Observability</a></li>
 </ul>
 
                     </main>

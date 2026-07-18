@@ -1,8 +1,8 @@
 import { describe, expect, it } from "bun:test";
-import { buildGoogleGenerateContentParams } from "@veyyon/pi-ai/providers/google-shared";
-import { mapGoogleToolChoice } from "@veyyon/pi-ai/stream";
-import type { Context, Tool, ToolChoice } from "@veyyon/pi-ai/types";
-import { getBundledModel } from "@veyyon/pi-catalog/models";
+import { buildGoogleGenerateContentParams } from "@veyyon/ai/providers/google-shared";
+import { mapGoogleToolChoice } from "@veyyon/ai/stream";
+import type { Context, Tool, ToolChoice } from "@veyyon/ai/types";
+import { getBundledModel } from "@veyyon/catalog/models";
 
 describe("mapGoogleToolChoice (F7)", () => {
 	it("returns string passthrough for auto/none/any", () => {

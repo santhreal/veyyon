@@ -2,15 +2,15 @@ import { afterEach, describe, expect, it, spyOn, vi } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { ReviewCommand } from "@veyyon/pi-coding-agent/extensibility/custom-commands/bundled/review";
-import type { CustomCommandAPI } from "@veyyon/pi-coding-agent/extensibility/custom-commands/types";
-import type { HookCommandContext } from "@veyyon/pi-coding-agent/extensibility/hooks/types";
-import type { SessionEntry } from "@veyyon/pi-coding-agent/session/session-entries";
-import type { PrDiffPayload, ViewLookupResult } from "@veyyon/pi-coding-agent/tools/gh";
-import * as gh from "@veyyon/pi-coding-agent/tools/gh";
-import * as git from "@veyyon/pi-coding-agent/utils/git";
-import * as jj from "@veyyon/pi-coding-agent/utils/jj";
-import { removeWithRetries } from "@veyyon/pi-utils";
+import { ReviewCommand } from "@veyyon/coding-agent/extensibility/custom-commands/bundled/review";
+import type { CustomCommandAPI } from "@veyyon/coding-agent/extensibility/custom-commands/types";
+import type { HookCommandContext } from "@veyyon/coding-agent/extensibility/hooks/types";
+import type { SessionEntry } from "@veyyon/coding-agent/session/session-entries";
+import type { PrDiffPayload, ViewLookupResult } from "@veyyon/coding-agent/tools/gh";
+import * as gh from "@veyyon/coding-agent/tools/gh";
+import * as git from "@veyyon/coding-agent/utils/git";
+import * as jj from "@veyyon/coding-agent/utils/jj";
+import { removeWithRetries } from "@veyyon/utils";
 
 const SAMPLE_JJ_DIFF = `diff --git a/src/workspace.ts b/src/workspace.ts
 --- a/src/workspace.ts
@@ -93,7 +93,7 @@ describe("ReviewCommand", () => {
 	});
 
 	async function createTempDir(): Promise<string> {
-		tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "omp-review-command-"));
+		tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-review-command-"));
 		return tmpDir;
 	}
 

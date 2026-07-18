@@ -1,6 +1,6 @@
-import { tryParseJson } from "@veyyon/pi-utils";
+import { tryParseJson } from "@veyyon/utils";
 import type { SpecialHandler } from "./types";
-import { buildResult, htmlToBasicMarkdown, loadPage } from "./types";
+import { buildResult, htmlToBasicMarkdown, loadPage, scraperDegrade, tryParseUrl } from "./types";
 
 interface MDNSection {
 	type: string;
@@ -109,7 +109,8 @@ async function convertMDNBody(sections: MDNSection[]): Promise<string> {
 }
 
 export const handleMDN: SpecialHandler = async (url: string, timeout: number, signal?: AbortSignal) => {
-	const urlObj = new URL(url);
+	const urlObj = tryParseUrl(url);
+	if (!urlObj) return null;
 
 	// Only handle developer.mozilla.org
 	if (!urlObj.hostname.includes("developer.mozilla.org")) {
@@ -167,7 +168,6 @@ export const handleMDN: SpecialHandler = async (url: string, timeout: number, si
 			notes,
 		});
 	} catch (err) {
-		notes.push(`MDN handler error: ${err instanceof Error ? err.message : String(err)}`);
-		return null;
+		return scraperDegrade("mdn", err);
 	}
 };

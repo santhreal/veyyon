@@ -1,11 +1,13 @@
 /**
  * Render every built-in tool's renderer across its lifecycle states.
  */
-import { Command, Flags } from "@veyyon/pi-utils/cli";
+import { Command, Flags } from "@veyyon/utils/cli";
 import { GALLERY_STATE_TOKENS, type GalleryState, parseGalleryStates, runGalleryCommand } from "../cli/gallery-cli";
 
 export default class Gallery extends Command {
 	static description = "Preview tool renderers across streaming, in-progress, success, and failure states";
+
+	static devTool = true;
 
 	static flags = {
 		tool: Flags.string({ char: "t", description: "Render a single tool by name" }),

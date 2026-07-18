@@ -1,4 +1,4 @@
-# OMP Julia prelude helpers (loaded once into the runner's top-level scope).
+# Veyyon Julia prelude helpers (loaded once into the runner's top-level scope).
 
 if !isdefined(Main, :__veyyon_prelude_loaded)
     global __veyyon_prelude_loaded = true
@@ -37,7 +37,7 @@ function __veyyon_resolve_path(p::AbstractString)
         return abspath(p)
     end
     scheme = lowercase(string(m.captures[1]))
-    roots_env = get(ENV, "PI_EVAL_LOCAL_ROOTS", "{}")
+    roots_env = get(ENV, "VEYYON_EVAL_LOCAL_ROOTS", "{}")
     roots = try
          Main.json_parse(roots_env)
     catch
@@ -84,7 +84,7 @@ function __veyyon_emit_status(op::String, fields::AbstractDict=Dict{String, Any}
     Main.emit_frame(Dict(
         "type" => "display",
         "id" => Main.current_rid,
-        "bundle" => Dict("application/x-omp-status" => status)
+        "bundle" => Dict("application/x-veyyon-status" => status)
     ))
     return nothing
 end
@@ -114,7 +114,7 @@ function Base.read(path::AbstractString, offset::Integer=1, limit::Union{Integer
         "type" => "display",
         "id" => Main.current_rid,
         "bundle" => Dict(
-            "application/x-omp-status" => Dict(
+            "application/x-veyyon-status" => Dict(
                 "op" => "read",
                 "path" => resolved,
                 "chars" => length(content),
@@ -136,7 +136,7 @@ function Base.write(path::AbstractString, content::Any)
         "type" => "display",
         "id" => Main.current_rid,
         "bundle" => Dict(
-            "application/x-omp-status" => Dict(
+            "application/x-veyyon-status" => Dict(
                 "op" => "write",
                 "path" => resolved,
                 "chars" => length(string(content))
@@ -242,9 +242,9 @@ function __veyyon_optional_int(value, default::Int)
 end
 
 function output(ids...; format="raw", query=nothing, offset=nothing, limit=nothing)
-    artifacts_dir = get(ENV, "PI_ARTIFACTS_DIR", "")
+    artifacts_dir = get(ENV, "VEYYON_ARTIFACTS_DIR", "")
     if isempty(artifacts_dir)
-        session_file = get(ENV, "PI_SESSION_FILE", "")
+        session_file = get(ENV, "VEYYON_SESSION_FILE", "")
         if isempty(session_file)
             __veyyon_emit_status("output", Dict{String, Any}("error" => "No session file available"))
             error("No session - output artifacts unavailable")
@@ -370,7 +370,7 @@ function env(key=nothing, value=nothing)
             "type" => "display",
             "id" => Main.current_rid,
             "bundle" => Dict(
-                "application/x-omp-status" => Dict(
+                "application/x-veyyon-status" => Dict(
                     "op" => "env",
                     "count" => length(items),
                     "keys" => keys_list[1:min(20, length(keys_list))]
@@ -388,7 +388,7 @@ function env(key=nothing, value=nothing)
             "type" => "display",
             "id" => Main.current_rid,
             "bundle" => Dict(
-                "application/x-omp-status" => Dict(
+                "application/x-veyyon-status" => Dict(
                     "op" => "env",
                     "key" => k,
                     "value" => v,
@@ -404,7 +404,7 @@ function env(key=nothing, value=nothing)
         "type" => "display",
         "id" => Main.current_rid,
         "bundle" => Dict(
-            "application/x-omp-status" => Dict(
+            "application/x-veyyon-status" => Dict(
                 "op" => "env",
                 "key" => k,
                 "value" => v,
@@ -422,9 +422,9 @@ end
 using Downloads
 
 function __veyyon_call_bridge(name::String, args::Dict{String, Any})
-    base_url = get(ENV, "PI_TOOL_BRIDGE_URL", nothing)
-    token = get(ENV, "PI_TOOL_BRIDGE_TOKEN", nothing)
-    session = get(ENV, "PI_TOOL_BRIDGE_SESSION", nothing)
+    base_url = get(ENV, "VEYYON_TOOL_BRIDGE_URL", nothing)
+    token = get(ENV, "VEYYON_TOOL_BRIDGE_TOKEN", nothing)
+    session = get(ENV, "VEYYON_TOOL_BRIDGE_SESSION", nothing)
     
     if base_url === nothing || token === nothing || session === nothing
         error("Tool bridge is not available in this cell.")
@@ -473,13 +473,13 @@ function __veyyon_call_bridge(name::String, args::Dict{String, Any})
     return get(parsed_resp, "value", nothing)
 end
 
-struct OmpToolProxy end
+struct VeyyonToolProxy end
 
-struct OmpToolCallable
+struct VeyyonToolCallable
     name::String
 end
 
-function (tc::OmpToolCallable)(args...; kwargs...)
+function (tc::VeyyonToolCallable)(args...; kwargs...)
     args_dict = Dict{String, Any}()
     if length(args) == 1 && args[1] isa AbstractDict
         for (k, v) in args[1]
@@ -493,11 +493,11 @@ function (tc::OmpToolCallable)(args...; kwargs...)
     return __veyyon_call_bridge("tool:" * tc.name, args_dict)
 end
 
-function Base.getproperty(::OmpToolProxy, sym::Symbol)
-    return OmpToolCallable(string(sym))
+function Base.getproperty(::VeyyonToolProxy, sym::Symbol)
+    return VeyyonToolCallable(string(sym))
 end
 
-const tool = OmpToolProxy()
+const tool = VeyyonToolProxy()
 
 # -------------------------------------------------------------------------
 # Agent calls
@@ -592,7 +592,7 @@ function Base.log(message::AbstractString)
         "type" => "display",
         "id" => Main.current_rid,
         "bundle" => Dict(
-            "application/x-omp-status" => Dict(
+            "application/x-veyyon-status" => Dict(
                 "op" => "log",
                 "message" => message
             )
@@ -606,7 +606,7 @@ function phase(title::String)
         "type" => "display",
         "id" => Main.current_rid,
         "bundle" => Dict(
-            "application/x-omp-status" => Dict(
+            "application/x-veyyon-status" => Dict(
                 "op" => "phase",
                 "title" => title
             )
@@ -684,7 +684,7 @@ end
 # Budget
 # -------------------------------------------------------------------------
 
-struct OmpBudgetProxy end
+struct VeyyonBudgetProxy end
 
 function __veyyon_budget_snapshot()
     try
@@ -710,7 +710,7 @@ function __veyyon_budget_int(value, default::Int=0)
     return default
 end
 
-function Base.getproperty(::OmpBudgetProxy, sym::Symbol)
+function Base.getproperty(::VeyyonBudgetProxy, sym::Symbol)
     if sym === :total
         snap = __veyyon_budget_snapshot()
         return get(snap, "total", nothing)
@@ -732,4 +732,4 @@ function Base.getproperty(::OmpBudgetProxy, sym::Symbol)
     error("Unknown budget metric: $sym")
 end
 
-const budget = OmpBudgetProxy()
+const budget = VeyyonBudgetProxy()

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
-import { streamSimple } from "@veyyon/pi-ai/stream";
-import type { Context, FetchImpl, Model } from "@veyyon/pi-ai/types";
-import { getBundledModel } from "@veyyon/pi-catalog/models";
+import { streamSimple } from "@veyyon/ai/stream";
+import type { Context, FetchImpl, Model } from "@veyyon/ai/types";
+import { getBundledModel } from "@veyyon/catalog/models";
 
 const baseModel = getBundledModel("openai", "gpt-4o-mini") as Model<"openai-responses">;
 

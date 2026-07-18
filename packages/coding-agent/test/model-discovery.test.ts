@@ -2,15 +2,15 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { Effort, type FetchImpl, type Model } from "@veyyon/pi-ai";
-import type { OAuthCredentials } from "@veyyon/pi-ai/oauth/types";
-import { buildModel } from "@veyyon/pi-catalog/build";
-import { writeModelCache } from "@veyyon/pi-catalog/model-cache";
-import type { OpenAICompat } from "@veyyon/pi-catalog/types";
-import { kNoAuth, ModelRegistry } from "@veyyon/pi-coding-agent/config/model-registry";
-import { resetSettingsForTest } from "@veyyon/pi-coding-agent/config/settings";
-import { AuthStorage } from "@veyyon/pi-coding-agent/session/auth-storage";
-import { removeSyncWithRetries, Snowflake } from "@veyyon/pi-utils";
+import { Effort, type FetchImpl, type Model } from "@veyyon/ai";
+import type { OAuthCredentials } from "@veyyon/ai/oauth/types";
+import { buildModel } from "@veyyon/catalog/build";
+import { writeModelCache } from "@veyyon/catalog/model-cache";
+import type { OpenAICompat } from "@veyyon/catalog/types";
+import { kNoAuth, ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
+import { resetSettingsForTest } from "@veyyon/coding-agent/config/settings";
+import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
+import { removeSyncWithRetries, Snowflake } from "@veyyon/utils";
 
 describe("ModelRegistry runtime discovery", () => {
 	let tempDir: string;
@@ -418,14 +418,14 @@ describe("ModelRegistry runtime discovery", () => {
 	});
 
 	test("keeps OLLAMA_BASE_URL precedence over OLLAMA_HOST", async () => {
-		using _baseUrl = withEnv("OLLAMA_BASE_URL", "http://omp-ollama.example:2222");
+		using _baseUrl = withEnv("OLLAMA_BASE_URL", "http://veyyon-ollama.example:2222");
 		using _host = withEnv("OLLAMA_HOST", "ollama-host.example:3333");
-		const fetchMock = mockOllamaDiscovery(["phi4-mini"], "http://omp-ollama.example:2222");
+		const fetchMock = mockOllamaDiscovery(["phi4-mini"], "http://veyyon-ollama.example:2222");
 		const registry = new ModelRegistry(authStorage, modelsJsonPath, { fetch: fetchMock });
 		await registry.refresh();
 
 		const model = registry.find("ollama", "phi4-mini");
-		expect(model?.baseUrl).toBe("http://omp-ollama.example:2222/v1");
+		expect(model?.baseUrl).toBe("http://veyyon-ollama.example:2222/v1");
 	});
 
 	test("uses OLLAMA_CONTEXT_LENGTH for implicit ollama context accounting", async () => {

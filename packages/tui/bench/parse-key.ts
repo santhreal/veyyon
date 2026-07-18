@@ -1,4 +1,4 @@
-import { parseKey as nativeParseKey } from "@veyyon/pi-natives";
+import { parseKey as nativeParseKey } from "@veyyon/natives";
 import * as native from "../src/keys";
 import * as js from "./_jskey";
 import { makeBench } from "./_harness";

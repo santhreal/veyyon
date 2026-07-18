@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
-import type { AgentMessage } from "@veyyon/pi-agent-core";
-import type { ImageContent, TextContent } from "@veyyon/pi-ai";
-import { stripImagesFromMessage } from "@veyyon/pi-coding-agent/session/messages";
+import type { AgentMessage } from "@veyyon/agent-core";
+import type { ImageContent, TextContent } from "@veyyon/ai";
+import { stripImagesFromMessage } from "@veyyon/coding-agent/session/messages";
 
 const png = (data: string = "iVBORw0KGgo"): ImageContent => ({ type: "image", data, mimeType: "image/png" });
 const text = (value: string): TextContent => ({ type: "text", text: value });

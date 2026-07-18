@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { normalizeResponsesToolCallId } from "@veyyon/pi-ai/utils";
+import { normalizeResponsesToolCallId } from "@veyyon/ai/utils";
 
 describe("normalizeResponsesToolCallId", () => {
 	it("preserves existing item prefix when truncating oversized ids", () => {

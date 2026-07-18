@@ -17,7 +17,7 @@
  */
 import * as fs from "node:fs";
 import { performance } from "node:perf_hooks";
-import { $flag, getDebugLogPath, logger } from "@veyyon/pi-utils";
+import { $flag, errorMessage, getDebugLogPath, logger } from "@veyyon/utils";
 import { DEFAULT_MAX_INLINE_IMAGES, ImageBudget } from "./components/image";
 import { planDeccaraFills } from "./deccara";
 import { isKeyRelease, matchesKey } from "./keys";
@@ -388,10 +388,10 @@ function isMultiplexerSession(): boolean {
  * geometry never actually changes. Routing them through the in-place
  * (multiplexer) resize path never touches the alt buffer, breaking the loop.
  *
- * `PI_TUI_RESIZE_IN_PLACE=1|0` forces this on/off for any terminal.
+ * `VEYYON_TUI_RESIZE_IN_PLACE=1|0` forces this on/off for any terminal.
  */
 function reportsSizeOnAltScreenToggle(): boolean {
-	const override = Bun.env.PI_TUI_RESIZE_IN_PLACE;
+	const override = Bun.env.VEYYON_TUI_RESIZE_IN_PLACE;
 	if (override === "0" || override === "false") return false;
 	if (override === "1" || override === "true") return true;
 	return Bun.env.TERM_PROGRAM?.toLowerCase() === "warpterminal";
@@ -649,8 +649,8 @@ const SGR_SEQUENCE = /\x1b\[[0-9;:]*m/g;
 // terminal dispatch one SGR instead of several. On a real transcript ~40% of
 // all SGR sequences are collapsible this way, which meaningfully cuts the
 // per-frame byte volume and SGR-dispatch count a slow (xterm.js/WebGL) terminal
-// must process. On by default; `PI_NO_SGR_COALESCE=1` disables it.
-const SGR_COALESCE_ENABLED = !$flag("PI_NO_SGR_COALESCE");
+// must process. On by default; `VEYYON_NO_SGR_COALESCE=1` disables it.
+const SGR_COALESCE_ENABLED = !$flag("VEYYON_NO_SGR_COALESCE");
 const CC_ESC = 0x1b;
 const CC_BRACKET = 0x5b; // [
 const CC_M = 0x6d; // m
@@ -968,7 +968,7 @@ export class TUI extends Container {
 	#sixelProbeBuffer = "";
 	#sixelProbeTimeout?: NodeJS.Timeout;
 	#sixelProbeUnsubscribe?: () => void;
-	#showHardwareCursor = $flag("PI_HARDWARE_CURSOR");
+	#showHardwareCursor = $flag("VEYYON_HARDWARE_CURSOR");
 	#synchronizedOutputEnabled = shouldEnableSynchronizedOutputByDefault();
 	#paintBeginSequence = this.#synchronizedOutputEnabled ? PAINT_BEGIN : PAINT_BEGIN_NO_SYNC;
 	#paintEndSequence = this.#synchronizedOutputEnabled ? PAINT_END : PAINT_END_NO_SYNC;
@@ -1020,7 +1020,7 @@ export class TUI extends Container {
 	#forceViewportRepaintOnNextRender = false;
 	#hasEverRendered = false;
 	#scrollbackRebuildEnabled =
-		Bun.env.PI_TUI_SCROLLBACK_REBUILD === "1" || Bun.env.PI_TUI_SCROLLBACK_REBUILD === "true";
+		Bun.env.VEYYON_TUI_SCROLLBACK_REBUILD === "1" || Bun.env.VEYYON_TUI_SCROLLBACK_REBUILD === "true";
 	// Set by the terminal resize callback; consumed by the next render. A resize
 	// event invalidates the committed screen even when the dimensions net out
 	// unchanged by render time (e.g. a 6→4→6 round trip coalesced into one frame
@@ -1558,7 +1558,7 @@ export class TUI extends Container {
 				// Startup listeners are feature hooks; one broken hook must not
 				// prevent rendering — but a swallowed throw hides a dead feature.
 				logger.error("TUI start listener threw; its feature did not initialize", {
-					error: error instanceof Error ? error.message : String(error),
+					error: errorMessage(error),
 				});
 			}
 		}
@@ -3101,7 +3101,7 @@ export class TUI extends Container {
 		this.#committedRows = resyncTo;
 		this.#committedPrefixAuditRows = Math.min(this.#committedPrefixAuditRows, resyncTo);
 		prefix.length = resyncTo;
-		if ($flag("PI_DEBUG_REDRAW")) {
+		if ($flag("VEYYON_DEBUG_REDRAW")) {
 			const msg = `[${new Date().toISOString()}] commit resync: committed prefix diverged at row ${resyncTo}; recommitting\n`;
 			fs.appendFileSync(getDebugLogPath(), msg);
 		}
@@ -3987,9 +3987,9 @@ export class TUI extends Container {
 		this.#commit(frame, window, width, height, cursorControl);
 	}
 
-	/** Optional intent log under PI_DEBUG_REDRAW. */
+	/** Optional intent log under VEYYON_DEBUG_REDRAW. */
 	#logRedraw(intent: RenderIntent, newLength: number, height: number): void {
-		if (!$flag("PI_DEBUG_REDRAW")) return;
+		if (!$flag("VEYYON_DEBUG_REDRAW")) return;
 		const detail =
 			intent.kind === "update"
 				? `update(chunk=${this.#committedRows}..${intent.chunkTo}, windowTop=${intent.windowTop})`

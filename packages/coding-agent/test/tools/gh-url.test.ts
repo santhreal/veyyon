@@ -9,10 +9,10 @@ import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { invalidateGithubCacheForBashCommand } from "@veyyon/pi-coding-agent/tools/gh-cache-invalidation";
-import { parseIssueUrl, parsePrUrl } from "@veyyon/pi-coding-agent/tools/gh-url";
-import { getCached, putCached, resetForTests } from "@veyyon/pi-coding-agent/tools/github-cache";
-import { removeWithRetries } from "@veyyon/pi-utils";
+import { invalidateGithubCacheForBashCommand } from "@veyyon/coding-agent/tools/gh-cache-invalidation";
+import { parseIssueUrl, parsePrUrl } from "@veyyon/coding-agent/tools/gh-url";
+import { getCached, putCached, resetForTests } from "@veyyon/coding-agent/tools/github-cache";
+import { removeWithRetries } from "@veyyon/utils";
 
 describe("parseIssueUrl / parsePrUrl (F5)", () => {
 	it("parses a query-string-suffixed issue URL", () => {
@@ -58,16 +58,16 @@ describe("gh.ts and gh-cache-invalidation.ts key the same URL identically (F5)",
 	let originalEnv: string | undefined;
 
 	async function withCache(fn: () => Promise<void> | void): Promise<void> {
-		originalEnv = process.env.OMP_GITHUB_CACHE_DB;
+		originalEnv = process.env.VEYYON_GITHUB_CACHE_DB;
 		tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "gh-url-f5-"));
-		process.env.OMP_GITHUB_CACHE_DB = path.join(tempDir, "github-cache.db");
+		process.env.VEYYON_GITHUB_CACHE_DB = path.join(tempDir, "github-cache.db");
 		resetForTests();
 		try {
 			await fn();
 		} finally {
 			resetForTests();
-			if (originalEnv === undefined) delete process.env.OMP_GITHUB_CACHE_DB;
-			else process.env.OMP_GITHUB_CACHE_DB = originalEnv;
+			if (originalEnv === undefined) delete process.env.VEYYON_GITHUB_CACHE_DB;
+			else process.env.VEYYON_GITHUB_CACHE_DB = originalEnv;
 			await removeWithRetries(tempDir);
 		}
 	}

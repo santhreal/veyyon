@@ -1,8 +1,8 @@
 import { Database } from "bun:sqlite";
 import { afterEach, describe, expect, it } from "bun:test";
 import * as path from "node:path";
-import { AgentStorage } from "@veyyon/pi-coding-agent/session/agent-storage";
-import { TempDir } from "@veyyon/pi-utils";
+import { AgentStorage } from "@veyyon/coding-agent/session/agent-storage";
+import { TempDir } from "@veyyon/utils";
 
 describe("AgentStorage model perf aggregates", () => {
 	let tempDir: TempDir;
@@ -18,7 +18,7 @@ describe("AgentStorage model perf aggregates", () => {
 	});
 
 	async function openStorage(): Promise<AgentStorage> {
-		tempDir = TempDir.createSync("@omp-agent-storage-perf-");
+		tempDir = TempDir.createSync("@veyyon-agent-storage-perf-");
 		return AgentStorage.open(path.join(tempDir.path(), "agent.db"));
 	}
 
@@ -96,7 +96,7 @@ describe("AgentStorage model perf aggregates", () => {
 		expect(storage.getModelPerf().get("openai/gpt-5")?.tps).toBeCloseTo(250, 5);
 	});
 
-	it("backfills perf aggregates from an omp stats database, excluding errored and stale turns", async () => {
+	it("backfills perf aggregates from a veyyon stats database, excluding errored and stale turns", async () => {
 		const storage = await openStorage();
 
 		// Minimal stats.db fixture: only the columns the backfill query reads.

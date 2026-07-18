@@ -14,8 +14,8 @@ import {
 	type UsageLimit,
 	type UsageReport,
 	type UsageUnit,
-} from "@veyyon/pi-ai";
-import { formatDuration, formatNumber, sanitizeText } from "@veyyon/pi-utils";
+} from "@veyyon/ai";
+import { formatCount, formatDuration, formatNumber, pluralize, sanitizeText } from "@veyyon/utils";
 import chalk from "chalk";
 import { ModelRegistry } from "../config/model-registry";
 import { discoverAuthStorage } from "../sdk";
@@ -377,7 +377,7 @@ function formatAccountHeader(
 	if (typeof planType === "string" && planType) header += chalk.dim(` · plan: ${planType}`);
 	const savedResets = report.resetCredits?.availableCount ?? 0;
 	if (savedResets > 0) {
-		header += chalk.cyan(` · * ${savedResets} saved reset${savedResets === 1 ? "" : "s"}`);
+		header += chalk.cyan(` · * ${formatCount("saved reset", savedResets)}`);
 		const credits = report.resetCredits?.credits;
 		if (credits) {
 			const expiries = credits
@@ -540,7 +540,7 @@ export function formatUsageBreakdown(
 		const accountCount = providerReports.length + providerUnreported.length;
 		lines.push("");
 		lines.push(
-			`${chalk.bold.cyan(formatProviderName(provider))} ${chalk.dim(`— ${accountCount} ${accountCount === 1 ? "account" : "accounts"}`)}`,
+			`${chalk.bold.cyan(formatProviderName(provider))} ${chalk.dim(`— ${formatCount("account", accountCount)}`)}`,
 		);
 		// Provider-wide disclaimers render once per provider, not per limit.
 		const providerNotes = [...new Set(providerReports.flatMap(report => report.notes ?? []))];
@@ -577,7 +577,7 @@ export function formatUsageBreakdown(
 		if (stats.length > 0) {
 			const parts = stats.map(
 				stat =>
-					`${stat.window} -> ${stat.usedAccounts.toFixed(2)}/${stat.accounts} ${stat.accounts === 1 ? "account" : "accounts"} used (${stat.remainingAccounts.toFixed(2)}× quota left)`,
+					`${stat.window} -> ${stat.usedAccounts.toFixed(2)}/${stat.accounts} ${pluralize("account", stat.accounts)} used (${stat.remainingAccounts.toFixed(2)}× quota left)`,
 			);
 			lines.push(`  ${chalk.dim(`capacity: ${parts.join(" · ")}`)}`);
 		}
@@ -695,7 +695,7 @@ export function formatUsageHistory(
 		const accounts = providers.get(provider) ?? new Map<string, HistoryAccount>();
 		lines.push("");
 		lines.push(
-			`${chalk.bold.cyan(formatProviderName(provider))} ${chalk.dim(`— ${accounts.size} ${accounts.size === 1 ? "account" : "accounts"}`)}`,
+			`${chalk.bold.cyan(formatProviderName(provider))} ${chalk.dim(`— ${formatCount("account", accounts.size)}`)}`,
 		);
 		const sortedAccounts = [...accounts.values()].sort((a, b) => a.label.localeCompare(b.label));
 		for (const account of sortedAccounts) {
@@ -713,7 +713,7 @@ export function formatUsageHistory(
 				const details: string[] = [];
 				if (latestFraction !== undefined) details.push(`latest ${(latestFraction * 100).toFixed(1)}%`);
 				if (peakFraction !== undefined) details.push(`peak ${(peakFraction * 100).toFixed(1)}%`);
-				details.push(`${series.entries.length} snapshot${series.entries.length === 1 ? "" : "s"}`);
+				details.push(formatCount("snapshot", series.entries.length));
 				lines.push(
 					`      ${STATUS_COLOR[status]("*")} ${series.title.padEnd(labelWidth)}  ${renderHistorySparkline(series.entries, sinceMs, nowMs)}  ${chalk.dim(details.join(" · "))}`,
 				);

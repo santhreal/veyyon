@@ -423,7 +423,7 @@ Runtime note:
 
 - Automatic session title generation is disabled in RPC mode, and `setTitle` UI
   requests are also suppressed by default because most hosts do not have a
-  meaningful terminal-title surface. Set `VEYYON_RPC_EMIT_TITLE=1` (legacy alias: `PI_RPC_EMIT_TITLE`) to opt back in to
+  meaningful terminal-title surface. Set `VEYYON_RPC_EMIT_TITLE=1` to opt back in to
   the UI event only.
 
 Example:

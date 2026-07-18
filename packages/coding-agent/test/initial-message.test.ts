@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
-import type { ImageContent } from "@veyyon/pi-ai";
-import type { Args } from "@veyyon/pi-coding-agent/cli/args";
-import { buildInitialMessage } from "@veyyon/pi-coding-agent/cli/initial-message";
+import type { ImageContent } from "@veyyon/ai";
+import type { Args } from "@veyyon/coding-agent/cli/args";
+import { buildInitialMessage } from "@veyyon/coding-agent/cli/initial-message";
 
 function createArgs(messages: string[]): Args {
 	return {

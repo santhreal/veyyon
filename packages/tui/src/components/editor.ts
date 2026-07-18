@@ -1,4 +1,4 @@
-import { getProjectDir, logger } from "@veyyon/pi-utils";
+import { getProjectDir, logger } from "@veyyon/utils";
 import {
 	type AutocompleteProvider,
 	findLeadingSlashCommandStart,

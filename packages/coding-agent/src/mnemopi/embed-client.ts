@@ -1,4 +1,4 @@
-import { logger } from "@veyyon/pi-utils";
+import { errorMessage, logger } from "@veyyon/utils";
 import {
 	createUnavailableWorker,
 	createWorkerHandle,
@@ -118,7 +118,7 @@ export class MnemopiEmbedClient {
 		} catch (error) {
 			logger.warn("mnemopi-embed: init failed; local embeddings unavailable for this model", {
 				model,
-				error: error instanceof Error ? error.message : String(error),
+				error: errorMessage(error),
 			});
 			return null;
 		}

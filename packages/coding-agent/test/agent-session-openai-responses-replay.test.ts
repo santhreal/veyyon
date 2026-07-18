@@ -9,17 +9,17 @@ import type {
 	ProviderSessionState,
 	ToolResultMessage,
 	Usage,
-} from "@veyyon/pi-ai/types";
-import { createOpenAIResponsesHistoryPayload } from "@veyyon/pi-ai/utils";
-import { getBundledModel } from "@veyyon/pi-catalog/models";
-import { ModelRegistry } from "@veyyon/pi-coding-agent/config/model-registry";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { createAgentSession } from "@veyyon/pi-coding-agent/sdk";
-import type { AgentSession } from "@veyyon/pi-coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/pi-coding-agent/session/auth-storage";
-import type { SessionEntry, SessionMessageEntry } from "@veyyon/pi-coding-agent/session/session-entries";
-import { SessionManager } from "@veyyon/pi-coding-agent/session/session-manager";
-import { removeSyncWithRetries, Snowflake } from "@veyyon/pi-utils";
+} from "@veyyon/ai/types";
+import { createOpenAIResponsesHistoryPayload } from "@veyyon/ai/utils";
+import { getBundledModel } from "@veyyon/catalog/models";
+import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import { createAgentSession } from "@veyyon/coding-agent/sdk";
+import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
+import type { SessionEntry, SessionMessageEntry } from "@veyyon/coding-agent/session/session-entries";
+import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { removeSyncWithRetries, Snowflake } from "@veyyon/utils";
 
 function createUsage(): Usage {
 	return {

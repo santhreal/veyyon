@@ -11,10 +11,10 @@ import {
 	type AgentToolResult,
 	EventLoopKeepalive,
 	ThinkingLevel,
-} from "@veyyon/pi-agent-core";
-import type { CompactionOutcome } from "@veyyon/pi-agent-core/compaction";
-import type { AssistantMessage, ImageContent, Message, Model, Usage, UsageReport } from "@veyyon/pi-ai";
-import { modelsAreEqual } from "@veyyon/pi-catalog/models";
+} from "@veyyon/agent-core";
+import type { CompactionOutcome } from "@veyyon/agent-core/compaction";
+import type { AssistantMessage, ImageContent, Message, Model, Usage, UsageReport } from "@veyyon/ai";
+import { modelsAreEqual } from "@veyyon/catalog/models";
 import type {
 	AutocompleteProvider,
 	Component,
@@ -23,7 +23,7 @@ import type {
 	NativeScrollbackLiveRegion,
 	OverlayHandle,
 	SlashCommand,
-} from "@veyyon/pi-tui";
+} from "@veyyon/tui";
 import {
 	Container,
 	clearRenderCache,
@@ -36,11 +36,12 @@ import {
 	Text,
 	TUI,
 	visibleWidth,
-} from "@veyyon/pi-tui";
-import { isInsideTerminalMultiplexer } from "@veyyon/pi-tui/terminal-capabilities";
+} from "@veyyon/tui";
+import { isInsideTerminalMultiplexer } from "@veyyon/tui/terminal-capabilities";
 import {
 	APP_NAME,
 	adjustHsv,
+	formatCount,
 	formatNumber,
 	getProjectDir,
 	hsvToRgb,
@@ -49,7 +50,7 @@ import {
 	postmortem,
 	prompt,
 	setProjectDir,
-} from "@veyyon/pi-utils";
+} from "@veyyon/utils";
 import chalk from "chalk";
 import { reset as resetCapabilities } from "../capability";
 import type { CollabGuestLink } from "../collab/guest";
@@ -636,7 +637,7 @@ export class InteractiveMode implements InteractiveModeContext {
 	#agentRegistrySubscriptionTarget?: AgentRegistry;
 	#mcpPendingServers = new Set<string>();
 	#mcpConnectedServers = new Set<string>();
-	#mcpFailedServers = new Map<string, string>();
+	#mcpFailedServers = new Map<string, { error: string; foreign: boolean }>();
 	/** Ghost-sun position: 0 = risen and resting on the hairline, 1 = fully set. */
 	#ghostSink = 0;
 	#ghostTimer?: NodeJS.Timeout;
@@ -824,7 +825,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		} else {
 			this.#mcpPendingServers.delete(event.serverName);
 			this.#mcpConnectedServers.delete(event.serverName);
-			this.#mcpFailedServers.set(event.serverName, event.error);
+			this.#mcpFailedServers.set(event.serverName, { error: event.error, foreign: event.foreign === true });
 		}
 
 		// Boot health lives on the location line's right side (a fixed quiet
@@ -857,7 +858,13 @@ export class InteractiveMode implements InteractiveModeContext {
 			const total = pending + this.#mcpConnectedServers.size + failed;
 			return theme.fg("dim", `mcp ${this.#mcpConnectedServers.size}/${total}`);
 		}
-		if (failed > 0) return theme.fg("statusLineDirty", `mcp ✗${failed} · /mcp list`);
+		if (failed > 0) {
+			// Failures of servers veyyon merely borrowed from another tool's
+			// config (Claude Code, Codex, …) stay visible but don't alarm —
+			// red at first paint is reserved for veyyon's own configuration.
+			const allForeign = [...this.#mcpFailedServers.values()].every(f => f.foreign);
+			return theme.fg(allForeign ? "dim" : "statusLineDirty", `mcp ✗${failed} · /mcp list`);
+		}
 		return null;
 	}
 
@@ -1022,7 +1029,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		// Load initial todos
 		await this.#loadTodoList();
 
-		// Start the UI. Cold `omp` launch opts into clearing on the first paint so
+		// Start the UI. Cold `veyyon` launch opts into clearing on the first paint so
 		// the initial welcome frame does not append over the previous run's scrollback.
 		this.ui.start({ clearScrollback: options.clearInitialTerminalHistory === true });
 		// The first paint used an estimated fill (no composed frame existed yet);
@@ -3181,9 +3188,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.#updateVibeModeStatus();
 		this.sessionManager.appendModeChange("none");
 		this.showStatus(
-			killed > 0
-				? `Vibe mode disabled. Killed ${killed} worker session${killed === 1 ? "" : "s"}.`
-				: "Vibe mode disabled.",
+			killed > 0 ? `Vibe mode disabled. Killed ${formatCount("worker session", killed)}.` : "Vibe mode disabled.",
 		);
 	}
 
@@ -3812,7 +3817,7 @@ export class InteractiveMode implements InteractiveModeContext {
 		// Do not force a final render during teardown: disposed session/UI state can
 		// collapse to an empty frame, clearing the viewport and leaving the parent
 		// shell prompt at row 0. Stop from the last committed frame so the terminal
-		// hands Bash the cursor immediately after visible OMP content.
+		// hands Bash the cursor immediately after visible veyyon content.
 		// Drain any in-flight Kitty key release events before stopping.
 		// This prevents escape sequences from leaking to the parent shell over slow SSH.
 		await this.ui.terminal.drainInput(1000);

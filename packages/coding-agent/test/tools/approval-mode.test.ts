@@ -2,14 +2,14 @@ import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { AgentToolContext } from "@veyyon/pi-agent-core";
-import { getBundledModel } from "@veyyon/pi-catalog/models";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { createAgentSession } from "@veyyon/pi-coding-agent/sdk";
-import type { AgentSession } from "@veyyon/pi-coding-agent/session/agent-session";
-import { SessionManager } from "@veyyon/pi-coding-agent/session/session-manager";
-import { normalizeApprovalMode } from "@veyyon/pi-coding-agent/tools/approval";
-import { removeSyncWithRetries, Snowflake } from "@veyyon/pi-utils";
+import type { AgentToolContext } from "@veyyon/agent-core";
+import { getBundledModel } from "@veyyon/catalog/models";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import { createAgentSession } from "@veyyon/coding-agent/sdk";
+import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { normalizeApprovalMode } from "@veyyon/coding-agent/tools/approval";
+import { removeSyncWithRetries, Snowflake } from "@veyyon/utils";
 
 const BASE_SETTINGS = {
 	"async.enabled": false,

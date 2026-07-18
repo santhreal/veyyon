@@ -1,6 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { type Env, polyphonicRecallEnabled } from "../config";
 import { closeQuietly, type DatabasePath, openDatabase } from "../db";
+import { tableExists } from "../util/sqlite";
 import type { BeamMemoryState, JsonValue, Metadata, RecallResult } from "./beam/types";
 import { EpisodicGraph } from "./episodic-graph";
 import { VeracityConsolidator } from "./veracity-consolidation";
@@ -224,10 +225,15 @@ export class PolyphonicRecallEngine {
 		const queryUnit = normalizeVector(queryEmbedding);
 		if (queryUnit === null) return [];
 		const now = new Date().toISOString();
-		let rows: EmbeddingRow[] = [];
-		try {
-			rows = this.db
-				.query(`
+		if (
+			!tableExists(this.db, "memory_embeddings") ||
+			!tableExists(this.db, "working_memory") ||
+			!tableExists(this.db, "episodic_memory")
+		) {
+			return [];
+		}
+		const rows = this.db
+			.query(`
 					SELECT me.memory_id, me.embedding_json, 'working' AS embedding_tier
 					FROM memory_embeddings me
 					JOIN working_memory wm ON wm.id = me.memory_id
@@ -243,10 +249,7 @@ export class PolyphonicRecallEngine {
 						AND (em.session_id = ? OR em.scope = 'global')
 					LIMIT 50000
 				`)
-				.all(now, this.sessionId, now, this.sessionId) as EmbeddingRow[];
-		} catch {
-			return [];
-		}
+			.all(now, this.sessionId, now, this.sessionId) as EmbeddingRow[];
 
 		const byId = new Map<string, VoiceRecallResult>();
 		for (const row of rows) {
@@ -353,10 +356,9 @@ export class PolyphonicRecallEngine {
 	temporalVoice(query: string): VoiceRecallResult[] {
 		if (envDisabled("MNEMOPI_VOICE_TEMPORAL") || !looksTemporal(query)) return [];
 		const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-		let rows: TemporalRow[] = [];
-		try {
-			rows = this.db
-				.query(`
+		if (!tableExists(this.db, "working_memory")) return [];
+		const rows = this.db
+			.query(`
 					SELECT id, timestamp, importance
 					FROM working_memory
 					WHERE timestamp > ?
@@ -366,10 +368,7 @@ export class PolyphonicRecallEngine {
 					ORDER BY timestamp DESC
 					LIMIT 20
 				`)
-				.all(weekAgo, new Date().toISOString(), this.sessionId) as TemporalRow[];
-		} catch {
-			return [];
-		}
+			.all(weekAgo, new Date().toISOString(), this.sessionId) as TemporalRow[];
 		const now = Date.now();
 		const results: VoiceRecallResult[] = [];
 		for (const row of rows) {
@@ -456,13 +455,11 @@ export class PolyphonicRecallEngine {
 	}
 	getStats(): Record<string, JsonValue> {
 		let embeddedRows = 0;
-		try {
+		if (tableExists(this.db, "memory_embeddings")) {
 			const row = this.db.query("SELECT COUNT(*) AS count FROM memory_embeddings").get() as {
 				count: number;
 			};
 			embeddedRows = row.count;
-		} catch {
-			embeddedRows = 0;
 		}
 		return {
 			voice_weights: {

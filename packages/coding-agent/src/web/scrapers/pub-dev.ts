@@ -1,12 +1,22 @@
-import { tryParseJson } from "@veyyon/pi-utils";
-import { buildResult, formatNumber, htmlToBasicMarkdown, loadPage, type SpecialHandler } from "./types";
+import { tryParseJson } from "@veyyon/utils";
+import {
+	buildResult,
+	formatNumber,
+	htmlToBasicMarkdown,
+	loadFailure,
+	loadPage,
+	type SpecialHandler,
+	scraperDegrade,
+	tryParseUrl,
+} from "./types";
 
 /**
  * Handle pub.dev URLs via API
  */
 export const handlePubDev: SpecialHandler = async (url: string, timeout: number, signal?: AbortSignal) => {
 	try {
-		const parsed = new URL(url);
+		const parsed = tryParseUrl(url);
+		if (!parsed) return null;
 		if (parsed.hostname !== "pub.dev" && parsed.hostname !== "www.pub.dev") return null;
 
 		// Extract package name from /packages/{package}
@@ -20,7 +30,7 @@ export const handlePubDev: SpecialHandler = async (url: string, timeout: number,
 		const apiUrl = `https://pub.dev/api/packages/${encodeURIComponent(packageName)}`;
 		const result = await loadPage(apiUrl, { timeout, signal });
 
-		if (!result.ok) return null;
+		if (!result.ok) return scraperDegrade("pub-dev", loadFailure(result));
 
 		const data = tryParseJson<{
 			name: string;
@@ -46,7 +56,7 @@ export const handlePubDev: SpecialHandler = async (url: string, timeout: number,
 				};
 			};
 		}>(result.content);
-		if (!data) return null;
+		if (!data) return scraperDegrade("pub-dev", "unexpected response shape");
 
 		const { name, latest, publisherId, metrics } = data;
 		const pubspec = latest.pubspec;
@@ -137,7 +147,7 @@ export const handlePubDev: SpecialHandler = async (url: string, timeout: number,
 		}
 
 		return buildResult(md, { url, method: "pub.dev", fetchedAt, notes: ["Fetched via pub.dev API"] });
-	} catch {}
-
-	return null;
+	} catch (error) {
+		return scraperDegrade("pub-dev", error);
+	}
 };

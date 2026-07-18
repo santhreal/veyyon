@@ -2,10 +2,10 @@ import { afterEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { clearCustomApis } from "@veyyon/pi-ai/api-registry";
-import { startAuthGateway } from "@veyyon/pi-ai/auth-gateway";
-import { AuthStorage } from "@veyyon/pi-ai/auth-storage";
-import { createMockModel, type MockModel, registerMockApi } from "@veyyon/pi-ai/providers/mock";
+import { clearCustomApis } from "@veyyon/ai/api-registry";
+import { startAuthGateway } from "@veyyon/ai/auth-gateway";
+import { AuthStorage } from "@veyyon/ai/auth-storage";
+import { createMockModel, type MockModel, registerMockApi } from "@veyyon/ai/providers/mock";
 
 interface GatewayHarness {
 	url: string;

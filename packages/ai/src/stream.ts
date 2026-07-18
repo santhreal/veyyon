@@ -3,19 +3,28 @@ import * as fsSync from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { scheduler } from "node:timers/promises";
-import { isOfficialAnthropicApiUrl } from "@veyyon/pi-catalog/compat/anthropic";
-import type { Effort } from "@veyyon/pi-catalog/effort";
-import { isVertexExpressOpenAIUrl, isVertexRawPredictUrl } from "@veyyon/pi-catalog/hosts";
+import { isOfficialAnthropicApiUrl } from "@veyyon/catalog/compat/anthropic";
+import type { Effort } from "@veyyon/catalog/effort";
+import { isVertexExpressOpenAIUrl, isVertexRawPredictUrl } from "@veyyon/catalog/hosts";
 import {
 	mapEffortToAnthropicAdaptiveEffort,
 	mapEffortToGoogleThinkingLevel,
 	minimumSupportedEffort,
 	requireSupportedEffort,
 	resolveWireModelId,
-} from "@veyyon/pi-catalog/model-thinking";
-import { CATALOG_PROVIDERS, type ProviderCatalogEntry } from "@veyyon/pi-catalog/provider-models";
-import { CODEX_BASE_URL } from "@veyyon/pi-catalog/wire/codex";
-import { $env, $pickenv, getConfigRootDir, isEnoent, logger, withExtraCaFetch } from "@veyyon/pi-utils";
+} from "@veyyon/catalog/model-thinking";
+import { CATALOG_PROVIDERS, type ProviderCatalogEntry } from "@veyyon/catalog/provider-models";
+import { CODEX_BASE_URL } from "@veyyon/catalog/wire/codex";
+import {
+	$env,
+	$pickenv,
+	errorMessage,
+	getConfigRootDir,
+	isEnoent,
+	logger,
+	trimTrailingSlashes,
+	withExtraCaFetch,
+} from "@veyyon/utils";
 import { getCustomApi } from "./api-registry";
 import { createAuthRetryKeyState, isApiKeyResolver, resolveNextAuthRetryKey } from "./auth-retry";
 import * as AIError from "./error";
@@ -130,7 +139,7 @@ function isOfficialOpenAIApiUrl(baseUrl: string | undefined): boolean {
 /** Strict official-Codex endpoint check; exact origin or a path boundary after {@link CODEX_BASE_URL}. */
 function isOfficialCodexApiUrl(baseUrl: string | undefined): boolean {
 	if (!baseUrl) return true;
-	const lower = baseUrl.toLowerCase().replace(/\/+$/, "");
+	const lower = trimTrailingSlashes(baseUrl.toLowerCase());
 	return lower === CODEX_BASE_URL || lower.startsWith(`${CODEX_BASE_URL}/`);
 }
 
@@ -834,7 +843,7 @@ function streamDispatch<TApi extends Api>(
 		}
 
 		case "openrouter": {
-			const useResponses = $env.PI_OPENROUTER_RESPONSES !== "0";
+			const useResponses = $env.VEYYON_OPENROUTER_RESPONSES !== "0";
 			if (useResponses) {
 				return streamOpenAIResponses(
 					model as Model<"openai-responses">,
@@ -1086,7 +1095,7 @@ export function streamSimple<TApi extends Api>(
 				// key — surface the cause instead of masking it as "No API key".
 				outer.fail(
 					new AIError.ConfigurationError(
-						`Failed to resolve API key for provider ${model.provider}: ${error instanceof Error ? error.message : String(error)}`,
+						`Failed to resolve API key for provider ${model.provider}: ${errorMessage(error)}`,
 						{ cause: error },
 					),
 				);
@@ -1225,7 +1234,7 @@ function maxTokensWithThinkingBudget(
 	return Math.min(uncappedMaxTokens, modelMaxTokens ?? Number.POSITIVE_INFINITY);
 }
 export const OUTPUT_FALLBACK_BUFFER = 4000;
-const ANTHROPIC_USE_INTERLEAVED_THINKING = Bun.env.PI_NO_INTERLEAVED_THINKING !== "1";
+const ANTHROPIC_USE_INTERLEAVED_THINKING = Bun.env.VEYYON_NO_INTERLEAVED_THINKING !== "1";
 
 export const ANTHROPIC_THINKING: Record<Effort, number> = {
 	minimal: 1024,
@@ -1556,7 +1565,7 @@ function mapOptionsForApi<TApi extends Api>(
 		}
 
 		case "openrouter": {
-			const useResponses = $env.PI_OPENROUTER_RESPONSES !== "0";
+			const useResponses = $env.VEYYON_OPENROUTER_RESPONSES !== "0";
 			if (useResponses) {
 				return castApi<"openai-responses">({
 					...base,

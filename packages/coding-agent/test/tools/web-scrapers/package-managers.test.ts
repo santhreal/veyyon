@@ -1,16 +1,17 @@
 import { describe, expect, it } from "bun:test";
-import { handleAur } from "@veyyon/pi-coding-agent/web/scrapers/aur";
-import { handleBrew } from "@veyyon/pi-coding-agent/web/scrapers/brew";
-import { handleMaven } from "@veyyon/pi-coding-agent/web/scrapers/maven";
-import { handleNuGet } from "@veyyon/pi-coding-agent/web/scrapers/nuget";
-import { handlePackagist } from "@veyyon/pi-coding-agent/web/scrapers/packagist";
-import { handleRubyGems } from "@veyyon/pi-coding-agent/web/scrapers/rubygems";
+import { handleAur } from "@veyyon/coding-agent/web/scrapers/aur";
+import { handleBrew } from "@veyyon/coding-agent/web/scrapers/brew";
+import { handleMaven } from "@veyyon/coding-agent/web/scrapers/maven";
+import { handleNuGet } from "@veyyon/coding-agent/web/scrapers/nuget";
+import { handlePackagist } from "@veyyon/coding-agent/web/scrapers/packagist";
+import { handleRubyGems } from "@veyyon/coding-agent/web/scrapers/rubygems";
+import { asRender } from "../../helpers/scrapers";
 
 const SKIP = !Bun.env.WEB_FETCH_INTEGRATION;
 
 describe.skipIf(SKIP)("handleBrew", () => {
 	it("fetches wget formula", async () => {
-		const result = await handleBrew("https://formulae.brew.sh/formula/wget", 20);
+		const result = asRender(await handleBrew("https://formulae.brew.sh/formula/wget", 20));
 		expect(result).not.toBeNull();
 		expect(result?.method).toBe("brew");
 		expect(result?.content).toContain("wget");
@@ -19,7 +20,7 @@ describe.skipIf(SKIP)("handleBrew", () => {
 	});
 
 	it("fetches firefox cask", async () => {
-		const result = await handleBrew("https://formulae.brew.sh/cask/firefox", 20);
+		const result = asRender(await handleBrew("https://formulae.brew.sh/cask/firefox", 20));
 		expect(result).not.toBeNull();
 		expect(result?.method).toBe("brew");
 		expect(result?.content).toContain("Firefox");
@@ -30,7 +31,7 @@ describe.skipIf(SKIP)("handleBrew", () => {
 
 describe.skipIf(SKIP)("handleAur", () => {
 	it("fetches yay package", async () => {
-		const result = await handleAur("https://aur.archlinux.org/packages/yay", 20);
+		const result = asRender(await handleAur("https://aur.archlinux.org/packages/yay", 20));
 		expect(result).not.toBeNull();
 		expect(result?.method).toBe("aur");
 		expect(result?.content).toContain("yay");
@@ -42,7 +43,7 @@ describe.skipIf(SKIP)("handleAur", () => {
 
 describe.skipIf(SKIP)("handleRubyGems", () => {
 	it("fetches rails gem", async () => {
-		const result = await handleRubyGems("https://rubygems.org/gems/rails", 20);
+		const result = asRender(await handleRubyGems("https://rubygems.org/gems/rails", 20));
 		expect(result).not.toBeNull();
 		expect(result?.method).toBe("rubygems");
 		expect(result?.content).toContain("rails");
@@ -53,7 +54,7 @@ describe.skipIf(SKIP)("handleRubyGems", () => {
 
 describe.skipIf(SKIP)("handleNuGet", () => {
 	it("fetches Newtonsoft.Json package", async () => {
-		const result = await handleNuGet("https://www.nuget.org/packages/Newtonsoft.Json", 20);
+		const result = asRender(await handleNuGet("https://www.nuget.org/packages/Newtonsoft.Json", 20));
 		expect(result).not.toBeNull();
 		expect(result?.method).toBe("nuget");
 		expect(result?.content).toContain("Newtonsoft.Json");
@@ -64,7 +65,7 @@ describe.skipIf(SKIP)("handleNuGet", () => {
 
 describe.skipIf(SKIP)("handlePackagist", () => {
 	it("fetches laravel/framework package", async () => {
-		const result = await handlePackagist("https://packagist.org/packages/laravel/framework", 20);
+		const result = asRender(await handlePackagist("https://packagist.org/packages/laravel/framework", 20));
 		expect(result).not.toBeNull();
 		expect(result?.method).toBe("packagist");
 		expect(result?.content).toContain("laravel/framework");
@@ -75,7 +76,9 @@ describe.skipIf(SKIP)("handlePackagist", () => {
 
 describe.skipIf(SKIP)("handleMaven", () => {
 	it("fetches commons-lang3 artifact from search.maven.org", async () => {
-		const result = await handleMaven("https://search.maven.org/artifact/org.apache.commons/commons-lang3", 20);
+		const result = asRender(
+			await handleMaven("https://search.maven.org/artifact/org.apache.commons/commons-lang3", 20),
+		);
 		expect(result).not.toBeNull();
 		expect(result?.method).toBe("maven");
 		expect(result?.content).toContain("org.apache.commons");
@@ -86,7 +89,9 @@ describe.skipIf(SKIP)("handleMaven", () => {
 	});
 
 	it("fetches commons-lang3 artifact from mvnrepository.com", async () => {
-		const result = await handleMaven("https://mvnrepository.com/artifact/org.apache.commons/commons-lang3", 20);
+		const result = asRender(
+			await handleMaven("https://mvnrepository.com/artifact/org.apache.commons/commons-lang3", 20),
+		);
 		expect(result).not.toBeNull();
 		expect(result?.method).toBe("maven");
 		expect(result?.content).toContain("org.apache.commons");

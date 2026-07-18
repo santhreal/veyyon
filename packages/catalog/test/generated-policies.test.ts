@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { Effort } from "@veyyon/pi-catalog/effort";
-import type { Api, ModelSpec, Provider } from "@veyyon/pi-catalog/types";
+import { Effort } from "@veyyon/catalog/effort";
+import type { Api, ModelSpec, Provider } from "@veyyon/catalog/types";
 import { applyGeneratedModelPolicies, linkOpenAIPromotionTargets } from "../scripts/generated-policies";
 
 function createSpec<TApi extends Api>(overrides: {

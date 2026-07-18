@@ -1,20 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
-import { Agent, type AgentMessage, type AgentTool } from "@veyyon/pi-agent-core";
-import * as compactionModule from "@veyyon/pi-agent-core/compaction";
-import type { Model, TextContent } from "@veyyon/pi-ai";
-import * as codexResponses from "@veyyon/pi-ai/providers/openai-codex-responses";
-import { AssistantMessageEventStream } from "@veyyon/pi-ai/utils/event-stream";
-import { getBundledModel } from "@veyyon/pi-catalog/models";
-import { ModelRegistry } from "@veyyon/pi-coding-agent/config/model-registry";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { AgentSession } from "@veyyon/pi-coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/pi-coding-agent/session/auth-storage";
-import { convertToLlm } from "@veyyon/pi-coding-agent/session/messages";
-import { SessionManager } from "@veyyon/pi-coding-agent/session/session-manager";
-import type { ToolSession } from "@veyyon/pi-coding-agent/tools";
-import { TodoTool, USER_TODO_EDIT_CUSTOM_TYPE } from "@veyyon/pi-coding-agent/tools/todo";
-import { TempDir } from "@veyyon/pi-utils";
+import { Agent, type AgentMessage, type AgentTool } from "@veyyon/agent-core";
+import * as compactionModule from "@veyyon/agent-core/compaction";
+import type { Model, TextContent } from "@veyyon/ai";
+import * as codexResponses from "@veyyon/ai/providers/openai-codex-responses";
+import { AssistantMessageEventStream } from "@veyyon/ai/utils/event-stream";
+import { getBundledModel } from "@veyyon/catalog/models";
+import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
+import { convertToLlm } from "@veyyon/coding-agent/session/messages";
+import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import type { ToolSession } from "@veyyon/coding-agent/tools";
+import { TodoTool, USER_TODO_EDIT_CUSTOM_TYPE } from "@veyyon/coding-agent/tools/todo";
+import { TempDir } from "@veyyon/utils";
 import { type } from "arktype";
 
 // Re-injecting eager preludes after compaction: the first-message preludes are the

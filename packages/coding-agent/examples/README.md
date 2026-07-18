@@ -1,6 +1,6 @@
 # Examples
 
-Example code for omp-coding-agent SDK, hooks, and custom tools.
+Example code for the veyyon coding-agent SDK, hooks, and custom tools.
 
 ## Directories
 

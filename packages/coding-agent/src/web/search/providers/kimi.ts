@@ -4,8 +4,8 @@
  * Uses Moonshot Kimi Code search API to retrieve web results.
  * Endpoint: POST https://api.kimi.com/coding/v1/search
  */
-import { type ApiKey, type AuthStorage, type FetchImpl, withAuth } from "@veyyon/pi-ai";
-import { $env } from "@veyyon/pi-utils";
+import { type ApiKey, type AuthStorage, type FetchImpl, withAuth } from "@veyyon/ai";
+import { $env } from "@veyyon/utils";
 
 import type { SearchResponse, SearchSource } from "../../../web/search/types";
 import { SearchProviderError } from "../../../web/search/types";
@@ -90,36 +90,38 @@ async function callKimiSearch(
 	},
 ): Promise<{ response: KimiSearchResponse; requestId?: string }> {
 	const fetchImpl = params.fetch ?? fetch;
-	const response = await fetchImpl(resolveBaseUrl(), {
-		method: "POST",
-		headers: {
-			Accept: "application/json",
-			"Content-Type": "application/json",
-			Authorization: `Bearer ${apiKey}`,
-		},
-		body: JSON.stringify({
-			text_query: params.query,
-			limit: params.limit,
-			enable_page_crawling: params.includeContent,
-			timeout_seconds: DEFAULT_TIMEOUT_SECONDS,
-		}),
-		signal: withHardTimeout(params.signal),
+	return withHardTimeout(params.signal, async hardSignal => {
+		const response = await fetchImpl(resolveBaseUrl(), {
+			method: "POST",
+			headers: {
+				Accept: "application/json",
+				"Content-Type": "application/json",
+				Authorization: `Bearer ${apiKey}`,
+			},
+			body: JSON.stringify({
+				text_query: params.query,
+				limit: params.limit,
+				enable_page_crawling: params.includeContent,
+				timeout_seconds: DEFAULT_TIMEOUT_SECONDS,
+			}),
+			signal: hardSignal,
+		});
+
+		if (!response.ok) {
+			const errorText = await response.text();
+			const classified = classifyProviderHttpError("kimi", response.status, errorText);
+			if (classified) throw classified;
+			throw new SearchProviderError(
+				"kimi",
+				`Kimi search API error (${response.status}): ${errorText}`,
+				response.status,
+			);
+		}
+
+		const data = (await response.json()) as KimiSearchResponse;
+		const requestId = response.headers.get("x-request-id") ?? response.headers.get("x-msh-request-id") ?? undefined;
+		return { response: data, requestId };
 	});
-
-	if (!response.ok) {
-		const errorText = await response.text();
-		const classified = classifyProviderHttpError("kimi", response.status, errorText);
-		if (classified) throw classified;
-		throw new SearchProviderError(
-			"kimi",
-			`Kimi search API error (${response.status}): ${errorText}`,
-			response.status,
-		);
-	}
-
-	const data = (await response.json()) as KimiSearchResponse;
-	const requestId = response.headers.get("x-request-id") ?? response.headers.get("x-msh-request-id") ?? undefined;
-	return { response: data, requestId };
 }
 
 /** Execute Kimi web search. */

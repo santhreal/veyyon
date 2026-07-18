@@ -15,13 +15,13 @@ use clap::{
 	builder::ValueParser,
 	error::{ContextKind, Error, ErrorKind},
 };
-use pi_uutils_ctx::format_usage;
 use uucore::{
 	display::Quotable,
 	error::{FromIo, UResult, USimpleError},
 	parser::shortcut_value_parser::ShortcutValueParser,
 	posix::{OBSOLETE, posix_version},
 };
+use veyyon_uutils_ctx::format_usage;
 
 pub mod options {
 	pub static ALL_REPEATED: &str = "all-repeated";
@@ -661,26 +661,26 @@ pub fn run(argv: Vec<OsString>) -> i32 {
 		Err(clap_error) => {
 			// Override the 3 errors whose exact wording GNU `uniq` requires.
 			if let Some(message) = override_clap_error(&clap_error) {
-				let _ = writeln!(pi_uutils_ctx::stderr(), "uniq: {message}");
+				let _ = writeln!(veyyon_uutils_ctx::stderr(), "uniq: {message}");
 				return 1;
 			}
 			// Otherwise let clap render: usage errors to stderr (exit 1),
 			// help/version to stdout (exit 0).
 			let rendered = clap_error.to_string();
 			if clap_error.use_stderr() {
-				let _ = write!(pi_uutils_ctx::stderr(), "{rendered}");
+				let _ = write!(veyyon_uutils_ctx::stderr(), "{rendered}");
 				return 1;
 			}
-			let _ = write!(pi_uutils_ctx::stdout(), "{rendered}");
+			let _ = write!(veyyon_uutils_ctx::stdout(), "{rendered}");
 			return 0;
 		},
 	};
 
 	match uniq_main(&matches, skip_fields_old, skip_chars_old) {
-		Ok(()) => pi_uutils_ctx::exit_code(),
+		Ok(()) => veyyon_uutils_ctx::exit_code(),
 		Err(err) => {
 			let code = err.code();
-			let _ = writeln!(pi_uutils_ctx::stderr(), "uniq: {err}");
+			let _ = writeln!(veyyon_uutils_ctx::stderr(), "uniq: {err}");
 			if code == 0 { 1 } else { code }
 		},
 	}
@@ -857,12 +857,12 @@ fn open_input_file(in_file_name: Option<&OsStr>) -> UResult<Box<dyn BufRead>> {
 		Some(path) if path != "-" => {
 			// pi-uutils: resolve the operand against the shell working directory
 			// for filesystem access; keep `path` for display/errors.
-			let in_file = File::open(pi_uutils_ctx::resolve(path))
+			let in_file = File::open(veyyon_uutils_ctx::resolve(path))
 				.map_err_context(|| format!("Could not open {}", path.maybe_quote()))?;
 			Box::new(BufReader::new(in_file))
 		},
 		// pi-uutils: stdin is a plain context reader; wrap for BufRead.
-		_ => Box::new(BufReader::new(pi_uutils_ctx::stdin())),
+		_ => Box::new(BufReader::new(veyyon_uutils_ctx::stdin())),
 	})
 }
 
@@ -871,11 +871,11 @@ fn open_output_file(out_file_name: Option<&OsStr>) -> UResult<Box<dyn Write>> {
 	Ok(match out_file_name {
 		Some(path) if path != "-" => {
 			// pi-uutils: resolve the operand against the shell working directory.
-			let out_file = File::create(pi_uutils_ctx::resolve(path))
+			let out_file = File::create(veyyon_uutils_ctx::resolve(path))
 				.map_err_context(|| format!("Could not open {}", path.maybe_quote()))?;
 			Box::new(BufWriter::with_capacity(OUTPUT_BUFFER_CAPACITY, out_file))
 		},
 		// pi-uutils: stdout is routed through the context.
-		_ => Box::new(BufWriter::with_capacity(OUTPUT_BUFFER_CAPACITY, pi_uutils_ctx::stdout())),
+		_ => Box::new(BufWriter::with_capacity(OUTPUT_BUFFER_CAPACITY, veyyon_uutils_ctx::stdout())),
 	})
 }

@@ -1,4 +1,4 @@
-import { sanitizeText } from "@veyyon/pi-utils";
+import { sanitizeText } from "@veyyon/utils";
 import type { Terminal as XtermTerminal } from "@xterm/headless";
 
 const RESET = "\x1b[0m";

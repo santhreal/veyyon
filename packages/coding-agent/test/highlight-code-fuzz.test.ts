@@ -9,7 +9,7 @@
  * Deterministic LCG so a failing (code, lang) pair reproduces from the seed.
  */
 import { describe, expect, it } from "bun:test";
-import { getThemeByName, highlightCode } from "@veyyon/pi-coding-agent/modes/theme/theme";
+import { getThemeByName, highlightCode } from "@veyyon/coding-agent/modes/theme/theme";
 
 // Minimal LCG (kept local; this package has no shared adversarial-string helper).
 function lcg(seed: number): () => number {

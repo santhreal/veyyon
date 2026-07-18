@@ -2,12 +2,12 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { type AssistantMessageEventStream, clearCustomApis, Effort, type FetchImpl, getCustomApi } from "@veyyon/pi-ai";
-import { getOAuthProviders, unregisterOAuthProviders } from "@veyyon/pi-ai/oauth";
-import type { OAuthCredentials } from "@veyyon/pi-ai/oauth/types";
-import { ModelRegistry, type ProviderConfigInput } from "@veyyon/pi-coding-agent/config/model-registry";
-import { AuthStorage } from "@veyyon/pi-coding-agent/session/auth-storage";
-import { removeSyncWithRetries, Snowflake } from "@veyyon/pi-utils";
+import { type AssistantMessageEventStream, clearCustomApis, Effort, type FetchImpl, getCustomApi } from "@veyyon/ai";
+import { getOAuthProviders, unregisterOAuthProviders } from "@veyyon/ai/oauth";
+import type { OAuthCredentials } from "@veyyon/ai/oauth/types";
+import { ModelRegistry, type ProviderConfigInput } from "@veyyon/coding-agent/config/model-registry";
+import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
+import { removeSyncWithRetries, Snowflake } from "@veyyon/utils";
 
 describe("ModelRegistry runtime provider registration", () => {
 	let tempDir: string;

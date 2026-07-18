@@ -14,12 +14,12 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import type { ChildProcess } from "node:child_process";
 import { execSync, spawn } from "node:child_process";
-import { isContextOverflow as originalIsContextOverflow } from "@veyyon/pi-ai/error";
-import { complete } from "@veyyon/pi-ai/stream";
-import type { AssistantMessage, Context, Model, Usage } from "@veyyon/pi-ai/types";
-import { buildModel } from "@veyyon/pi-catalog/build";
-import { getBundledModel } from "@veyyon/pi-catalog/models";
-import { $which } from "@veyyon/pi-utils";
+import { isContextOverflow as originalIsContextOverflow } from "@veyyon/ai/error";
+import { complete } from "@veyyon/ai/stream";
+import type { AssistantMessage, Context, Model, Usage } from "@veyyon/ai/types";
+import { buildModel } from "@veyyon/catalog/build";
+import { getBundledModel } from "@veyyon/catalog/models";
+import { $which } from "@veyyon/utils";
 
 function isContextOverflow(message: AssistantMessage, contextWindow: number | null): boolean {
 	return originalIsContextOverflow(message, contextWindow ?? 0);
@@ -164,7 +164,7 @@ function toPositiveInteger(value: unknown): number | undefined {
 }
 
 async function discoverLmStudioModel(): Promise<LmStudioDiscoveredModel | undefined> {
-	if (!Bun.env.PI_LOCAL_LLM || Bun.env.PI_NO_LOCAL_LLM) return undefined;
+	if (!Bun.env.VEYYON_LOCAL_LLM || Bun.env.VEYYON_NO_LOCAL_LLM) return undefined;
 
 	const baseUrl = normalizeLmStudioBaseUrl(Bun.env.LM_STUDIO_BASE_URL);
 	const openAIModels = getModelRecords(await fetchLmStudioJson(`${baseUrl}/models`))
@@ -555,8 +555,8 @@ describe("Context overflow error handling", () => {
 	// Ollama (local)
 	// =============================================================================
 
-	// Ollama tests require PI_LOCAL_LLM=1 and ollama installed
-	const ollamaInstalled = !!Bun.env.PI_LOCAL_LLM && !!$which("ollama");
+	// Ollama tests require VEYYON_LOCAL_LLM=1 and ollama installed
+	const ollamaInstalled = !!Bun.env.VEYYON_LOCAL_LLM && !!$which("ollama");
 
 	describe.skipIf(!ollamaInstalled)("Ollama (local)", () => {
 		let ollamaProcess: ChildProcess | null = null;
@@ -640,7 +640,7 @@ describe("Context overflow error handling", () => {
 	});
 
 	// =============================================================================
-	// LM Studio (local) - requires PI_LOCAL_LLM=1 and a visible local model
+	// LM Studio (local) - requires VEYYON_LOCAL_LLM=1 and a visible local model
 	// =============================================================================
 
 	describe.skipIf(lmStudioModel === undefined)("LM Studio (local)", () => {

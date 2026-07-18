@@ -6,8 +6,8 @@
  * - `IrcBus.send` to an advisor ref fails as non-messageable, without reviving it.
  */
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { IrcBus } from "@veyyon/pi-coding-agent/irc/bus";
-import { AgentRegistry } from "@veyyon/pi-coding-agent/registry/agent-registry";
+import { IrcBus } from "@veyyon/coding-agent/irc/bus";
+import { AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";
 
 describe("advisor registry visibility", () => {
 	beforeEach(() => {

@@ -1,7 +1,8 @@
 /**
  * Run on-disk storage maintenance.
  */
-import { Command, Flags } from "@veyyon/pi-utils/cli";
+import { formatCount } from "@veyyon/utils";
+import { Command, Flags } from "@veyyon/utils/cli";
 import { collectGcErrors, type GcCommandArgs, runGcCommand } from "../cli/gc-cli";
 
 export default class Gc extends Command {
@@ -38,7 +39,7 @@ export default class Gc extends Command {
 		const errors = collectGcErrors(result);
 		if (errors.length > 0) {
 			process.stderr.write(
-				`GC completed with ${errors.length} error${errors.length === 1 ? "" : "s"}:\n${errors.map(error => `- ${error}`).join("\n")}\n`,
+				`GC completed with ${formatCount("error", errors.length)}:\n${errors.map(error => `- ${error}`).join("\n")}\n`,
 			);
 			process.exitCode = 1;
 		}

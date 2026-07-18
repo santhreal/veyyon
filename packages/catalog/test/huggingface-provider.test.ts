@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { huggingfaceModelManagerOptions } from "@veyyon/pi-catalog/provider-models/openai-compat";
+import { huggingfaceModelManagerOptions } from "@veyyon/catalog/provider-models/openai-compat";
 
 describe("Hugging Face built-in provider", () => {
 	test("stamps supportsTools: false only when every routed upstream reports it", async () => {

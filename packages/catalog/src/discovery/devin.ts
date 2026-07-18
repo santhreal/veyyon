@@ -1,5 +1,6 @@
 import { gunzipSync } from "node:zlib";
 import { create, fromBinary, toBinary } from "@bufbuild/protobuf";
+import { trimTrailingSlashes } from "@veyyon/utils";
 import type { FetchImpl, ModelSpec } from "../types";
 import { discoveryFetch } from "../utils";
 import {
@@ -53,7 +54,7 @@ export async function fetchDevinModels(
 ): Promise<ModelSpec<"devin-agent">[] | null> {
 	const timeoutMs = options.timeoutMs ?? 5_000;
 	const resolvedBaseUrl = options.baseUrl ?? DEVIN_DEFAULT_BASE_URL;
-	const requestUrl = `${resolvedBaseUrl.replace(/\/+$/, "")}${DEVIN_GET_CLI_MODEL_CONFIGS_PATH}`;
+	const requestUrl = `${trimTrailingSlashes(resolvedBaseUrl)}${DEVIN_GET_CLI_MODEL_CONFIGS_PATH}`;
 
 	const controller = new AbortController();
 	const timer = setTimeout(() => controller.abort(), timeoutMs);

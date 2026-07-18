@@ -8,10 +8,10 @@ import packageJson from "../package.json" with { type: "json" };
 import { embeddedAddon } from "./embedded-addon.js";
 
 /**
- * Native addon loader for `@veyyon/pi-natives`.
+ * Native addon loader for `@veyyon/natives`.
  *
  * Owns every step between "Node imports `native/index.js`" and "the right
- * `pi_natives.<platform>-<arch>*.node` is required, validated, and returned":
+ * `veyyon_natives.<platform>-<arch>*.node` is required, validated, and returned":
  * platform/variant detection, candidate-path resolution, on-disk staging from
  * `node_modules` (Windows update safety), embedded-addon extraction (Bun
  * standalone binaries), version-sentinel validation, and the aggregated error
@@ -22,8 +22,8 @@ import { embeddedAddon } from "./embedded-addon.js";
  * `scripts/gen-enums.ts`); everything else lives here so the pure helpers stay
  * unit-testable without triggering the side-effectful module-load path.
  *
- * Background (issue #823): `bun build --compile --define PI_COMPILED=true`
- * substitutes the bare identifier `PI_COMPILED`, NOT `process.env.PI_COMPILED`,
+ * Background (issue #823): `bun build --compile --define VEYYON_COMPILED=true`
+ * substitutes the bare identifier `VEYYON_COMPILED`, NOT `process.env.VEYYON_COMPILED`,
  * so a runtime read of the env var returns `undefined`. Older CommonJS loader
  * code also saw the original build-host absolute path in `__filename`; ESM
  * `import.meta.url` is rewritten to the bunfs URL. The embedded-addon
@@ -34,13 +34,13 @@ import { embeddedAddon } from "./embedded-addon.js";
 const SUPPORTED_PLATFORMS = ["linux-x64", "linux-arm64", "darwin-x64", "darwin-arm64", "win32-x64"];
 
 /**
- * Streaming startup marker, enabled by `PI_DEBUG_STARTUP`. Local copy of the
+ * Streaming startup marker, enabled by `VEYYON_DEBUG_STARTUP`. Local copy of the
  * pi-utils helper (this loader cannot depend on pi-utils). Synchronous on
  * purpose: extraction/dlopen hangs must still leave the `:start` marker.
  * @param {string} text
  */
 function startupMarker(text) {
-	if (!process.env.PI_DEBUG_STARTUP) return;
+	if (!process.env.VEYYON_DEBUG_STARTUP) return;
 	try {
 		fs.writeSync(2, `[startup] ${text}\n`);
 	} catch {
@@ -59,7 +59,7 @@ function getNativesDir() {
 function resolveLeafPackageDir(platformTag) {
 	try {
 		const require_ = createRequire(import.meta.url);
-		return path.dirname(require_.resolve(`@veyyon/pi-natives-${platformTag}/package.json`));
+		return path.dirname(require_.resolve(`@veyyon/natives-${platformTag}/package.json`));
 	} catch {
 		return null;
 	}
@@ -79,7 +79,7 @@ function resolveLeafPackageDir(platformTag) {
  */
 export function detectCompiledBinary({ embeddedAddon, env, importMetaUrl }) {
 	if (embeddedAddon) return true;
-	if (env && env.PI_COMPILED) return true;
+	if (env && env.VEYYON_COMPILED) return true;
 	if (typeof importMetaUrl === "string") {
 		if (importMetaUrl.includes("$bunfs")) return true;
 		if (importMetaUrl.includes("~BUN")) return true;
@@ -93,10 +93,10 @@ export function detectCompiledBinary({ embeddedAddon, env, importMetaUrl }) {
  * @returns {string[]}
  */
 export function getAddonFilenames({ tag, arch, variant }) {
-	const defaultFilename = `pi_natives.${tag}.node`;
+	const defaultFilename = `veyyon_natives.${tag}.node`;
 	if (arch !== "x64" || !variant) return [defaultFilename];
-	const baselineFilename = `pi_natives.${tag}-baseline.node`;
-	const modernFilename = `pi_natives.${tag}-modern.node`;
+	const baselineFilename = `veyyon_natives.${tag}-baseline.node`;
+	const modernFilename = `veyyon_natives.${tag}-modern.node`;
 	if (variant === "modern") {
 		return [modernFilename, baselineFilename, defaultFilename];
 	}
@@ -107,12 +107,12 @@ export function getAddonFilenames({ tag, arch, variant }) {
  * Decide whether the loader should mirror the package's `native/<filename>.node`
  * into the per-version cache directory (`~/.veyyon/natives/<version>/`) before loading.
  *
- * Windows-only safety net for `bun install -g` updates: when a previous `omp`
+ * Windows-only safety net for `bun install -g` updates: when a previous `veyyon`
  * process is running, bun cannot overwrite the locked `.node` inside
- * `node_modules/@veyyon/pi-natives/native/`, leaving an old binary next to a
+ * `node_modules/@veyyon/natives/native/`, leaving an old binary next to a
  * newer `index.js` and producing `<sym> is not a function` crashes on the next
  * launch. Staging into the version-pinned cache:
- *   1. Gives every package version its own filesystem path, so concurrent omp
+ *   1. Gives every package version its own filesystem path, so concurrent veyyon
  *      processes never collide on the same file.
  *   2. Makes the running process keep its handle on the cache copy, freeing bun
  *      to overwrite the `node_modules` copy on subsequent updates.
@@ -251,7 +251,7 @@ function runCommand(command, args) {
 }
 
 function getVariantOverride() {
-	const value = process.env.PI_NATIVE_VARIANT;
+	const value = process.env.VEYYON_NATIVE_VARIANT;
 	if (!value) return null;
 	if (value === "modern" || value === "baseline") return value;
 	return null;
@@ -299,7 +299,7 @@ function detectAvx2Support() {
 /**
  * Pure variant-selection helper, exposed for unit tests. Resolution order:
  *
- *   1. `override` (user-facing `PI_NATIVE_VARIANT` env var). Always wins.
+ *   1. `override` (user-facing `VEYYON_NATIVE_VARIANT` env var). Always wins.
  *   2. The private `__PI_NATIVE_VARIANT_CACHE` env var, populated by the first
  *      context that detected at runtime. Lets child workers / subprocesses
  *      inherit the main thread's verdict instead of re-spawning `sysctl` etc.
@@ -592,7 +592,7 @@ function validateLoadedBindings(ctx, bindings, candidate) {
 	if (ctx.isWorkspaceLoad) return;
 	if (typeof bindings[ctx.versionSentinelExport] === "function") return;
 	throw new Error(
-		`Loaded ${candidate} but it does not expose the @veyyon/pi-natives@${ctx.packageVersion} ` +
+		`Loaded ${candidate} but it does not expose the @veyyon/natives@${ctx.packageVersion} ` +
 			`version sentinel \`${ctx.versionSentinelExport}\`. The .node file on disk is from a different ` +
 			"release than this loader — reinstall to re-sync.",
 	);
@@ -602,12 +602,12 @@ function validateLoadedBindings(ctx, bindings, candidate) {
  * Install the addon's bounded Tokio runtime now that `dlopen` has returned and
  * the dynamic-loader lock is released. The Rust `#[module_init]` deliberately
  * does NOT build the runtime — spawning worker threads under the loader lock
- * deadlocks on some hosts — so it exposes `__ompInstallTokioRuntime` for the
+ * deadlocks on some hosts — so it exposes `__veyyonInstallTokioRuntime` for the
  * loader to call once, before any async native runs. Best-effort: older addons
  * predating this export simply fall back to napi-rs's default runtime.
  */
 function installNativeTokioRuntime(bindings) {
-	const install = bindings.__ompInstallTokioRuntime;
+	const install = bindings.__veyyonInstallTokioRuntime;
 	if (typeof install !== "function") return;
 	try {
 		install();
@@ -634,7 +634,7 @@ function buildHelpMessage(ctx) {
 		);
 	}
 	return (
-		"If installed via npm/bun, try reinstalling: bun install @veyyon/pi-natives\n" +
+		"If installed via npm/bun, try reinstalling: bun install @veyyon/natives\n" +
 		"If developing locally, build with: bun --cwd=packages/natives run build\n" +
 		"Optional x64 variants: TARGET_VARIANT=baseline|modern bun --cwd=packages/natives run build"
 	);
@@ -655,7 +655,7 @@ function initLoaderContext() {
 	const versionedDir = path.join(nativesDir, packageVersion);
 	const userDataDir =
 		process.platform === "win32"
-			? path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local"), "omp")
+			? path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), "AppData", "Local"), "veyyon")
 			: path.join(os.homedir(), ".local", "bin");
 
 	const isCompiledBinary = detectCompiledBinary({
@@ -686,13 +686,13 @@ function initLoaderContext() {
 	});
 
 	// Version sentinel emitted by the Rust addon under a `js_name` that encodes
-	// the package version (`__piNativesV{major}_{minor}_{patch}`).
-	// `scripts/release.ts` bumps the name in `crates/pi-natives/src/lib.rs` in
+	// the package version (`__veyyonNativesV{major}_{minor}_{patch}`).
+	// `scripts/release.ts` bumps the name in `crates/veyyon-natives/src/lib.rs` in
 	// lock-step with the version, so a `.node` from a different release
 	// physically cannot expose the symbol this loader is looking for. That
 	// turns the silent `<sym> is not a function` crash from a Windows
 	// locked-file update into an actionable load-time error.
-	const versionSentinelExport = `__piNativesV${packageVersion.replace(/[^A-Za-z0-9]/g, "_")}`;
+	const versionSentinelExport = `__veyyonNativesV${packageVersion.replace(/[^A-Za-z0-9]/g, "_")}`;
 	const isWorkspaceLoad =
 		!isCompiledBinary && !nativeDir.includes("\\node_modules\\") && !nativeDir.includes("/node_modules/");
 
@@ -749,6 +749,6 @@ export function loadNative() {
 	}
 	const details = errors.map(error => `- ${error}`).join("\n");
 	throw new Error(
-		`Failed to load pi_natives native addon for ${ctx.addonLabel}.\n\nTried:\n${details}\n\n${buildHelpMessage(ctx)}`,
+		`Failed to load veyyon_natives native addon for ${ctx.addonLabel}.\n\nTried:\n${details}\n\n${buildHelpMessage(ctx)}`,
 	);
 }

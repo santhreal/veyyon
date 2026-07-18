@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { parseSSE, redactUrlForLog } from "@veyyon/pi-coding-agent/mcp/json-rpc";
+import { parseSSE, redactUrlForLog } from "@veyyon/coding-agent/mcp/json-rpc";
 
 describe("redactUrlForLog", () => {
 	it("redacts credential-bearing query params but keeps the rest", () => {

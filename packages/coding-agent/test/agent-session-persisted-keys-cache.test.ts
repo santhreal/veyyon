@@ -2,16 +2,16 @@ import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { Agent, type AgentMessage } from "@veyyon/pi-agent-core";
-import type { AssistantMessage } from "@veyyon/pi-ai";
-import { getBundledModel } from "@veyyon/pi-catalog/models";
-import { ModelRegistry } from "@veyyon/pi-coding-agent/config/model-registry";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { AgentSession } from "@veyyon/pi-coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/pi-coding-agent/session/auth-storage";
-import { SessionManager } from "@veyyon/pi-coding-agent/session/session-manager";
-import { createTools, type ToolSession } from "@veyyon/pi-coding-agent/tools";
-import { removeSyncWithRetries, Snowflake } from "@veyyon/pi-utils";
+import { Agent, type AgentMessage } from "@veyyon/agent-core";
+import type { AssistantMessage } from "@veyyon/ai";
+import { getBundledModel } from "@veyyon/catalog/models";
+import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
+import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { createTools, type ToolSession } from "@veyyon/coding-agent/tools";
+import { removeSyncWithRetries, Snowflake } from "@veyyon/utils";
 import { createAssistantMessage } from "./helpers/agent-session-setup";
 
 describe("AgentSession persistence-keys cache", () => {

@@ -1,7 +1,14 @@
 /**
  * Read the Docs handler for web-fetch
  */
-import { buildResult, htmlToBasicMarkdown, loadPage, type RenderResult, type SpecialHandler } from "./types";
+import {
+	buildResult,
+	htmlToBasicMarkdown,
+	loadPage,
+	type RenderResult,
+	type SpecialHandler,
+	tryParseUrl,
+} from "./types";
 
 export const handleReadTheDocs: SpecialHandler = async (
 	url: string,
@@ -9,7 +16,8 @@ export const handleReadTheDocs: SpecialHandler = async (
 	signal?: AbortSignal,
 ): Promise<RenderResult | null> => {
 	// Check if URL matches Read the Docs patterns
-	const urlObj = new URL(url);
+	const urlObj = tryParseUrl(url);
+	if (!urlObj) return null;
 	const isReadTheDocs =
 		urlObj.hostname.endsWith(".readthedocs.io") ||
 		urlObj.hostname === "readthedocs.org" ||

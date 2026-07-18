@@ -2,17 +2,17 @@
 
 Configure personality via `/settings` or the `personality` key in `config.yml` (below).
 
-Personalities change **how the agent writes replies**, not which tools it has or what sandbox/approval policy applies.
+Personalities change **how the agent writes replies**, not which tools it has or `tools.approvalMode`.
 
-## Available personalities (shipped)
+## Built-in personalities
 
 A personality injects a `<personality>` block into the system prompt when enabled, changing tone only.
 
 | Personality | Config value | Effect |
 | --- | --- | --- |
-| Default | `default` | Standard Veyyon tone |
-| Pragmatic | `pragmatic` | Concise, task-focused |
-| Friendly | `friendly` | Warm, collaborative |
+| Default | `default` | Built-in default system personality text |
+| Pragmatic | `pragmatic` | Concise, task-focused prompt text |
+| Friendly | `friendly` | Collaborative prompt text |
 | None | `none` | No personality block |
 
 Schema default: `personality: default` in `settings-schema.ts`. The setting is a free-form string, not a closed enum — see [Extending the catalog](#extending-the-catalog).
@@ -20,7 +20,7 @@ Schema default: `personality: default` in `settings-schema.ts`. The setting is a
 ## Configuring personality
 
 - **Settings UI:** `/settings` → **Model** tab → **Prompt** group → **Personality**. Options are resolved at render time (built-ins + your `~/.veyyon/personalities` and project `.veyyon/personalities` files); changing the value refreshes the base system prompt immediately.
-- **Config file:** in `~/.veyyon/agent/config.yml` (or profile agent dir):
+- **Config file:** in `~/.veyyon/profiles/default/agent/config.yml` (or profile agent dir):
 
 ```yaml
 personality: pragmatic

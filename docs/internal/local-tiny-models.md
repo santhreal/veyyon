@@ -15,7 +15,7 @@ they opt in.
 - **Device policy**: local tiny models default to CPU-only inference and retry once on CPU if an
   explicit accelerated provider cannot initialize.
   - Pick a provider persistently with the `providers.tinyModelDevice` setting (`default` keeps CPU),
-    or per-run with the `VEYYON_TINY_DEVICE` env var (legacy: `PI_TINY_DEVICE`) (which overrides the setting).
+    or per-run with the `VEYYON_TINY_DEVICE` env var (which overrides the setting).
   - Accepted values are `cpu`, `gpu`, `metal`/`webgpu`, `auto`, `cuda`, `dml`, `coreml`, `wasm`,
     `webnn`, `webnn-gpu`, `webnn-cpu`, and `webnn-npu`.
   - Direct `coreml` remains opt-in via `VEYYON_TINY_DEVICE=coreml`; it is not part of the default because
@@ -28,7 +28,7 @@ they opt in.
 - **Quantization: q4 is the sweet spot** — smaller on disk, faster to load, and fast at inference.
   q8/int8 loads slower _and_ infers slower on CPU. Every shipped model defaults to `q4`; override the
   precision persistently with the `providers.tinyModelDtype` setting (`default` keeps `q4`, e.g. `fp16`
-  for higher fidelity), or per-run with `VEYYON_TINY_DTYPE` (legacy: `PI_TINY_DTYPE`; overrides the setting). Accepts `auto`,
+  for higher fidelity), or per-run with `VEYYON_TINY_DTYPE` (overrides the setting). Accepts `auto`,
   `fp32`, `fp16`, `q8`, `int8`, `uint8`, `q4`, `bnb4`, `q4f16`, `q2`, `q2f16`, `q1`, `q1f16`; an
   unrecognized value fails loudly at worker startup.
 - **Load-time correction (important).** An earlier belief that "q4 >=1B models take minutes to load"

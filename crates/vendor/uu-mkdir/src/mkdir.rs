@@ -12,7 +12,6 @@ use std::{
 };
 
 use clap::{Arg, ArgAction, ArgMatches, Command, builder::ValueParser, parser::ValuesRef};
-use pi_uutils_ctx::format_usage;
 #[cfg(all(unix, target_os = "linux"))]
 use uucore::error::FromIo;
 #[cfg(not(windows))]
@@ -22,6 +21,7 @@ use uucore::{
 	error::{UResult, USimpleError},
 	fs::dir_strip_dot_for_creation,
 };
+use veyyon_uutils_ctx::format_usage;
 
 static DEFAULT_PERM: u32 = 0o777;
 
@@ -98,8 +98,9 @@ fn run_matches(matches: &ArgMatches) -> UResult<()> {
 	}
 }
 
-/// In-process builtin entry point. The host installs a [`pi_uutils_ctx`] scope
-/// (stdio + working directory) on a dedicated blocking thread, then calls this.
+/// In-process builtin entry point. The host installs a [`veyyon_uutils_ctx`]
+/// scope (stdio + working directory) on a dedicated blocking thread, then calls
+/// this.
 ///
 /// Unlike uutils' `#[uucore::main] uumain`, this never mutates process-global
 /// signal handlers and never calls `std::process::exit` — clap help/usage/
@@ -111,18 +112,18 @@ pub fn run(args: Vec<OsString>) -> i32 {
 		Err(err) => {
 			let rendered = err.to_string();
 			if err.use_stderr() {
-				let _ = write!(pi_uutils_ctx::stderr(), "{rendered}");
+				let _ = write!(veyyon_uutils_ctx::stderr(), "{rendered}");
 				return 1;
 			}
-			let _ = write!(pi_uutils_ctx::stdout(), "{rendered}");
+			let _ = write!(veyyon_uutils_ctx::stdout(), "{rendered}");
 			return 0;
 		},
 	};
 	match run_matches(&matches) {
-		Ok(()) => pi_uutils_ctx::exit_code(),
+		Ok(()) => veyyon_uutils_ctx::exit_code(),
 		Err(err) => {
 			let code = err.code();
-			let _ = writeln!(pi_uutils_ctx::stderr(), "mkdir: {err}");
+			let _ = writeln!(veyyon_uutils_ctx::stderr(), "mkdir: {err}");
 			if code == 0 { 1 } else { code }
 		},
 	}
@@ -194,8 +195,8 @@ fn exec(dirs: ValuesRef<OsString>, config: &Config) {
 		// pi-uutils: report recoverable errors to the context stderr + exit
 		// code instead of uucore's process-global `show_if_err!`.
 		if let Err(e) = mkdir(path, config) {
-			let _ = writeln!(pi_uutils_ctx::stderr(), "mkdir: {e}");
-			pi_uutils_ctx::set_exit_code(1);
+			let _ = writeln!(veyyon_uutils_ctx::stderr(), "mkdir: {e}");
+			veyyon_uutils_ctx::set_exit_code(1);
 		}
 	}
 }
@@ -241,7 +242,7 @@ fn chmod(path: &Path, mode: u32) -> UResult<()> {
 // Uses iterative approach instead of recursion to avoid stack overflow with
 // deep nesting.
 fn create_dir(path: &Path, is_parent: bool, config: &Config) -> UResult<()> {
-	let path_exists = pi_uutils_ctx::resolve(path).exists();
+	let path_exists = veyyon_uutils_ctx::resolve(path).exists();
 	if path_exists && !config.recursive {
 		return Err(USimpleError::new(1, format!("{}: File exists", path.maybe_quote())));
 	}
@@ -268,7 +269,7 @@ fn create_dir(path: &Path, is_parent: bool, config: &Config) -> UResult<()> {
 		// Second pass: create directories from root to leaf
 		// Only create those that don't exist
 		for dir in dirs_to_create.iter().rev() {
-			if !pi_uutils_ctx::resolve(dir).exists() {
+			if !veyyon_uutils_ctx::resolve(dir).exists() {
 				create_single_dir(dir, true, config)?;
 			}
 		}
@@ -327,7 +328,7 @@ fn create_dir_with_mode(path: &Path, _mode: u32) -> std::io::Result<()> {
 fn create_single_dir(path: &Path, is_parent: bool, config: &Config) -> UResult<()> {
 	// pi-uutils: resolve against the shell working directory for every
 	// filesystem operation; the original operand `path` is kept for display.
-	let fs_path = pi_uutils_ctx::resolve(path);
+	let fs_path = veyyon_uutils_ctx::resolve(path);
 	let path_exists = fs_path.exists();
 
 	// Calculate the mode to use for directory creation
@@ -344,7 +345,7 @@ fn create_single_dir(path: &Path, is_parent: bool, config: &Config) -> UResult<(
 	match create_dir_with_mode(&fs_path, create_mode) {
 		Ok(()) => {
 			if config.verbose {
-				writeln!(pi_uutils_ctx::stdout(), "mkdir: created directory {}", path.quote())?;
+				writeln!(veyyon_uutils_ctx::stdout(), "mkdir: created directory {}", path.quote())?;
 			}
 
 			// On Linux, we may need to add ACL permission bits via chmod.
@@ -389,7 +390,7 @@ fn create_single_dir(path: &Path, is_parent: bool, config: &Config) -> UResult<(
 			// Print verbose message for logical directories, even if they exist
 			// This matches GNU behavior for paths like "test_dir/../test_dir_a"
 			if config.verbose && is_parent && config.recursive && !ends_with_parent_dir {
-				writeln!(pi_uutils_ctx::stdout(), "mkdir: created directory {}", path.quote())?;
+				writeln!(veyyon_uutils_ctx::stdout(), "mkdir: created directory {}", path.quote())?;
 			}
 			Ok(())
 		},

@@ -1,5 +1,5 @@
-import type { AgentMessage } from "@veyyon/pi-agent-core";
-import { getBlobsDir, isEnoent, parseJsonlLenient } from "@veyyon/pi-utils";
+import type { AgentMessage } from "@veyyon/agent-core";
+import { getBlobsDir, isEnoent, parseJsonlLenient } from "@veyyon/utils";
 import { BlobStore, isBlobRef, resolveImageData, resolveImageDataUrl } from "./blob-store";
 import { buildSessionContext } from "./session-context";
 import {

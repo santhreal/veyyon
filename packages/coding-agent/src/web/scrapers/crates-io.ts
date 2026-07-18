@@ -1,6 +1,6 @@
-import { tryParseJson } from "@veyyon/pi-utils";
-import type { RenderResult, SpecialHandler } from "./types";
-import { buildResult, formatNumber, loadPage, looksLikeHtml } from "./types";
+import { tryParseJson } from "@veyyon/utils";
+import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
+import { buildResult, formatNumber, loadFailure, loadPage, looksLikeHtml, scraperDegrade, tryParseUrl } from "./types";
 
 /**
  * Handle crates.io URLs via API
@@ -9,9 +9,10 @@ export const handleCratesIo: SpecialHandler = async (
 	url: string,
 	timeout: number,
 	signal?: AbortSignal,
-): Promise<RenderResult | null> => {
+): Promise<RenderResult | ScraperDegrade | null> => {
 	try {
-		const parsed = new URL(url);
+		const parsed = tryParseUrl(url);
+		if (!parsed) return null;
 		if (parsed.hostname !== "crates.io" && parsed.hostname !== "www.crates.io") return null;
 
 		// Extract crate name from /crates/name or /crates/name/version
@@ -29,7 +30,7 @@ export const handleCratesIo: SpecialHandler = async (
 			headers: { "User-Agent": "veyyon-web-fetch/1.0 (https://github.com/santhreal/veyyon)" },
 		});
 
-		if (!result.ok) return null;
+		if (!result.ok) return scraperDegrade("crates-io", loadFailure(result));
 
 		const data = tryParseJson<{
 			crate: {
@@ -54,7 +55,7 @@ export const handleCratesIo: SpecialHandler = async (
 				rust_version: string | null;
 			}>;
 		}>(result.content);
-		if (!data) return null;
+		if (!data) return scraperDegrade("crates-io", "unexpected response shape");
 
 		const crate = data.crate;
 		const latestVersion = data.versions?.[0];
@@ -91,7 +92,7 @@ export const handleCratesIo: SpecialHandler = async (
 		}
 
 		return buildResult(md, { url, method: "crates.io", fetchedAt, notes: ["Fetched via crates.io API"] });
-	} catch {}
-
-	return null;
+	} catch (error) {
+		return scraperDegrade("crates-io", error);
+	}
 };

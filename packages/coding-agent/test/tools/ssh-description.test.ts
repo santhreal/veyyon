@@ -1,12 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
-import type { SSHHost } from "@veyyon/pi-coding-agent/capability/ssh";
-import type { SourceMeta } from "@veyyon/pi-coding-agent/capability/types";
-import * as discovery from "@veyyon/pi-coding-agent/discovery";
-import type { SSHHostInfo } from "@veyyon/pi-coding-agent/ssh/connection-manager";
-import * as connectionManager from "@veyyon/pi-coding-agent/ssh/connection-manager";
-import * as sshExecutor from "@veyyon/pi-coding-agent/ssh/ssh-executor";
-import type { ToolSession } from "@veyyon/pi-coding-agent/tools";
-import { loadSshTool } from "@veyyon/pi-coding-agent/tools/ssh";
+import type { SSHHost } from "@veyyon/coding-agent/capability/ssh";
+import type { SourceMeta } from "@veyyon/coding-agent/capability/types";
+import * as discovery from "@veyyon/coding-agent/discovery";
+import type { SSHHostInfo } from "@veyyon/coding-agent/ssh/connection-manager";
+import * as connectionManager from "@veyyon/coding-agent/ssh/connection-manager";
+import * as sshExecutor from "@veyyon/coding-agent/ssh/ssh-executor";
+import type { ToolSession } from "@veyyon/coding-agent/tools";
+import { loadSshTool } from "@veyyon/coding-agent/tools/ssh";
 
 const SOURCE: SourceMeta = {
 	provider: "test",
@@ -17,8 +17,8 @@ const SOURCE: SourceMeta = {
 
 // Unique names so no persisted host-info cache file can exist for them.
 const RUN_ID = `${Date.now()}-${process.pid}`;
-const HOST_A: SSHHost = { name: `a-omp-test-${RUN_ID}`, host: "alpha.example.com", _source: SOURCE };
-const HOST_B: SSHHost = { name: `b-omp-test-${RUN_ID}`, host: "beta.example.com", _source: SOURCE };
+const HOST_A: SSHHost = { name: `a-veyyon-test-${RUN_ID}`, host: "alpha.example.com", _source: SOURCE };
+const HOST_B: SSHHost = { name: `b-veyyon-test-${RUN_ID}`, host: "beta.example.com", _source: SOURCE };
 const LINUX_BASH_INFO: SSHHostInfo = { version: 4, os: "linux", shell: "bash", compatEnabled: false };
 const WINDOWS_CMD_INFO: SSHHostInfo = { version: 4, os: "windows", shell: "cmd", compatEnabled: false };
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import type { DiscoverableTool } from "@veyyon/pi-coding-agent/tool-discovery/tool-index";
+import type { DiscoverableTool } from "@veyyon/coding-agent/tool-discovery/tool-index";
 import {
 	buildDiscoverableToolSearchIndex,
 	collectDiscoverableTools,
@@ -10,7 +10,7 @@ import {
 	searchDiscoverableTools,
 	selectDiscoverableToolNamesByServer,
 	summarizeDiscoverableTools,
-} from "@veyyon/pi-coding-agent/tool-discovery/tool-index";
+} from "@veyyon/coding-agent/tool-discovery/tool-index";
 import { type } from "arktype";
 
 // ─── Minimal AgentTool stub ───────────────────────────────────────────────────

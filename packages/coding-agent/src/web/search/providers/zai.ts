@@ -4,8 +4,8 @@
  * Calls Z.AI's remote MCP server (`webSearchPrime`) and adapts results into
  * the unified SearchResponse shape used by the web search tool.
  */
-import { type ApiKey, type AuthStorage, type FetchImpl, getEnvApiKey, withAuth } from "@veyyon/pi-ai";
-import { isRecord } from "@veyyon/pi-utils";
+import { type ApiKey, type AuthStorage, type FetchImpl, getEnvApiKey, withAuth } from "@veyyon/ai";
+import { isRecord } from "@veyyon/utils";
 import type { SearchResponse, SearchSource } from "../../../web/search/types";
 import { SearchProviderError } from "../../../web/search/types";
 import { dateToAgeSeconds } from "../utils";
@@ -123,30 +123,32 @@ async function postZaiMcp(
 		body.id = crypto.randomUUID();
 	}
 
-	const response = await fetchImpl(ZAI_MCP_URL, {
-		method: "POST",
-		headers,
-		body: JSON.stringify(body),
-		signal: withHardTimeout(signal),
+	return withHardTimeout(signal, async hardSignal => {
+		const response = await fetchImpl(ZAI_MCP_URL, {
+			method: "POST",
+			headers,
+			body: JSON.stringify(body),
+			signal: hardSignal,
+		});
+
+		if (!response.ok) {
+			const errorText = await response.text();
+			const classified = classifyProviderHttpError("zai", response.status, errorText);
+			if (classified) throw classified;
+			throw new SearchProviderError("zai", `Z.AI MCP error (${response.status}): ${errorText}`, response.status);
+		}
+
+		const nextSessionId = response.headers.get("Mcp-Session-Id") ?? sessionId;
+		if (!expectResponse) {
+			await response.body?.cancel();
+			return { sessionId: nextSessionId };
+		}
+
+		return {
+			parsed: parseZaiMcpResponse(await response.text()),
+			sessionId: nextSessionId,
+		};
 	});
-
-	if (!response.ok) {
-		const errorText = await response.text();
-		const classified = classifyProviderHttpError("zai", response.status, errorText);
-		if (classified) throw classified;
-		throw new SearchProviderError("zai", `Z.AI MCP error (${response.status}): ${errorText}`, response.status);
-	}
-
-	const nextSessionId = response.headers.get("Mcp-Session-Id") ?? sessionId;
-	if (!expectResponse) {
-		await response.body?.cancel();
-		return { sessionId: nextSessionId };
-	}
-
-	return {
-		parsed: parseZaiMcpResponse(await response.text()),
-		sessionId: nextSessionId,
-	};
 }
 
 function readJsonRpcPayload(parsed: unknown): JsonRpcPayload {

@@ -1,3 +1,4 @@
+import { trimTrailingSlashes } from "@veyyon/utils";
 import * as git from "../utils/git";
 import type { ASIData, ASIValue, MetricDirection, NumericMetricMap } from "./types";
 
@@ -129,7 +130,7 @@ export function inferMetricUnitFromName(name: string): string {
 export function normalizePathSpec(value: string): string {
 	const trimmed = value.trim().replaceAll("\\", "/");
 	if (trimmed === "" || trimmed === "." || trimmed === "./") return ".";
-	const collapsed = trimmed.replace(/^\.\/+/, "").replace(/\/+$/, "");
+	const collapsed = trimTrailingSlashes(trimmed.replace(/^\.\/+/, ""));
 	return collapsed.length === 0 ? "." : collapsed;
 }
 

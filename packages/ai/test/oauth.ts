@@ -8,9 +8,9 @@
  */
 import * as fs from "node:fs/promises";
 import path from "node:path";
-import { getOAuthApiKey } from "@veyyon/pi-ai/oauth";
-import type { OAuthCredentials, OAuthProvider } from "@veyyon/pi-ai/oauth/types";
-import { $flag, getAgentDir, isEnoent } from "@veyyon/pi-utils";
+import { getOAuthApiKey } from "@veyyon/ai/oauth";
+import type { OAuthCredentials, OAuthProvider } from "@veyyon/ai/oauth/types";
+import { $flag, getAgentDir, isEnoent } from "@veyyon/utils";
 
 /**
  * E2E tests require explicit opt-in via E2E=1 environment variable.

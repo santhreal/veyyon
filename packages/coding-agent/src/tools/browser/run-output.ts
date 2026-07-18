@@ -1,4 +1,4 @@
-import type { ImageContent, TextContent } from "@veyyon/pi-ai";
+import type { ImageContent, TextContent } from "@veyyon/ai";
 import type { JsDisplayOutput } from "../../eval/js/shared/types";
 
 /**

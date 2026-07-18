@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "bun:test";
-import { recallEnhanced } from "@veyyon/pi-mnemopi/core/beam/recall";
-import { initBeam } from "@veyyon/pi-mnemopi/core/beam/schema";
+import { recallEnhanced } from "@veyyon/mnemopi/core/beam/recall";
+import { initBeam } from "@veyyon/mnemopi/core/beam/schema";
 import {
 	exportToDict,
 	forgetWorking,
@@ -16,9 +16,9 @@ import {
 	scratchpadRead,
 	scratchpadWrite,
 	updateWorking,
-} from "@veyyon/pi-mnemopi/core/beam/store";
-import type { BeamEvent, BeamMemoryState } from "@veyyon/pi-mnemopi/core/beam/types";
-import { openDatabase } from "@veyyon/pi-mnemopi/db";
+} from "@veyyon/mnemopi/core/beam/store";
+import type { BeamEvent, BeamMemoryState } from "@veyyon/mnemopi/core/beam/types";
+import { openDatabase } from "@veyyon/mnemopi/db";
 
 const states: BeamMemoryState[] = [];
 

@@ -23,12 +23,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { ImageContent } from "@veyyon/pi-ai";
-import { resetSettingsForTest, Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { CustomEditor } from "@veyyon/pi-coding-agent/modes/components/custom-editor";
-import { InputController } from "@veyyon/pi-coding-agent/modes/controllers/input-controller";
-import { getEditorTheme } from "@veyyon/pi-coding-agent/modes/theme/theme";
-import type { InteractiveModeContext } from "@veyyon/pi-coding-agent/modes/types";
+import type { ImageContent } from "@veyyon/ai";
+import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
+import { CustomEditor } from "@veyyon/coding-agent/modes/components/custom-editor";
+import { InputController } from "@veyyon/coding-agent/modes/controllers/input-controller";
+import { getEditorTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
 
 const BRACKETED_PASTE_START = "\x1b[200~";
 const BRACKETED_PASTE_END = "\x1b[201~";

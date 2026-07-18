@@ -1,8 +1,8 @@
-import type { Effort } from "@veyyon/pi-catalog/effort";
-import { toFirepassWireModelId, toFireworksWireModelId } from "@veyyon/pi-catalog/fireworks-model-id";
-import { isGlm52ReasoningEffortModelId } from "@veyyon/pi-catalog/identity";
-import { getSupportedEfforts } from "@veyyon/pi-catalog/model-thinking";
-import { calculateCost } from "@veyyon/pi-catalog/models";
+import type { Effort } from "@veyyon/catalog/effort";
+import { toFirepassWireModelId, toFireworksWireModelId } from "@veyyon/catalog/fireworks-model-id";
+import { isGlm52ReasoningEffortModelId } from "@veyyon/catalog/identity";
+import { getSupportedEfforts } from "@veyyon/catalog/model-thinking";
+import { calculateCost } from "@veyyon/catalog/models";
 import type {
 	OpenAICompat,
 	OpenAIReasoningDisableMode,
@@ -12,14 +12,14 @@ import type {
 	ResolvedOpenAIResponsesCompat,
 	ResolvedOpenAISharedCompat,
 	VercelGatewayRouting,
-} from "@veyyon/pi-catalog/types";
+} from "@veyyon/catalog/types";
 import {
 	COREWEAVE_PROJECT_HEADER,
 	coreWeaveProjectHeaders,
 	hasCoreWeaveProjectHeader,
 	removeBlankCoreWeaveProjectHeaders,
-} from "@veyyon/pi-catalog/wire/coreweave";
-import { parseGitHubCopilotApiKey } from "@veyyon/pi-catalog/wire/github-copilot";
+} from "@veyyon/catalog/wire/coreweave";
+import { parseGitHubCopilotApiKey } from "@veyyon/catalog/wire/github-copilot";
 import {
 	$env,
 	classifyJsonPrefix,
@@ -29,7 +29,7 @@ import {
 	parseStreamingJsonThrottled,
 	stringifyJson,
 	structuredCloneJSON,
-} from "@veyyon/pi-utils";
+} from "@veyyon/utils";
 import * as AIError from "../error";
 import {
 	type Api,
@@ -1362,7 +1362,7 @@ export function convertResponsesInputContent(
 /**
  * Map freeform custom-tool wire names back to the internal tool name for
  * providers that only accept function_call / function_call_output.
- * Built once per request; `apply_patch` → `edit` is the OMP default.
+ * Built once per request; `apply_patch` → `edit` is the veyyon default.
  */
 function buildCustomToolWireNameMap(tools: readonly Tool[] | undefined): ReadonlyMap<string, string> | undefined {
 	if (!tools?.length) return undefined;

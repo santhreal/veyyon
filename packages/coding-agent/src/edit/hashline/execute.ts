@@ -10,6 +10,8 @@
  * batch's `flush` flag to true only for the final write so diagnostics
  * round-trip once.
  */
+
+import type { AgentToolResult } from "@veyyon/agent-core";
 import {
 	type BlockResolution,
 	buildCompactDiffPreview,
@@ -19,7 +21,7 @@ import {
 	type PatchSectionResult,
 	type PreparedSection,
 } from "@veyyon/hashline";
-import type { AgentToolResult } from "@veyyon/pi-agent-core";
+import { formatCount } from "@veyyon/utils";
 import type { FileDiagnosticsResult, WritethroughCallback, WritethroughDeferredHandle } from "../../lsp";
 import type { ToolSession } from "../../tools";
 import { outputMeta } from "../../tools/output-meta";
@@ -104,7 +106,7 @@ function formatBlockResolution(resolution: BlockResolution): string {
 	const span =
 		resolution.start === resolution.end ? `line ${resolution.start}` : `lines ${resolution.start}-${resolution.end}`;
 	const suffix = resolution.op === "insert_after" ? `; body lands after line ${resolution.end}` : "";
-	return `${op} ${resolution.anchorLine} → resolved ${span} (${lines} line${lines === 1 ? "" : "s"})${suffix}`;
+	return `${op} ${resolution.anchorLine} → resolved ${span} (${formatCount("line", lines)})${suffix}`;
 }
 
 function renderSection(

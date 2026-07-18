@@ -8,7 +8,7 @@
  * the hand-written prompt. Run several samples and several models: trust only content
  * that is STABLE across samples AND agrees across models.
  *
- * Routes through @veyyon/pi-ai (`completeSimple`) rather than raw HTTP so model
+ * Routes through @veyyon/ai (`completeSimple`) rather than raw HTTP so model
  * resolution, auth, and provider quirks match production.
  * Per-provider env keys (<PROVIDER>_API_KEY) are resolved automatically; temperature is never sent.
  * Caller passes two things: a JSON schema and a template. Everything else has defaults.
@@ -25,10 +25,10 @@
  * Programmatic: import { probe } from "./probe.ts"
  */
 import { parseArgs } from "node:util";
-import { completeSimple } from "@veyyon/pi-ai";
-import type { Api, AssistantMessage, Model } from "@veyyon/pi-ai";
-import type { GeneratedProvider } from "@veyyon/pi-catalog/models";
-import { getBundledModel } from "@veyyon/pi-catalog/models";
+import { completeSimple } from "@veyyon/ai";
+import type { Api, AssistantMessage, Model } from "@veyyon/ai";
+import type { GeneratedProvider } from "@veyyon/catalog/models";
+import { getBundledModel } from "@veyyon/catalog/models";
 
 /** Default 3-model panel when the caller does not pin a model. */
 const DEFAULT_MODELS = ["fireworks/kimi-k2.7-code", "anthropic/claude-opus-4-8", "openai/gpt-5.5"];

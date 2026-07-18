@@ -1,5 +1,5 @@
-import { encodeSixel } from "@veyyon/pi-natives";
-import { $env, isBunTestRuntime, isTerminalHeadless } from "@veyyon/pi-utils";
+import { encodeSixel } from "@veyyon/natives";
+import { $env, isBunTestRuntime, isTerminalHeadless } from "@veyyon/utils";
 import { sendDesktopNotification, shouldDeliverDesktopNotification } from "./desktop-notify";
 import {
 	detectKittyUnicodePlaceholdersSupport,
@@ -167,13 +167,13 @@ export function isInsideZellij(env: NodeJS.ProcessEnv = Bun.env): boolean {
 }
 
 export function isNotificationSuppressed(): boolean {
-	const value = $env.PI_NOTIFICATIONS;
+	const value = $env.VEYYON_NOTIFICATIONS;
 	if (!value) return false;
 	return value === "off" || value === "0" || value === "false";
 }
 
 function getForcedImageProtocol(): ImageProtocol | null | undefined {
-	const raw = $env.PI_FORCE_IMAGE_PROTOCOL?.trim().toLowerCase();
+	const raw = $env.VEYYON_FORCE_IMAGE_PROTOCOL?.trim().toLowerCase();
 	if (!raw) return undefined;
 	if (raw === "kitty") return ImageProtocol.Kitty;
 	if (raw === "iterm2" || raw === "iterm") return ImageProtocol.Iterm2;
@@ -218,8 +218,8 @@ export function isWindowsTerminalPreviewSixelSupported(
  * probe so both honor the same precedence — an opt-out beats a force-on.
  */
 export function synchronizedOutputUserOverride(env: NodeJS.ProcessEnv = Bun.env): boolean | null {
-	if (env.PI_NO_SYNC_OUTPUT || env.PI_TUI_SYNC_OUTPUT === "0") return false;
-	if (env.PI_FORCE_SYNC_OUTPUT === "1" || env.PI_TUI_SYNC_OUTPUT === "1") return true;
+	if (env.VEYYON_NO_SYNC_OUTPUT || env.VEYYON_TUI_SYNC_OUTPUT === "0") return false;
+	if (env.VEYYON_FORCE_SYNC_OUTPUT === "1" || env.VEYYON_TUI_SYNC_OUTPUT === "1") return true;
 	return null;
 }
 
@@ -237,8 +237,8 @@ function advertisesSynchronizedOutput(termFeatures: string | undefined): boolean
  * Whether DEC 2026 synchronized-output wrappers should be enabled by default.
  *
  * Policy (highest precedence first):
- *   1. Explicit user override (`PI_NO_SYNC_OUTPUT`/`PI_TUI_SYNC_OUTPUT=0` off,
- *      `PI_FORCE_SYNC_OUTPUT=1`/`PI_TUI_SYNC_OUTPUT=1` on).
+ *   1. Explicit user override (`VEYYON_NO_SYNC_OUTPUT`/`VEYYON_TUI_SYNC_OUTPUT=0` off,
+ *      `VEYYON_FORCE_SYNC_OUTPUT=1`/`VEYYON_TUI_SYNC_OUTPUT=1` on).
  *   2. Positive `TERM_FEATURES` advertisement (`Sy`) — survives SSH/mux wrapping.
  *   3. Windows Terminal (1.24+) via `WT_SESSION`, on native win32 and the
  *      WSL/SSH-fronted host alike.
@@ -300,11 +300,11 @@ export function shouldEnableSynchronizedOutputByDefault(
  *
  * Disabled under tmux/screen/zellij multiplexers — screen-coordinate rectangle
  * protocols are not safe to assume through a multiplexer — and via the
- * `PI_NO_DECCARA` kill switch. Pure helper for tests and `TERMINAL` construction.
+ * `VEYYON_NO_DECCARA` kill switch. Pure helper for tests and `TERMINAL` construction.
  */
 export function detectRectangularSgrSupport(terminalId: TerminalId, env: NodeJS.ProcessEnv = Bun.env): boolean {
 	if (terminalId !== "kitty") return false;
-	const kill = env.PI_NO_DECCARA;
+	const kill = env.VEYYON_NO_DECCARA;
 	if (kill && kill !== "0" && kill.toLowerCase() !== "false") return false;
 	if (isInsideTerminalMultiplexer(env)) {
 		return false;
@@ -318,8 +318,8 @@ export function detectRectangularSgrSupport(terminalId: TerminalId, env: NodeJS.
  * {@link synchronizedOutputUserOverride}.
  */
 export function hyperlinksUserOverride(env: NodeJS.ProcessEnv = Bun.env): boolean | null {
-	if (env.PI_NO_HYPERLINKS === "1") return false;
-	if (env.PI_FORCE_HYPERLINKS === "1") return true;
+	if (env.VEYYON_NO_HYPERLINKS === "1") return false;
+	if (env.VEYYON_FORCE_HYPERLINKS === "1") return true;
 	return null;
 }
 
@@ -338,7 +338,7 @@ function parseTmuxVersionFromEnv(env: NodeJS.ProcessEnv): { major: number; minor
  * Whether OSC 8 hyperlinks should be enabled by default.
  *
  * Policy (highest precedence first):
- *   1. Explicit user override (`PI_NO_HYPERLINKS=1` off, `PI_FORCE_HYPERLINKS=1`
+ *   1. Explicit user override (`VEYYON_NO_HYPERLINKS=1` off, `VEYYON_FORCE_HYPERLINKS=1`
  *      on). Opt-out wins ties.
  *   2. Static terminal capability — terminals whose {@link TerminalInfo} marks
  *      `hyperlinks: false` (e.g. `base`) stay off unless the user forced on.
@@ -508,13 +508,13 @@ export const TERMINAL: RuntimeTerminal = (() => {
 	}
 	// Hyperlink (OSC 8) capability. The static per-terminal flag lives on
 	// KNOWN_TERMINALS; shouldEnableHyperlinksByDefault folds in runtime context —
-	// PI_FORCE_HYPERLINKS / PI_NO_HYPERLINKS overrides plus a tmux>=3.4 gate so
+	// VEYYON_FORCE_HYPERLINKS / VEYYON_NO_HYPERLINKS overrides plus a tmux>=3.4 gate so
 	// modern tmux forwards OSC 8 to outer terminals that opt in via
 	// `terminal-features "*:hyperlinks"`.
 	resolved.hyperlinks = shouldEnableHyperlinksByDefault(Bun.env, resolved.id);
 	// DECCARA rectangular-SGR background fills. The static per-terminal capability
 	// lives on KNOWN_TERMINALS; here we fold in runtime context — multiplexer and
-	// the PI_NO_DECCARA kill switch via detectRectangularSgrSupport — and force it
+	// the VEYYON_NO_DECCARA kill switch via detectRectangularSgrSupport — and force it
 	// off inside the test runtime so the xterm.js-backed virtual terminal (which
 	// ignores DECCARA) exercises the padded-string fallback. Integration tests opt
 	// in explicitly through setTerminalDeccara.
@@ -1053,7 +1053,7 @@ function sanitizeOsc99Id(id: string | undefined): string {
 }
 
 function osc99Id(id: string | undefined): string {
-	return sanitizeOsc99Id(id) || `omp-${nextOsc99NotificationId++}`;
+	return sanitizeOsc99Id(id) || `veyyon-${nextOsc99NotificationId++}`;
 }
 
 function utf8CodePointBytes(char: string): number {

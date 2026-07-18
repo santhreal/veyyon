@@ -12,11 +12,11 @@
  *   window so `/clear` and fresh-session flows zero the meter.
  */
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
-import { resetSettingsForTest, Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { StatusLineComponent } from "@veyyon/pi-coding-agent/modes/components/status-line";
-import type { SegmentContext } from "@veyyon/pi-coding-agent/modes/components/status-line/segments";
-import { renderSegment } from "@veyyon/pi-coding-agent/modes/components/status-line/segments";
-import { initTheme } from "@veyyon/pi-coding-agent/modes/theme/theme";
+import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
+import { StatusLineComponent } from "@veyyon/coding-agent/modes/components/status-line";
+import type { SegmentContext } from "@veyyon/coding-agent/modes/components/status-line/segments";
+import { renderSegment } from "@veyyon/coding-agent/modes/components/status-line/segments";
+import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 
 beforeAll(async () => {
 	resetSettingsForTest();

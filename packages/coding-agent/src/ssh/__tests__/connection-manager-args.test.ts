@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { getRemoteHostDir } from "@veyyon/pi-utils";
+import { getRemoteHostDir } from "@veyyon/utils";
 import {
 	buildRemoteCommand,
 	extractProbePayload,
@@ -66,7 +66,7 @@ describe("ssh host shell classification", () => {
 			["/usr/bin/zsh", "zsh"],
 		];
 		for (const [shellValue, expected] of cases) {
-			const name = `omp-shellclf-${crypto.randomUUID()}`;
+			const name = `veyyon-shellclf-${crypto.randomUUID()}`;
 			const file = path.join(getRemoteHostDir(), `${sanitizeHostName(name)}.json`);
 			await Bun.write(file, JSON.stringify({ version: 3, os: "linux", shell: shellValue, compatEnabled: false }));
 			try {
@@ -106,7 +106,7 @@ describe("extractProbePayload (host probe framing)", () => {
 
 describe("findProbeMarker (transfer-shell probe recovery)", () => {
 	it("returns the tail after the marker when it appears in stdout", () => {
-		// Happy path: `sh -lc 'printf "PI_TRANSFER_OK|"; uname -s'` lands in
+		// Happy path: `sh -lc 'printf "VEYYON_TRANSFER_OK|"; uname -s'` lands in
 		// stdout. The tail is the uname output the caller uses to refine OS.
 		const stdout = `${TRANSFER_PROBE_MARKER}Linux\n`;
 		expect(findProbeMarker(stdout, "", TRANSFER_PROBE_MARKER)).toBe("Linux\n");

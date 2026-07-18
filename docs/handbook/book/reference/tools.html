@@ -10,6 +10,10 @@
         <!-- Veyyon handbook: self-contained head additions. No remote resources. -->
         <meta name="theme-color" content="#050505">
         <meta name="color-scheme" content="dark">
+        <!-- Site favicons live at the deployed root, one level above /docs/. -->
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+        <link rel="icon" href="/favicon.ico" sizes="48x48">
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png">
         <style>
           /* Paint the near-black surface before CSS/JS resolve the theme, so there is
              no light flash on load. Kept in sync with theme/veyyon.css. */
@@ -18,7 +22,7 @@
           *, *::before, *::after { box-sizing: border-box; }
         </style>
 
-        <meta name="description" content="How Veyyon turns open models into frontier coding agents. The product, the harness, tool-call repair, the edit format, per-model adaptation, and how to use it.">
+        <meta name="description" content="Operator handbook for the Veyyon terminal coding agent: install, configuration, tools, approvals, edit formats, providers, and harness structure.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -38,7 +42,7 @@
         <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="../ayu-highlight-3fdfc3ac.css">
 
         <!-- Custom theme stylesheets -->
-        <link rel="stylesheet" href="../theme/veyyon-fc839a17.css">
+        <link rel="stylesheet" href="../theme/veyyon-06f6939e.css">
 
 
         <!-- Provide site root and default themes to javascript -->
@@ -46,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-e76f06ca.js";
+            window.path_to_searchindex_js = "../searchindex-a2447057.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-9cfd259b.js"></script>
+        <script src="../toc-cc1a72e9.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -194,7 +198,7 @@
                         <h1 id="tools-reference"><a class="header" href="#tools-reference">Tools reference</a></h1>
 <p>Model-facing tools are advertised to the model per turn. Availability depends on
 settings, approval mode, plan mode, memory backend, and feature flags.</p>
-<p>For approvals see <a href="../features/sandbox.html">Approvals and autonomy</a>. For MCP tools see <a href="../features/mcp.html">MCP</a>.
+<p>For approvals see <a href="../features/sandbox.html">Approvals</a>. For MCP tools see <a href="../features/mcp.html">MCP</a>.
 Per-tool engineering specs live under <a href="../../../tools/"><code>docs/tools/</code></a>.</p>
 <h2 id="core-loop"><a class="header" href="#core-loop">Core loop</a></h2>
 <ol>
@@ -204,23 +208,22 @@ Per-tool engineering specs live under <a href="../../../tools/"><code>docs/tools
 </ol>
 <p>General schema repair runs before dispatch on all schema-bearing tool calls; tool-specific
 leniency (e.g. hashline parsing) is layered on top. See <a href="../repair/overview.html">Repair overview</a>.</p>
-<h2 id="edit-and-write-built"><a class="header" href="#edit-and-write-built">Edit and write (built)</a></h2>
+<h2 id="edit-and-write"><a class="header" href="#edit-and-write">Edit and write</a></h2>
 <div class="table-wrapper">
 <table>
 <thead>
 <tr><th>Tool</th><th>Purpose</th></tr>
 </thead>
 <tbody>
-<tr><td><code>edit</code></td><td>Apply changes — default <strong>hashline</strong> <code>input</code> string (<code>edit.mode</code>)</td></tr>
+<tr><td><code>edit</code></td><td>Apply changes — default <strong>hashline</strong> (<code>edit.mode: hashline</code>); also <code>apply_patch</code> / <code>patch</code> / <code>replace</code> modes</td></tr>
 <tr><td><code>write</code></td><td>Create or overwrite a whole file</td></tr>
-<tr><td><code>apply_patch</code></td><td>V4A envelope when <code>edit.mode: apply_patch</code></td></tr>
 </tbody>
 </table>
 </div>
 <p>Hashline flow: <code>read</code>/<code>grep</code> mint <code>[path#TAG]</code> anchors → model copies tags into <code>edit</code> →
 <code>@veyyon/hashline</code> applies ops. See <a href="../edit/engine.html">Edit engine</a> and
 <a href="../../../tools/edit.html"><code>docs/tools/edit.md</code></a>.</p>
-<h2 id="read-and-search-built"><a class="header" href="#read-and-search-built">Read and search (built)</a></h2>
+<h2 id="read-and-search"><a class="header" href="#read-and-search">Read and search</a></h2>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -234,7 +237,7 @@ leniency (e.g. hashline parsing) is layered on top. See <a href="../repair/overv
 </tbody>
 </table>
 </div>
-<h2 id="shell-and-execution-built"><a class="header" href="#shell-and-execution-built">Shell and execution (built)</a></h2>
+<h2 id="shell-and-execution"><a class="header" href="#shell-and-execution">Shell and execution</a></h2>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -250,7 +253,7 @@ leniency (e.g. hashline parsing) is layered on top. See <a href="../repair/overv
 </tbody>
 </table>
 </div>
-<h2 id="agent-coordination-built"><a class="header" href="#agent-coordination-built">Agent coordination (built)</a></h2>
+<h2 id="agent-coordination"><a class="header" href="#agent-coordination">Agent coordination</a></h2>
 <div class="table-wrapper">
 <table>
 <thead>

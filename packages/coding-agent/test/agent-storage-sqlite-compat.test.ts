@@ -1,8 +1,8 @@
 import { Database } from "bun:sqlite";
 import { afterEach, describe, expect, it } from "bun:test";
 import * as path from "node:path";
-import { AgentStorage, SCHEMA_VERSION } from "@veyyon/pi-coding-agent/session/agent-storage";
-import { TempDir } from "@veyyon/pi-utils";
+import { AgentStorage, SCHEMA_VERSION } from "@veyyon/coding-agent/session/agent-storage";
+import { TempDir } from "@veyyon/utils";
 import { readTableSql } from "./helpers/sqlite-inspect";
 
 const LEGACY_TIMESTAMP = 1_700_000_000;
@@ -46,7 +46,7 @@ describe("AgentStorage SQLite compatibility", () => {
 	});
 
 	it("creates fresh storage without unixepoch defaults", async () => {
-		tempDir = TempDir.createSync("@omp-agent-storage-fresh-");
+		tempDir = TempDir.createSync("@veyyon-agent-storage-fresh-");
 		const dbPath = path.join(tempDir.path(), "agent.db");
 
 		const storage = await AgentStorage.open(dbPath);
@@ -61,7 +61,7 @@ describe("AgentStorage SQLite compatibility", () => {
 	});
 
 	it("migrates legacy settings and model usage schemas away from unixepoch defaults", async () => {
-		tempDir = TempDir.createSync("@omp-agent-storage-legacy-");
+		tempDir = TempDir.createSync("@veyyon-agent-storage-legacy-");
 		const dbPath = path.join(tempDir.path(), "agent.db");
 		const legacyDb = new Database(dbPath);
 		legacyDb.exec(`

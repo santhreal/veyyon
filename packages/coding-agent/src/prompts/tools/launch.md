@@ -1,4 +1,4 @@
-Launches and controls project-scoped long-running processes shared by every omp instance in the same directory.
+Launches and controls project-scoped long-running processes shared by every veyyon instance in the same directory.
 
 <instruction>
 - Long-running service, watcher, debugger, REPL, or process needing later input? MUST use `launch`, not `bash`.

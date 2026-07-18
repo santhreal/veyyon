@@ -1,9 +1,9 @@
+import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
+import type { ToolExample } from "@veyyon/ai";
 import { MismatchError as HashlineMismatchError } from "@veyyon/hashline";
 import hashlineGrammar from "@veyyon/hashline/grammar.lark" with { type: "text" };
 import hashlineDescription from "@veyyon/hashline/prompt.md" with { type: "text" };
-import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/pi-agent-core";
-import type { ToolExample } from "@veyyon/pi-ai";
-import { prompt } from "@veyyon/pi-utils";
+import { errorMessage, prompt } from "@veyyon/utils";
 import { createLspWritethrough, flushLspWritethroughBatch, type WritethroughCallback, writethroughNoop } from "../lsp";
 import { DeferredDiagnostics } from "../lsp/deferred-diagnostics";
 import { getDiagnosticsLedger } from "../lsp/diagnostics-ledger";
@@ -67,7 +67,7 @@ function resolveConfiguredEditMode(rawEditMode: string): EditMode | undefined {
 
 	const editMode = normalizeEditMode(rawEditMode);
 	if (!editMode) {
-		throw new Error(`Invalid PI_EDIT_VARIANT: ${rawEditMode}`);
+		throw new Error(`Invalid VEYYON_EDIT_VARIANT: ${rawEditMode}`);
 	}
 
 	return editMode;
@@ -84,7 +84,7 @@ function resolveAllowFuzzy(session: ToolSession, rawValue: string): boolean {
 		case "auto":
 			return session.settings.get("edit.fuzzyMatch");
 		default:
-			throw new Error(`Invalid PI_EDIT_FUZZY: ${rawValue}`);
+			throw new Error(`Invalid VEYYON_EDIT_FUZZY: ${rawValue}`);
 	}
 }
 
@@ -95,7 +95,7 @@ function resolveFuzzyThreshold(session: ToolSession, rawValue: string): number {
 
 	const threshold = Number.parseFloat(rawValue);
 	if (Number.isNaN(threshold) || threshold < 0 || threshold > 1) {
-		throw new Error(`Invalid PI_EDIT_FUZZY_THRESHOLD: ${rawValue}`);
+		throw new Error(`Invalid VEYYON_EDIT_FUZZY_THRESHOLD: ${rawValue}`);
 	}
 
 	return threshold;
@@ -167,7 +167,7 @@ async function executeApplyPatchPerFile(
 			const text = result.content?.find(c => c.type === "text")?.text ?? "";
 			if (text) contentTexts.push(text);
 		} catch (err) {
-			const errorText = err instanceof Error ? err.message : String(err);
+			const errorText = errorMessage(err);
 			const displayErrorText = err instanceof HashlineMismatchError ? err.displayMessage : undefined;
 			perFileResults.push({ path, diff: "", isError: true, errorText, displayErrorText });
 			contentTexts.push(`Error editing ${path}: ${errorText}`);
@@ -289,7 +289,7 @@ async function executeSinglePathEntries(
 			const text = result.content?.find(c => c.type === "text")?.text ?? "";
 			if (text) contentTexts.push(text);
 		} catch (err) {
-			const errorText = err instanceof Error ? err.message : String(err);
+			const errorText = errorMessage(err);
 			contentTexts.push(`Error editing ${path} (entry ${i + 1} of ${runs.length}): ${errorText}`);
 			if (i > 0) {
 				contentTexts.push(i === 1 ? `Entry 1 was already applied.` : `Entries 1-${i} were already applied.`);
@@ -382,9 +382,9 @@ export class EditTool implements AgentTool<TInput> {
 
 	constructor(private readonly session: ToolSession) {
 		const {
-			PI_EDIT_FUZZY: editFuzzy = "auto",
-			PI_EDIT_FUZZY_THRESHOLD: editFuzzyThreshold = "auto",
-			PI_EDIT_VARIANT: envEditVariant = "auto",
+			VEYYON_EDIT_FUZZY: editFuzzy = "auto",
+			VEYYON_EDIT_FUZZY_THRESHOLD: editFuzzyThreshold = "auto",
+			VEYYON_EDIT_VARIANT: envEditVariant = "auto",
 		} = Bun.env;
 
 		this.#editMode = resolveConfiguredEditMode(envEditVariant);

@@ -2,16 +2,17 @@ import { afterEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { Model } from "@veyyon/pi-ai/types";
-import { buildModel } from "@veyyon/pi-catalog/build";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
+import type { Model } from "@veyyon/ai/types";
+import { buildModel } from "@veyyon/catalog/build";
+import { Settings } from "@veyyon/coding-agent/config/settings";
 import {
 	filterToolsByHarnessProfile,
 	isRepairEnabledForModel,
 	resetHarnessProfileFileCache,
 	resolveHarnessProfileForModel,
-} from "@veyyon/pi-coding-agent/harness/model-profile";
-import { removeSyncWithRetries, Snowflake, setAgentDir } from "@veyyon/pi-utils";
+	resolvePromptSectionOrderForModel,
+} from "@veyyon/coding-agent/harness/model-profile";
+import { removeSyncWithRetries, Snowflake, setAgentDir } from "@veyyon/utils";
 
 const model: Model = buildModel({
 	id: "gpt-test",
@@ -64,5 +65,38 @@ describe("harness model profiles (A3 MVP)", () => {
 			"harness.profiles": { "openai/gpt-test": { tools: ["read", "grep"] } },
 		});
 		expect(filterToolsByHarnessProfile(["read", "edit", "bash"], settings, model)).toEqual(["read"]);
+	});
+
+	it("resolves promptSectionOrder, deduplicated", () => {
+		const settings = Settings.isolated({
+			"harness.profiles": {
+				"openai/gpt-test": { promptSectionOrder: ["tool-policy", "role", "tool-policy"] },
+			},
+		});
+		expect(resolvePromptSectionOrderForModel(settings, model)).toEqual(["tool-policy", "role"]);
+	});
+
+	it("rejects a promptSectionOrder list containing an unknown section name", () => {
+		const settings = Settings.isolated({
+			"harness.profiles": {
+				"openai/gpt-test": { repair: false, promptSectionOrder: ["tool-policy", "bogus-section"] },
+			},
+		});
+		// The whole list drops (a typo'd entry must not silently apply a different
+		// order), while the rest of the profile survives.
+		expect(resolvePromptSectionOrderForModel(settings, model)).toBeUndefined();
+		expect(isRepairEnabledForModel(settings, model)).toBe(false);
+	});
+
+	it("loads promptSectionOrder from harness-profiles.yml", () => {
+		tempDir = fs.mkdtempSync(path.join(os.tmpdir(), `harness-profile-${Snowflake.next()}-`));
+		setAgentDir(tempDir);
+		resetHarnessProfileFileCache();
+		fs.writeFileSync(
+			path.join(tempDir, "harness-profiles.yml"),
+			"profiles:\n  openai/gpt-test:\n    promptSectionOrder: [delivery-contract, role]\n",
+		);
+		const settings = Settings.isolated({ "harness.profiles": {} });
+		expect(resolvePromptSectionOrderForModel(settings, model)).toEqual(["delivery-contract", "role"]);
 	});
 });

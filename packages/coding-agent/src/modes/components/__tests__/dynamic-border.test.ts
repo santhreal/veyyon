@@ -16,7 +16,7 @@ describe("DynamicBorder", () => {
 	// the uninitialized state is only reachable in a fresh module graph — a
 	// subprocess reproduces the actual reported scenario deterministically.
 	it("renders plain glyphs when the module-level theme is uninitialized", async () => {
-		const dir = await fs.mkdtemp(path.join(os.tmpdir(), "omp-dynamic-border-"));
+		const dir = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-dynamic-border-"));
 		try {
 			const script = [
 				`import { DynamicBorder } from ${JSON.stringify(componentPath)};`,

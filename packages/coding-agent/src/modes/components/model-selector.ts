@@ -5,8 +5,8 @@
  * surface that needs "pick a model from the catalog" without reimplementing
  * search, auth badges, or clear/unset.
  */
-import type { Model } from "@veyyon/pi-ai";
-import { type Component, Container, matchesKey, Spacer, Text, truncateToWidth } from "@veyyon/pi-tui";
+import type { Model } from "@veyyon/ai";
+import { type Component, Container, matchesKey, Spacer, Text, truncateToWidth } from "@veyyon/tui";
 import type { ModelRegistry } from "../../config/model-registry";
 import type { Settings } from "../../config/settings";
 import { theme } from "../theme/theme";

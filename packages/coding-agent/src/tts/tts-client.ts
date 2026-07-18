@@ -1,4 +1,4 @@
-import { logger } from "@veyyon/pi-utils";
+import { logger } from "@veyyon/utils";
 import {
 	createUnavailableWorker,
 	createWorkerHandle,
@@ -13,7 +13,7 @@ import {
 } from "../subprocess/worker-client";
 import { tinyWorkerEnv } from "../tiny/title-client";
 import { safeSend } from "../utils/ipc";
-import { isTtsLocalModelKey, type TtsLocalModelKey } from "./models";
+import { isCorruptModelCacheError, isTtsLocalModelKey, type TtsLocalModelKey } from "./models";
 import type { TtsProgressEvent, TtsWorkerInbound, TtsWorkerOutbound } from "./tts-protocol";
 
 /** Decoded PCM returned by a local synthesis request. */
@@ -22,10 +22,28 @@ export interface TtsAudio {
 	sampleRate: number;
 }
 
+/**
+ * Where a stream session's chunks and terminal events are delivered. Sessions
+ * register a thin adapter (not the {@link AudioChunkChannel} itself) so a
+ * corrupt-cache failure can be intercepted and retried on a fresh worker
+ * before anything reaches the consumer-facing channel.
+ */
+interface StreamAudioSink {
+	push(chunk: TtsAudioChunk): void;
+	close(): void;
+	fail(error: Error): void;
+}
+
 type PendingRequest =
-	| { kind: "synthesize"; modelKey: TtsLocalModelKey; resolve: (audio: TtsAudio | null) => void }
+	| {
+			kind: "synthesize";
+			modelKey: TtsLocalModelKey;
+			resolve: (audio: TtsAudio | null) => void;
+			/** Worker-reported errors reject so the caller can retry corrupt-cache loads on a fresh worker. */
+			reject: (error: Error) => void;
+	  }
 	| { kind: "download"; modelKey: TtsLocalModelKey; resolve: (ok: boolean) => void }
-	| { kind: "stream"; modelKey: TtsLocalModelKey; channel: AudioChunkChannel };
+	| { kind: "stream"; modelKey: TtsLocalModelKey; channel: StreamAudioSink };
 
 export interface TtsSynthesizeOptions {
 	voice?: string;
@@ -207,34 +225,52 @@ export class TtsClient {
 		if (!isTtsLocalModelKey(modelKey)) return null;
 		if (options.signal?.aborted) return null;
 
-		try {
-			const worker = this.#ensureWorker();
-			const id = String(++this.#nextRequestId);
-			const { promise, resolve } = Promise.withResolvers<TtsAudio | null>();
-			this.#addPending(id, { kind: "synthesize", modelKey, resolve });
-			const abort = (): void => {
-				const pending = this.#pending.get(id);
-				if (pending?.kind !== "synthesize") return;
-				this.#deletePending(id);
-				pending.resolve(null);
-			};
-			options.signal?.addEventListener("abort", abort, { once: true });
+		for (let attempt = 0; ; attempt++) {
 			try {
-				const request: TtsWorkerInbound = options.voice
-					? { type: "synthesize", id, modelKey, text, voice: options.voice }
-					: { type: "synthesize", id, modelKey, text };
-				worker.send(request);
-				return await promise;
-			} finally {
-				options.signal?.removeEventListener("abort", abort);
-				this.#deletePending(id);
+				return await this.#synthesizeOnce(modelKey, text, options);
+			} catch (error) {
+				const err = error instanceof Error ? error : new Error(String(error));
+				// Same recovery as synthesizeStream: the failed worker process has
+				// the corrupt weight bytes memoized, so retry once on a fresh one.
+				if (attempt === 0 && isCorruptModelCacheError(err) && options.signal?.aborted !== true) {
+					logger.warn("tts: synthesis hit corrupt cached weights; restarting the TTS worker and retrying", {
+						modelKey,
+						error: err.message,
+					});
+					await this.terminate();
+					continue;
+				}
+				logger.debug("tts: local synthesis failed", { modelKey, error: err.message });
+				return null;
 			}
-		} catch (error) {
-			logger.debug("tts: local synthesis failed", {
-				modelKey,
-				error: error instanceof Error ? error.message : String(error),
-			});
-			return null;
+		}
+	}
+
+	async #synthesizeOnce(
+		modelKey: TtsLocalModelKey,
+		text: string,
+		options: TtsSynthesizeOptions,
+	): Promise<TtsAudio | null> {
+		const worker = this.#ensureWorker();
+		const id = String(++this.#nextRequestId);
+		const { promise, resolve, reject } = Promise.withResolvers<TtsAudio | null>();
+		this.#addPending(id, { kind: "synthesize", modelKey, resolve, reject });
+		const abort = (): void => {
+			const pending = this.#pending.get(id);
+			if (pending?.kind !== "synthesize") return;
+			this.#deletePending(id);
+			pending.resolve(null);
+		};
+		options.signal?.addEventListener("abort", abort, { once: true });
+		try {
+			const request: TtsWorkerInbound = options.voice
+				? { type: "synthesize", id, modelKey, text, voice: options.voice }
+				: { type: "synthesize", id, modelKey, text };
+			worker.send(request);
+			return await promise;
+		} finally {
+			options.signal?.removeEventListener("abort", abort);
+			this.#deletePending(id);
 		}
 	}
 
@@ -253,49 +289,102 @@ export class TtsClient {
 			return { push: () => {}, end: () => {}, chunks: channel.iterator() };
 		}
 
-		let worker: RefCountedWorkerHandle<TtsWorkerInbound, TtsWorkerOutbound>;
-		try {
-			worker = this.#ensureWorker();
-		} catch (error) {
-			logger.debug("tts: stream synthesis failed to start", {
-				modelKey,
-				error: error instanceof Error ? error.message : String(error),
-			});
-			const channel = new AudioChunkChannel();
-			channel.fail(error instanceof Error ? error : new Error(String(error)));
-			return { push: () => {}, end: () => {}, chunks: channel.iterator() };
-		}
-
-		const id = String(++this.#nextRequestId);
 		const signal = options.signal;
 		let closed = false;
 		let ended = false;
+		let chunksEmitted = 0;
+		let corruptCacheRetriesLeft = 1;
+		const segments: string[] = [];
+		let activeWorker: RefCountedWorkerHandle<TtsWorkerInbound, TtsWorkerOutbound> | null = null;
+		let activeId: string | null = null;
+
 		const abort = (): void => {
 			if (closed) return;
 			closed = true;
 			ended = true;
-			if (!this.#pending.has(id)) return;
-			this.#deletePending(id);
-			worker.send({ type: "stream-cancel", id });
+			if (activeId !== null && this.#pending.has(activeId)) {
+				this.#deletePending(activeId);
+				activeWorker?.send({ type: "stream-cancel", id: activeId });
+			}
 			channel.close();
 		};
 		const channel = new AudioChunkChannel(() => signal?.removeEventListener("abort", abort));
-		this.#addPending(id, { kind: "stream", modelKey, channel });
-		signal?.addEventListener("abort", abort, { once: true });
 
-		const start: TtsWorkerInbound = options.voice
-			? { type: "stream-start", id, modelKey, voice: options.voice }
-			: { type: "stream-start", id, modelKey };
-		worker.send(start);
+		// The session's audio routes through this sink so a corrupt-cache model
+		// load can be retried transparently. The failed worker process has the
+		// corrupt weight bytes memoized in its module state, so even after the
+		// worker purges and re-downloads the file, every in-process load keeps
+		// failing (observed live) — only a fresh subprocess recovers. Retry once,
+		// and only before any audio was delivered: replaying after a partial
+		// stream would speak duplicate segments.
+		const sink: StreamAudioSink = {
+			push: chunk => {
+				chunksEmitted += 1;
+				channel.push(chunk);
+			},
+			close: () => channel.close(),
+			fail: error => {
+				if (corruptCacheRetriesLeft > 0 && chunksEmitted === 0 && !closed && isCorruptModelCacheError(error)) {
+					corruptCacheRetriesLeft -= 1;
+					logger.warn(
+						"tts: model load hit corrupt cached weights; restarting the TTS worker and replaying the stream",
+						{
+							modelKey,
+							error: error.message,
+						},
+					);
+					// #handleMessage terminates the client right after failing us;
+					// terminating here first makes that call a no-op (the sync prefix
+					// nulls #worker), so the respawn below starts from a clean slate.
+					void this.terminate().then(() => {
+						if (closed) return;
+						const startError = startAttempt();
+						if (startError) channel.fail(startError);
+					});
+					return;
+				}
+				channel.fail(error);
+			},
+		};
+
+		const startAttempt = (): Error | null => {
+			let worker: RefCountedWorkerHandle<TtsWorkerInbound, TtsWorkerOutbound>;
+			try {
+				worker = this.#ensureWorker();
+			} catch (error) {
+				return error instanceof Error ? error : new Error(String(error));
+			}
+			const id = String(++this.#nextRequestId);
+			activeWorker = worker;
+			activeId = id;
+			this.#addPending(id, { kind: "stream", modelKey, channel: sink });
+			const start: TtsWorkerInbound = options.voice
+				? { type: "stream-start", id, modelKey, voice: options.voice }
+				: { type: "stream-start", id, modelKey };
+			worker.send(start);
+			for (const text of segments) worker.send({ type: "stream-push", id, text });
+			if (ended) worker.send({ type: "stream-end", id });
+			return null;
+		};
+
+		const firstStartError = startAttempt();
+		if (firstStartError) {
+			logger.debug("tts: stream synthesis failed to start", { modelKey, error: firstStartError.message });
+			channel.fail(firstStartError);
+			return { push: () => {}, end: () => {}, chunks: channel.iterator() };
+		}
+		signal?.addEventListener("abort", abort, { once: true });
 
 		return {
 			push: (text: string) => {
-				if (!closed && !ended) worker.send({ type: "stream-push", id, text });
+				if (closed || ended) return;
+				segments.push(text);
+				if (activeId !== null) activeWorker?.send({ type: "stream-push", id: activeId, text });
 			},
 			end: () => {
 				if (closed || ended) return;
 				ended = true;
-				worker.send({ type: "stream-end", id });
+				if (activeId !== null) activeWorker?.send({ type: "stream-end", id: activeId });
 			},
 			chunks: channel.iterator(),
 		};
@@ -437,7 +526,7 @@ export class TtsClient {
 		}
 		logger.debug("tts: worker returned error", { error: message.error });
 		this.#emitProgress({ modelKey: pending.modelKey, status: "error" });
-		if (pending.kind === "synthesize") pending.resolve(null);
+		if (pending.kind === "synthesize") pending.reject(new Error(message.error));
 		else if (pending.kind === "download") pending.resolve(false);
 		else pending.channel.fail(new Error(message.error));
 		void this.terminate();

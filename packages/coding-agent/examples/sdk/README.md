@@ -1,6 +1,6 @@
 # SDK Examples
 
-Programmatic usage of omp-coding-agent via `createAgentSession()`.
+Programmatic usage of the veyyon coding agent via `createAgentSession()`.
 
 ## Examples
 
@@ -29,7 +29,7 @@ npx tsx examples/sdk/01-minimal.ts
 ## Quick Reference
 
 ```typescript
-import { getModel } from "@veyyon/pi-ai";
+import { getModel } from "@veyyon/ai";
 import {
 	AuthStorage,
 	createAgentSession,
@@ -48,7 +48,7 @@ import {
 	HIDDEN_TOOLS,
 	createTools,
 	ResolveTool,
-} from "@veyyon/pi-coding-agent";
+} from "@veyyon/coding-agent";
 
 // Auth and models setup
 const authStorage = discoverAuthStorage();

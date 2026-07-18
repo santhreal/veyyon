@@ -149,7 +149,7 @@ impl Cli {
 			// loading happens inside unpatched jaq-core
 			'L' => self
 				.library_path
-				.push(pi_uutils_ctx::resolve(args.next().ok_or(Error::Path("-L"))?)),
+				.push(veyyon_uutils_ctx::resolve(args.next().ok_or(Error::Path("-L"))?)),
 			'e' => self.exit_status = true,
 			'V' => self.version = true,
 			'h' => self.help = true,

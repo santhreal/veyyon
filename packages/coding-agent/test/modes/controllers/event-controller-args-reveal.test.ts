@@ -6,15 +6,15 @@
  * how assistant text snaps at message_end.
  */
 import { afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
-import type { AssistantMessage } from "@veyyon/pi-ai";
-import { kStreamingPartialJson } from "@veyyon/pi-ai/utils/block-symbols";
-import { resetSettingsForTest, Settings, settings } from "@veyyon/pi-coding-agent/config/settings";
-import { ToolExecutionComponent } from "@veyyon/pi-coding-agent/modes/components/tool-execution";
-import { EventController } from "@veyyon/pi-coding-agent/modes/controllers/event-controller";
-import { STREAMING_REVEAL_FRAME_MS } from "@veyyon/pi-coding-agent/modes/controllers/streaming-reveal";
-import { initTheme } from "@veyyon/pi-coding-agent/modes/theme/theme";
-import type { InteractiveModeContext } from "@veyyon/pi-coding-agent/modes/types";
-import type { AgentSessionEvent } from "@veyyon/pi-coding-agent/session/agent-session";
+import type { AssistantMessage } from "@veyyon/ai";
+import { kStreamingPartialJson } from "@veyyon/ai/utils/block-symbols";
+import { resetSettingsForTest, Settings, settings } from "@veyyon/coding-agent/config/settings";
+import { ToolExecutionComponent } from "@veyyon/coding-agent/modes/components/tool-execution";
+import { EventController } from "@veyyon/coding-agent/modes/controllers/event-controller";
+import { STREAMING_REVEAL_FRAME_MS } from "@veyyon/coding-agent/modes/controllers/streaming-reveal";
+import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
+import type { AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session";
 
 beforeAll(async () => {
 	await initTheme();

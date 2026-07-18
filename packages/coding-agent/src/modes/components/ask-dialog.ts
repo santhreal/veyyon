@@ -1,5 +1,6 @@
 import {
 	type Component,
+	clamp,
 	Ellipsis,
 	Markdown,
 	type MarkdownTheme,
@@ -16,7 +17,8 @@ import {
 	truncateToWidth,
 	visibleWidth,
 	wrapTextWithAnsi,
-} from "@veyyon/pi-tui";
+} from "@veyyon/tui";
+import { formatCount } from "@veyyon/utils";
 import type {
 	ExtensionAskDialogQuestion,
 	ExtensionAskDialogResultItem,
@@ -122,10 +124,6 @@ interface PreviewSegment {
 	kind: "markdown" | "code";
 	text: string;
 	language: string | undefined;
-}
-
-function clamp(value: number, min: number, max: number): number {
-	return Math.max(min, Math.min(value, max));
 }
 
 function stripRecommendedSuffix(label: string): string {
@@ -281,7 +279,11 @@ function renderRowLabel(
 	const marker = `${theme.fg(checked ? "success" : "dim", optionMarker(question, checked))} `;
 	const cursor = selected ? theme.fg("accent", `${theme.nav.cursor} `) : "  ";
 	const label = renderInlineMarkdown(rowItem.label, mdTheme, t => theme.fg(color, t));
-	const noteMarker = state.note && state.noteRowKey === rowItem.key ? theme.fg("success", "  note note") : "";
+	// "✎ note" marker (glyph + word), matching the plan-review annotation mark.
+	const noteMarker =
+		state.note && state.noteRowKey === rowItem.key
+			? `  ${theme.styledSymbol("tool.edit", "success")} ${theme.fg("success", "note")}`
+			: "";
 	const firstLine = `${cursor}${marker}${label}${noteMarker}`;
 	const lines = [truncateToWidth(firstLine, width, Ellipsis.Unicode)];
 	if (rowItem.kind === "option") {
@@ -758,12 +760,7 @@ export class AskDialogComponent implements Component {
 		const allLines: string[] = [];
 		const unanswered = this.#unansweredCount();
 		if (unanswered > 0) {
-			allLines.push(
-				theme.fg(
-					"warning",
-					`${unanswered} unanswered question${unanswered === 1 ? "" : "s"}; Enter still submits.`,
-				),
-			);
+			allLines.push(theme.fg("warning", `${formatCount("unanswered question", unanswered)}; Enter still submits.`));
 			allLines.push("");
 		}
 		for (let index = 0; index < this.questions.length; index++) {

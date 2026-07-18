@@ -1,7 +1,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import type { AssistantMessage } from "@veyyon/pi-ai";
-import { prompt, Snowflake } from "@veyyon/pi-utils";
+import type { AssistantMessage } from "@veyyon/ai";
+import { errorMessage, prompt, Snowflake } from "@veyyon/utils";
 import backgroundTanDispatchPrompt from "../../prompts/system/background-tan-dispatch.md" with { type: "text" };
 import tanContextSwitchPrompt from "../../prompts/system/tan-context-switch.md" with { type: "text" };
 import { AgentRegistry, MAIN_AGENT_ID } from "../../registry/agent-registry";
@@ -203,7 +203,7 @@ export class TanCommandController {
 			);
 		} catch (error) {
 			if (cloneFile) await removeCloneSession(cloneFile);
-			this.ctx.showError(error instanceof Error ? error.message : String(error));
+			this.ctx.showError(errorMessage(error));
 			return;
 		}
 

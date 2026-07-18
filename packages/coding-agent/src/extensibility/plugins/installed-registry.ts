@@ -5,7 +5,7 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 
-import { getPluginsDir, isEnoent, logger, tryParseJson } from "@veyyon/pi-utils";
+import { getPluginsDir, isEnoent, logger, tryParseJson } from "@veyyon/utils";
 
 export interface InstalledPluginsRegistry {
 	version: 2;

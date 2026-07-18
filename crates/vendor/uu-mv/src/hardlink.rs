@@ -118,14 +118,14 @@ impl HardlinkTracker {
 	) -> Option<PathBuf> {
 		use std::os::unix::fs::MetadataExt;
 
-		let metadata = match pi_uutils_ctx::resolve(source).metadata() {
+		let metadata = match veyyon_uutils_ctx::resolve(source).metadata() {
 			Ok(meta) => meta,
 			Err(e) => {
 				// Gracefully handle metadata errors by logging and continuing without hardlink
 				// tracking
 				if options.verbose {
 					let _ = writeln!(
-						pi_uutils_ctx::stderr(),
+						veyyon_uutils_ctx::stderr(),
 						"warning: cannot get metadata for {}: {e}",
 						source.quote()
 					);
@@ -147,7 +147,7 @@ impl HardlinkTracker {
 			if has_hardlinks {
 				if options.verbose {
 					let _ = writeln!(
-						pi_uutils_ctx::stderr(),
+						veyyon_uutils_ctx::stderr(),
 						"preserving hardlink {} -> {} (hardlinked)",
 						source.quote(),
 						existing_path.quote()
@@ -184,8 +184,11 @@ impl HardlinkGroupScanner {
 				&& options.verbose
 			{
 				// Only show warnings for verbose mode
-				let _ =
-					writeln!(pi_uutils_ctx::stderr(), "warning: failed to scan {}: {e}", file.quote());
+				let _ = writeln!(
+					veyyon_uutils_ctx::stderr(),
+					"warning: failed to scan {}: {e}",
+					file.quote()
+				);
 			}
 			// For non-verbose mode, silently continue for missing files
 			// This provides graceful degradation - we'll lose hardlink info for
@@ -198,7 +201,7 @@ impl HardlinkGroupScanner {
 			let stats = self.stats();
 			if stats.total_groups > 0 {
 				let _ = writeln!(
-					pi_uutils_ctx::stderr(),
+					veyyon_uutils_ctx::stderr(),
 					"found {} hardlink groups with {} total files",
 					stats.total_groups,
 					stats.total_files
@@ -211,11 +214,11 @@ impl HardlinkGroupScanner {
 	fn scan_single_path(&mut self, path: &Path) -> io::Result<()> {
 		use std::os::unix::fs::MetadataExt;
 
-		if pi_uutils_ctx::resolve(path).is_dir() {
+		if veyyon_uutils_ctx::resolve(path).is_dir() {
 			// Recursively scan directory contents
 			self.scan_directory_recursive(path)?;
 		} else {
-			let metadata = pi_uutils_ctx::resolve(path).metadata()?;
+			let metadata = veyyon_uutils_ctx::resolve(path).metadata()?;
 			if metadata.nlink() > 1 {
 				let key = (metadata.dev(), metadata.ino());
 				self
@@ -232,7 +235,7 @@ impl HardlinkGroupScanner {
 	fn scan_directory_recursive(&mut self, dir: &Path) -> io::Result<()> {
 		use std::os::unix::fs::MetadataExt;
 
-		let entries = std::fs::read_dir(pi_uutils_ctx::resolve(dir))?;
+		let entries = std::fs::read_dir(veyyon_uutils_ctx::resolve(dir))?;
 		for entry in entries {
 			let entry = entry?;
 			let path = entry.path();

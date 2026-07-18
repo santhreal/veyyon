@@ -1,5 +1,6 @@
-import type { AgentTool, AgentToolResult } from "@veyyon/pi-agent-core";
-import { INTENT_FIELD } from "@veyyon/pi-wire";
+import type { AgentTool, AgentToolResult } from "@veyyon/agent-core";
+import { errorMessage } from "@veyyon/utils";
+import { INTENT_FIELD } from "@veyyon/wire";
 import type { ToolSession } from "../../tools";
 import { ToolError } from "../../tools/tool-errors";
 import { EVAL_AGENT_BRIDGE_NAME, runEvalAgent } from "../agent-bridge";
@@ -156,7 +157,7 @@ export async function callSessionTool(name: string, args: unknown, options: Tool
 	} catch (error) {
 		options.emitStatus?.({
 			op: name,
-			error: error instanceof Error ? error.message : String(error),
+			error: errorMessage(error),
 		});
 		throw error;
 	}

@@ -1,18 +1,18 @@
 import { mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import * as path from "node:path";
-import { formatHashlineHeader } from "@veyyon/hashline";
 import type {
 	AgentTool,
 	AgentToolContext,
 	AgentToolResult,
 	AgentToolUpdateCallback,
 	ToolTier,
-} from "@veyyon/pi-agent-core";
-import { type GrepMatch, GrepOutputMode, type GrepResult, grep } from "@veyyon/pi-natives";
-import type { Component } from "@veyyon/pi-tui";
-import { Text } from "@veyyon/pi-tui";
-import { prompt, untilAborted } from "@veyyon/pi-utils";
+} from "@veyyon/agent-core";
+import { formatHashlineHeader } from "@veyyon/hashline";
+import { type GrepMatch, GrepOutputMode, type GrepResult, grep } from "@veyyon/natives";
+import type { Component } from "@veyyon/tui";
+import { Text } from "@veyyon/tui";
+import { prompt, untilAborted } from "@veyyon/utils";
 import { type } from "arktype";
 import { recordFileSnapshot, recordSeenLinesFromBody } from "../edit/file-snapshot-store";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
@@ -101,7 +101,7 @@ export const SINGLE_FILE_MATCHES = 200;
  * (DEFAULT_FILE_LIMIT files × MULTI_FILE_PER_FILE_MATCHES matches) plus
  * pagination headroom so the caller can see total file count. */
 const INTERNAL_TOTAL_CAP = 2000;
-/** Mirrors `MAX_FILE_BYTES` in `crates/pi-natives/src/grep.rs`. Native grep
+/** Mirrors `MAX_FILE_BYTES` in `crates/veyyon-natives/src/grep.rs`. Native grep
  * searches only the first `MAX_FILE_BYTES` of a larger file (a leading mmap
  * window) and drops the rest; matches beyond the window are not returned. We
  * surface a partial-coverage note when the caller explicitly targeted such a
@@ -288,7 +288,7 @@ async function resolveArchiveSearchPaths(
 		}
 
 		if (!tempDir) {
-			tempDir = await mkdtemp(path.join(tmpdir(), "omp-search-archive-"));
+			tempDir = await mkdtemp(path.join(tmpdir(), "veyyon-search-archive-"));
 		}
 		// Per-entry filename keeps the scratch path unique even when two selectors
 		// resolve to members with the same basename.
@@ -338,7 +338,7 @@ interface IndexedContentLines {
 	starts: number[];
 }
 
-const OMP_ROOT_URL_RE = /^omp:\/\/(?:\/?|docs\/?)$/i;
+const VEYYON_ROOT_URL_RE = /^veyyon:\/\/(?:\/?|docs\/?)$/i;
 
 function normalizeSearchLine(line: string): string {
 	return line.endsWith("\r") ? line.slice(0, -1) : line;
@@ -643,7 +643,7 @@ async function searchVirtualResources(
 	// `[[:digit:]]`) behaves identically on virtual/remote resources. The JS helpers
 	// below then rebuild the exact forward-only, range-trimmed context windows the
 	// virtual-search contract requires.
-	const dir = await mkdtemp(path.join(tmpdir(), "omp-search-virtual-"));
+	const dir = await mkdtemp(path.join(tmpdir(), "veyyon-search-virtual-"));
 	try {
 		for (let idx = 0; idx < resources.length; idx++) {
 			const resource = resources[idx];
@@ -738,8 +738,8 @@ async function expandVirtualInternalResource(
 	context: ResolveContext,
 	ranges: readonly LineRange[] | undefined,
 ): Promise<VirtualSearchResource[]> {
-	if (OMP_ROOT_URL_RE.test(rawPath)) {
-		const completions = await internalRouter.complete("omp", "");
+	if (VEYYON_ROOT_URL_RE.test(rawPath)) {
+		const completions = await internalRouter.complete("veyyon", "");
 		if (completions && completions.length > 0) {
 			const resources: VirtualSearchResource[] = [];
 			const seen = new Set<string>();
@@ -1433,7 +1433,7 @@ export class GrepTool implements AgentTool<typeof searchSchema, GrepToolDetails>
 					let lastEmittedLine: number | undefined;
 					const gutterPad = " ".repeat(lineNumberWidth + 1);
 					// Track match/context lines whose displayed text was
-					// column-truncated by the native (see `crates/pi-natives/src/grep.rs`
+					// column-truncated by the native (see `crates/veyyon-natives/src/grep.rs`
 					// `truncate_line`, marker `...` at max_columns). Excluded from
 					// seenLines so a follow-up edit anchored at that line still
 					// requires a full-width re-read — the model saw only the

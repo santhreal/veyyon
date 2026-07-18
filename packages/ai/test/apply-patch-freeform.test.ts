@@ -3,21 +3,21 @@ import {
 	buildTransformedCodexRequestBody,
 	convertOpenAICodexResponsesTools as convertCodexTools,
 	normalizeCodexToolChoice,
-} from "@veyyon/pi-ai/providers/openai-codex-responses";
+} from "@veyyon/ai/providers/openai-codex-responses";
 import {
 	buildParams,
 	convertTools,
 	mapOpenAIResponsesToolChoiceForTools,
 	supportsFreeformApplyPatch,
-} from "@veyyon/pi-ai/providers/openai-responses";
-import type { ResponseStreamEvent } from "@veyyon/pi-ai/providers/openai-responses-wire";
+} from "@veyyon/ai/providers/openai-responses";
+import type { ResponseStreamEvent } from "@veyyon/ai/providers/openai-responses-wire";
 import {
 	appendResponsesToolResultMessages,
 	convertResponsesAssistantMessage,
 	processResponsesStream,
-} from "@veyyon/pi-ai/providers/openai-shared";
-import type { AssistantMessage, Model, ModelSpec, Tool, ToolResultMessage } from "@veyyon/pi-ai/types";
-import { buildModel } from "@veyyon/pi-catalog/build";
+} from "@veyyon/ai/providers/openai-shared";
+import type { AssistantMessage, Model, ModelSpec, Tool, ToolResultMessage } from "@veyyon/ai/types";
+import { buildModel } from "@veyyon/catalog/build";
 import { type } from "arktype";
 
 const GRAMMAR = [

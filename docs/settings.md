@@ -13,14 +13,14 @@ Settings are stored as plain YAML mappings. Every key, its type, default, and en
 
 | Scope | Path | Read behavior | Write behavior |
 |---|---|---|---|
-| Global | `~/.veyyon/agent/config.yml` | The main persistent settings file. Always loaded. | `/settings`, `veyyon config set`, and `veyyon config reset` write here. |
-| Global legacy | `~/.veyyon/agent/settings.json` | Migrated into `config.yml` once, only when `config.yml` does not yet exist. | Not written after migration; the original is renamed to `settings.json.bak`. |
+| Global | `~/.veyyon/profiles/default/agent/config.yml` | The main persistent settings file. Always loaded. | `/settings`, `veyyon config set`, and `veyyon config reset` write here. |
+| Global legacy | `~/.veyyon/profiles/default/agent/settings.json` | Migrated into `config.yml` once, only when `config.yml` does not yet exist. | Not written after migration; the original is renamed to `settings.json.bak`. |
 | Project | `<cwd>/.veyyon/config.yml` (plus `.veyyon/settings.json`) | Loaded when the process working directory has a non-empty `.veyyon/`. | Read-only from settings commands; edit the file by hand. |
 | Project legacy | `<cwd>/.veyyon/settings.json` | Still read; project `config.yml` is merged on top of it. | Not written by settings commands. |
 | CLI overlay | Any file passed with `--config <file>` | Loaded after global and project settings, for that one process. Repeatable. | Never persisted. |
 | Runtime overrides | In-memory only | Set by dedicated CLI flags (`--model`, `--approval-mode`, …) and feature env vars. | Never persisted. |
 
-`VEYYON_CODING_AGENT_DIR` (legacy `PI_CODING_AGENT_DIR`) relocates the `~/.veyyon/agent` base directory. When it is set, the global `config.yml`, the auth store (`agent.db`), and everything else under the agent directory move with it. Use `veyyon config path` to print the active agent directory.
+`VEYYON_CODING_AGENT_DIR` relocates the `~/.veyyon/profiles/default/agent` base directory. When it is set, the global `config.yml`, the auth store (`agent.db`), and everything else under the agent directory move with it. Use `veyyon config path` to print the active agent directory.
 
 Native project settings are intentionally scoped to the process working directory's `.veyyon/` folder — settings discovery does **not** walk ancestor directories looking for the nearest `.veyyon/`. Other discovery providers (Claude, Codex, Gemini, Cursor, OpenCode) can also contribute project-level settings from their own files; those are read-only from `veyyon` settings commands and can be turned off by provider id (see [Provider and source disabling](#provider-and-source-disabling)).
 
@@ -99,7 +99,7 @@ From highest to lowest:
 1. **Runtime overrides** — dedicated CLI flags and feature env vars applied in memory for the current process: `--model`, `--smol`, `--slow`, `--plan`, `--approval-mode`, `--auto-approve`/`--yolo`, `--hide-thinking`, `--advisor`, `--no-pty`, `--api-key`, and protocol-mode defaults. Never persisted.
 2. **CLI config overlays** — each `--config <file>`; later overlay files override earlier ones.
 3. **Project settings** — `<cwd>/.veyyon/settings.json` then `<cwd>/.veyyon/config.yml` (and contributions from other discovery providers at project level).
-4. **Global settings** — `~/.veyyon/agent/config.yml`.
+4. **Global settings** — `~/.veyyon/profiles/default/agent/config.yml`.
 5. **Built-in defaults** — from the settings schema.
 
 A key that is unset at every layer resolves to its schema default at read time.
@@ -110,17 +110,17 @@ Environment variables are **not** a single settings layer. Each is read by the f
 
 | Env var | Overrides setting | Notes |
 |---|---|---|
-| `PI_SMOL_MODEL` | `modelRoles.smol` | Also exposed as `--smol`. |
-| `PI_SLOW_MODEL` | `modelRoles.slow` | Also exposed as `--slow`. |
-| `PI_PLAN_MODEL` | `modelRoles.plan` | Also exposed as `--plan`. |
-| `PI_NO_PTY=1` | (disables PTY bash) | Equivalent to `--no-pty` for the process. |
-| `PI_PY` | `eval.py` | `PI_PY=0` disables the Python eval backend. |
-| `PI_JS` | `eval.js` | `PI_JS=0` disables the JavaScript eval backend. |
-| `PI_TINY_DEVICE` | `providers.tinyModelDevice` | ONNX execution provider for local tiny models. |
-| `PI_TINY_DTYPE` | `providers.tinyModelDtype` | ONNX precision for local tiny models. |
-| `OMP_AUTH_BROKER_URL` | `auth.broker.url` | Env value takes precedence over config. |
-| `OMP_AUTH_BROKER_TOKEN` | `auth.broker.token` | Env value takes precedence over config. |
-| `VEYYON_CODING_AGENT_DIR` (legacy `PI_CODING_AGENT_DIR`) | (relocates agent dir) | Moves `config.yml`, `agent.db`, and the whole agent base. |
+| `VEYYON_SMOL_MODEL` | `modelRoles.smol` | Also exposed as `--smol`. |
+| `VEYYON_SLOW_MODEL` | `modelRoles.slow` | Also exposed as `--slow`. |
+| `VEYYON_PLAN_MODEL` | `modelRoles.plan` | Also exposed as `--plan`. |
+| `VEYYON_NO_PTY=1` | (disables PTY bash) | Equivalent to `--no-pty` for the process. |
+| `VEYYON_PY` | `eval.py` | `VEYYON_PY=0` disables the Python eval backend. |
+| `VEYYON_JS` | `eval.js` | `VEYYON_JS=0` disables the JavaScript eval backend. |
+| `VEYYON_TINY_DEVICE` | `providers.tinyModelDevice` | ONNX execution provider for local tiny models. |
+| `VEYYON_TINY_DTYPE` | `providers.tinyModelDtype` | ONNX precision for local tiny models. |
+| `VEYYON_AUTH_BROKER_URL` | `auth.broker.url` | Env value takes precedence over config. |
+| `VEYYON_AUTH_BROKER_TOKEN` | `auth.broker.token` | Env value takes precedence over config. |
+| `VEYYON_CODING_AGENT_DIR` | (relocates agent dir) | Moves `config.yml`, `agent.db`, and the whole agent base. |
 
 Provider API keys are resolved separately (stored auth, OAuth, `models.yml`, environment, and `.env` files); see [Providers](./providers.md) and the full [Environment variables](./environment-variables.md) reference.
 
@@ -139,7 +139,7 @@ theme:
   light: light
 
 tools:
-  approvalMode: write
+  approvalMode: auto-edit
   approval:
     bash: prompt
     read: allow
@@ -148,9 +148,9 @@ tools:
 ### Worked example: global vs. project
 
 ```yaml
-# ~/.veyyon/agent/config.yml
+# ~/.veyyon/profiles/default/agent/config.yml
 tools:
-  approvalMode: write
+  approvalMode: auto-edit
   approval:
     bash: prompt
     read: allow
@@ -171,7 +171,7 @@ Effective settings inside `<repo>`:
 
 ```yaml
 tools:
-  approvalMode: write   # kept from global (object deep-merge)
+  approvalMode: auto-edit   # kept from global (object deep-merge)
   approval:
     bash: allow         # overridden by project
     read: allow         # kept from global
@@ -193,12 +193,12 @@ modelRoles:
   slow: anthropic/claude-opus-4-5:high
 
 tools:
-  approvalMode: write
+  approvalMode: auto-edit
   approval:
     bash: prompt
 
 compaction:
-  strategy: snapcompact
+  strategy: snap
   thresholdPercent: 80
 
 theme:
@@ -264,7 +264,7 @@ Most provider-control use cases list model provider ids. Disabling the `claude` 
 Because arrays replace rather than append, a project that sets `disabledProviders` must list the complete desired set:
 
 ```yaml
-# ~/.veyyon/agent/config.yml
+# ~/.veyyon/profiles/default/agent/config.yml
 disabledProviders:
   - anthropic
   - openai
@@ -282,21 +282,29 @@ Every key below is defined in the settings schema; `veyyon config list` shows th
 
 ### Models
 
-`modelRoles`, `modelTags`, and `cycleOrder` work together to define the models you can switch between. Role values may carry a thinking suffix (`:minimal`, `:low`, `:medium`, `:high`, `:xhigh`, `:max`).
+`modelRoles`, `modelTags`, and `cycleOrder` work together. Role values may carry a thinking suffix (`:minimal`, `:low`, `:medium`, `:high`, `:xhigh`, `:max`).
+
+The **interactive** model (main conversation) is persisted as **`modelRoles.default`**. That key is a legacy storage name: it is hidden from role pickers and stripped from `cycleOrder` on load. Selectable built-in roles: `smol`, `slow`, `vision`, `plan`, `designer`, `commit`, `tiny`, `task`, `advisor`.
 
 ```yaml
 modelRoles:
-  default: anthropic/claude-sonnet-4-5
+  default: anthropic/claude-sonnet-4-5   # interactive model (persisted default)
   smol: openai/gpt-4.1-mini
   slow: anthropic/claude-opus-4-5:high
   vision: gemini/gemini-3-pro-preview
   plan: anthropic/claude-opus-4-5
+  task: deepseek/deepseek-chat
   advisor: anthropic/claude-sonnet-4-5:medium
 
 cycleOrder:
   - smol
-  - default
   - slow
+
+subagent:
+  model: deepseek/deepseek-chat          # optional; overrides modelRoles.task when set
+
+compaction:
+  model: openai/gpt-5-mini               # optional; else inherits interactive
 
 modelProviderOrder:
   - anthropic
@@ -308,15 +316,17 @@ enabledModels:
 
 | Key | Type | Default | Notes |
 |---|---|---|---|
-| `modelRoles` | record | `{}` | Map of role name -> model id. Built-in roles: `default`, `smol`, `slow`, `vision`, `plan`, `designer`, `commit`, `tiny`, `task`, `advisor`. The `tiny` role overrides the online model for lightweight background tasks (titles, memory, auto-thinking, unexpected-stop), else `@smol`. Per-role env/flags exist only for `--model`/`--smol`/`--slow`/`--plan`; configure the advisor with `modelRoles.advisor`. |
+| `modelRoles` | record | `{}` | Role name → model id. Interactive model uses key `default` (hidden in UI). Selectable built-ins: `smol`, `slow`, `vision`, `plan`, `designer`, `commit`, `tiny`, `task`, `advisor`. `tiny` is used for lightweight background tasks when set, else `@smol`. Launch: `--model` (interactive), `--smol`, `--slow`, `--plan`; advisor via `modelRoles.advisor` + `advisor.enabled` / `--advisor`. |
 | `modelTags` | record | `{}` | Custom role/tag metadata; can introduce additional roles. |
 | `modelProviderOrder` | array | `[]` | Preferred provider order when a model id is ambiguous. |
-| `cycleOrder` | array | `["smol","default","slow"]` | Roles cycled by the model switcher. |
+| `cycleOrder` | array | `["smol","slow"]` | Roles cycled by the model switcher (`app.model.cycleForward`, often Ctrl+P). The entry `default` is dropped on load. |
+| `subagent.model` | string | unset | Task subagent model; unset inherits interactive; when set overrides `modelRoles.task`. |
+| `compaction.model` | string | unset | Compaction model; unset inherits interactive. |
 | `enabledModels` | array | `[]` | Allow-list of models; supports [path-scoped entries](#path-scoped-arrays). Empty means all available models. |
 | `disabledProviders` | array | `[]` | Disabled model/discovery providers; supports path-scoped entries. See [above](#provider-and-source-disabling). |
 | `includeModelInPrompt` | boolean | `true` | Include the active model name in the system prompt. |
 
-See [Models](./models.md) for the `models.yml` schema and custom-provider definitions.
+See [Models](./models.md) for the `models.yml` schema and custom-provider definitions. Handbook: [Models, roles, and profiles](./handbook/src/using/roles-and-profiles.md) (under `docs/handbook/src/using/`).
 
 ### Advisor
 
@@ -439,7 +449,7 @@ tools:
 
 | Key | Type | Default | Notes |
 |---|---|---|---|
-| `tools.approvalMode` | enum | `yolo` | `always-ask` (auto-approve read-only), `write` (auto-approve read + workspace-write), `yolo` (auto-approve all tiers). `--approval-mode` and `--auto-approve`/`--yolo` override per run. |
+| `tools.approvalMode` | enum | `yolo` | Canonical: `plan` (read auto; write/exec ask; plan-mode semantics), `ask` (read auto; write/exec ask), `auto-edit` (read+write auto; exec ask), `yolo` (all tiers auto). Legacy aliases still accepted: `always-ask` → `ask`, `write` → `auto-edit`. Override per run with `--approval-mode` / `--auto-approve` / `--yolo`. |
 | `tools.approval` | record | `{}` | Per-tool policy keyed by tool name; each value is `allow`, `deny`, or `prompt`. e.g. `veyyon config set tools.approval '{"bash":"prompt"}'`. |
 | `tools.discoveryMode` | enum | `auto` | `auto`, `off`, `mcp-only`, `all`. Controls dynamic tool discovery. |
 | `tools.essentialOverride` | array | `[]` | Tool names kept available even when tools are narrowed. |
@@ -484,8 +494,8 @@ lsp:
 | `launch.enabled` | boolean | `true` | Enable the launch tool for shared long-running project processes. |
 | `bash.autoBackground.enabled` | boolean | `false` | Auto-background long-running commands. |
 | `bash.autoBackground.thresholdMs` | number | `60000` | Threshold before auto-backgrounding. |
-| `eval.py` | boolean | `true` | Python eval backend. `PI_PY=0` disables for the process. |
-| `eval.js` | boolean | `true` | JavaScript eval backend. `PI_JS=0` disables for the process. |
+| `eval.py` | boolean | `true` | Python eval backend. `VEYYON_PY=0` disables for the process. |
+| `eval.js` | boolean | `true` | JavaScript eval backend. `VEYYON_JS=0` disables for the process. |
 | `python.kernelMode` | enum | `session` | `session` (persistent kernel) or `per-call`. |
 | `python.interpreter` | string | `""` | Path to a Python interpreter; empty = auto-detect. |
 | `lsp.enabled` | boolean | `true` | Language-server integration. `--no-lsp` disables for the run. |
@@ -534,30 +544,28 @@ contextPromotion:
 
 compaction:
   enabled: true
-  strategy: snapcompact     # context-full, handoff, shake, snapcompact, off
-  midTurnEnabled: true      # check thresholds between tool-loop provider requests
-  thresholdPercent: -1       # -1 = default reserve-based behavior
-  thresholdTokens: -1        # fixed token limit when > 0
+  strategy: snap              # handoff | snap (schema default)
+  midTurnEnabled: true        # check thresholds between tool-loop provider requests
+  thresholdPercent: -1        # -1 = provider/reserve default
+  thresholdTokens: -1         # fixed token limit when > 0
   remoteEnabled: true
 
 memory:
-  backend: off               # off, local, hindsight, mnemopi
+  backend: off                # off, local, hindsight, mnemopi
 ```
 
 | Key | Type | Default | Notes |
 |---|---|---|---|
-| `contextPromotion.enabled` | boolean | `false` | Promote to the active model's explicit `contextPromotionTarget` on context overflow. |
+| `contextPromotion.enabled` | boolean | `false` | Promote to a larger-context model on overflow instead of compacting. |
 | `compaction.enabled` | boolean | `true` | Automatic conversation compaction. |
 | `compaction.midTurnEnabled` | boolean | `true` | Check thresholds at safe mid-turn tool-loop boundaries before the next provider request. |
-| `compaction.strategy` | enum | `snapcompact` | `context-full`, `handoff`, `shake`, `snapcompact`, `off`. |
-| `compaction.thresholdPercent` | number | `-1` | Percent-of-context trigger; `-1` = reserve-based default. |
+| `compaction.strategy` | enum | `snap` | `handoff` (LLM handoff summary / new session transfer) or `snap` (snapcompact dense image archive; no LLM call for the archive path). |
+| `compaction.model` | string | unset | Model for handoff/LLM compaction; unset inherits interactive (`modelRoles.default`). |
+| `compaction.thresholdPercent` | number | `-1` | Percent-of-context trigger; `-1` = reserve/provider default. |
 | `compaction.thresholdTokens` | number | `-1` | Fixed token trigger when `> 0`. |
-| `compaction.reserveTokens` | number | `16384` | Tokens reserved for the next turn. |
-| `compaction.keepRecentTokens` | number | `20000` | Recent tokens always preserved. |
 | `compaction.remoteEnabled` | boolean | `true` | Allow remote compaction service. |
-| `compaction.autoContinue` | boolean | `true` | Continue automatically after compaction. |
 | `memory.backend` | enum | `off` | `off`, `local`, `hindsight`, `mnemopi`. Each backend has its own `hindsight.*` / `mnemopi.*` / `memories.*` tuning keys. |
-| `autolearn.enabled` | boolean | `false` | Experimental: after the agent stops, nudge it to capture lessons to memory and create/enhance isolated managed skills under `~/.veyyon/agent/managed-skills`. Enables the `manage_skill` tool (and `learn` when a memory backend is active). |
+| `autolearn.enabled` | boolean | `false` | Experimental: after the agent stops, nudge it to capture lessons to memory and create/enhance isolated managed skills under `~/.veyyon/profiles/default/agent/managed-skills`. Enables the `manage_skill` tool (and `learn` when a memory backend is active). |
 | `autolearn.autoContinue` | boolean | `false` | When `autolearn.enabled`, auto-run one capture turn at stop (uses extra tokens). Off = a passive reminder rides your next turn. |
 | `autolearn.minToolCalls` | number | `5` | Only nudge after a turn that used at least this many tools. |
 
@@ -654,8 +662,8 @@ searxng:
 | `providers.image` | enum | `auto` | `auto`, `openai`, `antigravity`, `xai`, `gemini`, `openrouter`. |
 | `providers.fetch` | enum | `auto` | `auto`, `native`, `trafilatura`, `lynx`, `parallel`, `jina`. |
 | `providers.tinyModel` | enum | `online` | `online` or a local model (`lfm2-350m`, `qwen3-0.6b`, `gemma-270m`, `qwen2.5-0.5b`, `lfm2-700m`). |
-| `providers.tinyModelDevice` | enum | `default` | ONNX execution provider for local tiny models. Overridden by `PI_TINY_DEVICE`. |
-| `providers.tinyModelDtype` | enum | `default` | ONNX precision for local tiny models. Overridden by `PI_TINY_DTYPE`. |
+| `providers.tinyModelDevice` | enum | `default` | ONNX execution provider for local tiny models. Overridden by `VEYYON_TINY_DEVICE`. |
+| `providers.tinyModelDtype` | enum | `default` | ONNX precision for local tiny models. Overridden by `VEYYON_TINY_DTYPE`. |
 | `providers.openaiWebsockets` | enum | `auto` | `auto`, `off`, `on`. |
 | `providers.openrouterVariant` | enum | `default` | `default`, `nitro`, `floor`, `online`, `exacto`. |
 | `providers.kimiApiFormat` | enum | `anthropic` | `openai`, `anthropic`. |
@@ -666,8 +674,8 @@ searxng:
 | `exa.enableWebsets` | boolean | `false` | Exa websets. |
 | `searxng.endpoint` | string | _(unset)_ | SearXNG instance URL. |
 | `searxng.token` | string | _(unset)_ | SearXNG token; also `searxng.basicUsername`/`searxng.basicPassword`/`searxng.categories`/`searxng.language`. |
-| `auth.broker.url` | string | _(unset)_ | Auth-broker URL. Overridden by `OMP_AUTH_BROKER_URL`. |
-| `auth.broker.token` | string | _(unset)_ | Auth-broker token. Overridden by `OMP_AUTH_BROKER_TOKEN`. |
+| `auth.broker.url` | string | _(unset)_ | Auth-broker URL. Overridden by `VEYYON_AUTH_BROKER_URL`. |
+| `auth.broker.token` | string | _(unset)_ | Auth-broker token. Overridden by `VEYYON_AUTH_BROKER_TOKEN`. |
 
 Provider credentials and custom model definitions are configured separately — see [Providers](./providers.md) and [Models](./models.md).
 
@@ -681,9 +689,9 @@ Provider credentials and custom model definitions are configured separately — 
 
 ### Startup migration to `config.yml`
 
-When `~/.veyyon/agent/config.yml` does not exist, startup builds it once from legacy sources, then writes the result:
+When `~/.veyyon/profiles/default/agent/config.yml` does not exist, startup builds it once from legacy sources, then writes the result:
 
-1. `~/.veyyon/agent/settings.json` (renamed to `settings.json.bak` after a successful migration).
+1. `~/.veyyon/profiles/default/agent/settings.json` (renamed to `settings.json.bak` after a successful migration).
 2. Settings persisted in `agent.db`.
 
 After `config.yml` exists, these legacy sources are no longer consulted. The generic config loader also performs `.json` -> `.yml` migration for other config files when only the `.json` form is present.
@@ -729,7 +737,7 @@ Arrays replace; they do not append. If a project sets `disabledProviders`, `enab
 
 ### `veyyon config reset` did not remove my key
 
-`reset` writes the schema **default** value into the global config — it persists the default rather than deleting the key. To stop overriding a project value from global config, delete the key from `~/.veyyon/agent/config.yml` by hand.
+`reset` writes the schema **default** value into the global config — it persists the default rather than deleting the key. To stop overriding a project value from global config, delete the key from `~/.veyyon/profiles/default/agent/config.yml` by hand.
 
 ### A `--config` overlay fails at startup
 

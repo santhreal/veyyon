@@ -6,7 +6,7 @@
  * Requests per-result summaries via `contents.summary` and synthesizes
  * them into a combined `answer` string on the SearchResponse.
  */
-import { type ApiKey, type AuthStorage, type FetchImpl, getEnvApiKey, withAuth } from "@veyyon/pi-ai";
+import { type ApiKey, type AuthStorage, type FetchImpl, getEnvApiKey, withAuth } from "@veyyon/ai";
 import { getDefault, settings } from "../../../config/settings";
 import { findApiKey, isSearchResponse } from "../../../exa/mcp-client";
 import { parseSSE } from "../../../mcp/json-rpc";
@@ -307,24 +307,26 @@ async function callExaSearch(apiKey: string, params: ExaSearchParams): Promise<E
 
 	const fetchImpl = params.fetch ?? fetch;
 	await waitForExaSearchSlot(params.signal);
-	const response = await fetchImpl(EXA_API_URL, {
-		method: "POST",
-		headers: {
-			"Content-Type": "application/json",
-			"x-api-key": apiKey,
-		},
-		body: JSON.stringify(body),
-		signal: withHardTimeout(params.signal),
+	return withHardTimeout(params.signal, async hardSignal => {
+		const response = await fetchImpl(EXA_API_URL, {
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+				"x-api-key": apiKey,
+			},
+			body: JSON.stringify(body),
+			signal: hardSignal,
+		});
+
+		if (!response.ok) {
+			const errorText = await response.text();
+			const classified = classifyProviderHttpError("exa", response.status, errorText);
+			if (classified) throw classified;
+			throw new SearchProviderError("exa", `Exa API error (${response.status}): ${errorText}`, response.status);
+		}
+
+		return response.json() as Promise<ExaSearchResponse>;
 	});
-
-	if (!response.ok) {
-		const errorText = await response.text();
-		const classified = classifyProviderHttpError("exa", response.status, errorText);
-		if (classified) throw classified;
-		throw new SearchProviderError("exa", `Exa API error (${response.status}): ${errorText}`, response.status);
-	}
-
-	return response.json() as Promise<ExaSearchResponse>;
 }
 function buildExaMcpArgs(params: ExaSearchParams): Record<string, unknown> {
 	const args: Record<string, unknown> = { query: params.query };
@@ -344,52 +346,54 @@ async function callExaMcpSearch(params: ExaSearchParams): Promise<ExaSearchRespo
 	query.set("tools", "web_search_exa");
 	const fetchImpl = params.fetch ?? fetch;
 	await waitForExaSearchSlot(params.signal);
-	const response = await fetchImpl(`https://mcp.exa.ai/mcp?${query.toString()}`, {
-		method: "POST",
-		headers: {
-			"Content-Type": "application/json",
-			Accept: "application/json, text/event-stream",
-		},
-		body: JSON.stringify({
-			jsonrpc: "2.0",
-			id: Math.random().toString(36).slice(2),
-			method: "tools/call",
-			params: {
-				name: "web_search_exa",
-				arguments: buildExaMcpArgs(params),
+	return withHardTimeout(params.signal, async hardSignal => {
+		const response = await fetchImpl(`https://mcp.exa.ai/mcp?${query.toString()}`, {
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+				Accept: "application/json, text/event-stream",
 			},
-		}),
-		signal: withHardTimeout(params.signal),
+			body: JSON.stringify({
+				jsonrpc: "2.0",
+				id: Math.random().toString(36).slice(2),
+				method: "tools/call",
+				params: {
+					name: "web_search_exa",
+					arguments: buildExaMcpArgs(params),
+				},
+			}),
+			signal: hardSignal,
+		});
+		if (!response.ok) {
+			throw new Error(`MCP request failed: ${response.status} ${response.statusText}`);
+		}
+		const mcpResponse = parseSSE(await response.text()) as {
+			result?: {
+				content?: Array<{ type: string; text?: string }>;
+			};
+			error?: {
+				code: number;
+				message: string;
+			};
+		} | null;
+		if (!mcpResponse) {
+			throw new Error("Failed to parse MCP response");
+		}
+		if (mcpResponse.error) {
+			throw new Error(`MCP error: ${mcpResponse.error.message}`);
+		}
+		const responsePayload = normalizeExaMcpPayload(mcpResponse.result);
+		if (isSearchResponse(responsePayload)) {
+			return responsePayload as ExaSearchResponse;
+		}
+
+		const parsed = parseExaMcpTextPayload(responsePayload);
+		if (parsed) {
+			return parsed;
+		}
+
+		throw new Error("Exa MCP search returned unexpected response shape.");
 	});
-	if (!response.ok) {
-		throw new Error(`MCP request failed: ${response.status} ${response.statusText}`);
-	}
-	const mcpResponse = parseSSE(await response.text()) as {
-		result?: {
-			content?: Array<{ type: string; text?: string }>;
-		};
-		error?: {
-			code: number;
-			message: string;
-		};
-	} | null;
-	if (!mcpResponse) {
-		throw new Error("Failed to parse MCP response");
-	}
-	if (mcpResponse.error) {
-		throw new Error(`MCP error: ${mcpResponse.error.message}`);
-	}
-	const responsePayload = normalizeExaMcpPayload(mcpResponse.result);
-	if (isSearchResponse(responsePayload)) {
-		return responsePayload as ExaSearchResponse;
-	}
-
-	const parsed = parseExaMcpTextPayload(responsePayload);
-	if (parsed) {
-		return parsed;
-	}
-
-	throw new Error("Exa MCP search returned unexpected response shape.");
 }
 
 /** Execute Exa web search */

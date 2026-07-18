@@ -1,9 +1,9 @@
 import { describe, expect, it } from "bun:test";
-import Plugin from "@veyyon/pi-coding-agent/commands/plugin";
-import type { CliConfig } from "@veyyon/pi-utils/cli";
+import Plugin from "@veyyon/coding-agent/commands/plugin";
+import type { CliConfig } from "@veyyon/utils/cli";
 
 const TEST_CONFIG: CliConfig = {
-	bin: "omp",
+	bin: "veyyon",
 	version: "0.0.0-test",
 	commands: new Map(),
 };

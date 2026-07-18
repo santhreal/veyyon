@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
-import { streamAnthropic } from "@veyyon/pi-ai/providers/anthropic";
-import { AnthropicMessages } from "@veyyon/pi-ai/providers/anthropic-client";
+import { streamAnthropic } from "@veyyon/ai/providers/anthropic";
+import { AnthropicMessages } from "@veyyon/ai/providers/anthropic-client";
 import type {
 	AssistantMessage,
 	AssistantMessageEvent,
@@ -8,8 +8,8 @@ import type {
 	Message,
 	Model,
 	ProviderSessionState,
-} from "@veyyon/pi-ai/types";
-import { buildModel } from "@veyyon/pi-catalog/build";
+} from "@veyyon/ai/types";
+import { buildModel } from "@veyyon/catalog/build";
 
 /**
  * Regression for #4297 — the anthropic-messages transport auto-heals the very

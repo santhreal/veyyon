@@ -1,0 +1,164 @@
+# veyyon security pipeline — the Santh CI security standard applied to this
+# repo. Five independent jobs, each fails closed on a real finding:
+#   secret-scan   keyhog scans the tree for leaked credentials
+#   cargo-deny    supply-chain gate (advisories, licenses, bans, sources)
+#   cargo-audit   RUSTSEC advisory scan of the Rust dependency graph
+#   bun-audit     npm advisory scan of the JS/TS dependency graph
+#   codeql        static application security testing (SAST) for JS/TS
+#
+# Runs on every push to main and every PR (fast feedback), plus a nightly
+# schedule so newly published advisories are caught against an unchanged tree,
+# plus manual dispatch.
+name: Security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # 03:17 UTC daily — offset off the hour to avoid the cron stampede.
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: "security-${{ github.ref }}"
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  secret-scan:
+    name: Secret scan (keyhog)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Hyperscan runtime
+        # keyhog links libhyperscan (libhs.so.5) for its regex engine; it isn't
+        # preinstalled on the runner.
+        run: sudo apt-get update && sudo apt-get install -y libhyperscan5
+      - name: Install keyhog
+        # Pin a release and fetch the linux binary directly with a SHA-256 check.
+        # keyhog's install.sh insists on a full signed GPU-sidecar bundle that
+        # isn't needed for a CPU-backend CI scan, so the direct download is the
+        # robust, reproducible path here.
+        env:
+          KEYHOG_VERSION: v0.5.40
+        run: |
+          base="https://github.com/santhreal/keyhog/releases/download/${KEYHOG_VERSION}"
+          curl -fsSL -o keyhog "$base/keyhog-linux-x86_64"
+          curl -fsSL -o keyhog.sha256 "$base/keyhog-linux-x86_64.sha256"
+          echo "$(awk '{print $1}' keyhog.sha256)  keyhog" | sha256sum -c -
+          chmod +x keyhog
+          mkdir -p "$HOME/.local/bin"
+          mv keyhog "$HOME/.local/bin/keyhog"
+          "$HOME/.local/bin/keyhog" --version
+      - name: Scan the repo for new secrets
+        # --precision drops entropy/ML-speculative noise and raises the confidence
+        # floor; the committed baseline suppresses the known public OAuth client IDs
+        # and test fixtures, so the job fails only on a genuinely NEW leak.
+        #
+        # keyhog fails closed (exit 13) when it cannot scan every byte — e.g. the
+        # image/tarball/embedded-byte test fixtures it detects as binary. A real
+        # secret in *text* still yields exit 1 even when binaries are present
+        # (verified), so exit 13 provably means "no findings, coverage just
+        # incomplete." We therefore gate on exit-code semantics rather than a
+        # fragile hand-maintained binary exclude-list: fail on secrets (1/10) or a
+        # genuine source failure, tolerate benign binary skips.
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          set +e
+          keyhog scan . \
+            --precision \
+            --backend cpu \
+            --baseline .keyhog-baseline.json \
+            --exclude-paths node_modules \
+            --exclude-paths target \
+            --exclude-paths '**/target' \
+            --exclude-paths .git \
+            --exclude-paths dist \
+            --exclude-paths '**/dist' \
+            --exclude-paths '**/adv-debug-*' \
+            2> keyhog.stderr
+          code=$?
+          set -e
+          cat keyhog.stderr
+          case "$code" in
+            0)
+              echo "keyhog: clean, full coverage." ;;
+            1|10)
+              echo "::error::keyhog found secret material (exit $code)."
+              exit 1 ;;
+            13)
+              # Coverage incomplete. Fail only if a real source failure caused it;
+              # benign binary/unreadable-file skips are expected on this tree.
+              if grep -qiE 'requested source failed|permission denied|no such file|i/o error|failed to read' keyhog.stderr; then
+                echo "::error::keyhog could not read a requested source (exit 13)."
+                exit 1
+              fi
+              echo "keyhog: no secrets found; some binary files were unscannable (benign)." ;;
+            *)
+              echo "::error::keyhog exited unexpectedly (exit $code)."
+              exit 1 ;;
+          esac
+
+  cargo-deny:
+    name: Supply chain (cargo-deny)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install cargo-deny
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deny
+      - name: cargo deny check
+        # Runs every check in deny.toml (advisories, licenses, bans, sources).
+        run: cargo deny check
+
+  cargo-audit:
+    name: RUSTSEC audit (cargo-audit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install cargo-audit
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
+      - name: cargo audit
+        # Deny warnings so unmaintained/yanked advisories fail the job too, not
+        # just RUSTSEC vulnerabilities. Cargo.lock is the audited input.
+        run: cargo audit --deny warnings
+
+  bun-audit:
+    name: npm advisory audit (bun)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/bun-install
+      - name: bun audit
+        # Fail on any advisory of high severity or worse in the JS/TS graph.
+        run: bun audit --audit-level=high
+
+  codeql:
+    name: SAST (CodeQL JS/TS)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+          # security-and-quality adds maintainability/correctness queries on top
+          # of the default security suite.
+          queries: security-and-quality
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+      - name: Analyze
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:javascript-typescript"

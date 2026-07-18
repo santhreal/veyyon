@@ -1,5 +1,5 @@
-import type { ImageContent } from "@veyyon/pi-ai";
-import { logger } from "@veyyon/pi-utils";
+import type { ImageContent } from "@veyyon/ai";
+import { errorMessage, logger } from "@veyyon/utils";
 import { type BlobPutResult, blobExtensionForImageMimeType } from "../session/blob-store";
 import { fileHyperlink } from "../tui/hyperlink";
 
@@ -90,7 +90,7 @@ async function materializeImageReferenceLinkAsync(
 		logger.warn("Failed to write image reference blob", {
 			index,
 			mimeType: image.mimeType,
-			error: error instanceof Error ? error.message : String(error),
+			error: errorMessage(error),
 		});
 		return undefined;
 	}
@@ -110,7 +110,7 @@ function materializeImageReferenceLink(
 		logger.warn("Failed to write image reference blob", {
 			index,
 			mimeType: image.mimeType,
-			error: error instanceof Error ? error.message : String(error),
+			error: errorMessage(error),
 		});
 		return undefined;
 	}

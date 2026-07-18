@@ -1,8 +1,8 @@
 /**
  * `veyyon auth-broker` — manage the veyyon credential vault.
  */
-import { APP_NAME } from "@veyyon/pi-utils";
-import { Args, Command, Flags, renderCommandHelp } from "@veyyon/pi-utils/cli";
+import { APP_NAME } from "@veyyon/utils";
+import { Args, Command, Flags, renderCommandHelp } from "@veyyon/utils/cli";
 import {
 	AUTH_BROKER_ACTIONS,
 	type AuthBrokerAction,

@@ -2,6 +2,7 @@ import { afterAll, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { hermeticSpawnEnv } from "../helpers/hermetic-spawn-env";
 
 // E2E twins for the non-TTY stdin contract:
 //
@@ -23,8 +24,10 @@ const cliEntry = path.join(repoRoot, "src", "cli.ts");
 const agentDir = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-nontty-test-"));
 // Empty project dir so repo discovery/extensions don't slow startup.
 const projectDir = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-nontty-proj-"));
+const hermetic = hermeticSpawnEnv({ VEYYON_NO_TITLE: "1", VEYYON_CODING_AGENT_DIR: agentDir });
 
 afterAll(() => {
+	hermetic.cleanup();
 	fs.rmSync(agentDir, { recursive: true, force: true });
 	fs.rmSync(projectDir, { recursive: true, force: true });
 });
@@ -38,12 +41,7 @@ const spawnCli = (
 		stdin,
 		stdout: "pipe",
 		stderr: "pipe",
-		env: {
-			...process.env,
-			NO_COLOR: "1",
-			PI_NO_TITLE: "1",
-			VEYYON_CODING_AGENT_DIR: agentDir,
-		},
+		env: hermetic.env,
 	});
 	const done = Promise.all([
 		new Response(proc.stdout as ReadableStream).text(),
@@ -71,6 +69,33 @@ describe("non-TTY stdin contract (e2e)", () => {
 		expect(stderr).toContain("Interactive mode needs a terminal");
 		// The old failure mode: zero bytes on both streams, process never exits.
 		expect(stdout + stderr).not.toBe("");
+	}, 60_000);
+
+	it("positional args with non-TTY stdin name both fixes: the -p rerun and the subcommand possibility", async () => {
+		const { done } = spawnCli(["sessions", "list"], "ignore");
+		const { stderr, exitCode } = await done;
+
+		expect(exitCode).toBe(1);
+		expect(stderr).toContain("Interactive mode needs a terminal");
+		// The exact rerun command, with the positional prompt quoted into it.
+		expect(stderr).toContain('veyyon -p "sessions list"');
+		// The typo'd-subcommand escape hatch.
+		expect(stderr).toContain('If "sessions" was meant as a subcommand');
+		expect(stderr).toContain("veyyon --help");
+		// The old message lied when positionals were present.
+		expect(stderr).not.toContain("no prompt was piped in");
+	}, 60_000);
+
+	it("a typo'd subcommand with trailing args gets a did-you-mean, which the bare pre-launch guard cannot give", async () => {
+		// `veyyon confg get foo` — argc 3, so the argc===1 pre-launch near-miss
+		// guard never fires; the non-TTY error must carry the suggestion instead.
+		const { done } = spawnCli(["confg", "get", "foo"], "ignore");
+		const { stderr, exitCode } = await done;
+
+		expect(exitCode).toBe(1);
+		expect(stderr).toContain('veyyon -p "confg get foo"');
+		expect(stderr).toContain("Did you mean");
+		expect(stderr).toContain("`veyyon config`");
 	}, 60_000);
 
 	it("`-p` with a piped prompt consumes it (reaches print mode) instead of silently exiting 0", async () => {

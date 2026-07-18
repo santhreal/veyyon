@@ -14,7 +14,7 @@ import {
 	isEnoent,
 	logger,
 	MAIN_CONFIG_FILENAMES,
-} from "@veyyon/pi-utils";
+} from "@veyyon/utils";
 import { YAML } from "bun";
 import { AuthStorage } from "../auth-storage";
 import * as AIError from "../error";
@@ -114,13 +114,13 @@ async function readConfigYaml(agentDir: string): Promise<ConfigSnapshot> {
 }
 
 function resolveSnapshotTtlMs(): number {
-	const raw = $pickenv("VEYYON_AUTH_BROKER_SNAPSHOT_TTL_MS", "OMP_AUTH_BROKER_SNAPSHOT_TTL_MS");
+	const raw = $pickenv("VEYYON_AUTH_BROKER_SNAPSHOT_TTL_MS");
 	if (raw === undefined) return DEFAULT_SNAPSHOT_CACHE_TTL_MS;
 	const value = raw.trim();
 	if (value === "") return DEFAULT_SNAPSHOT_CACHE_TTL_MS;
 	const ttlMs = Number(value);
 	if (Number.isFinite(ttlMs) && ttlMs >= 0) return ttlMs;
-	logger.warn("Invalid VEYYON_AUTH_BROKER_SNAPSHOT_TTL_MS / OMP_AUTH_BROKER_SNAPSHOT_TTL_MS; using default", {
+	logger.warn("Invalid VEYYON_AUTH_BROKER_SNAPSHOT_TTL_MS; using default", {
 		value: raw,
 	});
 	return DEFAULT_SNAPSHOT_CACHE_TTL_MS;
@@ -129,8 +129,7 @@ function resolveSnapshotTtlMs(): number {
 /**
  * Resolve broker connection configuration using the same precedence as the TUI:
  *
- * 1. `VEYYON_AUTH_BROKER_URL` / `VEYYON_AUTH_BROKER_TOKEN` env vars
- *    (`OMP_AUTH_BROKER_*` legacy fallbacks).
+ * 1. `VEYYON_AUTH_BROKER_URL` / `VEYYON_AUTH_BROKER_TOKEN` env vars.
  * 2. `auth.broker.url` / `auth.broker.token` in `<agentDir>/config.yml` or `<agentDir>/config.yaml`.
  * 3. `<config-root>/auth-broker.token` file (paired with a URL from env/config).
  *
@@ -144,8 +143,8 @@ export async function resolveAuthBrokerConfig(
 	const agentDir = options.agentDir ?? getAgentDir();
 	const resolveConfig = options.configValueResolver ?? defaultResolveConfigValue;
 
-	const envUrl = $pickenv("VEYYON_AUTH_BROKER_URL", "OMP_AUTH_BROKER_URL");
-	const envToken = $pickenv("VEYYON_AUTH_BROKER_TOKEN", "OMP_AUTH_BROKER_TOKEN");
+	const envUrl = $pickenv("VEYYON_AUTH_BROKER_URL");
+	const envToken = $pickenv("VEYYON_AUTH_BROKER_TOKEN");
 
 	let url = envUrl && envUrl.length > 0 ? envUrl : undefined;
 	let configToken: string | undefined;
@@ -167,8 +166,8 @@ export async function resolveAuthBrokerConfig(
 	if (!token) {
 		throw new AIError.MissingApiKeyError(
 			undefined,
-			`OMP_AUTH_BROKER_URL is set (${url}) but no bearer token is available. ` +
-				`Set OMP_AUTH_BROKER_TOKEN, the \`auth.broker.token\` config entry, or place one at ${getAuthBrokerTokenFilePath()}.`,
+			`VEYYON_AUTH_BROKER_URL is set (${url}) but no bearer token is available. ` +
+				`Set VEYYON_AUTH_BROKER_TOKEN, the \`auth.broker.token\` config entry, or place one at ${getAuthBrokerTokenFilePath()}.`,
 		);
 	}
 	return { url, token };

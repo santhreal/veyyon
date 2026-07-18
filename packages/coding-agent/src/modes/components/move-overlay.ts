@@ -18,7 +18,7 @@ import {
 	padding,
 	routeSgrMouseInput,
 	type SgrMouseEvent,
-} from "@veyyon/pi-tui";
+} from "@veyyon/tui";
 import { theme } from "../theme/theme";
 import { matchesSelectCancel, matchesSelectDown, matchesSelectUp } from "../utils/keybinding-matchers";
 import {

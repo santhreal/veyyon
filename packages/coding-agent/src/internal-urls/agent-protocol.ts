@@ -13,7 +13,7 @@
  */
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { isEnoent } from "@veyyon/pi-utils";
+import { errorMessage, isEnoent } from "@veyyon/utils";
 import { applyQuery, pathToQuery } from "./json-query";
 import { artifactsDirsFromRegistry } from "./registry-helpers";
 import type { InternalResource, InternalUrl, ProtocolHandler, UrlCompletion } from "./types";
@@ -98,7 +98,7 @@ export class AgentProtocolHandler implements ProtocolHandler {
 			try {
 				jsonValue = JSON.parse(rawContent);
 			} catch (err) {
-				const message = err instanceof Error ? err.message : String(err);
+				const message = errorMessage(err);
 				throw new Error(`Output ${outputId} is not valid JSON: ${message}`);
 			}
 

@@ -4,11 +4,11 @@ import {
 	ChatMessageRequestType,
 	GetChatMessageRequestSchema,
 	GetChatMessageResponseSchema,
-} from "@veyyon/pi-catalog/discovery/devin-gen/exa/api_server_pb/api_server_pb";
+} from "@veyyon/catalog/discovery/devin-gen/exa/api_server_pb/api_server_pb";
 import {
 	GetUserJwtRequestSchema,
 	GetUserJwtResponseSchema,
-} from "@veyyon/pi-catalog/discovery/devin-gen/exa/auth_pb/auth_pb";
+} from "@veyyon/catalog/discovery/devin-gen/exa/auth_pb/auth_pb";
 import {
 	CacheControlType,
 	type ChatMessagePrompt,
@@ -16,7 +16,7 @@ import {
 	ChatToolChoiceSchema,
 	ChatToolDefinitionSchema,
 	PromptCacheOptionsSchema,
-} from "@veyyon/pi-catalog/discovery/devin-gen/exa/chat_pb/chat_pb";
+} from "@veyyon/catalog/discovery/devin-gen/exa/chat_pb/chat_pb";
 import {
 	ChatMessageSource,
 	type ChatToolCall,
@@ -26,9 +26,9 @@ import {
 	ImageDataSchema,
 	MetadataSchema,
 	StopReason,
-} from "@veyyon/pi-catalog/discovery/devin-gen/exa/codeium_common_pb/codeium_common_pb";
-import { calculateCost } from "@veyyon/pi-catalog/models";
-import { logger, parseStreamingJson, parseStreamingJsonThrottled } from "@veyyon/pi-utils";
+} from "@veyyon/catalog/discovery/devin-gen/exa/codeium_common_pb/codeium_common_pb";
+import { calculateCost } from "@veyyon/catalog/models";
+import { logger, parseStreamingJson, parseStreamingJsonThrottled } from "@veyyon/utils";
 import * as AIError from "../error";
 import type {
 	Api,
@@ -484,7 +484,7 @@ function buildDevinChatRequest(
 	});
 }
 
-/** Map omp `Message` history onto Cascade `ChatMessagePrompt`s (USER / SYSTEM / TOOL channels). */
+/** Map veyyon `Message` history onto Cascade `ChatMessagePrompt`s (USER / SYSTEM / TOOL channels). */
 function buildChatMessagePrompts(messages: Message[], cascadeId: string): ChatMessagePrompt[] {
 	const prompts: ChatMessagePrompt[] = [];
 	// messageId seeds are `cascadeId\0index\0role[...]` — prompt text is excluded

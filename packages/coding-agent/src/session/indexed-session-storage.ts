@@ -1,4 +1,4 @@
-import { toError } from "@veyyon/pi-utils";
+import { toError } from "@veyyon/utils";
 import type {
 	SessionStorage,
 	SessionStorageStat,

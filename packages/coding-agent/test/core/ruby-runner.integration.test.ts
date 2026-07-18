@@ -1,15 +1,15 @@
 /**
  * End-to-end exercise of the subprocess-backed Ruby runner.
  *
- * Gated by `PI_RUBY_INTEGRATION=1` so CI without a real Ruby interpreter
+ * Gated by `VEYYON_RUBY_INTEGRATION=1` so CI without a real Ruby interpreter
  * (or sandboxes where subprocess spawning is restricted) does not fail.
  */
 import { afterEach, describe, expect, it } from "bun:test";
-import { disposeAllRubyKernelSessions, executeRubyWithKernel } from "@veyyon/pi-coding-agent/eval/rb/executor";
-import { RubyKernel } from "@veyyon/pi-coding-agent/eval/rb/kernel";
-import { TempDir } from "@veyyon/pi-utils";
+import { disposeAllRubyKernelSessions, executeRubyWithKernel } from "@veyyon/coding-agent/eval/rb/executor";
+import { RubyKernel } from "@veyyon/coding-agent/eval/rb/kernel";
+import { TempDir } from "@veyyon/utils";
 
-const SHOULD_RUN = Bun.env.PI_RUBY_INTEGRATION === "1";
+const SHOULD_RUN = Bun.env.VEYYON_RUBY_INTEGRATION === "1";
 
 describe.skipIf(!SHOULD_RUN)("ruby runner subprocess", () => {
 	afterEach(async () => {
@@ -73,6 +73,42 @@ describe.skipIf(!SHOULD_RUN)("ruby runner subprocess", () => {
 			if (json?.type === "json") {
 				expect(json.data).toEqual({ a: 1, b: [2, 3] });
 			}
+		} finally {
+			await kernel.shutdown();
+		}
+	});
+
+	it("renders to_veyyon_mime bundles, accepting to_omp_mime as the legacy name", async () => {
+		using tempDir = TempDir.createSync("@ruby-runner-mime-");
+		const kernel = await RubyKernel.start({ cwd: tempDir.path() });
+		try {
+			const primary = await executeRubyWithKernel(
+				kernel,
+				'class VeyyonCard; def to_veyyon_mime; { "text/markdown" => "**veyyon primary**" }; end; end; VeyyonCard.new',
+				{},
+			);
+			expect(primary.exitCode).toBe(0);
+			expect(primary.output).toContain("veyyon primary");
+			expect(primary.displayOutputs.some(o => o.type === "markdown")).toBe(true);
+
+			// Pre-rebrand notebooks may still implement the old hook name.
+			const legacy = await executeRubyWithKernel(
+				kernel,
+				'class OmpCard; def to_omp_mime; { "text/markdown" => "**legacy accepted**" }; end; end; OmpCard.new',
+				{},
+			);
+			expect(legacy.exitCode).toBe(0);
+			expect(legacy.output).toContain("legacy accepted");
+			expect(legacy.displayOutputs.some(o => o.type === "markdown")).toBe(true);
+
+			// When both exist, the veyyon name wins.
+			const both = await executeRubyWithKernel(
+				kernel,
+				'class BothCard; def to_veyyon_mime; { "text/markdown" => "**new name wins**" }; end; def to_omp_mime; { "text/markdown" => "**old name lost**" }; end; end; BothCard.new',
+				{},
+			);
+			expect(both.output).toContain("new name wins");
+			expect(both.output).not.toContain("old name lost");
 		} finally {
 			await kernel.shutdown();
 		}

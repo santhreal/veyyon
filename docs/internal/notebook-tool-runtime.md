@@ -109,12 +109,12 @@ In session mode:
 
 Kernel startup and per-execution environment patching can receive:
 
-- `PI_SESSION_FILE`
-- `PI_ARTIFACTS_DIR`
-- `PI_TOOL_BRIDGE_URL`
-- `PI_TOOL_BRIDGE_TOKEN`
-- `PI_TOOL_BRIDGE_SESSION`
-- `PI_EVAL_LOCAL_ROOTS`
+- `VEYYON_SESSION_FILE`
+- `VEYYON_ARTIFACTS_DIR`
+- `VEYYON_TOOL_BRIDGE_URL`
+- `VEYYON_TOOL_BRIDGE_TOKEN`
+- `VEYYON_TOOL_BRIDGE_SESSION`
+- `VEYYON_EVAL_LOCAL_ROOTS`
 
 The runner initializes process state so code executes in the requested cwd, managed env entries are reflected in `os.environ`, and cwd is available on `sys.path`.
 
@@ -137,7 +137,7 @@ Structured outputs captured separately include:
 
 - `application/json` -> JSON display output
 - `image/png` / `image/jpeg` -> image output
-- `application/x-omp-status` -> status event
+- `application/x-veyyon-status` -> status event
 
 Cancellation/timeout:
 

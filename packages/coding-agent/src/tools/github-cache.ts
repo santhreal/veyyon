@@ -20,7 +20,7 @@ import { Database } from "bun:sqlite";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { getGithubCacheDbPath, logger } from "@veyyon/pi-utils";
+import { getGithubCacheDbPath, logger } from "@veyyon/utils";
 import type { Settings } from "../config/settings";
 import { ToolAbortError } from "./tool-errors";
 

@@ -10,6 +10,10 @@
         <!-- Veyyon handbook: self-contained head additions. No remote resources. -->
         <meta name="theme-color" content="#050505">
         <meta name="color-scheme" content="dark">
+        <!-- Site favicons live at the deployed root, one level above /docs/. -->
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+        <link rel="icon" href="/favicon.ico" sizes="48x48">
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png">
         <style>
           /* Paint the near-black surface before CSS/JS resolve the theme, so there is
              no light flash on load. Kept in sync with theme/veyyon.css. */
@@ -18,7 +22,7 @@
           *, *::before, *::after { box-sizing: border-box; }
         </style>
 
-        <meta name="description" content="How Veyyon turns open models into frontier coding agents. The product, the harness, tool-call repair, the edit format, per-model adaptation, and how to use it.">
+        <meta name="description" content="Operator handbook for the Veyyon terminal coding agent: install, configuration, tools, approvals, edit formats, providers, and harness structure.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -38,7 +42,7 @@
         <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="../ayu-highlight-3fdfc3ac.css">
 
         <!-- Custom theme stylesheets -->
-        <link rel="stylesheet" href="../theme/veyyon-fc839a17.css">
+        <link rel="stylesheet" href="../theme/veyyon-06f6939e.css">
 
 
         <!-- Provide site root and default themes to javascript -->
@@ -46,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-e76f06ca.js";
+            window.path_to_searchindex_js = "../searchindex-a2447057.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-9cfd259b.js"></script>
+        <script src="../toc-cc1a72e9.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -192,13 +196,11 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="core-concepts"><a class="header" href="#core-concepts">Core concepts</a></h1>
-<p>This chapter is the mental model for how Veyyon runs. Read it when you need the vocabulary behind
-sessions, permissions, and the BYOK model boundary. Day-to-day commands live in <a href="../using/getting-started.html">Using Veyyon</a>;
-feature guides live under <a href="../features/index.html">Features</a>.</p>
+<p>Vocabulary for sessions, permissions, and the model/provider boundary. Operator commands:
+<a href="../using/getting-started.html">Using Veyyon</a>. Feature guides: <a href="../features/index.html">Features</a>.</p>
 <h2 id="what-this-chapter-covers"><a class="header" href="#what-this-chapter-covers">What this chapter covers</a></h2>
-<p>Veyyon is a terminal coding harness. The CLI is <strong><code>veyyon</code></strong>. You point it at a model endpoint with a key you
-supply, and the harness drives a loop of read, edit, verify, and stop. The concepts below explain the
-units of that loop and the contracts that keep it predictable across providers.</p>
+<p>The CLI is <strong><code>veyyon</code></strong>. It calls a configured model endpoint with your credentials and runs a tool loop
+(read, edit, verify, stop). The pages below define the units and contracts of that loop.</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -213,7 +215,7 @@ units of that loop and the contracts that keep it predictable across providers.<
 </div>
 <h2 id="foundations-that-pair-with-these-pages"><a class="header" href="#foundations-that-pair-with-these-pages">Foundations that pair with these pages</a></h2>
 <p>Before or after this chapter, the foundations pages give the design spine without repeating the
-day-to-day workflow:</p>
+operator workflow:</p>
 <ul>
 <li><a href="../foundations/core-concepts.html">Core concepts (foundations)</a> defines session, thread, turn, rollout
 JSONL, and the state database in more detail.</li>
@@ -231,14 +233,14 @@ JSONL, and the state database in more detail.</li>
                   ├─ endpoint + key               (your provider)
                   └─ model id                     (discovered or pinned)
 </code></pre>
-<p>The harness stays the same when you change providers. You change the endpoint, the key, and optionally
-the model id. Tool repair, edit verification, sandboxing, and context compaction remain harness
-behavior. See <a href="../using/configuring-providers.html">Configuring providers</a> for copy-paste setups and
-<a href="../using/models.html">Models and providers</a> for day-to-day model selection.</p>
+<p>Changing providers changes endpoint, credentials, and model id. Tool repair, edit verification,
+approvals, and context compaction remain harness behavior. See
+<a href="../using/configuring-providers.html">Configuring providers</a> and
+<a href="../using/models.html">Models and providers</a>.</p>
 <h2 id="related-reading"><a class="header" href="#related-reading">Related reading</a></h2>
 <ul>
-<li><a href="./permission-model.html">Permission model</a> and <a href="../features/sandbox.html">Approvals and autonomy</a> for the
-approval-mode ladder.</li>
+<li><a href="./permission-model.html">Permission model</a> and <a href="../features/sandbox.html">Approvals</a> for the
+approval modes.</li>
 <li>Prefer <code>--approval-mode auto-edit</code> for bounded automation.</li>
 <li><a href="../features/exec.html">Non-interactive mode</a> for scripted <code>veyyon</code> launch patterns.</li>
 </ul>

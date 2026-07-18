@@ -1,3 +1,4 @@
+import { trimTrailingSlashes } from "@veyyon/utils";
 import { type } from "arktype";
 import { getBundledModels } from "../models";
 import { toModelSpec } from "../provider-models/bundled-references";
@@ -154,7 +155,7 @@ function normalizeBaseUrl(baseUrl?: string): string {
 	if (!value) {
 		return GOOGLE_GENERATIVE_AI_BASE_URL;
 	}
-	return value.replace(/\/+$/, "");
+	return trimTrailingSlashes(value);
 }
 
 function normalizePositiveInt(value: number | undefined, fallback: number): number;

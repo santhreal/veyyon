@@ -1,11 +1,7 @@
 import { describe, expect, it } from "bun:test";
-import { getThemeByName } from "@veyyon/pi-coding-agent/modes/theme/theme";
-import {
-	recallToolRenderer,
-	reflectToolRenderer,
-	retainToolRenderer,
-} from "@veyyon/pi-coding-agent/tools/memory-render";
-import { sanitizeText } from "@veyyon/pi-utils";
+import { getThemeByName } from "@veyyon/coding-agent/modes/theme/theme";
+import { recallToolRenderer, reflectToolRenderer, retainToolRenderer } from "@veyyon/coding-agent/tools/memory-render";
+import { sanitizeText } from "@veyyon/utils";
 
 async function theme() {
 	const t = await getThemeByName("dark");

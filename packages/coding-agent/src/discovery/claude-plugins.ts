@@ -6,7 +6,7 @@
  */
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { logger } from "@veyyon/pi-utils";
+import { logger } from "@veyyon/utils";
 import { registerProvider } from "../capability";
 import { readFile } from "../capability/fs";
 import { type Hook, hookCapability } from "../capability/hook";
@@ -400,7 +400,7 @@ async function loadMCPServers(ctx: LoadContext): Promise<LoadResult<MCPServer>> 
 		const obj = parsed as Record<string, unknown>;
 
 		// Two shapes are supported:
-		//   nested: { "mcpServers": { name: cfg, ... } }   (OMP/Claude Code project shape)
+		//   nested: { "mcpServers": { name: cfg, ... } }   (Veyyon/Claude Code project shape)
 		//   flat:   { name: cfg, ... }                      (Claude marketplace plugin shape)
 		// If "mcpServers" is present and an object, treat it as the canonical map.
 		// Otherwise, treat the whole object as the server map.

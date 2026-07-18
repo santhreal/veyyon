@@ -13,16 +13,16 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import type { AgentToolResult } from "@veyyon/agent-core";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import { canonicalSnapshotKey, getFileSnapshotStore } from "@veyyon/coding-agent/edit/file-snapshot-store";
+import { HashlineFilesystem } from "@veyyon/coding-agent/edit/hashline/filesystem";
+import { writethroughNoop } from "@veyyon/coding-agent/lsp";
+import type { ToolSession } from "@veyyon/coding-agent/tools";
+import type { ReadToolDetails } from "@veyyon/coding-agent/tools/read";
+import { ReadTool } from "@veyyon/coding-agent/tools/read";
 import { Patch, Patcher } from "@veyyon/hashline";
-import type { AgentToolResult } from "@veyyon/pi-agent-core";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { canonicalSnapshotKey, getFileSnapshotStore } from "@veyyon/pi-coding-agent/edit/file-snapshot-store";
-import { HashlineFilesystem } from "@veyyon/pi-coding-agent/edit/hashline/filesystem";
-import { writethroughNoop } from "@veyyon/pi-coding-agent/lsp";
-import type { ToolSession } from "@veyyon/pi-coding-agent/tools";
-import type { ReadToolDetails } from "@veyyon/pi-coding-agent/tools/read";
-import { ReadTool } from "@veyyon/pi-coding-agent/tools/read";
-import { removeWithRetries } from "@veyyon/pi-utils";
+import { removeWithRetries } from "@veyyon/utils";
 
 const HASHLINE_HEADER_LINE = /^\[([^#\r\n]+)#([0-9A-F]{4})\]$/m;
 const COLUMN_CAP = 64;

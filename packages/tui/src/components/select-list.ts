@@ -1,4 +1,4 @@
-import { popLoopPhase, pushLoopPhase } from "@veyyon/pi-utils";
+import { popLoopPhase, pushLoopPhase } from "@veyyon/utils";
 import { fuzzyFilter } from "../fuzzy";
 import { getKeybindings } from "../keybindings";
 import { extractPrintableText } from "../keys";

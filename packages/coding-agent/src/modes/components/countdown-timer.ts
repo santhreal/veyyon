@@ -1,7 +1,7 @@
 /**
  * Reusable countdown timer for dialog components.
  */
-import type { Component, TUI } from "@veyyon/pi-tui";
+import type { Component, TUI } from "@veyyon/tui";
 
 export class CountdownTimer {
 	#intervalId: NodeJS.Timeout | undefined;

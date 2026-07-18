@@ -2,8 +2,8 @@
  * Get the API key or OAuth token for a provider.
  */
 
-import { PROVIDER_REGISTRY } from "@veyyon/pi-ai";
-import { Args, Command, Flags } from "@veyyon/pi-utils/cli";
+import { PROVIDER_REGISTRY } from "@veyyon/ai";
+import { Args, Command, Flags } from "@veyyon/utils/cli";
 import chalk from "chalk";
 import { isAuthenticated, ModelRegistry } from "../config/model-registry";
 import { discoverAuthStorage } from "../sdk";
@@ -139,6 +139,10 @@ export default class Token extends Command {
 				process.stderr.write(`${chalk.red(msg)}\n`);
 				if (activeProviders.size > 0) {
 					process.stderr.write(`Configured providers: ${Array.from(activeProviders).sort().join(", ")}\n`);
+				} else {
+					process.stderr.write(
+						"No providers are configured. Sign in with /login in an interactive session, or set the provider's API key environment variable.\n",
+					);
 				}
 				process.exitCode = 1;
 				return;

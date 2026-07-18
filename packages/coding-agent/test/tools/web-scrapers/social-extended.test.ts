@@ -1,17 +1,18 @@
 import { describe, expect, it } from "bun:test";
-import { handleBluesky } from "@veyyon/pi-coding-agent/web/scrapers/bluesky";
-import { handleMastodon } from "@veyyon/pi-coding-agent/web/scrapers/mastodon";
+import { handleBluesky } from "@veyyon/coding-agent/web/scrapers/bluesky";
+import { handleMastodon } from "@veyyon/coding-agent/web/scrapers/mastodon";
+import { asRender } from "../../helpers/scrapers";
 
 const SKIP = !Bun.env.WEB_FETCH_INTEGRATION;
 
 describe.skipIf(SKIP)("handleMastodon", () => {
 	it("returns null for non-Mastodon URLs", async () => {
-		const result = await handleMastodon("https://example.com", 20);
+		const result = asRender(await handleMastodon("https://example.com", 20));
 		expect(result).toBeNull();
 	});
 
 	it("returns null for URLs without @user pattern", async () => {
-		const result = await handleMastodon("https://mastodon.social/about", 20);
+		const result = asRender(await handleMastodon("https://mastodon.social/about", 20));
 		expect(result).toBeNull();
 	});
 
@@ -19,7 +20,7 @@ describe.skipIf(SKIP)("handleMastodon", () => {
 		"fetches a Mastodon profile",
 		async () => {
 			// @Gargron is Eugen Rochko, creator of Mastodon - very stable
-			const result = await handleMastodon("https://mastodon.social/@Gargron", 20);
+			const result = asRender(await handleMastodon("https://mastodon.social/@Gargron", 20));
 			expect(result).not.toBeNull();
 			expect(result?.method).toBe("mastodon");
 			expect(result?.contentType).toBe("text/markdown");
@@ -35,19 +36,19 @@ describe.skipIf(SKIP)("handleMastodon", () => {
 
 	it("returns null for non-Mastodon instance with @user pattern", async () => {
 		// A site that has @user pattern but isn't Mastodon
-		const result = await handleMastodon("https://twitter.com/@jack", 20);
+		const result = asRender(await handleMastodon("https://twitter.com/@jack", 20));
 		expect(result).toBeNull();
 	});
 });
 
 describe.skipIf(SKIP)("handleBluesky", () => {
 	it("returns null for non-Bluesky URLs", async () => {
-		const result = await handleBluesky("https://example.com", 20);
+		const result = asRender(await handleBluesky("https://example.com", 20));
 		expect(result).toBeNull();
 	});
 
 	it("returns null for bsky.app URLs without profile path", async () => {
-		const result = await handleBluesky("https://bsky.app/about", 20);
+		const result = asRender(await handleBluesky("https://bsky.app/about", 20));
 		expect(result).toBeNull();
 	});
 
@@ -55,7 +56,7 @@ describe.skipIf(SKIP)("handleBluesky", () => {
 		"fetches a Bluesky profile",
 		async () => {
 			// bsky.app official account - stable
-			const result = await handleBluesky("https://bsky.app/profile/bsky.app", 20);
+			const result = asRender(await handleBluesky("https://bsky.app/profile/bsky.app", 20));
 			expect(result).not.toBeNull();
 			expect(result?.method).toBe("bluesky-api");
 			expect(result?.contentType).toBe("text/markdown");
@@ -74,7 +75,7 @@ describe.skipIf(SKIP)("handleBluesky", () => {
 		"fetches Jay Graber's profile",
 		async () => {
 			// Jay Graber - CEO of Bluesky, very stable
-			const result = await handleBluesky("https://bsky.app/profile/jay.bsky.team", 20);
+			const result = asRender(await handleBluesky("https://bsky.app/profile/jay.bsky.team", 20));
 			expect(result).not.toBeNull();
 			expect(result?.method).toBe("bluesky-api");
 			expect(result?.contentType).toBe("text/markdown");

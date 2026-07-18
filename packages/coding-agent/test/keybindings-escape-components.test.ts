@@ -1,13 +1,13 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
-import { getBundledModel } from "@veyyon/pi-catalog/models";
-import { KeybindingsManager } from "@veyyon/pi-coding-agent/config/keybindings";
-import type { ModelRegistry } from "@veyyon/pi-coding-agent/config/model-registry";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { ModelHubComponent } from "@veyyon/pi-coding-agent/modes/components/model-hub";
-import { SessionSelectorComponent } from "@veyyon/pi-coding-agent/modes/components/session-selector";
-import { initTheme } from "@veyyon/pi-coding-agent/modes/theme/theme";
-import type { SessionInfo } from "@veyyon/pi-coding-agent/session/session-listing";
-import { setKeybindings, type TUI } from "@veyyon/pi-tui";
+import { getBundledModel } from "@veyyon/catalog/models";
+import { KeybindingsManager } from "@veyyon/coding-agent/config/keybindings";
+import type { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import { ModelHubComponent } from "@veyyon/coding-agent/modes/components/model-hub";
+import { SessionSelectorComponent } from "@veyyon/coding-agent/modes/components/session-selector";
+import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import type { SessionInfo } from "@veyyon/coding-agent/session/session-listing";
+import { setKeybindings, type TUI } from "@veyyon/tui";
 
 beforeAll(() => {
 	initTheme();

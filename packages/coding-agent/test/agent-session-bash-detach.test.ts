@@ -5,9 +5,9 @@
  * Target commit: b0950f7ed
  *
  * The fix lives in `crates/vendor/brush-core/src/commands.rs` and is
- * verified at the unit level by `pi-natives::shell::tests::child_session_action`
+ * verified at the unit level by `veyyon-natives::shell::tests::child_session_action`
  * (truth-table) and `embedded_external_command_runs_in_its_own_session` (real
- * brush spawn). This test pulls the fix end-to-end through the OMP coding
+ * brush spawn). This test pulls the fix end-to-end through the Veyyon coding
  * agent stack:
  *
  *   AgentSession.prompt
@@ -15,7 +15,7 @@
  *       → Agent loop dispatches a tool call
  *         → BashTool.execute
  *           → executeBash
- *             → pi-natives `Shell.run` (real native binding)
+ *             → veyyon-natives `Shell.run` (real native binding)
  *               → brush-core::execute_external_command (the patched code)
  *                 → spawned child reports getsid()/getpid()
  *
@@ -34,25 +34,25 @@
  *
  * If this test ever starts failing on macOS/Linux, the embedded-host bug is
  * back and `BashTool` invocations that touch `/dev/tty` or `tcsetpgrp` can
- * SIGTTIN/SIGTTOU the OMP host process.
+ * SIGTTIN/SIGTTOU the veyyon host process.
  */
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
 import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { Agent, type AgentMessage, type AgentTool } from "@veyyon/pi-agent-core";
-import { createMockModel, type MockResponse } from "@veyyon/pi-ai/providers/mock";
-import { getBundledModel } from "@veyyon/pi-catalog/models";
-import { ModelRegistry } from "@veyyon/pi-coding-agent/config/model-registry";
-import { resetSettingsForTest, Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { AgentSession } from "@veyyon/pi-coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/pi-coding-agent/session/auth-storage";
-import { convertToLlm } from "@veyyon/pi-coding-agent/session/messages";
-import { SessionManager } from "@veyyon/pi-coding-agent/session/session-manager";
-import type { ToolSession } from "@veyyon/pi-coding-agent/tools";
-import { BashTool } from "@veyyon/pi-coding-agent/tools/bash";
-import { removeSyncWithRetries, Snowflake } from "@veyyon/pi-utils";
+import { Agent, type AgentMessage, type AgentTool } from "@veyyon/agent-core";
+import { createMockModel, type MockResponse } from "@veyyon/ai/providers/mock";
+import { getBundledModel } from "@veyyon/catalog/models";
+import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
+import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
+import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
+import { convertToLlm } from "@veyyon/coding-agent/session/messages";
+import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import type { ToolSession } from "@veyyon/coding-agent/tools";
+import { BashTool } from "@veyyon/coding-agent/tools/bash";
+import { removeSyncWithRetries, Snowflake } from "@veyyon/utils";
 
 /** Scripted assistant turn that issues a single `bash` tool call. */
 function bashCall(command: string, callId: string): MockResponse {

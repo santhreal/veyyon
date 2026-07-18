@@ -3,10 +3,10 @@
  */
 
 import * as os from "node:os";
-import type { AgentTool } from "@veyyon/pi-agent-core";
-import type { ToolExample, TSchema } from "@veyyon/pi-ai";
-import { renderToolInventory } from "@veyyon/pi-ai/dialect";
-import { $env, getGpuCachePath, getProjectDir, hasFsCode, isEnoent, logger, prompt } from "@veyyon/pi-utils";
+import type { AgentTool } from "@veyyon/agent-core";
+import type { ToolExample, TSchema } from "@veyyon/ai";
+import { renderToolInventory } from "@veyyon/ai/dialect";
+import { $env, getGpuCachePath, getProjectDir, hasFsCode, isEnoent, logger, prompt } from "@veyyon/utils";
 import { contextFileCapability } from "./capability/context-file";
 import { systemPromptCapability } from "./capability/system-prompt";
 import { findConfigFile } from "./config";
@@ -21,6 +21,7 @@ import {
 	type ResolvedPersonality,
 	resolvePersonality,
 } from "./personality/resolver";
+import { applyPromptSectionOrder } from "./prompt-sections";
 import activeRepoContextTemplate from "./prompts/system/active-repo-context.md" with { type: "text" };
 import customSystemPromptTemplate from "./prompts/system/custom-system-prompt.md" with { type: "text" };
 import projectPromptTemplate from "./prompts/system/project-prompt.md" with { type: "text" };
@@ -510,6 +511,12 @@ export interface BuildSystemPromptOptions {
 	renderMermaid?: boolean;
 	/** Pre-resolved nested active repo context. Undefined resolves from cwd. */
 	activeRepoContext?: ActiveRepoContext | null;
+	/**
+	 * Reorder the default template's banner sections (see {@link PROMPT_SECTION_NAMES}).
+	 * Resolved from the model's harness profile `promptSectionOrder`. Ignored (loudly)
+	 * for custom prompt templates, which have no banner sections.
+	 */
+	sectionOrder?: readonly string[];
 }
 
 /** Result of building provider-facing system prompt messages. */
@@ -556,6 +563,7 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 		includeWorkspaceTree = false,
 		renderMermaid = true,
 		activeRepoContext: providedActiveRepoContext,
+		sectionOrder,
 	} = options;
 	const inlineToolDescriptors = providedInlineToolDescriptors ?? false;
 	const resolvedCwd = cwd ?? getProjectDir();
@@ -816,7 +824,14 @@ export async function buildSystemPrompt(options: BuildSystemPromptOptions = {}):
 		includeWorkspaceTree,
 		renderMermaid,
 	};
-	const rendered = prompt.render(resolvedCustomPrompt ? customSystemPromptTemplate : systemPromptTemplate, data);
+	let rendered = prompt.render(resolvedCustomPrompt ? customSystemPromptTemplate : systemPromptTemplate, data);
+	if (sectionOrder && sectionOrder.length > 0) {
+		if (resolvedCustomPrompt) {
+			logger.warn("harness promptSectionOrder is ignored for custom system prompt templates (no banner sections)");
+		} else {
+			rendered = applyPromptSectionOrder(rendered, sectionOrder);
+		}
+	}
 	const systemPrompt = [rendered];
 	// Custom prompt templates already render context files and append text; the
 	// project footer still carries environment, cwd, workspace, and dir-context.

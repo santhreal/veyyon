@@ -32,10 +32,10 @@ Two modes control what happens to each secret:
 
 Define custom secret entries in YAML. Two locations are checked:
 
-| Level   | Path                       | Purpose                     |
-| ------- | -------------------------- | --------------------------- |
-| Global  | `~/.veyyon/agent/secrets.yml` | Secrets across all projects |
-| Project | `<cwd>/.veyyon/secrets.yml`   | Project-specific secrets    |
+| Level   | Path                                              | Purpose                     |
+| ------- | ------------------------------------------------- | --------------------------- |
+| Global  | `~/.veyyon/profiles/default/agent/secrets.yml` (active agent dir) | Profile-wide secrets |
+| Project | `<cwd>/.veyyon/secrets.yml`                       | Project-specific secrets    |
 
 Project entries override global entries with matching `content`.
 

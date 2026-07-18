@@ -6,8 +6,8 @@
 - Entry: `packages/coding-agent/src/tools/ast-edit.ts`
 - Model-facing prompt: `packages/coding-agent/src/prompts/tools/ast-edit.md`
 - Key collaborators:
-  - `crates/pi-natives/src/ast.rs` — native rewrite planning and file mutation
-  - `crates/pi-ast/src/language/mod.rs` — language aliases and extension inference used by the native wrapper.
+  - `crates/veyyon-natives/src/ast.rs` — native rewrite planning and file mutation
+  - `crates/veyyon-ast/src/language/mod.rs` — language aliases and extension inference used by the native wrapper.
   - `packages/coding-agent/src/tools/path-utils.ts` — path/glob parsing and multi-path resolution
   - `packages/coding-agent/src/tools/resolve.ts` — preview/apply queueing
   - `packages/coding-agent/src/tools/render-utils.ts` — parse-error dedupe and display caps
@@ -49,11 +49,11 @@ Shared AST pattern grammar and language catalog: see [`ast_grep`](./ast-grep.md#
    - at least one op is required,
    - duplicate `pat` values fail,
    - ops are converted to a `Record<pattern, replacement>`.
-2. The wrapper reads `PI_MAX_AST_FILES` via `$envpos(..., 1000)` and uses that as the native `maxFiles` cap for both preview and apply.
+2. The wrapper reads `VEYYON_MAX_AST_FILES` via `$envpos(..., 1000)` and uses that as the native `maxFiles` cap for both preview and apply.
 3. Path normalization, internal URL handling, missing-path partitioning, and multi-path resolution follow the same `path-utils.ts` flow as `ast_grep`.
 4. The scope's `isDirectory` flag (set by a stat in `resolveToolSearchScope`) decides whether to render grouped directory output.
 5. `runAstEditOnce(...)` always runs native `astEdit(...)` with `dryRun: true` and `failOnParseError: false` on the first pass.
-6. Native `ast_edit` in `crates/pi-natives/src/ast.rs`:
+6. Native `ast_edit` in `crates/veyyon-natives/src/ast.rs`:
    - normalizes the rewrite map and sorts rules by pattern string,
    - resolves strictness (`smart` by default),
    - collects candidate files from a file or gitignore-aware directory scan,
@@ -89,11 +89,11 @@ Shared AST pattern grammar and language catalog: see [`ast_grep`](./ast-grep.md#
   - Cancellation and optional native timeout are cooperative through `CancelToken::heartbeat()`.
 
 ## Limits & Caps
-- File cap exposed by the wrapper: `PI_MAX_AST_FILES`, default `1000`, in `packages/coding-agent/src/tools/ast-edit.ts`.
-- Native `maxFiles` and `maxReplacements` are both clamped to at least `1` when provided in `crates/pi-natives/src/ast.rs`.
+- File cap exposed by the wrapper: `VEYYON_MAX_AST_FILES`, default `1000`, in `packages/coding-agent/src/tools/ast-edit.ts`.
+- Native `maxFiles` and `maxReplacements` are both clamped to at least `1` when provided in `crates/veyyon-natives/src/ast.rs`.
 - The wrapper never sets `maxReplacements`; native behavior therefore defaults to effectively unbounded replacements for a run.
 - Parse issues are deduplicated and capped at `PARSE_ERRORS_LIMIT = 20` entries via `capParseErrors(...)` in `packages/coding-agent/src/tools/render-utils.ts`; `details.parseErrors` carries the capped list and `details.parseErrorsTotal` the pre-cap deduplicated count.
-- Directory scans use `include_hidden: true`, `use_gitignore: true`, and skip `node_modules` unless the glob text explicitly mentions `node_modules` in `crates/pi-natives/src/ast.rs`.
+- Directory scans use `include_hidden: true`, `use_gitignore: true`, and skip `node_modules` unless the glob text explicitly mentions `node_modules` in `crates/veyyon-natives/src/ast.rs`.
 - No separate glob-expansion count cap exists. Candidate count is whatever the resolved path/glob expands to after gitignore filtering, then native `maxFiles` stops mutations after the configured number of touched files.
 - Preview text truncates each rendered `before` and `after` first line to 120 characters in `packages/coding-agent/src/tools/ast-edit.ts`.
 

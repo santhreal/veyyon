@@ -9,7 +9,7 @@ import { generateEnumExports } from "./gen-enums";
 process.env.PCRE2_SYS_STATIC ??= "1";
 
 const repoRoot = path.join(import.meta.dir, "../../..");
-const rustDir = path.join(repoRoot, "crates/pi-natives");
+const rustDir = path.join(repoRoot, "crates/veyyon-natives");
 const nativeDir = path.join(import.meta.dir, "../native");
 const packageJsonPath = path.join(import.meta.dir, "../package.json");
 
@@ -156,7 +156,7 @@ async function resolveBuiltAddonPath(outputDir: string, canonicalFilename: strin
 	}
 
 	const generatedCandidates = entries.filter(entry => {
-		if (!entry.startsWith(`pi_natives.${targetPlatform}-${targetArch}`) || !entry.endsWith(".node")) {
+		if (!entry.startsWith(`veyyon_natives.${targetPlatform}-${targetArch}`) || !entry.endsWith(".node")) {
 			return false;
 		}
 		return true;
@@ -372,10 +372,10 @@ if (crossTarget) {
 	await ensureZigbuildTargetDirLink(crossTarget, bareTriple);
 }
 
-const canonicalAddonFilename = `pi_natives.${targetPlatform}-${targetArch}${variantSuffix}.node`;
+const canonicalAddonFilename = `veyyon_natives.${targetPlatform}-${targetArch}${variantSuffix}.node`;
 const canonicalAddonPath = path.join(nativeDir, canonicalAddonFilename);
 
-console.log(`Building pi-natives for ${targetPlatform}-${targetArch}${variantSuffix}${profileSuffix}…`);
+console.log(`Building veyyon-natives for ${targetPlatform}-${targetArch}${variantSuffix}${profileSuffix}…`);
 
 await fs.mkdir(nativeDir, { recursive: true });
 await cleanupStaleTemps(nativeDir);

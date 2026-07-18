@@ -1,3 +1,4 @@
+import { errorMessage } from "@veyyon/utils";
 import type { ExtensionAPI } from "../extensibility/extensions";
 import * as git from "../utils/git";
 import * as jj from "../utils/jj";
@@ -66,7 +67,7 @@ export async function ensureAutoresearchBranch(
 	} catch (err) {
 		return {
 			ok: false,
-			error: `Unable to inspect git status before starting autoresearch: ${err instanceof Error ? err.message : String(err)}`,
+			error: `Unable to inspect git status before starting autoresearch: ${errorMessage(err)}`,
 		};
 	}
 
@@ -90,7 +91,7 @@ export async function ensureAutoresearchBranch(
 	} catch (err) {
 		return {
 			ok: false,
-			error: `Failed to create autoresearch branch ${branchName}: ${err instanceof Error ? err.message : String(err)}`,
+			error: `Failed to create autoresearch branch ${branchName}: ${errorMessage(err)}`,
 		};
 	}
 	return { ok: true, branchName, created: true };

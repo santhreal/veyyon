@@ -3,7 +3,7 @@
  * `anthropic-messages` despite the gateways only serving them at
  * `/v1/chat/completions`. Symptoms include raw MiniMax/tool-call markup
  * (`<invoke name="bash">`, `<tool_call>`, `<description>`, `<cwd>`,
- * `<|minimax|>`) leaking into the UI because OMP POSTs anthropic-shaped
+ * `<|minimax|>`) leaking into the UI because Veyyon POSTs anthropic-shaped
  * requests to /v1/messages and the gateway returns non-Anthropic responses.
  *
  * models.dev declares these ids with `provider.npm = "@ai-sdk/anthropic"`,
@@ -19,8 +19,8 @@ import {
 	type ModelsDevModel,
 	opencodeGoModelManagerOptions,
 	opencodeZenModelManagerOptions,
-} from "@veyyon/pi-catalog/provider-models/openai-compat";
-import type { FetchImpl } from "@veyyon/pi-catalog/types";
+} from "@veyyon/catalog/provider-models/openai-compat";
+import type { FetchImpl } from "@veyyon/catalog/types";
 
 const OPENCODE_ZEN_BASE = "https://opencode.ai/zen/v1";
 const OPENCODE_GO_BASE = "https://opencode.ai/zen/go/v1";

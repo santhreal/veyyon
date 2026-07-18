@@ -1,4 +1,4 @@
-import type { AgentTool, AgentToolResult } from "@veyyon/pi-agent-core";
+import type { AgentTool, AgentToolResult } from "@veyyon/agent-core";
 import { type } from "arktype";
 import memoryEditDescription from "../prompts/tools/memory-edit.md" with { type: "text" };
 import type { ToolSession } from ".";

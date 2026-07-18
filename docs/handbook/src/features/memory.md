@@ -3,14 +3,14 @@
 Veyyon can remember durable project context across sessions. Memory is **off by default**; pick a
 backend in `config.yml` or `/settings`.
 
-## Backends (built)
+## Backends
 
-| Backend | Storage | Best for |
+| Backend | Storage | Notes |
 | --- | --- | --- |
 | `off` | — | No memory injection or retention |
-| `local` | Markdown under the agent memories dir (`MEMORY.md`, `memory_summary.md`, `skills/`) | Curated summaries from past session files |
-| `mnemopi` | SQLite via `@veyyon/pi-mnemopi` | Vector + FTS recall, auto-retain, compaction hooks |
-| `hindsight` | Hindsight backend (when configured) | Alternative structured memory |
+| `local` | Markdown under the agent memories dir (`MEMORY.md`, `memory_summary.md`, `skills/`) | Summaries from past session files |
+| `mnemopi` | SQLite via `@veyyon/mnemopi` | Vector + FTS, auto-retain, compaction hooks |
+| `hindsight` | Hindsight server (when configured) | Remote bank; retain/recall/reflect tools |
 
 Enable in config:
 
@@ -44,15 +44,15 @@ session JSONL files, then consolidates into `MEMORY.md`, `memory_summary.md`, an
 
 Engineering detail: [`docs/memory.md`](../../../memory.md).
 
-## Compaction (three knobs)
+## Compaction (primary knobs)
 
 Context compaction is separate from durable memory. Settings → Compaction (or `config.yml`) exposes
-exactly three fields:
+these primary fields:
 
 | Setting | Key | Values |
 | --- | --- | --- |
-| Threshold | `compaction.thresholdPercent` | percent of the context window |
-| Type | `compaction.strategy` | `handoff` or `snap` |
+| Threshold | `compaction.thresholdPercent` | percent of the context window (`compaction.thresholdTokens` optional) |
+| Type | `compaction.strategy` | `handoff` or `snap` (schema default `snap`) |
 | Model | `compaction.model` | model id; unset uses the interactive model |
 
 `handoff` writes a structured session transfer; `snap` archives history via the snapcompact engine.
@@ -69,11 +69,4 @@ a plan and pair citations with fresh repo evidence.
 Use `/memory` or `/settings` (Memory group), or set keys under `memory.*`, `mnemopi.*`,
 `hindsight.*`, or `memories.*` depending on the active backend.
 
-> **Per-profile:** the active backend, its settings, and its stored data (mnemopi SQLite path,
-> local Markdown artifacts, hindsight bank id) are all scoped to the active profile
-> (`VEYYON_PROFILE`). Two profiles never share memory — switching profiles switches to an
-> independent `memory.backend` and an independent database/artifact set under that profile's
-> agent directory.
-
-> **Spec — not shipped:** rollout-DB memory phases, `<oai-mem-citation>` blocks, `rollout_summaries/`,
-> and a `/memories` settings pane. Veyyon uses the backends above instead.
+The active backend, its settings, and its stored data (mnemopi SQLite path, local Markdown artifacts, hindsight bank id) are scoped to the active profile (`VEYYON_PROFILE`). Profiles do not share memory stores.

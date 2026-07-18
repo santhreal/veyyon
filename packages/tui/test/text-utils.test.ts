@@ -7,7 +7,7 @@ import {
 	sliceWithWidth,
 	truncateToWidth,
 	visibleWidth,
-} from "@veyyon/pi-tui/utils";
+} from "@veyyon/tui/utils";
 import { Glob } from "bun";
 
 describe("text utils", () => {

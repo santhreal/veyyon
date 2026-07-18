@@ -1,9 +1,9 @@
-import { type AgentMessage, countTokens } from "@veyyon/pi-agent-core";
-import type { CompactionSettings } from "@veyyon/pi-agent-core/compaction";
-import { effectiveReserveTokens, estimateTokens, resolveThresholdTokens } from "@veyyon/pi-agent-core/compaction";
-import type { Tool as AiTool, Model } from "@veyyon/pi-ai";
-import { toolWireSchema } from "@veyyon/pi-ai/utils/schema";
-import { formatNumber, logger } from "@veyyon/pi-utils";
+import { type AgentMessage, countTokens } from "@veyyon/agent-core";
+import type { CompactionSettings } from "@veyyon/agent-core/compaction";
+import { effectiveReserveTokens, estimateTokens, resolveThresholdTokens } from "@veyyon/agent-core/compaction";
+import type { Tool as AiTool, Model } from "@veyyon/ai";
+import { toolWireSchema } from "@veyyon/ai/utils/schema";
+import { formatCount, formatNumber, logger } from "@veyyon/utils";
 import type { Skill } from "../../extensibility/skills";
 import type { AgentSession } from "../../session/agent-session";
 import { estimateInlineSavings, type SnapcompactSavingsEstimate } from "../../session/snapcompact-inline";
@@ -171,7 +171,7 @@ export function computeNonMessageTokens(session: AgentSession): number {
  * Incremental cache for {@link computeStoredMessagesTokens} (P5, BACKLOG perf
  * hotspots). `estimateTokens` itself already memoizes each message's token
  * count by identity (see `estimateTokens`/`tokenEstimateCache` in
- * `@veyyon/pi-agent-core/compaction`), but the pre-prompt, mid-turn, and
+ * `@veyyon/agent-core/compaction`), but the pre-prompt, mid-turn, and
  * post-turn compaction checks each re-summed the FULL `session.messages`
  * array on every call — an O(n) history walk repeated several times per turn
  * even when nothing in the history had changed since the last call.
@@ -485,7 +485,7 @@ function buildLegendLines(breakdown: ContextBreakdown, theme: typeof Theme): str
 						`  System prompt (${sp.scope === "agents-md" ? "AGENTS.md" : "all"}): saves ${theme.bold(`~${formatNumber(sp.savedTokens)}`)} ` +
 							theme.fg(
 								"dim",
-								`(${formatNumber(sp.textTokens)} text → ${sp.frames} frame${sp.frames === 1 ? "" : "s"} ≈ ${formatNumber(sp.imageTokens)})`,
+								`(${formatNumber(sp.textTokens)} text → ${formatCount("frame", sp.frames)} ≈ ${formatNumber(sp.imageTokens)})`,
 							),
 					);
 				} else {

@@ -1,6 +1,6 @@
-import { tryParseJson } from "@veyyon/pi-utils";
-import type { RenderResult, SpecialHandler } from "./types";
-import { buildResult, loadPage } from "./types";
+import { tryParseJson } from "@veyyon/utils";
+import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
+import { buildResult, loadFailure, loadPage, scraperDegrade, tryParseUrl } from "./types";
 
 interface KevEntry {
 	cveID: string;
@@ -31,9 +31,10 @@ export const handleCisaKev: SpecialHandler = async (
 	url: string,
 	timeout: number,
 	signal?: AbortSignal,
-): Promise<RenderResult | null> => {
+): Promise<RenderResult | ScraperDegrade | null> => {
 	try {
-		const parsed = new URL(url);
+		const parsed = tryParseUrl(url);
+		if (!parsed) return null;
 		const hostname = parsed.hostname.toLowerCase();
 		if (!hostname.endsWith("cisa.gov")) return null;
 
@@ -52,10 +53,10 @@ export const handleCisaKev: SpecialHandler = async (
 			signal,
 		});
 
-		if (!result.ok) return null;
+		if (!result.ok) return scraperDegrade("cisa-kev", loadFailure(result));
 
 		const data = tryParseJson<KevCatalog>(result.content);
-		if (!data) return null;
+		if (!data) return scraperDegrade("cisa-kev", "unexpected response shape");
 
 		const entry = data.vulnerabilities?.find(item => item.cveID?.toUpperCase() === cveId);
 		if (!entry) return null;
@@ -81,7 +82,7 @@ export const handleCisaKev: SpecialHandler = async (
 		}
 
 		return buildResult(md, { url, method: "cisa-kev", fetchedAt, notes: ["Fetched via CISA KEV feed"] });
-	} catch {}
-
-	return null;
+	} catch (error) {
+		return scraperDegrade("cisa-kev", error);
+	}
 };

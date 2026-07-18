@@ -2,8 +2,8 @@ import { afterAll, describe, expect, test } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { __internalsForTesting, withFileLock } from "@veyyon/pi-coding-agent/config/file-lock";
-import { removeWithRetries } from "@veyyon/pi-utils";
+import { __internalsForTesting, withFileLock } from "@veyyon/coding-agent/config/file-lock";
+import { removeWithRetries } from "@veyyon/utils";
 
 const { tryAcquireLock, releaseLock, readLockInfo, isLockStale, getLockPath } = __internalsForTesting;
 

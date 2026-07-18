@@ -4,7 +4,7 @@
  * Primary provider for Veyyon native configs. Supports all capabilities.
  */
 import * as path from "node:path";
-import { getAgentDir, logger, parseFrontmatter, tryParseJson } from "@veyyon/pi-utils";
+import { getAgentDir, logger, parseFrontmatter, tryParseJson } from "@veyyon/utils";
 import { YAML } from "bun";
 import { getManagedSkillsDir, MANAGED_SKILLS_PROVIDER_ID } from "../autolearn/managed-skills";
 import { registerProvider } from "../capability";
@@ -281,7 +281,7 @@ async function loadSkills(ctx: LoadContext): Promise<LoadResult<Skill>> {
 		}),
 	);
 
-	// User-level scan from ~/.veyyon/agent/skills/
+	// User-level scan from ~/.veyyon/profiles/default/agent/skills/
 	const userScan = scanSkillsFromDir(ctx, {
 		dir: path.join(getAgentDir(), "skills"),
 		providerId: PROVIDER_ID,
@@ -321,7 +321,7 @@ registerProvider<Skill>(skillCapability.id, {
 registerProvider<Skill>(skillCapability.id, {
 	id: MANAGED_SKILLS_PROVIDER_ID,
 	displayName: "Managed Skills (auto-learn)",
-	description: "Auto-generated managed skills from ~/.veyyon/agent/managed-skills",
+	description: "Auto-generated managed skills from ~/.veyyon/profiles/default/agent/managed-skills",
 	priority: MANAGED_SKILLS_PRIORITY,
 	load: loadManagedSkills,
 });
@@ -377,7 +377,7 @@ async function loadRules(ctx: LoadContext): Promise<LoadResult<Rule>> {
 	// Top-level RULES.md is a sticky always-apply rule. Documented in
 	// https://veyyon.dev/docs/context as the file that gets "re-injected near
 	// the current turn so they keep hold across long conversations".
-	// User scope:    ~/.veyyon/agent/RULES.md
+	// User scope:    ~/.veyyon/profiles/default/agent/RULES.md
 	// Project scope: nearest .veyyon/RULES.md walking up from cwd to repoRoot
 	const userRulesFile = path.join(getAgentDir(), "RULES.md");
 	const userRule = await loadStickyRulesFile(userRulesFile, "user");

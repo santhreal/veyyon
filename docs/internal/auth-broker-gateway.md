@@ -150,7 +150,7 @@ If the broker is down at boot and a fresh cache exists, startup now succeeds fro
 
 ## Operator opt-in
 
-The broker is **off** unless `VEYYON_AUTH_BROKER_URL` (or `auth.broker.url` in `config.yml`) is set. Every `VEYYON_AUTH_BROKER_*` variable also accepts its legacy `OMP_AUTH_BROKER_*` alias (VEYYON_ wins). When set, `discoverAuthStorage` in `packages/coding-agent/src/sdk.ts` swaps the local SQLite credential store for `RemoteAuthCredentialStore` and every API call resolves credentials through the broker.
+The broker is **off** unless `VEYYON_AUTH_BROKER_URL` (or `auth.broker.url` in `config.yml`) is set. When set, `discoverAuthStorage` in `packages/coding-agent/src/sdk.ts` swaps the local SQLite credential store for `RemoteAuthCredentialStore` and every API call resolves credentials through the broker.
 
 ### Environment variables
 
@@ -183,7 +183,7 @@ The gateway has no dedicated env vars — it inherits `VEYYON_AUTH_BROKER_*` bec
 | `<config-dir>/auth-broker.token`  | `veyyon auth-broker serve` (created at first start)     | `0600` in a `0700` parent dir |
 | `<config-dir>/auth-gateway.token` | `veyyon auth-gateway serve` (skipped under `--no-auth`) | `0600` in a `0700` parent dir |
 
-`<config-dir>` resolves to `~/.veyyon/` (respecting `VEYYON_CONFIG_DIR`, legacy `OMP_CONFIG_DIR` / `PI_CONFIG_DIR`).
+`<config-dir>` resolves to `~/.veyyon/` (respecting `VEYYON_CONFIG_DIR`).
 
 ## Interaction with the local API-key resolution order
 

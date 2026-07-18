@@ -1,4 +1,4 @@
-import { $env } from "@veyyon/pi-utils";
+import { $env } from "@veyyon/utils";
 
 export function isFoundryEnabled(): boolean {
 	const value = $env.CLAUDE_CODE_USE_FOUNDRY;

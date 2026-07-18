@@ -1,7 +1,7 @@
 /**
  * Tiny-model UI labels for spawned subagents.
  */
-import { logger, prompt } from "@veyyon/pi-utils";
+import { errorMessage, logger, prompt } from "@veyyon/utils";
 import type { ModelRegistry } from "../config/model-registry";
 import type { Settings } from "../config/settings";
 import taskLabelSystemPrompt from "../prompts/system/task-label.md" with { type: "text" };
@@ -31,7 +31,7 @@ export async function generateTaskLabel(
 	} catch (err) {
 		logger.debug("task-label: generation failed", {
 			sessionId,
-			error: err instanceof Error ? err.message : String(err),
+			error: errorMessage(err),
 		});
 		return null;
 	}

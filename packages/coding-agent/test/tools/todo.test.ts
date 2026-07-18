@@ -1,8 +1,8 @@
 import { beforeAll, describe, expect, it } from "bun:test";
 import * as path from "node:path";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { initTheme, theme } from "@veyyon/pi-coding-agent/modes/theme/theme";
-import type { ToolSession } from "@veyyon/pi-coding-agent/tools";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
+import type { ToolSession } from "@veyyon/coding-agent/tools";
 import {
 	nextActionableTask,
 	resolveTodoMarkdownPath,
@@ -11,8 +11,8 @@ import {
 	TodoTool,
 	todoMatchesAnyDescription,
 	todoToolRenderer,
-} from "@veyyon/pi-coding-agent/tools/todo";
-import type { Component } from "@veyyon/pi-tui";
+} from "@veyyon/coding-agent/tools/todo";
+import type { Component } from "@veyyon/tui";
 import { type } from "arktype";
 
 function createSession(initialPhases: TodoPhase[] = []): ToolSession {
@@ -500,7 +500,7 @@ describe("todoToolRenderer.renderCall malformed-args regression (#2005)", () => 
 	it("renders op summary metadata for a well-formed flat call", () => {
 		const args = { op: "init", items: ["a", "b", "c"] };
 		const component = todoToolRenderer.renderCall(args, renderOptions, theme);
-		// `Text(text, 0, 0)` from `@veyyon/pi-tui` exposes the content via .render().
+		// `Text(text, 0, 0)` from `@veyyon/tui` exposes the content via .render().
 		const rendered = Bun.stripANSI(component.render(120).join("\n"));
 		expect(rendered).toContain("init");
 		expect(rendered).toContain("3 items");

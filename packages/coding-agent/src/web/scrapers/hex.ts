@@ -1,13 +1,14 @@
-import { tryParseJson } from "@veyyon/pi-utils";
+import { tryParseJson } from "@veyyon/utils";
 import type { SpecialHandler } from "./types";
-import { buildResult, formatIsoDate, formatNumber, loadPage } from "./types";
+import { buildResult, formatIsoDate, formatNumber, loadFailure, loadPage, scraperDegrade, tryParseUrl } from "./types";
 
 /**
  * Handle Hex.pm (Elixir package registry) URLs via API
  */
 export const handleHex: SpecialHandler = async (url, timeout, signal) => {
 	try {
-		const parsed = new URL(url);
+		const parsed = tryParseUrl(url);
+		if (!parsed) return null;
 		if (parsed.hostname !== "hex.pm" && parsed.hostname !== "www.hex.pm") return null;
 
 		// Extract package name from /packages/name or /packages/name/version
@@ -21,7 +22,7 @@ export const handleHex: SpecialHandler = async (url, timeout, signal) => {
 		const apiUrl = `https://hex.pm/api/packages/${packageName}`;
 		const result = await loadPage(apiUrl, { timeout, signal });
 
-		if (!result.ok) return null;
+		if (!result.ok) return scraperDegrade("hex", loadFailure(result));
 
 		const data = tryParseJson<{
 			name: string;
@@ -42,7 +43,7 @@ export const handleHex: SpecialHandler = async (url, timeout, signal) => {
 			latest_version?: string;
 			latest_stable_version?: string;
 		}>(result.content);
-		if (!data) return null;
+		if (!data) return scraperDegrade("hex", "unexpected response shape");
 
 		let md = `# ${data.name}\n\n`;
 		if (data.meta?.description) md += `${data.meta.description}\n\n`;
@@ -99,7 +100,7 @@ export const handleHex: SpecialHandler = async (url, timeout, signal) => {
 		}
 
 		return buildResult(md, { url, method: "hex", fetchedAt, notes: ["Fetched via Hex.pm API"] });
-	} catch {}
-
-	return null;
+	} catch (error) {
+		return scraperDegrade("hex", error);
+	}
 };

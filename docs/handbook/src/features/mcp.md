@@ -1,7 +1,8 @@
 # MCP
 
-Model Context Protocol (MCP) lets Veyyon connect to external tools and data sources. Veyyon is an MCP
-**client** by default; agent control protocol (ACP) and SDK paths can expose Veyyon as a server.
+Model Context Protocol (MCP) is how Veyyon **consumes** external tools and data (MCP client). Veyyon
+is not an MCP server binary. For editor embedding use **ACP** (`veyyon acp`); for in-process control
+use the SDK.
 
 ## Transports
 
@@ -17,7 +18,7 @@ Model Context Protocol (MCP) lets Veyyon connect to external tools and data sour
 | Scope | Path |
 | --- | --- |
 | Project | `.veyyon/mcp.json` |
-| User | `~/.veyyon/agent/mcp.json` |
+| User | `~/.veyyon/profiles/default/agent/mcp.json` |
 
 Example:
 
@@ -54,9 +55,9 @@ Engineering detail: [`docs/mcp-config.md`](../../../mcp-config.md).
 
 Tool names appear namespaced as `mcp__<server>__<tool>`.
 
-## Running Veyyon as an MCP server
+## Related surfaces (not MCP server mode)
 
-Use the ACP integration or SDK embedding rather than a separate `veyyon mcp-server` subcommand unless
-your build registers it.
+- **ACP** (`veyyon acp`) — Agent Client Protocol for editors; not MCP.
+- **SDK** — embed the agent in a host process.
 
-Veyyon configures MCP through `mcp.json` and the `/mcp` command.
+MCP config remains `mcp.json` and `/mcp`.

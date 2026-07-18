@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { prompt } from "@veyyon/pi-utils";
+import { prompt } from "@veyyon/utils";
 import "../../src/config/prompt-templates";
 import subagentSystemPromptTemplate from "../../src/prompts/system/subagent-system-prompt.md" with { type: "text" };
 

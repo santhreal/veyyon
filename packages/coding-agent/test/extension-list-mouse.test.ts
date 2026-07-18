@@ -1,8 +1,8 @@
 import { beforeAll, describe, expect, test } from "bun:test";
-import { buildTabBarTabs } from "@veyyon/pi-coding-agent/modes/components/extensions/extension-dashboard";
-import { ExtensionList } from "@veyyon/pi-coding-agent/modes/components/extensions/extension-list";
-import type { Extension } from "@veyyon/pi-coding-agent/modes/components/extensions/types";
-import { initTheme } from "@veyyon/pi-coding-agent/modes/theme/theme";
+import { buildTabBarTabs } from "@veyyon/coding-agent/modes/components/extensions/extension-dashboard";
+import { ExtensionList } from "@veyyon/coding-agent/modes/components/extensions/extension-list";
+import type { Extension } from "@veyyon/coding-agent/modes/components/extensions/types";
+import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 
 beforeAll(async () => {
 	await initTheme(false);

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "bun:test";
-import { loginDeepSeek, normalizeDeepSeekApiKey } from "@veyyon/pi-ai/registry/deepseek";
-import type { OAuthController } from "@veyyon/pi-ai/registry/oauth/types";
-import type { FetchImpl } from "@veyyon/pi-ai/types";
+import { loginDeepSeek, normalizeDeepSeekApiKey } from "@veyyon/ai/registry/deepseek";
+import type { OAuthController } from "@veyyon/ai/registry/oauth/types";
+import type { FetchImpl } from "@veyyon/ai/types";
 
 function makeController(paste: string, fetchMock: FetchImpl): OAuthController {
 	return {

@@ -1,4 +1,4 @@
-import type { CustomToolFactory } from "@veyyon/pi-coding-agent";
+import type { CustomToolFactory } from "@veyyon/coding-agent";
 
 const factory: CustomToolFactory = pi => ({
 	name: "hello",

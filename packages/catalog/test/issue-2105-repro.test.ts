@@ -1,10 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { getEnvApiKey } from "@veyyon/pi-ai/stream";
-import { DEFAULT_MODEL_PER_PROVIDER, PROVIDER_DESCRIPTORS } from "@veyyon/pi-catalog/provider-models/descriptors";
-import {
-	aimlApiModelManagerOptions,
-	isLikelyAimlApiChatModelId,
-} from "@veyyon/pi-catalog/provider-models/openai-compat";
+import { getEnvApiKey } from "@veyyon/ai/stream";
+import { DEFAULT_MODEL_PER_PROVIDER, PROVIDER_DESCRIPTORS } from "@veyyon/catalog/provider-models/descriptors";
+import { aimlApiModelManagerOptions, isLikelyAimlApiChatModelId } from "@veyyon/catalog/provider-models/openai-compat";
 
 describe("AIML API built-in provider (issue #2105)", () => {
 	test("registers built-in runtime descriptor with AIMLAPI_API_KEY discovery", () => {

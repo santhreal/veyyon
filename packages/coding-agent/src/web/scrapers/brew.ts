@@ -1,5 +1,5 @@
-import type { RenderResult, SpecialHandler } from "./types";
-import { buildResult, formatNumber, loadPage } from "./types";
+import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
+import { buildResult, formatNumber, loadFailure, loadPage, scraperDegrade, tryParseUrl } from "./types";
 
 interface BrewFormula {
 	name: string;
@@ -62,9 +62,10 @@ export const handleBrew: SpecialHandler = async (
 	url: string,
 	timeout: number,
 	signal?: AbortSignal,
-): Promise<RenderResult | null> => {
+): Promise<RenderResult | ScraperDegrade | null> => {
 	try {
-		const parsed = new URL(url);
+		const parsed = tryParseUrl(url);
+		if (!parsed) return null;
 		if (parsed.hostname !== "formulae.brew.sh") return null;
 
 		const formulaMatch = parsed.pathname.match(/^\/formula\/([^/]+)\/?$/);
@@ -81,7 +82,7 @@ export const handleBrew: SpecialHandler = async (
 			: `https://formulae.brew.sh/api/cask/${encodeURIComponent(name)}.json`;
 
 		const result = await loadPage(apiUrl, { timeout, signal });
-		if (!result.ok) return null;
+		if (!result.ok) return scraperDegrade("brew", loadFailure(result));
 
 		let md: string;
 
@@ -166,7 +167,7 @@ export const handleBrew: SpecialHandler = async (
 			fetchedAt,
 			notes: [`Fetched via Homebrew ${isFormula ? "formula" : "cask"} API`],
 		});
-	} catch {}
-
-	return null;
+	} catch (error) {
+		return scraperDegrade("brew", error);
+	}
 };

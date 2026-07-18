@@ -10,6 +10,10 @@
         <!-- Veyyon handbook: self-contained head additions. No remote resources. -->
         <meta name="theme-color" content="#050505">
         <meta name="color-scheme" content="dark">
+        <!-- Site favicons live at the deployed root, one level above /docs/. -->
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+        <link rel="icon" href="/favicon.ico" sizes="48x48">
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png">
         <style>
           /* Paint the near-black surface before CSS/JS resolve the theme, so there is
              no light flash on load. Kept in sync with theme/veyyon.css. */
@@ -18,7 +22,7 @@
           *, *::before, *::after { box-sizing: border-box; }
         </style>
 
-        <meta name="description" content="How Veyyon turns open models into frontier coding agents. The product, the harness, tool-call repair, the edit format, per-model adaptation, and how to use it.">
+        <meta name="description" content="Operator handbook for the Veyyon terminal coding agent: install, configuration, tools, approvals, edit formats, providers, and harness structure.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -38,7 +42,7 @@
         <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="../ayu-highlight-3fdfc3ac.css">
 
         <!-- Custom theme stylesheets -->
-        <link rel="stylesheet" href="../theme/veyyon-fc839a17.css">
+        <link rel="stylesheet" href="../theme/veyyon-06f6939e.css">
 
 
         <!-- Provide site root and default themes to javascript -->
@@ -46,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-e76f06ca.js";
+            window.path_to_searchindex_js = "../searchindex-a2447057.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-9cfd259b.js"></script>
+        <script src="../toc-cc1a72e9.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -192,14 +196,12 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="the-provider-stack-and-bring-your-own-key"><a class="header" href="#the-provider-stack-and-bring-your-own-key">The provider stack and bring-your-own-key</a></h1>
-<blockquote>
-<p><strong>Status: Built.</strong> The harness owns the model registry and provider auth.</p>
-</blockquote>
+<p>The harness owns the model registry and provider auth.</p>
 <p>A <strong>provider</strong> is the API namespace (<code>anthropic</code>, <code>openai</code>, <code>google</code>, custom gateways, local
 <code>ollama</code>, …). A <strong>model</strong> is <code>provider/model-id</code>. Veyyon assembles the selectable catalog from:</p>
 <ol>
 <li>Bundled pi-catalog models</li>
-<li><code>~/.veyyon/agent/models.yml</code> custom providers and models</li>
+<li><code>~/.veyyon/profiles/default/agent/models.yml</code> custom providers and models</li>
 <li>Runtime discovery (Ollama, LM Studio, discovery-enabled gateways)</li>
 <li>Extension-registered providers</li>
 </ol>
@@ -210,7 +212,7 @@ is keyless/local).</p>
 <ol>
 <li>CLI <code>--api-key</code> (ephemeral)</li>
 <li><code>models.yml</code> <code>apiKey</code> on a custom provider</li>
-<li>Stored API key / OAuth in the agent auth store (<code>~/.veyyon/agent/agent.db</code>)</li>
+<li>Stored API key / OAuth in the agent auth store (<code>~/.veyyon/profiles/default/agent/agent.db</code>)</li>
 <li>Provider environment variables (see <a href="../../../providers.html"><code>docs/providers.md</code></a>)</li>
 <li>Custom fallback resolvers in <code>models.yml</code></li>
 </ol>
@@ -218,7 +220,7 @@ is keyless/local).</p>
 providers.</p>
 <h2 id="custom-providers"><a class="header" href="#custom-providers">Custom providers</a></h2>
 <p>Add OpenAI- or Anthropic-compatible endpoints as data:</p>
-<pre><code class="language-yaml"># ~/.veyyon/agent/models.yml
+<pre><code class="language-yaml"># ~/.veyyon/profiles/default/agent/models.yml
 providers:
   my-gateway:
     baseUrl: https://api.example.com/v1

@@ -45,7 +45,6 @@ use custom_str_cmp::custom_str_cmp;
 use ext_sort::ext_sort;
 use foldhash::{HashMap, SharedSeed, fast::FoldHasher};
 use numeric_str_cmp::{NumInfo, NumInfoParseSettings, human_numeric_str_cmp, numeric_str_cmp};
-use pi_uutils_ctx::{format_usage, rayon_global_pool_available};
 use rand::{RngExt as _, rng};
 #[cfg(not(target_os = "wasi"))]
 use rayon::slice::ParallelSliceMut;
@@ -67,6 +66,7 @@ use uucore::{
 	posix::{MODERN, TRADITIONAL},
 	version_cmp::version_cmp,
 };
+use veyyon_uutils_ctx::{format_usage, rayon_global_pool_available};
 
 use crate::{buffer_hint::automatic_buffer_size, tmp_dir::TmpDirWrapper};
 
@@ -75,7 +75,7 @@ use crate::{buffer_hint::automatic_buffer_size, tmp_dir::TmpDirWrapper};
 // stderr, so output is correctly routed when running as an in-process builtin.
 macro_rules! show_error {
     ($($args:tt)+) => {{
-        let _ = writeln!(pi_uutils_ctx::stderr(), "sort: {}", format_args!($($args)+));
+        let _ = writeln!(veyyon_uutils_ctx::stderr(), "sort: {}", format_args!($($args)+));
     }};
 }
 
@@ -114,7 +114,7 @@ fn field_spec_msg(key: &str) -> &'static str {
 // in-memory cursor without needing the thread-local context.
 fn read_stdin_to_cursor() -> UResult<Box<dyn Read + Send>> {
 	let mut buf = Vec::new();
-	pi_uutils_ctx::stdin()
+	veyyon_uutils_ctx::stdin()
 		.read_to_end(&mut buf)
 		.map_err(|error| SortError::ReadFailed { path: PathBuf::from(STDIN_FILE), error })?;
 	Ok(Box::new(std::io::Cursor::new(buf)) as Box<dyn Read + Send>)
@@ -278,7 +278,7 @@ impl Output {
 			let file = OpenOptions::new()
 				.write(true)
 				.create(true)
-				.open(pi_uutils_ctx::resolve(path))
+				.open(veyyon_uutils_ctx::resolve(path))
 				.map_err(|e| SortError::OpenFailed { path: path.to_owned(), error: e })?;
 			Some((name.as_ref().to_owned(), file))
 		} else {
@@ -294,7 +294,7 @@ impl Output {
 				let _ = file.set_len(0);
 				Box::new(file)
 			},
-			None => Box::new(pi_uutils_ctx::stdout()),
+			None => Box::new(veyyon_uutils_ctx::stdout()),
 		})
 	}
 
@@ -1958,8 +1958,8 @@ fn emit_debug_warnings(
 
 /// In-process builtin entry point. Mirrors uutils' `uumain`, but owns argument
 /// parsing (bypassing the localized, process-exiting clap handler) and routes
-/// all I/O through `pi_uutils_ctx`, so it is safe inside the long-lived host
-/// shell process.
+/// all I/O through `veyyon_uutils_ctx`, so it is safe inside the long-lived
+/// host shell process.
 pub fn run(args: Vec<OsString>) -> i32 {
 	let (processed_args, mut legacy_warnings) = preprocess_legacy_args(args);
 	if !legacy_warnings.is_empty() {
@@ -1970,15 +1970,15 @@ pub fn run(args: Vec<OsString>) -> i32 {
 		Err(err) => {
 			let rendered = err.to_string();
 			if err.use_stderr() {
-				let _ = write!(pi_uutils_ctx::stderr(), "{rendered}");
+				let _ = write!(veyyon_uutils_ctx::stderr(), "{rendered}");
 				return 1;
 			}
-			let _ = write!(pi_uutils_ctx::stdout(), "{rendered}");
+			let _ = write!(veyyon_uutils_ctx::stdout(), "{rendered}");
 			return 0;
 		},
 	};
 	match uu_sort(&matches, &legacy_warnings) {
-		Ok(()) => pi_uutils_ctx::exit_code(),
+		Ok(()) => veyyon_uutils_ctx::exit_code(),
 		Err(err) => {
 			let code = err.code();
 			// pi-uutils: match uucore's entry point, which suppresses the
@@ -1986,7 +1986,7 @@ pub fn run(args: Vec<OsString>) -> i32 {
 			// disordered input with --check=silent).
 			let rendered = err.to_string();
 			if !rendered.is_empty() {
-				let _ = writeln!(pi_uutils_ctx::stderr(), "sort: {rendered}");
+				let _ = writeln!(veyyon_uutils_ctx::stderr(), "sort: {rendered}");
 			}
 			if code == 0 { 1 } else { code }
 		},
@@ -2130,7 +2130,7 @@ fn uu_sort(matches: &ArgMatches, legacy_warnings: &[LegacyKeyWarning]) -> UResul
 		settings.buffer_size_is_explicit = false;
 	}
 
-	let mut tmp_dir = TmpDirWrapper::new(pi_uutils_ctx::resolve(
+	let mut tmp_dir = TmpDirWrapper::new(veyyon_uutils_ctx::resolve(
 		matches.get_one::<String>(options::TMP_DIR).map_or_else(
 			|| {
 				// WASI does not support std::env::temp_dir() — it panics with
@@ -2587,7 +2587,7 @@ fn sort_by<'a>(unsorted: &mut Vec<Line<'a>>, settings: &GlobalSettings, line_dat
 	let cmp = |a: &Line<'a>, b: &Line<'a>| compare_by(a, b, settings, line_data, line_data);
 	// WASI does not support threads, so use non-parallel sort to avoid
 	// rayon's thread pool which triggers an unreachable trap. Windows can also
-	// force sequential sort when pi-natives could not safely configure Rayon's
+	// force sequential sort when veyyon-natives could not safely configure Rayon's
 	// process-global worker pool under commit pressure.
 	if settings.stable || settings.unique {
 		#[cfg(not(target_os = "wasi"))]
@@ -3127,7 +3127,7 @@ fn open(path: impl AsRef<OsStr>) -> UResult<Box<dyn Read + Send>> {
 	}
 
 	let path = Path::new(path);
-	match File::open(pi_uutils_ctx::resolve(path)) {
+	match File::open(veyyon_uutils_ctx::resolve(path)) {
 		Ok(f) => Ok(Box::new(f) as Box<dyn Read + Send>),
 		Err(error) => Err(SortError::ReadFailed { path: path.to_owned(), error }.into()),
 	}
@@ -3141,7 +3141,7 @@ fn open_with_open_failed_error(path: impl AsRef<OsStr>) -> UResult<Box<dyn Read 
 	}
 
 	let path = Path::new(path);
-	match File::open(pi_uutils_ctx::resolve(path)) {
+	match File::open(veyyon_uutils_ctx::resolve(path)) {
 		Ok(f) => Ok(Box::new(f) as Box<dyn Read + Send>),
 		Err(error) => Err(SortError::OpenFailed { path: path.to_owned(), error }.into()),
 	}

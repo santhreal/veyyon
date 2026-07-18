@@ -5,7 +5,7 @@ import {
 	planFileUrlForSlug,
 	resolveApprovedPlan,
 	resolvePlanTitle,
-} from "@veyyon/pi-coding-agent/plan-mode/approved-plan";
+} from "@veyyon/coding-agent/plan-mode/approved-plan";
 
 describe("planFileUrlForSlug", () => {
 	it("maps a slug to its local plan URL", () => {

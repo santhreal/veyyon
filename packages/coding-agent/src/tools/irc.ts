@@ -9,10 +9,10 @@
  * drains pending messages; `list` shows every addressable peer.
  */
 
-import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/pi-agent-core";
-import type { ToolExample } from "@veyyon/pi-ai";
-import { type Component, Text } from "@veyyon/pi-tui";
-import { formatAge, formatDuration, prompt } from "@veyyon/pi-utils";
+import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
+import type { ToolExample } from "@veyyon/ai";
+import { type Component, Text } from "@veyyon/tui";
+import { errorMessage, formatAge, formatDuration, prompt } from "@veyyon/utils";
 import { type } from "arktype";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import { IrcBus, type IrcDeliveryReceipt, type IrcMessage } from "../irc/bus";
@@ -397,7 +397,7 @@ export class IrcTool implements AgentTool<typeof ircSchema, IrcDetails> {
 			if (signal?.aborted) {
 				throw error;
 			}
-			return errorResult(error instanceof Error ? error.message : String(error), { op: "wait", from: senderId });
+			return errorResult(errorMessage(error), { op: "wait", from: senderId });
 		}
 	}
 

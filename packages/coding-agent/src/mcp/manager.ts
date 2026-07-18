@@ -6,8 +6,9 @@
  */
 import * as path from "node:path";
 import * as url from "node:url";
-import { isDefinitiveOAuthFailure, type TSchema } from "@veyyon/pi-ai";
-import { logger } from "@veyyon/pi-utils";
+import { isDefinitiveOAuthFailure, type TSchema } from "@veyyon/ai";
+import { logger } from "@veyyon/utils";
+import { FOREIGN_PROVIDER_IDS } from "../capability/index";
 import type { SourceMeta } from "../capability/types";
 import { resolveConfigValue } from "../config/resolve-config-value";
 import type { CustomTool } from "../extensibility/custom-tools/types";
@@ -494,7 +495,7 @@ export class MCPManager {
 					this.#pendingToolLoads.delete(name);
 					const message = error instanceof Error ? error.message : String(error);
 					this.#lastErrors.set(name, message);
-					onStatus?.({ type: "failed", serverName: name, error: message });
+					onStatus?.({ type: "failed", serverName: name, error: message, foreign: this.#isForeignServer(name) });
 					if (!allowBackgroundLogging || reportedErrors.has(name)) return;
 					logger.error("MCP tool load failed", { path: `mcp:${name}`, error: message });
 				});
@@ -505,7 +506,7 @@ export class MCPManager {
 			onStatus({ type: "connecting", serverNames: statusServerNames });
 			for (const { name, message } of validationFailures) {
 				this.#lastErrors.set(name, message);
-				onStatus({ type: "failed", serverName: name, error: message });
+				onStatus({ type: "failed", serverName: name, error: message, foreign: this.#isForeignServer(name) });
 			}
 		}
 
@@ -697,6 +698,12 @@ export class MCPManager {
 	 */
 	getSource(name: string): SourceMeta | undefined {
 		return this.#sources.get(name) ?? this.#connections.get(name)?._source;
+	}
+
+	/** True when the server was imported from another tool's config (Claude Code, Codex, …). */
+	#isForeignServer(name: string): boolean {
+		const provider = this.getSource(name)?.provider;
+		return provider !== undefined && FOREIGN_PROVIDER_IDS.has(provider);
 	}
 
 	/**

@@ -1,4 +1,4 @@
-import { logger } from "@veyyon/pi-utils";
+import { errorMessage, logger } from "@veyyon/utils";
 import xterm, { type Terminal as XtermTerminal } from "@xterm/headless";
 import { readTerminalRows } from "../tools/terminal-output";
 import { DAEMON_PTY_COLUMNS, DAEMON_PTY_ROWS } from "./protocol";
@@ -37,7 +37,7 @@ export async function renderTerminalOutput(
 		return options.head ? rows.slice(0, maxRows) : rows.slice(-maxRows);
 	} catch (error) {
 		logger.debug("Failed to render launch terminal output", {
-			error: error instanceof Error ? error.message : String(error),
+			error: errorMessage(error),
 		});
 		return undefined;
 	} finally {

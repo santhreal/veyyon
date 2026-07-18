@@ -1,12 +1,12 @@
 /**
  * Tree-sitter-backed {@link BlockResolver} for the hashline block replace
  * operator. Bridges the pure hashline seam to the native `blockRangeAt`
- * primitive in `@veyyon/pi-natives`, which infers the language from the file
+ * primitive in `@veyyon/natives`, which infers the language from the file
  * path and returns the 1-indexed line span of the syntactic block beginning on
  * the requested line (or `null` when none can be resolved).
  */
 import type { BlockResolver } from "@veyyon/hashline";
-import { blockRangeAt } from "@veyyon/pi-natives";
+import { blockRangeAt } from "@veyyon/natives";
 
 /**
  * `blockRangeAt` runs a full synchronous tree-sitter parse of `text` per

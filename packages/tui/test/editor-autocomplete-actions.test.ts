@@ -7,8 +7,8 @@ import {
 	type AutocompleteProvider,
 	CombinedAutocompleteProvider,
 	findLeadingSlashCommandStart,
-} from "@veyyon/pi-tui/autocomplete";
-import { Editor } from "@veyyon/pi-tui/components/editor";
+} from "@veyyon/tui/autocomplete";
+import { Editor } from "@veyyon/tui/components/editor";
 import { defaultEditorTheme } from "./test-themes";
 
 function onceAutocompleteUpdate(editor: Editor): Promise<void> {

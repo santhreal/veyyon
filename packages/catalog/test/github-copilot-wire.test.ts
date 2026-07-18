@@ -4,7 +4,7 @@ import {
 	normalizeGitHubCopilotApiEndpoint,
 	normalizeGitHubCopilotEnterpriseDomain,
 	parseGitHubCopilotApiKey,
-} from "@veyyon/pi-catalog/wire/github-copilot";
+} from "@veyyon/catalog/wire/github-copilot";
 
 describe("GitHub Copilot OAuth helpers", () => {
 	it("treats github.com as the public Copilot host", () => {

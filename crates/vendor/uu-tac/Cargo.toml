@@ -1,6 +1,6 @@
 # Vendored from uutils/coreutils tag 0.8.0 (src/uu/tac), patched to resolve
 # path arguments against the shell working directory and route I/O through
-# pi-uutils-ctx so it can run in-process as a shell builtin. See src/tac.rs
+# veyyon-uutils-ctx so it can run in-process as a shell builtin. See src/tac.rs
 # for the patch markers (`pi-uutils:` comments).
 [package]
 name = "uu_tac"
@@ -19,7 +19,7 @@ memmap2 = "0.9"
 regex = "1.11"
 thiserror = "2.0.3"
 uucore = "0.8.0"
-pi-uutils-ctx = { path = "../../pi-uutils-ctx" }
+veyyon-uutils-ctx = { path = "../../veyyon-uutils-ctx" }
 
 [dev-dependencies]
 parking_lot = "0.12"

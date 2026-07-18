@@ -4,7 +4,7 @@
  * Calls Firecrawl's search API and maps web results into the unified
  * SearchResponse shape used by the web search tool.
  */
-import { type ApiKey, type AuthStorage, type FetchImpl, getEnvApiKey, withAuth } from "@veyyon/pi-ai";
+import { type ApiKey, type AuthStorage, type FetchImpl, getEnvApiKey, withAuth } from "@veyyon/ai";
 import type { SearchResponse, SearchSource } from "../../../web/search/types";
 import { SearchProviderError } from "../../../web/search/types";
 import { clampNumResults } from "../utils";
@@ -67,28 +67,30 @@ function buildRequestBody(params: FirecrawlSearchParams): Record<string, unknown
 }
 
 async function callFirecrawlSearch(apiKey: string, params: FirecrawlSearchParams): Promise<FirecrawlSearchResponse> {
-	const response = await (params.fetch ?? fetch)(FIRECRAWL_SEARCH_URL, {
-		method: "POST",
-		headers: {
-			"Content-Type": "application/json",
-			Authorization: `Bearer ${apiKey}`,
-		},
-		body: JSON.stringify(buildRequestBody(params)),
-		signal: withHardTimeout(params.signal),
+	return withHardTimeout(params.signal, async hardSignal => {
+		const response = await (params.fetch ?? fetch)(FIRECRAWL_SEARCH_URL, {
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+				Authorization: `Bearer ${apiKey}`,
+			},
+			body: JSON.stringify(buildRequestBody(params)),
+			signal: hardSignal,
+		});
+
+		if (!response.ok) {
+			const errorText = await response.text();
+			const classified = classifyProviderHttpError("firecrawl", response.status, errorText);
+			if (classified) throw classified;
+			throw new SearchProviderError(
+				"firecrawl",
+				`Firecrawl API error (${response.status}): ${errorText}`,
+				response.status,
+			);
+		}
+
+		return (await response.json()) as FirecrawlSearchResponse;
 	});
-
-	if (!response.ok) {
-		const errorText = await response.text();
-		const classified = classifyProviderHttpError("firecrawl", response.status, errorText);
-		if (classified) throw classified;
-		throw new SearchProviderError(
-			"firecrawl",
-			`Firecrawl API error (${response.status}): ${errorText}`,
-			response.status,
-		);
-	}
-
-	return (await response.json()) as FirecrawlSearchResponse;
 }
 
 /** Execute Firecrawl web search. */

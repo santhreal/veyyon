@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { BeamMemory } from "@veyyon/pi-mnemopi/core/beam";
+import { BeamMemory } from "@veyyon/mnemopi/core/beam";
 
 describe("BeamMemory hub", () => {
 	it("wires index methods to beam module implementations", async () => {

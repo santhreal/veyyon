@@ -10,7 +10,7 @@ This page answers common questions and errors. For a guided diagnostic path, see
 
 ### Does Veyyon sandbox the commands it runs?
 
-No. Veyyon does not add an OS-level command sandbox — there is no Landlock, seccomp, Seatbelt, or bubblewrap confinement. The boundary is the **approval mode** (`tools.approvalMode`), which decides which tool tiers run automatically and which pause for your yes. Run write-capable modes only where you trust the repository and the machine. See [Approvals and autonomy](../features/sandbox.md).
+No OS confinement (no Landlock, seccomp, Seatbelt, bubblewrap). Policy is **`tools.approvalMode`** (schema default **`yolo`**) plus execpolicy `.rules`. See [Approvals](../features/sandbox.md).
 
 ## Database and session locking
 
@@ -28,7 +28,7 @@ For how sessions are stored and resumed, see [Sessions](./sessions.md).
 
 ### "Invalid API key" or "Authentication failed"
 
-Veyyon is provider-agnostic and does not proxy your requests. The key is sent directly to the provider you configured. Check that the environment variable or config key matches the provider's expected name, that it is not expired, and that it has the required permissions. The supported variables are covered in [Models and providers](./models.md).
+The process calls the configured provider endpoint with the configured key. Check env var / auth store / `models.yml` for that provider, key validity, and scopes. See [Models and providers](./models.md).
 
 ### "Unsupported region" or endpoint errors
 
@@ -42,7 +42,7 @@ Veyyon discovers model ids from the provider's `/models` endpoint rather than ma
 
 ### Why did my edit ask for approval?
 
-The approval mode decides when Veyyon must ask before acting. In `ask` (and `plan`), anything that writes a file or runs a command pauses for your yes. If an edit paused, the current mode classifies it as needing approval. Change the mode with `--approval-mode <mode>` (`plan`, `ask`, `auto-edit`, `yolo`), `--auto-approve` / `--yolo`, or `tools.approvalMode` in `config.yml`. See [Approvals and autonomy](../features/sandbox.md).
+The approval mode decides when Veyyon prompts before a tool runs. In `ask` and `plan`, write and exec tiers prompt. Change mode with `--approval-mode <mode>` (`plan`, `ask`, `auto-edit`, `yolo`), `--auto-approve` / `--yolo`, or `tools.approvalMode` in `config.yml`. See [Approvals](../features/sandbox.md).
 
 ### How do I resume a session?
 
@@ -50,7 +50,7 @@ Run `veyyon --continue` to continue the most recent session, or `veyyon --resume
 
 ### What happened to my queued follow-up?
 
-Follow-ups queued during a turn are stored server-side with the session, so they survive TUI restarts and session resumes. If you press `Esc` to interrupt the current turn, queued follow-ups are pulled back into the composer so nothing is lost. See [Sessions](./sessions.md) for the full queue behavior.
+Follow-ups queued during a turn are stored with the session on disk, so they survive TUI restarts and session resumes. If you press `Esc` to interrupt the current turn, queued follow-ups are pulled back into the composer so nothing is lost. See [Sessions](./sessions.md) for the full queue behavior.
 
 ### Why does my output look truncated?
 
@@ -60,5 +60,5 @@ Output is intentionally truncated when it exceeds a tool budget. The truncation 
 
 - [Troubleshooting](./troubleshooting.md) for the guided diagnostic path.
 - [Models and providers](./models.md) for provider keys, endpoints, and model selection.
-- [Approvals and autonomy](../features/sandbox.md) for the approval-mode ladder.
+- [Approvals](../features/sandbox.md) for the approval modes.
 - [Sessions](./sessions.md) for resume, fork, branch, and export.

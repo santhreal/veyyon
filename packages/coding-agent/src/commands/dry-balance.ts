@@ -1,9 +1,11 @@
-import { APP_NAME } from "@veyyon/pi-utils";
-import { Args, Command, Flags } from "@veyyon/pi-utils/cli";
+import { APP_NAME } from "@veyyon/utils";
+import { Args, Command, Flags } from "@veyyon/utils/cli";
 import { runDryBalanceCommand } from "../cli/dry-balance-cli";
 
 export default class DryBalance extends Command {
 	static description = "Dry-run OAuth account balancing across random session ids";
+
+	static devTool = true;
 
 	static args = {
 		model: Args.string({

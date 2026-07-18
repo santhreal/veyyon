@@ -3,9 +3,9 @@
  */
 
 import { HL_FILE_PREFIX, HL_FILE_SUFFIX, HL_MOVE_KEYWORD, HL_REM_KEYWORD } from "@veyyon/hashline";
-import type { Component } from "@veyyon/pi-tui";
-import { sliceWithWidth, visibleWidth, wrapTextWithAnsi } from "@veyyon/pi-tui";
-import { sanitizeText } from "@veyyon/pi-utils";
+import type { Component } from "@veyyon/tui";
+import { sliceWithWidth, visibleWidth, wrapTextWithAnsi } from "@veyyon/tui";
+import { errorMessage, sanitizeText } from "@veyyon/utils";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import type { FileDiagnosticsResult } from "../lsp";
 import { renderDiff as renderDiffColored } from "../modes/components/diff";
@@ -630,7 +630,7 @@ function getApplyPatchRenderSummary(
 	try {
 		return { entries: expandApplyPatchToEntries({ input: args.input }) };
 	} catch (err) {
-		const error = err instanceof Error ? err.message : String(err);
+		const error = errorMessage(err);
 		if (isPartial && error === MISSING_APPLY_PATCH_END_ERROR) {
 			return { entries: expandApplyPatchToPreviewEntries({ input: args.input }) };
 		}

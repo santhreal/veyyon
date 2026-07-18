@@ -1,11 +1,11 @@
 import { beforeAll, describe, expect, it } from "bun:test";
-import { initTheme } from "@veyyon/pi-coding-agent/modes/theme/theme";
+import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import {
 	containsWorkflow,
 	highlightWorkflow,
 	renderWorkflowNotice,
 	WORKFLOW_NOTICE,
-} from "@veyyon/pi-coding-agent/modes/workflow";
+} from "@veyyon/coding-agent/modes/workflow";
 
 beforeAll(() => {
 	// highlightWorkflow reads the global theme's color mode.

@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from "bun:test";
-import { renderWelcomeTip } from "@veyyon/pi-coding-agent/modes/components/welcome";
-import { initTheme, setTheme, theme } from "@veyyon/pi-coding-agent/modes/theme/theme";
-import { visibleWidth } from "@veyyon/pi-tui";
+import { renderWelcomeTip } from "@veyyon/coding-agent/modes/components/welcome";
+import { initTheme, setTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
+import { visibleWidth } from "@veyyon/tui";
 
 describe("renderWelcomeTip", () => {
 	beforeAll(async () => {

@@ -1,12 +1,12 @@
 # Hooks Examples
 
-Example hooks for omp-coding-agent.
+Example hooks for the veyyon coding agent.
 
 ## Usage
 
 ```bash
 # Load a hook with --hook flag
-omp --hook examples/hooks/permission-gate.ts
+veyyon --hook examples/hooks/permission-gate.ts
 
 # Or copy to hooks directory for auto-discovery
 cp permission-gate.ts ~/.veyyon/agent/hooks/
@@ -34,7 +34,7 @@ cp permission-gate.ts ~/.veyyon/agent/hooks/
 See [docs/hooks.md](../../../../docs/hooks.md) for full documentation.
 
 ```typescript
-import type { HookAPI } from "@veyyon/pi-coding-agent/hooks";
+import type { HookAPI } from "@veyyon/coding-agent/hooks";
 
 export default function (pi: HookAPI) {
 	// Subscribe to events

@@ -1,6 +1,6 @@
 /**
  * Tests for `AuthStorage.checkCredentials()` — the per-credential auth probe
- * that powers `omp auth-gateway check`. Contract under test:
+ * that powers `veyyon auth-gateway check`. Contract under test:
  *
  *   1. A working credential reports `ok: true` and surfaces the probe's
  *      `email`/`accountId` (so the user can identify the row).
@@ -31,10 +31,10 @@ import {
 	type CompletionProbeInput,
 	REMOTE_REFRESH_SENTINEL,
 	type StoredAuthCredential,
-} from "@veyyon/pi-ai/auth-storage";
-import type { UsageProvider } from "@veyyon/pi-ai/usage";
-import * as claudeUsage from "@veyyon/pi-ai/usage/claude";
-import { opencodeGoUsageProvider } from "@veyyon/pi-ai/usage/opencode-go";
+} from "@veyyon/ai/auth-storage";
+import type { UsageProvider } from "@veyyon/ai/usage";
+import * as claudeUsage from "@veyyon/ai/usage/claude";
+import { opencodeGoUsageProvider } from "@veyyon/ai/usage/opencode-go";
 
 function oauthRow(id: number, email: string, opts?: { expired?: boolean }): StoredAuthCredential {
 	const credential: AuthCredential = {

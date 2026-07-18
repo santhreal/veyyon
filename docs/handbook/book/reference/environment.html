@@ -10,6 +10,10 @@
         <!-- Veyyon handbook: self-contained head additions. No remote resources. -->
         <meta name="theme-color" content="#050505">
         <meta name="color-scheme" content="dark">
+        <!-- Site favicons live at the deployed root, one level above /docs/. -->
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+        <link rel="icon" href="/favicon.ico" sizes="48x48">
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png">
         <style>
           /* Paint the near-black surface before CSS/JS resolve the theme, so there is
              no light flash on load. Kept in sync with theme/veyyon.css. */
@@ -18,7 +22,7 @@
           *, *::before, *::after { box-sizing: border-box; }
         </style>
 
-        <meta name="description" content="How Veyyon turns open models into frontier coding agents. The product, the harness, tool-call repair, the edit format, per-model adaptation, and how to use it.">
+        <meta name="description" content="Operator handbook for the Veyyon terminal coding agent: install, configuration, tools, approvals, edit formats, providers, and harness structure.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -38,7 +42,7 @@
         <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="../ayu-highlight-3fdfc3ac.css">
 
         <!-- Custom theme stylesheets -->
-        <link rel="stylesheet" href="../theme/veyyon-fc839a17.css">
+        <link rel="stylesheet" href="../theme/veyyon-06f6939e.css">
 
 
         <!-- Provide site root and default themes to javascript -->
@@ -46,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-e76f06ca.js";
+            window.path_to_searchindex_js = "../searchindex-a2447057.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-9cfd259b.js"></script>
+        <script src="../toc-cc1a72e9.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -192,10 +196,10 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="environment-variables"><a class="header" href="#environment-variables">Environment variables</a></h1>
-<p>This page covers the day-to-day surface only: identity/profile selection, provider auth, and the
+<p>This page covers the common operator surface: identity/profile selection, provider auth, and the
 handful of <code>VEYYON_*</code> variables that are actually read by the runtime today. Veyyon also reads a large
-number of <code>PI_*</code> debug/behavior-toggle variables (timing, startup tracing, TUI flags, eval-runtime
-toggles, and more) that are not day-to-day configuration. For the complete, code-grounded reference —
+number of <code>VEYYON_*</code> debug/behavior-toggle variables (timing, startup tracing, TUI flags, eval-runtime
+toggles, and more) that are less common configuration. For the complete, code-grounded reference —
 including every provider credential var, precedence chains, and internal toggles — see
 <a href="../../../environment-variables.html"><code>docs/environment-variables.md</code></a>.</p>
 <h2 id="location-and-identity"><a class="header" href="#location-and-identity">Location and identity</a></h2>
@@ -207,12 +211,14 @@ active profile is selected by its own variable:</p>
 <tr><th>Variable</th><th>Purpose</th></tr>
 </thead>
 <tbody>
-<tr><td><code>VEYYON_CONFIG_DIR</code></td><td>Overrides the config directory <strong>name</strong> under <code>$HOME</code> (default <code>.veyyon</code>). Does not accept a full path. Legacy aliases <code>OMP_CONFIG_DIR</code> and <code>PI_CONFIG_DIR</code> are still accepted (first set wins: Veyyon → OMP → PI).</td></tr>
-<tr><td><code>VEYYON_CODING_AGENT_DIR</code></td><td>Full override for the agent directory (default <code>~/&lt;config-dir-name&gt;/agent</code>); legacy alias <code>PI_CODING_AGENT_DIR</code>.</td></tr>
-<tr><td><code>VEYYON_PROFILE</code></td><td>Selects the active named profile (<code>~/.veyyon/profiles/&lt;name&gt;/agent</code>). Legacy aliases <code>OMP_PROFILE</code> and <code>PI_PROFILE</code> are still accepted.</td></tr>
-<tr><td><code>VEYYON_PACKAGE_DIR</code></td><td>Override package directory for bundled assets (Nix/Guix). Legacy <code>OMP_PACKAGE_DIR</code> / <code>PI_PACKAGE_DIR</code>.</td></tr>
-<tr><td><code>VEYYON_NO_PTY</code></td><td>Set to <code>1</code> to disable PTY-based interactive bash. Legacy <code>OMP_NO_PTY</code> / <code>PI_NO_PTY</code>.</td></tr>
-<tr><td><code>VEYYON_NO_TITLE</code></td><td>Set to disable auto terminal-title updates. Legacy <code>OMP_NO_TITLE</code> / <code>PI_NO_TITLE</code>.</td></tr>
+<tr><td><code>VEYYON_CONFIG_DIR</code></td><td>Overrides the config directory <strong>name</strong> under <code>$HOME</code> (default <code>.veyyon</code>). Does not accept a full path.</td></tr>
+<tr><td><code>VEYYON_CODING_AGENT_DIR</code></td><td>Full override for the agent directory (default <code>~/&lt;config-dir-name&gt;/profiles/&lt;active-or-default&gt;/agent</code>).</td></tr>
+<tr><td><code>VEYYON_PROFILE</code></td><td>Selects the active named profile (<code>~/.veyyon/profiles/&lt;name&gt;/agent</code>).</td></tr>
+<tr><td><code>VEYYON_PACKAGE_DIR</code></td><td>Override package directory for bundled assets (Nix/Guix).</td></tr>
+<tr><td><code>VEYYON_NO_PTY</code></td><td>Set to <code>1</code> to disable PTY-based interactive bash.</td></tr>
+<tr><td><code>VEYYON_NO_TITLE</code></td><td>Set to disable auto terminal-title updates.</td></tr>
+<tr><td><code>VEYYON_WORKTREE_DIR</code></td><td>Absolute path for agent-managed git worktrees (default profile path <code>~/.veyyon/profiles/&lt;name&gt;/wt</code>; also settable via the <code>worktree.base</code> setting). <code>~</code> is expanded; a relative value is ignored.</td></tr>
+<tr><td><code>VEYYON_GITHUB_CACHE_DB</code></td><td>Full path override for the GitHub view cache database (default <code>~/.veyyon/cache/github-cache.db</code>).</td></tr>
 </tbody>
 </table>
 </div>
@@ -270,7 +276,7 @@ sign-in and wins over a stored key.</p>
 <tr><td><code>LM_STUDIO_BASE_URL</code></td><td>LM Studio discovery base URL (defaults to <code>http://127.0.0.1:1234/v1</code>).</td></tr>
 <tr><td><code>LLAMA_CPP_BASE_URL</code></td><td>llama.cpp discovery base URL (defaults to <code>http://127.0.0.1:8080</code>).</td></tr>
 <tr><td><code>LITELLM_BASE_URL</code></td><td>LiteLLM proxy base URL fallback (defaults to <code>http://localhost:4000/v1</code>).</td></tr>
-<tr><td><code>PI_EDIT_VARIANT</code></td><td>Force edit tool variant: <code>hashline</code>, <code>apply_patch</code>, <code>patch</code>, <code>replace</code>.</td></tr>
+<tr><td><code>VEYYON_EDIT_VARIANT</code></td><td>Force edit tool variant: <code>hashline</code>, <code>apply_patch</code>, <code>patch</code>, <code>replace</code>.</td></tr>
 </tbody>
 </table>
 </div>
@@ -298,7 +304,7 @@ into <code>RequestInit.tls.ca</code> itself).</p>
 <tr><th>Variable</th><th>Purpose</th></tr>
 </thead>
 <tbody>
-<tr><td><code>VEYYON_INSTALL_DIR</code></td><td>Overrides the install script’s target directory (default <code>~/.local/bin</code> on Unix, <code>%LOCALAPPDATA%\veyyon</code> on Windows). Legacy alias <code>PI_INSTALL_DIR</code> is still accepted.</td></tr>
+<tr><td><code>VEYYON_INSTALL_DIR</code></td><td>Overrides the install script’s target directory (default <code>~/.local/bin</code> on Unix, <code>%LOCALAPPDATA%\veyyon</code> on Windows).</td></tr>
 </tbody>
 </table>
 </div>
@@ -315,7 +321,7 @@ convention in the current runtime.</p>
 <tr><th>Variable</th><th>Purpose</th></tr>
 </thead>
 <tbody>
-<tr><td><code>VEYYON_MCP_TIMEOUT_MS</code></td><td>Overrides the MCP client request timeout (ms) for every server; <code>0</code> disables client-side timeouts. Default <code>30000</code>. Legacy alias <code>OMP_MCP_TIMEOUT_MS</code>.</td></tr>
+<tr><td><code>VEYYON_MCP_TIMEOUT_MS</code></td><td>Overrides the MCP client request timeout (ms) for every server; <code>0</code> disables client-side timeouts. Default <code>30000</code>.</td></tr>
 </tbody>
 </table>
 </div>
@@ -329,8 +335,8 @@ broker host:</p>
 <tr><th>Variable</th><th>Purpose</th></tr>
 </thead>
 <tbody>
-<tr><td><code>VEYYON_AUTH_BROKER_URL</code></td><td>Base URL of the remote auth-broker; selects broker mode. Legacy alias <code>OMP_AUTH_BROKER_URL</code>.</td></tr>
-<tr><td><code>VEYYON_AUTH_BROKER_TOKEN</code></td><td>Bearer token sent to the broker. Legacy alias <code>OMP_AUTH_BROKER_TOKEN</code>.</td></tr>
+<tr><td><code>VEYYON_AUTH_BROKER_URL</code></td><td>Base URL of the remote auth-broker; selects broker mode.</td></tr>
+<tr><td><code>VEYYON_AUTH_BROKER_TOKEN</code></td><td>Bearer token sent to the broker.</td></tr>
 <tr><td><code>VEYYON_AUTH_BROKER_SNAPSHOT_TTL_MS</code></td><td>Freshness window (ms) for the encrypted local snapshot cache; default <code>3600000</code>.</td></tr>
 <tr><td><code>VEYYON_AUTH_BROKER_SNAPSHOT_CACHE</code></td><td>Path to the encrypted local snapshot cache.</td></tr>
 </tbody>
@@ -358,15 +364,15 @@ broker host:</p>
 <tbody>
 <tr><td><code>NO_COLOR</code></td><td>When set (to any value), Veyyon renders without color; hierarchy comes through emphasis, spacing, and glyphs instead.</td></tr>
 <tr><td><code>TERM</code> / <code>COLORTERM</code></td><td>Read to detect terminal capabilities (truecolor, ANSI-256, ANSI-16) and pick the matching palette mapping.</td></tr>
-<tr><td><code>PI_HARDWARE_CURSOR</code></td><td>Truthy enables hardware cursor mode.</td></tr>
-<tr><td><code>PI_TUI_WRITE_LOG</code></td><td>When set, logs TUI writes to the given file (debugging).</td></tr>
+<tr><td><code>VEYYON_HARDWARE_CURSOR</code></td><td>Truthy enables hardware cursor mode.</td></tr>
+<tr><td><code>VEYYON_TUI_WRITE_LOG</code></td><td>When set, logs TUI writes to the given file (debugging).</td></tr>
 </tbody>
 </table>
 </div>
 <p>There is no <code>VEYYON_TUI_DISABLE_KEYBOARD_ENHANCEMENT</code>, <code>VEYYON_TUI_RECORD_SESSION</code>, or
 <code>VEYYON_TUI_SESSION_LOG_PATH</code>; see
 <a href="../../../environment-variables.html#9-tui-runtime-flags-shared-package-affects-coding-agent-ux"><code>docs/environment-variables.md</code></a>
-for the real <code>PI_*</code>-prefixed TUI flags.</p>
+for the real <code>VEYYON_*</code>-prefixed TUI flags.</p>
 <h2 id="removed--does-not-exist"><a class="header" href="#removed--does-not-exist">Removed / does not exist</a></h2>
 <div class="table-wrapper">
 <table>
@@ -374,7 +380,7 @@ for the real <code>PI_*</code>-prefixed TUI flags.</p>
 <tr><th>Name</th><th>Status</th></tr>
 </thead>
 <tbody>
-<tr><td><code>VEYYON_HOME</code></td><td>Never existed. Config location is <code>VEYYON_CONFIG_DIR</code> (dirname override, legacy <code>OMP_CONFIG_DIR</code>/<code>PI_CONFIG_DIR</code>) + optional XDG migration, not a single home-path variable.</td></tr>
+<tr><td><code>VEYYON_HOME</code></td><td>Never existed. Config location is <code>VEYYON_CONFIG_DIR</code> (dirname override) + optional XDG migration, not a single home-path variable.</td></tr>
 <tr><td><code>VEYYON_SQLITE_HOME</code></td><td>Never existed. No separate SQLite-state override; state lives under the resolved agent directory.</td></tr>
 <tr><td><code>VEYYON_API_KEY</code> / <code>VEYYON_ACCESS_TOKEN</code></td><td>Never existed as a Veyyon-branded credential; use each provider’s native key variable.</td></tr>
 <tr><td><code>VEYYON_AUTHAPI_BASE_URL</code></td><td>Never existed. The ChatGPT AuthAPI host used by personal-access-token whoami is not overridable via env today.</td></tr>

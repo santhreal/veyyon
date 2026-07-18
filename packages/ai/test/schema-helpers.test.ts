@@ -7,7 +7,7 @@ import {
 	mergeCompatibleEnumSchemas,
 	mergePropertySchemas,
 	stripResidualCombiners,
-} from "@veyyon/pi-ai/utils/schema";
+} from "@veyyon/ai/utils/schema";
 
 describe("isJsonObject", () => {
 	it("returns true for plain objects", () => {

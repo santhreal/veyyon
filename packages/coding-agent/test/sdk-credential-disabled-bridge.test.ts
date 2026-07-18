@@ -2,16 +2,16 @@ import { afterEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { AuthStorage, type CredentialDisabledEvent } from "@veyyon/pi-ai";
-import * as oauthUtils from "@veyyon/pi-ai/oauth";
-import { ModelRegistry } from "@veyyon/pi-coding-agent/config/model-registry";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
-import type { Extension, ExtensionError, ExtensionFactory } from "@veyyon/pi-coding-agent/extensibility/extensions";
-import { ExtensionRunner } from "@veyyon/pi-coding-agent/extensibility/extensions";
-import { ExtensionRuntime } from "@veyyon/pi-coding-agent/extensibility/extensions/loader";
-import { createAgentSession } from "@veyyon/pi-coding-agent/sdk";
-import { SessionManager } from "@veyyon/pi-coding-agent/session/session-manager";
-import { removeSyncWithRetries, Snowflake } from "@veyyon/pi-utils";
+import { AuthStorage, type CredentialDisabledEvent } from "@veyyon/ai";
+import * as oauthUtils from "@veyyon/ai/oauth";
+import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import type { Extension, ExtensionError, ExtensionFactory } from "@veyyon/coding-agent/extensibility/extensions";
+import { ExtensionRunner } from "@veyyon/coding-agent/extensibility/extensions";
+import { ExtensionRuntime } from "@veyyon/coding-agent/extensibility/extensions/loader";
+import { createAgentSession } from "@veyyon/coding-agent/sdk";
+import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { removeSyncWithRetries, Snowflake } from "@veyyon/utils";
 
 interface SessionDirs {
 	cwd: string;

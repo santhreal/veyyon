@@ -1,8 +1,9 @@
 /**
  * GitHub Copilot wire metadata: API-key envelope parsing and endpoint
  * derivation shared by catalog discovery and the pi-ai OAuth flow. The device
- * login / token refresh flow lives in `@veyyon/pi-ai`'s registry.
+ * login / token refresh flow lives in `@veyyon/ai`'s registry.
  */
+import { trimTrailingSlashes } from "@veyyon/utils";
 
 export const COPILOT_USER_AGENT = "opencode/1.3.15" as const;
 
@@ -67,7 +68,7 @@ export function normalizeGitHubCopilotApiEndpoint(input: string | undefined): st
 	try {
 		const url = new URL(trimmed);
 		if (url.protocol !== "https:" || !url.hostname) return undefined;
-		return trimmed.replace(/\/+$/, "");
+		return trimTrailingSlashes(trimmed);
 	} catch {
 		return undefined;
 	}

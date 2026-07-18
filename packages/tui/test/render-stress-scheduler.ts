@@ -1,4 +1,4 @@
-import type { RenderScheduler } from "@veyyon/pi-tui/tui";
+import type { RenderScheduler } from "@veyyon/tui/tui";
 import type { VirtualTerminal } from "./virtual-terminal";
 
 export class StressRenderScheduler implements RenderScheduler {

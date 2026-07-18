@@ -1,7 +1,7 @@
-import type { Dialect as CatalogDialect } from "@veyyon/pi-catalog/identity";
+import type { Dialect as CatalogDialect } from "@veyyon/catalog/identity";
 import type { Context, Message, ToolCall } from "../types";
 
-export type { Dialect } from "@veyyon/pi-catalog/identity";
+export type { Dialect } from "@veyyon/catalog/identity";
 
 export type InbandScanEvent =
 	| { type: "text"; text: string }

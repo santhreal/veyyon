@@ -3,17 +3,17 @@ import {
 	type InputItem,
 	type RequestBody,
 	transformRequestBody,
-} from "@veyyon/pi-ai/providers/openai-codex/request-transformer";
+} from "@veyyon/ai/providers/openai-codex/request-transformer";
 import {
 	buildTransformedCodexRequestBody,
 	convertCodexResponsesMessages,
 	resetOpenAICodexHistoryAfterCompaction,
 	streamOpenAICodexResponses,
-} from "@veyyon/pi-ai/providers/openai-codex-responses";
-import { isOpenAIResponsesProgressEvent } from "@veyyon/pi-ai/providers/openai-shared";
-import type { CodexCompactionRequestContext, Context, FetchImpl, ProviderSessionState } from "@veyyon/pi-ai/types";
-import { buildModel } from "@veyyon/pi-catalog/build";
-import * as piUtils from "@veyyon/pi-utils";
+} from "@veyyon/ai/providers/openai-codex-responses";
+import { isOpenAIResponsesProgressEvent } from "@veyyon/ai/providers/openai-shared";
+import type { CodexCompactionRequestContext, Context, FetchImpl, ProviderSessionState } from "@veyyon/ai/types";
+import { buildModel } from "@veyyon/catalog/build";
+import * as piUtils from "@veyyon/utils";
 import { createCodexModel } from "./helpers";
 
 const TEST_INSTALLATION_ID = "00000000-0000-4000-8000-000000000001";

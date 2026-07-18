@@ -10,10 +10,10 @@ import type {
 	OAuthAccess,
 	OAuthAccessResolution,
 	SimpleStreamOptions,
-} from "@veyyon/pi-ai";
-import { streamSimple } from "@veyyon/pi-ai";
-import { replaceTabs, truncateToWidth } from "@veyyon/pi-tui";
-import { formatDuration, getProjectDir } from "@veyyon/pi-utils";
+} from "@veyyon/ai";
+import { streamSimple } from "@veyyon/ai";
+import { replaceTabs, truncateToWidth } from "@veyyon/tui";
+import { formatDuration, getProjectDir } from "@veyyon/utils";
 import chalk from "chalk";
 import { ModelRegistry } from "../config/model-registry";
 import {

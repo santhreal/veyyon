@@ -1,54 +1,36 @@
 # Contributing to Veyyon
 
-Thanks for your interest in contributing. This project uses a lightweight
-**vouch** system to decide who can open pull requests. Please read this before
-opening a PR.
+Thanks for your interest in contributing. Issues and pull requests are open to
+everyone; please read this before opening a PR.
 
 ## TL;DR
 
 - **Issues are open to everyone.** File bugs, feature requests, and questions
   freely — they are triaged automatically.
-- **Pull requests require a vouch.** A PR whose author is not vouched (or is
-  denounced) is **closed automatically**. If you are not yet vouched, do **not**
-  open a PR to get noticed — it will be closed on sight. Start a Discussion and
-  ask to be vouched first (see below).
+- **Pull requests are open to everyone too.** Open a PR against `main`. It runs
+  through CI and an automated review, then a maintainer reviews it.
 
-## Who can open PRs
+## Opening a PR
 
-A pull request is accepted when its author is any of:
-
-- a repository collaborator (write access or above), or a bot; or
-- listed — without a leading `-` — in [`.github/VOUCHED.td`](.github/VOUCHED.td).
-
-Anyone **denounced** (prefixed with `-` in that file) is always blocked.
-
-## Getting vouched
-
-1. Open a [Discussion](../../discussions) (or comment on an existing one)
-   describing what you'd like to contribute.
-2. A maintainer vouches you by commenting **`!vouch`** (vouches the discussion
-   author) or **`!vouch @your-handle`** on that discussion.
-3. Once you appear in `.github/VOUCHED.td`, open your PR — it stays open and is
-   reviewed.
-
-Maintainers may also `!denounce [@user]` and `!unvouch [@user]`. Only
-collaborators with admin/maintain/write can run these commands.
+1. Fork the repo (or branch, if you have write access) and make your change.
+2. Put a changelog entry under the affected package's `## [Unreleased]`
+   section, keep the PR description short (what broke, the fix), and make sure
+   `bun run check` and the tests pass locally.
+3. Open the PR against `main`.
 
 ## What happens to your PR
 
-| You are… | Result |
+Every PR runs the full CI suite before a human looks at it:
+
+| Stage | What it does |
 | --- | --- |
-| Vouched (or a collaborator) | PR stays open → automated review → human review |
-| Not vouched | PR closed with a comment — get vouched, then reopen or open a new PR |
-| Denounced | PR closed |
+| **Checks** (`checks.yml`) | Biome lint + type check, TypeScript workspace tests |
+| **CI** (`ci.yml`) | Native addon builds, Rust + TS test matrix, install-method smoke tests |
+| **Security** (`security.yml`) | keyhog secret scan, `cargo deny`, `cargo audit`, `bun audit`, CodeQL SAST |
+| **Autoreview** (`autoreview.yml`) | santh-bot (qodo pr-agent) posts an AI review, description, and improvement pass |
+| **veybot** | The in-repo review bot posts a deeper contextual review |
 
-Pushing more commits to an open, vouched PR is fine — it remains vouched.
+Green CI plus the automated review is the entry point to human review — it is
+not a merge gate on its own. A maintainer makes the final call.
 
-## The VOUCHED.td file
-
-[`.github/VOUCHED.td`](.github/VOUCHED.td) is the source of truth: one handle per
-line, sorted alphabetically, optionally `platform:handle`, with `-` marking a
-denouncement and an optional reason after the handle. The format follows
-[mitchellh/vouch](https://github.com/mitchellh/vouch); the denouncement list is
-intentionally public so other projects can reuse our prior knowledge of bad
-actors.
+Pushing more commits to an open PR re-runs the pipeline; that's expected.

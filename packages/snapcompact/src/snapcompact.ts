@@ -39,15 +39,15 @@
  *
  * The whole pass is local and deterministic — no LLM call, no API key, no
  * latency beyond rendering. Rasterization and PNG encoding happen in native
- * code (`renderSnapcompactPng` in `crates/pi-natives/src/snapcompact.rs`).
+ * code (`renderSnapcompactPng` in `crates/veyyon-natives/src/snapcompact.rs`).
  * Frames persist in the compaction entry's `preserveData` and are
  * re-attached to the compaction summary message on every context rebuild.
  */
 
-import type { Api, ImageContent, Message, TextContent } from "@veyyon/pi-ai";
-import { renderSnapcompactPng, snapcompactSupportedChars } from "@veyyon/pi-natives";
-import { formatGroupedPaths, prompt } from "@veyyon/pi-utils";
-import { INTENT_FIELD } from "@veyyon/pi-wire";
+import type { Api, ImageContent, Message, TextContent } from "@veyyon/ai";
+import { renderSnapcompactPng, snapcompactSupportedChars } from "@veyyon/natives";
+import { formatGroupedPaths, pluralize, prompt } from "@veyyon/utils";
+import { INTENT_FIELD } from "@veyyon/wire";
 import fileOperationsTemplate from "./prompts/file-operations.md" with { type: "text" };
 import snapcompactSummaryPrompt from "./prompts/snapcompact-summary.md" with { type: "text" };
 
@@ -1251,7 +1251,7 @@ const DOC_GUTTER = 3;
 
 /** East Asian Wide / Fullwidth code points that occupy two grid cells when a
  *  narrow bitmap shape draws them through the Silver fallback. Mirrors
- *  `is_wide` in `crates/pi-natives/src/snapcompact.rs`; the two MUST stay in
+ *  `is_wide` in `crates/veyyon-natives/src/snapcompact.rs`; the two MUST stay in
  *  sync or native layout and this capacity math disagree on cell counts. */
 function isWideCodePoint(cp: number): boolean {
 	return (
@@ -1646,7 +1646,7 @@ function imagesWithinBudget(
 function omittedFrameNotice(omittedFrames: number, omittedBytes: number): string {
 	return [
 		"-------------- snapcompact image middle omitted",
-		`${omittedFrames.toLocaleString()} archived image frame${omittedFrames === 1 ? "" : "s"} (${formatFrameDataBytes(omittedBytes)} base64) exceeded the per-request snapcompact payload budget. The compacted summary and visible text edges remain available.`,
+		`${omittedFrames.toLocaleString()} archived image ${pluralize("frame", omittedFrames)} (${formatFrameDataBytes(omittedBytes)} base64) exceeded the per-request snapcompact payload budget. The compacted summary and visible text edges remain available.`,
 		"--------------",
 	].join("\n");
 }
@@ -1967,7 +1967,7 @@ export async function compact<TMessage = Message>(
 	const textNote = textChars > 0 ? ` (+${textChars.toLocaleString()} chars as text)` : "";
 	return {
 		summary,
-		shortSummary: `Archived ${totalChars.toLocaleString()} chars of history onto ${frames.length} snapcompact frame${frames.length === 1 ? "" : "s"}${textNote}`,
+		shortSummary: `Archived ${totalChars.toLocaleString()} chars of history onto ${frames.length} snapcompact ${pluralize("frame", frames.length)}${textNote}`,
 		firstKeptEntryId,
 		tokensBefore,
 		details: { readFiles, modifiedFiles },

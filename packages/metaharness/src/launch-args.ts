@@ -38,7 +38,7 @@ export interface LaunchRequest {
 	note?: string;
 	/** Experiment goal; upserted for the run's experiment (job-name prefix). */
 	goal?: string;
-	/** Use prebuilt dist/omp-linux-* binaries instead of the default source mount. */
+	/** Use prebuilt dist/vey-linux-* binaries instead of the default source mount. */
 	prebuiltBinaries?: boolean;
 	/** Extra raw runner args, appended verbatim. */
 	extraArgs?: string[];
@@ -74,7 +74,7 @@ export function harborRunnerArgs(
 		}
 	}
 	if (request.prebuiltBinaries) {
-		for (const name of ["omp-linux-arm64", "omp-linux-x64"]) {
+		for (const name of ["vey-linux-arm64", "vey-linux-x64"]) {
 			const binary = path.join(REPO_ROOT, "packages", "coding-agent", "dist", name);
 			if (fs.existsSync(binary)) argv.push("--binary", binary);
 		}

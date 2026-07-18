@@ -15,7 +15,7 @@ import {
 	parseAnthropicModel,
 	supportsAdaptiveThinkingDisplay,
 	supportsMidConversationSystemMessages,
-} from "@veyyon/pi-catalog/identity";
+} from "@veyyon/catalog/identity";
 
 describe("isKimiModelId", () => {
 	test("matches Kimi namespace and delimiter forms", () => {

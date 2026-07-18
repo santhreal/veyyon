@@ -20,8 +20,8 @@ import {
 	type CustomToolAPI,
 	loadCustomTools,
 	type ToolPathWithSource,
-} from "@veyyon/pi-coding-agent/extensibility/custom-tools";
-import { removeWithRetries } from "@veyyon/pi-utils";
+} from "@veyyon/coding-agent/extensibility/custom-tools";
+import { removeWithRetries } from "@veyyon/utils";
 
 describe("loadCustomTools per-session binding (#2190 review fix)", () => {
 	let tmp: string;

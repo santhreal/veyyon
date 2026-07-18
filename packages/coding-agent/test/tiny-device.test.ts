@@ -8,7 +8,7 @@ import {
 	type TinyModelDevice,
 	tinyModelDeviceLoadOrder,
 	tinyModelDeviceSettingToEnv,
-} from "@veyyon/pi-coding-agent/tiny/device";
+} from "@veyyon/coding-agent/tiny/device";
 
 describe("tiny model device selection", () => {
 	it("defaults to CPU-only inference on every platform", () => {
@@ -37,7 +37,7 @@ describe("tiny model device selection", () => {
 	});
 });
 
-describe("tiny model device setting → PI_TINY_DEVICE mapping", () => {
+describe("tiny model device setting → VEYYON_TINY_DEVICE mapping", () => {
 	it("returns undefined for the default sentinel so the worker keeps its CPU default", () => {
 		expect(tinyModelDeviceSettingToEnv(TINY_MODEL_DEVICE_DEFAULT)).toBeUndefined();
 		expect(tinyModelDeviceSettingToEnv(undefined)).toBeUndefined();

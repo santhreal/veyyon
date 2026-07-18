@@ -1,4 +1,5 @@
-import { routeSelectListMouse, type SelectItem, SelectList, type SgrMouseEvent, truncateToWidth } from "@veyyon/pi-tui";
+import { routeSelectListMouse, type SelectItem, SelectList, type SgrMouseEvent, truncateToWidth } from "@veyyon/tui";
+import { errorMessage } from "@veyyon/utils";
 import { type ImportCandidate, importForeignItems, scanForeignConfig } from "../../../discovery/import-scan";
 import { getSelectListTheme, theme } from "../../theme/theme";
 import type { SetupScene, SetupSceneController, SetupSceneHost } from "./types";
@@ -82,7 +83,7 @@ class ImportSceneController implements SetupSceneController {
 			return;
 		}
 		try {
-			const { getAgentDir } = await import("@veyyon/pi-utils");
+			const { getAgentDir } = await import("@veyyon/utils");
 			const outcome = await importForeignItems(getAgentDir(), chosen);
 			this.#status = [
 				theme.fg(
@@ -95,12 +96,7 @@ class ImportSceneController implements SetupSceneController {
 			this.host.finish("done");
 		} catch (error) {
 			this.#importing = false;
-			this.#status = [
-				theme.fg(
-					"error",
-					`${theme.status.error} Import failed: ${error instanceof Error ? error.message : String(error)}`,
-				),
-			];
+			this.#status = [theme.fg("error", `${theme.status.error} Import failed: ${errorMessage(error)}`)];
 			this.host.requestRender();
 		}
 	}

@@ -7,8 +7,8 @@ import {
 	replaceTabs,
 	truncateToWidth,
 	visibleWidth,
-} from "@veyyon/pi-tui";
-import { sanitizeText } from "@veyyon/pi-utils";
+} from "@veyyon/tui";
+import { pluralize, sanitizeText } from "@veyyon/utils";
 import { bottomBorder, divider, row, topBorder } from "../modes/components/overlay-box";
 import { theme } from "../modes/theme/theme";
 import { copyToClipboard } from "../utils/clipboard";
@@ -954,7 +954,7 @@ export class DebugLogViewerComponent implements Component {
 
 		try {
 			copyToClipboard(selectedPayload);
-			const message = `Copied ${selected.length} log ${selected.length === 1 ? "entry" : "entries"}`;
+			const message = `Copied ${selected.length} log ${pluralize("entry", selected.length)}`;
 			this.#statusMessage = message;
 			this.#onStatus?.(message);
 		} catch (error) {

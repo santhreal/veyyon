@@ -1,6 +1,6 @@
 # Vendored from uutils/coreutils tag 0.8.0 (src/uu/date), patched to resolve
 # path arguments against the shell working directory and route I/O through
-# pi-uutils-ctx so it can run in-process as a shell builtin. The set-date
+# veyyon-uutils-ctx so it can run in-process as a shell builtin. The set-date
 # capability (and its libc/windows-sys settime dependencies) is removed
 # entirely, along with the fluent/icu localization stack. See src/date.rs for
 # the patch markers (`pi-uutils:` comments).
@@ -24,7 +24,7 @@ jiff = { version = "0.2", features = [
 parse_datetime = "0.14"
 regex = "1.11"
 uucore = { version = "0.8.0", features = ["parser"] }
-pi-uutils-ctx = { path = "../../pi-uutils-ctx" }
+veyyon-uutils-ctx = { path = "../../veyyon-uutils-ctx" }
 
 # pi-uutils: rustix is kept only for `clock_getres` (--resolution); the
 # `clock_settime` user is gone with the set-date capability.

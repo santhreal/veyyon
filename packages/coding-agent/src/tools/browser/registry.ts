@@ -1,5 +1,5 @@
 import * as path from "node:path";
-import { logger, withTimeout } from "@veyyon/pi-utils";
+import { errorMessage, logger, withTimeout } from "@veyyon/utils";
 import type { Subprocess } from "bun";
 import type { Browser, CDPSession } from "puppeteer-core";
 import { ToolAbortError, ToolError } from "../tool-errors";
@@ -95,7 +95,7 @@ export async function acquireBrowser(kind: BrowserKind, opts: AcquireBrowserOpti
 	if (opts.signal?.aborted) {
 		await disposeBrowserHandle(handle, { kill: kind.kind === "spawned" }).catch(err => {
 			logger.debug("Failed to dispose orphan browser after abort", {
-				error: err instanceof Error ? err.message : String(err),
+				error: errorMessage(err),
 			});
 		});
 		throw new ToolAbortError("Browser open aborted");

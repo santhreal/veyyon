@@ -10,6 +10,10 @@
         <!-- Veyyon handbook: self-contained head additions. No remote resources. -->
         <meta name="theme-color" content="#050505">
         <meta name="color-scheme" content="dark">
+        <!-- Site favicons live at the deployed root, one level above /docs/. -->
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+        <link rel="icon" href="/favicon.ico" sizes="48x48">
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png">
         <style>
           /* Paint the near-black surface before CSS/JS resolve the theme, so there is
              no light flash on load. Kept in sync with theme/veyyon.css. */
@@ -18,7 +22,7 @@
           *, *::before, *::after { box-sizing: border-box; }
         </style>
 
-        <meta name="description" content="How Veyyon turns open models into frontier coding agents. The product, the harness, tool-call repair, the edit format, per-model adaptation, and how to use it.">
+        <meta name="description" content="Operator handbook for the Veyyon terminal coding agent: install, configuration, tools, approvals, edit formats, providers, and harness structure.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -38,7 +42,7 @@
         <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="../ayu-highlight-3fdfc3ac.css">
 
         <!-- Custom theme stylesheets -->
-        <link rel="stylesheet" href="../theme/veyyon-fc839a17.css">
+        <link rel="stylesheet" href="../theme/veyyon-06f6939e.css">
 
 
         <!-- Provide site root and default themes to javascript -->
@@ -46,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-e76f06ca.js";
+            window.path_to_searchindex_js = "../searchindex-a2447057.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-9cfd259b.js"></script>
+        <script src="../toc-cc1a72e9.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -195,73 +199,73 @@
 <p>A concise vocabulary of the primitives that shape Veyyon’s runtime behavior.</p>
 <ul>
 <li>
-<p><strong>apply_patch</strong>: Veyyon’s structured edit tool. The model emits a <code>*** Begin Patch … *** End Patch</code> envelope, and the harness applies it through one verified path that checks for a unique match, respects the approval policy, and records the diff. It is delivered as a Freeform tool on the Responses API or as a Function tool with an <code>{input}</code> JSON field on Chat Completions.</p>
+<p><strong>apply_patch</strong>: Edit mode (<code>edit.mode: apply_patch</code>) for a Codex-style <code>*** Begin Patch … *** End Patch</code> envelope. Default edit mode is <strong>hashline</strong> via the <code>edit</code> tool. Apply-patch shares approval policy with other write paths.</p>
 </li>
 <li>
-<p><strong>approval mode</strong>: The autonomy control (<code>tools.approvalMode</code>) that decides which tool tiers run automatically and which pause for your yes: <code>plan</code>, <code>ask</code>, <code>auto-edit</code>, <code>yolo</code> (legacy <code>always-ask</code> = <code>ask</code>, <code>write</code> = <code>auto-edit</code>). Veyyon does not add an OS command sandbox, so the mode is the boundary.</p>
+<p><strong>approval mode</strong>: The autonomy control (<code>tools.approvalMode</code>) for tool tiers: <code>plan</code>, <code>ask</code>, <code>auto-edit</code>, <code>yolo</code> (legacy <code>always-ask</code> → <code>ask</code>, <code>write</code> → <code>auto-edit</code>). There is no OS command sandbox; the mode (plus execpolicy) is the boundary.</p>
 </li>
 <li>
-<p><strong>backend catalog</strong>: The Tier-B data file that maps each model slug to a provider, wire API, and connection facts. Veyyon selects the model contract against this catalog rather than hardcoding provider lists.</p>
+<p><strong>model catalog</strong>: Bundled provider/model data plus <code>models.yml</code> / <code>models.yaml</code> custom entries. There is no separate <code>backends.toml</code> subsystem.</p>
 </li>
 <li>
 <p><strong>compaction</strong>: The compression layer that summarizes a long trajectory into a smaller, information-preserving form instead of truncating it. Compaction preserves the goal card, recent user messages, and deterministic working-set facts across successive windows.</p>
 </li>
 <li>
-<p><strong>edit / write</strong>: The <code>edit</code> and <code>write</code> tools change files on disk. <code>write</code> creates or replaces a file; <code>edit</code> replaces exact text with new text. Both route through the same verified path as <code>apply_patch</code> and respect the approval policy.</p>
+<p><strong>edit / write</strong>: The <code>edit</code> and <code>write</code> tools change files on disk. Default <code>edit</code> is hashline (content-hash anchors); <code>write</code> creates or overwrites a whole file. Both respect <code>tools.approvalMode</code>.</p>
 </li>
 <li>
 <p><strong>Freeform tool / Function tool</strong>: The two tool shapes Veyyon advertises to a model. A Freeform tool emits a raw grammar-shaped body; a Function tool emits JSON arguments matching a schema. The choice depends on the backend wire API.</p>
 </li>
 <li>
-<p><strong>goal state</strong>: A structured goal card owned by the harness and stored in the state database. It keeps the objective, constraints, blockers, and completion criteria in a named context slot separate from the conversation tail so compaction cannot drop the user’s intent.</p>
+<p><strong>goal state</strong>: A structured goal card on the session (session-backed). Holds the objective and lifecycle fields, injected outside the raw conversation tail so compaction does not drop intent.</p>
 </li>
 <li>
-<p><strong>hook</strong>: A user-configured lifecycle handler that runs a command in response to events such as <code>PreToolUse</code>, <code>PostToolUse</code>, <code>PreCompact</code>, or <code>SessionStart</code>. Hooks can inject context, rewrite tool input, or block an action.</p>
+<p><strong>hook</strong>: A TypeScript module that default-exports a factory and registers handlers with <code>pi.on(...)</code> (events such as <code>tool_call</code>, <code>tool_result</code>, <code>session</code>). Can block tools, inject context, or register commands. See <a href="../features/hooks.html">Hooks</a>.</p>
 </li>
 <li>
-<p><strong>MCP</strong>: Model Context Protocol, the bridge between Veyyon and external tools or data sources. Veyyon can consume MCP servers and can also run as an MCP server so other clients can delegate programming tasks to it.</p>
+<p><strong>MCP</strong>: Model Context Protocol. Veyyon is an MCP <strong>client</strong> that connects to external MCP servers and exposes their tools as <code>mcp__…</code>. Editor embedding uses ACP (<code>veyyon acp</code>), which is a different protocol.</p>
 </li>
 <li>
-<p><strong>model contract / BYOK</strong>: The model contract is your chosen endpoint, model, and credentials. BYOK (bring-your-own-key) means you supply your own provider or local-endpoint key, so Veyyon calls the API directly without telemetry egress.</p>
+<p><strong>model contract / BYOK</strong>: The model contract is your chosen endpoint, model, and credentials. BYOK (bring-your-own-key) means you supply your own provider or local-endpoint key; Veyyon calls that API with your credentials. Optional OTEL export is separate and only when configured.</p>
 </li>
 <li>
-<p><strong>personality</strong>: A style-only setting that changes how the agent writes replies without altering its tools or permissions. Built-in personalities include <code>pragmatic</code>, <code>friendly</code>, and <code>none</code>.</p>
+<p><strong>personality</strong>: Style-only system prompt block. Built-ins include <code>default</code>, <code>pragmatic</code>, <code>friendly</code>, and <code>none</code>.</p>
 </li>
 <li>
-<p><strong>plugin</strong>: A directory with a <code>.veyyon-plugin/plugin.json</code> manifest that adds skills, MCP servers, apps, hooks, or TUI customizations to Veyyon. Plugins are discovered through marketplaces.</p>
+<p><strong>plugin</strong>: A directory with a <code>.veyyon-plugin/plugin.json</code> manifest that can add skills, MCP servers, hooks, and related assets. Plugins are discovered through marketplaces.</p>
 </li>
 <li>
-<p><strong>profile</strong>: A named configuration group (a per-profile <code>config.yml</code> under the agent directory) that bundles model, provider, approval mode, personality, and other runtime settings. Activate a profile at launch with <code>--profile</code> or at runtime with <code>/profile</code>.</p>
+<p><strong>profile</strong>: A directory under <code>~/.veyyon/profiles/&lt;name&gt;/</code> (including <code>default</code>) holding agent settings, sessions, MCP, skills, and related state. Activate with <code>--profile</code>, <code>VEYYON_PROFILE</code>, or <code>/profile</code> (relaunch).</p>
 </li>
 <li>
-<p><strong>prompt-cache discipline</strong>: The practice of keeping stable prompt prefixes stable and treating cache behavior as measured runtime policy. Veyyon orders context and compacts in ways that preserve prefix stability across turns.</p>
+<p><strong>prompt-cache discipline</strong>: Keeping stable prompt prefixes byte-stable so provider prompt caches hit; context order and compaction are designed around that.</p>
 </li>
 <li>
-<p><strong>repair</strong>: The layer that coerces a malformed-but-recoverable tool call into schema shape before dispatch, or fails loud with coaching when the call is unrepairable. It is protocol-agnostic and driven by the same schema the model was shown.</p>
+<p><strong>repair</strong>: Schema-based coercion of malformed tool-call arguments before validation; ambiguous cases return an error tool result (no dispatch). See <a href="../repair/overview.html">Repair</a>.</p>
 </li>
 <li>
-<p><strong>repair cascade</strong>: The ordered set of sound transforms the repair engine applies to a tool call. Each rule returns a coerced value, a rule name for telemetry, and a coaching hint so the model stops re-malforming.</p>
+<p><strong>repair cascade</strong>: The ordered set of sound transforms the repair engine applies to a tool call. Each rule returns a coerced value, a rule name for telemetry, and a coaching hint.</p>
 </li>
 <li>
 <p><strong>rollout</strong>: The append-only JSONL log of a session’s entries. Each entry carries an <code>id</code> and <code>parent_id</code>; a <code>leaf_move</code> line branches the active leaf to any earlier entry without rewriting history.</p>
 </li>
 <li>
-<p><strong>session</strong>: The unit of interactive work in Veyyon. A session records turns, tool activity, approvals, edits, and verification output, and survives context pressure through goal state and compaction.</p>
+<p><strong>session</strong>: The unit of interactive work in Veyyon. A session records turns, tool activity, approvals, edits, and verification output,</p>
 </li>
 <li>
-<p><strong>skill</strong>: A reusable capability defined as data on the filesystem in a directory with a <code>SKILL.md</code> file. Skills are loaded from system, admin, user, project, and repository scopes and their instructions are injected into the system rules block.</p>
+<p><strong>skill</strong>: Filesystem package with a <code>SKILL.md</code>. Discovered from profile/project skill dirs, managed-skills, plugins, and optional foreign-tool layouts. Metadata enters the system prompt; body is read via <code>skill://</code>.</p>
 </li>
 <li>
 <p><strong>thread / active leaf</strong>: A thread is a linear sequence of messages within a session. The active leaf is the currently selected tip of the session tree that receives the next turn; branching moves the leaf without erasing sibling history.</p>
 </li>
 <li>
-<p><strong>tool call / repair</strong>: A tool call is a model message that invokes a tool; repair is the harness layer that fixes malformed calls before dispatch so they land on the first attempt.</p>
+<p><strong>tool call</strong>: A model message that invokes a tool by name with arguments. Repair may coerce malformed arguments before validation.</p>
 </li>
 <li>
-<p><strong>turn</strong>: One complete model-invocation cycle in a session: the harness assembles context, the model responds, and any resulting tool calls are executed and repaired until the turn resolves.</p>
+<p><strong>turn</strong>: One model-invocation cycle: assemble context, model response, tool calls until the turn ends.</p>
 </li>
 <li>
-<p><strong>verifier / stop-when-green</strong>: The verifier checks whether a goal or task is satisfied. Stop-when-green is the policy of ending the turn loop once the verifier passes, so the agent does not waste budget after winning.</p>
+<p><strong>verifier / stop-when-green</strong>: Checks whether a goal or task is satisfied. Stop-when-green ends the turn loop once verification passes.</p>
 </li>
 </ul>
 <p>See also: <a href="../concepts/sessions-turns-threads.html">Sessions, turns, and threads</a>, <a href="../concepts/permission-model.html">Permission model</a>, <a href="../concepts/model-contract.html">Model contract</a>, <a href="../repair/overview.html">Repair overview</a>, and <a href="../context/compaction-memory.html">Compaction and memory</a>.</p>

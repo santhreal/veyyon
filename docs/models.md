@@ -1,6 +1,6 @@
 # Model and Provider Configuration (`models.yml` / `models.yaml`)
 
-This document describes how the coding-agent currently loads models, applies overrides, resolves credentials, and chooses models at runtime.
+This document describes how the coding agent loads models, applies overrides, resolves credentials, and chooses models at runtime.
 
 ## What controls model behavior
 
@@ -9,15 +9,15 @@ Primary implementation files:
 - `src/config/model-registry.ts` — loads built-in + custom models, provider overrides, runtime discovery, auth integration
 - `src/config/model-resolver.ts` — parses model patterns and selects initial/smol/slow models
 - `src/config/settings-schema.ts` — model-related settings (`modelRoles`, provider transport preferences)
-- `src/session/auth-storage.ts` — re-exports `AuthStorage` from `@veyyon/pi-ai` (`packages/ai/src/auth-storage.ts`); API key + OAuth resolution order
+- `src/session/auth-storage.ts` — re-exports `AuthStorage` from `@veyyon/ai` (`packages/ai/src/auth-storage.ts`); API key + OAuth resolution order
 - `packages/catalog/src/models.ts` and `packages/catalog/src/types.ts` — built-in providers/models (`getBundledModels` / `getBundledProviders`) and `Model`/`compat` types
 
 ## Config file location and legacy behavior
 
 Default config paths, in precedence order:
 
-- `~/.veyyon/agent/models.yml`
-- `~/.veyyon/agent/models.yaml`
+- `~/.veyyon/profiles/default/agent/models.yml`
+- `~/.veyyon/profiles/default/agent/models.yaml`
 
 Legacy behavior still present:
 
@@ -149,7 +149,7 @@ providers:
   openai:
     apiKey: "!op read op://dev/openai/api-key"
     headers:
-      X-Team-Key: "!bw get password omp-team-key"
+      X-Team-Key: "!bw get password veyyon-team-key"
 ```
 
 Successful command outputs are cached for the process lifetime so the command is not re-run for every model.
@@ -158,7 +158,7 @@ Successful command outputs are cached for the process lifetime so the command is
 
 ModelRegistry pipeline (on refresh):
 
-1. Load built-in providers/models from `@veyyon/pi-catalog` (`getBundledProviders` / `getBundledModels`).
+1. Load built-in providers/models from `@veyyon/catalog` (`getBundledProviders` / `getBundledModels`).
 2. Load `models.yml` / `models.yaml` custom config.
 3. Apply provider overrides (`baseUrl`, `headers`, `disableStrictTools`) to built-in models.
 4. Apply `modelOverrides` (per provider + model id).
@@ -398,9 +398,9 @@ Keyless providers:
 
 ### Broker mode
 
-When `OMP_AUTH_BROKER_URL` (or `auth.broker.url`) is set, the local SQLite credential store is replaced by `RemoteAuthCredentialStore`. Layers 2 and 3 above (stored API key / OAuth in `agent.db`) are served from a broker-supplied snapshot whose `refresh` tokens are redacted; expiry triggers `POST /v1/credential/:id/refresh` on the broker rather than a local refresh.
+When `VEYYON_AUTH_BROKER_URL` (or `auth.broker.url`) is set, the local SQLite credential store is replaced by `RemoteAuthCredentialStore`. Layers 2 and 3 above (stored API key / OAuth in `agent.db`) are served from a broker-supplied snapshot whose `refresh` tokens are redacted; expiry triggers `POST /v1/credential/:id/refresh` on the broker rather than a local refresh.
 
-`AuthStorage.setConfigApiKey` lets a `models.yml` `apiKey` win over a broker-resolved OAuth token without overriding a runtime `--api-key`. See [`auth-broker-gateway.md`](./internal/auth-broker-gateway.md) for the full broker / gateway design and env surface (`OMP_AUTH_BROKER_URL`, `OMP_AUTH_BROKER_TOKEN`, `auth.broker.url`, `auth.broker.token`).
+`AuthStorage.setConfigApiKey` lets a `models.yml` `apiKey` win over a broker-resolved OAuth token without overriding a runtime `--api-key`. See [`auth-broker-gateway.md`](./internal/auth-broker-gateway.md) for the full broker / gateway design and env surface (`VEYYON_AUTH_BROKER_URL`, `VEYYON_AUTH_BROKER_TOKEN`, `auth.broker.url`, `auth.broker.token`).
 
 ## Model availability vs all models
 
@@ -443,13 +443,22 @@ Resolution precedence for exact selectors:
 
 ### Role aliases and settings
 
-Supported model roles:
+Built-in role ids (see `model-roles.ts`):
 
-- `default`, `smol`, `slow`, `vision`, `plan`, `designer`, `commit`, `tiny`, `task`, `advisor`
+| Role | Selectable in UI | Purpose |
+| --- | --- | --- |
+| `default` | No (hidden) | Storage key for the **interactive** model (`/model` persist / “set as default”) |
+| `smol` | Yes | Fast / cheap (`--smol`) |
+| `slow` | Yes | Thinking (`--slow`) |
+| `vision` | Yes | Multimodal |
+| `plan` | Yes | Plan mode (`--plan`) |
+| `designer` | Yes | Design-oriented work |
+| `commit` | Yes | Commit / changelog |
+| `tiny` | Yes | Lightweight background (titles, classifiers); else `@smol` |
+| `task` | Yes | Task subagents (overridden by `subagent.model` when set) |
+| `advisor` | Yes | Advisor runtime |
 
-The `tiny` role overrides the online model used for lightweight background tasks (session titles, memory, `auto`-thinking difficulty classification, unexpected-stop detection); when unset, these fall back to `@smol`. Pick one in `/models`.
-
-Role aliases like `@smol` expand through `settings.modelRoles`; `*` selects `@default`. Quote `@` aliases in YAML values (`fable: "@slow"`). Each role value can also append a thinking selector such as `:minimal`, `:low`, `:medium`, or `:high`.
+`cycleOrder` defaults to `["smol","slow"]`; the entry `default` is stripped on load. Role aliases like `@smol` expand through `settings.modelRoles`; `*` selects `@default` (interactive). Quote `@` aliases in YAML values (`fable: "@slow"`). Each role value can append a thinking selector (`:minimal`, `:low`, `:medium`, `:high`, `:xhigh`, `:max`).
 
 If a role points at another role, the target model still inherits normally and any explicit suffix on the referring role wins for that role-specific use.
 
@@ -735,7 +744,7 @@ providers:
 
 ## Legacy consumer caveat
 
-Most model configuration now flows through `models.yml` / `models.yaml` via `ModelRegistry`. Explicit `.json` / `.jsonc` paths remain supported only when passed programmatically to `ModelRegistry`; the default user config prefers `~/.veyyon/agent/models.yml`, then falls back to `~/.veyyon/agent/models.yaml`.
+Most model configuration now flows through `models.yml` / `models.yaml` via `ModelRegistry`. Explicit `.json` / `.jsonc` paths remain supported only when passed programmatically to `ModelRegistry`; the default user config prefers `~/.veyyon/profiles/default/agent/models.yml`, then falls back to `~/.veyyon/profiles/default/agent/models.yaml`.
 
 ## Failure mode
 

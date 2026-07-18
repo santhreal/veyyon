@@ -1,8 +1,8 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { fuzzyFind } from "@veyyon/pi-natives";
-import { getProjectDir } from "@veyyon/pi-utils";
+import { fuzzyFind } from "@veyyon/natives";
+import { getProjectDir } from "@veyyon/utils";
 import { isSubsequenceMatch, subsequenceScore } from "./fuzzy";
 
 const PATH_DELIMITERS = new Set([" ", "\t", '"', "'", "="]);
@@ -286,7 +286,11 @@ function buildSlashCommandCompletions(commands: CommandEntry[], lowerPrefix: str
 				});
 			}
 
-			if (lowerPrefix.length > 0) {
+			// Alias rows exist so an alias the user actually typed still completes
+			// (`/models` → the model command). When the primary NAME already
+			// matched the prefix, its row is present and an alias row would be a
+			// duplicate with the identical description — pure menu clutter.
+			if (lowerPrefix.length > 0 && nameScore === 0) {
 				for (const alias of getCommandAliases(cmd)) {
 					if (alias === name) continue;
 					const aliasScore = scoreCommandTextMatch(lowerPrefix, alias.toLowerCase());
@@ -361,7 +365,7 @@ function buildMidPromptSkillCompletions(commands: CommandEntry[], lowerPrefix: s
 export class CombinedAutocompleteProvider implements AutocompleteProvider {
 	#commands: CommandEntry[];
 	#basePath: string;
-	// Intentionally separate from pi-natives cache: this cache is a local,
+	// Intentionally separate from veyyon-natives cache: this cache is a local,
 	// per-directory readdir fast-path for prefix completions. Global fuzzy
 	// discovery continues to use native fuzzyFind + shared scan cache.
 	#dirCache: Map<string, { entries: fs.Dirent[]; timestamp: number }> = new Map();

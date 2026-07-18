@@ -12,7 +12,7 @@ third-party attribution.
   `packages/agent`, `packages/tui`, `packages/ai`, `packages/catalog`, and
   most of `packages/*`).
 - The Rust native hot paths (`crates/pi-grep`, `crates/pi-pty`,
-  `crates/pi-shell`, `crates/hashline`-adjacent natives, and others under
+  `crates/veyyon-shell`, `crates/hashline`-adjacent natives, and others under
   `crates/`), including their vendored third-party dependencies under
   `crates/vendor/`.
 - The prompt/agent model, hashline edit engine, mnemopi memory system, and
@@ -51,7 +51,7 @@ assert a pinned upstream commit hash it cannot verify.
 - `NOTICE` — third-party attribution for code vendored or adapted under
   licenses other than plain MIT-via-`LICENSE` (Apache-2.0 wire types,
   Apache-2.0 generated bundles), plus pointers to crate-level notices.
-- `crates/pi-shell/NOTICE` — crate-scoped attribution for a specific
+- `crates/veyyon-shell/NOTICE` — crate-scoped attribution for a specific
   adapted algorithm (RTK, MIT); kept in place rather than merged into the
   root file so it stays next to the code it describes.
 - `crates/vendor/*/LICENSE` — per-crate upstream license files for vendored

@@ -31,14 +31,14 @@ Extension loading builds a list of module entry files, imports each module with 
 Native `extension-module` discovery comes from:
 
 - Project directory: `<cwd>/.veyyon/extensions`
-- User directory: `~/.veyyon/agent/extensions`
-- Native legacy/settings JSON entries: `<cwd>/.veyyon/settings.json#extensions` and `~/.veyyon/agent/settings.json#extensions`
+- User directory: `~/.veyyon/profiles/default/agent/extensions`
+- Native legacy/settings JSON entries: `<cwd>/.veyyon/settings.json#extensions` and `~/.veyyon/profiles/default/agent/settings.json#extensions`
 
-The project root is the native provider's `.veyyon` directory (`SOURCE_PATHS.native.projectDir`), cwd-only; it does not walk ancestors. The user root is the active profile's agent directory via `getAgentDir()`, so under `veyyon --profile <name>` it becomes `~/.veyyon/profiles/<name>/agent/extensions` (and it honors `VEYYON_CODING_AGENT_DIR` (legacy `PI_CODING_AGENT_DIR`)). See [Profiles](../config-usage.md#profiles).
+The project root is the native provider's `.veyyon` directory (`SOURCE_PATHS.native.projectDir`), cwd-only; it does not walk ancestors. The user root is the active profile's agent directory via `getAgentDir()`, so under `veyyon --profile <name>` it becomes `~/.veyyon/profiles/<name>/agent/extensions` (and it honors `VEYYON_CODING_AGENT_DIR`). See [Profiles](../config-usage.md#profiles).
 
 Notes:
 
-- Native auto-discovery is `.veyyon` based (`CONFIG_DIR_NAME`, one owner in `@veyyon/pi-utils` dirs.ts).
+- Native auto-discovery is `.veyyon` based (`CONFIG_DIR_NAME`, one owner in `@veyyon/utils` dirs.ts).
 - Package manifests read the `veyyon` key first, then legacy `omp` / `pi` (`MANIFEST_KEYS` in `src/extensibility/manifest-key.ts`). Neither `.omp/` nor `.pi/` directories are native roots.
 
 ### 2) Discovered JS/TS hook factories
@@ -64,18 +64,18 @@ Configured path sources in the main session startup path (`sdk.ts`):
 
 Settings files:
 
-- User: `~/.veyyon/agent/config.yml` (or custom agent dir via `VEYYON_CODING_AGENT_DIR`, legacy `PI_CODING_AGENT_DIR`)
+- User: `~/.veyyon/profiles/default/agent/config.yml` (or custom agent dir via `VEYYON_CODING_AGENT_DIR`)
 - Project/native settings capability: `<cwd>/.veyyon/config.yml` and `<cwd>/.veyyon/settings.json`
 
 Native extension-module discovery also reads legacy JSON extension lists from:
 
-- `~/.veyyon/agent/settings.json`
+- `~/.veyyon/profiles/default/agent/settings.json`
 - `<cwd>/.veyyon/settings.json`
 
 Examples:
 
 ```yaml
-# ~/.veyyon/agent/config.yml
+# ~/.veyyon/profiles/default/agent/config.yml
 extensions:
   - ~/my-exts/safety.ts
   - ./local/ext-pack
@@ -230,7 +230,7 @@ When events run through `ExtensionRunner`, handler exceptions are caught and emi
 ### User-level
 
 ```text
-~/.veyyon/agent/
+~/.veyyon/profiles/default/agent/
   config.yml
   extensions/
     guardrails.ts

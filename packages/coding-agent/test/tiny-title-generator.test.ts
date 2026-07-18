@@ -1,28 +1,28 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
-import type { Api, Model } from "@veyyon/pi-ai";
-import * as ai from "@veyyon/pi-ai";
-import { getBundledModel } from "@veyyon/pi-catalog/models";
-import { isSubcommand } from "@veyyon/pi-coding-agent/cli-commands";
-import { getDefault, getEnumValues, getUi } from "@veyyon/pi-coding-agent/config/settings-schema";
-import { TinyTitleDownloadProgressComponent } from "@veyyon/pi-coding-agent/modes/components/tiny-title-download-progress";
-import { initTheme } from "@veyyon/pi-coding-agent/modes/theme/theme";
+import type { Api, Model } from "@veyyon/ai";
+import * as ai from "@veyyon/ai";
+import { getBundledModel } from "@veyyon/catalog/models";
+import { isSubcommand } from "@veyyon/coding-agent/cli-commands";
+import { getDefault, getEnumValues, getUi } from "@veyyon/coding-agent/config/settings-schema";
+import { TinyTitleDownloadProgressComponent } from "@veyyon/coding-agent/modes/components/tiny-title-download-progress";
+import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 import {
 	TINY_MODEL_DEVICE_DEFAULT,
 	TINY_MODEL_DEVICE_SETTING_OPTIONS,
 	TINY_MODEL_DEVICE_SETTING_VALUES,
-} from "@veyyon/pi-coding-agent/tiny/device";
+} from "@veyyon/coding-agent/tiny/device";
 import {
 	TINY_MODEL_DTYPE_DEFAULT,
 	TINY_MODEL_DTYPE_SETTING_OPTIONS,
 	TINY_MODEL_DTYPE_SETTING_VALUES,
-} from "@veyyon/pi-coding-agent/tiny/dtype";
+} from "@veyyon/coding-agent/tiny/dtype";
 import {
 	ONLINE_TINY_TITLE_MODEL_KEY,
 	TINY_TITLE_MODEL_OPTIONS,
 	TINY_TITLE_MODEL_VALUES,
-} from "@veyyon/pi-coding-agent/tiny/models";
-import { createTinyTitleSubprocess, tinyTitleClient } from "@veyyon/pi-coding-agent/tiny/title-client";
-import { generateSessionTitle } from "@veyyon/pi-coding-agent/utils/title-generator";
+} from "@veyyon/coding-agent/tiny/models";
+import { createTinyTitleSubprocess, tinyTitleClient } from "@veyyon/coding-agent/tiny/title-client";
+import { generateSessionTitle } from "@veyyon/coding-agent/utils/title-generator";
 import type { Subprocess } from "bun";
 
 function getModelOrThrow(id: string): Model<Api> {

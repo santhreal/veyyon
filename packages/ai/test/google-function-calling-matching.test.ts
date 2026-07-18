@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
-import { convertMessages } from "@veyyon/pi-ai/providers/google-shared";
-import type { Context, Model, Usage } from "@veyyon/pi-ai/types";
-import { buildModel } from "@veyyon/pi-catalog/build";
+import { convertMessages } from "@veyyon/ai/providers/google-shared";
+import type { Context, Model, Usage } from "@veyyon/ai/types";
+import { buildModel } from "@veyyon/catalog/build";
 
 const ZERO_USAGE: Usage = {
 	input: 0,

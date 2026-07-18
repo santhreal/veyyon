@@ -5,7 +5,7 @@
  */
 import * as fs from "node:fs/promises";
 import * as url from "node:url";
-import { getWorkProfile } from "@veyyon/pi-natives";
+import { getWorkProfile } from "@veyyon/natives";
 import {
 	isNotificationSuppressed,
 	Loader,
@@ -15,8 +15,8 @@ import {
 	TERMINAL,
 	type TerminalNotification,
 	Text,
-} from "@veyyon/pi-tui";
-import { getSessionsDir } from "@veyyon/pi-utils";
+} from "@veyyon/tui";
+import { errorMessage, getSessionsDir } from "@veyyon/utils";
 import { DynamicBorder } from "../modes/components/dynamic-border";
 import { ModalSelectListComponent } from "../modes/components/modal-select-list";
 import { TranscriptBlock } from "../modes/components/transcript-container";
@@ -162,7 +162,7 @@ export class DebugSelectorComponent {
 		try {
 			session = await startCpuProfile();
 		} catch (err) {
-			this.ctx.showError(`Failed to start profiler: ${err instanceof Error ? err.message : String(err)}`);
+			this.ctx.showError(`Failed to start profiler: ${errorMessage(err)}`);
 			return;
 		}
 
@@ -227,7 +227,7 @@ export class DebugSelectorComponent {
 		} catch (err) {
 			loader.stop();
 			this.ctx.statusContainer.clear();
-			this.ctx.showError(`Failed to create report: ${err instanceof Error ? err.message : String(err)}`);
+			this.ctx.showError(`Failed to create report: ${errorMessage(err)}`);
 		}
 	}
 
@@ -251,7 +251,7 @@ export class DebugSelectorComponent {
 				new Text(theme.fg("dim", `Opened flamegraph (${workProfile.sampleCount} samples)`), 1, 0),
 			]);
 		} catch (err) {
-			this.ctx.showError(`Failed to open profile: ${err instanceof Error ? err.message : String(err)}`);
+			this.ctx.showError(`Failed to open profile: ${errorMessage(err)}`);
 		}
 	}
 
@@ -284,7 +284,7 @@ export class DebugSelectorComponent {
 		} catch (err) {
 			loader.stop();
 			this.ctx.statusContainer.clear();
-			this.ctx.showError(`Failed to create report: ${err instanceof Error ? err.message : String(err)}`);
+			this.ctx.showError(`Failed to create report: ${errorMessage(err)}`);
 		}
 	}
 
@@ -321,7 +321,7 @@ export class DebugSelectorComponent {
 		} catch (err) {
 			loader.stop();
 			this.ctx.statusContainer.clear();
-			this.ctx.showError(`Failed to create report: ${err instanceof Error ? err.message : String(err)}`);
+			this.ctx.showError(`Failed to create report: ${errorMessage(err)}`);
 		}
 	}
 
@@ -359,7 +359,7 @@ export class DebugSelectorComponent {
 			});
 			this.ctx.ui.setFocus(viewer);
 		} catch (err) {
-			this.ctx.showError(`Failed to read logs: ${err instanceof Error ? err.message : String(err)}`);
+			this.ctx.showError(`Failed to read logs: ${errorMessage(err)}`);
 		}
 
 		this.ctx.ui.requestRender();
@@ -399,7 +399,7 @@ export class DebugSelectorComponent {
 		try {
 			info = existing ?? (await startRemoteDebuggerServer());
 		} catch (err) {
-			this.ctx.showError(`Failed to start remote debugger: ${err instanceof Error ? err.message : String(err)}`);
+			this.ctx.showError(`Failed to start remote debugger: ${errorMessage(err)}`);
 			return;
 		}
 
@@ -439,7 +439,7 @@ export class DebugSelectorComponent {
 			block.addChild(new DynamicBorder());
 			this.ctx.present(block);
 		} catch (err) {
-			this.ctx.showError(`Failed to collect system info: ${err instanceof Error ? err.message : String(err)}`);
+			this.ctx.showError(`Failed to collect system info: ${errorMessage(err)}`);
 		}
 	}
 
@@ -560,7 +560,7 @@ export class DebugSelectorComponent {
 		} catch (err) {
 			loader.stop();
 			this.ctx.statusContainer.clear();
-			this.ctx.showError(`Failed to clear cache: ${err instanceof Error ? err.message : String(err)}`);
+			this.ctx.showError(`Failed to clear cache: ${errorMessage(err)}`);
 		}
 	}
 

@@ -7,7 +7,7 @@
  * that walks the resulting fallback chain.
  */
 import * as fs from "node:fs/promises";
-import { $which } from "@veyyon/pi-utils";
+import { $which, errorMessage } from "@veyyon/utils";
 import { getToolPath } from "../utils/tools-manager";
 
 export interface PlayerCommand {
@@ -124,7 +124,7 @@ export async function playAudioFile(filePath: string, options: PlayAudioOptions 
 			}
 		} catch (err) {
 			if (signal?.aborted) throw playbackAbortError(signal);
-			failures.push(`${command.cmd}: ${err instanceof Error ? err.message : String(err)}`);
+			failures.push(`${command.cmd}: ${errorMessage(err)}`);
 		}
 	}
 

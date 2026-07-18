@@ -9,8 +9,8 @@ import {
 	type ToolCall,
 	type ToolResultMessage,
 	type Usage,
-} from "@veyyon/pi-ai";
-import { getSessionsDir, isEnoent, readLines } from "@veyyon/pi-utils";
+} from "@veyyon/ai";
+import { getSessionsDir, isEnoent, readLines } from "@veyyon/utils";
 import type {
 	AgentType,
 	MessageStats,
@@ -49,14 +49,14 @@ export function classifyAgentType(sessionPath: string): AgentType {
 
 /**
  * Extract folder name from session filename.
- * Session files are named like: --work--pi--/timestamp_uuid.jsonl
+ * Session files are named like: --work--veyyon--/timestamp_uuid.jsonl
  * The folder part uses -- as path separator.
  */
 function extractFolderFromPath(sessionPath: string): string {
 	const sessionsDir = getSessionsDir();
 	const rel = path.relative(sessionsDir, sessionPath);
 	const projectDir = rel.split(path.sep)[0];
-	// Convert --work--pi-- to /work/pi
+	// Convert --work--veyyon-- to /work/veyyon
 	return projectDir.replace(/^--/, "/").replace(/--/g, "/");
 }
 

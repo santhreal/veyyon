@@ -7,10 +7,10 @@
  * state, while the advisor config overlay embeds it as a plain "pick one
  * model" list.
  */
-import { ThinkingLevel } from "@veyyon/pi-agent-core";
-import type { Model } from "@veyyon/pi-ai";
-import { buildModel } from "@veyyon/pi-catalog/build";
-import { modelsAreEqual } from "@veyyon/pi-catalog/models";
+import { ThinkingLevel } from "@veyyon/agent-core";
+import type { Model } from "@veyyon/ai";
+import { buildModel } from "@veyyon/catalog/build";
+import { modelsAreEqual } from "@veyyon/catalog/models";
 import {
 	type Component,
 	fuzzyRank,
@@ -20,8 +20,8 @@ import {
 	type SgrMouseEvent,
 	truncateToWidth,
 	visibleWidth,
-} from "@veyyon/pi-tui";
-import { formatNumber } from "@veyyon/pi-utils";
+} from "@veyyon/tui";
+import { formatNumber } from "@veyyon/utils";
 import { getModelMatchPreferences, resolveModelRoleValue } from "../../config/model-resolver";
 import { getKnownRoleIds, getRoleInfo, MODEL_ROLE_IDS } from "../../config/model-roles";
 import type { Settings } from "../../config/settings";
@@ -838,6 +838,10 @@ export class ModelBrowser implements Component {
 				perfWidth = Math.max(perfWidth, visibleWidth(this.#perfCell(item, perfMode)));
 			}
 
+			// ScrollView reserves a 2-column bar band (gap + glyph) when the list
+			// overflows; compose rows inside it so the right-aligned price column
+			// is never ellipsis-truncated against the scrollbar.
+			const barCols = total > this.#windowCount ? 2 : 1;
 			const rows: string[] = [];
 			for (let i = startIndex; i < endIndex; i++) {
 				const item = this.#visibleItems[i];
@@ -845,7 +849,7 @@ export class ModelBrowser implements Component {
 				rows.push(
 					this.#renderRow(
 						item,
-						width - 1,
+						width - barCols,
 						i === this.#selectedIndex,
 						i === this.#hoveredIndex,
 						ctxWidth,

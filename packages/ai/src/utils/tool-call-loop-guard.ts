@@ -1,4 +1,4 @@
-import { INTENT_FIELD } from "@veyyon/pi-wire";
+import { INTENT_FIELD } from "@veyyon/wire";
 import type { AssistantMessage, ToolCall, ToolResultMessage } from "../types";
 
 const LEGACY_INTENT_FIELD = "__intent";

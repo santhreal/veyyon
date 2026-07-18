@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import type { AgentMessage } from "@veyyon/pi-agent-core";
-import { type AsyncJob, AsyncJobManager } from "@veyyon/pi-coding-agent/async";
-import type { CustomMessage } from "@veyyon/pi-coding-agent/session/messages";
-import { YieldQueue } from "@veyyon/pi-coding-agent/session/yield-queue";
-import type { ToolSession } from "@veyyon/pi-coding-agent/tools";
-import { JobTool } from "@veyyon/pi-coding-agent/tools/job";
+import type { AgentMessage } from "@veyyon/agent-core";
+import { type AsyncJob, AsyncJobManager } from "@veyyon/coding-agent/async";
+import type { CustomMessage } from "@veyyon/coding-agent/session/messages";
+import { YieldQueue } from "@veyyon/coding-agent/session/yield-queue";
+import type { ToolSession } from "@veyyon/coding-agent/tools";
+import { JobTool } from "@veyyon/coding-agent/tools/job";
 
 type AsyncEntry = {
 	jobId: string;

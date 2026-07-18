@@ -15,7 +15,7 @@ It reflects the current implementation, including partial semantics and metadata
 - [`packages/coding-agent/src/discovery/index.ts`](../../packages/coding-agent/src/discovery/index.ts)
 - [`packages/coding-agent/src/discovery/helpers.ts`](../../packages/coding-agent/src/discovery/helpers.ts)
 - [`packages/coding-agent/src/discovery/builtin.ts`](../../packages/coding-agent/src/discovery/builtin.ts)
-- [`packages/coding-agent/src/discovery/omp-plugins.ts`](../../packages/coding-agent/src/discovery/omp-plugins.ts)
+- [`packages/coding-agent/src/discovery/veyyon-plugins.ts`](../../packages/coding-agent/src/discovery/veyyon-plugins.ts)
 - [`packages/coding-agent/src/discovery/builtin-defaults.ts`](../../packages/coding-agent/src/discovery/builtin-defaults.ts)
 - [`packages/coding-agent/src/discovery/agents.ts`](../../packages/coding-agent/src/discovery/agents.ts)
 - [`packages/coding-agent/src/discovery/cursor.ts`](../../packages/coding-agent/src/discovery/cursor.ts)
@@ -55,7 +55,7 @@ Consequence: precedence and deduplication are **name-based only**. Two different
 `src/discovery/index.ts` auto-registers providers. For `rules`, current providers are:
 
 - `native` (priority `100`)
-- `omp-plugins` (priority `90`) — `rules/*.{md,mdc}` inside configured extension package roots, normalized via the shared `buildRuleFromMarkdown` path
+- `veyyon-plugins` (priority `90`) — `rules/*.{md,mdc}` inside configured extension package roots, normalized via the shared `buildRuleFromMarkdown` path
 - `agents` (priority `70`)
 - `cursor` (priority `50`)
 - `windsurf` (priority `50`)
@@ -67,8 +67,8 @@ Consequence: precedence and deduplication are **name-based only**. Two different
 Loads native rules from:
 
 - project: `<cwd>/.veyyon/rules/*.{md,mdc}` when the cwd `.veyyon` directory exists
-- user: `~/.veyyon/agent/rules/*.{md,mdc}`
-- sticky user rule: `~/.veyyon/agent/RULES.md`
+- user: `~/.veyyon/profiles/default/agent/rules/*.{md,mdc}`
+- sticky user rule: `~/.veyyon/profiles/default/agent/RULES.md`
 - sticky project rule: nearest ancestor `.veyyon/RULES.md` while walking from cwd toward the repository root
 
 Normalization:
@@ -161,7 +161,7 @@ Ambiguity consequences:
 Effective rule provider order is currently:
 
 1. `native` (100)
-2. `omp-plugins` (90)
+2. `veyyon-plugins` (90)
 3. `agents` (70)
 4. `cursor` (50)
 5. `windsurf` (50)
@@ -174,8 +174,8 @@ Within a provider, item order comes from `loadFilesFromDir` glob result ordering
 
 Notable source-order differences:
 
-- `native` appends project `.veyyon/rules`, user `~/.veyyon/agent/rules`, user `RULES.md`, then nearest project `.veyyon/RULES.md`.
-- `omp-plugins` appends `rules/` results per configured extension package root.
+- `native` appends project `.veyyon/rules`, user `~/.veyyon/profiles/default/agent/rules`, user `RULES.md`, then nearest project `.veyyon/RULES.md`.
+- `veyyon-plugins` appends `rules/` results per configured extension package root.
 - `agents` appends project-walk `.agent`/`.agents` rule dirs before user home dirs.
 - `cursor` appends user then project results.
 - `windsurf` appends user `global_rules` first, then project rules.
@@ -261,7 +261,7 @@ Implications:
 
 ## 9. Known partial / non-enforced semantics
 
-1. The rule providers currently loaded for `rules` are `native`, `omp-plugins`, `agents`, `cursor`, `windsurf`, `cline`, and embedded `builtin-defaults`; provider files for other tools may parse other config formats but do not register rule loaders.
+1. The rule providers currently loaded for `rules` are `native`, `veyyon-plugins`, `agents`, `cursor`, `windsurf`, `cline`, and embedded `builtin-defaults`; provider files for other tools may parse other config formats but do not register rule loaders.
 2. `globs` metadata is surfaced to prompt/UI and is used as a global path gate for TTSR matching, but it is not used to automatically select rulebook rules for `rule://`.
 3. Rule selection for `rule://` includes rulebook, always-apply, and registered TTSR rules (so a triggered TTSR rule can be re-read), but not rules that registered no condition and carry neither a description nor `alwaysApply`.
 4. Discovery warnings (`loadCapability("rules").warnings`) are produced but `createAgentSession` does not currently surface/log them in this path.

@@ -4,9 +4,9 @@ import {
 	generateBranchSummary,
 	prepareBranchEntries,
 	type SessionEntry,
-} from "@veyyon/pi-agent-core/compaction";
-import type { AssistantMessage, Model, Usage } from "@veyyon/pi-ai";
-import { buildModel } from "@veyyon/pi-catalog/build";
+} from "@veyyon/agent-core/compaction";
+import type { AssistantMessage, Model, Usage } from "@veyyon/ai";
+import { buildModel } from "@veyyon/catalog/build";
 
 const MODEL: Model = buildModel({
 	id: "mock-model",

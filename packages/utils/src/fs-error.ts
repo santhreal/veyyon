@@ -5,7 +5,7 @@
  *
  * @example
  * ```ts
- * import { isEnoent, isFsError } from "@veyyon/pi-utils";
+ * import { isEnoent, isFsError } from "@veyyon/utils";
  *
  * try {
  *     return await Bun.file(path).text();

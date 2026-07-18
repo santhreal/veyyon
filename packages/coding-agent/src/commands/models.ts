@@ -1,8 +1,8 @@
 /**
  * List, search, and refresh available models.
  */
-import { APP_NAME } from "@veyyon/pi-utils";
-import { Args, Command, Flags } from "@veyyon/pi-utils/cli";
+import { APP_NAME } from "@veyyon/utils";
+import { Args, Command, Flags } from "@veyyon/utils/cli";
 import { resolveModelsArgs, runModelsCommand } from "../cli/models-cli";
 
 export default class Models extends Command {

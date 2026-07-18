@@ -1,6 +1,6 @@
 # Vendored from uutils/coreutils tag 0.8.0 (src/uu/checksum_common plus
 # uucore checksum compute/validate), patched to route I/O and path resolution
-# through pi-uutils-ctx for safe in-process shell builtin execution.
+# through veyyon-uutils-ctx for safe in-process shell builtin execution.
 [package]
 name = "uu_checksum_common"
 version = "0.8.0"
@@ -17,4 +17,4 @@ base64-simd = "0.8"
 hex = "0.4.3"
 os_display = "0.1.4"
 uucore = { version = "0.8.0", features = ["checksum", "encoding", "sum", "hardware"] }
-pi-uutils-ctx = { path = "../../pi-uutils-ctx" }
+veyyon-uutils-ctx = { path = "../../veyyon-uutils-ctx" }

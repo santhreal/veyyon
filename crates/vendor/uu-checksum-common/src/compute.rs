@@ -155,7 +155,7 @@ fn print_legacy_checksum(
 	match (options.algo_kind, sum) {
 		(SizedAlgoKind::Sysv, DigestOutput::U16(sum)) => {
 			let _ = write!(
-				pi_uutils_ctx::stdout(),
+				veyyon_uutils_ctx::stdout(),
 				"{prefix}{sum} {}",
 				size.div_ceil(options.algo_kind.bitlen()),
 			);
@@ -164,21 +164,21 @@ fn print_legacy_checksum(
 			// The BSD checksum output is 5 digit integer
 			let bsd_width = 5;
 			let _ = write!(
-				pi_uutils_ctx::stdout(),
+				veyyon_uutils_ctx::stdout(),
 				"{prefix}{sum:0bsd_width$} {:bsd_width$}",
 				size.div_ceil(options.algo_kind.bitlen()),
 			);
 		},
 		(SizedAlgoKind::Crc | SizedAlgoKind::Crc32b, DigestOutput::Crc(sum)) => {
-			let _ = write!(pi_uutils_ctx::stdout(), "{prefix}{sum} {size}");
+			let _ = write!(veyyon_uutils_ctx::stdout(), "{prefix}{sum} {size}");
 		},
 		(algo, output) => unreachable!("Bug: Invalid legacy checksum ({algo:?}, {output:?})"),
 	}
 
 	// Print the filename after a space if not stdin
 	if escaped_filename != "-" {
-		let _ = write!(pi_uutils_ctx::stdout(), " ");
-		let _dropped_result = pi_uutils_ctx::stdout().write_all(escaped_filename.as_bytes());
+		let _ = write!(veyyon_uutils_ctx::stdout(), " ");
+		let _dropped_result = veyyon_uutils_ctx::stdout().write_all(escaped_filename.as_bytes());
 	}
 }
 
@@ -190,13 +190,13 @@ fn print_tagged_checksum(options: &ChecksumComputeOptions, filename: &OsStr, sum
 	};
 
 	// Print algo name and opening parenthesis.
-	let _ = write!(pi_uutils_ctx::stdout(), "{prefix}{} (", options.algo_kind.to_tag());
+	let _ = write!(veyyon_uutils_ctx::stdout(), "{prefix}{} (", options.algo_kind.to_tag());
 
 	// Print filename
-	let _dropped_result = pi_uutils_ctx::stdout().write_all(escaped_filename.as_bytes());
+	let _dropped_result = veyyon_uutils_ctx::stdout().write_all(escaped_filename.as_bytes());
 
 	// Print closing parenthesis and sum
-	let _ = write!(pi_uutils_ctx::stdout(), ") = {sum}");
+	let _ = write!(veyyon_uutils_ctx::stdout(), ") = {sum}");
 }
 
 fn print_untagged_checksum(
@@ -212,13 +212,13 @@ fn print_untagged_checksum(
 	};
 
 	// Print checksum and reading mode flag
-	let _ = write!(pi_uutils_ctx::stdout(), "{prefix}{sum} {}", match reading_mode {
+	let _ = write!(veyyon_uutils_ctx::stdout(), "{prefix}{sum} {}", match reading_mode {
 		ReadingMode::Binary => '*',
 		ReadingMode::Text => ' ',
 	});
 
 	// Print filename
-	let _dropped_result = pi_uutils_ctx::stdout().write_all(escaped_filename.as_bytes());
+	let _dropped_result = veyyon_uutils_ctx::stdout().write_all(escaped_filename.as_bytes());
 }
 
 /// Calculate checksum
@@ -241,7 +241,7 @@ where
 		}
 
 		let filepath = Path::new(filename);
-		let resolved_filepath = pi_uutils_ctx::resolve(filepath);
+		let resolved_filepath = veyyon_uutils_ctx::resolve(filepath);
 		let stdin_buf;
 		let file_buf;
 		if resolved_filepath.is_dir() {
@@ -253,7 +253,7 @@ where
 		let mut file = BufReader::with_capacity(
 			READ_BUFFER_SIZE,
 			if filename == "-" {
-				stdin_buf = pi_uutils_ctx::stdin();
+				stdin_buf = veyyon_uutils_ctx::stdin();
 				Box::new(stdin_buf) as Box<dyn Read>
 			} else {
 				file_buf = match File::open(&resolved_filepath) {
@@ -286,7 +286,7 @@ where
 		match options.output_format {
 			OutputFormat::Raw => {
 				// Cannot handle multiple files anyway, output immediately.
-				digest_output.write_raw(pi_uutils_ctx::stdout())?;
+				digest_output.write_raw(veyyon_uutils_ctx::stdout())?;
 				return Ok(());
 			},
 			OutputFormat::Legacy => {
@@ -305,7 +305,7 @@ where
 			},
 		}
 
-		let _ = write!(pi_uutils_ctx::stdout(), "{}", options.line_ending);
+		let _ = write!(veyyon_uutils_ctx::stdout(), "{}", options.line_ending);
 	}
 	Ok(())
 }

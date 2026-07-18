@@ -1,12 +1,12 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
-import type { AssistantMessage } from "@veyyon/pi-ai";
-import { resetSettingsForTest, Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { AssistantMessageComponent } from "@veyyon/pi-coding-agent/modes/components/assistant-message";
-import { TranscriptContainer } from "@veyyon/pi-coding-agent/modes/components/transcript-container";
-import { initTheme } from "@veyyon/pi-coding-agent/modes/theme/theme";
-import { USER_INTERRUPT_LABEL } from "@veyyon/pi-coding-agent/session/messages";
-import { type Component, Text } from "@veyyon/pi-tui";
+import type { AssistantMessage } from "@veyyon/ai";
+import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
+import { AssistantMessageComponent } from "@veyyon/coding-agent/modes/components/assistant-message";
+import { TranscriptContainer } from "@veyyon/coding-agent/modes/components/transcript-container";
+import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { USER_INTERRUPT_LABEL } from "@veyyon/coding-agent/session/messages";
+import { type Component, Text } from "@veyyon/tui";
 
 // Models a transcript block that re-lays-out (tool preview collapsing, assistant
 // message finalizing, late async result) after newer blocks were appended below

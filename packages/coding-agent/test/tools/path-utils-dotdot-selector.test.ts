@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { parseLineRangeChunk, parseLineRanges, splitPathAndSel } from "@veyyon/pi-coding-agent/tools/path-utils";
-import { ToolError } from "@veyyon/pi-coding-agent/tools/tool-errors";
+import { parseLineRangeChunk, parseLineRanges, splitPathAndSel } from "@veyyon/coding-agent/tools/path-utils";
+import { ToolError } from "@veyyon/coding-agent/tools/tool-errors";
 
 describe("`..` range selector alias", () => {
 	it("treats `N..M` as the inclusive range `N-M`", () => {

@@ -16,11 +16,12 @@
  *      filled from more than one plausible donor field
  *      ({@link detectAmbiguousRequiredStringRepair}).
  *
- * Schema coercion and type drift remain in `@veyyon/pi-ai/utils/validation`.
+ * Schema coercion and type drift remain in `@veyyon/ai/utils/validation`.
  */
-import type { Tool, ToolCall } from "@veyyon/pi-ai/types";
-import { isArkSchema, isZodSchema, toolWireSchema } from "@veyyon/pi-ai/utils/schema";
-import { parseJsonWithRepair } from "@veyyon/pi-utils/json-parse";
+import type { Tool, ToolCall } from "@veyyon/ai/types";
+import { isArkSchema, isZodSchema, toolWireSchema } from "@veyyon/ai/utils/schema";
+import { parseJsonWithRepair } from "@veyyon/utils/json-parse";
+import { isRecord } from "@veyyon/utils/type-guards";
 
 /** Hard cap on raw JSON bytes accepted for repair attempts. */
 export const MAX_REPAIR_INPUT_BYTES = 1_048_576;
@@ -35,10 +36,6 @@ export type ToolCallRepairOutcome =
 export function isToolCallRepairDisabled(): boolean {
 	const value = process.env.VEYYON_REPAIR_DISABLE?.trim().toLowerCase();
 	return value === "1" || value === "true" || value === "yes";
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function asObjectArgs(value: unknown): Record<string, unknown> | undefined {
@@ -228,7 +225,7 @@ function applyAliasKeyRenames(
  *
  * Callers MUST NOT pass a Zod- or ArkType-derived wire schema here: wire
  * conversion for those two authoring paths (`closeDeclaredObjects` in
- * `@veyyon/pi-ai/utils/schema/wire`) sets `additionalProperties: false` on
+ * `@veyyon/ai/utils/schema/wire`) sets `additionalProperties: false` on
  * every declared object node purely to match the provider-facing "closed"
  * emission convention — it is not an authorial strictness opt-in, and
  * treating it as one would refuse hallucinated keys on nearly every real
@@ -376,7 +373,7 @@ export function repairToolCallArguments(tool: Tool, toolCall: ToolCall): ToolCal
 	// Whether `wireSchema.additionalProperties === false` reflects the tool
 	// author's real intent, or is merely wire-conversion boilerplate. Zod and
 	// ArkType tools (the canonical authoring paths — see `Tool.parameters` in
-	// `@veyyon/pi-ai/types`) always emit `additionalProperties: false` on the
+	// `@veyyon/ai/types`) always emit `additionalProperties: false` on the
 	// wire to match the provider-facing "closed" convention, regardless of
 	// whether the tool's real validator rejects extra keys. Only raw-JSON /
 	// TypeBox authoring carries the keyword exactly as the author wrote it,

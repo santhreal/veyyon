@@ -4,11 +4,11 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 
-import { AuthStorage, SqliteAuthCredentialStore } from "@veyyon/pi-ai/auth-storage";
-import * as deepseekModule from "@veyyon/pi-ai/registry/deepseek";
-import * as kagiModule from "@veyyon/pi-ai/registry/kagi";
-import * as ollamaCloudModule from "@veyyon/pi-ai/registry/ollama-cloud";
-import * as aiStream from "@veyyon/pi-ai/stream";
+import { AuthStorage, SqliteAuthCredentialStore } from "@veyyon/ai/auth-storage";
+import * as deepseekModule from "@veyyon/ai/registry/deepseek";
+import * as kagiModule from "@veyyon/ai/registry/kagi";
+import * as ollamaCloudModule from "@veyyon/ai/registry/ollama-cloud";
+import * as aiStream from "@veyyon/ai/stream";
 import { removeWithRetries } from "../../utils/src/temp";
 
 function countCredentialRows(dbPath: string, provider: string): number {

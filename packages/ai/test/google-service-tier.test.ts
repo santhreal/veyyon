@@ -1,8 +1,8 @@
 import { describe, expect, it } from "bun:test";
-import { streamGoogle } from "@veyyon/pi-ai/providers/google";
-import { streamGoogleVertex } from "@veyyon/pi-ai/providers/google-vertex";
-import type { AssistantMessageEvent, Context, FetchImpl, Model } from "@veyyon/pi-ai/types";
-import { buildModel } from "@veyyon/pi-catalog/build";
+import { streamGoogle } from "@veyyon/ai/providers/google";
+import { streamGoogleVertex } from "@veyyon/ai/providers/google-vertex";
+import type { AssistantMessageEvent, Context, FetchImpl, Model } from "@veyyon/ai/types";
+import { buildModel } from "@veyyon/catalog/build";
 
 const context: Context = { messages: [{ role: "user", content: "hi", timestamp: 1 }] };
 

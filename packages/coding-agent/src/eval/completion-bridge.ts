@@ -11,9 +11,9 @@
  * The call is oneshot and toolless from the model's perspective — pure text
  * in, text (or, with `schema`, a structured object) out.
  */
-import { instrumentedCompleteSimple, resolveTelemetry } from "@veyyon/pi-agent-core";
-import { type Api, Effort, type Model, type Tool } from "@veyyon/pi-ai";
-import { getSupportedEfforts } from "@veyyon/pi-catalog/model-thinking";
+import { instrumentedCompleteSimple, resolveTelemetry } from "@veyyon/agent-core";
+import { type Api, Effort, type Model, type Tool } from "@veyyon/ai";
+import { getSupportedEfforts } from "@veyyon/catalog/model-thinking";
 import { type } from "arktype";
 import { extractTextContent, extractToolCall, parseJsonPayload } from "../commit/utils";
 

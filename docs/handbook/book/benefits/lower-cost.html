@@ -3,13 +3,17 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Lower token cost and faster turns - The Veyyon Harness Handbook</title>
+        <title>Context size and retries - The Veyyon Harness Handbook</title>
 
 
         <!-- Custom HTML head -->
         <!-- Veyyon handbook: self-contained head additions. No remote resources. -->
         <meta name="theme-color" content="#050505">
         <meta name="color-scheme" content="dark">
+        <!-- Site favicons live at the deployed root, one level above /docs/. -->
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+        <link rel="icon" href="/favicon.ico" sizes="48x48">
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png">
         <style>
           /* Paint the near-black surface before CSS/JS resolve the theme, so there is
              no light flash on load. Kept in sync with theme/veyyon.css. */
@@ -18,7 +22,7 @@
           *, *::before, *::after { box-sizing: border-box; }
         </style>
 
-        <meta name="description" content="How Veyyon turns open models into frontier coding agents. The product, the harness, tool-call repair, the edit format, per-model adaptation, and how to use it.">
+        <meta name="description" content="Operator handbook for the Veyyon terminal coding agent: install, configuration, tools, approvals, edit formats, providers, and harness structure.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -38,7 +42,7 @@
         <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="../ayu-highlight-3fdfc3ac.css">
 
         <!-- Custom theme stylesheets -->
-        <link rel="stylesheet" href="../theme/veyyon-fc839a17.css">
+        <link rel="stylesheet" href="../theme/veyyon-06f6939e.css">
 
 
         <!-- Provide site root and default themes to javascript -->
@@ -46,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-e76f06ca.js";
+            window.path_to_searchindex_js = "../searchindex-a2447057.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-9cfd259b.js"></script>
+        <script src="../toc-cc1a72e9.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -191,29 +195,21 @@
 
                 <div id="mdbook-content" class="content">
                     <main>
-                        <h1 id="lower-token-cost-and-faster-turns"><a class="header" href="#lower-token-cost-and-faster-turns">Lower token cost and faster turns</a></h1>
-<p>Veyyon treats cost as a product feature. The cheapest token is the one the model never has to spend.</p>
-<p>Cost drops when the harness avoids retries, bounds tool output, keeps the working context small, preserves
-cache-friendly continuity, and verifies before spending more turns. These are not separate tricks. They
-compound.</p>
-<h2 id="what-improves"><a class="header" href="#what-improves">What improves</a></h2>
+                        <h1 id="context-size-and-retries"><a class="header" href="#context-size-and-retries">Context size and retries</a></h1>
+<p>Token use and turn count depend on tool output size, compaction, and whether bad edits or tool JSON force retries.</p>
+<h2 id="mechanisms"><a class="header" href="#mechanisms">Mechanisms</a></h2>
 <ul>
-<li>Bounded <code>read</code>, <code>glob</code>, and <code>grep</code> tools prevent one call from flooding the context.</li>
-<li>Tool output says exactly when and how it was truncated.</li>
-<li>Compaction preserves the task state instead of dropping history silently.</li>
-<li>The deterministic file working set survives compaction.</li>
-<li>Reviewer hints and verification stop wasted turns before they become expensive loops.</li>
+<li>Bounded <code>read</code>, <code>glob</code>, and <code>grep</code> outputs (truncation is marked in tool results)</li>
+<li>Compaction (<code>handoff</code> or <code>snap</code>) compresses older history instead of dropping it silently</li>
+<li>Goal mode keeps an objective outside the raw transcript tail</li>
+<li>Edit verification and tool repair reduce failed apply/schema turns</li>
 </ul>
-<h2 id="why-it-matters"><a class="header" href="#why-it-matters">Why it matters</a></h2>
-<p>A long coding task fails when the model loses the plot. It also gets expensive when every tool call
-returns more text than the next decision needs. Veyyon keeps the context focused on the files, failures,
-and diffs that still matter.</p>
-<h2 id="where-the-details-live"><a class="header" href="#where-the-details-live">Where the details live</a></h2>
+<h2 id="details"><a class="header" href="#details">Details</a></h2>
 <ul>
-<li><a href="../why/performance.html">Performance</a> explains the product-level speed story.</li>
-<li><a href="../context/reads-search.html">Bounded reads and instant search</a> explains the tool-output bounds.</li>
-<li><a href="../context/compaction-memory.html">Compaction and project memory</a> explains long-task context.</li>
-<li><a href="../context/goal-state.html">Goal state</a> explains how the harness keeps long tasks coherent.</li>
+<li><a href="../context/reads-search.html">Bounded reads and search</a></li>
+<li><a href="../context/compaction-memory.html">Compaction and project memory</a></li>
+<li><a href="../context/goal-state.html">Goal state</a></li>
+<li><a href="../why/performance.html">Performance</a></li>
 </ul>
 
                     </main>

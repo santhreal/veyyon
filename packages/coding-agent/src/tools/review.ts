@@ -9,10 +9,10 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import path from "node:path";
-import type { AgentTool } from "@veyyon/pi-agent-core";
-import type { Component } from "@veyyon/pi-tui";
-import { Container, Text } from "@veyyon/pi-tui";
-import { isRecord } from "@veyyon/pi-utils";
+import type { AgentTool } from "@veyyon/agent-core";
+import type { Component } from "@veyyon/tui";
+import { Container, Text } from "@veyyon/tui";
+import { isRecord } from "@veyyon/utils";
 import { type } from "arktype";
 import type { Theme, ThemeColor } from "../modes/theme/theme";
 import { subprocessToolRegistry } from "../task/subprocess-tool-registry";

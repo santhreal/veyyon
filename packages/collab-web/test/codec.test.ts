@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import type { WireFrame } from "@veyyon/pi-wire";
+import type { WireFrame } from "@veyyon/wire";
 import { generateRoomKey, importRoomKey, open, seal } from "../src/lib/codec";
 import { decodeBase64Url } from "../src/lib/link";
 

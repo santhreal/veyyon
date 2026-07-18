@@ -1,6 +1,6 @@
-import { tryParseJson } from "@veyyon/pi-utils";
-import type { RenderResult, SpecialHandler } from "./types";
-import { buildResult, htmlToBasicMarkdown, loadPage } from "./types";
+import { tryParseJson } from "@veyyon/utils";
+import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
+import { buildResult, htmlToBasicMarkdown, loadFailure, loadPage, scraperDegrade, tryParseUrl } from "./types";
 
 interface SpdxCrossRef {
 	url?: string;
@@ -47,9 +47,10 @@ export const handleSpdx: SpecialHandler = async (
 	url: string,
 	timeout: number,
 	signal?: AbortSignal,
-): Promise<RenderResult | null> => {
+): Promise<RenderResult | ScraperDegrade | null> => {
 	try {
-		const parsed = new URL(url);
+		const parsed = tryParseUrl(url);
+		if (!parsed) return null;
 		if (parsed.hostname !== "spdx.org" && parsed.hostname !== "www.spdx.org") return null;
 
 		const match = parsed.pathname.match(/^\/licenses\/([^/]+?)(?:\.html)?\/?$/i);
@@ -66,10 +67,10 @@ export const handleSpdx: SpecialHandler = async (
 			signal,
 		});
 
-		if (!result.ok) return null;
+		if (!result.ok) return scraperDegrade("spdx", loadFailure(result));
 
 		const license = tryParseJson<SpdxLicense>(result.content);
-		if (!license) return null;
+		if (!license) return scraperDegrade("spdx", "unexpected response shape");
 
 		const title = license.name || license.licenseId || licenseId;
 		let md = `# ${title}\n\n`;
@@ -102,7 +103,7 @@ export const handleSpdx: SpecialHandler = async (
 		}
 
 		return buildResult(md, { url, method: "spdx-api", fetchedAt, notes: ["Fetched via SPDX license API"] });
-	} catch {}
-
-	return null;
+	} catch (error) {
+		return scraperDegrade("spdx", error);
+	}
 };

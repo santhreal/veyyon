@@ -52,7 +52,7 @@ original session is never modified.
 
 Models have a finite token window. As a session grows, the raw transcript may no longer fit. Veyyon compacts history into a smaller, information-preserving summary instead of truncating it.
 
-Compaction preserves the goal card, active user instructions, recent turns, and a deterministic working-set of files touched. This lets a resumed session show the model what matters without forcing it to read the entire transcript.
+Compaction preserves the goal card, active user instructions, recent turns, and a deterministic working-set of files touched so a resumed session does not require the full raw transcript.
 
 Prefer `/compact` when you need a summary to retain state. Prefer the `/new` command when prior transcript is no longer useful and you want a clean session without summarization. See [Slash commands](../reference/slash-commands.md).
 

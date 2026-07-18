@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { callWithCopilotModelRetry, isCopilotTransientModelError } from "@veyyon/pi-ai/utils/retry";
-import { isRetryableError } from "@veyyon/pi-utils";
+import { callWithCopilotModelRetry, isCopilotTransientModelError } from "@veyyon/ai/utils/retry";
+import { isRetryableError } from "@veyyon/utils";
 
 type ErrorShape = { status: number; code?: string; error?: { code?: string; message?: string }; message: string };
 

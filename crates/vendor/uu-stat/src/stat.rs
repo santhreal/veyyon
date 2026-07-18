@@ -7,9 +7,9 @@
 // pi-uutils: vendored from uutils/coreutils 0.8.0 and patched to run in-process
 // as a shell builtin. Every filesystem syscall (stat/lstat/statfs/readlink)
 // resolves its path operand against the shell working directory via
-// `pi_uutils_ctx::resolve` AT THE CALL SITE, while the original operands are
-// kept for display/error messages and `%n` output (GNU prints operands as
-// typed). All process-global stdio is routed through `pi_uutils_ctx`,
+// `veyyon_uutils_ctx::resolve` AT THE CALL SITE, while the original operands
+// are kept for display/error messages and `%n` output (GNU prints operands as
+// typed). All process-global stdio is routed through `veyyon_uutils_ctx`,
 // `translate!` strings are literalized from locales/en-US.ftl, QUOTING_STYLE is
 // read from the scope environment, SELinux support is dropped, and the entry
 // point no longer calls `std::process::exit`. The upstream implementation is
@@ -26,7 +26,7 @@ pub use imp::{run, uu_app};
 #[cfg(not(unix))]
 pub fn run(_argv: Vec<std::ffi::OsString>) -> i32 {
 	use std::io::Write;
-	let _ = writeln!(pi_uutils_ctx::stderr(), "stat: unsupported on this platform");
+	let _ = writeln!(veyyon_uutils_ctx::stderr(), "stat: unsupported on this platform");
 	1
 }
 
@@ -36,7 +36,7 @@ pub fn uu_app() -> clap::Command {
 	clap::Command::new("stat")
 		.version(uucore::crate_version!())
 		.about("Display file or file system status.")
-		.override_usage(pi_uutils_ctx::format_usage("stat [OPTION]... FILE..."))
+		.override_usage(veyyon_uutils_ctx::format_usage("stat [OPTION]... FILE..."))
 }
 
 #[cfg(unix)]
@@ -52,7 +52,6 @@ mod imp {
 	};
 
 	use clap::{Arg, ArgAction, ArgMatches, Command, builder::ValueParser};
-	use pi_uutils_ctx::format_usage;
 	use thiserror::Error;
 	use uucore::{
 		display::Quotable,
@@ -66,6 +65,7 @@ mod imp {
 		libc::mode_t,
 		time::{FormatSystemTimeFallback, format_system_time, system_time_to_sec},
 	};
+	use veyyon_uutils_ctx::format_usage;
 
 	const ABOUT: &str = "Display file or file system status.";
 	const USAGE: &str = "stat [OPTION]... FILE...";
@@ -200,7 +200,7 @@ for details about the options it supports.";
 	/// fill characters.
 	fn pad_and_print(result: &str, left: bool, width: usize, padding: Padding) {
 		// pi-uutils: write to the context stdout instead of `print!`.
-		let mut out = pi_uutils_ctx::stdout();
+		let mut out = veyyon_uutils_ctx::stdout();
 		let _ = match (left, padding) {
 			(false, Padding::Zero) => write!(out, "{result:0>width$}"),
 			(false, Padding::Space) => write!(out, "{result:>width$}"),
@@ -472,7 +472,7 @@ for details about the options it supports.";
 			},
 			// pi-uutils: context stdout instead of `print!`.
 			OutputType::Unknown => {
-				let _ = write!(pi_uutils_ctx::stdout(), "?");
+				let _ = write!(veyyon_uutils_ctx::stdout(), "?");
 			},
 		}
 	}
@@ -529,7 +529,8 @@ for details about the options it supports.";
 
 		let bytes = s.as_bytes();
 
-		if pad_and_print_bytes(pi_uutils_ctx::stdout(), bytes, flags.left, width, precision).is_err()
+		if pad_and_print_bytes(veyyon_uutils_ctx::stdout(), bytes, flags.left, width, precision)
+			.is_err()
 		{
 			// if an error occurred while trying to print bytes fall back to normal lossy
 			// string so it can be printed
@@ -562,7 +563,7 @@ for details about the options it supports.";
 	) -> Result<String, i32> {
 		// pi-uutils: QUOTING_STYLE comes from the scope environment (the
 		// shell's exported variables), not the host process environment.
-		let quoting_style = pi_uutils_ctx::var("QUOTING_STYLE")
+		let quoting_style = veyyon_uutils_ctx::var("QUOTING_STYLE")
 			.and_then(|style| style.parse().ok())
 			.unwrap_or_default();
 
@@ -575,7 +576,7 @@ for details about the options it supports.";
 				},
 				Err(e) => {
 					// pi-uutils: `show_error!` replaced with a context-stderr write.
-					let _ = writeln!(pi_uutils_ctx::stderr(), "stat: {e}");
+					let _ = writeln!(veyyon_uutils_ctx::stderr(), "stat: {e}");
 					Err(1)
 				},
 			}
@@ -594,7 +595,7 @@ for details about the options it supports.";
 			Token::Byte(byte) => write_raw_byte(byte),
 			// pi-uutils: context stdout instead of `print!`.
 			Token::Char(c) => {
-				let _ = write!(pi_uutils_ctx::stdout(), "{c}");
+				let _ = write!(veyyon_uutils_ctx::stdout(), "{c}");
 			},
 			Token::Directive { flag, width, precision, format } => {
 				let output = match format {
@@ -818,7 +819,7 @@ for details about the options it supports.";
 	fn write_raw_byte(byte: u8) {
 		// pi-uutils: context stdout instead of the process stdout, and no
 		// `unwrap` — an in-process builtin must not panic on a broken pipe.
-		let _ = pi_uutils_ctx::stdout().write_all(&[byte]);
+		let _ = veyyon_uutils_ctx::stdout().write_all(&[byte]);
 	}
 
 	impl Stater {
@@ -937,7 +938,8 @@ for details about the options it supports.";
 			if *i >= bound {
 				// pi-uutils: `show_warning!` replaced with a context-stderr
 				// write; message literalized from locales/en-US.ftl.
-				let _ = writeln!(pi_uutils_ctx::stderr(), "stat: warning: backslash at end of format");
+				let _ =
+					writeln!(veyyon_uutils_ctx::stderr(), "stat: warning: backslash at end of format");
 				return Token::Char('\\');
 			}
 			match chars[*i] {
@@ -978,7 +980,7 @@ for details about the options it supports.";
 							// pi-uutils: `show_warning!` replaced with a
 							// context-stderr write.
 							let _ = writeln!(
-								pi_uutils_ctx::stderr(),
+								veyyon_uutils_ctx::stderr(),
 								"stat: warning: unrecognized escape '\\x'"
 							);
 							Token::Byte(b'x')
@@ -987,7 +989,7 @@ for details about the options it supports.";
 						// pi-uutils: `show_warning!` replaced with a
 						// context-stderr write.
 						let _ = writeln!(
-							pi_uutils_ctx::stderr(),
+							veyyon_uutils_ctx::stderr(),
 							"stat: warning: incomplete hex escape '\\x'"
 						);
 						Token::Byte(b'x')
@@ -997,7 +999,7 @@ for details about the options it supports.";
 					// pi-uutils: `show_warning!` replaced with a context-stderr
 					// write.
 					let _ = writeln!(
-						pi_uutils_ctx::stderr(),
+						veyyon_uutils_ctx::stderr(),
 						"stat: warning: unrecognized escape '\\{other}'"
 					);
 					Token::Byte(other as u8)
@@ -1114,7 +1116,7 @@ for details about the options it supports.";
 						// pi-uutils: `show_warning!` replaced with a
 						// context-stderr write.
 						let _ = writeln!(
-							pi_uutils_ctx::stderr(),
+							veyyon_uutils_ctx::stderr(),
 							"stat: warning: cannot read table of mounted file systems: {e}"
 						);
 						None
@@ -1160,7 +1162,7 @@ for details about the options it supports.";
 				Token::Byte(byte) => write_raw_byte(byte),
 				// pi-uutils: context stdout instead of `print!`.
 				Token::Char(c) => {
-					let _ = write!(pi_uutils_ctx::stdout(), "{c}");
+					let _ = write!(veyyon_uutils_ctx::stdout(), "{c}");
 				},
 
 				Token::Directive { flag, width, precision, format } => {
@@ -1287,7 +1289,7 @@ for details about the options it supports.";
 					// pi-uutils: `show_error!` replaced with a context-stderr
 					// write.
 					let _ =
-						writeln!(pi_uutils_ctx::stderr(), "stat: {}", StatError::StdinFilesystemMode);
+						writeln!(veyyon_uutils_ctx::stderr(), "stat: {}", StatError::StdinFilesystemMode);
 					return 1;
 				}
 				if let Ok(p) = Path::new("/dev/stdin").canonicalize() {
@@ -1301,7 +1303,7 @@ for details about the options it supports.";
 			// pi-uutils: resolve the operand against the shell working
 			// directory for every syscall below; `display_name` keeps the
 			// operand as typed for `%n` and error messages.
-			let resolved = pi_uutils_ctx::resolve(&file);
+			let resolved = veyyon_uutils_ctx::resolve(&file);
 			if self.show_fs {
 				match statfs(resolved.as_os_str()) {
 					Ok(meta) => {
@@ -1316,7 +1318,7 @@ for details about the options it supports.";
 						// pi-uutils: `show_error!` replaced with a
 						// context-stderr write.
 						let _ = writeln!(
-							pi_uutils_ctx::stderr(),
+							veyyon_uutils_ctx::stderr(),
 							"stat: {}",
 							StatError::CannotReadFilesystemInfo {
 								file: display_name.quote().to_string(),
@@ -1360,10 +1362,11 @@ for details about the options it supports.";
 					Err(e) => {
 						// pi-uutils: `show_error!` replaced with a
 						// context-stderr write.
-						let _ = writeln!(pi_uutils_ctx::stderr(), "stat: {}", StatError::CannotStat {
-							file:  display_name.quote().to_string(),
-							error: e.to_string(),
-						});
+						let _ =
+							writeln!(veyyon_uutils_ctx::stderr(), "stat: {}", StatError::CannotStat {
+								file:  display_name.quote().to_string(),
+								error: e.to_string(),
+							});
 						return 1;
 					},
 				}
@@ -1524,7 +1527,7 @@ for details about the options it supports.";
 		};
 		if timefmt_ignored {
 			let _ = writeln!(
-				pi_uutils_ctx::stderr(),
+				veyyon_uutils_ctx::stderr(),
 				"stat: warning: BSD '-t' time format is ignored; human-readable times use the GNU \
 				 default format"
 			);
@@ -1722,7 +1725,7 @@ for details about the options it supports.";
 			None => argv,
 			Some(Ok(rewritten)) => rewritten,
 			Some(Err(msg)) => {
-				let _ = writeln!(pi_uutils_ctx::stderr(), "stat: {msg}");
+				let _ = writeln!(veyyon_uutils_ctx::stderr(), "stat: {msg}");
 				return 1;
 			},
 		};
@@ -1731,15 +1734,15 @@ for details about the options it supports.";
 			Err(err) => {
 				let rendered = err.to_string();
 				if err.use_stderr() {
-					let _ = write!(pi_uutils_ctx::stderr(), "{rendered}");
+					let _ = write!(veyyon_uutils_ctx::stderr(), "{rendered}");
 					return 1;
 				}
-				let _ = write!(pi_uutils_ctx::stdout(), "{rendered}");
+				let _ = write!(veyyon_uutils_ctx::stdout(), "{rendered}");
 				return 0;
 			},
 		};
 		match stat_main(&matches) {
-			Ok(()) => pi_uutils_ctx::exit_code(),
+			Ok(()) => veyyon_uutils_ctx::exit_code(),
 			Err(err) => {
 				let code = err.code();
 				// pi-uutils: `do_stat` already reports its errors to the
@@ -1748,7 +1751,7 @@ for details about the options it supports.";
 				// "stat: " prefix for it.
 				let msg = err.to_string();
 				if !msg.is_empty() {
-					let _ = writeln!(pi_uutils_ctx::stderr(), "stat: {msg}");
+					let _ = writeln!(veyyon_uutils_ctx::stderr(), "stat: {msg}");
 				}
 				if code == 0 { 1 } else { code }
 			},
@@ -1941,7 +1944,7 @@ mod tests {
 	use std::{collections::HashMap, ffi::OsString, fs, io::Write, path::PathBuf, sync::Arc};
 
 	use parking_lot::Mutex;
-	use pi_uutils_ctx::ScopeIo;
+	use veyyon_uutils_ctx::ScopeIo;
 
 	use super::run;
 
@@ -1979,7 +1982,7 @@ mod tests {
 			.map(OsString::from)
 			.collect();
 
-		let code = pi_uutils_ctx::scope(io, || run(argv));
+		let code = veyyon_uutils_ctx::scope(io, || run(argv));
 
 		let out_str = String::from_utf8(stdout_buf.lock().clone()).unwrap();
 		let err_str = String::from_utf8(stderr_buf.lock().clone()).unwrap();
@@ -2002,7 +2005,7 @@ mod tests {
 		fs::write(root.join("data.bin"), b"hello world!").unwrap();
 
 		// Relative operand + scope cwd differing from the process cwd: only the
-		// call-site `pi_uutils_ctx::resolve` patch makes this find the file.
+		// call-site `veyyon_uutils_ctx::resolve` patch makes this find the file.
 		let (code, stdout, stderr) = run_in(root, vec!["-c", "%s", "data.bin"]);
 		assert_eq!(code, 0);
 		assert_eq!(stdout, "12\n");

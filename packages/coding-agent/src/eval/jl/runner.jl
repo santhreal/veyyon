@@ -1,4 +1,4 @@
-# OMP Julia runner — subprocess wrapper used by the coding-agent host.
+# Veyyon Julia runner — subprocess wrapper used by the coding-agent host.
 # Persistent Julia process that speaks NDJSON over stdout and a custom TSV protocol on stdin.
 
 using Base64
@@ -498,9 +498,9 @@ function build_mime_bundle(value)
     return bundle
 end
 
-struct OmpDisplay <: AbstractDisplay end
+struct VeyyonDisplay <: AbstractDisplay end
 
-function Base.display(d::OmpDisplay, value)
+function Base.display(d::VeyyonDisplay, value)
     rid = current_rid
     if rid !== nothing
         bundle = build_mime_bundle(value)
@@ -509,7 +509,7 @@ function Base.display(d::OmpDisplay, value)
     return nothing
 end
 
-pushdisplay(OmpDisplay())
+pushdisplay(VeyyonDisplay())
 
 function emit_error(rid, err, bt)
     io = IOBuffer()
@@ -570,12 +570,12 @@ function apply_request_runtime(cwd, env_pairs)
     end
     
     managed_env_keys = [
-        "PI_SESSION_FILE",
-        "PI_ARTIFACTS_DIR",
-        "PI_TOOL_BRIDGE_URL",
-        "PI_TOOL_BRIDGE_TOKEN",
-        "PI_TOOL_BRIDGE_SESSION",
-        "PI_EVAL_LOCAL_ROOTS"
+        "VEYYON_SESSION_FILE",
+        "VEYYON_ARTIFACTS_DIR",
+        "VEYYON_TOOL_BRIDGE_URL",
+        "VEYYON_TOOL_BRIDGE_TOKEN",
+        "VEYYON_TOOL_BRIDGE_SESSION",
+        "VEYYON_EVAL_LOCAL_ROOTS"
     ]
     for k in managed_env_keys
         delete!(ENV, k)

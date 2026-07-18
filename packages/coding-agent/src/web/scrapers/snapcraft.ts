@@ -1,6 +1,6 @@
-import { tryParseJson } from "@veyyon/pi-utils";
-import type { RenderResult, SpecialHandler } from "./types";
-import { buildResult, formatNumber, loadPage } from "./types";
+import { tryParseJson } from "@veyyon/utils";
+import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
+import { buildResult, formatNumber, loadFailure, loadPage, scraperDegrade, tryParseUrl } from "./types";
 
 interface SnapcraftPublisher {
 	"display-name"?: string;
@@ -100,9 +100,10 @@ export const handleSnapcraft: SpecialHandler = async (
 	url: string,
 	timeout: number,
 	signal?: AbortSignal,
-): Promise<RenderResult | null> => {
+): Promise<RenderResult | ScraperDegrade | null> => {
 	try {
-		const parsed = new URL(url);
+		const parsed = tryParseUrl(url);
+		if (!parsed) return null;
 		if (parsed.hostname !== "snapcraft.io" && parsed.hostname !== "www.snapcraft.io") return null;
 
 		const installMatch = parsed.pathname.match(/^\/install\/([^/]+)\/?$/);
@@ -121,10 +122,10 @@ export const handleSnapcraft: SpecialHandler = async (
 				"Snap-Device-Series": "16",
 			},
 		});
-		if (!result.ok) return null;
+		if (!result.ok) return scraperDegrade("snapcraft", loadFailure(result));
 
 		const data = tryParseJson<SnapcraftResponse>(result.content);
-		if (!data) return null;
+		if (!data) return scraperDegrade("snapcraft", "unexpected response shape");
 
 		const snapInfo = data.snap ?? data;
 		const name = snapInfo.title ?? snapInfo.name ?? data.name ?? snapName;
@@ -181,7 +182,7 @@ export const handleSnapcraft: SpecialHandler = async (
 		}
 
 		return buildResult(md, { url, method: "snapcraft", fetchedAt, notes: ["Fetched via Snapcraft API"] });
-	} catch {}
-
-	return null;
+	} catch (error) {
+		return scraperDegrade("snapcraft", error);
+	}
 };

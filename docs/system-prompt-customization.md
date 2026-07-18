@@ -19,11 +19,11 @@ Four user-controllable inputs feed prompt assembly. All four resolve a value as 
 | Input | Source | Effect |
 |---|---|---|
 | `--system-prompt <text-or-file>` | CLI flag | Replaces block 0: the default stable instructions. Highest precedence. |
-| `SYSTEM.md` | `<cwd>/.veyyon/SYSTEM.md`, then `~/.veyyon/agent/SYSTEM.md` (and equivalent paths under `.claude`, `.codex`, `.gemini`) | Same effect as `--system-prompt`; used when the flag is absent. |
+| `SYSTEM.md` | `<cwd>/.veyyon/SYSTEM.md`, then `~/.veyyon/profiles/default/agent/SYSTEM.md` (and equivalent paths under `.claude`, `.codex`, `.gemini`) | Same effect as `--system-prompt`; used when the flag is absent. |
 | `--append-system-prompt <text-or-file>` | CLI flag | Adds a prompt block. Without a custom system prompt it goes after all default blocks; with one it goes after the custom block and before the preserved project/environment footer. |
 | `APPEND_SYSTEM.md` | Same discovery as `SYSTEM.md` | Same effect as `--append-system-prompt`; used when the flag is absent. |
 
-Discovery for `SYSTEM.md` / `APPEND_SYSTEM.md` uses `findConfigFile` (`packages/coding-agent/src/config.ts`): the first existing file across the ordered bases (`.veyyon`, `.claude`, `.codex`, `.gemini` — project-level at `<cwd>` first, then user-level at `~`) wins. The user-level `.veyyon` base is profile-aware: under a named profile (`--profile <name>` / `VEYYON_PROFILE`) it resolves to `~/.veyyon/profiles/<name>/agent/SYSTEM.md` instead of `~/.veyyon/agent/SYSTEM.md`. **No ancestor walk-up.** Running `veyyon` from `<repo>/subdir` does not pick up `<repo>/.veyyon/SYSTEM.md`; the file must live directly under the cwd's config base or in the user-level location. See [`docs/config-usage.md`](./config-usage.md) for the full discovery contract.
+Discovery for `SYSTEM.md` / `APPEND_SYSTEM.md` uses `findConfigFile` (`packages/coding-agent/src/config.ts`): the first existing file across the ordered bases (`.veyyon`, `.claude`, `.codex`, `.gemini` — project-level at `<cwd>` first, then user-level at `~`) wins. The user-level `.veyyon` base is profile-aware: under a named profile (`--profile <name>` / `VEYYON_PROFILE`) it resolves to `~/.veyyon/profiles/<name>/agent/SYSTEM.md` instead of `~/.veyyon/profiles/default/agent/SYSTEM.md`. **No ancestor walk-up.** Running `veyyon` from `<repo>/subdir` does not pick up `<repo>/.veyyon/SYSTEM.md`; the file must live directly under the cwd's config base or in the user-level location. See [`docs/config-usage.md`](./config-usage.md) for the full discovery contract.
 
 Precedence (highest first):
 
@@ -87,7 +87,7 @@ the rendered output contains those characters verbatim — `{{cwd}}`, `{{#if has
 
 This is by design. The internal template variables (`cwd`, `date`, `environment`, `workspaceTree`, `skills`, `rules`, `toolRefs`, `hasMemoryRoot`, `hasObsidian`, `mcpDiscoveryServerSummaries`, ...) are not a supported public surface — they change between releases as the prompt is rewritten, and they would couple user configs to internals. Treat them as private.
 
-If a future release exposes a templating surface for `SYSTEM.md`, it will be opt-in (e.g. via a settings flag or a different filename) and documented here.
+There is no supported public templating surface for `SYSTEM.md` today. Write plain text (or markdown) only.
 
 ---
 
@@ -98,7 +98,7 @@ If a future release exposes a templating surface for `SYSTEM.md`, it will be opt
 Use `APPEND_SYSTEM.md` (or `--append-system-prompt`) without `SYSTEM.md`. The default stable instructions and the dynamic project/environment footer stay intact; your text is appended as an additional block.
 
 ```text
-# ~/.veyyon/agent/APPEND_SYSTEM.md
+# ~/.veyyon/profiles/default/agent/APPEND_SYSTEM.md
 Prefer Bun APIs over Node APIs in this project.
 When you change a public function, run `bun check` before yielding.
 ```
@@ -108,7 +108,7 @@ When you change a public function, run `bun check` before yielding.
 Use `SYSTEM.md` (or `--system-prompt`). You replace the stable default instructions in block 0, but normal CLI startup still preserves the dynamic project/environment footer block (`project-prompt.md`): workstation info, context files, dir-context list, workspace tree, current date, cwd, and related project context.
 
 ```text
-# ~/.veyyon/agent/SYSTEM.md
+# ~/.veyyon/profiles/default/agent/SYSTEM.md
 You are a code reviewer. Read diffs, surface issues, never edit files.
 - Cite paths with backticks.
 - Prefer concrete fixes over abstract advice.
@@ -122,14 +122,14 @@ Use `APPEND_SYSTEM.md`, not `SYSTEM.md`. Skills, rulebook summaries, always-appl
 
 The dynamic project/environment footer that remains after `SYSTEM.md` is only block 1 (`project-prompt.md`): workstation info, AGENTS.md context files, dir-context list, workspace tree, current date, cwd, and related project context. It does not include discovered skills.
 
-There is currently no supported CLI mode for "replace the stable default instructions but keep the generated skills/rules/tool guidance." If you need automatic skills loading, keep the default block and add your customization via `APPEND_SYSTEM.md`. If you fully replace with `SYSTEM.md`, you must hard-code any skill names/instructions you want the model to know about, and those will not track discovery automatically.
+There is no supported CLI mode for "replace the stable default instructions but keep the generated skills/rules/tool guidance." For automatic skills loading, keep the default block and add customization via `APPEND_SYSTEM.md`. A full `SYSTEM.md` replacement must hard-code any skill names/instructions you want the model to know about (they will not track discovery).
 
 ### "Customize automatic session titles"
 
 `SYSTEM.md` and `APPEND_SYSTEM.md` do not affect the model call that names a new session. Create the title-specific prompt file instead:
 
 ```text
-# ~/.veyyon/agent/TITLE_SYSTEM.md
+# ~/.veyyon/profiles/default/agent/TITLE_SYSTEM.md
 Generate a session name using lowercase `<type>:<primary-objective>`.
 If the message carries no concrete task, output exactly `none`.
 ```
@@ -138,7 +138,7 @@ If the message carries no concrete task, output exactly `none`.
 
 ### "Replace everything, including project context" — SDK-only
 
-The normal CLI file/flag path intentionally preserves `defaultPrompt.slice(1)`. Code using `CreateAgentSessionOptions.systemPrompt` directly can return a full replacement array and omit the project footer, but that is not what `.veyyon/SYSTEM.md`, `~/.veyyon/agent/SYSTEM.md`, or `--system-prompt` do.
+The normal CLI file/flag path intentionally preserves `defaultPrompt.slice(1)`. Code using `CreateAgentSessionOptions.systemPrompt` directly can return a full replacement array and omit the project footer, but that is not what `.veyyon/SYSTEM.md`, `~/.veyyon/profiles/default/agent/SYSTEM.md`, or `--system-prompt` do.
 
 ### "Replace, but keep one section of the default instructions" — not directly supported
 
@@ -164,7 +164,7 @@ Only one path actually drives the customization a CLI user sees: the primary CLI
 - The primary CLI path (`discoverSystemPromptFile` / `discoverAppendSystemPromptFile` in `main.ts`, which feeds `resolvedSystemPrompt` / `resolvedAppendPrompt`) calls `findConfigFile`. `findConfigFile` checks only `<cwd>/.veyyon`, `<cwd>/.claude`, `<cwd>/.codex`, `<cwd>/.gemini`, and the user-level equivalents — it does **not** walk up ancestors. Files in `<ancestor>/.veyyon/SYSTEM.md` are ignored when `veyyon` is started from a subdirectory.
 - The secondary capability path (`loadSystemPromptFiles` → builtin discovery) does walk up via `findNearestProjectConfigDir` and requires the project `.veyyon/` directory to be non-empty. Its result is rendered into the template variable `systemPromptCustomization`. Under normal CLI startup the default template (`system-prompt.md`) never references that variable, so ancestor-walk capability content has no user-visible effect.
 
-Net effect for CLI users: put `SYSTEM.md` / `APPEND_SYSTEM.md` directly under `<cwd>/.veyyon` (or another supported config base under cwd) or in the user-level location (`~/.veyyon/agent/SYSTEM.md` etc.). Ancestor paths are not searched.
+Net effect for CLI users: put `SYSTEM.md` / `APPEND_SYSTEM.md` directly under `<cwd>/.veyyon` (or another supported config base under cwd) or in the user-level location (`~/.veyyon/profiles/default/agent/SYSTEM.md` etc.). Ancestor paths are not searched.
 
 ---
 
@@ -179,4 +179,4 @@ Net effect for CLI users: put `SYSTEM.md` / `APPEND_SYSTEM.md` directly under `<
 | Use `{{cwd}}` / `{{date}}` / other internals in my file | Not supported. Files are inserted verbatim. |
 | Inherit specific sections from `system-prompt.md` | Not supported; use append, or copy what you need into `SYSTEM.md`. |
 | Override at a per-repo level | Project `.veyyon/SYSTEM.md` under the cwd you launch `veyyon` from |
-| Override globally | `~/.veyyon/agent/SYSTEM.md` or `~/.veyyon/agent/APPEND_SYSTEM.md` |
+| Override globally | `~/.veyyon/profiles/default/agent/SYSTEM.md` or `~/.veyyon/profiles/default/agent/APPEND_SYSTEM.md` |

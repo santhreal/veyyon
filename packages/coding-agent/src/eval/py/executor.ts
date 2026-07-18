@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-import { getProjectDir, logger } from "@veyyon/pi-utils";
+import { errorMessage, getProjectDir, logger } from "@veyyon/utils";
 import type { ToolSession } from "../../tools";
 import {
 	attachSessionOwner,
@@ -63,8 +63,8 @@ export interface PythonExecutorOptions {
 	/**
 	 * Effective artifacts directory for the current session. Subagents share
 	 * the parent's directory, so this can differ from `sessionFile`'s sibling
-	 * dir. When present, exported to the kernel as `PI_ARTIFACTS_DIR` and
-	 * preferred over `PI_SESSION_FILE`-derived paths.
+	 * dir. When present, exported to the kernel as `VEYYON_ARTIFACTS_DIR` and
+	 * preferred over `VEYYON_SESSION_FILE`-derived paths.
 	 */
 	artifactsDir?: string;
 	/** Artifact path/id for full output storage */
@@ -73,7 +73,7 @@ export interface PythonExecutorOptions {
 	/**
 	 * On-disk roots the prelude helpers (`read`/`write`) substitute for
 	 * internal-URL schemes (e.g. `{ local: "/…/artifacts/local" }`). Exported to
-	 * the kernel as `PI_EVAL_LOCAL_ROOTS` (JSON) so `write("local://x")` lands
+	 * the kernel as `VEYYON_EVAL_LOCAL_ROOTS` (JSON) so `write("local://x")` lands
 	 * where `read local://x` resolves instead of a literal `local:/` directory.
 	 */
 	localRoots?: Record<string, string>;
@@ -404,7 +404,7 @@ async function ensureToolBridge(options: PythonExecutorOptions): Promise<void> {
 		options.bridge = await ensurePyToolBridge();
 	} catch (err) {
 		logger.warn("Failed to start Python tool bridge", {
-			error: err instanceof Error ? err.message : String(err),
+			error: errorMessage(err),
 		});
 	}
 }

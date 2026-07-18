@@ -6,7 +6,7 @@
  * TUI editor (`packages/tui/src/components/editor.ts`); the editor fires the
  * popup, this module decides whether there are candidates to show.
  */
-import { type AutocompleteItem, isSubsequenceMatch, subsequenceScore } from "@veyyon/pi-tui";
+import { type AutocompleteItem, isSubsequenceMatch, subsequenceScore } from "@veyyon/tui";
 import { InternalUrlRouter } from "../internal-urls/router";
 
 /** Upper bound on candidates surfaced in the dropdown. */

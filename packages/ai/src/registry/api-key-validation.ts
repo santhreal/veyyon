@@ -1,3 +1,4 @@
+import { scopedTimeoutSignal } from "@veyyon/utils";
 import * as AIError from "../error";
 import type { FetchImpl } from "../types";
 
@@ -46,81 +47,93 @@ function resolveValidationHeaders(
  * Performs a minimal request to verify credentials and endpoint access.
  */
 export async function validateOpenAICompatibleApiKey(options: OpenAICompatibleValidationOptions): Promise<void> {
-	const timeoutSignal = AbortSignal.timeout(VALIDATION_TIMEOUT_MS);
-	const signal = options.signal ? AbortSignal.any([options.signal, timeoutSignal]) : timeoutSignal;
-	const fetchImpl = options.fetch ?? fetch;
-
-	const response = await fetchImpl(`${options.baseUrl}/chat/completions`, {
-		method: "POST",
-		headers: {
-			"Content-Type": "application/json",
-			Authorization: `Bearer ${options.apiKey}`,
-		},
-		body: JSON.stringify({
-			model: options.model,
-			messages: [{ role: "user", content: "ping" }],
-			max_tokens: 1,
-			temperature: 0,
-		}),
-		signal,
-	});
-
-	if (response.ok) {
-		return;
-	}
-
-	let details = "";
+	// The scoped handle clears its backing timer on settle (a bare
+	// AbortSignal.timeout stays armed), and the fence spans the body read.
+	const requestTimeout = scopedTimeoutSignal(VALIDATION_TIMEOUT_MS, options.signal);
+	const signal = requestTimeout.signal;
 	try {
-		details = (await response.text()).trim();
-	} catch {
-		// ignore body parse errors, status is enough
-	}
+		const fetchImpl = options.fetch ?? fetch;
 
-	const message = details
-		? `${options.provider} API key validation failed (${response.status}): ${details}`
-		: `${options.provider} API key validation failed (${response.status})`;
-	throw new AIError.ApiKeyRequiredError(message);
+		const response = await fetchImpl(`${options.baseUrl}/chat/completions`, {
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+				Authorization: `Bearer ${options.apiKey}`,
+			},
+			body: JSON.stringify({
+				model: options.model,
+				messages: [{ role: "user", content: "ping" }],
+				max_tokens: 1,
+				temperature: 0,
+			}),
+			signal,
+		});
+
+		if (response.ok) {
+			return;
+		}
+
+		let details = "";
+		try {
+			details = (await response.text()).trim();
+		} catch {
+			// ignore body parse errors, status is enough
+		}
+
+		const message = details
+			? `${options.provider} API key validation failed (${response.status}): ${details}`
+			: `${options.provider} API key validation failed (${response.status})`;
+		throw new AIError.ApiKeyRequiredError(message);
+	} finally {
+		requestTimeout.cancel();
+	}
 }
 
 /**
  * Validate an API key against an Anthropic-compatible messages endpoint.
  */
 export async function validateAnthropicCompatibleApiKey(options: AnthropicCompatibleValidationOptions): Promise<void> {
-	const timeoutSignal = AbortSignal.timeout(VALIDATION_TIMEOUT_MS);
-	const signal = options.signal ? AbortSignal.any([options.signal, timeoutSignal]) : timeoutSignal;
-	const baseUrl = normalizeAnthropicCompatibleBaseUrl(options.baseUrl);
-	const fetchImpl = options.fetch ?? fetch;
-
-	const response = await fetchImpl(`${baseUrl}/v1/messages`, {
-		method: "POST",
-		headers: {
-			"Content-Type": "application/json",
-			"anthropic-version": "2023-06-01",
-			"x-api-key": options.apiKey,
-		},
-		body: JSON.stringify({
-			model: options.model,
-			messages: [{ role: "user", content: "ping" }],
-			max_tokens: 1,
-		}),
-		signal,
-	});
-
-	if (response.ok) {
-		return;
-	}
-
-	let details = "";
+	// The scoped handle clears its backing timer on settle (a bare
+	// AbortSignal.timeout stays armed), and the fence spans the body read.
+	const requestTimeout = scopedTimeoutSignal(VALIDATION_TIMEOUT_MS, options.signal);
+	const signal = requestTimeout.signal;
 	try {
-		details = (await response.text()).trim();
-	} catch {
-		// ignore body parse errors, status is enough
-	}
+		const baseUrl = normalizeAnthropicCompatibleBaseUrl(options.baseUrl);
+		const fetchImpl = options.fetch ?? fetch;
 
-	const message = details
-		? `${options.provider} API key validation failed (${response.status}): ${details}`
-		: `${options.provider} API key validation failed (${response.status})`;
-	throw new AIError.ApiKeyRequiredError(message);
+		const response = await fetchImpl(`${baseUrl}/v1/messages`, {
+			method: "POST",
+			headers: {
+				"Content-Type": "application/json",
+				"anthropic-version": "2023-06-01",
+				"x-api-key": options.apiKey,
+			},
+			body: JSON.stringify({
+				model: options.model,
+				messages: [{ role: "user", content: "ping" }],
+				max_tokens: 1,
+			}),
+			signal,
+		});
+
+		if (response.ok) {
+			return;
+		}
+
+		let details = "";
+		try {
+			details = (await response.text()).trim();
+		} catch {
+			// ignore body parse errors, status is enough
+		}
+
+		const message = details
+			? `${options.provider} API key validation failed (${response.status}): ${details}`
+			: `${options.provider} API key validation failed (${response.status})`;
+		throw new AIError.ApiKeyRequiredError(message);
+	} finally {
+		requestTimeout.cancel();
+	}
 }
 
 /**
@@ -130,32 +143,38 @@ export async function validateAnthropicCompatibleApiKey(options: AnthropicCompat
  * should not block key validation.
  */
 export async function validateApiKeyAgainstModelsEndpoint(options: ModelListValidationOptions): Promise<void> {
-	const timeoutSignal = AbortSignal.timeout(VALIDATION_TIMEOUT_MS);
-	const signal = options.signal ? AbortSignal.any([options.signal, timeoutSignal]) : timeoutSignal;
-	const fetchImpl = options.fetch ?? fetch;
-
-	const response = await fetchImpl(options.modelsUrl, {
-		method: "GET",
-		headers: {
-			...(resolveValidationHeaders(options.headers) ?? {}),
-			Authorization: `Bearer ${options.apiKey}`,
-		},
-		signal,
-	});
-
-	if (response.ok) {
-		return;
-	}
-
-	let details = "";
+	// The scoped handle clears its backing timer on settle (a bare
+	// AbortSignal.timeout stays armed), and the fence spans the body read.
+	const requestTimeout = scopedTimeoutSignal(VALIDATION_TIMEOUT_MS, options.signal);
+	const signal = requestTimeout.signal;
 	try {
-		details = (await response.text()).trim();
-	} catch {
-		// ignore body parse errors, status is enough
-	}
+		const fetchImpl = options.fetch ?? fetch;
 
-	const message = details
-		? `${options.provider} API key validation failed (${response.status}): ${details}`
-		: `${options.provider} API key validation failed (${response.status})`;
-	throw new AIError.ApiKeyRequiredError(message);
+		const response = await fetchImpl(options.modelsUrl, {
+			method: "GET",
+			headers: {
+				...(resolveValidationHeaders(options.headers) ?? {}),
+				Authorization: `Bearer ${options.apiKey}`,
+			},
+			signal,
+		});
+
+		if (response.ok) {
+			return;
+		}
+
+		let details = "";
+		try {
+			details = (await response.text()).trim();
+		} catch {
+			// ignore body parse errors, status is enough
+		}
+
+		const message = details
+			? `${options.provider} API key validation failed (${response.status}): ${details}`
+			: `${options.provider} API key validation failed (${response.status})`;
+		throw new AIError.ApiKeyRequiredError(message);
+	} finally {
+		requestTimeout.cancel();
+	}
 }

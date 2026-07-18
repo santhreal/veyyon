@@ -1,7 +1,7 @@
 import { Database, type SQLQueryBindings } from "bun:sqlite";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { getAutoresearchDbPath, getAutoresearchProjectDir, logger } from "@veyyon/pi-utils";
+import { errorMessage, getAutoresearchDbPath, getAutoresearchProjectDir, logger } from "@veyyon/utils";
 import * as git from "../utils/git";
 import type { ASIData, ExperimentStatus, MetricDirection, NumericMetricMap } from "./types";
 
@@ -572,7 +572,7 @@ export async function openAutoresearchStorageIfExists(cwd: string): Promise<Auto
 }
 
 async function resolveAutoresearchPaths(cwd: string): Promise<{ dbPath: string; projectDir: string }> {
-	const override = process.env.VEYYON_AUTORESEARCH_DB_DIR ?? process.env.OMP_AUTORESEARCH_DB_DIR;
+	const override = process.env.VEYYON_AUTORESEARCH_DB_DIR;
 	const repoRoot = (await git.repo.root(cwd)) ?? cwd;
 	const encoded = encodeProjectKey(repoRoot);
 	if (override) {
@@ -593,7 +593,7 @@ export function closeAllAutoresearchStorages(): void {
 			storage.close();
 		} catch (err) {
 			logger.warn("Failed to close autoresearch storage", {
-				error: err instanceof Error ? err.message : String(err),
+				error: errorMessage(err),
 				path: storage.dbPath,
 			});
 		}

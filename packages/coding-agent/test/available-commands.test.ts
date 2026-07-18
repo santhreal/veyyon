@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { buildAvailableSlashCommands } from "@veyyon/pi-coding-agent/slash-commands/available-commands";
+import { buildAvailableSlashCommands } from "@veyyon/coding-agent/slash-commands/available-commands";
 
 describe("buildAvailableSlashCommands", () => {
 	test("returns RPC-safe command metadata with stable sources", async () => {

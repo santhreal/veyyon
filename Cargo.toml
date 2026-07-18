@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/pi-*", "crates/vendor/*"]
+members = ["crates/veyyon-*", "crates/vendor/*"]
 exclude = ["crates/vendor/brush-core", "crates/vendor/brush-builtins"]
 resolver = "3"
 
@@ -8,8 +8,8 @@ version = "1.0.0"
 edition = "2024"
 license = "MIT"
 authors = ["Can Boluk"]
-homepage = "https://omp.sh/"
-repository = "https://github.com/can1357/oh-my-pi"
+homepage = "https://veyyon.dev/"
+repository = "https://github.com/santhreal/veyyon"
 
 [patch.crates-io]
 brush-core = { path = "crates/vendor/brush-core" }
@@ -22,8 +22,8 @@ codegen-units = 1
 strip = true
 # Unwind (not abort) so panics inside vendored code and native tasks stay
 # recoverable at the appropriate boundary: the uutils boundary
-# (pi-shell coreutils) turns a panic into a failed command, and the
-# `task::blocking` wrapper in `crates/pi-natives/src/task.rs` catches unwinds
+# (veyyon-shell coreutils) turns a panic into a failed command, and the
+# `task::blocking` wrapper in `crates/veyyon-natives/src/task.rs` catches unwinds
 # inside `Blocking::compute` before they cross napi-rs's async-work
 # `extern "C"` callback (napi `src/async_work.rs:109`) so they surface as
 # rejected JS Promises instead of forced process aborts under Rust's C-unwind
@@ -31,7 +31,7 @@ strip = true
 # per-call `catch_unwind` on the `Task`/`AsyncTask` path; the tokio-future
 # path (`env.spawn_future`) is guarded upstream. Recoverable uutils panics
 # are kept out of the crash report by the crash hook
-# (see crates/pi-natives/src/crash_handler.rs).
+# (see crates/veyyon-natives/src/crash_handler.rs).
 panic = "unwind"
 
 [profile.ci]
@@ -175,10 +175,10 @@ too_many_lines = "allow"     # Arbitrary limits don't account for necessary comp
 # ──────────────────────────────────────────────────────────────────────────────
 # Internal Libraries
 # ──────────────────────────────────────────────────────────────────────────────
-pi-ast = { path = "crates/pi-ast" }
-pi-iso = { path = "crates/pi-iso" }
-pi-shell = { path = "crates/pi-shell" }
-pi-walker = { path = "crates/pi-walker" }
+veyyon-ast = { path = "crates/veyyon-ast" }
+veyyon-iso = { path = "crates/veyyon-iso" }
+veyyon-shell = { path = "crates/veyyon-shell" }
+veyyon-walker = { path = "crates/veyyon-walker" }
 brush-core = { path = "crates/vendor/brush-core" }
 brush-builtins = { path = "crates/vendor/brush-builtins" }
 

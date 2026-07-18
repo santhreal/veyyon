@@ -1,6 +1,7 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { hostMatchesUrl } from "@veyyon/pi-catalog/hosts";
+import { hostMatchesUrl } from "@veyyon/catalog/hosts";
+import { trimTrailingSlashes } from "@veyyon/utils";
 import {
 	type Env,
 	envBool,
@@ -341,7 +342,7 @@ export function llmModelFiles(env: Env = process.env): readonly [repo: string, f
 }
 
 export function llmBaseUrl(env: Env = process.env): string {
-	return envString("MNEMOPI_LLM_BASE_URL", "", env).replace(/\/+$/, "");
+	return trimTrailingSlashes(envString("MNEMOPI_LLM_BASE_URL", "", env));
 }
 
 export function llmApiKey(env: Env = process.env): string {

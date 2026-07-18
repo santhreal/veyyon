@@ -16,7 +16,7 @@ const GITLAB_DUO_WORKFLOW_MAX_GROUP_PAGES = 50;
 
 // GitLab Duo Workflow does not expose a context window via the model catalog GraphQL.
 // The Duo Workflow Service streams the real per-agent window in each checkpoint's
-// `agent_context_usage` (claude_opus_4_8 observed at 1_000_000), but OMP's context
+// `agent_context_usage` (claude_opus_4_8 observed at 1_000_000), but Veyyon's context
 // panel / auto-compaction read `model.contextWindow` from the catalog ModelSpec, which
 // the provider cannot backfill at runtime. Match the model ref to a static window the
 // same way other providers ship static values; DWS' own global fallback is 200_000
@@ -175,7 +175,7 @@ export function buildGitLabDuoWorkflowModelSpec(
 		baseUrl: normalizedBaseUrl,
 		// The Duo Agent Platform path exposes no client-controllable thinking knob
 		// (Anthropic model params are server-fixed; see provider notes), so reasoning
-		// is off — this also hides OMP's thinking-effort selector for these models.
+		// is off — this also hides Veyyon's thinking-effort selector for these models.
 		reasoning: false,
 		input: ["text"],
 		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },

@@ -1,6 +1,6 @@
-import type { TextContent } from "@veyyon/pi-ai";
-import type { Component } from "@veyyon/pi-tui";
-import { Box, Container, Markdown, Spacer, Text } from "@veyyon/pi-tui";
+import type { TextContent } from "@veyyon/ai";
+import type { Component } from "@veyyon/tui";
+import { Box, Container, Markdown, Spacer, Text } from "@veyyon/tui";
 import { getMarkdownTheme, theme } from "../../modes/theme/theme";
 import type { CustomMessage, SkillPromptDetails } from "../../session/messages";
 import { shortenPath } from "../../tools/render-utils";

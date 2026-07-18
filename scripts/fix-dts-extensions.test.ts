@@ -35,7 +35,7 @@ afterEach(async () => {
 describe("resolveDtsSpecifier", () => {
 	it("returns null for bare, scoped, node:, and already-suffixed specifiers", async () => {
 		const root = await makeTree({ "placeholder.d.ts": "export {};\n" });
-		for (const spec of ["@veyyon/pi-tui", "zod/v4", "node:fs", "./x.js", "./data.json", "./m.mjs", "./c.cjs"]) {
+		for (const spec of ["@veyyon/tui", "zod/v4", "node:fs", "./x.js", "./data.json", "./m.mjs", "./c.cjs"]) {
 			expect(await resolveDtsSpecifier(root, spec)).toBeNull();
 		}
 	});
@@ -117,7 +117,7 @@ describe("fixDtsFile", () => {
 
 	it("leaves a file of bare and already-suffixed specifiers byte-for-byte unchanged", async () => {
 		const source =
-			'export * from "@veyyon/pi-tui";\n' +
+			'export * from "@veyyon/tui";\n' +
 			'import { z } from "zod/v4";\n' +
 			'import * as nodefs from "node:fs";\n' +
 			'export * from "./x.js";\n' +

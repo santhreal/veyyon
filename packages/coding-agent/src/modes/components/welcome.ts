@@ -8,8 +8,8 @@ import {
 	truncateToWidth,
 	visibleWidth,
 	wrapTextWithAnsi,
-} from "@veyyon/pi-tui";
-import { APP_NAME } from "@veyyon/pi-utils";
+} from "@veyyon/tui";
+import { APP_NAME } from "@veyyon/utils";
 import { shimmerEnabled } from "../../modes/theme/shimmer";
 import { theme } from "../../modes/theme/theme";
 import { sunMark } from "./sun";

@@ -1,8 +1,8 @@
 import { beforeAll, describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
-import { renderSegment } from "@veyyon/pi-coding-agent/modes/components/status-line/segments";
-import type { SegmentContext } from "@veyyon/pi-coding-agent/modes/components/status-line/types";
-import { initTheme } from "@veyyon/pi-coding-agent/modes/theme/theme";
+import { renderSegment } from "@veyyon/coding-agent/modes/components/status-line/segments";
+import type { SegmentContext } from "@veyyon/coding-agent/modes/components/status-line/types";
+import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 
 beforeAll(async () => {
 	await initTheme();

@@ -1,10 +1,8 @@
 /**
  * Manage self-contained Veyyon profiles.
  */
-import { Args, Command, Flags } from "@veyyon/pi-utils/cli";
-import { type ProfileAction, type ProfileCommandArgs, runProfileCommand } from "../cli/profile-cli";
-
-const ACTIONS: ProfileAction[] = ["list", "new", "rm"];
+import { Args, Command, Flags } from "@veyyon/utils/cli";
+import { PROFILE_ACTIONS, type ProfileAction, type ProfileCommandArgs, runProfileCommand } from "../cli/profile-cli";
 
 export default class Profile extends Command {
 	static description = "List, create, or remove self-contained profiles";
@@ -15,11 +13,11 @@ export default class Profile extends Command {
 		action: Args.string({
 			description: "Profile action",
 			required: false,
-			options: ACTIONS,
+			options: PROFILE_ACTIONS,
 			default: "list",
 		}),
 		name: Args.string({
-			description: "Profile name (new/rm)",
+			description: "Profile name (new/rm/default)",
 			required: false,
 		}),
 	};
@@ -30,6 +28,7 @@ export default class Profile extends Command {
 			default: "default",
 		}),
 		yes: Flags.boolean({ description: "Confirm profile removal", default: false }),
+		clear: Flags.boolean({ description: "Clear the global defaultProfile (`default` action)", default: false }),
 		json: Flags.boolean({ description: "Output JSON", default: false }),
 	};
 
@@ -38,6 +37,8 @@ export default class Profile extends Command {
 		"veyyon profile new work",
 		"veyyon profile new bounty --from blank",
 		"veyyon profile rm work --yes",
+		"veyyon profile default work",
+		"veyyon profile default --clear",
 	];
 
 	async run(): Promise<void> {
@@ -48,6 +49,7 @@ export default class Profile extends Command {
 			from: flags.from,
 			yes: flags.yes,
 			json: flags.json,
+			clear: flags.clear,
 		};
 		try {
 			await runProfileCommand(cmd);

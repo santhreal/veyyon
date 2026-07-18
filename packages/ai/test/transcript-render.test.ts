@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import type { Message, Usage } from "@veyyon/pi-ai";
-import { type Dialect, getDialectDefinition } from "@veyyon/pi-ai/dialect";
+import type { Message, Usage } from "@veyyon/ai";
+import { type Dialect, getDialectDefinition } from "@veyyon/ai/dialect";
 
 function usage(): Usage {
 	return {

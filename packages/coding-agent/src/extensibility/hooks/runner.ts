@@ -1,8 +1,9 @@
 /**
  * Hook runner - executes hooks and manages their lifecycle.
  */
-import type { AgentMessage } from "@veyyon/pi-agent-core";
-import type { Model } from "@veyyon/pi-ai";
+import type { AgentMessage } from "@veyyon/agent-core";
+import type { Model } from "@veyyon/ai";
+import { errorMessage } from "@veyyon/utils";
 import type { ModelRegistry } from "../../config/model-registry";
 import type { SessionManager } from "../../session/session-manager";
 import { createNoOpUIContext } from "../utils";
@@ -305,7 +306,7 @@ export class HookRunner {
 						result = handlerResult as SessionCompactingResult;
 					}
 				} catch (err) {
-					const message = err instanceof Error ? err.message : String(err);
+					const message = errorMessage(err);
 					this.emitError({
 						hookPath: hook.path,
 						event: event.type,
@@ -372,7 +373,7 @@ export class HookRunner {
 						currentMessages = (handlerResult as ContextEventResult).messages!;
 					}
 				} catch (err) {
-					const message = err instanceof Error ? err.message : String(err);
+					const message = errorMessage(err);
 					this.emitError({
 						hookPath: hook.path,
 						event: "context",
@@ -391,7 +392,7 @@ export class HookRunner {
 	 */
 	async emitBeforeAgentStart(
 		prompt: string,
-		images?: import("@veyyon/pi-ai").ImageContent[],
+		images?: import("@veyyon/ai").ImageContent[],
 	): Promise<BeforeAgentStartEventResult | undefined> {
 		const ctx = this.#createContext();
 		let result: BeforeAgentStartEventResult | undefined;
@@ -410,7 +411,7 @@ export class HookRunner {
 						result = handlerResult as BeforeAgentStartEventResult;
 					}
 				} catch (err) {
-					const message = err instanceof Error ? err.message : String(err);
+					const message = errorMessage(err);
 					this.emitError({
 						hookPath: hook.path,
 						event: "before_agent_start",

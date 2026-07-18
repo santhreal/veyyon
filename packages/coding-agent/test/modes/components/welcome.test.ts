@@ -1,8 +1,8 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
-import { Settings, settings } from "@veyyon/pi-coding-agent/config/settings";
-import { pickWeightedTip, WelcomeComponent } from "@veyyon/pi-coding-agent/modes/components/welcome";
-import { initTheme, theme } from "@veyyon/pi-coding-agent/modes/theme/theme";
+import { Settings, settings } from "@veyyon/coding-agent/config/settings";
+import { pickWeightedTip, WelcomeComponent } from "@veyyon/coding-agent/modes/components/welcome";
+import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
 
 function plain(lines: readonly string[]): string {
 	return lines.map(line => stripVTControlCharacters(line)).join("\n");

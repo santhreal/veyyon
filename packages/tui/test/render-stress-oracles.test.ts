@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { CURSOR_MARKER } from "@veyyon/pi-tui/tui";
+import { CURSOR_MARKER } from "@veyyon/tui/tui";
 import {
 	compositeExpectedLineAt,
 	cursorInsertionIndex,

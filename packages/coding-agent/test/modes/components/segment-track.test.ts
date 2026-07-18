@@ -3,8 +3,8 @@ import {
 	renderSegmentTrack,
 	resolveSegmentPalette,
 	type TrackSegment,
-} from "@veyyon/pi-coding-agent/modes/components/segment-track";
-import { initTheme, type ThemeColor, theme } from "@veyyon/pi-coding-agent/modes/theme/theme";
+} from "@veyyon/coding-agent/modes/components/segment-track";
+import { initTheme, type ThemeColor, theme } from "@veyyon/coding-agent/modes/theme/theme";
 
 beforeAll(async () => {
 	await initTheme();

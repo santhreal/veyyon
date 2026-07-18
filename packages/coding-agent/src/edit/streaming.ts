@@ -22,6 +22,7 @@ import {
 	Patch as HashlinePatch,
 	type SnapshotStore,
 } from "@veyyon/hashline";
+import { errorMessage } from "@veyyon/utils";
 import type { Theme } from "../modes/theme/theme";
 import { type EditMode, resolveEditMode } from "../utils/edit-mode";
 import { computeEditDiff, type DiffError, type DiffResult } from "./diff";
@@ -635,7 +636,7 @@ const applyPatchStrategy: EditStreamingStrategy<ApplyPatchArgs> = {
 			try {
 				entries = expandApplyPatchToPreviewEntries({ input });
 			} catch (err) {
-				return [{ path: "", error: err instanceof Error ? err.message : String(err) }];
+				return [{ path: "", error: errorMessage(err) }];
 			}
 		}
 		const groups = groupApplyPatchEntriesByPath(entries);

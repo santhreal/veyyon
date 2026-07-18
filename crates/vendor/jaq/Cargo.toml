@@ -19,7 +19,7 @@ memmap2 = "0.9"
 tempfile = "3.3.0"
 unicode-width = "0.1.13"
 yansi = "1.0.1"
-pi-uutils-ctx = { path = "../../pi-uutils-ctx" }
+veyyon-uutils-ctx = { path = "../../veyyon-uutils-ctx" }
 
 [dev-dependencies]
 tempfile = "3"

@@ -1,6 +1,6 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { getAgentDir, getProjectDir, isEnoent } from "@veyyon/pi-utils";
+import { getAgentDir, getProjectDir, isEnoent } from "@veyyon/utils";
 import { manifestFromPackageJson } from "../manifest-key";
 import { extractPackageName } from "./parser";
 import type { InstalledPlugin } from "./types";
@@ -42,7 +42,7 @@ export async function installPlugin(packageName: string): Promise<InstalledPlugi
 	const pkgJsonPath = path.join(PLUGINS_DIR, "package.json");
 	const pkgJson = Bun.file(pkgJsonPath);
 	if (!(await pkgJson.exists())) {
-		await pkgJson.write(JSON.stringify({ name: "omp-plugins", private: true, dependencies: {} }, null, 2));
+		await pkgJson.write(JSON.stringify({ name: "veyyon-plugins", private: true, dependencies: {} }, null, 2));
 	}
 
 	// Run npm install in plugins directory

@@ -6,10 +6,10 @@
  * result pairs collapsed to single lines, thinking elided, custom messages
  * as one-liners. No system prompt, no tool catalog, no config sections.
  */
-import type { AgentMessage } from "@veyyon/pi-agent-core";
-import type { AssistantMessage, ImageContent, TextContent, ToolResultMessage } from "@veyyon/pi-ai";
-import { escapeXmlText } from "@veyyon/pi-utils";
-import { INTENT_FIELD } from "@veyyon/pi-wire";
+import type { AgentMessage } from "@veyyon/agent-core";
+import type { AssistantMessage, ImageContent, TextContent, ToolResultMessage } from "@veyyon/ai";
+import { escapeXmlText, formatCount, truncate } from "@veyyon/utils";
+import { INTENT_FIELD } from "@veyyon/wire";
 import type {
 	BashExecutionMessage,
 	BranchSummaryMessage,
@@ -72,8 +72,7 @@ const PRIMARY_ARG_KEYS = [
 
 /** Collapse whitespace runs and truncate to `max` chars with an ellipsis. */
 function oneLine(text: string, max = PRIMARY_ARG_MAX): string {
-	const flat = text.replace(/\s+/g, " ").trim();
-	return flat.length > max ? `${flat.slice(0, max - 1)}…` : flat;
+	return truncate(text.replace(/\s+/g, " ").trim(), max);
 }
 
 /** Join the text blocks of a string-or-blocks content field. Images become `[image]`. */
@@ -175,7 +174,7 @@ function toolCallLine(
 	} else {
 		const text = contentToText(result.content);
 		const lines = lineCount(text);
-		const count = `${lines} ${lines === 1 ? "line" : "lines"}`;
+		const count = formatCount("line", lines);
 		if (result.isError) {
 			const firstLine = oneLine(text.split("\n", 1)[0] ?? "");
 			base = firstLine ? `${head} ⇒ error · ${count} — ${firstLine}` : `${head} ⇒ error · ${count}`;
@@ -211,7 +210,7 @@ function executionLine(
 			? `error · exit ${msg.exitCode}`
 			: "ok";
 	const lines = lineCount(msg.output);
-	return `→ ${kind}! ${oneLine(source)} ⇒ ${status} · ${lines} ${lines === 1 ? "line" : "lines"}`;
+	return `→ ${kind}! ${oneLine(source)} ⇒ ${status} · ${formatCount("line", lines)}`;
 }
 
 /**

@@ -1,6 +1,7 @@
 /**
  * CLI handler for `veyyon grievances` — view, clean, and manually push reported tool issues.
  */
+import { formatCount, pluralize } from "@veyyon/utils";
 import chalk from "chalk";
 import { Settings } from "../config/settings";
 import { flushGrievances, openAutoQaDb } from "../tools/report-tool-issue";
@@ -41,7 +42,7 @@ export async function listGrievances(options: ListGrievancesOptions): Promise<vo
 			console.log("[]");
 		} else {
 			console.log(
-				chalk.dim("No grievances database found. Enable auto-QA with PI_AUTO_QA=1 or the dev.autoqa setting."),
+				chalk.dim("No grievances database found. Enable auto-QA with VEYYON_AUTO_QA=1 or the dev.autoqa setting."),
 			);
 		}
 		return;
@@ -110,7 +111,7 @@ export async function cleanGrievances(options: CleanGrievancesOptions): Promise<
 			console.log(JSON.stringify({ deleted: 0 }));
 		} else {
 			console.log(
-				chalk.dim("No grievances database found. Enable auto-QA with PI_AUTO_QA=1 or the dev.autoqa setting."),
+				chalk.dim("No grievances database found. Enable auto-QA with VEYYON_AUTO_QA=1 or the dev.autoqa setting."),
 			);
 		}
 		return;
@@ -148,7 +149,7 @@ export async function cleanGrievances(options: CleanGrievancesOptions): Promise<
 
 		const scope =
 			options.id !== undefined ? `#${options.id}` : options.tool ? `for ${options.tool}` : "(all entries)";
-		console.log(chalk.green(`Deleted ${deleted} grievance${deleted === 1 ? "" : "s"} ${scope}.`));
+		console.log(chalk.green(`Deleted ${formatCount("grievance", deleted)} ${scope}.`));
 	} finally {
 		db.close();
 	}
@@ -196,7 +197,7 @@ function makeProgressBar(total: number, width = 30): ProgressBar {
  * explicit "yes ship these now" intent).
  *
  * Requires endpoint configuration — `dev.autoqaPush.endpoint` (or
- * `PI_AUTO_QA_PUSH_URL`) is unset by default, so push is a no-op until
+ * `VEYYON_AUTO_QA_PUSH_URL`) is unset by default, so push is a no-op until
  * explicitly configured.
  */
 export async function pushGrievances(options: PushGrievancesOptions): Promise<void> {
@@ -232,7 +233,7 @@ export async function pushGrievances(options: PushGrievancesOptions): Promise<vo
 		if (result.skipped) {
 			console.log(
 				chalk.yellow(
-					"Push skipped — no endpoint configured. Set `dev.autoqaPush.endpoint` or `PI_AUTO_QA_PUSH_URL`.",
+					"Push skipped — no endpoint configured. Set `dev.autoqaPush.endpoint` or `VEYYON_AUTO_QA_PUSH_URL`.",
 				),
 			);
 			return;
@@ -242,13 +243,13 @@ export async function pushGrievances(options: PushGrievancesOptions): Promise<vo
 			return;
 		}
 		if (result.ok) {
-			console.log(chalk.green(`Pushed ${result.pushed}/${total} grievance${result.pushed === 1 ? "" : "s"}.`));
+			console.log(chalk.green(`Pushed ${result.pushed}/${total} ${pluralize("grievance", result.pushed)}.`));
 			return;
 		}
 		const remaining = total - result.pushed;
 		console.log(
 			chalk.red(
-				`Push failed after ${result.pushed}/${total}; ${remaining} grievance${remaining === 1 ? "" : "s"} remain unpushed.`,
+				`Push failed after ${result.pushed}/${total}; ${formatCount("grievance", remaining)} remain unpushed.`,
 			),
 		);
 		process.exitCode = 1;

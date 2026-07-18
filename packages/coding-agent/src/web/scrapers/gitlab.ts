@@ -1,4 +1,4 @@
-import { tryParseJson } from "@veyyon/pi-utils";
+import { tryParseJson } from "@veyyon/utils";
 import {
 	buildResult,
 	formatIsoDate,
@@ -6,7 +6,10 @@ import {
 	htmlToBasicMarkdown,
 	loadPage,
 	type RenderResult,
+	type ScraperDegrade,
 	type SpecialHandler,
+	scraperDegrade,
+	tryParseUrl,
 } from "./types";
 
 interface GitLabUrl {
@@ -23,7 +26,8 @@ interface GitLabUrl {
  */
 function parseGitLabUrl(url: string): GitLabUrl | null {
 	try {
-		const parsed = new URL(url);
+		const parsed = tryParseUrl(url);
+		if (!parsed) return null;
 		if (parsed.hostname !== "gitlab.com") return null;
 
 		const segments = parsed.pathname.split("/").filter(Boolean);
@@ -325,7 +329,7 @@ export const handleGitLab: SpecialHandler = async (
 	url: string,
 	timeout: number,
 	signal?: AbortSignal,
-): Promise<RenderResult | null> => {
+): Promise<RenderResult | ScraperDegrade | null> => {
 	const gl = parseGitLabUrl(url);
 	if (!gl) return null;
 
@@ -397,5 +401,7 @@ export const handleGitLab: SpecialHandler = async (
 		}
 	}
 
-	return null;
+	// Matched a GitLab URL but every API path failed: degrade loudly so the
+	// generic fetch result records why the rich rendering is missing.
+	return scraperDegrade("gitlab", "GitLab API requests failed");
 };

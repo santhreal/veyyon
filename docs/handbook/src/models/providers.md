@@ -1,12 +1,12 @@
 # The provider stack and bring-your-own-key
 
-> **Status: Built.** The harness owns the model registry and provider auth.
+The harness owns the model registry and provider auth.
 
 A **provider** is the API namespace (`anthropic`, `openai`, `google`, custom gateways, local
 `ollama`, …). A **model** is `provider/model-id`. Veyyon assembles the selectable catalog from:
 
 1. Bundled pi-catalog models
-2. `~/.veyyon/agent/models.yml` custom providers and models
+2. `~/.veyyon/profiles/default/agent/models.yml` custom providers and models
 3. Runtime discovery (Ollama, LM Studio, discovery-enabled gateways)
 4. Extension-registered providers
 
@@ -19,7 +19,7 @@ Resolution order (first match wins):
 
 1. CLI `--api-key` (ephemeral)
 2. `models.yml` `apiKey` on a custom provider
-3. Stored API key / OAuth in the agent auth store (`~/.veyyon/agent/agent.db`)
+3. Stored API key / OAuth in the agent auth store (`~/.veyyon/profiles/default/agent/agent.db`)
 4. Provider environment variables (see [`docs/providers.md`](../../../providers.md))
 5. Custom fallback resolvers in `models.yml`
 
@@ -31,7 +31,7 @@ providers.
 Add OpenAI- or Anthropic-compatible endpoints as data:
 
 ```yaml
-# ~/.veyyon/agent/models.yml
+# ~/.veyyon/profiles/default/agent/models.yml
 providers:
   my-gateway:
     baseUrl: https://api.example.com/v1

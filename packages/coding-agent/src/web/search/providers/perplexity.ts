@@ -16,12 +16,12 @@ import {
 	type FetchImpl,
 	type Usage,
 	withOAuthAccess,
-} from "@veyyon/pi-ai";
-import { streamOpenAICompletions } from "@veyyon/pi-ai/providers/openai-completions";
-import { streamOpenAIResponses } from "@veyyon/pi-ai/providers/openai-responses";
-import { buildModel } from "@veyyon/pi-catalog/build";
-import type { Model, ModelSpec } from "@veyyon/pi-catalog/types";
-import { $env, readSseJson } from "@veyyon/pi-utils";
+} from "@veyyon/ai";
+import { streamOpenAICompletions } from "@veyyon/ai/providers/openai-completions";
+import { streamOpenAIResponses } from "@veyyon/ai/providers/openai-responses";
+import { buildModel } from "@veyyon/catalog/build";
+import type { Model, ModelSpec } from "@veyyon/catalog/types";
+import { $env, readSseJson } from "@veyyon/utils";
 import type {
 	PerplexityRequest,
 	PerplexitySearchResult,
@@ -427,42 +427,43 @@ async function callPerplexityApi(
 	fetchImpl: FetchImpl | undefined,
 	signal?: AbortSignal,
 ): Promise<SearchResponse> {
-	const metadata: PerplexityApiStreamMetadata = {};
-	const context = buildPerplexityContext(request);
-	const requestSignal = withHardTimeout(signal);
-	const onSseEvent = (event: { data: string }): void => {
-		collectPerplexityMetadata(metadata, event.data);
-	};
+	return withHardTimeout(signal, async hardSignal => {
+		const metadata: PerplexityApiStreamMetadata = {};
+		const context = buildPerplexityContext(request);
+		const onSseEvent = (event: { data: string }): void => {
+			collectPerplexityMetadata(metadata, event.data);
+		};
 
-	const message = config.useResponses
-		? await drainAssistantStream(
-				streamOpenAIResponses(buildPerplexityResponsesModel(config, request), context, {
-					apiKey: config.apiKey,
-					maxTokens: request.max_tokens ?? undefined,
-					temperature: request.temperature ?? undefined,
-					signal: requestSignal,
-					fetch: fetchImpl,
-					extraBody: buildPerplexityExtraBody(request),
-					onSseEvent,
-				}),
-			)
-		: await drainAssistantStream(
-				streamOpenAICompletions(buildPerplexityCompletionsModel(config, request), context, {
-					apiKey: config.apiKey,
-					maxTokens: request.max_tokens ?? undefined,
-					temperature: request.temperature ?? undefined,
-					signal: requestSignal,
-					fetch: fetchImpl,
-					onPayload: payload => applyPerplexityExtraBody(payload, request),
-					onSseEvent,
-				}),
-			);
+		const message = config.useResponses
+			? await drainAssistantStream(
+					streamOpenAIResponses(buildPerplexityResponsesModel(config, request), context, {
+						apiKey: config.apiKey,
+						maxTokens: request.max_tokens ?? undefined,
+						temperature: request.temperature ?? undefined,
+						signal: hardSignal,
+						fetch: fetchImpl,
+						extraBody: buildPerplexityExtraBody(request),
+						onSseEvent,
+					}),
+				)
+			: await drainAssistantStream(
+					streamOpenAICompletions(buildPerplexityCompletionsModel(config, request), context, {
+						apiKey: config.apiKey,
+						maxTokens: request.max_tokens ?? undefined,
+						temperature: request.temperature ?? undefined,
+						signal: hardSignal,
+						fetch: fetchImpl,
+						onPayload: payload => applyPerplexityExtraBody(payload, request),
+						onSseEvent,
+					}),
+				);
 
-	if (message.stopReason === "error" || message.stopReason === "aborted") {
-		throwPerplexityStreamError(message);
-	}
+		if (message.stopReason === "error" || message.stopReason === "aborted") {
+			throwPerplexityStreamError(message);
+		}
 
-	return parseStreamedApiResponse(message, metadata);
+		return parseStreamedApiResponse(message, metadata);
+	});
 }
 
 function buildOAuthSources(event: PerplexityOAuthStreamEvent): SearchSource[] {
@@ -604,79 +605,81 @@ async function callPerplexityAsk(
 		requestParams.send_back_text_in_streaming_api = true;
 	}
 
-	const requestInit = {
-		method: "POST",
-		headers,
-		body: JSON.stringify({
-			query_str: effectiveQuery,
-			params: requestParams,
-		}),
-		signal: withHardTimeout(params.signal),
-	};
+	return withHardTimeout(params.signal, async hardSignal => {
+		const requestInit = {
+			method: "POST",
+			headers,
+			body: JSON.stringify({
+				query_str: effectiveQuery,
+				params: requestParams,
+			}),
+			signal: hardSignal,
+		};
 
-	// The consumer ask endpoint intermittently drops the socket before sending an
-	// HTTP response (#5315). Retry the transport exactly once; once we hold an
-	// HTTP response (handled below) the outcome — including non-2xx — is final and
-	// never retried, so a real 401/429 is never papered over by a second attempt.
-	let response: Response;
-	try {
-		response = await (params.fetch ?? fetch)(PERPLEXITY_OAUTH_ASK_URL, requestInit);
-	} catch (error) {
-		if (params.signal?.aborted) throw error;
-		response = await (params.fetch ?? fetch)(PERPLEXITY_OAUTH_ASK_URL, requestInit);
-	}
-
-	if (!response.ok) {
-		const errorText = await response.text();
-		const classified = classifyProviderHttpError("perplexity", response.status, errorText);
-		if (classified) throw classified;
-		throw new SearchProviderError(
-			"perplexity",
-			`Perplexity ask API error (${response.status}): ${errorText}`,
-			response.status,
-		);
-	}
-
-	if (!response.body) {
-		throw new SearchProviderError("perplexity", "Perplexity ask API returned no response body", 500);
-	}
-
-	let answer = "";
-	let model: string | undefined;
-	let finalRequestId: string | undefined;
-	const sourcesByUrl = new Map<string, SearchSource>();
-	let mergedEvent: PerplexityOAuthStreamEvent = { blocks: [] };
-
-	for await (const event of readSseJson<PerplexityOAuthStreamEvent>(response.body, params.signal)) {
-		if (event.error_code) {
-			const message = event.error_message ?? event.error_code;
-			throw new SearchProviderError("perplexity", `Perplexity ask stream error: ${message}`, 400);
+		// The consumer ask endpoint intermittently drops the socket before sending an
+		// HTTP response (#5315). Retry the transport exactly once; once we hold an
+		// HTTP response (handled below) the outcome — including non-2xx — is final and
+		// never retried, so a real 401/429 is never papered over by a second attempt.
+		let response: Response;
+		try {
+			response = await (params.fetch ?? fetch)(PERPLEXITY_OAUTH_ASK_URL, requestInit);
+		} catch (error) {
+			if (params.signal?.aborted) throw error;
+			response = await (params.fetch ?? fetch)(PERPLEXITY_OAUTH_ASK_URL, requestInit);
 		}
 
-		mergedEvent = mergeOAuthEventSnapshot(mergedEvent, event);
-
-		const eventAnswer = buildOAuthAnswer(mergedEvent);
-		if (eventAnswer.length > 0) {
-			answer = eventAnswer;
+		if (!response.ok) {
+			const errorText = await response.text();
+			const classified = classifyProviderHttpError("perplexity", response.status, errorText);
+			if (classified) throw classified;
+			throw new SearchProviderError(
+				"perplexity",
+				`Perplexity ask API error (${response.status}): ${errorText}`,
+				response.status,
+			);
 		}
 
-		for (const source of buildOAuthSources(mergedEvent)) {
-			sourcesByUrl.set(source.url, source);
+		if (!response.body) {
+			throw new SearchProviderError("perplexity", "Perplexity ask API returned no response body", 500);
 		}
 
-		if (mergedEvent.display_model) model = mergedEvent.display_model;
-		if (mergedEvent.uuid) finalRequestId = mergedEvent.uuid;
-		if (mergedEvent.final || mergedEvent.status === "COMPLETED") {
-			break;
-		}
-	}
+		let answer = "";
+		let model: string | undefined;
+		let finalRequestId: string | undefined;
+		const sourcesByUrl = new Map<string, SearchSource>();
+		let mergedEvent: PerplexityOAuthStreamEvent = { blocks: [] };
 
-	return {
-		answer,
-		sources: [...sourcesByUrl.values()],
-		model,
-		requestId: finalRequestId ?? requestId,
-	};
+		for await (const event of readSseJson<PerplexityOAuthStreamEvent>(response.body, params.signal)) {
+			if (event.error_code) {
+				const message = event.error_message ?? event.error_code;
+				throw new SearchProviderError("perplexity", `Perplexity ask stream error: ${message}`, 400);
+			}
+
+			mergedEvent = mergeOAuthEventSnapshot(mergedEvent, event);
+
+			const eventAnswer = buildOAuthAnswer(mergedEvent);
+			if (eventAnswer.length > 0) {
+				answer = eventAnswer;
+			}
+
+			for (const source of buildOAuthSources(mergedEvent)) {
+				sourcesByUrl.set(source.url, source);
+			}
+
+			if (mergedEvent.display_model) model = mergedEvent.display_model;
+			if (mergedEvent.uuid) finalRequestId = mergedEvent.uuid;
+			if (mergedEvent.final || mergedEvent.status === "COMPLETED") {
+				break;
+			}
+		}
+
+		return {
+			answer,
+			sources: [...sourcesByUrl.values()],
+			model,
+			requestId: finalRequestId ?? requestId,
+		};
+	});
 }
 
 function assistantText(message: AssistantMessage): string {

@@ -29,7 +29,7 @@ export interface CustomCommandAPI {
 	arktype: typeof arktype;
 	/** Injected zod/v4 module for canonical command validation. */
 	zod: typeof zod;
-	/** Injected pi-coding-agent exports */
+	/** Injected coding-agent exports */
 	pi: typeof PiCodingAgent;
 }
 

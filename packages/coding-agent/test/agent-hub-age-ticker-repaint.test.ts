@@ -9,13 +9,13 @@
  * for an idle, open hub.
  */
 import { afterEach, beforeAll, describe, expect, it, setSystemTime, vi } from "bun:test";
-import { IrcBus } from "@veyyon/pi-coding-agent/irc/bus";
-import { AgentHubOverlayComponent } from "@veyyon/pi-coding-agent/modes/components/agent-hub";
-import { SessionObserverRegistry } from "@veyyon/pi-coding-agent/modes/session-observer-registry";
-import { initTheme } from "@veyyon/pi-coding-agent/modes/theme/theme";
-import { AgentRegistry } from "@veyyon/pi-coding-agent/registry/agent-registry";
-import type { AgentSession } from "@veyyon/pi-coding-agent/session/agent-session";
-import type { TUI } from "@veyyon/pi-tui";
+import { IrcBus } from "@veyyon/coding-agent/irc/bus";
+import { AgentHubOverlayComponent } from "@veyyon/coding-agent/modes/components/agent-hub";
+import { SessionObserverRegistry } from "@veyyon/coding-agent/modes/session-observer-registry";
+import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";
+import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import type { TUI } from "@veyyon/tui";
 
 describe("Agent hub age ticker repaint scope", () => {
 	beforeAll(async () => {

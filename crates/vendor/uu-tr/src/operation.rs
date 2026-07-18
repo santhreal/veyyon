@@ -352,12 +352,12 @@ impl Sequence {
 					let outstand_char: char = char::from_u32(input[2] as u32).unwrap();
 					// pi-uutils: warning macros use process-global stderr; write to the scope.
 					let _ = writeln!(
-						pi_uutils_ctx::stderr(),
+						veyyon_uutils_ctx::stderr(),
 						"tr: warning: the ambiguous octal escape \\{origin_octal} is being interpreted \
 						 as the 2-byte sequence \\0{actual_octal_tail}, {outstand_char}"
 					);
 				} else {
-					let _ = writeln!(pi_uutils_ctx::stderr(), "tr: warning: invalid utf8 sequence");
+					let _ = writeln!(veyyon_uutils_ctx::stderr(), "tr: warning: invalid utf8 sequence");
 				}
 			}
 			result

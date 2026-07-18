@@ -10,8 +10,8 @@ use std::{
 	io::{BufWriter, Write},
 };
 
-use pi_uutils_ctx::CtxStdout;
 use uucore::error::UResult;
+use veyyon_uutils_ctx::CtxStdout;
 
 /// `dired` Module Documentation
 ///

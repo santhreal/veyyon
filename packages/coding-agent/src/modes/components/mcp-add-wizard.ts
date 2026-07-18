@@ -3,17 +3,8 @@
  *
  * Interactive multi-step wizard for adding MCP servers.
  */
-import {
-	Container,
-	Input,
-	matchesKey,
-	replaceTabs,
-	Spacer,
-	Text,
-	TruncatedText,
-	truncateToWidth,
-} from "@veyyon/pi-tui";
-import { getMCPConfigPath, getProjectDir } from "@veyyon/pi-utils";
+import { Container, Input, matchesKey, replaceTabs, Spacer, Text, TruncatedText, truncateToWidth } from "@veyyon/tui";
+import { errorMessage, getMCPConfigPath, getProjectDir } from "@veyyon/utils";
 import { validateServerName } from "../../mcp/config-writer";
 import { analyzeAuthError, discoverOAuthEndpoints, fetchResourceMetadataScopes } from "../../mcp/oauth-discovery";
 import type { MCPHttpServerConfig, MCPServerConfig, MCPSseServerConfig, MCPStdioServerConfig } from "../../mcp/types";
@@ -1056,7 +1047,7 @@ export class MCPAddWizard extends Container {
 				this.#renderStep();
 			} else {
 				// Not an auth error - just a connection failure
-				const errorMsg = sanitize(error instanceof Error ? error.message : String(error));
+				const errorMsg = sanitize(errorMessage(error));
 				this.#contentContainer.clear();
 				this.#contentContainer.addChild(new Text(theme.fg("error", "x Connection failed"), 0, 0));
 				this.#contentContainer.addChild(new Spacer(1));
@@ -1250,7 +1241,7 @@ export class MCPAddWizard extends Container {
 					}
 				} catch (error) {
 					healthPassed = false;
-					healthError = sanitize(error instanceof Error ? error.message : String(error));
+					healthError = sanitize(errorMessage(error));
 				}
 			}
 
@@ -1279,7 +1270,7 @@ export class MCPAddWizard extends Container {
 			// keeps the "OAuth authentication failed" framing so the existing tips
 			// stay meaningful. Name-matching avoids importing controller types.
 			const cancelled = error instanceof Error && error.name === "MCPOAuthCancelledError";
-			const errorMsg = sanitize(error instanceof Error ? error.message : String(error));
+			const errorMsg = sanitize(errorMessage(error));
 			this.#contentContainer.clear();
 			this.#contentContainer.addChild(
 				new Text(

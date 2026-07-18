@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { formatModelAuthBadge, resolveModelAuthStatus } from "@veyyon/pi-coding-agent/modes/components/model-selector";
-import { getSettingsForTab, invalidateSettingDefsCache } from "@veyyon/pi-coding-agent/modes/components/settings-defs";
+import { formatModelAuthBadge, resolveModelAuthStatus } from "@veyyon/coding-agent/modes/components/model-selector";
+import { getSettingsForTab, invalidateSettingDefsCache } from "@veyyon/coding-agent/modes/components/settings-defs";
 
 describe("settings model pickers", () => {
 	it("exposes modelRoles as a searchable roles editor, not a JSON text field", () => {

@@ -1,15 +1,15 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
-import { Agent } from "@veyyon/pi-agent-core";
-import { ModelRegistry } from "@veyyon/pi-coding-agent/config/model-registry";
-import { resetSettingsForTest, Settings, settings } from "@veyyon/pi-coding-agent/config/settings";
-import { InteractiveMode } from "@veyyon/pi-coding-agent/modes/interactive-mode";
-import { initTheme } from "@veyyon/pi-coding-agent/modes/theme/theme";
-import type { SubmittedUserInput } from "@veyyon/pi-coding-agent/modes/types";
-import { AgentSession } from "@veyyon/pi-coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/pi-coding-agent/session/auth-storage";
-import { SessionManager } from "@veyyon/pi-coding-agent/session/session-manager";
-import { TempDir } from "@veyyon/pi-utils";
+import { Agent } from "@veyyon/agent-core";
+import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
+import { resetSettingsForTest, Settings, settings } from "@veyyon/coding-agent/config/settings";
+import { InteractiveMode } from "@veyyon/coding-agent/modes/interactive-mode";
+import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import type { SubmittedUserInput } from "@veyyon/coding-agent/modes/types";
+import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
+import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { TempDir } from "@veyyon/utils";
 
 async function flushMicrotasks(): Promise<void> {
 	await Promise.resolve();

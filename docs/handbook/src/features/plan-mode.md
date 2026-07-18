@@ -1,55 +1,40 @@
 # Plan mode and goals
 
-Veyyon ships **plan mode** and **goal mode** as engine features. They are separate modes with different
-tools and continuation behavior.
+Plan mode and goal mode are separate engine modes with different tools and continuation behavior. They cannot be active together (and each conflicts with vibe mode).
 
-> **Spec — not shipped:** three enforced chat phases, `<proposed_plan>` cards, `Shift+Tab` collaboration
-> cycling, and a `plan_mode_reasoning_effort` config key. Veyyon's plan mode works as described below.
+## Plan mode
 
----
-
-## Plan mode (shipped)
-
-Plan mode is read-focused exploration that drafts a **plan file** before you approve implementation.
+Read-focused exploration that drafts a **plan file** before implementation.
 
 ### Enabling
 
-- Setting: `plan.enabled` (default `true`; toggle in `/settings` Advanced → Plan).
-- Slash: `/plan` toggles plan mode; `/plan <prompt>` enters plan mode and submits the prompt.
-- Related: `/plan-review` reopens plan review while plan mode is active.
-
-Plan mode blocks **goal mode** and **vibe mode** (and vice versa).
+- Setting: `plan.enabled` (default `true`; `/settings` Advanced → Plan)
+- Slash: `/plan` toggles plan mode; `/plan <prompt>` enters plan mode and submits the prompt
+- `/plan-review` reopens plan review while plan mode is active
 
 ### Behavior
 
-When plan mode is on:
+1. Session selects a plan file path and records plan-mode state.
+2. Tool surface adjusts: `resolve` is available for plan approval; plan-file `write`/`edit` may be enabled for drafting.
+3. The agent explores and writes the plan (read-oriented work plus plan-file edits).
+4. Finalization uses the **`resolve`** tool with plan-approval semantics (`plan_approval`).
+5. Exit: `/plan` again (confirmation if a draft exists). Session records `mode` entries in the session file.
 
-1. Veyyon selects a plan file path (per-session) and sets mode state on the session.
-2. Active tools are adjusted: `resolve` is added for plan approval; built-in `write` may be activated so the agent can draft the plan file.
-3. The agent explores and writes the plan using read-oriented work plus plan-file `write`/`edit` as configured.
-4. Finalization uses the **`resolve`** tool with plan approval semantics (`plan_approval`), not a `<proposed_plan>` XML tag.
-5. Exiting: `/plan` again (with confirmation if a draft exists) pauses or disables plan mode; session records `mode` entries in the session file.
+When configured, plan mode uses the **`plan` model role**.
 
-Plan mode uses the **`plan` model role** when configured.
+## Goal mode
 
----
-
-## Goals (shipped)
-
-Goal mode tracks a **persistent objective** on a saved session and can auto-continue when idle.
+A **persistent objective** on a saved session, with optional auto-continuation when idle.
 
 ### Enabling
 
-- Setting: `goal.enabled` (default `true`).
-- Slash commands:
-  - `/goal set <objective>` — create or replace goal
-  - `/goal show` — status, tokens, budget
-  - `/goal pause` / `/goal resume`
-  - `/goal drop` — remove goal
-  - `/goal budget <N|off>` — token budget
-- `/guided-goal` — interview flow before enabling goal mode
-
-Goal mode blocks plan mode and vibe mode.
+- Setting: `goal.enabled` (default `true`)
+- `/goal set <objective>` — create or replace
+- `/goal show` — status, tokens, budget
+- `/goal pause` / `/goal resume`
+- `/goal drop` — remove
+- `/goal budget <N|off>` — token budget
+- `/guided-goal` — interview flow before enabling
 
 ### Goal state
 
@@ -65,25 +50,25 @@ Statuses: `active`, `paused`, `budget-limited`, `complete`, `dropped`.
 
 When goal mode is active, the agent can call the `goal` tool with ops: `create`, `get`, `complete`, `resume`, `drop`. Continuation prompts inject on idle turns per `goal.continuationModes`.
 
-### Walkthrough (real commands)
+### Example
 
 ```console
 $ veyyon
 ```
 
 ```text
-/goal set Add a --max-time flag to the print-mode runner and document it in the handbook
+/goal set Add a --max-time flag to the print-mode runner and document it
 ```
 
-Work in normal mode; use `/goal show` for progress. When blocked, `/goal pause`. When done, the agent should `complete` via the goal tool or you `/goal drop`.
+Use `/goal show` for progress. Pause with `/goal pause`. Complete via the goal tool or `/goal drop`.
 
----
+Architecture notes: [Goal state](../context/goal-state.md). Sessions: [Sessions](../using/sessions.md).
 
-## Spec — not shipped (goal card richness)
+## Vibe mode
 
-[Goal state and long sessions](../context/goal-state.md) describes a richer goal card (verification ledger, working-set fields, reviewer carry-forward) as a **future expansion layer**. The shipped card is the bounded objective + budget + status model above.
+`/vibe` toggles **vibe mode**. The main agent becomes a director with a reduced tool set
+(`read`, `vibe_spawn`, `vibe_send`, `vibe_wait`, `vibe_kill`, `vibe_list`) and drives worker CLIs
+(`fast` / `good` model lanes) instead of editing files itself.
 
-## See also
-
-- [Sessions](../using/sessions.md) — goals require a persisted session
-- [Context: goal state](../context/goal-state.md) — architecture notes
+Mutual exclusion: plan mode, goal mode, and vibe mode cannot run together; the TUI warns if you try
+to enter one while another is active.

@@ -9,7 +9,7 @@ import {
 	shouldEnableHyperlinksByDefault,
 	shouldEnableSynchronizedOutputByDefault,
 	synchronizedOutputUserOverride,
-} from "@veyyon/pi-tui/terminal-capabilities";
+} from "@veyyon/tui/terminal-capabilities";
 
 describe("detectTerminalId", () => {
 	it("recognizes Warp before the true-color fallback", () => {
@@ -30,18 +30,20 @@ describe("synchronizedOutputUserOverride", () => {
 	});
 
 	it("returns false for either opt-out flag", () => {
-		expect(synchronizedOutputUserOverride({ PI_NO_SYNC_OUTPUT: "1" })).toBe(false);
-		expect(synchronizedOutputUserOverride({ PI_TUI_SYNC_OUTPUT: "0" })).toBe(false);
+		expect(synchronizedOutputUserOverride({ VEYYON_NO_SYNC_OUTPUT: "1" })).toBe(false);
+		expect(synchronizedOutputUserOverride({ VEYYON_TUI_SYNC_OUTPUT: "0" })).toBe(false);
 	});
 
 	it("returns true for either force-on flag", () => {
-		expect(synchronizedOutputUserOverride({ PI_FORCE_SYNC_OUTPUT: "1" })).toBe(true);
-		expect(synchronizedOutputUserOverride({ PI_TUI_SYNC_OUTPUT: "1" })).toBe(true);
+		expect(synchronizedOutputUserOverride({ VEYYON_FORCE_SYNC_OUTPUT: "1" })).toBe(true);
+		expect(synchronizedOutputUserOverride({ VEYYON_TUI_SYNC_OUTPUT: "1" })).toBe(true);
 	});
 
 	it("resolves opt-out ahead of force-on when both are set", () => {
-		expect(synchronizedOutputUserOverride({ PI_NO_SYNC_OUTPUT: "1", PI_FORCE_SYNC_OUTPUT: "1" })).toBe(false);
-		expect(synchronizedOutputUserOverride({ PI_TUI_SYNC_OUTPUT: "0", PI_FORCE_SYNC_OUTPUT: "1" })).toBe(false);
+		expect(synchronizedOutputUserOverride({ VEYYON_NO_SYNC_OUTPUT: "1", VEYYON_FORCE_SYNC_OUTPUT: "1" })).toBe(false);
+		expect(synchronizedOutputUserOverride({ VEYYON_TUI_SYNC_OUTPUT: "0", VEYYON_FORCE_SYNC_OUTPUT: "1" })).toBe(
+			false,
+		);
 	});
 });
 
@@ -94,21 +96,21 @@ describe("shouldEnableSynchronizedOutputByDefault", () => {
 	});
 
 	it("lets a user opt-out beat every positive heuristic", () => {
-		expect(shouldEnableSynchronizedOutputByDefault({ PI_NO_SYNC_OUTPUT: "1" }, "kitty")).toBe(false);
-		expect(shouldEnableSynchronizedOutputByDefault({ PI_TUI_SYNC_OUTPUT: "0" }, "ghostty")).toBe(false);
+		expect(shouldEnableSynchronizedOutputByDefault({ VEYYON_NO_SYNC_OUTPUT: "1" }, "kitty")).toBe(false);
+		expect(shouldEnableSynchronizedOutputByDefault({ VEYYON_TUI_SYNC_OUTPUT: "0" }, "ghostty")).toBe(false);
 		expect(
 			shouldEnableSynchronizedOutputByDefault(
-				{ PI_NO_SYNC_OUTPUT: "1", WT_SESSION: "abc", TERM_FEATURES: "Sy" },
+				{ VEYYON_NO_SYNC_OUTPUT: "1", WT_SESSION: "abc", TERM_FEATURES: "Sy" },
 				"kitty",
 			),
 		).toBe(false);
 	});
 
 	it("lets a user force-on beat the conservative defaults", () => {
-		expect(shouldEnableSynchronizedOutputByDefault({ PI_FORCE_SYNC_OUTPUT: "1" }, "base")).toBe(true);
-		expect(shouldEnableSynchronizedOutputByDefault({ PI_TUI_SYNC_OUTPUT: "1", TMUX: "1" }, "base")).toBe(true);
+		expect(shouldEnableSynchronizedOutputByDefault({ VEYYON_FORCE_SYNC_OUTPUT: "1" }, "base")).toBe(true);
+		expect(shouldEnableSynchronizedOutputByDefault({ VEYYON_TUI_SYNC_OUTPUT: "1", TMUX: "1" }, "base")).toBe(true);
 		expect(
-			shouldEnableSynchronizedOutputByDefault({ PI_FORCE_SYNC_OUTPUT: "1", SSH_CONNECTION: "1 2 3 4" }, "base"),
+			shouldEnableSynchronizedOutputByDefault({ VEYYON_FORCE_SYNC_OUTPUT: "1", SSH_CONNECTION: "1 2 3 4" }, "base"),
 		).toBe(true);
 	});
 });
@@ -125,7 +127,7 @@ describe("Warp terminal capabilities", () => {
 			COLORTERM: "truecolor",
 		};
 		for (const key of [
-			"PI_FORCE_IMAGE_PROTOCOL",
+			"VEYYON_FORCE_IMAGE_PROTOCOL",
 			"WSL_DISTRO_NAME",
 			"WSL_INTEROP",
 			"KITTY_WINDOW_ID",
@@ -142,7 +144,7 @@ describe("Warp terminal capabilities", () => {
 			cmd: [
 				process.execPath,
 				"--eval",
-				`import { ImageProtocol, TERMINAL, TERMINAL_ID } from "@veyyon/pi-tui/terminal-capabilities";
+				`import { ImageProtocol, TERMINAL, TERMINAL_ID } from "@veyyon/tui/terminal-capabilities";
 console.log(JSON.stringify({ id: TERMINAL_ID, imageProtocol: TERMINAL.imageProtocol, expected: ImageProtocol.Kitty }));`,
 			],
 			env,
@@ -203,7 +205,7 @@ console.log(JSON.stringify({ id: TERMINAL_ID, imageProtocol: TERMINAL.imageProto
 	it("leaves synchronized output off by default and honors hyperlink force-on", () => {
 		expect(shouldEnableSynchronizedOutputByDefault({}, "warp")).toBe(false);
 		expect(shouldEnableHyperlinksByDefault({}, "warp")).toBe(false);
-		expect(shouldEnableHyperlinksByDefault({ PI_FORCE_HYPERLINKS: "1" }, "warp")).toBe(true);
+		expect(shouldEnableHyperlinksByDefault({ VEYYON_FORCE_HYPERLINKS: "1" }, "warp")).toBe(true);
 	});
 });
 
@@ -214,23 +216,23 @@ describe("hyperlinksUserOverride", () => {
 	});
 
 	it("returns true for the force-on flag", () => {
-		expect(hyperlinksUserOverride({ PI_FORCE_HYPERLINKS: "1" })).toBe(true);
+		expect(hyperlinksUserOverride({ VEYYON_FORCE_HYPERLINKS: "1" })).toBe(true);
 	});
 
 	it("returns false for the opt-out flag", () => {
-		expect(hyperlinksUserOverride({ PI_NO_HYPERLINKS: "1" })).toBe(false);
+		expect(hyperlinksUserOverride({ VEYYON_NO_HYPERLINKS: "1" })).toBe(false);
 	});
 
 	it("resolves opt-out ahead of force-on when both are set", () => {
-		expect(hyperlinksUserOverride({ PI_NO_HYPERLINKS: "1", PI_FORCE_HYPERLINKS: "1" })).toBe(false);
+		expect(hyperlinksUserOverride({ VEYYON_NO_HYPERLINKS: "1", VEYYON_FORCE_HYPERLINKS: "1" })).toBe(false);
 	});
 
 	it("ignores values other than the literal '1'", () => {
 		// Mirrors the sync-output knobs: only the canonical `1` toggles them;
 		// `true`/`yes` are not accepted to keep the contract obvious.
-		expect(hyperlinksUserOverride({ PI_FORCE_HYPERLINKS: "true" })).toBeNull();
-		expect(hyperlinksUserOverride({ PI_FORCE_HYPERLINKS: "0" })).toBeNull();
-		expect(hyperlinksUserOverride({ PI_NO_HYPERLINKS: "0" })).toBeNull();
+		expect(hyperlinksUserOverride({ VEYYON_FORCE_HYPERLINKS: "true" })).toBeNull();
+		expect(hyperlinksUserOverride({ VEYYON_FORCE_HYPERLINKS: "0" })).toBeNull();
+		expect(hyperlinksUserOverride({ VEYYON_NO_HYPERLINKS: "0" })).toBeNull();
 	});
 });
 
@@ -355,19 +357,19 @@ describe("shouldEnableHyperlinksByDefault", () => {
 		).toBe(false);
 	});
 
-	it("lets PI_NO_HYPERLINKS beat every positive heuristic", () => {
-		expect(shouldEnableHyperlinksByDefault({ PI_NO_HYPERLINKS: "1" }, "kitty")).toBe(false);
+	it("lets VEYYON_NO_HYPERLINKS beat every positive heuristic", () => {
+		expect(shouldEnableHyperlinksByDefault({ VEYYON_NO_HYPERLINKS: "1" }, "kitty")).toBe(false);
 		expect(
 			shouldEnableHyperlinksByDefault(
-				{ PI_NO_HYPERLINKS: "1", TERM_PROGRAM: "tmux", TERM_PROGRAM_VERSION: "3.5a", TMUX: "1" },
+				{ VEYYON_NO_HYPERLINKS: "1", TERM_PROGRAM: "tmux", TERM_PROGRAM_VERSION: "3.5a", TMUX: "1" },
 				"wezterm",
 			),
 		).toBe(false);
 	});
 
-	it("lets PI_FORCE_HYPERLINKS override the conservative defaults (old tmux, screen, base terminal)", () => {
-		expect(shouldEnableHyperlinksByDefault({ PI_FORCE_HYPERLINKS: "1" }, "base")).toBe(true);
-		expect(shouldEnableHyperlinksByDefault({ PI_FORCE_HYPERLINKS: "1", TMUX: "1" }, "wezterm")).toBe(true);
-		expect(shouldEnableHyperlinksByDefault({ PI_FORCE_HYPERLINKS: "1", STY: "1.pts-0" }, "kitty")).toBe(true);
+	it("lets VEYYON_FORCE_HYPERLINKS override the conservative defaults (old tmux, screen, base terminal)", () => {
+		expect(shouldEnableHyperlinksByDefault({ VEYYON_FORCE_HYPERLINKS: "1" }, "base")).toBe(true);
+		expect(shouldEnableHyperlinksByDefault({ VEYYON_FORCE_HYPERLINKS: "1", TMUX: "1" }, "wezterm")).toBe(true);
+		expect(shouldEnableHyperlinksByDefault({ VEYYON_FORCE_HYPERLINKS: "1", STY: "1.pts-0" }, "kitty")).toBe(true);
 	});
 });

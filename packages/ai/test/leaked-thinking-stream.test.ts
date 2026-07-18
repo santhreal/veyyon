@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { stream } from "@veyyon/pi-ai/stream";
+import { stream } from "@veyyon/ai/stream";
 import type {
 	AssistantMessage,
 	AssistantMessageEvent,
@@ -9,11 +9,11 @@ import type {
 	TextContent,
 	ThinkingContent,
 	ToolCall,
-} from "@veyyon/pi-ai/types";
-import { getStreamingPartialJson, setStreamingPartialJson } from "@veyyon/pi-ai/utils/block-symbols";
-import { AssistantMessageEventStream } from "@veyyon/pi-ai/utils/event-stream";
-import { wrapLeakedThinkingStream } from "@veyyon/pi-ai/utils/leaked-thinking-stream";
-import { buildModel } from "@veyyon/pi-catalog/build";
+} from "@veyyon/ai/types";
+import { getStreamingPartialJson, setStreamingPartialJson } from "@veyyon/ai/utils/block-symbols";
+import { AssistantMessageEventStream } from "@veyyon/ai/utils/event-stream";
+import { wrapLeakedThinkingStream } from "@veyyon/ai/utils/leaked-thinking-stream";
+import { buildModel } from "@veyyon/catalog/build";
 
 /** Minimal assistant message; `content`/`stopReason` overridden per event. */
 function msg(overrides: Partial<AssistantMessage> = {}): AssistantMessage {

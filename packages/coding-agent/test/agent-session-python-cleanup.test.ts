@@ -1,15 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, type Mock, vi } from "bun:test";
 import * as fs from "node:fs";
-import { getBundledModel } from "@veyyon/pi-catalog/models";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
-import * as pythonExecutor from "@veyyon/pi-coding-agent/eval/py/executor";
-import type { PythonKernel as PythonKernelInstance } from "@veyyon/pi-coding-agent/eval/py/kernel";
-import * as pythonKernel from "@veyyon/pi-coding-agent/eval/py/kernel";
-import { AgentRegistry } from "@veyyon/pi-coding-agent/registry/agent-registry";
-import { createAgentSession, type ExtensionFactory, type WorkspaceTree } from "@veyyon/pi-coding-agent/sdk";
-import { AgentStorage } from "@veyyon/pi-coding-agent/session/agent-storage";
-import { SessionManager } from "@veyyon/pi-coding-agent/session/session-manager";
-import { Snowflake, TempDir } from "@veyyon/pi-utils";
+import { getBundledModel } from "@veyyon/catalog/models";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import * as pythonExecutor from "@veyyon/coding-agent/eval/py/executor";
+import type { PythonKernel as PythonKernelInstance } from "@veyyon/coding-agent/eval/py/kernel";
+import * as pythonKernel from "@veyyon/coding-agent/eval/py/kernel";
+import { AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";
+import { createAgentSession, type ExtensionFactory, type WorkspaceTree } from "@veyyon/coding-agent/sdk";
+import { AgentStorage } from "@veyyon/coding-agent/session/agent-storage";
+import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { Snowflake, TempDir } from "@veyyon/utils";
 
 const OK_EXECUTION = { status: "ok", cancelled: false, timedOut: false, stdinRequested: false } as const;
 

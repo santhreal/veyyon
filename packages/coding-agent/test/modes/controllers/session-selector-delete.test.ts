@@ -1,7 +1,7 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
-import { SessionSelectorComponent } from "@veyyon/pi-coding-agent/modes/components/session-selector";
-import { initTheme } from "@veyyon/pi-coding-agent/modes/theme/theme";
-import type { SessionInfo } from "@veyyon/pi-coding-agent/session/session-listing";
+import { SessionSelectorComponent } from "@veyyon/coding-agent/modes/components/session-selector";
+import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import type { SessionInfo } from "@veyyon/coding-agent/session/session-listing";
 
 beforeAll(() => {
 	initTheme();
@@ -51,6 +51,7 @@ describe("SessionSelectorComponent delete confirmation", () => {
 		expect(renderText(selector)).toContain("Delete session?");
 		expect(renderText(selector)).toContain("Alpha");
 
+		selector.handleInput("\x1b[A"); // dialog defaults to No — step up to Yes
 		selector.handleInput("\n");
 		await Bun.sleep(0);
 
@@ -67,6 +68,7 @@ describe("SessionSelectorComponent delete confirmation", () => {
 		const selector = createSelector(onDelete);
 
 		selector.handleInput("\x1b[3~");
+		selector.handleInput("\x1b[A"); // dialog defaults to No — step up to Yes
 		selector.handleInput("\n");
 		await Bun.sleep(0);
 
@@ -82,6 +84,7 @@ describe("SessionSelectorComponent delete confirmation", () => {
 		const selector = createSelector(onDelete);
 
 		selector.handleInput("\x1b[3~");
+		selector.handleInput("\x1b[A"); // dialog defaults to No — step up to Yes
 		selector.handleInput("\n");
 		await Bun.sleep(0);
 
@@ -102,6 +105,7 @@ describe("SessionSelectorComponent delete confirmation", () => {
 		expect(renderText(selector)).toContain("Alpha");
 
 		// Confirm.
+		selector.handleInput("\x1b[A"); // dialog defaults to No — step up to Yes
 		selector.handleInput("\n");
 		await Bun.sleep(0);
 

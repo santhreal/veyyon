@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 
-import { postmortem, Snowflake, untilAborted } from "@veyyon/pi-utils";
+import { postmortem, Snowflake, untilAborted } from "@veyyon/utils";
 import type { HTMLElement } from "linkedom";
 import type {
 	Browser,
@@ -18,6 +18,7 @@ import type {
 	Target,
 } from "puppeteer-core";
 import { JsRuntime, type RuntimeHooks } from "../../eval/js/shared/runtime";
+import { scopedTimeoutSignal } from "../../utils/fetch-timeout";
 import { resizeImage } from "../../utils/image-resize";
 import { resolveToCwd } from "../path-utils";
 import { formatScreenshot } from "../render-utils";
@@ -505,8 +506,8 @@ async function clickQueryHandlerText(
 	timeoutMs: number,
 	signal?: AbortSignal,
 ): Promise<void> {
-	const timeoutSignal = AbortSignal.timeout(timeoutMs);
-	const clickSignal = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
+	const clickTimeout = scopedTimeoutSignal(timeoutMs, signal);
+	const clickSignal = clickTimeout.signal;
 	const start = Date.now();
 	let lastSeen = 0;
 	let lastReason: string | null = null;
@@ -538,6 +539,7 @@ async function clickQueryHandlerText(
 			await Promise.all(handles.map(async handle => handle.dispose().catch(() => undefined)));
 		}
 	}
+	clickTimeout.cancel();
 	throw new ToolError(
 		`Timed out clicking ${selector} (seen ${lastSeen} matches; last reason: ${lastReason ?? "unknown"}). ` +
 			"If there are multiple matching elements, use observe + tab.id() or a more specific selector.",
@@ -799,10 +801,10 @@ export class WorkerCore {
 			});
 			return;
 		}
-		const timeoutSignal = AbortSignal.timeout(msg.timeoutMs);
+		const cellTimeout = scopedTimeoutSignal(msg.timeoutMs);
 		const ac = new AbortController();
 		const runAc = new AbortController();
-		const signal = AbortSignal.any([timeoutSignal, ac.signal, runAc.signal]);
+		const signal = AbortSignal.any([cellTimeout.signal, ac.signal, runAc.signal]);
 		const output = new RunOutput();
 		const screenshots: ScreenshotResult[] = [];
 		const active: ActiveRun = {
@@ -851,7 +853,7 @@ export class WorkerCore {
 					signal.reason instanceof ToolAbortError
 						? signal.reason
 						: new ToolAbortError(undefined, { cause: signal.reason });
-				if (timeoutSignal.aborted) {
+				if (cellTimeout.signal.aborted) {
 					const stalled = describeInflight(active.inflight);
 					const dialog = this.#openDialog;
 					const dialogNote = dialog
@@ -866,8 +868,10 @@ export class WorkerCore {
 					rejectCancel(abortError);
 				}
 				// Cancel in-flight tool calls so user code's awaited proxies reject promptly.
-				const toolAbort = timeoutSignal.aborted
-					? postmortem.markExpectedCleanupError(new ToolAbortError(undefined, { cause: timeoutSignal.reason }))
+				const toolAbort = cellTimeout.signal.aborted
+					? postmortem.markExpectedCleanupError(
+							new ToolAbortError(undefined, { cause: cellTimeout.signal.reason }),
+						)
 					: abortError;
 				for (const pending of active.pendingTools.values()) {
 					pending.reject(toolAbort);
@@ -896,6 +900,7 @@ export class WorkerCore {
 		} catch (error) {
 			this.#transport.send({ type: "result", id: msg.id, ok: false, error: errorPayload(error) });
 		} finally {
+			cellTimeout.cancel();
 			if (this.#active?.id === msg.id) this.#active = null;
 			runAc.abort(postmortem.markExpectedCleanupError(new ToolAbortError("Browser run ended")));
 		}
@@ -970,8 +975,8 @@ export class WorkerCore {
 		const opId = active.opCounter++;
 		active.inflight.set(opId, { label, startedAt: Date.now() });
 		const capped = Number.isFinite(perOpTimeoutMs) && perOpTimeoutMs > 0;
-		const opTimeout = capped ? AbortSignal.timeout(perOpTimeoutMs) : undefined;
-		const opSignal = opTimeout ? AbortSignal.any([cellSignal, opTimeout]) : cellSignal;
+		const opTimeout = capped ? scopedTimeoutSignal(perOpTimeoutMs) : undefined;
+		const opSignal = opTimeout ? AbortSignal.any([cellSignal, opTimeout.signal]) : cellSignal;
 		const selector = opts?.selector;
 		const watchdog =
 			selector !== undefined && opts?.zeroMatchAfterMs !== undefined && parseAriaRefSelector(selector) === null
@@ -995,13 +1000,14 @@ export class WorkerCore {
 			if (
 				capped &&
 				!cellSignal.aborted &&
-				(opTimeout?.aborted || (err instanceof Error && err.name === "TimeoutError"))
+				(opTimeout?.signal.aborted || (err instanceof Error && err.name === "TimeoutError"))
 			) {
 				const hint = selector ? await this.#selectorTimeoutHint(selector) : "";
 				throw new ToolError(`${label} timed out after ${perOpTimeoutMs}ms${hint}`);
 			}
 			throw err;
 		} finally {
+			opTimeout?.cancel();
 			earlyAc.abort();
 			active.inflight.delete(opId);
 		}
@@ -1430,7 +1436,7 @@ export class WorkerCore {
 						session.browserScreenshotDir,
 						`screenshot-${new Date().toISOString().replace(/[:.]/g, "-").slice(0, -1)}.${ext}`,
 					)
-				: path.join(os.tmpdir(), `omp-sshots-${Snowflake.next()}.${ext}`));
+				: path.join(os.tmpdir(), `veyyon-sshots-${Snowflake.next()}.${ext}`));
 		await fs.promises.mkdir(path.dirname(dest), { recursive: true });
 		await Bun.write(dest, savedBuffer);
 		const info: ScreenshotResult = {

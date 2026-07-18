@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { BeamMemory } from "@veyyon/pi-mnemopi/core/beam";
-import { Mnemopi } from "@veyyon/pi-mnemopi/core/memory";
+import { BeamMemory } from "@veyyon/mnemopi/core/beam";
+import { Mnemopi } from "@veyyon/mnemopi/core/memory";
 
 // Real embeddings (fastembed + onnxruntime-node, ~270MB) install on demand via
 // `bun install` on first use. These tests assert identity filtering and FTS

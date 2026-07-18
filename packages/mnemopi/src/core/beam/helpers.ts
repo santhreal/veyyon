@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import { logger } from "@veyyon/pi-utils";
+import { logger } from "@veyyon/utils";
 import { generateId as generateTimedId, sha256Hex16, stableMemoryId } from "../../util/ids";
 import {
 	cjkFtsTerms,
@@ -7,11 +7,11 @@ import {
 	FACT_MATCH_STOPWORDS,
 	factMatchTokens,
 	ftsQueryTerms,
-	hasCjk,
 	isCjkChar,
 	RECALL_SYNONYMS,
 	recallTokens,
 } from "../../util/regex";
+import { tableExists } from "../../util/sqlite";
 import { currentEmbeddingModel, embed } from "../embeddings";
 import { getMnemopiRuntimeOptions, mnemopiDebugEnabled, withMnemopiRuntimeOptions } from "../runtime-options";
 import { buildExactVectorIndex, searchExactVectorIndex } from "../vector-index";
@@ -29,16 +29,6 @@ export interface VectorDistanceResult {
 export interface WorkingVectorResult {
 	id: string;
 	sim: number;
-}
-
-export interface FtsRankResult {
-	rowid: number;
-	rank: number;
-}
-
-export interface WorkingFtsRankResult {
-	id: string;
-	rank: number;
 }
 
 const DEFAULT_RECENCY_HALFLIFE_HOURS = 72;
@@ -64,18 +54,6 @@ function clamp01(value: number): number {
 
 function asFiniteNonNegative(value: number): number {
 	return Number.isFinite(value) && value > 0 ? value : 0;
-}
-
-function tableExists(db: Database, table: string): boolean {
-	try {
-		return (
-			db
-				.query("SELECT 1 FROM sqlite_master WHERE type IN ('table','virtual table') AND name = ? LIMIT 1")
-				.get(table) !== null
-		);
-	} catch {
-		return false;
-	}
 }
 
 function rowValue<T>(row: unknown, key: string): T | undefined {
@@ -253,72 +231,6 @@ export function buildFtsQuery(query: string): string {
 	return ftsQueryTerms(query).join(" OR ");
 }
 
-function cjkCharsForSearch(query: string): string[] {
-	return Array.from(new Set(Array.from(query).filter(isCjkChar))).sort();
-}
-
-export function cjkLikeSearch(
-	db: Database,
-	query: string,
-	k = 20,
-	working = false,
-): Array<FtsRankResult | WorkingFtsRankResult> {
-	const cjkChars = cjkCharsForSearch(query);
-	if (cjkChars.length === 0) return [];
-	const table = working ? "working_memory" : "episodic_memory";
-	const idColumn = working ? "id" : "rowid";
-	const conditions = cjkChars.map(() => "content LIKE ? ESCAPE '\\'").join(" OR ");
-	try {
-		const rows = db
-			.query(`SELECT ${idColumn}, content FROM ${table} WHERE ${conditions} LIMIT ?`)
-			.all(...cjkChars.map(ch => `%${ch}%`), k * 5) as Record<string, unknown>[];
-		const scored: Array<{ id: string | number; score: number }> = [];
-		for (const row of rows) {
-			const content = String(row.content ?? "");
-			let hits = 0;
-			for (const ch of cjkChars) if (content.includes(ch)) hits += 1;
-			const score = hits / Math.max(cjkChars.length, 1);
-			if (score > 0) scored.push({ id: row[idColumn] as string | number, score });
-		}
-		scored.sort((a, b) => b.score - a.score);
-		return scored
-			.slice(0, Math.max(0, Math.trunc(k)))
-			.map(row =>
-				working ? { id: String(row.id), rank: -row.score } : { rowid: Number(row.id), rank: -row.score },
-			);
-	} catch {
-		return [];
-	}
-}
-
-export function ftsSearch(db: Database, query: string, k = 20): FtsRankResult[] {
-	const ftsQuery = buildFtsQuery(query);
-	if (!ftsQuery) return hasCjk(query) ? (cjkLikeSearch(db, query, k, false) as FtsRankResult[]) : [];
-	try {
-		const rows = db
-			.query("SELECT rowid, rank FROM fts_episodes WHERE fts_episodes MATCH ? ORDER BY rank, rowid LIMIT ?")
-			.all(ftsQuery, k) as Record<string, unknown>[];
-		if (rows.length === 0 && hasCjk(query)) return cjkLikeSearch(db, query, k, false) as FtsRankResult[];
-		return rows.map(row => ({ rowid: Number(row.rowid), rank: Number(row.rank) }));
-	} catch {
-		return [];
-	}
-}
-
-export function ftsSearchWorking(db: Database, query: string, k = 20): WorkingFtsRankResult[] {
-	const ftsQuery = buildFtsQuery(query);
-	if (!ftsQuery) return hasCjk(query) ? (cjkLikeSearch(db, query, k, true) as WorkingFtsRankResult[]) : [];
-	try {
-		const rows = db
-			.query("SELECT id, rank FROM fts_working WHERE fts_working MATCH ? ORDER BY rank, id LIMIT ?")
-			.all(ftsQuery, k) as Record<string, unknown>[];
-		if (rows.length === 0 && hasCjk(query)) return cjkLikeSearch(db, query, k, true) as WorkingFtsRankResult[];
-		return rows.map(row => ({ id: String(row.id), rank: Number(row.rank) }));
-	} catch {
-		return [];
-	}
-}
-
 export function encodeVector(embedding: readonly number[]): string {
 	return JSON.stringify(embedding);
 }
@@ -345,16 +257,12 @@ export function vecAvailable(db: Database): boolean {
 
 export function effectiveVecType(db: Database): "float32" | "int8" | "bit" {
 	if (!vecAvailable(db)) return "float32";
-	try {
-		const row = db.query("SELECT sql FROM sqlite_master WHERE type='table' AND name='vec_episodes'").get() as {
-			sql?: string;
-		} | null;
-		const sql = row?.sql ?? "";
-		if (sql.includes("int8")) return "int8";
-		if (sql.includes("bit")) return "bit";
-	} catch {
-		return "float32";
-	}
+	const row = db.query("SELECT sql FROM sqlite_master WHERE type='table' AND name='vec_episodes'").get() as {
+		sql?: string;
+	} | null;
+	const sql = row?.sql ?? "";
+	if (sql.includes("int8")) return "int8";
+	if (sql.includes("bit")) return "bit";
 	return "float32";
 }
 
@@ -374,52 +282,45 @@ export function vecInsert(db: Database, rowid: number, embedding: readonly numbe
 }
 
 export function vecSearch(db: Database, embedding: readonly number[], k = 20): VectorDistanceResult[] {
+	if (!vecAvailable(db)) return [];
 	const vecType = effectiveVecType(db);
 	const embJson = encodeVector(embedding);
 	const limit = Math.max(0, Math.trunc(k));
-	try {
-		let rows: Record<string, unknown>[];
-		if (vecType === "bit") {
-			rows = db
-				.query(
-					`SELECT rowid, distance FROM vec_episodes WHERE embedding MATCH vec_quantize_binary(?) ORDER BY distance LIMIT ${limit}`,
-				)
-				.all(embJson) as Record<string, unknown>[];
-		} else if (vecType === "int8") {
-			rows = db
-				.query(
-					`SELECT rowid, distance FROM vec_episodes WHERE embedding MATCH vec_quantize_int8(?, "unit") AND k=${limit} ORDER BY distance`,
-				)
-				.all(embJson) as Record<string, unknown>[];
-		} else {
-			rows = db
-				.query(`SELECT rowid, distance FROM vec_episodes WHERE embedding MATCH ? ORDER BY distance LIMIT ${limit}`)
-				.all(embJson) as Record<string, unknown>[];
-		}
-		return rows.map(row => ({ rowid: Number(row.rowid), distance: Number(row.distance) }));
-	} catch {
-		return [];
+	let rows: Record<string, unknown>[];
+	if (vecType === "bit") {
+		rows = db
+			.query(
+				`SELECT rowid, distance FROM vec_episodes WHERE embedding MATCH vec_quantize_binary(?) ORDER BY distance LIMIT ${limit}`,
+			)
+			.all(embJson) as Record<string, unknown>[];
+	} else if (vecType === "int8") {
+		rows = db
+			.query(
+				`SELECT rowid, distance FROM vec_episodes WHERE embedding MATCH vec_quantize_int8(?, "unit") AND k=${limit} ORDER BY distance`,
+			)
+			.all(embJson) as Record<string, unknown>[];
+	} else {
+		rows = db
+			.query(`SELECT rowid, distance FROM vec_episodes WHERE embedding MATCH ? ORDER BY distance LIMIT ${limit}`)
+			.all(embJson) as Record<string, unknown>[];
 	}
+	return rows.map(row => ({ rowid: Number(row.rowid), distance: Number(row.distance) }));
 }
 
 export function inMemoryVecSearch(db: Database, queryEmbedding: readonly number[], k = 20): VectorDistanceResult[] {
-	if (queryEmbedding.length === 0) return [];
-	try {
-		const rows = db
-			.query(`
-				SELECT em.rowid, me.memory_id, me.embedding_json
-				FROM memory_embeddings me
-				JOIN episodic_memory em ON me.memory_id = em.id
-				LIMIT 10000
-			`)
-			.all() as Record<string, unknown>[];
-		const index = buildExactVectorIndex(
-			rows.map(row => ({ id: Number(row.rowid), vector: decodeVector(String(row.embedding_json ?? "")) })),
-		);
-		return searchExactVectorIndex(index, queryEmbedding, k).map(hit => ({ rowid: hit.id, distance: 1 - hit.score }));
-	} catch {
-		return [];
-	}
+	if (queryEmbedding.length === 0 || !tableExists(db, "memory_embeddings")) return [];
+	const rows = db
+		.query(`
+			SELECT em.rowid, me.memory_id, me.embedding_json
+			FROM memory_embeddings me
+			JOIN episodic_memory em ON me.memory_id = em.id
+			LIMIT 10000
+		`)
+		.all() as Record<string, unknown>[];
+	const index = buildExactVectorIndex(
+		rows.map(row => ({ id: Number(row.rowid), vector: decodeVector(String(row.embedding_json ?? "")) })),
+	);
+	return searchExactVectorIndex(index, queryEmbedding, k).map(hit => ({ rowid: hit.id, distance: 1 - hit.score }));
 }
 
 export function workingMemoryVecSearch(
@@ -428,26 +329,22 @@ export function workingMemoryVecSearch(
 	k = 20,
 	now: Date = new Date(),
 ): WorkingVectorResult[] {
-	if (queryEmbedding.length === 0) return [];
-	try {
-		const limit = process.env.MNEMOPI_BEAM_MODE ? 500_000 : 50_000;
-		const rows = db
-			.query(`
-				SELECT wm.id, me.embedding_json
-				FROM memory_embeddings me
-				JOIN working_memory wm ON me.memory_id = wm.id
-				WHERE wm.superseded_by IS NULL
-				  AND (wm.valid_until IS NULL OR wm.valid_until > ?)
-				LIMIT ?
-			`)
-			.all(now.toISOString(), limit) as Record<string, unknown>[];
-		const index = buildExactVectorIndex(
-			rows.map(row => ({ id: String(row.id), vector: decodeVector(String(row.embedding_json ?? "")) })),
-		);
-		return searchExactVectorIndex(index, queryEmbedding, k).map(hit => ({ id: hit.id, sim: hit.score }));
-	} catch {
-		return [];
-	}
+	if (queryEmbedding.length === 0 || !tableExists(db, "memory_embeddings")) return [];
+	const limit = process.env.MNEMOPI_BEAM_MODE ? 500_000 : 50_000;
+	const rows = db
+		.query(`
+			SELECT wm.id, me.embedding_json
+			FROM memory_embeddings me
+			JOIN working_memory wm ON me.memory_id = wm.id
+			WHERE wm.superseded_by IS NULL
+			  AND (wm.valid_until IS NULL OR wm.valid_until > ?)
+			LIMIT ?
+		`)
+		.all(now.toISOString(), limit) as Record<string, unknown>[];
+	const index = buildExactVectorIndex(
+		rows.map(row => ({ id: String(row.id), vector: decodeVector(String(row.embedding_json ?? "")) })),
+	);
+	return searchExactVectorIndex(index, queryEmbedding, k).map(hit => ({ id: hit.id, sim: hit.score }));
 }
 
 export function normalizeMetadata(input: unknown): Metadata {

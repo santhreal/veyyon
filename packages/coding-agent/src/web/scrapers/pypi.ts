@@ -1,5 +1,15 @@
-import { tryParseJson } from "@veyyon/pi-utils";
-import { buildResult, formatNumber, loadPage, type RenderResult, type SpecialHandler } from "./types";
+import { tryParseJson } from "@veyyon/utils";
+import {
+	buildResult,
+	formatNumber,
+	loadFailure,
+	loadPage,
+	type RenderResult,
+	type ScraperDegrade,
+	type SpecialHandler,
+	scraperDegrade,
+	tryParseUrl,
+} from "./types";
 
 /**
  * Handle PyPI URLs via JSON API
@@ -8,9 +18,10 @@ export const handlePyPI: SpecialHandler = async (
 	url: string,
 	timeout: number,
 	signal?: AbortSignal,
-): Promise<RenderResult | null> => {
+): Promise<RenderResult | ScraperDegrade | null> => {
 	try {
-		const parsed = new URL(url);
+		const parsed = tryParseUrl(url);
+		if (!parsed) return null;
 		if (parsed.hostname !== "pypi.org" && parsed.hostname !== "www.pypi.org") return null;
 
 		// Extract package name from /project/{package} or /project/{package}/{version}
@@ -30,7 +41,7 @@ export const handlePyPI: SpecialHandler = async (
 			loadPage(downloadsUrl, { timeout: Math.min(timeout, 5), signal }),
 		]);
 
-		if (!result.ok) return null;
+		if (!result.ok) return scraperDegrade("pypi", loadFailure(result));
 
 		// Parse download stats
 		let weeklyDownloads: number | null = null;
@@ -58,7 +69,7 @@ export const handlePyPI: SpecialHandler = async (
 			releases?: Record<string, unknown>;
 			requires_dist?: string[];
 		}>(result.content);
-		if (!pkg) return null;
+		if (!pkg) return scraperDegrade("pypi", "unexpected response shape");
 
 		const info = pkg.info;
 		let md = `# ${info.name}\n\n`;
@@ -106,7 +117,7 @@ export const handlePyPI: SpecialHandler = async (
 		}
 
 		return buildResult(md, { url, method: "pypi", fetchedAt, notes: ["Fetched via PyPI JSON API"] });
-	} catch {}
-
-	return null;
+	} catch (error) {
+		return scraperDegrade("pypi", error);
+	}
 };

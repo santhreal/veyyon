@@ -1,22 +1,16 @@
-# Edits that land the first time
+# Edit path and tool arguments
 
-The most visible difference in Veyyon is simple: fewer failed edit turns.
+Edits and tool calls go through harness steps that reduce apply and schema failures before a full retry turn.
 
-Most coding agents lose time in small, boring ways. A model sends a tool call with one field named
-wrongly. It wraps a JSON array in a string. It emits a patch in the format the backend cannot carry. The
-agent bounces the error back to the model, the model apologizes, and the same edit gets tried again.
+## Behavior
 
-Veyyon removes that waste at the harness layer.
+- Hashline edits anchor on `read` / `grep` / `write` snapshot tags
+- `edit`, `write`, and compatibility modes share the approval gate
+- Stale anchors fail verification with recovery context for the model
+- Schema repair coerces unambiguous malformed tool JSON before dispatch; ambiguous input is refused
 
-## What improves
+## Details
 
-- Hashline edits anchor on `read`/`grep` snapshot tags for verifiable hunks.
-- `edit`, `write`, and `apply_patch` modes share the same approval gate.
-- Stale anchors fail with recovery hints instead of silent wrong edits.
-- General schema repair coerces almost-right tool calls into shape before dispatch.
-
-## Where the details live
-
-- [Editing and repair](../using/editing.md) explains the user-facing behavior.
-- [Why repair exists](../repair/overview.md) explains the repair seam.
-- [The hashline edit engine](../edit/engine.md) explains the shipped edit path.
+- [Editing and repair](../using/editing.md)
+- [Repair overview](../repair/overview.md)
+- [The hashline edit engine](../edit/engine.md)

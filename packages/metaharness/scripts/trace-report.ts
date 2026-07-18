@@ -23,14 +23,14 @@
  *   ... --tiny openrouter/inclusionai/ling-2.6-flash
  *   ... --synth openrouter/openai/gpt-oss-120b
  *
- * Auth: provider API keys resolve through omp's auth storage
- * (~/.omp/agent/agent.db: stored key, OAuth, or env var fallback).
+ * Auth: provider API keys resolve through veyyon's auth storage
+ * (~/.veyyon/agent/agent.db: stored key, OAuth, or env var fallback).
  */
 
 import { parseArgs } from "node:util";
-import { type Api, AuthStorage, completeSimple, type Model, SqliteAuthCredentialStore } from "@veyyon/pi-ai";
-import { type GeneratedProvider, getBundledModel } from "@veyyon/pi-catalog/models";
-import { getAgentDbPath } from "@veyyon/pi-utils";
+import { type Api, AuthStorage, completeSimple, type Model, SqliteAuthCredentialStore } from "@veyyon/ai";
+import { type GeneratedProvider, getBundledModel } from "@veyyon/catalog/models";
+import { getAgentDbPath } from "@veyyon/utils";
 
 const DEFAULT_TINY = "openrouter/inclusionai/ling-2.6-flash";
 const DEFAULT_SYNTH = "openrouter/openai/gpt-oss-120b";

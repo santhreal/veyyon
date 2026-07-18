@@ -2,14 +2,14 @@ import { afterEach, describe, expect, test, vi } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { getOAuthProviders } from "@veyyon/pi-ai/registry/oauth";
-import { getEnvApiKey } from "@veyyon/pi-ai/stream";
-import { Effort } from "@veyyon/pi-catalog/effort";
-import { resolveProviderModels } from "@veyyon/pi-catalog/model-manager";
-import { getBundledModels } from "@veyyon/pi-catalog/models";
-import { DEFAULT_MODEL_PER_PROVIDER, PROVIDER_DESCRIPTORS } from "@veyyon/pi-catalog/provider-models/descriptors";
-import { sakanaModelManagerOptions } from "@veyyon/pi-catalog/provider-models/openai-compat";
-import type { FetchImpl, ModelSpec, ResolvedOpenAIResponsesCompat } from "@veyyon/pi-catalog/types";
+import { getOAuthProviders } from "@veyyon/ai/registry/oauth";
+import { getEnvApiKey } from "@veyyon/ai/stream";
+import { Effort } from "@veyyon/catalog/effort";
+import { resolveProviderModels } from "@veyyon/catalog/model-manager";
+import { getBundledModels } from "@veyyon/catalog/models";
+import { DEFAULT_MODEL_PER_PROVIDER, PROVIDER_DESCRIPTORS } from "@veyyon/catalog/provider-models/descriptors";
+import { sakanaModelManagerOptions } from "@veyyon/catalog/provider-models/openai-compat";
+import type { FetchImpl, ModelSpec, ResolvedOpenAIResponsesCompat } from "@veyyon/catalog/types";
 
 const ORIGINAL_ENV = {
 	SAKANA_API_KEY: Bun.env.SAKANA_API_KEY,

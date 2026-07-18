@@ -1,9 +1,10 @@
+import { errorMessage } from "@veyyon/utils";
 import type { Api, Model } from "../types";
 
 export function createProviderErrorMessage(model: Model<Api>, err: unknown) {
 	return {
 		role: "assistant" as const,
-		content: [{ type: "text" as const, text: err instanceof Error ? err.message : String(err) }],
+		content: [{ type: "text" as const, text: errorMessage(err) }],
 		api: model.api,
 		provider: model.provider,
 		model: model.id,

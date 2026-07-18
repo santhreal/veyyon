@@ -2,11 +2,11 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { resetSettingsForTest, Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { DEFAULT_FUZZY_THRESHOLD, executePatchSingle } from "@veyyon/pi-coding-agent/edit";
-import type { FileDiagnosticsResult } from "@veyyon/pi-coding-agent/lsp";
-import type { ToolSession } from "@veyyon/pi-coding-agent/tools";
-import { removeWithRetries } from "@veyyon/pi-utils";
+import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
+import { DEFAULT_FUZZY_THRESHOLD, executePatchSingle } from "@veyyon/coding-agent/edit";
+import type { FileDiagnosticsResult } from "@veyyon/coding-agent/lsp";
+import type { ToolSession } from "@veyyon/coding-agent/tools";
+import { removeWithRetries } from "@veyyon/utils";
 
 function makeSession(cwd: string): ToolSession {
 	return {
@@ -42,7 +42,7 @@ let tempDir: string;
 
 beforeEach(async () => {
 	resetSettingsForTest();
-	tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "omp-patch-unchanged-"));
+	tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-patch-unchanged-"));
 	await Settings.init({ inMemory: true, cwd: tempDir });
 });
 

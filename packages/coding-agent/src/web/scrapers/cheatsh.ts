@@ -1,5 +1,5 @@
-import type { RenderResult, SpecialHandler } from "./types";
-import { buildResult, loadPage } from "./types";
+import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
+import { buildResult, loadPage, scraperDegrade, tryParseUrl } from "./types";
 
 /**
  * Handle cheat.sh / cht.sh URLs for command cheatsheets
@@ -11,9 +11,10 @@ export const handleCheatSh: SpecialHandler = async (
 	url: string,
 	timeout: number,
 	signal?: AbortSignal,
-): Promise<RenderResult | null> => {
+): Promise<RenderResult | ScraperDegrade | null> => {
 	try {
-		const parsed = new URL(url);
+		const parsed = tryParseUrl(url);
+		if (!parsed) return null;
 		if (parsed.hostname !== "cheat.sh" && parsed.hostname !== "cht.sh") return null;
 
 		// Extract topic from path (everything after /)
@@ -62,7 +63,7 @@ export const handleCheatSh: SpecialHandler = async (
 		}
 
 		return buildResult(md, { url, method: "cheat.sh", fetchedAt, notes: ["Fetched via cheat.sh"] });
-	} catch {}
-
-	return null;
+	} catch (error) {
+		return scraperDegrade("cheatsh", error);
+	}
 };

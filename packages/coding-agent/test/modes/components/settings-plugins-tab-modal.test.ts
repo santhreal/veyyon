@@ -1,8 +1,8 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
-import { resetSettingsForTest, Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { SettingsSelectorComponent } from "@veyyon/pi-coding-agent/modes/components/settings-selector";
-import { initTheme } from "@veyyon/pi-coding-agent/modes/theme/theme";
+import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
+import { SettingsSelectorComponent } from "@veyyon/coding-agent/modes/components/settings-selector";
+import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 
 function strip(s: string): string {
 	return stripVTControlCharacters(s);

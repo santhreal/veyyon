@@ -1,7 +1,7 @@
-import type { AgentMessage } from "@veyyon/pi-agent-core";
-import { estimateTokens } from "@veyyon/pi-agent-core/compaction";
-import type { AssistantMessage, ImageContent, TextContent } from "@veyyon/pi-ai";
-import { logger } from "@veyyon/pi-utils";
+import type { AgentMessage } from "@veyyon/agent-core";
+import { estimateTokens } from "@veyyon/agent-core/compaction";
+import type { AssistantMessage, ImageContent, TextContent } from "@veyyon/ai";
+import { logger } from "@veyyon/utils";
 import { obfuscateToolArguments, type SecretObfuscator } from "../secrets/obfuscator";
 import { formatSessionHistoryMarkdown, PRIMARY_CONTEXT_CUSTOM_TYPES } from "../session/session-history-format";
 

@@ -1,6 +1,6 @@
-import { tryParseJson } from "@veyyon/pi-utils";
-import type { RenderResult, SpecialHandler } from "./types";
-import { buildResult, formatIsoDate, loadPage } from "./types";
+import { tryParseJson } from "@veyyon/utils";
+import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
+import { buildResult, formatIsoDate, loadFailure, loadPage, scraperDegrade, tryParseUrl } from "./types";
 
 interface CvssV31 {
 	baseScore: number;
@@ -78,9 +78,10 @@ export const handleNvd: SpecialHandler = async (
 	url: string,
 	timeout: number,
 	signal?: AbortSignal,
-): Promise<RenderResult | null> => {
+): Promise<RenderResult | ScraperDegrade | null> => {
 	try {
-		const parsed = new URL(url);
+		const parsed = tryParseUrl(url);
+		if (!parsed) return null;
 		if (!parsed.hostname.includes("nvd.nist.gov")) return null;
 
 		// Extract CVE ID from /vuln/detail/{CVE-ID}
@@ -98,10 +99,10 @@ export const handleNvd: SpecialHandler = async (
 			signal,
 		});
 
-		if (!result.ok) return null;
+		if (!result.ok) return scraperDegrade("nvd", loadFailure(result));
 
 		const data = tryParseJson<NvdResponse>(result.content);
-		if (!data) return null;
+		if (!data) return scraperDegrade("nvd", "unexpected response shape");
 
 		const vuln = data.vulnerabilities?.[0]?.cve;
 		if (!vuln) return null;
@@ -200,9 +201,9 @@ export const handleNvd: SpecialHandler = async (
 		}
 
 		return buildResult(md, { url, method: "nvd", fetchedAt, notes: ["Fetched via NVD API"] });
-	} catch {}
-
-	return null;
+	} catch (error) {
+		return scraperDegrade("nvd", error);
+	}
 };
 
 function extractCpes(configurations?: Configuration[]): string[] {

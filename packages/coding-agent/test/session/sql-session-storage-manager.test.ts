@@ -7,9 +7,9 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import type { Usage } from "@veyyon/pi-ai";
-import { SessionManager } from "@veyyon/pi-coding-agent/session/session-manager";
-import { SqlSessionStorage } from "@veyyon/pi-coding-agent/session/sql-session-storage";
+import type { Usage } from "@veyyon/ai";
+import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { SqlSessionStorage } from "@veyyon/coding-agent/session/sql-session-storage";
 import { SQL } from "bun";
 
 function fakeUsage(input: number, output: number): Usage {
@@ -53,7 +53,7 @@ describe("SessionManager + SqlSessionStorage (SQLite)", () => {
 		await storage.drain();
 		await manager.close();
 
-		const rows = (await client.unsafe(`SELECT content FROM omp_session_files WHERE path = ?`, [
+		const rows = (await client.unsafe(`SELECT content FROM veyyon_session_files WHERE path = ?`, [
 			sessionFilePath,
 		])) as Array<{ content: string }>;
 		expect(rows).toHaveLength(1);

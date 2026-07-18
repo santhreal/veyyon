@@ -13,7 +13,7 @@
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { CONFIG_DIR_NAME, getProjectDir, isEnoent, logger } from "@veyyon/pi-utils";
+import { CONFIG_DIR_NAME, getProjectDir, isEnoent, logger } from "@veyyon/utils";
 import defaultPersonality from "../prompts/system/personalities/default.md" with { type: "text" };
 import friendlyPersonality from "../prompts/system/personalities/friendly.md" with { type: "text" };
 import pragmaticPersonality from "../prompts/system/personalities/pragmatic.md" with { type: "text" };

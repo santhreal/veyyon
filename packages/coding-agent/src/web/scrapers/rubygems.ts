@@ -1,5 +1,15 @@
-import { tryParseJson } from "@veyyon/pi-utils";
-import { buildResult, formatNumber, loadPage, type RenderResult, type SpecialHandler } from "./types";
+import { tryParseJson } from "@veyyon/utils";
+import {
+	buildResult,
+	formatNumber,
+	loadFailure,
+	loadPage,
+	type RenderResult,
+	type ScraperDegrade,
+	type SpecialHandler,
+	scraperDegrade,
+	tryParseUrl,
+} from "./types";
 
 interface RubyGemsDependency {
 	name: string;
@@ -34,9 +44,10 @@ export const handleRubyGems: SpecialHandler = async (
 	url: string,
 	timeout: number,
 	signal?: AbortSignal,
-): Promise<RenderResult | null> => {
+): Promise<RenderResult | ScraperDegrade | null> => {
 	try {
-		const parsed = new URL(url);
+		const parsed = tryParseUrl(url);
+		if (!parsed) return null;
 		if (parsed.hostname !== "rubygems.org" && parsed.hostname !== "www.rubygems.org") return null;
 
 		// Extract gem name from /gems/{name}
@@ -54,10 +65,10 @@ export const handleRubyGems: SpecialHandler = async (
 			headers: { Accept: "application/json" },
 		});
 
-		if (!result.ok) return null;
+		if (!result.ok) return scraperDegrade("rubygems", loadFailure(result));
 
 		const gem = tryParseJson<RubyGemsResponse>(result.content);
-		if (!gem) return null;
+		if (!gem) return scraperDegrade("rubygems", "unexpected response shape");
 
 		let md = `# ${gem.name}\n\n`;
 		if (gem.info) md += `${gem.info}\n\n`;
@@ -97,7 +108,7 @@ export const handleRubyGems: SpecialHandler = async (
 		}
 
 		return buildResult(md, { url, method: "rubygems", fetchedAt, notes: ["Fetched via RubyGems API"] });
-	} catch {}
-
-	return null;
+	} catch (error) {
+		return scraperDegrade("rubygems", error);
+	}
 };

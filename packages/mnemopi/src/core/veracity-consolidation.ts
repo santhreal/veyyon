@@ -1,6 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { createHash } from "node:crypto";
 import { type DatabasePath, openDatabase } from "../db";
+import { toUtcIso } from "../util/datetime";
 
 export const VERACITY_WEIGHTS = Object.freeze({
 	stated: 1.0,
@@ -105,10 +106,6 @@ function parseSources(raw: string | null): string[] {
 	} catch {
 		return [];
 	}
-}
-
-function nowIso(): string {
-	return new Date().toISOString();
 }
 
 export function computeFactId(subject: string, predicate: string, object: string): string {
@@ -261,7 +258,7 @@ export class VeracityConsolidator {
 			const existing = this.conn
 				.query("SELECT * FROM consolidated_facts WHERE subject = ? AND predicate = ? AND object = ?")
 				.get(subject, predicate, object) as ConsolidatedFactRow | null;
-			const now = nowIso();
+			const now = toUtcIso();
 
 			if (existing !== null) {
 				const newConfidence = this.bayesianUpdate(existing.confidence, veracity);
@@ -348,7 +345,7 @@ export class VeracityConsolidator {
 				);
 				return;
 			}
-			const now = nowIso();
+			const now = toUtcIso();
 			this.conn
 				.query("UPDATE consolidated_facts SET superseded_by = ?, updated_at = ? WHERE id = ?")
 				.run(winningFactId, now, losingId);
@@ -442,7 +439,7 @@ export class VeracityConsolidator {
 		this.serializedWrite(() => {
 			this.conn
 				.query("UPDATE consolidated_facts SET superseded_by = ?, updated_at = ? WHERE id = ?")
-				.run(winningId, nowIso(), losingId);
+				.run(winningId, toUtcIso(), losingId);
 		});
 	}
 

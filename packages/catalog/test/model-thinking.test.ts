@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { buildModel } from "@veyyon/pi-catalog/build";
-import { Effort } from "@veyyon/pi-catalog/effort";
+import { buildModel } from "@veyyon/catalog/build";
+import { Effort } from "@veyyon/catalog/effort";
 import {
 	clampThinkingLevelForModel,
 	getSupportedEfforts,
@@ -8,8 +8,8 @@ import {
 	mapEffortToGoogleThinkingLevel,
 	minimumSupportedEffort,
 	requireSupportedEffort,
-} from "@veyyon/pi-catalog/model-thinking";
-import type { Api, Model, ModelSpec, Provider } from "@veyyon/pi-catalog/types";
+} from "@veyyon/catalog/model-thinking";
+import type { Api, Model, ModelSpec, Provider } from "@veyyon/catalog/types";
 
 function createModel<TApi extends Api>(overrides: {
 	id: string;

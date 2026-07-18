@@ -1,19 +1,19 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { Agent } from "@veyyon/pi-agent-core";
-import * as compactionModule from "@veyyon/pi-agent-core/compaction";
-import { resolveThresholdTokens, shouldCompact } from "@veyyon/pi-agent-core/compaction";
-import { getBundledModel } from "@veyyon/pi-catalog/models";
-import { ModelRegistry } from "@veyyon/pi-coding-agent/config/model-registry";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { loadExtensions } from "@veyyon/pi-coding-agent/extensibility/extensions/loader";
-import { ExtensionRunner } from "@veyyon/pi-coding-agent/extensibility/extensions/runner";
-import { AgentSession } from "@veyyon/pi-coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/pi-coding-agent/session/auth-storage";
-import type { CompactionEntry } from "@veyyon/pi-coding-agent/session/session-entries";
-import { SessionManager } from "@veyyon/pi-coding-agent/session/session-manager";
-import { getProjectAgentDir, TempDir } from "@veyyon/pi-utils";
+import { Agent } from "@veyyon/agent-core";
+import * as compactionModule from "@veyyon/agent-core/compaction";
+import { resolveThresholdTokens, shouldCompact } from "@veyyon/agent-core/compaction";
+import { getBundledModel } from "@veyyon/catalog/models";
+import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import { loadExtensions } from "@veyyon/coding-agent/extensibility/extensions/loader";
+import { ExtensionRunner } from "@veyyon/coding-agent/extensibility/extensions/runner";
+import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
+import type { CompactionEntry } from "@veyyon/coding-agent/session/session-entries";
+import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { getProjectAgentDir, TempDir } from "@veyyon/utils";
 
 /**
  * Regression test for the auto-compaction thrash loop.

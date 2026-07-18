@@ -1,9 +1,9 @@
-import type { Effort } from "@veyyon/pi-catalog/effort";
-import { isKimiModelId } from "@veyyon/pi-catalog/identity";
-import { resolveWireModelId } from "@veyyon/pi-catalog/model-thinking";
-import { calculateCost } from "@veyyon/pi-catalog/models";
-import type { ResolvedOpenAICompat } from "@veyyon/pi-catalog/types";
-import { $env, parseStreamingJson, parseStreamingJsonThrottled } from "@veyyon/pi-utils";
+import type { Effort } from "@veyyon/catalog/effort";
+import { isKimiModelId } from "@veyyon/catalog/identity";
+import { resolveWireModelId } from "@veyyon/catalog/model-thinking";
+import { calculateCost } from "@veyyon/catalog/models";
+import type { ResolvedOpenAICompat } from "@veyyon/catalog/types";
+import { $env, parseStreamingJson, parseStreamingJsonThrottled, trimTrailingSlashes } from "@veyyon/utils";
 import { renderDemotedThinking } from "../dialect/demotion";
 import * as AIError from "../error";
 import { getKimiCommonHeaders } from "../registry/oauth/kimi";
@@ -644,7 +644,7 @@ const streamOpenAICompletionsOnce = (
 			);
 			const strictToolsScope = getOpenAIStrictToolsScope(model, baseUrl);
 			let disableStrictTools = isStrictToolsDisabledForScope(providerSessionState, strictToolsScope);
-			const trimmedBaseUrl = baseUrl.replace(/\/+$/, "");
+			const trimmedBaseUrl = trimTrailingSlashes(baseUrl);
 			const completionsUrl = query
 				? `${trimmedBaseUrl}/chat/completions?${new URLSearchParams(query)}`
 				: `${trimmedBaseUrl}/chat/completions`;

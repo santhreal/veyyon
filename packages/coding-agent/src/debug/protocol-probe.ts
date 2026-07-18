@@ -26,7 +26,7 @@ import {
 	TERMINAL,
 	Text,
 	type TextSizingScale,
-} from "@veyyon/pi-tui";
+} from "@veyyon/tui";
 import { DynamicBorder } from "../modes/components/dynamic-border";
 import { theme } from "../modes/theme/theme";
 
@@ -184,7 +184,7 @@ class RawLines implements Component {
 export interface ProtocolProbeOptions {
 	image: SampleImage;
 	imageBudget: ImageBudget;
-	/** Whether the desktop notification was suppressed (e.g. `PI_NOTIFICATIONS=off`). */
+	/** Whether the desktop notification was suppressed (e.g. `VEYYON_NOTIFICATIONS=off`). */
 	notificationSuppressed: boolean;
 }
 
@@ -253,7 +253,7 @@ export class ProtocolProbeComponent extends Container {
 
 		// Notifications: fired by the caller; this line reports the outcome.
 		const notifyStatus = options.notificationSuppressed
-			? theme.fg("warning", "suppressed (PI_NOTIFICATIONS)")
+			? theme.fg("warning", "suppressed (VEYYON_NOTIFICATIONS)")
 			: theme.fg("success", "sent — check your desktop / titlebar");
 		this.addChild(
 			new Text(

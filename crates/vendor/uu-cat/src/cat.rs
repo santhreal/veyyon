@@ -15,13 +15,13 @@ use std::{
 
 use clap::{Arg, ArgAction, ArgMatches, Command};
 use memchr::memchr2;
-use pi_uutils_ctx::format_usage;
 use thiserror::Error;
 use uucore::{
 	display::Quotable,
 	error::{UResult, strip_errno},
 	fast_inc::fast_inc_one,
 };
+use veyyon_uutils_ctx::format_usage;
 
 // Allocate 32 digits for the line number.
 // An estimate is that we can print about 1e8 lines/seconds, so 32 digits
@@ -208,18 +208,18 @@ pub fn run(argv: Vec<OsString>) -> i32 {
 		Err(err) => {
 			let rendered = err.to_string();
 			if err.use_stderr() {
-				let _ = write!(pi_uutils_ctx::stderr(), "{rendered}");
+				let _ = write!(veyyon_uutils_ctx::stderr(), "{rendered}");
 				return 1;
 			}
-			let _ = write!(pi_uutils_ctx::stdout(), "{rendered}");
+			let _ = write!(veyyon_uutils_ctx::stdout(), "{rendered}");
 			return 0;
 		},
 	};
 	match cat_main(&matches) {
-		Ok(()) => pi_uutils_ctx::exit_code(),
+		Ok(()) => veyyon_uutils_ctx::exit_code(),
 		Err(err) => {
 			let code = err.code();
-			let _ = writeln!(pi_uutils_ctx::stderr(), "cat: {err}");
+			let _ = writeln!(veyyon_uutils_ctx::stderr(), "cat: {err}");
 			if code == 0 { 1 } else { code }
 		},
 	}
@@ -370,7 +370,7 @@ fn cat_path(path: &OsString, options: &OutputOptions, state: &mut OutputState) -
 			// splice fast path is dropped; it always streams. It is never an
 			// interactive terminal in the embedded shell.
 			let mut handle =
-				InputHandle { reader: pi_uutils_ctx::stdin(), is_interactive: false };
+				InputHandle { reader: veyyon_uutils_ctx::stdin(), is_interactive: false };
 			cat_handle(&mut handle, options, state)
 		},
 		InputType::Directory => Err(CatError::IsDirectory),
@@ -379,7 +379,7 @@ fn cat_path(path: &OsString, options: &OutputOptions, state: &mut OutputState) -
 		_ => {
 			// pi-uutils: resolve the operand against the shell working directory
 			// at the fs boundary; keep `path` for display/errors.
-			let file = File::open(pi_uutils_ctx::resolve(path))?;
+			let file = File::open(veyyon_uutils_ctx::resolve(path))?;
 			let mut handle = InputHandle { reader: file, is_interactive: false };
 			cat_handle(&mut handle, options, state)
 		},
@@ -404,7 +404,7 @@ where
 		}
 	}
 	if state.skipped_carriage_return {
-		let _ = write!(pi_uutils_ctx::stdout(), "\r");
+		let _ = write!(veyyon_uutils_ctx::stdout(), "\r");
 	}
 	if error_messages.is_empty() {
 		Ok(())
@@ -429,7 +429,7 @@ fn get_input_type(path: &OsString) -> CatResult<InputType> {
 		return Ok(InputType::StdIn);
 	}
 
-	let ft = match metadata(pi_uutils_ctx::resolve(path)) {
+	let ft = match metadata(veyyon_uutils_ctx::resolve(path)) {
 		Ok(md) => md.file_type(),
 		Err(e) => {
 			if let Some(raw_error) = e.raw_os_error() {
@@ -468,7 +468,7 @@ fn write_fast<R: FdReadable>(handle: &mut InputHandle<R>) -> CatResult<()> {
 	// pi-uutils: the Linux/Android splice() fast path needs real fds for both
 	// the input reader and stdout; the context streams have neither, so always
 	// use the generic read/write copy loop below.
-	let stdout = pi_uutils_ctx::stdout();
+	let stdout = veyyon_uutils_ctx::stdout();
 	let mut stdout_lock = stdout.lock();
 	let mut buf = [0; 1024 * 64];
 	loop {
@@ -500,7 +500,7 @@ fn write_lines<R: FdReadable>(
 	state: &mut OutputState,
 ) -> CatResult<()> {
 	let mut in_buf = [0; 1024 * 31];
-	let stdout = pi_uutils_ctx::stdout();
+	let stdout = veyyon_uutils_ctx::stdout();
 	let stdout = stdout.lock();
 	// Add a 32K buffer for stdout - this greatly improves performance.
 	let mut writer = BufWriter::with_capacity(32 * 1024, stdout);

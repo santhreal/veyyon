@@ -5,7 +5,7 @@ import {
 	getDialectDefinition,
 	type InbandScanEvent,
 	type InbandScannerOptions,
-} from "@veyyon/pi-ai/dialect";
+} from "@veyyon/ai/dialect";
 
 function scan(
 	dialect: Dialect,

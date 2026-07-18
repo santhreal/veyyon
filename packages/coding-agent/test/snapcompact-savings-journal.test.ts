@@ -2,12 +2,12 @@ import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { Model } from "@veyyon/pi-ai";
-import { buildModel } from "@veyyon/pi-catalog/build";
+import type { Model } from "@veyyon/ai";
+import { buildModel } from "@veyyon/catalog/build";
 import {
 	createSnapcompactSavingsRecorder,
 	readSnapcompactSavingsJournal,
-} from "@veyyon/pi-coding-agent/session/snapcompact-savings-journal";
+} from "@veyyon/coding-agent/session/snapcompact-savings-journal";
 
 function model(provider = "anthropic", id = "claude-test"): Model {
 	return buildModel({

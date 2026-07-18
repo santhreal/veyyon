@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { resolveOpenAIRequestSetup } from "@veyyon/pi-ai/providers/openai-shared";
+import { resolveOpenAIRequestSetup } from "@veyyon/ai/providers/openai-shared";
 
 const ORIGINAL_MOONSHOT_BASE_URL = Bun.env.MOONSHOT_BASE_URL;
 

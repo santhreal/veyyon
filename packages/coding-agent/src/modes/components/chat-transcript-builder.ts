@@ -11,9 +11,9 @@
  * entry count, but it cannot duplicate or misorder rows the way incremental
  * component reuse could.
  */
-import type { AgentMessage, AgentTool } from "@veyyon/pi-agent-core";
-import type { Usage } from "@veyyon/pi-ai";
-import type { TUI } from "@veyyon/pi-tui";
+import type { AgentMessage, AgentTool } from "@veyyon/agent-core";
+import type { Usage } from "@veyyon/ai";
+import type { TUI } from "@veyyon/tui";
 import type { AdvisorMessageDetails } from "../../advisor";
 import { COLLAB_PROMPT_MESSAGE_TYPE, type CollabPromptDetails } from "../../collab/protocol";
 import { settings } from "../../config/settings";

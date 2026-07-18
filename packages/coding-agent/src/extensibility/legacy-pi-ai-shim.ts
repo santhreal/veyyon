@@ -1,6 +1,6 @@
 /**
  * Compatibility shim for legacy extensions importing the package root of
- * `@veyyon/pi-ai` (or one of its aliased scopes like `@earendil-works/pi-ai`
+ * `@veyyon/ai` (or one of its aliased scopes like `@earendil-works/pi-ai`
  * or `@mariozechner/pi-ai`).
  *
  * pi-ai 15.1.0 removed the historical TypeBox root exports (`Type`, plus the
@@ -8,7 +8,7 @@
  * entrypoint. Legacy extensions still author parameter schemas as
  * `Type.Object({ ... })`, so this file is served by `legacy-pi-compat.ts` in
  * place of the real pi-ai entrypoint whenever a legacy extension imports the
- * bare package root. Subpath imports (`@veyyon/pi-ai/oauth`, etc.)
+ * bare package root. Subpath imports (`@veyyon/ai/oauth`, etc.)
  * continue to resolve directly against the bundled pi-ai package.
  *
  * The `Type` runtime and legacy `StringEnum()` helper are borrowed from the
@@ -25,7 +25,7 @@ import {
 	getBundledModels,
 	getBundledProviders,
 	modelsAreEqual,
-} from "@veyyon/pi-catalog/models";
+} from "@veyyon/catalog/models";
 import { type TSchema, Type } from "./typebox";
 
 export interface StringEnumOptions<T extends string> {
@@ -71,13 +71,13 @@ export function StringEnum<T extends string | number>(
 	return schema;
 }
 
-export * from "@veyyon/pi-ai";
+export * from "@veyyon/ai";
 /**
  * Compatibility re-exports for catalog symbols that pi-ai historically exposed
  * from its own barrel prior to the `refactor(catalog)!: split model catalog
  * from pi-ai` change. Legacy extensions still import these from the pi-ai
  * root, so the shim bridges them through to their new home in
- * `@veyyon/pi-catalog/models`. `getModel`/`getModels` are the historical
+ * `@veyyon/catalog/models`. `getModel`/`getModels` are the historical
  * pi-ai names for `getBundledModel`/`getBundledModels`; the remaining symbols
  * kept their names across the move.
  */

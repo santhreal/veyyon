@@ -1,4 +1,5 @@
-import type { AgentTool, AgentToolResult } from "@veyyon/pi-agent-core";
+import type { AgentTool, AgentToolResult } from "@veyyon/agent-core";
+import { errorMessage } from "@veyyon/utils";
 import { type } from "arktype";
 import { sanitizeSkillName, writeManagedSkill } from "../autolearn/managed-skills";
 import { isNameClaimedByAuthoredSkill } from "../extensibility/skills";
@@ -123,7 +124,7 @@ export class LearnTool implements AgentTool<typeof learnSchema> {
 			try {
 				await writeManagedSkill(params.skill);
 			} catch (err) {
-				const reason = err instanceof Error ? err.message : String(err);
+				const reason = errorMessage(err);
 				throw new Error(`${memoryMessage}, but the managed skill could not be written: ${reason}`);
 			}
 			const verb = params.skill.action === "create" ? "Created" : "Updated";

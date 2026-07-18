@@ -1,6 +1,6 @@
 /**
  * The provider catalog table: one entry per chat-model provider, carrying the
- * catalog half of what used to live in `@veyyon/pi-ai`'s registry definitions
+ * catalog half of what used to live in `@veyyon/ai`'s registry definitions
  * (default model, runtime model-manager factory, discovery wiring). The auth
  * half (env keys, OAuth login/refresh) stays in the pi-ai registry, which
  * type-checks itself against `KnownProvider` from this table.

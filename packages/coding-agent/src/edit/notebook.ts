@@ -1,5 +1,5 @@
 import * as path from "node:path";
-import { isEnoent } from "@veyyon/pi-utils";
+import { isEnoent, isRecord } from "@veyyon/utils";
 
 export type NotebookCellType = "code" | "markdown" | "raw";
 
@@ -44,10 +44,6 @@ function unescapeMarkerLikeLine(line: string): string {
 
 export function isNotebookPath(filePath: string): boolean {
 	return path.extname(filePath).toLowerCase() === ".ipynb";
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function isCellType(value: unknown): value is NotebookCellType {

@@ -1,6 +1,6 @@
 # Vendored from uutils/coreutils tag 0.8.0 (src/uu/realpath), patched to resolve
 # path arguments against the shell working directory and route I/O through
-# pi-uutils-ctx so it can run in-process as a shell builtin. See src/realpath.rs
+# veyyon-uutils-ctx so it can run in-process as a shell builtin. See src/realpath.rs
 # for the patch markers (`pi-uutils:` comments).
 [package]
 name = "uu_realpath"
@@ -15,7 +15,7 @@ path = "src/realpath.rs"
 [dependencies]
 clap = { version = "4.5", features = ["wrap_help", "cargo", "color"] }
 uucore = { version = "0.8.0", features = ["fs"] }
-pi-uutils-ctx = { path = "../../pi-uutils-ctx" }
+veyyon-uutils-ctx = { path = "../../veyyon-uutils-ctx" }
 
 [dev-dependencies]
 parking_lot = "0.12"

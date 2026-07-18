@@ -110,8 +110,8 @@ export const miscFixtures: Record<string, GalleryFixture> = {
 		},
 		args: {
 			host: "deploy@web-01",
-			command: "systemctl status omp-api --no-pager | head -n 12",
-			cwd: "/srv/omp",
+			command: "systemctl status veyyon-api --no-pager | head -n 12",
+			cwd: "/srv/veyyon",
 			timeout: 60,
 		},
 		result: {
@@ -120,13 +120,13 @@ export const miscFixtures: Record<string, GalleryFixture> = {
 					type: "text",
 					text: [
 						"● veyyon-api.service - Veyyon API",
-						"     Loaded: loaded (/etc/systemd/system/omp-api.service; enabled)",
+						"     Loaded: loaded (/etc/systemd/system/veyyon-api.service; enabled)",
 						"     Active: active (running) since Sat 2026-06-06 09:14:02 UTC; 3h 21min ago",
 						"   Main PID: 4812 (bun)",
 						"      Tasks: 17 (limit: 4915)",
 						"     Memory: 142.6M",
 						"        CPU: 38.214s",
-						"     CGroup: /system.slice/omp-api.service",
+						"     CGroup: /system.slice/veyyon-api.service",
 						"             └─4812 /usr/local/bin/bun run dist/server.js",
 					].join("\n"),
 				},

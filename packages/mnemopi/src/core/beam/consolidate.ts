@@ -1,4 +1,6 @@
 import type { SQLQueryBindings } from "bun:sqlite";
+import { errorMessage, logger } from "@veyyon/utils";
+import { envInt } from "../../util/env";
 import { generateId, stableMemoryId } from "../../util/ids";
 import { aaakEncode } from "../aaak";
 import { REGEX_EXTRACTION_MAX_INPUT_CHARS } from "../entities";
@@ -47,11 +49,6 @@ const EPISODIC_VERACITY_WEIGHT = {
 } as const;
 
 type EpisodicVeracity = keyof typeof EPISODIC_VERACITY_WEIGHT;
-
-function envInt(name: string, defaultValue: number): number {
-	const parsed = Number.parseInt(process.env[name] ?? "", 10);
-	return Number.isFinite(parsed) ? parsed : defaultValue;
-}
 
 const SLEEP_BATCH_SIZE = envInt("MNEMOPI_SLEEP_BATCH", 5000);
 const TIER2_DAYS = envInt("MNEMOPI_TIER2_DAYS", 30);
@@ -381,8 +378,13 @@ function ingestIntoEpisodicGraph(beam: BeamMemoryState, memoryId: string, summar
 			linkExisting: true,
 			extractEntities: true,
 		});
-	} catch {
-		// Graph enrichment is best-effort and never blocks consolidation.
+	} catch (error) {
+		// Best-effort: never blocks the consolidation that already landed, but
+		// the operator must see that the graph lost edges (Law 10).
+		logger.warn("mnemopi: episodic-graph enrichment failed; consolidated memory stored without graph edges", {
+			memoryId,
+			error: errorMessage(error),
+		});
 	}
 }
 
@@ -870,10 +872,14 @@ export function degradeEpisodic(beam: BeamMemoryState, dryRun = false): Record<s
 			]);
 			if (compressed !== content) invalidateEpisodicVectors(beam, id);
 			beam.db.run("RELEASE degrade_episodic");
-		} catch {
+		} catch (error) {
 			beam.db.run("ROLLBACK TO degrade_episodic");
 			beam.db.run("RELEASE degrade_episodic");
 			result.tier1_to_tier2--;
+			logger.warn("mnemopi: tier-1→2 degrade failed for memory; row left at tier 1", {
+				memoryId: id,
+				error: errorMessage(error),
+			});
 		}
 	}
 	for (const row of tier2Rows) {
@@ -890,10 +896,14 @@ export function degradeEpisodic(beam: BeamMemoryState, dryRun = false): Record<s
 			]);
 			if (compressed !== content) invalidateEpisodicVectors(beam, id);
 			beam.db.run("RELEASE degrade_episodic");
-		} catch {
+		} catch (error) {
 			beam.db.run("ROLLBACK TO degrade_episodic");
 			beam.db.run("RELEASE degrade_episodic");
 			result.tier2_to_tier3--;
+			logger.warn("mnemopi: tier-2→3 degrade failed for memory; row left at tier 2", {
+				memoryId: id,
+				error: errorMessage(error),
+			});
 		}
 	}
 	return result;

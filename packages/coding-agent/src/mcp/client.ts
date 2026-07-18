@@ -5,7 +5,7 @@
  */
 import * as path from "node:path";
 import * as url from "node:url";
-import { getProjectDir, logger, withTimeout } from "@veyyon/pi-utils";
+import { errorMessage, getProjectDir, logger, withTimeout } from "@veyyon/utils";
 import { describeMCPTimeout, isMCPTimeoutEnabled, resolveMCPTimeoutMs } from "./timeout";
 import { createHttpTransport } from "./transports/http";
 import { createSseTransport } from "./transports/sse";
@@ -129,7 +129,7 @@ async function initializeConnection(
 /**
  * Connect to an MCP server.
  * Has a 30 second timeout by default to prevent blocking startup.
- * Set VEYYON_MCP_TIMEOUT_MS=0 (legacy OMP_MCP_TIMEOUT_MS) to disable MCP client-side timeouts.
+ * Set VEYYON_MCP_TIMEOUT_MS=0 to disable MCP client-side timeouts.
  */
 export async function connectToServer(
 	name: string,
@@ -307,7 +307,7 @@ export async function listResources(
 
 /** True when an error is a JSON-RPC "method not found" (-32601) response. */
 function isMethodNotFoundError(error: unknown): boolean {
-	const message = error instanceof Error ? error.message : String(error);
+	const message = errorMessage(error);
 	return message.includes("-32601") || /method not found/i.test(message);
 }
 

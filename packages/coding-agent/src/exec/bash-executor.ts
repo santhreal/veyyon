@@ -3,9 +3,9 @@
  *
  * Uses brush-core via native bindings for shell execution.
  */
-import { ExponentialYield } from "@veyyon/pi-agent-core/utils/yield";
-import { type MinimizerOptions, Shell, type ShellRunResult } from "@veyyon/pi-natives";
-import { isExecutable, type ShellConfig } from "@veyyon/pi-utils/procmgr";
+import { ExponentialYield } from "@veyyon/agent-core/utils/yield";
+import { type MinimizerOptions, Shell, type ShellRunResult } from "@veyyon/natives";
+import { isExecutable, type ShellConfig } from "@veyyon/utils/procmgr";
 import { Settings, type ShellMinimizerSettings } from "../config/settings";
 import { OutputSink } from "../session/streaming-output";
 import { resolveOutputMaxColumns, resolveOutputSinkHeadBytes } from "../tools/output-meta";
@@ -307,7 +307,7 @@ export async function executeBash(command: string, options?: BashExecutorOptions
 	const nativeOwnsTimeout = nativeTimeoutMs !== undefined;
 	if (deadlineTimeoutMs !== undefined) {
 		timeoutTimer = setTimeout(() => {
-			// Explicit timeouts are already enforced inside pi-natives via
+			// Explicit timeouts are already enforced inside veyyon-natives via
 			// `timeoutMs`. Do not also abort the JS AbortSignal here: on Windows,
 			// aborting that signal while a piped command is still forwarding output
 			// can terminate the Bun host before the native timeout result resolves.

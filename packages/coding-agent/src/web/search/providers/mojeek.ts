@@ -1,5 +1,5 @@
-import type { AuthStorage } from "@veyyon/pi-ai";
-import { untilAborted } from "@veyyon/pi-utils";
+import type { AuthStorage } from "@veyyon/ai";
+import { untilAborted } from "@veyyon/utils";
 import { parseHTML } from "linkedom";
 import type { Page } from "puppeteer-core";
 import type { SearchResponse, SearchSource } from "../../../web/search/types";
@@ -124,49 +124,50 @@ function isRobotPage(page: LoadedHtmlPage): boolean {
 }
 
 async function callMojeekHtml(params: SearchParams, numResults: number): Promise<string> {
-	const signal = withHardTimeout(params.signal);
-	const url = buildSearchUrl(params, numResults);
-	let page: LoadedHtmlPage;
-	try {
-		page = await browserFetch(url, {
-			fetch: params.fetch,
-			signal,
-			randomizeHeaders: false,
-			referer: MOJEEK_HOME_URL,
-			browser: {
-				homeUrl: MOJEEK_HOME_URL,
-				afterNavigation: solveCaptcha,
-				shouldFallback: isRobotPage,
-				attempts: 2,
-				retryDelayMs: 1_000,
-			},
-		});
-	} catch (error) {
-		if (error instanceof SearchProviderError || params.signal?.aborted) throw error;
-		if (signal.aborted) {
-			throw new SearchProviderError("mojeek", "Mojeek search timed out.", 504);
+	return withHardTimeout(params.signal, async signal => {
+		const url = buildSearchUrl(params, numResults);
+		let page: LoadedHtmlPage;
+		try {
+			page = await browserFetch(url, {
+				fetch: params.fetch,
+				signal,
+				randomizeHeaders: false,
+				referer: MOJEEK_HOME_URL,
+				browser: {
+					homeUrl: MOJEEK_HOME_URL,
+					afterNavigation: solveCaptcha,
+					shouldFallback: isRobotPage,
+					attempts: 2,
+					retryDelayMs: 1_000,
+				},
+			});
+		} catch (error) {
+			if (error instanceof SearchProviderError || params.signal?.aborted) throw error;
+			if (signal.aborted) {
+				throw new SearchProviderError("mojeek", "Mojeek search timed out.", 504);
+			}
+			const message = error instanceof Error ? error.message : String(error);
+			throw new SearchProviderError("mojeek", `Mojeek search failed: ${message}`, 503);
 		}
-		const message = error instanceof Error ? error.message : String(error);
-		throw new SearchProviderError("mojeek", `Mojeek search failed: ${message}`, 503);
-	}
 
-	// Robot walls: the ALTCHA proof-of-work captcha page arrives as HTTP 200
-	// (`<title>Captcha</title>`, `altcha-widget`) and the "automated queries"
-	// refusal as HTTP 403. Both bodies are more actionable than their raw
-	// statuses, so check them before the generic status handling.
-	if (isRobotPage(page)) {
-		throw new SearchProviderError(
-			"mojeek",
-			"Mojeek blocked the request with its automated-queries wall. Mojeek rate-limits scripted searches from datacenter/shared-egress IPs; retry later or configure another provider such as Brave, Tavily, Exa, or Kagi.",
-			429,
-		);
-	}
-	if (page.status < 200 || page.status >= 300) {
-		const classified = classifyProviderHttpError("mojeek", page.status, page.html);
-		if (classified) throw classified;
-		throw new SearchProviderError("mojeek", `Mojeek HTML error (${page.status})`, page.status);
-	}
-	return page.html;
+		// Robot walls: the ALTCHA proof-of-work captcha page arrives as HTTP 200
+		// (`<title>Captcha</title>`, `altcha-widget`) and the "automated queries"
+		// refusal as HTTP 403. Both bodies are more actionable than their raw
+		// statuses, so check them before the generic status handling.
+		if (isRobotPage(page)) {
+			throw new SearchProviderError(
+				"mojeek",
+				"Mojeek blocked the request with its automated-queries wall. Mojeek rate-limits scripted searches from datacenter/shared-egress IPs; retry later or configure another provider such as Brave, Tavily, Exa, or Kagi.",
+				429,
+			);
+		}
+		if (page.status < 200 || page.status >= 300) {
+			const classified = classifyProviderHttpError("mojeek", page.status, page.html);
+			if (classified) throw classified;
+			throw new SearchProviderError("mojeek", `Mojeek HTML error (${page.status})`, page.status);
+		}
+		return page.html;
+	});
 }
 
 /** Execute a Mojeek web search against the standard HTML results page. */

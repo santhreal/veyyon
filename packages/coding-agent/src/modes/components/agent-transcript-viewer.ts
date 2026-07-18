@@ -14,9 +14,9 @@
  * same append path over the host's byte-capped transcript reads.
  */
 import * as fs from "node:fs";
-import type { AgentTool } from "@veyyon/pi-agent-core";
-import { type Component, Editor, matchesKey, routeSgrMouseInput, ScrollView, type TUI } from "@veyyon/pi-tui";
-import { formatDuration, formatNumber, logger } from "@veyyon/pi-utils";
+import type { AgentTool } from "@veyyon/agent-core";
+import { type Component, Editor, matchesKey, routeSgrMouseInput, ScrollView, type TUI } from "@veyyon/tui";
+import { errorMessage, formatDuration, formatNumber, logger } from "@veyyon/utils";
 import type { KeyId } from "../../config/keybindings";
 import type { MessageRenderer } from "../../extensibility/extensions/types";
 import type { AgentLifecycleManager } from "../../registry/agent-lifecycle";
@@ -524,7 +524,7 @@ export class AgentTranscriptViewer implements Component {
 				// Steers a mid-turn agent; sends a normal prompt to an idle one.
 				await session.prompt(trimmed, { streamingBehavior: "steer" });
 			} catch (error) {
-				this.#notice = error instanceof Error ? error.message : String(error);
+				this.#notice = errorMessage(error);
 			}
 			this.deps.requestRender();
 		})();

@@ -1,13 +1,13 @@
 import { describe, expect, it } from "bun:test";
-import type { Tool, ToolCall } from "@veyyon/pi-ai/types";
-import { toolWireSchema } from "@veyyon/pi-ai/utils/schema";
+import type { Tool, ToolCall } from "@veyyon/ai/types";
+import { toolWireSchema } from "@veyyon/ai/utils/schema";
 import {
 	detectAmbiguousRequiredStringRepair,
 	detectStrictUnknownKeyRepair,
 	MAX_REPAIR_INPUT_BYTES,
 	planAliasKeyRepairs,
 	repairToolCallArguments,
-} from "@veyyon/pi-coding-agent/repair/schema-repair";
+} from "@veyyon/coding-agent/repair/schema-repair";
 import { type } from "arktype";
 
 const sampleTool: Tool = {

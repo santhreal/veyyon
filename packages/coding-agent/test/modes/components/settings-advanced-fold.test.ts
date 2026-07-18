@@ -11,13 +11,13 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { resetSettingsForTest, Settings, settings } from "@veyyon/pi-coding-agent/config/settings";
-import { SETTINGS_SCHEMA, TAB_GROUPS } from "@veyyon/pi-coding-agent/config/settings-schema";
-import { getSettingDef, getSettingsForTab } from "@veyyon/pi-coding-agent/modes/components/settings-defs";
-import { SettingsSelectorComponent } from "@veyyon/pi-coding-agent/modes/components/settings-selector";
-import { initTheme } from "@veyyon/pi-coding-agent/modes/theme/theme";
-import { ImageProtocol, TERMINAL } from "@veyyon/pi-tui";
-import { removeSyncWithRetries, Snowflake } from "@veyyon/pi-utils";
+import { resetSettingsForTest, Settings, settings } from "@veyyon/coding-agent/config/settings";
+import { SETTINGS_SCHEMA, TAB_GROUPS } from "@veyyon/coding-agent/config/settings-schema";
+import { getSettingDef, getSettingsForTab } from "@veyyon/coding-agent/modes/components/settings-defs";
+import { SettingsSelectorComponent } from "@veyyon/coding-agent/modes/components/settings-selector";
+import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { ImageProtocol, TERMINAL } from "@veyyon/tui";
+import { removeSyncWithRetries, Snowflake } from "@veyyon/utils";
 
 type MutableTerminalInfo = { imageProtocol: ImageProtocol | null };
 const terminal = TERMINAL as unknown as MutableTerminalInfo;

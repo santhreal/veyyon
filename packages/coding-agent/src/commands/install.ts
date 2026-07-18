@@ -4,7 +4,7 @@
  *
  * The docs (veyyon.dev/docs/extensions) advertise
  *
- *   omp install ./my-extension
+ *   veyyon install ./my-extension
  *
  * as a third loading mechanism that "symlinks the directory into the plugin
  * set and watches it for changes". Before this command existed, `install` was
@@ -20,7 +20,7 @@
 
 import { existsSync } from "node:fs";
 import * as path from "node:path";
-import { Args, Command, Flags } from "@veyyon/pi-utils/cli";
+import { Args, Command, Flags } from "@veyyon/utils/cli";
 import { type PluginAction, type PluginCommandArgs, runPluginCommand } from "../cli/plugin-cli";
 import { initTheme } from "../modes/theme/theme";
 

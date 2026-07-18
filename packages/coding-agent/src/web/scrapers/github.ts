@@ -1,6 +1,7 @@
-import { $env, ptree } from "@veyyon/pi-utils";
-import type { RenderResult, SpecialHandler } from "./types";
-import { buildResult, formatMediaDuration, loadPage } from "./types";
+import { $env, formatCount } from "@veyyon/utils";
+import { scopedTimeoutSignal } from "../../utils/fetch-timeout";
+import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
+import { buildResult, formatMediaDuration, loadPage, scraperDegrade, tryParseUrl } from "./types";
 
 interface GitHubUrl {
 	type:
@@ -37,7 +38,8 @@ interface GitHubIssueComment {
  */
 export function parseGitHubUrl(url: string): GitHubUrl | null {
 	try {
-		const parsed = new URL(url);
+		const parsed = tryParseUrl(url);
+		if (!parsed) return null;
 		if (parsed.hostname !== "github.com") return null;
 
 		const parts = parsed.pathname.split("/").filter(Boolean);
@@ -116,9 +118,10 @@ export async function fetchGitHubApi(
 	timeout: number,
 	signal?: AbortSignal,
 ): Promise<{ data: unknown; ok: boolean }> {
+	// Scoped so the deadline timer is cleared on settle instead of staying
+	// armed like a bare AbortSignal.timeout; the fence spans the body read.
+	const requestTimeout = scopedTimeoutSignal(timeout * 1000, signal);
 	try {
-		const requestSignal = ptree.combineSignals(signal, timeout * 1000);
-
 		const headers: Record<string, string> = {
 			Accept: "application/vnd.github.v3+json",
 			"User-Agent": "veyyon-web-fetch/1.0",
@@ -131,7 +134,7 @@ export async function fetchGitHubApi(
 		}
 
 		const response = await fetch(`https://api.github.com${endpoint}`, {
-			signal: requestSignal,
+			signal: requestTimeout.signal,
 			headers,
 		});
 
@@ -142,6 +145,8 @@ export async function fetchGitHubApi(
 		return { data: await response.json(), ok: true };
 	} catch {
 		return { data: null, ok: false };
+	} finally {
+		requestTimeout.cancel();
 	}
 }
 
@@ -291,7 +296,7 @@ async function renderGitHubCommit(
 	if (commit.stats) {
 		const { additions = 0, deletions = 0 } = commit.stats;
 		const fileCount = commit.files?.length ?? 0;
-		md += `${fileCount} file${fileCount === 1 ? "" : "s"} changed · +${additions} −${deletions}\n`;
+		md += `${formatCount("file", fileCount)} changed · +${additions} −${deletions}\n`;
 	}
 	if (commit.parents && commit.parents.length > 0) {
 		md += `Parents: ${commit.parents.map(p => p.sha.slice(0, 12)).join(", ")}\n`;
@@ -699,7 +704,7 @@ export const handleGitHub: SpecialHandler = async (
 	url: string,
 	timeout: number,
 	signal?: AbortSignal,
-): Promise<RenderResult | null> => {
+): Promise<RenderResult | ScraperDegrade | null> => {
 	const gh = parseGitHubUrl(url);
 	if (!gh) return null;
 
@@ -795,6 +800,7 @@ export const handleGitHub: SpecialHandler = async (
 		}
 	}
 
-	// Fall back to null (let normal rendering handle it)
-	return null;
+	// Matched a GitHub URL but every API path failed: degrade loudly so the
+	// generic fetch result records why the rich rendering is missing.
+	return scraperDegrade("github", "GitHub API requests failed");
 };

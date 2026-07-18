@@ -9,7 +9,8 @@ import * as net from "node:net";
 import * as path from "node:path";
 import * as tls from "node:tls";
 import * as zlib from "node:zlib";
-import { PtySession } from "@veyyon/pi-natives";
+import { PtySession } from "@veyyon/natives";
+import { errorMessage } from "@veyyon/utils";
 import xterm from "@xterm/headless";
 
 const DEFAULT_PROXY_HOST = "127.0.0.1";
@@ -678,10 +679,6 @@ export class ClaudeMessagesProxy {
 		clientTls.once("close", closeInternalServer);
 	}
 }
-function errorMessage(error: unknown): string {
-	return error instanceof Error ? error.message : String(error);
-}
-
 async function shutdownPty(session: PtySession, runPromise: Promise<unknown>): Promise<void> {
 	try {
 		session.write("\x03");

@@ -5,7 +5,7 @@
  * Uses the settings schema as the source of truth for available settings.
  */
 
-import { APP_NAME, getAgentDir } from "@veyyon/pi-utils";
+import { APP_NAME, getAgentDir } from "@veyyon/utils";
 import chalk from "chalk";
 import {
 	getDefault,
@@ -70,56 +70,8 @@ function getSettingValues(def: CliSettingDef): readonly string[] | undefined {
 	return undefined;
 }
 
-// =============================================================================
-// Argument Parser
-// =============================================================================
-
-const VALID_ACTIONS: ConfigAction[] = ["list", "get", "set", "reset", "path", "init-xdg"];
-
-/**
- * Parse config subcommand arguments.
- * Returns undefined if not a config command.
- */
-export function parseConfigArgs(args: string[]): ConfigCommandArgs | undefined {
-	if (args.length === 0 || args[0] !== "config") {
-		return undefined;
-	}
-
-	if (args.length < 2 || args[1] === "--help" || args[1] === "-h") {
-		return { action: "list", flags: {} };
-	}
-
-	const action = args[1];
-	if (!VALID_ACTIONS.includes(action as ConfigAction)) {
-		console.error(chalk.red(`Unknown config command: ${action}`));
-		console.error(`Valid commands: ${VALID_ACTIONS.join(", ")}`);
-		process.exit(1);
-	}
-
-	const result: ConfigCommandArgs = {
-		action: action as ConfigAction,
-		flags: {},
-	};
-
-	const positionalArgs: string[] = [];
-	for (let i = 2; i < args.length; i++) {
-		const arg = args[i];
-		if (arg === "--json") {
-			result.flags.json = true;
-		} else if (!arg.startsWith("-")) {
-			positionalArgs.push(arg);
-		}
-	}
-
-	if (positionalArgs.length > 0) {
-		result.key = positionalArgs[0];
-	}
-	if (positionalArgs.length > 1) {
-		result.value = positionalArgs.slice(1).join(" ");
-	}
-
-	return result;
-}
+/** Canonical action list; the `config` command's options validation imports this. */
+export const CONFIG_ACTIONS: ConfigAction[] = ["list", "get", "set", "reset", "path", "init-xdg"];
 
 // =============================================================================
 // Value Formatting
@@ -280,7 +232,8 @@ async function handleList(flags: { json?: boolean }): Promise<void> {
 		const result: Record<string, { value: unknown; type: string; description: string }> = {};
 		for (const def of defs) {
 			result[def.path] = {
-				value: settings.get(def.path),
+				// `?? null` so unset settings still serialize a `value` key (JSON.stringify drops undefined).
+				value: settings.get(def.path) ?? null,
 				type: def.type,
 				description: def.description,
 			};
@@ -334,7 +287,9 @@ function handleGet(key: string | undefined, flags: { json?: boolean }): void {
 	const value = settings.get(def.path);
 
 	if (flags.json) {
-		console.log(JSON.stringify({ key: def.path, value, type: def.type, description: def.description }, null, 2));
+		console.log(
+			JSON.stringify({ key: def.path, value: value ?? null, type: def.type, description: def.description }, null, 2),
+		);
 		return;
 	}
 
@@ -403,32 +358,3 @@ function handlePath(): void {
 // =============================================================================
 // Help
 // =============================================================================
-
-export function printConfigHelp(): void {
-	console.log(`${chalk.bold(`${APP_NAME} config`)} - Manage settings
-
-${chalk.bold("Commands:")}
-  list               List all settings with current values
-  get <key>          Get a specific setting value
-  set <key> <value>  Set a setting value
-  reset <key>        Reset a setting to its default value
-  path               Print the config directory path
-  init-xdg           Initialize XDG Base Directory structure
-
-${chalk.bold("Options:")}
-  --json             Output as JSON
-
-${chalk.bold("Examples:")}
-  ${APP_NAME} config list
-  ${APP_NAME} config get theme
-  ${APP_NAME} config set theme catppuccin-mocha
-  ${APP_NAME} config set compaction.enabled false
-  ${APP_NAME} config set defaultThinkingLevel medium
-  ${APP_NAME} config reset steeringMode
-  ${APP_NAME} config list --json
-  ${APP_NAME} config init-xdg
-
-${chalk.bold("Boolean Values:")}
-  true, false, yes, no, on, off, 1, 0
-`);
-}

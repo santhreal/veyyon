@@ -7,19 +7,19 @@
 
 // pi-uutils: vendored from uutils/coreutils 0.8.0 and patched to run in-process
 // as a shell builtin. The OMP_NUM_THREADS and OMP_THREAD_LIMIT environment
-// variables are read from the scope environment via `pi_uutils_ctx::var` (the
-// shell's exported variables), not the host process environment. All output is
-// routed through the context stdout, `translate!` strings are literalized, and
-// the entry point no longer calls `std::process::exit`.
+// variables are read from the scope environment via `veyyon_uutils_ctx::var`
+// (the shell's exported variables), not the host process environment. All
+// output is routed through the context stdout, `translate!` strings are
+// literalized, and the entry point no longer calls `std::process::exit`.
 
 use std::{ffi::OsString, io::Write, thread};
 
 use clap::{Arg, ArgAction, ArgMatches, Command};
-use pi_uutils_ctx::format_usage;
 use uucore::{
 	display::Quotable,
 	error::{UResult, USimpleError},
 };
+use veyyon_uutils_ctx::format_usage;
 
 static OPT_ALL: &str = "all";
 static OPT_IGNORE: &str = "ignore";
@@ -35,20 +35,20 @@ pub fn run(argv: Vec<OsString>) -> i32 {
 		Err(err) => {
 			let rendered = err.to_string();
 			if err.use_stderr() {
-				let _ = write!(pi_uutils_ctx::stderr(), "{rendered}");
+				let _ = write!(veyyon_uutils_ctx::stderr(), "{rendered}");
 				return 1;
 			}
-			let _ = write!(pi_uutils_ctx::stdout(), "{rendered}");
+			let _ = write!(veyyon_uutils_ctx::stdout(), "{rendered}");
 			return 0;
 		},
 	};
 	match nproc_main(&matches) {
-		Ok(()) => pi_uutils_ctx::exit_code(),
+		Ok(()) => veyyon_uutils_ctx::exit_code(),
 		Err(err) => {
 			let code = err.code();
 			let msg = err.to_string();
 			if !msg.is_empty() {
-				let _ = writeln!(pi_uutils_ctx::stderr(), "nproc: {msg}");
+				let _ = writeln!(veyyon_uutils_ctx::stderr(), "nproc: {msg}");
 			}
 			if code == 0 { 1 } else { code }
 		},
@@ -72,7 +72,7 @@ fn nproc_main(matches: &ArgMatches) -> UResult<()> {
 
 	// pi-uutils: OMP_THREAD_LIMIT comes from the scope environment (the
 	// shell's exported variables), not the host process environment.
-	let limit = match pi_uutils_ctx::var("OMP_THREAD_LIMIT") {
+	let limit = match veyyon_uutils_ctx::var("OMP_THREAD_LIMIT") {
 		// Uses the OpenMP variable to limit the number of threads
 		// If the parsing fails, returns the max size (so, no impact)
 		// If OMP_THREAD_LIMIT=0, rejects the value
@@ -90,7 +90,7 @@ fn nproc_main(matches: &ArgMatches) -> UResult<()> {
 	} else {
 		// OMP_NUM_THREADS doesn't have an impact on --all
 		// pi-uutils: OMP_NUM_THREADS comes from the scope environment.
-		match pi_uutils_ctx::var("OMP_NUM_THREADS") {
+		match veyyon_uutils_ctx::var("OMP_NUM_THREADS") {
 			// Uses the OpenMP variable to force the number of threads
 			// If the parsing fails, returns the number of CPU
 			Some(threads) => {
@@ -118,7 +118,7 @@ fn nproc_main(matches: &ArgMatches) -> UResult<()> {
 		cores -= ignore;
 	}
 	// pi-uutils: write to the context stdout instead of the process stdout.
-	pi_uutils_ctx::stdout()
+	veyyon_uutils_ctx::stdout()
 		.write_all(format!("{cores}\n").as_bytes())
 		.map_err(|e| USimpleError::new(1, e.to_string()))?;
 	Ok(())
@@ -176,7 +176,7 @@ mod tests {
 	use std::{collections::HashMap, io::Write, path::PathBuf, sync::Arc};
 
 	use parking_lot::Mutex;
-	use pi_uutils_ctx::ScopeIo;
+	use veyyon_uutils_ctx::ScopeIo;
 
 	use super::*;
 
@@ -214,7 +214,7 @@ mod tests {
 			.map(OsString::from)
 			.collect();
 
-		let code = pi_uutils_ctx::scope(io, || run(argv));
+		let code = veyyon_uutils_ctx::scope(io, || run(argv));
 
 		let out_str = String::from_utf8(stdout_buf.lock().clone()).unwrap();
 		let err_str = String::from_utf8(stderr_buf.lock().clone()).unwrap();

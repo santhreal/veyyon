@@ -1,6 +1,6 @@
-import { tryParseJson } from "@veyyon/pi-utils";
-import type { RenderResult, SpecialHandler } from "./types";
-import { buildResult, formatIsoDate, formatNumber, loadPage } from "./types";
+import { tryParseJson } from "@veyyon/utils";
+import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
+import { buildResult, formatIsoDate, formatNumber, loadPage, scraperDegrade, tryParseUrl } from "./types";
 
 interface NuGetODataEntry {
 	Id: string;
@@ -40,9 +40,10 @@ export const handleChocolatey: SpecialHandler = async (
 	url: string,
 	timeout: number,
 	signal?: AbortSignal,
-): Promise<RenderResult | null> => {
+): Promise<RenderResult | ScraperDegrade | null> => {
 	try {
-		const parsed = new URL(url);
+		const parsed = tryParseUrl(url);
+		if (!parsed) return null;
 		if (!parsed.hostname.includes("chocolatey.org")) return null;
 
 		// Extract package name from /packages/{name} or /packages/{name}/{version}
@@ -190,7 +191,7 @@ export const handleChocolatey: SpecialHandler = async (
 		md += `\n---\n**Install:** \`choco install ${packageName}\`\n`;
 
 		return buildResult(md, { url, method: "chocolatey", fetchedAt, notes: ["Fetched via Chocolatey NuGet API"] });
-	} catch {}
-
-	return null;
+	} catch (error) {
+		return scraperDegrade("chocolatey", error);
+	}
 };

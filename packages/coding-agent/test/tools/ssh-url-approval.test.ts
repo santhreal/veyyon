@@ -1,10 +1,10 @@
 import { beforeAll, describe, expect, it } from "bun:test";
 import * as os from "node:os";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
-import type { ToolSession } from "@veyyon/pi-coding-agent/tools";
-import { GrepTool } from "@veyyon/pi-coding-agent/tools/grep";
-import { ReadTool } from "@veyyon/pi-coding-agent/tools/read";
-import { WriteTool } from "@veyyon/pi-coding-agent/tools/write";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import type { ToolSession } from "@veyyon/coding-agent/tools";
+import { GrepTool } from "@veyyon/coding-agent/tools/grep";
+import { ReadTool } from "@veyyon/coding-agent/tools/read";
+import { WriteTool } from "@veyyon/coding-agent/tools/write";
 
 // Minimal ToolSession stub (block-images.test.ts shape). Approval functions are
 // pure over their args, and the write-execute selector reject throws before any

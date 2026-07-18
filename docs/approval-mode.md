@@ -14,11 +14,14 @@ Tools without an `approval` declaration are treated as `exec`. This is the safe 
 
 Configure with `tools.approvalMode`:
 
-| Mode             | Auto-approves           | Prompts for     |
-| ---------------- | ----------------------- | --------------- |
-| `always-ask`     | `read`                  | `write`, `exec` |
-| `write`          | `read`, `write`         | `exec`          |
-| `yolo` (default) | `read`, `write`, `exec` | none            |
+| Mode               | Auto-approves           | Prompts for     |
+| ------------------ | ----------------------- | --------------- |
+| `plan`             | `read`                  | `write`, `exec` (plan-mode semantics) |
+| `ask`              | `read`                  | `write`, `exec` |
+| `auto-edit`        | `read`, `write`         | `exec`          |
+| `yolo` (default)   | `read`, `write`, `exec` | none            |
+
+Legacy aliases still accepted: `always-ask` → `ask`, `write` → `auto-edit`.
 
 `--auto-approve` and `--yolo` force `tools.approvalMode: yolo` for the session.
 
@@ -28,7 +31,7 @@ Configure with `tools.approvalMode`:
 
 ```yaml
 tools:
-  approvalMode: write
+  approvalMode: auto-edit
   approval:
     bash: prompt
     read: allow
@@ -91,7 +94,7 @@ approval: (args) =>
 
 ## ACP sessions
 
-ACP (`veyyon acp`) uses the same settings resolver as normal Veyyon launches. Global `~/.veyyon/agent/config.yml` applies, project config for the ACP session `cwd` applies, and any `--config <file>` overlays passed to the ACP server process apply to sessions created by that process.
+ACP (`veyyon acp`) uses the same settings resolver as normal Veyyon launches. Global `~/.veyyon/profiles/default/agent/config.yml` (or the active profile's agent dir) applies, project config for the ACP session `cwd` applies, and any `--config <file>` overlays passed to the ACP server process apply to sessions created by that process.
 
 To auto-approve ACP tool calls, set the mode in global or project config:
 

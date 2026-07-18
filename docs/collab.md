@@ -1,6 +1,6 @@
 # Collab: Live Session Sharing
 
-`/collab` shares your running session with other veyyon instances in real time. Guests render the **same session natively in their own TUI** — streaming assistant text, tool-call cards, footer state (cwd, model, context %, cost), ctrl+o expansion, `/dump` — no terminal mirroring. Guests can prompt and interrupt the agent; the host machine runs the agent and all tools.
+`/collab` shares a running session with other Veyyon instances over a relay. Guests open the session in their own TUI (assistant text, tool cards, footer state, `/dump`); the host process runs the agent and tools. This is not terminal multiplexing.
 
 ## Quick start
 

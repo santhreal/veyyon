@@ -28,7 +28,7 @@ export const CONVERTIBLE_EXTENSIONS = new Set([
 /**
  * In-house document → markdown engine (replaces the `markit-ai` package).
  *
- * Only the document converters omp routes are registered (pdf, docx, pptx,
+ * Only the document converters veyyon routes are registered (pdf, docx, pptx,
  * xlsx, epub). The first converter whose `accepts()` returns true and whose
  * `convert()` succeeds wins.
  */

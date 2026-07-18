@@ -1,7 +1,7 @@
 /**
  * Regression for the Windows `bun install -g` update path: when an `omp`
  * process is running, bun cannot overwrite a locked
- * `node_modules/@veyyon/pi-natives/native/pi_natives.win32-x64.node` during
+ * `node_modules/@veyyon/natives/native/veyyon_natives.win32-x64.node` during
  * package update and silently keeps the old binary next to the new ESM
  * wrapper. The next launch then throws `<sym> is not a function` deep inside
  * tool execution (see Discord report, 2026-05-14).
@@ -31,9 +31,9 @@ import {
 } from "../native/loader-state.js";
 import packageJson from "../package.json" with { type: "json" };
 
-const winNodeModulesNativeDir = "C:\\Users\\Admin\\node_modules\\@oh-my-pi\\pi-natives\\native";
+const winNodeModulesNativeDir = "C:\\Users\\Admin\\node_modules\\@oh-my-pi\\veyyon-natives\\native";
 const winWorkspaceNativeDir = "C:\\Users\\Admin\\dev\\oh-my-pi\\packages\\natives\\native";
-const posixNodeModulesNativeDir = "/home/u/proj/node_modules/@veyyon/pi-natives/native";
+const posixNodeModulesNativeDir = "/home/u/proj/node_modules/@veyyon/natives/native";
 
 describe("windows native addon staging", () => {
 	it("stages only on Windows node_modules installs", () => {
@@ -97,9 +97,9 @@ describe("windows native addon staging", () => {
 			userDataDir,
 		});
 
-		const versionedBaseline = path.join(versionedDir, "pi_natives.win32-x64-baseline.node");
-		const versionedDefault = path.join(versionedDir, "pi_natives.win32-x64.node");
-		const nodeModulesBaseline = path.join(winNodeModulesNativeDir, "pi_natives.win32-x64-baseline.node");
+		const versionedBaseline = path.join(versionedDir, "veyyon_natives.win32-x64-baseline.node");
+		const versionedDefault = path.join(versionedDir, "veyyon_natives.win32-x64.node");
+		const nodeModulesBaseline = path.join(winNodeModulesNativeDir, "veyyon_natives.win32-x64-baseline.node");
 
 		// Staged paths must be probed first so the running process locks the cache
 		// copy and bun is free to replace the node_modules copy on next update.
@@ -110,7 +110,7 @@ describe("windows native addon staging", () => {
 		// User-data dir is reserved for compiled-binary mode — staging must not
 		// quietly start probing it on npm installs (where it never contains the
 		// addon anyway).
-		const userDataBaseline = path.join(userDataDir, "pi_natives.win32-x64-baseline.node");
+		const userDataBaseline = path.join(userDataDir, "veyyon_natives.win32-x64-baseline.node");
 		expect(candidates).not.toContain(userDataBaseline);
 	});
 
@@ -128,8 +128,8 @@ describe("windows native addon staging", () => {
 			userDataDir: "/home/u/.local/bin",
 		});
 
-		const versionedBaseline = path.join(versionedDir, "pi_natives.linux-x64-baseline.node");
-		const nodeModulesBaseline = path.join(posixNodeModulesNativeDir, "pi_natives.linux-x64-baseline.node");
+		const versionedBaseline = path.join(versionedDir, "veyyon_natives.linux-x64-baseline.node");
+		const nodeModulesBaseline = path.join(posixNodeModulesNativeDir, "veyyon_natives.linux-x64-baseline.node");
 		expect(candidates).not.toContain(versionedBaseline);
 		expect(candidates).toContain(nodeModulesBaseline);
 	});
@@ -151,16 +151,16 @@ describe("windows native addon staging", () => {
 	});
 });
 
-describe("pi-natives version sentinel", () => {
+describe("veyyon-natives version sentinel", () => {
 	it("Rust `js_name` matches the package version", async () => {
 		// The JS loader (`packages/natives/native/index.js`) computes its expected
 		// sentinel from `package.json#version`; if the Rust source falls out of
 		// sync we ship a `.node` that the loader will refuse to use. Pinning the
 		// pairing here catches release-script regressions before they reach CI.
-		const libRs = await Bun.file(path.join(import.meta.dir, "../../../crates/pi-natives/src/lib.rs")).text();
-		const sentinelMatch = libRs.match(/js_name = "(__piNativesV[A-Za-z0-9_]+)"/);
-		expect(sentinelMatch, 'Rust sentinel `js_name = "__piNativesV…"` not found in lib.rs').not.toBeNull();
-		const expected = `__piNativesV${packageJson.version.replace(/[^A-Za-z0-9]/g, "_")}`;
+		const libRs = await Bun.file(path.join(import.meta.dir, "../../../crates/veyyon-natives/src/lib.rs")).text();
+		const sentinelMatch = libRs.match(/js_name = "(__veyyonNativesV[A-Za-z0-9_]+)"/);
+		expect(sentinelMatch, 'Rust sentinel `js_name = "__veyyonNativesV…"` not found in lib.rs').not.toBeNull();
+		const expected = `__veyyonNativesV${packageJson.version.replace(/[^A-Za-z0-9]/g, "_")}`;
 		expect(sentinelMatch?.[1]).toBe(expected);
 	});
 });

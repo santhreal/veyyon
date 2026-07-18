@@ -1,6 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { $which, getRemoteHostDir, getSshControlDir, isEnoent, logger, postmortem, ptree } from "@veyyon/pi-utils";
+import { $which, getRemoteHostDir, getSshControlDir, isEnoent, logger, postmortem, ptree } from "@veyyon/utils";
 import { buildSshTarget, sanitizeHostName } from "./utils";
 
 export interface SSHConnectionTarget {
@@ -25,7 +25,7 @@ export interface SSHHostInfo {
 	os: SSHHostOs;
 	shell: SSHHostShell;
 	/**
-	 * Shell name OMP verified can execute the POSIX transfer snippets
+	 * Shell name veyyon verified can execute the POSIX transfer snippets
 	 * (`head`/`cat`/`mv`/`test`/`ls`) `ssh://` uses. Probed by running
 	 * `sh -lc` / `bash -lc` / `zsh -lc` against the remote and keeping the
 	 * first one that round-trips a known marker. Independent of `shell`
@@ -37,9 +37,16 @@ export interface SSHHostInfo {
 	compatEnabled: boolean;
 }
 
-const CONTROL_DIR = getSshControlDir();
-const CONTROL_PATH = path.join(CONTROL_DIR, "%C.sock");
-const HOST_INFO_DIR = getRemoteHostDir();
+// Resolved per call, never frozen at module load: the dirs resolver is rebuilt
+// after profile/agent `.env` files apply (refreshDirsFromEnv), which happens
+// AFTER this module imports — a frozen const would silently point at the
+// pre-.env location.
+function controlDir(): string {
+	return getSshControlDir();
+}
+function controlPathTemplate(): string {
+	return path.join(controlDir(), "%C.sock");
+}
 const HOST_INFO_VERSION = 4;
 
 const activeHosts = new Map<string, SSHConnectionTarget>();
@@ -53,16 +60,17 @@ interface SSHArgsOptions {
 }
 
 function ensureControlDir() {
-	fs.mkdirSync(CONTROL_DIR, { recursive: true, mode: 0o700 });
+	const dir = controlDir();
+	fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
 	try {
-		fs.chmodSync(CONTROL_DIR, 0o700);
+		fs.chmodSync(dir, 0o700);
 	} catch (err) {
-		logger.debug("SSH control dir chmod failed", { path: CONTROL_DIR, error: String(err) });
+		logger.debug("SSH control dir chmod failed", { path: dir, error: String(err) });
 	}
 }
 
 function getHostInfoPath(name: string): string {
-	return path.join(HOST_INFO_DIR, `${sanitizeHostName(name)}.json`);
+	return path.join(getRemoteHostDir(), `${sanitizeHostName(name)}.json`);
 }
 
 async function deleteHostInfoFromDisk(hostName: string): Promise<void> {
@@ -100,7 +108,7 @@ function buildCommonArgs(host: SSHConnectionTarget, options?: SSHArgsOptions): s
 	const args = options?.allowStdin ? [] : ["-n"];
 
 	if (supportsSshControlMaster(options?.platform)) {
-		args.push("-o", "ControlMaster=auto", "-o", `ControlPath=${CONTROL_PATH}`, "-o", "ControlPersist=3600");
+		args.push("-o", "ControlMaster=auto", "-o", `ControlPath=${controlPathTemplate()}`, "-o", "ControlPersist=3600");
 	}
 
 	args.push("-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new");
@@ -318,10 +326,10 @@ async function persistHostInfo(host: SSHConnectionTarget, info: SSHHostInfo): Pr
  * `motd`, login messages, `Last login: …`) instead of trusting only the first
  * line of stdout. See #3719.
  */
-export const HOST_PROBE_MARKER = "PI_HOST_PROBE=";
+export const HOST_PROBE_MARKER = "VEYYON_HOST_PROBE=";
 
 /** Marker for the transfer-shell capability probe. */
-export const TRANSFER_PROBE_MARKER = "PI_TRANSFER_OK|";
+export const TRANSFER_PROBE_MARKER = "VEYYON_TRANSFER_OK|";
 
 /** sh / bash / zsh, in the order we'll try as `transferShell` candidates. */
 const TRANSFER_SHELL_CANDIDATES = ["sh", "bash", "zsh"] as const;
@@ -467,12 +475,12 @@ async function probeHostInfo(host: SSHConnectionTarget): Promise<SSHHostInfo> {
 	const hasBash = !unexpandedPosixVars && (Boolean(bashVersion) || shell === "bash");
 	let compatShell: SSHHostInfo["compatShell"];
 	if (os === "windows" && host.compat !== false) {
-		const bashProbe = await runSshCaptureSync(await buildRemoteCommand(host, 'bash -lc "echo PI_BASH_OK"'));
-		if (bashProbe.exitCode === 0 && bashProbe.stdout.includes("PI_BASH_OK")) {
+		const bashProbe = await runSshCaptureSync(await buildRemoteCommand(host, 'bash -lc "echo VEYYON_BASH_OK"'));
+		if (bashProbe.exitCode === 0 && bashProbe.stdout.includes("VEYYON_BASH_OK")) {
 			compatShell = "bash";
 		} else {
-			const shProbe = await runSshCaptureSync(await buildRemoteCommand(host, 'sh -lc "echo PI_SH_OK"'));
-			if (shProbe.exitCode === 0 && shProbe.stdout.includes("PI_SH_OK")) {
+			const shProbe = await runSshCaptureSync(await buildRemoteCommand(host, 'sh -lc "echo VEYYON_SH_OK"'));
+			if (shProbe.exitCode === 0 && shProbe.stdout.includes("VEYYON_SH_OK")) {
 				compatShell = "sh";
 			}
 		}
@@ -659,9 +667,9 @@ export async function closeAllConnections(): Promise<void> {
 }
 
 export function getControlPathTemplate(): string {
-	return CONTROL_PATH;
+	return controlPathTemplate();
 }
 
 export function getControlDir(): string {
-	return CONTROL_DIR;
+	return controlDir();
 }

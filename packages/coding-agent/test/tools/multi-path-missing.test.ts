@@ -2,9 +2,9 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { createTools, type ToolSession } from "@veyyon/pi-coding-agent/tools";
-import { removeWithRetries } from "@veyyon/pi-utils";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import { createTools, type ToolSession } from "@veyyon/coding-agent/tools";
+import { removeWithRetries } from "@veyyon/utils";
 
 // Regression for grievances #208 (find) and #209 (search): a multi-path call
 // that includes an entry which does not exist on disk must not abort the whole

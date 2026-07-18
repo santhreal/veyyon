@@ -11,7 +11,7 @@
  * Deterministic LCG so a failure reproduces from the printed seed input.
  */
 import { describe, it } from "bun:test";
-import { extractSegments, sliceWithWidth, visibleWidth } from "@veyyon/pi-tui";
+import { extractSegments, sliceWithWidth, visibleWidth } from "@veyyon/tui";
 import { buildString, lcg } from "./helpers/adversarial-strings";
 
 // Column / length arguments, including the pathological ones a resize storm or a

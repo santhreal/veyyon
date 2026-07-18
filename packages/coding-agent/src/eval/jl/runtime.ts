@@ -40,7 +40,7 @@ const WINDOWS_ENV_ALLOWLIST = [
 
 // Julia version managers and package layout live behind these prefixes; passing them
 // through lets Julia discover packages and configure its runtime consistently.
-const DEFAULT_ENV_ALLOW_PREFIXES = ["LC_", "XDG_", "PI_", "JULIA_", "OPENBLAS_", "MKL_"];
+const DEFAULT_ENV_ALLOW_PREFIXES = ["LC_", "XDG_", "VEYYON_", "JULIA_", "OPENBLAS_", "MKL_"];
 
 export interface JuliaRuntime {
 	/** Path to the julia executable. */

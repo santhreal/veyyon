@@ -45,9 +45,10 @@ fn replace_output_file_in_input_files(
 	tmp_dir: &mut TmpDirWrapper,
 ) -> UResult<()> {
 	let mut copy: Option<PathBuf> = None;
-	if let Some(Ok(output_path)) = output.map(|path| pi_uutils_ctx::resolve(path).canonicalize()) {
+	if let Some(Ok(output_path)) = output.map(|path| veyyon_uutils_ctx::resolve(path).canonicalize())
+	{
 		for file in files {
-			if let Ok(file_path) = pi_uutils_ctx::resolve(file.as_os_str()).canonicalize()
+			if let Ok(file_path) = veyyon_uutils_ctx::resolve(file.as_os_str()).canonicalize()
 				&& file_path == output_path
 			{
 				if let Some(copy) = &copy {

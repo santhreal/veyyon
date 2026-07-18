@@ -10,6 +10,10 @@
         <!-- Veyyon handbook: self-contained head additions. No remote resources. -->
         <meta name="theme-color" content="#050505">
         <meta name="color-scheme" content="dark">
+        <!-- Site favicons live at the deployed root, one level above /docs/. -->
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+        <link rel="icon" href="/favicon.ico" sizes="48x48">
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png">
         <style>
           /* Paint the near-black surface before CSS/JS resolve the theme, so there is
              no light flash on load. Kept in sync with theme/veyyon.css. */
@@ -18,7 +22,7 @@
           *, *::before, *::after { box-sizing: border-box; }
         </style>
 
-        <meta name="description" content="How Veyyon turns open models into frontier coding agents. The product, the harness, tool-call repair, the edit format, per-model adaptation, and how to use it.">
+        <meta name="description" content="Operator handbook for the Veyyon terminal coding agent: install, configuration, tools, approvals, edit formats, providers, and harness structure.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -38,7 +42,7 @@
         <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="../ayu-highlight-3fdfc3ac.css">
 
         <!-- Custom theme stylesheets -->
-        <link rel="stylesheet" href="../theme/veyyon-fc839a17.css">
+        <link rel="stylesheet" href="../theme/veyyon-06f6939e.css">
 
 
         <!-- Provide site root and default themes to javascript -->
@@ -46,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-e76f06ca.js";
+            window.path_to_searchindex_js = "../searchindex-a2447057.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-9cfd259b.js"></script>
+        <script src="../toc-cc1a72e9.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -193,8 +197,8 @@
                     <main>
                         <h1 id="personalities"><a class="header" href="#personalities">Personalities</a></h1>
 <p>Configure personality via <code>/settings</code> or the <code>personality</code> key in <code>config.yml</code> (below).</p>
-<p>Personalities change <strong>how the agent writes replies</strong>, not which tools it has or what sandbox/approval policy applies.</p>
-<h2 id="available-personalities-shipped"><a class="header" href="#available-personalities-shipped">Available personalities (shipped)</a></h2>
+<p>Personalities change <strong>how the agent writes replies</strong>, not which tools it has or <code>tools.approvalMode</code>.</p>
+<h2 id="built-in-personalities"><a class="header" href="#built-in-personalities">Built-in personalities</a></h2>
 <p>A personality injects a <code>&lt;personality&gt;</code> block into the system prompt when enabled, changing tone only.</p>
 <div class="table-wrapper">
 <table>
@@ -202,9 +206,9 @@
 <tr><th>Personality</th><th>Config value</th><th>Effect</th></tr>
 </thead>
 <tbody>
-<tr><td>Default</td><td><code>default</code></td><td>Standard Veyyon tone</td></tr>
-<tr><td>Pragmatic</td><td><code>pragmatic</code></td><td>Concise, task-focused</td></tr>
-<tr><td>Friendly</td><td><code>friendly</code></td><td>Warm, collaborative</td></tr>
+<tr><td>Default</td><td><code>default</code></td><td>Built-in default system personality text</td></tr>
+<tr><td>Pragmatic</td><td><code>pragmatic</code></td><td>Concise, task-focused prompt text</td></tr>
+<tr><td>Friendly</td><td><code>friendly</code></td><td>Collaborative prompt text</td></tr>
 <tr><td>None</td><td><code>none</code></td><td>No personality block</td></tr>
 </tbody>
 </table>
@@ -213,7 +217,7 @@
 <h2 id="configuring-personality"><a class="header" href="#configuring-personality">Configuring personality</a></h2>
 <ul>
 <li><strong>Settings UI:</strong> <code>/settings</code> → <strong>Model</strong> tab → <strong>Prompt</strong> group → <strong>Personality</strong>. Options are resolved at render time (built-ins + your <code>~/.veyyon/personalities</code> and project <code>.veyyon/personalities</code> files); changing the value refreshes the base system prompt immediately.</li>
-<li><strong>Config file:</strong> in <code>~/.veyyon/agent/config.yml</code> (or profile agent dir):</li>
+<li><strong>Config file:</strong> in <code>~/.veyyon/profiles/default/agent/config.yml</code> (or profile agent dir):</li>
 </ul>
 <pre><code class="language-yaml">personality: pragmatic
 </code></pre>
@@ -251,7 +255,7 @@
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                             </a>
 
-                            <a rel="next prefetch" href="../features/export-import.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                            <a rel="next prefetch" href="../features/speech.html" class="mobile-nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                             </a>
 
@@ -265,7 +269,7 @@
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                     </a>
 
-                    <a rel="next prefetch" href="../features/export-import.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
+                    <a rel="next prefetch" href="../features/speech.html" class="nav-chapters next" title="Next chapter" aria-label="Next chapter" aria-keyshortcuts="Right">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M278.6 233.4c12.5 12.5 12.5 32.8 0 45.3l-160 160c-12.5 12.5-32.8 12.5-45.3 0s-12.5-32.8 0-45.3L210.7 256 73.4 118.6c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0l160 160z"/></svg></span>
                     </a>
             </nav>

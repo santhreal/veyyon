@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "bun:test";
-import { BeamMemory } from "@veyyon/pi-mnemopi/core/beam";
-import { parseQueryTime, temporalBoost } from "@veyyon/pi-mnemopi/core/beam/recall";
+import { BeamMemory } from "@veyyon/mnemopi/core/beam";
+import { parseQueryTime, temporalBoost } from "@veyyon/mnemopi/core/beam/recall";
 
 const beams: BeamMemory[] = [];
 

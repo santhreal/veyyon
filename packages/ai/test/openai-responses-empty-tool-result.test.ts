@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
-import { buildResponsesInput } from "@veyyon/pi-ai/providers/openai-shared";
-import type { Context, ImageContent, ModelSpec, TextContent } from "@veyyon/pi-ai/types";
-import { buildModel } from "@veyyon/pi-catalog/build";
+import { buildResponsesInput } from "@veyyon/ai/providers/openai-shared";
+import type { Context, ImageContent, ModelSpec, TextContent } from "@veyyon/ai/types";
+import { buildModel } from "@veyyon/catalog/build";
 
 const model = buildModel({
 	id: "test-vision",

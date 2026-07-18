@@ -1,5 +1,5 @@
-import type { PythonKernelExecutor } from "@veyyon/pi-coding-agent/eval/py/executor";
-import type { KernelExecuteOptions, KernelExecuteResult } from "@veyyon/pi-coding-agent/eval/py/kernel";
+import type { PythonKernelExecutor } from "@veyyon/coding-agent/eval/py/executor";
+import type { KernelExecuteOptions, KernelExecuteResult } from "@veyyon/coding-agent/eval/py/kernel";
 
 export class FakeKernel implements PythonKernelExecutor {
 	private result: KernelExecuteResult;

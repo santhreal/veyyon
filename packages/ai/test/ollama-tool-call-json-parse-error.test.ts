@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
 import { scheduler } from "node:timers/promises";
-import * as AIError from "@veyyon/pi-ai/error";
-import { streamOllama } from "@veyyon/pi-ai/providers/ollama";
-import type { Context, Model } from "@veyyon/pi-ai/types";
-import { buildModel } from "@veyyon/pi-catalog/build";
+import * as AIError from "@veyyon/ai/error";
+import { streamOllama } from "@veyyon/ai/providers/ollama";
+import type { Context, Model } from "@veyyon/ai/types";
+import { buildModel } from "@veyyon/catalog/build";
 
 const model: Model<"ollama-chat"> = buildModel({
 	id: "qwen3.6-coder:27b",

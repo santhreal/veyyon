@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { findCompactMode, parseCompactArgs } from "@veyyon/pi-coding-agent/session/compact-modes";
+import { findCompactMode, parseCompactArgs } from "@veyyon/coding-agent/session/compact-modes";
 
 describe("compact mode registry", () => {
 	it("maps each mode to the settings overrides the engine relies on", () => {

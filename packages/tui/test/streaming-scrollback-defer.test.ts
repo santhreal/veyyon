@@ -1,12 +1,7 @@
-process.env.PI_TUI_SCROLLBACK_REBUILD = "true";
+process.env.VEYYON_TUI_SCROLLBACK_REBUILD = "true";
 
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import {
-	type Component,
-	type NativeScrollbackCommittedRows,
-	type NativeScrollbackLiveRegion,
-	TUI,
-} from "@veyyon/pi-tui";
+import { type Component, type NativeScrollbackCommittedRows, type NativeScrollbackLiveRegion, TUI } from "@veyyon/tui";
 import { VirtualTerminal } from "./virtual-terminal";
 
 // Law-encoding suite for native-scrollback commits.
@@ -173,7 +168,7 @@ function saveTerminalEnv(): Record<string, string | undefined> {
 	// ambient terminal identity to keep the direct-terminal scrollback
 	// assertions deterministic on any dev machine.
 	const saved: Record<string, string | undefined> = {};
-	for (const key of ["TERM_PROGRAM", "PI_TUI_RESIZE_IN_PLACE"]) {
+	for (const key of ["TERM_PROGRAM", "VEYYON_TUI_RESIZE_IN_PLACE"]) {
 		saved[key] = Bun.env[key];
 		delete Bun.env[key];
 	}

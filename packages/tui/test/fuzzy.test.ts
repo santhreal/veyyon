@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { fuzzyFilter, fuzzyMatch, isSubsequenceMatch, subsequenceScore } from "@veyyon/pi-tui/fuzzy";
+import { fuzzyFilter, fuzzyMatch, isSubsequenceMatch, subsequenceScore } from "@veyyon/tui/fuzzy";
 import { Glob } from "bun";
 
 describe("fuzzyFilter", () => {

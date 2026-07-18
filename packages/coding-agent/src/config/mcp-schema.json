@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "mcp-schema.json",
   "title": "Veyyon MCP configuration",
-  "description": "Schema for mcp.json, .mcp.json, .veyyon/mcp.json, and ~/.veyyon/agent/mcp.json used by the Veyyon coding agent.",
+  "description": "Schema for mcp.json, .mcp.json, .veyyon/mcp.json, and ~/.veyyon/profiles/default/agent/mcp.json used by the Veyyon coding agent.",
   "type": "object",
   "additionalProperties": false,
   "properties": {
@@ -54,7 +54,7 @@
         "type": {
           "type": "string",
           "enum": ["oauth", "apikey"],
-          "description": "Auth strategy understood by OMP."
+          "description": "Auth strategy understood by Veyyon."
         },
         "credentialId": {
           "type": "string",
@@ -111,7 +111,7 @@
       "properties": {
         "enabled": {
           "type": "boolean",
-          "description": "Whether OMP should try to connect this server."
+          "description": "Whether Veyyon should try to connect this server."
         },
         "timeout": {
           "type": "number",

@@ -1,17 +1,16 @@
 import { Database } from "bun:sqlite";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-
-import { formatHashlineHeader, stripHashlinePrefixes } from "@veyyon/hashline";
 import type {
 	AgentTool,
 	AgentToolContext,
 	AgentToolResult,
 	AgentToolUpdateCallback,
 	ToolTier,
-} from "@veyyon/pi-agent-core";
-import type { Component } from "@veyyon/pi-tui";
-import { isEnoent, isRecord, prompt, untilAborted } from "@veyyon/pi-utils";
+} from "@veyyon/agent-core";
+import { formatHashlineHeader, stripHashlinePrefixes } from "@veyyon/hashline";
+import type { Component } from "@veyyon/tui";
+import { formatCount, isEnoent, isRecord, prompt, untilAborted } from "@veyyon/utils";
 import { type } from "arktype";
 
 import { canonicalSnapshotKey, getFileSnapshotStore } from "../edit/file-snapshot-store";
@@ -1054,7 +1053,7 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 			emitWriteProgress(onUpdate, cleanContent, displayPath, absolutePath);
 
 			// Try ACP bridge first for editor-visible filesystem paths. Internal
-			// artifacts such as local:// plans are owned by OMP, not the editor.
+			// artifacts such as local:// plans are owned by veyyon, not the editor.
 			if (await routeWriteThroughBridge(this.session, path, absolutePath, cleanContent, signal)) {
 				const madeExecutable = await maybeMarkExecutableForShebang(absolutePath, cleanContent);
 				const header = maybeWriteSnapshotHeader(this.session, absolutePath, cleanContent);
@@ -1155,7 +1154,7 @@ function writeContentOf(args: unknown): string {
 
 function formatLineCountSuffix(lineCount: number, uiTheme: Theme): string {
 	if (lineCount <= 0) return "";
-	return uiTheme.fg("dim", ` · ${lineCount} line${lineCount === 1 ? "" : "s"}`);
+	return uiTheme.fg("dim", ` · ${formatCount("line", lineCount)}`);
 }
 
 function normalizeDisplayText(text: unknown): string {
@@ -1203,7 +1202,7 @@ function formatStreamingContent(
 
 		let text = "\n\n";
 		if (hidden > 0) {
-			text += `${uiTheme.fg("dim", `… (${hidden} earlier line${hidden === 1 ? "" : "s"})`)}\n`;
+			text += `${uiTheme.fg("dim", `… (${formatCount("earlier line", hidden)})`)}\n`;
 		}
 		for (let i = 0; i < highlighted.length; i++) {
 			const lineNum = startIndex + i + 1;

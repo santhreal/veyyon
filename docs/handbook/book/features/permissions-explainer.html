@@ -3,13 +3,17 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>Permissions explainer - The Veyyon Harness Handbook</title>
+        <title>Permissions UX - The Veyyon Harness Handbook</title>
 
 
         <!-- Custom HTML head -->
         <!-- Veyyon handbook: self-contained head additions. No remote resources. -->
         <meta name="theme-color" content="#050505">
         <meta name="color-scheme" content="dark">
+        <!-- Site favicons live at the deployed root, one level above /docs/. -->
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+        <link rel="icon" href="/favicon.ico" sizes="48x48">
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png">
         <style>
           /* Paint the near-black surface before CSS/JS resolve the theme, so there is
              no light flash on load. Kept in sync with theme/veyyon.css. */
@@ -18,7 +22,7 @@
           *, *::before, *::after { box-sizing: border-box; }
         </style>
 
-        <meta name="description" content="How Veyyon turns open models into frontier coding agents. The product, the harness, tool-call repair, the edit format, per-model adaptation, and how to use it.">
+        <meta name="description" content="Operator handbook for the Veyyon terminal coding agent: install, configuration, tools, approvals, edit formats, providers, and harness structure.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -38,7 +42,7 @@
         <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="../ayu-highlight-3fdfc3ac.css">
 
         <!-- Custom theme stylesheets -->
-        <link rel="stylesheet" href="../theme/veyyon-fc839a17.css">
+        <link rel="stylesheet" href="../theme/veyyon-06f6939e.css">
 
 
         <!-- Provide site root and default themes to javascript -->
@@ -46,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-e76f06ca.js";
+            window.path_to_searchindex_js = "../searchindex-a2447057.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-9cfd259b.js"></script>
+        <script src="../toc-cc1a72e9.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -192,16 +196,9 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="permissions-and-approvals"><a class="header" href="#permissions-and-approvals">Permissions and approvals</a></h1>
-<p>Veyyon can run commands and edit files on your behalf. One control shapes that power: the <strong>approval
-mode</strong>, which decides when Veyyon acts on its own and when it pauses to ask you first. This page
-explains the flow and the choices. For the full reference, see <a href="./sandbox.html">Approvals and autonomy</a>.</p>
-<p>Veyyon does not add an OS-level command sandbox — it does not confine shell commands with Landlock,
-seccomp, Seatbelt, or bubblewrap. The approval mode is the boundary, so run write-capable modes only
-where you trust the repository and the machine.</p>
-<h2 id="the-approval-flow"><a class="header" href="#the-approval-flow">The approval flow</a></h2>
-<p>When Veyyon wants to run a command or edit a file, it shows a short prompt. The prompt tells you what
-is about to happen and where; you choose whether to allow it once, allow it for the session, or deny it.</p>
-<p>A command prompt looks like this:</p>
+<p>Reference: <a href="./sandbox.html">Approvals</a>. No OS command sandbox (Landlock, seccomp, Seatbelt, bubblewrap).</p>
+<h2 id="prompt-flow"><a class="header" href="#prompt-flow">Prompt flow</a></h2>
+<p>When the active mode requires approval for a tool call, the TUI shows the action and waits:</p>
 <pre><code class="language-text">Veyyon would like to run a shell command
 
 Command:   cargo test
@@ -209,7 +206,6 @@ Directory: /home/user/my-project
 
 [y] yes   [n] no   [a] always for this session   [p] show policy
 </code></pre>
-<p>A file-edit prompt looks like this:</p>
 <pre><code class="language-text">Veyyon would like to edit a file
 
 File:   src/main.rs
@@ -217,48 +213,45 @@ Change: update the function signature and add a null check
 
 [y] yes   [n] no   [a] always for this session   [p] show policy
 </code></pre>
-<p><code>y</code> runs the action once. <code>a</code> lets the same kind of action run without asking for the rest of the
-session. <code>n</code> cancels it and tells the model so it can try another approach. <code>p</code> shows the active policy.</p>
-<h2 id="tool-tiers"><a class="header" href="#tool-tiers">Tool tiers</a></h2>
-<p>The mode grants autonomy per tier: <strong>read</strong> tools (<code>read</code>, <code>grep</code>, <code>glob</code>) never change anything,
-<strong>write</strong> tools (<code>edit</code>, <code>write</code>) modify workspace files, and <strong>exec</strong> tools (<code>bash</code>) run programs.</p>
-<h2 id="approval-modes"><a class="header" href="#approval-modes">Approval modes</a></h2>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>Mode</th><th>read</th><th>write</th><th>exec</th><th>Best for</th></tr>
+<tr><th>Key</th><th>Effect</th></tr>
 </thead>
 <tbody>
-<tr><td><code>plan</code></td><td>auto</td><td>ask</td><td>ask</td><td>Read-only exploration and planning.</td></tr>
-<tr><td><code>ask</code></td><td>auto</td><td>ask</td><td>ask</td><td>Everyday work; approve each change and command.</td></tr>
-<tr><td><code>auto-edit</code></td><td>auto</td><td>auto</td><td>ask</td><td>Edit freely, confirm before running commands.</td></tr>
-<tr><td><code>yolo</code></td><td>auto</td><td>auto</td><td>auto</td><td>Fully hands-off; trusted / externally isolated environments only.</td></tr>
+<tr><td><code>y</code></td><td>Allow once</td></tr>
+<tr><td><code>a</code></td><td>Allow this kind of action for the rest of the session</td></tr>
+<tr><td><code>n</code></td><td>Deny; model receives the denial</td></tr>
+<tr><td><code>p</code></td><td>Show active policy</td></tr>
 </tbody>
 </table>
 </div>
-<p>The legacy names <code>always-ask</code> (= <code>ask</code>) and <code>write</code> (= <code>auto-edit</code>) are still accepted. Set the mode
-with <code>--approval-mode &lt;mode&gt;</code>, <code>--auto-approve</code> / <code>--yolo</code>, <code>--plan-yolo</code>, or <code>tools.approvalMode</code> in
-<code>config.yml</code>.</p>
-<h2 id="headless-runs"><a class="header" href="#headless-runs">Headless runs</a></h2>
-<p><code>veyyon --print</code> has no TTY to answer prompts. Pick the mode for the job: <code>--approval-mode ask</code> stops
-the turn rather than hanging on anything that would prompt, and <code>--yolo</code> runs the whole task
-unattended. Use <code>--yolo</code> only when the runner is disposable or externally isolated, because Veyyon does
-not contain the commands it runs.</p>
-<h2 id="execution-policy-rules"><a class="header" href="#execution-policy-rules">Execution policy rules</a></h2>
-<p>Beyond the mode, <strong>execpolicy</strong> <code>.rules</code> files (user and project) refine which specific commands
-auto-run. Untrusted project directories disable project-local rules, config, and hooks until you trust
-the directory.</p>
-<h2 id="tuning-for-a-session"><a class="header" href="#tuning-for-a-session">Tuning for a session</a></h2>
+<h2 id="modes"><a class="header" href="#modes">Modes</a></h2>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Mode</th><th>read</th><th>write</th><th>exec</th></tr>
+</thead>
+<tbody>
+<tr><td><code>plan</code></td><td>auto</td><td>ask</td><td>ask</td></tr>
+<tr><td><code>ask</code></td><td>auto</td><td>ask</td><td>ask</td></tr>
+<tr><td><code>auto-edit</code></td><td>auto</td><td>auto</td><td>ask</td></tr>
+<tr><td><code>yolo</code></td><td>auto</td><td>auto</td><td>auto</td></tr>
+</tbody>
+</table>
+</div>
+<p>Schema default: <strong><code>yolo</code></strong>. Aliases: <code>always-ask</code> → <code>ask</code>, <code>write</code> → <code>auto-edit</code>.</p>
+<p>CLI: <code>--approval-mode &lt;mode&gt;</code>, <code>--yolo</code> / <code>--auto-approve</code>, <code>--plan-yolo</code>.</p>
+<h2 id="headless"><a class="header" href="#headless">Headless</a></h2>
+<p><code>veyyon --print</code> has no TTY. Modes that would prompt stop the turn; use <code>--yolo</code> or a non-prompting mode for unattended runs.</p>
+<h2 id="execpolicy"><a class="header" href="#execpolicy">Execpolicy</a></h2>
+<p><code>.rules</code> files (user and project) refine command auto-approval. Untrusted project directories disable project-local rules, config, and hooks until trusted.</p>
+<h2 id="related"><a class="header" href="#related">Related</a></h2>
 <ul>
-<li>Change the mode mid-session from <code>/settings</code> (Advanced → Safety).</li>
-<li><code>/reload-plugins</code> re-reads <code>config.yml</code> after you edit it, so policy changes apply without restarting.</li>
-<li>Use <a href="../using/configuration.html#use-profiles-for-different-kinds-of-work">profiles</a> for repeatable setups — for example a <code>reviewer</code>
-profile pinned to <code>plan</code>.</li>
+<li><a href="./sandbox.html">Approvals</a></li>
+<li><a href="../concepts/permission-model.html">Permission model</a></li>
+<li><a href="../using/safety.html">Safety</a></li>
 </ul>
-<h2 id="what-to-verify"><a class="header" href="#what-to-verify">What to verify</a></h2>
-<p>After changing settings, confirm the active <code>tools.approvalMode</code> in <code>/settings</code> (Advanced → Safety). A
-silent fallback to a less restrictive state is treated as a bug. See <a href="../using/safety.html">Safety</a> for
-the broader guarantees and how to inspect what Veyyon has done.</p>
 
                     </main>
 

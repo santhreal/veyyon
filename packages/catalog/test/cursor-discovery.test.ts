@@ -146,7 +146,7 @@ function startCursorDiscoveryServer(body: Uint8Array): Promise<string> {
 }
 
 async function createTempCachePath(): Promise<string> {
-	const dir = await fs.mkdtemp(path.join(os.tmpdir(), "omp-cursor-cache-"));
+	const dir = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-cursor-cache-"));
 	tempDirs.add(dir);
 	return path.join(dir, "models.db");
 }

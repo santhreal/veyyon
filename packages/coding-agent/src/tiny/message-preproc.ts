@@ -7,7 +7,7 @@
  * both ends with an explicit omission marker. Title generation, auto-thinking,
  * and the title benchmark MUST use this same policy.
  */
-import { stripAnsi } from "@veyyon/pi-utils";
+import { stripAnsi } from "@veyyon/utils";
 
 /** Maximum characters emitted by {@link preprocessTinyMessage}. */
 export const MAX_TINY_MESSAGE_CHARS = 2000;

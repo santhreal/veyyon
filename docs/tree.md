@@ -1,6 +1,6 @@
 # `/tree` Command Reference
 
-`/tree` opens the interactive **Session Tree** navigator. It lets you jump to any entry in the current session file and continue from that point.
+`/tree` opens the interactive session tree navigator. Selecting an entry moves the active leaf in the current session file and continues from that point.
 
 This is an in-file leaf move, not a new session export.
 

@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-
-import { Text } from "@veyyon/pi-tui";
+import { Text } from "@veyyon/tui";
+import { formatCount, truncate } from "@veyyon/utils";
 import { type } from "arktype";
 import type { ToolDefinition } from "../../extensibility/extensions";
 import type { Theme } from "../../modes/theme/theme";
@@ -375,7 +375,7 @@ async function revertFailedExperiment(
 			// best effort
 		}
 	}
-	return { note: `reverted ${total} file${total === 1 ? "" : "s"}` };
+	return { note: `reverted ${formatCount("file", total)}` };
 }
 
 async function detectModifiedPaths(
@@ -499,7 +499,7 @@ function buildLogText(
 
 function truncateAsiValue(value: ASIData[string]): string {
 	const text = typeof value === "string" ? value : JSON.stringify(value);
-	return text.length > 120 ? `${text.slice(0, 117)}...` : text;
+	return truncate(text, 120, "...");
 }
 
 function renderSummary(details: LogDetails, theme: Theme): string {

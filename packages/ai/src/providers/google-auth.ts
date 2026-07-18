@@ -15,7 +15,7 @@
 import { Buffer } from "node:buffer";
 import * as os from "node:os";
 import * as path from "node:path";
-import { $envpos, isEnoent, logger } from "@veyyon/pi-utils";
+import { $envpos, isEnoent, logger, scopedTimeoutSignal } from "@veyyon/utils";
 import * as AIError from "../error";
 import type { FetchImpl } from "../types";
 import { raceWithSignal } from "../utils/abort";
@@ -165,18 +165,21 @@ async function fetchMetadataToken(
 	signal: AbortSignal | undefined,
 	fetchImpl: FetchImpl,
 ): Promise<TokenResponse | undefined> {
-	const timeout = AbortSignal.timeout(2000);
-	const combined = signal ? AbortSignal.any([signal, timeout]) : timeout;
+	// Scoped so the 2s probe timer is cleared on settle instead of staying
+	// armed like a bare AbortSignal.timeout; the fence spans the body read.
+	const metadataTimeout = scopedTimeoutSignal(2000, signal);
 	try {
 		const response = await fetchImpl(METADATA_TOKEN_URL, {
 			method: "GET",
 			headers: { "Metadata-Flavor": "Google" },
-			signal: combined,
+			signal: metadataTimeout.signal,
 		});
 		if (!response.ok) return undefined;
 		return (await response.json()) as TokenResponse;
 	} catch {
 		return undefined;
+	} finally {
+		metadataTimeout.cancel();
 	}
 }
 
@@ -283,7 +286,7 @@ const SHARED_TOKEN_RESOLVE_TIMEOUT_MS = 30_000;
 export async function getVertexAccessToken(options?: { signal?: AbortSignal; fetch?: FetchImpl }): Promise<string> {
 	// An explicit access token (e.g. `gcloud auth print-access-token`) bypasses the cache so a
 	// refreshed env token takes effect immediately. `CLOUDSDK_AUTH_ACCESS_TOKEN` is gcloud's own
-	// override var; `GOOGLE_CLOUD_ACCESS_TOKEN` is the omp-facing alias.
+	// override var; `GOOGLE_CLOUD_ACCESS_TOKEN` is the veyyon-facing alias.
 	const explicitToken = Bun.env.GOOGLE_CLOUD_ACCESS_TOKEN || Bun.env.CLOUDSDK_AUTH_ACCESS_TOKEN;
 	if (explicitToken) return explicitToken;
 	const fetchImpl = options?.fetch ?? globalThis.fetch.bind(globalThis);
@@ -306,16 +309,17 @@ export async function getVertexAccessToken(options?: { signal?: AbortSignal; fet
 	// by every concurrent caller, so aborting one request must not fail the whole batch.
 	// Each caller races its own signal against the shared promise instead.
 	const promise = (async () => {
+		// Scoped so the shared-resolve timer is cleared on settle instead of
+		// staying armed like a bare AbortSignal.timeout.
+		const resolveTimeout = scopedTimeoutSignal(SHARED_TOKEN_RESOLVE_TIMEOUT_MS);
 		try {
-			const { source, token } = await resolveAccessTokenUncached(
-				AbortSignal.timeout(SHARED_TOKEN_RESOLVE_TIMEOUT_MS),
-				fetchImpl,
-			);
+			const { source, token } = await resolveAccessTokenUncached(resolveTimeout.signal, fetchImpl);
 			const expiresAtMs = Date.now() + Math.max(0, token.expires_in * 1000);
 			tokenCache.set(source, { token: token.access_token, expiresAtMs });
 			logger.debug("vertex.adc acquired access token", { source, expiresInSec: token.expires_in });
 			return token.access_token;
 		} finally {
+			resolveTimeout.cancel();
 			inflight.delete(cacheKey);
 		}
 	})();

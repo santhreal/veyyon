@@ -37,7 +37,7 @@
  * questions); the event controller wires the per-session enhancer via
  * {@link Vocalizer.setEnhancer}.
  */
-import { logger } from "@veyyon/pi-utils";
+import { errorMessage, logger } from "@veyyon/utils";
 import { settings } from "../config/settings";
 import { DEFAULT_TTS_VOICE } from "./models";
 import { SpeakableStream } from "./speakable";
@@ -391,7 +391,7 @@ export class Vocalizer {
 			}
 		} catch (error) {
 			logger.debug("vocalizer: stream failed", {
-				error: error instanceof Error ? error.message : String(error),
+				error: errorMessage(error),
 			});
 		}
 		player.stop();

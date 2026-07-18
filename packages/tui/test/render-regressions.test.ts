@@ -1,4 +1,4 @@
-process.env.PI_TUI_SCROLLBACK_REBUILD = "true";
+process.env.VEYYON_TUI_SCROLLBACK_REBUILD = "true";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import {
@@ -8,7 +8,7 @@ import {
 	setTerminalScreenToScrollback,
 	TERMINAL,
 	TUI,
-} from "@veyyon/pi-tui";
+} from "@veyyon/tui";
 import { VirtualTerminal } from "./virtual-terminal";
 
 class MutableLinesComponent implements Component {
@@ -211,7 +211,7 @@ describe("TUI terminal-state regressions", () => {
 		// Resize classification now depends on TERM_PROGRAM (Warp takes the
 		// in-place path), so neutralize the ambient terminal identity to keep
 		// these direct-terminal assertions deterministic on any dev machine.
-		for (const key of ["TERM_PROGRAM", "PI_TUI_RESIZE_IN_PLACE"]) {
+		for (const key of ["TERM_PROGRAM", "VEYYON_TUI_RESIZE_IN_PLACE"]) {
 			savedTerminalEnv[key] = Bun.env[key];
 			delete Bun.env[key];
 		}
@@ -977,7 +977,7 @@ describe("TUI terminal-state regressions", () => {
 				"        ├─────────┘         └────────┘                     │",
 				"        ▼                                                  │",
 				"┌──────────────┐     ┌────────────┐                        │",
-				"│      ai      │     │ pi-natives │◄───────────────────────┘",
+				"│      ai      │     │ veyyon-natives │◄───────────────────────┘",
 				"└──────────────┘     └────────────┘",
 			];
 			const working: string[] = [];
@@ -1125,7 +1125,7 @@ describe("TUI terminal-state regressions", () => {
 				"        ├─────────┘         └────────┘                     │",
 				"        ▼                                                  │",
 				"┌──────────────┐     ┌────────────┐                        │",
-				"│      ai      │     │ pi-natives │◄───────────────────────┘",
+				"│      ai      │     │ veyyon-natives │◄───────────────────────┘",
 				"└──────────────┘     └────────────┘",
 			];
 			tui.addChild(new MutableLinesComponent(lines));
@@ -1324,14 +1324,14 @@ describe("TUI terminal-state regressions", () => {
 			for (let r = 0; r < 6; r++) term.write(`STALE-ROW-${r} leftover content\r\n`);
 			await term.flush();
 			const tui = new TUI(term);
-			tui.addChild(new MutableLinesComponent(["omp line 1", "omp line 2"]));
+			tui.addChild(new MutableLinesComponent(["veyyon line 1", "veyyon line 2"]));
 
 			try {
 				tui.start();
 				await settle(term);
 				const viewport = term.getViewport().join("\n");
 				expect(viewport).not.toContain("STALE-ROW");
-				expect(viewport).toContain("omp line 1");
+				expect(viewport).toContain("veyyon line 1");
 			} finally {
 				tui.stop();
 				setTerminalScreenToScrollback(saved);
@@ -3888,9 +3888,9 @@ describe("TUI terminal-state regressions", () => {
 		// these wrapper-bracketing assertions stay deterministic. In CI an unknown
 		// TERM disables sync output by default, which would emit no BSU/ESU pairs.
 		const SYNC_ENV: Record<string, string | undefined> = {
-			PI_FORCE_SYNC_OUTPUT: "1",
-			PI_NO_SYNC_OUTPUT: undefined,
-			PI_TUI_SYNC_OUTPUT: undefined,
+			VEYYON_FORCE_SYNC_OUTPUT: "1",
+			VEYYON_NO_SYNC_OUTPUT: undefined,
+			VEYYON_TUI_SYNC_OUTPUT: undefined,
 		};
 		const savedSyncEnv: Record<string, string | undefined> = {};
 

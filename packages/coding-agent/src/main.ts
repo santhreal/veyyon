@@ -7,8 +7,8 @@
 import * as fsSync from "node:fs";
 import * as os from "node:os";
 import { createInterface } from "node:readline/promises";
-import { EventLoopKeepalive } from "@veyyon/pi-agent-core";
-import type { ImageContent } from "@veyyon/pi-ai";
+import { EventLoopKeepalive } from "@veyyon/agent-core";
+import type { ImageContent } from "@veyyon/ai";
 import {
 	$env,
 	directoryExists,
@@ -19,7 +19,7 @@ import {
 	postmortem,
 	setProjectDir,
 	VERSION,
-} from "@veyyon/pi-utils";
+} from "@veyyon/utils";
 import chalk from "chalk";
 import { reset as resetCapabilities } from "./capability";
 import { type Args, reportUnrecognizedFlags } from "./cli/args";
@@ -32,6 +32,7 @@ import { findConfigFile } from "./config";
 import { ModelRegistry } from "./config/model-registry";
 import {
 	expandRoleAlias,
+	fallbackForUnavailableDefault,
 	getModelMatchPreferences,
 	resolveCliModel,
 	resolveModelRoleValue,
@@ -42,7 +43,7 @@ import { ModelsConfigFile } from "./config/models-config";
 import { getDefault, type SettingPath, Settings, settings } from "./config/settings";
 import { initializeWithSettings } from "./discovery";
 import { clearPluginRootsAndCaches, injectPluginDirRoots, preloadPluginRoots } from "./discovery/helpers";
-import { injectOmpExtensionCliRoots } from "./discovery/omp-extension-roots";
+import { injectVeyyonExtensionCliRoots } from "./discovery/veyyon-extension-roots";
 import { ExtensionRunner } from "./extensibility/extensions/runner";
 import type { ExtensionUIContext } from "./extensibility/extensions/types";
 import { registerDaemonProjectPresence } from "./launch/presence";
@@ -92,7 +93,7 @@ async function checkForNewVersion(currentVersion: string): Promise<string | unde
 		return;
 	}
 	try {
-		const response = await fetch("https://registry.npmjs.org/@veyyon/pi-coding-agent/latest", {
+		const response = await fetch("https://registry.npmjs.org/@veyyon/coding-agent/latest", {
 			signal: withTimeoutSignal(5_000),
 		});
 		if (!response.ok) return undefined;
@@ -136,7 +137,7 @@ const RPC_BACKGROUND_DEFAULTED_SETTING_PATHS: SettingPath[] = [
 ];
 
 // Protocol-mode hosts opt into a small set of paths whose host-default we
-// re-apply at startup so embedders inherit OMP's neutral defaults instead of
+// re-apply at startup so embedders inherit veyyon's neutral defaults instead of
 // the local user's globally-persisted preferences for interactive use. The
 // guard preserves any explicit configuration — caller `Settings.isolated`
 // overrides, project `.claude/settings.yml`, `--config` overlays, or global
@@ -187,7 +188,7 @@ async function readPipedInput(): Promise<string | undefined> {
 // stderr line every 10s naming the deepest in-flight startup phase. Turns
 // zero-output indefinite hangs (stuck discovery read, network wait, stdin
 // pipe) into self-diagnosing reports instead of "it just hangs" (see the
-// PI_DEBUG_STARTUP markers for the synchronous-hang counterpart).
+// VEYYON_DEBUG_STARTUP markers for the synchronous-hang counterpart).
 
 const STARTUP_WATCHDOG_INTERVAL_MS = 10_000;
 let startupWatchdogTimer: NodeJS.Timeout | undefined;
@@ -201,7 +202,7 @@ function armStartupWatchdog(): void {
 		const phase = logger.openSpanPath().join(" > ") || "module load / pre-phase work";
 		process.stderr.write(
 			`${chalk.yellow(`Still starting after ${elapsed}s`)}${chalk.dim(` — phase: ${phase}`)}\n` +
-				`${chalk.dim(`  logs: ${getLogPath()} · re-run with PI_DEBUG_STARTUP=1 for streaming phase markers`)}\n`,
+				`${chalk.dim(`  logs: ${getLogPath()} · re-run with VEYYON_DEBUG_STARTUP=1 for streaming phase markers`)}\n`,
 		);
 	}, STARTUP_WATCHDOG_INTERVAL_MS);
 	startupWatchdogTimer.unref?.();
@@ -628,7 +629,7 @@ export async function createSessionManager(
 		if (!match) {
 			throw new SessionResolutionError(
 				`Session "${forkSource}" not found.`,
-				"Run `veyyon --resume` without an argument to pick from recent sessions, or `omp` to start a new one.",
+				"Run `veyyon --resume` without an argument to pick from recent sessions, or `veyyon` to start a new one.",
 			);
 		}
 		return await SessionManager.forkFrom(match.session.path, cwd, parsed.sessionDir);
@@ -648,7 +649,7 @@ export async function createSessionManager(
 		if (!match) {
 			throw new SessionResolutionError(
 				`Session "${sessionArg}" not found.`,
-				"Run `veyyon --resume` without an argument to pick from recent sessions, or `omp` to start a new one.",
+				"Run `veyyon --resume` without an argument to pick from recent sessions, or `veyyon` to start a new one.",
 			);
 		}
 		if (match.scope === "local") {
@@ -877,7 +878,23 @@ export async function buildSessionOptions(
 				}
 			}
 		}
-		if (!options.model) options.model = scopedModels[0].model;
+		if (!options.model) {
+			if (remembered) {
+				// Law 10: substituting for a configured-but-unauthenticated default
+				// must be loud. fallbackForUnavailableDefault owns the substitution
+				// and the warning for every surface (session, commit, …).
+				const fallback = fallbackForUnavailableDefault(
+					remembered,
+					scopedModels.map(scopedModel => scopedModel.model),
+				);
+				if (fallback) {
+					process.stderr.write(`${chalk.yellow(`Warning: ${fallback.warning}`)}\n`);
+					options.model = fallback.model;
+				}
+			} else {
+				options.model = scopedModels[0].model;
+			}
+		}
 	}
 
 	if (parsed.noPrewalk && (parsed.prewalk || parsed.prewalkInto !== undefined)) {
@@ -1016,7 +1033,21 @@ export async function runRootCommand(
 ): Promise<void> {
 	logger.startTiming();
 	startStartupWatchdog();
+	try {
+		await runRootCommandInner(parsed, rawArgs, deps);
+	} finally {
+		// A throw or early return before a mode handoff must not leak the
+		// watchdog interval into embedders or long-lived test processes.
+		stopStartupWatchdog();
+	}
+}
 
+/** True while the startup watchdog interval is armed. Test observability only. */
+export function __startupWatchdogArmedForTests(): boolean {
+	return startupWatchdogTimer !== undefined;
+}
+
+async function runRootCommandInner(parsed: Args, rawArgs: string[], deps: RunRootCommandDependencies): Promise<void> {
 	// Initialize theme early with defaults (CLI commands need symbols)
 	// Will be re-initialized with user preferences later
 	await logger.time("initTheme:initial", initTheme);
@@ -1067,13 +1098,13 @@ export async function runRootCommand(
 	pluginPreloadPromise.catch(() => {});
 
 	// Register CLI-provided extension package paths (`--extension`, `--hook`) so
-	// the `omp-plugins` discovery provider can surface their `skills/`, `hooks/`,
+	// the `veyyon-plugins` discovery provider can surface their `skills/`, `hooks/`,
 	// `tools/`, `commands/`, `rules/`, `prompts/`, and `.mcp.json` sub-trees.
 	// `--no-extensions` short-circuits both the factory load and the sub-discovery.
 	if (!parsedArgs.noExtensions) {
 		const cliExtensions = [...(parsedArgs.extensions ?? []), ...(parsedArgs.hooks ?? [])];
 		if (cliExtensions.length > 0) {
-			injectOmpExtensionCliRoots(cliExtensions, home, getProjectDir());
+			injectVeyyonExtensionCliRoots(cliExtensions, home, getProjectDir());
 		}
 	}
 
@@ -1095,10 +1126,10 @@ export async function runRootCommand(
 		applyAcpDefaultSettingOverrides(settingsInstance);
 	}
 	if (parsedArgs.noPty || parsedArgs.mode === "rpc-ui") {
-		Bun.env.PI_NO_PTY = "1";
+		Bun.env.VEYYON_NO_PTY = "1";
 	}
 	if (parsedArgs.noTitle || parsedArgs.mode === "rpc" || parsedArgs.mode === "rpc-ui" || parsedArgs.mode === "acp") {
-		Bun.env.PI_NO_TITLE = "1";
+		Bun.env.VEYYON_NO_TITLE = "1";
 	}
 	const mode = parsedArgs.mode || "text";
 	const isProtocolMode = mode === "rpc" || mode === "rpc-ui" || mode === "acp";
@@ -1110,10 +1141,29 @@ export async function runRootCommand(
 	// `</dev/null`, an empty pipe) the TUI blocks forever with zero output.
 	// Fail fast with the fix instead of hanging.
 	if (isInteractive && !process.stdin.isTTY) {
-		process.stderr.write(
-			"Interactive mode needs a terminal: stdin is not a TTY and no prompt was piped in.\n" +
-				'Pipe a prompt (`echo "…" | veyyon`), pass one with `-p "…"`, or run veyyon from an interactive terminal.\n',
-		);
+		if (parsedArgs.messages.length > 0) {
+			// Positional args were given — either a prompt missing `-p`, or a typo'd
+			// subcommand that fell through to launch. Name both fixes instead of the
+			// misleading "no prompt was piped in".
+			const positional = parsedArgs.messages.join(" ");
+			const preview = positional.length > 60 ? `${positional.slice(0, 57)}…` : positional;
+			// Single-token typo of a real subcommand gets the same "did you mean"
+			// as the pre-launch guard (which only fires for bare argc===1 argv).
+			const { nearMissSubcommandMessage } = await import("./cli-commands");
+			const nearMiss = nearMissSubcommandMessage(parsedArgs.messages[0], 1);
+			process.stderr.write(
+				"Interactive mode needs a terminal: stdin is not a TTY.\n" +
+					`To run the prompt you passed non-interactively, add -p: \`veyyon -p "${preview}"\`.\n` +
+					(nearMiss
+						? `${nearMiss}\n`
+						: `If "${parsedArgs.messages[0]}" was meant as a subcommand, see \`veyyon --help\` for the command list.\n`),
+			);
+		} else {
+			process.stderr.write(
+				"Interactive mode needs a terminal: stdin is not a TTY and no prompt was piped in.\n" +
+					'Pipe a prompt (`echo "…" | veyyon`), pass one with `-p "…"`, or run veyyon from an interactive terminal.\n',
+			);
+		}
 		process.exit(1);
 	}
 	// Interactive mode's modes/components subtree is the largest single chunk of
@@ -1126,9 +1176,9 @@ export async function runRootCommand(
 	logger.time("initializeWithSettings", initializeWithSettings, settingsInstance);
 
 	// Apply model role overrides from CLI args or env vars (ephemeral, not persisted)
-	const smolModel = parsedArgs.smol ?? $env.PI_SMOL_MODEL;
-	const slowModel = parsedArgs.slow ?? $env.PI_SLOW_MODEL;
-	const planModel = parsedArgs.plan ?? $env.PI_PLAN_MODEL;
+	const smolModel = parsedArgs.smol ?? $env.VEYYON_SMOL_MODEL;
+	const slowModel = parsedArgs.slow ?? $env.VEYYON_SLOW_MODEL;
+	const planModel = parsedArgs.plan ?? $env.VEYYON_PLAN_MODEL;
 	if (smolModel || slowModel || planModel) {
 		settingsInstance.overrideModelRoles({
 			smol: smolModel,
@@ -1428,7 +1478,7 @@ export async function runRootCommand(
 			isInteractive,
 			resuming: Boolean(parsedArgs.continue || parsedArgs.resume || parsedArgs.fork),
 			quiet: settingsInstance.get("startup.quiet"),
-			timing: Boolean($env.PI_TIMING),
+			timing: Boolean($env.VEYYON_TIMING),
 			stdinIsTTY: process.stdin.isTTY,
 			stdoutIsTTY: process.stdout.isTTY,
 		});
@@ -1503,7 +1553,7 @@ export async function runRootCommand(
 				notifs.push(modelScopeNotification);
 			}
 
-			if ($env.PI_TIMING) {
+			if ($env.VEYYON_TIMING) {
 				logger.printTimings();
 				if (logger.shouldExitAfterTimings()) {
 					process.exit(0);
@@ -1539,7 +1589,7 @@ export async function runRootCommand(
 				initialImages,
 				printThoughts: initialArgs.printThoughts,
 			});
-			if ($env.PI_TIMING) {
+			if ($env.VEYYON_TIMING) {
 				logger.printTimings();
 			}
 			await session.dispose();

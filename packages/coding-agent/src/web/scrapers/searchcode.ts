@@ -1,6 +1,6 @@
-import { tryParseJson } from "@veyyon/pi-utils";
-import type { RenderResult, SpecialHandler } from "./types";
-import { buildResult, formatNumber, loadPage } from "./types";
+import { tryParseJson } from "@veyyon/utils";
+import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
+import { buildResult, formatNumber, loadFailure, loadPage, scraperDegrade, tryParseUrl } from "./types";
 
 interface SearchcodeResult {
 	id?: number | string;
@@ -71,9 +71,10 @@ export const handleSearchcode: SpecialHandler = async (
 	url: string,
 	timeout: number,
 	signal?: AbortSignal,
-): Promise<RenderResult | null> => {
+): Promise<RenderResult | ScraperDegrade | null> => {
 	try {
-		const parsed = new URL(url);
+		const parsed = tryParseUrl(url);
+		if (!parsed) return null;
 		if (!VALID_HOSTS.has(parsed.hostname)) return null;
 
 		const fetchedAt = new Date().toISOString();
@@ -82,10 +83,10 @@ export const handleSearchcode: SpecialHandler = async (
 			const id = viewMatch[1];
 			const apiUrl = `https://searchcode.com/api/result/${encodeURIComponent(id)}/`;
 			const result = await loadPage(apiUrl, { timeout, signal, headers: { Accept: "application/json" } });
-			if (!result.ok) return null;
+			if (!result.ok) return scraperDegrade("searchcode", loadFailure(result));
 
 			const data = tryParseJson<SearchcodeResult>(result.content);
-			if (!data) return null;
+			if (!data) return scraperDegrade("searchcode", "unexpected response shape");
 
 			const filename = data.filename || data.location || `Result ${id}`;
 			const lineNumbers = parseLineNumbers(data.lines);
@@ -125,10 +126,10 @@ export const handleSearchcode: SpecialHandler = async (
 		const page = Number.isFinite(pageNumber) && pageNumber >= 0 ? pageNumber : 0;
 		const apiUrl = `https://searchcode.com/api/codesearch_I/?q=${encodeURIComponent(query)}&p=${page}`;
 		const result = await loadPage(apiUrl, { timeout, signal, headers: { Accept: "application/json" } });
-		if (!result.ok) return null;
+		if (!result.ok) return scraperDegrade("searchcode", loadFailure(result));
 
 		const data = tryParseJson<SearchcodeSearchResponse>(result.content);
-		if (!data) return null;
+		if (!data) return scraperDegrade("searchcode", "unexpected response shape");
 
 		const results = Array.isArray(data.results) ? data.results : [];
 		const total =
@@ -183,7 +184,7 @@ export const handleSearchcode: SpecialHandler = async (
 		}
 
 		return buildResult(md, { url, method: "searchcode", fetchedAt, notes: ["Fetched via searchcode API"] });
-	} catch {}
-
-	return null;
+	} catch (error) {
+		return scraperDegrade("searchcode", error);
+	}
 };

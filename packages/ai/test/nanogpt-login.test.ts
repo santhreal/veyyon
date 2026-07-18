@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "bun:test";
-import { loginNanoGPT } from "@veyyon/pi-ai/registry/nanogpt";
-import type { FetchImpl } from "@veyyon/pi-ai/types";
+import { loginNanoGPT } from "@veyyon/ai/registry/nanogpt";
+import type { FetchImpl } from "@veyyon/ai/types";
 
 describe("nanogpt login", () => {
 	it("validates API key without requiring a specific model entitlement", async () => {

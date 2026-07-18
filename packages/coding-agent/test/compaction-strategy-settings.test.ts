@@ -2,14 +2,11 @@ import { describe, expect, it } from "bun:test";
 import {
 	migrateCompactionStrategyValue,
 	normalizeCompactionStrategy,
-} from "@veyyon/pi-coding-agent/config/compaction-strategy";
-import {
-	resolveAgentModelPatterns,
-	resolveCompactionModelPatterns,
-} from "@veyyon/pi-coding-agent/config/model-resolver";
-import { getKnownRoleIds, MODEL_ROLE_IDS, SELECTABLE_MODEL_ROLE_IDS } from "@veyyon/pi-coding-agent/config/model-roles";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { getSettingsForTab } from "@veyyon/pi-coding-agent/modes/components/settings-defs";
+} from "@veyyon/coding-agent/config/compaction-strategy";
+import { resolveAgentModelPatterns, resolveCompactionModelPatterns } from "@veyyon/coding-agent/config/model-resolver";
+import { getKnownRoleIds, MODEL_ROLE_IDS, SELECTABLE_MODEL_ROLE_IDS } from "@veyyon/coding-agent/config/model-roles";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import { getSettingsForTab } from "@veyyon/coding-agent/modes/components/settings-defs";
 
 describe("compaction strategy settings", () => {
 	it("normalizes legacy strategy tokens to handoff or snap only", () => {

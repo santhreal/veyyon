@@ -6,10 +6,10 @@ import type {
 	AgentToolUpdateCallback,
 	RenderResultOptions,
 	ToolApprovalDecision,
-} from "@veyyon/pi-agent-core";
-import type { ToolExample } from "@veyyon/pi-ai";
-import { type Component, Text } from "@veyyon/pi-tui";
-import { isEnoent, prompt } from "@veyyon/pi-utils";
+} from "@veyyon/agent-core";
+import type { ToolExample } from "@veyyon/ai";
+import { type Component, Text } from "@veyyon/tui";
+import { isEnoent, prompt } from "@veyyon/utils";
 import { type } from "arktype";
 import {
 	type DapBreakpointRecord,
@@ -42,6 +42,7 @@ import type { Theme } from "../modes/theme/theme";
 import debugDescription from "../prompts/tools/debug.md" with { type: "text" };
 import { renderStatusLine } from "../tui";
 import { CachedOutputBlock, markFramedBlockComponent } from "../tui/output-block";
+import { scopedTimeoutSignal } from "../utils/fetch-timeout";
 import type { ToolSession } from ".";
 import { truncateForPrompt } from "./approval";
 import type { OutputMeta } from "./output-meta";
@@ -727,8 +728,19 @@ export class DebugTool implements AgentTool<typeof debugSchema, DebugToolDetails
 		_context?: AgentToolContext,
 	): Promise<AgentToolResult<DebugToolDetails>> {
 		const timeoutSec = clampTimeout("debug", params.timeout);
-		const timeoutSignal = AbortSignal.timeout(timeoutSec * 1000);
-		const combinedSignal = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
+		const timeout = scopedTimeoutSignal(timeoutSec * 1000, signal);
+		try {
+			return await this.executeWithSignal(params, timeout.signal, timeoutSec);
+		} finally {
+			timeout.cancel();
+		}
+	}
+
+	private async executeWithSignal(
+		params: DebugParams,
+		combinedSignal: AbortSignal,
+		timeoutSec: number,
+	): Promise<AgentToolResult<DebugToolDetails>> {
 		const details: DebugToolDetails = { action: params.action, success: true };
 		const result = toolResult(details);
 		switch (params.action) {

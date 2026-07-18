@@ -9,8 +9,8 @@
 import { Database } from "bun:sqlite";
 import { describe, expect, it } from "bun:test";
 import "./setup";
-import { initBeam } from "@veyyon/pi-mnemopi/core/beam";
-import { Mnemopi } from "@veyyon/pi-mnemopi/core/memory";
+import { initBeam } from "@veyyon/mnemopi/core/beam";
+import { Mnemopi } from "@veyyon/mnemopi/core/memory";
 
 const OLD_MODEL = "BAAI/bge-small-en-v1.5";
 const NEW_MODEL = "intfloat/multilingual-e5-large";

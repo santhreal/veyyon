@@ -27,7 +27,6 @@ use std::{
 
 use ansi_width::ansi_width;
 use glob::MatchOptions;
-use pi_uutils_ctx::CtxStdout;
 #[cfg(unix)]
 use rustc_hash::FxHashMap;
 use term_grid::{DEFAULT_SEPARATOR_SIZE, Direction, Filling, Grid, GridOptions};
@@ -57,6 +56,7 @@ use uucore::{
 	quoting_style::{QuotingStyle, locale_aware_escape_dir_name, locale_aware_escape_name},
 	time::{FormatSystemTimeFallback, format_system_time},
 };
+use veyyon_uutils_ctx::CtxStdout;
 
 use crate::{
 	Config, ListState, LsError, PathData,
@@ -740,7 +740,7 @@ fn display_item_name(
 		&& path.file_type().is_some_and(FileType::is_symlink)
 		&& !path.must_dereference
 	{
-		match pi_uutils_ctx::resolve(path.path()).read_link() {
+		match veyyon_uutils_ctx::resolve(path.path()).read_link() {
 			Ok(target_path) => {
 				name.push(" -> ");
 
@@ -760,7 +760,7 @@ fn display_item_name(
 						&target_path
 					};
 
-					match fs::canonicalize(pi_uutils_ctx::resolve(absolute_target)) {
+					match fs::canonicalize(veyyon_uutils_ctx::resolve(absolute_target)) {
 						Ok(resolved_target) => {
 							let target_data = PathData::new(
 								resolved_target.as_path().into(),
@@ -1148,7 +1148,8 @@ fn create_hyperlink(name: &OsStr, path: &PathData) -> OsString {
 	let osc_8_tail = OsStr::new("\x1b]8;;\x1b\\");
 	let esc_bl = OsStr::new("\x1b\\");
 
-	let absolute_path = fs::canonicalize(pi_uutils_ctx::resolve(path.path())).unwrap_or_default();
+	let absolute_path =
+		fs::canonicalize(veyyon_uutils_ctx::resolve(path.path())).unwrap_or_default();
 	let mut ret = OsString::with_capacity(
 		osc_8_head.len()
 			+ osc_8_tail.len()

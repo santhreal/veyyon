@@ -1,6 +1,6 @@
 {
   "type": "module",
-  "name": "@veyyon/pi-ai",
+  "name": "@veyyon/ai",
   "version": "1.0.0",
   "description": "Unified LLM API with automatic model discovery and provider configuration",
   "homepage": "https://veyyon.dev",
@@ -11,11 +11,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/can1357/oh-my-pi.git",
+    "url": "git+https://github.com/santhreal/veyyon.git",
     "directory": "packages/ai"
   },
   "bugs": {
-    "url": "https://github.com/can1357/oh-my-pi/issues"
+    "url": "https://github.com/santhreal/veyyon/issues"
   },
   "keywords": [
     "ai",
@@ -38,9 +38,9 @@
   },
   "dependencies": {
     "@bufbuild/protobuf": "catalog:",
-    "@veyyon/pi-catalog": "catalog:",
-    "@veyyon/pi-utils": "catalog:",
-    "@veyyon/pi-wire": "catalog:",
+    "@veyyon/catalog": "catalog:",
+    "@veyyon/utils": "catalog:",
+    "@veyyon/wire": "catalog:",
     "arktype": "catalog:",
     "zod": "catalog:"
   },

@@ -1,9 +1,9 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
-import { clearRenderCache, Markdown, renderInlineMarkdown } from "@veyyon/pi-tui/components/markdown";
-import { setTerminalTextSizing, TERMINAL } from "@veyyon/pi-tui/terminal-capabilities";
-import { type Component, TUI } from "@veyyon/pi-tui/tui";
-import { visibleWidth } from "@veyyon/pi-tui/utils";
+import { clearRenderCache, Markdown, renderInlineMarkdown } from "@veyyon/tui/components/markdown";
+import { setTerminalTextSizing, TERMINAL } from "@veyyon/tui/terminal-capabilities";
+import { type Component, TUI } from "@veyyon/tui/tui";
+import { visibleWidth } from "@veyyon/tui/utils";
 import { Chalk } from "chalk";
 import { defaultMarkdownTheme } from "./test-themes.js";
 import { VirtualTerminal } from "./virtual-terminal.js";

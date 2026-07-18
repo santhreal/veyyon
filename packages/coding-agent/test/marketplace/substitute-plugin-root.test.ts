@@ -1,9 +1,9 @@
 import { describe, expect, it } from "bun:test";
-import { substitutePluginRoot } from "@veyyon/pi-coding-agent/discovery/substitute-plugin-root";
+import { substitutePluginRoot } from "@veyyon/coding-agent/discovery/substitute-plugin-root";
 
 // Use concatenation to avoid noTemplateCurlyInString lint rule on literal placeholder names
 const CLAUDE_VAR = "$" + "{CLAUDE_PLUGIN_ROOT}";
-const OMP_VAR = "$" + "{OMP_PLUGIN_ROOT}";
+const VEYYON_VAR = "$" + "{VEYYON_PLUGIN_ROOT}";
 
 describe("substitutePluginRoot", () => {
 	const ROOT = "/plugins/my-plugin";
@@ -12,12 +12,12 @@ describe("substitutePluginRoot", () => {
 		expect(substitutePluginRoot(`${CLAUDE_VAR}/bin/server`, ROOT)).toBe("/plugins/my-plugin/bin/server");
 	});
 
-	it("replaces OMP_PLUGIN_ROOT in strings", () => {
-		expect(substitutePluginRoot(`${OMP_VAR}/bin/server`, ROOT)).toBe("/plugins/my-plugin/bin/server");
+	it("replaces VEYYON_PLUGIN_ROOT in strings", () => {
+		expect(substitutePluginRoot(`${VEYYON_VAR}/bin/server`, ROOT)).toBe("/plugins/my-plugin/bin/server");
 	});
 
 	it("replaces both variables in same string", () => {
-		expect(substitutePluginRoot(`${CLAUDE_VAR}:${OMP_VAR}`, ROOT)).toBe("/plugins/my-plugin:/plugins/my-plugin");
+		expect(substitutePluginRoot(`${CLAUDE_VAR}:${VEYYON_VAR}`, ROOT)).toBe("/plugins/my-plugin:/plugins/my-plugin");
 	});
 
 	it("handles arrays recursively", () => {
@@ -37,7 +37,7 @@ describe("substitutePluginRoot", () => {
 		const input = {
 			command: `${CLAUDE_VAR}/server`,
 			args: ["--port", "3000"],
-			env: { HOME: OMP_VAR },
+			env: { HOME: VEYYON_VAR },
 		};
 		expect(substitutePluginRoot(input, ROOT)).toEqual({
 			command: "/plugins/my-plugin/server",

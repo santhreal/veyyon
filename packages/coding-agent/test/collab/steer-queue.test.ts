@@ -5,17 +5,17 @@
  * `queuedMessageCount` from the agent-core queue for host and guest UI state.
  */
 import { afterEach, describe, expect, it } from "bun:test";
-import { importRoomKey } from "@veyyon/pi-coding-agent/collab/crypto";
-import { CollabHost } from "@veyyon/pi-coding-agent/collab/host";
+import { importRoomKey } from "@veyyon/coding-agent/collab/crypto";
+import { CollabHost } from "@veyyon/coding-agent/collab/host";
 import {
 	COLLAB_PROTO,
 	type CollabFrame,
 	parseCollabLink,
 	rewriteEnvelopePeer,
 	unpackEnvelope,
-} from "@veyyon/pi-coding-agent/collab/protocol";
-import { CollabSocket } from "@veyyon/pi-coding-agent/collab/relay-client";
-import type { InteractiveModeContext } from "@veyyon/pi-coding-agent/modes/types";
+} from "@veyyon/coding-agent/collab/protocol";
+import { CollabSocket } from "@veyyon/coding-agent/collab/relay-client";
+import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
 
 interface RelayData {
 	role: "host" | "guest";
@@ -24,7 +24,7 @@ interface RelayData {
 
 type RelaySocket = Bun.ServerWebSocket<RelayData>;
 
-/** Single-room relay mirroring the omp-collab-relay forwarding contract. */
+/** Single-room relay mirroring the collab-relay forwarding contract. */
 function startTestRelay(): { url: string; stop(): void } {
 	let host: RelaySocket | null = null;
 	const guests = new Map<number, RelaySocket>();

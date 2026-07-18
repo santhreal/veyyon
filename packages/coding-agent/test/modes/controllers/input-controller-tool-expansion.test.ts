@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "bun:test";
-import { InputController } from "@veyyon/pi-coding-agent/modes/controllers/input-controller";
-import type { InteractiveModeContext } from "@veyyon/pi-coding-agent/modes/types";
+import { InputController } from "@veyyon/coding-agent/modes/controllers/input-controller";
+import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
 
 describe("InputController tool output expansion", () => {
 	it("expands children and forces a full display reset to bypass frozen snapshots", () => {

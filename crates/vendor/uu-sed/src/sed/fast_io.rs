@@ -316,7 +316,7 @@ impl IOChunkContent<'_> {
 	}
 }
 
-// Patched for pi-uutils-ctx embedding: upstream's FastCopy (raw-fd metadata
+// Patched for veyyon-uutils-ctx embedding: upstream's FastCopy (raw-fd metadata
 // driving write(2)/copy_file_range(2) output fast paths) is removed, because
 // the output writer is a plain `Write` handle without a file descriptor.
 
@@ -344,15 +344,15 @@ impl<'a> LineReader<'a> {
 	// Use "-" to read from the standard input.
 	pub fn open(path: &PathBuf) -> io::Result<Self> {
 		if path.as_os_str() == "-" {
-			// Patched for pi-uutils-ctx embedding: read the context stdin.
-			let boxed: Box<dyn Read> = Box::new(pi_uutils_ctx::stdin());
+			// Patched for veyyon-uutils-ctx embedding: read the context stdin.
+			let boxed: Box<dyn Read> = Box::new(veyyon_uutils_ctx::stdin());
 			let reader = BufReader::new(boxed);
 			return Ok(LineReader::ReadInput(ReadLineCursor::new(reader)));
 		}
 
-		// Patched for pi-uutils-ctx embedding: input file operands resolve
+		// Patched for veyyon-uutils-ctx embedding: input file operands resolve
 		// against the shell working directory.
-		let file = File::open(pi_uutils_ctx::resolve(path))?;
+		let file = File::open(veyyon_uutils_ctx::resolve(path))?;
 
 		#[cfg(unix)]
 		{
@@ -424,7 +424,7 @@ impl<'a> LineReader<'a> {
 	}
 }
 
-// Patched for pi-uutils-ctx embedding: output goes to plain `Write` handles
+// Patched for veyyon-uutils-ctx embedding: output goes to plain `Write` handles
 // (the context stdout has no raw fd), so upstream's `Write + AsRawFd` bound
 // is reduced to `Write` on every platform.
 pub trait OutputWrite: Write {}
@@ -486,7 +486,7 @@ impl OutputBuffer {
 
 	#[cfg(unix)]
 	pub fn new(w: Box<dyn OutputWrite + 'static>) -> Self {
-		// Patched for pi-uutils-ctx embedding: the writer is not fd-backed,
+		// Patched for veyyon-uutils-ctx embedding: the writer is not fd-backed,
 		// so regular-file output detection is gone; always bound pending
 		// data by the pipe-sized limit.
 		Self {
@@ -517,7 +517,7 @@ impl OutputBuffer {
 			self.flush_mmap(WriteRange::Complete)?;
 		}
 
-		let Ok(file) = File::open(pi_uutils_ctx::resolve(path)) else {
+		let Ok(file) = File::open(veyyon_uutils_ctx::resolve(path)) else {
 			// Per POSIX, if the file can't be read treat it as empty.
 			return Ok(());
 		};
@@ -615,7 +615,7 @@ impl OutputBuffer {
 	}
 
 	/// Flush any pending mmap data.
-	// Patched for pi-uutils-ctx embedding: the raw-fd write(2) and
+	// Patched for veyyon-uutils-ctx embedding: the raw-fd write(2) and
 	// copy_file_range(2) fast paths are removed; the coalesced mmap span is
 	// written through the buffered writer. `cover` block alignment is thus
 	// irrelevant and every flush writes the complete pending span.

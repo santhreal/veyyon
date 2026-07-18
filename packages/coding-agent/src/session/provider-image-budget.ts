@@ -6,7 +6,7 @@ import type {
 	TextContent,
 	ToolResultMessage,
 	UserMessage,
-} from "@veyyon/pi-ai";
+} from "@veyyon/ai";
 import { providerImageBudget } from "@veyyon/snapcompact";
 
 const TOOL_RESULT_IMAGE_OMISSION: TextContent = {

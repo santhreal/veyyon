@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { jsonSchemaToTypeScript, toolWireSchema } from "@veyyon/pi-ai/utils/schema";
+import { jsonSchemaToTypeScript, toolWireSchema } from "@veyyon/ai/utils/schema";
 import { z } from "zod/v4";
 
 describe("jsonSchemaToTypeScript", () => {

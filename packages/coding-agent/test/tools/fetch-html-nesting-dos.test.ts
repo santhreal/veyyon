@@ -12,7 +12,7 @@
  * htmlToMarkdown, which would core-dump this test process.
  */
 import { describe, expect, it } from "bun:test";
-import { htmlNestingExceeds } from "@veyyon/pi-coding-agent/tools/fetch";
+import { htmlNestingExceeds } from "@veyyon/coding-agent/tools/fetch";
 
 const LIMIT = 500;
 

@@ -1,6 +1,6 @@
-import { tryParseJson } from "@veyyon/pi-utils";
-import type { RenderResult, SpecialHandler } from "./types";
-import { buildResult, formatNumber, htmlToBasicMarkdown, loadPage } from "./types";
+import { tryParseJson } from "@veyyon/utils";
+import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
+import { buildResult, formatNumber, htmlToBasicMarkdown, loadPage, scraperDegrade, tryParseUrl } from "./types";
 
 interface PluginVendor {
 	name?: string;
@@ -78,9 +78,10 @@ export const handleJetBrainsMarketplace: SpecialHandler = async (
 	url: string,
 	timeout: number,
 	signal?: AbortSignal,
-): Promise<RenderResult | null> => {
+): Promise<RenderResult | ScraperDegrade | null> => {
 	try {
-		const parsed = new URL(url);
+		const parsed = tryParseUrl(url);
+		if (!parsed) return null;
 		if (!MARKETPLACE_HOSTS.has(parsed.hostname)) return null;
 
 		const match = parsed.pathname.match(/^\/plugin\/(\d+)(?:-[^/]+)?(?:\/|$)/);
@@ -153,7 +154,7 @@ export const handleJetBrainsMarketplace: SpecialHandler = async (
 			fetchedAt,
 			notes: ["Fetched via JetBrains Marketplace API"],
 		});
-	} catch {}
-
-	return null;
+	} catch (error) {
+		return scraperDegrade("jetbrains-marketplace", error);
+	}
 };

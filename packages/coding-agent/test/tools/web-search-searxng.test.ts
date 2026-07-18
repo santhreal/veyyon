@@ -2,11 +2,11 @@ import { afterEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { FetchImpl } from "@veyyon/pi-ai/types";
-import { resetSettingsForTest, Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { searchSearXNG } from "@veyyon/pi-coding-agent/web/search/providers/searxng";
-import { SearchProviderError } from "@veyyon/pi-coding-agent/web/search/types";
-import { removeWithRetries } from "@veyyon/pi-utils";
+import type { FetchImpl } from "@veyyon/ai/types";
+import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
+import { searchSearXNG } from "@veyyon/coding-agent/web/search/providers/searxng";
+import { SearchProviderError } from "@veyyon/coding-agent/web/search/types";
+import { removeWithRetries } from "@veyyon/utils";
 
 describe("SearXNG web search provider", () => {
 	afterEach(() => {

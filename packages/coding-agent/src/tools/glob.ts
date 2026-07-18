@@ -1,11 +1,11 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/pi-agent-core";
-import type { ToolExample } from "@veyyon/pi-ai";
-import * as natives from "@veyyon/pi-natives";
-import type { Component } from "@veyyon/pi-tui";
-import { Text } from "@veyyon/pi-tui";
-import { formatGroupedPaths, isEnoent, prompt, untilAborted } from "@veyyon/pi-utils";
+import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
+import type { ToolExample } from "@veyyon/ai";
+import * as natives from "@veyyon/natives";
+import type { Component } from "@veyyon/tui";
+import { Text } from "@veyyon/tui";
+import { formatGroupedPaths, isEnoent, prompt, untilAborted } from "@veyyon/utils";
 import { type } from "arktype";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import { InternalUrlRouter } from "../internal-urls";
@@ -13,6 +13,7 @@ import type { Theme } from "../modes/theme/theme";
 import globDescription from "../prompts/tools/glob.md" with { type: "text" };
 import { type TruncationResult, truncateHead } from "../session/streaming-output";
 import { Ellipsis, fileHyperlink, renderFileList, renderStatusLine, renderTreeList, truncateToWidth } from "../tui";
+import { isTimeoutError, scopedTimeoutSignal } from "../utils/fetch-timeout";
 import type { ToolSession } from ".";
 import { applyListLimit } from "./list-limit";
 import { formatFullOutputReference, type OutputMeta } from "./output-meta";
@@ -244,8 +245,8 @@ export class GlobTool implements AgentTool<typeof findSchema, GlobToolDetails> {
 			const includeHidden = hidden ?? true;
 			const useGitignore = gitignore ?? true;
 			const timeoutMs = DEFAULT_GLOB_TIMEOUT_MS;
-			const timeoutSignal = AbortSignal.timeout(timeoutMs);
-			const combinedSignal = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
+			const scopedTimeout = scopedTimeoutSignal(timeoutMs, signal);
+			const combinedSignal = scopedTimeout.signal;
 			const formatMatchPath = (matchPath: string, base: string, fileType?: natives.FileType): string => {
 				const hadTrailingSlash = matchPath.endsWith("/") || matchPath.endsWith("\\");
 				const absolutePath = path.isAbsolute(matchPath) ? matchPath : path.resolve(base, matchPath);
@@ -436,7 +437,7 @@ export class GlobTool implements AgentTool<typeof findSchema, GlobToolDetails> {
 					return out;
 				} catch (error) {
 					if (error instanceof Error && error.name === "AbortError") {
-						if (timeoutSignal.aborted && !signal?.aborted) {
+						if (isTimeoutError(combinedSignal.reason) && !signal?.aborted) {
 							timedOut = true;
 							return [];
 						}
@@ -446,7 +447,12 @@ export class GlobTool implements AgentTool<typeof findSchema, GlobToolDetails> {
 				}
 			};
 
-			const perTarget = await Promise.all(targets.map(runTarget));
+			let perTarget: Array<Array<{ path: string; mtime: number }>>;
+			try {
+				perTarget = await Promise.all(targets.map(runTarget));
+			} finally {
+				scopedTimeout.cancel();
+			}
 
 			if (timedOut) {
 				// Drain the partial matches accumulated during streaming and return them

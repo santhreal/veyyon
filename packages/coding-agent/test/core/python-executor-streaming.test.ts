@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { executePythonWithKernel } from "@veyyon/pi-coding-agent/eval/py/executor";
-import { DEFAULT_MAX_BYTES } from "@veyyon/pi-coding-agent/session/streaming-output";
+import { executePythonWithKernel } from "@veyyon/coding-agent/eval/py/executor";
+import { DEFAULT_MAX_BYTES } from "@veyyon/coding-agent/session/streaming-output";
 import { FakeKernel } from "./helpers";
 
 describe("executePythonWithKernel streaming", () => {

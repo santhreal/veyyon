@@ -8,6 +8,7 @@
  * tests to spy on.
  */
 
+import { errorMessage } from "@veyyon/utils";
 import { isTimeoutError, withTimeoutSignal } from "../utils/fetch-timeout";
 import type { HindsightConfig } from "./config";
 
@@ -521,7 +522,7 @@ export class HindsightApi {
 		} catch (err) {
 			const message = isTimeoutError(err)
 				? `${operation} request timed out after 30s`
-				: `${operation} request failed: ${err instanceof Error ? err.message : String(err)}`;
+				: `${operation} request failed: ${errorMessage(err)}`;
 			throw new HindsightError(message, undefined, err);
 		}
 

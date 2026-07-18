@@ -1,0 +1,83 @@
+# Build context for `Dockerfile.veybot` (veybot:dev). Shadows .dockerignore
+# for this file only — the veyyon-root build uses Dockerfile.dockerignore instead.
+#
+# Note: this duplicates most of the entries in Dockerfile.dockerignore. That's
+# the cost of per-Dockerfile shadows (no shared file to factor common rules
+# into). Keep them roughly in sync.
+
+# Heavy build outputs — must never reach the build context.
+target/
+**/node_modules
+dist/
+runs/
+
+# Per-host scratch the veyyon codebase uses for parallel agents / worktrees.
+.fallow/
+.worktrees/
+.wt/
+.opencode/
+.pi_config/
+.veyyon/plugins/
+
+# VCS, editors, IDEs.
+.git/
+.npm/
+.vscode/
+.zed/
+.idea/
+
+# OS + transient noise.
+.DS_Store
+*.swp
+*.swo
+*~
+*.tmp
+
+# Logs + profiling artifacts.
+*.log
+*.cpuprofile
+*.heapprofile
+*.heapsnapshot
+CPU.*
+
+# Build / test side outputs.
+*.tsbuildinfo
+coverage/
+.nyc_output/
+__pycache__/
+compaction-results/
+changes/
+
+# Generated files (the in-image build regenerates them).
+packages/coding-agent/src/internal-urls/docs-index.generated.ts
+packages/natives/native/.build/
+packages/natives/native/veyyon_natives.darwin-*.node
+packages/natives/native/veyyon_natives.dev.node
+packages/ai/test/.temp-images/
+python/veyyon-rpc/src/veyyon_rpc.egg-info/
+python/veybot/data/
+python/veybot/.cache/
+python/veybot/src/veybot/static/
+python/veybot/web/dist/
+
+# Scratch files the repo creates ad-hoc.
+syntax.jsonl
+out.jsonl
+out.html
+veyyon-*.html
+
+# Secrets. Should never be in the image regardless.
+.env
+
+# veybot-only excludes. Natives + wheel + python + bun + rustup all come
+# from VEYYON_BASE; the web-builder stage only needs root manifests + the
+# python/veybot/web tree; the runtime stage only COPYs python/veybot/
+# pyproject + src + entrypoint. Everything below is dead weight in the
+# veybot build context.
+crates/
+docs/
+assets/
+scripts/
+LICENSE
+AGENTS.md
+README.md

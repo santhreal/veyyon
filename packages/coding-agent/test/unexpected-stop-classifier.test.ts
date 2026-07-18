@@ -1,12 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
-import type { AssistantMessage } from "@veyyon/pi-ai";
-import * as ai from "@veyyon/pi-ai";
-import { getBundledModel } from "@veyyon/pi-catalog/models";
+import type { AssistantMessage } from "@veyyon/ai";
+import * as ai from "@veyyon/ai";
+import { getBundledModel } from "@veyyon/catalog/models";
 import {
 	classifyUnexpectedStop,
 	isUnexpectedStopCandidate,
 	parseUnexpectedStopClassification,
-} from "@veyyon/pi-coding-agent/session/unexpected-stop-classifier";
+} from "@veyyon/coding-agent/session/unexpected-stop-classifier";
 
 function makeAssistantMessage(options: {
 	stopReason: AssistantMessage["stopReason"];

@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { errorMessage } from "@veyyon/utils";
 import { type } from "arktype";
 import { resolvePromptCacheKey } from "../auth-gateway/http";
 /**
@@ -689,7 +690,7 @@ export function encodeStream(
 				}
 			} catch (err) {
 				if (!cancelled) {
-					const msg = err instanceof Error ? err.message : String(err);
+					const msg = errorMessage(err);
 					writeSse(controller, { error: { message: msg, type: "upstream_error" } });
 					controller.close();
 				}

@@ -1,7 +1,7 @@
-import type { AgentMessage } from "@veyyon/pi-agent-core";
-import type { CompactionOutcome } from "@veyyon/pi-agent-core/compaction";
-import type { AssistantMessage, ImageContent, Message, Usage, UsageReport } from "@veyyon/pi-ai";
-import type { Component, Container, EditorTheme, Loader, Spacer, Text, TUI } from "@veyyon/pi-tui";
+import type { AgentMessage } from "@veyyon/agent-core";
+import type { CompactionOutcome } from "@veyyon/agent-core/compaction";
+import type { AssistantMessage, ImageContent, Message, Usage, UsageReport } from "@veyyon/ai";
+import type { Component, Container, EditorTheme, Loader, Spacer, Text, TUI } from "@veyyon/tui";
 import type { CollabGuestLink } from "../collab/guest";
 import type { CollabHost } from "../collab/host";
 import type { KeybindingsManager } from "../config/keybindings";

@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { buildParams } from "@veyyon/pi-ai/providers/openai-responses";
-import type { Context } from "@veyyon/pi-ai/types";
-import { Effort } from "@veyyon/pi-catalog/effort";
-import { getSupportedEfforts } from "@veyyon/pi-catalog/model-thinking";
-import { getBundledModel } from "@veyyon/pi-catalog/models";
+import { buildParams } from "@veyyon/ai/providers/openai-responses";
+import type { Context } from "@veyyon/ai/types";
+import { Effort } from "@veyyon/catalog/effort";
+import { getSupportedEfforts } from "@veyyon/catalog/model-thinking";
+import { getBundledModel } from "@veyyon/catalog/models";
 
 // Pins fix #2 of the compaction effort-override bug. Models that reason
 // natively but reject the wire `reasoning.effort` param (e.g.

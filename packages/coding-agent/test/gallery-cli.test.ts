@@ -1,14 +1,16 @@
 import { beforeAll, describe, expect, it } from "bun:test";
+import * as path from "node:path";
 import {
 	GALLERY_STATES,
 	parseGalleryStates,
 	renderGalleryState,
 	resolveFixture,
-} from "@veyyon/pi-coding-agent/cli/gallery-cli";
-import type { GalleryFixture } from "@veyyon/pi-coding-agent/cli/gallery-fixtures";
-import { resetSettingsForTest, Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { initTheme, theme } from "@veyyon/pi-coding-agent/modes/theme/theme";
-import { toolRenderers } from "@veyyon/pi-coding-agent/tools/renderers";
+} from "@veyyon/coding-agent/cli/gallery-cli";
+import type { GalleryFixture } from "@veyyon/coding-agent/cli/gallery-fixtures";
+import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
+import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
+import { toolRenderers } from "@veyyon/coding-agent/tools/renderers";
+import { hermeticSpawnEnv } from "./helpers/hermetic-spawn-env";
 
 beforeAll(async () => {
 	resetSettingsForTest();
@@ -123,4 +125,32 @@ describe("gallery harness", () => {
 		expect(fixture.args).toBeDefined();
 		expect(fixture.result.content.length).toBeGreaterThan(0);
 	});
+
+	it("exits 1 with the error on stderr for an unknown --tool", async () => {
+		// Scripts must be able to distinguish "tool doesn't exist" from an empty
+		// gallery: the refusal goes to stderr and the exit code is non-zero.
+		const cliEntry = path.resolve(import.meta.dir, "../src/cli.ts");
+		const { env, cleanup } = hermeticSpawnEnv();
+		let stdout: string;
+		let stderr: string;
+		let exitCode: number;
+		try {
+			const proc = Bun.spawn([process.execPath, cliEntry, "gallery", "--tool", "nonexistent-tool"], {
+				env,
+				stdout: "pipe",
+				stderr: "pipe",
+			});
+			[stdout, stderr, exitCode] = await Promise.all([
+				new Response(proc.stdout).text(),
+				new Response(proc.stderr).text(),
+				proc.exited,
+			]);
+		} finally {
+			cleanup();
+		}
+		expect(exitCode).toBe(1);
+		expect(stderr).toContain("Unknown tool 'nonexistent-tool'");
+		expect(stderr).toContain("Known tools:");
+		expect(stdout).not.toContain("Unknown tool");
+	}, 30_000);
 });

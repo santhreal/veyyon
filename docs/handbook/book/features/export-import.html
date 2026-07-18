@@ -10,6 +10,10 @@
         <!-- Veyyon handbook: self-contained head additions. No remote resources. -->
         <meta name="theme-color" content="#050505">
         <meta name="color-scheme" content="dark">
+        <!-- Site favicons live at the deployed root, one level above /docs/. -->
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+        <link rel="icon" href="/favicon.ico" sizes="48x48">
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png">
         <style>
           /* Paint the near-black surface before CSS/JS resolve the theme, so there is
              no light flash on load. Kept in sync with theme/veyyon.css. */
@@ -18,7 +22,7 @@
           *, *::before, *::after { box-sizing: border-box; }
         </style>
 
-        <meta name="description" content="How Veyyon turns open models into frontier coding agents. The product, the harness, tool-call repair, the edit format, per-model adaptation, and how to use it.">
+        <meta name="description" content="Operator handbook for the Veyyon terminal coding agent: install, configuration, tools, approvals, edit formats, providers, and harness structure.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -38,7 +42,7 @@
         <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="../ayu-highlight-3fdfc3ac.css">
 
         <!-- Custom theme stylesheets -->
-        <link rel="stylesheet" href="../theme/veyyon-fc839a17.css">
+        <link rel="stylesheet" href="../theme/veyyon-06f6939e.css">
 
 
         <!-- Provide site root and default themes to javascript -->
@@ -46,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-e76f06ca.js";
+            window.path_to_searchindex_js = "../searchindex-a2447057.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-9cfd259b.js"></script>
+        <script src="../toc-cc1a72e9.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -192,7 +196,7 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="export-and-import"><a class="header" href="#export-and-import">Export and import</a></h1>
-<h2 id="session-export-built"><a class="header" href="#session-export-built">Session export (built)</a></h2>
+<h2 id="session-export"><a class="header" href="#session-export">Session export</a></h2>
 <p><code>/export</code> writes the current session transcript. Target format depends on the extension:</p>
 <div class="table-wrapper">
 <table>
@@ -207,16 +211,16 @@
 </div>
 <p>Paths resolve relative to the working directory, <code>~/</code>, or absolute paths. Directory targets receive
 the default session filename inside the folder.</p>
-<h2 id="migration-from-claude-code-built"><a class="header" href="#migration-from-claude-code-built">Migration from Claude Code (built)</a></h2>
+<h2 id="migration-from-claude-code"><a class="header" href="#migration-from-claude-code">Migration from Claude Code</a></h2>
 <p><code>/import</code> is <strong>not</strong> in the builtin slash registry; Claude migration may be available through setup
 flows or extensions. When import runs, it merges compatible settings from <code>.claude/</code> into Veyyon’s
-config tree (<code>.veyyon/</code>, <code>~/.veyyon/agent/</code>), including MCP, hooks, skills, and agents.</p>
+config tree (<code>.veyyon/</code>, <code>~/.veyyon/profiles/default/agent/</code>), including MCP, hooks, skills, and agents.</p>
 <p>Import works on <strong>local</strong> sessions; no background daemon is required.</p>
 <p>Typical migrated items:</p>
 <ul>
 <li>Settings from <code>.claude/settings.json</code> → <code>config.yml</code></li>
 <li>MCP servers → <code>mcp.json</code></li>
-<li>Hooks → <code>.veyyon/hooks.json</code> or extension hooks</li>
+<li>Hooks → TypeScript modules under <code>.veyyon/hooks/</code> (or agent <code>hooks/</code>) loaded via the extension path</li>
 <li>Skills → <code>.agents/skills</code> / <code>.veyyon/skills</code></li>
 <li>Subagents → <code>.veyyon/agents</code></li>
 <li><code>CLAUDE.md</code> → <code>AGENTS.md</code></li>
@@ -227,7 +231,7 @@ config tree (<code>.veyyon/</code>, <code>~/.veyyon/agent/</code>), including MC
 
                     <nav class="nav-wrapper" aria-label="Page navigation">
                         <!-- Mobile navigation buttons -->
-                            <a rel="prev" href="../features/personalities.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                            <a rel="prev" href="../features/speech.html" class="mobile-nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                                 <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                             </a>
 
@@ -241,7 +245,7 @@ config tree (<code>.veyyon/</code>, <code>~/.veyyon/agent/</code>), including MC
             </div>
 
             <nav class="nav-wide-wrapper" aria-label="Page navigation">
-                    <a rel="prev" href="../features/personalities.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
+                    <a rel="prev" href="../features/speech.html" class="nav-chapters previous" title="Previous chapter" aria-label="Previous chapter" aria-keyshortcuts="Left">
                         <span class=fa-svg><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 512"><!--! Font Awesome Free 6.2.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2022 Fonticons, Inc. --><path d="M41.4 233.4c-12.5 12.5-12.5 32.8 0 45.3l160 160c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L109.3 256 246.6 118.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0l-160 160z"/></svg></span>
                     </a>
 

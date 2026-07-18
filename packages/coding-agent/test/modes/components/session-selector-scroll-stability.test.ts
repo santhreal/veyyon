@@ -1,8 +1,8 @@
 import { beforeAll, describe, expect, it } from "bun:test";
-import { SessionSelectorComponent } from "@veyyon/pi-coding-agent/modes/components/session-selector";
-import { initTheme } from "@veyyon/pi-coding-agent/modes/theme/theme";
-import type { SessionInfo } from "@veyyon/pi-coding-agent/session/session-listing";
-import { TUI } from "@veyyon/pi-tui";
+import { SessionSelectorComponent } from "@veyyon/coding-agent/modes/components/session-selector";
+import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import type { SessionInfo } from "@veyyon/coding-agent/session/session-listing";
+import { TUI } from "@veyyon/tui";
 import { StressRenderScheduler } from "../../../../tui/test/render-stress-scheduler";
 import { VirtualTerminal } from "../../../../tui/test/virtual-terminal";
 

@@ -4,8 +4,8 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { BeamMemory } from "@veyyon/pi-mnemopi/core/beam";
-import { type DiagnosticSummary, inspectDatabase, runDiagnostics } from "@veyyon/pi-mnemopi/diagnose";
+import { BeamMemory } from "@veyyon/mnemopi/core/beam";
+import { type DiagnosticSummary, inspectDatabase, runDiagnostics } from "@veyyon/mnemopi/diagnose";
 
 function tempRoot(): string {
 	return mkdtempSync(join(tmpdir(), "mnemopi-ts-diagnose-"));

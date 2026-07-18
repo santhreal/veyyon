@@ -5,16 +5,16 @@
  */
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
-import { resetSettingsForTest, Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { IrcBus } from "@veyyon/pi-coding-agent/irc/bus";
-import { AgentHubOverlayComponent } from "@veyyon/pi-coding-agent/modes/components/agent-hub";
-import { SelectorController } from "@veyyon/pi-coding-agent/modes/controllers/selector-controller";
-import { SessionObserverRegistry } from "@veyyon/pi-coding-agent/modes/session-observer-registry";
-import { initTheme } from "@veyyon/pi-coding-agent/modes/theme/theme";
-import type { InteractiveModeContext } from "@veyyon/pi-coding-agent/modes/types";
-import { AgentRegistry } from "@veyyon/pi-coding-agent/registry/agent-registry";
-import type { AgentSession } from "@veyyon/pi-coding-agent/session/agent-session";
-import { TempDir } from "@veyyon/pi-utils";
+import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
+import { IrcBus } from "@veyyon/coding-agent/irc/bus";
+import { AgentHubOverlayComponent } from "@veyyon/coding-agent/modes/components/agent-hub";
+import { SelectorController } from "@veyyon/coding-agent/modes/controllers/selector-controller";
+import { SessionObserverRegistry } from "@veyyon/coding-agent/modes/session-observer-registry";
+import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
+import { AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";
+import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import { TempDir } from "@veyyon/utils";
 
 const AGENT_ID = "Worker";
 const TEST_CWD = path.resolve("agent-hub-cwd");
@@ -90,7 +90,7 @@ describe("Agent hub Enter activation", () => {
 	});
 
 	it("lists persisted subagent session files after restart", async () => {
-		using tempDir = TempDir.createSync("@omp-agent-hub-persisted-");
+		using tempDir = TempDir.createSync("@veyyon-agent-hub-persisted-");
 		const sessionFile = path.join(tempDir.path(), "main.jsonl");
 		const workerSessionFile = path.join(tempDir.path(), "main", "Worker.jsonl");
 		await Bun.write(sessionFile, "");
@@ -268,7 +268,7 @@ describe("Agent hub double-← gating", () => {
 	});
 
 	it("requireContent opens the hub after persisted subagents load", async () => {
-		using tempDir = TempDir.createSync("@omp-agent-hub-require-content-");
+		using tempDir = TempDir.createSync("@veyyon-agent-hub-require-content-");
 		const sessionFile = path.join(tempDir.path(), "main.jsonl");
 		const workerSessionFile = path.join(tempDir.path(), "main", "Worker.jsonl");
 		await Bun.write(sessionFile, "");

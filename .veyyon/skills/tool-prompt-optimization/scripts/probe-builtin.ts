@@ -18,9 +18,9 @@
  * The heavy coding-agent import lives here; probe.ts stays pi-ai-only.
  */
 import { parseArgs } from "node:util";
-import { toolWireSchema } from "@veyyon/pi-ai";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { BUILTIN_TOOLS, GithubTool, HIDDEN_TOOLS, IrcTool, type Tool, type ToolFactory, type ToolSession } from "@veyyon/pi-coding-agent/tools";
+import { toolWireSchema } from "@veyyon/ai";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import { BUILTIN_TOOLS, GithubTool, HIDDEN_TOOLS, IrcTool, type Tool, type ToolFactory, type ToolSession } from "@veyyon/coding-agent/tools";
 import { probe } from "./probe.ts";
 
 const OPEN_TAG = /^<[a-z_][\w-]*>$/i;

@@ -1,7 +1,7 @@
 import { describe, expect, it, type Mock, vi } from "bun:test";
-import type { ImageContent } from "@veyyon/pi-ai";
-import { InputController } from "@veyyon/pi-coding-agent/modes/controllers/input-controller";
-import type { InteractiveModeContext } from "@veyyon/pi-coding-agent/modes/types";
+import type { ImageContent } from "@veyyon/ai";
+import { InputController } from "@veyyon/coding-agent/modes/controllers/input-controller";
+import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
 import manualContinuePrompt from "../src/prompts/system/manual-continue.md" with { type: "text" };
 
 type FakeEditor = {

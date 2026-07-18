@@ -13,11 +13,11 @@ import {
 	getRepoRoot,
 	mergeTaskBranches,
 	parseIsolationMode,
-} from "@veyyon/pi-coding-agent/task/worktree";
-import * as git from "@veyyon/pi-coding-agent/utils/git";
-import * as jj from "@veyyon/pi-coding-agent/utils/jj";
-import * as natives from "@veyyon/pi-natives";
-import { removeWithRetries, setWorktreesDir } from "@veyyon/pi-utils";
+} from "@veyyon/coding-agent/task/worktree";
+import * as git from "@veyyon/coding-agent/utils/git";
+import * as jj from "@veyyon/coding-agent/utils/jj";
+import * as natives from "@veyyon/natives";
+import { removeWithRetries, setWorktreesDir } from "@veyyon/utils";
 
 const tempDirs: string[] = [];
 
@@ -40,7 +40,7 @@ async function runGit(repo: string, args: string[]): Promise<string> {
 }
 
 async function createGitRepo(): Promise<{ baseBranch: string; repo: string }> {
-	const repo = await fs.mkdtemp(path.join(os.tmpdir(), "omp-worktree-"));
+	const repo = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-worktree-"));
 	tempDirs.push(repo);
 	await runGit(repo, ["init"]);
 	await runGit(repo, ["config", "user.email", "test@example.com"]);
@@ -95,7 +95,7 @@ describe("worktree isolation helpers", () => {
 		let initialSha: string;
 
 		beforeAll(async () => {
-			repo = await fs.mkdtemp(path.join(os.tmpdir(), "omp-worktree-"));
+			repo = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-worktree-"));
 			await runGit(repo, ["init", "-q", "-b", BASE_BRANCH]);
 			await runGit(repo, ["config", "user.email", "test@example.com"]);
 			await runGit(repo, ["config", "user.name", "Test User"]);
@@ -153,10 +153,10 @@ describe("worktree isolation helpers", () => {
 		});
 
 		it("uses compact isolation paths that do not embed long task ids", async () => {
-			const originalWorktreeDir = process.env.OMP_WORKTREE_DIR;
-			const worktreeBase = await fs.mkdtemp(path.join(os.tmpdir(), "omp-worktree-base-"));
+			const originalWorktreeDir = process.env.VEYYON_WORKTREE_DIR;
+			const worktreeBase = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-worktree-base-"));
 			tempDirs.push(worktreeBase);
-			delete process.env.OMP_WORKTREE_DIR;
+			delete process.env.VEYYON_WORKTREE_DIR;
 			setWorktreesDir(worktreeBase);
 			vi.spyOn(natives, "isoResolve").mockReturnValue({
 				kind: natives.IsoBackendKind.Rcopy,
@@ -177,9 +177,9 @@ describe("worktree isolation helpers", () => {
 				expect(isolationSegment.length).toBeLessThanOrEqual(12);
 			} finally {
 				if (originalWorktreeDir === undefined) {
-					delete process.env.OMP_WORKTREE_DIR;
+					delete process.env.VEYYON_WORKTREE_DIR;
 				} else {
-					process.env.OMP_WORKTREE_DIR = originalWorktreeDir;
+					process.env.VEYYON_WORKTREE_DIR = originalWorktreeDir;
 				}
 				setWorktreesDir(undefined);
 			}
@@ -267,7 +267,7 @@ describe("worktree isolation helpers", () => {
 				// as a stash entry for the user to reconcile manually.
 				expect(status).toBe("");
 				expect(headContent).toBe("task branch change\n");
-				expect(stashList).toContain("omp-task-merge");
+				expect(stashList).toContain("veyyon-task-merge");
 
 				// Downstream contract: with a clean index, captureDeltaPatch
 				// produces a valid unified diff (not `diff --cc`) that a
@@ -328,7 +328,7 @@ describe("worktree isolation helpers", () => {
 					expect(magicExists).toBe(false);
 					expect(buildLogExists).toBe(true);
 					expect(headContent).toBe("task branch change\n");
-					expect(stashList).toContain("omp-task-merge");
+					expect(stashList).toContain("veyyon-task-merge");
 				} finally {
 					await cleanupTaskBranches(repo, [ignoredBranch]);
 					await Promise.all([
@@ -350,7 +350,7 @@ describe("worktree isolation helpers", () => {
 				await fs.writeFile(fixturePath, `${parentDirtyLines.join("\n")}\n`);
 				const baseline = await captureBaseline(repo);
 
-				const isoRoot = await fs.mkdtemp(path.join(os.tmpdir(), "omp-worktree-iso-"));
+				const isoRoot = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-worktree-iso-"));
 				tempDirs.push(isoRoot);
 				const iso = path.join(isoRoot, "repo");
 				await runGit(isoRoot, ["clone", "-q", repo, iso]);
@@ -513,7 +513,7 @@ describe("getRepoRoot", () => {
 	});
 
 	it("rejects pure jj workspaces with an actionable Jujutsu message", async () => {
-		const dir = await fs.mkdtemp(path.join(os.tmpdir(), "omp-purejj-"));
+		const dir = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-purejj-"));
 		tempDirs.push(dir);
 		await fs.mkdir(path.join(dir, ".jj", "repo", "store"), { recursive: true });
 		await expect(getRepoRoot(dir)).rejects.toThrow(/pure Jujutsu/);
@@ -521,7 +521,7 @@ describe("getRepoRoot", () => {
 	});
 
 	it("preserves the generic git-not-found error for directories without any repo", async () => {
-		const dir = await fs.mkdtemp(path.join(os.tmpdir(), "omp-norepo-"));
+		const dir = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-norepo-"));
 		tempDirs.push(dir);
 		await expect(getRepoRoot(dir)).rejects.toThrow("Git repository not found for isolated task execution.");
 	});
@@ -543,7 +543,7 @@ describe("getRepoRoot", () => {
 		// .jj, but `git.repo.root(inner)` finds the inner .git, so Git
 		// automation targets the nested checkout safely. Isolation must keep
 		// working here exactly as it did before the pure-jj guard landed.
-		const outer = await fs.mkdtemp(path.join(os.tmpdir(), "omp-outerjj-"));
+		const outer = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-outerjj-"));
 		tempDirs.push(outer);
 		await fs.mkdir(path.join(outer, ".jj", "repo", "store"), { recursive: true });
 		const inner = path.join(outer, "vendor");
@@ -562,7 +562,7 @@ describe("applyNestedPatches", () => {
 	let nestedDir: string;
 
 	beforeEach(async () => {
-		parentRepo = await fs.mkdtemp(path.join(os.tmpdir(), "omp-nested-apply-"));
+		parentRepo = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-nested-apply-"));
 		await runGit(parentRepo, ["init", "-q", "-b", "main"]);
 		await runGit(parentRepo, ["config", "user.email", "test@example.com"]);
 		await runGit(parentRepo, ["config", "user.name", "Test User"]);
@@ -664,7 +664,7 @@ describe("applyNestedPatches", () => {
 			runGit(nestedDir, ["stash", "list"]),
 		]);
 		expect(committedFiles.trim()).toBe("file.txt");
-		expect(stashList).toContain("omp-isolation-");
+		expect(stashList).toContain("veyyon-isolation-");
 	});
 });
 
@@ -677,8 +677,8 @@ describe("commitToBranch preserves agent commits", () => {
 	}
 
 	beforeEach(async () => {
-		parent = await fs.mkdtemp(path.join(os.tmpdir(), "omp-commit-parent-"));
-		isolation = await fs.mkdtemp(path.join(os.tmpdir(), "omp-commit-iso-"));
+		parent = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-commit-parent-"));
+		isolation = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-commit-iso-"));
 		await gitr(parent, ["init", "-q", "-b", "main"]);
 		await gitr(parent, ["config", "user.email", "user@example.com"]);
 		await gitr(parent, ["config", "user.name", "Parent User"]);

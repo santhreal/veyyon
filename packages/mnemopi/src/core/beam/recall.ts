@@ -1,4 +1,6 @@
 import { normalizedRecallWeights, temporalHalflifeHours } from "../../config";
+import { toUtcIso } from "../../util/datetime";
+import { tableExists as tableExistsIn } from "../../util/sqlite";
 import { embedQuery } from "../embeddings";
 import { mmrRerank } from "../mmr";
 import { adjustWeights, classifyIntent } from "../query-intent";
@@ -129,10 +131,6 @@ const FACT_QUERY_FILLER_WORDS = new Set([
 
 const FACT_CLITIC_FRAGMENTS = new Set(["d", "ll", "m", "re", "s", "t", "ve"]);
 const FLAT_FACT_SEARCH_NOISE: Record<string, true> = { entity: true, fact: true };
-
-function nowIso(): string {
-	return new Date().toISOString();
-}
 
 function asNumber(value: unknown, fallback = 0): number {
 	const n = typeof value === "number" ? value : Number(value);
@@ -424,15 +422,8 @@ function queryAll(beam: BeamMemoryState, sql: string, params: readonly DbValue[]
 	return beam.db.query(sql).all(...params) as Row[];
 }
 
-function queryGet(beam: BeamMemoryState, sql: string, params: readonly DbValue[] = []): Row | null {
-	return (beam.db.query(sql).get(...params) as Row | null) ?? null;
-}
-
 function tableExists(beam: BeamMemoryState, table: string): boolean {
-	return (
-		queryGet(beam, "SELECT 1 FROM sqlite_master WHERE type IN ('table', 'virtual table') AND name = ?", [table]) !==
-		null
-	);
+	return tableExistsIn(beam.db, table);
 }
 
 function factsHaveScopeColumn(beam: BeamMemoryState): boolean {
@@ -455,7 +446,7 @@ function buildWhere(
 ): { where: string; params: DbValue[] } {
 	const prefix = tableAlias.length === 0 ? "" : `${tableAlias}.`;
 	const clauses = [`(${prefix}valid_until IS NULL OR ${prefix}valid_until > ?)`, `${prefix}superseded_by IS NULL`];
-	const params: DbValue[] = [nowIso()];
+	const params: DbValue[] = [toUtcIso()];
 	const channelId = options.channelId ?? null;
 	const authorId = options.authorId ?? null;
 	const authorType = options.authorType ?? null;
@@ -523,21 +514,17 @@ function ftsRows(
 	useSynonyms = true,
 ): Row[] {
 	if (!tableExists(beam, table)) return [];
-	try {
-		if (table === "fts_working") {
-			return queryAll(beam, "SELECT id, rank FROM fts_working WHERE fts_working MATCH ? ORDER BY rank, id LIMIT ?", [
-				ftsQuery(query, useSynonyms),
-				limit,
-			]);
-		}
-		return queryAll(
-			beam,
-			"SELECT rowid, rank FROM fts_episodes WHERE fts_episodes MATCH ? ORDER BY rank, rowid LIMIT ?",
-			[ftsQuery(query, useSynonyms), limit],
-		);
-	} catch {
-		return [];
+	if (table === "fts_working") {
+		return queryAll(beam, "SELECT id, rank FROM fts_working WHERE fts_working MATCH ? ORDER BY rank, id LIMIT ?", [
+			ftsQuery(query, useSynonyms),
+			limit,
+		]);
 	}
+	return queryAll(
+		beam,
+		"SELECT rowid, rank FROM fts_episodes WHERE fts_episodes MATCH ? ORDER BY rank, rowid LIMIT ?",
+		[ftsQuery(query, useSynonyms), limit],
+	);
 }
 
 function normalizeRanks(rows: readonly Row[], key: string): Map<string | number, number> {
@@ -853,7 +840,7 @@ function updateRecallCounts(
 	results: readonly RecallResult[],
 	options: RecallOptionsInternal,
 ): void {
-	const timestamp = nowIso();
+	const timestamp = toUtcIso();
 	for (const tierLabel of ["working", "episodic"] as const) {
 		const ids = results.filter(r => r.tier_label === tierLabel).map(r => r.id);
 		if (ids.length === 0) continue;

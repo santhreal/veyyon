@@ -2,13 +2,13 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { type ExecuteHashlineSingleOptions, executeHashlineSingle } from "@veyyon/pi-coding-agent/edit";
-import { canonicalSnapshotKey, getFileSnapshotStore } from "@veyyon/pi-coding-agent/edit/file-snapshot-store";
-import { DEFAULT_MAX_BYTES } from "@veyyon/pi-coding-agent/session/streaming-output";
-import type { ToolSession } from "@veyyon/pi-coding-agent/tools";
-import { ReadTool } from "@veyyon/pi-coding-agent/tools/read";
-import { removeWithRetries } from "@veyyon/pi-utils";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import { type ExecuteHashlineSingleOptions, executeHashlineSingle } from "@veyyon/coding-agent/edit";
+import { canonicalSnapshotKey, getFileSnapshotStore } from "@veyyon/coding-agent/edit/file-snapshot-store";
+import { DEFAULT_MAX_BYTES } from "@veyyon/coding-agent/session/streaming-output";
+import type { ToolSession } from "@veyyon/coding-agent/tools";
+import { ReadTool } from "@veyyon/coding-agent/tools/read";
+import { removeWithRetries } from "@veyyon/utils";
 import { GrepTool } from "../../src/tools/grep";
 
 function createSession(cwd: string): ToolSession {

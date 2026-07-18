@@ -1,15 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
-import { Agent } from "@veyyon/pi-agent-core";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
-import type { SettingPath } from "@veyyon/pi-coding-agent/config/settings-schema";
-import { IrcBus, type IrcMessage } from "@veyyon/pi-coding-agent/irc/bus";
-import { AgentLifecycleManager } from "@veyyon/pi-coding-agent/registry/agent-lifecycle";
-import { AgentRegistry } from "@veyyon/pi-coding-agent/registry/agent-registry";
-import { AgentSession, type AgentSessionEvent } from "@veyyon/pi-coding-agent/session/agent-session";
-import type { CustomMessage } from "@veyyon/pi-coding-agent/session/messages";
-import { SessionManager } from "@veyyon/pi-coding-agent/session/session-manager";
-import type { ToolSession } from "@veyyon/pi-coding-agent/tools";
-import { IrcTool } from "@veyyon/pi-coding-agent/tools/irc";
+import { Agent } from "@veyyon/agent-core";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import type { SettingPath } from "@veyyon/coding-agent/config/settings-schema";
+import { IrcBus, type IrcMessage } from "@veyyon/coding-agent/irc/bus";
+import { AgentLifecycleManager } from "@veyyon/coding-agent/registry/agent-lifecycle";
+import { AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";
+import { AgentSession, type AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session";
+import type { CustomMessage } from "@veyyon/coding-agent/session/messages";
+import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import type { ToolSession } from "@veyyon/coding-agent/tools";
+import { IrcTool } from "@veyyon/coding-agent/tools/irc";
 
 interface FakeSession {
 	session: AgentSession;

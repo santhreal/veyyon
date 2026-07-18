@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { Effort } from "@veyyon/pi-ai";
-import { parseAgentFields } from "@veyyon/pi-coding-agent/discovery/helpers";
-import { AUTO_THINKING } from "@veyyon/pi-coding-agent/thinking";
+import { Effort } from "@veyyon/ai";
+import { parseAgentFields } from "@veyyon/coding-agent/discovery/helpers";
+import { AUTO_THINKING } from "@veyyon/coding-agent/thinking";
 
 describe("parseAgentFields", () => {
 	test("parses blocking from boolean frontmatter", () => {

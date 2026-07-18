@@ -2,12 +2,7 @@ import { beforeAll, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import {
-	type InMemorySnapshotStore as FileReadCache,
-	formatHashlineHeader,
-	MismatchError as HashlineMismatchError,
-} from "@veyyon/hashline";
-import { resetSettingsForTest, Settings } from "@veyyon/pi-coding-agent/config/settings";
+import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import {
 	canonicalSnapshotKey,
 	type ExecuteHashlineSingleOptions,
@@ -15,10 +10,15 @@ import {
 	getFileSnapshotStore as getFileReadCache,
 	HashlineFilesystem,
 	hashlineEditParamsSchema,
-} from "@veyyon/pi-coding-agent/edit";
-import { resolveLocalUrlToPath } from "@veyyon/pi-coding-agent/internal-urls";
-import type { ToolSession } from "@veyyon/pi-coding-agent/tools";
-import { removeWithRetries } from "@veyyon/pi-utils";
+} from "@veyyon/coding-agent/edit";
+import { resolveLocalUrlToPath } from "@veyyon/coding-agent/internal-urls";
+import type { ToolSession } from "@veyyon/coding-agent/tools";
+import {
+	type InMemorySnapshotStore as FileReadCache,
+	formatHashlineHeader,
+	MismatchError as HashlineMismatchError,
+} from "@veyyon/hashline";
+import { removeWithRetries } from "@veyyon/utils";
 import { type Type, type } from "arktype";
 
 beforeAll(async () => {
@@ -512,7 +512,7 @@ describe("hashline — filename+tag path recovery", () => {
 			const root = canonicalSnapshotKey(tempDir);
 			const inside = path.join(root, "pkg", "test", "file.ts");
 			// A sibling of the working tree stands in for the artifact sandbox / vault.
-			const outside = path.join(canonicalSnapshotKey(os.tmpdir()), "omp-artifacts", "file.ts");
+			const outside = path.join(canonicalSnapshotKey(os.tmpdir()), "veyyon-artifacts", "file.ts");
 
 			// Internal-URL authored targets are approved at "read"; never redirect to a "write".
 			expect(guardFs.allowTagPathRecovery("local://file.ts", inside)).toBe(false);

@@ -1,4 +1,4 @@
-import type { ServerSentEvent } from "@veyyon/pi-utils";
+import type { ServerSentEvent } from "@veyyon/utils";
 import type { RawSseEvent } from "../types";
 
 type RawSseObserver = (event: RawSseEvent) => void;

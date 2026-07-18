@@ -6,7 +6,7 @@
  * only exercised indirectly through renderMathInText.
  */
 import { describe, expect, it } from "bun:test";
-import { inlineMathSpanEnd } from "@veyyon/pi-tui/latex-to-unicode";
+import { inlineMathSpanEnd } from "@veyyon/tui/latex-to-unicode";
 
 describe("inlineMathSpanEnd", () => {
 	it("returns the closing-$ index for a simple span", () => {

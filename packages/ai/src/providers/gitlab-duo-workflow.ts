@@ -3,7 +3,8 @@ import * as path from "node:path";
 import {
 	discoverGitLabDuoWorkflowRuntimeNamespace,
 	type GitLabDuoWorkflowNamespaceSelection,
-} from "@veyyon/pi-catalog/discovery/gitlab-duo-workflow";
+} from "@veyyon/catalog/discovery/gitlab-duo-workflow";
+import { scopedTimeoutSignal } from "@veyyon/utils";
 import * as AIError from "../error";
 import type {
 	Api,
@@ -40,7 +41,7 @@ const DEFAULT_GITLAB_DUO_WORKFLOW_TRACE_FILE = path.resolve(
 const GITLAB_DUO_WORKFLOW_CLIENT_TYPE = "node-websocket";
 /**
  * Idle deadline for the workflow WebSocket. The socket has no server-side
- * keepalive contract OMP can rely on, so a connection silently going half-open
+ * keepalive contract veyyon can rely on, so a connection silently going half-open
  * (proxy/LB drops the TCP link without delivering FIN/RST) would otherwise leave
  * `runGitLabDuoWorkflowSocket` waiting forever. If no frame arrives within this
  * window — before open or between checkpoints — the socket is aborted and the
@@ -63,7 +64,7 @@ const GITLAB_DUO_WORKFLOW_IDLE_TIMEOUT_MS = 90_000;
 const GITLAB_DUO_WORKFLOW_REST_TIMEOUT_MS = 30_000;
 /**
  * How many times a single stream may restart on a FRESH workflow after the server
- * reports its per-workflow step (graph-recursion) limit. Long OMP tool-call loops
+ * reports its per-workflow step (graph-recursion) limit. Long veyyon tool-call loops
  * legitimately overrun the cap; each restart resets the budget. Bounded so a task
  * that perpetually overruns degrades to a graceful stop instead of looping on quota.
  */
@@ -148,8 +149,8 @@ export const GITLAB_DUO_WORKFLOW_CLIENT_CAPABILITIES = [
 	"tool_call_approval",
 ] as const;
 
-const GITLAB_DUO_WORKFLOW_INLINE_AGENT_NAME = "omp_agent";
-const GITLAB_DUO_WORKFLOW_INLINE_PROMPT_ID = "omp_inline_prompt";
+const GITLAB_DUO_WORKFLOW_INLINE_AGENT_NAME = "veyyon_agent";
+const GITLAB_DUO_WORKFLOW_INLINE_PROMPT_ID = "veyyon_inline_prompt";
 // `on_agent_reasoning` is what makes the server tag an agent's pre-tool-call
 // commentary as `message_sub_type: "reasoning"` — the chain-of-thought the
 // official Duo CLI surfaces. An inline flow must opt in explicitly.
@@ -555,7 +556,7 @@ export function buildGitLabDuoWorkflowStartRequest(
 
 // Build the inline ambient flow sent over the wire (Path B / `flowConfig`). The
 // server constructs the whole flow from this struct: a single agent component
-// whose system slot carries OMP's own authoritative system prompt (no GitLab jinja
+// whose system slot carries veyyon's own authoritative system prompt (no GitLab jinja
 // wrapper / project metadata) and `on_agent_reasoning` so pre-tool-call commentary
 // streams back as reasoning. `toolset: []` because MCP tools auto-attach from
 // `startRequest.mcpTools` when the workflow's `mcp_enabled` is true. The user slot
@@ -809,7 +810,7 @@ function createGitLabDuoWorkflowProviderSessionState(): GitLabDuoWorkflowProvide
 		close: () => {
 			// Stop the server-side workflow before tearing down the socket. The session
 			// is being reset/disposed, so no resume will return the result; without this
-			// PATCH a workflow the server is still running on OMP would be stranded.
+			// PATCH a workflow the server is still running on veyyon would be stranded.
 			try {
 				state.active?.stop?.();
 			} catch {
@@ -927,17 +928,18 @@ export function gitLabDuoWorkflowErrorText(error: unknown): string {
 	return error instanceof Error ? error.message : String(error);
 }
 
-// Absolute-deadline signal for one REST setup fetch (`fetch`, `direct_access`, etc.).
-// The caller's abort signal — when present — is folded in with `AbortSignal.any`, so
-// either the request being cancelled OR the local timeout aborts the fetch. Called
-// per-fetch so each REST call gets its OWN fresh budget; a shared timeout would race
-// several fetches on the same clock and starve the later ones after the first spent
-// the whole budget. The workflow's `start` event already streamed before any of
-// these calls run, so an unbounded fetch would leave the assistant stream with no
-// terminal event — see {@link GITLAB_DUO_WORKFLOW_REST_TIMEOUT_MS}.
-function gitLabDuoWorkflowRestSignal(callerSignal?: AbortSignal): AbortSignal {
-	const timeoutSignal = AbortSignal.timeout(GITLAB_DUO_WORKFLOW_REST_TIMEOUT_MS);
-	return callerSignal ? AbortSignal.any([callerSignal, timeoutSignal]) : timeoutSignal;
+// Scoped absolute deadline for one REST setup fetch (`fetch`, `direct_access`, etc.).
+// The caller's abort signal — when present — is folded in, so either the request
+// being cancelled OR the local timeout aborts the fetch. Minted per-fetch so each
+// REST call gets its OWN fresh budget; a shared timeout would race several fetches
+// on the same clock and starve the later ones after the first spent the whole
+// budget. The workflow's `start` event already streamed before any of these calls
+// run, so an unbounded fetch would leave the assistant stream with no terminal
+// event — see {@link GITLAB_DUO_WORKFLOW_REST_TIMEOUT_MS}. Callers hold the handle
+// across the fetch AND its body reads and cancel() in finally so the backing timer
+// is cleared on settle instead of staying armed (a bare AbortSignal.timeout leaks).
+function gitLabDuoWorkflowRestTimeout(callerSignal?: AbortSignal): { signal: AbortSignal; cancel(): void } {
+	return scopedTimeoutSignal(GITLAB_DUO_WORKFLOW_REST_TIMEOUT_MS, callerSignal);
 }
 
 async function readGitLabDuoWorkflowResponseErrorMessage(response: Response): Promise<string | undefined> {
@@ -1105,7 +1107,7 @@ async function runGitLabDuoWorkflow(
 				markGitLabDuoWorkflowSettingsEnsured(apiKey, baseUrl, options.cwd);
 			}
 		}
-		// The inline `ambient` flow fails server-side without a project, and OMP has
+		// The inline `ambient` flow fails server-side without a project, and veyyon has
 		// no project of its own, so auto-discover one when nothing is configured. Prefer
 		// the project the namespace was resolved from (the workspace git remote or an
 		// explicit project), so a group with multiple projects scopes to the actual
@@ -1360,7 +1362,7 @@ async function runGitLabDuoWorkflow(
 				continue;
 			}
 			// The server caps each workflow at a fixed step (graph-recursion) limit.
-			// A long but healthy OMP tool-call loop legitimately overruns it; that is
+			// A long but healthy veyyon tool-call loop legitimately overruns it; that is
 			// not a real failure. Stop the exhausted run and create a FRESH workflow
 			// (a new id resets the step budget — unlike the timeout case, resending on
 			// the same id would not), then reopen the socket. The conversation so far
@@ -1502,6 +1504,7 @@ async function fetchGitLabDuoWorkflowAvailableModels(
 	rootNamespaceId: string,
 	signal?: AbortSignal,
 ): Promise<GitLabAvailableModelsPayload | undefined> {
+	const restTimeout = gitLabDuoWorkflowRestTimeout(signal);
 	try {
 		const response = await fetchImpl(gitLabApiUrl(baseUrl, "/api/graphql"), {
 			method: "POST",
@@ -1513,7 +1516,7 @@ async function fetchGitLabDuoWorkflowAvailableModels(
 				query: GITLAB_DUO_WORKFLOW_AVAILABLE_MODELS_QUERY,
 				variables: { rootNamespaceId: toGitLabGraphQLNamespaceId(rootNamespaceId) },
 			}),
-			signal: gitLabDuoWorkflowRestSignal(signal),
+			signal: restTimeout.signal,
 		});
 		if (!response.ok) return undefined;
 		const payload: unknown = await response.json();
@@ -1524,6 +1527,8 @@ async function fetchGitLabDuoWorkflowAvailableModels(
 		// transient-network behavior (undefined -> caller falls back to defaults), so a
 		// stalled models fetch degrades rather than hanging the whole stream.
 		return undefined;
+	} finally {
+		restTimeout.cancel();
 	}
 }
 
@@ -1554,6 +1559,7 @@ async function resolveGitLabDuoWorkflowNumericProjectId(
 	projectPath: string,
 	signal?: AbortSignal,
 ): Promise<string | undefined> {
+	const restTimeout = gitLabDuoWorkflowRestTimeout(signal);
 	try {
 		const response = await fetchImpl(gitLabApiUrl(baseUrl, `/api/v4/projects/${encodeURIComponent(projectPath)}`), {
 			method: "GET",
@@ -1561,7 +1567,7 @@ async function resolveGitLabDuoWorkflowNumericProjectId(
 				Authorization: `Bearer ${apiKey}`,
 				"content-type": "application/json",
 			},
-			signal: gitLabDuoWorkflowRestSignal(signal),
+			signal: restTimeout.signal,
 		});
 		if (!response.ok) return undefined;
 		const payload: unknown = await response.json();
@@ -1571,6 +1577,8 @@ async function resolveGitLabDuoWorkflowNumericProjectId(
 		// caller to fall back to the workflow's namespace-only routing rather than block
 		// the stream on a hanging project lookup.
 		return undefined;
+	} finally {
+		restTimeout.cancel();
 	}
 }
 
@@ -1582,7 +1590,7 @@ interface GitLabDuoWorkflowDiscoveredProject {
 	path: string;
 }
 
-// OMP has no GitLab project of its own, but the inline `ambient` flow fails
+// veyyon has no GitLab project of its own, but the inline `ambient` flow fails
 // server-side without a project context. When the caller did not configure a
 // project, discover one the credential can access: prefer a project inside the
 // resolved namespace group, then fall back to any membership project. Returns
@@ -1601,6 +1609,7 @@ async function discoverGitLabDuoWorkflowProject(
 		`/api/v4/projects?membership=true&${query}`,
 	];
 	for (const endpoint of endpoints) {
+		const restTimeout = gitLabDuoWorkflowRestTimeout(signal);
 		try {
 			const response = await fetchImpl(gitLabApiUrl(baseUrl, endpoint), {
 				method: "GET",
@@ -1608,7 +1617,7 @@ async function discoverGitLabDuoWorkflowProject(
 					Authorization: `Bearer ${apiKey}`,
 					"content-type": "application/json",
 				},
-				signal: gitLabDuoWorkflowRestSignal(signal),
+				signal: restTimeout.signal,
 			});
 			if (!response.ok) continue;
 			const payload: unknown = await response.json();
@@ -1619,6 +1628,8 @@ async function discoverGitLabDuoWorkflowProject(
 		} catch {
 			// Timeout/abort on one endpoint: fall through to the next fallback rather than
 			// aborting discovery. Each endpoint gets its own fresh REST budget.
+		} finally {
+			restTimeout.cancel();
 		}
 	}
 	return undefined;
@@ -1633,58 +1644,64 @@ async function requestGitLabDuoWorkflowDirectAccess(
 	workflowDefinition: GitLabDuoWorkflowDefinition = GITLAB_DUO_WORKFLOW_DEFINITION,
 	signal?: AbortSignal,
 ): Promise<GitLabDuoWorkflowDirectAccessConnection> {
-	// A timeout here throws `AbortError`/`TimeoutError` (per `AbortSignal.timeout`),
-	// which surfaces through the outer `streamGitLabDuoWorkflow` catch as a real
-	// stream `error` event — matching the existing HTTP-error path rather than the
-	// swallowed best-effort helpers (settings ensure / project discovery / models).
-	const response = await fetchImpl(gitLabApiUrl(baseUrl, "/api/v4/ai/duo_workflows/direct_access"), {
-		method: "POST",
-		headers: {
-			Authorization: `Bearer ${apiKey}`,
-			"content-type": "application/json",
-		},
-		body: JSON.stringify(buildGitLabDuoWorkflowDirectAccessBody(rootNamespaceId, projectId, workflowDefinition)),
-		signal: gitLabDuoWorkflowRestSignal(signal),
-	});
-	traceGitLabDuoWorkflow("direct_access.response", {
-		status: response.status,
-		ok: response.ok,
-		rootNamespaceId,
-		hasProjectId: Boolean(projectId),
-	});
-	if (!response.ok) {
-		const message = await readGitLabDuoWorkflowResponseErrorMessage(response);
-		// Always embed the HTTP status, even when the body carries a message: the
-		// streaming auth-retry/rotation path (`extractStatusFromAssistantError` ->
-		// `extractHttpStatusFromError`) refreshes/rotates broker credentials only
-		// when the assistant error exposes `errorStatus` or the message embeds an
-		// `HTTP <status>` token. A 401 `{"message":"Unauthorized"}` or a 429 quota
-		// body would otherwise surface as a hard failure with no recoverable status.
-		throw new AIError.GitLabDuoWorkflowApiError(
-			message
-				? `GitLab Duo Workflow direct_access failed with HTTP ${response.status}: ${message}`
-				: `GitLab Duo Workflow direct_access failed with HTTP ${response.status}`,
-			response.status,
-		);
-	}
-	const payload = (await response.json()) as GitLabDirectAccessResponse;
-	const token = extractGitLabWorkflowToken(payload);
-	if (!token) {
-		throw new AIError.ProviderResponseError("GitLab Duo Workflow direct_access did not return credentials", {
-			provider: "gitlab-duo-agent",
-			kind: "empty-body",
+	// A timeout here throws `TimeoutError`, which surfaces through the outer
+	// `streamGitLabDuoWorkflow` catch as a real stream `error` event — matching the
+	// existing HTTP-error path rather than the swallowed best-effort helpers
+	// (settings ensure / project discovery / models). The fence spans the body
+	// reads below, not just the fetch.
+	const restTimeout = gitLabDuoWorkflowRestTimeout(signal);
+	try {
+		const response = await fetchImpl(gitLabApiUrl(baseUrl, "/api/v4/ai/duo_workflows/direct_access"), {
+			method: "POST",
+			headers: {
+				Authorization: `Bearer ${apiKey}`,
+				"content-type": "application/json",
+			},
+			body: JSON.stringify(buildGitLabDuoWorkflowDirectAccessBody(rootNamespaceId, projectId, workflowDefinition)),
+			signal: restTimeout.signal,
 		});
+		traceGitLabDuoWorkflow("direct_access.response", {
+			status: response.status,
+			ok: response.ok,
+			rootNamespaceId,
+			hasProjectId: Boolean(projectId),
+		});
+		if (!response.ok) {
+			const message = await readGitLabDuoWorkflowResponseErrorMessage(response);
+			// Always embed the HTTP status, even when the body carries a message: the
+			// streaming auth-retry/rotation path (`extractStatusFromAssistantError` ->
+			// `extractHttpStatusFromError`) refreshes/rotates broker credentials only
+			// when the assistant error exposes `errorStatus` or the message embeds an
+			// `HTTP <status>` token. A 401 `{"message":"Unauthorized"}` or a 429 quota
+			// body would otherwise surface as a hard failure with no recoverable status.
+			throw new AIError.GitLabDuoWorkflowApiError(
+				message
+					? `GitLab Duo Workflow direct_access failed with HTTP ${response.status}: ${message}`
+					: `GitLab Duo Workflow direct_access failed with HTTP ${response.status}`,
+				response.status,
+			);
+		}
+		const payload = (await response.json()) as GitLabDirectAccessResponse;
+		const token = extractGitLabWorkflowToken(payload);
+		if (!token) {
+			throw new AIError.ProviderResponseError("GitLab Duo Workflow direct_access did not return credentials", {
+				provider: "gitlab-duo-agent",
+				kind: "empty-body",
+			});
+		}
+		traceGitLabDuoWorkflow("direct_access.token", { hasToken: true });
+		const serviceEndpoint = !payload.gitlab_rails?.token && Boolean(payload.duo_workflow_service?.base_url);
+		return {
+			token,
+			...(serviceEndpoint && payload.duo_workflow_service?.base_url
+				? { baseUrl: normalizeGitLabDuoWorkflowServiceBaseUrl(payload.duo_workflow_service.base_url) }
+				: {}),
+			headers: serviceEndpoint ? (payload.duo_workflow_service?.headers ?? {}) : {},
+			serviceEndpoint,
+		};
+	} finally {
+		restTimeout.cancel();
 	}
-	traceGitLabDuoWorkflow("direct_access.token", { hasToken: true });
-	const serviceEndpoint = !payload.gitlab_rails?.token && Boolean(payload.duo_workflow_service?.base_url);
-	return {
-		token,
-		...(serviceEndpoint && payload.duo_workflow_service?.base_url
-			? { baseUrl: normalizeGitLabDuoWorkflowServiceBaseUrl(payload.duo_workflow_service.base_url) }
-			: {}),
-		headers: serviceEndpoint ? (payload.duo_workflow_service?.headers ?? {}) : {},
-		serviceEndpoint,
-	};
 }
 
 async function createGitLabDuoWorkflow(
@@ -1702,37 +1719,43 @@ async function createGitLabDuoWorkflow(
 		projectId,
 		workflowDefinition,
 	});
-	const response = await fetchImpl(gitLabApiUrl(baseUrl, "/api/v4/ai/duo_workflows/workflows"), {
-		method: "POST",
-		headers: {
-			Authorization: `Bearer ${apiKey}`,
-			"content-type": "application/json",
-		},
-		body: JSON.stringify(body),
-		signal: gitLabDuoWorkflowRestSignal(signal),
-	});
-	traceGitLabDuoWorkflow("workflow.create.response", {
-		status: response.status,
-		ok: response.ok,
-		namespaceId,
-		hasProjectId: Boolean(projectId),
-	});
-	if (!response.ok) {
-		throw new AIError.GitLabDuoWorkflowApiError(
-			`GitLab Duo Workflow create failed with HTTP ${response.status}`,
-			response.status,
-		);
+	// The fence spans the body read below, not just the fetch.
+	const restTimeout = gitLabDuoWorkflowRestTimeout(signal);
+	try {
+		const response = await fetchImpl(gitLabApiUrl(baseUrl, "/api/v4/ai/duo_workflows/workflows"), {
+			method: "POST",
+			headers: {
+				Authorization: `Bearer ${apiKey}`,
+				"content-type": "application/json",
+			},
+			body: JSON.stringify(body),
+			signal: restTimeout.signal,
+		});
+		traceGitLabDuoWorkflow("workflow.create.response", {
+			status: response.status,
+			ok: response.ok,
+			namespaceId,
+			hasProjectId: Boolean(projectId),
+		});
+		if (!response.ok) {
+			throw new AIError.GitLabDuoWorkflowApiError(
+				`GitLab Duo Workflow create failed with HTTP ${response.status}`,
+				response.status,
+			);
+		}
+		const payload = (await response.json()) as GitLabCreateWorkflowResponse;
+		const workflowId = payload.id ?? payload.workflow_id ?? payload.workflowId;
+		if (workflowId === undefined) {
+			throw new AIError.ProviderResponseError(
+				`GitLab Duo Workflow create response missing workflow id (HTTP ${response.status})`,
+				{ provider: "gitlab-duo-agent", kind: "empty-body" },
+			);
+		}
+		traceGitLabDuoWorkflow("workflow.create.id", { workflowId });
+		return String(workflowId);
+	} finally {
+		restTimeout.cancel();
 	}
-	const payload = (await response.json()) as GitLabCreateWorkflowResponse;
-	const workflowId = payload.id ?? payload.workflow_id ?? payload.workflowId;
-	if (workflowId === undefined) {
-		throw new AIError.ProviderResponseError(
-			`GitLab Duo Workflow create response missing workflow id (HTTP ${response.status})`,
-			{ provider: "gitlab-duo-agent", kind: "empty-body" },
-		);
-	}
-	traceGitLabDuoWorkflow("workflow.create.id", { workflowId });
-	return String(workflowId);
 }
 
 async function stopGitLabDuoWorkflow(
@@ -1746,6 +1769,7 @@ async function stopGitLabDuoWorkflow(
 	// caller must still fire the server-side stop, but a stalled PATCH here would
 	// otherwise leave the `runGitLabDuoWorkflow` promise unresolved forever — the
 	// bounded budget keeps cleanup best-effort in both directions.
+	const restTimeout = gitLabDuoWorkflowRestTimeout();
 	try {
 		await fetchImpl(gitLabApiUrl(baseUrl, `/api/v4/ai/duo_workflows/workflows/${encodeURIComponent(workflowId)}`), {
 			method: "PATCH",
@@ -1754,7 +1778,7 @@ async function stopGitLabDuoWorkflow(
 				"content-type": "application/json",
 			},
 			body: JSON.stringify(buildGitLabDuoWorkflowStopBody()),
-			signal: gitLabDuoWorkflowRestSignal(),
+			signal: restTimeout.signal,
 		});
 	} catch (error) {
 		// Server-side stop is best-effort: a timeout / network fault must not reject
@@ -1764,6 +1788,8 @@ async function stopGitLabDuoWorkflow(
 			workflowId,
 			error: gitLabDuoWorkflowErrorText(error),
 		});
+	} finally {
+		restTimeout.cancel();
 	}
 }
 
@@ -1799,6 +1825,7 @@ async function ensureGitLabDuoWorkflowSettings(
 	// namespace, which retrying never fixes) — is definitive. A thrown network error
 	// or a 5xx is transient, so the caller should keep the guard retryable and try
 	// again on a later turn rather than permanently skipping the PUT.
+	const restTimeout = gitLabDuoWorkflowRestTimeout(signal);
 	try {
 		const response = await fetchImpl(gitLabApiUrl(baseUrl, `/api/v4/groups/${encodeURIComponent(restNamespaceId)}`), {
 			method: "PUT",
@@ -1807,13 +1834,15 @@ async function ensureGitLabDuoWorkflowSettings(
 				"content-type": "application/json",
 			},
 			body: JSON.stringify(buildGitLabDuoWorkflowSettingsBody()),
-			signal: gitLabDuoWorkflowRestSignal(signal),
+			signal: restTimeout.signal,
 		});
 		traceGitLabDuoWorkflow("settings.ensure", { status: response.status, ok: response.ok });
 		return response.status < 500;
 	} catch (error) {
 		traceGitLabDuoWorkflow("settings.ensure_error", { error: gitLabDuoWorkflowErrorText(error) });
 		return false;
+	} finally {
+		restTimeout.cancel();
 	}
 }
 
@@ -1991,7 +2020,7 @@ export function runGitLabDuoWorkflowSocket(
 				}
 				if (!handleSocketResult(result, data, pending)) {
 					// An `action` result stops the replay loop to hand the tool call back
-					// to OMP. Clear the pause flag first: the live `onmessage` handler must
+					// to veyyon. Clear the pause flag first: the live `onmessage` handler must
 					// process the resume continuation directly instead of buffering it
 					// (a buffered continuation would idle the turn until timeout).
 					if (active) active.paused = false;
@@ -2114,7 +2143,7 @@ async function handleGitLabDuoWorkflowSocketMessage(
 			getRecordString(event, "error") ?? getRecordString(event, "message") ?? status,
 		);
 		// The server caps each workflow at a fixed graph-recursion limit (DWS
-		// RECURSION_LIMIT). A long but healthy OMP tool-call loop legitimately hits
+		// RECURSION_LIMIT). A long but healthy veyyon tool-call loop legitimately hits
 		// it and surfaces as FAILED with this message. That is not a real failure —
 		// resume by starting a fresh workflow that continues the same conversation
 		// (the accumulated context/tool results replay via the goal envelope).
@@ -2223,14 +2252,14 @@ function buildGitLabMcpToolDefinition(tool: Tool): GitLabMcpToolDefinition {
 	// Register the tool under its BARE name (no `mcp__veyyon__` prefix). The server does
 	// not strip prefixes — it registers `_executable_tools` and binds the model schema
 	// under exactly the wire `name` (sanitize_llm_name only replaces illegal chars), so
-	// the name the model sees, the toolset key it is matched against, and OMP's own
+	// the name the model sees, the toolset key it is matched against, and veyyon's own
 	// tool docs must all be the same bare name. A prefixed wire name only forced the
-	// model to learn `mcp__veyyon__read` while OMP docs say `read`, with no upside.
+	// model to learn `mcp__veyyon__read` while veyyon docs say `read`, with no upside.
 	// `originalToolName`/`serverName` stay as MCP metadata; they are not the match key.
 	return {
 		name: tool.name,
 		originalToolName: tool.name,
-		serverName: "omp",
+		serverName: "veyyon",
 		description: tool.description || "",
 		inputSchema: JSON.stringify(
 			schema && typeof schema === "object" ? schema : { type: "object", properties: {}, required: [] },
@@ -2551,9 +2580,9 @@ interface GitLabDuoWorkflowReplayMessage {
 // markers are a historical record, not a syntax to emit.
 const GITLAB_DUO_WORKFLOW_CHATML_HISTORY_NOTE = chatmlHistoryNote.trim();
 
-// The OMP system prompt that rides the inline flow's `prompt_template.system` slot.
+// The veyyon system prompt that rides the inline flow's `prompt_template.system` slot.
 // DWS wraps it in its own gateway boilerplate, but the slot content is delivered to
-// the model verbatim, so OMP's authoritative rules go here directly — no redirect
+// the model verbatim, so veyyon's authoritative rules go here directly — no redirect
 // preamble and no embedding inside the goal. When the goal is a multi-turn ChatML
 // transcript (not a lone bare-text prompt), append the history-note so the model does
 // not mimic the transcript's `<|im_start|>`/`<ran …>` markers as its own tool-call
@@ -2636,7 +2665,7 @@ function renderGitLabDuoWorkflowChatMlToolCall(toolCall: GitLabDuoWorkflowReplay
 	// context, so `<`/`>` need no escaping. Render as a past-tense `<ran NAME>` record:
 	// the tag names the tool, the body is just the arguments JSON (the `{name,arguments}`
 	// wrapper is dropped — it was the exact shape the model copied as a would-be live
-	// call). The call id is OMP-internal wiring the model never reads (call→result pair
+	// call). The call id is veyyon-internal wiring the model never reads (call→result pair
 	// by adjacency), so it is omitted to save bytes. `arguments` carries the `i` (intent)
 	// key only at live dispatch; on replay it is stripped (see gitLabDuoWorkflowAssistantToolCalls).
 	const args = JSON.stringify(toolCall.arguments) ?? "null";
@@ -2694,7 +2723,7 @@ function gitLabDuoWorkflowAssistantToolCalls(message: AssistantMessage): GitLabD
 	return toolCalls;
 }
 
-// The `i` key is OMP's per-call intent narration (e.g. "Reading kernel smoke body").
+// The `i` key is veyyon's per-call intent narration (e.g. "Reading kernel smoke body").
 // It is UI-time metadata describing the call as it is made; on replay the tool name
 // plus arguments already say what the call did, so the intent is dead transcript
 // weight. Drop it from the rendered history. (Live dispatch never reads the replayed
@@ -2897,7 +2926,7 @@ function resolveGitLabDuoWorkflowDefinition(
 	return configured;
 }
 
-// Every workflow definition OMP ships is the inline ambient flow (Path B /
+// Every workflow definition veyyon ships is the inline ambient flow (Path B /
 // `flowConfig`); the predicate is kept as a seam for future server-side flows.
 function isGitLabDuoWorkflowInlineFlow(workflowDefinition: GitLabDuoWorkflowDefinition): boolean {
 	void workflowDefinition;

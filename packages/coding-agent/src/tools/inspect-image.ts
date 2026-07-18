@@ -1,7 +1,7 @@
-import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/pi-agent-core";
-import { instrumentedCompleteSimple, resolveTelemetry } from "@veyyon/pi-agent-core";
-import { type Api, completeSimple, type ImageContent, type Model, type ToolExample } from "@veyyon/pi-ai";
-import { prompt } from "@veyyon/pi-utils";
+import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
+import { instrumentedCompleteSimple, resolveTelemetry } from "@veyyon/agent-core";
+import { type Api, completeSimple, type ImageContent, type Model, type ToolExample } from "@veyyon/ai";
+import { prompt } from "@veyyon/utils";
 import { type } from "arktype";
 import { extractTextContent } from "../commit/utils";
 

@@ -10,7 +10,7 @@
  * Layering mirrors `pruning.ts`: no I/O here.
  */
 
-import type { TextContent, ToolResultMessage } from "@veyyon/pi-ai";
+import type { TextContent, ToolResultMessage } from "@veyyon/ai";
 import { countTokens } from "../tokenizer";
 import type { AgentMessage } from "../types";
 import { estimateTokens } from "./compaction";
@@ -126,7 +126,7 @@ function entryTokens(entry: SessionEntry): number {
  *
  * Conservative: unterminated fences/tags yield no range, and XML detection is
  * suppressed inside fences. Mirrors the toggling logic in
- * `@veyyon/pi-utils` `format()` so behavior stays aligned with prompt rendering.
+ * `@veyyon/utils` `format()` so behavior stays aligned with prompt rendering.
  */
 function scanTextForBlockRanges(text: string): Array<{ start: number; end: number }> {
 	const ranges: Array<{ start: number; end: number }> = [];

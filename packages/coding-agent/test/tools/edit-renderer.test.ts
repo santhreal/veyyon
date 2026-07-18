@@ -2,16 +2,16 @@ import { beforeAll, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
+import type { AgentTool } from "@veyyon/agent-core";
+import { renderGalleryState, resolveFixture } from "@veyyon/coding-agent/cli/gallery-cli";
+import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
+import { editToolRenderer } from "@veyyon/coding-agent/edit/renderer";
+import { renderDiff } from "@veyyon/coding-agent/modes/components/diff";
+import { ToolExecutionComponent } from "@veyyon/coding-agent/modes/components/tool-execution";
+import * as themeModule from "@veyyon/coding-agent/modes/theme/theme";
 import { InMemorySnapshotStore } from "@veyyon/hashline";
-import type { AgentTool } from "@veyyon/pi-agent-core";
-import { renderGalleryState, resolveFixture } from "@veyyon/pi-coding-agent/cli/gallery-cli";
-import { resetSettingsForTest, Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { editToolRenderer } from "@veyyon/pi-coding-agent/edit/renderer";
-import { renderDiff } from "@veyyon/pi-coding-agent/modes/components/diff";
-import { ToolExecutionComponent } from "@veyyon/pi-coding-agent/modes/components/tool-execution";
-import * as themeModule from "@veyyon/pi-coding-agent/modes/theme/theme";
-import { Text, type TUI, visibleWidth } from "@veyyon/pi-tui";
-import { removeWithRetries } from "@veyyon/pi-utils";
+import { Text, type TUI, visibleWidth } from "@veyyon/tui";
+import { removeWithRetries } from "@veyyon/utils";
 import chalk from "chalk";
 
 beforeAll(async () => {
@@ -131,7 +131,7 @@ describe("editToolRenderer", () => {
 			{
 				input: [
 					"*** Begin Patch",
-					"[crates/pi-natives/src/shell.rs]",
+					"[crates/veyyon-natives/src/shell.rs]",
 					"INS.TAIL:",
 					"+pub fn streaming_preview() {",
 				].join("\n"),
@@ -142,7 +142,7 @@ describe("editToolRenderer", () => {
 		);
 
 		const rendered = Bun.stripANSI(component.render(160).join("\n"));
-		expect(rendered).toContain("crates/pi-natives/src/shell.rs");
+		expect(rendered).toContain("crates/veyyon-natives/src/shell.rs");
 		expect(rendered).not.toContain("INS.TAIL:");
 		expect(rendered).not.toContain("+pub fn streaming_preview() {");
 		expect(rendered).not.toContain("*** Begin Patch");

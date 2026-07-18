@@ -591,7 +591,7 @@ impl Printf {
 						},
 						Err(e) => {
 							let _ = writeln!(
-								pi_uutils_ctx::stderr(),
+								veyyon_uutils_ctx::stderr(),
 								"Error processing '{}': {}",
 								file_info.path().to_string_lossy(),
 								e

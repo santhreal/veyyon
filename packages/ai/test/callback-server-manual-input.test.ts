@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { OAuthCallbackFlow } from "@veyyon/pi-ai/registry/oauth/callback-server";
-import type { OAuthCredentials } from "@veyyon/pi-ai/registry/oauth/types";
+import { OAuthCallbackFlow } from "@veyyon/ai/registry/oauth/callback-server";
+import type { OAuthCredentials } from "@veyyon/ai/registry/oauth/types";
 
 class TestCallbackFlow extends OAuthCallbackFlow {
 	async generateAuthUrl(_state: string, redirectUri: string): Promise<{ url: string; instructions?: string }> {

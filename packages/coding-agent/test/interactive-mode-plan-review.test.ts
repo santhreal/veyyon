@@ -1,26 +1,26 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { Agent, AgentBusyError, ThinkingLevel } from "@veyyon/pi-agent-core";
-import type { AssistantMessage, Usage } from "@veyyon/pi-ai";
-import * as AIError from "@veyyon/pi-ai/error";
-import { KeybindingsManager } from "@veyyon/pi-coding-agent/config/keybindings";
-import { ModelRegistry } from "@veyyon/pi-coding-agent/config/model-registry";
-import { resetSettingsForTest, Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { resolveLocalUrlToPath } from "@veyyon/pi-coding-agent/internal-urls";
-import { AssistantMessageComponent } from "@veyyon/pi-coding-agent/modes/components/assistant-message";
-import type { HookSelectorSlider } from "@veyyon/pi-coding-agent/modes/components/hook-selector";
-import type { PlanReviewOverlay } from "@veyyon/pi-coding-agent/modes/components/plan-review-overlay";
-import { InteractiveMode } from "@veyyon/pi-coding-agent/modes/interactive-mode";
-import { initTheme } from "@veyyon/pi-coding-agent/modes/theme/theme";
-import { AgentSession } from "@veyyon/pi-coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/pi-coding-agent/session/auth-storage";
-import { SILENT_ABORT_MARKER, USER_INTERRUPT_LABEL } from "@veyyon/pi-coding-agent/session/messages";
-import { SessionManager } from "@veyyon/pi-coding-agent/session/session-manager";
-import { AUTO_THINKING } from "@veyyon/pi-coding-agent/thinking";
-import * as clipboard from "@veyyon/pi-coding-agent/utils/clipboard";
-import { setKeybindings, Text } from "@veyyon/pi-tui";
-import { formatNumber, TempDir } from "@veyyon/pi-utils";
+import { Agent, AgentBusyError, ThinkingLevel } from "@veyyon/agent-core";
+import type { AssistantMessage, Usage } from "@veyyon/ai";
+import * as AIError from "@veyyon/ai/error";
+import { KeybindingsManager } from "@veyyon/coding-agent/config/keybindings";
+import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
+import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
+import { resolveLocalUrlToPath } from "@veyyon/coding-agent/internal-urls";
+import { AssistantMessageComponent } from "@veyyon/coding-agent/modes/components/assistant-message";
+import type { HookSelectorSlider } from "@veyyon/coding-agent/modes/components/hook-selector";
+import type { PlanReviewOverlay } from "@veyyon/coding-agent/modes/components/plan-review-overlay";
+import { InteractiveMode } from "@veyyon/coding-agent/modes/interactive-mode";
+import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
+import { SILENT_ABORT_MARKER, USER_INTERRUPT_LABEL } from "@veyyon/coding-agent/session/messages";
+import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { AUTO_THINKING } from "@veyyon/coding-agent/thinking";
+import * as clipboard from "@veyyon/coding-agent/utils/clipboard";
+import { setKeybindings, Text } from "@veyyon/tui";
+import { formatNumber, TempDir } from "@veyyon/utils";
 
 /**
  * Matches the plan-approved synthetic-prompt dispatch. `#approvePlan` calls

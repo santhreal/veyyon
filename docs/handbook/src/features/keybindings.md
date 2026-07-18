@@ -1,6 +1,6 @@
 # Keybindings and Vim mode
 
-Remap TUI shortcuts from **`~/.veyyon/agent/keybindings.yml`** (YAML map of action ID → chord or chord
+Remap TUI shortcuts from **`~/.veyyon/profiles/default/agent/keybindings.yml`** (YAML map of action ID → chord or chord
 list). Run **`/hotkeys`** in a session to see active bindings.
 
 ## Customize keybindings

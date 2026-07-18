@@ -7,10 +7,10 @@
  */
 import * as fs from "node:fs/promises";
 import path from "node:path";
+import type { AgentMessage } from "@veyyon/agent-core";
+import type { ImageContent } from "@veyyon/ai";
 import { formatHashlineHeader, formatNumberedLines, type SnapshotStore } from "@veyyon/hashline";
-import type { AgentMessage } from "@veyyon/pi-agent-core";
-import type { ImageContent } from "@veyyon/pi-ai";
-import { formatAge, formatBytes, isProbablyBinary, readImageMetadata } from "@veyyon/pi-utils";
+import { formatAge, formatBytes, isProbablyBinary, readImageMetadata } from "@veyyon/utils";
 import { canonicalSnapshotKey } from "../edit/file-snapshot-store";
 import { normalizeToLF } from "../edit/normalize";
 import type { FileMentionMessage } from "../session/messages";

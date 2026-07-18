@@ -226,7 +226,9 @@ export const UNICODE_SYMBOLS: SymbolMap = {
 	// Status
 	"status.success": "✓",
 	"status.error": "✗",
-	"status.warning": "warn",
+	// A bare stroke matching ✓/✗ — this used to be the literal word "warn",
+	// which leaked as text ("warn interrupted" in the resume dialog).
+	"status.warning": "!",
 	"status.info": "ⓘ",
 	"status.pending": "⏳",
 	"status.disabled": "⦸",
@@ -283,7 +285,7 @@ export const UNICODE_SYMBOLS: SymbolMap = {
 	// Icons.
 	//
 	// The DEFAULT (non-Nerd-Font) map is deliberately icon-light: veyyon's status
-	// line reads as clean silver text, not a row of mismatched glyphs. omp shipped
+	// line reads as clean silver text, not a row of mismatched glyphs. veyyon shipped
 	// a grab-bag here — a hexagon for the model, the bare letters F/T/P as folder/
 	// scratch/package "icons", an emoji for the session — which looked unfinished
 	// and clashed with the wordmark. Segment content is self-describing (the model
@@ -300,7 +302,9 @@ export const UNICODE_SYMBOLS: SymbolMap = {
 	"icon.folder": "",
 	"icon.worktree": "⧉",
 	"icon.search": "⌕",
-	"icon.scratchFolder": "🗑",
+	// Neutral "ephemeral" mark (matches the poimandres themes) — the old 🗑
+	// trash can read as "this session is garbage" when cwd was /tmp.
+	"icon.scratchFolder": "◌",
 	"icon.file": "▤",
 	"icon.git": "",
 	"icon.branch": "",
@@ -321,7 +325,7 @@ export const UNICODE_SYMBOLS: SymbolMap = {
 	"icon.host": "",
 	"icon.session": "",
 	"icon.package": "",
-	"icon.warning": "warn",
+	"icon.warning": "!",
 	"icon.rewind": "↶",
 	"icon.auto": "⟲",
 	"icon.fast": "",
@@ -331,7 +335,7 @@ export const UNICODE_SYMBOLS: SymbolMap = {
 	"icon.extensionMcp": "",
 	"icon.extensionRule": "",
 	"icon.extensionHook": "",
-	"icon.extensionPrompt": "note",
+	"icon.extensionPrompt": "¶",
 	"icon.extensionContextFile": "",
 	"icon.extensionInstruction": "",
 	// STT
@@ -403,19 +407,22 @@ export const UNICODE_SYMBOLS: SymbolMap = {
 	"lang.archive": "",
 	"lang.binary": "",
 	// Settings tabs
-	"tab.appearance": "A",
-	"tab.model": "M",
-	"tab.interaction": "K",
-	"tab.context": "C",
-	"tab.files": "F",
-	"tab.shell": "S",
-	"tab.tools": "T",
-	"tab.memory": "R",
-	"tab.tasks": "P",
-	"tab.providers": "N",
+	// Icon-light doctrine (see the icon block comment above): the category name
+	// stands alone. The old arbitrary mnemonic letters ("K Interaction",
+	// "R Memory", "N Providers") read as noise, not navigation.
+	"tab.appearance": "",
+	"tab.model": "",
+	"tab.interaction": "",
+	"tab.context": "",
+	"tab.files": "",
+	"tab.shell": "",
+	"tab.tools": "",
+	"tab.memory": "",
+	"tab.tasks": "",
+	"tab.providers": "",
 	// Tool identity icons (per-tool signature glyph on the success header)
-	"tool.write": "note",
-	"tool.edit": "note",
+	"tool.write": "❐",
+	"tool.edit": "✎",
 	"tool.bash": ">",
 	"tool.ssh": "⇄",
 	"tool.lsp": "",
@@ -432,7 +439,7 @@ export const UNICODE_SYMBOLS: SymbolMap = {
 	"tool.todo": "",
 	"tool.memory": "R",
 	"tool.ask": "?",
-	"tool.resolve": "ok",
+	"tool.resolve": "✓",
 	"tool.review": "◉",
 	"tool.inspectImage": "",
 	"tool.goal": "◎",

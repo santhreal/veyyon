@@ -1,9 +1,9 @@
 import { describe, expect, it } from "bun:test";
-import type { AssistantMessage, ProviderPayload, Usage } from "@veyyon/pi-ai";
-import { BlobStore } from "@veyyon/pi-coding-agent/session/blob-store";
-import type { SessionMessageEntry } from "@veyyon/pi-coding-agent/session/session-entries";
-import { prepareEntryForPersistence } from "@veyyon/pi-coding-agent/session/session-persistence";
-import { TempDir } from "@veyyon/pi-utils";
+import type { AssistantMessage, ProviderPayload, Usage } from "@veyyon/ai";
+import { BlobStore } from "@veyyon/coding-agent/session/blob-store";
+import type { SessionMessageEntry } from "@veyyon/coding-agent/session/session-entries";
+import { prepareEntryForPersistence } from "@veyyon/coding-agent/session/session-persistence";
+import { TempDir } from "@veyyon/utils";
 
 const usage = (): Usage => ({
 	input: 1,

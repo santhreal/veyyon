@@ -10,14 +10,14 @@ import {
 	type RequestPermissionResponse,
 	type SessionNotification,
 } from "@agentclientprotocol/sdk";
-import type { Model } from "@veyyon/pi-ai";
-import { buildModel } from "@veyyon/pi-catalog/build";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { createAcpConnection } from "@veyyon/pi-coding-agent/modes/acp/acp-mode";
-import type { AgentSession } from "@veyyon/pi-coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/pi-coding-agent/session/auth-storage";
-import { SessionManager } from "@veyyon/pi-coding-agent/session/session-manager";
-import { TempDir } from "@veyyon/pi-utils";
+import type { Model } from "@veyyon/ai";
+import { buildModel } from "@veyyon/catalog/build";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import { createAcpConnection } from "@veyyon/coding-agent/modes/acp/acp-mode";
+import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
+import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { TempDir } from "@veyyon/utils";
 
 const TEST_MODEL: Model = buildModel({
 	id: "claude-sonnet-4-20250514",
@@ -157,7 +157,7 @@ async function closeTransport(writable: WritableStream<unknown>): Promise<void> 
 
 describe("ACP lazy startup", () => {
 	it("applies schema defaults for ACP background jobs and preserves explicit overrides", async () => {
-		const { runRootCommand } = await import("@veyyon/pi-coding-agent/main");
+		const { runRootCommand } = await import("@veyyon/coding-agent/main");
 
 		type ObservedBackgroundSettings = {
 			asyncEnabled: boolean;
@@ -167,7 +167,7 @@ describe("ACP lazy startup", () => {
 		};
 
 		const runAcpStartup = async (settings: Settings): Promise<ObservedBackgroundSettings> => {
-			using tempDir = TempDir.createSync("@omp-acp-background-settings-");
+			using tempDir = TempDir.createSync("@veyyon-acp-background-settings-");
 			const cwd = tempDir.path();
 			const authStorage = await AuthStorage.create(path.join(cwd, "auth.db"));
 			let observed: ObservedBackgroundSettings | undefined;
@@ -248,7 +248,7 @@ describe("ACP lazy startup", () => {
 		// configured value (caller, project, --config overlay, or global) with the
 		// schema default. The fix (re-)added an `isConfigured` guard so explicit
 		// configuration survives, and the schema default only fills holes.
-		const { runRootCommand } = await import("@veyyon/pi-coding-agent/main");
+		const { runRootCommand } = await import("@veyyon/coding-agent/main");
 
 		const explicit = {
 			"task.isolation.mode": "rcopy",
@@ -280,7 +280,7 @@ describe("ACP lazy startup", () => {
 		type ObservedSettings = Record<string, unknown>;
 
 		const runProtocolStartup = async (mode: "rpc" | "rpc-ui" | "acp"): Promise<ObservedSettings> => {
-			using tempDir = TempDir.createSync("@omp-protocol-host-defaulted-");
+			using tempDir = TempDir.createSync("@veyyon-protocol-host-defaulted-");
 			const cwd = tempDir.path();
 			const authStorage = await AuthStorage.create(path.join(cwd, "auth.db"));
 			const settings = Settings.isolated({ ...explicit, ...rpcOnlyExplicit });
@@ -337,7 +337,7 @@ describe("ACP lazy startup", () => {
 	});
 
 	it("honors explicit todo settings for protocol hosts", async () => {
-		const { runRootCommand } = await import("@veyyon/pi-coding-agent/main");
+		const { runRootCommand } = await import("@veyyon/coding-agent/main");
 
 		type ObservedTodoSettings = {
 			enabled: boolean;
@@ -346,7 +346,7 @@ describe("ACP lazy startup", () => {
 		};
 
 		const runProtocolStartup = async (mode: "rpc" | "rpc-ui" | "acp"): Promise<ObservedTodoSettings> => {
-			using tempDir = TempDir.createSync("@omp-protocol-todo-settings-");
+			using tempDir = TempDir.createSync("@veyyon-protocol-todo-settings-");
 			const cwd = tempDir.path();
 			const authStorage = await AuthStorage.create(path.join(cwd, "auth.db"));
 			const settings = Settings.isolated({
@@ -462,7 +462,7 @@ describe("ACP lazy startup", () => {
 	});
 
 	it("applies CLI runtime API keys after ACP lazy session creation resolves extension models", async () => {
-		using tempDir = TempDir.createSync("@omp-acp-lazy-api-key-");
+		using tempDir = TempDir.createSync("@veyyon-acp-lazy-api-key-");
 		const cwd = tempDir.path();
 
 		await Bun.write(
@@ -489,8 +489,8 @@ describe("ACP lazy startup", () => {
 		const authStorage = await AuthStorage.create(path.join(cwd, "auth.db"));
 		try {
 			const settings = Settings.isolated({});
-			const { runRootCommand } = await import("@veyyon/pi-coding-agent/main");
-			const { createAgentSession } = await import("@veyyon/pi-coding-agent/sdk");
+			const { runRootCommand } = await import("@veyyon/coding-agent/main");
+			const { createAgentSession } = await import("@veyyon/coding-agent/sdk");
 			let session: AgentSession | undefined;
 
 			const stopped = runRootCommand(

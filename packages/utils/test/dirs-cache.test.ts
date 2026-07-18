@@ -10,8 +10,8 @@ import {
 	getDocumentConversionCacheDir,
 	getProfileRootDir,
 	setAgentDir,
-} from "@veyyon/pi-utils/dirs";
-import { Snowflake } from "@veyyon/pi-utils/snowflake";
+} from "@veyyon/utils/dirs";
+import { Snowflake } from "@veyyon/utils/snowflake";
 
 function restoreEnv(key: string, value: string | undefined): void {
 	if (value === undefined) {
@@ -23,24 +23,21 @@ function restoreEnv(key: string, value: string | undefined): void {
 
 describe("document conversion cache directory", () => {
 	let tempRoot = "";
-	let originalPiCodingAgentDir: string | undefined;
-	let originalOmpProfile: string | undefined;
-	let originalPiProfile: string | undefined;
+	let originalAgentDir: string | undefined;
+	let originalProfile: string | undefined;
 	let originalXdgCacheHome: string | undefined;
 
 	beforeEach(async () => {
-		originalPiCodingAgentDir = process.env.PI_CODING_AGENT_DIR;
-		originalOmpProfile = process.env.OMP_PROFILE;
-		originalPiProfile = process.env.PI_PROFILE;
+		originalAgentDir = process.env.VEYYON_CODING_AGENT_DIR;
+		originalProfile = process.env.VEYYON_PROFILE;
 		originalXdgCacheHome = process.env.XDG_CACHE_HOME;
-		tempRoot = path.join(os.tmpdir(), "pi-utils-document-cache", Snowflake.next());
+		tempRoot = path.join(os.tmpdir(), "veyyon-utils-document-cache", Snowflake.next());
 		await fs.mkdir(tempRoot, { recursive: true });
 	});
 
 	afterEach(async () => {
-		restoreEnv("PI_CODING_AGENT_DIR", originalPiCodingAgentDir);
-		restoreEnv("OMP_PROFILE", originalOmpProfile);
-		restoreEnv("PI_PROFILE", originalPiProfile);
+		restoreEnv("VEYYON_CODING_AGENT_DIR", originalAgentDir);
+		restoreEnv("VEYYON_PROFILE", originalProfile);
 		restoreEnv("XDG_CACHE_HOME", originalXdgCacheHome);
 		__resetDirsFromEnvForTests();
 		await fs.rm(tempRoot, { recursive: true, force: true });
@@ -52,7 +49,7 @@ describe("document conversion cache directory", () => {
 		process.env.XDG_CACHE_HOME = path.join(tempRoot, "cache");
 		await fs.mkdir(path.join(process.env.XDG_CACHE_HOME, APP_NAME), { recursive: true });
 
-		const defaultAgentDir = path.join(os.homedir(), getConfigDirName(), "agent");
+		const defaultAgentDir = path.join(os.homedir(), getConfigDirName(), "profiles", "default", "agent");
 		setAgentDir(defaultAgentDir);
 
 		expect(getDocumentConversionCacheDir()).toBe(
@@ -60,7 +57,7 @@ describe("document conversion cache directory", () => {
 		);
 	});
 
-	it("stays under a custom PI_CODING_AGENT_DIR", () => {
+	it("stays under a custom VEYYON_CODING_AGENT_DIR", () => {
 		const customAgentDir = path.join(tempRoot, "custom-agent");
 
 		setAgentDir(customAgentDir);
@@ -71,23 +68,20 @@ describe("document conversion cache directory", () => {
 
 describe("test directory state cleanup", () => {
 	it("restores the active profile from the current env after setAgentDir mutations", () => {
-		const originalPiCodingAgentDir = process.env.PI_CODING_AGENT_DIR;
-		const originalOmpProfile = process.env.OMP_PROFILE;
-		const originalPiProfile = process.env.PI_PROFILE;
+		const originalAgentDir = process.env.VEYYON_CODING_AGENT_DIR;
+		const originalProfile = process.env.VEYYON_PROFILE;
 		const originalXdgCacheHome = process.env.XDG_CACHE_HOME;
 		try {
-			process.env.OMP_PROFILE = "cache-profile";
-			delete process.env.PI_PROFILE;
-			delete process.env.PI_CODING_AGENT_DIR;
+			delete process.env.VEYYON_PROFILE;
+			delete process.env.VEYYON_CODING_AGENT_DIR;
 			delete process.env.XDG_CACHE_HOME;
 			__resetDirsFromEnvForTests();
 
-			setAgentDir(path.join(os.tmpdir(), "pi-utils-document-cache", Snowflake.next(), "agent"));
+			setAgentDir(path.join(os.tmpdir(), "veyyon-utils-document-cache", Snowflake.next(), "agent"));
 			expect(getActiveProfile()).toBeUndefined();
 
-			process.env.OMP_PROFILE = "cache-profile";
-			delete process.env.PI_PROFILE;
-			delete process.env.PI_CODING_AGENT_DIR;
+			process.env.VEYYON_PROFILE = "cache-profile";
+			delete process.env.VEYYON_CODING_AGENT_DIR;
 			__resetDirsFromEnvForTests();
 
 			expect(getActiveProfile()).toBe("cache-profile");
@@ -95,9 +89,8 @@ describe("test directory state cleanup", () => {
 				path.join(getProfileRootDir("cache-profile"), "agent", "cache", "document-conversions"),
 			);
 		} finally {
-			restoreEnv("PI_CODING_AGENT_DIR", originalPiCodingAgentDir);
-			restoreEnv("OMP_PROFILE", originalOmpProfile);
-			restoreEnv("PI_PROFILE", originalPiProfile);
+			restoreEnv("VEYYON_CODING_AGENT_DIR", originalAgentDir);
+			restoreEnv("VEYYON_PROFILE", originalProfile);
 			restoreEnv("XDG_CACHE_HOME", originalXdgCacheHome);
 			__resetDirsFromEnvForTests();
 		}

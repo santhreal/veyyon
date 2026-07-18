@@ -1,8 +1,9 @@
 import * as os from "node:os";
 import * as path from "node:path";
-import { ThinkingLevel } from "@veyyon/pi-agent-core";
-import { TERMINAL } from "@veyyon/pi-tui";
-import { formatDuration, formatNumber, getProjectDir, pathIsWithin, relativePathWithinRoot } from "@veyyon/pi-utils";
+import { ThinkingLevel } from "@veyyon/agent-core";
+import { normalizePremiumRequests } from "@veyyon/stats/format";
+import { TERMINAL } from "@veyyon/tui";
+import { formatDuration, formatNumber, getProjectDir, pathIsWithin, relativePathWithinRoot } from "@veyyon/utils";
 import { type ThemeColor, theme } from "../../../modes/theme/theme";
 import { shortenPath, TRUNCATE_LENGTHS, truncateToWidth } from "../../../tools/render-utils";
 import { getSessionAccentAnsi, getSessionAccentHex } from "../../../utils/session-color";
@@ -44,10 +45,6 @@ function stripDisplayRoot(pwd: string): string {
 		if (relative) return relative;
 	}
 	return pwd;
-}
-
-function normalizePremiumRequests(value: number): number {
-	return Math.round((value + Number.EPSILON) * 100) / 100;
 }
 
 const SCRATCH_ROOTS: readonly string[] = (() => {

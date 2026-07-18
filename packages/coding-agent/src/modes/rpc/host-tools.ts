@@ -1,6 +1,6 @@
-import type { AgentTool, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/pi-agent-core";
-import type { Static, TSchema } from "@veyyon/pi-ai";
-import { Snowflake } from "@veyyon/pi-utils";
+import type { AgentTool, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
+import type { Static, TSchema } from "@veyyon/ai";
+import { Snowflake } from "@veyyon/utils";
 import { applyToolProxy } from "../../extensibility/tool-proxy";
 import type { Theme } from "../../modes/theme/theme";
 import type {

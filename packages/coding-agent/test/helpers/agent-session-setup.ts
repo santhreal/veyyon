@@ -1,4 +1,4 @@
-import type { AssistantMessage } from "@veyyon/pi-ai";
+import type { AssistantMessage } from "@veyyon/ai";
 
 /**
  * Shared factory for building a minimal mock `AssistantMessage`

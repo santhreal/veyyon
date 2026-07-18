@@ -1,4 +1,4 @@
-import type { AuthStorage, FetchImpl } from "@veyyon/pi-ai";
+import type { AuthStorage, FetchImpl } from "@veyyon/ai";
 import type { SearchProviderId, SearchResponse } from "../types";
 
 /**

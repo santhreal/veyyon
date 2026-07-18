@@ -1,4 +1,4 @@
-import { parseFrontmatter, prompt } from "@veyyon/pi-utils";
+import { parseFrontmatter, prompt } from "@veyyon/utils";
 import { slashCommandCapability } from "../capability/slash-command";
 import { appendInlineArgsFallback, templateUsesInlineArgPlaceholders } from "../config/prompt-templates";
 import type { SlashCommand } from "../discovery";

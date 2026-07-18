@@ -1,4 +1,4 @@
-import { sanitizeText } from "@veyyon/pi-utils";
+import { sanitizeText } from "@veyyon/utils";
 import { replaceTabs, truncateToWidth, wrapTextWithAnsi } from "../tools/render-utils";
 
 export function formatDebugLogLine(line: string, maxWidth: number): string {

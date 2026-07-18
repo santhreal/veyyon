@@ -1,4 +1,4 @@
-import { $flag } from "@veyyon/pi-utils";
+import { $flag } from "@veyyon/utils";
 import { upgradeJsonSchemaTo202012 } from "./draft";
 import { tryEnforceStrictSchema } from "./normalize";
 
@@ -11,7 +11,7 @@ import { tryEnforceStrictSchema } from "./normalize";
  * see `openai-completions`, `openai-responses`, `openai-codex-responses`, and
  * the strict candidate selection in `anthropic`.
  */
-export const NO_STRICT = $flag("PI_NO_STRICT");
+export const NO_STRICT = $flag("VEYYON_NO_STRICT");
 
 /**
  * Consolidated helper for OpenAI-style strict schema enforcement.

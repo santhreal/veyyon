@@ -1,22 +1,23 @@
 import { describe, expect, it } from "bun:test";
-import { handleYouTube } from "@veyyon/pi-coding-agent/web/scrapers/youtube";
+import { handleYouTube } from "@veyyon/coding-agent/web/scrapers/youtube";
+import { asRender } from "../../helpers/scrapers";
 
 const SKIP = !Bun.env.WEB_FETCH_INTEGRATION;
 
 describe.skipIf(SKIP)("handleYouTube", () => {
 	it("returns null for non-YouTube URLs", async () => {
-		const result = await handleYouTube("https://example.com", 10);
+		const result = asRender(await handleYouTube("https://example.com", 10));
 		expect(result).toBeNull();
 	});
 
 	it("returns null for invalid YouTube URLs", async () => {
-		const result = await handleYouTube("https://youtube.com/invalid", 10);
+		const result = asRender(await handleYouTube("https://youtube.com/invalid", 10));
 		expect(result).toBeNull();
 	});
 
 	it("handles youtube.com/watch?v= format", async () => {
 		// Use Rick Astley's "Never Gonna Give You Up" - a stable, well-known video
-		const result = await handleYouTube("https://www.youtube.com/watch?v=dQw4w9WgXcQ", 30);
+		const result = asRender(await handleYouTube("https://www.youtube.com/watch?v=dQw4w9WgXcQ", 30));
 		if (!result) throw new Error("expected YouTube result");
 		const method = result.method;
 		expect(["parallel", "youtube", "youtube-no-ytdlp"]).toContain(method);
@@ -33,7 +34,7 @@ describe.skipIf(SKIP)("handleYouTube", () => {
 	}, 30000);
 
 	it("handles youtu.be/ short format", async () => {
-		const result = await handleYouTube("https://youtu.be/dQw4w9WgXcQ", 30);
+		const result = asRender(await handleYouTube("https://youtu.be/dQw4w9WgXcQ", 30));
 		if (!result) throw new Error("expected YouTube result");
 		const method = result.method;
 		expect(["parallel", "youtube", "youtube-no-ytdlp"]).toContain(method);
@@ -46,7 +47,7 @@ describe.skipIf(SKIP)("handleYouTube", () => {
 
 	it("handles youtube.com/shorts/ format", async () => {
 		// Use a stable YouTube Shorts video
-		const result = await handleYouTube("https://www.youtube.com/shorts/jNQXAC9IVRw", 30);
+		const result = asRender(await handleYouTube("https://www.youtube.com/shorts/jNQXAC9IVRw", 30));
 		if (!result) throw new Error("expected YouTube result");
 		expect(["parallel", "youtube", "youtube-no-ytdlp"]).toContain(result.method);
 		if (result.method === "youtube") {
@@ -55,7 +56,7 @@ describe.skipIf(SKIP)("handleYouTube", () => {
 	}, 30000);
 
 	it("handles youtube.com/embed/ format", async () => {
-		const result = await handleYouTube("https://www.youtube.com/embed/dQw4w9WgXcQ", 30);
+		const result = asRender(await handleYouTube("https://www.youtube.com/embed/dQw4w9WgXcQ", 30));
 		if (!result) throw new Error("expected YouTube result");
 		expect(["parallel", "youtube", "youtube-no-ytdlp"]).toContain(result.method);
 		if (result.method === "youtube") {
@@ -64,7 +65,7 @@ describe.skipIf(SKIP)("handleYouTube", () => {
 	}, 30000);
 
 	it("handles youtube.com/v/ format", async () => {
-		const result = await handleYouTube("https://www.youtube.com/v/dQw4w9WgXcQ", 30);
+		const result = asRender(await handleYouTube("https://www.youtube.com/v/dQw4w9WgXcQ", 30));
 		if (!result) throw new Error("expected YouTube result");
 		expect(["parallel", "youtube", "youtube-no-ytdlp"]).toContain(result.method);
 		if (result.method === "youtube") {
@@ -73,7 +74,7 @@ describe.skipIf(SKIP)("handleYouTube", () => {
 	}, 30000);
 
 	it("handles m.youtube.com mobile URLs", async () => {
-		const result = await handleYouTube("https://m.youtube.com/watch?v=dQw4w9WgXcQ", 30);
+		const result = asRender(await handleYouTube("https://m.youtube.com/watch?v=dQw4w9WgXcQ", 30));
 		if (!result) throw new Error("expected YouTube result");
 		expect(["parallel", "youtube", "youtube-no-ytdlp"]).toContain(result.method);
 		if (result.method === "youtube") {
@@ -82,7 +83,7 @@ describe.skipIf(SKIP)("handleYouTube", () => {
 	}, 30000);
 
 	it("extracts video metadata when yt-dlp is available", async () => {
-		const result = await handleYouTube("https://www.youtube.com/watch?v=dQw4w9WgXcQ", 30);
+		const result = asRender(await handleYouTube("https://www.youtube.com/watch?v=dQw4w9WgXcQ", 30));
 		expect(result).not.toBeNull();
 
 		// If yt-dlp is available, should have metadata
@@ -101,7 +102,7 @@ describe.skipIf(SKIP)("handleYouTube", () => {
 
 	it("handles videos with transcripts gracefully", async () => {
 		// This video should have captions
-		const result = await handleYouTube("https://www.youtube.com/watch?v=dQw4w9WgXcQ", 30);
+		const result = asRender(await handleYouTube("https://www.youtube.com/watch?v=dQw4w9WgXcQ", 30));
 		expect(result).not.toBeNull();
 
 		if (result?.method === "youtube") {
@@ -115,7 +116,7 @@ describe.skipIf(SKIP)("handleYouTube", () => {
 	it("returns appropriate response when yt-dlp is not available", async () => {
 		// We can't force yt-dlp to be unavailable in tests, but we can verify
 		// the return structure matches expectations for both cases
-		const result = await handleYouTube("https://www.youtube.com/watch?v=dQw4w9WgXcQ", 30);
+		const result = asRender(await handleYouTube("https://www.youtube.com/watch?v=dQw4w9WgXcQ", 30));
 		if (!result) throw new Error("expected YouTube result");
 
 		// Should have one of these methods
@@ -125,15 +126,14 @@ describe.skipIf(SKIP)("handleYouTube", () => {
 
 	it("normalizes video URLs to canonical format", async () => {
 		// Different input formats should normalize to same canonical URL
-		const result = await handleYouTube("https://youtu.be/dQw4w9WgXcQ", 30);
+		const result = asRender(await handleYouTube("https://youtu.be/dQw4w9WgXcQ", 30));
 		expect(result).not.toBeNull();
 		expect(result?.finalUrl).toBe("https://www.youtube.com/watch?v=dQw4w9WgXcQ");
 	}, 30000);
 
 	it("handles playlist URLs by extracting video ID", async () => {
-		const result = await handleYouTube(
-			"https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=PLrAXtmErZgOeiKm4sgNOknGvNjby9efdf",
-			30,
+		const result = asRender(
+			await handleYouTube("https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=PLrAXtmErZgOeiKm4sgNOknGvNjby9efdf", 30),
 		);
 		if (!result) throw new Error("expected YouTube result");
 		if (result.method === "youtube") {
@@ -144,7 +144,7 @@ describe.skipIf(SKIP)("handleYouTube", () => {
 	}, 30000);
 
 	it("includes subtitle source information when available", async () => {
-		const result = await handleYouTube("https://www.youtube.com/watch?v=dQw4w9WgXcQ", 30);
+		const result = asRender(await handleYouTube("https://www.youtube.com/watch?v=dQw4w9WgXcQ", 30));
 
 		if (result?.method === "youtube") {
 			// If transcript is present, should note the source
@@ -159,7 +159,7 @@ describe.skipIf(SKIP)("handleYouTube", () => {
 	}, 30000);
 
 	it("formats duration in human readable format", async () => {
-		const result = await handleYouTube("https://www.youtube.com/watch?v=dQw4w9WgXcQ", 30);
+		const result = asRender(await handleYouTube("https://www.youtube.com/watch?v=dQw4w9WgXcQ", 30));
 
 		if (result?.method === "youtube" && result.content.includes("Duration")) {
 			// Should have duration in M:SS or H:MM:SS format
@@ -168,7 +168,7 @@ describe.skipIf(SKIP)("handleYouTube", () => {
 	}, 30000);
 
 	it("formats view count in readable format", async () => {
-		const result = await handleYouTube("https://www.youtube.com/watch?v=dQw4w9WgXcQ", 30);
+		const result = asRender(await handleYouTube("https://www.youtube.com/watch?v=dQw4w9WgXcQ", 30));
 
 		if (result?.method === "youtube" && result.content.includes("Views")) {
 			// Should have views formatted (e.g., 1.5B, 100M, 10.5K)
@@ -177,7 +177,7 @@ describe.skipIf(SKIP)("handleYouTube", () => {
 	}, 30000);
 
 	it("includes upload date when available", async () => {
-		const result = await handleYouTube("https://www.youtube.com/watch?v=dQw4w9WgXcQ", 30);
+		const result = asRender(await handleYouTube("https://www.youtube.com/watch?v=dQw4w9WgXcQ", 30));
 
 		if (result?.method === "youtube" && result.content.includes("Uploaded")) {
 			// Should have date in YYYY-MM-DD format
@@ -186,7 +186,7 @@ describe.skipIf(SKIP)("handleYouTube", () => {
 	}, 30000);
 
 	it("truncates long descriptions", async () => {
-		const result = await handleYouTube("https://www.youtube.com/watch?v=dQw4w9WgXcQ", 30);
+		const result = asRender(await handleYouTube("https://www.youtube.com/watch?v=dQw4w9WgXcQ", 30));
 
 		if (result?.method === "youtube" && result.content.includes("Description")) {
 			// Description section should exist
@@ -195,8 +195,8 @@ describe.skipIf(SKIP)("handleYouTube", () => {
 	}, 30000);
 
 	it("handles www prefix variations", async () => {
-		const withWww = await handleYouTube("https://www.youtube.com/watch?v=dQw4w9WgXcQ", 30);
-		const withoutWww = await handleYouTube("https://youtube.com/watch?v=dQw4w9WgXcQ", 30);
+		const withWww = asRender(await handleYouTube("https://www.youtube.com/watch?v=dQw4w9WgXcQ", 30));
+		const withoutWww = asRender(await handleYouTube("https://youtube.com/watch?v=dQw4w9WgXcQ", 30));
 
 		expect(withWww).not.toBeNull();
 		expect(withoutWww).not.toBeNull();

@@ -2,11 +2,11 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { FileEntry, SessionHeader } from "@veyyon/pi-coding-agent/session/session-entries";
-import { findMostRecentSession, resolveResumableSession } from "@veyyon/pi-coding-agent/session/session-listing";
-import { loadEntriesFromFile } from "@veyyon/pi-coding-agent/session/session-loader";
-import { SessionManager } from "@veyyon/pi-coding-agent/session/session-manager";
-import { getConfigRootDir, getSessionsDir, removeSyncWithRetries, Snowflake, setAgentDir } from "@veyyon/pi-utils";
+import type { FileEntry, SessionHeader } from "@veyyon/coding-agent/session/session-entries";
+import { findMostRecentSession, resolveResumableSession } from "@veyyon/coding-agent/session/session-listing";
+import { loadEntriesFromFile } from "@veyyon/coding-agent/session/session-loader";
+import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { getConfigRootDir, getSessionsDir, removeSyncWithRetries, Snowflake, setAgentDir } from "@veyyon/utils";
 
 describe("loadEntriesFromFile", () => {
 	let tempDir: string;
@@ -159,7 +159,7 @@ describe("resolveResumableSession", () => {
 
 describe("SessionManager temp cwd session dirs", () => {
 	let testAgentDir: string;
-	const originalAgentDir = process.env.PI_CODING_AGENT_DIR;
+	const originalAgentDir = process.env.VEYYON_CODING_AGENT_DIR;
 	const fallbackAgentDir = path.join(getConfigRootDir(), "agent");
 
 	function expectedTempSessionDirName(tempCwd: string): string {
@@ -174,7 +174,7 @@ describe("SessionManager temp cwd session dirs", () => {
 	}
 
 	beforeEach(() => {
-		testAgentDir = fs.mkdtempSync(path.join(os.tmpdir(), "omp-session-dir-test-"));
+		testAgentDir = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-session-dir-test-"));
 		setAgentDir(testAgentDir);
 	});
 
@@ -183,7 +183,7 @@ describe("SessionManager temp cwd session dirs", () => {
 			setAgentDir(originalAgentDir);
 		} else {
 			setAgentDir(fallbackAgentDir);
-			delete process.env.PI_CODING_AGENT_DIR;
+			delete process.env.VEYYON_CODING_AGENT_DIR;
 		}
 		removeSyncWithRetries(testAgentDir);
 	});
@@ -247,7 +247,7 @@ describe("SessionManager legacy session migration persistence", () => {
 	}
 
 	beforeEach(() => {
-		tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "omp-session-manager-legacy-"));
+		tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-session-manager-legacy-"));
 	});
 
 	afterEach(() => {

@@ -28,7 +28,7 @@
   var WIN = [
     [0.03, 0.1], [0.115, 0.185], [0.2, 0.27], [0.285, 0.35], // act I — the idea, centered
     [0.425, 0.495], [0.51, 0.575], [0.59, 0.655], [0.67, 0.73], [0.745, 0.8], [0.815, 0.865], // act II — product
-    [0.885, 1.2], // act III — the terminal, working; gets the longest dwell (the payoff)
+    [0.885, 1.2], // terminal demo dwell
   ];
   var scenes = document.querySelectorAll(".scene");
   var FADE = 0.022;

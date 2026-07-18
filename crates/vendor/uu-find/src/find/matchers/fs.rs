@@ -30,7 +30,7 @@ pub struct Cache {
 use std::{cell::RefCell, io::Write, path::Path};
 
 #[cfg(unix)]
-use pi_uutils_ctx::stderr;
+use veyyon_uutils_ctx::stderr;
 
 #[cfg(unix)]
 pub fn get_file_system_type(path: &Path, cache: &RefCell<Option<Cache>>) -> UResult<String> {

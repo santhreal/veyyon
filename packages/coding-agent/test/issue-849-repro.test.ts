@@ -1,11 +1,7 @@
 import { describe, expect, it } from "bun:test";
-import type { AssistantMessage } from "@veyyon/pi-ai";
-import { buildSessionContext } from "@veyyon/pi-coding-agent/session/session-context";
-import type {
-	ModelChangeEntry,
-	SessionEntry,
-	SessionMessageEntry,
-} from "@veyyon/pi-coding-agent/session/session-entries";
+import type { AssistantMessage } from "@veyyon/ai";
+import { buildSessionContext } from "@veyyon/coding-agent/session/session-context";
+import type { ModelChangeEntry, SessionEntry, SessionMessageEntry } from "@veyyon/coding-agent/session/session-entries";
 
 /**
  * Issue #849: After a user explicitly switches to gpt-5.5, the session reverts

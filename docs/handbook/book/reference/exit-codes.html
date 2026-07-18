@@ -10,6 +10,10 @@
         <!-- Veyyon handbook: self-contained head additions. No remote resources. -->
         <meta name="theme-color" content="#050505">
         <meta name="color-scheme" content="dark">
+        <!-- Site favicons live at the deployed root, one level above /docs/. -->
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+        <link rel="icon" href="/favicon.ico" sizes="48x48">
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png">
         <style>
           /* Paint the near-black surface before CSS/JS resolve the theme, so there is
              no light flash on load. Kept in sync with theme/veyyon.css. */
@@ -18,7 +22,7 @@
           *, *::before, *::after { box-sizing: border-box; }
         </style>
 
-        <meta name="description" content="How Veyyon turns open models into frontier coding agents. The product, the harness, tool-call repair, the edit format, per-model adaptation, and how to use it.">
+        <meta name="description" content="Operator handbook for the Veyyon terminal coding agent: install, configuration, tools, approvals, edit formats, providers, and harness structure.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -38,7 +42,7 @@
         <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="../ayu-highlight-3fdfc3ac.css">
 
         <!-- Custom theme stylesheets -->
-        <link rel="stylesheet" href="../theme/veyyon-fc839a17.css">
+        <link rel="stylesheet" href="../theme/veyyon-06f6939e.css">
 
 
         <!-- Provide site root and default themes to javascript -->
@@ -46,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-e76f06ca.js";
+            window.path_to_searchindex_js = "../searchindex-a2447057.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-9cfd259b.js"></script>
+        <script src="../toc-cc1a72e9.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -192,7 +196,7 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="exit-codes"><a class="header" href="#exit-codes">Exit codes</a></h1>
-<p>Veyyon follows the standard shell conventions so it composes cleanly in scripts and CI.</p>
+<p>Exit codes follow common shell conventions for scripts and CI.</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -200,9 +204,8 @@
 </thead>
 <tbody>
 <tr><td><code>0</code></td><td>Success.</td></tr>
-<tr><td><code>1</code></td><td>A Veyyon error (bad config, auth failure, no such session, an unrecoverable runtime error) — or the fallback when a child process ended without a reportable status.</td></tr>
-<tr><td><code>2</code></td><td>Usage error from argument parsing (an unknown flag or missing value); the standard <code>clap</code> convention.</td></tr>
-<tr><td><code>N</code></td><td>When Veyyon runs a child process (for example a sandboxed shell command), the child’s own exit code passes through unchanged.</td></tr>
+<tr><td><code>1</code></td><td>Any Veyyon error: bad config, auth failure, no such session, an unrecoverable runtime error, a usage error from argument parsing (unknown flag, bad value, missing argument) — or the fallback when a child process ended without a reportable status.</td></tr>
+<tr><td><code>N</code></td><td>When Veyyon runs a child process (for example a shell tool command), the child’s own exit code passes through unchanged.</td></tr>
 <tr><td><code>128 + signal</code></td><td>On Unix, a child killed by a signal is reported as <code>128 + signal</code> (the POSIX shell convention): <code>SIGKILL</code> (9) → <code>137</code>, <code>SIGTERM</code> (15) → <code>143</code>.</td></tr>
 </tbody>
 </table>
@@ -214,7 +217,7 @@ success.</li>
 <li>A signal death is surfaced as a distinct non-zero code, never swallowed.</li>
 </ul>
 <p>For the machine-readable event stream (including per-turn and per-tool outcomes), use the
-Agent Control Protocol mode (<code>veyyon acp</code>); see the <a href="./cli.html">CLI reference</a>.</p>
+Agent Client Protocol mode (<code>veyyon acp</code>); see the <a href="./cli.html">CLI reference</a>.</p>
 
                     </main>
 

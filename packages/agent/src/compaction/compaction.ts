@@ -21,15 +21,15 @@ import {
 	type Tool,
 	type Usage,
 	withAuth,
-} from "@veyyon/pi-ai";
-import { ProviderHttpError } from "@veyyon/pi-ai/error";
-import { createOpenAICodexCompactionRequestContext } from "@veyyon/pi-ai/providers/openai-codex-responses";
-import { convertTools } from "@veyyon/pi-ai/providers/openai-responses";
-import { buildResponsesInput, resolveOpenAICompatPolicy } from "@veyyon/pi-ai/providers/openai-shared";
-import { preferredDialect } from "@veyyon/pi-catalog/identity";
-import { clampThinkingLevelForModel } from "@veyyon/pi-catalog/model-thinking";
-import { logger, prompt, stringifyJson } from "@veyyon/pi-utils";
+} from "@veyyon/ai";
+import { ProviderHttpError } from "@veyyon/ai/error";
+import { createOpenAICodexCompactionRequestContext } from "@veyyon/ai/providers/openai-codex-responses";
+import { convertTools } from "@veyyon/ai/providers/openai-responses";
+import { buildResponsesInput, resolveOpenAICompatPolicy } from "@veyyon/ai/providers/openai-shared";
+import { preferredDialect } from "@veyyon/catalog/identity";
+import { clampThinkingLevelForModel } from "@veyyon/catalog/model-thinking";
 import * as snapcompact from "@veyyon/snapcompact";
+import { errorMessage, logger, prompt, stringifyJson } from "@veyyon/utils";
 import { type AgentTelemetry, instrumentedCompleteSimple } from "../telemetry";
 import { ThinkingLevel } from "../thinking";
 import { countTokens } from "../tokenizer";
@@ -1448,7 +1448,7 @@ export async function compact(
 				// summarization" and keep compaction running on an aborted signal.
 				if (signal?.aborted) throw err;
 				logger.warn("OpenAI V2 remote compaction failed, falling back to V1/local summarization", {
-					error: err instanceof Error ? err.message : String(err),
+					error: errorMessage(err),
 					model: model.id,
 					provider: model.provider,
 				});
@@ -1498,7 +1498,7 @@ export async function compact(
 				// summarization" and keep compaction running on an aborted signal.
 				if (signal?.aborted) throw err;
 				logger.warn("OpenAI remote compaction failed, falling back to local summarization", {
-					error: err instanceof Error ? err.message : String(err),
+					error: errorMessage(err),
 					model: model.id,
 					provider: model.provider,
 				});

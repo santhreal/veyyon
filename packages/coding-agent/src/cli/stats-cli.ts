@@ -4,8 +4,9 @@
  * Handles `veyyon stats` subcommand for viewing AI usage statistics.
  */
 
-import { truncateToWidth } from "@veyyon/pi-tui/utils";
-import { APP_NAME, formatDuration, formatNumber, formatPercent } from "@veyyon/pi-utils";
+import { formatCostTiered as formatCost, normalizePremiumRequests } from "@veyyon/stats/format";
+import { truncateToWidth } from "@veyyon/tui/utils";
+import { formatDuration, formatNumber, formatPercent } from "@veyyon/utils";
 import chalk from "chalk";
 import { openPath } from "../utils/open";
 
@@ -65,47 +66,6 @@ export interface StatsCommandArgs {
 // Argument Parser
 // =============================================================================
 
-/**
- * Parse stats subcommand arguments.
- * Returns undefined if not a stats command.
- */
-export function parseStatsArgs(args: string[]): StatsCommandArgs | undefined {
-	if (args.length === 0 || args[0] !== "stats") {
-		return undefined;
-	}
-
-	const result: StatsCommandArgs = {
-		port: 3847,
-		json: false,
-		summary: false,
-	};
-
-	for (let i = 1; i < args.length; i++) {
-		const arg = args[i];
-		if (arg === "--json" || arg === "-j") {
-			result.json = true;
-		} else if (arg === "--summary" || arg === "-s") {
-			result.summary = true;
-		} else if ((arg === "--port" || arg === "-p") && i + 1 < args.length) {
-			result.port = parseInt(args[++i], 10);
-		} else if (arg.startsWith("--port=")) {
-			result.port = parseInt(arg.split("=")[1], 10);
-		}
-	}
-
-	return result;
-}
-
-function formatCost(n: number): string {
-	if (n < 0.01) return `$${n.toFixed(4)}`;
-	if (n < 1) return `$${n.toFixed(3)}`;
-	return `$${n.toFixed(2)}`;
-}
-
-function normalizePremiumRequests(n: number): number {
-	return Math.round((n + Number.EPSILON) * 100) / 100;
-}
-
 // =============================================================================
 // Command Handler
 // =============================================================================
@@ -113,7 +73,7 @@ function normalizePremiumRequests(n: number): number {
 export async function runStatsCommand(cmd: StatsCommandArgs): Promise<void> {
 	// Lazy import to avoid loading stats module when not needed
 	const { getDashboardStats, syncAllSessions, getTotalMessageCount, startServer, closeDb } = await import(
-		"@veyyon/pi-stats"
+		"@veyyon/stats"
 	);
 
 	// Sync session files first
@@ -122,7 +82,9 @@ export async function runStatsCommand(cmd: StatsCommandArgs): Promise<void> {
 	const { processed, files } = await syncAllSessions({ onProgress: progress.onProgress });
 	progress.finish();
 	const total = await getTotalMessageCount();
-	console.log(`Synced ${processed} new entries from ${files} files (${total} total)\n`);
+	// stderr, like "Syncing…": in --json mode stdout must carry only the JSON
+	// document or `veyyon stats -j | jq` fails to parse.
+	process.stderr.write(`Synced ${processed} new entries from ${files} files (${total} total)\n\n`);
 
 	if (cmd.json) {
 		const stats = await getDashboardStats();
@@ -157,7 +119,7 @@ export async function runStatsCommand(cmd: StatsCommandArgs): Promise<void> {
 }
 
 async function printStatsSummary(): Promise<void> {
-	const { getDashboardStats } = await import("@veyyon/pi-stats");
+	const { getDashboardStats } = await import("@veyyon/stats");
 	const stats = await getDashboardStats();
 	const { overall, byModel, byFolder } = stats;
 
@@ -200,30 +162,3 @@ async function printStatsSummary(): Promise<void> {
 // =============================================================================
 // Help
 // =============================================================================
-
-export function printStatsHelp(): void {
-	console.log(`${chalk.bold(`${APP_NAME} stats`)} - AI Usage Statistics Dashboard
-
-${chalk.bold("Usage:")}
-  ${APP_NAME} stats [options]
-
-${chalk.bold("Options:")}
-  -p, --port <port>  Port for the dashboard server (default: 3847)
-  -j, --json         Output stats as JSON and exit
-  -s, --summary      Print summary to console and exit
-  -h, --help         Show this help message
-
-${chalk.bold("Examples:")}
-  ${APP_NAME} stats              # Start dashboard server
-  ${APP_NAME} stats --json       # Print stats as JSON
-  ${APP_NAME} stats --summary    # Print summary to console
-  ${APP_NAME} stats --port 8080  # Start on custom port
-
-${chalk.bold("Metrics:")}
-  - Total requests and error rate
-  - Token usage (input, output, cache)
-  - Cost breakdown
-  - Average duration and time to first token (TTFT)
-  - Tokens per second throughput
-`);
-}

@@ -1,5 +1,5 @@
-import { type AssistantMessage, completeSimple, type Model } from "@veyyon/pi-ai";
-import { logger, prompt } from "@veyyon/pi-utils";
+import { type AssistantMessage, completeSimple, type Model } from "@veyyon/ai";
+import { errorMessage, logger, prompt } from "@veyyon/utils";
 
 import type { ModelRegistry } from "../config/model-registry";
 import { resolveRoleSelectionWithInherit } from "../config/model-resolver";
@@ -54,7 +54,7 @@ export async function classifyUnexpectedStop(
 		return undefined;
 	} catch (error) {
 		logger.debug("unexpected-stop: classification failed", {
-			error: error instanceof Error ? error.message : String(error),
+			error: errorMessage(error),
 			backend,
 		});
 		return undefined;

@@ -1,4 +1,4 @@
-import { removeSyncWithRetries } from "@veyyon/pi-utils";
+import { removeSyncWithRetries } from "@veyyon/utils";
 
 export interface TempHomeState {
 	tempDir: string;

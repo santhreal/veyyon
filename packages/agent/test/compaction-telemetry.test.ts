@@ -23,18 +23,18 @@ import {
 	generateBranchSummary,
 	generateHandoff,
 	generateSummary,
-} from "@veyyon/pi-agent-core/compaction";
+} from "@veyyon/agent-core/compaction";
 import {
 	type AgentTelemetryConfig,
 	GenAIAttr,
 	GenAIOperation,
 	PiGenAIAttr,
 	resolveTelemetry,
-} from "@veyyon/pi-agent-core/telemetry";
-import type { AgentMessage } from "@veyyon/pi-agent-core/types";
-import type { AssistantMessage, Model, Usage } from "@veyyon/pi-ai";
-import * as ai from "@veyyon/pi-ai";
-import { buildModel } from "@veyyon/pi-catalog/build";
+} from "@veyyon/agent-core/telemetry";
+import type { AgentMessage } from "@veyyon/agent-core/types";
+import type { AssistantMessage, Model, Usage } from "@veyyon/ai";
+import * as ai from "@veyyon/ai";
+import { buildModel } from "@veyyon/catalog/build";
 
 const MODEL: Model = buildModel({
 	id: "mock-model",

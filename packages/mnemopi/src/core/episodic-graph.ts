@@ -1,5 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { closeQuietly, type DatabasePath, openDatabase } from "../db";
+import { toUtcIso } from "../util/datetime";
+import { tableExists } from "../util/sqlite";
 import { CONTENT_STOPWORDS } from "./stopwords";
 
 export interface Gist {
@@ -100,10 +102,6 @@ interface EdgeRow {
 const EXTRACT_FACTS_MAX_CONTENT_LEN = 4096;
 const MAX_FACTS_PER_MEMORY = 5;
 const DEFAULT_LINK_THRESHOLD = 0.35;
-
-function nowIso(): string {
-	return new Date().toISOString();
-}
 
 function unique(values: Iterable<string>, limit = Number.MAX_SAFE_INTEGER): string[] {
 	const seen = new Set<string>();
@@ -278,7 +276,7 @@ export class EpisodicGraph {
 		return {
 			id: `gist_${memoryId}`,
 			text: this.createSummary(content),
-			timestamp: nowIso(),
+			timestamp: toUtcIso(),
 			participants: this.extractParticipants(content),
 			location: this.extractLocation(content),
 			emotion: this.extractEmotion(content),
@@ -298,7 +296,7 @@ export class EpisodicGraph {
 				subject: cleanSubject,
 				predicate,
 				object: cleanObject,
-				timestamp: nowIso(),
+				timestamp: toUtcIso(),
 				confidence,
 				temporalQualifier: null,
 			});
@@ -446,7 +444,7 @@ export class EpisodicGraph {
 		const gist = this.extractGist(content, memoryId);
 		const facts = extractEntities ? this.extractFacts(content, memoryId) : [];
 		const edges: GraphEdge[] = [];
-		const timestamp = nowIso();
+		const timestamp = toUtcIso();
 
 		const previousMemoryIds = linkExisting ? this.knownMemoryIds(memoryId) : [];
 		this.storeGist(gist, memoryId);
@@ -596,41 +594,37 @@ export class EpisodicGraph {
 			.query("SELECT DISTINCT memory_id FROM gists WHERE memory_id IS NOT NULL AND memory_id != ?")
 			.all(exclude) as { memory_id: string }[];
 		for (const row of gistRows) ids.add(row.memory_id);
-		try {
+		// Standalone graph stores do not have Beam memory tables; a broken handle
+		// still propagates instead of silently shrinking the candidate set.
+		if (tableExists(this.db, "working_memory")) {
 			const workingRows = this.db.query("SELECT id FROM working_memory WHERE id != ?").all(exclude) as {
 				id: string;
 			}[];
 			for (const row of workingRows) ids.add(row.id);
-		} catch {
-			// Standalone graph stores do not have Beam memory tables.
 		}
-		try {
+		if (tableExists(this.db, "episodic_memory")) {
 			const episodicRows = this.db.query("SELECT id FROM episodic_memory WHERE id != ?").all(exclude) as {
 				id: string;
 			}[];
 			for (const row of episodicRows) ids.add(row.id);
-		} catch {
-			// Standalone graph stores do not have Beam memory tables.
 		}
 		return [...ids];
 	}
 
 	private memoryContent(memoryId: string): string {
-		try {
+		// Standalone EpisodicGraph users may not have Beam tables; gate instead of
+		// catching so a broken handle propagates rather than degrading to gist text.
+		if (tableExists(this.db, "working_memory")) {
 			const working = this.db.query("SELECT content FROM working_memory WHERE id = ?").get(memoryId) as {
 				content: string;
 			} | null;
 			if (working !== null) return working.content;
-		} catch {
-			// Standalone EpisodicGraph users may not have Beam tables.
 		}
-		try {
+		if (tableExists(this.db, "episodic_memory")) {
 			const episodic = this.db.query("SELECT content FROM episodic_memory WHERE id = ?").get(memoryId) as {
 				content: string;
 			} | null;
 			if (episodic !== null) return episodic.content;
-		} catch {
-			// Fall through to graph-local gist text.
 		}
 		const gist = this.db.query("SELECT text FROM gists WHERE memory_id = ?").get(memoryId) as {
 			text: string;

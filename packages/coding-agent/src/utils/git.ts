@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { $which, hasFsCode, isEisdir, isEnoent, isEnotdir, Snowflake } from "@veyyon/pi-utils";
+import { $which, hasFsCode, isEisdir, isEnoent, isEnotdir, Snowflake } from "@veyyon/utils";
 import type { Subprocess } from "bun";
 import {
 	parseDiffHunks as parseCommitDiffHunks,
@@ -515,7 +515,8 @@ export async function withRepoLock<T>(cwd: string, fn: () => Promise<T>, signal?
 	}
 }
 
-function splitLines(text: string): string[] {
+/** Split VCS stdout into trimmed, non-empty lines. Shared with jj.ts. */
+export function splitLines(text: string): string[] {
 	return text
 		.split("\n")
 		.map(line => line.trim())
@@ -561,7 +562,7 @@ function buildApplyArgs(patchPath: string, options: PatchOptions): string[] {
 }
 
 async function writeTempPatch(content: string): Promise<string> {
-	const tempPath = path.join(os.tmpdir(), `omp-git-patch-${Snowflake.next()}.patch`);
+	const tempPath = path.join(os.tmpdir(), `veyyon-git-patch-${Snowflake.next()}.patch`);
 	await Bun.write(tempPath, content);
 	return tempPath;
 }

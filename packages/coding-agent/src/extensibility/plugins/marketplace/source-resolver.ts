@@ -13,7 +13,7 @@ import * as crypto from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 
-import { isEnoent, pathIsWithin } from "@veyyon/pi-utils";
+import { isEnoent, pathIsWithin } from "@veyyon/utils";
 import * as git from "../../../utils/git";
 
 import type { MarketplaceCatalogMetadata, MarketplacePluginEntry, PluginSource } from "./types";

@@ -1,6 +1,6 @@
-import { tryParseJson } from "@veyyon/pi-utils";
+import { tryParseJson } from "@veyyon/utils";
 import type { SpecialHandler } from "./types";
-import { buildResult, decodeHtmlEntities, formatIsoDate, loadPage } from "./types";
+import { buildResult, decodeHtmlEntities, formatIsoDate, loadPage, tryParseUrl } from "./types";
 
 interface HNItem {
 	id: number;
@@ -134,7 +134,8 @@ async function renderListing(ids: number[], timeout: number, title: string, sign
 }
 
 export const handleHackerNews: SpecialHandler = async (url, timeout, signal) => {
-	const parsed = new URL(url);
+	const parsed = tryParseUrl(url);
+	if (!parsed) return null;
 	if (!parsed.hostname.includes("news.ycombinator.com")) return null;
 
 	const notes: string[] = [];

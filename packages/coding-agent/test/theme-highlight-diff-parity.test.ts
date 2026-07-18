@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from "bun:test";
-import { getThemeByName, highlightCode, setThemeInstance } from "@veyyon/pi-coding-agent/modes/theme/theme";
+import { getThemeByName, highlightCode, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
 
 const unifiedDiffChunks = [
 	[

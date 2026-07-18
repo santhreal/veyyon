@@ -1,8 +1,9 @@
 # Signing in
 
 Veyyon authenticates to whichever provider you point it at and calls provider APIs directly with keys
-you supply. It has no telemetry egress of its own. Logins are **provider-scoped**: authenticating
-`anthropic` does not authenticate `openai`, and each provider tracks its own credentials.
+you supply. Optional OpenTelemetry export runs only when `OTEL_EXPORTER_OTLP_*` is configured. Logins
+are **provider-scoped**: authenticating `anthropic` does not authenticate `openai`, and each provider
+tracks its own credentials.
 
 ## Sign in from the TUI
 
@@ -13,7 +14,7 @@ Use the interactive slash commands inside a session:
 - `/login <redirect-url>` — completes an OAuth flow that needs a pasted callback URL.
 - `/logout` — opens the provider selector to remove stored credentials.
 
-On first run, the setup ceremony (`veyyon setup`, or `/setup` / `/providers` later) walks the same flow.
+On first run, the first-run setup (`veyyon setup`, or `/setup` / `/providers` later) walks the same flow.
 
 ## Headless and remote hosts
 
@@ -48,7 +49,7 @@ a `.env` file) is used without an interactive sign-in.
 | `mistral` | `MISTRAL_API_KEY` |
 
 The full provider → variable map lives in [Providers](../models/providers.md). `.env` files are loaded
-from `<cwd>/.env`, `~/.veyyon/agent/.env`, `~/.veyyon/.env`, and `~/.env`, with earlier sources winning.
+from `<cwd>/.env`, `~/.veyyon/profiles/default/agent/.env`, `~/.veyyon/.env`, and `~/.env`, with earlier sources winning.
 
 ## How keys are resolved
 
@@ -60,14 +61,14 @@ When a provider needs a key, Veyyon resolves it in order (first match wins):
 4. A stored OAuth credential (refreshed as needed).
 5. The provider's environment variable (including `.env`).
 
-Stored credentials live in the auth store at `~/.veyyon/agent/agent.db` (or the configured auth-broker
-snapshot in broker mode). `PI_CODING_AGENT_DIR` relocates the agent base, and the auth store moves with
+Stored credentials live in the auth store at `~/.veyyon/profiles/default/agent/agent.db` (or the configured auth-broker
+snapshot in broker mode). `VEYYON_CODING_AGENT_DIR` relocates the agent base, and the auth store moves with
 it.
 
 ## Provider data is data-driven
 
 Provider identity (display name, env var, OAuth parameters) and endpoints (base URL, API kind) come
-from the bundled model catalog plus your `~/.veyyon/agent/models.yml`. A new BYOK provider becomes
+from the bundled model catalog plus your `~/.veyyon/profiles/default/agent/models.yml`. A new BYOK provider becomes
 selectable by adding a `providers:` entry — not by changing code. See
 [Configuring providers](./configuring-providers.md) and `docs/providers.md`.
 

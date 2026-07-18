@@ -1,6 +1,6 @@
 # Export and import
 
-## Session export (built)
+## Session export
 
 `/export` writes the current session transcript. Target format depends on the extension:
 
@@ -12,11 +12,11 @@
 Paths resolve relative to the working directory, `~/`, or absolute paths. Directory targets receive
 the default session filename inside the folder.
 
-## Migration from Claude Code (built)
+## Migration from Claude Code
 
 `/import` is **not** in the builtin slash registry; Claude migration may be available through setup
 flows or extensions. When import runs, it merges compatible settings from `.claude/` into Veyyon's
-config tree (`.veyyon/`, `~/.veyyon/agent/`), including MCP, hooks, skills, and agents.
+config tree (`.veyyon/`, `~/.veyyon/profiles/default/agent/`), including MCP, hooks, skills, and agents.
 
 Import works on **local** sessions; no background daemon is required.
 
@@ -24,7 +24,7 @@ Typical migrated items:
 
 - Settings from `.claude/settings.json` → `config.yml`
 - MCP servers → `mcp.json`
-- Hooks → `.veyyon/hooks.json` or extension hooks
+- Hooks → TypeScript modules under `.veyyon/hooks/` (or agent `hooks/`) loaded via the extension path
 - Skills → `.agents/skills` / `.veyyon/skills`
 - Subagents → `.veyyon/agents`
 - `CLAUDE.md` → `AGENTS.md`

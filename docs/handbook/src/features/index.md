@@ -1,34 +1,30 @@
 # Features
 
-Veyyon's features are split into two groups: everyday interactions you use while working, and power-user customization tools that shape how the agent behaves.
+## Interactive surfaces
 
-## Everyday features
+- [Status line and multi-agent UI](./cockpit.md) — status segments, `/cockpit`, jobs, swarm
+- [Keybindings](./keybindings.md) — chords and Vim mode
+- Composer: prompt history, `@` / `/` completion, Esc interrupt — [Quickstart](../using/quickstart.md), [Keybindings](./keybindings.md)
+- [Web search](./web-search.md)
 
-- [Cockpit](./cockpit.md) customizes the status line and monitors multi-agent work; a terminal title composer and TUI pet are spec only.
-- [Keybindings](./keybindings.md) remaps shortcuts and toggles Vim mode in the composer.
-- Composer conveniences (prompt history, `@` / `/` completion, empty-state hints, Esc interrupt) are documented in [Quickstart](../using/quickstart.md#composer-conveniences) and [Keybindings](./keybindings.md).
-- [Web search](./web-search.md) lets the model look up current information from the web.
+## Modes and extensions
 
-## Power features
+- [Plan mode, goals, and vibe](./plan-mode.md)
+- [Skills](./skills.md)
+- [Plugins](./plugins.md)
+- [Hooks](./hooks.md) — TypeScript modules, `pi.on(...)`
+- [MCP](./mcp.md)
+- [Branching](./branching.md)
+- [Memory](./memory.md)
+- [Profiles](./profiles.md)
+- [Personalities](./personalities.md)
+- [Speech](./speech.md)
+- [Export and import](./export-import.md)
+- [Connectors](./connectors.md)
+- [Approvals](./sandbox.md)
+- [Code review](./review.md)
+- [Non-interactive mode](./exec.md)
 
-- [Plan mode](./plan-mode.md) plans complex changes through grounded conversation before editing code.
-- [Skills](./skills.md) are reusable capabilities defined on the filesystem and shared across projects.
-- [Plugins](./plugins.md) bundle skills, MCP servers, hooks, apps, and TUI customizations from marketplaces.
-- [Hooks](./hooks.md) run commands or inject context in response to lifecycle events.
-- [MCP](./mcp.md) connects Veyyon to external tools and data sources via the Model Context Protocol.
-- [Branching](./branching.md) explores alternative paths by forking, cloning, or branching the session tree.
-- [Memory](./memory.md) collects guidance and decisions from past runs to keep future threads consistent.
-- [Profiles](./profiles.md) bundle and switch between groups of configuration settings.
-- [Personalities](./personalities.md) changes the agent's communication style without changing its capabilities.
-- [Export and import](./export-import.md) saves sessions to files and migrates settings from Claude Code.
-- [Connectors](./connectors.md) reach provider-hosted apps and data sources behind your account.
+## Recipes
 
-## Task-oriented guides
-
-Feature pages are reference-shaped. For goal-shaped recipes that stitch hooks, exec, MCP,
-skills, plugins, memory, and branching together, start with
-[Task guides](../using/task-guides.md).
-
-## Where to go next
-
-For command and file reference, see the [Reference](../reference/index.md) chapter. For how Veyyon is designed, see [Foundations](../foundations/thesis.md).
+[Task guides](../using/task-guides.md). Reference: [Reference](../reference/index.md).

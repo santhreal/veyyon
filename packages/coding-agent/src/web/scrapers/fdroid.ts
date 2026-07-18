@@ -1,6 +1,6 @@
-import { tryParseJson } from "@veyyon/pi-utils";
-import type { LocalizedText, RenderResult, SpecialHandler } from "./types";
-import { buildResult, getLocalizedText, loadPage } from "./types";
+import { tryParseJson } from "@veyyon/utils";
+import type { LocalizedText, RenderResult, ScraperDegrade, SpecialHandler } from "./types";
+import { buildResult, getLocalizedText, loadFailure, loadPage, scraperDegrade, tryParseUrl } from "./types";
 
 type FdroidPackage = {
 	packageName?: string;
@@ -64,9 +64,10 @@ export const handleFdroid: SpecialHandler = async (
 	url: string,
 	timeout: number,
 	signal?: AbortSignal,
-): Promise<RenderResult | null> => {
+): Promise<RenderResult | ScraperDegrade | null> => {
 	try {
-		const parsed = new URL(url);
+		const parsed = tryParseUrl(url);
+		if (!parsed) return null;
 		if (parsed.hostname !== "f-droid.org" && parsed.hostname !== "www.f-droid.org") return null;
 
 		// Extract package name from /packages/{packageName} or /en/packages/{packageName}
@@ -83,10 +84,10 @@ export const handleFdroid: SpecialHandler = async (
 			signal,
 		});
 
-		if (!result.ok) return null;
+		if (!result.ok) return scraperDegrade("fdroid", loadFailure(result));
 
 		const data = tryParseJson<FdroidPackage>(result.content);
-		if (!data) return null;
+		if (!data) return scraperDegrade("fdroid", "unexpected response shape");
 
 		const displayName = getLocalizedText(data.name) ?? packageName;
 		const summary = getLocalizedText(data.summary);
@@ -128,7 +129,7 @@ export const handleFdroid: SpecialHandler = async (
 		}
 
 		return buildResult(md, { url, method: "fdroid", fetchedAt, notes: ["Fetched via F-Droid API"] });
-	} catch {}
-
-	return null;
+	} catch (error) {
+		return scraperDegrade("fdroid", error);
+	}
 };

@@ -6,10 +6,10 @@ import {
 	synthesizeCursorExecToolCall,
 	type ToolCallState,
 	type UsageState,
-} from "@veyyon/pi-ai/providers/cursor";
-import type { AssistantMessage, AssistantMessageEvent } from "@veyyon/pi-ai/types";
-import { getStreamingPartialJson } from "@veyyon/pi-ai/utils/block-symbols";
-import { AssistantMessageEventStream } from "@veyyon/pi-ai/utils/event-stream";
+} from "@veyyon/ai/providers/cursor";
+import type { AssistantMessage, AssistantMessageEvent } from "@veyyon/ai/types";
+import { getStreamingPartialJson } from "@veyyon/ai/utils/block-symbols";
+import { AssistantMessageEventStream } from "@veyyon/ai/utils/event-stream";
 
 interface Harness {
 	output: AssistantMessage;

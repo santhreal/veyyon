@@ -8,7 +8,7 @@
 
 ### Fixed
 
-- Fixed the peer dependency range for @veyyon/pi-coding-agent to match the current ^16 major version.
+- Fixed the peer dependency range for @veyyon/coding-agent to match the current ^16 major version.
 
 ## [15.9.0] - 2026-06-04
 

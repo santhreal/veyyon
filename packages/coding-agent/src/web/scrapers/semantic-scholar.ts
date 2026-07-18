@@ -1,4 +1,4 @@
-import { tryParseJson } from "@veyyon/pi-utils";
+import { tryParseJson } from "@veyyon/utils";
 import type { SpecialHandler } from "./types";
 import { buildResult, formatNumber, loadPage } from "./types";
 

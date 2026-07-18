@@ -18,18 +18,18 @@
  *     follow-up stays queued for the next explicit resume rather than auto-running.
  */
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { Agent, type AgentMessage, type AgentTool } from "@veyyon/pi-agent-core";
-import type { ToolCall } from "@veyyon/pi-ai";
-import { createMockModel, type MockModel, type MockResponse } from "@veyyon/pi-ai/providers/mock";
-import { getBundledModel } from "@veyyon/pi-catalog/models";
-import { ModelRegistry } from "@veyyon/pi-coding-agent/config/model-registry";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
-import type { IrcMessage } from "@veyyon/pi-coding-agent/irc/bus";
-import { AgentSession } from "@veyyon/pi-coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/pi-coding-agent/session/auth-storage";
-import { USER_INTERRUPT_LABEL } from "@veyyon/pi-coding-agent/session/messages";
-import { SessionManager } from "@veyyon/pi-coding-agent/session/session-manager";
-import { Snowflake, TempDir } from "@veyyon/pi-utils";
+import { Agent, type AgentMessage, type AgentTool } from "@veyyon/agent-core";
+import type { ToolCall } from "@veyyon/ai";
+import { createMockModel, type MockModel, type MockResponse } from "@veyyon/ai/providers/mock";
+import { getBundledModel } from "@veyyon/catalog/models";
+import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import type { IrcMessage } from "@veyyon/coding-agent/irc/bus";
+import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
+import { USER_INTERRUPT_LABEL } from "@veyyon/coding-agent/session/messages";
+import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { Snowflake, TempDir } from "@veyyon/utils";
 import { type } from "arktype";
 
 interface MockYieldDetails {

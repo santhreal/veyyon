@@ -422,9 +422,9 @@ fn read_file_path(lines: &ScriptLineProvider, line: &mut ScriptCharProvider) -> 
 	if path.is_empty() {
 		compilation_error(lines, line, "missing file path")
 	} else {
-		// Patched for pi-uutils-ctx embedding: resolve `r`/`w`/`s///w` file
+		// Patched for veyyon-uutils-ctx embedding: resolve `r`/`w`/`s///w` file
 		// operands against the shell working directory.
-		Ok(pi_uutils_ctx::resolve(path))
+		Ok(veyyon_uutils_ctx::resolve(path))
 	}
 }
 
@@ -1121,7 +1121,7 @@ fn compile_label_command(
 }
 
 /// Return the default `l` command output width.
-// Patched for pi-uutils-ctx embedding: the context streams are never a
+// Patched for veyyon-uutils-ctx embedding: the context streams are never a
 // terminal, so upstream's terminal_size() width auto-detection is dropped.
 fn output_width() -> usize {
 	DEFAULT_OUTPUT_WIDTH

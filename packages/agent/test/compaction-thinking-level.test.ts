@@ -1,16 +1,16 @@
 import { afterEach, describe, expect, test, vi } from "bun:test";
-import type { AgentMessage } from "@veyyon/pi-agent-core";
+import type { AgentMessage } from "@veyyon/agent-core";
 import {
 	type CompactionPreparation,
 	compact,
 	createFileOps,
 	DEFAULT_COMPACTION_SETTINGS,
 	generateHandoff,
-} from "@veyyon/pi-agent-core/compaction";
-import { ThinkingLevel } from "@veyyon/pi-agent-core/thinking";
-import type { AssistantMessage, Model } from "@veyyon/pi-ai";
-import * as ai from "@veyyon/pi-ai";
-import { getBundledModel } from "@veyyon/pi-catalog/models";
+} from "@veyyon/agent-core/compaction";
+import { ThinkingLevel } from "@veyyon/agent-core/thinking";
+import type { AssistantMessage, Model } from "@veyyon/ai";
+import * as ai from "@veyyon/ai";
+import { getBundledModel } from "@veyyon/catalog/models";
 
 // Pins fix #1 of the compaction effort-override bug. Before this fix,
 // `generateHandoff` (and the three other compaction summarizers) hardcoded

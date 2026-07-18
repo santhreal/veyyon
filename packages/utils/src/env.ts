@@ -101,21 +101,12 @@ export function parseEnvFile(filePath: string): Record<string, string> {
 		// File doesn't exist or can't be read - return empty result
 	}
 
-	// VEYYON_ / OMP_ override PI_
-	for (const k in result) {
-		if (k.startsWith("VEYYON_")) {
-			result[`PI_${k.slice(7)}`] = result[k];
-		} else if (k.startsWith("OMP_")) {
-			result[`PI_${k.slice(4)}`] = result[k];
-		}
-	}
-
 	return result;
 }
 
 // Eagerly parse the user's $HOME/.env and the current project's .env (from cwd)
 const homeEnv = parseEnvFile(path.join(os.homedir(), ".env"));
-const piEnv = parseEnvFile(path.join(getConfigRootDir(), ".env"));
+const configRootEnv = parseEnvFile(path.join(getConfigRootDir(), ".env"));
 const agentEnv = parseEnvFile(path.join(getAgentDir(), ".env"));
 const projectEnv = parseEnvFile(path.join(process.cwd(), ".env"));
 
@@ -126,7 +117,7 @@ for (const key of Object.keys(Bun.env)) {
 	}
 }
 
-for (const file of [projectEnv, agentEnv, piEnv, homeEnv]) {
+for (const file of [projectEnv, agentEnv, configRootEnv, homeEnv]) {
 	for (const key in file) {
 		if (!isMacosMallocStackLoggingEnvName(key) && !Bun.env[key]) {
 			Bun.env[key] = file[key];
@@ -134,20 +125,7 @@ for (const file of [projectEnv, agentEnv, piEnv, homeEnv]) {
 	}
 }
 
-// Mirror VEYYON_/OMP_ vars onto their PI_ legacy names in the merged env, so
-// call sites that still read the PI_ alias (e.g. `$flag("PI_PY")`) honor the
-// primary name whether it came from a .env file (mirrored at parse time above)
-// or the real process environment. OMP_ first, then VEYYON_, so VEYYON_ wins
-// when both are set — matching the VEYYON_ > OMP_ > PI_ precedence everywhere.
-for (const prefix of ["OMP_", "VEYYON_"] as const) {
-	for (const key of Object.keys(Bun.env)) {
-		if (key.startsWith(prefix)) {
-			Bun.env[`PI_${key.slice(prefix.length)}`] = Bun.env[key];
-		}
-	}
-}
-
-// Directory-affecting keys (XDG_*_HOME, and in default mode VEYYON_/PI_CODING_AGENT_DIR)
+// Directory-affecting keys (XDG_*_HOME, and in default mode VEYYON_CODING_AGENT_DIR)
 // may have just arrived from the profile/agent `.env` applied above. The dirs
 // resolver cached its paths at module load — before this file ran — so rebuild
 // it now from the updated env. `getAgentDir()` already located the `.env` from
@@ -157,7 +135,7 @@ refreshDirsFromEnv();
 /**
  * Intentional re-export of Bun.env.
  *
- * All users should import this env module (import { $env } from "@veyyon/pi-utils")
+ * All users should import this env module (import { $env } from "@veyyon/utils")
  * before using environment variables. This ensures that .env files have been loaded and
  * overrides (project, home) have been applied, so $env always reflects the correct values.
  */
@@ -227,11 +205,11 @@ export function setTerminalHeadless(headless: boolean): boolean {
  * binary. Detects via the embedded virtual-filesystem path markers
  * (`$bunfs`, `~BUN`, or its URL-encoded form `%7EBUN`) in `import.meta.url`,
  * which Bun rewrites for every module bundled into the executable. The
- * `PI_COMPILED` env var (set by the build script's `--define`) is checked
+ * `VEYYON_COMPILED` env var (set by the build script's `--define`) is checked
  * first for cheap fast-path detection.
  */
 export function isCompiledBinary(): boolean {
-	if (process.env.PI_COMPILED || Bun.env.PI_COMPILED) return true;
+	if (process.env.VEYYON_COMPILED || Bun.env.VEYYON_COMPILED) return true;
 	const url = import.meta.url;
 	return url.includes("$bunfs") || url.includes("~BUN") || url.includes("%7EBUN");
 }

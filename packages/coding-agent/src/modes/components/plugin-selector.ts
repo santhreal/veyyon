@@ -4,7 +4,7 @@
  * Shows available plugins from all configured marketplaces in a SelectList.
  * Selecting a plugin triggers installation. Esc cancels.
  */
-import { Container, type SelectItem, SelectList, type SgrMouseEvent } from "@veyyon/pi-tui";
+import { Container, type SelectItem, SelectList, type SgrMouseEvent } from "@veyyon/tui";
 import { getSelectListTheme } from "../theme/theme";
 import { DynamicBorder } from "./dynamic-border";
 import { routeSelectListMouseWithTopBorder } from "./select-list-mouse-routing";

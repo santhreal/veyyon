@@ -98,7 +98,8 @@ fn prompt_dir_with_mode(path: &Path, mode: libc::mode_t, options: &Options) -> b
 
 /// Whether the given file or directory is readable.
 pub fn is_readable(path: &Path) -> bool {
-	fs::metadata(pi_uutils_ctx::resolve(path)).is_ok_and(|metadata| is_readable_metadata(&metadata))
+	fs::metadata(veyyon_uutils_ctx::resolve(path))
+		.is_ok_and(|metadata| is_readable_metadata(&metadata))
 }
 
 /// Remove a single file using safe traversal
@@ -111,7 +112,7 @@ pub fn safe_remove_file(
 	let parent = path.parent().unwrap_or(Path::new("."));
 	let file_name = path.file_name()?;
 
-	let dir_fd = DirFd::open(&pi_uutils_ctx::resolve(parent), SymlinkBehavior::Follow).ok()?;
+	let dir_fd = DirFd::open(&veyyon_uutils_ctx::resolve(parent), SymlinkBehavior::Follow).ok()?;
 
 	match dir_fd.unlink_at(file_name, false) {
 		Ok(_) => {
@@ -142,7 +143,7 @@ pub fn safe_remove_empty_dir(
 	let parent = path.parent().unwrap_or(Path::new("."));
 	let dir_name = path.file_name()?;
 
-	let dir_fd = DirFd::open(&pi_uutils_ctx::resolve(parent), SymlinkBehavior::Follow).ok()?;
+	let dir_fd = DirFd::open(&veyyon_uutils_ctx::resolve(parent), SymlinkBehavior::Follow).ok()?;
 
 	match dir_fd.unlink_at(dir_name, true) {
 		Ok(_) => {
@@ -224,7 +225,7 @@ fn handle_unlink(
 
 /// Helper function to remove directory handling special cases
 pub fn remove_dir_with_special_cases(path: &Path, options: &Options, error_occurred: bool) -> bool {
-	match fs::remove_dir(pi_uutils_ctx::resolve(path)) {
+	match fs::remove_dir(veyyon_uutils_ctx::resolve(path)) {
 		Err(_) if !error_occurred && !is_readable(path) => {
 			// For compatibility with GNU test case
 			// `tests/rm/unread2.sh`, show "Permission denied" in this
@@ -232,7 +233,7 @@ pub fn remove_dir_with_special_cases(path: &Path, options: &Options, error_occur
 			show_permission_denied_error(path);
 			true
 		},
-		Err(_) if !error_occurred && pi_uutils_ctx::resolve(path).read_dir().is_err() => {
+		Err(_) if !error_occurred && veyyon_uutils_ctx::resolve(path).read_dir().is_err() => {
 			// For compatibility with GNU test case on Linux
 			// Check if directory is readable by attempting to read it
 			show_permission_denied_error(path);
@@ -260,7 +261,7 @@ pub fn safe_remove_dir_recursive(
 ) -> bool {
 	// Base case 1: this is a file or a symbolic link.
 	// Use lstat to avoid race condition between check and use
-	let initial_mode = match fs::symlink_metadata(pi_uutils_ctx::resolve(path)) {
+	let initial_mode = match fs::symlink_metadata(veyyon_uutils_ctx::resolve(path)) {
 		Ok(metadata) if !metadata.is_dir() => {
 			return remove_file(path, options, progress_bar);
 		},
@@ -271,14 +272,14 @@ pub fn safe_remove_dir_recursive(
 	};
 
 	// Try to open the directory using DirFd for secure traversal
-	let dir_fd = match DirFd::open(&pi_uutils_ctx::resolve(path), SymlinkBehavior::Follow) {
+	let dir_fd = match DirFd::open(&veyyon_uutils_ctx::resolve(path), SymlinkBehavior::Follow) {
 		Ok(fd) => fd,
 		Err(e) => {
 			// If we can't open the directory for safe traversal,
 			// handle the error appropriately and try to remove if possible
 			if e.kind() == std::io::ErrorKind::PermissionDenied {
 				// Try to remove the directory directly if it's empty
-				if fs::remove_dir(pi_uutils_ctx::resolve(path)).is_ok() {
+				if fs::remove_dir(veyyon_uutils_ctx::resolve(path)).is_ok() {
 					verbose_removed_directory(path, options);
 					return false;
 				}

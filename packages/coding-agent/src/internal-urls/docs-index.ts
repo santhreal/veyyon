@@ -2,7 +2,7 @@
  * Harness documentation index for the `veyyon://` protocol.
  *
  * Compiled binaries and the prepacked npm bundle inline a compressed index of the
- * docs (injected via `process.env.PI_DOCS_EMBED` at build time). The format is two lines:
+ * docs (injected via `process.env.VEYYON_DOCS_EMBED` at build time). The format is two lines:
  *   1. a plain JSON array of the sorted doc file names, and
  *   2. a base64 gzip blob of the index-aligned doc bodies (`string[]`).
  * Listing/completion (`getDocFilenames`) parses only the small first line and
@@ -17,7 +17,7 @@ import { promisify } from "node:util";
 import { gunzip } from "node:zlib";
 import { Glob } from "bun";
 
-const docsEmbed = process.env.PI_DOCS_EMBED ?? "";
+const docsEmbed = process.env.VEYYON_DOCS_EMBED ?? "";
 
 const gunzipAsync = promisify(gunzip);
 

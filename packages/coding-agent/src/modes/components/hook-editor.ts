@@ -7,7 +7,7 @@
  *   (Ctrl+Q / Ctrl+Enter) submits, bordered popup
  * - Prompt-style (ask): Enter submits, Shift+Enter inserts newline, legacy ask chrome
  */
-import { Container, Editor, matchesKey, Spacer, Text, type TUI } from "@veyyon/pi-tui";
+import { Container, Editor, matchesKey, Spacer, Text, type TUI } from "@veyyon/tui";
 import { getEditorTheme, theme } from "../../modes/theme/theme";
 import {
 	matchesAppExternalEditor,

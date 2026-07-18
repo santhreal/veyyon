@@ -13,7 +13,7 @@ saveTextLockfile = true
 ".lark" = "text"
 
 [test]
-# bun test does NOT honor .gitignore; prune robomp's repo clones and
+# bun test does NOT honor .gitignore; prune veybot's repo clones and
 # scratch dirs so a root-level `bun test` doesn't walk into them.
 pathIgnorePatterns = [
   "**/node_modules/**",
@@ -23,7 +23,7 @@ pathIgnorePatterns = [
   "python/**",
   "docs/**",
   "runs/**",
-  "python/robomp/data/**",
+  "python/veybot/data/**",
   ".wt/**",
   ".worktrees/**",
 ]

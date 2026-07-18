@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
-import { stream } from "@veyyon/pi-ai/stream";
-import type { Context, Model } from "@veyyon/pi-ai/types";
-import { getBundledModel } from "@veyyon/pi-catalog/models";
+import { stream } from "@veyyon/ai/stream";
+import type { Context, Model } from "@veyyon/ai/types";
+import { getBundledModel } from "@veyyon/catalog/models";
 import { e2eApiKey } from "./oauth";
 
 function makeContext(): Context {

@@ -1,8 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
-import { resetSettingsForTest, Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { getThemeByName, setThemeInstance, type Theme } from "@veyyon/pi-coding-agent/modes/theme/theme";
-import type { TaskParams } from "@veyyon/pi-coding-agent/task";
-import { taskToolRenderer } from "@veyyon/pi-coding-agent/task/renderer";
+import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
+import { getThemeByName, setThemeInstance, type Theme } from "@veyyon/coding-agent/modes/theme/theme";
+import type { TaskParams } from "@veyyon/coding-agent/task";
+import { taskToolRenderer } from "@veyyon/coding-agent/task/renderer";
 
 describe("task renderer: streaming call preview", () => {
 	let theme: Theme;

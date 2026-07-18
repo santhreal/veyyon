@@ -416,37 +416,37 @@ function BehaviorModelsTable({
 											label="Yelling (CAPS)"
 											total={model.totalYelling}
 											messages={model.totalMessages}
-											valueClass="text-[#ed4abf]"
+											valueClass="text-[#f0862e]"
 										/>
 										<DetailRow
 											label="Profanity"
 											total={model.totalProfanity}
 											messages={model.totalMessages}
-											valueClass="text-[#ff6b7d]"
+											valueClass="text-[#c96f6e]"
 										/>
 										<DetailRow
 											label="Anguish (!!!, nooo, dude, ..)"
 											total={model.totalAnguish}
 											messages={model.totalMessages}
-											valueClass="text-[#9b4dff]"
+											valueClass="text-[#c9a24b]"
 										/>
 										<DetailRow
 											label="Negation (no/nope/wrong)"
 											total={model.totalNegation}
 											messages={model.totalMessages}
-											valueClass="text-[#5ad8e6]"
+											valueClass="text-[#8891a0]"
 										/>
 										<DetailRow
 											label="Repetition (i meant, still doesnt)"
 											total={model.totalRepetition}
 											messages={model.totalMessages}
-											valueClass="text-[#5ad8e6]"
+											valueClass="text-[#8891a0]"
 										/>
 										<DetailRow
 											label="Blame (you didnt, stop X-ing)"
 											total={model.totalBlame}
 											messages={model.totalMessages}
-											valueClass="text-[#5ad8e6]"
+											valueClass="text-[#8891a0]"
 										/>
 										<DetailRow
 											label="Avg chars / msg"
@@ -515,10 +515,10 @@ function DetailRow({
 }
 
 const SERIES_COLORS = {
-	yelling: "#ed4abf", // brand pink
-	profanity: "#ff6b7d", // rose
-	anguish: "#9b4dff", // brand violet
-	frustration: "#5ad8e6", // brand cyan
+	yelling: "#f0862e", // ember
+	profanity: "#c96f6e", // red
+	anguish: "#c9a24b", // amber
+	frustration: "#8891a0", // slate
 } as const;
 
 function BreakdownChart({ data, chartTheme }: { data: DailyPoint[]; chartTheme: TableChartTheme }) {

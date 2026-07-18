@@ -1,6 +1,6 @@
-import { tryParseJson } from "@veyyon/pi-utils";
-import type { RenderResult, SpecialHandler } from "./types";
-import { buildResult, formatNumber, loadPage } from "./types";
+import { tryParseJson } from "@veyyon/utils";
+import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
+import { buildResult, formatNumber, loadFailure, loadPage, scraperDegrade, tryParseUrl } from "./types";
 
 /**
  * Handle npm URLs via registry API
@@ -9,9 +9,10 @@ export const handleNpm: SpecialHandler = async (
 	url: string,
 	timeout: number,
 	signal?: AbortSignal,
-): Promise<RenderResult | null> => {
+): Promise<RenderResult | ScraperDegrade | null> => {
 	try {
-		const parsed = new URL(url);
+		const parsed = tryParseUrl(url);
+		if (!parsed) return null;
 		if (parsed.hostname !== "www.npmjs.com" && parsed.hostname !== "npmjs.com") return null;
 
 		// Extract package name from /package/[scope/]name
@@ -37,7 +38,7 @@ export const handleNpm: SpecialHandler = async (
 			loadPage(downloadsUrl, { timeout: Math.min(timeout, 5), signal }),
 		]);
 
-		if (!result.ok) return null;
+		if (!result.ok) return scraperDegrade("npm", loadFailure(result));
 
 		// Parse download stats
 		let weeklyDownloads: number | null = null;
@@ -58,7 +59,7 @@ export const handleNpm: SpecialHandler = async (
 			dependencies?: Record<string, string>;
 			readme?: string;
 		}>(result.content);
-		if (!pkg) return null;
+		if (!pkg) return scraperDegrade("npm", "unexpected response shape");
 
 		let md = `# ${pkg.name}\n\n`;
 		if (pkg.description) md += `${pkg.description}\n\n`;
@@ -92,7 +93,7 @@ export const handleNpm: SpecialHandler = async (
 		}
 
 		return buildResult(md, { url, method: "npm", fetchedAt, notes: ["Fetched via npm registry"] });
-	} catch {}
-
-	return null;
+	} catch (error) {
+		return scraperDegrade("npm", error);
+	}
 };

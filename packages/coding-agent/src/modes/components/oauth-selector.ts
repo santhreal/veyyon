@@ -1,5 +1,5 @@
-import { getOAuthProviders } from "@veyyon/pi-ai/oauth";
-import type { OAuthProviderInfo } from "@veyyon/pi-ai/oauth/types";
+import { getOAuthProviders } from "@veyyon/ai/oauth";
+import type { OAuthProviderInfo } from "@veyyon/ai/oauth/types";
 import {
 	type Component,
 	extractPrintableText,
@@ -9,7 +9,7 @@ import {
 	routeSgrMouseInput,
 	ScrollView,
 	type SgrMouseEvent,
-} from "@veyyon/pi-tui";
+} from "@veyyon/tui";
 import { settings } from "../../config/settings";
 import { theme } from "../../modes/theme/theme";
 import { matchesSelectCancel, matchesSelectDown, matchesSelectUp } from "../../modes/utils/keybinding-matchers";

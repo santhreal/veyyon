@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import type * as BrowsersNs from "@puppeteer/browsers";
-import { $which, getPuppeteerDir, logger } from "@veyyon/pi-utils";
+import { $which, errorMessage, getPuppeteerDir, logger } from "@veyyon/utils";
 import type { Browser, CDPSession, Page, default as Puppeteer, Target } from "puppeteer-core";
 import stealthTamperingScript from "../puppeteer/00_stealth_tampering.txt" with { type: "text" };
 import stealthActivityScript from "../puppeteer/01_stealth_activity.txt" with { type: "text" };
@@ -513,14 +513,14 @@ async function sendUserAgentOverride(client: PuppeteerCdpClient, override: UserA
 		await client.send("Network.setUserAgentOverride", override as unknown as Record<string, unknown>);
 	} catch (error) {
 		logger.debug("Failed to apply Network user agent override", {
-			error: error instanceof Error ? error.message : String(error),
+			error: errorMessage(error),
 		});
 	}
 	try {
 		await client.send("Emulation.setUserAgentOverride", override as unknown as Record<string, unknown>);
 	} catch (error) {
 		logger.debug("Failed to apply Emulation user agent override", {
-			error: error instanceof Error ? error.message : String(error),
+			error: errorMessage(error),
 		});
 	}
 }
@@ -599,7 +599,7 @@ async function withSoftTimeout<T>(promise: Promise<T>, timeoutMs: number, label:
 	try {
 		return await Promise.race([
 			promise.catch(error => {
-				logger.debug(`Failed to apply ${label}`, { error: error instanceof Error ? error.message : String(error) });
+				logger.debug(`Failed to apply ${label}`, { error: errorMessage(error) });
 				return undefined;
 			}),
 			timeoutPromise,

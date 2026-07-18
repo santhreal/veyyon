@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { BeamMemory } from "@veyyon/pi-mnemopi/core/beam";
+import { BeamMemory } from "@veyyon/mnemopi/core/beam";
 
 type TempDb = { dir: string; path: string };
 const tempDbs: TempDb[] = [];

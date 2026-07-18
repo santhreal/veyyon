@@ -3,14 +3,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { ImageContent, TextContent } from "@veyyon/pi-ai";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
-import type { ToolSession } from "@veyyon/pi-coding-agent/tools";
-import { ReadTool } from "@veyyon/pi-coding-agent/tools/read";
-import { zip } from "@veyyon/pi-coding-agent/utils/zip";
-import * as scrapers from "@veyyon/pi-coding-agent/web/scrapers/types";
-import * as scraperUtils from "@veyyon/pi-coding-agent/web/scrapers/utils";
-import { removeSyncWithRetries, Snowflake } from "@veyyon/pi-utils";
+import type { ImageContent, TextContent } from "@veyyon/ai";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import type { ToolSession } from "@veyyon/coding-agent/tools";
+import { ReadTool } from "@veyyon/coding-agent/tools/read";
+import { zip } from "@veyyon/coding-agent/utils/zip";
+import * as scrapers from "@veyyon/coding-agent/web/scrapers/types";
+import * as scraperUtils from "@veyyon/coding-agent/web/scrapers/utils";
+import { removeSyncWithRetries, Snowflake } from "@veyyon/utils";
 
 function makeSession(testDir: string): ToolSession {
 	const sessionFile = path.join(testDir, "session.jsonl");

@@ -2,10 +2,10 @@ import { afterEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { generateThemeVars } from "@veyyon/pi-coding-agent/export/html";
-import { defaultThemes } from "@veyyon/pi-coding-agent/modes/theme/defaults";
-import { getResolvedThemeColors, getThemeByName, isLightTheme } from "@veyyon/pi-coding-agent/modes/theme/theme";
-import { getAgentDir, getCustomThemesDir, removeWithRetries, setAgentDir } from "@veyyon/pi-utils";
+import { generateThemeVars } from "@veyyon/coding-agent/export/html";
+import { defaultThemes } from "@veyyon/coding-agent/modes/theme/defaults";
+import { getResolvedThemeColors, getThemeByName, isLightTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { getAgentDir, getCustomThemesDir, removeWithRetries, setAgentDir } from "@veyyon/utils";
 
 describe("Theme.isLight", () => {
 	it("classifies built-in themes by their status-line surface", async () => {
@@ -72,9 +72,9 @@ describe("getResolvedThemeColors HTML export defaults", () => {
 		if (tempAgentDir === undefined) return;
 		setAgentDir(originalAgentDir);
 		if (originalAgentDirEnv === undefined) {
-			delete process.env.PI_CODING_AGENT_DIR;
+			delete process.env.VEYYON_CODING_AGENT_DIR;
 		} else {
-			process.env.PI_CODING_AGENT_DIR = originalAgentDirEnv;
+			process.env.VEYYON_CODING_AGENT_DIR = originalAgentDirEnv;
 		}
 		await removeWithRetries(tempAgentDir);
 		tempAgentDir = undefined;
@@ -82,8 +82,8 @@ describe("getResolvedThemeColors HTML export defaults", () => {
 
 	it("uses light text when a light-status custom theme derives dark export surfaces from userMessageBg", async () => {
 		originalAgentDir = getAgentDir();
-		originalAgentDirEnv = process.env.PI_CODING_AGENT_DIR;
-		tempAgentDir = await fs.mkdtemp(path.join(os.tmpdir(), "omp-theme-export-"));
+		originalAgentDirEnv = process.env.VEYYON_CODING_AGENT_DIR;
+		tempAgentDir = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-theme-export-"));
 		setAgentDir(tempAgentDir);
 
 		const { export: _ignoredExport, ...themeWithoutExport } = defaultThemes.porcelain;

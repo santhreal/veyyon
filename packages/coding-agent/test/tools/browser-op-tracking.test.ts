@@ -4,7 +4,7 @@ import {
 	describeScreenshot,
 	type InflightOp,
 	imageFormatForPath,
-} from "@veyyon/pi-coding-agent/tools/browser/tab-worker";
+} from "@veyyon/coding-agent/tools/browser/tab-worker";
 
 describe("browser op tracking — timeout diagnostics", () => {
 	it("labels a screenshot op by its distinguishing argument", () => {

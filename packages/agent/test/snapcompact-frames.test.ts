@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import type { ImageContent } from "@veyyon/pi-ai";
+import type { ImageContent } from "@veyyon/ai";
 import * as snapcompact from "@veyyon/snapcompact";
 import { estimateTokens } from "../src/compaction/compaction";
 import { createCompactionSummaryMessage, defaultConvertToLlm } from "../src/compaction/messages";

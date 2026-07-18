@@ -1,18 +1,16 @@
-# Bounded reads & instant search
+# Bounded reads and search
 
-> **Status: Built.** The `read`, `glob`, `grep`, and `write` tools ship as TypeScript modules in
-> `packages/coding-agent/src/tools/{read,glob,grep,write}.ts`. There is no `experimental_tools` or
-> `backends.toml` gating — every tool below is always on. This chapter describes their real parameter
-> shapes and behavioral contracts.
+`read`, `glob`, `grep`, and `write` ship as TypeScript modules under
+`packages/coding-agent/src/tools/{read,glob,grep,write}.ts`. They are always available (no
+`experimental_tools` or `backends.toml` gate). This page documents parameter shapes and bounds.
 
-These tools fight **token blowup** and **latency** — supporting concerns that compound into
-control-flow failures on long trajectories, the long-context runs where a model stops making progress
-because its window is full of raw dumps.
+Unbounded `cat` / `find` / `grep -r` via shell can fill the context window. These tools apply
+line/byte/result caps and surface truncation instead of silent dumps.
 
 ## The `read` tool (`tools/read.ts`)
 
-A model that `cat`s a 20k-line file blows its whole context on one call. The `read` tool takes a single
-`path` string (no separate `offset`/`limit` arguments) and bounds every read to a budget:
+`read` takes a single `path` string (no separate `offset`/`limit` arguments) and bounds every read
+to a budget:
 
 - **One parameter, inline selectors.** `read {path}`, where `path` can carry a line-range selector
   appended after a colon: `src/foo.ts:50-200` (inclusive range), `src/foo.ts:50` / `:50-` (from line 50
@@ -25,8 +23,8 @@ A model that `cat`s a 20k-line file blows its whole context on one call. The `re
 - **Structural summaries for parseable code.** A read with no selector on a parseable source file
   returns declarations with bodies elided (`…`), and the footer names the recovery selector so the model
   re-issues only the ranges it actually needs instead of re-reading the whole file.
-- **Truncation is never silent.** A summary footer or a `[Showing lines …]`-style notice always names the
-  exact continuation selector.
+- **Truncation is explicit.** A summary footer or a `[Showing lines …]`-style notice names the
+  continuation selector.
 - **Beyond plain text files:** the same tool also reads directories (depth-limited listing), archives
   (`.tar`, `.tar.gz`, `.zip`, via `archive.zip:path/inside`), SQLite databases (`file.db:table`, with
   pagination and `where`/`order` filters), PDF/Word/PowerPoint/Excel/EPUB (extracted text), Jupyter
@@ -51,9 +49,8 @@ includes `target/`, `node_modules/`, and `.git/`; `glob` is bounded and gitignor
   a byte cap. Every truncation is surfaced as an actionable notice.
 - **Sorted by mtime, newest first** (not lexicographic), grouped under `# <dir>/` headers with
   basenames below; directories get a trailing `/`.
-- **`.git` and `node_modules` are never descended**, and traversal goes through the same filesystem
-  abstraction `read`/`grep` use, so it is correct inside a sandbox or remote container, not just on the
-  host.
+- **`.git` and `node_modules` are never descended**. Traversal uses the same filesystem abstraction
+  as `read`/`grep` (including remote/task workspaces when those backends are active).
 
 ## The `grep` tool (`tools/grep.ts`)
 
@@ -98,7 +95,7 @@ capture path (`tools/bash-interactive.ts`):
 - **ANSI stripping is Bun-native, not a hand-rolled parser.** `sanitizeText()` calls Bun's built-in
   `Bun.stripANSI()` when an ESC byte is present, then strips C0/C1 control bytes and DEL with a single
   regex pass. The function is a TypeScript replacement for a former Rust native
-  (`crates/pi-natives/src/text.rs::sanitize_text`, noted in the current source comment) — there is no
+  (`crates/veyyon-natives/src/text.rs::sanitize_text`, noted in the current source comment) — there is no
   live Rust ECMA-48 grammar walker in this path today.
 - **Keep `\n` and `\t`, drop the rest.** The control regex covers C0 (excluding tab/newline), `\r`,
   DEL, and the C1 range; `\n` and `\t` are the two explicit exclusions.

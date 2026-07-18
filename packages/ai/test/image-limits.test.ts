@@ -72,13 +72,13 @@ import { execSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { complete } from "@veyyon/pi-ai/stream";
-import type { Api, Context, ImageContent, Model, OptionsForApi, UserMessage } from "@veyyon/pi-ai/types";
-import { getBundledModel } from "@veyyon/pi-catalog/models";
-import { $which, removeSyncWithRetries } from "@veyyon/pi-utils";
+import { complete } from "@veyyon/ai/stream";
+import type { Api, Context, ImageContent, Model, OptionsForApi, UserMessage } from "@veyyon/ai/types";
+import { getBundledModel } from "@veyyon/catalog/models";
+import { $which, removeSyncWithRetries } from "@veyyon/utils";
 import { e2eApiKey } from "./oauth";
 
-const TEMP_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "omp-temp-images-"));
+const TEMP_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-temp-images-"));
 
 /**
  * Generate a valid PNG image of specified dimensions using ImageMagick

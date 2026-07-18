@@ -1,7 +1,7 @@
 /**
- * Shared wire types for the omp collab live-session protocol.
+ * Shared wire types for the veyyon collab live-session protocol.
  *
- * Dependency-free JSON shapes produced by `@veyyon/pi-coding-agent`
+ * Dependency-free JSON shapes produced by `@veyyon/coding-agent`
  * (`src/collab/protocol.ts` and friends). Browser and test clients import this
  * package instead of depending on the coding-agent runtime; conformance is
  * asserted type-only in `packages/coding-agent/test/collab/web-wire.types.ts`.
@@ -435,7 +435,7 @@ export const DEFAULT_RELAY_URL = "wss://share.veyyon.dev";
  * Same caveat as {@link DEFAULT_RELAY_URL}: `share.veyyon.dev` is not yet a
  * deployed Veyyon share server. `/share` without `--server`/`share.serverUrl`
  * will fail closed on upload (network error) rather than silently reaching
- * upstream `omp.sh` infra.
+ * an unintended upstream server.
  */
 export const DEFAULT_SHARE_URL = "https://share.veyyon.dev/s";
 

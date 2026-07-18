@@ -7,9 +7,10 @@
  * rendered output to stdout. It exists for visual QA of tool renderers without
  * having to provoke each state through a live agent session.
  */
-import type { AgentTool } from "@veyyon/pi-agent-core";
-import type { TUI } from "@veyyon/pi-tui";
-import { getProjectDir } from "@veyyon/pi-utils";
+import type { AgentTool } from "@veyyon/agent-core";
+import type { TUI } from "@veyyon/tui";
+import { getProjectDir } from "@veyyon/utils";
+import chalk from "chalk";
 import { Settings } from "../config/settings";
 import { ToolExecutionComponent } from "../modes/components/tool-execution";
 import { initTheme, theme } from "../modes/theme/theme";
@@ -248,7 +249,8 @@ export async function runGalleryCommand(args: GalleryCommandArgs): Promise<void>
 	const allNames = Array.from(new Set([...Object.keys(toolRenderers), ...Object.keys(galleryFixtures)])).sort();
 	const names = args.tool ? allNames.filter(name => name === args.tool) : allNames;
 	if (args.tool && names.length === 0) {
-		process.stdout.write(`Unknown tool '${args.tool}'. Known tools: ${allNames.join(", ")}\n`);
+		process.stderr.write(`Unknown tool '${args.tool}'. Known tools: ${allNames.join(", ")}\n`);
+		process.exitCode = 1;
 		return;
 	}
 
@@ -267,6 +269,9 @@ export async function runGalleryCommand(args: GalleryCommandArgs): Promise<void>
 
 	const lines = sections.flatMap(section => section.lines);
 	lines.push("");
-	const text = lines.map(line => (args.plain ? Bun.stripANSI(line) : line)).join("\n");
+	// --plain forces it, but a piped/redirected stdout (chalk detects non-TTY
+	// and NO_COLOR) also degrades to plain text instead of escape soup.
+	const plain = args.plain || chalk.level === 0;
+	const text = lines.map(line => (plain ? Bun.stripANSI(line) : line)).join("\n");
 	process.stdout.write(`${text}\n`);
 }

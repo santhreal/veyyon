@@ -19,9 +19,8 @@ param(
 $ErrorActionPreference = "Stop"
 
 $Repo = "santhreal/veyyon"
-$Package = "@veyyon/pi-coding-agent"
-# VEYYON_INSTALL_DIR is the modern name; PI_INSTALL_DIR is honored for compatibility.
-$InstallDir = if ($env:VEYYON_INSTALL_DIR) { $env:VEYYON_INSTALL_DIR } elseif ($env:PI_INSTALL_DIR) { $env:PI_INSTALL_DIR } else { "$env:LOCALAPPDATA\veyyon" }
+$Package = "@veyyon/coding-agent"
+$InstallDir = if ($env:VEYYON_INSTALL_DIR) { $env:VEYYON_INSTALL_DIR } else { "$env:LOCALAPPDATA\veyyon" }
 $BinName = "veyyon"
 $AliasName = "vey"
 $BinaryAsset = "veyyon-windows-x64.exe"
@@ -107,7 +106,15 @@ function Find-BashShell {
 
 function Configure-BashShell {
     try {
-        $settingsDir = Join-Path $env:USERPROFILE ".veyyon\agent"
+        # Default profile agent dir. A legacy bare-root agent dir wins so we never
+        # create both layouts at once (launch fails closed on that ambiguity);
+        # veyyon migrates the legacy tree into profiles\default on next launch.
+        $legacyAgentDir = Join-Path $env:USERPROFILE ".veyyon\agent"
+        if (Test-Path $legacyAgentDir) {
+            $settingsDir = $legacyAgentDir
+        } else {
+            $settingsDir = Join-Path $env:USERPROFILE ".veyyon\profiles\default\agent"
+        }
         $settingsFile = Join-Path $settingsDir "settings.json"
 
         # Check if settings.json already has a shellPath configured

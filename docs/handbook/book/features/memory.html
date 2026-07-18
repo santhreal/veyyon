@@ -10,6 +10,10 @@
         <!-- Veyyon handbook: self-contained head additions. No remote resources. -->
         <meta name="theme-color" content="#050505">
         <meta name="color-scheme" content="dark">
+        <!-- Site favicons live at the deployed root, one level above /docs/. -->
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+        <link rel="icon" href="/favicon.ico" sizes="48x48">
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png">
         <style>
           /* Paint the near-black surface before CSS/JS resolve the theme, so there is
              no light flash on load. Kept in sync with theme/veyyon.css. */
@@ -18,7 +22,7 @@
           *, *::before, *::after { box-sizing: border-box; }
         </style>
 
-        <meta name="description" content="How Veyyon turns open models into frontier coding agents. The product, the harness, tool-call repair, the edit format, per-model adaptation, and how to use it.">
+        <meta name="description" content="Operator handbook for the Veyyon terminal coding agent: install, configuration, tools, approvals, edit formats, providers, and harness structure.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -38,7 +42,7 @@
         <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="../ayu-highlight-3fdfc3ac.css">
 
         <!-- Custom theme stylesheets -->
-        <link rel="stylesheet" href="../theme/veyyon-fc839a17.css">
+        <link rel="stylesheet" href="../theme/veyyon-06f6939e.css">
 
 
         <!-- Provide site root and default themes to javascript -->
@@ -46,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-e76f06ca.js";
+            window.path_to_searchindex_js = "../searchindex-a2447057.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-9cfd259b.js"></script>
+        <script src="../toc-cc1a72e9.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -194,17 +198,17 @@
                         <h1 id="memory"><a class="header" href="#memory">Memory</a></h1>
 <p>Veyyon can remember durable project context across sessions. Memory is <strong>off by default</strong>; pick a
 backend in <code>config.yml</code> or <code>/settings</code>.</p>
-<h2 id="backends-built"><a class="header" href="#backends-built">Backends (built)</a></h2>
+<h2 id="backends"><a class="header" href="#backends">Backends</a></h2>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>Backend</th><th>Storage</th><th>Best for</th></tr>
+<tr><th>Backend</th><th>Storage</th><th>Notes</th></tr>
 </thead>
 <tbody>
 <tr><td><code>off</code></td><td>—</td><td>No memory injection or retention</td></tr>
-<tr><td><code>local</code></td><td>Markdown under the agent memories dir (<code>MEMORY.md</code>, <code>memory_summary.md</code>, <code>skills/</code>)</td><td>Curated summaries from past session files</td></tr>
-<tr><td><code>mnemopi</code></td><td>SQLite via <code>@veyyon/pi-mnemopi</code></td><td>Vector + FTS recall, auto-retain, compaction hooks</td></tr>
-<tr><td><code>hindsight</code></td><td>Hindsight backend (when configured)</td><td>Alternative structured memory</td></tr>
+<tr><td><code>local</code></td><td>Markdown under the agent memories dir (<code>MEMORY.md</code>, <code>memory_summary.md</code>, <code>skills/</code>)</td><td>Summaries from past session files</td></tr>
+<tr><td><code>mnemopi</code></td><td>SQLite via <code>@veyyon/mnemopi</code></td><td>Vector + FTS, auto-retain, compaction hooks</td></tr>
+<tr><td><code>hindsight</code></td><td>Hindsight server (when configured)</td><td>Remote bank; retain/recall/reflect tools</td></tr>
 </tbody>
 </table>
 </div>
@@ -231,17 +235,17 @@ The <code>/memory</code> slash command exposes <code>view</code>, <code>stats</c
 session JSONL files, then consolidates into <code>MEMORY.md</code>, <code>memory_summary.md</code>, and optional
 <code>skills/</code>. The agent reads artifacts via <code>memory://</code> URLs on the <code>read</code> tool.</p>
 <p>Engineering detail: <a href="../../../memory.html"><code>docs/memory.md</code></a>.</p>
-<h2 id="compaction-three-knobs"><a class="header" href="#compaction-three-knobs">Compaction (three knobs)</a></h2>
+<h2 id="compaction-primary-knobs"><a class="header" href="#compaction-primary-knobs">Compaction (primary knobs)</a></h2>
 <p>Context compaction is separate from durable memory. Settings → Compaction (or <code>config.yml</code>) exposes
-exactly three fields:</p>
+these primary fields:</p>
 <div class="table-wrapper">
 <table>
 <thead>
 <tr><th>Setting</th><th>Key</th><th>Values</th></tr>
 </thead>
 <tbody>
-<tr><td>Threshold</td><td><code>compaction.thresholdPercent</code></td><td>percent of the context window</td></tr>
-<tr><td>Type</td><td><code>compaction.strategy</code></td><td><code>handoff</code> or <code>snap</code></td></tr>
+<tr><td>Threshold</td><td><code>compaction.thresholdPercent</code></td><td>percent of the context window (<code>compaction.thresholdTokens</code> optional)</td></tr>
+<tr><td>Type</td><td><code>compaction.strategy</code></td><td><code>handoff</code> or <code>snap</code> (schema default <code>snap</code>)</td></tr>
 <tr><td>Model</td><td><code>compaction.model</code></td><td>model id; unset uses the interactive model</td></tr>
 </tbody>
 </table>
@@ -255,17 +259,7 @@ a plan and pair citations with fresh repo evidence.</p>
 <h2 id="configuration"><a class="header" href="#configuration">Configuration</a></h2>
 <p>Use <code>/memory</code> or <code>/settings</code> (Memory group), or set keys under <code>memory.*</code>, <code>mnemopi.*</code>,
 <code>hindsight.*</code>, or <code>memories.*</code> depending on the active backend.</p>
-<blockquote>
-<p><strong>Per-profile:</strong> the active backend, its settings, and its stored data (mnemopi SQLite path,
-local Markdown artifacts, hindsight bank id) are all scoped to the active profile
-(<code>VEYYON_PROFILE</code>). Two profiles never share memory — switching profiles switches to an
-independent <code>memory.backend</code> and an independent database/artifact set under that profile’s
-agent directory.</p>
-</blockquote>
-<blockquote>
-<p><strong>Spec — not shipped:</strong> rollout-DB memory phases, <code>&lt;oai-mem-citation&gt;</code> blocks, <code>rollout_summaries/</code>,
-and a <code>/memories</code> settings pane. Veyyon uses the backends above instead.</p>
-</blockquote>
+<p>The active backend, its settings, and its stored data (mnemopi SQLite path, local Markdown artifacts, hindsight bank id) are scoped to the active profile (<code>VEYYON_PROFILE</code>). Profiles do not share memory stores.</p>
 
                     </main>
 

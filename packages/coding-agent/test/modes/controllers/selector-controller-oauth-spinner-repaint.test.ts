@@ -9,12 +9,12 @@
  * cadence purely to advance one glyph.
  */
 import { afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
-import { getOAuthProviders } from "@veyyon/pi-ai/oauth";
-import { OAuthSelectorComponent } from "@veyyon/pi-coding-agent/modes/components/oauth-selector";
-import { SelectorController } from "@veyyon/pi-coding-agent/modes/controllers/selector-controller";
-import { initTheme } from "@veyyon/pi-coding-agent/modes/theme/theme";
-import type { InteractiveModeContext } from "@veyyon/pi-coding-agent/modes/types";
-import type { AuthStorage } from "@veyyon/pi-coding-agent/session/auth-storage";
+import { getOAuthProviders } from "@veyyon/ai/oauth";
+import { OAuthSelectorComponent } from "@veyyon/coding-agent/modes/components/oauth-selector";
+import { SelectorController } from "@veyyon/coding-agent/modes/controllers/selector-controller";
+import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
+import type { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 
 function createOverlayHost() {
 	let overlaid: unknown;

@@ -1,11 +1,11 @@
 # frozen_string_literal: false
-# OMP Ruby prelude helpers (loaded once into the runner's TOPLEVEL_BINDING).
+# Veyyon Ruby prelude helpers (loaded once into the runner's TOPLEVEL_BINDING).
 #
 # Mirrors eval/py/prelude.py: defines the cross-runtime helper surface
 # (display/read/write/env/output, the `tool` bridge proxy,
 # completion/agent/parallel/pipeline/log/phase/budget). Host-side helpers reach
 # the coding-agent over the same loopback HTTP tool bridge the Python prelude
-# uses (PI_TOOL_BRIDGE_URL/TOKEN/SESSION). Path helpers honor PI_EVAL_LOCAL_ROOTS
+# uses (VEYYON_TOOL_BRIDGE_URL/TOKEN/SESSION). Path helpers honor VEYYON_EVAL_LOCAL_ROOTS
 # so `write("local://x")` lands where `read local://x` resolves.
 #
 # `__veyyon_*` primitives (emit/present/status/scrub/run_id) are provided by
@@ -25,7 +25,7 @@ unless defined?($__veyyon_prelude_loaded) && $__veyyon_prelude_loaded
   end
 
   # Map a helper path to a real filesystem path. A `scheme://…` whose scheme has
-  # an injected on-disk root (PI_EVAL_LOCAL_ROOTS, e.g. `local://`) is rewritten
+  # an injected on-disk root (VEYYON_EVAL_LOCAL_ROOTS, e.g. `local://`) is rewritten
   # under that root; plain paths pass through; any other `scheme://` is rejected.
   def __veyyon_resolve_path(path)
     return path unless path.is_a?(String)
@@ -34,7 +34,7 @@ unless defined?($__veyyon_prelude_loaded) && $__veyyon_prelude_loaded
     scheme = m[1].downcase
     roots =
       begin
-        raw = ENV["PI_EVAL_LOCAL_ROOTS"]
+        raw = ENV["VEYYON_EVAL_LOCAL_ROOTS"]
         raw && !raw.empty? ? JSON.parse(raw) : {}
       rescue StandardError
         {}
@@ -166,9 +166,9 @@ unless defined?($__veyyon_prelude_loaded) && $__veyyon_prelude_loaded
   end
 
   def output(*ids, format: "raw", query: nil, offset: nil, limit: nil)
-    artifacts_dir = ENV["PI_ARTIFACTS_DIR"]
+    artifacts_dir = ENV["VEYYON_ARTIFACTS_DIR"]
     if artifacts_dir.nil? || artifacts_dir.empty?
-      session_file = ENV["PI_SESSION_FILE"]
+      session_file = ENV["VEYYON_SESSION_FILE"]
       if session_file.nil? || session_file.empty?
         __veyyon_emit_status("output", "error" => "No session file available")
         raise "No session - output artifacts unavailable"
@@ -277,15 +277,15 @@ unless defined?($__veyyon_prelude_loaded) && $__veyyon_prelude_loaded
   # Host tool bridge (loopback HTTP) — `tool.<name>(args)`, completion, agent.
   # -------------------------------------------------------------------------
 
-  module OmpBridge
+  module VeyyonBridge
     INTENT_FIELD = "i"
 
     module_function
 
     def proxy_env
-      base = ENV["PI_TOOL_BRIDGE_URL"]
-      token = ENV["PI_TOOL_BRIDGE_TOKEN"]
-      session = ENV["PI_TOOL_BRIDGE_SESSION"]
+      base = ENV["VEYYON_TOOL_BRIDGE_URL"]
+      token = ENV["VEYYON_TOOL_BRIDGE_TOKEN"]
+      session = ENV["VEYYON_TOOL_BRIDGE_SESSION"]
       if base.nil? || base.empty? || token.nil? || token.empty? || session.nil? || session.empty?
         raise "tool bridge is unavailable in this kernel"
       end
@@ -340,13 +340,13 @@ unless defined?($__veyyon_prelude_loaded) && $__veyyon_prelude_loaded
   end
 
   # `tool[:name]` form — a reusable one-tool callable.
-  class OmpToolCallable
+  class VeyyonToolCallable
     def initialize(name)
       @name = name
     end
 
     def call(args = nil, **kwargs)
-      OmpBridge.tool_call(@name, args, kwargs)
+      VeyyonBridge.tool_call(@name, args, kwargs)
     end
 
     def to_proc
@@ -360,13 +360,13 @@ unless defined?($__veyyon_prelude_loaded) && $__veyyon_prelude_loaded
 
   # `tool.<name>(args)` proxy. BasicObject so helper methods defined on Object
   # (read/write/…) never shadow a tool name — every call routes to the bridge.
-  class OmpToolProxy < BasicObject
+  class VeyyonToolProxy < BasicObject
     def method_missing(name, args = nil, **kwargs)
-      ::OmpBridge.tool_call(name.to_s, args, kwargs)
+      ::VeyyonBridge.tool_call(name.to_s, args, kwargs)
     end
 
     def [](name)
-      ::OmpToolCallable.new(name.to_s)
+      ::VeyyonToolCallable.new(name.to_s)
     end
 
     def respond_to_missing?(_name, _include_private = false)
@@ -374,20 +374,20 @@ unless defined?($__veyyon_prelude_loaded) && $__veyyon_prelude_loaded
     end
 
     def inspect
-      session = ::ENV["PI_TOOL_BRIDGE_SESSION"]
+      session = ::ENV["VEYYON_TOOL_BRIDGE_SESSION"]
       session ? "#<tool proxy session=#{session}>" : "#<tool proxy unavailable>"
     end
   end
 
   def tool
-    $__veyyon_tool_proxy ||= OmpToolProxy.new
+    $__veyyon_tool_proxy ||= VeyyonToolProxy.new
   end
 
   def completion(prompt, model: "default", system: nil, schema: nil)
     args = { "prompt" => prompt, "model" => model }
     args["system"] = system unless system.nil?
     args["schema"] = schema unless schema.nil?
-    res = OmpBridge.call("__completion__", args)
+    res = VeyyonBridge.call("__completion__", args)
     text = res.is_a?(Hash) ? res["text"] : res
     schema.nil? ? text : JSON.parse(text)
   end
@@ -405,7 +405,7 @@ unless defined?($__veyyon_prelude_loaded) && $__veyyon_prelude_loaded
     args["merge"] = !!merge unless merge.nil?
     # Tell the bridge a handle is wanted so it preserves the backing artifacts.
     args["handle"] = true if handle
-    res = OmpBridge.call("__agent__", args)
+    res = VeyyonBridge.call("__agent__", args)
     text = res.is_a?(Hash) ? res["text"] : res
     parsed = schema.nil? ? text : JSON.parse(text)
     return parsed unless handle
@@ -439,7 +439,7 @@ unless defined?($__veyyon_prelude_loaded) && $__veyyon_prelude_loaded
   # -------------------------------------------------------------------------
 
   def __veyyon_concurrency_limit
-    snap = (OmpBridge.call("__concurrency__", {}) rescue nil) || {}
+    snap = (VeyyonBridge.call("__concurrency__", {}) rescue nil) || {}
     n = (snap["limit"] || 0).to_i
     n > 0 ? n : 0
   rescue StandardError
@@ -516,31 +516,31 @@ unless defined?($__veyyon_prelude_loaded) && $__veyyon_prelude_loaded
   end
 
   # Live view of the host Goal Mode token budget via the host bridge.
-  class OmpBudget
+  class VeyyonBudget
     def total
-      snap = (OmpBridge.call("__budget__", {}) || {})
+      snap = (VeyyonBridge.call("__budget__", {}) || {})
       snap["total"]
     end
 
     def hard
-      snap = (OmpBridge.call("__budget__", {}) || {})
+      snap = (VeyyonBridge.call("__budget__", {}) || {})
       snap["hard"] ? true : false
     end
 
     def spent
-      snap = (OmpBridge.call("__budget__", {}) || {})
+      snap = (VeyyonBridge.call("__budget__", {}) || {})
       (snap["spent"] || 0).to_i
     end
 
     def remaining
-      snap = (OmpBridge.call("__budget__", {}) || {})
+      snap = (VeyyonBridge.call("__budget__", {}) || {})
       total = snap["total"]
       return Float::INFINITY if total.nil?
       [0, total - (snap["spent"] || 0).to_i].max
     end
 
     def inspect
-      snap = ((OmpBridge.call("__budget__", {}) rescue nil) || {})
+      snap = ((VeyyonBridge.call("__budget__", {}) rescue nil) || {})
       "#<budget total=#{snap["total"].inspect} spent=#{snap["spent"].inspect}>"
     rescue StandardError
       "#<budget unavailable>"
@@ -548,6 +548,6 @@ unless defined?($__veyyon_prelude_loaded) && $__veyyon_prelude_loaded
   end
 
   def budget
-    $__veyyon_budget ||= OmpBudget.new
+    $__veyyon_budget ||= VeyyonBudget.new
   end
 end

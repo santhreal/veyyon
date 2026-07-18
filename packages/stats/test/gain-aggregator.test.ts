@@ -1,10 +1,10 @@
 import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { initDb, insertMessageStats } from "@veyyon/pi-stats/db";
-import { dedupeProjects, getGainDashboardStats, normalizeProjectPath } from "@veyyon/pi-stats/gain-aggregator";
-import type { MessageStats } from "@veyyon/pi-stats/types";
-import { getStatsDbPath } from "@veyyon/pi-utils";
+import { initDb, insertMessageStats } from "@veyyon/stats/db";
+import { dedupeProjects, getGainDashboardStats, normalizeProjectPath } from "@veyyon/stats/gain-aggregator";
+import type { MessageStats } from "@veyyon/stats/types";
+import { getStatsDbPath } from "@veyyon/utils";
 import { installStatsTestIsolation } from "./helpers/temp-agent";
 
 installStatsTestIsolation("@pi-stats-gain-");
@@ -54,7 +54,7 @@ describe("gain project normalization", () => {
 		expect(normalizeProjectPath("/Users/me/tool/worktrees/app/packages/stats")).toBe(
 			"/Users/me/tool/worktrees/app/packages/stats",
 		);
-		expect(normalizeProjectPath("/tmp/pi-bash-exec/session")).toBeNull();
+		expect(normalizeProjectPath("/tmp/veyyon-bash-exec/session")).toBeNull();
 	});
 
 	it("dedupes normalized project roots with separator-aware parent matching", () => {

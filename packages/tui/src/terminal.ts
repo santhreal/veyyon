@@ -8,7 +8,7 @@ import {
 	postmortem,
 	restoreTerminalStderr,
 	suppressTerminalStderr,
-} from "@veyyon/pi-utils";
+} from "@veyyon/utils";
 import { setKittyProtocolActive } from "./keys";
 import { OSC11_RESET_BACKGROUND_SEQUENCE, osc11SetBackgroundSequence, oscChannelTo8Bit } from "./paint-ground";
 import { StdinBuffer } from "./stdin-buffer";
@@ -517,7 +517,7 @@ export class ProcessTerminal implements Terminal {
 	// terminal side effect (writes, probes, raw mode, SIGWINCH, timers) is
 	// suppressed. Defaults on under `bun test` — see isTerminalHeadless().
 	#headless = isTerminalHeadless();
-	#writeLogPath = $env.PI_TUI_WRITE_LOG || "";
+	#writeLogPath = $env.VEYYON_TUI_WRITE_LOG || "";
 	#stdoutErrorCleanup?: () => void;
 	#stdoutErrorHandler = (err: Error) => {
 		this.#markTerminalWriteFailed(err);
@@ -727,7 +727,7 @@ export class ProcessTerminal implements Terminal {
 		// gates the renderer's begin/end markers; 2048 (in-band resize) is enabled
 		// only after the terminal confirms support; 2031 (appearance change
 		// notifications) drives mid-session theme tracking. Xterm ?1010/?1011
-		// are disabled while OMP owns the TTY so typing in the editor does not
+		// are disabled while Veyyon owns the TTY so typing in the editor does not
 		// force a reader scrolled into native history back to the tail. Each probe
 		// rides the shared DA1 sentinel, so terminals that ignore DECRQM resolve as
 		// unsupported when the DA1 reply arrives.
@@ -1127,7 +1127,7 @@ export class ProcessTerminal implements Terminal {
 
 	#shouldQueryOsc99Support(): boolean {
 		if (TERMINAL.notifyProtocol !== NotifyProtocol.Osc99) return false;
-		return !isBunTestRuntime() || $env.PI_TUI_OSC99_PROBE === "1";
+		return !isBunTestRuntime() || $env.VEYYON_TUI_OSC99_PROBE === "1";
 	}
 
 	#queryOsc99Support(): void {
@@ -1137,7 +1137,7 @@ export class ProcessTerminal implements Terminal {
 		this.#osc99ResponseBuffer = "";
 		if (this.#dead || !this.#shouldQueryOsc99Support()) return;
 
-		const id = `omp-probe-${nextOsc99ProbeId++}`;
+		const id = `veyyon-probe-${nextOsc99ProbeId++}`;
 		this.#osc99PendingId = id;
 		this.#da1SentinelOwners.push({ kind: "osc99Probe", id });
 		// Wrap the probe under tmux so terminals behind `allow-passthrough on`

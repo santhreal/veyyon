@@ -2,10 +2,10 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { MCPManager } from "@veyyon/pi-coding-agent/mcp/manager";
-import type { McpConnectionStatusEvent } from "@veyyon/pi-coding-agent/mcp/startup-events";
-import type { MCPServerConfig } from "@veyyon/pi-coding-agent/mcp/types";
-import { removeSyncWithRetries } from "@veyyon/pi-utils";
+import { MCPManager } from "@veyyon/coding-agent/mcp/manager";
+import type { McpConnectionStatusEvent } from "@veyyon/coding-agent/mcp/startup-events";
+import type { MCPServerConfig } from "@veyyon/coding-agent/mcp/types";
+import { removeSyncWithRetries } from "@veyyon/utils";
 
 const FIXTURE_PATH = path.join(import.meta.dir, "fixtures", "many-tools-mcp.ts");
 const BUN_EXEC = process.execPath;
@@ -14,7 +14,7 @@ describe("MCPManager connection status events", () => {
 	let workDir: string;
 
 	beforeEach(() => {
-		workDir = fs.mkdtempSync(path.join(os.tmpdir(), "omp-mcp-status-"));
+		workDir = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-mcp-status-"));
 	});
 
 	afterEach(() => {
@@ -40,7 +40,13 @@ describe("MCPManager connection status events", () => {
 			expect(result.errors.get("broken")).toBe('Server "broken": stdio server requires "command" field');
 			expect(events).toEqual([
 				{ type: "connecting", serverNames: ["alpha", "broken"] },
-				{ type: "failed", serverName: "broken", error: 'Server "broken": stdio server requires "command" field' },
+				{
+					type: "failed",
+					serverName: "broken",
+					error: 'Server "broken": stdio server requires "command" field',
+					// A server from veyyon's own config — not imported from another tool.
+					foreign: false,
+				},
 				{ type: "connected", serverName: "alpha" },
 			]);
 		} finally {

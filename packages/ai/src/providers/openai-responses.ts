@@ -1,5 +1,5 @@
-import { hostMatchesUrl } from "@veyyon/pi-catalog/hosts";
-import { $flag, logger, structuredCloneJSON } from "@veyyon/pi-utils";
+import { hostMatchesUrl } from "@veyyon/catalog/hosts";
+import { $flag, errorMessage, logger, structuredCloneJSON, trimTrailingSlashes } from "@veyyon/utils";
 import * as AIError from "../error";
 import { getEnvApiKey } from "../stream";
 import type {
@@ -107,7 +107,7 @@ export interface OpenAIResponsesOptions extends StreamOptions {
 	 * Stateful turns: chain via `previous_response_id` + delta input instead of
 	 * replaying the full transcript. Forces `store: true` (the platform only
 	 * resolves stored responses). Defaults ON against the official OpenAI API
-	 * and OFF for other Responses endpoints; `PI_OPENAI_STATEFUL` overrides the
+	 * and OFF for other Responses endpoints; `VEYYON_OPENAI_STATEFUL` overrides the
 	 * default, and `false` here vetoes everything. Requires `sessionId` +
 	 * `providerSessionState`. Falls back to a full replay whenever history
 	 * mutates or the server reports a stale id.
@@ -221,7 +221,7 @@ function isOpenAIResponsesStatefulEnabled(
 	// `store: true`, and third-party /v1/responses proxies routinely ignore or
 	// reject `previous_response_id`. An unset baseUrl means the default
 	// endpoint (api.openai.com).
-	return $flag("PI_OPENAI_STATEFUL", !baseUrl || hostMatchesUrl(baseUrl, "openai"));
+	return $flag("VEYYON_OPENAI_STATEFUL", !baseUrl || hostMatchesUrl(baseUrl, "openai"));
 }
 
 function getOpenAIResponsesChainState(
@@ -297,7 +297,7 @@ function registerOpenAIResponsesChainStaleFailure(chain: OpenAIResponsesChainSta
 		chain.disabled = true;
 	}
 	logger.debug("OpenAI responses previous_response_id rejected; falling back to full context", {
-		error: error instanceof Error ? error.message : String(error),
+		error: errorMessage(error),
 		consecutiveFailures: chain.staleFailures,
 		disabled: chain.disabled,
 	});
@@ -312,7 +312,7 @@ function markOpenAIResponsesChainZeroDataRetention(chain: OpenAIResponsesChainSt
 	chain.disabled = true;
 	chain.staleFailures = OPENAI_RESPONSES_CHAIN_STALE_FAILURE_LIMIT;
 	logger.debug("OpenAI responses chaining disabled (Zero Data Retention)", {
-		error: error instanceof Error ? error.message : String(error),
+		error: errorMessage(error),
 	});
 }
 
@@ -406,7 +406,7 @@ const streamOpenAIResponsesOnce = (
 			const builtParams = buildParams(model, context, options, providerSessionState, strictToolsScope);
 			const params = builtParams.params;
 			let activeParams = params;
-			const resolvedBaseUrl = (baseUrl ?? "https://api.openai.com/v1").replace(/\/+$/, "");
+			const resolvedBaseUrl = trimTrailingSlashes(baseUrl ?? "https://api.openai.com/v1");
 			const requestReasoningEffortFallbacks = new Map<string, OpenAIReasoningEffortFallback>();
 			const attemptedReasoningEffortFallbacks = new Set<string>();
 			let pendingReasoningEffortFallback: { key: string; fallback: OpenAIReasoningEffortFallback } | undefined;

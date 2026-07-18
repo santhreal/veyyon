@@ -11,16 +11,17 @@
  */
 import * as fs from "node:fs";
 import { parseArgs as nodeParseArgs } from "node:util";
+import { errorMessage } from "./type-guards";
 
 /**
- * Streaming startup marker, enabled by `PI_DEBUG_STARTUP`. Local copy of
+ * Streaming startup marker, enabled by `VEYYON_DEBUG_STARTUP`. Local copy of
  * `logger.startupMarker` so the minimal `--version`/bootstrap import graph
  * stays free of the winston-backed logger module. Synchronous on purpose:
  * a command module whose import hangs (dlopen, fs on a dead mount) must
  * still leave its `:start` marker behind.
  */
 function startupMarker(text: string): void {
-	if (!process.env.PI_DEBUG_STARTUP) return;
+	if (!process.env.VEYYON_DEBUG_STARTUP) return;
 	try {
 		fs.writeSync(2, `[startup] ${text}\n`);
 	} catch {
@@ -137,6 +138,8 @@ export interface CommandCtor {
 	new (argv: string[], config: CliConfig): Command;
 	description?: string;
 	hidden?: boolean;
+	/** Diagnostic/dev tooling: listed under a separate DIAGNOSTIC COMMANDS help section. */
+	devTool?: boolean;
 	strict?: boolean;
 	aliases?: string[];
 	examples?: string[];
@@ -213,7 +216,7 @@ export abstract class Command {
 					strict,
 				});
 			} catch (error) {
-				throw new CliUsageError(error instanceof Error ? error.message : String(error));
+				throw new CliUsageError(errorMessage(error));
 			}
 		})();
 
@@ -285,6 +288,37 @@ export abstract class Command {
 	}
 }
 
+/**
+ * Split a command-argument string on whitespace, honoring double quotes and
+ * backslash escapes: `add "phase one" x` → ["add", "phase one", "x"].
+ */
+export function tokenizeQuotedArgs(input: string): string[] {
+	const tokens: string[] = [];
+	let current = "";
+	let inQuote = false;
+	for (let index = 0; index < input.length; index++) {
+		const ch = input[index];
+		if (ch === "\\" && index + 1 < input.length) {
+			current += input[++index];
+			continue;
+		}
+		if (ch === '"') {
+			inQuote = !inQuote;
+			continue;
+		}
+		if (!inQuote && /\s/.test(ch)) {
+			if (current) {
+				tokens.push(current);
+				current = "";
+			}
+			continue;
+		}
+		current += ch;
+	}
+	if (current) tokens.push(current);
+	return tokens;
+}
+
 // ---------------------------------------------------------------------------
 // Help rendering
 // ---------------------------------------------------------------------------
@@ -304,12 +338,18 @@ export function renderRootHelp(config: CliConfig): void {
 		renderCommandBody(lines, defaultCmd);
 	}
 
-	// List visible subcommands
+	// List visible subcommands; diagnostic/dev tools get their own section so the
+	// main list reads as the product surface.
 	const visible = [...commands.entries()].filter(([, C]) => !C.hidden);
-	if (visible.length > 0) {
-		lines.push("COMMANDS");
-		const maxLen = Math.max(...visible.map(([n]) => n.length));
-		for (const [name, C] of visible.sort((a, b) => a[0].localeCompare(b[0]))) {
+	const sections: Array<[string, typeof visible]> = [
+		["COMMANDS", visible.filter(([, C]) => !C.devTool)],
+		["DIAGNOSTIC COMMANDS", visible.filter(([, C]) => C.devTool)],
+	];
+	const maxLen = visible.length > 0 ? Math.max(...visible.map(([n]) => n.length)) : 0;
+	for (const [title, entries] of sections) {
+		if (entries.length === 0) continue;
+		lines.push(title);
+		for (const [name, C] of entries.sort((a, b) => a[0].localeCompare(b[0]))) {
 			lines.push(`  ${name.padEnd(maxLen + 2)}${C.description ?? ""}`);
 		}
 		lines.push("");
@@ -376,7 +416,16 @@ function renderCommandBody(lines: string[], Cmd: CommandCtor): void {
 		for (const [name, desc] of flagEntries) {
 			const charPart = desc.char ? `-${desc.char}, ` : "    ";
 			const namePart = `--${name}`;
-			const typePart = desc.kind === "boolean" ? "" : desc.kind === "integer" ? "=<int>" : "=<value>";
+			// Enum-constrained flags render their accepted values like args do —
+			// values that only surface as a parse error are invisible until guessed.
+			const typePart =
+				desc.kind === "boolean"
+					? ""
+					: desc.options
+						? `=<${[...desc.options].join("|")}>`
+						: desc.kind === "integer"
+							? "=<int>"
+							: "=<value>";
 			formatted.push([`  ${charPart}${namePart}${typePart}`, desc.description ?? ""]);
 		}
 		const maxLeft = Math.max(...formatted.map(([l]) => l.length));
@@ -486,7 +535,7 @@ export async function run(opts: RunOptions): Promise<void> {
 		// process-level catch would dump a minified `dist/cli.js` code frame over a
 		// plain argument error (issue #5369).
 		if (error instanceof CliUsageError) {
-			process.stderr.write(`error: ${error.message}\n\n`);
+			process.stderr.write(`Error: ${error.message}\n\n`);
 			process.stderr.write(`USAGE\n  ${commandUsageLine(bin, entry.name, Cmd)}\n`);
 			process.stderr.write(`\nRun \`${bin} ${entry.name} --help\` for details.\n`);
 			process.exitCode = 1;

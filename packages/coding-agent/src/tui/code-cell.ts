@@ -1,7 +1,9 @@
 /**
  * Render a code or markdown cell with optional output section.
  */
-import { Markdown } from "@veyyon/pi-tui";
+
+import { Markdown } from "@veyyon/tui";
+import { formatCount } from "@veyyon/utils";
 import { getMarkdownTheme, highlightCode, type Theme } from "../modes/theme/theme";
 import {
 	formatDuration,
@@ -168,7 +170,7 @@ export function renderCodeCell(options: CodeCellOptions, theme: Theme): string[]
 		if (tail) {
 			// Earlier rows scrolled above the live tail window — mark them on top so
 			// the newest streamed line stays pinned to the bottom of the box.
-			const earlier = `… ${hiddenCodeLines} earlier line${hiddenCodeLines === 1 ? "" : "s"}${hint ? ` ${hint}` : ""}`;
+			const earlier = `… ${formatCount("earlier line", hiddenCodeLines)}${hint ? ` ${hint}` : ""}`;
 			codeLines.unshift(theme.fg("dim", gutterPad + earlier));
 		} else {
 			const moreLine = `${formatMoreItems(hiddenCodeLines, "line")}${hint ? ` ${hint}` : ""}`;

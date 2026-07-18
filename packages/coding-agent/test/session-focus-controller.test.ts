@@ -1,9 +1,9 @@
 import { describe, expect, it } from "bun:test";
-import { SessionFocusController } from "@veyyon/pi-coding-agent/modes/controllers/session-focus-controller";
-import type { InteractiveModeContext } from "@veyyon/pi-coding-agent/modes/types";
-import { AgentLifecycleManager } from "@veyyon/pi-coding-agent/registry/agent-lifecycle";
-import { AgentRegistry, MAIN_AGENT_ID } from "@veyyon/pi-coding-agent/registry/agent-registry";
-import type { AgentSession, AgentSessionEvent } from "@veyyon/pi-coding-agent/session/agent-session";
+import { SessionFocusController } from "@veyyon/coding-agent/modes/controllers/session-focus-controller";
+import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
+import { AgentLifecycleManager } from "@veyyon/coding-agent/registry/agent-lifecycle";
+import { AgentRegistry, MAIN_AGENT_ID } from "@veyyon/coding-agent/registry/agent-registry";
+import type { AgentSession, AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session";
 
 interface SessionStub {
 	session: AgentSession;

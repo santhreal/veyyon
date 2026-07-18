@@ -1,10 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { type Api, Effort, type Model } from "@veyyon/pi-ai";
-import { buildModel } from "@veyyon/pi-catalog/build";
-import { DEFAULT_MODEL_PER_PROVIDER } from "@veyyon/pi-catalog/provider-models";
+import { type Api, Effort, type Model } from "@veyyon/ai";
+import { buildModel } from "@veyyon/catalog/build";
+import { DEFAULT_MODEL_PER_PROVIDER } from "@veyyon/catalog/provider-models";
 import {
 	expandRoleAlias,
 	extractExplicitThinkingSelector,
+	fallbackForUnavailableDefault,
 	filterAvailableModelsByEnabledPatterns,
 	parseModelPattern,
 	parseModelString,
@@ -17,9 +18,9 @@ import {
 	resolveModelRoleValue,
 	resolveModelScope,
 	resolveRoleSelectionWithInherit,
-} from "@veyyon/pi-coding-agent/config/model-resolver";
-import { DEFAULT_MODEL_ROLE_ALIAS, LEGACY_MODEL_ROLE_ALIAS_PREFIX } from "@veyyon/pi-coding-agent/config/model-roles";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
+} from "@veyyon/coding-agent/config/model-resolver";
+import { DEFAULT_MODEL_ROLE_ALIAS, LEGACY_MODEL_ROLE_ALIAS_PREFIX } from "@veyyon/coding-agent/config/model-roles";
+import { Settings } from "@veyyon/coding-agent/config/settings";
 
 // Mock models for testing
 const mockModels: Model<"anthropic-messages">[] = [
@@ -1759,5 +1760,94 @@ describe("resolveRoleSelectionWithInherit", () => {
 	test("returns undefined only when nothing is configured and no live model exists", () => {
 		const settings = Settings.isolated();
 		expect(resolveRoleSelectionWithInherit(["tiny", "smol"], settings, mockModels)).toBeUndefined();
+	});
+});
+
+describe("resolveCliModel — ambiguous ids prefer authenticated providers", () => {
+	// Real repro: `--model grok-4.3` matched both `xai/grok-4.3` (no credential,
+	// first in catalog order) and `xai-oauth/grok-4.3` (live oauth credential).
+	// The first-catalog-hit pick selected the credential-less provider and died
+	// on "No API key found" while a signed-in provider held the same model.
+	const sharedIdModels = ["xai", "xai-oauth"].map(provider =>
+		buildModel({
+			id: "grok-4.3",
+			name: "Grok 4.3",
+			api: "anthropic-messages",
+			provider,
+			baseUrl: `https://${provider}.example.com`,
+			reasoning: false,
+			input: ["text"],
+			cost: { input: 1, output: 2, cacheRead: 0.1, cacheWrite: 1 },
+			contextWindow: 100000,
+			maxTokens: 8192,
+		}),
+	);
+
+	test("flat exact bare id picks the provider with stored credentials", () => {
+		const registry = {
+			getAll: () => sharedIdModels,
+			hasConfiguredAuth: (model: Model<Api>) => model.provider === "xai-oauth",
+		};
+
+		const result = resolveCliModel({ cliModel: "grok-4.3", modelRegistry: registry });
+
+		expect(result.error).toBeUndefined();
+		expect(result.model?.provider).toBe("xai-oauth");
+		expect(result.model?.id).toBe("grok-4.3");
+	});
+
+	test("without a credential check the pick stays deterministic by catalog order", () => {
+		const registry = { getAll: () => sharedIdModels };
+
+		const result = resolveCliModel({ cliModel: "grok-4.3", modelRegistry: registry });
+
+		expect(result.error).toBeUndefined();
+		expect(result.model?.provider).toBe("xai");
+	});
+
+	test("fuzzy/substring ambiguity also prefers the authenticated provider", () => {
+		const registry = {
+			getAll: () => sharedIdModels,
+			hasConfiguredAuth: (model: Model<Api>) => model.provider === "xai-oauth",
+		};
+
+		const result = resolveCliModel({ cliModel: "grok", modelRegistry: registry });
+
+		expect(result.error).toBeUndefined();
+		expect(result.model?.provider).toBe("xai-oauth");
+	});
+
+	test("a fully qualified provider/id reference is never overridden by auth preference", () => {
+		const registry = {
+			getAll: () => sharedIdModels,
+			hasConfiguredAuth: (model: Model<Api>) => model.provider === "xai-oauth",
+		};
+
+		const result = resolveCliModel({ cliModel: "xai/grok-4.3", modelRegistry: registry });
+
+		expect(result.error).toBeUndefined();
+		expect(result.model?.provider).toBe("xai");
+	});
+});
+
+describe("fallbackForUnavailableDefault", () => {
+	test("substitutes the first available model and names both models in the warning", () => {
+		const result = fallbackForUnavailableDefault("goneco/vanished-model", mockModels);
+
+		expect(result?.model).toBe(mockModels[0]);
+		expect(result?.warning).toContain('"goneco/vanished-model"');
+		expect(result?.warning).toContain(`${mockModels[0].provider}/${mockModels[0].id}`);
+		expect(result?.warning).toContain("veyyon auth");
+	});
+
+	test("describes an unnamed configured default generically", () => {
+		const result = fallbackForUnavailableDefault(undefined, mockModels);
+
+		expect(result?.warning).toStartWith("The configured default model is unavailable");
+		expect(result?.warning).not.toContain('""');
+	});
+
+	test("returns undefined when no model is available at all", () => {
+		expect(fallbackForUnavailableDefault("goneco/vanished-model", [])).toBeUndefined();
 	});
 });

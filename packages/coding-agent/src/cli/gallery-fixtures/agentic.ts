@@ -1,5 +1,5 @@
 // Gallery fixtures for the agentic orchestration tools (task, irc, goal, job).
-import type { Usage } from "@veyyon/pi-ai";
+import type { Usage } from "@veyyon/ai";
 import type { TaskToolDetails } from "../../task/types";
 import type { IrcDetails } from "../../tools/irc";
 import type { GalleryFixture } from "./types";

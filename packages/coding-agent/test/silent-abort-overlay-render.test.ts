@@ -11,15 +11,15 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import * as AIError from "@veyyon/pi-ai/error";
-import { resetSettingsForTest, Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { AgentTranscriptViewer } from "@veyyon/pi-coding-agent/modes/components/agent-transcript-viewer";
-import type { ObservableSession } from "@veyyon/pi-coding-agent/modes/session-observer-registry";
-import { initTheme } from "@veyyon/pi-coding-agent/modes/theme/theme";
-import { AgentRegistry } from "@veyyon/pi-coding-agent/registry/agent-registry";
-import { SILENT_ABORT_MARKER } from "@veyyon/pi-coding-agent/session/messages";
-import type { TUI } from "@veyyon/pi-tui";
-import { removeSyncWithRetries } from "@veyyon/pi-utils";
+import * as AIError from "@veyyon/ai/error";
+import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
+import { AgentTranscriptViewer } from "@veyyon/coding-agent/modes/components/agent-transcript-viewer";
+import type { ObservableSession } from "@veyyon/coding-agent/modes/session-observer-registry";
+import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";
+import { SILENT_ABORT_MARKER } from "@veyyon/coding-agent/session/messages";
+import type { TUI } from "@veyyon/tui";
+import { removeSyncWithRetries } from "@veyyon/utils";
 
 const SESSION_ID = "test-session-1";
 
@@ -36,7 +36,7 @@ function makeSubagentRegistry(sessions: ObservableSession[]) {
 		onChange: () => () => {},
 		setMainSession: () => {},
 		getActiveSubagentCount: () => sessions.filter(s => s.status === "active").length,
-	} as unknown as import("@veyyon/pi-coding-agent/modes/session-observer-registry").SessionObserverRegistry;
+	} as unknown as import("@veyyon/coding-agent/modes/session-observer-registry").SessionObserverRegistry;
 }
 
 function makeViewer(sessionFile: string, observed: ObservableSession[]): AgentTranscriptViewer {
@@ -75,7 +75,7 @@ describe("Agent hub silent-abort regression", () => {
 	beforeEach(async () => {
 		resetSettingsForTest();
 		await Settings.init({ inMemory: true });
-		tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "omp-overlay-test-"));
+		tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-overlay-test-"));
 	});
 
 	afterEach(() => {

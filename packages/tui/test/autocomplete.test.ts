@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { CombinedAutocompleteProvider } from "@veyyon/pi-tui/autocomplete";
+import { CombinedAutocompleteProvider } from "@veyyon/tui/autocomplete";
 
 describe("CombinedAutocompleteProvider", () => {
 	describe("extractPathPrefix", () => {
@@ -802,6 +802,21 @@ describe("trySyncSlashCompletion", () => {
 		const result = await provider.getSuggestions(["/"], 0, 1);
 		expect(result).not.toBeNull();
 		expect(result!.items.map(i => i.value)).toEqual(["setup", "usage"]);
+	});
+
+	it("suppresses the alias row when the primary name already matches the prefix", async () => {
+		const provider = new CombinedAutocompleteProvider(
+			[{ name: "model", aliases: ["models"], description: "Switch model" }],
+			"/tmp",
+		);
+		// `/mod` matches both `model` and `models` — two rows with the identical
+		// description were pure clutter; the alias row exists only for prefixes
+		// the primary name cannot complete (e.g. the exact `/models`).
+		const result = await provider.getSuggestions(["/mod"], 0, 4);
+		expect(result).not.toBeNull();
+		expect(result!.items.map(i => i.value)).toEqual(["model"]);
+		const aliasOnly = await provider.getSuggestions(["/models"], 0, 7);
+		expect(aliasOnly!.items.map(i => i.value)).toEqual(["models"]);
 	});
 
 	it("keeps registry order for same-prefix commands so /set still applies settings", () => {

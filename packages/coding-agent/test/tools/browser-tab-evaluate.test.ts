@@ -1,8 +1,8 @@
 import { describe, expect, it } from "bun:test";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
-import type { ToolSession } from "@veyyon/pi-coding-agent/sdk";
-import { BrowserTool } from "@veyyon/pi-coding-agent/tools/browser";
-import { ensureChromiumExecutable } from "@veyyon/pi-coding-agent/tools/browser/launch";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import type { ToolSession } from "@veyyon/coding-agent/sdk";
+import { BrowserTool } from "@veyyon/coding-agent/tools/browser";
+import { ensureChromiumExecutable } from "@veyyon/coding-agent/tools/browser/launch";
 
 function makeSession(): ToolSession {
 	return {

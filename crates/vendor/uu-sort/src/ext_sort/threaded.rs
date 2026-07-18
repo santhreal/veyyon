@@ -68,7 +68,7 @@ pub fn ext_sort(
 			Err(err) => {
 				// Print the error and disable compression
 				let _ = writeln!(
-					pi_uutils_ctx::stderr(),
+					veyyon_uutils_ctx::stderr(),
 					"sort: could not run compress program '{prog}': {}",
 					strip_errno(&err)
 				);

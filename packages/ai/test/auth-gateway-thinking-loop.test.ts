@@ -3,12 +3,12 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import { scheduler } from "node:timers/promises";
-import { clearCustomApis } from "@veyyon/pi-ai/api-registry";
-import { startAuthGateway } from "@veyyon/pi-ai/auth-gateway";
-import { AuthStorage, SqliteAuthCredentialStore } from "@veyyon/pi-ai/auth-storage";
-import { ProviderHttpError } from "@veyyon/pi-ai/error";
-import { createMockModel, registerMockApi } from "@veyyon/pi-ai/providers/mock";
-import { THINKING_LOOP_ERROR_MARKER } from "@veyyon/pi-ai/utils/thinking-loop";
+import { clearCustomApis } from "@veyyon/ai/api-registry";
+import { startAuthGateway } from "@veyyon/ai/auth-gateway";
+import { AuthStorage, SqliteAuthCredentialStore } from "@veyyon/ai/auth-storage";
+import { ProviderHttpError } from "@veyyon/ai/error";
+import { createMockModel, registerMockApi } from "@veyyon/ai/providers/mock";
+import { THINKING_LOOP_ERROR_MARKER } from "@veyyon/ai/utils/thinking-loop";
 
 /** A degenerate near-duplicate reasoning loop (the gemini-3.5-flash shape). */
 function loopThinking(): string {

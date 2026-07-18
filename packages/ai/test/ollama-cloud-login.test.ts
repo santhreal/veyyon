@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { loginOllamaCloud } from "@veyyon/pi-ai/registry/ollama-cloud";
+import { loginOllamaCloud } from "@veyyon/ai/registry/ollama-cloud";
 
 describe("ollama cloud login", () => {
 	it("opens Ollama Cloud key settings and trims the pasted key", async () => {

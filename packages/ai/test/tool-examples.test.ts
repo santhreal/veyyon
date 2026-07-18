@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { INTENT_FIELD } from "@veyyon/pi-wire";
+import { INTENT_FIELD } from "@veyyon/wire";
 import { renderToolExamples } from "../src/dialect/examples";
 import type { InbandTool } from "../src/dialect/types";
 

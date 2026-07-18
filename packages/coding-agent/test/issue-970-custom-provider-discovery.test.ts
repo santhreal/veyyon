@@ -3,16 +3,16 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { stripVTControlCharacters } from "node:util";
-import { buildModel } from "@veyyon/pi-catalog/build";
-import { writeModelCache } from "@veyyon/pi-catalog/model-cache";
-import type { ModelRegistry, ProviderDiscoveryState } from "@veyyon/pi-coding-agent/config/model-registry";
-import { ModelRegistry as ModelRegistryImpl } from "@veyyon/pi-coding-agent/config/model-registry";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { ModelHubComponent } from "@veyyon/pi-coding-agent/modes/components/model-hub";
-import { getThemeByName, setThemeInstance } from "@veyyon/pi-coding-agent/modes/theme/theme";
-import { AuthStorage } from "@veyyon/pi-coding-agent/session/auth-storage";
-import type { TUI } from "@veyyon/pi-tui";
-import { removeSyncWithRetries, Snowflake } from "@veyyon/pi-utils";
+import { buildModel } from "@veyyon/catalog/build";
+import { writeModelCache } from "@veyyon/catalog/model-cache";
+import type { ModelRegistry, ProviderDiscoveryState } from "@veyyon/coding-agent/config/model-registry";
+import { ModelRegistry as ModelRegistryImpl } from "@veyyon/coding-agent/config/model-registry";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import { ModelHubComponent } from "@veyyon/coding-agent/modes/components/model-hub";
+import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
+import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
+import type { TUI } from "@veyyon/tui";
+import { removeSyncWithRetries, Snowflake } from "@veyyon/utils";
 
 function normalizeRenderedText(text: string): string {
 	return stripVTControlCharacters(text).replace(/\s+/g, " ").trim();

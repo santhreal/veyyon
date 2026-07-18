@@ -8,14 +8,17 @@ export const DAEMON_BROKER_WORKER_ARG = "__veyyon_worker_daemon_broker";
 export const DAEMON_PTY_COLUMNS = 120;
 export const DAEMON_PTY_ROWS = 40;
 
+// Internal tool→broker-worker handoff keys, set by the launching process and
+// deleted by the broker on read (see broker.ts). Not user-configurable, so no
+// legacy `OMP_*` alias is kept — the value moves with the veyyon brand.
 /** Environment key carrying the broker's canonical project directory. */
-export const DAEMON_PROJECT_DIR_ENV = "OMP_DAEMON_PROJECT_DIR";
+export const DAEMON_PROJECT_DIR_ENV = "VEYYON_DAEMON_PROJECT_DIR";
 
 /** Environment key carrying the broker's private runtime directory. */
-export const DAEMON_RUNTIME_DIR_ENV = "OMP_DAEMON_RUNTIME_DIR";
+export const DAEMON_RUNTIME_DIR_ENV = "VEYYON_DAEMON_RUNTIME_DIR";
 
 /** Optional environment key overriding last-client shutdown grace. */
-export const DAEMON_IDLE_GRACE_ENV = "OMP_DAEMON_IDLE_GRACE_MS";
+export const DAEMON_IDLE_GRACE_ENV = "VEYYON_DAEMON_IDLE_GRACE_MS";
 
 /** Stable lifecycle states exposed by the launch tool. */
 export type DaemonState = "starting" | "running" | "ready" | "restarting" | "stopping" | "exited" | "failed";

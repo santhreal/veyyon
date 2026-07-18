@@ -2,16 +2,16 @@ import { afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { RenderResultOptions } from "@veyyon/pi-coding-agent/extensibility/custom-tools/types";
-import { getThemeByName, initTheme, type Theme } from "@veyyon/pi-coding-agent/modes/theme/theme";
+import type { RenderResultOptions } from "@veyyon/coding-agent/extensibility/custom-tools/types";
+import { getThemeByName, initTheme, type Theme } from "@veyyon/coding-agent/modes/theme/theme";
 import {
 	expandDelimitedPathEntries,
 	parseFindPattern,
 	resolveToolSearchScope,
 	splitDelimitedPathEntry,
-} from "@veyyon/pi-coding-agent/tools/path-utils";
-import type { Component } from "@veyyon/pi-tui";
-import { removeWithRetries } from "@veyyon/pi-utils";
+} from "@veyyon/coding-agent/tools/path-utils";
+import type { Component } from "@veyyon/tui";
+import { removeWithRetries } from "@veyyon/utils";
 import { globToolRenderer } from "../../src/tools/glob";
 
 let uiTheme: Theme;

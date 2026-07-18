@@ -12,8 +12,9 @@ import type {
 	ModelRegistry,
 	Settings,
 	SingleResult,
-} from "@veyyon/pi-coding-agent";
-import { runSubprocess } from "@veyyon/pi-coding-agent";
+} from "@veyyon/coding-agent";
+import { runSubprocess } from "@veyyon/coding-agent";
+import { errorMessage } from "@veyyon/utils";
 import type { SwarmAgent } from "./schema";
 import type { StateTracker } from "./state";
 
@@ -91,7 +92,7 @@ export async function executeSwarmAgent(
 
 		return result;
 	} catch (err) {
-		const error = err instanceof Error ? err.message : String(err);
+		const error = errorMessage(err);
 		await stateTracker.updateAgent(agent.name, {
 			status: "failed",
 			completedAt: Date.now(),

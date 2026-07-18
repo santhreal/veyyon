@@ -12,8 +12,8 @@
  */
 
 import { describe, expect, it, spyOn } from "bun:test";
-import * as attach from "@veyyon/pi-coding-agent/tools/browser/attach";
-import { type BrowserHandle, releaseBrowser } from "@veyyon/pi-coding-agent/tools/browser/registry";
+import * as attach from "@veyyon/coding-agent/tools/browser/attach";
+import { type BrowserHandle, releaseBrowser } from "@veyyon/coding-agent/tools/browser/registry";
 
 /** Build a headless handle whose `browser.close()` never resolves. */
 function makeHangingHeadlessHandle(pid: number | undefined): {

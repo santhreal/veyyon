@@ -7,9 +7,9 @@
 
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { discoverAuthStorage } from "@veyyon/pi-coding-agent";
-import { ModelRegistry } from "@veyyon/pi-coding-agent/config/model-registry";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
+import { discoverAuthStorage } from "@veyyon/coding-agent";
+import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
+import { Settings } from "@veyyon/coding-agent/config/settings";
 import { buildDependencyGraph, buildExecutionWaves, detectCycles } from "./swarm/dag";
 import { PipelineController } from "./swarm/pipeline";
 import { renderSwarmProgress } from "./swarm/render";
@@ -18,7 +18,7 @@ import { StateTracker } from "./swarm/state";
 
 const yamlPath = process.argv[2];
 if (!yamlPath) {
-	console.error("Usage: omp-swarm <path-to-yaml>");
+	console.error("Usage: veyyon-swarm <path-to-yaml>");
 	process.exit(1);
 }
 

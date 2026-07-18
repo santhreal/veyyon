@@ -1,6 +1,6 @@
 name: Build native addon
 description: >
-   Build the pi_natives cdylib for one platform/arch/variant and upload it as a
+   Build the veyyon_natives cdylib for one platform/arch/variant and upload it as a
    hash-tagged artifact. Runs on GitHub-hosted runners: installs the toolchains,
    uses the Swatinem target/ cache, and the GitHub Actions sccache backend.
 
@@ -236,8 +236,8 @@ runs:
       - name: Upload native addon(s)
         uses: actions/upload-artifact@v4
         with:
-           name: pi-natives-${{ inputs.platform }}-${{ inputs.arch }}${{ inputs.variant && format('-{0}', inputs.variant) || '' }}-h${{ inputs.hash }}
-           path: packages/natives/native/pi_natives.${{ inputs.platform }}-${{ inputs.arch }}*.node
+           name: veyyon-natives-${{ inputs.platform }}-${{ inputs.arch }}${{ inputs.variant && format('-{0}', inputs.variant) || '' }}-h${{ inputs.hash }}
+           path: packages/natives/native/veyyon_natives.${{ inputs.platform }}-${{ inputs.arch }}*.node
            if-no-files-found: error
            # Explicit so the native_artifact_lookup canary keeps working even if
            # org defaults shift; bump if Rust source ever stays stable for >90 days

@@ -3,14 +3,14 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
-import { isEnhancedRecallEnabled, isQueryCacheEnabled, QueryCache } from "@veyyon/pi-mnemopi/core/query-cache";
+import { isEnhancedRecallEnabled, isQueryCacheEnabled, QueryCache } from "@veyyon/mnemopi/core/query-cache";
 import {
 	CORE_QUERY_STOP_WORDS,
 	expandQuery,
 	getSynonyms,
 	normalizeQuery,
 	STOP_WORDS,
-} from "@veyyon/pi-mnemopi/core/synonyms";
+} from "@veyyon/mnemopi/core/synonyms";
 
 const openCaches: QueryCache[] = [];
 

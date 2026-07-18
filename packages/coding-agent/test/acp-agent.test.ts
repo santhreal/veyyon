@@ -17,27 +17,27 @@ import {
 	zPromptResponse,
 	zSessionNotification,
 } from "@agentclientprotocol/sdk/dist/schema/zod.gen.js";
-import type { Model } from "@veyyon/pi-ai";
-import { buildModel } from "@veyyon/pi-catalog/build";
-import { resetSettingsForTest, Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { resolveLocalUrlToPath } from "@veyyon/pi-coding-agent/internal-urls";
+import type { Model } from "@veyyon/ai";
+import { buildModel } from "@veyyon/catalog/build";
+import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
+import { resolveLocalUrlToPath } from "@veyyon/coding-agent/internal-urls";
 import {
 	ACP_BOOTSTRAP_RACE_GUARD_MS,
 	AcpAgent,
 	createAcpExtensionUiContext,
-} from "@veyyon/pi-coding-agent/modes/acp/acp-agent";
-import type { PlanModeState } from "@veyyon/pi-coding-agent/plan-mode/state";
-import type { AgentSession, AgentSessionEvent } from "@veyyon/pi-coding-agent/session/agent-session";
-import { SILENT_ABORT_MARKER } from "@veyyon/pi-coding-agent/session/messages";
-import { SessionManager } from "@veyyon/pi-coding-agent/session/session-manager";
-import { DEFAULT_STT_MODEL_KEY, STT_MODEL_OPTIONS } from "@veyyon/pi-coding-agent/stt/models";
+} from "@veyyon/coding-agent/modes/acp/acp-agent";
+import type { PlanModeState } from "@veyyon/coding-agent/plan-mode/state";
+import type { AgentSession, AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session";
+import { SILENT_ABORT_MARKER } from "@veyyon/coding-agent/session/messages";
+import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { DEFAULT_STT_MODEL_KEY, STT_MODEL_OPTIONS } from "@veyyon/coding-agent/stt/models";
 import {
 	DEFAULT_TTS_LOCAL_MODEL_KEY,
 	DEFAULT_TTS_VOICE,
 	TTS_LOCAL_MODELS,
 	TTS_LOCAL_VOICE_OPTIONS,
-} from "@veyyon/pi-coding-agent/tts/models";
-import { getConfigRootDir, setAgentDir } from "@veyyon/pi-utils";
+} from "@veyyon/coding-agent/tts/models";
+import { getConfigRootDir, setAgentDir } from "@veyyon/utils";
 import type { z } from "zod/v4";
 
 /**
@@ -423,7 +423,7 @@ function expectAcpNotifications(updates: SessionNotification[]): void {
 }
 
 const cleanupRoots: string[] = [];
-const originalAgentDir = process.env.PI_CODING_AGENT_DIR;
+const originalAgentDir = process.env.VEYYON_CODING_AGENT_DIR;
 const fallbackAgentDir = path.join(getConfigRootDir(), "agent");
 
 afterEach(async () => {
@@ -431,7 +431,7 @@ afterEach(async () => {
 		setAgentDir(originalAgentDir);
 	} else {
 		setAgentDir(fallbackAgentDir);
-		delete process.env.PI_CODING_AGENT_DIR;
+		delete process.env.VEYYON_CODING_AGENT_DIR;
 	}
 	resetSettingsForTest();
 
@@ -443,7 +443,7 @@ afterEach(async () => {
 async function createHarness(
 	options: { elicitationHandler?: (req: CreateElicitationRequest) => Promise<CreateElicitationResponse> } = {},
 ): Promise<AgentHarness> {
-	const root = await fs.promises.mkdtemp(path.join(os.tmpdir(), "omp-acp-test-"));
+	const root = await fs.promises.mkdtemp(path.join(os.tmpdir(), "veyyon-acp-test-"));
 	cleanupRoots.push(root);
 	const agentDir = path.join(root, "agent");
 	const cwdA = path.join(root, "cwd-a");
@@ -940,14 +940,16 @@ describe("ACP agent", () => {
 		await Bun.sleep(0);
 	});
 
-	it("accepts OMP extension methods and rejects unknown unprefixed methods", async () => {
+	it("accepts Veyyon extension methods (and the legacy _omp/ prefix) and rejects unknown unprefixed methods", async () => {
 		const harness = await createHarness();
 
-		const result = await harness.agent.extMethod("_omp/sessions/listAll", { limit: 2 });
+		const result = await harness.agent.extMethod("_veyyon/sessions/listAll", { limit: 2 });
 
 		expect(Array.isArray(result.sessions)).toBe(true);
 		expect(typeof result.total).toBe("number");
-		await expect(harness.agent.extMethod("omp/sessions/listAll", { limit: 2 })).rejects.toThrow(
+		const legacy = await harness.agent.extMethod("_omp/sessions/listAll", { limit: 2 });
+		expect(Array.isArray(legacy.sessions)).toBe(true);
+		await expect(harness.agent.extMethod("veyyon/sessions/listAll", { limit: 2 })).rejects.toThrow(
 			"Unknown ACP ext method",
 		);
 

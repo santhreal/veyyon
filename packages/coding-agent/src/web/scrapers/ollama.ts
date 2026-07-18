@@ -1,7 +1,7 @@
-import { tryParseJson } from "@veyyon/pi-utils";
+import { tryParseJson } from "@veyyon/utils";
 import { formatBytes } from "../../tools/render-utils";
-import type { RenderResult, SpecialHandler } from "./types";
-import { buildResult, decodeHtmlEntities, loadPage } from "./types";
+import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
+import { buildResult, decodeHtmlEntities, loadPage, scraperDegrade, tryParseUrl } from "./types";
 
 interface OllamaTagDetails {
 	parent_model?: string;
@@ -98,7 +98,8 @@ function buildModelPath(parts: string[]): string {
 
 function parseOllamaUrl(url: string): { modelRef: string; baseRef: string; pageUrl: string } | null {
 	try {
-		const parsed = new URL(url);
+		const parsed = tryParseUrl(url);
+		if (!parsed) return null;
 		if (!VALID_HOSTNAMES.has(parsed.hostname)) return null;
 
 		const parts = parsed.pathname.split("/").filter(Boolean);
@@ -160,7 +161,7 @@ export const handleOllama: SpecialHandler = async (
 	url: string,
 	timeout: number,
 	signal?: AbortSignal,
-): Promise<RenderResult | null> => {
+): Promise<RenderResult | ScraperDegrade | null> => {
 	try {
 		const parsed = parseOllamaUrl(url);
 		if (!parsed) return null;
@@ -233,7 +234,7 @@ export const handleOllama: SpecialHandler = async (
 			fetchedAt,
 			notes: ["Fetched via Ollama API"],
 		});
-	} catch {}
-
-	return null;
+	} catch (error) {
+		return scraperDegrade("ollama", error);
+	}
 };

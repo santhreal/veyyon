@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { matchesKey, parseKey, setKittyProtocolActive } from "@veyyon/pi-tui/keys";
+import { matchesKey, parseKey, setKittyProtocolActive } from "@veyyon/tui/keys";
 
 // Issue #879: On Windows (legacy keyboard mode), pressing Alt+Shift+P emits
 // the two-byte sequence ESC + 'P' (0x1B 0x50). The native key parser only

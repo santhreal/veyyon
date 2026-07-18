@@ -98,7 +98,7 @@ scrolled reader could be looking at.
    (⇒ re-anchor at the first changed row). Frozen snapshots past the verified
    zone are exempt while live and hard-scanned in full, once, when the
    boundary rises past them. A re-anchor repairs history by **erase-and-replay
-   rebuild** (`divergenceRebuild`, opt-in `PI_TUI_SCROLLBACK_REBUILD`,
+   rebuild** (`divergenceRebuild`, opt-in `VEYYON_TUI_SCROLLBACK_REBUILD`,
    non-multiplexer) so history holds the content exactly once, else by
    recommitting from the changed row — **duplication, never loss**.
 3. Classify: **fullPaint** (first paint, `clearScrollback` session replace, or
@@ -126,7 +126,7 @@ scrolled reader could be looking at.
 `clearScrollback: true` — reached by user gestures: session
 replace/branch/resume (`requestRender(true, { clearScrollback: true })`),
 resize outside a multiplexer, `resetDisplay()` (Ctrl+L); plus, when the
-opt-in scrollback rebuild is enabled (`PI_TUI_SCROLLBACK_REBUILD`), the
+opt-in scrollback rebuild is enabled (`VEYYON_TUI_SCROLLBACK_REBUILD`), the
 `divergenceRebuild` repair path on non-multiplexer terminals (committed
 history diverged from the frame — erase and replay so history holds the
 content exactly once instead of a duplicated block). It clears native
@@ -219,17 +219,17 @@ per-terminal optimization.
 `(env, platform)` and unit-testable.
 
 - `shouldEnableSynchronizedOutputByDefault(env, id)` → DEC 2026 default.
-  Precedence: user opt-out (`PI_NO_SYNC_OUTPUT`/`PI_TUI_SYNC_OUTPUT=0`) → user
-  force-on (`PI_FORCE_SYNC_OUTPUT=1`/`PI_TUI_SYNC_OUTPUT=1`) → `TERM_FEATURES`
+  Precedence: user opt-out (`VEYYON_NO_SYNC_OUTPUT`/`VEYYON_TUI_SYNC_OUTPUT=0`) → user
+  force-on (`VEYYON_FORCE_SYNC_OUTPUT=1`/`VEYYON_TUI_SYNC_OUTPUT=1`) → `TERM_FEATURES`
   advertises `Sy` → `WT_SESSION` → known direct terminals → off for risky
   multiplexers and unknowns. Reconciled at runtime by the DECRQM mode-2026
   report; a user override still wins.
 - `detectRectangularSgrSupport(id, env)` → DECCARA fills: kitty only, off in
-  multiplexers and under `PI_NO_DECCARA`.
+  multiplexers and under `VEYYON_NO_DECCARA`.
 - `supportsScreenToScrollback` → kitty's ED22 (used once, on the initial
   paint, to preserve the pre-existing shell screen).
 
-The old ED3-risk classifier (`eagerEraseScrollbackRisk`, `PI_TUI_ED3_SAFE`,
+The old ED3-risk classifier (`eagerEraseScrollbackRisk`, `VEYYON_TUI_ED3_SAFE`,
 `submitPinsViewportToTail`) is gone: behavior no longer depends on which
 terminal is rendering, so there is no risk class to detect. Env sniffing now
 only selects *optimizations* (sync output, DECCARA, images), where a miss is
@@ -242,7 +242,7 @@ cosmetic, not corrupting.
 `visibleWidth` / `truncateToWidth` / `sliceByColumn` / `wrapTextWithAnsi`
 (`utils.ts`) all agree on **one UAX#11 width model**. Slicing, truncation,
 wrapping, and segment extraction run on the native engine
-(`@veyyon/pi-natives`, Rust `unicode-width`); `visibleWidth` measures with
+(`@veyyon/natives`, Rust `unicode-width`); `visibleWidth` measures with
 `Bun.stringWidth` **pinned to that same model** (`STRING_WIDTH_OPTS`:
 `countAnsiEscapeCodes: false`, `ambiguousIsNarrow: true`) — a JSC builtin that
 shares the native width tables without the per-call N-API box the native
@@ -319,8 +319,8 @@ line), so demotion never shrinks the block and never shifts committed content
 below it.
 
 **Rule:** never re-emit full base64 per frame. Kitty Unicode placeholders are
-default-on only for kitty/ghostty (`PI_NO_KITTY_PLACEHOLDERS` /
-`PI_KITTY_PLACEHOLDERS`).
+default-on only for kitty/ghostty (`VEYYON_NO_KITTY_PLACEHOLDERS` /
+`VEYYON_KITTY_PLACEHOLDERS`).
 
 ---
 
@@ -328,20 +328,20 @@ default-on only for kitty/ghostty (`PI_NO_KITTY_PLACEHOLDERS` /
 
 | Var | Effect |
 |---|---|
-| `PI_NO_SYNC_OUTPUT=1` | Disable DEC 2026 BSU/ESU wrappers (autowrap discipline stays on). |
-| `PI_TUI_SYNC_OUTPUT=0\|1` / `PI_FORCE_SYNC_OUTPUT=1` | Force sync output off / on. |
-| `PI_NO_DECCARA` | Disable Kitty DECCARA rectangular-fill optimization. |
-| `PI_FORCE_IMAGE_PROTOCOL=kitty\|iterm2\|sixel\|off` | Override image protocol detection. |
-| `PI_NO_KITTY_PLACEHOLDERS=1` / `PI_KITTY_PLACEHOLDERS=1` | Force Kitty Unicode placeholders off / on. |
-| `PI_HARDWARE_CURSOR=1` | Show the real hardware cursor instead of a rendered one. |
-| `PI_NOTIFICATIONS=off\|0\|false` | Suppress terminal notifications. |
-| `PI_DEBUG_REDRAW=1` | Log the chosen render intent + ledger state per frame to the debug log. |
-| `PI_TUI_RESIZE_IN_PLACE=1\|0` | Force resize to repaint in place (no alt-screen borrow, no ED3 rewrap) on / off. Default-on for terminals that re-report size on alt-screen toggles (Warp). |
-| `PI_TUI_SCROLLBACK_REBUILD=1\|true` | Opt into the `divergenceRebuild` repair: when committed history diverges from the frame on a non-multiplexer terminal, erase and replay history (ED3 full paint) so content lands exactly once, instead of recommitting below the stale copy. |
+| `VEYYON_NO_SYNC_OUTPUT=1` | Disable DEC 2026 BSU/ESU wrappers (autowrap discipline stays on). |
+| `VEYYON_TUI_SYNC_OUTPUT=0\|1` / `VEYYON_FORCE_SYNC_OUTPUT=1` | Force sync output off / on. |
+| `VEYYON_NO_DECCARA` | Disable Kitty DECCARA rectangular-fill optimization. |
+| `VEYYON_FORCE_IMAGE_PROTOCOL=kitty\|iterm2\|sixel\|off` | Override image protocol detection. |
+| `VEYYON_NO_KITTY_PLACEHOLDERS=1` / `VEYYON_KITTY_PLACEHOLDERS=1` | Force Kitty Unicode placeholders off / on. |
+| `VEYYON_HARDWARE_CURSOR=1` | Show the real hardware cursor instead of a rendered one. |
+| `VEYYON_NOTIFICATIONS=off\|0\|false` | Suppress terminal notifications. |
+| `VEYYON_DEBUG_REDRAW=1` | Log the chosen render intent + ledger state per frame to the debug log. |
+| `VEYYON_TUI_RESIZE_IN_PLACE=1\|0` | Force resize to repaint in place (no alt-screen borrow, no ED3 rewrap) on / off. Default-on for terminals that re-report size on alt-screen toggles (Warp). |
+| `VEYYON_TUI_SCROLLBACK_REBUILD=1\|true` | Opt into the `divergenceRebuild` repair: when committed history diverges from the frame on a non-multiplexer terminal, erase and replay history (ED3 full paint) so content lands exactly once, instead of recommitting below the stale copy. |
 
-Removed with the old engine: `PI_TUI_ED3_SAFE` (no ED3-risk lever exists),
-`PI_CLEAR_ON_SHRINK` (shrinks always clear exactly), `PI_TUI_DEBUG` (per-render
-dump superseded by `PI_DEBUG_REDRAW` ledger logging and the stress harness
+Removed with the old engine: `VEYYON_TUI_ED3_SAFE` (no ED3-risk lever exists),
+`VEYYON_CLEAR_ON_SHRINK` (shrinks always clear exactly), `VEYYON_TUI_DEBUG` (per-render
+dump superseded by `VEYYON_DEBUG_REDRAW` ledger logging and the stress harness
 replay/reduce tooling).
 
 ---

@@ -3,7 +3,7 @@
  *
  * Handles /ssh subcommands for managing SSH host configurations.
  */
-import { CONFIG_DIR_NAME, getProjectDir, getSSHConfigPath, logger } from "@veyyon/pi-utils";
+import { CONFIG_DIR_NAME, errorMessage, getProjectDir, getSSHConfigPath, logger } from "@veyyon/utils";
 import { type SSHHost, sshCapability } from "../../capability/ssh";
 import { loadCapability } from "../../discovery";
 import { addSSHHost, readSSHConfigFile, removeSSHHost, type SSHHostConfig } from "../../ssh/config-writer";
@@ -224,7 +224,7 @@ export class SSHCommandController {
 
 			this.#showMessage(lines.join("\n"));
 		} catch (error) {
-			const errorMsg = error instanceof Error ? error.message : String(error);
+			const errorMsg = errorMessage(error);
 
 			let helpText = "";
 			if (errorMsg.includes("already exists")) {
@@ -264,7 +264,7 @@ export class SSHCommandController {
 				// Configured hosts still list, but the user should know why
 				// discovered hosts are missing instead of seeing a short list.
 				logger.warn("SSH host discovery failed; listing configured hosts only", {
-					error: error instanceof Error ? error.message : String(error),
+					error: errorMessage(error),
 				});
 			}
 
@@ -327,7 +327,7 @@ export class SSHCommandController {
 
 			this.#showMessage(lines.join("\n"));
 		} catch (error) {
-			this.ctx.showError(`Failed to list hosts: ${error instanceof Error ? error.message : String(error)}`);
+			this.ctx.showError(`Failed to list hosts: ${errorMessage(error)}`);
 		}
 	}
 
@@ -375,7 +375,7 @@ export class SSHCommandController {
 				["", theme.fg("success", `- Removed SSH host "${name}" from ${scope} config`), ""].join("\n"),
 			);
 		} catch (error) {
-			this.ctx.showError(`Failed to remove host: ${error instanceof Error ? error.message : String(error)}`);
+			this.ctx.showError(`Failed to remove host: ${errorMessage(error)}`);
 		}
 	}
 

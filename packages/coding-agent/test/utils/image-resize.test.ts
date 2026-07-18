@@ -1,5 +1,5 @@
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "bun:test";
-import { resizeImage } from "@veyyon/pi-coding-agent/utils/image-resize";
+import { resizeImage } from "@veyyon/coding-agent/utils/image-resize";
 
 // 1x1 red PNG (69 bytes) — used as a Bun.Image seed to synthesize larger fixtures
 // without checking binary blobs into the repo.
@@ -217,31 +217,31 @@ describe("resizeImage minimum dimension", () => {
 });
 
 describe("resizeImage env wiring", () => {
-	const prior = Bun.env.OMP_NO_WEBP;
+	const prior = Bun.env.VEYYON_NO_WEBP;
 
 	beforeEach(() => {
-		delete (Bun.env as Record<string, string | undefined>).OMP_NO_WEBP;
+		delete (Bun.env as Record<string, string | undefined>).VEYYON_NO_WEBP;
 	});
 
 	afterEach(() => {
-		if (prior === undefined) delete (Bun.env as Record<string, string | undefined>).OMP_NO_WEBP;
-		else Bun.env.OMP_NO_WEBP = prior;
+		if (prior === undefined) delete (Bun.env as Record<string, string | undefined>).VEYYON_NO_WEBP;
+		else Bun.env.VEYYON_NO_WEBP = prior;
 	});
 
-	it("treats OMP_NO_WEBP=1 set at call time as exclusion (not baked at module load)", async () => {
-		Bun.env.OMP_NO_WEBP = "1";
+	it("treats VEYYON_NO_WEBP=1 set at call time as exclusion (not baked at module load)", async () => {
+		Bun.env.VEYYON_NO_WEBP = "1";
 
 		const result = await resizeImage({ type: "image", data: smallWebp, mimeType: "image/webp" });
 
 		expect(result.mimeType).not.toBe("image/webp");
 	});
 
-	it("treats OMP_NO_WEBP='' / '0' as NOT excluded", async () => {
-		Bun.env.OMP_NO_WEBP = "";
+	it("treats VEYYON_NO_WEBP='' / '0' as NOT excluded", async () => {
+		Bun.env.VEYYON_NO_WEBP = "";
 		const empty = await resizeImage({ type: "image", data: smallWebp, mimeType: "image/webp" });
 		expect(empty.mimeType).toBe("image/webp");
 
-		Bun.env.OMP_NO_WEBP = "0";
+		Bun.env.VEYYON_NO_WEBP = "0";
 		const zero = await resizeImage({ type: "image", data: smallWebp, mimeType: "image/webp" });
 		expect(zero.mimeType).toBe("image/webp");
 	});

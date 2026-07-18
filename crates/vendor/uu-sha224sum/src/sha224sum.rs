@@ -5,6 +5,6 @@
 
 // pi-uutils: Patched for in-process embedding via the shared
 // `uu-checksum-common` crate, which redirects all standard stream I/O and file
-// resolution through `pi-uutils-ctx`.
+// resolution through `veyyon-uutils-ctx`.
 
 uu_checksum_common::declare_standalone!("sha224sum", uucore::checksum::AlgoKind::Sha224);

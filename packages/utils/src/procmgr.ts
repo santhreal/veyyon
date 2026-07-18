@@ -1,6 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { Process, ProcessStatus } from "@veyyon/pi-natives";
+import { Process, ProcessStatus } from "@veyyon/natives";
 import type { Subprocess } from "bun";
 import { $env, filterChildShellEnv } from "./env";
 import { $which } from "./which";
@@ -29,7 +29,7 @@ export function isExecutable(path: string): boolean {
  * Build the spawn environment (cached).
  */
 function buildSpawnEnv(shell: string): Record<string, string> {
-	const noCI = $env.PI_BASH_NO_CI || $env.CLAUDE_BASH_NO_CI;
+	const noCI = $env.VEYYON_BASH_NO_CI || $env.CLAUDE_BASH_NO_CI;
 	return {
 		...filterChildShellEnv(Bun.env),
 		SHELL: shell,
@@ -43,10 +43,10 @@ function buildSpawnEnv(shell: string): Record<string, string> {
 
 /**
  * Get shell args, optionally including login shell flag.
- * Supports PI_BASH_NO_LOGIN and CLAUDE_BASH_NO_LOGIN to skip -l.
+ * Supports VEYYON_BASH_NO_LOGIN and CLAUDE_BASH_NO_LOGIN to skip -l.
  */
 function getShellArgs(): string[] {
-	const noLogin = $env.PI_BASH_NO_LOGIN || $env.CLAUDE_BASH_NO_LOGIN;
+	const noLogin = $env.VEYYON_BASH_NO_LOGIN || $env.CLAUDE_BASH_NO_LOGIN;
 	return noLogin ? ["-c"] : ["-l", "-c"];
 }
 
@@ -54,7 +54,7 @@ function getShellArgs(): string[] {
  * Get shell prefix for wrapping commands (profilers, strace, etc.).
  */
 function getShellPrefix(): string | undefined {
-	return $env.PI_SHELL_PREFIX || $env.CLAUDE_CODE_SHELL_PREFIX;
+	return $env.VEYYON_SHELL_PREFIX || $env.CLAUDE_CODE_SHELL_PREFIX;
 }
 
 /**

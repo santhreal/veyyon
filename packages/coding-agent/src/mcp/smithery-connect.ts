@@ -1,6 +1,7 @@
+import { trimTrailingSlashes } from "@veyyon/utils";
 import { withTimeoutSignal } from "../utils/fetch-timeout";
 
-const SMITHERY_API_BASE_URL = (process.env.SMITHERY_API_URL || "https://api.smithery.ai").replace(/\/+$/, "");
+const SMITHERY_API_BASE_URL = trimTrailingSlashes(process.env.SMITHERY_API_URL || "https://api.smithery.ai");
 const SMITHERY_CONNECT_TIMEOUT_MS = 10_000;
 
 export class SmitheryConnectError extends Error {

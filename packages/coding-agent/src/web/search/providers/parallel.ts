@@ -1,4 +1,4 @@
-import { type ApiKey, type AuthStorage, type FetchImpl, getEnvApiKey, withAuth } from "@veyyon/pi-ai";
+import { type ApiKey, type AuthStorage, type FetchImpl, getEnvApiKey, withAuth } from "@veyyon/ai";
 import type { SearchResponse } from "../../../web/search/types";
 import { SearchProviderError } from "../../../web/search/types";
 import {
@@ -42,31 +42,33 @@ async function searchWithAuthStorage(
 	return withAuth(
 		keyOrResolver,
 		async key => {
-			const response = await (params.fetch ?? fetch)(PARALLEL_SEARCH_URL, {
-				method: "POST",
-				headers: {
-					Accept: "application/json",
-					"Content-Type": "application/json",
-					"x-api-key": key,
-					"parallel-beta": PARALLEL_BETA_HEADER,
-				},
-				body: JSON.stringify({
-					objective,
-					search_queries: queries,
-					mode: "fast",
-					excerpts: {
-						max_chars_per_result: 10_000,
+			return withHardTimeout(params.signal, async hardSignal => {
+				const response = await (params.fetch ?? fetch)(PARALLEL_SEARCH_URL, {
+					method: "POST",
+					headers: {
+						Accept: "application/json",
+						"Content-Type": "application/json",
+						"x-api-key": key,
+						"parallel-beta": PARALLEL_BETA_HEADER,
 					},
-				}),
-				signal: withHardTimeout(params.signal),
+					body: JSON.stringify({
+						objective,
+						search_queries: queries,
+						mode: "fast",
+						excerpts: {
+							max_chars_per_result: 10_000,
+						},
+					}),
+					signal: hardSignal,
+				});
+
+				if (!response.ok) {
+					throw parseParallelErrorResponse(response.status, await response.text());
+				}
+
+				const payload: unknown = await response.json();
+				return parseParallelSearchPayload(payload, { parseMetadata: false });
 			});
-
-			if (!response.ok) {
-				throw parseParallelErrorResponse(response.status, await response.text());
-			}
-
-			const payload: unknown = await response.json();
-			return parseParallelSearchPayload(payload, { parseMetadata: false });
 		},
 		{ signal: params.signal },
 	);

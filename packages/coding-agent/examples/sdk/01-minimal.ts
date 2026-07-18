@@ -4,7 +4,7 @@
  * Uses all defaults: discovers skills, hooks, tools, context files
  * from cwd and ~/.veyyon/agent. Model chosen from settings or first available.
  */
-import { createAgentSession } from "@veyyon/pi-coding-agent";
+import { createAgentSession } from "@veyyon/coding-agent";
 
 const { session } = await createAgentSession();
 

@@ -1,4 +1,4 @@
-import type { AuthStorage, FetchImpl } from "@veyyon/pi-ai";
+import type { AuthStorage, FetchImpl } from "@veyyon/ai";
 import { parseHTML } from "linkedom";
 import type { SearchResponse, SearchSource } from "../../../web/search/types";
 import { SearchProviderError } from "../../../web/search/types";
@@ -133,47 +133,48 @@ async function fetchFormInputs(fetchImpl: FetchImpl, signal: AbortSignal): Promi
 }
 
 async function callStartpageHtml(params: SearchParams): Promise<string> {
-	const fetchImpl = params.fetch ?? fetch;
-	const signal = withHardTimeout(params.signal);
-	const withDate = params.recency ? RECENCY_TO_STARTPAGE_WITH_DATE[params.recency] : undefined;
+	return withHardTimeout(params.signal, async signal => {
+		const fetchImpl = params.fetch ?? fetch;
+		const withDate = params.recency ? RECENCY_TO_STARTPAGE_WITH_DATE[params.recency] : undefined;
 
-	const formInputs = await fetchFormInputs(fetchImpl, signal);
-	let page: LoadedHtmlPage;
-	if (formInputs) {
-		const form = new URLSearchParams(formInputs);
-		form.set("query", params.query);
-		if (withDate) form.set("with_date", withDate);
-		page = await browserFetch(STARTPAGE_SEARCH_URL, {
-			fetch: fetchImpl,
-			signal,
-			referer: STARTPAGE_HOME_URL,
-			init: { method: "POST", body: form.toString() },
-			headers: { "Content-Type": "application/x-www-form-urlencoded" },
-		});
-	} else {
-		const url = new URL(STARTPAGE_SEARCH_URL);
-		url.searchParams.set("query", params.query);
-		if (withDate) url.searchParams.set("with_date", withDate);
-		page = await browserFetch(url.href, {
-			fetch: fetchImpl,
-			signal,
-			referer: STARTPAGE_HOME_URL,
-		});
-	}
+		const formInputs = await fetchFormInputs(fetchImpl, signal);
+		let page: LoadedHtmlPage;
+		if (formInputs) {
+			const form = new URLSearchParams(formInputs);
+			form.set("query", params.query);
+			if (withDate) form.set("with_date", withDate);
+			page = await browserFetch(STARTPAGE_SEARCH_URL, {
+				fetch: fetchImpl,
+				signal,
+				referer: STARTPAGE_HOME_URL,
+				init: { method: "POST", body: form.toString() },
+				headers: { "Content-Type": "application/x-www-form-urlencoded" },
+			});
+		} else {
+			const url = new URL(STARTPAGE_SEARCH_URL);
+			url.searchParams.set("query", params.query);
+			if (withDate) url.searchParams.set("with_date", withDate);
+			page = await browserFetch(url.href, {
+				fetch: fetchImpl,
+				signal,
+				referer: STARTPAGE_HOME_URL,
+			});
+		}
 
-	if (isChallengeResponse(page)) {
-		throw new SearchProviderError(
-			"startpage",
-			"Startpage blocked the request with a CAPTCHA challenge. Startpage rate-limits automated searches from datacenter/shared-egress IPs; try another provider such as DuckDuckGo or Mojeek, or retry later.",
-			429,
-		);
-	}
-	if (page.status < 200 || page.status >= 300) {
-		const classified = classifyProviderHttpError("startpage", page.status, page.html);
-		if (classified) throw classified;
-		throw new SearchProviderError("startpage", `Startpage HTML error (${page.status})`, page.status);
-	}
-	return page.html;
+		if (isChallengeResponse(page)) {
+			throw new SearchProviderError(
+				"startpage",
+				"Startpage blocked the request with a CAPTCHA challenge. Startpage rate-limits automated searches from datacenter/shared-egress IPs; try another provider such as DuckDuckGo or Mojeek, or retry later.",
+				429,
+			);
+		}
+		if (page.status < 200 || page.status >= 300) {
+			const classified = classifyProviderHttpError("startpage", page.status, page.html);
+			if (classified) throw classified;
+			throw new SearchProviderError("startpage", `Startpage HTML error (${page.status})`, page.status);
+		}
+		return page.html;
+	});
 }
 
 /** Execute a Startpage web search via the homepage-token form flow. */

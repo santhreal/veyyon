@@ -1,6 +1,7 @@
 import * as net from "node:net";
-import { Process, ProcessStatus } from "@veyyon/pi-natives";
+import { Process, ProcessStatus } from "@veyyon/natives";
 import type { Browser, Page } from "puppeteer-core";
+import { scopedTimeoutSignal } from "../../utils/fetch-timeout";
 import { ToolError, throwIfAborted } from "../tool-errors";
 
 const ATTACH_TARGET_SKIP_PATTERN =
@@ -36,10 +37,9 @@ export async function waitForCdp(cdpUrl: string, timeoutMs: number, signal?: Abo
 	const probeUrl = `${cdpUrl.replace(/\/+$/, "")}/json/version`;
 	while (Date.now() < deadline) {
 		throwIfAborted(signal);
-		const probeTimeout = AbortSignal.timeout(2000);
-		const probeSignal = signal ? AbortSignal.any([signal, probeTimeout]) : probeTimeout;
+		const probeTimeout = scopedTimeoutSignal(2000, signal);
 		try {
-			const res = await fetch(probeUrl, { signal: probeSignal });
+			const res = await fetch(probeUrl, { signal: probeTimeout.signal });
 			if (res.ok) {
 				await res.body?.cancel();
 				return;
@@ -49,6 +49,8 @@ export async function waitForCdp(cdpUrl: string, timeoutMs: number, signal?: Abo
 		} catch (err) {
 			if (signal?.aborted) throwIfAborted(signal);
 			lastErr = err;
+		} finally {
+			probeTimeout.cancel();
 		}
 		await Bun.sleep(150);
 	}
@@ -81,14 +83,15 @@ function findCdpPortInArgs(args: string[]): number | null {
 
 /** One-shot probe: returns true when `/json/version` answers 200 within the timeout. */
 async function probeCdpAt(port: number, signal?: AbortSignal): Promise<boolean> {
-	const probeTimeout = AbortSignal.timeout(1500);
-	const probeSignal = signal ? AbortSignal.any([signal, probeTimeout]) : probeTimeout;
+	const probeTimeout = scopedTimeoutSignal(1500, signal);
 	try {
-		const res = await fetch(`http://127.0.0.1:${port}/json/version`, { signal: probeSignal });
+		const res = await fetch(`http://127.0.0.1:${port}/json/version`, { signal: probeTimeout.signal });
 		await res.body?.cancel();
 		return res.ok;
 	} catch {
 		return false;
+	} finally {
+		probeTimeout.cancel();
 	}
 }
 

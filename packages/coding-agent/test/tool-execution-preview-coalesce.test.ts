@@ -2,12 +2,12 @@ import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { AgentTool } from "@veyyon/pi-agent-core";
-import { EDIT_MODE_STRATEGIES, type PerFileDiffPreview } from "@veyyon/pi-coding-agent/edit";
-import { ToolExecutionComponent } from "@veyyon/pi-coding-agent/modes/components/tool-execution";
-import { initTheme } from "@veyyon/pi-coding-agent/modes/theme/theme";
-import type { TUI } from "@veyyon/pi-tui";
-import { removeWithRetries } from "@veyyon/pi-utils";
+import type { AgentTool } from "@veyyon/agent-core";
+import { EDIT_MODE_STRATEGIES, type PerFileDiffPreview } from "@veyyon/coding-agent/edit";
+import { ToolExecutionComponent } from "@veyyon/coding-agent/modes/components/tool-execution";
+import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import type { TUI } from "@veyyon/tui";
+import { removeWithRetries } from "@veyyon/utils";
 
 // The reveal controller pushes streamed args at ~30fps; a whole-file diff can
 // outlast a frame. The component must coalesce those ticks into one compute at a

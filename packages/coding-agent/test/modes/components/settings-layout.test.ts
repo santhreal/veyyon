@@ -1,13 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { resetSettingsForTest, Settings } from "@veyyon/pi-coding-agent/config/settings";
+import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import {
 	SETTING_TABS,
 	SETTINGS_SCHEMA,
 	type SettingPath,
 	type SettingTab,
 	TAB_GROUPS,
-} from "@veyyon/pi-coding-agent/config/settings-schema";
-import { getSettingsForTab } from "@veyyon/pi-coding-agent/modes/components/settings-defs";
+} from "@veyyon/coding-agent/config/settings-schema";
+import { getSettingsForTab } from "@veyyon/coding-agent/modes/components/settings-defs";
 
 interface UiShape {
 	tab: SettingTab;

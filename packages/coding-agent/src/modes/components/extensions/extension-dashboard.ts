@@ -23,8 +23,8 @@ import {
 	TabBar,
 	truncateToWidth,
 	visibleWidth,
-} from "@veyyon/pi-tui";
-import { getMCPConfigPath, logger } from "@veyyon/pi-utils";
+} from "@veyyon/tui";
+import { getMCPConfigPath, logger } from "@veyyon/utils";
 import { Settings } from "../../../config/settings";
 import { setMcpServerEnabled } from "../../../mcp/config-writer";
 import { getTabBarTheme } from "../../../modes/shared";

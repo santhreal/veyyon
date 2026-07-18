@@ -1,5 +1,5 @@
 # Vendored from uutils/coreutils tag 0.8.0 (src/uu/wc), patched to route I/O
-# (stdin/stdout/stderr) and path resolution through pi-uutils-ctx so it can run
+# (stdin/stdout/stderr) and path resolution through veyyon-uutils-ctx so it can run
 # in-process as a shell builtin. See src/wc.rs for the patch markers
 # (`pi-uutils:` comments).
 [package]
@@ -23,7 +23,7 @@ uucore = { version = "0.8.0", features = [
   "quoting-style",
 ] }
 unicode-width = "0.2.0"
-pi-uutils-ctx = { path = "../../pi-uutils-ctx" }
+veyyon-uutils-ctx = { path = "../../veyyon-uutils-ctx" }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2.172"

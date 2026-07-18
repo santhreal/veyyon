@@ -16,10 +16,10 @@ pub fn run(argv: Vec<OsString>) -> i32 {
 		Err(err) => {
 			let rendered = err.to_string();
 			if err.use_stderr() {
-				let _ = write!(pi_uutils_ctx::stderr(), "{rendered}");
+				let _ = write!(veyyon_uutils_ctx::stderr(), "{rendered}");
 				return 1;
 			}
-			let _ = write!(pi_uutils_ctx::stdout(), "{rendered}");
+			let _ = write!(veyyon_uutils_ctx::stdout(), "{rendered}");
 			return 0;
 		},
 	};
@@ -28,10 +28,10 @@ pub fn run(argv: Vec<OsString>) -> i32 {
 		base_common::handle_input(&mut input, Format::Base64, config)
 	});
 	match result {
-		Ok(()) => pi_uutils_ctx::exit_code(),
+		Ok(()) => veyyon_uutils_ctx::exit_code(),
 		Err(err) => {
 			let code = err.code();
-			let _ = writeln!(pi_uutils_ctx::stderr(), "base64: {err}");
+			let _ = writeln!(veyyon_uutils_ctx::stderr(), "base64: {err}");
 			if code == 0 { 1 } else { code }
 		},
 	}
@@ -61,7 +61,7 @@ mod tests {
 	};
 
 	use parking_lot::Mutex;
-	use pi_uutils_ctx::ScopeIo;
+	use veyyon_uutils_ctx::ScopeIo;
 
 	use super::run;
 
@@ -97,7 +97,7 @@ mod tests {
 			.chain(args)
 			.map(OsString::from)
 			.collect();
-		let code = pi_uutils_ctx::scope(io, || run(argv));
+		let code = veyyon_uutils_ctx::scope(io, || run(argv));
 
 		(
 			code,

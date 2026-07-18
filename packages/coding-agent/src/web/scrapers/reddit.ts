@@ -1,5 +1,15 @@
-import { tryParseJson } from "@veyyon/pi-utils";
-import { buildResult, formatIsoDate, loadPage, type RenderResult, type SpecialHandler } from "./types";
+import { tryParseJson } from "@veyyon/utils";
+import {
+	buildResult,
+	formatIsoDate,
+	loadFailure,
+	loadPage,
+	type RenderResult,
+	type ScraperDegrade,
+	type SpecialHandler,
+	scraperDegrade,
+	tryParseUrl,
+} from "./types";
 
 interface RedditPost {
 	title: string;
@@ -28,9 +38,10 @@ export const handleReddit: SpecialHandler = async (
 	url: string,
 	timeout: number,
 	signal?: AbortSignal,
-): Promise<RenderResult | null> => {
+): Promise<RenderResult | ScraperDegrade | null> => {
 	try {
-		const parsed = new URL(url);
+		const parsed = tryParseUrl(url);
+		if (!parsed) return null;
 		if (!parsed.hostname.includes("reddit.com")) return null;
 
 		const fetchedAt = new Date().toISOString();
@@ -42,10 +53,10 @@ export const handleReddit: SpecialHandler = async (
 		}
 
 		const result = await loadPage(jsonUrl, { timeout, signal });
-		if (!result.ok) return null;
+		if (!result.ok) return scraperDegrade("reddit", loadFailure(result));
 
 		const data = tryParseJson<any>(result.content);
-		if (!data) return null;
+		if (!data) return scraperDegrade("reddit", "unexpected response shape");
 		let md = "";
 
 		// Handle different Reddit URL types
@@ -89,7 +100,7 @@ export const handleReddit: SpecialHandler = async (
 		if (!md) return null;
 
 		return buildResult(md, { url, method: "reddit", fetchedAt, notes: ["Fetched via Reddit JSON API"] });
-	} catch {}
-
-	return null;
+	} catch (error) {
+		return scraperDegrade("reddit", error);
+	}
 };

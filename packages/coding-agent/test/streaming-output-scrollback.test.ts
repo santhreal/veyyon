@@ -1,12 +1,12 @@
 import { afterEach, beforeAll, describe, expect, test } from "bun:test";
-import type { AssistantMessage } from "@veyyon/pi-ai";
-import { AssistantMessageComponent } from "@veyyon/pi-coding-agent/modes/components/assistant-message";
-import { ToolExecutionComponent } from "@veyyon/pi-coding-agent/modes/components/tool-execution";
-import { TranscriptContainer } from "@veyyon/pi-coding-agent/modes/components/transcript-container";
-import { theme as activeTheme, initTheme } from "@veyyon/pi-coding-agent/modes/theme/theme";
-import { evalToolRenderer } from "@veyyon/pi-coding-agent/tools/eval-render";
-import { previewWindowRows } from "@veyyon/pi-coding-agent/tools/render-utils";
-import { type Component, TUI } from "@veyyon/pi-tui";
+import type { AssistantMessage } from "@veyyon/ai";
+import { AssistantMessageComponent } from "@veyyon/coding-agent/modes/components/assistant-message";
+import { ToolExecutionComponent } from "@veyyon/coding-agent/modes/components/tool-execution";
+import { TranscriptContainer } from "@veyyon/coding-agent/modes/components/transcript-container";
+import { theme as activeTheme, initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { evalToolRenderer } from "@veyyon/coding-agent/tools/eval-render";
+import { previewWindowRows } from "@veyyon/coding-agent/tools/render-utils";
+import { type Component, TUI } from "@veyyon/tui";
 import { VirtualTerminal } from "../../tui/test/virtual-terminal";
 
 // Long, path-like output that wraps at the box's inner width — the case that

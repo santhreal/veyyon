@@ -2,15 +2,15 @@ import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { resetSettingsForTest, Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { DEFAULT_FUZZY_THRESHOLD, executePatchSingle, executeReplaceSingle } from "@veyyon/pi-coding-agent/edit";
-import { HashlineFilesystem } from "@veyyon/pi-coding-agent/edit/hashline/filesystem";
-import { resolveLocalUrlToPath } from "@veyyon/pi-coding-agent/internal-urls";
-import type { WritethroughCallback } from "@veyyon/pi-coding-agent/lsp";
-import type { PlanModeState } from "@veyyon/pi-coding-agent/plan-mode/state";
-import type { ClientBridge } from "@veyyon/pi-coding-agent/session/client-bridge";
-import type { ToolSession } from "@veyyon/pi-coding-agent/tools";
-import { removeWithRetries } from "@veyyon/pi-utils";
+import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
+import { DEFAULT_FUZZY_THRESHOLD, executePatchSingle, executeReplaceSingle } from "@veyyon/coding-agent/edit";
+import { HashlineFilesystem } from "@veyyon/coding-agent/edit/hashline/filesystem";
+import { resolveLocalUrlToPath } from "@veyyon/coding-agent/internal-urls";
+import type { WritethroughCallback } from "@veyyon/coding-agent/lsp";
+import type { PlanModeState } from "@veyyon/coding-agent/plan-mode/state";
+import type { ClientBridge } from "@veyyon/coding-agent/session/client-bridge";
+import type { ToolSession } from "@veyyon/coding-agent/tools";
+import { removeWithRetries } from "@veyyon/utils";
 
 // ─── Shared helpers ───────────────────────────────────────────────────────────
 
@@ -75,7 +75,7 @@ describe("HashlineFilesystem ACP fs routing", () => {
 
 	beforeEach(async () => {
 		resetSettingsForTest();
-		tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "omp-acp-hashline-"));
+		tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-acp-hashline-"));
 		await Settings.init({ inMemory: true, cwd: tmpDir });
 	});
 
@@ -133,7 +133,7 @@ describe("HashlineFilesystem ACP fs routing", () => {
 		// Tag-based path recovery rebinds a bare `cfg-…-plan.md` edit onto its
 		// absolute sandbox path. Even though it is NOT the active plan file
 		// (planFilePath is still the default local://PLAN.md, a fresh-slug plan),
-		// the OMP-owned artifact must be written to disk, never pushed to the editor.
+		// the veyyon-owned artifact must be written to disk, never pushed to the editor.
 		const { bridge, spy: bridgeSpy } = makeBridge();
 		const session = createSession(tmpDir, {
 			bridge,
@@ -165,7 +165,7 @@ describe("executeReplaceSingle ACP fs routing", () => {
 
 	beforeEach(async () => {
 		resetSettingsForTest();
-		tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "omp-acp-replace-"));
+		tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-acp-replace-"));
 		await Settings.init({ inMemory: true, cwd: tmpDir });
 	});
 
@@ -238,7 +238,7 @@ describe("executePatchSingle ACP fs routing", () => {
 
 	beforeEach(async () => {
 		resetSettingsForTest();
-		tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "omp-acp-patch-"));
+		tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-acp-patch-"));
 		await Settings.init({ inMemory: true, cwd: tmpDir });
 	});
 

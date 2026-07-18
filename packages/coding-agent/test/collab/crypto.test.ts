@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { generateRoomKey, generateWriteToken, importRoomKey, open, seal } from "@veyyon/pi-coding-agent/collab/crypto";
+import { generateRoomKey, generateWriteToken, importRoomKey, open, seal } from "@veyyon/coding-agent/collab/crypto";
 import {
 	type CollabFrame,
 	DEFAULT_RELAY_URL,
@@ -10,7 +10,7 @@ import {
 	parseCollabLink,
 	rewriteEnvelopePeer,
 	unpackEnvelope,
-} from "@veyyon/pi-coding-agent/collab/protocol";
+} from "@veyyon/coding-agent/collab/protocol";
 
 describe("collab crypto", () => {
 	it("round-trips a frame through seal/open", async () => {

@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
-import { resetSettingsForTest, Settings } from "@veyyon/pi-coding-agent/config/settings";
+import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import {
 	SEARCH_PROVIDER_ORDER,
 	setExcludedSearchProviders,
 	setPreferredSearchProvider,
-} from "@veyyon/pi-coding-agent/web/search/provider";
-import { __resetDirsFromEnvForTests, setAgentDir, TempDir } from "@veyyon/pi-utils";
+} from "@veyyon/coding-agent/web/search/provider";
+import { __resetDirsFromEnvForTests, setAgentDir, TempDir } from "@veyyon/utils";
 import { runSearchCommand } from "../../../src/cli/web-search-cli";
 
 const WEB_SEARCH_ENV_KEYS = [
@@ -27,9 +27,9 @@ const WEB_SEARCH_ENV_KEYS = [
 	"XAI_API_KEY",
 ] as const;
 
-const originalAgentDir = process.env.PI_CODING_AGENT_DIR;
-const originalOmpProfile = process.env.OMP_PROFILE;
-const originalPiProfile = process.env.PI_PROFILE;
+const originalAgentDir = process.env.VEYYON_CODING_AGENT_DIR;
+const originalVeyyonProfile = process.env.VEYYON_PROFILE;
+const originalPiProfile = process.env.VEYYON_PROFILE;
 
 let tempAgentDir: TempDir | undefined;
 let originalEnv: Partial<Record<(typeof WEB_SEARCH_ENV_KEYS)[number], string | undefined>> = {};
@@ -83,7 +83,7 @@ beforeEach(async () => {
 	resetSettingsForTest();
 	setPreferredSearchProvider("auto");
 	setExcludedSearchProviders([]);
-	tempAgentDir = TempDir.createSync("@omp-search-cli-");
+	tempAgentDir = TempDir.createSync("@veyyon-search-cli-");
 	setAgentDir(tempAgentDir.path());
 	await Settings.init({
 		inMemory: true,
@@ -104,9 +104,9 @@ afterEach(async () => {
 	for (const key of WEB_SEARCH_ENV_KEYS) {
 		restoreEnv(key, originalEnv[key]);
 	}
-	restoreEnv("PI_CODING_AGENT_DIR", originalAgentDir);
-	restoreEnv("OMP_PROFILE", originalOmpProfile);
-	restoreEnv("PI_PROFILE", originalPiProfile);
+	restoreEnv("VEYYON_CODING_AGENT_DIR", originalAgentDir);
+	restoreEnv("VEYYON_PROFILE", originalVeyyonProfile);
+	restoreEnv("VEYYON_PROFILE", originalPiProfile);
 	__resetDirsFromEnvForTests();
 	if (tempAgentDir) {
 		await tempAgentDir.remove();

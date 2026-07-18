@@ -2,11 +2,11 @@ import { Database } from "bun:sqlite";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { AgentToolResult } from "@veyyon/pi-agent-core";
-import type { FetchImpl, ImageContent, TextContent } from "@veyyon/pi-ai";
-import { htmlToMarkdown } from "@veyyon/pi-natives";
-import { type Component, Text } from "@veyyon/pi-tui";
-import { $which, ptree, truncate } from "@veyyon/pi-utils";
+import type { AgentToolResult } from "@veyyon/agent-core";
+import type { FetchImpl, ImageContent, TextContent } from "@veyyon/ai";
+import { htmlToMarkdown } from "@veyyon/natives";
+import { type Component, Text } from "@veyyon/tui";
+import { $which, formatCount, ptree, truncate } from "@veyyon/utils";
 import { LRUCache } from "lru-cache/raw";
 import type { Settings } from "../config/settings";
 import { readEditableNotebookText } from "../edit/notebook";
@@ -18,13 +18,22 @@ import type { AgentStorage } from "../session/agent-storage";
 import { DEFAULT_MAX_BYTES, truncateHead } from "../session/streaming-output";
 import { renderStatusLine, urlHyperlink } from "../tui";
 import { CachedOutputBlock, markFramedBlockComponent } from "../tui/output-block";
+import { scopedTimeoutSignal } from "../utils/fetch-timeout";
 import { webpExclusionForModel } from "../utils/image-loading";
 import { formatDimensionNote, resizeImage } from "../utils/image-resize";
 import { ensureTool } from "../utils/tools-manager";
 import { type ArchiveFormat, listArchiveRoot, sniffArchiveFormat } from "../utils/zip";
 import { extractWithParallel, findParallelApiKey, getParallelExtractContent } from "../web/parallel";
-import type { RenderResult, SpecialHandler } from "../web/scrapers/types";
-import { finalizeOutput, loadPage, looksLikeHtml, MAX_BYTES, MAX_OUTPUT_CHARS } from "../web/scrapers/types";
+import {
+	finalizeOutput,
+	isScraperDegrade,
+	loadPage,
+	looksLikeHtml,
+	MAX_BYTES,
+	MAX_OUTPUT_CHARS,
+	type RenderResult,
+	type SpecialHandler,
+} from "../web/scrapers/types";
 import { convertWithMarkit, fetchBinary } from "../web/scrapers/utils";
 import { applyListLimit } from "./list-limit";
 import { formatStyledArtifactReference, type OutputMeta } from "./output-meta";
@@ -596,7 +605,7 @@ async function parseFeedToMarkdown(content: string, maxItems = 10): Promise<stri
 
 				md += `## ${itemTitle}\n`;
 				if (pubDate) md += `*${pubDate}*\n\n`;
-				if (desc) md += `${desc.slice(0, 500)}${desc.length > 500 ? "..." : ""}\n\n`;
+				if (desc) md += `${truncate(desc, 500, "...")}\n\n`;
 				if (link) md += `[Read more](${link})\n\n`;
 				md += "---\n\n";
 			}
@@ -620,7 +629,7 @@ async function parseFeedToMarkdown(content: string, maxItems = 10): Promise<stri
 
 				md += `## ${entryTitle}\n`;
 				if (updated) md += `*${updated}*\n\n`;
-				if (summary) md += `${summary.slice(0, 500)}${summary.length > 500 ? "..." : ""}\n\n`;
+				if (summary) md += `${truncate(summary, 500, "...")}\n\n`;
 				if (link) md += `[Read more](${link})\n\n`;
 				md += "---\n\n";
 			}
@@ -667,97 +676,114 @@ export async function renderHtmlToText(
 	storage: AgentStorage | null,
 	fetchOverride?: FetchImpl,
 ): Promise<{ content: string; ok: boolean; method: string }> {
-	const overallSignal = ptree.combineSignals(userSignal, timeout * 1000);
-	const execOptions = {
-		mode: "group" as const,
-		allowNonZero: true,
-		allowAbort: true,
-		stderr: "full" as const,
-		signal: overallSignal,
-	};
-	const remoteBudgetMs = Math.min(timeout * 1000, REMOTE_READER_MAX_MS);
-	// Per-attempt budget for remote endpoints so one stall cannot consume the
-	// whole reader-mode budget and starve the local fallbacks.
-	const remoteSignal = () => ptree.combineSignals(userSignal, remoteBudgetMs);
-	const fetchImpl = fetchOverride ?? fetch;
+	// Scoped so the overall-budget timer is cleared on settle instead of
+	// staying armed like a bare AbortSignal.timeout.
+	const overallTimeout = scopedTimeoutSignal(timeout * 1000, userSignal);
+	const overallSignal = overallTimeout.signal;
+	try {
+		const execOptions = {
+			mode: "group" as const,
+			allowNonZero: true,
+			allowAbort: true,
+			stderr: "full" as const,
+			signal: overallSignal,
+		};
+		const remoteBudgetMs = Math.min(timeout * 1000, REMOTE_READER_MAX_MS);
+		const fetchImpl = fetchOverride ?? fetch;
 
-	const runners: Record<FetchProvider, () => Promise<string | null>> = {
-		// Purely local, no network/subprocess: still works on already-loaded HTML
-		// even after remote/subprocess attempts are aborted by the budget. Deeply
-		// nested HTML crashes the native converter (see MAX_HTML_NESTING_DEPTH), so
-		// skip it for such input and let the chain fall through to another reader.
-		native: () =>
-			htmlNestingExceeds(html, MAX_HTML_NESTING_DEPTH)
-				? Promise.resolve(null)
-				: htmlToMarkdown(html, { cleanContent: true }),
-		trafilatura: async () => {
-			const trafilatura = await ensureTool("trafilatura", { signal: overallSignal, silent: true });
-			if (!trafilatura) return null;
-			const result = await ptree.exec([trafilatura, "-u", url, "--output-format", "markdown"], execOptions);
-			return result.ok ? result.stdout : null;
-		},
-		lynx: async () => {
-			if (!hasCommand("lynx")) return null;
-			const result = await ptree.exec(["lynx", "-dump", "-nolist", "-width", "250", url], execOptions);
-			return result.ok ? result.stdout : null;
-		},
-		parallel: async () => {
-			if (!findParallelApiKey(storage)) return null;
-			const parallelResult = await extractWithParallel(
-				[url],
-				{
-					objective: "Extract the main content",
-					excerpts: true,
-					fullContent: false,
-					signal: remoteSignal(),
-					fetch: fetchImpl,
-				},
-				storage,
-			);
-			const firstDocument = parallelResult.results[0];
-			return firstDocument ? getParallelExtractContent(firstDocument) : null;
-		},
-		jina: async () => {
-			const response = await fetchImpl(`https://r.jina.ai/${url}`, {
-				headers: { Accept: "text/markdown" },
-				signal: remoteSignal(),
-			});
-			return response.ok ? await response.text() : null;
-		},
-	};
+		const runners: Record<FetchProvider, () => Promise<string | null>> = {
+			// Purely local, no network/subprocess: still works on already-loaded HTML
+			// even after remote/subprocess attempts are aborted by the budget. Deeply
+			// nested HTML crashes the native converter (see MAX_HTML_NESTING_DEPTH), so
+			// skip it for such input and let the chain fall through to another reader.
+			native: () =>
+				htmlNestingExceeds(html, MAX_HTML_NESTING_DEPTH)
+					? Promise.resolve(null)
+					: htmlToMarkdown(html, { cleanContent: true }),
+			trafilatura: async () => {
+				const trafilatura = await ensureTool("trafilatura", { signal: overallSignal, silent: true });
+				if (!trafilatura) return null;
+				const result = await ptree.exec([trafilatura, "-u", url, "--output-format", "markdown"], execOptions);
+				return result.ok ? result.stdout : null;
+			},
+			lynx: async () => {
+				if (!hasCommand("lynx")) return null;
+				const result = await ptree.exec(["lynx", "-dump", "-nolist", "-width", "250", url], execOptions);
+				return result.ok ? result.stdout : null;
+			},
+			parallel: async () => {
+				if (!findParallelApiKey(storage)) return null;
+				// Per-attempt budget for remote endpoints so one stall cannot consume
+				// the whole reader-mode budget and starve the local fallbacks; scoped
+				// so the timer is cleared when the attempt settles.
+				const remoteTimeout = scopedTimeoutSignal(remoteBudgetMs, userSignal);
+				try {
+					const parallelResult = await extractWithParallel(
+						[url],
+						{
+							objective: "Extract the main content",
+							excerpts: true,
+							fullContent: false,
+							signal: remoteTimeout.signal,
+							fetch: fetchImpl,
+						},
+						storage,
+					);
+					const firstDocument = parallelResult.results[0];
+					return firstDocument ? getParallelExtractContent(firstDocument) : null;
+				} finally {
+					remoteTimeout.cancel();
+				}
+			},
+			jina: async () => {
+				const remoteTimeout = scopedTimeoutSignal(remoteBudgetMs, userSignal);
+				try {
+					const response = await fetchImpl(`https://r.jina.ai/${url}`, {
+						headers: { Accept: "text/markdown" },
+						signal: remoteTimeout.signal,
+					});
+					return response.ok ? await response.text() : null;
+				} finally {
+					remoteTimeout.cancel();
+				}
+			},
+		};
 
-	const preference = settings.get("providers.fetch");
-	const order: readonly FetchProvider[] =
-		preference === "auto"
-			? FETCH_PROVIDER_ORDER
-			: [preference, ...FETCH_PROVIDER_ORDER.filter(method => method !== preference)];
+		const preference = settings.get("providers.fetch");
+		const order: readonly FetchProvider[] =
+			preference === "auto"
+				? FETCH_PROVIDER_ORDER
+				: [preference, ...FETCH_PROVIDER_ORDER.filter(method => method !== preference)];
 
-	// Highest-priority output that is substantial but fails the low-quality gate.
-	// Surfaced (ok: true) only when no backend clears the gate, so the caller's
-	// targeted fallbacks (llms.txt / document extraction) still run and we beat
-	// returning the unrendered raw HTML.
-	let lowQuality: { content: string; method: FetchProvider } | null = null;
+		// Highest-priority output that is substantial but fails the low-quality gate.
+		// Surfaced (ok: true) only when no backend clears the gate, so the caller's
+		// targeted fallbacks (llms.txt / document extraction) still run and we beat
+		// returning the unrendered raw HTML.
+		let lowQuality: { content: string; method: FetchProvider } | null = null;
 
-	for (const method of order) {
-		// Honour real user cancellation between attempts; remote per-attempt and
-		// overall-budget timeouts still fall through to later (local) renderers.
-		userSignal?.throwIfAborted();
-		try {
-			const content = await runners[method]();
-			if (!content || content.trim().length <= 100) continue;
-			if (!isLowQualityOutput(content)) {
-				return { content, ok: true, method };
-			}
-			lowQuality ??= { content, method };
-		} catch {
+		for (const method of order) {
+			// Honour real user cancellation between attempts; remote per-attempt and
+			// overall-budget timeouts still fall through to later (local) renderers.
 			userSignal?.throwIfAborted();
+			try {
+				const content = await runners[method]();
+				if (!content || content.trim().length <= 100) continue;
+				if (!isLowQualityOutput(content)) {
+					return { content, ok: true, method };
+				}
+				lowQuality ??= { content, method };
+			} catch {
+				userSignal?.throwIfAborted();
+			}
 		}
-	}
 
-	if (lowQuality) {
-		return { content: lowQuality.content, ok: true, method: lowQuality.method };
+		if (lowQuality) {
+			return { content: lowQuality.content, ok: true, method: lowQuality.method };
+		}
+		return { content: "", ok: false, method: "none" };
+	} finally {
+		overallTimeout.cancel();
 	}
-	return { content: "", ok: false, method: "none" };
 }
 
 /**
@@ -924,13 +950,13 @@ async function withTempBinaryFile<T>(
 }
 
 async function renderNotebookPayload(bytes: Uint8Array, displayUrl: string): Promise<string> {
-	return withTempBinaryFile("omp-url-notebook-", ".ipynb", bytes, tempPath =>
+	return withTempBinaryFile("veyyon-url-notebook-", ".ipynb", bytes, tempPath =>
 		readEditableNotebookText(tempPath, displayUrl),
 	);
 }
 
 async function renderSqlitePayload(bytes: Uint8Array): Promise<string> {
-	return withTempBinaryFile("omp-url-sqlite-", ".sqlite", bytes, async tempPath => {
+	return withTempBinaryFile("veyyon-url-sqlite-", ".sqlite", bytes, async tempPath => {
 		let db: Database | null = null;
 		try {
 			db = new Database(tempPath, { readonly: true, strict: true });
@@ -1091,19 +1117,44 @@ function loadSpecialHandlers(): Promise<SpecialHandler[]> {
 /**
  * Try all special handlers
  */
-async function handleSpecialUrls(
+export async function handleSpecialUrls(
 	url: string,
 	timeout: number,
 	signal: AbortSignal | undefined,
 	storage: AgentStorage | null,
+	notes: string[],
+	handlers?: SpecialHandler[],
 ): Promise<FetchRenderResult | null> {
-	const specialHandlers = await loadSpecialHandlers();
+	const specialHandlers = handlers ?? (await loadSpecialHandlers());
 	for (const handler of specialHandlers) {
 		if (signal?.aborted) {
 			throw new ToolAbortError();
 		}
-		const result = await handler(url, timeout, signal, storage);
-		if (result) return result;
+		let result: Awaited<ReturnType<SpecialHandler>>;
+		try {
+			result = await handler(url, timeout, signal, storage);
+		} catch (error) {
+			if (signal?.aborted || error instanceof ToolAbortError) {
+				throw new ToolAbortError();
+			}
+			// A handler must never take the whole fetch down: record the failure
+			// loudly and keep going so the generic fetch still runs.
+			const detail = error instanceof Error ? error.message : String(error);
+			notes.push(`${handler.name || "site"} scraper threw (${detail}); fell back to a generic fetch`);
+			continue;
+		}
+		if (signal?.aborted) {
+			throw new ToolAbortError();
+		}
+		if (!result) continue;
+		if (isScraperDegrade(result)) {
+			// The handler matched the URL but could not scrape it. Surface the
+			// degrade on the generic-fetch result — never silently — and stop
+			// probing: no other handler claims this site.
+			notes.push(result.note);
+			return null;
+		}
+		return result;
 	}
 	return null;
 }
@@ -1150,7 +1201,7 @@ async function renderUrl(
 
 	// Step 1: Try special handlers for known sites (unless raw mode)
 	if (!raw) {
-		const specialResult = await handleSpecialUrls(url, timeout, signal, storage);
+		const specialResult = await handleSpecialUrls(url, timeout, signal, storage, notes);
 		if (specialResult) return specialResult;
 	}
 
@@ -1169,6 +1220,7 @@ async function renderUrl(
 			fetchedAt,
 			truncated: false,
 			notes: [
+				...notes,
 				response.status ? `Failed to fetch URL (HTTP ${response.status})` : "Failed to fetch URL",
 				...(response.error ? [`Cause: ${response.error}`] : []),
 			],
@@ -1969,7 +2021,7 @@ export function renderReadUrlResult(
 			`${uiTheme.fg("muted", "Final URL:")} ${formatReadUrlMetadataValue(details.finalUrl, uiTheme)}`,
 		);
 	}
-	const lineLabel = `${lineCount} line${lineCount === 1 ? "" : "s"}`;
+	const lineLabel = `${formatCount("line", lineCount)}`;
 	metadataLines.push(`${uiTheme.fg("muted", "Lines:")} ${lineLabel}`);
 	metadataLines.push(`${uiTheme.fg("muted", "Chars:")} ${charCount}`);
 	if (truncated) {

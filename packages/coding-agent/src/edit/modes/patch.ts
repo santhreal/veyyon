@@ -7,8 +7,8 @@
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { AgentToolResult } from "@veyyon/pi-agent-core";
-import { isEnoent } from "@veyyon/pi-utils";
+import type { AgentToolResult } from "@veyyon/agent-core";
+import { errorMessage, isEnoent } from "@veyyon/utils";
 import { type } from "arktype";
 import {
 	type FileDiagnosticsResult,
@@ -1661,7 +1661,7 @@ export async function computePatchDiff(
 			path: result.change.newPath ?? result.change.path,
 		});
 	} catch (err) {
-		return { error: err instanceof Error ? err.message : String(err) };
+		return { error: errorMessage(err) };
 	}
 }
 

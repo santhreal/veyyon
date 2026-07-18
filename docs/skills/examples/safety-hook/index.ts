@@ -1,5 +1,5 @@
-// @ts-nocheck — example file; install @veyyon/pi-coding-agent before running
-import type { ExtensionAPI } from "@veyyon/pi-coding-agent";
+// @ts-nocheck — example file; install @veyyon/coding-agent before running
+import type { ExtensionAPI } from "@veyyon/coding-agent";
 
 /**
  * Safety hook: blocks any bash tool call that contains "rm -rf /".

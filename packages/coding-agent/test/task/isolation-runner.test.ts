@@ -2,16 +2,16 @@ import { afterEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import * as executorModule from "@veyyon/pi-coding-agent/task/executor";
+import * as executorModule from "@veyyon/coding-agent/task/executor";
 import {
 	applyEligibleNestedPatches,
 	mergeIsolatedChanges,
 	runIsolatedSubprocess,
-} from "@veyyon/pi-coding-agent/task/isolation-runner";
-import type { SingleResult } from "@veyyon/pi-coding-agent/task/types";
-import * as worktreeModule from "@veyyon/pi-coding-agent/task/worktree";
-import * as gitModule from "@veyyon/pi-coding-agent/utils/git";
-import * as natives from "@veyyon/pi-natives";
+} from "@veyyon/coding-agent/task/isolation-runner";
+import type { SingleResult } from "@veyyon/coding-agent/task/types";
+import * as worktreeModule from "@veyyon/coding-agent/task/worktree";
+import * as gitModule from "@veyyon/coding-agent/utils/git";
+import * as natives from "@veyyon/natives";
 import { $ } from "bun";
 
 function result(overrides: Partial<SingleResult> = {}): SingleResult {
@@ -44,7 +44,7 @@ async function git(repoRoot: string, ...args: string[]): Promise<string> {
 }
 
 async function seedFooRepo(finalContent: string): Promise<{ repoRoot: string; patchPath: string }> {
-	const repoRoot = await fs.mkdtemp(path.join(os.tmpdir(), "omp-isolation-merge-"));
+	const repoRoot = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-isolation-merge-"));
 	tempRoots.push(repoRoot);
 
 	await git(repoRoot, "init");
@@ -77,7 +77,7 @@ describe("runIsolatedSubprocess", () => {
 	});
 
 	it("preserves branch-mode output as a patch when branch transfer fails", async () => {
-		const repoRoot = await fs.mkdtemp(path.join(os.tmpdir(), "omp-isolation-run-"));
+		const repoRoot = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-isolation-run-"));
 		tempRoots.push(repoRoot);
 		const isolationDir = path.join(repoRoot, "isolated");
 		const artifactsDir = path.join(repoRoot, "artifacts");

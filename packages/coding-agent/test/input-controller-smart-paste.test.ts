@@ -7,8 +7,8 @@
  */
 
 import { describe, expect, it, vi } from "bun:test";
-import { InputController } from "@veyyon/pi-coding-agent/modes/controllers/input-controller";
-import type { InteractiveModeContext } from "@veyyon/pi-coding-agent/modes/types";
+import { InputController } from "@veyyon/coding-agent/modes/controllers/input-controller";
+import type { InteractiveModeContext } from "@veyyon/coding-agent/modes/types";
 
 function createContext(options?: { focused?: { pasteText(text: string): void } }) {
 	const pasteText = vi.fn();

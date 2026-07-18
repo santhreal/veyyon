@@ -1,6 +1,6 @@
-import { tryParseJson } from "@veyyon/pi-utils";
-import type { RenderResult, SpecialHandler } from "./types";
-import { buildResult, formatNumber, loadPage } from "./types";
+import { tryParseJson } from "@veyyon/utils";
+import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
+import { buildResult, formatNumber, loadPage, scraperDegrade, tryParseUrl } from "./types";
 
 interface TerraformModule {
 	id: string;
@@ -69,9 +69,10 @@ export const handleTerraform: SpecialHandler = async (
 	url: string,
 	timeout: number,
 	signal?: AbortSignal,
-): Promise<RenderResult | null> => {
+): Promise<RenderResult | ScraperDegrade | null> => {
 	try {
-		const parsed = new URL(url);
+		const parsed = tryParseUrl(url);
+		if (!parsed) return null;
 		if (!parsed.hostname.includes("registry.terraform.io")) return null;
 
 		const fetchedAt = new Date().toISOString();
@@ -91,9 +92,9 @@ export const handleTerraform: SpecialHandler = async (
 		}
 
 		return null;
-	} catch {}
-
-	return null;
+	} catch (error) {
+		return scraperDegrade("terraform", error);
+	}
 };
 
 async function handleModuleUrl(

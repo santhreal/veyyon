@@ -7,7 +7,7 @@
  * `ToolSession` registered for the current execution and forwards to the same
  * `callSessionTool` implementation the JS bridge uses.
  */
-import { logger } from "@veyyon/pi-utils";
+import { errorMessage, logger } from "@veyyon/utils";
 import type { ToolSession } from "../../tools";
 import { callSessionTool, type JsStatusEvent } from "../js/tool-bridge";
 
@@ -112,7 +112,7 @@ async function startServer(): Promise<BridgeServer> {
 			} catch (err) {
 				return Response.json({
 					ok: false,
-					error: err instanceof Error ? err.message : String(err),
+					error: errorMessage(err),
 				});
 			}
 		},
@@ -175,7 +175,7 @@ export async function disposePyToolBridge(): Promise<void> {
 		await server.stop();
 	} catch (err) {
 		logger.debug("Failed to stop Python tool bridge", {
-			error: err instanceof Error ? err.message : String(err),
+			error: errorMessage(err),
 		});
 	}
 }

@@ -7,8 +7,8 @@ import {
 	AuthStorage,
 	REMOTE_REFRESH_SENTINEL,
 	SqliteAuthCredentialStore,
-} from "@veyyon/pi-ai/auth-storage";
-import * as oauthUtils from "@veyyon/pi-ai/registry/oauth";
+} from "@veyyon/ai/auth-storage";
+import * as oauthUtils from "@veyyon/ai/registry/oauth";
 import { removeWithRetries } from "../../utils/src/temp";
 
 describe("AuthStorage broker sentinel refresh", () => {

@@ -1,4 +1,5 @@
-import { toNumber } from "@veyyon/pi-catalog/utils";
+import { toNumber } from "@veyyon/catalog/utils";
+import { formatCount } from "@veyyon/utils";
 import type {
 	CredentialRankingStrategy,
 	UsageAmount,
@@ -132,11 +133,6 @@ function formatDate(value: Date): string {
 	)}:${pad(value.getSeconds())}`;
 }
 
-function formatCountedUnit(count: number, singular: string): string {
-	const suffix = count === 1 ? "" : "s";
-	return `${count} ${singular}${suffix}`;
-}
-
 function buildZaiWindow(parsed: ZaiUsageLimitItem): UsageWindow {
 	const count = parsed.number !== undefined && parsed.number > 0 ? parsed.number : 1;
 	let id: string;
@@ -145,17 +141,17 @@ function buildZaiWindow(parsed: ZaiUsageLimitItem): UsageWindow {
 	switch (parsed.unit) {
 		case 3:
 			id = `${count}h`;
-			label = formatCountedUnit(count, "Hour");
+			label = formatCount("Hour", count);
 			durationMs = count * HOUR_MS;
 			break;
 		case 4:
 			id = `${count}d`;
-			label = formatCountedUnit(count, "Day");
+			label = formatCount("Day", count);
 			durationMs = count * DAY_MS;
 			break;
 		case 5:
 			id = `${count}mo`;
-			label = count === 1 ? "Monthly" : formatCountedUnit(count, "Month");
+			label = count === 1 ? "Monthly" : formatCount("Month", count);
 			durationMs = count * MONTH_MS;
 			break;
 		case 6:

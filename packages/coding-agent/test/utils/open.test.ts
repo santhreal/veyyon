@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { openPath } from "@veyyon/pi-coding-agent/utils/open";
-import * as piUtils from "@veyyon/pi-utils";
+import { openPath } from "@veyyon/coding-agent/utils/open";
+import * as piUtils from "@veyyon/utils";
 import type { Subprocess } from "bun";
 
 type SpawnOptions = Bun.SpawnOptions.SpawnOptions<

@@ -1,9 +1,9 @@
-import { getImageDimensions, TERMINAL } from "@veyyon/pi-tui";
-import { Image } from "@veyyon/pi-tui/components/image";
-import { Spacer } from "@veyyon/pi-tui/components/spacer";
-import { Text } from "@veyyon/pi-tui/components/text";
-import { ProcessTerminal } from "@veyyon/pi-tui/terminal";
-import { TUI } from "@veyyon/pi-tui/tui";
+import { getImageDimensions, TERMINAL } from "@veyyon/tui";
+import { Image } from "@veyyon/tui/components/image";
+import { Spacer } from "@veyyon/tui/components/spacer";
+import { Text } from "@veyyon/tui/components/text";
+import { ProcessTerminal } from "@veyyon/tui/terminal";
+import { TUI } from "@veyyon/tui/tui";
 
 const testImagePath = Bun.argv[2] || "/tmp/test-image.png";
 

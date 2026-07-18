@@ -3,7 +3,7 @@
 Model-facing tools are advertised to the model per turn. Availability depends on
 settings, approval mode, plan mode, memory backend, and feature flags.
 
-For approvals see [Approvals and autonomy](../features/sandbox.md). For MCP tools see [MCP](../features/mcp.md).
+For approvals see [Approvals](../features/sandbox.md). For MCP tools see [MCP](../features/mcp.md).
 Per-tool engineering specs live under [`docs/tools/`](../../../tools/).
 
 ## Core loop
@@ -15,19 +15,18 @@ Per-tool engineering specs live under [`docs/tools/`](../../../tools/).
 General schema repair runs before dispatch on all schema-bearing tool calls; tool-specific
 leniency (e.g. hashline parsing) is layered on top. See [Repair overview](../repair/overview.md).
 
-## Edit and write (built)
+## Edit and write
 
 | Tool | Purpose |
 | --- | --- |
-| `edit` | Apply changes — default **hashline** `input` string (`edit.mode`) |
+| `edit` | Apply changes — default **hashline** (`edit.mode: hashline`); also `apply_patch` / `patch` / `replace` modes |
 | `write` | Create or overwrite a whole file |
-| `apply_patch` | V4A envelope when `edit.mode: apply_patch` |
 
 Hashline flow: `read`/`grep` mint `[path#TAG]` anchors → model copies tags into `edit` →
 `@veyyon/hashline` applies ops. See [Edit engine](../edit/engine.md) and
 [`docs/tools/edit.md`](../../../tools/edit.md).
 
-## Read and search (built)
+## Read and search
 
 | Tool | Purpose |
 | --- | --- |
@@ -36,7 +35,7 @@ Hashline flow: `read`/`grep` mint `[path#TAG]` anchors → model copies tags int
 | `glob` | Path globbing |
 | `search_tool_bm25` | Discover tools by description (when enabled) |
 
-## Shell and execution (built)
+## Shell and execution
 
 | Tool | Purpose |
 | --- | --- |
@@ -47,7 +46,7 @@ Hashline flow: `read`/`grep` mint `[path#TAG]` anchors → model copies tags int
 | `browser` | Browser automation |
 | `job` | Background job control |
 
-## Agent coordination (built)
+## Agent coordination
 
 | Tool | Purpose |
 | --- | --- |

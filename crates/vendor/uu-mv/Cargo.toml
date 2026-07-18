@@ -1,6 +1,6 @@
 # Vendored from uutils/coreutils tag 0.8.0 (src/uu/mv), patched to resolve path
 # arguments against the shell working directory and route I/O + prompts through
-# pi-uutils-ctx so it can run in-process as a shell builtin. See src/mv.rs for
+# veyyon-uutils-ctx so it can run in-process as a shell builtin. See src/mv.rs for
 # the patch markers (`pi-uutils:` comments).
 [package]
 name = "uu_mv"
@@ -25,7 +25,7 @@ uucore = { version = "0.8.0", features = [
   "fsxattr",
   "update-control",
 ] }
-pi-uutils-ctx = { path = "../../pi-uutils-ctx" }
+veyyon-uutils-ctx = { path = "../../veyyon-uutils-ctx" }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61.0", default-features = false, features = [

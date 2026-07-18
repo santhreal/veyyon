@@ -1,4 +1,4 @@
-import type { AutocompleteItem } from "@veyyon/pi-tui";
+import type { AutocompleteItem } from "@veyyon/tui";
 import buckets from "./data/emojis.json" with { type: "json" };
 
 // Bucket layout: `{ "<first-char>": [["<name>", "<emoji>"], ...] }`, with each

@@ -1,5 +1,6 @@
-import type { AgentMessage } from "@veyyon/pi-agent-core";
-import type { AssistantMessage } from "@veyyon/pi-ai";
+import type { AgentMessage } from "@veyyon/agent-core";
+import type { AssistantMessage } from "@veyyon/ai";
+import { formatCount } from "@veyyon/utils";
 import type { SessionEntry } from "./session-entries";
 
 export const TOOL_EXECUTION_START_CUSTOM_TYPE = "tool_execution_start";
@@ -161,7 +162,7 @@ export function createInterruptedTurnAbortMessage(
 			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 		},
 		stopReason: "aborted",
-		errorMessage: "Previous OMP process exited before completing the turn.",
+		errorMessage: "Previous veyyon process exited before completing the turn.",
 		timestamp: Number.isFinite(recordedAt) ? recordedAt : Date.now(),
 	};
 }
@@ -305,6 +306,5 @@ export function describePendingToolCalls(entries: readonly SessionEntry[]): stri
 	const pending = collectPendingToolCalls(entries);
 	if (pending.length === 0) return undefined;
 	const formatted = pending.map(formatPendingToolCall).join(", ");
-	const noun = pending.length === 1 ? "tool call" : "tool calls";
-	return `Previous session ended while ${pending.length} ${noun} remained pending: ${formatted}. The prior OMP process exited before recording tool result(s).`;
+	return `Previous session ended while ${formatCount("tool call", pending.length)} remained pending: ${formatted}. The prior veyyon process exited before recording tool result(s).`;
 }

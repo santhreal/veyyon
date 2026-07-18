@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
-import { parseFrontmatter } from "@veyyon/pi-utils";
-import * as logger from "@veyyon/pi-utils/logger";
+import { parseFrontmatter } from "@veyyon/utils";
+import * as logger from "@veyyon/utils/logger";
 
 describe("parseFrontmatter", () => {
 	afterEach(() => {

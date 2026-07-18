@@ -14,14 +14,14 @@ Related references: [Hooks guide](../features/hooks-guide.md), [Non-interactive 
 Goal: every time the agent finishes an edit, run a deterministic check and fail closed when it breaks.
 
 The shipped hook model is a **TypeScript module** discovered under `.veyyon/hooks/` (project) or
-`~/.veyyon/agent/hooks/` (user). The module exports a factory that registers handlers with `pi.on(...)`.
+`~/.veyyon/profiles/default/agent/hooks/` (user). The module exports a factory that registers handlers with `pi.on(...)`.
 
 ```ts
 // .veyyon/hooks/post-edit-check.ts
 export default (pi) => {
-  pi.on("PostToolUse", async (event) => {
-    if (!/^(edit|write)$/.test(event.tool)) return;
-    // run your check (spawn a test/linter) and block on failure
+  pi.on("tool_result", async (event) => {
+    if (!/^(edit|write)$/.test(event.toolName)) return;
+    // run your check (spawn a test/linter); return { block, reason } from tool_call to deny
   });
 };
 ```
@@ -29,29 +29,18 @@ export default (pi) => {
 The Bun runtime imports the module at startup; restart (or `/reload-plugins`) to pick up changes. See
 [Hooks guide](../features/hooks-guide.md) for the event names and handler contract.
 
-> **Spec — not shipped:** JSON `hooks.json` / `config.yml` `hooks:` tables and the
-> `{ type: "command" }` subprocess model with `PreToolUse` / `PostToolUse` matchers. Veyyon runs
-> TS `pi.on(...)` modules, not external subprocess commands.
-
 ---
 
 ## Run a bounded task from a script or CI
 
-Use a one-shot prompt when the trigger lives outside the agent (pre-commit, CI, `entr`, `watchexec`):
+Use `veyyon --print` (`-p`) when the trigger lives outside the agent (pre-commit, CI, `entr`, `watchexec`):
 
 ```console
-$ veyyon --approval-mode auto-edit \
+$ veyyon -p --approval-mode auto-edit \
     "Run the focused tests for the files changed in the last commit and fail if any regress"
 ```
 
-The prompt can be an argument or piped on stdin. Pick `auto-edit` for unattended write access with an
-exec prompt, or `--yolo` to auto-approve everything in a trusted, ideally externally-sandboxed
-environment. Keep the smoke set small; put heavy suites in CI.
-
-> **Spec — not shipped:** a dedicated `veyyon exec` subcommand with `--json` event streams, `-o`
-> final-message capture, and `veyyon review --uncommitted`. See
-> [Non-interactive mode](../features/exec.md) for the current scripted surface, and use `/review` in
-> the TUI for a review pass.
+The prompt can be an argument or piped on stdin. `auto-edit` auto-approves writes and still prompts on exec; `--yolo` auto-approves all tiers (use only on disposable runners). JSON event streams: `--json`. For review, pass a review prompt to `-p`, or use the passive advisor (`--advisor`) in the TUI. See [Non-interactive mode](../features/exec.md).
 
 ---
 
@@ -74,7 +63,7 @@ Add it from the TUI, which writes `mcp.json` for you:
 /mcp add
 ```
 
-Or edit `~/.veyyon/agent/mcp.json` (user) / `.veyyon/mcp.json` (project) directly:
+Or edit `~/.veyyon/profiles/default/agent/mcp.json` (user) / `.veyyon/mcp.json` (project) directly:
 
 ```json
 {
@@ -96,7 +85,7 @@ server needs OAuth, run `/mcp reauth <name>`. Details: [MCP](../features/mcp.md)
 ### Path 2: author a skill
 
 Create a skill directory in user or project scope, for example
-`~/.veyyon/agent/skills/audit-config/SKILL.md` (or `.veyyon/skills/…` in a repo):
+`~/.veyyon/profiles/default/agent/skills/audit-config/SKILL.md` (or `.veyyon/skills/…` in a repo):
 
 ```markdown
 ---
@@ -131,7 +120,7 @@ hand.
 Cross-session memory is off by default. Turn on a backend with `memory.backend` in `config.yml`:
 
 ```yaml
-# ~/.veyyon/agent/config.yml
+# ~/.veyyon/profiles/default/agent/config.yml
 memory:
   backend: mnemopi        # off (default), local, hindsight, mnemopi
 ```
@@ -147,16 +136,15 @@ Use the session tree when you need parallel context *inside* one problem.
 | --- | --- |
 | Inspect the tree / jump to a prior turn | `/tree` |
 | Copy history into a new session from a user message | `/fork` |
-| Duplicate the current leaf immediately | `/clone` |
 
-Typical flow: reach a decision point, `/fork` or `/clone` to try an alternate approach, and keep the
-branch worth keeping. Full behavior: [Branching](../features/branching.md) and [Sessions](./sessions.md).
+Typical flow: reach a decision point, `/fork` to try an alternate approach, continue on the
+branch that works. Full behavior: [Branching](../features/branching.md) and [Sessions](./sessions.md).
 
 ### Memory vs branching
 
-- **Memory** shares durable, consolidated knowledge across different sessions and days.
-- **Branching** shares live transcript context within or beside the current problem.
-- Use both: branch to explore, then let memory capture the decision you kept.
+- **Memory** stores durable facts across sessions when a backend is enabled.
+- **Branching** forks live transcript context for the current problem.
+- Branch to explore; use memory for decisions that should outlive one session.
 
 ---
 

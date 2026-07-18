@@ -4,15 +4,15 @@
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { Agent } from "@veyyon/pi-agent-core";
-import { getBundledModel } from "@veyyon/pi-catalog/models";
-import { ModelRegistry } from "@veyyon/pi-coding-agent/config/model-registry";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { AgentSession } from "@veyyon/pi-coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/pi-coding-agent/session/auth-storage";
-import { SessionManager } from "@veyyon/pi-coding-agent/session/session-manager";
-import { createTools, type ToolSession } from "@veyyon/pi-coding-agent/tools";
-import { Snowflake } from "@veyyon/pi-utils";
+import { Agent } from "@veyyon/agent-core";
+import { getBundledModel } from "@veyyon/catalog/models";
+import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
+import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { createTools, type ToolSession } from "@veyyon/coding-agent/tools";
+import { Snowflake } from "@veyyon/utils";
 import { e2eApiKey } from "../../ai/test/oauth";
 
 export { e2eApiKey };
@@ -74,7 +74,7 @@ export function assistantMsg(text: string) {
  * Use this for e2e tests that need real LLM calls.
  */
 export async function createTestSession(options: TestSessionOptions = {}): Promise<TestSessionContext> {
-	const tempDir = path.join(os.tmpdir(), `omp-test-${Snowflake.next()}`);
+	const tempDir = path.join(os.tmpdir(), `veyyon-test-${Snowflake.next()}`);
 	fs.mkdirSync(tempDir, { recursive: true });
 
 	const toolSession: ToolSession = {

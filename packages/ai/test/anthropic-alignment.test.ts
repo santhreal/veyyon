@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import * as tls from "node:tls";
-import { Effort } from "@veyyon/pi-ai";
+import { Effort } from "@veyyon/ai";
 import {
 	applyClaudeToolPrefix,
 	buildAnthropicClientOptions,
@@ -20,19 +20,11 @@ import {
 	mapStainlessOs,
 	streamAnthropic,
 	stripClaudeToolPrefix,
-} from "@veyyon/pi-ai/providers/anthropic";
-import { getEnvApiKey, streamSimple } from "@veyyon/pi-ai/stream";
-import type {
-	AssistantMessage,
-	Context,
-	Model,
-	ModelSpec,
-	TJsonSchema,
-	TokenTaskBudget,
-	Tool,
-} from "@veyyon/pi-ai/types";
-import { buildModel } from "@veyyon/pi-catalog/build";
-import { removeSyncWithRetries } from "@veyyon/pi-utils";
+} from "@veyyon/ai/providers/anthropic";
+import { getEnvApiKey, streamSimple } from "@veyyon/ai/stream";
+import type { AssistantMessage, Context, Model, ModelSpec, TJsonSchema, TokenTaskBudget, Tool } from "@veyyon/ai/types";
+import { buildModel } from "@veyyon/catalog/build";
+import { removeSyncWithRetries } from "@veyyon/utils";
 import { type as arkType } from "arktype";
 import { withEnv } from "./helpers";
 

@@ -10,6 +10,10 @@
         <!-- Veyyon handbook: self-contained head additions. No remote resources. -->
         <meta name="theme-color" content="#050505">
         <meta name="color-scheme" content="dark">
+        <!-- Site favicons live at the deployed root, one level above /docs/. -->
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+        <link rel="icon" href="/favicon.ico" sizes="48x48">
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png">
         <style>
           /* Paint the near-black surface before CSS/JS resolve the theme, so there is
              no light flash on load. Kept in sync with theme/veyyon.css. */
@@ -18,7 +22,7 @@
           *, *::before, *::after { box-sizing: border-box; }
         </style>
 
-        <meta name="description" content="How Veyyon turns open models into frontier coding agents. The product, the harness, tool-call repair, the edit format, per-model adaptation, and how to use it.">
+        <meta name="description" content="Operator handbook for the Veyyon terminal coding agent: install, configuration, tools, approvals, edit formats, providers, and harness structure.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -38,7 +42,7 @@
         <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="../ayu-highlight-3fdfc3ac.css">
 
         <!-- Custom theme stylesheets -->
-        <link rel="stylesheet" href="../theme/veyyon-fc839a17.css">
+        <link rel="stylesheet" href="../theme/veyyon-06f6939e.css">
 
 
         <!-- Provide site root and default themes to javascript -->
@@ -46,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-e76f06ca.js";
+            window.path_to_searchindex_js = "../searchindex-a2447057.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-9cfd259b.js"></script>
+        <script src="../toc-cc1a72e9.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -192,45 +196,31 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="per-model-repair-posture"><a class="header" href="#per-model-repair-posture">Per-model repair posture</a></h1>
-<blockquote>
-<p><strong>Status: Partial — repair shipped; per-model knobs are an early cut via harness profiles.</strong></p>
-</blockquote>
-<h2 id="shipped"><a class="header" href="#shipped">Shipped</a></h2>
-<ul>
-<li><strong>Repair</strong> threads the active model through the repair hook, so per-model posture can vary.</li>
-<li><strong>Harness profiles:</strong> <code>harness.profiles</code> in <code>config.yml</code> or <code>harness-profiles.yml</code> in the
-agent dir. Keys match <code>provider/model-id</code> or <code>provider/*</code> wildcards.</li>
-</ul>
+<p>The repair hook receives the active model id so behavior can vary by model. Configure overrides with <strong>harness profiles</strong>: <code>harness.profiles</code> in <code>config.yml</code>, or <code>harness-profiles.yml</code> in the agent dir. Keys are <code>provider/model-id</code> or <code>provider/*</code> wildcards.</p>
 <pre><code class="language-yaml">harness:
   profiles:
     "anthropic/claude-sonnet-4-20250514":
       repair: true
       tools: ["read", "edit", "grep", "bash"]
-      promptSectionOrder: ["activeRepo", "system", "project"]
+      promptSectionOrder: ["tool-policy", "delivery-contract"]
     "google/*":
       repair: false
 </code></pre>
-<ul>
-<li><code>repair: false</code> skips schema repair for that model.</li>
-<li><code>tools: [...]</code> filters the initial tool allowlist (MVP hint surface).</li>
-<li><code>promptSectionOrder: [...]</code> reorders the top-level system-prompt blocks for that model. The three
-addressable blocks are <code>system</code> (the rendered <code>system-prompt.md</code>/custom prompt), <code>project</code> (the
-environment/workspace footer), and <code>activeRepo</code> (nested-repo notice, when applicable). Named
-blocks move to the front in the order given; unlisted blocks keep their default relative order
-after the named ones. This reorders whole blocks only — it does <strong>not</strong> reorder content <em>within</em>
-<code>system-prompt.md</code> (e.g. moving “Delegation” before “Tool Policy”), because that template renders
-as one piece, not a list of named sections.</li>
-</ul>
-<p>Disable all repair: <code>VEYYON_REPAIR_DISABLE=1</code>.</p>
-<h2 id="spec--not-shipped"><a class="header" href="#spec--not-shipped">Spec — not shipped</a></h2>
-<ul>
-<li>Per-<code>(model,tool,shape)</code> telemetry counters</li>
-<li>Strictness tables (refuse earlier vs coerce more) beyond the ambiguity guard</li>
-<li>Full <code>backends.toml</code> three-backend tuning</li>
-<li>Reordering <em>within</em> <code>system-prompt.md</code> (Skills vs. Tool Policy vs. Delegation, etc.) — only the
-three coarse top-level blocks above are addressable today; the template itself is monolithic.</li>
-</ul>
-<p>See <a href="./overview.html">Why repair exists</a> and <a href="../using/models.html#per-model-harness-profiles-mvp">Models</a>.</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Field</th><th>Effect</th></tr>
+</thead>
+<tbody>
+<tr><td><code>repair: false</code></td><td>Skip schema repair for that model</td></tr>
+<tr><td><code>tools: [...]</code></td><td>Filter the initial tool allowlist</td></tr>
+<tr><td><code>promptSectionOrder: [...]</code></td><td>Reorder default system-prompt banner sections</td></tr>
+</tbody>
+</table>
+</div>
+<p>Addressable banner sections: <code>role</code>, <code>runtime</code>, <code>tool-policy</code>, <code>execution-workflow</code>, <code>delivery-contract</code>. Listed sections move to the front in the given order (after the fixed system-conventions preamble); unlisted sections keep template order after them. An unknown name rejects the whole list with a warning. Custom system-prompt templates have no banner sections, so the setting is ignored (with a warning).</p>
+<p>Disable all repair process-wide: <code>VEYYON_REPAIR_DISABLE=1</code>.</p>
+<p>See <a href="./overview.html">Why repair exists</a> and <a href="../using/models.html#harness-profiles">Models</a>.</p>
 
                     </main>
 

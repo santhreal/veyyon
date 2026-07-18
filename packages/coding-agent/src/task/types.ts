@@ -1,5 +1,5 @@
-import type { Usage } from "@veyyon/pi-ai";
-import { $env } from "@veyyon/pi-utils";
+import type { Usage } from "@veyyon/ai";
+import { $env } from "@veyyon/utils";
 import { type BaseType, type } from "arktype";
 import type { AgentSessionEvent } from "../session/agent-session";
 import type { ConfiguredThinkingLevel } from "../thinking";
@@ -21,10 +21,10 @@ const parseNumber = (value: string | undefined, defaultValue: number): number =>
 };
 
 /** Maximum output bytes per agent */
-export const MAX_OUTPUT_BYTES = parseNumber($env.PI_TASK_MAX_OUTPUT_BYTES, 500_000);
+export const MAX_OUTPUT_BYTES = parseNumber($env.VEYYON_TASK_MAX_OUTPUT_BYTES, 500_000);
 
 /** Maximum output lines per agent */
-export const MAX_OUTPUT_LINES = parseNumber($env.PI_TASK_MAX_OUTPUT_LINES, 5000);
+export const MAX_OUTPUT_LINES = parseNumber($env.VEYYON_TASK_MAX_OUTPUT_LINES, 5000);
 
 /** EventBus channel for raw subagent events */
 export const TASK_SUBAGENT_EVENT_CHANNEL = "task:subagent:event";

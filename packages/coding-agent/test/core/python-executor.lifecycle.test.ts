@@ -1,13 +1,13 @@
 import { afterEach, describe, expect, it } from "bun:test";
-import { disposeAllKernelSessions, executePython } from "@veyyon/pi-coding-agent/eval/py/executor";
+import { disposeAllKernelSessions, executePython } from "@veyyon/coding-agent/eval/py/executor";
 import {
 	type KernelExecuteOptions,
 	type KernelExecuteResult,
 	type KernelShutdownResult,
 	PythonKernel,
-} from "@veyyon/pi-coding-agent/eval/py/kernel";
+} from "@veyyon/coding-agent/eval/py/kernel";
 
-Bun.env.PI_PYTHON_SKIP_CHECK = "1";
+Bun.env.VEYYON_PYTHON_SKIP_CHECK = "1";
 
 class FakeKernel {
 	#result: KernelExecuteResult;

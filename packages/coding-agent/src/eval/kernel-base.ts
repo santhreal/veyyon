@@ -1,4 +1,4 @@
-import { logger, Snowflake } from "@veyyon/pi-utils";
+import { errorMessage, logger, Snowflake } from "@veyyon/utils";
 import type { Subprocess } from "bun";
 import { type KernelDisplayOutput, renderKernelDisplay } from "./py/display";
 
@@ -273,7 +273,7 @@ export abstract class BaseKernel<TExecuteOptions extends KernelExecuteOptions = 
 			pending.cancelled = true;
 			pending.error = {
 				name: "TransportError",
-				value: err instanceof Error ? err.message : String(err),
+				value: errorMessage(err),
 				traceback: [],
 			};
 			finalize();
@@ -288,7 +288,7 @@ export abstract class BaseKernel<TExecuteOptions extends KernelExecuteOptions = 
 			this.#proc.kill("SIGINT");
 		} catch (err) {
 			logger.warn(`Failed to interrupt ${this.#options.languageName.toLowerCase()} runner`, {
-				error: err instanceof Error ? err.message : String(err),
+				error: errorMessage(err),
 			});
 		}
 	}
@@ -391,7 +391,7 @@ export abstract class BaseKernel<TExecuteOptions extends KernelExecuteOptions = 
 				await this.#flushFrames();
 			} catch (err) {
 				logger.warn(`${this.#options.languageName} kernel reader failed`, {
-					error: err instanceof Error ? err.message : String(err),
+					error: errorMessage(err),
 				});
 			} finally {
 				try {
@@ -443,7 +443,7 @@ export abstract class BaseKernel<TExecuteOptions extends KernelExecuteOptions = 
 			} catch (err) {
 				logger.warn(`${this.#options.languageName} runner emitted invalid JSON`, {
 					line: line.slice(0, 200),
-					error: err instanceof Error ? err.message : String(err),
+					error: errorMessage(err),
 				});
 				continue;
 			}

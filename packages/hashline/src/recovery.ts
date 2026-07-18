@@ -7,7 +7,7 @@
  * patcher then returns a mismatch with fresh context instead of guessing.
  */
 import * as Diff from "diff";
-import { applyEdits } from "./apply";
+import { applyEdits, getEditAnchors } from "./apply";
 import { RECOVERY_EXTERNAL_WARNING, RECOVERY_LINE_REMAP_WARNING, RECOVERY_SESSION_CHAIN_WARNING } from "./messages";
 import type { SnapshotStore } from "./snapshots";
 import type { Anchor, ApplyResult, Edit } from "./types";
@@ -34,14 +34,6 @@ function collectAnchorLines(edits: readonly Edit[]): number[] {
 		for (const anchor of getEditAnchors(edit)) lines.push(anchor.line);
 	}
 	return lines;
-}
-
-function getEditAnchors(edit: Edit): Anchor[] {
-	if (edit.kind === "delete") return [edit.anchor];
-	// Recovery only ever receives already-resolved edits (no `block`); this arm
-	// exists for type-exhaustiveness over the full `Edit` union.
-	if (edit.kind === "block") return [edit.anchor];
-	return edit.cursor.kind === "before_anchor" || edit.cursor.kind === "after_anchor" ? [edit.cursor.anchor] : [];
 }
 
 function buildLineMap(previousText: string, currentText: string): Map<number, number> {

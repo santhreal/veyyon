@@ -1,19 +1,19 @@
 import { beforeAll, describe, expect, it, spyOn } from "bun:test";
 import * as os from "node:os";
 import { stripVTControlCharacters } from "node:util";
-import { PluginManager } from "@veyyon/pi-coding-agent/extensibility/plugins";
+import { PluginManager } from "@veyyon/coding-agent/extensibility/plugins";
 import {
 	type InstalledPluginSummary,
 	MarketplaceManager,
-} from "@veyyon/pi-coding-agent/extensibility/plugins/marketplace";
-import type { InstalledPlugin } from "@veyyon/pi-coding-agent/extensibility/plugins/types";
+} from "@veyyon/coding-agent/extensibility/plugins/marketplace";
+import type { InstalledPlugin } from "@veyyon/coding-agent/extensibility/plugins/types";
 import {
 	MarketplacePluginDetailComponent,
 	PluginListComponent,
 	type PluginListEntry,
 	PluginSettingsComponent,
-} from "@veyyon/pi-coding-agent/modes/components/plugin-settings";
-import { initTheme } from "@veyyon/pi-coding-agent/modes/theme/theme";
+} from "@veyyon/coding-agent/modes/components/plugin-settings";
+import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 
 beforeAll(async () => {
 	await initTheme();
@@ -285,7 +285,7 @@ describe("MarketplacePluginDetailComponent", () => {
 
 	it("shortens home-relative install paths to ~ before rendering", () => {
 		const home = os.homedir();
-		const installPath = `${home}/.omp/cache/plugins/sample@mkt`;
+		const installPath = `${home}/.veyyon/cache/plugins/sample@mkt`;
 		const plugin = marketplace("sample@mkt", { entry: { installPath } });
 
 		const component = new MarketplacePluginDetailComponent(plugin, {
@@ -296,7 +296,7 @@ describe("MarketplacePluginDetailComponent", () => {
 		const text = stripVTControlCharacters(component.render(120).join("\n"));
 		// `shortenPath` keeps the rest of the path intact but replaces $HOME with `~`,
 		// so the user's home directory never leaks into the rendered TUI surface.
-		expect(text).toContain("~/.omp/cache/plugins/sample@mkt");
+		expect(text).toContain("~/.veyyon/cache/plugins/sample@mkt");
 		expect(text).not.toContain(home);
 	});
 });

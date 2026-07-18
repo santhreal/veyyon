@@ -2,10 +2,10 @@
  * `veyyon auth-gateway` command handlers.
  *
  * Boots a forward-proxy server that lets less-trusted clients (the macOS
- * usage widget, robomp containers, …) make provider API calls without ever
+ * usage widget, veybot containers, …) make provider API calls without ever
  * seeing the access token. The gateway is itself a broker client and
  * resolves credentials through the configured broker (via the same
- * `OMP_AUTH_BROKER_URL` / `auth.broker.url` precedence used elsewhere).
+ * `VEYYON_AUTH_BROKER_URL` / `auth.broker.url` precedence used elsewhere).
  *
  * Sub-verbs:
  *   - `serve [--bind=…]` — boots the gateway against the configured broker.
@@ -23,13 +23,14 @@ import {
 	type CredentialCompletionResult,
 	completeSimple,
 	type Model,
-} from "@veyyon/pi-ai";
-import { AuthBrokerClient, RemoteAuthCredentialStore, type SnapshotResponse } from "@veyyon/pi-ai/auth-broker";
-import { DEFAULT_AUTH_GATEWAY_BIND, startAuthGateway } from "@veyyon/pi-ai/auth-gateway";
-import { type GeneratedProvider, getBundledModels, getBundledProviders } from "@veyyon/pi-catalog/models";
-import { getConfigRootDir, isEnoent, VERSION } from "@veyyon/pi-utils";
+} from "@veyyon/ai";
+import { AuthBrokerClient, RemoteAuthCredentialStore, type SnapshotResponse } from "@veyyon/ai/auth-broker";
+import { DEFAULT_AUTH_GATEWAY_BIND, startAuthGateway } from "@veyyon/ai/auth-gateway";
+import { type GeneratedProvider, getBundledModels, getBundledProviders } from "@veyyon/catalog/models";
+import { formatCount, getConfigRootDir, isEnoent, VERSION } from "@veyyon/utils";
 import chalk from "chalk";
 import { type AuthBrokerClientConfig, resolveAuthBrokerConfig } from "../session/auth-broker-config";
+import { scopedTimeoutSignal } from "../utils/fetch-timeout";
 
 export type AuthGatewayAction = "serve" | "token" | "status" | "check";
 
@@ -139,7 +140,7 @@ async function runServe(flags: AuthGatewayCommandArgs["flags"]): Promise<void> {
 	const brokerConfig = await resolveAuthBrokerConfig();
 	if (!brokerConfig) {
 		throw new Error(
-			"`veyyon auth-gateway serve` requires OMP_AUTH_BROKER_URL (or `auth.broker.url`/`auth.broker.token` in config.yml). The gateway is itself a broker client.",
+			"`veyyon auth-gateway serve` requires VEYYON_AUTH_BROKER_URL (or `auth.broker.url`/`auth.broker.token` in config.yml). The gateway is itself a broker client.",
 		);
 	}
 	const bind = flags.bind ?? DEFAULT_AUTH_GATEWAY_BIND;
@@ -266,7 +267,7 @@ async function runStatus(flags: AuthGatewayCommandArgs["flags"]): Promise<void> 
 		if (flags.json) {
 			process.stdout.write(`${JSON.stringify(status)}\n`);
 		} else {
-			process.stdout.write(`${chalk.yellow("No broker configured.")} Set OMP_AUTH_BROKER_URL.\n`);
+			process.stdout.write(`${chalk.yellow("No broker configured.")} Set VEYYON_AUTH_BROKER_URL.\n`);
 			process.stdout.write(
 				`token: ${status.tokenPresent ? chalk.green("present") : chalk.red("missing")} at ${status.tokenFile}\n`,
 			);
@@ -291,9 +292,7 @@ async function runStatus(flags: AuthGatewayCommandArgs["flags"]): Promise<void> 
 		if (flags.json) {
 			process.stdout.write(`${JSON.stringify(status)}\n`);
 		} else {
-			const brokerLine = `upstream broker: ${brokerConfig.url} (${snapshot.credentials.length} credential${
-				snapshot.credentials.length === 1 ? "" : "s"
-			})`;
+			const brokerLine = `upstream broker: ${brokerConfig.url} (${formatCount("credential", snapshot.credentials.length)})`;
 			process.stdout.write(`${tokenPresent ? chalk.green("ready") : chalk.yellow("not ready")} ${brokerLine}\n`);
 			process.stdout.write(
 				`token: ${tokenPresent ? chalk.green("present") : chalk.red("missing")} at ${status.tokenFile}\n`,
@@ -439,24 +438,28 @@ async function probeOneModel(
 	outerSignal: AbortSignal,
 ): Promise<CredentialCompletionResult> {
 	const start = Date.now();
-	const attemptTimeoutSignal = AbortSignal.timeout(STRICT_PROBE_PER_ATTEMPT_TIMEOUT_MS);
-	const attemptSignal = AbortSignal.any([outerSignal, attemptTimeoutSignal]);
+	const attemptTimeout = scopedTimeoutSignal(STRICT_PROBE_PER_ATTEMPT_TIMEOUT_MS, outerSignal);
 	// `systemPrompt` is mandatory for some providers (Codex 400s "Instructions
 	// are required" without it). `disableReasoning` is intentionally NOT set:
 	// providers like Fireworks reject the "none" effort it maps to, and we'd
 	// rather burn 16 reasoning tokens than misdiagnose a healthy credential.
-	const response = await completeSimple(
-		model,
-		{
-			systemPrompt: ["Connectivity check. Reply with the single word 'pong'."],
-			messages: [{ role: "user", content: "ping", timestamp: start }],
-		},
-		{
-			apiKey,
-			maxTokens: 32,
-			signal: attemptSignal,
-		},
-	);
+	let response: Awaited<ReturnType<typeof completeSimple>>;
+	try {
+		response = await completeSimple(
+			model,
+			{
+				systemPrompt: ["Connectivity check. Reply with the single word 'pong'."],
+				messages: [{ role: "user", content: "ping", timestamp: start }],
+			},
+			{
+				apiKey,
+				maxTokens: 32,
+				signal: attemptTimeout.signal,
+			},
+		);
+	} finally {
+		attemptTimeout.cancel();
+	}
 	const latencyMs = Date.now() - start;
 	if (response.stopReason === "error" || response.stopReason === "aborted") {
 		return {
@@ -534,7 +537,7 @@ async function runCheck(flags: AuthGatewayCommandArgs["flags"]): Promise<void> {
 	const brokerConfig = await resolveAuthBrokerConfig();
 	if (!brokerConfig) {
 		throw new Error(
-			"`veyyon auth-gateway check` requires OMP_AUTH_BROKER_URL (or `auth.broker.url`/`auth.broker.token` in config.yml). It probes the same credentials the gateway would serve.",
+			"`veyyon auth-gateway check` requires VEYYON_AUTH_BROKER_URL (or `auth.broker.url`/`auth.broker.token` in config.yml). It probes the same credentials the gateway would serve.",
 		);
 	}
 

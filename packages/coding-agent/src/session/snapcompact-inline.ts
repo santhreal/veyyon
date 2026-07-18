@@ -14,8 +14,8 @@
  * estimate (`estimateInlineSavings`) so the two can never disagree.
  */
 
-import { countTokens } from "@veyyon/pi-agent-core";
-import type { Context, ImageContent, Model, TextContent, ToolResultMessage, UserMessage } from "@veyyon/pi-ai";
+import { countTokens } from "@veyyon/agent-core";
+import type { Context, ImageContent, Model, TextContent, ToolResultMessage, UserMessage } from "@veyyon/ai";
 import * as snapcompact from "@veyyon/snapcompact";
 import contextFramesNote from "../prompts/system/snapcompact-context-frames-note.md" with { type: "text" };
 import contextStub from "../prompts/system/snapcompact-context-stub.md" with { type: "text" };

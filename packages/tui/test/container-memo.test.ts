@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
-import { Box, type Component, Container, Text } from "@veyyon/pi-tui";
+import { Box, type Component, Container, Text } from "@veyyon/tui";
 
 /**
  * Leaf component that returns a stable cached array and counts render calls.

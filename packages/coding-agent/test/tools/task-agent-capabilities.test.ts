@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
-import { isReadOnlyAgent } from "@veyyon/pi-coding-agent/task";
-import { loadBundledAgents } from "@veyyon/pi-coding-agent/task/agents";
-import type { AgentDefinition } from "@veyyon/pi-coding-agent/task/types";
+import { isReadOnlyAgent } from "@veyyon/coding-agent/task";
+import { loadBundledAgents } from "@veyyon/coding-agent/task/agents";
+import type { AgentDefinition } from "@veyyon/coding-agent/task/types";
 
 function agentByName(agents: AgentDefinition[], name: string): AgentDefinition {
 	const agent = agents.find(candidate => candidate.name === name);

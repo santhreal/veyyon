@@ -2,9 +2,9 @@
  * ORCID handler for web-fetch
  */
 
-import { tryParseJson } from "@veyyon/pi-utils";
-import type { RenderResult, SpecialHandler } from "./types";
-import { buildResult, loadPage } from "./types";
+import { tryParseJson } from "@veyyon/utils";
+import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
+import { buildResult, loadPage, scraperDegrade, tryParseUrl } from "./types";
 
 const MAX_WORKS = 50;
 const ORCID_PATTERN = /\/(\d{4}-\d{4}-\d{4}-\d{3}[\dXx])(?:\/|$)/;
@@ -206,9 +206,10 @@ export const handleOrcid: SpecialHandler = async (
 	url: string,
 	timeout: number,
 	signal?: AbortSignal,
-): Promise<RenderResult | null> => {
+): Promise<RenderResult | ScraperDegrade | null> => {
 	try {
-		const parsed = new URL(url);
+		const parsed = tryParseUrl(url);
+		if (!parsed) return null;
 		if (!isOrcidHost(parsed.hostname)) return null;
 
 		const orcid = extractOrcidId(parsed.pathname);
@@ -226,7 +227,7 @@ export const handleOrcid: SpecialHandler = async (
 		if (!result.ok || !result.content) return null;
 
 		const record = tryParseJson<OrcidRecord>(result.content);
-		if (!record) return null;
+		if (!record) return scraperDegrade("orcid", "unexpected response shape");
 
 		const personName = formatName(record.person?.name);
 		const biography = record.person?.biography?.content?.trim();
@@ -280,7 +281,7 @@ export const handleOrcid: SpecialHandler = async (
 		}
 
 		return buildResult(md, { url, method: "orcid-api", fetchedAt, notes: ["Fetched via ORCID Public API"] });
-	} catch {
-		return null;
+	} catch (error) {
+		return scraperDegrade("orcid", error);
 	}
 };

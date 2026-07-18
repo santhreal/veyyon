@@ -1,4 +1,4 @@
-import { parseJsonWithRepair, parseStreamingJson } from "@veyyon/pi-utils";
+import { parseJsonWithRepair, parseStreamingJson } from "@veyyon/utils";
 import type { Message, ToolCall } from "../types";
 import { asRecord, mintToolCallId, partialSuffixOverlapAny } from "./coercion";
 import dialectPrompt from "./hermes.md" with { type: "text" };

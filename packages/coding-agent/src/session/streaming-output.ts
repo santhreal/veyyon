@@ -1,5 +1,5 @@
-import type { AgentToolUpdateCallback } from "@veyyon/pi-agent-core";
-import { sanitizeText } from "@veyyon/pi-utils";
+import type { AgentToolUpdateCallback } from "@veyyon/agent-core";
+import { sanitizeText } from "@veyyon/utils";
 import { formatBytes } from "../tools/render-utils";
 import { sanitizeWithOptionalSixelPassthrough } from "../utils/sixel";
 

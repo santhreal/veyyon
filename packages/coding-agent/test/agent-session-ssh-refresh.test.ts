@@ -1,18 +1,18 @@
 import { afterEach, describe, expect, it, spyOn } from "bun:test";
-import { Agent, type AgentTool } from "@veyyon/pi-agent-core";
-import type { Model } from "@veyyon/pi-ai";
-import { buildModel } from "@veyyon/pi-catalog/build";
-import { reset as resetCapabilities } from "@veyyon/pi-coding-agent/capability";
-import { type SSHHost, sshCapability } from "@veyyon/pi-coding-agent/capability/ssh";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { loadCapability } from "@veyyon/pi-coding-agent/discovery";
-import { AgentSession } from "@veyyon/pi-coding-agent/session/agent-session";
-import { SessionManager } from "@veyyon/pi-coding-agent/session/session-manager";
-import { addSSHHost, removeSSHHost, updateSSHHost } from "@veyyon/pi-coding-agent/ssh/config-writer";
-import * as connectionManager from "@veyyon/pi-coding-agent/ssh/connection-manager";
-import type { ToolSession } from "@veyyon/pi-coding-agent/tools";
-import { loadSshTool } from "@veyyon/pi-coding-agent/tools/ssh";
-import { getSSHConfigPath, TempDir } from "@veyyon/pi-utils";
+import { Agent, type AgentTool } from "@veyyon/agent-core";
+import type { Model } from "@veyyon/ai";
+import { buildModel } from "@veyyon/catalog/build";
+import { reset as resetCapabilities } from "@veyyon/coding-agent/capability";
+import { type SSHHost, sshCapability } from "@veyyon/coding-agent/capability/ssh";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import { loadCapability } from "@veyyon/coding-agent/discovery";
+import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { addSSHHost, removeSSHHost, updateSSHHost } from "@veyyon/coding-agent/ssh/config-writer";
+import * as connectionManager from "@veyyon/coding-agent/ssh/connection-manager";
+import type { ToolSession } from "@veyyon/coding-agent/tools";
+import { loadSshTool } from "@veyyon/coding-agent/tools/ssh";
+import { getSSHConfigPath, TempDir } from "@veyyon/utils";
 
 function createModel(): Model<"openai-responses"> {
 	return buildModel({

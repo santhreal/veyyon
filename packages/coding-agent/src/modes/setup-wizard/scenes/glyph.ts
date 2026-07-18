@@ -1,4 +1,4 @@
-import { routeSelectListMouse, type SelectItem, SelectList, type SgrMouseEvent } from "@veyyon/pi-tui";
+import { routeSelectListMouse, type SelectItem, SelectList, type SgrMouseEvent } from "@veyyon/tui";
 import { getSelectListTheme, type SymbolPreset, setSymbolPreset, theme } from "../../theme/theme";
 import type { SetupScene, SetupSceneController, SetupSceneHost } from "./types";
 

@@ -4,7 +4,7 @@
  * Calls Brave's web search REST API and maps results into the unified
  * SearchResponse shape used by the web search tool.
  */
-import { type AuthStorage, type FetchImpl, getEnvApiKey } from "@veyyon/pi-ai";
+import { type AuthStorage, type FetchImpl, getEnvApiKey } from "@veyyon/ai";
 import type { SearchResponse, SearchSource } from "../../../web/search/types";
 import { SearchProviderError } from "../../../web/search/types";
 import { clampNumResults, dateToAgeSeconds } from "../utils";
@@ -82,24 +82,26 @@ async function callBraveSearch(
 	}
 
 	const fetchImpl = params.fetch ?? fetch;
-	const response = await fetchImpl(url, {
-		headers: {
-			Accept: "application/json",
-			"X-Subscription-Token": apiKey,
-		},
-		signal: withHardTimeout(params.signal),
+	return withHardTimeout(params.signal, async hardSignal => {
+		const response = await fetchImpl(url, {
+			headers: {
+				Accept: "application/json",
+				"X-Subscription-Token": apiKey,
+			},
+			signal: hardSignal,
+		});
+
+		if (!response.ok) {
+			const errorText = await response.text();
+			const classified = classifyProviderHttpError("brave", response.status, errorText);
+			if (classified) throw classified;
+			throw new SearchProviderError("brave", `Brave API error (${response.status}): ${errorText}`, response.status);
+		}
+
+		const data = (await response.json()) as BraveSearchResponse;
+		const requestId = response.headers.get("x-request-id") ?? response.headers.get("request-id") ?? undefined;
+		return { response: data, requestId };
 	});
-
-	if (!response.ok) {
-		const errorText = await response.text();
-		const classified = classifyProviderHttpError("brave", response.status, errorText);
-		if (classified) throw classified;
-		throw new SearchProviderError("brave", `Brave API error (${response.status}): ${errorText}`, response.status);
-	}
-
-	const data = (await response.json()) as BraveSearchResponse;
-	const requestId = response.headers.get("x-request-id") ?? response.headers.get("request-id") ?? undefined;
-	return { response: data, requestId };
 }
 
 /** Execute Brave web search. */

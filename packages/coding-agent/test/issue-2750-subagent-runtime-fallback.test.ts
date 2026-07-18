@@ -1,11 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
-import type { Api, Model } from "@veyyon/pi-ai";
-import { buildModel } from "@veyyon/pi-catalog/build";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
-import * as sdkModule from "@veyyon/pi-coding-agent/sdk";
-import type { AgentSession } from "@veyyon/pi-coding-agent/session/agent-session";
-import { runSubprocess } from "@veyyon/pi-coding-agent/task/executor";
-import type { AgentDefinition } from "@veyyon/pi-coding-agent/task/types";
+import type { Api, Model } from "@veyyon/ai";
+import { buildModel } from "@veyyon/catalog/build";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import * as sdkModule from "@veyyon/coding-agent/sdk";
+import type { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import { runSubprocess } from "@veyyon/coding-agent/task/executor";
+import type { AgentDefinition } from "@veyyon/coding-agent/task/types";
 
 function model(provider: string, id: string): Model<Api> {
 	return buildModel({

@@ -3,13 +3,17 @@
     <head>
         <!-- Book generated using mdBook -->
         <meta charset="UTF-8">
-        <title>What makes Veyyon different - The Veyyon Harness Handbook</title>
+        <title>Mechanisms - The Veyyon Harness Handbook</title>
 
 
         <!-- Custom HTML head -->
         <!-- Veyyon handbook: self-contained head additions. No remote resources. -->
         <meta name="theme-color" content="#050505">
         <meta name="color-scheme" content="dark">
+        <!-- Site favicons live at the deployed root, one level above /docs/. -->
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+        <link rel="icon" href="/favicon.ico" sizes="48x48">
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png">
         <style>
           /* Paint the near-black surface before CSS/JS resolve the theme, so there is
              no light flash on load. Kept in sync with theme/veyyon.css. */
@@ -18,7 +22,7 @@
           *, *::before, *::after { box-sizing: border-box; }
         </style>
 
-        <meta name="description" content="How Veyyon turns open models into frontier coding agents. The product, the harness, tool-call repair, the edit format, per-model adaptation, and how to use it.">
+        <meta name="description" content="Operator handbook for the Veyyon terminal coding agent: install, configuration, tools, approvals, edit formats, providers, and harness structure.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -38,7 +42,7 @@
         <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="../ayu-highlight-3fdfc3ac.css">
 
         <!-- Custom theme stylesheets -->
-        <link rel="stylesheet" href="../theme/veyyon-fc839a17.css">
+        <link rel="stylesheet" href="../theme/veyyon-06f6939e.css">
 
 
         <!-- Provide site root and default themes to javascript -->
@@ -46,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-e76f06ca.js";
+            window.path_to_searchindex_js = "../searchindex-a2447057.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-9cfd259b.js"></script>
+        <script src="../toc-cc1a72e9.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -191,42 +195,33 @@
 
                 <div id="mdbook-content" class="content">
                     <main>
-                        <h1 id="what-makes-veyyon-different"><a class="header" href="#what-makes-veyyon-different">What makes Veyyon different</a></h1>
-<p>These ideas set Veyyon apart. Each is shipped unless noted as <strong>Spec — not shipped</strong>.</p>
-<p>For a reader-first pass, start with the benefit chapters. This page is the compact design map.</p>
-<h2 id="hashline-first-editing"><a class="header" href="#hashline-first-editing">Hashline-first editing</a></h2>
-<p>Open models emit reliable <strong>hashline</strong> patches when the harness matches their training. Veyyon’s <code>edit</code>
-and <code>write</code> tools apply hashline patches with verification before bytes hit disk, so an edit either
-lands exactly or fails loudly with recovery hints.</p>
+                        <h1 id="mechanisms"><a class="header" href="#mechanisms">Mechanisms</a></h1>
+<p>Compact map of the main harness mechanisms. Operator how-tos live under <a href="../using/getting-started.html">Using</a> and <a href="../features/sandbox.html">Features</a>.</p>
+<h2 id="hashline-edits"><a class="header" href="#hashline-edits">Hashline edits</a></h2>
+<p><code>edit</code> and <code>write</code> accept hashline (content-addressed) patches. The natives layer verifies the patch against the current file before writing. On mismatch the tool fails with recovery context for the model.</p>
 <p>See <a href="../using/editing.html">Editing and repair</a> and <a href="../edit/engine.html">The hashline edit engine</a>.</p>
-<h2 id="tool-approval-by-tier-autonomy-ladder"><a class="header" href="#tool-approval-by-tier-autonomy-ladder">Tool approval by tier (autonomy ladder)</a></h2>
-<p><code>tools.approvalMode</code> (<code>plan</code>, <code>ask</code>, <code>auto-edit</code>, <code>yolo</code>; legacy <code>always-ask</code> / <code>write</code> aliases) and
-per-tool <code>tools.approval</code> overrides gate read, write, and exec tiers. Bash can force prompts on
-destructive patterns even in permissive modes.</p>
-<p>See <code>docs/approval-mode.md</code> and <code>/settings</code> → Advanced → Safety.</p>
-<h2 id="every-model-in-the-harness-it-fits"><a class="header" href="#every-model-in-the-harness-it-fits">Every model in the harness it fits</a></h2>
-<p>Model selection is three explicit slots — the <strong>interactive</strong> model (chosen with <code>/model</code>), the
-<strong>subagent</strong> model, and the <strong>compaction</strong> model (both set in settings). No <code>default</code> model stands in
-for the others. Optional named <strong>roles</strong> live in settings, scoped per profile, for anyone who wants
-specific work types pinned to specific models. Prompts and tool exposure adapt per model and per agent
-kind (main vs subagent).</p>
-<h2 id="provider-agnostic-runtime"><a class="header" href="#provider-agnostic-runtime">Provider-agnostic runtime</a></h2>
-<p>The agent loop, TUI, session format, MCP, skills, hooks, and extensions are provider-neutral. You configure providers in <code>~/.veyyon/agent/config.yml</code> or via <code>/setup</code> / <code>/providers</code>.</p>
-<h2 id="control-flow-in-the-harness"><a class="header" href="#control-flow-in-the-harness">Control flow in the harness</a></h2>
-<p>Compaction, goal continuation, plan mode, vibe mode, and task subagents are engine features, not persona-only instructions. Goal mode can auto-continue idle sessions toward an objective; plan mode drafts a plan file before mutating the repo.</p>
-<h2 id="spec--not-shipped-documented-elsewhere"><a class="header" href="#spec--not-shipped-documented-elsewhere">Spec — not shipped (documented elsewhere)</a></h2>
+<h2 id="tool-approval-tiers"><a class="header" href="#tool-approval-tiers">Tool approval tiers</a></h2>
+<p><code>tools.approvalMode</code> is one of <code>plan</code>, <code>ask</code>, <code>auto-edit</code>, <code>yolo</code> (legacy aliases: <code>always-ask</code> → <code>ask</code>, <code>write</code> → <code>auto-edit</code>). Per-tool <code>tools.approval</code> overrides apply on top. Tiers are read, write, and exec. Bash can still force a prompt on destructive patterns depending on execpolicy rules.</p>
+<p>See <a href="../features/sandbox.html">Approvals</a> and <code>/settings</code> → Advanced → Safety. Detail also in <code>docs/approval-mode.md</code> in the repo.</p>
+<h2 id="model-slots-and-roles"><a class="header" href="#model-slots-and-roles">Model slots and roles</a></h2>
 <ul>
-<li>A full schema-based tool-call repair cascade. General schema repair on tool calls is shipped; the
-broader cascade is planned. See <a href="../repair/overview.html">Repair overview</a>.</li>
-<li>Self-contained profiles that own isolated MCP/skills copies per profile. Today profiles relocate the
-agent directory to <code>~/.veyyon/profiles/&lt;name&gt;/agent/</code>.</li>
-<li>A top-level <code>veyyon doctor</code> install-health command. Use <code>veyyon plugin doctor</code> and <code>/debug</code> today.</li>
+<li><strong>Interactive model</strong> — <code>/model</code> / <code>--model</code>; persisted as <code>modelRoles.default</code>.</li>
+<li><strong>Roles</strong> — <code>smol</code>, <code>slow</code>, <code>vision</code>, <code>plan</code>, <code>designer</code>, <code>commit</code>, <code>tiny</code>, <code>task</code>, <code>advisor</code> (+ custom) in <code>modelRoles</code>.</li>
+<li><strong>Overrides</strong> — <code>subagent.model</code> (overrides <code>modelRoles.task</code> when set), <code>compaction.model</code> (else inherit interactive).</li>
+<li><strong>Cycle</strong> — <code>cycleOrder</code> (default <code>smol</code>, <code>slow</code>); <code>app.model.cycleForward</code> (often Ctrl+P).</li>
 </ul>
-<h2 id="where-to-go-next"><a class="header" href="#where-to-go-next">Where to go next</a></h2>
+<p>Full contract: <a href="../using/roles-and-profiles.html">Models, roles, and profiles</a>.</p>
+<h2 id="provider-neutral-loop"><a class="header" href="#provider-neutral-loop">Provider-neutral loop</a></h2>
+<p>The agent loop, TUI, session format, MCP, skills, hooks, and extensions do not hard-code a single vendor. Providers are configured in the active profile’s agent dir (<code>config.yml</code>, <code>/setup</code>, <code>/providers</code>).</p>
+<h2 id="engine-modes"><a class="header" href="#engine-modes">Engine modes</a></h2>
+<p>Compaction, goal continuation, plan mode, vibe mode, and task subagents are implemented in the session/tool layer. Goal mode can continue an idle session toward a stored objective. Plan mode writes a plan file and restricts mutation until resolve/approval paths complete.</p>
+<h2 id="profiles"><a class="header" href="#profiles">Profiles</a></h2>
+<p>Every profile (including <code>default</code>) lives at <code>~/.veyyon/profiles/&lt;name&gt;/agent/</code> (settings, sessions, MCP, skills, hooks, …). See <a href="../features/profiles.html">Profiles</a> and <a href="../reference/file-locations.html">File locations</a>.</p>
+<h2 id="related"><a class="header" href="#related">Related</a></h2>
 <ul>
-<li><a href="./performance.html">Performance</a></li>
-<li><a href="../foundations/thesis.html">The thesis: the harness is the lever</a></li>
+<li><a href="../foundations/thesis.html">Design goals</a></li>
 <li><a href="../using/roles-and-profiles.html">Roles and profiles</a></li>
+<li><a href="../repair/overview.html">Repair</a></li>
 </ul>
 
                     </main>

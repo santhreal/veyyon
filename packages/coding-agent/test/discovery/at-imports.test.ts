@@ -2,9 +2,9 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { clearCache as clearFsCache } from "@veyyon/pi-coding-agent/capability/fs";
-import { expandAtImports, MAX_AT_IMPORT_DEPTH } from "@veyyon/pi-coding-agent/discovery/at-imports";
-import { removeWithRetries } from "@veyyon/pi-utils";
+import { clearCache as clearFsCache } from "@veyyon/coding-agent/capability/fs";
+import { expandAtImports, MAX_AT_IMPORT_DEPTH } from "@veyyon/coding-agent/discovery/at-imports";
+import { removeWithRetries } from "@veyyon/utils";
 
 /**
  * Behavior contract for the @-import expander used by every AGENTS.md /
@@ -15,7 +15,7 @@ describe("expandAtImports", () => {
 	let tmp: string;
 
 	beforeEach(async () => {
-		tmp = await fs.mkdtemp(path.join(os.tmpdir(), "omp-at-import-"));
+		tmp = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-at-import-"));
 	});
 
 	afterEach(async () => {
@@ -55,7 +55,7 @@ describe("expandAtImports", () => {
 	});
 
 	test("resolves ~/path against the home override", async () => {
-		const fakeHome = await fs.mkdtemp(path.join(os.tmpdir(), "omp-at-home-"));
+		const fakeHome = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-at-home-"));
 		try {
 			await fs.writeFile(path.join(fakeHome, "prefs.md"), "use 2 spaces");
 			const expanded = await expandAtImports("See @~/prefs.md.\n", path.join(tmp, "AGENTS.md"), {

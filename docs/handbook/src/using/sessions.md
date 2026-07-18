@@ -30,7 +30,7 @@ presenting a clean-looking summary that dropped the real constraint.
 
 ## Session files are trees
 
-A session file (`~/.veyyon/agent/sessions/**/<timestamp>_<id>.jsonl`) is an append-only log, but its entries form
+A session file (`~/.veyyon/profiles/default/agent/sessions/**/<timestamp>_<id>.jsonl`) is an append-only log, but its entries form
 a tree. Every recorded line carries an `id` and a `parent_id`, and a `leaf_move` line moves the
 session's *active leaf* to any earlier entry, so the next recorded entry starts a sibling branch from
 that point. Nothing is ever rewritten: branches you navigate away from stay in the file, and resuming
@@ -94,7 +94,7 @@ they survive resume and never rewrite history.
 
 `/export` writes a copy of the current session to a file you keep, for backup, inspection, or
 moving a conversation between machines. The copy is the session's rollout file (append-only JSONL,
-Veyyon's own portable session format), so it is faithful and self-contained.
+Veyyon's portable session format).
 
 - `/export`: copy to the session's working directory under the rollout's own file name.
 - `/export <path>`: copy to `<path>`. The path may be absolute, relative to the working directory,
@@ -103,7 +103,7 @@ Veyyon's own portable session format), so it is faithful and self-contained.
 The command reports the destination and the number of bytes written, and never modifies the live
 session.
 
-Programmatic access uses the Agent Control Protocol (`veyyon acp`) or SDK embedding; no separate daemon
+Programmatic access uses the Agent Client Protocol (`veyyon acp`) or SDK embedding; no separate daemon
 is required. Session tree operations in the TUI use `/tree`, `/branch`, and `/fork`.
 
 ## Typing while the agent works
@@ -128,14 +128,14 @@ Delivery is governed by `steeringMode` and `followUpMode` (both `one-at-a-time` 
 `all` to deliver every queued message at the next boundary):
 
 ```yaml
-# ~/.veyyon/agent/config.yml
+# ~/.veyyon/profiles/default/agent/config.yml
 steeringMode: all
 followUpMode: all
 ```
 
 Programmatic clients use `turn/followUp` to queue a follow-up on an active thread and
 `thread/followUps/recall` to take every queued follow-up back off the queue (the response returns
-the recalled messages). Queueing an empty message is refused loudly.
+the recalled messages). Queueing an empty message is refused with an error.
 
 ## Next
 

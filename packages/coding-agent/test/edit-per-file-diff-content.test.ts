@@ -2,17 +2,17 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { resetSettingsForTest, Settings } from "@veyyon/pi-coding-agent/config/settings";
+import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import {
 	DEFAULT_FUZZY_THRESHOLD,
 	EditTool,
 	type EditToolDetails,
 	executePatchSingle,
 	executeReplaceSingle,
-} from "@veyyon/pi-coding-agent/edit";
-import { writethroughNoop } from "@veyyon/pi-coding-agent/lsp";
-import type { ToolSession } from "@veyyon/pi-coding-agent/tools";
-import { removeWithRetries } from "@veyyon/pi-utils";
+} from "@veyyon/coding-agent/edit";
+import { writethroughNoop } from "@veyyon/coding-agent/lsp";
+import type { ToolSession } from "@veyyon/coding-agent/tools";
+import { removeWithRetries } from "@veyyon/utils";
 
 // ─── Minimal ToolSession stub ────────────────────────────────────────────────
 
@@ -42,7 +42,7 @@ let tempDir: string;
 
 beforeEach(async () => {
 	resetSettingsForTest();
-	tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "omp-edit-diff-"));
+	tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-edit-diff-"));
 	await Settings.init({ inMemory: true, cwd: tempDir });
 });
 

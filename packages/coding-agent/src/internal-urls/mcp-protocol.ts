@@ -1,10 +1,7 @@
+import { escapeRegExp } from "@veyyon/utils";
 import { MCPManager } from "../mcp/manager";
 import type { MCPResourceReadResult } from "../mcp/types";
 import type { InternalResource, InternalUrl, ProtocolHandler } from "./types";
-
-function escapeRegex(text: string): string {
-	return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
 
 function getUriTemplateMatchScore(
 	uri: string,
@@ -13,7 +10,7 @@ function getUriTemplateMatchScore(
 	const expressionPattern = /\{[^}]+\}/g;
 	const literalSegments = uriTemplate.split(expressionPattern);
 	const expressionCount = (uriTemplate.match(expressionPattern) ?? []).length;
-	const pattern = literalSegments.map(escapeRegex).join("(.*?)");
+	const pattern = literalSegments.map(escapeRegExp).join("(.*?)");
 	const regex = new RegExp(`^${pattern}$`);
 	if (!regex.test(uri)) return undefined;
 	const literalChars = literalSegments.reduce((total, segment) => total + segment.length, 0);

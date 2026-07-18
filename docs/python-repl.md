@@ -75,7 +75,7 @@ Runner → host:
 {"type": "done",     "id": "<reqId>", "status": "ok"|"error", "executionCount": N, "cancelled": false}
 ```
 
-Status events the prelude emits (e.g. `_emit_status("find", count=…)`) ship inside display bundles under `application/x-omp-status` so the existing TUI status renderer keeps working.
+Status events the prelude emits (e.g. `_emit_status("find", count=…)`) ship inside display bundles under `application/x-veyyon-status` so the existing TUI status renderer keeps working.
 
 ## Magics
 
@@ -150,13 +150,13 @@ The runner additionally receives `PYTHONUNBUFFERED=1` and `PYTHONIOENCODING=utf-
 
 ## Tool availability and mode selection
 
-`eval.py` / `eval.js` (both default `true`) plus optional boolean env flags `PI_PY` / `PI_JS` control eval backend exposure:
+`eval.py` / `eval.js` (both default `true`) plus optional boolean env flags `VEYYON_PY` / `VEYYON_JS` control eval backend exposure:
 
-- Python backend only (`eval.py=true`, `eval.js=false`, or `PI_PY=1 PI_JS=0`)
-- JavaScript backend only (`eval.py=false`, `eval.js=true`, or `PI_PY=0 PI_JS=1`)
-- both backends (`eval.py=true`, `eval.js=true`, or `PI_PY=1 PI_JS=1`)
+- Python backend only (`eval.py=true`, `eval.js=false`, or `VEYYON_PY=1 VEYYON_JS=0`)
+- JavaScript backend only (`eval.py=false`, `eval.js=true`, or `VEYYON_PY=0 VEYYON_JS=1`)
+- both backends (`eval.py=true`, `eval.js=true`, or `VEYYON_PY=1 VEYYON_JS=1`)
 
-`PI_PY` and `PI_JS` use normal boolean flag parsing. Each flag, when set, overrides only its own setting; an unset flag falls back to its setting (`eval.py` / `eval.js`, both default `true`).
+`VEYYON_PY` and `VEYYON_JS` use normal boolean flag parsing. Each flag, when set, overrides only its own setting; an unset flag falls back to its setting (`eval.py` / `eval.js`, both default `true`).
 
 If Python preflight fails and `eval.js` is enabled, `eval` remains available for `js` cells; `py` cells fail with a Python-backend availability error.
 
@@ -194,7 +194,7 @@ From runner frames:
 - `stdout` / `stderr` → plain text chunks
 - `display` / `result` → rich display handling (MIME bundle)
 - `error` → traceback text
-- `application/x-omp-status` MIME inside `display` → structured status events
+- `application/x-veyyon-status` MIME inside `display` → structured status events
 
 Display MIME precedence:
 
@@ -206,7 +206,7 @@ Additionally captured as structured outputs:
 
 - `application/json` → JSON tree data
 - `image/png` / `image/jpeg` → image payloads
-- `application/x-omp-status` → status events
+- `application/x-veyyon-status` → status events
 
 ### Matplotlib
 
@@ -230,7 +230,7 @@ Output is streamed through `OutputSink` and may be persisted to artifact storage
 
 ## Operational troubleshooting
 
-- **Python backend not available** — Check `eval.py`, `PI_PY`, and that `python`/`python3` is on PATH. If preflight fails and `eval.js` is enabled, use a `js` cell.
+- **Python backend not available** — Check `eval.py`, `VEYYON_PY`, and that `python`/`python3` is on PATH. If preflight fails and `eval.js` is enabled, use a `js` cell.
 - **No Python on PATH** — Install a system Python 3.8+ or place a venv at `~/.veyyon/python-env`. `veyyon setup python --check` reports the resolved interpreter.
 - **Execution hangs then times out** — Increase tool `timeout` (max 3600s) if workload is legitimate. For stuck native code, cancellation triggers `SIGINT` first then escalates; the session restarts on the next request.
 - **stdin/input prompts in Python code** — `input()` is not supported; pass data programmatically.
@@ -240,7 +240,7 @@ Output is streamed through `OutputSink` and may be persisted to artifact storage
 
 Each variable also accepts its `VEYYON_`-prefixed primary name (e.g. `VEYYON_PY`); the `VEYYON_`/`OMP_` value wins when both are set.
 
-- `PI_PY` / `PI_JS` — eval backend exposure overrides
-- `PI_PYTHON_SKIP_CHECK=1` — bypass Python preflight/warm checks
-- `PI_PYTHON_INTEGRATION=1` — enable gated integration tests that spawn a real Python
-- `PI_PYTHON_IPC_TRACE=1` — log NDJSON frames exchanged with the runner subprocess
+- `VEYYON_PY` / `VEYYON_JS` — eval backend exposure overrides
+- `VEYYON_PYTHON_SKIP_CHECK=1` — bypass Python preflight/warm checks
+- `VEYYON_PYTHON_INTEGRATION=1` — enable gated integration tests that spawn a real Python
+- `VEYYON_PYTHON_IPC_TRACE=1` — log NDJSON frames exchanged with the runner subprocess

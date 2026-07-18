@@ -18,9 +18,9 @@ This repo contains multiple packages, but **`packages/coding-agent/`** is the pr
 | `packages/natives`      | Bindings for native text/image/grep operations       |
 | `packages/stats`        | Local observability dashboard (`veyyon stats`)       |
 | `packages/utils`        | Shared utilities (logger, streams, temp files)       |
-| `crates/pi-natives`     | Rust crate for performance-critical text/grep ops    |
+| `crates/veyyon-natives`     | Rust crate for performance-critical text/grep ops    |
 
-**Catalog import convention**: code in this repo imports catalog *values* (bundled models, model-thinking helpers, identity, descriptors, model manager/cache) from `@veyyon/pi-catalog/<module>` — never via `@veyyon/pi-ai`. The pi-ai barrel re-exports only the model/effort *types* its own signatures use (`Model`, `Api`, `ThinkingConfig`, `Effort`, …); type-only imports of those from `@veyyon/pi-ai` are fine.
+**Catalog import convention**: code in this repo imports catalog *values* (bundled models, model-thinking helpers, identity, descriptors, model manager/cache) from `@veyyon/catalog/<module>` — never via `@veyyon/ai`. The pi-ai barrel re-exports only the model/effort *types* its own signatures use (`Model`, `Api`, `ThinkingConfig`, `Effort`, …); type-only imports of those from `@veyyon/ai` are fine.
 
 ## GitHub
 
@@ -38,9 +38,9 @@ Unless user tells you exactly what to write:
 - **Class privacy**: use ES `#private` fields; leave externally accessible members bare. **No `private`/`protected`/`public` keyword on fields or methods**, except on **constructor parameter properties** where TypeScript requires it (e.g. `constructor(private readonly session: ToolSession)`).
 - **Promises**: use `Promise.withResolvers()` instead of `new Promise((resolve, reject) => ...)`.
 - **Prompts**: never build prompts in code (no inline strings, template literals, or concatenation). Prompts live in static `.md` files; use Handlebars for dynamic content. Import them via `import content from "./prompt.md" with { type: "text" }` — not `readFile`.
-- **Worker scripts**: workers re-enter the CLI entrypoint; never spawn separate worker entry modules. `cli.ts` declares itself as the worker host at startup (`declareWorkerHostEntry()` from `@veyyon/pi-utils/env`) and dispatches hidden argv selectors (`__omp_worker_stats_sync`, `__omp_worker_tab`, `__omp_worker_js_eval`, `__omp_worker_tiny_inference`) before loading the command registry. Spawn sites use:
+- **Worker scripts**: workers re-enter the CLI entrypoint; never spawn separate worker entry modules. `cli.ts` declares itself as the worker host at startup (`declareWorkerHostEntry()` from `@veyyon/utils/env`) and dispatches hidden argv selectors (`__omp_worker_stats_sync`, `__omp_worker_tab`, `__omp_worker_js_eval`, `__omp_worker_tiny_inference`) before loading the command registry. Spawn sites use:
   ```ts
-  import { workerHostEntry } from "@veyyon/pi-utils";
+  import { workerHostEntry } from "@veyyon/utils";
   const hostEntry = workerHostEntry();
   const worker = hostEntry
   	? new Worker(hostEntry, { type: "module", argv: ["__omp_worker_<name>"] })
@@ -61,7 +61,7 @@ Use Bun APIs where they provide a cleaner alternative; fall back to `node:*` onl
 | File read/write | `Bun.file()`, `Bun.write()`               | `readFileSync`, `writeFileSync` |
 | Spawn process   | `` $`cmd` ``, `Bun.spawn()`               | `child_process`                 |
 | Sleep           | `Bun.sleep(ms)`                           | `setTimeout` promise            |
-| Binary lookup   | `$which("git")` from `@veyyon/pi-utils` | `spawnSync(["which", "git"])`   |
+| Binary lookup   | `$which("git")` from `@veyyon/utils` | `spawnSync(["which", "git"])`   |
 | HTTP server     | `Bun.serve()`                             | `http.createServer()`           |
 | SQLite          | `bun:sqlite`                              | `better-sqlite3`                |
 | Hashing         | `Bun.hash()`, `Bun.password.*`, WebCrypto | `node:crypto`                   |
@@ -125,7 +125,7 @@ Use `node:fs/promises` for directory ops (`fs.mkdir`, `fs.rm`, `fs.readdir`) —
 - `mkdir(dirname(path), …)` before `Bun.write(path, …)` → redundant; `Bun.write` handles it.
 - `if (await file.exists()) { await file.json() }` → two syscalls plus race. Use try-catch with `isEnoent`:
   ```typescript
-  import { isEnoent } from "@veyyon/pi-utils";
+  import { isEnoent } from "@veyyon/utils";
   try {
   	return await Bun.file(path).json();
   } catch (err) {
@@ -171,7 +171,7 @@ Regenerate with `bun run gen:models` and commit `models.json` alongside the sour
 **NEVER use `console.log`/`error`/`warn`** in the coding-agent package — it corrupts TUI rendering. Use the centralized logger:
 
 ```typescript
-import { logger } from "@veyyon/pi-utils";
+import { logger } from "@veyyon/utils";
 
 logger.error("MCP request failed", { url, method });
 logger.warn("Theme file invalid, using fallback", { path });
@@ -185,7 +185,7 @@ Logs go to `~/.veyyon/logs/veyyon.YYYY-MM-DD.log` with automatic rotation.
 All text displayed in tool renderers must be sanitized. Raw content (file contents, error messages, tool output) breaks terminal rendering: tabs → visual holes, long lines → overflow, paths → leak home directory.
 
 **Rules:**
-- **Tabs → spaces** via `replaceTabs()` (from `@veyyon/pi-tui` or `../tools/render-utils`).
+- **Tabs → spaces** via `replaceTabs()` (from `@veyyon/tui` or `../tools/render-utils`).
 - **Truncate** lines with `truncateToWidth()` / `ui.truncate()`. Use `TRUNCATE_LENGTHS` constants.
 - **Shorten paths** with `shortenPath()` (replaces home with `~`).
 - **Preview limits** from `PREVIEW_LIMITS`. No ad-hoc numbers.
@@ -220,7 +220,7 @@ For the bash tool specifically:
 | `bun run lint` / `lint:ts` | Biome lint (advisory; fix real bugs, don't contort for style). |
 | `bun run test` | Local TS test runner (`scripts/ci-test-ts.ts local`). |
 | `bun run ci:test:ts:workspace` | The exact workspace test bucket CI runs. |
-| `bun run ci:build:native` | Build the `pi_natives` addon — required before tests that touch native paths. |
+| `bun run ci:build:native` | Build the `veyyon_natives` addon — required before tests that touch native paths. |
 
 **Commit conventions** (only when the user asks you to commit):
 - Commit in **logical chunks**, one concern per commit — never one giant `git add -A`. Stage only the paths you changed.
@@ -288,15 +288,12 @@ locally. Never weaken a test or the baseline to pass (Laws 6 & 9).
 
 ### `ci.yml` — the build + release pipeline (`main` pushes and release tags)
 
-Runs on the self-hosted `omp-kata` runner plus cross-platform runners. On an ordinary
-`main` push it builds/caches the native addons and runs the full test matrix. When
-`HEAD` carries a `v*` release tag (see below), the same run additionally builds the
-per-platform binaries, then publishes: **GitHub release** (all binaries + `.sha256`),
-**npm** packages, and the **Homebrew** formula.
-
-> Availability note: `ci.yml`'s release jobs depend on the self-hosted `omp-kata`
-> runner. If it is offline on the public repo, cross-platform binaries (darwin,
-> linux-arm64, win32) won't build in CI and must be produced another way.
+Runs entirely on GitHub-hosted runners (`ubuntu-22.04`, `macos-14`, and the OS
+matrix — no self-hosted dependency). On an ordinary `main` push it builds/caches the
+native addons and runs the full test matrix. When `HEAD` carries a `v*` release tag
+(see below), the same run additionally builds the per-platform binaries, then
+publishes: **GitHub release** (all binaries + `.sha256`), **npm** packages, and the
+**Homebrew** formula.
 
 ## Releasing
 
@@ -317,7 +314,7 @@ release is only real once it is a tagged commit **and** a published GitHub relea
 
 `scripts/release.ts` then, in order: verifies you're on clean `main` and the version
 is greater than the latest tag → bumps every public `package.json` + root catalog
-`@veyyon/*` entries → bumps the Rust workspace version, `pi-natives` sentinel, and
+`@veyyon/*` entries → bumps the Rust workspace version, `veyyon-natives` sentinel, and
 regenerates lockfiles → normalizes and finalizes changelogs (`[Unreleased]` → the new
 version, adds a fresh `[Unreleased]`) → runs `bun run check` → commits
 `chore: bump version to vX.Y.Z` → tags and **atomically** pushes `main` + the tag (by
@@ -336,7 +333,7 @@ The repo carries **no `v*` tags** yet — only the inherited oh-my-pi changelog 
 as a `0.0.0` baseline, so `bun run release 1.0.0` (equivalently `release major`) cuts
 the first release cleanly instead of aborting on `git describe`. Package `version`
 fields sit at the `16.5.2` fork point until then; the release run flips every public
-package, the Rust workspace, and the `pi-natives` sentinel to `1.0.0` in one atomic
+package, the Rust workspace, and the `veyyon-natives` sentinel to `1.0.0` in one atomic
 commit. Before running it, add a short "First veyyon release" summary under each
 changed package's `## [Unreleased]` so the generated `## [1.0.0]` entry isn't empty.
 
@@ -371,12 +368,4 @@ Static site under `website/`, deployed to Cloudflare Pages.
 `releases/latest`, downloads `veyyon-<platform>-<arch>` plus its `.sha256`, and
 **fails closed** on a checksum mismatch. It covers linux (x64/arm64) and darwin
 (x64/arm64); Windows uses `install.ps1`. A release that ships only some platforms
-will 404 for the rest — keep the release asset set complete (see the CI note below).
-
-### Known gap: release runners
-
-`ci.yml`'s release jobs run on the self-hosted `omp-kata` runner. On the public repo
-that runner may be unavailable, in which case cross-platform binaries don't build and
-a release can't publish all assets. Migrating the release matrix to GitHub-hosted
-runners (ubuntu/macos/windows) is the durable fix — until then, a release may need
-binaries produced on per-platform hosts.
+will 404 for the rest — keep the release asset set complete.

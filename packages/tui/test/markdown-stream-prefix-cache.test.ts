@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { clearRenderCache, Markdown, type MarkdownTheme } from "@veyyon/pi-tui/components/markdown";
+import { clearRenderCache, Markdown, type MarkdownTheme } from "@veyyon/tui/components/markdown";
 import { defaultMarkdownTheme } from "./test-themes.js";
 
 const WIDTH = 72;

@@ -10,7 +10,7 @@ import {
 	getProjectPluginOverridesPath,
 	isEnoent,
 	logger,
-} from "@veyyon/pi-utils";
+} from "@veyyon/utils";
 import { type ManifestHolder, manifestFromPackageJson } from "../manifest-key";
 import { withExitGuard } from "../utils";
 import { refreshBunGitCache } from "./bun-git-cache";
@@ -182,7 +182,7 @@ export class PluginManager {
 					pkgJsonPath,
 					JSON.stringify(
 						{
-							name: "omp-plugins",
+							name: "veyyon-plugins",
 							private: true,
 							dependencies: {},
 						},
@@ -305,7 +305,7 @@ export class PluginManager {
 			throw err;
 		}
 
-		const backupRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), "omp-plugin-backup-"));
+		const backupRoot = await fs.promises.mkdtemp(path.join(os.tmpdir(), "veyyon-plugin-backup-"));
 		const backupPath = path.join(backupRoot, "package");
 		await fs.promises.cp(packagePath, backupPath, { recursive: true, verbatimSymlinks: true });
 		return { actualName, packagePath, backupRoot, backupPath };
@@ -631,6 +631,14 @@ export class PluginManager {
 	async uninstall(name: string): Promise<void> {
 		validatePackageName(name);
 		await this.#ensurePackageJson();
+
+		// `bun uninstall` exits 0 even when the package was never a dependency,
+		// which would report success for a plugin that was never installed.
+		const manifest = Bun.file(getPluginsPackageJson());
+		const deps = (await manifest.exists()) ? ((await manifest.json()).dependencies ?? {}) : {};
+		if (!(name in deps)) {
+			throw new Error(`Plugin ${name} is not installed. Run \`veyyon plugin list\` to see installed plugins.`);
+		}
 
 		const proc = Bun.spawn(["bun", "uninstall", name], {
 			cwd: getPluginsDir(),

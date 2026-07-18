@@ -11,15 +11,15 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { Agent } from "@veyyon/pi-agent-core";
-import { getBundledModel } from "@veyyon/pi-catalog/models";
-import { ModelRegistry } from "@veyyon/pi-coding-agent/config/model-registry";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { AgentSession, type AgentSessionEvent } from "@veyyon/pi-coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/pi-coding-agent/session/auth-storage";
-import { SessionManager } from "@veyyon/pi-coding-agent/session/session-manager";
-import { createTools, type ToolSession } from "@veyyon/pi-coding-agent/tools";
-import { removeSyncWithRetries, Snowflake } from "@veyyon/pi-utils";
+import { Agent } from "@veyyon/agent-core";
+import { getBundledModel } from "@veyyon/catalog/models";
+import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import { AgentSession, type AgentSessionEvent } from "@veyyon/coding-agent/session/agent-session";
+import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
+import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { createTools, type ToolSession } from "@veyyon/coding-agent/tools";
+import { removeSyncWithRetries, Snowflake } from "@veyyon/utils";
 import { e2eApiKey } from "./utilities";
 
 describe.skipIf(!e2eApiKey("ANTHROPIC_API_KEY"))("AgentSession compaction e2e", () => {
@@ -31,7 +31,7 @@ describe.skipIf(!e2eApiKey("ANTHROPIC_API_KEY"))("AgentSession compaction e2e", 
 
 	beforeEach(() => {
 		// Create temp directory for session files
-		tempDir = path.join(os.tmpdir(), `omp-compaction-test-${Snowflake.next()}`);
+		tempDir = path.join(os.tmpdir(), `veyyon-compaction-test-${Snowflake.next()}`);
 		fs.mkdirSync(tempDir, { recursive: true });
 
 		// Track events

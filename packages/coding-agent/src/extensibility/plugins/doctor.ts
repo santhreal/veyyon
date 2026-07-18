@@ -1,4 +1,4 @@
-import { $which } from "@veyyon/pi-utils";
+import { $which } from "@veyyon/utils";
 import { theme } from "../../modes/theme/theme";
 import type { DoctorCheck } from "./types";
 

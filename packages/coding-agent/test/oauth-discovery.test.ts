@@ -5,7 +5,7 @@ import {
 	extractMcpAuthServerUrl,
 	extractOAuthChallengeScopes,
 	fetchResourceMetadataScopes,
-} from "@veyyon/pi-coding-agent/mcp/oauth-discovery";
+} from "@veyyon/coding-agent/mcp/oauth-discovery";
 import { type FetchInput, mockFetch } from "./helpers/fetch-mock";
 
 describe("mcp oauth discovery", () => {

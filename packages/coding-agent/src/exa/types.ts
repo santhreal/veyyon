@@ -3,7 +3,7 @@
  *
  * Types for the Exa MCP client and tool implementations.
  */
-import type { TSchema } from "@veyyon/pi-ai";
+import type { TSchema } from "@veyyon/ai";
 
 /** MCP tool definition from server */
 export interface MCPTool {

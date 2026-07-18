@@ -1,5 +1,5 @@
-import type { RenderResult, SpecialHandler } from "./types";
-import { buildResult, loadPage } from "./types";
+import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
+import { buildResult, loadPage, scraperDegrade, tryParseUrl } from "./types";
 
 const TLDR_BASE = "https://raw.githubusercontent.com/tldr-pages/tldr/main/pages";
 const PLATFORMS = ["common", "linux", "osx"] as const;
@@ -13,9 +13,10 @@ export const handleTldr: SpecialHandler = async (
 	url: string,
 	timeout: number,
 	signal?: AbortSignal,
-): Promise<RenderResult | null> => {
+): Promise<RenderResult | ScraperDegrade | null> => {
 	try {
-		const parsed = new URL(url);
+		const parsed = tryParseUrl(url);
+		if (!parsed) return null;
 		if (parsed.hostname !== "tldr.sh" && parsed.hostname !== "tldr.ostera.io") return null;
 
 		// Extract command from path (e.g., /tar -> tar)
@@ -41,7 +42,7 @@ export const handleTldr: SpecialHandler = async (
 		}
 
 		return null;
-	} catch {}
-
-	return null;
+	} catch (error) {
+		return scraperDegrade("tldr", error);
+	}
 };

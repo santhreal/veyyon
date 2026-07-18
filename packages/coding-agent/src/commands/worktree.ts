@@ -1,8 +1,8 @@
 /**
  * List and clean up agent-managed git worktrees under `~/.veyyon/wt`.
  */
-import { getProjectDir } from "@veyyon/pi-utils";
-import { Args, Command, Flags } from "@veyyon/pi-utils/cli";
+import { getProjectDir } from "@veyyon/utils";
+import { Args, Command, Flags } from "@veyyon/utils/cli";
 import { clearWorktrees, listWorktrees } from "../cli/worktree-cli";
 import { Settings } from "../config/settings";
 

@@ -1,6 +1,6 @@
-import { tryParseJson } from "@veyyon/pi-utils";
-import type { RenderResult, SpecialHandler } from "./types";
-import { buildResult, formatIsoDate, formatNumber, loadPage } from "./types";
+import { tryParseJson } from "@veyyon/utils";
+import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
+import { buildResult, formatIsoDate, formatNumber, loadFailure, loadPage, scraperDegrade, tryParseUrl } from "./types";
 
 interface MavenDoc {
 	id: string;
@@ -30,9 +30,10 @@ export const handleMaven: SpecialHandler = async (
 	url: string,
 	timeout: number,
 	signal?: AbortSignal,
-): Promise<RenderResult | null> => {
+): Promise<RenderResult | ScraperDegrade | null> => {
 	try {
-		const parsed = new URL(url);
+		const parsed = tryParseUrl(url);
+		if (!parsed) return null;
 		const hostname = parsed.hostname;
 
 		// Check if this is a Maven URL
@@ -73,10 +74,10 @@ export const handleMaven: SpecialHandler = async (
 			signal,
 		});
 
-		if (!result.ok) return null;
+		if (!result.ok) return scraperDegrade("maven", loadFailure(result));
 
 		const data = tryParseJson<MavenResponse>(result.content);
-		if (!data) return null;
+		if (!data) return scraperDegrade("maven", "unexpected response shape");
 
 		if (data.response.numFound === 0) return null;
 
@@ -132,7 +133,7 @@ export const handleMaven: SpecialHandler = async (
 		md += `- [MVN Repository](https://mvnrepository.com/artifact/${doc.g}/${doc.a}/${displayVersion})\n`;
 
 		return buildResult(md, { url, method: "maven", fetchedAt, notes: ["Fetched via Maven Central API"] });
-	} catch {}
-
-	return null;
+	} catch (error) {
+		return scraperDegrade("maven", error);
+	}
 };

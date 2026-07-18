@@ -8,9 +8,9 @@
 
 // pi-uutils: vendored from uutils/coreutils 0.8.0 and patched to run in-process
 // as a shell builtin. seq is pure computation + stdout: all process-global
-// stdio is routed through `pi_uutils_ctx` (the emission loops write to a
+// stdio is routed through `veyyon_uutils_ctx` (the emission loops write to a
 // `BufWriter` around the context stdout handle and poll
-// `pi_uutils_ctx::is_cancelled()` periodically, since seq can generate
+// `veyyon_uutils_ctx::is_cancelled()` periodically, since seq can generate
 // unbounded output), `translate!` strings are literalized, SIGPIPE probing is
 // dropped, and the entry point no longer calls `std::process::exit`.
 
@@ -22,13 +22,13 @@ use std::{
 use clap::{Arg, ArgAction, ArgMatches, Command};
 use num_bigint::BigUint;
 use num_traits::{ToPrimitive, Zero};
-use pi_uutils_ctx::format_usage;
 use uucore::{
 	error::{FromIo, UResult},
 	extendedbigdecimal::ExtendedBigDecimal,
 	fast_inc::fast_inc,
 	format::{Format, num_format, num_format::FloatVariant},
 };
+use veyyon_uutils_ctx::format_usage;
 
 mod error;
 
@@ -110,20 +110,20 @@ pub fn run(argv: Vec<OsString>) -> i32 {
 		Err(err) => {
 			let rendered = err.to_string();
 			if err.use_stderr() {
-				let _ = write!(pi_uutils_ctx::stderr(), "{rendered}");
+				let _ = write!(veyyon_uutils_ctx::stderr(), "{rendered}");
 				return 1;
 			}
-			let _ = write!(pi_uutils_ctx::stdout(), "{rendered}");
+			let _ = write!(veyyon_uutils_ctx::stdout(), "{rendered}");
 			return 0;
 		},
 	};
 	match seq_main(&matches) {
-		Ok(()) => pi_uutils_ctx::exit_code(),
+		Ok(()) => veyyon_uutils_ctx::exit_code(),
 		Err(err) => {
 			let code = err.code();
 			let msg = err.to_string();
 			if !msg.is_empty() {
-				let _ = writeln!(pi_uutils_ctx::stderr(), "seq: {msg}");
+				let _ = writeln!(veyyon_uutils_ctx::stderr(), "seq: {msg}");
 			}
 			if code == 0 { 1 } else { code }
 		},
@@ -243,7 +243,7 @@ fn seq_main(matches: &ArgMatches) -> UResult<()> {
 			// signal dispositions, so the upstream `sigpipe_was_ignored` probe
 			// is dropped and the message goes to the context stderr.
 			let err = err.map_err_context(|| "write error".into());
-			let _ = writeln!(pi_uutils_ctx::stderr(), "seq: {err}");
+			let _ = writeln!(veyyon_uutils_ctx::stderr(), "seq: {err}");
 			Ok(())
 		},
 		Err(err) => Err(err.map_err_context(|| "write error".into())),
@@ -355,7 +355,7 @@ fn fast_print_seq(
 	for i in 0..loop_cnt {
 		// pi-uutils: seq can generate effectively unbounded output; poll the
 		// host cancel flag periodically so shell abort/timeout is observed.
-		if i % CANCEL_POLL_INTERVAL == 0 && pi_uutils_ctx::is_cancelled() {
+		if i % CANCEL_POLL_INTERVAL == 0 && veyyon_uutils_ctx::is_cancelled() {
 			return Ok(());
 		}
 		stdout.write_all(&buf[start..])?;
@@ -387,7 +387,7 @@ fn print_seq(
 ) -> std::io::Result<()> {
 	// pi-uutils: buffer the context stdout handle instead of the (locked)
 	// process stdout.
-	let mut stdout = BufWriter::new(pi_uutils_ctx::stdout());
+	let mut stdout = BufWriter::new(veyyon_uutils_ctx::stdout());
 	let (first, increment, last) = range;
 
 	if fast_allowed {
@@ -418,7 +418,7 @@ fn print_seq(
 	while !done_printing(&value, &increment, &last) {
 		// pi-uutils: seq can generate effectively unbounded output; poll the
 		// host cancel flag periodically so shell abort/timeout is observed.
-		if iterations.is_multiple_of(CANCEL_POLL_INTERVAL) && pi_uutils_ctx::is_cancelled() {
+		if iterations.is_multiple_of(CANCEL_POLL_INTERVAL) && veyyon_uutils_ctx::is_cancelled() {
 			return Ok(());
 		}
 		iterations += 1;
@@ -442,7 +442,7 @@ mod tests {
 	use std::{collections::HashMap, io::Write, path::PathBuf, sync::Arc};
 
 	use parking_lot::Mutex;
-	use pi_uutils_ctx::ScopeIo;
+	use veyyon_uutils_ctx::ScopeIo;
 
 	use super::*;
 
@@ -480,7 +480,7 @@ mod tests {
 			.map(OsString::from)
 			.collect();
 
-		let code = pi_uutils_ctx::scope(io, || run(argv));
+		let code = veyyon_uutils_ctx::scope(io, || run(argv));
 
 		let out_str = String::from_utf8(stdout_buf.lock().clone()).unwrap();
 		let err_str = String::from_utf8(stderr_buf.lock().clone()).unwrap();

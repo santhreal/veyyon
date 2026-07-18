@@ -15,7 +15,7 @@
  * generates an ephemeral side-channel auto-reply.
  */
 
-import { logger, Snowflake } from "@veyyon/pi-utils";
+import { errorMessage, logger, Snowflake } from "@veyyon/utils";
 import { AgentLifecycleManager } from "../registry/agent-lifecycle";
 import { AgentRegistry, MAIN_AGENT_ID } from "../registry/agent-registry";
 import type { CustomMessage } from "../session/messages";
@@ -136,7 +136,7 @@ export class IrcBus {
 				return {
 					to: message.to,
 					outcome: "failed",
-					error: error instanceof Error ? error.message : String(error),
+					error: errorMessage(error),
 				};
 			}
 		}
@@ -169,7 +169,7 @@ export class IrcBus {
 			return {
 				to: message.to,
 				outcome: "failed",
-				error: error instanceof Error ? error.message : String(error),
+				error: errorMessage(error),
 			};
 		}
 	}

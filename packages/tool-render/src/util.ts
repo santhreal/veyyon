@@ -1,18 +1,17 @@
 /**
  * Pure helpers shared by tool renderers. Host-agnostic; no DOM beyond
  * `globalThis` feature probes, no host-framework imports. `stripAnsi` is
- * re-exported from the dependency-free `@veyyon/pi-utils/strip-ansi` subpath
+ * re-exported from the dependency-free `@veyyon/utils/strip-ansi` subpath
  * (bypasses the Node-heavy package barrel) so this file stays safe to bundle
  * for the browser — see BACKLOG SPEC-ONE-PLACE-AUDIT F6.
  */
-import { stripAnsi } from "@veyyon/pi-utils/strip-ansi";
+import { stripAnsi } from "@veyyon/utils/strip-ansi";
+import { isRecord } from "@veyyon/utils/type-guards";
 import type { ToolResultImage, ToolResultLike } from "./types";
 
-export { stripAnsi };
-
-export function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
-}
+// Re-exported from the dependency-free type-guards subpath for the same
+// bundle-safety reason as stripAnsi above.
+export { isRecord, stripAnsi };
 
 /** String passthrough; anything else (including null/undefined) → null. */
 export function str(value: unknown): string | null {

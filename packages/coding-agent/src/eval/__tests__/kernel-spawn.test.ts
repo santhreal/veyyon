@@ -37,7 +37,7 @@ describe("shouldDetachKernel", () => {
  */
 describe("shouldHideKernelWindow", () => {
 	it("inherits the host console on Windows when one is attached", () => {
-		// Reporter's repro: omp launched in Windows Terminal, host has a
+		// Reporter's repro: veyyon launched in Windows Terminal, host has a
 		// console, kernel must inherit so `import pandas` doesn't deadlock in
 		// `_multiarray_umath` and SIGINT can recover the cell.
 		expect(shouldHideKernelWindow({ platform: "win32", hostHasInheritableConsole: true })).toBe(false);
@@ -71,7 +71,7 @@ describe("consoleAttachedViaTTY (FFI fallback heuristic)", () => {
 		expect(consoleAttachedViaTTY({ stdinIsTTY: true, stdoutIsTTY: true, stderrIsTTY: true })).toBe(true);
 	});
 
-	it("treats `omp -p '...' > out.txt` (stdout-only redirect) as console-attached", () => {
+	it("treats `veyyon -p '...' > out.txt` (stdout-only redirect) as console-attached", () => {
 		// The reviewer's first-pass repro: stdout off the terminal, stdin
 		// and stderr still attached. OR keeps the console.
 		expect(consoleAttachedViaTTY({ stdinIsTTY: true, stdoutIsTTY: false, stderrIsTTY: true })).toBe(true);
@@ -87,7 +87,7 @@ describe("consoleAttachedViaTTY (FFI fallback heuristic)", () => {
 
 	it("returns false only when none of stdin/stdout/stderr is a TTY", () => {
 		// This is the gap: a real Windows Terminal session with all three
-		// streams redirected (`omp ... < in > out 2> err`) lands here.
+		// streams redirected (`veyyon ... < in > out 2> err`) lands here.
 		// `hostHasInheritableConsole` uses the Win32 FFI probe to recover
 		// the right answer in that scenario; this helper is the fallback.
 		expect(consoleAttachedViaTTY({ stdinIsTTY: false, stdoutIsTTY: false, stderrIsTTY: false })).toBe(false);

@@ -7,8 +7,8 @@
  */
 
 import { describe, expect, it } from "bun:test";
-import { serializeTitleSlot } from "@veyyon/pi-coding-agent/session/session-title-slot";
-import { SqlSessionStorage, type SqlSessionStorageClient } from "@veyyon/pi-coding-agent/session/sql-session-storage";
+import { serializeTitleSlot } from "@veyyon/coding-agent/session/session-title-slot";
+import { SqlSessionStorage, type SqlSessionStorageClient } from "@veyyon/coding-agent/session/sql-session-storage";
 import { SQL } from "bun";
 
 async function createSqlite(): Promise<{ client: InstanceType<typeof SQL>; storage: SqlSessionStorage }> {
@@ -25,7 +25,7 @@ describe("SqlSessionStorage (SQLite backend)", () => {
 		expect(storage.existsSync("/sessions/p/a.jsonl")).toBe(true);
 		expect(await storage.readText("/sessions/p/a.jsonl")).toBe("line1\nline2\n");
 
-		const rows = (await client.unsafe(`SELECT path, content FROM omp_session_files WHERE path = ?`, [
+		const rows = (await client.unsafe(`SELECT path, content FROM veyyon_session_files WHERE path = ?`, [
 			"/sessions/p/a.jsonl",
 		])) as Array<{ path: string; content: string }>;
 		expect(rows).toEqual([{ path: "/sessions/p/a.jsonl", content: "line1\nline2\n" }]);
@@ -39,9 +39,9 @@ describe("SqlSessionStorage (SQLite backend)", () => {
 	it("create() warms the metadata index without selecting full content", async () => {
 		const client = new SQL("sqlite::memory:");
 		await client.unsafe(
-			`CREATE TABLE omp_session_files (path TEXT PRIMARY KEY, content TEXT NOT NULL, mtime_ms INTEGER NOT NULL, title TEXT, title_source TEXT, title_updated_at TEXT)`,
+			`CREATE TABLE veyyon_session_files (path TEXT PRIMARY KEY, content TEXT NOT NULL, mtime_ms INTEGER NOT NULL, title TEXT, title_source TEXT, title_updated_at TEXT)`,
 		);
-		await client.unsafe(`INSERT INTO omp_session_files (path, content, mtime_ms) VALUES (?, ?, ?)`, [
+		await client.unsafe(`INSERT INTO veyyon_session_files (path, content, mtime_ms) VALUES (?, ?, ?)`, [
 			"/sessions/p/huge.jsonl",
 			"0123456789",
 			Date.now(),
@@ -88,7 +88,7 @@ describe("SqlSessionStorage (SQLite backend)", () => {
 		expect(await storage.readText("/sessions/p/session.jsonl")).toBe('{"type":"session"}\n{"type":"message"}\n');
 
 		await storage.drain();
-		const rows = (await client.unsafe(`SELECT content FROM omp_session_files WHERE path = ?`, [
+		const rows = (await client.unsafe(`SELECT content FROM veyyon_session_files WHERE path = ?`, [
 			"/sessions/p/session.jsonl",
 		])) as Array<{ content: string }>;
 		expect(rows[0].content).toBe('{"type":"session"}\n{"type":"message"}\n');
@@ -106,7 +106,7 @@ describe("SqlSessionStorage (SQLite backend)", () => {
 		await writer.close();
 
 		expect(await storage.readText("/sessions/p/keep.jsonl")).toBe("fresh\n");
-		const rows = (await client.unsafe(`SELECT content FROM omp_session_files WHERE path = ?`, [
+		const rows = (await client.unsafe(`SELECT content FROM veyyon_session_files WHERE path = ?`, [
 			"/sessions/p/keep.jsonl",
 		])) as Array<{ content: string }>;
 		expect(rows[0].content).toBe("fresh\n");
@@ -132,7 +132,7 @@ describe("SqlSessionStorage (SQLite backend)", () => {
 		const writer = storage.openWriter("/sessions/p/fail.jsonl");
 
 		// Force a SQL error: drop the table so the next append throws.
-		await client.unsafe("DROP TABLE omp_session_files");
+		await client.unsafe("DROP TABLE veyyon_session_files");
 		void writer.append("doomed\n").catch(() => {});
 
 		await expect(storage.drain()).rejects.toThrow();
@@ -154,7 +154,7 @@ describe("SqlSessionStorage (SQLite backend)", () => {
 		expect(storage.existsSync("/sessions/p/s1/sub/notes")).toBe(false);
 		expect(storage.existsSync("/sessions/p/other.jsonl")).toBe(true);
 
-		const remaining = (await client.unsafe(`SELECT path FROM omp_session_files ORDER BY path`)) as Array<{
+		const remaining = (await client.unsafe(`SELECT path FROM veyyon_session_files ORDER BY path`)) as Array<{
 			path: string;
 		}>;
 		expect(remaining.map(r => r.path)).toEqual(["/sessions/p/other.jsonl"]);
@@ -171,7 +171,7 @@ describe("SqlSessionStorage (SQLite backend)", () => {
 		expect(await storage.readText("/sessions/p/renamed.jsonl")).toBe("payload\n");
 		expect(storage.statSync("/sessions/p/renamed.jsonl").mtimeMs).toBe(originalMtime);
 
-		const rows = (await client.unsafe(`SELECT path, content FROM omp_session_files`)) as Array<{
+		const rows = (await client.unsafe(`SELECT path, content FROM veyyon_session_files`)) as Array<{
 			path: string;
 			content: string;
 		}>;
@@ -193,7 +193,7 @@ describe("SqlSessionStorage (SQLite backend)", () => {
 	it("refresh() reloads the mirror from SQL after out-of-band writes", async () => {
 		const { client, storage } = await createSqlite();
 		// Simulate a peer process inserting directly.
-		await client.unsafe(`INSERT INTO omp_session_files (path, content, mtime_ms) VALUES (?, ?, ?)`, [
+		await client.unsafe(`INSERT INTO veyyon_session_files (path, content, mtime_ms) VALUES (?, ?, ?)`, [
 			"/peer/x.jsonl",
 			"from peer\n",
 			Date.now() + 5_000,
@@ -313,7 +313,7 @@ describe("SqlSessionStorage (SQLite backend)", () => {
 		expect(storage.existsSync("/sessions/p/odd%_#name/draft.txt")).toBe(false);
 		expect(storage.existsSync("/sessions/p/sibling.jsonl")).toBe(true);
 
-		const remaining = (await client.unsafe(`SELECT path FROM omp_session_files`)) as Array<{ path: string }>;
+		const remaining = (await client.unsafe(`SELECT path FROM veyyon_session_files`)) as Array<{ path: string }>;
 		expect(remaining.map(r => r.path)).toEqual(["/sessions/p/sibling.jsonl"]);
 		await client.end();
 	});
@@ -328,7 +328,7 @@ describe("SqlSessionStorage (SQLite backend)", () => {
 		const client = new SQL("sqlite::memory:");
 		// Pre-create the table with the expected schema.
 		await client.unsafe(
-			`CREATE TABLE omp_session_files (path TEXT PRIMARY KEY, content TEXT NOT NULL, mtime_ms INTEGER NOT NULL, title TEXT, title_source TEXT, title_updated_at TEXT)`,
+			`CREATE TABLE veyyon_session_files (path TEXT PRIMARY KEY, content TEXT NOT NULL, mtime_ms INTEGER NOT NULL, title TEXT, title_source TEXT, title_updated_at TEXT)`,
 		);
 		const storage = await SqlSessionStorage.create({ client, createTable: false });
 		await storage.writeText("/s/x.jsonl", "ok");

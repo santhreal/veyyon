@@ -10,7 +10,7 @@ export const STATUS_LINE_PRESETS: Record<StatusLinePreset, PresetDef> = {
 		// stray `>`/`▶` glyphs on the composer border. `pipe` has no end-caps, reads
 		// as clean silver text on black, and never depends on a font the user may not
 		// have. Icons are blank in the default theme (see theme.ts), so segments read
-		// as plain words divided by a quiet bar — the premium, un-omp look.
+		// as plain words divided by a quiet bar — the premium, decluttered look.
 		leftSegments: ["model", "mode", "path", "git", "context_pct"],
 		rightSegments: ["session_name"],
 		separator: "pipe",

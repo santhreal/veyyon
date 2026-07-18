@@ -2,9 +2,9 @@
 
 Bitmap-frame context compression for vision-capable LLMs.
 
-Instead of asking an LLM to summarize discarded conversation history, snapcompact serializes it and renders the text into dense PNG frames of pixel-font glyphs that vision models read back directly. The whole pass is local and deterministic — no LLM call, no API key, no latency beyond rendering. Rasterization and PNG encoding happen in native code (`@veyyon/pi-natives`).
+Instead of asking an LLM to summarize discarded conversation history, snapcompact serializes it and renders the text into dense PNG frames of pixel-font glyphs that vision models read back directly. The whole pass is local and deterministic — no LLM call, no API key, no latency beyond rendering. Rasterization and PNG encoding happen in native code (`@veyyon/natives`).
 
-Built for [oh-my-pi](https://github.com/can1357/oh-my-pi)'s compaction pipeline, but the rendering API works on arbitrary text.
+Built for [veyyon](https://github.com/santhreal/veyyon)'s compaction pipeline, but the rendering API works on arbitrary text.
 
 ## How it works
 
@@ -67,6 +67,6 @@ const result = await compact(preparation, { model });
 
 ## References
 
-- [Monorepo README](https://github.com/can1357/oh-my-pi#readme)
+- [Monorepo README](https://github.com/santhreal/veyyon#readme)
 - [Compaction architecture](../../docs/compaction.md)
 - [CHANGELOG](./CHANGELOG.md)

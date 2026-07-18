@@ -1,6 +1,6 @@
 [book]
 title = "The Veyyon Harness Handbook"
-description = "How Veyyon turns open models into frontier coding agents. The product, the harness, tool-call repair, the edit format, per-model adaptation, and how to use it."
+description = "Operator handbook for the Veyyon terminal coding agent: install, configuration, tools, approvals, edit formats, providers, and harness structure."
 authors = ["Veyyon"]
 language = "en"
 src = "src"

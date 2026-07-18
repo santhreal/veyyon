@@ -1,7 +1,7 @@
 # The hashline edit engine
 
-> **Status: Built.** Default edit mode is **hashline** (`edit.mode: hashline` in `config.yml`),
-> implemented in the `@veyyon/hashline` package.
+Default edit mode is **hashline** (`edit.mode: hashline` in `config.yml`), implemented in
+`@veyyon/hashline`.
 
 Veyyon applies file changes through the **`edit`** tool (hashline patch language by default). The
 model copies `[PATH#TAG]` anchors from `read` / `grep` / `write` output, then emits `SWAP`, `DEL`,
@@ -22,7 +22,7 @@ default and the path Veyyon optimizes for.
 4. **`write`** can create or overwrite whole files; in hashline display mode it also mints snapshot
    headers for the next edit.
 
-`edit.mode` and `PI_EDIT_VARIANT` select among `hashline`, `apply_patch`, `patch`, and `replace`.
+`edit.mode` and `VEYYON_EDIT_VARIANT` select among `hashline`, `apply_patch`, `patch`, and `replace`.
 
 ## Invariants
 
@@ -30,7 +30,7 @@ default and the path Veyyon optimizes for.
 | --- | --- |
 | Stale anchor | Mismatch errors name the tag; snapshot recovery can suggest the current file hash |
 | Line numbers | 1-indexed; body rows use `+TEXT` prefix |
-| Order | Non-overlapping hunks; overlapping regions fail loudly |
+| Order | Non-overlapping hunks; overlapping regions fail with an error |
 | Encoding | Applies to normalized content; BOM and dominant line ending preserved on write |
 
 ## Further reading

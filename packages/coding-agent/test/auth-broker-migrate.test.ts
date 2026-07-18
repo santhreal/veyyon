@@ -2,10 +2,10 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { AuthStorage, SqliteAuthCredentialStore } from "@veyyon/pi-ai";
-import { type AuthBrokerServerHandle, startAuthBroker } from "@veyyon/pi-ai/auth-broker";
-import { runAuthBrokerCommand } from "@veyyon/pi-coding-agent/cli/auth-broker-cli";
-import { getAgentDbPath, removeWithRetries, setAgentDir } from "@veyyon/pi-utils";
+import { AuthStorage, SqliteAuthCredentialStore } from "@veyyon/ai";
+import { type AuthBrokerServerHandle, startAuthBroker } from "@veyyon/ai/auth-broker";
+import { runAuthBrokerCommand } from "@veyyon/coding-agent/cli/auth-broker-cli";
+import { getAgentDbPath, removeWithRetries, setAgentDir } from "@veyyon/utils";
 
 const TEAM_ORG = "org-team-1111";
 
@@ -37,10 +37,10 @@ describe("auth-broker migrate (org-only dedupe)", () => {
 	const savedEnv: Record<string, string | undefined> = {};
 
 	beforeEach(async () => {
-		savedEnv.OMP_AUTH_BROKER_URL = process.env.OMP_AUTH_BROKER_URL;
-		savedEnv.OMP_AUTH_BROKER_TOKEN = process.env.OMP_AUTH_BROKER_TOKEN;
-		agentDir = await fs.mkdtemp(path.join(os.tmpdir(), "omp-migrate-client-"));
-		brokerAgentDir = await fs.mkdtemp(path.join(os.tmpdir(), "omp-migrate-broker-"));
+		savedEnv.VEYYON_AUTH_BROKER_URL = process.env.VEYYON_AUTH_BROKER_URL;
+		savedEnv.VEYYON_AUTH_BROKER_TOKEN = process.env.VEYYON_AUTH_BROKER_TOKEN;
+		agentDir = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-migrate-client-"));
+		brokerAgentDir = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-migrate-broker-"));
 		setAgentDir(agentDir);
 
 		brokerStore = await SqliteAuthCredentialStore.open(path.join(brokerAgentDir, "agent.db"));
@@ -52,8 +52,8 @@ describe("auth-broker migrate (org-only dedupe)", () => {
 			bearerTokens: [token],
 			disableRefresher: true,
 		});
-		process.env.OMP_AUTH_BROKER_URL = handle.url;
-		process.env.OMP_AUTH_BROKER_TOKEN = token;
+		process.env.VEYYON_AUTH_BROKER_URL = handle.url;
+		process.env.VEYYON_AUTH_BROKER_TOKEN = token;
 	});
 
 	afterEach(async () => {
@@ -62,7 +62,7 @@ describe("auth-broker migrate (org-only dedupe)", () => {
 		brokerStore?.close();
 		await removeWithRetries(agentDir);
 		await removeWithRetries(brokerAgentDir);
-		for (const key of ["OMP_AUTH_BROKER_URL", "OMP_AUTH_BROKER_TOKEN"] as const) {
+		for (const key of ["VEYYON_AUTH_BROKER_URL", "VEYYON_AUTH_BROKER_TOKEN"] as const) {
 			if (savedEnv[key] === undefined) delete process.env[key];
 			else process.env[key] = savedEnv[key];
 		}

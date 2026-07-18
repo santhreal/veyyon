@@ -3,15 +3,18 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { extractionRate, normalizeBatch, normalizeChat } from "@veyyon/pi-mnemopi/core/chat-normalize";
-import { getCostStats, initCostLog, logCost } from "@veyyon/pi-mnemopi/core/cost-log";
-import { estimateCost, estimateTokens } from "@veyyon/pi-mnemopi/core/token-counter";
+import { extractionRate, normalizeBatch, normalizeChat } from "@veyyon/mnemopi/core/chat-normalize";
+import { getCostStats, initCostLog, logCost } from "@veyyon/mnemopi/core/cost-log";
+import { estimateCost, estimateTokens } from "@veyyon/mnemopi/core/token-counter";
 
 describe("token counter", () => {
-	it("uses the Python fallback token estimate and pricing table", () => {
+	it("uses the shared byte-aware token estimate and pricing table", () => {
 		expect(estimateTokens("")).toBe(0);
 		expect(estimateTokens("abcdefghijkl")).toBe(3);
-		expect(estimateTokens("abc")).toBe(0);
+		// The old floor(chars/4) copy claimed non-empty "abc" was 0 tokens.
+		expect(estimateTokens("abc")).toBe(1);
+		// 8 CJK chars = 24 UTF-8 bytes -> 6 tokens; the char-based copy said 2.
+		expect(estimateTokens("日本語のテキスト")).toBe(6);
 		expect(estimateCost(1_000_000, "gpt-4o-mini")).toEqual({
 			tokens: 1_000_000,
 			model: "gpt-4o-mini",

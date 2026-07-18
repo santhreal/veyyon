@@ -5,8 +5,8 @@
  * cell with status icon, optional output, and expand/collapse handling. `open`
  * and `close` actions render as compact status lines.
  */
-import type { Component } from "@veyyon/pi-tui";
-import { Text } from "@veyyon/pi-tui";
+import type { Component } from "@veyyon/tui";
+import { Text } from "@veyyon/tui";
 import type { RenderResultOptions } from "../../extensibility/custom-tools/types";
 import type { Theme } from "../../modes/theme/theme";
 import { Hasher, isFramedBlockComponent, markFramedBlockComponent, renderCodeCell, renderStatusLine } from "../../tui";

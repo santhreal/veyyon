@@ -12,7 +12,7 @@ use std::{
 	io::{self, Write},
 };
 
-use pi_uutils_ctx::stderr;
+use veyyon_uutils_ctx::stderr;
 
 use super::{Matcher, MatcherIO, WalkEntry};
 

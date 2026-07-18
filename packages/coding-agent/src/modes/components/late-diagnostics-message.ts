@@ -1,4 +1,4 @@
-import { Container, Text } from "@veyyon/pi-tui";
+import { Container, Text } from "@veyyon/tui";
 import { formatDiagnostics } from "../../tools/render-utils";
 import { getLanguageFromPath, theme } from "../theme/theme";
 

@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
-import { type SettingPath, Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { createTools, HIDDEN_TOOLS, type ToolSession } from "@veyyon/pi-coding-agent/tools";
+import { type SettingPath, Settings } from "@veyyon/coding-agent/config/settings";
+import { createTools, HIDDEN_TOOLS, type ToolSession } from "@veyyon/coding-agent/tools";
 
-Bun.env.PI_PYTHON_SKIP_CHECK = "1";
+Bun.env.VEYYON_PYTHON_SKIP_CHECK = "1";
 
 function createTestSession(overrides: Partial<ToolSession> = {}): ToolSession {
 	return {
@@ -130,10 +130,7 @@ describe("createTools", () => {
 
 	it("still exposes eval when python kernel is unavailable (dispatches to js)", async () => {
 		const session = createTestSession();
-		vi.spyOn(
-			await import("@veyyon/pi-coding-agent/eval/py/kernel"),
-			"checkPythonKernelAvailability",
-		).mockResolvedValue({
+		vi.spyOn(await import("@veyyon/coding-agent/eval/py/kernel"), "checkPythonKernelAvailability").mockResolvedValue({
 			ok: false,
 			reason: "missing python",
 		});

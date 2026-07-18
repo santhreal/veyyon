@@ -1,12 +1,12 @@
 import { Database } from "bun:sqlite";
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
+import { Settings } from "@veyyon/coding-agent/config/settings";
 import {
 	__resetAutoQaFlushStateForTests,
 	flushGrievances,
 	isAutoQaEnabled,
-} from "@veyyon/pi-coding-agent/tools/report-tool-issue";
-import * as piUtils from "@veyyon/pi-utils";
+} from "@veyyon/coding-agent/tools/report-tool-issue";
+import * as piUtils from "@veyyon/utils";
 import { mockFetch } from "../helpers/fetch-mock";
 
 function openTempDb(): Database {
@@ -54,7 +54,7 @@ function pushSettings(overrides: Record<string, unknown> = {}): Settings {
 	return Settings.isolated({
 		"dev.autoqa": true,
 		// Consent is the push opt-in; `granted` is what `resolvePushConfig`
-		// gates on (or `PI_AUTO_QA_PUSH=1` for headless overrides).
+		// gates on (or `VEYYON_AUTO_QA_PUSH=1` for headless overrides).
 		"dev.autoqa.consent": "granted",
 		"dev.autoqaPush.endpoint": "https://qa.example.com/grievances",
 		...overrides,
@@ -65,10 +65,10 @@ let originalPiAutoQa: string | undefined;
 
 function restoreAutoQaEnv(): void {
 	if (originalPiAutoQa === undefined) {
-		delete Bun.env.PI_AUTO_QA;
+		delete Bun.env.VEYYON_AUTO_QA;
 		return;
 	}
-	Bun.env.PI_AUTO_QA = originalPiAutoQa;
+	Bun.env.VEYYON_AUTO_QA = originalPiAutoQa;
 }
 
 describe("flushGrievances", () => {
@@ -76,8 +76,8 @@ describe("flushGrievances", () => {
 
 	beforeEach(() => {
 		__resetAutoQaFlushStateForTests();
-		originalPiAutoQa = Bun.env.PI_AUTO_QA;
-		delete Bun.env.PI_AUTO_QA;
+		originalPiAutoQa = Bun.env.VEYYON_AUTO_QA;
+		delete Bun.env.VEYYON_AUTO_QA;
 		vi.spyOn(piUtils, "getInstallId").mockReturnValue("11111111-2222-3333-4444-555555555555");
 		db = openTempDb();
 	});
@@ -89,14 +89,14 @@ describe("flushGrievances", () => {
 		db.close();
 	});
 
-	it("lets PI_AUTO_QA=false disable auto QA when the setting is enabled", () => {
-		Bun.env.PI_AUTO_QA = "0";
+	it("lets VEYYON_AUTO_QA=false disable auto QA when the setting is enabled", () => {
+		Bun.env.VEYYON_AUTO_QA = "0";
 
 		expect(isAutoQaEnabled(Settings.isolated({ "dev.autoqa": true }))).toBe(false);
 	});
 
-	it("lets PI_AUTO_QA=true enable auto QA when the setting is disabled", () => {
-		Bun.env.PI_AUTO_QA = "1";
+	it("lets VEYYON_AUTO_QA=true enable auto QA when the setting is disabled", () => {
+		Bun.env.VEYYON_AUTO_QA = "1";
 
 		expect(isAutoQaEnabled(Settings.isolated({ "dev.autoqa": false }))).toBe(true);
 	});
@@ -175,7 +175,7 @@ describe("flushGrievances", () => {
 		]);
 
 		// Rows are retained for inspection — `pushed=1` flips, but the data
-		// stays so users can browse what they've shipped via `omp grievances`.
+		// stays so users can browse what they've shipped via `veyyon grievances`.
 		expect(selectIds(db)).toEqual([1, 2]);
 		expect(selectPushedIds(db)).toEqual([1, 2]);
 		expect(selectUnpushedIds(db)).toEqual([]);

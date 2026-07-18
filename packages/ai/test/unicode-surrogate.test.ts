@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
-import { complete } from "@veyyon/pi-ai/stream";
-import type { Api, Context, Model, OptionsForApi, ToolResultMessage } from "@veyyon/pi-ai/types";
-import { getBundledModel } from "@veyyon/pi-catalog/models";
+import { complete } from "@veyyon/ai/stream";
+import type { Api, Context, Model, OptionsForApi, ToolResultMessage } from "@veyyon/ai/types";
+import { getBundledModel } from "@veyyon/catalog/models";
 import { type } from "arktype";
 import { e2eApiKey, resolveApiKey } from "./oauth";
 

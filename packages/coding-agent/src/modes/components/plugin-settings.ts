@@ -18,8 +18,8 @@ import {
 	SettingsList,
 	Spacer,
 	Text,
-} from "@veyyon/pi-tui";
-import { logger } from "@veyyon/pi-utils";
+} from "@veyyon/tui";
+import { errorMessage, logger } from "@veyyon/utils";
 import { PluginManager } from "../../extensibility/plugins/manager";
 import type { InstalledPluginSummary, MarketplaceManager } from "../../extensibility/plugins/marketplace";
 import type { InstalledPlugin, PluginSettingSchema } from "../../extensibility/plugins/types";
@@ -626,7 +626,7 @@ export class PluginSettingsComponent extends Container {
 		const [npmPlugins, marketplacePlugins] = await Promise.all([
 			this.#manager.list().catch(err => {
 				logger.error("Settings → Plugins: failed to list npm plugins", {
-					error: err instanceof Error ? err.message : String(err),
+					error: errorMessage(err),
 				});
 				return [] as InstalledPlugin[];
 			}),
@@ -634,7 +634,7 @@ export class PluginSettingsComponent extends Container {
 				.then(mgr => mgr.listInstalledPlugins())
 				.catch(err => {
 					logger.error("Settings → Plugins: failed to list marketplace plugins", {
-						error: err instanceof Error ? err.message : String(err),
+						error: errorMessage(err),
 					});
 					return [] as InstalledPluginSummary[];
 				}),
@@ -702,7 +702,7 @@ export class PluginSettingsComponent extends Container {
 						pluginId: plugin.id,
 						scope: plugin.scope,
 						enabled,
-						error: err instanceof Error ? err.message : String(err),
+						error: errorMessage(err),
 					});
 				}
 			},

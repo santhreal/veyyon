@@ -10,6 +10,10 @@
         <!-- Veyyon handbook: self-contained head additions. No remote resources. -->
         <meta name="theme-color" content="#050505">
         <meta name="color-scheme" content="dark">
+        <!-- Site favicons live at the deployed root, one level above /docs/. -->
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+        <link rel="icon" href="/favicon.ico" sizes="48x48">
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png">
         <style>
           /* Paint the near-black surface before CSS/JS resolve the theme, so there is
              no light flash on load. Kept in sync with theme/veyyon.css. */
@@ -18,7 +22,7 @@
           *, *::before, *::after { box-sizing: border-box; }
         </style>
 
-        <meta name="description" content="How Veyyon turns open models into frontier coding agents. The product, the harness, tool-call repair, the edit format, per-model adaptation, and how to use it.">
+        <meta name="description" content="Operator handbook for the Veyyon terminal coding agent: install, configuration, tools, approvals, edit formats, providers, and harness structure.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -38,7 +42,7 @@
         <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="../ayu-highlight-3fdfc3ac.css">
 
         <!-- Custom theme stylesheets -->
-        <link rel="stylesheet" href="../theme/veyyon-fc839a17.css">
+        <link rel="stylesheet" href="../theme/veyyon-06f6939e.css">
 
 
         <!-- Provide site root and default themes to javascript -->
@@ -46,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-e76f06ca.js";
+            window.path_to_searchindex_js = "../searchindex-a2447057.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-9cfd259b.js"></script>
+        <script src="../toc-cc1a72e9.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -192,20 +196,45 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="profiles"><a class="header" href="#profiles">Profiles</a></h1>
-<p>A <strong>profile</strong> is a named config root that relocates Veyyon’s user-level agent directory. It lets you keep separate settings, sessions, MCP config, skills, and hooks for different kinds of work (for example <code>work</code> vs <code>bounty</code>) while sharing one <code>veyyon</code> binary.</p>
-<p>For the mental model and roles, see <a href="../using/roles-and-profiles.html">Roles and profiles</a>.</p>
+<p>A <strong>profile</strong> is a directory under <code>~/.veyyon/profiles/&lt;name&gt;/</code> holding that identity’s settings, sessions, MCP, skills, hooks, logs, plugins, and caches. One binary; multiple profile trees.</p>
+<p>Roles and profile layout: <a href="../using/roles-and-profiles.html">Roles and profiles</a>.</p>
+<h2 id="layout"><a class="header" href="#layout">Layout</a></h2>
+<p>Every profile — <strong>including <code>default</code></strong> — lives under the same tree:</p>
+<pre><code class="language-text">~/.veyyon/
+  config.yml            # GLOBAL settings (defaultProfile, ...) — not a profile's settings
+  install-id            # per-install UUID, shared by all profiles
+  profiles/
+    default/            # the default profile — a real profile like any other
+      agent/            # settings, sessions, skills, MCP, keybindings, ...
+      logs/  plugins/  cache/  wt/  ...
+    work/
+      agent/
+      ...
+</code></pre>
+<p>See <a href="../reference/file-locations.html">File locations</a> for the full per-profile tree and the
+one-time migration from the legacy bare-root layout.</p>
+<h2 id="which-profile-launches"><a class="header" href="#which-profile-launches">Which profile launches</a></h2>
+<p>Resolution order for every <code>veyyon</code> / <code>vey</code> invocation:</p>
+<ol>
+<li><code>--profile &lt;name&gt;</code>.</li>
+<li><code>VEYYON_PROFILE</code>. An explicitly <strong>empty</strong>
+<code>VEYYON_PROFILE=</code> forces <code>default</code>, bypassing step 3.</li>
+<li><code>defaultProfile</code> in the global <code>~/.veyyon/config.yml</code> — set or show it with
+<code>veyyon profile default [name]</code>.</li>
+<li><code>default</code>.</li>
+</ol>
 <h2 id="what-a-profile-owns-shipped"><a class="header" href="#what-a-profile-owns-shipped">What a profile owns (shipped)</a></h2>
-<p>When <code>--profile &lt;name&gt;</code> is active (or <code>VEYYON_PROFILE</code> is set), native Veyyon paths under <code>~/.veyyon/agent/</code> resolve to:</p>
+<p>When a profile <code>&lt;name&gt;</code> is active, native Veyyon paths resolve under:</p>
 <pre><code class="language-text">~/.veyyon/profiles/&lt;name&gt;/agent/
 </code></pre>
-<p>That relocation is uniform across settings, sessions, blobs, slash commands, rules, prompts, hooks, tools, extensions, skills, MCP, keybindings, theme, and top-level instruction files (<code>SYSTEM.md</code>, <code>RULES.md</code>, <code>AGENTS.md</code>) discovered from the user agent dir. A named profile does <strong>not</strong> read another profile’s <code>agent/</code> tree at runtime.</p>
+<p>That resolution is uniform across settings, sessions, blobs, slash commands, rules, prompts, hooks, tools, extensions, skills, MCP, keybindings, theme, and top-level instruction files (<code>SYSTEM.md</code>, <code>RULES.md</code>, <code>AGENTS.md</code>) discovered from the user agent dir. Operational state (logs, plugins, caches, worktrees) resolves under the profile root <code>~/.veyyon/profiles/&lt;name&gt;/</code> the same way. A profile never reads another profile’s tree at runtime.</p>
 <p><strong>Keybindings:</strong> each profile owns <code>agent/keybindings.*</code>. New profiles seeded with <code>veyyon profile new --from default</code> copy the default profile’s keybindings once. On first launch of an older named profile that has no keybindings file, Veyyon performs the same one-time seed and logs it. There is no live merge from the default profile after that.</p>
 <p>Project-level dirs (<code>&lt;cwd&gt;/.veyyon</code>, <code>.claude</code>, etc.) are <strong>not</strong> profile-scoped; they follow the working directory.</p>
 <p><strong>Other tools’ config</strong> (skills and <code>CLAUDE.md</code>/<code>AGENTS.md</code> written for Claude, Codex, and similar) is on by default and controlled per profile by <code>discovery.importForeignConfig</code>, so one profile can keep importing it while another opts out to run native-only. Another tool’s own global dir (<code>~/.claude/skills</code>, …) cannot be relocated into a profile — see <a href="./skills.html#profiles-isolate-skills">Skills › Profiles isolate skills</a>.</p>
 <h2 id="activating-a-profile"><a class="header" href="#activating-a-profile">Activating a profile</a></h2>
 <ul>
 <li><strong>CLI:</strong> <code>veyyon --profile &lt;name&gt;</code> (no short form; <code>-p</code> is <code>--print</code>).</li>
-<li><strong>Env:</strong> <code>VEYYON_PROFILE=&lt;name&gt;</code> (legacy: <code>OMP_PROFILE</code>, <code>PI_PROFILE</code>).</li>
+<li><strong>Env:</strong> <code>VEYYON_PROFILE=&lt;name&gt;</code>.</li>
 <li><strong>TUI:</strong> <code>/profile &lt;name&gt;</code> ends the current conversation and relaunches Veyyon on that profile (a fresh session — profiles are chosen at process start, so there is no hot-swap). Bare <code>/profile</code> lists profiles with the active one marked.</li>
 <li><strong>Shell alias:</strong> <code>veyyon --profile work --alias mywork</code> installs a managed block in your shell rc (see <code>cli/profile-alias.ts</code>).</li>
 </ul>
@@ -221,12 +250,14 @@
 $ veyyon profile new work
 $ veyyon profile new bounty --from blank
 $ veyyon profile rm work --yes
+$ veyyon profile default work
 </code></pre>
 <ul>
 <li><code>new</code> creates <code>~/.veyyon/profiles/&lt;name&gt;/agent/</code> with the expected identity dirs (<code>skills/</code>, <code>commands/</code>, …).</li>
 <li><code>--from default</code> (default) seeds <code>config.yml</code>, keybindings, MCP, skills, and other identity files from the default profile. Sessions, blobs, and databases are <strong>not</strong> copied.</li>
 <li><code>--from blank</code> creates an empty agent tree.</li>
 <li><code>rm</code> refuses the default profile, the active profile, and destructive deletes without <code>--yes</code>.</li>
+<li><code>default [name]</code> shows or sets the global <code>defaultProfile</code> (which profile a bare <code>vey</code> launches); <code>default --clear</code> removes it.</li>
 </ul>
 <p>In the TUI, <code>/profile new &lt;name&gt;</code> opens a picker listing every carry-over item — AGENTS.md, settings, MCP servers, SSH targets, skills, commands, tools, prompts, themes, extensions, keybindings — each individually toggleable (all selected by default). The new profile is seeded from the <strong>active</strong> profile with exactly the chosen items.</p>
 <p>You can still create a profile implicitly by running <code>veyyon --profile &lt;name&gt;</code> once; use <code>profile new</code> when you want seeding without launching the TUI.</p>
@@ -237,9 +268,10 @@ $ veyyon profile rm work --yes
 <p>Each profile’s <code>config.yml</code> owns the three model slots and optional roles:</p>
 <pre><code class="language-yaml">modelRoles:
   default: openai/gpt-5             # interactive (also set live with /model)
-  plan: openai/o3                   # optional roles; settings → Models → Roles
+  plan: openai/o3
+  smol: deepseek/deepseek-chat
 subagent:
-  model: deepseek/deepseek-chat
+  model: deepseek/deepseek-chat     # optional override of modelRoles.task
 compaction:
   model: openai/gpt-5-mini
   strategy: handoff                 # or snap

@@ -7,7 +7,6 @@ recovery → verification. For the normal (non-incident) flows, see [releasing](
 | Runbook | When to reach for it |
 | --- | --- |
 | [release-recovery.md](release-recovery.md) | `bun run release` or its CI failed partway; a tag exists but the GitHub release / binaries are missing or incomplete. |
-| [runner-outage.md](runner-outage.md) | The self-hosted `omp-kata` runner is offline, so ordinary main-push CI hangs (releases route to GitHub-hosted runners and are unaffected). |
 | [secret-rotation.md](secret-rotation.md) | Rotating Apple signing secrets, the Cloudflare Pages token, or auth-broker bearer tokens. |
 | [install-rollback.md](install-rollback.md) | A published release is bad and `curl … | sh` is serving it to users. |
 

@@ -1,5 +1,5 @@
-import type { Component } from "@veyyon/pi-tui";
-import { Box, Container } from "@veyyon/pi-tui";
+import type { Component } from "@veyyon/tui";
+import { Box, Container } from "@veyyon/tui";
 import type { MessageRenderer } from "../../extensibility/extensions/types";
 import { theme } from "../../modes/theme/theme";
 import type { CustomMessage } from "../../session/messages";

@@ -1,11 +1,8 @@
 # Role policy
 
-> **Status: Built (partial).** Role and subagent machinery is part of the harness. Roles are
-> configuration and spawn parameters, not a fixed pipeline.
-
-Intra-harness role policy chooses which model, prompt, and tool surface fits a subagent or
-specialized pass. Veyyon is provider-agnostic: roles are configuration + spawn parameters, not
-hard-coded provider assumptions.
+Role and subagent machinery is configuration and spawn parameters, not a fixed pipeline. Intra-harness
+role policy chooses which model, prompt, and tool surface fits a subagent or specialized pass.
+Veyyon is provider-agnostic: roles are not hard-coded provider assumptions.
 
 ## What exists today
 

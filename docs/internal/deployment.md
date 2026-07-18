@@ -148,9 +148,9 @@ push triggers `ci.yml`, which builds every platform binary and publishes the Git
 release with all assets + checksums. The install scripts then pick it up through
 `releases/latest` with no further action.
 
-> Release-shaped runs route every `ci.yml` job to GitHub-hosted runners, so a
-> release never depends on the self-hosted fleet — see
-> [releasing.md](./releasing.md) §Release runners.
+> Every `ci.yml` job runs on GitHub-hosted runners, so a release never depends
+> on a self-hosted fleet — see [releasing.md](./releasing.md) §Runners and
+> concurrency.
 
 ## Repository secrets and variables
 

@@ -1,7 +1,7 @@
 import type { HTMLElement } from "linkedom";
 import { ToolAbortError } from "../../tools/tool-errors";
 import type { RenderResult, SpecialHandler } from "./types";
-import { buildResult, loadPage } from "./types";
+import { buildResult, loadPage, tryParseUrl } from "./types";
 
 const NITTER_INSTANCES = [
 	"nitter.privacyredirect.com",
@@ -19,7 +19,8 @@ export const handleTwitter: SpecialHandler = async (
 	signal?: AbortSignal,
 ): Promise<RenderResult | null> => {
 	try {
-		const parsed = new URL(url);
+		const parsed = tryParseUrl(url);
+		if (!parsed) return null;
 		if (!["twitter.com", "x.com", "www.twitter.com", "www.x.com"].includes(parsed.hostname)) {
 			return null;
 		}

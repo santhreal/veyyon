@@ -1,10 +1,11 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { gunzipSync } from "node:zlib";
-import { getDocsRsCacheDir, isEnoent, logger, ptree, tryParseJson } from "@veyyon/pi-utils";
+import { getDocsRsCacheDir, isEnoent, logger, truncate, tryParseJson } from "@veyyon/utils";
 import { ToolAbortError } from "../../tools/tool-errors";
-import type { RenderResult, SpecialHandler } from "./types";
-import { buildResult, MAX_BYTES } from "./types";
+import { scopedTimeoutSignal } from "../../utils/fetch-timeout";
+import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
+import { buildResult, MAX_BYTES, scraperDegrade, tryParseUrl } from "./types";
 
 // --- Rustdoc JSON types (subset we care about) ---
 
@@ -61,7 +62,8 @@ interface DocsRsTarget {
 }
 
 function parseDocsRsUrl(url: string): DocsRsTarget | null {
-	const parsed = new URL(url);
+	const parsed = tryParseUrl(url);
+	if (!parsed) return null;
 	if (parsed.hostname !== "docs.rs") return null;
 
 	const segments = parsed.pathname.replace(/\/+$/, "").split("/").filter(Boolean);
@@ -335,7 +337,7 @@ export const handleDocsRs: SpecialHandler = async (
 	url: string,
 	timeout: number,
 	signal?: AbortSignal,
-): Promise<RenderResult | null> => {
+): Promise<RenderResult | ScraperDegrade | null> => {
 	const target = parseDocsRsUrl(url);
 	if (!target) return null;
 
@@ -384,14 +386,16 @@ export const handleDocsRs: SpecialHandler = async (
 	const jsonUrl = `https://docs.rs/crate/${target.crateName}/${target.version}/json.gz`;
 
 	let crate_: RustdocCrate | null;
+	// Scoped so the deadline timer is cleared on settle instead of staying
+	// armed like a bare AbortSignal.timeout; the fence spans the streamed read.
+	const requestTimeout = scopedTimeoutSignal(timeout * 1000, signal);
 	try {
-		const requestSignal = ptree.combineSignals(signal, timeout * 1000);
 		const response = await fetch(jsonUrl, {
-			signal: requestSignal,
+			signal: requestTimeout.signal,
 			headers: { "User-Agent": "veyyon-web-fetch/1.0", Accept: "application/gzip" },
 			redirect: "follow",
 		});
-		if (!response.ok) return null;
+		if (!response.ok) return scraperDegrade("docs.rs", `HTTP ${response.status}`);
 
 		const reader = response.body?.getReader();
 		if (!reader) return null;
@@ -415,11 +419,13 @@ export const handleDocsRs: SpecialHandler = async (
 		if (crate_?.index) {
 			await writeCachedRustdocCrate(target, jsonStr);
 		}
-	} catch {
+	} catch (error) {
 		if (signal?.aborted) throw new ToolAbortError();
-		return null;
+		return scraperDegrade("docs.rs", error);
+	} finally {
+		requestTimeout.cancel();
 	}
-	if (!crate_?.index) return null;
+	if (!crate_?.index) return scraperDegrade("docs.rs", "rustdoc JSON had no item index");
 
 	const index = crate_.index;
 
@@ -659,5 +665,5 @@ function renderModule(
 
 function firstLine(s: string): string {
 	const line = s.split("\n")[0].trim();
-	return line.length > 200 ? `${line.slice(0, 197)}...` : line;
+	return truncate(line, 200, "...");
 }

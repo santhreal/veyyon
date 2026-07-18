@@ -15,9 +15,9 @@
  * Deterministic LCG so a failing (content, width) pair reproduces from the seed.
  */
 import { describe, expect, it } from "bun:test";
-import { Markdown } from "@veyyon/pi-tui/components/markdown";
-import { Text } from "@veyyon/pi-tui/components/text";
-import { padding } from "@veyyon/pi-tui/utils";
+import { Markdown } from "@veyyon/tui/components/markdown";
+import { Text } from "@veyyon/tui/components/text";
+import { padding } from "@veyyon/tui/utils";
 import { buildString, lcg } from "./helpers/adversarial-strings";
 import { defaultMarkdownTheme } from "./test-themes.js";
 

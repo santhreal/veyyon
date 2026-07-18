@@ -1,29 +1,32 @@
 import { describe, expect, it } from "bun:test";
-import { handleStackOverflow } from "@veyyon/pi-coding-agent/web/scrapers/stackoverflow";
+import { handleStackOverflow } from "@veyyon/coding-agent/web/scrapers/stackoverflow";
+import { asRender } from "../../helpers/scrapers";
 
 const SKIP = !Bun.env.WEB_FETCH_INTEGRATION;
 
 describe.skipIf(SKIP)("handleStackOverflow", () => {
 	it("returns null for non-SE URLs", async () => {
-		const result = await handleStackOverflow("https://example.com", 20);
+		const result = asRender(await handleStackOverflow("https://example.com", 20));
 		expect(result).toBeNull();
 	});
 
 	it("returns null for SE site without question path", async () => {
-		const result = await handleStackOverflow("https://stackoverflow.com/tags", 20);
+		const result = asRender(await handleStackOverflow("https://stackoverflow.com/tags", 20));
 		expect(result).toBeNull();
 	});
 
 	it("returns null for SE user profile URLs", async () => {
-		const result = await handleStackOverflow("https://stackoverflow.com/users/1", 20);
+		const result = asRender(await handleStackOverflow("https://stackoverflow.com/users/1", 20));
 		expect(result).toBeNull();
 	});
 
 	// stackoverflow.com - "What is a NullPointerException" (classic, highly voted)
 	it("fetches stackoverflow.com question", async () => {
-		const result = await handleStackOverflow(
-			"https://stackoverflow.com/questions/218384/what-is-a-nullpointerexception-and-how-do-i-fix-it",
-			20,
+		const result = asRender(
+			await handleStackOverflow(
+				"https://stackoverflow.com/questions/218384/what-is-a-nullpointerexception-and-how-do-i-fix-it",
+				20,
+			),
 		);
 		expect(result).not.toBeNull();
 		expect(result?.method).toBe("stackexchange");
@@ -34,9 +37,11 @@ describe.skipIf(SKIP)("handleStackOverflow", () => {
 
 	// unix.stackexchange.com - "Why does my shell script choke on whitespace" (classic)
 	it("fetches unix.stackexchange.com question", async () => {
-		const result = await handleStackOverflow(
-			"https://unix.stackexchange.com/questions/131766/why-does-my-shell-script-choke-on-whitespace-or-other-special-characters",
-			20,
+		const result = asRender(
+			await handleStackOverflow(
+				"https://unix.stackexchange.com/questions/131766/why-does-my-shell-script-choke-on-whitespace-or-other-special-characters",
+				20,
+			),
 		);
 		expect(result).not.toBeNull();
 		expect(result?.method).toBe("stackexchange");
@@ -47,9 +52,11 @@ describe.skipIf(SKIP)("handleStackOverflow", () => {
 
 	// superuser.com - "What are PATH and other environment variables" (stable)
 	it("fetches superuser.com question", async () => {
-		const result = await handleStackOverflow(
-			"https://superuser.com/questions/284342/what-are-path-and-other-environment-variables-and-how-can-i-set-or-use-them",
-			20,
+		const result = asRender(
+			await handleStackOverflow(
+				"https://superuser.com/questions/284342/what-are-path-and-other-environment-variables-and-how-can-i-set-or-use-them",
+				20,
+			),
 		);
 		expect(result).not.toBeNull();
 		expect(result?.method).toBe("stackexchange");
@@ -60,9 +67,11 @@ describe.skipIf(SKIP)("handleStackOverflow", () => {
 
 	// askubuntu.com - "What is the difference between apt and apt-get" (iconic)
 	it("fetches askubuntu.com question", async () => {
-		const result = await handleStackOverflow(
-			"https://askubuntu.com/questions/445384/what-is-the-difference-between-apt-and-apt-get",
-			20,
+		const result = asRender(
+			await handleStackOverflow(
+				"https://askubuntu.com/questions/445384/what-is-the-difference-between-apt-and-apt-get",
+				20,
+			),
 		);
 		expect(result).not.toBeNull();
 		expect(result?.method).toBe("stackexchange");
@@ -73,9 +82,11 @@ describe.skipIf(SKIP)("handleStackOverflow", () => {
 
 	// serverfault.com - "What is a reverse proxy" (stable sysadmin topic)
 	it("fetches serverfault.com question", async () => {
-		const result = await handleStackOverflow(
-			"https://serverfault.com/questions/127021/what-is-the-difference-between-a-proxy-and-a-reverse-proxy",
-			20,
+		const result = asRender(
+			await handleStackOverflow(
+				"https://serverfault.com/questions/127021/what-is-the-difference-between-a-proxy-and-a-reverse-proxy",
+				20,
+			),
 		);
 		expect(result).not.toBeNull();
 		expect(result?.method).toBe("stackexchange");
@@ -88,7 +99,7 @@ describe.skipIf(SKIP)("handleStackOverflow", () => {
 
 	// Verify response structure
 	it("returns complete response structure", async () => {
-		const result = await handleStackOverflow("https://stackoverflow.com/questions/218384", 20);
+		const result = asRender(await handleStackOverflow("https://stackoverflow.com/questions/218384", 20));
 		expect(result).not.toBeNull();
 		expect(result).toHaveProperty("contentType", "text/markdown");
 		expect(result).toHaveProperty("method", "stackexchange");

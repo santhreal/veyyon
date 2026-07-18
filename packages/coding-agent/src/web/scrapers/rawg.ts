@@ -1,5 +1,15 @@
-import { tryParseJson } from "@veyyon/pi-utils";
-import { buildResult, htmlToBasicMarkdown, loadPage, type RenderResult, type SpecialHandler } from "./types";
+import { tryParseJson } from "@veyyon/utils";
+import {
+	buildResult,
+	htmlToBasicMarkdown,
+	loadFailure,
+	loadPage,
+	type RenderResult,
+	type ScraperDegrade,
+	type SpecialHandler,
+	scraperDegrade,
+	tryParseUrl,
+} from "./types";
 
 interface RawgPlatformEntry {
 	platform?: {
@@ -27,9 +37,10 @@ export const handleRawg: SpecialHandler = async (
 	url: string,
 	timeout: number,
 	signal?: AbortSignal,
-): Promise<RenderResult | null> => {
+): Promise<RenderResult | ScraperDegrade | null> => {
 	try {
-		const parsed = new URL(url);
+		const parsed = tryParseUrl(url);
+		if (!parsed) return null;
 		if (!isRawgHostname(parsed.hostname)) return null;
 
 		const slug = extractGameSlug(parsed.pathname);
@@ -39,10 +50,10 @@ export const handleRawg: SpecialHandler = async (
 		const apiUrl = `https://api.rawg.io/api/games/${encodeURIComponent(slug)}`;
 		const result = await loadPage(apiUrl, { timeout, signal, headers: { Accept: "application/json" } });
 
-		if (!result.ok) return null;
+		if (!result.ok) return scraperDegrade("rawg", loadFailure(result));
 
 		const game = tryParseJson<RawgGameResponse>(result.content);
-		if (!game) return null;
+		if (!game) return scraperDegrade("rawg", "unexpected response shape");
 
 		if (requiresApiKey(game)) return null;
 
@@ -69,9 +80,9 @@ export const handleRawg: SpecialHandler = async (
 		}
 
 		return buildResult(md, { url, method: "rawg", fetchedAt, notes: ["Fetched via RAWG API"] });
-	} catch {}
-
-	return null;
+	} catch (error) {
+		return scraperDegrade("rawg", error);
+	}
 };
 
 function isRawgHostname(hostname: string): boolean {

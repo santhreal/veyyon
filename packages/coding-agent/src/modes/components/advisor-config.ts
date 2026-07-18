@@ -15,9 +15,9 @@
  * {@link WatchdogConfigDoc} and only touches disk + the live advisors via the host
  * `save` callback.
  */
-import type { ThinkingLevel } from "@veyyon/pi-agent-core";
-import type { Model } from "@veyyon/pi-ai";
-import { getSupportedEfforts } from "@veyyon/pi-catalog/model-thinking";
+import type { ThinkingLevel } from "@veyyon/agent-core";
+import type { Model } from "@veyyon/ai";
+import { getSupportedEfforts } from "@veyyon/catalog/model-thinking";
 import {
 	type Component,
 	Input,
@@ -28,7 +28,8 @@ import {
 	type SgrMouseEvent,
 	type TUI,
 	truncateToWidth,
-} from "@veyyon/pi-tui";
+} from "@veyyon/tui";
+import { errorMessage } from "@veyyon/utils";
 import {
 	ADVISOR_DEFAULT_TOOL_NAMES,
 	type AdvisorConfig,
@@ -342,7 +343,7 @@ export class AdvisorConfigOverlayComponent implements Component {
 		};
 		list.onSelect = item =>
 			void this.#onListSelect(item.value).catch(err => {
-				this.#cb.notify(`Advisor config: ${err instanceof Error ? err.message : String(err)}`);
+				this.#cb.notify(`Advisor config: ${errorMessage(err)}`);
 			});
 		list.onCancel = () => this.#cb.close();
 		this.#setScreen("list", list, "↑↓ move · Enter / click select · scroll preview on the right · Esc close");

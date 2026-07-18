@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { parseSessionFile } from "@veyyon/pi-stats/parser";
-import { getSessionsDir } from "@veyyon/pi-utils";
+import { parseSessionFile } from "@veyyon/stats/parser";
+import { getSessionsDir } from "@veyyon/utils";
 import { installStatsTestIsolation } from "./helpers/temp-agent";
 
 installStatsTestIsolation("@pi-stats-large-session-");

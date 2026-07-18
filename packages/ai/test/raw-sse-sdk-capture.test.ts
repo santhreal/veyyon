@@ -1,13 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "bun:test";
-import { streamAnthropic } from "@veyyon/pi-ai/providers/anthropic";
-import type { AnthropicMessagesClientLike } from "@veyyon/pi-ai/providers/anthropic-client";
-import type { RawMessageStreamEvent } from "@veyyon/pi-ai/providers/anthropic-wire";
-import { streamAzureOpenAIResponses } from "@veyyon/pi-ai/providers/azure-openai-responses";
-import { streamOpenAICompletions } from "@veyyon/pi-ai/providers/openai-completions";
-import { streamOpenAIResponses } from "@veyyon/pi-ai/providers/openai-responses";
-import type { Context, FetchImpl, Model, RawSseEvent } from "@veyyon/pi-ai/types";
-import { buildModel } from "@veyyon/pi-catalog/build";
-import { getBundledModel } from "@veyyon/pi-catalog/models";
+import { streamAnthropic } from "@veyyon/ai/providers/anthropic";
+import type { AnthropicMessagesClientLike } from "@veyyon/ai/providers/anthropic-client";
+import type { RawMessageStreamEvent } from "@veyyon/ai/providers/anthropic-wire";
+import { streamAzureOpenAIResponses } from "@veyyon/ai/providers/azure-openai-responses";
+import { streamOpenAICompletions } from "@veyyon/ai/providers/openai-completions";
+import { streamOpenAIResponses } from "@veyyon/ai/providers/openai-responses";
+import type { Context, FetchImpl, Model, RawSseEvent } from "@veyyon/ai/types";
+import { buildModel } from "@veyyon/catalog/build";
+import { getBundledModel } from "@veyyon/catalog/models";
 
 const context: Context = {
 	messages: [{ role: "user", content: "Say hello", timestamp: Date.now() }],

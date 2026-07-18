@@ -1,4 +1,4 @@
-import { prompt } from "@veyyon/pi-utils";
+import { prompt } from "@veyyon/utils";
 import type { CustomCommand, CustomCommandAPI } from "../../../../extensibility/custom-commands/types";
 import type { HookCommandContext } from "../../../../extensibility/hooks/types";
 import ciGreenRequestTemplate from "../../../../prompts/ci-green-request.md" with { type: "text" };

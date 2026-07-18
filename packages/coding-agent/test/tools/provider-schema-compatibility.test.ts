@@ -8,10 +8,10 @@ import {
 	toolWireSchema,
 	validateSchemaCompatibility,
 	validateStrictSchemaEnforcement,
-} from "@veyyon/pi-ai/utils/schema";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { createTools, HIDDEN_TOOLS, type ToolSession } from "@veyyon/pi-coding-agent/tools";
-import { createVibeTools } from "@veyyon/pi-coding-agent/tools/vibe";
+} from "@veyyon/ai/utils/schema";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import { createTools, HIDDEN_TOOLS, type ToolSession } from "@veyyon/coding-agent/tools";
+import { createVibeTools } from "@veyyon/coding-agent/tools/vibe";
 
 interface ToolSchemaEntry {
 	name: string;

@@ -2,26 +2,26 @@
  * Regression tests for top-level `RULES.md` sticky rules.
  *
  * `RULES.md` (singular, top-level) MUST be loaded as a sticky always-apply rule
- * from both `~/.veyyon/agent/RULES.md` (user) and the nearest `.omp/RULES.md`
+ * from both `~/.veyyon/agent/RULES.md` (user) and the nearest `.veyyon/RULES.md`
  * (project, walked up from cwd to repoRoot).
  */
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { getCapability } from "@veyyon/pi-coding-agent/capability";
-import { clearCache } from "@veyyon/pi-coding-agent/capability/fs";
-import { type Rule, ruleCapability } from "@veyyon/pi-coding-agent/capability/rule";
-import type { LoadContext } from "@veyyon/pi-coding-agent/capability/types";
+import { getCapability } from "@veyyon/coding-agent/capability";
+import { clearCache } from "@veyyon/coding-agent/capability/fs";
+import { type Rule, ruleCapability } from "@veyyon/coding-agent/capability/rule";
+import type { LoadContext } from "@veyyon/coding-agent/capability/types";
 // Importing discovery registers all providers as a side effect.
-import { loadCapability } from "@veyyon/pi-coding-agent/discovery";
-import { getConfigRootDir, removeSyncWithRetries, setAgentDir } from "@veyyon/pi-utils";
+import { loadCapability } from "@veyyon/coding-agent/discovery";
+import { getConfigRootDir, removeSyncWithRetries, setAgentDir } from "@veyyon/utils";
 
 let tempDir: string;
 let home: string;
 let project: string;
 
-const originalAgentDirEnv = process.env.PI_CODING_AGENT_DIR;
+const originalAgentDirEnv = process.env.VEYYON_CODING_AGENT_DIR;
 const fallbackAgentDir = path.join(getConfigRootDir(), "agent");
 
 function writeFile(filePath: string, content: string): void {
@@ -60,7 +60,7 @@ afterEach(() => {
 		setAgentDir(originalAgentDirEnv);
 	} else {
 		setAgentDir(fallbackAgentDir);
-		delete process.env.PI_CODING_AGENT_DIR;
+		delete process.env.VEYYON_CODING_AGENT_DIR;
 	}
 	removeSyncWithRetries(tempDir);
 });
@@ -79,7 +79,7 @@ test("user ~/.veyyon/agent/RULES.md becomes an alwaysApply rule", async () => {
 	expect(userRule?.content).toContain("beads task tracker");
 });
 
-test("project .omp/RULES.md becomes an alwaysApply rule", async () => {
+test("project .veyyon/RULES.md becomes an alwaysApply rule", async () => {
 	writeFile(path.join(project, ".veyyon", "RULES.md"), "# Project rule\nAlways say hi.\n");
 
 	const rules = await loadNativeRules({ cwd: project, home, repoRoot: project });
@@ -150,7 +150,7 @@ test("alwaysApply is forced even when frontmatter says false", async () => {
 });
 
 test("absent RULES.md does not produce a rule", async () => {
-	// No RULES.md anywhere — only a sibling .omp/rules/ to make sure the directory exists.
+	// No RULES.md anywhere — only a sibling .veyyon/rules/ to make sure the directory exists.
 	writeFile(path.join(home, ".veyyon", "agent", "rules", "other.md"), "# Unrelated rule\n");
 
 	const rules = await loadNativeRules({ cwd: project, home, repoRoot: project });

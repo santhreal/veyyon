@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
-import { streamOpenAICompletions } from "@veyyon/pi-ai/providers/openai-completions";
-import type { Context, Model, ModelSpec, Tool, ToolChoice } from "@veyyon/pi-ai/types";
-import { buildModel } from "@veyyon/pi-catalog/build";
+import { streamOpenAICompletions } from "@veyyon/ai/providers/openai-completions";
+import type { Context, Model, ModelSpec, Tool, ToolChoice } from "@veyyon/ai/types";
+import { buildModel } from "@veyyon/catalog/build";
 import { z } from "zod/v4";
 
 interface ChatCompletionsPayload {

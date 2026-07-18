@@ -7,11 +7,11 @@
  * ends without a `toolcall_end` event.
  */
 import { describe, expect, it } from "bun:test";
-import type { ProxyAssistantMessageEvent } from "@veyyon/pi-agent-core/proxy";
-import { type ProxyMessageEventStream, streamProxy } from "@veyyon/pi-agent-core/proxy";
-import type { AssistantMessage, AssistantMessageEvent, Context, FetchImpl, Model, ToolCall } from "@veyyon/pi-ai";
-import { getStreamingPartialJson } from "@veyyon/pi-ai/utils/block-symbols";
-import { buildModel } from "@veyyon/pi-catalog/build";
+import type { ProxyAssistantMessageEvent } from "@veyyon/agent-core/proxy";
+import { type ProxyMessageEventStream, streamProxy } from "@veyyon/agent-core/proxy";
+import type { AssistantMessage, AssistantMessageEvent, Context, FetchImpl, Model, ToolCall } from "@veyyon/ai";
+import { getStreamingPartialJson } from "@veyyon/ai/utils/block-symbols";
+import { buildModel } from "@veyyon/catalog/build";
 
 const mockModel: Model = buildModel({
 	id: "test-model",

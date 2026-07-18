@@ -1,5 +1,5 @@
 import * as fs from "node:fs";
-import { workerHostEntry } from "@veyyon/pi-utils";
+import { workerHostEntry } from "@veyyon/utils";
 import {
 	getRecentErrors as dbGetRecentErrors,
 	getRecentRequests as dbGetRecentRequests,
@@ -83,7 +83,7 @@ export interface SyncOptions {
 
 function defaultWorkerCount(): number {
 	// Bun 1.3.x can abort the macOS process when stats sync workers re-enter
-	// the compiled `omp` binary. Keep macOS on the documented serial path.
+	// the compiled `veyyon` binary. Keep macOS on the documented serial path.
 	if (process.platform === "darwin") return 1;
 	// `navigator.hardwareConcurrency` is the portable answer in Bun; fall
 	// back to a small fixed pool if it's somehow unavailable.
@@ -103,10 +103,10 @@ interface WorkerHandle {
 
 /**
  * Create a fresh sync worker. When the process was started from a
- * self-dispatching CLI entry (omp in source, npm-bundle, or compiled form),
+ * self-dispatching CLI entry (veyyon in source, npm-bundle, or compiled form),
  * re-enter that entry with a worker argv selector; otherwise (standalone
  * veyyon-stats, bun test, SDK embedding) load the worker module directly, so this
- * package keeps zero runtime dependency on `@veyyon/pi-coding-agent`.
+ * package keeps zero runtime dependency on `@veyyon/coding-agent`.
  */
 function createSyncWorker(): Worker {
 	const hostEntry = workerHostEntry();

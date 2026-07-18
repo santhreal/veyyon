@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "bun:test";
-import { ChatBlock, type ChatBlockHost } from "@veyyon/pi-coding-agent/modes/components/chat-block";
-import type { Component } from "@veyyon/pi-tui";
+import { ChatBlock, type ChatBlockHost } from "@veyyon/coding-agent/modes/components/chat-block";
+import type { Component } from "@veyyon/tui";
 
 /** Concrete subclass exposing the protected lifecycle seams for assertions. */
 class TestBlock extends ChatBlock {

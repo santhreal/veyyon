@@ -1,4 +1,4 @@
-# @veyyon/pi-tui
+# @veyyon/tui
 
 Minimal terminal UI framework with differential rendering and synchronized output for flicker-free interactive CLI applications.
 
@@ -16,7 +16,7 @@ Minimal terminal UI framework with differential rendering and synchronized outpu
 ## Quick Start
 
 ```typescript
-import { TUI, Text, Editor, ProcessTerminal } from "@veyyon/pi-tui";
+import { TUI, Text, Editor, ProcessTerminal } from "@veyyon/tui";
 
 // Create terminal
 const terminal = new ProcessTerminal();
@@ -443,8 +443,8 @@ Supported formats: PNG, JPEG, GIF, WebP. Dimensions are parsed from the image he
 Supports both slash commands and file paths.
 
 ```typescript
-import { CombinedAutocompleteProvider } from "@veyyon/pi-tui";
-import { getProjectDir } from "@veyyon/pi-utils";
+import { CombinedAutocompleteProvider } from "@veyyon/tui";
+import { getProjectDir } from "@veyyon/utils";
 
 const provider = new CombinedAutocompleteProvider(
 	[
@@ -499,7 +499,7 @@ import {
 	isHome,
 	isEnd,
 	// ... and more
-} from "@veyyon/pi-tui";
+} from "@veyyon/tui";
 
 if (isCtrlC(data)) {
 	process.exit(0);
@@ -514,7 +514,7 @@ The TUI uses three rendering strategies:
 2. **Width Changed or Change Above Viewport**: Clear screen and full re-render
 3. **Normal Update**: Move cursor to first changed line, clear to end, render changed lines
 
-All updates are wrapped in **synchronized output** (`\x1b[?2026h` ... `\x1b[?2026l`) for atomic, flicker-free rendering unless `PI_NO_SYNC_OUTPUT=1` is set. The opt-out removes only the DEC 2026 wrapper; paint writes still guard terminal autowrap to avoid pending-wrap cursor artifacts.
+All updates are wrapped in **synchronized output** (`\x1b[?2026h` ... `\x1b[?2026l`) for atomic, flicker-free rendering unless `VEYYON_NO_SYNC_OUTPUT=1` is set. The opt-out removes only the DEC 2026 wrapper; paint writes still guard terminal autowrap to avoid pending-wrap cursor artifacts.
 
 ## Terminal Interface
 
@@ -544,7 +544,7 @@ interface Terminal {
 ## Utilities
 
 ```typescript
-import { Ellipsis, visibleWidth, truncateToWidth, wrapTextWithAnsi } from "@veyyon/pi-tui";
+import { Ellipsis, visibleWidth, truncateToWidth, wrapTextWithAnsi } from "@veyyon/tui";
 
 // Get visible width of string (ignoring ANSI codes, uses Bun.stringWidth)
 const width = visibleWidth("\x1b[31mHello\x1b[0m"); // 5
@@ -569,8 +569,8 @@ When creating custom components, **each line returned by `render()` must not exc
 Use the key detection utilities to handle keyboard input:
 
 ```typescript
-import { isEnter, isEscape, isArrowUp, isArrowDown, isCtrlC, isTab, isBackspace } from "@veyyon/pi-tui";
-import type { Component } from "@veyyon/pi-tui";
+import { isEnter, isEscape, isArrowUp, isArrowDown, isCtrlC, isTab, isBackspace } from "@veyyon/tui";
+import type { Component } from "@veyyon/tui";
 
 class MyInteractiveComponent implements Component {
 	private selectedIndex = 0;
@@ -605,8 +605,8 @@ class MyInteractiveComponent implements Component {
 Use the provided utilities to ensure lines fit:
 
 ```typescript
-import { visibleWidth, truncateToWidth } from "@veyyon/pi-tui";
-import type { Component } from "@veyyon/pi-tui";
+import { visibleWidth, truncateToWidth } from "@veyyon/tui";
+import type { Component } from "@veyyon/tui";
 
 class MyComponent implements Component {
 	private text: string;

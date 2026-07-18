@@ -58,9 +58,10 @@ format). Match the surrounding code.
 
 ## Opening a pull request
 
-Pull requests require a **vouch** — see [CONTRIBUTING.md](../../CONTRIBUTING.md). In
-short: get vouched via a Discussion first, then open the PR. Put your change under the
-affected package's `## [Unreleased]` changelog section, keep the PR description short
-(what broke, the fix), and make sure `bun run check` and the tests pass.
+Pull requests are open to everyone — see [CONTRIBUTING.md](../../CONTRIBUTING.md).
+Open the PR against `main`. Put your change under the affected package's
+`## [Unreleased]` changelog section, keep the PR description short (what broke, the
+fix), and make sure `bun run check` and the tests pass. CI, the security suite, and
+the automated review run before a maintainer reviews it.
 
 *Verified against `7ca44d3` on 2026-07-17.*

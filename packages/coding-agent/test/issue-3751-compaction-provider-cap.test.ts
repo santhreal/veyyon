@@ -20,20 +20,20 @@
  *     unrelated provider call.
  */
 import { afterEach, describe, expect, it, vi } from "bun:test";
-import type { StreamFn } from "@veyyon/pi-agent-core";
+import type { StreamFn } from "@veyyon/agent-core";
 import {
 	type CompactionPreparation,
 	compact,
 	createFileOps,
 	DEFAULT_COMPACTION_SETTINGS,
-} from "@veyyon/pi-agent-core/compaction";
-import type { AgentMessage } from "@veyyon/pi-agent-core/types";
-import type { AssistantMessage, Model } from "@veyyon/pi-ai";
-import * as ai from "@veyyon/pi-ai";
-import { AssistantMessageEventStream } from "@veyyon/pi-ai/utils/event-stream";
-import { getBundledModel } from "@veyyon/pi-catalog/models";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { wrapStreamFnWithProviderConcurrency } from "@veyyon/pi-coding-agent/task/provider-concurrency";
+} from "@veyyon/agent-core/compaction";
+import type { AgentMessage } from "@veyyon/agent-core/types";
+import type { AssistantMessage, Model } from "@veyyon/ai";
+import * as ai from "@veyyon/ai";
+import { AssistantMessageEventStream } from "@veyyon/ai/utils/event-stream";
+import { getBundledModel } from "@veyyon/catalog/models";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import { wrapStreamFnWithProviderConcurrency } from "@veyyon/coding-agent/task/provider-concurrency";
 
 interface Deferred {
 	promise: Promise<void>;

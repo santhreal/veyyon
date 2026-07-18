@@ -4,7 +4,7 @@ import {
 	isMcpConnectionStatusEvent,
 	MCP_CONNECTION_STATUS_EVENT_CHANNEL,
 	sanitizeMcpStatusError,
-} from "@veyyon/pi-coding-agent/mcp/startup-events";
+} from "@veyyon/coding-agent/mcp/startup-events";
 
 // Cross-module contract guard.
 //
@@ -21,18 +21,24 @@ describe("mcp/startup-events — connection-status cross-module contract", () =>
 	});
 
 	it("sanitizeMcpStatusError strips control chars and shortens home paths (shared by /mcp list)", () => {
-		const raw = `failed at\t${os.homedir()}/.omp/mcp.log\n${"x".repeat(200)}`;
+		const raw = `failed at\t${os.homedir()}/.veyyon/mcp.log\n${"x".repeat(200)}`;
 		const out = sanitizeMcpStatusError(raw);
 		expect(out).not.toContain(os.homedir());
 		expect(out).not.toContain("\n");
 		expect(out).not.toContain("\t");
-		expect(out).toContain("~/.omp/mcp.log");
+		expect(out).toContain("~/.veyyon/mcp.log");
 	});
 
 	it("accepts well-formed payloads and rejects malformed ones", () => {
 		expect(isMcpConnectionStatusEvent({ type: "connecting", serverNames: ["a"] })).toBe(true);
 		expect(isMcpConnectionStatusEvent({ type: "connected", serverName: "a" })).toBe(true);
 		expect(isMcpConnectionStatusEvent({ type: "failed", serverName: "a", error: "boom" })).toBe(true);
+		// `foreign` marks servers borrowed from another tool's config; the boot
+		// health zone dims those failures instead of painting them in alarm.
+		expect(isMcpConnectionStatusEvent({ type: "failed", serverName: "a", error: "boom", foreign: true })).toBe(true);
+		expect(isMcpConnectionStatusEvent({ type: "failed", serverName: "a", error: "boom", foreign: "yes" })).toBe(
+			false,
+		);
 
 		expect(isMcpConnectionStatusEvent(null)).toBe(false);
 		expect(isMcpConnectionStatusEvent("connecting")).toBe(false);

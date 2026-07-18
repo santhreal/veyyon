@@ -1,7 +1,7 @@
 import * as path from "node:path";
-import type { ThinkingLevel } from "@veyyon/pi-agent-core";
-import type { Api, ApiKey, Model } from "@veyyon/pi-ai";
-import { getProjectDir, logger, prompt } from "@veyyon/pi-utils";
+import type { ThinkingLevel } from "@veyyon/agent-core";
+import type { Api, ApiKey, Model } from "@veyyon/ai";
+import { getProjectDir, logger, prompt } from "@veyyon/utils";
 import { ModelRegistry } from "../config/model-registry";
 import { Settings } from "../config/settings";
 import { discoverAuthStorage } from "../sdk";
@@ -29,7 +29,7 @@ let typesDescription: string | undefined;
 const TYPES_DESCRIPTION = (): string => (typesDescription ??= prompt.render(typesDescriptionPrompt));
 
 /**
- * Execute the omp commit pipeline for staged changes.
+ * Execute the veyyon commit pipeline for staged changes.
  */
 export async function runCommitCommand(args: CommitCommandArgs): Promise<void> {
 	if (args.legacy) {
@@ -40,6 +40,13 @@ export async function runCommitCommand(args: CommitCommandArgs): Promise<void> {
 
 async function runLegacyCommitCommand(args: CommitCommandArgs): Promise<void> {
 	const cwd = getProjectDir();
+	// Fail fast outside a repository: otherwise the first `git diff --cached`
+	// surfaces as a raw GitCommandError with git's full usage dump.
+	if ((await git.repo.root(cwd)) === null) {
+		process.stderr.write(`Error: ${cwd} is not inside a git repository — \`veyyon commit\` needs one.\n`);
+		process.exitCode = 1;
+		return;
+	}
 	const settings = await Settings.init();
 	const commitSettings = settings.getGroup("commit");
 	const authStorage = await discoverAuthStorage();

@@ -14,8 +14,8 @@
  *    message delta is a cache miss each turn.
  */
 
-import type { Context, Message, Tool } from "@veyyon/pi-ai";
-import type { Dialect } from "@veyyon/pi-ai/dialect";
+import type { Context, Message, Tool } from "@veyyon/ai";
+import type { Dialect } from "@veyyon/ai/dialect";
 import { normalizeTools } from "./agent-loop";
 import type { AgentContext } from "./types";
 

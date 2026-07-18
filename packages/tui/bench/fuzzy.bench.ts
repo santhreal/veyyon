@@ -39,7 +39,7 @@ const FILES = [
 	"src/components/markdown.ts", "src/tools/read.ts", "src/tools/grep.ts", "src/utils/git.ts",
 	"src/modes/theme/theme.ts", "src/system-prompt.ts", "src/workspace-tree.ts",
 	"packages/tui/src/fuzzy.ts", "packages/tui/src/autocomplete.ts", "packages/tui/src/utils.ts",
-	"crates/pi-natives/src/grep.rs", "crates/pi-ast/src/summary.rs", "crates/pi-shell/src/shell.rs",
+	"crates/veyyon-natives/src/grep.rs", "crates/veyyon-ast/src/summary.rs", "crates/veyyon-shell/src/shell.rs",
 	"packages/coding-agent/src/tools/write.ts", "packages/coding-agent/src/tools/bash.ts",
 ];
 

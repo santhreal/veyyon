@@ -1,10 +1,10 @@
 import { afterAll, beforeAll, describe, expect, it } from "bun:test";
 import { stripVTControlCharacters } from "node:util";
-import { resetSettingsForTest, Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { StatusLineComponent } from "@veyyon/pi-coding-agent/modes/components/status-line";
-import { renderSegment } from "@veyyon/pi-coding-agent/modes/components/status-line/segments";
-import type { SegmentContext } from "@veyyon/pi-coding-agent/modes/components/status-line/types";
-import { initTheme } from "@veyyon/pi-coding-agent/modes/theme/theme";
+import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
+import { StatusLineComponent } from "@veyyon/coding-agent/modes/components/status-line";
+import { renderSegment } from "@veyyon/coding-agent/modes/components/status-line/segments";
+import type { SegmentContext } from "@veyyon/coding-agent/modes/components/status-line/types";
+import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
 
 beforeAll(async () => {
 	resetSettingsForTest();

@@ -1,11 +1,9 @@
 /**
  * Manage bundled task agents.
  */
-import { Args, Command, Flags, renderCommandHelp } from "@veyyon/pi-utils/cli";
-import { type AgentsAction, type AgentsCommandArgs, runAgentsCommand } from "../cli/agents-cli";
+import { Args, Command, Flags, renderCommandHelp } from "@veyyon/utils/cli";
+import { AGENTS_ACTIONS, type AgentsAction, type AgentsCommandArgs, runAgentsCommand } from "../cli/agents-cli";
 import { initTheme } from "../modes/theme/theme";
-
-const ACTIONS: AgentsAction[] = ["unpack"];
 
 export default class Agents extends Command {
 	static description = "Manage bundled task agents";
@@ -14,7 +12,7 @@ export default class Agents extends Command {
 		action: Args.string({
 			description: "Agents action",
 			required: false,
-			options: ACTIONS,
+			options: AGENTS_ACTIONS,
 		}),
 	};
 

@@ -18,8 +18,8 @@ import {
 	stripClaudeToolPrefix,
 	withAuth,
 	wrapFetchForCch,
-} from "@veyyon/pi-ai";
-import { $env } from "@veyyon/pi-utils";
+} from "@veyyon/ai";
+import { $env } from "@veyyon/utils";
 import type {
 	AnthropicApiResponse,
 	AnthropicCitation,
@@ -131,25 +131,27 @@ async function callSearch(
 	// OAuth requests inject the CC billing header (buildSystemBlocks); patch its
 	// cch attestation like the streaming path instead of shipping `cch=00000`.
 	const doFetch = auth.isOAuth ? wrapFetchForCch(fetchImpl) : fetchImpl;
-	const response = await doFetch(url, {
-		method: "POST",
-		headers,
-		body: JSON.stringify(body),
-		signal: withHardTimeout(signal),
+	return withHardTimeout(signal, async hardSignal => {
+		const response = await doFetch(url, {
+			method: "POST",
+			headers,
+			body: JSON.stringify(body),
+			signal: hardSignal,
+		});
+
+		if (!response.ok) {
+			const errorText = await response.text();
+			const classified = classifyProviderHttpError("anthropic", response.status, errorText);
+			if (classified) throw classified;
+			throw new SearchProviderError(
+				"anthropic",
+				`Anthropic API error (${response.status}): ${errorText}`,
+				response.status,
+			);
+		}
+
+		return response.json() as Promise<AnthropicApiResponse>;
 	});
-
-	if (!response.ok) {
-		const errorText = await response.text();
-		const classified = classifyProviderHttpError("anthropic", response.status, errorText);
-		if (classified) throw classified;
-		throw new SearchProviderError(
-			"anthropic",
-			`Anthropic API error (${response.status}): ${errorText}`,
-			response.status,
-		);
-	}
-
-	return response.json() as Promise<AnthropicApiResponse>;
 }
 
 /**

@@ -12,9 +12,9 @@ import {
 	agentStatusColor,
 	agentStatusGlyph,
 	agentStatusWord,
-} from "@veyyon/pi-coding-agent/modes/components/agent-status-display";
-import { initTheme, theme } from "@veyyon/pi-coding-agent/modes/theme/theme";
-import type { AgentStatus } from "@veyyon/pi-coding-agent/registry/agent-registry";
+} from "@veyyon/coding-agent/modes/components/agent-status-display";
+import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
+import type { AgentStatus } from "@veyyon/coding-agent/registry/agent-registry";
 
 const ALL_STATUSES: AgentStatus[] = ["running", "idle", "parked", "aborted"];
 

@@ -8,6 +8,7 @@
  *   #/runs        flat run list (legacy view)
  *   #/runs/<name> run detail — normalized trace grid + live trace viewer
  */
+import { formatCount } from "@veyyon/utils";
 import { type RefObject, useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 
@@ -212,7 +213,7 @@ function ExperimentsIndex() {
 					<div className="w-40 shrink-0">
 						<div className="font-semibold">{exp.id}</div>
 						<div className="text-xs text-zinc-500">
-							{exp.arms} arm{exp.arms === 1 ? "" : "s"}
+							{formatCount("arm", exp.arms)}
 							{exp.runningArms > 0 && <span className="text-sky-400"> · {exp.runningArms} live</span>}
 						</div>
 					</div>

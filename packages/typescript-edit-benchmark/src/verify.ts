@@ -4,6 +4,7 @@
  * Compares output files against expected fixtures with byte-for-byte equality.
  */
 import * as path from "node:path";
+import { errorMessage } from "@veyyon/utils";
 import { diffLines } from "diff";
 import { formatContent } from "./formatter";
 import { listFiles } from "./shared";
@@ -171,7 +172,7 @@ export async function verifyExpectedFileSubset(
 	} catch (err) {
 		return {
 			success: false,
-			error: err instanceof Error ? err.message : String(err),
+			error: errorMessage(err),
 			duration: Date.now() - startTime,
 		};
 	}

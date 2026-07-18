@@ -1,6 +1,6 @@
-import { tryParseJson } from "@veyyon/pi-utils";
-import type { RenderResult, SpecialHandler } from "./types";
-import { buildResult, loadPage } from "./types";
+import { tryParseJson } from "@veyyon/utils";
+import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
+import { buildResult, loadFailure, loadPage, scraperDegrade, tryParseUrl } from "./types";
 
 interface SecFiling {
 	accessionNumber: string;
@@ -158,9 +158,10 @@ export const handleSecEdgar: SpecialHandler = async (
 	url: string,
 	timeout: number,
 	signal?: AbortSignal,
-): Promise<RenderResult | null> => {
+): Promise<RenderResult | ScraperDegrade | null> => {
 	try {
-		const parsed = new URL(url);
+		const parsed = tryParseUrl(url);
+		if (!parsed) return null;
 
 		// Check if it's an SEC URL
 		if (!parsed.hostname.includes("sec.gov")) return null;
@@ -183,10 +184,10 @@ export const handleSecEdgar: SpecialHandler = async (
 			},
 		});
 
-		if (!result.ok) return null;
+		if (!result.ok) return scraperDegrade("sec-edgar", loadFailure(result));
 
 		const company = tryParseJson<SecCompany>(result.content);
-		if (!company) return null;
+		if (!company) return scraperDegrade("sec-edgar", "unexpected response shape");
 
 		// Build markdown output
 		let md = `# ${company.name}\n\n`;
@@ -255,7 +256,7 @@ export const handleSecEdgar: SpecialHandler = async (
 		md += `- [Company Search](https://www.sec.gov/cgi-bin/browse-edgar?company=${encodeURIComponent(company.name)}&CIK=&type=&owner=include&count=40&action=getcompany)\n`;
 
 		return buildResult(md, { url, method: "sec-edgar", fetchedAt, notes: ["Fetched via SEC EDGAR API"] });
-	} catch {}
-
-	return null;
+	} catch (error) {
+		return scraperDegrade("sec-edgar", error);
+	}
 };

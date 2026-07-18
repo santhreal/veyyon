@@ -8,6 +8,7 @@
 /// <reference types="./bun-imports.d.ts" />
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import { errorMessage } from "@veyyon/utils";
 
 export interface EditTask {
 	id: string;
@@ -172,7 +173,7 @@ export async function validateFixturesFromDir(fixturesPath: string): Promise<Fix
 		try {
 			metadata = JSON.parse(await metadataFile.text()) as Record<string, unknown>;
 		} catch (err) {
-			const error = err instanceof Error ? err.message : String(err);
+			const error = errorMessage(err);
 			issues.push({ taskId, message: `metadata.json is invalid JSON: ${error}` });
 			continue;
 		}

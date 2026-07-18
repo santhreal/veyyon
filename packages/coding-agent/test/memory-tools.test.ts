@@ -10,12 +10,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import { existsSync, mkdirSync } from "node:fs";
 import path from "node:path";
-import { resetSettingsForTest, Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { HindsightApi } from "@veyyon/pi-coding-agent/hindsight/client";
-import type { HindsightConfig } from "@veyyon/pi-coding-agent/hindsight/config";
-import { HindsightSessionState } from "@veyyon/pi-coding-agent/hindsight/state";
-import { mnemopiBackend } from "@veyyon/pi-coding-agent/mnemopi/backend";
-import { loadMnemopiConfig, type MnemopiBackendConfig } from "@veyyon/pi-coding-agent/mnemopi/config";
+import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
+import { HindsightApi } from "@veyyon/coding-agent/hindsight/client";
+import type { HindsightConfig } from "@veyyon/coding-agent/hindsight/config";
+import { HindsightSessionState } from "@veyyon/coding-agent/hindsight/state";
+import { mnemopiBackend } from "@veyyon/coding-agent/mnemopi/backend";
+import { loadMnemopiConfig, type MnemopiBackendConfig } from "@veyyon/coding-agent/mnemopi/config";
 import {
 	getMnemopiScopedDbPaths,
 	getMnemopiSessionState,
@@ -23,14 +23,14 @@ import {
 	loadMnemopiCore,
 	MnemopiSessionState,
 	setMnemopiSessionState,
-} from "@veyyon/pi-coding-agent/mnemopi/state";
-import type { ToolSession } from "@veyyon/pi-coding-agent/tools/index";
-import { MemoryEditTool } from "@veyyon/pi-coding-agent/tools/memory-edit";
-import { MemoryRecallTool } from "@veyyon/pi-coding-agent/tools/memory-recall";
-import { MemoryReflectTool } from "@veyyon/pi-coding-agent/tools/memory-reflect";
-import { MemoryRetainTool } from "@veyyon/pi-coding-agent/tools/memory-retain";
-import { resetMemoryForTests } from "@veyyon/pi-mnemopi";
-import { TempDir } from "@veyyon/pi-utils";
+} from "@veyyon/coding-agent/mnemopi/state";
+import type { ToolSession } from "@veyyon/coding-agent/tools/index";
+import { MemoryEditTool } from "@veyyon/coding-agent/tools/memory-edit";
+import { MemoryRecallTool } from "@veyyon/coding-agent/tools/memory-recall";
+import { MemoryReflectTool } from "@veyyon/coding-agent/tools/memory-reflect";
+import { MemoryRetainTool } from "@veyyon/coding-agent/tools/memory-retain";
+import { resetMemoryForTests } from "@veyyon/mnemopi";
+import { TempDir } from "@veyyon/utils";
 
 // Mnemopi is lazy-loaded at runtime; preload it so the sync construction in
 // registerMnemopiState() and getMnemopiScopedDbPaths() can resolve the module.

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { resetSettingsForTest, Settings } from "@veyyon/pi-coding-agent/config/settings";
+import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
 import {
 	ApplyPatchError,
 	applyCodexPatch,
@@ -12,9 +12,9 @@ import {
 	parseApplyPatch,
 	parseDiffHunks,
 	seekSequence,
-} from "@veyyon/pi-coding-agent/edit";
-import type { ToolSession } from "@veyyon/pi-coding-agent/tools";
-import { removeSyncWithRetries } from "@veyyon/pi-utils";
+} from "@veyyon/coding-agent/edit";
+import type { ToolSession } from "@veyyon/coding-agent/tools";
+import { removeSyncWithRetries } from "@veyyon/utils";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Test-local adapters over the production Codex envelope API.
@@ -822,7 +822,7 @@ describe("EditTool create-over-existing mode split", () => {
 
 	beforeEach(async () => {
 		resetSettingsForTest();
-		tempDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "omp-apply-patch-overwrite-"));
+		tempDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "veyyon-apply-patch-overwrite-"));
 		await Settings.init({ inMemory: true, cwd: tempDir });
 	});
 

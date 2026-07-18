@@ -4,7 +4,7 @@ import {
 	SUBAGENT_WARNING_MISSING_YIELD,
 	SUBAGENT_WARNING_NULL_YIELD,
 	SUBAGENT_WARNING_SCHEMA_OVERRIDDEN,
-} from "@veyyon/pi-coding-agent/task/executor";
+} from "@veyyon/coding-agent/task/executor";
 
 describe("subagent warning injection", () => {
 	it("injects null-data warning when yield is success without data", () => {

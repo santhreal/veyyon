@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, test, vi } from "bun:test";
-import { completeSimple } from "@veyyon/pi-ai";
-import { resolveOpenAIRequestSetup } from "@veyyon/pi-ai/providers/openai-shared";
-import type { Context, FetchImpl } from "@veyyon/pi-ai/types";
-import { getBundledModel } from "@veyyon/pi-catalog/models";
+import { completeSimple } from "@veyyon/ai";
+import { resolveOpenAIRequestSetup } from "@veyyon/ai/providers/openai-shared";
+import type { Context, FetchImpl } from "@veyyon/ai/types";
+import { getBundledModel } from "@veyyon/catalog/models";
 
 const COREWEAVE_ENV_KEYS = ["COREWEAVE_PROJECT", "WANDB_INFERENCE_PROJECT", "WANDB_ENTITY", "WANDB_PROJECT"] as const;
 const ORIGINAL_ENV = new Map(COREWEAVE_ENV_KEYS.map(key => [key, Bun.env[key]]));

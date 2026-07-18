@@ -7,8 +7,8 @@ import {
 	isSqliteBusyError,
 	SqliteAuthCredentialStore,
 	type StoredAuthCredential,
-} from "@veyyon/pi-ai";
-import { AsyncDrain, getAgentDbPath, getStatsDbPath, isRecord, logger } from "@veyyon/pi-utils";
+} from "@veyyon/ai";
+import { AsyncDrain, getAgentDbPath, getStatsDbPath, isRecord, logger } from "@veyyon/utils";
 import type { RawSettings as Settings } from "../config/settings";
 
 /** Row shape for settings table queries */
@@ -124,7 +124,7 @@ const instances = new Map<string, AgentStorage>();
 
 /**
  * Unified SQLite storage for agent settings, model usage, and auth credentials.
- * Delegates auth credential operations to AuthCredentialStore from @veyyon/pi-ai.
+ * Delegates auth credential operations to AuthCredentialStore from @veyyon/ai.
  * Uses singleton pattern per database path; access via AgentStorage.open().
  */
 export class AgentStorage {
@@ -198,7 +198,7 @@ ON CONFLICT(model_key) DO UPDATE SET
 	#initializeSchema(): void {
 		// Install the busy handler BEFORE any lock-taking statement (incl.
 		// `PRAGMA journal_mode=WAL`, which acquires an exclusive lock during WAL
-		// recovery). Without this, concurrent omp startups can crash here with
+		// recovery). Without this, concurrent veyyon startups can crash here with
 		// `SQLITE_BUSY` / `SQLITE_BUSY_RECOVERY`. See issue #2421.
 		this.#db.run("PRAGMA busy_timeout = 5000");
 		this.#db.run(`

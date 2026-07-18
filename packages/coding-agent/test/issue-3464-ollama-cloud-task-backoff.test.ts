@@ -1,18 +1,18 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
-import { Agent, type StreamFn } from "@veyyon/pi-agent-core";
-import type { AssistantMessage, Model } from "@veyyon/pi-ai";
-import { createMockModel } from "@veyyon/pi-ai/providers/mock";
-import { AssistantMessageEventStream } from "@veyyon/pi-ai/utils/event-stream";
-import { type GeneratedProvider, getBundledModel } from "@veyyon/pi-catalog/models";
-import { ModelRegistry } from "@veyyon/pi-coding-agent/config/model-registry";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { AgentSession } from "@veyyon/pi-coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/pi-coding-agent/session/auth-storage";
-import { SessionManager } from "@veyyon/pi-coding-agent/session/session-manager";
-import { Semaphore } from "@veyyon/pi-coding-agent/task/parallel";
-import { wrapStreamFnWithProviderConcurrency } from "@veyyon/pi-coding-agent/task/provider-concurrency";
-import { TempDir } from "@veyyon/pi-utils";
+import { Agent, type StreamFn } from "@veyyon/agent-core";
+import type { AssistantMessage, Model } from "@veyyon/ai";
+import { createMockModel } from "@veyyon/ai/providers/mock";
+import { AssistantMessageEventStream } from "@veyyon/ai/utils/event-stream";
+import { type GeneratedProvider, getBundledModel } from "@veyyon/catalog/models";
+import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
+import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import { Semaphore } from "@veyyon/coding-agent/task/parallel";
+import { wrapStreamFnWithProviderConcurrency } from "@veyyon/coding-agent/task/provider-concurrency";
+import { TempDir } from "@veyyon/utils";
 
 interface Deferred {
 	promise: Promise<void>;
@@ -37,7 +37,7 @@ describe("issue #3464: ollama-cloud task backoff", () => {
 	let session: AgentSession | undefined;
 
 	beforeAll(async () => {
-		tempDir = TempDir.createSync("@omp-issue-3464-");
+		tempDir = TempDir.createSync("@veyyon-issue-3464-");
 		authStorage = await AuthStorage.create(path.join(tempDir.path(), "auth.db"));
 		authStorage.setRuntimeApiKey("anthropic", "anthropic-test-key");
 		authStorage.setRuntimeApiKey("openai", "openai-test-key");

@@ -4,7 +4,7 @@ import {
 	getLongestModelLikeIdSegment,
 	getModelLikeIdSegments,
 	stripBracketedModelIdAffixes,
-} from "@veyyon/pi-catalog/identity/id";
+} from "@veyyon/catalog/identity/id";
 
 describe("getModelLikeIdSegments", () => {
 	test("keeps only family-prefixed segments that carry a digit, deduped", () => {

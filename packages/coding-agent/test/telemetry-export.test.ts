@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { fileURLToPath } from "node:url";
-import { initTelemetryExport, isTelemetryExportEnabled } from "@veyyon/pi-coding-agent/telemetry-export";
+import { initTelemetryExport, isTelemetryExportEnabled } from "@veyyon/coding-agent/telemetry-export";
+import { hermeticSpawnEnv } from "./helpers/hermetic-spawn-env";
 
 /**
  * Gating contract for the OTLP export bootstrap. These cases all short-circuit
@@ -83,8 +84,15 @@ describe("initTelemetryExport export path", () => {
 		// singleton into every later test. The probe stands up its own loopback
 		// receiver and exits 0 only when a protobuf trace export actually lands.
 		const probe = fileURLToPath(new URL("./otel-export-probe.ts", import.meta.url));
-		const proc = Bun.spawn(["bun", probe], { stdout: "pipe", stderr: "pipe" });
-		const [code, stdout] = await Promise.all([proc.exited, new Response(proc.stdout).text()]);
+		const { env, cleanup } = hermeticSpawnEnv();
+		let code: number;
+		let stdout: string;
+		try {
+			const proc = Bun.spawn(["bun", probe], { env, stdout: "pipe", stderr: "pipe" });
+			[code, stdout] = await Promise.all([proc.exited, new Response(proc.stdout).text()]);
+		} finally {
+			cleanup();
+		}
 		expect(stdout).toContain("PROBE: RECEIVED");
 		expect(code).toBe(0);
 	}, 20_000);

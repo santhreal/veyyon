@@ -4,8 +4,8 @@
  * Provides both character-level and line-level fuzzy matching with progressive
  * fallback strategies for finding text in files.
  */
-import type { AgentToolResult } from "@veyyon/pi-agent-core";
-import { levenshteinDistance } from "@veyyon/pi-utils";
+import type { AgentToolResult } from "@veyyon/agent-core";
+import { levenshteinDistance } from "@veyyon/utils";
 import { type } from "arktype";
 import type { FileDiagnosticsResult, WritethroughCallback, WritethroughDeferredHandle } from "../../lsp";
 import type { ToolSession } from "../../tools";
@@ -304,7 +304,7 @@ function findExactMatchOutcome(content: string, target: string): MatchOutcome | 
 // Core Algorithms
 // ═══════════════════════════════════════════════════════════════════════════
 
-// Canonical implementation lives in @veyyon/pi-utils; re-exported here for
+// Canonical implementation lives in @veyyon/utils; re-exported here for
 // existing importers of this module's fuzzy-matching surface.
 export { levenshteinDistance };
 

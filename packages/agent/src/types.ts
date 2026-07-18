@@ -17,18 +17,18 @@ import type {
 	ToolChoice,
 	ToolResultMessage,
 	TSchema,
-} from "@veyyon/pi-ai";
-import type { Dialect } from "@veyyon/pi-ai/dialect";
+} from "@veyyon/ai";
+import type { Dialect } from "@veyyon/ai/dialect";
 
 /**
  * Owned-dialect configuration: a fixed dialect, or a per-model resolver that is
  * re-evaluated with the active model on every request. `undefined` (value or
  * resolver result) keeps provider-native tool calling, subject to the
- * `PI_DIALECT` env override.
+ * `VEYYON_DIALECT` env override.
  */
 export type ConfiguredDialect = Dialect | ((model: Model) => Dialect | undefined);
 
-import type { HarmonyAuditEvent } from "@veyyon/pi-ai/utils/harmony-leak";
+import type { HarmonyAuditEvent } from "@veyyon/ai/utils/harmony-leak";
 import type { AppendOnlyContextManager } from "./append-only-context";
 import type { AgentRunCoverage, AgentRunSummary } from "./run-collector";
 import type { AgentTelemetryConfig } from "./telemetry";
@@ -311,7 +311,7 @@ export interface AgentLoopConfig extends SimpleStreamOptions {
 	 * - `false`: let the request finish and silently discard everything past the
 	 *   fabrication boundary (keeps the connection alive but pays for the tokens
 	 *   the model spends on the discarded tail).
-	 * Only meaningful when {@link dialect} (or `PI_DIALECT`) selects an
+	 * Only meaningful when {@link dialect} (or `VEYYON_DIALECT`) selects an
 	 * owned dialect; native tool calling never fabricates results in text.
 	 */
 	abortOnFabricatedToolResult?: boolean;
@@ -744,7 +744,6 @@ export interface AgentTool<TParameters extends TSchema = TSchema, TDetails = unk
  * assignable to `AgentTool<TSchema, unknown>` — collections that hold tools of
  * differing detail types must use this alias instead.
  */
-// biome-ignore lint/suspicious/noExplicitAny: existential type over all tool instantiations
 export type AnyAgentTool = AgentTool<any, any, any>;
 
 // AgentContext is like Context but uses AgentTool

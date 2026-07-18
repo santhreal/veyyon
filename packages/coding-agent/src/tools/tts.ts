@@ -3,9 +3,9 @@
 // backend (Kokoro-82M via kokoro-js on the shared ONNX worker) is layered on behind
 // the `providers.tts` switch.
 
-import type { AgentToolResult } from "@veyyon/pi-agent-core";
-import { type ApiKey, withAuth } from "@veyyon/pi-ai";
-import { ProviderHttpError } from "@veyyon/pi-ai/error";
+import type { AgentToolResult } from "@veyyon/agent-core";
+import { type ApiKey, withAuth } from "@veyyon/ai";
+import { ProviderHttpError } from "@veyyon/ai/error";
 import { type } from "arktype";
 import { settings } from "../config/settings";
 import type { CustomTool, CustomToolContext } from "../extensibility/custom-tools/types";
@@ -13,6 +13,7 @@ import { resolveXAIHttpCredentials, veyyonXAIUserAgent } from "../lib/xai-http";
 import { DEFAULT_TTS_LOCAL_MODEL_KEY, DEFAULT_TTS_VOICE, isTtsLocalModelKey, KOKORO_VOICES } from "../tts/models";
 import { ttsClient } from "../tts/tts-client";
 import { encodeWav } from "../tts/wav";
+import { scopedTimeoutSignal } from "../utils/fetch-timeout";
 import { formatPathRelativeToCwd, resolveToCwd } from "./path-utils";
 
 // Hermes tts_tool.py L167-171
@@ -131,8 +132,8 @@ async function synthesizeXai(
 	}
 
 	// Compose the caller signal with a 60 s timeout fence.
-	const timeoutSignal = AbortSignal.timeout(60_000);
-	const combinedSignal = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
+	const requestTimeout = scopedTimeoutSignal(60_000, signal);
+	const combinedSignal = requestTimeout.signal;
 
 	const sessionId = ctx.sessionManager.getSessionId();
 	const apiKey: ApiKey = ctx.modelRegistry.resolver(creds.provider, {
@@ -141,6 +142,7 @@ async function synthesizeXai(
 	});
 
 	let response: Response;
+	let bytes: Uint8Array;
 	try {
 		response = await withAuth(
 			apiKey,
@@ -165,6 +167,7 @@ async function synthesizeXai(
 			},
 			{ signal: combinedSignal },
 		);
+		bytes = new Uint8Array(await response.arrayBuffer());
 	} catch (error) {
 		const status = (error as { status?: unknown }).status;
 		if (error instanceof Error && typeof status === "number") {
@@ -174,8 +177,9 @@ async function synthesizeXai(
 			};
 		}
 		throw error;
+	} finally {
+		requestTimeout.cancel();
 	}
-	const bytes = new Uint8Array(await response.arrayBuffer());
 	await Bun.write(outputPath, bytes);
 	return {
 		content: [

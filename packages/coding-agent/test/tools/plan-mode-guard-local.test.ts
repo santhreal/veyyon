@@ -2,10 +2,10 @@ import { describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { PlanModeState } from "@veyyon/pi-coding-agent/plan-mode/state";
-import type { ToolSession } from "@veyyon/pi-coding-agent/tools";
-import { enforcePlanModeWrite, resolvePlanPath } from "@veyyon/pi-coding-agent/tools/plan-mode-guard";
-import { removeWithRetries } from "@veyyon/pi-utils";
+import type { PlanModeState } from "@veyyon/coding-agent/plan-mode/state";
+import type { ToolSession } from "@veyyon/coding-agent/tools";
+import { enforcePlanModeWrite, resolvePlanPath } from "@veyyon/coding-agent/tools/plan-mode-guard";
+import { removeWithRetries } from "@veyyon/utils";
 
 const ARTIFACTS_DIR = path.join(os.tmpdir(), "agent-artifacts");
 const REPO_ROOT = path.join(os.tmpdir(), "repo");
@@ -44,7 +44,7 @@ describe("resolvePlanPath local:// support", () => {
 	it("falls back to os tmp root when artifacts dir is unavailable", () => {
 		const session = makeSession({ artifactsDir: null, sessionId: "session-42" });
 		expect(resolvePlanPath(session, "local://memo.txt")).toBe(
-			path.join(os.tmpdir(), "omp-local", "session-42", "memo.txt"),
+			path.join(os.tmpdir(), "veyyon-local", "session-42", "memo.txt"),
 		);
 	});
 });

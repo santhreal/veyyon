@@ -1,7 +1,10 @@
-import { Args, Command, Flags } from "@veyyon/pi-utils/cli";
-import { runTinyModelsCommand, type TinyModelsAction, type TinyModelsCommandArgs } from "../cli/tiny-models-cli";
-
-const ACTIONS: TinyModelsAction[] = ["download", "list"];
+import { Args, Command, Flags } from "@veyyon/utils/cli";
+import {
+	runTinyModelsCommand,
+	TINY_MODELS_ACTIONS,
+	type TinyModelsAction,
+	type TinyModelsCommandArgs,
+} from "../cli/tiny-models-cli";
 
 export default class TinyModels extends Command {
 	static description = "Download tiny local models (session titles + memory)";
@@ -10,7 +13,7 @@ export default class TinyModels extends Command {
 		action: Args.string({
 			description: "Action to perform",
 			required: false,
-			options: ACTIONS,
+			options: TINY_MODELS_ACTIONS,
 		}),
 		model: Args.string({
 			description: "Model key, or all",

@@ -1,10 +1,10 @@
-# @veyyon/pi-coding-agent
+# @veyyon/coding-agent
 
-Core implementation package for the `omp` coding agent in the `oh-my-pi` monorepo.
+Core implementation package for the `veyyon` coding agent in the veyyon monorepo.
 
 For installation, setup, provider configuration, model roles, slash commands, and full CLI reference, see:
 - [Monorepo README (local)](../../README.md)
-- [Monorepo README (GitHub)](https://github.com/can1357/oh-my-pi#readme)
+- [Monorepo README (GitHub)](https://github.com/santhreal/veyyon#readme)
 
 Package-specific references:
 - [CHANGELOG](./CHANGELOG.md)
@@ -15,11 +15,12 @@ Package-specific references:
 
 ## Memory backends
 
-The agent supports three mutually-exclusive memory backends, selected via the `memory.backend` setting (Settings → Memory tab, or `~/.veyyon/config.yml`):
+Memory backends are selected via `memory.backend` (Settings → Memory, or profile `config.yml` under `~/.veyyon/profiles/default/agent/`):
 
 - `off` (default) — no memory subsystem runs.
-- `local` — existing rollout-summarisation pipeline; writes `memory_summary.md` and consolidated artifacts under the agent dir.
-- `hindsight` — talks to a [Hindsight](https://hindsight.vectorize.io) server (Cloud or self-hosted Docker), retains transcripts every Nth user turn, recalls memories on the first turn of a session, and exposes `retain`, `recall`, and `reflect`.
+- `local` — rollout summarization; writes `memory_summary.md` and related artifacts under the agent dir.
+- `mnemopi` — local SQLite engine via `@veyyon/mnemopi` (vector + FTS, auto-retain, compaction hooks).
+- `hindsight` — [Hindsight](https://hindsight.vectorize.io) server (cloud or self-hosted), retain/recall/reflect tools.
 
 ### Hindsight quickstart
 

@@ -1,7 +1,7 @@
 import { mkdirSync } from "node:fs";
-import { type ApiKey, getOpenRouterHeaders, withAuth } from "@veyyon/pi-ai";
-import { ProviderHttpError } from "@veyyon/pi-ai/error";
-import { hostMatchesUrl } from "@veyyon/pi-catalog/hosts";
+import { type ApiKey, getOpenRouterHeaders, withAuth } from "@veyyon/ai";
+import { ProviderHttpError } from "@veyyon/ai/error";
+import { hostMatchesUrl } from "@veyyon/catalog/hosts";
 import {
 	$env,
 	$flag,
@@ -9,7 +9,8 @@ import {
 	fetchWithRetry,
 	getFastembedCacheDir,
 	logger,
-} from "@veyyon/pi-utils";
+	withScopedTimeoutSignal,
+} from "@veyyon/utils";
 import type { EmbeddingModel } from "fastembed";
 import { LRUCache } from "lru-cache/raw";
 import { ensureFastembedModelSidecars } from "./fastembed-model-cache";
@@ -352,36 +353,43 @@ async function embedApi(texts: readonly string[]): Promise<EmbeddingMatrix | nul
 		// rotation) when `apiKey` is a resolver. The 429 backoff stays inside
 		// the attempt via fetchWithRetry. An empty static key attempts without
 		// an Authorization header (local/proxy setups).
-		const response = await withAuth(apiKey, async key => {
-			const headers: Record<string, string> = {
-				"Content-Type": "application/json",
-				...getOpenRouterHeaders(),
-			};
-			if (key !== "") {
-				headers.Authorization = `Bearer ${key}`;
-			}
-			const res = await fetchWithRetry(`${baseUrl.replace(/\/+$/, "")}/embeddings`, {
-				method: "POST",
-				headers,
-				body,
-				signal: AbortSignal.timeout(30000),
-				maxAttempts: 3,
-				defaultDelayMs: attempt => 2 ** attempt * 1000,
+		// The 30s deadline was already absolute across retry attempts; the
+		// scoped fence keeps that, extends it over the body read, and clears
+		// the timer on settle instead of lingering like AbortSignal.timeout.
+		return await withScopedTimeoutSignal(30000, async signal => {
+			const response = await withAuth(apiKey, async key => {
+				const headers: Record<string, string> = {
+					"Content-Type": "application/json",
+					...getOpenRouterHeaders(),
+				};
+				if (key !== "") {
+					headers.Authorization = `Bearer ${key}`;
+				}
+				const res = await fetchWithRetry(`${baseUrl.replace(/\/+$/, "")}/embeddings`, {
+					method: "POST",
+					headers,
+					body,
+					signal,
+					maxAttempts: 3,
+					defaultDelayMs: attempt => 2 ** attempt * 1000,
+				});
+				if (res.status === 401) {
+					throw new ProviderHttpError("mnemopi embedding request unauthorized (401)", 401, {
+						headers: res.headers,
+					});
+				}
+				return res;
 			});
-			if (res.status === 401) {
-				throw new ProviderHttpError("mnemopi embedding request unauthorized (401)", 401, { headers: res.headers });
+			if (!response.ok) {
+				return null;
 			}
-			return res;
+			const { data: rows } = (await response.json()) as { data?: Array<{ embedding: number[] }> };
+			if (rows === undefined) {
+				return null;
+			}
+			apiCallCount += 1;
+			return rows.map(row => new Float32Array(row.embedding));
 		});
-		if (!response.ok) {
-			return null;
-		}
-		const { data: rows } = (await response.json()) as { data?: Array<{ embedding: number[] }> };
-		if (rows === undefined) {
-			return null;
-		}
-		apiCallCount += 1;
-		return rows.map(row => new Float32Array(row.embedding));
 	} catch (error) {
 		logger.debug("mnemopi embedding request failed", { status: extractHttpStatusFromError(error) });
 		return null;

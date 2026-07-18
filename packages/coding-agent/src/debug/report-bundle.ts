@@ -5,8 +5,8 @@
  */
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import type { WorkProfile } from "@veyyon/pi-natives";
-import { APP_NAME, getLogPath, getLogsDir, getReportsDir, isEnoent } from "@veyyon/pi-utils";
+import type { WorkProfile } from "@veyyon/natives";
+import { APP_NAME, getLogPath, getLogsDir, getReportsDir, isEnoent } from "@veyyon/utils";
 import { writeArchive } from "../utils/zip";
 import type { CpuProfile, HeapSnapshot } from "./profiler";
 import { collectSystemInfo, sanitizeEnv } from "./system-info";

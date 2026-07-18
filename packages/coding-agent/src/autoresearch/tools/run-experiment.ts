@@ -1,7 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { Text } from "@veyyon/pi-tui";
-import { formatBytes } from "@veyyon/pi-utils";
+import { Text } from "@veyyon/tui";
+import { formatBytes } from "@veyyon/utils";
 import { type } from "arktype";
 import { executeBash } from "../../exec/bash-executor";
 import type { ToolDefinition } from "../../extensibility/extensions";

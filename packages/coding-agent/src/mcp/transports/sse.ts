@@ -1,5 +1,5 @@
-import * as AIError from "@veyyon/pi-ai/error";
-import { logger, readSseEvents, Snowflake } from "@veyyon/pi-utils";
+import * as AIError from "@veyyon/ai/error";
+import { logger, readSseEvents, Snowflake } from "@veyyon/utils";
 import type {
 	JsonRpcError,
 	JsonRpcMessage,

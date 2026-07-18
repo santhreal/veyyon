@@ -10,6 +10,10 @@
         <!-- Veyyon handbook: self-contained head additions. No remote resources. -->
         <meta name="theme-color" content="#050505">
         <meta name="color-scheme" content="dark">
+        <!-- Site favicons live at the deployed root, one level above /docs/. -->
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+        <link rel="icon" href="/favicon.ico" sizes="48x48">
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png">
         <style>
           /* Paint the near-black surface before CSS/JS resolve the theme, so there is
              no light flash on load. Kept in sync with theme/veyyon.css. */
@@ -18,7 +22,7 @@
           *, *::before, *::after { box-sizing: border-box; }
         </style>
 
-        <meta name="description" content="How Veyyon turns open models into frontier coding agents. The product, the harness, tool-call repair, the edit format, per-model adaptation, and how to use it.">
+        <meta name="description" content="Operator handbook for the Veyyon terminal coding agent: install, configuration, tools, approvals, edit formats, providers, and harness structure.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -38,7 +42,7 @@
         <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="../ayu-highlight-3fdfc3ac.css">
 
         <!-- Custom theme stylesheets -->
-        <link rel="stylesheet" href="../theme/veyyon-fc839a17.css">
+        <link rel="stylesheet" href="../theme/veyyon-06f6939e.css">
 
 
         <!-- Provide site root and default themes to javascript -->
@@ -46,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-e76f06ca.js";
+            window.path_to_searchindex_js = "../searchindex-a2447057.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-9cfd259b.js"></script>
+        <script src="../toc-cc1a72e9.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -192,243 +196,41 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="hooks"><a class="header" href="#hooks">Hooks</a></h1>
-<p>Veyyon supports lifecycle hooks via the <strong>extension runner</strong>. The shipped model is a <strong>TypeScript
-hook module</strong>: files discovered under <code>.veyyon/hooks/</code> are imported by the Bun runtime and export a
-factory that registers <code>pi.on(...)</code> handlers.</p>
-<blockquote>
-<p><strong>Spec — not shipped:</strong> the JSON <code>hooks.json</code> file, <code>config.yml</code> <code>hooks:</code> tables, and the
-<code>{ "type": "command" }</code> external-subprocess model with the <code>PreToolUse</code> / <code>PostToolUse</code> / matcher /
-trust-level semantics documented on the rest of this page. Veyyon does not load hooks from JSON or
-run them as external subprocess commands. Those shapes are documented as the target
-compatibility surface; to write a hook that runs today, use a TypeScript module that calls
-<code>pi.on(...)</code>.</p>
-</blockquote>
-<h2 id="event-lifecycle"><a class="header" href="#event-lifecycle">Event Lifecycle</a></h2>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Event Name</th><th>Supports Matcher</th><th>Matcher Target</th><th>Description</th></tr>
-</thead>
-<tbody>
-<tr><td><code>PreToolUse</code></td><td>Yes</td><td>Tool name</td><td>Fires before Veyyon executes a tool.</td></tr>
-<tr><td><code>PermissionRequest</code></td><td>Yes</td><td>Tool name</td><td>Fires when Veyyon requests permission to run a tool.</td></tr>
-<tr><td><code>PostToolUse</code></td><td>Yes</td><td>Tool name</td><td>Fires after Veyyon completes tool execution.</td></tr>
-<tr><td><code>PreCompact</code></td><td>Yes</td><td>Compaction trigger</td><td>Fires before Veyyon compacts the conversation history.</td></tr>
-<tr><td><code>PostCompact</code></td><td>Yes</td><td>Compaction trigger</td><td>Fires after Veyyon compacts the conversation history.</td></tr>
-<tr><td><code>SessionStart</code></td><td>Yes</td><td>Startup source</td><td>Fires when a Veyyon session starts.</td></tr>
-<tr><td><code>UserPromptSubmit</code></td><td>No</td><td>None</td><td>Fires when the user submits a new prompt.</td></tr>
-<tr><td><code>SubagentStart</code></td><td>Yes</td><td>Subagent type</td><td>Fires when a subagent starts.</td></tr>
-<tr><td><code>SubagentStop</code></td><td>Yes</td><td>Subagent type</td><td>Fires when a subagent finishes.</td></tr>
-<tr><td><code>Stop</code></td><td>No</td><td>None</td><td>Fires when Veyyon exits.</td></tr>
-</tbody>
-</table>
-</div>
-<h3 id="startup-and-compaction-matchers"><a class="header" href="#startup-and-compaction-matchers">Startup and Compaction Matchers</a></h3>
-<p>For <code>SessionStart</code>, the matcher filters against the startup source. The possible values are:</p>
-<ul>
-<li><code>startup</code> (a new Veyyon session starts)</li>
-<li><code>resume</code> (resuming a saved session)</li>
-<li><code>clear</code> (starting a clean conversation)</li>
-<li><code>compact</code> (starting a compaction turn)</li>
-</ul>
-<p>For <code>PreCompact</code> and <code>PostCompact</code>, the matcher filters against the trigger name.</p>
-<h2 id="configuration"><a class="header" href="#configuration">Configuration</a></h2>
-<blockquote>
-<p><strong>Spec — not shipped:</strong> the two JSON/YAML configuration paths in this section describe the target
-model, not the shipped TS <code>pi.on(...)</code> loader. They are documented for compatibility only.</p>
-</blockquote>
-<p>The spec model configures hooks in two ways:</p>
-<ol>
-<li>In <code>config.yml</code> (either system-level, user-level, or project-local config) under a <code>hooks</code> section.</li>
-<li>In a standalone <code>hooks.json</code> file inside the config folder (such as the project’s <code>.veyyon/hooks.json</code> or the user’s <code>$VEYYON_HOME/hooks.json</code>).</li>
-</ol>
-<h3 id="hook-handler-schema"><a class="header" href="#hook-handler-schema">Hook Handler Schema</a></h3>
-<p>Every hook handler configuration supports the following parameters:</p>
-<div class="table-wrapper">
-<table>
-<thead>
-<tr><th>Field Name</th><th>Type</th><th>Description</th></tr>
-</thead>
-<tbody>
-<tr><td><code>type</code></td><td>String</td><td>Must be <code>"command"</code>. (Prompt and agent hook types are reserved but not supported yet).</td></tr>
-<tr><td><code>command</code></td><td>String</td><td>The command string to execute in the shell.</td></tr>
-<tr><td><code>commandWindows</code></td><td>String</td><td>(Optional) A Windows-specific command override.</td></tr>
-<tr><td><code>timeout</code></td><td>Integer</td><td>(Optional) The execution timeout in seconds. Defaults to 10 minutes.</td></tr>
-<tr><td><code>async</code></td><td>Boolean</td><td>(Optional) Whether to execute the hook asynchronously.</td></tr>
-<tr><td><code>statusMessage</code></td><td>String</td><td>(Optional) A message to show in the TUI while the hook is running.</td></tr>
-</tbody>
-</table>
-</div>
-<h3 id="configuration-examples"><a class="header" href="#configuration-examples">Configuration Examples</a></h3>
-<h4 id="in-configyml-spec-model"><a class="header" href="#in-configyml-spec-model">In <code>config.yml</code> (spec model)</a></h4>
-<pre><code class="language-yaml">hooks:
-  PreToolUse:
-    - matcher: "^Bash$"
-      hooks:
-        - type: command
-          command: "echo 'Running bash command'"
-          timeout: 30
-</code></pre>
-<h4 id="in-hooksjson"><a class="header" href="#in-hooksjson">In <code>hooks.json</code></a></h4>
-<pre><code class="language-json">{
-  "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "^Bash$",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "echo 'Running bash command'",
-            "timeout": 30
-          }
-        ]
-      }
-    ]
-  }
+<p>Hooks are TypeScript modules discovered under hook paths (for example <code>.veyyon/hooks/</code>) and loaded through the extension runner. Each module default-exports a factory that registers handlers with <code>pi.on(...)</code>.</p>
+<p>CLI: <code>--hook</code> is an alias for <code>--extension</code> (paths merge into extension loading).</p>
+<p>Full API and event list: repository <code>docs/hooks.md</code> and <code>packages/coding-agent/src/extensibility/hooks/</code>.</p>
+<h2 id="module-shape"><a class="header" href="#module-shape">Module shape</a></h2>
+<pre><code class="language-ts">import type { HookAPI } from "@veyyon/coding-agent/extensibility/hooks";
+
+export default function hook(pi: HookAPI): void {
+	pi.on("tool_call", async (event, ctx) =&gt; {
+		if (
+			event.toolName === "bash" &amp;&amp;
+			String(event.input.command ?? "").includes("rm -rf")
+		) {
+			return { block: true, reason: "blocked by policy" };
+		}
+	});
 }
 </code></pre>
-<h2 id="security-and-trust-model"><a class="header" href="#security-and-trust-model">Security and Trust Model</a></h2>
-<p>Veyyon requires user-level and project-local hooks to be trusted before they can execute. Every hook handler has a calculated cryptographic hash derived from its event name, matcher, and normalized settings.</p>
-<p>Upon discovery, Veyyon classifies hooks into one of four trust levels:</p>
+<p>The factory can:</p>
 <ul>
-<li><strong>Managed</strong>: Hooks loaded from administrator-enforced requirements layers (such as <code>/etc/veyyon/config.yml</code> or MDM profiles) are always trusted.</li>
-<li><strong>Trusted</strong>: User-level or project-local hooks whose calculated hash matches a trusted hash stored under the <code>hooks.state</code> section in <code>$VEYYON_HOME/config.yml</code>.</li>
-<li><strong>Modified</strong>: Hooks that were previously trusted, but their command or matcher settings have been modified.</li>
-<li><strong>Untrusted</strong>: Newly discovered hooks that have no trust record.</li>
+<li>register handlers with <code>pi.on(...)</code></li>
+<li>send custom messages with <code>pi.sendMessage(...)</code></li>
+<li>persist non-LLM state with <code>pi.appendEntry(...)</code></li>
+<li>register slash commands with <code>pi.registerCommand(...)</code></li>
+<li>register message renderers with <code>pi.registerMessageRenderer(...)</code></li>
+<li>run shell commands with <code>pi.exec(...)</code></li>
 </ul>
-<p>Veyyon disables project-local configuration, hooks, and execution policies in untrusted project directories. You can bypass trust verification by running Veyyon with the <code>--dangerously-bypass-hook-trust</code> command-line flag.</p>
-<h2 id="execution-mechanics"><a class="header" href="#execution-mechanics">Execution Mechanics</a></h2>
-<p>Command hooks run as subprocesses. On Unix-like systems, Veyyon runs commands using the shell specified in the <code>SHELL</code> environment variable, falling back to <code>/bin/sh</code> with the <code>-lc</code> arguments. On Windows, Veyyon uses the shell program in the <code>COMSPEC</code> environment variable, falling back to <code>cmd.exe</code> with the <code>/C</code> argument.</p>
-<h3 id="hook-input-standard-input"><a class="header" href="#hook-input-standard-input">Hook Input (Standard Input)</a></h3>
-<p>Veyyon writes a JSON object to standard input (stdin) containing the event details. Every event payload shares these properties:</p>
-<pre><code class="language-json">{
-  "sessionId": "a-unique-session-id",
-  "turnId": "active-turn-id",
-  "agentId": "active-subagent-id",
-  "agentType": "active-subagent-type",
-  "transcriptPath": "/absolute/path/to/transcript.jsonl",
-  "cwd": "/absolute/path/to/cwd",
-  "hookEventName": "PreToolUse",
-  "model": "model-name",
-  "permissionMode": "permission-mode"
-}
-</code></pre>
-<p>Event-specific stdin properties include:</p>
+<h2 id="discovery"><a class="header" href="#discovery">Discovery</a></h2>
+<p>Hook/extension paths are resolved as absolute, <code>~</code>-expanded, or relative to cwd. Discovery loads capability-registered modules, importable <code>.ts</code>/<code>.js</code> factories, plugin extension entry points, and explicit paths.</p>
+<h2 id="lifecycle-extension-bus"><a class="header" href="#lifecycle-extension-bus">Lifecycle (extension bus)</a></h2>
+<p>Handlers attach to the runtime event bus used by the extension runner (tool call, session, compaction, and related events as defined in <code>types.ts</code>). Exact event names and payloads are in <code>packages/coding-agent/src/extensibility/hooks/types.ts</code> and <code>docs/hooks.md</code>.</p>
+<h2 id="related"><a class="header" href="#related">Related</a></h2>
 <ul>
-<li><strong><code>PreToolUse</code></strong>: <code>toolName</code> (string), <code>toolInput</code> (JSON arguments), <code>toolUseId</code> (string)</li>
-<li><strong><code>PermissionRequest</code></strong>: <code>toolName</code> (string), <code>toolInput</code> (JSON arguments)</li>
-<li><strong><code>PostToolUse</code></strong>: <code>toolName</code> (string), <code>toolInput</code> (JSON arguments), <code>toolResponse</code> (JSON output), <code>toolUseId</code> (string)</li>
-<li><strong><code>PreCompact</code> &amp; <code>PostCompact</code></strong>: <code>trigger</code> (string)</li>
-<li><strong><code>SessionStart</code></strong>: <code>source</code> (string)</li>
-<li><strong><code>SubagentStart</code></strong>: <code>agentId</code> (string), <code>agentType</code> (string)</li>
-<li><strong><code>UserPromptSubmit</code></strong>: <code>prompt</code> (string)</li>
-<li><strong><code>Stop</code></strong>: <code>stopHookActive</code> (boolean), <code>lastAssistantMessage</code> (string or null)</li>
-<li><strong><code>SubagentStop</code></strong>: <code>stopHookActive</code> (boolean), <code>agentId</code> (string), <code>agentType</code> (string), <code>lastAssistantMessage</code> (string or null), <code>agentTranscriptPath</code> (string or null)</li>
+<li><a href="./hooks-guide.html">Custom hooks guide</a></li>
+<li>Repository <code>docs/hooks.md</code></li>
 </ul>
-<h3 id="hook-output-standard-output"><a class="header" href="#hook-output-standard-output">Hook Output (Standard Output)</a></h3>
-<p>Hooks communicate their results to Veyyon by writing to standard output (stdout):</p>
-<ul>
-<li>If stdout is empty, Veyyon proceeds normally.</li>
-<li>If stdout is not valid JSON, Veyyon treats it as a plain-text message and injects it into the LLM context.</li>
-<li>If stdout is JSON, it must conform to the hook schema.</li>
-</ul>
-<h4 id="universal-json-output-properties"><a class="header" href="#universal-json-output-properties">Universal JSON Output Properties</a></h4>
-<pre><code class="language-json">{
-  "continue": true,
-  "stopReason": "Optional explanation",
-  "suppressOutput": false,
-  "systemMessage": "Optional warning text to show in the TUI"
-}
-</code></pre>
-<p>If <code>continue</code> is set to <code>false</code>, Veyyon aborts the action (this is ignored by <code>SubagentStart</code>).</p>
-<h4 id="event-specific-json-output-properties"><a class="header" href="#event-specific-json-output-properties">Event-Specific JSON Output Properties</a></h4>
-<p>Hooks can return structured updates under the <code>hookSpecificOutput</code> key or direct properties:</p>
-<ul>
-<li>
-<p><strong><code>PreToolUse</code></strong>:</p>
-<ul>
-<li><code>decision</code> (string): Set to <code>"block"</code> or <code>"approve"</code>.</li>
-<li><code>reason</code> (string): Required if <code>decision</code> is <code>"block"</code>.</li>
-<li><code>hookSpecificOutput</code>:
-<ul>
-<li><code>hookEventName</code>: <code>"PreToolUse"</code>.</li>
-<li><code>permissionDecision</code> (string): Set to <code>"allow"</code>, <code>"deny"</code>, or <code>"ask"</code>.</li>
-<li><code>permissionDecisionReason</code> (string).</li>
-<li><code>updatedInput</code> (JSON): Rewrites the arguments of the tool before Veyyon runs it.</li>
-<li><code>additionalContext</code> (string): Text to append to the LLM context.</li>
-</ul>
-</li>
-</ul>
-</li>
-<li>
-<p><strong><code>PermissionRequest</code></strong>:</p>
-<ul>
-<li><code>hookSpecificOutput</code>:
-<ul>
-<li><code>hookEventName</code>: <code>"PermissionRequest"</code>.</li>
-<li><code>decision</code>:
-<ul>
-<li><code>behavior</code> (string): Set to <code>"allow"</code> or <code>"deny"</code>.</li>
-<li><code>message</code> (string).
-(Note: <code>updated_input</code>, <code>updated_permissions</code>, or setting <code>interrupt</code> to <code>true</code> will cause the hook to fail closed).</li>
-</ul>
-</li>
-</ul>
-</li>
-</ul>
-</li>
-<li>
-<p><strong><code>PostToolUse</code></strong>:</p>
-<ul>
-<li><code>decision</code> (string): Set to <code>"block"</code>.</li>
-<li><code>reason</code> (string): Required if <code>decision</code> is <code>"block"</code>.</li>
-<li><code>hookSpecificOutput</code>:
-<ul>
-<li><code>hookEventName</code>: <code>"PostToolUse"</code>.</li>
-<li><code>additionalContext</code> (string): Text to append to the LLM context.</li>
-<li><code>updatedMCPToolOutput</code> (JSON): Rewrites the output returned by the MCP tool.</li>
-</ul>
-</li>
-</ul>
-</li>
-<li>
-<p><strong><code>SessionStart</code>, <code>SubagentStart</code>, <code>UserPromptSubmit</code></strong>:</p>
-<ul>
-<li><code>hookSpecificOutput</code>:
-<ul>
-<li><code>hookEventName</code>: Match the event name.</li>
-<li><code>additionalContext</code> (string): Text to append to the LLM context.</li>
-</ul>
-</li>
-</ul>
-</li>
-<li>
-<p><strong><code>Stop</code>, <code>SubagentStop</code></strong>:</p>
-<ul>
-<li><code>decision</code> (string): Set to <code>"block"</code>.</li>
-<li><code>reason</code> (string): Required if <code>decision</code> is <code>"block"</code>.</li>
-</ul>
-</li>
-</ul>
-<h2 id="the-hooks-tui-command"><a class="header" href="#the-hooks-tui-command">The <code>/hooks</code> TUI Command</a></h2>
-<p>You can view and manage lifecycle hooks using the <code>/hooks</code> slash command in the Veyyon TUI. Running <code>/hooks</code> fetches the active hooks configuration and opens the hooks browser in the bottom pane.</p>
-<h3 id="interface-navigation"><a class="header" href="#interface-navigation">Interface Navigation</a></h3>
-<p>Use the following keyboard shortcuts in the hooks browser:</p>
-<ul>
-<li><strong>Arrow Up / Down</strong>: Navigate through the list of events or individual handlers.</li>
-<li><strong>Page Up / Down</strong>: Scroll by page.</li>
-<li><strong>Enter (on Events page)</strong>: Opens the handlers configured for the selected event.</li>
-<li><strong>Enter or Space (on Handlers page)</strong>: Toggles the enabled state of the selected trusted hook.</li>
-<li><strong>t (on Handlers page)</strong>: Trusts the selected hook.</li>
-<li><strong>t (on Events page)</strong>: Trusts all untrusted or modified hooks discovered in the current directory.</li>
-<li><strong>Escape (on Handlers page)</strong>: Returns to the events list.</li>
-<li><strong>Escape (on Events page)</strong>: Closes the hooks browser.</li>
-</ul>
-<h2 id="related-recipes"><a class="header" href="#related-recipes">Related recipes</a></h2>
-<p>For a worked “run a check after every edit” flow that pairs hooks with non-interactive
-<code>veyyon --print</code> runs, see
-<a href="../using/task-guides.html#automate-a-check-on-every-edit-hooks">Task guides</a>.</p>
-<p>Engineering detail: <a href="../../../hooks.html"><code>docs/hooks.md</code></a>.</p>
 
                     </main>
 

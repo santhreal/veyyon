@@ -1,4 +1,4 @@
-import { toNumber } from "@veyyon/pi-catalog/utils";
+import { toNumber } from "@veyyon/catalog/utils";
 import { ProviderHttpError } from "../../error";
 
 export type CodexRateLimit = {

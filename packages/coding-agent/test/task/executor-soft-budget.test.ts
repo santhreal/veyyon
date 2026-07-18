@@ -1,17 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
-import type { ModelRegistry } from "@veyyon/pi-coding-agent/config/model-registry";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
-import type { LoadExtensionsResult } from "@veyyon/pi-coding-agent/extensibility/extensions/types";
-import { IrcBus } from "@veyyon/pi-coding-agent/irc/bus";
-import { AgentLifecycleManager } from "@veyyon/pi-coding-agent/registry/agent-lifecycle";
-import { AgentRegistry } from "@veyyon/pi-coding-agent/registry/agent-registry";
-import type { CreateAgentSessionResult } from "@veyyon/pi-coding-agent/sdk";
-import * as sdkModule from "@veyyon/pi-coding-agent/sdk";
-import type { AgentSession, AgentSessionEvent, PromptOptions } from "@veyyon/pi-coding-agent/session/agent-session";
-import { runSubprocess } from "@veyyon/pi-coding-agent/task/executor";
-import type { AgentDefinition } from "@veyyon/pi-coding-agent/task/types";
-import { EventBus } from "@veyyon/pi-coding-agent/utils/event-bus";
-import { TempDir } from "@veyyon/pi-utils";
+import type { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import type { LoadExtensionsResult } from "@veyyon/coding-agent/extensibility/extensions/types";
+import { IrcBus } from "@veyyon/coding-agent/irc/bus";
+import { AgentLifecycleManager } from "@veyyon/coding-agent/registry/agent-lifecycle";
+import { AgentRegistry } from "@veyyon/coding-agent/registry/agent-registry";
+import type { CreateAgentSessionResult } from "@veyyon/coding-agent/sdk";
+import * as sdkModule from "@veyyon/coding-agent/sdk";
+import type { AgentSession, AgentSessionEvent, PromptOptions } from "@veyyon/coding-agent/session/agent-session";
+import { runSubprocess } from "@veyyon/coding-agent/task/executor";
+import type { AgentDefinition } from "@veyyon/coding-agent/task/types";
+import { EventBus } from "@veyyon/coding-agent/utils/event-bus";
+import { TempDir } from "@veyyon/utils";
 
 /**
  * Contracts under test — the soft request budget must degrade gracefully

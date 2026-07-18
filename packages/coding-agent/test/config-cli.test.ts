@@ -1,18 +1,19 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
-import { runConfigCommand } from "@veyyon/pi-coding-agent/cli/config-cli";
-import { resetSettingsForTest } from "@veyyon/pi-coding-agent/config/settings";
-import { AgentStorage } from "@veyyon/pi-coding-agent/session/agent-storage";
-import { getConfigRootDir, setAgentDir, TempDir } from "@veyyon/pi-utils";
+import { runConfigCommand } from "@veyyon/coding-agent/cli/config-cli";
+import { resetSettingsForTest } from "@veyyon/coding-agent/config/settings";
+import { AgentStorage } from "@veyyon/coding-agent/session/agent-storage";
+import { getConfigRootDir, setAgentDir, TempDir } from "@veyyon/utils";
+import { hermeticSpawnEnv } from "./helpers/hermetic-spawn-env";
 
 let testAgentDir: TempDir | undefined;
-const originalAgentDir = process.env.PI_CODING_AGENT_DIR;
+const originalAgentDir = process.env.VEYYON_CODING_AGENT_DIR;
 const fallbackAgentDir = path.join(getConfigRootDir(), "agent");
 const cliEntry = path.join(import.meta.dir, "..", "src", "cli.ts");
 
 beforeEach(() => {
 	resetSettingsForTest();
-	testAgentDir = TempDir.createSync("@omp-config-cli-");
+	testAgentDir = TempDir.createSync("@veyyon-config-cli-");
 	setAgentDir(testAgentDir.path());
 });
 
@@ -24,7 +25,7 @@ afterEach(async () => {
 		setAgentDir(originalAgentDir);
 	} else {
 		setAgentDir(fallbackAgentDir);
-		delete process.env.PI_CODING_AGENT_DIR;
+		delete process.env.VEYYON_CODING_AGENT_DIR;
 	}
 	if (testAgentDir) {
 		try {
@@ -169,18 +170,22 @@ describe("config CLI schema coverage", () => {
 	});
 	it("fully flushes JSON larger than a pipe buffer", async () => {
 		if (!testAgentDir) throw new Error("Test agent directory was not initialized");
-		const proc = Bun.spawn([process.execPath, cliEntry, "config", "list", "--json"], {
-			stdout: "pipe",
-			stderr: "pipe",
-			env: {
-				...process.env,
-				NO_COLOR: "1",
-				PI_CODING_AGENT_DIR: testAgentDir.path(),
-			},
-		});
-		const stdout = new Response(proc.stdout).text();
-		const stderr = new Response(proc.stderr).text();
-		const [exitCode, output, error] = await Promise.all([proc.exited, stdout, stderr]);
+		const { env, cleanup } = hermeticSpawnEnv({ VEYYON_CODING_AGENT_DIR: testAgentDir.path() });
+		let exitCode: number;
+		let output: string;
+		let error: string;
+		try {
+			const proc = Bun.spawn([process.execPath, cliEntry, "config", "list", "--json"], {
+				stdout: "pipe",
+				stderr: "pipe",
+				env,
+			});
+			const stdout = new Response(proc.stdout).text();
+			const stderr = new Response(proc.stderr).text();
+			[exitCode, output, error] = await Promise.all([proc.exited, stdout, stderr]);
+		} finally {
+			cleanup();
+		}
 
 		expect(exitCode).toBe(0);
 		expect(error).toBe("");

@@ -144,7 +144,7 @@ async function runScenarioInSubprocess(scenario: Scenario): Promise<void> {
 	// than pipes. Each scenario still runs in its own process for full isolation;
 	// only the transport changed. stderr stays inherited so a hard crash (no
 	// result file written) still surfaces its diagnostics.
-	const base = path.join(os.tmpdir(), `omp-tui-stress-ipc-${process.pid}-${ipcCounter++}`);
+	const base = path.join(os.tmpdir(), `veyyon-tui-stress-ipc-${process.pid}-${ipcCounter++}`);
 	const inputPath = `${base}.in.json`;
 	const outputPath = `${base}.out.json`;
 	await Bun.write(inputPath, JSON.stringify(scenario));

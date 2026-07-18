@@ -2,8 +2,8 @@ import { afterEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { buildDirectoryTree, buildWorkspaceTree } from "@veyyon/pi-coding-agent/workspace-tree";
-import { removeWithRetries } from "@veyyon/pi-utils";
+import { buildDirectoryTree, buildWorkspaceTree } from "@veyyon/coding-agent/workspace-tree";
+import { removeWithRetries } from "@veyyon/utils";
 
 const tempDirs: string[] = [];
 

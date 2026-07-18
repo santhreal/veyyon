@@ -1,6 +1,6 @@
 # Core concepts
 
-Veyyon is built around a few persistent, composable units. This page defines the units that shape a conversation and explains how they fit together.
+Veyyon is built around a few persistent units. This page defines the units that shape a conversation and explains how they fit together.
 
 ## Session
 
@@ -8,7 +8,7 @@ A **session** is the persisted unit of work. It holds a thread, a working direct
 
 Sessions are durable: they survive a TUI restart, a context compaction, or a machine reboot. The file on disk is the source of truth, not the in-memory state.
 
-See [Sessions](../using/sessions.md) for day-to-day commands and [File locations](../reference/file-locations.md) for where the files live.
+See [Sessions](../using/sessions.md) for operator commands and [File locations](../reference/file-locations.md) for where the files live.
 
 ## Thread
 
@@ -30,11 +30,11 @@ Context history is preserved in two layers.
 
 Every event in a session is appended to a rollout file as a JSONL line. The rollout file lives under the sessions directory below the config home (`~/.veyyon/.../sessions/`). Each line is a rollout item: a user message, an agent response, a tool call, a compaction, a goal update, or a leaf move.
 
-Rollout files are append-only. Nothing is ever rewritten. This property makes branching and resume safe and auditable. See [Sessions](../using/sessions.md) for day-to-day commands and [Session and turn internals](../architecture/session-turn.md) for the persistence format.
+Rollout files are append-only. Nothing is ever rewritten. This property makes branching and resume safe and auditable. See [Sessions](../using/sessions.md) for operator commands and [Session and turn internals](../architecture/session-turn.md) for the persistence format.
 
 ### State database
 
-Thread metadata, goal cards, and queued follow-ups are also mirrored into a local SQLite index. The index lets the harness list and resume sessions quickly without replaying the entire rollout log.
+Thread metadata, goal cards, and queued follow-ups are also mirrored into a local SQLite index so listing and resume do not require replaying the entire rollout log.
 
 ## How context history is updated
 
@@ -59,7 +59,7 @@ Use `/tree` to browse the session tree, `/fork` to copy history into a new sessi
 
 ## Plan mode
 
-Plan mode changes how a turn behaves. In Plan mode, the agent is constrained to non-mutating investigation and planning; it cannot edit files or run mutating commands. It produces a `<proposed_plan>` that you approve before implementation begins. This makes a plan a first-class turn result, not just prose in the transcript. See [Plan mode and goals](../features/plan-mode.md).
+Plan mode is an engine mode: tool surface and prompts favor exploration and drafting a **plan file**. Finalization uses the **`resolve`** tool with plan-approval semantics. Toggle with `/plan`. See [Plan mode and goals](../features/plan-mode.md).
 
 ## What to remember
 

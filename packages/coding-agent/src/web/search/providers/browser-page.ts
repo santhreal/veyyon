@@ -1,5 +1,5 @@
-import type { FetchImpl } from "@veyyon/pi-ai";
-import { untilAborted } from "@veyyon/pi-utils";
+import type { FetchImpl } from "@veyyon/ai";
+import { untilAborted } from "@veyyon/utils";
 import type { Page } from "puppeteer-core";
 import { applyStealthPatches, applyViewport } from "../../../tools/browser/launch";
 import { acquireBrowser, holdBrowser, releaseBrowser } from "../../../tools/browser/registry";

@@ -8,11 +8,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/can1357/oh-my-pi.git",
+    "url": "git+https://github.com/santhreal/veyyon.git",
     "directory": "packages/snapcompact"
   },
   "bugs": {
-    "url": "https://github.com/can1357/oh-my-pi/issues"
+    "url": "https://github.com/santhreal/veyyon/issues"
   },
   "keywords": [
     "context-compression",
@@ -31,10 +31,10 @@
     "fmt": "biome format --write ."
   },
   "dependencies": {
-    "@veyyon/pi-ai": "catalog:",
-    "@veyyon/pi-natives": "catalog:",
-    "@veyyon/pi-utils": "catalog:",
-    "@veyyon/pi-wire": "catalog:"
+    "@veyyon/ai": "catalog:",
+    "@veyyon/natives": "catalog:",
+    "@veyyon/utils": "catalog:",
+    "@veyyon/wire": "catalog:"
   },
   "devDependencies": {
     "@types/bun": "catalog:"

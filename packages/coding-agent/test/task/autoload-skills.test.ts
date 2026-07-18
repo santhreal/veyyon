@@ -1,14 +1,14 @@
 import { afterEach, describe, expect, it, type Mock, vi } from "bun:test";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
-import type { Skill } from "@veyyon/pi-coding-agent/extensibility/skills";
-import * as skillsModule from "@veyyon/pi-coding-agent/extensibility/skills";
-import type { CreateAgentSessionResult } from "@veyyon/pi-coding-agent/sdk";
-import * as sdkModule from "@veyyon/pi-coding-agent/sdk";
-import type { AgentSession, AgentSessionEvent, PromptOptions } from "@veyyon/pi-coding-agent/session/agent-session";
-import { SKILL_PROMPT_MESSAGE_TYPE } from "@veyyon/pi-coding-agent/session/messages";
-import { runSubprocess } from "@veyyon/pi-coding-agent/task/executor";
-import type { AgentDefinition } from "@veyyon/pi-coding-agent/task/types";
-import { EventBus } from "@veyyon/pi-coding-agent/utils/event-bus";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import type { Skill } from "@veyyon/coding-agent/extensibility/skills";
+import * as skillsModule from "@veyyon/coding-agent/extensibility/skills";
+import type { CreateAgentSessionResult } from "@veyyon/coding-agent/sdk";
+import * as sdkModule from "@veyyon/coding-agent/sdk";
+import type { AgentSession, AgentSessionEvent, PromptOptions } from "@veyyon/coding-agent/session/agent-session";
+import { SKILL_PROMPT_MESSAGE_TYPE } from "@veyyon/coding-agent/session/messages";
+import { runSubprocess } from "@veyyon/coding-agent/task/executor";
+import type { AgentDefinition } from "@veyyon/coding-agent/task/types";
+import { EventBus } from "@veyyon/coding-agent/utils/event-bus";
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -61,7 +61,7 @@ function createSessionResult(session: AgentSession): CreateAgentSessionResult {
 	return {
 		session,
 		extensionsResult:
-			{} as unknown as import("@veyyon/pi-coding-agent/extensibility/extensions/types").LoadExtensionsResult,
+			{} as unknown as import("@veyyon/coding-agent/extensibility/extensions/types").LoadExtensionsResult,
 		setToolUIContext: () => {},
 		eventBus: new EventBus(),
 	};
@@ -90,7 +90,7 @@ describe("autoloadSkills in executor", () => {
 		settings: Settings.isolated(),
 		modelRegistry: {
 			refresh: async () => {},
-		} as unknown as import("@veyyon/pi-coding-agent/config/model-registry").ModelRegistry,
+		} as unknown as import("@veyyon/coding-agent/config/model-registry").ModelRegistry,
 		enableLsp: false,
 	};
 

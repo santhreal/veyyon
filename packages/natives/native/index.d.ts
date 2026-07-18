@@ -169,13 +169,13 @@ export declare function __veyyonInstallTokioRuntime(): void
  * `<sym> is not a function` crash from a locked-file update (the canonical
  * Windows `bun install -g` failure mode) into a clear load-time error.
  *
- * Bump policy: `__piNativesV{major}_{minor}_{patch}` — non-alphanumerics in
+ * Bump policy: `__veyyonNativesV{major}_{minor}_{patch}` — non-alphanumerics in
  * the version string are mapped to `_` to keep it a valid JS identifier.
  * MUST stay in sync with `VERSION_SENTINEL_EXPORT` in
  * `packages/natives/native/index.js` (which derives the name from
  * `package.json#version`).
  */
-export declare function __piNativesV1_0_0(): void
+export declare function __veyyonNativesV1_0_0(): void
 
 /**
  * Apply ast-grep rewrite rules to matching files; honors `dryRun` and returns
@@ -918,7 +918,7 @@ export declare enum IsoChangeKind {
 /**
  * Capture the changes between `lower` and `merged`.
  *
- * Uses [`pi_iso::IsolationBackend::diff`]'s default implementation —
+ * Uses [`veyyon_iso::IsolationBackend::diff`]'s default implementation —
  * `git diff` when `merged/.git` exists, otherwise a mtime-skipped tree
  * walk. The backend selection only affects the lifecycle methods; diff
  * behaviour is uniform.
@@ -966,7 +966,7 @@ export interface IsoProbeResult {
 
 /**
  * Pick the best backend available right now. `preferred` is treated as
- * a hint — see [`pi_iso::resolve`] for the exact priority rules.
+ * a hint — see [`veyyon_iso::resolve`] for the exact priority rules.
  */
 export declare function isoResolve(preferred?: IsoBackendKind | undefined | null): IsoResolveResult
 
@@ -1162,7 +1162,7 @@ export interface MinimizerOptions {
    * Kill-switch to fall back to the pre-PR (legacy) filter behavior for
    * grep / find / pytest. When `Some(true)`, filters that opted into the
    * always-shrink Tier 1 / Tier 2 behavior skip the new code path. When
-   * `None`, defers to the `OMP_MINIMIZER_LEGACY_FILTERS` env var.
+   * `None`, defers to the `VEYYON_MINIMIZER_LEGACY_FILTERS` env var.
    */
   legacyFilters?: boolean
 }

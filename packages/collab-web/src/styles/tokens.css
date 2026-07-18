@@ -1,83 +1,99 @@
-/* Design tokens — omp brand palette: deep-purple surfaces, pink accent, cyan
- * focus ring. Dark is the default; `[data-theme="light"]` and the
- * prefers-color-scheme light fallback flip to light surfaces.
+/* Design tokens — Veyyon brand palette: pitch-black ground, silver structure,
+ * a single ember-sun accent (veyyōn = the sun). No purple/cyan/rainbow chrome,
+ * no smooth gradients. Mirrors `website/site.css` :root (the reference
+ * implementation) and the `brand.md` identity contract. Dark is the default;
+ * `[data-theme="light"]` and the prefers-color-scheme light fallback flip to
+ * the white-ground light theme.
  * The ONLY file allowed to contain raw color values. */
 :root {
 	color-scheme: dark;
 
-	/* surfaces — neutral ramp tinted by the brand purple (hue 307, anchored to #0f0a14) */
-	--bg: oklch(0.16 0.02 307);
-	--bg-raised: oklch(0.19 0.022 307);
-	--bg-inset: oklch(0.13 0.016 307);
-	--bg-overlay: oklch(0.235 0.026 307);
+	/* surfaces — every background is pure black; hierarchy comes from silver
+	 * hairlines, text weight, and the ember accent, never tinted/raised fills.
+	 * Floating surfaces lift with --shadow-overlay, not with a lighter ground. */
+	--bg: #000000;
+	--bg-raised: #000000;
+	--bg-inset: #000000;
+	--bg-overlay: #000000;
 
 	/* text */
-	--fg: oklch(0.92 0.01 307);
-	--fg-muted: oklch(0.71 0.016 307);
-	--fg-faint: oklch(0.53 0.018 307);
+	--fg: #f6f7f9;
+	--fg-muted: #b4bac4;
+	--fg-faint: #7c828d;
 
-	/* one accent: brand pink (#ed4abf) */
-	--accent: oklch(0.674 0.23 341);
-	--accent-fg: oklch(0.2 0.07 341);
-	--accent-muted: oklch(0.674 0.23 341 / 18%);
+	/* silver is structure — wordmark, labels, hairlines, primary hierarchy */
+	--silver: #c6cbd4;
+	--silver-hi: #e6e9ee;
 
-	/* brand lockup */
-	--brand-mark-gradient: linear-gradient(135deg, #ed4abf 0%, #9b4dff 50%, #5ad8e6 100%);
+	/* one accent: ember — the sun (#f0862e), never a primary fill */
+	--accent: #f0862e;
+	--accent-hi: #fb9e44;
+	--accent-fg: #0a0a0a;
+	--accent-muted: rgba(240, 134, 46, 0.16);
 
-	/* status — used sparingly */
-	--ok: oklch(0.76 0.14 150);
-	--warn: oklch(0.79 0.14 85);
-	--err: oklch(0.66 0.19 25);
+	/* brand lockup mark — the stepped ember sun (discrete bands, not a smooth
+	 * gradient), matching website/favicon.svg. */
+	--brand-mark: radial-gradient(circle, #ffca80 0 22%, #fb9e44 22% 44%, #f0862e 44% 66%, #c8590c 66% 100%);
 
-	/* hairlines */
-	--border: oklch(1 0 0 / 9%);
-	--border-strong: oklch(1 0 0 / 13%);
-	/* focus ring: brand cyan (#5ad8e6) — distinct from the accent */
-	--ring: oklch(0.817 0.112 205 / 70%);
+	/* status — used sparingly, only when the meaning fits */
+	--ok: #7fb98a;
+	--warn: #c9a24b;
+	--err: #c96f6e;
 
-	/* type — system stacks only */
-	--font-ui: ui-sans-serif, system-ui, -apple-system, "Segoe UI", "Helvetica Neue", sans-serif;
-	--font-mono: ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+	/* silver hairlines */
+	--border: rgba(198, 203, 212, 0.12);
+	--border-strong: rgba(198, 203, 212, 0.21);
+	/* focus ring: the ember sun (kept distinct from --warn amber) */
+	--ring: rgba(240, 134, 46, 0.7);
 
-	/* radii */
+	/* type — JetBrains Mono is the brand/display voice, Inter for reading */
+	--font-ui: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", "Helvetica Neue", sans-serif;
+	--font-mono: "JetBrains Mono", ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+
+	/* radii — restrained, near-sharp edges */
 	--radius-sm: 3px;
 	--radius: 6px;
 	--radius-lg: 8px;
 
 	/* non-pinned helpers (kept here so no raw colors leak outside this file) */
-	--shadow-overlay: 0 12px 32px oklch(0 0 0 / 45%), 0 2px 8px oklch(0 0 0 / 30%);
-	--rail-mobile-shadow: -4px 0 16px oklch(0 0 0 / 30%);
-	--backdrop: oklch(0.1 0.014 307 / 62%);
+	--shadow-overlay: 0 12px 32px rgba(0, 0, 0, 0.55), 0 2px 8px rgba(0, 0, 0, 0.4);
+	--rail-mobile-shadow: -4px 0 16px rgba(0, 0, 0, 0.4);
+	--backdrop: rgba(0, 0, 0, 0.66);
 }
 
-/* Light theme — explicit override (toggle writes data-theme="light"). */
+/* Light theme — explicit override (toggle writes data-theme="light").
+ * White ground, silver text, ember accent (glow #fbe9d9). */
 [data-theme="light"] {
 	color-scheme: light;
 
-	--bg: oklch(0.985 0.004 307);
-	--bg-raised: oklch(1 0 0);
-	--bg-inset: oklch(0.95 0.006 307);
-	--bg-overlay: oklch(0.965 0.006 307);
+	--bg: #ffffff;
+	--bg-raised: #ffffff;
+	--bg-inset: #f6f7f8;
+	--bg-overlay: #ffffff;
 
-	--fg: oklch(0.26 0.03 307);
-	--fg-muted: oklch(0.46 0.03 307);
-	--fg-faint: oklch(0.58 0.025 307);
+	--fg: #343b45;
+	--fg-muted: #5c6470;
+	--fg-faint: #8a909a;
 
-	--accent: oklch(0.62 0.23 341);
-	--accent-fg: oklch(0.99 0.01 341);
-	--accent-muted: oklch(0.62 0.23 341 / 14%);
+	--silver: #5c6470;
+	--silver-hi: #343b45;
 
-	--ok: oklch(0.55 0.13 150);
-	--warn: oklch(0.6 0.13 85);
-	--err: oklch(0.55 0.19 25);
+	--accent: #f0862e;
+	--accent-hi: #d9701c;
+	--accent-fg: #ffffff;
+	--accent-muted: #fbe9d9;
 
-	--border: oklch(0 0 0 / 10%);
-	--border-strong: oklch(0 0 0 / 15%);
-	--ring: oklch(0.58 0.13 230 / 70%);
+	--ok: #4f9e63;
+	--warn: #b07d1e;
+	--err: #c0504e;
 
-	--shadow-overlay: 0 12px 32px oklch(0 0 0 / 14%), 0 2px 8px oklch(0 0 0 / 10%);
-	--rail-mobile-shadow: -4px 0 16px oklch(0 0 0 / 14%);
-	--backdrop: oklch(0.55 0.02 307 / 28%);
+	--border: rgba(52, 59, 69, 0.14);
+	--border-strong: rgba(52, 59, 69, 0.22);
+	--ring: rgba(240, 134, 46, 0.6);
+
+	--shadow-overlay: 0 12px 32px rgba(0, 0, 0, 0.14), 0 2px 8px rgba(0, 0, 0, 0.1);
+	--rail-mobile-shadow: -4px 0 16px rgba(0, 0, 0, 0.14);
+	--backdrop: rgba(52, 59, 69, 0.28);
 }
 
 /* Light theme — system fallback when no explicit preference is stored. */
@@ -85,29 +101,33 @@
 	:root:not([data-theme]) {
 		color-scheme: light;
 
-		--bg: oklch(0.985 0.004 307);
-		--bg-raised: oklch(1 0 0);
-		--bg-inset: oklch(0.95 0.006 307);
-		--bg-overlay: oklch(0.965 0.006 307);
+		--bg: #ffffff;
+		--bg-raised: #ffffff;
+		--bg-inset: #f6f7f8;
+		--bg-overlay: #ffffff;
 
-		--fg: oklch(0.26 0.03 307);
-		--fg-muted: oklch(0.46 0.03 307);
-		--fg-faint: oklch(0.58 0.025 307);
+		--fg: #343b45;
+		--fg-muted: #5c6470;
+		--fg-faint: #8a909a;
 
-		--accent: oklch(0.62 0.23 341);
-		--accent-fg: oklch(0.99 0.01 341);
-		--accent-muted: oklch(0.62 0.23 341 / 14%);
+		--silver: #5c6470;
+		--silver-hi: #343b45;
 
-		--ok: oklch(0.55 0.13 150);
-		--warn: oklch(0.6 0.13 85);
-		--err: oklch(0.55 0.19 25);
+		--accent: #f0862e;
+		--accent-hi: #d9701c;
+		--accent-fg: #ffffff;
+		--accent-muted: #fbe9d9;
 
-		--border: oklch(0 0 0 / 10%);
-		--border-strong: oklch(0 0 0 / 15%);
-		--ring: oklch(0.58 0.13 230 / 70%);
+		--ok: #4f9e63;
+		--warn: #b07d1e;
+		--err: #c0504e;
 
-		--shadow-overlay: 0 12px 32px oklch(0 0 0 / 14%), 0 2px 8px oklch(0 0 0 / 10%);
-		--backdrop: oklch(0.55 0.02 307 / 28%);
-		--rail-mobile-shadow: -4px 0 16px oklch(0 0 0 / 14%);
+		--border: rgba(52, 59, 69, 0.14);
+		--border-strong: rgba(52, 59, 69, 0.22);
+		--ring: rgba(240, 134, 46, 0.6);
+
+		--shadow-overlay: 0 12px 32px rgba(0, 0, 0, 0.14), 0 2px 8px rgba(0, 0, 0, 0.1);
+		--backdrop: rgba(52, 59, 69, 0.28);
+		--rail-mobile-shadow: -4px 0 16px rgba(0, 0, 0, 0.14);
 	}
 }

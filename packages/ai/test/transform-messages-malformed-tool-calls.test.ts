@@ -7,9 +7,9 @@
 // `transformMessages` is the canonical sanitize boundary every provider passes
 // through, so the defensive filter lives there.
 import { describe, expect, it } from "bun:test";
-import { transformMessages } from "@veyyon/pi-ai/providers/transform-messages";
-import type { AssistantMessage, Message, Model, ToolCall, ToolResultMessage } from "@veyyon/pi-ai/types";
-import { buildModel } from "@veyyon/pi-catalog/build";
+import { transformMessages } from "@veyyon/ai/providers/transform-messages";
+import type { AssistantMessage, Message, Model, ToolCall, ToolResultMessage } from "@veyyon/ai/types";
+import { buildModel } from "@veyyon/catalog/build";
 
 const model: Model<"anthropic-messages"> = buildModel({
 	api: "anthropic-messages",

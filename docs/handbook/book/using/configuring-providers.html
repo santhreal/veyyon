@@ -10,6 +10,10 @@
         <!-- Veyyon handbook: self-contained head additions. No remote resources. -->
         <meta name="theme-color" content="#050505">
         <meta name="color-scheme" content="dark">
+        <!-- Site favicons live at the deployed root, one level above /docs/. -->
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+        <link rel="icon" href="/favicon.ico" sizes="48x48">
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png">
         <style>
           /* Paint the near-black surface before CSS/JS resolve the theme, so there is
              no light flash on load. Kept in sync with theme/veyyon.css. */
@@ -18,7 +22,7 @@
           *, *::before, *::after { box-sizing: border-box; }
         </style>
 
-        <meta name="description" content="How Veyyon turns open models into frontier coding agents. The product, the harness, tool-call repair, the edit format, per-model adaptation, and how to use it.">
+        <meta name="description" content="Operator handbook for the Veyyon terminal coding agent: install, configuration, tools, approvals, edit formats, providers, and harness structure.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#ffffff">
 
@@ -38,7 +42,7 @@
         <link rel="stylesheet" id="mdbook-ayu-highlight-css" href="../ayu-highlight-3fdfc3ac.css">
 
         <!-- Custom theme stylesheets -->
-        <link rel="stylesheet" href="../theme/veyyon-fc839a17.css">
+        <link rel="stylesheet" href="../theme/veyyon-06f6939e.css">
 
 
         <!-- Provide site root and default themes to javascript -->
@@ -46,10 +50,10 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-e76f06ca.js";
+            window.path_to_searchindex_js = "../searchindex-a2447057.js";
         </script>
         <!-- Start loading toc.js asap -->
-        <script src="../toc-9cfd259b.js"></script>
+        <script src="../toc-cc1a72e9.js"></script>
     </head>
     <body>
     <div id="mdbook-help-container">
@@ -192,14 +196,14 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="configuring-providers"><a class="header" href="#configuring-providers">Configuring providers</a></h1>
-<p>Copy-paste setups for bring-your-own-key (BYOK) and local providers. For the day-to-day switching
+<p>Copy-paste setups for bring-your-own-key (BYOK) and local providers. For model selection
 guide, see <a href="./models.html">Models and providers</a>. For the harness/provider boundary, see
 <a href="../concepts/model-contract.html">Model contract</a>.</p>
-<p>Custom providers live under <code>providers:</code> in <code>~/.veyyon/agent/models.yml</code>. Keys are resolved from the
+<p>Custom providers live under <code>providers:</code> in <code>~/.veyyon/profiles/default/agent/models.yml</code>. Keys are resolved from the
 environment, stored auth, OAuth, or a <code>models.yml</code> <code>apiKey</code> (see <a href="../models/providers.html">Providers</a>
 and <code>docs/providers.md</code>).</p>
 <h2 id="anatomy-of-a-provider-entry"><a class="header" href="#anatomy-of-a-provider-entry">Anatomy of a provider entry</a></h2>
-<pre><code class="language-yaml"># ~/.veyyon/agent/models.yml
+<pre><code class="language-yaml"># ~/.veyyon/profiles/default/agent/models.yml
 providers:
   acme:
     baseUrl: https://api.acme.example/v1
@@ -230,7 +234,7 @@ providers:
 <ul>
 <li>Custom providers are merged <strong>alongside</strong> built-ins; they do not silently replace <code>openai</code>.</li>
 <li>A custom <code>ollama</code> / <code>lm-studio</code> / <code>llama.cpp</code> entry replaces that engine’s built-in discovery.</li>
-<li>A YAML or schema error makes the registry skip the file loudly — validate with <code>veyyon models</code>.</li>
+<li>A YAML or schema error makes the registry skip the file with an error message — validate with <code>veyyon models</code>.</li>
 </ul>
 <p>After editing, restart the session.</p>
 <h2 id="openai-api-key"><a class="header" href="#openai-api-key">OpenAI (API key)</a></h2>
@@ -302,8 +306,8 @@ $ veyyon           # then /model and pick an ollama/… entry from discovery
 $ veyyon           # then /model and pick an lm-studio/… entry
 </code></pre>
 <h2 id="pinning-models-for-roles-and-ci"><a class="header" href="#pinning-models-for-roles-and-ci">Pinning models for roles and CI</a></h2>
-<p>Set background roles under <code>modelRoles</code> in <code>config.yml</code>:</p>
-<pre><code class="language-yaml"># ~/.veyyon/agent/config.yml
+<p>Set the interactive model and optional roles in the profile <code>config.yml</code> (<code>modelRoles.default</code> is the interactive model):</p>
+<pre><code class="language-yaml"># ~/.veyyon/profiles/default/agent/config.yml
 modelRoles:
   default: openai/gpt-5
   smol: openai/gpt-5-mini

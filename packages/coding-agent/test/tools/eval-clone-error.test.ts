@@ -1,8 +1,8 @@
 import { afterAll, describe, expect, it } from "bun:test";
-import { Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { disposeAllVmContexts } from "@veyyon/pi-coding-agent/eval/js/context-manager";
-import type { ToolSession } from "@veyyon/pi-coding-agent/tools";
-import { EvalTool } from "@veyyon/pi-coding-agent/tools/eval";
+import { Settings } from "@veyyon/coding-agent/config/settings";
+import { disposeAllVmContexts } from "@veyyon/coding-agent/eval/js/context-manager";
+import type { ToolSession } from "@veyyon/coding-agent/tools";
+import { EvalTool } from "@veyyon/coding-agent/tools/eval";
 
 function makeSession(): ToolSession {
 	return {

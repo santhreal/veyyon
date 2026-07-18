@@ -1,26 +1,26 @@
 # Natives Text/Search Pipeline
 
-This document maps the `@veyyon/pi-natives` text/search/code surface from generated JS/TS exports to Rust N-API modules and back to JS result objects.
+This document maps the `@veyyon/natives` text/search/code surface from generated JS/TS exports to Rust N-API modules and back to JS result objects.
 
 Terminology follows [`natives-architecture.md`](./natives-architecture.md):
 
 - **Generated binding**: public API in `packages/natives/native/index.d.ts`.
-- **Rust module layer**: N-API exports in `crates/pi-natives/src/*`.
-- **Shared scan cache**: TTL directory-entry cache owned by `pi-walker` (`crates/pi-walker/src/cache.rs`) used by discovery/search flows.
+- **Rust module layer**: N-API exports in `crates/veyyon-natives/src/*`.
+- **Shared scan cache**: TTL directory-entry cache owned by `veyyon-walker` (`crates/veyyon-walker/src/cache.rs`) used by discovery/search flows.
 
 ## Implementation files
 
 - `packages/natives/native/index.d.ts`
-- `crates/pi-natives/src/grep.rs`
-- `crates/pi-natives/src/glob.rs`
-- `crates/pi-natives/src/glob_util.rs`
-- `crates/pi-natives/src/iofs.rs`
-- `crates/pi-walker/src/cache.rs`
-- `crates/pi-natives/src/fd.rs`
-- `crates/pi-natives/src/ast.rs`
-- `crates/pi-natives/src/text.rs`
-- `crates/pi-natives/src/highlight.rs`
-- `crates/pi-natives/src/tokens.rs`
+- `crates/veyyon-natives/src/grep.rs`
+- `crates/veyyon-natives/src/glob.rs`
+- `crates/veyyon-natives/src/glob_util.rs`
+- `crates/veyyon-natives/src/iofs.rs`
+- `crates/veyyon-walker/src/cache.rs`
+- `crates/veyyon-natives/src/fd.rs`
+- `crates/veyyon-natives/src/ast.rs`
+- `crates/veyyon-natives/src/text.rs`
+- `crates/veyyon-natives/src/highlight.rs`
+- `crates/veyyon-natives/src/tokens.rs`
 
 ## JS API ↔ Rust export mapping
 
@@ -65,7 +65,7 @@ Terminology follows [`natives-architecture.md`](./natives-architecture.md):
 - **Single-file branch**
   - `grep` resolves path, checks metadata is file, and searches that file.
 - **Directory branch**
-  - Directory walks go through `pi_walker::WalkRequest` (files-only filter, `WalkDetail::Minimal`, `FollowLinks::Never`, `SizeHintPolicy::WhenCheap`) built by `build_grep_walk_request`.
+  - Directory walks go through `veyyon_walker::WalkRequest` (files-only filter, `WalkDetail::Minimal`, `FollowLinks::Never`, `SizeHintPolicy::WhenCheap`) built by `build_grep_walk_request`.
   - Grep always walks with `.cache(false)` — it does not use the shared TTL scan cache (that cache serves `glob`/`fuzzyFind`).
   - Entry filtering: file-only + optional glob filter (`glob_util`) + optional type filter mapping (`js`, `ts`, `rust`, etc.).
 
@@ -106,13 +106,13 @@ Terminology follows [`natives-architecture.md`](./natives-architecture.md):
 
 ## 2) File discovery (`glob`) and fuzzy path search (`fuzzyFind`)
 
-`glob` and `fuzzyFind` share the `pi-walker` TTL scan cache; matching logic differs.
+`glob` and `fuzzyFind` share the `veyyon-walker` TTL scan cache; matching logic differs.
 
 ### `glob` flow
 
 1. Caller passes `GlobOptions` directly. `pattern` and `path` are required in the generated type.
 2. Rust resolves the search path and compiles pattern via `glob_util::compile_glob`.
-3. Entry source: a `pi_walker::WalkRequest` with `.cache(config.cache)` and `.empty_recheck(EmptyRecheck::Configured)` — `cache=true` serves from the walker TTL cache (with stale-empty recheck), `cache=false` walks fresh without storing.
+3. Entry source: a `veyyon_walker::WalkRequest` with `.cache(config.cache)` and `.empty_recheck(EmptyRecheck::Configured)` — `cache=true` serves from the walker TTL cache (with stale-empty recheck), `cache=false` walks fresh without storing.
 4. Filtering:
    - skip `.git` always;
    - skip `node_modules` unless requested (`includeNodeModules`) or pattern mentions `node_modules`;
@@ -123,7 +123,7 @@ Terminology follows [`natives-architecture.md`](./natives-architecture.md):
 ### `fuzzyFind` flow
 
 1. Rust implementation lives in `fd.rs`; generated export is `fuzzyFind`.
-2. Shared scan source from the `pi-walker` cache with the same cache/no-cache split and stale-empty recheck policy (fd walks with `FollowLinks::Always`).
+2. Shared scan source from the `veyyon-walker` cache with the same cache/no-cache split and stale-empty recheck policy (fd walks with `FollowLinks::Always`).
 3. Scoring:
    - exact / starts-with / contains / subsequence-based fuzzy score;
    - separator/punctuation-normalized scoring path;
@@ -156,9 +156,9 @@ Terminology follows [`natives-architecture.md`](./natives-architecture.md):
 
 These exports are direct native APIs used by tooling; they are not mediated by a TS wrapper in `packages/natives`.
 
-## 4) Shared scan/cache lifecycle (`pi-walker` cache)
+## 4) Shared scan/cache lifecycle (`veyyon-walker` cache)
 
-The scan cache lives in `crates/pi-walker/src/cache.rs`. `collect_entries(root, options, heartbeat)` stores scan results as normalized relative entries (`path`, `fileType`, optional `mtime` and regular-file `size`) keyed by the canonical search root plus the **entire** `WalkOptions` struct (with the `cache` flag normalized out) — so `include_hidden`, `use_gitignore`, `skip_node_modules`, `follow_links`, and scan detail (`Minimal` vs `Full`) all key distinct cache entries.
+The scan cache lives in `crates/veyyon-walker/src/cache.rs`. `collect_entries(root, options, heartbeat)` stores scan results as normalized relative entries (`path`, `fileType`, optional `mtime` and regular-file `size`) keyed by the canonical search root plus the **entire** `WalkOptions` struct (with the `cache` flag normalized out) — so `include_hidden`, `use_gitignore`, `skip_node_modules`, `follow_links`, and scan detail (`Minimal` vs `Full`) all key distinct cache entries.
 
 Tunables are env-configured: `FS_SCAN_CACHE_TTL_MS` (default 1000ms; `0` disables), `FS_SCAN_EMPTY_RECHECK_MS` (default 200ms), and a max-entry cap with oldest-entry eviction.
 
@@ -171,7 +171,7 @@ Tunables are env-configured: `FS_SCAN_CACHE_TTL_MS` (default 1000ms; `0` disable
 3. **Stale-empty recheck**
    - Requests that opt in via `EmptyRecheck::Configured` (glob, fuzzyFind): if the query yields zero matches and cache age exceeds the empty-result threshold, force one rescan.
 4. **Invalidation**
-   - `invalidateFsScanCache(path?)` (exported from `iofs.rs`, backed by `pi_walker::cache::invalidate_all` / `invalidate_path_string`):
+   - `invalidateFsScanCache(path?)` (exported from `iofs.rs`, backed by `veyyon_walker::cache::invalidate_all` / `invalidate_path_string`):
      - no arg: clear all keys;
      - path arg: remove keys whose cached root contains that path.
 
@@ -203,7 +203,7 @@ These are pure, in-memory utilities.
 - `truncateToWidth`: visible-cell truncation with ellipsis policy (`Unicode`, `Ascii`, `Omit`), optional right padding.
 - `sliceWithWidth`: column slicing with optional strict width enforcement.
 - `extractSegments`: extracts before/after segments around an overlay while restoring ANSI state for the `after` segment.
-- `sanitizeText` (ANSI/control/surrogate stripping with line-ending normalization) no longer lives in `text.rs`; it moved to `@veyyon/pi-utils` as a pure-JS implementation in `packages/utils/src/sanitize-text.ts`. The native binding was removed in the same change because the JS version was competitive on the benchmarked workloads, and keeping a Rust copy forced every caller (including `pi-utils`) to pull in `@veyyon/pi-natives`.
+- `sanitizeText` (ANSI/control/surrogate stripping with line-ending normalization) no longer lives in `text.rs`; it moved to `@veyyon/utils` as a pure-JS implementation in `packages/utils/src/sanitize-text.ts`. The native binding was removed in the same change because the JS version was competitive on the benchmarked workloads, and keeping a Rust copy forced every caller (including `pi-utils`) to pull in `@veyyon/natives`.
 - `visibleWidth`: counts visible terminal cells using caller-supplied tab width.
 
 ### Failure behavior

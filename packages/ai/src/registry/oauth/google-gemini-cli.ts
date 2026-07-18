@@ -3,8 +3,8 @@
  * Standard Gemini models only (gemini-2.0-flash, gemini-2.5-*)
  */
 
-import { getGeminiCliHeaders } from "@veyyon/pi-catalog/wire/gemini-headers";
-import { $env } from "@veyyon/pi-utils";
+import { getGeminiCliHeaders } from "@veyyon/catalog/wire/gemini-headers";
+import { $env } from "@veyyon/utils";
 import * as AIError from "../../error";
 import { runGoogleOAuthLogin } from "./google-oauth-shared";
 import type { OAuthController, OAuthCredentials } from "./types";

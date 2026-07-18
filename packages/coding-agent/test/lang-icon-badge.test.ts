@@ -10,7 +10,7 @@
  *      from the settings-tab icons — html showing "N" etc. — mismatched badges.
  */
 import { describe, expect, it } from "bun:test";
-import { getThemeByName } from "@veyyon/pi-coding-agent/modes/theme/theme";
+import { getThemeByName } from "@veyyon/coding-agent/modes/theme/theme";
 
 const DEFAULT_MARK = "⌘";
 

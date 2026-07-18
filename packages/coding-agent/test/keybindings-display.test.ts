@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { getDefaultPasteImageKeys, KeybindingsManager } from "@veyyon/pi-coding-agent/config/keybindings";
+import { getDefaultPasteImageKeys, KeybindingsManager } from "@veyyon/coding-agent/config/keybindings";
 
 describe("KeybindingsManager.getDisplayString", () => {
 	it("formats a single binding as a human-readable key hint", () => {

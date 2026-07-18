@@ -1,4 +1,4 @@
-import { buildModel } from "@veyyon/pi-catalog/build";
+import { buildModel } from "@veyyon/catalog/build";
 import * as AIError from "../error";
 import { ANTHROPIC_THINKING, mapAnthropicToolChoice } from "../stream";
 import type { Api, Context, FetchImpl, Model, ModelSpec, SimpleStreamOptions } from "../types";

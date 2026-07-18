@@ -1,9 +1,9 @@
+import { LRUCache } from "lru-cache/raw";
 import { recencyHalflifeHours } from "../config";
-import { LruCache } from "./lru";
 
 const TZ_RE = /(?:Z|[+-]\d\d:?\d\d)$/;
 const DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/;
-const TS_CACHE = new LruCache<string, Date>(2000);
+const TS_CACHE = new LRUCache<string, Date>({ max: 2000 });
 
 export type QueryTime = string | Date | null | undefined;
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import { serializeConversation } from "@veyyon/pi-agent-core/compaction/utils";
-import type { Message } from "@veyyon/pi-ai";
+import { serializeConversation } from "@veyyon/agent-core/compaction/utils";
+import type { Message } from "@veyyon/ai";
 
 describe("serializeConversation", () => {
 	it("truncates long tool results in serialized summaries", () => {

@@ -13,7 +13,7 @@
   - `packages/coding-agent/src/session/streaming-output.ts` — line truncation and final byte truncation.
   - `packages/coding-agent/src/config/settings-schema.ts` — default context lines.
   - `packages/natives/native/index.d.ts` — native `grep()` types exposed to TS.
-  - `crates/pi-natives/src/grep.rs` — native regex/file search implementation.
+  - `crates/veyyon-natives/src/grep.rs` — native regex/file search implementation.
   - `docs/internal/natives-text-search-pipeline.md` — native search pipeline overview.
 
 ## Inputs
@@ -59,7 +59,7 @@ The tool returns a single text block in `content[0].text` plus structured `detai
    - glob metacharacters (`*`, `?`, `[`, `{`) are rejected for internal URLs;
    - resources with `sourcePath` are searched through their backing file;
    - resources without `sourcePath` are searched in memory with JavaScript `RegExp`;
-   - `veyyon://` (legacy alias `omp://`) expands to every embedded documentation file via URL completion;
+   - `veyyon://` expands to every embedded documentation file via URL completion;
    - immutable sources are tracked so output can suppress editable hashline numbered output per file.
 5. For multi-path calls, `partitionExistingPaths()` skips only ENOENT entries. If every filesystem entry is missing and no virtual internal resources remain, the tool errors.
 6. Path resolution branches:
@@ -67,7 +67,7 @@ The tool returns a single text block in `content[0].text` plus structured `detai
    - multiple entries: `resolveExplicitSearchPaths()` (via `resolveToolSearchScope()`) computes a common base directory, brace-union glob, exact-file list, or per-entry target list. Targets fan out when the common ancestor is not itself a requested scope, or when a plain-file entry would otherwise be demoted into a directory walk's glob union (`fanOutFileTargets`).
 7. Line-range selectors are validated after path/archive/internal resolution. They are allowed only for single files, archive members, or virtual resources; glob/directory line-range selectors error.
 8. `grep.ts` stats the resolved base path to decide file vs directory behavior.
-9. It calls native `grep()` from `@veyyon/pi-natives` with:
+9. It calls native `grep()` from `@veyyon/natives` with:
    - `pattern`, `ignoreCase`, `multiline`, `gitignore`;
    - `hidden: true`;
    - `cache: false`;
@@ -77,7 +77,7 @@ The tool returns a single text block in `content[0].text` plus structured `detai
    - `maxCountPerFile`: the per-file match cap plus one;
    - `mode: content`;
    - the combined abort `signal` and `timeoutMs: SEARCH_GREP_TIMEOUT_MS` (`30_000`).
-10. Native execution happens in `crates/pi-natives/src/grep.rs`:
+10. Native execution happens in `crates/veyyon-natives/src/grep.rs`:
    - `build_matcher()` sanitizes non-quantifier braces before regex compile;
    - if compile fails with unopened/unclosed-group errors, it retries after escaping previously unescaped parentheses;
    - directory scans use the grep pipeline described in `docs/internal/natives-text-search-pipeline.md`.
@@ -112,7 +112,7 @@ The tool returns a single text block in `content[0].text` plus structured `detai
 5. **Internal URL paths**
    - Filesystem-backed resources search their resolved `sourcePath`.
    - Virtual resources without `sourcePath` search their resolved content in memory.
-   - `veyyon://` (legacy alias `omp://`) expands to all embedded documentation files so it can be used as a docs search root.
+   - `veyyon://` expands to all embedded documentation files so it can be used as a docs search root.
    - No internal-URL globbing.
    - Immutable and virtual sources suppress editable hashline anchors.
 
@@ -139,7 +139,7 @@ The tool returns a single text block in `content[0].text` plus structured `detai
 - Pagination: `skip` is a file-page offset for multi-file scopes. The result text says `Use skip=<N> for the next page` when more files remain.
 - Native directory-scan cache: available in `grep.rs`, but this tool always sets `cache: false`.
 - Native grep wall-clock budget: `30_000ms` per invocation (`SEARCH_GREP_TIMEOUT_MS` in `packages/coding-agent/src/tools/grep.ts`); hitting it raises `Grep timed out after 30s; ...`.
-- Native per-file size cap: `4 * 1024 * 1024` bytes (`MAX_FILE_BYTES` in `crates/pi-natives/src/grep.rs`, mirrored as `NATIVE_GREP_MAX_FILE_BYTES` in `grep.ts`). Oversized files are silently skipped by native grep; `grep.ts` surfaces a `Skipped oversized file(s)` note (with names for explicit file targets, a count for directory scans).
+- Native per-file size cap: `4 * 1024 * 1024` bytes (`MAX_FILE_BYTES` in `crates/veyyon-natives/src/grep.rs`, mirrored as `NATIVE_GREP_MAX_FILE_BYTES` in `grep.ts`). Oversized files are silently skipped by native grep; `grep.ts` surfaces a `Skipped oversized file(s)` note (with names for explicit file targets, a count for directory scans).
 
 ## Errors
 - `Pattern must not be empty` when trimmed `pattern` is empty.

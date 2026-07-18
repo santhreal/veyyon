@@ -8,7 +8,7 @@ import {
 	ScrollView,
 	type SgrMouseEvent,
 	truncateToWidth,
-} from "@veyyon/pi-tui";
+} from "@veyyon/tui";
 import { theme } from "../../modes/theme/theme";
 import { matchesSelectCancel, matchesSelectDown, matchesSelectUp } from "../../modes/utils/keybinding-matchers";
 import {
@@ -126,7 +126,7 @@ class UserMessageList implements Component {
 			const normalizedMessage = message.text.replace(/\n/g, " ").trim();
 
 			// First line: cursor + message
-			const cursor = isSelected ? theme.fg("accent", "› ") : "  ";
+			const cursor = isSelected ? theme.fg("accent", `${theme.nav.cursor} `) : "  ";
 			const maxMsgWidth = rowWidth - 2; // Account for cursor (2 chars)
 			const truncatedMsg = truncateToWidth(normalizedMessage, maxMsgWidth);
 			const messageLine = cursor + (isSelected ? theme.bold(truncatedMsg) : truncatedMsg);

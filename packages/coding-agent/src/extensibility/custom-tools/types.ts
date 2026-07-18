@@ -10,11 +10,11 @@ import type {
 	ToolApproval,
 	ToolApprovalDecision,
 	ToolTier,
-} from "@veyyon/pi-agent-core";
-import type { CompactionResult } from "@veyyon/pi-agent-core/compaction";
-import type { FetchImpl, Model, Static, TSchema } from "@veyyon/pi-ai";
-import type { Component } from "@veyyon/pi-tui";
-import type { logger as PiLogger } from "@veyyon/pi-utils";
+} from "@veyyon/agent-core";
+import type { CompactionResult } from "@veyyon/agent-core/compaction";
+import type { FetchImpl, Model, Static, TSchema } from "@veyyon/ai";
+import type { Component } from "@veyyon/tui";
+import type { logger as PiLogger } from "@veyyon/utils";
 import type { type as ArkType } from "arktype";
 import type * as zod from "zod/v4";
 import type { Rule } from "../../capability/rule";
@@ -97,7 +97,7 @@ export interface CustomToolContext {
 	settings?: Settings;
 	/** Fetch implementation for outbound HTTP; defaults to global fetch when omitted. */
 	fetch?: FetchImpl;
-	/** Calling session's `local://` root mapping for tools that bridge out of the OMP process. */
+	/** Calling session's `local://` root mapping for tools that bridge out of the veyyon process. */
 	localProtocolOptions?: LocalProtocolOptions;
 	/** Whether to auto-approve all destructive tool operations (--auto-approve CLI flag) */
 	autoApprove?: boolean;

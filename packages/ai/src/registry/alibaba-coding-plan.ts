@@ -1,3 +1,4 @@
+import { trimTrailingSlashes } from "@veyyon/utils";
 import * as AIError from "../error";
 import * as apiKeyValidation from "./api-key-validation";
 import type { OAuthController, OAuthCredentials, OAuthLoginCallbacks } from "./oauth/types";
@@ -38,7 +39,7 @@ export async function loginAlibabaCodingPlan(options: OAuthController): Promise<
 			message: "Enter custom base URL",
 			placeholder: "https://your-proxy.com/v1",
 		});
-		const trimmedUrl = customUrl.trim().replace(/\/+$/, "");
+		const trimmedUrl = trimTrailingSlashes(customUrl.trim());
 		if (!trimmedUrl) {
 			throw new AIError.ConfigurationError("Custom URL is required for option 3");
 		}

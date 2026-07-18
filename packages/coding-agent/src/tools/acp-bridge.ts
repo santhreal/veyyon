@@ -28,7 +28,7 @@ export function shouldRouteWriteThroughBridge(
 	absolutePath: string,
 ): boolean {
 	if (isInternalUrlPath(requestedPath)) return false;
-	// OMP-owned session artifacts (plan files, scratch notes) must stay off the
+	// Veyyon-owned session artifacts (plan files, scratch notes) must stay off the
 	// editor buffer even when addressed by their absolute sandbox path — e.g.
 	// after tag-based path recovery rebinds a bare `plan.md#tag` onto the
 	// `local://` artifact, `requestedPath` is the absolute path, not the URL.

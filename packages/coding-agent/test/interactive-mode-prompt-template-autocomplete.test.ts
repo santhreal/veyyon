@@ -1,5 +1,5 @@
 /**
- * Issue #2462: prompt templates discovered from `cwd/.omp/prompts/` were never
+ * Issue #2462: prompt templates discovered from `cwd/.veyyon/prompts/` were never
  * surfaced in the slash-command autocomplete picker. The runtime expansion in
  * `AgentSession.prompt()` worked, but `InteractiveMode.refreshSlashCommandState`
  * never passed `session.promptTemplates` into the autocomplete provider.
@@ -8,18 +8,18 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as os from "node:os";
 import * as path from "node:path";
-import { Agent, type AgentTool } from "@veyyon/pi-agent-core";
-import { type Api, Effort, type Model } from "@veyyon/pi-ai";
-import { ModelRegistry } from "@veyyon/pi-coding-agent/config/model-registry";
-import type { PromptTemplate } from "@veyyon/pi-coding-agent/config/prompt-templates";
-import { resetSettingsForTest, Settings } from "@veyyon/pi-coding-agent/config/settings";
-import { InteractiveMode } from "@veyyon/pi-coding-agent/modes/interactive-mode";
-import { initTheme } from "@veyyon/pi-coding-agent/modes/theme/theme";
-import { AgentSession } from "@veyyon/pi-coding-agent/session/agent-session";
-import { AuthStorage } from "@veyyon/pi-coding-agent/session/auth-storage";
-import { SessionManager } from "@veyyon/pi-coding-agent/session/session-manager";
-import type { AutocompleteProvider } from "@veyyon/pi-tui";
-import { TempDir } from "@veyyon/pi-utils";
+import { Agent, type AgentTool } from "@veyyon/agent-core";
+import { type Api, Effort, type Model } from "@veyyon/ai";
+import { ModelRegistry } from "@veyyon/coding-agent/config/model-registry";
+import type { PromptTemplate } from "@veyyon/coding-agent/config/prompt-templates";
+import { resetSettingsForTest, Settings } from "@veyyon/coding-agent/config/settings";
+import { InteractiveMode } from "@veyyon/coding-agent/modes/interactive-mode";
+import { initTheme } from "@veyyon/coding-agent/modes/theme/theme";
+import { AgentSession } from "@veyyon/coding-agent/session/agent-session";
+import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
+import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
+import type { AutocompleteProvider } from "@veyyon/tui";
+import { TempDir } from "@veyyon/utils";
 import { type } from "arktype";
 
 function makeTool(name: string): AgentTool {
@@ -173,11 +173,11 @@ describe("InteractiveMode prompt-template autocomplete (#2462)", () => {
 
 		await created.mode.refreshSlashCommandState(tempDir.path());
 		const offFast = (await fetchSlashItems(providerSlot.current!, "/fast")).find(item => item.value === "fast");
-		expect(offFast?.description).toBe("Fast: off");
+		expect(offFast?.description).toBe("Toggle fast mode · off");
 
 		created.session.setFastMode(true);
 		const onFast = (await fetchSlashItems(providerSlot.current!, "/fast")).find(item => item.value === "fast");
-		expect(onFast?.description).toBe("Fast: on");
+		expect(onFast?.description).toBe("Toggle fast mode · on");
 	});
 
 	it("does not duplicate templates whose names collide with builtin slash commands", async () => {

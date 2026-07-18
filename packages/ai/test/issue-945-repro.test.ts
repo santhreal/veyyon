@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
-import { streamOpenAICompletions } from "@veyyon/pi-ai/providers/openai-completions";
-import type { Context, Model, Tool } from "@veyyon/pi-ai/types";
-import { getBundledModel } from "@veyyon/pi-catalog/models";
+import { streamOpenAICompletions } from "@veyyon/ai/providers/openai-completions";
+import type { Context, Model, Tool } from "@veyyon/ai/types";
+import { getBundledModel } from "@veyyon/catalog/models";
 import { type } from "arktype";
 
 const echoTool: Tool = {

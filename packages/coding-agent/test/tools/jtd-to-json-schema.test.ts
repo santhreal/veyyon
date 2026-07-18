@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { jtdToJsonSchema } from "@veyyon/pi-coding-agent/tools/jtd-to-json-schema";
+import { jtdToJsonSchema } from "@veyyon/coding-agent/tools/jtd-to-json-schema";
 
 describe("jtdToJsonSchema", () => {
 	it("converts JTD elements and int32 primitives into JSON Schema", () => {

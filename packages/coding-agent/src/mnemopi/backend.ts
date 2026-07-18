@@ -1,11 +1,11 @@
 import { rm } from "node:fs/promises";
 import * as path from "node:path";
-import { type ApiKeyResolver, completeSimple } from "@veyyon/pi-ai";
-import { hostMatchesUrl } from "@veyyon/pi-catalog/hosts";
-import type { Mnemopi } from "@veyyon/pi-mnemopi";
-import type * as MnemopiDiagnoseNs from "@veyyon/pi-mnemopi/diagnose";
-import type { DiagnosticSummary } from "@veyyon/pi-mnemopi/diagnose";
-import { logger } from "@veyyon/pi-utils";
+import { type ApiKeyResolver, completeSimple } from "@veyyon/ai";
+import { hostMatchesUrl } from "@veyyon/catalog/hosts";
+import type { Mnemopi } from "@veyyon/mnemopi";
+import type * as MnemopiDiagnoseNs from "@veyyon/mnemopi/diagnose";
+import type { DiagnosticSummary } from "@veyyon/mnemopi/diagnose";
+import { logger } from "@veyyon/utils";
 import type { ModelRegistry } from "../config/model-registry";
 import { resolveRoleSelectionWithInherit } from "../config/model-resolver";
 import type {
@@ -45,7 +45,7 @@ let mnemopiDiagnoseMod: typeof MnemopiDiagnoseNs | undefined;
 
 async function loadMnemopiDiagnose(): Promise<typeof MnemopiDiagnoseNs> {
 	if (!mnemopiDiagnoseMod) {
-		mnemopiDiagnoseMod = await import("@veyyon/pi-mnemopi/diagnose");
+		mnemopiDiagnoseMod = await import("@veyyon/mnemopi/diagnose");
 	}
 	return mnemopiDiagnoseMod;
 }

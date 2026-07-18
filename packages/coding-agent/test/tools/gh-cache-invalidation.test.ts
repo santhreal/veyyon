@@ -7,9 +7,9 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { invalidateGithubCacheForBashCommand } from "@veyyon/pi-coding-agent/tools/gh-cache-invalidation";
-import { getCached, putCached, resetForTests as resetCacheForTests } from "@veyyon/pi-coding-agent/tools/github-cache";
-import { removeWithRetries } from "@veyyon/pi-utils";
+import { invalidateGithubCacheForBashCommand } from "@veyyon/coding-agent/tools/gh-cache-invalidation";
+import { getCached, putCached, resetForTests as resetCacheForTests } from "@veyyon/coding-agent/tools/github-cache";
+import { removeWithRetries } from "@veyyon/utils";
 
 const REPO = "owner/example";
 
@@ -76,18 +76,18 @@ let tempDir: string;
 let originalEnv: string | undefined;
 
 beforeEach(async () => {
-	originalEnv = process.env.OMP_GITHUB_CACHE_DB;
+	originalEnv = process.env.VEYYON_GITHUB_CACHE_DB;
 	tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "gh-cache-inv-"));
-	process.env.OMP_GITHUB_CACHE_DB = path.join(tempDir, "github-cache.db");
+	process.env.VEYYON_GITHUB_CACHE_DB = path.join(tempDir, "github-cache.db");
 	resetCacheForTests();
 });
 
 afterEach(async () => {
 	resetCacheForTests();
 	if (originalEnv === undefined) {
-		delete process.env.OMP_GITHUB_CACHE_DB;
+		delete process.env.VEYYON_GITHUB_CACHE_DB;
 	} else {
-		process.env.OMP_GITHUB_CACHE_DB = originalEnv;
+		process.env.VEYYON_GITHUB_CACHE_DB = originalEnv;
 	}
 	await removeWithRetries(tempDir);
 });

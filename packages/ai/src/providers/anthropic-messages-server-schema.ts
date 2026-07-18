@@ -1,6 +1,6 @@
 /**
  * ArkType schemas for the Anthropic Messages API request shape we accept on the
- * gateway. Maps canonical wire variants to our internal normalized omp Context
+ * gateway. Maps canonical wire variants to our internal normalized veyyon Context
  * and options.
  */
 
