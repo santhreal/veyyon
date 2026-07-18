@@ -4,7 +4,7 @@ import { parseHTML } from "linkedom";
 import type { Page } from "puppeteer-core";
 import type { SearchResponse, SearchSource } from "../../../web/search/types";
 import { SearchProviderError } from "../../../web/search/types";
-import { clampNumResults } from "../utils";
+import { clampNumResults, collapseWhitespace } from "../utils";
 import type { SearchParams } from "./base";
 import { SearchProvider } from "./base";
 import type { LoadedHtmlPage } from "./browser-page";
@@ -73,9 +73,9 @@ function parseHtmlResults(html: string): ParsedResult[] {
 		if (!href) continue;
 		const url = normalizeResultUrl(href);
 		if (!url) continue;
-		const title = (anchor?.textContent ?? "").replace(/\s+/g, " ").trim();
+		const title = collapseWhitespace(anchor?.textContent);
 		if (!title) continue;
-		const snippet = (item.querySelector("p.s")?.textContent ?? "").replace(/\s+/g, " ").trim();
+		const snippet = collapseWhitespace(item.querySelector("p.s")?.textContent);
 		results.push({ title, url, snippet: snippet || undefined });
 	}
 	return results;

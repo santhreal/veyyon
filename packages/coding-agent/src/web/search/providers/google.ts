@@ -2,7 +2,7 @@ import type { AuthStorage } from "@veyyon/ai";
 import { parseHTML } from "linkedom";
 import type { SearchResponse, SearchSource } from "../../../web/search/types";
 import { SearchProviderError } from "../../../web/search/types";
-import { clampNumResults } from "../utils";
+import { clampNumResults, collapseWhitespace } from "../utils";
 import type { SearchParams } from "./base";
 import { SearchProvider } from "./base";
 import type { LoadedHtmlPage } from "./browser-page";
@@ -35,10 +35,6 @@ interface ParsedResult {
 	snippet?: string;
 }
 
-function normalizeText(value: string | null | undefined): string {
-	return (value ?? "").replace(/\s+/g, " ").trim();
-}
-
 function unwrapResultUrl(href: string): string | undefined {
 	let url: URL;
 	try {
@@ -67,7 +63,7 @@ function findSnippet(heading: Element): string | undefined {
 	if (!container) return undefined;
 
 	for (const selector of GOOGLE_SNIPPET_SELECTORS) {
-		const text = normalizeText(container.querySelector(selector)?.textContent).replace(/\s*Read more$/i, "");
+		const text = collapseWhitespace(container.querySelector(selector)?.textContent).replace(/\s*Read more$/i, "");
 		if (text) return text;
 	}
 	return undefined;
@@ -82,7 +78,7 @@ function parseHtmlResults(html: string): ParsedResult[] {
 		if (!href) continue;
 		const url = unwrapResultUrl(href);
 		if (!url) continue;
-		const title = normalizeText(heading.textContent);
+		const title = collapseWhitespace(heading.textContent);
 		if (!title) continue;
 		results.push({ title, url, snippet: findSnippet(heading) });
 	}
