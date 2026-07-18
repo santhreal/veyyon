@@ -1,0 +1,21 @@
+# cargo-audit configuration for the veyyon Rust workspace.
+# The RUSTSEC audit job in .github/workflows/security.yml runs
+# `cargo audit --deny warnings`; cargo-audit reads this file from `.cargo/`.
+#
+# This ignore list mirrors deny.toml's [advisories].ignore — keep the two in
+# sync. Each entry is a reviewed, consciously accepted advisory; see deny.toml
+# for the full rationale.
+[advisories]
+ignore = [
+    # quick-xml DoS advisories: reachable only via wayland-scanner's build-time
+    # proc-macro parsing trusted wayland protocol XML, not runtime input. No
+    # upstream fix (wayland-scanner 0.31.10 pins quick-xml ^0.39; arboard 3.6.1
+    # is latest).
+    "RUSTSEC-2026-0194", # quick-xml: quadratic run time on duplicate attribute names
+    "RUSTSEC-2026-0195", # quick-xml: unbounded namespace-declaration allocation
+    # Unmaintained (not vulnerable) transitive crates, no maintained drop-in.
+    "RUSTSEC-2025-0141", # bincode is unmaintained
+    "RUSTSEC-2025-0119", # number_prefix is unmaintained
+    "RUSTSEC-2026-0192", # ttf-parser is unmaintained
+    "RUSTSEC-2024-0320", # yaml-rust is unmaintained
+]
