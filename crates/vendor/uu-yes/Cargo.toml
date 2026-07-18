@@ -15,7 +15,7 @@ path = "src/yes.rs"
 
 [dependencies]
 clap = { version = "4.5", features = ["wrap_help", "cargo", "color"] }
-itertools = "0.14.0"
+itertools = "0.15.0"
 uucore = "0.8.0"
 veyyon-uutils-ctx = { path = "../../veyyon-uutils-ctx" }
 

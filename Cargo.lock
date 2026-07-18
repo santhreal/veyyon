@@ -378,7 +378,7 @@ dependencies = [
  "clap",
  "fancy-regex 0.17.0",
  "futures",
- "itertools",
+ "itertools 0.14.0",
  "nix 0.31.3",
  "procfs",
  "rlimit",
@@ -410,7 +410,7 @@ dependencies = [
  "getrandom 0.4.3",
  "hostname",
  "inherent",
- "itertools",
+ "itertools 0.14.0",
  "libc",
  "nix 0.31.3",
  "normalize-path",
@@ -2272,6 +2272,15 @@ name = "itertools"
 version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2b192c782037fadd9cfa75548310488aabdbf3d2da73885b31bd0abd03351285"
+dependencies = [
+ "either",
+]
+
+[[package]]
+name = "itertools"
+version = "0.15.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8b4baf93f58d4425749ca49a51c50ebab072c5df6994d08fed93541c331481dc"
 dependencies = [
  "either",
 ]
@@ -5437,7 +5446,7 @@ dependencies = [
  "compare",
  "flume",
  "foldhash 0.2.0",
- "itertools",
+ "itertools 0.15.0",
  "memchr",
  "nix 0.31.3",
  "rand 0.10.2",
@@ -5604,7 +5613,7 @@ name = "uu_yes"
 version = "0.8.0"
 dependencies = [
  "clap",
- "itertools",
+ "itertools 0.15.0",
  "parking_lot",
  "uucore 0.8.0",
  "veyyon-uutils-ctx",
@@ -5660,7 +5669,7 @@ dependencies = [
  "icu_decimal",
  "icu_locale",
  "icu_provider",
- "itertools",
+ "itertools 0.14.0",
  "jiff",
  "jiff-icu",
  "libc",
