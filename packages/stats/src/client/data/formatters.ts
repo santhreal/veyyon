@@ -1,4 +1,4 @@
-import { formatBytes } from "@veyyon/utils";
+import { formatBytes } from "@veyyon/utils/format";
 import { formatDistanceToNow } from "date-fns";
 
 // Byte counts render with the shared pi-utils owner (binary units, "1.5MB")
