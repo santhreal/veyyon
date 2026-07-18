@@ -46,7 +46,7 @@
 
 import type { Api, ImageContent, Message, TextContent } from "@veyyon/ai";
 import { renderSnapcompactPng, snapcompactSupportedChars } from "@veyyon/natives";
-import { formatGroupedPaths, pluralize, prompt } from "@veyyon/utils";
+import { collapseWhitespace, formatGroupedPaths, pluralize, prompt } from "@veyyon/utils";
 import { INTENT_FIELD } from "@veyyon/wire";
 import fileOperationsTemplate from "./prompts/file-operations.md" with { type: "text" };
 import snapcompactSummaryPrompt from "./prompts/snapcompact-summary.md" with { type: "text" };
@@ -859,7 +859,7 @@ export function serializeConversation(messages: Message[], options?: SerializeOp
 							: typeof args[INTENT_FIELD] === "string"
 								? (args[INTENT_FIELD] as string)
 								: "";
-					const intent = stripDimMarkers(rawIntent).replace(/\s+/g, " ").trim();
+					const intent = collapseWhitespace(stripDimMarkers(rawIntent));
 					const argsStr = truncateForSummary(
 						Object.entries(args)
 							.filter(([key]) => key !== INTENT_FIELD)

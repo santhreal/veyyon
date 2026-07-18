@@ -30,7 +30,7 @@
 import { parseArgs } from "node:util";
 import { type Api, AuthStorage, completeSimple, type Model, SqliteAuthCredentialStore } from "@veyyon/ai";
 import { type GeneratedProvider, getBundledModel } from "@veyyon/catalog/models";
-import { getAgentDbPath } from "@veyyon/utils";
+import { collapseWhitespace, getAgentDbPath } from "@veyyon/utils";
 
 const DEFAULT_TINY = "openrouter/inclusionai/ling-2.6-flash";
 const DEFAULT_SYNTH = "openrouter/openai/gpt-oss-120b";
@@ -357,7 +357,7 @@ async function main(): Promise<void> {
 		if (item.kind !== "turn") return undefined;
 		try {
 			const sentence = await ask(tiny, TINY_SYSTEM, turnPrompt(item), 300);
-			return sentence.replace(/\s+/g, " ").trim();
+			return collapseWhitespace(sentence);
 		} finally {
 			completed++;
 			if (completed % 10 === 0) console.error(`[trace-report] map ${completed}/${items.length}`);

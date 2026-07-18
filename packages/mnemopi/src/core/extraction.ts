@@ -1,4 +1,4 @@
-import { isRecord } from "@veyyon/utils";
+import { collapseWhitespace, isRecord } from "@veyyon/utils";
 import { envBool, envInt, envString } from "../util/env";
 import { getDiagnostics, safeForLog } from "./extraction/diagnostics";
 import { callHostLlm, getHostLlmBackend } from "./llm-backends";
@@ -264,7 +264,7 @@ function addUnique(out: string[], value: string): void {
 }
 
 export function heuristicExtractFacts(text: string): string[] {
-	const normalized = text.replace(/\s+/g, " ").trim();
+	const normalized = collapseWhitespace(text);
 	if (normalized === "") {
 		return [];
 	}

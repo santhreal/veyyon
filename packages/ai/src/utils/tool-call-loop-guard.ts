@@ -1,3 +1,4 @@
+import { collapseWhitespace } from "@veyyon/utils";
 import { INTENT_FIELD } from "@veyyon/wire";
 import type { AssistantMessage, ToolCall, ToolResultMessage } from "../types";
 
@@ -44,7 +45,7 @@ function canonicalizeToolCallValue(value: unknown): unknown {
 }
 
 function summarizeText(text: string, limit: number): string {
-	let summary = text.replace(/\s+/g, " ").trim();
+	let summary = collapseWhitespace(text);
 	if (summary.length > limit) {
 		summary = `${summary.slice(0, limit)}…`;
 	}
