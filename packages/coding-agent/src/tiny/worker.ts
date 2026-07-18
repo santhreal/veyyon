@@ -5,10 +5,9 @@ import type {
 	TextGenerationStringOutput,
 	StoppingCriteria as TransformersStoppingCriteria,
 } from "@huggingface/transformers";
-import { getTinyModelsCacheDir, prompt } from "@veyyon/utils";
+import { errorMessage, getTinyModelsCacheDir, prompt } from "@veyyon/utils";
 import titleSystemPrompt from "../prompts/system/title-system.md" with { type: "text" };
 import {
-	errorMessage,
 	errorText,
 	formatOnnxRuntimeCudaDiagnostics,
 	getTransformersVersionSpec,
