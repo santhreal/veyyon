@@ -218,6 +218,38 @@ pub fn head_tail_dedup(input: &str) -> String {
 	head_tail_dedup_capped(input, 120, 80)
 }
 
+/// Collapse every run of blank lines down to a single blank line.
+///
+/// Canonical owner for the "squeeze repeated blank lines" shape. When
+/// `trim_whitespace_only` is set, a line containing only whitespace counts as
+/// blank and is emitted as an empty line (Docker/compose logs indent their
+/// blank separators); when clear, only genuinely empty lines collapse and
+/// whitespace-only lines pass through verbatim (the glab filter relies on
+/// that). Output is line-normalized: every retained line ends in `\n`.
+#[must_use]
+pub fn collapse_blank_runs(input: &str, trim_whitespace_only: bool) -> String {
+	let mut out = String::new();
+	let mut saw_blank = false;
+	for line in input.lines() {
+		let is_blank = if trim_whitespace_only {
+			line.trim().is_empty()
+		} else {
+			line.is_empty()
+		};
+		if is_blank {
+			if !saw_blank {
+				out.push('\n');
+			}
+			saw_blank = true;
+			continue;
+		}
+		saw_blank = false;
+		out.push_str(line);
+		out.push('\n');
+	}
+	out
+}
+
 #[must_use]
 pub fn is_markdown_badge_or_image(line: &str) -> bool {
 	line.starts_with("![") || line.starts_with("[![") || line.contains("img.shields.io")
@@ -510,5 +542,21 @@ mod tests {
 		assert!(is_horizontal_rule("***"));
 		assert!(!is_horizontal_rule("   "), "whitespace-only must not be a rule");
 		assert!(!is_horizontal_rule("  "), "short whitespace must not be a rule");
+	}
+
+	#[test]
+	fn collapse_blank_runs_squeezes_and_respects_trim_mode() {
+		// Any run of blank lines collapses to exactly one blank line; every
+		// retained line is newline-terminated.
+		assert_eq!(collapse_blank_runs("a\n\n\n\nb\n", true), "a\n\nb\n");
+		// A single interior blank is preserved (not dropped) in both modes.
+		assert_eq!(collapse_blank_runs("a\n\nb\n", false), "a\n\nb\n");
+		// trim=true: a whitespace-only line counts as blank and is emitted empty
+		// (the Docker/compose log semantics that owned the old private helper).
+		assert_eq!(collapse_blank_runs("a\n   \n\t\nb\n", true), "a\n\nb\n");
+		// trim=false: whitespace-only lines pass through verbatim and only
+		// genuinely empty lines collapse (the glab filter semantics).
+		assert_eq!(collapse_blank_runs("a\n   \nb\n", false), "a\n   \nb\n");
+		assert_eq!(collapse_blank_runs("a\n\n\nb\n", false), "a\n\nb\n");
 	}
 }

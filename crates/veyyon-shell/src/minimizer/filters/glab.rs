@@ -15,9 +15,6 @@ static SECTION_MARKER_RE: LazyLock<Regex> =
 /// `[36;1m`, etc.
 static BARE_ANSI_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\[[\d;]+[A-Za-z]").unwrap());
 
-/// Multiple consecutive blank lines (3+ newlines) collapsed to double newline.
-static MULTI_BLANK_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\n{3,}").unwrap());
-
 #[must_use]
 pub fn supports(subcommand: Option<&str>) -> bool {
 	matches!(subcommand, Some("mr" | "issue" | "ci" | "pipeline" | "release"))
@@ -281,8 +278,8 @@ fn filter_release_view(input: &str) -> String {
 		filtered.push('\n');
 	}
 
-	// Collapse multiple blank lines
-	MULTI_BLANK_RE.replace_all(&filtered, "\n\n").to_string()
+	// Collapse multiple blank lines (whitespace-only lines preserved verbatim).
+	primitives::collapse_blank_runs(&filtered, false)
 }
 
 // ── MR/issue view filter ─────────────────────────────────────────────
