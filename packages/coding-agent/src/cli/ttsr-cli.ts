@@ -13,7 +13,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { AstMatchStrictness, astMatch, FileType, type GlobMatch, glob } from "@veyyon/natives";
-import { truncate } from "@veyyon/utils";
+import { escapeRegExp, truncate } from "@veyyon/utils";
 import { getProjectDir } from "@veyyon/utils/dirs";
 import chalk from "chalk";
 import { BUILTIN_DEFAULTS_PROVIDER_ID, type Rule, ruleCapability } from "../capability/rule";
@@ -525,10 +525,6 @@ function parseScanToolScopeToken(token: string): ScanScopePlan | undefined {
 	};
 }
 
-function escapeRegexLiteral(value: string): string {
-	return value.replace(/[\\^$.*+?()[\]{}|]/g, "\\$&");
-}
-
 function compileAstPrefilter(pattern: string): RegExp | undefined {
 	if (/\bas\s*\{/.test(pattern)) {
 		return /\bas\b(?:\s|\/\/[^\n]*(?:\n|$)|\/\*[\s\S]*?\*\/)*\{/;
@@ -539,7 +535,7 @@ function compileAstPrefilter(pattern: string): RegExp | undefined {
 		?.filter(token => !ignored.has(token) && !/^[A-Z_]+$/.test(token))
 		.sort((a, b) => b.length - a.length);
 	const token = tokens?.[0];
-	return token ? new RegExp(`\\b${escapeRegexLiteral(token)}\\b`) : undefined;
+	return token ? new RegExp(`\\b${escapeRegExp(token)}\\b`) : undefined;
 }
 
 function compileScanRulePlans(rules: Rule[]): ScanRulePlan[] {
