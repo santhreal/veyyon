@@ -1,3 +1,4 @@
+import { collapseWhitespace } from "@veyyon/utils";
 import { stripTypePrefix } from "../../commit/analysis/summary";
 import { validateSummary } from "../../commit/analysis/validation";
 import type { CommitType, ConventionalDetail } from "../../commit/types";
@@ -64,7 +65,7 @@ const pastTenseEdExceptions = new Set(["hundred", "red", "bed"]);
 
 export function normalizeSummary(summary: string, type: CommitType, scope: string | null): string {
 	const stripped = stripTypePrefix(summary, type, scope);
-	return normalizeUnicode(stripped).replace(/\s+/g, " ").trim();
+	return collapseWhitespace(normalizeUnicode(stripped));
 }
 
 export function validateSummaryRules(summary: string): { errors: string[]; warnings: string[] } {

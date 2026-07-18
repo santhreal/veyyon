@@ -1,4 +1,4 @@
-import { parseFrontmatter } from "@veyyon/utils";
+import { collapseWhitespace, parseFrontmatter } from "@veyyon/utils";
 import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
 import { buildResult, loadFailure, loadPage, scraperDegrade, tryParseUrl } from "./types";
 import { asString } from "./utils";
@@ -24,7 +24,7 @@ function normalizeList(value: unknown): string[] {
 }
 
 function formatLabel(value: string): string {
-	const cleaned = value.replace(/[-_]+/g, " ").replace(/\s+/g, " ").trim();
+	const cleaned = collapseWhitespace(value.replace(/[-_]+/g, " "));
 	if (!cleaned) return value;
 	return cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
 }

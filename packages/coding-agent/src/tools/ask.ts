@@ -29,7 +29,7 @@ import {
 	truncateToWidth,
 	visibleWidth,
 } from "@veyyon/tui";
-import { formatCount, prompt, untilAborted } from "@veyyon/utils";
+import { collapseWhitespace, formatCount, prompt, untilAborted } from "@veyyon/utils";
 import { type as arkType } from "arktype";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import type { ExtensionUISelectItem } from "../extensibility/extensions";
@@ -206,7 +206,7 @@ function clampLineToWidth(line: string, width: number): string {
 }
 
 function flattenDescription(text: string): string {
-	return text.replace(/\s+/g, " ").trim();
+	return collapseWhitespace(text);
 }
 
 function getSelectOptionDescription(option: ExtensionUISelectItem): string | undefined {

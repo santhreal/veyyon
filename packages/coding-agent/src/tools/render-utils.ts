@@ -11,7 +11,7 @@ import type { ToolCallContext } from "@veyyon/agent-core";
 import type { Ellipsis } from "@veyyon/natives";
 import type { Component } from "@veyyon/tui";
 import { getKeybindings, replaceTabs, truncateToWidth } from "@veyyon/tui";
-import { formatCount, pluralize } from "@veyyon/utils";
+import { collapseWhitespace, formatCount, pluralize } from "@veyyon/utils";
 import { formatKeyHints, type KeyId } from "../config/keybindings";
 import { settings } from "../config/settings";
 import type { Theme } from "../modes/theme/theme";
@@ -112,7 +112,7 @@ export function getPreviewLines(text: string, maxLines: number, maxLineLen: numb
  * visual lines. Whitespace runs collapse to one space, so tabs are handled too.
  */
 export function previewLine(text: string, maxWidth: number, ellipsis?: Ellipsis): string {
-	return truncateToWidth(text.replace(/\s+/g, " ").trim(), maxWidth, ellipsis);
+	return truncateToWidth(collapseWhitespace(text), maxWidth, ellipsis);
 }
 
 // =============================================================================

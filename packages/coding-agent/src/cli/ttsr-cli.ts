@@ -13,7 +13,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { AstMatchStrictness, astMatch, FileType, type GlobMatch, glob } from "@veyyon/natives";
-import { escapeRegExp, truncate } from "@veyyon/utils";
+import { collapseWhitespace, escapeRegExp, truncate } from "@veyyon/utils";
 import { getProjectDir } from "@veyyon/utils/dirs";
 import chalk from "chalk";
 import { BUILTIN_DEFAULTS_PROVIDER_ID, type Rule, ruleCapability } from "../capability/rule";
@@ -158,7 +158,7 @@ async function readSnippet(opts: { snippet?: string; file?: string }): Promise<s
 }
 
 function previewSnippet(text: string): string {
-	return truncate(text.replace(/\s+/g, " ").trim(), 80);
+	return truncate(collapseWhitespace(text), 80);
 }
 
 function deriveLang(filePaths: string[] | undefined): string | undefined {
