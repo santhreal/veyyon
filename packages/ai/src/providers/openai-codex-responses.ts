@@ -18,6 +18,7 @@ import {
 	parseStreamingJson,
 	readSseJson,
 	structuredCloneJSON,
+	trimTrailingSlashes,
 } from "@veyyon/utils";
 import { type } from "arktype";
 import packageJson from "../../package.json" with { type: "json" };
@@ -3898,7 +3899,7 @@ function redactHeaders(headers: Headers): Record<string, string> {
 
 function resolveCodexResponsesUrl(baseUrl: string | undefined): string {
 	const raw = baseUrl && baseUrl.trim().length > 0 ? baseUrl : CODEX_BASE_URL;
-	const normalized = raw.replace(/\/+$/, "");
+	const normalized = trimTrailingSlashes(raw);
 	if (normalized.endsWith("/codex/responses")) return normalized;
 	if (normalized.endsWith("/codex")) return `${normalized}/responses`;
 	return `${normalized}/codex/responses`;

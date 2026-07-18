@@ -9,6 +9,7 @@ import {
 	fetchWithRetry,
 	getFastembedCacheDir,
 	logger,
+	trimTrailingSlashes,
 	withScopedTimeoutSignal,
 } from "@veyyon/utils";
 import type { EmbeddingModel } from "fastembed";
@@ -365,7 +366,7 @@ async function embedApi(texts: readonly string[]): Promise<EmbeddingMatrix | nul
 				if (key !== "") {
 					headers.Authorization = `Bearer ${key}`;
 				}
-				const res = await fetchWithRetry(`${baseUrl.replace(/\/+$/, "")}/embeddings`, {
+				const res = await fetchWithRetry(`${trimTrailingSlashes(baseUrl)}/embeddings`, {
 					method: "POST",
 					headers,
 					body,

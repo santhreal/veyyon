@@ -1,3 +1,4 @@
+import { trimTrailingSlashes } from "@veyyon/utils";
 import {
 	fetchOpenAICompatibleModels,
 	type OpenAICompatibleModelMapperContext,
@@ -2282,7 +2283,7 @@ function normalizeZenMuxOpenAiBaseUrl(baseUrl?: string): string {
 function toZenMuxAnthropicBaseUrl(openAiBaseUrl: string): string {
 	try {
 		const parsed = new URL(openAiBaseUrl);
-		const trimmedPath = parsed.pathname.replace(/\/+$/g, "");
+		const trimmedPath = trimTrailingSlashes(parsed.pathname);
 		parsed.pathname = trimmedPath.endsWith("/api/v1")
 			? `${trimmedPath.slice(0, -"/api/v1".length)}/api/anthropic`
 			: "/api/anthropic";
@@ -2446,7 +2447,7 @@ export interface VercelAiGatewayModelManagerConfig {
 }
 
 function normalizeVercelAiGatewayBaseUrls(rawBaseUrl: string | undefined): { baseUrl: string; catalogBaseUrl: string } {
-	const baseUrl = (rawBaseUrl === undefined ? "https://ai-gateway.vercel.sh" : rawBaseUrl.trim()).replace(/\/+$/, "");
+	const baseUrl = trimTrailingSlashes(rawBaseUrl === undefined ? "https://ai-gateway.vercel.sh" : rawBaseUrl.trim());
 	const catalogBaseUrl = baseUrl === "" || baseUrl.endsWith("/v1") ? baseUrl : `${baseUrl}/v1`;
 
 	return {
@@ -2996,7 +2997,7 @@ const SAKANA_RESPONSES_COMPAT: ModelSpec<"openai-responses">["compat"] = {
 
 function normalizeSakanaBaseUrl(baseUrl: string | undefined): string {
 	const value = baseUrl?.trim() || SAKANA_DEFAULT_BASE_URL;
-	const normalized = value.replace(/\/+$/, "");
+	const normalized = trimTrailingSlashes(value);
 	return normalized.endsWith("/v1") ? normalized : `${normalized}/v1`;
 }
 
@@ -3256,13 +3257,13 @@ const LITELLM_UNUSABLE_SENTINEL_IDS: Record<string, true> = {
 };
 
 export function normalizeLiteLLMManagementBaseUrl(baseUrl: string): string {
-	const trimmed = baseUrl.trim().replace(/\/+$/g, "");
+	const trimmed = trimTrailingSlashes(baseUrl.trim());
 	if (!trimmed) {
 		return "";
 	}
 	try {
 		const parsed = new URL(trimmed);
-		const path = parsed.pathname.replace(/\/+$/g, "");
+		const path = trimTrailingSlashes(parsed.pathname);
 		parsed.pathname = path.endsWith("/v1") ? path.slice(0, -3) || "/" : path || "/";
 		const normalized = `${parsed.protocol}//${parsed.host}${parsed.pathname}`;
 		return normalized.endsWith("/") ? normalized.slice(0, -1) : normalized;

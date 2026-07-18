@@ -36,15 +36,9 @@ const LOCAL_DEF = /function\s+trimTrailingSlash(?:es)?\s*\(/;
 // trimTrailingSlashes, remove its entry; a stale entry fails the lock, so the
 // list can only shrink. (utils/src/url.ts is the owner and always allowed.)
 const INLINE_STRIP_GRANDFATHERED = new Set([
-	"agent/src/compaction/compaction-v2-streaming.ts",
-	"agent/src/compaction/openai.ts",
 	"ai/src/providers/gitlab-duo-workflow.ts",
-	"ai/src/providers/openai-codex-responses.ts",
 	"ai/src/providers/openai-shared.ts",
-	"ai/src/providers/pi-native-client.ts",
-	"catalog/src/discovery/cursor.ts",
 	"catalog/src/discovery/gitlab-duo-workflow.ts",
-	"catalog/src/provider-models/openai-compat.ts",
 	"coding-agent/src/config/model-discovery.ts",
 	"coding-agent/src/export/share.ts",
 	"coding-agent/src/hindsight/client.ts",
@@ -60,9 +54,6 @@ const INLINE_STRIP_GRANDFATHERED = new Set([
 	"coding-agent/src/web/scrapers/docs-rs.ts",
 	"coding-agent/src/web/scrapers/w3c.ts",
 	"coding-agent/src/web/search/providers/searxng.ts",
-	"mnemopi/src/core/embeddings.ts",
-	"mnemopi/src/core/extraction/client.ts",
-	"stats/src/gain-aggregator.ts",
 ]);
 const INLINE_STRIP = /replace\(\/\\\/\+\$\//;
 

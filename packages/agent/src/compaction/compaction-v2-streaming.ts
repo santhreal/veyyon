@@ -22,7 +22,7 @@ import {
 	resolveOpenAIRequestSetup,
 } from "@veyyon/ai/providers/openai-shared";
 import { CODEX_BASE_URL, getCodexAccountId, OPENAI_HEADER_VALUES, OPENAI_HEADERS } from "@veyyon/catalog/wire/codex";
-import { $env, logger, scopedTimeoutSignal, stringifyJson } from "@veyyon/utils";
+import { $env, logger, scopedTimeoutSignal, stringifyJson, trimTrailingSlashes } from "@veyyon/utils";
 
 // ============================================================================
 // Types & Configuration
@@ -124,7 +124,7 @@ function isOpenAiV2CompatibleModel(model: Model): boolean {
 
 function resolveOpenAiResponsesEndpoint(baseUrl: string | undefined): string {
 	const rawBase = baseUrl && baseUrl.length > 0 ? baseUrl : "https://api.openai.com/v1";
-	const normalizedBase = rawBase.replace(/\/+$/, "");
+	const normalizedBase = trimTrailingSlashes(rawBase);
 	if (normalizedBase.endsWith("/responses")) return normalizedBase;
 	if (normalizedBase.endsWith("/v1")) return `${normalizedBase}/responses`;
 	return `${normalizedBase}/v1/responses`;
@@ -132,7 +132,7 @@ function resolveOpenAiResponsesEndpoint(baseUrl: string | undefined): string {
 
 function resolveOpenAiCodexResponsesEndpoint(baseUrl: string | undefined): string {
 	const rawBase = baseUrl && baseUrl.trim().length > 0 ? baseUrl : CODEX_BASE_URL;
-	const normalizedBase = rawBase.replace(/\/+$/, "");
+	const normalizedBase = trimTrailingSlashes(rawBase);
 	if (normalizedBase.endsWith("/codex/responses")) return normalizedBase;
 	if (normalizedBase.endsWith("/codex")) return `${normalizedBase}/responses`;
 	return `${normalizedBase}/codex/responses`;
@@ -148,7 +148,7 @@ function resolveAzureOpenAiBaseUrl(model: Model): string {
 			"Azure OpenAI base URL is required. Set AZURE_OPENAI_BASE_URL or AZURE_OPENAI_RESOURCE_NAME, or configure model.baseUrl.",
 		);
 	}
-	return resolvedBaseUrl.replace(/\/+$/, "");
+	return trimTrailingSlashes(resolvedBaseUrl);
 }
 
 function appendAzureApiVersion(endpoint: string): string {

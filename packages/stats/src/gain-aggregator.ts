@@ -10,7 +10,7 @@
 import type { Stats } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { getStatsDbPath, isEnoent, logger } from "@veyyon/utils";
+import { getStatsDbPath, isEnoent, logger, trimTrailingSlashes } from "@veyyon/utils";
 import { getTimeRangeConfig } from "./aggregator";
 import { initDb } from "./db";
 import type { GainDashboardStats, GainSourceTotals, GainTimeSeriesPoint } from "./shared-types";
@@ -26,7 +26,7 @@ const TEMP_PATH_RE = /(?:^|\/)(?:T|tmp|veyyon-bash-exec|veyyon-bash-detach)(?:\/
 // ---------------------------------------------------------------------------
 
 function canonicalProjectPath(p: string): string {
-	const normalized = p.replaceAll("\\", "/").replace(/\/+$/u, "");
+	const normalized = trimTrailingSlashes(p.replaceAll("\\", "/"));
 	return normalized || "/";
 }
 

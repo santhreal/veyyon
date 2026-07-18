@@ -15,7 +15,7 @@
  * route every LLM call through a credential-holding sidecar so the slot
  * itself stays credential-free.
  */
-import { readSseJson } from "@veyyon/utils";
+import { readSseJson, trimTrailingSlashes } from "@veyyon/utils";
 import * as AIError from "../error";
 import type {
 	Api,
@@ -109,7 +109,7 @@ function resolveStreamUrl(model: Model<Api>): string {
 			`pi-native transport requires \`baseUrl\` on model ${model.id} (set it on the provider config in models.yml)`,
 		);
 	}
-	return `${model.baseUrl.replace(/\/+$/, "")}/v1/pi/stream`;
+	return `${trimTrailingSlashes(model.baseUrl)}/v1/pi/stream`;
 }
 
 function buildHeaders(model: Model<Api>, apiKey: string | undefined): Record<string, string> {

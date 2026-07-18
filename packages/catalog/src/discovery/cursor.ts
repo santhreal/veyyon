@@ -1,5 +1,6 @@
 import * as http2 from "node:http2";
 import { create, fromBinary, toBinary } from "@bufbuild/protobuf";
+import { trimTrailingSlashes } from "@veyyon/utils";
 import { type } from "arktype";
 import { getBundledModels } from "../models";
 import { toModelSpec } from "../provider-models/bundled-references";
@@ -81,7 +82,7 @@ export async function fetchCursorUsableModels(
 			customModelIds: normalizeCustomModelIds(options.customModelIds),
 		});
 		const body = toBinary(GetUsableModelsRequestSchema, requestPayload);
-		const baseUrl = (options.baseUrl ?? CURSOR_DEFAULT_BASE_URL).replace(/\/+$/, "");
+		const baseUrl = trimTrailingSlashes(options.baseUrl ?? CURSOR_DEFAULT_BASE_URL);
 
 		const responseBuffer = await fetchViaHttp2(baseUrl, body, options, timeoutMs);
 

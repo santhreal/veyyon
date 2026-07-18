@@ -38,7 +38,7 @@ import {
 	normalizeResponsesToolCallId,
 } from "@veyyon/ai/utils";
 import { CODEX_BASE_URL, getCodexAccountId, OPENAI_HEADER_VALUES, OPENAI_HEADERS } from "@veyyon/catalog/wire/codex";
-import { $env, logger, scopedTimeoutSignal, stringifyJson } from "@veyyon/utils";
+import { $env, logger, scopedTimeoutSignal, stringifyJson, trimTrailingSlashes } from "@veyyon/utils";
 
 export * from "./compaction-v2-streaming";
 
@@ -146,7 +146,7 @@ function resolveAzureOpenAiBaseUrl(model: Model): string {
 			"Azure OpenAI base URL is required. Set AZURE_OPENAI_BASE_URL or AZURE_OPENAI_RESOURCE_NAME, or configure model.baseUrl.",
 		);
 	}
-	return resolvedBaseUrl.replace(/\/+$/, "");
+	return trimTrailingSlashes(resolvedBaseUrl);
 }
 
 function appendAzureApiVersion(endpoint: string): string {

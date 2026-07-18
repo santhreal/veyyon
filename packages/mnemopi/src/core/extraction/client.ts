@@ -1,6 +1,6 @@
 import { type ApiKey, type FetchImpl, withAuth } from "@veyyon/ai";
 import * as AIError from "@veyyon/ai/error";
-import { withScopedTimeoutSignal } from "@veyyon/utils";
+import { trimTrailingSlashes, withScopedTimeoutSignal } from "@veyyon/utils";
 
 import { getDiagnostics } from "./diagnostics";
 import { EXTRACTION_SYSTEM_PROMPT, EXTRACTION_USER_TEMPLATE } from "./prompts";
@@ -55,7 +55,7 @@ export class ExtractionClient {
 	constructor(opts: ExtractionClientOptions = {}) {
 		this.model = opts.model || DEFAULT_EXTRACTION_MODEL;
 		this.apiKey = opts.apiKey ?? process.env.OPENROUTER_API_KEY ?? "";
-		this.baseUrl = (opts.baseUrl || OPENROUTER_BASE_URL).replace(/\/+$/, "");
+		this.baseUrl = trimTrailingSlashes(opts.baseUrl || OPENROUTER_BASE_URL);
 		this.fetchImpl = opts.fetch ?? fetch;
 	}
 
