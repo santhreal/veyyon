@@ -71,7 +71,6 @@
     "@veyyon/utils": "catalog:",
     "@veyyon/wire": "catalog:",
     "@veyyon/snapcompact": "catalog:",
-    "@veyyon/tool-render": "catalog:",
     "@xterm/headless": "catalog:",
     "arktype": "catalog:",
     "chalk": "catalog:",

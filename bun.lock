@@ -93,7 +93,6 @@
         "@veyyon/natives": "catalog:",
         "@veyyon/snapcompact": "catalog:",
         "@veyyon/stats": "catalog:",
-        "@veyyon/tool-render": "catalog:",
         "@veyyon/tui": "catalog:",
         "@veyyon/utils": "catalog:",
         "@veyyon/wire": "catalog:",
