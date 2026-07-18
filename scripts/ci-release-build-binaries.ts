@@ -144,10 +144,18 @@ async function buildBinary(target: BinaryTarget): Promise<void> {
 
 async function generateBundle(): Promise<void> {
 	if (isDryRun) {
+		console.log("DRY RUN bun --cwd=packages/coding-agent run gen:tool-views");
 		console.log("DRY RUN bun run gen:mupdf");
 		console.log("DRY RUN bun run gen:stats");
 		return;
 	}
+	// Compiled binaries embed the tool-view renderers via `src/export/html/index.ts`
+	// (`import ... "./n"`), which transitively imports the generated
+	// `tool-views.generated.js`. Both artifacts are gitignored, so the release
+	// build must regenerate them before Bun.build or the bundle fails with
+	// `Could not resolve: "./tool-views.generated.js"`. build-binary.ts already
+	// runs this; the CI release path was the only caller missing it.
+	await runCommand(["bun", "--cwd=packages/coding-agent", "run", "gen:tool-views"], repoRoot);
 	await runCommand(["bun", "run", "gen:mupdf"], repoRoot);
 	// Compiled binaries ship no dashboard sources; without the embedded stats
 	// archive `veyyon stats` 500s on every request (the empty placeholder
