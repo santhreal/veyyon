@@ -308,3 +308,15 @@ describe("hashline parser — delete and blank payload semantics", () => {
 		expect(applyDiff("a\nb\nc\n", splitHashlineInput(embedded).diff)).toBe("a\nfirst\n\nsecond\nc\n");
 	});
 });
+
+describe("applying into an empty file", () => {
+	// splitHashlineLines("") is [""]; the insert helpers must replace that sole
+	// empty line rather than prepend/append a stray blank.
+	it("INS.HEAD fills an empty file with no leading blank line", () => {
+		expect(applyDiff("", `INS.HEAD:\n${repl("first")}\n${repl("second")}`)).toBe("first\nsecond");
+	});
+
+	it("INS.TAIL fills an empty file with no trailing blank line", () => {
+		expect(applyDiff("", `INS.TAIL:\n${repl("only")}`)).toBe("only");
+	});
+});
