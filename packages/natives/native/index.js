@@ -24,7 +24,7 @@ export const Shell = nativeBindings.Shell;
 
 // functions
 export const __veyyonInstallTokioRuntime = nativeBindings.__veyyonInstallTokioRuntime;
-export const __veyyonNativesV1_0_5 = nativeBindings.__veyyonNativesV1_0_5;
+export const __veyyonNativesV1_0_6 = nativeBindings.__veyyonNativesV1_0_6;
 export const astEdit = nativeBindings.astEdit;
 export const astGrep = nativeBindings.astGrep;
 export const astMatch = nativeBindings.astMatch;
