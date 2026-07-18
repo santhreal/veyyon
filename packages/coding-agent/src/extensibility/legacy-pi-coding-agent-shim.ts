@@ -17,7 +17,7 @@ import * as path from "node:path";
 import type { AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
 import type { TSchema } from "@veyyon/ai";
 import { Text } from "@veyyon/tui";
-import { getAgentDir, getProjectDir, parseFrontmatter as parseOmpFrontmatter } from "@veyyon/utils";
+import { escapeRegExp, getAgentDir, getProjectDir, parseFrontmatter as parseOmpFrontmatter } from "@veyyon/utils";
 import type { PromptTemplate } from "../config/prompt-templates";
 import { type SettingPath, Settings } from "../config/settings";
 import { EditTool } from "../edit";
@@ -288,10 +288,6 @@ function lineRangePath(readPath: string, offset: number | undefined, limit: numb
 	return `${readPath}:${start}-${end}`;
 }
 
-function escapeRegexLiteral(value: string): string {
-	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
 function joinLegacyGlob(searchPath: string, pattern: string): string {
 	if (path.isAbsolute(pattern)) return pattern;
 	if (!searchPath || searchPath === ".") return pattern;
@@ -497,7 +493,7 @@ export function createGrepToolDefinition(cwd: string, options?: GrepToolOptions)
 		renderResult: legacyRenderResult,
 		execute: (toolCallId, params, signal, onUpdate) => {
 			const rawPattern = stringField(params, "pattern") ?? "";
-			const pattern = booleanField(params, "literal") ? escapeRegexLiteral(rawPattern) : rawPattern;
+			const pattern = booleanField(params, "literal") ? escapeRegExp(rawPattern) : rawPattern;
 			const searchPath = stringField(params, "path") ?? ".";
 			const glob = stringField(params, "glob");
 			const context = numberField(params, "context");

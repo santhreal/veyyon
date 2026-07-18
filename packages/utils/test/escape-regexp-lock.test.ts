@@ -9,16 +9,17 @@ import { escapeRegExp } from "../src/regex";
 //
 // GRANDFATHERED lists the sites that still carry a local copy. Convert a file,
 // remove its entry — a stale entry fails the lock so the list can only shrink.
-const GRANDFATHERED = new Set([
-	// Remaining local copies, owned by in-flight work on these files; import
-	// escapeRegExp from @veyyon/utils when that work lands.
-	"coding-agent/src/cli/ttsr-cli.ts",
-	"coding-agent/src/extensibility/legacy-pi-coding-agent-shim.ts",
+const GRANDFATHERED = new Set<string>([
+	// Empty: every hand-rolled copy now imports escapeRegExp from @veyyon/utils.
 ]);
 
 const PACKAGES_DIR = path.join(import.meta.dir, "../..");
 
-const LOCAL_DEF = /function\s+escapeRege(?:Exp|x|xLiteral)\s*\(/;
+// Matches any hand-rolled regex-escaper: escapeRegExp / escapeRegex /
+// escapeRegexLiteral (and future variants). Anchored on "escapeReg" + word
+// chars — the earlier form ("escapeRege…") silently missed the capital-E
+// "escapeRegExp" spelling, letting a third copy slip through the lock.
+const LOCAL_DEF = /function\s+escapeReg\w*\s*\(/;
 
 async function walk(dir: string, out: string[]): Promise<void> {
 	for (const entry of await readdir(dir, { withFileTypes: true })) {

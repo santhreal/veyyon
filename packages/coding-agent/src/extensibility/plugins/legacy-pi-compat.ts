@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import { isBuiltin } from "node:module";
 import * as path from "node:path";
 import * as url from "node:url";
-import { isCompiledBinary, stripWindowsExtendedLengthPathPrefix } from "@veyyon/utils";
+import { escapeRegExp, isCompiledBinary, stripWindowsExtendedLengthPathPrefix } from "@veyyon/utils";
 import { registerPluginCacheInvalidator } from "../../discovery/helpers";
 
 const IS_COMPILED_BINARY = isCompiledBinary();
@@ -1153,10 +1153,6 @@ async function rewriteExtensionBareImports(
 		return source;
 	}
 	return `${rewritten}${source.slice(lastIndex)}`;
-}
-
-function escapeRegExp(value: string): string {
-	return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 // Match source modules in an extension graph: relative imports, package
