@@ -1342,7 +1342,7 @@ dependencies = [
  "fluent-syntax",
  "intl-memoizer",
  "intl_pluralrules",
- "rustc-hash 2.1.3",
+ "rustc-hash",
  "self_cell",
  "smallvec",
  "unic-langid",
@@ -2626,7 +2626,7 @@ dependencies = [
  "napi-build",
  "napi-sys",
  "nohash-hasher",
- "rustc-hash 2.1.3",
+ "rustc-hash",
  "tokio",
 ]
 
@@ -3684,12 +3684,6 @@ dependencies = [
 
 [[package]]
 name = "rustc-hash"
-version = "1.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "08d43f7aa6b08d49f382cde6a7982047c3426db949b1424bc4b7ec9ae12c6ce2"
-
-[[package]]
-name = "rustc-hash"
 version = "2.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6b1e7f9a428571be2dc5bc0505c13fb6bf936822b894ec87abf8a08a4e51742d"
@@ -4184,9 +4178,9 @@ dependencies = [
 
 [[package]]
 name = "tiktoken-rs"
-version = "0.11.0"
+version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fac4a168cfc1d8ed65bf17a6ee0843ad9a68f863c63c0fb2fa7eab67838782ee"
+checksum = "027853bbf8c7763b77c5c595f1c271c7d536ced7d6f83452911b944621e57fc2"
 dependencies = [
  "anyhow",
  "base64",
@@ -4194,7 +4188,7 @@ dependencies = [
  "fancy-regex 0.17.0",
  "lazy_static",
  "regex",
- "rustc-hash 1.1.0",
+ "rustc-hash",
 ]
 
 [[package]]
@@ -4955,7 +4949,7 @@ version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cb30dbbd9036155e74adad6812e9898d03ec374946234fbcebd5dfc7b9187b90"
 dependencies = [
- "rustc-hash 2.1.3",
+ "rustc-hash",
 ]
 
 [[package]]
@@ -5229,7 +5223,7 @@ dependencies = [
  "glob",
  "hostname",
  "lscolors",
- "rustc-hash 2.1.3",
+ "rustc-hash",
  "thiserror 2.0.18",
  "uucore 0.8.0",
  "uutils_term_grid",
@@ -5276,7 +5270,7 @@ dependencies = [
  "fs_extra",
  "indicatif",
  "libc",
- "rustc-hash 2.1.3",
+ "rustc-hash",
  "thiserror 2.0.18",
  "uucore 0.8.0",
  "veyyon-uutils-ctx",
@@ -5670,7 +5664,7 @@ dependencies = [
  "num-traits",
  "os_display",
  "procfs",
- "rustc-hash 2.1.3",
+ "rustc-hash",
  "rustix",
  "sha1",
  "sha2",
@@ -5699,7 +5693,7 @@ dependencies = [
  "libc",
  "nix 0.31.3",
  "os_display",
- "rustc-hash 2.1.3",
+ "rustc-hash",
  "rustix",
  "thiserror 2.0.18",
  "unic-langid",
