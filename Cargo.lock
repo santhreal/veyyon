@@ -5781,7 +5781,7 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "veyyon-ast"
-version = "1.0.2"
+version = "1.0.3"
 dependencies = [
  "anyhow",
  "ast-grep-core",
@@ -5850,7 +5850,7 @@ dependencies = [
 
 [[package]]
 name = "veyyon-iso"
-version = "1.0.2"
+version = "1.0.3"
 dependencies = [
  "async-trait",
  "libc",
@@ -5862,7 +5862,7 @@ dependencies = [
 
 [[package]]
 name = "veyyon-natives"
-version = "1.0.2"
+version = "1.0.3"
 dependencies = [
  "anyhow",
  "arboard",
@@ -5915,7 +5915,7 @@ dependencies = [
 
 [[package]]
 name = "veyyon-shell"
-version = "1.0.2"
+version = "1.0.3"
 dependencies = [
  "anyhow",
  "brush-builtins",
@@ -5999,7 +5999,7 @@ dependencies = [
 
 [[package]]
 name = "veyyon-walker"
-version = "1.0.2"
+version = "1.0.3"
 dependencies = [
  "dashmap",
  "globset",
