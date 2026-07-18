@@ -107,9 +107,9 @@ dependencies = [
 
 [[package]]
 name = "anyhow"
-version = "1.0.103"
+version = "1.0.104"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2a4385e2e34eb35d6b3efe798b9eb88096925d87726c0798709bf56d9ed84af3"
+checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
 
 [[package]]
 name = "arboard"
@@ -5781,7 +5781,7 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "veyyon-ast"
-version = "1.0.10"
+version = "1.0.11"
 dependencies = [
  "anyhow",
  "ast-grep-core",
@@ -5850,7 +5850,7 @@ dependencies = [
 
 [[package]]
 name = "veyyon-iso"
-version = "1.0.10"
+version = "1.0.11"
 dependencies = [
  "async-trait",
  "libc",
@@ -5862,7 +5862,7 @@ dependencies = [
 
 [[package]]
 name = "veyyon-natives"
-version = "1.0.10"
+version = "1.0.11"
 dependencies = [
  "anyhow",
  "arboard",
@@ -5915,7 +5915,7 @@ dependencies = [
 
 [[package]]
 name = "veyyon-shell"
-version = "1.0.10"
+version = "1.0.11"
 dependencies = [
  "anyhow",
  "brush-builtins",
@@ -5999,7 +5999,7 @@ dependencies = [
 
 [[package]]
 name = "veyyon-walker"
-version = "1.0.10"
+version = "1.0.11"
 dependencies = [
  "dashmap",
  "globset",
