@@ -1,7 +1,7 @@
 {
 	"type": "module",
 	"name": "@veyyon/tool-render",
-	"version": "1.0.2",
+	"version": "1.0.3",
 	"description": "Shared React tool-call renderers for Veyyon HTML export and collab-web",
 	"homepage": "https://veyyon.dev",
 	"author": "Can Boluk",
