@@ -2,7 +2,15 @@ import { Database } from "bun:sqlite";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { gunzipSync, gzipSync } from "node:zlib";
-import { formatBytes, getAgentDir, getBlobsDir, getHistoryDbPath, getModelDbPath, getSessionsDir } from "@veyyon/utils";
+import {
+	errorMessage,
+	formatBytes,
+	getAgentDir,
+	getBlobsDir,
+	getHistoryDbPath,
+	getModelDbPath,
+	getSessionsDir,
+} from "@veyyon/utils";
 import { Settings } from "../config/settings";
 import { getDefault } from "../config/settings-schema";
 import { listSessionsReadOnly, type SessionInfo, type SessionStatus } from "../session/session-listing";
@@ -180,10 +188,6 @@ export function collectGcErrors(result: GcResult): string[] {
 
 function getArchivedSessionsDir(agentDir: string): string {
 	return path.join(path.dirname(getSessionsDir(agentDir)), "archive", "sessions");
-}
-
-function errorMessage(error: unknown): string {
-	return error instanceof Error ? error.message : String(error);
 }
 
 function codeOf(error: unknown): string | undefined {

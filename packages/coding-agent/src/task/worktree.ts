@@ -3,7 +3,7 @@ import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
 import * as natives from "@veyyon/natives";
-import { getWorktreeDir, logger, Snowflake } from "@veyyon/utils";
+import { errorMessage, getWorktreeDir, logger, Snowflake } from "@veyyon/utils";
 import * as git from "../utils/git";
 import * as jj from "../utils/jj";
 import { mapWithConcurrencyLimit } from "./parallel";
@@ -400,10 +400,6 @@ export interface IsolationHandle {
  * caller learns about that through `IsolationHandle.fellBack` +
  * `fallbackReason`.
  */
-
-function errorMessage(err: unknown): string {
-	return err instanceof Error ? err.message : String(err);
-}
 
 function getTaskIsolationSegment(repoRoot: string, id: string): string {
 	const key = `${path.resolve(repoRoot)}\0${id}`;
