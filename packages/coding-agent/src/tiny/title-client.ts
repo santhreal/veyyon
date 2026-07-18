@@ -1,19 +1,18 @@
 import { $env, errorMessage, logger } from "@veyyon/utils";
 import { settings } from "../config/settings";
 import {
-	createUnavailableWorker,
-	createWorkerHandle,
 	createWorkerSubprocess,
 	logWorkerMessage,
 	type RefCountedWorkerHandle,
+	refCountedUnavailableWorker,
 	resolveWorkerSpawnCmd,
 	SMOKE_TEST_TIMEOUT_MS,
 	type SpawnedSubprocess,
 	smokeTestWorker,
 	spawnWorkerOrUnavailable,
 	workerEnvFromParent,
+	wrapRefCountedSubprocess,
 } from "../subprocess/worker-client";
-import { safeSend } from "../utils/ipc";
 import { tinyModelDeviceSettingToEnv } from "./device";
 import { tinyModelDtypeSettingToEnv } from "./dtype";
 import {
@@ -135,45 +134,14 @@ export function createTinyTitleSubprocess(): SpawnedSubprocess<TinyTitleWorkerOu
 	});
 }
 
-function wrapSubprocess(
-	spawned: SpawnedSubprocess<TinyTitleWorkerOutbound>,
-): RefCountedWorkerHandle<TinyTitleWorkerInbound, TinyTitleWorkerOutbound> {
-	const { proc } = spawned;
-	return {
-		...createWorkerHandle<TinyTitleWorkerInbound, TinyTitleWorkerOutbound>(spawned, message =>
-			safeSend(proc, message, "tiny-title"),
-		),
-		ref() {
-			try {
-				proc.ref();
-			} catch {
-				// Already gone.
-			}
-		},
-		unref() {
-			try {
-				proc.unref();
-			} catch {
-				// Already gone.
-			}
-		},
-	};
-}
-
-function spawnInlineUnavailableWorker(
-	error: unknown,
-): RefCountedWorkerHandle<TinyTitleWorkerInbound, TinyTitleWorkerOutbound> {
-	return {
-		...createUnavailableWorker<TinyTitleWorkerInbound, TinyTitleWorkerOutbound>(error),
-		ref() {},
-		unref() {},
-	};
-}
-
 function spawnTinyTitleWorker(): RefCountedWorkerHandle<TinyTitleWorkerInbound, TinyTitleWorkerOutbound> {
 	return spawnWorkerOrUnavailable(
-		() => wrapSubprocess(createTinyTitleSubprocess()),
-		spawnInlineUnavailableWorker,
+		() =>
+			wrapRefCountedSubprocess<TinyTitleWorkerInbound, TinyTitleWorkerOutbound>(
+				createTinyTitleSubprocess(),
+				"tiny-title",
+			),
+		error => refCountedUnavailableWorker<TinyTitleWorkerInbound, TinyTitleWorkerOutbound>(error),
 		"Tiny title worker spawn failed; local titles disabled",
 	);
 }
@@ -438,5 +406,12 @@ export async function smokeTestTinyTitleWorker({
 }: {
 	timeoutMs?: number;
 } = {}): Promise<void> {
-	await smokeTestWorker(wrapSubprocess(createTinyTitleSubprocess()), "tiny title worker", timeoutMs);
+	await smokeTestWorker(
+		wrapRefCountedSubprocess<TinyTitleWorkerInbound, TinyTitleWorkerOutbound>(
+			createTinyTitleSubprocess(),
+			"tiny-title",
+		),
+		"tiny title worker",
+		timeoutMs,
+	);
 }

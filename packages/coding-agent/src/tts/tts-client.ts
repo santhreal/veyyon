@@ -1,18 +1,17 @@
 import { logger } from "@veyyon/utils";
 import {
-	createUnavailableWorker,
-	createWorkerHandle,
 	createWorkerSubprocess,
 	logWorkerMessage,
 	type RefCountedWorkerHandle,
+	refCountedUnavailableWorker,
 	resolveWorkerSpawnCmd,
 	SMOKE_TEST_TIMEOUT_MS,
 	type SpawnedSubprocess,
 	smokeTestWorker,
 	spawnWorkerOrUnavailable,
+	wrapRefCountedSubprocess,
 } from "../subprocess/worker-client";
 import { tinyWorkerEnv } from "../tiny/title-client";
-import { safeSend } from "../utils/ipc";
 import { isCorruptModelCacheError, isTtsLocalModelKey, type TtsLocalModelKey } from "./models";
 import type { TtsProgressEvent, TtsWorkerInbound, TtsWorkerOutbound } from "./tts-protocol";
 
@@ -163,41 +162,10 @@ export function createTtsSubprocess(): SpawnedSubprocess<TtsWorkerOutbound> {
 	});
 }
 
-function wrapSubprocess(
-	spawned: SpawnedSubprocess<TtsWorkerOutbound>,
-): RefCountedWorkerHandle<TtsWorkerInbound, TtsWorkerOutbound> {
-	const { proc } = spawned;
-	return {
-		...createWorkerHandle<TtsWorkerInbound, TtsWorkerOutbound>(spawned, message => safeSend(proc, message, "tts")),
-		ref() {
-			try {
-				proc.ref();
-			} catch {
-				// Already gone.
-			}
-		},
-		unref() {
-			try {
-				proc.unref();
-			} catch {
-				// Already gone.
-			}
-		},
-	};
-}
-
-function spawnInlineUnavailableWorker(error: unknown): RefCountedWorkerHandle<TtsWorkerInbound, TtsWorkerOutbound> {
-	return {
-		...createUnavailableWorker<TtsWorkerInbound, TtsWorkerOutbound>(error),
-		ref() {},
-		unref() {},
-	};
-}
-
 function spawnTtsWorker(): RefCountedWorkerHandle<TtsWorkerInbound, TtsWorkerOutbound> {
 	return spawnWorkerOrUnavailable(
-		() => wrapSubprocess(createTtsSubprocess()),
-		spawnInlineUnavailableWorker,
+		() => wrapRefCountedSubprocess<TtsWorkerInbound, TtsWorkerOutbound>(createTtsSubprocess(), "tts"),
+		error => refCountedUnavailableWorker<TtsWorkerInbound, TtsWorkerOutbound>(error),
 		"TTS worker spawn failed; local TTS disabled",
 	);
 }
@@ -560,5 +528,9 @@ export async function smokeTestTtsWorker({
 }: {
 	timeoutMs?: number;
 } = {}): Promise<void> {
-	await smokeTestWorker(wrapSubprocess(createTtsSubprocess()), "tts worker", timeoutMs);
+	await smokeTestWorker(
+		wrapRefCountedSubprocess<TtsWorkerInbound, TtsWorkerOutbound>(createTtsSubprocess(), "tts"),
+		"tts worker",
+		timeoutMs,
+	);
 }

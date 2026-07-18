@@ -10,6 +10,7 @@ import {
 	workerHostEntry,
 } from "@veyyon/utils";
 import type { Subprocess } from "bun";
+import { safeSend } from "../utils/ipc";
 
 /**
  * Shared lifecycle scaffolding for the ONNX inference subprocess clients
@@ -365,6 +366,39 @@ export function createWorkerHandle<Inbound, Outbound>(
 }
 
 /**
+ * Wrap a spawned subprocess as a {@link RefCountedWorkerHandle}: the shared
+ * {@link createWorkerHandle} plus `proc.ref()`/`unref()` (each swallowing the
+ * post-exit throw when the child is already gone). Sends go through
+ * {@link safeSend}, which neutralizes the synchronous throw and the async EPIPE
+ * on a broken IPC pipe; `sendLabel` tags its debug log for this worker family
+ * (e.g. "stt", "tts", "tiny-title"). The single owner for the stt/tts/tiny
+ * clients — they differ only in worker types and this label.
+ */
+export function wrapRefCountedSubprocess<Inbound, Outbound>(
+	spawned: SpawnedSubprocess<Outbound>,
+	sendLabel: string,
+): RefCountedWorkerHandle<Inbound, Outbound> {
+	const { proc } = spawned;
+	return {
+		...createWorkerHandle<Inbound, Outbound>(spawned, message => safeSend(proc, message, sendLabel)),
+		ref() {
+			try {
+				proc.ref();
+			} catch {
+				// Already gone.
+			}
+		},
+		unref() {
+			try {
+				proc.unref();
+			} catch {
+				// Already gone.
+			}
+		},
+	};
+}
+
+/**
  * A stand-in handle used when the worker subprocess cannot be spawned. It
  * ponges `ping` (so the smoke probe and readiness checks still resolve) and
  * answers every other request with the spawn error so callers fail fast
@@ -401,6 +435,22 @@ export function createUnavailableWorker<
 		async terminate() {
 			listeners.clear();
 		},
+	};
+}
+
+/**
+ * The {@link RefCountedWorkerHandle} form of {@link createUnavailableWorker}:
+ * the unavailable stub plus no-op `ref()`/`unref()` (an absent worker has no
+ * subprocess to keep alive). Single owner for the stt/tts/tiny inline fallback.
+ */
+export function refCountedUnavailableWorker<
+	Inbound extends { type: string; id: string },
+	Outbound extends { type: string },
+>(error: unknown): RefCountedWorkerHandle<Inbound, Outbound> {
+	return {
+		...createUnavailableWorker<Inbound, Outbound>(error),
+		ref() {},
+		unref() {},
 	};
 }
 
