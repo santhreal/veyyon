@@ -1,4 +1,4 @@
-import { formatCount } from "@veyyon/utils";
+import { formatCount } from "@veyyon/utils/format";
 import { RefreshCw } from "lucide-react";
 import { useState } from "react";
 import { sync } from "../api";
