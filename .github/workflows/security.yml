@@ -33,7 +33,7 @@ jobs:
     name: Secret scan (keyhog)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install Hyperscan runtime
         # keyhog links libhyperscan (libhs.so.5) for its regex engine; it isn't
         # preinstalled on the runner.
@@ -107,7 +107,7 @@ jobs:
     name: Supply chain (cargo-deny)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install cargo-deny
         uses: taiki-e/install-action@v2
         with:
@@ -120,7 +120,7 @@ jobs:
     name: RUSTSEC audit (cargo-audit)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install cargo-audit
         uses: taiki-e/install-action@v2
         with:
@@ -134,7 +134,7 @@ jobs:
     name: npm advisory audit (bun)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: ./.github/actions/bun-install
       - name: bun audit
         # Fail on any advisory of high severity or worse in the JS/TS graph.
@@ -148,7 +148,7 @@ jobs:
       security-events: write
       actions: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v3
         with:
