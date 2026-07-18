@@ -279,20 +279,6 @@ export class PatchSection {
 		return this.parse().warnings;
 	}
 
-	/**
-	 * True when at least one edit anchors to concrete file content. Pure
-	 * `insert head:` / `insert tail:` literal inserts do not count: those are
-	 * safe to apply to files that don't yet exist.
-	 */
-	get hasAnchorScopedEdit(): boolean {
-		return this.edits.some(edit => {
-			if (edit.kind === "delete") return true;
-			// A `replace_block N:` edit is anchored to concrete content on line N.
-			if (edit.kind === "block") return true;
-			return edit.cursor.kind === "before_anchor" || edit.cursor.kind === "after_anchor";
-		});
-	}
-
 	/** Anchor lines touched by this section, sorted ascending and deduplicated. */
 	collectAnchorLines(): readonly number[] {
 		const lines = new Set<number>();

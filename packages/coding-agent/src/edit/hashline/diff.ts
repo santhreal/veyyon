@@ -17,6 +17,7 @@ import {
 	computeFileHash,
 	type Edit,
 	Patch as HashlinePatch,
+	hasAnchorScopedEdit,
 	hasBlockEdit,
 	MismatchError,
 	missingSnapshotTagMessage,
@@ -139,14 +140,6 @@ async function readSectionForPreview(
 		: recoverSectionPathFromTag(section, authoredAbsolutePath, snapshots);
 	const target = recovered ?? authoredAbsolutePath;
 	return { absolutePath: target, rawContent: await read(target, section.path) };
-}
-
-function hasAnchorScopedEdit(edits: readonly Edit[]): boolean {
-	return edits.some(edit => {
-		if (edit.kind === "delete") return true;
-		if (edit.kind === "block") return true;
-		return edit.cursor.kind === "before_anchor" || edit.cursor.kind === "after_anchor";
-	});
 }
 
 function createMismatchError(

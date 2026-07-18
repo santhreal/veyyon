@@ -24,7 +24,7 @@
  */
 import * as path from "node:path";
 import { applyEdits } from "./apply";
-import { hasBlockEdit, resolveBlockEdits } from "./block";
+import { hasAnchorScopedEdit, hasBlockEdit, resolveBlockEdits } from "./block";
 import { computeFileHash, formatHashlineHeader } from "./format";
 import type { Filesystem, WriteResult } from "./fs";
 import { isNotFound } from "./fs";
@@ -137,15 +137,6 @@ export class PreparedSection {
 	get isNoop(): boolean {
 		return this.fileOp === undefined && this.applyResult.text === this.normalized;
 	}
-}
-
-function hasAnchorScopedEdit(edits: readonly Edit[]): boolean {
-	return edits.some(edit => {
-		if (edit.kind === "delete") return true;
-		// A `replace_block N:` edit anchors to concrete content on line N.
-		if (edit.kind === "block") return true;
-		return edit.cursor.kind === "before_anchor" || edit.cursor.kind === "after_anchor";
-	});
 }
 
 function assertSectionHashPresent(sectionPath: string, fileHash: string | undefined): void {

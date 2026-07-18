@@ -5,6 +5,8 @@ import {
 	type BlockSpan,
 	computeFileHash,
 	type Edit,
+	hasAnchorScopedEdit,
+	hasBlockEdit,
 	InMemoryFilesystem,
 	InMemorySnapshotStore,
 	MismatchError,
@@ -437,5 +439,54 @@ describe("INS.BLK.POST", () => {
 		expect(result.sections[0]?.op).toBe("update");
 		expect(fs.get(PATH)).toBe("function x() {\n  if (y) {\n  }\n  done();\n}\n");
 		expect(result.sections[0]?.blockResolutions).toEqual([{ anchorLine: 2, start: 2, end: 3, op: "insert_after" }]);
+	});
+});
+
+describe("edit predicates", () => {
+	const del: Edit = { kind: "delete", anchor: { line: 2 }, lineNum: 2, index: 0 };
+	const block: Edit = { kind: "block", anchor: { line: 2 }, payloads: ["x"], lineNum: 2, index: 0 };
+	const beforeAnchor: Edit = {
+		kind: "insert",
+		cursor: { kind: "before_anchor", anchor: { line: 2 } },
+		text: "x",
+		lineNum: 2,
+		index: 0,
+	};
+	const afterAnchor: Edit = {
+		kind: "insert",
+		cursor: { kind: "after_anchor", anchor: { line: 2 } },
+		text: "x",
+		lineNum: 2,
+		index: 0,
+	};
+	const headInsert: Edit = { kind: "insert", cursor: { kind: "bof" }, text: "x", lineNum: 1, index: 0 };
+	const tailInsert: Edit = { kind: "insert", cursor: { kind: "eof" }, text: "x", lineNum: 1, index: 0 };
+
+	describe("hasAnchorScopedEdit", () => {
+		it("is true when any edit binds to concrete file content", () => {
+			expect(hasAnchorScopedEdit([del])).toBe(true);
+			expect(hasAnchorScopedEdit([block])).toBe(true);
+			expect(hasAnchorScopedEdit([beforeAnchor])).toBe(true);
+			expect(hasAnchorScopedEdit([afterAnchor])).toBe(true);
+		});
+
+		it("is false for pure head/tail literal inserts and the empty list", () => {
+			expect(hasAnchorScopedEdit([headInsert])).toBe(false);
+			expect(hasAnchorScopedEdit([tailInsert])).toBe(false);
+			expect(hasAnchorScopedEdit([headInsert, tailInsert])).toBe(false);
+			expect(hasAnchorScopedEdit([])).toBe(false);
+		});
+
+		it("is true when a literal insert is mixed with an anchored edit", () => {
+			expect(hasAnchorScopedEdit([headInsert, del])).toBe(true);
+		});
+	});
+
+	describe("hasBlockEdit", () => {
+		it("is true only when a deferred block edit is present", () => {
+			expect(hasBlockEdit([block])).toBe(true);
+			expect(hasBlockEdit([del, headInsert])).toBe(false);
+			expect(hasBlockEdit([])).toBe(false);
+		});
 	});
 });

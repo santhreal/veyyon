@@ -54,6 +54,22 @@ export function hasBlockEdit(edits: readonly Edit[]): boolean {
 }
 
 /**
+ * True when at least one edit anchors to concrete file content. A delete, a
+ * `replace_block N:` (anchored to line N), and any `before_anchor` /
+ * `after_anchor` insert all bind to existing text; pure `insert head:` /
+ * `insert tail:` literal inserts do not, so a section built only from those is
+ * safe to apply to a file that does not yet exist. Callers use this to decide
+ * whether a stale-hash section must go through snapshot recovery before apply.
+ */
+export function hasAnchorScopedEdit(edits: readonly Edit[]): boolean {
+	return edits.some(edit => {
+		if (edit.kind === "delete") return true;
+		if (edit.kind === "block") return true;
+		return edit.cursor.kind === "before_anchor" || edit.cursor.kind === "after_anchor";
+	});
+}
+
+/**
  * Resolve every deferred block edit in `edits` against `text` (parsed as the
  * language inferred from `path`). Non-block edits pass through untouched.
  * Returns a fresh edit list with no `block` variants. The fast path returns the
