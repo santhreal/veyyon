@@ -17,7 +17,7 @@ codesnake = "0.2"
 hifijson = "0.2.0"
 memmap2 = "0.9"
 tempfile = "3.3.0"
-unicode-width = "0.1.13"
+unicode-width = "0.2.2"
 yansi = "1.0.1"
 veyyon-uutils-ctx = { path = "../../veyyon-uutils-ctx" }
 
