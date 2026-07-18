@@ -313,6 +313,15 @@ interface BunInstallCachePruneResult {
 }
 
 interface BunCachePackageGroup {
+	/**
+	 * The package.json `name` resolved from a materialized dir in this group.
+	 * `undefined` until an actual dir is read. Groups are keyed by cache-dir
+	 * stem (shared by a package's marker dir `X` and its actual dirs
+	 * `X@version`), which can differ from the manifest name when a package was
+	 * installed under a former brand (e.g. cache stem `@veyyon/pi-utils` for
+	 * manifest name `@veyyon/utils`); the filter matches on this resolved name.
+	 */
+	packageName?: string;
 	actualDirs: Map<string, string[]>;
 	markerDir?: string;
 	markerEntries: Map<string, string[]>;
@@ -368,11 +377,11 @@ async function readdirIfExists(dir: string): Promise<fs.Dirent[]> {
 	}
 }
 
-function getBunCacheGroup(groups: Map<string, BunCachePackageGroup>, packageName: string): BunCachePackageGroup {
-	let group = groups.get(packageName);
+function getBunCacheGroup(groups: Map<string, BunCachePackageGroup>, stem: string): BunCachePackageGroup {
+	let group = groups.get(stem);
 	if (!group) {
 		group = { actualDirs: new Map(), markerEntries: new Map() };
-		groups.set(packageName, group);
+		groups.set(stem, group);
 	}
 	return group;
 }
@@ -388,16 +397,16 @@ function addVersionPath(entries: Map<string, string[]>, version: string, entryPa
 
 async function addBunCacheActualDir(
 	groups: Map<string, BunCachePackageGroup>,
+	stem: string,
 	dirPath: string,
-	packageNames: Set<string> | undefined,
 ): Promise<void> {
 	try {
 		const manifest = (await Bun.file(path.join(dirPath, "package.json")).json()) as Partial<
 			Record<"name" | "version", unknown>
 		>;
 		if (typeof manifest.name !== "string" || typeof manifest.version !== "string") return;
-		if (packageNames && !packageNames.has(manifest.name)) return;
-		const group = getBunCacheGroup(groups, manifest.name);
+		const group = getBunCacheGroup(groups, stem);
+		group.packageName = manifest.name;
 		addVersionPath(group.actualDirs, manifest.version, dirPath);
 	} catch (err) {
 		if (isEnoent(err)) return;
@@ -407,13 +416,11 @@ async function addBunCacheActualDir(
 
 async function addBunCacheMarkerDir(
 	groups: Map<string, BunCachePackageGroup>,
-	packageName: string,
+	stem: string,
 	markerDir: string,
-	packageNames: Set<string> | undefined,
 ): Promise<void> {
-	if (packageNames && !packageNames.has(packageName)) return;
 	const markerEntries = await readdirIfExists(markerDir);
-	const group = getBunCacheGroup(groups, packageName);
+	const group = getBunCacheGroup(groups, stem);
 	group.markerDir = markerDir;
 	for (const entry of markerEntries) {
 		const cacheVersion = stripBunCacheVersionSuffix(entry.name);
@@ -421,10 +428,20 @@ async function addBunCacheMarkerDir(
 	}
 }
 
-async function collectBunCacheGroups(
-	cacheDir: string,
-	packageNames: Set<string> | undefined,
-): Promise<Map<string, BunCachePackageGroup>> {
+/**
+ * Split a bun cache directory name into its package stem and the `@version…`
+ * remainder. A package's marker dir (`react`) and its materialized dirs
+ * (`react@19.2.6@@@1`) share the same stem, so grouping by stem keeps them
+ * together even when the manifest name has since been rebranded away from the
+ * on-disk name. `undefined` remainder marks a marker directory.
+ */
+function splitBunCacheStem(name: string): { stem: string; hasVersion: boolean } {
+	const versionSeparator = name.indexOf("@");
+	if (versionSeparator === -1) return { stem: name, hasVersion: false };
+	return { stem: name.slice(0, versionSeparator), hasVersion: true };
+}
+
+async function collectBunCacheGroups(cacheDir: string): Promise<Map<string, BunCachePackageGroup>> {
 	const groups = new Map<string, BunCachePackageGroup>();
 	for (const entry of await readdirIfExists(cacheDir)) {
 		if (!entry.isDirectory()) continue;
@@ -433,20 +450,21 @@ async function collectBunCacheGroups(
 			for (const scopedEntry of await readdirIfExists(entryPath)) {
 				if (!scopedEntry.isDirectory()) continue;
 				const scopedEntryPath = path.join(entryPath, scopedEntry.name);
-				const versionSeparator = scopedEntry.name.lastIndexOf("@");
-				if (versionSeparator === -1) {
-					await addBunCacheMarkerDir(groups, `${entry.name}/${scopedEntry.name}`, scopedEntryPath, packageNames);
+				const { stem, hasVersion } = splitBunCacheStem(scopedEntry.name);
+				const scopedStem = `${entry.name}/${stem}`;
+				if (hasVersion) {
+					await addBunCacheActualDir(groups, scopedStem, scopedEntryPath);
 				} else {
-					await addBunCacheActualDir(groups, scopedEntryPath, packageNames);
+					await addBunCacheMarkerDir(groups, scopedStem, scopedEntryPath);
 				}
 			}
 			continue;
 		}
-		const versionSeparator = entry.name.lastIndexOf("@");
-		if (versionSeparator === -1) {
-			await addBunCacheMarkerDir(groups, entry.name, entryPath, packageNames);
+		const { stem, hasVersion } = splitBunCacheStem(entry.name);
+		if (hasVersion) {
+			await addBunCacheActualDir(groups, stem, entryPath);
 		} else {
-			await addBunCacheActualDir(groups, entryPath, packageNames);
+			await addBunCacheMarkerDir(groups, stem, entryPath);
 		}
 	}
 	return groups;
@@ -472,11 +490,14 @@ export async function pruneBunInstallCache(
 	cacheDir: string,
 	packageNames?: Set<string>,
 ): Promise<BunInstallCachePruneResult> {
-	const groups = await collectBunCacheGroups(cacheDir, packageNames);
+	const groups = await collectBunCacheGroups(cacheDir);
 	let scannedPackages = 0;
 	let removedEntries = 0;
 	for (const group of groups.values()) {
 		if (group.actualDirs.size === 0) continue;
+		// Filter by the manifest name resolved from a materialized dir, not the
+		// on-disk stem, so rebranded caches (stem != name) still match.
+		if (packageNames && (group.packageName === undefined || !packageNames.has(group.packageName))) continue;
 		scannedPackages++;
 		let latestVersion: string | undefined;
 		for (const version of group.actualDirs.keys()) {
