@@ -2,6 +2,7 @@ import { dlopen, FFIType, ptr } from "bun:ffi";
 import * as fs from "node:fs";
 import {
 	$env,
+	errorMessage,
 	isBunTestRuntime,
 	isTerminalHeadless,
 	logger,
@@ -591,7 +592,7 @@ export class ProcessTerminal implements Terminal {
 				callback(this.#backgroundColorHex);
 			} catch (error) {
 				logger.error("background-color subscriber threw during replay", {
-					error: error instanceof Error ? error.message : String(error),
+					error: errorMessage(error),
 				});
 			}
 		}
@@ -629,7 +630,7 @@ export class ProcessTerminal implements Terminal {
 				// Keep other subscribers alive, but a throwing appearance
 				// subscriber (e.g. the theme bridge) is a broken feature.
 				logger.error("appearance-change subscriber threw during replay", {
-					error: error instanceof Error ? error.message : String(error),
+					error: errorMessage(error),
 				});
 			}
 		}
@@ -1282,7 +1283,7 @@ export class ProcessTerminal implements Terminal {
 				logger.error("private-mode capability subscriber threw", {
 					mode,
 					supported,
-					error: error instanceof Error ? error.message : String(error),
+					error: errorMessage(error),
 				});
 			}
 		}

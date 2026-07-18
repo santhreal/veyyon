@@ -39,7 +39,7 @@ import {
 	signalListLabel,
 } from "@veyyon/ai/utils/harmony-leak";
 import { preferredDialect } from "@veyyon/catalog/identity";
-import { formatCount, logger, sanitizeText, structuredCloneJSON } from "@veyyon/utils";
+import { errorMessage, formatCount, logger, sanitizeText, structuredCloneJSON } from "@veyyon/utils";
 import { INTENT_FIELD } from "@veyyon/wire";
 import { agentPauseGate } from "./pause";
 import { type AgentRunCoverage, type AgentRunSummary, ToolCallBlockedError } from "./run-collector";
@@ -1989,7 +1989,7 @@ async function executeToolCalls(
 					// resolver is a broken tool feature — surface it.
 					logger.warn("tool intent resolver threw; using the default intent label", {
 						tool: toolCall.name,
-						error: error instanceof Error ? error.message : String(error),
+						error: errorMessage(error),
 					});
 				}
 			}
@@ -2048,12 +2048,12 @@ async function executeToolCalls(
 						content: [
 							{
 								type: "text" as const,
-								text: validationError instanceof Error ? validationError.message : String(validationError),
+								text: errorMessage(validationError),
 							},
 						],
 						details: {
 							isError: true,
-							error: validationError instanceof Error ? validationError.message : String(validationError),
+							error: errorMessage(validationError),
 						},
 					},
 					true,
@@ -2161,7 +2161,7 @@ async function executeToolCalls(
 			} catch (e) {
 				caughtError = e;
 				result = {
-					content: [{ type: "text", text: e instanceof Error ? e.message : String(e) }],
+					content: [{ type: "text", text: errorMessage(e) }],
 					details: {},
 				};
 				isError = true;
@@ -2197,7 +2197,7 @@ async function executeToolCalls(
 				} catch (e) {
 					caughtError = e;
 					result = {
-						content: [{ type: "text", text: e instanceof Error ? e.message : String(e) }],
+						content: [{ type: "text", text: errorMessage(e) }],
 						details: {},
 					};
 					isError = true;
@@ -2265,7 +2265,7 @@ async function executeToolCalls(
 				concurrency = "exclusive";
 				logger.warn("tool concurrency resolver threw; running the call serially", {
 					tool: record.tool?.name,
-					error: error instanceof Error ? error.message : String(error),
+					error: errorMessage(error),
 				});
 			}
 		} else {

@@ -1,6 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { existsSync } from "node:fs";
 import { dirname } from "node:path";
+import { errorMessage } from "@veyyon/utils";
 import { dataDir as configuredDataDir, dbPath as configuredDbPath } from "./config";
 import { initBeam } from "./core/beam";
 import { closeQuietly, openDatabase } from "./db";
@@ -137,7 +138,7 @@ export function inspectDatabase(options: DiagnosticOptions = {}): DiagnosticSumm
 			log("db", `${table}_count`, count === null ? "MISSING" : String(count));
 		}
 	} catch (error) {
-		log("db", "open_or_inspect", "ERROR", error instanceof Error ? error.message : String(error));
+		log("db", "open_or_inspect", "ERROR", errorMessage(error));
 	} finally {
 		if (owned) closeQuietly(db);
 	}

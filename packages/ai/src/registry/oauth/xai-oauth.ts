@@ -7,7 +7,7 @@
  * the discovered token endpoint until the user approves the login.
  */
 
-import { scopedTimeoutSignal } from "@veyyon/utils";
+import { errorMessage, scopedTimeoutSignal } from "@veyyon/utils";
 import * as AIError from "../../error";
 import type { FetchImpl } from "../../types";
 import { type OAuthDeviceCodePollResult, pollOAuthDeviceCodeFlow } from "./device-code";
@@ -88,14 +88,11 @@ async function xaiOAuthDiscovery(
 				signal: requestTimeout.signal,
 			});
 		} catch (error) {
-			throw new AIError.OAuthError(
-				`xAI OIDC discovery failed: ${error instanceof Error ? error.message : String(error)}`,
-				{
-					kind: "discovery",
-					provider: "xai",
-					cause: error,
-				},
-			);
+			throw new AIError.OAuthError(`xAI OIDC discovery failed: ${errorMessage(error)}`, {
+				kind: "discovery",
+				provider: "xai",
+				cause: error,
+			});
 		}
 		if (response.status !== 200) {
 			throw new AIError.OAuthError(`xAI OIDC discovery returned status ${response.status}.`, {
@@ -108,10 +105,11 @@ async function xaiOAuthDiscovery(
 		try {
 			payload = await response.json();
 		} catch (error) {
-			throw new AIError.OAuthError(
-				`xAI OIDC discovery returned invalid JSON: ${error instanceof Error ? error.message : String(error)}`,
-				{ kind: "validation", provider: "xai", cause: error },
-			);
+			throw new AIError.OAuthError(`xAI OIDC discovery returned invalid JSON: ${errorMessage(error)}`, {
+				kind: "validation",
+				provider: "xai",
+				cause: error,
+			});
 		}
 		if (!isRecord(payload)) {
 			throw new AIError.OAuthError("xAI OIDC discovery response was not a JSON object.", {
@@ -264,10 +262,11 @@ async function requestXAIDeviceAuthorization(
 			});
 		} catch (error) {
 			if (signal?.aborted) throw new AIError.LoginCancelledError();
-			throw new AIError.OAuthError(
-				`xAI device-code request failed: ${error instanceof Error ? error.message : String(error)}`,
-				{ kind: "device-auth", provider: "xai", cause: error },
-			);
+			throw new AIError.OAuthError(`xAI device-code request failed: ${errorMessage(error)}`, {
+				kind: "device-auth",
+				provider: "xai",
+				cause: error,
+			});
 		}
 
 		if (!response.ok) {
@@ -291,10 +290,11 @@ async function requestXAIDeviceAuthorization(
 		try {
 			payload = await response.json();
 		} catch (error) {
-			throw new AIError.OAuthError(
-				`xAI device-code response returned invalid JSON: ${error instanceof Error ? error.message : String(error)}`,
-				{ kind: "validation", provider: "xai", cause: error },
-			);
+			throw new AIError.OAuthError(`xAI device-code response returned invalid JSON: ${errorMessage(error)}`, {
+				kind: "validation",
+				provider: "xai",
+				cause: error,
+			});
 		}
 		return parseXAIDeviceAuthorization(payload);
 	} finally {
@@ -329,22 +329,23 @@ async function pollXAIDeviceToken(
 			});
 		} catch (error) {
 			if (signal?.aborted) throw new AIError.LoginCancelledError();
-			throw new AIError.OAuthError(
-				`xAI device-code token polling failed: ${error instanceof Error ? error.message : String(error)}`,
-				{ kind: "polling", provider: "xai", cause: error },
-			);
+			throw new AIError.OAuthError(`xAI device-code token polling failed: ${errorMessage(error)}`, {
+				kind: "polling",
+				provider: "xai",
+				cause: error,
+			});
 		}
 
 		let payload: unknown;
 		try {
 			payload = await response.json();
 		} catch (error) {
-			throw new AIError.OAuthError(
-				`xAI device-code token polling returned invalid JSON: ${
-					error instanceof Error ? error.message : String(error)
-				}`,
-				{ kind: "polling", provider: "xai", status: response.status, cause: error },
-			);
+			throw new AIError.OAuthError(`xAI device-code token polling returned invalid JSON: ${errorMessage(error)}`, {
+				kind: "polling",
+				provider: "xai",
+				status: response.status,
+				cause: error,
+			});
 		}
 
 		if (response.ok) {
@@ -454,10 +455,11 @@ export async function refreshXAIOAuthToken(refreshToken: string, fetchOverride?:
 		try {
 			payload = await response.json();
 		} catch (error) {
-			throw new AIError.OAuthError(
-				`xAI token refresh returned invalid JSON: ${error instanceof Error ? error.message : String(error)}`,
-				{ kind: "validation", provider: "xai", cause: error },
-			);
+			throw new AIError.OAuthError(`xAI token refresh returned invalid JSON: ${errorMessage(error)}`, {
+				kind: "validation",
+				provider: "xai",
+				cause: error,
+			});
 		}
 		return parseXAITokenResponse(payload, "xAI token refresh response", refreshToken);
 	} finally {

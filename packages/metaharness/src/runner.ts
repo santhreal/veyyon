@@ -2,7 +2,7 @@
 import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { trimTrailingSlashes } from "@veyyon/utils";
+import { errorMessage, trimTrailingSlashes } from "@veyyon/utils";
 /**
  * Harbor benchmark runner for the local `veyyon` build.
  *
@@ -1520,9 +1520,7 @@ function runDockerCleanup(force: boolean): void {
 		}
 		process.stdout.write("Docker cleanup completed.\n");
 	} catch (err: unknown) {
-		process.stdout.write(
-			`\nwarning: failed to run docker cleanup: ${err instanceof Error ? err.message : String(err)}\n`,
-		);
+		process.stdout.write(`\nwarning: failed to run docker cleanup: ${errorMessage(err)}\n`);
 	}
 }
 
@@ -1726,7 +1724,7 @@ async function main(): Promise<void> {
 if (import.meta.main) {
 	main().catch((err: unknown) => {
 		if (isTTY) process.stdout.write(`${ESC}?25h${ESC}?1049l`);
-		process.stderr.write(red(`\nerror: ${err instanceof Error ? err.message : String(err)}\n`));
+		process.stderr.write(red(`\nerror: ${errorMessage(err)}\n`));
 		process.exit(1);
 	});
 }

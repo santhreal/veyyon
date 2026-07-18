@@ -100,7 +100,6 @@ const ERRORMESSAGE_GRANDFATHERED = new Set<string>([]);
 // lane-hot files (plus hashline/collab-web, which have no @veyyon/utils dep and
 // keep local ternaries deliberately). Convert a file, remove its entry. Shrink-only.
 const INLINE_ERRORMESSAGE_GRANDFATHERED = new Set([
-	"agent/src/agent-loop.ts",
 	"agent/src/compaction/compaction-v2-streaming.ts",
 	"ai/src/auth-gateway/server.ts",
 	"ai/src/auth-storage.ts",
@@ -110,7 +109,6 @@ const INLINE_ERRORMESSAGE_GRANDFATHERED = new Set([
 	"ai/src/providers/openai-codex-responses.ts",
 	"ai/src/providers/openai-responses-server.ts",
 	"ai/src/providers/pi-native-server.ts",
-	"ai/src/registry/oauth/xai-oauth.ts",
 	"coding-agent/src/autoresearch/tools/init-experiment.ts",
 	"coding-agent/src/autoresearch/tools/log-experiment.ts",
 	"coding-agent/src/cli/auth-broker-cli.ts",
@@ -195,11 +193,6 @@ const INLINE_ERRORMESSAGE_GRANDFATHERED = new Set([
 	"coding-agent/src/web/search/providers/mojeek.ts",
 	"collab-web/src/lib/client.ts",
 	"hashline/src/patcher.ts",
-	"metaharness/src/runner.ts",
-	"mnemopi/src/diagnose.ts",
-	"tui/src/desktop-notify.ts",
-	"tui/src/terminal.ts",
-	"utils/src/dirs.ts",
 	"utils/src/ptree.ts",
 	"utils/src/type-guards.ts",
 ]);

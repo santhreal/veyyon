@@ -16,6 +16,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { YAML } from "bun";
 import { engines, version } from "../package.json" with { type: "json" };
+import { errorMessage } from "./type-guards";
 
 /** App name (e.g. "veyyon") */
 export const APP_NAME: string = "veyyon";
@@ -142,7 +143,7 @@ export function resolveProfileFromEnv(): string | undefined {
 			return normalizeProfileName(value);
 		} catch (error) {
 			// Name which env var carried the bad value — the operator set it out-of-band.
-			throw new Error(`Invalid ${key}: ${error instanceof Error ? error.message : String(error)}`);
+			throw new Error(`Invalid ${key}: ${errorMessage(error)}`);
 		}
 	}
 	return undefined;
@@ -214,7 +215,7 @@ export function resolveGlobalDefaultProfile(): string | undefined {
 			parsed = YAML.parse(text);
 		} catch (error) {
 			throw new Error(
-				`Global config ${filePath} is not valid YAML: ${error instanceof Error ? error.message : String(error)}. ` +
+				`Global config ${filePath} is not valid YAML: ${errorMessage(error)}. ` +
 					`Fix or remove the file (it holds only cross-profile keys like defaultProfile).`,
 			);
 		}
@@ -227,7 +228,7 @@ export function resolveGlobalDefaultProfile(): string | undefined {
 		try {
 			return normalizeProfileName(value);
 		} catch (error) {
-			throw new Error(`Global config ${filePath}: ${error instanceof Error ? error.message : String(error)}`);
+			throw new Error(`Global config ${filePath}: ${errorMessage(error)}`);
 		}
 	}
 	return undefined;
@@ -259,7 +260,7 @@ export function writeGlobalDefaultProfile(profile: string | undefined): string {
 			parsed = YAML.parse(text);
 		} catch (error) {
 			throw new Error(
-				`Global config ${candidate} is not valid YAML: ${error instanceof Error ? error.message : String(error)}. ` +
+				`Global config ${candidate} is not valid YAML: ${errorMessage(error)}. ` +
 					`Fix or remove the file before changing defaultProfile.`,
 			);
 		}
