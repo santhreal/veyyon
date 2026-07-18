@@ -1,5 +1,5 @@
 /** `web_search` — provider-backed web search with synthesized answer and sources. */
-import { formatCount } from "@veyyon/utils";
+import { formatCount } from "@veyyon/utils/format";
 import type { ReactNode } from "react";
 import { Badge, Badges, InvalidArg, Kv, KvGrid, Note, ResultText, Row } from "../parts";
 import type { ToolRenderer, ToolRenderProps } from "../types";

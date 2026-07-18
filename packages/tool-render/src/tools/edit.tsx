@@ -1,5 +1,5 @@
 /** `edit` / `apply_patch` — hashline patch application rendered as colored diffs. */
-import { formatCount } from "@veyyon/utils";
+import { formatCount } from "@veyyon/utils/format";
 import type { ReactNode } from "react";
 import { Badge, DiffBlock, InvalidArg, Kv, KvGrid, Note, Output, PathText, ResultText } from "../parts";
 import type { ToolRenderer, ToolRenderProps } from "../types";

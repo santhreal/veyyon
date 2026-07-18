@@ -1,5 +1,5 @@
 /** `todo` — phased task-list ops and the resulting board. */
-import { formatCount } from "@veyyon/utils";
+import { formatCount } from "@veyyon/utils/format";
 import type { ReactNode } from "react";
 import { Badges, ResultText, Row } from "../parts";
 import type { ToolRenderer, ToolRenderProps } from "../types";
