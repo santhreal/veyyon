@@ -2288,9 +2288,9 @@ version = "2.3.0"
 dependencies = [
  "codesnake",
  "hifijson",
- "jaq-core",
+ "jaq-core 2.2.1",
  "jaq-json",
- "jaq-std",
+ "jaq-std 3.0.1",
  "memmap2",
  "parking_lot",
  "tempfile",
@@ -2311,6 +2311,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "jaq-core"
+version = "3.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7561783b20275a6c9cb576e39208b0c635f34ef14357f1f05a2927a774f3adec"
+dependencies = [
+ "dyn-clone",
+ "once_cell",
+ "typed-arena",
+]
+
+[[package]]
 name = "jaq-json"
 version = "1.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2319,8 +2330,8 @@ dependencies = [
  "foldhash 0.1.5",
  "hifijson",
  "indexmap",
- "jaq-core",
- "jaq-std",
+ "jaq-core 2.2.1",
+ "jaq-std 2.1.2",
 ]
 
 [[package]]
@@ -2332,10 +2343,27 @@ dependencies = [
  "aho-corasick",
  "base64",
  "chrono",
- "jaq-core",
+ "jaq-core 2.2.1",
  "libm",
  "log",
  "regex-lite",
+ "urlencoding",
+]
+
+[[package]]
+name = "jaq-std"
+version = "3.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8bdc5a74b0feeb5e6a1dc2dd08c34280a61e37668d10a6a3b27ad69d0fb9ce2e"
+dependencies = [
+ "aho-corasick",
+ "base64",
+ "bstr",
+ "jaq-core 3.1.0",
+ "jiff",
+ "libm",
+ "log",
+ "regex-bites",
  "urlencoding",
 ]
 
@@ -3606,6 +3634,12 @@ dependencies = [
  "memchr",
  "regex-syntax",
 ]
+
+[[package]]
+name = "regex-bites"
+version = "0.1.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b6a15a2fa0bfda9361941c45550896ae87b15cc6c8c939ea350079670332e211"
 
 [[package]]
 name = "regex-lite"
