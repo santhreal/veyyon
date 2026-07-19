@@ -22,6 +22,50 @@ export function cosineSimilarity(a: ArrayLike<number>, b: ArrayLike<number>): nu
 	return dot / (Math.sqrt(normA) * Math.sqrt(normB));
 }
 
+/**
+ * Build a reusable cosine scorer bound to one query vector. When you score many
+ * candidates against the same query (recall's vector pass sweeps up to a few hundred
+ * rows per tier), `cosineSimilarity(query, candidate)` recomputes the query norm and
+ * re-runs the query's finite-value check on every call. `cosineScorer` does that work
+ * once and returns a closure that scores each candidate.
+ *
+ * The returned scorer is byte-identical to `cosineSimilarity(query, candidate)` for
+ * every candidate, not merely close: it keeps the same operation order (accumulate the
+ * dot product at full precision, then divide by `sqrt(normA) * sqrt(normB)`), so no
+ * pre-division shifts a rounding bit. Length mismatch (missing entries read as 0) and
+ * non-finite entries (read as 0) are handled exactly as in `cosineSimilarity`.
+ */
+export function cosineScorer(query: ArrayLike<number>): (candidate: ArrayLike<number>) => number {
+	const cleanQuery = new Float64Array(query.length);
+	let normA = 0;
+	for (let i = 0; i < query.length; i += 1) {
+		const raw = query[i] ?? 0;
+		const av = Number.isFinite(raw) ? raw : 0;
+		cleanQuery[i] = av;
+		normA += av * av;
+	}
+	if (normA === 0) {
+		return () => 0;
+	}
+	const sqrtA = Math.sqrt(normA);
+	return (candidate: ArrayLike<number>): number => {
+		const length = cleanQuery.length > candidate.length ? cleanQuery.length : candidate.length;
+		let dot = 0;
+		let normB = 0;
+		for (let i = 0; i < length; i += 1) {
+			const av = cleanQuery[i] ?? 0;
+			const rawB = candidate[i] ?? 0;
+			const bv = Number.isFinite(rawB) ? rawB : 0;
+			dot += av * bv;
+			normB += bv * bv;
+		}
+		if (normB === 0) {
+			return 0;
+		}
+		return dot / (sqrtA * Math.sqrt(normB));
+	};
+}
+
 // Every persisted embedding is stored as a JSON array of numbers. `encodeEmbeddingJson`
 // and `decodeEmbeddingJson` are the single owner of that wire format: encode with the
 // former on write, decode with the latter on read, and never hand-roll `JSON.parse`
