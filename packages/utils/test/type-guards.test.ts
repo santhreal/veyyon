@@ -115,29 +115,43 @@ const INLINE_ERRORMESSAGE = /instanceof Error \? \w+\.message : String\(/;
 const ISRECORD_DEF = /function\s+isRecord\s*\(/;
 const ERRORMESSAGE_DEF = /function\s+errorMessage\s*\(/;
 
-async function walk(dir: string, out: string[]): Promise<void> {
+async function walk(dir: string, out: string[], includeTests: boolean): Promise<void> {
 	for (const entry of await readdir(dir, { withFileTypes: true })) {
 		const full = path.join(dir, entry.name);
 		if (entry.isDirectory()) {
 			if (entry.name === "node_modules" || entry.name === "dist" || entry.name === "vendor") continue;
-			await walk(full, out);
-		} else if (entry.name.endsWith(".ts") && !entry.name.endsWith(".test.ts")) {
+			await walk(full, out, includeTests);
+		} else if (entry.name.endsWith(".ts") && (includeTests || !entry.name.endsWith(".test.ts"))) {
 			out.push(full);
 		}
 	}
 }
 
-async function sourceFiles(): Promise<string[]> {
+// `dirs` names the per-package subdirectories to scan. Production scans src
+// only; the test-code check scans test too, because a hand-rolled guard in a
+// test helper is still a second definition that drifts and the src-only scan
+// never saw it (three test-local isRecord copies had slipped in exactly there).
+async function collectFiles(dirs: readonly string[], includeTests: boolean): Promise<string[]> {
 	const files: string[] = [];
 	for (const pkg of await readdir(PACKAGES_DIR, { withFileTypes: true })) {
 		if (!pkg.isDirectory()) continue;
-		try {
-			await walk(path.join(PACKAGES_DIR, pkg.name, "src"), files);
-		} catch {
-			// Package without a src/ directory (assets-only) — nothing to scan.
+		for (const sub of dirs) {
+			try {
+				await walk(path.join(PACKAGES_DIR, pkg.name, sub), files, includeTests);
+			} catch {
+				// Package without that subdirectory (assets-only) — nothing to scan.
+			}
 		}
 	}
 	return files;
+}
+
+function sourceFiles(): Promise<string[]> {
+	return collectFiles(["src"], false);
+}
+
+function testFiles(): Promise<string[]> {
+	return collectFiles(["test"], true);
 }
 
 describe("type-guards source locks", () => {
@@ -180,5 +194,14 @@ describe("type-guards source locks", () => {
 			"new inline `instanceof Error ? .message : String(...)` — call errorMessage from @veyyon/utils instead",
 		).toEqual([]);
 		expect(cleared, "grandfathered entries whose local copy is gone — remove them from the list").toEqual([]);
+	});
+
+	it("no test file defines a local isRecord — tests must dogfood the owner too", async () => {
+		const offenders: string[] = [];
+		for (const file of await testFiles()) {
+			const rel = path.relative(PACKAGES_DIR, file).replaceAll(path.sep, "/");
+			if (ISRECORD_DEF.test(await readFile(file, "utf8"))) offenders.push(rel);
+		}
+		expect(offenders, "test-local isRecord copies — import it from @veyyon/utils instead").toEqual([]);
 	});
 });

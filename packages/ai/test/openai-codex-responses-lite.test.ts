@@ -14,6 +14,7 @@ import { isOpenAIResponsesProgressEvent } from "@veyyon/ai/providers/openai-shar
 import type { CodexCompactionRequestContext, Context, FetchImpl, ProviderSessionState } from "@veyyon/ai/types";
 import { buildModel } from "@veyyon/catalog/build";
 import * as piUtils from "@veyyon/utils";
+import { isRecord } from "@veyyon/utils";
 import { createCodexModel } from "./helpers";
 
 const TEST_INSTALLATION_ID = "00000000-0000-4000-8000-000000000001";
@@ -74,10 +75,6 @@ const COMPLETED_CODEX_EVENTS: Array<Record<string, unknown>> = [
 interface CapturedCodexRequest {
 	headers: Headers;
 	body: Record<string, unknown>;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function requireRecord(value: unknown, label: string): Record<string, unknown> {

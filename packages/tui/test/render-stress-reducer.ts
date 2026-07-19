@@ -1,5 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { isRecord } from "@veyyon/utils/type-guards";
 import {
 	buildScenarios,
 	isOperationKind,
@@ -30,10 +31,6 @@ function extractReplayOperations(parsed: unknown): OperationKind[] {
 		operations.push(kind);
 	}
 	return operations;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 export async function reduceFailingOperations<T>(

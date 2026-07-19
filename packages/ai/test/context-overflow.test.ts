@@ -19,7 +19,7 @@ import { complete } from "@veyyon/ai/stream";
 import type { AssistantMessage, Context, Model, Usage } from "@veyyon/ai/types";
 import { buildModel } from "@veyyon/catalog/build";
 import { getBundledModel } from "@veyyon/catalog/models";
-import { $which } from "@veyyon/utils";
+import { $which, isRecord } from "@veyyon/utils";
 
 function isContextOverflow(message: AssistantMessage, contextWindow: number | null): boolean {
 	return originalIsContextOverflow(message, contextWindow ?? 0);
@@ -107,10 +107,6 @@ interface LmStudioDiscoveredModel {
 	name: string;
 	contextWindow: number;
 	baseUrl: string;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function normalizeLmStudioBaseUrl(rawBaseUrl: string | undefined): string {

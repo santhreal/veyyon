@@ -10,7 +10,7 @@ import { renderSegment } from "@veyyon/coding-agent/modes/components/status-line
 import { initTheme, theme } from "@veyyon/coding-agent/modes/theme/theme";
 import { getSessionAccentAnsi, getSessionAccentHex } from "@veyyon/coding-agent/utils/session-color";
 import { visibleWidth } from "@veyyon/tui";
-import { getProjectDir, setProjectDir } from "@veyyon/utils";
+import { getProjectDir, setProjectDir, stripAnsi } from "@veyyon/utils";
 
 const originalProjectDir = getProjectDir();
 
@@ -116,10 +116,6 @@ function createStatusLineSession(sessionName: string, modelName?: string) {
 			}),
 		},
 	} as unknown as ConstructorParameters<typeof StatusLineComponent>[0];
-}
-
-function stripAnsi(value: string): string {
-	return value.replace(/\x1B\[[0-?]*[ -/]*[@-~]/g, "");
 }
 
 describe("status line session accent", () => {

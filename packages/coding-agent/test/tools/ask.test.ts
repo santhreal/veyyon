@@ -1,5 +1,4 @@
 import { beforeAll, describe, expect, it, vi } from "bun:test";
-import { stripVTControlCharacters } from "node:util";
 import type { AgentToolContext } from "@veyyon/agent-core";
 import { Settings } from "@veyyon/coding-agent/config/settings";
 import type {
@@ -11,6 +10,7 @@ import { getThemeByName, initTheme } from "@veyyon/coding-agent/modes/theme/them
 import type { ToolSession } from "@veyyon/coding-agent/tools";
 import { AskTool, askToolRenderer } from "@veyyon/coding-agent/tools/ask";
 import { ToolAbortError } from "@veyyon/coding-agent/tools/tool-errors";
+import { stripAnsi } from "@veyyon/utils";
 import { type } from "arktype";
 
 function createSession(overrides: Partial<ToolSession> = {}): ToolSession {
@@ -68,10 +68,6 @@ function createContext(args: {
 		},
 		abort: args.abort ?? (() => {}),
 	} as unknown as AgentToolContext;
-}
-
-function stripAnsi(text: string): string {
-	return stripVTControlCharacters(text);
 }
 
 function selectItemLabel(option: ExtensionUISelectItem | undefined): string | undefined {
