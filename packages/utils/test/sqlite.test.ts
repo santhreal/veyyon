@@ -1,6 +1,6 @@
 import { Database } from "bun:sqlite";
 import { afterEach, describe, expect, it } from "bun:test";
-import { tableExists } from "../src/sqlite";
+import { sqlPlaceholders, tableExists } from "../src/sqlite";
 
 // One in-memory database per assertion group; each closes in afterEach so a
 // leaked handle can never mask the closed-handle propagation test below.
@@ -58,5 +58,37 @@ describe("tableExists", () => {
 		// that would disable whole features without a trace. The query error
 		// surfaces to the caller.
 		expect(() => tableExists(closed, "history")).toThrow();
+	});
+});
+
+describe("sqlPlaceholders", () => {
+	it("builds a comma-separated run of the requested count", () => {
+		expect(sqlPlaceholders(1)).toBe("?");
+		expect(sqlPlaceholders(3)).toBe("?, ?, ?");
+	});
+
+	it("returns an empty string for a count of 0 (caller must guard IN ())", () => {
+		expect(sqlPlaceholders(0)).toBe("");
+	});
+
+	it("binds cleanly in a real IN clause", () => {
+		const db = new Database(":memory:");
+		try {
+			db.run("CREATE TABLE t (id INTEGER)");
+			for (const id of [1, 2, 3, 4]) db.run("INSERT INTO t (id) VALUES (?)", [id]);
+			const wanted = [2, 4];
+			const rows = db
+				.query(`SELECT id FROM t WHERE id IN (${sqlPlaceholders(wanted.length)}) ORDER BY id`)
+				.all(...wanted) as Array<{ id: number }>;
+			expect(rows.map(r => r.id)).toEqual([2, 4]);
+		} finally {
+			db.close();
+		}
+	});
+
+	it("throws on a negative or non-integer count", () => {
+		expect(() => sqlPlaceholders(-1)).toThrow(RangeError);
+		expect(() => sqlPlaceholders(2.5)).toThrow(RangeError);
+		expect(() => sqlPlaceholders(Number.NaN)).toThrow(RangeError);
 	});
 });

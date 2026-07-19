@@ -11,6 +11,7 @@ import type { Stats } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { batched, getStatsDbPath, isEnoent, logger, trimTrailingSlashes } from "@veyyon/utils";
+import { sqlPlaceholders } from "@veyyon/utils/sqlite";
 import { getTimeRangeConfig } from "./aggregator";
 import { initDb } from "./db";
 import type { GainDashboardStats, GainSourceTotals, GainTimeSeriesPoint } from "./shared-types";
@@ -133,7 +134,7 @@ async function readProjectsBySession(sessions: readonly string[]): Promise<Map<s
 
 	const database = await initDb();
 	for (const chunk of batched(uniqueSessions, SQLITE_VARIABLE_CHUNK_SIZE)) {
-		const placeholders = chunk.map(() => "?").join(",");
+		const placeholders = sqlPlaceholders(chunk.length);
 		const rows = database
 			.prepare(`SELECT DISTINCT session_file, folder FROM messages WHERE session_file IN (${placeholders})`)
 			.all(...chunk) as Array<{ session_file: string; folder: string }>;

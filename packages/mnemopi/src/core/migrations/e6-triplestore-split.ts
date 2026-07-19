@@ -1,6 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { existsSync, writeFileSync } from "node:fs";
 import { closeQuietly, type DatabasePath, openDatabase } from "../../db";
+import { sqlPlaceholders } from "../../util/sqlite";
 
 export const ANNOTATION_KINDS = ["mentions", "fact", "occurred_on", "has_source"] as const;
 export type AnnotationKind = (typeof ANNOTATION_KINDS)[number];
@@ -30,10 +31,6 @@ interface TripleCandidateRow {
 interface Classification {
 	rows: TripleCandidateRow[];
 	total: number;
-}
-
-function placeholders(count: number): string {
-	return Array.from({ length: count }, () => "?").join(",");
 }
 
 function hasTable(db: Database, name: string): boolean {
@@ -69,7 +66,7 @@ function initAnnotations(db: Database): void {
 
 export function hasPendingMigration(db: Database): boolean {
 	if (!hasTable(db, "triples")) return false;
-	const marks = placeholders(ANNOTATION_KINDS.length);
+	const marks = sqlPlaceholders(ANNOTATION_KINDS.length);
 	if (!hasTable(db, "annotations")) {
 		return db.query(`SELECT 1 FROM triples WHERE predicate IN (${marks}) LIMIT 1`).get(...ANNOTATION_KINDS) !== null;
 	}
@@ -93,7 +90,7 @@ export function hasPendingMigration(db: Database): boolean {
 function classifyRows(db: Database): Classification {
 	if (!hasTable(db, "triples")) return { rows: [], total: 0 };
 	const totalRow = db.query("SELECT COUNT(*) AS count FROM triples").get() as { count: number };
-	const marks = placeholders(ANNOTATION_KINDS.length);
+	const marks = sqlPlaceholders(ANNOTATION_KINDS.length);
 	const candidates = db
 		.query(`
 			SELECT id, subject, predicate, object, source, confidence, created_at

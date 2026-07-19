@@ -7,7 +7,7 @@ import { parseQueryTime, recencyDecay, temporalBoost, toUtcIso } from "../../uti
 export { parseQueryTime, temporalBoost } from "../../util/datetime";
 
 import { unicodeWordTokens } from "../../util/regex";
-import { SQLITE_IN_CLAUSE_BATCH, tableExists as tableExistsIn } from "../../util/sqlite";
+import { SQLITE_IN_CLAUSE_BATCH, sqlPlaceholders, tableExists as tableExistsIn } from "../../util/sqlite";
 import { embedQuery } from "../embeddings";
 import { mmrRerank } from "../mmr";
 import { adjustWeights, classifyIntent } from "../query-intent";
@@ -377,10 +377,6 @@ function ftsQuery(query: string, useSynonyms = true): string {
 	return tokens.map(ftsPhrase).join(" OR ");
 }
 
-function placeholders(count: number): string {
-	return new Array<string>(count).fill("?").join(",");
-}
-
 function queryAll(beam: BeamMemoryState, sql: string, params: readonly DbValue[] = []): Row[] {
 	return beam.db.query(sql).all(...params) as Row[];
 }
@@ -543,7 +539,7 @@ function vectorSimilarities(
 	for (const chunk of batched(memoryIds, SQLITE_IN_CLAUSE_BATCH)) {
 		const rows = queryAll(
 			beam,
-			`SELECT memory_id, embedding_json FROM memory_embeddings WHERE memory_id IN (${placeholders(chunk.length)})`,
+			`SELECT memory_id, embedding_json FROM memory_embeddings WHERE memory_id IN (${sqlPlaceholders(chunk.length)})`,
 			chunk,
 		);
 		for (const row of rows) {
@@ -586,7 +582,7 @@ function fetchCandidates(
 		`SELECT ${columns
 			.split(", ")
 			.map(column => `m.${column}`)
-			.join(", ")} FROM ${table} m WHERE m.${keyColumn} IN (${placeholders(idsOrRowids.length)}) AND ${where}`,
+			.join(", ")} FROM ${table} m WHERE m.${keyColumn} IN (${sqlPlaceholders(idsOrRowids.length)}) AND ${where}`,
 		[...idsOrRowids, ...params],
 	);
 	const out: MemoryCandidate[] = [];
@@ -763,7 +759,7 @@ function dedupCrossTierSummaryLinks(beam: BeamMemoryState, results: readonly Rec
 
 	const summaryRows = queryAll(
 		beam,
-		`SELECT id, summary_of FROM episodic_memory WHERE id IN (${placeholders(episodicIds.length)})`,
+		`SELECT id, summary_of FROM episodic_memory WHERE id IN (${sqlPlaceholders(episodicIds.length)})`,
 		episodicIds,
 	);
 	const dropWorking = new Set<string>();
@@ -809,7 +805,7 @@ function updateRecallCounts(
 		const table = tierLabel === "working" ? "working_memory" : "episodic_memory";
 		const { where, params } = buildWhere(beam, "", options);
 		beam.db.run(
-			`UPDATE ${table} SET recall_count = COALESCE(recall_count, 0) + 1, last_recalled = ? WHERE id IN (${placeholders(ids.length)}) AND ${where}`,
+			`UPDATE ${table} SET recall_count = COALESCE(recall_count, 0) + 1, last_recalled = ? WHERE id IN (${sqlPlaceholders(ids.length)}) AND ${where}`,
 			[timestamp, ...ids, ...params],
 		);
 	}
@@ -854,7 +850,7 @@ function collectMemoryCandidates(
 		if (emIds.length > 0) {
 			const rows = queryAll(
 				beam,
-				`SELECT rowid, id FROM episodic_memory WHERE id IN (${placeholders(emIds.length)})`,
+				`SELECT rowid, id FROM episodic_memory WHERE id IN (${sqlPlaceholders(emIds.length)})`,
 				emIds,
 			);
 			emRowids = [...new Set([...emRowids, ...rows.map(row => numberOrDefault(row.rowid)).filter(n => n > 0)])];
@@ -1100,7 +1096,7 @@ export function factRecall(beam: BeamMemoryState, query: string, topK = 30): Fac
 		beam,
 		`SELECT rowid, fact_id, subject, predicate, object, timestamp, confidence
 		 FROM facts
-		 WHERE rowid IN (${placeholders(rowids.length)}) AND ${visibility.where}
+		 WHERE rowid IN (${sqlPlaceholders(rowids.length)}) AND ${visibility.where}
 		 ORDER BY confidence DESC
 		 LIMIT ?`,
 		[...rowids, ...visibility.params, rowids.length],

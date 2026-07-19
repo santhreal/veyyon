@@ -24,6 +24,7 @@ import { Database } from "bun:sqlite";
 import type { AgentTool } from "@veyyon/agent-core";
 import type { FetchImpl } from "@veyyon/ai";
 import { $env, $flag, getAutoQaDbDir, getInstallId, logger, scopedTimeoutSignal, VERSION } from "@veyyon/utils";
+import { sqlPlaceholders } from "@veyyon/utils/sqlite";
 import { type } from "arktype";
 import type { Settings } from "..";
 import type { ToolSession } from "./index";
@@ -408,7 +409,7 @@ async function performFlush(db: Database, config: PushConfig, options: FlushOpti
 		// batch (after partial fills, retries, etc.) still flips exactly what
 		// we sent.
 		const ids = rows.map(r => r.id);
-		const placeholders = ids.map(() => "?").join(",");
+		const placeholders = sqlPlaceholders(ids.length);
 		db.prepare(`UPDATE grievances SET pushed = 1 WHERE id IN (${placeholders})`).run(...ids);
 		totalPushed += rows.length;
 		options.onProgress?.(totalPushed);

@@ -3,7 +3,7 @@
 // The previous local copy filtered on `type IN ('table','virtual table')`, but
 // SQLite registers FTS5/vec virtual tables with `type = 'table'`, so the extra
 // literal never matched; the shared owner uses the correct set.
-export { tableExists } from "@veyyon/utils/sqlite";
+export { sqlPlaceholders, tableExists } from "@veyyon/utils/sqlite";
 
 /**
  * Batch size for building `... IN (?, ?, …)` clauses over a list of ids. SQLite
