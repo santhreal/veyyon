@@ -1,4 +1,6 @@
 import { describe, expect, it } from "bun:test";
+import { readdir, readFile } from "node:fs/promises";
+import * as path from "node:path";
 import {
 	envBool,
 	envDisabled,
@@ -10,6 +12,22 @@ import {
 	envTruthy,
 	envValue,
 } from "../src/util/env";
+
+const SRC_DIR = path.join(import.meta.dir, "..", "src");
+const OWNER = path.join("util", "env.ts");
+
+async function sourceFiles(dir: string, out: string[] = []): Promise<string[]> {
+	for (const entry of await readdir(dir, { withFileTypes: true })) {
+		const full = path.join(dir, entry.name);
+		if (entry.isDirectory()) {
+			if (entry.name === "node_modules" || entry.name === "dist") continue;
+			await sourceFiles(full, out);
+		} else if (entry.name.endsWith(".ts") && !entry.name.endsWith(".test.ts")) {
+			out.push(full);
+		}
+	}
+	return out;
+}
 
 describe("envValue / envString / envOptionalString", () => {
 	it("envValue returns the raw value or undefined, preserving empty strings", () => {
@@ -88,5 +106,33 @@ describe("envOneOf", () => {
 		expect(envOneOf("X", allowed, "auto", { X: "turbo" })).toBe("auto");
 		expect(envOneOf("X", allowed, "auto", { X: "" })).toBe("auto");
 		expect(envOneOf("X", allowed, "auto", {})).toBe("auto");
+	});
+});
+
+describe("env-helper source lock", () => {
+	// util/env.ts is the ONE owner of the env-reading helpers. A local copy is a
+	// same-name-divergence trap: local-llm.ts once carried its own `env` alias and
+	// an `envBool` that returned false (not the default) on an unrecognized value,
+	// so MNEMOPI_LLM_ENABLED meant two different things depending on the code path.
+	// Longer names first so the reported match names the exact clone.
+	const ENV_HELPER_DEF =
+		/\bfunction (envOptionalString|envOneOf|envString|envValue|envTruthy|envDisabled|envBool|envInt|envFloat|env)\s*\(/;
+
+	it("catches the def shape but not a coincidental name", () => {
+		expect(ENV_HELPER_DEF.test("function envBool(name: string) {")).toBe(true);
+		expect(ENV_HELPER_DEF.test("function env(name: string): string {")).toBe(true);
+		expect(ENV_HELPER_DEF.test("function environment() {")).toBe(false);
+		expect(ENV_HELPER_DEF.test("function readEnvBool() {")).toBe(false);
+	});
+
+	it("no production source outside util/env.ts defines an env-reading helper", async () => {
+		const offenders: string[] = [];
+		for (const file of await sourceFiles(SRC_DIR)) {
+			if (file.endsWith(OWNER)) continue;
+			if (ENV_HELPER_DEF.test(await readFile(file, "utf8"))) {
+				offenders.push(path.relative(SRC_DIR, file).replaceAll(path.sep, "/"));
+			}
+		}
+		expect(offenders, "local env helper — import it from ../util/env instead").toEqual([]);
 	});
 });
