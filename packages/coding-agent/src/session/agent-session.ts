@@ -13256,6 +13256,26 @@ export class AgentSession {
 	}
 
 	/**
+	 * Does the live context still trip threshold compaction? Measured with the
+	 * same convention as {@link #compactionCreatedHeadroom} (usage minus stored
+	 * snapshot, against the active window) and the exact `shouldCompact`
+	 * predicate the caller used to trigger this run. Used by the Tier-0 lossless
+	 * dedup pass to decide whether an LLM/snap compaction is still warranted
+	 * after redundant tool-results were elided. When the window is unknown we
+	 * cannot evaluate the bar, so we assume it still trips and let compaction
+	 * proceed (never suppress a compaction we cannot prove is unnecessary).
+	 */
+	#thresholdStillTrips(compactionSettings: Parameters<typeof shouldCompact>[2]): boolean {
+		const contextWindow = this.model?.contextWindow ?? 0;
+		if (contextWindow <= 0) return true;
+		const residualTokens = compactionContextTokens(
+			this.getContextUsage({ contextWindow })?.tokens ?? 0,
+			this.#estimateStoredContextTokens(),
+		);
+		return shouldCompact(residualTokens, contextWindow, compactionSettings);
+	}
+
+	/**
 	 * Retry-side counterpart to {@link #compactionCreatedHeadroom}. An
 	 * overflow/incomplete recovery only needs the rebuilt prompt to *fit* the
 	 * window again — it does not have to land under the compaction threshold, let
@@ -13411,6 +13431,28 @@ export class AgentSession {
 			!suppressContinuation && options.autoContinue !== false && compactionSettings.autoContinue !== false;
 		const suppressHandoff = options.suppressHandoff === true;
 		let fallbackFromShake = false;
+		// Tier-0 lossless pass, ahead of every strategy. Before an LLM compaction,
+		// snapcompact, or shake ever touches history under pressure, drop
+		// tool-results that are byte-identical to a newer copy (a re-read of an
+		// unchanged file, a re-run of the same command). This is recall-preserving
+		// (the newest copy stays live; elided copies recover via the offload
+		// artifact) and LLM-free, so it costs nothing to run first and shrinks
+		// whatever the strategy dispatch below has to process. Skipped for `idle`,
+		// which runs its own scheduling and is not a pressure trigger. When the
+		// dedup alone brings a `threshold` trigger back under the bar, the whole
+		// compaction is unnecessary — return early and keep the un-compacted
+		// (merely deduped) history. `overflow`/`incomplete` are recovery paths the
+		// caller needs fully resolved, so they always fall through to the body.
+		if (reason !== "idle") {
+			const deduped = await this.dedupeRedundantToolResults();
+			if (deduped.toolResultsDropped > 0) {
+				if (this.#promptGeneration !== generation) return COMPACTION_CHECK_NONE;
+				this.#rebasePendingContextSnapshotAfterCompaction();
+				if (reason === "threshold" && !this.#thresholdStillTrips(compactionSettings)) {
+					return COMPACTION_CHECK_NONE;
+				}
+			}
+		}
 		// Shake runs inline (cheap, no remote LLM). On overflow recovery, if shake
 		// reclaims nothing we fall through to the summary-compaction body below so
 		// the oversized input still gets resolved.

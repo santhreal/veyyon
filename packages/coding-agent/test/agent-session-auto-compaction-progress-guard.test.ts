@@ -1295,4 +1295,153 @@ describe("AgentSession auto-compaction progress guard", () => {
 			.at(-1);
 		expect(compactionEntry?.warning).toBeUndefined();
 	});
+
+	describe("Tier-0 lossless dedup pass (runs ahead of every strategy)", () => {
+		const DUP_SENTINEL = "DUPLICATE_RESULT_BODY_7f3a\n";
+
+		// Seed a user → assistant(toolCall bash `ls`) → toolResult turn carrying
+		// `text`. Two seeds with identical text produce byte-identical results the
+		// redundancy pass collapses to the newest copy.
+		function seedBashResult(text: string): void {
+			const toolCallId = `call_bash_${sessionManager.getBranch().length}`;
+			sessionManager.appendMessage({
+				role: "user",
+				content: [{ type: "text", text: "run it" }],
+				timestamp: Date.now() - 3,
+			});
+			sessionManager.appendMessage({
+				role: "assistant",
+				content: [{ type: "toolCall", id: toolCallId, name: "bash", arguments: { command: "ls" } }],
+				api: "anthropic-messages",
+				provider: "anthropic",
+				model: "claude-sonnet-4-5",
+				stopReason: "toolUse",
+				usage: {
+					input: 100,
+					output: 10,
+					cacheRead: 0,
+					cacheWrite: 0,
+					totalTokens: 110,
+					cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+				},
+				timestamp: Date.now() - 2,
+			});
+			sessionManager.appendMessage({
+				role: "toolResult",
+				toolCallId,
+				toolName: "bash",
+				content: [{ type: "text", text }],
+				isError: false,
+				timestamp: Date.now() - 1,
+			});
+		}
+
+		// Live tool-result bodies still carrying the duplicate sentinel. An elided
+		// copy's content becomes the `[shaken …]` placeholder, so it drops out of
+		// this count — the newest (kept) copy stays.
+		function liveDuplicateCount(): number {
+			return sessionManager
+				.getBranch()
+				.filter(e => e.type === "message" && (e.message as { role?: string }).role === "toolResult")
+				.map(e =>
+					((e as { message: { content: { type: string; text?: string }[] } }).message.content ?? [])
+						.filter(b => b.type === "text")
+						.map(b => b.text ?? "")
+						.join(""),
+				)
+				.filter(text => text.includes(DUP_SENTINEL)).length;
+		}
+
+		it("elides an identical earlier result and skips compaction when that alone clears the threshold", async () => {
+			// Two byte-identical bash results plus a distinct one. The redundancy pass
+			// drops the older duplicate losslessly; nothing else is touched.
+			seedBashResult(DUP_SENTINEL.repeat(200));
+			seedBashResult("UNIQUE_BODY_KEEP\n".repeat(50));
+			seedBashResult(DUP_SENTINEL.repeat(200));
+
+			// Context reads over-threshold while both duplicate copies are live and
+			// falls under it the instant one is elided — the honest post-dedup state.
+			vi.spyOn(session, "getContextUsage").mockImplementation(() => {
+				const tokens = liveDuplicateCount() >= 2 ? 190000 : 1000;
+				return { tokens, contextWindow: 200000, percent: tokens / 2000 };
+			});
+			const promptSpy = vi.spyOn(session.agent, "prompt").mockResolvedValue(undefined as never);
+			const dedupeSpy = vi.spyOn(session, "dedupeRedundantToolResults");
+			const notices = collectNotices();
+			const startCount = countCompactionStarts();
+
+			const assistantMsg = highUsageAssistant();
+			session.agent.emitExternalEvent({ type: "message_end", message: assistantMsg });
+			session.agent.emitExternalEvent({ type: "agent_end", messages: [assistantMsg] });
+			await session.waitForIdle();
+
+			// Dedup ran, dropped exactly the one older duplicate, and its lossless
+			// result made compaction unnecessary: no compaction ever started.
+			expect(dedupeSpy).toHaveBeenCalledTimes(1);
+			expect(await dedupeSpy.mock.results[0]!.value).toMatchObject({ toolResultsDropped: 1 });
+			expect(liveDuplicateCount()).toBe(1);
+			expect(startCount()).toBe(0);
+			expect(promptSpy).not.toHaveBeenCalled();
+			// No dead-end warning: skipping compaction here is a resolution, not a stall.
+			expect(notices.filter(n => n.message.includes(NO_PROGRESS_FRAGMENT)).length).toBe(0);
+		});
+
+		it("still runs the strategy compaction when dedup does not clear the pressure", async () => {
+			seedBashResult(DUP_SENTINEL.repeat(200));
+			seedBashResult(DUP_SENTINEL.repeat(200));
+
+			// Context stays over threshold even after the duplicate is gone (the
+			// surviving copy is itself large), so the Tier-0 pass must fall through
+			// to the real compaction rather than swallow the trigger.
+			vi.spyOn(session, "getContextUsage").mockReturnValue({ tokens: 190000, contextWindow: 200000, percent: 95 });
+			vi.spyOn(session.agent, "prompt").mockResolvedValue(undefined as never);
+			const dedupeSpy = vi.spyOn(session, "dedupeRedundantToolResults");
+			const startCount = countCompactionStarts();
+
+			const { promise: compactionDone, resolve: onCompactionDone } = Promise.withResolvers<void>();
+			session.subscribe(event => {
+				if (event.type === "auto_compaction_end") onCompactionDone();
+			});
+
+			const assistantMsg = highUsageAssistant();
+			session.agent.emitExternalEvent({ type: "message_end", message: assistantMsg });
+			session.agent.emitExternalEvent({ type: "agent_end", messages: [assistantMsg] });
+			await compactionDone;
+			await session.waitForIdle();
+
+			expect(dedupeSpy).toHaveBeenCalledTimes(1);
+			expect(await dedupeSpy.mock.results[0]!.value).toMatchObject({ toolResultsDropped: 1 });
+			expect(startCount()).toBe(1);
+		});
+
+		it("does not early-return on an overflow recovery even when dedup frees space", async () => {
+			seedBashResult(DUP_SENTINEL.repeat(200));
+			seedBashResult(DUP_SENTINEL.repeat(200));
+
+			// Overflow is a recovery path: the prompt must be rebuilt to fit the window
+			// regardless of how much dedup reclaimed, so compaction must run.
+			vi.spyOn(session, "getContextUsage").mockImplementation(() => {
+				const tokens = liveDuplicateCount() >= 2 ? 250000 : 1000;
+				return { tokens, contextWindow: 200000, percent: tokens / 2500 };
+			});
+			vi.spyOn(session.agent, "prompt").mockResolvedValue(undefined as never);
+			const dedupeSpy = vi.spyOn(session, "dedupeRedundantToolResults");
+			const startCount = countCompactionStarts();
+
+			const { promise: compactionDone, resolve: onCompactionDone } = Promise.withResolvers<void>();
+			session.subscribe(event => {
+				if (event.type === "auto_compaction_end") onCompactionDone();
+			});
+
+			const overflowMsg = overflowAssistant();
+			session.agent.emitExternalEvent({ type: "message_end", message: overflowMsg });
+			session.agent.emitExternalEvent({ type: "agent_end", messages: [overflowMsg] });
+			await compactionDone;
+			await session.waitForIdle();
+
+			expect(dedupeSpy).toHaveBeenCalledTimes(1);
+			// Overflow recovery resolves regardless of the freed space: compaction ran.
+			expect(startCount()).toBe(1);
+		});
+	});
 });
