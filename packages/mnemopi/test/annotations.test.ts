@@ -127,6 +127,29 @@ describe("AnnotationStore", () => {
 		}
 	});
 
+	it("counts a renumber-insert that hits the unique index as skipped, not a throw", () => {
+		const dst = new AnnotationStore(tempDb());
+		try {
+			dst.add("mem-1", "mentions", "Alice");
+			dst.add("mem-1", "mentions", "Bob");
+			const rows = dst.exportAll();
+			const alice = rows.find(row => row.value === "Alice");
+			expect(alice).toBeDefined();
+
+			// Import an item that reuses Alice's id but carries Bob's value. The id
+			// matches an existing row with different content and force is off, so the
+			// store re-inserts without the id — which collides with the existing
+			// (mem-1, mentions, Bob) on the unique index. isSqliteConstraint recognizes
+			// the collision and counts it as skipped instead of rethrowing.
+			const stats = dst.importAll([{ id: alice?.id, memory_id: "mem-1", kind: "mentions", value: "Bob" }]);
+			expect(stats).toEqual({ inserted: 0, skipped: 1, overwritten: 0, imported_renumbered: 0 });
+			// No phantom third row was created by the failed renumber insert.
+			expect(dst.exportAll()).toHaveLength(2);
+		} finally {
+			dst.close();
+		}
+	});
+
 	it("initializes and reuses a shared bun:sqlite connection", () => {
 		const path = tempDb();
 		initAnnotations(path);
