@@ -799,11 +799,17 @@ function userText(content: unknown): string {
 	return parts.join("\n");
 }
 
+// Deliberate loose-`unknown` sibling of userText: it defensively flattens
+// possibly-untyped persisted message content (raw JSON off disk), so it cannot
+// use the typed @veyyon/ai assistantText owner, which requires an
+// AssistantMessage. Mirrors userText's null/non-object guard.
 function assistantText(content: unknown): string {
 	if (!Array.isArray(content)) return "";
 	const parts: string[] = [];
 	for (const block of content) {
-		if (block.type === "text" && block.text) parts.push(block.text);
+		if (!block || typeof block !== "object") continue;
+		const maybe = block as { type?: unknown; text?: unknown };
+		if (maybe.type === "text" && typeof maybe.text === "string") parts.push(maybe.text);
 	}
 	return parts.join("\n");
 }

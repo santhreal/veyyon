@@ -12,6 +12,7 @@ import {
 	type AssistantMessage,
 	type AssistantMessageEventStream,
 	type AuthStorage,
+	assistantText,
 	type Context,
 	type FetchImpl,
 	type Usage,
@@ -682,14 +683,6 @@ async function callPerplexityAsk(
 	});
 }
 
-function assistantText(message: AssistantMessage): string {
-	let text = "";
-	for (const block of message.content) {
-		if (block.type === "text") text += block.text;
-	}
-	return text;
-}
-
 function isPerplexitySearchResult(value: unknown): value is PerplexitySearchResult {
 	const record = asRecord(value);
 	return typeof record?.url === "string" && record.url.length > 0;
@@ -761,7 +754,7 @@ function usageFromAssistant(usage: Usage): SearchResponse["usage"] | undefined {
 function parseStreamedApiResponse(message: AssistantMessage, metadata: PerplexityApiStreamMetadata): SearchResponse {
 	const { sources, citations } = buildApiSources(metadata);
 	const relatedQuestions = relatedQuestionsFromMetadata(metadata);
-	const answer = assistantText(message);
+	const answer = assistantText(message, "");
 
 	return {
 		provider: "perplexity",
