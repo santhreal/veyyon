@@ -1,3 +1,4 @@
+import { clamp01 } from "@veyyon/utils";
 import { shimmerText } from "../../modes/theme/shimmer";
 import { theme as currentTheme, type Theme } from "../../modes/theme/theme";
 
@@ -43,7 +44,7 @@ function resolveProgressBarTheme(uiTheme: ProgressBarTheme | undefined): Progres
 export function renderAsciiBar(fraction: number | undefined, width = 24, uiTheme?: ProgressBarTheme): string {
 	const progressBarTheme = resolveProgressBarTheme(uiTheme);
 	if (fraction === undefined) return `[${shimmerText("·".repeat(width), progressBarTheme)}]`;
-	const clamped = Math.min(Math.max(fraction, 0), 1);
+	const clamped = clamp01(fraction);
 	const filled = Math.round(clamped * width);
 	const pct = Math.round(clamped * 100);
 	const bar = `${"█".repeat(filled)}${"░".repeat(Math.max(0, width - filled))}`;

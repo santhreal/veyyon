@@ -1,4 +1,4 @@
-import { $env, DAY_MS, HOUR_MS, MINUTE_MS, normalizeBaseUrl, SECOND_MS } from "@veyyon/utils";
+import { $env, clamp01, DAY_MS, HOUR_MS, MINUTE_MS, normalizeBaseUrl, SECOND_MS } from "@veyyon/utils";
 import { getKimiCommonHeaders } from "../registry/oauth/kimi";
 import type {
 	UsageAmount,
@@ -131,8 +131,8 @@ function buildUsageAmount(row: KimiUsageRow): UsageAmount {
 	if (row.used !== undefined) amount.used = row.used;
 	if (row.remaining !== undefined) amount.remaining = row.remaining;
 	if (row.limit !== undefined && row.used !== undefined && row.limit > 0) {
-		amount.usedFraction = Math.min(Math.max(row.used / row.limit, 0), 1);
-		amount.remainingFraction = Math.min(Math.max((row.limit - row.used) / row.limit, 0), 1);
+		amount.usedFraction = clamp01(row.used / row.limit);
+		amount.remainingFraction = clamp01((row.limit - row.used) / row.limit);
 		amount.remaining = amount.remaining ?? row.limit - row.used;
 	}
 	return amount;

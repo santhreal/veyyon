@@ -1,4 +1,4 @@
-import { errorMessage, logger } from "@veyyon/utils";
+import { clamp, errorMessage, logger } from "@veyyon/utils";
 
 const DELIVERY_RETRY_BASE_MS = 500;
 const DELIVERY_RETRY_MAX_MS = 30_000;
@@ -699,7 +699,7 @@ export class AsyncJobManager {
 	}
 
 	#getRetryDelay(attempt: number): number {
-		const exp = Math.min(Math.max(attempt - 1, 0), 8);
+		const exp = clamp(attempt - 1, 0, 8);
 		const backoffMs = DELIVERY_RETRY_BASE_MS * 2 ** exp;
 		const jitterMs = Math.floor(Math.random() * DELIVERY_RETRY_JITTER_MS);
 		return Math.min(DELIVERY_RETRY_MAX_MS, backoffMs + jitterMs);

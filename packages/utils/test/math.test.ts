@@ -49,15 +49,20 @@ describe("clamp01", () => {
 	});
 });
 
-// Source lock: clamp01 has exactly ONE owner, packages/utils/src/math.ts.
-// Four hand-rolled copies (coding-agent/sun.ts, mnemopi helpers.ts + recall.ts,
-// tui latex-to-unicode.ts) drifted on NaN handling before they were folded onto
-// this owner. Import clamp01 from @veyyon/utils instead of writing another copy.
+// Source lock: clamp and clamp01 have exactly ONE owner, packages/utils/src/math.ts.
+// Hand-rolled copies drifted on NaN handling before they were folded onto this
+// owner: local clamp01 copies (coding-agent/sun.ts, mnemopi helpers.ts +
+// recall.ts, tui latex-to-unicode.ts) and a whole second `clamp` owner in
+// tui/utils.ts whose docstring documented the opposite non-finite behavior.
+// Import clamp/clamp01 from @veyyon/utils instead of writing another copy.
 const PACKAGES_DIR = path.join(import.meta.dir, "../..");
 const OWNER = "utils/src/math.ts";
 const CLAMP01_DEF = /function\s+clamp01\s*\(/;
+// `clamp\s*\(` matches `function clamp(` but not `clamp01(` (which is `clamp` + `01`)
+// nor `clampFoo(`, so a second same-name owner is caught without false positives.
+const CLAMP_DEF = /function\s+clamp\s*\(/;
 
-async function walkTsSources(dir: string, out: string[]): Promise<void> {
+async function walkTsSources(dir: string, out: string[], skipModes = false): Promise<void> {
 	let entries: import("node:fs").Dirent[];
 	try {
 		entries = await readdir(dir, { withFileTypes: true });
@@ -68,26 +73,96 @@ async function walkTsSources(dir: string, out: string[]): Promise<void> {
 		const full = path.join(dir, entry.name);
 		if (entry.isDirectory()) {
 			if (entry.name === "node_modules" || entry.name === "dist" || entry.name === "vendor") continue;
-			await walkTsSources(full, out);
+			// The coding-agent modes/ subtree is a separately owned UI lane; the
+			// inline-idiom lock does not reach into it.
+			if (skipModes && entry.name === "modes") continue;
+			await walkTsSources(full, out, skipModes);
 		} else if (entry.name.endsWith(".ts") && !entry.name.endsWith(".test.ts")) {
 			out.push(full);
 		}
 	}
 }
 
-describe("clamp01 source lock", () => {
-	it("no production source defines a local clamp01 outside the owner", async () => {
-		const files: string[] = [];
+/**
+ * Detect a hand-rolled two-bound clamp: `Math.min(Math.max(v, lo), hi)` or the
+ * mirror `Math.max(Math.min(v, hi), lo)`, where the inner call's result is the
+ * outer call's first argument (a comma follows the inner close paren). This is
+ * exactly `clamp(v, lo, hi)`. It deliberately ignores floor-then-scale shapes
+ * like `Math.min(Math.max(x, 0) * k, hi)`, where an operator, not a comma,
+ * follows the inner call, so those legitimate compositions are not flagged.
+ */
+function hasInlineClamp(text: string): boolean {
+	for (const [outer, inner] of [
+		["min", "max"],
+		["max", "min"],
+	]) {
+		const needle = `Math.${outer}(Math.${inner}(`;
+		const innerNameLen = `Math.${outer}(Math.${inner}`.length;
+		let from = 0;
+		let idx = text.indexOf(needle, from);
+		while (idx !== -1) {
+			from = idx + needle.length;
+			let depth = 0;
+			let end = -1;
+			for (let j = idx + innerNameLen; j < text.length; j++) {
+				const c = text[j];
+				if (c === "(") depth++;
+				else if (c === ")") {
+					depth--;
+					if (depth === 0) {
+						end = j;
+						break;
+					}
+				}
+			}
+			if (end !== -1) {
+				let k = end + 1;
+				while (k < text.length && /\s/.test(text[k] ?? "")) k++;
+				if (text[k] === ",") return true;
+			}
+			idx = text.indexOf(needle, from);
+		}
+	}
+	return false;
+}
+
+describe("clamp source lock", () => {
+	it("hasInlineClamp matches pure clamps but not floor-then-scale or floor-first shapes", () => {
+		expect(hasInlineClamp("Math.min(Math.max(x, 0), 1)")).toBe(true);
+		expect(hasInlineClamp("Math.max(Math.min(x, 1), 0)")).toBe(true);
+		expect(hasInlineClamp("Math.min(Math.max(cursor, 0), text.length)")).toBe(true);
+		// Operator (not comma) after the inner call: a floor-then-scale composition.
+		expect(hasInlineClamp("Math.min(Math.max(0, baseDelayMs) * 2 ** attempt, MAX)")).toBe(false);
+		expect(hasInlineClamp("Math.min(Math.max(seconds, 0) * 1000, MAX)")).toBe(false);
+		// Floor-first `Math.max(lo, Math.min(...))` is a different idiom, not targeted here.
+		expect(hasInlineClamp("Math.max(0, Math.min(a, b))")).toBe(false);
+	});
+
+	it("no production source defines a local clamp or clamp01, or inlines the clamp idiom", async () => {
+		const defFiles: string[] = [];
+		const idiomFiles: string[] = [];
 		for (const pkg of await readdir(PACKAGES_DIR, { withFileTypes: true })) {
 			if (!pkg.isDirectory()) continue;
-			await walkTsSources(path.join(PACKAGES_DIR, pkg.name, "src"), files);
+			await walkTsSources(path.join(PACKAGES_DIR, pkg.name, "src"), defFiles);
+			await walkTsSources(path.join(PACKAGES_DIR, pkg.name, "src"), idiomFiles, true);
+			await walkTsSources(path.join(PACKAGES_DIR, pkg.name, "scripts"), defFiles);
+			await walkTsSources(path.join(PACKAGES_DIR, pkg.name, "scripts"), idiomFiles, true);
 		}
-		const offenders: string[] = [];
-		for (const file of files) {
+		const defOffenders: string[] = [];
+		for (const file of defFiles) {
 			const rel = path.relative(PACKAGES_DIR, file).replaceAll(path.sep, "/");
 			if (rel === OWNER) continue;
-			if (CLAMP01_DEF.test(await readFile(file, "utf8"))) offenders.push(rel);
+			const body = await readFile(file, "utf8");
+			if (CLAMP01_DEF.test(body) || CLAMP_DEF.test(body)) defOffenders.push(rel);
 		}
-		expect(offenders, "new local clamp01 copies — import it from @veyyon/utils instead").toEqual([]);
+		expect(defOffenders, "local clamp/clamp01 copies — import them from @veyyon/utils instead").toEqual([]);
+
+		const idiomOffenders: string[] = [];
+		for (const file of idiomFiles) {
+			const rel = path.relative(PACKAGES_DIR, file).replaceAll(path.sep, "/");
+			if (rel === OWNER) continue;
+			if (hasInlineClamp(await readFile(file, "utf8"))) idiomOffenders.push(rel);
+		}
+		expect(idiomOffenders, "inline Math.min(Math.max(...)) clamp — call clamp()/clamp01() instead").toEqual([]);
 	});
 });

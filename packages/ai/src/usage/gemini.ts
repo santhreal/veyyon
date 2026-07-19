@@ -1,4 +1,4 @@
-import { trimTrailingSlashes } from "@veyyon/utils";
+import { clamp01, trimTrailingSlashes } from "@veyyon/utils";
 import { getGeminiCliHeaders } from "../providers/google-gemini-cli";
 import type {
 	UsageAmount,
@@ -98,8 +98,8 @@ function buildAmount(remainingFraction: number | undefined): UsageAmount {
 	if (remainingFraction === undefined || !Number.isFinite(remainingFraction)) {
 		return { unit: "percent" };
 	}
-	const remaining = Math.min(Math.max(remainingFraction, 0), 1);
-	const used = Math.min(Math.max(1 - remaining, 0), 1);
+	const remaining = clamp01(remainingFraction);
+	const used = clamp01(1 - remaining);
 	return {
 		unit: "percent",
 		used: Math.round(used * 1000) / 10,

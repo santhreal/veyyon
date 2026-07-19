@@ -611,7 +611,7 @@ export class SettingsList implements Component {
 			}
 			const computeStart = (vh: number) =>
 				Math.max(0, Math.min(this.#selectedIndex - Math.floor(vh / 2), this.#filteredItems.length - vh));
-			let viewportHeight = Math.min(Math.max(1, this.#maxVisible - inlineDesc.length), this.#filteredItems.length);
+			let viewportHeight = clamp(this.#maxVisible - inlineDesc.length, 1, this.#filteredItems.length);
 			let startIndex = computeStart(viewportHeight);
 			// Sticky header: once scrolling carries the active section's heading
 			// above the viewport, pin it as a leading row (borrowed from the

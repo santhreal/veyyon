@@ -15,7 +15,7 @@ import {
 	type UsageReport,
 	type UsageUnit,
 } from "@veyyon/ai";
-import { DAY_MS, formatCount, formatDuration, formatNumber, pluralize, sanitizeText } from "@veyyon/utils";
+import { clamp01, DAY_MS, formatCount, formatDuration, formatNumber, pluralize, sanitizeText } from "@veyyon/utils";
 import chalk from "chalk";
 import { ModelRegistry } from "../config/model-registry";
 import { discoverAuthStorage } from "../sdk";
@@ -228,7 +228,7 @@ function describeAmount(limit: UsageLimit): string {
 function renderBar(limit: UsageLimit): string {
 	const fraction = resolveUsedFraction(limit);
 	if (fraction === undefined) return chalk.dim("·".repeat(BAR_WIDTH));
-	const clamped = Math.min(Math.max(fraction, 0), 1);
+	const clamped = clamp01(fraction);
 	const filled = Math.round(clamped * BAR_WIDTH);
 	const color = STATUS_COLOR[resolveStatus(limit)];
 	return color("█".repeat(filled)) + chalk.dim("░".repeat(BAR_WIDTH - filled));
@@ -636,7 +636,7 @@ function renderHistorySparkline(entries: UsageHistoryEntry[], sinceMs: number, n
 	return buckets
 		.map(fraction => {
 			if (fraction === undefined) return chalk.dim("·");
-			const clamped = Math.min(Math.max(fraction, 0), 1);
+			const clamped = clamp01(fraction);
 			const level = SPARK_LEVELS[Math.min(SPARK_LEVELS.length - 1, Math.floor(clamped * SPARK_LEVELS.length))];
 			return STATUS_COLOR[historyStatus(clamped, undefined)](level);
 		})

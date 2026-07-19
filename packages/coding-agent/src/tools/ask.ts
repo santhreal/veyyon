@@ -29,7 +29,7 @@ import {
 	truncateToWidth,
 	visibleWidth,
 } from "@veyyon/tui";
-import { collapseWhitespace, formatCount, prompt, untilAborted } from "@veyyon/utils";
+import { clamp, collapseWhitespace, formatCount, prompt, untilAborted } from "@veyyon/utils";
 import { type as arkType } from "arktype";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import type { ExtensionUISelectItem } from "../extensibility/extensions";
@@ -541,7 +541,7 @@ async function askSingleQuestion(
 	const promptWithProgress = navigation?.progressText ? `${question} (${navigation.progressText})` : question;
 	if (multi) {
 		const selected = new Set<string>(selectedOptions);
-		let cursorIndex = Math.min(Math.max(recommended ?? 0, 0), Math.max(questionOptions.length - 1, 0));
+		let cursorIndex = clamp(recommended ?? 0, 0, Math.max(questionOptions.length - 1, 0));
 		const firstSelected = selectedOptions[0];
 		if (firstSelected) {
 			const selectedIndex = questionOptions.findIndex(option => option.label === firstSelected);

@@ -2,7 +2,7 @@
  * Shared types and utilities for web-fetch handlers
  */
 import { scheduler } from "node:timers/promises";
-import { errorMessage } from "@veyyon/utils";
+import { clamp, errorMessage } from "@veyyon/utils";
 import type TurndownService from "turndown";
 
 import type { AgentStorage } from "../../session/agent-storage";
@@ -138,7 +138,7 @@ function parseRetryAfterMs(value: string | null): number {
 	const seconds = Number(value);
 	if (Number.isFinite(seconds)) return Math.min(Math.max(seconds, 0) * 1000, RETRY_AFTER_MAX_MS);
 	const date = Date.parse(value);
-	if (!Number.isNaN(date)) return Math.min(Math.max(date - Date.now(), 0), RETRY_AFTER_MAX_MS);
+	if (!Number.isNaN(date)) return clamp(date - Date.now(), 0, RETRY_AFTER_MAX_MS);
 	return 1_000;
 }
 
