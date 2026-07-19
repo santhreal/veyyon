@@ -30,7 +30,7 @@ import {
 } from "@veyyon/tui";
 import { errorMessage } from "@veyyon/utils";
 import type { ModelRegistry } from "../../config/model-registry";
-import { formatModelSelectorValue, resolveModelRoleValue } from "../../config/model-resolver";
+import { formatModelSelectorValue, parseModelString, resolveModelRoleValue } from "../../config/model-resolver";
 import { getRoleInfo, ROLE_INHERIT_LABEL, SELECTABLE_MODEL_ROLE_IDS } from "../../config/model-roles";
 import {
 	getDefault,
@@ -358,6 +358,21 @@ class ProviderLimitsSubmenu extends Container {
  * identical effort step instead of two divergent copies.
  */
 /**
+ * Human summary of a stored model selector for a settings row: renders the
+ * effort suffix as a readable ` · high` (e.g. `anthropic/claude-sonnet-4-5 · high`)
+ * instead of the raw `:high` token, and returns the bare selector unchanged when
+ * it carries no effort. Uses the same parser the resolver does, so a model id
+ * that legitimately ends in a colon token is left intact. One owner so the
+ * single-slot rows and the role list read identically.
+ */
+export function formatSelectorSummary(raw: string): string {
+	const trimmed = raw.trim();
+	if (!trimmed) return trimmed;
+	const parsed = parseModelString(trimmed);
+	return parsed?.thinkingLevel ? `${parsed.provider}/${parsed.id} · ${parsed.thinkingLevel}` : trimmed;
+}
+
+/**
  * The effort-picker rows: the empty "model default thinking" entry first (its
  * empty value formats to the bare selector), then each supported effort in the
  * model's own order. Split out so the ordering can be asserted directly.
@@ -441,7 +456,10 @@ class ModelRolesSubmenu extends Container {
 			return {
 				value: role,
 				label: info.name,
-				description: assigned && assigned.length > 0 ? assigned : (info.unsetLabel ?? ROLE_INHERIT_LABEL),
+				description:
+					assigned && assigned.length > 0
+						? formatSelectorSummary(assigned)
+						: (info.unsetLabel ?? ROLE_INHERIT_LABEL),
 			};
 		});
 		this.#selectList = new SelectList(items, Math.min(Math.max(items.length, 1), 12), getSelectListTheme());
@@ -1518,7 +1536,7 @@ export class SettingsSelectorComponent implements Component {
 	}
 
 	#formatModelSelectorValue(value: unknown): string {
-		if (typeof value === "string" && value.trim()) return value.trim();
+		if (typeof value === "string" && value.trim()) return formatSelectorSummary(value);
 		// Unset resolves live against the active main model at use time.
 		return "inherit";
 	}
