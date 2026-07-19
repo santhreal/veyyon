@@ -9,6 +9,8 @@
  *   - retention transcript framing
  */
 
+import { hasAlphanumeric } from "@veyyon/utils";
+
 export interface HindsightMessage {
 	role: string;
 	content: string;
@@ -48,7 +50,6 @@ export function stripMemoryTags(content: string): string {
 // can actually match on. Punctuation/whitespace-only strings (e.g. the lone
 // `.` some providers emit for tool-call-only or thinking-only assistant turns)
 // are dropped before retain/recall touches them — see issue #1806.
-const SUBSTANTIVE_CHAR_RE = /[\p{L}\p{N}]/u;
 
 /**
  * True when `content` carries at least one letter or digit. Used by retain
@@ -57,7 +58,7 @@ const SUBSTANTIVE_CHAR_RE = /[\p{L}\p{N}]/u;
  * embeddings with no semantic content.
  */
 export function hasSubstantiveContent(content: string): boolean {
-	return SUBSTANTIVE_CHAR_RE.test(content);
+	return hasAlphanumeric(content);
 }
 
 /** Format recall results into a bullet list for context injection. */

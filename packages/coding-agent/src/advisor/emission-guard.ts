@@ -29,12 +29,11 @@
  *
  * Exported for tests.
  */
+
+import { NON_ALNUM_RUN_RE } from "@veyyon/utils";
+
 export function normalizeAdvisorNote(note: string): string {
-	return note
-		.toLowerCase()
-		.normalize("NFKC")
-		.replace(/[^\p{L}\p{N}]+/gu, " ")
-		.trim();
+	return note.toLowerCase().normalize("NFKC").replace(NON_ALNUM_RUN_RE, " ").trim();
 }
 
 /**

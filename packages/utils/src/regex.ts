@@ -8,6 +8,41 @@ export function escapeRegExp(value: string): string {
 }
 
 /**
+ * The character class of "substantive" characters: Unicode letters and numbers.
+ * Everything else (punctuation, symbols, whitespace, marks) counts as a
+ * separator. This fragment is the single owner of the `\p{L}\p{N}` charset; the
+ * patterns below are all built from it, so widening or narrowing what counts as
+ * a word character happens in exactly one place. Written as a string (not a
+ * literal class) so this file never contains the bare `\p{L}\p{N}` sequence the
+ * source lock hunts for elsewhere.
+ */
+const ALNUM_CLASS = "\\p{L}\\p{N}";
+
+/**
+ * Matches a single alphanumeric character (one Unicode letter or number).
+ * Non-global, so `.test()` is safe to call repeatedly on the shared instance.
+ */
+export const ALNUM_RE = new RegExp(`[${ALNUM_CLASS}]`, "u");
+
+/** Whether `value` contains at least one Unicode letter or number. */
+export function hasAlphanumeric(value: string): boolean {
+	return ALNUM_RE.test(value);
+}
+
+/**
+ * Matches a run of one or more non-alphanumeric characters. Global, for
+ * `.replace(NON_ALNUM_RUN_RE, " ")` or `.split(NON_ALNUM_RUN_RE)`, where every
+ * run of separators collapses to a single boundary.
+ */
+export const NON_ALNUM_RUN_RE = new RegExp(`[^${ALNUM_CLASS}]+`, "gu");
+
+/**
+ * Matches a run of one or more alphanumeric characters (a "word"). Global, for
+ * `.match` / `.matchAll` / `.replace` over the words of a string.
+ */
+export const ALNUM_WORD_RE = new RegExp(`[${ALNUM_CLASS}]+`, "gu");
+
+/**
  * A UUID in the canonical 8-4-4-4-12 lowercase-hex form, any version.
  * Case-insensitive. Anchored, so it matches only when the whole string is a
  * UUID. Non-global, so `.test()` is safe to call repeatedly on the shared

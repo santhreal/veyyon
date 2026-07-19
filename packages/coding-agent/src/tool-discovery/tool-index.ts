@@ -1,7 +1,7 @@
 import type { AgentTool } from "@veyyon/agent-core";
 import type { Tool as AiTool } from "@veyyon/ai";
 import { toolWireSchema } from "@veyyon/ai/utils/schema";
-import { formatCount, isRecord } from "@veyyon/utils";
+import { formatCount, isRecord, NON_ALNUM_RUN_RE } from "@veyyon/utils";
 
 // ─── Generic Tool Discovery Types ────────────────────────────────────────────
 
@@ -93,7 +93,7 @@ function tokenize(value: string): string[] {
 			// Everything that isn't a letter or digit becomes a separator. This subsumes markdown
 			// punctuation (`|*_`#-~>[]()`), box-drawing glyphs (─│┌), em/en dashes, smart quotes,
 			// zero-width spaces, NBSPs, etc.
-			.replace(/[^\p{L}\p{N}]+/gu, " ")
+			.replace(NON_ALNUM_RUN_RE, " ")
 			.toLowerCase()
 			.trim()
 			.split(/\s+/)
