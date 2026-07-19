@@ -1,6 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { closeQuietly, type DatabasePath, openDatabase } from "../db";
 import { toUtcIso } from "../util/datetime";
+import { unicodeWordTokens, WORD_TOKEN_HYPHEN_RE } from "../util/regex";
 import { tableExists } from "../util/sqlite";
 import { CONTENT_STOPWORDS } from "./stopwords";
 
@@ -186,8 +187,7 @@ function lowerSet(values: readonly (string | null)[]): Set<string> {
 
 function contentTokenSet(text: string): Set<string> {
 	const out = new Set<string>();
-	for (const match of text.toLocaleLowerCase().matchAll(/[\p{L}\p{N}_-]+/gu)) {
-		const token = match[0] ?? "";
+	for (const token of unicodeWordTokens(text.toLocaleLowerCase(), WORD_TOKEN_HYPHEN_RE)) {
 		if (token.length < 3 || CONTENT_STOPWORDS.has(token)) continue;
 		out.add(token);
 	}

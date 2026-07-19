@@ -1,6 +1,35 @@
 const RECALL_TOKEN_RE = /[a-z0-9][a-z0-9_.:/+-]*/g;
 const CJK_RE = /[\u3040-\u30ff\u4e00-\u9fff\uac00-\ud7af]/;
 
+// Unicode word-token character set, in ONE place. The base fragment is written
+// as a string (never a literal class) so this owner file does not itself carry
+// the `[\p{L}\p{N}...` needle the source lock bans everywhere else, and so the
+// three call-site variants stay in sync by construction: they only differ in the
+// extra punctuation they keep inside a token.
+const UNICODE_WORD_BASE = "\\p{L}\\p{N}_";
+/** Maximal runs of letters, numbers, and underscore. */
+export const WORD_TOKEN_RE = new RegExp(`[${UNICODE_WORD_BASE}]+`, "gu");
+/** Word runs that also keep an internal or trailing hyphen (e.g. "opt-in"). */
+export const WORD_TOKEN_HYPHEN_RE = new RegExp(`[${UNICODE_WORD_BASE}-]+`, "gu");
+/** Word runs that also keep dots and hyphens (e.g. "v1.2.3", "opt-in"). */
+export const WORD_TOKEN_DOT_HYPHEN_RE = new RegExp(`[${UNICODE_WORD_BASE}.-]+`, "gu");
+
+/**
+ * Split already-lowercased `text` into its unicode word tokens, in document
+ * order. Pass a wider class (`WORD_TOKEN_HYPHEN_RE` / `WORD_TOKEN_DOT_HYPHEN_RE`)
+ * to keep hyphens or dots inside a token. Case folding stays at the call site
+ * (some callers use `toLocaleLowerCase`), as does length and stopword filtering,
+ * because those policies legitimately differ per caller.
+ */
+export function unicodeWordTokens(loweredText: string, wordClass: RegExp = WORD_TOKEN_RE): string[] {
+	const tokens: string[] = [];
+	for (const match of loweredText.matchAll(wordClass)) {
+		const token = match[0];
+		if (token.length > 0) tokens.push(token);
+	}
+	return tokens;
+}
+
 export const FACT_MATCH_STOPWORDS = new Set([
 	"a",
 	"an",

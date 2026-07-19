@@ -10,6 +10,7 @@ import {
 	isCjkChar,
 	RECALL_SYNONYMS,
 	recallTokens,
+	unicodeWordTokens,
 } from "../../util/regex";
 import { tableExists } from "../../util/sqlite";
 import { currentEmbeddingModel, embed } from "../embeddings";
@@ -37,7 +38,6 @@ const TS_CACHE_MAX = 2000;
 const moduleTimestampCache = new Map<string, Date>();
 
 const SPLIT_TOKEN_RE = /[_:/.-]+/g;
-const WORD_RE = /[\p{L}\p{N}_]+/gu;
 function envNumber(name: string, fallback: number): number {
 	const raw = process.env[name];
 	if (raw === undefined || raw.trim() === "") return fallback;
@@ -640,7 +640,7 @@ export function detectLanguage(text: string): string {
 }
 
 function words(text: string): Set<string> {
-	return new Set(Array.from(text.matchAll(WORD_RE), match => match[0] ?? ""));
+	return new Set(unicodeWordTokens(text));
 }
 
 function intersectionCount(left: ReadonlySet<string>, right: ReadonlySet<string>): number {
