@@ -131,6 +131,7 @@
       "version": "16.3.6",
       "dependencies": {
         "@veyyon/tool-render": "catalog:",
+        "@veyyon/utils": "catalog:",
         "@veyyon/wire": "catalog:",
         "lucide-react": "catalog:",
         "marked": "catalog:",

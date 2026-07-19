@@ -8,6 +8,7 @@
  * reconnect.
  */
 
+import { exponentialBackoffDelay } from "@veyyon/utils/backoff";
 import type { GuestFrame, HostFrame, RelayControlMessage } from "@veyyon/wire";
 import { open, seal } from "./codec";
 import { packEnvelope, unpackEnvelope } from "./link";
@@ -19,8 +20,6 @@ const FATAL_CLOSE_REASONS: Record<number, string> = {
 	4029: "room is full",
 };
 
-const BACKOFF_BASE_MS = 1_000;
-const BACKOFF_MAX_MS = 30_000;
 /** Max enveloped frames buffered while a reconnect is pending; overflow is dropped. */
 const MAX_PENDING_SENDS = 256;
 
@@ -202,9 +201,8 @@ export class CollabSocket {
 	}
 
 	#scheduleRetry(): void {
-		const base = Math.min(BACKOFF_BASE_MS * 2 ** this.#attempt, BACKOFF_MAX_MS);
+		const delay = exponentialBackoffDelay(this.#attempt);
 		this.#attempt++;
-		const delay = base * (0.75 + Math.random() * 0.5);
 		this.#retryTimer = setTimeout(() => {
 			this.#retryTimer = undefined;
 			if (this.#closed) return;

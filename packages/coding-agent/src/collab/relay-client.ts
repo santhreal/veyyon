@@ -5,7 +5,7 @@
  * exponential backoff on transient drops. Fatal relay close codes (room gone,
  * host conflict, room full) and decryption failures never reconnect.
  */
-import { logger } from "@veyyon/utils";
+import { exponentialBackoffDelay, logger } from "@veyyon/utils";
 import { open, seal } from "./crypto";
 import type { CollabFrame, RelayControlMessage } from "./protocol";
 import { packEnvelope, unpackEnvelope } from "./protocol";
@@ -17,8 +17,6 @@ const FATAL_CLOSE_REASONS: Record<number, string> = {
 	4029: "room is full",
 };
 
-const BACKOFF_BASE_MS = 1_000;
-const BACKOFF_MAX_MS = 30_000;
 /** Max enveloped frames buffered while a reconnect is pending; overflow is dropped. */
 const MAX_PENDING_SENDS = 256;
 const WS_BACKPRESSURE_THRESHOLD = 64 * 1024;
@@ -263,9 +261,8 @@ export class CollabSocket {
 	}
 
 	#scheduleRetry(): void {
-		const base = Math.min(BACKOFF_BASE_MS * 2 ** this.#attempt, BACKOFF_MAX_MS);
+		const delay = exponentialBackoffDelay(this.#attempt);
 		this.#attempt++;
-		const delay = base * (0.75 + Math.random() * 0.5);
 		this.#retryTimer = setTimeout(() => {
 			this.#retryTimer = undefined;
 			if (this.#closed) return;
