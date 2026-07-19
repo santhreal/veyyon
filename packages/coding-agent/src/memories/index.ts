@@ -6,7 +6,16 @@ import type { AgentMessage } from "@veyyon/agent-core";
 import { type ApiKey, completeSimple, Effort, type Model } from "@veyyon/ai";
 import { clampThinkingLevelForModel } from "@veyyon/catalog/model-thinking";
 import { emptyCost } from "@veyyon/catalog/models";
-import { getAgentDbPath, getMemoriesDir, isEnoent, isRecord, logger, parseJsonlLenient, prompt } from "@veyyon/utils";
+import {
+	clampLow,
+	getAgentDbPath,
+	getMemoriesDir,
+	isEnoent,
+	isRecord,
+	logger,
+	parseJsonlLenient,
+	prompt,
+} from "@veyyon/utils";
 
 import type { ModelRegistry } from "../config/model-registry";
 import { getModelMatchPreferences, resolveModelRoleValue } from "../config/model-resolver";
@@ -740,7 +749,7 @@ async function runStage1Job(options: {
 			{
 				apiKey,
 				metadata: options.metadata,
-				maxTokens: Math.max(1024, Math.min(4096, Math.floor(modelMaxTokens * 0.2))),
+				maxTokens: clampLow(Math.floor(modelMaxTokens * 0.2), 1024, 4096),
 				reasoning: clampThinkingLevelForModel(model, Effort.Low),
 			},
 		);

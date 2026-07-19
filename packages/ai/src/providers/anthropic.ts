@@ -9,6 +9,7 @@ import { isAnthropicOAuthToken } from "@veyyon/catalog/utils";
 import { parseGitHubCopilotApiKey } from "@veyyon/catalog/wire/github-copilot";
 import {
 	$env,
+	clampLow,
 	errorMessage,
 	getInstallId,
 	isEnoent,
@@ -844,8 +845,8 @@ async function resizeAnthropicManyImageBlock(block: ImageContent): Promise<Image
 		if (width <= ANTHROPIC_MANY_IMAGE_MAX_DIMENSION && height <= ANTHROPIC_MANY_IMAGE_MAX_DIMENSION) return block;
 
 		const scale = Math.min(ANTHROPIC_MANY_IMAGE_MAX_DIMENSION / width, ANTHROPIC_MANY_IMAGE_MAX_DIMENSION / height);
-		const targetWidth = Math.max(1, Math.min(ANTHROPIC_MANY_IMAGE_MAX_DIMENSION, Math.round(width * scale)));
-		const targetHeight = Math.max(1, Math.min(ANTHROPIC_MANY_IMAGE_MAX_DIMENSION, Math.round(height * scale)));
+		const targetWidth = clampLow(Math.round(width * scale), 1, ANTHROPIC_MANY_IMAGE_MAX_DIMENSION);
+		const targetHeight = clampLow(Math.round(height * scale), 1, ANTHROPIC_MANY_IMAGE_MAX_DIMENSION);
 
 		const [png, jpeg] = await Promise.all([
 			new Bun.Image(inputBuffer).resize(targetWidth, targetHeight).png().bytes(),

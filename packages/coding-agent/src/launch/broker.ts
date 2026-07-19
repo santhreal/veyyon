@@ -3,7 +3,7 @@ import * as net from "node:net";
 import * as os from "node:os";
 import * as path from "node:path";
 import { Process, type PtyRunResult, PtySession } from "@veyyon/natives";
-import { errorMessage, isEexist, isEnoent, logger, postmortem, sanitizeText } from "@veyyon/utils";
+import { clampLow, errorMessage, isEexist, isEnoent, logger, postmortem, sanitizeText } from "@veyyon/utils";
 import { truncateHead, truncateHeadBytes, truncateTail, truncateTailBytes } from "../session/streaming-output";
 import { workerEnvFromParent } from "../subprocess/worker-client";
 import { daemonBrokerEndpoint } from "./paths";
@@ -769,7 +769,7 @@ class DaemonBroker {
 			);
 			timedOut = !changed;
 		}
-		const lines = Math.max(1, Math.min(1_000, Math.floor(operation.lines)));
+		const lines = clampLow(Math.floor(operation.lines), 1, 1_000);
 		const output = record.log
 			? await record.log.read(operation.head, lines, operation.grep)
 			: await DaemonLog.readFiles(

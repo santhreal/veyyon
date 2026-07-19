@@ -1,5 +1,5 @@
 import type { AgentToolUpdateCallback } from "@veyyon/agent-core";
-import { sanitizeText } from "@veyyon/utils";
+import { clampLow, sanitizeText } from "@veyyon/utils";
 import { formatBytes } from "../tools/render-utils";
 import { sanitizeWithOptionalSixelPassthrough } from "../utils/sixel";
 
@@ -796,7 +796,7 @@ export class OutputSink {
 		this.#onChunk = onChunk;
 		this.#chunkThrottleMs = chunkThrottleMs;
 		this.#artifactMaxBytes = Math.max(0, artifactMaxBytes);
-		this.#artifactHeadBudget = Math.max(0, Math.min(artifactHeadBytes, this.#artifactMaxBytes));
+		this.#artifactHeadBudget = clampLow(artifactHeadBytes, 0, this.#artifactMaxBytes);
 		this.#artifactTailBudget = Math.max(0, this.#artifactMaxBytes - this.#artifactHeadBudget);
 	}
 

@@ -1,4 +1,5 @@
 import type { Database, SQLQueryBindings } from "bun:sqlite";
+import { clampLow } from "@veyyon/utils";
 import { formatBytes, replaceTabs, truncateToWidth } from "./render-utils";
 import { ToolError } from "./tool-errors";
 
@@ -203,12 +204,12 @@ function buildAsciiTable(columns: string[], rows: SqliteRow[]): string {
 	}
 
 	const widths = columns.map(column =>
-		Math.max(MIN_COLUMN_WIDTH, Math.min(MAX_COLUMN_WIDTH, Bun.stringWidth(sanitizeCell(column)))),
+		clampLow(Bun.stringWidth(sanitizeCell(column)), MIN_COLUMN_WIDTH, MAX_COLUMN_WIDTH),
 	);
 	for (const row of rows) {
 		for (const [index, column] of columns.entries()) {
 			const cellWidth = Bun.stringWidth(sanitizeCell(stringifySqliteValue(row[column])));
-			widths[index] = Math.max(widths[index] ?? MIN_COLUMN_WIDTH, Math.min(MAX_COLUMN_WIDTH, cellWidth));
+			widths[index] = clampLow(cellWidth, widths[index] ?? MIN_COLUMN_WIDTH, MAX_COLUMN_WIDTH);
 		}
 	}
 

@@ -21,7 +21,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { parseArgs } from "node:util";
-import { TempDir } from "@veyyon/utils";
+import { clampLow, TempDir } from "@veyyon/utils";
 import { $ } from "bun";
 import { diffLines } from "diff";
 import { formatContent } from "./formatter";
@@ -539,9 +539,9 @@ function distanceToRange(lineNumber: number, start: number, end: number): number
 function resolveLineForHunk(hunk: DiffHunk, fallbackLine: number, maxLine: number): number {
 	if (maxLine <= 0) return 1;
 	if (hunk.newStart <= hunk.newEnd) {
-		return Math.max(hunk.newStart, Math.min(fallbackLine, hunk.newEnd));
+		return clampLow(fallbackLine, hunk.newStart, hunk.newEnd);
 	}
-	return Math.max(1, Math.min(hunk.newStart, maxLine));
+	return clampLow(hunk.newStart, 1, maxLine);
 }
 
 function snippetFromChangedLines(changedLines: string[], fallbackLines: string[], lineNumber: number): string {

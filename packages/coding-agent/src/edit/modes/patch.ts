@@ -8,7 +8,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { AgentToolResult } from "@veyyon/agent-core";
-import { errorMessage, isEnoent } from "@veyyon/utils";
+import { clampLow, errorMessage, isEnoent } from "@veyyon/utils";
 import { type } from "arktype";
 import {
 	type FileDiagnosticsResult,
@@ -1085,7 +1085,7 @@ function computeReplacements(
 		const allowAggressiveFallbacks = hunk.changeContext !== undefined || lineHint !== undefined || hunk.isEndOfFile;
 		const fallbackVariants = filterFallbackVariants(buildFallbackVariants(hunk), allowAggressiveFallbacks);
 		if (lineHint !== undefined && hunk.changeContext === undefined && !hunk.hasContextLines) {
-			lineIndex = Math.max(0, Math.min(lineHint - 1, originalLines.length - 1));
+			lineIndex = clampLow(lineHint - 1, 0, originalLines.length - 1);
 		}
 
 		// If hunk has a changeContext, find it and adjust lineIndex

@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { createHash } from "node:crypto";
-import { logger } from "@veyyon/utils";
+import { clampLow, logger } from "@veyyon/utils";
 import { tableExists } from "../util/sqlite";
 import * as embeddings from "./embeddings";
 import { cosineSimilarity } from "./vector-math";
@@ -236,7 +236,7 @@ function isBeliefLike(value: unknown): value is Record<string, unknown> {
 function normalizeBelief(value: Record<string, unknown>): Belief {
 	const confidence =
 		typeof value.confidence === "number" && Number.isFinite(value.confidence)
-			? Math.max(0.1, Math.min(1, value.confidence))
+			? clampLow(value.confidence, 0.1, 1)
 			: 0.5;
 	const action = value.action === "update" || value.action === "dampen" ? value.action : "create";
 	return {
@@ -322,7 +322,7 @@ export function applyBeliefs(
 	initSchema(db);
 	const now = new Date().toISOString();
 	for (const belief of beliefs) {
-		const confidence = Math.max(0.1, Math.min(1, belief.confidence));
+		const confidence = clampLow(belief.confidence, 0.1, 1);
 		if (belief.action === "dampen" && belief.target_fact_id)
 			db.run("UPDATE facts SET confidence = MAX(0.1, confidence - 0.15) WHERE fact_id = ?", [belief.target_fact_id]);
 		if (belief.action === "update" && belief.target_fact_id)

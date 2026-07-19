@@ -8,7 +8,7 @@ import {
 	truncateToWidth,
 	visibleWidth,
 } from "@veyyon/tui";
-import { errorMessage, pluralize, sanitizeText } from "@veyyon/utils";
+import { clampLow, errorMessage, pluralize, sanitizeText } from "@veyyon/utils";
 import { bottomBorder, divider, row, topBorder } from "../modes/components/overlay-box";
 import { theme } from "../modes/theme/theme";
 import { copyToClipboard } from "../utils/clipboard";
@@ -642,7 +642,7 @@ export class DebugLogViewerComponent implements Component {
 		if (event.wheel !== null && overBody) {
 			this.#statusMessage = undefined;
 			const maxOffset = Math.max(0, this.#model.rows.length - this.#bodyHeight());
-			this.#scrollRowOffset = Math.max(0, Math.min(maxOffset, this.#scrollRowOffset + event.wheel * 3));
+			this.#scrollRowOffset = clampLow(this.#scrollRowOffset + event.wheel * 3, 0, maxOffset);
 			this.#onUpdate?.();
 			return true;
 		}
@@ -794,7 +794,7 @@ export class DebugLogViewerComponent implements Component {
 		const delta = cursorRowIndex - previousCursorRowIndex;
 		const nextOffset = previousScrollOffset + delta;
 		const maxOffset = Math.max(0, this.#model.rows.length - this.#bodyHeight());
-		this.#scrollRowOffset = Math.max(0, Math.min(maxOffset, nextOffset));
+		this.#scrollRowOffset = clampLow(nextOffset, 0, maxOffset);
 	}
 
 	#renderRows(innerWidth: number): Array<{ lines: string[]; rowIndex: number }> {

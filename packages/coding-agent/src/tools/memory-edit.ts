@@ -1,4 +1,5 @@
 import type { AgentTool, AgentToolResult } from "@veyyon/agent-core";
+import { clampLow } from "@veyyon/utils";
 import { type } from "arktype";
 import memoryEditDescription from "../prompts/tools/memory-edit.md" with { type: "text" };
 import type { ToolSession } from ".";
@@ -40,7 +41,7 @@ export class MemoryEditTool implements AgentTool<typeof memoryEditSchema> {
 			throw new Error("memory_edit update requires content or importance.");
 		}
 
-		const importance = params.importance === undefined ? undefined : Math.max(0, Math.min(1, params.importance));
+		const importance = params.importance === undefined ? undefined : clampLow(params.importance, 0, 1);
 		const result = state.editScopedMemory(params.op, params.id, {
 			content: params.content,
 			importance,

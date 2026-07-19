@@ -1,3 +1,5 @@
+import { clampLow } from "@veyyon/utils";
+
 export interface ToolTimeoutConfig {
 	/** Default timeout in seconds when agent omits the field */
 	default: number;
@@ -26,5 +28,5 @@ export type ToolWithTimeout = keyof typeof TOOL_TIMEOUTS;
 export function clampTimeout(tool: ToolWithTimeout, rawTimeout?: number): number {
 	const config = TOOL_TIMEOUTS[tool];
 	const timeout = rawTimeout ?? config.default;
-	return Math.max(config.min, Math.min(config.max, timeout));
+	return clampLow(timeout, config.min, config.max);
 }

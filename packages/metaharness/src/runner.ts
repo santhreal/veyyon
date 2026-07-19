@@ -2,7 +2,7 @@
 import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { errorMessage, isRecord, trimTrailingSlashes, tryParseJson } from "@veyyon/utils";
+import { clampLow, errorMessage, isRecord, trimTrailingSlashes, tryParseJson } from "@veyyon/utils";
 /**
  * Harbor benchmark runner for the local `veyyon` build.
  *
@@ -472,7 +472,7 @@ function fmtDur(ms: number): string {
 	return `${m}:${String(sec).padStart(2, "0")}`;
 }
 function bar(frac: number, width: number): string {
-	const f = Math.max(0, Math.min(1, frac));
+	const f = clampLow(frac, 0, 1);
 	const filled = Math.round(f * width);
 	return "█".repeat(filled) + "░".repeat(width - filled);
 }

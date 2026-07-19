@@ -1,4 +1,4 @@
-import { formatBytes } from "@veyyon/utils";
+import { clampLow, formatBytes } from "@veyyon/utils";
 import chalk from "chalk";
 import {
 	DEFAULT_TINY_TITLE_LOCAL_MODEL_KEY,
@@ -92,7 +92,7 @@ function makeProgressReporter(modelKey: TinyLocalModelKey, json: boolean | undef
 		const progress = event.progress ?? lastProgress;
 		if (progress >= 0 && progress < lastProgress + 1 && event.status !== "ready") return;
 		if (progress >= 0) lastProgress = progress;
-		const ratio = progress >= 0 ? Math.max(0, Math.min(1, progress / 100)) : 0;
+		const ratio = progress >= 0 ? clampLow(progress / 100, 0, 1) : 0;
 		const barWidth = 30;
 		const filled = Math.round(ratio * barWidth);
 		const bar = `${"█".repeat(filled)}${"░".repeat(barWidth - filled)}`;

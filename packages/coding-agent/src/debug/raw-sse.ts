@@ -1,5 +1,5 @@
 import { type Component, matchesKey, parseSgrMouse, replaceTabs, ScrollView, truncateToWidth } from "@veyyon/tui";
-import { errorMessage, sanitizeText } from "@veyyon/utils";
+import { clampLow, errorMessage, sanitizeText } from "@veyyon/utils";
 import { bottomBorder, divider, row, topBorder } from "../modes/components/overlay-box";
 import { theme } from "../modes/theme/theme";
 import { copyToClipboard } from "../utils/clipboard";
@@ -155,7 +155,7 @@ export class RawSseViewerComponent implements Component {
 		const overBody = event.row >= this.#bodyRowStart && event.row < this.#bodyRowStart + this.#bodyRowCount;
 		if (event.wheel !== null && overBody) {
 			this.#followTail = false;
-			this.#scrollOffset = Math.max(0, Math.min(this.#maxScrollOffset(), this.#scrollOffset + event.wheel * 3));
+			this.#scrollOffset = clampLow(this.#scrollOffset + event.wheel * 3, 0, this.#maxScrollOffset());
 			this.#onUpdate?.();
 			return true;
 		}
@@ -170,7 +170,7 @@ export class RawSseViewerComponent implements Component {
 		if (overBody) {
 			this.#followTail = false;
 			const clickedOffset = this.#scrollOffset + event.row - this.#bodyRowStart;
-			this.#scrollOffset = Math.max(0, Math.min(this.#maxScrollOffset(), clickedOffset));
+			this.#scrollOffset = clampLow(clickedOffset, 0, this.#maxScrollOffset());
 			this.#onUpdate?.();
 			return true;
 		}

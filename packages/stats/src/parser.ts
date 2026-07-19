@@ -11,7 +11,7 @@ import {
 	type Usage,
 } from "@veyyon/ai";
 import { emptyCost } from "@veyyon/catalog/models";
-import { contentText, getSessionsDir, isEnoent, readLines, tryParseJson } from "@veyyon/utils";
+import { clampLow, contentText, getSessionsDir, isEnoent, readLines, tryParseJson } from "@veyyon/utils";
 import type {
 	AgentType,
 	MessageStats,
@@ -364,7 +364,7 @@ export async function parseSessionFile(sessionPath: string, fromOffset = 0): Pro
 	const toolCalls: ToolCallStats[] = [];
 	const toolResults: ToolResultLink[] = [];
 	const userByEntryId = new Map<string, UserMessageStats>();
-	const start = Math.max(0, Math.min(fromOffset, bytes.length));
+	const start = clampLow(fromOffset, 0, bytes.length);
 	const unprocessed = bytes.subarray(start);
 	const { entries, read } = parseSessionEntriesLenient(unprocessed);
 	let currentServiceTier: ServiceTierByFamily | undefined;

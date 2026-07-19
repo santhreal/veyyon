@@ -29,7 +29,7 @@ import {
 	truncateToWidth,
 	visibleWidth,
 } from "@veyyon/tui";
-import { clamp, collapseWhitespace, formatCount, prompt, untilAborted } from "@veyyon/utils";
+import { clamp, clampLow, collapseWhitespace, formatCount, prompt, untilAborted } from "@veyyon/utils";
 import { type as arkType } from "arktype";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import type { ExtensionUISelectItem } from "../extensibility/extensions";
@@ -631,7 +631,7 @@ async function askSingleQuestion(
 			}
 			if (initialIndex !== undefined) {
 				const maxIndex = Math.max(optionsWithNavigation.length - 1, 0);
-				initialIndex = Math.max(0, Math.min(initialIndex, maxIndex));
+				initialIndex = clampLow(initialIndex, 0, maxIndex);
 			}
 
 			const {
