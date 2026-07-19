@@ -35,6 +35,50 @@ describe("BeamMemory hub", () => {
 		}
 	});
 
+	it("delegates the working-stats, MEMORIA, degrade, health, and sleep-all methods to their owners", () => {
+		const beam = new BeamMemory({ dbPath: ":memory:" });
+		try {
+			beam.remember("Project Alpha kickoff on 2026-05-30", { source: "test", importance: 0.8 });
+
+			// Global stats see the one row; an author-scoped query for a non-existent author sees none.
+			expect(beam.getGlobalWorkingStats()).toMatchObject({ count: 1 });
+			expect(beam.getWorkingStats("nobody", "human", "no-channel")).toMatchObject({ count: 0 });
+
+			// Pattern fact extraction over non-matching text yields the zeroed FactCounts.
+			expect(beam.extractAndStoreFacts("hello world plain text", 0, null)).toEqual({
+				metric: 0,
+				date: 0,
+				version: 0,
+				entity: 0,
+				sequence: 0,
+				timeline: 0,
+				negation: 0,
+				decision: 0,
+			});
+
+			const retrieved = beam.memoriaRetrieve("Alpha");
+			expect(retrieved.query).toBe("Alpha");
+			expect(Array.isArray(retrieved.results)).toBe(true);
+
+			// A dry-run degrade over an empty episodic tier reports zero movement.
+			expect(beam.degradeEpisodic(true)).toEqual({ status: "dry_run", tier1_to_tier2: 0, tier2_to_tier3: 0 });
+			expect(beam.getContaminated(50, 0)).toEqual([]);
+
+			// A fresh store has no successful consolidation, so health reports no_data with zero errors.
+			expect(beam.health()).toMatchObject({ status: "no_data", error_count: 0, stale_threshold_hours: 24 });
+
+			// Nothing is old enough to consolidate, so sleepAllSessions is a no_op dry run.
+			expect(beam.sleepAllSessions(true)).toMatchObject({
+				dry_run: true,
+				status: "no_op",
+				items_consolidated: 0,
+			});
+			expect(beam.getConsolidationLog(10)).toEqual([]);
+		} finally {
+			beam.close();
+		}
+	});
+
 	it("routes detectLanguage to the single comprehensive owner (all five languages)", () => {
 		const beam = new BeamMemory({ dbPath: ":memory:" });
 		try {
