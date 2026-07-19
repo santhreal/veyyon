@@ -4516,6 +4516,10 @@ export class InteractiveMode implements InteractiveModeContext {
 		this.#selectorController.showModelSelector(options);
 	}
 
+	showThinkingSelector(): void {
+		this.#selectorController.showThinkingSelector();
+	}
+
 	showPluginSelector(mode?: "install" | "uninstall"): void {
 		void this.#selectorController.showPluginSelector(mode);
 	}
