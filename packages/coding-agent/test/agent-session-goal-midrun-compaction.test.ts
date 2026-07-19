@@ -28,6 +28,7 @@ function activeGoalState(): GoalModeState {
 			status: "active",
 			tokensUsed: 0,
 			timeUsedSeconds: 0,
+			turnsCompleted: 0,
 			createdAt: now,
 			updatedAt: now,
 		},

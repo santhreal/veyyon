@@ -2190,6 +2190,8 @@ export class InteractiveMode implements InteractiveModeContext {
 			tokenBudget: typeof value.tokenBudget === "number" ? value.tokenBudget : undefined,
 			tokensUsed: value.tokensUsed,
 			timeUsedSeconds: value.timeUsedSeconds,
+			// Back-compat: goals persisted before turn accounting existed lack this.
+			turnsCompleted: typeof value.turnsCompleted === "number" ? value.turnsCompleted : 0,
 			createdAt: value.createdAt,
 			updatedAt: value.updatedAt,
 		};

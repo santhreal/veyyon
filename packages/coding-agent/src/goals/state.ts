@@ -9,6 +9,8 @@ export interface Goal {
 	tokenBudget?: number;
 	tokensUsed: number;
 	timeUsedSeconds: number;
+	/** Completed agent turns accounted to this goal — the goal's step count. */
+	turnsCompleted: number;
 	createdAt: number;
 	updatedAt: number;
 }

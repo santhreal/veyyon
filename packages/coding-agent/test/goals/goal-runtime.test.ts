@@ -27,6 +27,7 @@ function createGoal(overrides: Partial<Goal> = {}): Goal {
 		tokenBudget: undefined,
 		tokensUsed: 0,
 		timeUsedSeconds: 0,
+		turnsCompleted: 0,
 		createdAt: 0,
 		updatedAt: 0,
 		...overrides,
@@ -139,6 +140,43 @@ describe("goal runtime", () => {
 		expect(harness.getState()?.goal.timeUsedSeconds).toBe(3);
 		expect(harness.runtime.snapshot.wallClock.lastAccountedAt).toBe(3_000);
 		expect(harness.persists).toHaveLength(2);
+	});
+
+	it("increments turnsCompleted once per agent turn accounted to the active goal", async () => {
+		const harness = createHarness({
+			state: { enabled: true, mode: "active", goal: createGoal() },
+		});
+		expect(harness.getState()?.goal.turnsCompleted).toBe(0);
+
+		harness.runtime.onTurnStart("turn-1", createUsage());
+		harness.setUsage(createUsage({ output: 10 }));
+		await harness.runtime.onAgentEnd({ currentUsage: createUsage({ output: 10 }) });
+		expect(harness.getState()?.goal.turnsCompleted).toBe(1);
+		expect(harness.getState()?.goal.tokensUsed).toBe(10);
+
+		harness.runtime.onTurnStart("turn-2", createUsage({ output: 10 }));
+		harness.setUsage(createUsage({ output: 25 }));
+		await harness.runtime.onAgentEnd({ currentUsage: createUsage({ output: 25 }) });
+		expect(harness.getState()?.goal.turnsCompleted).toBe(2);
+		expect(harness.getState()?.goal.tokensUsed).toBe(25);
+	});
+
+	it("does not count a turn while the goal is paused (no accounting state)", async () => {
+		const harness = createHarness({
+			state: { enabled: false, mode: "active", goal: createGoal({ status: "paused" }) },
+		});
+		harness.runtime.onTurnStart("turn-1", createUsage());
+		await harness.runtime.onAgentEnd({ currentUsage: createUsage({ output: 10 }) });
+		expect(harness.getState()?.goal.turnsCompleted).toBe(0);
+	});
+
+	it("does not count an agent-end with no turn started under the goal", async () => {
+		const harness = createHarness({
+			state: { enabled: true, mode: "active", goal: createGoal() },
+		});
+		// No onTurnStart -> no snapshot -> the agent-end is not attributed to the goal.
+		await harness.runtime.onAgentEnd({ currentUsage: createUsage({ output: 10 }) });
+		expect(harness.getState()?.goal.turnsCompleted).toBe(0);
 	});
 
 	it("does not persist snapshots on wall-clock-only flushes", async () => {
