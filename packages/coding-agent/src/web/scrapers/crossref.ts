@@ -1,6 +1,7 @@
 import { tryParseJson } from "@veyyon/utils";
 import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
 import { buildResult, htmlToBasicMarkdown, loadFailure, loadPage, scraperDegrade, tryParseUrl } from "./types";
+import { partialIsoDate } from "./utils";
 
 interface CrossrefAuthor {
 	given?: string;
@@ -54,16 +55,8 @@ function formatAuthors(authors?: CrossrefAuthor[]): string | null {
 }
 
 function formatDate(date?: CrossrefDate): string | null {
-	const parts = date?.["date-parts"]?.[0];
-	if (!parts || parts.length === 0) return null;
-	const [year, month, day] = parts;
-	if (!year) return null;
-	const formatted = [
-		String(year),
-		month ? String(month).padStart(2, "0") : "",
-		day ? String(day).padStart(2, "0") : "",
-	].filter(Boolean);
-	return formatted.join("-");
+	const [year, month, day] = date?.["date-parts"]?.[0] ?? [];
+	return partialIsoDate(year, month, day);
 }
 
 async function formatAbstract(abstract?: string): Promise<string | null> {
