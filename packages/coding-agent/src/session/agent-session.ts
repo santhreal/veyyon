@@ -825,6 +825,13 @@ export interface AgentSessionConfig {
 	settings: Settings;
 	/** Whether the caller explicitly requested yolo/auto-approve behavior for this session. */
 	autoApprove?: boolean;
+	/**
+	 * Start the session with the full permission bypass on (the
+	 * `--dangerously-skip-permissions` launch flag). Stronger than `autoApprove`:
+	 * removes every prompt including per-tool `prompt` overrides, but explicit
+	 * `deny` and plan mode still block. Toggle at runtime with `/yolo`.
+	 */
+	bypassAllApprovals?: boolean;
 	/** Models to cycle through with Ctrl+P (from --models flag) */
 	scopedModels?: Array<{ model: Model; thinkingLevel?: ThinkingLevel }>;
 	/** Initial session thinking selector. */
@@ -2515,6 +2522,7 @@ export class AgentSession {
 		this.sessionManager = config.sessionManager;
 		this.settings = config.settings;
 		this.#autoApprove = config.autoApprove === true;
+		this.#approvalBypassActive = config.bypassAllApprovals === true;
 		// Power assertions are taken per turn (see #beginInFlight); nothing acquired here.
 		this.#evalKernelOwnerId = config.evalKernelOwnerId ?? `agent-session:${Snowflake.next()}`;
 		this.#parentEvalSessionId = config.parentEvalSessionId;

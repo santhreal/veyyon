@@ -580,6 +580,13 @@ export interface CreateAgentSessionOptions {
 
 	/** Whether to auto-approve all tool calls (--auto-approve CLI flag). Default: false */
 	autoApprove?: boolean;
+
+	/**
+	 * Start with the full permission bypass on (the `--dangerously-skip-permissions`
+	 * flag). Stronger than `autoApprove`: removes every prompt including per-tool
+	 * `prompt` overrides. Explicit `deny` and plan mode still block. Default: false.
+	 */
+	bypassAllApprovals?: boolean;
 }
 
 /** Result from createAgentSession */
@@ -2936,6 +2943,7 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			sessionManager,
 			settings,
 			autoApprove: options.autoApprove,
+			bypassAllApprovals: options.bypassAllApprovals,
 			evalKernelOwnerId,
 			// Defined only for top-level sessions (creation is gated above).
 			// AgentSession uses this to decide whether it may dispose the global
