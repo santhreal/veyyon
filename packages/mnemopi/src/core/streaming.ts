@@ -1,7 +1,7 @@
 import type { Database, SQLQueryBindings } from "bun:sqlite";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { logger } from "@veyyon/utils";
+import { errorMessage, logger } from "@veyyon/utils";
 import { sqlPlaceholders } from "../util/sqlite";
 
 export const ALLOWED_DELTA_TABLES = new Set(["working_memory", "episodic_memory"] as const);
@@ -216,7 +216,7 @@ export class MemoryStream {
 				logger.warn("mnemopi: memory-stream listener threw; isolated and continuing", {
 					eventType: event.eventType,
 					memoryId: event.memoryId,
-					error: error instanceof Error ? error.message : String(error),
+					error: errorMessage(error),
 				});
 			}
 		}
@@ -227,7 +227,7 @@ export class MemoryStream {
 				logger.warn("mnemopi: memory-stream any-listener threw; isolated and continuing", {
 					eventType: event.eventType,
 					memoryId: event.memoryId,
-					error: error instanceof Error ? error.message : String(error),
+					error: errorMessage(error),
 				});
 			}
 		}
