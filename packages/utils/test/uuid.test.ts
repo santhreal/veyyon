@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { isUuid, UUID_RE } from "../src/regex";
+import { DATE_ONLY_RE, isDateOnly, isUuid, UUID_RE } from "../src/regex";
 
 // `isUuid` / `UUID_RE` is the single owner for canonical-UUID matching. main.ts
 // (session-id arg), typebox.ts (schema "uuid" format), and dirs.ts (UUID-named
@@ -30,5 +30,33 @@ describe("isUuid", () => {
 		expect(UUID_RE.global).toBe(false);
 		expect(isUuid(uuid)).toBe(true);
 		expect(isUuid(uuid)).toBe(true);
+	});
+});
+
+// `isDateOnly` / `DATE_ONLY_RE` is the single owner for the bare-YYYY-MM-DD
+// shape check. typebox.ts ("date" format), gh.ts (relative-date parsing), and
+// mnemopi datetime/recall (date -> midnight-UTC) all re-point here.
+describe("isDateOnly", () => {
+	it("accepts a bare YYYY-MM-DD date", () => {
+		expect(isDateOnly("2024-01-31")).toBe(true);
+	});
+
+	it("is shape-only — it does not range-check month or day", () => {
+		// Documented behavior: callers that need real validity build a Date after.
+		expect(isDateOnly("2024-99-99")).toBe(true);
+	});
+
+	it("rejects datetimes, partial dates, and non-dates", () => {
+		expect(isDateOnly("2024-01-31T00:00:00Z")).toBe(false);
+		expect(isDateOnly("2024-1-3")).toBe(false);
+		expect(isDateOnly("2024-01")).toBe(false);
+		expect(isDateOnly("not-a-date")).toBe(false);
+		expect(isDateOnly("")).toBe(false);
+	});
+
+	it("is anchored and non-global (stateless)", () => {
+		expect(DATE_ONLY_RE.global).toBe(false);
+		expect(isDateOnly("x 2024-01-31")).toBe(false);
+		expect(isDateOnly("2024-01-31 x")).toBe(false);
 	});
 });

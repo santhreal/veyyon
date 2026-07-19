@@ -10,7 +10,7 @@ import type {
 	ToolApprovalDecision,
 } from "@veyyon/agent-core";
 
-import { errorMessage, getWorktreeDir, hashPath, isEnoent, prompt, untilAborted } from "@veyyon/utils";
+import { errorMessage, getWorktreeDir, hashPath, isDateOnly, isEnoent, prompt, untilAborted } from "@veyyon/utils";
 import { type } from "arktype";
 import type { Settings } from "../config/settings";
 import githubDescription from "../prompts/tools/github.md" with { type: "text" };
@@ -692,7 +692,6 @@ function appendRepoFlag(args: string[], repo: string | undefined, identifier?: s
 const REPO_API_URL_PREFIX = "https://api.github.com/repos/";
 
 const RELATIVE_DURATION_PATTERN = /^(\d+)\s*(m|h|d|w|mo|y)$/i;
-const ISO_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 const FIXED_UNIT_MS: Record<string, number> = {
 	m: 60_000,
 	h: 3_600_000,
@@ -731,7 +730,7 @@ export function parseSearchDateBound(raw: string, now: Date = new Date()): strin
 		return bound.toISOString().slice(0, 10);
 	}
 
-	if (ISO_DATE_PATTERN.test(trimmed)) {
+	if (isDateOnly(trimmed)) {
 		return trimmed;
 	}
 

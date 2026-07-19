@@ -18,7 +18,7 @@
  */
 
 import { areJsonValuesEqual } from "@veyyon/ai/utils/schema";
-import { isUuid } from "@veyyon/utils";
+import { isDateOnly, isUuid } from "@veyyon/utils";
 
 // ---------------------------------------------------------------------------
 // Type aliases — exported so `import type { Static, TSchema } from "..."`
@@ -272,8 +272,7 @@ function createFormatStringValidator(format: string): (data: unknown) => unknown
 				return isUuid(data) ? data : validationFailure("Invalid UUID format");
 			}
 			case "date": {
-				const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-				if (!dateRegex.test(data)) return validationFailure("Invalid date format (YYYY-MM-DD)");
+				if (!isDateOnly(data)) return validationFailure("Invalid date format (YYYY-MM-DD)");
 				const date = new Date(data);
 				return Number.isNaN(date.getTime()) ? validationFailure("Invalid date") : data;
 			}
