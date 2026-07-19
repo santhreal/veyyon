@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { DAY_MS, isRecord, WEEK_MS } from "@veyyon/utils";
-import { type Env, polyphonicRecallEnabled } from "../config";
+import { type Env, envDisabled, polyphonicRecallEnabled } from "../config";
 import { closeQuietly, type DatabasePath, openDatabase } from "../db";
 import { tableExists } from "../util/sqlite";
 import type { BeamMemoryState, JsonValue, Metadata, RecallResult } from "./beam/types";
@@ -89,12 +89,6 @@ const POLYPHONIC_VOICES: readonly PolyphonicVoice[] = ["vector", "graph", "fact"
 export function polyphonicRecallIsEnabled(env: Env = process.env): boolean {
 	return polyphonicRecallEnabled(env);
 }
-function envDisabled(name: string, env: Env = process.env): boolean {
-	const value = env[name];
-	if (value === undefined) return false;
-	return ["0", "false", "no", "off"].includes(value.trim().toLowerCase());
-}
-
 function metadataValue(value: unknown): JsonValue {
 	if (value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
 		return value;

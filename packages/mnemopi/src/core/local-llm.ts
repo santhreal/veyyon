@@ -1,7 +1,7 @@
 import { type Api, type ApiKey, assistantText, completeSimple, type FetchImpl, type Model, withAuth } from "@veyyon/ai";
 import { ProviderHttpError } from "@veyyon/ai/error";
-import { estimateTokensFromText, withScopedTimeoutSignal } from "@veyyon/utils";
-import { envInt } from "../util/env";
+import { estimateTokensFromText, trimTrailingSlashes, withScopedTimeoutSignal } from "@veyyon/utils";
+import { envBool, envInt, envString } from "../util/env";
 import { type CompleteOptions, callHostLlm, getHostLlmBackend } from "./llm-backends";
 import {
 	getMnemopiRuntimeOptions,
@@ -21,12 +21,6 @@ export const DEFAULT_MODEL_REPO =
 export const DEFAULT_MODEL_FILE =
 	ENV_MODEL_REPO !== "" && ENV_MODEL_FILE !== "" ? ENV_MODEL_FILE : "tinyllama-1.1b-chat-v1.0.Q4_K_M.gguf";
 
-const TRUE_VALUES: Record<string, true> = { "1": true, true: true, yes: true, on: true };
-
-function env(name: string): string {
-	return process.env[name] ?? "";
-}
-
 function activeLlmOptions() {
 	return getMnemopiRuntimeOptions()?.llm;
 }
@@ -38,19 +32,6 @@ function activeCustomCompletion(): MnemopiLlmCompletion | undefined {
 function activePiAiModel(): Model<Api> | undefined {
 	const model = activeLlmOptions()?.model;
 	return isPiAiModel(model) ? model : undefined;
-}
-
-function envBool(name: string, defaultValue: boolean): boolean {
-	const value = env(name).trim().toLowerCase();
-	return value === "" ? defaultValue : TRUE_VALUES[value] === true;
-}
-
-function stripTrailingSlash(value: string): string {
-	let end = value.length;
-	while (end > 0 && value.charCodeAt(end - 1) === 47) {
-		end -= 1;
-	}
-	return end === value.length ? value : value.slice(0, end);
 }
 
 function llmEnabled(): boolean {
@@ -94,9 +75,9 @@ function hostLlmContextTokens(): number {
 function llmBaseUrl(): string {
 	const active = activeLlmOptions();
 	if (active?.baseUrl !== undefined) {
-		return stripTrailingSlash(active.baseUrl);
+		return trimTrailingSlashes(active.baseUrl);
 	}
-	return stripTrailingSlash(env("MNEMOPI_LLM_BASE_URL"));
+	return trimTrailingSlashes(envString("MNEMOPI_LLM_BASE_URL"));
 }
 
 function llmModelName(): string {
@@ -104,7 +85,7 @@ function llmModelName(): string {
 	if (typeof model === "string") {
 		return model;
 	}
-	return env("MNEMOPI_LLM_MODEL") || "local";
+	return envString("MNEMOPI_LLM_MODEL") || "local";
 }
 
 function llmApiKey(): ApiKey {
@@ -112,11 +93,11 @@ function llmApiKey(): ApiKey {
 	if (active?.apiKey !== undefined) {
 		return active.apiKey;
 	}
-	return env("MNEMOPI_LLM_API_KEY");
+	return envString("MNEMOPI_LLM_API_KEY");
 }
 
 function sleepPrompt(): string {
-	return env("MNEMOPI_SLEEP_PROMPT").trim();
+	return envString("MNEMOPI_SLEEP_PROMPT").trim();
 }
 
 function memoryLines(memories: readonly string[]): string {
@@ -223,8 +204,8 @@ async function tryHostLlm(prompt: string, maxTokens: number, temperature: number
 		maxTokens,
 		temperature,
 		timeout: 15,
-		provider: env("MNEMOPI_HOST_LLM_PROVIDER").trim() || null,
-		model: env("MNEMOPI_HOST_LLM_MODEL").trim() || null,
+		provider: envString("MNEMOPI_HOST_LLM_PROVIDER").trim() || null,
+		model: envString("MNEMOPI_HOST_LLM_MODEL").trim() || null,
 	});
 	const text = typeof raw === "string" ? raw.trim() : "";
 	return [true, text === "" ? null : text];

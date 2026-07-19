@@ -142,7 +142,7 @@ export function parseRequest(body: unknown, _headers?: Headers): PiNativeParsedR
 
 	return {
 		modelId,
-		context: context as Context,
+		context: context as unknown as Context,
 		options,
 		stream,
 	};
