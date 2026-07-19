@@ -22,6 +22,16 @@ export type ApprovalMode = AutonomyLevel | LegacyApprovalMode;
 export interface ApprovalResolutionOptions {
 	/** When plan-mode session is active, write-tier tools may run (plan-file guard at execute). */
 	planModeActive?: boolean;
+	/**
+	 * Full bypass (the `/yolo` command): every approval that would prompt is
+	 * allowed instead, including per-tool `prompt` overrides and a tool's own
+	 * `approval(args)` prompt. This is stronger than the `yolo` autonomy level,
+	 * which still honors per-tool `prompt`/`deny`. A hard `deny` is never a
+	 * prompt, so bypass never overrides one: an explicit user
+	 * `tools.approval.<tool>: deny` and a plan-mode mutation block both still
+	 * stop the call (fail closed on real denials).
+	 */
+	bypassAllApprovals?: boolean;
 }
 
 type ApprovalSubject = Pick<AgentTool, "name" | "approval" | "formatApprovalDetails">;
@@ -130,8 +140,26 @@ function planAutonomyBlocksMutation(
  *
  * In yolo mode, override-based tool prompts are ignored; user `tools.approval`
  * settings remain authoritative.
+ *
+ * When `options.bypassAllApprovals` is set (the `/yolo` command), any result
+ * that would still prompt is turned into `allow` as a final step. A `deny` is a
+ * hard block, not a prompt, so it survives the bypass unchanged.
  */
 export function resolveApproval(
+	tool: ApprovalSubject,
+	args: unknown,
+	mode: ApprovalMode,
+	userConfig: Record<string, unknown> = {},
+	options?: ApprovalResolutionOptions,
+): ResolvedApproval {
+	const resolved = resolveApprovalInner(tool, args, mode, userConfig, options);
+	if (options?.bypassAllApprovals && resolved.policy === "prompt") {
+		return { ...resolved, policy: "allow" };
+	}
+	return resolved;
+}
+
+function resolveApprovalInner(
 	tool: ApprovalSubject,
 	args: unknown,
 	mode: ApprovalMode,
