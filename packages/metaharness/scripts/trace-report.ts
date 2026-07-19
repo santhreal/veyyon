@@ -278,7 +278,11 @@ function synthPrompt(options: {
 // --------------------------------------------------------------------------
 // Run
 
-function formatDuration(ms: number | null): string {
+// Fixed mm:ss trace-row duration (zero-padded seconds), distinct from
+// @veyyon/utils formatDuration's compact multi-scale format — this file imports
+// that module, so the local formatter takes an honest name to avoid a same-name
+// shadow. "?" marks a row whose duration was never recorded.
+function formatTraceDuration(ms: number | null): string {
 	if (ms == null) return "?";
 	const seconds = Math.round(ms / 1000);
 	return `${Math.floor(seconds / 60)}m${String(seconds % 60).padStart(2, "0")}s`;
@@ -331,7 +335,7 @@ async function main(): Promise<void> {
 				`Benchmark: ${runData.run.benchmark} (${runData.run.dataset})`,
 				`Configured model: ${runData.run.models}`,
 				row
-					? `Task: ${row.task} — status: ${row.status.toUpperCase()} (reward ${row.reward ?? "?"}), cost $${row.costUsd?.toFixed(2) ?? "?"}, duration ${formatDuration(row.durationMs)}`
+					? `Task: ${row.task} — status: ${row.status.toUpperCase()} (reward ${row.reward ?? "?"}), cost $${row.costUsd?.toFixed(2) ?? "?"}, duration ${formatTraceDuration(row.durationMs)}`
 					: "",
 			]
 				.filter(Boolean)
