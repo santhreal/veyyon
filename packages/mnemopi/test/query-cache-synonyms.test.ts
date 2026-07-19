@@ -55,6 +55,14 @@ describe("synonym expansion", () => {
 		expect(result).toContain("(password|pass|pwd|passwd|credential|secret|token)");
 	});
 
+	it("passes a word with no synonym group through unchanged", () => {
+		// "kubernetes" is neither a stop word nor a canonical/synonym term, so it takes
+		// the untouched-word branch and is emitted verbatim between two expansions.
+		const result = expandQuery("kubernetes db password");
+		expect(result.split(" ")[0]).toBe("kubernetes");
+		expect(result).toContain("(database|db|datastore|data_store)");
+	});
+
 	it("normalizes by removing stop words and mapping synonyms to canonical words", () => {
 		const result = normalizeQuery("what is the database password");
 		expect(result.split(" ")).toEqual(["database", "password"]);

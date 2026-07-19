@@ -156,6 +156,8 @@ describe("AAAK encoding", () => {
 	});
 
 	it("leaves compact AAAK text unchanged and uses Python completion compaction order", () => {
+		// Empty input short-circuits before any transform and returns the empty string.
+		expect(encode("")).toBe("");
 		expect(encode("PREF|dark-mode")).toBe("PREF|dark-mode");
 		expect(encode("TASK: backup working correctly, migration completed")).toBe("TASK: backup OK | migration DONEd");
 	});

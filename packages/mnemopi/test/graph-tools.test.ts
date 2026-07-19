@@ -174,3 +174,30 @@ describe("EpisodicGraph scoring and proactive links", () => {
 		});
 	});
 });
+
+describe("EpisodicGraph connection ownership", () => {
+	it("owns and closes its own connection when constructed without a db", () => {
+		// No `db` option: the graph opens its own in-memory connection and owns it.
+		const graph = new EpisodicGraph();
+		expect(graph.ownsConnection).toBe(true);
+		// A fresh owned graph has an empty schema, so stats are all zero.
+		expect(graph.getStats()).toEqual({ gists: 0, facts: 0, edges: 0, totalNodes: 0 });
+		// close() runs the owns-connection branch: the handle is released and the next
+		// query against it throws rather than returning rows.
+		graph.close();
+		expect(() => graph.getStats()).toThrow();
+	});
+
+	it("leaves an injected connection open after close", () => {
+		const db = openDatabase(":memory:");
+		try {
+			const graph = new EpisodicGraph({ db });
+			expect(graph.ownsConnection).toBe(false);
+			// close() is a no-op on an injected db: the caller still owns it and can query.
+			graph.close();
+			expect(graph.getStats().gists).toBe(0);
+		} finally {
+			closeQuietly(db);
+		}
+	});
+});

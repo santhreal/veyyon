@@ -12,6 +12,7 @@ import {
 	getDefaultInstance,
 	getStats,
 	Mnemopi,
+	query,
 	recall,
 	recallEnhanced,
 	remember,
@@ -204,6 +205,11 @@ describe("Mnemopi facade", () => {
 		const hits = await search("alias", 10);
 		const ids = hits.map(row => row.id);
 		expect(ids).toContain(addId);
+
+		// The module-level `query` alias is a second name for the same recall path, so
+		// it returns the identical id set for the identical arguments.
+		const queried = await query("alias", 10);
+		expect(queried.map(row => row.id).sort()).toEqual(ids.sort());
 
 		// getDefaultInstance hands back the live singleton, and flushExtractions drains cleanly.
 		const instance = getDefaultInstance();
