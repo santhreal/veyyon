@@ -13,7 +13,7 @@ import type {
 import { isRecord } from "../utils";
 import { normalizeCodexBaseUrl } from "./openai-codex-base-url";
 import { listCodexResetCredits } from "./openai-codex-reset";
-import { toNumber } from "./shared";
+import { toNumber, usageStatusFromUsedFraction } from "./shared";
 
 const CODEX_USAGE_PATH = "wham/usage";
 const JWT_AUTH_CLAIM = "https://api.openai.com/auth";
@@ -248,12 +248,12 @@ function buildUsageAmount(window: ParsedUsageWindow): UsageAmount {
 	};
 }
 
+// Codex adds one provider-specific prefix: an explicit limit_reached flag from
+// the API forces "exhausted" even when the reported fraction is below 1. Past
+// that, the fraction-to-status mapping is the shared owner.
 function buildUsageStatus(usedFraction?: number, limitReached?: boolean): UsageLimit["status"] {
 	if (limitReached) return "exhausted";
-	if (usedFraction === undefined) return "unknown";
-	if (usedFraction >= 1) return "exhausted";
-	if (usedFraction >= 0.9) return "warning";
-	return "ok";
+	return usageStatusFromUsedFraction(usedFraction);
 }
 
 function buildUsageLimit(args: {
