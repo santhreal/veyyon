@@ -2,6 +2,7 @@ import type { SQLQueryBindings } from "bun:sqlite";
 import { collapseWhitespace, DAY_MS, errorMessage, HOUR_MS, logger } from "@veyyon/utils";
 import { envInt } from "../../util/env";
 import { generateId, stableMemoryId } from "../../util/ids";
+import { unicodeWordTokens, WORD_TOKEN_DOT_HYPHEN_RE } from "../../util/regex";
 import { aaakEncode } from "../aaak";
 import { REGEX_EXTRACTION_MAX_INPUT_CHARS } from "../entities";
 import { EpisodicGraph } from "../episodic-graph";
@@ -230,8 +231,7 @@ function makeQuestionTokens(query: string): string[] {
 		"who",
 		"with",
 	]);
-	return [...query.toLowerCase().matchAll(/[\p{L}\p{N}_.-]+/gu)]
-		.map(m => m[0] ?? "")
+	return unicodeWordTokens(query.toLowerCase(), WORD_TOKEN_DOT_HYPHEN_RE)
 		.filter(token => token.length > 1 && !stop.has(token))
 		.slice(0, 8);
 }
@@ -446,7 +446,7 @@ export function detectLanguage(_beam: BeamMemoryState, text: string): string {
 		if (hits >= 2) return "ru";
 	}
 	if (/[äöüß]/.test(lower)) return "de";
-	const words = new Set(lower.match(/[\p{L}\p{N}_]+/gu) ?? []);
+	const words = new Set(unicodeWordTokens(lower));
 	let german = 0;
 	for (const marker of [
 		"ich",

@@ -1,6 +1,7 @@
 import { clamp, clamp01, HOUR_MS, isDateOnly } from "@veyyon/utils";
 import { normalizedRecallWeights, temporalHalflifeHours } from "../../config";
 import { toUtcIso } from "../../util/datetime";
+import { unicodeWordTokens } from "../../util/regex";
 import { tableExists as tableExistsIn } from "../../util/sqlite";
 import { embedQuery } from "../embeddings";
 import { mmrRerank } from "../mmr";
@@ -151,11 +152,9 @@ function round4(value: number): number {
 }
 
 function tokenize(text: string): string[] {
-	const lowered = text.toLowerCase();
-	const matches = lowered.match(/[\p{L}\p{N}_]+/gu) ?? [];
 	const tokens: string[] = [];
-	for (const token of matches) {
-		if (token.length === 0 || STOP_WORDS.has(token)) continue;
+	for (const token of unicodeWordTokens(text.toLowerCase())) {
+		if (STOP_WORDS.has(token)) continue;
 		tokens.push(token);
 	}
 	return tokens;

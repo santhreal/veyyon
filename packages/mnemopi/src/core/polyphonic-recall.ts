@@ -2,6 +2,7 @@ import type { Database } from "bun:sqlite";
 import { DAY_MS, isRecord, WEEK_MS } from "@veyyon/utils";
 import { type Env, envDisabled, polyphonicRecallEnabled } from "../config";
 import { closeQuietly, type DatabasePath, openDatabase } from "../db";
+import { unicodeWordTokens, WORD_TOKEN_HYPHEN_RE } from "../util/regex";
 import { tableExists } from "../util/sqlite";
 import type { BeamMemoryState, JsonValue, Metadata, RecallResult } from "./beam/types";
 import { EpisodicGraph } from "./episodic-graph";
@@ -161,8 +162,7 @@ function extractEntities(text: string): string[] {
 
 function queryWords(query: string): string[] {
 	const seen = new Set<string>();
-	for (const match of query.toLowerCase().matchAll(/[\p{L}\p{N}_-]+/gu)) {
-		const word = match[0];
+	for (const word of unicodeWordTokens(query.toLowerCase(), WORD_TOKEN_HYPHEN_RE)) {
 		if (word.length >= 3) seen.add(word);
 	}
 	return [...seen];
