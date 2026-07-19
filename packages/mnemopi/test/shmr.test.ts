@@ -3,9 +3,11 @@ import { afterEach, describe, expect, it, type Mock, spyOn } from "bun:test";
 import { initBeam } from "@veyyon/mnemopi/core/beam";
 import * as embeddings from "@veyyon/mnemopi/core/embeddings";
 import {
+	applyBeliefs,
 	clusterBySimilarity,
 	cosineSimilarity,
 	embed,
+	embedBatch,
 	extractJsonFromLlmOutput,
 	formatClusterForLlm,
 	getResonanceLog,
@@ -13,6 +15,7 @@ import {
 	recallBeliefs,
 	reflect,
 } from "@veyyon/mnemopi/core/shmr";
+import { logger } from "@veyyon/utils";
 
 let embedSpy: Mock<typeof embeddings.embed> | null = null;
 
@@ -68,6 +71,26 @@ describe("SHMR embedding integration", () => {
 		expect(clusters.map(cluster => cluster.length).sort()).toEqual([1, 2]);
 	});
 
+	it("degrades to hash embeddings and warns when the provider throws mid-batch", async () => {
+		embedSpy = spyOn(embeddings, "embed").mockRejectedValue(new Error("provider offline"));
+		const warn = spyOn(logger, "warn").mockImplementation(() => {});
+		try {
+			const vectors = await embedBatch(["dark mode preference", "dark mode preference"]);
+
+			// One vector per input, and identical text hashes to an identical vector,
+			// so the whole batch shares the deterministic hash space.
+			expect(vectors).toHaveLength(2);
+			expect(Array.from(vectors[0] as Float32Array)).toEqual(Array.from(vectors[1] as Float32Array));
+
+			// The degrade is surfaced loudly, not swallowed (Law 10).
+			const degraded = warn.mock.calls.find(call => String(call[0]).includes("degraded to hash embeddings"));
+			expect(degraded).toBeDefined();
+			expect((degraded?.[1] as Record<string, unknown>).error).toContain("provider offline");
+		} finally {
+			warn.mockRestore();
+		}
+	});
+
 	it("reuses precomputed vectors from memory_embeddings during harmonize", async () => {
 		// No provider and zero word overlap between contents: only the precomputed
 		// vectors stored in memory_embeddings can make these two items cluster.
@@ -119,6 +142,50 @@ describe("SHMR deterministic helpers", () => {
 				true,
 			);
 			expect(getResonanceLog({ db }, 1)[0]?.beliefs_generated).toBeGreaterThanOrEqual(1);
+		} finally {
+			db.close();
+		}
+	});
+
+	it("applies an update belief by rewriting the target fact object and confidence", () => {
+		const db = new Database(":memory:");
+		try {
+			initBeam(db);
+			db.run(
+				"INSERT INTO facts (fact_id, session_id, subject, predicate, object, confidence, timestamp) VALUES (?, ?, ?, ?, ?, ?, ?)",
+				["f1", "s", "user", "prefers", "light mode", 0.5, "2026-01-01T00:00:00"],
+			);
+
+			applyBeliefs(
+				db,
+				[
+					{
+						subject: "user",
+						predicate: "prefers",
+						object: "dark mode",
+						confidence: 0.9,
+						action: "update",
+						target_fact_id: "f1",
+					},
+				],
+				[{ fact_id: "f1", object: "light mode" }],
+				"cluster-1",
+			);
+
+			const fact = db.query("SELECT object, confidence FROM facts WHERE fact_id = ?").get("f1") as {
+				object: string;
+				confidence: number;
+			};
+			expect(fact.object).toBe("dark mode");
+			expect(fact.confidence).toBeCloseTo(0.9, 10);
+
+			// The belief itself is also persisted with the cluster's fact provenance.
+			const belief = db
+				.query("SELECT object, confidence, provenance, cluster_id FROM harmonic_beliefs WHERE cluster_id = ?")
+				.get("cluster-1") as { object: string; confidence: number; provenance: string; cluster_id: string };
+			expect(belief.object).toBe("dark mode");
+			expect(belief.confidence).toBeCloseTo(0.9, 10);
+			expect(JSON.parse(belief.provenance)).toEqual(["f1"]);
 		} finally {
 			db.close();
 		}
