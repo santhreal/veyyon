@@ -222,7 +222,11 @@ describe("global --profile flag", () => {
 		try {
 			const home = path.join(root, "home");
 			const configDir = ".veyyon-profile-cli-env";
-			const defaultAgentDir = path.join(home, configDir, "agent");
+			// Plant the "default" sentinel where the default profile actually
+			// resolves (profiles/default/agent), not the legacy bare <configDir>/agent
+			// path. That way the negative assertion below proves the work profile
+			// wins over a genuinely loadable default .env, not over an empty dir.
+			const defaultAgentDir = path.join(home, configDir, "profiles", "default", "agent");
 			const profileAgentDir = path.join(home, configDir, "profiles", "work", "agent");
 			await fs.mkdir(defaultAgentDir, { recursive: true });
 			await fs.mkdir(profileAgentDir, { recursive: true });
@@ -269,6 +273,20 @@ describe("global --profile flag", () => {
 		} finally {
 			await removeWithRetries(root);
 		}
+	});
+
+	it("cli.ts imports no top-level @veyyon/utils barrel (would eager-load .env before setProfile)", async () => {
+		// Source lock guarding the ordering the test above proves behaviorally: the
+		// "@veyyon/utils" barrel re-exports ./env, which parses the agent-dir .env
+		// at import time. cli.ts must reach every utils symbol through a subpath
+		// (e.g. @veyyon/utils/type-guards, /dirs) so nothing loads the agent .env
+		// before runCli() calls setProfile(). A bare-barrel static import here
+		// silently reintroduces the wrong-profile-.env bug, so fail on it.
+		const cliSource = await fs.readFile(path.join(import.meta.dir, "..", "src", "cli.ts"), "utf-8");
+		const barrelImports = cliSource
+			.split("\n")
+			.filter(line => /^\s*import\b/.test(line) && /from\s+["']@veyyon\/utils["']/.test(line));
+		expect(barrelImports).toEqual([]);
 	});
 
 	it("surfaces an invalid VEYYON_PROFILE env as a clean error, not an import crash", async () => {
