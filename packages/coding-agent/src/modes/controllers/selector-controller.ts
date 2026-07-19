@@ -1,4 +1,5 @@
 import { ThinkingLevel } from "@veyyon/agent-core";
+import type { Effort } from "@veyyon/ai";
 import { PASTE_CODE_LOGIN_PROVIDERS } from "@veyyon/ai";
 import { getOAuthProviders } from "@veyyon/ai/oauth";
 import type { OAuthProvider } from "@veyyon/ai/oauth/types";
@@ -58,6 +59,7 @@ import { OAuthSelectorComponent } from "../components/oauth-selector";
 import { ResetUsageSelectorComponent } from "../components/reset-usage-selector";
 import { SessionSelectorComponent } from "../components/session-selector";
 import { SettingsSelectorComponent } from "../components/settings-selector";
+import { ThinkingSelectorComponent } from "../components/thinking-selector";
 import { ToolExecutionComponent } from "../components/tool-execution";
 import { TranscriptBlock } from "../components/transcript-container";
 import { TreeSelectorComponent } from "../components/tree-selector";
@@ -260,6 +262,37 @@ export class SelectorController {
 					done();
 					this.ctx.ui.requestRender();
 				},
+			);
+			return { component, focus: component };
+		});
+	}
+
+	/**
+	 * Thinking-effort picker for the interactive (session) model — the overlay
+	 * behind `/thinking` and its `/effort` alias. Mirrors the `thinkingLevel`
+	 * settings row: the chosen level persists per profile (setThinkingLevel with
+	 * persist=true) and repaints the editor border + status line. A model with no
+	 * supported efforts has nothing to pick, so we say so instead of opening an
+	 * empty card.
+	 */
+	showThinkingSelector(): void {
+		const availableLevels = [...this.ctx.session.getAvailableThinkingLevels()];
+		if (availableLevels.length === 0) {
+			this.ctx.showStatus("This model has no thinking-effort levels to choose from.");
+			return;
+		}
+		const currentLevel = this.ctx.session.thinkingLevel as Effort | undefined;
+		this.showModalSelector(done => {
+			const component = new ThinkingSelectorComponent(
+				currentLevel ?? availableLevels[0],
+				availableLevels,
+				level => {
+					this.ctx.session.setThinkingLevel(level as ConfiguredThinkingLevel, true);
+					this.ctx.statusLine.invalidate();
+					this.ctx.updateEditorBorderColor();
+					done();
+				},
+				() => done(),
 			);
 			return { component, focus: component };
 		});

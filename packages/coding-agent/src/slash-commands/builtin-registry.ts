@@ -23,6 +23,7 @@ import type { AgentSession, FreshSessionResult } from "../session/agent-session"
 import { COMPACT_MODES, parseCompactArgs } from "../session/compact-modes";
 import { resolveResumableSession } from "../session/session-listing";
 import { formatShakeSummary, type ShakeMode } from "../session/shake-types";
+import { AUTO_THINKING, parseConfiguredThinkingLevel } from "../thinking";
 import { expandTilde, resolveToCwd } from "../tools/path-utils";
 import { urlHyperlinkAlways } from "../tui";
 import { copyToClipboard } from "../utils/clipboard";
@@ -65,6 +66,11 @@ function refreshStatusLine(ctx: InteractiveModeContext): void {
 /** `/fast status` label for the active model: "on" when its family is priority, else "off". */
 function formatFastModeStatus(session: AgentSession): string {
 	return session.isFastModeEnabled() ? "on" : "off";
+}
+
+/** Comma-joined thinking-effort choices for the active model, plus `auto`. */
+function formatThinkingLevelChoices(session: AgentSession): string {
+	return [...session.getAvailableThinkingLevels(), AUTO_THINKING].join(", ");
 }
 
 const AUTOCOMPLETE_DETAIL_LIMIT = 48;
@@ -434,6 +440,56 @@ const BUILTIN_SLASH_COMMAND_REGISTRY: ReadonlyArray<SlashCommandSpec> = [
 		handleTui: (_command, runtime) => {
 			runtime.ctx.showModelSelector({ temporaryOnly: true });
 			runtime.ctx.editor.setText("");
+		},
+	},
+	{
+		name: "thinking",
+		aliases: ["effort"],
+		description: "Set the thinking effort for this session's model",
+		acpDescription: "Set thinking effort",
+		acpInputHint: "[minimal|low|medium|high|xhigh|auto|off]",
+		allowArgs: true,
+		getTuiAutocompleteDescription: runtime => {
+			const level = runtime.ctx.session.configuredThinkingLevel();
+			return level ? `Set thinking effort · now ${level}` : "Set thinking effort";
+		},
+		handle: async (command, runtime) => {
+			const available = formatThinkingLevelChoices(runtime.session);
+			const arg = command.args.trim();
+			if (!arg) {
+				const current = runtime.session.configuredThinkingLevel();
+				await runtime.output(
+					`Thinking effort: ${current ?? "auto"}. Choose one of: ${available}. Usage: /thinking <level>`,
+				);
+				return commandConsumed();
+			}
+			const level = parseConfiguredThinkingLevel(arg);
+			if (level === undefined) {
+				return usage(`Unknown thinking level: ${arg}. Choose one of: ${available}.`, runtime);
+			}
+			runtime.session.setThinkingLevel(level, true);
+			await runtime.output(`Thinking effort set to ${level}.`);
+			await runtime.notifyConfigChanged?.();
+			return commandConsumed();
+		},
+		handleTui: (command, runtime) => {
+			const arg = command.args.trim();
+			runtime.ctx.editor.setText("");
+			if (!arg) {
+				runtime.ctx.showThinkingSelector();
+				return;
+			}
+			const level = parseConfiguredThinkingLevel(arg);
+			if (level === undefined) {
+				runtime.ctx.showStatus(
+					`Unknown thinking level: ${arg}. Choose one of: ${formatThinkingLevelChoices(runtime.ctx.session)}.`,
+				);
+				return;
+			}
+			runtime.ctx.session.setThinkingLevel(level, true);
+			refreshStatusLine(runtime.ctx);
+			runtime.ctx.updateEditorBorderColor();
+			runtime.ctx.showStatus(`Thinking effort set to ${level}.`);
 		},
 	},
 	{
