@@ -186,7 +186,6 @@ export class BeamMemory implements BeamMemoryState {
 		this.episodicGraph = new EpisodicGraph({ db: this.db, dbPath: this.dbPath });
 		this.veracityConsolidator = null;
 		this.caches = {
-			timestampParse: new Map<string, Date>(),
 			extractionBuffer: [],
 		};
 	}
