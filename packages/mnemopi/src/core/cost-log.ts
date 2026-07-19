@@ -2,6 +2,7 @@ import { Database } from "bun:sqlite";
 import { mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+import { toUtcIso } from "../util/datetime";
 
 export const DEFAULT_LOG_DIR = join(homedir(), ".mnemopi", "data");
 export const DEFAULT_LOG_DB = join(DEFAULT_LOG_DIR, "cost_log.db");
@@ -60,7 +61,7 @@ export function logCost(
 				INSERT INTO cost_entries (session_id, memory_count, token_count, estimated_cost_usd, model, timestamp)
 				VALUES (?, ?, ?, ?, ?, ?)
 			`)
-			.run(sessionId, memoryCount, tokenCount, estimatedCostUsd, model, localIsoTimestamp(new Date()));
+			.run(sessionId, memoryCount, tokenCount, estimatedCostUsd, model, toUtcIso());
 	} finally {
 		conn.close();
 	}
@@ -96,8 +97,4 @@ export function getCostStats(sessionId?: string, dbPath?: string): CostStats {
 	} finally {
 		conn.close();
 	}
-}
-function localIsoTimestamp(date: Date): string {
-	const offsetMs = date.getTimezoneOffset() * 60_000;
-	return new Date(date.getTime() - offsetMs).toISOString().replace("Z", "");
 }
