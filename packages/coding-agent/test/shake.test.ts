@@ -160,6 +160,35 @@ describe("AgentSession shake", () => {
 		});
 	});
 
+	describe("dedupeRedundantToolResults (proactive, strategy-independent)", () => {
+		it("elides earlier identical copies and keeps the newest, without touching non-duplicates", async () => {
+			seedHeavyToolResult("DUP_BODY\n".repeat(20)); // copy 1 (bash / command ls)
+			seedHeavyToolResult("DIFFERENT_BODY\n".repeat(20)); // unique
+			seedHeavyToolResult("DUP_BODY\n".repeat(20)); // copy 2 — identical to copy 1
+
+			const result = await session.dedupeRedundantToolResults();
+			expect(result.toolResultsDropped).toBe(1);
+			expect(result.artifactId).toBeDefined();
+
+			const [dup1, unique, dup2] = branchToolResults();
+			expect(dup1.prunedAt).toBeGreaterThan(0);
+			expect(dup1.content.map(b => (b.type === "text" ? b.text : "")).join("")).toContain(
+				`artifact://${result.artifactId}`,
+			);
+			expect(unique.prunedAt).toBeUndefined();
+			expect(dup2.prunedAt).toBeUndefined();
+			expect(dup2.content).toEqual([{ type: "text", text: "DUP_BODY\n".repeat(20) }]);
+		});
+
+		it("is a no-op with zero counts when nothing is redundant", async () => {
+			seedHeavyToolResult("ONLY_ONE\n".repeat(20));
+			const result = await session.dedupeRedundantToolResults();
+			expect(result.toolResultsDropped).toBe(0);
+			expect(result.tokensFreed).toBe(0);
+			expect(branchToolResults()[0].prunedAt).toBeUndefined();
+		});
+	});
+
 	describe("images", () => {
 		it("mirrors dropImages and reports the removed image count", async () => {
 			const png: ImageContent = { type: "image", data: "iVBORw0KGgo", mimeType: "image/png" };

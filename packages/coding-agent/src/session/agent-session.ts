@@ -10338,6 +10338,30 @@ export class AgentSession {
 			return { mode, toolResultsDropped: 0, blocksDropped: 0, tokensFreed: 0 };
 		}
 
+		const applied = await this.#offloadAndApplyShakeRegions(regions);
+
+		return {
+			mode,
+			toolResultsDropped: applied.toolResultsDropped,
+			blocksDropped: applied.blocksDropped,
+			tokensFreed: applied.tokensFreed,
+			artifactId: applied.artifactId,
+		};
+	}
+
+	/**
+	 * Offload a set of shake regions to one recovery artifact, splice their
+	 * placeholders in place, persist the rewrite, and re-prime the provider /
+	 * advisor views. Shared by {@link shake} and
+	 * {@link dedupeRedundantToolResults} so the offload + rewrite tail lives in
+	 * exactly one place. Caller guarantees `regions` is non-empty.
+	 */
+	async #offloadAndApplyShakeRegions(regions: ShakeRegion[]): Promise<{
+		toolResultsDropped: number;
+		blocksDropped: number;
+		tokensFreed: number;
+		artifactId: string | undefined;
+	}> {
 		const artifactId = await this.#saveShakeArtifact(regions);
 		const replacements = regions.map((region, index) => this.#shakeElidePlaceholder(region, index, artifactId));
 
@@ -10363,11 +10387,39 @@ export class AgentSession {
 		this.#closeCodexProviderSessionsForHistoryRewrite();
 
 		return {
-			mode,
 			toolResultsDropped,
 			blocksDropped,
 			tokensFreed: Math.max(0, originalTokens - replacementTokens),
 			artifactId,
+		};
+	}
+
+	/**
+	 * Lossless, LLM-free reducer: elide earlier tool-results that are
+	 * byte-identical to a newer one (re-read of an unchanged file, re-run of the
+	 * same command). Unlike {@link shake} this touches only exact duplicates, so
+	 * it is safe to run proactively on any compaction strategy — the newest copy
+	 * of each result stays live and the elided copies remain recoverable via the
+	 * offload artifact. Returns zero counts when nothing is redundant.
+	 */
+	async dedupeRedundantToolResults(): Promise<{
+		toolResultsDropped: number;
+		tokensFreed: number;
+		artifactId?: string;
+	}> {
+		const branchEntries = this.sessionManager.getBranch();
+		const config = this.#withPlanProtection({
+			...AGGRESSIVE_SHAKE_CONFIG,
+			keepBoundaryId: getLatestCompactionEntry(branchEntries)?.firstKeptEntryId,
+		});
+		const regions = collectRedundantToolResultRegions(branchEntries, config);
+		if (regions.length === 0) return { toolResultsDropped: 0, tokensFreed: 0 };
+
+		const applied = await this.#offloadAndApplyShakeRegions(regions);
+		return {
+			toolResultsDropped: applied.toolResultsDropped,
+			tokensFreed: applied.tokensFreed,
+			artifactId: applied.artifactId,
 		};
 	}
 
