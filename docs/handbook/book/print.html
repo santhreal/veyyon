@@ -51,7 +51,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-f100f8fc.js";
+            window.path_to_searchindex_js = "searchindex-751a3c12.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-cc1a72e9.js"></script>
@@ -5143,9 +5143,14 @@ behind it.</p>
 <h2 id="context-compaction"><a class="header" href="#context-compaction">Context compaction</a></h2>
 <p>Primary compaction knobs (settings → Models → Compaction, or <code>config.yml</code>):</p>
 <ul>
-<li><strong>Threshold</strong> (<code>compaction.thresholdPercent</code>): percent of the
-context window at which auto-compaction runs. Also on demand with <code>/compact</code>.
-Optional fixed trigger: <code>compaction.thresholdTokens</code> when set <code>&gt; 0</code>.</li>
+<li><strong>Threshold</strong> (<code>compaction.thresholdTokens</code>): an absolute token amount,
+model-independent. Auto-compaction runs once context exceeds this many
+tokens, whatever the current model’s window is. This is the primary knob.
+When the amount is larger than the current model’s window, it is honored up
+to one token below the window and you get a one-time warning. Set it to
+<code>Default</code> (<code>-1</code>) to fall back to the legacy percent trigger
+(<code>compaction.thresholdPercent</code>), which is a percent of the current model’s
+window. You can also compact on demand with <code>/compact</code>.</li>
 <li><strong>Type</strong> (<code>compaction.strategy</code>): how history is compressed:
 <ul>
 <li><code>handoff</code>: writes a structured handoff summary that preserves the task, pending questions, and
