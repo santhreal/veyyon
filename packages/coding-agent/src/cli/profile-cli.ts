@@ -205,10 +205,24 @@ async function clearCopiedDisplayName(agentDir: string): Promise<void> {
 
 /** Persist a profile's display name into that profile's own settings file. */
 export async function writeProfileDisplayName(profile: string | undefined, displayName: string): Promise<void> {
-	const { Settings } = await import("../config/settings");
-	const agentDir = path.join(getProfileRootDir(normalizeProfileName(profile)), "agent");
+	const { Settings, isSettingsInitialized } = await import("../config/settings");
+	const trimmed = displayName.trim();
+	const normalized = normalizeProfileName(profile);
+	// Renaming the ACTIVE profile in a live session must write through the live
+	// singleton, not an isolated instance. The isolated path persists the new
+	// name to disk correctly (locked + atomic), but the running session's cached
+	// reads and its effective-setting listeners would keep showing the OLD name
+	// until the singleton's next save re-read or a reload. Writing through the
+	// singleton updates its in-memory cache and fires the change event now.
+	if (isSettingsInitialized() && normalized === getActiveProfile()) {
+		const live = Settings.instance;
+		live.set("profile.displayName", trimmed);
+		await live.flush();
+		return;
+	}
+	const agentDir = path.join(getProfileRootDir(normalized), "agent");
 	const settings = await Settings.loadIsolated({ agentDir });
-	settings.set("profile.displayName", displayName.trim());
+	settings.set("profile.displayName", trimmed);
 	await settings.flush();
 }
 
