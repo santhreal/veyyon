@@ -9,7 +9,7 @@ import {
 	injectVeyyonExtensionCliRoots,
 } from "@veyyon/coding-agent/discovery/veyyon-extension-roots";
 import { discoverAgents } from "@veyyon/coding-agent/task/discovery";
-import { removeWithRetries } from "@veyyon/utils";
+import { getPluginsDir, removeWithRetries } from "@veyyon/utils";
 
 const VEYYON_AGENT_MD = [
 	"---",
@@ -39,7 +39,13 @@ const CLAUDE_AGENT_MD = [
 ].join("\n");
 
 async function writeOmpPluginAgent(home: string): Promise<void> {
-	const userPluginsRoot = path.join(home, ".veyyon", "profiles", "default", "plugins");
+	// Derive the plugins root from the same resolver the loader reads, so the
+	// fixture lands under whatever profile is active (getPluginsDir honours the
+	// host's active profile). Hardcoding `profiles/default/plugins` here made the
+	// test pass only when the host's global defaultProfile happened to be
+	// "default"; on any other profile the loader looked elsewhere and the plugin
+	// agent vanished.
+	const userPluginsRoot = getPluginsDir(home);
 	const pluginRoot = path.join(userPluginsRoot, "node_modules", "loom");
 	await fs.mkdir(path.join(pluginRoot, "agents"), { recursive: true });
 	await fs.writeFile(
@@ -91,7 +97,7 @@ describe("discoverAgents", () => {
 		expect(projectAgentsDir).toBe(path.join(projectDir, ".veyyon", "agents"));
 	});
 
-	test("loads agents from Veyyon npm plugins under <home>/.veyyon/plugins/node_modules", async () => {
+	test("loads agents from Veyyon npm plugins under the active profile's plugins/node_modules", async () => {
 		await writeOmpPluginAgent(tempHome);
 
 		const { agents } = await discoverAgents(projectDir, tempHome);
