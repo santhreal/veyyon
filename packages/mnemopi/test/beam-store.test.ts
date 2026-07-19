@@ -18,6 +18,7 @@ import {
 	updateWorking,
 } from "@veyyon/mnemopi/core/beam/store";
 import type { BeamEvent, BeamMemoryState } from "@veyyon/mnemopi/core/beam/types";
+import { EpisodicGraph } from "@veyyon/mnemopi/core/episodic-graph";
 import { openDatabase } from "@veyyon/mnemopi/db";
 import { logger } from "@veyyon/utils";
 
@@ -142,6 +143,23 @@ describe("beam store free functions", () => {
 		]);
 		expect(getWorkingStats(beam)).toMatchObject({ total: 3, count: 3 });
 		expect(getGlobalWorkingStats(beam)).toMatchObject({ total: 3, count: 3 });
+	});
+
+	it("schedules background fact extraction for batch items that opt in with extract:true", () => {
+		const beam = makeState();
+		// Only the second item opts into extraction, so the per-item guard takes its
+		// true arm for that id and its false arm for the first — both rows still store.
+		const ids = rememberBatch(beam, [
+			{ content: "Batch item without extraction" },
+			{ content: "Batch item that wants fact extraction", extract: true },
+		]);
+
+		expect(ids).toHaveLength(2);
+		expect(get(beam, ids[0] as string)?.content).toBe("Batch item without extraction");
+		expect(get(beam, ids[1] as string)?.content).toBe("Batch item that wants fact extraction");
+		// Without an LLM the scheduled extraction is a best-effort no-op, so both rows
+		// remain the only working memories and the batch does not throw.
+		expect(getWorkingStats(beam)).toMatchObject({ total: 2, count: 2 });
 	});
 
 	it("updates, invalidates, gets episodic fallback, forgets with authorized annotation cascade, and reports scoped stats", () => {
@@ -398,5 +416,37 @@ describe("trust tier, temporal annotations, and episodic invalidation", () => {
 
 		// An id present nowhere returns false from both arms.
 		expect(invalidate(beam, "ghost-id")).toBe(false);
+	});
+
+	it("stores the memory and warns when proactive graph linking throws", () => {
+		const beam = makeState();
+		// A real EpisodicGraph over a closed database: the instanceof check in
+		// proactiveLinkIfEnabled passes, so ingestMemory runs and throws, exercising
+		// the best-effort catch that must never block durable storage.
+		const brokenDb = openDatabase(":memory:");
+		const brokenGraph = new EpisodicGraph({ db: brokenDb });
+		brokenDb.close();
+		beam.episodicGraph = brokenGraph;
+
+		const previous = process.env.MNEMOPI_PROACTIVE_LINKING;
+		process.env.MNEMOPI_PROACTIVE_LINKING = "1";
+		const warn = spyOn(logger, "warn").mockImplementation(() => {});
+		try {
+			const id = remember(beam, "A memory that should survive a broken graph", { source: "conversation" });
+
+			// The working row landed despite the graph failure.
+			const row = get(beam, id);
+			expect(row?.content).toBe("A memory that should survive a broken graph");
+
+			// The failure is surfaced loudly, not swallowed (Law 10).
+			const linkWarn = warn.mock.calls.find(call => String(call[0]).includes("proactive graph linking failed"));
+			expect(linkWarn).toBeDefined();
+			const linkMeta = linkWarn?.[1] as { memoryId: string } | undefined;
+			expect(linkMeta?.memoryId).toBe(id);
+		} finally {
+			warn.mockRestore();
+			if (previous === undefined) delete process.env.MNEMOPI_PROACTIVE_LINKING;
+			else process.env.MNEMOPI_PROACTIVE_LINKING = previous;
+		}
 	});
 });
