@@ -25,6 +25,7 @@ import {
 	logger,
 	prompt,
 	readImageMetadata,
+	scopedTimeoutSignal,
 	trimTrailingSlashes,
 	untilAborted,
 } from "@veyyon/utils";
@@ -677,8 +678,10 @@ async function findUniqueSuffixMatch(
 	if (!normalized) return null;
 	const pattern = `**/${escapeGlobMetachars(normalized)}`;
 
-	const timeoutSignal = AbortSignal.timeout(GLOB_TIMEOUT_MS);
-	const combinedSignal = signal ? AbortSignal.any([signal, timeoutSignal]) : timeoutSignal;
+	// scopedTimeoutSignal cancels the backing timer on settle, so the glob
+	// timeout never outlives the walk (a bare AbortSignal.timeout would keep its
+	// timer armed for the full window and accumulate under load).
+	const { signal: combinedSignal, cancel } = scopedTimeoutSignal(GLOB_TIMEOUT_MS, signal);
 
 	let matches: string[];
 	try {
@@ -697,6 +700,8 @@ async function findUniqueSuffixMatch(
 			throw new ToolAbortError();
 		}
 		return null;
+	} finally {
+		cancel();
 	}
 
 	if (matches.length !== 1) return null;
