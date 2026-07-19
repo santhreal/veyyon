@@ -11,7 +11,7 @@
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { errorMessage, getAgentDir } from "@veyyon/utils";
+import { atomicWriteFileSync, errorMessage, getAgentDir } from "@veyyon/utils";
 import type * as mupdf from "mupdf";
 import { type EmbeddedMupdfModuleFiles, loadEmbeddedMupdfModuleFiles } from "../../../utils/mupdf-wasm-embed";
 import type { ImageRegion, PageContent, Segment, TextBox } from "./types";
@@ -44,11 +44,8 @@ function materializeEmbeddedMupdf(embedded: EmbeddedMupdfModuleFiles): string {
 		const target = path.join(cacheDir, name);
 		const bytes = fs.readFileSync(asset);
 		if (fs.existsSync(target) && fs.statSync(target).size === bytes.byteLength) continue;
-		fs.mkdirSync(cacheDir, { recursive: true });
-		// Write-then-rename so a concurrent process never imports a torn file.
-		const tmp = path.join(cacheDir, `.${name}.${process.pid}.tmp`);
-		fs.writeFileSync(tmp, bytes);
-		fs.renameSync(tmp, target);
+		// Atomic so a concurrent process never imports a torn cache asset.
+		atomicWriteFileSync(target, bytes);
 	}
 	return path.join(cacheDir, "mupdf.js");
 }
