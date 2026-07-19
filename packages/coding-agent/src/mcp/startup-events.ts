@@ -1,4 +1,4 @@
-import { sanitizeText } from "@veyyon/utils";
+import { isRecord, sanitizeText } from "@veyyon/utils";
 import { replaceTabs, shortenPath, TRUNCATE_LENGTHS, truncateToWidth } from "../tools/render-utils";
 
 export const MCP_CONNECTION_STATUS_EVENT_CHANNEL = "mcp:connection-status";
@@ -46,10 +46,6 @@ function shortenEmbeddedPaths(text: string): string {
 			return `${leading}${shortenPath(segment.slice(leading.length, end))}${trailing}`;
 		})
 		.join(" ");
-}
-
-function isRecord(data: unknown): data is Record<string, unknown> {
-	return typeof data === "object" && data !== null;
 }
 
 function isStringArray(data: unknown): data is string[] {

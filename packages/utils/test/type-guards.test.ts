@@ -70,20 +70,18 @@ const PACKAGES_DIR = path.join(import.meta.dir, "../..");
 const OWNER = "utils/src/type-guards.ts";
 
 // launch/protocol.ts is a deliberately dependency-free cross-process protocol
-// module (zero imports) and keeps a self-contained guard. The rest are
-// remaining local copies owned by in-flight work on those files — import
-// isRecord from @veyyon/utils when that work lands. Shrink-only.
+// module (zero imports) and keeps a self-contained guard. The four remaining
+// entries live in packages that either predate the shared owner or carry a
+// package-local shape — fold each onto @veyyon/utils and drop its entry.
+// The six coding-agent copies (share/legacy-pi-compat/model-profile/
+// startup-events/agent-session/task-executor) were folded 2026-07-19; two of
+// them (share, startup-events) had drifted to accept arrays, the exact
+// same-name divergence this lock exists to catch. Shrink-only.
 const ISRECORD_ALLOWED = new Set([
 	"coding-agent/src/launch/protocol.ts",
 	"agent/src/compaction/compaction-v2-streaming.ts",
 	"ai/src/providers/openai-reasoning-fallback.ts",
 	"ai/src/registry/oauth/xai-oauth.ts",
-	"coding-agent/src/export/share.ts",
-	"coding-agent/src/extensibility/plugins/legacy-pi-compat.ts",
-	"coding-agent/src/harness/model-profile.ts",
-	"coding-agent/src/mcp/startup-events.ts",
-	"coding-agent/src/session/agent-session.ts",
-	"coding-agent/src/task/executor.ts",
 	"utils/src/runtime-install.ts",
 ]);
 
