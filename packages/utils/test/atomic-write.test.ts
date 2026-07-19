@@ -317,6 +317,10 @@ const HANDROLLED_ATOMIC_ALLOWED = new Map<string, string>([
 	// integrity check on the temp file BETWEEN the write and the rename, rolling
 	// back on failure. The owner has no verify-before-rename hook.
 	["mnemopi/src/dr/recovery.ts", "DR restore verifies the temp file before renaming"],
+	// createProfile seeds a whole agent tree into a staging DIRECTORY and renames
+	// the directory into place so a half-seeded profile never appears. The owner
+	// writes a single file, not a populated tree.
+	["coding-agent/src/cli/profile-cli.ts", "staging profile directory, not a file write"],
 ]);
 
 const RENAME_CALL = /\brename(?:Sync)?\s*\(/;
