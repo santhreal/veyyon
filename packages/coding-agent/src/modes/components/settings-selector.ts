@@ -570,7 +570,9 @@ const ADVANCED_TOGGLE_ID_PREFIX = "__advanced:";
 
 // Numeric compaction settings whose -1 sentinel renders as (and is set via)
 // the "default" submenu option: -1 = derive the value from the model/provider.
-const COMPACTION_DEFAULT_SENTINEL_PATHS: ReadonlySet<string> = new Set([
+// Exported so the settings round-trip guard (test) treats this as the single
+// authority on which paths accept the "default" sentinel option value.
+export const COMPACTION_DEFAULT_SENTINEL_PATHS: ReadonlySet<string> = new Set([
 	"compaction.thresholdPercent",
 	"compaction.thresholdTokens",
 	"compaction.modelContextWindow",
