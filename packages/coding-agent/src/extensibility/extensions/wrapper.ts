@@ -130,9 +130,13 @@ export class ExtensionToolWrapper<TParameters extends TSchema = TSchema, TDetail
 		const settings: Settings | undefined = context?.settings;
 		const configuredMode = (settings?.get("tools.approvalMode") ?? "yolo") as ApprovalMode;
 		const planModeActive = context?.planModeActive === true;
+		const bypassAllApprovals = context?.bypassAllApprovals === true;
 		const approvalMode = resolveEffectiveApprovalMode(configuredMode, { planModeActive, cliAutoApprove });
 		const userPolicies = (settings?.get("tools.approval") ?? {}) as Record<string, unknown>;
-		const approvalCheck = requiresApproval(this.tool, params, approvalMode, userPolicies, { planModeActive });
+		const approvalCheck = requiresApproval(this.tool, params, approvalMode, userPolicies, {
+			planModeActive,
+			bypassAllApprovals,
+		});
 
 		if (approvalCheck.required) {
 			const hasApprovalHandlers =

@@ -1704,7 +1704,12 @@ export class InteractiveMode implements InteractiveModeContext {
 	}
 
 	updateEditorBorderColor(): void {
-		if (this.isBashMode) {
+		// The `/yolo` full-bypass is a persistent danger state ("every prompt is
+		// off"), so it outranks every other border treatment — the operator must
+		// never lose sight of it.
+		if (this.session.isApprovalBypassed()) {
+			this.editor.borderColor = theme.getBypassModeBorderColor();
+		} else if (this.isBashMode) {
 			this.editor.borderColor = theme.getBashModeBorderColor();
 		} else if (this.isPythonMode) {
 			this.editor.borderColor = theme.getPythonModeBorderColor();
@@ -1733,7 +1738,9 @@ export class InteractiveMode implements InteractiveModeContext {
 		// and the named-session accent still take over; the thinking level already
 		// shows in the capability line, so it no longer tints the glyph.
 		let gutter: string;
-		if (this.isBashMode) {
+		if (this.session.isApprovalBypassed()) {
+			gutter = theme.getBypassModeBorderColor()("›");
+		} else if (this.isBashMode) {
 			gutter = theme.getBashModeBorderColor()("›");
 		} else if (this.isPythonMode) {
 			gutter = theme.getPythonModeBorderColor()("›");

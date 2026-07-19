@@ -25,6 +25,8 @@ picker. Commands below are the **builtin** set; extensions may add more.
 | `/model [id]` | Select the **interactive** model only (no role cycle; roles live in settings) |
 | `/switch` | Same interactive model picker |
 | `/fast on\|off\|status` | Fast mode |
+| `/thinking [level]` (`/effort`) | Set reasoning effort; no argument opens the picker |
+| `/yolo on\|off\|status` | Remove ALL permission prompts for this session (explicit deny and plan mode still block; needs confirmation) |
 | `/plan` | Toggle plan mode |
 | `/plan-review` | Re-open plan review |
 | `/goal …` | Goal set/show/pause/resume/drop/budget |

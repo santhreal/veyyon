@@ -380,6 +380,15 @@ export class Theme {
 		return (str: string) => this.fg("pythonMode", str);
 	}
 
+	/**
+	 * Border/glyph color for the `/yolo` full-bypass danger state. Uses the
+	 * theme's `error` role so "every prompt is off" reads as loud and unmistakable
+	 * in every theme. Single owner for the bypass indicator color.
+	 */
+	getBypassModeBorderColor(): (str: string) => string {
+		return (str: string) => this.fg("error", str);
+	}
+
 	// ============================================================================
 	// Symbol Methods
 	// ============================================================================

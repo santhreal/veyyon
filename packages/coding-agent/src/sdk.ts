@@ -2251,6 +2251,9 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			settings,
 			localProtocolOptions,
 			autoApprove: options.autoApprove ?? false,
+			// Live read so a mid-session `/yolo` toggle takes effect on the next
+			// tool call (getSessionContext runs per tool-execution context build).
+			bypassAllApprovals: session.isApprovalBypassed(),
 		});
 		const toolContextStore = new ToolContextStore(getSessionContext);
 

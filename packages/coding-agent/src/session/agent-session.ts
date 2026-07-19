@@ -1746,6 +1746,14 @@ export class AgentSession {
 	readonly yieldQueue: YieldQueue;
 	fileSnapshotStore?: InMemorySnapshotStore;
 	#autoApprove: boolean;
+	/**
+	 * Full permission bypass (the `/yolo` command). Session-scoped, defaults off,
+	 * never auto-persisted: every approval that would prompt is allowed while set,
+	 * but explicit user `deny` and plan-mode blocks still stop the call. Read live
+	 * into each tool-execution context so a mid-session toggle takes effect on the
+	 * next tool call.
+	 */
+	#approvalBypassActive = false;
 
 	#powerAssertion: MacOSPowerAssertion | undefined;
 
@@ -6955,8 +6963,25 @@ export class AgentSession {
 	#isExplicitAutoApproveMode(): boolean {
 		return (
 			this.#autoApprove ||
+			this.#approvalBypassActive ||
 			(this.settings.isConfigured("tools.approvalMode") && this.settings.get("tools.approvalMode") === "yolo")
 		);
+	}
+
+	/** Whether the `/yolo` full-bypass is currently active for this session. */
+	isApprovalBypassed(): boolean {
+		return this.#approvalBypassActive;
+	}
+
+	/**
+	 * Turn the `/yolo` full-bypass on or off for this session. Returns the new
+	 * state. Session-scoped only: never written to settings, so it always starts
+	 * off in a fresh session. The next tool call reads this live via the tool
+	 * context (`bypassAllApprovals`).
+	 */
+	setApprovalBypass(enabled: boolean): boolean {
+		this.#approvalBypassActive = enabled;
+		return this.#approvalBypassActive;
 	}
 
 	async #applyActiveToolsByName(

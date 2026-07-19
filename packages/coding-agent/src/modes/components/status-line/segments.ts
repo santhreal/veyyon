@@ -193,43 +193,58 @@ function renderGoalMode(ctx: SegmentContext, mode: { enabled: boolean; paused: b
 	return { content: theme.fg(color, parts.join(" ")), visible: true };
 }
 
+/** The active mode label (plan/prewalk/goal/vibe/loop), independent of the bypass marker. */
+function renderBaseMode(ctx: SegmentContext): RenderedSegment {
+	const pauseSuffix = theme.icon.pause ? ` ${theme.icon.pause}` : " (paused)";
+
+	const plan = ctx.planMode;
+	if (plan && (plan.enabled || plan.paused)) {
+		const label = plan.paused ? `Plan${pauseSuffix}` : "Plan";
+		const content = withIcon(theme.icon.plan, label);
+		const color = plan.paused ? "warning" : "accent";
+		return { content: theme.fg(color, content), visible: true };
+	}
+
+	const prewalk = ctx.prewalk;
+	if (prewalk?.enabled) {
+		const content = withIcon(theme.icon.prewalk, "Prewalk");
+		return { content: theme.fg("accent", content), visible: true };
+	}
+
+	const goal = ctx.goalMode;
+	if (goal && (goal.enabled || goal.paused)) {
+		return renderGoalMode(ctx, goal);
+	}
+
+	const vibe = ctx.vibeMode;
+	if (vibe?.enabled) {
+		const content = withIcon(theme.icon.agents, "Vibe");
+		return { content: theme.fg("accent", content), visible: true };
+	}
+
+	const loop = ctx.loopMode;
+	if (loop?.enabled) {
+		const content = withIcon(theme.icon.loop, "Loop");
+		return { content: theme.fg("customMessageLabel", content), visible: true };
+	}
+
+	return { content: "", visible: false };
+}
+
 const modeSegment: StatusLineSegment = {
 	id: "mode",
 	render(ctx) {
-		const pauseSuffix = theme.icon.pause ? ` ${theme.icon.pause}` : " (paused)";
-
-		const plan = ctx.planMode;
-		if (plan && (plan.enabled || plan.paused)) {
-			const label = plan.paused ? `Plan${pauseSuffix}` : "Plan";
-			const content = withIcon(theme.icon.plan, label);
-			const color = plan.paused ? "warning" : "accent";
-			return { content: theme.fg(color, content), visible: true };
+		const base = renderBaseMode(ctx);
+		// The `/yolo` full-bypass ("all prompts off") is the single most important
+		// state to surface, so it prefixes whatever mode is active rather than
+		// replacing it. The red editor border is the always-on guarantee; this text
+		// is the label. Errs loud (Law 10 — a silent bypass would be a safety bug).
+		if (ctx.session.isApprovalBypassed()) {
+			const marker = theme.fg("error", `${theme.symbol("status.warning")} YOLO`);
+			const content = base.visible && base.content ? `${marker} ${base.content}` : marker;
+			return { content, visible: true };
 		}
-
-		const prewalk = ctx.prewalk;
-		if (prewalk?.enabled) {
-			const content = withIcon(theme.icon.prewalk, "Prewalk");
-			return { content: theme.fg("accent", content), visible: true };
-		}
-
-		const goal = ctx.goalMode;
-		if (goal && (goal.enabled || goal.paused)) {
-			return renderGoalMode(ctx, goal);
-		}
-
-		const vibe = ctx.vibeMode;
-		if (vibe?.enabled) {
-			const content = withIcon(theme.icon.agents, "Vibe");
-			return { content: theme.fg("accent", content), visible: true };
-		}
-
-		const loop = ctx.loopMode;
-		if (loop?.enabled) {
-			const content = withIcon(theme.icon.loop, "Loop");
-			return { content: theme.fg("customMessageLabel", content), visible: true };
-		}
-
-		return { content: "", visible: false };
+		return base;
 	},
 };
 
