@@ -78,7 +78,6 @@ const ISRECORD_ALLOWED = new Set([
 	"agent/src/compaction/compaction-v2-streaming.ts",
 	"ai/src/providers/openai-reasoning-fallback.ts",
 	"ai/src/registry/oauth/xai-oauth.ts",
-	"coding-agent/src/config/settings.ts",
 	"coding-agent/src/export/share.ts",
 	"coding-agent/src/extensibility/plugins/legacy-pi-compat.ts",
 	"coding-agent/src/harness/model-profile.ts",

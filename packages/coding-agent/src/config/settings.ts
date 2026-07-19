@@ -21,6 +21,7 @@ import {
 	getLastChangelogVersionPath,
 	getProjectDir,
 	isEnoent,
+	isRecord,
 	logger,
 	MAIN_CONFIG_FILENAMES,
 	procmgr,
@@ -164,10 +165,6 @@ function stringArrayFromUnknown(value: unknown): string[] {
 	if (typeof value === "string") return [value];
 	if (Array.isArray(value)) return value.filter((item): item is string => typeof item === "string");
 	return [];
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
 function modelRoleValueFromUnknown(value: unknown): string | undefined {
@@ -781,6 +778,12 @@ export class Settings {
 	async #loadProjectSettings(): Promise<RawSettings> {
 		try {
 			const result = await loadCapability(settingsCapability.id, { cwd: this.#cwd });
+			// Surface provider-level warnings (e.g. a malformed project settings
+			// file that the capability layer flagged): dropping them silently
+			// meant a user's broken settings.json was ignored with no signal.
+			for (const warning of result.warnings) {
+				logger.warn("Settings: project settings discovery warning", { warning });
+			}
 			let merged: RawSettings = {};
 			for (const item of result.items as SettingsCapabilityItem[]) {
 				if (item.level === "project") {
@@ -788,7 +791,13 @@ export class Settings {
 				}
 			}
 			return this.#migrateRawSettings(merged);
-		} catch {
+		} catch (error) {
+			// Fail soft to defaults so a bad project settings file cannot block
+			// startup, but do not swallow the reason (Law 10).
+			logger.warn("Settings: failed to load project settings", {
+				cwd: this.#cwd,
+				error: String(error),
+			});
 			return {};
 		}
 	}
