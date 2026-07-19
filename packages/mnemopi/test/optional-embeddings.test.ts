@@ -3,6 +3,7 @@ import { getFastembedCacheDir } from "@veyyon/utils";
 import "./setup";
 import {
 	available,
+	availableApi,
 	embed,
 	embedQuery,
 	getEmbeddingApiCallCountForTests,
@@ -21,6 +22,7 @@ const ENV_KEYS = [
 	"MNEMOPI_EMBEDDING_MODEL",
 	"MNEMOPI_EMBEDDING_API_URL",
 	"MNEMOPI_EMBEDDING_API_KEY",
+	"MNEMOPI_EMBEDDING_MAX_INPUT_CHARS",
 	"OPENROUTER_BASE_URL",
 	"OPENROUTER_API_KEY",
 	"OPENAI_API_KEY",
@@ -110,6 +112,72 @@ describe("optional embeddings", () => {
 			expect(await embedQuery("cache me")).toEqual(new Float32Array([8, 99]));
 			expect(await embedQuery("cache me")).toEqual(new Float32Array([8, 99]));
 			expect(calls).toBe(1);
+		});
+	});
+
+	it("clips an oversized embedding input into a head/tail window before embedding", async () => {
+		await withEnv({ MNEMOPI_NO_EMBEDDINGS: undefined, MNEMOPI_EMBEDDING_MAX_INPUT_CHARS: "40" }, async () => {
+			let received: readonly string[] = [];
+			setEmbeddingProviderForTests({
+				embed: streamRows(texts => {
+					received = texts;
+					return texts.map(text => [text.length, text.charCodeAt(0) || 0]);
+				}),
+				available: () => true,
+			});
+
+			const result = await embed([`${"H".repeat(100)}${"T".repeat(100)}`]);
+			// 40-char budget: 15 head chars + the 9-char elision marker + 16 tail chars.
+			expect(received[0]).toBe(`${"H".repeat(15)}\n\n[...]\n\n${"T".repeat(16)}`);
+			expect(result).toEqual([new Float32Array([40, "H".charCodeAt(0)])]);
+		});
+	});
+
+	it("falls back to a tail-only clip when the window is too small to split", async () => {
+		await withEnv({ MNEMOPI_NO_EMBEDDINGS: undefined, MNEMOPI_EMBEDDING_MAX_INPUT_CHARS: "20" }, async () => {
+			let received: readonly string[] = [];
+			setEmbeddingProviderForTests({
+				embed: streamRows(texts => {
+					received = texts;
+					return texts.map(text => [text.length, text.charCodeAt(0) || 0]);
+				}),
+				available: () => true,
+			});
+
+			const result = await embed([`${"H".repeat(100)}${"T".repeat(100)}`]);
+			// A 20-char window cannot fit the marker plus a useful head, so only the tail is kept.
+			expect(received[0]).toBe("T".repeat(20));
+			expect(result).toEqual([new Float32Array([20, "T".charCodeAt(0)])]);
+		});
+	});
+
+	it("reports API availability from the configured embedding API key", async () => {
+		await withEnv(
+			{ MNEMOPI_EMBEDDING_API_KEY: "sk-configured", OPENROUTER_API_KEY: undefined, OPENAI_API_KEY: undefined },
+			() => {
+				expect(availableApi()).toBe(true);
+			},
+		);
+		await withEnv(
+			{ MNEMOPI_EMBEDDING_API_KEY: undefined, OPENROUTER_API_KEY: undefined, OPENAI_API_KEY: undefined },
+			() => {
+				expect(availableApi()).toBe(false);
+			},
+		);
+	});
+
+	it("treats a provider without an availability probe as available, and a throwing probe as not", async () => {
+		await withEnv({ MNEMOPI_NO_EMBEDDINGS: undefined }, async () => {
+			setEmbeddingProviderForTests({ embed: streamRows(() => [[1]]) });
+			expect(await available()).toBe(true);
+
+			setEmbeddingProviderForTests({
+				embed: streamRows(() => [[1]]),
+				available: () => {
+					throw new Error("probe failed");
+				},
+			});
+			expect(await available()).toBe(false);
 		});
 	});
 
