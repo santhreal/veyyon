@@ -55,15 +55,34 @@ Project-level dirs (`<cwd>/.veyyon`, `.claude`, etc.) are **not** profile-scoped
 
 - **CLI:** `veyyon --profile <name>` (no short form; `-p` is `--print`).
 - **Env:** `VEYYON_PROFILE=<name>`.
-- **TUI:** `/profile <name>` ends the current conversation and relaunches Veyyon on that profile (a fresh session: profiles are chosen at process start, so there is no hot-swap). Bare `/profile` lists profiles with the active one marked.
+- **TUI:** `/profile <name>` ends the current conversation and relaunches Veyyon on that profile (a fresh session: profiles are chosen at process start, so there is no hot-swap). Bare `/profile` (or `/profiles`) opens the profile picker described below.
 - **Shell alias:** `veyyon --profile work --alias mywork` installs a managed block in your shell rc (see `cli/profile-alias.ts`).
+
+## TUI profile commands
+
+`/profiles` and `/profile` are the same command. Run it with no arguments to open the **profile picker**, an interactive dialog that lists every profile (the active one marked) plus a **Create new profile** row. Select a profile to open its action menu: **Switch to it**, **Rename it**, or **Delete it** (switch and delete are hidden for the active profile, and the default profile is never offered for deletion). The picker is the fastest way to manage profiles without remembering the verb syntax.
+
+You can also type any verb directly:
+
+| Command | Effect |
+| --- | --- |
+| `/profiles`, `/profile` | Open the profile picker. |
+| `/profile list` | Print the profile list as text (active marked with `*`). |
+| `/profile <name>` | Switch to `<name>` (relaunches as a fresh session). |
+| `/profile switch <name>` | Same as `/profile <name>`. |
+| `/profile new <name>`, `/profile create <name>` | Create `<name>`, then open the copy-items picker. |
+| `/profile rename <old> to <new>` | Set the display name of `<old>` to `<new>`. |
+| `/profile rename to <new>` | Rename the active profile. |
+| `/profile rm <name>`, `/profile delete <name>` | Delete `<name>` after a confirmation. Refuses the active and default profiles. |
+
+Choosing **Create new profile** or **Rename** in the picker prefills the composer with the matching command (`/profile new ` or `/profile <name> rename to `) so you finish by typing the name and pressing Enter. Name entry always flows through the same typed command, so there is one place that creates and renames.
 
 ## Profile names and renaming
 
 A profile's directory name (`~/.veyyon/profiles/<name>`) is its stable identity and never changes. Each profile can additionally carry a **display name**, the `profile.displayName` setting, stored in that profile's own `config.yml`:
 
 - **Settings:** `/settings` › Interaction › Profile › Profile Name.
-- **TUI:** `/profile rename to <new>` renames the active profile; `/profile <name> rename to <new>` renames another one. The default profile is renamable too.
+- **TUI:** `/profile rename to <new>` renames the active profile; `/profile <name> rename to <new>` (or `/profile rename <name> to <new>`) renames another one. The default profile is renamable too. The profile picker's **Rename** action prefills this command for you.
 
 `/profile list` shows `name (Display Name)` when they differ, and `/profile <input>` resolves a directory name first, then a unique display name. A copied settings file never carries the source's display name, `profile new` clears it so two profiles cannot answer to one name.
 
@@ -83,7 +102,7 @@ $ veyyon profile default work
 - `rm` refuses the default profile, the active profile, and destructive deletes without `--yes`.
 - `default [name]` shows or sets the global `defaultProfile` (which profile a bare `vey` launches); `default --clear` removes it.
 
-In the TUI, `/profile new <name>` opens a picker listing every carry-over item (AGENTS.md, settings, MCP servers, SSH targets, skills, commands, tools, prompts, themes, extensions, keybindings), each individually toggleable (all selected by default). The new profile is seeded from the **active** profile with exactly the chosen items.
+In the TUI, `/profile new <name>` (or `/profile create <name>`) opens a picker listing every carry-over item (AGENTS.md, settings, MCP servers, SSH targets, skills, commands, tools, prompts, themes, extensions, keybindings), each individually toggleable (all selected by default). The new profile is seeded from the **active** profile with exactly the chosen items. Deleting is available too: `/profile rm <name>` (or the picker's **Delete** action) removes a profile after a confirmation, and refuses the active and default profiles. See [TUI profile commands](#tui-profile-commands) for the full verb list.
 
 You can still create a profile implicitly by running `veyyon --profile <name>` once; use `profile new` when you want seeding without launching the TUI.
 

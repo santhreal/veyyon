@@ -15,7 +15,7 @@ picker. Commands below are the **builtin** set; extensions may add more.
 | `/export [path]` | Export session JSONL or HTML |
 | `/dump` | Dump debug artifacts |
 | `/session info`, `/session delete` | Session metadata or delete |
-| `/profile [name]` | List profiles, or switch (relaunches as a fresh session); `/profile new <name>` opens the copy picker; `/profile [name] rename to <new>` sets a display name |
+| `/profile [name]`, `/profiles` | Bare opens the profile picker (switch, rename, create, delete); `/profile <name>` switches (relaunches as a fresh session); `/profile new <name>` opens the copy picker; `/profile <name> rename to <new>` sets a display name; `/profile rm <name>` deletes after a confirmation |
 | `/exit`, `/quit`, `/pause` | Leave or pause |
 
 ## Model, modes, and behavior

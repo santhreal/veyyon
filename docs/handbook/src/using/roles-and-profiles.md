@@ -89,7 +89,7 @@ Every profile including `default`:
 ```
 
 Global `~/.veyyon/config.yml` holds cross-profile keys such as `defaultProfile`.  
-Activate: `--profile`, `VEYYON_PROFILE`, `veyyon profile default <name>`, TUI `/profile` (relaunch).  
+Activate: `--profile`, `VEYYON_PROFILE`, `veyyon profile default <name>`, TUI `/profiles` picker or `/profile <name>` (relaunch).  
 See [Profiles](../features/profiles.md), [File locations](../reference/file-locations.md).
 
 ## Approvals

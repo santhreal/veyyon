@@ -35,6 +35,7 @@ import { describeRedeemOutcome, type ResetUsageAccount, toResetUsageAccounts } f
 import { handleSshAcp } from "./helpers/ssh";
 import { handleTodoAcp } from "./helpers/todo";
 import { buildUsageReportText } from "./helpers/usage-report";
+import type { ProfileCommandPort } from "./profile-command";
 import type {
 	BuiltinSlashCommand,
 	ParsedSlashCommand,
@@ -1645,111 +1646,39 @@ const BUILTIN_SLASH_COMMAND_REGISTRY: ReadonlyArray<SlashCommandSpec> = [
 	{
 		name: "profile",
 		aliases: ["profiles"],
-		description: "List profiles, switch with /profile <name>, rename with /profile [name] rename to <new>",
+		description:
+			"Open the profile picker, or /profile <name> to switch, /profile <name> rename to <new>, /profile new <name>, /profile rm <name>",
 		allowArgs: true,
 		handleTui: async (command, runtime) => {
 			runtime.ctx.editor.setText("");
-			const { getActiveProfile, listProfiles } = await import("@veyyon/utils");
-			const { createProfile, readProfileDisplayName, resolveProfileByName, writeProfileDisplayName } = await import(
-				"../cli/profile-cli"
-			);
-			const args = command.args.trim();
-			const active = getActiveProfile();
-			const activeName = active ?? "default";
-
-			const listOut = async (): Promise<void> => {
-				const lines: string[] = [];
-				for (const profile of listProfiles()) {
-					const display = await readProfileDisplayName(profile.name === "default" ? undefined : profile.name);
-					const marker = profile.name === activeName ? "*" : " ";
-					const label = display && display !== profile.name ? `${profile.name} (${display})` : profile.name;
-					lines.push(`${marker} ${label}`);
-				}
-				lines.push(
-					"",
-					"Switch: /profile <name> · Rename: /profile [name] rename to <new> · New: /profile new <name>",
-				);
-				runtime.ctx.showStatus(lines.join("\n"));
+			const [{ parseProfileCommand, runProfileCommand }, { resolveVeyyonCommand }] = await Promise.all([
+				import("./profile-command"),
+				import("../task/veyyon-command"),
+			]);
+			const ctx = runtime.ctx;
+			const port: ProfileCommandPort = {
+				showStatus: message => ctx.showStatus(message, { dim: false }),
+				showError: message => ctx.showError(message),
+				setEditorText: text => ctx.editor.setText(text),
+				askDialog: questions => ctx.showAskDialog(questions),
+				requestRelaunch: env => {
+					const veyyon = resolveVeyyonCommand();
+					const argv =
+						veyyon.shell && process.platform === "win32"
+							? ["cmd.exe", "/c", veyyon.cmd, ...veyyon.args]
+							: [veyyon.cmd, ...veyyon.args];
+					ctx.requestRelaunch({ argv, env });
+				},
+				requestShutdown: () => {
+					void ctx.shutdown();
+				},
 			};
-
 			try {
-				if (!args || args === "list") {
-					await listOut();
-					return commandConsumed();
-				}
-
-				const newMatch = args.match(/^new\s+(\S+)$/);
-				if (newMatch) {
-					const { PROFILE_COPY_ITEMS } = await import("../cli/profile-cli");
-					const labels = PROFILE_COPY_ITEMS.map(item => item.label);
-					const result = await runtime.ctx.showAskDialog([
-						{
-							id: "copy-items",
-							header: "New profile",
-							question: `Copy which items from "${activeName}" into "${newMatch[1]}"? Everything is selected; deselect what should stay behind.`,
-							options: PROFILE_COPY_ITEMS.map(item => ({ label: item.label, description: item.description })),
-							multi: true,
-							preselected: labels,
-						},
-					]);
-					if (result?.kind !== "submit") {
-						runtime.ctx.showStatus("Profile creation cancelled");
-						return commandConsumed();
-					}
-					const chosen = new Set(result.results[0]?.selectedOptions ?? []);
-					const keys = new Set(PROFILE_COPY_ITEMS.filter(item => chosen.has(item.label)).map(item => item.key));
-					const created = await createProfile(newMatch[1]!, keys.size > 0 ? (active ?? "default") : "blank", keys);
-					runtime.ctx.showStatus(
-						`Created profile "${created.name}" (${keys.size}/${PROFILE_COPY_ITEMS.length} items copied from "${activeName}"). Switch with /profile ${created.name}`,
-					);
-					return commandConsumed();
-				}
-
-				// `/profile rename to <new>` renames the active profile;
-				// `/profile <name> rename to <new>` renames a specific one.
-				const renameMatch = args.match(/^(?:(\S+)\s+)?rename\s+to\s+(.+)$/);
-				if (renameMatch) {
-					const targetInput = renameMatch[1];
-					const newName = renameMatch[2]!.trim();
-					const target = targetInput === undefined ? active : await resolveProfileByName(targetInput);
-					if (target === null) {
-						runtime.ctx.showError(`No profile named "${targetInput}". Try /profile list`);
-						return commandConsumed();
-					}
-					await writeProfileDisplayName(target, newName);
-					runtime.ctx.showStatus(`Renamed profile "${target ?? "default"}" to "${newName}"`);
-					return commandConsumed();
-				}
-
-				const resolved = await resolveProfileByName(args);
-				if (resolved === null) {
-					runtime.ctx.showError(`No profile named "${args}". Try /profile list or /profile new ${args}`);
-					return commandConsumed();
-				}
-				if (resolved === active) {
-					runtime.ctx.showStatus(`Already on profile "${resolved ?? "default"}"`);
-					return commandConsumed();
-				}
-
-				const { resolveVeyyonCommand } = await import("../task/veyyon-command");
-				const veyyon = resolveVeyyonCommand();
-				const argv =
-					veyyon.shell && process.platform === "win32"
-						? ["cmd.exe", "/c", veyyon.cmd, ...veyyon.args]
-						: [veyyon.cmd, ...veyyon.args];
-				runtime.ctx.requestRelaunch({
-					argv,
-					env: {
-						VEYYON_PROFILE: resolved,
-					},
-				});
-				runtime.ctx.showStatus(`Switching to profile "${resolved ?? "default"}" — starting a fresh session…`);
-				void runtime.ctx.shutdown();
-				return commandConsumed();
+				await runProfileCommand(parseProfileCommand(command.args), port);
 			} catch (error) {
-				runtime.ctx.showError(error instanceof Error ? error.message : String(error));
-				return commandConsumed();
+				ctx.showError(error instanceof Error ? error.message : String(error));
 			}
+			return commandConsumed();
 		},
 	},
 	{
@@ -1975,10 +1904,10 @@ function buildProfileArgumentCompletions(): (prefix: string) => Promise<Autocomp
 				label: profile.name,
 				description:
 					(profile.name === active ? "active" : "switch (fresh session)") +
-					(display && display !== profile.name ? ` — ${display}` : ""),
+					(display && display !== profile.name ? ` (${display})` : ""),
 			});
 		}
-		for (const sub of ["list", "new ", "rename to "]) {
+		for (const sub of ["list", "new ", "create ", "switch ", "rename to ", "rm ", "delete "]) {
 			if (sub.startsWith(prefix.toLowerCase())) {
 				items.push({ value: sub, label: sub.trim(), description: "" });
 			}
