@@ -26,21 +26,26 @@
 				color: var(--fg);
 				font-family: var(--mono);
 				overflow: hidden;
+				min-height: 100%;
+				/* Two stacked regions: the sun owns the top, the card sits in the
+				   row underneath it. This guarantees the text is below the sun and
+				   never overlaps it, at any window size. */
 				display: grid;
-				place-items: center;
+				grid-template-rows: 1fr auto;
 			}
 			#sun {
-				position: fixed;
-				inset: 0;
+				grid-row: 1;
+				min-height: 0;
 				width: 100%;
 				height: 100%;
-				z-index: 0;
+				display: block;
 			}
 			.card {
+				grid-row: 2;
 				position: relative;
-				z-index: 1;
 				text-align: center;
-				padding: 40px 28px;
+				padding: 8px 28px 12vh;
+				margin: 0 auto;
 				max-width: 30rem;
 				opacity: 0;
 				transform: translateY(8px);
@@ -152,18 +157,23 @@
 					return ((h ^ (h >>> 16)) >>> 0) / 4294967295;
 				}
 				function layout() {
-					W = window.innerWidth; H = window.innerHeight;
+					// Size to the canvas's own region (the top grid row), not the
+					// whole window, so the sun stays above the card that sits in the
+					// row beneath it.
+					var rect = cv.getBoundingClientRect();
+					W = Math.max(1, Math.round(rect.width)); H = Math.max(1, Math.round(rect.height));
 					var mn = Math.min(W, H);
 					dpr = Math.min(window.devicePixelRatio || 1, 2);
 					cv.width = Math.floor(W * dpr); cv.height = Math.floor(H * dpr);
-					cv.style.width = W + "px"; cv.style.height = H + "px";
+					// Do not set cv.style.width/height: CSS (the grid row) owns the
+					// element's layout size; the backing store above matches it.
 					ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 					fontPx = W < 720 ? 10 : 11;
 					mono = (getComputedStyle(document.body).getPropertyValue("--mono") || "monospace").trim();
 					cellW = Math.max(5, Math.round(fontPx * 0.62));
 					cellH = Math.max(9, Math.round(fontPx * 1.15));
 					cols = Math.ceil(W / cellW); rows = Math.ceil(H / cellH);
-					cxPx = W / 2; cyPx = H * 0.4; Rpx = mn * (W < 720 ? 0.32 : 0.24);
+					cxPx = W / 2; cyPx = H * 0.5; Rpx = mn * (W < 720 ? 0.34 : 0.3);
 				}
 				function spawn(px, py, amp) {
 					ripples.push({ x: px, y: py, t: (performance.now() - t0) / 1000, amp: amp });
@@ -250,7 +260,7 @@
 					statustag.textContent = "ok";
 					title.textContent = "Signed in";
 					message.textContent =
-						"You're signed in to Veyyon. This tab closes on its own — or close it now and return to your terminal.";
+						"You're signed in to Veyyon. This tab closes on its own, or close it now and return to your terminal.";
 					setTimeout(function () { window.close(); }, 3200);
 				} else {
 					app.classList.add("error");

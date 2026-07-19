@@ -95,6 +95,6 @@ export function emitOAuthSuccessPage(ctrl: OAuthSuccessPageSink): void {
 		const { url } = serveOAuthSuccessPage({ ok: true });
 		ctrl.onSuccessPage(url);
 	} catch (error) {
-		ctrl.onProgress?.(`Signed in — could not open the local success page: ${errorMessage(error)}`);
+		ctrl.onProgress?.(`Signed in, but could not open the local success page: ${errorMessage(error)}`);
 	}
 }
