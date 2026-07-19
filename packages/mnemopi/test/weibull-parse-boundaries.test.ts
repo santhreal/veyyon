@@ -8,11 +8,13 @@ describe("weibullBoost timestamp parsing boundaries", () => {
 		expect(weibullBoost(new Date("garbage"), now)).toBe(0.0);
 	});
 
-	it("falls back to regex parsing when Date() rejects a zoned-bracket suffix", () => {
-		// new Date() fails on the [Zone] suffix; the 26-char truncation + regex path
-		// constructs a LOCAL time, so compare against the same local construction.
-		const local = new Date(2026, 0, 2, 3, 4, 5, 123);
-		expect(weibullBoost("2026-01-02T03:04:05.123456+05:30[Asia/Kolkata]", local)).toBeCloseTo(1.0, 10);
+	it("honors the offset on an IXDTF zoned-bracket stamp instead of dropping it", () => {
+		// Temporal.ZonedDateTime.toString() emits `<datetime><offset>[Zone]`. The
+		// +05:30 offset fixes the instant to 2026-01-01T21:34:05.123Z; the named-zone
+		// bracket is stripped and the offset is honored (the old regex fallback silently
+		// discarded the offset and read the wall-clock time in the backend's local zone).
+		const queryTime = new Date("2026-01-01T21:34:05.123Z");
+		expect(weibullBoost("2026-01-02T03:04:05.123456+05:30[Asia/Kolkata]", queryTime)).toBeCloseTo(1.0, 10);
 	});
 
 	it("returns 0 when the query time itself is invalid", () => {

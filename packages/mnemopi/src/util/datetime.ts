@@ -3,12 +3,17 @@ import { LRUCache } from "lru-cache/raw";
 import { recencyHalflifeHours } from "../config";
 
 const TZ_RE = /(?:Z|[+-]\d\d:?\d\d)$/;
+// IXDTF named-zone suffix, e.g. the `[Asia/Kolkata]` in
+// `2026-01-02T03:04:05+05:30[Asia/Kolkata]` that `Temporal.ZonedDateTime.toString()`
+// emits. The numeric offset before it already fixes the instant, so drop the
+// bracket to let `new Date` parse the rest.
+const IXDTF_ZONE_RE = /\[[^\]]*\]$/;
 const TS_CACHE = new LRUCache<string, Date>({ max: 2000 });
 
 export type QueryTime = string | Date | null | undefined;
 
 export function parseIsoDateTimeUtc(value: string): Date {
-	let text = value.trim();
+	let text = value.trim().replace(IXDTF_ZONE_RE, "");
 	if (!text) throw new RangeError("Invalid ISO datetime: empty string");
 	if (isDateOnly(text)) text += "T00:00:00Z";
 	else if (!TZ_RE.test(text)) text += "Z";

@@ -21,6 +21,17 @@ describe("parseIsoDateTimeUtc", () => {
 		expect(parseIsoDateTimeUtc("2026-01-02T03:04:05-0330").toISOString()).toBe("2026-01-02T06:34:05.000Z");
 	});
 
+	it("strips the IXDTF named-zone bracket and honors the numeric offset", () => {
+		// Temporal.ZonedDateTime.toString() form: <datetime><offset>[Zone].
+		expect(parseIsoDateTimeUtc("2026-01-02T03:04:05.123456+05:30[Asia/Kolkata]").toISOString()).toBe(
+			"2026-01-01T21:34:05.123Z",
+		);
+		// A bracket with only Z before it is UTC.
+		expect(parseIsoDateTimeUtc("2026-01-02T03:04:05Z[UTC]").toISOString()).toBe("2026-01-02T03:04:05.000Z");
+		// A zone bracket with no offset falls back to the zone-less UTC assumption.
+		expect(parseIsoDateTimeUtc("2026-01-02T03:04:05[America/Denver]").toISOString()).toBe("2026-01-02T03:04:05.000Z");
+	});
+
 	it("throws RangeError on empty and unparseable input", () => {
 		expect(() => parseIsoDateTimeUtc("")).toThrow(RangeError);
 		expect(() => parseIsoDateTimeUtc("   ")).toThrow(RangeError);
