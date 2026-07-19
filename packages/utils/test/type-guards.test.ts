@@ -4,10 +4,12 @@ import * as path from "node:path";
 import {
 	asRecord,
 	errorMessage,
+	finiteNumber,
 	getNonBlankStringProperty,
 	getStringProperty,
 	isRecord,
 	toError,
+	trimmedString,
 } from "../src/type-guards";
 
 describe("isRecord / asRecord", () => {
@@ -61,6 +63,33 @@ describe("getStringProperty / getNonBlankStringProperty", () => {
 	});
 });
 
+describe("trimmedString / finiteNumber", () => {
+	it("trimmedString returns the trimmed value, or null for non-strings and blanks", () => {
+		expect(trimmedString(" hello ")).toBe("hello");
+		expect(trimmedString("x")).toBe("x");
+		// The returned string is already trimmed: callers do not trim again.
+		expect(trimmedString("\t a b \n")).toBe("a b");
+		expect(trimmedString("")).toBeNull();
+		expect(trimmedString("   ")).toBeNull();
+		expect(trimmedString(42)).toBeNull();
+		expect(trimmedString(null)).toBeNull();
+		expect(trimmedString(undefined)).toBeNull();
+		expect(trimmedString(["a"])).toBeNull();
+	});
+
+	it("finiteNumber accepts finite numbers only", () => {
+		expect(finiteNumber(0)).toBe(0);
+		expect(finiteNumber(-3.5)).toBe(-3.5);
+		expect(finiteNumber(1e9)).toBe(1e9);
+		expect(finiteNumber(Number.NaN)).toBeNull();
+		expect(finiteNumber(Number.POSITIVE_INFINITY)).toBeNull();
+		expect(finiteNumber(Number.NEGATIVE_INFINITY)).toBeNull();
+		expect(finiteNumber("5")).toBeNull();
+		expect(finiteNumber(null)).toBeNull();
+		expect(finiteNumber(undefined)).toBeNull();
+	});
+});
+
 // Repo-wide source locks: these guards have exactly ONE owner,
 // packages/utils/src/type-guards.ts. Local copies drift (the isRecord sweep
 // found copies that accepted arrays; the errorMessage sweep found seven
@@ -104,6 +133,18 @@ const INLINE_ERRORMESSAGE = /instanceof Error \? \w+\.message : String\(/;
 
 const ISRECORD_DEF = /function\s+isRecord\s*\(/;
 const ERRORMESSAGE_DEF = /function\s+errorMessage\s*\(/;
+
+// `asString` and `asNumber` are BANNED as local coercer names: three different
+// contracts once shared the name asString (trimmed-non-empty-or-null in the
+// scrapers/zai copies, string-or-"" in mnemopi recall, string-or-undefined in
+// the openai responses server), the exact same-name divergence that misleads a
+// reader jumping between files. The one trimmed-non-empty-or-null contract now
+// lives on the owner as trimmedString (finiteNumber for the number case); the
+// genuinely-distinct total coercers were renamed to say what they do
+// (stringOrEmpty, numberOrDefault, nullableString, stringOrUndefined). Any new
+// `function asString`/`function asNumber` fails this lock: import trimmedString
+// /finiteNumber, or give the local a contract-precise name.
+const ASCOERCE_DEF = /function\s+as(?:String|Number)\s*\(/;
 
 async function walk(dir: string, out: string[], includeTests: boolean): Promise<void> {
 	for (const entry of await readdir(dir, { withFileTypes: true })) {
@@ -184,6 +225,19 @@ describe("type-guards source locks", () => {
 			"new inline `instanceof Error ? .message : String(...)` — call errorMessage from @veyyon/utils instead",
 		).toEqual([]);
 		expect(cleared, "grandfathered entries whose local copy is gone — remove them from the list").toEqual([]);
+	});
+
+	it("no production source defines a local asString/asNumber coercer — the name is banned", async () => {
+		const offenders: string[] = [];
+		for (const file of await sourceFiles()) {
+			const rel = path.relative(PACKAGES_DIR, file).replaceAll(path.sep, "/");
+			if (rel === OWNER) continue;
+			if (ASCOERCE_DEF.test(await readFile(file, "utf8"))) offenders.push(rel);
+		}
+		expect(
+			offenders,
+			"local asString/asNumber coercers: import trimmedString/finiteNumber from @veyyon/utils, or use a contract-precise name",
+		).toEqual([]);
 	});
 
 	it("no test file defines a local isRecord — tests must dogfood the owner too", async () => {
