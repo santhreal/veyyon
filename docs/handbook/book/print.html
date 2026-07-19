@@ -51,7 +51,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-054cba79.js";
+            window.path_to_searchindex_js = "searchindex-ac028553.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-cc1a72e9.js"></script>
@@ -4394,7 +4394,9 @@ environment variable; see the <a href="#cli-reference">CLI reference</a>.</p>
 </thead>
 <tbody>
 <tr><td><code>0</code></td><td>Success.</td></tr>
-<tr><td><code>1</code></td><td>Any Veyyon error: bad config, auth failure, no such session, an unrecoverable runtime error, a usage error from argument parsing (unknown flag, bad value, missing argument), or the fallback when a child process ended without a reportable status.</td></tr>
+<tr><td><code>1</code></td><td>A Veyyon runtime error: bad config, auth failure, no such session, an unrecoverable runtime error, or the fallback when a child process ended without a reportable status.</td></tr>
+<tr><td><code>2</code></td><td>A command-line usage error, following the conventional shell meaning of code <code>2</code>. You get it for an unrecognized flag, a bad flag value, or a single-shot run (<code>--print</code>) with no prompt to send. Veyyon fails before starting a session, so no LLM call or MCP connection happens.</td></tr>
+<tr><td><code>130</code></td><td>Veyyon itself was interrupted. A second <code>Ctrl+C</code> during shutdown hard-aborts the process at <code>128 + SIGINT</code> (<code>128 + 2</code>), rather than waiting on a teardown step that is stuck.</td></tr>
 <tr><td><code>N</code></td><td>When Veyyon runs a child process (for example a shell tool command), the child’s own exit code passes through unchanged.</td></tr>
 <tr><td><code>128 + signal</code></td><td>On Unix, a child killed by a signal is reported as <code>128 + signal</code> (the POSIX shell convention): <code>SIGKILL</code> (9) → <code>137</code>, <code>SIGTERM</code> (15) → <code>143</code>.</td></tr>
 </tbody>
