@@ -4,7 +4,7 @@ import {
 	discoverGitLabDuoWorkflowRuntimeNamespace,
 	type GitLabDuoWorkflowNamespaceSelection,
 } from "@veyyon/catalog/discovery/gitlab-duo-workflow";
-import { errorMessage, scopedTimeoutSignal, trimTrailingSlashes } from "@veyyon/utils";
+import { errorMessage, getNonBlankStringProperty, scopedTimeoutSignal, trimTrailingSlashes } from "@veyyon/utils";
 import * as AIError from "../error";
 import type {
 	Api,
@@ -773,7 +773,11 @@ function mapGitLabDuoWorkflowMcpToolCall(args: Record<string, unknown>): {
 	name: string;
 	arguments: Record<string, unknown>;
 } {
-	const rawName = stringField(args, "toolName") ?? stringField(args, "tool_name") ?? stringField(args, "name") ?? "";
+	const rawName =
+		getNonBlankStringProperty(args, "toolName") ??
+		getNonBlankStringProperty(args, "tool_name") ??
+		getNonBlankStringProperty(args, "name") ??
+		"";
 	const toolName = rawName.startsWith("mcp__veyyon__") ? rawName.slice("mcp__veyyon__".length) : rawName;
 	const parsedArgs = parseGitLabDuoWorkflowMcpArguments(args.args ?? args.arguments);
 	if (toolName === "edit" && typeof parsedArgs.input === "string") {
@@ -2953,10 +2957,6 @@ function parseJsonRecord(text: string): Record<string, unknown> | null {
 function numberField(record: Record<string, unknown>, key: string): number | undefined {
 	const value = record[key];
 	return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : undefined;
-}
-
-function stringField(record: Record<string, unknown>, key: string): string | undefined {
-	return nonEmptyString(record[key]);
 }
 
 function extractGitLabDuoWorkflowCheckpoint(

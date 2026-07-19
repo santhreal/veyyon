@@ -22,7 +22,15 @@ import {
 	resolveOpenAIRequestSetup,
 } from "@veyyon/ai/providers/openai-shared";
 import { CODEX_BASE_URL, getCodexAccountId, OPENAI_HEADER_VALUES, OPENAI_HEADERS } from "@veyyon/catalog/wire/codex";
-import { $env, errorMessage, logger, scopedTimeoutSignal, stringifyJson, trimTrailingSlashes } from "@veyyon/utils";
+import {
+	$env,
+	errorMessage,
+	getStringProperty,
+	logger,
+	scopedTimeoutSignal,
+	stringifyJson,
+	trimTrailingSlashes,
+} from "@veyyon/utils";
 
 // ============================================================================
 // Types & Configuration
@@ -547,8 +555,8 @@ function formatCompactionV2Failure(event: Record<string, unknown>, type: string)
 		: response && isRecord(response.error)
 			? response.error
 			: undefined;
-	const message = error ? stringField(error, "message") : undefined;
-	const code = error ? (stringField(error, "code") ?? stringField(error, "type")) : undefined;
+	const message = error ? getStringProperty(error, "message") : undefined;
+	const code = error ? (getStringProperty(error, "code") ?? getStringProperty(error, "type")) : undefined;
 	return `V2 compaction stream ${type}${code ? ` (${code})` : ""}${message ? `: ${message}` : ""}`;
 }
 
@@ -599,13 +607,13 @@ export function buildCompactionV2ReplacementHistory(
 
 function isRetainedForCompactionV2(item: Record<string, unknown>): boolean {
 	if (item.type !== "message") return false;
-	const role = stringField(item, "role");
+	const role = getStringProperty(item, "role");
 	return role === "user" || role === "developer" || role === "system";
 }
 
 function shouldKeepCompactionV2HistoryItem(item: Record<string, unknown>): boolean {
 	if (item.type !== "message") return item.type === "compaction";
-	const role = stringField(item, "role");
+	const role = getStringProperty(item, "role");
 	if (role !== "user") return false;
 	return !isContextualUserMessage(item);
 }
@@ -614,7 +622,7 @@ function isContextualUserMessage(item: Record<string, unknown>): boolean {
 	const content = Array.isArray(item.content) ? item.content : [];
 	return content.some(part => {
 		if (!isRecord(part) || part.type !== "input_text") return false;
-		const text = stringField(part, "text")?.trimStart().toLowerCase();
+		const text = getStringProperty(part, "text")?.trimStart().toLowerCase();
 		return !!text && CONTEXTUAL_USER_PREFIXES.some(prefix => text.startsWith(prefix));
 	});
 }
@@ -664,7 +672,7 @@ function messageContentTokenCount(item: Record<string, unknown>): number {
 			continue;
 		}
 		if (part.type === "input_text" || part.type === "output_text") {
-			tokens += approxTokenCount(stringField(part, "text") ?? "");
+			tokens += approxTokenCount(getStringProperty(part, "text") ?? "");
 		}
 	}
 	return tokens;
@@ -688,7 +696,7 @@ function truncateMessageTextToTokenBudget(
 		if (part.type !== "input_text" && part.type !== "output_text") continue;
 		if (remaining === 0) continue;
 
-		const text = stringField(part, "text") ?? "";
+		const text = getStringProperty(part, "text") ?? "";
 		const tokenCount = approxTokenCount(text);
 		if (tokenCount <= remaining) {
 			truncatedContent.push(part);
@@ -746,7 +754,7 @@ export function getCompactionV2PreserveData(
 ): { provider: string; replacementHistory: Array<Record<string, unknown>>; usedTokens: number } | undefined {
 	const candidate = preserveData?.[OPENAI_REMOTE_COMPACTION_PRESERVE_KEY];
 	if (!isRecord(candidate)) return undefined;
-	const provider = stringField(candidate, "provider");
+	const provider = getStringProperty(candidate, "provider");
 	if (!provider) return undefined;
 	if (!Array.isArray(candidate.replacementHistory)) return undefined;
 
@@ -759,11 +767,6 @@ export function getCompactionV2PreserveData(
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return !!value && typeof value === "object";
-}
-
-function stringField(record: Record<string, unknown>, field: string): string | undefined {
-	const value = record[field];
-	return typeof value === "string" ? value : undefined;
 }
 
 function numberField(record: Record<string, unknown>, field: string): number | undefined {
