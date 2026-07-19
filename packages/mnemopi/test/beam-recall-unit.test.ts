@@ -506,4 +506,69 @@ describe("beam recall free functions", () => {
 		expect(fullHit?.content).toBe(long);
 		expect(fullHit?.truncated).toBe(false);
 	});
+
+	it("restricts recall to the fromDate/toDate window", async () => {
+		const beam = makeBeam();
+		insertWorking(beam, "in", "coffee within the window", { timestamp: "2026-05-15T10:00:00.000Z" });
+		insertWorking(beam, "before", "coffee before the window", { timestamp: "2026-04-01T10:00:00.000Z" });
+		insertWorking(beam, "after", "coffee after the window", { timestamp: "2026-07-01T10:00:00.000Z" });
+
+		const results = await recall(beam, "coffee", 10, { fromDate: "2026-05-01", toDate: "2026-06-01" });
+		const ids = results.map(row => row.id);
+		expect(ids).toContain("in");
+		expect(ids).not.toContain("before");
+		expect(ids).not.toContain("after");
+	});
+
+	it("scopes recall to the requested author id and type, ignoring the session filter", async () => {
+		const beam = makeBeam();
+		const insertAuthored = (id: string, content: string, authorId: string, authorType: string): void => {
+			beam.db.run(
+				`INSERT INTO working_memory
+					(id, content, source, timestamp, session_id, importance, scope, veracity, memory_type, author_id, author_type)
+					VALUES (?, ?, 'test', '2026-05-30T12:00:00.000Z', 'other-session', 0.5, 'private', 'unknown', 'general', ?, ?)`,
+				[id, content, authorId, authorType],
+			);
+		};
+		insertAuthored("ada", "coffee note from Ada", "ada", "human");
+		insertAuthored("bob", "coffee note from Bob", "bob", "human");
+		insertAuthored("bot", "coffee note from a bot", "ada", "agent");
+
+		const results = await recall(beam, "coffee", 10, { authorId: "ada", authorType: "human" });
+		const ids = results.map(row => row.id);
+		// Author scope drops the session filter (rows live in "other-session") but still filters by id + type.
+		expect(ids).toContain("ada");
+		expect(ids).not.toContain("bob");
+		expect(ids).not.toContain("bot");
+	});
+
+	it("scopes recall to the requested channel id", async () => {
+		const beam = makeBeam();
+		const insertChanneled = (id: string, content: string, channelId: string): void => {
+			beam.db.run(
+				`INSERT INTO working_memory
+					(id, content, source, timestamp, session_id, importance, scope, veracity, memory_type, channel_id)
+					VALUES (?, ?, 'test', '2026-05-30T12:00:00.000Z', ?, 0.5, 'private', 'unknown', 'general', ?)`,
+				[id, content, beam.sessionId, channelId],
+			);
+		};
+		insertChanneled("ch1", "coffee in channel one", "ch1");
+		insertChanneled("ch2", "coffee in channel two", "ch2");
+
+		const results = await recall(beam, "coffee", 10, { channelId: "ch1" });
+		const ids = results.map(row => row.id);
+		expect(ids).toContain("ch1");
+		expect(ids).not.toContain("ch2");
+	});
+
+	it("boosts a single-token query when the token repeats in the content", async () => {
+		const beam = makeBeam();
+		insertWorking(beam, "triple", "coffee coffee coffee beans");
+		insertWorking(beam, "single", "coffee and quiet mornings");
+
+		const results = await recall(beam, "coffee", 10);
+		// The repeated-token row earns the multi-occurrence lexical boost (0.9 vs 0.7) and ranks first.
+		expect(results[0]?.id).toBe("triple");
+		expect(results.map(row => row.id)).toContain("single");
+	});
 });
