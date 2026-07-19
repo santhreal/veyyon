@@ -21,30 +21,44 @@ const PACKAGES_DIR = path.join(import.meta.dir, "../..");
 // "escapeRegExp" spelling, letting a third copy slip through the lock.
 const LOCAL_DEF = /function\s+escapeReg\w*\s*\(/;
 
-async function walk(dir: string, out: string[]): Promise<void> {
+async function walk(dir: string, out: string[], includeTests: boolean): Promise<void> {
 	for (const entry of await readdir(dir, { withFileTypes: true })) {
 		const full = path.join(dir, entry.name);
 		if (entry.isDirectory()) {
 			if (entry.name === "node_modules" || entry.name === "dist" || entry.name === "vendor") continue;
-			await walk(full, out);
-		} else if (entry.name.endsWith(".ts") && !entry.name.endsWith(".test.ts")) {
+			await walk(full, out, includeTests);
+		} else if (entry.name.endsWith(".ts") && (includeTests || !entry.name.endsWith(".test.ts"))) {
 			out.push(full);
 		}
 	}
 }
 
-async function sourceFiles(): Promise<string[]> {
+// Collect .ts files across every package. `dirs` names the per-package
+// subdirectories to scan (src for production, test for the suites) — the
+// production check scans src only; the test check scans test too, because a
+// hand-rolled copy in a test helper is still a second definition that drifts,
+// and the src-only scan never saw it (that is exactly how one slipped in).
+async function collectFiles(dirs: readonly string[], includeTests: boolean): Promise<string[]> {
 	const files: string[] = [];
 	for (const pkg of await readdir(PACKAGES_DIR, { withFileTypes: true })) {
 		if (!pkg.isDirectory()) continue;
-		const src = path.join(PACKAGES_DIR, pkg.name, "src");
-		try {
-			await walk(src, files);
-		} catch {
-			// Package without a src/ directory (assets-only) — nothing to scan.
+		for (const sub of dirs) {
+			try {
+				await walk(path.join(PACKAGES_DIR, pkg.name, sub), files, includeTests);
+			} catch {
+				// Package without that subdirectory (assets-only) — nothing to scan.
+			}
 		}
 	}
 	return files;
+}
+
+function sourceFiles(): Promise<string[]> {
+	return collectFiles(["src"], false);
+}
+
+function testFiles(): Promise<string[]> {
+	return collectFiles(["test"], true);
 }
 
 describe("escapeRegExp source lock", () => {
@@ -74,5 +88,14 @@ describe("escapeRegExp source lock", () => {
 		}
 		expect(offenders, "new local escapeRegExp copies — import it from @veyyon/utils instead").toEqual([]);
 		expect(cleared, "grandfathered entries whose local copy is gone — remove them from the list").toEqual([]);
+	});
+
+	it("no test file defines a local escapeRegExp — tests must dogfood the owner too", async () => {
+		const offenders: string[] = [];
+		for (const file of await testFiles()) {
+			const rel = path.relative(PACKAGES_DIR, file).replaceAll(path.sep, "/");
+			if (LOCAL_DEF.test(await readFile(file, "utf8"))) offenders.push(rel);
+		}
+		expect(offenders, "test-local escapeRegExp copies — import it from @veyyon/utils instead").toEqual([]);
 	});
 });

@@ -8,11 +8,8 @@ import {
 	loadSystemPromptFiles,
 	type SystemPromptToolMetadata,
 } from "@veyyon/coding-agent/system-prompt";
+import { escapeRegExp } from "@veyyon/utils";
 import { cleanupTempHome } from "./helpers/temp-home-cleanup";
-
-function escapeRegExp(text: string): string {
-	return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
 
 const READ_TOOL = new Map<string, SystemPromptToolMetadata>([
 	[
