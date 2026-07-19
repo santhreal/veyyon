@@ -289,4 +289,20 @@ describe("temporal parser", () => {
 		expect(parseNlDate("in 99999999999999999999 days", REF)).toBeNull();
 		expect(parseNlDate("99999999999999999999 days ago", REF)).toBeNull();
 	});
+
+	it("parses last-year and next-year references directly through parseNlDate", () => {
+		// parseNlDate has its own qualifier+unit block, distinct from extractTemporal's
+		// regex path; the year arms round to Jan 1 of the adjacent year.
+		const lastYear = parseNlDate("last year", REF);
+		expect(lastYear).not.toBeNull();
+		expect(lastYear === null ? null : iso(lastYear[0])).toBe("2025-01-01");
+		expect(lastYear?.[1]).toBe("year");
+		expect(lastYear?.[2]).toEqual(["2025", "last-year"]);
+
+		const nextYear = parseNlDate("next year", REF);
+		expect(nextYear).not.toBeNull();
+		expect(nextYear === null ? null : iso(nextYear[0])).toBe("2027-01-01");
+		expect(nextYear?.[1]).toBe("year");
+		expect(nextYear?.[2]).toEqual(["2027", "next-year"]);
+	});
 });

@@ -79,4 +79,20 @@ describe("diagnose helpers", () => {
 			db.close();
 		}
 	});
+
+	it("records an ERROR entry and key finding when the database cannot be inspected", () => {
+		const db = new Database(":memory:");
+		// A closed handle makes the first PRAGMA query throw inside the inspect try
+		// block, exercising the catch that logs an open_or_inspect ERROR rather than
+		// crashing the whole diagnostic run.
+		db.close();
+
+		const summary = inspectDatabase({ db, dbPath: ":memory:", initialize: false });
+		expect(status(summary, "open_or_inspect")).toBe("ERROR");
+		expect(summary.checks_failed).toBeGreaterThan(0);
+		const finding = summary.key_findings.find(entry => entry.startsWith("open_or_inspect:"));
+		expect(finding).toBeDefined();
+		// The env/db_path preamble entries still landed before the failure.
+		expect(status(summary, "db_path")).toBe("OK");
+	});
 });
