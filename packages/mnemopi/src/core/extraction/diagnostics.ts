@@ -1,3 +1,5 @@
+import { truncateForLog } from "../../util/log-format";
+
 export const EXTRACTION_TIERS = ["host", "remote", "local", "cloud", "wrapper"] as const;
 export type ExtractionTier = (typeof EXTRACTION_TIERS)[number];
 
@@ -67,10 +69,6 @@ function isTier(tier: string): tier is ExtractionTier {
 	return (EXTRACTION_TIERS as readonly string[]).includes(tier);
 }
 
-function truncateError(msg: string): string {
-	return msg.length > ERROR_MESSAGE_CAP ? `${msg.slice(0, ERROR_MESSAGE_CAP)}...[truncated]` : msg;
-}
-
 function errorRepr(exc: unknown): string {
 	if (exc instanceof Error) {
 		return `${exc.name}: ${exc.message}`;
@@ -113,10 +111,10 @@ export class ExtractionDiagnostics {
 		const sample: ErrorSample = { at: new Date().toISOString(), type: "unspecified", msg: "" };
 		if (exc !== undefined && exc !== null) {
 			sample.type = exc instanceof Error ? exc.name : typeof exc;
-			sample.msg = truncateError(errorRepr(exc));
+			sample.msg = truncateForLog(errorRepr(exc), ERROR_MESSAGE_CAP);
 		} else if (reason !== undefined) {
 			sample.type = "reason";
-			sample.msg = truncateError(reason);
+			sample.msg = truncateForLog(reason, ERROR_MESSAGE_CAP);
 		}
 		if (reason !== undefined) {
 			sample.reason = reason;
