@@ -18,7 +18,6 @@ const GRANDFATHERED = new Set([
 	// scopedTimeoutSignal (cancel in finally, fence spanning body reads) when
 	// that work lands.
 	"coding-agent/src/session/agent-session.ts",
-	"coding-agent/src/task/executor.ts",
 ]);
 
 const PACKAGES_DIR = path.join(import.meta.dir, "../..");
