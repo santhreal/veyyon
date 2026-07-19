@@ -254,14 +254,34 @@ export async function createProfile(
 	const rootDir = getProfileRootDir(normalized);
 	const agentDir = path.join(rootDir, "agent");
 	const seedAgentDir = resolveSeedAgentDir(from);
-	if (seedAgentDir) {
-		await seedProfileAgentFrom(seedAgentDir, agentDir, items);
-		// A copied settings file carries the source's display name; the new
-		// profile must not answer to it. Edit the YAML surgically — a full
-		// Settings load/save would migrate legacy keys as a side effect.
-		await clearCopiedDisplayName(agentDir);
-	} else {
-		await ensureBlankAgentTree(agentDir);
+
+	// Build the whole profile tree in a staging sibling dir and rename it into
+	// place only after every seed step succeeds. A failed or interrupted seed
+	// (copy error, full disk, SIGINT mid-copy) then leaves NO profile directory
+	// behind, so the create is cleanly retryable — instead of a half-populated
+	// tree that profileExists() reports as real and that blocks recreation
+	// without a manual rm. The staging name is dot-prefixed, so it fails
+	// normalizeProfileName and never shows up in listProfiles during the build.
+	const parentDir = path.dirname(rootDir);
+	await fs.mkdir(parentDir, { recursive: true });
+	const stagingRoot = path.join(parentDir, `.${normalized}.${process.pid}.${crypto.randomUUID()}.tmp`);
+	const stagingAgentDir = path.join(stagingRoot, "agent");
+	try {
+		if (seedAgentDir) {
+			await seedProfileAgentFrom(seedAgentDir, stagingAgentDir, items);
+			// A copied settings file carries the source's display name; the new
+			// profile must not answer to it. Edit the YAML surgically — a full
+			// Settings load/save would migrate legacy keys as a side effect.
+			await clearCopiedDisplayName(stagingAgentDir);
+		} else {
+			await ensureBlankAgentTree(stagingAgentDir);
+		}
+		// rename onto an existing non-empty dir fails loudly (a concurrent create
+		// won the race); that is correct — we clean up staging and surface it.
+		await fs.rename(stagingRoot, rootDir);
+	} catch (error) {
+		await removeWithRetries(stagingRoot).catch(() => {});
+		throw error;
 	}
 
 	return { name: normalized, rootDir, agentDir };

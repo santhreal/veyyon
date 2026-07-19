@@ -88,6 +88,22 @@ describe("profile lifecycle CLI", () => {
 		expect(profileExists("work")).toBe(false);
 	});
 
+	it("leaves no profile directory behind when seeding fails partway", async () => {
+		// Seed from a source whose config.yml is invalid YAML: files copy into the
+		// staging dir, then clearCopiedDisplayName throws while parsing it. The
+		// profile must not exist and no staging directory may linger, so the user
+		// can simply retry rather than being stuck with a corrupt half-profile.
+		await createProfile("src", "blank");
+		await Bun.write(path.join(getProfileRootDir("src"), "agent", "config.yml"), "profile: [unclosed\n");
+
+		await expect(createProfile("work", "src")).rejects.toThrow("not valid YAML");
+
+		expect(profileExists("work")).toBe(false);
+		const profilesDir = path.join(os.homedir(), configDir, "profiles");
+		const leftovers = (await fs.readdir(profilesDir)).filter(name => name.includes("work"));
+		expect(leftovers).toEqual([]);
+	});
+
 	it("does not copy sessions or blobs when seeding from default", async () => {
 		const defaultAgentDir = path.join(os.homedir(), configDir, "profiles", "default", "agent");
 		await fs.mkdir(path.join(defaultAgentDir, "sessions"), { recursive: true });
