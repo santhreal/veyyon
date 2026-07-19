@@ -16,7 +16,7 @@
  * `save` callback.
  */
 import type { ThinkingLevel } from "@veyyon/agent-core";
-import type { Model } from "@veyyon/ai";
+import type { Effort, Model } from "@veyyon/ai";
 import { getSupportedEfforts } from "@veyyon/catalog/model-thinking";
 import {
 	type Component,
@@ -40,6 +40,7 @@ import type { ModelRegistry } from "../../config/model-registry";
 import { formatModelSelectorValue } from "../../config/model-resolver";
 import type { Settings } from "../../config/settings";
 import { getSelectListTheme, theme } from "../theme/theme";
+import { effortStepItems } from "./effort-picker";
 import { HookEditorComponent } from "./hook-editor";
 import { buildBrowserItems, ModelBrowser, sortModelItems } from "./model-browser";
 import {
@@ -495,9 +496,8 @@ export class AdvisorConfigOverlayComponent implements Component {
 		this.#setScreen("model", picker, "Type to search · Enter / click twice picks · Esc back");
 	}
 
-	#showThinkingPicker(index: number, selector: string, efforts: readonly string[]): void {
-		const items: SelectItem[] = [{ value: "", label: "(model default thinking)" }];
-		for (const effort of efforts) items.push({ value: effort, label: effort });
+	#showThinkingPicker(index: number, selector: string, efforts: readonly Effort[]): void {
+		const items = effortStepItems(efforts);
 		const list = new SelectList(items, Math.max(1, items.length), getSelectListTheme());
 		list.onSelect = item => {
 			// `item.value` is one of the model's own supported efforts (or "" for the

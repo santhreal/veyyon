@@ -30,7 +30,7 @@ import {
 } from "@veyyon/tui";
 import { errorMessage } from "@veyyon/utils";
 import type { ModelRegistry } from "../../config/model-registry";
-import { formatModelSelectorValue, parseModelString, resolveModelRoleValue } from "../../config/model-resolver";
+import { resolveModelRoleValue } from "../../config/model-resolver";
 import { getRoleInfo, ROLE_INHERIT_LABEL, SELECTABLE_MODEL_ROLE_IDS } from "../../config/model-roles";
 import {
 	getDefault,
@@ -51,6 +51,7 @@ import { getCurrentThemeName, getSelectListTheme, getSettingsListTheme, theme } 
 import { BUILTIN_PERSONALITY_DESCRIPTIONS, NONE_PERSONALITY } from "../../personality/resolver";
 import { AUTO_THINKING, type ConfiguredThinkingLevel } from "../../thinking";
 import { getTabBarTheme } from "../shared";
+import { formatSelectorSummary, renderEffortStep } from "./effort-picker";
 import {
 	BREADCRUMB_HOVER_ID,
 	computeModalDims,
@@ -347,72 +348,6 @@ class ProviderLimitsSubmenu extends Container {
 }
 
 /**
- * The single effort-picker step, shared by every submenu that assigns a model
- * with a thinking effort (single-slot {@link ModelEffortSubmenu} and the
- * {@link ModelRolesSubmenu} role list). Clears `container`, renders the effort
- * list into it, and returns the {@link SelectList} so the caller can route
- * keyboard input to it. Selecting a level calls `onPersist` with the selector
- * already carrying the `:level` suffix ({@link formatModelSelectorValue}); the
- * empty first row means "model default thinking" (bare selector). Esc calls
- * `onBack`. Keeping this in one place is why the two submenus render an
- * identical effort step instead of two divergent copies.
- */
-/**
- * Human summary of a stored model selector for a settings row: renders the
- * effort suffix as a readable ` · high` (e.g. `anthropic/claude-sonnet-4-5 · high`)
- * instead of the raw `:high` token, and returns the bare selector unchanged when
- * it carries no effort. Uses the same parser the resolver does, so a model id
- * that legitimately ends in a colon token is left intact. One owner so the
- * single-slot rows and the role list read identically.
- */
-export function formatSelectorSummary(raw: string): string {
-	const trimmed = raw.trim();
-	if (!trimmed) return trimmed;
-	const parsed = parseModelString(trimmed);
-	return parsed?.thinkingLevel ? `${parsed.provider}/${parsed.id} · ${parsed.thinkingLevel}` : trimmed;
-}
-
-/**
- * The effort-picker rows: the empty "model default thinking" entry first (its
- * empty value formats to the bare selector), then each supported effort in the
- * model's own order. Split out so the ordering can be asserted directly.
- */
-export function effortStepItems(efforts: readonly Effort[]): SelectItem[] {
-	const items: SelectItem[] = [{ value: "", label: "(model default thinking)" }];
-	for (const effort of efforts) items.push({ value: effort, label: effort });
-	return items;
-}
-
-export function renderEffortStep(
-	container: Container,
-	selector: string,
-	efforts: readonly Effort[],
-	onPersist: (value: string) => void,
-	onBack: () => void,
-): SelectList {
-	container.clear();
-	const items = effortStepItems(efforts);
-	const list = new SelectList(items, Math.max(1, items.length), getSelectListTheme());
-	list.onSelect = item => {
-		// `item.value` is one of the model's own supported efforts (or "" for the
-		// model default); `formatModelSelectorValue` spells the `:level` suffix.
-		const level = item.value ? (item.value as ThinkingLevel) : undefined;
-		onPersist(formatModelSelectorValue(selector, level));
-	};
-	list.onCancel = onBack;
-	container.addChild(new Text(theme.bold(theme.fg("accent", "Thinking effort")), 0, 0));
-	container.addChild(new Spacer(1));
-	container.addChild(
-		new Text(theme.fg("muted", `Effort for ${selector} — applied when this model runs. Per active profile.`), 0, 0),
-	);
-	container.addChild(new Spacer(1));
-	container.addChild(list);
-	container.addChild(new Spacer(1));
-	container.addChild(new Text(theme.fg("dim", "  Enter / click pick · Esc back to model"), 0, 0));
-	return list;
-}
-
-/**
  * Role list → reusable {@link ModelSelectorPanel} for each role.
  * Assignments write through `settings.setModelRole` (profile-scoped).
  */
@@ -544,8 +479,8 @@ class ModelRolesSubmenu extends Container {
 /**
  * Two-step picker for a single-model settings slot (`compaction.model`,
  * `subagent.model`): pick a model, then pick a thinking effort for it. The
- * effort rides the stored selector as a `:level` suffix
- * ({@link formatModelSelectorValue}), the same encoding the advisor model
+ * effort rides the stored selector as a `:level` suffix (via
+ * {@link renderEffortStep}), the same encoding the advisor model
  * assignment uses, so the one stored value both persists per profile and is
  * applied at run time: the compaction candidate resolver and the subagent
  * spawner each parse the suffix back into a thinking level. Models with no
