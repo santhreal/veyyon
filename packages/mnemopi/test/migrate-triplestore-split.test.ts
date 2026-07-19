@@ -199,4 +199,19 @@ describe("E6 triplestore split migration", () => {
 			closeQuietly(db);
 		}
 	});
+
+	it("throws and logs when the target database is missing or in-memory", () => {
+		const logs: string[] = [];
+		const missing = tempDb();
+		expect(() => migrate(missing, false, true, line => logs.push(line))).toThrow(`database not found: ${missing}`);
+		expect(logs).toContain(`ERROR: database not found: ${missing}`);
+
+		// ":memory:" is rejected before any open: an in-memory handle has no file to
+		// migrate or back up.
+		const memLogs: string[] = [];
+		expect(() => migrate(":memory:", false, true, line => memLogs.push(line))).toThrow(
+			"database not found: :memory:",
+		);
+		expect(memLogs).toContain("ERROR: database not found: :memory:");
+	});
 });

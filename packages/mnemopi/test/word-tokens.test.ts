@@ -1,7 +1,13 @@
 import { describe, expect, it } from "bun:test";
 import { readdir, readFile } from "node:fs/promises";
 import * as path from "node:path";
-import { unicodeWordTokens, WORD_TOKEN_DOT_HYPHEN_RE, WORD_TOKEN_HYPHEN_RE, WORD_TOKEN_RE } from "../src/util/regex";
+import {
+	minimumRecallRelevance,
+	unicodeWordTokens,
+	WORD_TOKEN_DOT_HYPHEN_RE,
+	WORD_TOKEN_HYPHEN_RE,
+	WORD_TOKEN_RE,
+} from "../src/util/regex";
 
 // The unicode word-token character set (`\p{L}\p{N}_` plus optional dot/hyphen)
 // had six hand-written inline copies across beam/ and core/ — three charset
@@ -49,6 +55,19 @@ describe("unicodeWordTokens", () => {
 		expect(unicodeWordTokens("a1 b2 c3")).toEqual(["a1", "b2", "c3"]);
 		expect(WORD_TOKEN_RE.global).toBe(true);
 		expect(WORD_TOKEN_RE.unicode).toBe(true);
+	});
+});
+
+describe("minimumRecallRelevance", () => {
+	it("relaxes the relevance floor as the query gets longer", () => {
+		// Longer queries carry more signal, so a lower per-token floor still keeps
+		// precision; short queries need a higher floor to avoid noise.
+		expect(minimumRecallRelevance(["a", "b", "c", "d"])).toBe(0.3);
+		expect(minimumRecallRelevance(["a", "b", "c", "d", "e"])).toBe(0.3);
+		expect(minimumRecallRelevance(["a", "b", "c"])).toBe(0.5);
+		expect(minimumRecallRelevance(["a", "b"])).toBe(0.15);
+		expect(minimumRecallRelevance(["a"])).toBe(0.15);
+		expect(minimumRecallRelevance([])).toBe(0.15);
 	});
 });
 
