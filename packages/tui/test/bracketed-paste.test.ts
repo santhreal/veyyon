@@ -83,5 +83,64 @@ describe("BracketedPasteHandler", () => {
 			// @ts-expect-error - remaining carries post-marker input
 			expect(result.remaining).toBe("tail");
 		});
+
+		it("omits prefix when the start marker is at the chunk head", () => {
+			const handler = new BracketedPasteHandler();
+			const result = handler.process(`${PASTE_START}p${PASTE_END}`);
+			expect(result.handled).toBe(true);
+			// @ts-expect-error - handled=true carries prefix
+			expect(result.prefix).toBeUndefined();
+		});
+	});
+
+	describe("Pre-marker bytes (regression: no fold into paste)", () => {
+		it("splits ordinary bytes before the start marker into prefix, not paste content", () => {
+			// A chunk that carries normal keystrokes ahead of the paste-start marker
+			// must not fold those keystrokes into the payload. Before the fix,
+			// `data.replace(PASTE_START, "")` left "abc" in the buffer so the paste
+			// content became "abcpasted".
+			const handler = new BracketedPasteHandler();
+			const result = handler.process(`abc${PASTE_START}pasted${PASTE_END}z`);
+			expect(result.handled).toBe(true);
+			// @ts-expect-error - handled=true carries prefix
+			expect(result.prefix).toBe("abc");
+			// @ts-expect-error - handled=true carries pasteContent
+			expect(result.pasteContent).toBe("pasted");
+			// @ts-expect-error - handled=true carries remaining
+			expect(result.remaining).toBe("z");
+		});
+
+		it("delivers prefix on the first chunk while the paste keeps buffering", () => {
+			// The prefix is surfaced the moment the paste starts, even though no end
+			// marker has arrived yet; the pre-marker bytes must not sit inside the
+			// still-open paste buffer where a later end marker would emit them as
+			// paste content.
+			const handler = new BracketedPasteHandler();
+			const first = handler.process(`abc${PASTE_START}par`);
+			expect(first.handled).toBe(true);
+			// @ts-expect-error - handled=true carries prefix
+			expect(first.prefix).toBe("abc");
+			// @ts-expect-error - handled=true, still buffering
+			expect(first.pasteContent).toBeUndefined();
+
+			const second = handler.process(`tial${PASTE_END}tail`);
+			expect(second.handled).toBe(true);
+			// @ts-expect-error - second chunk carries no prefix
+			expect(second.prefix).toBeUndefined();
+			// @ts-expect-error - only the post-marker bytes are paste content
+			expect(second.pasteContent).toBe("partial");
+			// @ts-expect-error - handled=true carries remaining
+			expect(second.remaining).toBe("tail");
+		});
+
+		it("surfaces prefix even when the cap aborts the same chunk", () => {
+			const handler = new BracketedPasteHandler({ byteLimit: 4 });
+			const result = handler.process(`hi${PASTE_START}0123456789`);
+			expect(result.handled).toBe(true);
+			// @ts-expect-error - handled=true carries prefix
+			expect(result.prefix).toBe("hi");
+			// @ts-expect-error - cap flush delivers the buffered payload
+			expect(result.pasteContent).toBe("0123456789");
+		});
 	});
 });
