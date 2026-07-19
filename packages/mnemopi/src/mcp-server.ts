@@ -1,4 +1,4 @@
-import { errorMessage } from "@veyyon/utils";
+import { errorMessage, isRecord } from "@veyyon/utils";
 import { getToolDefinitions, handleToolCall, type ToolArguments, type ToolDefinition } from "./mcp-tools";
 
 export interface JsonRpcRequest {
@@ -81,10 +81,7 @@ export async function handleJsonRpc(request: JsonRpcRequest): Promise<JsonRpcRes
 	if (method === "tools/call") {
 		const params = request.params ?? {};
 		const name = typeof params.name === "string" ? params.name : "";
-		const args =
-			params.arguments !== null && typeof params.arguments === "object" && !Array.isArray(params.arguments)
-				? (params.arguments as ToolArguments)
-				: {};
+		const args = isRecord(params.arguments) ? (params.arguments as ToolArguments) : {};
 		if (name.length === 0) return err(id, -32602, "tools/call requires params.name");
 		return ok(id, await callToolJson(name, args));
 	}

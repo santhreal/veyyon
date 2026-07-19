@@ -6,7 +6,7 @@ import type { AgentMessage } from "@veyyon/agent-core";
 import { type ApiKey, completeSimple, Effort, type Model } from "@veyyon/ai";
 import { clampThinkingLevelForModel } from "@veyyon/catalog/model-thinking";
 import { emptyCost } from "@veyyon/catalog/models";
-import { getAgentDbPath, getMemoriesDir, isEnoent, logger, parseJsonlLenient, prompt } from "@veyyon/utils";
+import { getAgentDbPath, getMemoriesDir, isEnoent, isRecord, logger, parseJsonlLenient, prompt } from "@veyyon/utils";
 
 import type { ModelRegistry } from "../config/model-registry";
 import { getModelMatchPreferences, resolveModelRoleValue } from "../config/model-resolver";
@@ -1027,7 +1027,7 @@ function parseJsonObject(text: string): Record<string, unknown> | undefined {
 	if (!text) return undefined;
 	try {
 		const parsed = JSON.parse(text) as unknown;
-		if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+		if (isRecord(parsed)) {
 			return parsed as Record<string, unknown>;
 		}
 	} catch {
@@ -1035,7 +1035,7 @@ function parseJsonObject(text: string): Record<string, unknown> | undefined {
 		if (!match) return undefined;
 		try {
 			const parsed = JSON.parse(match[0]) as unknown;
-			if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+			if (isRecord(parsed)) {
 				return parsed as Record<string, unknown>;
 			}
 		} catch {

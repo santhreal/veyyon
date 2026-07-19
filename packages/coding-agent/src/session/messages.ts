@@ -4,6 +4,7 @@
  * Extends the base AgentMessage type with coding-agent specific message types,
  * and provides a transformer to convert them to LLM-compatible messages.
  */
+
 import type { AgentMessage } from "@veyyon/agent-core";
 import {
 	type BranchSummaryMessage,
@@ -12,7 +13,7 @@ import {
 } from "@veyyon/agent-core/compaction/messages";
 import type { AssistantMessage, ImageContent, Message, MessageAttribution, TextContent, UserMessage } from "@veyyon/ai";
 import * as AIError from "@veyyon/ai/error";
-import { prompt } from "@veyyon/utils";
+import { isRecord, prompt } from "@veyyon/utils";
 import userInterjectionTemplate from "../prompts/steering/user-interjection.md" with { type: "text" };
 
 export {
@@ -313,7 +314,7 @@ function normalizeCustomMessageAttribution(attribution: unknown): MessageAttribu
 function isCustomMessagePayloadObject<T>(
 	payload: unknown,
 ): payload is Partial<Pick<CustomMessage<T>, "customType" | "content" | "display" | "details" | "attribution">> {
-	return payload !== null && typeof payload === "object" && !Array.isArray(payload);
+	return isRecord(payload);
 }
 
 /** Normalizes extension-provided custom message input before it reaches session state or disk. */

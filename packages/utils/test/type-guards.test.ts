@@ -176,6 +176,36 @@ function isIsRecordCloneBody(body: string): boolean {
 	return hasArr && hasGuard;
 }
 
+// The SAME three-term predicate also appeared inline (written straight into an
+// `if`/ternary/assignment on a value or member expression, not behind a guard
+// name), which neither name lock nor the body lock above sees. Those were swept
+// onto isRecord(X) on 2026-07-19 across six packages (~50 sites). Two remain in
+// the coding-agent modes/ UI lane, which an active feature branch owns; convert
+// them when that lane unblocks, then remove the entry. Shrink-only.
+const ISRECORD_INLINE_GRANDFATHERED = new Set([
+	"coding-agent/src/modes/controllers/event-controller.ts",
+	"coding-agent/src/modes/utils/transcript-render-helpers.ts",
+]);
+
+// A dotted value/member expression (no call parens, no index brackets).
+const INLINE_ID = "[A-Za-z_$][\\w$]*(?:\\.[A-Za-z_$][\\w$]*)*";
+// The four inline spellings, each with a \1 backreference so all slots are the
+// SAME expression (a coincidental `a && typeof b === "object"` is not flagged).
+const INLINE_ISRECORD = [
+	new RegExp(`typeof (${INLINE_ID}) === "object" && \\1 !== null && !Array\\.isArray\\(\\1\\)`, "g"),
+	new RegExp(`(${INLINE_ID}) !== null && typeof \\1 === "object" && !Array\\.isArray\\(\\1\\)`, "g"),
+	new RegExp(`!!(${INLINE_ID}) && typeof \\1 === "object" && !Array\\.isArray\\(\\1\\)`, "g"),
+	new RegExp(`(?<![.\\w])(${INLINE_ID}) && typeof \\1 === "object" && !Array\\.isArray\\(\\1\\)`, "g"),
+];
+
+function hasInlineIsRecord(text: string): boolean {
+	for (const re of INLINE_ISRECORD) {
+		re.lastIndex = 0;
+		if (re.test(text)) return true;
+	}
+	return false;
+}
+
 async function walk(dir: string, out: string[], includeTests: boolean): Promise<void> {
 	for (const entry of await readdir(dir, { withFileTypes: true })) {
 		const full = path.join(dir, entry.name);
@@ -300,6 +330,29 @@ describe("type-guards source locks", () => {
 			[...new Set(offenders)],
 			"named isRecord clones (isObj/isPlainObject/isJsonObject/…) — import isRecord from @veyyon/utils instead",
 		).toEqual([]);
+	});
+
+	it("no production source writes the isRecord predicate inline (except the blocked modes/ lane)", async () => {
+		// Positive control: the four spellings match, a coincidental two-identifier
+		// conjunction does not.
+		expect(hasInlineIsRecord(`if (typeof x === "object" && x !== null && !Array.isArray(x)) {`)).toBe(true);
+		expect(hasInlineIsRecord(`return v !== null && typeof v === "object" && !Array.isArray(v);`)).toBe(true);
+		expect(hasInlineIsRecord(`const r = !!v && typeof v === "object" && !Array.isArray(v);`)).toBe(true);
+		expect(hasInlineIsRecord(`x.y && typeof x.y === "object" && !Array.isArray(x.y) ? x.y : {}`)).toBe(true);
+		expect(hasInlineIsRecord(`if (a && typeof b === "object" && !Array.isArray(c)) {`)).toBe(false);
+
+		const offenders: string[] = [];
+		const seen = new Set<string>();
+		for (const file of await sourceFiles()) {
+			const rel = path.relative(PACKAGES_DIR, file).replaceAll(path.sep, "/");
+			if (rel === OWNER || ISRECORD_ALLOWED.has(rel)) continue;
+			if (!hasInlineIsRecord(await readFile(file, "utf8"))) continue;
+			seen.add(rel);
+			if (!ISRECORD_INLINE_GRANDFATHERED.has(rel)) offenders.push(rel);
+		}
+		const cleared = [...ISRECORD_INLINE_GRANDFATHERED].filter(rel => !seen.has(rel));
+		expect(offenders, "inline isRecord predicate — call isRecord(x) from @veyyon/utils instead").toEqual([]);
+		expect(cleared, "grandfathered inline sites now clean — remove them from the list").toEqual([]);
 	});
 
 	it("no test file defines a local isRecord — tests must dogfood the owner too", async () => {

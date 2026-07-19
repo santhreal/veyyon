@@ -26,7 +26,7 @@
  *   4xx/5xx: { error: { type, message } }
  */
 
-import { errorMessage } from "@veyyon/utils";
+import { errorMessage, isRecord } from "@veyyon/utils";
 import type { AuthGatewayStreamControl } from "../auth-gateway/types";
 import * as AIError from "../error";
 import type { AssistantMessageEventStream, Context, SimpleStreamOptions } from "../types";
@@ -127,7 +127,7 @@ export function parseRequest(body: unknown, _headers?: Headers): PiNativeParsedR
 
 	const options: SimpleStreamOptions = {};
 	const rawOpts = obj.options;
-	if (typeof rawOpts === "object" && rawOpts !== null && !Array.isArray(rawOpts)) {
+	if (isRecord(rawOpts)) {
 		const optsBag = options as Record<string, unknown>;
 		for (const [k, v] of Object.entries(rawOpts)) {
 			if (v === undefined || v === null) continue;

@@ -2,6 +2,7 @@
  * Agent loop that works with AgentMessage throughout.
  * Transforms to Message[] only at the LLM call boundary.
  */
+
 import {
 	type AssistantMessage,
 	type AssistantMessageEvent,
@@ -40,7 +41,7 @@ import {
 } from "@veyyon/ai/utils/harmony-leak";
 import { preferredDialect } from "@veyyon/catalog/identity";
 import { emptyUsage } from "@veyyon/catalog/models";
-import { errorMessage, formatCount, logger, sanitizeText, structuredCloneJSON } from "@veyyon/utils";
+import { errorMessage, formatCount, isRecord, logger, sanitizeText, structuredCloneJSON } from "@veyyon/utils";
 import { INTENT_FIELD } from "@veyyon/wire";
 import { agentPauseGate } from "./pause";
 import { type AgentRunCoverage, type AgentRunSummary, ToolCallBlockedError } from "./run-collector";
@@ -594,8 +595,7 @@ function injectIntentIntoSchema(
 	if (!schema || typeof schema !== "object" || Array.isArray(schema)) return schema;
 	const schemaRecord = schema as Record<string, unknown>;
 	const propertiesValue = schemaRecord.properties;
-	const hasOwnProperties =
-		propertiesValue !== null && typeof propertiesValue === "object" && !Array.isArray(propertiesValue);
+	const hasOwnProperties = isRecord(propertiesValue);
 
 	// Pure union root (anyOf/oneOf with no own properties): push `i` into each
 	// alternative branch so each closed shape keeps `additionalProperties: false`

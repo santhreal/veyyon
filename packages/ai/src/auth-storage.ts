@@ -7,11 +7,19 @@
  * - `AuthStorage` class: credential management with round-robin, usage limits, OAuth refresh
  * - `SqliteAuthCredentialStore`: concrete SQLite-backed implementation
  */
+
 import { Database, type Statement } from "bun:sqlite";
 import { createHash } from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { errorMessage, getAgentDbPath, logger, scopedTimeoutSignal, trimTrailingSlashes } from "@veyyon/utils";
+import {
+	errorMessage,
+	getAgentDbPath,
+	isRecord,
+	logger,
+	scopedTimeoutSignal,
+	trimTrailingSlashes,
+} from "@veyyon/utils";
 import type { ApiKeyResolver } from "./auth-retry";
 import * as AIError from "./error";
 import { isUsageLimitOutcome } from "./error/rate-limit";
@@ -5944,17 +5952,14 @@ function extractOAuthTokenIdentifiers(token: string | undefined): string[] | und
 		const directEmail = normalizeStoredEmail(typeof payload.email === "string" ? payload.email : undefined);
 		if (directEmail) identifiers.add(`email:${directEmail}`);
 		const openAiProfile = payload["https://api.openai.com/profile"];
-		if (typeof openAiProfile === "object" && openAiProfile !== null && !Array.isArray(openAiProfile)) {
+		if (isRecord(openAiProfile)) {
 			const claimEmail = normalizeStoredEmail(
 				(openAiProfile as Record<string, unknown>).email as string | undefined,
 			);
 			if (claimEmail) identifiers.add(`email:${claimEmail}`);
 		}
 		const openAiAuth = payload["https://api.openai.com/auth"];
-		const authClaims =
-			typeof openAiAuth === "object" && openAiAuth !== null && !Array.isArray(openAiAuth)
-				? (openAiAuth as Record<string, unknown>)
-				: undefined;
+		const authClaims = isRecord(openAiAuth) ? (openAiAuth as Record<string, unknown>) : undefined;
 		const accountId = normalizeStoredAccountId(
 			typeof payload.account_id === "string"
 				? payload.account_id

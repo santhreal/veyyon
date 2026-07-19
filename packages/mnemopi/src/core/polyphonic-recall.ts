@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import { DAY_MS, WEEK_MS } from "@veyyon/utils";
+import { DAY_MS, isRecord, WEEK_MS } from "@veyyon/utils";
 import { type Env, polyphonicRecallEnabled } from "../config";
 import { closeQuietly, type DatabasePath, openDatabase } from "../db";
 import { tableExists } from "../util/sqlite";
@@ -115,7 +115,7 @@ function parseMetadata(raw: string | null): Metadata {
 	if (raw === null || raw.length === 0) return {};
 	try {
 		const parsed = JSON.parse(raw) as unknown;
-		if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) {
+		if (isRecord(parsed)) {
 			return metadataValue(parsed) as Metadata;
 		}
 	} catch {

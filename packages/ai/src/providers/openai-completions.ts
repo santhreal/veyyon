@@ -3,7 +3,7 @@ import { isKimiModelId } from "@veyyon/catalog/identity";
 import { resolveWireModelId } from "@veyyon/catalog/model-thinking";
 import { calculateCost, emptyCost } from "@veyyon/catalog/models";
 import type { ResolvedOpenAICompat } from "@veyyon/catalog/types";
-import { $env, parseStreamingJson, parseStreamingJsonThrottled, trimTrailingSlashes } from "@veyyon/utils";
+import { $env, isRecord, parseStreamingJson, parseStreamingJsonThrottled, trimTrailingSlashes } from "@veyyon/utils";
 import { renderDemotedThinking } from "../dialect/demotion";
 import * as AIError from "../error";
 import { getKimiCommonHeaders } from "../registry/oauth/kimi";
@@ -257,7 +257,7 @@ function normalizeStreamingContentText(content: unknown): string {
 }
 
 function serializeToolArguments(value: unknown): string {
-	if (value && typeof value === "object" && !Array.isArray(value)) {
+	if (isRecord(value)) {
 		try {
 			return JSON.stringify(value);
 		} catch {
@@ -270,7 +270,7 @@ function serializeToolArguments(value: unknown): string {
 		if (trimmed.length === 0) return "{}";
 		try {
 			const parsed = JSON.parse(trimmed);
-			if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+			if (isRecord(parsed)) {
 				return JSON.stringify(parsed);
 			}
 		} catch {}
@@ -284,7 +284,7 @@ function cloneStreamingArgumentValue(value: unknown): unknown {
 	if (Array.isArray(value)) {
 		return value.map(cloneStreamingArgumentValue);
 	}
-	if (value !== null && typeof value === "object" && !Array.isArray(value)) {
+	if (isRecord(value)) {
 		return mergeStreamingArgumentObjects(undefined, value as Record<string, unknown>);
 	}
 	return value;
@@ -1208,7 +1208,7 @@ const streamOpenAICompletionsOnce = (
 										block[kStreamingLastParseLen] = throttled.parsedLen;
 									}
 								}
-							} else if (rawArgs && typeof rawArgs === "object" && !Array.isArray(rawArgs)) {
+							} else if (isRecord(rawArgs)) {
 								// MiniMax-compatible hosts stream `function.arguments` as an object instead of the
 								// OpenAI JSON-string contract. Most chunks carry the complete object in one delta,
 								// but cannot rely on that: replacing per-chunk drops earlier keys (and earlier

@@ -2,7 +2,7 @@
 import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { errorMessage, trimTrailingSlashes } from "@veyyon/utils";
+import { errorMessage, isRecord, trimTrailingSlashes } from "@veyyon/utils";
 /**
  * Harbor benchmark runner for the local `veyyon` build.
  *
@@ -1618,7 +1618,7 @@ async function runBenchmark(cfg: Config): Promise<BenchmarkRun> {
 		}
 		if (harborEnv.VEYYON_BENCH_FORWARD_ENV) {
 			const parsedForwardEnv: unknown = JSON.parse(harborEnv.VEYYON_BENCH_FORWARD_ENV);
-			if (parsedForwardEnv !== null && typeof parsedForwardEnv === "object" && !Array.isArray(parsedForwardEnv)) {
+			if (isRecord(parsedForwardEnv)) {
 				const keys: string[] = [];
 				for (const key in parsedForwardEnv) keys.push(key);
 				process.stdout.write(`  VEYYON_BENCH_FORWARD_ENV=${keys.join(",")} (values hidden)\n`);

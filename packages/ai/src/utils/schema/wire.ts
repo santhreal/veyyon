@@ -518,7 +518,7 @@ export function normalizeEmptySchemas(node: unknown): void {
 	}
 	for (const mapKey of SCHEMA_MAP_KEYS) {
 		const map = obj[mapKey];
-		if (map !== null && typeof map === "object" && !Array.isArray(map)) {
+		if (isRecord(map)) {
 			for (const k in map as Record<string, unknown>) {
 				if (isEmptyObject((map as Record<string, unknown>)[k])) (map as Record<string, unknown>)[k] = true;
 			}
@@ -580,7 +580,7 @@ function closeDeclaredObjects(node: unknown): void {
 	}
 	for (const mapKey of SCHEMA_MAP_KEYS) {
 		const map = obj[mapKey];
-		if (map !== null && typeof map === "object" && !Array.isArray(map)) {
+		if (isRecord(map)) {
 			for (const k in map as Record<string, unknown>) closeDeclaredObjects((map as Record<string, unknown>)[k]);
 		}
 	}
@@ -648,7 +648,7 @@ function pruneArkUndefinedUnionBranches(node: unknown): void {
 	}
 	for (const mapKey of SCHEMA_MAP_KEYS) {
 		const map = obj[mapKey];
-		if (map !== null && typeof map === "object" && !Array.isArray(map)) {
+		if (isRecord(map)) {
 			for (const key in map as Record<string, unknown>) {
 				pruneArkUndefinedUnionBranches((map as Record<string, unknown>)[key]);
 			}
