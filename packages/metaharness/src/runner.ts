@@ -2,7 +2,7 @@
 import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { errorMessage, isRecord, trimTrailingSlashes } from "@veyyon/utils";
+import { errorMessage, isRecord, trimTrailingSlashes, tryParseJson } from "@veyyon/utils";
 /**
  * Harbor benchmark runner for the local `veyyon` build.
  *
@@ -521,8 +521,10 @@ function resolveReward(rewards: Record<string, number> | null): number | null {
 
 function readJson(file: string): unknown {
 	try {
-		return JSON.parse(fs.readFileSync(file, "utf8"));
+		return tryParseJson(fs.readFileSync(file, "utf8"));
 	} catch {
+		// A missing/unreadable file (readFileSync throws) reads the same as invalid
+		// JSON here: absent config. tryParseJson already returns null on bad JSON.
 		return null;
 	}
 }

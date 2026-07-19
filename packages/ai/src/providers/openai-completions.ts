@@ -3,7 +3,14 @@ import { isKimiModelId } from "@veyyon/catalog/identity";
 import { resolveWireModelId } from "@veyyon/catalog/model-thinking";
 import { calculateCost, emptyCost } from "@veyyon/catalog/models";
 import type { ResolvedOpenAICompat } from "@veyyon/catalog/types";
-import { $env, isRecord, parseStreamingJson, parseStreamingJsonThrottled, trimTrailingSlashes } from "@veyyon/utils";
+import {
+	$env,
+	isRecord,
+	parseStreamingJson,
+	parseStreamingJsonThrottled,
+	trimTrailingSlashes,
+	tryParseJson,
+} from "@veyyon/utils";
 import { renderDemotedThinking } from "../dialect/demotion";
 import * as AIError from "../error";
 import { getKimiCommonHeaders } from "../registry/oauth/kimi";
@@ -2024,14 +2031,7 @@ export function convertMessages(
 				});
 				const reasoningDetails = toolCalls
 					.filter(tc => tc.thoughtSignature)
-					.map(tc => {
-						try {
-							const parsed: unknown = JSON.parse(tc.thoughtSignature!);
-							return parsed;
-						} catch {
-							return null;
-						}
-					})
+					.map(tc => tryParseJson(tc.thoughtSignature!))
 					.filter(Boolean);
 				if (reasoningDetails.length > 0) {
 					assistantMsg.reasoning_details = reasoningDetails;

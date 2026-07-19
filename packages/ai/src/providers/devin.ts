@@ -28,7 +28,13 @@ import {
 	StopReason,
 } from "@veyyon/catalog/discovery/devin-gen/exa/codeium_common_pb/codeium_common_pb";
 import { calculateCost, emptyUsage } from "@veyyon/catalog/models";
-import { logger, parseStreamingJson, parseStreamingJsonThrottled, trimTrailingSlashes } from "@veyyon/utils";
+import {
+	logger,
+	parseStreamingJson,
+	parseStreamingJsonThrottled,
+	trimTrailingSlashes,
+	tryParseJson,
+} from "@veyyon/utils";
 import * as AIError from "../error";
 import type {
 	Api,
@@ -572,12 +578,7 @@ function buildChatMessagePrompts(messages: Message[], cascadeId: string): ChatMe
  */
 function readConnectTrailerError(text: string): string | null {
 	if (text.length === 0) return null;
-	let parsed: unknown;
-	try {
-		parsed = JSON.parse(text);
-	} catch {
-		return null;
-	}
+	const parsed = tryParseJson(text);
 	if (!parsed || typeof parsed !== "object" || !("error" in parsed)) return null;
 	const err = parsed.error;
 	if (!err || typeof err !== "object") return null;

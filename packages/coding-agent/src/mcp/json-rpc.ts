@@ -4,7 +4,7 @@
  * Lightweight utilities for calling MCP servers directly via HTTP
  * without maintaining persistent connections.
  */
-import { logger } from "@veyyon/utils";
+import { logger, tryParseJson } from "@veyyon/utils";
 import { scopedTimeoutSignal } from "../utils/fetch-timeout";
 
 /** Hard ceiling on a single MCP HTTP request when the caller provides no signal. */
@@ -45,11 +45,7 @@ export function parseSSE(text: string): unknown {
 		}
 	}
 	// Fallback: try parsing entire response as JSON
-	try {
-		return JSON.parse(text);
-	} catch {
-		return null;
-	}
+	return tryParseJson(text);
 }
 
 /** JSON-RPC 2.0 response structure */

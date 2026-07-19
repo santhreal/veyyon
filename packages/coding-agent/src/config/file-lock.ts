@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import * as fs from "node:fs/promises";
-import { isEnoent, logger } from "@veyyon/utils";
+import { isEnoent, logger, tryParseJson } from "@veyyon/utils";
 
 export interface FileLockOptions {
 	staleMs?: number;
@@ -32,8 +32,9 @@ async function writeLockInfo(lockPath: string, token: string): Promise<void> {
 async function readLockInfo(lockPath: string): Promise<LockInfo | null> {
 	try {
 		const content = await fs.readFile(`${lockPath}/info`, "utf-8");
-		return JSON.parse(content) as LockInfo;
+		return tryParseJson<LockInfo>(content);
 	} catch {
+		// Missing/unreadable lock file (readFile throws) — no lock held.
 		return null;
 	}
 }

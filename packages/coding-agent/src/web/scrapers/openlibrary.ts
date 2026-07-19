@@ -315,8 +315,8 @@ async function fetchAuthorNames(authorKeys: string[], timeout: number, signal?: 
 		try {
 			const result = await loadPage(apiUrl, { timeout: Math.min(timeout, 5), signal });
 			if (result.ok) {
-				const author = JSON.parse(result.content) as { name?: string };
-				return author.name || null;
+				const author = tryParseJson<{ name?: string }>(result.content);
+				return author?.name || null;
 			}
 		} catch {}
 		return null;

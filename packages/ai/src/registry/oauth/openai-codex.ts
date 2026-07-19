@@ -3,7 +3,7 @@
  */
 
 import { OPENAI_HEADER_VALUES } from "@veyyon/catalog/wire/codex";
-import { withScopedTimeoutSignal } from "@veyyon/utils";
+import { tryParseJson, withScopedTimeoutSignal } from "@veyyon/utils";
 import * as AIError from "../../error";
 import type { FetchImpl } from "../../types";
 import { isRecord } from "../../utils";
@@ -40,15 +40,13 @@ type JwtPayload = {
 };
 
 export function decodeJwt<T = Record<string, unknown>>(token: string): T | null {
-	try {
-		const parts = token.split(".");
-		if (parts.length !== 3) return null;
-		const payload = parts[1] ?? "";
-		const decoded = Buffer.from(payload, "base64").toString("utf-8");
-		return JSON.parse(decoded) as T;
-	} catch {
-		return null;
-	}
+	const parts = token.split(".");
+	if (parts.length !== 3) return null;
+	const payload = parts[1] ?? "";
+	// Buffer.from base64 and toString never throw (invalid bytes are dropped);
+	// the only failure mode is a non-JSON payload, which tryParseJson maps to null.
+	const decoded = Buffer.from(payload, "base64").toString("utf-8");
+	return tryParseJson<T>(decoded);
 }
 
 function getTokenProfile(accessToken: string): { accountId?: string; email?: string } {

@@ -11,6 +11,7 @@ import {
 	isRecord,
 	scopedTimeoutSignal,
 	trimTrailingSlashes,
+	tryParseJson,
 } from "@veyyon/utils";
 import * as AIError from "../error";
 import type {
@@ -2941,12 +2942,8 @@ function parseGitLabDuoWorkflowSocketData(data: unknown): Record<string, unknown
 }
 
 function parseJsonRecord(text: string): Record<string, unknown> | null {
-	try {
-		const parsed = JSON.parse(text) as unknown;
-		return parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : null;
-	} catch {
-		return null;
-	}
+	const parsed = tryParseJson(text);
+	return parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : null;
 }
 
 function numberField(record: Record<string, unknown>, key: string): number | undefined {

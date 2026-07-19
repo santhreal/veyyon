@@ -11,7 +11,7 @@ import {
 	type Usage,
 } from "@veyyon/ai";
 import { emptyCost } from "@veyyon/catalog/models";
-import { contentText, getSessionsDir, isEnoent, readLines } from "@veyyon/utils";
+import { contentText, getSessionsDir, isEnoent, readLines, tryParseJson } from "@veyyon/utils";
 import type {
 	AgentType,
 	MessageStats,
@@ -283,11 +283,7 @@ const jsonLineDecoder = new TextDecoder();
 function parseJsonLine(bytes: Uint8Array, start: number, end: number): SessionEntry | null {
 	while (end > start && bytes[end - 1] === CR) end--;
 	if (end <= start) return null;
-	try {
-		return JSON.parse(jsonLineDecoder.decode(bytes.subarray(start, end))) as SessionEntry;
-	} catch {
-		return null;
-	}
+	return tryParseJson<SessionEntry>(jsonLineDecoder.decode(bytes.subarray(start, end)));
 }
 
 function visitSessionEntriesLenient(bytes: Uint8Array, visit: (entry: SessionEntry) => void): number {
