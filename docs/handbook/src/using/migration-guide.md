@@ -23,7 +23,7 @@ Profile settings live in `~/.veyyon/profiles/<name>/agent/config.yml` (default p
 
 - **New required keys** are added when a new feature is on by default. The error message names the missing key and the section it belongs in. Add it to the profile `config.yml` or disable the related feature if you do not need it.
 - **Renamed fields** are reported as unknown keys. The old name is usually accepted during a short migration window, but you should rename it to the current spelling.
-- **Removed fields** are ignored unless you run with `--strict-config`, in which case unknown keys are treated as errors. Use `--strict-config` in CI to keep your config clean; leave it off during normal use so upgrades do not immediately break.
+- **Removed fields** are reported as unknown keys but do not stop Veyyon from starting, so an upgrade does not immediately break an old config. Delete the key once you see it reported to keep the file clean.
 
 ### Updating your config
 

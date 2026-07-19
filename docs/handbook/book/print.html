@@ -51,7 +51,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-b31c94e7.js";
+            window.path_to_searchindex_js = "searchindex-054cba79.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-cc1a72e9.js"></script>
@@ -1843,15 +1843,13 @@ EOF
 <tr><th>Option</th><th>Effect</th></tr>
 </thead>
 <tbody>
-<tr><td><code>--strict-config</code></td><td>Error when <code>config.yml</code> contains unknown fields</td></tr>
-<tr><td><code>--skip-git-repo-check</code></td><td>Allow running outside a Git repository</td></tr>
-<tr><td><code>--ephemeral</code></td><td>Do not persist the session under the agent sessions dir</td></tr>
-<tr><td><code>--ignore-user-config</code></td><td>Do not load user <code>config.yml</code> (auth still uses the agent dir)</td></tr>
-<tr><td><code>--ignore-rules</code></td><td>Do not load user or project execpolicy <code>.rules</code> files</td></tr>
+<tr><td><code>--no-session</code></td><td>Do not persist the session (an ephemeral run)</td></tr>
+<tr><td><code>--no-rules</code></td><td>Do not discover or load rules files</td></tr>
+<tr><td><code>--no-skills</code></td><td>Do not discover or load skills</td></tr>
 <tr><td><code>--profile &lt;name&gt;</code></td><td>Activate a named profile (<code>-p</code> is <code>--print</code>, not profile)</td></tr>
-<tr><td><code>-c key=value</code></td><td>Override a config value for this run (repeatable)</td></tr>
+<tr><td><code>--config &lt;file&gt;</code></td><td>Load an extra config overlay for this run, repeatable and never persisted</td></tr>
 <tr><td><code>--cwd &lt;DIR&gt;</code></td><td>Working directory for the session</td></tr>
-<tr><td><code>--add-dir &lt;DIR&gt;</code></td><td>Extra writable root (repeatable)</td></tr>
+<tr><td><code>--allow-home</code></td><td>Start in your home directory instead of auto-switching to a temp dir</td></tr>
 </tbody>
 </table>
 </div>
@@ -3679,7 +3677,7 @@ See <a href="#approvals">Approvals</a>.</p>
 <ul>
 <li><strong>New required keys</strong> are added when a new feature is on by default. The error message names the missing key and the section it belongs in. Add it to the profile <code>config.yml</code> or disable the related feature if you do not need it.</li>
 <li><strong>Renamed fields</strong> are reported as unknown keys. The old name is usually accepted during a short migration window, but you should rename it to the current spelling.</li>
-<li><strong>Removed fields</strong> are ignored unless you run with <code>--strict-config</code>, in which case unknown keys are treated as errors. Use <code>--strict-config</code> in CI to keep your config clean; leave it off during normal use so upgrades do not immediately break.</li>
+<li><strong>Removed fields</strong> are reported as unknown keys but do not stop Veyyon from starting, so an upgrade does not immediately break an old config. Delete the key once you see it reported to keep the file clean.</li>
 </ul>
 <h3 id="updating-your-config"><a class="header" href="#updating-your-config">Updating your config</a></h3>
 <ol>
@@ -3778,7 +3776,6 @@ $ veyyon "fix the failing test in auth.rs"
 <tr><td><code>--model &lt;id&gt;</code></td><td>Interactive model (<code>provider/model</code>)</td></tr>
 <tr><td><code>--subagent-model &lt;id&gt;</code></td><td>Model for spawned task subagents</td></tr>
 <tr><td><code>--compaction-model &lt;id&gt;</code></td><td>Model for context compaction</td></tr>
-<tr><td><code>--no-alt-screen</code></td><td>Inline mode (preserve scrollback)</td></tr>
 </tbody>
 </table>
 </div>

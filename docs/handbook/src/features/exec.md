@@ -18,15 +18,13 @@ Run `veyyon --help` for the generated flag set. Common options:
 
 | Option | Effect |
 | --- | --- |
-| `--strict-config` | Error when `config.yml` contains unknown fields |
-| `--skip-git-repo-check` | Allow running outside a Git repository |
-| `--ephemeral` | Do not persist the session under the agent sessions dir |
-| `--ignore-user-config` | Do not load user `config.yml` (auth still uses the agent dir) |
-| `--ignore-rules` | Do not load user or project execpolicy `.rules` files |
+| `--no-session` | Do not persist the session (an ephemeral run) |
+| `--no-rules` | Do not discover or load rules files |
+| `--no-skills` | Do not discover or load skills |
 | `--profile <name>` | Activate a named profile (`-p` is `--print`, not profile) |
-| `-c key=value` | Override a config value for this run (repeatable) |
+| `--config <file>` | Load an extra config overlay for this run, repeatable and never persisted |
 | `--cwd <DIR>` | Working directory for the session |
-| `--add-dir <DIR>` | Extra writable root (repeatable) |
+| `--allow-home` | Start in your home directory instead of auto-switching to a temp dir |
 
 ### Output and models
 

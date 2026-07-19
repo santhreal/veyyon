@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-b31c94e7.js";
+            window.path_to_searchindex_js = "../searchindex-054cba79.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-cc1a72e9.js"></script>
@@ -218,7 +218,7 @@
 <ul>
 <li><strong>New required keys</strong> are added when a new feature is on by default. The error message names the missing key and the section it belongs in. Add it to the profile <code>config.yml</code> or disable the related feature if you do not need it.</li>
 <li><strong>Renamed fields</strong> are reported as unknown keys. The old name is usually accepted during a short migration window, but you should rename it to the current spelling.</li>
-<li><strong>Removed fields</strong> are ignored unless you run with <code>--strict-config</code>, in which case unknown keys are treated as errors. Use <code>--strict-config</code> in CI to keep your config clean; leave it off during normal use so upgrades do not immediately break.</li>
+<li><strong>Removed fields</strong> are reported as unknown keys but do not stop Veyyon from starting, so an upgrade does not immediately break an old config. Delete the key once you see it reported to keep the file clean.</li>
 </ul>
 <h3 id="updating-your-config"><a class="header" href="#updating-your-config">Updating your config</a></h3>
 <ol>

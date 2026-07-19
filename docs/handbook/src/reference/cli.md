@@ -22,7 +22,6 @@ Common launch options:
 | `--model <id>` | Interactive model (`provider/model`) |
 | `--subagent-model <id>` | Model for spawned task subagents |
 | `--compaction-model <id>` | Model for context compaction |
-| `--no-alt-screen` | Inline mode (preserve scrollback) |
 
 Config precedence: CLI flags → `-c` overrides → `config.yml` → defaults. See
 [Configuration](../using/configuration.md).
