@@ -1,4 +1,4 @@
-import { clamp01 } from "@veyyon/utils";
+import { clamp01, isDateOnly } from "@veyyon/utils";
 import { normalizedRecallWeights, temporalHalflifeHours } from "../../config";
 import { toUtcIso } from "../../util/datetime";
 import { tableExists as tableExistsIn } from "../../util/sqlite";
@@ -369,7 +369,7 @@ export function parseQueryTime(value: RecallOptionsInternal["queryTime"]): Date 
 		return value;
 	}
 	if (typeof value === "string") {
-		const normalized = /^\d{4}-\d{2}-\d{2}$/.test(value)
+		const normalized = isDateOnly(value)
 			? `${value}T00:00:00.000Z`
 			: /(?:Z|[+-]\d{2}:?\d{2})$/.test(value)
 				? value

@@ -1,8 +1,8 @@
+import { isDateOnly } from "@veyyon/utils";
 import { LRUCache } from "lru-cache/raw";
 import { recencyHalflifeHours } from "../config";
 
 const TZ_RE = /(?:Z|[+-]\d\d:?\d\d)$/;
-const DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/;
 const TS_CACHE = new LRUCache<string, Date>({ max: 2000 });
 
 export type QueryTime = string | Date | null | undefined;
@@ -10,7 +10,7 @@ export type QueryTime = string | Date | null | undefined;
 export function parseIsoDateTimeUtc(value: string): Date {
 	let text = value.trim();
 	if (!text) throw new RangeError("Invalid ISO datetime: empty string");
-	if (DATE_ONLY_RE.test(text)) text += "T00:00:00Z";
+	if (isDateOnly(text)) text += "T00:00:00Z";
 	else if (!TZ_RE.test(text)) text += "Z";
 	const date = new Date(text);
 	if (Number.isNaN(date.getTime())) throw new RangeError(`Invalid ISO datetime: ${value}`);
