@@ -14,6 +14,7 @@ import {
 } from "@veyyon/catalog/wire/github-copilot";
 import * as AIError from "../../error";
 import type { FetchImpl } from "../../types";
+import { fetchGitHubCopilotJson } from "../../utils/github-copilot-http";
 import { emitOAuthSuccessPage } from "./success-page";
 import type { OAuthCredentials } from "./types";
 
@@ -62,33 +63,20 @@ function getUrls(domain: string): {
 	};
 }
 
-async function fetchJson(url: string, init: RequestInit, fetchImpl: FetchImpl): Promise<unknown> {
-	const response = await fetchImpl(url, init);
-	if (!response.ok) {
-		const text = await response.text();
-		throw new AIError.ProviderHttpError(`${response.status} ${response.statusText}: ${text}`, response.status);
-	}
-	return response.json();
-}
-
 async function startDeviceFlow(domain: string, fetchImpl: FetchImpl): Promise<DeviceCodeResponse> {
 	const urls = getUrls(domain);
-	const data = await fetchJson(
-		urls.deviceCodeUrl,
-		{
-			method: "POST",
-			headers: {
-				Accept: "application/json",
-				"Content-Type": "application/json",
-				...OPENCODE_HEADERS,
-			},
-			body: JSON.stringify({
-				client_id: CLIENT_ID,
-				scope: "read:user",
-			}),
+	const data = await fetchGitHubCopilotJson(fetchImpl, urls.deviceCodeUrl, {
+		method: "POST",
+		headers: {
+			Accept: "application/json",
+			"Content-Type": "application/json",
+			...OPENCODE_HEADERS,
 		},
-		fetchImpl,
-	);
+		body: JSON.stringify({
+			client_id: CLIENT_ID,
+			scope: "read:user",
+		}),
+	});
 
 	if (!data || typeof data !== "object") {
 		throw new AIError.OAuthError("Invalid device code response", { kind: "validation", provider: "github-copilot" });
@@ -151,23 +139,19 @@ async function pollForGitHubAccessToken(
 			throw new AIError.LoginCancelledError();
 		}
 
-		const raw = await fetchJson(
-			urls.accessTokenUrl,
-			{
-				method: "POST",
-				headers: {
-					Accept: "application/json",
-					"Content-Type": "application/json",
-					...OPENCODE_HEADERS,
-				},
-				body: JSON.stringify({
-					client_id: CLIENT_ID,
-					device_code: deviceCode,
-					grant_type: "urn:ietf:params:oauth:grant-type:device_code",
-				}),
+		const raw = await fetchGitHubCopilotJson(fetchImpl, urls.accessTokenUrl, {
+			method: "POST",
+			headers: {
+				Accept: "application/json",
+				"Content-Type": "application/json",
+				...OPENCODE_HEADERS,
 			},
-			fetchImpl,
-		);
+			body: JSON.stringify({
+				client_id: CLIENT_ID,
+				device_code: deviceCode,
+				grant_type: "urn:ietf:params:oauth:grant-type:device_code",
+			}),
+		});
 
 		if (raw && typeof raw === "object" && typeof (raw as DeviceTokenSuccessResponse).access_token === "string") {
 			return (raw as DeviceTokenSuccessResponse).access_token;
@@ -230,17 +214,13 @@ export function refreshGitHubCopilotToken(
 
 async function discoverGitHubCopilotApiEndpoint(token: string, fetchImpl: FetchImpl): Promise<string | undefined> {
 	try {
-		const data = await fetchJson(
-			"https://api.github.com/copilot_internal/user",
-			{
-				headers: {
-					Accept: "application/json",
-					Authorization: `token ${token}`,
-					...OPENCODE_HEADERS,
-				},
+		const data = await fetchGitHubCopilotJson(fetchImpl, "https://api.github.com/copilot_internal/user", {
+			headers: {
+				Accept: "application/json",
+				Authorization: `token ${token}`,
+				...OPENCODE_HEADERS,
 			},
-			fetchImpl,
-		);
+		});
 		if (!data || typeof data !== "object") return undefined;
 		const endpoints = (data as { endpoints?: { api?: unknown } }).endpoints;
 		return typeof endpoints?.api === "string" ? normalizeGitHubCopilotApiEndpoint(endpoints.api) : undefined;
