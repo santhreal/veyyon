@@ -22,7 +22,7 @@ import { streamOpenAICompletions } from "@veyyon/ai/providers/openai-completions
 import { streamOpenAIResponses } from "@veyyon/ai/providers/openai-responses";
 import { buildModel } from "@veyyon/catalog/build";
 import type { Model, ModelSpec } from "@veyyon/catalog/types";
-import { $env, readSseJson } from "@veyyon/utils";
+import { $env, asRecord, readSseJson } from "@veyyon/utils";
 import type {
 	PerplexityRequest,
 	PerplexitySearchResult,
@@ -148,11 +148,6 @@ function mergeOAuthEventSnapshot(
 	}
 
 	return merged;
-}
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-	if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
-	return value as Record<string, unknown>;
 }
 
 function parseJson(text: string): unknown | null {

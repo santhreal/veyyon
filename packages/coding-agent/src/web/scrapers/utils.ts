@@ -1,15 +1,13 @@
-import { isRecord } from "@veyyon/utils";
+import { asRecord, isRecord } from "@veyyon/utils";
 import { scopedTimeoutSignal } from "../../utils/fetch-timeout";
 
-export { isRecord };
+// Re-export the @veyyon/utils guards so scraper modules can import them from
+// this local barrel; asRecord/isRecord have exactly one definition (the owner).
+export { asRecord, isRecord };
 
 import { ToolAbortError } from "../../tools/tool-errors";
 import { convertBufferWithMarkit } from "../../utils/markit";
 import { MAX_BYTES } from "./types";
-
-export function asRecord(value: unknown): Record<string, unknown> | null {
-	return isRecord(value) ? value : null;
-}
 
 export function asString(value: unknown): string | null {
 	if (typeof value !== "string") return null;
