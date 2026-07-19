@@ -1,4 +1,5 @@
-import { fetchWithRetry, parseStreamingJson, trimTrailingSlashes } from "@veyyon/utils";
+import { normalizeOllamaCloudBaseUrl } from "@veyyon/catalog/provider-models/ollama";
+import { fetchWithRetry, parseStreamingJson } from "@veyyon/utils";
 import * as AIError from "../error";
 import { getEnvApiKey } from "../stream";
 import type {
@@ -93,15 +94,6 @@ type InternalToolCallBlock = AssistantMessage["content"][number] & {
 	type: "toolCall";
 	[kStreamingPartialJson]?: string;
 };
-
-function normalizeBaseUrl(baseUrl?: string): string {
-	const value = baseUrl?.trim();
-	if (!value) {
-		return "https://ollama.com";
-	}
-	const trimmed = trimTrailingSlashes(value);
-	return trimmed.endsWith("/api") ? trimmed.slice(0, -4) : trimmed;
-}
 
 type OllamaThinkValue = boolean | "low" | "medium" | "high" | "max" | undefined;
 
@@ -550,7 +542,7 @@ const streamOllamaOnce = (
 			if (!apiKey) {
 				throw new AIError.MissingApiKeyError(model.provider);
 			}
-			const baseUrl = normalizeBaseUrl(model.baseUrl);
+			const baseUrl = normalizeOllamaCloudBaseUrl(model.baseUrl);
 			let body = createChatBody(model, context, options);
 			const replacementPayload = await options.onPayload?.(body, model);
 			if (replacementPayload !== undefined) {
