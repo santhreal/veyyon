@@ -1,3 +1,4 @@
+import { toNumber } from "@veyyon/catalog/utils";
 import { clamp, decodeJwtPayload, HOUR_MS, MINUTE_MS, WEEK_MS } from "@veyyon/utils";
 import type {
 	CredentialRankingStrategy,
@@ -13,7 +14,7 @@ import type {
 import { isRecord } from "../utils";
 import { normalizeCodexBaseUrl } from "./openai-codex-base-url";
 import { listCodexResetCredits } from "./openai-codex-reset";
-import { toNumber, usageStatusFromUsedFraction } from "./shared";
+import { usageStatusFromUsedFraction } from "./shared";
 
 const CODEX_USAGE_PATH = "wham/usage";
 const JWT_AUTH_CLAIM = "https://api.openai.com/auth";
