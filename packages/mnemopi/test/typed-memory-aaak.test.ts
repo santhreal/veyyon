@@ -67,6 +67,75 @@ describe("typed memory classification", () => {
 		expect(tieBroken.memory_type).toBe(MemoryType.ERROR);
 		expect(tieBroken.priority).toBe("persistent");
 	});
+
+	it("adds the +0.1 confidence boost when the matched span exceeds 20 characters", () => {
+		// The GOAL pattern matches the full 24-char "grow to 100000 customers": base 0.8 + 0.1.
+		const long = classifyMemory("grow to 100000 customers");
+		expect(long.memory_type).toBe(MemoryType.GOAL);
+		expect(long.confidence).toBeCloseTo(0.9, 10);
+		expect(long.priority).toBe("high");
+	});
+
+	it("maps every memory type to its exact retention priority", () => {
+		expect(getTypePriority(MemoryType.INSTRUCTION)).toBe(10);
+		expect(getTypePriority(MemoryType.COMMITMENT)).toBe(9);
+		expect(getTypePriority(MemoryType.ERROR)).toBe(8);
+		expect(getTypePriority(MemoryType.GOAL)).toBe(7);
+		expect(getTypePriority(MemoryType.DECISION)).toBe(6);
+		expect(getTypePriority(MemoryType.PREFERENCE)).toBe(5);
+		expect(getTypePriority(MemoryType.FACT)).toBe(4);
+		expect(getTypePriority(MemoryType.RELATIONSHIP)).toBe(4);
+		expect(getTypePriority(MemoryType.LEARNING)).toBe(3);
+		expect(getTypePriority(MemoryType.OBSERVATION)).toBe(3);
+		expect(getTypePriority(MemoryType.EVENT)).toBe(2);
+		expect(getTypePriority(MemoryType.CONTEXT)).toBe(2);
+		expect(getTypePriority(MemoryType.ARTIFACT)).toBe(1);
+		expect(getTypePriority(MemoryType.UNKNOWN)).toBe(0);
+		expect(getTypePriority("not-a-real-type")).toBe(0);
+	});
+
+	it("maps every memory type to its exact decay rate", () => {
+		expect(getDecayRate(MemoryType.CONTEXT)).toBe(0.9);
+		expect(getDecayRate(MemoryType.EVENT)).toBe(0.7);
+		expect(getDecayRate(MemoryType.OBSERVATION)).toBe(0.5);
+		expect(getDecayRate(MemoryType.UNKNOWN)).toBe(0.5);
+		expect(getDecayRate(MemoryType.COMMITMENT)).toBe(0.5);
+		expect(getDecayRate(MemoryType.GOAL)).toBe(0.4);
+		expect(getDecayRate(MemoryType.LEARNING)).toBe(0.3);
+		expect(getDecayRate(MemoryType.DECISION)).toBe(0.3);
+		expect(getDecayRate(MemoryType.PREFERENCE)).toBe(0.2);
+		expect(getDecayRate(MemoryType.FACT)).toBe(0.1);
+		expect(getDecayRate(MemoryType.RELATIONSHIP)).toBe(0.1);
+		expect(getDecayRate(MemoryType.ARTIFACT)).toBe(0.1);
+		expect(getDecayRate(MemoryType.INSTRUCTION)).toBe(0.05);
+		expect(getDecayRate(MemoryType.ERROR)).toBe(0.05);
+		expect(getDecayRate("not-a-real-type")).toBe(0.3);
+	});
+
+	it("consolidates the accumulating knowledge types and skips the transient ones", () => {
+		for (const type of [
+			MemoryType.FACT,
+			MemoryType.PREFERENCE,
+			MemoryType.DECISION,
+			MemoryType.GOAL,
+			MemoryType.LEARNING,
+			MemoryType.OBSERVATION,
+			MemoryType.RELATIONSHIP,
+			MemoryType.INSTRUCTION,
+		]) {
+			expect(shouldConsolidate(type)).toBe(true);
+		}
+		for (const type of [
+			MemoryType.COMMITMENT,
+			MemoryType.EVENT,
+			MemoryType.CONTEXT,
+			MemoryType.ERROR,
+			MemoryType.ARTIFACT,
+			MemoryType.UNKNOWN,
+		]) {
+			expect(shouldConsolidate(type)).toBe(false);
+		}
+	});
 });
 
 describe("AAAK encoding", () => {
