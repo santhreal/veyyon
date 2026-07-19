@@ -36,16 +36,40 @@ export function display(value: unknown): string {
 	}
 }
 
-/** Replace `/Users/<x>` / `/home/<x>` prefix with `~` for display. */
-export function shortenPath(p: string): string {
+/**
+ * Replace the `/Users/<x>` / `/home/<x>` home prefix with `~` for display.
+ *
+ * Browser-safe: this package bundles for the web, where `os.homedir()` is
+ * unavailable, so the home directory is matched by the `/Users/<user>` and
+ * `/home/<user>` conventions rather than the real `$HOME`. The coding-agent
+ * TUI has its own `shortenPath` in `coding-agent/src/tools/render-utils.ts`
+ * that collapses the real home dir (it runs under Node, where `$HOME` is
+ * known); the two are a deliberate runtime split, not an accidental
+ * duplicate. This is the single owner for every browser surface: collab-web
+ * re-exports it from here rather than keeping its own copy.
+ *
+ * Pass `collapseAfter` to also elide a long middle: a path with more than
+ * `collapseAfter` slash-separated segments renders as `first/…/last-two`.
+ * Omit it (the default) to shorten only the home prefix.
+ */
+export function shortenPath(p: string, opts?: { collapseAfter?: number }): string {
+	let out = p;
 	for (const prefix of ["/Users/", "/home/"]) {
 		if (p.startsWith(prefix)) {
 			const rest = p.slice(prefix.length);
 			const slash = rest.indexOf("/");
-			return slash < 0 ? "~" : `~${rest.slice(slash)}`;
+			out = slash < 0 ? "~" : `~${rest.slice(slash)}`;
+			break;
 		}
 	}
-	return p;
+	const collapseAfter = opts?.collapseAfter;
+	if (collapseAfter !== undefined) {
+		const segs = out.split("/");
+		if (segs.length > collapseAfter) {
+			out = `${segs[0]}/…/${segs.slice(-2).join("/")}`;
+		}
+	}
+	return out;
 }
 
 /**

@@ -33,7 +33,7 @@ export function HeaderBar({ snapshot, subCount, railOpen, onToggleRail, onLeave 
 				</span>
 				{state?.cwd && (
 					<span className="sh-cwd" title={state.cwd}>
-						{shortenPath(state.cwd)}
+						{shortenPath(state.cwd, { collapseAfter: 4 })}
 					</span>
 				)}
 			</div>
