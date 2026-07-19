@@ -1,4 +1,4 @@
-import { clamp, clamp01 } from "@veyyon/utils";
+import { batched, clamp, clamp01 } from "@veyyon/utils";
 import { normalizedRecallWeights, temporalHalflifeHours } from "../../config";
 import { parseQueryTime, recencyDecay, temporalBoost, toUtcIso } from "../../util/datetime";
 
@@ -7,7 +7,7 @@ import { parseQueryTime, recencyDecay, temporalBoost, toUtcIso } from "../../uti
 export { parseQueryTime, temporalBoost } from "../../util/datetime";
 
 import { unicodeWordTokens } from "../../util/regex";
-import { tableExists as tableExistsIn } from "../../util/sqlite";
+import { SQLITE_IN_CLAUSE_BATCH, tableExists as tableExistsIn } from "../../util/sqlite";
 import { embedQuery } from "../embeddings";
 import { mmrRerank } from "../mmr";
 import { adjustWeights, classifyIntent } from "../query-intent";
@@ -540,8 +540,7 @@ function vectorSimilarities(
 	) {
 		return out;
 	}
-	for (let offset = 0; offset < memoryIds.length; offset += 500) {
-		const chunk = memoryIds.slice(offset, offset + 500);
+	for (const chunk of batched(memoryIds, SQLITE_IN_CLAUSE_BATCH)) {
 		const rows = queryAll(
 			beam,
 			`SELECT memory_id, embedding_json FROM memory_embeddings WHERE memory_id IN (${placeholders(chunk.length)})`,
