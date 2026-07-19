@@ -5,6 +5,7 @@
  * optional synthesized answer.
  */
 import { type ApiKey, type AuthStorage, type FetchImpl, getEnvApiKey, withAuth } from "@veyyon/ai";
+import { asRecord } from "@veyyon/utils";
 import type { SearchResponse, SearchSource } from "../../../web/search/types";
 import { SearchProviderError } from "../../../web/search/types";
 import { clampNumResults, dateToAgeSeconds } from "../utils";
@@ -35,11 +36,6 @@ interface TavilySearchResponse {
 	answer?: string | null;
 	results?: TavilySearchResult[];
 	request_id?: string | null;
-}
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-	if (typeof value !== "object" || value === null) return null;
-	return value as Record<string, unknown>;
 }
 
 function getErrorMessage(value: unknown): string | null {
