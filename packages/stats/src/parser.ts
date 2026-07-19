@@ -10,6 +10,7 @@ import {
 	type ToolResultMessage,
 	type Usage,
 } from "@veyyon/ai";
+import { emptyCost } from "@veyyon/catalog/models";
 import { contentText, getSessionsDir, isEnoent, readLines } from "@veyyon/utils";
 import type {
 	AgentType,
@@ -179,7 +180,7 @@ function extractStats(
 					cacheRead: rawUsage.cacheRead ?? 0,
 					cacheWrite: rawUsage.cacheWrite ?? 0,
 					totalTokens: rawUsage.totalTokens ?? 0,
-					cost: rawUsage.cost ?? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+					cost: rawUsage.cost ?? emptyCost(),
 					premiumRequests: derived,
 				};
 

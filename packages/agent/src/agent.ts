@@ -24,7 +24,7 @@ import {
 } from "@veyyon/ai";
 import type { HarmonyAuditEvent } from "@veyyon/ai/utils/harmony-leak";
 import { preferredDialect } from "@veyyon/catalog/identity";
-import { getBundledModel } from "@veyyon/catalog/models";
+import { emptyUsage, getBundledModel } from "@veyyon/catalog/models";
 import { errorMessage, logger } from "@veyyon/utils";
 import {
 	abortReasonText,
@@ -1315,14 +1315,7 @@ export class Agent {
 							api: model.api,
 							provider: model.provider,
 							model: model.id,
-							usage: {
-								input: 0,
-								output: 0,
-								cacheRead: 0,
-								cacheWrite: 0,
-								totalTokens: 0,
-								cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-							},
+							usage: emptyUsage(),
 							stopReason: stoppedForAbort ? "aborted" : "error",
 							errorMessage,
 							timestamp: Date.now(),

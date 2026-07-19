@@ -4,6 +4,7 @@ import {
 	discoverGitLabDuoWorkflowRuntimeNamespace,
 	type GitLabDuoWorkflowNamespaceSelection,
 } from "@veyyon/catalog/discovery/gitlab-duo-workflow";
+import { emptyUsage } from "@veyyon/catalog/models";
 import { errorMessage, getNonBlankStringProperty, scopedTimeoutSignal, trimTrailingSlashes } from "@veyyon/utils";
 import * as AIError from "../error";
 import type {
@@ -2279,14 +2280,7 @@ function createAssistantMessage(model: Model<Api>): AssistantMessage {
 		api: model.api,
 		provider: model.provider,
 		model: model.id,
-		usage: {
-			input: 0,
-			output: 0,
-			cacheRead: 0,
-			cacheWrite: 0,
-			totalTokens: 0,
-			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-		},
+		usage: emptyUsage(),
 		stopReason: "stop",
 		timestamp: Date.now(),
 	};

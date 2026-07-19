@@ -5,7 +5,7 @@
  */
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { scheduler } from "node:timers/promises";
-import { calculateCost } from "@veyyon/catalog/models";
+import { calculateCost, emptyCost, emptyUsage } from "@veyyon/catalog/models";
 import {
 	ANTIGRAVITY_SYSTEM_INSTRUCTION,
 	getAntigravityModelWireProfile,
@@ -508,14 +508,7 @@ export const streamGoogleGeminiCli: StreamFunction<"google-gemini-cli"> = (
 			api: "google-gemini-cli" as Api,
 			provider: model.provider,
 			model: model.id,
-			usage: {
-				input: 0,
-				output: 0,
-				cacheRead: 0,
-				cacheWrite: 0,
-				totalTokens: 0,
-				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-			},
+			usage: emptyUsage(),
 			stopReason: "stop",
 			timestamp: Date.now(),
 		};
@@ -639,14 +632,7 @@ export const streamGoogleGeminiCli: StreamFunction<"google-gemini-cli"> = (
 
 			const resetOutput = () => {
 				output.content = [];
-				output.usage = {
-					input: 0,
-					output: 0,
-					cacheRead: 0,
-					cacheWrite: 0,
-					totalTokens: 0,
-					cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-				};
+				output.usage = emptyUsage();
 				output.stopReason = "stop";
 				output.errorMessage = undefined;
 				output.timestamp = Date.now();
@@ -882,13 +868,7 @@ export const streamGoogleGeminiCli: StreamFunction<"google-gemini-cli"> = (
 							cacheWrite: 0,
 							totalTokens: responseData.usageMetadata.totalTokenCount || 0,
 							...(thinkingTokens > 0 ? { reasoningTokens: thinkingTokens } : {}),
-							cost: {
-								input: 0,
-								output: 0,
-								cacheRead: 0,
-								cacheWrite: 0,
-								total: 0,
-							},
+							cost: emptyCost(),
 						};
 						calculateCost(model, output.usage);
 					}

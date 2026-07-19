@@ -15,6 +15,7 @@
  * route every LLM call through a credential-holding sidecar so the slot
  * itself stays credential-free.
  */
+import { emptyUsage } from "@veyyon/catalog/models";
 import { readSseJson, trimTrailingSlashes } from "@veyyon/utils";
 import * as AIError from "../error";
 import type {
@@ -254,14 +255,7 @@ function makeSyntheticAssistant(model: Model<Api>): AssistantMessage {
 		api: model.api,
 		provider: model.provider,
 		model: model.id,
-		usage: {
-			input: 0,
-			output: 0,
-			cacheRead: 0,
-			cacheWrite: 0,
-			totalTokens: 0,
-			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-		},
+		usage: emptyUsage(),
 		stopReason: "stop",
 		timestamp: Date.now(),
 	};

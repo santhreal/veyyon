@@ -52,6 +52,37 @@ export function calculateCost<TApi extends Api>(model: Model<TApi>, usage: Usage
 	usage.cost.total = usage.cost.input + usage.cost.output + usage.cost.cacheRead + usage.cost.cacheWrite;
 	return usage.cost;
 }
+
+/**
+ * A fresh, fully-zeroed {@link Usage.cost}: every cost bucket set to 0. This is
+ * the ONE owner for the zeroed cost object providers install before
+ * {@link calculateCost} overwrites it with real per-token costs. A new object
+ * is returned on every call, so mutation never leaks between turns.
+ */
+export function emptyCost(): Usage["cost"] {
+	return { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 };
+}
+
+/**
+ * A fresh, fully-zeroed {@link Usage}: every required token bucket and every
+ * cost field set to 0, optional fields (orchestration, reasoningTokens, cttl,
+ * server, premiumRequests) left absent. This is the ONE owner for the zeroed
+ * Usage every provider needs, both as a "no tokens reported" result and as the
+ * starting accumulator a streaming provider increments field by field.
+ *
+ * A new object is returned on every call, so mutating the result (the streaming
+ * accumulator pattern) never leaks into another turn's usage.
+ */
+export function emptyUsage(): Usage {
+	return {
+		input: 0,
+		output: 0,
+		cacheRead: 0,
+		cacheWrite: 0,
+		totalTokens: 0,
+		cost: emptyCost(),
+	};
+}
 /**
  * Check if two models are equal by comparing both their id and provider.
  * Returns false if either model is null or undefined.

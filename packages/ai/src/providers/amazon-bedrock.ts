@@ -9,7 +9,7 @@
 
 import type { Effort } from "@veyyon/catalog/effort";
 import { mapEffortToAnthropicAdaptiveEffort, requireSupportedEffort } from "@veyyon/catalog/model-thinking";
-import { calculateCost } from "@veyyon/catalog/models";
+import { calculateCost, emptyUsage } from "@veyyon/catalog/models";
 import { $env, $flag, fetchWithRetry, parseStreamingJson, parseStreamingJsonThrottled } from "@veyyon/utils";
 import { renderDemotedThinking } from "../dialect/demotion";
 import * as AIError from "../error";
@@ -292,14 +292,7 @@ export const streamBedrock: StreamFunction<"bedrock-converse-stream"> = (
 			api: "bedrock-converse-stream" as Api,
 			provider: model.provider,
 			model: model.id,
-			usage: {
-				input: 0,
-				output: 0,
-				cacheRead: 0,
-				cacheWrite: 0,
-				totalTokens: 0,
-				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-			},
+			usage: emptyUsage(),
 			stopReason: "stop",
 			timestamp: Date.now(),
 		};

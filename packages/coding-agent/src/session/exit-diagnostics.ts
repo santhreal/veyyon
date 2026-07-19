@@ -1,5 +1,6 @@
 import type { AgentMessage } from "@veyyon/agent-core";
 import type { AssistantMessage } from "@veyyon/ai";
+import { emptyUsage } from "@veyyon/catalog/models";
 import { formatCount } from "@veyyon/utils";
 import type { SessionEntry } from "./session-entries";
 
@@ -153,14 +154,7 @@ export function createInterruptedTurnAbortMessage(
 		api: model.api,
 		provider: model.provider,
 		model: model.model,
-		usage: {
-			input: 0,
-			output: 0,
-			cacheRead: 0,
-			cacheWrite: 0,
-			totalTokens: 0,
-			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-		},
+		usage: emptyUsage(),
 		stopReason: "aborted",
 		errorMessage: "Previous veyyon process exited before completing the turn.",
 		timestamp: Number.isFinite(recordedAt) ? recordedAt : Date.now(),

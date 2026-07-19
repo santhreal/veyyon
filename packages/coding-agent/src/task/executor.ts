@@ -8,6 +8,7 @@ import path from "node:path";
 import type { AgentEvent, AgentIdentity, AgentTelemetryConfig } from "@veyyon/agent-core";
 import { recordHandoff, resolveTelemetry } from "@veyyon/agent-core";
 import type { Api, Model, ServiceTierByFamily, Usage } from "@veyyon/ai";
+import { emptyUsage } from "@veyyon/catalog/models";
 import {
 	collapseWhitespace,
 	errorMessage,
@@ -932,15 +933,7 @@ function createSubagentRunMonitor(args: RunMonitorArgs): SubagentRunMonitor {
 	let yieldCallPending = false;
 
 	// Accumulate usage incrementally from message_end events (no memory for streaming events)
-	const accumulatedUsage: Usage = {
-		input: 0,
-		output: 0,
-		cacheRead: 0,
-		cacheWrite: 0,
-		totalTokens: 0,
-		reasoningTokens: 0,
-		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-	};
+	const accumulatedUsage: Usage = { ...emptyUsage(), reasoningTokens: 0 };
 	let hasUsage = false;
 	let budgetSteerSent = false;
 	let budgetLimitExceeded = false;

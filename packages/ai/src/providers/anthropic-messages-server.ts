@@ -1,4 +1,5 @@
 import { Effort } from "@veyyon/catalog/effort";
+import { emptyUsage } from "@veyyon/catalog/models";
 import { errorMessage, logger } from "@veyyon/utils";
 import { type } from "arktype";
 import { captureRequestHeaders, resolvePromptCacheKey } from "../auth-gateway/http";
@@ -399,17 +400,6 @@ export function parseRequest(body: unknown, headers?: Headers): ParsedRequest {
 		},
 		stream: data.stream === true,
 		options,
-	};
-}
-
-function emptyUsage(): AssistantMessage["usage"] {
-	return {
-		input: 0,
-		output: 0,
-		cacheRead: 0,
-		cacheWrite: 0,
-		totalTokens: 0,
-		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
 	};
 }
 

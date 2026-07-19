@@ -9,6 +9,7 @@
  * Inverse direction (source-of-truth for item shapes): ../../providers/openai-responses.ts
  */
 
+import { emptyUsage } from "@veyyon/catalog/models";
 import { errorMessage, logger } from "@veyyon/utils";
 import { type } from "arktype";
 import { resolvePromptCacheKey } from "../auth-gateway/http";
@@ -253,14 +254,7 @@ function ensureAssistantPlaceholder(messages: Message[], modelId: string, now: n
 		api: "openai-responses",
 		provider: "openai",
 		model: modelId,
-		usage: {
-			input: 0,
-			output: 0,
-			cacheRead: 0,
-			cacheWrite: 0,
-			totalTokens: 0,
-			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-		},
+		usage: emptyUsage(),
 		stopReason: "stop",
 		timestamp: now,
 	};
@@ -344,14 +338,7 @@ export function parseRequest(body: unknown, headers?: Headers): ParsedRequest {
 							api: "openai-responses",
 							provider: "openai",
 							model: data.model,
-							usage: {
-								input: 0,
-								output: 0,
-								cacheRead: 0,
-								cacheWrite: 0,
-								totalTokens: 0,
-								cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-							},
+							usage: emptyUsage(),
 							stopReason: "stop",
 							timestamp: now,
 						});

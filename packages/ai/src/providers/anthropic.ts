@@ -4,7 +4,7 @@ import { scheduler } from "node:timers/promises";
 import * as tls from "node:tls";
 import { isOfficialAnthropicApiUrl } from "@veyyon/catalog/compat/anthropic";
 import { mapEffortToAnthropicAdaptiveEffort } from "@veyyon/catalog/model-thinking";
-import { calculateCost, getBundledModel } from "@veyyon/catalog/models";
+import { calculateCost, emptyCost, emptyUsage, getBundledModel } from "@veyyon/catalog/models";
 import { isAnthropicOAuthToken } from "@veyyon/catalog/utils";
 import { parseGitHubCopilotApiKey } from "@veyyon/catalog/wire/github-copilot";
 import {
@@ -1522,15 +1522,9 @@ function unwrapAnthropicThinkingEnvelope(text: string): string | undefined {
 }
 
 function createEmptyUsage(premiumRequests?: number): Usage {
-	return {
-		input: 0,
-		output: 0,
-		cacheRead: 0,
-		cacheWrite: 0,
-		totalTokens: 0,
-		...(premiumRequests === undefined ? {} : { premiumRequests }),
-		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-	};
+	const usage = emptyUsage();
+	if (premiumRequests !== undefined) usage.premiumRequests = premiumRequests;
+	return usage;
 }
 
 export type AnthropicUsageLike = {
@@ -1639,7 +1633,7 @@ function calculateFallbackTurnCost(
 ): boolean {
 	const iterations = source.iterations ?? [];
 	if (iterations.length === 0) return false;
-	const cost = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 };
+	const cost = emptyCost();
 	const hasFallbackMessage = iterations.some(iter => iter.type === "fallback_message");
 	let applied = false;
 	for (const iteration of iterations) {

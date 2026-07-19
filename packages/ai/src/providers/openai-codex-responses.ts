@@ -1,6 +1,6 @@
 import * as os from "node:os";
 import { scheduler } from "node:timers/promises";
-import { calculateCost } from "@veyyon/catalog/models";
+import { calculateCost, emptyUsage } from "@veyyon/catalog/models";
 import {
 	CODEX_BASE_URL,
 	CODEX_CLIENT_VERSION,
@@ -1161,14 +1161,7 @@ function applyCodexServiceTierPricing(
 
 function resetOutputState(output: AssistantMessage): void {
 	output.content.length = 0;
-	output.usage = {
-		input: 0,
-		output: 0,
-		cacheRead: 0,
-		cacheWrite: 0,
-		totalTokens: 0,
-		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-	};
+	output.usage = emptyUsage();
 	output.stopReason = "stop";
 	output.stopDetails = undefined;
 }
@@ -2476,14 +2469,7 @@ export const streamOpenAICodexResponses: StreamFunction<"openai-codex-responses"
 			api: "openai-codex-responses" as Api,
 			provider: model.provider,
 			model: model.id,
-			usage: {
-				input: 0,
-				output: 0,
-				cacheRead: 0,
-				cacheWrite: 0,
-				totalTokens: 0,
-				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-			},
+			usage: emptyUsage(),
 			stopReason: "stop",
 			timestamp: Date.now(),
 		};

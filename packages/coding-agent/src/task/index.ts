@@ -18,6 +18,7 @@ import * as os from "node:os";
 import path from "node:path";
 import type { AgentTool, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
 import type { Usage } from "@veyyon/ai";
+import { emptyCost, emptyUsage } from "@veyyon/catalog/models";
 import { $env, errorMessage, formatCount, logger, pluralize, prompt, Snowflake } from "@veyyon/utils";
 import type { ToolSession } from "..";
 import { resolveAgentModelPatterns } from "../config/model-resolver";
@@ -72,14 +73,7 @@ function renderSubagentUserPrompt(assignment: string): string {
 }
 
 function createUsageTotals(): Usage {
-	return {
-		input: 0,
-		output: 0,
-		cacheRead: 0,
-		cacheWrite: 0,
-		totalTokens: 0,
-		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-	};
+	return emptyUsage();
 }
 
 function addUsageTotals(target: Usage, usage: Partial<Usage>): void {
@@ -88,15 +82,7 @@ function addUsageTotals(target: Usage, usage: Partial<Usage>): void {
 	const cacheRead = usage.cacheRead ?? 0;
 	const cacheWrite = usage.cacheWrite ?? 0;
 	const totalTokens = usage.totalTokens ?? input + output + cacheRead + cacheWrite;
-	const cost =
-		usage.cost ??
-		({
-			input: 0,
-			output: 0,
-			cacheRead: 0,
-			cacheWrite: 0,
-			total: 0,
-		} satisfies Usage["cost"]);
+	const cost = usage.cost ?? emptyCost();
 
 	target.input += input;
 	target.output += output;

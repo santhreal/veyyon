@@ -1,7 +1,7 @@
 import type { Effort } from "@veyyon/catalog/effort";
 import { isKimiModelId } from "@veyyon/catalog/identity";
 import { resolveWireModelId } from "@veyyon/catalog/model-thinking";
-import { calculateCost } from "@veyyon/catalog/models";
+import { calculateCost, emptyCost } from "@veyyon/catalog/models";
 import type { ResolvedOpenAICompat } from "@veyyon/catalog/types";
 import { $env, parseStreamingJson, parseStreamingJsonThrottled, trimTrailingSlashes } from "@veyyon/utils";
 import { renderDemotedThinking } from "../dialect/demotion";
@@ -1625,7 +1625,7 @@ export function parseChunkUsage(
 	});
 	const usage: AssistantMessage["usage"] = {
 		...accounting,
-		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+		cost: emptyCost(),
 		...(premiumRequests !== undefined ? { premiumRequests } : {}),
 	};
 	calculateCost(model, usage);

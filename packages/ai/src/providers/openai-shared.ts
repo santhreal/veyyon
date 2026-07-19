@@ -2,7 +2,7 @@ import type { Effort } from "@veyyon/catalog/effort";
 import { toFirepassWireModelId, toFireworksWireModelId } from "@veyyon/catalog/fireworks-model-id";
 import { isGlm52ReasoningEffortModelId } from "@veyyon/catalog/identity";
 import { getSupportedEfforts } from "@veyyon/catalog/model-thinking";
-import { calculateCost } from "@veyyon/catalog/models";
+import { calculateCost, emptyCost, emptyUsage } from "@veyyon/catalog/models";
 import type {
 	OpenAICompat,
 	OpenAIReasoningDisableMode,
@@ -2697,14 +2697,7 @@ export function createInitialResponsesAssistantMessage(api: Api, provider: strin
 		api,
 		provider,
 		model: modelId,
-		usage: {
-			input: 0,
-			output: 0,
-			cacheRead: 0,
-			cacheWrite: 0,
-			totalTokens: 0,
-			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-		},
+		usage: emptyUsage(),
 		stopReason: "stop",
 		timestamp: Date.now(),
 	};
@@ -2918,7 +2911,7 @@ export function populateResponsesUsageFromResponse(
 	const premiumRequests = output.usage.premiumRequests;
 	output.usage = {
 		...accounting,
-		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+		cost: emptyCost(),
 	};
 	if (premiumRequests !== undefined) {
 		output.usage.premiumRequests = premiumRequests;
