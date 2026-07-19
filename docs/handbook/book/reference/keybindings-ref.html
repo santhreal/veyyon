@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-5adfaf9b.js";
+            window.path_to_searchindex_js = "../searchindex-0100c520.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-cc1a72e9.js"></script>
@@ -224,10 +224,13 @@
 <tr><td><code>esc</code></td><td>Interrupt the running turn</td></tr>
 <tr><td><code>alt-,</code> or <code>shift-down</code></td><td>Decrease reasoning effort</td></tr>
 <tr><td><code>alt-.</code> or <code>shift-up</code></td><td>Increase reasoning effort</td></tr>
+<tr><td><code>shift-tab</code></td><td>Cycle reasoning effort (<code>app.thinking.cycle</code>)</td></tr>
+<tr><td><code>ctrl-t</code></td><td>Toggle reasoning on and off (<code>app.thinking.toggle</code>)</td></tr>
 <tr><td><code>alt-up</code> or <code>shift-left</code></td><td>Edit the most recently queued message</td></tr>
 </tbody>
 </table>
 </div>
+<p>You can also set the effort by name with the <code>/thinking</code> command (its alias is <code>/effort</code>). With no argument it opens a picker; <code>/thinking high</code> sets the level directly. The choice persists with the active profile.</p>
 <h2 id="composer"><a class="header" href="#composer">Composer</a></h2>
 <div class="table-wrapper">
 <table>
