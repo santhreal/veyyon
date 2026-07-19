@@ -8,7 +8,7 @@
  * `authStorage.getApiKey("anthropic", sessionId)` first, then pass the result
  * through {@link buildAnthropicAuthConfig} for header/URL shaping.
  */
-import { $env, trimTrailingSlashes } from "@veyyon/utils";
+import { $env, normalizeBaseUrl } from "@veyyon/utils";
 import {
 	buildAnthropicHeaders as buildProviderAnthropicHeaders,
 	normalizeAnthropicBaseUrl,
@@ -24,11 +24,6 @@ export interface AnthropicAuthConfig {
 }
 
 const DEFAULT_BASE_URL = "https://api.anthropic.com";
-
-function normalizeBaseUrl(baseUrl: string | undefined): string | undefined {
-	const trimmed = baseUrl?.trim();
-	return trimmed ? trimTrailingSlashes(trimmed) : undefined;
-}
 
 export function resolveAnthropicBaseUrlFromEnv(): string | undefined {
 	if (isFoundryEnabled()) {

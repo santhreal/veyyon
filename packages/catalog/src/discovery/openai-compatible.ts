@@ -1,4 +1,4 @@
-import { trimTrailingSlashes } from "@veyyon/utils";
+import { normalizeBaseUrl } from "@veyyon/utils";
 import { type } from "arktype";
 import type { Api, FetchImpl, ModelSpec, Provider } from "../types";
 import { discoveryFetch } from "../utils";
@@ -126,7 +126,7 @@ export interface FetchOpenAICompatibleModelsOptions<TApi extends Api> {
 export async function fetchOpenAICompatibleModels<TApi extends Api>(
 	options: FetchOpenAICompatibleModelsOptions<TApi>,
 ): Promise<ModelSpec<TApi>[] | null> {
-	const baseUrl = normalizeBaseUrl(options.baseUrl);
+	const baseUrl = normalizeBaseUrl(options.baseUrl, "");
 	if (!baseUrl) {
 		return null;
 	}
@@ -211,14 +211,6 @@ export async function fetchOpenAICompatibleModels<TApi extends Api>(
 	}
 
 	return Array.from(deduped.values()).sort((left, right) => left.id.localeCompare(right.id));
-}
-
-function normalizeBaseUrl(baseUrl: string): string {
-	const trimmed = baseUrl.trim();
-	if (!trimmed) {
-		return "";
-	}
-	return trimTrailingSlashes(trimmed);
 }
 
 function extractModelEntries(payload: unknown): ParsedOpenAICompatibleModelRecord[] | null {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { readdir, readFile } from "node:fs/promises";
 import * as path from "node:path";
-import { trimTrailingSlashes } from "../src/url";
+import { normalizeBaseUrl, trimTrailingSlashes } from "../src/url";
 
 describe("trimTrailingSlashes", () => {
 	it("strips a single trailing slash", () => {
@@ -22,6 +22,31 @@ describe("trimTrailingSlashes", () => {
 	});
 });
 
+describe("normalizeBaseUrl", () => {
+	it("trims whitespace and strips trailing slashes on a real value", () => {
+		expect(normalizeBaseUrl("  https://api.example.com/v1//  ", "")).toBe("https://api.example.com/v1");
+		expect(normalizeBaseUrl("https://api.example.com", "")).toBe("https://api.example.com");
+	});
+
+	it("returns the default constant unchanged for missing or blank input (gemini/codex contract)", () => {
+		const fallback = "https://generativelanguage.googleapis.com/v1beta";
+		expect(normalizeBaseUrl(undefined, fallback)).toBe(fallback);
+		expect(normalizeBaseUrl("   ", fallback)).toBe(fallback);
+		expect(normalizeBaseUrl("", fallback)).toBe(fallback);
+	});
+
+	it("returns the empty-string sentinel for blank input (openai-compatible contract)", () => {
+		expect(normalizeBaseUrl(undefined, "")).toBe("");
+		expect(normalizeBaseUrl("  ", "")).toBe("");
+	});
+
+	it("returns undefined for blank input when no fallback is given (anthropic contract)", () => {
+		expect(normalizeBaseUrl(undefined)).toBeUndefined();
+		expect(normalizeBaseUrl("   ")).toBeUndefined();
+		expect(normalizeBaseUrl("https://api.anthropic.com/")).toBe("https://api.anthropic.com");
+	});
+});
+
 // Repo-wide source lock: trimTrailingSlashes has exactly ONE owner,
 // packages/utils/src/url.ts. Both named local copies (catalog antigravity.ts,
 // catalog provider-models/ollama.ts) were converted when this lock landed, so
@@ -30,6 +55,16 @@ describe("trimTrailingSlashes", () => {
 const PACKAGES_DIR = path.join(import.meta.dir, "../..");
 
 const LOCAL_DEF = /function\s+trimTrailingSlash(?:es)?\s*\(/;
+
+// normalizeBaseUrl has exactly ONE owner too (utils/src/url.ts). Five former
+// local copies (ai anthropic-auth, ai usage/kimi, catalog discovery
+// gemini/codex/openai-compatible) diverged only in their blank-input fallback
+// (undefined / "" / a default constant) and were folded into the owner's
+// `fallback` parameter. Provider-specific *resolution* wrappers keep their own
+// distinct names (resolveKimiBaseUrl, normalizeOllamaCloudBaseUrl,
+// normalizeAnthropicBaseUrl); only the exact bare name `normalizeBaseUrl`
+// defined outside the owner is an offender. No grandfathered set.
+const LOCAL_NORMALIZE_BASE_URL = /function\s+normalizeBaseUrl\s*\(/;
 
 // Inline `.replace(/\/+$/...)` trailing-slash strips are fully drained: every
 // former site now calls trimTrailingSlashes. The set is empty, so ANY new inline
@@ -62,6 +97,7 @@ async function walk(dir: string, out: string[]): Promise<void> {
 describe("trimTrailingSlashes source lock", () => {
 	it("no production source defines a local trimTrailingSlash variant outside utils/src/url.ts", async () => {
 		const offenders: string[] = [];
+		const normalizeOffenders: string[] = [];
 		const inlineOffenders: string[] = [];
 		const inlineSeen = new Set<string>();
 		const striponeOffenders: string[] = [];
@@ -79,6 +115,7 @@ describe("trimTrailingSlashes source lock", () => {
 				if (rel === "utils/src/url.ts") continue;
 				const text = await readFile(file, "utf8");
 				if (LOCAL_DEF.test(text)) offenders.push(rel);
+				if (LOCAL_NORMALIZE_BASE_URL.test(text)) normalizeOffenders.push(rel);
 				if (INLINE_STRIP.test(text)) {
 					inlineSeen.add(rel);
 					if (!INLINE_STRIP_GRANDFATHERED.has(rel)) inlineOffenders.push(rel);
@@ -94,6 +131,10 @@ describe("trimTrailingSlashes source lock", () => {
 			...[...STRIPONE_GRANDFATHERED].filter(rel => !striponeSeen.has(rel)),
 		];
 		expect(offenders, "local trimTrailingSlash copies — import from @veyyon/utils instead").toEqual([]);
+		expect(
+			normalizeOffenders,
+			"local normalizeBaseUrl copies — import from @veyyon/utils instead (use a distinct name for provider-specific resolution wrappers)",
+		).toEqual([]);
 		expect(
 			inlineOffenders,
 			"new inline trailing-slash strip — import trimTrailingSlashes from @veyyon/utils instead",
