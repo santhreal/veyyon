@@ -6,6 +6,7 @@ import type { Dirent } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import {
+	atomicWriteFile,
 	getActiveProfile,
 	getProfileRootDir,
 	isRecord,
@@ -195,7 +196,10 @@ async function clearCopiedDisplayName(agentDir: string): Promise<void> {
 		if (!("displayName" in profileObj)) continue;
 		delete profileObj.displayName;
 		if (Object.keys(profileObj).length === 0) delete root.profile;
-		await Bun.write(filePath, YAML.stringify(root, null, 2));
+		// Atomic write so an interrupted rewrite never leaves a truncated config
+		// in the staging tree (a torn file would still fail loud on the next read,
+		// but a clean temp+rename keeps the settings file whole regardless).
+		await atomicWriteFile(filePath, YAML.stringify(root, null, 2));
 	}
 }
 

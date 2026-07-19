@@ -104,6 +104,38 @@ describe("profile lifecycle CLI", () => {
 		expect(leftovers).toEqual([]);
 	});
 
+	it("refuses to recreate an existing profile and never disturbs its tree", async () => {
+		await createProfile("work", "blank");
+		// Drop a marker the recreate attempt must not touch.
+		const marker = path.join(getProfileRootDir("work"), "agent", "MARKER");
+		await Bun.write(marker, "keep-me");
+
+		await expect(createProfile("work", "blank")).rejects.toThrow('Profile "work" already exists');
+
+		// The existing tree survives untouched and no staging dir leaks.
+		expect(await Bun.file(marker).text()).toBe("keep-me");
+		const profilesDir = path.join(os.homedir(), configDir, "profiles");
+		const leftovers = (await fs.readdir(profilesDir)).filter(name => name.startsWith("."));
+		expect(leftovers).toEqual([]);
+	});
+
+	it("fs.rename onto a non-empty directory fails loud (the create-race backstop)", async () => {
+		// createProfile's catch relies on rename REJECTING when the destination is
+		// a populated directory (a concurrent create won the TOCTOU race), so the
+		// loser cleans up staging and rethrows instead of clobbering the winner.
+		// Pin that platform contract: replacing a non-empty dir must reject.
+		const base = path.join(os.homedir(), configDir, "rename-backstop");
+		const winner = path.join(base, "winner");
+		const loser = path.join(base, "loser");
+		await fs.mkdir(winner, { recursive: true });
+		await Bun.write(path.join(winner, "populated"), "x");
+		await fs.mkdir(loser, { recursive: true });
+
+		await expect(fs.rename(loser, winner)).rejects.toMatchObject({ code: "ENOTEMPTY" });
+		// The winner's contents are untouched by the failed rename.
+		expect(await Bun.file(path.join(winner, "populated")).text()).toBe("x");
+	});
+
 	it("does not copy sessions or blobs when seeding from default", async () => {
 		const defaultAgentDir = path.join(os.homedir(), configDir, "profiles", "default", "agent");
 		await fs.mkdir(path.join(defaultAgentDir, "sessions"), { recursive: true });
