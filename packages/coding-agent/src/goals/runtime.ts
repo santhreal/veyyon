@@ -229,7 +229,26 @@ export class GoalRuntime {
 			return;
 		}
 		await this.flushUsage("suppressed", options?.currentUsage);
+		await this.#recordCompletedTurn();
 		this.#turnSnapshot = undefined;
+	}
+
+	/**
+	 * Bump the goal's completed-turn counter once for the agent turn that just
+	 * ended, but only when that turn was actually accounted to the active goal
+	 * (a `turnSnapshot` bound to this goal id). Turns that ran before the goal
+	 * was created, or under a different/paused goal, do not count.
+	 */
+	async #recordCompletedTurn(): Promise<void> {
+		const accountedGoalId = this.#turnSnapshot?.activeGoalId;
+		if (accountedGoalId === undefined) return;
+		await this.#withAccounting(async () => {
+			const state = this.#getStateClone();
+			if (!state?.enabled || !isAccountingStatus(state.goal) || state.goal.id !== accountedGoalId) return;
+			state.goal.turnsCompleted += 1;
+			state.goal.updatedAt = this.#now();
+			await this.#commitState(state, { persist: "goal" });
+		});
 	}
 
 	async onTaskAborted(options?: { reason?: "interrupted" | "internal" }): Promise<void> {
@@ -375,6 +394,7 @@ export class GoalRuntime {
 			tokenBudget,
 			tokensUsed: 0,
 			timeUsedSeconds: 0,
+			turnsCompleted: 0,
 			createdAt: now,
 			updatedAt: now,
 		};

@@ -348,6 +348,7 @@ export const agenticFixtures: Record<string, GalleryFixture> = {
 					tokenBudget: 500_000,
 					tokensUsed: 48_200,
 					timeUsedSeconds: 312,
+					turnsCompleted: 14,
 					createdAt: 1_749_200_000_000,
 					updatedAt: 1_749_200_312_000,
 				},

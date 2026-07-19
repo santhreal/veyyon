@@ -22,6 +22,7 @@ function createGoal(overrides: Partial<Goal> = {}): Goal {
 		tokenBudget: undefined,
 		tokensUsed: 0,
 		timeUsedSeconds: 0,
+		turnsCompleted: 0,
 		createdAt: 0,
 		updatedAt: 0,
 		...overrides,
@@ -72,6 +73,7 @@ describe("GoalTool", () => {
 			status: "complete",
 			tokensUsed: 7,
 			timeUsedSeconds: 3,
+			turnsCompleted: 0,
 			tokenBudget: 10,
 		});
 		const runtime = {

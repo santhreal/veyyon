@@ -69,6 +69,7 @@ describe("executeJs workflow helpers", () => {
 					tokenBudget: 100_000,
 					tokensUsed: 4_200,
 					timeUsedSeconds: 0,
+					turnsCompleted: 0,
 					createdAt: 0,
 					updatedAt: 0,
 				},

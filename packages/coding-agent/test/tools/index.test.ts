@@ -34,6 +34,7 @@ function createActiveGoalState() {
 			tokenBudget: 25,
 			tokensUsed: 5,
 			timeUsedSeconds: 0,
+			turnsCompleted: 0,
 			createdAt: 1,
 			updatedAt: 1,
 		},
