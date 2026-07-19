@@ -782,6 +782,14 @@ export interface ReadToolDetails {
 	conflictCount?: number;
 	/** Paths recovered from a delimited read argument; used only by the TUI to render one call as multiple read rows. */
 	displayReadTargets?: string[];
+	/**
+	 * Set when the tool could not deliver the target's content as text (a binary
+	 * file or archive entry, or a failed document conversion). The result is left
+	 * non-`isError` on purpose so the agent gets the bracketed guidance (for
+	 * example the `:raw` hint) without a retry storm; this marker lets the
+	 * `veyyon read` CLI exit non-zero instead of reporting the refusal as success.
+	 */
+	contentUnavailable?: { reason: "binary" | "conversion-failed" };
 }
 
 type ReadParams = ReadToolInput;
@@ -1804,7 +1812,7 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 		const entry = await archive.readFile(archiveSubPath);
 		const text = decodeUtf8Text(entry.bytes);
 		if (text === null) {
-			return toolResult<ReadToolDetails>(details)
+			return toolResult<ReadToolDetails>({ ...details, contentUnavailable: { reason: "binary" } })
 				.text(
 					prependSuffixResolutionNotice(
 						`[Cannot read binary archive entry '${entry.path}' (${formatBytes(entry.size)})]`,
@@ -2404,8 +2412,10 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 				});
 			} else if (result.error) {
 				content = [{ type: "text", text: `[Cannot read ${ext} file: ${result.error || "conversion failed"}]` }];
+				details.contentUnavailable = { reason: "conversion-failed" };
 			} else {
 				content = [{ type: "text", text: `[Cannot read ${ext} file: conversion failed]` }];
+				details.contentUnavailable = { reason: "conversion-failed" };
 			}
 		} else {
 			// Binary sniff before any UTF-8 text materialization. A binary file
@@ -2416,7 +2426,11 @@ export class ReadTool implements AgentTool<typeof readSchema, ReadToolDetails> {
 			// explicit escape hatch for reading bytes verbatim. This single guard
 			// covers both the multi-range and single-range disk paths below.
 			if (!isRawSelector(parsed) && (await isProbablyBinary(absolutePath))) {
-				return toolResult<ReadToolDetails>({ resolvedPath: absolutePath, suffixResolution })
+				return toolResult<ReadToolDetails>({
+					resolvedPath: absolutePath,
+					suffixResolution,
+					contentUnavailable: { reason: "binary" },
+				})
 					.text(
 						prependSuffixResolutionNotice(
 							`[Cannot read binary file '${formatPathRelativeToCwd(absolutePath, this.session.cwd)}' (${formatBytes(fileSize)}); not valid UTF-8 text. Use ':raw' to read bytes verbatim.]`,
