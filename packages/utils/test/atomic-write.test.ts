@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as fsp from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import * as path from "node:path";
 import { atomicWriteFile, atomicWriteFileSync, atomicWriteFileWith } from "../src/atomic-write";
 import { TempDir } from "../src/temp";
@@ -288,5 +289,83 @@ describe("atomicWriteFile", () => {
 			expect(fs.readFileSync(blocker, "utf8")).toBe("i am a file");
 			expect(fs.readdirSync(dir.path())).toEqual(["blocker"]);
 		});
+	});
+});
+
+// ── Source lock: one home for temp-file + rename ─────────────────────────────
+//
+// Atomic writes have exactly one owner, packages/utils/src/atomic-write.ts. A
+// hand-rolled `write to ${path}.tmp` then `rename` at a call site drifts (the
+// copies this lock replaced variously skipped the fsync, the directory flush,
+// the Windows rename-clobber fallback, and symlink preservation). This lock
+// fails when a production source outside the owner pairs a `.tmp` temp token
+// with a `rename` call, so a new copy has to route through the owner instead.
+//
+// A short allow-list covers the writers that legitimately pair the two for a
+// reason the bytes/path owner cannot express. Each is NOT a call-site copy of
+// the owner's logic; convert one only if that stops being true, then drop it.
+const ATOMIC_OWNER = "utils/src/atomic-write.ts";
+const HANDROLLED_ATOMIC_ALLOWED = new Map<string, string>([
+	// A synchronous commit-guard fence checks a revoke flag and renames with no
+	// await gap between them; the owner's async open/close would reintroduce the
+	// gap the fence exists to close.
+	["coding-agent/src/session/session-storage.ts", "bespoke commitGuard sync fence"],
+	// Clones a git repo into a temp DIRECTORY and renames the directory into
+	// place. The owner writes a single file, not a populated tree.
+	["coding-agent/src/extensibility/plugins/marketplace/fetcher.ts", "temp clone directory, not a file write"],
+	// Restore writes the candidate with exclusive-create (`wx`) and runs a SQLite
+	// integrity check on the temp file BETWEEN the write and the rename, rolling
+	// back on failure. The owner has no verify-before-rename hook.
+	["mnemopi/src/dr/recovery.ts", "DR restore verifies the temp file before renaming"],
+]);
+
+const RENAME_CALL = /\brename(?:Sync)?\s*\(/;
+// A `.tmp` temp-file token. The `\b` after `tmp` keeps `os.tmpdir()` (a real,
+// unrelated call in directory-migration code) from matching.
+const TEMP_TOKEN = /\.tmp\b/;
+
+const ATOMIC_PACKAGES_DIR = path.join(import.meta.dir, "../..");
+
+async function walkTsSources(dir: string, out: string[]): Promise<void> {
+	const entries = await readdir(dir, { withFileTypes: true }).catch(() => []); // [] = no such src/ subtree
+	for (const entry of entries) {
+		const full = path.join(dir, entry.name);
+		if (entry.isDirectory()) {
+			if (entry.name === "node_modules" || entry.name === "dist" || entry.name === "vendor") continue;
+			await walkTsSources(full, out);
+		} else if (entry.name.endsWith(".ts") && !entry.name.endsWith(".test.ts")) {
+			out.push(full);
+		}
+	}
+}
+
+async function productionSources(): Promise<string[]> {
+	const files: string[] = [];
+	for (const pkg of await readdir(ATOMIC_PACKAGES_DIR, { withFileTypes: true })) {
+		if (!pkg.isDirectory()) continue;
+		await walkTsSources(path.join(ATOMIC_PACKAGES_DIR, pkg.name, "src"), files);
+	}
+	return files;
+}
+
+describe("atomic-write source lock", () => {
+	it("no production source hand-rolls temp-file + rename outside the owner", async () => {
+		const offenders: string[] = [];
+		const seen = new Set<string>();
+		for (const file of await productionSources()) {
+			const rel = path.relative(ATOMIC_PACKAGES_DIR, file).replaceAll(path.sep, "/");
+			if (rel === ATOMIC_OWNER) continue;
+			const text = await readFile(file, "utf8");
+			if (RENAME_CALL.test(text) && TEMP_TOKEN.test(text)) {
+				seen.add(rel);
+				if (!HANDROLLED_ATOMIC_ALLOWED.has(rel)) offenders.push(rel);
+			}
+		}
+		const staleAllowed = [...HANDROLLED_ATOMIC_ALLOWED.keys()].filter(rel => !seen.has(rel));
+		expect(
+			offenders.sort(),
+			"new hand-rolled temp+rename — call atomicWriteFile/atomicWriteFileWith from @veyyon/utils instead",
+		).toEqual([]);
+		expect(staleAllowed, "allow-listed file no longer hand-rolls temp+rename — remove it from the list").toEqual([]);
 	});
 });
