@@ -327,4 +327,35 @@ describe("KeybindingsManager.create", () => {
 
 		expect(manager.getKeys("app.message.followUp")).toEqual(["ctrl+q"]);
 	});
+
+	it("writes the migrated keybindings file atomically (owner-only, no temp leftover)", async () => {
+		const agentDir = await fs.mkdtemp(path.join(os.tmpdir(), "pi-keybindings-atomic-"));
+		const jsonPath = path.join(agentDir, "keybindings.json");
+		const ymlPath = path.join(agentDir, "keybindings.yml");
+
+		// A legacy JSON triggers the write-back to keybindings.yml on create().
+		await Bun.write(jsonPath, `${JSON.stringify({ fork: "ctrl+f" }, null, 2)}\n`);
+
+		try {
+			const manager = KeybindingsManager.create(agentDir);
+			expect(manager.getKeys("app.session.fork")).toEqual(["ctrl+f"]);
+
+			// The atomic sync writer defaults to mode 0o600 (owner-only). A raw
+			// fs.writeFileSync would have created the file at the umask default
+			// (~0o644), so the exact mode proves the atomic path was taken.
+			const stat = await fs.stat(ymlPath);
+			expect(stat.mode & 0o777).toBe(0o600);
+
+			// The temp file the atomic write stages under is renamed into place,
+			// so no stray sibling may linger in the agent dir.
+			const entries = await fs.readdir(agentDir);
+			expect(entries.sort()).toEqual(["keybindings.json", "keybindings.yml"]);
+
+			// The file is complete and parses to the exact migrated config.
+			const written = YAML.parse(await Bun.file(ymlPath).text());
+			expect(written).toEqual({ "app.session.fork": "ctrl+f" });
+		} finally {
+			await removeWithRetries(agentDir);
+		}
+	});
 });

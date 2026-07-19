@@ -9,7 +9,7 @@ import {
 	TUI_KEYBINDINGS,
 	KeybindingsManager as TuiKeybindingsManager,
 } from "@veyyon/tui";
-import { getActiveProfile, getAgentDir, getProfileRootDir, isEnoent, logger } from "@veyyon/utils";
+import { atomicWriteFileSync, getActiveProfile, getAgentDir, getProfileRootDir, isEnoent, logger } from "@veyyon/utils";
 import { JSONC, YAML } from "bun";
 
 /**
@@ -408,7 +408,11 @@ function loadRawConfig(filePath: string): unknown {
 
 function writeKeybindingsConfig(filePath: string, config: KeybindingsConfig): boolean {
 	try {
-		fs.writeFileSync(filePath, YAML.stringify(config, null, 2), "utf-8");
+		// Atomic write (temp + fsync + rename) so a crash or power loss mid-write
+		// never tears keybindings.yml. A torn file would fail YAML.parse in
+		// loadRawConfig, which silently falls back to default bindings and drops
+		// the user's whole custom map — exactly the corruption we prevent here.
+		atomicWriteFileSync(filePath, YAML.stringify(config, null, 2));
 		logger.debug("Migrated keybindings config", { path: filePath });
 		return true;
 	} catch (error) {
