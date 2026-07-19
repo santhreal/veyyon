@@ -165,6 +165,35 @@ async function runSwitch(name: string, port: ProfileCommandPort): Promise<void> 
 	port.requestShutdown();
 }
 
+/**
+ * Warn when a new display name will not behave as a switch target. Directory
+ * names are the unique key; display names are not, so a rename can silently
+ * mint a name the operator can never switch to. Surface both cases at rename
+ * time instead of leaving them to be discovered at the next `/profile <name>`.
+ * Returns undefined when the name is cleanly reachable.
+ */
+async function renameCaveat(resolved: string | undefined, trimmed: string): Promise<string | undefined> {
+	const ownDir = resolved ?? "default";
+	const profiles = listProfiles();
+	// (1) Shadowed by a directory name: resolveProfileByName resolves directory
+	// names first, so a display name equal to ANOTHER profile's directory name is
+	// unreachable — the directory always wins.
+	if (profiles.some(profile => profile.name !== ownDir && profile.name === trimmed)) {
+		return `Heads up: "${trimmed}" is also another profile's directory name, so /profile ${trimmed} switches to that profile, not this one. Rename to a distinct name to switch by it.`;
+	}
+	// (2) Duplicate display name: two profiles sharing a display name make
+	// switch-by-display-name ambiguous, which fails loudly only later at switch.
+	for (const profile of profiles) {
+		if (profile.name === ownDir) continue;
+		const dirName = profile.name === "default" ? undefined : profile.name;
+		const display = await readProfileDisplayName(dirName);
+		if (display && display.localeCompare(trimmed, undefined, { sensitivity: "accent" }) === 0) {
+			return `Heads up: another profile already shows as "${trimmed}", so /profile ${trimmed} is ambiguous. Switch by directory name, or pick a unique display name.`;
+		}
+	}
+	return undefined;
+}
+
 async function runRename(target: string | undefined, newName: string, port: ProfileCommandPort): Promise<void> {
 	const trimmed = newName.trim();
 	if (!trimmed) {
@@ -176,8 +205,11 @@ async function runRename(target: string | undefined, newName: string, port: Prof
 		port.showError(`No profile named "${target}". Try /profiles`);
 		return;
 	}
+	// Check reachability against the pre-rename world (skips the target itself).
+	const caveat = await renameCaveat(resolved, trimmed);
 	await writeProfileDisplayName(resolved, trimmed);
-	port.showStatus(`Renamed profile "${resolved ?? "default"}" to "${trimmed}"`);
+	const base = `Renamed profile "${resolved ?? "default"}" to "${trimmed}"`;
+	port.showStatus(caveat ? `${base}\n${caveat}` : base);
 }
 
 async function runRemove(name: string, port: ProfileCommandPort): Promise<void> {

@@ -86,6 +86,8 @@ A profile's directory name (`~/.veyyon/profiles/<name>`) is its stable identity 
 
 `/profile list` shows `name (Display Name)` when they differ, and `/profile <input>` resolves a directory name first, then a unique display name. A copied settings file never carries the source's display name, `profile new` clears it so two profiles cannot answer to one name.
 
+Because directory names resolve first, a rename warns you when the display name you chose will not switch back to this profile: when it matches another profile's directory name (that directory wins), or when it duplicates another profile's display name (the switch becomes ambiguous). The rename still applies, so use a distinct name if you want to switch by it.
+
 ## Creating and managing profiles
 
 ```console
