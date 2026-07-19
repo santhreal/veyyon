@@ -4,7 +4,7 @@ import {
 	effortStepItems,
 	formatSelectorSummary,
 	renderEffortStep,
-} from "@veyyon/coding-agent/modes/components/settings-selector";
+} from "@veyyon/coding-agent/modes/components/effort-picker";
 import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
 import { Container } from "@veyyon/tui";
 
