@@ -357,6 +357,17 @@ class ProviderLimitsSubmenu extends Container {
  * `onBack`. Keeping this in one place is why the two submenus render an
  * identical effort step instead of two divergent copies.
  */
+/**
+ * The effort-picker rows: the empty "model default thinking" entry first (its
+ * empty value formats to the bare selector), then each supported effort in the
+ * model's own order. Split out so the ordering can be asserted directly.
+ */
+export function effortStepItems(efforts: readonly Effort[]): SelectItem[] {
+	const items: SelectItem[] = [{ value: "", label: "(model default thinking)" }];
+	for (const effort of efforts) items.push({ value: effort, label: effort });
+	return items;
+}
+
 export function renderEffortStep(
 	container: Container,
 	selector: string,
@@ -365,8 +376,7 @@ export function renderEffortStep(
 	onBack: () => void,
 ): SelectList {
 	container.clear();
-	const items: SelectItem[] = [{ value: "", label: "(model default thinking)" }];
-	for (const effort of efforts) items.push({ value: effort, label: effort });
+	const items = effortStepItems(efforts);
 	const list = new SelectList(items, Math.max(1, items.length), getSelectListTheme());
 	list.onSelect = item => {
 		// `item.value` is one of the model's own supported efforts (or "" for the
