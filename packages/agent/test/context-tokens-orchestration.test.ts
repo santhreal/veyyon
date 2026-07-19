@@ -35,3 +35,17 @@ describe("calculateContextTokens", () => {
 		expect(calculateContextTokens(u)).toBe(115);
 	});
 });
+
+describe("calculatePromptTokens", () => {
+	it("sums input + cacheRead + cacheWrite when prompt tokens are present", () => {
+		const u = usage({ input: 40, cacheRead: 100, cacheWrite: 10, output: 7, totalTokens: 157 });
+		expect(calculatePromptTokens(u)).toBe(150);
+	});
+
+	it("falls back to context tokens when there are no prompt-side tokens", () => {
+		// A response-only usage record (all prompt fields zero) has no prompt
+		// tokens, so the estimate falls back to the context-token total.
+		const u = usage({ input: 0, cacheRead: 0, cacheWrite: 0, output: 42, totalTokens: 42 });
+		expect(calculatePromptTokens(u)).toBe(42);
+	});
+});

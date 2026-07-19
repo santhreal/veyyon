@@ -95,4 +95,22 @@ describe("compaction reserve provenance", () => {
 		expect(DEFAULT_COMPACTION_SETTINGS.reserveTokens).toBeUndefined();
 		expect(DEFAULT_RESERVE_TOKENS).toBe(16384);
 	});
+
+	it("prefers an explicit fixed thresholdTokens, clamped to [1, window - 1]", () => {
+		const cw = 10000;
+		const settings: CompactionSettings = { enabled: true, thresholdTokens: 4000, keepRecentTokens: 2000 };
+		// A fixed token limit wins over any percentage and is returned as-is when in range.
+		expect(resolveThresholdTokens(cw, settings)).toBe(4000);
+		// Over-window fixed value clamps to window - 1.
+		expect(resolveThresholdTokens(cw, { ...settings, thresholdTokens: 999_999 })).toBe(9999);
+		// A zero/negative fixed value is not a valid fixed limit; it falls through.
+		expect(resolveThresholdTokens(cw, { ...settings, thresholdTokens: 0, thresholdPercent: 50 })).toBe(5000);
+	});
+
+	it("uses a valid thresholdPercent, clamped to [1, 99], as a fraction of the window", () => {
+		const cw = 10000;
+		expect(resolveThresholdTokens(cw, { enabled: true, thresholdPercent: 80, keepRecentTokens: 2000 })).toBe(8000);
+		// Above 99 clamps to 99%.
+		expect(resolveThresholdTokens(cw, { enabled: true, thresholdPercent: 250, keepRecentTokens: 2000 })).toBe(9900);
+	});
 });
