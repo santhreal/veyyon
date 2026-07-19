@@ -5,7 +5,7 @@
  * the unified SearchResponse shape used by the web search tool.
  */
 import { type ApiKey, type AuthStorage, type FetchImpl, getEnvApiKey, withAuth } from "@veyyon/ai";
-import { isRecord } from "@veyyon/utils";
+import { isRecord, trimmedString } from "@veyyon/utils";
 import type { SearchResponse, SearchSource } from "../../../web/search/types";
 import { SearchProviderError } from "../../../web/search/types";
 import { dateToAgeSeconds } from "../utils";
@@ -64,12 +64,6 @@ const ZAI_MCP_CLIENT_INFO = {
 	name: "veyyon-coding-agent",
 	version: "1.0.0",
 };
-
-function asString(value: unknown): string | null {
-	if (typeof value !== "string") return null;
-	const trimmed = value.trim();
-	return trimmed.length > 0 ? trimmed : null;
-}
 
 function parseZaiMcpResponse(rawText: string): unknown {
 	const parsedMessages: unknown[] = [];
@@ -156,7 +150,9 @@ function readJsonRpcPayload(parsed: unknown): JsonRpcPayload {
 	const directErrorCode = typeof parsedRecord?.code === "number" ? parsedRecord.code : undefined;
 	const directErrorSuccess = parsedRecord?.success;
 	const directErrorMessage =
-		asString(parsedRecord?.msg) ?? asString(parsedRecord?.message) ?? asString(parsedRecord?.error_message);
+		trimmedString(parsedRecord?.msg) ??
+		trimmedString(parsedRecord?.message) ??
+		trimmedString(parsedRecord?.error_message);
 	if (directErrorSuccess === false && directErrorMessage) {
 		throw new SearchProviderError(
 			"zai",
@@ -235,7 +231,7 @@ async function callZaiTool(
 		const errorText = content
 			.map(item => {
 				if (!isRecord(item)) return null;
-				return asString(item.text);
+				return trimmedString(item.text);
 			})
 			.filter((text): text is string => text != null)
 			.join("\n")
@@ -322,7 +318,7 @@ function parseSearchPayload(rawResult: unknown): {
 		const content = rawResult.content;
 		if (Array.isArray(content)) {
 			for (const part of content) {
-				const text = isRecord(part) ? asString(part.text) : null;
+				const text = isRecord(part) ? trimmedString(part.text) : null;
 				if (!text) continue;
 				textParts.push(text);
 				try {
@@ -355,17 +351,17 @@ function parseSearchPayload(rawResult: unknown): {
 function toSources(results: ZaiSearchResult[]): SearchSource[] {
 	const sources: SearchSource[] = [];
 	for (const result of results) {
-		const url = asString(result.link) ?? asString(result.url);
+		const url = trimmedString(result.link) ?? trimmedString(result.url);
 		if (!url) continue;
 
-		const publishedDate = asString(result.publish_date) ?? asString(result.publishedDate);
+		const publishedDate = trimmedString(result.publish_date) ?? trimmedString(result.publishedDate);
 		sources.push({
-			title: asString(result.title) ?? url,
+			title: trimmedString(result.title) ?? url,
 			url,
-			snippet: asString(result.content) ?? undefined,
+			snippet: trimmedString(result.content) ?? undefined,
 			publishedDate: publishedDate ?? undefined,
 			ageSeconds: dateToAgeSeconds(publishedDate),
-			author: asString(result.media) ?? undefined,
+			author: trimmedString(result.media) ?? undefined,
 		});
 	}
 	return sources;

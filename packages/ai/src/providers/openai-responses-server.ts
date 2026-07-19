@@ -59,7 +59,7 @@ function isObj(v: unknown): v is Record<string, unknown> {
 	return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 
-function asString(v: unknown): string | undefined {
+function stringOrUndefined(v: unknown): string | undefined {
 	return typeof v === "string" ? v : undefined;
 }
 
@@ -269,10 +269,10 @@ function flattenFunctionOutputArray(blocks: readonly unknown[]): string {
 		if (!isObj(raw)) continue;
 		const t = raw.type;
 		if (t === "output_text" || t === "text") {
-			const text = asString(raw.text);
+			const text = stringOrUndefined(raw.text);
 			if (text) parts.push(text);
 		} else if (t === "refusal") {
-			const refusal = asString(raw.refusal);
+			const refusal = stringOrUndefined(raw.refusal);
 			if (refusal) parts.push(`[refusal: ${refusal}]`);
 		}
 	}
@@ -562,7 +562,7 @@ function buildReasoningItem(part: ThinkingContent): ReasoningOutputItem {
 		try {
 			const sigParsed: unknown = JSON.parse(part.thinkingSignature);
 			if (isObj(sigParsed) && sigParsed.type === "reasoning") {
-				const id = part.itemId ?? asString(sigParsed.id) ?? makeReasoningId();
+				const id = part.itemId ?? stringOrUndefined(sigParsed.id) ?? makeReasoningId();
 				// Preserve any extra fields (encrypted_content, …) the original carried,
 				// but normalize the summary into the canonical `{type, text}[]` shape.
 				const merged: Record<string, unknown> = { ...sigParsed, type: "reasoning", id };
@@ -589,7 +589,7 @@ function reasoningItemId(part: ThinkingContent): string {
 		try {
 			const sigParsed: unknown = JSON.parse(part.thinkingSignature);
 			if (isObj(sigParsed)) {
-				const id = asString(sigParsed.id);
+				const id = stringOrUndefined(sigParsed.id);
 				if (id) return id;
 			}
 		} catch {

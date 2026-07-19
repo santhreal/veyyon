@@ -1,7 +1,7 @@
 import { collapseWhitespace, parseFrontmatter } from "@veyyon/utils";
 import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
 import { buildResult, loadFailure, loadPage, scraperDegrade, tryParseUrl } from "./types";
-import { asString } from "./utils";
+import { trimmedString } from "./utils";
 
 const ALLOWED_HOSTS = new Set(["choosealicense.com", "www.choosealicense.com"]);
 const LICENSE_PATH = /^\/licenses\/([^/]+)\/?$/i;
@@ -67,9 +67,9 @@ export const handleChooseALicense: SpecialHandler = async (
 
 		const { frontmatter, body } = parseFrontmatter(result.content, { source: rawUrl });
 
-		const title = asString(frontmatter.title) ?? formatLabel(licenseSlug);
-		const spdxId = asString(frontmatter.spdxId) ?? "Unknown";
-		const description = asString(frontmatter.description);
+		const title = trimmedString(frontmatter.title) ?? formatLabel(licenseSlug);
+		const spdxId = trimmedString(frontmatter.spdxId) ?? "Unknown";
+		const description = trimmedString(frontmatter.description);
 		const permissions = normalizeList(frontmatter.permissions);
 		const conditions = normalizeList(frontmatter.conditions);
 		const limitations = normalizeList(frontmatter.limitations);

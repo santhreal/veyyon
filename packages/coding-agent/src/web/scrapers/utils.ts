@@ -1,23 +1,13 @@
-import { asRecord, isRecord } from "@veyyon/utils";
+import { asRecord, finiteNumber, isRecord, trimmedString } from "@veyyon/utils";
 import { scopedTimeoutSignal } from "../../utils/fetch-timeout";
 
-// Re-export the @veyyon/utils guards so scraper modules can import them from
-// this local barrel; asRecord/isRecord have exactly one definition (the owner).
-export { asRecord, isRecord };
+// Re-export the @veyyon/utils guards/coercers so scraper modules can import
+// them from this local barrel; each has exactly one definition (the owner).
+export { asRecord, finiteNumber, isRecord, trimmedString };
 
 import { ToolAbortError } from "../../tools/tool-errors";
 import { convertBufferWithMarkit } from "../../utils/markit";
 import { MAX_BYTES } from "./types";
-
-export function asString(value: unknown): string | null {
-	if (typeof value !== "string") return null;
-	const trimmed = value.trim();
-	return trimmed.length > 0 ? trimmed : null;
-}
-
-export function asNumber(value: unknown): number | null {
-	return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
 
 export interface BinaryFetchSuccess {
 	ok: true;

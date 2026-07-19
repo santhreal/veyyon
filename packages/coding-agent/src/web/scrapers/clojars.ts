@@ -1,7 +1,7 @@
 import { tryParseJson } from "@veyyon/utils";
 import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
 import { buildResult, formatNumber, loadFailure, loadPage, scraperDegrade, tryParseUrl } from "./types";
-import { asNumber, asString, isRecord } from "./utils";
+import { finiteNumber, isRecord, trimmedString } from "./utils";
 
 function formatLicenses(licenses: unknown): string[] {
 	if (!Array.isArray(licenses)) return [];
@@ -13,8 +13,8 @@ function formatLicenses(licenses: unknown): string[] {
 			continue;
 		}
 		if (isRecord(license)) {
-			const name = asString(license.name);
-			const url = asString(license.url);
+			const name = trimmedString(license.name);
+			const url = trimmedString(license.url);
 			if (name && url) {
 				output.push(`${name} (${url})`);
 			} else if (name) {
@@ -37,8 +37,8 @@ function formatDependencies(deps: unknown): string[] {
 				continue;
 			}
 			if (Array.isArray(dep)) {
-				const name = asString(dep[0]);
-				const version = asString(dep[1]);
+				const name = trimmedString(dep[0]);
+				const version = trimmedString(dep[1]);
 				if (name && version) {
 					output.push(`${name}: ${version}`);
 				} else if (name) {
@@ -47,8 +47,8 @@ function formatDependencies(deps: unknown): string[] {
 				continue;
 			}
 			if (isRecord(dep)) {
-				const name = asString(dep.name) ?? asString(dep.artifact) ?? asString(dep.jar_name);
-				const version = asString(dep.version);
+				const name = trimmedString(dep.name) ?? trimmedString(dep.artifact) ?? trimmedString(dep.jar_name);
+				const version = trimmedString(dep.version);
 				if (name && version) {
 					output.push(`${name}: ${version}`);
 				} else if (name) {
@@ -61,7 +61,7 @@ function formatDependencies(deps: unknown): string[] {
 
 	if (isRecord(deps)) {
 		for (const [name, version] of Object.entries(deps)) {
-			const versionText = asString(version);
+			const versionText = trimmedString(version);
 			if (versionText) {
 				output.push(`${name}: ${versionText}`);
 			} else if (name.trim()) {
@@ -116,13 +116,17 @@ export const handleClojars: SpecialHandler = async (
 		const data = Array.isArray(payload) ? payload[0] : payload;
 		if (!isRecord(data)) return null;
 
-		const groupName = asString(data.group_name) ?? asString(data.group) ?? groupFromUrl;
-		const artifactName = asString(data.jar_name) ?? asString(data.artifact) ?? asString(data.name) ?? artifactFromUrl;
-		const version = asString(data.latest_version) ?? asString(data.version);
-		const description = asString(data.description) ?? asString(data.summary);
+		const groupName = trimmedString(data.group_name) ?? trimmedString(data.group) ?? groupFromUrl;
+		const artifactName =
+			trimmedString(data.jar_name) ?? trimmedString(data.artifact) ?? trimmedString(data.name) ?? artifactFromUrl;
+		const version = trimmedString(data.latest_version) ?? trimmedString(data.version);
+		const description = trimmedString(data.description) ?? trimmedString(data.summary);
 		const downloads =
-			asNumber(data.downloads) ?? asNumber(data.downloads_total) ?? asNumber(data.total_downloads) ?? null;
-		const homepage = asString(data.homepage) ?? asString(data.url);
+			finiteNumber(data.downloads) ??
+			finiteNumber(data.downloads_total) ??
+			finiteNumber(data.total_downloads) ??
+			null;
+		const homepage = trimmedString(data.homepage) ?? trimmedString(data.url);
 		const licenses = formatLicenses(data.licenses);
 		const dependencies = formatDependencies(data.dependencies ?? data.deps);
 
