@@ -284,6 +284,19 @@ export abstract class Command {
 			}
 		}
 
+		// Reject positionals that no declared arg consumed. Silently dropping them
+		// lets an intuitive-but-wrong invocation run with a wider scope than the
+		// user wrote — `usage invalidate anthropic` swallows `anthropic` and
+		// invalidates every provider at exit 0 — so fail closed and name the stray
+		// token instead (Law 10: no silent fallbacks). A command that means to take
+		// arbitrary trailing positionals declares a `multiple` arg, which consumes
+		// them here and never reaches this check.
+		if (posIdx < positionals.length) {
+			const stray = positionals.slice(posIdx);
+			const label = stray.length === 1 ? "argument" : "arguments";
+			throw new CliUsageError(`Unexpected ${label}: ${stray.map(token => `"${token}"`).join(", ")}`);
+		}
+
 		return { flags, args, argv: positionals } as never;
 	}
 }
