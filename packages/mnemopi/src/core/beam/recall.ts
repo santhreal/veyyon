@@ -13,7 +13,7 @@ import { mmrRerank } from "../mmr";
 import { adjustWeights, classifyIntent } from "../query-intent";
 import { CORE_QUERY_STOP_WORDS, getSynonyms, normalizeQuery, STOP_WORDS as QUERY_STOP_WORDS } from "../synonyms";
 import { extractTemporal } from "../temporal-parser";
-import { cosineSimilarity, decodeEmbeddingJson } from "../vector-math";
+import { cosineScorer, decodeEmbeddingJson } from "../vector-math";
 import type { BeamMemoryState, RecallEnhancedOptions, RecallOptions, RecallResult } from "./types";
 
 type DbValue = string | number | null | Uint8Array;
@@ -519,6 +519,10 @@ function vectorSimilarities(
 	) {
 		return out;
 	}
+	// One scorer for the whole sweep: the query norm and finite-value check are
+	// computed once here, not per candidate. cosineScorer is byte-identical to
+	// cosineSimilarity(queryEmbedding, vector).
+	const score = cosineScorer(queryEmbedding);
 	for (const chunk of batched(memoryIds, SQLITE_IN_CLAUSE_BATCH)) {
 		const rows = queryAll(
 			beam,
@@ -528,7 +532,7 @@ function vectorSimilarities(
 		for (const row of rows) {
 			const vector = decodeEmbeddingJson(row.embedding_json);
 			const id = stringOrEmpty(row.memory_id);
-			if (vector !== null && id.length > 0) out.set(id, Math.max(0, cosineSimilarity(queryEmbedding, vector)));
+			if (vector !== null && id.length > 0) out.set(id, Math.max(0, score(vector)));
 		}
 	}
 	return out;
