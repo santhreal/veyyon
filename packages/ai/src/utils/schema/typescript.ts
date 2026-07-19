@@ -9,7 +9,7 @@
  * literal enums/consts, and descriptions survive.
  */
 
-import { isJsonObject } from "./types";
+import { isRecord } from "@veyyon/utils";
 
 export interface JsonSchemaToTsOptions {
 	/** Indentation unit for nested object bodies. Default two spaces. */
@@ -76,7 +76,7 @@ function convertArray(node: Record<string, unknown>, ctx: Ctx, pad: string): str
 }
 
 function convertObject(node: Record<string, unknown>, ctx: Ctx, pad: string): string {
-	const properties = isJsonObject(node.properties) ? node.properties : undefined;
+	const properties = isRecord(node.properties) ? node.properties : undefined;
 	const additional = node.additionalProperties;
 	const childPad = pad + ctx.indent;
 
@@ -87,12 +87,7 @@ function convertObject(node: Record<string, unknown>, ctx: Ctx, pad: string): st
 		);
 		for (const key in properties) {
 			const value = properties[key];
-			if (
-				ctx.comments &&
-				isJsonObject(value) &&
-				typeof value.description === "string" &&
-				value.description.length > 0
-			) {
+			if (ctx.comments && isRecord(value) && typeof value.description === "string" && value.description.length > 0) {
 				emitJsDoc(body, value.description, childPad);
 			}
 			const optional = required.has(key) ? "" : "?";
@@ -103,13 +98,13 @@ function convertObject(node: Record<string, unknown>, ctx: Ctx, pad: string): st
 
 	// No named properties: pure record / open / empty object.
 	if (body.length === 0) {
-		if (isJsonObject(additional)) return `Record<string, ${convert(additional, ctx, pad)}>`;
+		if (isRecord(additional)) return `Record<string, ${convert(additional, ctx, pad)}>`;
 		if (additional === true) return "Record<string, unknown>";
 		return "{}";
 	}
 
 	// Named properties alongside a free-form value schema → index signature.
-	if (isJsonObject(additional)) {
+	if (isRecord(additional)) {
 		body.push(`${childPad}[key: string]: ${convert(additional, ctx, childPad)};`);
 	}
 	return `{\n${body.join("\n")}\n${pad}}`;
@@ -138,13 +133,13 @@ function convertType(type: string, node: Record<string, unknown>, ctx: Ctx, pad:
 function convert(node: unknown, ctx: Ctx, pad: string): string {
 	if (node === true) return "unknown";
 	if (node === false) return "never";
-	if (!isJsonObject(node)) return "unknown";
+	if (!isRecord(node)) return "unknown";
 
 	const ref = node.$ref;
 	if (typeof ref === "string") {
 		const match = LOCAL_REF.exec(ref);
 		const resolved = match && ctx.defs ? ctx.defs[match[1]] : undefined;
-		if (isJsonObject(resolved) && !ctx.seen.has(resolved)) {
+		if (isRecord(resolved) && !ctx.seen.has(resolved)) {
 			ctx.seen.add(resolved);
 			const out = convert(resolved, ctx, pad);
 			ctx.seen.delete(resolved);
@@ -177,12 +172,12 @@ function convert(node: unknown, ctx: Ctx, pad: string): string {
 
 /** Convert a JSON Schema object into a simplified TypeScript type string. */
 export function jsonSchemaToTypeScript(schema: unknown, options?: JsonSchemaToTsOptions): string {
-	const root = isJsonObject(schema) ? schema : undefined;
+	const root = isRecord(schema) ? schema : undefined;
 	let defs: Record<string, unknown> | undefined;
 	if (root) {
 		for (const key of ["definitions", "$defs"] as const) {
 			const value = root[key];
-			if (isJsonObject(value)) {
+			if (isRecord(value)) {
 				defs ??= {};
 				Object.assign(defs, value);
 			}

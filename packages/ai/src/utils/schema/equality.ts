@@ -1,5 +1,5 @@
+import { isRecord } from "@veyyon/utils";
 import type { JsonObject } from "./types";
-import { isJsonObject } from "./types";
 
 export function areJsonValuesEqual(left: unknown, right: unknown): boolean {
 	if (Object.is(left, right)) {
@@ -16,7 +16,7 @@ export function areJsonValuesEqual(left: unknown, right: unknown): boolean {
 		}
 		return true;
 	}
-	if (!isJsonObject(left) || !isJsonObject(right)) {
+	if (!isRecord(left) || !isRecord(right)) {
 		return false;
 	}
 	let rightLen = 0;
@@ -30,7 +30,7 @@ export function areJsonValuesEqual(left: unknown, right: unknown): boolean {
 }
 
 export function mergeCompatibleEnumSchemas(existing: unknown, incoming: unknown): JsonObject | null {
-	if (!isJsonObject(existing) || !isJsonObject(incoming)) {
+	if (!isRecord(existing) || !isRecord(incoming)) {
 		return null;
 	}
 	const existingEnum = Array.isArray(existing.enum) ? existing.enum : null;
@@ -72,7 +72,7 @@ export function mergeCompatibleEnumSchemas(existing: unknown, incoming: unknown)
 }
 
 function getAnyOfVariants(schema: unknown): unknown[] {
-	if (isJsonObject(schema) && Array.isArray(schema.anyOf)) {
+	if (isRecord(schema) && Array.isArray(schema.anyOf)) {
 		return schema.anyOf;
 	}
 	return [schema];

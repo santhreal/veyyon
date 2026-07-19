@@ -22,7 +22,7 @@
  * keeps the schema in charge of acceptance — we never invent values, only
  * massage shapes the LLM almost got right.
  */
-import { structuredCloneJSON } from "@veyyon/utils";
+import { isRecord, structuredCloneJSON } from "@veyyon/utils";
 import { type Type, type } from "arktype";
 import type { ZodType } from "zod/v4";
 import type { $ZodIssue as ZodIssue } from "zod/v4/core";
@@ -1586,12 +1586,8 @@ type ContextValidationResult =
 	| { success: true; value: unknown }
 	| { success: false; flatIssues: FlatIssue[]; messages: string[] };
 
-function isPlainRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 function preserveUnknownRootFields(input: unknown, parsed: unknown): unknown {
-	if (!isPlainRecord(input) || !isPlainRecord(parsed)) return parsed;
+	if (!isRecord(input) || !isRecord(parsed)) return parsed;
 	return { ...input, ...parsed };
 }
 
@@ -1793,7 +1789,7 @@ function splitSpilledValue(text: string): SpillSplit | null {
  * whose string content legitimately contains tag-like text are never touched.
  */
 function healInbandArgSpill(value: unknown): { value: unknown; changed: boolean } {
-	if (!isPlainRecord(value)) return { value, changed: false };
+	if (!isRecord(value)) return { value, changed: false };
 	let changed = false;
 	const out: Record<string, unknown> = { ...value };
 	const recovered: [string, string][] = [];

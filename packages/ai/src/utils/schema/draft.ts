@@ -1,6 +1,7 @@
+import { isRecord } from "@veyyon/utils";
 import { areJsonValuesEqual } from "./equality";
 import { epochNext, once } from "./stamps";
-import { isJsonObject, type JsonObject } from "./types";
+import type { JsonObject } from "./types";
 
 export const JSON_SCHEMA_DRAFT_2020_12_URI = "https://json-schema.org/draft/2020-12/schema";
 
@@ -42,7 +43,7 @@ function convertRef(value: string): string {
 /** Get-or-create a child object map on `target[key]`. Used to lazily build up `$defs`/`dependentRequired`/`dependentSchemas` during conversion. */
 function getObjectMap(target: JsonObject, key: string): JsonObject {
 	const existing = target[key];
-	if (isJsonObject(existing)) return existing;
+	if (isRecord(existing)) return existing;
 	const next: JsonObject = {};
 	target[key] = next;
 	return next;
@@ -57,7 +58,7 @@ function mergeSchemaMap(target: JsonObject, key: string, value: JsonObject, cach
 }
 /** Copy a schema-map field with upgrade; non-object values are passed through verbatim. */
 function copySchemaMap(target: JsonObject, key: string, value: unknown, cache: WeakMap<object, unknown>): void {
-	if (!isJsonObject(value)) {
+	if (!isRecord(value)) {
 		target[key] = value;
 		return;
 	}
@@ -131,7 +132,7 @@ function mergeDependentSchema(target: JsonObject, key: string, schema: unknown):
  */
 function convertDependencies(source: JsonObject, target: JsonObject, cache: WeakMap<object, unknown>): void {
 	const dependencies = source.dependencies;
-	if (!isJsonObject(dependencies)) return;
+	if (!isRecord(dependencies)) return;
 	for (const key in dependencies) {
 		const dependency = dependencies[key];
 		const converted = upgradeJsonSchemaTo202012Impl(dependency, cache);
@@ -150,7 +151,7 @@ function hasNullType(type: unknown): boolean {
 
 /** True if any variant in `anyOf` declares (only) a null type. Used to avoid double-adding `{type:"null"}`. */
 function hasNullVariant(variants: unknown[]): boolean {
-	return variants.some(variant => isJsonObject(variant) && hasNullType(variant.type));
+	return variants.some(variant => isRecord(variant) && hasNullType(variant.type));
 }
 
 /**
@@ -180,7 +181,7 @@ function makeNullable(schema: JsonObject): JsonObject {
 
 /** True if any entry in a schema-map needs upgrading. Shortcut used during pre-check to skip the full clone when nothing has changed. */
 function schemaMapNeedsDraft202012Upgrade(value: unknown, epoch: number): boolean {
-	if (!isJsonObject(value)) return false;
+	if (!isRecord(value)) return false;
 	for (const k in value) {
 		if (schemaNeedsDraft202012UpgradeImpl(value[k], epoch)) return true;
 	}
@@ -199,7 +200,7 @@ function schemaNeedsDraft202012UpgradeImpl(value: unknown, epoch: number): boole
 		if (!once(value, epoch)) return false;
 		return value.some(entry => schemaNeedsDraft202012UpgradeImpl(entry, epoch));
 	}
-	if (!isJsonObject(value)) return false;
+	if (!isRecord(value)) return false;
 	if (!once(value, epoch)) return false;
 
 	for (const key in value) {
@@ -244,7 +245,7 @@ function upgradeJsonSchemaTo202012Impl(value: unknown, cache: WeakMap<object, un
 		}
 		return result;
 	}
-	if (!isJsonObject(value)) return value;
+	if (!isRecord(value)) return value;
 
 	const cached = cache.get(value);
 	if (cached !== undefined) return cached;
@@ -257,7 +258,7 @@ function upgradeJsonSchemaTo202012Impl(value: unknown, cache: WeakMap<object, un
 		// `definitions` is the draft-07 name; merge under the canonical `$defs`.
 		// `$defs` may appear pre-upgraded — still walk entries to upgrade their bodies.
 		if (key === "definitions" || key === "$defs") {
-			if (isJsonObject(entry)) mergeSchemaMap(result, "$defs", entry, cache);
+			if (isRecord(entry)) mergeSchemaMap(result, "$defs", entry, cache);
 			continue;
 		}
 		// Recurse into each entry; the map shape itself is preserved.

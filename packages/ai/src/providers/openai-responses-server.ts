@@ -10,7 +10,7 @@
  */
 
 import { emptyUsage } from "@veyyon/catalog/models";
-import { errorMessage, logger } from "@veyyon/utils";
+import { errorMessage, isRecord, logger } from "@veyyon/utils";
 import { type } from "arktype";
 import { resolvePromptCacheKey } from "../auth-gateway/http";
 import type { AuthGatewayStreamControl, AuthGatewayParsedRequest as ParsedRequest } from "../auth-gateway/types";
@@ -53,10 +53,6 @@ function isReasoningEffort(value: unknown): value is NonNullable<ParsedRequest["
 
 function isServiceTier(value: unknown): value is NonNullable<ParsedRequest["options"]["serviceTier"]> {
 	return value === "auto" || value === "default" || value === "flex" || value === "scale" || value === "priority";
-}
-
-function isObj(v: unknown): v is Record<string, unknown> {
-	return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 
 function stringOrUndefined(v: unknown): string | undefined {
@@ -266,7 +262,7 @@ function ensureAssistantPlaceholder(messages: Message[], modelId: string, now: n
 function flattenFunctionOutputArray(blocks: readonly unknown[]): string {
 	const parts: string[] = [];
 	for (const raw of blocks) {
-		if (!isObj(raw)) continue;
+		if (!isRecord(raw)) continue;
 		const t = raw.type;
 		if (t === "output_text" || t === "text") {
 			const text = stringOrUndefined(raw.text);
@@ -365,7 +361,7 @@ export function parseRequest(body: unknown, headers?: Headers): ParsedRequest {
 				let args: Record<string, unknown>;
 				try {
 					const parsedArgs: unknown = JSON.parse(argsRaw);
-					args = isObj(parsedArgs) ? parsedArgs : {};
+					args = isRecord(parsedArgs) ? parsedArgs : {};
 				} catch {
 					throw new AIError.ValidationError(
 						`openai-responses: function_call ${call.call_id} has invalid JSON arguments`,
@@ -478,7 +474,7 @@ export function parseRequest(body: unknown, headers?: Headers): ParsedRequest {
 	if (cacheKey !== undefined) options.promptCacheKey = cacheKey;
 	if (data.previous_response_id !== undefined) options.previousResponseId = data.previous_response_id;
 	if (data.user !== undefined) options.user = data.user;
-	if (isObj(data.metadata)) options.metadata = data.metadata;
+	if (isRecord(data.metadata)) options.metadata = data.metadata;
 	// `store` is a stateful-storage hint that veyyon's gateway doesn't honour;
 	// silently accepted by the schema. No typed slot — drop.
 
@@ -561,7 +557,7 @@ function buildReasoningItem(part: ThinkingContent): ReasoningOutputItem {
 	if (part.thinkingSignature) {
 		try {
 			const sigParsed: unknown = JSON.parse(part.thinkingSignature);
-			if (isObj(sigParsed) && sigParsed.type === "reasoning") {
+			if (isRecord(sigParsed) && sigParsed.type === "reasoning") {
 				const id = part.itemId ?? stringOrUndefined(sigParsed.id) ?? makeReasoningId();
 				// Preserve any extra fields (encrypted_content, …) the original carried,
 				// but normalize the summary into the canonical `{type, text}[]` shape.
@@ -588,7 +584,7 @@ function reasoningItemId(part: ThinkingContent): string {
 	if (part.thinkingSignature) {
 		try {
 			const sigParsed: unknown = JSON.parse(part.thinkingSignature);
-			if (isObj(sigParsed)) {
+			if (isRecord(sigParsed)) {
 				const id = stringOrUndefined(sigParsed.id);
 				if (id) return id;
 			}

@@ -146,6 +146,36 @@ const ERRORMESSAGE_DEF = /function\s+errorMessage\s*\(/;
 // /finiteNumber, or give the local a contract-precise name.
 const ASCOERCE_DEF = /function\s+as(?:String|Number)\s*\(/;
 
+// isRecord clones hid behind DIFFERENT names (isObj, isPlainObject, isJsonObject,
+// isPlainRecord, isSchemaRecord), so the `function isRecord` name lock never saw
+// them. This body lock catches the SHAPE regardless of name: a named function
+// whose body is exactly the three-term isRecord conjunction (typeof-object, a
+// null/truthy guard, and !Array.isArray on the same identifier) and nothing
+// else. A richer guard (extra `in`/`.length`/`||` terms) or a coercing ternary
+// has a different term count or per-term shape and is correctly left alone. All
+// former clones were folded onto the owner on 2026-07-19 (the ai schema subsystem
+// alone had ~100 call sites behind isJsonObject); this lock keeps them gone.
+const GUARD_FN = /function\s+\w+\s*\([^)]*\)\s*(?::[^{]*?)?\{([^{}]*)\}/g;
+
+function isIsRecordCloneBody(body: string): boolean {
+	// Body must be a single `return <expr>;` (no `const`, no extra statements).
+	const rm = body.match(/^\s*return\s+([\s\S]+?);?\s*$/);
+	if (!rm) return false;
+	let expr = rm[1].trim();
+	while (expr.startsWith("(") && expr.endsWith(")")) expr = expr.slice(1, -1).trim();
+	const terms = expr
+		.split("&&")
+		.map(t => t.trim())
+		.filter(Boolean);
+	if (terms.length !== 3) return false;
+	const typeofTerm = terms.find(t => /^typeof\s+\w+\s*===\s*"object"$/.test(t));
+	if (!typeofTerm) return false;
+	const id = (typeofTerm.match(/^typeof\s+(\w+)/) as RegExpMatchArray)[1];
+	const hasArr = terms.some(t => new RegExp(`^!\\s*Array\\.isArray\\(\\s*${id}\\s*\\)$`).test(t));
+	const hasGuard = terms.some(t => new RegExp(`^(?:${id}\\s*!==?\\s*null|!!\\s*${id}|${id})$`).test(t));
+	return hasArr && hasGuard;
+}
+
 async function walk(dir: string, out: string[], includeTests: boolean): Promise<void> {
 	for (const entry of await readdir(dir, { withFileTypes: true })) {
 		const full = path.join(dir, entry.name);
@@ -237,6 +267,38 @@ describe("type-guards source locks", () => {
 		expect(
 			offenders,
 			"local asString/asNumber coercers: import trimmedString/finiteNumber from @veyyon/utils, or use a contract-precise name",
+		).toEqual([]);
+	});
+
+	it("no production source defines a differently-named isRecord clone", async () => {
+		// Positive control: the detector must catch the four clone spellings and
+		// reject a richer guard and a coercing ternary. A silent false-negative
+		// here would make the source scan below vacuously pass.
+		expect(isIsRecordCloneBody(`return typeof v === "object" && v !== null && !Array.isArray(v);`)).toBe(true);
+		expect(isIsRecordCloneBody(`return v !== null && typeof v === "object" && !Array.isArray(v);`)).toBe(true);
+		expect(isIsRecordCloneBody(`return !!v && typeof v === "object" && !Array.isArray(v);`)).toBe(true);
+		expect(isIsRecordCloneBody(`return v && typeof v === "object" && !Array.isArray(v);`)).toBe(true);
+		expect(isIsRecordCloneBody(`return typeof v === "object" && v !== null && "k" in v && !Array.isArray(v);`)).toBe(
+			false,
+		);
+		expect(
+			isIsRecordCloneBody(
+				`const x = a.b; return x !== null && typeof x === "object" && !Array.isArray(x) ? x : null;`,
+			),
+		).toBe(false);
+
+		const offenders: string[] = [];
+		for (const file of await sourceFiles()) {
+			const rel = path.relative(PACKAGES_DIR, file).replaceAll(path.sep, "/");
+			if (rel === OWNER || ISRECORD_ALLOWED.has(rel)) continue;
+			const text = await readFile(file, "utf8");
+			for (const match of text.matchAll(GUARD_FN)) {
+				if (isIsRecordCloneBody(match[1])) offenders.push(rel);
+			}
+		}
+		expect(
+			[...new Set(offenders)],
+			"named isRecord clones (isObj/isPlainObject/isJsonObject/…) — import isRecord from @veyyon/utils instead",
 		).toEqual([]);
 	});
 

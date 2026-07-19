@@ -24,7 +24,8 @@
  * Pure / identity-preserving: returns the input reference when nothing changes.
  */
 
-import { isJsonObject, type JsonObject } from "./types";
+import { isRecord } from "@veyyon/utils";
+import type { JsonObject } from "./types";
 
 const VALID_JSON_SCHEMA_TYPES: Record<string, true> = {
 	string: true,
@@ -117,7 +118,7 @@ const KEYS_THAT_ACCEPT_NULL: Record<string, true> = {
 
 function isZodLeak(node: JsonObject): boolean {
 	const def = node.def;
-	if (!isJsonObject(def)) return false;
+	if (!isRecord(def)) return false;
 	const defType = def.type;
 	if (typeof defType !== "string" || !ZOD_KINDS[defType]) return false;
 	// Both surface and inner `.type` must agree — Zod always mirrors `_def.type`
@@ -162,8 +163,8 @@ function rewriteZodNode(node: JsonObject, seen: WeakSet<object>): unknown {
 			// Prefer node.options (array form Zod exposes) → def.entries values →
 			// object-shaped node.enum values. All three carry the same data.
 			const optionsArray = Array.isArray(node.options) ? (node.options as unknown[]) : null;
-			const entries = isJsonObject(def.entries) ? Object.values(def.entries) : null;
-			const enumObj = isJsonObject(node.enum) ? Object.values(node.enum) : null;
+			const entries = isRecord(def.entries) ? Object.values(def.entries) : null;
+			const enumObj = isRecord(node.enum) ? Object.values(node.enum) : null;
 			const values = optionsArray ?? entries ?? enumObj ?? [];
 			return { type: inferTypeFromValues(values), enum: values };
 		}
@@ -218,7 +219,7 @@ function rewriteZodNode(node: JsonObject, seen: WeakSet<object>): unknown {
 		}
 
 		case "object": {
-			const shape = isJsonObject(def.shape) ? def.shape : ({} as JsonObject);
+			const shape = isRecord(def.shape) ? def.shape : ({} as JsonObject);
 			const properties: JsonObject = {};
 			const required: string[] = [];
 			for (const key in shape) {
@@ -243,7 +244,7 @@ function rewriteZodNode(node: JsonObject, seen: WeakSet<object>): unknown {
 		case "pipe":
 		case "transform": {
 			const inner = walk(unwrapInnerSchema(def), seen);
-			if (kind === "nullable" && isJsonObject(inner)) {
+			if (kind === "nullable" && isRecord(inner)) {
 				if (typeof inner.type === "string") {
 					return { ...inner, type: [inner.type, "null"] };
 				}
@@ -279,7 +280,7 @@ function rewriteZodNode(node: JsonObject, seen: WeakSet<object>): unknown {
 }
 
 function isOptionalEntry(value: unknown): boolean {
-	if (!isJsonObject(value)) return false;
+	if (!isRecord(value)) return false;
 	if (!isZodLeak(value)) return false;
 	const kind = (value.def as JsonObject).type;
 	return kind === "optional" || kind === "default" || kind === "prefault";
@@ -306,7 +307,7 @@ function walk(value: unknown, seen: WeakSet<object>): unknown {
 		});
 		return changed ? out : value;
 	}
-	if (!isJsonObject(value)) return value;
+	if (!isRecord(value)) return value;
 	if (seen.has(value)) return value;
 	seen.add(value);
 

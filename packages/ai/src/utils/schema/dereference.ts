@@ -9,7 +9,8 @@
  *
  * After dereferencing, `$defs` and `definitions` are stripped from the root.
  */
-import { isJsonObject, type JsonObject } from "./types";
+import { isRecord } from "@veyyon/utils";
+import type { JsonObject } from "./types";
 
 /**
  * Resolve a JSON-pointer-style `$ref` against the root schema's `$defs`
@@ -22,17 +23,17 @@ function resolveLocalRef(ref: string, root: JsonObject): JsonObject | undefined 
 
 	const [, defsKey, name] = match;
 	const defs = root[defsKey!];
-	if (!isJsonObject(defs)) return undefined;
+	if (!isRecord(defs)) return undefined;
 
 	const resolved = defs[name!];
-	return isJsonObject(resolved) ? resolved : undefined;
+	return isRecord(resolved) ? resolved : undefined;
 }
 
 /**
  * Recursively dereference a JSON Schema node, inlining all local `$ref` pointers.
  */
 function dereferenceNode(node: unknown, root: JsonObject, visiting: Set<string>): unknown {
-	if (!isJsonObject(node)) return node;
+	if (!isRecord(node)) return node;
 	if (Array.isArray(node)) return node.map(item => dereferenceNode(item, root, visiting));
 
 	const ref = node.$ref;
@@ -54,7 +55,7 @@ function dereferenceNode(node: unknown, root: JsonObject, visiting: Set<string>)
 				break;
 			}
 		}
-		if (!hasSiblings || !isJsonObject(inlined)) return inlined;
+		if (!hasSiblings || !isRecord(inlined)) return inlined;
 		const merged: JsonObject = { ...inlined, ...node };
 		delete merged.$ref;
 		return merged;
@@ -68,7 +69,7 @@ function dereferenceNode(node: unknown, root: JsonObject, visiting: Set<string>)
 
 		if (Array.isArray(value)) {
 			result[key] = value.map(item => dereferenceNode(item, root, visiting));
-		} else if (isJsonObject(value)) {
+		} else if (isRecord(value)) {
 			result[key] = dereferenceNode(value, root, visiting);
 		} else {
 			result[key] = value;
@@ -88,7 +89,7 @@ function dereferenceNode(node: unknown, root: JsonObject, visiting: Set<string>)
  *          if it's not an object or has no `$defs`/`definitions`.
  */
 export function dereferenceJsonSchema(schema: unknown): unknown {
-	if (!isJsonObject(schema)) return schema;
+	if (!isRecord(schema)) return schema;
 
 	// Fast path: nothing to dereference
 	const hasDefs = schema.$defs !== undefined || schema.definitions !== undefined;
