@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { ThinkingLevel } from "@veyyon/agent-core";
 import { type Api, Effort, type Model } from "@veyyon/ai";
 import { buildModel } from "@veyyon/catalog/build";
 import { DEFAULT_MODEL_PER_PROVIDER } from "@veyyon/catalog/provider-models";
@@ -7,6 +8,7 @@ import {
 	extractExplicitThinkingSelector,
 	fallbackForUnavailableDefault,
 	filterAvailableModelsByEnabledPatterns,
+	formatModelSelectorValue,
 	parseModelPattern,
 	parseModelString,
 	pickDefaultAvailableModel,
@@ -21,6 +23,7 @@ import {
 } from "@veyyon/coding-agent/config/model-resolver";
 import { DEFAULT_MODEL_ROLE_ALIAS, LEGACY_MODEL_ROLE_ALIAS_PREFIX } from "@veyyon/coding-agent/config/model-roles";
 import { Settings } from "@veyyon/coding-agent/config/settings";
+import { AUTO_THINKING } from "@veyyon/coding-agent/thinking";
 
 // Mock models for testing
 const mockModels: Model<"anthropic-messages">[] = [
@@ -1849,5 +1852,77 @@ describe("fallbackForUnavailableDefault", () => {
 
 	test("returns undefined when no model is available at all", () => {
 		expect(fallbackForUnavailableDefault("goneco/vanished-model", [])).toBeUndefined();
+	});
+});
+
+describe("formatModelSelectorValue <-> parseModelString round-trip (HSL-3)", () => {
+	// The concrete thinking levels parseModelString recovers with no options: a
+	// selector formatted with a level must parse back to the same provider/id/level.
+	const CONCRETE_LEVELS: ThinkingLevel[] = [
+		ThinkingLevel.Off,
+		ThinkingLevel.Minimal,
+		ThinkingLevel.Low,
+		ThinkingLevel.Medium,
+		ThinkingLevel.High,
+		ThinkingLevel.XHigh,
+	];
+
+	for (const level of CONCRETE_LEVELS) {
+		test(`selector formatted with :${level} parses back to the same provider/id/level`, () => {
+			const selector = "anthropic/claude-sonnet-4-5";
+			const formatted = formatModelSelectorValue(selector, level);
+			expect(formatted).toBe(`${selector}:${level}`);
+			expect(parseModelString(formatted)).toEqual({
+				provider: "anthropic",
+				id: "claude-sonnet-4-5",
+				thinkingLevel: level,
+			});
+		});
+	}
+
+	test("Inherit is dropped by the formatter and yields no thinking level on parse", () => {
+		const selector = "anthropic/claude-sonnet-4-5";
+		const formatted = formatModelSelectorValue(selector, ThinkingLevel.Inherit);
+		expect(formatted).toBe(selector);
+		expect(parseModelString(formatted)).toEqual({ provider: "anthropic", id: "claude-sonnet-4-5" });
+	});
+
+	test("undefined level round-trips as a bare selector", () => {
+		const selector = "openai/gpt-5.2";
+		expect(formatModelSelectorValue(selector, undefined)).toBe(selector);
+		expect(parseModelString(selector)).toEqual({ provider: "openai", id: "gpt-5.2" });
+	});
+
+	// :max and :auto are gated: parseModelString ignores them WITHOUT opt-in so
+	// real model ids ending in :max (e.g. glm-4.7:max) are never reinterpreted as
+	// a thinking suffix. This pins that intentional asymmetry.
+	test(":max is NOT treated as a thinking level without opt-in (protects literal :max model ids)", () => {
+		const formatted = formatModelSelectorValue("anthropic/claude-opus-4-8", ThinkingLevel.Max);
+		expect(formatted).toBe("anthropic/claude-opus-4-8:max");
+		// No options -> the :max stays part of the id, no thinking level extracted.
+		expect(parseModelString(formatted)).toEqual({ provider: "anthropic", id: "claude-opus-4-8:max" });
+		// With opt-in, :max is recovered as the thinking level.
+		expect(parseModelString(formatted, { allowMaxSuffix: true })).toEqual({
+			provider: "anthropic",
+			id: "claude-opus-4-8",
+			thinkingLevel: ThinkingLevel.Max,
+		});
+	});
+
+	test(":auto is NOT treated as a thinking level without opt-in", () => {
+		const formatted = formatModelSelectorValue("anthropic/claude-sonnet-4-5", AUTO_THINKING);
+		expect(formatted).toBe("anthropic/claude-sonnet-4-5:auto");
+		expect(parseModelString(formatted)).toEqual({ provider: "anthropic", id: "claude-sonnet-4-5:auto" });
+		expect(parseModelString(formatted, { allowAutoAlias: true })).toEqual({
+			provider: "anthropic",
+			id: "claude-sonnet-4-5",
+			thinkingLevel: AUTO_THINKING,
+		});
+	});
+
+	test("an empty or provider-less selector parses to undefined (no crash)", () => {
+		expect(parseModelString("")).toBeUndefined();
+		expect(parseModelString("noprovider")).toBeUndefined();
+		expect(parseModelString(":high")).toBeUndefined();
 	});
 });
