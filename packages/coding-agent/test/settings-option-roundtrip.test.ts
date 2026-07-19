@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { getEnumValues, getType } from "@veyyon/coding-agent/config/settings-schema";
+import { getDefault, getEnumValues, getType, type SettingPath } from "@veyyon/coding-agent/config/settings-schema";
 import { getAllSettingDefs } from "@veyyon/coding-agent/modes/components/settings-defs";
 import { COMPACTION_DEFAULT_SENTINEL_PATHS } from "@veyyon/coding-agent/modes/components/settings-selector";
 
@@ -84,6 +84,49 @@ describe("settings UI option values round-trip through their setter (HSL-2)", ()
 		for (const def of defs) {
 			if (def.type !== "enum") continue;
 			if ((def.values ?? []).length === 0) broken.push(def.path);
+		}
+		expect(broken).toEqual([]);
+	});
+});
+
+/**
+ * HSL-1: numeric sentinel defaults must stay reachable and consistent. A knob
+ * that defaults to the `-1` "inherit/default" sentinel must (a) actually declare
+ * `-1` as its schema default and (b) expose a UI option that restores that
+ * sentinel, or the user can never get back to the default once they change it.
+ * A mismatch here silently changes behavior (the stored default and the
+ * "Default" option disagree, or the default is unreachable).
+ */
+describe("numeric sentinel defaults are consistent and reachable (HSL-1)", () => {
+	const defs = getAllSettingDefs();
+	const submenuDefs = defs.filter((def): def is Extract<typeof def, { type: "submenu" }> => def.type === "submenu");
+
+	it("every compaction sentinel-path setting defaults to -1", () => {
+		const broken: string[] = [];
+		for (const path of COMPACTION_DEFAULT_SENTINEL_PATHS) {
+			const defaultValue = getDefault(path as SettingPath);
+			if (defaultValue !== -1) broken.push(`${path} defaults to ${JSON.stringify(defaultValue)}, expected -1`);
+		}
+		expect(broken).toEqual([]);
+	});
+
+	it("every numeric submenu whose default is the -1 sentinel exposes an option that restores it", () => {
+		const broken: string[] = [];
+		for (const def of submenuDefs) {
+			if (getType(def.path) !== "number") continue;
+			if (getDefault(def.path) !== -1) continue;
+			// The option must map back to -1: either the "default" sentinel string
+			// on a sentinel path, or a literal "-1"/"" value that Number()-parses to -1.
+			const restores = def.options.some(o => {
+				if (
+					COMPACTION_DEFAULT_SENTINEL_PATHS.has(def.path) &&
+					(o.value === "default" || o.value === "" || o.value === "-1")
+				) {
+					return true;
+				}
+				return Number(o.value) === -1;
+			});
+			if (!restores) broken.push(`${def.path} defaults to -1 but no option restores it`);
 		}
 		expect(broken).toEqual([]);
 	});
