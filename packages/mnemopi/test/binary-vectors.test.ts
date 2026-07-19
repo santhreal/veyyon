@@ -48,6 +48,17 @@ describe("binary vector helpers", () => {
 		expect(getVecType({ MNEMOPI_VEC_TYPE: "bogus" })).toBe("float32");
 		expect(getVecType({})).toBe("int8");
 	});
+
+	it("exposes the free functions as static methods that delegate identically", () => {
+		const embedding = [1, -1, 0, 2, -2, 0.1, -0.1, 3, -1, 1];
+		const left = new Uint8Array([0b10100000, 0b11110000]);
+		const right = new Uint8Array([0b00110000, 0b11000000]);
+		expect(Array.from(BinaryVectorStore.maximallyInformativeBinarization(embedding))).toEqual(
+			Array.from(maximallyInformativeBinarization(embedding)),
+		);
+		expect(BinaryVectorStore.hammingDistance(left, right)).toBe(hammingDistance(left, right));
+		expect(BinaryVectorStore.informationTheoreticScore(4, 16)).toBe(informationTheoreticScore(4, 16));
+	});
 });
 
 describe("BinaryVectorStore", () => {
