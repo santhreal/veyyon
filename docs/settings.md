@@ -199,7 +199,7 @@ tools:
 
 compaction:
   strategy: snap
-  thresholdPercent: 80
+  thresholdTokens: 150000     # compact past 150k tokens, on any model
 
 theme:
   dark: titanium
@@ -548,8 +548,8 @@ compaction:
   enabled: true
   strategy: snap              # handoff | snap (schema default)
   midTurnEnabled: true        # check thresholds between tool-loop provider requests
-  thresholdPercent: -1        # -1 = provider/reserve default
-  thresholdTokens: -1         # fixed token limit when > 0
+  thresholdTokens: -1         # absolute token trigger, model-independent (-1 = use the percent below)
+  thresholdPercent: -1        # legacy percent-of-window trigger (-1 = provider/reserve default)
   remoteEnabled: true
 
 memory:
@@ -563,8 +563,8 @@ memory:
 | `compaction.midTurnEnabled` | boolean | `true` | Check thresholds at safe mid-turn tool-loop boundaries before the next provider request. |
 | `compaction.strategy` | enum | `snap` | `handoff` (LLM handoff summary / new session transfer) or `snap` (snapcompact dense image archive; no LLM call for the archive path). |
 | `compaction.model` | string | unset | Model for handoff/LLM compaction; unset inherits interactive (`modelRoles.default`). |
-| `compaction.thresholdPercent` | number | `-1` | Percent-of-context trigger; `-1` = reserve/provider default. |
-| `compaction.thresholdTokens` | number | `-1` | Fixed token trigger when `> 0`. |
+| `compaction.thresholdTokens` | number | `-1` | Absolute token trigger, model-independent: compact when context exceeds this many tokens. The primary knob (`/settings` -> Compaction Threshold). Wins over `thresholdPercent` when `> 0`. If it exceeds the current model's window it is honored up to `contextWindow - 1` and you get a one-time warning. `-1` = use the percent below. |
+| `compaction.thresholdPercent` | number | `-1` | Legacy percent-of-window trigger; ignored when `thresholdTokens > 0`. `-1` = reserve/provider default. |
 | `compaction.remoteEnabled` | boolean | `true` | Allow remote compaction service. |
 | `memory.backend` | enum | `off` | `off`, `local`, `hindsight`, `mnemopi`. Each backend has its own `hindsight.*` / `mnemopi.*` / `memories.*` tuning keys. |
 | `autolearn.enabled` | boolean | `false` | Experimental: after the agent stops, nudge it to capture lessons to memory and create/enhance isolated managed skills under `~/.veyyon/profiles/default/agent/managed-skills`. Enables the `manage_skill` tool (and `learn` when a memory backend is active). |

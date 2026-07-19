@@ -341,6 +341,26 @@ export function resolveThresholdTokens(contextWindow: number, settings: Compacti
 	return Math.floor(contextWindow * (clampedThresholdPercent / 100));
 }
 
+/**
+ * True when the operator configured an absolute `compaction.thresholdTokens`
+ * that this model's window cannot hold, so `resolveThresholdTokens` had to cap
+ * it below the configured value. Callers surface this loudly: the absolute
+ * amount is honored up to `contextWindow - 1` and never silently reinterpreted,
+ * so the operator learns their model-independent amount was capped for the
+ * current (smaller) model.
+ *
+ * Defined in terms of `resolveThresholdTokens` so the clamp boundary lives in
+ * exactly one place — this predicate just reports "did the resolver reduce my
+ * configured amount?".
+ */
+export function isThresholdTokensClampedForWindow(contextWindow: number, settings: CompactionSettings): boolean {
+	const thresholdTokens = settings.thresholdTokens;
+	if (typeof thresholdTokens !== "number" || !Number.isFinite(thresholdTokens) || thresholdTokens <= 0) {
+		return false;
+	}
+	return resolveThresholdTokens(contextWindow, settings) < thresholdTokens;
+}
+
 // ============================================================================
 // Cut point detection
 // ============================================================================

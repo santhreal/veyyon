@@ -51,14 +51,53 @@ export const CONTEXT_SETTINGS = {
 		},
 	},
 
-	"compaction.thresholdPercent": {
+	// The visible compaction knob is an ABSOLUTE token amount, model-independent:
+	// compaction triggers when context exceeds this many tokens, whatever the
+	// current model's window is. It takes priority over the legacy percent knob
+	// below (see resolveThresholdTokens). When the amount exceeds the current
+	// model's window it is honored up to `contextWindow - 1` and the operator is
+	// notified loudly (never silently reinterpreted) — see
+	// isThresholdTokensClampedForWindow.
+	"compaction.thresholdTokens": {
 		type: "number",
 		default: -1,
 		ui: {
 			tab: "model",
 			group: "Compaction",
 			label: "Compaction Threshold",
-			description: "Auto-compact when context exceeds this percent of the window (-1 = provider default).",
+			description:
+				"Auto-compact when context exceeds this many tokens (model-independent). Default = the legacy percent/reserve behavior below. Wins over the percent knob when set.",
+			options: [
+				{ value: "default", label: "Default", description: "Use the percent/reserve threshold below" },
+				{ value: "32000", label: "32k", description: "Compact past 32,000 tokens" },
+				{ value: "64000", label: "64k", description: "Compact past 64,000 tokens" },
+				{ value: "100000", label: "100k", description: "Compact past 100,000 tokens" },
+				{ value: "128000", label: "128k", description: "Compact past 128,000 tokens" },
+				{ value: "150000", label: "150k", description: "Compact past 150,000 tokens" },
+				{ value: "200000", label: "200k", description: "Compact past 200,000 tokens" },
+				{ value: "256000", label: "256k", description: "Compact past 256,000 tokens" },
+				{ value: "300000", label: "300k", description: "Compact past 300,000 tokens" },
+				{ value: "400000", label: "400k", description: "Compact past 400,000 tokens" },
+				{ value: "500000", label: "500k", description: "Compact past 500,000 tokens" },
+				{ value: "750000", label: "750k", description: "Compact past 750,000 tokens" },
+				{ value: "1000000", label: "1M", description: "Compact past 1,000,000 tokens" },
+			],
+		},
+	},
+
+	// Legacy percent-of-window threshold. Kept valid and honored only when
+	// `compaction.thresholdTokens` is Default (-1). Model-relative, so the same
+	// percent means a different absolute trigger on every model — prefer the
+	// absolute token amount above.
+	"compaction.thresholdPercent": {
+		type: "number",
+		default: -1,
+		ui: {
+			tab: "model",
+			group: "Compaction",
+			label: "Compaction Threshold (percent, legacy)",
+			description:
+				"Legacy: auto-compact when context exceeds this percent of the model's window (-1 = provider default). Ignored when the token amount above is set.",
 			options: [
 				{ value: "default", label: "Default", description: "Legacy reserve-based threshold" },
 				{ value: "10", label: "10%", description: "Extremely early maintenance" },
@@ -75,10 +114,6 @@ export const CONTEXT_SETTINGS = {
 				{ value: "95", label: "95%", description: "Near context limit" },
 			],
 		},
-	},
-	"compaction.thresholdTokens": {
-		type: "number",
-		default: -1,
 	},
 
 	"compaction.model": {

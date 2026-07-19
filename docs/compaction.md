@@ -417,7 +417,8 @@ From `settings-schema.ts`:
 - `compaction.midTurnEnabled` = `true`
 - `compaction.remoteEnabled` = `true`
 - `compaction.remoteEndpoint` = `undefined`
-- `compaction.thresholdPercent` = `-1` and `compaction.thresholdTokens` = `-1`; when no positive override is set, the threshold is `contextWindow - max(15% of contextWindow, reserveTokens)`
+- `compaction.thresholdTokens` = `-1`; the primary trigger is an absolute token amount, model-independent. When set `> 0`, compaction runs once context exceeds that many tokens, whatever the current model's window is, and it wins over `thresholdPercent`. When the amount is larger than the current model's window it is honored up to `contextWindow - 1` and the operator gets a one-time warning (never silently reinterpreted).
+- `compaction.thresholdPercent` = `-1`; the legacy percent-of-window trigger, used only when `thresholdTokens` is `-1`. When both are unset the threshold is `contextWindow - max(15% of contextWindow, reserveTokens)`.
 - `compaction.idleEnabled` = `false`
 - `compaction.idleThresholdTokens` = `200000`
 - `compaction.idleTimeoutSeconds` = `300`

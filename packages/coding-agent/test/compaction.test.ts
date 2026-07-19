@@ -10,6 +10,7 @@ import {
 	estimateTokens,
 	findCutPoint,
 	getLastAssistantUsage,
+	isThresholdTokensClampedForWindow,
 	prepareCompaction,
 	resolveThresholdTokens,
 	shouldCompact,
@@ -329,6 +330,92 @@ describe("shouldCompact", () => {
 		};
 
 		expect(shouldCompact(95000, 100000, settings)).toBe(false);
+	});
+});
+
+describe("resolveThresholdTokens — absolute token amount (the visible knob)", () => {
+	it("uses a configured absolute thresholdTokens verbatim, ignoring the percent knob", () => {
+		const settings: CompactionSettings = {
+			enabled: true,
+			thresholdTokens: 150_000,
+			// A percent that would resolve to 900,000 on this window — proven ignored.
+			thresholdPercent: 90,
+			reserveTokens: 10_000,
+			keepRecentTokens: 20_000,
+		};
+
+		expect(resolveThresholdTokens(1_000_000, settings)).toBe(150_000);
+		expect(shouldCompact(149_999, 1_000_000, settings)).toBe(false);
+		expect(shouldCompact(150_001, 1_000_000, settings)).toBe(true);
+	});
+
+	it("is model-independent: the same amount triggers at the same token count on a different window", () => {
+		const settings: CompactionSettings = {
+			enabled: true,
+			thresholdTokens: 100_000,
+			thresholdPercent: -1,
+			reserveTokens: 10_000,
+			keepRecentTokens: 20_000,
+		};
+
+		// 200k window and 1M window both trigger at exactly 100,000 tokens.
+		expect(resolveThresholdTokens(200_000, settings)).toBe(100_000);
+		expect(resolveThresholdTokens(1_000_000, settings)).toBe(100_000);
+	});
+
+	it("falls back to the percent knob when thresholdTokens is the default sentinel (-1)", () => {
+		const settings: CompactionSettings = {
+			enabled: true,
+			thresholdTokens: -1,
+			thresholdPercent: 80,
+			reserveTokens: 10_000,
+			keepRecentTokens: 20_000,
+		};
+
+		expect(resolveThresholdTokens(100_000, settings)).toBe(80_000);
+	});
+
+	it("caps the amount at contextWindow - 1 when it exceeds the current model's window", () => {
+		const settings: CompactionSettings = {
+			enabled: true,
+			thresholdTokens: 500_000,
+			thresholdPercent: -1,
+			reserveTokens: 10_000,
+			keepRecentTokens: 20_000,
+		};
+
+		// 500k configured, 200k model window → capped to 199,999.
+		expect(resolveThresholdTokens(200_000, settings)).toBe(199_999);
+	});
+});
+
+describe("isThresholdTokensClampedForWindow — loud clamp signal", () => {
+	const base: CompactionSettings = {
+		enabled: true,
+		thresholdPercent: -1,
+		reserveTokens: 10_000,
+		keepRecentTokens: 20_000,
+	};
+
+	it("is true when the configured amount exceeds contextWindow - 1", () => {
+		const settings: CompactionSettings = { ...base, thresholdTokens: 500_000 };
+		expect(isThresholdTokensClampedForWindow(200_000, settings)).toBe(true);
+	});
+
+	it("is false when the configured amount fits inside the window", () => {
+		const settings: CompactionSettings = { ...base, thresholdTokens: 150_000 };
+		expect(isThresholdTokensClampedForWindow(200_000, settings)).toBe(false);
+	});
+
+	it("is false exactly at the contextWindow - 1 boundary (honored, not capped)", () => {
+		const settings: CompactionSettings = { ...base, thresholdTokens: 199_999 };
+		expect(resolveThresholdTokens(200_000, settings)).toBe(199_999);
+		expect(isThresholdTokensClampedForWindow(200_000, settings)).toBe(false);
+	});
+
+	it("is false when thresholdTokens is unset (percent/reserve path, nothing to clamp)", () => {
+		const settings: CompactionSettings = { ...base, thresholdTokens: -1, thresholdPercent: 90 };
+		expect(isThresholdTokensClampedForWindow(200_000, settings)).toBe(false);
 	});
 });
 

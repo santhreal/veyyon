@@ -60,6 +60,7 @@ import {
 	estimateTokens,
 	generateBranchSummary,
 	generateHandoffFromContext,
+	isThresholdTokensClampedForWindow,
 	prepareCompaction,
 	renderHandoffPrompt,
 	resolveBudgetReserveTokens,
@@ -1761,6 +1762,13 @@ export class AgentSession {
 	 * next tool call.
 	 */
 	#approvalBypassActive = false;
+
+	// Context window we last warned about clamping `compaction.thresholdTokens`
+	// for. The absolute token amount is model-independent, so when it exceeds the
+	// current model's window we honor it up to `contextWindow - 1` and warn once
+	// per distinct window (re-warns after a model switch to a smaller window),
+	// never silently reinterpreting the operator's configured amount.
+	#compactionClampNoticeWindow: number | undefined = undefined;
 
 	#powerAssertion: MacOSPowerAssertion | undefined;
 
@@ -11359,6 +11367,7 @@ export class AgentSession {
 			storedContextTokens,
 		);
 		const thresholdTokens = resolveThresholdTokens(contextWindow, compactionSettings);
+		this.#noticeCompactionThresholdClamp(contextWindow, compactionSettings, thresholdTokens);
 		const shouldThresholdCompact = shouldCompact(contextTokens, contextWindow, compactionSettings);
 		logger.debug("Auto-compaction threshold decision", {
 			phase: "post-agent-end",
@@ -11405,6 +11414,29 @@ export class AgentSession {
 			Array.isArray(record.type) &&
 			record.type.length > 0 &&
 			record.type.every(item => typeof item === "string")
+		);
+	}
+
+	/**
+	 * Warn the operator, once per distinct context window, when their configured
+	 * absolute `compaction.thresholdTokens` exceeds the current model's window and
+	 * was capped to `contextWindow - 1`. The token amount is model-independent by
+	 * design, so rather than silently reinterpreting it (a silent fallback) we
+	 * honor it up to the window and say so loudly. Re-warns after a switch to a
+	 * different (smaller) window; stays quiet once the amount fits.
+	 */
+	#noticeCompactionThresholdClamp(
+		contextWindow: number,
+		compactionSettings: CompactionSettings,
+		clampedThresholdTokens: number,
+	): void {
+		if (!isThresholdTokensClampedForWindow(contextWindow, compactionSettings)) return;
+		if (this.#compactionClampNoticeWindow === contextWindow) return;
+		this.#compactionClampNoticeWindow = contextWindow;
+		this.emitNotice(
+			"warning",
+			`compaction.thresholdTokens (${compactionSettings.thresholdTokens}) is larger than this model's context window (${contextWindow}); capped to ${clampedThresholdTokens} tokens for the current model. Lower the amount or switch to a larger-window model to use the full value.`,
+			"compaction",
 		);
 	}
 

@@ -10,9 +10,14 @@ behind it.
 
 Primary compaction knobs (settings → Models → Compaction, or `config.yml`):
 
-- **Threshold** (`compaction.thresholdPercent`): percent of the
-  context window at which auto-compaction runs. Also on demand with `/compact`.
-  Optional fixed trigger: `compaction.thresholdTokens` when set `> 0`.
+- **Threshold** (`compaction.thresholdTokens`): an absolute token amount,
+  model-independent. Auto-compaction runs once context exceeds this many
+  tokens, whatever the current model's window is. This is the primary knob.
+  When the amount is larger than the current model's window, it is honored up
+  to one token below the window and you get a one-time warning. Set it to
+  `Default` (`-1`) to fall back to the legacy percent trigger
+  (`compaction.thresholdPercent`), which is a percent of the current model's
+  window. You can also compact on demand with `/compact`.
 - **Type** (`compaction.strategy`): how history is compressed:
   - `handoff`: writes a structured handoff summary that preserves the task, pending questions, and
     recent decisions, then continues from it (LLM transfer path).
