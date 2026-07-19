@@ -6,6 +6,7 @@
  * for the browser — see BACKLOG SPEC-ONE-PLACE-AUDIT F6.
  */
 import { collapseWhitespace } from "@veyyon/utils/collapse-whitespace";
+import { truncate as truncateChars } from "@veyyon/utils/format";
 import { stripAnsi } from "@veyyon/utils/strip-ansi";
 import { isRecord } from "@veyyon/utils/type-guards";
 import type { ToolResultImage, ToolResultLike } from "./types";
@@ -73,8 +74,15 @@ export function scopePaths(args: Record<string, unknown>): string[] {
 	return [];
 }
 
+/**
+ * Truncate to `maxLen` code points, appending an ellipsis when cut. Delegates
+ * to the single owner in `@veyyon/utils/format`, which cuts by code point (so an
+ * astral character — emoji, rare CJK — is never split into a lone surrogate)
+ * and reserves the ellipsis width so the result never exceeds `maxLen`. This
+ * wrapper only supplies the historical default of 100 that the owner omits.
+ */
 export function truncate(s: string, maxLen = 100): string {
-	return s.length <= maxLen ? s : `${s.slice(0, maxLen)}…`;
+	return truncateChars(s, maxLen);
 }
 
 /** Collapse all whitespace runs to single spaces (for one-line summaries). */
