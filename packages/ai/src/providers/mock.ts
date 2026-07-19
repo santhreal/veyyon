@@ -42,6 +42,7 @@
  *   expect(mock.calls).toHaveLength(2);
  */
 
+import { emptyUsage } from "@veyyon/catalog/models";
 import { registerCustomApi } from "../api-registry";
 import * as AIError from "../error";
 import type {
@@ -425,17 +426,6 @@ function normalizeContent(input: MockContent, state: MockModel): TextContent | T
 		} as ToolCall;
 	}
 	return input;
-}
-
-function emptyUsage(): Usage {
-	return {
-		input: 0,
-		output: 0,
-		cacheRead: 0,
-		cacheWrite: 0,
-		totalTokens: 0,
-		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-	} as Usage;
 }
 
 function mergeUsage(partial?: Partial<Omit<Usage, "cost">> & { cost?: Partial<Usage["cost"]> }): Usage {

@@ -1,3 +1,4 @@
+import { emptyUsage } from "@veyyon/catalog/models";
 import { normalizeOllamaCloudBaseUrl } from "@veyyon/catalog/provider-models/ollama";
 import { fetchWithRetry, parseStreamingJson } from "@veyyon/utils";
 import * as AIError from "../error";
@@ -361,14 +362,7 @@ function createEmptyOutput(model: Model<"ollama-chat">): AssistantMessage {
 		api: "ollama-chat" as Api,
 		provider: model.provider,
 		model: model.id,
-		usage: {
-			input: 0,
-			output: 0,
-			cacheRead: 0,
-			cacheWrite: 0,
-			totalTokens: 0,
-			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-		},
+		usage: emptyUsage(),
 		stopReason: "stop",
 		timestamp: Date.now(),
 	};

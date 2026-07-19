@@ -2,7 +2,7 @@ import { Database } from "bun:sqlite";
 import * as fs from "node:fs/promises";
 import type { StopReason, Usage } from "@veyyon/ai";
 import type { GeneratedProvider } from "@veyyon/catalog/models";
-import { getBundledModel } from "@veyyon/catalog/models";
+import { emptyCost, getBundledModel } from "@veyyon/catalog/models";
 import { getConfigRootDir, getStatsDbPath } from "@veyyon/utils";
 import { classifyAgentType } from "./parser";
 import type {
@@ -31,14 +31,6 @@ import type {
 type ModelCost = { input: number; output: number; cacheRead: number; cacheWrite: number };
 type UsageCost = Usage["cost"];
 type CostTokens = Pick<Usage, "input" | "output" | "cacheRead" | "cacheWrite">;
-
-const ZERO_USAGE_COST: UsageCost = {
-	input: 0,
-	output: 0,
-	cacheRead: 0,
-	cacheWrite: 0,
-	total: 0,
-};
 
 interface CostBackfillRow {
 	id: number;
@@ -317,7 +309,7 @@ function resolveStoredCost(stats: MessageStats): UsageCost {
 		return storedCost;
 	}
 
-	return calculateCatalogCost(stats.provider, stats.model, stats.usage) ?? storedCost ?? ZERO_USAGE_COST;
+	return calculateCatalogCost(stats.provider, stats.model, stats.usage) ?? storedCost ?? emptyCost();
 }
 
 function backfillMissingCatalogCosts(database: Database): void {

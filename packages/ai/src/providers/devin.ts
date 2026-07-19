@@ -27,7 +27,7 @@ import {
 	MetadataSchema,
 	StopReason,
 } from "@veyyon/catalog/discovery/devin-gen/exa/codeium_common_pb/codeium_common_pb";
-import { calculateCost } from "@veyyon/catalog/models";
+import { calculateCost, emptyUsage } from "@veyyon/catalog/models";
 import { logger, parseStreamingJson, parseStreamingJsonThrottled, trimTrailingSlashes } from "@veyyon/utils";
 import * as AIError from "../error";
 import type {
@@ -96,14 +96,7 @@ export const streamDevin: StreamFunction<"devin-agent"> = (
 			api: "devin-agent" as Api,
 			provider: model.provider,
 			model: model.id,
-			usage: {
-				input: 0,
-				output: 0,
-				cacheRead: 0,
-				cacheWrite: 0,
-				totalTokens: 0,
-				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-			},
+			usage: emptyUsage(),
 			stopReason: "stop",
 			timestamp: Date.now(),
 		};

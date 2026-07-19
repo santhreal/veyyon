@@ -102,7 +102,7 @@ import {
 	WriteShellStdinResultSchema,
 	WriteSuccessSchema,
 } from "@veyyon/catalog/discovery/cursor-gen/agent_pb";
-import { calculateCost } from "@veyyon/catalog/models";
+import { calculateCost, emptyUsage } from "@veyyon/catalog/models";
 import {
 	$env,
 	errorMessage,
@@ -336,14 +336,7 @@ export const streamCursor: StreamFunction<"cursor-agent"> = (
 			api: "cursor-agent" as Api,
 			provider: model.provider,
 			model: model.id,
-			usage: {
-				input: 0,
-				output: 0,
-				cacheRead: 0,
-				cacheWrite: 0,
-				totalTokens: 0,
-				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-			},
+			usage: emptyUsage(),
 			stopReason: "stop",
 			timestamp: Date.now(),
 		};

@@ -5,6 +5,7 @@ import * as path from "node:path";
 import type { AgentMessage } from "@veyyon/agent-core";
 import { type ApiKey, completeSimple, Effort, type Model } from "@veyyon/ai";
 import { clampThinkingLevelForModel } from "@veyyon/catalog/model-thinking";
+import { emptyCost } from "@veyyon/catalog/models";
 import { getAgentDbPath, getMemoriesDir, isEnoent, logger, parseJsonlLenient, prompt } from "@veyyon/utils";
 
 import type { ModelRegistry } from "../config/model-registry";
@@ -383,7 +384,7 @@ async function runPhase1(options: {
 			succeededNoOutput: 0,
 			failed: 0,
 			produced: 0,
-			usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+			usage: emptyCost(),
 		};
 
 		await runWithConcurrency(claims, config.stage1Concurrency, async claim => {

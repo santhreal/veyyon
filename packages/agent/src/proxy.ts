@@ -19,7 +19,7 @@ import {
 	type StreamingPartialJsonCarrier,
 	setStreamingPartialJson,
 } from "@veyyon/ai/utils/block-symbols";
-import { calculateCost } from "@veyyon/catalog/models";
+import { calculateCost, emptyUsage } from "@veyyon/catalog/models";
 import { errorMessage, parseStreamingJson, readSseJson } from "@veyyon/utils";
 
 // Event stream adapter for proxy SSE events
@@ -102,14 +102,7 @@ export function streamProxy(model: Model, context: Context, options: ProxyStream
 			api: model.api,
 			provider: model.provider,
 			model: model.id,
-			usage: {
-				input: 0,
-				output: 0,
-				cacheRead: 0,
-				cacheWrite: 0,
-				totalTokens: 0,
-				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-			},
+			usage: emptyUsage(),
 			timestamp: Date.now(),
 		};
 
@@ -236,14 +229,7 @@ function processProxyEvent(
 	switch (proxyEvent.type) {
 		case "start":
 			partial.content.length = 0;
-			partial.usage = {
-				input: 0,
-				output: 0,
-				cacheRead: 0,
-				cacheWrite: 0,
-				totalTokens: 0,
-				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-			};
+			partial.usage = emptyUsage();
 			partial.errorMessage = undefined;
 			partial.errorId = undefined;
 			partial.duration = undefined;

@@ -1,3 +1,4 @@
+import { emptyUsage } from "@veyyon/catalog/models";
 import { errorMessage } from "@veyyon/utils";
 import type { Api, Model } from "../types";
 
@@ -8,14 +9,7 @@ export function createProviderErrorMessage(model: Model<Api>, err: unknown) {
 		api: model.api,
 		provider: model.provider,
 		model: model.id,
-		usage: {
-			input: 0,
-			output: 0,
-			cacheRead: 0,
-			cacheWrite: 0,
-			totalTokens: 0,
-			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-		},
+		usage: emptyUsage(),
 		stopReason: "error" as const,
 		timestamp: Date.now(),
 	};

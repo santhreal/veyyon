@@ -39,6 +39,7 @@ import {
 	signalListLabel,
 } from "@veyyon/ai/utils/harmony-leak";
 import { preferredDialect } from "@veyyon/catalog/identity";
+import { emptyUsage } from "@veyyon/catalog/models";
 import { errorMessage, formatCount, logger, sanitizeText, structuredCloneJSON } from "@veyyon/utils";
 import { INTENT_FIELD } from "@veyyon/wire";
 import { agentPauseGate } from "./pause";
@@ -1766,14 +1767,7 @@ function emitAbortedAssistantMessage(
 				api: model.api,
 				provider: model.provider,
 				model: model.id,
-				usage: {
-					input: 0,
-					output: 0,
-					cacheRead: 0,
-					cacheWrite: 0,
-					totalTokens: 0,
-					cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-				},
+				usage: emptyUsage(),
 				stopReason: "aborted",
 				errorMessage,
 				errorId,

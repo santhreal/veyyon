@@ -3,7 +3,7 @@
  */
 
 import { scheduler } from "node:timers/promises";
-import { calculateCost } from "@veyyon/catalog/models";
+import { calculateCost, emptyCost, emptyUsage } from "@veyyon/catalog/models";
 import { readSseJson } from "@veyyon/utils";
 import { renderDemotedThinking } from "../dialect/demotion";
 import * as AIError from "../error";
@@ -469,14 +469,7 @@ export function hasMeaningfulGoogleContent(output: AssistantMessage): boolean {
 /** Wipe a streamed message between empty-response retries so the next attempt starts clean. */
 function resetGoogleStreamOutputForRetry(output: AssistantMessage): void {
 	output.content = [];
-	output.usage = {
-		input: 0,
-		output: 0,
-		cacheRead: 0,
-		cacheWrite: 0,
-		totalTokens: 0,
-		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-	};
+	output.usage = emptyUsage();
 	output.stopReason = "stop";
 	output.errorMessage = undefined;
 	output.timestamp = Date.now();
@@ -740,13 +733,7 @@ export async function consumeGoogleStream<T extends GoogleApiType>(args: {
 				cacheWrite: 0,
 				totalTokens: chunk.usageMetadata.totalTokenCount || 0,
 				...(thinkingTokens > 0 ? { reasoningTokens: thinkingTokens } : {}),
-				cost: {
-					input: 0,
-					output: 0,
-					cacheRead: 0,
-					cacheWrite: 0,
-					total: 0,
-				},
+				cost: emptyCost(),
 			};
 			calculateCost(model, output.usage);
 		}
@@ -910,14 +897,7 @@ export function streamGoogleGenAI<T extends "google-generative-ai" | "google-ver
 			api: api as Api,
 			provider: model.provider,
 			model: model.id,
-			usage: {
-				input: 0,
-				output: 0,
-				cacheRead: 0,
-				cacheWrite: 0,
-				totalTokens: 0,
-				cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-			},
+			usage: emptyUsage(),
 			stopReason: "stop",
 			timestamp: Date.now(),
 		};

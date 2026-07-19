@@ -11,6 +11,7 @@
  * loading that can be integrated when stream.ts is refactored.
  */
 
+import { emptyUsage } from "@veyyon/catalog/models";
 import { errorMessage } from "@veyyon/utils";
 import * as AIError from "../error";
 import type {
@@ -303,14 +304,7 @@ function createLazyLoadErrorMessage<TApi extends Api>(
 		api: model.api,
 		provider: model.provider,
 		model: model.id,
-		usage: {
-			input: 0,
-			output: 0,
-			cacheRead: 0,
-			cacheWrite: 0,
-			totalTokens: 0,
-			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-		},
+		usage: emptyUsage(),
 		stopReason,
 		errorMessage: stopReason === "aborted" ? "Request was aborted" : errorMessage(error),
 		timestamp: Date.now(),

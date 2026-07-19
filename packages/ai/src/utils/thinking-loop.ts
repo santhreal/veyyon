@@ -36,6 +36,7 @@
  * `completeSimple`) re-sample it a few times and then let a stubborn loop cook
  * through one unguarded pass. Disable detection with `VEYYON_NO_THINKING_LOOP_GUARD=1`.
  */
+import { emptyUsage } from "@veyyon/catalog/models";
 import { logger } from "@veyyon/utils";
 import * as AIError from "../error";
 import type { Api, AssistantMessage, Model, StreamOptions } from "../types";
@@ -470,14 +471,7 @@ function buildThinkingLoopError(model: Model<Api>, detail: string): AssistantMes
 		api: model.api,
 		provider: model.provider,
 		model: model.id,
-		usage: {
-			input: 0,
-			output: 0,
-			cacheRead: 0,
-			cacheWrite: 0,
-			totalTokens: 0,
-			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-		},
+		usage: emptyUsage(),
 		stopReason: "error",
 		// "stream stall" makes the transport/session retry classifiers treat this
 		// as a transient (retryable) failure with no bespoke rule.
