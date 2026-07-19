@@ -56,9 +56,9 @@ describe("exec — nonzero exit", () => {
 
 describe("exec — cancellation", () => {
 	it("returns an AbortError result when an already-aborted signal is passed and allowAbort is set", async () => {
-		const child = spawn(["sh", "-c", "sleep 2"], { signal: AbortSignal.abort() });
-		child.exited.catch(() => {});
-		const r = await child.wait({ allowAbort: true });
+		// No test-side pre-attach: wait() itself must close the unhandled-rejection
+		// window (regression guard for PTREE-WAIT-LATE-REJECT-WINDOW).
+		const r = await exec(["sh", "-c", "sleep 2"], { signal: AbortSignal.abort(), allowAbort: true });
 		expect(r.ok).toBe(false);
 		expect(r.exitCode).toBeNull();
 		expect(r.exitError).toBeInstanceOf(AbortError);
@@ -76,22 +76,25 @@ describe("exec — cancellation", () => {
 		expect((caught as AbortError).aborted).toBe(true);
 	});
 
-	it("times out with a TimeoutError after the deadline", async () => {
-		const child = spawn(["sh", "-c", "sleep 2"], { timeout: 60 });
-		// Pre-attach so the kill-triggered rejection is never momentarily unhandled
-		// while wait() is still draining stdout/stderr.
-		child.exited.catch(() => {});
-		const r = await child.wait({ allowAbort: true });
+	it("times out with a TimeoutError while stdout is still flooding (no unhandled rejection)", async () => {
+		// A process actively producing stdout when the timeout kill lands is the
+		// widest form of the drain window: without wait()'s synchronous exit
+		// handler this leaks an unhandledRejection and fails the runner. No
+		// test-side pre-attach — exec() must handle it end to end.
+		const r = await exec(["sh", "-c", "i=0; while [ $i -lt 1000000 ]; do echo $i; i=$((i+1)); done"], {
+			timeout: 60,
+			allowAbort: true,
+		});
 		expect(r.exitError).toBeInstanceOf(TimeoutError);
 		expect(r.exitError?.aborted).toBe(true);
+		expect(r.ok).toBe(false);
 	});
 
 	it("aborts mid-flight when a live signal fires", async () => {
 		const controller = new AbortController();
-		const child = spawn(["sh", "-c", "sleep 2"], { signal: controller.signal });
-		child.exited.catch(() => {});
+		const promise = exec(["sh", "-c", "sleep 2"], { signal: controller.signal, allowAbort: true });
 		controller.abort();
-		const r = await child.wait({ allowAbort: true });
+		const r = await promise;
 		expect(r.exitError).toBeInstanceOf(AbortError);
 		expect(r.exitError?.aborted).toBe(true);
 	});

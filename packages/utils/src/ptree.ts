@@ -260,6 +260,26 @@ export class ChildProcess<In extends InMask = InMask> {
 	async wait(opts?: WaitOptions): Promise<ExecResult> {
 		const { allowNonZero = false, allowAbort = false, stderr: stderrMode = "buffer" } = opts ?? {};
 
+		// Attach the exit handler synchronously, BEFORE draining stdout/stderr.
+		// A kill that lands during the drain window (timeout fired, signal
+		// aborted) rejects `#exited` immediately; if nothing were awaiting it
+		// yet, that rejection would surface as a spurious unhandledRejection for
+		// a process being cancelled exactly as designed. This settled promise
+		// never rejects (both paths capture into locals), so there is no window.
+		let exitError: Exception | undefined;
+		let fatalError: unknown;
+		let hasFatal = false;
+		const exitSettled = this.#exited.then(
+			() => {},
+			(err: unknown) => {
+				if (err instanceof Exception) exitError = err;
+				else {
+					fatalError = err;
+					hasFatal = true;
+				}
+			},
+		);
+
 		const stdoutP = new Response(this.stdout).text();
 		const stderrP =
 			stderrMode === "full"
@@ -268,13 +288,8 @@ export class ChildProcess<In extends InMask = InMask> {
 
 		const [stdout, stderr] = await Promise.all([stdoutP, stderrP]);
 
-		let exitError: Exception | undefined;
-		try {
-			await this.#exited;
-		} catch (err) {
-			if (err instanceof Exception) exitError = err;
-			else throw err;
-		}
+		await exitSettled;
+		if (hasFatal) throw fatalError;
 
 		if (!exitError) exitError = this.exitReason;
 		if (!exitError && this.exitCode !== null && this.exitCode !== 0) {
