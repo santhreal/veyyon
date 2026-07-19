@@ -177,7 +177,7 @@ describe("run() usage errors", () => {
 			return true;
 		});
 		const prevExitCode = process.exitCode;
-		let observedExitCode: number | undefined;
+		let observedExitCode: number | string | null | undefined;
 		try {
 			await expect(
 				run({ bin: "veyyon", version: "0.0.0", argv: ["usage", "invalidate", "anthropic"], commands }),
@@ -224,6 +224,32 @@ describe("run() usage errors", () => {
 			process.exitCode = prevExitCode ?? 0;
 		}
 		expect(errs.join("")).not.toContain("Unexpected");
+	});
+
+	// Contract: an unknown command name exits 1 with one consistent message, on
+	// both the run path and the `--help` path — `veyyon <typo> --help` used to
+	// print a different message and exit 0, reporting the typo as success.
+	it.each([
+		["run path", ["nope"]],
+		["help path", ["nope", "--help"]],
+	])("reports an unknown command consistently and exits 1 (%s)", async (_label, argv) => {
+		const commands: CommandEntry[] = [{ name: "bench", load: async () => BenchLikeCommand }];
+		const errs: string[] = [];
+		const stderrSpy = spyOn(process.stderr, "write").mockImplementation(chunk => {
+			errs.push(String(chunk));
+			return true;
+		});
+		const prevExitCode = process.exitCode;
+		let observedExitCode: number | string | null | undefined;
+		try {
+			await run({ bin: "veyyon", version: "0.0.0", argv, commands });
+			observedExitCode = process.exitCode;
+		} finally {
+			stderrSpy.mockRestore();
+			process.exitCode = prevExitCode ?? 0;
+		}
+		expect(observedExitCode).toBe(1);
+		expect(errs.join("")).toContain("Error: Unknown command 'nope'");
 	});
 });
 

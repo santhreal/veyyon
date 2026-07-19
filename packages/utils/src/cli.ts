@@ -485,6 +485,11 @@ function findEntry(commands: CommandEntry[], id: string): CommandEntry | undefin
 	return commands.find(e => e.name === id) ?? commands.find(e => e.aliases?.includes(id));
 }
 
+/** Single source for the unknown-command message so every dispatch path agrees. */
+function unknownCommandLine(commandId: string): string {
+	return `Error: Unknown command '${commandId}'\n`;
+}
+
 /**
  * Main entry point — replaces `run()` from @oclif/core.
  *
@@ -523,7 +528,11 @@ export async function run(opts: RunOptions): Promise<void> {
 			const Cmd = await loadEntry(entry);
 			renderCommandHelp(bin, entry.name, Cmd);
 		} else {
-			process.stderr.write(`Unknown command: ${commandId}\n`);
+			// An unknown command is an error on the help path too: exit non-zero so
+			// `veyyon <typo> --help` matches `veyyon <typo>` (both exit 1) instead of
+			// reporting the typo as success.
+			process.stderr.write(unknownCommandLine(commandId));
+			process.exitCode = 1;
 		}
 		return;
 	}
@@ -532,7 +541,7 @@ export async function run(opts: RunOptions): Promise<void> {
 	const entry = findEntry(opts.commands, commandId);
 
 	if (!entry) {
-		process.stderr.write(`Error: command ${commandId} not found\n`);
+		process.stderr.write(unknownCommandLine(commandId));
 		process.exitCode = 1;
 		return;
 	}
