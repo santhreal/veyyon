@@ -184,6 +184,14 @@ function getBaseConfigRoot(): string {
 export const DEFAULT_PROFILE_DIR_NAME = "default";
 
 /**
+ * The single directory under the config root that holds all profiles
+ * (`<configRoot>/profiles/<name>`). One owner for the segment name so a rename
+ * or layout change touches exactly one place; every profile-path builder below
+ * joins this rather than repeating the literal.
+ */
+export const PROFILES_DIR_NAME = "profiles";
+
+/**
  * Every profile — including the default — lives under `profiles/<name>`.
  * The bare config root holds only global, cross-profile state (the global
  * `config.yml`, `install-id`, and `profiles/` itself); see
@@ -191,7 +199,7 @@ export const DEFAULT_PROFILE_DIR_NAME = "default";
  * legacy bare-root layout.
  */
 function getProfileConfigRoot(profile: string | undefined): string {
-	return path.join(getBaseConfigRoot(), "profiles", profile ?? DEFAULT_PROFILE_DIR_NAME);
+	return path.join(getBaseConfigRoot(), PROFILES_DIR_NAME, profile ?? DEFAULT_PROFILE_DIR_NAME);
 }
 
 /**
@@ -402,8 +410,7 @@ export function getConfigDirName(): string {
 
 /** Get the config agent directory name relative to home (e.g. ".veyyon/profiles/default/agent"). */
 export function getConfigAgentDirName(): string {
-	const profile = getActiveProfile() ?? DEFAULT_PROFILE_DIR_NAME;
-	return path.join(getConfigDirName(), "profiles", profile, "agent");
+	return path.join(getConfigDirName(), PROFILES_DIR_NAME, getActiveProfileOrDefault(), "agent");
 }
 
 // =============================================================================
@@ -461,7 +468,7 @@ class DirResolver {
 				try {
 					const appRoot = path.join(value, APP_NAME);
 					if (profile) {
-						const profilePath = path.join(appRoot, "profiles", profile);
+						const profilePath = path.join(appRoot, PROFILES_DIR_NAME, profile);
 						if (fs.existsSync(profilePath)) {
 							return profilePath;
 						}
@@ -678,6 +685,15 @@ export function getActiveProfile(): string | undefined {
 	return activeProfile;
 }
 
+/**
+ * The active profile's directory name, resolving the undefined (default) case to
+ * {@link DEFAULT_PROFILE_DIR_NAME}. One owner for the "active profile, or default"
+ * idiom so the fallback can never drift between path builders.
+ */
+export function getActiveProfileOrDefault(): string {
+	return getActiveProfile() ?? DEFAULT_PROFILE_DIR_NAME;
+}
+
 /** Resolve the config root that backs a profile without activating it. */
 export function getProfileRootDir(profile: string | undefined): string {
 	return getProfileConfigRoot(normalizeProfileName(profile));
@@ -701,7 +717,7 @@ export function listProfiles(): ProfileInfo[] {
 		},
 	];
 
-	const profilesDir = path.join(getBaseConfigRoot(), "profiles");
+	const profilesDir = path.join(getBaseConfigRoot(), PROFILES_DIR_NAME);
 	let entries: fs.Dirent[] = [];
 	try {
 		entries = fs.readdirSync(profilesDir, { withFileTypes: true });
@@ -748,7 +764,7 @@ export function profileExists(profile: string | undefined): boolean {
  * other entry in the config root belongs to the legacy default profile and is
  * moved into `profiles/default/` by {@link migrateLegacyDefaultProfileLayout}.
  */
-const GLOBAL_ROOT_ENTRIES = new Set<string>(["profiles", INSTALL_ID_FILE, ...MAIN_CONFIG_FILENAMES]);
+const GLOBAL_ROOT_ENTRIES = new Set<string>([PROFILES_DIR_NAME, INSTALL_ID_FILE, ...MAIN_CONFIG_FILENAMES]);
 
 export interface LegacyLayoutMigrationResult {
 	migrated: boolean;
@@ -775,7 +791,7 @@ export interface LegacyLayoutMigrationResult {
 export function migrateLegacyDefaultProfileLayout(): LegacyLayoutMigrationResult {
 	const root = getBaseConfigRoot();
 	const legacyAgentDir = path.join(root, "agent");
-	const targetDir = path.join(root, "profiles", DEFAULT_PROFILE_DIR_NAME);
+	const targetDir = path.join(root, PROFILES_DIR_NAME, DEFAULT_PROFILE_DIR_NAME);
 	if (!fs.existsSync(legacyAgentDir)) {
 		return { migrated: false, movedEntries: [], targetDir };
 	}
@@ -839,7 +855,7 @@ export function getLogPath(date = new Date()): string {
  */
 export function getPluginsDir(home?: string): string {
 	if (home !== undefined && home !== RESOLVER_HOME) {
-		return path.join(home, getConfigDirName(), "profiles", getActiveProfile() ?? DEFAULT_PROFILE_DIR_NAME, "plugins");
+		return path.join(home, getConfigDirName(), PROFILES_DIR_NAME, getActiveProfileOrDefault(), "plugins");
 	}
 	return dirs.rootSubdir("plugins", "data");
 }
