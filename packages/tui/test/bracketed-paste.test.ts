@@ -7,7 +7,7 @@
  * byte cap only fires on alternate callers that bypass StdinBuffer.
  */
 import { describe, expect, it } from "bun:test";
-import { BracketedPasteHandler } from "@veyyon/tui/bracketed-paste";
+import { BracketedPasteHandler, decodeReencodedPasteControls } from "@veyyon/tui/bracketed-paste";
 
 const PASTE_START = "\x1b[200~";
 const PASTE_END = "\x1b[201~";
@@ -141,6 +141,80 @@ describe("BracketedPasteHandler", () => {
 			expect(result.prefix).toBe("hi");
 			// @ts-expect-error - cap flush delivers the buffered payload
 			expect(result.pasteContent).toBe("0123456789");
+		});
+	});
+});
+
+describe("decodeReencodedPasteControls", () => {
+	// tmux (extended-keys passthrough) re-encodes control bytes inside a paste as
+	// key-event escape sequences. If they are not decoded back to the literal byte
+	// before control-char stripping, ESC is dropped and the printable tail
+	// ("[106;5u" / "[27;5;106~") leaks into the buffer. These lock the exact byte
+	// each sequence must produce.
+
+	describe("csi-u format (ESC [ codepoint ; 5 u)", () => {
+		it("decodes Ctrl+J to a newline", () => {
+			expect(decodeReencodedPasteControls("\x1b[106;5u")).toBe("\n");
+		});
+
+		it("decodes Ctrl+I to a tab", () => {
+			expect(decodeReencodedPasteControls("\x1b[105;5u")).toBe("\t");
+		});
+
+		it("decodes Ctrl+M to a carriage return", () => {
+			expect(decodeReencodedPasteControls("\x1b[109;5u")).toBe("\r");
+		});
+
+		it("decodes lowercase boundaries a (Ctrl+A) and z (Ctrl+Z)", () => {
+			expect(decodeReencodedPasteControls("\x1b[97;5u")).toBe("\x01");
+			expect(decodeReencodedPasteControls("\x1b[122;5u")).toBe("\x1a");
+		});
+
+		it("decodes uppercase boundaries A and Z to the same control bytes", () => {
+			expect(decodeReencodedPasteControls("\x1b[65;5u")).toBe("\x01");
+			expect(decodeReencodedPasteControls("\x1b[90;5u")).toBe("\x1a");
+		});
+	});
+
+	describe("xterm format (ESC [ 27 ; 5 ; codepoint ~)", () => {
+		it("decodes Ctrl+J to a newline", () => {
+			expect(decodeReencodedPasteControls("\x1b[27;5;106~")).toBe("\n");
+		});
+
+		it("decodes Ctrl+I to a tab", () => {
+			expect(decodeReencodedPasteControls("\x1b[27;5;105~")).toBe("\t");
+		});
+	});
+
+	describe("non-Ctrl-letter codepoints are left literal, not synthesized", () => {
+		it("leaves a digit codepoint untouched", () => {
+			// 49 = '1' is neither a-z nor A-Z, so it is not a re-encoded Ctrl byte.
+			expect(decodeReencodedPasteControls("\x1b[49;5u")).toBe("\x1b[49;5u");
+		});
+
+		it("leaves the codepoints just outside the letter ranges untouched", () => {
+			// 96 = '`' (below 'a'), 91 = '[' (above 'Z'), 64 = '@' (below 'A'),
+			// 123 = '{' (above 'z').
+			for (const cp of [64, 91, 96, 123]) {
+				expect(decodeReencodedPasteControls(`\x1b[${cp};5u`)).toBe(`\x1b[${cp};5u`);
+			}
+		});
+	});
+
+	describe("embedding and idempotence", () => {
+		it("decodes multiple sequences of both formats interleaved with plain text", () => {
+			expect(decodeReencodedPasteControls("a\x1b[106;5ub\x1b[27;5;105~c")).toBe("a\nb\tc");
+		});
+
+		it("returns text with no re-encoded sequences unchanged", () => {
+			expect(decodeReencodedPasteControls("plain text, no escapes")).toBe("plain text, no escapes");
+			expect(decodeReencodedPasteControls("")).toBe("");
+		});
+
+		it("is idempotent: a decoded literal byte is not re-decoded", () => {
+			const once = decodeReencodedPasteControls("x\x1b[106;5uy");
+			expect(once).toBe("x\ny");
+			expect(decodeReencodedPasteControls(once)).toBe("x\ny");
 		});
 	});
 });
