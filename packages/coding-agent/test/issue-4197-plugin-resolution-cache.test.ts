@@ -8,7 +8,7 @@ import {
 	__rewriteLegacyExtensionSourceForTests,
 } from "@veyyon/coding-agent/extensibility/plugins/legacy-pi-compat";
 import { getEnabledPlugins } from "@veyyon/coding-agent/extensibility/plugins/loader";
-import { removeWithRetries } from "@veyyon/utils";
+import { getPluginsDir, removeWithRetries } from "@veyyon/utils";
 
 const tempRoots: string[] = [];
 
@@ -30,7 +30,10 @@ test("getEnabledPlugins caches repeated discovery for the same cwd and home unti
 	tempRoots.push(root);
 	const home = path.join(root, "home");
 	const cwd = path.join(root, "project");
-	const pluginsDir = path.join(home, ".veyyon", "profiles", "default", "plugins");
+	// Derive the plugins root from getPluginsDir(home) — the same owner the loader
+	// reads — so the fixture lands under the active profile, not a hardcoded
+	// "default" that the loader would ignore on any other profile.
+	const pluginsDir = getPluginsDir(home);
 	const pluginPackageJson = path.join(pluginsDir, "node_modules", "veyyon-cache-repro", "package.json");
 	await fs.mkdir(path.dirname(pluginPackageJson), { recursive: true });
 	await fs.mkdir(cwd, { recursive: true });
