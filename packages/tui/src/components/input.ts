@@ -69,8 +69,16 @@ export class Input implements Component, Focusable {
 		// Handle bracketed paste mode
 		const paste = this.#pasteHandler.process(data);
 		if (paste.handled) {
+			// Bytes before the start marker are ordinary input; route them straight
+			// to key handling (never back through the paste gate, which would fold
+			// them into the active buffer).
+			if (paste.prefix !== undefined && paste.prefix.length > 0) {
+				this.#handleKeyInput(paste.prefix);
+			}
 			if (paste.pasteContent !== undefined) {
 				this.#handlePaste(paste.pasteContent);
+				// `remaining` follows a completed paste and may itself begin another
+				// paste, so it goes through the full gate.
 				if (paste.remaining.length > 0) {
 					this.handleInput(paste.remaining);
 				}
@@ -78,6 +86,10 @@ export class Input implements Component, Focusable {
 			return;
 		}
 
+		this.#handleKeyInput(data);
+	}
+
+	#handleKeyInput(data: string): void {
 		const kb = getKeybindings();
 
 		// Escape/Cancel

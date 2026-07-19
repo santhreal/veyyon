@@ -1,7 +1,21 @@
 const PASTE_START = "\x1b[200~";
 const PASTE_END = "\x1b[201~";
 
-export type PasteResult = { handled: false } | { handled: true; pasteContent?: string; remaining: string };
+export type PasteResult =
+	| { handled: false }
+	| {
+			handled: true;
+			/**
+			 * Ordinary input bytes that arrived in the same chunk *before* the paste
+			 * start marker. They are not part of the paste and must be handled as
+			 * normal keyboard input, without being fed back through paste detection
+			 * (they contain no start marker and would otherwise be swallowed into an
+			 * active buffer). Omitted when the start marker was at the chunk head.
+			 */
+			prefix?: string;
+			pasteContent?: string;
+			remaining: string;
+	  };
 
 // Some terminals re-encode the control bytes inside a bracketed paste as key-event
 // escape sequences (observed with tmux extended-keys passthrough under kitty). tmux
@@ -85,10 +99,19 @@ export class BracketedPasteHandler {
 	 *          buffer); omitted when still buffering.
 	 */
 	process(data: string): PasteResult {
-		if (data.includes(PASTE_START)) {
+		let prefix: string | undefined;
+
+		const startIndex = data.indexOf(PASTE_START);
+		if (startIndex !== -1) {
+			// Bytes before the start marker are ordinary input that merely shared a
+			// chunk with the paste, not paste content. Split them off as `prefix`
+			// (only when non-empty) and begin buffering from just after the marker.
+			// Replacing only the marker, as the previous code did, folded the
+			// pre-marker bytes into the paste payload.
+			if (startIndex > 0) prefix = data.slice(0, startIndex);
 			this.#active = true;
 			this.#buffer = "";
-			data = data.replace(PASTE_START, "");
+			data = data.slice(startIndex + PASTE_START.length);
 		}
 
 		if (!this.#active) return { handled: false };
@@ -103,7 +126,7 @@ export class BracketedPasteHandler {
 			this.#buffer = "";
 			this.#active = false;
 
-			return { handled: true, pasteContent, remaining };
+			return { handled: true, prefix, pasteContent, remaining };
 		}
 
 		// Byte cap: a lost/corrupted end marker (ssh/tmux truncation) must not
@@ -115,9 +138,9 @@ export class BracketedPasteHandler {
 			const pasteContent = this.#buffer;
 			this.#buffer = "";
 			this.#active = false;
-			return { handled: true, pasteContent, remaining: "" };
+			return { handled: true, prefix, pasteContent, remaining: "" };
 		}
 
-		return { handled: true, remaining: "" };
+		return { handled: true, prefix, remaining: "" };
 	}
 }
