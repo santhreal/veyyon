@@ -41,7 +41,10 @@ export function contentText(content: string | readonly ContentBlockLike[], optio
 	const parts: string[] = [];
 	for (const block of content) {
 		if (block.type === "text") {
-			const text = block.text ?? "";
+			// Guard on `typeof` rather than `?? ""`: at the message boundary a
+			// block may be malformed (a non-string `text`), and a bare `.trim()`
+			// on that would throw. A non-string text reads as absent here.
+			const text = typeof block.text === "string" ? block.text : "";
 			const value = trimBlocks ? text.trim() : text;
 			if (trimBlocks && value.length === 0) continue;
 			parts.push(value);
