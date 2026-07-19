@@ -199,4 +199,88 @@ describe("local LLM TypeScript port", () => {
 			memory.close();
 		}
 	});
+
+	it("threads the runtime-scoped maxTokens into a custom completion", async () => {
+		const memory = new Mnemopi({ llm: { complete: (_p, o) => `mt:${o?.maxTokens}`, maxTokens: 111 } });
+		try {
+			const text = await withMnemopiRuntimeOptions(memory.runtimeOptions, () => complete("hi"));
+			expect(text).toBe("mt:111");
+		} finally {
+			memory.close();
+		}
+	});
+
+	it("chunks and merges multi-part summaries through a custom completion", async () => {
+		process.env.MNEMOPI_LLM_N_CTX = "200";
+		delete process.env.MNEMOPI_HOST_LLM_ENABLED;
+		let calls = 0;
+		const memory = new Mnemopi({
+			llm: {
+				complete: () => {
+					calls += 1;
+					return "S";
+				},
+			},
+		});
+		try {
+			const text = await withMnemopiRuntimeOptions(memory.runtimeOptions, () =>
+				summarizeMemories(["x".repeat(100), "y".repeat(100)], "src"),
+			);
+			// Two chunks each summarize to "S", then a third call merges the two summaries.
+			expect(text).toBe("S");
+			expect(calls).toBe(3);
+		} finally {
+			memory.close();
+		}
+	});
+
+	it("returns null from a pi-ai model whose completion throws, forwarding the runtime api key", async () => {
+		const okModel = createMockModel({ handler: () => ({ content: ["model summary"] }) });
+		const okMemory = new Mnemopi({ llm: { model: okModel, apiKey: "sk-runtime" } });
+		try {
+			expect(await withMnemopiRuntimeOptions(okMemory.runtimeOptions, () => complete("hello"))).toBe(
+				"model summary",
+			);
+		} finally {
+			okMemory.close();
+		}
+
+		const throwingModel = createMockModel({
+			handler: () => {
+				throw new Error("model exploded");
+			},
+		});
+		const badMemory = new Mnemopi({ llm: { model: throwingModel } });
+		try {
+			expect(await withMnemopiRuntimeOptions(badMemory.runtimeOptions, () => complete("hello"))).toBeNull();
+		} finally {
+			badMemory.close();
+		}
+	});
+
+	it("returns null on remote non-ok, network throw, and unauthorized responses", async () => {
+		process.env.MNEMOPI_LLM_BASE_URL = "http://remote/v1";
+		process.env.MNEMOPI_LLM_API_KEY = "sk-static";
+
+		const serverError: FetchImpl = async () => new Response("upstream error", { status: 500 });
+		expect(await callRemoteLlm("prompt", 0.3, { fetch: serverError })).toBeNull();
+
+		const networkThrow: FetchImpl = async () => {
+			throw new Error("connection reset");
+		};
+		expect(await callRemoteLlm("prompt", 0.3, { fetch: networkThrow })).toBeNull();
+
+		// A 401 raises ProviderHttpError; a static key cannot refresh, so it surfaces as null.
+		const unauthorized: FetchImpl = async () => new Response("nope", { status: 401 });
+		expect(await callRemoteLlm("prompt", 0.3, { fetch: unauthorized })).toBeNull();
+	});
+
+	it("completes through the remote transport when only environment settings are present", async () => {
+		process.env.MNEMOPI_LLM_ENABLED = "true";
+		process.env.MNEMOPI_LLM_BASE_URL = "http://remote/v1";
+		delete process.env.MNEMOPI_HOST_LLM_ENABLED;
+		const fetchMock: FetchImpl = async () =>
+			new Response(JSON.stringify({ choices: [{ message: { content: "Remote done." } }] }), { status: 200 });
+		expect(await complete("summarize this", 0.3, { fetch: fetchMock })).toBe("Remote done.");
+	});
 });
