@@ -19,7 +19,6 @@ const GRANDFATHERED = new Set([
 	// that work lands.
 	"coding-agent/src/session/agent-session.ts",
 	"coding-agent/src/extensibility/plugins/marketplace/fetcher.ts",
-	"coding-agent/src/tools/read.ts",
 	"coding-agent/src/task/executor.ts",
 ]);
 
