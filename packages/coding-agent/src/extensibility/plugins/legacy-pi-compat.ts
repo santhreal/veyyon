@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import { isBuiltin } from "node:module";
 import * as path from "node:path";
 import * as url from "node:url";
-import { escapeRegExp, isCompiledBinary, stripWindowsExtendedLengthPathPrefix } from "@veyyon/utils";
+import { escapeRegExp, isCompiledBinary, isRecord, stripWindowsExtendedLengthPathPrefix } from "@veyyon/utils";
 import { registerPluginCacheInvalidator } from "../../discovery/helpers";
 
 const IS_COMPILED_BINARY = isCompiledBinary();
@@ -611,10 +611,6 @@ function toGraphImportSpecifier(resolvedPath: string, mtimeTag: string | null): 
 		return url.pathToFileURL(stripWindowsExtendedLengthPathPrefix(resolvedPath)).href;
 	}
 	return `${stripWindowsExtendedLengthPathPrefix(resolvedPath)}?mtime=${mtimeTag}`;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 async function pathExists(p: string): Promise<boolean> {

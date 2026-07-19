@@ -21,7 +21,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import type { AgentMessage, AgentState } from "@veyyon/agent-core";
 import type { AssistantMessage, ImageContent, TextContent } from "@veyyon/ai";
-import { $which, errorMessage, logger, trimTrailingSlashes } from "@veyyon/utils";
+import { $which, errorMessage, isRecord, logger, trimTrailingSlashes } from "@veyyon/utils";
 import { DEFAULT_SHARE_URL } from "@veyyon/wire";
 import { $ } from "bun";
 import { obfuscateToolArguments, type SecretObfuscator } from "../secrets/obfuscator";
@@ -352,10 +352,6 @@ async function sealSessionData(key: CryptoKey, data: SessionData): Promise<Uint8
 	out.set(iv, 0);
 	out.set(ciphertext, IV_LENGTH);
 	return out;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null;
 }
 
 /** Replace inline image payloads (image blocks + data: URLs) with tiny placeholders, in place. */

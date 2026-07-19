@@ -140,6 +140,7 @@ import {
 	getInstallId,
 	isBunTestRuntime,
 	isEnoent,
+	isRecord,
 	logger,
 	postmortem,
 	prompt,
@@ -1695,10 +1696,6 @@ type SetSessionNameWithTrigger = (
 	source?: SessionTitleSource,
 	trigger?: SessionNameTrigger,
 ) => Promise<boolean>;
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return value !== null && typeof value === "object" && !Array.isArray(value);
-}
 
 function textFromContent(content: unknown): string {
 	if (typeof content === "string") return content.trim();

@@ -7,7 +7,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { Model } from "@veyyon/ai/types";
-import { getAgentDir, logger } from "@veyyon/utils";
+import { getAgentDir, isRecord, logger } from "@veyyon/utils";
 import { YAML } from "bun";
 import type { Settings } from "../config/settings";
 import { PROMPT_SECTION_NAMES, type PromptSectionName } from "../prompt-sections";
@@ -34,10 +34,6 @@ let cachedFileProfiles: HarnessProfilesRecord | undefined;
 export function resetHarnessProfileFileCache(): void {
 	cachedAgentDir = undefined;
 	cachedFileProfiles = undefined;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 const PROMPT_SECTION_NAME_SET: ReadonlySet<string> = new Set(PROMPT_SECTION_NAMES);

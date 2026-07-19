@@ -11,6 +11,7 @@ import type { Api, Model, ServiceTierByFamily, Usage } from "@veyyon/ai";
 import {
 	collapseWhitespace,
 	errorMessage,
+	isRecord,
 	logger,
 	popLoopPhase,
 	prompt,
@@ -264,11 +265,6 @@ function withAbortTimeout<T>(
 	});
 
 	return wrappedPromise;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	if (!value || typeof value !== "object") return false;
-	return !Array.isArray(value);
 }
 
 function getReportFindingKey(value: unknown): string | null {
