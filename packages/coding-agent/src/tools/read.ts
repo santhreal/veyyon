@@ -18,6 +18,7 @@ import {
 	errorMessage,
 	formatCount,
 	getRemoteDir,
+	hasUrlScheme,
 	type ImageMetadata,
 	isProbablyBinary,
 	isProbablyBinaryHeader,
@@ -3315,10 +3316,8 @@ export interface ReadRenderArgs {
 	raw?: boolean;
 }
 
-const INTERNAL_URL_LIKE_RE = /^[a-z][a-z0-9+.-]*:\/\//i;
-
 function splitReadRenderPath(rawPath: string): { path: string; sel?: string } {
-	if (INTERNAL_URL_LIKE_RE.test(rawPath)) {
+	if (hasUrlScheme(rawPath)) {
 		const internal = splitInternalUrlSel(rawPath);
 		if (internal.sel) return internal;
 	}

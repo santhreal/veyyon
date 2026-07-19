@@ -1,6 +1,6 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { errorMessage } from "@veyyon/utils";
+import { errorMessage, urlScheme } from "@veyyon/utils";
 import type { Skill } from "../extensibility/skills";
 import { type LocalProtocolOptions, resolveLocalUrlToPath } from "../internal-urls";
 import { validateRelativePath } from "../internal-urls/skill-protocol";
@@ -128,10 +128,8 @@ function matchSkillName(
 }
 
 function extractScheme(url: string): SupportedInternalScheme | undefined {
-	const match = /^([a-z][a-z0-9+.-]*):\/\//i.exec(url);
-	if (!match) return undefined;
-	const scheme = match[1].toLowerCase();
-	if (!SUPPORTED_INTERNAL_SCHEMES.includes(scheme as SupportedInternalScheme)) return undefined;
+	const scheme = urlScheme(url);
+	if (!scheme || !SUPPORTED_INTERNAL_SCHEMES.includes(scheme as SupportedInternalScheme)) return undefined;
 	return scheme as SupportedInternalScheme;
 }
 

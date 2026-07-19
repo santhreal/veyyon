@@ -5,6 +5,7 @@
  * `InternalUrlRouter.instance()`. Handlers are stateless; per-session and
  * shared state lives in `./state.ts`.
  */
+import { urlScheme } from "@veyyon/utils";
 import { AgentProtocolHandler } from "./agent-protocol";
 import { ArtifactProtocolHandler } from "./artifact-protocol";
 import { HistoryProtocolHandler } from "./history-protocol";
@@ -68,9 +69,9 @@ export class InternalUrlRouter {
 	}
 
 	canHandle(input: string): boolean {
-		const match = input.match(/^([a-z][a-z0-9+.-]*):\/\//i);
-		if (!match) return false;
-		return this.#handlers.has(match[1].toLowerCase());
+		const scheme = urlScheme(input);
+		if (!scheme) return false;
+		return this.#handlers.has(scheme);
 	}
 
 	/** Schemes whose handler supports host/path autocomplete. */

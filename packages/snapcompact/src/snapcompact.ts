@@ -46,7 +46,7 @@
 
 import type { Api, ImageContent, Message, TextContent } from "@veyyon/ai";
 import { renderSnapcompactPng, snapcompactSupportedChars } from "@veyyon/natives";
-import { collapseWhitespace, formatGroupedPaths, pluralize, prompt } from "@veyyon/utils";
+import { collapseWhitespace, containsUrlScheme, formatGroupedPaths, pluralize, prompt } from "@veyyon/utils";
 import { INTENT_FIELD } from "@veyyon/wire";
 import fileOperationsTemplate from "./prompts/file-operations.md" with { type: "text" };
 import snapcompactSummaryPrompt from "./prompts/snapcompact-summary.md" with { type: "text" };
@@ -636,10 +636,9 @@ export function createFileOps(): FileOperations {
 		edited: new Set(),
 	};
 }
-const URL_SCHEME_RE = /[a-z][a-z0-9+.-]*:\/\//i;
 
 export function isUrlSchemePath(path: string): boolean {
-	return URL_SCHEME_RE.test(path);
+	return containsUrlScheme(path);
 }
 
 export function computeFileLists(fileOps: FileOperations): CompactionDetails {

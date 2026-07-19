@@ -4,7 +4,7 @@
 
 import type { Message, ToolCall } from "@veyyon/ai";
 import { type Dialect, getDialectDefinition } from "@veyyon/ai/dialect";
-import { formatGroupedPaths, prompt, stringifyJson } from "@veyyon/utils";
+import { containsUrlScheme, formatGroupedPaths, prompt, stringifyJson } from "@veyyon/utils";
 import type { AgentMessage } from "../types";
 import fileOperationsTemplate from "./prompts/file-operations.md" with { type: "text" };
 import summarizationSystemPrompt from "./prompts/summarization-system.md" with { type: "text" };
@@ -77,20 +77,18 @@ export function stripReadSelector(path: string): string {
 }
 
 /**
+ * Whether `path` references a `scheme://` URL (internal URI or web URL) rather
+ * than a filesystem path that belongs in the compaction `<files>` summary.
+ *
  * A real filesystem path never contains a `scheme://` URL. Tool-call paths that
  * do — `conflict://1`, `artifact://3`, `local://ctx.md`, `history://…`,
  * `issue://12`, `https://…`, and the tolerated `file.ts:conflict://1` prefix
  * form — are session-scoped or remote resources, not files the post-compaction
- * agent can re-ground on. Keep them out of the `<files>` summary.
- */
-const URL_SCHEME_RE = /[a-z][a-z0-9+.-]*:\/\//i;
-
-/**
- * Whether `path` references a `scheme://` URL (internal URI or web URL) rather
- * than a filesystem path that belongs in the compaction `<files>` summary.
+ * agent can re-ground on. Keep them out of the `<files>` summary. Matches a
+ * scheme anywhere (not only at the start) so the tolerated prefix form counts.
  */
 export function isUrlSchemePath(path: string): boolean {
-	return URL_SCHEME_RE.test(path);
+	return containsUrlScheme(path);
 }
 
 /**
