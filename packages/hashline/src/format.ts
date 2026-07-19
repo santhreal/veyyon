@@ -134,7 +134,18 @@ export function formatNumberedLine(lineNumber: number, line: string): string {
 	return `${lineNumber}${HL_LINE_BODY_SEP}${line}`;
 }
 
-/** Format file text with hashline-mode line-number prefixes for display. */
+/**
+ * Format file text with hashline-mode line-number prefixes for display.
+ *
+ * The `split("\n")` here matches how the patcher addresses lines, so display
+ * and edit addressing stay in lockstep. A newline-terminated file therefore
+ * shows one extra numbered line with an empty body (`"x\ny\n"` renders as
+ * `1:x`, `2:y`, `3:`). That final empty line is the trailing-newline sentinel
+ * the patcher calls the phantom line (see `trailingPhantomLine` in apply.ts):
+ * it is the addressable append-past-end anchor, not content. Do not strip it
+ * from display without also changing the patcher's addressing, or an edit that
+ * targets the last line would land on the wrong offset.
+ */
 export function formatNumberedLines(text: string, startLine = 1): string {
 	const lines = text.split("\n");
 	return lines.map((line, i) => formatNumberedLine(startLine + i, line)).join("\n");

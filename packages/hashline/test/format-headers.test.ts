@@ -31,6 +31,15 @@ describe("formatHashlineHeader / formatNumberedLines", () => {
 		expect(formatNumberedLines("a\nb")).toBe("1:a\n2:b");
 		expect(formatNumberedLines("a\nb", 10)).toBe("10:a\n11:b");
 	});
+
+	it("renders the trailing-newline phantom line as an empty-bodied final number", () => {
+		// A newline-terminated file shows one extra numbered line with an empty
+		// body. It is the addressable append-past-end anchor (the patcher's
+		// trailingPhantomLine), so display stays in lockstep with edit addressing.
+		expect(formatNumberedLines("x\ny\n")).toBe("1:x\n2:y\n3:");
+		// A file with no trailing newline has no phantom line.
+		expect(formatNumberedLines("x\ny")).toBe("1:x\n2:y");
+	});
 });
 
 describe("computeFileHash", () => {
