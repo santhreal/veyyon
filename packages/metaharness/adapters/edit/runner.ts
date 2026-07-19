@@ -11,7 +11,7 @@ import { formatHashlineHeader, InMemorySnapshotStore } from "@veyyon/hashline";
 import type { AgentMessage, ResolvedThinkingLevel, ThinkingLevel } from "@veyyon/agent-core";
 import type { Model, ToolExample } from "@veyyon/ai";
 import { formatSessionDumpText, RpcClient } from "@veyyon/coding-agent";
-import { prompt } from "@veyyon/utils";
+import { estimateTokensFromText, prompt } from "@veyyon/utils";
 import { diffLines } from "diff";
 import { formatDirectory } from "@veyyon/typescript-edit-benchmark/formatter";
 import {
@@ -1111,7 +1111,7 @@ async function runSingleTask(
 			}
 
 			const initialState = await client.getState();
-			const systemPromptTokens = estimateTokens(initialState.systemPrompt?.join("\n\n") ?? "");
+			const systemPromptTokens = estimateTokensFromText(initialState.systemPrompt?.join("\n\n") ?? "");
 
 			const maxAttempts = Math.max(1, Math.floor(config.maxAttempts ?? 1));
 			const maxTimeoutRetries = config.maxTimeoutRetries ?? 3;
@@ -1705,11 +1705,6 @@ async function collectPromptEvents(
 	}
 	await eventsPromise;
 	return events;
-}
-
-/** Rough token estimate (4 chars per token). Used to subtract system prompt overhead. */
-function estimateTokens(text: string): number {
-	return Math.ceil(text.length / 4);
 }
 
 function diffTokenStats(before: SessionTokenStats, after: SessionTokenStats, systemPromptTokens: number): TokenStats {
