@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import {
 	ENTITY_EXTRACTION_STOP_WORDS,
+	entityExtractionPerformance,
 	extractEntitiesRegex,
 	findSimilarEntities,
 	levenshteinDistance,
@@ -54,10 +55,34 @@ describe("entity utilities", () => {
 		expect(extractEntitiesRegex(text)).toEqual([]);
 	});
 
+	it("scores a mid-string substring (not a prefix) with the 0.5 base bonus", () => {
+		// "abdias" is contained in "dr abdias" but neither is a prefix of the
+		// other, so the includes branch fires: 0.5 + (6/9) * 0.3.
+		expect(similarity("Abdias", "Dr Abdias")).toBeCloseTo(0.5 + (6 / 9) * 0.3, 10);
+	});
+
+	it("returns 0 for a prefix match whose shorter side is under 30% of the longer", () => {
+		// "a" is a prefix of the longer string but only 1/10 of its length.
+		expect(similarity("A", "Abcdefghij")).toBe(0.0);
+	});
+
 	it("finds similar entities above threshold sorted by score", () => {
 		const result = findSimilarEntities("Abdias", ["Maya", "Abdias Moya", "Abdias J.", "Zebra"], 0.7);
 		expect(result.map(([name]) => name)).toEqual(["Abdias J.", "Abdias Moya"]);
 		expect(findSimilarEntities("Zebra", ["Abdias", "Maya"], 0.8)).toEqual([]);
+	});
+
+	it("scores an exact match as 1.0 and ranks it first", () => {
+		const result = findSimilarEntities("Abdias", ["Abdias J.", "Abdias"], 0.7);
+		expect(result[0]).toEqual(["Abdias", 1.0]);
+		expect(result.map(([, score]) => score)).toEqual([1.0, expect.any(Number)]);
+		expect(result[1]?.[1]).toBeLessThan(1.0);
+	});
+
+	it("measures per-iteration extraction time as a finite non-negative number", () => {
+		const perIteration = entityExtractionPerformance("Abdias visited New York", 5);
+		expect(perIteration).toBeGreaterThanOrEqual(0);
+		expect(Number.isFinite(perIteration)).toBe(true);
 	});
 
 	it("exports the stop-word set used by extraction", () => {
