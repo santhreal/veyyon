@@ -18,7 +18,6 @@ const GRANDFATHERED = new Set([
 	// scopedTimeoutSignal (cancel in finally, fence spanning body reads) when
 	// that work lands.
 	"coding-agent/src/session/agent-session.ts",
-	"coding-agent/src/extensibility/plugins/marketplace/fetcher.ts",
 	"coding-agent/src/task/executor.ts",
 ]);
 

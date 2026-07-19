@@ -7,7 +7,7 @@
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { isEnoent, isRecord, logger } from "@veyyon/utils";
+import { isEnoent, isRecord, logger, scopedTimeoutSignal } from "@veyyon/utils";
 import * as git from "../../../utils/git";
 
 import type { MarketplaceCatalog, MarketplaceSourceType } from "./types";
@@ -264,13 +264,23 @@ export async function fetchMarketplace(source: string, cacheDir: string): Promis
 	}
 
 	// type === "url"
-	const response = await fetch(source, { signal: AbortSignal.timeout(60_000) });
-	if (!response.ok) {
-		throw new Error(
-			`Failed to fetch marketplace catalog from ${source}: HTTP ${response.status} ${response.statusText}`,
-		);
+	// scopedTimeoutSignal cancels the 60s timer once the fetch and body read
+	// settle, so the deadline never outlives the request (a bare
+	// AbortSignal.timeout would keep its timer armed for the full window). The
+	// fence still spans response.text(), so a slow body stream is bounded too.
+	const { signal, cancel } = scopedTimeoutSignal(60_000);
+	let text: string;
+	try {
+		const response = await fetch(source, { signal });
+		if (!response.ok) {
+			throw new Error(
+				`Failed to fetch marketplace catalog from ${source}: HTTP ${response.status} ${response.statusText}`,
+			);
+		}
+		text = await response.text();
+	} finally {
+		cancel();
 	}
-	const text = await response.text();
 	const catalog = parseMarketplaceCatalog(text, source);
 
 	const catalogDir = path.join(cacheDir, catalog.name);
