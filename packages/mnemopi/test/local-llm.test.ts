@@ -4,10 +4,13 @@ import { createMockModel, registerMockApi } from "@veyyon/ai/providers/mock";
 import { CallableLlmBackend, resetHostLlmBackendForTests, setHostLlmBackend } from "@veyyon/mnemopi/core/llm-backends";
 import {
 	buildHostPrompt,
+	buildPrompt,
 	callLocalLlm,
 	callRemoteLlm,
 	chunkMemoriesByBudget,
+	cleanOutput,
 	complete,
+	configuredLlmWillHandleCall,
 	llmAvailable,
 	localGgufAvailable,
 	summarizeMemories,
@@ -136,6 +139,37 @@ describe("local LLM TypeScript port", () => {
 		} finally {
 			memory.close();
 		}
+	});
+
+	it("builds the local prompt with and without a source suffix", () => {
+		expect(buildPrompt(["a", "b"], "")).toBe(
+			"/no_think\nSummarize the following memories into 1-3 concise sentences. Preserve facts, names, preferences, and decisions. Discard fluff.\n\n- a\n- b\n\nSummary:",
+		);
+		expect(buildPrompt(["a"], "profile")).toBe(
+			"/no_think\nSummarize the following memories into 1-3 concise sentences. Preserve facts, names, preferences, and decisions. Discard fluff. Source: profile.\n\n- a\n\nSummary:",
+		);
+	});
+
+	it("strips chat-template tokens, echoed instructions, source lines, and bullets", () => {
+		expect(cleanOutput("<|assistant|>Hello there.</s>")).toBe("Hello there.");
+		expect(cleanOutput("Summarize the following memories into one. Real summary here.")).toBe("Real summary here.");
+		expect(cleanOutput("Source: profile\nReal line")).toBe("Real line");
+		expect(cleanOutput("- bullet one\n- bullet two\nActual content")).toBe("Actual content");
+	});
+
+	it("reports no configured completion when neither a function nor a pi-ai model is active", () => {
+		expect(configuredLlmWillHandleCall()).toBe(false);
+	});
+
+	it("splits memories across budget boundaries and skips oversized memories", () => {
+		process.env.MNEMOPI_LLM_N_CTX = "800";
+		delete process.env.MNEMOPI_HOST_LLM_ENABLED;
+		expect(
+			chunkMemoriesByBudget(["x".repeat(600), "y".repeat(600), "z".repeat(600)], "src").map(c => c.length),
+		).toEqual([2, 1]);
+		delete process.env.MNEMOPI_LLM_N_CTX;
+		// A memory larger than the whole budget is dropped; the small ones survive.
+		expect(chunkMemoriesByBudget(["small", "z".repeat(100_000), "tiny"]).flat()).toEqual(["small", "tiny"]);
 	});
 
 	it("lets llm:false override remote environment defaults", async () => {
