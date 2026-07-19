@@ -1,6 +1,10 @@
 import { beforeAll, describe, expect, it } from "bun:test";
 import { Effort } from "@veyyon/catalog/effort";
-import { effortStepItems, renderEffortStep } from "@veyyon/coding-agent/modes/components/settings-selector";
+import {
+	effortStepItems,
+	formatSelectorSummary,
+	renderEffortStep,
+} from "@veyyon/coding-agent/modes/components/settings-selector";
 import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
 import { Container } from "@veyyon/tui";
 
@@ -77,5 +81,24 @@ describe("renderEffortStep", () => {
 
 		expect(items.map(item => item.value)).toEqual(["", "minimal", "low", "medium", "high", "xhigh"]);
 		expect(items[0]?.label).toBe("(model default thinking)");
+	});
+});
+
+describe("formatSelectorSummary", () => {
+	it("renders an effort suffix as a readable ` · level`", () => {
+		expect(formatSelectorSummary("anthropic/claude-sonnet-4-5:high")).toBe("anthropic/claude-sonnet-4-5 · high");
+	});
+
+	it("leaves a bare selector unchanged", () => {
+		expect(formatSelectorSummary("anthropic/claude-sonnet-4-5")).toBe("anthropic/claude-sonnet-4-5");
+	});
+
+	it("trims surrounding whitespace", () => {
+		expect(formatSelectorSummary("  openai/gpt-x:low  ")).toBe("openai/gpt-x · low");
+	});
+
+	it("leaves a model id that legitimately ends in a non-level colon token intact", () => {
+		// `:max` is not a strict effort suffix, so it is not split off as an effort.
+		expect(formatSelectorSummary("openrouter/some-model:max")).toBe("openrouter/some-model:max");
 	});
 });
