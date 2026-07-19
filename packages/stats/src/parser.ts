@@ -10,7 +10,7 @@ import {
 	type ToolResultMessage,
 	type Usage,
 } from "@veyyon/ai";
-import { getSessionsDir, isEnoent, readLines } from "@veyyon/utils";
+import { contentText, getSessionsDir, isEnoent, readLines } from "@veyyon/utils";
 import type {
 	AgentType,
 	MessageStats,
@@ -101,26 +101,13 @@ function isToolResultMessage(entry: SessionEntry): entry is SessionMessageEntry 
 /**
  * Extract plain text from a user message content payload.
  */
-function extractUserText(content: unknown): string {
-	if (typeof content === "string") return content;
-	if (!Array.isArray(content)) return "";
-	const parts: string[] = [];
-	for (const block of content) {
-		if (block && typeof block === "object" && (block as { type?: unknown }).type === "text") {
-			const text = (block as { text?: unknown }).text;
-			if (typeof text === "string") parts.push(text);
-		}
-	}
-	return parts.join("");
-}
-
 /**
  * Build user-message stats from an entry. Returns null for empty/synthetic content.
  */
 function extractUserStats(sessionFile: string, folder: string, entry: SessionMessageEntry): UserMessageStats | null {
 	const msg = entry.message as { role: "user"; content?: unknown; synthetic?: boolean };
 	if (msg.role !== "user" || msg.synthetic) return null;
-	const text = extractUserText(msg.content);
+	const text = contentText(msg.content, "");
 	if (!text.trim()) return null;
 	const metrics = computeUserMessageMetrics(text);
 	const ts = Date.parse(entry.timestamp);

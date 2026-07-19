@@ -3,6 +3,7 @@ export * from "./async";
 export * from "./binary";
 export * from "./collapse-whitespace";
 export * from "./color";
+export * from "./content-text";
 export * from "./dirs";
 export * from "./env";
 export * from "./fetch-retry";
