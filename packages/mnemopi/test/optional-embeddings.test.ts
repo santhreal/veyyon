@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it, spyOn } from "bun:test";
 import { getFastembedCacheDir } from "@veyyon/utils";
 import "./setup";
 import {
@@ -313,6 +313,293 @@ describe("optional embeddings", () => {
 				expect(initCalls).toBe(2);
 				expect(observedCacheDirs).toEqual([getFastembedCacheDir(), getFastembedCacheDir()]);
 				expect(observedCacheDirs.some(cacheDir => cacheDir?.includes(".hermes") ?? false)).toBe(false);
+			},
+		);
+	});
+});
+
+/** A `fetch` stand-in that keeps `.preconnect` so bun's typed global stays satisfied. */
+function mockFetch(handler: (input: string | URL | Request, init?: RequestInit) => Promise<Response>) {
+	return spyOn(globalThis, "fetch").mockImplementation(
+		Object.assign(handler, { preconnect: globalThis.fetch.preconnect }),
+	);
+}
+
+describe("embedding API transport", () => {
+	it("sends a bearer token to a runtime-scoped custom endpoint and decodes the matrix", async () => {
+		let auth = "";
+		let sentModel = "";
+		let calls = 0;
+		const spy = mockFetch((_input, init) => {
+			calls += 1;
+			auth = new Headers(init?.headers).get("authorization") ?? "";
+			sentModel = (JSON.parse(String(init?.body)) as { model: string }).model;
+			return Promise.resolve(Response.json({ data: [{ embedding: [1, 2, 3] }] }));
+		});
+		try {
+			const result = await withMnemopiRuntimeOptions(
+				{
+					embeddings: {
+						model: "openai/text-embedding-3-small",
+						apiKey: "sk-active",
+						apiUrl: "http://active.test/v1",
+					},
+				},
+				() => embed(["hi"]),
+			);
+			expect(result).toEqual([new Float32Array([1, 2, 3])]);
+			// Active-scope apiKey and apiUrl override the environment, and a non-empty key sets the header.
+			expect(auth).toBe("Bearer sk-active");
+			expect(sentModel).toBe("openai/text-embedding-3-small");
+			expect(calls).toBe(1);
+			expect(getEmbeddingApiCallCountForTests()).toBe(1);
+		} finally {
+			spy.mockRestore();
+		}
+	});
+
+	it("returns null when the embedding API responds with a non-retryable client error", async () => {
+		const spy = mockFetch(() => Promise.resolve(new Response("bad request", { status: 400 })));
+		try {
+			const result = await withEnv(
+				{
+					MNEMOPI_NO_EMBEDDINGS: undefined,
+					MNEMOPI_EMBEDDING_MODEL: "openai/text-embedding-3-small",
+					MNEMOPI_EMBEDDING_API_URL: "http://custom.test/v1",
+					MNEMOPI_EMBEDDING_API_KEY: "sk-x",
+				},
+				() => embed(["hi"]),
+			);
+			expect(result).toBeNull();
+		} finally {
+			spy.mockRestore();
+		}
+	});
+
+	it("returns null when the embedding API omits the data field", async () => {
+		const spy = mockFetch(() => Promise.resolve(Response.json({})));
+		try {
+			const result = await withEnv(
+				{
+					MNEMOPI_NO_EMBEDDINGS: undefined,
+					MNEMOPI_EMBEDDING_MODEL: "openai/text-embedding-3-small",
+					MNEMOPI_EMBEDDING_API_URL: "http://custom.test/v1",
+					MNEMOPI_EMBEDDING_API_KEY: "sk-x",
+				},
+				() => embed(["hi"]),
+			);
+			expect(result).toBeNull();
+		} finally {
+			spy.mockRestore();
+		}
+	});
+
+	it("returns null when a 401 raises a provider error a static key cannot refresh", async () => {
+		const spy = mockFetch(() => Promise.resolve(new Response("nope", { status: 401 })));
+		try {
+			const result = await withEnv(
+				{
+					MNEMOPI_NO_EMBEDDINGS: undefined,
+					MNEMOPI_EMBEDDING_MODEL: "openai/text-embedding-3-small",
+					MNEMOPI_EMBEDDING_API_URL: "http://custom.test/v1",
+					MNEMOPI_EMBEDDING_API_KEY: "sk-bad",
+				},
+				() => embed(["hi"]),
+			);
+			expect(result).toBeNull();
+		} finally {
+			spy.mockRestore();
+		}
+	});
+
+	it("never contacts the network for an OpenRouter API model without a configured key", async () => {
+		const spy = mockFetch(() => Promise.reject(new Error("fetch should not run")));
+		try {
+			const result = await withEnv(
+				{
+					MNEMOPI_NO_EMBEDDINGS: undefined,
+					MNEMOPI_EMBEDDING_MODEL: "openai/text-embedding-3-small",
+					MNEMOPI_EMBEDDING_API_URL: undefined,
+					OPENROUTER_BASE_URL: undefined,
+					MNEMOPI_EMBEDDING_API_KEY: undefined,
+					OPENROUTER_API_KEY: undefined,
+					OPENAI_API_KEY: undefined,
+				},
+				() => embed(["hi"]),
+			);
+			expect(result).toBeNull();
+			expect(spy).not.toHaveBeenCalled();
+		} finally {
+			spy.mockRestore();
+		}
+	});
+});
+
+describe("embedding availability branches", () => {
+	it("reports API availability for an OpenRouter model from the configured key", async () => {
+		await withEnv(
+			{
+				MNEMOPI_NO_EMBEDDINGS: undefined,
+				MNEMOPI_EMBEDDING_MODEL: "openai/text-embedding-3-small",
+				MNEMOPI_EMBEDDING_API_URL: undefined,
+				OPENROUTER_BASE_URL: undefined,
+				MNEMOPI_EMBEDDING_API_KEY: "sk-present",
+				OPENROUTER_API_KEY: undefined,
+				OPENAI_API_KEY: undefined,
+			},
+			async () => {
+				expect(await available()).toBe(true);
+			},
+		);
+		await withEnv(
+			{
+				MNEMOPI_NO_EMBEDDINGS: undefined,
+				MNEMOPI_EMBEDDING_MODEL: "openai/text-embedding-3-small",
+				MNEMOPI_EMBEDDING_API_URL: undefined,
+				OPENROUTER_BASE_URL: undefined,
+				MNEMOPI_EMBEDDING_API_KEY: undefined,
+				OPENROUTER_API_KEY: undefined,
+				OPENAI_API_KEY: undefined,
+			},
+			async () => {
+				expect(await available()).toBe(false);
+			},
+		);
+	});
+
+	it("reports availability from a constructor-scoped provider", async () => {
+		const memory = new Mnemopi({ embeddings: { provider: streamRows(() => [[1]]) } });
+		try {
+			// A provider with no availability probe counts as available through the active-scope branch.
+			expect(await withMnemopiRuntimeOptions(memory.runtimeOptions, () => available())).toBe(true);
+		} finally {
+			memory.close();
+		}
+	});
+
+	it("reports the local fastembed path unavailable inside a test runtime", async () => {
+		await withEnv(
+			{
+				NODE_ENV: "test",
+				BUN_ENV: undefined,
+				MNEMOPI_NO_EMBEDDINGS: undefined,
+				MNEMOPI_EMBEDDING_MODEL: "BAAI/bge-small-en-v1.5",
+				MNEMOPI_EMBEDDING_API_URL: undefined,
+				OPENROUTER_BASE_URL: undefined,
+				MNEMOPI_EMBEDDING_API_KEY: undefined,
+				OPENROUTER_API_KEY: undefined,
+				OPENAI_API_KEY: undefined,
+			},
+			async () => {
+				expect(await available()).toBe(false);
+			},
+		);
+	});
+});
+
+describe("embedding cache-scope and local-model paths", () => {
+	it("reuses the provider cache-scope id across distinct queries", async () => {
+		const memory = new Mnemopi({
+			embeddings: { provider: streamRows(texts => texts.map(text => [text.length])) },
+		});
+		try {
+			await withMnemopiRuntimeOptions(memory.runtimeOptions, async () => {
+				expect(await embedQuery("first")).toEqual(new Float32Array([5]));
+				// A second distinct query recomputes the key and reuses the id already assigned to the provider.
+				expect(await embedQuery("second")).toEqual(new Float32Array([6]));
+			});
+		} finally {
+			memory.close();
+		}
+	});
+
+	it("returns null when the constructor-scoped provider throws", async () => {
+		const memory = new Mnemopi({
+			embeddings: {
+				provider: () => {
+					throw new Error("scoped provider down");
+				},
+			},
+		});
+		try {
+			expect(await withMnemopiRuntimeOptions(memory.runtimeOptions, () => embed(["hi"]))).toBeNull();
+		} finally {
+			memory.close();
+		}
+	});
+
+	it("serves a repeated single-text embed from the query cache and reuses the loaded model", async () => {
+		await withEnv(
+			{
+				NODE_ENV: undefined,
+				BUN_ENV: undefined,
+				MNEMOPI_NO_EMBEDDINGS: undefined,
+				MNEMOPI_EMBEDDING_MODEL: "BAAI/bge-small-en-v1.5",
+				MNEMOPI_EMBEDDING_API_URL: undefined,
+				OPENROUTER_BASE_URL: undefined,
+				MNEMOPI_EMBEDDING_API_KEY: undefined,
+				OPENROUTER_API_KEY: undefined,
+				OPENAI_API_KEY: undefined,
+			},
+			async () => {
+				let embedCalls = 0;
+				setLocalModelInitializerForTests(async () => ({
+					embed: streamRows(texts => {
+						embedCalls += 1;
+						return texts.map(text => [text.length]);
+					}),
+				}));
+
+				expect(await embed(["repeat"])).toEqual([new Float32Array([6])]);
+				// The second identical embed short-circuits on the query cache; the model is not re-invoked.
+				expect(await embed(["repeat"])).toEqual([new Float32Array([6])]);
+				expect(embedCalls).toBe(1);
+				// A different single text misses the cache but reuses the already-loaded model promise.
+				expect(await embed(["different"])).toEqual([new Float32Array([9])]);
+				expect(embedCalls).toBe(2);
+			},
+		);
+	});
+
+	it("returns null for a local model name fastembed does not recognize outside a test runtime", async () => {
+		await withEnv(
+			{
+				NODE_ENV: undefined,
+				BUN_ENV: undefined,
+				MNEMOPI_NO_EMBEDDINGS: undefined,
+				MNEMOPI_EMBEDDING_MODEL: "acme/mystery-embedder",
+				MNEMOPI_EMBEDDING_API_URL: undefined,
+				OPENROUTER_BASE_URL: undefined,
+				MNEMOPI_EMBEDDING_API_KEY: undefined,
+				OPENROUTER_API_KEY: undefined,
+				OPENAI_API_KEY: undefined,
+			},
+			async () => {
+				expect(await embed(["hi"])).toBeNull();
+			},
+		);
+	});
+
+	it("returns null when the loaded local model throws during inference", async () => {
+		await withEnv(
+			{
+				NODE_ENV: undefined,
+				BUN_ENV: undefined,
+				MNEMOPI_NO_EMBEDDINGS: undefined,
+				MNEMOPI_EMBEDDING_MODEL: "BAAI/bge-small-en-v1.5",
+				MNEMOPI_EMBEDDING_API_URL: undefined,
+				OPENROUTER_BASE_URL: undefined,
+				MNEMOPI_EMBEDDING_API_KEY: undefined,
+				OPENROUTER_API_KEY: undefined,
+				OPENAI_API_KEY: undefined,
+			},
+			async () => {
+				setLocalModelInitializerForTests(async () => ({
+					embed: () => {
+						throw new Error("inference blew up");
+					},
+				}));
+				expect(await embed(["boom"])).toBeNull();
 			},
 		);
 	});
