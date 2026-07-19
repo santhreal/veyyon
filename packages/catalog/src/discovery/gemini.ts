@@ -1,4 +1,4 @@
-import { trimTrailingSlashes } from "@veyyon/utils";
+import { normalizeBaseUrl } from "@veyyon/utils";
 import { type } from "arktype";
 import { getBundledModels } from "../models";
 import { toModelSpec } from "../provider-models/bundled-references";
@@ -80,7 +80,7 @@ export async function fetchGeminiModels(
 	}
 
 	const fetchImpl = discoveryFetch(options.fetch);
-	const baseUrl = normalizeBaseUrl(options.baseUrl);
+	const baseUrl = normalizeBaseUrl(options.baseUrl, GOOGLE_GENERATIVE_AI_BASE_URL);
 	const pageSize = normalizePositiveInt(options.pageSize, DEFAULT_PAGE_SIZE);
 	const maxPages = normalizePositiveInt(options.maxPages, DEFAULT_MAX_PAGES);
 
@@ -148,14 +148,6 @@ function buildModelsUrl(baseUrl: string, apiKey: string, pageSize: number, pageT
 		url.searchParams.set("pageToken", pageToken);
 	}
 	return url;
-}
-
-function normalizeBaseUrl(baseUrl?: string): string {
-	const value = (baseUrl ?? GOOGLE_GENERATIVE_AI_BASE_URL).trim();
-	if (!value) {
-		return GOOGLE_GENERATIVE_AI_BASE_URL;
-	}
-	return trimTrailingSlashes(value);
 }
 
 function normalizePositiveInt(value: number | undefined, fallback: number): number;

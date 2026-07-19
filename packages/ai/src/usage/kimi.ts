@@ -1,4 +1,4 @@
-import { $env, trimTrailingSlashes } from "@veyyon/utils";
+import { $env, normalizeBaseUrl } from "@veyyon/utils";
 import { getKimiCommonHeaders } from "../registry/oauth/kimi";
 import type {
 	UsageAmount,
@@ -31,10 +31,12 @@ type KimiUsageRow = {
 	window?: UsageWindow;
 };
 
-function normalizeBaseUrl(baseUrl?: string): string {
-	const envBase = $env.KIMI_CODE_BASE_URL?.trim();
-	const candidate = baseUrl?.trim() || envBase || DEFAULT_BASE_URL;
-	return trimTrailingSlashes(candidate);
+// Kimi's own env/default resolution: prefer the explicit arg, then the
+// KIMI_CODE_BASE_URL override, then the built-in default. Slash/whitespace
+// normalization is delegated to the shared @veyyon/utils owner.
+function resolveKimiBaseUrl(baseUrl?: string): string {
+	const candidate = baseUrl?.trim() || $env.KIMI_CODE_BASE_URL?.trim() || DEFAULT_BASE_URL;
+	return normalizeBaseUrl(candidate, DEFAULT_BASE_URL);
 }
 
 function buildUsageUrl(baseUrl: string): string {
@@ -227,7 +229,7 @@ export const kimiUsageProvider: UsageProvider = {
 			return null;
 		}
 
-		const baseUrl = normalizeBaseUrl(params.baseUrl);
+		const baseUrl = resolveKimiBaseUrl(params.baseUrl);
 		const url = buildUsageUrl(baseUrl);
 		let payload: unknown;
 		try {

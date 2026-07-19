@@ -1,4 +1,4 @@
-import { trimTrailingSlashes } from "@veyyon/utils";
+import { normalizeBaseUrl } from "@veyyon/utils";
 import { type } from "arktype";
 import type { ModelSpec } from "../types";
 import { discoveryFetch } from "../utils";
@@ -80,7 +80,7 @@ export interface CodexModelDiscoveryResult {
  */
 export async function fetchCodexModels(options: CodexModelDiscoveryOptions): Promise<CodexModelDiscoveryResult | null> {
 	const fetchFn = discoveryFetch(options.fetchFn);
-	const baseUrl = normalizeBaseUrl(options.baseUrl);
+	const baseUrl = normalizeBaseUrl(options.baseUrl, CODEX_BASE_URL);
 	const paths = normalizePaths(options.paths);
 	const clientVersion = normalizeClientVersion(options.clientVersion) ?? CODEX_CLIENT_VERSION;
 	const headers = buildCodexHeaders(options, clientVersion);
@@ -119,14 +119,6 @@ export async function fetchCodexModels(options: CodexModelDiscoveryOptions): Pro
 		return etag ? { models, etag } : { models };
 	}
 	return sawSuccessfulResponse ? { models: [] } : null;
-}
-
-function normalizeBaseUrl(baseUrl: string | undefined): string {
-	const raw = (baseUrl ?? CODEX_BASE_URL).trim();
-	if (!raw) {
-		return CODEX_BASE_URL;
-	}
-	return trimTrailingSlashes(raw);
 }
 
 function normalizePaths(paths: readonly string[] | undefined): string[] {
