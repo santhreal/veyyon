@@ -256,3 +256,171 @@ describe("streamProxy — server disconnect without terminal event", () => {
 		}
 	});
 });
+
+describe("streamProxy — non-ok proxy responses", () => {
+	it("surfaces the parsed error field from a non-ok JSON body", async () => {
+		const fetchMock: FetchImpl = () =>
+			Promise.resolve(new Response(JSON.stringify({ error: "quota exceeded" }), { status: 429 }));
+		const stream = streamProxy(mockModel, mockContext, {
+			proxyUrl: "http://localhost:0",
+			authToken: "test",
+			fetch: fetchMock,
+		});
+		await collectEvents(stream);
+		const result = await stream.result();
+		expect(result.stopReason).toBe("error");
+		expect(result.errorMessage).toBe("Proxy error: quota exceeded");
+	});
+
+	it("falls back to status + statusText when the non-ok body is not JSON", async () => {
+		const fetchMock: FetchImpl = () =>
+			Promise.resolve(new Response("gateway down", { status: 502, statusText: "Bad Gateway" }));
+		const stream = streamProxy(mockModel, mockContext, {
+			proxyUrl: "http://localhost:0",
+			authToken: "test",
+			fetch: fetchMock,
+		});
+		await collectEvents(stream);
+		const result = await stream.result();
+		expect(result.stopReason).toBe("error");
+		expect(result.errorMessage).toBe("Proxy error: 502 Bad Gateway");
+	});
+});
+
+describe("streamProxy — thinking blocks and event-order guards", () => {
+	it("accumulates a thinking block across start/delta/end into the final message", async () => {
+		const events: ProxyAssistantMessageEvent[] = [
+			{ type: "start" },
+			{ type: "thinking_start", contentIndex: 0 },
+			{ type: "thinking_delta", contentIndex: 0, delta: "step one " },
+			{ type: "thinking_delta", contentIndex: 0, delta: "step two" },
+			{ type: "thinking_end", contentIndex: 0, contentSignature: "sig-123" },
+			{ type: "done", reason: "stop", usage: { ...baseUsage } },
+		];
+		const fetchMock: FetchImpl = () => Promise.resolve(new Response(buildSseBody(events), { status: 200 }));
+		const stream = streamProxy(mockModel, mockContext, {
+			proxyUrl: "http://localhost:0",
+			authToken: "test",
+			fetch: fetchMock,
+		});
+		const collected = await collectEvents(stream);
+		expect(collected.some(e => e.type === "thinking_end")).toBe(true);
+		const result = await stream.result();
+		expect(result.stopReason).toBe("stop");
+		const thinking = result.content.find(c => c.type === "thinking");
+		expect(thinking).toBeDefined();
+		if (thinking && thinking.type === "thinking") {
+			expect(thinking.thinking).toBe("step one step two");
+			expect(thinking.thinkingSignature).toBe("sig-123");
+		}
+	});
+
+	// Each out-of-order event is processed inside streamProxy's try block, so its
+	// throw becomes an error terminal event carrying the guard message.
+	const outOfOrderCases: Array<{ name: string; events: ProxyAssistantMessageEvent[]; message: string }> = [
+		{
+			name: "text_delta before text_start",
+			events: [{ type: "start" }, { type: "text_delta", contentIndex: 0, delta: "x" }],
+			message: "Received text_delta for non-text content",
+		},
+		{
+			name: "text_end before text_start",
+			events: [{ type: "start" }, { type: "text_end", contentIndex: 0 }],
+			message: "Received text_end for non-text content",
+		},
+		{
+			name: "thinking_delta on a text block",
+			events: [
+				{ type: "start" },
+				{ type: "text_start", contentIndex: 0 },
+				{ type: "thinking_delta", contentIndex: 0, delta: "x" },
+			],
+			message: "Received thinking_delta for non-thinking content",
+		},
+		{
+			name: "thinking_end on a text block",
+			events: [
+				{ type: "start" },
+				{ type: "text_start", contentIndex: 0 },
+				{ type: "thinking_end", contentIndex: 0 },
+			],
+			message: "Received thinking_end for non-thinking content",
+		},
+		{
+			name: "toolcall_delta on a text block",
+			events: [
+				{ type: "start" },
+				{ type: "text_start", contentIndex: 0 },
+				{ type: "toolcall_delta", contentIndex: 0, delta: "{" },
+			],
+			message: "Received toolcall_delta for non-toolCall content",
+		},
+	];
+
+	for (const { name, events, message } of outOfOrderCases) {
+		it(`emits an error terminal event for ${name}`, async () => {
+			const fetchMock: FetchImpl = () => Promise.resolve(new Response(buildSseBody(events), { status: 200 }));
+			const stream = streamProxy(mockModel, mockContext, {
+				proxyUrl: "http://localhost:0",
+				authToken: "test",
+				fetch: fetchMock,
+			});
+			await collectEvents(stream);
+			const result = await stream.result();
+			expect(result.stopReason).toBe("error");
+			expect(result.errorMessage).toBe(message);
+		});
+	}
+
+	it("cancels the live response body when the client aborts mid-stream", async () => {
+		const ac = new AbortController();
+		let bodyCancelled = false;
+		const body = new ReadableStream<Uint8Array>({
+			start(controller) {
+				// Emit one event then keep the stream open so the abort lands mid-read.
+				controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify({ type: "start" })}\n\n`));
+			},
+			cancel() {
+				bodyCancelled = true;
+			},
+		});
+		const fetchMock: FetchImpl = () => Promise.resolve(new Response(body, { status: 200 }));
+		const stream = streamProxy(mockModel, mockContext, {
+			proxyUrl: "http://localhost:0",
+			authToken: "test",
+			signal: ac.signal,
+			fetch: fetchMock,
+		});
+		const collectPromise = collectEvents(stream);
+		await new Promise(resolve => setTimeout(resolve, 20));
+		ac.abort("mid-stream");
+		await collectPromise;
+		const result = await stream.result();
+		// The abort handler cancels the in-flight body and the run ends as aborted.
+		expect(bodyCancelled).toBe(true);
+		expect(result.stopReason).toBe("aborted");
+	});
+
+	it("silently ignores a toolcall_end that lands on a non-toolCall block", async () => {
+		const events: ProxyAssistantMessageEvent[] = [
+			{ type: "start" },
+			{ type: "text_start", contentIndex: 0 },
+			{ type: "text_delta", contentIndex: 0, delta: "hi" },
+			{ type: "text_end", contentIndex: 0 },
+			{ type: "toolcall_end", contentIndex: 0 },
+			{ type: "done", reason: "stop", usage: { ...baseUsage } },
+		];
+		const fetchMock: FetchImpl = () => Promise.resolve(new Response(buildSseBody(events), { status: 200 }));
+		const stream = streamProxy(mockModel, mockContext, {
+			proxyUrl: "http://localhost:0",
+			authToken: "test",
+			fetch: fetchMock,
+		});
+		const collected = await collectEvents(stream);
+		// The mismatched toolcall_end produces no event, but the stream still completes.
+		expect(collected.some(e => e.type === "toolcall_end")).toBe(false);
+		expect(collected.some(e => e.type === "done")).toBe(true);
+		const result = await stream.result();
+		expect(result.stopReason).toBe("stop");
+	});
+});
