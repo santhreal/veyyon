@@ -26,6 +26,7 @@ Read files, directories, archives, SQLite, images, documents, internal resources
 - Directory → depth-limited dirent listing.
 {{#if IS_HL_MODE}}
 - File + selector → filename-only snapshot header + numbered lines: `[foo.ts#1A2B]` then `41:def alpha():`. Copy `[FILENAME#TAG]` for anchored edits; ops use bare line numbers. NEVER fabricate the tag.
+- A file that ends in a newline shows one extra numbered line with an empty body (a 2-line file `x\ny\n` reads as `1:x`, `2:y`, `3:`). That final empty line is not content: it marks the trailing newline and is the anchor you insert after to append at end of file.
 {{else}}
 {{#if IS_LINE_NUMBER_MODE}}
 - File + selector → numbered lines: `41|def alpha():`.
