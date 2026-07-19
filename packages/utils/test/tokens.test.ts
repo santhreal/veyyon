@@ -44,16 +44,34 @@ const ESTIMATE_GRANDFATHERED = new Set<string>([]);
 
 const ESTIMATE_DEF = /function\s+estimateTokens\s*\(/;
 
-async function walk(dir: string, out: string[]): Promise<void> {
+async function walk(dir: string, out: string[], includeTests = false): Promise<void> {
 	for (const entry of await readdir(dir, { withFileTypes: true })) {
 		const full = path.join(dir, entry.name);
 		if (entry.isDirectory()) {
 			if (entry.name === "node_modules" || entry.name === "dist" || entry.name === "vendor") continue;
-			await walk(full, out);
-		} else if (entry.name.endsWith(".ts") && !entry.name.endsWith(".test.ts")) {
+			await walk(full, out, includeTests);
+		} else if (entry.name.endsWith(".ts") && (includeTests || !entry.name.endsWith(".test.ts"))) {
 			out.push(full);
 		}
 	}
+}
+
+// Collect every .ts under each package's test/ dir. A test helper that
+// hand-rolls its own token estimator instead of importing the owner is a second
+// definition that drifts — the src-only scan never saw it. Same delegation
+// escape hatch: a def that references estimateTokensFromText is delegating, not
+// duplicating.
+async function testFiles(): Promise<string[]> {
+	const files: string[] = [];
+	for (const pkg of await readdir(PACKAGES_DIR, { withFileTypes: true })) {
+		if (!pkg.isDirectory()) continue;
+		try {
+			await walk(path.join(PACKAGES_DIR, pkg.name, "test"), files, true);
+		} catch {
+			// Package without a test/ directory — nothing to scan.
+		}
+	}
+	return files;
 }
 
 describe("estimateTokens source lock", () => {
@@ -83,5 +101,20 @@ describe("estimateTokens source lock", () => {
 			[],
 		);
 		expect(cleared, "grandfathered entries whose local estimator is gone — remove them from the list").toEqual([]);
+	});
+
+	it("no test file hand-rolls estimateTokens without delegating to estimateTokensFromText", async () => {
+		const offenders: string[] = [];
+		for (const file of await testFiles()) {
+			const rel = path.relative(PACKAGES_DIR, file).replaceAll(path.sep, "/");
+			const text = await readFile(file, "utf8");
+			if (!ESTIMATE_DEF.test(text)) continue;
+			if (text.includes("estimateTokensFromText")) continue;
+			offenders.push(rel);
+		}
+		expect(
+			offenders,
+			"test-local hand-rolled estimateTokens — import estimateTokensFromText from @veyyon/utils instead",
+		).toEqual([]);
 	});
 });
