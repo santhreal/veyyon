@@ -1,5 +1,5 @@
 import type { AgentTool, AgentToolResult } from "@veyyon/agent-core";
-import { errorMessage } from "@veyyon/utils";
+import { errorMessage, isRecord } from "@veyyon/utils";
 import { INTENT_FIELD } from "@veyyon/wire";
 import type { ToolSession } from "../../tools";
 import { ToolError } from "../../tools/tool-errors";
@@ -46,7 +46,7 @@ function getTool(session: ToolSession, name: string): AgentTool {
 }
 
 function normalizeArgs(args: unknown): unknown {
-	if (!args || typeof args !== "object" || Array.isArray(args)) {
+	if (!isRecord(args)) {
 		return args;
 	}
 	const record = { ...(args as Record<string, unknown>) };

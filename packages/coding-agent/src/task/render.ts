@@ -4,10 +4,11 @@
  * Provides renderCall and renderResult functions for displaying
  * task execution in the terminal UI.
  */
+
 import path from "node:path";
 import type { Component } from "@veyyon/tui";
 import { Container, Markdown, Text } from "@veyyon/tui";
-import { formatCount, formatNumber, sanitizeText } from "@veyyon/utils";
+import { formatCount, formatNumber, isRecord, sanitizeText } from "@veyyon/utils";
 import { settings } from "../config/settings";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import { formatContextUsage } from "../modes/components/status-line/context-thresholds";
@@ -161,7 +162,7 @@ function extractIncrementalReviewResult(
 	}));
 	const assembled = assembleYieldResult(yieldItems, undefined, REVIEWER_ARRAY_LABELS);
 	const data = assembled?.data;
-	if (!data || typeof data !== "object" || Array.isArray(data)) return undefined;
+	if (!isRecord(data)) return undefined;
 	const record = data as Record<string, unknown>;
 	const overallCorrectness = record.overall_correctness;
 	const explanation = record.explanation;

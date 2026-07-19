@@ -16,8 +16,9 @@
  * @see ./veyyon-extension-roots.ts
  * @see ../../docs/internal/extension-loading.md
  */
+
 import * as path from "node:path";
-import { logger, parseFrontmatter, tryParseJson } from "@veyyon/utils";
+import { isRecord, logger, parseFrontmatter, tryParseJson } from "@veyyon/utils";
 import { registerProvider } from "../capability";
 import { readDirEntries, readFile } from "../capability/fs";
 import { type Hook, hookCapability } from "../capability/hook";
@@ -294,10 +295,10 @@ async function loadMCPServers(ctx: LoadContext): Promise<LoadResult<MCPServer>> 
 			continue;
 		}
 		const servers = parsed.mcpServers;
-		if (!servers || typeof servers !== "object" || Array.isArray(servers)) continue;
+		if (!isRecord(servers)) continue;
 
 		for (const [serverName, serverCfg] of Object.entries(servers)) {
-			if (!serverCfg || typeof serverCfg !== "object" || Array.isArray(serverCfg)) continue;
+			if (!isRecord(serverCfg)) continue;
 			const cfg = serverCfg as RawMcpServer;
 			if (typeof cfg.command !== "string" && typeof cfg.url !== "string") {
 				warnings.push(`[veyyon-plugins] Skipping MCP server "${serverName}" in ${mcpPath}: missing command or url`);

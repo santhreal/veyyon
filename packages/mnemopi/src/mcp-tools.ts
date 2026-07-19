@@ -473,7 +473,7 @@ function serialize(value: unknown): unknown {
 }
 
 function cloneRowForBankImport(value: unknown, sessionId: string, channelId: string | null): unknown {
-	if (value === null || typeof value !== "object" || Array.isArray(value)) return value;
+	if (!isRecord(value)) return value;
 	const row: Record<string, unknown> & { session_id: string; channel_id?: string } = {
 		...(value as Record<string, unknown>),
 		session_id: sessionId,

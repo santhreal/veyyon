@@ -5799,7 +5799,7 @@ function deserializeCredential(row: AuthRow): AuthCredential | null {
 	} catch {
 		return null;
 	}
-	if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+	if (!isRecord(parsed)) {
 		return null;
 	}
 	if (row.credential_type === "api_key") {

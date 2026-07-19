@@ -56,7 +56,7 @@ export function isRetriableConnectionError(error: unknown): boolean {
 type MCPToolArgs = NonNullable<MCPToolCallParams["arguments"]>;
 
 function normalizeToolArgs(value: unknown): MCPToolArgs {
-	if (typeof value !== "object" || value === null || Array.isArray(value)) {
+	if (!isRecord(value)) {
 		return {};
 	}
 	return value as MCPToolArgs;

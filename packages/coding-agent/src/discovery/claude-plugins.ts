@@ -414,7 +414,7 @@ async function loadMCPServers(ctx: LoadContext): Promise<LoadResult<MCPServer>> 
 			continue;
 		}
 
-		if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) continue;
+		if (!isRecord(parsed)) continue;
 		const obj = parsed as Record<string, unknown>;
 
 		// Two shapes are supported:
@@ -437,7 +437,7 @@ async function loadMCPServers(ctx: LoadContext): Promise<LoadResult<MCPServer>> 
 		}
 
 		for (const [serverName, serverCfg] of Object.entries(servers)) {
-			if (!serverCfg || typeof serverCfg !== "object" || Array.isArray(serverCfg)) continue;
+			if (!isRecord(serverCfg)) continue;
 			const raw = serverCfg as {
 				enabled?: boolean;
 				timeout?: number;

@@ -723,7 +723,7 @@ function normalizeOptionalNullsForSchema(
 
 	if (Array.isArray(value)) {
 		const itemSchema = schemaObject.items;
-		if (itemSchema === null || typeof itemSchema !== "object" || Array.isArray(itemSchema)) {
+		if (!isRecord(itemSchema)) {
 			return { value, changed: false };
 		}
 
@@ -1298,7 +1298,7 @@ function normalizeStringEncodedArrayUnions(schema: unknown, value: unknown): { v
 	// Recurse into array items.
 	if (Array.isArray(value)) {
 		const itemSchema = schemaObject.items;
-		if (!itemSchema || typeof itemSchema !== "object" || Array.isArray(itemSchema)) {
+		if (!isRecord(itemSchema)) {
 			return { value, changed: false };
 		}
 		let changed = false;
@@ -1344,7 +1344,7 @@ function normalizeStringEncodedArrayUnions(schema: unknown, value: unknown): { v
  * (`{ type: "object", properties: { X: { type: "string" } }, required: ["X"] }`).
  */
 function singleRequiredStringKey(schema: unknown): string | undefined {
-	if (!schema || typeof schema !== "object" || Array.isArray(schema)) return undefined;
+	if (!isRecord(schema)) return undefined;
 	const obj = schema as Record<string, unknown>;
 	if (obj.type !== "object") return undefined;
 	const properties = obj.properties;
@@ -1372,7 +1372,7 @@ function singleRequiredStringKey(schema: unknown): string | undefined {
 function normalizeSingleStringField(schema: unknown, value: unknown): { value: unknown; changed: boolean } {
 	const key = singleRequiredStringKey(schema);
 	if (key === undefined) return { value, changed: false };
-	if (typeof value !== "object" || value === null || Array.isArray(value)) return { value, changed: false };
+	if (!isRecord(value)) return { value, changed: false };
 	const record = value as Record<string, unknown>;
 	if (record[key] !== undefined) return { value, changed: false };
 	for (const candidate in record) {

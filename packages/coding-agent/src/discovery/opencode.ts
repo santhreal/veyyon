@@ -15,8 +15,9 @@
  *
  * Priority: 55 (tool-specific provider)
  */
+
 import * as path from "node:path";
-import { logger, parseFrontmatter, tryParseJson } from "@veyyon/utils";
+import { isRecord, logger, parseFrontmatter, tryParseJson } from "@veyyon/utils";
 import { registerProvider } from "../capability";
 import { type ContextFile, contextFileCapability } from "../capability/context-file";
 import { type ExtensionModule, extensionModuleCapability } from "../capability/extension-module";
@@ -110,7 +111,7 @@ function stringArray(value: unknown): string[] | undefined {
 }
 
 function stringRecord(value: unknown): Record<string, string> | undefined {
-	if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+	if (!isRecord(value)) return undefined;
 
 	const record: Record<string, string> = {};
 	for (const [key, item] of Object.entries(value)) {

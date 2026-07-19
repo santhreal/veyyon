@@ -1413,7 +1413,7 @@ function collectStringPaths(value: unknown): string[] {
 }
 
 function getEditDestructiveIntent(args: unknown): { kind: "delete" | "move"; paths: string[] } | undefined {
-	if (!args || typeof args !== "object" || Array.isArray(args)) return undefined;
+	if (!isRecord(args)) return undefined;
 	const a = args as Record<string, unknown>;
 
 	const edits = Array.isArray(a.edits) ? a.edits : undefined;
@@ -1421,13 +1421,13 @@ function getEditDestructiveIntent(args: unknown): { kind: "delete" | "move"; pat
 		const path = getStringProperty(a, "path");
 		if (path) {
 			for (const edit of edits) {
-				if (!edit || typeof edit !== "object" || Array.isArray(edit)) continue;
+				if (!isRecord(edit)) continue;
 				const op = getStringProperty(edit as Record<string, unknown>, "op");
 				if (op === "delete") return { kind: "delete", paths: [path] };
 			}
 		}
 		for (const edit of edits) {
-			if (!edit || typeof edit !== "object" || Array.isArray(edit)) continue;
+			if (!isRecord(edit)) continue;
 			const entry = edit as Record<string, unknown>;
 			const op = getStringProperty(entry, "op");
 			const rename = getStringProperty(entry, "rename");
@@ -5018,7 +5018,7 @@ export class AgentSession {
 	}
 
 	#extractTtsrRuleNames(details: unknown): string[] {
-		if (!details || typeof details !== "object" || Array.isArray(details)) {
+		if (!isRecord(details)) {
 			return [];
 		}
 		const rules = (details as { rules?: unknown }).rules;
@@ -5372,7 +5372,7 @@ export class AgentSession {
 
 	/** Extract path-like arguments from tool call payload for TTSR glob matching. */
 	#extractTtsrFilePathsFromArgs(args: unknown): string[] | undefined {
-		if (!args || typeof args !== "object" || Array.isArray(args)) {
+		if (!isRecord(args)) {
 			return undefined;
 		}
 
@@ -5612,7 +5612,7 @@ export class AgentSession {
 		if (toolCall.name !== "edit") return undefined;
 
 		const args = toolCall.arguments;
-		if (!args || typeof args !== "object" || Array.isArray(args)) return undefined;
+		if (!isRecord(args)) return undefined;
 		if ("old_text" in args || "new_text" in args) return undefined;
 
 		const path = typeof args.path === "string" ? args.path : undefined;
@@ -14200,7 +14200,7 @@ export class AgentSession {
 	#validateRetryFallbackChains(): void {
 		const configuredChains = this.settings.get("retry.fallbackChains");
 		if (configuredChains === undefined) return;
-		if (!configuredChains || typeof configuredChains !== "object" || Array.isArray(configuredChains)) {
+		if (!isRecord(configuredChains)) {
 			const msg = "retry.fallbackChains must be a mapping of role names or model selectors to selector arrays.";
 			logger.warn(msg);
 			this.configWarnings.push(msg);

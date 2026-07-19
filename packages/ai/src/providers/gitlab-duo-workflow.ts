@@ -960,7 +960,7 @@ async function readGitLabDuoWorkflowResponseErrorMessage(response: Response): Pr
 }
 
 function getGitLabDuoWorkflowErrorField(payload: unknown, field: "message" | "error"): string | undefined {
-	if (!payload || typeof payload !== "object" || Array.isArray(payload)) return undefined;
+	if (!isRecord(payload)) return undefined;
 	const value = (payload as Record<string, unknown>)[field];
 	if (typeof value !== "string" || value.trim().length === 0) return undefined;
 	return value;

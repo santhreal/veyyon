@@ -5,7 +5,7 @@
  * Uses the settings schema as the source of truth for available settings.
  */
 
-import { APP_NAME, getAgentDir } from "@veyyon/utils";
+import { APP_NAME, getAgentDir, isRecord } from "@veyyon/utils";
 import chalk from "chalk";
 import {
 	getDefault,
@@ -168,7 +168,7 @@ function parseAndSetValue(path: SettingPath, rawValue: string): void {
 			} catch {
 				throw new Error(`Invalid record JSON: ${rawValue}`);
 			}
-			if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+			if (!isRecord(parsed)) {
 				throw new Error(`Invalid record JSON: ${rawValue}`);
 			}
 			if (path === "providers.maxInFlightRequests") {
