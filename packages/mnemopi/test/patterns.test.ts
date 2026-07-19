@@ -61,6 +61,26 @@ describe("pattern detection", () => {
 		expect(detector.detectTemporal([{ content: "Only one", timestamp: "2026-01-01T09:00:00" }])).toEqual([]);
 	});
 
+	it("buckets the creation hour in UTC, independent of the backend timezone", () => {
+		const detector = new PatternDetector(0.3);
+		// All four are the same UTC instant window (hour 14) expressed four ways:
+		// Z-suffixed, naive, and SQLite-space forms must land in the same bucket, and
+		// the reported hour is the UTC hour (14), not the host-local hour. On a
+		// non-UTC host, local-time bucketing (the old getHours) would report a
+		// different hour and split the naive rows off from the Z rows.
+		const patterns = detector.detectTemporal([
+			{ content: "a", timestamp: "2026-03-01T14:00:00Z" },
+			{ content: "b", timestamp: "2026-03-02T14:30:00" },
+			{ content: "c", timestamp: "2026-03-03 14:15:00" },
+			{ content: "d", timestamp: "2026-03-04T14:45:00Z" },
+		]);
+		const hourPattern = patterns.find(pattern => pattern.description.includes(":00 ("));
+		expect(hourPattern).toBeDefined();
+		expect(hourPattern?.description).toContain("14:00");
+		expect(hourPattern?.metadata.hour).toBe(14);
+		expect(hourPattern?.metadata.count).toBe(4);
+	});
+
 	it("detects frequent keywords and co-occurrence", () => {
 		const detector = new PatternDetector(0.1);
 		const patterns = detector.detectContent([

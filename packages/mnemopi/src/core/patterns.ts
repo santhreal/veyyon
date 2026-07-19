@@ -1,3 +1,4 @@
+import { parseTsFast } from "../util/datetime";
 import { CONTENT_STOPWORDS } from "./stopwords";
 
 const UTF8_ENCODER = new TextEncoder();
@@ -260,13 +261,17 @@ export class PatternDetector {
 		for (const mem of memories) {
 			const ts = timestampOf(mem);
 			if (ts === undefined) continue;
-			const date = new Date(ts.replace("Z", "+00:00"));
-			if (!Number.isNaN(date.getTime())) timestamps.push(date);
+			// Canonical parse: a naive stamp is read as UTC, matching the Z-suffixed
+			// rows, so mixed inputs land in the same instant. Buckets below read the
+			// UTC frame (getUTCHours/getUTCDay) so a memory's creation-hour and
+			// weekday pattern is stable no matter which timezone the backend runs in.
+			const date = parseTsFast(ts);
+			if (date !== undefined) timestamps.push(date);
 		}
 		if (timestamps.length < 3) return patterns;
 
 		const hourCounts = new Map<number, number>();
-		for (const timestamp of timestamps) increment(hourCounts, timestamp.getHours());
+		for (const timestamp of timestamps) increment(hourCounts, timestamp.getUTCHours());
 		const total = timestamps.length;
 		for (const [hour, count] of mostCommon(hourCounts, 3)) {
 			const confidence = count / total;
@@ -277,7 +282,7 @@ export class PatternDetector {
 						description: `Memories frequently created at ${hour.toString().padStart(2, "0")}:00 (${count}/${total} times)`,
 						confidence,
 						samples: timestamps
-							.filter(timestamp => timestamp.getHours() === hour)
+							.filter(timestamp => timestamp.getUTCHours() === hour)
 							.slice(0, 3)
 							.map(isoSample),
 						metadata: { hour, count, total },
@@ -288,7 +293,7 @@ export class PatternDetector {
 
 		const dayNames = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
 		const dayCounts = new Map<number, number>();
-		for (const timestamp of timestamps) increment(dayCounts, (timestamp.getDay() + 6) % 7);
+		for (const timestamp of timestamps) increment(dayCounts, (timestamp.getUTCDay() + 6) % 7);
 		for (const [day, count] of mostCommon(dayCounts, 2)) {
 			const confidence = count / total;
 			const dayName = dayNames[day];
@@ -299,7 +304,7 @@ export class PatternDetector {
 						description: `Memories frequently created on ${dayName} (${count}/${total} times)`,
 						confidence,
 						samples: timestamps
-							.filter(timestamp => (timestamp.getDay() + 6) % 7 === day)
+							.filter(timestamp => (timestamp.getUTCDay() + 6) % 7 === day)
 							.slice(0, 3)
 							.map(isoSample),
 						metadata: { day: dayName, count, total },

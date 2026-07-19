@@ -1,4 +1,5 @@
 import { HOUR_MS } from "@veyyon/utils";
+import { parseTsFast } from "../util/datetime";
 
 export type MemoryType = keyof typeof WEIBULL_PARAMS;
 
@@ -40,46 +41,20 @@ export const WEIBULL_PARAMS = {
 export const DEFAULT_HALFLIFE_HOURS = 168.0;
 
 type TimestampInput = string | Date | null | undefined;
-function capture(match: RegExpExecArray, index: number): string {
-	return match[index] ?? "";
-}
 
+// Route every string timestamp through the package's one canonical parser, which
+// treats a naive (no-timezone) or date-only stamp as UTC. The previous hand-rolled
+// ladder here reused `new Date(...)` with a local-time `new Date(year, month-1, day)`
+// fallback, so the same stored stamp decayed differently depending on the host's
+// timezone. `parseTsFast` already accepts the ISO, naive, SQLite-space, and
+// date-only forms these rows carry.
 function parseTimestamp(timestamp: TimestampInput): Date | null {
 	if (timestamp == null) return null;
 	if (timestamp instanceof Date) {
 		return Number.isFinite(timestamp.getTime()) ? timestamp : null;
 	}
-
 	if (typeof timestamp !== "string") return null;
-
-	const normalized = timestamp.replace("Z", "+00:00");
-	const parsed = new Date(normalized);
-	if (Number.isFinite(parsed.getTime())) return parsed;
-
-	const truncated = normalized.slice(0, 26);
-	const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(truncated);
-	if (dateOnly !== null) {
-		const year = Number(capture(dateOnly, 1));
-		const month = Number(capture(dateOnly, 2));
-		const day = Number(capture(dateOnly, 3));
-		const date = new Date(year, month - 1, day);
-		return Number.isFinite(date.getTime()) ? date : null;
-	}
-
-	const dateTime = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,6}))?/.exec(truncated);
-	if (dateTime === null) return null;
-
-	const millis = Number(capture(dateTime, 7).padEnd(3, "0").slice(0, 3));
-	const date = new Date(
-		Number(capture(dateTime, 1)),
-		Number(capture(dateTime, 2)) - 1,
-		Number(capture(dateTime, 3)),
-		Number(capture(dateTime, 4)),
-		Number(capture(dateTime, 5)),
-		Number(capture(dateTime, 6)),
-		millis,
-	);
-	return Number.isFinite(date.getTime()) ? date : null;
+	return parseTsFast(timestamp) ?? null;
 }
 
 function paramsFor(memoryType: string): WeibullParams | undefined {
