@@ -14,6 +14,7 @@ import {
 	directoryExists,
 	getLogPath,
 	getProjectDir,
+	isUuid,
 	logger,
 	normalizePathForComparison,
 	postmortem,
@@ -588,8 +589,6 @@ async function moveMissingCwdSessionIfNeeded(
 	return { status: "moved", manager };
 }
 
-const SESSION_ID_ARG_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
 export function normalizeContinueSessionArgs(parsed: Args, rawArgs?: readonly string[]): void {
 	if (!parsed.continue || parsed.resume || parsed.fork) return;
 
@@ -600,7 +599,7 @@ export function normalizeContinueSessionArgs(parsed: Args, rawArgs?: readonly st
 		const continueIndex = rawArgs.findIndex(arg => arg === "--continue" || arg === "-c");
 		message = rawArgs[continueIndex + 1]?.trim();
 	}
-	if (!message || !SESSION_ID_ARG_RE.test(message)) return;
+	if (!message || !isUuid(message)) return;
 
 	const messageIndex = parsed.messages.indexOf(message);
 	if (messageIndex === -1) return;
