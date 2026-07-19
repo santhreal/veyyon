@@ -239,6 +239,11 @@ function legacyBuiltinTool(cwd: string, name: LegacyCodingToolName): ToolDefinit
 	return markToolDefinition(definition);
 }
 
+// Deliberate local trio (string/number/boolean): unlike the @veyyon/utils
+// getStringProperty family, these take `unknown` and read through Reflect.get so
+// they work on any object the legacy shim receives (class instances, proxies),
+// not just plain records. numberField/booleanField have no owner, so keeping the
+// three together preserves one readable, symmetric field-reader.
 function stringField(value: unknown, key: string): string | undefined {
 	if (value === null || typeof value !== "object") return undefined;
 	const field = Reflect.get(value, key);
