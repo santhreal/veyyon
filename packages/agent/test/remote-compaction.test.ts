@@ -11,11 +11,14 @@ import {
 	buildCompactionV2Request,
 	buildOpenAiNativeHistory,
 	getCompactionV2PreserveData,
+	getPreservedOpenAiRemoteCompactionData,
+	OPENAI_REMOTE_COMPACTION_PRESERVE_KEY,
 	requestCompactionV2Streaming,
 	requestOpenAiRemoteCompaction,
 	requestRemoteCompaction,
 	shouldUseCompactionV2Streaming,
 	shouldUseOpenAiRemoteCompaction,
+	withOpenAiRemoteCompactionPreserveData,
 } from "@veyyon/agent-core/compaction/openai";
 import * as ai from "@veyyon/ai";
 import { getOpenAICodexTransportDetails } from "@veyyon/ai/providers/openai-codex-responses";
@@ -1352,5 +1355,380 @@ describe("compact() remote compaction failure handling", () => {
 
 		expect(result.summary).toContain("local summary");
 		expect(completeSpy).toHaveBeenCalled();
+	});
+});
+
+function makeAssistant(content: AssistantMessage["content"], over: Partial<AssistantMessage> = {}): AssistantMessage {
+	return {
+		role: "assistant",
+		content,
+		timestamp: Date.now(),
+		provider: "openai",
+		model: "gpt-5",
+		api: "openai-responses",
+		usage: ZERO_USAGE,
+		stopReason: "stop",
+		...over,
+	};
+}
+
+describe("getPreservedOpenAiRemoteCompactionData", () => {
+	const item = { type: "compaction" as const, encrypted_content: "enc" };
+	const wrap = (data: unknown) => ({ [OPENAI_REMOTE_COMPACTION_PRESERVE_KEY]: data });
+
+	test("returns undefined for missing, non-object, or structurally invalid entries", () => {
+		expect(getPreservedOpenAiRemoteCompactionData(undefined)).toBeUndefined();
+		expect(getPreservedOpenAiRemoteCompactionData({})).toBeUndefined();
+		expect(getPreservedOpenAiRemoteCompactionData(wrap("nope"))).toBeUndefined();
+		// replacementHistory must be an array.
+		expect(
+			getPreservedOpenAiRemoteCompactionData(wrap({ replacementHistory: {}, compactionItem: item })),
+		).toBeUndefined();
+		// compactionItem must be an object.
+		expect(
+			getPreservedOpenAiRemoteCompactionData(wrap({ replacementHistory: [], compactionItem: 3 })),
+		).toBeUndefined();
+		// A classic compaction with no encrypted_content string is rejected.
+		expect(
+			getPreservedOpenAiRemoteCompactionData(
+				wrap({ replacementHistory: [], compactionItem: { type: "compaction" } }),
+			),
+		).toBeUndefined();
+		// An unrelated item type is rejected.
+		expect(
+			getPreservedOpenAiRemoteCompactionData(wrap({ replacementHistory: [], compactionItem: { type: "other" } })),
+		).toBeUndefined();
+	});
+
+	test("accepts a classic encrypted compaction and normalizes the provider field", () => {
+		const history = [{ type: "message" }];
+		expect(
+			getPreservedOpenAiRemoteCompactionData(
+				wrap({ provider: "openai", replacementHistory: history, compactionItem: item }),
+			),
+		).toEqual({ provider: "openai", replacementHistory: history, compactionItem: item });
+		// A non-string provider is dropped to undefined.
+		expect(
+			getPreservedOpenAiRemoteCompactionData(wrap({ provider: 7, replacementHistory: [], compactionItem: item }))
+				?.provider,
+		).toBeUndefined();
+	});
+
+	test("accepts a compaction_summary item without encrypted content", () => {
+		const summaryItem = { type: "compaction_summary" as const, summary: "recap" };
+		expect(
+			getPreservedOpenAiRemoteCompactionData(wrap({ replacementHistory: [], compactionItem: summaryItem })),
+		).toEqual({ provider: undefined, replacementHistory: [], compactionItem: summaryItem });
+	});
+});
+
+describe("withOpenAiRemoteCompactionPreserveData", () => {
+	const remote = { replacementHistory: [], compactionItem: { type: "compaction_summary" as const } };
+
+	test("stores the remote-compaction record alongside existing keys", () => {
+		expect(withOpenAiRemoteCompactionPreserveData({ other: 1 }, remote)).toEqual({
+			other: 1,
+			[OPENAI_REMOTE_COMPACTION_PRESERVE_KEY]: remote,
+		});
+		// Undefined base preserve-data still yields a fresh object with just the key.
+		expect(withOpenAiRemoteCompactionPreserveData(undefined, remote)).toEqual({
+			[OPENAI_REMOTE_COMPACTION_PRESERVE_KEY]: remote,
+		});
+	});
+
+	test("removes the key when clearing, collapsing to undefined once empty", () => {
+		// No record + key absent is a no-op that returns the same reference.
+		const untouched = { other: 1 };
+		expect(withOpenAiRemoteCompactionPreserveData(untouched, undefined)).toBe(untouched);
+		// Clearing leaves the remaining keys.
+		expect(
+			withOpenAiRemoteCompactionPreserveData(
+				{ other: 1, [OPENAI_REMOTE_COMPACTION_PRESERVE_KEY]: remote },
+				undefined,
+			),
+		).toEqual({
+			other: 1,
+		});
+		// Clearing the only key collapses to undefined.
+		expect(
+			withOpenAiRemoteCompactionPreserveData({ [OPENAI_REMOTE_COMPACTION_PRESERVE_KEY]: remote }, undefined),
+		).toBeUndefined();
+	});
+});
+
+describe("buildOpenAiNativeHistory content encoding", () => {
+	test("encodes string user content as a single input_text item", () => {
+		const items = buildOpenAiNativeHistory(
+			[{ role: "user", content: "hello world", timestamp: 0 }],
+			makeOpenAiModel(),
+		);
+		expect(items).toEqual([
+			{ type: "message", role: "user", content: [{ type: "input_text", text: "hello world" }] },
+		]);
+	});
+
+	test("encodes array developer content, keeping text and images and dropping blank text", () => {
+		const items = buildOpenAiNativeHistory(
+			[
+				{
+					role: "developer",
+					content: [
+						{ type: "text", text: "keep me" },
+						{ type: "text", text: "   " },
+						{ type: "image", mimeType: "image/png", data: "ZmFrZQ==" },
+					],
+					timestamp: 0,
+				},
+			],
+			makeOpenAiModel(),
+		);
+		expect(items).toEqual([
+			{
+				type: "message",
+				role: "developer",
+				content: [
+					{ type: "input_text", text: "keep me" },
+					{ type: "input_image", detail: "auto", image_url: "data:image/png;base64,ZmFrZQ==" },
+				],
+			},
+		]);
+	});
+
+	test("encodes a plain assistant text block as an output_text message with a synthesized id", () => {
+		const items = buildOpenAiNativeHistory(
+			[makeAssistant([{ type: "text", text: "the answer" }])],
+			makeOpenAiModel(),
+		);
+		expect(items).toEqual([
+			{
+				type: "message",
+				role: "assistant",
+				content: [{ type: "output_text", text: "the answer", annotations: [] }],
+				status: "completed",
+				id: "msg_0",
+				phase: undefined,
+			},
+		]);
+	});
+
+	test("replays a parseable thinking signature as a native reasoning item and skips an unparseable one", () => {
+		const reasoning = { type: "reasoning", id: "rs_1", summary: [] };
+		const ok = buildOpenAiNativeHistory(
+			[makeAssistant([{ type: "thinking", thinking: "…", thinkingSignature: JSON.stringify(reasoning) }])],
+			makeOpenAiModel(),
+		);
+		expect(ok).toEqual([reasoning]);
+
+		const bad = buildOpenAiNativeHistory(
+			[makeAssistant([{ type: "thinking", thinking: "…", thinkingSignature: "{not json" }])],
+			makeOpenAiModel(),
+		);
+		expect(bad).toEqual([]);
+	});
+
+	test("emits a tool result with images as an output item plus a follow-up user image message", () => {
+		const assistant = makeAssistant(
+			[{ type: "toolCall", id: "call_shot_1|fc_shot_1", name: "screenshot", arguments: {} }],
+			{ stopReason: "toolUse" },
+		);
+		const toolResult: ToolResultMessage = {
+			role: "toolResult",
+			toolCallId: "call_shot_1|fc_shot_1",
+			toolName: "screenshot",
+			content: [
+				{ type: "text", text: "captured" },
+				{ type: "image", mimeType: "image/png", data: "ZmFrZQ==" },
+			],
+			isError: false,
+			timestamp: Date.now(),
+		};
+
+		const items = buildOpenAiNativeHistory([assistant, toolResult], makeOpenAiModel({ input: ["text", "image"] }));
+
+		const output = items.find(item => item.type === "function_call_output");
+		expect(output?.output).toBe("captured");
+		const imageMsg = items.find(item => item.type === "message" && item.role === "user");
+		expect(imageMsg?.content).toEqual([
+			{ type: "input_text", text: "Attached image(s) from tool result:" },
+			{ type: "input_image", detail: "auto", image_url: "data:image/png;base64,ZmFrZQ==" },
+		]);
+	});
+});
+
+describe("buildOpenAiNativeHistory model-identity handling", () => {
+	test("clears a native item id when replaying a tool call authored by a different model", () => {
+		const assistant = makeAssistant(
+			[{ type: "toolCall", id: "call_x|fc_x", name: "read", arguments: { path: "/a" } }],
+			{ model: "gpt-4o", stopReason: "toolUse" },
+		);
+		const items = buildOpenAiNativeHistory([assistant], makeOpenAiModel());
+		const call = items.find(item => item.type === "function_call");
+		expect(call?.call_id).toBe("call_x");
+		// The `fc_`-prefixed item id belongs to the other model's response and is dropped.
+		expect(call?.id).toBeUndefined();
+	});
+});
+
+describe("resolveOpenAiCompactEndpoint via requestOpenAiRemoteCompaction", () => {
+	test("appends /v1/responses/compact when the base URL has no /v1 suffix", async () => {
+		let seenEndpoint = "";
+		const fetchMock: FetchImpl = async endpoint => {
+			seenEndpoint = String(endpoint);
+			return new Response(JSON.stringify({ output: [{ type: "compaction_summary", summary: "ok" }] }), {
+				headers: { "content-type": "application/json" },
+			});
+		};
+		await requestOpenAiRemoteCompaction(
+			makeOpenAiModel({ baseUrl: "https://custom.example.com" }),
+			"key",
+			[],
+			"instructions",
+			undefined,
+			{ fetch: fetchMock },
+		);
+		expect(seenEndpoint).toBe("https://custom.example.com/v1/responses/compact");
+	});
+
+	test("raises a clear error when an Azure model has no resolvable base URL", async () => {
+		const previous = {
+			base: process.env.AZURE_OPENAI_BASE_URL,
+			resource: process.env.AZURE_OPENAI_RESOURCE_NAME,
+		};
+		delete process.env.AZURE_OPENAI_BASE_URL;
+		delete process.env.AZURE_OPENAI_RESOURCE_NAME;
+		try {
+			const model = { ...makeAzureModel(), baseUrl: "" } as Model;
+			await expect(
+				requestOpenAiRemoteCompaction(model, "key", [], "instructions", undefined, {
+					fetch: async () => new Response("{}", { headers: { "content-type": "application/json" } }),
+				}),
+			).rejects.toThrow("Azure OpenAI base URL is required");
+		} finally {
+			if (previous.base === undefined) delete process.env.AZURE_OPENAI_BASE_URL;
+			else process.env.AZURE_OPENAI_BASE_URL = previous.base;
+			if (previous.resource === undefined) delete process.env.AZURE_OPENAI_RESOURCE_NAME;
+			else process.env.AZURE_OPENAI_RESOURCE_NAME = previous.resource;
+		}
+	});
+});
+
+describe("buildOpenAiNativeHistory content edges", () => {
+	test("replays native responses history carried on a user message's providerPayload", () => {
+		const historyItem = {
+			type: "message",
+			role: "user",
+			content: [{ type: "input_text", text: "carried" }],
+			id: "msg_hist",
+		};
+		const userWithHistory = {
+			role: "user",
+			content: [{ type: "text", text: "ignored-because-history-wins" }],
+			timestamp: Date.now(),
+			providerPayload: { type: "openaiResponsesHistory", provider: "openai-codex", dt: true, items: [historyItem] },
+		} as unknown as AssistantMessage;
+		const items = buildOpenAiNativeHistory([userWithHistory], CODEX_MODEL);
+		expect(items).toContainEqual(historyItem);
+		// The literal content block is not emitted; the native history replaces it.
+		expect(items.some(item => JSON.stringify(item).includes("ignored-because-history-wins"))).toBe(false);
+	});
+
+	test("hashes an assistant text-signature id longer than 64 chars into a stable msg id", () => {
+		const longId = `id_${"x".repeat(80)}`;
+		const assistant = makeAssistant([{ type: "text", text: "answer", textSignature: longId }]);
+		const items = buildOpenAiNativeHistory([assistant], makeOpenAiModel());
+		const message = items.find(item => item.type === "message" && item.role === "assistant");
+		expect(message?.id).toBe(`msg_${Bun.hash(longId).toString(36)}`);
+	});
+});
+
+describe("requestOpenAiRemoteCompaction codex auth headers", () => {
+	test("adds the chatgpt-account-id header parsed from a codex JWT access token", async () => {
+		const b64url = (obj: unknown) =>
+			btoa(JSON.stringify(obj)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+		const jwt = `${b64url({ alg: "none" })}.${b64url({
+			"https://api.openai.com/auth": { chatgpt_account_id: "acct-xyz" },
+		})}.sig`;
+		let seenHeaders: Record<string, string> = {};
+		const fetchMock: FetchImpl = async (_endpoint, init) => {
+			seenHeaders = (init?.headers ?? {}) as Record<string, string>;
+			return new Response(JSON.stringify({ output: [{ type: "compaction_summary", summary: "ok" }] }), {
+				headers: { "content-type": "application/json" },
+			});
+		};
+		await requestOpenAiRemoteCompaction(CODEX_MODEL, jwt, [], "instructions", undefined, {
+			fetch: fetchMock,
+			installationId: TEST_INSTALLATION_ID,
+		} as never);
+		expect(seenHeaders["chatgpt-account-id"]).toBe("acct-xyz");
+	});
+});
+
+describe("requestOpenAiRemoteCompaction response validation", () => {
+	test("throws when the endpoint returns no compaction item", async () => {
+		const fetchMock: FetchImpl = async () =>
+			new Response(JSON.stringify({ output: [{ type: "message", role: "assistant", content: [] }] }), {
+				headers: { "content-type": "application/json" },
+			});
+
+		await expect(
+			requestOpenAiRemoteCompaction(makeOpenAiModel(), "key", [], "instructions", undefined, { fetch: fetchMock }),
+		).rejects.toThrow("missing compaction item");
+	});
+});
+
+describe("requestRemoteCompaction wire edges", () => {
+	test("raises a ProviderHttpError on a non-ok response", async () => {
+		const fetchMock: FetchImpl = async () => new Response("boom", { status: 503, statusText: "Service Unavailable" });
+		await expect(
+			requestRemoteCompaction("https://host/compact", { systemPrompt: "s", prompt: "p" }, undefined, {
+				fetch: fetchMock,
+			}),
+		).rejects.toThrow("Remote compaction failed (503 Service Unavailable)");
+	});
+
+	test("joins array-form chat-completions content into the summary", async () => {
+		const fetchMock: FetchImpl = async () =>
+			new Response(
+				JSON.stringify({
+					choices: [
+						{
+							message: {
+								content: [
+									{ type: "text", text: "part-a " },
+									{ type: "text", text: "part-b" },
+								],
+							},
+						},
+					],
+				}),
+				{ headers: { "content-type": "application/json" } },
+			);
+		const result = await requestRemoteCompaction(
+			"https://host/v1/chat/completions",
+			{ systemPrompt: "s", prompt: "p" },
+			undefined,
+			{ fetch: fetchMock, model: makeOpenAiModel(), apiKey: "key" },
+		);
+		expect(result).toEqual({ summary: "part-a part-b" });
+	});
+
+	test("throws when a chat-completions response has no message content", async () => {
+		const fetchMock: FetchImpl = async () =>
+			new Response(JSON.stringify({ choices: [] }), { headers: { "content-type": "application/json" } });
+		await expect(
+			requestRemoteCompaction("https://host/chat/completions", { systemPrompt: "s", prompt: "p" }, undefined, {
+				fetch: fetchMock,
+			}),
+		).rejects.toThrow("missing choices[0].message.content");
+	});
+
+	test("throws when a generic response is missing the summary field", async () => {
+		const fetchMock: FetchImpl = async () =>
+			new Response(JSON.stringify({ notSummary: true }), { headers: { "content-type": "application/json" } });
+		await expect(
+			requestRemoteCompaction("https://host/compact", { systemPrompt: "s", prompt: "p" }, undefined, {
+				fetch: fetchMock,
+			}),
+		).rejects.toThrow("missing summary");
 	});
 });
