@@ -32,3 +32,17 @@ export function sqlPlaceholders(count: number): string {
 	}
 	return Array.from({ length: count }, () => "?").join(", ");
 }
+
+/**
+ * Escape the SQL `LIKE` wildcards in `value` so user input matches as literal
+ * text instead of as a pattern. Backslash, `%` (any run) and `_` (any single
+ * character) are each prefixed with a backslash.
+ *
+ * The result is only correct when the statement declares the same escape
+ * character, so the `LIKE` clause must read `... LIKE ? ESCAPE '\'`. The caller
+ * still wraps the escaped value in its own `%…%` for a substring match; those
+ * surrounding wildcards are meant to stay active.
+ */
+export function escapeLike(value: string): string {
+	return value.replace(/[\\%_]/g, "\\$&");
+}

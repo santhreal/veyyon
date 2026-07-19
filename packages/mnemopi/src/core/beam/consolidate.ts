@@ -3,7 +3,7 @@ import { collapseWhitespace, DAY_MS, errorMessage, HOUR_MS, logger } from "@veyy
 import { envInt } from "../../util/env";
 import { generateId, stableMemoryId } from "../../util/ids";
 import { unicodeWordTokens, WORD_TOKEN_DOT_HYPHEN_RE } from "../../util/regex";
-import { sqlPlaceholders } from "../../util/sqlite";
+import { escapeLike, sqlPlaceholders } from "../../util/sqlite";
 import { aaakEncode } from "../aaak";
 import { REGEX_EXTRACTION_MAX_INPUT_CHARS } from "../entities";
 import { EpisodicGraph } from "../episodic-graph";
@@ -192,10 +192,6 @@ function sourceSession(beam: BeamMemoryState): string {
 
 function asRows(value: unknown): Row[] {
 	return Array.isArray(value) ? (value as Row[]) : [];
-}
-
-function escapeLike(value: string): string {
-	return value.replace(/[\\%_]/g, m => `\\${m}`);
 }
 
 function makeQuestionTokens(query: string): string[] {

@@ -1,6 +1,6 @@
 import { Database } from "bun:sqlite";
 import { afterEach, describe, expect, it } from "bun:test";
-import { sqlPlaceholders, tableExists } from "../src/sqlite";
+import { escapeLike, sqlPlaceholders, tableExists } from "../src/sqlite";
 
 // One in-memory database per assertion group; each closes in afterEach so a
 // leaked handle can never mask the closed-handle propagation test below.
@@ -90,5 +90,41 @@ describe("sqlPlaceholders", () => {
 		expect(() => sqlPlaceholders(-1)).toThrow(RangeError);
 		expect(() => sqlPlaceholders(2.5)).toThrow(RangeError);
 		expect(() => sqlPlaceholders(Number.NaN)).toThrow(RangeError);
+	});
+});
+
+describe("escapeLike", () => {
+	it("prefixes each LIKE metacharacter with a backslash", () => {
+		expect(escapeLike("100%")).toBe("100\\%");
+		expect(escapeLike("a_b")).toBe("a\\_b");
+		expect(escapeLike("c:\\dir")).toBe("c:\\\\dir");
+		expect(escapeLike("50%_of\\it")).toBe("50\\%\\_of\\\\it");
+	});
+
+	it("leaves ordinary text untouched", () => {
+		expect(escapeLike("plain text 123")).toBe("plain text 123");
+		expect(escapeLike("")).toBe("");
+	});
+
+	it("makes a wildcard in the search term match literally under ESCAPE '\\'", () => {
+		db = new Database(":memory:");
+		db.run("CREATE TABLE t (label TEXT)");
+		for (const label of ["50% off", "500 items", "5_0", "540"]) {
+			db.run("INSERT INTO t (label) VALUES (?)", [label]);
+		}
+
+		// Searching for "50%" must find only the literal "50% off" row, not the
+		// "500 items" / "540" rows a bare `%` wildcard would also match.
+		const pctRows = db
+			.query("SELECT label FROM t WHERE label LIKE ? ESCAPE '\\' ORDER BY label")
+			.all(`%${escapeLike("50%")}%`) as Array<{ label: string }>;
+		expect(pctRows.map(r => r.label)).toEqual(["50% off"]);
+
+		// The literal underscore in "5_0" must not match "540" the way a raw
+		// `_` single-character wildcard would.
+		const underRows = db
+			.query("SELECT label FROM t WHERE label LIKE ? ESCAPE '\\'")
+			.all(`%${escapeLike("5_0")}%`) as Array<{ label: string }>;
+		expect(underRows.map(r => r.label)).toEqual(["5_0"]);
 	});
 });
