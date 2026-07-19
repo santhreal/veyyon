@@ -220,7 +220,7 @@ export function resolveGlobalDefaultProfile(): string | undefined {
 					`Fix or remove the file (it holds only cross-profile keys like defaultProfile).`,
 			);
 		}
-		if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return undefined;
+		if (!isRecord(parsed)) return undefined;
 		const value = (parsed as Record<string, unknown>).defaultProfile;
 		if (value === undefined || value === null) return undefined;
 		if (typeof value !== "string") {

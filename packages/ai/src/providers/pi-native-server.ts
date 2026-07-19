@@ -94,7 +94,7 @@ const ALLOWED_OPTION_KEYS: ReadonlySet<keyof SimpleStreamOptions> = new Set([
  * the gateway with only a URL swap.
  */
 export function parseRequest(body: unknown, _headers?: Headers): PiNativeParsedRequest {
-	if (typeof body !== "object" || body === null || Array.isArray(body)) {
+	if (!isRecord(body)) {
 		throw new AIError.ValidationError("Request body must be a JSON object");
 	}
 	const obj = body as Record<string, unknown>;
@@ -111,7 +111,7 @@ export function parseRequest(body: unknown, _headers?: Headers): PiNativeParsedR
 	if (!modelId) throw new AIError.ValidationError("Missing `modelId` (or `model.id`) field");
 
 	const context = obj.context;
-	if (typeof context !== "object" || context === null || Array.isArray(context)) {
+	if (!isRecord(context)) {
 		throw new AIError.ValidationError("Missing `context` object");
 	}
 	const ctxObj = context as Record<string, unknown>;

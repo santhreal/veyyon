@@ -592,7 +592,7 @@ function injectIntentIntoSchema(
 	mode: "require" | "optional" = "require",
 	describeIntent = true,
 ): unknown {
-	if (!schema || typeof schema !== "object" || Array.isArray(schema)) return schema;
+	if (!isRecord(schema)) return schema;
 	const schemaRecord = schema as Record<string, unknown>;
 	const propertiesValue = schemaRecord.properties;
 	const hasOwnProperties = isRecord(propertiesValue);
@@ -1700,7 +1700,7 @@ function emitDiscardedHarmonyPartial(
 }
 
 function isStringRecord(value: unknown): value is Record<string, string> {
-	if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+	if (!isRecord(value)) return false;
 	return Object.values(value).every(child => typeof child === "string");
 }
 

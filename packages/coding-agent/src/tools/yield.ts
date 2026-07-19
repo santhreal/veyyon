@@ -3,6 +3,7 @@
  *
  * Subagents can call this tool incrementally or terminally depending on `type`.
  */
+
 import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallback } from "@veyyon/agent-core";
 import type { TSchema } from "@veyyon/ai/types";
 import {
@@ -12,7 +13,7 @@ import {
 	sanitizeSchemaForStrictMode,
 	tryEnforceStrictSchema,
 } from "@veyyon/ai/utils/schema";
-import { errorMessage } from "@veyyon/utils";
+import { errorMessage, isRecord } from "@veyyon/utils";
 import { subprocessToolRegistry } from "../task/subprocess-tool-registry";
 import type { ToolSession } from ".";
 import { buildOutputValidator, formatAllValidationIssues } from "./output-schema-validator";
@@ -314,7 +315,7 @@ export class YieldTool implements AgentTool<TSchema, YieldDetails> {
 	): Promise<AgentToolResult<YieldDetails>> {
 		const raw = params as Record<string, unknown>;
 		const rawResult = raw.result;
-		if (!rawResult || typeof rawResult !== "object" || Array.isArray(rawResult)) {
+		if (!isRecord(rawResult)) {
 			throw new Error("result must be an object containing either data or error");
 		}
 		const resultRecord = rawResult as Record<string, unknown>;

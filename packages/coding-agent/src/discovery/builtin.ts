@@ -3,8 +3,9 @@
  *
  * Primary provider for Veyyon native configs. Supports all capabilities.
  */
+
 import * as path from "node:path";
-import { getAgentDir, logger, parseFrontmatter, tryParseJson } from "@veyyon/utils";
+import { getAgentDir, isRecord, logger, parseFrontmatter, tryParseJson } from "@veyyon/utils";
 import { YAML } from "bun";
 import { getManagedSkillsDir, MANAGED_SKILLS_PROVIDER_ID } from "../autolearn/managed-skills";
 import { registerProvider } from "../capability";
@@ -828,7 +829,7 @@ async function loadSettings(ctx: LoadContext): Promise<LoadResult<Settings>> {
 	const parseYamlSettings = (content: string, filePath: string): Record<string, unknown> | null => {
 		try {
 			const data = YAML.parse(content);
-			if (!data || typeof data !== "object" || Array.isArray(data)) return {};
+			if (!isRecord(data)) return {};
 			return data as Record<string, unknown>;
 		} catch {
 			warnings.push(`Failed to parse ${filePath}`);

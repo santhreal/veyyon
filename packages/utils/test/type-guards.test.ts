@@ -208,6 +208,35 @@ function hasInlineIsRecord(text: string): boolean {
 	return false;
 }
 
+// The negated predicate `!isRecord(x)` also gets hand-inlined as its De Morgan
+// expansion. These are the three distinct spellings (¬!!x and ¬x both collapse
+// to !x), each backreferenced so all slots are the SAME expression.
+const NEGATED_INLINE_ISRECORD = [
+	new RegExp(`typeof (${INLINE_ID}) !== "object" \\|\\| \\1 === null \\|\\| Array\\.isArray\\(\\1\\)`, "g"),
+	new RegExp(`(${INLINE_ID}) === null \\|\\| typeof \\1 !== "object" \\|\\| Array\\.isArray\\(\\1\\)`, "g"),
+	new RegExp(`!(${INLINE_ID}) \\|\\| typeof \\1 !== "object" \\|\\| Array\\.isArray\\(\\1\\)`, "g"),
+];
+
+// Same coding-agent modes/ UI lane block as the positive set: these files are
+// owned by an active feature branch. Convert when that lane unblocks, then
+// remove the entry. Shrink-only.
+const NEGATED_ISRECORD_INLINE_GRANDFATHERED = new Set([
+	"coding-agent/src/modes/acp/acp-event-mapper.ts",
+	"coding-agent/src/modes/components/model-hub.ts",
+	"coding-agent/src/modes/components/read-tool-group.ts",
+	"coding-agent/src/modes/components/settings-selector.ts",
+	"coding-agent/src/modes/controllers/omfg-rule.ts",
+	"coding-agent/src/modes/rpc/rpc-mode.ts",
+]);
+
+function hasNegatedInlineIsRecord(text: string): boolean {
+	for (const re of NEGATED_INLINE_ISRECORD) {
+		re.lastIndex = 0;
+		if (re.test(text)) return true;
+	}
+	return false;
+}
+
 async function walk(dir: string, out: string[], includeTests: boolean): Promise<void> {
 	for (const entry of await readdir(dir, { withFileTypes: true })) {
 		const full = path.join(dir, entry.name);
@@ -355,6 +384,28 @@ describe("type-guards source locks", () => {
 		const cleared = [...ISRECORD_INLINE_GRANDFATHERED].filter(rel => !seen.has(rel));
 		expect(offenders, "inline isRecord predicate — call isRecord(x) from @veyyon/utils instead").toEqual([]);
 		expect(cleared, "grandfathered inline sites now clean — remove them from the list").toEqual([]);
+	});
+
+	it("no production source writes the negated isRecord predicate inline (except the blocked modes/ lane)", async () => {
+		// Positive control: the three negated spellings match; a two-identifier
+		// disjunction does not.
+		expect(hasNegatedInlineIsRecord(`if (typeof x !== "object" || x === null || Array.isArray(x)) {`)).toBe(true);
+		expect(hasNegatedInlineIsRecord(`return v === null || typeof v !== "object" || Array.isArray(v);`)).toBe(true);
+		expect(hasNegatedInlineIsRecord(`if (!v || typeof v !== "object" || Array.isArray(v)) return {};`)).toBe(true);
+		expect(hasNegatedInlineIsRecord(`if (!a || typeof b !== "object" || Array.isArray(c)) {`)).toBe(false);
+
+		const offenders: string[] = [];
+		const seen = new Set<string>();
+		for (const file of await sourceFiles()) {
+			const rel = path.relative(PACKAGES_DIR, file).replaceAll(path.sep, "/");
+			if (rel === OWNER || ISRECORD_ALLOWED.has(rel)) continue;
+			if (!hasNegatedInlineIsRecord(await readFile(file, "utf8"))) continue;
+			seen.add(rel);
+			if (!NEGATED_ISRECORD_INLINE_GRANDFATHERED.has(rel)) offenders.push(rel);
+		}
+		const cleared = [...NEGATED_ISRECORD_INLINE_GRANDFATHERED].filter(rel => !seen.has(rel));
+		expect(offenders, "inline !isRecord predicate — call !isRecord(x) from @veyyon/utils instead").toEqual([]);
+		expect(cleared, "grandfathered negated inline sites now clean — remove them from the list").toEqual([]);
 	});
 
 	it("no test file defines a local isRecord — tests must dogfood the owner too", async () => {

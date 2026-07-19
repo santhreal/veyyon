@@ -1064,7 +1064,7 @@ function parseConsolidationOutputSchema(value: Record<string, unknown>): Consoli
 	if (!Array.isArray(value.skills)) return undefined;
 	const skills: ConsolidationSkillSchema[] = [];
 	for (const item of value.skills) {
-		if (!item || typeof item !== "object" || Array.isArray(item)) return undefined;
+		if (!isRecord(item)) return undefined;
 		const data = item as Record<string, unknown>;
 		if (!hasExactKeys(data, ["name", "content", "scripts", "templates", "examples"], true)) return undefined;
 		if (typeof data.name !== "string") return undefined;
@@ -1134,7 +1134,7 @@ function parseConsolidationSkillFileArray(value: unknown): ConsolidationSkillFil
 	if (!Array.isArray(value)) return undefined;
 	const files: ConsolidationSkillFileSchema[] = [];
 	for (const item of value) {
-		if (!item || typeof item !== "object" || Array.isArray(item)) return undefined;
+		if (!isRecord(item)) return undefined;
 		const data = item as Record<string, unknown>;
 		if (!hasExactKeys(data, ["path", "content"])) return undefined;
 		if (typeof data.path !== "string" || typeof data.content !== "string") return undefined;

@@ -47,7 +47,7 @@ export function isStringOnlySchema(schema: unknown): boolean {
 }
 
 export function collectSchemaTypes(schema: unknown, out: Set<string> = new Set(), depth = 0): Set<string> {
-	if (depth > 8 || !schema || typeof schema !== "object" || Array.isArray(schema)) return out;
+	if (depth > 8 || !isRecord(schema)) return out;
 	const node = schema as Record<string, unknown>;
 	const type = node.type;
 	if (typeof type === "string") out.add(type);
@@ -95,13 +95,13 @@ export function isObjectSchema(schema: unknown): boolean {
 }
 
 export function getObjectProperties(schema: unknown): Record<string, unknown> {
-	if (!schema || typeof schema !== "object" || Array.isArray(schema)) return {};
+	if (!isRecord(schema)) return {};
 	const props = (schema as Record<string, unknown>).properties;
 	return isRecord(props) ? props : {};
 }
 
 export function getArrayItemSchema(schema: unknown): unknown {
-	if (!schema || typeof schema !== "object" || Array.isArray(schema)) return undefined;
+	if (!isRecord(schema)) return undefined;
 	return (schema as Record<string, unknown>).items;
 }
 

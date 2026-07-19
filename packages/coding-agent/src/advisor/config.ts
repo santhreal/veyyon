@@ -1,6 +1,6 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { isEnoent, logger } from "@veyyon/utils";
+import { isEnoent, isRecord, logger } from "@veyyon/utils";
 import { type } from "arktype";
 import { YAML } from "bun";
 import { expandAtImports } from "../discovery/at-imports";
@@ -131,7 +131,7 @@ export async function discoverAdvisorConfigs(cwd: string, agentDir?: string): Pr
 			logger.warn("Advisor config: failed to parse YAML", { path: item.path, error: String(err) });
 			continue;
 		}
-		if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+		if (!isRecord(parsed)) {
 			logger.warn("Advisor config: expected a YAML mapping", { path: item.path });
 			continue;
 		}
@@ -230,7 +230,7 @@ export async function loadWatchdogConfigFile(filePath: string): Promise<Watchdog
 		logger.warn("Advisor config: failed to parse for edit", { path: filePath, error: String(err) });
 		return { advisors: [] };
 	}
-	if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return { advisors: [] };
+	if (!isRecord(parsed)) return { advisors: [] };
 	const result = watchdogYamlSchema(parsed);
 	if (result instanceof type.errors) {
 		logger.warn("Advisor config: invalid schema for edit", { path: filePath, error: result.summary });

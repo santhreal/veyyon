@@ -115,7 +115,7 @@ function setByPath(obj: RawSettings, segments: string[], value: unknown): void {
 }
 
 export function normalizeProviderMaxInFlightRequests(value: unknown): Record<string, number> {
-	if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+	if (!isRecord(value)) return {};
 	const normalized: Record<string, number> = {};
 	for (const [provider, rawLimit] of Object.entries(value)) {
 		if (typeof rawLimit !== "number" || !Number.isFinite(rawLimit) || rawLimit <= 0) continue;
@@ -125,7 +125,7 @@ export function normalizeProviderMaxInFlightRequests(value: unknown): Record<str
 }
 
 export function validateProviderMaxInFlightRequests(value: unknown): Record<string, number> {
-	if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+	if (!isRecord(value)) return {};
 	const invalidProviders: string[] = [];
 	const normalized: Record<string, number> = {};
 	for (const [provider, rawLimit] of Object.entries(value)) {
@@ -190,7 +190,7 @@ function resolvePathScopedStringArray(settingPath: SettingPath, value: unknown, 
 			resolved.push(entry);
 			continue;
 		}
-		if (!entry || typeof entry !== "object" || Array.isArray(entry)) continue;
+		if (!isRecord(entry)) continue;
 
 		const scoped = entry as PathScopedStringArrayEntry;
 		const prefixes = [
@@ -752,7 +752,7 @@ export class Settings {
 
 		try {
 			const parsed = YAML.parse(content);
-			if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+			if (!isRecord(parsed)) {
 				return {};
 			}
 			return this.#migrateRawSettings(parsed as RawSettings);

@@ -338,7 +338,7 @@ function normalizeArkPropertyComments(node: unknown): void {
 
 /** True when `val` is a plain empty object `{}`. */
 function isEmptyObject(val: unknown): val is Record<string, never> {
-	if (val === null || typeof val !== "object" || Array.isArray(val)) return false;
+	if (!isRecord(val)) return false;
 	return Object.keys(val).length === 0;
 }
 

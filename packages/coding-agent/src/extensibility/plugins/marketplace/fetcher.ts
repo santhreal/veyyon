@@ -107,7 +107,7 @@ export function parseMarketplaceCatalog(content: string, filePath: string): Mark
 		throw new Error(`Failed to parse marketplace catalog at ${filePath}: ${(err as Error).message}`);
 	}
 
-	if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+	if (!isRecord(raw)) {
 		throw new Error(`Marketplace catalog at ${filePath} must be a JSON object`);
 	}
 

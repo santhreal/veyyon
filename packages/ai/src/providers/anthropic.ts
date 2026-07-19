@@ -616,7 +616,7 @@ function isClaudeJsonUserId(userId: string): boolean {
 	} catch {
 		return false;
 	}
-	if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return false;
+	if (!isRecord(parsed)) return false;
 	const obj = parsed as Record<string, unknown>;
 	return typeof obj.session_id === "string" && obj.session_id.length > 0;
 }
@@ -633,7 +633,7 @@ function extractClaudeMetadataSessionId(userId: unknown): string | undefined {
 	} catch {
 		return undefined;
 	}
-	if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return undefined;
+	if (!isRecord(parsed)) return undefined;
 	const sessionId = (parsed as Record<string, unknown>).session_id;
 	return typeof sessionId === "string" && sessionId.length > 0 ? sessionId : undefined;
 }

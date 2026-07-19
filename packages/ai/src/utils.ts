@@ -1,4 +1,4 @@
-import { $env } from "@veyyon/utils";
+import { $env, isRecord } from "@veyyon/utils";
 import type { ResponseInput, ResponseInputItem } from "./providers/openai-responses-wire";
 import type { CacheRetention, OpenAIResponsesHistoryPayload, ProviderPayload } from "./types";
 
@@ -88,7 +88,7 @@ function clampReplayItemImageDetail(
 
 	let changed = false;
 	const content = item.content.map(part => {
-		if (!part || typeof part !== "object" || Array.isArray(part)) return part;
+		if (!isRecord(part)) return part;
 		const record = part as Record<string, unknown>;
 		if (record.type !== "input_image" || record.detail !== "original") return part;
 		changed = true;

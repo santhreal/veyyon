@@ -1,7 +1,7 @@
 import type { AgentTool } from "@veyyon/agent-core";
 import type { Tool as AiTool } from "@veyyon/ai";
 import { toolWireSchema } from "@veyyon/ai/utils/schema";
-import { formatCount } from "@veyyon/utils";
+import { formatCount, isRecord } from "@veyyon/utils";
 
 // ─── Generic Tool Discovery Types ────────────────────────────────────────────
 
@@ -74,9 +74,9 @@ function getSchemaPropertyKeys(tool: Pick<AiTool, "name" | "description" | "para
 	} catch {
 		// Schema may contain functions or cycles; fall back to the raw shape.
 	}
-	if (!parameters || typeof parameters !== "object" || Array.isArray(parameters)) return [];
+	if (!isRecord(parameters)) return [];
 	const properties = (parameters as { properties?: unknown }).properties;
-	if (!properties || typeof properties !== "object" || Array.isArray(properties)) return [];
+	if (!isRecord(properties)) return [];
 	return Object.keys(properties as Record<string, unknown>).sort();
 }
 

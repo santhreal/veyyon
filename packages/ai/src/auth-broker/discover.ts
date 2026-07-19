@@ -4,6 +4,7 @@
  * token file → local SQLite) in one place so build-time tooling sees the same
  * credentials as the TUI.
  */
+
 import * as path from "node:path";
 import {
 	$pickenv,
@@ -12,6 +13,7 @@ import {
 	getAuthBrokerSnapshotCachePath,
 	getConfigRootDir,
 	isEnoent,
+	isRecord,
 	logger,
 	MAIN_CONFIG_FILENAMES,
 } from "@veyyon/utils";
@@ -82,7 +84,7 @@ interface ConfigSnapshot {
 function readDottedString(record: Record<string, unknown>, dottedKey: string): string | undefined {
 	let current: unknown = record;
 	for (const segment of dottedKey.split(".")) {
-		if (current === null || typeof current !== "object" || Array.isArray(current)) {
+		if (!isRecord(current)) {
 			current = undefined;
 			break;
 		}
@@ -99,7 +101,7 @@ async function readConfigYaml(agentDir: string): Promise<ConfigSnapshot> {
 		try {
 			const raw = await Bun.file(configPath).text();
 			const parsed = YAML.parse(raw);
-			if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+			if (!isRecord(parsed)) return {};
 			const record = parsed as Record<string, unknown>;
 			const url = readDottedString(record, "auth.broker.url");
 			const token = readDottedString(record, "auth.broker.token");

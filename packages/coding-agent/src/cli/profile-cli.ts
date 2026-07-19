@@ -8,6 +8,7 @@ import * as path from "node:path";
 import {
 	getActiveProfile,
 	getProfileRootDir,
+	isRecord,
 	listProfiles,
 	MAIN_CONFIG_FILENAMES,
 	normalizeProfileName,
@@ -186,10 +187,10 @@ async function clearCopiedDisplayName(agentDir: string): Promise<void> {
 		} catch (error) {
 			throw new Error(`Copied settings file ${filePath} is not valid YAML: ${String(error)}`);
 		}
-		if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) continue;
+		if (!isRecord(parsed)) continue;
 		const root = parsed as Record<string, unknown>;
 		const profile = root.profile;
-		if (!profile || typeof profile !== "object" || Array.isArray(profile)) continue;
+		if (!isRecord(profile)) continue;
 		const profileObj = profile as Record<string, unknown>;
 		if (!("displayName" in profileObj)) continue;
 		delete profileObj.displayName;

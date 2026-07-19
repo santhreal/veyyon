@@ -1,6 +1,6 @@
 import { instrumentedCompleteSimple, resolveTelemetry } from "@veyyon/agent-core";
 import type { Tool } from "@veyyon/ai";
-import { prompt, Snowflake } from "@veyyon/utils";
+import { isRecord, prompt, Snowflake } from "@veyyon/utils";
 import { extractTextContent, extractToolCall, parseJsonPayload } from "../commit/utils";
 import guidedGoalInterviewPrompt from "../prompts/goals/guided-goal-interview.md" with { type: "text" };
 import guidedGoalSystemPrompt from "../prompts/goals/guided-goal-system.md" with { type: "text" };
@@ -55,7 +55,7 @@ export function newGuidedGoalSessionId(session: AgentSession): string {
 }
 
 function parseGuidedGoalPayload(value: unknown): GuidedGoalTurnResult {
-	if (!value || typeof value !== "object" || Array.isArray(value)) {
+	if (!isRecord(value)) {
 		throw new Error("guided goal returned an invalid response");
 	}
 	const payload = value as Record<string, unknown>;

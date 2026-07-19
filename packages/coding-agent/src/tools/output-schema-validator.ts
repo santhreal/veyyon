@@ -224,7 +224,7 @@ function collectClosedTopLevelUnions(jsonSchema: Record<string, unknown>): Close
 
 function declaredPropertyLabels(jsonSchema: Record<string, unknown>): string[] {
 	const properties = jsonSchema.properties;
-	if (properties === null || typeof properties !== "object" || Array.isArray(properties)) return [];
+	if (!isRecord(properties)) return [];
 	const labels: string[] = [];
 	for (const label in properties) labels.push(label);
 	return labels;

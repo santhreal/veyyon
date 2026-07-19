@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { isRecord } from "@veyyon/utils";
 
 import { dataDir as configuredDataDir, dbPath as configuredDbPath } from "./config";
 import { BankManager, ValueError } from "./core/banks";
@@ -159,8 +160,7 @@ export const cmdImport: CommandHandler = (args, context) => {
 		if (error instanceof SyntaxError) fail(`Invalid JSON: ${error.message}`, 1);
 		throw error;
 	}
-	if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed))
-		fail("Import file must contain a Mnemopi export object", 1);
+	if (!isRecord(parsed)) fail("Import file must contain a Mnemopi export object", 1);
 	return withMemory(context, memory => {
 		const stats = memory.importFromDict(parsed as Record<string, unknown>);
 		out(context, `Imported ${formatImportStats(stats)} from ${inputPath}`);
