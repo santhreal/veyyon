@@ -8,6 +8,7 @@
  */
 
 import { type AssistantMessage, assistantTextBlocks } from "@veyyon/ai";
+import { contentText } from "@veyyon/utils";
 import type { SessionEntry } from "../session/session-entries";
 import { type HindsightMessage, hasSubstantiveContent } from "./content";
 
@@ -40,7 +41,7 @@ export function extractMessages(sessionManager: ReadonlySessionManagerLike): Hin
 
 		const text =
 			role === "user"
-				? extractUserText(msg)
+				? contentText((msg as { content: unknown }).content)
 				: assistantTextBlocks(msg as AssistantMessage)
 						.filter(Boolean)
 						.join("\n");
@@ -49,20 +50,4 @@ export function extractMessages(sessionManager: ReadonlySessionManagerLike): Hin
 	}
 
 	return messages;
-}
-
-function extractUserText(msg: { content: unknown }): string {
-	const content = msg.content;
-	if (typeof content === "string") return content;
-	if (!Array.isArray(content)) return "";
-
-	const parts: string[] = [];
-	for (const block of content) {
-		if (!block || typeof block !== "object") continue;
-		const maybeText = block as { type?: unknown; text?: unknown };
-		if (maybeText.type === "text" && typeof maybeText.text === "string") {
-			parts.push(maybeText.text);
-		}
-	}
-	return parts.join("\n");
 }
