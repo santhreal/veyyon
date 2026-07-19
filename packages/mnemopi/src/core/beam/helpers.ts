@@ -1,5 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { clamp01, logger } from "@veyyon/utils";
+import { envFloat } from "../../util/env";
 import { generateId as generateTimedId, sha256Hex16, stableMemoryId } from "../../util/ids";
 import {
 	cjkFtsTerms,
@@ -35,12 +36,6 @@ export interface WorkingVectorResult {
 const DEFAULT_WEIGHTS: HybridWeights = [0.5, 0.3, 0.2];
 
 const SPLIT_TOKEN_RE = /[_:/.-]+/g;
-function envNumber(name: string, fallback: number): number {
-	const raw = process.env[name];
-	if (raw === undefined || raw.trim() === "") return fallback;
-	const value = Number(raw);
-	return Number.isFinite(value) ? value : fallback;
-}
 
 function rowValue<T>(row: unknown, key: string): T | undefined {
 	if (row && typeof row === "object" && key in row) return (row as Record<string, T>)[key];
@@ -60,9 +55,9 @@ export function normalizeWeights(
 	ftsWeight: number | null | undefined,
 	importanceWeight: number | null | undefined,
 ): HybridWeights {
-	let vw = Math.max(0, vecWeight ?? envNumber("MNEMOPI_VEC_WEIGHT", DEFAULT_WEIGHTS[0]));
-	let fw = Math.max(0, ftsWeight ?? envNumber("MNEMOPI_FTS_WEIGHT", DEFAULT_WEIGHTS[1]));
-	let iw = Math.max(0, importanceWeight ?? envNumber("MNEMOPI_IMPORTANCE_WEIGHT", DEFAULT_WEIGHTS[2]));
+	let vw = Math.max(0, vecWeight ?? envFloat("MNEMOPI_VEC_WEIGHT", DEFAULT_WEIGHTS[0]));
+	let fw = Math.max(0, ftsWeight ?? envFloat("MNEMOPI_FTS_WEIGHT", DEFAULT_WEIGHTS[1]));
+	let iw = Math.max(0, importanceWeight ?? envFloat("MNEMOPI_IMPORTANCE_WEIGHT", DEFAULT_WEIGHTS[2]));
 	if (!Number.isFinite(vw)) vw = 0;
 	if (!Number.isFinite(fw)) fw = 0;
 	if (!Number.isFinite(iw)) iw = 0;
