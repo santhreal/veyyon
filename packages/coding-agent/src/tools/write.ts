@@ -1,6 +1,5 @@
 import { Database } from "bun:sqlite";
 import * as fs from "node:fs/promises";
-import * as path from "node:path";
 import type {
 	AgentTool,
 	AgentToolContext,
@@ -10,7 +9,16 @@ import type {
 } from "@veyyon/agent-core";
 import { formatHashlineHeader, stripHashlinePrefixes } from "@veyyon/hashline";
 import type { Component } from "@veyyon/tui";
-import { errorMessage, formatCount, isEnoent, isRecord, prompt, untilAborted, urlScheme } from "@veyyon/utils";
+import {
+	atomicWriteFileWith,
+	errorMessage,
+	formatCount,
+	isEnoent,
+	isRecord,
+	prompt,
+	untilAborted,
+	urlScheme,
+} from "@veyyon/utils";
 import { type } from "arktype";
 
 import { canonicalSnapshotKey, getFileSnapshotStore } from "../edit/file-snapshot-store";
@@ -489,14 +497,6 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 		// whole-archive rewrite then defaults to an uncompressed tar, matching the
 		// previous `isZip`/`isGzip`/else fallthrough.
 		const format = archiveFormatFromPath(finalPath) ?? "tar";
-		// Rewrites are whole-archive: write to a temp file and rename so a
-		// crash/disk-full mid-write can't destroy the original archive.
-		const tmpPath = `${finalPath}.tmp-${process.pid}`;
-
-		const parentDir = path.dirname(resolvedArchivePath.absolutePath);
-		if (parentDir && parentDir !== ".") {
-			await fs.mkdir(parentDir, { recursive: true });
-		}
 
 		const entries = new Map<string, ArchiveMemberContent>();
 		if (resolvedArchivePath.exists) {
@@ -511,11 +511,12 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 		}
 		entries.set(resolvedArchivePath.archiveSubPath, content);
 
+		// Whole-archive rewrite: writeArchive streams into a temp file that
+		// atomicWriteFileWith renames over the original only on success, so a
+		// crash/disk-full mid-write can't destroy the existing archive.
 		try {
-			await writeArchive(tmpPath, format, entries);
-			await fs.rename(tmpPath, finalPath);
+			await atomicWriteFileWith(finalPath, tmpPath => writeArchive(tmpPath, format, entries));
 		} catch (error) {
-			await fs.rm(tmpPath, { force: true }).catch(() => {});
 			throw new ToolError(errorMessage(error));
 		}
 

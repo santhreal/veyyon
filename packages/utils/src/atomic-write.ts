@@ -64,55 +64,29 @@ function isRenameClobberError(error: unknown): boolean {
 	return isFsError(error) && (error.code === "EPERM" || error.code === "EEXIST" || error.code === "EACCES");
 }
 
-/**
- * Write `data` to `filePath` atomically. Creates parent directories as needed.
- * Either fully succeeds (the target now holds `data`) or throws with the target
- * left untouched.
- */
-export async function atomicWriteFile(
-	filePath: string,
-	data: string | NodeJS.ArrayBufferView,
-	options: AtomicWriteOptions = {},
-): Promise<void> {
-	const { mode = 0o600, fsync = true } = options;
+// The bytes writer and the path writer share the tricky, drift-prone parts of an
+// atomic write — symlink resolution, the rename-clobber fallback, the directory
+// fsync. These three helpers are that single home; both public writers call them
+// so the behavior can only ever be defined once.
 
-	// If the caller's path is a symlink (a dotfile manager pointing config.yml
-	// into a synced repo), replace the file it *points to* so the link survives.
-	// Renaming a temp over the link name would silently turn the link into a
-	// regular file and detach it from the repo. A dangling link resolves to a
-	// missing directory below and fails loudly, which is correct: a broken link
-	// is a real error to surface, not something to paper over by creating dirs.
-	let target = filePath;
-	let viaSymlink = false;
+// Resolve the real file an atomic write should replace. If `filePath` is a
+// symlink (a dotfile manager pointing config.yml into a synced repo), return the
+// link's target so the link survives; renaming a temp over the link name would
+// silently turn the link into a regular file. A dangling link keeps `viaSymlink`
+// true so the caller skips mkdir and fails loudly on the missing directory.
+async function resolveWriteTarget(filePath: string): Promise<{ target: string; viaSymlink: boolean }> {
 	try {
 		if ((await fsp.lstat(filePath)).isSymbolicLink()) {
-			target = path.resolve(path.dirname(filePath), await fsp.readlink(filePath));
-			viaSymlink = true;
+			return { target: path.resolve(path.dirname(filePath), await fsp.readlink(filePath)), viaSymlink: true };
 		}
 	} catch (error) {
 		// ENOENT is the normal first-write case (the path does not exist yet).
 		if (!isEnoent(error)) throw error;
 	}
+	return { target: filePath, viaSymlink: false };
+}
 
-	const dir = path.dirname(target);
-	// Create parents for a regular path (a convenience). Never fabricate the
-	// target directory of a symlink: a missing one means the link is dangling.
-	if (!viaSymlink) await fsp.mkdir(dir, { recursive: true });
-
-	const tmpPath = nextTempPath(dir, path.basename(target));
-
-	let handle: fsp.FileHandle | undefined;
-	try {
-		handle = await fsp.open(tmpPath, "w", mode);
-		await handle.writeFile(data);
-		if (fsync) await handle.sync();
-	} catch (error) {
-		await handle?.close().catch(() => {});
-		await fsp.rm(tmpPath, { force: true }).catch(() => {});
-		throw error;
-	}
-	await handle.close();
-
+async function renameTempOverTarget(tmpPath: string, target: string): Promise<void> {
 	try {
 		await fsp.rename(tmpPath, target);
 	} catch (error) {
@@ -124,22 +98,111 @@ export async function atomicWriteFile(
 			throw error;
 		}
 	}
+}
 
-	if (fsync) {
-		// Persist the rename itself by flushing the directory entry. Some
-		// platforms (notably Windows) do not allow opening a directory for
-		// fsync; the rename is still durable enough there, so ignore the failure.
+async function fsyncDirEntry(dir: string): Promise<void> {
+	// Persist the rename itself by flushing the directory entry. Some platforms
+	// (notably Windows) do not allow opening a directory for fsync; the rename is
+	// still durable enough there, so ignore the failure.
+	try {
+		const dirHandle = await fsp.open(dir, "r");
 		try {
-			const dirHandle = await fsp.open(dir, "r");
-			try {
-				await dirHandle.sync();
-			} finally {
-				await dirHandle.close();
-			}
-		} catch {
-			// Directory fsync unsupported on this platform; the rename stands.
+			await dirHandle.sync();
+		} finally {
+			await dirHandle.close();
 		}
+	} catch {
+		// Directory fsync unsupported on this platform; the rename stands.
 	}
+}
+
+/**
+ * Write `data` to `filePath` atomically. Creates parent directories as needed.
+ * Either fully succeeds (the target now holds `data`) or throws with the target
+ * left untouched.
+ */
+export async function atomicWriteFile(
+	filePath: string,
+	data: string | NodeJS.ArrayBufferView,
+	options: AtomicWriteOptions = {},
+): Promise<void> {
+	const { mode = 0o600, fsync = true } = options;
+	await atomicWriteFileWith(
+		filePath,
+		async tmpPath => {
+			// Open with `mode` so the created file (and the replacement it becomes)
+			// carries the requested permissions, then fsync the write handle
+			// directly. Flushing the same handle that holds write access is what
+			// keeps durability correct on Windows, where fsync needs write rights.
+			const handle = await fsp.open(tmpPath, "w", mode);
+			try {
+				await handle.writeFile(data);
+				if (fsync) await handle.sync();
+			} finally {
+				await handle.close();
+			}
+		},
+		{ fsync, fsyncTempFile: false },
+	);
+}
+
+/**
+ * The producer form of {@link atomicWriteFile}: instead of handing over bytes,
+ * you get the temp path and write to it however you like (a streaming writer, a
+ * third-party encoder that only takes a path). The same crash-safety holds — the
+ * temp is renamed over the target only after `write` resolves, so a failure
+ * leaves the target untouched — and the same symlink handling applies.
+ *
+ * Use this only when the payload is produced by something that writes to a path
+ * rather than returning bytes. When you already have the bytes, call
+ * {@link atomicWriteFile}; it routes through here.
+ *
+ * @example
+ * ```ts
+ * await atomicWriteFileWith(archivePath, tmpPath => writeArchive(tmpPath, format, entries));
+ * ```
+ */
+export async function atomicWriteFileWith(
+	filePath: string,
+	write: (tempPath: string) => Promise<void>,
+	options: AtomicWriteOptions & {
+		/**
+		 * Reopen the finished temp file and fsync it before the rename. Defaults
+		 * to `true`, which is what a path writer needs: it closes its own fd, so
+		 * the owner must flush the bytes. {@link atomicWriteFile} passes `false`
+		 * because it already fsyncs its own write handle (the Windows-correct way).
+		 */
+		fsyncTempFile?: boolean;
+	} = {},
+): Promise<void> {
+	const { fsync = true, fsyncTempFile = true } = options;
+
+	const { target, viaSymlink } = await resolveWriteTarget(filePath);
+	const dir = path.dirname(target);
+	// Create parents for a regular path (a convenience). Never fabricate the
+	// target directory of a symlink: a missing one means the link is dangling.
+	if (!viaSymlink) await fsp.mkdir(dir, { recursive: true });
+
+	const tmpPath = nextTempPath(dir, path.basename(target));
+	try {
+		await write(tmpPath);
+		if (fsync && fsyncTempFile) {
+			// Reopen read-write (not "r"): on Windows fsync needs write access, and
+			// the writer already closed its own fd.
+			const handle = await fsp.open(tmpPath, "r+");
+			try {
+				await handle.sync();
+			} finally {
+				await handle.close();
+			}
+		}
+	} catch (error) {
+		await fsp.rm(tmpPath, { force: true }).catch(() => {});
+		throw error;
+	}
+
+	await renameTempOverTarget(tmpPath, target);
+	if (fsync) await fsyncDirEntry(dir);
 }
 
 /**

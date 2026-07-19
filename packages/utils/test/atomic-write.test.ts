@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as fsp from "node:fs/promises";
 import * as path from "node:path";
-import { atomicWriteFile, atomicWriteFileSync } from "../src/atomic-write";
+import { atomicWriteFile, atomicWriteFileSync, atomicWriteFileWith } from "../src/atomic-write";
 import { TempDir } from "../src/temp";
 
 describe("atomicWriteFile", () => {
@@ -160,6 +160,83 @@ describe("atomicWriteFile", () => {
 			expect(seen === small || seen === big).toBe(true);
 		}
 		expect(fs.readFileSync(target, "utf8")).toBe(big);
+	});
+
+	describe("atomicWriteFileWith", () => {
+		it("renames a path writer's output into place and leaves no temp behind", async () => {
+			const target = path.join(dir.path(), "archive.tar");
+			await atomicWriteFileWith(target, async tmpPath => {
+				await fsp.writeFile(tmpPath, "PACKED_BYTES");
+			});
+
+			expect(fs.readFileSync(target, "utf8")).toBe("PACKED_BYTES");
+			expect(tempSiblings(target)).toEqual([]);
+		});
+
+		it("creates missing parent directories for a path writer", async () => {
+			const target = path.join(dir.path(), "nested", "deep", "archive.tar");
+			await atomicWriteFileWith(target, tmpPath => fsp.writeFile(tmpPath, "ok"));
+
+			expect(fs.readFileSync(target, "utf8")).toBe("ok");
+		});
+
+		it("does not touch the original target until the writer succeeds", async () => {
+			const target = path.join(dir.path(), "archive.tar");
+			await atomicWriteFile(target, "ORIGINAL");
+
+			let sawOriginalMidWrite = "";
+			await atomicWriteFileWith(target, async tmpPath => {
+				// The rename has not happened yet, so the target must still read the
+				// old content while the writer is producing the replacement.
+				sawOriginalMidWrite = fs.readFileSync(target, "utf8");
+				await fsp.writeFile(tmpPath, "REPLACEMENT");
+			});
+
+			expect(sawOriginalMidWrite).toBe("ORIGINAL");
+			expect(fs.readFileSync(target, "utf8")).toBe("REPLACEMENT");
+		});
+
+		it("leaves the original intact and drops the temp when the writer throws", async () => {
+			const target = path.join(dir.path(), "archive.tar");
+			await atomicWriteFile(target, "ORIGINAL");
+
+			await expect(
+				atomicWriteFileWith(target, async tmpPath => {
+					await fsp.writeFile(tmpPath, "HALF_WRITTEN");
+					throw new Error("encoder blew up");
+				}),
+			).rejects.toThrow("encoder blew up");
+
+			expect(fs.readFileSync(target, "utf8")).toBe("ORIGINAL");
+			expect(tempSiblings(target)).toEqual([]);
+		});
+
+		it("preserves a symlinked target, updating the file it points to", async () => {
+			if (process.platform === "win32") return;
+			const realDir = path.join(dir.path(), "dotfiles");
+			fs.mkdirSync(realDir);
+			const realFile = path.join(realDir, "archive.tar");
+			fs.writeFileSync(realFile, "old");
+			const link = path.join(dir.path(), "archive.tar");
+			fs.symlinkSync(realFile, link);
+
+			await atomicWriteFileWith(link, tmpPath => fsp.writeFile(tmpPath, "new"));
+
+			expect(fs.lstatSync(link).isSymbolicLink()).toBe(true);
+			expect(fs.readFileSync(realFile, "utf8")).toBe("new");
+			expect(tempSiblings(realFile)).toEqual([]);
+		});
+
+		it("survives concurrent path writers: final content is exactly one complete payload", async () => {
+			const target = path.join(dir.path(), "archive.tar");
+			const payloads = Array.from({ length: 20 }, (_, i) => `MEMBER_${i}_`.repeat(3000));
+
+			await Promise.all(payloads.map(p => atomicWriteFileWith(target, tmpPath => fsp.writeFile(tmpPath, p))));
+
+			const final = fs.readFileSync(target, "utf8");
+			expect(payloads).toContain(final);
+			expect(tempSiblings(target)).toEqual([]);
+		});
 	});
 
 	describe("atomicWriteFileSync", () => {

@@ -1,7 +1,7 @@
 import type { Stats } from "node:fs";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { errorMessage, getDocumentConversionCacheDir, isEnoent, logger } from "@veyyon/utils";
+import { atomicWriteFile, errorMessage, getDocumentConversionCacheDir, isEnoent, logger } from "@veyyon/utils";
 import packageJson from "../../package.json" with { type: "json" };
 
 /**
@@ -139,16 +139,12 @@ export async function pruneMarkitConversionCache(cacheDir: string): Promise<void
 export async function writeMarkitConversionCache(key: string, content: string): Promise<void> {
 	const cacheDir = getDocumentConversionCacheDir();
 	const target = path.join(cacheDir, `${key}.json`);
-	// The random suffix keeps concurrent writers (same pid + same ms) from
-	// colliding on one temp path before the atomic rename.
-	const tempPath = path.join(cacheDir, `${key}.${process.pid}.${Date.now()}.${crypto.randomUUID()}.tmp`);
 	const payload = JSON.stringify({ version: MARKIT_CONVERSION_CACHE_VERSION, content });
 	try {
-		await fs.mkdir(cacheDir, { recursive: true });
-		await Bun.write(tempPath, payload);
-		await fs.rename(tempPath, target);
+		// atomicWriteFile creates the parent dir, writes to a unique temp path,
+		// and renames it into place; a failed write leaves no partial `.json`.
+		await atomicWriteFile(target, payload);
 	} catch (error) {
-		await fs.rm(tempPath, { force: true }).catch(() => undefined);
 		logger.debug("document conversion cache write failed", { error: errorMessage(error) });
 		return;
 	}
