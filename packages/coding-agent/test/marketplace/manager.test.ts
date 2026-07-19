@@ -252,7 +252,10 @@ describe("MarketplaceManager", () => {
 	it("installPlugin exposes marketplace package to the runtime loader", async () => {
 		const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-mgr-home-"));
 		try {
-			const pluginsDir = path.join(tmpHome, CONFIG_DIR_NAME, "profiles", "default", "plugins");
+			// Install where the runtime loader reads: getPluginsDir(tmpHome) resolves
+			// the active profile, so hardcoding "default" pointed the manager at a
+			// profile the loader never scans (the assertion then passed vacuously).
+			const pluginsDir = piUtils.getPluginsDir(tmpHome);
 			const manager = new MarketplaceManager({
 				marketplacesRegistryPath: path.join(tmpHome, CONFIG_DIR_NAME, "marketplaces.json"),
 				installedRegistryPath: path.join(pluginsDir, "installed_plugins.json"),
@@ -365,7 +368,10 @@ describe("MarketplaceManager", () => {
 	it("installPlugin keeps marketplace packages out of Veyyon extension roots", async () => {
 		const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), "veyyon-mgr-home-"));
 		try {
-			const pluginsDir = path.join(tmpHome, CONFIG_DIR_NAME, "profiles", "default", "plugins");
+			// Install where the runtime loader reads: getPluginsDir(tmpHome) resolves
+			// the active profile, so hardcoding "default" pointed the manager at a
+			// profile the loader never scans (the assertion then passed vacuously).
+			const pluginsDir = piUtils.getPluginsDir(tmpHome);
 			const manager = new MarketplaceManager({
 				marketplacesRegistryPath: path.join(tmpHome, CONFIG_DIR_NAME, "marketplaces.json"),
 				installedRegistryPath: path.join(pluginsDir, "installed_plugins.json"),

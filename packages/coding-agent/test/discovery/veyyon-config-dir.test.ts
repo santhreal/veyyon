@@ -4,7 +4,7 @@ import * as path from "node:path";
 import type { LoadContext } from "@veyyon/coding-agent/capability/types";
 import { getConfigDirs } from "@veyyon/coding-agent/config";
 import { getUserPath } from "@veyyon/coding-agent/discovery/helpers";
-import { getAgentDir } from "@veyyon/utils";
+import { DEFAULT_PROFILE_DIR_NAME, getActiveProfile, getAgentDir } from "@veyyon/utils";
 
 describe("VEYYON_CONFIG_DIR", () => {
 	const original = process.env.VEYYON_CONFIG_DIR;
@@ -33,8 +33,18 @@ describe("VEYYON_CONFIG_DIR", () => {
 	test("getConfigDirs respects VEYYON_CONFIG_DIR for user base", () => {
 		process.env.VEYYON_CONFIG_DIR = ".config/veyyon";
 		const result = getConfigDirs("commands", { project: false });
+		// The profile segment tracks the active profile (getConfigDirs routes
+		// through the profile-aware config root); pinning it to "default" broke on
+		// any host whose active profile differs.
 		const expected = path.resolve(
-			path.join(os.homedir(), ".config/veyyon", "profiles", "default", "agent", "commands"),
+			path.join(
+				os.homedir(),
+				".config/veyyon",
+				"profiles",
+				getActiveProfile() ?? DEFAULT_PROFILE_DIR_NAME,
+				"agent",
+				"commands",
+			),
 		);
 		expect(result[0]).toEqual({ path: expected, source: ".veyyon", level: "user" });
 	});
