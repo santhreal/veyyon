@@ -7,12 +7,11 @@ import type {
 	UsageLimit,
 	UsageProvider,
 	UsageReport,
-	UsageStatus,
 	UsageWindow,
 } from "../usage";
 import { isRecord } from "../utils";
 // (Refresh is the sole responsibility of AuthStorage; no provider-direct refresh here.)
-import { toNumber } from "./shared";
+import { toNumber, usageStatusFromUsedFraction } from "./shared";
 
 const DEFAULT_BASE_URL = "https://api.kimi.com/coding/v1";
 const USAGE_PATH = "usages";
@@ -138,13 +137,6 @@ function buildUsageAmount(row: KimiUsageRow): UsageAmount {
 	return amount;
 }
 
-function buildUsageStatus(amount: UsageAmount): UsageStatus {
-	if (amount.usedFraction === undefined) return "unknown";
-	if (amount.usedFraction >= 1) return "exhausted";
-	if (amount.usedFraction >= 0.9) return "warning";
-	return "ok";
-}
-
 function toUsageLimit(row: KimiUsageRow, provider: string, index: number, accountId?: string): UsageLimit {
 	const window: UsageWindow | undefined =
 		row.window ??
@@ -168,7 +160,7 @@ function toUsageLimit(row: KimiUsageRow, provider: string, index: number, accoun
 		},
 		window,
 		amount,
-		status: buildUsageStatus(amount),
+		status: usageStatusFromUsedFraction(amount.usedFraction),
 	};
 }
 

@@ -6,10 +6,9 @@ import type {
 	UsageLimit,
 	UsageProvider,
 	UsageReport,
-	UsageStatus,
 	UsageWindow,
 } from "../usage";
-import { toNumber } from "./shared";
+import { toNumber, usageStatusFromUsedFraction } from "./shared";
 
 function parseTimestamp(value: unknown): number | undefined {
 	const numeric = toNumber(value);
@@ -90,17 +89,7 @@ export function parseCursorUsage(payload: unknown, fetchedAt = Date.now()): Usag
 				unit,
 			};
 
-			const usedFraction = amount.usedFraction;
-			let status: UsageStatus = "unknown";
-			if (usedFraction !== undefined) {
-				if (usedFraction >= 1) {
-					status = "exhausted";
-				} else if (usedFraction >= 0.9) {
-					status = "warning";
-				} else {
-					status = "ok";
-				}
-			}
+			const status = usageStatusFromUsedFraction(amount.usedFraction);
 
 			limits.push({
 				id: limitId,
