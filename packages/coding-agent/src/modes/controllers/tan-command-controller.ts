@@ -1,6 +1,6 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import type { AssistantMessage } from "@veyyon/ai";
+import { assistantText } from "@veyyon/ai";
 import { errorMessage, prompt, Snowflake } from "@veyyon/utils";
 import backgroundTanDispatchPrompt from "../../prompts/system/background-tan-dispatch.md" with { type: "text" };
 import tanContextSwitchPrompt from "../../prompts/system/tan-context-switch.md" with { type: "text" };
@@ -19,15 +19,6 @@ function previewWork(work: string): string {
 	const singleLine = work.trim().replace(/\s+/g, " ");
 	if (singleLine.length <= TAN_LABEL_PREVIEW_LENGTH) return singleLine;
 	return `${singleLine.slice(0, TAN_LABEL_PREVIEW_LENGTH - 1)}…`;
-}
-
-function extractAssistantText(message: AssistantMessage | undefined): string {
-	if (!message) return "";
-	return message.content
-		.filter(content => content.type === "text")
-		.map(content => content.text)
-		.join("")
-		.trim();
 }
 
 async function removeCloneSession(cloneFile: string): Promise<void> {
@@ -176,7 +167,8 @@ export class TanCommandController {
 							injectContextSwitch();
 							await clone.prompt(trimmedWork, { attribution: "user" });
 							await clone.waitForIdle();
-							return extractAssistantText(clone.getLastAssistantMessage()) || "(no output)";
+							const last = clone.getLastAssistantMessage();
+							return (last ? assistantText(last, "").trim() : "") || "(no output)";
 						} finally {
 							unsubscribeCompaction();
 							signal.removeEventListener("abort", abortClone);

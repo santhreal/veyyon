@@ -13,7 +13,7 @@
  * Throws on any failure (no model, no key, unparseable output, abort/timeout);
  * the caller falls back to a concrete level and continues the turn.
  */
-import { type AssistantMessage, completeSimple, Effort, type Model } from "@veyyon/ai";
+import { assistantText, completeSimple, Effort, type Model } from "@veyyon/ai";
 import { prompt } from "@veyyon/utils";
 
 import type { ModelRegistry } from "../config/model-registry";
@@ -103,7 +103,7 @@ async function classifyOnline(input: string, deps: ClassifyDifficultyDeps): Prom
 		throw new Error(`auto-thinking: online classification failed: ${response.errorMessage ?? "unknown error"}`);
 	}
 
-	const text = extractText(response.content);
+	const text = assistantText(response, " ").trim();
 	const effort = parseDifficultyLevel(text);
 	if (!effort) {
 		throw new Error(`auto-thinking: unparseable online classification: ${JSON.stringify(text)}`);
@@ -170,12 +170,4 @@ function earliest(candidates: Array<[number, Effort]>): Effort | undefined {
 		if (candidate[0] < best[0]) best = candidate;
 	}
 	return best[1];
-}
-
-function extractText(content: AssistantMessage["content"]): string {
-	return content
-		.filter((block): block is Extract<AssistantMessage["content"][number], { type: "text" }> => block.type === "text")
-		.map(block => block.text)
-		.join(" ")
-		.trim();
 }

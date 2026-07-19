@@ -7,7 +7,7 @@
  * surviving message's `TextContent` parts are joined with newlines.
  */
 
-import type { AssistantMessage } from "@veyyon/ai";
+import { type AssistantMessage, assistantTextBlocks } from "@veyyon/ai";
 import type { SessionEntry } from "../session/session-entries";
 import { type HindsightMessage, hasSubstantiveContent } from "./content";
 
@@ -38,7 +38,12 @@ export function extractMessages(sessionManager: ReadonlySessionManagerLike): Hin
 		const role = msg.role;
 		if (role !== "user" && role !== "assistant") continue;
 
-		const text = role === "user" ? extractUserText(msg) : extractAssistantText(msg as AssistantMessage);
+		const text =
+			role === "user"
+				? extractUserText(msg)
+				: assistantTextBlocks(msg as AssistantMessage)
+						.filter(Boolean)
+						.join("\n");
 		if (!hasSubstantiveContent(text)) continue;
 		messages.push({ role, content: text });
 	}
@@ -58,14 +63,6 @@ function extractUserText(msg: { content: unknown }): string {
 		if (maybeText.type === "text" && typeof maybeText.text === "string") {
 			parts.push(maybeText.text);
 		}
-	}
-	return parts.join("\n");
-}
-
-function extractAssistantText(msg: AssistantMessage): string {
-	const parts: string[] = [];
-	for (const block of msg.content) {
-		if (block.type === "text" && block.text) parts.push(block.text);
 	}
 	return parts.join("\n");
 }

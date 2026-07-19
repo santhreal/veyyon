@@ -15,7 +15,7 @@
  *   mechanical {@link SpeakableStream} cleanup — speech never blocks on the
  *   model.
  */
-import { type AssistantMessage, completeSimple } from "@veyyon/ai";
+import { assistantText, completeSimple } from "@veyyon/ai";
 import { errorMessage, logger, prompt } from "@veyyon/utils";
 import type { ModelRegistry } from "../config/model-registry";
 import { getModelMatchPreferences, resolveModelRoleValue } from "../config/model-resolver";
@@ -41,14 +41,6 @@ export interface SpeechEnhancerDeps {
 	registry: ModelRegistry;
 	sessionId: string;
 	metadataResolver?: (provider: string) => Record<string, unknown> | undefined;
-}
-
-function extractText(content: AssistantMessage["content"]): string {
-	return content
-		.filter((block): block is Extract<AssistantMessage["content"][number], { type: "text" }> => block.type === "text")
-		.map(block => block.text)
-		.join(" ")
-		.trim();
 }
 
 /**
@@ -107,7 +99,7 @@ export class SpeechEnhancer {
 				logger.debug("speech-enhancer: rewrite errored", { error: response.errorMessage });
 				return null;
 			}
-			return extractText(response.content);
+			return assistantText(response, " ").trim();
 		} catch (error) {
 			if (!signal?.aborted) {
 				logger.debug("speech-enhancer: rewrite failed", {
