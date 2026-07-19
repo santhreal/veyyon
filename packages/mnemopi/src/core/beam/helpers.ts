@@ -17,6 +17,7 @@ import { tableExists } from "../../util/sqlite";
 import { currentEmbeddingModel, embed } from "../embeddings";
 import { getMnemopiRuntimeOptions, mnemopiDebugEnabled, withMnemopiRuntimeOptions } from "../runtime-options";
 import { buildExactVectorIndex, searchExactVectorIndex } from "../vector-index";
+import { decodeEmbeddingJson, encodeEmbeddingJson } from "../vector-math";
 import type { BeamMemoryState, JsonValue, Metadata } from "./types";
 
 export type Vector = number[];
@@ -141,23 +142,11 @@ export function buildFtsQuery(query: string): string {
 }
 
 export function encodeVector(embedding: readonly number[]): string {
-	return JSON.stringify(embedding);
+	return encodeEmbeddingJson(embedding);
 }
 
 export function decodeVector(value: string | null | undefined): Vector | null {
-	if (!value) return null;
-	try {
-		const parsed = JSON.parse(value) as unknown;
-		if (!Array.isArray(parsed)) return null;
-		const vector: number[] = [];
-		for (const item of parsed) {
-			if (typeof item !== "number" || !Number.isFinite(item)) return null;
-			vector.push(item);
-		}
-		return vector;
-	} catch {
-		return null;
-	}
+	return decodeEmbeddingJson(value);
 }
 
 export function vecAvailable(db: Database): boolean {

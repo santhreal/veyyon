@@ -2,7 +2,7 @@ import { Database } from "bun:sqlite";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { type Env, enhancedRecallEnabled } from "../config";
-import { cosineSimilarity } from "./vector-math";
+import { cosineSimilarity, decodeEmbeddingJson, encodeEmbeddingJson } from "./vector-math";
 
 export type QueryCacheResult = Record<string, unknown>;
 export type QueryEmbedding = readonly number[];
@@ -105,8 +105,8 @@ export class QueryCache {
 					this.#rememberKey(row.normalized, now);
 					this.#tier1.set(row.normalized, results);
 					this.#tier4.set(row.normalized, results);
-					if (row.embedding_json !== null) {
-						const embedding = JSON.parse(row.embedding_json) as number[];
+					const embedding = decodeEmbeddingJson(row.embedding_json);
+					if (embedding !== null) {
 						this.#tier23.set(row.normalized, { embedding, results });
 					}
 				} catch {
@@ -330,7 +330,7 @@ export class QueryCache {
 				"INSERT OR REPLACE INTO query_cache (normalized, embedding_json, results_json) VALUES (?, ?, ?)",
 				[
 					normalized,
-					embedding !== undefined && embedding !== null ? JSON.stringify(embedding) : null,
+					embedding !== undefined && embedding !== null ? encodeEmbeddingJson(embedding) : null,
 					JSON.stringify(results),
 				],
 			);
