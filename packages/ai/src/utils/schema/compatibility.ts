@@ -1,3 +1,4 @@
+import { isRecord } from "@veyyon/utils";
 import {
 	CCA_UNSUPPORTED_SCHEMA_FIELDS,
 	COMBINATOR_KEYS,
@@ -5,7 +6,7 @@ import {
 	UNSUPPORTED_SCHEMA_FIELDS,
 } from "./fields";
 import { isValidJsonSchema } from "./meta-validator";
-import { isJsonObject, type JsonObject } from "./types";
+import type { JsonObject } from "./types";
 
 /**
  * Schema compatibility audits.
@@ -98,7 +99,7 @@ function walkSchema(
 		return;
 	}
 
-	if (!isJsonObject(value)) {
+	if (!isRecord(value)) {
 		return;
 	}
 
@@ -109,7 +110,7 @@ function walkSchema(
 		// entry's schema rather than the map object itself.
 		const entry = value[key];
 		if (key === "properties" || key === "$defs" || key === "definitions" || key === "dependentSchemas") {
-			if (isJsonObject(entry)) {
+			if (isRecord(entry)) {
 				for (const name in entry) {
 					const child = entry[name];
 					walkSchema(child, { path: `${state.path}.${key}.${name}` }, visitNode);
@@ -131,7 +132,7 @@ function walkSchema(
 			continue;
 		}
 
-		if (isJsonObject(entry)) {
+		if (isRecord(entry)) {
 			walkSchema(entry, { path: `${state.path}.${key}` }, visitNode);
 		}
 	}
@@ -171,7 +172,7 @@ function validateStrictNode(node: JsonObject, state: TraversalState): SchemaComp
 
 	const hasCombinator = COMBINATOR_KEYS.some(key => Array.isArray(node[key]));
 	const hasRef = typeof node.$ref === "string";
-	const hasNot = isJsonObject(node.not);
+	const hasNot = isRecord(node.not);
 	if (node.type === undefined && !hasCombinator && !hasRef && !hasNot) {
 		violations.push(
 			createViolation(
@@ -183,7 +184,7 @@ function validateStrictNode(node: JsonObject, state: TraversalState): SchemaComp
 	}
 	// Rules 3a-3d apply only to object-shaped nodes.
 
-	const isObjectNode = node.type === "object" || isJsonObject(node.properties);
+	const isObjectNode = node.type === "object" || isRecord(node.properties);
 	if (!isObjectNode) {
 		return violations;
 	}
@@ -201,7 +202,7 @@ function validateStrictNode(node: JsonObject, state: TraversalState): SchemaComp
 	}
 	// 3b: `properties` must exist and be an object — without it strict mode has nothing to validate.
 
-	if (!isJsonObject(node.properties)) {
+	if (!isRecord(node.properties)) {
 		violations.push(
 			createViolation(
 				`${state.path}.properties`,

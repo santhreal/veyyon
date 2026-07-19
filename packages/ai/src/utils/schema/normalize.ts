@@ -6,7 +6,7 @@
  * exposes one option-driven core plus thin dispatchers that pin the option set
  * for each target.
  */
-import { logger } from "@veyyon/utils";
+import { isRecord, logger } from "@veyyon/utils";
 import * as AIError from "../../error";
 import { dereferenceJsonSchema } from "./dereference";
 import { upgradeJsonSchemaTo202012 } from "./draft";
@@ -23,7 +23,7 @@ import {
 import { isValidJsonSchema } from "./meta-validator";
 import { type DescriptionSpillFormat, spillToDescription } from "./spill";
 import { enter, epochNext, exit, once, stamp } from "./stamps";
-import { isJsonObject, isJsonObjectEmpty, type JsonObject } from "./types";
+import { isJsonObjectEmpty, type JsonObject } from "./types";
 import { decontaminateZodInstance } from "./zod-decontaminate";
 
 export type ResidualSchemaIncompatibility = "type-array" | "type-null" | "nullable" | "combiners";
@@ -149,7 +149,7 @@ function preHandleNullFields(obj: JsonObject): JsonObject {
 	let sawNull = false;
 	const kept: unknown[] = [];
 	for (const v of variants) {
-		if (isJsonObject(v) && v.type === "null") {
+		if (isRecord(v) && v.type === "null") {
 			sawNull = true;
 			continue;
 		}
@@ -163,7 +163,7 @@ function preHandleNullFields(obj: JsonObject): JsonObject {
 	out.nullable = true;
 	if (kept.length === 0) {
 		delete out.anyOf;
-	} else if (kept.length === 1 && isJsonObject(kept[0])) {
+	} else if (kept.length === 1 && isRecord(kept[0])) {
 		delete out.anyOf;
 		const only = kept[0];
 		for (const k in only) {
@@ -236,7 +236,7 @@ function normalizeSchemaNode(value: unknown, options: NormalizeSchemaWalkOptions
 			exit(value);
 		}
 	}
-	if (!isJsonObject(value)) {
+	if (!isRecord(value)) {
 		return value;
 	}
 	// `enter`/`exit` path-tracking (not a visited-set): DAG-shared subtrees are
@@ -259,7 +259,7 @@ function normalizeSchemaObjectNode(value: JsonObject, options: NormalizeSchemaWa
 	for (const combiner of JSON_SCHEMA_COMBINERS) {
 		if (!Array.isArray(obj[combiner])) continue;
 		const variants = obj[combiner] as JsonObject[];
-		const allHaveConst = variants.every(v => isJsonObject(v) && "const" in v);
+		const allHaveConst = variants.every(v => isRecord(v) && "const" in v);
 		if (!allHaveConst || variants.length === 0) continue;
 
 		const dedupedEnum: unknown[] = [];
@@ -371,7 +371,7 @@ function normalizeSchemaObjectNode(value: JsonObject, options: NormalizeSchemaWa
 		options.autoPropertyOrdering &&
 		result.type === "object" &&
 		!outHasOwn(result, "propertyOrdering") &&
-		isJsonObject(result.properties)
+		isRecord(result.properties)
 	) {
 		const props = result.properties;
 		const keys: string[] = [];
@@ -432,21 +432,19 @@ function mergeObjectCombinerVariants(schema: JsonObject, combiner: "anyOf" | "on
 
 	const variants: JsonObject[] = [];
 	for (const entry of variantsRaw) {
-		if (!isJsonObject(entry)) {
+		if (!isRecord(entry)) {
 			return schema;
 		}
 		const variantType = entry.type;
 		const hasObjectShape =
-			isJsonObject(entry.properties) ||
-			Array.isArray(entry.required) ||
-			Object.hasOwn(entry, "additionalProperties");
+			isRecord(entry.properties) || Array.isArray(entry.required) || Object.hasOwn(entry, "additionalProperties");
 		if (variantType === undefined && !hasObjectShape) {
 			return schema;
 		}
 		if (variantType !== undefined && variantType !== "object") {
 			return schema;
 		}
-		if (entry.properties !== undefined && !isJsonObject(entry.properties)) {
+		if (entry.properties !== undefined && !isRecord(entry.properties)) {
 			return schema;
 		}
 		if (entry.required !== undefined && !Array.isArray(entry.required)) {
@@ -456,13 +454,13 @@ function mergeObjectCombinerVariants(schema: JsonObject, combiner: "anyOf" | "on
 	}
 
 	const mergedProperties: JsonObject = {};
-	const ownProperties = isJsonObject(schema.properties) ? schema.properties : {};
+	const ownProperties = isRecord(schema.properties) ? schema.properties : {};
 	for (const name in ownProperties) {
 		if (Object.hasOwn(ownProperties, name)) mergedProperties[name] = ownProperties[name];
 	}
 
 	for (const variant of variants) {
-		const properties = isJsonObject(variant.properties) ? variant.properties : {};
+		const properties = isRecord(variant.properties) ? variant.properties : {};
 		for (const name in properties) {
 			if (!Object.hasOwn(properties, name)) continue;
 			const propertySchema = properties[name];
@@ -523,7 +521,7 @@ function collapseMixedTypeCombinerVariants(schema: JsonObject, combiner: "anyOf"
 	const variantTypes: string[] = [];
 	const mergedVariantFields: JsonObject = {};
 	for (const entry of variantsRaw) {
-		if (!isJsonObject(entry) || typeof entry.type !== "string") {
+		if (!isRecord(entry) || typeof entry.type !== "string") {
 			return schema;
 		}
 
@@ -616,7 +614,7 @@ function collapseSameTypeCombinerVariants(schema: JsonObject, combiner: "anyOf" 
 	let commonType: string | undefined;
 	const variants: JsonObject[] = [];
 	for (const entry of variantsRaw) {
-		if (!isJsonObject(entry) || typeof entry.type !== "string") return schema;
+		if (!isRecord(entry) || typeof entry.type !== "string") return schema;
 		if (commonType === undefined) commonType = entry.type;
 		else if (entry.type !== commonType) return schema;
 		variants.push(entry);
@@ -670,7 +668,7 @@ export function stripResidualCombiners(value: unknown, epoch: number = epochNext
 		if (!once(value, epoch)) return [];
 		return value.map(entry => stripResidualCombiners(entry, epoch));
 	}
-	if (!isJsonObject(value)) return value;
+	if (!isRecord(value)) return value;
 	if (!once(value, epoch)) return {};
 	const result: JsonObject = {};
 	for (const key in value) {
@@ -702,7 +700,7 @@ interface NullableExtractionResult {
 }
 
 function extractNullableUnionSchema(schema: unknown): NullableExtractionResult {
-	if (!isJsonObject(schema)) {
+	if (!isRecord(schema)) {
 		return { schema, nullable: false };
 	}
 
@@ -728,7 +726,7 @@ function extractNullableUnionSchema(schema: unknown): NullableExtractionResult {
 		let hasNullVariant = false;
 		const nonNullVariants: unknown[] = [];
 		for (const variant of variantsRaw) {
-			if (isJsonObject(variant) && variant.type === "null") {
+			if (isRecord(variant) && variant.type === "null") {
 				let keyCount = 0;
 				for (const k in variant) {
 					if (!Object.hasOwn(variant, k)) continue;
@@ -742,7 +740,7 @@ function extractNullableUnionSchema(schema: unknown): NullableExtractionResult {
 			nonNullVariants.push(variant);
 		}
 
-		if (!hasNullVariant || nonNullVariants.length !== 1 || !isJsonObject(nonNullVariants[0])) {
+		if (!hasNullVariant || nonNullVariants.length !== 1 || !isRecord(nonNullVariants[0])) {
 			continue;
 		}
 
@@ -784,7 +782,7 @@ function normalizeNullablePropertiesForCloudCodeAssist(
 			nullable: false,
 		};
 	}
-	if (!isJsonObject(value)) {
+	if (!isRecord(value)) {
 		return { schema: value, nullable: false };
 	}
 	if (!once(value, epoch)) {
@@ -797,7 +795,7 @@ function normalizeNullablePropertiesForCloudCodeAssist(
 			normalized[key] = normalizeNullablePropertiesForCloudCodeAssist(value[key], false, epoch).schema;
 	}
 
-	if (isJsonObject(normalized.properties)) {
+	if (isRecord(normalized.properties)) {
 		const properties = normalized.properties;
 		const required = new Set(
 			Array.isArray(normalized.required)
@@ -864,7 +862,7 @@ function hasResidualSchemaIncompatibilities(
 		if (!once(value, epoch)) return false;
 		return value.some(entry => hasResidualSchemaIncompatibilities(entry, checks, epoch));
 	}
-	if (!isJsonObject(value)) {
+	if (!isRecord(value)) {
 		return false;
 	}
 	if (!once(value, epoch)) {
@@ -1086,7 +1084,7 @@ export function sanitizeSchemaForOllama(schema: JsonObject): JsonObject {
 	const normalizeNode = (value: unknown): unknown => {
 		if (value === true) return OLLAMA_OPEN_SUBSCHEMA_WIDENING;
 		if (value === false) return { not: OLLAMA_OPEN_SUBSCHEMA_WIDENING };
-		if (!isJsonObject(value)) {
+		if (!isRecord(value)) {
 			if (!Array.isArray(value)) return value;
 			let changed = false;
 			const output = value.map(item => {
@@ -1121,7 +1119,7 @@ export function sanitizeSchemaForOllama(schema: JsonObject): JsonObject {
 			}
 
 			let next = child;
-			if (OLLAMA_SCHEMA_MAP_KEYS.has(key) && isJsonObject(child)) {
+			if (OLLAMA_SCHEMA_MAP_KEYS.has(key) && isRecord(child)) {
 				let mapChanged = false;
 				const mapOutput: JsonObject = {};
 				for (const childKey in child) {
@@ -1230,7 +1228,7 @@ function hasOpenAIUnsupportedRegexLookaround(pattern: string): boolean {
 }
 
 function normalizeOpenAIResponsesSchemaNode(value: unknown, cache: WeakMap<JsonObject, unknown>): unknown {
-	if (!isJsonObject(value)) return value;
+	if (!isRecord(value)) return value;
 
 	// `{}` (empty JSON Schema) ≡ `true` (JSON Schema draft 2020-12 §4.3.1).
 	// Grammar-constrained samplers (llama.cpp, etc.) treat the object form as
@@ -1276,13 +1274,13 @@ function normalizeOpenAIResponsesSchemaNode(value: unknown, cache: WeakMap<JsonO
 
 		const child = value[key];
 		let next: unknown = child;
-		if (key === "patternProperties" && isJsonObject(child)) {
+		if (key === "patternProperties" && isRecord(child)) {
 			next = normalizeOpenAIResponsesSchemaMap(child, cache, true);
-		} else if (OPENAI_RESPONSES_SCHEMA_MAP_KEYS.has(key) && isJsonObject(child)) {
+		} else if (OPENAI_RESPONSES_SCHEMA_MAP_KEYS.has(key) && isRecord(child)) {
 			next = normalizeOpenAIResponsesSchemaMap(child, cache, false);
 		} else if (OPENAI_RESPONSES_SCHEMA_ARRAY_KEYS.has(key) && Array.isArray(child)) {
 			next = normalizeOpenAIResponsesSchemaArray(child, cache);
-		} else if (OPENAI_RESPONSES_SCHEMA_VALUE_KEYS.has(key) && isJsonObject(child)) {
+		} else if (OPENAI_RESPONSES_SCHEMA_VALUE_KEYS.has(key) && isRecord(child)) {
 			next = normalizeOpenAIResponsesSchemaNode(child, cache);
 		}
 
@@ -1362,7 +1360,7 @@ function appendOpenAIResponsesFallbackPatternProperty(output: JsonObject, schema
 		output[OPENAI_RESPONSES_PATTERN_PROPERTIES_FALLBACK] = schema;
 		return;
 	}
-	if (isJsonObject(existing) && Array.isArray(existing.anyOf) && Object.keys(existing).length === 1) {
+	if (isRecord(existing) && Array.isArray(existing.anyOf) && Object.keys(existing).length === 1) {
 		existing.anyOf = [...existing.anyOf, schema];
 		return;
 	}
@@ -1408,7 +1406,7 @@ function jsonSchemaTypeAcceptsValue(type: string, value: unknown): boolean {
 		case "array":
 			return Array.isArray(value);
 		case "object":
-			return isJsonObject(value);
+			return isRecord(value);
 		default:
 			return true;
 	}
@@ -1466,7 +1464,7 @@ const kStrictSchema = Symbol("pi.schema.strict");
  * wherever they sit in a combinator or `items`/`prefixItems` position.
  */
 function isUnrepresentableStrictBranch(value: unknown): boolean {
-	return typeof value === "boolean" || (isJsonObject(value) && isJsonObjectEmpty(value));
+	return typeof value === "boolean" || (isRecord(value) && isJsonObjectEmpty(value));
 }
 
 /**
@@ -1492,24 +1490,24 @@ function hasUnrepresentableStrictObjectMap(schema: Record<string, unknown>, epoc
 	if (!once(schema, epoch)) return false;
 
 	let hasPatternProperties = false;
-	if (isJsonObject(schema.patternProperties)) {
+	if (isRecord(schema.patternProperties)) {
 		for (const _ in schema.patternProperties) {
 			hasPatternProperties = true;
 			break;
 		}
 	}
 	const additionalPropertiesValue = schema.additionalProperties;
-	const hasSchemaAdditionalProperties = additionalPropertiesValue === true || isJsonObject(additionalPropertiesValue);
+	const hasSchemaAdditionalProperties = additionalPropertiesValue === true || isRecord(additionalPropertiesValue);
 	if (hasPatternProperties || hasSchemaAdditionalProperties) {
 		return true;
 	}
 
-	if (isJsonObject(schema.properties)) {
+	if (isRecord(schema.properties)) {
 		const properties = schema.properties;
 		for (const k in properties) {
 			const propertySchema = properties[k];
 			if (isUnrepresentableStrictBranch(propertySchema)) return true;
-			if (isJsonObject(propertySchema) && hasUnrepresentableStrictObjectMap(propertySchema, epoch)) {
+			if (isRecord(propertySchema) && hasUnrepresentableStrictObjectMap(propertySchema, epoch)) {
 				return true;
 			}
 		}
@@ -1518,14 +1516,14 @@ function hasUnrepresentableStrictObjectMap(schema: Record<string, unknown>, epoc
 	if (isUnrepresentableStrictBranch(schema.items)) {
 		return true;
 	}
-	if (isJsonObject(schema.items)) {
+	if (isRecord(schema.items)) {
 		if (hasUnrepresentableStrictObjectMap(schema.items, epoch)) {
 			return true;
 		}
 	} else if (Array.isArray(schema.items)) {
 		for (const itemSchema of schema.items) {
 			if (isUnrepresentableStrictBranch(itemSchema)) return true;
-			if (isJsonObject(itemSchema) && hasUnrepresentableStrictObjectMap(itemSchema, epoch)) {
+			if (isRecord(itemSchema) && hasUnrepresentableStrictObjectMap(itemSchema, epoch)) {
 				return true;
 			}
 		}
@@ -1533,7 +1531,7 @@ function hasUnrepresentableStrictObjectMap(schema: Record<string, unknown>, epoc
 	if (Array.isArray(schema.prefixItems)) {
 		for (const itemSchema of schema.prefixItems) {
 			if (isUnrepresentableStrictBranch(itemSchema)) return true;
-			if (isJsonObject(itemSchema) && hasUnrepresentableStrictObjectMap(itemSchema, epoch)) {
+			if (isRecord(itemSchema) && hasUnrepresentableStrictObjectMap(itemSchema, epoch)) {
 				return true;
 			}
 		}
@@ -1544,7 +1542,7 @@ function hasUnrepresentableStrictObjectMap(schema: Record<string, unknown>, epoc
 		if (!Array.isArray(variants)) continue;
 		for (const variant of variants) {
 			if (isUnrepresentableStrictBranch(variant)) return true;
-			if (isJsonObject(variant) && hasUnrepresentableStrictObjectMap(variant, epoch)) {
+			if (isRecord(variant) && hasUnrepresentableStrictObjectMap(variant, epoch)) {
 				return true;
 			}
 		}
@@ -1552,11 +1550,11 @@ function hasUnrepresentableStrictObjectMap(schema: Record<string, unknown>, epoc
 
 	for (const defsKey of ["$defs", "definitions"] as const) {
 		const defs = schema[defsKey];
-		if (!isJsonObject(defs)) continue;
+		if (!isRecord(defs)) continue;
 		for (const k in defs) {
 			const defSchema = defs[k];
 			if (isUnrepresentableStrictBranch(defSchema)) return true;
-			if (isJsonObject(defSchema) && hasUnrepresentableStrictObjectMap(defSchema, epoch)) {
+			if (isRecord(defSchema) && hasUnrepresentableStrictObjectMap(defSchema, epoch)) {
 				return true;
 			}
 		}
@@ -1627,7 +1625,7 @@ export function sanitizeSchemaForStrictMode(
 	// Cite: openai-python/src/openai/lib/_pydantic.py:79-83
 	{
 		const allOf = schema.allOf;
-		if (Array.isArray(allOf) && allOf.length === 1 && isJsonObject(allOf[0])) {
+		if (Array.isArray(allOf) && allOf.length === 1 && isRecord(allOf[0])) {
 			const merged: Record<string, unknown> = { ...schema };
 			delete merged.allOf;
 			const sole = allOf[0] as Record<string, unknown>;
@@ -1706,11 +1704,11 @@ export function sanitizeSchemaForStrictMode(
 		}
 		// `properties` map — recurse into each property schema.
 
-		if (key === "properties" && isJsonObject(value)) {
+		if (key === "properties" && isRecord(value)) {
 			const properties: Record<string, unknown> = {};
 			for (const propertyName in value) {
 				const propertySchema = value[propertyName];
-				properties[propertyName] = isJsonObject(propertySchema)
+				properties[propertyName] = isRecord(propertySchema)
 					? sanitizeSchemaForStrictMode(propertySchema, epoch, cache, root)
 					: propertySchema;
 			}
@@ -1720,11 +1718,11 @@ export function sanitizeSchemaForStrictMode(
 		// `items` can be schema, tuple-array, or scalar boolean — recurse where applicable.
 
 		if (key === "items") {
-			if (isJsonObject(value)) {
+			if (isRecord(value)) {
 				sanitized.items = sanitizeSchemaForStrictMode(value, epoch, cache, root);
 			} else if (Array.isArray(value)) {
 				sanitized.items = value.map(entry =>
-					isJsonObject(entry) ? sanitizeSchemaForStrictMode(entry, epoch, cache, root) : entry,
+					isRecord(entry) ? sanitizeSchemaForStrictMode(entry, epoch, cache, root) : entry,
 				);
 			} else {
 				sanitized.items = value;
@@ -1735,7 +1733,7 @@ export function sanitizeSchemaForStrictMode(
 
 		if (key === "prefixItems" && Array.isArray(value)) {
 			sanitized.prefixItems = value.map(entry =>
-				isJsonObject(entry) ? sanitizeSchemaForStrictMode(entry, epoch, cache, root) : entry,
+				isRecord(entry) ? sanitizeSchemaForStrictMode(entry, epoch, cache, root) : entry,
 			);
 			continue;
 		}
@@ -1743,17 +1741,17 @@ export function sanitizeSchemaForStrictMode(
 
 		if (COMBINATOR_KEYS.includes(key as (typeof COMBINATOR_KEYS)[number]) && Array.isArray(value)) {
 			sanitized[key] = value.map(entry =>
-				isJsonObject(entry) ? sanitizeSchemaForStrictMode(entry, epoch, cache, root) : entry,
+				isRecord(entry) ? sanitizeSchemaForStrictMode(entry, epoch, cache, root) : entry,
 			);
 			continue;
 		}
 		// Definition maps — recurse into each named schema.
 
-		if ((key === "$defs" || key === "definitions") && isJsonObject(value)) {
+		if ((key === "$defs" || key === "definitions") && isRecord(value)) {
 			const defs: Record<string, unknown> = {};
 			for (const definitionName in value) {
 				const definitionSchema = value[definitionName];
-				defs[definitionName] = isJsonObject(definitionSchema)
+				defs[definitionName] = isRecord(definitionSchema)
 					? sanitizeSchemaForStrictMode(definitionSchema, epoch, cache, root)
 					: definitionSchema;
 			}
@@ -1794,7 +1792,7 @@ export function sanitizeSchemaForStrictMode(
 		sanitized.type = typeValue;
 	}
 
-	if (sanitized.type === undefined && isJsonObject(sanitized.properties)) {
+	if (sanitized.type === undefined && isRecord(sanitized.properties)) {
 		sanitized.type = "object";
 	}
 
@@ -1830,7 +1828,7 @@ export function sanitizeSchemaForStrictMode(
  * branches of a non-pure node would drop those constraints.
  */
 function isPureAnyOfNode(value: unknown): value is Record<string, unknown> & { anyOf: unknown[] } {
-	if (!isJsonObject(value) || !Array.isArray(value.anyOf)) return false;
+	if (!isRecord(value) || !Array.isArray(value.anyOf)) return false;
 	for (const key in value) {
 		if (key !== "anyOf" && key !== "description") return false;
 	}
@@ -1898,9 +1896,9 @@ function enforceStrictSchemaBody(
 			if (!originalRequired.has(key)) {
 				// Don't double-wrap if already nullable
 				if (
-					isJsonObject(processed) &&
+					isRecord(processed) &&
 					Array.isArray(processed.anyOf) &&
-					processed.anyOf.some(v => isJsonObject(v) && v.type === "null")
+					processed.anyOf.some(v => isRecord(v) && v.type === "null")
 				) {
 					strictProperties[key] = processed;
 					continue;
@@ -1909,7 +1907,7 @@ function enforceStrictSchemaBody(
 					strictProperties[key] = { ...processed, anyOf: [...processed.anyOf, { type: "null" }] };
 					continue;
 				}
-				if (isJsonObject(processed) && typeof processed.description === "string") {
+				if (isRecord(processed) && typeof processed.description === "string") {
 					const { description, ...withoutDescription } = processed;
 					strictProperties[key] = { anyOf: [withoutDescription, { type: "null" }], description };
 					continue;
@@ -2000,7 +1998,7 @@ function enforceStrictSchemaBody(
 		result.type === undefined &&
 		result.$ref === undefined &&
 		!COMBINATOR_KEYS.some(key => Array.isArray(result[key])) &&
-		!isJsonObject(result.not)
+		!isRecord(result.not)
 	) {
 		throw new AIError.ValidationError("Schema node has no type, combinator, or $ref — cannot enforce strict mode");
 	}
@@ -2036,10 +2034,10 @@ function resolveStrictRef(root: Record<string, unknown>, ref: string): Record<st
 	const segments = ref.slice(2).split("/");
 	let cursor: unknown = root;
 	for (const raw of segments) {
-		if (!isJsonObject(cursor)) return undefined;
+		if (!isRecord(cursor)) return undefined;
 		// JSON Pointer unescape: ~1 → "/", ~0 → "~" (must run in that order).
 		const segment = raw.replace(/~1/g, "/").replace(/~0/g, "~");
 		cursor = cursor[segment];
 	}
-	return isJsonObject(cursor) ? cursor : undefined;
+	return isRecord(cursor) ? cursor : undefined;
 }

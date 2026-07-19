@@ -1,31 +1,35 @@
 import { describe, expect, it } from "bun:test";
+import { isRecord } from "@veyyon/utils";
 import {
 	adaptSchemaForStrict,
 	areJsonValuesEqual,
 	copySchemaWithout,
-	isJsonObject,
 	mergeCompatibleEnumSchemas,
 	mergePropertySchemas,
 	stripResidualCombiners,
 } from "@veyyon/ai/utils/schema";
 
-describe("isJsonObject", () => {
+// The schema subsystem's object guard is the shared @veyyon/utils isRecord (the
+// former local isJsonObject clone was folded onto that owner). This block stays
+// as a smoke check that the guard the schema code depends on has the right
+// plain-object-only semantics.
+describe("isRecord (schema object guard)", () => {
 	it("returns true for plain objects", () => {
-		expect(isJsonObject({})).toBe(true);
-		expect(isJsonObject({ a: 1 })).toBe(true);
+		expect(isRecord({})).toBe(true);
+		expect(isRecord({ a: 1 })).toBe(true);
 	});
 
 	it("returns false for arrays", () => {
-		expect(isJsonObject([])).toBe(false);
-		expect(isJsonObject([1, 2])).toBe(false);
+		expect(isRecord([])).toBe(false);
+		expect(isRecord([1, 2])).toBe(false);
 	});
 
 	it("returns false for primitives and null", () => {
-		expect(isJsonObject(null)).toBe(false);
-		expect(isJsonObject(undefined)).toBe(false);
-		expect(isJsonObject(0)).toBe(false);
-		expect(isJsonObject("")).toBe(false);
-		expect(isJsonObject(false)).toBe(false);
+		expect(isRecord(null)).toBe(false);
+		expect(isRecord(undefined)).toBe(false);
+		expect(isRecord(0)).toBe(false);
+		expect(isRecord("")).toBe(false);
+		expect(isRecord(false)).toBe(false);
 	});
 });
 

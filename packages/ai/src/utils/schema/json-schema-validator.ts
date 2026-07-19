@@ -12,7 +12,7 @@
  * Compared to AJV this is single-pass, synchronous, dependency-free, and
  * tolerates non-standard shapes (`nullable`) that LLM-emitted schemas carry.
  */
-import { logger } from "@veyyon/utils";
+import { isRecord, logger } from "@veyyon/utils";
 import { areJsonValuesEqual } from "./equality";
 
 export interface JsonSchemaValidationIssue {
@@ -65,10 +65,6 @@ function getValueIdentity(ctx: ValidationContext, value: object): number {
 	return id;
 }
 
-function isJsonObject(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 function pushIssue(
 	issues: JsonSchemaValidationIssue[],
 	path: readonly PropertyKey[],
@@ -98,7 +94,7 @@ function matchesJsonSchemaType(value: unknown, type: string): boolean {
 		case "boolean":
 			return typeof value === "boolean";
 		case "object":
-			return isJsonObject(value);
+			return isRecord(value);
 		case "array":
 			return Array.isArray(value);
 		case "null":
@@ -138,7 +134,7 @@ function resolveLocalRef(root: unknown, ref: string): unknown | undefined {
 	let current: unknown = root;
 	for (const rawToken of ref.slice(2).split("/")) {
 		const token = decodePointerToken(rawToken);
-		if (!isJsonObject(current) && !Array.isArray(current)) return undefined;
+		if (!isRecord(current) && !Array.isArray(current)) return undefined;
 		current = (current as Record<string, unknown>)[token];
 	}
 	return current;
@@ -170,7 +166,7 @@ function validateSchemaNode(
 		pushIssue(issues, path, "must not match false schema", { keyword: "false" });
 		return false;
 	}
-	if (!isJsonObject(schema)) {
+	if (!isRecord(schema)) {
 		pushIssue(issues, path, "schema must be an object or boolean", { keyword: "schema" });
 		return false;
 	}
@@ -310,7 +306,7 @@ function validateSchemaNode(
 		);
 	}
 
-	if (isJsonObject(value)) {
+	if (isRecord(value)) {
 		valid = validateObjectKeywords(schema, value, path, ctx, issues) && valid;
 	}
 	if (Array.isArray(value)) {
@@ -335,7 +331,7 @@ function validateObjectKeywords(
 	issues: JsonSchemaValidationIssue[],
 ): boolean {
 	let valid = true;
-	const properties = isJsonObject(schema.properties) ? schema.properties : {};
+	const properties = isRecord(schema.properties) ? schema.properties : {};
 	if (isRequiredSet(schema.required)) {
 		for (const key of schema.required) {
 			if (!(key in value)) {
@@ -357,7 +353,7 @@ function validateObjectKeywords(
 	}
 
 	const known = new Set(Object.keys(properties));
-	if (isJsonObject(schema.patternProperties)) {
+	if (isRecord(schema.patternProperties)) {
 		const patternProperties = schema.patternProperties;
 		for (const pattern in patternProperties) {
 			const patternSchema = patternProperties[pattern];
@@ -377,7 +373,7 @@ function validateObjectKeywords(
 		}
 	}
 
-	if (isJsonObject(schema.dependentRequired)) {
+	if (isRecord(schema.dependentRequired)) {
 		const dependentRequired = schema.dependentRequired;
 		for (const key in dependentRequired) {
 			const deps = dependentRequired[key];
@@ -395,7 +391,7 @@ function validateObjectKeywords(
 		}
 	}
 
-	if (isJsonObject(schema.dependentSchemas)) {
+	if (isRecord(schema.dependentSchemas)) {
 		const dependentSchemas = schema.dependentSchemas;
 		for (const key in dependentSchemas) {
 			if (!(key in value)) continue;
