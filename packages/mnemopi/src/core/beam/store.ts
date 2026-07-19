@@ -1,5 +1,5 @@
 import type { Database, SQLQueryBindings } from "bun:sqlite";
-import { errorMessage, HOUR_MS, isRecord, logger } from "@veyyon/utils";
+import { batched, errorMessage, HOUR_MS, isRecord, logger } from "@veyyon/utils";
 import { transaction } from "../../db";
 import { toUtcIso } from "../../util/datetime";
 import { generateId } from "../../util/ids";
@@ -309,8 +309,8 @@ export function reconcileEmbeddingModel(beam: BeamMemoryState): void {
 	// Re-embed in bounded batches so a corpus-wide rebuild never issues one giant
 	// embedding request; each batch is its own tracked background task.
 	const rebuild = (items: readonly EmbedItem[]): void => {
-		for (let offset = 0; offset < items.length; offset += EMBED_REBUILD_BATCH) {
-			scheduleEmbedding(beam, items.slice(offset, offset + EMBED_REBUILD_BATCH));
+		for (const batch of batched(items, EMBED_REBUILD_BATCH)) {
+			scheduleEmbedding(beam, batch);
 		}
 	};
 

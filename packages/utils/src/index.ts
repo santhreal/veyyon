@@ -1,4 +1,5 @@
 export { once, untilAborted } from "./abortable";
+export * from "./array";
 export * from "./async";
 export * from "./backoff";
 export * from "./binary";

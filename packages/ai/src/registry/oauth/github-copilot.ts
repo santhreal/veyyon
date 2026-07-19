@@ -12,7 +12,7 @@ import {
 	normalizeGitHubCopilotEnterpriseDomain,
 	OPENCODE_HEADERS,
 } from "@veyyon/catalog/wire/github-copilot";
-import { DAY_MS } from "@veyyon/utils";
+import { batched, DAY_MS } from "@veyyon/utils";
 import * as AIError from "../../error";
 import type { FetchImpl } from "../../types";
 import { fetchGitHubCopilotJson } from "../../utils/github-copilot-http";
@@ -277,8 +277,7 @@ async function enableAllGitHubCopilotModels(
 	// the upstream model id; enable each wire id exactly once.
 	const wireModelIds = [...new Set(getBundledModels("github-copilot").map(model => model.requestModelId ?? model.id))];
 	const BATCH_SIZE = 5;
-	for (let i = 0; i < wireModelIds.length; i += BATCH_SIZE) {
-		const batch = wireModelIds.slice(i, i + BATCH_SIZE);
+	for (const batch of batched(wireModelIds, BATCH_SIZE)) {
 		await Promise.all(
 			batch.map(async modelId => {
 				const success = await enableGitHubCopilotModel(token, modelId, fetchImpl, enterpriseDomain, apiEndpoint);
