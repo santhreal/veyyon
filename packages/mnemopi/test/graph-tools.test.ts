@@ -48,6 +48,30 @@ describe("EpisodicGraph CRUD", () => {
 			});
 		});
 	});
+
+	it("reads a stored fact back by id and returns null for an unknown id", () => {
+		withGraph(graph => {
+			const fact = {
+				id: "fact_1",
+				subject: "Ada",
+				predicate: "prefers",
+				object: "dark mode",
+				timestamp: "2026-05-30T00:00:00.000Z",
+				confidence: 0.9,
+			};
+			graph.storeFact(fact, "mem_x", "sess");
+			expect(graph.getFact("fact_1")).toEqual({
+				id: "fact_1",
+				subject: "Ada",
+				predicate: "prefers",
+				object: "dark mode",
+				timestamp: "2026-05-30T00:00:00.000Z",
+				confidence: 0.9,
+				temporalQualifier: null,
+			});
+			expect(graph.getFact("missing")).toBeNull();
+		});
+	});
 });
 
 describe("EpisodicGraph links and traversal", () => {
@@ -82,6 +106,30 @@ describe("EpisodicGraph links and traversal", () => {
 			graph.addEdge(edge("bug_123", "fix_456", "caused", 0.9));
 			const results = graph.findRelatedMemories("bug_123", 1, "caused");
 			expect(results).toEqual([{ memoryId: "fix_456", edgeType: "caused", weight: 0.9, depth: 1 }]);
+		});
+	});
+
+	it("lists all edges and filters by an endpoint via getEdges", () => {
+		withGraph(graph => {
+			graph.addEdge(edge("mem_a", "mem_b", "ctx", 0.8));
+			graph.addEdge(edge("mem_b", "mem_c", "ctx", 0.7));
+			graph.addEdge(edge("mem_x", "mem_y", "syn", 0.4));
+
+			// No argument returns every edge in insertion order.
+			expect(graph.getEdges()).toEqual([
+				{ source: "mem_a", target: "mem_b", edgeType: "ctx", weight: 0.8, timestamp: "2026-05-30T00:00:00.000Z" },
+				{ source: "mem_b", target: "mem_c", edgeType: "ctx", weight: 0.7, timestamp: "2026-05-30T00:00:00.000Z" },
+				{ source: "mem_x", target: "mem_y", edgeType: "syn", weight: 0.4, timestamp: "2026-05-30T00:00:00.000Z" },
+			]);
+
+			// An endpoint argument matches edges where it is either source or target.
+			expect(graph.getEdges("mem_b")).toEqual([
+				{ source: "mem_a", target: "mem_b", edgeType: "ctx", weight: 0.8, timestamp: "2026-05-30T00:00:00.000Z" },
+				{ source: "mem_b", target: "mem_c", edgeType: "ctx", weight: 0.7, timestamp: "2026-05-30T00:00:00.000Z" },
+			]);
+			expect(graph.getEdges("mem_x")).toEqual([
+				{ source: "mem_x", target: "mem_y", edgeType: "syn", weight: 0.4, timestamp: "2026-05-30T00:00:00.000Z" },
+			]);
 		});
 	});
 });
