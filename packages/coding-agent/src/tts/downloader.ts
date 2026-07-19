@@ -1,6 +1,4 @@
-import * as fs from "node:fs/promises";
-import * as path from "node:path";
-import { getTinyModelsCacheDir } from "@veyyon/utils";
+import { transformersRepoCacheState } from "../subprocess/transformers-cache";
 import { getTtsLocalModelSpec } from "./models";
 import { isTtsRuntimeCached } from "./runtime";
 import { ttsClient } from "./tts-client";
@@ -21,14 +19,8 @@ export interface TtsDownloadProgress {
 export async function isTtsModelCached(modelKey: string): Promise<boolean> {
 	const spec = getTtsLocalModelSpec(modelKey);
 	if (!spec) return false;
-	const repoDir = path.join(getTinyModelsCacheDir(), ...spec.repo.split("/"));
-	try {
-		const entries = await fs.readdir(repoDir, { recursive: true });
-		const hasWeights = entries.some(entry => typeof entry === "string" && entry.endsWith(".onnx"));
-		return hasWeights && (await isTtsRuntimeCached());
-	} catch {
-		return false;
-	}
+	const { downloaded } = await transformersRepoCacheState(spec.repo);
+	return downloaded && (await isTtsRuntimeCached());
 }
 
 /**
