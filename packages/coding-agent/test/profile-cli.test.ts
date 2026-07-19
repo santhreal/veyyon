@@ -276,9 +276,9 @@ describe("global --profile flag", () => {
 	});
 
 	it("cli.ts imports no top-level @veyyon/utils barrel (would eager-load .env before setProfile)", async () => {
-		// Source lock guarding the ordering the test above proves behaviorally: the
-		// "@veyyon/utils" barrel re-exports ./env, which parses the agent-dir .env
-		// at import time. cli.ts must reach every utils symbol through a subpath
+		// Fast source lock guarding the ordering the test above proves behaviorally:
+		// the "@veyyon/utils" barrel re-exports ./env, which parses the agent-dir
+		// .env at import time. cli.ts must reach every utils symbol through a subpath
 		// (e.g. @veyyon/utils/type-guards, /dirs) so nothing loads the agent .env
 		// before runCli() calls setProfile(). A bare-barrel static import here
 		// silently reintroduces the wrong-profile-.env bug, so fail on it.
@@ -287,6 +287,62 @@ describe("global --profile flag", () => {
 			.split("\n")
 			.filter(line => /^\s*import\b/.test(line) && /from\s+["']@veyyon\/utils["']/.test(line));
 		expect(barrelImports).toEqual([]);
+	});
+
+	it("importing cli.ts (whole static graph) loads no agent .env before setProfile runs", async () => {
+		// Stronger than the source lock above: the source lock only inspects cli.ts
+		// itself, but the invariant covers the ENTIRE static import graph reachable
+		// before runCli() calls setProfile() — any transitively imported module that
+		// pulls the "@veyyon/utils" barrel would eager-load the agent .env just the
+		// same. This probe imports the cli module WITHOUT calling runCli and asserts
+		// a planted default-profile .env never leaked into the process env; if it
+		// did, some module in the pre-setProfile graph loaded .env at import time.
+		const root = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-profile-cli-leak-"));
+		try {
+			const home = path.join(root, "home");
+			const configDir = ".veyyon-profile-cli-leak";
+			const defaultAgentDir = path.join(home, configDir, "profiles", "default", "agent");
+			await fs.mkdir(defaultAgentDir, { recursive: true });
+			await Bun.write(path.join(defaultAgentDir, ".env"), "VEYYON_IMPORT_LEAK_SENTINEL=leaked\n");
+
+			const probePath = path.join(root, "probe.ts");
+			await Bun.write(
+				probePath,
+				[
+					// Import ONLY — never call runCli, so setProfile never runs.
+					`import ${JSON.stringify(url.pathToFileURL(cliEntry).href)};`,
+					'process.stdout.write("LEAK=" + (Bun.env.VEYYON_IMPORT_LEAK_SENTINEL ?? "<none>"));',
+				].join("\n"),
+			);
+
+			const childEnv: Record<string, string | undefined> = {
+				...process.env,
+				HOME: home,
+				VEYYON_CONFIG_DIR: configDir,
+				VEYYON_NO_TITLE: "1",
+				NO_COLOR: "1",
+			};
+			delete childEnv.VEYYON_PROFILE;
+			delete childEnv.VEYYON_CODING_AGENT_DIR;
+			delete childEnv.VEYYON_IMPORT_LEAK_SENTINEL;
+
+			const proc = Bun.spawn([process.execPath, probePath], {
+				cwd: repoRoot,
+				stdout: "pipe",
+				stderr: "pipe",
+				env: childEnv,
+			});
+			const [stdout, stderr, exitCode] = await Promise.all([
+				readStream(proc.stdout as ReadableStream<Uint8Array>),
+				readStream(proc.stderr as ReadableStream<Uint8Array>),
+				proc.exited,
+			]);
+
+			expect(exitCode, stderr).toBe(0);
+			expect(stdout).toContain("LEAK=<none>");
+		} finally {
+			await removeWithRetries(root);
+		}
 	});
 
 	it("surfaces an invalid VEYYON_PROFILE env as a clean error, not an import crash", async () => {
