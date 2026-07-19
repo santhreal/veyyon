@@ -1940,7 +1940,6 @@ export class Markdown implements Component {
 	}
 
 	#renderInlineTokensInner(tokens: Token[], styleContext?: InlineStyleContext): string {
-		let result = "";
 		const resolvedStyleContext = styleContext ?? this.#getDefaultInlineStyleContext();
 		const { applyText, stylePrefix } = resolvedStyleContext;
 		const applyTextWithNewlines = (text: string): string => {
@@ -1948,124 +1947,19 @@ export class Markdown implements Component {
 			return segments.map((segment: string) => (segment === "" ? "" : applyText(segment))).join("\n");
 		};
 		const swatchGlyph = this.#theme.symbols.colorSwatch || DEFAULT_COLOR_SWATCH_GLYPH;
-		let trimLeadingWhitespace = false;
-		const htmlState = createHtmlNormalizationState();
-		const markHtmlItemWhenContent = (text: string): void => {
-			markCurrentHtmlItemContent(htmlState, text);
-		};
-
-		for (const token of collapseInlineHtml(tokens)) {
-			if (isMathToken(token)) {
-				markHtmlItemWhenContent(token.text);
-				result += applyTextWithNewlines(renderMathToken(token.text));
-				continue;
-			}
-			switch (token.type) {
-				case "text": {
-					const rawText = trimLeadingWhitespace ? token.text.replace(/^\s+/, "") : token.text;
-					const text = normalizeHtmlEntitiesForTerminal(rawText);
-					trimLeadingWhitespace = false;
-					markHtmlItemWhenContent(text);
-					if (token.tokens) markHtmlItemWhenContent(plainInlineTokens(token.tokens));
-					// Text tokens in list items can have nested tokens for inline formatting
-					if (token.tokens && token.tokens.length > 0) {
-						result += this.#renderInlineTokens(token.tokens, resolvedStyleContext);
-					} else {
-						result += renderTextWithSwatches(text, applyTextWithNewlines, swatchGlyph);
-					}
-					break;
-				}
-
-				case "paragraph":
-					// Paragraph tokens contain nested inline tokens
-					markHtmlItemWhenContent(plainInlineTokens(token.tokens || []));
-					result += this.#renderInlineTokens(token.tokens || [], resolvedStyleContext);
-					break;
-
-				case "strong": {
-					markHtmlItemWhenContent(plainInlineTokens(token.tokens || []));
-					const boldContent = this.#renderInlineTokens(token.tokens || [], resolvedStyleContext);
-					result += this.#theme.bold(boldContent) + stylePrefix;
-					break;
-				}
-
-				case "em": {
-					const italicContent = this.#renderInlineTokens(token.tokens || [], resolvedStyleContext);
-					markHtmlItemWhenContent(plainInlineTokens(token.tokens || []));
-					result += this.#theme.italic(italicContent) + stylePrefix;
-					break;
-				}
-
-				case "codespan": {
-					markHtmlItemWhenContent(token.text);
-					result += codespanSwatch(token.text, swatchGlyph) + this.#theme.code(token.text) + stylePrefix;
-					break;
-				}
-
-				case "link": {
-					markHtmlItemWhenContent(token.text);
-					const linkText = this.#renderInlineTokens(token.tokens || [], resolvedStyleContext);
-					const styledLinkText = this.#theme.link(this.#theme.underline(linkText));
-					const clickableLinkText = formatHyperlink(styledLinkText, token.href);
-					// If link text matches href, only show the link once
-					// Compare raw text (token.text) not styled text (linkText) since linkText has ANSI codes
-					// For mailto: links, strip the prefix before comparing (autolinked emails have
-					// text="foo@bar.com" but href="mailto:foo@bar.com")
-					const hrefForComparison = token.href.startsWith("mailto:") ? token.href.slice(7) : token.href;
-					if (token.text === token.href || token.text === hrefForComparison)
-						result += clickableLinkText + stylePrefix;
-					else {
-						const styledLinkUrl = this.#theme.linkUrl(` (${token.href})`);
-						result += clickableLinkText + formatHyperlink(styledLinkUrl, token.href) + stylePrefix;
-					}
-					break;
-				}
-
-				case "br":
-					result += "\n";
-					trimLeadingWhitespace = true;
-					break;
-
-				case "del": {
-					const delContent = this.#renderInlineTokens(token.tokens || [], resolvedStyleContext);
-					markHtmlItemWhenContent(plainInlineTokens(token.tokens || []));
-					result += this.#theme.strikethrough(delContent) + stylePrefix;
-					break;
-				}
-
-				case "html":
-					if ("raw" in token && typeof token.raw === "string") {
-						const cleaned = normalizeHtmlForTerminal(token.raw, htmlState);
-						result += applyTextWithNewlines(cleaned);
-						if (cleaned.endsWith("\n")) {
-							trimLeadingWhitespace = true;
-						} else if (cleaned.length > 0) {
-							trimLeadingWhitespace = false;
-						}
-					}
-					break;
-
-				default:
-					// Handle any other inline token types as plain text
-					if ("text" in token && typeof token.text === "string") {
-						const rawText = trimLeadingWhitespace ? token.text.replace(/^\s+/, "") : token.text;
-						const text = normalizeHtmlEntitiesForTerminal(rawText);
-						trimLeadingWhitespace = false;
-						markHtmlItemWhenContent(text);
-						result += applyTextWithNewlines(text);
-					}
-			}
-		}
-
-		// Strip dangling re-opened-default SGR prefix left over from the last inline
-		// token (strong/em/codespan/link/del/etc.) so the emitted line self-terminates
-		// at its last styled segment instead of carrying an unmatched SGR open into
-		// the next line. Matches upstream behavior.
-		while (stylePrefix && result.endsWith(stylePrefix)) {
-			result = result.slice(0, -stylePrefix.length);
-		}
-
-		return result;
+		return walkInlineTokens(tokens, {
+			theme: this.#theme,
+			applyText,
+			applyTextWithNewlines,
+			renderLeafText: (text: string) => renderTextWithSwatches(text, applyTextWithNewlines, swatchGlyph),
+			stylePrefix,
+			swatchGlyph,
+			hyperlinks: true,
+			useHtmlState: true,
+			handleBlocks: true,
+			stripTrailingPrefix: true,
+			renderNested: (subTokens: Token[]) => this.#renderInlineTokens(subTokens, resolvedStyleContext),
+		});
 	}
 
 	/**
@@ -2406,6 +2300,185 @@ export class Markdown implements Component {
 }
 
 /**
+ * Per-level dispatch context for {@link walkInlineTokens}. Both inline renderers
+ * (the rich Markdown component and the standalone {@link renderInlineMarkdown})
+ * flow through the one walker; every place they diverge is a field here rather
+ * than a second copy of the token switch:
+ *   - `renderLeafText` styles a bare text leaf (rich shows color swatches, the
+ *     standalone just applies its base color).
+ *   - `swatchGlyph` non-null adds the codespan color swatch.
+ *   - `hyperlinks` wraps links in OSC-8 escapes and appends the ` (href)` tail.
+ *   - `useHtmlState` threads an HTML-normalization state across the token run.
+ *   - `handleBlocks` activates the `paragraph`/`br` block cases (the standalone
+ *     falls those through to plain text).
+ *   - `stripTrailingPrefix` trims a dangling reopened-default SGR at the end.
+ * The recursion cap lives in the two thin callers, so this walker is pure
+ * single-level dispatch.
+ */
+interface InlineWalkContext {
+	theme: MarkdownTheme;
+	applyText: (text: string) => string;
+	applyTextWithNewlines: (text: string) => string;
+	renderLeafText: (text: string) => string;
+	stylePrefix: string;
+	swatchGlyph: string | null;
+	hyperlinks: boolean;
+	useHtmlState: boolean;
+	handleBlocks: boolean;
+	stripTrailingPrefix: boolean;
+	renderNested: (tokens: Token[]) => string;
+}
+
+/**
+ * The single owner of the inline-token grammar (text/strong/em/codespan/link/
+ * del/html/paragraph/br/math + fallback). Walks one level of inline tokens and
+ * returns the styled string; nested emphasis recurses through `ctx.renderNested`
+ * so each caller keeps its own depth guard. Kept byte-identical to the two
+ * former hand-copied switches — locked by markdown-inline-one-place.test.ts.
+ */
+function walkInlineTokens(tokens: Token[], ctx: InlineWalkContext): string {
+	let result = "";
+	let trimLeadingWhitespace = false;
+	const htmlState = ctx.useHtmlState ? createHtmlNormalizationState() : null;
+	const markContent = (text: string): void => {
+		if (htmlState) markCurrentHtmlItemContent(htmlState, text);
+	};
+	const appendDefaultText = (token: Token): void => {
+		if ("text" in token && typeof token.text === "string") {
+			const rawText = trimLeadingWhitespace ? token.text.replace(/^\s+/, "") : token.text;
+			const text = normalizeHtmlEntitiesForTerminal(rawText);
+			trimLeadingWhitespace = false;
+			markContent(text);
+			result += ctx.applyTextWithNewlines(text);
+		}
+	};
+
+	for (const token of collapseInlineHtml(tokens)) {
+		if (isMathToken(token)) {
+			markContent(token.text);
+			result += ctx.applyTextWithNewlines(renderMathToken(token.text));
+			continue;
+		}
+		switch (token.type) {
+			case "text": {
+				const rawText = trimLeadingWhitespace ? token.text.replace(/^\s+/, "") : token.text;
+				const text = normalizeHtmlEntitiesForTerminal(rawText);
+				trimLeadingWhitespace = false;
+				markContent(text);
+				if (token.tokens) markContent(plainInlineTokens(token.tokens));
+				// Text tokens in list items can have nested tokens for inline formatting
+				if (token.tokens && token.tokens.length > 0) {
+					result += ctx.renderNested(token.tokens);
+				} else {
+					result += ctx.renderLeafText(text);
+				}
+				break;
+			}
+
+			case "paragraph":
+				// Paragraph tokens contain nested inline tokens
+				if (ctx.handleBlocks) {
+					markContent(plainInlineTokens(token.tokens || []));
+					result += ctx.renderNested(token.tokens || []);
+				} else {
+					appendDefaultText(token);
+				}
+				break;
+
+			case "strong": {
+				markContent(plainInlineTokens(token.tokens || []));
+				const boldContent = ctx.renderNested(token.tokens || []);
+				result += ctx.theme.bold(boldContent) + ctx.stylePrefix;
+				break;
+			}
+
+			case "em": {
+				const italicContent = ctx.renderNested(token.tokens || []);
+				markContent(plainInlineTokens(token.tokens || []));
+				result += ctx.theme.italic(italicContent) + ctx.stylePrefix;
+				break;
+			}
+
+			case "codespan": {
+				markContent(token.text);
+				const swatch = ctx.swatchGlyph ? codespanSwatch(token.text, ctx.swatchGlyph) : "";
+				result += swatch + ctx.theme.code(token.text) + ctx.stylePrefix;
+				break;
+			}
+
+			case "link": {
+				markContent(token.text);
+				const linkText = ctx.renderNested(token.tokens || []);
+				const styledLinkText = ctx.theme.link(ctx.theme.underline(linkText));
+				if (!ctx.hyperlinks) {
+					result += styledLinkText + ctx.stylePrefix;
+					break;
+				}
+				const clickableLinkText = formatHyperlink(styledLinkText, token.href);
+				// If link text matches href, only show the link once. Compare raw text
+				// (token.text) not styled text (linkText) since linkText has ANSI codes.
+				// For mailto: links, strip the prefix before comparing (autolinked emails
+				// have text="foo@bar.com" but href="mailto:foo@bar.com").
+				const hrefForComparison = token.href.startsWith("mailto:") ? token.href.slice(7) : token.href;
+				if (token.text === token.href || token.text === hrefForComparison) {
+					result += clickableLinkText + ctx.stylePrefix;
+				} else {
+					const styledLinkUrl = ctx.theme.linkUrl(` (${token.href})`);
+					result += clickableLinkText + formatHyperlink(styledLinkUrl, token.href) + ctx.stylePrefix;
+				}
+				break;
+			}
+
+			case "br":
+				if (ctx.handleBlocks) {
+					result += "\n";
+					trimLeadingWhitespace = true;
+				} else {
+					appendDefaultText(token);
+				}
+				break;
+
+			case "del": {
+				const delContent = ctx.renderNested(token.tokens || []);
+				markContent(plainInlineTokens(token.tokens || []));
+				result += ctx.theme.strikethrough(delContent) + ctx.stylePrefix;
+				break;
+			}
+
+			case "html":
+				if ("raw" in token && typeof token.raw === "string") {
+					const cleaned = normalizeHtmlForTerminal(token.raw, htmlState ?? undefined);
+					result += ctx.applyTextWithNewlines(cleaned);
+					if (ctx.handleBlocks) {
+						if (cleaned.endsWith("\n")) {
+							trimLeadingWhitespace = true;
+						} else if (cleaned.length > 0) {
+							trimLeadingWhitespace = false;
+						}
+					}
+				}
+				break;
+
+			default:
+				// Handle any other inline token types as plain text
+				appendDefaultText(token);
+		}
+	}
+
+	// Strip dangling re-opened-default SGR prefix left over from the last inline
+	// token (strong/em/codespan/link/del/etc.) so the emitted line self-terminates
+	// at its last styled segment instead of carrying an unmatched SGR open into
+	// the next line. Matches upstream behavior.
+	if (ctx.stripTrailingPrefix) {
+		while (ctx.stylePrefix && result.endsWith(ctx.stylePrefix)) {
+			result = result.slice(0, -ctx.stylePrefix.length);
+		}
+	}
+
+	return result;
+}
+
+/**
  * Render inline markdown (bold, italic, code, links, strikethrough) to a styled string.
  * Unlike the full Markdown component, this produces a single line with no block-level elements.
  */
@@ -2450,52 +2523,21 @@ function renderInlineTokens(
 		const plain = plainInlineTokens(tokens);
 		return plain === "" ? "" : applyText(plain);
 	}
-	let result = "";
-	const styleReset = applyText("");
-	for (const token of collapseInlineHtml(tokens)) {
-		if (isMathToken(token)) {
-			result += applyText(renderMathToken(token.text));
-			continue;
-		}
-		switch (token.type) {
-			case "text":
-				if (token.tokens && token.tokens.length > 0) {
-					result += renderInlineTokens(token.tokens, mdTheme, applyText, depth + 1);
-				} else {
-					result += applyText(normalizeHtmlEntitiesForTerminal(token.text));
-				}
-				break;
-			case "strong":
-				result += mdTheme.bold(renderInlineTokens(token.tokens || [], mdTheme, applyText, depth + 1)) + styleReset;
-				break;
-			case "em":
-				result +=
-					mdTheme.italic(renderInlineTokens(token.tokens || [], mdTheme, applyText, depth + 1)) + styleReset;
-				break;
-			case "codespan":
-				result += mdTheme.code(token.text) + styleReset;
-				break;
-			case "del":
-				result +=
-					mdTheme.strikethrough(renderInlineTokens(token.tokens || [], mdTheme, applyText, depth + 1)) +
-					styleReset;
-				break;
-			case "link": {
-				const linkText = renderInlineTokens(token.tokens || [], mdTheme, applyText, depth + 1);
-				result += mdTheme.link(mdTheme.underline(linkText)) + styleReset;
-				break;
-			}
-			case "html":
-				if ("raw" in token && typeof token.raw === "string") {
-					result += applyText(normalizeHtmlForTerminal(token.raw));
-				}
-				break;
-			default:
-				if ("text" in token && typeof token.text === "string") {
-					result += applyText(normalizeHtmlEntitiesForTerminal(token.text));
-				}
-				break;
-		}
-	}
-	return result;
+	// Thin adapter over the shared grammar walker: no color swatches, no OSC-8
+	// hyperlinks, no HTML-normalization state, no block cases — the single-line
+	// inline subset. `stylePrefix` is `applyText("")` (the base-color reset the
+	// former copy appended after each styled span).
+	return walkInlineTokens(tokens, {
+		theme: mdTheme,
+		applyText,
+		applyTextWithNewlines: applyText,
+		renderLeafText: applyText,
+		stylePrefix: applyText(""),
+		swatchGlyph: null,
+		hyperlinks: false,
+		useHtmlState: false,
+		handleBlocks: false,
+		stripTrailingPrefix: false,
+		renderNested: (subTokens: Token[]) => renderInlineTokens(subTokens, mdTheme, applyText, depth + 1),
+	});
 }
