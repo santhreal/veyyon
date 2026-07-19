@@ -1,7 +1,7 @@
 import * as path from "node:path";
 import type { Component } from "@veyyon/tui";
 import { Container, Text } from "@veyyon/tui";
-import { formatCount } from "@veyyon/utils";
+import { formatCount, hasUrlScheme } from "@veyyon/utils";
 import { InternalUrlRouter } from "../../internal-urls";
 import { getLanguageFromPath, theme } from "../../modes/theme/theme";
 import { parseLineRanges, selectorLineRanges, splitPathAndSel } from "../../tools/path-utils";
@@ -110,8 +110,6 @@ const READ_STATUS_RANK: Record<ReadEntry["status"], number> = {
 	error: 3,
 };
 
-const URL_LIKE_RE = /^[a-z][a-z0-9+.-]*:\/\//i;
-
 function getDisplayReadTargets(details: ReadToolResultDetails | undefined): string[] | undefined {
 	if (!Array.isArray(details?.displayReadTargets)) return undefined;
 	const targets = details.displayReadTargets
@@ -209,7 +207,7 @@ function commaContinuesLineRangeSelector(input: string, partStart: number, comma
 
 function splitReadDisplayPathSpecs(rawPath: string): string[] {
 	const normalized = rawPath.trim();
-	if (!normalized || URL_LIKE_RE.test(normalized)) return [rawPath];
+	if (!normalized || hasUrlScheme(normalized)) return [rawPath];
 
 	const parts: string[] = [];
 	let braceDepth = 0;

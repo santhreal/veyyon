@@ -10,7 +10,7 @@ import type {
 } from "@veyyon/agent-core";
 import { formatHashlineHeader, stripHashlinePrefixes } from "@veyyon/hashline";
 import type { Component } from "@veyyon/tui";
-import { errorMessage, formatCount, isEnoent, isRecord, prompt, untilAborted } from "@veyyon/utils";
+import { errorMessage, formatCount, isEnoent, isRecord, prompt, untilAborted, urlScheme } from "@veyyon/utils";
 import { type } from "arktype";
 
 import { canonicalSnapshotKey, getFileSnapshotStore } from "../edit/file-snapshot-store";
@@ -392,8 +392,8 @@ export class WriteTool implements AgentTool<typeof writeSchema, WriteToolDetails
 		// scheme whose handler exposes a `write` hook mutates handler-owned user
 		// data (e.g. vault:// notes) and must take the write tier so always-ask
 		// mode actually prompts.
-		const match = /^([a-z][a-z0-9+.-]*):\/\//i.exec(path.trim());
-		const handler = match ? InternalUrlRouter.instance().getHandler(match[1]!.toLowerCase()) : undefined;
+		const scheme = urlScheme(path.trim());
+		const handler = scheme ? InternalUrlRouter.instance().getHandler(scheme) : undefined;
 		return handler?.write ? "write" : "read";
 	};
 	readonly formatApprovalDetails = (args: unknown): string[] => {

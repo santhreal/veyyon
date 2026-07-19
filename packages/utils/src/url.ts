@@ -29,3 +29,47 @@ export function normalizeBaseUrl(baseUrl: string | undefined, fallback?: string)
 	if (trimmed) return trimTrailingSlashes(trimmed);
 	return fallback;
 }
+
+/**
+ * The RFC 3986 scheme charset, anchored to a leading `scheme://` and capturing
+ * the scheme (group 1). This is the ONE owner for "does this string start with
+ * a URL scheme" — provider base URLs, internal URIs (`skill://`, `artifact://`),
+ * and web URLs all share the same scheme grammar (`ALPHA *( ALPHA / DIGIT / "+"
+ * / "-" / "." )`), so hand-copying the literal drifts. Non-global, so `.exec`
+ * and `.test` stay stateless.
+ *
+ * Callers that only need the raw match offsets (e.g. `match[0].length` to find
+ * where the scheme ends) may use this const directly; everyone else should
+ * prefer {@link hasUrlScheme} or {@link urlScheme}.
+ */
+export const URL_SCHEME_PREFIX_RE = /^([a-z][a-z0-9+.-]*):\/\//i;
+
+/** True when `value` begins with a `scheme://` prefix (e.g. `https://`, `skill://`). */
+export function hasUrlScheme(value: string): boolean {
+	return URL_SCHEME_PREFIX_RE.test(value);
+}
+
+/**
+ * The lowercased scheme of a leading `scheme://` prefix, or `null` when `value`
+ * has none. Lowercasing matches the scheme-lookup keys every caller used before
+ * (`match[1].toLowerCase()`), so schemes compare case-insensitively.
+ */
+export function urlScheme(value: string): string | null {
+	const match = URL_SCHEME_PREFIX_RE.exec(value);
+	return match ? match[1].toLowerCase() : null;
+}
+
+/**
+ * The same scheme grammar, unanchored: matches a `scheme://` anywhere in
+ * `value`, not only at the start. This is a deliberately looser test than
+ * {@link hasUrlScheme}, kept as its own owner so the two intents cannot be
+ * confused. Used to tell a URL entry from a filesystem path in compaction
+ * file-summary passes, where the input is a bare token that either is a URL or
+ * is a path.
+ */
+export const URL_SCHEME_ANYWHERE_RE = /[a-z][a-z0-9+.-]*:\/\//i;
+
+/** True when `value` contains a `scheme://` anywhere in the string. */
+export function containsUrlScheme(value: string): boolean {
+	return URL_SCHEME_ANYWHERE_RE.test(value);
+}

@@ -7,6 +7,7 @@ import {
 	isEnotdir,
 	stripWindowsExtendedLengthPathPrefix,
 	trimTrailingSlashes,
+	URL_SCHEME_PREFIX_RE,
 } from "@veyyon/utils";
 import type { Skill } from "../extensibility/skills";
 import { InternalUrlRouter, type LocalProtocolOptions } from "../internal-urls";
@@ -58,7 +59,6 @@ const INTERNAL_SCHEMES_WITH_SELECTORS: Record<string, true> = {
 // schemes opaque; selector support for them needs a resolver-aware path that
 // tries the exact URI before interpreting any suffix as a read selector.
 const OPAQUE_RESOURCE_SCHEMES: ReadonlySet<string> = new Set(["mcp"]);
-const INTERNAL_URL_SCHEME_RE = /^([a-z][a-z0-9+.-]*):\/\//i;
 const NARROW_NO_BREAK_SPACE = "\u202F";
 const TOP_LEVEL_INTERNAL_URL_PREFIXES = [
 	"agent://",
@@ -376,7 +376,7 @@ export async function splitPathAndSelPreferringLiteral(
  */
 
 export function splitInternalUrlSel(rawPath: string): { path: string; sel?: string } {
-	const schemeMatch = rawPath.match(INTERNAL_URL_SCHEME_RE);
+	const schemeMatch = rawPath.match(URL_SCHEME_PREFIX_RE);
 	if (!schemeMatch) return { path: rawPath };
 	const scheme = schemeMatch[1].toLowerCase();
 	// Opaque schemes (mcp://, etc.) carry server-defined resource URIs that may
