@@ -1,7 +1,7 @@
 import { scheduler } from "node:timers/promises";
 import { bareModelId, parseAnthropicModel } from "@veyyon/catalog/identity";
 import { toNumber } from "@veyyon/catalog/utils";
-import { trimTrailingSlashes } from "@veyyon/utils";
+import { HOUR_MS, trimTrailingSlashes, WEEK_MS } from "@veyyon/utils";
 import * as AIError from "../error";
 import { claudeCodeVersion } from "../providers/anthropic";
 import {
@@ -20,8 +20,7 @@ import {
 import { isRecord } from "../utils";
 
 const DEFAULT_ENDPOINT = "https://api.anthropic.com/api/oauth";
-const FIVE_HOURS_MS = 5 * 60 * 60 * 1000;
-const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+const FIVE_HOURS_MS = 5 * HOUR_MS;
 const MAX_ATTEMPTS = 3;
 const BASE_RETRY_DELAY_MS = 500;
 
@@ -440,7 +439,7 @@ function buildScopedWeeklyUsageLimits(entries: readonly ParsedApiLimitEntry[]): 
 			label: `Claude 7 Day (${entry.displayName})`,
 			windowId: "7d",
 			windowLabel: "7 Day",
-			durationMs: SEVEN_DAYS_MS,
+			durationMs: WEEK_MS,
 			bucket: entry.bucket,
 			provider: "anthropic",
 			tier: slug,
@@ -470,7 +469,7 @@ export function parseClaudeRateLimitHeaders(headers: Record<string, string>, now
 			label: "Claude 7 Day",
 			windowId: "7d",
 			windowLabel: "7 Day",
-			durationMs: SEVEN_DAYS_MS,
+			durationMs: WEEK_MS,
 			bucket: sevenDay,
 			provider: "anthropic",
 			shared: true,
@@ -480,7 +479,7 @@ export function parseClaudeRateLimitHeaders(headers: Record<string, string>, now
 			label: "Claude 7 Day (Fable)",
 			windowId: "7d",
 			windowLabel: "7 Day",
-			durationMs: SEVEN_DAYS_MS,
+			durationMs: WEEK_MS,
 			bucket: modelScopedSevenDay,
 			provider: "anthropic",
 			tier: "fable",
@@ -535,7 +534,7 @@ async function fetchClaudeUsage(params: UsageFetchParams, ctx: UsageFetchContext
 			label: "Claude 7 Day",
 			windowId: "7d",
 			windowLabel: "7 Day",
-			durationMs: SEVEN_DAYS_MS,
+			durationMs: WEEK_MS,
 			bucket: sevenDay,
 			provider: "anthropic",
 			shared: true,
@@ -545,7 +544,7 @@ async function fetchClaudeUsage(params: UsageFetchParams, ctx: UsageFetchContext
 			label: "Claude 7 Day (Opus)",
 			windowId: "7d",
 			windowLabel: "7 Day",
-			durationMs: SEVEN_DAYS_MS,
+			durationMs: WEEK_MS,
 			bucket: sevenDayOpus,
 			provider: "anthropic",
 			tier: "opus",
@@ -555,7 +554,7 @@ async function fetchClaudeUsage(params: UsageFetchParams, ctx: UsageFetchContext
 			label: "Claude 7 Day (Sonnet)",
 			windowId: "7d",
 			windowLabel: "7 Day",
-			durationMs: SEVEN_DAYS_MS,
+			durationMs: WEEK_MS,
 			bucket: sevenDaySonnet,
 			provider: "anthropic",
 			tier: "sonnet",
@@ -660,7 +659,7 @@ function rankingUsedFraction(limit: UsageLimit): number {
 
 function rankingDrainRate(limit: UsageLimit, nowMs: number): number {
 	const usedFraction = rankingUsedFraction(limit);
-	const durationMs = limit.window?.durationMs ?? SEVEN_DAYS_MS;
+	const durationMs = limit.window?.durationMs ?? WEEK_MS;
 	if (!Number.isFinite(durationMs) || durationMs <= 0) return usedFraction;
 	const resetAt = limit.window?.resetsAt;
 	if (typeof resetAt !== "number" || !Number.isFinite(resetAt)) return usedFraction;

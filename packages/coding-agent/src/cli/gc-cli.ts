@@ -3,6 +3,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { gunzipSync, gzipSync } from "node:zlib";
 import {
+	DAY_MS,
 	errorMessage,
 	formatBytes,
 	getAgentDir,
@@ -10,6 +11,7 @@ import {
 	getHistoryDbPath,
 	getModelDbPath,
 	getSessionsDir,
+	MINUTE_MS,
 } from "@veyyon/utils";
 import { Settings } from "../config/settings";
 import { getDefault } from "../config/settings-schema";
@@ -23,8 +25,7 @@ const JSONL_GLOB = new Bun.Glob("**/*.jsonl");
 const JSONL_GZ_GLOB = new Bun.Glob("**/*.jsonl.gz");
 const JSONL_BACKUP_GLOB = new Bun.Glob("**/*.jsonl.*.bak");
 const ACTIVE_STATUSES: ReadonlySet<SessionStatus> = new Set(["pending", "interrupted", "unknown"]);
-const DAY_MS = 86_400_000;
-const GC_WRITE_GRACE_MS = 5 * 60_000;
+const GC_WRITE_GRACE_MS = 5 * MINUTE_MS;
 const SESSION_SUFFIX = ".jsonl";
 const COMPRESSED_SESSION_SUFFIX = ".jsonl.gz";
 const GC_LOCK_BREAKER_SUFFIX = ".break";

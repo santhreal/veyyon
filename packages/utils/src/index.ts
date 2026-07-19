@@ -39,6 +39,7 @@ export * from "./string-case";
 export * from "./strip-ansi";
 export * from "./tab-spacing";
 export * from "./temp";
+export * from "./time";
 export * from "./tls-fetch";
 export * from "./tokens";
 export * from "./type-guards";
