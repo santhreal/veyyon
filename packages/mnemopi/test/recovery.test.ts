@@ -4,7 +4,17 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, wri
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { gunzipSync, gzipSync } from "node:zlib";
-import { createBackup, emergencyRestore, restoreBackup, verifyIntegrity } from "@veyyon/mnemopi/dr/recovery";
+import {
+	createBackup,
+	emergencyRestore,
+	FileNotFoundError,
+	getDefaultPaths,
+	healthCheck,
+	listBackups,
+	restoreBackup,
+	rotateBackups,
+	verifyIntegrity,
+} from "@veyyon/mnemopi/dr/recovery";
 
 const tempDirs: string[] = [];
 const SQLITE_HEADER = Buffer.from("SQLite format 3\0", "binary");
@@ -176,5 +186,186 @@ describe("SQLite recovery helpers", () => {
 		expect(() => emergencyRestore(backupDir, dbPath)).toThrow("All backups failed integrity check");
 		expect(verifyIntegrity(dbPath)).toBe(true);
 		expect(readMemory(dbPath)).toBe("backup me");
+	});
+});
+
+// Drop a placeholder backup + metadata sidecar with a controlled name so
+// list/rotate ordering is deterministic (createBackup names by wall-clock).
+function dropBackupFile(backupDir: string, stamp: string, withMeta = true): string {
+	mkdirSync(backupDir, { recursive: true });
+	const file = join(backupDir, `mnemopi_backup_${stamp}.db.gz`);
+	writeFileSync(file, gzipSync(Buffer.from(`payload-${stamp}`)));
+	if (withMeta) writeFileSync(`${file.slice(0, -3)}.gz.json`, JSON.stringify({ timestamp: stamp, compressed: true }));
+	return file;
+}
+
+function withEnv<T>(overrides: Record<string, string>, fn: () => T): T {
+	const saved = new Map<string, string | undefined>();
+	for (const [key, value] of Object.entries(overrides)) {
+		saved.set(key, process.env[key]);
+		process.env[key] = value;
+	}
+	try {
+		return fn();
+	} finally {
+		for (const [key, value] of saved) {
+			if (value === undefined) delete process.env[key];
+			else process.env[key] = value;
+		}
+	}
+}
+
+describe("getDefaultPaths", () => {
+	it("honors MNEMOPI_BACKUP_DIR and otherwise derives backups next to the data dir", () => {
+		const explicit = getDefaultPaths({ MNEMOPI_DATA_DIR: "/d/data", MNEMOPI_BACKUP_DIR: "/custom/backups" });
+		expect(explicit.dataDir).toBe("/d/data");
+		expect(explicit.backupDir).toBe("/custom/backups");
+		expect(explicit.dbPath).toBe("/d/data/mnemopi.db");
+
+		const derived = getDefaultPaths({ MNEMOPI_DATA_DIR: "/d/data" });
+		expect(derived.backupDir).toBe("/d/backups");
+	});
+});
+
+describe("listBackups", () => {
+	it("returns [] for a missing directory", () => {
+		expect(listBackups(join(makeTempDir(), "nope"))).toEqual([]);
+	});
+
+	it("lists newest-first with parsed metadata, omitting it when the sidecar is absent", () => {
+		const backupDir = join(makeTempDir(), "backups");
+		dropBackupFile(backupDir, "20260101_090000", true);
+		dropBackupFile(backupDir, "20260301_090000", false);
+		// A non-matching file is ignored.
+		writeFileSync(join(backupDir, "unrelated.txt"), "x");
+
+		const listed = listBackups(backupDir);
+		expect(listed.map(entry => entry.name)).toEqual([
+			"mnemopi_backup_20260301_090000.db.gz",
+			"mnemopi_backup_20260101_090000.db.gz",
+		]);
+		expect(listed[0]?.metadata).toBeUndefined();
+		expect(listed[1]?.metadata?.timestamp).toBe("20260101_090000");
+		expect(listed[1]?.metadata?.compressed).toBe(true);
+		expect(listed[1]?.size).toBeGreaterThan(0);
+		expect(typeof listed[1]?.modified).toBe("string");
+	});
+});
+
+describe("rotateBackups", () => {
+	it("deletes the oldest beyond the keep count, with their metadata sidecars", () => {
+		const backupDir = join(makeTempDir(), "backups");
+		for (const stamp of ["20260101_090000", "20260201_090000", "20260301_090000", "20260401_090000"]) {
+			dropBackupFile(backupDir, stamp, true);
+		}
+		const result = rotateBackups(backupDir, 2);
+		expect(result.total_backups).toBe(4);
+		expect(result.kept).toBe(2);
+		expect(result.deleted).toBe(2);
+		expect(result.deleted_files).toEqual([
+			"mnemopi_backup_20260101_090000.db.gz",
+			"mnemopi_backup_20260201_090000.db.gz",
+		]);
+		// The two oldest and their sidecars are gone; the two newest remain.
+		expect(existsSync(join(backupDir, "mnemopi_backup_20260101_090000.db.gz"))).toBe(false);
+		expect(existsSync(join(backupDir, "mnemopi_backup_20260101_090000.db.gz.json"))).toBe(false);
+		expect(existsSync(join(backupDir, "mnemopi_backup_20260401_090000.db.gz"))).toBe(true);
+	});
+
+	it("deletes nothing when the count is at or under keep", () => {
+		const backupDir = join(makeTempDir(), "backups");
+		dropBackupFile(backupDir, "20260101_090000", true);
+		const result = rotateBackups(backupDir, 10);
+		expect(result).toEqual({ total_backups: 1, kept: 10, deleted: 0, deleted_files: [] });
+	});
+
+	it("reports zero totals for a missing directory", () => {
+		expect(rotateBackups(join(makeTempDir(), "gone"), 3)).toEqual({
+			total_backups: 0,
+			kept: 3,
+			deleted: 0,
+			deleted_files: [],
+		});
+	});
+});
+
+describe("healthCheck", () => {
+	it("reports healthy with the latest backup when the db is valid", () => {
+		const dir = makeTempDir();
+		const dataDir = join(dir, "data");
+		const backupDir = join(dir, "backups");
+		mkdirSync(dataDir, { recursive: true });
+		createSqliteDb(join(dataDir, "mnemopi.db"));
+		dropBackupFile(backupDir, "20260101_090000", true);
+		dropBackupFile(backupDir, "20260301_090000", true);
+
+		const result = withEnv({ MNEMOPI_DATA_DIR: dataDir, MNEMOPI_BACKUP_DIR: backupDir }, () => healthCheck());
+		expect(result.status).toBe("healthy");
+		expect(result.database.exists).toBe(true);
+		expect(result.database.valid).toBe(true);
+		expect(result.database.message).toBe("Database integrity verified");
+		expect(result.backups.total).toBe(2);
+		expect(result.backups.latest?.endsWith("mnemopi_backup_20260301_090000.db.gz")).toBe(true);
+	});
+
+	it("reports unhealthy when the database is missing", () => {
+		const dir = makeTempDir();
+		const dataDir = join(dir, "data");
+		const backupDir = join(dir, "backups");
+		mkdirSync(dataDir, { recursive: true });
+
+		const result = withEnv({ MNEMOPI_DATA_DIR: dataDir, MNEMOPI_BACKUP_DIR: backupDir }, () => healthCheck());
+		expect(result.status).toBe("unhealthy");
+		expect(result.database.exists).toBe(false);
+		expect(result.database.valid).toBe(false);
+		expect(result.database.message).toBe("Database missing or corrupt");
+		expect(result.backups.total).toBe(0);
+		expect(result.backups.latest).toBeNull();
+	});
+});
+
+describe("restore edge cases", () => {
+	it("throws FileNotFoundError when the backup path is absent", () => {
+		const dir = makeTempDir();
+		expect(() => restoreBackup(join(dir, "missing.db.gz"), join(dir, "target.db"))).toThrow(FileNotFoundError);
+	});
+
+	it("throws FileNotFoundError when emergency restore finds no backups", () => {
+		const dir = makeTempDir();
+		expect(() => emergencyRestore(join(dir, "empty"), join(dir, "target.db"))).toThrow(FileNotFoundError);
+	});
+
+	it("returns false integrity for a missing database path", () => {
+		expect(verifyIntegrity(join(makeTempDir(), "nope.db"))).toBe(false);
+	});
+
+	it("restores a gzipped SQL dump by replaying it into a fresh database", () => {
+		const dir = makeTempDir();
+		const targetPath = join(dir, "restored.db");
+		const backupPath = join(dir, "dump_backup.db.gz");
+		// A non-SQLite payload triggers the SQL-dump restore branch.
+		const sql =
+			"CREATE TABLE memories (id INTEGER PRIMARY KEY, content TEXT NOT NULL);\nINSERT INTO memories (content) VALUES ('from dump');";
+		writeFileSync(backupPath, gzipSync(Buffer.from(sql, "utf8")));
+
+		const result = restoreBackup(backupPath, targetPath);
+		expect(result.restored).toBe(true);
+		expect(result.integrity_check).toBe(true);
+		expect(readMemory(targetPath)).toBe("from dump");
+	});
+
+	it("emergency-restores from the newest valid backup, skipping a corrupt newer one", () => {
+		const dir = makeTempDir();
+		const dbPath = join(dir, "mnemopi.db");
+		const backupDir = join(dir, "backups");
+		createSqliteDb(dbPath);
+		const good = createBackup(dbPath, backupDir);
+		// A corrupt backup whose name sorts AFTER the good one, so it is tried first.
+		writeCorruptSqliteBackup(join(backupDir, "mnemopi_backup_29991231_235959.db.gz"));
+
+		const result = emergencyRestore(backupDir, join(dir, "restored.db"));
+		expect(result.restored).toBe(true);
+		expect(result.backup_used).toBe(good.backup_path);
+		expect(result.attempts).toBe(2);
 	});
 });
