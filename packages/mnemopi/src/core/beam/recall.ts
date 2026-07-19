@@ -1,6 +1,11 @@
-import { clamp, clamp01, HOUR_MS, isDateOnly } from "@veyyon/utils";
+import { clamp, clamp01 } from "@veyyon/utils";
 import { normalizedRecallWeights, temporalHalflifeHours } from "../../config";
-import { toUtcIso } from "../../util/datetime";
+import { parseQueryTime, recencyDecay, temporalBoost, toUtcIso } from "../../util/datetime";
+
+// Temporal scoring has one owner (util/datetime.ts). Re-export the two helpers
+// the recall surface has always exposed so callers keep importing them here.
+export { parseQueryTime, temporalBoost } from "../../util/datetime";
+
 import { unicodeWordTokens } from "../../util/regex";
 import { tableExists as tableExistsIn } from "../../util/sqlite";
 import { embedQuery } from "../embeddings";
@@ -352,42 +357,6 @@ function lexicalRelevance(queryTokens: readonly string[], content: string, norma
 	return clamp01((exact + partial * 0.5) / queryTokens.length);
 }
 
-function recencyDecay(timestamp: unknown, halfLifeHours = 72): number {
-	const raw = stringOrEmpty(timestamp);
-	if (raw.length === 0) return 0;
-	const parsed = Date.parse(raw);
-	if (!Number.isFinite(parsed)) return 0;
-	const ageHours = Math.max(0, (Date.now() - parsed) / HOUR_MS);
-	return Math.exp(-ageHours / Math.max(halfLifeHours, 0.001));
-}
-
-export function parseQueryTime(value: RecallOptionsInternal["queryTime"]): Date {
-	if (value == null) return new Date();
-	if (value instanceof Date) {
-		if (!Number.isFinite(value.getTime())) throw new RangeError("Invalid query time");
-		return value;
-	}
-	if (typeof value === "string") {
-		const normalized = isDateOnly(value)
-			? `${value}T00:00:00.000Z`
-			: /(?:Z|[+-]\d{2}:?\d{2})$/.test(value)
-				? value
-				: `${value}Z`;
-		const parsed = new Date(normalized);
-		if (Number.isFinite(parsed.getTime())) return parsed;
-	}
-	throw new TypeError("queryTime must be null, an ISO date string, or a valid Date");
-}
-
-export function temporalBoost(timestamp: unknown, queryTime: Date, halfLifeHours: number): number {
-	const raw = stringOrEmpty(timestamp);
-	if (raw.length === 0) return 0;
-	const parsed = Date.parse(raw);
-	if (!Number.isFinite(parsed)) return 0;
-	const distanceHours = Math.max(0, queryTime.getTime() - parsed) / HOUR_MS;
-	return Math.exp(-distanceHours / Math.max(halfLifeHours, 0.001));
-}
-
 function inferTemporalOptions(query: string, options: RecallOptionsInternal): RecallOptionsInternal {
 	const copy: RecallOptionsInternal = { ...options };
 	const info = extractTemporal(query, options.queryTime ?? undefined);
@@ -682,8 +651,8 @@ function scoreCandidate(
 	const importance = numberOrDefault(candidate.row.importance, 0.5);
 	const decay =
 		options.queryTime == null
-			? recencyDecay(candidate.row.timestamp, 72)
-			: temporalBoost(candidate.row.timestamp, parseQueryTime(options.queryTime), 72);
+			? recencyDecay(stringOrEmpty(candidate.row.timestamp), 72, undefined, 0)
+			: temporalBoost(stringOrEmpty(candidate.row.timestamp), parseQueryTime(options.queryTime), 72);
 	const keyword = Math.max(lexical, candidate.signals.fts * 0.6);
 	let baseScore: number;
 	if (candidate.tierLabel === "episodic") {
@@ -701,12 +670,12 @@ function scoreCandidate(
 	let temporalScore = 0;
 	if (temporalWeight > 0) {
 		temporalScore = temporalBoost(
-			candidate.row.timestamp,
+			stringOrEmpty(candidate.row.timestamp),
 			parseQueryTime(options.queryTime),
 			options.temporalHalflife ?? temporalHalflifeHours(),
 		);
 		const eventBoost = temporalBoost(
-			candidate.row.event_date,
+			stringOrEmpty(candidate.row.event_date),
 			parseQueryTime(options.queryTime),
 			(options.temporalHalflife ?? temporalHalflifeHours()) * 2,
 		);

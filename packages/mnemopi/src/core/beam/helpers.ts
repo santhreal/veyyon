@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import { clamp01, HOUR_MS, logger } from "@veyyon/utils";
+import { clamp01, logger } from "@veyyon/utils";
 import { generateId as generateTimedId, sha256Hex16, stableMemoryId } from "../../util/ids";
 import {
 	cjkFtsTerms,
@@ -32,10 +32,7 @@ export interface WorkingVectorResult {
 	sim: number;
 }
 
-const DEFAULT_RECENCY_HALFLIFE_HOURS = 72;
 const DEFAULT_WEIGHTS: HybridWeights = [0.5, 0.3, 0.2];
-const TS_CACHE_MAX = 2000;
-const moduleTimestampCache = new Map<string, Date>();
 
 const SPLIT_TOKEN_RE = /[_:/.-]+/g;
 function envNumber(name: string, fallback: number): number {
@@ -45,17 +42,9 @@ function envNumber(name: string, fallback: number): number {
 	return Number.isFinite(value) ? value : fallback;
 }
 
-function asFiniteNonNegative(value: number): number {
-	return Number.isFinite(value) && value > 0 ? value : 0;
-}
-
 function rowValue<T>(row: unknown, key: string): T | undefined {
 	if (row && typeof row === "object" && key in row) return (row as Record<string, T>)[key];
 	return undefined;
-}
-
-function timestampCacheFor(beam?: Pick<BeamMemoryState, "caches"> | null): Map<string, Date> {
-	return beam?.caches?.timestampParse ?? moduleTimestampCache;
 }
 
 export function generateId(content: string, now: Date = new Date()): string {
@@ -86,77 +75,9 @@ export function normalizeImportance(importance: number | null | undefined, fallb
 	return clamp01(importance ?? fallback);
 }
 
-export function normalizeDateUtc(dt: Date): Date {
-	const time = dt.getTime();
-	if (!Number.isFinite(time)) throw new RangeError("Invalid Date");
-	return new Date(time);
-}
-
-export function parseIsoDateTimeUtc(value: string): Date {
-	const normalized = value.endsWith("Z") ? value : value.replace(/Z$/, "+00:00");
-	const dt = new Date(normalized);
-	if (!Number.isFinite(dt.getTime())) throw new RangeError(`Invalid ISO datetime: ${value}`);
-	return dt;
-}
-
-export function parseQueryTime(queryTime?: string | Date | null): Date {
-	if (queryTime == null) return new Date();
-	if (queryTime instanceof Date) return normalizeDateUtc(queryTime);
-	try {
-		return parseIsoDateTimeUtc(queryTime);
-	} catch {
-		return parseIsoDateTimeUtc(`${queryTime}T00:00:00`);
-	}
-}
-
-export function parseTimestampFast(
-	ts: string | null | undefined,
-	beam?: Pick<BeamMemoryState, "caches"> | null,
-): Date | null {
-	if (!ts) return null;
-	const cache = timestampCacheFor(beam);
-	const cached = cache.get(ts);
-	if (cached !== undefined) return cached;
-	let parsed: Date;
-	try {
-		parsed = parseIsoDateTimeUtc(ts);
-	} catch {
-		return null;
-	}
-	if (cache.size >= TS_CACHE_MAX) cache.clear();
-	cache.set(ts, parsed);
-	return parsed;
-}
-
-export function recencyDecay(
-	timestamp: string | null | undefined,
-	halflifeHours = DEFAULT_RECENCY_HALFLIFE_HOURS,
-	now: Date = new Date(),
-): number {
-	if (!timestamp) return 0.5;
-	const halflife = asFiniteNonNegative(halflifeHours);
-	if (halflife === 0) return 0.5;
-	const ts = parseTimestampFast(timestamp);
-	if (ts === null) return 0.5;
-	const ageHours = (now.getTime() - ts.getTime()) / HOUR_MS;
-	return Math.exp(-ageHours / halflife);
-}
-
-export function temporalBoost(
-	memoryTimestamp: string | null | undefined,
-	queryTime: Date | string,
-	halflifeHours = 24,
-	beam?: Pick<BeamMemoryState, "caches"> | null,
-): number {
-	const ts = parseTimestampFast(memoryTimestamp, beam);
-	if (ts === null) return 0;
-	const query = parseQueryTime(queryTime);
-	const effectiveTs = ts.getTime() > query.getTime() ? query : ts;
-	const halflife = asFiniteNonNegative(halflifeHours);
-	if (halflife === 0) return effectiveTs.getTime() === query.getTime() ? 1 : 0;
-	const hoursDelta = (query.getTime() - effectiveTs.getTime()) / HOUR_MS;
-	return Math.exp(-hoursDelta / halflife);
-}
+// The temporal-scoring family (parseIsoDateTimeUtc, parseQueryTime, recencyDecay,
+// temporalBoost, and the timestamp cache) lives in util/datetime.ts, the single
+// owner. Recall scoring reaches it through recall.ts; this module keeps no fork.
 
 export function lexicalRelevance(queryTokens: readonly string[], content: string, queryLower = ""): number {
 	const contentLower = content.toLowerCase();

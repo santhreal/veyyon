@@ -45,18 +45,27 @@ export function toUtcIso(value: Date = new Date()): string {
 	return normalizeDateTimeUtc(value).toISOString();
 }
 
+/**
+ * Exponential recency weight for a timestamp: 1 at zero age, halving every
+ * {@link halflifeHours}. A future timestamp is clamped to age 0 (weight 1) so
+ * the result stays in (0, 1]. When the timestamp is missing or unparseable the
+ * caller chooses the neutral value through {@link fallback}: recall scoring
+ * passes 0 (an untimestamped row earns no recency credit) while the default
+ * 0.5 keeps a memory mid-ranked.
+ */
 export function recencyDecay(
 	timestamp: string | Date | null | undefined,
 	halflifeHours = recencyHalflifeHours(),
 	now: Date = new Date(),
+	fallback = 0.5,
 ): number {
-	if (!timestamp) return 0.5;
+	if (!timestamp) return fallback;
 	try {
 		const ts = typeof timestamp === "string" ? parseIsoDateTimeUtc(timestamp) : normalizeDateTimeUtc(timestamp);
-		const ageHours = (now.getTime() - ts.getTime()) / HOUR_MS;
+		const ageHours = Math.max(0, (now.getTime() - ts.getTime()) / HOUR_MS);
 		return Math.exp(-ageHours / halflifeHours);
 	} catch {
-		return 0.5;
+		return fallback;
 	}
 }
 

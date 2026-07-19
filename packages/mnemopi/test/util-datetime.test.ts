@@ -70,6 +70,47 @@ describe("recencyDecay", () => {
 		expect(recencyDecay(null, 24, now)).toBe(0.5);
 		expect(recencyDecay("garbage", 24, now)).toBe(0.5);
 	});
+
+	it("uses the caller-supplied fallback for missing or unparseable timestamps (recall passes 0)", () => {
+		expect(recencyDecay(null, 24, now, 0)).toBe(0);
+		expect(recencyDecay("", 24, now, 0)).toBe(0);
+		expect(recencyDecay("garbage", 24, now, 0)).toBe(0);
+	});
+
+	it("clamps a future timestamp to age 0 so the weight never exceeds 1", () => {
+		// One day in the future relative to `now`; without the clamp the age is
+		// negative and the exponential would climb above 1.
+		expect(recencyDecay("2026-06-02T00:00:00Z", 24, now, 0)).toBe(1);
+	});
+});
+
+describe("recencyDecay / temporalBoost parity across zone forms (single owner)", () => {
+	// Every former fork (helpers.ts, recall.ts) is gone; these assert the owner
+	// reproduces the exact outputs the live recall path relied on for each input
+	// shape: explicit Z, zone-less (assumed UTC), date-only, invalid, and future.
+	const now = new Date("2026-06-10T00:00:00Z");
+	const oneDay = 24;
+
+	it("recencyDecay treats a zone-less timestamp as UTC, matching the explicit-Z form", () => {
+		const withZ = recencyDecay("2026-06-09T00:00:00Z", oneDay, now, 0);
+		const zoneLess = recencyDecay("2026-06-09T00:00:00", oneDay, now, 0);
+		expect(zoneLess).toBeCloseTo(withZ, 12);
+		expect(zoneLess).toBeCloseTo(Math.exp(-1), 12);
+	});
+
+	it("recencyDecay reads a date-only string as UTC midnight", () => {
+		expect(recencyDecay("2026-06-09", oneDay, now, 0)).toBeCloseTo(Math.exp(-1), 12);
+	});
+
+	it("temporalBoost matches recall's distance decay for Z, zone-less, and offset forms", () => {
+		const query = new Date("2026-06-10T00:00:00Z");
+		expect(temporalBoost("2026-06-09T00:00:00Z", query, oneDay)).toBeCloseTo(Math.exp(-1), 12);
+		expect(temporalBoost("2026-06-09T00:00:00", query, oneDay)).toBeCloseTo(Math.exp(-1), 12);
+		expect(temporalBoost("2026-06-09T03:00:00+03:00", query, oneDay)).toBeCloseTo(Math.exp(-1), 12);
+		expect(temporalBoost("2026-06-11T00:00:00Z", query, oneDay)).toBe(1); // future -> clamp
+		expect(temporalBoost("garbage", query, oneDay)).toBe(0);
+		expect(temporalBoost("", query, oneDay)).toBe(0);
+	});
 });
 
 describe("temporalBoost", () => {
