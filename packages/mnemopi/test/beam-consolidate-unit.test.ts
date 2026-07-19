@@ -12,6 +12,8 @@ import {
 	memoriaRetrieve,
 	sleep,
 	sleepAllSessions,
+	storeExtractedFactCategories,
+	storeFactStrings,
 } from "@veyyon/mnemopi/core/beam/consolidate";
 import type { BeamMemoryState } from "@veyyon/mnemopi/core/beam/types";
 import { REGEX_EXTRACTION_MAX_INPUT_CHARS } from "@veyyon/mnemopi/core/entities";
@@ -58,6 +60,14 @@ function insertWorking(db: Database, id: string, sessionId: string, content: str
 		`INSERT INTO working_memory (id, content, source, timestamp, session_id, importance, veracity, scope, created_at)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		[id, content, source, oldIso(), sessionId, 0.7, "true", "session", oldIso()],
+	);
+}
+
+function insertWorkingVeracity(db: Database, id: string, sessionId: string, veracity: string): void {
+	db.run(
+		`INSERT INTO working_memory (id, content, source, timestamp, session_id, importance, veracity, scope, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		[id, `note ${id}`, "conversation", oldIso(), sessionId, 0.7, veracity, "session", oldIso()],
 	);
 }
 
@@ -352,5 +362,182 @@ describe("beam consolidation free functions", () => {
 		});
 		const facts = beam.db.query("SELECT COUNT(*) AS count FROM memoria_facts").get() as { count: number };
 		expect(facts.count).toBe(0);
+	});
+
+	it("stores every extracted category into its MEMORIA table and the knowledge graph", () => {
+		const beam = trackedState();
+		const stored = storeExtractedFactCategories(
+			beam,
+			{
+				facts: ["The user prefers dark mode", "Ada owns the API"],
+				instructions: ["always run tests before pushing"],
+				preferences: ["dark roast coffee"],
+				timelines: ["Release ships on 2026-05-30", "Kickoff happened last spring"],
+				kg: [{ subject: "Ada", predicate: "owns", object: "the API" }],
+			},
+			3,
+			"wm-src",
+			0.8,
+		);
+
+		// facts(2) + instructions(1) + preferences(1) + timelines(2); kg is not part of `stored`.
+		expect(stored).toBe(6);
+
+		// Every category string also lands as an "entity" fact row.
+		const factRows = beam.db
+			.query("SELECT fact_type, key, value, importance FROM memoria_facts WHERE source_memory_id = ? ORDER BY id")
+			.all("wm-src") as { fact_type: string; key: string; value: string; importance: number }[];
+		expect(factRows).toHaveLength(6);
+		expect(factRows.every(row => row.fact_type === "entity" && row.key === "fact")).toBe(true);
+		expect(factRows.every(row => row.importance === 0.8)).toBe(true);
+
+		// The fact "The user prefers dark mode" routes a preference (topic captured); the
+		// explicit preferences array adds a topic-less row.
+		const prefs = beam.db
+			.query("SELECT preference, topic FROM memoria_preferences WHERE source_memory_id = ? ORDER BY id")
+			.all("wm-src") as { preference: string; topic: string | null }[];
+		expect(prefs).toEqual([
+			{ preference: "The user prefers dark mode", topic: "dark mode" },
+			{ preference: "dark roast coffee", topic: null },
+		]);
+
+		const instructions = beam.db
+			.query("SELECT instruction, active, context_snippet FROM memoria_instructions WHERE source_memory_id = ?")
+			.all("wm-src") as { instruction: string; active: number; context_snippet: string }[];
+		expect(instructions).toEqual([
+			{
+				instruction: "always run tests before pushing",
+				active: 1,
+				context_snippet: "always run tests before pushing",
+			},
+		]);
+
+		// timelineDate lifts an ISO date out of the description, else stores null.
+		const timelines = beam.db
+			.query(
+				"SELECT date, description, source FROM memoria_timelines WHERE source_memory_id = ? ORDER BY message_idx, description",
+			)
+			.all("wm-src") as { date: string | null; description: string; source: string }[];
+		expect(timelines).toEqual([
+			{ date: null, description: "Kickoff happened last spring", source: "extraction" },
+			{ date: "2026-05-30", description: "Release ships on 2026-05-30", source: "extraction" },
+		]);
+
+		const kg = beam.db
+			.query("SELECT subject, predicate, object, confidence FROM memoria_kg WHERE source_memory_id = ?")
+			.all("wm-src") as { subject: string; predicate: string; object: string; confidence: number }[];
+		expect(kg).toEqual([{ subject: "Ada", predicate: "owns", object: "the API", confidence: 0.65 }]);
+		const triples = beam.db.query("SELECT subject, predicate, object, source, confidence FROM triples").all() as {
+			subject: string;
+			predicate: string;
+			object: string;
+			source: string;
+			confidence: number;
+		}[];
+		expect(triples).toEqual([
+			{ subject: "Ada", predicate: "owns", object: "the API", source: "wm-src", confidence: 0.65 },
+		]);
+	});
+
+	it("routes preference and instruction heuristics only when enabled", () => {
+		const beam = trackedState();
+		const stored = storeFactStrings(
+			beam,
+			["The user dislikes loud offices", "Instruction: keep replies terse", "plain fact"],
+			0,
+			"wm-h",
+			0.6,
+		);
+		expect(stored).toBe(3);
+		expect(
+			beam.db.query("SELECT preference, topic FROM memoria_preferences WHERE source_memory_id = ?").all("wm-h"),
+		).toEqual([{ preference: "The user dislikes loud offices", topic: "loud offices" }]);
+		expect(
+			beam.db.query("SELECT instruction FROM memoria_instructions WHERE source_memory_id = ?").all("wm-h"),
+		).toEqual([{ instruction: "keep replies terse" }]);
+
+		// With routing off, the same shapes stay plain facts.
+		storeFactStrings(beam, ["The user prefers X", "Instruction: Y"], 0, "wm-off", 0.6, {
+			routeHeuristicCategories: false,
+		});
+		expect(
+			beam.db.query("SELECT COUNT(*) AS count FROM memoria_preferences WHERE source_memory_id = ?").get("wm-off"),
+		).toEqual({ count: 0 });
+		expect(
+			beam.db.query("SELECT COUNT(*) AS count FROM memoria_instructions WHERE source_memory_id = ?").get("wm-off"),
+		).toEqual({ count: 0 });
+		expect(
+			beam.db.query("SELECT COUNT(*) AS count FROM memoria_facts WHERE source_memory_id = ?").get("wm-off"),
+		).toEqual({ count: 2 });
+	});
+
+	it("aggregates episodic veracity by majority, lowest-weight tie-break, and unknown floor", () => {
+		const majority = trackedState("maj");
+		insertWorkingVeracity(majority.db, "m1", "maj", "true");
+		insertWorkingVeracity(majority.db, "m2", "maj", "true");
+		insertWorkingVeracity(majority.db, "m3", "maj", "false");
+		sleep(majority, false);
+		expect((majority.db.query("SELECT veracity FROM episodic_memory").get() as { veracity: string }).veracity).toBe(
+			"true",
+		);
+
+		// Tie between "inferred" (0.7) and "false" (0.0): the lower weight wins.
+		const tie = trackedState("tie");
+		insertWorkingVeracity(tie.db, "t1", "tie", "inferred");
+		insertWorkingVeracity(tie.db, "t2", "tie", "false");
+		sleep(tie, false);
+		expect((tie.db.query("SELECT veracity FROM episodic_memory").get() as { veracity: string }).veracity).toBe(
+			"false",
+		);
+
+		// All-unknown sources fall through to the "unknown" floor.
+		const floor = trackedState("floor");
+		insertWorkingVeracity(floor.db, "f1", "floor", "unknown");
+		insertWorkingVeracity(floor.db, "f2", "floor", "unknown");
+		sleep(floor, false);
+		expect((floor.db.query("SELECT veracity FROM episodic_memory").get() as { veracity: string }).veracity).toBe(
+			"unknown",
+		);
+	});
+
+	it("classifies retrieval ability and routes to the matching MEMORIA table", () => {
+		const beam = trackedState();
+		storeExtractedFactCategories(
+			beam,
+			{
+				facts: ["Phoenix uses SQLite"],
+				instructions: [],
+				preferences: [],
+				timelines: ["Phoenix launch on 2026-05-30"],
+				kg: [{ subject: "Phoenix", predicate: "uses", object: "SQLite" }],
+			},
+			0,
+			"seed",
+			0.7,
+		);
+
+		// Timeline reasoning (TR) and event ordering (EO) both route to the timeline table.
+		const tr = memoriaRetrieve(beam, "how long until phoenix");
+		expect(tr.ability).toBe("TR");
+		expect((tr.results[0] as { description?: string }).description).toBe("Phoenix launch on 2026-05-30");
+		const eo = memoriaRetrieve(beam, "walk me through phoenix");
+		expect(eo.ability).toBe("TR");
+		expect((eo.results[0] as { description?: string }).description).toBe("Phoenix launch on 2026-05-30");
+
+		// Multi-session recall (MR) routes to the knowledge graph.
+		const mr = memoriaRetrieve(beam, "across all my sessions about phoenix");
+		expect(mr.ability).toBe("MR");
+		expect((mr.results[0] as { subject?: string }).subject).toBe("Phoenix");
+
+		// Contradiction (CR), regex-headed questions, and keyword questions route to facts.
+		const cr = memoriaRetrieve(beam, "have i noted phoenix");
+		expect(cr.ability).toBe("IE");
+		expect(cr.results.map(row => (row as { value?: string }).value)).toContain("Phoenix uses SQLite");
+		expect(memoriaRetrieve(beam, "who owns phoenix").ability).toBe("IE");
+
+		// A plain statement classifies as nothing and returns no results.
+		const none = memoriaRetrieve(beam, "phoenix is here");
+		expect(none.ability).toBe("");
+		expect(none.results).toEqual([]);
 	});
 });
