@@ -25,7 +25,7 @@ export default class Completions extends Command {
 	};
 
 	static examples = [
-		`# zsh — eval at startup, or write to a file in $fpath\n  eval "$(${APP_NAME} completions zsh)"`,
+		`# zsh: eval at startup, or write to a file in $fpath\n  eval "$(${APP_NAME} completions zsh)"`,
 		`# bash\n  eval "$(${APP_NAME} completions bash)"`,
 		`# fish\n  ${APP_NAME} completions fish > ~/.config/fish/completions/${APP_NAME}.fish`,
 	];

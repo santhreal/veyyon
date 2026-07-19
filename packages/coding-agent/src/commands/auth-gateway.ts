@@ -28,7 +28,7 @@ export default class AuthGateway extends Command {
 		regenerate: Flags.boolean({ description: "Regenerate the gateway bearer token (token)" }),
 		"no-auth": Flags.boolean({
 			description:
-				"Disable inbound bearer-token auth (serve). Useful when bound to loopback — any caller is allowed.",
+				"Disable inbound bearer-token auth (serve). Useful when bound to loopback, where any caller is allowed.",
 		}),
 		strict: Flags.boolean({
 			description:
@@ -45,7 +45,7 @@ export default class AuthGateway extends Command {
 		`# Show local gateway + broker config status\n  ${APP_NAME} auth-gateway status`,
 		`# Probe each broker credential to see which one is producing 401s\n  ${APP_NAME} auth-gateway check`,
 		`# Same, machine-readable for scripts\n  ${APP_NAME} auth-gateway check --json`,
-		`# Strict check — also exercises each credential with a real chat-completion ping\n  ${APP_NAME} auth-gateway check --strict`,
+		`# Strict check: also exercises each credential with a real chat-completion ping\n  ${APP_NAME} auth-gateway check --strict`,
 	];
 
 	async run(): Promise<void> {
