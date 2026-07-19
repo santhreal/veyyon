@@ -1,4 +1,5 @@
 import { type FetchImpl, getEnvApiKey } from "@veyyon/ai";
+import { isRecord } from "@veyyon/utils/type-guards";
 import type { AgentStorage } from "../session/agent-storage";
 import { findCredential, withHardTimeout } from "./search/providers/utils";
 
@@ -76,10 +77,6 @@ export class ParallelApiError extends Error {
 	}
 }
 
-function isObject(value: unknown): value is object {
-	return typeof value === "object" && value !== null;
-}
-
 function getOwnValue(value: object, key: string): unknown {
 	return Object.getOwnPropertyDescriptor(value, key)?.value;
 }
@@ -97,7 +94,7 @@ function getNumber(value: object, key: string): number | undefined {
 function getObjectArray(value: object, key: string): object[] {
 	const candidate = getOwnValue(value, key);
 	if (!Array.isArray(candidate)) return [];
-	return candidate.filter(isObject);
+	return candidate.filter(isRecord);
 }
 
 function getStringArray(value: object, key: string): string[] {
@@ -107,7 +104,7 @@ function getStringArray(value: object, key: string): string[] {
 }
 
 function extractParallelErrorMessage(payload: unknown): string | null {
-	if (!isObject(payload)) return null;
+	if (!isRecord(payload)) return null;
 
 	const directMessage = getString(payload, "message") ?? getString(payload, "detail") ?? getString(payload, "error");
 	if (directMessage && directMessage.trim().length > 0) {
@@ -115,7 +112,7 @@ function extractParallelErrorMessage(payload: unknown): string | null {
 	}
 
 	const errorObject = getOwnValue(payload, "error");
-	if (isObject(errorObject)) {
+	if (isRecord(errorObject)) {
 		const nestedMessage = getString(errorObject, "message") ?? getString(errorObject, "detail");
 		if (nestedMessage && nestedMessage.trim().length > 0) {
 			return nestedMessage.trim();
@@ -169,7 +166,7 @@ function parseWarnings(payload: unknown): string[] {
 			warnings.push(item);
 			continue;
 		}
-		if (!isObject(item)) continue;
+		if (!isRecord(item)) continue;
 		const message = getString(item, "message") ?? getString(item, "warning");
 		if (message) {
 			warnings.push(message);
@@ -183,7 +180,7 @@ function parseUsageItems(payload: unknown): ParallelUsageItem[] {
 
 	const usageItems: ParallelUsageItem[] = [];
 	for (const item of payload) {
-		if (!isObject(item)) continue;
+		if (!isRecord(item)) continue;
 		usageItems.push({
 			name: getString(item, "name"),
 			count: getNumber(item, "count"),
@@ -196,7 +193,7 @@ export function parseParallelSearchPayload(
 	payload: unknown,
 	options?: { parseMetadata?: boolean },
 ): ParallelSearchResult {
-	if (!isObject(payload)) {
+	if (!isRecord(payload)) {
 		throw new ParallelApiError("Parallel search returned an invalid response payload.");
 	}
 
@@ -246,7 +243,7 @@ export function getParallelExtractContent(document: ParallelExtractDocument): st
 }
 
 function parseExtractPayload(payload: unknown): ParallelExtractResult {
-	if (!isObject(payload)) {
+	if (!isRecord(payload)) {
 		throw new ParallelApiError("Parallel extract returned an invalid response payload.");
 	}
 

@@ -127,6 +127,10 @@ export interface DaemonWireRequest {
 /** Response envelope kept raw until matched with its pending operation. */
 export type DaemonWireResponse = { id: string; ok: true; result: unknown } | { id: string; ok: false; error: string };
 
+// launch/protocol.ts is deliberately dependency-free (zero imports) so the
+// broker worker can load it in isolation, so this keeps a self-contained copy of
+// isRecord rather than importing @veyyon/utils. The type-guards source-lock test
+// grandfathers this one file for exactly that reason.
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
