@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "bun:test";
-import { agentLoop, agentPauseGate } from "@veyyon/agent-core";
+import { AgentPauseGate, agentLoop, agentPauseGate } from "@veyyon/agent-core";
 import type { AgentContext, AgentLoopConfig, AgentMessage, AgentTool } from "@veyyon/agent-core/types";
 import type { Message } from "@veyyon/ai";
 import { createMockModel } from "@veyyon/ai/providers/mock";
@@ -134,6 +134,24 @@ describe("agentPauseGate", () => {
 		agentPauseGate.resume();
 		await waiter;
 		expect(released).toBe(true);
+	});
+
+	it("exposes paused and pausedAt through their getters across a pause cycle", () => {
+		// A fresh instance keeps this off the process-global singleton.
+		const gate = new AgentPauseGate();
+		expect(gate.paused).toBe(false);
+		expect(gate.pausedAt).toBeUndefined();
+
+		const before = Date.now();
+		expect(gate.pause()).toBe(true);
+		expect(gate.paused).toBe(true);
+		const at = gate.pausedAt;
+		expect(typeof at).toBe("number");
+		expect(at).toBeGreaterThanOrEqual(before);
+
+		expect(gate.resume()).toBeGreaterThanOrEqual(0);
+		expect(gate.paused).toBe(false);
+		expect(gate.pausedAt).toBeUndefined();
 	});
 
 	it("reports pause state transitions to onChange subscribers", () => {
