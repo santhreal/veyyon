@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, it } from "bun:test";
-import { renderEffortStep } from "@veyyon/coding-agent/modes/components/settings-selector";
+import { Effort } from "@veyyon/catalog/effort";
+import { effortStepItems, renderEffortStep } from "@veyyon/coding-agent/modes/components/settings-selector";
 import { getThemeByName, setThemeInstance } from "@veyyon/coding-agent/modes/theme/theme";
 import { Container } from "@veyyon/tui";
 
@@ -20,7 +21,7 @@ describe("renderEffortStep", () => {
 		const list = renderEffortStep(
 			new Container(),
 			"anthropic/claude-sonnet-4-5",
-			["low", "high"],
+			[Effort.Low, Effort.High],
 			value => {
 				persisted = value;
 			},
@@ -37,7 +38,7 @@ describe("renderEffortStep", () => {
 		const list = renderEffortStep(
 			new Container(),
 			"anthropic/claude-sonnet-4-5",
-			["low", "high"],
+			[Effort.Low, Effort.High],
 			value => {
 				persisted = value;
 			},
@@ -56,7 +57,7 @@ describe("renderEffortStep", () => {
 		const list = renderEffortStep(
 			new Container(),
 			"anthropic/claude-sonnet-4-5",
-			["low", "high"],
+			[Effort.Low, Effort.High],
 			value => {
 				persisted = value;
 			},
@@ -72,14 +73,9 @@ describe("renderEffortStep", () => {
 	});
 
 	it("offers the model-default row plus every supported effort, in order", () => {
-		const list = renderEffortStep(
-			new Container(),
-			"anthropic/claude-sonnet-4-5",
-			["minimal", "low", "medium", "high", "xhigh"],
-			() => {},
-			() => {},
-		);
+		const items = effortStepItems([Effort.Minimal, Effort.Low, Effort.Medium, Effort.High, Effort.XHigh]);
 
-		expect(list.items.map(item => item.value)).toEqual(["", "minimal", "low", "medium", "high", "xhigh"]);
+		expect(items.map(item => item.value)).toEqual(["", "minimal", "low", "medium", "high", "xhigh"]);
+		expect(items[0]?.label).toBe("(model default thinking)");
 	});
 });
