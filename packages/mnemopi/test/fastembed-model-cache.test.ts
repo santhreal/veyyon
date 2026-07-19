@@ -44,6 +44,30 @@ describe("fastembed model cache repair", () => {
 		}
 	});
 
+	it("throws with the model, file, repo, and HTTP status when a sidecar download fails", async () => {
+		const cacheDir = await fs.mkdtemp(path.join(os.tmpdir(), "mnemopi-fastembed-fail-"));
+		const fetchSpy = spyOn(globalThis, "fetch").mockImplementation(
+			Object.assign(
+				(_input: string | URL | Request, _init?: RequestInit) =>
+					Promise.resolve(new Response("gone", { status: 404, statusText: "Not Found" })),
+				{ preconnect: globalThis.fetch.preconnect },
+			),
+		);
+
+		try {
+			// config.json is the first sidecar, so the 404 surfaces on it before any write.
+			expect(ensureFastembedModelSidecars("fast-bge-small-en", cacheDir)).rejects.toThrow(
+				"Failed to download fast-bge-small-en config.json from BAAI/bge-small-en: 404 Not Found",
+			);
+			await Bun.sleep(0);
+			// A failed download writes nothing to the cache directory.
+			expect(await Bun.file(path.join(cacheDir, "fast-bge-small-en", "config.json")).exists()).toBe(false);
+		} finally {
+			fetchSpy.mockRestore();
+			await fs.rm(cacheDir, { recursive: true, force: true });
+		}
+	});
+
 	it("reports unsupported fastembed cache names without network access", async () => {
 		const fetchSpy = spyOn(globalThis, "fetch").mockImplementation(
 			Object.assign(

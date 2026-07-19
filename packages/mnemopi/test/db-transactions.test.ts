@@ -1,6 +1,6 @@
 import { Database } from "bun:sqlite";
 import { describe, expect, it } from "bun:test";
-import { closeQuietly, openDatabase, transaction, transactionAsync } from "../src/db";
+import { closeQuietly, loadExtensions, openDatabase, transaction, transactionAsync } from "../src/db";
 
 function table(db: Database): void {
 	db.exec("CREATE TABLE t (v TEXT)");
@@ -23,6 +23,19 @@ describe("openDatabase", () => {
 		const db = openDatabase(":memory:", { pragmas: false });
 		expect((db.query("PRAGMA foreign_keys").get() as { foreign_keys: number }).foreign_keys).toBe(0);
 		db.close();
+	});
+
+	it("treats empty extension specifiers as a no-op that never calls loadExtension", () => {
+		// An empty string and empty/blank array entries are skipped, so no real .so
+		// is needed to exercise the guard branches. A non-empty entry would throw here.
+		const db = openDatabase(":memory:", { loadExtension: "" });
+		try {
+			expect(() => loadExtensions(db, "")).not.toThrow();
+			expect(() => loadExtensions(db, ["", ""])).not.toThrow();
+			expect(() => loadExtensions(db, [])).not.toThrow();
+		} finally {
+			db.close();
+		}
 	});
 });
 

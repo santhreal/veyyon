@@ -129,4 +129,26 @@ describe("orchestrateRecall", () => {
 			closeQuietly(beam.db);
 		}
 	});
+
+	it("converts a Float32Array query embedding to a plain array on the linear path", async () => {
+		const beam = fakeBeam();
+		const original = beam.recall.bind(beam);
+		let seen: unknown;
+		beam.recall = ((query: string, topK?: number, options?: { queryEmbedding?: unknown }) => {
+			seen = options?.queryEmbedding;
+			return original(query, topK);
+		}) as FakeBeam["recall"];
+		try {
+			const results = await orchestrateRecall(beam, "needle", 2, {
+				forceLinear: true,
+				queryEmbedding: new Float32Array([0.25, 0.5]),
+			});
+			expect(results[0]?.id).toBe("linear");
+			// toLinearRecallOptions rebuilds the typed array as a JS array before it reaches recall.
+			expect(Array.isArray(seen)).toBe(true);
+			expect(seen).toEqual([0.25, 0.5]);
+		} finally {
+			closeQuietly(beam.db);
+		}
+	});
 });
