@@ -121,18 +121,22 @@ function formatSleepPrompt(memories: readonly string[], source = ""): string | n
 	return rendered;
 }
 
+/** The instruction preamble shared by every summarization prompt and the budget estimate. */
+const SUMMARY_HEADER =
+	"Summarize the following memories into 1-3 concise sentences. Preserve facts, names, preferences, and decisions. Discard fluff.";
+
+/** {@link SUMMARY_HEADER} with an optional ` Source: <source>.` suffix when a source is named. */
+function summaryHeader(source: string): string {
+	return source === "" ? SUMMARY_HEADER : `${SUMMARY_HEADER} Source: ${source}.`;
+}
+
 export function buildPrompt(memories: readonly string[], source = ""): string {
 	const custom = formatSleepPrompt(memories, source);
 	if (custom !== null) {
 		return custom;
 	}
 
-	let header =
-		"Summarize the following memories into 1-3 concise sentences. Preserve facts, names, preferences, and decisions. Discard fluff.";
-	if (source !== "") {
-		header += ` Source: ${source}.`;
-	}
-	return `/no_think\n${header}\n\n${memoryLines(memories)}\n\nSummary:`;
+	return `/no_think\n${summaryHeader(source)}\n\n${memoryLines(memories)}\n\nSummary:`;
 }
 
 export async function callConfiguredCompletion(
@@ -179,12 +183,7 @@ export function buildHostPrompt(memories: readonly string[], source = ""): strin
 		return custom;
 	}
 
-	let header =
-		"Summarize the following memories into 1-3 concise sentences. Preserve facts, names, preferences, and decisions. Discard fluff.";
-	if (source !== "") {
-		header += ` Source: ${source}.`;
-	}
-	return `${header}\n\n${memoryLines(memories)}`;
+	return `${summaryHeader(source)}\n\n${memoryLines(memories)}`;
 }
 
 function hostBackendWillHandleCall(): boolean {
@@ -242,12 +241,7 @@ export function chunkMemoriesByBudget(memories: readonly string[], source = ""):
 	let currentChunk: string[] = [];
 	let currentTokens = 0;
 
-	let header =
-		"Summarize the following memories into 1-3 concise sentences. Preserve facts, names, preferences, and decisions. Discard fluff.";
-	if (source !== "") {
-		header += ` Source: ${source}.`;
-	}
-	const headerTokens = estimateTokensFromText(`${header}\n\n`);
+	const headerTokens = estimateTokensFromText(`${summaryHeader(source)}\n\n`);
 	const formatOverhead = estimateTokensFromText("- \n");
 	const available = budget - headerTokens;
 
