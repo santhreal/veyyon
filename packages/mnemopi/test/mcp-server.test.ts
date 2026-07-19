@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { callToolJson, handleJsonRpc, runStdio } from "@veyyon/mnemopi/mcp-server";
+import { callToolJson, handleJsonRpc, main, runStdio } from "@veyyon/mnemopi/mcp-server";
 import { getToolDefinitions, handleToolCall, TOOLS } from "@veyyon/mnemopi/mcp-tools";
 
 let dataDir: string;
@@ -93,6 +93,52 @@ describe("MCP JSON handlers", () => {
 		if (response === null) throw new Error("expected tools/list response");
 		expect(response.error).toBeUndefined();
 		expect((response.result as { tools: unknown[] }).tools).toHaveLength(23);
+	});
+
+	it("answers initialize with the protocol version and server info", async () => {
+		const response = await handleJsonRpc({ jsonrpc: "2.0", id: 3, method: "initialize" });
+		if (response === null) throw new Error("expected initialize response");
+		expect(response.error).toBeUndefined();
+		const result = response.result as {
+			protocolVersion: string;
+			serverInfo: { name: string };
+			capabilities: { tools: unknown };
+		};
+		expect(result.protocolVersion).toBe("2024-11-05");
+		expect(result.serverInfo.name).toBe("mnemopi");
+		expect(result.capabilities.tools).toEqual({});
+	});
+
+	it("dispatches tools/call and rejects missing names and unknown methods", async () => {
+		const call = await handleJsonRpc({
+			jsonrpc: "2.0",
+			id: 4,
+			method: "tools/call",
+			params: { name: "mnemopi_stats", arguments: { bank: "server" } },
+		});
+		const callResult = call?.result as { content: Array<{ text: string }> };
+		expect(JSON.parse(callResult.content[0]?.text ?? "{}")).toMatchObject({ status: "ok", bank: "server" });
+
+		const missingName = await handleJsonRpc({ jsonrpc: "2.0", id: 5, method: "tools/call", params: {} });
+		expect(missingName?.error).toEqual({ code: -32602, message: "tools/call requires params.name" });
+
+		const unknown = await handleJsonRpc({ jsonrpc: "2.0", id: 6, method: "nope" });
+		expect(unknown?.error).toEqual({ code: -32601, message: "Unknown method: nope" });
+	});
+
+	it("wraps a failing tool call as an MCP error result", async () => {
+		const response = await callToolJson("mnemopi_diagnose", { bank: "../escape" });
+		expect(response.isError).toBe(true);
+		const payload = JSON.parse(response.content[0]?.text ?? "{}") as { status: string; message: string };
+		expect(payload.status).toBe("error");
+		expect(payload.message.length).toBeGreaterThan(0);
+	});
+
+	it("parses main() CLI flags and rejects a non-stdio transport", () => {
+		// main() throws synchronously via runMcpServer before returning a promise.
+		expect(() => main(["--transport", "websocket", "--port", "123", "--bank", "cli-bank", "--host", "h"])).toThrow(
+			"Only stdio transport is implemented",
+		);
 	});
 
 	it("does not write a response for notifications but still answers requests", async () => {
