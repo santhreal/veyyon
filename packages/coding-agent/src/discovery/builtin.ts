@@ -35,7 +35,7 @@ import {
 	scanSkillsFromDir,
 } from "./helpers";
 
-const PROVIDER_ID = "native";
+export const PROVIDER_ID = "native";
 const DISPLAY_NAME = "Veyyon";
 const DESCRIPTION = "Native configuration from ~/.veyyon and .veyyon/";
 const PRIORITY = 100;
@@ -270,30 +270,17 @@ registerProvider<SystemPrompt>(systemPromptCapability.id, {
 
 // Skills
 async function loadSkills(ctx: LoadContext): Promise<LoadResult<Skill>> {
-	// Walk up from cwd finding .veyyon/skills/ in ancestors (closest first)
-	const ancestors = getAncestorDirs(ctx.cwd, ctx.repoRoot ?? ctx.home);
-	const projectScans = ancestors.map(({ dir }) =>
-		scanSkillsFromDir(ctx, {
-			dir: path.join(dir, PATHS.projectDir, "skills"),
-			providerId: PROVIDER_ID,
-			level: "project",
-			requireDescription: true,
-		}),
-	);
-
-	// User-level scan from ~/.veyyon/profiles/default/agent/skills/
-	const userScan = scanSkillsFromDir(ctx, {
+	// Skills come only from the active profile's agent dir
+	// (~/.veyyon/profiles/<name>/agent/skills). Project-local `.veyyon/skills`
+	// directories are deliberately NOT scanned: skills belong to your profile, so
+	// switching profiles switches skills, and no repository you enter can inject
+	// its own skills into a session by ambient autodiscovery.
+	return scanSkillsFromDir(ctx, {
 		dir: path.join(getAgentDir(), "skills"),
 		providerId: PROVIDER_ID,
 		level: "user",
 		requireDescription: true,
 	});
-
-	const results = await Promise.all([...projectScans, userScan]);
-	return {
-		items: results.flatMap(r => r.items),
-		warnings: results.flatMap(r => r.warnings ?? []),
-	};
 }
 
 // Managed skills (auto-learn) are a SEPARATE provider at the lowest skill

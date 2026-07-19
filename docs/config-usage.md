@@ -271,9 +271,9 @@ Generate a session name using lowercase `<type>:<primary-objective>`.
 
 ## Skills subsystem
 
-- `extensibility/skills.ts` loads via `loadCapability(skillCapability.id, { cwd })`.
-- Applies source toggles and filters (`ignoredSkills`, `includeSkills`, custom dirs).
-- Legacy-named toggles still exist (`skills.enablePiUser`, `skills.enablePiProject`) but they gate the native provider (`provider === "native"`).
+- `extensibility/skills.ts` loads via `loadCapability(skillCapability.id, { cwd, providers: profileSkillProviderIds() })`.
+- The allowlist (`native`, `veyyon-managed`, `veyyon-plugins`) scopes discovery to the active profile; foreign-tool skill providers are never scanned ambiently (they feed the import scan only).
+- Applies name-based filters only: `disabledExtensions`, `ignoredSkills`, `includeSkills`. There are no per-source toggles and no custom directories.
 
 ## Hooks subsystem
 
@@ -312,6 +312,6 @@ Settings capability items are not deduplicated; `Settings.#loadProjectSettings()
 - `ConfigFile` JSON -> YAML migration for YAML-targeted files.
 - Settings migration from `settings.json` and `agent.db` to `config.yml`.
 - Settings key migrations include `queueMode`, `ask.timeout`, flat `theme`, `task.isolation.enabled`, legacy `task.isolation.mode` values, removed edit modes, `statusLine.plan_mode`, `memories.enabled`, and hindsight scoping/name fields.
-- Legacy setting names `skills.enablePiUser` / `skills.enablePiProject` are still active gates for native skill source.
+- The removed per-source skill toggles (`skills.enableCodexUser`, `skills.enableClaudeUser`, `skills.enableClaudeProject`, `skills.enablePiUser`, `skills.enablePiProject`, `skills.enableAgentsUser`, `skills.enableAgentsProject`) and `skills.customDirectories` are no longer read. Skills load only from the active profile. A stale key in an old `config.yml` is ignored, not an error.
 
 If these compatibility paths are removed in code, update this document immediately; several runtime behaviors still depend on them today.

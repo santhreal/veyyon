@@ -25,7 +25,7 @@ Typical migrated items:
 - Settings from `.claude/settings.json` → `config.yml`
 - MCP servers → `mcp.json`
 - Hooks → TypeScript modules under `.veyyon/hooks/` (or agent `hooks/`) loaded via the extension path
-- Skills → `.agents/skills` / `.veyyon/skills`
+- Skills → the active profile's `skills` directory (`~/.veyyon/profiles/<profile>/agent/skills`)
 - Subagents → `.veyyon/agents`
 - `CLAUDE.md` → `AGENTS.md`
 

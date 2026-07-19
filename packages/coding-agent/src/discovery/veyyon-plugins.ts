@@ -33,7 +33,7 @@ import { resolvePluginStdioPaths } from "./substitute-plugin-root";
 import { listVeyyonExtensionRoots, type VeyyonExtensionRoot } from "./veyyon-extension-roots";
 
 // Provider id is persisted in user settings (`disabledProviders`).
-const PROVIDER_ID = "veyyon-plugins";
+export const PROVIDER_ID = "veyyon-plugins";
 const DISPLAY_NAME = "Extension Packages";
 const DESCRIPTION =
 	"Sub-discovery (skills, hooks, tools, commands, rules, prompts, .mcp.json) inside extension packages";

@@ -167,9 +167,10 @@ async function loadContextFiles(ctx: LoadContext): Promise<LoadResult<ContextFil
 async function loadSkills(ctx: LoadContext): Promise<LoadResult<Skill>> {
 	const userSkillsDir = path.join(getUserClaude(ctx), "skills");
 
-	// Walk up from cwd finding .claude/skills/ in ancestors. Skip $HOME:
-	// that path is already scanned as the Claude user source below, and scanning
-	// it again as project would bypass enableClaudeUser when project skills stay enabled.
+	// Walk up from cwd finding .claude/skills/ in ancestors. Skip $HOME: that path
+	// is already scanned as the Claude user source below, so scanning it again as
+	// project would double-count it. (This provider is not loaded ambiently; it
+	// feeds the onboarding import scan that copies foreign skills into the profile.)
 	const projectScans: Promise<LoadResult<Skill>>[] = [];
 	let current = ctx.cwd;
 	while (true) {

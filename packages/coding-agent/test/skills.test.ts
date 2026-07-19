@@ -1,16 +1,11 @@
-import { describe, expect, it, spyOn } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, spyOn } from "bun:test";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { type Skill as CapabilitySkill, skillCapability } from "@veyyon/coding-agent/capability/skill";
-import { getCapability } from "@veyyon/coding-agent/discovery";
-import {
-	loadSkills,
-	loadSkillsFromDir,
-	parseSkillInvocation,
-	type Skill,
-} from "@veyyon/coding-agent/extensibility/skills";
+import "@veyyon/coding-agent/discovery";
+import { loadSkills, loadSkillsFromDir, parseSkillInvocation, type Skill } from "@veyyon/coding-agent/extensibility/skills";
 import { removeWithRetries } from "@veyyon/utils";
+import { getAgentDir, setAgentDir } from "@veyyon/utils/dirs";
 
 const fixturesDir = path.resolve(import.meta.dirname, "fixtures/skills");
 const collisionFixturesDir = path.resolve(import.meta.dirname, "fixtures/skills-collision");
@@ -25,23 +20,15 @@ const expectedFixtureSkillOrder: string[] = [
 	"valid-skill",
 ];
 
-/**
- * Disable every named built-in skill source. Used by `loadSkills` option tests
- * that need to isolate a custom directory or assert "no built-in leakage". Tests
- * MUST spread this in: the discovery surface only ignores `~/.<dir>/skills/*` if
- * every provider toggle resolves to false, otherwise stray skills from the
- * developer's real `$HOME` (e.g. `~/.agents/skills/<name>/SKILL.md`) leak into
- * the assertion.
- */
-const DISABLE_ALL_BUILTIN_SKILLS = {
-	enableCodexUser: false,
-	enableClaudeUser: false,
-	enableClaudeProject: false,
-	enablePiUser: false,
-	enablePiProject: false,
-	enableAgentsUser: false,
-	enableAgentsProject: false,
-} as const;
+/** Author a `SKILL.md` under `dir/<name>/`. */
+async function writeSkill(dir: string, name: string, description: string, extraFrontmatter = ""): Promise<void> {
+	const file = path.join(dir, name, "SKILL.md");
+	await fs.mkdir(path.dirname(file), { recursive: true });
+	const front = ["---", `name: ${name}`, `description: ${description}`, extraFrontmatter, "---"]
+		.filter(line => line !== "")
+		.join("\n");
+	await fs.writeFile(file, `${front}\n\n# ${name}\n`);
+}
 
 describe("skills", () => {
 	describe("loadSkillsFromDir", () => {
@@ -155,296 +142,145 @@ describe("skills", () => {
 		});
 	});
 
-	describe("loadSkills with options", () => {
-		it("should load from customDirectories only when built-ins disabled", async () => {
-			const { skills } = await loadSkills({ ...DISABLE_ALL_BUILTIN_SKILLS, customDirectories: [fixturesDir] });
-			expect(skills.length).toBeGreaterThan(0);
-			// Custom directory skills have source "custom:user"
-			expect(skills.every(s => s.source.startsWith("custom"))).toBe(true);
+	// Skills load ONLY from the active profile's agent dir
+	// (`~/.veyyon/profiles/<name>/agent/skills`), plus its managed auto-learn
+	// skills and profile-installed plugins. These tests point the agent dir at a
+	// temp profile and prove that foreign-tool directories and project-local
+	// `.veyyon/skills` never contribute skills, no matter what is on disk.
+	describe("loadSkills profile scoping", () => {
+		let tempHome: string;
+		let tempCwd: string;
+		let agentSkillsDir: string;
+		let originalAgentDir: string;
+		let homedirSpy: ReturnType<typeof spyOn>;
+
+		beforeEach(async () => {
+			originalAgentDir = getAgentDir();
+			tempHome = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-skill-scope-home-"));
+			// cwd lives under the fake home so any ancestor walk is bounded to it.
+			tempCwd = path.join(tempHome, "work");
+			await fs.mkdir(tempCwd, { recursive: true });
+			homedirSpy = spyOn(os, "homedir").mockReturnValue(tempHome);
+			const agentDir = path.join(tempHome, ".veyyon", "agent");
+			setAgentDir(agentDir);
+			agentSkillsDir = path.join(agentDir, "skills");
+			await fs.mkdir(agentSkillsDir, { recursive: true });
 		});
 
-		it("should return customDirectory skills sorted by name (case-insensitive)", async () => {
-			const { skills } = await loadSkills({ ...DISABLE_ALL_BUILTIN_SKILLS, customDirectories: [fixturesDir] });
-
-			expect(skills.map(s => s.name)).toEqual(expectedFixtureSkillOrder);
-		});
-
-		it("should keep user Claude skills when project .claude/skills is missing", async () => {
-			const tempHomeDir = await fs.mkdtemp(path.join(os.tmpdir(), "pi-claude-home-"));
-			const tempProjectDir = await fs.mkdtemp(path.join(os.tmpdir(), "pi-claude-project-"));
-
-			try {
-				const userSkillDir = path.join(tempHomeDir, ".claude", "skills", "user-only-skill");
-				await fs.mkdir(userSkillDir, { recursive: true });
-				await fs.writeFile(
-					path.join(userSkillDir, "SKILL.md"),
-					[
-						"---",
-						"name: user-only-skill",
-						"description: User-only Claude skill",
-						"---",
-						"",
-						"# User-only skill",
-					].join("\n"),
-				);
-
-				const capability = getCapability<CapabilitySkill>(skillCapability.id);
-				expect(capability).toBeDefined();
-				const claudeProvider = capability?.providers.find(provider => provider.id === "claude");
-				expect(claudeProvider).toBeDefined();
-
-				const result = await claudeProvider!.load({ cwd: tempProjectDir, home: tempHomeDir, repoRoot: null });
-				expect(result.items.some(skill => skill.name === "user-only-skill" && skill.level === "user")).toBe(true);
-			} finally {
-				await removeWithRetries(tempProjectDir);
-				await removeWithRetries(tempHomeDir);
-			}
-		});
-
-		// Regression for issue #2401: a user who disables the named third-party
-		// CLI toggles (codex/claude/native) MUST still see skills from the
-		// canonical Veyyon-native `~/.agent[s]/skills` (the `agents` provider).
-		// Pre-fix `loadSkills` gated `agents` on `anyBuiltInSkillSourceEnabled`,
-		// so flipping the five third-party toggles off silently disabled it.
-		it("should still load ~/.agents/skills when codex/claude/native toggles are off (#2401)", async () => {
-			const tempHome = await fs.mkdtemp(path.join(os.tmpdir(), "pi-agents-home-"));
-			const tempCwd = await fs.mkdtemp(path.join(os.tmpdir(), "pi-agents-cwd-"));
-			const skillDir = path.join(tempHome, ".agents", "skills", "user-agents-skill");
-			await fs.mkdir(skillDir, { recursive: true });
-			await fs.writeFile(
-				path.join(skillDir, "SKILL.md"),
-				["---", "description: Loaded from ~/.agents/skills", "---", "", "# user-agents-skill"].join("\n"),
-			);
-			const homedirSpy = spyOn(os, "homedir").mockReturnValue(tempHome);
-			try {
-				const { skills } = await loadSkills({
-					enableCodexUser: false,
-					enableClaudeUser: false,
-					enableClaudeProject: false,
-					enablePiUser: false,
-					enablePiProject: false,
-					// enableAgentsUser/enableAgentsProject left at their default-true value
-					cwd: tempCwd,
-				});
-				expect(skills.some(s => s.name === "user-agents-skill" && s.source === "agents:user")).toBe(true);
-			} finally {
-				homedirSpy.mockRestore();
-				await removeWithRetries(tempHome);
-				await removeWithRetries(tempCwd);
-			}
-		});
-
-		it("respects an explicit enableAgentsUser: false (#2401)", async () => {
-			const tempHome = await fs.mkdtemp(path.join(os.tmpdir(), "pi-agents-home-off-"));
-			const tempCwd = await fs.mkdtemp(path.join(os.tmpdir(), "pi-agents-cwd-off-"));
-			const skillDir = path.join(tempHome, ".agents", "skills", "opted-out");
-			await fs.mkdir(skillDir, { recursive: true });
-			await fs.writeFile(
-				path.join(skillDir, "SKILL.md"),
-				["---", "description: Should be filtered out", "---", "", "# opted-out"].join("\n"),
-			);
-			const homedirSpy = spyOn(os, "homedir").mockReturnValue(tempHome);
-			try {
-				const { skills } = await loadSkills({
-					...DISABLE_ALL_BUILTIN_SKILLS,
-					enableAgentsUser: false,
-					cwd: tempCwd,
-				});
-				expect(skills.some(s => s.name === "opted-out")).toBe(false);
-			} finally {
-				homedirSpy.mockRestore();
-				await removeWithRetries(tempHome);
-				await removeWithRetries(tempCwd);
-			}
-		});
-
-		// Regression for PR #2405 review: the fall-through gate used by
-		// unknown third-party providers (opencode/github/claude-plugins/...)
-		// MUST NOT consider the Veyyon-native `enableAgentsUser`/`...Project`
-		// toggles. Otherwise a user who disables Codex/Claude/Pi to silence
-		// third-party CLI noise but keeps the default agents toggles on still
-		// sees opencode skills resurface via the fallback branch.
-		it("does not re-enable third-party providers via the agents toggles (PR #2405)", async () => {
-			const tempHome = await fs.mkdtemp(path.join(os.tmpdir(), "pi-opencode-home-"));
-			const tempCwd = await fs.mkdtemp(path.join(os.tmpdir(), "pi-opencode-cwd-"));
-			const opencodeSkillDir = path.join(tempHome, ".config", "opencode", "skills", "leaked-opencode");
-			await fs.mkdir(opencodeSkillDir, { recursive: true });
-			await fs.writeFile(
-				path.join(opencodeSkillDir, "SKILL.md"),
-				["---", "description: Should be filtered by third-party gate", "---", "", "# leaked-opencode"].join("\n"),
-			);
-			const homedirSpy = spyOn(os, "homedir").mockReturnValue(tempHome);
-			try {
-				const { skills } = await loadSkills({
-					enableCodexUser: false,
-					enableClaudeUser: false,
-					enableClaudeProject: false,
-					enablePiUser: false,
-					enablePiProject: false,
-					// enableAgentsUser / enableAgentsProject default true
-					cwd: tempCwd,
-				});
-				expect(skills.some(s => s.name === "leaked-opencode")).toBe(false);
-			} finally {
-				homedirSpy.mockRestore();
-				await removeWithRetries(tempHome);
-				await removeWithRetries(tempCwd);
-			}
-		});
-
-		it("should filter out ignoredSkills", async () => {
-			const { skills } = await loadSkills({
-				...DISABLE_ALL_BUILTIN_SKILLS,
-				customDirectories: [fixturesDir],
-				ignoredSkills: ["valid-skill"],
-			});
-			expect(skills.some(s => s.name === "valid-skill")).toBe(false);
-		});
-
-		it("should support glob patterns in ignoredSkills", async () => {
-			const { skills } = await loadSkills({
-				...DISABLE_ALL_BUILTIN_SKILLS,
-				customDirectories: [fixturesDir],
-				ignoredSkills: ["valid-*"],
-			});
-			expect(skills.every(s => !s.name.startsWith("valid-"))).toBe(true);
-		});
-
-		it("should skip skills disabled via frontmatter", async () => {
-			const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-disabled-skill-"));
-			const skillDir = path.join(tempDir, "disabled-skill");
-			await fs.mkdir(skillDir, { recursive: true });
-			await fs.writeFile(
-				path.join(skillDir, "SKILL.md"),
-				`---
-name: disabled-skill
-description: Should not be discovered.
-enabled: false
----
-
-# Disabled Skill
-`,
-			);
-
-			try {
-				const { skills } = await loadSkills({ ...DISABLE_ALL_BUILTIN_SKILLS, customDirectories: [tempDir] });
-				expect(skills.some(s => s.name === "disabled-skill")).toBe(false);
-			} finally {
-				await removeWithRetries(tempDir);
-			}
-		});
-
-		it("should hide skills with disable-model-invocation frontmatter (Agent Skills spec)", async () => {
-			const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "veyyon-dmi-skill-"));
-			const skillDir = path.join(tempDir, "hidden-by-spec");
-			await fs.mkdir(skillDir, { recursive: true });
-			await fs.writeFile(
-				path.join(skillDir, "SKILL.md"),
-				`---\nname: hidden-by-spec\ndescription: Should be hidden via Agent Skills standard field.\ndisable-model-invocation: true\n---\n\n# Hidden Skill\n`,
-			);
-
-			try {
-				const { skills } = await loadSkills({ ...DISABLE_ALL_BUILTIN_SKILLS, customDirectories: [tempDir] });
-				const skill = skills.find(s => s.name === "hidden-by-spec");
-				expect(skill).toBeDefined();
-				expect(skill!.hide).toBe(true);
-			} finally {
-				await removeWithRetries(tempDir);
-			}
-		});
-
-		it("should let ignoredSkills override includeSkills", async () => {
-			const { skills } = await loadSkills({
-				...DISABLE_ALL_BUILTIN_SKILLS,
-				customDirectories: [fixturesDir],
-				includeSkills: ["valid-*"],
-				ignoredSkills: ["valid-skill"],
-			});
-			expect(skills.every(s => s.name !== "valid-skill")).toBe(true);
-		});
-	});
-
-	it("should expand ~ in customDirectories", async () => {
-		const fakeHome = await fs.mkdtemp(path.join(os.tmpdir(), "pi-skills-home-"));
-		const homedirSpy = spyOn(os, "homedir").mockReturnValue(fakeHome);
-		const tempHomeSkillsDir = await fs.mkdtemp(path.join(fakeHome, ".pi-skills-test-"));
-		const relativeToHome = path.relative(fakeHome, tempHomeSkillsDir);
-		const tildeDir = `~/${relativeToHome.split(path.sep).join("/")}`;
-		const skillDir = path.join(tempHomeSkillsDir, "tilde-skill");
-		const skillPath = path.join(skillDir, "SKILL.md");
-		await fs.mkdir(skillDir, { recursive: true });
-		await fs.writeFile(
-			skillPath,
-			`---
-name: tilde-skill
-description: Skill loaded from a tilde-expanded custom directory.
----
-
-# Tilde Skill
-`,
-		);
-
-		try {
-			const { skills: withTilde } = await loadSkills({
-				...DISABLE_ALL_BUILTIN_SKILLS,
-				customDirectories: [tildeDir],
-			});
-			const { skills: withoutTilde } = await loadSkills({
-				...DISABLE_ALL_BUILTIN_SKILLS,
-				customDirectories: [tempHomeSkillsDir],
-			});
-			expect(withTilde.length).toBe(withoutTilde.length);
-			expect(withTilde.some(skill => skill.name === "tilde-skill")).toBe(true);
-		} finally {
+		afterEach(async () => {
 			homedirSpy.mockRestore();
-			await removeWithRetries(fakeHome);
-		}
-	});
-
-	it("should return empty when all sources disabled and no custom dirs", async () => {
-		const { skills } = await loadSkills({ ...DISABLE_ALL_BUILTIN_SKILLS });
-		expect(skills).toHaveLength(0);
-	});
-
-	it("should filter skills with includeSkills glob patterns", async () => {
-		// Load all skills from fixtures
-		const { skills: allSkills } = await loadSkills({
-			...DISABLE_ALL_BUILTIN_SKILLS,
-			customDirectories: [fixturesDir],
+			setAgentDir(originalAgentDir);
+			await removeWithRetries(tempHome);
 		});
-		expect(allSkills.length).toBeGreaterThan(0);
 
-		// Filter to only include "valid-skill"
-		const { skills: filtered } = await loadSkills({
-			...DISABLE_ALL_BUILTIN_SKILLS,
-			customDirectories: [fixturesDir],
-			includeSkills: ["valid-skill"],
+		it("loads authored skills from the active profile as native:user", async () => {
+			await writeSkill(agentSkillsDir, "profile-skill", "A skill in the active profile.");
+			const { skills } = await loadSkills({ cwd: tempCwd });
+			const skill = skills.find(s => s.name === "profile-skill");
+			expect(skill).toBeDefined();
+			expect(skill?.source).toBe("native:user");
 		});
-		expect(filtered).toHaveLength(1);
-		expect(filtered[0].name).toBe("valid-skill");
-	});
 
-	it("should support glob patterns in includeSkills", async () => {
-		const { skills } = await loadSkills({
-			...DISABLE_ALL_BUILTIN_SKILLS,
-			customDirectories: [fixturesDir],
-			includeSkills: ["valid-*"],
-		});
-		expect(skills.length).toBeGreaterThan(0);
-		expect(skills.every(s => s.name.startsWith("valid-"))).toBe(true);
-	});
+		it("never loads foreign ~/.claude, ~/.codex, or ~/.agents skills", async () => {
+			await writeSkill(agentSkillsDir, "profile-skill", "A skill in the active profile.");
+			for (const [dir, name] of [
+				[path.join(tempHome, ".claude", "skills"), "claude-skill"],
+				[path.join(tempHome, ".codex", "skills"), "codex-skill"],
+				[path.join(tempHome, ".agents", "skills"), "agents-skill"],
+				[path.join(tempHome, ".agent", "skills"), "agent-skill"],
+			] as const) {
+				await writeSkill(dir, name, `Foreign ${name} that must never load.`);
+			}
 
-	it("should return all skills when includeSkills is empty", async () => {
-		const { skills: withEmpty } = await loadSkills({
-			...DISABLE_ALL_BUILTIN_SKILLS,
-			customDirectories: [fixturesDir],
-			includeSkills: [],
+			const { skills } = await loadSkills({ cwd: tempCwd });
+			const names = skills.map(s => s.name);
+			expect(names).toContain("profile-skill");
+			expect(names).not.toContain("claude-skill");
+			expect(names).not.toContain("codex-skill");
+			expect(names).not.toContain("agents-skill");
+			expect(names).not.toContain("agent-skill");
+			// Every loaded skill comes from a profile-native provider.
+			expect(
+				skills.every(s => ["native", "veyyon-managed", "veyyon-plugins"].includes(s.source.split(":")[0])),
+			).toBe(true);
 		});
-		const { skills: withoutOption } = await loadSkills({
-			...DISABLE_ALL_BUILTIN_SKILLS,
-			customDirectories: [fixturesDir],
+
+		it("does not load project-local .veyyon/skills (no ambient project autodiscovery)", async () => {
+			await writeSkill(agentSkillsDir, "profile-skill", "A skill in the active profile.");
+			await writeSkill(path.join(tempCwd, ".veyyon", "skills"), "project-skill", "A project skill that must not load.");
+
+			const { skills } = await loadSkills({ cwd: tempCwd });
+			const names = skills.map(s => s.name);
+			expect(names).toContain("profile-skill");
+			expect(names).not.toContain("project-skill");
 		});
-		expect(withEmpty.length).toBe(withoutOption.length);
+
+		it("returns no skills when the master switch is off", async () => {
+			await writeSkill(agentSkillsDir, "profile-skill", "A skill in the active profile.");
+			const { skills } = await loadSkills({ cwd: tempCwd, enabled: false });
+			expect(skills).toHaveLength(0);
+		});
+
+		it("filters out ignoredSkills", async () => {
+			await writeSkill(agentSkillsDir, "keep-me", "Kept.");
+			await writeSkill(agentSkillsDir, "drop-me", "Dropped.");
+			const { skills } = await loadSkills({ cwd: tempCwd, ignoredSkills: ["drop-me"] });
+			const names = skills.map(s => s.name);
+			expect(names).toContain("keep-me");
+			expect(names).not.toContain("drop-me");
+		});
+
+		it("supports glob patterns in ignoredSkills", async () => {
+			await writeSkill(agentSkillsDir, "valid-alpha", "Alpha.");
+			await writeSkill(agentSkillsDir, "valid-beta", "Beta.");
+			await writeSkill(agentSkillsDir, "other", "Other.");
+			const { skills } = await loadSkills({ cwd: tempCwd, ignoredSkills: ["valid-*"] });
+			const names = skills.map(s => s.name);
+			expect(names).toEqual(["other"]);
+		});
+
+		it("filters to includeSkills glob patterns", async () => {
+			await writeSkill(agentSkillsDir, "valid-alpha", "Alpha.");
+			await writeSkill(agentSkillsDir, "valid-beta", "Beta.");
+			await writeSkill(agentSkillsDir, "other", "Other.");
+			const { skills } = await loadSkills({ cwd: tempCwd, includeSkills: ["valid-*"] });
+			const names = skills.map(s => s.name).sort();
+			expect(names).toEqual(["valid-alpha", "valid-beta"]);
+		});
+
+		it("lets ignoredSkills override includeSkills", async () => {
+			await writeSkill(agentSkillsDir, "valid-alpha", "Alpha.");
+			await writeSkill(agentSkillsDir, "valid-beta", "Beta.");
+			const { skills } = await loadSkills({
+				cwd: tempCwd,
+				includeSkills: ["valid-*"],
+				ignoredSkills: ["valid-alpha"],
+			});
+			expect(skills.map(s => s.name)).toEqual(["valid-beta"]);
+		});
+
+		it("skips skills disabled via frontmatter", async () => {
+			await writeSkill(agentSkillsDir, "disabled-skill", "Should not be discovered.", "enabled: false");
+			const { skills } = await loadSkills({ cwd: tempCwd });
+			expect(skills.some(s => s.name === "disabled-skill")).toBe(false);
+		});
+
+		it("hides skills with disable-model-invocation frontmatter (Agent Skills spec)", async () => {
+			await writeSkill(agentSkillsDir, "hidden-by-spec", "Hidden via the Agent Skills standard field.", "disable-model-invocation: true");
+			const { skills } = await loadSkills({ cwd: tempCwd });
+			const skill = skills.find(s => s.name === "hidden-by-spec");
+			expect(skill).toBeDefined();
+			expect(skill?.hide).toBe(true);
+		});
+
+		it("discovers skills when the profile skills dir is a symlink", async () => {
+			// Replace the real skills dir with a symlink to the shared fixtures.
+			await removeWithRetries(agentSkillsDir);
+			await fs.symlink(fixturesDir, agentSkillsDir, "dir");
+			const { skills } = await loadSkills({ cwd: tempCwd });
+			expect(skills.map(s => s.name)).toEqual(expectedFixtureSkillOrder);
+			expect(skills.every(s => s.source === "native:user")).toBe(true);
+		});
 	});
 });
 

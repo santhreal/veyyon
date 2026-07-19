@@ -424,16 +424,18 @@ export interface BranchSummarySettings {
 }
 
 export interface SkillsSettings {
+	/** Master switch. When false, no skills load at all. */
 	enabled?: boolean;
+	/** Expose loaded skills as `/skill:<name>` slash commands. */
 	enableSkillCommands?: boolean;
-	enableCodexUser?: boolean;
-	enableClaudeUser?: boolean;
-	enableClaudeProject?: boolean;
-	enablePiUser?: boolean;
-	enablePiProject?: boolean;
-	enableAgentsUser?: boolean;
-	enableAgentsProject?: boolean;
-	customDirectories?: string[];
+	/**
+	 * Skills load only from the active profile's Veyyon agent dir
+	 * (`~/.veyyon/profiles/<name>/agent/skills`), its managed auto-learn skills,
+	 * and skills bundled with plugins installed into that profile. There is no
+	 * cross-computer autodiscovery and no per-source toggle: Claude, Codex, the
+	 * Agent Skills standard, GitHub, and OpenCode directories are never scanned.
+	 * The two lists below filter that profile set by skill name.
+	 */
 	ignoredSkills?: string[];
 	includeSkills?: string[];
 	disabledExtensions?: string[];

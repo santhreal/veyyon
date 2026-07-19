@@ -59,100 +59,25 @@ describe("managed-skills discovery", () => {
 		expect(skills.some(s => s.name === "bar" && s.source === "veyyon-managed:user")).toBe(false);
 	});
 
-	it("lets an authored skill from a NON-native provider win over a managed skill", async () => {
-		// `.agents/skills` is the `agents` provider — a different provider than the
-		// one that discovers managed skills. Authored must still win globally.
-		await writeSkill(path.join(tempHome, ".agents", "skills"), "baz", "Authored baz (.agents).");
-		await writeSkill(managedDir, "baz", "Managed baz.");
+	it("keeps a managed skill visible when no authored skill claims its name", async () => {
+		await writeSkill(managedDir, "solo-managed", "Managed solo.");
 		const { skills } = await loadSkills({ cwd: tempCwd });
-		const bazzes = skills.filter(s => s.name === "baz");
-		expect(bazzes).toHaveLength(1);
-		expect(bazzes[0]?.source).toBe("agents:user");
-		expect(skills.some(s => s.name === "baz" && s.source === "veyyon-managed:user")).toBe(false);
-	});
-
-	it("lets a custom-directory authored skill win over a managed skill", async () => {
-		// Custom directories are merged AFTER loadCapability, so this exercises the
-		// skills.ts dead-last backstop rather than capability-level priority dedup.
-		const customDir = path.join(tempHome, "custom-skills");
-		await writeSkill(customDir, "qux", "Authored qux (custom).");
-		await writeSkill(managedDir, "qux", "Managed qux.");
-		const { skills } = await loadSkills({ cwd: tempCwd, customDirectories: [customDir] });
-		const quxes = skills.filter(s => s.name === "qux");
-		expect(quxes).toHaveLength(1);
-		expect(quxes[0]?.source).toBe("custom:user");
-	});
-
-	it("keeps a managed skill visible even when a disabled provider has the same name", async () => {
-		// loadCapability dedupes before source filtering, so a fully-DISABLED higher-
-		// priority authored skill must not consume the managed fallback. claude is
-		// discovered at user AND (because cwd is under home) project level, so both
-		// toggles must be off to truly disable it.
-		await writeSkill(path.join(tempHome, ".claude", "skills"), "dis", "Disabled claude dis.");
-		await writeSkill(managedDir, "dis", "Managed dis.");
-		const { skills } = await loadSkills({
-			cwd: tempCwd,
-			enableClaudeUser: false,
-			enableClaudeProject: false,
-		});
-		const dises = skills.filter(s => s.name === "dis");
-		expect(dises).toHaveLength(1);
-		expect(dises[0]?.source).toBe("veyyon-managed:user");
-	});
-
-	it("selects an enabled lower-priority authored skill when a disabled higher-priority provider has the same name (#4648)", async () => {
-		await writeSkill(path.join(tempHome, ".claude", "skills"), "fallback-authored", "Disabled claude.");
-		await writeSkill(path.join(tempHome, ".agents", "skills"), "fallback-authored", "Enabled agents.");
-		const { skills } = await loadSkills({
-			cwd: tempCwd,
-			enableClaudeUser: false,
-			enableClaudeProject: false,
-		});
-		const matches = skills.filter(s => s.name === "fallback-authored");
+		const matches = skills.filter(s => s.name === "solo-managed");
 		expect(matches).toHaveLength(1);
-		expect(matches[0]?.source).toBe("agents:user");
+		expect(matches[0]?.source).toBe("veyyon-managed:user");
 	});
 
-	it("does not resurrect disabled home claude user skills as project skills when cwd is under home", async () => {
-		// No repo root marker is created in tempHome/work. A Claude home skill must
-		// stay user-scoped only even while project skills remain enabled by default.
-		await writeSkill(path.join(tempHome, ".claude", "skills"), "home-only", "Disabled claude home skill.");
-		await writeSkill(path.join(tempHome, ".agents", "skills"), "home-only", "Enabled agents fallback.");
-		const { skills } = await loadSkills({
-			cwd: tempCwd,
-			enableClaudeUser: false,
-		});
-		const matches = skills.filter(s => s.name === "home-only");
-		expect(matches).toHaveLength(1);
-		expect(matches[0]?.source).toBe("agents:user");
-		expect(skills.some(s => s.name === "home-only" && s.source === "claude:project")).toBe(false);
-	});
-
-	it("preserves provider priority when duplicate authored providers are both enabled (#4648)", async () => {
-		await writeSkill(path.join(tempHome, ".claude", "skills"), "priority-authored", "Enabled claude.");
-		await writeSkill(path.join(tempHome, ".agents", "skills"), "priority-authored", "Enabled agents.");
+	it("never loads foreign ~/.claude or ~/.agents skills alongside managed skills", async () => {
+		// Skills come only from the active profile: foreign-tool directories are
+		// not in the provider allowlist and are never scanned.
+		await writeSkill(path.join(tempHome, ".claude", "skills"), "foreign-claude", "Foreign claude.");
+		await writeSkill(path.join(tempHome, ".agents", "skills"), "foreign-agents", "Foreign agents.");
+		await writeSkill(managedDir, "kept", "Managed kept.");
 		const { skills } = await loadSkills({ cwd: tempCwd });
-		const matches = skills.filter(s => s.name === "priority-authored");
-		expect(matches).toHaveLength(1);
-		expect(matches[0]?.source).toBe("claude:user");
-	});
-
-	it("keeps managed skills dead-last behind an enabled authored fallback hidden by a disabled duplicate (#4648)", async () => {
-		// claude (priority 80, fully disabled) shadows agents (70, enabled) at
-		// capability dedup. loadSkills must recover the enabled authored agent skill
-		// from the pre-dedup superset and still keep managed dead-last.
-		await writeSkill(path.join(tempHome, ".claude", "skills"), "shadowed", "Disabled claude.");
-		await writeSkill(path.join(tempHome, ".agents", "skills"), "shadowed", "Enabled agents.");
-		await writeSkill(managedDir, "shadowed", "Managed shadowed.");
-		const { skills } = await loadSkills({
-			cwd: tempCwd,
-			enableClaudeUser: false,
-			enableClaudeProject: false,
-		});
-		const shadowed = skills.filter(s => s.name === "shadowed");
-		expect(shadowed).toHaveLength(1);
-		expect(shadowed[0]?.source).toBe("agents:user");
-		expect(skills.some(s => s.name === "shadowed" && s.source === "veyyon-managed:user")).toBe(false);
+		const names = skills.map(s => s.name);
+		expect(names).toContain("kept");
+		expect(names).not.toContain("foreign-claude");
+		expect(names).not.toContain("foreign-agents");
 	});
 
 	it("skips a managed skill whose on-disk frontmatter name is unsafe", async () => {

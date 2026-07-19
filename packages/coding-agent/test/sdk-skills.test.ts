@@ -9,24 +9,23 @@ import { createAgentSession } from "@veyyon/coding-agent/sdk";
 import { AuthStorage } from "@veyyon/coding-agent/session/auth-storage";
 import { SessionManager } from "@veyyon/coding-agent/session/session-manager";
 import { removeSyncWithRetries } from "@veyyon/utils";
+import { getAgentDir, setAgentDir } from "@veyyon/utils/dirs";
 import { cleanupTempHome } from "./helpers/temp-home-cleanup";
 
+// Skills load only from the active profile's agent dir, so the master switch is
+// the only skills setting left; there are no per-source toggles.
 function createIsolatedSkillsSettings(): Settings {
 	return Settings.isolated({
 		"skills.enabled": true,
-		"skills.enableCodexUser": false,
-		"skills.enableClaudeUser": false,
-		"skills.enableClaudeProject": false,
-		"skills.enablePiUser": false,
-		"skills.enablePiProject": true,
 	});
 }
 
 describe("createAgentSession skills option", () => {
 	let tempDir: string;
-	let skillsDir: string;
+	let nativeUserSkillsDir: string;
 	let tempHomeDir = "";
 	let originalHome: string | undefined;
+	let originalAgentDir: string;
 	// Auth storage (SQLite DB) and the model registry are immutable across these tests: skill
 	// discovery never touches models, and building them per test would make createAgentSession call
 	// modelRegistry.refreshInBackground(), whose online model discovery saturates the event loop and
@@ -49,18 +48,20 @@ describe("createAgentSession skills option", () => {
 
 	beforeEach(() => {
 		tempDir = path.join(os.tmpdir(), `pi-sdk-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
-		// Create skill in .veyyon/skills/ for native project-level discovery
-		skillsDir = path.join(tempDir, ".veyyon", "skills", "test-skill");
-		fs.mkdirSync(skillsDir, { recursive: true });
+		fs.mkdirSync(tempDir, { recursive: true });
 		originalHome = process.env.HOME;
+		originalAgentDir = getAgentDir();
 		tempHomeDir = fs.mkdtempSync(path.join(os.tmpdir(), "pi-sdk-home-"));
 		process.env.HOME = tempHomeDir;
-		const nativeUserSkillsDir = path.join(tempHomeDir, ".veyyon", "agent", "skills");
-		fs.mkdirSync(nativeUserSkillsDir, { recursive: true });
-
-		// Create a test skill in the pi skills directory
+		// Skills load only from the active profile's agent skills dir. Point the
+		// agent dir at the temp home and author the test skill there.
+		const userAgentDir = path.join(tempHomeDir, ".veyyon", "agent");
+		setAgentDir(userAgentDir);
+		nativeUserSkillsDir = path.join(userAgentDir, "skills");
+		const testSkillDir = path.join(nativeUserSkillsDir, "test-skill");
+		fs.mkdirSync(testSkillDir, { recursive: true });
 		fs.writeFileSync(
-			path.join(skillsDir, "SKILL.md"),
+			path.join(testSkillDir, "SKILL.md"),
 			`---
 name: test-skill
 description: A test skill for SDK tests.
@@ -86,10 +87,13 @@ description: Skill loaded through a symlink.
 Loaded via symbolic link.
 `,
 		);
-		fs.symlinkSync(externalSkillDir, path.join(path.dirname(skillsDir), "symlinked-skill-link"), "dir");
+		fs.symlinkSync(externalSkillDir, path.join(nativeUserSkillsDir, "symlinked-skill-link"), "dir");
 	});
 
-	afterEach(cleanupTempHome(() => ({ tempDir, tempHomeDir, originalHome })));
+	afterEach(() => {
+		setAgentDir(originalAgentDir);
+		cleanupTempHome(() => ({ tempDir, tempHomeDir, originalHome }))();
+	});
 
 	it("should discover skills by default and expose them on session.skills", async () => {
 		const { session } = await createAgentSession({
@@ -117,10 +121,22 @@ Loaded via symbolic link.
 		expect(session.skills.some((s: Skill) => s.name === "symlinked-skill")).toBe(true);
 	});
 
-	it("should still discover project skills when user skills directory is missing", async () => {
-		const userAgentDir = path.join(tempHomeDir, ".veyyon", "agent");
-		removeSyncWithRetries(path.join(userAgentDir, "skills"));
-		fs.writeFileSync(path.join(userAgentDir, "placeholder.txt"), "placeholder");
+	it("does not discover foreign ~/.claude/skills or project .veyyon/skills", async () => {
+		// A skill in the Claude home dir must never load (no cross-computer autodiscovery).
+		const claudeSkillDir = path.join(tempHomeDir, ".claude", "skills", "foreign-claude-skill");
+		fs.mkdirSync(claudeSkillDir, { recursive: true });
+		fs.writeFileSync(
+			path.join(claudeSkillDir, "SKILL.md"),
+			`---\nname: foreign-claude-skill\ndescription: A Claude skill that must never load.\n---\n\n# Foreign\n`,
+		);
+		// A skill in a project-local .veyyon/skills dir must also not load: skills
+		// belong to the profile, not to whatever repo you happen to be inside.
+		const projectSkillDir = path.join(tempDir, ".veyyon", "skills", "project-skill");
+		fs.mkdirSync(projectSkillDir, { recursive: true });
+		fs.writeFileSync(
+			path.join(projectSkillDir, "SKILL.md"),
+			`---\nname: project-skill\ndescription: A project skill that must never load.\n---\n\n# Project\n`,
+		);
 
 		const { session } = await createAgentSession({
 			cwd: tempDir,
@@ -130,6 +146,9 @@ Loaded via symbolic link.
 			settings: createIsolatedSkillsSettings(),
 		});
 
+		expect(session.skills.some((s: Skill) => s.name === "foreign-claude-skill")).toBe(false);
+		expect(session.skills.some((s: Skill) => s.name === "project-skill")).toBe(false);
+		// The profile skill still loads.
 		expect(session.skills.some((s: Skill) => s.name === "test-skill")).toBe(true);
 	});
 	it("should have empty skills when options.skills is empty array (--no-skills)", async () => {

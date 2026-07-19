@@ -4,18 +4,17 @@ A skill is a folder that adds a reusable capability to Veyyon. This page explain
 
 ## Directory structure
 
-Skills are placed on the filesystem according to the scope where they should apply. Veyyon loads skills from these locations in order:
+Skills load only from the active profile. Veyyon reads these locations, all under the profile's agent dir (`profiles/default/` when you have not selected a profile):
 
 | Scope | Directory | Purpose |
 | --- | --- | --- |
-| User | `$HOME/.veyyon/profiles/<profile>/agent/skills` | Skills available to the current user, per profile (`profiles/default/` when none is selected). |
-| Project | `.veyyon/skills` | Skills shipped with a project, discovered by walking up from the working directory. |
-| Agents layout | `.agents/skills`, `$HOME/.agents/skills` | Skills in the cross-tool agents layout (project walk-up plus user home). |
-| Custom | `skills.customDirectories` | Extra directories you list in settings. |
+| User | `$HOME/.veyyon/profiles/<profile>/agent/skills` | Skills you author or install for the active profile. |
+| Managed | `$HOME/.veyyon/profiles/<profile>/agent/managed-skills` | Auto-learn skills Veyyon writes itself. A same-named user skill always wins. |
+| Plugins | plugins installed into the active profile | Skills bundled with a plugin you added to this profile. |
 
-Foreign-tool locations (`$HOME/.claude/skills`, …) are also discovered when foreign-config import is on, see [Skills](skills.md#skill-locations) for the full table.
+Nothing else contributes skills. A project-local `.veyyon/skills` directory and another tool's skill directory (`$HOME/.claude/skills`, `$HOME/.codex/skills`, `$HOME/.agents/skills`, and the rest) are never scanned. To use a skill from another tool, import it into your profile, see [Skills](skills.md#importing-another-tools-skills). For the full provider list and dedup rules, see [Skills](skills.md#skill-locations).
 
-Create a new skill by making a directory inside one of these scopes and adding a `SKILL.md` file. The name of the directory is the default name of the skill.
+Create a new skill by making a directory inside the profile's `skills` dir and adding a `SKILL.md` file. The name of the directory is the default name of the skill.
 
 A skill directory may contain additional files:
 
@@ -144,21 +143,21 @@ skills:
   config:
     - name: my-skill
       enabled: true
-    - path: /home/user/.agents/skills/other-skill/SKILL.md
+    - path: /home/user/.veyyon/profiles/default/agent/skills/other-skill/SKILL.md
       enabled: false
 ```
 
-## Worked example: a project-local skill
+## Worked example: a profile skill
 
-This example creates a skill inside a project that adds a custom onboarding check.
+This example creates a skill in your active profile that adds a custom onboarding check.
 
-Create the skill directory:
+Create the skill directory under the active profile (`profiles/default` when you have not selected one):
 
 ```bash
-mkdir -p .veyyon/skills/onboarding-check
+mkdir -p ~/.veyyon/profiles/default/agent/skills/onboarding-check
 ```
 
-Create `.veyyon/skills/onboarding-check/SKILL.md`:
+Create `onboarding-check/SKILL.md` in that directory:
 
 ```markdown
 ---
@@ -180,7 +179,7 @@ Use this skill when the user asks whether the project is ready for a new contrib
 Report the result as a short checklist with `done` or `missing` for each item.
 ```
 
-Create `.veyyon/skills/onboarding-check/agents/openai.yaml`:
+Create `onboarding-check/agents/openai.yaml` in the same directory:
 
 ```yaml
 interface:
@@ -193,8 +192,8 @@ policy:
     - veyyon
 ```
 
-No registration is needed, a skill under `.veyyon/skills` (or any other discovered
-directory) is picked up automatically. If your `config.yml` uses an `includeSkills`
+No registration is needed, a skill under the active profile's `skills` directory is
+picked up automatically. If your `config.yml` uses an `includeSkills`
 allowlist, add the skill's name to it:
 
 ```yaml

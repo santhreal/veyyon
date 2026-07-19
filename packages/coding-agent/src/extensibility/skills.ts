@@ -10,11 +10,36 @@ import { skillCapability } from "../capability/skill";
 import type { SourceMeta } from "../capability/types";
 import type { SkillsSettings } from "../config/settings";
 import { type Skill as CapabilitySkill, loadCapability } from "../discovery";
+import { PROVIDER_ID as NATIVE_SKILL_PROVIDER } from "../discovery/builtin";
 import { compareSkillOrder, scanSkillsFromDir } from "../discovery/helpers";
+import { PROVIDER_ID as VEYYON_PLUGINS_SKILL_PROVIDER } from "../discovery/veyyon-plugins";
 import autoloadTemplate from "../prompts/skills/autoload.md" with { type: "text" };
 import userInvocationTemplate from "../prompts/skills/user-invocation.md" with { type: "text" };
 import type { SkillPromptDetails } from "../session/messages";
-import { expandTilde } from "../tools/path-utils";
+
+/**
+ * Skills load ONLY from these Veyyon-native providers, every one rooted under
+ * the active profile's agent dir (`~/.veyyon/profiles/<name>/agent`):
+ *
+ *   - `native`         — the profile's own `skills/` directory (skills you author)
+ *   - `veyyon-managed` — auto-learn managed skills in the same profile
+ *   - `veyyon-plugins` — skills bundled with plugins installed into the profile
+ *
+ * There is no cross-computer autodiscovery. Claude (`~/.claude`), Codex
+ * (`~/.codex`), the Agent Skills standard (`~/.agent[s]`), GitHub, OpenCode, and
+ * Claude marketplace plugins never contribute skills, and are never scanned:
+ * this list is passed to `loadCapability` as an explicit provider allowlist, so
+ * their directories are not read at all. Switching profiles switches the skill
+ * set, because every provider here resolves through the active profile.
+ *
+ * This is a function, not a top-level array, because the provider-id constants
+ * live in modules that participate in the discovery import cycle: reading them at
+ * module-init time would hit the temporal dead zone. Called from `loadSkills`,
+ * every binding is initialized.
+ */
+export function profileSkillProviderIds(): readonly string[] {
+	return [NATIVE_SKILL_PROVIDER, MANAGED_SKILLS_PROVIDER_ID, VEYYON_PLUGINS_SKILL_PROVIDER];
+}
 export interface Skill {
 	name: string;
 	description: string;
@@ -124,14 +149,6 @@ export async function loadSkills(options: LoadSkillsOptions = {}): Promise<LoadS
 	const {
 		cwd = getProjectDir(),
 		enabled = true,
-		enableCodexUser = true,
-		enableClaudeUser = true,
-		enableClaudeProject = true,
-		enablePiUser = true,
-		enablePiProject = true,
-		enableAgentsUser = true,
-		enableAgentsProject = true,
-		customDirectories = [],
 		ignoredSkills = [],
 		includeSkills = [],
 		disabledExtensions = [],
@@ -141,35 +158,16 @@ export async function loadSkills(options: LoadSkillsOptions = {}): Promise<LoadS
 	if (!enabled) {
 		return { skills: [], warnings: [] };
 	}
-	// Fall-through gate for third-party CLI providers (claude-plugins, opencode,
-	// gemini, github, ...) that share user intent with the named third-party
-	// source toggles but don't have a dedicated control of their own. Only the
-	// third-party toggles count here: the Veyyon-native providers (`agents`,
-	// `native`) get explicit branches in `isSourceEnabled` below, so folding
-	// them into the fallback would re-enable unrelated third-party CLIs whenever
-	// the user kept the default `.agent[s]/skills` toggles on while turning off
-	// Codex/Claude/Pi (issue #2401 / PR #2405 review).
-	const anyThirdPartySkillToggleEnabled =
-		enableCodexUser || enableClaudeUser || enableClaudeProject || enablePiUser || enablePiProject;
 
-	function isSourceEnabled(source: SourceMeta): boolean {
-		const { provider, level } = source;
-		// Managed skills (auto-learn) are Veyyon-native and discovered unconditionally
-		// — third-party CLI toggles must never silently hide them (cf. #2401). The
-		// master `enabled` flag above still gates them.
-		if (provider === MANAGED_SKILLS_PROVIDER_ID) return true;
-		if (provider === "codex" && level === "user") return enableCodexUser;
-		if (provider === "claude" && level === "user") return enableClaudeUser;
-		if (provider === "claude" && level === "project") return enableClaudeProject;
-		if (provider === "native" && level === "user") return enablePiUser;
-		if (provider === "native" && level === "project") return enablePiProject;
-		if (provider === "agents" && level === "user") return enableAgentsUser;
-		if (provider === "agents" && level === "project") return enableAgentsProject;
-		return anyThirdPartySkillToggleEnabled;
-	}
-
-	// Use capability API to load all skills
-	const result = await loadCapability<CapabilitySkill>(skillCapability.id, { cwd, disabledExtensions });
+	// Load skills only from the active profile's Veyyon-native providers (see
+	// profileSkillProviderIds). The allowlist means foreign-tool directories
+	// (`~/.claude`, `~/.codex`, `~/.agent[s]`, GitHub, OpenCode, Claude plugins)
+	// are never scanned, so there is nothing to filter out per source afterwards.
+	const result = await loadCapability<CapabilitySkill>(skillCapability.id, {
+		cwd,
+		disabledExtensions,
+		providers: [...profileSkillProviderIds()],
+	});
 
 	const skillMap = new Map<string, Skill>();
 	const realPathSet = new Set<string>();
@@ -191,13 +189,12 @@ export async function loadSkills(options: LoadSkillsOptions = {}): Promise<LoadS
 		(disabledExtensions ?? []).filter(id => id.startsWith("skill:")).map(id => id.slice(6)),
 	);
 	// Select authored skills from the pre-dedup superset. `loadCapability`
-	// dedupes before source toggles, so a disabled high-priority provider must
-	// not hide an enabled lower-priority provider with the same skill name.
+	// dedupes before this pass, so keep the first occurrence of each name (the
+	// providers are already scoped to the active profile by the allowlist).
 	const seenAuthoredSkillNames = new Set<string>();
 	const filteredSkills = result.all.filter(capSkill => {
 		if (capSkill._source.provider === MANAGED_SKILLS_PROVIDER_ID) return false;
 		if (disabledSkillNames.has(capSkill.name)) return false;
-		if (!isSourceEnabled(capSkill._source)) return false;
 		if (matchesIgnorePatterns(capSkill.name)) return false;
 		if (!matchesIncludePatterns(capSkill.name)) return false;
 		if (seenAuthoredSkillNames.has(capSkill.name)) return false;
@@ -246,76 +243,10 @@ export async function loadSkills(options: LoadSkillsOptions = {}): Promise<LoadS
 		}
 	}
 
-	const customDirectoryResults = await Promise.all(
-		customDirectories.map(async dir => {
-			const expandedDir = expandTilde(dir);
-			const scanResult = await scanSkillsFromDir(
-				{ cwd, home: os.homedir(), repoRoot: null },
-				{
-					dir: expandedDir,
-					providerId: "custom",
-					level: "user",
-					requireDescription: true,
-				},
-			);
-			return { expandedDir, scanResult };
-		}),
-	);
-
-	const allCustomSkills: Array<{ skill: Skill; path: string }> = [];
-	for (const { expandedDir, scanResult } of customDirectoryResults) {
-		for (const capSkill of scanResult.items) {
-			if (disabledSkillNames.has(capSkill.name)) continue;
-			if (matchesIgnorePatterns(capSkill.name)) continue;
-			if (!matchesIncludePatterns(capSkill.name)) continue;
-			allCustomSkills.push({
-				skill: {
-					name: capSkill.name,
-					description:
-						typeof capSkill.frontmatter?.description === "string" ? capSkill.frontmatter.description : "",
-					filePath: capSkill.path,
-					baseDir: capSkill.path.replace(/[\\/]SKILL\.md$/, ""),
-					source: "custom:user",
-					hide: capSkill.frontmatter?.hide === true || capSkill.frontmatter?.disableModelInvocation === true,
-					_source: { ...capSkill._source, providerName: "Custom" },
-				},
-				path: capSkill.path,
-			});
-		}
-		collisionWarnings.push(...(scanResult.warnings ?? []).map(message => ({ skillPath: expandedDir, message })));
-	}
-
-	const customRealPaths = await Promise.all(
-		allCustomSkills.map(async ({ path }) => {
-			try {
-				return await fs.realpath(path);
-			} catch {
-				return path;
-			}
-		}),
-	);
-
-	for (let i = 0; i < allCustomSkills.length; i++) {
-		const { skill } = allCustomSkills[i];
-		const resolvedPath = customRealPaths[i];
-		if (realPathSet.has(resolvedPath)) continue;
-
-		const existing = skillMap.get(skill.name);
-		if (existing) {
-			collisionWarnings.push({
-				skillPath: skill.filePath,
-				message: `name collision: "${skill.name}" already loaded from ${existing.filePath}, skipping this one`,
-			});
-		} else {
-			skillMap.set(skill.name, skill);
-			realPathSet.add(resolvedPath);
-		}
-	}
-
 	// Managed (auto-learn) skills resolve dead-last with first-wins. Source from
-	// result.all (pre-dedup): capability-level dedup runs BEFORE isSourceEnabled,
-	// so a managed skill can be shadowed by a higher-priority authored skill that
-	// is itself disabled here — managed must stay visible regardless of toggles.
+	// result.all (pre-dedup): capability-level dedup runs BEFORE this pass, so a
+	// managed skill can be shadowed by a higher-priority authored skill; managed
+	// must stay visible whenever the authored name is not actually present.
 	// Validate the on-disk name (a hand-placed managed file could carry an unsafe
 	// frontmatter name) and re-sanitize the description on read. Descriptions and
 	// names both render unescaped into the system prompt.
@@ -327,14 +258,11 @@ export async function loadSkills(options: LoadSkillsOptions = {}): Promise<LoadS
 			!matchesIgnorePatterns(capSkill.name) &&
 			matchesIncludePatterns(capSkill.name),
 	);
-	// Names claimed by any ENABLED authored skill (from the pre-dedup superset).
-	// Managed defers to these even when capability dedup hid an enabled authored
-	// skill behind a disabled higher-priority one, so managed never masks it.
+	// Names claimed by any authored skill (from the pre-dedup superset). Managed
+	// defers to these so it never masks an authored skill of the same name.
 	const enabledAuthoredNames = new Set(
 		result.all
-			.filter(
-				capSkill => capSkill._source.provider !== MANAGED_SKILLS_PROVIDER_ID && isSourceEnabled(capSkill._source),
-			)
+			.filter(capSkill => capSkill._source.provider !== MANAGED_SKILLS_PROVIDER_ID)
 			.map(capSkill => capSkill.name),
 	);
 	const managedRealPaths = await Promise.all(
@@ -350,12 +278,8 @@ export async function loadSkills(options: LoadSkillsOptions = {}): Promise<LoadS
 		const capSkill = managedCandidates[i];
 		const resolvedPath = managedRealPaths[i];
 		if (realPathSet.has(resolvedPath)) continue;
-		if (enabledAuthoredNames.has(capSkill.name)) continue; // an enabled authored skill owns this name
-		// Already claimed — e.g. by a custom-directory skill. LOAD-BEARING: custom
-		// dirs never enter `result.all`, so they are absent from `enabledAuthoredNames`
-		// above; this map check is the ONLY veto that lets a custom-dir authored skill
-		// win over a same-named managed one. The custom-dir loop (which populates
-		// skillMap, ~30 lines up) MUST run before this block — do not reorder.
+		if (enabledAuthoredNames.has(capSkill.name)) continue; // an authored skill owns this name
+		// Already loaded under this name (an authored skill won the dedup above).
 		if (skillMap.has(capSkill.name)) continue;
 		const rawDescription =
 			typeof capSkill.frontmatter?.description === "string" ? capSkill.frontmatter.description : "";

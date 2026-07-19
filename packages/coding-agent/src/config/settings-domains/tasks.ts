@@ -366,21 +366,10 @@ export const TASKS_SETTINGS = {
 		},
 	},
 
-	"skills.enableCodexUser": { type: "boolean", default: true },
-
-	"skills.enableClaudeUser": { type: "boolean", default: true },
-
-	"skills.enableClaudeProject": { type: "boolean", default: true },
-
-	"skills.enablePiUser": { type: "boolean", default: true },
-
-	"skills.enablePiProject": { type: "boolean", default: true },
-
-	"skills.enableAgentsUser": { type: "boolean", default: true },
-
-	"skills.enableAgentsProject": { type: "boolean", default: true },
-
-	"skills.customDirectories": { type: "array", default: [] as string[] },
+	// Skills load only from the active profile's Veyyon agent dir (plus its
+	// managed auto-learn skills and profile-installed plugins). There is no
+	// cross-computer autodiscovery, so there are no per-source toggles here; the
+	// two lists below filter that profile set by skill name.
 
 	"skills.ignoredSkills": { type: "array", default: [] as string[] },
 

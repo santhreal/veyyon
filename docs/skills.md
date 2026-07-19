@@ -24,16 +24,14 @@ The runtime only requires `name` and `path` for validity. In practice, matching 
 
 ### Directory layout
 
-For provider-based discovery (native/Claude/Codex/Agents/plugin providers), skills are discovered as **one level under `skills/`**:
+Skills are discovered as **one level under `skills/`**:
 
 - `<skills-root>/<skill-name>/SKILL.md`
 
-Nested patterns like `<skills-root>/group/<skill>/SKILL.md` are not discovered by provider loaders.
-
-For `skills.customDirectories`, scanning uses the same non-recursive layout (`*/SKILL.md`).
+Nested patterns like `<skills-root>/group/<skill>/SKILL.md` are not discovered.
 
 ```text
-Provider-discovered layout (non-recursive under skills/):
+Discovered layout (non-recursive under skills/):
 
 <root>/skills/
   ├─ postgres/
@@ -42,9 +40,7 @@ Provider-discovered layout (non-recursive under skills/):
   │   └─ SKILL.md      ✅ discovered
   └─ team/
       └─ internal/
-          └─ SKILL.md  ❌ not discovered by provider loaders
-
-Custom-directory scanning is also non-recursive, so nested paths are ignored unless you point `customDirectories` at that nested parent.
+          └─ SKILL.md  ❌ not discovered (nested)
 ```
 
 ### `SKILL.md` frontmatter
@@ -62,67 +58,51 @@ Supported frontmatter fields on the skill type:
 Current runtime behavior:
 
 - `name` defaults to the skill directory name
-- `description` is required for:
-  - native `.veyyon` provider skill discovery (`requireDescription: true`)
-  - `veyyon-plugins` extension-package skills and the `github` provider (`.github/skills/`), which also pass `requireDescription: true`
-  - `skills.customDirectories` scans via `scanSkillsFromDir` in `src/discovery/helpers.ts` (non-recursive)
-- the claude/codex/agents/opencode/claude-plugins providers can load skills without description
+- `description` is required for both providers that load skills ambiently:
+  - native `.veyyon` provider (`requireDescription: true`), the profile's `skills/` dir
+  - `veyyon-plugins` extension-package skills (`requireDescription: true`)
+- the managed (auto-learn) provider also requires a description
 
 ## Discovery pipeline
 
-`loadSkills()` in `src/extensibility/skills.ts` does three passes:
+Skills load only from the active profile. `loadSkills()` passes an explicit
+provider allowlist to `loadCapability("skills")`, so only the profile-native
+providers run and no foreign-tool directory is ever scanned:
 
-1. **Capability providers** via `loadCapability("skills")` (the managed/auto-learn provider's skills are skipped here and handled in pass 3)
-2. **Custom directories** via `scanSkillsFromDir(..., { requireDescription: true })` (one-level directory enumeration)
-3. **Managed (auto-learn) skills** (`veyyon-managed` provider) resolved dead-last with first-wins, so any same-named authored skill from any provider or custom directory takes precedence
+- `native` (priority 100): the profile's `.../agent/skills` dir, user level only, via `src/discovery/builtin.ts`. Project-local `.veyyon/skills` is deliberately not scanned.
+- `veyyon-plugins` (priority 90): `skills/` bundled with plugins installed into the active profile
+- `veyyon-managed` (priority 5): auto-learn skills under `.../agent/managed-skills`, discovered unconditionally (only writing/nudging is gated by `autolearn.enabled`); always defers to a same-named authored skill
 
-If `skills.enabled` is `false`, discovery returns no skills.
+The allowlist is defined by `profileSkillProviderIds()` in `src/extensibility/skills.ts`. If `skills.enabled` is `false`, discovery returns no skills.
 
-### Built-in skill providers and precedence
+Dedup key is skill name; the first item with a given name wins, and a same-named authored (`native` or `veyyon-plugins`) skill always beats the managed one.
 
-Provider ordering is priority-first (higher wins), then registration order for ties.
+### Foreign providers are import-only
 
-Current registered skill providers:
+The `claude`, `codex`, `agents`, `opencode`, `claude-plugins`, and `github`
+skill providers are still registered, but they are **not** in the ambient
+allowlist, so they never contribute skills to a session. They exist to feed the
+onboarding import scan (`scanForeignConfig` in `src/discovery/import-scan.ts`),
+which enumerates user-level foreign skills so you can copy the ones you want into
+the active profile. An imported skill becomes a profile-native `native` skill.
 
-1. `native` (priority 100): `.veyyon` user/project skills via `src/discovery/builtin.ts`
-2. `veyyon-plugins` (priority 90): `skills/` bundled next to extension packages loaded through `extensions:`, `--extension`/`-e`, or installed plugins under `~/.veyyon/profiles/default/plugins/node_modules`
-3. `claude` (priority 80)
-4. priority 70 group (in registration order):
-   - `claude-plugins`
-   - `agents`
-   - `codex`
-5. `opencode` (priority 55)
-6. `github` (priority 30): `.github/skills/<name>/SKILL.md` (GitHub Agent Skills layout, project-only)
-7. `veyyon-managed` (priority 5): auto-learn skills under `~/.veyyon/profiles/default/agent/managed-skills`, registered in `src/discovery/builtin.ts` and discovered unconditionally (only writing/nudging is gated by `autolearn.enabled`); always defers to a same-named authored skill
+### Filtering
 
-Dedup key is skill name. First item with a given name wins.
+Beyond the allowlist, `loadSkills()` applies these name-based controls:
 
-### Source toggles and filtering
-
-`loadSkills()` applies these controls:
-
-- source toggles: `enableCodexUser`, `enableClaudeUser`, `enableClaudeProject`, `enablePiUser`, `enablePiProject`, `enableAgentsUser`, `enableAgentsProject`
 - `disabledExtensions` entries with `skill:<name>`
 - `ignoredSkills` (exclude; glob patterns)
 - `includeSkills` (include allowlist; glob patterns; empty means include all)
 
-Filter order is:
-
-1. not disabled by `disabledExtensions`
-2. source enabled
-3. not ignored
-4. included (if include list present)
-
-The `agents` provider (`.agent[s]/skills`) is the canonical Veyyon-native location and has its own `enableAgentsUser`/`enableAgentsProject` toggles, disabling Claude/Codex/Pi does **not** turn it off. For providers without a dedicated toggle (`claude-plugins`, `opencode`, `gemini`, `github`, …), enablement falls back to: enabled if **any** named source toggle is enabled.
+Filter order is: not disabled by `disabledExtensions`, then not ignored, then included (if an include list is present). There are no per-source toggles.
 
 ### Collision and duplicate handling
 
-- Capability dedup already keeps first skill per name (highest-precedence provider)
+- Capability dedup already keeps the first skill per name (highest-precedence provider)
 - `extensibility/skills.ts` additionally:
   - de-duplicates identical files by `realpath` (symlink-safe)
   - emits collision warnings when a later skill name conflicts
   - keeps the convenience `loadSkillsFromDir({ dir, source })` API as a thin adapter over `scanSkillsFromDir`
-- Custom-directory skills are merged after provider skills and follow the same collision behavior
 
 ## Runtime usage behavior
 
@@ -223,5 +203,5 @@ No fallback search is performed for missing assets.
 - Put each skill in its own directory: `<skills-root>/<skill-name>/SKILL.md`
 - Always include explicit `name` and `description` frontmatter
 - Keep referenced assets under the same skill directory and access with `skill://<name>/...`
-- For nested taxonomy (`team/domain/skill`), point `skills.customDirectories` to the nested parent directory; scanning itself remains non-recursive
-- Avoid duplicate skill names across sources; first match wins by provider precedence
+- Put every skill in the active profile's `skills/` dir; there is no nested-taxonomy or custom-directory scanning
+- Avoid duplicate skill names; the first match wins by provider precedence (authored beats managed)
