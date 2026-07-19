@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import { afterEach, describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it, spyOn } from "bun:test";
 import { initBeam } from "@veyyon/mnemopi/core/beam";
 import {
 	consolidateToEpisodic,
@@ -18,7 +18,9 @@ import {
 } from "@veyyon/mnemopi/core/beam/consolidate";
 import type { BeamMemoryState } from "@veyyon/mnemopi/core/beam/types";
 import { REGEX_EXTRACTION_MAX_INPUT_CHARS } from "@veyyon/mnemopi/core/entities";
+import { EpisodicGraph } from "@veyyon/mnemopi/core/episodic-graph";
 import { closeQuietly, openDatabase } from "@veyyon/mnemopi/db";
+import { logger } from "@veyyon/utils";
 
 function state(sessionId = "s1"): BeamMemoryState {
 	const db = openDatabase(":memory:", { create: true, readwrite: true });
@@ -623,5 +625,74 @@ describe("beam consolidation free functions", () => {
 		expect(report.stale_hours as number).toBeGreaterThan(24);
 		expect(report.details).toEqual({ stale: true, consolidation_log_entries_checked: "last 7 days" });
 		expect(report.recommendation as string).toContain("Run sleepAllSessions()");
+	});
+});
+
+describe("episodic veracity aggregation and graph-enrichment failure", () => {
+	it("settles an all-unrecognized veracity group to unknown when consolidating", () => {
+		const beam = trackedState();
+		// One source so the rows land in a single sleep chunk. Every veracity is
+		// either the literal "unknown" or a string clampVeracity does not recognize
+		// (which clamps to unknown), so aggregateEpisodicVeracity finds no non-unknown
+		// winner and returns unknown through its fallthrough.
+		insertWorkingVeracity(beam.db, "wv1", "s1", "asserted");
+		insertWorkingVeracity(beam.db, "wv2", "s1", "verified");
+		insertWorkingVeracity(beam.db, "wv3", "s1", "unknown");
+
+		const result = sleep(beam, false);
+		expect(result.status).toBe("consolidated");
+		expect(result.items_consolidated).toBe(3);
+
+		const rows = beam.db.query("SELECT veracity FROM episodic_memory").all() as { veracity: string }[];
+		expect(rows).toHaveLength(1);
+		expect(rows[0].veracity).toBe("unknown");
+	});
+
+	it("picks the most frequent recognized veracity as the consolidated winner", () => {
+		const beam = trackedState();
+		insertWorkingVeracity(beam.db, "wa1", "s1", "stated");
+		insertWorkingVeracity(beam.db, "wa2", "s1", "stated");
+		insertWorkingVeracity(beam.db, "wa3", "s1", "inferred");
+
+		expect(sleep(beam, false).items_consolidated).toBe(3);
+		const rows = beam.db.query("SELECT veracity FROM episodic_memory").all() as { veracity: string }[];
+		expect(rows).toHaveLength(1);
+		expect(rows[0].veracity).toBe("stated");
+	});
+
+	it("stores the episodic memory and surfaces a warning when graph enrichment fails", () => {
+		const beam = trackedState();
+		// A real EpisodicGraph over a closed database: instanceof passes so
+		// consolidateToEpisodic reuses it, and ingestMemory then throws, exercising
+		// the best-effort catch that must never roll back the episodic write.
+		const brokenDb = openDatabase(":memory:");
+		const brokenGraph = new EpisodicGraph({ db: brokenDb });
+		brokenDb.close();
+		beam.episodicGraph = brokenGraph;
+
+		const warn = spyOn(logger, "warn").mockImplementation(() => {});
+		try {
+			const memoryId = consolidateToEpisodic(beam, "A settled summary of the day", ["src1", "src2"], "sleep", 0.6, {
+				veracity: "stated",
+			});
+
+			// The episodic row landed despite the graph failure.
+			const row = beam.db.query("SELECT content, veracity FROM episodic_memory WHERE id = ?").get(memoryId) as {
+				content: string;
+				veracity: string;
+			};
+			expect(row.content).toBe("A settled summary of the day");
+			expect(row.veracity).toBe("stated");
+
+			// The failure is surfaced, not swallowed.
+			const enrichmentWarn = warn.mock.calls.find(call =>
+				String(call[0]).includes("episodic-graph enrichment failed"),
+			);
+			expect(enrichmentWarn).toBeDefined();
+			expect(enrichmentWarn?.[1] as Record<string, unknown>).toMatchObject({ memoryId });
+		} finally {
+			warn.mockRestore();
+			closeQuietly(brokenDb);
+		}
 	});
 });
