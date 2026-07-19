@@ -43,6 +43,7 @@
  */
 
 import { emptyUsage } from "@veyyon/catalog/models";
+import { untilAborted } from "@veyyon/utils";
 import { registerCustomApi } from "../api-registry";
 import * as AIError from "../error";
 import type {
@@ -338,8 +339,9 @@ async function runMock(
 	}
 
 	if (response.delayMs && response.delayMs > 0) {
+		const delayMs = response.delayMs;
 		try {
-			await sleep(response.delayMs, options?.signal);
+			await untilAborted(options?.signal, () => Bun.sleep(delayMs));
 		} catch {
 			emitTerminalError(stream, model, startedAt, perfStart, "aborted", "Mock aborted during delay.");
 			return;
@@ -477,25 +479,6 @@ function emitTerminalError(
 	};
 	stream.push({ type: "start", partial: failure });
 	stream.push({ type: "error", reason, error: failure });
-}
-
-function sleep(ms: number, signal?: AbortSignal): Promise<void> {
-	const { promise, resolve, reject } = Promise.withResolvers<void>();
-	if (signal?.aborted) {
-		reject(signal.reason);
-		return promise;
-	}
-	const onAbort = () => {
-		clearTimeout(timer);
-		signal?.removeEventListener("abort", onAbort);
-		reject(signal?.reason ?? new AIError.AbortError("aborted"));
-	};
-	const timer = setTimeout(() => {
-		signal?.removeEventListener("abort", onAbort);
-		resolve();
-	}, ms);
-	signal?.addEventListener("abort", onAbort, { once: true });
-	return promise;
 }
 
 function generateToolCallId(state: MockModel): string {
