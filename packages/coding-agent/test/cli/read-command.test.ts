@@ -1,10 +1,11 @@
 /**
  * `veyyon read` CLI probe: prints the read tool's content blocks exactly as
  * the model receives them (hashline header + numbered lines), exits 1 on a
- * missing path, and surfaces the binary-file refusal notice. The refusal
- * currently exits 0 because the tool returns it as a non-error result — that
- * contract is under review in BACKLOG READ-CLI-BINARY-EXIT0; this suite pins
- * today's behavior so a decision shows up as an intentional test change.
+ * missing path, and exits 1 on a binary-file refusal. The tool keeps the
+ * refusal a non-error result so the agent gets the `:raw` hint without a retry
+ * storm; the CLI has no retry loop, so it reports the refusal honestly via a
+ * `details.contentUnavailable` marker and a non-zero exit (BACKLOG
+ * READ-CLI-BINARY-EXIT0). The bracketed notice and `:raw` hint still print.
  */
 import { describe, expect, it } from "bun:test";
 import { mkdtempSync, writeFileSync } from "node:fs";
@@ -52,11 +53,11 @@ describe("veyyon read", () => {
 		expect(stderr).toContain("not found");
 	}, 30_000);
 
-	it("refuses a binary file with the :raw hint (currently exit 0 — see ledger)", async () => {
+	it("exits 1 on a binary file while still printing the :raw hint", async () => {
 		const dir = mkdtempSync(path.join(tmpdir(), "veyyon-read-fixture-"));
 		writeFileSync(path.join(dir, "blob.bin"), Buffer.from([0x00, 0xff, 0xfe, 0x00, 0x01, 0x02]));
 		const { exitCode, stdout } = await runRead(["blob.bin"], dir);
-		expect(exitCode).toBe(0);
+		expect(exitCode).toBe(1);
 		expect(stdout).toContain("Cannot read binary file");
 		expect(stdout).toContain(":raw");
 	}, 30_000);
