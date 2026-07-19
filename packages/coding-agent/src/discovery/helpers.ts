@@ -9,6 +9,7 @@ import {
 	getConfigDirName,
 	getPluginsDir,
 	getProjectDir,
+	isEacces,
 	isEnoent,
 	logger,
 	parseFrontmatter,
@@ -296,24 +297,57 @@ export function parseAgentFields(frontmatter: Record<string, unknown>): ParsedAg
 	return { name, description, tools, spawns, model, output, thinkingLevel, blocking, autoloadSkills, readSummarize };
 }
 
+// An empty directory scan is ambiguous: the directory may be genuinely empty or
+// missing (benign, nothing to discover), or it may exist but deny read access,
+// in which case its entries silently vanished (Law 10). The native glob cannot
+// carry that distinction across the boundary — a missing path throws while an
+// unreadable one is failed closed at the walker root probe or, on an older
+// native build, swallowed to an empty set. Re-classify here with Node fs, which
+// reports a real errno, so the caller never has to string-match a message.
+// Returns a warning when the directory exists but is not readable, else null.
+function unreadableDirWarning(dir: string): string | null {
+	try {
+		// Listing a directory requires read permission on the directory itself;
+		// a chmod-000 directory fails this with EACCES even though it stats fine.
+		fs.accessSync(dir, fs.constants.R_OK);
+		return null;
+	} catch (err) {
+		if (isEacces(err)) {
+			return `directory exists but is not readable, so its entries were skipped: ${dir} (${errorMessage(err)})`;
+		}
+		// ENOENT / ENOTDIR and friends are the normal "nothing to discover" case.
+		return null;
+	}
+}
+
+// Warn (and optionally record) when an empty scan is actually an unreadable
+// directory rather than an empty one. Callers invoke this only on an empty
+// result, so the extra stat never touches the common non-empty discovery path.
+function surfaceUnreadableDir(dir: string, warnings?: string[]): void {
+	const warning = unreadableDirWarning(dir);
+	if (!warning) return;
+	warnings?.push(warning);
+	logger.warn("Discovery: directory exists but is not readable; its entries were skipped", { path: dir });
+}
+
 async function globIf(
 	dir: string,
 	pattern: string,
 	fileType: FileType,
 	recursive: boolean = true,
 ): Promise<Array<{ path: string }>> {
+	let matches: Array<{ path: string }>;
 	try {
-		const result = await glob({ pattern, path: dir, gitignore: true, hidden: false, fileType, recursive });
-		return result.matches;
+		matches = (await glob({ pattern, path: dir, gitignore: true, hidden: false, fileType, recursive })).matches;
 	} catch {
-		// The native glob throws only when the path is absent or is not a directory
-		// (both benign probe misses, nothing to discover). A directory that exists
-		// but is unreadable does NOT throw here: the native layer swallows the
-		// permission/IO error and returns an empty match set, so this catch cannot
-		// distinguish it. Surfacing that case is tracked as LAW10-NATIVE-GLOB-SWALLOWS-IO
-		// (fix belongs in crates/veyyon-natives/src/iofs.rs, not this catch).
-		return [];
+		// The native glob throws for an absent path or a non-directory (benign
+		// probe misses) and, with the walker root readability fix, for an
+		// unreadable directory. Treat the throw as an empty result and let the
+		// readability probe below decide whether it deserves a warning.
+		matches = [];
 	}
+	if (matches.length === 0) surfaceUnreadableDir(dir);
+	return matches;
 }
 
 export interface ScanSkillsFromDirOptions {
@@ -485,9 +519,16 @@ export async function loadFilesFromDir<T>(
 		});
 		matches = result.matches;
 	} catch {
-		// Native glob throws only for an absent path or a non-directory (benign).
-		// An existing-but-unreadable directory is swallowed by the native layer and
-		// returns empty, so it cannot be surfaced here — see LAW10-NATIVE-GLOB-SWALLOWS-IO.
+		// Native glob throws for an absent path or a non-directory (benign) and,
+		// with the walker root readability fix, for an unreadable directory. Fall
+		// through with an empty match set so the readability probe below can tell
+		// an unreadable directory (warn) from a missing one (silent).
+		matches = [];
+	}
+	if (matches.length === 0) {
+		// An empty scan of an unreadable directory means its files silently
+		// vanished; record it in the structured warnings channel and log it.
+		surfaceUnreadableDir(dir, warnings);
 		return { items, warnings };
 	}
 
