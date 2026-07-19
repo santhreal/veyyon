@@ -13,7 +13,7 @@ import { mmrRerank } from "../mmr";
 import { adjustWeights, classifyIntent } from "../query-intent";
 import { CORE_QUERY_STOP_WORDS, getSynonyms, normalizeQuery, STOP_WORDS as QUERY_STOP_WORDS } from "../synonyms";
 import { extractTemporal } from "../temporal-parser";
-import { cosineSimilarity } from "../vector-math";
+import { cosineSimilarity, decodeEmbeddingJson } from "../vector-math";
 import type { BeamMemoryState, RecallEnhancedOptions, RecallOptions, RecallResult } from "./types";
 
 type DbValue = string | number | null | Uint8Array;
@@ -505,23 +505,6 @@ function normalizeRanks(rows: readonly Row[], key: string): Map<string | number,
 	return out;
 }
 
-function parseEmbedding(raw: unknown): number[] | null {
-	if (typeof raw !== "string") return null;
-	try {
-		const parsed = JSON.parse(raw) as unknown;
-		if (!Array.isArray(parsed)) return null;
-		const vector = new Array<number>(parsed.length);
-		for (let i = 0; i < parsed.length; i += 1) {
-			const value = Number(parsed[i]);
-			if (!Number.isFinite(value)) return null;
-			vector[i] = value;
-		}
-		return vector;
-	} catch {
-		return null;
-	}
-}
-
 function vectorSimilarities(
 	beam: BeamMemoryState,
 	memoryIds: readonly string[],
@@ -543,7 +526,7 @@ function vectorSimilarities(
 			chunk,
 		);
 		for (const row of rows) {
-			const vector = parseEmbedding(row.embedding_json);
+			const vector = decodeEmbeddingJson(row.embedding_json);
 			const id = stringOrEmpty(row.memory_id);
 			if (vector !== null && id.length > 0) out.set(id, Math.max(0, cosineSimilarity(queryEmbedding, vector)));
 		}
