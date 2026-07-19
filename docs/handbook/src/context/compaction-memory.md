@@ -28,6 +28,27 @@ Primary compaction knobs (settings → Models → Compaction, or `config.yml`):
 `/compact <focus>` steers a run with an "Additional focus:" directive. Recent user messages are
 retained verbatim up to the type's budget.
 
+## Shake and duplicate elision
+
+Shake is a lighter reducer than compaction. Instead of summarizing history, it drops heavy
+content out of the live context and leaves a short placeholder in its place. Whole tool
+results and large fenced or XML blocks are replaced with a marker such as
+`[shaken ~1200 tokens — recover: artifact://42 (region 3)]`. The full text is saved as a
+session artifact first, so you can always read it back with `read artifact://42`. Nothing is
+lost, it just stops being resent on every turn. Run it on demand with `/shake`, or let
+auto-maintenance run it when `compaction.strategy` is `shake`.
+
+Shake also removes redundancy. When you read the same unchanged file twice, or run the same
+command twice and get the same output, every copy but the newest carries no new information.
+Shake finds each earlier tool result whose tool, arguments, and output exactly match a later
+one, and elides the earlier copies through the same artifact path. The newest copy stays in
+place. This runs even for recent results that the size-based pass would otherwise keep, because
+a duplicate is redundant however recent it is. Results from a protected tool (such as `skill`),
+error results, and results already elided are never deduplicated.
+
+The match is exact. If a command's output changes between runs, both runs are kept, because the
+later one is genuinely new information rather than a repeat.
+
 ## Memory backends
 
 When `memory.backend` is `mnemopi` or `local`, compaction can request **pre-compaction context**

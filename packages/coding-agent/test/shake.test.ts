@@ -125,6 +125,41 @@ describe("AgentSession shake", () => {
 		});
 	});
 
+	describe("redundancy dedup", () => {
+		it("elides an earlier byte-identical result the heavy pass would protect, keeping the newest copy", async () => {
+			// Two small, recent, identical results: the heavy pass protects both
+			// (inside protectTokens, below minSavings), so only the redundancy pass
+			// can reclaim the older copy. Using DEFAULT_SHAKE_CONFIG (not the manual
+			// aggressive preset) proves the dedup path fires on its own.
+			seedHeavyToolResult("IDENTICAL_READ_BODY\n".repeat(20));
+			seedHeavyToolResult("IDENTICAL_READ_BODY\n".repeat(20));
+
+			const heavyOnly = compactionModule.collectShakeRegions(
+				sessionManager.getBranch(),
+				compactionModule.DEFAULT_SHAKE_CONFIG,
+			);
+			expect(heavyOnly).toHaveLength(0);
+
+			const result = await session.shake("elide", { config: compactionModule.DEFAULT_SHAKE_CONFIG });
+			expect(result.toolResultsDropped).toBe(1);
+			expect(result.artifactId).toBeDefined();
+
+			const [older, newer] = branchToolResults();
+			expect(older.prunedAt).toBeGreaterThan(0);
+			const olderText = older.content.map(b => (b.type === "text" ? b.text : "")).join("");
+			expect(olderText).toContain(`artifact://${result.artifactId}`);
+			expect(newer.prunedAt).toBeUndefined();
+			expect(newer.content).toEqual([{ type: "text", text: "IDENTICAL_READ_BODY\n".repeat(20) }]);
+		});
+
+		it("leaves a single result untouched (nothing to dedup)", async () => {
+			seedHeavyToolResult("UNIQUE_BODY\n".repeat(20));
+			const result = await session.shake("elide", { config: compactionModule.DEFAULT_SHAKE_CONFIG });
+			expect(result.toolResultsDropped).toBe(0);
+			expect(branchToolResults()[0].prunedAt).toBeUndefined();
+		});
+	});
+
 	describe("images", () => {
 		it("mirrors dropImages and reports the removed image count", async () => {
 			const png: ImageContent = { type: "image", data: "iVBORw0KGgo", mimeType: "image/png" };

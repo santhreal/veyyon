@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-ca1f7644.js";
+            window.path_to_searchindex_js = "../searchindex-0e386aa7.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-cc1a72e9.js"></script>
@@ -224,6 +224,23 @@ interactive model. See <a href="../using/roles-and-profiles.html">Models, roles,
 </ul>
 <p><code>/compact &lt;focus&gt;</code> steers a run with an “Additional focus:” directive. Recent user messages are
 retained verbatim up to the type’s budget.</p>
+<h2 id="shake-and-duplicate-elision"><a class="header" href="#shake-and-duplicate-elision">Shake and duplicate elision</a></h2>
+<p>Shake is a lighter reducer than compaction. Instead of summarizing history, it drops heavy
+content out of the live context and leaves a short placeholder in its place. Whole tool
+results and large fenced or XML blocks are replaced with a marker such as
+<code>[shaken ~1200 tokens — recover: artifact://42 (region 3)]</code>. The full text is saved as a
+session artifact first, so you can always read it back with <code>read artifact://42</code>. Nothing is
+lost, it just stops being resent on every turn. Run it on demand with <code>/shake</code>, or let
+auto-maintenance run it when <code>compaction.strategy</code> is <code>shake</code>.</p>
+<p>Shake also removes redundancy. When you read the same unchanged file twice, or run the same
+command twice and get the same output, every copy but the newest carries no new information.
+Shake finds each earlier tool result whose tool, arguments, and output exactly match a later
+one, and elides the earlier copies through the same artifact path. The newest copy stays in
+place. This runs even for recent results that the size-based pass would otherwise keep, because
+a duplicate is redundant however recent it is. Results from a protected tool (such as <code>skill</code>),
+error results, and results already elided are never deduplicated.</p>
+<p>The match is exact. If a command’s output changes between runs, both runs are kept, because the
+later one is genuinely new information rather than a repeat.</p>
 <h2 id="memory-backends"><a class="header" href="#memory-backends">Memory backends</a></h2>
 <p>When <code>memory.backend</code> is <code>mnemopi</code> or <code>local</code>, compaction can request <strong>pre-compaction context</strong>
 from the active memory backend so summaries retain project facts. See <a href="../features/memory.html">Memory</a>.</p>

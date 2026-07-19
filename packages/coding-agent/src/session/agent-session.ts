@@ -51,6 +51,7 @@ import {
 	calculateContextTokens,
 	calculatePromptTokens,
 	collectEntriesForBranchSummary,
+	collectRedundantToolResultRegions,
 	collectShakeRegions,
 	compact,
 	compactionContextTokens,
@@ -10318,7 +10319,21 @@ export class AgentSession {
 			// only churns persisted history with no prompt/cache effect.
 			keepBoundaryId: getLatestCompactionEntry(branchEntries)?.firstKeptEntryId,
 		});
-		const regions = collectShakeRegions(branchEntries, config);
+		// Heavy-content pass: large tool results and fenced/XML blocks under the
+		// usual size/protect-window/savings gates. Redundancy pass: earlier
+		// tool-results byte-identical to a newer one (re-read of an unchanged file,
+		// re-run of the same command). A duplicate carries no unique information, so
+		// it is eligible however recent it is — the two passes overlap only on the
+		// same tool-result entry, which the newer pass must not re-elide.
+		const heavyRegions = collectShakeRegions(branchEntries, config);
+		const redundantRegions = collectRedundantToolResultRegions(branchEntries, config);
+		const heavyToolResultEntries = new Set<ShakeRegion["entry"]>(
+			heavyRegions.filter(region => region.kind === "toolResult").map(region => region.entry),
+		);
+		const regions = [
+			...heavyRegions,
+			...redundantRegions.filter(region => !heavyToolResultEntries.has(region.entry)),
+		];
 		if (regions.length === 0) {
 			return { mode, toolResultsDropped: 0, blocksDropped: 0, tokensFreed: 0 };
 		}

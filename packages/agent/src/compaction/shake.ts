@@ -12,7 +12,7 @@
 
 import type { TextContent, ToolResultMessage } from "@veyyon/ai";
 import { countTokens } from "../tokenizer";
-import type { AgentMessage } from "../types";
+import type { AgentMessage, AgentToolCall } from "../types";
 import { estimateTokens } from "./compaction";
 import type { CustomMessageEntry, SessionEntry, SessionMessageEntry } from "./entries";
 import {
@@ -341,6 +341,92 @@ export function collectShakeRegions(entries: SessionEntry[], config: ShakeConfig
 	for (const region of regions) savings += Math.max(0, region.tokens - PLACEHOLDER_TOKEN_ESTIMATE);
 	if (savings < config.minSavings) return [];
 
+	return regions;
+}
+
+/**
+ * Stable signature of a tool-result for redundancy matching: tool name, the
+ * paired call's arguments (key-sorted so argument order never splits a match),
+ * and the verbatim output text. Two results with the same signature carry the
+ * same information — re-reading an unchanged file or re-running the same command
+ * produces byte-identical output, and only the newest copy needs to stay live.
+ */
+function redundancySignature(toolName: string, call: AgentToolCall | undefined, outputText: string): string {
+	const args = call?.arguments;
+	const argsKey = args === undefined ? "" : JSON.stringify(args, Object.keys(args).sort());
+	return `${toolName} ${argsKey} ${outputText}`;
+}
+
+/**
+ * Locate earlier tool-result messages whose (tool, arguments, output) is
+ * byte-identical to a LATER tool-result on the same branch.
+ *
+ * Re-reading an unchanged file or re-running the same command leaves several
+ * identical results in context; every copy but the newest is pure redundancy.
+ * This returns the earlier copies as tool-result regions (the newest copy of
+ * each signature is always kept), in document order. The caller offloads their
+ * text through the same artifact path as {@link collectShakeRegions}, so the
+ * bytes stay recoverable even if the surviving copy is later elided too.
+ *
+ * Unlike {@link collectShakeRegions} this ignores the protect-recent window and
+ * the savings gate: a duplicate carries no unique recent information, so it is
+ * eligible however recent it is, and dedup is meant to run proactively rather
+ * than only under context pressure. Protected tools, error results, empty
+ * results, and already-pruned results are never deduped — an identical error may
+ * still be worth re-reading in place, and protection/prune state is
+ * authoritative. `keepBoundaryId` still applies: entries summarized away by a
+ * prior compaction are never sent, so shaking them only churns history.
+ */
+export function collectRedundantToolResultRegions(entries: SessionEntry[], config: ShakeConfig): ShakeRegion[] {
+	const n = entries.length;
+	if (n === 0) return [];
+
+	const toolCallsById = collectToolCallsById(entries);
+
+	const boundaryIndex =
+		config.keepBoundaryId === undefined
+			? 0
+			: Math.max(
+					0,
+					entries.findIndex(entry => entry.id === config.keepBoundaryId),
+				);
+
+	interface Candidate {
+		index: number;
+		entry: SessionMessageEntry;
+		message: ToolResultMessage;
+		signature: string;
+		text: string;
+	}
+	const candidates: Candidate[] = [];
+	// signature -> index of the newest (survivor) candidate.
+	const latestBySignature = new Map<string, number>();
+
+	for (let i = boundaryIndex; i < n; i++) {
+		const toolResult = getToolResultMessage(entries[i]);
+		if (!toolResult) continue;
+		if (toolResult.prunedAt !== undefined) continue;
+		if (toolResult.isError === true) continue;
+		if (isProtectedToolResult(toolResult, toolCallsById.get(toolResult.toolCallId), config.protectedTools)) continue;
+		const text = toolResultText(toolResult);
+		if (text.length === 0) continue;
+		const signature = redundancySignature(toolResult.toolName, toolCallsById.get(toolResult.toolCallId), text);
+		candidates.push({ index: i, entry: entries[i] as SessionMessageEntry, message: toolResult, signature, text });
+		latestBySignature.set(signature, i);
+	}
+
+	const regions: ShakeRegion[] = [];
+	for (const candidate of candidates) {
+		// The newest copy of each signature survives; every earlier copy is elided.
+		if (latestBySignature.get(candidate.signature) === candidate.index) continue;
+		regions.push({
+			kind: "toolResult",
+			entry: candidate.entry,
+			tokens: estimateTokens(candidate.message as AgentMessage),
+			originalText: candidate.text,
+			label: candidate.message.toolName,
+		});
+	}
 	return regions;
 }
 
