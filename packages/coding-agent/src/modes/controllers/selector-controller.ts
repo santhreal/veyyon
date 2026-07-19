@@ -103,7 +103,13 @@ export class SelectorController {
 	 * @param create Factory that receives a `done` callback and returns the component and focus target
 	 */
 	showSelector(create: (done: () => void) => { component: Component; focus: Component }): void {
+		// Re-entrant guard: a selection path and a cancel path may both call
+		// `done()` (or a component may fire both), so the editor is restored
+		// exactly once instead of clearing and re-adding it twice.
+		let closed = false;
 		const done = () => {
+			if (closed) return;
+			closed = true;
 			this.ctx.editorContainer.clear();
 			this.ctx.editorContainer.addChild(this.ctx.editor);
 			this.ctx.ui.setFocus(this.ctx.editor);
@@ -126,8 +132,22 @@ export class SelectorController {
 		},
 	): void {
 		let overlayHandle: OverlayHandle | undefined;
+		// Re-entrant guard + early-close handling. `done()` may fire more than
+		// once (a select path and a cancel path can race), so the overlay must
+		// hide exactly once. It may also fire synchronously inside `create()`,
+		// before `showOverlay` has returned a handle to hide; in that case we
+		// record the request and run the teardown right after the handle exists,
+		// so the overlay never gets stranded open (Law 10: no silent no-op).
+		let closed = false;
+		let closeRequestedEarly = false;
 		const done = () => {
-			overlayHandle?.hide();
+			if (closed) return;
+			if (!overlayHandle) {
+				closeRequestedEarly = true;
+				return;
+			}
+			closed = true;
+			overlayHandle.hide();
 			this.focusActiveEditorArea();
 			this.ctx.ui.requestRender();
 		};
@@ -140,6 +160,10 @@ export class SelectorController {
 			margin: 0,
 			fullscreen: true,
 		});
+		if (closeRequestedEarly) {
+			done();
+			return;
+		}
 		this.ctx.ui.setFocus(focus);
 		this.ctx.ui.requestRender();
 	}
