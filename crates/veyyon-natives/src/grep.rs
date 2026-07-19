@@ -438,7 +438,18 @@ const fn parse_output_mode(mode: Option<GrepOutputMode>) -> OutputMode {
 	}
 }
 
-fn resolve_search_path(path: &str) -> Result<PathBuf> {
+/// Make a grep operand absolute without canonicalizing it.
+///
+/// This is deliberately NOT `veyyon_walker::resolve_search_path`, which
+/// resolves a canonical readable *directory* (it stats, rejects
+/// non-directories, and follows symlinks via `canonicalize`). A grep operand
+/// may be a single file or a directory, and grep reports match paths relative
+/// to the operand the caller passed, so canonicalizing here would rewrite a
+/// symlinked operand and change how every match path prints. Keep this a plain
+/// cwd-join; the caller stats the result to branch file vs directory, and the
+/// directory branch fails closed on an unreadable root through the shared
+/// `veyyon_walker::ensure_readable_dir`.
+fn resolve_grep_operand(path: &str) -> Result<PathBuf> {
 	let candidate = PathBuf::from(path);
 	if candidate.is_absolute() {
 		return Ok(candidate);
@@ -1934,7 +1945,7 @@ fn grep_sync_with_matcher<M: Matcher + Sync>(
 	ct: task::CancelToken,
 	matcher: &M,
 ) -> Result<GrepResult> {
-	let search_path = resolve_search_path(&options.path)?;
+	let search_path = resolve_grep_operand(&options.path)?;
 	let metadata = std::fs::metadata(&search_path)
 		.map_err(|err| Error::from_reason(format!("Path not found: {err}")))?;
 	let multiline = options.multiline.unwrap_or(false);
@@ -2261,7 +2272,7 @@ mod tests {
 	use grep_matcher::Matcher;
 
 	#[cfg(unix)]
-	use super::{GrepConfig, GrepOutputMode, grep_sync};
+	use super::{GrepConfig, GrepOutputMode, grep_sync, resolve_grep_operand};
 	use super::{escape_unescaped_parentheses, sanitize_braces};
 	#[cfg(unix)]
 	use crate::task;
@@ -2448,6 +2459,34 @@ mod tests {
 			assert_eq!(result.matches[0].line, line);
 		}
 	}
+	#[cfg(unix)]
+	#[test]
+	fn resolve_grep_operand_absolutizes_without_canonicalizing() {
+		// An absolute operand passes through byte-for-byte. Crucially it is NOT
+		// canonicalized: a symlinked operand must stay the symlink so grep reports
+		// match paths relative to the path the caller passed. This is the exact
+		// contract that keeps it separate from veyyon_walker::resolve_search_path.
+		let root = TempDirGuard::new();
+		let target = root.path().join("target-dir");
+		fs::create_dir(&target).expect("create target dir");
+		let link = root.path().join("link-dir");
+		std::os::unix::fs::symlink(&target, &link).expect("create symlink");
+
+		let resolved =
+			resolve_grep_operand(&link.to_string_lossy()).expect("absolute operand resolves");
+		assert_eq!(resolved, link, "operand must stay the symlink, not resolve to its target");
+		assert_ne!(resolved, target, "resolve_grep_operand must not canonicalize");
+
+		// A relative operand joins the current directory and comes back absolute.
+		let relative = resolve_grep_operand("some/relative/path").expect("relative operand resolves");
+		assert!(relative.is_absolute(), "a relative operand resolves to an absolute path");
+		assert!(
+			relative.ends_with("some/relative/path"),
+			"the relative tail is preserved: {}",
+			relative.display()
+		);
+	}
+
 	#[cfg(unix)]
 	#[test]
 	fn grep_directory_skips_fifo_entries() {
