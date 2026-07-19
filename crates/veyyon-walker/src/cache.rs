@@ -260,7 +260,40 @@ pub fn resolve_search_path(path: &str) -> Result<PathBuf, WalkError<String>> {
 			message: "Search path must be a directory".to_string(),
 		});
 	}
-	Ok(std::fs::canonicalize(&root).unwrap_or(root))
+	let resolved = std::fs::canonicalize(&root).unwrap_or(root);
+	// Validate the root operand's READABILITY here, in the one place the root is
+	// already checked for existence and being a directory. metadata() above
+	// succeeds on a chmod-000 directory (stat needs only parent search
+	// permission, not read permission on the directory itself), so without this
+	// probe an unreadable root's read_dir fails deep in the walk and — in
+	// DirectoryErrorMode::SkipSkippable, the mode the glob fast path uses — is
+	// silently skipped as if the directory were empty. That makes an unreadable
+	// skills/rules directory indistinguishable from an empty one, so its
+	// contents vanish with zero operator signal (Law 10). Fail closed at the
+	// boundary instead. This is the root operand only: descendant permission
+	// errors during a broad walk stay tolerated (handle_read_dir_error /
+	// walk_parallel_dir keep skipping them), matching a broad walk's intent.
+	match std::fs::read_dir(&resolved) {
+		Ok(mut entries) => {
+			// Some platforms surface the permission error on the first read
+			// rather than on open, so probe one entry before declaring it
+			// readable. The iterator is dropped immediately; the real walk
+			// re-opens the directory.
+			if let Some(Err(err)) = entries.next() {
+				return Err(WalkError::InvalidData {
+					path:    resolved,
+					message: format!("Search path is not readable: {err}"),
+				});
+			}
+		},
+		Err(err) => {
+			return Err(WalkError::InvalidData {
+				path:    resolved,
+				message: format!("Search path is not readable: {err}"),
+			});
+		},
+	}
+	Ok(resolved)
 }
 
 fn collect_entries_uncached<H, E>(
@@ -666,5 +699,59 @@ mod tests {
 			.expect("full scan includes file");
 		assert!(full_file.mtime.is_some(), "full scan should include mtime");
 		assert_eq!(full_file.size, Some(2.0));
+	}
+
+	#[cfg(unix)]
+	#[test]
+	fn resolve_search_path_rejects_unreadable_root() {
+		// A directory that exists and is a directory but is not readable
+		// (chmod 000) must fail resolution loudly rather than resolving cleanly
+		// and letting the walk skip it silently as if it were empty (Law 10:
+		// no silent fallbacks). Root bypasses permission checks, so this is
+		// meaningless under uid 0 — skip there rather than assert a false pass.
+		// SAFETY: getuid is a simple libc call with no arguments and no state.
+		if unsafe { libc::getuid() } == 0 {
+			return;
+		}
+
+		let guard = TempDirGuard::new();
+		let unreadable = guard.path().join("locked");
+		fs::create_dir(&unreadable).expect("create locked dir");
+		fs::write(unreadable.join("hidden.txt"), b"secret").expect("seed a file");
+		fs::set_permissions(&unreadable, std::os::unix::fs::PermissionsExt::from_mode(0o000))
+			.expect("chmod 000");
+
+		let result = super::resolve_search_path(&unreadable.to_string_lossy());
+
+		// Restore permissions before asserting so the guard can clean up even
+		// if the assertion fails.
+		fs::set_permissions(&unreadable, std::os::unix::fs::PermissionsExt::from_mode(0o755))
+			.expect("restore perms");
+
+		match result {
+			Err(crate::WalkError::InvalidData { message, .. }) => {
+				assert!(
+					message.contains("not readable"),
+					"expected an unreadable-root message, got: {message}"
+				);
+			},
+			Err(other) => panic!("expected InvalidData for unreadable root, got: {other:?}"),
+			Ok(path) => panic!("unreadable root resolved instead of failing: {}", path.display()),
+		}
+	}
+
+	#[test]
+	fn resolve_search_path_accepts_a_readable_root() {
+		// The readability probe must not reject an ordinary readable directory,
+		// empty or not: it opens the directory and probes at most one entry.
+		let guard = TempDirGuard::new();
+		let empty = guard.path().join("empty");
+		fs::create_dir(&empty).expect("create empty dir");
+		super::resolve_search_path(&empty.to_string_lossy())
+			.expect("an empty readable directory resolves");
+
+		fs::write(guard.path().join("file.txt"), b"x").expect("seed a file");
+		super::resolve_search_path(&guard.path().to_string_lossy())
+			.expect("a non-empty readable directory resolves");
 	}
 }
