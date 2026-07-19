@@ -82,16 +82,35 @@ const INLINE_STRIP = /replace\(\/\\\/\+\$\//;
 const STRIPONE_GRANDFATHERED = new Set<string>(["tui/src/autocomplete.ts", "utils/src/path-tree.ts"]);
 const STRIPONE = /endsWith\("\/"\) \? \w+(?:\.\w+)*\.slice\(0, ?-1\)/;
 
-async function walk(dir: string, out: string[]): Promise<void> {
+async function walk(dir: string, out: string[], includeTests = false): Promise<void> {
 	for (const entry of await readdir(dir, { withFileTypes: true })) {
 		const full = path.join(dir, entry.name);
 		if (entry.isDirectory()) {
 			if (entry.name === "node_modules" || entry.name === "dist" || entry.name === "vendor") continue;
-			await walk(full, out);
-		} else if (entry.name.endsWith(".ts") && !entry.name.endsWith(".test.ts")) {
+			await walk(full, out, includeTests);
+		} else if (entry.name.endsWith(".ts") && (includeTests || !entry.name.endsWith(".test.ts"))) {
 			out.push(full);
 		}
 	}
+}
+
+// Collect every .ts under each package's test/ dir. Only the function-definition
+// checks (LOCAL_DEF, LOCAL_NORMALIZE_BASE_URL) run against these — a test helper
+// that reimplements trimTrailingSlashes/normalizeBaseUrl is a second definition
+// that drifts, and the src-only scan never saw it. The inline-pattern checks
+// (INLINE_STRIP/STRIPONE) stay src-only: those regexes legitimately match test
+// assertions constructing expected values, so scanning tests would false-flag.
+async function testFiles(): Promise<string[]> {
+	const files: string[] = [];
+	for (const pkg of await readdir(PACKAGES_DIR, { withFileTypes: true })) {
+		if (!pkg.isDirectory()) continue;
+		try {
+			await walk(path.join(PACKAGES_DIR, pkg.name, "test"), files, true);
+		} catch {
+			// Package without a test/ directory — nothing to scan.
+		}
+	}
+	return files;
 }
 
 describe("trimTrailingSlashes source lock", () => {
@@ -144,5 +163,18 @@ describe("trimTrailingSlashes source lock", () => {
 			"new strip-one `endsWith('/') ? slice(0,-1)` URL normalizer — call trimTrailingSlashes instead",
 		).toEqual([]);
 		expect(cleared, "grandfathered entries whose strip is gone — remove them from the list").toEqual([]);
+	});
+
+	it("no test file defines a local trimTrailingSlashes or normalizeBaseUrl — tests dogfood the owner too", async () => {
+		const defOffenders: string[] = [];
+		const normalizeOffenders: string[] = [];
+		for (const file of await testFiles()) {
+			const rel = path.relative(PACKAGES_DIR, file).replaceAll(path.sep, "/");
+			const text = await readFile(file, "utf8");
+			if (LOCAL_DEF.test(text)) defOffenders.push(rel);
+			if (LOCAL_NORMALIZE_BASE_URL.test(text)) normalizeOffenders.push(rel);
+		}
+		expect(defOffenders, "test-local trimTrailingSlash copies — import from @veyyon/utils instead").toEqual([]);
+		expect(normalizeOffenders, "test-local normalizeBaseUrl copies — import from @veyyon/utils instead").toEqual([]);
 	});
 });
