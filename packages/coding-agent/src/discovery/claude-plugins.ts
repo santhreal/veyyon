@@ -6,7 +6,7 @@
  */
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import { logger } from "@veyyon/utils";
+import { errorMessage, isRecord, logger } from "@veyyon/utils";
 import { registerProvider } from "../capability";
 import { readFile } from "../capability/fs";
 import { type Hook, hookCapability } from "../capability/hook";
@@ -41,27 +41,38 @@ interface ResolvedPluginDir {
 	warnings: string[];
 }
 
-async function readPluginManifest(root: ClaudePluginRoot): Promise<ClaudePluginManifest | null> {
+async function readPluginManifest(root: ClaudePluginRoot, warnings?: string[]): Promise<ClaudePluginManifest | null> {
 	const manifestPath = path.join(root.path, ".claude-plugin", "plugin.json");
 	const raw = await readFile(manifestPath);
-	if (raw === null) return null;
+	if (raw === null) return null; // manifest absent — plugin uses default dirs
 
 	try {
 		const parsed = JSON.parse(raw);
-		if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+		if (!isRecord(parsed)) {
+			// The file exists and parses but is not a JSON object (array, string,
+			// number, null). Silently falling back to defaults would hide the
+			// author's misconfiguration, so surface it (Law 10).
+			const message = `[claude-plugins] Ignoring non-object plugin manifest ${manifestPath}`;
+			warnings?.push(message);
+			logger.warn(message);
+			return null;
+		}
 		return parsed as ClaudePluginManifest;
-	} catch {
+	} catch (err) {
+		// Malformed JSON in a manifest the author DID write is a real error, not
+		// the benign "no manifest" case. Surface it instead of silently loading
+		// the plugin from default dirs as if it had no manifest.
+		const message = `[claude-plugins] Invalid JSON in ${manifestPath}: ${errorMessage(err)}`;
+		warnings?.push(message);
+		logger.warn(message);
 		return null;
 	}
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
-async function skillsManifestReplacesFallback(root: ClaudePluginRoot): Promise<boolean> {
-	const raw = await readFile(path.join(root.path, "marketplace.json"));
-	if (raw === null) return false;
+async function skillsManifestReplacesFallback(root: ClaudePluginRoot, warnings?: string[]): Promise<boolean> {
+	const marketplacePath = path.join(root.path, "marketplace.json");
+	const raw = await readFile(marketplacePath);
+	if (raw === null) return false; // marketplace manifest absent — keep the default skills dir
 
 	try {
 		const parsed: unknown = JSON.parse(raw);
@@ -71,7 +82,12 @@ async function skillsManifestReplacesFallback(root: ClaudePluginRoot): Promise<b
 			Array.isArray(plugins) &&
 			plugins.some(entry => isRecord(entry) && entry.name === root.plugin && entry.source === "./")
 		);
-	} catch {
+	} catch (err) {
+		// A malformed marketplace.json silently defaulted to "does not replace",
+		// so a plugin author's intended skills layout was ignored with no signal.
+		const message = `[claude-plugins] Invalid JSON in ${marketplacePath}: ${errorMessage(err)}`;
+		warnings?.push(message);
+		logger.warn(message);
 		return false;
 	}
 }
@@ -111,7 +127,8 @@ async function resolvePluginDir(
 	fallback: string,
 	includeFallback: boolean,
 ): Promise<ResolvedPluginDir> {
-	const manifest = await readPluginManifest(root);
+	const warnings: string[] = [];
+	const manifest = await readPluginManifest(root, warnings);
 	const fallbackDir = path.join(root.path, fallback);
 
 	let configured: string[] | undefined;
@@ -137,7 +154,7 @@ async function resolvePluginDir(
 	}
 
 	if (configured === undefined) {
-		return { dirs: [fallbackDir], warnings: [] };
+		return { dirs: [fallbackDir], warnings };
 	}
 
 	// Dedup preserves order: default entry (when included) first, then declared
@@ -146,7 +163,6 @@ async function resolvePluginDir(
 	// alongside extras without producing double-loads.
 	const seen = new Set<string>();
 	const dirs: string[] = [];
-	const warnings: string[] = [];
 	if (includeFallback) {
 		seen.add(fallbackDir);
 		dirs.push(fallbackDir);
@@ -178,13 +194,15 @@ async function loadSkills(ctx: LoadContext): Promise<LoadResult<Skill>> {
 	warnings.push(...rootWarnings);
 	const results = await Promise.all(
 		roots.map(async root => {
-			const includeFallback = !(await skillsManifestReplacesFallback(root));
-			const { dirs: skillsDirs, warnings: resolveWarnings } = await resolvePluginDir(
+			const resolveWarnings: string[] = [];
+			const includeFallback = !(await skillsManifestReplacesFallback(root, resolveWarnings));
+			const { dirs: skillsDirs, warnings: dirWarnings } = await resolvePluginDir(
 				root,
 				["skills"],
 				"skills",
 				includeFallback,
 			);
+			resolveWarnings.push(...dirWarnings);
 			const scanResults = await Promise.all(
 				skillsDirs.map(dir =>
 					scanSkillsFromDir(ctx, {
