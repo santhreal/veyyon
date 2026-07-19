@@ -49,10 +49,15 @@ import { moduleLoadBuffer } from "./timing-buffer";
 // (e.g. `Missing 'default' export`). Our own source tree (where the interesting
 // timing lives) is uniformly TypeScript, so a TS-only filter is both safe and
 // sufficient.
-const MODULE_LOADER_FILTER = /\.[mc]?tsx?$/;
+// Exported for unit testing: these are the module's pure, side-effect-free
+// building blocks (source instrumentation, path splitting, the file/import
+// patterns). The timing machinery below wires them into Bun's plugin hooks,
+// which only run under `VEYYON_TIMING`; the pure pieces stay independently
+// verifiable.
+export const MODULE_LOADER_FILTER = /\.[mc]?tsx?$/;
 const MODULE_COMPLETE_KEY: symbol = Symbol.for("veyyon.moduleLoadComplete");
 const MODULE_BODY_START_KEY: symbol = Symbol.for("veyyon.moduleBodyStart");
-const STATIC_IMPORT_PATTERN =
+export const STATIC_IMPORT_PATTERN =
 	/\b(?:import|export)\s+(?:type\s+)?(?:[^"']*?\s+from\s+)?["']([^"']+)["']|\bimport\s*\(\s*["']([^"']+)["']\s*\)/g;
 
 type CompleteStore = Record<symbol, ((path: string) => void) | undefined>;
@@ -65,7 +70,7 @@ function completionMarker(path: string): string {
 	return `\n;globalThis[Symbol.for("veyyon.moduleLoadComplete")]?.(${JSON.stringify(path)});\n`;
 }
 
-function instrumentContents(path: string, contents: string): string {
+export function instrumentContents(path: string, contents: string): string {
 	const start = bodyStartMarker(path);
 	const end = completionMarker(path);
 	if (!contents.startsWith("#!")) return `${start}${contents}${end}`;
@@ -73,7 +78,7 @@ function instrumentContents(path: string, contents: string): string {
 	if (newline === -1) return `${contents}\n${start}${end}`;
 	return `${contents.slice(0, newline + 1)}${start}${contents.slice(newline + 1)}${end}`;
 }
-function importerDir(importer: string): string {
+export function importerDir(importer: string): string {
 	const slash = importer.lastIndexOf("/");
 	if (slash === -1) return ".";
 	return importer.slice(0, slash);
@@ -88,7 +93,7 @@ function childSetFor(importsByPath: Map<string, Set<string>>, path: string): Set
 	return children;
 }
 
-function addImportEdges(importsByPath: Map<string, Set<string>>, importer: string, contents: string): void {
+export function addImportEdges(importsByPath: Map<string, Set<string>>, importer: string, contents: string): void {
 	STATIC_IMPORT_PATTERN.lastIndex = 0;
 	for (const match of contents.matchAll(STATIC_IMPORT_PATTERN)) {
 		const specifier = match[1] ?? match[2];
