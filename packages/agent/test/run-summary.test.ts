@@ -18,6 +18,7 @@ import type {
 } from "@opentelemetry/api";
 import { agentLoop, agentLoopDetailed } from "@veyyon/agent-core/agent-loop";
 import {
+	AgentRunCollector,
 	type AgentRunSummary,
 	aggregateAgentRunCoverage,
 	aggregateAgentRunSummaries,
@@ -798,5 +799,18 @@ describe("regressions: agent loop telemetry/run summary", () => {
 		// Either the cycle is short-circuited as `[Circular]` or the depth cap
 		// truncates it to `{kind:"array",length:N}` — both are bounded.
 		expect(/Circular|"kind":"array"/.test(String(captured))).toBe(true);
+	});
+});
+
+describe("AgentRunCollector run-ended latch", () => {
+	it("starts un-ended and latches on the first markRunEnded, ignoring repeats", () => {
+		const collector = new AgentRunCollector();
+		expect(collector.runEnded).toBe(false);
+		expect(collector.markRunEnded()).toBe(true);
+		expect(collector.runEnded).toBe(true);
+		// Idempotent: the success path and the error-path finally both call it, but
+		// only the first transition should win.
+		expect(collector.markRunEnded()).toBe(false);
+		expect(collector.runEnded).toBe(true);
 	});
 });
