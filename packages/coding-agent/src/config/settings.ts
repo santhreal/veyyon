@@ -891,6 +891,16 @@ export class Settings {
 		}
 
 		// 3. Write merged settings
+		//
+		// This write is deliberately NOT wrapped in withFileLock, unlike #saveNow.
+		// It runs only from #load when config.yml is absent (first run), and its
+		// content is a pure, deterministic function of the legacy sources
+		// (settings.json + agent.db) — so a concurrent first-run in another
+		// process writes byte-identical content and last-writer-wins is benign.
+		// The write itself is atomic (whole file), so no reader ever sees a
+		// partial config. INVARIANT: if migration ever becomes non-idempotent or
+		// order-dependent, this must move under withFileLock(this.#configPath)
+		// with a re-read, matching #saveNow.
 		if (migrated && Object.keys(settings).length > 0) {
 			try {
 				await atomicWriteFile(this.#configPath, YAML.stringify(settings, null, 2));
