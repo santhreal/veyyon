@@ -8,7 +8,9 @@ import { detailsRecord, isRecord, num, scopePaths, shortenPath, str, truncate } 
 function Summary({ args }: ToolRenderProps): ReactNode {
 	const raw = args.path ?? args.paths;
 	if (raw !== undefined && typeof raw !== "string" && !Array.isArray(raw)) return <InvalidArg what="path" />;
-	const globs = scopePaths(args).map(shortenPath).join(", ");
+	const globs = scopePaths(args)
+		.map(p => shortenPath(p))
+		.join(", ");
 	return <span className="tv-pattern">{truncate(globs || "*", 120)}</span>;
 }
 
@@ -47,7 +49,7 @@ function Body({ args, result }: ToolRenderProps): ReactNode {
 					),
 				]}
 			/>
-			{missing.length > 0 && <Note tone="warn">skipped missing: {missing.map(shortenPath).join(", ")}</Note>}
+			{missing.length > 0 && <Note tone="warn">skipped missing: {missing.map(p => shortenPath(p)).join(", ")}</Note>}
 			{error !== null && !result?.isError && <Note tone="err">{error}</Note>}
 			<ResultText result={result} maxLines={12} />
 		</>

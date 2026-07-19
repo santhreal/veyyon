@@ -6,7 +6,7 @@ import { detailsRecord, num, resultTextOf, scopePaths, shortenPath, str } from "
 
 /** Grep scope: current `path` (string, delimited, or JSON array) or legacy `paths`; defaults to workspace root. */
 function pathsOf(args: Record<string, unknown>): string[] {
-	const list = scopePaths(args).map(shortenPath);
+	const list = scopePaths(args).map(p => shortenPath(p));
 	return list.length ? list : ["."];
 }
 
