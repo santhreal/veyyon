@@ -4,10 +4,13 @@ import * as path from "node:path";
 import { FileType, glob } from "@veyyon/natives";
 import {
 	CONFIG_DIR_NAME,
+	errorMessage,
 	getAgentDir,
 	getConfigDirName,
 	getPluginsDir,
 	getProjectDir,
+	isEnoent,
+	logger,
 	parseFrontmatter,
 	tryParseJson,
 } from "@veyyon/utils";
@@ -303,6 +306,12 @@ async function globIf(
 		const result = await glob({ pattern, path: dir, gitignore: true, hidden: false, fileType, recursive });
 		return result.matches;
 	} catch {
+		// The native glob throws only when the path is absent or is not a directory
+		// (both benign probe misses, nothing to discover). A directory that exists
+		// but is unreadable does NOT throw here: the native layer swallows the
+		// permission/IO error and returns an empty match set, so this catch cannot
+		// distinguish it. Surfacing that case is tracked as LAW10-NATIVE-GLOB-SWALLOWS-IO
+		// (fix belongs in crates/veyyon-natives/src/iofs.rs, not this catch).
 		return [];
 	}
 }
@@ -476,7 +485,9 @@ export async function loadFilesFromDir<T>(
 		});
 		matches = result.matches;
 	} catch {
-		// Directory doesn't exist or isn't readable
+		// Native glob throws only for an absent path or a non-directory (benign).
+		// An existing-but-unreadable directory is swallowed by the native layer and
+		// returns empty, so it cannot be surfaced here — see LAW10-NATIVE-GLOB-SWALLOWS-IO.
 		return { items, warnings };
 	}
 
@@ -1091,15 +1102,24 @@ export async function injectPluginDirRoots(home: string, dirs: string[], cwd?: s
 		const resolved = path.resolve(dir);
 		// Read plugin name from manifest
 		let pluginName = path.basename(resolved);
+		const manifestPath = path.join(resolved, ".claude-plugin", "plugin.json");
 		try {
-			const manifestPath = path.join(resolved, ".claude-plugin", "plugin.json");
 			const content = await Bun.file(manifestPath).text();
 			const manifest = JSON.parse(content);
 			if (typeof manifest.name === "string" && manifest.name) {
 				pluginName = manifest.name;
 			}
-		} catch {
-			// No manifest or invalid — use directory name
+		} catch (err) {
+			// No manifest is expected (many --plugin-dir targets ship none), so fall
+			// back to the directory name silently for ENOENT. A manifest that exists
+			// but cannot be read or parsed is a real problem in a path the user asked
+			// for explicitly: surface it instead of silently using the basename.
+			if (!isEnoent(err)) {
+				logger.warn("Plugin manifest exists but could not be read; using directory name", {
+					path: manifestPath,
+					error: errorMessage(err),
+				});
+			}
 		}
 
 		injected.push(buildPluginDirRoot(resolved, pluginName));
