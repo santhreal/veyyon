@@ -1,10 +1,11 @@
 import { Database } from "bun:sqlite";
-import { describe, expect, it } from "bun:test";
+import { describe, expect, it, spyOn } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { initBeam } from "@veyyon/mnemopi/core/beam";
 import { DeltaSync, EventType, MemoryEvent, MemoryStream, SyncCheckpoint } from "@veyyon/mnemopi/core/streaming";
+import { logger } from "@veyyon/utils";
 
 describe("MemoryEvent", () => {
 	it("serializes and restores Python-shaped events", () => {
@@ -29,16 +30,38 @@ describe("MemoryEvent", () => {
 });
 
 describe("MemoryStream", () => {
-	it("invokes typed and any callbacks while isolating exceptions", () => {
+	it("isolates a throwing listener but surfaces the error loudly", () => {
 		const stream = new MemoryStream(10);
 		const calls: string[] = [];
-		stream.on(EventType.MEMORY_ADDED, () => {
-			throw new Error("boom");
-		});
-		stream.on(EventType.MEMORY_ADDED, event => calls.push(event.memoryId));
-		stream.onAny(event => calls.push(`any:${event.memoryId}`));
-		stream.emit(new MemoryEvent({ event_type: EventType.MEMORY_ADDED, memory_id: "a" }));
-		expect(calls).toEqual(["a", "any:a"]);
+		const warn = spyOn(logger, "warn").mockImplementation(() => {});
+		try {
+			stream.on(EventType.MEMORY_ADDED, () => {
+				throw new Error("typed-boom");
+			});
+			stream.on(EventType.MEMORY_ADDED, event => calls.push(event.memoryId));
+			stream.onAny(() => {
+				throw new Error("any-boom");
+			});
+			stream.onAny(event => calls.push(`any:${event.memoryId}`));
+			stream.emit(new MemoryEvent({ event_type: EventType.MEMORY_ADDED, memory_id: "a" }));
+
+			// Isolation: the surviving listeners still ran despite two throwing ones.
+			expect(calls).toEqual(["a", "any:a"]);
+
+			// Surfaced, not swallowed: one warn per throwing listener, carrying the
+			// event context and the original error message.
+			expect(warn).toHaveBeenCalledTimes(2);
+			const messages = warn.mock.calls.map(call => String(call[0]));
+			expect(messages.some(message => message.includes("listener threw"))).toBe(true);
+			const contexts = warn.mock.calls.map(call => call[1] as Record<string, unknown>);
+			expect(contexts.map(context => context.error)).toEqual(["typed-boom", "any-boom"]);
+			for (const context of contexts) {
+				expect(context.eventType).toBe(EventType.MEMORY_ADDED);
+				expect(context.memoryId).toBe("a");
+			}
+		} finally {
+			warn.mockRestore();
+		}
 	});
 
 	it("keeps a bounded filterable buffer", () => {
