@@ -2068,6 +2068,14 @@ fn grep_sync_with_matcher<M: Matcher + Sync>(
 		});
 	}
 
+	// The search root is a directory here (the is_file branch returned above and
+	// non-file, non-dir returned earlier). metadata() succeeds on a chmod-000
+	// directory, so without this probe the walk skips an unreadable root and grep
+	// returns zero matches, indistinguishable from a directory with no matches
+	// (Law 10). Fail closed on the root operand; descendant permission errors stay
+	// tolerated by the walk. Shares the walker's single readability owner.
+	veyyon_walker::ensure_readable_dir(&search_path).map_err(iofs::map_walker_error)?;
+
 	let mentions_node_modules = glob.is_some_and(|g| g.contains("node_modules"));
 	let results = run_streaming_grep(
 		&search_path,
@@ -2455,6 +2463,43 @@ mod tests {
 		assert_eq!(result.files_searched, 1);
 		assert_eq!(result.matches.len(), 1);
 		assert_eq!(result.matches[0].path, "regular.txt");
+	}
+
+	#[cfg(unix)]
+	#[test]
+	fn grep_directory_fails_closed_on_unreadable_root() {
+		// A chmod-000 directory still answers `metadata()` (stat needs only search
+		// permission on the parent), so the old path resolved it cleanly, then the
+		// SkipSkippable walk swallowed the unreadable-root read_dir error and grep
+		// returned zero matches, indistinguishable from a directory with no matches
+		// (Law 10). The shared readability probe now fails the operand loudly.
+		// Root bypasses permission bits, so skip under uid 0.
+		// SAFETY: getuid is a simple libc call with no arguments and no state.
+		if unsafe { libc::getuid() } == 0 {
+			return;
+		}
+
+		let root = TempDirGuard::new();
+		let locked = root.path().join("locked");
+		fs::create_dir(&locked).expect("create locked dir");
+		write_file(&locked.join("hidden.txt"), "needle\n");
+		fs::set_permissions(&locked, std::os::unix::fs::PermissionsExt::from_mode(0o000))
+			.expect("chmod 000");
+
+		let result = grep_sync(base_grep_config(&locked), None, task::CancelToken::default());
+
+		fs::set_permissions(&locked, std::os::unix::fs::PermissionsExt::from_mode(0o755))
+			.expect("restore perms");
+
+		match result {
+			Ok(res) => {
+				panic!("grep on an unreadable directory must fail, got {} matches", res.total_matches)
+			},
+			Err(err) => assert!(
+				err.to_string().contains("not readable"),
+				"expected an unreadable-root error, got: {err}"
+			),
+		}
 	}
 
 	#[cfg(unix)]
