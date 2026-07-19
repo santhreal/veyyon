@@ -1,5 +1,6 @@
 import { DAY_MS, HOUR_MS } from "@veyyon/utils";
 import type { UsageCostHistoryEntry, UsageLimit, UsageProvider, UsageWindow } from "../usage";
+import { usageStatusFromUsedFraction } from "./shared";
 
 const OPENCODE_GO_PROVIDER = "opencode-go";
 const OPENCODE_GO_LIMITS = [
@@ -21,10 +22,10 @@ function sumWindowCosts(entries: UsageCostHistoryEntry[], sinceMs: number): { us
 	return { used, resetsAt: firstRecordedAt };
 }
 
+// Uses the shared 0.9 warning threshold like every other provider; a stray
+// 0.8 here previously warned 10% early and diverged from the fleet-wide owner.
 function resolveStatus(usedFraction: number): UsageLimit["status"] {
-	if (usedFraction >= 1) return "exhausted";
-	if (usedFraction >= 0.8) return "warning";
-	return "ok";
+	return usageStatusFromUsedFraction(usedFraction);
 }
 
 function buildWindowLimit(
