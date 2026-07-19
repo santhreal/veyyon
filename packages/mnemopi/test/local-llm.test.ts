@@ -283,4 +283,62 @@ describe("local LLM TypeScript port", () => {
 			new Response(JSON.stringify({ choices: [{ message: { content: "Remote done." } }] }), { status: 200 });
 		expect(await complete("summarize this", 0.3, { fetch: fetchMock })).toBe("Remote done.");
 	});
+
+	it("renders the env sleep-prompt override through buildPrompt with all three substitutions", () => {
+		process.env.MNEMOPI_SLEEP_PROMPT = "Digest {memory_count} from {source}:\n{memories}";
+		expect(buildPrompt(["alpha", "beta"], "chat")).toBe("Digest 2 from chat:\n- alpha\n- beta");
+	});
+
+	it("prefers a runtime consolidationPrompt over the env sleep prompt in buildPrompt", async () => {
+		process.env.MNEMOPI_SLEEP_PROMPT = "ENV {memories}";
+		const memory = new Mnemopi({ llm: { consolidationPrompt: "RUNTIME {memory_count}: {memories}" } });
+		const rendered = await withMnemopiRuntimeOptions(memory.runtimeOptions, () => buildPrompt(["one"], ""));
+		expect(rendered).toBe("RUNTIME 1: - one");
+	});
+
+	it("chunks an empty memory list into an empty batch list", () => {
+		expect(chunkMemoriesByBudget([])).toEqual([]);
+	});
+
+	it("summarizes an empty memory list as null without touching any backend", async () => {
+		let calls = 0;
+		const fetchMock: FetchImpl = async () => {
+			calls += 1;
+			return new Response("", { status: 200 });
+		};
+		expect(await summarizeMemories([], "", { fetch: fetchMock })).toBeNull();
+		expect(calls).toBe(0);
+	});
+
+	it("returns null from callRemoteLlm when no base URL is configured", async () => {
+		delete process.env.MNEMOPI_LLM_BASE_URL;
+		let calls = 0;
+		const fetchMock: FetchImpl = async () => {
+			calls += 1;
+			return new Response("", { status: 200 });
+		};
+		expect(await callRemoteLlm("prompt", 0.3, { fetch: fetchMock })).toBeNull();
+		expect(calls).toBe(0);
+	});
+
+	it("reports llmAvailable true through a configured completion function", async () => {
+		const memory = new Mnemopi({ llm: { complete: () => "ok" } });
+		expect(await withMnemopiRuntimeOptions(memory.runtimeOptions, () => llmAvailable())).toBe(true);
+	});
+
+	it("reports llmAvailable true through an enabled host backend", () => {
+		process.env.MNEMOPI_LLM_ENABLED = "true";
+		process.env.MNEMOPI_HOST_LLM_ENABLED = "true";
+		delete process.env.MNEMOPI_LLM_BASE_URL;
+		setHostLlmBackend(new CallableLlmBackend("host", () => "x"));
+		expect(llmAvailable()).toBe(true);
+	});
+
+	it("reports llmAvailable false with no completion, host backend, or remote URL", () => {
+		process.env.MNEMOPI_LLM_ENABLED = "true";
+		delete process.env.MNEMOPI_HOST_LLM_ENABLED;
+		delete process.env.MNEMOPI_LLM_BASE_URL;
+		resetHostLlmBackendForTests();
+		expect(llmAvailable()).toBe(false);
+	});
 });
