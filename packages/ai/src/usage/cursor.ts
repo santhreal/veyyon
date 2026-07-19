@@ -1,3 +1,4 @@
+import { toNumber } from "@veyyon/catalog/utils";
 import { isRecord, trimTrailingSlashes } from "@veyyon/utils";
 import type {
 	UsageAmount,
@@ -8,7 +9,7 @@ import type {
 	UsageReport,
 	UsageWindow,
 } from "../usage";
-import { toNumber, usageStatusFromUsedFraction } from "./shared";
+import { usageStatusFromUsedFraction } from "./shared";
 
 function parseTimestamp(value: unknown): number | undefined {
 	const numeric = toNumber(value);

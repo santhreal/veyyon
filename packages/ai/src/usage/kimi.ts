@@ -1,3 +1,5 @@
+// (Refresh is the sole responsibility of AuthStorage; no provider-direct refresh here.)
+import { toNumber } from "@veyyon/catalog/utils";
 import { $env, clamp01, DAY_MS, HOUR_MS, MINUTE_MS, normalizeBaseUrl, SECOND_MS } from "@veyyon/utils";
 import { getKimiCommonHeaders } from "../registry/oauth/kimi";
 import type {
@@ -10,8 +12,7 @@ import type {
 	UsageWindow,
 } from "../usage";
 import { isRecord } from "../utils";
-// (Refresh is the sole responsibility of AuthStorage; no provider-direct refresh here.)
-import { toNumber, usageStatusFromUsedFraction } from "./shared";
+import { usageStatusFromUsedFraction } from "./shared";
 
 const DEFAULT_BASE_URL = "https://api.kimi.com/coding/v1";
 const USAGE_PATH = "usages";
