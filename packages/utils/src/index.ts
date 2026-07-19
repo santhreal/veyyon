@@ -1,5 +1,6 @@
 export { once, untilAborted } from "./abortable";
 export * from "./async";
+export * from "./backoff";
 export * from "./binary";
 export * from "./collapse-whitespace";
 export * from "./color";
