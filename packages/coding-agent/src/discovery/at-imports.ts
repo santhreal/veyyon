@@ -168,7 +168,11 @@ async function resolveAndExpand(
 
 	const content = await readFile(resolved);
 	if (content === null) {
-		logger.debug("@-import: file not found", { path: resolved });
+		// The include is absent or unreadable. readFile already warns loudly
+		// when a file exists but cannot be read (permission/IO error), so a
+		// genuinely missing include is the only benign case left here; keep it
+		// at debug and do not over-claim "not found" for the error case.
+		logger.debug("@-import: include unresolved (missing or unreadable)", { path: resolved });
 		return null;
 	}
 

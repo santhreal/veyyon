@@ -1,5 +1,8 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { isEnoent, isEnotdir, isFsError } from "@veyyon/utils/fs-error";
+import * as logger from "@veyyon/utils/logger";
+import { errorMessage } from "@veyyon/utils/type-guards";
 
 const contentCache = new Map<string, string | null>();
 const dirCache = new Map<string, fs.Dirent[]>();
@@ -28,8 +31,23 @@ export async function readFile(filePath: string): Promise<string | null> {
 		const content = await Bun.file(abs).text();
 		contentCache.set(abs, content);
 		return content;
-	} catch {
+	} catch (err) {
 		contentCache.set(abs, null);
+		// ENOENT/ENOTDIR mean the path genuinely is not there: the common,
+		// benign case when discovery probes optional context files. Anything
+		// else (EACCES, EIO, EMFILE, EBUSY, ...) means the file EXISTS but we
+		// could not read it. Surface that loudly instead of silently dropping
+		// the context, so the operator learns why a CLAUDE.md/AGENTS.md went
+		// missing from the prompt (Law 10: no silent recall loss). We still
+		// return null so startup proceeds; the cached null above suppresses
+		// re-warning on repeat reads of the same path.
+		if (!isEnoent(err) && !isEnotdir(err)) {
+			logger.warn("Context file exists but could not be read; dropped from discovery", {
+				path: abs,
+				code: isFsError(err) ? err.code : undefined,
+				error: errorMessage(err),
+			});
+		}
 		return null;
 	}
 }
@@ -44,8 +62,20 @@ export async function readDirEntries(dirPath: string): Promise<fs.Dirent[]> {
 		const entries = await fs.promises.readdir(abs, { withFileTypes: true });
 		dirCache.set(abs, entries);
 		return entries;
-	} catch {
+	} catch (err) {
 		dirCache.set(abs, []);
+		// Same split as readFile: a missing directory (ENOENT/ENOTDIR) is the
+		// expected probe-miss during discovery, but a directory that exists yet
+		// cannot be listed (EACCES, EMFILE, ...) is a real error that would
+		// otherwise silently hide every context file beneath it. Warn, cache
+		// the empty result so we do not re-warn, and fail soft with [].
+		if (!isEnoent(err) && !isEnotdir(err)) {
+			logger.warn("Directory exists but could not be listed; skipped during discovery", {
+				path: abs,
+				code: isFsError(err) ? err.code : undefined,
+				error: errorMessage(err),
+			});
+		}
 		return [];
 	}
 }
