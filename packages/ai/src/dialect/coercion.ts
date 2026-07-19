@@ -131,6 +131,13 @@ export function normalizeKimiFunctionName(rawId: string): string {
 	return parts[parts.length - 1]?.trim() ?? beforeIndex.trim();
 }
 
-export function asRecord(value: unknown): Record<string, unknown> {
+/**
+ * Coerce a parsed tool-argument value to a record, defaulting to an empty
+ * object when it is not one. Tool-call `arguments` must always be a record, so
+ * this never returns null. That is the opposite of the shared `asRecord` in
+ * @veyyon/utils, which returns null for non-records; the distinct name keeps
+ * the two contracts from being confused at a call site.
+ */
+export function recordOrEmpty(value: unknown): Record<string, unknown> {
 	return isRecord(value) ? value : {};
 }

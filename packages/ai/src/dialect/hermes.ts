@@ -1,6 +1,6 @@
 import { parseJsonWithRepair, parseStreamingJson } from "@veyyon/utils";
 import type { Message, ToolCall } from "../types";
-import { asRecord, mintToolCallId, partialSuffixOverlapAny } from "./coercion";
+import { mintToolCallId, partialSuffixOverlapAny, recordOrEmpty } from "./coercion";
 import dialectPrompt from "./hermes.md" with { type: "text" };
 import { renderChatMlTranscript, renderDelimitedThinking, renderToolResponseResults, stringifyJson } from "./rendering";
 import type {
@@ -153,7 +153,7 @@ export class HermesInbandScanner implements InbandScanner {
 					args = {};
 				}
 			}
-			return { name: parsed.name, arguments: asRecord(args) };
+			return { name: parsed.name, arguments: recordOrEmpty(args) };
 		} catch {
 			return undefined;
 		}
