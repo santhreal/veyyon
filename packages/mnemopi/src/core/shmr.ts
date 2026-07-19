@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { batched, clampLow, logger } from "@veyyon/utils";
 import { SQLITE_IN_CLAUSE_BATCH, sqlPlaceholders, tableExists } from "../util/sqlite";
 import * as embeddings from "./embeddings";
-import { cosineSimilarity } from "./vector-math";
+import { cosineSimilarity, decodeEmbeddingJson } from "./vector-math";
 
 export { cosineSimilarity };
 
@@ -352,20 +352,8 @@ function dbOf(beam: BeamLike): Database {
 }
 
 function parseEmbeddingJson(raw: unknown): Vector | null {
-	if (typeof raw !== "string") return null;
-	try {
-		const parsed = JSON.parse(raw) as unknown;
-		if (!Array.isArray(parsed) || parsed.length === 0) return null;
-		const out = new Float32Array(parsed.length);
-		for (let i = 0; i < parsed.length; i++) {
-			const value = Number(parsed[i]);
-			if (!Number.isFinite(value)) return null;
-			out[i] = value;
-		}
-		return out;
-	} catch {
-		return null;
-	}
+	const decoded = decodeEmbeddingJson(raw);
+	return decoded === null ? null : Float32Array.from(decoded);
 }
 
 /** Precomputed vectors from `memory_embeddings` (written by `scheduleEmbedding()`). */
