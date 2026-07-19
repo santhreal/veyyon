@@ -1,3 +1,5 @@
+import { jaccardWordSimilarity } from "../util/text-similarity";
+
 export interface MmrResult {
 	readonly content?: string;
 	readonly score?: number;
@@ -7,17 +9,7 @@ export interface MmrResult {
 export type SimilarityFn = (textA: string, textB: string) => number;
 
 export function jaccardSimilarity(textA: string, textB: string): number {
-	const wordsA = new Set(textA.toLowerCase().split(/\s+/).filter(Boolean));
-	const wordsB = new Set(textB.toLowerCase().split(/\s+/).filter(Boolean));
-
-	if (wordsA.size === 0 || wordsB.size === 0) return 0.0;
-
-	let intersection = 0;
-	for (const word of wordsA) {
-		if (wordsB.has(word)) intersection += 1;
-	}
-
-	return intersection / (wordsA.size + wordsB.size - intersection);
+	return jaccardWordSimilarity(textA, textB);
 }
 export function mmrRerank<T extends MmrResult>(
 	results: readonly T[],

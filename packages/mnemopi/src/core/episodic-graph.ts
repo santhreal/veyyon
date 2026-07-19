@@ -3,6 +3,7 @@ import { closeQuietly, type DatabasePath, openDatabase } from "../db";
 import { toUtcIso } from "../util/datetime";
 import { unicodeWordTokens, WORD_TOKEN_HYPHEN_RE } from "../util/regex";
 import { tableExists } from "../util/sqlite";
+import { jaccardIndex, overlapScore } from "../util/text-similarity";
 import { CONTENT_STOPWORDS } from "./stopwords";
 
 export interface Gist {
@@ -192,24 +193,6 @@ function contentTokenSet(text: string): Set<string> {
 		out.add(token);
 	}
 	return out;
-}
-
-function jaccard(left: Set<string>, right: Set<string>): number {
-	if (left.size === 0 || right.size === 0) return 0;
-	let intersection = 0;
-	for (const item of left) {
-		if (right.has(item)) intersection++;
-	}
-	return intersection / (left.size + right.size - intersection);
-}
-
-function overlapScore(left: Set<string>, right: Set<string>): number {
-	if (left.size === 0 || right.size === 0) return 0;
-	let hits = 0;
-	for (const item of left) {
-		if (right.has(item)) hits++;
-	}
-	return hits / Math.max(left.size, right.size);
 }
 
 export class EpisodicGraph {
@@ -469,7 +452,7 @@ export class EpisodicGraph {
 			const sourceTokens = contentTokenSet(content);
 			for (const otherId of previousMemoryIds) {
 				const otherContent = this.memoryContent(otherId);
-				const lexicalScore = Math.round(jaccard(sourceTokens, contentTokenSet(otherContent)) * 1000) / 1000;
+				const lexicalScore = Math.round(jaccardIndex(sourceTokens, contentTokenSet(otherContent)) * 1000) / 1000;
 				let wroteCtxEdge = false;
 				if (lexicalScore >= minLinkScore) {
 					const edge = {

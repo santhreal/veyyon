@@ -2,6 +2,7 @@ import { Database } from "bun:sqlite";
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { type Env, enhancedRecallEnabled } from "../config";
+import { jaccardWordSimilarity } from "../util/text-similarity";
 import { cosineSimilarity, decodeEmbeddingJson, encodeEmbeddingJson } from "./vector-math";
 
 export type QueryCacheResult = Record<string, unknown>;
@@ -249,20 +250,7 @@ export class QueryCache {
 	}
 
 	jaccardWords(queryA: string, queryB: string): number {
-		const wordsA = this.#wordSet(queryA);
-		const wordsB = this.#wordSet(queryB);
-		if (wordsA.size === 0 || wordsB.size === 0) return 0;
-		let intersection = 0;
-		for (const word of wordsA) if (wordsB.has(word)) intersection += 1;
-		return intersection / (wordsA.size + wordsB.size - intersection);
-	}
-
-	#wordSet(query: string): Set<string> {
-		const words = new Set<string>();
-		for (const rawWord of query.toLowerCase().split(/\s+/)) {
-			if (rawWord.length !== 0) words.add(rawWord);
-		}
-		return words;
+		return jaccardWordSimilarity(queryA, queryB);
 	}
 
 	#rememberKey(key: string, now: number): void {
