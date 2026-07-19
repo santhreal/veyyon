@@ -103,6 +103,14 @@ export interface CustomToolContext {
 	autoApprove?: boolean;
 	/** Plan-mode session active — approval caps to plan autonomy (read + plan-file write). */
 	planModeActive?: boolean;
+	/**
+	 * Full permission bypass (the `/yolo` command). Every approval that would
+	 * prompt is allowed instead, including per-tool `prompt` overrides. Unlike
+	 * `autoApprove` (yolo autonomy), this also flips a tool's own `approval(args)`
+	 * prompt. An explicit user `deny` and a plan-mode block are hard denials and
+	 * still stop the call. Session-scoped, defaults off.
+	 */
+	bypassAllApprovals?: boolean;
 }
 
 /** Session event passed to onSession callback */

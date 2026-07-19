@@ -25,6 +25,21 @@ Legacy aliases still accepted: `always-ask` → `ask`, `write` → `auto-edit`.
 
 `--auto-approve` and `--yolo` force `tools.approvalMode: yolo` for the session.
 
+## The `/yolo` command (full session bypass)
+
+The `yolo` mode above still honors your per-tool policies: `tools.approval.<tool>: prompt` and a tool's own safety `override` prompt both still stop the call. The `/yolo` command is stronger. It removes every approval prompt for the current session, including per-tool `prompt` overrides and safety `override` prompts.
+
+Run `/yolo` in the TUI and confirm the danger prompt to turn it on. While it is on, file writes, shell commands, and network calls run without asking. The composer border and prompt glyph turn red and the status line shows a red `YOLO` marker, so you always know it is active.
+
+Two things still block a call, because they are hard denials rather than prompts:
+
+- an explicit `tools.approval.<tool>: deny`, and
+- plan mode (mutating tools stay blocked).
+
+The bypass is session-scoped. It defaults to off, is never written to settings, and resets to off when the session ends. Turn it off at any time with `/yolo off`, and check the current state with `/yolo status`.
+
+This is different from the `--yolo` and `--auto-approve` launch flags, which set the `yolo` approval mode (and so keep honoring your per-tool `prompt`/`deny` policies). The `/yolo` command is the in-session full bypass.
+
 ## User overrides
 
 `tools.approval` is honored in every mode:
