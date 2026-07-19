@@ -203,4 +203,47 @@ describe("migrateLegacyDefaultProfileLayout", () => {
 		expect(fs.existsSync(path.join(root, "profiles", "work", "agent"))).toBe(true);
 		expect(fs.existsSync(path.join(root, "profiles", "default", "agent"))).toBe(true);
 	});
+
+	it("resumes an interrupted migration and moves the remaining root entries", () => {
+		const root = getGlobalConfigRootDir();
+		const target = path.join(root, "profiles", "default");
+		// Simulate a migration killed mid-loop: the marker survives, some entries
+		// already landed in profiles/default, and others are still at the root.
+		fs.mkdirSync(target, { recursive: true });
+		fs.writeFileSync(path.join(target, ".migration-in-progress"), "");
+		fs.mkdirSync(path.join(target, "logs"), { recursive: true }); // already moved
+		fs.mkdirSync(path.join(root, "agent"), { recursive: true }); // not yet moved
+		fs.writeFileSync(path.join(root, "stats.db"), "stats"); // not yet moved
+
+		const result = migrateLegacyDefaultProfileLayout();
+		expect(result.migrated).toBe(true);
+		expect(result.movedEntries).toEqual(["agent", "stats.db"]);
+		// Every entry now lives under the profile, the marker is gone, and nothing
+		// is left orphaned at the root.
+		expect(fs.existsSync(path.join(target, "agent"))).toBe(true);
+		expect(fs.readFileSync(path.join(target, "stats.db"), "utf8")).toBe("stats");
+		expect(fs.existsSync(path.join(target, "logs"))).toBe(true);
+		expect(fs.existsSync(path.join(target, ".migration-in-progress"))).toBe(false);
+		expect(fs.existsSync(path.join(root, "agent"))).toBe(false);
+		expect(fs.existsSync(path.join(root, "stats.db"))).toBe(false);
+	});
+
+	it("resumes even after the legacy agent dir was already moved (no silent orphan)", () => {
+		const root = getGlobalConfigRootDir();
+		const target = path.join(root, "profiles", "default");
+		// The killed run had already moved agent/ into the profile, leaving only a
+		// stray sibling at the root. Without the marker this used to read as
+		// "already migrated" and strand the sibling forever; the marker forces a
+		// resume that sweeps it in.
+		fs.mkdirSync(path.join(target, "agent"), { recursive: true });
+		fs.writeFileSync(path.join(target, ".migration-in-progress"), "");
+		fs.mkdirSync(path.join(root, "logs"), { recursive: true });
+
+		const result = migrateLegacyDefaultProfileLayout();
+		expect(result.migrated).toBe(true);
+		expect(result.movedEntries).toEqual(["logs"]);
+		expect(fs.existsSync(path.join(target, "logs"))).toBe(true);
+		expect(fs.existsSync(path.join(root, "logs"))).toBe(false);
+		expect(fs.existsSync(path.join(target, ".migration-in-progress"))).toBe(false);
+	});
 });
