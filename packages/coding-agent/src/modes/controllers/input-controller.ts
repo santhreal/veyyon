@@ -175,6 +175,7 @@ export class InputController {
 	#focusedLeftTapListenerInstalled = false;
 	#btwBranchListenerInstalled = false;
 	#btwCopyListenerInstalled = false;
+	#goalDetailListenerInstalled = false;
 	// Tap counter for the double-← gesture; reset whenever a quiet gap
 	// (>= LEFT_DOUBLE_TAP_MAX_GAP_MS) starts a fresh sequence. See
 	// #detectLeftDoubleTap.
@@ -263,6 +264,20 @@ export class InputController {
 				if (this.ctx.ui.getFocused() !== this.ctx.editor) return undefined;
 				if (this.ctx.editor.getText().trim()) return undefined;
 				void this.ctx.handleBtwCopyKey();
+				return { consume: true };
+			});
+		}
+		if (!this.#goalDetailListenerInstalled) {
+			this.#goalDetailListenerInstalled = true;
+			// Down-arrow on an empty composer expands the goal status segment into
+			// its detail/action menu (only while a goal is active or paused, so it
+			// never steals `down` in ordinary editing). Mirrors the b/c affordances.
+			this.ctx.ui.addInputListener(data => {
+				if (!matchesKey(data, "down")) return undefined;
+				if (!this.ctx.goalModeEnabled && !this.ctx.goalModePaused) return undefined;
+				if (this.ctx.ui.getFocused() !== this.ctx.editor) return undefined;
+				if (this.ctx.editor.getText().trim()) return undefined;
+				void this.ctx.openGoalDetail();
 				return { consume: true };
 			});
 		}

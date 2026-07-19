@@ -160,7 +160,7 @@ const GOAL_SPINNER_PERIOD_MS = 120;
 const GOAL_NEAR_BUDGET_FRACTION = 0.9;
 
 /** Compact filled/empty unicode bar for a 0..1 fraction (clamped). */
-function goalProgressBar(fraction: number): string {
+export function goalProgressBar(fraction: number): string {
 	const clamped = Math.max(0, Math.min(1, fraction));
 	const filled = Math.round(clamped * GOAL_BAR_WIDTH);
 	return `${"▰".repeat(filled)}${"▱".repeat(GOAL_BAR_WIDTH - filled)}`;
