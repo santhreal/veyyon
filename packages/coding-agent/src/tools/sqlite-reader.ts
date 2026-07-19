@@ -1,6 +1,6 @@
 import type { Database, SQLQueryBindings } from "bun:sqlite";
 import { clampLow } from "@veyyon/utils";
-import { sqlPlaceholders } from "@veyyon/utils/sqlite";
+import { sqlPlaceholders, tableExists } from "@veyyon/utils/sqlite";
 import { formatBytes, replaceTabs, truncateToWidth } from "./render-utils";
 import { ToolError } from "./tool-errors";
 
@@ -592,12 +592,7 @@ export function parseSqliteSelector(subPath: string, queryString: string): Sqlit
  */
 function loadRowEstimates(db: Database): Map<string, number> {
 	const estimates = new Map<string, number>();
-	const hasStat1 = db
-		.prepare<Pick<SqliteMasterRow, "name">, []>(
-			"SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'sqlite_stat1'",
-		)
-		.get();
-	if (!hasStat1) return estimates;
+	if (!tableExists(db, "sqlite_stat1")) return estimates;
 
 	for (const { tbl, stat } of db.prepare<SqliteStat1Row, []>("SELECT tbl, stat FROM sqlite_stat1").all()) {
 		if (!stat) continue;
