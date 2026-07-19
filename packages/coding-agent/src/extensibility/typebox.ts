@@ -18,6 +18,7 @@
  */
 
 import { areJsonValuesEqual } from "@veyyon/ai/utils/schema";
+import { isUuid } from "@veyyon/utils";
 
 // ---------------------------------------------------------------------------
 // Type aliases — exported so `import type { Static, TSchema } from "..."`
@@ -268,8 +269,7 @@ function createFormatStringValidator(format: string): (data: unknown) => unknown
 					return validationFailure("Invalid URL format");
 				}
 			case "uuid": {
-				const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-				return uuidRegex.test(data) ? data : validationFailure("Invalid UUID format");
+				return isUuid(data) ? data : validationFailure("Invalid UUID format");
 			}
 			case "date": {
 				const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
