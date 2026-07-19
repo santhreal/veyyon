@@ -1,6 +1,6 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as path from "node:path";
-import { Agent, type AgentMessage, type StreamFn } from "@veyyon/agent-core";
+import { Agent, type AgentMessage, type StreamFn, ThinkingLevel } from "@veyyon/agent-core";
 import * as compactionModule from "@veyyon/agent-core/compaction";
 import type { AssistantMessage, Model, ToolCall } from "@veyyon/ai";
 import { createMockModel } from "@veyyon/ai/providers/mock";
@@ -857,6 +857,73 @@ describe("AgentSession handoff", () => {
 		await waitFor(() => firstCandidateKey !== undefined);
 		// Unset compaction.model = inherit: the live session model runs compaction.
 		expect(firstCandidateKey).toBe(`${model.provider}/${model.id}`);
+	});
+
+	it("applies the compaction.model effort suffix to the compaction call, overriding the session effort", async () => {
+		session.settings.override("compaction.strategy", "context-full" as never);
+		session.settings.set("compaction.thresholdTokens", 50);
+		session.settings.set("compaction.keepRecentTokens", 1);
+		session.settings.set("contextPromotion.enabled", false);
+		// Session effort is Low, but the compaction model is pinned to :high — the
+		// candidate's own configured effort must win over the session effort.
+		session.setThinkingLevel(ThinkingLevel.Low);
+		session.settings.set("compaction.model", `${model.provider}/${model.id}:high`);
+
+		let capturedCandidateKey: string | undefined;
+		let capturedLevel: ThinkingLevel | undefined;
+		vi.spyOn(compactionModule, "compact").mockImplementation(
+			async (preparation, candidate, _resolver, _customInstructions, _signal, options) => {
+				capturedCandidateKey ??= `${candidate.provider}/${candidate.id}`;
+				capturedLevel ??= options?.thinkingLevel;
+				return {
+					summary: "compacted",
+					shortSummary: undefined,
+					firstKeptEntryId: preparation.firstKeptEntryId,
+					tokensBefore: preparation.tokensBefore,
+					details: {},
+				};
+			},
+		);
+		vi.spyOn(session.agent, "prompt").mockImplementation(async () => {});
+
+		await session.prompt("pending prompt ".repeat(120));
+		await waitFor(() => capturedCandidateKey !== undefined);
+
+		expect(capturedCandidateKey).toBe(`${model.provider}/${model.id}`);
+		expect(capturedLevel).toBe(ThinkingLevel.High);
+	});
+
+	it("uses the session effort for compaction when compaction.model carries no effort suffix", async () => {
+		session.settings.override("compaction.strategy", "context-full" as never);
+		session.settings.set("compaction.thresholdTokens", 50);
+		session.settings.set("compaction.keepRecentTokens", 1);
+		session.settings.set("contextPromotion.enabled", false);
+		session.setThinkingLevel(ThinkingLevel.Low);
+		// Bare selector, no `:effort` — the session effort (Low) governs compaction.
+		session.settings.set("compaction.model", `${model.provider}/${model.id}`);
+
+		let capturedCandidateKey: string | undefined;
+		let capturedLevel: ThinkingLevel | undefined;
+		vi.spyOn(compactionModule, "compact").mockImplementation(
+			async (preparation, candidate, _resolver, _customInstructions, _signal, options) => {
+				capturedCandidateKey ??= `${candidate.provider}/${candidate.id}`;
+				capturedLevel ??= options?.thinkingLevel;
+				return {
+					summary: "compacted",
+					shortSummary: undefined,
+					firstKeptEntryId: preparation.firstKeptEntryId,
+					tokensBefore: preparation.tokensBefore,
+					details: {},
+				};
+			},
+		);
+		vi.spyOn(session.agent, "prompt").mockImplementation(async () => {});
+
+		await session.prompt("pending prompt ".repeat(120));
+		await waitFor(() => capturedCandidateKey !== undefined);
+
+		expect(capturedCandidateKey).toBe(`${model.provider}/${model.id}`);
+		expect(capturedLevel).toBe(ThinkingLevel.Low);
 	});
 
 	it("keeps pre-prompt context-full checks aligned with provider-anchored usage", async () => {

@@ -1,5 +1,6 @@
 import type { ThinkingLevel } from "@veyyon/agent-core";
-import type { Effort, Model } from "@veyyon/ai";
+import type { Api, Effort, Model } from "@veyyon/ai";
+import { getSupportedEfforts } from "@veyyon/catalog/model-thinking";
 import type { ShapeTarget } from "@veyyon/snapcompact";
 import {
 	type Component,
@@ -29,6 +30,7 @@ import {
 } from "@veyyon/tui";
 import { errorMessage } from "@veyyon/utils";
 import type { ModelRegistry } from "../../config/model-registry";
+import { formatModelSelectorValue, resolveModelRoleValue } from "../../config/model-resolver";
 import { getRoleInfo, ROLE_INHERIT_LABEL, SELECTABLE_MODEL_ROLE_IDS } from "../../config/model-roles";
 import {
 	getDefault,
@@ -436,6 +438,113 @@ class ModelRolesSubmenu extends Container {
 			},
 		);
 		this.addChild(panel);
+	}
+
+	handleInput(data: string): void {
+		if (this.#selectList) {
+			this.#selectList.handleInput(data);
+			return;
+		}
+		this.children[0]?.handleInput?.(data);
+	}
+}
+
+/**
+ * Two-step picker for a single-model settings slot (`compaction.model`,
+ * `subagent.model`): pick a model, then pick a thinking effort for it. The
+ * effort rides the stored selector as a `:level` suffix
+ * ({@link formatModelSelectorValue}), the same encoding the advisor model
+ * assignment uses, so the one stored value both persists per profile and is
+ * applied at run time: the compaction candidate resolver and the subagent
+ * spawner each parse the suffix back into a thinking level. Models with no
+ * supported efforts skip the second step and persist the bare selector.
+ */
+class ModelEffortSubmenu extends Container {
+	#selectList: SelectList | undefined;
+
+	constructor(
+		private readonly path: SettingPath,
+		private readonly registry: ModelRegistry,
+		private readonly models: ReadonlyArray<Model>,
+		private readonly title: string,
+		private readonly currentSelector: string | undefined,
+		private readonly done: (value?: string) => void,
+		private readonly onChange: (value: string | undefined) => void,
+		private readonly requestRender?: () => void,
+	) {
+		super();
+		this.#showModelPicker();
+	}
+
+	#showModelPicker(): void {
+		this.clear();
+		this.#selectList = undefined;
+		const panel = new ModelSelectorPanel(
+			settings,
+			this.registry,
+			this.models,
+			{
+				title: this.title,
+				description: "Searchable catalog · auth / local / no auth shown on each row.",
+				currentSelector: this.currentSelector || undefined,
+				allowClear: true,
+			},
+			{
+				onPick: (model, selector) => {
+					const efforts = getSupportedEfforts(model);
+					if (efforts.length === 0) {
+						this.#persist(selector);
+						return;
+					}
+					this.#showEffortPicker(selector, efforts);
+					this.requestRender?.();
+				},
+				onClear: () => {
+					settings.set(this.path, undefined as never);
+					this.onChange(undefined);
+					this.done("inherit");
+				},
+				onCancel: () => this.done(),
+			},
+		);
+		this.addChild(panel);
+	}
+
+	#showEffortPicker(selector: string, efforts: readonly Effort[]): void {
+		this.clear();
+		const items: SelectItem[] = [{ value: "", label: "(model default thinking)" }];
+		for (const effort of efforts) items.push({ value: effort, label: effort });
+		const list = new SelectList(items, Math.max(1, items.length), getSelectListTheme());
+		list.onSelect = item => {
+			// `item.value` is one of the model's own supported efforts (or "" for the
+			// model default); `formatModelSelectorValue` spells the `:level` suffix.
+			const level = item.value ? (item.value as ThinkingLevel) : undefined;
+			this.#persist(formatModelSelectorValue(selector, level));
+		};
+		list.onCancel = () => {
+			this.#showModelPicker();
+			this.requestRender?.();
+		};
+		this.#selectList = list;
+		this.addChild(new Text(theme.bold(theme.fg("accent", "Thinking effort")), 0, 0));
+		this.addChild(new Spacer(1));
+		this.addChild(
+			new Text(
+				theme.fg("muted", `Effort for ${selector} — applied when this model runs. Per active profile.`),
+				0,
+				0,
+			),
+		);
+		this.addChild(new Spacer(1));
+		this.addChild(list);
+		this.addChild(new Spacer(1));
+		this.addChild(new Text(theme.fg("dim", "  Enter / click pick · Esc back to model"), 0, 0));
+	}
+
+	#persist(value: string): void {
+		settings.set(this.path, value as never);
+		this.onChange(value);
+		this.done(value);
 	}
 
 	handleInput(data: string): void {
@@ -1383,32 +1492,24 @@ export class SettingsSelectorComponent implements Component {
 		// `SettingValue<SettingPath>` collapses to never for the full path union;
 		// widen and narrow by runtime type instead.
 		const current: unknown = settings.get(path);
-		const currentSelector = typeof current === "string" ? current.trim() : undefined;
+		const rawCurrent = typeof current === "string" ? current.trim() : undefined;
+		// The stored value may carry a `:effort` suffix; resolve it back to the bare
+		// `provider/id` so the model row highlights as current in the picker.
+		const resolvedCurrent = rawCurrent
+			? resolveModelRoleValue(rawCurrent, ctx.models as Model<Api>[]).model
+			: undefined;
+		const currentSelector = resolvedCurrent ? `${resolvedCurrent.provider}/${resolvedCurrent.id}` : rawCurrent;
 		const label =
 			path === "subagent.model" ? "Subagent Model" : path === "compaction.model" ? "Compaction Model" : String(path);
-		return new ModelSelectorPanel(
-			settings,
+		return new ModelEffortSubmenu(
+			path,
 			ctx.registry,
 			ctx.models,
-			{
-				title: label,
-				description: "Searchable catalog · auth / local / no auth shown on each row.",
-				currentSelector: currentSelector || undefined,
-				allowClear: true,
-			},
-			{
-				onPick: (_model, selector) => {
-					settings.set(path, selector as never);
-					this.callbacks.onChange(path, selector);
-					done(selector);
-				},
-				onClear: () => {
-					settings.set(path, undefined as never);
-					this.callbacks.onChange(path, undefined);
-					done("inherit");
-				},
-				onCancel: () => done(),
-			},
+			label,
+			currentSelector || undefined,
+			done,
+			value => this.callbacks.onChange(path, value),
+			this.context.requestRender,
 		);
 	}
 
