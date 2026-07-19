@@ -1,3 +1,4 @@
+import { DAY_MS } from "@veyyon/utils/time";
 import { parseQueryTime, type QueryTime } from "../util/datetime";
 
 export type DatePrecision = "day" | "week" | "month" | "year" | "relative" | "unknown";
@@ -9,8 +10,6 @@ export interface TemporalInfo {
 	temporal_tags: string[];
 	primary_signal: string | null;
 }
-
-const MS_PER_DAY = 86_400_000;
 
 // Day name -> weekday number (Monday=0, Sunday=6), matching Python datetime.weekday().
 export const DAY_MAP: Readonly<Record<string, number>> = {
@@ -106,7 +105,7 @@ function isoWeek(value: Date): number {
 	const d = dateOnly(value);
 	d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
 	const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-	return Math.ceil(((d.getTime() - yearStart.getTime()) / MS_PER_DAY + 1) / 7);
+	return Math.ceil(((d.getTime() - yearStart.getTime()) / DAY_MS + 1) / 7);
 }
 
 function finiteDate(value: Date): Date | undefined {

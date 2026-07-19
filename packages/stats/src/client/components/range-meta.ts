@@ -4,12 +4,11 @@
  * defined in `aggregator.ts`.
  */
 
+import { DAY_MS, HOUR_MS, MINUTE_MS } from "@veyyon/utils/time";
 import { format } from "date-fns";
 import type { TimeRange } from "../types";
 
-const HOUR_MS = 60 * 60 * 1000;
-const DAY_MS = 24 * HOUR_MS;
-const FIVE_MIN_MS = 5 * 60 * 1000;
+const FIVE_MIN_MS = 5 * MINUTE_MS;
 
 export interface RangeMeta {
 	/** Human label used in chart subtitles ("the last 24 hours"). */

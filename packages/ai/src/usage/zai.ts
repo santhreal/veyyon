@@ -1,5 +1,5 @@
 import { toNumber } from "@veyyon/catalog/utils";
-import { formatCount } from "@veyyon/utils";
+import { DAY_MS, formatCount, HOUR_MS, WEEK_MS } from "@veyyon/utils";
 import type {
 	CredentialRankingStrategy,
 	UsageAmount,
@@ -16,10 +16,6 @@ import { isRecord } from "../utils";
 const DEFAULT_ENDPOINT = "https://api.z.ai";
 const QUOTA_PATH = "/api/monitor/usage/quota/limit";
 const MODEL_USAGE_PATH = "/api/monitor/usage/model-usage";
-const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
-const HOUR_MS = 60 * 60 * 1000;
-const DAY_MS = 24 * HOUR_MS;
-const WEEK_MS = 7 * DAY_MS;
 const MONTH_MS = 30 * DAY_MS;
 
 interface ZaiUsageDetail {
@@ -184,7 +180,7 @@ function requestQuotaLabel(parsed: ZaiUsageLimitItem): string {
 }
 
 function buildModelUsageUrl(baseUrl: string, now: Date): string {
-	const start = new Date(now.getTime() - SEVEN_DAYS_MS);
+	const start = new Date(now.getTime() - WEEK_MS);
 	const startTime = formatDate(start);
 	const endTime = formatDate(now);
 	return `${baseUrl}${MODEL_USAGE_PATH}?startTime=${encodeURIComponent(startTime)}&endTime=${encodeURIComponent(endTime)}`;

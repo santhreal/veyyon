@@ -1,8 +1,7 @@
+import { DAY_MS, HOUR_MS } from "@veyyon/utils";
 import type { UsageCostHistoryEntry, UsageLimit, UsageProvider, UsageWindow } from "../usage";
 
 const OPENCODE_GO_PROVIDER = "opencode-go";
-const HOUR_MS = 60 * 60 * 1000;
-const DAY_MS = 24 * HOUR_MS;
 const OPENCODE_GO_LIMITS = [
 	{ id: "rolling-5h", label: "5 Hour", durationMs: 5 * HOUR_MS, limitUsd: 12 },
 	{ id: "weekly", label: "Weekly", durationMs: 7 * DAY_MS, limitUsd: 30 },

@@ -1,5 +1,5 @@
 import * as fs from "node:fs";
-import { workerHostEntry } from "@veyyon/utils";
+import { DAY_MS, HOUR_MS, MINUTE_MS, workerHostEntry } from "@veyyon/utils";
 import {
 	getRecentErrors as dbGetRecentErrors,
 	getRecentRequests as dbGetRecentRequests,
@@ -292,9 +292,7 @@ export async function syncAllSessions(opts?: SyncOptions): Promise<{ processed: 
 	return { processed: totalProcessed, files: filesProcessed };
 }
 
-const HOUR_MS = 60 * 60 * 1000;
-const DAY_MS = 24 * HOUR_MS;
-const FIVE_MIN_MS = 5 * 60 * 1000;
+const FIVE_MIN_MS = 5 * MINUTE_MS;
 
 type TimeRange = "1h" | "24h" | "7d" | "30d" | "90d" | "all";
 
