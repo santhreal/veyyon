@@ -15,6 +15,7 @@ import type { AssistantMessage, ImageContent, Message, MessageAttribution, TextC
 import * as AIError from "@veyyon/ai/error";
 import { isRecord, prompt } from "@veyyon/utils";
 import userInterjectionTemplate from "../prompts/steering/user-interjection.md" with { type: "text" };
+import { contentText } from "./content-text";
 
 export {
 	type BranchSummaryMessage,
@@ -361,23 +362,6 @@ function renderSteeringEnvelope(message: string): string {
 	return prompt.render(userInterjectionTemplate, { message });
 }
 
-function getArrayContentText(content: (TextContent | ImageContent)[]): string {
-	let firstText: string | undefined;
-	let textParts: string[] | undefined;
-	for (const part of content) {
-		if (part.type !== "text") continue;
-		if (firstText === undefined) {
-			firstText = part.text;
-			continue;
-		}
-		if (textParts === undefined) {
-			textParts = [firstText];
-		}
-		textParts.push(part.text);
-	}
-	return textParts === undefined ? (firstText ?? "") : textParts.join("\n");
-}
-
 function getArrayContentImages(content: (TextContent | ImageContent)[]): ImageContent[] {
 	let images: ImageContent[] | undefined;
 	for (const part of content) {
@@ -394,7 +378,7 @@ function wrapSteeringUserMessage(message: UserMessage): UserMessage {
 		return { ...userMessageWithoutSteering(message), content: renderSteeringEnvelope(message.content) };
 	}
 
-	const text = getArrayContentText(message.content);
+	const text = contentText(message.content);
 	if (text.length === 0) return message;
 	const content: (TextContent | ImageContent)[] = [{ type: "text", text: renderSteeringEnvelope(text) }];
 	content.push(...getArrayContentImages(message.content));
