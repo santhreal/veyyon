@@ -5,7 +5,7 @@ import type {
 	TextGenerationStringOutput,
 	StoppingCriteria as TransformersStoppingCriteria,
 } from "@huggingface/transformers";
-import { errorMessage, getTinyModelsCacheDir, prompt } from "@veyyon/utils";
+import { clamp, errorMessage, getTinyModelsCacheDir, prompt } from "@veyyon/utils";
 import titleSystemPrompt from "../prompts/system/title-system.md" with { type: "text" };
 import {
 	errorText,
@@ -290,7 +290,7 @@ async function generateCompletion(
 	const generator = await loadPipeline(modelKey, transport, requestId);
 	const text = buildCompletionPrompt(generator, promptText);
 	const requested = maxTokens ?? MEMORY_COMPLETION_DEFAULT_MAX_NEW_TOKENS;
-	const maxNewTokens = Math.min(Math.max(1, requested), COMPLETION_MAX_NEW_TOKENS);
+	const maxNewTokens = clamp(requested, 1, COMPLETION_MAX_NEW_TOKENS);
 	const output = (await generator(text, {
 		max_new_tokens: maxNewTokens,
 		do_sample: false,

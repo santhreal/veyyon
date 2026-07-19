@@ -22,7 +22,7 @@
 // scratch here on this module's ANSI-aware Box model.
 
 import { latexColorScope, latexToUnicode, MATH_FONT_COMMANDS } from "./latex-to-unicode";
-import { visibleWidth } from "./utils";
+import { clamp, visibleWidth } from "./utils";
 
 /**
  * A rectangular block of rendered text. Every entry in `lines` is padded to
@@ -299,7 +299,7 @@ function delimColumn(key: string, height: number, baseline: number): Box | null 
 		for (let y = 0; y < height; y++) lines.push(y === baseline ? key : blank);
 		return { lines, baseline, width };
 	}
-	const axisRow = Math.min(Math.max(baseline, 1), height - 2);
+	const axisRow = clamp(baseline, 1, height - 2);
 	for (let y = 0; y < height; y++) {
 		if (y === 0) lines.push(pieces.top);
 		else if (y === height - 1) lines.push(pieces.bot);

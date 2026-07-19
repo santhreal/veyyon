@@ -1,7 +1,7 @@
 import { scheduler } from "node:timers/promises";
 import { bareModelId, parseAnthropicModel } from "@veyyon/catalog/identity";
 import { toNumber } from "@veyyon/catalog/utils";
-import { HOUR_MS, trimTrailingSlashes, WEEK_MS } from "@veyyon/utils";
+import { clamp, clamp01, HOUR_MS, trimTrailingSlashes, WEEK_MS } from "@veyyon/utils";
 import * as AIError from "../error";
 import { claudeCodeVersion } from "../providers/anthropic";
 import {
@@ -358,7 +358,7 @@ async function fetchProfile(
 
 function buildUsageAmount(utilization: number | undefined): UsageAmount | undefined {
 	if (utilization === undefined) return undefined;
-	const clamped = Math.min(Math.max(utilization, 0), 100);
+	const clamped = clamp(utilization, 0, 100);
 	const usedFraction = clamped / 100;
 	return {
 		used: clamped,
@@ -654,7 +654,7 @@ function scopeClaudeLimitsForModelHardBlock(
 function rankingUsedFraction(limit: UsageLimit): number {
 	const fraction = resolveUsedFraction(limit);
 	if (typeof fraction !== "number" || !Number.isFinite(fraction)) return 0.5;
-	return Math.min(Math.max(fraction, 0), 1);
+	return clamp01(fraction);
 }
 
 function rankingDrainRate(limit: UsageLimit, nowMs: number): number {
@@ -664,7 +664,7 @@ function rankingDrainRate(limit: UsageLimit, nowMs: number): number {
 	const resetAt = limit.window?.resetsAt;
 	if (typeof resetAt !== "number" || !Number.isFinite(resetAt)) return usedFraction;
 	const remainingWindowMs = resetAt - nowMs;
-	const clampedRemainingWindowMs = Math.min(Math.max(remainingWindowMs, 0), durationMs);
+	const clampedRemainingWindowMs = clamp(remainingWindowMs, 0, durationMs);
 	const elapsedMs = durationMs - clampedRemainingWindowMs;
 	if (elapsedMs <= 0) return usedFraction;
 	const elapsedHours = elapsedMs / (60 * 60 * 1000);

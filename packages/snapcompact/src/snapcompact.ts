@@ -46,7 +46,7 @@
 
 import type { Api, ImageContent, Message, TextContent } from "@veyyon/ai";
 import { renderSnapcompactPng, snapcompactSupportedChars } from "@veyyon/natives";
-import { collapseWhitespace, containsUrlScheme, formatGroupedPaths, pluralize, prompt } from "@veyyon/utils";
+import { clamp01, collapseWhitespace, containsUrlScheme, formatGroupedPaths, pluralize, prompt } from "@veyyon/utils";
 import { INTENT_FIELD } from "@veyyon/wire";
 import fileOperationsTemplate from "./prompts/file-operations.md" with { type: "text" };
 import snapcompactSummaryPrompt from "./prompts/snapcompact-summary.md" with { type: "text" };
@@ -739,7 +739,7 @@ export interface SerializeOptions {
 /** Keep the head and tail of `text`, eliding the middle beyond `maxChars`. */
 function truncateForSummary(text: string, maxChars: number, headRatio: number): string {
 	if (text.length <= maxChars) return text;
-	const ratio = Math.min(Math.max(headRatio, 0), 1);
+	const ratio = clamp01(headRatio);
 	const headChars = Math.round(maxChars * ratio);
 	const tailChars = maxChars - headChars;
 	const elided = text.length - maxChars;

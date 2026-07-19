@@ -8,11 +8,11 @@ import {
 	wrapTextWithAnsi as nativeWrapTextWithAnsi,
 	type SliceResult,
 } from "@veyyon/natives";
-import { DEFAULT_TAB_WIDTH } from "@veyyon/utils";
+import { clamp, DEFAULT_TAB_WIDTH } from "@veyyon/utils";
 
 export { Ellipsis } from "@veyyon/natives";
 
-export { DEFAULT_TAB_WIDTH } from "@veyyon/utils";
+export { clamp, DEFAULT_TAB_WIDTH } from "@veyyon/utils";
 
 export type HangulCompatibilityJamoWidth = "platform" | "unicode" | 1 | 2;
 
@@ -230,18 +230,6 @@ export function padding(n: number): string {
 	if (!(n >= 1)) return "";
 	if (n <= 512) return SPACE_BUFFER.slice(0, n);
 	return " ".repeat(n > MAX_PADDING ? MAX_PADDING : n);
-}
-
-/**
- * Constrain `value` to the inclusive range [min, max].
- *
- * Canonical owner for the `Math.max(min, Math.min(value, max))` idiom that was
- * inlined across dozens of layout/scroll/selection sites. Semantics match that
- * idiom exactly: on an inverted range (min > max) `min` wins, and a NaN `value`
- * propagates as NaN (callers that need a finite fallback must sanitize first).
- */
-export function clamp(value: number, min: number, max: number): number {
-	return Math.max(min, Math.min(value, max));
 }
 
 // Grapheme segmenter (shared instance)
@@ -525,7 +513,7 @@ function floorToGraphemeBoundary(text: string, cursor: number): number {
 export function moveWordLeft(text: string, cursor: number): number {
 	const len = text.length;
 	if (len === 0) return 0;
-	let i = floorToGraphemeBoundary(text, Math.min(Math.max(cursor, 0), len));
+	let i = floorToGraphemeBoundary(text, clamp(cursor, 0, len));
 	if (i === 0) return 0;
 
 	const graphemes = [...segmenter.segment(text.slice(0, i))];
@@ -581,7 +569,7 @@ export function moveWordLeft(text: string, cursor: number): number {
 export function moveWordRight(text: string, cursor: number): number {
 	const len = text.length;
 	if (len === 0) return 0;
-	let i = floorToGraphemeBoundary(text, Math.min(Math.max(cursor, 0), len));
+	let i = floorToGraphemeBoundary(text, clamp(cursor, 0, len));
 	if (i === len) return len;
 
 	const iterator = segmenter.segment(text.slice(i))[Symbol.iterator]();

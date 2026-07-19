@@ -1,5 +1,5 @@
 import { toNumber } from "@veyyon/catalog/utils";
-import { DAY_MS, formatCount, HOUR_MS, WEEK_MS } from "@veyyon/utils";
+import { clamp01, DAY_MS, formatCount, HOUR_MS, WEEK_MS } from "@veyyon/utils";
 import type {
 	CredentialRankingStrategy,
 	UsageAmount,
@@ -100,7 +100,7 @@ function buildUsageAmount(args: {
 }): UsageAmount {
 	const usedFraction =
 		args.percentage !== undefined
-			? Math.min(Math.max(args.percentage / 100, 0), 1)
+			? clamp01(args.percentage / 100)
 			: args.used !== undefined && args.limit !== undefined && args.limit > 0
 				? Math.min(args.used / args.limit, 1)
 				: undefined;

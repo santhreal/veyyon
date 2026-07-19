@@ -1,4 +1,4 @@
-import { decodeJwtPayload, HOUR_MS, MINUTE_MS, WEEK_MS } from "@veyyon/utils";
+import { clamp, decodeJwtPayload, HOUR_MS, MINUTE_MS, WEEK_MS } from "@veyyon/utils";
 import type {
 	CredentialRankingStrategy,
 	UsageAmount,
@@ -236,7 +236,7 @@ function buildUsageAmount(window: ParsedUsageWindow): UsageAmount {
 	if (usedPercent === undefined) {
 		return { unit: "percent" };
 	}
-	const clamped = Math.min(Math.max(usedPercent, 0), 100);
+	const clamped = clamp(usedPercent, 0, 100);
 	const usedFraction = clamped / 100;
 	return {
 		used: clamped,

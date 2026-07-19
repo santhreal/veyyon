@@ -1,4 +1,4 @@
-import { clamp01, HOUR_MS, isDateOnly } from "@veyyon/utils";
+import { clamp, clamp01, HOUR_MS, isDateOnly } from "@veyyon/utils";
 import { normalizedRecallWeights, temporalHalflifeHours } from "../../config";
 import { toUtcIso } from "../../util/datetime";
 import { tableExists as tableExistsIn } from "../../util/sqlite";
@@ -289,7 +289,7 @@ function lexicalGroupRelevance(
 			count += 1;
 			offset = idx + token.length;
 		}
-		return clamp01(0.7 + Math.min(Math.max(count - 1, 0), 3) * 0.1);
+		return clamp01(0.7 + clamp(count - 1, 0, 3) * 0.1);
 	}
 	return clamp01((exact + partial * 0.5) / queryGroups.length);
 }
@@ -329,7 +329,7 @@ function lexicalRelevance(queryTokens: readonly string[], content: string, norma
 			count += 1;
 			offset = idx + token.length;
 		}
-		return clamp01(0.7 + Math.min(Math.max(count - 1, 0), 3) * 0.1);
+		return clamp01(0.7 + clamp(count - 1, 0, 3) * 0.1);
 	}
 	const contentTokens = new Set(tokenize(contentLower));
 	let exact = 0;

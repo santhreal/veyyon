@@ -185,28 +185,24 @@ describe("clamp", () => {
 		expect(clamp(42, 0, 10)).toBe(10);
 	});
 
-	it("preserves the historical inline idiom on an inverted range (min wins)", () => {
-		// The inlined `Math.max(min, Math.min(value, max))` returns min when min > max
-		// regardless of value; the extracted helper must match byte-for-byte.
+	it("returns min on an inverted range (min > max)", () => {
 		expect(clamp(5, 10, 0)).toBe(10);
 		expect(clamp(-5, 10, 0)).toBe(10);
-		expect(clamp(Math.max(10, Math.min(5, 0)), 0, 20)).toBe(10);
 	});
 
-	it("propagates NaN value (same as the idiom) so callers sanitize first", () => {
-		expect(clamp(Number.NaN, 0, 10)).toBeNaN();
-	});
-
-	it("passes Infinity bounds through unchanged", () => {
-		expect(clamp(1e9, 0, Number.POSITIVE_INFINITY)).toBe(1e9);
+	it("maps a non-finite value to the low bound (the shared owner's contract)", () => {
+		// tui re-exports clamp from @veyyon/utils, which fails a broken computation
+		// to `min` rather than propagating NaN. The old tui-local clamp propagated
+		// NaN; this asserts the unified behavior after the two owners were merged.
+		expect(clamp(Number.NaN, 0, 10)).toBe(0);
 		expect(clamp(Number.NEGATIVE_INFINITY, 0, 10)).toBe(0);
+		expect(clamp(Number.POSITIVE_INFINITY, 0, 10)).toBe(0);
 	});
 
-	// ONE-PLACE lock: the clamp idiom was inlined across select-list, settings-list,
-	// scroll-view, spacer, and tab-bar (and a local `const clamp` lived in
-	// select-list). It now has a single owner in utils.ts — a re-declared `clamp`
-	// (function or const) anywhere in tui/src must re-import instead, or copies drift.
-	it("is defined in exactly one source file", async () => {
+	// ONE-PLACE lock: clamp now has a single owner, @veyyon/utils (utils/src/math.ts),
+	// which tui re-exports through utils.ts. No file in tui/src may re-declare it as a
+	// function or const, or the two copies drift again (they once disagreed on NaN).
+	it("has no local definition in tui/src (only the re-export)", async () => {
 		const root = `${import.meta.dir}/../..`;
 		const definitions: string[] = [];
 		const glob = new Glob("**/*.ts");
@@ -214,6 +210,6 @@ describe("clamp", () => {
 			const src = await Bun.file(`${root}/tui/src/${rel}`).text();
 			if (/(?:function\s+clamp\b|(?:const|let)\s+clamp\s*=)/.test(src)) definitions.push(`tui/src/${rel}`);
 		}
-		expect(definitions).toEqual(["tui/src/utils.ts"]);
+		expect(definitions).toEqual([]);
 	});
 });

@@ -13,6 +13,8 @@ import { createHash } from "node:crypto";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import {
+	clamp,
+	clamp01,
 	decodeJwtPayload,
 	errorMessage,
 	getAgentDbPath,
@@ -2185,7 +2187,7 @@ export class AuthStorage {
 			const waitMs =
 				leaseExpiresAt === undefined
 					? OAUTH_REFRESH_LEASE_POLL_MS
-					: Math.min(Math.max(leaseExpiresAt - Date.now(), OAUTH_REFRESH_LEASE_POLL_MS), 250);
+					: clamp(leaseExpiresAt - Date.now(), OAUTH_REFRESH_LEASE_POLL_MS, 250);
 			await raceCredentialRefreshWithSignal(
 				Bun.sleep(waitMs),
 				options.signal,
@@ -3916,7 +3918,7 @@ export class AuthStorage {
 		if (typeof usedFraction !== "number" || !Number.isFinite(usedFraction)) {
 			return 0.5;
 		}
-		return Math.min(Math.max(usedFraction, 0), 1);
+		return clamp01(usedFraction);
 	}
 
 	/**
