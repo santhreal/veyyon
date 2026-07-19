@@ -788,16 +788,29 @@ export interface LegacyLayoutMigrationResult {
 }
 
 /**
+ * Marker written inside `profiles/default/` while a legacy-layout migration is
+ * moving entries, removed once every entry has landed. Its presence is how a
+ * resumed migration tells an INTERRUPTED move (finish it) apart from a genuine
+ * both-layouts conflict (fail closed).
+ */
+const LEGACY_MIGRATION_MARKER = ".migration-in-progress";
+
+/**
  * One-time move of the legacy bare-root default profile
  * (`~/.veyyon/agent`, `~/.veyyon/logs`, …) into `~/.veyyon/profiles/default/`.
  *
- * - Nothing to do when no legacy `agent/` dir exists (fresh install, or
- *   already migrated).
- * - FAILS CLOSED when both the legacy `agent/` dir and `profiles/default/`
- *   exist: two candidate default profiles is a state we must never guess
- *   about, so the error names both directories and how to reconcile.
- * - Otherwise moves every non-global root entry (same-filesystem rename) and
- *   reports what moved so the caller can print one loud notice.
+ * - Nothing to do when no legacy `agent/` dir exists and no migration is in
+ *   progress (fresh install, or already migrated).
+ * - RESUMES an interrupted migration: if a prior run moved some entries and was
+ *   killed mid-loop, a marker file inside `profiles/default/` survives, so the
+ *   next run finishes moving the remaining root entries instead of leaving them
+ *   silently orphaned outside the profile. The move is a set of independent
+ *   same-filesystem renames, so replaying it is safe — an already-moved entry
+ *   is simply no longer at the root.
+ * - FAILS CLOSED when a FINISHED `profiles/default/` (no marker) and the legacy
+ *   `agent/` dir both exist: two candidate default profiles is a state we must
+ *   never guess about, so the error names both directories and how to reconcile.
+ * - Reports what moved so the caller can print one loud notice.
  *
  * Must run before anything reads or writes profile paths (the CLI calls it
  * right after startup profile resolution, before `.env` loading).
@@ -806,10 +819,16 @@ export function migrateLegacyDefaultProfileLayout(): LegacyLayoutMigrationResult
 	const root = getBaseConfigRoot();
 	const legacyAgentDir = path.join(root, "agent");
 	const targetDir = path.join(root, PROFILES_DIR_NAME, DEFAULT_PROFILE_DIR_NAME);
-	if (!fs.existsSync(legacyAgentDir)) {
+	const markerPath = path.join(targetDir, LEGACY_MIGRATION_MARKER);
+	const resuming = fs.existsSync(markerPath);
+
+	if (!fs.existsSync(legacyAgentDir) && !resuming) {
+		// No legacy layout to move and no half-done migration to finish.
 		return { migrated: false, movedEntries: [], targetDir };
 	}
-	if (fs.existsSync(targetDir)) {
+	if (fs.existsSync(targetDir) && !resuming) {
+		// A completed new-layout dir (no marker) next to a legacy one: genuine
+		// conflict, never a mid-migration state. Refuse rather than guess.
 		throw new Error(
 			`Both the legacy default-profile layout (${legacyAgentDir}) and the new one (${targetDir}) exist. ` +
 				`Veyyon cannot guess which is current. Merge or remove one — typically: move the contents of ` +
@@ -817,13 +836,18 @@ export function migrateLegacyDefaultProfileLayout(): LegacyLayoutMigrationResult
 				`then delete the legacy copies — and relaunch.`,
 		);
 	}
+	// Claim the migration by planting the marker BEFORE any move, so an
+	// interruption at any point leaves a resumable state, never a silent orphan.
 	fs.mkdirSync(targetDir, { recursive: true });
+	fs.writeFileSync(markerPath, "");
 	const movedEntries: string[] = [];
 	for (const entry of fs.readdirSync(root)) {
 		if (GLOBAL_ROOT_ENTRIES.has(entry)) continue;
 		fs.renameSync(path.join(root, entry), path.join(targetDir, entry));
 		movedEntries.push(entry);
 	}
+	// All entries landed — drop the marker so the migration reads as complete.
+	fs.rmSync(markerPath, { force: true });
 	movedEntries.sort((a, b) => a.localeCompare(b));
 	return { migrated: true, movedEntries, targetDir };
 }
