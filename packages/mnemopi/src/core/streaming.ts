@@ -1,6 +1,7 @@
 import type { Database, SQLQueryBindings } from "bun:sqlite";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { logger } from "@veyyon/utils";
 import { sqlPlaceholders } from "../util/sqlite";
 
 export const ALLOWED_DELTA_TABLES = new Set(["working_memory", "episodic_memory"] as const);
@@ -209,12 +210,26 @@ export class MemoryStream {
 		for (const callback of this.callbacks.get(event.eventType) ?? []) {
 			try {
 				callback(event);
-			} catch {}
+			} catch (error) {
+				// Isolate a throwing subscriber so it can't break delivery to the rest,
+				// but surface it: a silently swallowed listener error is a lost signal.
+				logger.warn("mnemopi: memory-stream listener threw; isolated and continuing", {
+					eventType: event.eventType,
+					memoryId: event.memoryId,
+					error: error instanceof Error ? error.message : String(error),
+				});
+			}
 		}
 		for (const callback of this.anyCallbacks) {
 			try {
 				callback(event);
-			} catch {}
+			} catch (error) {
+				logger.warn("mnemopi: memory-stream any-listener threw; isolated and continuing", {
+					eventType: event.eventType,
+					memoryId: event.memoryId,
+					error: error instanceof Error ? error.message : String(error),
+				});
+			}
 		}
 		for (const iterator of this.iterators) iterator.push(event);
 	}
