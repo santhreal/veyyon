@@ -6,6 +6,7 @@ import {
 	formatFileOperations,
 	isUrlSchemePath,
 	stripReadSelector,
+	upsertFileOperations,
 } from "../src/compaction/utils";
 import { createAssistantMessage } from "./helpers";
 
@@ -88,6 +89,19 @@ describe("extractFileOpsFromMessage", () => {
 		expect(readFiles).toEqual(["src/keep.ts"]);
 		expect(modifiedFiles).toEqual([]);
 	});
+
+	it("records an edit tool call as a modified file, not a read", () => {
+		const fileOps = createFileOps();
+		const message = createAssistantMessage([
+			readCall("r1", "src/reader.ts"),
+			{ type: "toolCall" as const, id: "e1", name: "edit", arguments: { path: "src/patched.ts" } },
+		]);
+		extractFileOpsFromMessage(message, fileOps);
+		expect([...fileOps.edited]).toEqual(["src/patched.ts"]);
+		const { readFiles, modifiedFiles } = computeFileLists(fileOps);
+		expect(readFiles).toEqual(["src/reader.ts"]);
+		expect(modifiedFiles).toEqual(["src/patched.ts"]);
+	});
 });
 
 describe("computeFileLists", () => {
@@ -121,6 +135,45 @@ describe("formatFileOperations", () => {
 	it("marks modified files Write when no read set is provided", () => {
 		const rendered = formatFileOperations([], ["c.ts"]);
 		expect(rendered).toBe(["<files>", "c.ts (Write)", "</files>"].join("\n"));
+	});
+
+	it("caps the tree at 20 files and appends an elided-count marker", () => {
+		// 25 read files: only the first 20 (after sort) render; the remaining 5 are
+		// summarized by a single trailing marker line.
+		const readFiles = Array.from({ length: 25 }, (_, i) => `src/f${String(i).padStart(2, "0")}.ts`);
+		const rendered = formatFileOperations(readFiles, []);
+		expect(rendered).toContain("f00.ts (Read)");
+		expect(rendered).toContain("f19.ts (Read)");
+		expect(rendered).not.toContain("f20.ts (Read)");
+		expect(rendered).toContain("[…5 files elided…]");
+	});
+});
+
+describe("upsertFileOperations", () => {
+	it("strips a stale <files> block and appends the freshly computed one", () => {
+		const summary = "Prose about the change.\n\n<files>\n# old/\nstale.ts (Read)\n</files>";
+		const out = upsertFileOperations(summary, ["src/a.ts"], []);
+		expect(out).toBe("Prose about the change.\n\n<files>\n# src/\na.ts (Read)\n</files>");
+		expect(out).not.toContain("stale.ts");
+	});
+
+	it("self-heals legacy <read-files>/<modified-files> tags into the combined tag", () => {
+		const summary =
+			"Body.\n\n<read-files>\nold-read.ts\n</read-files>\n<modified-files>\nold-mod.ts\n</modified-files>";
+		const out = upsertFileOperations(summary, [], ["src/w.ts"]);
+		expect(out).toBe("Body.\n\n<files>\n# src/\nw.ts (Write)\n</files>");
+		expect(out).not.toContain("old-read.ts");
+		expect(out).not.toContain("<read-files>");
+	});
+
+	it("returns the base summary unchanged when there are no file operations", () => {
+		const out = upsertFileOperations("Just prose.", [], []);
+		expect(out).toBe("Just prose.");
+	});
+
+	it("returns only the file block when the base summary is empty", () => {
+		const out = upsertFileOperations("", ["src/only.ts"], []);
+		expect(out).toBe("<files>\n# src/\nonly.ts (Read)\n</files>");
 	});
 });
 
