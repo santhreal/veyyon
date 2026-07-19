@@ -5,7 +5,7 @@
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { isEnoent } from "@veyyon/utils";
+import { atomicWriteFile, isEnoent } from "@veyyon/utils";
 
 export interface SSHHostConfig {
 	host: string;
@@ -46,17 +46,12 @@ export async function readSSHConfigFile(filePath: string): Promise<SSHConfigFile
  * Creates parent directories if they don't exist.
  */
 export async function writeSSHConfigFile(filePath: string, config: SSHConfigFile): Promise<void> {
-	// Ensure parent directory exists
+	// Ensure the parent directory exists and is owner-only (it holds credentials).
 	const dir = path.dirname(filePath);
 	await fs.promises.mkdir(dir, { recursive: true, mode: 0o700 });
 
-	// Write to temp file first (atomic write)
-	const tmpPath = `${filePath}.tmp`;
 	const content = JSON.stringify(config, null, 2);
-	await fs.promises.writeFile(tmpPath, content, { encoding: "utf-8", mode: 0o600 });
-
-	// Rename to final path (atomic on most systems)
-	await fs.promises.rename(tmpPath, filePath);
+	await atomicWriteFile(filePath, content, { mode: 0o600 });
 }
 
 /**

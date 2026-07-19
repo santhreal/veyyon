@@ -2,10 +2,9 @@
  * Installed plugin registry read/write (Claude Code-compatible shape).
  */
 
-import * as fs from "node:fs/promises";
 import * as path from "node:path";
 
-import { getPluginsDir, isEnoent, logger, tryParseJson } from "@veyyon/utils";
+import { atomicWriteFile, getPluginsDir, isEnoent, logger, tryParseJson } from "@veyyon/utils";
 
 export interface InstalledPluginsRegistry {
 	version: 2;
@@ -48,28 +47,7 @@ export function getPluginsCacheDir(): string {
 }
 
 async function atomicWriteJson(filePath: string, data: unknown): Promise<void> {
-	const content = `${JSON.stringify(data, null, 2)}\n`;
-	const tmpPath = `${filePath}.tmp`;
-	await Bun.write(tmpPath, content);
-	try {
-		await fs.rename(tmpPath, filePath);
-	} catch (err) {
-		if ((err as NodeJS.ErrnoException).code === "EPERM") {
-			try {
-				await fs.unlink(filePath);
-			} catch {
-				// ignore
-			}
-			await fs.rename(tmpPath, filePath);
-		} else {
-			try {
-				await fs.unlink(tmpPath);
-			} catch {
-				// ignore
-			}
-			throw err;
-		}
-	}
+	await atomicWriteFile(filePath, `${JSON.stringify(data, null, 2)}\n`);
 }
 
 function emptyInstalledPluginsRegistry(): InstalledPluginsRegistry {
