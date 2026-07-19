@@ -152,10 +152,46 @@ const modelSegment: StatusLineSegment = {
 	},
 };
 
-function formatGoalBudget(current: number, budget?: number): string {
-	const used = formatNumber(current);
-	if (budget === undefined) return used;
-	return `${used}/${formatNumber(budget)}`;
+/** Cells in the compact goal progress bar (verbose mode only). */
+const GOAL_BAR_WIDTH = 8;
+/** Spinner advances one frame per this many active-ms (steady when idle/paused). */
+const GOAL_SPINNER_PERIOD_MS = 120;
+/** Recolor to warning once the goal has burned this fraction of its token budget. */
+const GOAL_NEAR_BUDGET_FRACTION = 0.9;
+
+/** Compact filled/empty unicode bar for a 0..1 fraction (clamped). */
+function goalProgressBar(fraction: number): string {
+	const clamped = Math.max(0, Math.min(1, fraction));
+	const filled = Math.round(clamped * GOAL_BAR_WIDTH);
+	return `${"▰".repeat(filled)}${"▱".repeat(GOAL_BAR_WIDTH - filled)}`;
+}
+
+/**
+ * Token readout for the goal segment. Always shows `tokensUsed`; when a budget
+ * is set it adds `used/budget` and a percent, and in verbose mode a compact
+ * progress bar. This is surfaced regardless of `goal.statusInFooter` — that flag
+ * now controls verbosity (the bar), not whether the readout exists at all.
+ */
+function formatGoalProgress(tokensUsed: number, tokenBudget: number | undefined, verbose: boolean): string {
+	const used = formatNumber(tokensUsed);
+	if (typeof tokenBudget !== "number" || tokenBudget <= 0) return used;
+	const fraction = tokensUsed / tokenBudget;
+	const percent = `${Math.min(999, Math.round(fraction * 100))}%`;
+	const base = `${used}/${formatNumber(tokenBudget)} ${percent}`;
+	return verbose ? `${base} ${goalProgressBar(fraction)}` : base;
+}
+
+/**
+ * Deterministic spinner frame for a still-running goal. `activeMs` advances only
+ * while the agent is streaming, so the frame is steady the instant the turn ends
+ * and needs no wall-clock read (making the rendered string exact for tests).
+ * Returns the static goal icon when the theme declares no spinner frames.
+ */
+function goalSpinnerIcon(activeMs: number): string {
+	const frames = theme.spinnerFrames;
+	if (frames.length === 0) return theme.icon.goal;
+	const idx = Math.floor(Math.max(0, activeMs) / GOAL_SPINNER_PERIOD_MS) % frames.length;
+	return frames[idx] ?? theme.icon.goal;
 }
 
 function renderGoalMode(ctx: SegmentContext, mode: { enabled: boolean; paused: boolean }): RenderedSegment {
@@ -185,11 +221,23 @@ function renderGoalMode(ctx: SegmentContext, mode: { enabled: boolean; paused: b
 			break;
 	}
 
+	const tokensUsed = goal?.tokensUsed ?? 0;
+	const tokenBudget = goal?.tokenBudget;
+	const running = status === "active";
+
+	// Near-budget soft warning: before the hard `budget-limited` status trips, a
+	// goal that has burned ≥90% of its budget recolors to warning so the operator
+	// sees the ceiling approaching while it is still running.
+	const nearBudget =
+		typeof tokenBudget === "number" && tokenBudget > 0 && tokensUsed >= tokenBudget * GOAL_NEAR_BUDGET_FRACTION;
+	if (running && nearBudget) color = "warning";
+
+	// Live motion while the agent streams under a running goal; steady otherwise.
+	if (running && ctx.session.isStreaming) icon = goalSpinnerIcon(ctx.activeMs);
+
+	const verbose = ctx.session.settings.get("goal.statusInFooter") === true;
 	const parts: string[] = [withIcon(icon, "Goal")];
-	const showBudget = ctx.session.settings.get("goal.statusInFooter") === true;
-	if (showBudget && goal) {
-		parts.push(formatGoalBudget(goal.tokensUsed, goal.tokenBudget));
-	}
+	if (goal) parts.push(formatGoalProgress(tokensUsed, tokenBudget, verbose));
 	return { content: theme.fg(color, parts.join(" ")), visible: true };
 }
 
