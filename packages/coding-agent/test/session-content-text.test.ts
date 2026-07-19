@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { readdir, readFile } from "node:fs/promises";
 import * as path from "node:path";
 import type { ImageContent, TextContent } from "@veyyon/ai";
-import { contentText } from "../src/session/content-text";
+import { type ContentBlockLike, contentText } from "../src/session/content-text";
 
 const text = (value: string): TextContent => ({ type: "text", text: value });
 const image = (): ImageContent => ({ type: "image", data: "AA", mimeType: "image/png" });
@@ -54,6 +54,44 @@ describe("contentText reproduces the former per-site helpers exactly", () => {
 
 	it("contentToText (session-history-format.ts): image placeholder, join newline", () => {
 		expect(contentText(blocks, { image: "[image]" })).toBe("first\n[image]\nsecond");
+	});
+});
+
+// textFromContent (agent-session.ts) is a thin adapter that hands the array
+// branch to contentText with { separator: "\n\n", trimBlocks: true }. It runs at
+// the `unknown` agent-message boundary where a block may be malformed, so the
+// owner must reproduce the old hand-rolled loop's defensive skips exactly:
+// non-record blocks, blocks with a non-string `text`, and blocks that are empty
+// after trimming are all dropped — never do they throw or leak a placeholder.
+describe("contentText tolerates the malformed agent-message boundary (textFromContent adapter)", () => {
+	const opts = { separator: "\n\n", trimBlocks: true } as const;
+
+	it("joins trimmed text blocks with a blank line", () => {
+		expect(contentText([text("  a  "), text("b")], opts)).toBe("a\n\nb");
+	});
+
+	it("skips blocks whose text is not a string instead of throwing", () => {
+		const blocks = [text("a"), { type: "text", text: 42 } as unknown as ContentBlockLike, text("b")];
+		expect(contentText(blocks, opts)).toBe("a\n\nb");
+	});
+
+	it("skips a text block with an absent text field", () => {
+		const blocks = [text("a"), { type: "text" } as ContentBlockLike, text("b")];
+		expect(contentText(blocks, opts)).toBe("a\n\nb");
+	});
+
+	it("skips non-text blocks (thinking, tool-call) carried in the wider message union", () => {
+		const blocks = [
+			text("a"),
+			{ type: "thinking", text: "hidden" } as ContentBlockLike,
+			{ type: "toolCall" } as ContentBlockLike,
+			text("b"),
+		];
+		expect(contentText(blocks, opts)).toBe("a\n\nb");
+	});
+
+	it("drops blocks that are only whitespace once trimmed", () => {
+		expect(contentText([text("a"), text("   "), text("b")], opts)).toBe("a\n\nb");
 	});
 });
 

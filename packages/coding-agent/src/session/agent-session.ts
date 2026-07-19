@@ -373,7 +373,7 @@ import {
 	shouldPromptCodexAutoRedeem,
 } from "./codex-auto-reset";
 import { findCompactMode } from "./compact-modes";
-import { contentText } from "./content-text";
+import { type ContentBlockLike, contentText } from "./content-text";
 import {
 	collectPendingToolCalls,
 	createInterruptedTurnAbortMessage,
@@ -1698,20 +1698,16 @@ type SetSessionNameWithTrigger = (
 	trigger?: SessionNameTrigger,
 ) => Promise<boolean>;
 
-// Distinct from `contentText` in ./content-text on purpose: this accepts
-// `unknown` agent-message content (a wider union that also carries thinking and
-// tool-call blocks and may be malformed at this boundary), guards each block
-// defensively, trims, and joins with a blank line.
+// A thin adapter over the `contentText` owner for the `unknown` agent-message
+// boundary: content here may be a plain string, an array of blocks (a wider
+// union that also carries thinking and tool-call blocks), or malformed. The
+// string/non-array guards live here; the block flattening (skip non-text, trim,
+// join with a blank line) is the owner's job. `contentText` skips non-record and
+// non-string-text blocks the same way the old hand-rolled loop did.
 function textFromContent(content: unknown): string {
 	if (typeof content === "string") return content.trim();
 	if (!Array.isArray(content)) return "";
-	const parts: string[] = [];
-	for (const block of content) {
-		if (!isRecord(block) || block.type !== "text" || typeof block.text !== "string") continue;
-		const text = block.text.trim();
-		if (text) parts.push(text);
-	}
-	return parts.join("\n\n");
+	return contentText(content as readonly ContentBlockLike[], { separator: "\n\n", trimBlocks: true });
 }
 
 function thinkingFromContent(content: unknown): string {
