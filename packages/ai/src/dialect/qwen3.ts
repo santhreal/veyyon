@@ -1,6 +1,6 @@
 import { parseJsonWithRepair } from "@veyyon/utils";
 import type { Message, ToolCall } from "../types";
-import { asRecord, mintToolCallId, partialSuffixOverlapAny } from "./coercion";
+import { mintToolCallId, partialSuffixOverlapAny, recordOrEmpty } from "./coercion";
 import dialectPrompt from "./qwen3.md" with { type: "text" };
 import { renderChatMlTranscript, renderToolResponseResults, stringifyJson } from "./rendering";
 import type {
@@ -186,7 +186,7 @@ export class Qwen3InbandScanner implements InbandScanner {
 					args = {};
 				}
 			}
-			return { name: parsed.name, arguments: asRecord(args) };
+			return { name: parsed.name, arguments: recordOrEmpty(args) };
 		} catch {
 			return undefined;
 		}

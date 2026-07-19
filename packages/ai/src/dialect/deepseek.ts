@@ -1,6 +1,6 @@
 import { parseJsonWithRepair } from "@veyyon/utils";
 import type { Message, ToolCall } from "../types";
-import { asRecord, mintToolCallId, partialSuffixOverlapAny } from "./coercion";
+import { mintToolCallId, partialSuffixOverlapAny, recordOrEmpty } from "./coercion";
 import dialectPrompt from "./deepseek.md" with { type: "text" };
 import { assistantTranscriptParts, collectToolResultRun, messageContentText, stringifyJson } from "./rendering";
 import type {
@@ -451,7 +451,7 @@ export class DeepSeekInbandScanner implements InbandScanner {
 		const trimmed = rawArgs.trim();
 		if (trimmed.length === 0) return {};
 		try {
-			return asRecord(parseJsonWithRepair<unknown>(trimmed));
+			return recordOrEmpty(parseJsonWithRepair<unknown>(trimmed));
 		} catch {
 			return {};
 		}

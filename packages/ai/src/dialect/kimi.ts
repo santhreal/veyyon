@@ -1,6 +1,6 @@
 import { parseJsonWithRepair } from "@veyyon/utils";
 import type { Message, ToolCall } from "../types";
-import { asRecord, normalizeKimiFunctionName, partialSuffixOverlapAny } from "./coercion";
+import { normalizeKimiFunctionName, partialSuffixOverlapAny, recordOrEmpty } from "./coercion";
 import dialectPrompt from "./kimi.md" with { type: "text" };
 import { assistantTranscriptParts, collectToolResultRun, messageContentText, stringifyJson } from "./rendering";
 import type {
@@ -213,7 +213,7 @@ export class KimiInbandScanner implements InbandScanner {
 	#parseArgs(rawArgs: string): Record<string, unknown> {
 		if (rawArgs.length === 0) return {};
 		try {
-			return asRecord(parseJsonWithRepair<unknown>(rawArgs));
+			return recordOrEmpty(parseJsonWithRepair<unknown>(rawArgs));
 		} catch {
 			return {};
 		}

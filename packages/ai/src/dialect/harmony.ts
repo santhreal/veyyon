@@ -1,6 +1,6 @@
 import { parseJsonWithRepair } from "@veyyon/utils";
 import type { Message, ToolCall } from "../types";
-import { asRecord, mintToolCallId, partialSuffixOverlapAny } from "./coercion";
+import { mintToolCallId, partialSuffixOverlapAny, recordOrEmpty } from "./coercion";
 import dialectPrompt from "./harmony.md" with { type: "text" };
 import {
 	assistantTranscriptParts,
@@ -226,7 +226,7 @@ export class HarmonyInbandScanner implements InbandScanner {
 		const raw = this.#toolArgs.trim();
 		if (raw.length === 0) return {};
 		try {
-			return asRecord(parseJsonWithRepair<unknown>(raw));
+			return recordOrEmpty(parseJsonWithRepair<unknown>(raw));
 		} catch {
 			return {};
 		}

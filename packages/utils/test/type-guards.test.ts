@@ -134,17 +134,19 @@ const INLINE_ERRORMESSAGE = /instanceof Error \? \w+\.message : String\(/;
 const ISRECORD_DEF = /function\s+isRecord\s*\(/;
 const ERRORMESSAGE_DEF = /function\s+errorMessage\s*\(/;
 
-// `asString` and `asNumber` are BANNED as local coercer names: three different
-// contracts once shared the name asString (trimmed-non-empty-or-null in the
-// scrapers/zai copies, string-or-"" in mnemopi recall, string-or-undefined in
-// the openai responses server), the exact same-name divergence that misleads a
-// reader jumping between files. The one trimmed-non-empty-or-null contract now
-// lives on the owner as trimmedString (finiteNumber for the number case); the
-// genuinely-distinct total coercers were renamed to say what they do
-// (stringOrEmpty, numberOrDefault, nullableString, stringOrUndefined). Any new
-// `function asString`/`function asNumber` fails this lock: import trimmedString
-// /finiteNumber, or give the local a contract-precise name.
-const ASCOERCE_DEF = /function\s+as(?:String|Number)\s*\(/;
+// `asString`, `asNumber`, and `asRecord` are BANNED as local coercer names
+// outside the owner. Three different contracts once shared the name asString
+// (trimmed-non-empty-or-null in the scrapers/zai copies, string-or-"" in mnemopi
+// recall, string-or-undefined in the openai responses server), and asRecord
+// meant two things (the owner returns null for non-records; an ai/dialect copy
+// returned {}), the exact same-name divergence that misleads a reader jumping
+// between files. The owner keeps asRecord (nullable), trimmedString, and
+// finiteNumber; the genuinely-distinct total coercers were renamed to say what
+// they do (stringOrEmpty, numberOrDefault, nullableString, stringOrUndefined,
+// recordOrEmpty). Any new `function asString`/`asNumber`/`asRecord` outside the
+// owner fails this lock: import the owner, or give the local a contract-precise
+// name.
+const ASCOERCE_DEF = /function\s+as(?:String|Number|Record)\s*\(/;
 
 // isRecord clones hid behind DIFFERENT names (isObj, isPlainObject, isJsonObject,
 // isPlainRecord, isSchemaRecord), so the `function isRecord` name lock never saw
@@ -287,7 +289,7 @@ describe("type-guards source locks", () => {
 		expect(cleared, "grandfathered entries whose local copy is gone — remove them from the list").toEqual([]);
 	});
 
-	it("no production source defines a local asString/asNumber coercer — the name is banned", async () => {
+	it("no production source defines a local asString/asNumber/asRecord coercer — the name is banned", async () => {
 		const offenders: string[] = [];
 		for (const file of await sourceFiles()) {
 			const rel = path.relative(PACKAGES_DIR, file).replaceAll(path.sep, "/");
