@@ -1,3 +1,4 @@
+import { clampLow } from "@veyyon/utils/math";
 import { SendHorizontal, Square } from "lucide-react";
 import type { KeyboardEvent, ReactNode } from "react";
 import { useCallback, useLayoutEffect, useRef, useState } from "react";
@@ -17,7 +18,7 @@ function autosize(el: HTMLTextAreaElement | null): void {
 	if (!el) return;
 	el.style.height = "0px";
 	const max = MAX_ROWS * LINE_PX + PAD_Y;
-	el.style.height = `${Math.max(LINE_PX + PAD_Y, Math.min(el.scrollHeight, max))}px`;
+	el.style.height = `${clampLow(el.scrollHeight, LINE_PX + PAD_Y, max)}px`;
 	el.style.overflowY = el.scrollHeight > max ? "auto" : "hidden";
 }
 

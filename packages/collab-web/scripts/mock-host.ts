@@ -9,6 +9,7 @@
  * of the fixture JSONL — exactly the frames a real `veyyon /collab` host emits.
  */
 
+import { clampLow } from "@veyyon/utils/math";
 import type { AgentSnapshot, HostFrame, SessionEntry, SessionState, WireFrame } from "@veyyon/wire";
 import { generateRoomKey, importRoomKey, open, seal } from "../src/lib/codec";
 import { COLLAB_PROTO, formatCollabLink, generateRoomId, packEnvelope, unpackEnvelope } from "../src/lib/link";
@@ -244,7 +245,7 @@ function handleAgentCmd(cmd: string, agentId: string, fromPeer: number): void {
 
 function handleFetchTranscript(reqId: number, fromByte: number, fromPeer: number): void {
 	const total = transcriptBytes.byteLength;
-	const start = Math.max(0, Math.min(fromByte, total));
+	const start = clampLow(fromByte, 0, total);
 	const text = start >= total ? "" : transcriptDecoder.decode(transcriptBytes.subarray(start));
 	// We always serve to EOF, so the next offset base is the full size.
 	sendFrame({ t: "transcript", reqId, text, newSize: total }, fromPeer);

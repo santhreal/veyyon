@@ -152,6 +152,82 @@ function hasInlineClamp(text: string): boolean {
 	return false;
 }
 
+/**
+ * Detect the floor-first idiom `Math.max(lo, Math.min(value, high))`, which is
+ * exactly `clampLow(value, lo, high)`. The marker is a `Math.min(...)` call that
+ * is the LAST top-level argument of an enclosing `Math.max(...)` — its close
+ * paren is immediately followed by the outer max's close paren (only whitespace
+ * between). It requires the inner `Math.min` to take exactly two arguments, so
+ * an irreducible `Math.max(0, Math.min(a, b, c))` (a floor over the min of
+ * several bounds — not a two-bound clampLow) is left alone. This is the mirror
+ * of {@link hasInlineClamp}, whose `["max","min"]` branch instead matches the
+ * min as the FIRST argument of the max (a comma, not a paren, after its close).
+ */
+function hasFloorFirst(text: string): boolean {
+	const needle = "Math.max(";
+	let idx = text.indexOf(needle);
+	while (idx !== -1) {
+		const open = idx + needle.length - 1; // position of the outer '('
+		let depth = 0;
+		let lastArgStart = -1;
+		let closeIdx = -1;
+		for (let j = open; j < text.length; j++) {
+			const c = text[j];
+			if (c === "(") {
+				depth++;
+				if (depth === 1) lastArgStart = j + 1;
+			} else if (c === ")") {
+				depth--;
+				if (depth === 0) {
+					closeIdx = j;
+					break;
+				}
+			} else if (c === "," && depth === 1) {
+				lastArgStart = j + 1;
+			}
+		}
+		if (closeIdx !== -1 && lastArgStart !== -1) {
+			let s = lastArgStart;
+			while (s < closeIdx && /\s/.test(text[s] ?? "")) s++;
+			if (text.startsWith("Math.min(", s)) {
+				let d = 0;
+				let minEnd = -1;
+				let topCommas = 0;
+				for (let j = s + "Math.min".length; j < text.length; j++) {
+					const c = text[j];
+					if (c === "(") d++;
+					else if (c === ")") {
+						d--;
+						if (d === 0) {
+							minEnd = j;
+							break;
+						}
+					} else if (c === "," && d === 1) topCommas++;
+				}
+				if (minEnd !== -1 && topCommas === 1) {
+					let k = minEnd + 1;
+					while (k < closeIdx && /\s/.test(text[k] ?? "")) k++;
+					if (k === closeIdx) return true;
+				}
+			}
+		}
+		idx = text.indexOf(needle, idx + needle.length);
+	}
+	return false;
+}
+
+// Floor-first survivors that genuinely cannot fold onto clampLow:
+//   - tab-worker.ts runs its bodies inside `handle.evaluate(el => {...})`, which
+//     executes in the browser page where imported module symbols are undefined;
+//     `Math` is the only clamp primitive available there.
+//   - experiments.ts clamps a logit that is deliberately ±Infinity for unanimous
+//     arms, and raw `Math.max(-4, Math.min(4, x))` maps +Infinity to +4. clampLow
+//     maps non-finite inputs to its LOW bound (-4), which would flip the sign.
+const FLOOR_FIRST_GRANDFATHERED = new Set([
+	"coding-agent/src/tools/browser/tab-worker.ts",
+	"metaharness/src/experiments.ts",
+]);
+
 describe("clamp source lock", () => {
 	it("hasInlineClamp matches pure clamps but not floor-then-scale or floor-first shapes", () => {
 		expect(hasInlineClamp("Math.min(Math.max(x, 0), 1)")).toBe(true);
@@ -164,7 +240,19 @@ describe("clamp source lock", () => {
 		expect(hasInlineClamp("Math.max(0, Math.min(a, b))")).toBe(false);
 	});
 
-	it("no production source defines a local clamp or clamp01, or inlines the clamp idiom", async () => {
+	it("hasFloorFirst matches the two-bound clampLow idiom but not three-bound mins or compositions", () => {
+		expect(hasFloorFirst("Math.max(0, Math.min(a, b))")).toBe(true);
+		expect(hasFloorFirst("Math.max(lo, Math.min(target + d * dir, hi))")).toBe(true);
+		expect(hasFloorFirst("Math.max(1, Math.min(1000, Math.floor(x)))")).toBe(true);
+		// Three-argument min is a floor over several bounds, not a two-bound clampLow.
+		expect(hasFloorFirst("Math.max(0, Math.min(a, b, c))")).toBe(false);
+		// min is the FIRST arg of max (the plain clamp idiom), not the last.
+		expect(hasFloorFirst("Math.max(Math.min(x, 1), 0)")).toBe(false);
+		// A trailing operator means the last arg is a composition, not a bare min.
+		expect(hasFloorFirst("Math.max(0, Math.min(a, b) + 1)")).toBe(false);
+	});
+
+	it("no production source defines a local clamp/clamp01/clampLow, or inlines the clamp or floor-first idiom", async () => {
 		const defFiles: string[] = [];
 		const idiomFiles: string[] = [];
 		for (const pkg of await readdir(PACKAGES_DIR, { withFileTypes: true })) {
@@ -181,14 +269,21 @@ describe("clamp source lock", () => {
 			const body = await readFile(file, "utf8");
 			if (CLAMP01_DEF.test(body) || CLAMP_DEF.test(body) || CLAMPLOW_DEF.test(body)) defOffenders.push(rel);
 		}
-		expect(defOffenders, "local clamp/clamp01 copies — import them from @veyyon/utils instead").toEqual([]);
+		expect(defOffenders, "local clamp/clamp01/clampLow copies — import them from @veyyon/utils instead").toEqual([]);
 
 		const idiomOffenders: string[] = [];
+		const floorFirstOffenders: string[] = [];
 		for (const file of idiomFiles) {
 			const rel = path.relative(PACKAGES_DIR, file).replaceAll(path.sep, "/");
 			if (rel === OWNER) continue;
-			if (hasInlineClamp(await readFile(file, "utf8"))) idiomOffenders.push(rel);
+			const body = await readFile(file, "utf8");
+			if (hasInlineClamp(body)) idiomOffenders.push(rel);
+			if (!FLOOR_FIRST_GRANDFATHERED.has(rel) && hasFloorFirst(body)) floorFirstOffenders.push(rel);
 		}
 		expect(idiomOffenders, "inline Math.min(Math.max(...)) clamp — call clamp()/clamp01() instead").toEqual([]);
+		expect(
+			floorFirstOffenders,
+			"inline Math.max(lo, Math.min(v, hi)) floor-first clamp — call clampLow(v, lo, hi) instead",
+		).toEqual([]);
 	});
 });

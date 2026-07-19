@@ -8,7 +8,7 @@ import type {
 } from "@veyyon/agent-core";
 import type { Component } from "@veyyon/tui";
 import { ImageProtocol, TERMINAL } from "@veyyon/tui";
-import { errorMessage, getProjectDir, isEnoent, logger, prompt } from "@veyyon/utils";
+import { clampLow, errorMessage, getProjectDir, isEnoent, logger, prompt } from "@veyyon/utils";
 import { type } from "arktype";
 import { type BashResult, executeBash } from "../exec/bash-executor";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
@@ -696,7 +696,7 @@ export class BashTool implements AgentTool<typeof bashSchemaBase | typeof bashSc
 		if (this.#autoBackgroundThresholdMs <= 0) return 0;
 		if (timeoutMs === undefined) return this.#autoBackgroundThresholdMs;
 		const timeoutBufferMs = 1_000;
-		return Math.max(0, Math.min(this.#autoBackgroundThresholdMs, timeoutMs - timeoutBufferMs));
+		return clampLow(timeoutMs - timeoutBufferMs, 0, this.#autoBackgroundThresholdMs);
 	}
 
 	async execute(

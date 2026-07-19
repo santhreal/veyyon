@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { isRecord } from "@veyyon/utils";
+import { clampLow, isRecord } from "@veyyon/utils";
 import { DEFAULT_DB_FILENAME, dataDir } from "./config";
 import { BankManager } from "./core/banks";
 import { BeamMemory, type RecallOptions } from "./core/beam";
@@ -757,7 +757,7 @@ async function handleSharedRemember(args: ToolArguments): Promise<ToolResult> {
 		const labelled = surfaceLabel(content, kind);
 		const memoryId = beam.remember(labelled, {
 			source: "surface_manual",
-			importance: Math.max(0, Math.min(1, numberArg(args, "importance", 0.8))),
+			importance: clampLow(numberArg(args, "importance", 0.8), 0, 1),
 			metadata: { ...(metadataArg(args) ?? {}), shared_memory: true, surface_kind: kind },
 			veracity: stringArg(args, "veracity", "unknown"),
 			scope: "global",

@@ -9,7 +9,7 @@
  */
 import type { AgentTool } from "@veyyon/agent-core";
 import type { TUI } from "@veyyon/tui";
-import { getProjectDir } from "@veyyon/utils";
+import { clampLow, getProjectDir } from "@veyyon/utils";
 import chalk from "chalk";
 import { Settings } from "../config/settings";
 import { ToolExecutionComponent } from "../modes/components/tool-execution";
@@ -182,7 +182,7 @@ export async function renderGalleryState(
 function resolveWidth(requested: number | undefined): number {
 	const fallback = process.stdout.columns ?? 100;
 	const width = requested ?? fallback;
-	return Math.max(40, Math.min(200, width));
+	return clampLow(width, 40, 200);
 }
 
 function sectionRule(label: string, width: number): string {

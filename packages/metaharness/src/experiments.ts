@@ -162,6 +162,9 @@ export function calibratedFinalPassPct(options: {
 	const known = [...siblings.values()].map(s => smoothed(s)).filter((p): p is number => p !== null);
 	const meanP = known.length > 0 ? known.reduce((a, b) => a + b, 0) / known.length : 0.5;
 	// Clamped logit keeps unanimous tasks from saturating the fit.
+	// Uses the raw min/max form deliberately: a unanimous arm's logit is +/-Infinity
+	// (p=1 -> +Inf, p=0 -> -Inf), and min/max map those to +4/-4 respectively. A
+	// clamp helper that fails non-finite to the low bound would flip +Inf to -4.
 	const logit = (p: number): number => Math.max(-4, Math.min(4, Math.log(p / (1 - p))));
 	const decidedLogits = decided.map(d => logit(smoothed(siblings.get(d.task)) ?? meanP));
 	const passes = decided.filter(d => d.passed).length;

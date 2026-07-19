@@ -1,5 +1,6 @@
 import type { Database } from "bun:sqlite";
 
+import { clampLow } from "@veyyon/utils";
 import { embeddingDim, type VecType } from "../config";
 import { closeQuietly, type DatabasePath, openDatabase } from "../db";
 
@@ -111,7 +112,7 @@ export const VEC_TYPE: VecType = getVecType();
 export function quantizeInt8(embedding: readonly number[]): Int8Array {
 	const out = new Int8Array(embedding.length);
 	for (let i = 0; i < embedding.length; i += 1) {
-		const value = Math.max(-1, Math.min(1, toFiniteNumber(embedding[i])));
+		const value = clampLow(toFiniteNumber(embedding[i]), -1, 1);
 		out[i] = value >= 0 ? Math.round(value * 127) : -Math.round(-value * 127);
 	}
 	return out;
@@ -228,7 +229,7 @@ export class BinaryVectorStore {
 			.all() as VectorRow[];
 		const results: BinaryVectorSearchResult[] = [];
 		for (const row of rows) {
-			const storedDim = Math.max(0, Math.min(EMBEDDING_DIM, Math.trunc(toFiniteNumber(row.original_dim))));
+			const storedDim = clampLow(Math.trunc(toFiniteNumber(row.original_dim)), 0, EMBEDDING_DIM);
 			const comparedDim = Math.min(queryDim, storedDim);
 			const distance = hammingDistanceForDimension(queryBinary, bytesFromBlob(row.binary_vector), comparedDim);
 			results.push({

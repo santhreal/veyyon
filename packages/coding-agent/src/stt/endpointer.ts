@@ -14,6 +14,8 @@
  * fully deterministic so it can be unit-tested with synthetic signals.
  */
 
+import { clampLow } from "@veyyon/utils";
+
 /** Tunable thresholds for {@link StreamEndpointer}. All durations in ms. */
 export interface EndpointerConfig {
 	/** Input sample rate (the recorder always delivers 16 kHz mono). */
@@ -80,7 +82,7 @@ class FloatBuffer {
 
 	/** Copy `[0, end)` into a fresh array the caller can retain. */
 	take(end = this.#len): Float32Array {
-		return this.#data.slice(0, Math.max(0, Math.min(end, this.#len)));
+		return this.#data.slice(0, clampLow(end, 0, this.#len));
 	}
 
 	reset(): void {

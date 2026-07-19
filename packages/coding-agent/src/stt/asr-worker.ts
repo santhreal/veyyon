@@ -8,6 +8,7 @@ import type {
 	ProgressInfo,
 } from "@huggingface/transformers";
 import {
+	clampLow,
 	ensureRuntimeInstalled,
 	errorMessage,
 	getTinyModelsCacheDir,
@@ -381,7 +382,7 @@ async function loadSherpaModel(
 	const runtime = await loadSherpaRuntime(transport, requestId, modelKey);
 	const files = await ensureSherpaModelFiles(spec, modelKey, transport, requestId);
 	const startedAt = performance.now();
-	const numThreads = Math.max(1, Math.min(4, os.availableParallelism()));
+	const numThreads = clampLow(os.availableParallelism(), 1, 4);
 	const recognizer = await runtime.OfflineRecognizer.createAsync({
 		modelConfig: {
 			transducer: { encoder: files.encoder, decoder: files.decoder, joiner: files.joiner },

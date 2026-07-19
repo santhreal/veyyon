@@ -8,7 +8,7 @@ import type {
 import type { ToolExample } from "@veyyon/ai";
 import type { Component } from "@veyyon/tui";
 import { Text } from "@veyyon/tui";
-import { prompt, sanitizeText } from "@veyyon/utils";
+import { clampLow, prompt, sanitizeText } from "@veyyon/utils";
 import { type } from "arktype";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
 import { daemonClientForProject } from "../launch/client";
@@ -109,7 +109,7 @@ function requiredName(params: LaunchParams): string {
 }
 
 function timeoutMs(value: number | undefined, fallbackSeconds: number): number {
-	const seconds = Math.max(0.05, Math.min(3_600, value ?? fallbackSeconds));
+	const seconds = clampLow(value ?? fallbackSeconds, 0.05, 3_600);
 	return Math.round(seconds * 1_000);
 }
 

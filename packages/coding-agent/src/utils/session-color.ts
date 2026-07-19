@@ -1,4 +1,4 @@
-import { hexToHsv, hslToHex, relativeLuminance } from "@veyyon/utils";
+import { clampLow, hexToHsv, hslToHex, relativeLuminance } from "@veyyon/utils";
 
 /**
  * Derive a stable hue (0-359) from a string using djb2 hash.
@@ -58,7 +58,7 @@ function findSafeHue(target: number, occupied: number[], lo: number, hi: number)
 	}
 	for (let d = 1; d <= hi - lo; d++) {
 		for (const dir of [1, -1]) {
-			const candidate = Math.max(lo, Math.min(hi, target + d * dir));
+			const candidate = clampLow(target + d * dir, lo, hi);
 			if (occupied.every(h => hueDistance(candidate, h) >= MIN_HUE_DISTANCE)) {
 				return candidate;
 			}

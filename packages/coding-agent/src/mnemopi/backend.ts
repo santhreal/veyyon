@@ -5,7 +5,7 @@ import { hostMatchesUrl } from "@veyyon/catalog/hosts";
 import type { Mnemopi } from "@veyyon/mnemopi";
 import type * as MnemopiDiagnoseNs from "@veyyon/mnemopi/diagnose";
 import type { DiagnosticSummary } from "@veyyon/mnemopi/diagnose";
-import { logger } from "@veyyon/utils";
+import { clampLow, logger } from "@veyyon/utils";
 import type { ModelRegistry } from "../config/model-registry";
 import { resolveRoleSelectionWithInherit } from "../config/model-resolver";
 import type {
@@ -391,12 +391,12 @@ function summarizeMnemopiStatus(
 
 function clampLimit(limit: number | undefined): number {
 	if (!Number.isFinite(limit)) return 10;
-	return Math.max(1, Math.min(50, Math.trunc(limit ?? 10)));
+	return clampLow(Math.trunc(limit ?? 10), 1, 50);
 }
 
 function normalizeImportance(value: number | undefined): number {
 	if (!Number.isFinite(value)) return 0.75;
-	return Math.max(0, Math.min(1, value ?? 0.75));
+	return clampLow(value ?? 0.75, 0, 1);
 }
 
 function renderMnemopiDiagnostics(entries: readonly { bank: string; summary: DiagnosticSummary }[]): string {

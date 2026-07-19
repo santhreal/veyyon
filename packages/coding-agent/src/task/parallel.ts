@@ -1,6 +1,8 @@
 /**
  * Parallel execution with concurrency control.
  */
+import { clampLow } from "@veyyon/utils";
+
 /** Result of parallel execution */
 export interface ParallelResult<R> {
 	/** Results array - undefined entries indicate tasks that were skipped due to abort */
@@ -31,7 +33,7 @@ export async function mapWithConcurrencyLimit<T, R>(
 ): Promise<ParallelResult<R>> {
 	const normalizedConcurrency = Number.isFinite(concurrency) ? Math.floor(concurrency) : items.length;
 	const effectiveConcurrency = normalizedConcurrency > 0 ? normalizedConcurrency : items.length;
-	const limit = Math.max(1, Math.min(effectiveConcurrency, items.length));
+	const limit = clampLow(effectiveConcurrency, 1, items.length);
 	const results: (R | undefined)[] = new Array(items.length);
 	let nextIndex = 0;
 

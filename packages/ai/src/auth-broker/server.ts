@@ -9,7 +9,7 @@
  * Transport security is delegated to the operator (Tailscale / Wireguard);
  * the server only checks a bearer token against an allow-list per request.
  */
-import { errorMessage, logger } from "@veyyon/utils";
+import { clampLow, errorMessage, logger } from "@veyyon/utils";
 import { type Type, type } from "arktype";
 import type { AuthStorage, StoredCredentialBlock } from "../auth-storage";
 import { parseBind } from "../utils/parse-bind";
@@ -153,7 +153,7 @@ function parseWaitMs(url: URL): number {
 	if (raw === null) return 0;
 	const parsed = Number(raw);
 	if (!Number.isFinite(parsed)) return 0;
-	return Math.max(0, Math.min(MAX_SNAPSHOT_WAIT_MS, Math.trunc(parsed)));
+	return clampLow(Math.trunc(parsed), 0, MAX_SNAPSHOT_WAIT_MS);
 }
 
 function delayResult(ms: number): { promise: Promise<"timeout">; cancel: () => void } {

@@ -46,7 +46,15 @@
 
 import type { Api, ImageContent, Message, TextContent } from "@veyyon/ai";
 import { renderSnapcompactPng, snapcompactSupportedChars } from "@veyyon/natives";
-import { clamp01, collapseWhitespace, containsUrlScheme, formatGroupedPaths, pluralize, prompt } from "@veyyon/utils";
+import {
+	clamp01,
+	clampLow,
+	collapseWhitespace,
+	containsUrlScheme,
+	formatGroupedPaths,
+	pluralize,
+	prompt,
+} from "@veyyon/utils";
 import { INTENT_FIELD } from "@veyyon/wire";
 import fileOperationsTemplate from "./prompts/file-operations.md" with { type: "text" };
 import snapcompactSummaryPrompt from "./prompts/snapcompact-summary.md" with { type: "text" };
@@ -1872,7 +1880,7 @@ export async function compact<TMessage = Message>(
 	const geo = geometry(high);
 	// The engine default caps archive growth; a caller-supplied maxFrames only
 	// lowers it further (an upper limit), never raising it past the default.
-	const maxFrames = Math.max(1, Math.min(options?.maxFrames ?? MAX_FRAMES_DEFAULT, MAX_FRAMES_DEFAULT));
+	const maxFrames = clampLow(options?.maxFrames ?? MAX_FRAMES_DEFAULT, 1, MAX_FRAMES_DEFAULT);
 
 	let archiveText = normalize(serialized, { shape: high });
 
