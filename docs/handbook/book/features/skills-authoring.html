@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-ac028553.js";
+            window.path_to_searchindex_js = "../searchindex-5adfaf9b.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-cc1a72e9.js"></script>
@@ -198,22 +198,21 @@
                         <h1 id="skills-authoring"><a class="header" href="#skills-authoring">Skills authoring</a></h1>
 <p>A skill is a folder that adds a reusable capability to Veyyon. This page explains how to write one from scratch. For background on how skills are discovered and loaded, see <a href="skills.html">Skills</a>.</p>
 <h2 id="directory-structure"><a class="header" href="#directory-structure">Directory structure</a></h2>
-<p>Skills are placed on the filesystem according to the scope where they should apply. Veyyon loads skills from these locations in order:</p>
+<p>Skills load only from the active profile. Veyyon reads these locations, all under the profile’s agent dir (<code>profiles/default/</code> when you have not selected a profile):</p>
 <div class="table-wrapper">
 <table>
 <thead>
 <tr><th>Scope</th><th>Directory</th><th>Purpose</th></tr>
 </thead>
 <tbody>
-<tr><td>User</td><td><code>$HOME/.veyyon/profiles/&lt;profile&gt;/agent/skills</code></td><td>Skills available to the current user, per profile (<code>profiles/default/</code> when none is selected).</td></tr>
-<tr><td>Project</td><td><code>.veyyon/skills</code></td><td>Skills shipped with a project, discovered by walking up from the working directory.</td></tr>
-<tr><td>Agents layout</td><td><code>.agents/skills</code>, <code>$HOME/.agents/skills</code></td><td>Skills in the cross-tool agents layout (project walk-up plus user home).</td></tr>
-<tr><td>Custom</td><td><code>skills.customDirectories</code></td><td>Extra directories you list in settings.</td></tr>
+<tr><td>User</td><td><code>$HOME/.veyyon/profiles/&lt;profile&gt;/agent/skills</code></td><td>Skills you author or install for the active profile.</td></tr>
+<tr><td>Managed</td><td><code>$HOME/.veyyon/profiles/&lt;profile&gt;/agent/managed-skills</code></td><td>Auto-learn skills Veyyon writes itself. A same-named user skill always wins.</td></tr>
+<tr><td>Plugins</td><td>plugins installed into the active profile</td><td>Skills bundled with a plugin you added to this profile.</td></tr>
 </tbody>
 </table>
 </div>
-<p>Foreign-tool locations (<code>$HOME/.claude/skills</code>, …) are also discovered when foreign-config import is on, see <a href="skills.html#skill-locations">Skills</a> for the full table.</p>
-<p>Create a new skill by making a directory inside one of these scopes and adding a <code>SKILL.md</code> file. The name of the directory is the default name of the skill.</p>
+<p>Nothing else contributes skills. A project-local <code>.veyyon/skills</code> directory and another tool’s skill directory (<code>$HOME/.claude/skills</code>, <code>$HOME/.codex/skills</code>, <code>$HOME/.agents/skills</code>, and the rest) are never scanned. To use a skill from another tool, import it into your profile, see <a href="skills.html#importing-another-tools-skills">Skills</a>. For the full provider list and dedup rules, see <a href="skills.html#skill-locations">Skills</a>.</p>
+<p>Create a new skill by making a directory inside the profile’s <code>skills</code> dir and adding a <code>SKILL.md</code> file. The name of the directory is the default name of the skill.</p>
 <p>A skill directory may contain additional files:</p>
 <pre><code>my-skill/
 ├── SKILL.md
@@ -321,15 +320,15 @@ denylist):</p>
   config:
     - name: my-skill
       enabled: true
-    - path: /home/user/.agents/skills/other-skill/SKILL.md
+    - path: /home/user/.veyyon/profiles/default/agent/skills/other-skill/SKILL.md
       enabled: false
 </code></pre>
-<h2 id="worked-example-a-project-local-skill"><a class="header" href="#worked-example-a-project-local-skill">Worked example: a project-local skill</a></h2>
-<p>This example creates a skill inside a project that adds a custom onboarding check.</p>
-<p>Create the skill directory:</p>
-<pre><code class="language-bash">mkdir -p .veyyon/skills/onboarding-check
+<h2 id="worked-example-a-profile-skill"><a class="header" href="#worked-example-a-profile-skill">Worked example: a profile skill</a></h2>
+<p>This example creates a skill in your active profile that adds a custom onboarding check.</p>
+<p>Create the skill directory under the active profile (<code>profiles/default</code> when you have not selected one):</p>
+<pre><code class="language-bash">mkdir -p ~/.veyyon/profiles/default/agent/skills/onboarding-check
 </code></pre>
-<p>Create <code>.veyyon/skills/onboarding-check/SKILL.md</code>:</p>
+<p>Create <code>onboarding-check/SKILL.md</code> in that directory:</p>
 <pre><code class="language-markdown">---
 name: onboarding-check
 description: Review the project for missing onboarding files and recommend improvements.
@@ -348,7 +347,7 @@ Use this skill when the user asks whether the project is ready for a new contrib
 
 Report the result as a short checklist with `done` or `missing` for each item.
 </code></pre>
-<p>Create <code>.veyyon/skills/onboarding-check/agents/openai.yaml</code>:</p>
+<p>Create <code>onboarding-check/agents/openai.yaml</code> in the same directory:</p>
 <pre><code class="language-yaml">interface:
   display_name: "Onboarding Check"
   short_description: "Check project onboarding completeness"
@@ -358,8 +357,8 @@ policy:
   products:
     - veyyon
 </code></pre>
-<p>No registration is needed, a skill under <code>.veyyon/skills</code> (or any other discovered
-directory) is picked up automatically. If your <code>config.yml</code> uses an <code>includeSkills</code>
+<p>No registration is needed, a skill under the active profile’s <code>skills</code> directory is
+picked up automatically. If your <code>config.yml</code> uses an <code>includeSkills</code>
 allowlist, add the skill’s name to it:</p>
 <pre><code class="language-yaml">skills:
   includeSkills:

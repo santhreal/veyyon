@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-ac028553.js";
+            window.path_to_searchindex_js = "../searchindex-5adfaf9b.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-cc1a72e9.js"></script>
@@ -199,55 +199,52 @@
 <p>A skill is a folder of instructions you drop next to your code or in your profile, and the agent picks it up on its own. Use one to teach Veyyon a repeated task: how your project runs its tests, the steps of a release, the shape of a code review. Skills live on disk, not in the binary, so you add or change one by editing a file, with no rebuild.</p>
 <p>For general information on Veyyon extension capabilities, see <a href="../using/extending.html">Tools, skills, and extension data</a>.</p>
 <h2 id="skill-locations"><a class="header" href="#skill-locations">Skill locations</a></h2>
-<p>Veyyon loads skills from several locations depending on the desired scope.</p>
+<p>Skills load only from the active profile. Veyyon reads these three locations,
+all under <code>$HOME/.veyyon/profiles/&lt;profile&gt;/agent</code> (<code>profiles/default/</code> when you
+have not selected a profile):</p>
 <div class="table-wrapper">
 <table>
 <thead>
 <tr><th>Scope</th><th>Location</th><th>Description</th></tr>
 </thead>
 <tbody>
-<tr><td><strong>User</strong></td><td><code>$HOME/.veyyon/profiles/&lt;profile&gt;/agent/skills</code></td><td>User-installed skills for the active profile (<code>profiles/default/</code> when none is selected).</td></tr>
-<tr><td><strong>Project</strong></td><td><code>.veyyon/skills</code></td><td>Project skills; discovered by walking up from the working directory, closest ancestor first.</td></tr>
-<tr><td><strong>Agents layout</strong></td><td><code>.agent/skills</code>, <code>.agents/skills</code>, <code>$HOME/.agents/skills</code></td><td>Skills in the cross-tool agents layout (project walk-up plus user home).</td></tr>
-<tr><td><strong>Managed</strong></td><td><code>$HOME/.veyyon/profiles/&lt;profile&gt;/agent/managed-skills</code></td><td>Auto-learn skills Veyyon writes itself; a same-named authored skill always wins.</td></tr>
-<tr><td><strong>Other tools</strong></td><td><code>$HOME/.claude/skills</code>, <code>.github/skills/&lt;name&gt;/SKILL.md</code>, …</td><td>Foreign-tool skills imported when discovery of other tools’ config is on (next section).</td></tr>
+<tr><td><strong>User</strong></td><td><code>.../agent/skills</code></td><td>Skills you author or install for the active profile.</td></tr>
+<tr><td><strong>Managed</strong></td><td><code>.../agent/managed-skills</code></td><td>Auto-learn skills Veyyon writes itself. A same-named user skill always wins.</td></tr>
+<tr><td><strong>Plugins</strong></td><td>plugins installed into the active profile</td><td>Skills bundled with a plugin you added to this profile.</td></tr>
 </tbody>
 </table>
 </div>
-<p>Full provider list, priorities, and dedup rules: <a href="../../../skills.html"><code>docs/skills.md</code></a>.</p>
-<h2 id="other-tools-skills-and-config-on-by-default"><a class="header" href="#other-tools-skills-and-config-on-by-default">Other tools’ skills and config (on by default)</a></h2>
-<p>By default Veyyon also discovers skills, context files (<code>CLAUDE.md</code>, standalone
-<code>AGENTS.md</code>), rules, and MCP servers for other AI coding tools (Claude, Codex,
-Gemini, Cursor, OpenCode, Windsurf, Cline, and similar) when present on disk.</p>
-<p>To run Veyyon on its <strong>own</strong> config only, turn off the single toggle in
-<strong>Settings › Providers › Discovery › Import Other Tools’ Config</strong>, or set it in
-<code>config.yml</code>:</p>
+<p>Nothing else contributes skills. There is no autodiscovery from across your
+computer: another tool’s skill directory (<code>$HOME/.claude/skills</code>,
+<code>$HOME/.codex/skills</code>, <code>$HOME/.agents/skills</code>, <code>.github/skills</code>, and the rest) is
+never scanned, and a project-local <code>.veyyon/skills</code> directory next to your code is
+not read either. Skills belong to your profile, so switching profiles switches
+the whole skill set, and no repository you open can inject a skill into a session.</p>
+<p>Full provider list and dedup rules: <a href="../../../skills.html"><code>docs/skills.md</code></a>.</p>
+<h2 id="importing-another-tools-skills"><a class="header" href="#importing-another-tools-skills">Importing another tool’s skills</a></h2>
+<p>Because foreign skills never load on their own, you bring one into Veyyon by
+importing it. The onboarding import scan finds user-level skills and instruction
+files that other AI tools (Claude, Codex, Gemini, Cursor, and similar) left on
+disk, and copies the ones you pick into the active profile’s <code>skills</code> directory.
+The copy is profile-owned from then on, so it loads like any other profile skill
+and is not affected by the original tool.</p>
+<p>A separate setting, <code>discovery.importForeignConfig</code>, governs whether Veyyon reads
+other tools’ context files (<code>CLAUDE.md</code>, standalone <code>AGENTS.md</code>), rules, and MCP
+servers, and whether it offers the import scan at all. Turn it off to run Veyyon
+on its own config only:</p>
 <pre><code class="language-yaml">discovery:
   importForeignConfig: false
 </code></pre>
-<p>When it is off, those foreign sources are skipped entirely, they never appear
-in <code>/extensions</code>, in the enable/disable list, or in the model’s context. When it is
-on (the default), the per-source toggles under <code>skills.*</code> (for example
-<code>skills.enableClaudeUser</code>) give finer control. Veyyon’s own <code>AGENTS.md</code> lives in
-<code>.veyyon/</code> (project) and the profile’s agent dir (user); those are always read and
-are not affected by this toggle.</p>
+<p>It does not change skill loading: foreign skills are never loaded ambiently
+whether it is on or off. Veyyon’s own <code>AGENTS.md</code> lives in <code>.veyyon/</code> (project)
+and the profile’s agent dir (user), and is always read.</p>
 <h2 id="profiles-isolate-skills"><a class="header" href="#profiles-isolate-skills">Profiles isolate skills</a></h2>
 <p>Each <a href="./profiles.html">profile</a> is a separate config root
-(<code>$HOME/.veyyon/profiles/&lt;name&gt;/agent</code>). Every skill source Veyyon owns, user
-skills, managed (auto-learn) skills, and plugin skills, resolves under that
-root, so profiles never share a skill directory:</p>
-<ul>
-<li>Switching profiles re-homes user and managed skills to the active profile.</li>
-<li>The <code>discovery.importForeignConfig</code> toggle and all <code>skills.*</code> settings are
-stored per profile, so one profile can import other tools’ skills while
-another stays clean.</li>
-</ul>
-<p>Two things are shared on purpose: <strong>project</strong> skills (<code>.veyyon/skills</code> next to
-your code) belong to the repository, not a profile; and another tool’s own skill
-directory (<code>$HOME/.claude/skills</code>, …) is global to the machine, a profile
-cannot relocate it, so per-profile isolation there means each profile decides
-independently whether to import it (via <code>discovery.importForeignConfig</code>, which
-is stored per profile and on by default).</p>
+(<code>$HOME/.veyyon/profiles/&lt;name&gt;/agent</code>), and every skill source resolves under
+that root, so profiles never share a skill directory. Switching profiles re-homes
+user skills, managed (auto-learn) skills, and plugin skills to the active
+profile, and all <code>skills.*</code> settings are stored per profile. One profile can hold
+a large skill set while another stays empty.</p>
 <h2 id="skill-structure"><a class="header" href="#skill-structure">Skill structure</a></h2>
 <p>Each skill is defined in its own subdirectory containing a <code>SKILL.md</code> file.</p>
 <h3 id="the-skill-file-skillmd"><a class="header" href="#the-skill-file-skillmd">The skill file (<code>SKILL.md</code>)</a></h3>
@@ -324,17 +321,16 @@ policy:
 <pre><code class="language-yaml">skills:
   enabled: false
 </code></pre>
-<h3 id="enable-or-disable-discovery-sources"><a class="header" href="#enable-or-disable-discovery-sources">Enable or disable discovery sources</a></h3>
-<p>Each discovery source has its own toggle, all defaulting to <code>true</code>: <code>enableCodexUser</code>,
-<code>enableClaudeUser</code>, <code>enableClaudeProject</code>, <code>enablePiUser</code>, <code>enablePiProject</code>,
-<code>enableAgentsUser</code>, <code>enableAgentsProject</code>. <code>customDirectories</code> adds extra directories to
-scan, and <code>enableSkillCommands</code> (default <code>true</code>) controls whether skills also register as
+<h3 id="skill-commands"><a class="header" href="#skill-commands">Skill commands</a></h3>
+<p><code>enableSkillCommands</code> (default <code>true</code>) controls whether skills also register as
 <code>/skill:name</code> commands.</p>
 <pre><code class="language-yaml">skills:
-  enableClaudeUser: false
-  customDirectories:
-    - /opt/team-skills
+  enableSkillCommands: false
 </code></pre>
+<p>There are no per-source toggles and no <code>customDirectories</code> setting. Skills load
+only from the active profile (see <a href="#skill-locations">Skill locations</a>), so there
+is nothing to enable or disable per source. To use a skill from another tool,
+import it into your profile.</p>
 <h3 id="manage-individual-skills"><a class="header" href="#manage-individual-skills">Manage individual skills</a></h3>
 <p><code>includeSkills</code> and <code>ignoredSkills</code> are glob lists matched against skill names. An empty
 <code>includeSkills</code> means every discovered skill is active; <code>ignoredSkills</code> then subtracts.</p>

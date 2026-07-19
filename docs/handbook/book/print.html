@@ -51,7 +51,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-ac028553.js";
+            window.path_to_searchindex_js = "searchindex-5adfaf9b.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-cc1a72e9.js"></script>
@@ -2031,55 +2031,52 @@ Workers are killed when you leave vibe mode, so none outlive the director that d
 <p>A skill is a folder of instructions you drop next to your code or in your profile, and the agent picks it up on its own. Use one to teach Veyyon a repeated task: how your project runs its tests, the steps of a release, the shape of a code review. Skills live on disk, not in the binary, so you add or change one by editing a file, with no rebuild.</p>
 <p>For general information on Veyyon extension capabilities, see <a href="#tools-skills-and-extension-data">Tools, skills, and extension data</a>.</p>
 <h2 id="skill-locations"><a class="header" href="#skill-locations">Skill locations</a></h2>
-<p>Veyyon loads skills from several locations depending on the desired scope.</p>
+<p>Skills load only from the active profile. Veyyon reads these three locations,
+all under <code>$HOME/.veyyon/profiles/&lt;profile&gt;/agent</code> (<code>profiles/default/</code> when you
+have not selected a profile):</p>
 <div class="table-wrapper">
 <table>
 <thead>
 <tr><th>Scope</th><th>Location</th><th>Description</th></tr>
 </thead>
 <tbody>
-<tr><td><strong>User</strong></td><td><code>$HOME/.veyyon/profiles/&lt;profile&gt;/agent/skills</code></td><td>User-installed skills for the active profile (<code>profiles/default/</code> when none is selected).</td></tr>
-<tr><td><strong>Project</strong></td><td><code>.veyyon/skills</code></td><td>Project skills; discovered by walking up from the working directory, closest ancestor first.</td></tr>
-<tr><td><strong>Agents layout</strong></td><td><code>.agent/skills</code>, <code>.agents/skills</code>, <code>$HOME/.agents/skills</code></td><td>Skills in the cross-tool agents layout (project walk-up plus user home).</td></tr>
-<tr><td><strong>Managed</strong></td><td><code>$HOME/.veyyon/profiles/&lt;profile&gt;/agent/managed-skills</code></td><td>Auto-learn skills Veyyon writes itself; a same-named authored skill always wins.</td></tr>
-<tr><td><strong>Other tools</strong></td><td><code>$HOME/.claude/skills</code>, <code>.github/skills/&lt;name&gt;/SKILL.md</code>, …</td><td>Foreign-tool skills imported when discovery of other tools’ config is on (next section).</td></tr>
+<tr><td><strong>User</strong></td><td><code>.../agent/skills</code></td><td>Skills you author or install for the active profile.</td></tr>
+<tr><td><strong>Managed</strong></td><td><code>.../agent/managed-skills</code></td><td>Auto-learn skills Veyyon writes itself. A same-named user skill always wins.</td></tr>
+<tr><td><strong>Plugins</strong></td><td>plugins installed into the active profile</td><td>Skills bundled with a plugin you added to this profile.</td></tr>
 </tbody>
 </table>
 </div>
-<p>Full provider list, priorities, and dedup rules: <a href="../../skills.html"><code>docs/skills.md</code></a>.</p>
-<h2 id="other-tools-skills-and-config-on-by-default"><a class="header" href="#other-tools-skills-and-config-on-by-default">Other tools’ skills and config (on by default)</a></h2>
-<p>By default Veyyon also discovers skills, context files (<code>CLAUDE.md</code>, standalone
-<code>AGENTS.md</code>), rules, and MCP servers for other AI coding tools (Claude, Codex,
-Gemini, Cursor, OpenCode, Windsurf, Cline, and similar) when present on disk.</p>
-<p>To run Veyyon on its <strong>own</strong> config only, turn off the single toggle in
-<strong>Settings › Providers › Discovery › Import Other Tools’ Config</strong>, or set it in
-<code>config.yml</code>:</p>
+<p>Nothing else contributes skills. There is no autodiscovery from across your
+computer: another tool’s skill directory (<code>$HOME/.claude/skills</code>,
+<code>$HOME/.codex/skills</code>, <code>$HOME/.agents/skills</code>, <code>.github/skills</code>, and the rest) is
+never scanned, and a project-local <code>.veyyon/skills</code> directory next to your code is
+not read either. Skills belong to your profile, so switching profiles switches
+the whole skill set, and no repository you open can inject a skill into a session.</p>
+<p>Full provider list and dedup rules: <a href="../../skills.html"><code>docs/skills.md</code></a>.</p>
+<h2 id="importing-another-tools-skills"><a class="header" href="#importing-another-tools-skills">Importing another tool’s skills</a></h2>
+<p>Because foreign skills never load on their own, you bring one into Veyyon by
+importing it. The onboarding import scan finds user-level skills and instruction
+files that other AI tools (Claude, Codex, Gemini, Cursor, and similar) left on
+disk, and copies the ones you pick into the active profile’s <code>skills</code> directory.
+The copy is profile-owned from then on, so it loads like any other profile skill
+and is not affected by the original tool.</p>
+<p>A separate setting, <code>discovery.importForeignConfig</code>, governs whether Veyyon reads
+other tools’ context files (<code>CLAUDE.md</code>, standalone <code>AGENTS.md</code>), rules, and MCP
+servers, and whether it offers the import scan at all. Turn it off to run Veyyon
+on its own config only:</p>
 <pre><code class="language-yaml">discovery:
   importForeignConfig: false
 </code></pre>
-<p>When it is off, those foreign sources are skipped entirely, they never appear
-in <code>/extensions</code>, in the enable/disable list, or in the model’s context. When it is
-on (the default), the per-source toggles under <code>skills.*</code> (for example
-<code>skills.enableClaudeUser</code>) give finer control. Veyyon’s own <code>AGENTS.md</code> lives in
-<code>.veyyon/</code> (project) and the profile’s agent dir (user); those are always read and
-are not affected by this toggle.</p>
+<p>It does not change skill loading: foreign skills are never loaded ambiently
+whether it is on or off. Veyyon’s own <code>AGENTS.md</code> lives in <code>.veyyon/</code> (project)
+and the profile’s agent dir (user), and is always read.</p>
 <h2 id="profiles-isolate-skills"><a class="header" href="#profiles-isolate-skills">Profiles isolate skills</a></h2>
 <p>Each <a href="#profiles-1">profile</a> is a separate config root
-(<code>$HOME/.veyyon/profiles/&lt;name&gt;/agent</code>). Every skill source Veyyon owns, user
-skills, managed (auto-learn) skills, and plugin skills, resolves under that
-root, so profiles never share a skill directory:</p>
-<ul>
-<li>Switching profiles re-homes user and managed skills to the active profile.</li>
-<li>The <code>discovery.importForeignConfig</code> toggle and all <code>skills.*</code> settings are
-stored per profile, so one profile can import other tools’ skills while
-another stays clean.</li>
-</ul>
-<p>Two things are shared on purpose: <strong>project</strong> skills (<code>.veyyon/skills</code> next to
-your code) belong to the repository, not a profile; and another tool’s own skill
-directory (<code>$HOME/.claude/skills</code>, …) is global to the machine, a profile
-cannot relocate it, so per-profile isolation there means each profile decides
-independently whether to import it (via <code>discovery.importForeignConfig</code>, which
-is stored per profile and on by default).</p>
+(<code>$HOME/.veyyon/profiles/&lt;name&gt;/agent</code>), and every skill source resolves under
+that root, so profiles never share a skill directory. Switching profiles re-homes
+user skills, managed (auto-learn) skills, and plugin skills to the active
+profile, and all <code>skills.*</code> settings are stored per profile. One profile can hold
+a large skill set while another stays empty.</p>
 <h2 id="skill-structure"><a class="header" href="#skill-structure">Skill structure</a></h2>
 <p>Each skill is defined in its own subdirectory containing a <code>SKILL.md</code> file.</p>
 <h3 id="the-skill-file-skillmd"><a class="header" href="#the-skill-file-skillmd">The skill file (<code>SKILL.md</code>)</a></h3>
@@ -2156,17 +2153,16 @@ policy:
 <pre><code class="language-yaml">skills:
   enabled: false
 </code></pre>
-<h3 id="enable-or-disable-discovery-sources"><a class="header" href="#enable-or-disable-discovery-sources">Enable or disable discovery sources</a></h3>
-<p>Each discovery source has its own toggle, all defaulting to <code>true</code>: <code>enableCodexUser</code>,
-<code>enableClaudeUser</code>, <code>enableClaudeProject</code>, <code>enablePiUser</code>, <code>enablePiProject</code>,
-<code>enableAgentsUser</code>, <code>enableAgentsProject</code>. <code>customDirectories</code> adds extra directories to
-scan, and <code>enableSkillCommands</code> (default <code>true</code>) controls whether skills also register as
+<h3 id="skill-commands"><a class="header" href="#skill-commands">Skill commands</a></h3>
+<p><code>enableSkillCommands</code> (default <code>true</code>) controls whether skills also register as
 <code>/skill:name</code> commands.</p>
 <pre><code class="language-yaml">skills:
-  enableClaudeUser: false
-  customDirectories:
-    - /opt/team-skills
+  enableSkillCommands: false
 </code></pre>
+<p>There are no per-source toggles and no <code>customDirectories</code> setting. Skills load
+only from the active profile (see <a href="#skill-locations">Skill locations</a>), so there
+is nothing to enable or disable per source. To use a skill from another tool,
+import it into your profile.</p>
 <h3 id="manage-individual-skills"><a class="header" href="#manage-individual-skills">Manage individual skills</a></h3>
 <p><code>includeSkills</code> and <code>ignoredSkills</code> are glob lists matched against skill names. An empty
 <code>includeSkills</code> means every discovered skill is active; <code>ignoredSkills</code> then subtracts.</p>
@@ -2190,22 +2186,21 @@ plugins, see <a href="#task-guides">Task guides</a>.</p>
 <h1 id="skills-authoring"><a class="header" href="#skills-authoring">Skills authoring</a></h1>
 <p>A skill is a folder that adds a reusable capability to Veyyon. This page explains how to write one from scratch. For background on how skills are discovered and loaded, see <a href="#skills">Skills</a>.</p>
 <h2 id="directory-structure"><a class="header" href="#directory-structure">Directory structure</a></h2>
-<p>Skills are placed on the filesystem according to the scope where they should apply. Veyyon loads skills from these locations in order:</p>
+<p>Skills load only from the active profile. Veyyon reads these locations, all under the profile’s agent dir (<code>profiles/default/</code> when you have not selected a profile):</p>
 <div class="table-wrapper">
 <table>
 <thead>
 <tr><th>Scope</th><th>Directory</th><th>Purpose</th></tr>
 </thead>
 <tbody>
-<tr><td>User</td><td><code>$HOME/.veyyon/profiles/&lt;profile&gt;/agent/skills</code></td><td>Skills available to the current user, per profile (<code>profiles/default/</code> when none is selected).</td></tr>
-<tr><td>Project</td><td><code>.veyyon/skills</code></td><td>Skills shipped with a project, discovered by walking up from the working directory.</td></tr>
-<tr><td>Agents layout</td><td><code>.agents/skills</code>, <code>$HOME/.agents/skills</code></td><td>Skills in the cross-tool agents layout (project walk-up plus user home).</td></tr>
-<tr><td>Custom</td><td><code>skills.customDirectories</code></td><td>Extra directories you list in settings.</td></tr>
+<tr><td>User</td><td><code>$HOME/.veyyon/profiles/&lt;profile&gt;/agent/skills</code></td><td>Skills you author or install for the active profile.</td></tr>
+<tr><td>Managed</td><td><code>$HOME/.veyyon/profiles/&lt;profile&gt;/agent/managed-skills</code></td><td>Auto-learn skills Veyyon writes itself. A same-named user skill always wins.</td></tr>
+<tr><td>Plugins</td><td>plugins installed into the active profile</td><td>Skills bundled with a plugin you added to this profile.</td></tr>
 </tbody>
 </table>
 </div>
-<p>Foreign-tool locations (<code>$HOME/.claude/skills</code>, …) are also discovered when foreign-config import is on, see <a href="#skill-locations">Skills</a> for the full table.</p>
-<p>Create a new skill by making a directory inside one of these scopes and adding a <code>SKILL.md</code> file. The name of the directory is the default name of the skill.</p>
+<p>Nothing else contributes skills. A project-local <code>.veyyon/skills</code> directory and another tool’s skill directory (<code>$HOME/.claude/skills</code>, <code>$HOME/.codex/skills</code>, <code>$HOME/.agents/skills</code>, and the rest) are never scanned. To use a skill from another tool, import it into your profile, see <a href="#importing-another-tools-skills">Skills</a>. For the full provider list and dedup rules, see <a href="#skill-locations">Skills</a>.</p>
+<p>Create a new skill by making a directory inside the profile’s <code>skills</code> dir and adding a <code>SKILL.md</code> file. The name of the directory is the default name of the skill.</p>
 <p>A skill directory may contain additional files:</p>
 <pre><code>my-skill/
 ├── SKILL.md
@@ -2313,15 +2308,15 @@ denylist):</p>
   config:
     - name: my-skill
       enabled: true
-    - path: /home/user/.agents/skills/other-skill/SKILL.md
+    - path: /home/user/.veyyon/profiles/default/agent/skills/other-skill/SKILL.md
       enabled: false
 </code></pre>
-<h2 id="worked-example-a-project-local-skill"><a class="header" href="#worked-example-a-project-local-skill">Worked example: a project-local skill</a></h2>
-<p>This example creates a skill inside a project that adds a custom onboarding check.</p>
-<p>Create the skill directory:</p>
-<pre><code class="language-bash">mkdir -p .veyyon/skills/onboarding-check
+<h2 id="worked-example-a-profile-skill"><a class="header" href="#worked-example-a-profile-skill">Worked example: a profile skill</a></h2>
+<p>This example creates a skill in your active profile that adds a custom onboarding check.</p>
+<p>Create the skill directory under the active profile (<code>profiles/default</code> when you have not selected one):</p>
+<pre><code class="language-bash">mkdir -p ~/.veyyon/profiles/default/agent/skills/onboarding-check
 </code></pre>
-<p>Create <code>.veyyon/skills/onboarding-check/SKILL.md</code>:</p>
+<p>Create <code>onboarding-check/SKILL.md</code> in that directory:</p>
 <pre><code class="language-markdown">---
 name: onboarding-check
 description: Review the project for missing onboarding files and recommend improvements.
@@ -2340,7 +2335,7 @@ Use this skill when the user asks whether the project is ready for a new contrib
 
 Report the result as a short checklist with `done` or `missing` for each item.
 </code></pre>
-<p>Create <code>.veyyon/skills/onboarding-check/agents/openai.yaml</code>:</p>
+<p>Create <code>onboarding-check/agents/openai.yaml</code> in the same directory:</p>
 <pre><code class="language-yaml">interface:
   display_name: "Onboarding Check"
   short_description: "Check project onboarding completeness"
@@ -2350,8 +2345,8 @@ policy:
   products:
     - veyyon
 </code></pre>
-<p>No registration is needed, a skill under <code>.veyyon/skills</code> (or any other discovered
-directory) is picked up automatically. If your <code>config.yml</code> uses an <code>includeSkills</code>
+<p>No registration is needed, a skill under the active profile’s <code>skills</code> directory is
+picked up automatically. If your <code>config.yml</code> uses an <code>includeSkills</code>
 allowlist, add the skill’s name to it:</p>
 <pre><code class="language-yaml">skills:
   includeSkills:
@@ -3018,14 +3013,35 @@ one-time migration from the legacy bare-root layout.</p>
 <ul>
 <li><strong>CLI:</strong> <code>veyyon --profile &lt;name&gt;</code> (no short form; <code>-p</code> is <code>--print</code>).</li>
 <li><strong>Env:</strong> <code>VEYYON_PROFILE=&lt;name&gt;</code>.</li>
-<li><strong>TUI:</strong> <code>/profile &lt;name&gt;</code> ends the current conversation and relaunches Veyyon on that profile (a fresh session: profiles are chosen at process start, so there is no hot-swap). Bare <code>/profile</code> lists profiles with the active one marked.</li>
+<li><strong>TUI:</strong> <code>/profile &lt;name&gt;</code> ends the current conversation and relaunches Veyyon on that profile (a fresh session: profiles are chosen at process start, so there is no hot-swap). Bare <code>/profile</code> (or <code>/profiles</code>) opens the profile picker described below.</li>
 <li><strong>Shell alias:</strong> <code>veyyon --profile work --alias mywork</code> installs a managed block in your shell rc (see <code>cli/profile-alias.ts</code>).</li>
 </ul>
+<h2 id="tui-profile-commands"><a class="header" href="#tui-profile-commands">TUI profile commands</a></h2>
+<p><code>/profiles</code> and <code>/profile</code> are the same command. Run it with no arguments to open the <strong>profile picker</strong>, an interactive dialog that lists every profile (the active one marked) plus a <strong>Create new profile</strong> row. Select a profile to open its action menu: <strong>Switch to it</strong>, <strong>Rename it</strong>, or <strong>Delete it</strong> (switch and delete are hidden for the active profile, and the default profile is never offered for deletion). The picker is the fastest way to manage profiles without remembering the verb syntax.</p>
+<p>You can also type any verb directly:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Command</th><th>Effect</th></tr>
+</thead>
+<tbody>
+<tr><td><code>/profiles</code>, <code>/profile</code></td><td>Open the profile picker.</td></tr>
+<tr><td><code>/profile list</code></td><td>Print the profile list as text (active marked with <code>*</code>).</td></tr>
+<tr><td><code>/profile &lt;name&gt;</code></td><td>Switch to <code>&lt;name&gt;</code> (relaunches as a fresh session).</td></tr>
+<tr><td><code>/profile switch &lt;name&gt;</code></td><td>Same as <code>/profile &lt;name&gt;</code>.</td></tr>
+<tr><td><code>/profile new &lt;name&gt;</code>, <code>/profile create &lt;name&gt;</code></td><td>Create <code>&lt;name&gt;</code>, then open the copy-items picker.</td></tr>
+<tr><td><code>/profile rename &lt;old&gt; to &lt;new&gt;</code></td><td>Set the display name of <code>&lt;old&gt;</code> to <code>&lt;new&gt;</code>.</td></tr>
+<tr><td><code>/profile rename to &lt;new&gt;</code></td><td>Rename the active profile.</td></tr>
+<tr><td><code>/profile rm &lt;name&gt;</code>, <code>/profile delete &lt;name&gt;</code></td><td>Delete <code>&lt;name&gt;</code> after a confirmation. Refuses the active and default profiles.</td></tr>
+</tbody>
+</table>
+</div>
+<p>Choosing <strong>Create new profile</strong> or <strong>Rename</strong> in the picker prefills the composer with the matching command (<code>/profile new </code> or <code>/profile &lt;name&gt; rename to </code>) so you finish by typing the name and pressing Enter. Name entry always flows through the same typed command, so there is one place that creates and renames.</p>
 <h2 id="profile-names-and-renaming"><a class="header" href="#profile-names-and-renaming">Profile names and renaming</a></h2>
 <p>A profile’s directory name (<code>~/.veyyon/profiles/&lt;name&gt;</code>) is its stable identity and never changes. Each profile can additionally carry a <strong>display name</strong>, the <code>profile.displayName</code> setting, stored in that profile’s own <code>config.yml</code>:</p>
 <ul>
 <li><strong>Settings:</strong> <code>/settings</code> › Interaction › Profile › Profile Name.</li>
-<li><strong>TUI:</strong> <code>/profile rename to &lt;new&gt;</code> renames the active profile; <code>/profile &lt;name&gt; rename to &lt;new&gt;</code> renames another one. The default profile is renamable too.</li>
+<li><strong>TUI:</strong> <code>/profile rename to &lt;new&gt;</code> renames the active profile; <code>/profile &lt;name&gt; rename to &lt;new&gt;</code> (or <code>/profile rename &lt;name&gt; to &lt;new&gt;</code>) renames another one. The default profile is renamable too. The profile picker’s <strong>Rename</strong> action prefills this command for you.</li>
 </ul>
 <p><code>/profile list</code> shows <code>name (Display Name)</code> when they differ, and <code>/profile &lt;input&gt;</code> resolves a directory name first, then a unique display name. A copied settings file never carries the source’s display name, <code>profile new</code> clears it so two profiles cannot answer to one name.</p>
 <h2 id="creating-and-managing-profiles"><a class="header" href="#creating-and-managing-profiles">Creating and managing profiles</a></h2>
@@ -3042,7 +3058,7 @@ $ veyyon profile default work
 <li><code>rm</code> refuses the default profile, the active profile, and destructive deletes without <code>--yes</code>.</li>
 <li><code>default [name]</code> shows or sets the global <code>defaultProfile</code> (which profile a bare <code>vey</code> launches); <code>default --clear</code> removes it.</li>
 </ul>
-<p>In the TUI, <code>/profile new &lt;name&gt;</code> opens a picker listing every carry-over item (AGENTS.md, settings, MCP servers, SSH targets, skills, commands, tools, prompts, themes, extensions, keybindings), each individually toggleable (all selected by default). The new profile is seeded from the <strong>active</strong> profile with exactly the chosen items.</p>
+<p>In the TUI, <code>/profile new &lt;name&gt;</code> (or <code>/profile create &lt;name&gt;</code>) opens a picker listing every carry-over item (AGENTS.md, settings, MCP servers, SSH targets, skills, commands, tools, prompts, themes, extensions, keybindings), each individually toggleable (all selected by default). The new profile is seeded from the <strong>active</strong> profile with exactly the chosen items. Deleting is available too: <code>/profile rm &lt;name&gt;</code> (or the picker’s <strong>Delete</strong> action) removes a profile after a confirmation, and refuses the active and default profiles. See <a href="#tui-profile-commands">TUI profile commands</a> for the full verb list.</p>
 <p>You can still create a profile implicitly by running <code>veyyon --profile &lt;name&gt;</code> once; use <code>profile new</code> when you want seeding without launching the TUI.</p>
 <h2 id="onboarding-import"><a class="header" href="#onboarding-import">Onboarding import</a></h2>
 <p>On first run (and once after upgrading past setup version 2), the setup wizard scans the machine for user-level config written for other tools (skills and <code>CLAUDE.md</code>/<code>AGENTS.md</code> from Claude Code, Codex, Cursor, and similar) and offers each item for import into your default profile. Imports <strong>copy</strong>: skills land in the profile’s <code>skills/</code>, instruction files append to the profile’s <code>AGENTS.md</code> under a source marker (re-imports are idempotent). The originals keep loading ambiently as the machine-wide base layer unless you turn off <code>discovery.importForeignConfig</code>.</p>
@@ -3157,7 +3173,7 @@ compaction:
 <p>Every profile including <code>default</code>:</p>
 <pre><code class="language-text">~/.veyyon/profiles/&lt;name&gt;/agent/   # config.yml, sessions, MCP, skills, …
 </code></pre>
-<p>Global <code>~/.veyyon/config.yml</code> holds cross-profile keys such as <code>defaultProfile</code>.<br>Activate: <code>--profile</code>, <code>VEYYON_PROFILE</code>, <code>veyyon profile default &lt;name&gt;</code>, TUI <code>/profile</code> (relaunch).<br>See <a href="#profiles-1">Profiles</a>, <a href="#file-locations-1">File locations</a>.</p>
+<p>Global <code>~/.veyyon/config.yml</code> holds cross-profile keys such as <code>defaultProfile</code>.<br>Activate: <code>--profile</code>, <code>VEYYON_PROFILE</code>, <code>veyyon profile default &lt;name&gt;</code>, TUI <code>/profiles</code> picker or <code>/profile &lt;name&gt;</code> (relaunch).<br>See <a href="#profiles-1">Profiles</a>, <a href="#file-locations-1">File locations</a>.</p>
 <h2 id="approvals-3"><a class="header" href="#approvals-3">Approvals</a></h2>
 <p><code>tools.approvalMode</code>: <code>plan</code> | <code>ask</code> | <code>auto-edit</code> | <code>yolo</code> (schema default <code>yolo</code>).<br>Aliases: <code>always-ask</code> → <code>ask</code>, <code>write</code> → <code>auto-edit</code>.<br>See <a href="#approvals">Approvals</a>.</p>
 <h2 id="related-10"><a class="header" href="#related-10">Related</a></h2>
@@ -3317,7 +3333,7 @@ config tree (<code>.veyyon/</code>, <code>~/.veyyon/profiles/default/agent/</cod
 <li>Settings from <code>.claude/settings.json</code> → <code>config.yml</code></li>
 <li>MCP servers → <code>mcp.json</code></li>
 <li>Hooks → TypeScript modules under <code>.veyyon/hooks/</code> (or agent <code>hooks/</code>) loaded via the extension path</li>
-<li>Skills → <code>.agents/skills</code> / <code>.veyyon/skills</code></li>
+<li>Skills → the active profile’s <code>skills</code> directory (<code>~/.veyyon/profiles/&lt;profile&gt;/agent/skills</code>)</li>
 <li>Subagents → <code>.veyyon/agents</code></li>
 <li><code>CLAUDE.md</code> → <code>AGENTS.md</code></li>
 </ul>
@@ -3847,7 +3863,7 @@ picker. Commands below are the <strong>builtin</strong> set; extensions may add 
 <tr><td><code>/export [path]</code></td><td>Export session JSONL or HTML</td></tr>
 <tr><td><code>/dump</code></td><td>Dump debug artifacts</td></tr>
 <tr><td><code>/session info</code>, <code>/session delete</code></td><td>Session metadata or delete</td></tr>
-<tr><td><code>/profile [name]</code></td><td>List profiles, or switch (relaunches as a fresh session); <code>/profile new &lt;name&gt;</code> opens the copy picker; <code>/profile [name] rename to &lt;new&gt;</code> sets a display name</td></tr>
+<tr><td><code>/profile [name]</code>, <code>/profiles</code></td><td>Bare opens the profile picker (switch, rename, create, delete); <code>/profile &lt;name&gt;</code> switches (relaunches as a fresh session); <code>/profile new &lt;name&gt;</code> opens the copy picker; <code>/profile &lt;name&gt; rename to &lt;new&gt;</code> sets a display name; <code>/profile rm &lt;name&gt;</code> deletes after a confirmation</td></tr>
 <tr><td><code>/exit</code>, <code>/quit</code>, <code>/pause</code></td><td>Leave or pause</td></tr>
 </tbody>
 </table>
