@@ -1,7 +1,7 @@
 import { Database, type SQLQueryBindings } from "bun:sqlite";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { errorMessage, getAutoresearchDbPath, getAutoresearchProjectDir, logger } from "@veyyon/utils";
+import { errorMessage, getAutoresearchDbPath, getAutoresearchProjectDir, logger, tryParseJson } from "@veyyon/utils";
 import * as git from "../utils/git";
 import type { ASIData, ExperimentStatus, MetricDirection, NumericMetricMap } from "./types";
 
@@ -690,11 +690,7 @@ function parseNumericMetricMap(json: string | null): NumericMetricMap | null {
 
 function parseAsiData(json: string | null): ASIData | null {
 	if (json === null) return null;
-	try {
-		const parsed = JSON.parse(json) as unknown;
-		if (typeof parsed !== "object" || parsed === null) return null;
-		return parsed as ASIData;
-	} catch {
-		return null;
-	}
+	const parsed = tryParseJson(json);
+	if (typeof parsed !== "object" || parsed === null) return null;
+	return parsed as ASIData;
 }

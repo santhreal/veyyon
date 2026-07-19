@@ -19,6 +19,7 @@ import {
 	logger,
 	scopedTimeoutSignal,
 	trimTrailingSlashes,
+	tryParseJson,
 } from "@veyyon/utils";
 import type { ApiKeyResolver } from "./auth-retry";
 import * as AIError from "./error";
@@ -5793,12 +5794,7 @@ function serializeCredential(provider: string, credential: AuthCredential): Seri
 }
 
 function deserializeCredential(row: AuthRow): AuthCredential | null {
-	let parsed: unknown;
-	try {
-		parsed = JSON.parse(row.data);
-	} catch {
-		return null;
-	}
+	const parsed = tryParseJson(row.data);
 	if (!isRecord(parsed)) {
 		return null;
 	}

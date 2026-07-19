@@ -7,7 +7,7 @@
  * them into a combined `answer` string on the SearchResponse.
  */
 import { type ApiKey, type AuthStorage, type FetchImpl, getEnvApiKey, withAuth } from "@veyyon/ai";
-import { asRecord } from "@veyyon/utils";
+import { asRecord, tryParseJson } from "@veyyon/utils";
 import { getDefault, settings } from "../../../config/settings";
 import { findApiKey, isSearchResponse } from "../../../exa/mcp-client";
 import { parseSSE } from "../../../mcp/json-rpc";
@@ -141,13 +141,6 @@ interface ExaSearchResponse {
 	costDollars?: { total: number };
 	searchTime?: number;
 }
-function parseJsonContent(text: string): unknown | null {
-	try {
-		return JSON.parse(text) as unknown;
-	} catch {
-		return null;
-	}
-}
 
 function normalizeExaMcpPayload(payload: unknown): unknown {
 	const candidates: unknown[] = [];
@@ -166,7 +159,7 @@ function normalizeExaMcpPayload(payload: unknown): unknown {
 				if (!part) continue;
 				const text = part.text;
 				if (typeof text !== "string" || text.trim().length === 0) continue;
-				const parsed = parseJsonContent(text);
+				const parsed = tryParseJson(text);
 				if (parsed !== null) candidates.push(parsed);
 			}
 		}

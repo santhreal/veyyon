@@ -7,6 +7,7 @@ import {
 	isEnotdir,
 	stripWindowsExtendedLengthPathPrefix,
 	trimTrailingSlashes,
+	tryParseJson,
 	URL_SCHEME_PREFIX_RE,
 } from "@veyyon/utils";
 import type { Skill } from "../extensibility/skills";
@@ -560,13 +561,7 @@ function parseStringEncodedPathArray(input: string): string[] | null {
 	const trimmed = input.trim();
 	if (!trimmed.startsWith("[") || !trimmed.endsWith("]")) return null;
 
-	let parsed: unknown;
-	try {
-		parsed = JSON.parse(trimmed);
-	} catch {
-		return null;
-	}
-
+	const parsed = tryParseJson(trimmed);
 	if (!Array.isArray(parsed) || parsed.some(entry => typeof entry !== "string")) {
 		return null;
 	}

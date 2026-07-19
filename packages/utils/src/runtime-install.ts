@@ -2,6 +2,7 @@ import * as fs from "node:fs";
 import * as fsp from "node:fs/promises";
 import * as Module from "node:module";
 import * as path from "node:path";
+import { tryParseJson } from "./json";
 import { isRecord } from "./type-guards";
 
 /**
@@ -137,9 +138,10 @@ export function resolveRuntimeModule(runtimeNodeModules: string, specifier: stri
 
 function readManifest(pkgDir: string): Record<string, unknown> | null {
 	try {
-		const parsed: unknown = JSON.parse(fs.readFileSync(path.join(pkgDir, "package.json"), "utf8"));
+		const parsed = tryParseJson(fs.readFileSync(path.join(pkgDir, "package.json"), "utf8"));
 		return isRecord(parsed) ? parsed : null;
 	} catch {
+		// Missing/unreadable package.json (readFileSync throws) — no manifest.
 		return null;
 	}
 }

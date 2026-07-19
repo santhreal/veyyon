@@ -6,6 +6,7 @@
  */
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import { tryParseJson } from "@veyyon/utils";
 
 // ============================================================================
 // State types
@@ -114,9 +115,12 @@ export class StateTracker {
 		const statePath = path.join(this.#swarmDir, "state", "pipeline.json");
 		try {
 			const content = await Bun.file(statePath).text();
-			this.#state = JSON.parse(content) as SwarmState;
-			return this.#state;
+			const state = tryParseJson<SwarmState>(content);
+			if (state === null) return null;
+			this.#state = state;
+			return state;
 		} catch {
+			// Missing/unreadable state file (text() throws) — no persisted state.
 			return null;
 		}
 	}

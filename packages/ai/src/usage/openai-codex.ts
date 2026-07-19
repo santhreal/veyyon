@@ -1,5 +1,5 @@
 import { Buffer } from "node:buffer";
-import { HOUR_MS, MINUTE_MS, WEEK_MS } from "@veyyon/utils";
+import { HOUR_MS, MINUTE_MS, tryParseJson, WEEK_MS } from "@veyyon/utils";
 import type {
 	CredentialRankingStrategy,
 	UsageAmount,
@@ -98,8 +98,9 @@ function parseJwt(token: string): JwtPayload | null {
 	if (parts.length !== 3) return null;
 	try {
 		const payloadJson = base64UrlDecode(parts[1]);
-		return JSON.parse(payloadJson) as JwtPayload;
+		return tryParseJson<JwtPayload>(payloadJson);
 	} catch {
+		// base64UrlDecode throws on a malformed segment — not a valid JWT.
 		return null;
 	}
 }
