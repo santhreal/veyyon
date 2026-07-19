@@ -1,6 +1,7 @@
 export { once, untilAborted } from "./abortable";
 export * from "./array";
 export * from "./async";
+export * from "./atomic-write";
 export * from "./backoff";
 export * from "./binary";
 export * from "./collapse-whitespace";

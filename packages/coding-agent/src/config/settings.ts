@@ -15,6 +15,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { configureProviderMaxInFlightRequests } from "@veyyon/ai/stream";
 import {
+	atomicWriteFile,
 	errorMessage,
 	expandTilde,
 	getAgentDbPath,
@@ -892,7 +893,7 @@ export class Settings {
 		// 3. Write merged settings
 		if (migrated && Object.keys(settings).length > 0) {
 			try {
-				await Bun.write(this.#configPath, YAML.stringify(settings, null, 2));
+				await atomicWriteFile(this.#configPath, YAML.stringify(settings, null, 2));
 				logger.debug("Settings: migrated to config.yml", { path: this.#configPath });
 			} catch (error) {
 				// The migration ran but the merged config could not be persisted, so
@@ -1458,7 +1459,7 @@ export class Settings {
 
 				// Update our global with any external changes we preserved
 				this.#global = current;
-				await Bun.write(configPath, YAML.stringify(this.#global, null, 2));
+				await atomicWriteFile(configPath, YAML.stringify(this.#global, null, 2));
 			});
 		} catch (error) {
 			logger.warn("Settings: save failed", { error: String(error) });
