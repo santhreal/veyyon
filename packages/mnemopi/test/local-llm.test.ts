@@ -150,6 +150,14 @@ describe("local LLM TypeScript port", () => {
 		);
 	});
 
+	it("defines the summarization header literal in exactly one place", async () => {
+		// buildPrompt, buildHostPrompt, and chunkMemoriesByBudget all share one
+		// SUMMARY_HEADER owner; a second inline copy would reintroduce drift.
+		const source = await Bun.file(new URL("../src/core/local-llm.ts", import.meta.url)).text();
+		const matches = source.match(/Summarize the following memories into 1-3 concise sentences\. Preserve facts/g);
+		expect(matches).toHaveLength(1);
+	});
+
 	it("strips chat-template tokens, echoed instructions, source lines, and bullets", () => {
 		expect(cleanOutput("<|assistant|>Hello there.</s>")).toBe("Hello there.");
 		expect(cleanOutput("Summarize the following memories into one. Real summary here.")).toBe("Real summary here.");
