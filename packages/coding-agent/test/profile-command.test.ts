@@ -166,6 +166,35 @@ describe("runProfileCommand effects", () => {
 		await runProfileCommand(parseProfileCommand("work rename to Renamed"), port);
 		expect(await readProfileDisplayName("work")).toBe("Renamed");
 		expect(port.statuses.some(s => s.includes('Renamed profile "work" to "Renamed"'))).toBe(true);
+		// A distinct, reachable name carries no caveat.
+		expect(port.statuses.some(s => s.includes("Heads up"))).toBe(false);
+	});
+
+	it("warns when a rename display name is shadowed by another profile's directory name", async () => {
+		await createProfile("work", "blank");
+		await createProfile("spare", "blank");
+		const port = makePort();
+		// Rename "work" to the display "spare": /profile spare would resolve to the
+		// spare DIRECTORY, never this profile — the rename still applies but warns.
+		await runProfileCommand(parseProfileCommand("work rename to spare"), port);
+		expect(await readProfileDisplayName("work")).toBe("spare");
+		const status = port.statuses.find(s => s.includes('Renamed profile "work" to "spare"'));
+		expect(status).toBeDefined();
+		expect(status).toContain("directory name");
+		expect(status).toContain("/profile spare");
+	});
+
+	it("warns when a rename display name duplicates another profile's display name", async () => {
+		await createProfile("work", "blank");
+		await createProfile("spare", "blank");
+		// Give spare a display name, then rename work to the same display name.
+		await runProfileCommand(parseProfileCommand("spare rename to Shared"), makePort());
+		const port = makePort();
+		await runProfileCommand(parseProfileCommand("work rename to Shared"), port);
+		expect(await readProfileDisplayName("work")).toBe("Shared");
+		const status = port.statuses.find(s => s.includes('Renamed profile "work" to "Shared"'));
+		expect(status).toBeDefined();
+		expect(status).toContain("ambiguous");
 	});
 
 	it("removes a non-active profile after the delete confirmation", async () => {

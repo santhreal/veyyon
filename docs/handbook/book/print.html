@@ -51,7 +51,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-6f1556b2.js";
+            window.path_to_searchindex_js = "searchindex-533805a5.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-cc1a72e9.js"></script>
@@ -3044,6 +3044,7 @@ one-time migration from the legacy bare-root layout.</p>
 <li><strong>TUI:</strong> <code>/profile rename to &lt;new&gt;</code> renames the active profile; <code>/profile &lt;name&gt; rename to &lt;new&gt;</code> (or <code>/profile rename &lt;name&gt; to &lt;new&gt;</code>) renames another one. The default profile is renamable too. The profile picker’s <strong>Rename</strong> action prefills this command for you.</li>
 </ul>
 <p><code>/profile list</code> shows <code>name (Display Name)</code> when they differ, and <code>/profile &lt;input&gt;</code> resolves a directory name first, then a unique display name. A copied settings file never carries the source’s display name, <code>profile new</code> clears it so two profiles cannot answer to one name.</p>
+<p>Because directory names resolve first, a rename warns you when the display name you chose will not switch back to this profile: when it matches another profile’s directory name (that directory wins), or when it duplicates another profile’s display name (the switch becomes ambiguous). The rename still applies, so use a distinct name if you want to switch by it.</p>
 <h2 id="creating-and-managing-profiles"><a class="header" href="#creating-and-managing-profiles">Creating and managing profiles</a></h2>
 <pre><code class="language-console">$ veyyon profile list
 $ veyyon profile new work
