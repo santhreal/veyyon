@@ -1,4 +1,5 @@
 import { Buffer } from "node:buffer";
+import { HOUR_MS, MINUTE_MS, WEEK_MS } from "@veyyon/utils";
 import type {
 	CredentialRankingStrategy,
 	UsageAmount,
@@ -535,7 +536,7 @@ export const openaiCodexUsageProvider: UsageProvider = {
 	},
 };
 
-const FIVE_HOUR_MS = 5 * 60 * 60 * 1000;
+const FIVE_HOUR_MS = 5 * HOUR_MS;
 
 export const codexRankingStrategy: CredentialRankingStrategy = {
 	blockScope() {
@@ -552,7 +553,7 @@ export const codexRankingStrategy: CredentialRankingStrategy = {
 		};
 		return { primary: findLimit("primary"), secondary: findLimit("secondary") };
 	},
-	windowDefaults: { primaryMs: 60 * 60 * 1000, secondaryMs: 7 * 24 * 60 * 60 * 1000 },
+	windowDefaults: { primaryMs: HOUR_MS, secondaryMs: WEEK_MS },
 	hasPriorityBoost(primary) {
 		if (!primary) return false;
 		const windowId = primary.scope.windowId?.toLowerCase();
@@ -561,7 +562,7 @@ export const codexRankingStrategy: CredentialRankingStrategy = {
 			windowId === "5h" ||
 			(typeof durationMs === "number" &&
 				Number.isFinite(durationMs) &&
-				Math.abs(durationMs - FIVE_HOUR_MS) <= 60_000);
+				Math.abs(durationMs - FIVE_HOUR_MS) <= MINUTE_MS);
 		if (!isFiveHourWindow) return false;
 		const usedFraction = primary.amount.usedFraction;
 		return typeof usedFraction === "number" && Number.isFinite(usedFraction) && usedFraction === 0;

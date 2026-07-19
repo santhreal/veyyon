@@ -26,13 +26,14 @@
  */
 
 import { scheduler } from "node:timers/promises";
+import { DAY_MS } from "@veyyon/utils";
 
 // ---------------------------------------------------------------------------
 // EventLoopKeepalive — the primary fix for idle-state busy-wait
 // ---------------------------------------------------------------------------
 
 export class EventLoopKeepalive {
-	#tmr = setInterval(() => {}, 86_400_000).unref();
+	#tmr = setInterval(() => {}, DAY_MS).unref();
 	[Symbol.dispose](): void {
 		clearInterval(this.#tmr);
 	}

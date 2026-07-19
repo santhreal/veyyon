@@ -1,4 +1,4 @@
-import { clamp01, isDateOnly } from "@veyyon/utils";
+import { clamp01, HOUR_MS, isDateOnly } from "@veyyon/utils";
 import { normalizedRecallWeights, temporalHalflifeHours } from "../../config";
 import { toUtcIso } from "../../util/datetime";
 import { tableExists as tableExistsIn } from "../../util/sqlite";
@@ -358,7 +358,7 @@ function recencyDecay(timestamp: unknown, halfLifeHours = 72): number {
 	if (raw.length === 0) return 0;
 	const parsed = Date.parse(raw);
 	if (!Number.isFinite(parsed)) return 0;
-	const ageHours = Math.max(0, (Date.now() - parsed) / 3_600_000);
+	const ageHours = Math.max(0, (Date.now() - parsed) / HOUR_MS);
 	return Math.exp(-ageHours / Math.max(halfLifeHours, 0.001));
 }
 
@@ -385,7 +385,7 @@ export function temporalBoost(timestamp: unknown, queryTime: Date, halfLifeHours
 	if (raw.length === 0) return 0;
 	const parsed = Date.parse(raw);
 	if (!Number.isFinite(parsed)) return 0;
-	const distanceHours = Math.max(0, queryTime.getTime() - parsed) / 3_600_000;
+	const distanceHours = Math.max(0, queryTime.getTime() - parsed) / HOUR_MS;
 	return Math.exp(-distanceHours / Math.max(halfLifeHours, 0.001));
 }
 

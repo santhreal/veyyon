@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import { clamp01, logger } from "@veyyon/utils";
+import { clamp01, HOUR_MS, logger } from "@veyyon/utils";
 import { generateId as generateTimedId, sha256Hex16, stableMemoryId } from "../../util/ids";
 import {
 	cjkFtsTerms,
@@ -138,7 +138,7 @@ export function recencyDecay(
 	if (halflife === 0) return 0.5;
 	const ts = parseTimestampFast(timestamp);
 	if (ts === null) return 0.5;
-	const ageHours = (now.getTime() - ts.getTime()) / 3_600_000;
+	const ageHours = (now.getTime() - ts.getTime()) / HOUR_MS;
 	return Math.exp(-ageHours / halflife);
 }
 
@@ -154,7 +154,7 @@ export function temporalBoost(
 	const effectiveTs = ts.getTime() > query.getTime() ? query : ts;
 	const halflife = asFiniteNonNegative(halflifeHours);
 	if (halflife === 0) return effectiveTs.getTime() === query.getTime() ? 1 : 0;
-	const hoursDelta = (query.getTime() - effectiveTs.getTime()) / 3_600_000;
+	const hoursDelta = (query.getTime() - effectiveTs.getTime()) / HOUR_MS;
 	return Math.exp(-hoursDelta / halflife);
 }
 

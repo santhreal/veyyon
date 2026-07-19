@@ -1,10 +1,11 @@
+import { DAY_MS } from "@veyyon/utils";
 import * as AIError from "../error";
 import type { OAuthController, OAuthCredentials } from "./oauth/types";
 import type { ProviderDefinition } from "./types";
 
 const KILO_DEVICE_AUTH_BASE_URL = "https://api.kilo.ai/api/device-auth";
 const POLL_INTERVAL_MS = 5000;
-const ONE_YEAR_MS = 365 * 24 * 60 * 60 * 1000;
+const ONE_YEAR_MS = 365 * DAY_MS;
 
 interface KiloDeviceAuthCodeResponse {
 	code?: string;

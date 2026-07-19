@@ -8,7 +8,7 @@ import {
 	SqliteAuthCredentialStore,
 	type StoredAuthCredential,
 } from "@veyyon/ai";
-import { AsyncDrain, errorMessage, getAgentDbPath, getStatsDbPath, isRecord, logger } from "@veyyon/utils";
+import { AsyncDrain, DAY_MS, errorMessage, getAgentDbPath, getStatsDbPath, isRecord, logger } from "@veyyon/utils";
 import type { RawSettings as Settings } from "../config/settings";
 
 /** Row shape for settings table queries */
@@ -93,7 +93,7 @@ const MODEL_PERF_BACKFILL_KEY = "model_perf_backfill";
 /** Batch window for deferred model_perf writes; matches prompt-history's drain cadence. */
 const MODEL_PERF_FLUSH_DELAY_MS = 100;
 /** Backfill ignores stats.db history older than this; decay makes stale provider speeds worthless anyway. */
-const MODEL_PERF_BACKFILL_MAX_AGE_MS = 90 * 86_400_000;
+const MODEL_PERF_BACKFILL_MAX_AGE_MS = 90 * DAY_MS;
 /** Rows fetched per synchronous backfill chunk — keeps per-chunk event-loop blocking under ~20ms even on cold I/O. */
 const MODEL_PERF_BACKFILL_CHUNK = 2048;
 /** Hard ceiling on rows scanned per backfill run, whatever the age cutoff admits — bounds total CPU on very high-volume databases (models only seen earlier than the newest N measurable rows get no backfill). */

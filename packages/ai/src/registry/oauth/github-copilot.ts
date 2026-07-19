@@ -12,6 +12,7 @@ import {
 	normalizeGitHubCopilotEnterpriseDomain,
 	OPENCODE_HEADERS,
 } from "@veyyon/catalog/wire/github-copilot";
+import { DAY_MS } from "@veyyon/utils";
 import * as AIError from "../../error";
 import type { FetchImpl } from "../../types";
 import { fetchGitHubCopilotJson } from "../../utils/github-copilot-http";
@@ -192,7 +193,7 @@ async function pollForGitHubAccessToken(
 }
 
 /** Far-future expiry (10 years). GitHub OAuth tokens are long-lived; no JWT exchange needed. */
-const FAR_FUTURE_MS = Date.now() + 10 * 365.25 * 24 * 60 * 60 * 1000;
+const FAR_FUTURE_MS = Date.now() + 10 * 365.25 * DAY_MS;
 
 /**
  * Refresh GitHub Copilot token.

@@ -1,5 +1,5 @@
 import type { SQLQueryBindings } from "bun:sqlite";
-import { collapseWhitespace, errorMessage, logger } from "@veyyon/utils";
+import { collapseWhitespace, DAY_MS, errorMessage, HOUR_MS, logger } from "@veyyon/utils";
 import { envInt } from "../../util/env";
 import { generateId, stableMemoryId } from "../../util/ids";
 import { aaakEncode } from "../aaak";
@@ -836,8 +836,8 @@ function invalidateEpisodicVectors(beam: BeamMemoryState, memoryId: string): voi
 
 export function degradeEpisodic(beam: BeamMemoryState, dryRun = false): Record<string, JsonValue> {
 	const now = isoNow();
-	const tier2Cutoff = cutoffIso(TIER2_DAYS, 24 * 60 * 60 * 1000);
-	const tier3Cutoff = cutoffIso(TIER3_DAYS, 24 * 60 * 60 * 1000);
+	const tier2Cutoff = cutoffIso(TIER2_DAYS, DAY_MS);
+	const tier3Cutoff = cutoffIso(TIER3_DAYS, DAY_MS);
 	const tier1Rows = asRows(
 		beam.db
 			.query(
@@ -948,7 +948,7 @@ export function health(
 				"No consolidation_log entries found with items_consolidated > 0. Run sleepAllSessions() or check logs.",
 		};
 	}
-	const staleHours = Math.round(((Date.now() - Date.parse(lastTs)) / 3_600_000) * 100) / 100;
+	const staleHours = Math.round(((Date.now() - Date.parse(lastTs)) / HOUR_MS) * 100) / 100;
 	const status = staleHours > staleThresholdHours ? "stale" : "healthy";
 	return {
 		status,

@@ -1,5 +1,5 @@
 import type { Database, SQLQueryBindings } from "bun:sqlite";
-import { errorMessage, logger } from "@veyyon/utils";
+import { errorMessage, HOUR_MS, logger } from "@veyyon/utils";
 import { transaction } from "../../db";
 import { toUtcIso } from "../../util/datetime";
 import { generateId } from "../../util/ids";
@@ -167,7 +167,7 @@ function trimWorkingMemory(beam: BeamMemoryState): void {
 	const limit = beam.config.workingMemoryLimit;
 	if (!Number.isFinite(limit) || limit <= 0) return;
 	const ttlHours = beam.config.workingMemoryTtlHours;
-	const cutoff = toUtcIso(new Date(Date.now() - ttlHours * 3_600_000));
+	const cutoff = toUtcIso(new Date(Date.now() - ttlHours * HOUR_MS));
 	beam.db
 		.prepare(`
 			DELETE FROM working_memory

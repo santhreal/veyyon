@@ -711,5 +711,5 @@ export const claudeRankingStrategy: CredentialRankingStrategy = {
 		const kind = getClaudeModelKind(context);
 		return kind === "fable" || kind === "mythos" ? `tier:${kind}` : undefined;
 	},
-	windowDefaults: { primaryMs: 5 * 60 * 60 * 1000, secondaryMs: 7 * 24 * 60 * 60 * 1000 },
+	windowDefaults: { primaryMs: 5 * HOUR_MS, secondaryMs: WEEK_MS },
 };
