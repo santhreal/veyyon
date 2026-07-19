@@ -1,5 +1,5 @@
-import { errorMessage } from "@veyyon/utils";
 import { formatCount } from "@veyyon/utils/format";
+import { errorMessage } from "@veyyon/utils/type-guards";
 import { RefreshCw } from "lucide-react";
 import { useState } from "react";
 import { sync } from "../api";
