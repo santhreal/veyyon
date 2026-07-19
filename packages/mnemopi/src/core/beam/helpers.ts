@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import { logger } from "@veyyon/utils";
+import { clamp01, logger } from "@veyyon/utils";
 import { generateId as generateTimedId, sha256Hex16, stableMemoryId } from "../../util/ids";
 import {
 	cjkFtsTerms,
@@ -43,13 +43,6 @@ function envNumber(name: string, fallback: number): number {
 	if (raw === undefined || raw.trim() === "") return fallback;
 	const value = Number(raw);
 	return Number.isFinite(value) ? value : fallback;
-}
-
-function clamp01(value: number): number {
-	if (!Number.isFinite(value)) return 0;
-	if (value < 0) return 0;
-	if (value > 1) return 1;
-	return value;
 }
 
 function asFiniteNonNegative(value: number): number {

@@ -15,6 +15,7 @@ export * from "./json-parse";
 export * from "./levenshtein";
 export * as logger from "./logger";
 export * from "./loop-phase";
+export * from "./math";
 export * from "./mermaid-ascii";
 export * from "./mime";
 export * from "./path";

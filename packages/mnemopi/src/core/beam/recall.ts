@@ -1,3 +1,4 @@
+import { clamp01 } from "@veyyon/utils";
 import { normalizedRecallWeights, temporalHalflifeHours } from "../../config";
 import { toUtcIso } from "../../util/datetime";
 import { tableExists as tableExistsIn } from "../../util/sqlite";
@@ -147,12 +148,6 @@ function asNullableString(value: unknown): string | null {
 
 function round4(value: number): number {
 	return Math.round(value * 10000) / 10000;
-}
-
-function clamp01(value: number): number {
-	if (value <= 0) return 0;
-	if (value >= 1) return 1;
-	return value;
 }
 
 function tokenize(text: string): string[] {

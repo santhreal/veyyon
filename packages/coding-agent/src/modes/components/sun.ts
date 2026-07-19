@@ -14,6 +14,8 @@
  * itself holds no state. Ripples (cursor/keypress flares) are passed in as data.
  */
 
+import { clamp01 } from "@veyyon/utils";
+
 /** Intensity → glyph. Eight stops, dark core of the void to a solid disc. */
 const GLYPH = ["·", "·", ":", "░", "▒", "▒", "▓", "█"] as const;
 
@@ -74,10 +76,6 @@ export interface SunFieldOptions {
 	ripples?: readonly Ripple[];
 	/** 0..1 — scales every cell down the ember ramp (faded ghost marks). Omit for full fire. */
 	intensity?: number;
-}
-
-function clamp01(x: number): number {
-	return x < 0 ? 0 : x > 1 ? 1 : x;
 }
 
 function smoothstep(edge0: number, edge1: number, x: number): number {
