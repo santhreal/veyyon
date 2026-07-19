@@ -1,3 +1,4 @@
+import { Database } from "bun:sqlite";
 import { describe, expect, it } from "bun:test";
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -6,6 +7,7 @@ import { join } from "node:path";
 import { extractionRate, normalizeBatch, normalizeChat } from "@veyyon/mnemopi/core/chat-normalize";
 import { getCostStats, initCostLog, logCost } from "@veyyon/mnemopi/core/cost-log";
 import { estimateCost, estimateTokens } from "@veyyon/mnemopi/core/token-counter";
+import { parseIsoDateTimeUtc } from "../src/util/datetime";
 
 describe("token counter", () => {
 	it("uses the shared byte-aware token estimate and pricing table", () => {
@@ -57,6 +59,26 @@ describe("cost log", () => {
 			total_tokens: 0,
 			total_estimated_cost_usd: 0,
 		});
+	});
+
+	it("stores each entry's timestamp as a UTC ISO instant, not host-local time", () => {
+		const dbPath = join(mkdtempSync(join(tmpdir(), "mnemopi-cost-ts-")), "cost_log.db");
+		const before = Date.now();
+		logCost("session-ts", 1, 10, 0.0001, "default", dbPath);
+		const after = Date.now();
+
+		const conn = new Database(dbPath, { readonly: true });
+		try {
+			const row = conn.query("SELECT timestamp FROM cost_entries LIMIT 1").get() as { timestamp: string };
+			// toUtcIso writes a Z-suffixed ISO string; a regression to the old local
+			// formatter dropped the Z and shifted the value by the host offset.
+			expect(row.timestamp.endsWith("Z")).toBe(true);
+			const stored = parseIsoDateTimeUtc(row.timestamp).getTime();
+			expect(stored).toBeGreaterThanOrEqual(before - 1000);
+			expect(stored).toBeLessThanOrEqual(after + 1000);
+		} finally {
+			conn.close();
+		}
 	});
 });
 
