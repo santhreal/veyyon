@@ -2,6 +2,7 @@ import { Database, type Statement } from "bun:sqlite";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { AsyncDrain, getHistoryDbPath, logger, NON_ALNUM_RUN_RE } from "@veyyon/utils";
+import { tableExists } from "@veyyon/utils/sqlite";
 
 export interface HistoryEntry {
 	id: number;
@@ -53,7 +54,7 @@ export class HistoryStorage {
 		// Install the busy handler BEFORE any lock-taking statement. See #2421.
 		this.#db.run("PRAGMA busy_timeout = 5000");
 
-		const hasFts = this.#db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='history_fts'").get();
+		const hasFts = tableExists(this.#db, "history_fts");
 		this.#db.run(`
 PRAGMA journal_mode=WAL;
 PRAGMA synchronous=NORMAL;

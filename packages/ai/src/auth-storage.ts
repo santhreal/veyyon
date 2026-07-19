@@ -24,6 +24,7 @@ import {
 	trimTrailingSlashes,
 	tryParseJson,
 } from "@veyyon/utils";
+import { tableExists } from "@veyyon/utils/sqlite";
 import type { ApiKeyResolver } from "./auth-retry";
 import * as AIError from "./error";
 import { isUsageLimitOutcome } from "./error/rate-limit";
@@ -6261,15 +6262,7 @@ export class SqliteAuthCredentialStore implements AuthCredentialStore {
 	}
 
 	#authCredentialsTableExists(): boolean {
-		const stmt = this.#db.prepare(
-			"SELECT 1 AS present FROM sqlite_master WHERE type = 'table' AND name = 'auth_credentials'",
-		);
-		try {
-			const row = stmt.get() as { present?: number } | undefined;
-			return row?.present === 1;
-		} finally {
-			stmt.finalize();
-		}
+		return tableExists(this.#db, "auth_credentials");
 	}
 
 	#readAuthSchemaVersion(): number | null {

@@ -6,6 +6,7 @@ import { dataDir as configuredDataDir, dbPath as configuredDbPath } from "./conf
 import { initBeam } from "./core/beam";
 import { closeQuietly, openDatabase } from "./db";
 import { toUtcIso } from "./util/datetime";
+import { tableExists } from "./util/sqlite";
 
 export interface DiagnosticEntry {
 	readonly ts: string;
@@ -33,7 +34,6 @@ export interface DiagnosticOptions {
 
 type CountRow = { count: number };
 type IntegrityRow = { integrity_check: string };
-type TableRow = { name: string };
 type ColumnRow = { name: string };
 
 const REQUIRED_TABLES = [
@@ -60,20 +60,12 @@ const REQUIRED_COLUMNS: Readonly<Record<string, readonly string[]>> = {
 	annotations: ["id", "memory_id", "kind", "value"],
 };
 
-function hasTable(db: Database, table: string): boolean {
-	return (
-		(db
-			.query("SELECT name FROM sqlite_master WHERE type IN ('table', 'view') AND name = ? LIMIT 1")
-			.get(table) as TableRow | null) !== null
-	);
-}
-
 function tableColumns(db: Database, table: string): Set<string> {
 	return new Set((db.query(`PRAGMA table_info(${table})`).all() as ColumnRow[]).map(row => row.name));
 }
 
 function safeCount(db: Database, table: string): number | null {
-	if (!hasTable(db, table)) return null;
+	if (!tableExists(db, table)) return null;
 	return (db.query(`SELECT COUNT(*) AS count FROM ${table}`).get() as CountRow).count;
 }
 
@@ -117,10 +109,10 @@ export function inspectDatabase(options: DiagnosticOptions = {}): DiagnosticSumm
 		log("db", "integrity_check", integrity.integrity_check === "ok" ? "OK" : "FAIL", integrity.integrity_check);
 
 		for (const table of REQUIRED_TABLES) {
-			log("schema", `table:${table}`, hasTable(db, table) ? "OK" : "MISSING");
+			log("schema", `table:${table}`, tableExists(db, table) ? "OK" : "MISSING");
 		}
 		for (const table in REQUIRED_COLUMNS) {
-			if (!hasTable(db, table)) continue;
+			if (!tableExists(db, table)) continue;
 			const columns = REQUIRED_COLUMNS[table];
 			if (!columns) continue;
 			const present = tableColumns(db, table);

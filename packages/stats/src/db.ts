@@ -4,6 +4,7 @@ import type { StopReason, Usage } from "@veyyon/ai";
 import type { GeneratedProvider } from "@veyyon/catalog/models";
 import { emptyCost, getBundledModel } from "@veyyon/catalog/models";
 import { DAY_MS, getConfigRootDir, getStatsDbPath } from "@veyyon/utils";
+import { tableExists } from "@veyyon/utils/sqlite";
 import { classifyAgentType } from "./parser";
 import type {
 	AgentType,
@@ -72,8 +73,7 @@ export async function initDb(): Promise<Database> {
 
 	// Whether `messages` predates this init — drives the one-time agent_type
 	// backfill below, so it must be sampled before CREATE TABLE adds the table.
-	const messagesTableExisted =
-		db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'messages'").get() !== undefined;
+	const messagesTableExisted = tableExists(db, "messages");
 
 	// Create tables
 	db.run(`
