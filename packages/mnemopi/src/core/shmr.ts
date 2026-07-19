@@ -1,7 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { createHash } from "node:crypto";
 import { batched, clampLow, logger } from "@veyyon/utils";
-import { SQLITE_IN_CLAUSE_BATCH, tableExists } from "../util/sqlite";
+import { SQLITE_IN_CLAUSE_BATCH, sqlPlaceholders, tableExists } from "../util/sqlite";
 import * as embeddings from "./embeddings";
 import { cosineSimilarity } from "./vector-math";
 
@@ -376,7 +376,7 @@ function precomputedVectors(db: Database, memoryIds: readonly (string | undefine
 	for (const chunk of batched(ids, SQLITE_IN_CLAUSE_BATCH)) {
 		const rows = db
 			.query(
-				`SELECT memory_id, embedding_json FROM memory_embeddings WHERE memory_id IN (${chunk.map(() => "?").join(", ")})`,
+				`SELECT memory_id, embedding_json FROM memory_embeddings WHERE memory_id IN (${sqlPlaceholders(chunk.length)})`,
 			)
 			.all(...chunk) as Array<{ memory_id: string; embedding_json: string | null }>;
 		for (const row of rows) {

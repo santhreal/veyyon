@@ -10,6 +10,7 @@
 import { Database } from "bun:sqlite";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { sqlPlaceholders } from "@veyyon/utils/sqlite";
 import { readBenchmarkSnapshot } from "./benchmarks";
 import { readJobResult } from "./runner";
 
@@ -372,7 +373,7 @@ export class RunStore {
 			if (snapshot.traces.length > 0) {
 				const names = snapshot.traces.map(t => t.name);
 				this.#db
-					.query(`DELETE FROM trials WHERE job_name = ? AND name NOT IN (${names.map(() => "?").join(",")})`)
+					.query(`DELETE FROM trials WHERE job_name = ? AND name NOT IN (${sqlPlaceholders(names.length)})`)
 					.run(jobName, ...names);
 			}
 			for (const trace of snapshot.traces) {

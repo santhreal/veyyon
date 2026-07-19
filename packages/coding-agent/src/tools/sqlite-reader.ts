@@ -1,5 +1,6 @@
 import type { Database, SQLQueryBindings } from "bun:sqlite";
 import { clampLow } from "@veyyon/utils";
+import { sqlPlaceholders } from "@veyyon/utils/sqlite";
 import { formatBytes, replaceTabs, truncateToWidth } from "./render-utils";
 import { ToolError } from "./tool-errors";
 
@@ -748,7 +749,7 @@ export function insertRow(db: Database, table: string, data: Record<string, unkn
 	}
 
 	const columns = entries.map(([column]) => quoteSqliteIdentifier(column)).join(", ");
-	const placeholders = entries.map(() => "?").join(", ");
+	const placeholders = sqlPlaceholders(entries.length);
 	const bindings = entries.map(([, value]) => value);
 	const statement = db.prepare<SqliteRow, SQLQueryBindings[]>(
 		`INSERT INTO ${quoteSqliteIdentifier(table)} (${columns}) VALUES (${placeholders})`,

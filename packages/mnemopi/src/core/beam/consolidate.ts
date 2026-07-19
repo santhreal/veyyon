@@ -3,6 +3,7 @@ import { collapseWhitespace, DAY_MS, errorMessage, HOUR_MS, logger } from "@veyy
 import { envInt } from "../../util/env";
 import { generateId, stableMemoryId } from "../../util/ids";
 import { unicodeWordTokens, WORD_TOKEN_DOT_HYPHEN_RE } from "../../util/regex";
+import { sqlPlaceholders } from "../../util/sqlite";
 import { aaakEncode } from "../aaak";
 import { REGEX_EXTRACTION_MAX_INPUT_CHARS } from "../entities";
 import { EpisodicGraph } from "../episodic-graph";
@@ -928,7 +929,7 @@ export function sleep(beam: BeamMemoryState, dryRun = false): SleepResult {
 	if (!dryRun) {
 		const claimTs = isoNow();
 		const ids = rows.map(row => rowValue(row, "id")).filter((id): id is string => id !== null);
-		const placeholders = ids.map(() => "?").join(",");
+		const placeholders = sqlPlaceholders(ids.length);
 		beam.db.run(
 			`UPDATE working_memory SET consolidated_at = ? WHERE id IN (${placeholders}) AND consolidated_at IS NULL`,
 			[claimTs, ...ids],
