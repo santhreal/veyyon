@@ -341,3 +341,72 @@ describe("extraction transport failure and no-output diagnostics", () => {
 		expect(result.kg).toEqual([]);
 	});
 });
+
+// The extractor parses raw LLM output, which is hostile input: a model can emit
+// over-long arrays, mistyped entries, mixed object shapes, and fenced blocks.
+// These tests pin the exact clamping, field-resolution, and fence-stripping
+// contract so a pathological completion can never blow past the per-category or
+// flat-fact caps nor smuggle non-string junk into the store. (kg-triple parsing
+// and malformed-JSON salvage are pinned in "category-preserving parse helpers".)
+describe("extractor output parsing under adversarial and boundary input", () => {
+	it("clamps each structured category to five entries and drops overflow", () => {
+		const result = parseExtractedFactCategories(JSON.stringify({ facts: ["a", "b", "c", "d", "e", "f", "g"] }));
+		// STRUCTURED_CATEGORY_LIMIT is 5: the sixth and seventh facts are dropped.
+		expect(result.facts).toEqual(["a", "b", "c", "d", "e"]);
+	});
+
+	it("clamps the flattened fact list to five across categories in flatten order", () => {
+		// flatten order is facts, then instructions, then preferences; six entries
+		// collapse to the first five, so the second preference falls off the end.
+		const facts = parseFacts(
+			JSON.stringify({ facts: ["fa", "fb"], instructions: ["ia", "ib"], preferences: ["pa", "pb"] }),
+		);
+		expect(facts).toEqual(["fa", "fb", "ia", "ib", "pa"]);
+	});
+
+	it("resolves object-shaped entries by field priority and drops empty and non-string values", () => {
+		const result = parseExtractedFactCategories(
+			JSON.stringify({
+				facts: [
+					{ text: "from text field", statement: "ignored because text wins" },
+					{ value: "from value field" },
+					{ nested: { deep: "unreachable" } },
+					{ fact: "   " },
+					42,
+				],
+			}),
+		);
+		// FACT_TEXT_FIELD_KEYS priority is fact, text, content, value, statement; the
+		// first non-blank field wins and the rest are ignored. Blank-only, deeply
+		// nested, and non-object entries resolve to nothing and are skipped.
+		expect(result.facts).toEqual(["from text field", "from value field"]);
+	});
+
+	it("joins every populated timeline field with a space in field order", () => {
+		const result = parseExtractedFactCategories(JSON.stringify({ timelines: [{ event: "ship", timeline: "Q3" }] }));
+		// Timelines set joinFields, so description/event/timeline/date all concatenate;
+		// here only event and timeline are present, joined in that order.
+		expect(result.timelines).toEqual(["ship Q3"]);
+	});
+
+	it("strips a bare code fence with no json tag before parsing", () => {
+		const result = parseExtractedFactCategories('```\n{"facts":["bare fenced fact"]}\n```');
+		expect(result.facts).toEqual(["bare fenced fact"]);
+	});
+
+	it("strips only trailing sentence punctuation and keeps internal punctuation", () => {
+		const result = parseExtractedFactCategories(
+			JSON.stringify({ facts: ["Ends with dots...", "Keep? internal! marks.", "  ", ""] }),
+		);
+		// A trailing run of . ! ? is removed; internal ? and ! survive; whitespace-only
+		// and empty entries never reach the output.
+		expect(result.facts).toEqual(["Ends with dots", "Keep? internal! marks"]);
+	});
+
+	it("keeps only lines over ten characters when falling back to the newline splitter", () => {
+		const result = parseExtractedFactCategories("short\n1. This bullet line is clearly long enough\ntiny");
+		// The line splitter strips leading numbering/bullets and requires more than ten
+		// characters, so only the middle line survives.
+		expect(result.facts).toEqual(["This bullet line is clearly long enough"]);
+	});
+});
