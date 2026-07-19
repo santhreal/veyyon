@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { AgentMessage } from "@veyyon/agent-core";
-import type { SessionEntry, SessionMessageEntry, ShakeConfig } from "@veyyon/agent-core/compaction";
+import type { CustomMessageEntry, SessionEntry, SessionMessageEntry, ShakeConfig } from "@veyyon/agent-core/compaction";
 import {
 	AGGRESSIVE_SHAKE_CONFIG,
 	applyShakeRegion,
@@ -234,5 +234,104 @@ describe("collectShakeRegions — useless results", () => {
 	test("an error result never bypasses the window even when flagged", () => {
 		const entry = messageEntry(toolResultMessage("search", "boom\n".repeat(50), { useless: true, isError: true }));
 		expect(collectShakeRegions([entry], cfg({ protectTokens: 1_000_000 }))).toHaveLength(0);
+	});
+});
+
+function customMessageEntry(customType: string, content: CustomMessageEntry["content"]): CustomMessageEntry {
+	return {
+		type: "custom_message",
+		id: nextId(),
+		parentId: null,
+		timestamp: new Date().toISOString(),
+		customType,
+		content,
+		display: true,
+	};
+}
+
+describe("collectShakeRegions — user / developer / custom_message blocks", () => {
+	test("collects a block from string-form user content and splices it in place", () => {
+		const entry = messageEntry({ role: "user", content: `intro\n${fencedBlock(120)}\ntrailer`, timestamp: 0 });
+
+		const regions = collectShakeRegions([entry], cfg());
+		expect(regions).toHaveLength(1);
+		const [region] = regions;
+		expect(region.kind).toBe("block");
+		if (region.kind !== "block") throw new Error("expected a block region");
+		expect(region.blockIndex).toBe(-1);
+		expect(region.label).toBe("user");
+
+		applyShakeRegion(region, "[shaken]");
+		expect((entry.message as { content: string }).content).toBe("intro\n[shaken]\ntrailer");
+	});
+
+	test("collects a block from array-form developer content and points blockIndex at the text block", () => {
+		const entry = messageEntry({
+			role: "developer",
+			content: [{ type: "text", text: fencedBlock(120) }],
+			timestamp: 0,
+		});
+
+		const regions = collectShakeRegions([entry], cfg());
+		expect(regions).toHaveLength(1);
+		const [region] = regions;
+		if (region.kind !== "block") throw new Error("expected a block region");
+		expect(region.blockIndex).toBe(0);
+		expect(region.label).toBe("developer");
+	});
+
+	test("collects and splices a block inside a string-form custom_message", () => {
+		const entry = customMessageEntry("plan", `note\n${fencedBlock(120)}\nend`);
+
+		const regions = collectShakeRegions([entry], cfg());
+		expect(regions).toHaveLength(1);
+		const [region] = regions;
+		if (region.kind !== "block") throw new Error("expected a block region");
+		expect(region.blockIndex).toBe(-1);
+		expect(region.label).toBe("plan");
+
+		applyShakeRegion(region, "[shaken]");
+		expect(entry.content).toBe("note\n[shaken]\nend");
+	});
+
+	test("collects and splices a block inside array-form custom_message content", () => {
+		const entry = customMessageEntry("plan", [{ type: "text", text: fencedBlock(120) }]);
+
+		const regions = collectShakeRegions([entry], cfg());
+		expect(regions).toHaveLength(1);
+		const [region] = regions;
+		if (region.kind !== "block") throw new Error("expected a block region");
+		expect(region.blockIndex).toBe(0);
+
+		applyShakeRegion(region, "[shaken]");
+		const block = (entry.content as TextContent[])[0];
+		expect(block.text).toBe("[shaken]");
+	});
+});
+
+describe("collectShakeRegions — compaction boundary", () => {
+	test("skips entries before keepBoundaryId and shakes only from the boundary onward", () => {
+		// A non-message/non-custom entry still flows through the token accounting
+		// (entryTokens returns 0 for it) without ever producing a region.
+		const other: SessionEntry = {
+			type: "model_change",
+			id: nextId(),
+			parentId: null,
+			timestamp: new Date().toISOString(),
+			model: "mock/mock-model",
+		};
+		const before = messageEntry(toolResultMessage("read", "BEFORE_BOUNDARY_PAYLOAD\n".repeat(40)));
+		const boundary = messageEntry({ role: "user", content: "resume here", timestamp: 0 });
+		const after = messageEntry(toolResultMessage("read", "AFTER_BOUNDARY_PAYLOAD\n".repeat(40)));
+
+		// Sanity: with no boundary both tool results are eligible.
+		expect(collectShakeRegions([other, before, boundary, after], cfg())).toHaveLength(2);
+
+		const regions = collectShakeRegions([other, before, boundary, after], cfg({ keepBoundaryId: boundary.id }));
+		expect(regions).toHaveLength(1);
+		const [region] = regions;
+		expect(region.entry).toBe(after);
+		expect(region.originalText).toContain("AFTER_BOUNDARY_PAYLOAD");
+		expect(region.originalText).not.toContain("BEFORE_BOUNDARY_PAYLOAD");
 	});
 });
