@@ -61,8 +61,8 @@ https://web.example/collab/#relay.example.com/r/<roomId>.<key>   → web UI and 
 
 The trailing `.<key>` or `#<key>` part is the room secret, base64url-encoded, in one of two strengths:
 
-- **Full link** — 48 bytes: the 32-byte AES-256-GCM room key followed by a 16-byte write token. Grants prompting, interrupting, and subagent control.
-- **View-only link** — the bare 32-byte key, no write token. Grants live read access only. Pre-token links parse as view-only.
+- **Full link**: 48 bytes: the 32-byte AES-256-GCM room key followed by a 16-byte write token. Grants prompting, interrupting, and subagent control.
+- **View-only link**: the bare 32-byte key, no write token. Grants live read access only. Pre-token links parse as view-only.
 
 The room secret is dot-joined in newly generated links because RFC 3986 forbids a raw `#` inside a URL fragment; parsers still accept legacy `#` forms and `%23`-mangled legacy deep links.
 
@@ -78,16 +78,16 @@ Possession of the link is the trust boundary: a full link reads and steers the s
 
 ## Guest permission model
 
-Two trust levels, enforced by the link itself — the host verifies the 16-byte write token at join and rejects writes from peers without it (they appear as read-only in the participants list, and the join notice says so).
+Two trust levels, enforced by the link itself, the host verifies the 16-byte write token at join and rejects writes from peers without it (they appear as read-only in the participants list, and the join notice says so).
 
 Guests with a full link can:
 
 - read the entire session (including the back-transcript at join time),
-- prompt the agent (rendered with their name badge on every participant's transcript; the LLM sees the prompt text verbatim — names are display-only),
+- prompt the agent (rendered with their name badge on every participant's transcript; the LLM sees the prompt text verbatim: names are display-only),
 - interrupt the agent (Esc),
 - use the Agent Hub against the host's subagents: live table and progress, chat (steers the host's subagent), kill, revive, and transcript viewing (fetched from the host on demand).
 
-Guests with a view-only link can read everything live — back-transcript, streaming text, tool cards, subagent transcripts — but the host rejects prompting, interrupting, and agent control from them.
+Guests with a view-only link can read everything live, back-transcript, streaming text, tool cards, subagent transcripts, but the host rejects prompting, interrupting, and agent control from them.
 
 Everything that mutates the host session or machine is host-only: `/model`, `/compact`, `/resume`, `/branch`, bash (`!`), python (`$`), skills, etc. Guests keep a small local allowlist (`/dump`, `/export`, `/copy`, `/help`, `/hotkeys`, `/theme`, `/settings`, `/leave`, `/collab`, `/exit`, `/quit`).
 
@@ -95,7 +95,7 @@ Known v1 limit for guests: a turn already streaming when you join becomes visibl
 
 ## Web client
 
-`packages/collab-web` is a standalone browser client for the same links — no veyyon install needed on the guest side. The relay serves it at `/`, which is what makes the `/collab` deep link click-to-join: `https://<relay>/#<link>` loads the client and auto-connects from the fragment. It renders the live transcript (streaming text, thinking, tool cards), a subagent panel with on-demand transcripts, and a composer with the same guest powers (prompt, interrupt, hub actions). Run `bun run dev` in the package for a local instance, `bun run mock-host` for an offline scripted host to develop against, and `bun run build` to emit a static `dist/` deployable anywhere (HTTPS required for WebCrypto). The client never talks to anything but the relay, and the key stays in the URL fragment.
+`packages/collab-web` is a standalone browser client for the same links, no veyyon install needed on the guest side. The relay serves it at `/`, which is what makes the `/collab` deep link click-to-join: `https://<relay>/#<link>` loads the client and auto-connects from the fragment. It renders the live transcript (streaming text, thinking, tool cards), a subagent panel with on-demand transcripts, and a composer with the same guest powers (prompt, interrupt, hub actions). Run `bun run dev` in the package for a local instance, `bun run mock-host` for an offline scripted host to develop against, and `bun run build` to emit a static `dist/` deployable anywhere (HTTPS required for WebCrypto). The client never talks to anything but the relay, and the key stays in the URL fragment.
 
 Set `collab.webUrl` when the browser UI is hosted separately from the websocket relay. When empty, `/collab` derives `http(s)://host[:port]` from `collab.relayUrl`; explicit web UI URLs must use `https://` except for `http://localhost` development origins. The generated browser URL still carries the relay-specific collab link in the fragment.
 
@@ -113,20 +113,20 @@ Set `collab.webUrl` when the browser UI is hosted separately from the websocket 
 
 The relay is a small content-blind Go service. It keeps no state beyond live connections and exposes:
 
-- `GET /` — the static collab-web guest client (target of the `/collab` deep link),
-- `GET /r/<roomId>?role=host|guest` — WebSocket upgrade,
-- `POST /s` / `GET /s/<id>` / `GET /s/<id>/raw` — `/share` blob upload, viewer page, and blob fetch,
-- `GET /healthz` — liveness.
+- `GET /`: the static collab-web guest client (target of the `/collab` deep link),
+- `GET /r/<roomId>?role=host|guest`: WebSocket upgrade,
+- `POST /s` / `GET /s/<id>` / `GET /s/<id>/raw`: `/share` blob upload, viewer page, and blob fetch,
+- `GET /healthz`: liveness.
 
 
 ## Architecture notes
 
-Hub topology — the host is authoritative, guests never peer:
+Hub topology, the host is authoritative, guests never peer:
 
-1. `entry` frames — durable session entries, broadcast pre-blob-externalization so images stay inline (guests cannot resolve host blob refs). Guests append them verbatim (ids preserved) to a replica session file under `~/.veyyon/collab/<roomId>.jsonl` and into the agent's message array, which is why `/dump` and context estimates work.
-2. `event` frames — live agent events, fed straight into the guest's normal event controller; rendering is events-only to prevent double-render.
-3. `state` frames — debounced footer snapshots: streaming flag, the host's full model object and thinking level (applied to the guest's replica agent state, so model display and context-window math are native), host context numbers, and participants.
-4. `bus` frames — mirrored task-subagent lifecycle/progress EventBus traffic, republished on the guest's local bus so the subagent HUD and status-line count work natively.
-5. `agents` frames — agent-registry snapshots feeding a guest-local registry, so the Agent Hub table renders host subagents.
+1. `entry` frames: durable session entries, broadcast pre-blob-externalization so images stay inline (guests cannot resolve host blob refs). Guests append them verbatim (ids preserved) to a replica session file under `~/.veyyon/collab/<roomId>.jsonl` and into the agent's message array, which is why `/dump` and context estimates work.
+2. `event` frames: live agent events, fed straight into the guest's normal event controller; rendering is events-only to prevent double-render.
+3. `state` frames: debounced footer snapshots: streaming flag, the host's full model object and thinking level (applied to the guest's replica agent state, so model display and context-window math are native), host context numbers, and participants.
+4. `bus` frames: mirrored task-subagent lifecycle/progress EventBus traffic, republished on the guest's local bus so the subagent HUD and status-line count work natively.
+5. `agents` frames: agent-registry snapshots feeding a guest-local registry, so the Agent Hub table renders host subagents.
 
 Guest→host: `hello`, `prompt`, `abort`, `agent-cmd` (hub chat/kill/revive), and `fetch-transcript` (incremental subagent-transcript reads answered by targeted `transcript` frames). The replica loads through the regular `/resume` machinery, so theming, ctrl+o, and transcript behavior are native by construction; the guest process never chdirs to host paths.

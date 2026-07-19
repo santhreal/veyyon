@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-a2447057.js";
+            window.path_to_searchindex_js = "../searchindex-b31c94e7.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-cc1a72e9.js"></script>
@@ -196,27 +196,28 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="mechanisms"><a class="header" href="#mechanisms">Mechanisms</a></h1>
-<p>Compact map of the main harness mechanisms. Operator how-tos live under <a href="../using/getting-started.html">Using</a> and <a href="../features/sandbox.html">Features</a>.</p>
+<p>This chapter is a compact map of the main harness mechanisms. It explains what each one is and points you to the chapter that covers it in full. The operator how-tos live under <a href="../using/getting-started.html">Using</a> and <a href="../features/sandbox.html">Features</a>.</p>
 <h2 id="hashline-edits"><a class="header" href="#hashline-edits">Hashline edits</a></h2>
-<p><code>edit</code> and <code>write</code> accept hashline (content-addressed) patches. The natives layer verifies the patch against the current file before writing. On mismatch the tool fails with recovery context for the model.</p>
+<p>The <code>edit</code> and <code>write</code> tools accept hashline patches, which are addressed by content rather than by line number. Before writing, the natives layer verifies the patch against the current file. If they do not match, the tool fails and returns recovery context to the model instead of writing a corrupted file.</p>
 <p>See <a href="../using/editing.html">Editing and repair</a> and <a href="../edit/engine.html">The hashline edit engine</a>.</p>
 <h2 id="tool-approval-tiers"><a class="header" href="#tool-approval-tiers">Tool approval tiers</a></h2>
-<p><code>tools.approvalMode</code> is one of <code>plan</code>, <code>ask</code>, <code>auto-edit</code>, <code>yolo</code> (legacy aliases: <code>always-ask</code> → <code>ask</code>, <code>write</code> → <code>auto-edit</code>). Per-tool <code>tools.approval</code> overrides apply on top. Tiers are read, write, and exec. Bash can still force a prompt on destructive patterns depending on execpolicy rules.</p>
-<p>See <a href="../features/sandbox.html">Approvals</a> and <code>/settings</code> → Advanced → Safety. Detail also in <code>docs/approval-mode.md</code> in the repo.</p>
+<p>The <code>tools.approvalMode</code> setting is one of <code>plan</code>, <code>ask</code>, <code>auto-edit</code>, or <code>yolo</code>. The older aliases <code>always-ask</code> and <code>write</code> still map to <code>ask</code> and <code>auto-edit</code>. On top of the mode, per-tool <code>tools.approval</code> overrides apply. The three tiers are read, write, and exec. Bash can still force a prompt on destructive patterns, depending on your execpolicy rules.</p>
+<p>See <a href="../features/sandbox.html">Approvals</a> and <code>/settings</code> then Advanced then Safety.</p>
 <h2 id="model-slots-and-roles"><a class="header" href="#model-slots-and-roles">Model slots and roles</a></h2>
+<p>Veyyon separates the model you use from the job it does:</p>
 <ul>
-<li><strong>Interactive model</strong> — <code>/model</code> / <code>--model</code>; persisted as <code>modelRoles.default</code>.</li>
-<li><strong>Roles</strong> — <code>smol</code>, <code>slow</code>, <code>vision</code>, <code>plan</code>, <code>designer</code>, <code>commit</code>, <code>tiny</code>, <code>task</code>, <code>advisor</code> (+ custom) in <code>modelRoles</code>.</li>
-<li><strong>Overrides</strong> — <code>subagent.model</code> (overrides <code>modelRoles.task</code> when set), <code>compaction.model</code> (else inherit interactive).</li>
-<li><strong>Cycle</strong> — <code>cycleOrder</code> (default <code>smol</code>, <code>slow</code>); <code>app.model.cycleForward</code> (often Ctrl+P).</li>
+<li><strong>The interactive model</strong> is what you set with <code>/model</code> or <code>--model</code>, and it persists as <code>modelRoles.default</code>.</li>
+<li><strong>Roles</strong> pin a model to a kind of work. The built-in roles are <code>smol</code>, <code>slow</code>, <code>vision</code>, <code>plan</code>, <code>designer</code>, <code>commit</code>, <code>tiny</code>, <code>task</code>, and <code>advisor</code>, and you can add your own in <code>modelRoles</code>.</li>
+<li><strong>Overrides</strong> let a slot win over a role. <code>subagent.model</code> overrides <code>modelRoles.task</code> when set, and <code>compaction.model</code> overrides the interactive model for compaction, otherwise compaction inherits it.</li>
+<li><strong>Cycling</strong> rotates through <code>cycleOrder</code> (which defaults to <code>smol</code> then <code>slow</code>), bound to <code>app.model.cycleForward</code>, often Ctrl+P.</li>
 </ul>
-<p>Full contract: <a href="../using/roles-and-profiles.html">Models, roles, and profiles</a>.</p>
+<p>The full contract is in <a href="../using/roles-and-profiles.html">Models, roles, and profiles</a>.</p>
 <h2 id="provider-neutral-loop"><a class="header" href="#provider-neutral-loop">Provider-neutral loop</a></h2>
-<p>The agent loop, TUI, session format, MCP, skills, hooks, and extensions do not hard-code a single vendor. Providers are configured in the active profile’s agent dir (<code>config.yml</code>, <code>/setup</code>, <code>/providers</code>).</p>
+<p>The agent loop, the TUI, the session format, MCP, skills, hooks, and extensions do not hard-code a single vendor. You configure providers in the active profile’s agent directory, through <code>config.yml</code>, <code>/setup</code>, or <code>/providers</code>.</p>
 <h2 id="engine-modes"><a class="header" href="#engine-modes">Engine modes</a></h2>
-<p>Compaction, goal continuation, plan mode, vibe mode, and task subagents are implemented in the session/tool layer. Goal mode can continue an idle session toward a stored objective. Plan mode writes a plan file and restricts mutation until resolve/approval paths complete.</p>
+<p>Compaction, goal continuation, plan mode, vibe mode, and task subagents live in the session and tool layer, not only in prompt text. Goal mode can keep an idle session moving toward a stored objective. Plan mode writes a plan file and holds back mutation until the resolve and approval paths complete.</p>
 <h2 id="profiles"><a class="header" href="#profiles">Profiles</a></h2>
-<p>Every profile (including <code>default</code>) lives at <code>~/.veyyon/profiles/&lt;name&gt;/agent/</code> (settings, sessions, MCP, skills, hooks, …). See <a href="../features/profiles.html">Profiles</a> and <a href="../reference/file-locations.html">File locations</a>.</p>
+<p>Every profile, including <code>default</code>, lives at <code>~/.veyyon/profiles/&lt;name&gt;/agent/</code>, which holds its settings, sessions, MCP config, skills, and hooks. See <a href="../features/profiles.html">Profiles</a> and <a href="../reference/file-locations.html">File locations</a>.</p>
 <h2 id="related"><a class="header" href="#related">Related</a></h2>
 <ul>
 <li><a href="../foundations/thesis.html">Design goals</a></li>

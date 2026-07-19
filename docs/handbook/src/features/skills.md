@@ -1,6 +1,6 @@
 # Skills
 
-Skills are filesystem packages discovered by the agent (project and profile skill dirs). They are not compiled into the binary.
+A skill is a folder of instructions you drop next to your code or in your profile, and the agent picks it up on its own. Use one to teach Veyyon a repeated task: how your project runs its tests, the steps of a release, the shape of a code review. Skills live on disk, not in the binary, so you add or change one by editing a file, with no rebuild.
 
 For general information on Veyyon extension capabilities, see [Tools, skills, and extension data](../using/extending.md).
 
@@ -33,7 +33,7 @@ discovery:
   importForeignConfig: false
 ```
 
-When it is off, those foreign sources are skipped entirely — they never appear
+When it is off, those foreign sources are skipped entirely, they never appear
 in `/extensions`, in the enable/disable list, or in the model's context. When it is
 on (the default), the per-source toggles under `skills.*` (for example
 `skills.enableClaudeUser`) give finer control. Veyyon's own `AGENTS.md` lives in
@@ -43,8 +43,8 @@ are not affected by this toggle.
 ## Profiles isolate skills
 
 Each [profile](./profiles.md) is a separate config root
-(`$HOME/.veyyon/profiles/<name>/agent`). Every skill source Veyyon owns — user
-skills, managed (auto-learn) skills, and plugin skills — resolves under that
+(`$HOME/.veyyon/profiles/<name>/agent`). Every skill source Veyyon owns, user
+skills, managed (auto-learn) skills, and plugin skills, resolves under that
 root, so profiles never share a skill directory:
 
 - Switching profiles re-homes user and managed skills to the active profile.
@@ -54,7 +54,7 @@ root, so profiles never share a skill directory:
 
 Two things are shared on purpose: **project** skills (`.veyyon/skills` next to
 your code) belong to the repository, not a profile; and another tool's own skill
-directory (`$HOME/.claude/skills`, ...) is global to the machine — a profile
+directory (`$HOME/.claude/skills`, ...) is global to the machine, a profile
 cannot relocate it, so per-profile isolation there means each profile decides
 independently whether to import it (via `discovery.importForeignConfig`, which
 is stored per profile and on by default).

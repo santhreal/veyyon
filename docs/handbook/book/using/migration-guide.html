@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-a2447057.js";
+            window.path_to_searchindex_js = "../searchindex-b31c94e7.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-cc1a72e9.js"></script>
@@ -242,7 +242,7 @@ veyyon plugin doctor
 <h2 id="session-and-state-data"><a class="header" href="#session-and-state-data">Session and state data</a></h2>
 <p>Session data lives under the <strong>profile agent dir</strong> (<code>~/.veyyon/profiles/default/agent/</code> by default):</p>
 <ul>
-<li><code>sessions/</code> — append-only JSONL rollouts (conversation history, branching).</li>
+<li><code>sessions/</code>: append-only JSONL rollouts (conversation history, branching).</li>
 <li>SQLite stores under the agent dir (for example <code>history.db</code>, <code>agent.db</code>) mirror lookups; they can be rebuilt from rollouts when missing.</li>
 </ul>
 <p>This means you usually do not need a manual database migration. When you start the new binary, it reads the rollout files and updates the state database as needed. If you see a warning about a stale state database, the binary repairs it automatically on startup.</p>

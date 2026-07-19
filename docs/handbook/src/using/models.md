@@ -1,6 +1,6 @@
 # Models and providers
 
-Select endpoints and model ids; the agent calls the configured provider API with your credentials (local server, hosted API, or OpenAI-compatible gateway).
+You choose an endpoint and a model id. Veyyon then calls that provider's API directly with your credentials. The endpoint can be a local server, a hosted API, or any OpenAI-compatible gateway.
 
 - Contract (what the harness owns vs the provider): [Model contract](../concepts/model-contract.md)
 - Copy-paste provider setups: [Configuring providers](./configuring-providers.md)
@@ -8,9 +8,9 @@ Select endpoints and model ids; the agent calls the configured provider API with
 
 ## API keys (BYOK)
 
-For non-managed providers the process sends the key to the provider endpoint you configured (no hosted proxy required).
+BYOK means bring your own key. For a provider you configure yourself, Veyyon sends your key straight to that provider's endpoint. There is no hosted proxy in between.
 
-Set the key through:
+Set the key one of three ways:
 
 - The provider's environment variable (see [Providers](../models/providers.md) for the full map), or
 - `/login` inside the TUI, which stores the credential in the auth store, or
@@ -52,7 +52,7 @@ selectable when it is not in `disabledProviders` **and** it is keyless or has re
 | `amazon-bedrock` | Uses the AWS credential chain (`AWS_PROFILE`, instance role, …). |
 | `ollama`, `lm-studio`, `llama.cpp` | Local engines, discovered automatically and keyless by default. |
 
-Once a provider is available, model ids come from its discovery endpoint — there is no hardcoded BYOK
+Once a provider is available, model ids come from its discovery endpoint, there is no hardcoded BYOK
 allowlist. Failed discovery returns an error; it does not invent an empty catalog.
 
 ## Local models: Ollama and LM Studio
@@ -114,7 +114,7 @@ compaction:
   model: openai/gpt-5-mini
 ```
 
-Ctrl+P (default binding) cycles roles listed in `cycleOrder` (schema default `smol`, `slow` — not `default`). Full role list and aliases: [Models, roles, and profiles](./roles-and-profiles.md).
+Ctrl+P (default binding) cycles roles listed in `cycleOrder` (schema default `smol`, `slow`, not `default`). Full role list and aliases: [Models, roles, and profiles](./roles-and-profiles.md).
 
 ## Per-model harness settings
 
@@ -160,8 +160,8 @@ Pin models in CI and shared profiles (`--model`, `modelRoles`). Floating “late
 
 ## Where to go next
 
-- [Configuring providers](./configuring-providers.md) — full copy-paste setups.
-- [Model contract](../concepts/model-contract.md) — harness vs provider boundary.
-- [Getting started](./getting-started.md) — first key and first task.
-- [Configuration](./configuration.md) — model defaults and overrides.
-- [Authentication](./authentication.md) — login, logout, secret storage.
+- [Configuring providers](./configuring-providers.md): full copy-paste setups.
+- [Model contract](../concepts/model-contract.md): harness vs provider boundary.
+- [Getting started](./getting-started.md): first key and first task.
+- [Configuration](./configuration.md): model defaults and overrides.
+- [Authentication](./authentication.md): login, logout, secret storage.

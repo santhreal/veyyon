@@ -6,14 +6,14 @@
 - Entry: `packages/coding-agent/src/tools/memory-recall.ts`
 - Model-facing prompt: `packages/coding-agent/src/prompts/tools/recall.md`
 - Hindsight collaborators:
-  - `packages/coding-agent/src/hindsight/state.ts` — session state, recall query defaults, prompt-side auto-recall.
-  - `packages/coding-agent/src/hindsight/content.ts` — result formatting and UTC timestamp formatting.
-  - `packages/coding-agent/src/hindsight/client.ts` — HTTP `recall` call and error mapping.
-  - `packages/coding-agent/src/hindsight/bank.ts` — bank id and tag-filter scoping.
+  - `packages/coding-agent/src/hindsight/state.ts`: session state, recall query defaults, prompt-side auto-recall.
+  - `packages/coding-agent/src/hindsight/content.ts`: result formatting and UTC timestamp formatting.
+  - `packages/coding-agent/src/hindsight/client.ts`: HTTP `recall` call and error mapping.
+  - `packages/coding-agent/src/hindsight/bank.ts`: bank id and tag-filter scoping.
 - Mnemopi collaborators:
-  - `packages/coding-agent/src/mnemopi/state.ts` — scoped local recall and result formatting with ids.
-  - `packages/coding-agent/src/mnemopi/config.ts` — local bank scoping and recall limits.
-  - `docs/tools/retain.md` — shared backend, storage, scoping, and retention behavior.
+  - `packages/coding-agent/src/mnemopi/state.ts`: scoped local recall and result formatting with ids.
+  - `packages/coding-agent/src/mnemopi/config.ts`: local bank scoping and recall limits.
+  - `docs/tools/retain.md`: shared backend, storage, scoping, and retention behavior.
 
 ## Inputs
 
@@ -59,13 +59,13 @@ When no matches exist:
 - Tool path: explicit query-only recall. It does not compose context from recent turns.
 - Backend auto-recall has a richer query-composition path in `HindsightSessionState.beforeAgentStartPrompt(...)` / `maybeRecallOnAgentStart(...)` and `MnemopiSessionState.beforeAgentStartPrompt(...)` / `maybeRecallOnAgentStart(...)`.
 - Hindsight bank scoping:
-  - `global` — no tag filter.
-  - `per-project` — separate bank id per project label (git primary checkout root basename; cwd basename outside a repo).
-  - `per-project-tagged` — shared bank id plus `project:<project label>` filter with `tagsMatch = "any"`, so project-tagged and untagged global memories can both surface.
+  - `global`: no tag filter.
+  - `per-project`: separate bank id per project label (git primary checkout root basename; cwd basename outside a repo).
+  - `per-project-tagged`: shared bank id plus `project:<project label>` filter with `tagsMatch = "any"`, so project-tagged and untagged global memories can both surface.
 - Mnemopi bank scoping:
-  - `global` — recall reads the shared bank.
-  - `per-project` — recall reads the project bank.
-  - `per-project-tagged` — recall reads the project bank and shared bank, then merges results.
+  - `global`: recall reads the shared bank.
+  - `per-project`: recall reads the project bank.
+  - `per-project-tagged`: recall reads the project bank and shared bank, then merges results.
 - Session scope: reads cross-session memory data, using the active session's cached config and scope.
 
 ## Side Effects

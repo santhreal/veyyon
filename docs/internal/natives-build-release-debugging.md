@@ -223,7 +223,7 @@ bun run gen:native:reset
 
 ## Orchestrator-side content-addressed build cache (veybot)
 
-When `veyyon-natives` is built inside the veybot orchestrator (`python/veybot/`), workspaces share built artifacts through a content-addressed cache instead of rebuilding from scratch in every per-issue worktree. The cache is **orchestrator-side only** — `bun --cwd=packages/natives run build` itself is unchanged; the cache lives outside the build pipeline and is populated/captured around `ensure_workspace` and post-task success in `python/veybot/src/natives_cache.py`.
+When `veyyon-natives` is built inside the veybot orchestrator (`python/veybot/`), workspaces share built artifacts through a content-addressed cache instead of rebuilding from scratch in every per-issue worktree. The cache is **orchestrator-side only**, `bun --cwd=packages/natives run build` itself is unchanged; the cache lives outside the build pipeline and is populated/captured around `ensure_workspace` and post-task success in `python/veybot/src/natives_cache.py`.
 
 ### What is cached
 
@@ -241,13 +241,13 @@ An entry is only considered a hit when the `.node` glob matches AND every compan
 
 The key is `sha256` over `(path \t git-tree-hash \n)` pairs for the following inputs, in this order (order is significant), followed by the target triple:
 
-1. `crates` (whole subtree — veyyon-natives transitively depends on other workspace crates)
+1. `crates` (whole subtree: veyyon-natives transitively depends on other workspace crates)
 2. `Cargo.lock`
 3. `Cargo.toml`
 4. `rust-toolchain.toml`
-5. `packages/natives` (whole subtree — build script, `scripts/*`, package.json with napi config)
+5. `packages/natives` (whole subtree: build script, `scripts/*`, package.json with napi config)
 
-Tree hashes come from one `git cat-file --batch-check` invocation against `HEAD`; paths missing from `HEAD` fold in as a fixed null hash so the key stays deterministic across repos that don't ship every input. The target-triple suffix matches the napi addon basename convention (`<platform>-<arch>` for non-x64, `<platform>-<arch>-<variant>` for x64). When `TARGET_VARIANT` is unset on an x64 host the variant component is `host` rather than autodetected — the key is stable on a given machine but a `modern`/`baseline` build with an explicit `TARGET_VARIANT` gets a different key.
+Tree hashes come from one `git cat-file --batch-check` invocation against `HEAD`; paths missing from `HEAD` fold in as a fixed null hash so the key stays deterministic across repos that don't ship every input. The target-triple suffix matches the napi addon basename convention (`<platform>-<arch>` for non-x64, `<platform>-<arch>-<variant>` for x64). When `TARGET_VARIANT` is unset on an x64 host the variant component is `host` rather than autodetected, the key is stable on a given machine but a `modern`/`baseline` build with an explicit `TARGET_VARIANT` gets a different key.
 
 Anything outside this input set (Rust toolchain auto-installed delta, host glibc, env vars other than `TARGET_VARIANT`) is **not** in the key. If you need to invalidate after such a change, delete the cache directory by hand or bump one of the input files.
 
@@ -261,7 +261,7 @@ Anything outside this input set (Rust toolchain auto-installed delta, host glibc
 
 ### Populate and capture semantics
 
-- **Populate** (workspace ← cache) runs inside `ensure_workspace`. On a key hit the `.node` is **hardlinked** into the workspace (zero-copy, shared inode); the companion `index.d.ts` / `index.js` / `embedded-addon.js` are **copied** (independent inodes) because the napi build's `installGeneratedBindings` and `gen-enums.ts` rewrite those files via `open(..., 'w')` — an in-place truncate that would otherwise propagate through a hardlink and corrupt the cache. Cross-device hardlink failures (`EXDEV`) fall back to copy.
+- **Populate** (workspace ← cache) runs inside `ensure_workspace`. On a key hit the `.node` is **hardlinked** into the workspace (zero-copy, shared inode); the companion `index.d.ts` / `index.js` / `embedded-addon.js` are **copied** (independent inodes) because the napi build's `installGeneratedBindings` and `gen-enums.ts` rewrite those files via `open(..., 'w')`: an in-place truncate that would otherwise propagate through a hardlink and corrupt the cache. Cross-device hardlink failures (`EXDEV`) fall back to copy.
 - **Capture** (cache ← workspace) runs from the post-task success path when the build produced a complete artifact set. Capture uses **copy**, not hardlink: hardlinking a slot-owned workspace file would preserve slot UID ownership on the cached inode and defeat the shared-group model. Copying creates a fresh root-owned, `gid=veyyon` inode via the setgid cache root. Capture is idempotent under the per-repo flock: a concurrent capture for the same key returns the existing entry.
 
 ### Garbage collection
@@ -271,7 +271,7 @@ A periodic GC loop runs in `WorkerPool` with two caps per repo. When either cap 
 - entry count cap (`max_entries_per_repo`, default 8)
 - byte cap (`max_bytes`, default 4 GiB)
 
-Workspaces that hardlinked a `.node` before GC retain access via the kernel inode refcount — `rmtree` of the cache entry does not delete the file from the workspace.
+Workspaces that hardlinked a `.node` before GC retain access via the kernel inode refcount, `rmtree` of the cache entry does not delete the file from the workspace.
 
 ### Configuration (settings on `veybot.config.Settings`)
 

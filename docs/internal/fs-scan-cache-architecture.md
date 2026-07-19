@@ -15,12 +15,12 @@ Primary goals:
 ## Ownership and public surface
 
 - Cache implementation and policy: `crates/veyyon-walker/src/cache.rs` (`collect_entries`, `invalidate_path`, `invalidate_path_string`, `invalidate_all`, env-configured policy getters)
-- Walk entry point that consults the cache: `veyyon_walker::WalkRequest` (`crates/veyyon-walker/src/lib.rs`) — the `.cache(bool)` builder flag routes `collect_entries` through `get_or_scan`
+- Walk entry point that consults the cache: `veyyon_walker::WalkRequest` (`crates/veyyon-walker/src/lib.rs`): the `.cache(bool)` builder flag routes `collect_entries` through `get_or_scan`
 - Native consumers (`crates/veyyon-natives/src/`):
-  - `glob.rs` — cache opt-in via config
-  - `fd.rs` (`fuzzyFind`) — cache opt-in via config
-  - `ast.rs` (`astGrep`/`astEdit` file discovery) — always cached (`.cache(true)`)
-  - `grep.rs` — **not cached**: it builds its walk with `.cache(false)`; there is no cached grep directory mode today
+  - `glob.rs`: cache opt-in via config
+  - `fd.rs` (`fuzzyFind`): cache opt-in via config
+  - `ast.rs` (`astGrep`/`astEdit` file discovery): always cached (`.cache(true)`)
+  - `grep.rs`: **not cached**: it builds its walk with `.cache(false)`; there is no cached grep directory mode today
 - JS binding/export:
   - `packages/natives/native/index.d.ts` (`invalidateFsScanCache`)
   - `packages/natives/native/index.js`
@@ -40,7 +40,7 @@ Each entry is keyed by `CacheKey { root, options }`:
 - `use_gitignore`
 - `skip_git`
 - `skip_node_modules`
-- `follow_links` (`FollowLinks::Never | Always | ...`) — **is** part of the key
+- `follow_links` (`FollowLinks::Never | Always | ...`): **is** part of the key
 - `detail` (`WalkDetail::Minimal` or `WalkDetail::Full`)
 - `order`, `emit_root`, `min_depth`, `max_depth`
 
@@ -59,7 +59,7 @@ Consumers must pass stable semantics for every walk option; changing any keyed f
 Cache population uses the in-house parallel walker (`collect_entries_native` in `veyyon-walker`; the external `ignore::WalkBuilder` is no longer used for this path):
 
 - entries sorted by path when `WalkOrder::Path` is requested (the common consumer setting)
-- `.git` is pruned when `skip_git=true` — every native consumer sets `.skip_git(true)`; `should_skip_path` additionally drops `.git`/unmentioned `node_modules` components in user-facing discovery
+- `.git` is pruned when `skip_git=true`: every native consumer sets `.skip_git(true)`; `should_skip_path` additionally drops `.git`/unmentioned `node_modules` components in user-facing discovery
 - `node_modules` is pruned at traversal time when `skip_node_modules=true`
 - cancellation heartbeat is checked every `HEARTBEAT_INTERVAL` (128) visited entries
 - `WalkDetail::Minimal` records normalized relative path and file type only
@@ -99,7 +99,7 @@ Normal cache hit:
 Empty-result fast recheck:
 
 - this is now **walker-internal** policy, configured per request via `.empty_recheck(EmptyRecheck::Never | Configured | AfterMillis(n))`
-- after filtering, if the surviving entry list is empty, the scan came from cache (`cache_age_ms > 0`), and the age is at or above the threshold (`empty_recheck_ms()` for `Configured`), the walker re-collects once with `options.cache = false` — a fresh, **uncached** scan that is not stored back
+- after filtering, if the surviving entry list is empty, the scan came from cache (`cache_age_ms > 0`), and the age is at or above the threshold (`empty_recheck_ms()` for `Configured`), the walker re-collects once with `options.cache = false`: a fresh, **uncached** scan that is not stored back
 - intended to reduce stale-negative results when files were added while the cache is still inside TTL
 
 Current consumers all pass `EmptyRecheck::Configured`: `glob`, `fuzzyFind` (`fd.rs`), and `astGrep`/`astEdit` (`ast.rs`).
@@ -164,7 +164,7 @@ When introducing cache use in a new scanner/search path:
    - pass them consistently on every `WalkRequest` so cache partitions are intentional
 
 2. **Treat cache data as pre-filtered only by traversal policy**
-   - apply tool-specific filtering (glob patterns, type filters, scoring) after retrieval — `WalkFilter` runs on top of the cached entry list
+   - apply tool-specific filtering (glob patterns, type filters, scoring) after retrieval: `WalkFilter` runs on top of the cached entry list
    - never assume cached entries already reflect your higher-level filters
 
 3. **Enable empty-result fast recheck only for stale-negative risk**
@@ -172,7 +172,7 @@ When introducing cache use in a new scanner/search path:
    - the walker handles the retry internally; do not hand-roll a second scan
 
 4. **Respect no-cache mode explicitly**
-   - when the caller disables cache, pass `.cache(false)` — the walk runs fresh and never populates the shared cache
+   - when the caller disables cache, pass `.cache(false)`: the walk runs fresh and never populates the shared cache
 
 5. **Wire mutation invalidation for any new write path**
    - after successful write/edit/delete/rename, call the coding-agent invalidation helper

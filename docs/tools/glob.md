@@ -6,13 +6,13 @@
 - Entry: `packages/coding-agent/src/tools/glob.ts`
 - Model-facing prompt: `packages/coding-agent/src/prompts/tools/glob.md`
 - Key collaborators:
-  - `packages/coding-agent/src/tools/path-utils.ts` — normalize inputs; split base path vs glob.
-  - `packages/coding-agent/src/tools/list-limit.ts` — apply result-count caps.
-  - `packages/coding-agent/src/session/streaming-output.ts` — truncate text output at byte cap.
-  - `packages/coding-agent/src/tools/tool-result.ts` — build `content` and `details.meta`.
-  - `packages/coding-agent/src/tools/output-meta.ts` — encode limit / truncation metadata.
-  - `packages/coding-agent/src/tools/tool-errors.ts` — map user-facing tool errors.
-  - `packages/coding-agent/src/tools/index.ts` — register the built-in local implementation.
+  - `packages/coding-agent/src/tools/path-utils.ts`: normalize inputs; split base path vs glob.
+  - `packages/coding-agent/src/tools/list-limit.ts`: apply result-count caps.
+  - `packages/coding-agent/src/session/streaming-output.ts`: truncate text output at byte cap.
+  - `packages/coding-agent/src/tools/tool-result.ts`: build `content` and `details.meta`.
+  - `packages/coding-agent/src/tools/output-meta.ts`: encode limit / truncation metadata.
+  - `packages/coding-agent/src/tools/tool-errors.ts`: map user-facing tool errors.
+  - `packages/coding-agent/src/tools/index.ts`: register the built-in local implementation.
 
 ## Inputs
 
@@ -85,7 +85,7 @@ The tool returns a single text block plus structured `details`.
 - Maximum result limit: `200` (`MAX_LIMIT`); larger inputs are clamped.
 - Local glob timeout: fixed at `5000` ms.
 - Output byte cap: `50 * 1024` bytes (`DEFAULT_MAX_BYTES` in `packages/coding-agent/src/session/streaming-output.ts`).
-- Default generic line cap in `truncateHead()` is `3000`, but `glob` overrides `maxLines` to `Number.MAX_SAFE_INTEGER`, so byte size — not line count — is the practical output truncation cap.
+- Default generic line cap in `truncateHead()` is `3000`, but `glob` overrides `maxLines` to `Number.MAX_SAFE_INTEGER`, so byte size, not line count, is the practical output truncation cap.
 - Streaming update throttle: `200` ms between `onUpdate` emissions.
 - Sort order: most recent `mtime` first in the built-in local branch and promised in the prompt. The tool re-sorts in JS even though native glob receives `sortByMtime: true` so native code can still stop early at `maxResults`.
 

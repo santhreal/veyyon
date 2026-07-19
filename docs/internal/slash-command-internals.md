@@ -29,13 +29,13 @@ The capability registry loads all registered providers, sorted by provider prior
 
 Current slash-command providers and priorities:
 
-1. `native` (Veyyon) — priority `100`
-2. `veyyon-plugins` (extension packages) — priority `90`
-3. `claude` — priority `80`
-4. `claude-plugins` — priority `70`
-5. `agents` (`.agent`/`.agents` standard dirs) — priority `70`
-6. `codex` — priority `70`
-7. `opencode` — priority `55`
+1. `native` (Veyyon): priority `100`
+2. `veyyon-plugins` (extension packages): priority `90`
+3. `claude`: priority `80`
+4. `claude-plugins`: priority `70`
+5. `agents` (`.agent`/`.agents` standard dirs): priority `70`
+6. `codex`: priority `70`
+7. `opencode`: priority `55`
 
 Tie behavior: equal-priority providers keep registration order. Current import order registers `claude-plugins` before `agents` before `codex`, so plugin commands win over both on name collisions.
 

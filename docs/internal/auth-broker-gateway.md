@@ -58,7 +58,7 @@ veyyon auth-broker status    [--json]
 
 - `serve` opens the local SQLite store at `getAgentDbPath()` and binds an HTTP listener (default `127.0.0.1:8765`). On startup a token is ensured at `<config-dir>/auth-broker.token` (mode `0600`, `0700` parent dir). The background refresher refreshes any OAuth credential whose `expires - Date.now() < refreshSkewMs` (default 5 min) every `refreshIntervalMs` (default 60 s).
 - `token` prints the cached bearer or generates a new one. `--regenerate` rotates it.
-- `login [<provider>]` runs the per-provider OAuth flow locally — when no provider is supplied, it falls back to an interactive numbered picker. With `--via=user@host` it shells out `ssh -L <callback-port>:127.0.0.1:<callback-port> user@host veyyon auth-broker login <provider>` so the OAuth callback hits the local browser but the credential is written on the broker host (`--via` requires `<provider>`). Built-in callback ports: `anthropic:54545`, `openai-codex:1455`, `google-gemini-cli:8085`, `google-antigravity:51121`, `gitlab-duo:8080`. The OAuth dance is driven in-process via `AuthStorage.login()` — there is no longer a `pi-ai` bin to spawn.
+- `login [<provider>]` runs the per-provider OAuth flow locally, when no provider is supplied, it falls back to an interactive numbered picker. With `--via=user@host` it shells out `ssh -L <callback-port>:127.0.0.1:<callback-port> user@host veyyon auth-broker login <provider>` so the OAuth callback hits the local browser but the credential is written on the broker host (`--via` requires `<provider>`). Built-in callback ports: `anthropic:54545`, `openai-codex:1455`, `google-gemini-cli:8085`, `google-antigravity:51121`, `gitlab-duo:8080`. The OAuth dance is driven in-process via `AuthStorage.login()`, there is no longer a `pi-ai` bin to spawn.
 - `logout [<provider>]` deletes every credential row for `<provider>`. With no argument it shows an interactive numbered picker of currently-stored providers.
 - `list` enumerates every registered OAuth provider id/name (the union of built-ins + `registerOAuthProvider` custom providers). `--json` emits a machine-readable array.
 - `import <file|dir>` imports CLIProxyAPI-style JSON credentials into the local SQLite store. Maps `type` field → veyyon provider (`claude → anthropic`, `codex → openai-codex`, `gemini → google-gemini-cli`, `antigravity → google-antigravity`, `gemini-cli → google-gemini-cli`).
@@ -83,8 +83,8 @@ Requests use `Authorization: Bearer <token>`. The server compares against an in-
 
 `AuthBrokerRefresher` iterates active OAuth credentials at `refreshIntervalMs` cadence and refreshes any within `refreshSkewMs` of expiry. Refreshes are single-flighted per credential id so a slow refresh cannot be retriggered. The refresher distinguishes:
 
-- **definitive failures** (`invalid_grant`, `invalid_token`, `revoked`, unauthorized refresh-token, 401/403 not from a network blip) — credentials are passed to `AuthStorage.disableCredentialById(id, cause)` so the next snapshot pull surfaces a clean delete on the client;
-- **transient failures** (timeout / ECONNREFUSED / fetch failed) — left in place for the next sweep.
+- **definitive failures** (`invalid_grant`, `invalid_token`, `revoked`, unauthorized refresh-token, 401/403 not from a network blip): credentials are passed to `AuthStorage.disableCredentialById(id, cause)` so the next snapshot pull surfaces a clean delete on the client;
+- **transient failures** (timeout / ECONNREFUSED / fetch failed): left in place for the next sweep.
 
 ## auth-gateway
 
@@ -97,7 +97,7 @@ veyyon auth-gateway status  [--json]
 veyyon auth-gateway check   [--strict] [--json]
 ```
 
-- `serve` requires `VEYYON_AUTH_BROKER_URL` (or `auth.broker.url` in `config.yml`) — the gateway is itself a broker client. It calls `AuthBrokerClient.fetchSnapshot()`, wraps it in `RemoteAuthCredentialStore`, and constructs an `AuthStorage` that resolves access tokens through the broker. Default bind is `127.0.0.1:4000`. The gateway token is stored at `<config-dir>/auth-gateway.token` (`0600`); `--no-auth` disables the bearer check entirely (loopback-only use).
+- `serve` requires `VEYYON_AUTH_BROKER_URL` (or `auth.broker.url` in `config.yml`): the gateway is itself a broker client. It calls `AuthBrokerClient.fetchSnapshot()`, wraps it in `RemoteAuthCredentialStore`, and constructs an `AuthStorage` that resolves access tokens through the broker. Default bind is `127.0.0.1:4000`. The gateway token is stored at `<config-dir>/auth-gateway.token` (`0600`); `--no-auth` disables the bearer check entirely (loopback-only use).
 - `token` / `status` manage and inspect the gateway bearer token and upstream broker readiness.
 - `check` probes broker-backed credentials through the gateway store. Without `--strict` it uses provider usage probes; `--strict` also exercises each credential against its chat-completion endpoint and can consume a small amount of quota.
 
@@ -126,7 +126,7 @@ Two layers cache the aggregate provider-usage report. Both are intentional and s
 
 ### Server-side cache (broker `AuthStorage`)
 
-`AuthStorage` caches each credential’s `UsageReport` in the broker’s SQLite store at a **5-minute per-credential TTL with ±25 % jitter**. Anthropic and OpenAI rate-limit `/usage` aggressively per source IP, and a synchronized 5-credential fan-out trips 429s every cycle; the jitter decorrelates refresh times within a few cycles. On fetch failure the store keeps the **last-good** report for up to 24 h with a short jittered re-poll window — so a transient upstream blip never blanks out the widget.
+`AuthStorage` caches each credential’s `UsageReport` in the broker’s SQLite store at a **5-minute per-credential TTL with ±25 % jitter**. Anthropic and OpenAI rate-limit `/usage` aggressively per source IP, and a synchronized 5-credential fan-out trips 429s every cycle; the jitter decorrelates refresh times within a few cycles. On fetch failure the store keeps the **last-good** report for up to 24 h with a short jittered re-poll window, so a transient upstream blip never blanks out the widget.
 
 Constants: `USAGE_REPORT_TTL_MS = 5 * 60_000`, `USAGE_LAST_GOOD_RETENTION_MS = 24 * 60 * 60_000` (`packages/ai/src/auth-storage.ts`).
 
@@ -136,7 +136,7 @@ When the gateway (or any other broker client) calls `fetchUsageReports()` / `get
 
 - `USAGE_CACHE_TTL_MS = 15_000` (`packages/ai/src/auth-broker/remote-store.ts`).
 - A single `#usageInflight` promise is shared across all callers; a per-caller `AbortSignal` is **raced** against the shared promise, not threaded into it, so one caller’s abort never cascades into a peer’s in-flight request.
-- On fetch failure the rejected promise is logged and the awaited value is `null` — callers (`AuthStorage.fetchUsageReports`, `#getUsageReport`) treat a `null` report as "no usage signal for this cycle" and proceed without it. **This is the 15 s TTL fallback**: the client absorbs transient broker outages by suppressing the error, returning `null` to ranking, and re-attempting after the 15 s window.
+- On fetch failure the rejected promise is logged and the awaited value is `null`: callers (`AuthStorage.fetchUsageReports`, `#getUsageReport`) treat a `null` report as "no usage signal for this cycle" and proceed without it. **This is the 15 s TTL fallback**: the client absorbs transient broker outages by suppressing the error, returning `null` to ranking, and re-attempting after the 15 s window.
 
 The 15 s client window deliberately sits below the broker’s 5 min server cache, so almost every client poll is served from the broker’s already-cached value; the client cache exists to absorb the parallel fan-out generated by `AuthStorage.#rankOAuthSelections` into a single broker round-trip.
 
@@ -156,7 +156,7 @@ The broker is **off** unless `VEYYON_AUTH_BROKER_URL` (or `auth.broker.url` in `
 
 | Variable                | Purpose                                                                                                                                            | Required when                                                                                                             |
 | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| `VEYYON_AUTH_BROKER_URL`   | Base URL of the remote auth-broker (e.g. `https://broker.tailnet:8765`). Selecting this puts the client in broker mode — local SQLite is bypassed. | Any time the veyyon client should resolve credentials through a broker (and required by `veyyon auth-gateway serve`).           |
+| `VEYYON_AUTH_BROKER_URL`   | Base URL of the remote auth-broker (e.g. `https://broker.tailnet:8765`). Selecting this puts the client in broker mode, local SQLite is bypassed. | Any time the veyyon client should resolve credentials through a broker (and required by `veyyon auth-gateway serve`).           |
 | `VEYYON_AUTH_BROKER_TOKEN` | Bearer token used for every broker endpoint except `/v1/healthz`.                                                                                  | When `VEYYON_AUTH_BROKER_URL` is set and no token is available from `auth.broker.token` or `<config-dir>/auth-broker.token`. |
 | `VEYYON_AUTH_BROKER_SNAPSHOT_TTL_MS` | Freshness window for the encrypted local snapshot cache. Default `3600000` (1 h); `0` disables cache reads and writes. | Optional in broker mode. |
 | `VEYYON_AUTH_BROKER_SNAPSHOT_CACHE`  | Path override for the encrypted local snapshot cache. Default `~/.veyyon/cache/auth-broker-snapshot.enc` (or XDG cache equivalent). | Optional in broker mode. |
@@ -167,7 +167,7 @@ Resolution order in `resolveAuthBrokerConfig()`:
 2. `VEYYON_AUTH_BROKER_TOKEN` env (else `auth.broker.token` from `config.yml`, else `<config-dir>/auth-broker.token`);
 3. URL set but no token resolvable → hard error pointing at the token file path.
 
-The gateway has no dedicated env vars — it inherits `VEYYON_AUTH_BROKER_*` because it is itself a broker client.
+The gateway has no dedicated env vars, it inherits `VEYYON_AUTH_BROKER_*` because it is itself a broker client.
 
 ### `config.yml` keys
 
@@ -193,8 +193,8 @@ The broker only owns OAuth credentials and provider-API-key credentials that wer
 
 ## See also
 
-- [`secrets.md`](../secrets.md) — secret obfuscation around tokens that _do_ leak through (e.g. `VEYYON_AUTH_BROKER_TOKEN` in shell output).
-- [`models.md`](../models.md) — provider auth resolution order; the broker plugs in at layers 2–3 (stored credentials).
-- [`environment-variables.md`](../environment-variables.md) — full env reference including `VEYYON_AUTH_BROKER_URL` / `VEYYON_AUTH_BROKER_TOKEN`.
+- [`secrets.md`](../secrets.md): secret obfuscation around tokens that _do_ leak through (e.g. `VEYYON_AUTH_BROKER_TOKEN` in shell output).
+- [`models.md`](../models.md): provider auth resolution order; the broker plugs in at layers 2–3 (stored credentials).
+- [`environment-variables.md`](../environment-variables.md): full env reference including `VEYYON_AUTH_BROKER_URL` / `VEYYON_AUTH_BROKER_TOKEN`.
 
 *Verified against `a49ff74` on 2026-07-17.*

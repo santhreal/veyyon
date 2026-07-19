@@ -10,7 +10,7 @@ private research notes.
   forward from it. Incorporated MIT code keeps its permission notice; see the repository `LICENSE`.
 - **codex**, by OpenAI, under the Apache 2.0 license. oh-my-pi and Veyyon carry forward the codex
   `apply_patch` patch format and parts of the agent-loop shape as an independent TypeScript
-  reimplementation — see `NOTICE` for exactly which files are format-compatible versus which actually
+  reimplementation, see `NOTICE` for exactly which files are format-compatible versus which actually
   vendor Apache 2.0 code (the OpenAI wire types and the Playwright ARIA-snapshot bundle do; the
   `apply_patch` parser and the Codex backend client do not).
 - **OpenCode**, under the MIT license. Veyyon studies its plan/build workflow, project memory, compact

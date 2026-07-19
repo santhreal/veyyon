@@ -22,13 +22,13 @@ If no pending action exists, `resolve(action="apply")` fails with:
 
 - `No pending action to resolve. Nothing to apply or discard.`
 
-`resolve(action="discard")` with no pending action succeeds instead, returning `Nothing to discard; no pending action remains.` — the desired end-state (no staged change) already holds.
+`resolve(action="discard")` with no pending action succeeds instead, returning `Nothing to discard; no pending action remains.`, the desired end-state (no staged change) already holds.
 
 ## Pending previews use a non-forcing soft tool requirement
 
 Preview producers call `queueResolveHandler(...)`, which registers a non-forcing
 pending invoker on the session (a stack keyed by a unique
-`pending-action:<tool>:<seq>` id — never clobbered by label). It does NOT force
+`pending-action:<tool>:<seq>` id, never clobbered by label). It does NOT force
 `tool_choice` and does NOT inject a steering reminder.
 
 While a preview is pending, the session's `getToolChoice` callback
@@ -37,7 +37,7 @@ carrying the resolve reminder, as a non-consuming peek. The agent runtime owns t
 lifecycle: it injects the reminder once, runs with `tool_choice` unchanged, and
 escalates to a one-turn forced `resolve` choice ONLY if the model fails to call
 `resolve` that turn (skipping any detour tool batch first). A model that resolves
-on the reminder pays no message-cache invalidation — the previous design forced
+on the reminder pays no message-cache invalidation, the previous design forced
 `tool_choice` on every preview, busting the provider message cache twice per cycle.
 
 Runtime behavior:
@@ -59,7 +59,7 @@ Multiple pending previews stack as unique-keyed invokers and resolve independent
 - `sourceToolName` (`ast_edit`)
 - `apply(reason: string, extra?: Record<string, unknown>)` callback that reruns AST edit with `dryRun: false`
 
-`resolve(action="apply", reason="...")` passes both `reason` and `extra` into this callback, but `ast_edit`'s apply ignores both — its parameter is `_reason`, and the rerun is independent of `reason`/`extra`.
+`resolve(action="apply", reason="...")` passes both `reason` and `extra` into this callback, but `ast_edit`'s apply ignores both, its parameter is `_reason`, and the rerun is independent of `reason`/`extra`.
 
 ## Custom tools: `pushPendingAction`
 
@@ -68,8 +68,8 @@ Custom tools can register resolve-compatible pending actions through `CustomTool
 `CustomToolPendingAction`:
 
 - `label: string` (required)
-- `apply(reason: string): Promise<AgentToolResult<unknown>>` (required) — invoked on apply; `reason` is the string passed to `resolve`
-- `reject?(reason: string): Promise<AgentToolResult<unknown> | undefined>` (optional) — invoked on discard; return value replaces the default "Discarded" message if provided
+- `apply(reason: string): Promise<AgentToolResult<unknown>>` (required): invoked on apply; `reason` is the string passed to `resolve`
+- `reject?(reason: string): Promise<AgentToolResult<unknown> | undefined>` (optional): invoked on discard; return value replaces the default "Discarded" message if provided
 - `details?: unknown` exists on the public custom-tool type but is not currently forwarded by the loader into resolve metadata
 - `sourceToolName?: string` (optional, defaults to `"custom_tool"`)
 

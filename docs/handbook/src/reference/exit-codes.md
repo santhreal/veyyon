@@ -5,7 +5,7 @@ Exit codes follow common shell conventions for scripts and CI.
 | Code | Meaning |
 | --- | --- |
 | `0` | Success. |
-| `1` | Any Veyyon error: bad config, auth failure, no such session, an unrecoverable runtime error, a usage error from argument parsing (unknown flag, bad value, missing argument) — or the fallback when a child process ended without a reportable status. |
+| `1` | Any Veyyon error: bad config, auth failure, no such session, an unrecoverable runtime error, a usage error from argument parsing (unknown flag, bad value, missing argument), or the fallback when a child process ended without a reportable status. |
 | `N` | When Veyyon runs a child process (for example a shell tool command), the child's own exit code passes through unchanged. |
 | `128 + signal` | On Unix, a child killed by a signal is reported as `128 + signal` (the POSIX shell convention): `SIGKILL` (9) → `137`, `SIGTERM` (15) → `143`. |
 

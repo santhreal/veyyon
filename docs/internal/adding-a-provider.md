@@ -14,7 +14,7 @@ A provider is described in two halves:
   callback maps are derived from the registry.
 
 **Scope.** This is for a provider that reuses an existing wire API
-(`openai-completions`, `anthropic-messages`, `google-generative-ai`, …) — the
+(`openai-completions`, `anthropic-messages`, `google-generative-ai`, …), the
 common case for gateways and API-key providers, since stream dispatch keys on
 `model.api`, not `model.provider`. Adding a *new wire protocol* (a new
 `KnownApi`) is a separate task that also touches `stream.ts` dispatch,
@@ -101,7 +101,7 @@ from the catalog table and `OAuthProvider` from the registry.
   API-key helpers (`api-key-login`, `api-key-validation`) sit beside the def
   files in `registry/`, since they back simple paste-an-API-key logins.
 - For a simple OpenAI-compatible gateway, build the manager inline with the
-  exported `createSimpleOpenAICompletionsOptions(providerId, baseUrl, config)` —
+  exported `createSimpleOpenAICompletionsOptions(providerId, baseUrl, config)`,
   no edits to `openai-compat.ts` required.
 - A `ProviderDefinition` may also be registered at runtime by an extension via
   `registerOAuthProvider` (the `AuthStorage.login` dispatcher handles built-ins

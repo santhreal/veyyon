@@ -6,11 +6,11 @@ This document describes how the coding agent loads models, applies overrides, re
 
 Primary implementation files:
 
-- `src/config/model-registry.ts` — loads built-in + custom models, provider overrides, runtime discovery, auth integration
-- `src/config/model-resolver.ts` — parses model patterns and selects initial/smol/slow models
-- `src/config/settings-schema.ts` — model-related settings (`modelRoles`, provider transport preferences)
-- `src/session/auth-storage.ts` — re-exports `AuthStorage` from `@veyyon/ai` (`packages/ai/src/auth-storage.ts`); API key + OAuth resolution order
-- `packages/catalog/src/models.ts` and `packages/catalog/src/types.ts` — built-in providers/models (`getBundledModels` / `getBundledProviders`) and `Model`/`compat` types
+- `src/config/model-registry.ts`: loads built-in + custom models, provider overrides, runtime discovery, auth integration
+- `src/config/model-resolver.ts`: parses model patterns and selects initial/smol/slow models
+- `src/config/settings-schema.ts`: model-related settings (`modelRoles`, provider transport preferences)
+- `src/session/auth-storage.ts`: re-exports `AuthStorage` from `@veyyon/ai` (`packages/ai/src/auth-storage.ts`); API key + OAuth resolution order
+- `packages/catalog/src/models.ts` and `packages/catalog/src/types.ts`: built-in providers/models (`getBundledModels` / `getBundledProviders`) and `Model`/`compat` types
 
 ## Config file location and legacy behavior
 
@@ -173,7 +173,7 @@ Cached per-provider model lists are persisted in the model-cache SQLite
 database (current schema version 6) with a `static_fingerprint` column that
 hashes the static catalog slice merged into the row. When `resolveProviderModels`
 skips the network fetch and the fingerprint of the in-memory static
-catalog matches the cached one, the cached rows are returned verbatim —
+catalog matches the cached one, the cached rows are returned verbatim,
 the static + dynamic merge is bypassed entirely. The fingerprint is
 memoized per process by tagging the static-models array with a symbol
 property, so repeated cold-start calls do not re-hash.
@@ -518,7 +518,7 @@ Context promotion is an overflow recovery mechanism for small-context variants (
 When a turn fails with a context overflow error (e.g. `context_length_exceeded`), `AgentSession` attempts promotion **before** falling back to compaction:
 
 1. If `contextPromotion.enabled` is true, resolve a promotion target (see below).
-2. If a target is found, switch to it and retry the request — no compaction needed.
+2. If a target is found, switch to it and retry the request: no compaction needed.
 3. If no target is available, fall through to auto-compaction on the current model.
 
 ### Target selection
@@ -571,53 +571,53 @@ Endpoint-specific exceptions that interact with these fields are cataloged in [P
 
 Request shaping:
 
-- `supportsStore` — emit `store: false` on requests. Default: auto (off for non-standard endpoints).
-- `supportsDeveloperRole` — use the `developer` system role for reasoning models instead of `system`. Default: auto.
-- `supportsMultipleSystemMessages` — preserve separate leading system/developer messages instead of coalescing them. Default: auto (known OpenAI-compatible hosted APIs preserve; strict-template/local hosts coalesce).
-- `supportsUsageInStreaming` — send `stream_options: { include_usage: true }` to receive token usage on streaming responses. Default: `true`.
-- `maxTokensField` — `"max_completion_tokens"` or `"max_tokens"`. Default: auto.
-- `supportsToolChoice` — emit the `tool_choice` parameter when the caller forces a specific tool. Default: `true`. Set `false` for endpoints that 400 on `tool_choice` (e.g. DeepSeek when reasoning is on).
-- `supportsForcedToolChoice` — accept a forced `tool_choice` that requires a specific tool. Default: `true`. When `false`, a forced selector is downgraded to `auto` so the tool stays available for endpoints that reject forced tool calls (e.g. some thinking-required OpenAI-compatible models).
-- `disableReasoningOnForcedToolChoice` — drop `reasoning_effort` / OpenRouter `reasoning` whenever `tool_choice` forces a call. Default: auto (Kimi/Anthropic-fronted endpoints).
-- `disableReasoningOnToolChoice` — drop reasoning fields whenever any `tool_choice` is sent. Default: auto (DeepSeek reasoning models).
-- `alwaysSendMaxTokens` — always send a max-token field when the caller did not provide one. Default: auto (Kimi-family models derive TPM limits from `max_tokens`).
-- `strictResponsesPairing` — Responses-API tool-call/result history must be strictly paired. Default: auto (Azure OpenAI, GitHub Copilot).
-- `streamIdleTimeoutMs` — stream-watchdog idle-timeout floor in ms for slow reasoning hosts. Default: auto (GLM coding-plan hosts, direct DeepSeek reasoning).
-- `cacheControlFormat` — `"anthropic"` to include Anthropic-style prompt-cache markers in chat-completions payloads. Default: auto (OpenRouter `anthropic/*` models).
-- `supportsLongPromptCacheRetention` — host honors `prompt_cache_retention: "24h"` on the Responses API. Default: auto (api.openai.com).
-- `extraBody` — extra top-level fields merged into every request body (gateway hints, controller selectors, etc.).
+- `supportsStore`: emit `store: false` on requests. Default: auto (off for non-standard endpoints).
+- `supportsDeveloperRole`: use the `developer` system role for reasoning models instead of `system`. Default: auto.
+- `supportsMultipleSystemMessages`: preserve separate leading system/developer messages instead of coalescing them. Default: auto (known OpenAI-compatible hosted APIs preserve; strict-template/local hosts coalesce).
+- `supportsUsageInStreaming`: send `stream_options: { include_usage: true }` to receive token usage on streaming responses. Default: `true`.
+- `maxTokensField`: `"max_completion_tokens"` or `"max_tokens"`. Default: auto.
+- `supportsToolChoice`: emit the `tool_choice` parameter when the caller forces a specific tool. Default: `true`. Set `false` for endpoints that 400 on `tool_choice` (e.g. DeepSeek when reasoning is on).
+- `supportsForcedToolChoice`: accept a forced `tool_choice` that requires a specific tool. Default: `true`. When `false`, a forced selector is downgraded to `auto` so the tool stays available for endpoints that reject forced tool calls (e.g. some thinking-required OpenAI-compatible models).
+- `disableReasoningOnForcedToolChoice`: drop `reasoning_effort` / OpenRouter `reasoning` whenever `tool_choice` forces a call. Default: auto (Kimi/Anthropic-fronted endpoints).
+- `disableReasoningOnToolChoice`: drop reasoning fields whenever any `tool_choice` is sent. Default: auto (DeepSeek reasoning models).
+- `alwaysSendMaxTokens`: always send a max-token field when the caller did not provide one. Default: auto (Kimi-family models derive TPM limits from `max_tokens`).
+- `strictResponsesPairing`: Responses-API tool-call/result history must be strictly paired. Default: auto (Azure OpenAI, GitHub Copilot).
+- `streamIdleTimeoutMs`: stream-watchdog idle-timeout floor in ms for slow reasoning hosts. Default: auto (GLM coding-plan hosts, direct DeepSeek reasoning).
+- `cacheControlFormat`: `"anthropic"` to include Anthropic-style prompt-cache markers in chat-completions payloads. Default: auto (OpenRouter `anthropic/*` models).
+- `supportsLongPromptCacheRetention`: host honors `prompt_cache_retention: "24h"` on the Responses API. Default: auto (api.openai.com).
+- `extraBody`: extra top-level fields merged into every request body (gateway hints, controller selectors, etc.).
 
 Reasoning / thinking:
 
-- `supportsReasoningEffort` — accept `reasoning_effort`. Default: auto (off for Grok, Z.ai/Zhipu, and Xiaomi MiMo).
-- `supportsReasoningParams` — whether request shaping may send reasoning params at all. Default: auto (off for GitHub Copilot chat-completions).
-- `reasoningEffortMap` — partial map from internal effort levels (`minimal|low|medium|high|xhigh|max`) to provider-specific strings (e.g. Fireworks GLM maps `minimal -> "none"`).
-- `thinkingFormat` — request shape for thinking: `"openai"` (`reasoning_effort`), `"openrouter"` (`reasoning: { effort }`), `"zai"` (`thinking: { type: "enabled" }`), `"qwen"` (top-level `enable_thinking`), or `"qwen-chat-template"` (`chat_template_kwargs.enable_thinking`). Default: `"openai"`.
-- `reasoningContentField` — assistant field carrying chain-of-thought: `"reasoning_content"`, `"reasoning"`, or `"reasoning_text"`. Default: auto.
-- `requiresReasoningContentForToolCalls` — assistant tool-call turns must round-trip the reasoning field (DeepSeek-R1, Kimi, OpenRouter when reasoning is on). Default: `false`.
-- `allowsSyntheticReasoningContentForToolCalls` — allow a placeholder reasoning field when a prior assistant tool-call turn lacks provider reasoning content. Default: `true`; set `false` for providers that validate the exact reasoning value.
-- `requiresAssistantContentForToolCalls` — assistant tool-call turns must include non-empty text content (Kimi). Default: `false`.
-- `whenThinking` — partial compat overrides applied only when a request actually engages thinking mode (deep-merged over the baseline compat).
+- `supportsReasoningEffort`: accept `reasoning_effort`. Default: auto (off for Grok, Z.ai/Zhipu, and Xiaomi MiMo).
+- `supportsReasoningParams`: whether request shaping may send reasoning params at all. Default: auto (off for GitHub Copilot chat-completions).
+- `reasoningEffortMap`: partial map from internal effort levels (`minimal|low|medium|high|xhigh|max`) to provider-specific strings (e.g. Fireworks GLM maps `minimal -> "none"`).
+- `thinkingFormat`: request shape for thinking: `"openai"` (`reasoning_effort`), `"openrouter"` (`reasoning: { effort }`), `"zai"` (`thinking: { type: "enabled" }`), `"qwen"` (top-level `enable_thinking`), or `"qwen-chat-template"` (`chat_template_kwargs.enable_thinking`). Default: `"openai"`.
+- `reasoningContentField`: assistant field carrying chain-of-thought: `"reasoning_content"`, `"reasoning"`, or `"reasoning_text"`. Default: auto.
+- `requiresReasoningContentForToolCalls`: assistant tool-call turns must round-trip the reasoning field (DeepSeek-R1, Kimi, OpenRouter when reasoning is on). Default: `false`.
+- `allowsSyntheticReasoningContentForToolCalls`: allow a placeholder reasoning field when a prior assistant tool-call turn lacks provider reasoning content. Default: `true`; set `false` for providers that validate the exact reasoning value.
+- `requiresAssistantContentForToolCalls`: assistant tool-call turns must include non-empty text content (Kimi). Default: `false`.
+- `whenThinking`: partial compat overrides applied only when a request actually engages thinking mode (deep-merged over the baseline compat).
 
 Tool / message normalization:
 
-- `requiresToolResultName` — tool-result messages need a `name` field (Mistral). Default: auto.
-- `requiresAssistantAfterToolResult` — a user message after a tool result needs an assistant turn in between. Default: auto.
-- `requiresThinkingAsText` — convert thinking blocks to text wrapped in `<thinking>` delimiters (Mistral). Default: auto.
-- `requiresMistralToolIds` — normalize tool-call ids to exactly 9 alphanumeric chars. Default: auto.
-- `supportsStrictMode` — accept the per-tool `strict` field on tool schemas. Default: conservative auto-detect per provider/baseUrl.
-- `toolStrictMode` — `"all_strict"` forces strict on every tool, `"none"` forces it off; unset keeps the existing per-tool mixed behavior.
+- `requiresToolResultName`: tool-result messages need a `name` field (Mistral). Default: auto.
+- `requiresAssistantAfterToolResult`: a user message after a tool result needs an assistant turn in between. Default: auto.
+- `requiresThinkingAsText`: convert thinking blocks to text wrapped in `<thinking>` delimiters (Mistral). Default: auto.
+- `requiresMistralToolIds`: normalize tool-call ids to exactly 9 alphanumeric chars. Default: auto.
+- `supportsStrictMode`: accept the per-tool `strict` field on tool schemas. Default: conservative auto-detect per provider/baseUrl.
+- `toolStrictMode`: `"all_strict"` forces strict on every tool, `"none"` forces it off; unset keeps the existing per-tool mixed behavior.
 
 Gateway routing (only applied when `baseUrl` matches the gateway):
 
-- `openRouterRouting.only` / `openRouterRouting.order` — provider routing on `openrouter.ai` (see <https://openrouter.ai/docs/provider-routing>).
-- `vercelGatewayRouting.only` / `vercelGatewayRouting.order` — provider routing on `ai-gateway.vercel.sh` (see <https://vercel.com/docs/ai-gateway/models-and-providers/provider-options>).
+- `openRouterRouting.only` / `openRouterRouting.order`: provider routing on `openrouter.ai` (see <https://openrouter.ai/docs/provider-routing>).
+- `vercelGatewayRouting.only` / `vercelGatewayRouting.order`: provider routing on `ai-gateway.vercel.sh` (see <https://vercel.com/docs/ai-gateway/models-and-providers/provider-options>).
 
 Provider-level `compat` is the baseline; per-model `compat` is deep-merged on top, with `openRouterRouting`, `vercelGatewayRouting`, and `extraBody` merged as nested objects.
 
 ### Anthropic compatibility (`anthropic-messages`)
 
-For `anthropic-messages` models the runtime uses a separate `AnthropicCompat` shape (`packages/catalog/src/types.ts`). The `models.yml` schema exposes the strict-tools opt-out as a top-level provider field (see below) plus two Anthropic-side flags in the same `compat` slot — `requiresToolResultId` (non-standard `id` alias on `tool_result` blocks for Z.AI-style proxies) and `replayUnsignedThinking` (replay unsigned thinking blocks as native thinking instead of demoting them to text); the remaining Anthropic-side knobs (`disableAdaptiveThinking`, `supportsEagerToolInputStreaming`, `supportsLongCacheRetention`, `supportsMidConversationSystem`, `supportsForcedToolChoice`, `supportsSamplingParams`, `escapeBuiltinToolNames`) are set by built-in catalog metadata and are not user-configurable from `models.yml`.
+For `anthropic-messages` models the runtime uses a separate `AnthropicCompat` shape (`packages/catalog/src/types.ts`). The `models.yml` schema exposes the strict-tools opt-out as a top-level provider field (see below) plus two Anthropic-side flags in the same `compat` slot, `requiresToolResultId` (non-standard `id` alias on `tool_result` blocks for Z.AI-style proxies) and `replayUnsignedThinking` (replay unsigned thinking blocks as native thinking instead of demoting them to text); the remaining Anthropic-side knobs (`disableAdaptiveThinking`, `supportsEagerToolInputStreaming`, `supportsLongCacheRetention`, `supportsMidConversationSystem`, `supportsForcedToolChoice`, `supportsSamplingParams`, `escapeBuiltinToolNames`) are set by built-in catalog metadata and are not user-configurable from `models.yml`.
 
 ### Strict tool schemas (`disableStrictTools`)
 

@@ -97,7 +97,7 @@ Invalid override keys are ignored and logged (`logger.debug`).
 
 #### Box-drawing borders
 
-All outlined chrome — tool-result frames, overlays, code fences, the editor, the welcome banner — draws with the `boxRound.*` tokens: rounded corners (`╭╮╰╯`) plus tee/cross junctions (`├┤┬┴┼`, which have no rounded Unicode form, so they are sourced from the `boxSharp.*` tokens). Markdown tables are the sole exception and keep the fully sharp `boxSharp.*` set (`┌┐└┘`).
+All outlined chrome, tool-result frames, overlays, code fences, the editor, the welcome banner, draws with the `boxRound.*` tokens: rounded corners (`╭╮╰╯`) plus tee/cross junctions (`├┤┬┴┼`, which have no rounded Unicode form, so they are sourced from the `boxSharp.*` tokens). Markdown tables are the sole exception and keep the fully sharp `boxSharp.*` set (`┌┐└┘`).
 
 Override behavior follows from that split:
 
@@ -114,7 +114,7 @@ Theme lookup order (`loadThemeJson`):
 
 Custom themes directory comes from `getCustomThemesDir()`:
 
-- default: `~/.veyyon/profiles/default/agent/themes` — profile-aware: under a named profile (`--profile <name>` / `VEYYON_PROFILE`) this resolves to `~/.veyyon/profiles/<name>/agent/themes`
+- default: `~/.veyyon/profiles/default/agent/themes`: profile-aware: under a named profile (`--profile <name>` / `VEYYON_PROFILE`) this resolves to `~/.veyyon/profiles/<name>/agent/themes`
 - overridden by `VEYYON_CODING_AGENT_DIR`: `$VEYYON_CODING_AGENT_DIR/themes`
 
 `getAvailableThemes()` returns merged built-in + custom names, sorted, with built-ins taking precedence on name collision.

@@ -2,7 +2,7 @@
 
 ## Usage and sessions
 
-- `/usage` in the TUI and `veyyon stats` on the CLI — token and usage views
+- `/usage` in the TUI and `veyyon stats` on the CLI: token and usage views
 - Status line token accounting (`token_*`, `context_pct`, `cost`)
 - Coding-agent structured logger
 

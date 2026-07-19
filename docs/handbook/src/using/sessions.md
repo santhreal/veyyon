@@ -70,14 +70,14 @@ The tree view filter modes (`treeFilterMode` in `config.yml`, also toggled in th
 | `labeled-only` | Entries with labels |
 | `all` | Every raw entry |
 
-Typing filters rows by preview and label text. There is no separate Conversation/User/Labeled/All tab chrome beyond these filter modes — see [Branching](../features/branching.md).
+Typing filters rows by preview and label text. There is no separate Conversation/User/Labeled/All tab chrome beyond these filter modes, see [Branching](../features/branching.md).
 
 ### Forking and branching to a new file
 
 `/fork` and `/branch` both create a new session file and never modify the original; `/tree`
 navigation above stays inside the current file.
 
-- **`/fork`** duplicates the **entire** current session — every entry, including sibling branches —
+- **`/fork`** duplicates the **entire** current session (every entry, including sibling branches)
   into a new persisted file. There is no entry picker; for a slice from a chosen point, use
   `/branch`. `veyyon --fork <session-id>` does the same at startup, and the launch session picker
   forks a recorded session the same way.

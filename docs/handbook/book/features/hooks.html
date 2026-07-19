@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-a2447057.js";
+            window.path_to_searchindex_js = "../searchindex-b31c94e7.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-cc1a72e9.js"></script>
@@ -196,7 +196,12 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="hooks"><a class="header" href="#hooks">Hooks</a></h1>
-<p>Hooks are TypeScript modules discovered under hook paths (for example <code>.veyyon/hooks/</code>) and loaded through the extension runner. Each module default-exports a factory that registers handlers with <code>pi.on(...)</code>.</p>
+<p>A hook lets you run your own code at a moment in the session: before a tool call, after a message,
+when a turn ends. You use one to enforce policy (block a dangerous command), add context, or record
+what happened. The example below refuses any <code>bash</code> command containing <code>rm -rf</code>.</p>
+<p>A hook is a TypeScript module. You put it under a hook path (for example <code>.veyyon/hooks/</code>), and Veyyon
+loads it through the extension runner. The module default-exports a factory function that registers
+handlers with <code>pi.on(...)</code>, one handler per event you care about.</p>
 <p>CLI: <code>--hook</code> is an alias for <code>--extension</code> (paths merge into extension loading).</p>
 <p>Full API and event list: repository <code>docs/hooks.md</code> and <code>packages/coding-agent/src/extensibility/hooks/</code>.</p>
 <h2 id="module-shape"><a class="header" href="#module-shape">Module shape</a></h2>

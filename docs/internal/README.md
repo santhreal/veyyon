@@ -1,6 +1,6 @@
 # Internal documentation
 
-Implementation and contributor docs — how Veyyon works, ships, and is built, for the people changing
+Implementation and contributor docs, how Veyyon works, ships, and is built, for the people changing
 it. None of this is published to the website or needed to *use* Veyyon; the operator-facing manual is
 the [handbook](../handbook/). For the map from `src/` subsystems to their authoritative doc, start at
 [`packages/coding-agent/DEVELOPMENT.md`](../../packages/coding-agent/DEVELOPMENT.md); load-bearing
@@ -16,7 +16,7 @@ New here? Read [onboarding](onboarding.md) and [testing](testing.md) first.
 - **Keep it navigable.** Every new internal doc gets a row in the relevant table below.
 - **Verification stamps.** A doc whose claims have been checked against the code ends with
   `*Verified against \`<commit-sha>\` on YYYY-MM-DD.*` as its last line. `scripts/check-doc-freshness.ts`
-  (a `docs.yml` gate) fails a stamped doc edited after its stamp date — re-verify and re-stamp in the
+  (a `docs.yml` gate) fails a stamped doc edited after its stamp date, re-verify and re-stamp in the
   same change. Stamping is earned by actually verifying, never backfilled blind; unstamped docs are
   reported loudly but do not fail.
 

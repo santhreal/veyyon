@@ -9,7 +9,7 @@ veyyon is ~665k lines of non-test TypeScript (plus ~427k lines of TS tests) and 
 lines of Rust across nine crates. The TypeScript is the entire product surface: the
 agent loop, the differential-rendering TUI, the multi-provider streaming client, the
 tool engine, MCP, the model catalog, modes, commands. The Rust is only the
-performance-critical natives — grep, PTY, shell, text/AST — reached from TS through a
+performance-critical natives, grep, PTY, shell, text/AST, reached from TS through a
 napi addon.
 
 The question raised: should veyyon migrate fully to Rust (cargo) instead of Bun?
@@ -21,7 +21,7 @@ incrementally where profiling justifies it.
 
 ## Consequences
 
-- Iteration speed stays high on the parts that change most — agent behavior and UX.
+- Iteration speed stays high on the parts that change most: agent behavior and UX.
 - Bun-specific APIs (`Bun.file`, Bun Shell, `bun:sqlite`, `Bun.stringWidth`, single-file
   `--compile`, the worker-reentry model) remain load-bearing; that dependency is
   accepted.

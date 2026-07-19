@@ -5,7 +5,7 @@ before tools are sent on the wire. All walkers live in
 `packages/ai/src/utils/schema/normalize.ts`; the operational contract is
 `packages/ai/src/utils/schema/CONSTRAINTS.md`.
 
-There is no separate `strict-mode.ts` module any more — OpenAI strict-mode
+There is no separate `strict-mode.ts` module any more, OpenAI strict-mode
 sanitization, OpenAI Responses `oneOf` rewriting, Google/Vertex/Gemini-CLI
 sanitization, Cloud Code Assist Claude sanitization, and MCP sanitization all
 share the same option-driven walk.
@@ -14,26 +14,26 @@ share the same option-driven walk.
 
 All exports live under `@veyyon/ai/utils/schema`:
 
-- `normalizeSchema(value, options)` — generic option-driven walker.
-- `normalizeSchemaForGoogle(value)` — Gemini / Vertex / Gemini CLI.
-- `normalizeSchemaForCCA(value)` — Cloud Code Assist Claude (Antigravity + GCA).
-- `normalizeSchemaForMCP(value)` — MCP inputSchemas before they enter the
+- `normalizeSchema(value, options)`: generic option-driven walker.
+- `normalizeSchemaForGoogle(value)`: Gemini / Vertex / Gemini CLI.
+- `normalizeSchemaForCCA(value)`: Cloud Code Assist Claude (Antigravity + GCA).
+- `normalizeSchemaForMCP(value)`: MCP inputSchemas before they enter the
   custom-tool registry. `tool-bridge.ts` runs every MCP `inputSchema` through
   this dispatcher.
-- `normalizeSchemaForMoonshot(value)` — Moonshot/Kimi tool schemas on the
+- `normalizeSchemaForMoonshot(value)`: Moonshot/Kimi tool schemas on the
   `openai-completions` transport (keyword whitelist + type-array → nullable
   rewrite; MFJS `default`/`description` preserved).
-- `sanitizeSchemaForOllama(schema)` — rewrites forms Ollama's Go `/api/chat`
+- `sanitizeSchemaForOllama(schema)`: rewrites forms Ollama's Go `/api/chat`
   tool parser cannot unmarshal (boolean subschemas, type arrays) before send
   in `providers/ollama.ts`.
 - `sanitizeSchemaForOpenAIResponses(schema)` (alias
-  `normalizeSchemaForOpenAIResponses`) — rewrites `oneOf` → `anyOf` for the
+  `normalizeSchemaForOpenAIResponses`), rewrites `oneOf` → `anyOf` for the
   Responses family.
 - `sanitizeSchemaForStrictMode(schema)` and
-  `enforceStrictSchema(schema)` / `tryEnforceStrictSchema(schema)` — the
+  `enforceStrictSchema(schema)` / `tryEnforceStrictSchema(schema)`, the
   OpenAI strict-mode pipeline (sanitize → enforce). All three are exported
   from `normalize.ts`.
-- `adaptSchemaForStrict(schema, strict)` from `./adapt` — thin composer that
+- `adaptSchemaForStrict(schema, strict)` from `./adapt`: thin composer that
   upgrades draft-07 inputs to 2020-12 and wraps `tryEnforceStrictSchema` for
   provider call sites. `./adapt` also exports the `NO_STRICT` global-bypass
   flag (env `VEYYON_NO_STRICT`, read via `$flag`) honored by every provider that
@@ -44,9 +44,9 @@ Removed in the unified-flow refactor:
 - `strict-mode.ts` (merged into `normalize.ts`).
 - `sanitize-google.ts` and `normalize-cca.ts` (replaced by
   `normalizeSchemaFor*` dispatchers).
-- `StringEnum` helper — use `z.enum([...])` directly; Zod's emitted JSON
+- `StringEnum` helper: use `z.enum([...])` directly; Zod's emitted JSON
   Schema is already wire-compatible with Google and other providers.
-- `sanitizeSchemaFor{Google,CCA,MCP}` / `prepareSchemaForCCA` — renamed to
+- `sanitizeSchemaFor{Google,CCA,MCP}` / `prepareSchemaForCCA`: renamed to
   `normalizeSchemaFor{Google,CCA,MCP}`.
 
 ## Dispatcher mapping
@@ -74,7 +74,7 @@ pinned by the dispatcher. Each node:
 
 1. Renames `snake_case` combinator/property keys to camelCase
    (`any_of` → `anyOf`, etc.; collisions follow python-genai
-   `pop(from)`/`set(to)` semantics — snake_case wins).
+   `pop(from)`/`set(to)` semantics, snake_case wins).
 2. Applies the `handle_null_fields` collapse for nullable unions before
    recursing into children.
 3. Strips keys the target provider does not support, optionally lifting
@@ -89,7 +89,7 @@ pinned by the dispatcher. Each node:
 6. Validates with the in-house structural validator (`isValidJsonSchema`
    from `meta-validator.ts`) when `validateAndFallback` is set (CCA path)
    and emits the per-tool fallback `{ "type": "object", "properties": {} }`
-   on residual incompatibility — `type` array, `type: "null"`, `nullable`
+   on residual incompatibility, `type` array, `type: "null"`, `nullable`
    key, or any remaining `anyOf`/`oneOf`/`allOf`.
 
 ## OpenAI strict-mode pipeline
@@ -120,7 +120,7 @@ so callers MUST emit `strict: true` only when enforcement actually succeeded.
 - **Local `$ref` inlining.** OpenAI strict mode rejects
   `{ "$ref": "...", "description": "..." }` with sibling keys. The
   sanitizer pre-resolves local `#/...` refs against the root and merges
-  with **sibling keys winning** over the resolved def — same precedence
+  with **sibling keys winning** over the resolved def, same precedence
   as `openai-python`'s `_ensure_strict_json_schema`. Recursive refs are
   guarded by the per-walk epoch.
 - **Single-item `allOf`.** A `{ "allOf": [X], ...siblings }` collapses to
@@ -133,7 +133,7 @@ so callers MUST emit `strict: true` only when enforcement actually succeeded.
   pruning type-specific keywords (e.g. `properties`/`required` only stay on
   the `object` variant, `items` only on the `array` variant). The shared
   `description` is **hoisted onto the `anyOf` wrapper** instead of being
-  duplicated on every branch — so a strict nullable union becomes
+  duplicated on every branch, so a strict nullable union becomes
   `{ anyOf: [T, { type: "null" }], description: "..." }`, not
   `anyOf: [{ ..., description }, { ..., description }]`.
 - **Enum/const without a `type`.** Both sanitize and enforce paths call
@@ -141,7 +141,7 @@ so callers MUST emit `strict: true` only when enforcement actually succeeded.
   from `enum` / `const` values. Mixed-primitive enums (`[1, "two", null]`),
   enums containing objects/arrays, and non-primitive `const` values
   (`{a:1}`, `[1,2,3]`) cannot be described by a single `type` keyword and
-  trigger the strict-mode fail-open path — emitting a typeless schema
+  trigger the strict-mode fail-open path, emitting a typeless schema
   would just be rejected on the wire by OpenAI.
 
 ## Performance: static fingerprint cache
@@ -162,7 +162,7 @@ default `''` to older tables).
 - On cache read, if the network fetch is being skipped, the cached row is
   fresh + authoritative, and the cached `static_fingerprint` matches the
   current one, `resolveProviderModels` returns the cached models verbatim
-  — the cache already incorporates the same static state, so re-running
+, the cache already incorporates the same static state, so re-running
   `mergeDynamicModels(static, cache)` would just rebuild the same objects.
 - `mergeModelSources` and `mergeDynamicModels` short-circuit on
   empty-source inputs (the common shape after `(static, [])` or for
@@ -175,13 +175,13 @@ and the full merge re-runs.
 
 ## Related
 
-- `docs/models.md` — registry, equivalence, compat flags
+- `docs/models.md`: registry, equivalence, compat flags
   (`supportsStrictMode`, `toolStrictMode`, `disableStrictTools`).
-- `docs/provider-streaming-internals.md` — how the normalized schemas are
+- `docs/provider-streaming-internals.md`: how the normalized schemas are
   used downstream during the provider stream loop.
-- `docs/internal/mcp-server-tool-authoring.md` — MCP `inputSchema` ingestion via
+- `docs/internal/mcp-server-tool-authoring.md`: MCP `inputSchema` ingestion via
   `normalizeSchemaForMCP`.
-- `packages/ai/src/utils/schema/CONSTRAINTS.md` — operational contract for
+- `packages/ai/src/utils/schema/CONSTRAINTS.md`: operational contract for
   every normalization rule.
 
 *Verified against `7ca44d3` on 2026-07-17.*

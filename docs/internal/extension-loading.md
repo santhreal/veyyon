@@ -14,11 +14,11 @@ Extension loading builds a list of module entry files, imports each module with 
 
 ## Primary implementation files
 
-- `src/extensibility/extensions/loader.ts` — path discovery + import/execution
-- `src/extensibility/extensions/index.ts` — public exports
-- `src/extensibility/extensions/runner.ts` — runtime/event execution after load
-- `src/discovery/builtin.ts` — native auto-discovery provider for extension modules
-- `src/config/settings.ts` — loads merged `extensions` / `disabledExtensions` settings
+- `src/extensibility/extensions/loader.ts`: path discovery + import/execution
+- `src/extensibility/extensions/index.ts`: public exports
+- `src/extensibility/extensions/runner.ts`: runtime/event execution after load
+- `src/discovery/builtin.ts`: native auto-discovery provider for extension modules
+- `src/config/settings.ts`: loads merged `extensions` / `disabledExtensions` settings
 
 ---
 
@@ -43,7 +43,7 @@ Notes:
 
 ### 2) Discovered JS/TS hook factories
 
-After native auto-discovery, `discoverAndLoadExtensions()` also appends JS/TS hook factories from the `hook` capability — any hook whose entry path is a `.ts`/`.js` file — so they load through the same module pipeline.
+After native auto-discovery, `discoverAndLoadExtensions()` also appends JS/TS hook factories from the `hook` capability, any hook whose entry path is a `.ts`/`.js` file, so they load through the same module pipeline.
 
 Hook-capability loading already applies its own hook-specific disabled ids, so these paths are not additionally filtered by `disabledExtensions` extension-module names.
 

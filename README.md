@@ -1,4 +1,8 @@
 <p align="center">
+  <img src="assets/icon.svg" width="72" height="72" alt="Veyyon">
+</p>
+
+<p align="center">
   <strong style="font-size: 2.5em; letter-spacing: 0.08em;">Veyyon</strong>
 </p>
 
@@ -13,16 +17,16 @@
 </p>
 
 <p align="center">
-  Fork of <a href="https://github.com/can1357/oh-my-pi">oh-my-pi</a> (MIT) and <a href="https://github.com/badlogic/pi-mono">Pi</a> by <a href="https://github.com/mariozechner">@mariozechner</a>.
-  Maintained at <a href="https://github.com/santhreal/veyyon">santhreal/veyyon</a>.
+  <em>The coding agent that lives in your terminal.</em>
 </p>
 
+<p align="center">
+  <img src="assets/demo-hero.gif" width="840" alt="Veyyon TUI booting into the ember-sun splash with the composer ready">
+</p>
 
 Terminal coding agent (CLI/TUI). Hashline edits, multi-provider catalog, local credentials, Rust natives on hot paths.
 
 Multi-provider catalog · 31 registered built-in tools (plus optional/gated tools) · LSP/DAP · Rust natives (`@veyyon/natives`).
-
-![Veyyon TUI: task prompt, hashline edits on src/utils.ts and test/utils.test.ts, `bun test` (3 pass), task complete.](assets/onboarding.gif)
 
 ## Install
 
@@ -33,8 +37,6 @@ bun install -g @veyyon/coding-agent
 ```
 
 First interactive `veyyon` opens the first-run setup (providers, glyphs, theme). Re-run with `veyyon setup`.
-
-![Veyyon first-run setup, step 1 of 4: "Set up your providers" with a provider sign-in picker listing ChatGPT Plus/Pro, Anthropic, Z.AI, Kimi Code, OpenRouter, GitHub Copilot, Cursor, Devin, Antigravity, and Google Cloud Code Assist.](assets/setup.webp)
 
 **From source**
 
@@ -54,44 +56,33 @@ macOS · Linux · Windows · bun ≥ 1.3.14
 `veyyon` generates completion scripts for **bash**, **zsh**, and **fish** from live command/flag metadata. Subcommands, flags, and enum values complete statically; model names (`--model`, `--smol`, `--slow`, `--plan`) resolve against the bundled model catalog and `--resume` against on-disk sessions.
 
 ```sh
-# zsh — add to ~/.zshrc (or write the output into a file on your $fpath)
+# zsh: add to ~/.zshrc (or write the output into a file on your $fpath)
 eval "$(veyyon completions zsh)"
 
-# bash — add to ~/.bashrc
+# bash: add to ~/.bashrc
 eval "$(veyyon completions bash)"
 
 # fish
 veyyon completions fish > ~/.config/fish/completions/veyyon.fish
 ```
 
-## Edit format and measured harness effects
+## Why the harness matters
 
-Same model weights; harness changes (edit format, tool surface) change outcomes. Example figures from the oh-my-pi lineage write-up ([harness post](https://blog.can.ac/2026/02/12/the-harness-problem/)):
-
-| model            | metric       | note |
-| ---------------- | ------------ | ---- |
-| Grok Code Fast 1 | 6.7% → 68.3% | pass rate with edit-format change |
-| Gemini 3 Flash   | +5 pp        | vs str_replace baseline in that study |
-| Grok 4 Fast      | −61% tokens  | output tokens when bad-diff retries drop |
-| MiniMax          | 2.1×         | pass rate, same weights/prompt |
-
-Tools include summarized `read`, in-process search, LSP, and per-model prompt assembly. Details: handbook [Mechanisms](docs/handbook/src/why/innovations.md).
+Same model weights, different harness (edit format, tool surface), different outcomes. Veyyon leans on this: hashline edits instead of `str_replace`, summarized `read`, in-process search, LSP, and per-model prompt assembly all shift how reliably a model lands a change. Details: handbook [Mechanisms](docs/handbook/src/why/innovations.md).
 
 ## Features
-
-Built on [Pi](https://github.com/badlogic/pi-mono) / [oh-my-pi](https://github.com/can1357/oh-my-pi).
 
 ### 01 · Code execution with tool-calling
 
 Persistent Python and Bun eval kernels can call agent tools (read, grep, task, …) over a loopback bridge in one session.
 
-![Veyyon TUI: a single eval session with `[1/2] pandas describe` (Python) printing a real DataFrame.describe() table, followed by `[2/2] top scorer` (JavaScript) running a reduce. Footer: 'Both kernels ran in one session.'](assets/python.webp)
+<p align="center">
+  <img src="assets/demo-ask.gif" width="820" alt="Asking about a file: Veyyon calls the read tool and answers grounded in the source">
+</p>
 
 ### 02 · LSP
 
 Rename and related ops go through the language server (including `workspace/willRenameFiles` where supported) so dependent files update with the edit.
-
-![Veyyon TUI: `LSP references` returns five hits across three files for the symbol `formatBytes`, then `LSP rename` applies the change with edits to format.ts/report.ts/cli.ts, then a `Search formatBytes 0 matches` confirmation. Final line: 'Rename complete. Five edits across three files…'.](assets/lspv.webp)
 
 ### 03 · Debugger (DAP)
 
@@ -101,15 +92,9 @@ Attach via DAP backends (lldb, dlv, debugpy, and others configured for the proje
 
 Regex rules can abort a stream mid-token, inject a system reminder, and retry. Injections can survive compaction.
 
-![Veyyon TUI: agent reading src.rs and about to write Box::leak when the request aborts (red `Error: Request was aborted`), an amber `⚠ Injecting rule: box-leak` card injects the rule body `Don't reach for Box::leak in production code paths`, and the agent then course-corrects by proposing `Arc<str>` and asking the user to confirm.](assets/ttsr.webp)
-
-
 ### 05 · Subagents
 
 The `task` tool fans out into optional isolated worktrees; workers use their own tool surface and can return schema-validated results to the parent.
-
-![Veyyon TUI showing `task` spawning two subagents `ComponentsExports` and `RoutesExports`, the constraints block requiring an IRC DM between peers, the per-subagent status cards with cost and duration, and a final Findings section listing both exports plus an 'IRC coordination note' about a one-sided handshake.](assets/task.webp)
-
 
 ### 06 · Advisor role
 
@@ -123,9 +108,6 @@ A second model (advisor role) can read each main-agent turn and inject notes int
 
 `web_search` ranks providers; `read` accepts URLs (including PDFs) and returns structured markdown for use like local files.
 
-![Veyyon TUI: web_search returns 10 ranked Perplexity sources for inference-time compute scaling, the agent picks an arxiv paper, calls read https://arxiv.org/pdf/2604.10739v1, and summarizes the paper's headline result with real numbers.](assets/perplexity.webp)
-
-
 ### 09 · In-process tools
 
 Search/glob/find run in-process via natives; shell uses brush with session continuity. One binary for macOS, Linux, and Windows.
@@ -134,11 +116,13 @@ Search/glob/find run in-process via natives; shell uses brush with session conti
 
 Interactive code review over branches, commits, or uncommitted work; findings ranked with confidence scores in-session.
 
-![Veyyon TUI: a /review pass over a branch, listing findings ranked P0 through P3 with per-issue confidence scores and a final ships/does-not-ship verdict.](assets/review.webp)
-
 ### 11 · Hashline
 
 Edits reference content-hash anchors from prior reads instead of retyping surrounding lines. Stale anchors fail verification before write.
+
+<p align="center">
+  <img src="assets/demo-edit.gif" width="820" alt="A hashline edit landing: read, anchored diff, and a verified write to src/utils.ts">
+</p>
 
 ### 12 · Unified read surface
 
@@ -182,28 +166,28 @@ Tools share the agent registry with `read` and `bash`. Restrict the exposed set 
 
 **Files and search**
 
-- `read` — files, dirs, archives, SQLite, PDFs, notebooks, URLs, internal schemes
-- `write` — create or overwrite a file, archive entry, or SQLite row
-- `edit` — hashline patches with content-hash anchors
-- `ast_edit` / `ast_grep` — structural rewrite preview and queries
-- `grep` / `glob` — content regex and path globs
+- `read`: files, dirs, archives, SQLite, PDFs, notebooks, URLs, internal schemes
+- `write`: create or overwrite a file, archive entry, or SQLite row
+- `edit`: hashline patches with content-hash anchors
+- `ast_edit` / `ast_grep`: structural rewrite preview and queries
+- `grep` / `glob`: content regex and path globs
 
 **Runtime**
 
-- `bash` — shell (optional PTY / background jobs)
-- `eval` — persistent Python/JS cells
-- `ssh` — remote host command
+- `bash`: shell (optional PTY / background jobs)
+- `eval`: persistent Python/JS cells
+- `ssh`: remote host command
 
 **Code intelligence**
 
-- `lsp` — diagnostics, navigation, symbols, renames, code actions
-- `debug` — DAP session control
+- `lsp`: diagnostics, navigation, symbols, renames, code actions
+- `debug`: DAP session control
 
 **Coordination**
 
-- `task` — subagents (optional workspace isolation)
-- `irc` — inter-agent messages in-process
-- `todo` / `job` / `ask` — list, background jobs, interactive questions
+- `task`: subagents (optional workspace isolation)
+- `irc`: inter-agent messages in-process
+- `todo` / `job` / `ask`: list, background jobs, interactive questions
 
 **External and media**
 
@@ -217,8 +201,8 @@ Tools share the agent registry with `read` and `bash`. Restrict the exposed set 
 
 **Misc**
 
-- `resolve` — apply or discard a queued preview action.
-- `search_tool_bm25` — BM25 over the hidden tool index; activates top matches mid-session.
+- `resolve`: apply or discard a queued preview action.
+- `search_tool_bm25`: BM25 over the hidden tool index; activates top matches mid-session.
 
 Setting-gated, off by default: `github`, `inspect_image`, `tts`, `checkpoint`, `rewind`, `search_tool_bm25`, `retain`, `recall`, `reflect`. Flip them on once, scoped per project.
 
@@ -232,8 +216,6 @@ Setting-gated, off by default: `github`, `inspect_image`, `tts`, `checkpoint`, `
 - **Cycle:** `cycleOrder` (default `smol`, `slow`); keybinding `app.model.cycleForward` (often Ctrl+P).
 
 See [Models, roles, and profiles](docs/handbook/src/using/roles-and-profiles.md).
-
-![Veyyon /model picker: a "Switch Model" panel listing configured providers and models with context-window sizes and per-million pricing, a green dot marking the current model, and type-to-search across the whole catalog.](assets/models.webp)
 
 Auth tags below: `oauth` signs in with your provider account, `plan` routes through a coding-plan subscription, `local` runs against a local server with the key optional.
 
@@ -257,10 +239,10 @@ Ollama `local` · Ollama Cloud · LM Studio `local` · llama.cpp `local` · vLLM
 
 ### Routing settings
 
-- **Custom providers** — OpenAI-compatible and other API kinds in `~/.veyyon/profiles/default/agent/models.yml` (`openai-completions`, `openai-responses`, `openai-codex-responses`, `azure-openai-responses`, `anthropic-messages`, `google-generative-ai`, `google-vertex`, …).
-- **Fallback chains** — `retry.fallbackChains` (per role or model). On 429/quota failure the next entry continues the turn; primary returns after cooldown.
-- **Path-scoped models** — `enabledModels` / `disabledProviders` with a `path:` prefix for repo-local sets.
-- **Round-robin credentials** — Multiple API keys per provider with session affinity and per-credential backoff.
+- **Custom providers**: OpenAI-compatible and other API kinds in `~/.veyyon/profiles/default/agent/models.yml` (`openai-completions`, `openai-responses`, `openai-codex-responses`, `azure-openai-responses`, `anthropic-messages`, `google-generative-ai`, `google-vertex`, …).
+- **Fallback chains**: `retry.fallbackChains` (per role or model). On 429/quota failure the next entry continues the turn; primary returns after cooldown.
+- **Path-scoped models**: `enabledModels` / `disabledProviders` with a `path:` prefix for repo-local sets.
+- **Round-robin credentials**: Multiple API keys per provider with session affinity and per-credential backoff.
 
 Provider and routing settings: `~/.veyyon/profiles/default/agent/models.yml` (see `packages/coding-agent` docs).
 
@@ -305,17 +287,17 @@ Providers (pin one, or `auto`):
 
 Host-specific extraction for:
 
-- **Code hosts** — github, gitlab
-- **Package registries** — npm, PyPI, crates.io, Hex, Hackage, NuGet, Maven, RubyGems, Packagist, pub.dev, Go packages
-- **Research** — arxiv, semantic scholar
-- **Forums** — stack overflow, reddit, hn
-- **Docs** — mdn, readthedocs, docs.rs
+- **Code hosts**: github, gitlab
+- **Package registries**: npm, PyPI, crates.io, Hex, Hackage, NuGet, Maven, RubyGems, Packagist, pub.dev, Go packages
+- **Research**: arxiv, semantic scholar
+- **Forums**: stack overflow, reddit, hn
+- **Docs**: mdn, readthedocs, docs.rs
 
 ### Security databases
 
-- **NVD** — national vulnerability database
-- **OSV** — open source vuln feed
-- **CISA KEV** — known exploited vulns
+- **NVD**: national vulnerability database
+- **OSV**: open source vuln feed
+- **CISA KEV**: known exploited vulns
 
 [`web_search` source](packages/coding-agent/src/web/search/index.ts)
 
@@ -366,9 +348,11 @@ Same engine, four hosts:
 
 Default surface. Tool calls render as cards; the `ask` tool shows a structured option picker. The same permission/ask surfaces can route over ACP when the client advertises them.
 
-![Veyyon TUI: the ask tool renders an option picker with three choices, a (Recommended) badge on the first, and 'up/down navigate · enter select · esc cancel' footer.](assets/ask.webp)
+<p align="center">
+  <img src="assets/demo-commands.gif" width="820" alt="Typing / opens the slash-command palette, filtering live to model and session commands">
+</p>
 
-### SDK — embed in Node
+### SDK: embed in Node
 
 `@veyyon/coding-agent`
 
@@ -394,7 +378,7 @@ const { session } = await createAgentSession({
 await session.prompt("list .ts files");
 ```
 
-### RPC — drive over stdio
+### RPC: drive over stdio
 
 `veyyon --mode rpc`
 
@@ -408,7 +392,7 @@ $ veyyon --mode rpc --no-session
 > {"id":"r3","type":"abort"}
 ```
 
-### ACP — speak to editors
+### ACP: speak to editors
 
 `veyyon acp`
 
@@ -427,13 +411,11 @@ SDK: `@veyyon/coding-agent` (see `packages/coding-agent`).
 
 Source and releases: [github.com/santhreal/veyyon](https://github.com/santhreal/veyyon).
 
-- **Extensions** — TypeScript modules using the same tool, slash-command, hotkey, and TUI registration APIs as built-ins.
-- **Discovery** — with foreign import enabled, loads rules/skills/MCP from common on-disk layouts (Claude, Cursor, Codex, Gemini, Windsurf, Cline, Copilot, VS Code, …).
-- **Reload** — `/reload-plugins` after local edits; packages publish via npm or marketplaces.
+- **Extensions**: TypeScript modules using the same tool, slash-command, hotkey, and TUI registration APIs as built-ins.
+- **Discovery**: with foreign import enabled, loads rules/skills/MCP from common on-disk layouts (Claude, Cursor, Codex, Gemini, Windsurf, Cline, Copilot, VS Code, …).
+- **Reload**: `/reload-plugins` after local edits; packages publish via npm or marketplaces.
 
-## Lineage
-
-Fork of [pi-mono](https://github.com/badlogic/pi-mono) / [oh-my-pi](https://github.com/can1357/oh-my-pi). Operator handbook: `docs/handbook/`.
+Operator handbook: `docs/handbook/`.
 
 ---
 
@@ -503,12 +485,9 @@ See **[CONTRIBUTING.md](CONTRIBUTING.md)** for contribution guidelines.
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE) for the full text and copyright notices.
 
-Veyyon is a fork of [oh-my-pi](https://github.com/can1357/oh-my-pi) (MIT) and [Pi](https://github.com/badlogic/pi-mono) by [Mario Zechner](https://github.com/mariozechner).
-
-© 2025 Mario Zechner  
-© 2025-2026 Can Bölük
+Veyyon is a fork of oh-my-pi (MIT) and Pi, created by Mario Zechner and Can Bölük. Their copyright notices are retained in [LICENSE](LICENSE).
 
 - [GitHub](https://github.com/santhreal/veyyon)
 - [Changelog](https://github.com/santhreal/veyyon/blob/main/packages/coding-agent/CHANGELOG.md)

@@ -32,7 +32,7 @@ All providers emit the same shape (`AssistantMessageEvent` in `packages/ai/src/t
 
 ## Delta throttling behavior
 
-`AssistantMessageEventStream` itself no longer throttles or merges delta events — every provider event is delivered as pushed. The per-delta cost control moved into tool-call argument parsing: providers accumulate partial JSON and re-parse it via `parseStreamingJsonThrottled()` (`packages/utils/src/json-parse.ts`), which skips the re-parse until at least `STREAMING_JSON_PARSE_MIN_GROWTH` (256) new bytes have arrived, bounding mid-stream parse cost from quadratic to linear. The final `toolcall_end` parse is always unconditional and authoritative.
+`AssistantMessageEventStream` itself no longer throttles or merges delta events, every provider event is delivered as pushed. The per-delta cost control moved into tool-call argument parsing: providers accumulate partial JSON and re-parse it via `parseStreamingJsonThrottled()` (`packages/utils/src/json-parse.ts`), which skips the re-parse until at least `STREAMING_JSON_PARSE_MIN_GROWTH` (256) new bytes have arrived, bounding mid-stream parse cost from quadratic to linear. The final `toolcall_end` parse is always unconditional and authoritative.
 
 There is no provider backpressure: providers still produce at full speed, while the local stream queues.
 
@@ -56,10 +56,10 @@ Normalization points:
 
 Tool-call argument streaming:
 
-- each tool block carries a symbol-keyed buffer `[kStreamingPartialJson]` (`packages/ai/src/utils/block-symbols.ts` — symbol keys keep it out of JSON serialization)
+- each tool block carries a symbol-keyed buffer `[kStreamingPartialJson]` (`packages/ai/src/utils/block-symbols.ts`: symbol keys keep it out of JSON serialization)
 - every `input_json_delta` appends to that buffer
 - `arguments` are reparsed on appended deltas via `parseStreamingJsonThrottled()` (re-parse only after ≥256 new bytes, tracked by `[kStreamingLastParseLen]`)
-- at finalize (`finalizeStreamBlock`), the buffer is parsed once more with `parseJsonWithRepair`; on failure the best-effort streamed arguments are kept, or — if nothing was recovered — `arguments` becomes a loud `{ __parseError, __rawJson }` record; the buffer is then cleared via `clearStreamingPartialJson`
+- at finalize (`finalizeStreamBlock`), the buffer is parsed once more with `parseJsonWithRepair`; on failure the best-effort streamed arguments are kept, or, if nothing was recovered, `arguments` becomes a loud `{ __parseError, __rawJson }` record; the buffer is then cleared via `clearStreamingPartialJson`
 
 ## OpenAI Responses family (`openai-responses`, `openai-codex-responses`, `azure-openai-responses`)
 
@@ -206,15 +206,15 @@ Provider-specific (not fully abstracted):
 
 ## Implementation files
 
-- [`../../ai/src/stream.ts`](../../packages/ai/src/stream.ts) — provider dispatch, option mapping, API key/session plumbing, custom API dispatch, and provider-specific credential handling.
-- [`../../ai/src/utils/event-stream.ts`](../../packages/ai/src/utils/event-stream.ts) — generic stream queue + final-result resolution.
-- [`packages/utils/src/json-parse.ts`](../../packages/utils/src/json-parse.ts) — partial JSON parsing for streamed tool arguments.
-- [`../../ai/src/providers/anthropic.ts`](../../packages/ai/src/providers/anthropic.ts) — Anthropic event translation and tool JSON delta accumulation.
-- [`../../ai/src/providers/openai-responses.ts`](../../packages/ai/src/providers/openai-responses.ts), [`openai-shared.ts`](../../packages/ai/src/providers/openai-shared.ts), [`openai-codex-responses.ts`](../../packages/ai/src/providers/openai-codex-responses.ts), [`azure-openai-responses.ts`](../../packages/ai/src/providers/azure-openai-responses.ts) — Responses-family event translation and status mapping.
-- [`../../ai/src/providers/google.ts`](../../packages/ai/src/providers/google.ts), [`google-gemini-cli.ts`](../../packages/ai/src/providers/google-gemini-cli.ts), [`google-vertex.ts`](../../packages/ai/src/providers/google-vertex.ts) — Gemini stream chunk-to-block translation variants.
-- [`../../ai/src/providers/google-shared.ts`](../../packages/ai/src/providers/google-shared.ts) — Gemini finish-reason mapping and shared conversion rules.
-- [`../../ai/src/providers/amazon-bedrock.ts`](../../packages/ai/src/providers/amazon-bedrock.ts), [`openai-completions.ts`](../../packages/ai/src/providers/openai-completions.ts), [`ollama.ts`](../../packages/ai/src/providers/ollama.ts), [`cursor.ts`](../../packages/ai/src/providers/cursor.ts), [`pi-native-client.ts`](../../packages/ai/src/providers/pi-native-client.ts) — additional built-in stream adapters using the same event contract.
-- [`../../agent/src/agent-loop.ts`](../../packages/agent/src/agent-loop.ts) — provider stream consumption and `message_update` bridging.
-- [`../src/session/agent-session.ts`](../../packages/coding-agent/src/session/agent-session.ts) — session-level handling of streaming updates, abort, retry, and persistence.
+- [`../../ai/src/stream.ts`](../../packages/ai/src/stream.ts): provider dispatch, option mapping, API key/session plumbing, custom API dispatch, and provider-specific credential handling.
+- [`../../ai/src/utils/event-stream.ts`](../../packages/ai/src/utils/event-stream.ts): generic stream queue + final-result resolution.
+- [`packages/utils/src/json-parse.ts`](../../packages/utils/src/json-parse.ts): partial JSON parsing for streamed tool arguments.
+- [`../../ai/src/providers/anthropic.ts`](../../packages/ai/src/providers/anthropic.ts): Anthropic event translation and tool JSON delta accumulation.
+- [`../../ai/src/providers/openai-responses.ts`](../../packages/ai/src/providers/openai-responses.ts), [`openai-shared.ts`](../../packages/ai/src/providers/openai-shared.ts), [`openai-codex-responses.ts`](../../packages/ai/src/providers/openai-codex-responses.ts), [`azure-openai-responses.ts`](../../packages/ai/src/providers/azure-openai-responses.ts): Responses-family event translation and status mapping.
+- [`../../ai/src/providers/google.ts`](../../packages/ai/src/providers/google.ts), [`google-gemini-cli.ts`](../../packages/ai/src/providers/google-gemini-cli.ts), [`google-vertex.ts`](../../packages/ai/src/providers/google-vertex.ts): Gemini stream chunk-to-block translation variants.
+- [`../../ai/src/providers/google-shared.ts`](../../packages/ai/src/providers/google-shared.ts): Gemini finish-reason mapping and shared conversion rules.
+- [`../../ai/src/providers/amazon-bedrock.ts`](../../packages/ai/src/providers/amazon-bedrock.ts), [`openai-completions.ts`](../../packages/ai/src/providers/openai-completions.ts), [`ollama.ts`](../../packages/ai/src/providers/ollama.ts), [`cursor.ts`](../../packages/ai/src/providers/cursor.ts), [`pi-native-client.ts`](../../packages/ai/src/providers/pi-native-client.ts): additional built-in stream adapters using the same event contract.
+- [`../../agent/src/agent-loop.ts`](../../packages/agent/src/agent-loop.ts): provider stream consumption and `message_update` bridging.
+- [`../src/session/agent-session.ts`](../../packages/coding-agent/src/session/agent-session.ts): session-level handling of streaming updates, abort, retry, and persistence.
 
 *Verified against `7ca44d3` on 2026-07-17.*

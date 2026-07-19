@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-a2447057.js";
+            window.path_to_searchindex_js = "../searchindex-b31c94e7.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-cc1a72e9.js"></script>
@@ -196,9 +196,11 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="plugins"><a class="header" href="#plugins">Plugins</a></h1>
-<p>Plugins add skills, MCP servers, hooks, and related assets. Manifest fields such as <code>apps</code> are
-schema keys for packaged connectors when present; see <a href="./connectors.html">Connectors</a> for the
-current integration surface (MCP, plugins, hooks, skills).</p>
+<p>A plugin bundles several extensions into one installable package: skills, MCP servers,
+hooks, and related assets that ship and update together. Reach for a plugin when you want to
+share a whole capability at once instead of wiring each piece by hand. Some manifests also
+carry a <code>apps</code> field for packaged connectors; see <a href="./connectors.html">Connectors</a> for the
+current integration surface (MCP, plugins, hooks, and skills).</p>
 <h2 id="plugin-structure"><a class="header" href="#plugin-structure">Plugin Structure</a></h2>
 <p>Every plugin is a directory with a <code>.veyyon-plugin/plugin.json</code> manifest file. The manifest describes the plugin’s metadata and lists its integration points.</p>
 <h3 id="plugin-manifest-pluginjson"><a class="header" href="#plugin-manifest-pluginjson">Plugin Manifest (<code>plugin.json</code>)</a></h3>
@@ -320,10 +322,10 @@ $ veyyon plugin marketplace upgrade debug
 <p>Marketplace and plugin state is not kept in <code>config.yml</code>. Two JSON registries, both managed
 by the <code>/plugins</code> UI and the <code>veyyon plugin</code> CLI (edit through those, not by hand):</p>
 <ul>
-<li><strong><code>marketplaces.json</code></strong> (under the config root, next to <code>config.yml</code>) — which catalogs you
+<li><strong><code>marketplaces.json</code></strong> (under the config root, next to <code>config.yml</code>): which catalogs you
 have added. Each entry records the marketplace <code>name</code>, <code>sourceType</code>, <code>sourceUri</code>,
 <code>catalogPath</code>, and added/updated timestamps.</li>
-<li><strong><code>installed_plugins.json</code></strong> (under the plugins dir) — which plugins are installed. Each
+<li><strong><code>installed_plugins.json</code></strong> (under the plugins dir): which plugins are installed. Each
 entry is keyed <code>&lt;plugin_name&gt;@&lt;marketplace_name&gt;</code> and records the install <code>scope</code>
 (user or project), <code>installPath</code>, <code>version</code>, install/update timestamps, the source git
 commit, and an <code>enabled</code> toggle.</li>
@@ -331,7 +333,7 @@ commit, and an <code>enabled</code> toggle.</li>
 <p>The one plugin-related key that does live in <code>config.yml</code> is <code>marketplace.autoUpdate</code>
 (<code>off</code> / <code>notify</code> / <code>auto</code>), which controls the startup update check.</p>
 <h2 id="related-recipes"><a class="header" href="#related-recipes">Related recipes</a></h2>
-<p>Plugins are installed through the <code>/plugins</code> popup or the <code>veyyon plugin</code> CLI above — there is
+<p>Plugins are installed through the <code>/plugins</code> popup or the <code>veyyon plugin</code> CLI above, there is
 no model-facing plugin-install tool. For task-shaped recipes that combine plugins with MCP and
 skills, see <a href="../using/task-guides.html">Task guides</a>.</p>
 

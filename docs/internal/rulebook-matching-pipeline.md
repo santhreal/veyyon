@@ -55,7 +55,7 @@ Consequence: precedence and deduplication are **name-based only**. Two different
 `src/discovery/index.ts` auto-registers providers. For `rules`, current providers are:
 
 - `native` (priority `100`)
-- `veyyon-plugins` (priority `90`) — `rules/*.{md,mdc}` inside configured extension package roots, normalized via the shared `buildRuleFromMarkdown` path
+- `veyyon-plugins` (priority `90`): `rules/*.{md,mdc}` inside configured extension package roots, normalized via the shared `buildRuleFromMarkdown` path
 - `agents` (priority `70`)
 - `cursor` (priority `50`)
 - `windsurf` (priority `50`)
@@ -100,7 +100,7 @@ Loads from:
 Normalization (`transformMDCRule`):
 
 - `description`: kept only if string
-- `alwaysApply`: normalized to a boolean — `true` only when frontmatter has `alwaysApply: true` (anything else becomes `false`)
+- `alwaysApply`: normalized to a boolean: `true` only when frontmatter has `alwaysApply: true` (anything else becomes `false`)
 - `globs`: accepts array (string elements only) or single string
 - `condition`/legacy `ttsr_trigger`, `astCondition`, `scope`, and `interruptMode` are parsed by shared rule helpers
 - `name` from filename without extension
@@ -145,7 +145,7 @@ Ambiguity consequences:
 
 - Fallback parser does not support arrays, nested objects, or quoting rules.
 - Fallback values become strings (for example `alwaysApply: true` becomes string `"true"`), so providers requiring boolean/string types may drop metadata.
-- `ttsr_trigger` works in fallback (underscore key); hyphenated keys like `thinking-level` also parse and are normalized to camelCase (`thinkingLevel`) — key normalization applies to the YAML path too.
+- `ttsr_trigger` works in fallback (underscore key); hyphenated keys like `thinking-level` also parse and are normalized to camelCase (`thinkingLevel`): key normalization applies to the YAML path too.
 - Files without valid frontmatter still load as rules with empty metadata and full content body.
 
 ## 4. Provider precedence and deduplication

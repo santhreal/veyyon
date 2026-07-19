@@ -5,7 +5,7 @@
 
 ## Context
 
-veyyon needed a terminal coding agent with a mature harness — agent loop, TUI, provider
+veyyon needed a terminal coding agent with a mature harness, agent loop, TUI, provider
 integrations, tools, sessions, MCP. Building that from zero is a multi-year effort
 before reaching parity with existing tools. [oh-my-pi](https://github.com/can1357/oh-my-pi)
 is MIT-licensed and already implements this surface well.
@@ -23,7 +23,7 @@ MIT attribution and fork provenance (`LICENSE`, `NOTICE`, `UPSTREAM.md`).
 - The inherited history has to be handled honestly: the per-package changelogs carry
   oh-my-pi's release history, marked as upstream, not veyyon's (see
   [ADR 0003](0003-reset-versioning-to-1.0.0.md)).
-- Ongoing debranding is required — stale `omp`/`pi-mono` names in code, docs, and CI are
+- Ongoing debranding is required: stale `omp`/`pi-mono` names in code, docs, and CI are
   tracked as findings until gone.
 - Upstream fixes can be selectively ported; veyyon is not obligated to track upstream.
 

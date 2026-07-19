@@ -258,12 +258,12 @@ export default function extension(pi: ExtensionAPI): void {
 
 ## Key implementation files
 
-- `packages/tui/src/tui.ts` — `Component`, `Focusable`, cursor marker, focus, overlay, input dispatch.
-- `packages/tui/src/utils.ts` — width/truncation/sanitization primitives.
-- `packages/tui/src/keys.ts` / `keybindings.ts` — key parsing and configurable action mapping.
-- `packages/coding-agent/src/modes/controllers/extension-ui-controller.ts` — interactive mounting/unmounting for extension/hook/custom-tool UI.
-- `packages/coding-agent/src/extensibility/extensions/types.ts` — extension UI and renderer contracts.
-- `packages/coding-agent/src/extensibility/hooks/types.ts` — hook UI contract (legacy custom signature).
-- `packages/coding-agent/src/extensibility/custom-tools/types.ts` — custom tool execute/render contracts.
-- `packages/coding-agent/src/modes/components/tool-execution.ts` — mounting `renderCall`/`renderResult` components and partial-state options.
-- `packages/coding-agent/src/tools/context.ts` — tool UI context propagation (`hasUI`, `ui`).
+- `packages/tui/src/tui.ts`: `Component`, `Focusable`, cursor marker, focus, overlay, input dispatch.
+- `packages/tui/src/utils.ts`: width/truncation/sanitization primitives.
+- `packages/tui/src/keys.ts` / `keybindings.ts`: key parsing and configurable action mapping.
+- `packages/coding-agent/src/modes/controllers/extension-ui-controller.ts`: interactive mounting/unmounting for extension/hook/custom-tool UI.
+- `packages/coding-agent/src/extensibility/extensions/types.ts`: extension UI and renderer contracts.
+- `packages/coding-agent/src/extensibility/hooks/types.ts`: hook UI contract (legacy custom signature).
+- `packages/coding-agent/src/extensibility/custom-tools/types.ts`: custom tool execute/render contracts.
+- `packages/coding-agent/src/modes/components/tool-execution.ts`: mounting `renderCall`/`renderResult` components and partial-state options.
+- `packages/coding-agent/src/tools/context.ts`: tool UI context propagation (`hasUI`, `ui`).

@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-a2447057.js";
+            window.path_to_searchindex_js = "../searchindex-b31c94e7.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-cc1a72e9.js"></script>
@@ -196,37 +196,38 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="quickstart"><a class="header" href="#quickstart">Quickstart</a></h1>
-<p>Install, first session, and a small edit. Full path: <a href="./getting-started.html">Getting started</a>.</p>
+<p>This is the short path: install Veyyon, start a session, and make one small edit. For the full walkthrough, see <a href="./getting-started.html">Getting started</a>.</p>
 <h2 id="before-you-start"><a class="header" href="#before-you-start">Before you start</a></h2>
+<p>Check whether Veyyon is already on your machine:</p>
 <pre><code class="language-shell">which vey
 vey --version
 </code></pre>
-<p>If missing, the one-command installer (wires PATH, completions, and the <code>vey</code> alias):</p>
+<p>If it is missing, the one-command installer wires up your PATH, shell completions, and the <code>vey</code> alias:</p>
 <pre><code class="language-shell">curl -fsSL https://get.veyyon.dev | sh
 </code></pre>
-<p>Or from the npm registry: <code>bun install -g @veyyon/coding-agent</code>. From source: <code>bun setup &amp;&amp; bun dev</code>
-in the repo root. See <a href="./install.html">Install</a>.</p>
+<p>You can also install from the npm registry with <code>bun install -g @veyyon/coding-agent</code>, or build from source with <code>bun setup &amp;&amp; bun dev</code> in the repository root. See <a href="./install.html">Install</a>.</p>
 <h2 id="check-the-environment"><a class="header" href="#check-the-environment">Check the environment</a></h2>
 <pre><code class="language-shell">veyyon plugin doctor
 </code></pre>
-<p>In the TUI, <code>/debug</code> opens interactive diagnostics. See <a href="../features/doctor.html">Diagnostics and health</a>.</p>
-<p>Config and sessions live under <code>~/.veyyon/profiles/default/agent/</code> by default (<code>VEYYON_CONFIG_DIR</code> / <code>VEYYON_CONFIG_DIR</code> / <code>VEYYON_CONFIG_DIR</code> can rename the home-relative dir). Named profiles use <code>~/.veyyon/profiles/&lt;name&gt;/agent/</code>.</p>
+<p>Inside the TUI, <code>/debug</code> opens interactive diagnostics. See <a href="../features/doctor.html">Diagnostics and health</a>.</p>
+<p>By default, your config and sessions live under <code>~/.veyyon/profiles/default/agent/</code>. Two environment variables move them: <code>VEYYON_CONFIG_DIR</code> renames the home-relative config directory, and <code>VEYYON_CODING_AGENT_DIR</code> relocates the agent base. Named profiles use <code>~/.veyyon/profiles/&lt;name&gt;/agent/</code>.</p>
 <h2 id="start-your-first-session"><a class="header" href="#start-your-first-session">Start your first session</a></h2>
 <pre><code class="language-shell">cd my-project
 vey
 </code></pre>
-<p><strong>First interactive launch</strong> shows the first-run setup (splash → providers → glyphs → theme → outro), then the welcome screen and composer. Resume / <code>VEYYON_SKIP_SETUP=1</code> skips it. Re-open providers later with <code>/setup</code> or <code>/providers</code>, or run <code>veyyon setup</code> from the shell.</p>
-<p>After that you should see the TUI composer, model indicator, and workspace path.</p>
+<p>The first interactive launch shows the first-run setup (splash, providers, glyphs, theme, outro), then the welcome screen and composer. Resuming a session, or setting <code>VEYYON_SKIP_SETUP=1</code>, skips it. You can re-open providers later with <code>/setup</code> or <code>/providers</code>, or run <code>veyyon setup</code> from the shell.</p>
+<p>After setup, you should see the TUI composer, the model indicator, and your workspace path.</p>
 <h2 id="ask-for-a-small-edit"><a class="header" href="#ask-for-a-small-edit">Ask for a small edit</a></h2>
 <pre><code class="language-text">&gt; Add a name argument to greet() in greet.py, default 'world'.
 </code></pre>
-<p>Veyyon reads the file, proposes an <code>edit</code> or hashline change, and may pause for approval depending on <code>tools.approvalMode</code>. Press <code>y</code> to accept when prompted.</p>
+<p>Veyyon reads the file, proposes an <code>edit</code> or hashline change, and may pause for approval depending on <code>tools.approvalMode</code>. Press <code>y</code> to accept when it prompts you.</p>
 <h2 id="composer-conveniences"><a class="header" href="#composer-conveniences">Composer conveniences</a></h2>
+<p>A few keys do a lot in the composer:</p>
 <ul>
-<li><code>@</code> — file/skill/plugin completion</li>
-<li><code>/</code> — slash commands (<code>/help</code>, <code>/tree</code>, <code>/settings</code>, …)</li>
-<li><code>Esc</code> — interrupt a running turn</li>
-<li><code>?</code> — shortcut hints on empty composer</li>
+<li><code>@</code> completes file, skill, and plugin names.</li>
+<li><code>/</code> opens the slash commands, such as <code>/help</code>, <code>/tree</code>, and <code>/settings</code>.</li>
+<li><code>Esc</code> interrupts a running turn.</li>
+<li><code>?</code> shows shortcut hints when the composer is empty.</li>
 </ul>
 <h2 id="next-steps"><a class="header" href="#next-steps">Next steps</a></h2>
 <ul>
@@ -235,7 +236,7 @@ vey
 <li><a href="./configuration.html">Configuration</a></li>
 <li><a href="../reference/cli.html">CLI reference</a></li>
 </ul>
-<p>You now know the loop: start <code>veyyon</code>, ask, approve tools, inspect diffs.</p>
+<p>You now know the loop: start <code>veyyon</code>, ask, approve the tools, and inspect the diffs.</p>
 
                     </main>
 

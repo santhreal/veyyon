@@ -15,7 +15,7 @@ In the TUI, `/marketplace` with no arguments opens the interactive plugin browse
 
 A **marketplace** is a Git repository (or local directory) containing a catalog file at `.veyyon-plugin/marketplace.json` (preferred) or `.claude-plugin/marketplace.json` (Claude Code-compatible fallback). The catalog lists available plugins with their sources, descriptions, and metadata.
 
-A **plugin** is a directory containing Claude/Veyyon plugin content such as skills, commands, agents, hooks, tools, MCP servers, or LSP servers. Extension modules (`package.json` `veyyon.extensions` entry points; legacy `omp`/`pi` keys still accepted) are not loaded from marketplace installs — they only load for npm-installed or `veyyon plugin link`ed plugins. Plugins are identified by `name@marketplace` (e.g. `code-review@claude-plugins-official`).
+A **plugin** is a directory containing Claude/Veyyon plugin content such as skills, commands, agents, hooks, tools, MCP servers, or LSP servers. Extension modules (`package.json` `veyyon.extensions` entry points; legacy `omp`/`pi` keys still accepted) are not loaded from marketplace installs, they only load for npm-installed or `veyyon plugin link`ed plugins. Plugins are identified by `name@marketplace` (e.g. `code-review@claude-plugins-official`).
 
 **Scopes**: marketplace plugins can be installed at two scopes:
 
@@ -87,7 +87,7 @@ Git and local sources must contain a catalog at `.veyyon-plugin/marketplace.json
 
 ## Catalog format (marketplace.json)
 
-A marketplace catalog lives at `.veyyon-plugin/marketplace.json` in the repository root. When veyyon is the only intended consumer, prefer this path. To remain Claude Code-compatible (veyyon loads the same shape from either path), publish at `.claude-plugin/marketplace.json` instead — veyyon uses it as a fallback when `.veyyon-plugin/marketplace.json` is absent. A repository may ship both: veyyon reads the `.veyyon-plugin/` copy, Claude Code reads the `.claude-plugin/` copy. Same catalog format either way:
+A marketplace catalog lives at `.veyyon-plugin/marketplace.json` in the repository root. When veyyon is the only intended consumer, prefer this path. To remain Claude Code-compatible (veyyon loads the same shape from either path), publish at `.claude-plugin/marketplace.json` instead, veyyon uses it as a fallback when `.veyyon-plugin/marketplace.json` is absent. A repository may ship both: veyyon reads the `.veyyon-plugin/` copy, Claude Code reads the `.claude-plugin/` copy. Same catalog format either way:
 
 ```json
 {

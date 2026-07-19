@@ -1,28 +1,24 @@
 # Core concepts
 
-Vocabulary for sessions, permissions, and the model/provider boundary. Operator commands:
-[Using Veyyon](../using/getting-started.md). Feature guides: [Features](../features/index.md).
+This chapter gives you the vocabulary for how Veyyon runs: sessions, permissions, and the boundary between the harness and your model provider. If you want operator commands instead, see [Using Veyyon](../using/getting-started.md), and for feature guides see [Features](../features/index.md).
 
 ## What this chapter covers
 
-The CLI is **`veyyon`**. It calls a configured model endpoint with your credentials and runs a tool loop
-(read, edit, verify, stop). The pages below define the units and contracts of that loop.
+The CLI is `veyyon`. It calls a configured model endpoint with your credentials and runs a tool loop: read, edit, verify, stop. The pages below define the units and contracts of that loop, so that later chapters can assume you know them.
 
 | Page | What it defines |
 | --- | --- |
-| [Sessions, turns, and threads](./sessions-turns-threads.md) | The runtime units: a session is the persisted run, a turn is one request plus the agent loop, and a thread is the active path through the session tree. |
-| [Permission model](./permission-model.md) | The approval-mode boundary. `tools.approvalMode` (`plan`/`ask`/`auto-edit`/`yolo`) decides which tool tiers run automatically and when Veyyon asks first. There is no OS command sandbox. |
-| [Model contract](./model-contract.md) | The BYOK boundary: endpoint + model + key. What the harness owns versus what the provider owns, Freeform vs Function tools, and how system prompts and tool schemas are presented. |
+| [Sessions, turns, and threads](./sessions-turns-threads.md) | The runtime units. A session is the persisted run, a turn is one request plus the agent loop, and a thread is the active path through the session tree. |
+| [Permission model](./permission-model.md) | The approval-mode boundary. `tools.approvalMode` (`plan`, `ask`, `auto-edit`, `yolo`) decides which tool tiers run automatically and when Veyyon asks you first. There is no operating-system command sandbox. |
+| [Model contract](./model-contract.md) | The bring-your-own-key boundary: endpoint, model, and key. It covers what the harness owns versus what the provider owns, Freeform versus Function tools, and how system prompts and tool schemas are presented. |
 
 ## Foundations that pair with these pages
 
-Before or after this chapter, the foundations pages give the design spine without repeating the
-operator workflow:
+The foundations pages give the design spine without repeating the operator workflow. Read them before or after this chapter, whichever suits you.
 
-- [Core concepts (foundations)](../foundations/core-concepts.md) defines session, thread, turn, rollout
-  JSONL, and the state database in more detail.
-- [Architecture overview](../foundations/architecture.md) maps subsystems to responsibilities.
-- Provider and model configuration: [Providers](../models/providers.md) and [`docs/providers.md`](../../../providers.md).
+- [Core concepts (foundations)](../foundations/core-concepts.md) defines a session, thread, turn, the rollout JSONL, and the state database in more detail.
+- [Architecture overview](../foundations/architecture.md) maps the subsystems to their responsibilities.
+- For provider and model configuration, see [Providers](../models/providers.md) and [`docs/providers.md`](../../../providers.md).
 
 ## How the pieces fit
 
@@ -38,14 +34,10 @@ operator workflow:
                   └─ model id                     (discovered or pinned)
 ```
 
-Changing providers changes endpoint, credentials, and model id. Tool repair, edit verification,
-approvals, and context compaction remain harness behavior. See
-[Configuring providers](../using/configuring-providers.md) and
-[Models and providers](../using/models.md).
+Changing providers changes the endpoint, the credentials, and the model id. Tool repair, edit verification, approvals, and context compaction stay the same, because they are harness behavior. See [Configuring providers](../using/configuring-providers.md) and [Models and providers](../using/models.md).
 
 ## Related reading
 
-- [Permission model](./permission-model.md) and [Approvals](../features/sandbox.md) for the
-  approval modes.
-- Prefer `--approval-mode auto-edit` for bounded automation.
-- [Non-interactive mode](../features/exec.md) for scripted `veyyon` launch patterns.
+- [Permission model](./permission-model.md) and [Approvals](../features/sandbox.md) cover the approval modes.
+- For bounded automation, prefer `--approval-mode auto-edit`.
+- [Non-interactive mode](../features/exec.md) covers scripted `veyyon` launch patterns.

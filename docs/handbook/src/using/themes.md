@@ -6,9 +6,9 @@ Veyyon's interface is built around near-black, near-white, and a persistent **Ve
 
 | File | Name | Notes |
 | --- | --- | --- |
-| `defaults/titanium.json` | Titanium | **Default dark theme.** Pitch black `#000000`, silver `#C6CBD4`, ember accent `#F0862E` — matches the website tokens (`website/site.css`) |
+| `defaults/titanium.json` | Titanium | **Default dark theme.** Pitch black `#000000`, silver `#C6CBD4`, ember accent `#F0862E`, matches the website tokens (`website/site.css`) |
 | `dark.json` | Veyyon Dark | Pitch black `#000000` / `#FAFAFA` / silver `#B8BDC7`; predates the ember accent |
-| `light.json` | Light | **Default light theme.** Titanium's inverse: white `#FFFFFF` ground, dark-silver structure `#5C6470`, ember accent (`#F0862E` chrome, `#B65E14` links) — see `docs/internal/design.md` "Light ground" |
+| `light.json` | Light | **Default light theme.** Titanium's inverse: white `#FFFFFF` ground, dark-silver structure `#5C6470`, ember accent (`#F0862E` chrome, `#B65E14` links), see `docs/internal/design.md` "Light ground" |
 
 A larger bundled catalog ships under `modes/theme/defaults/` and is selectable from the theme picker.
 
@@ -25,7 +25,7 @@ Terminal capability detection maps the same hierarchy for truecolor, ANSI-256, A
 `tui.paintGround` (`/settings` → Appearance → Display) controls whether Veyyon sets the
 terminal's own background color (OSC 11) to the theme's ground while it runs, so the UI
 fills the window edge-to-edge instead of floating on the terminal's configured background.
-The original background is restored on exit — including crash exits.
+The original background is restored on exit, including crash exits.
 
 | Value | Behavior |
 | --- | --- |
@@ -37,7 +37,7 @@ Terminals that don't support OSC 11 ignore the sequence; nothing breaks.
 
 ## What the theme covers
 
-The contract applies to onboarding, composer, menus, dialogs, status line, markdown, tables, diffs, tool output, approvals, progress, and errors — not only the chat pane.
+The contract applies to onboarding, composer, menus, dialogs, status line, markdown, tables, diffs, tool output, approvals, progress, and errors, not only the chat pane.
 
 ## Identity elsewhere
 

@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-a2447057.js";
+            window.path_to_searchindex_js = "../searchindex-b31c94e7.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-cc1a72e9.js"></script>
@@ -256,7 +256,7 @@ Veyyon adapts to that surface through the provider’s <code>api</code> kind:</p
 <li>Model ids come from the provider’s discovery endpoint when discovery runs. There is no hardcoded
 allowlist for BYOK providers, and discovery returns an error; it does not invent an empty catalog on failure.</li>
 </ul>
-<p>Everything beyond the built-in catalog is data in <code>models.yml</code> — see
+<p>Everything beyond the built-in catalog is data in <code>models.yml</code>, see
 <a href="../models/providers.html">Providers</a> and <a href="../../../providers.html"><code>docs/providers.md</code></a>.</p>
 <h2 id="system-prompts-and-tool-schemas"><a class="header" href="#system-prompts-and-tool-schemas">System prompts and tool schemas</a></h2>
 <p>Each turn the harness builds a request that includes:</p>
@@ -323,13 +323,13 @@ have resolvable credentials.</li>
 <p>The conversation model (<code>/model</code> or <code>--model</code>) is separate from background roles. Roles are configured
 under <code>modelRoles</code>:</p>
 <ul>
-<li><code>modelRoles.task</code> — default for spawned subagents unless an agent definition pins its own model.</li>
-<li><code>modelRoles.tiny</code> (or <code>smol</code>) — lightweight background work (titles, memory, auto-thinking).</li>
+<li><code>modelRoles.task</code>: default for spawned subagents unless an agent definition pins its own model.</li>
+<li><code>modelRoles.tiny</code> (or <code>smol</code>): lightweight background work (titles, memory, auto-thinking).</li>
 </ul>
 <p>Precedence for subagents is explicit: an agent definition’s own model pattern wins, otherwise
 <code>modelRoles.task</code>, otherwise the conversation model. There is no silent blend. <code>/status</code> and
 <code>veyyon plugin doctor</code> report the effective values. See
-<a href="../using/models.html#roles-optional">Models and providers</a>.</p>
+<a href="../using/roles-and-profiles.html">Models, roles, and profiles</a>.</p>
 <h2 id="automation-note"><a class="header" href="#automation-note">Automation note</a></h2>
 <p>For non-interactive runs, pass the prompt and pick an approval mode that matches your trust boundary:</p>
 <pre><code class="language-console">$ veyyon --approval-mode auto-edit "run the unit tests and fix failures"
@@ -343,12 +343,12 @@ under <code>modelRoles</code>:</p>
 </ul>
 <h2 id="next"><a class="header" href="#next">Next</a></h2>
 <ul>
-<li><a href="../using/configuring-providers.html">Configuring providers</a> — Ollama, LM Studio, Anthropic, and custom
+<li><a href="../using/configuring-providers.html">Configuring providers</a>: Ollama, LM Studio, Anthropic, and custom
 OpenAI-compatible endpoints.</li>
-<li><a href="../using/models.html">Models and providers</a> — choosing and switching models in a session.</li>
-<li><a href="../using/safety.html">Safety</a> — boundaries around tool use and model output.</li>
-<li><a href="./permission-model.html">Permission model</a> — the approval modes.</li>
-<li><a href="../using/authentication.html">Signing in</a> — interactive and env-var auth paths.</li>
+<li><a href="../using/models.html">Models and providers</a>: choosing and switching models in a session.</li>
+<li><a href="../using/safety.html">Safety</a>: boundaries around tool use and model output.</li>
+<li><a href="./permission-model.html">Permission model</a>: the approval modes.</li>
+<li><a href="../using/authentication.html">Signing in</a>: interactive and env-var auth paths.</li>
 </ul>
 
                     </main>

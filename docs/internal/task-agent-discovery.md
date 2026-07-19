@@ -35,7 +35,7 @@ Parsing comes from frontmatter via `parseAgentFields()` (`src/discovery/helpers.
 - `spawns` accepts `*`, CSV, or array
 - backward-compat behavior: if `spawns` missing but `tools` includes `task`, `spawns` becomes `*`
 - `output` is passed through as opaque schema data
-- `read-summarize: false` (parsed as `readSummarize`) forces the subagent's `read` tool to return verbatim file content instead of structural summaries — `runSubprocess` applies it as a `read.summarize.enabled: false` override on the subagent's isolated settings (`src/task/executor.ts`). `scout` and `librarian` ship with it disabled. Defaults to enabled when the field is absent.
+- `read-summarize: false` (parsed as `readSummarize`) forces the subagent's `read` tool to return verbatim file content instead of structural summaries: `runSubprocess` applies it as a `read.summarize.enabled: false` override on the subagent's isolated settings (`src/task/executor.ts`). `scout` and `librarian` ship with it disabled. Defaults to enabled when the field is absent.
 
 ## Bundled agents
 
@@ -56,14 +56,14 @@ Because bundled parsing uses `level: "fatal"`, malformed bundled frontmatter thr
 
 ## Filesystem and plugin discovery
 
-`discoverAgents(cwd, home)` (`src/task/discovery.ts`) merges agents from Veyyon-native roots and Claude plugin roots before appending bundled definitions. Cross-harness roots such as `.claude/agents`, `.codex/agents`, and `.gemini/agents` are intentionally skipped — their frontmatter schema is not the Veyyon task-agent contract (`TASK_AGENT_CONFIG_SOURCE = ".veyyon"` filters both dir lists).
+`discoverAgents(cwd, home)` (`src/task/discovery.ts`) merges agents from Veyyon-native roots and Claude plugin roots before appending bundled definitions. Cross-harness roots such as `.claude/agents`, `.codex/agents`, and `.gemini/agents` are intentionally skipped, their frontmatter schema is not the Veyyon task-agent contract (`TASK_AGENT_CONFIG_SOURCE = ".veyyon"` filters both dir lists).
 
 ### Discovery inputs
 
 1. Nearest project `.veyyon` agents dir from `findAllNearestProjectConfigDirs("agents", cwd)` (filtered to `.veyyon`; first hit only)
 2. User `.veyyon` agents dir from `getConfigDirs("agents", { project: false })` (filtered to `.veyyon`; first hit only)
-3. Veyyon extension-package `agents/` dirs (`listVeyyonExtensionRoots`) — only when `isProviderEnabled("veyyon-plugins")`; consumed in source-precedence order (CLI roots > project `extensions:` settings > user `extensions:` settings > installed npm/link plugins, marketplace installs excluded by realpath)
-4. Claude marketplace plugin roots (`listClaudePluginRoots(home, cwd)`) with `agents/` subdirs — only when `isProviderEnabled("claude-plugins")`; project-scope plugins sort before user-scope
+3. Veyyon extension-package `agents/` dirs (`listVeyyonExtensionRoots`): only when `isProviderEnabled("veyyon-plugins")`; consumed in source-precedence order (CLI roots > project `extensions:` settings > user `extensions:` settings > installed npm/link plugins, marketplace installs excluded by realpath)
+4. Claude marketplace plugin roots (`listClaudePluginRoots(home, cwd)`) with `agents/` subdirs: only when `isProviderEnabled("claude-plugins")`; project-scope plugins sort before user-scope
 5. Bundled agents (`loadBundledAgents()`)
 
 ### Actual source order
@@ -130,7 +130,7 @@ Runtime output schema precedence in `TaskTool.#runSpawn`:
 1. agent frontmatter `output`
 2. parent session `outputSchema`
 
-(`effectiveOutputSchema = effectiveAgent.output ?? this.session.outputSchema` — the task call itself never carries a schema; ad-hoc structured workflows go through the eval bridge's `agent(prompt, schema)`.)
+(`effectiveOutputSchema = effectiveAgent.output ?? this.session.outputSchema`, the task call itself never carries a schema; ad-hoc structured workflows go through the eval bridge's `agent(prompt, schema)`.)
 
 The model-facing prompt (`src/prompts/tools/task.md`) no longer carries the old structured-output mismatch warning; it tags read-only agents and warns against offloading reasoning to `explore`/`sonic` instead.
 

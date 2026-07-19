@@ -176,7 +176,7 @@ Lifecycle/state transition:
 12. emit `session_switch` hook event (`reason: "resume"`, `previousSessionFile`)
 13. replace agent messages with rebuilt context and sync todos
 14. close provider sessions when switching to a different session or when same-session reload changed replay messages
-15. restore model via `getRestorableSessionModels(sessionContext.models, lastModelChangeRole)` — tries the recorded models in fallback order and uses the first one present in the model registry
+15. restore model via `getRestorableSessionModels(sessionContext.models, lastModelChangeRole)`: tries the recorded models in fallback order and uses the first one present in the model registry
 16. restore thinking level and service tier:
     - thinking uses persisted `thinking_level_change`, otherwise the configured default clamped to model capability
     - service tier uses persisted `service_tier_change`, otherwise the configured per-family `tier.openai`/`tier.anthropic`/`tier.google` settings (`"none"` becomes unset)

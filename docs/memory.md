@@ -1,6 +1,6 @@
 # Autonomous Memory
 
-When a memory backend is enabled, the agent automatically extracts durable knowledge from past sessions and injects a compact summary into future sessions for the same project. Over time it builds a project-scoped memory store — technical decisions, recurring workflows, pitfalls — that carries forward without manual effort.
+When a memory backend is enabled, the agent automatically extracts durable knowledge from past sessions and injects a compact summary into future sessions for the same project. Over time it builds a project-scoped memory store, technical decisions, recurring workflows, pitfalls, that carries forward without manual effort.
 
 ## Backends
 
@@ -26,7 +26,7 @@ memory:
 
 At session start, if a memory summary exists for the current project, it is injected into the system prompt as a **Memory Guidance** block. The agent is instructed to:
 
-- Treat memory as heuristic context — useful for process and prior decisions, not authoritative on current repo state.
+- Treat memory as heuristic context: useful for process and prior decisions, not authoritative on current repo state.
 - Cite the memory artifact path when memory changes the plan, and pair it with current-repo evidence before acting.
 - Prefer repo state and user instruction when they conflict with memory; treat conflicting memory as stale.
 
@@ -54,13 +54,13 @@ The agent can read memory files directly using `memory://` URLs with the `read` 
 
 Local summary memories are built by a background pipeline that runs at startup; `/memory enqueue` marks consolidation work that the next startup picks up. The pipeline is skipped for subagents and for sessions that are not persisted to a session file.
 
-**Phase 1 — per-session extraction:** For each past session that has changed since it was last processed, a model reads the session history and extracts durable signal: technical decisions, constraints, resolved failures, recurring workflows. Sessions that are too recent, too old, currently active, or beyond the configured scan/age limits are skipped. Each extraction produces a raw memory block and a short synopsis for that session.
+**Phase 1, per-session extraction:** For each past session that has changed since it was last processed, a model reads the session history and extracts durable signal: technical decisions, constraints, resolved failures, recurring workflows. Sessions that are too recent, too old, currently active, or beyond the configured scan/age limits are skipped. Each extraction produces a raw memory block and a short synopsis for that session.
 
-**Phase 2 — consolidation:** After extraction, a second model pass reads all per-session extractions and produces three outputs written to disk:
+**Phase 2, consolidation:** After extraction, a second model pass reads all per-session extractions and produces three outputs written to disk:
 
-- `MEMORY.md` — a curated long-term memory document
-- `memory_summary.md` — the compact text injected at session start
-- `skills/` — reusable procedural playbooks, each in its own subdirectory
+- `MEMORY.md`: a curated long-term memory document
+- `memory_summary.md`: the compact text injected at session start
+- `skills/`: reusable procedural playbooks, each in its own subdirectory
 
 Phase 2 uses a lease and heartbeat to prevent double-running when multiple processes start simultaneously. Stale skill directories from prior runs are pruned automatically.
 
@@ -72,9 +72,9 @@ Memory extraction and consolidation behavior is driven by static prompt files in
 
 | File                     | Purpose                                      | Variables                                   |
 | ------------------------ | -------------------------------------------- | ------------------------------------------- |
-| `stage_one_system.md`    | System prompt for per-session extraction     | —                                           |
+| `stage_one_system.md`    | System prompt for per-session extraction     | n/a                                           |
 | `stage_one_input.md`     | User-turn template wrapping session content  | `{{thread_id}}`, `{{response_items_json}}`  |
-| `consolidation_system.md`| System prompt for cross-session consolidation | —                                          |
+| `consolidation_system.md`| System prompt for cross-session consolidation | n/a                                          |
 | `consolidation.md`       | User-turn prompt for cross-session consolidation | `{{raw_memories}}`, `{{rollout_summaries}}` |
 | `read-path.md`           | Memory guidance injected into live sessions  | `{{memory_summary}}`, `{{learned}}`         |
 
@@ -103,7 +103,7 @@ Additional tuning knobs (concurrency, lease durations, token budgets) are availa
 
 ## Key files
 
-- `packages/coding-agent/src/memories/index.ts` — pipeline orchestration, injection, clear/enqueue entry points (the `/memory` command routes here via `packages/coding-agent/src/memory-backend/local-backend.ts`)
-- `packages/coding-agent/src/memories/storage.ts` — SQLite-backed job queue and thread registry
-- `packages/coding-agent/src/prompts/memories/` — memory prompt templates
-- `packages/coding-agent/src/internal-urls/memory-protocol.ts` — `memory://` URL handler
+- `packages/coding-agent/src/memories/index.ts`: pipeline orchestration, injection, clear/enqueue entry points (the `/memory` command routes here via `packages/coding-agent/src/memory-backend/local-backend.ts`)
+- `packages/coding-agent/src/memories/storage.ts`: SQLite-backed job queue and thread registry
+- `packages/coding-agent/src/prompts/memories/`: memory prompt templates
+- `packages/coding-agent/src/internal-urls/memory-protocol.ts`: `memory://` URL handler

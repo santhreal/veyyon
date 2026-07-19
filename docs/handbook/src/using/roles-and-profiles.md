@@ -6,7 +6,7 @@
 | --- | --- |
 | **Interactive model** | The model used for the main conversation. Chosen with `/model` or `--model`. Persisted under `modelRoles.default` (legacy key name; not a selectable “role” in the UI). |
 | **Role** | A named model assignment for a kind of work (`smol`, `plan`, `task`, …). Configured in `modelRoles` / settings → Model → Roles. |
-| **Slot overrides** | `subagent.model` and `compaction.model` — dedicated destinations that override the corresponding role or inherit the interactive model when unset. |
+| **Slot overrides** | `subagent.model` and `compaction.model`, dedicated destinations that override the corresponding role or inherit the interactive model when unset. |
 | **Profile** | User config tree at `~/.veyyon/profiles/<name>/` (including `default`). |
 
 ## Interactive model
@@ -101,5 +101,5 @@ See [Approvals](../features/sandbox.md).
 ## Related
 
 - [Models and providers](./models.md)
-- [settings.md Models](../../settings.md) (repo `docs/settings.md`)
+- [Settings: models](../../../settings.md) (repo `docs/settings.md`)
 - [Compaction](../context/compaction-memory.md)

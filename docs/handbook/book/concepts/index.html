@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-a2447057.js";
+            window.path_to_searchindex_js = "../searchindex-b31c94e7.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-cc1a72e9.js"></script>
@@ -196,31 +196,27 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="core-concepts"><a class="header" href="#core-concepts">Core concepts</a></h1>
-<p>Vocabulary for sessions, permissions, and the model/provider boundary. Operator commands:
-<a href="../using/getting-started.html">Using Veyyon</a>. Feature guides: <a href="../features/index.html">Features</a>.</p>
+<p>This chapter gives you the vocabulary for how Veyyon runs: sessions, permissions, and the boundary between the harness and your model provider. If you want operator commands instead, see <a href="../using/getting-started.html">Using Veyyon</a>, and for feature guides see <a href="../features/index.html">Features</a>.</p>
 <h2 id="what-this-chapter-covers"><a class="header" href="#what-this-chapter-covers">What this chapter covers</a></h2>
-<p>The CLI is <strong><code>veyyon</code></strong>. It calls a configured model endpoint with your credentials and runs a tool loop
-(read, edit, verify, stop). The pages below define the units and contracts of that loop.</p>
+<p>The CLI is <code>veyyon</code>. It calls a configured model endpoint with your credentials and runs a tool loop: read, edit, verify, stop. The pages below define the units and contracts of that loop, so that later chapters can assume you know them.</p>
 <div class="table-wrapper">
 <table>
 <thead>
 <tr><th>Page</th><th>What it defines</th></tr>
 </thead>
 <tbody>
-<tr><td><a href="./sessions-turns-threads.html">Sessions, turns, and threads</a></td><td>The runtime units: a session is the persisted run, a turn is one request plus the agent loop, and a thread is the active path through the session tree.</td></tr>
-<tr><td><a href="./permission-model.html">Permission model</a></td><td>The approval-mode boundary. <code>tools.approvalMode</code> (<code>plan</code>/<code>ask</code>/<code>auto-edit</code>/<code>yolo</code>) decides which tool tiers run automatically and when Veyyon asks first. There is no OS command sandbox.</td></tr>
-<tr><td><a href="./model-contract.html">Model contract</a></td><td>The BYOK boundary: endpoint + model + key. What the harness owns versus what the provider owns, Freeform vs Function tools, and how system prompts and tool schemas are presented.</td></tr>
+<tr><td><a href="./sessions-turns-threads.html">Sessions, turns, and threads</a></td><td>The runtime units. A session is the persisted run, a turn is one request plus the agent loop, and a thread is the active path through the session tree.</td></tr>
+<tr><td><a href="./permission-model.html">Permission model</a></td><td>The approval-mode boundary. <code>tools.approvalMode</code> (<code>plan</code>, <code>ask</code>, <code>auto-edit</code>, <code>yolo</code>) decides which tool tiers run automatically and when Veyyon asks you first. There is no operating-system command sandbox.</td></tr>
+<tr><td><a href="./model-contract.html">Model contract</a></td><td>The bring-your-own-key boundary: endpoint, model, and key. It covers what the harness owns versus what the provider owns, Freeform versus Function tools, and how system prompts and tool schemas are presented.</td></tr>
 </tbody>
 </table>
 </div>
 <h2 id="foundations-that-pair-with-these-pages"><a class="header" href="#foundations-that-pair-with-these-pages">Foundations that pair with these pages</a></h2>
-<p>Before or after this chapter, the foundations pages give the design spine without repeating the
-operator workflow:</p>
+<p>The foundations pages give the design spine without repeating the operator workflow. Read them before or after this chapter, whichever suits you.</p>
 <ul>
-<li><a href="../foundations/core-concepts.html">Core concepts (foundations)</a> defines session, thread, turn, rollout
-JSONL, and the state database in more detail.</li>
-<li><a href="../foundations/architecture.html">Architecture overview</a> maps subsystems to responsibilities.</li>
-<li>Provider and model configuration: <a href="../models/providers.html">Providers</a> and <a href="../../../providers.html"><code>docs/providers.md</code></a>.</li>
+<li><a href="../foundations/core-concepts.html">Core concepts (foundations)</a> defines a session, thread, turn, the rollout JSONL, and the state database in more detail.</li>
+<li><a href="../foundations/architecture.html">Architecture overview</a> maps the subsystems to their responsibilities.</li>
+<li>For provider and model configuration, see <a href="../models/providers.html">Providers</a> and <a href="../../../providers.html"><code>docs/providers.md</code></a>.</li>
 </ul>
 <h2 id="how-the-pieces-fit"><a class="header" href="#how-the-pieces-fit">How the pieces fit</a></h2>
 <pre><code class="language-text">  you ──► veyyon (TUI or a one-shot prompt)
@@ -233,16 +229,12 @@ JSONL, and the state database in more detail.</li>
                   ├─ endpoint + key               (your provider)
                   └─ model id                     (discovered or pinned)
 </code></pre>
-<p>Changing providers changes endpoint, credentials, and model id. Tool repair, edit verification,
-approvals, and context compaction remain harness behavior. See
-<a href="../using/configuring-providers.html">Configuring providers</a> and
-<a href="../using/models.html">Models and providers</a>.</p>
+<p>Changing providers changes the endpoint, the credentials, and the model id. Tool repair, edit verification, approvals, and context compaction stay the same, because they are harness behavior. See <a href="../using/configuring-providers.html">Configuring providers</a> and <a href="../using/models.html">Models and providers</a>.</p>
 <h2 id="related-reading"><a class="header" href="#related-reading">Related reading</a></h2>
 <ul>
-<li><a href="./permission-model.html">Permission model</a> and <a href="../features/sandbox.html">Approvals</a> for the
-approval modes.</li>
-<li>Prefer <code>--approval-mode auto-edit</code> for bounded automation.</li>
-<li><a href="../features/exec.html">Non-interactive mode</a> for scripted <code>veyyon</code> launch patterns.</li>
+<li><a href="./permission-model.html">Permission model</a> and <a href="../features/sandbox.html">Approvals</a> cover the approval modes.</li>
+<li>For bounded automation, prefer <code>--approval-mode auto-edit</code>.</li>
+<li><a href="../features/exec.html">Non-interactive mode</a> covers scripted <code>veyyon</code> launch patterns.</li>
 </ul>
 
                     </main>

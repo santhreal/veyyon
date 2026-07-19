@@ -6,7 +6,7 @@ Engine reference: `docs/tree.md`, `docs/internal/session-tree-plan.md`.
 
 ## Navigate in place: `/tree`
 
-`/tree` opens the session tree selector (`TreeSelectorComponent`). It moves the leaf **within the same session file** — no new session id.
+`/tree` opens the session tree selector (`TreeSelectorComponent`). It moves the leaf **within the same session file**, no new session id.
 
 Also opens via:
 
@@ -43,7 +43,7 @@ Optional **branch summary** when `branchSummary.enabled` is true: after picking 
 | Command | Behavior |
 | --- | --- |
 | `/branch` | Pick a **user message**; copy history up to that boundary into a **new session file** (or reset root); prefills composer. When `doubleEscapeAction = "tree"`, opens `/tree` instead. |
-| `/fork` | Duplicate the **entire** current session — every entry, including sibling branches — into a new persisted file (`handleForkCommand`). No entry picker; for a slice from a chosen point, use `/branch`. |
+| `/fork` | Duplicate the **entire** current session (every entry, including sibling branches) into a new persisted file (`handleForkCommand`). No entry picker; for a slice from a chosen point, use `/branch`. |
 | CLI | `veyyon --fork <session-id>` at startup |
 
 `/fork` and `/branch` change session **files**. `/tree` does not.
@@ -54,7 +54,7 @@ There is no `/clone` slash command in the shipped registry.
 
 `/btw <question>` (not `/side`) runs an ephemeral side thread with inherited context, then returns. See implementation `handleBtwCommand` in `interactive-mode.ts`.
 
-`/tan` runs tangential background agent work — separate from `/btw`.
+`/tan` runs tangential background agent work, separate from `/btw`.
 
 ## Configuration
 
@@ -68,7 +68,7 @@ branchSummary:
 
 ## Command availability
 
-Branching commands require a started session (at least one turn). Some commands are disabled while tasks run; `/btw` may remain available for steering — see TUI status when blocked.
+Branching commands require a started session (at least one turn). Some commands are disabled while tasks run; `/btw` may remain available for steering, see TUI status when blocked.
 
 ## See also
 

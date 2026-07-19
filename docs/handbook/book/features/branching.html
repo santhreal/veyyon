@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-a2447057.js";
+            window.path_to_searchindex_js = "../searchindex-b31c94e7.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-cc1a72e9.js"></script>
@@ -199,7 +199,7 @@
 <p>Veyyon sessions are <strong>trees</strong>, not linear chat logs. Each entry has <code>id</code> and <code>parentId</code>; the active position is the current <strong>leaf</strong>. Branching appends from the chosen parent without deleting sibling branches.</p>
 <p>Engine reference: <code>docs/tree.md</code>, <code>docs/internal/session-tree-plan.md</code>.</p>
 <h2 id="navigate-in-place-tree"><a class="header" href="#navigate-in-place-tree">Navigate in place: <code>/tree</code></a></h2>
-<p><code>/tree</code> opens the session tree selector (<code>TreeSelectorComponent</code>). It moves the leaf <strong>within the same session file</strong> — no new session id.</p>
+<p><code>/tree</code> opens the session tree selector (<code>TreeSelectorComponent</code>). It moves the leaf <strong>within the same session file</strong>, no new session id.</p>
 <p>Also opens via:</p>
 <ul>
 <li>Keybinding <code>app.session.tree</code></li>
@@ -239,7 +239,7 @@
 </thead>
 <tbody>
 <tr><td><code>/branch</code></td><td>Pick a <strong>user message</strong>; copy history up to that boundary into a <strong>new session file</strong> (or reset root); prefills composer. When <code>doubleEscapeAction = "tree"</code>, opens <code>/tree</code> instead.</td></tr>
-<tr><td><code>/fork</code></td><td>Duplicate the <strong>entire</strong> current session — every entry, including sibling branches — into a new persisted file (<code>handleForkCommand</code>). No entry picker; for a slice from a chosen point, use <code>/branch</code>.</td></tr>
+<tr><td><code>/fork</code></td><td>Duplicate the <strong>entire</strong> current session (every entry, including sibling branches) into a new persisted file (<code>handleForkCommand</code>). No entry picker; for a slice from a chosen point, use <code>/branch</code>.</td></tr>
 <tr><td>CLI</td><td><code>veyyon --fork &lt;session-id&gt;</code> at startup</td></tr>
 </tbody>
 </table>
@@ -248,7 +248,7 @@
 <p>There is no <code>/clone</code> slash command in the shipped registry.</p>
 <h2 id="ephemeral-side-questions-btw"><a class="header" href="#ephemeral-side-questions-btw">Ephemeral side questions: <code>/btw</code></a></h2>
 <p><code>/btw &lt;question&gt;</code> (not <code>/side</code>) runs an ephemeral side thread with inherited context, then returns. See implementation <code>handleBtwCommand</code> in <code>interactive-mode.ts</code>.</p>
-<p><code>/tan</code> runs tangential background agent work — separate from <code>/btw</code>.</p>
+<p><code>/tan</code> runs tangential background agent work, separate from <code>/btw</code>.</p>
 <h2 id="configuration"><a class="header" href="#configuration">Configuration</a></h2>
 <pre><code class="language-yaml">doubleEscapeAction: tree   # tree | branch | none
 treeFilterMode: default    # default | no-tools | user-only | labeled-only | all
@@ -257,7 +257,7 @@ branchSummary:
   reserveTokens: 16384
 </code></pre>
 <h2 id="command-availability"><a class="header" href="#command-availability">Command availability</a></h2>
-<p>Branching commands require a started session (at least one turn). Some commands are disabled while tasks run; <code>/btw</code> may remain available for steering — see TUI status when blocked.</p>
+<p>Branching commands require a started session (at least one turn). Some commands are disabled while tasks run; <code>/btw</code> may remain available for steering, see TUI status when blocked.</p>
 <h2 id="see-also"><a class="header" href="#see-also">See also</a></h2>
 <ul>
 <li><a href="../using/sessions.html">Sessions</a></li>

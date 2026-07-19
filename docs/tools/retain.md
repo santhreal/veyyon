@@ -6,19 +6,19 @@
 - Entry: `packages/coding-agent/src/tools/memory-retain.ts`
 - Model-facing prompt: `packages/coding-agent/src/prompts/tools/retain.md`
 - Hindsight collaborators:
-  - `packages/coding-agent/src/hindsight/state.ts` — per-session queue, flush, auto-retain.
-  - `packages/coding-agent/src/hindsight/backend.ts` — session bootstrap, prompt injection, subagent aliasing.
-  - `packages/coding-agent/src/hindsight/bank.ts` — bank id derivation, tag scoping, first-use bank/mission setup.
-  - `packages/coding-agent/src/hindsight/client.ts` — HTTP `retain` / `retainBatch` calls.
-  - `packages/coding-agent/src/hindsight/content.ts` — retention transcript shaping, memory-tag stripping.
-  - `packages/coding-agent/src/hindsight/mental-models.ts` — bank-scoped mental-model seeding and cache rendering.
-  - `packages/coding-agent/src/hindsight/seeds.json` — built-in mental-model seed definitions.
-  - `packages/coding-agent/src/hindsight/transcript.ts` — extracts user/assistant turns for auto-retain.
+  - `packages/coding-agent/src/hindsight/state.ts`: per-session queue, flush, auto-retain.
+  - `packages/coding-agent/src/hindsight/backend.ts`: session bootstrap, prompt injection, subagent aliasing.
+  - `packages/coding-agent/src/hindsight/bank.ts`: bank id derivation, tag scoping, first-use bank/mission setup.
+  - `packages/coding-agent/src/hindsight/client.ts`: HTTP `retain` / `retainBatch` calls.
+  - `packages/coding-agent/src/hindsight/content.ts`: retention transcript shaping, memory-tag stripping.
+  - `packages/coding-agent/src/hindsight/mental-models.ts`: bank-scoped mental-model seeding and cache rendering.
+  - `packages/coding-agent/src/hindsight/seeds.json`: built-in mental-model seed definitions.
+  - `packages/coding-agent/src/hindsight/transcript.ts`: extracts user/assistant turns for auto-retain.
 - Mnemopi collaborators:
-  - `packages/coding-agent/src/mnemopi/backend.ts` — local backend bootstrap, prompt injection, subagent aliasing, enqueue/clear.
-  - `packages/coding-agent/src/mnemopi/state.ts` — scoped recall/retain state and local writes.
-  - `packages/coding-agent/src/mnemopi/config.ts` — local SQLite path, bank, scoping, provider settings.
-  - `packages/mnemopi/src/core/memory.ts` — local memory runtime used by `remember(...)`.
+  - `packages/coding-agent/src/mnemopi/backend.ts`: local backend bootstrap, prompt injection, subagent aliasing, enqueue/clear.
+  - `packages/coding-agent/src/mnemopi/state.ts`: scoped recall/retain state and local writes.
+  - `packages/coding-agent/src/mnemopi/config.ts`: local SQLite path, bank, scoping, provider settings.
+  - `packages/mnemopi/src/core/memory.ts`: local memory runtime used by `remember(...)`.
 
 ## Inputs
 
@@ -58,13 +58,13 @@ Mnemopi:
 - Hindsight tool path: queued batch write only.
 - Mnemopi tool path: direct local `remember(...)` into the scoped retain bank.
 - Hindsight bank scoping from `computeBankScope(...)`:
-  - `global` — one shared bank, no project tags.
-  - `per-project` — bank id gets `-<project label>` appended, where the label is the git primary checkout root basename (cwd basename outside a repo).
-  - `per-project-tagged` — shared bank plus `project:<project label>` tags on retained memories.
+  - `global`: one shared bank, no project tags.
+  - `per-project`: bank id gets `-<project label>` appended, where the label is the git primary checkout root basename (cwd basename outside a repo).
+  - `per-project-tagged`: shared bank plus `project:<project label>` tags on retained memories.
 - Mnemopi bank scoping from `computeMnemopiBankScope(...)`:
-  - `global` — retain and recall use the shared bank.
-  - `per-project` — retain and recall use the project bank.
-  - `per-project-tagged` — retain writes project-local memories; recall also reads the shared bank.
+  - `global`: retain and recall use the shared bank.
+  - `per-project`: retain and recall use the project bank.
+  - `per-project-tagged`: retain writes project-local memories; recall also reads the shared bank.
 - Session scope:
   - tool-called retains are per-session work for the active backend;
   - persisted Hindsight memories are cross-session server-side bank data;
@@ -97,7 +97,7 @@ Mnemopi:
 - Hindsight auto-retain settings:
   - `hindsight.retainEveryNTurns` default `3`
   - `hindsight.retainOverlapTurns` default `2`
-  - `hindsight.retainContext` default `"veyyon"` (provenance tag sent with each retain; not a recall filter — memories tagged `"omp"` under the prior default remain fully recallable)
+  - `hindsight.retainContext` default `"veyyon"` (provenance tag sent with each retain; not a recall filter: memories tagged `"omp"` under the prior default remain fully recallable)
   - `hindsight.retainMode` default `"full-session"`
 - Mnemopi retain settings:
   - `mnemopi.retainEveryNTurns` default `4`

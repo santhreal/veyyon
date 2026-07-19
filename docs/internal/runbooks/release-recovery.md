@@ -13,7 +13,7 @@ Nothing was pushed.
   `git tag --points-at HEAD`.
 - Fix the underlying failure (usually a failing `bun run check`).
 - If a local tag was created but not pushed, delete it (`git tag -d <tag>`) and re-run
-  `bun run release <version>` — do not hand-push a half-made tag.
+  `bun run release <version>`, do not hand-push a half-made tag.
 
 ## 2. The tag pushed but CI never published
 
@@ -23,7 +23,7 @@ binaries.
 1. Check CI: `bun run release watch` re-attaches to the release run, or open the Actions tab.
 2. If the run never started, open the Actions tab and check for a queued job or a workflow
    syntax error. Release jobs use GitHub-hosted runners, so a missing runner is never the cause.
-3. If the run failed on the macOS signing step, the `APPLE_*` secrets are missing or invalid — see
+3. If the run failed on the macOS signing step, the `APPLE_*` secrets are missing or invalid: see
    [secret-rotation.md](secret-rotation.md) and [macOS signing](../macos-signing-notarization.md).
 4. After fixing the cause, re-trigger the release jobs by re-running the failed CI workflow for that
    tag (Actions → the failed run → **Re-run failed jobs**). Do not cut a second tag for the same
@@ -33,12 +33,12 @@ binaries.
 
 Symptom: `curl -fsSL https://get.veyyon.dev | sh` fails, or fails a checksum.
 
-- `install.sh` **fails closed** on a checksum mismatch — that is correct behavior, not a bug to work
+- `install.sh` **fails closed** on a checksum mismatch: that is correct behavior, not a bug to work
   around. A mismatch means the uploaded `veyyon-<target>` binary and its `.sha256` sidecar disagree.
   It also fails closed when the sidecar is **missing or empty** (the `release_github` job generates
   one per binary); `--no-verify` / `-NoVerify` is the explicit override for old pre-sidecar releases.
   A missing sidecar on a current release means the "Generate SHA-256 sidecars" step was skipped or
-  its uploads failed — re-run the publish job.
+  its uploads failed, re-run the publish job.
 - Confirm every expected asset is attached to the release: `veyyon-linux-x64`, `veyyon-linux-arm64`,
   `veyyon-darwin-x64`, `veyyon-darwin-arm64`, `veyyon-windows-x64.exe`.
 - If assets are missing or wrong, re-run the release build/publish jobs for the tag (step 2.4). CI

@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-a2447057.js";
+            window.path_to_searchindex_js = "../searchindex-b31c94e7.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-cc1a72e9.js"></script>
@@ -196,7 +196,7 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="configuration"><a class="header" href="#configuration">Configuration</a></h1>
-<p>Settings by goal. Provider setup: <a href="./models.html">Models and providers</a>, <a href="./authentication.html">Authentication</a>. Full key catalog: repository <code>docs/settings.md</code>.</p>
+<p>This page groups settings by what you are trying to do. For provider and sign-in setup, see <a href="./models.html">Models and providers</a> and <a href="./authentication.html">Authentication</a>. For the full list of every key, see the repository’s <code>docs/settings.md</code>.</p>
 <h2 id="where-settings-live"><a class="header" href="#where-settings-live">Where settings live</a></h2>
 <p>Settings are YAML mappings. Persistent settings live in <code>config.yml</code>; custom model providers live in
 <code>models.yml</code>; MCP servers live in <code>mcp.json</code>.</p>
@@ -270,7 +270,7 @@ compaction:
     read: allow
 </code></pre>
 <p>Per run, <code>--approval-mode &lt;mode&gt;</code> and <code>--auto-approve</code> / <code>--yolo</code> override the mode. There is no
-separate OS shell sandbox — the approval mode is the only boundary; see
+separate OS shell sandbox, the approval mode is the only boundary; see
 <a href="../features/sandbox.html">Approvals</a> and <a href="./safety.html">Safety</a>.</p>
 <h2 id="run-unattended-or-in-ci"><a class="header" href="#run-unattended-or-in-ci">Run unattended or in CI</a></h2>
 <div class="table-wrapper">
@@ -331,7 +331,7 @@ $ # edit ~/.veyyon/profiles/work/agent/config.yml
 <p>See <a href="../features/profiles.html">Profiles</a>, <a href="../reference/file-locations.html">File locations</a>.</p>
 <h2 id="wire-mcp-servers-and-hooks"><a class="header" href="#wire-mcp-servers-and-hooks">Wire MCP servers and hooks</a></h2>
 <p>MCP servers are configured as JSON, not in <code>config.yml</code>:</p>
-<p>In <code>~/.veyyon/profiles/default/agent/mcp.json</code> (JSON is strict — no comments):</p>
+<p>In <code>~/.veyyon/profiles/default/agent/mcp.json</code> (JSON is strict, no comments):</p>
 <pre><code class="language-json">{
   "mcpServers": {
     "database": {
@@ -347,7 +347,7 @@ $ # edit ~/.veyyon/profiles/work/agent/config.yml
 <ul>
 <li><a href="./getting-started.html">Getting started</a></li>
 <li><a href="./task-guides.html">Task guides</a></li>
-<li><a href="./safety.html">Safety</a> — <code>tools.approvalMode</code> (default <code>yolo</code>)</li>
+<li><a href="./safety.html">Safety</a>: <code>tools.approvalMode</code> (default <code>yolo</code>)</li>
 <li><a href="./extending.html">Extending</a></li>
 <li><a href="../reference/cli.html">CLI</a></li>
 </ul>

@@ -6,16 +6,16 @@
 - Entry: `packages/coding-agent/src/tools/read.ts`
 - Model-facing prompt: `packages/coding-agent/src/prompts/tools/read.md`
 - Key collaborators:
-  - `packages/coding-agent/src/tools/path-utils.ts` — split `path` from trailing selectors; normalize local paths.
-  - `packages/coding-agent/src/utils/zip.ts` — the unified ZIP/tar wrapper: detect `archive.ext:inner/path`, index archives, list/read entries.
-  - `packages/coding-agent/src/tools/sqlite-reader.ts` — detect SQLite targets, parse selectors, render tables.
-  - `packages/coding-agent/src/tools/fetch.ts` — URL parsing, fetch/render pipeline, URL cache/artifacts.
-  - `packages/coding-agent/src/internal-urls/router.ts` — resolve `agent://`, `artifact://`, `history://`, `issue://`, `local://`, `mcp://`, `memory://`, `veyyon://`, `pr://`, `rule://`, `skill://`, and `vault://`.
-  - `packages/coding-agent/src/edit/notebook.ts` — convert `.ipynb` to editable `# %% [...] cell:N` text.
-  - `packages/coding-agent/src/utils/file-display-mode.ts` — decide hashline vs line-number vs raw display.
-  - `packages/coding-agent/src/workspace-tree.ts` — render directory trees.
-  - `packages/coding-agent/src/edit/file-snapshot-store.ts` — stores read lines for later hashline edit verification/recovery.
-  - `packages/coding-agent/src/tools/index.ts` — registers `read: s => new ReadTool(s)`.
+  - `packages/coding-agent/src/tools/path-utils.ts`: split `path` from trailing selectors; normalize local paths.
+  - `packages/coding-agent/src/utils/zip.ts`: the unified ZIP/tar wrapper: detect `archive.ext:inner/path`, index archives, list/read entries.
+  - `packages/coding-agent/src/tools/sqlite-reader.ts`: detect SQLite targets, parse selectors, render tables.
+  - `packages/coding-agent/src/tools/fetch.ts`: URL parsing, fetch/render pipeline, URL cache/artifacts.
+  - `packages/coding-agent/src/internal-urls/router.ts`: resolve `agent://`, `artifact://`, `history://`, `issue://`, `local://`, `mcp://`, `memory://`, `veyyon://`, `pr://`, `rule://`, `skill://`, and `vault://`.
+  - `packages/coding-agent/src/edit/notebook.ts`: convert `.ipynb` to editable `# %% [...] cell:N` text.
+  - `packages/coding-agent/src/utils/file-display-mode.ts`: decide hashline vs line-number vs raw display.
+  - `packages/coding-agent/src/workspace-tree.ts`: render directory trees.
+  - `packages/coding-agent/src/edit/file-snapshot-store.ts`: stores read lines for later hashline edit verification/recovery.
+  - `packages/coding-agent/src/tools/index.ts`: registers `read: s => new ReadTool(s)`.
 
 ## Inputs
 
@@ -171,7 +171,7 @@ URL selectors are parsed separately in `packages/coding-agent/src/tools/fetch.ts
 ### Documents
 - `CONVERTIBLE_EXTENSIONS` in `packages/coding-agent/src/tools/read.ts` covers `.pdf`, `.doc`, `.docx`, `.ppt`, `.pptx`, `.xls`, `.xlsx`, `.rtf`, `.epub`.
 - `convertFileWithMarkit()` converts the file to text/markdown; line-range and `:raw` selectors then apply to the converted output (`file.pdf:50-100`, `:5-16,40-80`).
-- For PDFs, embedded images are surfaced as browsable handles. markit emits a `<!-- image: <id> (page N, WxHpt) -->` region for each embedded image; `read.ts` rewrites it into a `read <pdf>:<id>.png` hint (as inline code, so spaces/parens in the path can't break markdown). Reading that handle (`doc.pdf:p11-img0.png`) extracts the image — passing markit an `imageDir` that lands in a session-artifact cache (`<artifacts>/pdf-assets/<key>/`, keyed by size+mtime, converted once per file) — and returns it through the normal image-loading path. `doc.pdf:` lists the extractable members; an unknown member errors with the available list. Requested members are matched against extracted basenames, so `..`/separators cannot escape the cache.
+- For PDFs, embedded images are surfaced as browsable handles. markit emits a `<!-- image: <id> (page N, WxHpt) -->` region for each embedded image; `read.ts` rewrites it into a `read <pdf>:<id>.png` hint (as inline code, so spaces/parens in the path can't break markdown). Reading that handle (`doc.pdf:p11-img0.png`) extracts the image, passing markit an `imageDir` that lands in a session-artifact cache (`<artifacts>/pdf-assets/<key>/`, keyed by size+mtime, converted once per file), and returns it through the normal image-loading path. `doc.pdf:` lists the extractable members; an unknown member errors with the available list. Requested members are matched against extracted basenames, so `..`/separators cannot escape the cache.
 - Conversion failures return a text block like `[Cannot read .pdf file: ...]`.
 
 ### Jupyter notebooks

@@ -6,7 +6,7 @@
 ## Context
 
 The fork ([ADR 0001](0001-fork-from-oh-my-pi.md)) inherited oh-my-pi's per-package
-changelogs — ~641 version entries up to `16.5.2`. But veyyon had never cut a release:
+changelogs, ~641 version entries up to `16.5.2`. But veyyon had never cut a release:
 zero `v*` tags, zero `chore: bump version to` commits, zero published GitHub releases.
 `16.5.2` was simply the upstream commit the fork was taken from. Presenting those
 entries as veyyon's own release history is misleading, and none of the `@veyyon/*`

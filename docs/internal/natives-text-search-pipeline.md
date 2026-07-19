@@ -66,7 +66,7 @@ Terminology follows [`natives-architecture.md`](./natives-architecture.md):
   - `grep` resolves path, checks metadata is file, and searches that file.
 - **Directory branch**
   - Directory walks go through `veyyon_walker::WalkRequest` (files-only filter, `WalkDetail::Minimal`, `FollowLinks::Never`, `SizeHintPolicy::WhenCheap`) built by `build_grep_walk_request`.
-  - Grep always walks with `.cache(false)` — it does not use the shared TTL scan cache (that cache serves `glob`/`fuzzyFind`).
+  - Grep always walks with `.cache(false)`: it does not use the shared TTL scan cache (that cache serves `glob`/`fuzzyFind`).
   - Entry filtering: file-only + optional glob filter (`glob_util`) + optional type filter mapping (`js`, `ts`, `rust`, etc.).
 
 ### Search/collection semantics
@@ -112,7 +112,7 @@ Terminology follows [`natives-architecture.md`](./natives-architecture.md):
 
 1. Caller passes `GlobOptions` directly. `pattern` and `path` are required in the generated type.
 2. Rust resolves the search path and compiles pattern via `glob_util::compile_glob`.
-3. Entry source: a `veyyon_walker::WalkRequest` with `.cache(config.cache)` and `.empty_recheck(EmptyRecheck::Configured)` — `cache=true` serves from the walker TTL cache (with stale-empty recheck), `cache=false` walks fresh without storing.
+3. Entry source: a `veyyon_walker::WalkRequest` with `.cache(config.cache)` and `.empty_recheck(EmptyRecheck::Configured)`: `cache=true` serves from the walker TTL cache (with stale-empty recheck), `cache=false` walks fresh without storing.
 4. Filtering:
    - skip `.git` always;
    - skip `node_modules` unless requested (`includeNodeModules`) or pattern mentions `node_modules`;
@@ -158,7 +158,7 @@ These exports are direct native APIs used by tooling; they are not mediated by a
 
 ## 4) Shared scan/cache lifecycle (`veyyon-walker` cache)
 
-The scan cache lives in `crates/veyyon-walker/src/cache.rs`. `collect_entries(root, options, heartbeat)` stores scan results as normalized relative entries (`path`, `fileType`, optional `mtime` and regular-file `size`) keyed by the canonical search root plus the **entire** `WalkOptions` struct (with the `cache` flag normalized out) — so `include_hidden`, `use_gitignore`, `skip_node_modules`, `follow_links`, and scan detail (`Minimal` vs `Full`) all key distinct cache entries.
+The scan cache lives in `crates/veyyon-walker/src/cache.rs`. `collect_entries(root, options, heartbeat)` stores scan results as normalized relative entries (`path`, `fileType`, optional `mtime` and regular-file `size`) keyed by the canonical search root plus the **entire** `WalkOptions` struct (with the `cache` flag normalized out), so `include_hidden`, `use_gitignore`, `skip_node_modules`, `follow_links`, and scan detail (`Minimal` vs `Full`) all key distinct cache entries.
 
 Tunables are env-configured: `FS_SCAN_CACHE_TTL_MS` (default 1000ms; `0` disables), `FS_SCAN_EMPTY_RECHECK_MS` (default 200ms), and a max-entry cap with oldest-entry eviction.
 

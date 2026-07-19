@@ -13,7 +13,7 @@ Skills are placed on the filesystem according to the scope where they should app
 | Agents layout | `.agents/skills`, `$HOME/.agents/skills` | Skills in the cross-tool agents layout (project walk-up plus user home). |
 | Custom | `skills.customDirectories` | Extra directories you list in settings. |
 
-Foreign-tool locations (`$HOME/.claude/skills`, …) are also discovered when foreign-config import is on — see [Skills](skills.md#skill-locations) for the full table.
+Foreign-tool locations (`$HOME/.claude/skills`, …) are also discovered when foreign-config import is on, see [Skills](skills.md#skill-locations) for the full table.
 
 Create a new skill by making a directory inside one of these scopes and adding a `SKILL.md` file. The name of the directory is the default name of the skill.
 
@@ -193,7 +193,7 @@ policy:
     - veyyon
 ```
 
-No registration is needed — a skill under `.veyyon/skills` (or any other discovered
+No registration is needed, a skill under `.veyyon/skills` (or any other discovered
 directory) is picked up automatically. If your `config.yml` uses an `includeSkills`
 allowlist, add the skill's name to it:
 

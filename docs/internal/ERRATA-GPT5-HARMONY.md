@@ -1,4 +1,4 @@
-# ERRATA — GPT-5 Harmony-Header Leakage
+# ERRATA: GPT-5 Harmony-Header Leakage
 
 Research note. The statistics below come from the named local stats database
 snapshot, not from checked-in tests or runtime code. The detection/recovery
@@ -21,14 +21,14 @@ OpenAI frames tool calls in the Harmony chat protocol:
 <|start|>assistant<|channel|>commentary to=functions.<NAME><|message|>{ARGS}<|call|>
 ```
 
-`<|channel|>commentary to=functions.NAME` is the **routing header** —
+`<|channel|>commentary to=functions.NAME` is the **routing header**,
 control tokens consumed by the runtime to dispatch the call. These
 tokens never appear as content under normal operation; the runtime
 strips them.
 
 The defect: gpt-5 models occasionally emit, **as ordinary content
-inside `{ARGS}`**, the **plain-text shadow** of these routing tokens —
-the same characters without the `<|…|>` brackets — and continue
+inside `{ARGS}`**, the **plain-text shadow** of these routing tokens,
+the same characters without the `<|…|>` brackets, and continue
 producing more pseudo-routing structure (channel name, body marker,
 multilingual spam, fake tool-result framing). The contamination lives
 inside the visible tool argument and is dispatched to the tool as if it
@@ -36,8 +36,8 @@ were intended content.
 
 **Critical detail.** The actual `<|start|>` / `<|channel|>` /
 `<|message|>` / `<|call|>` special tokens almost never appear in tool
-args. What leaks is the bracket-less spelling — `analysis to=functions.X
-code …` — because OpenAI applies a logit mask suppressing the
+args. What leaks is the bracket-less spelling, `analysis to=functions.X
+code …`, because OpenAI applies a logit mask suppressing the
 control-token IDs inside the args region. The mass that would have gone
 to those special tokens redistributes onto the un-bracketed plain-text
 representation the model also learned. This makes the leak structurally
@@ -68,7 +68,7 @@ Source: `~/.veyyon/stats.db` (`ss_tool_calls`, `ss_assistant_msgs`), through
 | gpt-5.4       |                 37 | 226,957 |         163 |
 | gpt-5.3-codex |                 17 | 112,243 |         151 |
 | gpt-5.5       |                  2 |  80,750 |          25 |
-| gpt-5.2-codex |                  0 |       — |           — |
+| gpt-5.2-codex |                  0 |       n/a |, |
 
 Plus 15 hits in assistant visible text / thinking blobs.
 
@@ -93,7 +93,7 @@ JUNK_PREFIX  ::= (GLITCH_TOKEN | CHANNEL_WORD | NON_LATIN_RUN | "}" | "】【")+
 ```
 
 **Cascading is common.** Of 96 marker occurrences across 71 contaminated
-records, 39 contain ≥2 markers and 7 contain ≥3 — the model emits
+records, 39 contain ≥2 markers and 7 contain ≥3, the model emits
 multiple fake `to=functions.X code …` blocks back-to-back, often with
 fake `code_output\nCell N:\n…` framing between them. Once the
 plain-text scaffolding is in the residual stream, the prefix now _looks
@@ -110,14 +110,14 @@ immediately before the marker in the natural corpus:
 | ----------------- | :----------: | -------: | ------------------------------: |
 | `Japgolly`        |      ✅      |  199,745 |                               1 |
 | `Jsii`            |      ✅      |  114,318 | (subtoken of `Jsii_commentary`) |
-| `Jsii_commentary` |  — (3 toks)  |        — |                               2 |
-| `changedFiles`    |  — (2 toks)  |        — |                               8 |
-| `RTLU`            |  — (2 toks)  |        — |                               3 |
+| `Jsii_commentary` |, (3 toks)  |        n/a |                               2 |
+| `changedFiles`    |, (2 toks)  |        n/a |                               8 |
+| `RTLU`            |, (2 toks)  |        n/a |                               3 |
 
-`Japgolly` is in the last 0.13% of the vocabulary — the same family of
+`Japgolly` is in the last 0.13% of the vocabulary, the same family of
 GitHub-corpus residue that produced `SolidGoldMagikarp` in the 2023
 GPT-2 vocabulary (Rumbelow & Watkins). `SolidGoldMagikarp` itself
-tokenizes to 5 tokens in `o200k_base` — that specific token was retired,
+tokenizes to 5 tokens in `o200k_base`, that specific token was retired,
 but the class wasn't.
 
 For the multi-token entries, the corpus-level signature is the surface
@@ -132,7 +132,7 @@ signal.
 
 `analysis` (5), `assistant` (5), `commentary` (3), `user` (1) appear
 directly preceding `to=`. Always bare words; never `<|channel|>analysis`
-or any other bracketed form. Consistent with §1 — the brackets are
+or any other bracketed form. Consistent with §1, the brackets are
 masked, the words are not.
 
 ### 2.6 Non-Latin spam residue
@@ -140,7 +140,7 @@ masked, the words are not.
 96 marker hits, by script: CJK 40, Cyrillic 12, Telugu/Kannada/Malayalam
 18, Thai 8, Georgian 7, Armenian 7, Arabic 1. Recurring fragments are
 Chinese gambling SEO (`大发时时彩`, `天天中彩票`), Georgian/Abkhaz junk,
-and Thai casino spam — well-known low-quality crawl residue.
+and Thai casino spam, well-known low-quality crawl residue.
 
 This is the same script distribution observed in the controlled
 reproduction (original research note §7.3, not carried into this repo),
@@ -154,7 +154,7 @@ The `edit` tool exists in two variants in the corpus:
 | Variant                                            | Calls | Recovery                                                                                                                                             |
 | -------------------------------------------------- | ----: | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Patch-DSL (`[PATH#TAG]`/anchor/`SWAP DEL INS` ops) |    27 | **Recoverable** by op-truncation (shipped as `recoverHarmonyToolCall` in `harmony-leak.ts`)                                                          |
-| JSON-schema (`{path,edits:[…]}`)                   |    11 | **Not recoverable** — contamination is escaped _inside_ JSON strings, parser accepts it cleanly, content would be written verbatim into source files |
+| JSON-schema (`{path,edits:[…]}`)                   |    11 | **Not recoverable**, contamination is escaped _inside_ JSON strings, parser accepts it cleanly, content would be written verbatim into source files |
 
 For Patch-DSL leaks specifically:
 
@@ -184,12 +184,12 @@ Step by step:
 3. At position t+1, the residual update `h_{t+1} ≈ LN(h_t + e_g + Attn +
 MLP)` is dominated by the prefix-derived terms; the just-emitted-token
    signal is effectively absent. Generation diversity normally comes
-   from `e_x` steering the residual into different sub-regions —
+   from `e_x` steering the residual into different sub-regions,
    stripped here.
 4. The next-token distribution therefore collapses onto the **conditional
    prior over continuations of the prefix, with local conditioning
    removed**. In a tool-calling rollout context, that prior is sharply
-   peaked on Harmony scaffolding (control tokens + routing tokens) —
+   peaked on Harmony scaffolding (control tokens + routing tokens),
    that's what RL trained.
 5. The mask zeros the control-token IDs. Mass redistributes onto the
    **next-best continuation**: the un-bracketed surface-form spelling of
@@ -201,7 +201,7 @@ MLP)` is dominated by the prefix-derived terms; the just-emitted-token
    prior keeps voting for more scaffolding. Cascading (§2.3) follows.
 7. Multilingual spam after the marker is the same prior-collapse
    continuation, drawn from the training neighborhood of the glitch
-   token (often ESL/auto-generated multilingual web junk — exactly the
+   token (often ESL/auto-generated multilingual web junk, exactly the
    crawl residue in §2.6).
 
 **Two corollaries the corpus data demanded but only the experiment

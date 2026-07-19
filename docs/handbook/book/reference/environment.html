@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-a2447057.js";
+            window.path_to_searchindex_js = "../searchindex-b31c94e7.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-cc1a72e9.js"></script>
@@ -199,8 +199,8 @@
 <p>This page covers the common operator surface: identity/profile selection, provider auth, and the
 handful of <code>VEYYON_*</code> variables that are actually read by the runtime today. Veyyon also reads a large
 number of <code>VEYYON_*</code> debug/behavior-toggle variables (timing, startup tracing, TUI flags, eval-runtime
-toggles, and more) that are less common configuration. For the complete, code-grounded reference —
-including every provider credential var, precedence chains, and internal toggles — see
+toggles, and more) that are less common configuration. For the complete, code-grounded reference,
+including every provider credential var, precedence chains, and internal toggles, see
 <a href="../../../environment-variables.html"><code>docs/environment-variables.md</code></a>.</p>
 <h2 id="location-and-identity"><a class="header" href="#location-and-identity">Location and identity</a></h2>
 <p>There is no <code>VEYYON_HOME</code>. The config directory <strong>name</strong> (not a full path) is overridable, and the
@@ -228,11 +228,11 @@ when those are set; unmigrated installs stay under <code>~/.veyyon</code>. See
 <p>There is no separate SQLite-state-directory override; state lives under the resolved agent directory
 above.</p>
 <h2 id="authentication"><a class="header" href="#authentication">Authentication</a></h2>
-<p>Provider BYOK uses each provider’s native key variable — there is no Veyyon-branded API key or access
+<p>Provider BYOK uses each provider’s native key variable, there is no Veyyon-branded API key or access
 token (a <code>VEYYON_API_KEY</code>/<code>VEYYON_ACCESS_TOKEN</code> legacy alias does not exist in the current runtime).
 When a provider’s key variable is set, it is used without an interactive sign-in. For providers with
 OAuth (Anthropic, xAI, Qwen, Cursor, and others), the OAuth token variable takes precedence over the
-plain API key — see the provider tables below and
+plain API key, see the provider tables below and
 <a href="../../../environment-variables.html#1-modelprovider-authentication"><code>docs/environment-variables.md</code></a>.</p>
 <p>OAuth sign-in itself is interactive: run <code>/login</code> inside the TUI (or <code>--provider &lt;id&gt;</code> at startup) to
 open the OAuth selector. There is no <code>veyyon login --with-api-key</code>/<code>--with-access-token</code> CLI subcommand;
@@ -312,7 +312,7 @@ into <code>RequestInit.tls.ca</code> itself).</p>
 <code>scripts/install.ps1</code>) do not read those names today.</p>
 <h2 id="mcp"><a class="header" href="#mcp">MCP</a></h2>
 <p>Any MCP server names its own bearer-token secret via <code>[mcp_servers.&lt;name&gt;].bearer_token_env_var</code> in
-<code>config.yml</code> — this points at <em>any</em> env var you choose (for example plain <code>GITHUB_PERSONAL_ACCESS_TOKEN</code>),
+<code>config.yml</code>, this points at <em>any</em> env var you choose (for example plain <code>GITHUB_PERSONAL_ACCESS_TOKEN</code>),
 not a fixed <code>VEYYON_*</code> name. There is no <code>VEYYON_GITHUB_PERSONAL_ACCESS_TOKEN</code> or <code>VEYYON_CONNECTORS_TOKEN</code>
 convention in the current runtime.</p>
 <div class="table-wrapper">

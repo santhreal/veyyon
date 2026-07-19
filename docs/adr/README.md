@@ -1,7 +1,7 @@
 # Architecture decision records
 
 Load-bearing decisions and *why* they were made, so the reasoning outlives the people
-who were in the room. Each record is immutable once accepted — to change a decision,
+who were in the room. Each record is immutable once accepted, to change a decision,
 add a new ADR that supersedes it.
 
 - One file per decision: `NNNN-short-title.md`, numbered in order.

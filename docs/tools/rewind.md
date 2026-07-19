@@ -6,10 +6,10 @@
 - Entry: `packages/coding-agent/src/tools/checkpoint.ts`
 - Model-facing prompt: `packages/coding-agent/src/prompts/tools/rewind.md`
 - Key collaborators:
-  - `packages/coding-agent/src/session/agent-session.ts` — validates pending rewind state, applies the actual rewind, and injects the retained report.
-  - `packages/coding-agent/src/session/session-manager.ts` — branches the persisted session tree and appends persisted summary/report entries.
-  - `packages/coding-agent/src/session/session-context.ts` — `buildSessionContext()` converts persisted `branch_summary` entries into LLM-visible `branchSummary` messages on rebuilt context.
-  - `packages/coding-agent/src/tools/index.ts` — registers the tool and shares the `checkpoint.enabled` gate.
+  - `packages/coding-agent/src/session/agent-session.ts`: validates pending rewind state, applies the actual rewind, and injects the retained report.
+  - `packages/coding-agent/src/session/session-manager.ts`: branches the persisted session tree and appends persisted summary/report entries.
+  - `packages/coding-agent/src/session/session-context.ts`: `buildSessionContext()` converts persisted `branch_summary` entries into LLM-visible `branchSummary` messages on rebuilt context.
+  - `packages/coding-agent/src/tools/index.ts`: registers the tool and shares the `checkpoint.enabled` gate.
 
 ## Inputs
 
@@ -24,7 +24,7 @@ The tool returns a single text result plus structured details:
   - `Rewind requested.`
   - `Report captured for context replacement.`
 - `details`:
-  - `report: string` — trimmed report text
+  - `report: string`: trimmed report text
   - `rewound: true`
 
 The returned tool result is not the final rewind. `AgentSession` waits until `turn_end`, then applies the rewind side effects asynchronously.
@@ -73,9 +73,9 @@ The returned tool result is not the final rewind. `AgentSession` waits until `tu
 - Persisted report/summary content is still subject to the global session persistence cap `MAX_PERSIST_CHARS = 500_000` in `packages/coding-agent/src/session/session-persistence.ts`.
 
 ## Errors
-- `ToolError("Checkpoint not available in subagents.")` — thrown for subagent sessions.
-- `ToolError("No active checkpoint.")` — thrown when no checkpoint state is present.
-- `ToolError("Report cannot be empty.")` — thrown when the trimmed report is empty.
+- `ToolError("Checkpoint not available in subagents.")`: thrown for subagent sessions.
+- `ToolError("No active checkpoint.")`: thrown when no checkpoint state is present.
+- `ToolError("Report cannot be empty.")`: thrown when the trimmed report is empty.
 - Missing checkpoint entry IDs during apply do not fail the tool call; `#applyRewind()` catches the error, logs `Rewind branch checkpoint missing, falling back to root`, and branches from root.
 
 ## Notes

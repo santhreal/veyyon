@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-a2447057.js";
+            window.path_to_searchindex_js = "../searchindex-b31c94e7.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-cc1a72e9.js"></script>
@@ -196,32 +196,35 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="getting-started"><a class="header" href="#getting-started">Getting started</a></h1>
-<p>Install, first-run setup, first session.</p>
+<p>This chapter takes you from nothing installed to a first real change in your own project. It has four steps: install Veyyon, run the first-time setup, sign in to a provider, and hand Veyyon a small task.</p>
 <h2 id="1-install"><a class="header" href="#1-install">1. Install</a></h2>
-<p><strong>npm / Bun (recommended)</strong></p>
+<p>The quickest path uses Bun to install the published package.</p>
 <pre><code class="language-console">$ bun install -g @veyyon/coding-agent
 $ veyyon --version
 </code></pre>
-<p><strong>From source</strong> (repo root):</p>
+<p>If you would rather build from a source checkout, clone the repository and run the setup script.</p>
 <pre><code class="language-console">$ git clone https://github.com/santhreal/veyyon.git
 $ cd veyyon
 $ bun setup
 $ bun dev --version
 </code></pre>
-<p><code>bun setup</code> installs workspace deps and builds <code>@veyyon/natives</code>. Config home: <code>~/.veyyon</code>; default profile agent dir: <code>~/.veyyon/profiles/default/agent/</code>.</p>
-<p>Shell completions: <code>veyyon completions bash|zsh|fish</code>. See <a href="./install.html">Install</a>.</p>
+<p><code>bun setup</code> installs the workspace dependencies and builds <code>@veyyon/natives</code>, the Rust addon. Your configuration lives under <code>~/.veyyon</code>, and the default profile keeps its agent state in <code>~/.veyyon/profiles/default/agent/</code>.</p>
+<p>To add shell completion, run <code>veyyon completions bash</code>, <code>veyyon completions zsh</code>, or <code>veyyon completions fish</code>. The <a href="./install.html">Install</a> chapter has the full details.</p>
 <h2 id="2-first-launch"><a class="header" href="#2-first-launch">2. First launch</a></h2>
-<p>First interactive <code>veyyon</code> (or <code>veyyon setup</code>) runs the setup UI:</p>
+<p>The first time you run <code>veyyon</code> (or any time you run <code>veyyon setup</code>), the setup UI walks you through five steps:</p>
 <ol>
-<li>Splash</li>
-<li>Providers (sign-in / keys; optional web search)</li>
-<li>Glyphs (Nerd Font / Unicode / ASCII)</li>
-<li>Theme</li>
-<li>Session welcome</li>
+<li>The splash screen.</li>
+<li>Providers, where you sign in or paste an API key, and optionally enable web search.</li>
+<li>Glyphs, where you choose a Nerd Font, plain Unicode, or ASCII.</li>
+<li>Theme.</li>
+<li>The session welcome.</li>
 </ol>
-<p>Later: <code>/setup</code> or <code>/providers</code> in the TUI. Skip with <code>VEYYON_SKIP_SETUP=1</code> or by resuming a session.</p>
-<p><strong>API key (example):</strong> set <code>DEEPSEEK_API_KEY</code> in the environment, then pick a DeepSeek model in <code>/model</code>.</p>
-<p><strong>Custom gateway</strong> — add a provider in <code>~/.veyyon/profiles/default/agent/models.yml</code>:</p>
+<p>You can return to provider setup later with <code>/setup</code> or <code>/providers</code> inside the TUI. To skip setup entirely, set <code>VEYYON_SKIP_SETUP=1</code>, or resume an existing session.</p>
+<h2 id="3-sign-in-to-a-provider"><a class="header" href="#3-sign-in-to-a-provider">3. Sign in to a provider</a></h2>
+<p>Veyyon needs at least one model provider. You have three common options.</p>
+<p><strong>Use an API key.</strong> Set the provider’s key in your environment, then pick one of its models in <code>/model</code>. For example, export <code>DEEPSEEK_API_KEY</code> and choose a DeepSeek model.</p>
+<p><strong>Sign in with OAuth.</strong> Run <code>/login</code>, or name a provider directly with <code>/login anthropic</code>. These are the same flows the Providers setup scene uses.</p>
+<p><strong>Add a custom gateway.</strong> Declare a provider in <code>~/.veyyon/profiles/default/agent/models.yml</code>:</p>
 <pre><code class="language-yaml">providers:
   my-gateway:
     baseUrl: https://gateway.example.com/v1
@@ -233,59 +236,52 @@ $ bun dev --version
         contextWindow: 200000
         maxTokens: 8192
 </code></pre>
-<p><strong>OAuth providers:</strong> <code>/login</code> or <code>/login anthropic</code> inside the TUI (same flows the Providers scene uses).</p>
-<p>Details: <a href="./models.html">Models and providers</a>, <a href="./configuring-providers.html">Configuring providers</a>, engine doc <code>docs/providers.md</code>.</p>
-<p>Local <strong>Ollama</strong> (keyless when the daemon is up):</p>
+<p><strong>Run a local model.</strong> With the Ollama daemon running, Veyyon discovers local models and needs no key:</p>
 <pre><code class="language-console">$ ollama serve
 $ veyyon
 </code></pre>
-<p>Then <code>/model</code> and choose an <code>ollama/…</code> model from discovery.</p>
-<h2 id="3-run-your-first-task"><a class="header" href="#3-run-your-first-task">3. Run your first task</a></h2>
+<p>Open <code>/model</code> and choose an <code>ollama/...</code> entry from the discovered list.</p>
+<p>For the full picture, see <a href="./models.html">Models and providers</a> and <a href="./configuring-providers.html">Configuring providers</a>.</p>
+<h2 id="4-run-your-first-task"><a class="header" href="#4-run-your-first-task">4. Run your first task</a></h2>
+<p>Change into a project you know, and start Veyyon.</p>
 <pre><code class="language-console">$ cd ~/code/my-project
 $ veyyon
 </code></pre>
-<p>Describe a small task:</p>
+<p>Describe a small, checkable task:</p>
 <pre><code class="language-text">Add a function add(a, b) in src/lib.rs and a unit test. Run the test.
 </code></pre>
-<p>Typical flow:</p>
+<p>A typical run looks like this:</p>
 <ol>
-<li>Veyyon reads relevant files (<code>read</code>, <code>grep</code>, <code>glob</code>, …).</li>
-<li>It proposes an edit through hashline/<code>edit</code>/<code>write</code> tools.</li>
-<li>When policy requires it, you approve the tool call (<code>tools.approvalMode</code> — see <a href="./safety.html">Safety</a>).</li>
-<li>The change lands; diffs appear in the TUI.</li>
-<li>If you asked for tests, approve <code>bash</code> or <code>cargo test</code> as needed.</li>
+<li>Veyyon reads the files it needs with <code>read</code>, <code>grep</code>, and <code>glob</code>.</li>
+<li>It proposes an edit through the hashline <code>edit</code> and <code>write</code> tools.</li>
+<li>When your policy requires it, you approve the tool call. The <code>tools.approvalMode</code> setting decides when this happens; see <a href="./safety.html">Safety</a>.</li>
+<li>The change lands, and the diff appears in the TUI.</li>
+<li>If you asked for tests, you approve the <code>bash</code> or <code>cargo test</code> call when Veyyon runs them.</li>
 </ol>
-<h2 id="4-approval-mode"><a class="header" href="#4-approval-mode">4. Approval mode</a></h2>
-<p>Tool approval tiers (<code>read</code>, <code>write</code>, <code>exec</code>) combine with <code>tools.approvalMode</code>:</p>
+<h2 id="approval-mode"><a class="header" href="#approval-mode">Approval mode</a></h2>
+<p>Every tool call falls into one of three tiers: <code>read</code>, <code>write</code>, or <code>exec</code>. The <code>tools.approvalMode</code> setting decides which tiers run without asking and which ones prompt you first.</p>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>Mode</th><th>Auto-approves</th><th>Prompts for</th></tr>
+<tr><th>Mode</th><th>Runs without asking</th><th>Prompts you for</th></tr>
 </thead>
 <tbody>
-<tr><td><code>plan</code></td><td><code>read</code> (proposes without writing)</td><td>everything that writes or runs</td></tr>
-<tr><td><code>ask</code></td><td><code>read</code></td><td><code>write</code>, <code>exec</code></td></tr>
-<tr><td><code>auto-edit</code></td><td><code>read</code>, <code>write</code></td><td><code>exec</code></td></tr>
-<tr><td><code>yolo</code> (default)</td><td>all tiers</td><td>none (unless per-tool override or bash safety override)</td></tr>
+<tr><td><code>plan</code></td><td><code>read</code> (it proposes, but does not write)</td><td>everything that writes or runs</td></tr>
+<tr><td><code>ask</code></td><td><code>read</code></td><td><code>write</code> and <code>exec</code></td></tr>
+<tr><td><code>auto-edit</code></td><td><code>read</code> and <code>write</code></td><td><code>exec</code></td></tr>
+<tr><td><code>yolo</code> (default)</td><td>all tiers</td><td>nothing, unless a per-tool override or a bash safety rule applies</td></tr>
 </tbody>
 </table>
 </div>
-<p>Legacy names <code>always-ask</code> (→ <code>ask</code>) and <code>write</code> (→ <code>auto-edit</code>) are still accepted.</p>
-<p>Schema default for <code>tools.approvalMode</code> is <strong><code>yolo</code></strong>. Change in <code>/settings</code> or config. See <a href="../features/sandbox.html">Approvals</a>, <a href="./safety.html">Safety</a>.</p>
-<h2 id="5-further-surfaces"><a class="header" href="#5-further-surfaces">5. Further surfaces</a></h2>
-<ol>
-<li><strong>Multi-file change</strong> — refactor across modules; hashline edits batch paths.</li>
-<li><strong>Session tree</strong> — <code>/tree</code> jumps to an earlier user message and branches in the same session file.</li>
-<li><strong>Models</strong> — <code>/model</code> for the interactive model; set subagent and compaction models in settings. See <a href="./roles-and-profiles.html">Models, roles, and profiles</a>.</li>
-</ol>
+<p>The older names <code>always-ask</code> and <code>write</code> still work, and map to <code>ask</code> and <code>auto-edit</code>. The schema default is <code>yolo</code>. You can change it in <code>/settings</code> or in your config. See <a href="../features/sandbox.html">Approvals</a> and <a href="./safety.html">Safety</a>.</p>
 <h2 id="where-to-go-next"><a class="header" href="#where-to-go-next">Where to go next</a></h2>
+<p>A few surfaces are worth trying early:</p>
 <ul>
-<li><a href="./quickstart.html">Quickstart</a> — shorter walkthrough.</li>
-<li><a href="./configuration.html">Configuration</a></li>
-<li><a href="./sessions.html">Sessions</a></li>
-<li><a href="../features/memory.html">Memory</a> — mnemopi backend</li>
-<li><a href="../features/doctor.html">Diagnostics</a> — plugin doctor and debug tools</li>
+<li><strong>A multi-file change.</strong> Ask for a refactor across modules. Hashline edits batch the paths together.</li>
+<li><strong>The session tree.</strong> <code>/tree</code> jumps back to an earlier message and branches from it inside the same session file.</li>
+<li><strong>Model slots.</strong> <code>/model</code> sets the interactive model. You set the subagent and compaction models in settings; see <a href="./roles-and-profiles.html">Models, roles, and profiles</a>.</li>
 </ul>
+<p>From here, the <a href="./quickstart.html">Quickstart</a> is a shorter walkthrough, <a href="./configuration.html">Configuration</a> covers settings, <a href="./sessions.html">Sessions</a> explains resuming and branching, <a href="../features/memory.html">Memory</a> covers the mnemopi backend, and <a href="../features/doctor.html">Diagnostics</a> covers the doctor and debug tools.</p>
 
                     </main>
 

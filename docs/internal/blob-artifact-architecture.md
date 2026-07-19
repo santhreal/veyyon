@@ -83,12 +83,12 @@ Non-persistent sessions without an adopted manager can store `saveArtifact(...)`
 
 ### 1) Session entry persistence rewrite path
 
-Before a session entry is written — incremental append (`#appendToSessionFile`) or a full-file rewrite (`#rewriteSynchronously` / `#rewriteAtomically`) — `SessionManager` serializes it through `#lineFor()`, which runs `prepareEntryForPersistence()` over the truncation pipeline.
+Before a session entry is written, incremental append (`#appendToSessionFile`) or a full-file rewrite (`#rewriteSynchronously` / `#rewriteAtomically`), `SessionManager` serializes it through `#lineFor()`, which runs `prepareEntryForPersistence()` over the truncation pipeline.
 
 Key behaviors:
 
 1. **Reasoning-signature dedup** (`stripReplayedReasoningSignatures`): assistant thinking blocks whose `thinkingSignature` reasoning item is already carried verbatim in the OpenAI Responses `providerPayload.items` drop the duplicate signature from the serialized line (matched on `encrypted_content`, else item `id`); the in-memory entry is untouched.
-2. **Large string truncation**: strings over `MAX_PERSIST_CHARS` (500k) are cut and suffixed with `"[Session persistence truncated large content]"`. Signed blocks are exempt and persist **verbatim** — a `thinking`/`text`/`toolCall` block with a non-empty `thinkingSignature`/`textSignature`/`thoughtSignature`, a `redactedThinking` block, or a Responses `reasoning` item with `encrypted_content` is returned untouched (truncation would invalidate the signature and 400 the replay). A signature key reached outside those shapes is preserved, never cleared or truncated.
+2. **Large string truncation**: strings over `MAX_PERSIST_CHARS` (500k) are cut and suffixed with `"[Session persistence truncated large content]"`. Signed blocks are exempt and persist **verbatim**: a `thinking`/`text`/`toolCall` block with a non-empty `thinkingSignature`/`textSignature`/`thoughtSignature`, a `redactedThinking` block, or a Responses `reasoning` item with `encrypted_content` is returned untouched (truncation would invalidate the signature and 400 the replay). A signature key reached outside those shapes is preserved, never cleared or truncated.
 3. **Transient field stripping**: `jsonlEvents` (raw subprocess streaming events, already saved to artifact files) is removed from persisted entries.
 4. **Image externalization to blobs**:
    - image blocks in `content` arrays are externalized when `data` is not already a blob ref and base64 length is at least threshold (`BLOB_EXTERNALIZE_THRESHOLD = 1024`),
@@ -232,17 +232,17 @@ The two systems intersect only indirectly: both reduce session JSONL bloat, but 
 
 ## Implementation files
 
-- [`src/session/blob-store.ts`](../../packages/coding-agent/src/session/blob-store.ts) — blob reference format, hashing, put/get, externalize/resolve helpers.
-- [`src/session/artifacts.ts`](../../packages/coding-agent/src/session/artifacts.ts) — session artifact directory model and numeric artifact ID/path allocation.
-- [`src/session/streaming-output.ts`](../../packages/coding-agent/src/session/streaming-output.ts) — `OutputSink` truncation/spill-to-file behavior and summary metadata.
-- [`src/session/session-manager.ts`](../../packages/coding-agent/src/session/session-manager.ts) — `BlobStore`/`ArtifactManager` construction, persistence-transform and blob-rehydration call sites, session fork/move interactions.
-- [`src/session/session-persistence.ts`](../../packages/coding-agent/src/session/session-persistence.ts) — `prepareEntryForPersistence()`: large-string truncation, transient-field stripping, and synchronous image-blob externalization.
-- [`src/session/session-loader.ts`](../../packages/coding-agent/src/session/session-loader.ts) — `resolveBlobRefsInEntries()`: blob-ref rehydration to base64 / data URLs on load.
-- [`src/session/agent-session.ts`](../../packages/coding-agent/src/session/agent-session.ts) — artifact directory copy during interactive fork.
-- [`src/internal-urls/artifact-protocol.ts`](../../packages/coding-agent/src/internal-urls/artifact-protocol.ts) — `artifact://` resolver.
-- [`src/internal-urls/agent-protocol.ts`](../../packages/coding-agent/src/internal-urls/agent-protocol.ts) — `agent://` resolver + JSON extraction.
-- [`src/internal-urls/router.ts`](../../packages/coding-agent/src/internal-urls/router.ts) — internal URL router wiring.
-- [`src/task/output-manager.ts`](../../packages/coding-agent/src/task/output-manager.ts) — session-scoped agent output ID allocation for `agent://`.
-- [`src/task/executor.ts`](../../packages/coding-agent/src/task/executor.ts) — subagent output artifact writes (`<id>.md`) and session JSONL sidecars.
+- [`src/session/blob-store.ts`](../../packages/coding-agent/src/session/blob-store.ts): blob reference format, hashing, put/get, externalize/resolve helpers.
+- [`src/session/artifacts.ts`](../../packages/coding-agent/src/session/artifacts.ts): session artifact directory model and numeric artifact ID/path allocation.
+- [`src/session/streaming-output.ts`](../../packages/coding-agent/src/session/streaming-output.ts): `OutputSink` truncation/spill-to-file behavior and summary metadata.
+- [`src/session/session-manager.ts`](../../packages/coding-agent/src/session/session-manager.ts): `BlobStore`/`ArtifactManager` construction, persistence-transform and blob-rehydration call sites, session fork/move interactions.
+- [`src/session/session-persistence.ts`](../../packages/coding-agent/src/session/session-persistence.ts): `prepareEntryForPersistence()`: large-string truncation, transient-field stripping, and synchronous image-blob externalization.
+- [`src/session/session-loader.ts`](../../packages/coding-agent/src/session/session-loader.ts): `resolveBlobRefsInEntries()`: blob-ref rehydration to base64 / data URLs on load.
+- [`src/session/agent-session.ts`](../../packages/coding-agent/src/session/agent-session.ts): artifact directory copy during interactive fork.
+- [`src/internal-urls/artifact-protocol.ts`](../../packages/coding-agent/src/internal-urls/artifact-protocol.ts): `artifact://` resolver.
+- [`src/internal-urls/agent-protocol.ts`](../../packages/coding-agent/src/internal-urls/agent-protocol.ts): `agent://` resolver + JSON extraction.
+- [`src/internal-urls/router.ts`](../../packages/coding-agent/src/internal-urls/router.ts): internal URL router wiring.
+- [`src/task/output-manager.ts`](../../packages/coding-agent/src/task/output-manager.ts): session-scoped agent output ID allocation for `agent://`.
+- [`src/task/executor.ts`](../../packages/coding-agent/src/task/executor.ts): subagent output artifact writes (`<id>.md`) and session JSONL sidecars.
 
 *Verified against `7ca44d3` on 2026-07-17.*

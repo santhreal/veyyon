@@ -51,7 +51,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-a2447057.js";
+            window.path_to_searchindex_js = "searchindex-b31c94e7.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-cc1a72e9.js"></script>
@@ -194,44 +194,50 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="the-veyyon-handbook"><a class="header" href="#the-veyyon-handbook">The Veyyon handbook</a></h1>
-<p>Veyyon is a terminal coding agent. You supply provider credentials; the process runs tools and edits files in your working tree.</p>
-<p>This handbook covers installation, configuration, features, and harness structure.</p>
+<p>Welcome. Veyyon is a coding agent that runs in your terminal. You give it credentials for a model provider, and it works inside your project: it reads files, runs tools, and edits your code in place, one reviewable step at a time. You stay in the loop, and you approve the work that touches your tree.</p>
+<p>This handbook teaches Veyyon from the ground up. It begins with installation and your first session, then explains the ideas the rest of the tool is built on, and finally covers each feature and the internals a contributor needs. You do not have to read it front to back. The early chapters assume less than the later ones, so if Veyyon is new to you, following the order will save you time.</p>
+<h2 id="who-this-book-is-for"><a class="header" href="#who-this-book-is-for">Who this book is for</a></h2>
+<p>You are comfortable at a command line, and you want a coding agent you can watch and steer rather than one that changes your files out of sight. You do not need to know Rust or TypeScript to use Veyyon. You do need a working terminal and an API key or a sign-in for at least one provider. The Architecture chapters go deeper, for readers who want to contribute to Veyyon itself.</p>
+<h2 id="how-to-read-this-book"><a class="header" href="#how-to-read-this-book">How to read this book</a></h2>
+<p>The book is arranged in the order you tend to need it.</p>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>Section</th><th>Contents</th></tr>
+<tr><th>Section</th><th>What it covers</th></tr>
 </thead>
 <tbody>
-<tr><td><a href="#overview">Why</a></td><td>Design goals and main mechanisms</td></tr>
-<tr><td><a href="#getting-started">Using</a></td><td>Install, providers, quickstart, configuration</td></tr>
-<tr><td><a href="#approvals">Features</a></td><td>Editing, approvals, models, sessions, plan/goal, MCP, plugins, memory, profiles</td></tr>
-<tr><td><a href="#architecture-at-a-glance">Architecture</a></td><td>Internals for contributors</td></tr>
+<tr><td><a href="#overview">Why</a></td><td>The design goals and the main mechanisms, so the rest makes sense</td></tr>
+<tr><td><a href="#getting-started">Using</a></td><td>Install, sign in, run your first task, configure providers</td></tr>
+<tr><td><a href="#approvals">Features</a></td><td>Editing, approvals, models, sessions, plan and goal modes, MCP, plugins, memory, profiles</td></tr>
+<tr><td><a href="#architecture-at-a-glance">Architecture</a></td><td>The internals, for contributors</td></tr>
 </tbody>
 </table>
 </div>
-<p>Start here if you are new: <a href="#getting-started">Getting started</a>, <a href="#editing-and-repair">Editing and repair</a>, <a href="#models-and-providers">Models and providers</a>.</p>
+<p>If you only want to get to work, read <a href="#install">Install</a>, sign in, and go to <a href="#getting-started">Getting started</a>. Come back to the concept chapters when something surprises you. They explain why Veyyon behaves the way it does, which is usually faster than guessing.</p>
 <h2 id="what-veyyon-is"><a class="header" href="#what-veyyon-is">What Veyyon is</a></h2>
-<p>Veyyon is a fork of <a href="https://github.com/can1357/oh-my-pi">oh-my-pi</a>. The CLI, TUI, tools, providers, and session loop are TypeScript on Bun. Grep, PTY, and hashline apply paths use Rust natives (<code>@veyyon/natives</code>).</p>
+<p>Veyyon is a fork of <a href="https://github.com/can1357/oh-my-pi">oh-my-pi</a>. The CLI, the TUI, the tools, the providers, and the session loop are TypeScript running on Bun. The hot paths, meaning grep, PTY, and hashline patch application, are Rust natives in <code>@veyyon/natives</code>.</p>
+<p>A few facts you will reach for often:</p>
 <ul>
-<li>Install: <code>bun install -g @veyyon/coding-agent</code> (or <code>bun setup &amp;&amp; bun dev</code> from a source checkout)</li>
-<li>Binary: <code>veyyon</code> (alias <code>vey</code>)</li>
-<li>Config home: <code>~/.veyyon</code>; default profile agent dir: <code>~/.veyyon/profiles/default/agent/</code> (other profiles: <code>~/.veyyon/profiles/&lt;name&gt;/agent/</code>)</li>
+<li>Install with <code>bun install -g @veyyon/coding-agent</code>, or run <code>bun setup &amp;&amp; bun dev</code> from a source checkout.</li>
+<li>The binary is <code>veyyon</code>, with the shorter alias <code>vey</code>.</li>
+<li>Configuration lives under <code>~/.veyyon</code>. The default profile keeps its agent state in <code>~/.veyyon/profiles/default/agent/</code>, and other profiles use <code>~/.veyyon/profiles/&lt;name&gt;/agent/</code>.</li>
 </ul>
-<p>Main surfaces: hashline edits, tool loop (read/grep/glob/edit/bash/LSP/MCP/…), optional memory backends, model slots and roles, session trees, skills, plan mode, goal mode, task isolation for subagents.</p>
-<h2 id="mechanisms-summary"><a class="header" href="#mechanisms-summary">Mechanisms (summary)</a></h2>
+<p>The surfaces you will meet in the rest of the book are hashline edits, the tool loop (read, grep, glob, edit, bash, LSP, MCP, and more), optional memory backends, model slots and roles, session trees, skills, plan mode, goal mode, and task isolation for subagents.</p>
+<h2 id="mechanisms-at-a-glance"><a class="header" href="#mechanisms-at-a-glance">Mechanisms at a glance</a></h2>
+<p>Each of these has its own chapter later. This list is a map, not the full explanation.</p>
 <ul>
-<li><strong>Hashline edits.</strong> <code>edit</code> / <code>write</code> apply content-addressed patches with verification before disk write; failures return structured errors to the model.</li>
-<li><strong>Model slots.</strong> Interactive model (<code>/model</code>), subagent model, and compaction model are separate settings. Optional named roles pin models for specific work kinds.</li>
-<li><strong>Approvals.</strong> <code>tools.approvalMode</code> gates read / write / exec tiers. There is no OS-level command sandbox (no Landlock, seccomp, Seatbelt, or bubblewrap).</li>
-<li><strong>Engine modes.</strong> Plan mode, goal mode, vibe mode, compaction, and task subagents are implemented in the agent loop, not only as prompt text.</li>
+<li><strong>Hashline edits.</strong> The <code>edit</code> and <code>write</code> tools apply content-addressed patches and verify them before anything reaches disk. A failed patch returns a structured error to the model instead of a half-written file.</li>
+<li><strong>Model slots.</strong> The interactive model (<code>/model</code>), the subagent model, and the compaction model are separate settings. Named roles can pin a model to a specific kind of work.</li>
+<li><strong>Approvals.</strong> The <code>tools.approvalMode</code> setting gates the read, write, and exec tiers. Veyyon does not add an operating-system command sandbox. It does not use Landlock, seccomp, Seatbelt, or bubblewrap, so approvals are your control point.</li>
+<li><strong>Engine modes.</strong> Plan mode, goal mode, vibe mode, compaction, and task subagents live in the agent loop itself, not only in prompt text.</li>
 </ul>
-<p>Credits and provenance: <a href="#acknowledgements">Acknowledgements</a>.</p>
+<p>For credits and provenance, see <a href="#acknowledgements">Acknowledgements</a>.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="design-and-mechanisms"><a class="header" href="#design-and-mechanisms">Design and mechanisms</a></h1>
 <ul>
-<li><a href="#overview">Overview</a> — what the product is and what the harness does</li>
-<li><a href="#mechanisms">Mechanisms</a> — hashline, approvals, model slots, profiles, engine modes</li>
-<li><a href="#performance">Performance</a> — retries, edit format, and tool bounds</li>
+<li><a href="#overview">Overview</a>: what the product is and what the harness does</li>
+<li><a href="#mechanisms">Mechanisms</a>: hashline, approvals, model slots, profiles, engine modes</li>
+<li><a href="#performance">Performance</a>: retries, edit format, and tool bounds</li>
 <li><a href="#edit-path-and-tool-arguments">Edit path and tool arguments</a></li>
 <li><a href="#context-size-and-retries">Context size and retries</a></li>
 <li><a href="#model-and-provider-selection">Model and provider selection</a></li>
@@ -240,55 +246,57 @@
 <p>Install: <a href="#install">Install</a>. Concepts: <a href="#core-concepts">Core concepts</a>.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="overview"><a class="header" href="#overview">Overview</a></h1>
-<p>Veyyon is a local terminal coding agent: the loop, tools, and credentials stay on your machine. You pick models through the bundled provider catalog (subscription sign-in or BYOK).</p>
+<p>Veyyon is a local terminal coding agent. The loop, the tools, and your credentials all stay on your machine. You choose which model to use from the bundled provider catalog, either by signing in to a subscription or by bringing your own key.</p>
+<p>This chapter is a one-page map of what the harness does. Each row links to the chapter that explains it in full, so you can skim now and follow up later.</p>
 <h2 id="what-the-harness-does"><a class="header" href="#what-the-harness-does">What the harness does</a></h2>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>Area</th><th>Behavior</th></tr>
+<tr><th>Area</th><th>What you get</th></tr>
 </thead>
 <tbody>
-<tr><td>Edits</td><td>Hashline-oriented <code>edit</code> / <code>write</code> with verification before disk write</td></tr>
-<tr><td>Tools</td><td>read, grep, glob, bash, LSP, DAP, browser, MCP, task subagents, …</td></tr>
-<tr><td>Approvals</td><td><code>tools.approvalMode</code> gates read / write / exec (no OS process sandbox)</td></tr>
-<tr><td>Models</td><td>Interactive, subagent, and compaction slots; optional roles per profile</td></tr>
-<tr><td>Sessions</td><td>Branchable session trees; resume and fork</td></tr>
-<tr><td>Memory</td><td>Memory backends when <code>memory.backend</code> is not <code>off</code></td></tr>
-<tr><td>Config</td><td><code>~/.veyyon</code> (or profile-relocated agent dir); project files under cwd</td></tr>
+<tr><td>Edits</td><td>Hashline <code>edit</code> and <code>write</code>, verified before anything is written to disk</td></tr>
+<tr><td>Tools</td><td>read, grep, glob, bash, LSP, DAP, browser, MCP, task subagents, and more</td></tr>
+<tr><td>Approvals</td><td><code>tools.approvalMode</code> gates the read, write, and exec tiers (there is no operating-system process sandbox)</td></tr>
+<tr><td>Models</td><td>Separate slots for the interactive, subagent, and compaction models, plus optional roles per profile</td></tr>
+<tr><td>Sessions</td><td>Branchable session trees that you can resume and fork</td></tr>
+<tr><td>Memory</td><td>Memory backends, active whenever <code>memory.backend</code> is not <code>off</code></td></tr>
+<tr><td>Config</td><td><code>~/.veyyon</code>, or a relocated agent directory per profile, alongside project files under your working directory</td></tr>
 </tbody>
 </table>
 </div>
 <h2 id="lineage"><a class="header" href="#lineage">Lineage</a></h2>
-<p>Built from <a href="https://github.com/can1357/oh-my-pi">oh-my-pi</a> and <a href="https://github.com/badlogic/pi-mono">Pi</a>. See <a href="#acknowledgements">Acknowledgements</a>.</p>
+<p>Veyyon is built from <a href="https://github.com/can1357/oh-my-pi">oh-my-pi</a> and <a href="https://github.com/badlogic/pi-mono">Pi</a>. The <a href="#acknowledgements">Acknowledgements</a> page records the full provenance.</p>
 <h2 id="next"><a class="header" href="#next">Next</a></h2>
 <ul>
-<li><a href="#mechanisms">Mechanisms</a></li>
-<li><a href="#getting-started">Getting started</a></li>
-<li><a href="#editing-and-repair">Editing and repair</a></li>
+<li><a href="#mechanisms">Mechanisms</a> explains how the harness works.</li>
+<li><a href="#getting-started">Getting started</a> walks through your first session.</li>
+<li><a href="#editing-and-repair">Editing and repair</a> covers the edit path in depth.</li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="mechanisms"><a class="header" href="#mechanisms">Mechanisms</a></h1>
-<p>Compact map of the main harness mechanisms. Operator how-tos live under <a href="#getting-started">Using</a> and <a href="#approvals">Features</a>.</p>
+<p>This chapter is a compact map of the main harness mechanisms. It explains what each one is and points you to the chapter that covers it in full. The operator how-tos live under <a href="#getting-started">Using</a> and <a href="#approvals">Features</a>.</p>
 <h2 id="hashline-edits"><a class="header" href="#hashline-edits">Hashline edits</a></h2>
-<p><code>edit</code> and <code>write</code> accept hashline (content-addressed) patches. The natives layer verifies the patch against the current file before writing. On mismatch the tool fails with recovery context for the model.</p>
+<p>The <code>edit</code> and <code>write</code> tools accept hashline patches, which are addressed by content rather than by line number. Before writing, the natives layer verifies the patch against the current file. If they do not match, the tool fails and returns recovery context to the model instead of writing a corrupted file.</p>
 <p>See <a href="#editing-and-repair">Editing and repair</a> and <a href="#the-hashline-edit-engine">The hashline edit engine</a>.</p>
 <h2 id="tool-approval-tiers"><a class="header" href="#tool-approval-tiers">Tool approval tiers</a></h2>
-<p><code>tools.approvalMode</code> is one of <code>plan</code>, <code>ask</code>, <code>auto-edit</code>, <code>yolo</code> (legacy aliases: <code>always-ask</code> → <code>ask</code>, <code>write</code> → <code>auto-edit</code>). Per-tool <code>tools.approval</code> overrides apply on top. Tiers are read, write, and exec. Bash can still force a prompt on destructive patterns depending on execpolicy rules.</p>
-<p>See <a href="#approvals">Approvals</a> and <code>/settings</code> → Advanced → Safety. Detail also in <code>docs/approval-mode.md</code> in the repo.</p>
+<p>The <code>tools.approvalMode</code> setting is one of <code>plan</code>, <code>ask</code>, <code>auto-edit</code>, or <code>yolo</code>. The older aliases <code>always-ask</code> and <code>write</code> still map to <code>ask</code> and <code>auto-edit</code>. On top of the mode, per-tool <code>tools.approval</code> overrides apply. The three tiers are read, write, and exec. Bash can still force a prompt on destructive patterns, depending on your execpolicy rules.</p>
+<p>See <a href="#approvals">Approvals</a> and <code>/settings</code> then Advanced then Safety.</p>
 <h2 id="model-slots-and-roles"><a class="header" href="#model-slots-and-roles">Model slots and roles</a></h2>
+<p>Veyyon separates the model you use from the job it does:</p>
 <ul>
-<li><strong>Interactive model</strong> — <code>/model</code> / <code>--model</code>; persisted as <code>modelRoles.default</code>.</li>
-<li><strong>Roles</strong> — <code>smol</code>, <code>slow</code>, <code>vision</code>, <code>plan</code>, <code>designer</code>, <code>commit</code>, <code>tiny</code>, <code>task</code>, <code>advisor</code> (+ custom) in <code>modelRoles</code>.</li>
-<li><strong>Overrides</strong> — <code>subagent.model</code> (overrides <code>modelRoles.task</code> when set), <code>compaction.model</code> (else inherit interactive).</li>
-<li><strong>Cycle</strong> — <code>cycleOrder</code> (default <code>smol</code>, <code>slow</code>); <code>app.model.cycleForward</code> (often Ctrl+P).</li>
+<li><strong>The interactive model</strong> is what you set with <code>/model</code> or <code>--model</code>, and it persists as <code>modelRoles.default</code>.</li>
+<li><strong>Roles</strong> pin a model to a kind of work. The built-in roles are <code>smol</code>, <code>slow</code>, <code>vision</code>, <code>plan</code>, <code>designer</code>, <code>commit</code>, <code>tiny</code>, <code>task</code>, and <code>advisor</code>, and you can add your own in <code>modelRoles</code>.</li>
+<li><strong>Overrides</strong> let a slot win over a role. <code>subagent.model</code> overrides <code>modelRoles.task</code> when set, and <code>compaction.model</code> overrides the interactive model for compaction, otherwise compaction inherits it.</li>
+<li><strong>Cycling</strong> rotates through <code>cycleOrder</code> (which defaults to <code>smol</code> then <code>slow</code>), bound to <code>app.model.cycleForward</code>, often Ctrl+P.</li>
 </ul>
-<p>Full contract: <a href="#models-roles-and-profiles">Models, roles, and profiles</a>.</p>
+<p>The full contract is in <a href="#models-roles-and-profiles">Models, roles, and profiles</a>.</p>
 <h2 id="provider-neutral-loop"><a class="header" href="#provider-neutral-loop">Provider-neutral loop</a></h2>
-<p>The agent loop, TUI, session format, MCP, skills, hooks, and extensions do not hard-code a single vendor. Providers are configured in the active profile’s agent dir (<code>config.yml</code>, <code>/setup</code>, <code>/providers</code>).</p>
+<p>The agent loop, the TUI, the session format, MCP, skills, hooks, and extensions do not hard-code a single vendor. You configure providers in the active profile’s agent directory, through <code>config.yml</code>, <code>/setup</code>, or <code>/providers</code>.</p>
 <h2 id="engine-modes"><a class="header" href="#engine-modes">Engine modes</a></h2>
-<p>Compaction, goal continuation, plan mode, vibe mode, and task subagents are implemented in the session/tool layer. Goal mode can continue an idle session toward a stored objective. Plan mode writes a plan file and restricts mutation until resolve/approval paths complete.</p>
+<p>Compaction, goal continuation, plan mode, vibe mode, and task subagents live in the session and tool layer, not only in prompt text. Goal mode can keep an idle session moving toward a stored objective. Plan mode writes a plan file and holds back mutation until the resolve and approval paths complete.</p>
 <h2 id="profiles"><a class="header" href="#profiles">Profiles</a></h2>
-<p>Every profile (including <code>default</code>) lives at <code>~/.veyyon/profiles/&lt;name&gt;/agent/</code> (settings, sessions, MCP, skills, hooks, …). See <a href="#profiles-1">Profiles</a> and <a href="#file-locations-1">File locations</a>.</p>
+<p>Every profile, including <code>default</code>, lives at <code>~/.veyyon/profiles/&lt;name&gt;/agent/</code>, which holds its settings, sessions, MCP config, skills, and hooks. See <a href="#profiles-1">Profiles</a> and <a href="#file-locations-1">File locations</a>.</p>
 <h2 id="related"><a class="header" href="#related">Related</a></h2>
 <ul>
 <li><a href="#harness-design-goals">Design goals</a></li>
@@ -380,15 +388,14 @@
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="install"><a class="header" href="#install">Install</a></h1>
-<p>Veyyon ships as the npm package <strong><code>@veyyon/coding-agent</code></strong> and installs the <code>veyyon</code>
-executable. It is a TypeScript + Bun agent loop with Rust natives (<code>@veyyon/natives</code>) for hot paths
-(grep, walker, shell/PTY, hashline edits). After install, run <code>veyyon plugin doctor</code>.</p>
+<p>Veyyon ships as the npm package <code>@veyyon/coding-agent</code>, and installing it gives you the <code>veyyon</code> executable. Under the hood it is a TypeScript and Bun agent loop, with Rust natives in <code>@veyyon/natives</code> handling the hot paths: grep, the file walker, the shell and PTY, and hashline edits. After you install, run <code>veyyon plugin doctor</code> to confirm everything is wired up.</p>
 <h2 id="requirements"><a class="header" href="#requirements">Requirements</a></h2>
+<p>You need two things:</p>
 <ul>
-<li><strong>Bun</strong> (recommended runtime) or a recent Node.js.</li>
-<li><strong>Git</strong> — most workflows expect a repository.</li>
+<li><strong>Bun</strong>, which is the recommended runtime, or a recent Node.js.</li>
+<li><strong>Git</strong>, because most workflows expect to run inside a repository.</li>
 </ul>
-<h2 id="install-npm--bun"><a class="header" href="#install-npm--bun">Install (npm / Bun)</a></h2>
+<h2 id="install-with-npm-or-bun"><a class="header" href="#install-with-npm-or-bun">Install with npm or Bun</a></h2>
 <pre><code class="language-console">$ bun install -g @veyyon/coding-agent
 $ veyyon --version
 </code></pre>
@@ -396,16 +403,16 @@ $ veyyon --version
 <pre><code class="language-console">$ npm install -g @veyyon/coding-agent
 $ veyyon --version
 </code></pre>
-<p><code>bun install</code> also builds <code>@veyyon/natives</code>. Config home: <code>~/.veyyon</code>; default profile agent dir: <code>~/.veyyon/profiles/default/agent/</code>.</p>
+<p>The install step also builds <code>@veyyon/natives</code>. Your configuration home is <code>~/.veyyon</code>, and the default profile keeps its agent directory at <code>~/.veyyon/profiles/default/agent/</code>.</p>
 <h2 id="after-install"><a class="header" href="#after-install">After install</a></h2>
-<p>The first interactive <code>veyyon</code> opens the first-run setup (splash → providers → glyphs → theme → outro). Force it again with <code>veyyon setup</code>. Re-open providers inside a session with <code>/setup</code> or <code>/providers</code>. See <a href="#getting-started">Getting started</a>.</p>
+<p>The first interactive <code>veyyon</code> opens the first-run setup, which moves through a splash, providers, glyphs, theme, and an outro. To run it again later, use <code>veyyon setup</code>. To re-open just the providers panel inside a session, use <code>/setup</code> or <code>/providers</code>. See <a href="#getting-started">Getting started</a>.</p>
 <h2 id="build-from-source"><a class="header" href="#build-from-source">Build from source</a></h2>
 <pre><code class="language-console">$ git clone https://github.com/santhreal/veyyon.git
 $ cd veyyon
 $ bun setup      # installs workspace deps and builds @veyyon/natives
 $ bun dev --version
 </code></pre>
-<p><code>bun dev</code> runs the in-repo build; use it while evaluating or contributing.</p>
+<p><code>bun dev</code> runs the in-repo build. Use it while you are evaluating Veyyon or contributing to it.</p>
 <h2 id="shell-completions"><a class="header" href="#shell-completions">Shell completions</a></h2>
 <pre><code class="language-console">$ veyyon completions bash|zsh|fish
 </code></pre>
@@ -414,43 +421,35 @@ $ bun dev --version
 $ veyyon plugin doctor
 $ veyyon plugin doctor --fix
 </code></pre>
-<p><code>veyyon plugin doctor</code> checks plugin health and warns when optional external binaries (<code>sd</code>, <code>sg</code>,
-<code>git</code>) or common API keys are missing. For interactive diagnostics use <code>/debug</code> in the TUI. See
-<a href="#diagnostics-and-health">Diagnostics</a>.</p>
+<p><code>veyyon plugin doctor</code> checks plugin health and warns you when an optional external binary (<code>sd</code>, <code>sg</code>, or <code>git</code>) or a common API key is missing. For interactive diagnostics, use <code>/debug</code> in the TUI. See <a href="#diagnostics-and-health">Diagnostics</a>.</p>
 <h3 id="relocate-the-config-directory"><a class="header" href="#relocate-the-config-directory">Relocate the config directory</a></h3>
-<p>By default Unix uses <code>~/.veyyon</code>. <code>VEYYON_CONFIG_DIR</code> renames the
-home-relative config directory; <code>VEYYON_CODING_AGENT_DIR</code> relocates
-the agent base (<code>config.yml</code>, <code>agent.db</code>, sessions, and more):</p>
+<p>On Unix, Veyyon uses <code>~/.veyyon</code> by default. Two environment variables let you move it. <code>VEYYON_CONFIG_DIR</code> renames the home-relative config directory, and <code>VEYYON_CODING_AGENT_DIR</code> relocates the agent base, which holds <code>config.yml</code>, <code>agent.db</code>, your sessions, and more.</p>
 <pre><code class="language-console">$ export VEYYON_CODING_AGENT_DIR=/path/to/veyyon-agent
 $ veyyon plugin doctor
 </code></pre>
-<p>Layout: <a href="#file-locations-1">File locations</a>.</p>
+<p>The <a href="#file-locations-1">File locations</a> chapter shows the full layout.</p>
 <h2 id="first-credentials"><a class="header" href="#first-credentials">First credentials</a></h2>
-<p>On first interactive launch, first-run setup (or <code>veyyon setup</code>) walks sign-in and API keys.
-Inside a session, use <code>/setup</code> / <code>/providers</code> to re-open that panel, <code>/login</code> (or <code>/login &lt;provider&gt;</code>)
-for OAuth and key entry, or export the provider’s environment variable and skip the interactive step.
-See <a href="#signing-in">Authentication</a> and <a href="#configuring-providers">Configuring providers</a>.</p>
+<p>On the first interactive launch, the first-run setup (or <code>veyyon setup</code>) walks you through sign-in and API keys. Inside a session you have three ways to manage credentials: open the panel again with <code>/setup</code> or <code>/providers</code>, run <code>/login</code> (or <code>/login &lt;provider&gt;</code>) for OAuth and key entry, or export the provider’s environment variable and skip the interactive step. See <a href="#signing-in">Authentication</a> and <a href="#configuring-providers">Configuring providers</a>.</p>
 <h2 id="uninstall"><a class="header" href="#uninstall">Uninstall</a></h2>
 <p>Remove the global package:</p>
 <pre><code class="language-console">$ bun remove -g @veyyon/coding-agent
 $ # or: npm uninstall -g @veyyon/coding-agent
 </code></pre>
-<p>Then remove state if you want a clean machine:</p>
+<p>Then remove your state if you want a clean machine:</p>
 <pre><code class="language-console">$ rm -rf ~/.veyyon          # irreversible: config, secrets, sessions, plugins, skills, logs
 $ # if you relocated the agent base:
 $ rm -rf "$VEYYON_CODING_AGENT_DIR"
 </code></pre>
-<p>Project-local files (<code>AGENTS.md</code>, <code>.veyyon/</code> in a repo) are <strong>not</strong> removed by deleting the
-home directory — clean those per repository if desired.</p>
-<p>To keep projects but wipe only sessions:</p>
+<p>Deleting the home directory does not remove project-local files such as a repository’s <code>AGENTS.md</code> or its <code>.veyyon/</code> directory. Clean those per repository if you want to.</p>
+<p>To keep your projects but wipe only sessions:</p>
 <pre><code class="language-console">$ rm -rf ~/.veyyon/profiles/default/agent/sessions
 </code></pre>
 <h2 id="next-1"><a class="header" href="#next-1">Next</a></h2>
 <ul>
-<li><a href="#getting-started">Getting started</a> — first interactive edit with sample terminal output.</li>
-<li><a href="#model-contract">Model contract</a> — choose credentials with the harness boundary in mind.</li>
-<li><a href="#safety-1">Safety</a> — approvals and fail-closed behavior.</li>
-<li><a href="#troubleshooting">Troubleshooting</a> / <a href="#frequently-asked-questions">FAQ</a> — when the doctor is not enough.</li>
+<li><a href="#getting-started">Getting started</a> walks through a first interactive edit, with sample terminal output.</li>
+<li><a href="#model-contract">Model contract</a> helps you choose credentials with the harness boundary in mind.</li>
+<li><a href="#safety-1">Safety</a> covers approvals and fail-closed behavior.</li>
+<li><a href="#troubleshooting">Troubleshooting</a> and the <a href="#frequently-asked-questions">FAQ</a> are there for when the doctor is not enough.</li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="signing-in"><a class="header" href="#signing-in">Signing in</a></h1>
@@ -461,10 +460,10 @@ tracks its own credentials.</p>
 <h2 id="sign-in-from-the-tui"><a class="header" href="#sign-in-from-the-tui">Sign in from the TUI</a></h2>
 <p>Use the interactive slash commands inside a session:</p>
 <ul>
-<li><code>/login</code> — opens the OAuth/key selector.</li>
-<li><code>/login &lt;provider&gt;</code> — jumps straight to one provider, e.g. <code>/login anthropic</code>, <code>/login openai</code>.</li>
-<li><code>/login &lt;redirect-url&gt;</code> — completes an OAuth flow that needs a pasted callback URL.</li>
-<li><code>/logout</code> — opens the provider selector to remove stored credentials.</li>
+<li><code>/login</code>: opens the OAuth/key selector.</li>
+<li><code>/login &lt;provider&gt;</code>: jumps straight to one provider, e.g. <code>/login anthropic</code>, <code>/login openai</code>.</li>
+<li><code>/login &lt;redirect-url&gt;</code>: completes an OAuth flow that needs a pasted callback URL.</li>
+<li><code>/logout</code>: opens the provider selector to remove stored credentials.</li>
 </ul>
 <p>On first run, the first-run setup (<code>veyyon setup</code>, or <code>/setup</code> / <code>/providers</code> later) walks the same flow.</p>
 <h2 id="headless-and-remote-hosts"><a class="header" href="#headless-and-remote-hosts">Headless and remote hosts</a></h2>
@@ -515,42 +514,43 @@ it.</p>
 <h2 id="provider-data-is-data-driven"><a class="header" href="#provider-data-is-data-driven">Provider data is data-driven</a></h2>
 <p>Provider identity (display name, env var, OAuth parameters) and endpoints (base URL, API kind) come
 from the bundled model catalog plus your <code>~/.veyyon/profiles/default/agent/models.yml</code>. A new BYOK provider becomes
-selectable by adding a <code>providers:</code> entry — not by changing code. See
+selectable by adding a <code>providers:</code> entry, not by changing code. See
 <a href="#configuring-providers">Configuring providers</a> and <code>docs/providers.md</code>.</p>
 <p>See also: <a href="#models-and-providers">Models and providers</a> and the <a href="#cli-reference">CLI reference</a>.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="quickstart"><a class="header" href="#quickstart">Quickstart</a></h1>
-<p>Install, first session, and a small edit. Full path: <a href="#getting-started">Getting started</a>.</p>
+<p>This is the short path: install Veyyon, start a session, and make one small edit. For the full walkthrough, see <a href="#getting-started">Getting started</a>.</p>
 <h2 id="before-you-start"><a class="header" href="#before-you-start">Before you start</a></h2>
+<p>Check whether Veyyon is already on your machine:</p>
 <pre><code class="language-shell">which vey
 vey --version
 </code></pre>
-<p>If missing, the one-command installer (wires PATH, completions, and the <code>vey</code> alias):</p>
+<p>If it is missing, the one-command installer wires up your PATH, shell completions, and the <code>vey</code> alias:</p>
 <pre><code class="language-shell">curl -fsSL https://get.veyyon.dev | sh
 </code></pre>
-<p>Or from the npm registry: <code>bun install -g @veyyon/coding-agent</code>. From source: <code>bun setup &amp;&amp; bun dev</code>
-in the repo root. See <a href="#install">Install</a>.</p>
+<p>You can also install from the npm registry with <code>bun install -g @veyyon/coding-agent</code>, or build from source with <code>bun setup &amp;&amp; bun dev</code> in the repository root. See <a href="#install">Install</a>.</p>
 <h2 id="check-the-environment"><a class="header" href="#check-the-environment">Check the environment</a></h2>
 <pre><code class="language-shell">veyyon plugin doctor
 </code></pre>
-<p>In the TUI, <code>/debug</code> opens interactive diagnostics. See <a href="#diagnostics-and-health">Diagnostics and health</a>.</p>
-<p>Config and sessions live under <code>~/.veyyon/profiles/default/agent/</code> by default (<code>VEYYON_CONFIG_DIR</code> / <code>VEYYON_CONFIG_DIR</code> / <code>VEYYON_CONFIG_DIR</code> can rename the home-relative dir). Named profiles use <code>~/.veyyon/profiles/&lt;name&gt;/agent/</code>.</p>
+<p>Inside the TUI, <code>/debug</code> opens interactive diagnostics. See <a href="#diagnostics-and-health">Diagnostics and health</a>.</p>
+<p>By default, your config and sessions live under <code>~/.veyyon/profiles/default/agent/</code>. Two environment variables move them: <code>VEYYON_CONFIG_DIR</code> renames the home-relative config directory, and <code>VEYYON_CODING_AGENT_DIR</code> relocates the agent base. Named profiles use <code>~/.veyyon/profiles/&lt;name&gt;/agent/</code>.</p>
 <h2 id="start-your-first-session"><a class="header" href="#start-your-first-session">Start your first session</a></h2>
 <pre><code class="language-shell">cd my-project
 vey
 </code></pre>
-<p><strong>First interactive launch</strong> shows the first-run setup (splash → providers → glyphs → theme → outro), then the welcome screen and composer. Resume / <code>VEYYON_SKIP_SETUP=1</code> skips it. Re-open providers later with <code>/setup</code> or <code>/providers</code>, or run <code>veyyon setup</code> from the shell.</p>
-<p>After that you should see the TUI composer, model indicator, and workspace path.</p>
+<p>The first interactive launch shows the first-run setup (splash, providers, glyphs, theme, outro), then the welcome screen and composer. Resuming a session, or setting <code>VEYYON_SKIP_SETUP=1</code>, skips it. You can re-open providers later with <code>/setup</code> or <code>/providers</code>, or run <code>veyyon setup</code> from the shell.</p>
+<p>After setup, you should see the TUI composer, the model indicator, and your workspace path.</p>
 <h2 id="ask-for-a-small-edit"><a class="header" href="#ask-for-a-small-edit">Ask for a small edit</a></h2>
 <pre><code class="language-text">&gt; Add a name argument to greet() in greet.py, default 'world'.
 </code></pre>
-<p>Veyyon reads the file, proposes an <code>edit</code> or hashline change, and may pause for approval depending on <code>tools.approvalMode</code>. Press <code>y</code> to accept when prompted.</p>
+<p>Veyyon reads the file, proposes an <code>edit</code> or hashline change, and may pause for approval depending on <code>tools.approvalMode</code>. Press <code>y</code> to accept when it prompts you.</p>
 <h2 id="composer-conveniences"><a class="header" href="#composer-conveniences">Composer conveniences</a></h2>
+<p>A few keys do a lot in the composer:</p>
 <ul>
-<li><code>@</code> — file/skill/plugin completion</li>
-<li><code>/</code> — slash commands (<code>/help</code>, <code>/tree</code>, <code>/settings</code>, …)</li>
-<li><code>Esc</code> — interrupt a running turn</li>
-<li><code>?</code> — shortcut hints on empty composer</li>
+<li><code>@</code> completes file, skill, and plugin names.</li>
+<li><code>/</code> opens the slash commands, such as <code>/help</code>, <code>/tree</code>, and <code>/settings</code>.</li>
+<li><code>Esc</code> interrupts a running turn.</li>
+<li><code>?</code> shows shortcut hints when the composer is empty.</li>
 </ul>
 <h2 id="next-steps"><a class="header" href="#next-steps">Next steps</a></h2>
 <ul>
@@ -559,35 +559,38 @@ vey
 <li><a href="#configuration-4">Configuration</a></li>
 <li><a href="#cli-reference">CLI reference</a></li>
 </ul>
-<p>You now know the loop: start <code>veyyon</code>, ask, approve tools, inspect diffs.</p>
+<p>You now know the loop: start <code>veyyon</code>, ask, approve the tools, and inspect the diffs.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="getting-started"><a class="header" href="#getting-started">Getting started</a></h1>
-<p>Install, first-run setup, first session.</p>
+<p>This chapter takes you from nothing installed to a first real change in your own project. It has four steps: install Veyyon, run the first-time setup, sign in to a provider, and hand Veyyon a small task.</p>
 <h2 id="1-install"><a class="header" href="#1-install">1. Install</a></h2>
-<p><strong>npm / Bun (recommended)</strong></p>
+<p>The quickest path uses Bun to install the published package.</p>
 <pre><code class="language-console">$ bun install -g @veyyon/coding-agent
 $ veyyon --version
 </code></pre>
-<p><strong>From source</strong> (repo root):</p>
+<p>If you would rather build from a source checkout, clone the repository and run the setup script.</p>
 <pre><code class="language-console">$ git clone https://github.com/santhreal/veyyon.git
 $ cd veyyon
 $ bun setup
 $ bun dev --version
 </code></pre>
-<p><code>bun setup</code> installs workspace deps and builds <code>@veyyon/natives</code>. Config home: <code>~/.veyyon</code>; default profile agent dir: <code>~/.veyyon/profiles/default/agent/</code>.</p>
-<p>Shell completions: <code>veyyon completions bash|zsh|fish</code>. See <a href="#install">Install</a>.</p>
+<p><code>bun setup</code> installs the workspace dependencies and builds <code>@veyyon/natives</code>, the Rust addon. Your configuration lives under <code>~/.veyyon</code>, and the default profile keeps its agent state in <code>~/.veyyon/profiles/default/agent/</code>.</p>
+<p>To add shell completion, run <code>veyyon completions bash</code>, <code>veyyon completions zsh</code>, or <code>veyyon completions fish</code>. The <a href="#install">Install</a> chapter has the full details.</p>
 <h2 id="2-first-launch"><a class="header" href="#2-first-launch">2. First launch</a></h2>
-<p>First interactive <code>veyyon</code> (or <code>veyyon setup</code>) runs the setup UI:</p>
+<p>The first time you run <code>veyyon</code> (or any time you run <code>veyyon setup</code>), the setup UI walks you through five steps:</p>
 <ol>
-<li>Splash</li>
-<li>Providers (sign-in / keys; optional web search)</li>
-<li>Glyphs (Nerd Font / Unicode / ASCII)</li>
-<li>Theme</li>
-<li>Session welcome</li>
+<li>The splash screen.</li>
+<li>Providers, where you sign in or paste an API key, and optionally enable web search.</li>
+<li>Glyphs, where you choose a Nerd Font, plain Unicode, or ASCII.</li>
+<li>Theme.</li>
+<li>The session welcome.</li>
 </ol>
-<p>Later: <code>/setup</code> or <code>/providers</code> in the TUI. Skip with <code>VEYYON_SKIP_SETUP=1</code> or by resuming a session.</p>
-<p><strong>API key (example):</strong> set <code>DEEPSEEK_API_KEY</code> in the environment, then pick a DeepSeek model in <code>/model</code>.</p>
-<p><strong>Custom gateway</strong> — add a provider in <code>~/.veyyon/profiles/default/agent/models.yml</code>:</p>
+<p>You can return to provider setup later with <code>/setup</code> or <code>/providers</code> inside the TUI. To skip setup entirely, set <code>VEYYON_SKIP_SETUP=1</code>, or resume an existing session.</p>
+<h2 id="3-sign-in-to-a-provider"><a class="header" href="#3-sign-in-to-a-provider">3. Sign in to a provider</a></h2>
+<p>Veyyon needs at least one model provider. You have three common options.</p>
+<p><strong>Use an API key.</strong> Set the provider’s key in your environment, then pick one of its models in <code>/model</code>. For example, export <code>DEEPSEEK_API_KEY</code> and choose a DeepSeek model.</p>
+<p><strong>Sign in with OAuth.</strong> Run <code>/login</code>, or name a provider directly with <code>/login anthropic</code>. These are the same flows the Providers setup scene uses.</p>
+<p><strong>Add a custom gateway.</strong> Declare a provider in <code>~/.veyyon/profiles/default/agent/models.yml</code>:</p>
 <pre><code class="language-yaml">providers:
   my-gateway:
     baseUrl: https://gateway.example.com/v1
@@ -599,63 +602,57 @@ $ bun dev --version
         contextWindow: 200000
         maxTokens: 8192
 </code></pre>
-<p><strong>OAuth providers:</strong> <code>/login</code> or <code>/login anthropic</code> inside the TUI (same flows the Providers scene uses).</p>
-<p>Details: <a href="#models-and-providers">Models and providers</a>, <a href="#configuring-providers">Configuring providers</a>, engine doc <code>docs/providers.md</code>.</p>
-<p>Local <strong>Ollama</strong> (keyless when the daemon is up):</p>
+<p><strong>Run a local model.</strong> With the Ollama daemon running, Veyyon discovers local models and needs no key:</p>
 <pre><code class="language-console">$ ollama serve
 $ veyyon
 </code></pre>
-<p>Then <code>/model</code> and choose an <code>ollama/…</code> model from discovery.</p>
-<h2 id="3-run-your-first-task"><a class="header" href="#3-run-your-first-task">3. Run your first task</a></h2>
+<p>Open <code>/model</code> and choose an <code>ollama/...</code> entry from the discovered list.</p>
+<p>For the full picture, see <a href="#models-and-providers">Models and providers</a> and <a href="#configuring-providers">Configuring providers</a>.</p>
+<h2 id="4-run-your-first-task"><a class="header" href="#4-run-your-first-task">4. Run your first task</a></h2>
+<p>Change into a project you know, and start Veyyon.</p>
 <pre><code class="language-console">$ cd ~/code/my-project
 $ veyyon
 </code></pre>
-<p>Describe a small task:</p>
+<p>Describe a small, checkable task:</p>
 <pre><code class="language-text">Add a function add(a, b) in src/lib.rs and a unit test. Run the test.
 </code></pre>
-<p>Typical flow:</p>
+<p>A typical run looks like this:</p>
 <ol>
-<li>Veyyon reads relevant files (<code>read</code>, <code>grep</code>, <code>glob</code>, …).</li>
-<li>It proposes an edit through hashline/<code>edit</code>/<code>write</code> tools.</li>
-<li>When policy requires it, you approve the tool call (<code>tools.approvalMode</code> — see <a href="#safety-1">Safety</a>).</li>
-<li>The change lands; diffs appear in the TUI.</li>
-<li>If you asked for tests, approve <code>bash</code> or <code>cargo test</code> as needed.</li>
+<li>Veyyon reads the files it needs with <code>read</code>, <code>grep</code>, and <code>glob</code>.</li>
+<li>It proposes an edit through the hashline <code>edit</code> and <code>write</code> tools.</li>
+<li>When your policy requires it, you approve the tool call. The <code>tools.approvalMode</code> setting decides when this happens; see <a href="#safety-1">Safety</a>.</li>
+<li>The change lands, and the diff appears in the TUI.</li>
+<li>If you asked for tests, you approve the <code>bash</code> or <code>cargo test</code> call when Veyyon runs them.</li>
 </ol>
-<h2 id="4-approval-mode"><a class="header" href="#4-approval-mode">4. Approval mode</a></h2>
-<p>Tool approval tiers (<code>read</code>, <code>write</code>, <code>exec</code>) combine with <code>tools.approvalMode</code>:</p>
+<h2 id="approval-mode"><a class="header" href="#approval-mode">Approval mode</a></h2>
+<p>Every tool call falls into one of three tiers: <code>read</code>, <code>write</code>, or <code>exec</code>. The <code>tools.approvalMode</code> setting decides which tiers run without asking and which ones prompt you first.</p>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>Mode</th><th>Auto-approves</th><th>Prompts for</th></tr>
+<tr><th>Mode</th><th>Runs without asking</th><th>Prompts you for</th></tr>
 </thead>
 <tbody>
-<tr><td><code>plan</code></td><td><code>read</code> (proposes without writing)</td><td>everything that writes or runs</td></tr>
-<tr><td><code>ask</code></td><td><code>read</code></td><td><code>write</code>, <code>exec</code></td></tr>
-<tr><td><code>auto-edit</code></td><td><code>read</code>, <code>write</code></td><td><code>exec</code></td></tr>
-<tr><td><code>yolo</code> (default)</td><td>all tiers</td><td>none (unless per-tool override or bash safety override)</td></tr>
+<tr><td><code>plan</code></td><td><code>read</code> (it proposes, but does not write)</td><td>everything that writes or runs</td></tr>
+<tr><td><code>ask</code></td><td><code>read</code></td><td><code>write</code> and <code>exec</code></td></tr>
+<tr><td><code>auto-edit</code></td><td><code>read</code> and <code>write</code></td><td><code>exec</code></td></tr>
+<tr><td><code>yolo</code> (default)</td><td>all tiers</td><td>nothing, unless a per-tool override or a bash safety rule applies</td></tr>
 </tbody>
 </table>
 </div>
-<p>Legacy names <code>always-ask</code> (→ <code>ask</code>) and <code>write</code> (→ <code>auto-edit</code>) are still accepted.</p>
-<p>Schema default for <code>tools.approvalMode</code> is <strong><code>yolo</code></strong>. Change in <code>/settings</code> or config. See <a href="#approvals">Approvals</a>, <a href="#safety-1">Safety</a>.</p>
-<h2 id="5-further-surfaces"><a class="header" href="#5-further-surfaces">5. Further surfaces</a></h2>
-<ol>
-<li><strong>Multi-file change</strong> — refactor across modules; hashline edits batch paths.</li>
-<li><strong>Session tree</strong> — <code>/tree</code> jumps to an earlier user message and branches in the same session file.</li>
-<li><strong>Models</strong> — <code>/model</code> for the interactive model; set subagent and compaction models in settings. See <a href="#models-roles-and-profiles">Models, roles, and profiles</a>.</li>
-</ol>
+<p>The older names <code>always-ask</code> and <code>write</code> still work, and map to <code>ask</code> and <code>auto-edit</code>. The schema default is <code>yolo</code>. You can change it in <code>/settings</code> or in your config. See <a href="#approvals">Approvals</a> and <a href="#safety-1">Safety</a>.</p>
 <h2 id="where-to-go-next"><a class="header" href="#where-to-go-next">Where to go next</a></h2>
+<p>A few surfaces are worth trying early:</p>
 <ul>
-<li><a href="#quickstart">Quickstart</a> — shorter walkthrough.</li>
-<li><a href="#configuration-4">Configuration</a></li>
-<li><a href="#sessions">Sessions</a></li>
-<li><a href="#memory">Memory</a> — mnemopi backend</li>
-<li><a href="#diagnostics-and-health">Diagnostics</a> — plugin doctor and debug tools</li>
+<li><strong>A multi-file change.</strong> Ask for a refactor across modules. Hashline edits batch the paths together.</li>
+<li><strong>The session tree.</strong> <code>/tree</code> jumps back to an earlier message and branches from it inside the same session file.</li>
+<li><strong>Model slots.</strong> <code>/model</code> sets the interactive model. You set the subagent and compaction models in settings; see <a href="#models-roles-and-profiles">Models, roles, and profiles</a>.</li>
 </ul>
+<p>From here, the <a href="#quickstart">Quickstart</a> is a shorter walkthrough, <a href="#configuration-4">Configuration</a> covers settings, <a href="#sessions">Sessions</a> explains resuming and branching, <a href="#memory">Memory</a> covers the mnemopi backend, and <a href="#diagnostics-and-health">Diagnostics</a> covers the doctor and debug tools.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="configuring-providers"><a class="header" href="#configuring-providers">Configuring providers</a></h1>
-<p>Copy-paste setups for bring-your-own-key (BYOK) and local providers. For model selection
-guide, see <a href="#models-and-providers">Models and providers</a>. For the harness/provider boundary, see
+<p>This page gives you copy-paste setups for bring-your-own-key (BYOK) and local providers.
+Once a provider works, see <a href="#models-and-providers">Models and providers</a> to choose and switch models.
+For what the harness owns versus what the provider owns, see
 <a href="#model-contract">Model contract</a>.</p>
 <p>Custom providers live under <code>providers:</code> in <code>~/.veyyon/profiles/default/agent/models.yml</code>. Keys are resolved from the
 environment, stored auth, OAuth, or a <code>models.yml</code> <code>apiKey</code> (see <a href="#the-provider-stack-and-bring-your-own-key">Providers</a>
@@ -692,7 +689,7 @@ providers:
 <ul>
 <li>Custom providers are merged <strong>alongside</strong> built-ins; they do not silently replace <code>openai</code>.</li>
 <li>A custom <code>ollama</code> / <code>lm-studio</code> / <code>llama.cpp</code> entry replaces that engine’s built-in discovery.</li>
-<li>A YAML or schema error makes the registry skip the file with an error message — validate with <code>veyyon models</code>.</li>
+<li>A YAML or schema error makes the registry skip the file with an error message: validate with <code>veyyon models</code>.</li>
 </ul>
 <p>After editing, restart the session.</p>
 <h2 id="openai-api-key"><a class="header" href="#openai-api-key">OpenAI (API key)</a></h2>
@@ -731,7 +728,7 @@ $ veyyon --model anthropic/claude-sonnet-4-5
 <p>To reach Anthropic models through a gateway instead, add an OpenAI-compatible custom provider
 (OpenRouter, LiteLLM, a team proxy) and select the gateway’s model id.</p>
 <h2 id="other-openai-compatible-hosts"><a class="header" href="#other-openai-compatible-hosts">Other OpenAI-compatible hosts</a></h2>
-<p>Any host that speaks Chat Completions works the same way — only <code>baseUrl</code>, <code>api</code>, and <code>apiKey</code> change:</p>
+<p>Any host that speaks Chat Completions works the same way, only <code>baseUrl</code>, <code>api</code>, and <code>apiKey</code> change:</p>
 <pre><code class="language-yaml">providers:
   my-proxy:
     baseUrl: https://llm-proxy.example.com/v1
@@ -779,7 +776,7 @@ modelRoles:
 <pre><code class="language-console">$ veyyon models
 $ veyyon --model &lt;provider&gt;/&lt;id&gt; "reply with the model name you are"
 </code></pre>
-<p>If discovery or auth fails, the error names the provider and the missing key or unreachable base URL —
+<p>If discovery or auth fails, the error names the provider and the missing key or unreachable base URL,
 fix that rather than retrying with a different silent default.</p>
 <h2 id="see-also"><a class="header" href="#see-also">See also</a></h2>
 <ul>
@@ -791,31 +788,27 @@ fix that rather than retrying with a different silent default.</p>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="core-concepts"><a class="header" href="#core-concepts">Core concepts</a></h1>
-<p>Vocabulary for sessions, permissions, and the model/provider boundary. Operator commands:
-<a href="#getting-started">Using Veyyon</a>. Feature guides: <a href="#features">Features</a>.</p>
+<p>This chapter gives you the vocabulary for how Veyyon runs: sessions, permissions, and the boundary between the harness and your model provider. If you want operator commands instead, see <a href="#getting-started">Using Veyyon</a>, and for feature guides see <a href="#features">Features</a>.</p>
 <h2 id="what-this-chapter-covers"><a class="header" href="#what-this-chapter-covers">What this chapter covers</a></h2>
-<p>The CLI is <strong><code>veyyon</code></strong>. It calls a configured model endpoint with your credentials and runs a tool loop
-(read, edit, verify, stop). The pages below define the units and contracts of that loop.</p>
+<p>The CLI is <code>veyyon</code>. It calls a configured model endpoint with your credentials and runs a tool loop: read, edit, verify, stop. The pages below define the units and contracts of that loop, so that later chapters can assume you know them.</p>
 <div class="table-wrapper">
 <table>
 <thead>
 <tr><th>Page</th><th>What it defines</th></tr>
 </thead>
 <tbody>
-<tr><td><a href="#sessions-turns-and-threads">Sessions, turns, and threads</a></td><td>The runtime units: a session is the persisted run, a turn is one request plus the agent loop, and a thread is the active path through the session tree.</td></tr>
-<tr><td><a href="#permission-model">Permission model</a></td><td>The approval-mode boundary. <code>tools.approvalMode</code> (<code>plan</code>/<code>ask</code>/<code>auto-edit</code>/<code>yolo</code>) decides which tool tiers run automatically and when Veyyon asks first. There is no OS command sandbox.</td></tr>
-<tr><td><a href="#model-contract">Model contract</a></td><td>The BYOK boundary: endpoint + model + key. What the harness owns versus what the provider owns, Freeform vs Function tools, and how system prompts and tool schemas are presented.</td></tr>
+<tr><td><a href="#sessions-turns-and-threads">Sessions, turns, and threads</a></td><td>The runtime units. A session is the persisted run, a turn is one request plus the agent loop, and a thread is the active path through the session tree.</td></tr>
+<tr><td><a href="#permission-model">Permission model</a></td><td>The approval-mode boundary. <code>tools.approvalMode</code> (<code>plan</code>, <code>ask</code>, <code>auto-edit</code>, <code>yolo</code>) decides which tool tiers run automatically and when Veyyon asks you first. There is no operating-system command sandbox.</td></tr>
+<tr><td><a href="#model-contract">Model contract</a></td><td>The bring-your-own-key boundary: endpoint, model, and key. It covers what the harness owns versus what the provider owns, Freeform versus Function tools, and how system prompts and tool schemas are presented.</td></tr>
 </tbody>
 </table>
 </div>
 <h2 id="foundations-that-pair-with-these-pages"><a class="header" href="#foundations-that-pair-with-these-pages">Foundations that pair with these pages</a></h2>
-<p>Before or after this chapter, the foundations pages give the design spine without repeating the
-operator workflow:</p>
+<p>The foundations pages give the design spine without repeating the operator workflow. Read them before or after this chapter, whichever suits you.</p>
 <ul>
-<li><a href="#core-concepts-1">Core concepts (foundations)</a> defines session, thread, turn, rollout
-JSONL, and the state database in more detail.</li>
-<li><a href="#architecture-at-a-glance">Architecture overview</a> maps subsystems to responsibilities.</li>
-<li>Provider and model configuration: <a href="#the-provider-stack-and-bring-your-own-key">Providers</a> and <a href="../../providers.html"><code>docs/providers.md</code></a>.</li>
+<li><a href="#core-concepts-1">Core concepts (foundations)</a> defines a session, thread, turn, the rollout JSONL, and the state database in more detail.</li>
+<li><a href="#architecture-at-a-glance">Architecture overview</a> maps the subsystems to their responsibilities.</li>
+<li>For provider and model configuration, see <a href="#the-provider-stack-and-bring-your-own-key">Providers</a> and <a href="../../providers.html"><code>docs/providers.md</code></a>.</li>
 </ul>
 <h2 id="how-the-pieces-fit"><a class="header" href="#how-the-pieces-fit">How the pieces fit</a></h2>
 <pre><code class="language-text">  you ──► veyyon (TUI or a one-shot prompt)
@@ -828,16 +821,12 @@ JSONL, and the state database in more detail.</li>
                   ├─ endpoint + key               (your provider)
                   └─ model id                     (discovered or pinned)
 </code></pre>
-<p>Changing providers changes endpoint, credentials, and model id. Tool repair, edit verification,
-approvals, and context compaction remain harness behavior. See
-<a href="#configuring-providers">Configuring providers</a> and
-<a href="#models-and-providers">Models and providers</a>.</p>
+<p>Changing providers changes the endpoint, the credentials, and the model id. Tool repair, edit verification, approvals, and context compaction stay the same, because they are harness behavior. See <a href="#configuring-providers">Configuring providers</a> and <a href="#models-and-providers">Models and providers</a>.</p>
 <h2 id="related-reading"><a class="header" href="#related-reading">Related reading</a></h2>
 <ul>
-<li><a href="#permission-model">Permission model</a> and <a href="#approvals">Approvals</a> for the
-approval modes.</li>
-<li>Prefer <code>--approval-mode auto-edit</code> for bounded automation.</li>
-<li><a href="#non-interactive-mode-veyyon---print">Non-interactive mode</a> for scripted <code>veyyon</code> launch patterns.</li>
+<li><a href="#permission-model">Permission model</a> and <a href="#approvals">Approvals</a> cover the approval modes.</li>
+<li>For bounded automation, prefer <code>--approval-mode auto-edit</code>.</li>
+<li><a href="#non-interactive-mode-veyyon---print">Non-interactive mode</a> covers scripted <code>veyyon</code> launch patterns.</li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="sessions-turns-and-threads"><a class="header" href="#sessions-turns-and-threads">Sessions, turns, and threads</a></h1>
@@ -890,15 +879,24 @@ original session is never modified.</p>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="permission-model"><a class="header" href="#permission-model">Permission model</a></h1>
-<p>Tool execution is gated by <strong><code>tools.approvalMode</code></strong>. The process does not apply OS command confinement (Landlock, seccomp, Seatbelt, bubblewrap).</p>
+<p>Every tool the model wants to run passes through one gate: the approval mode. The
+approval mode decides whether a tool runs on its own or waits for you to say yes. You
+set it once in config, and you can change it for a single run from the command line.</p>
+<p>One setting controls this: <code>tools.approvalMode</code>. Nothing else confines what a command
+can do once it runs. Veyyon does not wrap commands in an operating-system sandbox
+(Landlock, seccomp, Seatbelt, or bubblewrap), so the approval mode is the boundary. Treat
+it as the boundary.</p>
 <h2 id="tool-tiers"><a class="header" href="#tool-tiers">Tool tiers</a></h2>
+<p>Every tool belongs to one of three tiers, ordered by how much it can change:</p>
 <ul>
-<li><strong>read</strong> — <code>read</code>, <code>grep</code>, <code>glob</code>, listing</li>
-<li><strong>write</strong> — <code>edit</code>, <code>write</code></li>
-<li><strong>exec</strong> — <code>bash</code> and other command execution</li>
+<li><strong>read</strong> looks but does not touch: <code>read</code>, <code>grep</code>, <code>glob</code>, and directory listing.</li>
+<li><strong>write</strong> changes files: <code>edit</code> and <code>write</code>.</li>
+<li><strong>exec</strong> runs commands: <code>bash</code> and anything else that executes a program.</li>
 </ul>
+<p>A mode approves whole tiers, not individual tools. That is why the tiers come first: once
+you know which tier a tool is in, the mode tells you whether it runs.</p>
 <h2 id="modes"><a class="header" href="#modes">Modes</a></h2>
-<p>Set with <code>tools.approvalMode</code>, or per run with <code>--approval-mode</code> / <code>--yolo</code> / <code>--plan-yolo</code>.</p>
+<p>A mode is a named choice of which tiers run without asking. There are four:</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -908,13 +906,20 @@ original session is never modified.</p>
 <tr><td><code>plan</code></td><td>read</td><td>write, exec</td></tr>
 <tr><td><code>ask</code></td><td>read</td><td>write, exec</td></tr>
 <tr><td><code>auto-edit</code></td><td>read + write</td><td>exec</td></tr>
-<tr><td><code>yolo</code></td><td>all tiers</td><td>nothing (unless per-tool override or bash safety rule)</td></tr>
+<tr><td><code>yolo</code></td><td>all tiers</td><td>nothing (unless a per-tool override or a bash safety rule applies)</td></tr>
 </tbody>
 </table>
 </div>
-<p>Schema default: <strong><code>yolo</code></strong>. Aliases: <code>always-ask</code> → <code>ask</code>, <code>write</code> → <code>auto-edit</code>.</p>
+<p>The schema default is <code>yolo</code>. Two older names still work: <code>always-ask</code> maps to <code>ask</code>, and
+<code>write</code> maps to <code>auto-edit</code>.</p>
+<p>Set the mode in config, or override it for one run:</p>
+<pre><code class="language-console">$ veyyon --approval-mode auto-edit "run the tests and fix failures"
+</code></pre>
+<p>The launch flags <code>--yolo</code> and <code>--plan-yolo</code> set <code>yolo</code> and a plan-mode variant of it.</p>
 <h2 id="per-tool-overrides"><a class="header" href="#per-tool-overrides">Per-tool overrides</a></h2>
-<p><code>tools.approval</code> maps tool name → <code>allow</code> | <code>deny</code> | <code>prompt</code> and wins for that tool.</p>
+<p>When you want one tool to behave differently from its tier, name it under
+<code>tools.approval</code>. Each entry maps a tool to <code>allow</code>, <code>deny</code>, or <code>prompt</code>, and that choice
+wins for that tool no matter what the mode says.</p>
 <pre><code class="language-yaml"># ~/.veyyon/profiles/default/agent/config.yml
 tools:
   approvalMode: auto-edit
@@ -922,10 +927,17 @@ tools:
     bash: prompt
     read: allow
 </code></pre>
+<p>Here the mode is <code>auto-edit</code>, so writes run without asking. The override then pulls <code>bash</code>
+back to <code>prompt</code>, so commands still stop for your approval.</p>
 <h2 id="execpolicy"><a class="header" href="#execpolicy">Execpolicy</a></h2>
-<p>User and project <code>.rules</code> files refine which shell commands auto-run. Untrusted project directories disable project-local rules, config, and hooks until the directory is trusted.</p>
+<p>Within the exec tier, <code>.rules</code> files refine which shell commands may auto-run. You keep
+them at the user level and per project. A project directory you have not trusted yet is
+treated as untrusted: its project-local rules, config, and hooks stay disabled until you
+trust the directory.</p>
 <h2 id="on-deny"><a class="header" href="#on-deny">On deny</a></h2>
-<p>Denied or failed policy checks return an error to the model. Permissions are not escalated on error.</p>
+<p>When a tool is denied, or a policy check fails, Veyyon returns an error to the model. It
+does not retry with more permission. An error never escalates what the model is allowed to
+do.</p>
 <h2 id="related-2"><a class="header" href="#related-2">Related</a></h2>
 <ul>
 <li><a href="#approvals">Approvals</a></li>
@@ -995,7 +1007,7 @@ Veyyon adapts to that surface through the provider’s <code>api</code> kind:</p
 <li>Model ids come from the provider’s discovery endpoint when discovery runs. There is no hardcoded
 allowlist for BYOK providers, and discovery returns an error; it does not invent an empty catalog on failure.</li>
 </ul>
-<p>Everything beyond the built-in catalog is data in <code>models.yml</code> — see
+<p>Everything beyond the built-in catalog is data in <code>models.yml</code>, see
 <a href="#the-provider-stack-and-bring-your-own-key">Providers</a> and <a href="../../providers.html"><code>docs/providers.md</code></a>.</p>
 <h2 id="system-prompts-and-tool-schemas"><a class="header" href="#system-prompts-and-tool-schemas">System prompts and tool schemas</a></h2>
 <p>Each turn the harness builds a request that includes:</p>
@@ -1062,13 +1074,13 @@ have resolvable credentials.</li>
 <p>The conversation model (<code>/model</code> or <code>--model</code>) is separate from background roles. Roles are configured
 under <code>modelRoles</code>:</p>
 <ul>
-<li><code>modelRoles.task</code> — default for spawned subagents unless an agent definition pins its own model.</li>
-<li><code>modelRoles.tiny</code> (or <code>smol</code>) — lightweight background work (titles, memory, auto-thinking).</li>
+<li><code>modelRoles.task</code>: default for spawned subagents unless an agent definition pins its own model.</li>
+<li><code>modelRoles.tiny</code> (or <code>smol</code>): lightweight background work (titles, memory, auto-thinking).</li>
 </ul>
 <p>Precedence for subagents is explicit: an agent definition’s own model pattern wins, otherwise
 <code>modelRoles.task</code>, otherwise the conversation model. There is no silent blend. <code>/status</code> and
 <code>veyyon plugin doctor</code> report the effective values. See
-<a href="#roles-optional">Models and providers</a>.</p>
+<a href="#models-roles-and-profiles">Models, roles, and profiles</a>.</p>
 <h2 id="automation-note"><a class="header" href="#automation-note">Automation note</a></h2>
 <p>For non-interactive runs, pass the prompt and pick an approval mode that matches your trust boundary:</p>
 <pre><code class="language-console">$ veyyon --approval-mode auto-edit "run the unit tests and fix failures"
@@ -1082,12 +1094,12 @@ under <code>modelRoles</code>:</p>
 </ul>
 <h2 id="next-2"><a class="header" href="#next-2">Next</a></h2>
 <ul>
-<li><a href="#configuring-providers">Configuring providers</a> — Ollama, LM Studio, Anthropic, and custom
+<li><a href="#configuring-providers">Configuring providers</a>: Ollama, LM Studio, Anthropic, and custom
 OpenAI-compatible endpoints.</li>
-<li><a href="#models-and-providers">Models and providers</a> — choosing and switching models in a session.</li>
-<li><a href="#safety-1">Safety</a> — boundaries around tool use and model output.</li>
-<li><a href="#permission-model">Permission model</a> — the approval modes.</li>
-<li><a href="#signing-in">Signing in</a> — interactive and env-var auth paths.</li>
+<li><a href="#models-and-providers">Models and providers</a>: choosing and switching models in a session.</li>
+<li><a href="#safety-1">Safety</a>: boundaries around tool use and model output.</li>
+<li><a href="#permission-model">Permission model</a>: the approval modes.</li>
+<li><a href="#signing-in">Signing in</a>: interactive and env-var auth paths.</li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="core-concepts-1"><a class="header" href="#core-concepts-1">Core concepts</a></h1>
@@ -1136,13 +1148,13 @@ OpenAI-compatible endpoints.</li>
 <li>Branching and forking are safe because history is never rewritten.</li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
-<h1 id="how-to-read-this-book"><a class="header" href="#how-to-read-this-book">How to read this book</a></h1>
+<h1 id="how-to-read-this-book-1"><a class="header" href="#how-to-read-this-book-1">How to read this book</a></h1>
 <h2 id="structure"><a class="header" href="#structure">Structure</a></h2>
 <ul>
-<li><strong>Using</strong> — install, config, and operator workflows.</li>
-<li><strong>Features</strong> — one topic per page (approvals, plan mode, profiles, …).</li>
-<li><strong>Reference</strong> — CLI flags, slash commands, keybindings, env vars.</li>
-<li><strong>Architecture / repair / edit</strong> — how the harness implements those surfaces.</li>
+<li><strong>Using</strong>: install, config, and operator workflows.</li>
+<li><strong>Features</strong>: one topic per page (approvals, plan mode, profiles, …).</li>
+<li><strong>Reference</strong>: CLI flags, slash commands, keybindings, env vars.</li>
+<li><strong>Architecture / repair / edit</strong>: how the harness implements those surfaces.</li>
 </ul>
 <p>Cross-links point at the page that owns a concept; prefer that page over repeating the full contract elsewhere.</p>
 <h2 id="conventions"><a class="header" href="#conventions">Conventions</a></h2>
@@ -1153,89 +1165,99 @@ OpenAI-compatible endpoints.</li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="features"><a class="header" href="#features">Features</a></h1>
+<p>This chapter is the hub for Veyyon’s features. It groups them into the interactive surfaces you work with directly, the modes and extensions that change how the agent runs, and a short list of recipes.</p>
 <h2 id="interactive-surfaces"><a class="header" href="#interactive-surfaces">Interactive surfaces</a></h2>
+<p>These are the parts of the TUI you touch every session:</p>
 <ul>
-<li><a href="#multi-agent-monitoring">Status line and multi-agent UI</a> — status segments, <code>/cockpit</code>, jobs, swarm</li>
-<li><a href="#keybindings-and-vim-mode">Keybindings</a> — chords and Vim mode</li>
-<li>Composer: prompt history, <code>@</code> / <code>/</code> completion, Esc interrupt — <a href="#quickstart">Quickstart</a>, <a href="#keybindings-and-vim-mode">Keybindings</a></li>
-<li><a href="#web-search">Web search</a></li>
+<li><a href="#multi-agent-monitoring">Status line and multi-agent UI</a> covers the status segments, <code>/cockpit</code>, jobs, and the swarm view.</li>
+<li><a href="#keybindings-and-vim-mode">Keybindings</a> covers the chords and Vim mode.</li>
+<li>The composer gives you prompt history, <code>@</code> and <code>/</code> completion, and <code>Esc</code> to interrupt. See <a href="#quickstart">Quickstart</a> and <a href="#keybindings-and-vim-mode">Keybindings</a>.</li>
+<li><a href="#web-search">Web search</a> covers searching from inside a session.</li>
 </ul>
 <h2 id="modes-and-extensions"><a class="header" href="#modes-and-extensions">Modes and extensions</a></h2>
-<ul>
-<li><a href="#plan-mode-and-goals">Plan mode, goals, and vibe</a></li>
-<li><a href="#skills">Skills</a></li>
-<li><a href="#plugins">Plugins</a></li>
-<li><a href="#hooks">Hooks</a> — TypeScript modules, <code>pi.on(...)</code></li>
-<li><a href="#mcp">MCP</a></li>
-<li><a href="#session-branching">Branching</a></li>
-<li><a href="#memory">Memory</a></li>
-<li><a href="#profiles-1">Profiles</a></li>
-<li><a href="#personalities">Personalities</a></li>
-<li><a href="#speech">Speech</a></li>
-<li><a href="#export-and-import">Export and import</a></li>
-<li><a href="#connectors-and-apps">Connectors</a></li>
-<li><a href="#approvals">Approvals</a></li>
-<li><a href="#code-review">Code review</a></li>
-<li><a href="#non-interactive-mode-veyyon---print">Non-interactive mode</a></li>
-</ul>
+<p>These change how the agent runs, or add new capabilities:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Feature</th><th>What it adds</th></tr>
+</thead>
+<tbody>
+<tr><td><a href="#plan-mode-and-goals">Plan mode, goals, and vibe</a></td><td>Engine modes that plan, pursue an objective, or direct workers</td></tr>
+<tr><td><a href="#skills">Skills</a></td><td>Reusable, on-demand instructions</td></tr>
+<tr><td><a href="#plugins">Plugins</a></td><td>Packaged extensions</td></tr>
+<tr><td><a href="#hooks">Hooks</a></td><td>TypeScript modules that run on events with <code>pi.on(...)</code></td></tr>
+<tr><td><a href="#mcp">MCP</a></td><td>Model Context Protocol servers and tools</td></tr>
+<tr><td><a href="#session-branching">Branching</a></td><td>Forking a session into parallel lines of work</td></tr>
+<tr><td><a href="#memory">Memory</a></td><td>Project-scoped recall across sessions</td></tr>
+<tr><td><a href="#profiles-1">Profiles</a></td><td>Isolated config, sessions, and state per name</td></tr>
+<tr><td><a href="#personalities">Personalities</a></td><td>Named voice and behavior presets</td></tr>
+<tr><td><a href="#speech">Speech</a></td><td>Text-to-speech output</td></tr>
+<tr><td><a href="#export-and-import">Export and import</a></td><td>Moving sessions in and out</td></tr>
+<tr><td><a href="#connectors-and-apps">Connectors</a></td><td>Third-party app integrations</td></tr>
+<tr><td><a href="#approvals">Approvals</a></td><td>The approval-mode boundary in depth</td></tr>
+<tr><td><a href="#code-review">Code review</a></td><td>Reviewing branches, commits, and uncommitted work</td></tr>
+<tr><td><a href="#non-interactive-mode-veyyon---print">Non-interactive mode</a></td><td>Running Veyyon from a script</td></tr>
+</tbody>
+</table>
+</div>
 <h2 id="recipes"><a class="header" href="#recipes">Recipes</a></h2>
-<p><a href="#task-guides">Task guides</a>. Reference: <a href="#reference">Reference</a>.</p>
+<p>For worked examples, see the <a href="#task-guides">Task guides</a>. For the full command and setting reference, see <a href="#reference">Reference</a>.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="editing-and-repair"><a class="header" href="#editing-and-repair">Editing and repair</a></h1>
-<p>Editing reliably is the core of a coding agent. Veyyon’s <strong>default</strong> edit surface is <strong>hashline</strong>:
-numbered lines from <code>read</code>/<code>grep</code>, snapshot tags, and <code>edit</code> with <code>SWAP</code>/<code>DEL</code>/<code>INS</code> operations.</p>
-<p>For edit/repair design see <a href="#edit-path-and-tool-arguments">Edit path and tool arguments</a> and
-<a href="#the-hashline-edit-engine">The hashline edit engine</a>.</p>
+<p>Editing reliably is the core of a coding agent, so it is worth understanding how Veyyon does it. The default edit surface is hashline. In practice that means three things work together: numbered lines that come back from <code>read</code> and <code>grep</code>, snapshot tags that identify a known state of a file, and the <code>edit</code> tool with its <code>SWAP</code>, <code>DEL</code>, and <code>INS</code> operations.</p>
+<p>For the design behind the edit and repair path, see <a href="#edit-path-and-tool-arguments">Edit path and tool arguments</a> and <a href="#the-hashline-edit-engine">The hashline edit engine</a>.</p>
 <h2 id="failure-modes"><a class="header" href="#failure-modes">Failure modes</a></h2>
-<p>Models often emit slightly wrong tool JSON or stale line anchors. Hashline detects stale <code>[path#TAG]</code>
-tags and returns recovery hints. <strong>General schema repair</strong> runs on all tool calls before validation —
-see <a href="#tool-call-repair">Repair overview</a>.</p>
-<h2 id="write-path-vs-edit-path"><a class="header" href="#write-path-vs-edit-path">Write path vs edit path</a></h2>
+<p>Models often emit slightly wrong tool JSON, or line anchors that have gone stale. Hashline catches a stale <code>[path#TAG]</code> tag and returns recovery hints instead of writing the wrong bytes. On top of that, general schema repair runs on every tool call before validation. See <a href="#tool-call-repair">Repair overview</a>.</p>
+<h2 id="write-path-versus-edit-path"><a class="header" href="#write-path-versus-edit-path">Write path versus edit path</a></h2>
+<p>Veyyon keeps surgical edits and whole-file writes separate on purpose.</p>
 <div class="table-wrapper">
 <table>
 <thead>
 <tr><th>Path</th><th>Applier</th><th>Role</th></tr>
 </thead>
 <tbody>
-<tr><td><code>edit</code></td><td><code>@veyyon/hashline</code> (default)</td><td>Surgical edits via snapshot tags and hashline ops</td></tr>
-<tr><td><code>write</code></td><td>Whole-file writer</td><td>Create or overwrite files; mints new snapshot tags in hashline mode</td></tr>
-<tr><td><code>apply_patch</code> / <code>patch</code> / <code>replace</code></td><td>Mode-specific parsers</td><td>Compatibility modes via <code>edit.mode</code></td></tr>
+<tr><td><code>edit</code></td><td><code>@veyyon/hashline</code> (default)</td><td>Surgical edits, anchored on snapshot tags and hashline ops</td></tr>
+<tr><td><code>write</code></td><td>Whole-file writer</td><td>Create or overwrite a file, minting new snapshot tags in hashline mode</td></tr>
+<tr><td><code>apply_patch</code>, <code>patch</code>, <code>replace</code></td><td>Mode-specific parsers</td><td>Compatibility modes selected by <code>edit.mode</code></td></tr>
 </tbody>
 </table>
 </div>
-<p>There is one <strong>hashline edit applier</strong> for anchored edits; <code>write</code> is intentionally separate for whole-file
-creation. Both honor the same approval policy.</p>
+<p>There is one hashline edit applier for anchored edits, and <code>write</code> stays separate for whole-file creation. Both honor the same approval policy.</p>
 <h2 id="tools"><a class="header" href="#tools">Tools</a></h2>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>Tool</th><th>What the model sends</th><th>Use for</th></tr>
+<tr><th>Tool</th><th>What the model sends</th><th>Use it for</th></tr>
 </thead>
 <tbody>
-<tr><td><code>edit</code></td><td>Hashline <code>input</code> (default) or mode-specific payload</td><td>Surgical edits</td></tr>
-<tr><td><code>write</code></td><td><code>path</code> + full <code>content</code></td><td>New files or full rewrites</td></tr>
-<tr><td><code>apply_patch</code></td><td>V4A envelope</td><td>When <code>edit.mode: apply_patch</code></td></tr>
+<tr><td><code>edit</code></td><td>A hashline <code>input</code> (default), or a mode-specific payload</td><td>Surgical edits</td></tr>
+<tr><td><code>write</code></td><td>A <code>path</code> plus the full <code>content</code></td><td>New files or full rewrites</td></tr>
+<tr><td><code>apply_patch</code></td><td>A V4A envelope</td><td>When <code>edit.mode</code> is <code>apply_patch</code></td></tr>
 </tbody>
 </table>
 </div>
-<p>Set <code>edit.mode</code> to <code>hashline</code>, <code>apply_patch</code>, <code>patch</code>, or <code>replace</code> in <code>config.yml</code>, or
-<code>VEYYON_EDIT_VARIANT</code> for one-shot overrides.</p>
+<p>You set <code>edit.mode</code> to <code>hashline</code>, <code>apply_patch</code>, <code>patch</code>, or <code>replace</code> in <code>config.yml</code>, or use <code>VEYYON_EDIT_VARIANT</code> for a one-shot override.</p>
 <h2 id="hashline-workflow"><a class="header" href="#hashline-workflow">Hashline workflow</a></h2>
+<p>The loop is short:</p>
 <ol>
-<li><strong><code>read</code></strong> (or <strong><code>grep</code></strong>) returns <code>[relative/path#TAG]</code> and <code>LINE:text</code> rows.</li>
-<li>Model calls <strong><code>edit</code></strong> with sections anchored on the same <code>TAG</code>.</li>
-<li>On success, output includes a fresh <code>[path#NEW_TAG]</code> and a compact diff.</li>
+<li><code>read</code> (or <code>grep</code>) returns <code>[relative/path#TAG]</code> and <code>LINE:text</code> rows.</li>
+<li>The model calls <code>edit</code>, anchoring each section on the same <code>TAG</code>.</li>
+<li>On success, the output includes a fresh <code>[path#NEW_TAG]</code> and a compact diff.</li>
 </ol>
-<p><code>write</code> strips pasted hashline prefixes when appropriate and can mint new tags after whole-file writes.</p>
+<p><code>write</code> strips pasted hashline prefixes when appropriate, and can mint new tags after a whole-file write.</p>
 <h2 id="safety"><a class="header" href="#safety">Safety</a></h2>
-<p>Edits honor the approval mode like <code>bash</code>. Denied tools are removed from the model’s tool
-list via <code>disallowed_tools</code> / plan mode.</p>
-<p>Veyyon uses hashline as the primary write path; <code>apply_patch</code> is a compatibility mode. There is no
-single V4A applier that routes every mutation through a <code>make_update_patch</code> envelope.</p>
+<p>Edits honor the approval mode, just as <code>bash</code> does. A denied tool is removed from the model’s tool list through <code>disallowed_tools</code> or plan mode, so the model cannot call it at all.</p>
+<p>Hashline is the primary write path, and <code>apply_patch</code> is a compatibility mode. There is no single V4A applier that routes every mutation through a <code>make_update_patch</code> envelope.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="approvals"><a class="header" href="#approvals">Approvals</a></h1>
-<p>Control surface: <strong><code>tools.approvalMode</code></strong>. There is no OS-level command sandbox (no Landlock, seccomp, Seatbelt, or bubblewrap). Shell and writes run as the process user subject to this policy and execpolicy rules.</p>
-<p>Concepts: <a href="#permission-model">Permission model</a>. UX: <a href="#permissions-and-approvals">Permissions and approvals</a>. <a href="#safety-1">Safety</a>.</p>
+<p>Approvals are how you decide which tools run without asking. One setting drives them:
+<code>tools.approvalMode</code>. There is no operating-system sandbox behind it (no Landlock, seccomp,
+Seatbelt, or bubblewrap). Shell commands and file writes run as your user, bounded only by
+this policy and the execpolicy rules below.</p>
+<p>This page is the operator reference. For the model behind it, see
+<a href="#permission-model">Permission model</a>. For how the prompts look and feel, see
+<a href="#permissions-and-approvals">Permissions and approvals</a>. For the wider boundary, see
+<a href="#safety-1">Safety</a>.</p>
 <h2 id="tool-tiers-1"><a class="header" href="#tool-tiers-1">Tool tiers</a></h2>
 <div class="table-wrapper">
 <table>
@@ -1277,7 +1299,9 @@ $ veyyon --plan-yolo               # plan now; yolo after leaving plan mode
 </code></pre>
 <p>Denied actions return an error to the model; permissions are not widened.</p>
 <h2 id="headless"><a class="header" href="#headless">Headless</a></h2>
-<p><code>veyyon --print</code> has no TTY. A mode that would prompt stops the turn unless you use <code>--yolo</code> or a non-prompting mode. Process exit status follows the run.</p>
+<p><code>veyyon --print</code> has no terminal to prompt in. If the mode would ask for approval, the turn
+stops instead. To run unattended, pass <code>--yolo</code> or pick a mode that does not prompt for the
+tiers you need. The process exit status follows the run.</p>
 <h2 id="execpolicy-1"><a class="header" href="#execpolicy-1">Execpolicy</a></h2>
 <p>User and project <code>.rules</code> files further restrict which commands auto-run. Untrusted project directories disable project-local rules, config, and hooks until the directory is trusted.</p>
 <h2 id="related-3"><a class="header" href="#related-3">Related</a></h2>
@@ -1374,15 +1398,15 @@ Change: update the function signature and add a null check
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="models-and-providers"><a class="header" href="#models-and-providers">Models and providers</a></h1>
-<p>Select endpoints and model ids; the agent calls the configured provider API with your credentials (local server, hosted API, or OpenAI-compatible gateway).</p>
+<p>You choose an endpoint and a model id. Veyyon then calls that provider’s API directly with your credentials. The endpoint can be a local server, a hosted API, or any OpenAI-compatible gateway.</p>
 <ul>
 <li>Contract (what the harness owns vs the provider): <a href="#model-contract">Model contract</a></li>
 <li>Copy-paste provider setups: <a href="#configuring-providers">Configuring providers</a></li>
 <li>Built-in provider stack internals: <a href="#the-provider-stack-and-bring-your-own-key">Provider stack and BYOK</a></li>
 </ul>
 <h2 id="api-keys-byok"><a class="header" href="#api-keys-byok">API keys (BYOK)</a></h2>
-<p>For non-managed providers the process sends the key to the provider endpoint you configured (no hosted proxy required).</p>
-<p>Set the key through:</p>
+<p>BYOK means bring your own key. For a provider you configure yourself, Veyyon sends your key straight to that provider’s endpoint. There is no hosted proxy in between.</p>
+<p>Set the key one of three ways:</p>
 <ul>
 <li>The provider’s environment variable (see <a href="#the-provider-stack-and-bring-your-own-key">Providers</a> for the full map), or</li>
 <li><code>/login</code> inside the TUI, which stores the credential in the auth store, or</li>
@@ -1422,7 +1446,7 @@ selectable when it is not in <code>disabledProviders</code> <strong>and</strong>
 </tbody>
 </table>
 </div>
-<p>Once a provider is available, model ids come from its discovery endpoint — there is no hardcoded BYOK
+<p>Once a provider is available, model ids come from its discovery endpoint, there is no hardcoded BYOK
 allowlist. Failed discovery returns an error; it does not invent an empty catalog.</p>
 <h2 id="local-models-ollama-and-lm-studio"><a class="header" href="#local-models-ollama-and-lm-studio">Local models: Ollama and LM Studio</a></h2>
 <p>Both are discovered automatically once the engine is running; no <code>models.yml</code> entry and no key are
@@ -1481,7 +1505,7 @@ subagent:
 compaction:
   model: openai/gpt-5-mini
 </code></pre>
-<p>Ctrl+P (default binding) cycles roles listed in <code>cycleOrder</code> (schema default <code>smol</code>, <code>slow</code> — not <code>default</code>). Full role list and aliases: <a href="#models-roles-and-profiles">Models, roles, and profiles</a>.</p>
+<p>Ctrl+P (default binding) cycles roles listed in <code>cycleOrder</code> (schema default <code>smol</code>, <code>slow</code>, not <code>default</code>). Full role list and aliases: <a href="#models-roles-and-profiles">Models, roles, and profiles</a>.</p>
 <h2 id="per-model-harness-settings"><a class="header" href="#per-model-harness-settings">Per-model harness settings</a></h2>
 <p>Prompt order, repair enablement, and tool exposure can be set per model id through <strong>harness profiles</strong>
 and model roles. See <a href="#execution-order-prompts">Execution-order prompts</a> and
@@ -1519,11 +1543,11 @@ $ veyyon --model openrouter/anthropic/claude-sonnet-4
 <p>Pin models in CI and shared profiles (<code>--model</code>, <code>modelRoles</code>). Floating “latest” aliases change under you.</p>
 <h2 id="where-to-go-next-1"><a class="header" href="#where-to-go-next-1">Where to go next</a></h2>
 <ul>
-<li><a href="#configuring-providers">Configuring providers</a> — full copy-paste setups.</li>
-<li><a href="#model-contract">Model contract</a> — harness vs provider boundary.</li>
-<li><a href="#getting-started">Getting started</a> — first key and first task.</li>
-<li><a href="#configuration-4">Configuration</a> — model defaults and overrides.</li>
-<li><a href="#signing-in">Authentication</a> — login, logout, secret storage.</li>
+<li><a href="#configuring-providers">Configuring providers</a>: full copy-paste setups.</li>
+<li><a href="#model-contract">Model contract</a>: harness vs provider boundary.</li>
+<li><a href="#getting-started">Getting started</a>: first key and first task.</li>
+<li><a href="#configuration-4">Configuration</a>: model defaults and overrides.</li>
+<li><a href="#signing-in">Authentication</a>: login, logout, secret storage.</li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="sessions"><a class="header" href="#sessions">Sessions</a></h1>
@@ -1591,12 +1615,12 @@ each label was set. Submitting empty text, or picking <strong>Clear label</stron
 </tbody>
 </table>
 </div>
-<p>Typing filters rows by preview and label text. There is no separate Conversation/User/Labeled/All tab chrome beyond these filter modes — see <a href="#session-branching">Branching</a>.</p>
+<p>Typing filters rows by preview and label text. There is no separate Conversation/User/Labeled/All tab chrome beyond these filter modes, see <a href="#session-branching">Branching</a>.</p>
 <h3 id="forking-and-branching-to-a-new-file"><a class="header" href="#forking-and-branching-to-a-new-file">Forking and branching to a new file</a></h3>
 <p><code>/fork</code> and <code>/branch</code> both create a new session file and never modify the original; <code>/tree</code>
 navigation above stays inside the current file.</p>
 <ul>
-<li><strong><code>/fork</code></strong> duplicates the <strong>entire</strong> current session — every entry, including sibling branches —
+<li><strong><code>/fork</code></strong> duplicates the <strong>entire</strong> current session (every entry, including sibling branches)
 into a new persisted file. There is no entry picker; for a slice from a chosen point, use
 <code>/branch</code>. <code>veyyon --fork &lt;session-id&gt;</code> does the same at startup, and the launch session picker
 forks a recorded session the same way.</li>
@@ -1758,7 +1782,7 @@ web_search:
   enabled: false
 </code></pre>
 <h2 id="provider-support"><a class="header" href="#provider-support">Provider support</a></h2>
-<p>The tool queries a configurable search backend — API-backed providers (using keys you have
+<p>The tool queries a configurable search backend, API-backed providers (using keys you have
 configured) or credential-free engines (Ecosia, Google, Mojeek, or <code>public</code>, which fans out
 to every credential-free engine and consolidates deduplicated results). <code>auto</code> resolves the
 first available provider in the built-in priority order; <code>providers.webSearchExclude</code> removes
@@ -1771,10 +1795,10 @@ the web, set <code>web_search.enabled: false</code>. See <a href="#approvals">Sa
 <h1 id="code-review"><a class="header" href="#code-review">Code review</a></h1>
 <p>Review surfaces:</p>
 <ol>
-<li><strong><code>/review</code></strong> — bundled interactive review command (branch, commits, or uncommitted work).</li>
-<li><strong>Advisor</strong> — optional second model that comments on main-agent turns.</li>
-<li><strong>Plan review</strong> — <code>/plan-review</code> while plan mode is active.</li>
-<li><strong>Non-interactive</strong> — free-form review prompts under <code>veyyon -p</code>.</li>
+<li><strong><code>/review</code></strong>: bundled interactive review command (branch, commits, or uncommitted work).</li>
+<li><strong>Advisor</strong>: optional second model that comments on main-agent turns.</li>
+<li><strong>Plan review</strong>: <code>/plan-review</code> while plan mode is active.</li>
+<li><strong>Non-interactive</strong>: free-form review prompts under <code>veyyon -p</code>.</li>
 </ol>
 <h2 id="review"><a class="header" href="#review"><code>/review</code></a></h2>
 <p>Bundled custom command (<code>packages/coding-agent/src/extensibility/custom-commands/bundled/review</code>).
@@ -1861,9 +1885,9 @@ EOF
 <tr><th>File</th><th>Name</th><th>Notes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>defaults/titanium.json</code></td><td>Titanium</td><td><strong>Default dark theme.</strong> Pitch black <code>#000000</code>, silver <code>#C6CBD4</code>, ember accent <code>#F0862E</code> — matches the website tokens (<code>website/site.css</code>)</td></tr>
+<tr><td><code>defaults/titanium.json</code></td><td>Titanium</td><td><strong>Default dark theme.</strong> Pitch black <code>#000000</code>, silver <code>#C6CBD4</code>, ember accent <code>#F0862E</code>, matches the website tokens (<code>website/site.css</code>)</td></tr>
 <tr><td><code>dark.json</code></td><td>Veyyon Dark</td><td>Pitch black <code>#000000</code> / <code>#FAFAFA</code> / silver <code>#B8BDC7</code>; predates the ember accent</td></tr>
-<tr><td><code>light.json</code></td><td>Light</td><td><strong>Default light theme.</strong> Titanium’s inverse: white <code>#FFFFFF</code> ground, dark-silver structure <code>#5C6470</code>, ember accent (<code>#F0862E</code> chrome, <code>#B65E14</code> links) — see <code>docs/internal/design.md</code> “Light ground”</td></tr>
+<tr><td><code>light.json</code></td><td>Light</td><td><strong>Default light theme.</strong> Titanium’s inverse: white <code>#FFFFFF</code> ground, dark-silver structure <code>#5C6470</code>, ember accent (<code>#F0862E</code> chrome, <code>#B65E14</code> links), see <code>docs/internal/design.md</code> “Light ground”</td></tr>
 </tbody>
 </table>
 </div>
@@ -1879,7 +1903,7 @@ EOF
 <p><code>tui.paintGround</code> (<code>/settings</code> → Appearance → Display) controls whether Veyyon sets the
 terminal’s own background color (OSC 11) to the theme’s ground while it runs, so the UI
 fills the window edge-to-edge instead of floating on the terminal’s configured background.
-The original background is restored on exit — including crash exits.</p>
+The original background is restored on exit, including crash exits.</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -1894,7 +1918,7 @@ The original background is restored on exit — including crash exits.</p>
 </div>
 <p>Terminals that don’t support OSC 11 ignore the sequence; nothing breaks.</p>
 <h2 id="what-the-theme-covers"><a class="header" href="#what-the-theme-covers">What the theme covers</a></h2>
-<p>The contract applies to onboarding, composer, menus, dialogs, status line, markdown, tables, diffs, tool output, approvals, progress, and errors — not only the chat pane.</p>
+<p>The contract applies to onboarding, composer, menus, dialogs, status line, markdown, tables, diffs, tool output, approvals, progress, and errors, not only the chat pane.</p>
 <h2 id="identity-elsewhere"><a class="header" href="#identity-elsewhere">Identity elsewhere</a></h2>
 <ul>
 <li>CLI binary: <code>veyyon</code></li>
@@ -1970,12 +1994,12 @@ script from <code>STANDARD.md</code> when touching Rust natives.</p>
 <h3 id="enabling-1"><a class="header" href="#enabling-1">Enabling</a></h3>
 <ul>
 <li>Setting: <code>goal.enabled</code> (default <code>true</code>)</li>
-<li><code>/goal set &lt;objective&gt;</code> — create or replace</li>
-<li><code>/goal show</code> — status, tokens, budget</li>
+<li><code>/goal set &lt;objective&gt;</code>: create or replace</li>
+<li><code>/goal show</code>: status, tokens, budget</li>
 <li><code>/goal pause</code> / <code>/goal resume</code></li>
-<li><code>/goal drop</code> — remove</li>
-<li><code>/goal budget &lt;N|off&gt;</code> — token budget</li>
-<li><code>/guided-goal</code> — interview flow before enabling</li>
+<li><code>/goal drop</code>: remove</li>
+<li><code>/goal budget &lt;N|off&gt;</code>: token budget</li>
+<li><code>/guided-goal</code>: interview flow before enabling</li>
 </ul>
 <h3 id="goal-state"><a class="header" href="#goal-state">Goal state</a></h3>
 <p>Stored on the session. Fields include:</p>
@@ -1997,9 +2021,16 @@ script from <code>STANDARD.md</code> when touching Rust natives.</p>
 (<code>fast</code> / <code>good</code> model lanes) instead of editing files itself.</p>
 <p>Mutual exclusion: plan mode, goal mode, and vibe mode cannot run together; the TUI warns if you try
 to enter one while another is active.</p>
+<p>Permissions: <code>vibe_spawn</code> and <code>vibe_send</code> are <code>exec</code>-level tool calls, so starting a worker or handing
+it a new instruction is gated by the session approval mode exactly like running a command (<code>vibe_wait</code>,
+<code>vibe_kill</code>, and <code>vibe_list</code> are read-level). Each worker then runs headless with the full tool set
+(edit, write, bash, …) and executes autonomously, a detached subagent has no UI to confirm prompts
+against, so approving the spawn is the authorization boundary. Your <code>tools.approval</code> allow/deny policies
+still apply inside every worker, so path and command denials you have configured are enforced there too.
+Workers are killed when you leave vibe mode, so none outlive the director that drives them.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="skills"><a class="header" href="#skills">Skills</a></h1>
-<p>Skills are filesystem packages discovered by the agent (project and profile skill dirs). They are not compiled into the binary.</p>
+<p>A skill is a folder of instructions you drop next to your code or in your profile, and the agent picks it up on its own. Use one to teach Veyyon a repeated task: how your project runs its tests, the steps of a release, the shape of a code review. Skills live on disk, not in the binary, so you add or change one by editing a file, with no rebuild.</p>
 <p>For general information on Veyyon extension capabilities, see <a href="#tools-skills-and-extension-data">Tools, skills, and extension data</a>.</p>
 <h2 id="skill-locations"><a class="header" href="#skill-locations">Skill locations</a></h2>
 <p>Veyyon loads skills from several locations depending on the desired scope.</p>
@@ -2028,7 +2059,7 @@ Gemini, Cursor, OpenCode, Windsurf, Cline, and similar) when present on disk.</p
 <pre><code class="language-yaml">discovery:
   importForeignConfig: false
 </code></pre>
-<p>When it is off, those foreign sources are skipped entirely — they never appear
+<p>When it is off, those foreign sources are skipped entirely, they never appear
 in <code>/extensions</code>, in the enable/disable list, or in the model’s context. When it is
 on (the default), the per-source toggles under <code>skills.*</code> (for example
 <code>skills.enableClaudeUser</code>) give finer control. Veyyon’s own <code>AGENTS.md</code> lives in
@@ -2036,8 +2067,8 @@ on (the default), the per-source toggles under <code>skills.*</code> (for exampl
 are not affected by this toggle.</p>
 <h2 id="profiles-isolate-skills"><a class="header" href="#profiles-isolate-skills">Profiles isolate skills</a></h2>
 <p>Each <a href="#profiles-1">profile</a> is a separate config root
-(<code>$HOME/.veyyon/profiles/&lt;name&gt;/agent</code>). Every skill source Veyyon owns — user
-skills, managed (auto-learn) skills, and plugin skills — resolves under that
+(<code>$HOME/.veyyon/profiles/&lt;name&gt;/agent</code>). Every skill source Veyyon owns, user
+skills, managed (auto-learn) skills, and plugin skills, resolves under that
 root, so profiles never share a skill directory:</p>
 <ul>
 <li>Switching profiles re-homes user and managed skills to the active profile.</li>
@@ -2047,7 +2078,7 @@ another stays clean.</li>
 </ul>
 <p>Two things are shared on purpose: <strong>project</strong> skills (<code>.veyyon/skills</code> next to
 your code) belong to the repository, not a profile; and another tool’s own skill
-directory (<code>$HOME/.claude/skills</code>, …) is global to the machine — a profile
+directory (<code>$HOME/.claude/skills</code>, …) is global to the machine, a profile
 cannot relocate it, so per-profile isolation there means each profile decides
 independently whether to import it (via <code>discovery.importForeignConfig</code>, which
 is stored per profile and on by default).</p>
@@ -2175,7 +2206,7 @@ plugins, see <a href="#task-guides">Task guides</a>.</p>
 </tbody>
 </table>
 </div>
-<p>Foreign-tool locations (<code>$HOME/.claude/skills</code>, …) are also discovered when foreign-config import is on — see <a href="#skill-locations">Skills</a> for the full table.</p>
+<p>Foreign-tool locations (<code>$HOME/.claude/skills</code>, …) are also discovered when foreign-config import is on, see <a href="#skill-locations">Skills</a> for the full table.</p>
 <p>Create a new skill by making a directory inside one of these scopes and adding a <code>SKILL.md</code> file. The name of the directory is the default name of the skill.</p>
 <p>A skill directory may contain additional files:</p>
 <pre><code>my-skill/
@@ -2321,7 +2352,7 @@ policy:
   products:
     - veyyon
 </code></pre>
-<p>No registration is needed — a skill under <code>.veyyon/skills</code> (or any other discovered
+<p>No registration is needed, a skill under <code>.veyyon/skills</code> (or any other discovered
 directory) is picked up automatically. If your <code>config.yml</code> uses an <code>includeSkills</code>
 allowlist, add the skill’s name to it:</p>
 <pre><code class="language-yaml">skills:
@@ -2337,9 +2368,11 @@ allowlist, add the skill’s name to it:</p>
 <p>From a command-line invocation, refer to the skill by its name. The exact command depends on the Veyyon CLI version; run <code>veyyon --help</code> or see the <a href="#cli-reference">CLI reference</a> for the current syntax.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="plugins"><a class="header" href="#plugins">Plugins</a></h1>
-<p>Plugins add skills, MCP servers, hooks, and related assets. Manifest fields such as <code>apps</code> are
-schema keys for packaged connectors when present; see <a href="#connectors-and-apps">Connectors</a> for the
-current integration surface (MCP, plugins, hooks, skills).</p>
+<p>A plugin bundles several extensions into one installable package: skills, MCP servers,
+hooks, and related assets that ship and update together. Reach for a plugin when you want to
+share a whole capability at once instead of wiring each piece by hand. Some manifests also
+carry a <code>apps</code> field for packaged connectors; see <a href="#connectors-and-apps">Connectors</a> for the
+current integration surface (MCP, plugins, hooks, and skills).</p>
 <h2 id="plugin-structure"><a class="header" href="#plugin-structure">Plugin Structure</a></h2>
 <p>Every plugin is a directory with a <code>.veyyon-plugin/plugin.json</code> manifest file. The manifest describes the plugin’s metadata and lists its integration points.</p>
 <h3 id="plugin-manifest-pluginjson"><a class="header" href="#plugin-manifest-pluginjson">Plugin Manifest (<code>plugin.json</code>)</a></h3>
@@ -2461,10 +2494,10 @@ $ veyyon plugin marketplace upgrade debug
 <p>Marketplace and plugin state is not kept in <code>config.yml</code>. Two JSON registries, both managed
 by the <code>/plugins</code> UI and the <code>veyyon plugin</code> CLI (edit through those, not by hand):</p>
 <ul>
-<li><strong><code>marketplaces.json</code></strong> (under the config root, next to <code>config.yml</code>) — which catalogs you
+<li><strong><code>marketplaces.json</code></strong> (under the config root, next to <code>config.yml</code>): which catalogs you
 have added. Each entry records the marketplace <code>name</code>, <code>sourceType</code>, <code>sourceUri</code>,
 <code>catalogPath</code>, and added/updated timestamps.</li>
-<li><strong><code>installed_plugins.json</code></strong> (under the plugins dir) — which plugins are installed. Each
+<li><strong><code>installed_plugins.json</code></strong> (under the plugins dir): which plugins are installed. Each
 entry is keyed <code>&lt;plugin_name&gt;@&lt;marketplace_name&gt;</code> and records the install <code>scope</code>
 (user or project), <code>installPath</code>, <code>version</code>, install/update timestamps, the source git
 commit, and an <code>enabled</code> toggle.</li>
@@ -2472,12 +2505,17 @@ commit, and an <code>enabled</code> toggle.</li>
 <p>The one plugin-related key that does live in <code>config.yml</code> is <code>marketplace.autoUpdate</code>
 (<code>off</code> / <code>notify</code> / <code>auto</code>), which controls the startup update check.</p>
 <h2 id="related-recipes-1"><a class="header" href="#related-recipes-1">Related recipes</a></h2>
-<p>Plugins are installed through the <code>/plugins</code> popup or the <code>veyyon plugin</code> CLI above — there is
+<p>Plugins are installed through the <code>/plugins</code> popup or the <code>veyyon plugin</code> CLI above, there is
 no model-facing plugin-install tool. For task-shaped recipes that combine plugins with MCP and
 skills, see <a href="#task-guides">Task guides</a>.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="hooks"><a class="header" href="#hooks">Hooks</a></h1>
-<p>Hooks are TypeScript modules discovered under hook paths (for example <code>.veyyon/hooks/</code>) and loaded through the extension runner. Each module default-exports a factory that registers handlers with <code>pi.on(...)</code>.</p>
+<p>A hook lets you run your own code at a moment in the session: before a tool call, after a message,
+when a turn ends. You use one to enforce policy (block a dangerous command), add context, or record
+what happened. The example below refuses any <code>bash</code> command containing <code>rm -rf</code>.</p>
+<p>A hook is a TypeScript module. You put it under a hook path (for example <code>.veyyon/hooks/</code>), and Veyyon
+loads it through the extension runner. The module default-exports a factory function that registers
+handlers with <code>pi.on(...)</code>, one handler per event you care about.</p>
 <p>CLI: <code>--hook</code> is an alias for <code>--extension</code> (paths merge into extension loading).</p>
 <p>Full API and event list: repository <code>docs/hooks.md</code> and <code>packages/coding-agent/src/extensibility/hooks/</code>.</p>
 <h2 id="module-shape"><a class="header" href="#module-shape">Module shape</a></h2>
@@ -2548,9 +2586,11 @@ export default function (pi: HookAPI): void {
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="mcp"><a class="header" href="#mcp">MCP</a></h1>
-<p>Model Context Protocol (MCP) is how Veyyon <strong>consumes</strong> external tools and data (MCP client). Veyyon
-is not an MCP server binary. For editor embedding use <strong>ACP</strong> (<code>veyyon acp</code>); for in-process control
-use the SDK.</p>
+<p>You point Veyyon at an external program (a database bridge, a browser driver, a hosted API) and its
+tools show up in the session, ready for the model to call. The Model Context Protocol (MCP) is the
+standard that makes this work. Veyyon speaks it as a client: it connects out to MCP servers and
+consumes their tools and data. It is not itself an MCP server binary. To embed Veyyon in an editor,
+use ACP (<code>veyyon acp</code>); to drive it from your own process, use the SDK.</p>
 <h2 id="transports"><a class="header" href="#transports">Transports</a></h2>
 <div class="table-wrapper">
 <table>
@@ -2611,8 +2651,8 @@ use the SDK.</p>
 <p>Tool names appear namespaced as <code>mcp__&lt;server&gt;__&lt;tool&gt;</code>.</p>
 <h2 id="related-surfaces-not-mcp-server-mode"><a class="header" href="#related-surfaces-not-mcp-server-mode">Related surfaces (not MCP server mode)</a></h2>
 <ul>
-<li><strong>ACP</strong> (<code>veyyon acp</code>) — Agent Client Protocol for editors; not MCP.</li>
-<li><strong>SDK</strong> — embed the agent in a host process.</li>
+<li><strong>ACP</strong> (<code>veyyon acp</code>): Agent Client Protocol for editors; not MCP.</li>
+<li><strong>SDK</strong>: embed the agent in a host process.</li>
 </ul>
 <p>MCP config remains <code>mcp.json</code> and <code>/mcp</code>.</p>
 <div style="break-before: page; page-break-before: always;"></div>
@@ -2775,7 +2815,7 @@ namespaced tool. Run <code>/mcp verbose</code> to see what was registered.</p>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="connectors-and-apps"><a class="header" href="#connectors-and-apps">Connectors and Apps</a></h1>
-<p>Veyyon does not ship provider-hosted connectors — account-gated app integrations wired through a
+<p>Veyyon does not ship provider-hosted connectors, account-gated app integrations wired through a
 provider’s own connector store. Extend it with the integrations below instead.</p>
 <h2 id="what-ships-instead"><a class="header" href="#what-ships-instead">What ships instead</a></h2>
 <p>Extend Veyyon with tools that are implemented and documented today:</p>
@@ -2793,7 +2833,7 @@ provider’s own connector store. Extend it with the integrations below instead.
 </tbody>
 </table>
 </div>
-<p>Tool policy uses <code>tools.approvalMode</code> and <code>tools.approval.&lt;tool&gt;</code> — same machinery for bash, MCP, and custom tools (<code>docs/approval-mode.md</code>).</p>
+<p>Tool policy uses <code>tools.approvalMode</code> and <code>tools.approval.&lt;tool&gt;</code>, same machinery for bash, MCP, and custom tools (<code>docs/approval-mode.md</code>).</p>
 <p>Provider-hosted connector stores and <code>apps</code> connector tables are not part of the current product surface.
 Use MCP, plugins, hooks, and skills for integrations.</p>
 <h2 id="see-also-1"><a class="header" href="#see-also-1">See also</a></h2>
@@ -2807,7 +2847,7 @@ Use MCP, plugins, hooks, and skills for integrations.</p>
 <p>Veyyon sessions are <strong>trees</strong>, not linear chat logs. Each entry has <code>id</code> and <code>parentId</code>; the active position is the current <strong>leaf</strong>. Branching appends from the chosen parent without deleting sibling branches.</p>
 <p>Engine reference: <code>docs/tree.md</code>, <code>docs/internal/session-tree-plan.md</code>.</p>
 <h2 id="navigate-in-place-tree"><a class="header" href="#navigate-in-place-tree">Navigate in place: <code>/tree</code></a></h2>
-<p><code>/tree</code> opens the session tree selector (<code>TreeSelectorComponent</code>). It moves the leaf <strong>within the same session file</strong> — no new session id.</p>
+<p><code>/tree</code> opens the session tree selector (<code>TreeSelectorComponent</code>). It moves the leaf <strong>within the same session file</strong>, no new session id.</p>
 <p>Also opens via:</p>
 <ul>
 <li>Keybinding <code>app.session.tree</code></li>
@@ -2847,7 +2887,7 @@ Use MCP, plugins, hooks, and skills for integrations.</p>
 </thead>
 <tbody>
 <tr><td><code>/branch</code></td><td>Pick a <strong>user message</strong>; copy history up to that boundary into a <strong>new session file</strong> (or reset root); prefills composer. When <code>doubleEscapeAction = "tree"</code>, opens <code>/tree</code> instead.</td></tr>
-<tr><td><code>/fork</code></td><td>Duplicate the <strong>entire</strong> current session — every entry, including sibling branches — into a new persisted file (<code>handleForkCommand</code>). No entry picker; for a slice from a chosen point, use <code>/branch</code>.</td></tr>
+<tr><td><code>/fork</code></td><td>Duplicate the <strong>entire</strong> current session (every entry, including sibling branches) into a new persisted file (<code>handleForkCommand</code>). No entry picker; for a slice from a chosen point, use <code>/branch</code>.</td></tr>
 <tr><td>CLI</td><td><code>veyyon --fork &lt;session-id&gt;</code> at startup</td></tr>
 </tbody>
 </table>
@@ -2856,7 +2896,7 @@ Use MCP, plugins, hooks, and skills for integrations.</p>
 <p>There is no <code>/clone</code> slash command in the shipped registry.</p>
 <h2 id="ephemeral-side-questions-btw"><a class="header" href="#ephemeral-side-questions-btw">Ephemeral side questions: <code>/btw</code></a></h2>
 <p><code>/btw &lt;question&gt;</code> (not <code>/side</code>) runs an ephemeral side thread with inherited context, then returns. See implementation <code>handleBtwCommand</code> in <code>interactive-mode.ts</code>.</p>
-<p><code>/tan</code> runs tangential background agent work — separate from <code>/btw</code>.</p>
+<p><code>/tan</code> runs tangential background agent work, separate from <code>/btw</code>.</p>
 <h2 id="configuration-2"><a class="header" href="#configuration-2">Configuration</a></h2>
 <pre><code class="language-yaml">doubleEscapeAction: tree   # tree | branch | none
 treeFilterMode: default    # default | no-tools | user-only | labeled-only | all
@@ -2865,7 +2905,7 @@ branchSummary:
   reserveTokens: 16384
 </code></pre>
 <h2 id="command-availability"><a class="header" href="#command-availability">Command availability</a></h2>
-<p>Branching commands require a started session (at least one turn). Some commands are disabled while tasks run; <code>/btw</code> may remain available for steering — see TUI status when blocked.</p>
+<p>Branching commands require a started session (at least one turn). Some commands are disabled while tasks run; <code>/btw</code> may remain available for steering, see TUI status when blocked.</p>
 <h2 id="see-also-2"><a class="header" href="#see-also-2">See also</a></h2>
 <ul>
 <li><a href="#sessions">Sessions</a></li>
@@ -2873,8 +2913,10 @@ branchSummary:
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="memory"><a class="header" href="#memory">Memory</a></h1>
-<p>Veyyon can remember durable project context across sessions. Memory is <strong>off by default</strong>; pick a
-backend in <code>config.yml</code> or <code>/settings</code>.</p>
+<p>By default, each session starts fresh: Veyyon knows nothing about your last one. Turn memory on and it
+carries durable project context forward, so a fact it learned yesterday is available today. Memory is
+off by default. To use it, you pick a backend, which is the store that holds what Veyyon remembers, in
+<code>config.yml</code> or <code>/settings</code>.</p>
 <h2 id="backends"><a class="header" href="#backends">Backends</a></h2>
 <div class="table-wrapper">
 <table>
@@ -2882,7 +2924,7 @@ backend in <code>config.yml</code> or <code>/settings</code>.</p>
 <tr><th>Backend</th><th>Storage</th><th>Notes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>off</code></td><td>—</td><td>No memory injection or retention</td></tr>
+<tr><td><code>off</code></td><td>n/a</td><td>No memory injection or retention</td></tr>
 <tr><td><code>local</code></td><td>Markdown under the agent memories dir (<code>MEMORY.md</code>, <code>memory_summary.md</code>, <code>skills/</code>)</td><td>Summaries from past session files</td></tr>
 <tr><td><code>mnemopi</code></td><td>SQLite via <code>@veyyon/mnemopi</code></td><td>Vector + FTS, auto-retain, compaction hooks</td></tr>
 <tr><td><code>hindsight</code></td><td>Hindsight server (when configured)</td><td>Remote bank; retain/recall/reflect tools</td></tr>
@@ -2942,12 +2984,12 @@ a plan and pair citations with fresh repo evidence.</p>
 <p>A <strong>profile</strong> is a directory under <code>~/.veyyon/profiles/&lt;name&gt;/</code> holding that identity’s settings, sessions, MCP, skills, hooks, logs, plugins, and caches. One binary; multiple profile trees.</p>
 <p>Roles and profile layout: <a href="#models-roles-and-profiles">Roles and profiles</a>.</p>
 <h2 id="layout"><a class="header" href="#layout">Layout</a></h2>
-<p>Every profile — <strong>including <code>default</code></strong> — lives under the same tree:</p>
+<p>Every profile, <strong>including <code>default</code></strong>, lives under the same tree:</p>
 <pre><code class="language-text">~/.veyyon/
-  config.yml            # GLOBAL settings (defaultProfile, ...) — not a profile's settings
+  config.yml            # GLOBAL settings (defaultProfile, ...), not a profile's settings
   install-id            # per-install UUID, shared by all profiles
   profiles/
-    default/            # the default profile — a real profile like any other
+    default/            # the default profile, a real profile like any other
       agent/            # settings, sessions, skills, MCP, keybindings, ...
       logs/  plugins/  cache/  wt/  ...
     work/
@@ -2962,7 +3004,7 @@ one-time migration from the legacy bare-root layout.</p>
 <li><code>--profile &lt;name&gt;</code>.</li>
 <li><code>VEYYON_PROFILE</code>. An explicitly <strong>empty</strong>
 <code>VEYYON_PROFILE=</code> forces <code>default</code>, bypassing step 3.</li>
-<li><code>defaultProfile</code> in the global <code>~/.veyyon/config.yml</code> — set or show it with
+<li><code>defaultProfile</code> in the global <code>~/.veyyon/config.yml</code>: set or show it with
 <code>veyyon profile default [name]</code>.</li>
 <li><code>default</code>.</li>
 </ol>
@@ -2973,21 +3015,21 @@ one-time migration from the legacy bare-root layout.</p>
 <p>That resolution is uniform across settings, sessions, blobs, slash commands, rules, prompts, hooks, tools, extensions, skills, MCP, keybindings, theme, and top-level instruction files (<code>SYSTEM.md</code>, <code>RULES.md</code>, <code>AGENTS.md</code>) discovered from the user agent dir. Operational state (logs, plugins, caches, worktrees) resolves under the profile root <code>~/.veyyon/profiles/&lt;name&gt;/</code> the same way. A profile never reads another profile’s tree at runtime.</p>
 <p><strong>Keybindings:</strong> each profile owns <code>agent/keybindings.*</code>. New profiles seeded with <code>veyyon profile new --from default</code> copy the default profile’s keybindings once. On first launch of an older named profile that has no keybindings file, Veyyon performs the same one-time seed and logs it. There is no live merge from the default profile after that.</p>
 <p>Project-level dirs (<code>&lt;cwd&gt;/.veyyon</code>, <code>.claude</code>, etc.) are <strong>not</strong> profile-scoped; they follow the working directory.</p>
-<p><strong>Other tools’ config</strong> (skills and <code>CLAUDE.md</code>/<code>AGENTS.md</code> written for Claude, Codex, and similar) is on by default and controlled per profile by <code>discovery.importForeignConfig</code>, so one profile can keep importing it while another opts out to run native-only. Another tool’s own global dir (<code>~/.claude/skills</code>, …) cannot be relocated into a profile — see <a href="#profiles-isolate-skills">Skills › Profiles isolate skills</a>.</p>
+<p><strong>Other tools’ config</strong> (skills and <code>CLAUDE.md</code>/<code>AGENTS.md</code> written for Claude, Codex, and similar) is on by default and controlled per profile by <code>discovery.importForeignConfig</code>, so one profile can keep importing it while another opts out to run native-only. Another tool’s own global dir (<code>~/.claude/skills</code>, …) cannot be relocated into a profile, see <a href="#profiles-isolate-skills">Skills › Profiles isolate skills</a>.</p>
 <h2 id="activating-a-profile"><a class="header" href="#activating-a-profile">Activating a profile</a></h2>
 <ul>
 <li><strong>CLI:</strong> <code>veyyon --profile &lt;name&gt;</code> (no short form; <code>-p</code> is <code>--print</code>).</li>
 <li><strong>Env:</strong> <code>VEYYON_PROFILE=&lt;name&gt;</code>.</li>
-<li><strong>TUI:</strong> <code>/profile &lt;name&gt;</code> ends the current conversation and relaunches Veyyon on that profile (a fresh session — profiles are chosen at process start, so there is no hot-swap). Bare <code>/profile</code> lists profiles with the active one marked.</li>
+<li><strong>TUI:</strong> <code>/profile &lt;name&gt;</code> ends the current conversation and relaunches Veyyon on that profile (a fresh session: profiles are chosen at process start, so there is no hot-swap). Bare <code>/profile</code> lists profiles with the active one marked.</li>
 <li><strong>Shell alias:</strong> <code>veyyon --profile work --alias mywork</code> installs a managed block in your shell rc (see <code>cli/profile-alias.ts</code>).</li>
 </ul>
 <h2 id="profile-names-and-renaming"><a class="header" href="#profile-names-and-renaming">Profile names and renaming</a></h2>
-<p>A profile’s directory name (<code>~/.veyyon/profiles/&lt;name&gt;</code>) is its stable identity and never changes. Each profile can additionally carry a <strong>display name</strong> — the <code>profile.displayName</code> setting, stored in that profile’s own <code>config.yml</code>:</p>
+<p>A profile’s directory name (<code>~/.veyyon/profiles/&lt;name&gt;</code>) is its stable identity and never changes. Each profile can additionally carry a <strong>display name</strong>, the <code>profile.displayName</code> setting, stored in that profile’s own <code>config.yml</code>:</p>
 <ul>
 <li><strong>Settings:</strong> <code>/settings</code> › Interaction › Profile › Profile Name.</li>
 <li><strong>TUI:</strong> <code>/profile rename to &lt;new&gt;</code> renames the active profile; <code>/profile &lt;name&gt; rename to &lt;new&gt;</code> renames another one. The default profile is renamable too.</li>
 </ul>
-<p><code>/profile list</code> shows <code>name (Display Name)</code> when they differ, and <code>/profile &lt;input&gt;</code> resolves a directory name first, then a unique display name. A copied settings file never carries the source’s display name — <code>profile new</code> clears it so two profiles cannot answer to one name.</p>
+<p><code>/profile list</code> shows <code>name (Display Name)</code> when they differ, and <code>/profile &lt;input&gt;</code> resolves a directory name first, then a unique display name. A copied settings file never carries the source’s display name, <code>profile new</code> clears it so two profiles cannot answer to one name.</p>
 <h2 id="creating-and-managing-profiles"><a class="header" href="#creating-and-managing-profiles">Creating and managing profiles</a></h2>
 <pre><code class="language-console">$ veyyon profile list
 $ veyyon profile new work
@@ -3002,10 +3044,10 @@ $ veyyon profile default work
 <li><code>rm</code> refuses the default profile, the active profile, and destructive deletes without <code>--yes</code>.</li>
 <li><code>default [name]</code> shows or sets the global <code>defaultProfile</code> (which profile a bare <code>vey</code> launches); <code>default --clear</code> removes it.</li>
 </ul>
-<p>In the TUI, <code>/profile new &lt;name&gt;</code> opens a picker listing every carry-over item — AGENTS.md, settings, MCP servers, SSH targets, skills, commands, tools, prompts, themes, extensions, keybindings — each individually toggleable (all selected by default). The new profile is seeded from the <strong>active</strong> profile with exactly the chosen items.</p>
+<p>In the TUI, <code>/profile new &lt;name&gt;</code> opens a picker listing every carry-over item (AGENTS.md, settings, MCP servers, SSH targets, skills, commands, tools, prompts, themes, extensions, keybindings), each individually toggleable (all selected by default). The new profile is seeded from the <strong>active</strong> profile with exactly the chosen items.</p>
 <p>You can still create a profile implicitly by running <code>veyyon --profile &lt;name&gt;</code> once; use <code>profile new</code> when you want seeding without launching the TUI.</p>
 <h2 id="onboarding-import"><a class="header" href="#onboarding-import">Onboarding import</a></h2>
-<p>On first run (and once after upgrading past setup version 2), the setup wizard scans the machine for user-level config written for other tools — skills and <code>CLAUDE.md</code>/<code>AGENTS.md</code> from Claude Code, Codex, Cursor, and similar — and offers each item for import into your default profile. Imports <strong>copy</strong>: skills land in the profile’s <code>skills/</code>, instruction files append to the profile’s <code>AGENTS.md</code> under a source marker (re-imports are idempotent). The originals keep loading ambiently as the machine-wide base layer unless you turn off <code>discovery.importForeignConfig</code>.</p>
+<p>On first run (and once after upgrading past setup version 2), the setup wizard scans the machine for user-level config written for other tools (skills and <code>CLAUDE.md</code>/<code>AGENTS.md</code> from Claude Code, Codex, Cursor, and similar) and offers each item for import into your default profile. Imports <strong>copy</strong>: skills land in the profile’s <code>skills/</code>, instruction files append to the profile’s <code>AGENTS.md</code> under a source marker (re-imports are idempotent). The originals keep loading ambiently as the machine-wide base layer unless you turn off <code>discovery.importForeignConfig</code>.</p>
 <p>Do not document inline <code>[profiles.&lt;name&gt;]</code> tables or standalone <code>&lt;name&gt;.config.yml</code> files as shipped; settings use <code>config.yml</code> under the active agent dir.</p>
 <h2 id="model-slots-and-roles-per-profile"><a class="header" href="#model-slots-and-roles-per-profile">Model slots and roles (per profile)</a></h2>
 <p>Each profile’s <code>config.yml</code> owns the three model slots and optional roles:</p>
@@ -3020,7 +3062,7 @@ compaction:
   strategy: handoff                 # or snap
   thresholdPercent: 80
 </code></pre>
-<p><strong>Unset slots and roles inherit the live main model.</strong> The compaction model and every model role default to “inherit”: when unset, they resolve to whatever the main model is <em>at use time</em>, so switching with <code>/model</code> changes them instantly. Only an explicit assignment pins a different model. (The advisor role is the one exception — unset, it follows its thinking-model chain; the settings UI labels each role’s unset behavior.) Switching profiles switches all of these assignments with the profile.</p>
+<p><strong>Unset slots and roles inherit the live main model.</strong> The compaction model and every model role default to “inherit”: when unset, they resolve to whatever the main model is <em>at use time</em>, so switching with <code>/model</code> changes them instantly. Only an explicit assignment pins a different model. (The advisor role is the one exception, unset, it follows its thinking-model chain; the settings UI labels each role’s unset behavior.) Switching profiles switches all of these assignments with the profile.</p>
 <h2 id="see-also-3"><a class="header" href="#see-also-3">See also</a></h2>
 <ul>
 <li><a href="#models-roles-and-profiles">Models, roles, and profiles</a></li>
@@ -3038,7 +3080,7 @@ compaction:
 <tbody>
 <tr><td><strong>Interactive model</strong></td><td>The model used for the main conversation. Chosen with <code>/model</code> or <code>--model</code>. Persisted under <code>modelRoles.default</code> (legacy key name; not a selectable “role” in the UI).</td></tr>
 <tr><td><strong>Role</strong></td><td>A named model assignment for a kind of work (<code>smol</code>, <code>plan</code>, <code>task</code>, …). Configured in <code>modelRoles</code> / settings → Model → Roles.</td></tr>
-<tr><td><strong>Slot overrides</strong></td><td><code>subagent.model</code> and <code>compaction.model</code> — dedicated destinations that override the corresponding role or inherit the interactive model when unset.</td></tr>
+<tr><td><strong>Slot overrides</strong></td><td><code>subagent.model</code> and <code>compaction.model</code>, dedicated destinations that override the corresponding role or inherit the interactive model when unset.</td></tr>
 <tr><td><strong>Profile</strong></td><td>User config tree at <code>~/.veyyon/profiles/&lt;name&gt;/</code> (including <code>default</code>).</td></tr>
 </tbody>
 </table>
@@ -3123,7 +3165,7 @@ compaction:
 <h2 id="related-10"><a class="header" href="#related-10">Related</a></h2>
 <ul>
 <li><a href="#models-and-providers">Models and providers</a></li>
-<li><a href="../settings.html">settings.md Models</a> (repo <code>docs/settings.md</code>)</li>
+<li><a href="../../settings.html">Settings: models</a> (repo <code>docs/settings.md</code>)</li>
 <li><a href="#compaction-and-project-memory">Compaction</a></li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
@@ -3145,7 +3187,7 @@ compaction:
 </tbody>
 </table>
 </div>
-<p>Schema default: <code>personality: default</code> in <code>settings-schema.ts</code>. The setting is a free-form string, not a closed enum — see <a href="#extending-the-catalog">Extending the catalog</a>.</p>
+<p>Schema default: <code>personality: default</code> in <code>settings-schema.ts</code>. The setting is a free-form string, not a closed enum, see <a href="#extending-the-catalog">Extending the catalog</a>.</p>
 <h2 id="configuring-personality"><a class="header" href="#configuring-personality">Configuring personality</a></h2>
 <ul>
 <li><strong>Settings UI:</strong> <code>/settings</code> → <strong>Model</strong> tab → <strong>Prompt</strong> group → <strong>Personality</strong>. Options are resolved at render time (built-ins + your <code>~/.veyyon/personalities</code> and project <code>.veyyon/personalities</code> files); changing the value refreshes the base system prompt immediately.</li>
@@ -3157,14 +3199,14 @@ compaction:
 <h2 id="extending-the-catalog"><a class="header" href="#extending-the-catalog">Extending the catalog</a></h2>
 <p>The 3 shipped personalities are seeds, not a closed set. Add a <code>&lt;name&gt;.md</code> file and its filename stem becomes a selectable personality name; the file body is injected verbatim as the <code>&lt;personality&gt;</code> block:</p>
 <ul>
-<li><strong>User-level:</strong> <code>~/.veyyon/personalities/&lt;name&gt;.md</code> — available in every project.</li>
-<li><strong>Project-level:</strong> <code>.veyyon/personalities/&lt;name&gt;.md</code> — available only in that project, and overrides a user or built-in personality of the same name.</li>
+<li><strong>User-level:</strong> <code>~/.veyyon/personalities/&lt;name&gt;.md</code>: available in every project.</li>
+<li><strong>Project-level:</strong> <code>.veyyon/personalities/&lt;name&gt;.md</code>: available only in that project, and overrides a user or built-in personality of the same name.</li>
 </ul>
 <p>Precedence for a given name is <strong>project &gt; user &gt; built-in</strong>. For example, dropping <code>~/.veyyon/personalities/pirate.md</code> with the body <code>You speak like a pirate.</code> and setting <code>personality: pirate</code> renders <code>&lt;personality&gt;You speak like a pirate.&lt;/personality&gt;</code> with no rebuild. A project <code>.veyyon/personalities/default.md</code> overrides the built-in <code>default</code> for that project only.</p>
 <p>Edge cases:</p>
 <ul>
 <li><code>none</code> is a reserved sentinel that disables the block; a file literally named <code>none.md</code> is ignored (it can never shadow the disable behavior).</li>
-<li>An empty or whitespace-only personality file is treated as absent — the next tier (or the built-in) is used instead, so the block is never emitted empty.</li>
+<li>An empty or whitespace-only personality file is treated as absent: the next tier (or the built-in) is used instead, so the block is never emitted empty.</li>
 <li>Setting <code>personality</code> to a name that resolves to nothing (no built-in, user, or project file) falls back to <code>default</code> and prints a visible warning; the <code>&lt;personality&gt;</code> block is never silently emitted empty for a real (non-<code>none</code>) request.</li>
 </ul>
 <p>See <code>packages/coding-agent/src/personality/resolver.ts</code> for the resolver implementation.</p>
@@ -3183,10 +3225,10 @@ compaction:
 <p>Three surfaces share a local neural TTS engine (Kokoro-82M, ~100 MB, WAV/PCM). Network
 is used only for the first model download (and for optional remote TTS backends when configured):</p>
 <ul>
-<li><strong>Spoken replies</strong> — the assistant’s streaming output is vocalized through
+<li><strong>Spoken replies</strong>: the assistant’s streaming output is vocalized through
 the speakers as it arrives.</li>
-<li><strong>Voice input</strong> — hold Space to talk; speech-to-text feeds the composer.</li>
-<li><strong>Speech synthesis</strong> — the <code>tts</code> agent tool and the <code>veyyon say</code> CLI turn
+<li><strong>Voice input</strong>: hold Space to talk; speech-to-text feeds the composer.</li>
+<li><strong>Speech synthesis</strong>: the <code>tts</code> agent tool and the <code>veyyon say</code> CLI turn
 text into audio files or playback.</li>
 </ul>
 <h2 id="setup"><a class="header" href="#setup">Setup</a></h2>
@@ -3362,7 +3404,7 @@ When asked to audit configuration:
 2. Flag `yolo` approval paired with broad tool allow-lists on untrusted repos.
 3. Prefer concrete remediations over generic advice.
 </code></pre>
-<p>Restart or open a new session so skill discovery picks it up. Skills are data — you can version them in
+<p>Restart or open a new session so skill discovery picks it up. Skills are data, you can version them in
 git and share them without shipping a new <code>veyyon</code> build. Prefer a skill when the “tool” is mostly
 prompting and local scripts; prefer MCP when the capability is a long-lived external process. See
 <a href="#skills">Skills</a>.</p>
@@ -3407,7 +3449,7 @@ branch that works. Full behavior: <a href="#session-branching">Branching</a> and
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="configuration-4"><a class="header" href="#configuration-4">Configuration</a></h1>
-<p>Settings by goal. Provider setup: <a href="#models-and-providers">Models and providers</a>, <a href="#signing-in">Authentication</a>. Full key catalog: repository <code>docs/settings.md</code>.</p>
+<p>This page groups settings by what you are trying to do. For provider and sign-in setup, see <a href="#models-and-providers">Models and providers</a> and <a href="#signing-in">Authentication</a>. For the full list of every key, see the repository’s <code>docs/settings.md</code>.</p>
 <h2 id="where-settings-live"><a class="header" href="#where-settings-live">Where settings live</a></h2>
 <p>Settings are YAML mappings. Persistent settings live in <code>config.yml</code>; custom model providers live in
 <code>models.yml</code>; MCP servers live in <code>mcp.json</code>.</p>
@@ -3481,7 +3523,7 @@ compaction:
     read: allow
 </code></pre>
 <p>Per run, <code>--approval-mode &lt;mode&gt;</code> and <code>--auto-approve</code> / <code>--yolo</code> override the mode. There is no
-separate OS shell sandbox — the approval mode is the only boundary; see
+separate OS shell sandbox, the approval mode is the only boundary; see
 <a href="#approvals">Approvals</a> and <a href="#safety-1">Safety</a>.</p>
 <h2 id="run-unattended-or-in-ci"><a class="header" href="#run-unattended-or-in-ci">Run unattended or in CI</a></h2>
 <div class="table-wrapper">
@@ -3542,7 +3584,7 @@ $ # edit ~/.veyyon/profiles/work/agent/config.yml
 <p>See <a href="#profiles-1">Profiles</a>, <a href="#file-locations-1">File locations</a>.</p>
 <h2 id="wire-mcp-servers-and-hooks"><a class="header" href="#wire-mcp-servers-and-hooks">Wire MCP servers and hooks</a></h2>
 <p>MCP servers are configured as JSON, not in <code>config.yml</code>:</p>
-<p>In <code>~/.veyyon/profiles/default/agent/mcp.json</code> (JSON is strict — no comments):</p>
+<p>In <code>~/.veyyon/profiles/default/agent/mcp.json</code> (JSON is strict, no comments):</p>
 <pre><code class="language-json">{
   "mcpServers": {
     "database": {
@@ -3558,7 +3600,7 @@ $ # edit ~/.veyyon/profiles/work/agent/config.yml
 <ul>
 <li><a href="#getting-started">Getting started</a></li>
 <li><a href="#task-guides">Task guides</a></li>
-<li><a href="#safety-1">Safety</a> — <code>tools.approvalMode</code> (default <code>yolo</code>)</li>
+<li><a href="#safety-1">Safety</a>: <code>tools.approvalMode</code> (default <code>yolo</code>)</li>
 <li><a href="#tools-skills-and-extension-data">Extending</a></li>
 <li><a href="#cli-reference">CLI</a></li>
 </ul>
@@ -3594,7 +3636,7 @@ $ veyyon plugin features &lt;plugin&gt; --set f1,f2     # replace the enabled se
 </code></pre>
 <p>See <a href="#plugins">Plugins</a> for installation and management.</p>
 <h2 id="related-12"><a class="header" href="#related-12">Related</a></h2>
-<p>Tool approvals are not feature flags — they use <code>tools.approvalMode</code> and per-tool policy.
+<p>Tool approvals are not feature flags, they use <code>tools.approvalMode</code> and per-tool policy.
 See <a href="#approvals">Approvals</a>.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="tools-skills-and-extension-data"><a class="header" href="#tools-skills-and-extension-data">Tools, skills, and extension data</a></h1>
@@ -3610,7 +3652,7 @@ See <a href="#approvals">Approvals</a>.</p>
 <p>TypeScript modules with <code>pi.on(...)</code>, not JSON command tables. See <a href="#hooks">Hooks</a>.</p>
 <h2 id="related-13"><a class="header" href="#related-13">Related</a></h2>
 <ul>
-<li><a href="#configuration-4">Configuration</a> — approval mode and settings paths</li>
+<li><a href="#configuration-4">Configuration</a>: approval mode and settings paths</li>
 <li><a href="#mechanisms">Mechanisms</a></li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
@@ -3661,7 +3703,7 @@ veyyon plugin doctor
 <h2 id="session-and-state-data"><a class="header" href="#session-and-state-data">Session and state data</a></h2>
 <p>Session data lives under the <strong>profile agent dir</strong> (<code>~/.veyyon/profiles/default/agent/</code> by default):</p>
 <ul>
-<li><code>sessions/</code> — append-only JSONL rollouts (conversation history, branching).</li>
+<li><code>sessions/</code>: append-only JSONL rollouts (conversation history, branching).</li>
 <li>SQLite stores under the agent dir (for example <code>history.db</code>, <code>agent.db</code>) mirror lookups; they can be rebuilt from rollouts when missing.</li>
 </ul>
 <p>This means you usually do not need a manual database migration. When you start the new binary, it reads the rollout files and updates the state database as needed. If you see a warning about a stale state database, the binary repairs it automatically on startup.</p>
@@ -3705,12 +3747,12 @@ rollback, compare your <code>config.yml</code> against the backup from before th
 <h1 id="reference"><a class="header" href="#reference">Reference</a></h1>
 <p>This part is the lookup desk: command flags, environment variables, exit codes, and the files Veyyon creates on your system. Use it when you need the exact name of a flag, the location of a config file, or the meaning of a return code.</p>
 <ul>
-<li><a href="#cli-reference">CLI reference</a> — the <code>veyyon</code> command and every subcommand, plus common flags and config overrides.</li>
-<li><a href="#slash-commands-3">Slash commands</a> — every <code>/</code> command available inside an interactive session, grouped by task.</li>
-<li><a href="#tools-reference">Tools reference</a> — model-facing tools (<code>sleep</code>, context, plugins, MCP resources, edit/exec) with params and safety.</li>
-<li><a href="#environment-variables">Environment variables</a> — supported common variables grouped by purpose (location, auth, catalog, TLS, install, repair, terminal), plus descoped names.</li>
-<li><a href="#exit-codes-1">Exit codes</a> — the return codes Veyyon uses and how child-process exit status passes through.</li>
-<li><a href="#file-locations-1">File locations</a> — where Veyyon stores config, sessions, logs, and credentials under <code>~/.veyyon</code>.</li>
+<li><a href="#cli-reference">CLI reference</a>: the <code>veyyon</code> command and every subcommand, plus common flags and config overrides.</li>
+<li><a href="#slash-commands-3">Slash commands</a>: every <code>/</code> command available inside an interactive session, grouped by task.</li>
+<li><a href="#tools-reference">Tools reference</a>: model-facing tools (<code>sleep</code>, context, plugins, MCP resources, edit/exec) with params and safety.</li>
+<li><a href="#environment-variables">Environment variables</a>: supported common variables grouped by purpose (location, auth, catalog, TLS, install, repair, terminal), plus descoped names.</li>
+<li><a href="#exit-codes-1">Exit codes</a>: the return codes Veyyon uses and how child-process exit status passes through.</li>
+<li><a href="#file-locations-1">File locations</a>: where Veyyon stores config, sessions, logs, and credentials under <code>~/.veyyon</code>.</li>
 </ul>
 <p>Where to go next: if something is failing, see <a href="#troubleshooting">Troubleshooting</a>; for definitions of terms used throughout the book, see the <a href="#glossary">Glossary</a>.</p>
 <div style="break-before: page; page-break-before: always;"></div>
@@ -3926,7 +3968,7 @@ leniency (e.g. hashline parsing) is layered on top. See <a href="#tool-call-repa
 <tr><th>Tool</th><th>Purpose</th></tr>
 </thead>
 <tbody>
-<tr><td><code>edit</code></td><td>Apply changes — default <strong>hashline</strong> (<code>edit.mode: hashline</code>); also <code>apply_patch</code> / <code>patch</code> / <code>replace</code> modes</td></tr>
+<tr><td><code>edit</code></td><td>Apply changes, default <strong>hashline</strong> (<code>edit.mode: hashline</code>); also <code>apply_patch</code> / <code>patch</code> / <code>replace</code> modes</td></tr>
 <tr><td><code>write</code></td><td>Create or overwrite a whole file</td></tr>
 </tbody>
 </table>
@@ -4134,7 +4176,7 @@ leniency (e.g. hashline parsing) is layered on top. See <a href="#tool-call-repa
 <p>Modal (vim-style) composer editing does not exist. There is no <code>/vim</code> command or
 <code>toggle_vim_mode</code> action; the composer uses the standard bindings above.</p>
 <h2 id="customizing-real-path-keybindingsyml"><a class="header" href="#customizing-real-path-keybindingsyml">Customizing (real path: keybindings.yml)</a></h2>
-<p>Custom bindings are <strong>shipped</strong> — but the config surface is its own file, not a <code>tui.keymap</code> block in
+<p>Custom bindings are <strong>shipped</strong>, but the config surface is its own file, not a <code>tui.keymap</code> block in
 <code>config.yml</code>. Set bindings by action ID in <strong><code>~/.veyyon/profiles/default/agent/keybindings.yml</code></strong> (YAML map of action ID
 → chord or chord list). A single string, a list of chords, or an empty list (disables the action) are
 all valid values:</p>
@@ -4152,8 +4194,8 @@ and <code>keybindings.json</code> files migrate automatically to the namespaced 
 <p>This page covers the common operator surface: identity/profile selection, provider auth, and the
 handful of <code>VEYYON_*</code> variables that are actually read by the runtime today. Veyyon also reads a large
 number of <code>VEYYON_*</code> debug/behavior-toggle variables (timing, startup tracing, TUI flags, eval-runtime
-toggles, and more) that are less common configuration. For the complete, code-grounded reference —
-including every provider credential var, precedence chains, and internal toggles — see
+toggles, and more) that are less common configuration. For the complete, code-grounded reference,
+including every provider credential var, precedence chains, and internal toggles, see
 <a href="../../environment-variables.html"><code>docs/environment-variables.md</code></a>.</p>
 <h2 id="location-and-identity"><a class="header" href="#location-and-identity">Location and identity</a></h2>
 <p>There is no <code>VEYYON_HOME</code>. The config directory <strong>name</strong> (not a full path) is overridable, and the
@@ -4181,11 +4223,11 @@ when those are set; unmigrated installs stay under <code>~/.veyyon</code>. See
 <p>There is no separate SQLite-state-directory override; state lives under the resolved agent directory
 above.</p>
 <h2 id="authentication"><a class="header" href="#authentication">Authentication</a></h2>
-<p>Provider BYOK uses each provider’s native key variable — there is no Veyyon-branded API key or access
+<p>Provider BYOK uses each provider’s native key variable, there is no Veyyon-branded API key or access
 token (a <code>VEYYON_API_KEY</code>/<code>VEYYON_ACCESS_TOKEN</code> legacy alias does not exist in the current runtime).
 When a provider’s key variable is set, it is used without an interactive sign-in. For providers with
 OAuth (Anthropic, xAI, Qwen, Cursor, and others), the OAuth token variable takes precedence over the
-plain API key — see the provider tables below and
+plain API key, see the provider tables below and
 <a href="../../environment-variables.html#1-modelprovider-authentication"><code>docs/environment-variables.md</code></a>.</p>
 <p>OAuth sign-in itself is interactive: run <code>/login</code> inside the TUI (or <code>--provider &lt;id&gt;</code> at startup) to
 open the OAuth selector. There is no <code>veyyon login --with-api-key</code>/<code>--with-access-token</code> CLI subcommand;
@@ -4265,7 +4307,7 @@ into <code>RequestInit.tls.ca</code> itself).</p>
 <code>scripts/install.ps1</code>) do not read those names today.</p>
 <h2 id="mcp-2"><a class="header" href="#mcp-2">MCP</a></h2>
 <p>Any MCP server names its own bearer-token secret via <code>[mcp_servers.&lt;name&gt;].bearer_token_env_var</code> in
-<code>config.yml</code> — this points at <em>any</em> env var you choose (for example plain <code>GITHUB_PERSONAL_ACCESS_TOKEN</code>),
+<code>config.yml</code>, this points at <em>any</em> env var you choose (for example plain <code>GITHUB_PERSONAL_ACCESS_TOKEN</code>),
 not a fixed <code>VEYYON_*</code> name. There is no <code>VEYYON_GITHUB_PERSONAL_ACCESS_TOKEN</code> or <code>VEYYON_CONNECTORS_TOKEN</code>
 convention in the current runtime.</p>
 <div class="table-wrapper">
@@ -4355,7 +4397,7 @@ environment variable; see the <a href="#cli-reference">CLI reference</a>.</p>
 </thead>
 <tbody>
 <tr><td><code>0</code></td><td>Success.</td></tr>
-<tr><td><code>1</code></td><td>Any Veyyon error: bad config, auth failure, no such session, an unrecoverable runtime error, a usage error from argument parsing (unknown flag, bad value, missing argument) — or the fallback when a child process ended without a reportable status.</td></tr>
+<tr><td><code>1</code></td><td>Any Veyyon error: bad config, auth failure, no such session, an unrecoverable runtime error, a usage error from argument parsing (unknown flag, bad value, missing argument), or the fallback when a child process ended without a reportable status.</td></tr>
 <tr><td><code>N</code></td><td>When Veyyon runs a child process (for example a shell tool command), the child’s own exit code passes through unchanged.</td></tr>
 <tr><td><code>128 + signal</code></td><td>On Unix, a child killed by a signal is reported as <code>128 + signal</code> (the POSIX shell convention): <code>SIGKILL</code> (9) → <code>137</code>, <code>SIGTERM</code> (15) → <code>143</code>.</td></tr>
 </tbody>
@@ -4371,7 +4413,7 @@ success.</li>
 Agent Client Protocol mode (<code>veyyon acp</code>); see the <a href="#cli-reference">CLI reference</a>.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="file-locations-1"><a class="header" href="#file-locations-1">File locations</a></h1>
-<p>Everything Veyyon stores lives under the config home — <code>~/.veyyon</code> by default on every platform.
+<p>Everything Veyyon stores lives under the config home, <code>~/.veyyon</code> by default on every platform.
 Override the directory name with <code>VEYYON_CONFIG_DIR</code>;
 on Linux/macOS the XDG layout is available after <code>veyyon config init-xdg</code>.</p>
 <h2 id="the-config-home-veyyon"><a class="header" href="#the-config-home-veyyon">The config home (<code>~/.veyyon/</code>)</a></h2>
@@ -4382,16 +4424,16 @@ on Linux/macOS the XDG layout is available after <code>veyyon config init-xdg</c
 <tr><th>Path</th><th>Contents</th></tr>
 </thead>
 <tbody>
-<tr><td><code>config.yml</code></td><td><strong>Global</strong> settings that apply across profiles — today <code>defaultProfile</code> (which profile a bare <code>vey</code> launches). Not to be confused with a profile’s own <code>config.yml</code> (below).</td></tr>
+<tr><td><code>config.yml</code></td><td><strong>Global</strong> settings that apply across profiles, today <code>defaultProfile</code> (which profile a bare <code>vey</code> launches). Not to be confused with a profile’s own <code>config.yml</code> (below).</td></tr>
 <tr><td><code>install-id</code></td><td>Persistent per-install UUID. Shared by every profile.</td></tr>
-<tr><td><code>profiles/</code></td><td>One directory per profile, including <code>profiles/default/</code> — see below.</td></tr>
+<tr><td><code>profiles/</code></td><td>One directory per profile, including <code>profiles/default/</code>, see below.</td></tr>
 </tbody>
 </table>
 </div>
 <h2 id="profiles-veyyonprofilesname"><a class="header" href="#profiles-veyyonprofilesname">Profiles (<code>~/.veyyon/profiles/&lt;name&gt;/</code>)</a></h2>
-<p>Every profile — including <code>default</code> — is a directory under <code>profiles/</code> with the same shape.
+<p>Every profile, including <code>default</code>, is a directory under <code>profiles/</code> with the same shape.
 A profile owns two layers:</p>
-<p><strong>Profile root</strong> (<code>profiles/&lt;name&gt;/</code>) — operational state:</p>
+<p><strong>Profile root</strong> (<code>profiles/&lt;name&gt;/</code>), operational state:</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -4408,7 +4450,7 @@ A profile owns two layers:</p>
 </tbody>
 </table>
 </div>
-<p><strong>Agent dir</strong> (<code>profiles/&lt;name&gt;/agent/</code>) — identity and conversation state:</p>
+<p><strong>Agent dir</strong> (<code>profiles/&lt;name&gt;/agent/</code>), identity and conversation state:</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -4437,7 +4479,7 @@ a named profile always derives its own agent dir.</p>
 <li><code>--profile &lt;name&gt;</code> on the command line.</li>
 <li><code>VEYYON_PROFILE</code>. An explicitly <strong>empty</strong>
 <code>VEYYON_PROFILE=</code> forces the <code>default</code> profile, bypassing step 3.</li>
-<li><code>defaultProfile</code> in the <strong>global</strong> <code>~/.veyyon/config.yml</code> — set it with
+<li><code>defaultProfile</code> in the <strong>global</strong> <code>~/.veyyon/config.yml</code>: set it with
 <code>veyyon profile default &lt;name&gt;</code>.</li>
 <li>The <code>default</code> profile.</li>
 </ol>
@@ -4445,7 +4487,7 @@ a named profile always derives its own agent dir.</p>
 <h3 id="legacy-layout-migration"><a class="header" href="#legacy-layout-migration">Legacy layout migration</a></h3>
 <p>Before this layout, the default profile lived bare in the config root (<code>~/.veyyon/agent/</code>,
 <code>~/.veyyon/logs/</code>, …). On first launch Veyyon migrates that state into <code>profiles/default/</code>
-once, and refuses to guess if both layouts are present — the error names the exact
+once, and refuses to guess if both layouts are present, the error names the exact
 directories to reconcile.</p>
 <h2 id="credential-storage"><a class="header" href="#credential-storage">Credential storage</a></h2>
 <p>Auth tokens live in the profile’s <code>agent.db</code> (or the OS keyring, depending on the configured
@@ -4460,7 +4502,7 @@ credential store). BYOK provider keys never land in plaintext <code>config.yml</
 </thead>
 <tbody>
 <tr><td><code>AGENTS.md</code></td><td>Project instructions Veyyon auto-loads. See <a href="#tools-skills-and-extension-data">AGENTS.md</a>.</td></tr>
-<tr><td><code>.veyyon/</code></td><td>Optional per-project overrides and data (<code>mcp.json</code>, <code>ssh.json</code>, <code>modules/</code>, <code>prompts/</code>). Follows the working directory — never profile-scoped.</td></tr>
+<tr><td><code>.veyyon/</code></td><td>Optional per-project overrides and data (<code>mcp.json</code>, <code>ssh.json</code>, <code>modules/</code>, <code>prompts/</code>). Follows the working directory, never profile-scoped.</td></tr>
 </tbody>
 </table>
 </div>
@@ -4575,7 +4617,7 @@ Seatbelt, or bubblewrap. The boundary is policy the agent loop enforces before d
 <h2 id="public-boundary"><a class="header" href="#public-boundary">Public boundary</a></h2>
 <p><code>tools.approvalMode</code> in <code>config.yml</code> and the launch flags (<code>--approval-mode</code>, <code>--auto-approve</code> /
 <code>--yolo</code>, <code>--plan-yolo</code>) resolve to a decision applied to the <code>bash</code>, <code>edit</code>, and <code>write</code> tools, with
-plan-mode guards on top. Commands run <strong>in-process</strong> after policy resolution — there is no standalone
+plan-mode guards on top. Commands run <strong>in-process</strong> after policy resolution, there is no standalone
 exec-server process in the shipped product.</p>
 <h2 id="key-concepts"><a class="header" href="#key-concepts">Key concepts</a></h2>
 <div class="table-wrapper">
@@ -4698,9 +4740,9 @@ protocol types.</li>
 </div>
 <h2 id="key-concepts-1"><a class="header" href="#key-concepts-1">Key concepts</a></h2>
 <ul>
-<li>Provider metadata — a provider’s auth mode and endpoint configuration.</li>
-<li>Model info — per-model capabilities such as context window and vision support.</li>
-<li>Auth material — resolved from API keys, access tokens, or OAuth credentials.</li>
+<li>Provider metadata: a provider’s auth mode and endpoint configuration.</li>
+<li>Model info: per-model capabilities such as context window and vision support.</li>
+<li>Auth material: resolved from API keys, access tokens, or OAuth credentials.</li>
 </ul>
 <p>See <a href="#models-and-providers">Models and providers</a> and
 <a href="#the-provider-stack-and-bring-your-own-key">Provider stack and bring-your-own-key</a> for how to add
@@ -4710,10 +4752,10 @@ your own keys and choose models.</p>
 <p>Product behavior is covered by tests that assert concrete outcomes, not only non-empty results.</p>
 <h2 id="examples-of-what-tests-check"><a class="header" href="#examples-of-what-tests-check">Examples of what tests check</a></h2>
 <ul>
-<li><strong>Hashline edit path</strong> — round-trip: generated patches apply to the intended content; mismatches fail with the expected error surface.</li>
-<li><strong>Tool-call repair</strong> — unit and conformance cases in <code>packages/coding-agent/test/repair/schema-repair.test.ts</code> (clean / repaired / unrepairable, alias ambiguity, strict <code>additionalProperties</code>).</li>
-<li><strong>Tool-output bounds</strong> — truncation limits behave as configured and remain visible to the model.</li>
-<li><strong>Architecture gates</strong> — layering, re-exports, and related repo checks (see project CI / <code>STANDARD.md</code> where applicable).</li>
+<li><strong>Hashline edit path</strong>: round-trip: generated patches apply to the intended content; mismatches fail with the expected error surface.</li>
+<li><strong>Tool-call repair</strong>: unit and conformance cases in <code>packages/coding-agent/test/repair/schema-repair.test.ts</code> (clean / repaired / unrepairable, alias ambiguity, strict <code>additionalProperties</code>).</li>
+<li><strong>Tool-output bounds</strong>: truncation limits behave as configured and remain visible to the model.</li>
+<li><strong>Architecture gates</strong>: layering, re-exports, and related repo checks (see project CI / <code>STANDARD.md</code> where applicable).</li>
 </ul>
 <h2 id="related-15"><a class="header" href="#related-15">Related</a></h2>
 <ul>
@@ -4744,20 +4786,20 @@ your own keys and choose models.</p>
 <p>Implementation: <code>packages/coding-agent/src/repair/schema-repair.ts</code><br>Tests: <code>packages/coding-agent/test/repair/schema-repair.test.ts</code></p>
 <h2 id="related-16"><a class="header" href="#related-16">Related</a></h2>
 <ul>
-<li><a href="#the-repair-cascade">The repair cascade</a> — ordered rules</li>
-<li><a href="#per-model-repair-posture">Per-model posture</a> — harness profiles</li>
+<li><a href="#the-repair-cascade">The repair cascade</a>: ordered rules</li>
+<li><a href="#per-model-repair-posture">Per-model posture</a>: harness profiles</li>
 <li><a href="#observability-for-repair-and-sessions">Soundness and telemetry</a></li>
-<li><a href="#the-hashline-edit-engine">The hashline edit engine</a> — edit path (separate from argument repair)</li>
+<li><a href="#the-hashline-edit-engine">The hashline edit engine</a>: edit path (separate from argument repair)</li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="the-repair-cascade"><a class="header" href="#the-repair-cascade">The repair cascade</a></h1>
 <p>Before argument validation, the agent loop runs <code>packages/coding-agent/src/repair/schema-repair.ts</code> in this order:</p>
 <ol>
-<li><strong>Parse leniency</strong> — trailing commas / relaxed JSON; stringified argument blobs.</li>
-<li><strong>Ambiguity guard</strong> — refuse when required string fields have multiple plausible donors.</li>
-<li><strong>Alias / typo key rename</strong> — unknown keys that match a common alias (<code>filepath</code> → <code>path</code>, <code>contents</code> → <code>content</code>) or a casing/separator typo of a declared property are renamed to the declared name. Refuse when the rename would be ambiguous (two unknown keys map to the same property, one unknown key matches more than one declared property, or the alias target already has a value).</li>
-<li><strong>Strict unknown-key rejection</strong> — when the tool schema declares <code>additionalProperties: false</code>, any key left after alias resolution is refused rather than dropped or passed through.</li>
-<li><strong>Outcome</strong> — <code>clean</code>, <code>repaired</code> (canonical args + hints), or <code>unrepairable</code> (error tool result, no dispatch).</li>
+<li><strong>Parse leniency</strong>: trailing commas / relaxed JSON; stringified argument blobs.</li>
+<li><strong>Ambiguity guard</strong>: refuse when required string fields have multiple plausible donors.</li>
+<li><strong>Alias / typo key rename</strong>: unknown keys that match a common alias (<code>filepath</code> → <code>path</code>, <code>contents</code> → <code>content</code>) or a casing/separator typo of a declared property are renamed to the declared name. Refuse when the rename would be ambiguous (two unknown keys map to the same property, one unknown key matches more than one declared property, or the alias target already has a value).</li>
+<li><strong>Strict unknown-key rejection</strong>: when the tool schema declares <code>additionalProperties: false</code>, any key left after alias resolution is refused rather than dropped or passed through.</li>
+<li><strong>Outcome</strong>: <code>clean</code>, <code>repaired</code> (canonical args + hints), or <code>unrepairable</code> (error tool result, no dispatch).</li>
 </ol>
 <p>Conformance suite: <code>packages/coding-agent/test/repair/schema-repair.test.ts</code> (alias renames, ambiguity refusals, strict-mode refusals, and a guard that strict rejection does not fire on ArkType/Zod wire schemas that synthesize <code>additionalProperties: false</code> for closed-object emission rather than authorial strictness).</p>
 <p>Per-model enable/disable and tool allowlist hints: <a href="#per-model-repair-posture">Per-model posture</a>.</p>
@@ -4797,7 +4839,7 @@ your own keys and choose models.</p>
 <h1 id="observability-for-repair-and-sessions"><a class="header" href="#observability-for-repair-and-sessions">Observability for repair and sessions</a></h1>
 <h2 id="usage-and-sessions"><a class="header" href="#usage-and-sessions">Usage and sessions</a></h2>
 <ul>
-<li><code>/usage</code> in the TUI and <code>veyyon stats</code> on the CLI — token and usage views</li>
+<li><code>/usage</code> in the TUI and <code>veyyon stats</code> on the CLI: token and usage views</li>
 <li>Status line token accounting (<code>token_*</code>, <code>context_pct</code>, <code>cost</code>)</li>
 <li>Coding-agent structured logger</li>
 </ul>
@@ -4852,7 +4894,7 @@ headers for the next edit.</li>
 <li>Settings: <code>edit.mode</code> in <a href="../../settings.html"><code>docs/settings.md</code></a></li>
 </ul>
 <p>There is no <code>veyyon-edit</code> Rust crate, no V4A-only write path, and no <code>make_update_patch</code> envelope
-routing. General schema-based tool-call repair <strong>is</strong> shipped — see
+routing. General schema-based tool-call repair <strong>is</strong> shipped, see
 <a href="#tool-call-repair">Repair overview</a>.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="repair-on-edits"><a class="header" href="#repair-on-edits">Repair on edits</a></h1>
@@ -4920,7 +4962,7 @@ providers:
 <h2 id="local-engines"><a class="header" href="#local-engines">Local engines</a></h2>
 <p><code>ollama</code>, <code>llama.cpp</code>, and <code>lm-studio</code> are treated as keyless when the engine responds. Each has its
 own discovery variable, not a shared <code>VEYYON_OSS_*</code> pair: <code>OLLAMA_BASE_URL</code> (or <code>OLLAMA_HOST</code>),
-<code>LLAMA_CPP_BASE_URL</code>, <code>LM_STUDIO_BASE_URL</code> — see <a href="#local-and-self-hosted-providers">Environment variables</a>.</p>
+<code>LLAMA_CPP_BASE_URL</code>, <code>LM_STUDIO_BASE_URL</code>, see <a href="#local-and-self-hosted-providers">Environment variables</a>.</p>
 <p>User guides: <a href="#models-and-providers">Models</a>, <a href="#configuring-providers">Configuring providers</a>.</p>
 <p>There is no separate <code>backends.toml</code> catalog subsystem; Veyyon uses <code>models.yml</code> plus the bundled
 catalog.</p>
@@ -4937,14 +4979,17 @@ goal mode (<code>/goal</code>) add gating on top of the default prompt stack.</p
 </ul>
 <p>Edit tool prompts switch with <code>edit.mode</code> (the hashline prompt when hashline is active).</p>
 <p>There is no <code>backends.toml</code>-driven catalog or per-backend prompt tuning, and <code>apply_patch</code> is not the
-default edit surface — Veyyon uses hashline by default.</p>
+default edit surface, Veyyon uses hashline by default.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="bounded-reads-and-search"><a class="header" href="#bounded-reads-and-search">Bounded reads and search</a></h1>
-<p><code>read</code>, <code>glob</code>, <code>grep</code>, and <code>write</code> ship as TypeScript modules under
-<code>packages/coding-agent/src/tools/{read,glob,grep,write}.ts</code>. They are always available (no
-<code>experimental_tools</code> or <code>backends.toml</code> gate). This page documents parameter shapes and bounds.</p>
-<p>Unbounded <code>cat</code> / <code>find</code> / <code>grep -r</code> via shell can fill the context window. These tools apply
-line/byte/result caps and surface truncation instead of silent dumps.</p>
+<p>Four tools give the agent controlled access to your files: <code>read</code>, <code>glob</code>, <code>grep</code>, and
+<code>write</code>. They are always available; there is no <code>experimental_tools</code> or <code>backends.toml</code> gate
+to turn them on.</p>
+<p>The point of these tools is bounds. An unbounded <code>cat</code>, <code>find</code>, or <code>grep -r</code> in the shell
+can dump enough text to fill the whole context window. These tools apply line, byte, and
+result caps instead, and they surface truncation rather than dropping output silently. This
+page documents each tool’s parameters and the limits it enforces. The implementations live
+under <code>packages/coding-agent/src/tools/{read,glob,grep,write}.ts</code>.</p>
 <h2 id="the-read-tool-toolsreadts"><a class="header" href="#the-read-tool-toolsreadts">The <code>read</code> tool (<code>tools/read.ts</code>)</a></h2>
 <p><code>read</code> takes a single <code>path</code> string (no separate <code>offset</code>/<code>limit</code> arguments) and bounds every read
 to a budget:</p>
@@ -4971,7 +5016,7 @@ notebooks (editable cell text), images, URLs (reader-mode by default), and inter
 <p>Text reading is intentionally separate from image inspection: image files go through <code>view_image</code> or
 a vision prepass rather than being bundled into ordinary text reads.</p>
 <h2 id="the-glob-tool-toolsglobts"><a class="header" href="#the-glob-tool-toolsglobts">The <code>glob</code> tool (<code>tools/glob.ts</code>)</a></h2>
-<p>There is no separate <code>find</code> or <code>ls</code> tool — pattern matching and directory listing are both the <code>glob</code>
+<p>There is no separate <code>find</code> or <code>ls</code> tool, pattern matching and directory listing are both the <code>glob</code>
 tool. A model that runs <code>find . -name '*.rs'</code> or <code>ls -R</code> in the shell gets back an unbounded dump that
 includes <code>target/</code>, <code>node_modules/</code>, and <code>.git/</code>; <code>glob</code> is bounded and gitignore-aware instead:</p>
 <ul>
@@ -4980,7 +5025,7 @@ accepts a glob, a single file, a directory (recursed), or a semicolon-delimited 
 (<code>src/**/*.ts; test/**/*.ts</code>); omitted, it searches the workspace root.</li>
 <li><strong><code>gitignore</code> (default <code>true</code>)</strong> hides <code>.gitignore</code> matches; set <code>false</code> to find <code>.env*</code>, build
 output, or anything the repo ignores. <strong><code>hidden</code> (default <code>true</code>)</strong> includes dotfiles.</li>
-<li><strong>Bounded by result count</strong>, default and max <code>200</code> (<code>DEFAULT_LIMIT</code> / <code>MAX_LIMIT</code> in <code>glob.ts</code>) — not
+<li><strong>Bounded by result count</strong>, default and max <code>200</code> (<code>DEFAULT_LIMIT</code> / <code>MAX_LIMIT</code> in <code>glob.ts</code>): not
 a byte cap. Every truncation is surfaced as an actionable notice.</li>
 <li><strong>Sorted by mtime, newest first</strong> (not lexicographic), grouped under <code># &lt;dir&gt;/</code> headers with
 basenames below; directories get a trailing <code>/</code>.</li>
@@ -4994,7 +5039,7 @@ count on top of the same gitignore-aware traversal <code>glob</code> uses:</p>
 <ul>
 <li><strong><code>grep {pattern, path?, case?, gitignore?, skip?}</code>.</strong> <code>path</code> scopes the search (single path,
 semicolon-delimited list, or a <code>file:line-range</code> selector on one target); <code>case</code> enables
-case-sensitivity (default case-insensitive is <strong>not</strong> assumed — see the tool description for the
+case-sensitivity (default case-insensitive is <strong>not</strong> assumed, see the tool description for the
 exact default); <code>skip</code> pages past files already returned once a call hits the file limit.</li>
 <li><strong>Bounded by file count, not match count.</strong> Results are paginated at <code>DEFAULT_FILE_LIMIT = 20</code> files
 per call, with an internal total cap of <code>2000</code> matches (<code>grep.ts</code>); <code>skip</code> continues from where the
@@ -5003,7 +5048,7 @@ previous call left off.</li>
 runs in line-number mode.</li>
 <li><strong>Cross-line patterns</strong> are detected from a literal <code>\n</code>/<code>\\n</code> in <code>pattern</code>.</li>
 <li>The tool description explicitly forbids shelling out to <code>grep</code>/<code>rg</code>/<code>ripgrep</code>/<code>ag</code>/<code>ack</code>/<code>git grep</code>
-via Bash — the built-in tool is the only sanctioned path.</li>
+via Bash, the built-in tool is the only sanctioned path.</li>
 </ul>
 <h2 id="the-write-tool-toolswritets"><a class="header" href="#the-write-tool-toolswritets">The <code>write</code> tool (<code>tools/write.ts</code>)</a></h2>
 <p><code>read</code>/<code>glob</code>/<code>grep</code> are the read side; <code>write {path, content}</code> creates or replaces a whole file. It
@@ -5027,7 +5072,7 @@ capture path (<code>tools/bash-interactive.ts</code>):</p>
 <li><strong>ANSI stripping is Bun-native, not a hand-rolled parser.</strong> <code>sanitizeText()</code> calls Bun’s built-in
 <code>Bun.stripANSI()</code> when an ESC byte is present, then strips C0/C1 control bytes and DEL with a single
 regex pass. The function is a TypeScript replacement for a former Rust native
-(<code>crates/veyyon-natives/src/text.rs::sanitize_text</code>, noted in the current source comment) — there is no
+(<code>crates/veyyon-natives/src/text.rs::sanitize_text</code>, noted in the current source comment), there is no
 live Rust ECMA-48 grammar walker in this path today.</li>
 <li><strong>Keep <code>\n</code> and <code>\t</code>, drop the rest.</strong> The control regex covers C0 (excluding tab/newline), <code>\r</code>,
 DEL, and the C1 range; <code>\n</code> and <code>\t</code> are the two explicit exclusions.</li>
@@ -5043,7 +5088,11 @@ reference after one regex probe; only output that actually carries escapes pays 
 <a href="#compaction-and-project-memory">compaction &amp; project memory</a> are how a long task stays coherent.</p>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="goal-state-and-long-sessions"><a class="header" href="#goal-state-and-long-sessions">Goal state and long sessions</a></h1>
-<p>Long context fails when the objective is only buried in the transcript. Goal mode keeps a structured objective on the session, injects it outside the raw conversation tail, and pairs with compaction for history.</p>
+<p>On a long task, the model can drift. The objective was stated an hour ago, and now it is buried under a
+thousand messages the model reads only the tail of. Goal mode fixes this. It pins a structured
+objective to the session and injects it separately from the raw conversation tail, so the goal stays in
+view no matter how long the transcript grows. It pairs with compaction, which handles the history
+behind it.</p>
 <h2 id="goal-card-session-backed"><a class="header" href="#goal-card-session-backed">Goal card (session-backed)</a></h2>
 <pre><code class="language-text">id:
 objective:
@@ -5065,23 +5114,25 @@ created_at / updated_at:
 </ul>
 <div style="break-before: page; page-break-before: always;"></div>
 <h1 id="compaction-and-project-memory"><a class="header" href="#compaction-and-project-memory">Compaction and project memory</a></h1>
-<p>Long sessions need three records: the <strong>goal</strong> (when enabled), the <strong>recent transcript</strong>, and
-<strong>compacted history</strong>. Compaction compresses older history instead of truncating it, keeping
-task-critical context.</p>
+<p>A long session eventually fills the context window. The simple fix, dropping the oldest messages, loses
+the decisions and constraints the model still needs. Compaction is the better fix: instead of
+truncating old history, it compresses it into a summary and keeps working. At any moment a long session
+holds three records: the goal (when enabled), the recent transcript verbatim, and the compacted history
+behind it.</p>
 <h2 id="context-compaction"><a class="header" href="#context-compaction">Context compaction</a></h2>
 <p>Primary compaction knobs (settings → Models → Compaction, or <code>config.yml</code>):</p>
 <ul>
-<li><strong>Threshold</strong> (<code>compaction.thresholdPercent</code>) — percent of the
+<li><strong>Threshold</strong> (<code>compaction.thresholdPercent</code>): percent of the
 context window at which auto-compaction runs. Also on demand with <code>/compact</code>.
 Optional fixed trigger: <code>compaction.thresholdTokens</code> when set <code>&gt; 0</code>.</li>
-<li><strong>Type</strong> (<code>compaction.strategy</code>) — how history is compressed:
+<li><strong>Type</strong> (<code>compaction.strategy</code>): how history is compressed:
 <ul>
-<li><code>handoff</code> — writes a structured handoff summary that preserves the task, pending questions, and
+<li><code>handoff</code>: writes a structured handoff summary that preserves the task, pending questions, and
 recent decisions, then continues from it (LLM transfer path).</li>
-<li><code>snap</code> — archives history via the snapcompact engine (dense image snapshot path; schema default).</li>
+<li><code>snap</code>: archives history via the snapcompact engine (dense image snapshot path; schema default).</li>
 </ul>
 </li>
-<li><strong>Model</strong> (<code>compaction.model</code>) — the model that performs LLM compaction / handoff. Unset uses your
+<li><strong>Model</strong> (<code>compaction.model</code>): the model that performs LLM compaction / handoff. Unset uses your
 interactive model. See <a href="#models-roles-and-profiles">Models, roles, and profiles</a>.</li>
 </ul>
 <p><code>/compact &lt;focus&gt;</code> steers a run with an “Additional focus:” directive. Recent user messages are
@@ -5107,13 +5158,13 @@ specific models, but editing them lives in a settings group, not the model picke
 <a href="#compaction-and-project-memory">Compaction &amp; project memory</a> and
 <a href="#models-roles-and-profiles">Models, roles, and profiles</a>.</li>
 <li><strong>Plan / goal modes</strong> alter prompts and tool gating (<code>/plan</code>, <code>/goal</code>). There is no <code>/advisor</code> slash
-command — the <strong>advisor watchdog</strong> (<code>advisor.enabled</code> and related settings, in
+command, the <strong>advisor watchdog</strong> (<code>advisor.enabled</code> and related settings, in
 <code>packages/coding-agent/src/advisor/</code>) is a background continuous-review mechanism, not a mode you
 invoke. See <code>docs/advisor-watchdog.md</code>.</li>
 <li><strong>Addressed inter-agent messaging</strong> via the <code>irc</code> tool (<code>packages/coding-agent/src/tools/irc.ts</code>,
 <code>packages/coding-agent/src/irc/bus.ts</code>): <code>send</code>/<code>wait</code>/<code>inbox</code>/<code>list</code> ops over a process-global bus.
 <code>send</code> is fire-and-forget with delivery receipts; the bus wakes an idle recipient with a real turn,
-revives a parked one, or injects a non-interrupting aside into a busy one — the shipped analogue of
+revives a parked one, or injects a non-interrupting aside into a busy one, the shipped analogue of
 wake-now-vs-defer message routing. <code>wait</code> (or <code>send await:true</code>) observes the recipient’s reply as a
 real turn. Gated by <code>isIrcEnabled</code>: available to every subagent and to a top-level session that can
 still spawn subagents.</li>
@@ -5203,7 +5254,7 @@ $ veyyon plugin doctor --fix
 </code></pre>
 <p>Checks plugin installation health. With <code>--fix</code>, it attempts automatic repairs where implemented.</p>
 <p>Additional plugin-environment checks warn when optional external binaries (<code>sd</code>, <code>sg</code>, <code>git</code>) or common
-API keys are missing — these are warnings, not hard failures.</p>
+API keys are missing, these are warnings, not hard failures.</p>
 <h2 id="tui-debug"><a class="header" href="#tui-debug">TUI debug</a></h2>
 <pre><code class="language-text">/debug
 </code></pre>
@@ -5241,7 +5292,7 @@ hashline edits), provider breadth, role routing, session-tree work, and edit erg
 forward from it. Incorporated MIT code keeps its permission notice; see the repository <code>LICENSE</code>.</li>
 <li><strong>codex</strong>, by OpenAI, under the Apache 2.0 license. oh-my-pi and Veyyon carry forward the codex
 <code>apply_patch</code> patch format and parts of the agent-loop shape as an independent TypeScript
-reimplementation — see <code>NOTICE</code> for exactly which files are format-compatible versus which actually
+reimplementation, see <code>NOTICE</code> for exactly which files are format-compatible versus which actually
 vendor Apache 2.0 code (the OpenAI wire types and the Playwright ARIA-snapshot bundle do; the
 <code>apply_patch</code> parser and the Codex backend client do not).</li>
 <li><strong>OpenCode</strong>, under the MIT license. Veyyon studies its plan/build workflow, project memory, compact

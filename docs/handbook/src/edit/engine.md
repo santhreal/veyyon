@@ -41,5 +41,5 @@ default and the path Veyyon optimizes for.
 - Settings: `edit.mode` in [`docs/settings.md`](../../../settings.md)
 
 There is no `veyyon-edit` Rust crate, no V4A-only write path, and no `make_update_patch` envelope
-routing. General schema-based tool-call repair **is** shipped — see
+routing. General schema-based tool-call repair **is** shipped, see
 [Repair overview](../repair/overview.md).

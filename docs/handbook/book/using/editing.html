@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-a2447057.js";
+            window.path_to_searchindex_js = "../searchindex-b31c94e7.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-cc1a72e9.js"></script>
@@ -196,56 +196,50 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="editing-and-repair"><a class="header" href="#editing-and-repair">Editing and repair</a></h1>
-<p>Editing reliably is the core of a coding agent. Veyyon’s <strong>default</strong> edit surface is <strong>hashline</strong>:
-numbered lines from <code>read</code>/<code>grep</code>, snapshot tags, and <code>edit</code> with <code>SWAP</code>/<code>DEL</code>/<code>INS</code> operations.</p>
-<p>For edit/repair design see <a href="../benefits/first-attempt-edits.html">Edit path and tool arguments</a> and
-<a href="../edit/engine.html">The hashline edit engine</a>.</p>
+<p>Editing reliably is the core of a coding agent, so it is worth understanding how Veyyon does it. The default edit surface is hashline. In practice that means three things work together: numbered lines that come back from <code>read</code> and <code>grep</code>, snapshot tags that identify a known state of a file, and the <code>edit</code> tool with its <code>SWAP</code>, <code>DEL</code>, and <code>INS</code> operations.</p>
+<p>For the design behind the edit and repair path, see <a href="../benefits/first-attempt-edits.html">Edit path and tool arguments</a> and <a href="../edit/engine.html">The hashline edit engine</a>.</p>
 <h2 id="failure-modes"><a class="header" href="#failure-modes">Failure modes</a></h2>
-<p>Models often emit slightly wrong tool JSON or stale line anchors. Hashline detects stale <code>[path#TAG]</code>
-tags and returns recovery hints. <strong>General schema repair</strong> runs on all tool calls before validation —
-see <a href="../repair/overview.html">Repair overview</a>.</p>
-<h2 id="write-path-vs-edit-path"><a class="header" href="#write-path-vs-edit-path">Write path vs edit path</a></h2>
+<p>Models often emit slightly wrong tool JSON, or line anchors that have gone stale. Hashline catches a stale <code>[path#TAG]</code> tag and returns recovery hints instead of writing the wrong bytes. On top of that, general schema repair runs on every tool call before validation. See <a href="../repair/overview.html">Repair overview</a>.</p>
+<h2 id="write-path-versus-edit-path"><a class="header" href="#write-path-versus-edit-path">Write path versus edit path</a></h2>
+<p>Veyyon keeps surgical edits and whole-file writes separate on purpose.</p>
 <div class="table-wrapper">
 <table>
 <thead>
 <tr><th>Path</th><th>Applier</th><th>Role</th></tr>
 </thead>
 <tbody>
-<tr><td><code>edit</code></td><td><code>@veyyon/hashline</code> (default)</td><td>Surgical edits via snapshot tags and hashline ops</td></tr>
-<tr><td><code>write</code></td><td>Whole-file writer</td><td>Create or overwrite files; mints new snapshot tags in hashline mode</td></tr>
-<tr><td><code>apply_patch</code> / <code>patch</code> / <code>replace</code></td><td>Mode-specific parsers</td><td>Compatibility modes via <code>edit.mode</code></td></tr>
+<tr><td><code>edit</code></td><td><code>@veyyon/hashline</code> (default)</td><td>Surgical edits, anchored on snapshot tags and hashline ops</td></tr>
+<tr><td><code>write</code></td><td>Whole-file writer</td><td>Create or overwrite a file, minting new snapshot tags in hashline mode</td></tr>
+<tr><td><code>apply_patch</code>, <code>patch</code>, <code>replace</code></td><td>Mode-specific parsers</td><td>Compatibility modes selected by <code>edit.mode</code></td></tr>
 </tbody>
 </table>
 </div>
-<p>There is one <strong>hashline edit applier</strong> for anchored edits; <code>write</code> is intentionally separate for whole-file
-creation. Both honor the same approval policy.</p>
+<p>There is one hashline edit applier for anchored edits, and <code>write</code> stays separate for whole-file creation. Both honor the same approval policy.</p>
 <h2 id="tools"><a class="header" href="#tools">Tools</a></h2>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>Tool</th><th>What the model sends</th><th>Use for</th></tr>
+<tr><th>Tool</th><th>What the model sends</th><th>Use it for</th></tr>
 </thead>
 <tbody>
-<tr><td><code>edit</code></td><td>Hashline <code>input</code> (default) or mode-specific payload</td><td>Surgical edits</td></tr>
-<tr><td><code>write</code></td><td><code>path</code> + full <code>content</code></td><td>New files or full rewrites</td></tr>
-<tr><td><code>apply_patch</code></td><td>V4A envelope</td><td>When <code>edit.mode: apply_patch</code></td></tr>
+<tr><td><code>edit</code></td><td>A hashline <code>input</code> (default), or a mode-specific payload</td><td>Surgical edits</td></tr>
+<tr><td><code>write</code></td><td>A <code>path</code> plus the full <code>content</code></td><td>New files or full rewrites</td></tr>
+<tr><td><code>apply_patch</code></td><td>A V4A envelope</td><td>When <code>edit.mode</code> is <code>apply_patch</code></td></tr>
 </tbody>
 </table>
 </div>
-<p>Set <code>edit.mode</code> to <code>hashline</code>, <code>apply_patch</code>, <code>patch</code>, or <code>replace</code> in <code>config.yml</code>, or
-<code>VEYYON_EDIT_VARIANT</code> for one-shot overrides.</p>
+<p>You set <code>edit.mode</code> to <code>hashline</code>, <code>apply_patch</code>, <code>patch</code>, or <code>replace</code> in <code>config.yml</code>, or use <code>VEYYON_EDIT_VARIANT</code> for a one-shot override.</p>
 <h2 id="hashline-workflow"><a class="header" href="#hashline-workflow">Hashline workflow</a></h2>
+<p>The loop is short:</p>
 <ol>
-<li><strong><code>read</code></strong> (or <strong><code>grep</code></strong>) returns <code>[relative/path#TAG]</code> and <code>LINE:text</code> rows.</li>
-<li>Model calls <strong><code>edit</code></strong> with sections anchored on the same <code>TAG</code>.</li>
-<li>On success, output includes a fresh <code>[path#NEW_TAG]</code> and a compact diff.</li>
+<li><code>read</code> (or <code>grep</code>) returns <code>[relative/path#TAG]</code> and <code>LINE:text</code> rows.</li>
+<li>The model calls <code>edit</code>, anchoring each section on the same <code>TAG</code>.</li>
+<li>On success, the output includes a fresh <code>[path#NEW_TAG]</code> and a compact diff.</li>
 </ol>
-<p><code>write</code> strips pasted hashline prefixes when appropriate and can mint new tags after whole-file writes.</p>
+<p><code>write</code> strips pasted hashline prefixes when appropriate, and can mint new tags after a whole-file write.</p>
 <h2 id="safety"><a class="header" href="#safety">Safety</a></h2>
-<p>Edits honor the approval mode like <code>bash</code>. Denied tools are removed from the model’s tool
-list via <code>disallowed_tools</code> / plan mode.</p>
-<p>Veyyon uses hashline as the primary write path; <code>apply_patch</code> is a compatibility mode. There is no
-single V4A applier that routes every mutation through a <code>make_update_patch</code> envelope.</p>
+<p>Edits honor the approval mode, just as <code>bash</code> does. A denied tool is removed from the model’s tool list through <code>disallowed_tools</code> or plan mode, so the model cannot call it at all.</p>
+<p>Hashline is the primary write path, and <code>apply_patch</code> is a compatibility mode. There is no single V4A applier that routes every mutation through a <code>make_update_patch</code> envelope.</p>
 
                     </main>
 

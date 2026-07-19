@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-a2447057.js";
+            window.path_to_searchindex_js = "../searchindex-b31c94e7.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-cc1a72e9.js"></script>
@@ -196,8 +196,9 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="configuring-providers"><a class="header" href="#configuring-providers">Configuring providers</a></h1>
-<p>Copy-paste setups for bring-your-own-key (BYOK) and local providers. For model selection
-guide, see <a href="./models.html">Models and providers</a>. For the harness/provider boundary, see
+<p>This page gives you copy-paste setups for bring-your-own-key (BYOK) and local providers.
+Once a provider works, see <a href="./models.html">Models and providers</a> to choose and switch models.
+For what the harness owns versus what the provider owns, see
 <a href="../concepts/model-contract.html">Model contract</a>.</p>
 <p>Custom providers live under <code>providers:</code> in <code>~/.veyyon/profiles/default/agent/models.yml</code>. Keys are resolved from the
 environment, stored auth, OAuth, or a <code>models.yml</code> <code>apiKey</code> (see <a href="../models/providers.html">Providers</a>
@@ -234,7 +235,7 @@ providers:
 <ul>
 <li>Custom providers are merged <strong>alongside</strong> built-ins; they do not silently replace <code>openai</code>.</li>
 <li>A custom <code>ollama</code> / <code>lm-studio</code> / <code>llama.cpp</code> entry replaces that engine’s built-in discovery.</li>
-<li>A YAML or schema error makes the registry skip the file with an error message — validate with <code>veyyon models</code>.</li>
+<li>A YAML or schema error makes the registry skip the file with an error message: validate with <code>veyyon models</code>.</li>
 </ul>
 <p>After editing, restart the session.</p>
 <h2 id="openai-api-key"><a class="header" href="#openai-api-key">OpenAI (API key)</a></h2>
@@ -273,7 +274,7 @@ $ veyyon --model anthropic/claude-sonnet-4-5
 <p>To reach Anthropic models through a gateway instead, add an OpenAI-compatible custom provider
 (OpenRouter, LiteLLM, a team proxy) and select the gateway’s model id.</p>
 <h2 id="other-openai-compatible-hosts"><a class="header" href="#other-openai-compatible-hosts">Other OpenAI-compatible hosts</a></h2>
-<p>Any host that speaks Chat Completions works the same way — only <code>baseUrl</code>, <code>api</code>, and <code>apiKey</code> change:</p>
+<p>Any host that speaks Chat Completions works the same way, only <code>baseUrl</code>, <code>api</code>, and <code>apiKey</code> change:</p>
 <pre><code class="language-yaml">providers:
   my-proxy:
     baseUrl: https://llm-proxy.example.com/v1
@@ -321,7 +322,7 @@ modelRoles:
 <pre><code class="language-console">$ veyyon models
 $ veyyon --model &lt;provider&gt;/&lt;id&gt; "reply with the model name you are"
 </code></pre>
-<p>If discovery or auth fails, the error names the provider and the missing key or unreachable base URL —
+<p>If discovery or auth fails, the error names the provider and the missing key or unreachable base URL,
 fix that rather than retrying with a different silent default.</p>
 <h2 id="see-also"><a class="header" href="#see-also">See also</a></h2>
 <ul>

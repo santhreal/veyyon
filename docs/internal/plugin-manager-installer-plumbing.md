@@ -43,9 +43,9 @@ veyyon plugin install name@marketplace / veyyon install name@marketplace
 
 Global plugin state lives under `~/.veyyon/profiles/default/plugins`:
 
-- `package.json` — dependency manifest used by `bun install`/`bun uninstall` for npm-installed plugins
-- `node_modules/` — installed npm plugin packages or symlinks
-- `veyyon-plugins.lock.json` — runtime state for npm/link plugins:
+- `package.json`: dependency manifest used by `bun install`/`bun uninstall` for npm-installed plugins
+- `node_modules/`: installed npm plugin packages or symlinks
+- `veyyon-plugins.lock.json`: runtime state for npm/link plugins:
   - enabled/disabled per plugin
   - selected feature set per plugin
   - persisted plugin settings
@@ -58,10 +58,10 @@ Overrides are read-only from manager/loader perspective (no write path here) and
 
 Marketplace registries live separately:
 
-- `~/.veyyon/marketplaces.json` — configured marketplace catalogs
-- `~/.veyyon/profiles/default/plugins/installed_plugins.json` — user-scoped marketplace installs
-- `<project-root>/.veyyon/plugins/installed_plugins.json` — project-scoped marketplace installs (`resolveActiveProjectRegistryPath` walks up from cwd to the nearest project config dir, stopping before the home dir)
-- `~/.veyyon/profiles/default/plugins/cache/{marketplaces,plugins}/` — cached catalogs and plugin directories
+- `~/.veyyon/marketplaces.json`: configured marketplace catalogs
+- `~/.veyyon/profiles/default/plugins/installed_plugins.json`: user-scoped marketplace installs
+- `<project-root>/.veyyon/plugins/installed_plugins.json`: project-scoped marketplace installs (`resolveActiveProjectRegistryPath` walks up from cwd to the nearest project config dir, stopping before the home dir)
+- `~/.veyyon/profiles/default/plugins/cache/{marketplaces,plugins}/`: cached catalogs and plugin directories
 
 ## Plugin spec parsing and metadata interpretation
 
@@ -81,7 +81,7 @@ Marketplace registries live separately:
 
 ## Manifest source and required fields
 
-Manifest is resolved through the one-owner helper `manifestFromPackageJson()` (`src/extensibility/manifest-key.ts`, `MANIFEST_KEYS = ["veyyon", "omp", "pi"]` — first defined key wins):
+Manifest is resolved through the one-owner helper `manifestFromPackageJson()` (`src/extensibility/manifest-key.ts`, `MANIFEST_KEYS = ["veyyon", "omp", "pi"]`, first defined key wins):
 
 1. `package.json.veyyon`
 2. legacy `package.json.omp`
@@ -111,7 +111,7 @@ Malformed `package.json` JSON is a hard failure at read time; malformed manifest
    - `[a,b]`: validates each feature exists in manifest features map
    - `[]`: empty feature list
    - bare spec: `null` (use defaults policy later in loader)
-7. Validate declared extension entries (`#validateInstalledExtensions`): each manifest `extensions` entry must resolve on disk and import to a factory function. On failure, roll back the install — restore the previous `plugins/package.json`, remove the freshly installed package, and restore any prior version from a backup taken before `bun install` — then abort.
+7. Validate declared extension entries (`#validateInstalledExtensions`): each manifest `extensions` entry must resolve on disk and import to a factory function. On failure, roll back the install, restore the previous `plugins/package.json`, remove the freshly installed package, and restore any prior version from a backup taken before `bun install`, then abort.
 8. Upsert lockfile runtime state: `{ version, enabledFeatures, enabled: true }`.
 
 ### Update semantics
@@ -225,7 +225,7 @@ No cross-process locking or merge strategy exists; concurrent writers can overwr
 Active manager path enforces package-name validation:
 
 - npm specs: a package-name regex (`VALID_PACKAGE_NAME`) for scoped/unscoped specs, optionally with version.
-- npm shell-metacharacter denylist: `;`, `&`, `|`, backtick, `$`, `(`, `)`, `{`, `}`, `[`, `]`, `<`, `>`, `\` — applied after `parsePluginSpec` strips the feature brackets, so a normal `pkg[feat]` spec never reaches it.
+- npm shell-metacharacter denylist: `;`, `&`, `|`, backtick, `$`, `(`, `)`, `{`, `}`, `[`, `]`, `<`, `>`, `\`: applied after `parsePluginSpec` strips the feature brackets, so a normal `pkg[feat]` spec never reaches it.
 - git specs: `validateGitSpec` rejects only the shared `SHELL_METACHARS` set (`;`, `&`, `|`, backtick, `$`, `(`, `)`, `{`, `}`, `<`, `>`, `\`, newline, CR, tab) instead of the npm regex, so `:`, `/`, `#`, `+`, `.`, `-`, `_`, `~`, `@` are permitted.
 
 This limits command-injection risk when invoking `bun install/uninstall`.
@@ -278,14 +278,14 @@ Operationally, `doctor --fix` can repair some drift (`bun install`, orphaned con
 
 ## Implementation files
 
-- [`src/commands/plugin.ts`](../../packages/coding-agent/src/commands/plugin.ts) — CLI command declaration and flag mapping
-- [`src/cli/plugin-cli.ts`](../../packages/coding-agent/src/cli/plugin-cli.ts) — action dispatch, user-facing command handlers
-- [`src/extensibility/plugins/manager.ts`](../../packages/coding-agent/src/extensibility/plugins/manager.ts) — active install/remove/list/link/state/doctor implementation
-- [`src/extensibility/plugins/installer.ts`](../../packages/coding-agent/src/extensibility/plugins/installer.ts) — legacy installer helpers and additional link safety checks
-- [`src/extensibility/plugins/loader.ts`](../../packages/coding-agent/src/extensibility/plugins/loader.ts) — enabled-plugin discovery and tool/hook/command path resolution
-- [`src/extensibility/plugins/parser.ts`](../../packages/coding-agent/src/extensibility/plugins/parser.ts) — install spec and package-name parsing helpers
-- [`src/extensibility/plugins/types.ts`](../../packages/coding-agent/src/extensibility/plugins/types.ts) — manifest/runtime/override type contracts
-- [`src/extensibility/custom-tools/loader.ts`](../../packages/coding-agent/src/extensibility/custom-tools/loader.ts) — runtime wiring for plugin-provided tool modules
-- [`src/extensibility/extensions/loader.ts`](../../packages/coding-agent/src/extensibility/extensions/loader.ts) — runtime wiring for plugin-provided extension modules
+- [`src/commands/plugin.ts`](../../packages/coding-agent/src/commands/plugin.ts): CLI command declaration and flag mapping
+- [`src/cli/plugin-cli.ts`](../../packages/coding-agent/src/cli/plugin-cli.ts): action dispatch, user-facing command handlers
+- [`src/extensibility/plugins/manager.ts`](../../packages/coding-agent/src/extensibility/plugins/manager.ts): active install/remove/list/link/state/doctor implementation
+- [`src/extensibility/plugins/installer.ts`](../../packages/coding-agent/src/extensibility/plugins/installer.ts): legacy installer helpers and additional link safety checks
+- [`src/extensibility/plugins/loader.ts`](../../packages/coding-agent/src/extensibility/plugins/loader.ts): enabled-plugin discovery and tool/hook/command path resolution
+- [`src/extensibility/plugins/parser.ts`](../../packages/coding-agent/src/extensibility/plugins/parser.ts): install spec and package-name parsing helpers
+- [`src/extensibility/plugins/types.ts`](../../packages/coding-agent/src/extensibility/plugins/types.ts): manifest/runtime/override type contracts
+- [`src/extensibility/custom-tools/loader.ts`](../../packages/coding-agent/src/extensibility/custom-tools/loader.ts): runtime wiring for plugin-provided tool modules
+- [`src/extensibility/extensions/loader.ts`](../../packages/coding-agent/src/extensibility/extensions/loader.ts): runtime wiring for plugin-provided extension modules
 
 *Verified against `7ca44d3` on 2026-07-17.*

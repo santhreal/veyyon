@@ -13,7 +13,7 @@ Source of truth in code:
 When no LSP config file is present, Veyyon auto-detects servers by intersecting two conditions:
 
 1. The project directory contains at least one of the server's `rootMarkers`.
-2. The server binary is available — checked in project-local bin directories first (e.g., `node_modules/.bin/`, `.venv/bin/`), then `$PATH`.
+2. The server binary is available: checked in project-local bin directories first (e.g., `node_modules/.bin/`, `.venv/bin/`), then `$PATH`.
 
 No configuration is required for common setups. The built-in server list covers most popular languages; see [`defaults.json`](../packages/coding-agent/src/lsp/defaults.json) for the full set.
 
@@ -62,8 +62,8 @@ or (flat, without the `servers` wrapper):
 
 Top-level keys:
 
-- `servers` — map of server name to `ServerConfig` (optional wrapper; flat form is equivalent)
-- `idleTimeoutMs` — shut down idle language servers after this many milliseconds; disabled by default
+- `servers`: map of server name to `ServerConfig` (optional wrapper; flat form is equivalent)
+- `idleTimeoutMs`: shut down idle language servers after this many milliseconds; disabled by default
 
 ## ServerConfig fields
 
@@ -80,7 +80,7 @@ Top-level keys:
 | `isLinter`        | `boolean`  | no       | Mark server as linter/formatter only; excluded from type-intelligence operations (hover, go-to-definition, etc.) |
 | `capabilities`    | `object`   | no       | Opt-in server-specific features; see [Capabilities](#capabilities)                                               |
 
-`resolvedCommand` is populated automatically at runtime — do not set it manually.
+`resolvedCommand` is populated automatically at runtime, do not set it manually.
 
 ### Capabilities
 

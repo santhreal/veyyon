@@ -105,7 +105,7 @@ Modal (vim-style) composer editing does not exist. There is no `/vim` command or
 
 ## Customizing (real path: keybindings.yml)
 
-Custom bindings are **shipped** — but the config surface is its own file, not a `tui.keymap` block in
+Custom bindings are **shipped**, but the config surface is its own file, not a `tui.keymap` block in
 `config.yml`. Set bindings by action ID in **`~/.veyyon/profiles/default/agent/keybindings.yml`** (YAML map of action ID
 → chord or chord list). A single string, a list of chords, or an empty list (disables the action) are
 all valid values:

@@ -15,24 +15,24 @@ The session is stored as an append-only entry log, but runtime behavior is tree-
 
 Key files:
 
-- `src/session/session-manager.ts` — tree data model, traversal, leaf movement, branch/session extraction
-- `src/session/session-context.ts` — `buildSessionContext` context reconstruction (resolved root→leaf LLM context, compaction/branch-summary replay)
-- `src/session/agent-session.ts` — `/tree` navigation flow, summarization, hook/event emission
-- `src/modes/components/tree-selector.ts` — interactive tree UI behavior and filtering
-- `src/modes/controllers/selector-controller.ts` — selector orchestration for `/tree` and `/branch`
-- `src/slash-commands/builtin-registry.ts` — command routing (`/tree`, `/branch`)
-- `src/modes/controllers/input-controller.ts` — double-escape behavior and `app.session.tree`/`app.session.fork` keybinding wiring
-- `src/session/messages.ts` — conversion of `branch_summary`, `compaction`, and `custom_message` entries into LLM context messages
+- `src/session/session-manager.ts`: tree data model, traversal, leaf movement, branch/session extraction
+- `src/session/session-context.ts`: `buildSessionContext` context reconstruction (resolved root→leaf LLM context, compaction/branch-summary replay)
+- `src/session/agent-session.ts`: `/tree` navigation flow, summarization, hook/event emission
+- `src/modes/components/tree-selector.ts`: interactive tree UI behavior and filtering
+- `src/modes/controllers/selector-controller.ts`: selector orchestration for `/tree` and `/branch`
+- `src/slash-commands/builtin-registry.ts`: command routing (`/tree`, `/branch`)
+- `src/modes/controllers/input-controller.ts`: double-escape behavior and `app.session.tree`/`app.session.fork` keybinding wiring
+- `src/session/messages.ts`: conversion of `branch_summary`, `compaction`, and `custom_message` entries into LLM context messages
 
 ## Tree data model in `SessionManager`
 
 Runtime indices live in a `SessionEntryIndex` helper, held as `#index` on `SessionManager` and kept in lockstep with the journal array `#entries`:
 
-- `#entriesById: Map<string, SessionEntry>` — fast lookup for any entry
-- `#children: Map<string | null, SessionEntry[]>` — parent→children adjacency
-- `#labels: Map<string, string>` — resolved labels by target entry id
-- `#leaf: string | null` — current position in the tree
-- `#usage` — running usage totals
+- `#entriesById: Map<string, SessionEntry>`: fast lookup for any entry
+- `#children: Map<string | null, SessionEntry[]>`: parent→children adjacency
+- `#labels: Map<string, string>`: resolved labels by target entry id
+- `#leaf: string | null`: current position in the tree
+- `#usage`: running usage totals
 
 Tree APIs:
 
@@ -76,7 +76,7 @@ Flow:
 3. Optionally summarize abandoned entries (hook-provided summary or built-in summarizer)
 4. Compute new leaf target:
    - selecting a **user** message: leaf moves to its parent, and message text is returned for editor prefill
-   - selecting a **custom_message**: same rule as user message (leaf = parent, text prefills editor) — except skill-prompt injections (`customType === SKILL_PROMPT_MESSAGE_TYPE`), which land the leaf on the node itself since their expanded body is not a re-editable user turn
+   - selecting a **custom_message**: same rule as user message (leaf = parent, text prefills editor): except skill-prompt injections (`customType === SKILL_PROMPT_MESSAGE_TYPE`), which land the leaf on the node itself since their expanded body is not a re-editable user turn
    - selecting any other entry: leaf = selected entry id
 5. Apply leaf move:
    - with summary: `branchWithSummary(newLeafId, ...)`
@@ -151,8 +151,8 @@ Command routing:
 
 Command-time extension API (`ExtensionCommandContext`):
 
-- `branch(entryId)` — create branched session file
-- `navigateTree(targetId, { summarize? })` — move within current tree/file
+- `branch(entryId)`: create branched session file
+- `navigateTree(targetId, { summarize? })`: move within current tree/file
 
 Events around tree navigation:
 

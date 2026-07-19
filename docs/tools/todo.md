@@ -6,19 +6,19 @@
 - Entry: `packages/coding-agent/src/tools/todo.ts`
 - Model-facing prompt: `packages/coding-agent/src/prompts/tools/todo.md`
 - Key collaborators:
-  - `packages/coding-agent/src/tools/index.ts` — registers tool, exposes session hooks, gates availability.
-  - `packages/coding-agent/src/modes/controllers/event-controller.ts` — updates the visible todo UI on tool completion.
-  - `packages/coding-agent/src/session/agent-session.ts` — stores cached phases, strips done/dropped tasks on session resume, emits failure reminders.
-  - `packages/coding-agent/src/modes/controllers/todo-command-controller.ts` — `/todo` command path, custom-entry persistence, transcript reminder injection.
-  - `packages/coding-agent/src/tools/render-utils.ts` — collapsed-preview cap for renderer trees.
+  - `packages/coding-agent/src/tools/index.ts`: registers tool, exposes session hooks, gates availability.
+  - `packages/coding-agent/src/modes/controllers/event-controller.ts`: updates the visible todo UI on tool completion.
+  - `packages/coding-agent/src/session/agent-session.ts`: stores cached phases, strips done/dropped tasks on session resume, emits failure reminders.
+  - `packages/coding-agent/src/modes/controllers/todo-command-controller.ts`: `/todo` command path, custom-entry persistence, transcript reminder injection.
+  - `packages/coding-agent/src/tools/render-utils.ts`: collapsed-preview cap for renderer trees.
 
 ## Inputs
 
-The params object **is** a single op — the discriminator and its fields live at the top level (no `ops` array wrapper).
+The params object **is** a single op, the discriminator and its fields live at the top level (no `ops` array wrapper).
 
 | Op | Required fields | Optional fields | Effect |
 | --- | --- | --- | --- |
-| `init` | `list` **or** flat `items` | `phase` (names the phase for the flat `items` form; defaults to `Tasks`) | Replaces the entire list — with `list`, uses the given phases; with a flat `items` array, synthesizes one phase. Every new task starts `pending` before normalization. |
+| `init` | `list` **or** flat `items` | `phase` (names the phase for the flat `items` form; defaults to `Tasks`) | Replaces the entire list, with `list`, uses the given phases; with a flat `items` array, synthesizes one phase. Every new task starts `pending` before normalization. |
 | `start` | `task` | None | Marks one task `in_progress`; any other `in_progress` task is demoted to `pending`. |
 | `done` | `task` or `phase` or neither | None | Marks the target task, phase, or all tasks `completed`. |
 | `drop` | `task` or `phase` or neither | None | Marks the target task, phase, or all tasks `abandoned`. |
@@ -42,7 +42,7 @@ The tool returns a single-shot `AgentToolResult`:
 - `content`: one text part containing the summary from `formatSummary(...)`.
   - Empty final state with no errors: `Todo list cleared.` (`Todo list is empty.` for a pure-`view` call).
   - Non-empty final state: remaining-item list, current phase progress, then a per-phase tree.
-  - If the op produced validation/runtime errors, the summary starts with `Errors: ...` and the result is marked `isError: true`; the mutation is discarded — the returned and persisted state stay at the pre-call list.
+  - If the op produced validation/runtime errors, the summary starts with `Errors: ...` and the result is marked `isError: true`; the mutation is discarded: the returned and persisted state stay at the pre-call list.
 - `details`:
   - `phases: TodoPhase[]`
   - `storage: "session" | "memory"`
@@ -118,11 +118,11 @@ The same file also exposes non-tool helpers used by `/todo`:
 - `init.list[*].items`: `minItems: 1`.
 - `append.items`: `minItems: 1`.
 - Renderer collapsed preview: `PREVIEW_LIMITS.COLLAPSED_ITEMS = 8` (`packages/coding-agent/src/tools/render-utils.ts`).
-- Auto-clear delay: `tasks.todoClearDelay` default `60` seconds; `< 0` disables auto-clear, `0` clears immediately. Display-only — applied by the TUI widget (`packages/coding-agent/src/modes/interactive-mode.ts`); the setting is inert at the session level.
+- Auto-clear delay: `tasks.todoClearDelay` default `60` seconds; `< 0` disables auto-clear, `0` clears immediately. Display-only: applied by the TUI widget (`packages/coding-agent/src/modes/interactive-mode.ts`); the setting is inert at the session level.
 - Tool execution mode: `concurrency = "exclusive"`, `strict = true`, `loadMode = "discoverable"`.
 
 ## Errors
-- Ordinary bad op payloads are accumulated as human-readable strings in `errors`; the result is marked `isError: true` and the mutation is discarded — the returned and persisted state stay at the pre-call list.
+- Ordinary bad op payloads are accumulated as human-readable strings in `errors`; the result is marked `isError: true` and the mutation is discarded: the returned and persisted state stay at the pre-call list.
 - Error strings come from the helpers in `packages/coding-agent/src/tools/todo.ts`, including:
   - `Missing list for init operation`
   - `Missing task content`

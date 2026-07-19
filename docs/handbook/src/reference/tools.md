@@ -19,7 +19,7 @@ leniency (e.g. hashline parsing) is layered on top. See [Repair overview](../rep
 
 | Tool | Purpose |
 | --- | --- |
-| `edit` | Apply changes — default **hashline** (`edit.mode: hashline`); also `apply_patch` / `patch` / `replace` modes |
+| `edit` | Apply changes, default **hashline** (`edit.mode: hashline`); also `apply_patch` / `patch` / `replace` modes |
 | `write` | Create or overwrite a whole file |
 
 Hashline flow: `read`/`grep` mint `[path#TAG]` anchors → model copies tags into `edit` →

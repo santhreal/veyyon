@@ -1,19 +1,19 @@
 # Brand and identity
 
-This page is the identity contract for the Veyyon harness (CLI, TUI, packages, config paths, docs). The shipped website (`website/`) is the reference implementation of the visual system — when this page and the website disagree, the website wins and this page gets fixed.
+This page is the identity contract for the Veyyon harness (CLI, TUI, packages, config paths, docs). The shipped website (`website/`) is the reference implementation of the visual system, when this page and the website disagree, the website wins and this page gets fixed.
 
 ## Product identity
 
 | Item | Value |
 | --- | --- |
-| Product name | **Veyyon** (only name — not "Veyyon Code") |
+| Product name | **Veyyon** (only name, not "Veyyon Code") |
 | Primary command | `veyyon` |
 | Short alias | `vey` |
 | npm scope | `@veyyon/*` (e.g. `@veyyon/coding-agent`) |
 | Config home | `~/.veyyon` (`VEYYON_CONFIG_DIR`) |
 | Profile env | `VEYYON_PROFILE` |
 
-Veyyon forks [oh-my-pi](https://github.com/can1357/oh-my-pi) (MIT): TypeScript/Bun agent loop and TUI, Rust natives for hot paths (grep, PTY, hashline). Upstream provenance is license and history — not a tagline to paste into Veyyon UI or docs.
+Veyyon forks [oh-my-pi](https://github.com/can1357/oh-my-pi) (MIT): TypeScript/Bun agent loop and TUI, Rust natives for hot paths (grep, PTY, hashline). Upstream provenance is license and history, not a tagline to paste into Veyyon UI or docs.
 
 Features marked `> **Spec — not shipped:**` are target design, not current behavior.
 
@@ -33,14 +33,14 @@ Exact, restrained, technical. Name the product **Veyyon**. Prefer short factual 
 | Veyyon Dark | Shipped | Pitch black `#000000` | Terminal default | Silver `#B8BDC7` | Silver `#B8BDC7` (pre-ember; blue `#4A84C9` remains a secondary color) |
 | Light | Shipped | White `#FFFFFF` | Silver strong `#343B45` | Silver `#5C6470` | Ember `#F0862E` (glow `#FBE9D9`) |
 
-The ground is **pitch black**. On it, two colors do two jobs — the same system the website ships (`website/site.css` `:root` tokens):
+The ground is **pitch black**. On it, two colors do two jobs, the same system the website ships (`website/site.css` `:root` tokens):
 
-- **Silver is structure** — wordmark, labels, hairlines, progress, primary text hierarchy: `#C6CBD4` / bright `#E6E9EE` (same value on both surfaces).
-- **Ember is the single accent** — the sun: `#F0862E`, carried on the website by links, hover `#FB9E44`, and the focus ring; in the TUI (titanium) by links, the accent border, list bullets, and the selection glow (`emberDim #B8632A`, `emberGlow #241510`). One accent per view; never a primary fill.
+- **Silver is structure**: wordmark, labels, hairlines, progress, primary text hierarchy: `#C6CBD4` / bright `#E6E9EE` (same value on both surfaces).
+- **Ember is the single accent**: the sun: `#F0862E`, carried on the website by links, hover `#FB9E44`, and the focus ring; in the TUI (titanium) by links, the accent border, list bullets, and the selection glow (`emberDim #B8632A`, `emberGlow #241510`). One accent per view; never a primary fill.
 
 Green, amber, and red only when meaning fits (success, warning, error): `#7FB98A` / `#C9A24B` / `#C96F6E` on both surfaces. Ember is the brand accent and stays distinct from the amber warning color. `website/site.css` `:root` is the canonical token source; the titanium theme mirrors it, locked by `test/brand-conformance.test.ts` (site.css parity test).
 
-**Every background is pure black `#000000`.** Hierarchy comes from silver hairlines, text weight, and the ember accent — not raised panels or tinted fills. No cyan/purple/rainbow chrome. No gradients. Sharp edges. The only permitted glow is the ember selection tint (`emberGlow`).
+**Every background is pure black `#000000`.** Hierarchy comes from silver hairlines, text weight, and the ember accent, not raised panels or tinted fills. No cyan/purple/rainbow chrome. No gradients. Sharp edges. The only permitted glow is the ember selection tint (`emberGlow`).
 
 Known drift (tracked in `BACKLOG.md`): `dark.json` (Veyyon Dark) predates the ember accent entirely (silver accent, blue secondary).
 
@@ -54,7 +54,7 @@ Session welcome is a single hero card (not a dual-column dashboard): wordmark, o
 
 - Identity and palette: brand system + this page.
 - Engine behavior: handbook pages reconciled to shipped code.
-- **Spec — not shipped**: target design until a release ships it.
+- **Spec: not shipped**: target design until a release ships it.
 
 See also: [Themes and identity](../handbook/src/using/themes.md), [TUI design language](./tui-design-language.md).
 

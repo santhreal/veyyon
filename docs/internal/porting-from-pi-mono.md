@@ -65,10 +65,10 @@ We run on Bun, but the current source intentionally mixes Bun APIs with small No
 
 **DO NOT replace (these work fine in Bun):**
 
-- `os.homedir()` — do NOT replace with `Bun.env.HOME` or literal `"~"`
-- `os.tmpdir()` — do NOT replace with `Bun.env.TMPDIR || "/tmp"` or hardcoded paths
-- `fs.mkdtempSync()` — do NOT replace with manual path construction
-- `path.join()`, `path.resolve()`, etc. — these are fine
+- `os.homedir()`: do NOT replace with `Bun.env.HOME` or literal `"~"`
+- `os.tmpdir()`: do NOT replace with `Bun.env.TMPDIR || "/tmp"` or hardcoded paths
+- `fs.mkdtempSync()`: do NOT replace with manual path construction
+- `path.join()`, `path.resolve()`, etc.: these are fine
 
 **Import style:** Use the `node:` prefix for Node standard-library imports. Namespace imports are common, but named imports are acceptable where the surrounding code already uses them.
 
@@ -206,7 +206,7 @@ Note: interactive mode was recently split into controllers/utils/types. When bac
 
 2. **API options get dropped** - When systems merge (e.g., `hooks` + `customTools` → `extensions`), old options may not wire through to the new implementation.
 
-3. **Code paths go stale** - A renamed concept (e.g., `hookMessage` → `custom`) needs updates in every switch statement, type guard, and handler—not just the definition.
+3. **Code paths go stale** - A renamed concept (e.g., `hookMessage` → `custom`) needs updates in every switch statement, type guard, and handler: not just the definition.
 
 4. **Context/capabilities shrink** - Old APIs may have exposed `{ logger, typebox, pi }` that new APIs forgot to include.
 
@@ -222,7 +222,7 @@ When upstream reworked a module:
 
 4. **Grep for stragglers** - Search for old names/concepts that may have been missed in switch statements, handlers, UI components.
 
-5. **Test the boundaries** - CLI flags, SDK options, event handlers, default values—these are where regressions hide.
+5. **Test the boundaries** - CLI flags, SDK options, event handlers, default values: these are where regressions hide.
 
 ### Quick checks
 
@@ -369,10 +369,10 @@ Our fork has architectural decisions that differ from upstream. **Do not port th
 
 When porting, **skip** these files/features entirely:
 
-- `footer-data-provider.ts` — we use StatusLineComponent
-- `clipboard-image.ts` — image clipboard support is exposed through `src/utils/clipboard.ts` backed by `@veyyon/natives`
-- GitHub workflow files — we have our own CI
-- `models.generated.ts` — auto-generated, regenerate locally (as models.json instead)
+- `footer-data-provider.ts`: we use StatusLineComponent
+- `clipboard-image.ts`: image clipboard support is exposed through `src/utils/clipboard.ts` backed by `@veyyon/natives`
+- GitHub workflow files: we have our own CI
+- `models.generated.ts`: auto-generated, regenerate locally (as models.json instead)
 
 ### Features We Added (Preserve These)
 

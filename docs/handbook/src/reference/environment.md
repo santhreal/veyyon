@@ -3,8 +3,8 @@
 This page covers the common operator surface: identity/profile selection, provider auth, and the
 handful of `VEYYON_*` variables that are actually read by the runtime today. Veyyon also reads a large
 number of `VEYYON_*` debug/behavior-toggle variables (timing, startup tracing, TUI flags, eval-runtime
-toggles, and more) that are less common configuration. For the complete, code-grounded reference —
-including every provider credential var, precedence chains, and internal toggles — see
+toggles, and more) that are less common configuration. For the complete, code-grounded reference,
+including every provider credential var, precedence chains, and internal toggles, see
 [`docs/environment-variables.md`](../../../environment-variables.md).
 
 ## Location and identity
@@ -32,11 +32,11 @@ above.
 
 ## Authentication
 
-Provider BYOK uses each provider's native key variable — there is no Veyyon-branded API key or access
+Provider BYOK uses each provider's native key variable, there is no Veyyon-branded API key or access
 token (a `VEYYON_API_KEY`/`VEYYON_ACCESS_TOKEN` legacy alias does not exist in the current runtime).
 When a provider's key variable is set, it is used without an interactive sign-in. For providers with
 OAuth (Anthropic, xAI, Qwen, Cursor, and others), the OAuth token variable takes precedence over the
-plain API key — see the provider tables below and
+plain API key, see the provider tables below and
 [`docs/environment-variables.md`](../../../environment-variables.md#1-modelprovider-authentication).
 
 OAuth sign-in itself is interactive: run `/login` inside the TUI (or `--provider <id>` at startup) to
@@ -104,7 +104,7 @@ There is no `VEYYON_NON_INTERACTIVE` or `VEYYON_INSTALL_URL`; the install script
 ## MCP
 
 Any MCP server names its own bearer-token secret via `[mcp_servers.<name>].bearer_token_env_var` in
-`config.yml` — this points at *any* env var you choose (for example plain `GITHUB_PERSONAL_ACCESS_TOKEN`),
+`config.yml`, this points at *any* env var you choose (for example plain `GITHUB_PERSONAL_ACCESS_TOKEN`),
 not a fixed `VEYYON_*` name. There is no `VEYYON_GITHUB_PERSONAL_ACCESS_TOKEN` or `VEYYON_CONNECTORS_TOKEN`
 convention in the current runtime.
 

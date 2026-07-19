@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-a2447057.js";
+            window.path_to_searchindex_js = "../searchindex-b31c94e7.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-cc1a72e9.js"></script>
@@ -210,13 +210,13 @@ specific models, but editing them lives in a settings group, not the model picke
 <a href="../context/compaction-memory.html">Compaction &amp; project memory</a> and
 <a href="../using/roles-and-profiles.html">Models, roles, and profiles</a>.</li>
 <li><strong>Plan / goal modes</strong> alter prompts and tool gating (<code>/plan</code>, <code>/goal</code>). There is no <code>/advisor</code> slash
-command — the <strong>advisor watchdog</strong> (<code>advisor.enabled</code> and related settings, in
+command, the <strong>advisor watchdog</strong> (<code>advisor.enabled</code> and related settings, in
 <code>packages/coding-agent/src/advisor/</code>) is a background continuous-review mechanism, not a mode you
 invoke. See <code>docs/advisor-watchdog.md</code>.</li>
 <li><strong>Addressed inter-agent messaging</strong> via the <code>irc</code> tool (<code>packages/coding-agent/src/tools/irc.ts</code>,
 <code>packages/coding-agent/src/irc/bus.ts</code>): <code>send</code>/<code>wait</code>/<code>inbox</code>/<code>list</code> ops over a process-global bus.
 <code>send</code> is fire-and-forget with delivery receipts; the bus wakes an idle recipient with a real turn,
-revives a parked one, or injects a non-interrupting aside into a busy one — the shipped analogue of
+revives a parked one, or injects a non-interrupting aside into a busy one, the shipped analogue of
 wake-now-vs-defer message routing. <code>wait</code> (or <code>send await:true</code>) observes the recipient’s reply as a
 real turn. Gated by <code>isIrcEnabled</code>: available to every subagent and to a top-level session that can
 still spawn subagents.</li>

@@ -1,8 +1,10 @@
 # Plugins
 
-Plugins add skills, MCP servers, hooks, and related assets. Manifest fields such as `apps` are
-schema keys for packaged connectors when present; see [Connectors](./connectors.md) for the
-current integration surface (MCP, plugins, hooks, skills).
+A plugin bundles several extensions into one installable package: skills, MCP servers,
+hooks, and related assets that ship and update together. Reach for a plugin when you want to
+share a whole capability at once instead of wiring each piece by hand. Some manifests also
+carry a `apps` field for packaged connectors; see [Connectors](./connectors.md) for the
+current integration surface (MCP, plugins, hooks, and skills).
 
 ## Plugin Structure
 
@@ -157,10 +159,10 @@ When the `/plugins` popup is open, you can use the following keyboard shortcuts 
 Marketplace and plugin state is not kept in `config.yml`. Two JSON registries, both managed
 by the `/plugins` UI and the `veyyon plugin` CLI (edit through those, not by hand):
 
-- **`marketplaces.json`** (under the config root, next to `config.yml`) — which catalogs you
+- **`marketplaces.json`** (under the config root, next to `config.yml`): which catalogs you
   have added. Each entry records the marketplace `name`, `sourceType`, `sourceUri`,
   `catalogPath`, and added/updated timestamps.
-- **`installed_plugins.json`** (under the plugins dir) — which plugins are installed. Each
+- **`installed_plugins.json`** (under the plugins dir): which plugins are installed. Each
   entry is keyed `<plugin_name>@<marketplace_name>` and records the install `scope`
   (user or project), `installPath`, `version`, install/update timestamps, the source git
   commit, and an `enabled` toggle.
@@ -170,6 +172,6 @@ The one plugin-related key that does live in `config.yml` is `marketplace.autoUp
 
 ## Related recipes
 
-Plugins are installed through the `/plugins` popup or the `veyyon plugin` CLI above — there is
+Plugins are installed through the `/plugins` popup or the `veyyon plugin` CLI above, there is
 no model-facing plugin-install tool. For task-shaped recipes that combine plugins with MCP and
 skills, see [Task guides](../using/task-guides.md).

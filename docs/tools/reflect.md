@@ -6,12 +6,12 @@
 - Entry: `packages/coding-agent/src/tools/memory-reflect.ts`
 - Model-facing prompt: `packages/coding-agent/src/prompts/tools/reflect.md`
 - Hindsight collaborators:
-  - `packages/coding-agent/src/hindsight/bank.ts` — best-effort first-use bank/mission setup (`ensureBankExists`).
-  - `packages/coding-agent/src/hindsight/state.ts` — session state, shared bank scope, recall/reflect config.
-  - `packages/coding-agent/src/hindsight/client.ts` — HTTP `reflect` call and error mapping.
+  - `packages/coding-agent/src/hindsight/bank.ts`: best-effort first-use bank/mission setup (`ensureBankExists`).
+  - `packages/coding-agent/src/hindsight/state.ts`: session state, shared bank scope, recall/reflect config.
+  - `packages/coding-agent/src/hindsight/client.ts`: HTTP `reflect` call and error mapping.
 - Mnemopi collaborators:
-  - `packages/coding-agent/src/mnemopi/state.ts` — scoped local recall and context formatting.
-  - `docs/tools/retain.md` — shared backend, storage, scoping, and mental-model behavior.
+  - `packages/coding-agent/src/mnemopi/state.ts`: scoped local recall and context formatting.
+  - `docs/tools/retain.md`: shared backend, storage, scoping, and mental-model behavior.
 
 ## Inputs
 
@@ -56,13 +56,13 @@ Mnemopi:
 - Hindsight tool path: one remote reflect request, optionally focused by `context`.
 - Mnemopi tool path: one local scoped recall followed by context formatting.
 - Hindsight bank scoping:
-  - `global` — no tag filter.
-  - `per-project` — separate bank id per project label (git primary checkout root basename; cwd basename outside a repo).
-  - `per-project-tagged` — shared bank id plus `project:<project label>` filter with `tagsMatch = "any"`.
+  - `global`: no tag filter.
+  - `per-project`: separate bank id per project label (git primary checkout root basename; cwd basename outside a repo).
+  - `per-project-tagged`: shared bank id plus `project:<project label>` filter with `tagsMatch = "any"`.
 - Mnemopi bank scoping:
-  - `global` — reads the shared bank.
-  - `per-project` — reads the project bank.
-  - `per-project-tagged` — reads the project bank and shared bank, then merges results.
+  - `global`: reads the shared bank.
+  - `per-project`: reads the project bank.
+  - `per-project-tagged`: reads the project bank and shared bank, then merges results.
 - Session scope: reads cross-session memory data, but does not persist local output.
 
 ## Side Effects

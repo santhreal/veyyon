@@ -132,7 +132,7 @@ while the shell command runs, so `abort_bash` (or any other command) sent
 during a long-running `bash` is handled without waiting for it to finish on
 its own. The `bash` response is emitted when the command completes; hosts
 correlate it via `id`. Ordering across concurrent commands is not guaranteed
-— clients MUST match responses on `id`, not on emission order.
+, clients MUST match responses on `id`, not on emission order.
 
 ### Session
 
@@ -332,7 +332,7 @@ The response payload is:
 
 Schemes are case-insensitive on the wire and normalized to lowercase before
 the response is sent. Re-sending `set_host_uri_schemes` replaces the entire
-previous set — schemes missing from the new list are unregistered.
+previous set, schemes missing from the new list are unregistered.
 
 ## Event Stream Schema
 

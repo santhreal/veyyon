@@ -6,14 +6,14 @@
 - Entry: `packages/coding-agent/src/tools/ast-edit.ts`
 - Model-facing prompt: `packages/coding-agent/src/prompts/tools/ast-edit.md`
 - Key collaborators:
-  - `crates/veyyon-natives/src/ast.rs` — native rewrite planning and file mutation
-  - `crates/veyyon-ast/src/language/mod.rs` — language aliases and extension inference used by the native wrapper.
-  - `packages/coding-agent/src/tools/path-utils.ts` — path/glob parsing and multi-path resolution
-  - `packages/coding-agent/src/tools/resolve.ts` — preview/apply queueing
-  - `packages/coding-agent/src/tools/render-utils.ts` — parse-error dedupe and display caps
-  - `packages/coding-agent/src/utils/file-display-mode.ts` — hashline vs line-number diff references
-  - `packages/hashline/src/format.ts` — stable hashline header formatting for preview anchors
-  - `packages/natives/native/index.d.ts` — JS-visible native binding contract
+  - `crates/veyyon-natives/src/ast.rs`: native rewrite planning and file mutation
+  - `crates/veyyon-ast/src/language/mod.rs`: language aliases and extension inference used by the native wrapper.
+  - `packages/coding-agent/src/tools/path-utils.ts`: path/glob parsing and multi-path resolution
+  - `packages/coding-agent/src/tools/resolve.ts`: preview/apply queueing
+  - `packages/coding-agent/src/tools/render-utils.ts`: parse-error dedupe and display caps
+  - `packages/coding-agent/src/utils/file-display-mode.ts`: hashline vs line-number diff references
+  - `packages/hashline/src/format.ts`: stable hashline header formatting for preview anchors
+  - `packages/natives/native/index.d.ts`: JS-visible native binding contract
 
 ## Inputs
 
@@ -80,7 +80,7 @@ Shared AST pattern grammar and language catalog: see [`ast_grep`](./ast-grep.md#
   - Apply rewrites files in place with `std::fs::write(...)`, but only when the computed output differs from the original source.
 - Session state (transcript, memory, jobs, checkpoints, registries)
   - Registers a non-forcing pending `resolve` invoker through `queueResolveHandler(...)`.
-  - Surfaces a `SoftToolRequirement` (with the resolve reminder) while pending; the agent runtime forces `resolve` only on non-compliance — no steering message and no per-preview forced tool choice.
+  - Surfaces a `SoftToolRequirement` (with the resolve reminder) while pending; the agent runtime forces `resolve` only on non-compliance: no steering message and no per-preview forced tool choice.
 - User-visible prompts / interactive UI
   - Direct `ast_edit` results are previews.
   - Follow-up apply/discard is exposed through the hidden `resolve` tool.

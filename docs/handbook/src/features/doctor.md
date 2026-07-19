@@ -13,7 +13,7 @@ $ veyyon plugin doctor --fix
 Checks plugin installation health. With `--fix`, it attempts automatic repairs where implemented.
 
 Additional plugin-environment checks warn when optional external binaries (`sd`, `sg`, `git`) or common
-API keys are missing — these are warnings, not hard failures.
+API keys are missing, these are warnings, not hard failures.
 
 ## TUI debug
 

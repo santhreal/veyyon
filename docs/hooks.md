@@ -13,11 +13,11 @@ So this file documents the legacy hook subsystem implementation itself (types/lo
 
 ## Key files
 
-- `src/extensibility/hooks/types.ts` — hook context, event types, and result contracts
-- `src/extensibility/hooks/loader.ts` — module loading and hook discovery bridge
-- `src/extensibility/hooks/runner.ts` — event dispatch, command lookup, error signaling
-- `src/extensibility/hooks/tool-wrapper.ts` — pre/post tool interception wrapper
-- `src/extensibility/hooks/index.ts` — exports/re-exports
+- `src/extensibility/hooks/types.ts`: hook context, event types, and result contracts
+- `src/extensibility/hooks/loader.ts`: module loading and hook discovery bridge
+- `src/extensibility/hooks/runner.ts`: event dispatch, command lookup, error signaling
+- `src/extensibility/hooks/tool-wrapper.ts`: pre/post tool interception wrapper
+- `src/extensibility/hooks/index.ts`: exports/re-exports
 
 ## What a hook module is
 

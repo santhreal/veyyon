@@ -1,6 +1,12 @@
 # Hooks
 
-Hooks are TypeScript modules discovered under hook paths (for example `.veyyon/hooks/`) and loaded through the extension runner. Each module default-exports a factory that registers handlers with `pi.on(...)`.
+A hook lets you run your own code at a moment in the session: before a tool call, after a message,
+when a turn ends. You use one to enforce policy (block a dangerous command), add context, or record
+what happened. The example below refuses any `bash` command containing `rm -rf`.
+
+A hook is a TypeScript module. You put it under a hook path (for example `.veyyon/hooks/`), and Veyyon
+loads it through the extension runner. The module default-exports a factory function that registers
+handlers with `pi.on(...)`, one handler per event you care about.
 
 CLI: `--hook` is an alias for `--extension` (paths merge into extension loading).
 

@@ -67,7 +67,7 @@ Veyyon adapts to that surface through the provider's `api` kind:
 - Model ids come from the provider's discovery endpoint when discovery runs. There is no hardcoded
   allowlist for BYOK providers, and discovery returns an error; it does not invent an empty catalog on failure.
 
-Everything beyond the built-in catalog is data in `models.yml` — see
+Everything beyond the built-in catalog is data in `models.yml`, see
 [Providers](../models/providers.md) and [`docs/providers.md`](../../../providers.md).
 
 ## System prompts and tool schemas
@@ -140,13 +140,13 @@ Malformed provider data fails at load. Silent fallback to a weaker provider is t
 The conversation model (`/model` or `--model`) is separate from background roles. Roles are configured
 under `modelRoles`:
 
-- `modelRoles.task` — default for spawned subagents unless an agent definition pins its own model.
-- `modelRoles.tiny` (or `smol`) — lightweight background work (titles, memory, auto-thinking).
+- `modelRoles.task`: default for spawned subagents unless an agent definition pins its own model.
+- `modelRoles.tiny` (or `smol`): lightweight background work (titles, memory, auto-thinking).
 
 Precedence for subagents is explicit: an agent definition's own model pattern wins, otherwise
 `modelRoles.task`, otherwise the conversation model. There is no silent blend. `/status` and
 `veyyon plugin doctor` report the effective values. See
-[Models and providers](../using/models.md#roles-optional).
+[Models, roles, and profiles](../using/roles-and-profiles.md).
 
 ## Automation note
 
@@ -166,9 +166,9 @@ Use `--yolo` (auto-approve everything) only in trusted automation, ideally in an
 
 ## Next
 
-- [Configuring providers](../using/configuring-providers.md) — Ollama, LM Studio, Anthropic, and custom
+- [Configuring providers](../using/configuring-providers.md): Ollama, LM Studio, Anthropic, and custom
   OpenAI-compatible endpoints.
-- [Models and providers](../using/models.md) — choosing and switching models in a session.
-- [Safety](../using/safety.md) — boundaries around tool use and model output.
-- [Permission model](./permission-model.md) — the approval modes.
-- [Signing in](../using/authentication.md) — interactive and env-var auth paths.
+- [Models and providers](../using/models.md): choosing and switching models in a session.
+- [Safety](../using/safety.md): boundaries around tool use and model output.
+- [Permission model](./permission-model.md): the approval modes.
+- [Signing in](../using/authentication.md): interactive and env-var auth paths.

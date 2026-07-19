@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-a2447057.js";
+            window.path_to_searchindex_js = "../searchindex-b31c94e7.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-cc1a72e9.js"></script>
@@ -203,10 +203,10 @@ tracks its own credentials.</p>
 <h2 id="sign-in-from-the-tui"><a class="header" href="#sign-in-from-the-tui">Sign in from the TUI</a></h2>
 <p>Use the interactive slash commands inside a session:</p>
 <ul>
-<li><code>/login</code> — opens the OAuth/key selector.</li>
-<li><code>/login &lt;provider&gt;</code> — jumps straight to one provider, e.g. <code>/login anthropic</code>, <code>/login openai</code>.</li>
-<li><code>/login &lt;redirect-url&gt;</code> — completes an OAuth flow that needs a pasted callback URL.</li>
-<li><code>/logout</code> — opens the provider selector to remove stored credentials.</li>
+<li><code>/login</code>: opens the OAuth/key selector.</li>
+<li><code>/login &lt;provider&gt;</code>: jumps straight to one provider, e.g. <code>/login anthropic</code>, <code>/login openai</code>.</li>
+<li><code>/login &lt;redirect-url&gt;</code>: completes an OAuth flow that needs a pasted callback URL.</li>
+<li><code>/logout</code>: opens the provider selector to remove stored credentials.</li>
 </ul>
 <p>On first run, the first-run setup (<code>veyyon setup</code>, or <code>/setup</code> / <code>/providers</code> later) walks the same flow.</p>
 <h2 id="headless-and-remote-hosts"><a class="header" href="#headless-and-remote-hosts">Headless and remote hosts</a></h2>
@@ -257,7 +257,7 @@ it.</p>
 <h2 id="provider-data-is-data-driven"><a class="header" href="#provider-data-is-data-driven">Provider data is data-driven</a></h2>
 <p>Provider identity (display name, env var, OAuth parameters) and endpoints (base URL, API kind) come
 from the bundled model catalog plus your <code>~/.veyyon/profiles/default/agent/models.yml</code>. A new BYOK provider becomes
-selectable by adding a <code>providers:</code> entry — not by changing code. See
+selectable by adding a <code>providers:</code> entry, not by changing code. See
 <a href="./configuring-providers.html">Configuring providers</a> and <code>docs/providers.md</code>.</p>
 <p>See also: <a href="./models.html">Models and providers</a> and the <a href="../reference/cli.html">CLI reference</a>.</p>
 

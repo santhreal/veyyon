@@ -6,13 +6,13 @@
 - Entry: `packages/coding-agent/src/tools/ast-grep.ts`
 - Model-facing prompt: `packages/coding-agent/src/prompts/tools/ast-grep.md`
 - Key collaborators:
-  - `crates/veyyon-natives/src/ast.rs` — native scan, parse, match engine
-  - `crates/veyyon-ast/src/language/mod.rs` — language aliases and extension inference used by the native wrapper.
-  - `packages/coding-agent/src/tools/path-utils.ts` — path/glob parsing and multi-path resolution
-  - `packages/coding-agent/src/tools/render-utils.ts` — parse-error dedupe and display caps
-  - `packages/coding-agent/src/tools/match-line-format.ts` — hashline match rendering
-  - `packages/coding-agent/src/utils/file-display-mode.ts` — hashline vs line-number output mode
-  - `packages/natives/native/index.d.ts` — JS-visible native binding contract
+  - `crates/veyyon-natives/src/ast.rs`: native scan, parse, match engine
+  - `crates/veyyon-ast/src/language/mod.rs`: language aliases and extension inference used by the native wrapper.
+  - `packages/coding-agent/src/tools/path-utils.ts`: path/glob parsing and multi-path resolution
+  - `packages/coding-agent/src/tools/render-utils.ts`: parse-error dedupe and display caps
+  - `packages/coding-agent/src/tools/match-line-format.ts`: hashline match rendering
+  - `packages/coding-agent/src/utils/file-display-mode.ts`: hashline vs line-number output mode
+  - `packages/natives/native/index.d.ts`: JS-visible native binding contract
 
 ## Inputs
 
@@ -23,10 +23,10 @@
 | `skip` | `number` | No | Match offset. Defaults to `0`, then `Math.floor(...)`; negatives and non-finite values fail. |
 
 Pattern grammar and language support exposed to the model:
-- `$NAME` — capture one AST node.
-- `$_` — match one AST node without binding.
-- `$$$NAME` — capture zero or more AST nodes; ast-grep stops lazily at the next satisfiable node.
-- `$$$` — match zero or more AST nodes without binding.
+- `$NAME`: capture one AST node.
+- `$_`: match one AST node without binding.
+- `$$$NAME`: capture zero or more AST nodes; ast-grep stops lazily at the next satisfiable node.
+- `$$$`: match zero or more AST nodes without binding.
 - Metavariable names must be uppercase and must stand for whole AST nodes, not partial tokens or string fragments.
 - Reusing the same metavariable requires identical code at each occurrence.
 - Patterns must parse as one valid AST node for the inferred target language.
@@ -70,7 +70,7 @@ Pattern grammar and language support exposed to the model:
 - Directory + optional glob: native scan walks the directory, then filters by compiled glob.
 - Multiple explicit paths/globs: wrapper unions them into one synthetic scope or runs per-target native calls when paths only meet at root.
 - Internal URL inputs: only supported when the router can resolve them to a backing file path.
-- Hashline output mode vs plain line-number mode: controlled by `resolveFileDisplayMode()`; hashline mode requires the edit tool and hashline edit mode, and per-file anchors additionally require a successful whole-file snapshot (`recordFileSnapshot()`) — over-cap or unreadable files fall back to plain output.
+- Hashline output mode vs plain line-number mode: controlled by `resolveFileDisplayMode()`; hashline mode requires the edit tool and hashline edit mode, and per-file anchors additionally require a successful whole-file snapshot (`recordFileSnapshot()`): over-cap or unreadable files fall back to plain output.
 
 ## Side Effects
 - Filesystem

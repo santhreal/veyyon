@@ -20,7 +20,7 @@ step (see [macOS signing](../macos-signing-notarization.md)).
 Rotate:
 
 1. Regenerate the credential in the Apple developer portal (new `.p12` or new API key).
-2. Re-run `scripts/ci-macos-upload-secrets.sh <dir>` — it validates the files (opens the `.p12` with
+2. Re-run `scripts/ci-macos-upload-secrets.sh <dir>`: it validates the files (opens the `.p12` with
    the password, sanity-checks the `.p8`) and pipes each value to `gh secret set`. Dry-run first with
    `--dry-run`.
 3. Revoke the old credential in the portal only after a test release signs cleanly.
@@ -45,7 +45,7 @@ The broker and gateway each authenticate every endpoint (except health) with a b
 1. Rotate: `veyyon auth-broker token --regenerate` (and `veyyon auth-gateway token --regenerate`).
 2. Distribute the new token to every gateway client via `VEYYON_AUTH_BROKER_TOKEN` (or
    `auth.broker.token` in config).
-3. Clients using a stale token fail closed on the next call — expected; update them.
+3. Clients using a stale token fail closed on the next call: expected; update them.
 
 ## After any rotation
 

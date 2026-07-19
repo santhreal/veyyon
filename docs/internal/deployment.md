@@ -2,7 +2,7 @@
 
 How veyyon reaches users. Two independent things ship: the **website** (Cloudflare
 Pages) and the **CLI binaries** (GitHub Releases, pulled by the install scripts).
-Neither depends on the other — you can redeploy the site without cutting a release,
+Neither depends on the other, you can redeploy the site without cutting a release,
 and a release publishes binaries without touching the site.
 
 ## Domains and what serves them
@@ -16,7 +16,7 @@ and a release publishes binaries without touching the site.
 ## Website
 
 The site is a static tree under `website/`, deployed to Cloudflare Pages. There is no
-build framework — the HTML pages are authored directly; only the changelog and the
+build framework, the HTML pages are authored directly; only the changelog and the
 install scripts are generated.
 
 ### Build
@@ -33,10 +33,10 @@ bun run site:build      # = node website/build.mjs
    shipped. The generator:
    - is fork-aware: it renders **only veyyon's own release cards** plus the
      `[Unreleased]` block (as an "Unreleased / next release" card at the top). The
-     pre-fork oh-my-pi history is never replayed as release cards — it collapses to a
+     pre-fork oh-my-pi history is never replayed as release cards, it collapses to a
      single credit note linking upstream;
    - marks each veyyon version `published` only when GitHub has a non-draft release for
-     it — using GitHub's publish date and a `View on GitHub ↗` permalink — and marks a
+     it, using GitHub's publish date and a `View on GitHub ↗` permalink, and marks a
      finalized-but-unpublished version as `pending release`;
    - fails **loud** (never silently): if the GitHub API is unreachable it warns and
      builds from the CHANGELOG alone (`--no-github` forces this offline mode), and if a
@@ -44,7 +44,7 @@ bun run site:build      # = node website/build.mjs
      dropping it. Repo resolves from `--repo` / `VEYYON_SITE_REPO` / `GITHUB_REPOSITORY`
      / the git remote, defaulting to `santhreal/veyyon`.
 2. Stages `scripts/install.sh` and `scripts/install.ps1` at the site root so
-   `veyyon.dev/install.sh` resolves. **The staged copies are build artifacts** — edit
+   `veyyon.dev/install.sh` resolves. **The staged copies are build artifacts**, edit
    the originals in `scripts/`, never `website/install.*`.
 3. Runs a brand check that fails the build if a page leaks the old product name
    (only the MIT oh-my-pi attribution and clearly-marked `OMP_` legacy env aliases are
@@ -58,7 +58,7 @@ book first:
 cd docs/handbook && mdbook build
 ```
 
-Use mdbook **v0.5.2** — the `docs.yml` book-freshness gate rebuilds with that pinned
+Use mdbook **v0.5.2**, the `docs.yml` book-freshness gate rebuilds with that pinned
 version and fails CI if the committed `docs/handbook/book/` doesn't match the sources.
 
 ### Automatic deploy on release (primary path)
@@ -67,13 +67,13 @@ The site redeploys itself whenever a release publishes. `ci.yml`'s `release_site
 runs after `release_github`: it regenerates the changelog (now reconciled against the
 just-published release), builds the site with the brand check gating, and deploys the
 `veyyon` Pages project with `wrangler pages deploy`. This is what keeps the changelog
-current — no human has to remember to redeploy after a release.
+current, no human has to remember to redeploy after a release.
 
 It needs two GitHub **repository secrets**:
 
-- **`CLOUDFLARE_API_TOKEN`** — a Cloudflare Pages:Edit token (the same value as
+- **`CLOUDFLARE_API_TOKEN`**: a Cloudflare Pages:Edit token (the same value as
   `CF_PAGES_API_TOKEN` in `/credentials/.env`).
-- **`CLOUDFLARE_ACCOUNT_ID`** — optional; set it only if the token spans more than one
+- **`CLOUDFLARE_ACCOUNT_ID`**: optional; set it only if the token spans more than one
   account.
 
 If `CLOUDFLARE_API_TOKEN` is absent the job **skips loudly** with a CI `::warning::`
@@ -104,10 +104,10 @@ VEYYON_PAGES_PROJECT=veyyon-get bun run site:deploy
 
 Cloudflare reads these from the deployed root:
 
-- **`website/_headers`** — sets `Content-Type: text/x-shellscript` and
+- **`website/_headers`**: sets `Content-Type: text/x-shellscript` and
   `Cache-Control: no-cache` on `install.sh`/`install.ps1` (a stale cached installer is
   a real hazard), and long-lived immutable caching on `/fonts/*`.
-- **`website/_redirects`** — clean-URL routing. `/install` serves the install *page*;
+- **`website/_redirects`**: clean-URL routing. `/install` serves the install *page*;
   the raw script lives at `/install.sh` and at `get.veyyon.dev`.
 
 ## CLI binaries
@@ -120,7 +120,7 @@ and verify it before running it.
 ### Asset names
 
 The build (`scripts/ci-release-build-binaries.ts`) and both installers agree on these
-names — keep them in sync if you touch any of the three:
+names, keep them in sync if you touch any of the three:
 
 | Platform / arch | Asset |
 | --- | --- |
@@ -135,7 +135,7 @@ Each ships alongside a `<asset>.sha256`. `install.sh` covers linux and darwin;
 
 ### Integrity
 
-`install.sh` **fails closed** on a checksum mismatch — it downloads `<asset>.sha256`,
+`install.sh` **fails closed** on a checksum mismatch, it downloads `<asset>.sha256`,
 compares, and refuses to install on any mismatch (override only with `--no-verify`).
 macOS binaries are additionally Developer-ID signed and notarized in CI when the
 `APPLE_*` secrets are present. A release that ships only some platforms will 404 for
@@ -149,19 +149,19 @@ release with all assets + checksums. The install scripts then pick it up through
 `releases/latest` with no further action.
 
 > Every `ci.yml` job runs on GitHub-hosted runners, so a release never depends
-> on a self-hosted fleet — see [releasing.md](./releasing.md) §Runners and
+> on a self-hosted fleet: see [releasing.md](./releasing.md) §Runners and
 > concurrency.
 
 ## Repository secrets and variables
 
 Everything CI needs to publish, in one place. Every secret is optional-with-a-loud-skip
 except `GITHUB_TOKEN` (automatic): a missing secret emits a CI `::warning::` and skips
-its publish leg — the release itself still ships the GitHub binaries.
+its publish leg, the release itself still ships the GitHub binaries.
 
 | Name | Kind | Gates |
 | --- | --- | --- |
 | `NPM_TOKEN` | secret | npm publish of `@veyyon/*` (or set repo var `NPM_TRUSTED_PUBLISH=on` once a trusted publisher exists) |
-| `HOMEBREW_TAP_DEPLOY_KEY` | secret | Homebrew formula push — also needs repo var `HOMEBREW_TAP_REPO` (e.g. `santhreal/homebrew-tap`) |
+| `HOMEBREW_TAP_DEPLOY_KEY` | secret | Homebrew formula push, also needs repo var `HOMEBREW_TAP_REPO` (e.g. `santhreal/homebrew-tap`) |
 | `CLOUDFLARE_API_TOKEN` | secret | `release_site` auto-deploy (Pages:Edit token; same value as `CF_PAGES_API_TOKEN` in `/credentials/.env`) |
 | `CLOUDFLARE_ACCOUNT_ID` | secret | only if the token spans multiple Cloudflare accounts |
 | `APPLE_CERTIFICATE_P12` + `APPLE_CERTIFICATE_PASSWORD` + `APPLE_API_KEY` + `APPLE_API_KEY_ID` + `APPLE_API_ISSUER_ID` | secrets | macOS Developer-ID signing + notarization (all five or signing is skipped) |
@@ -172,20 +172,20 @@ its publish leg — the release itself still ships the GitHub binaries.
 The installers resolve **`releases/latest`**, so what "latest" points at *is* the
 rollback lever:
 
-- **Bad release, binaries broken** — mark the bad GitHub release as a **pre-release**
+- **Bad release, binaries broken**: mark the bad GitHub release as a **pre-release**
   (or delete it). `releases/latest` immediately falls back to the previous good
   release and every new `curl | sh` install gets the old binaries. This is the fastest
   path and needs no new build.
-- **npm** — you cannot unpublish after the fact; `npm deprecate @veyyon/<pkg>@<ver> "broken, use <prev>"`
+- **npm**: you cannot unpublish after the fact; `npm deprecate @veyyon/<pkg>@<ver> "broken, use <prev>"`
   instead, then ship the fix. Deprecation warns on install without breaking resolution.
-- **Homebrew** — revert the formula commit in the tap repo; `brew install` follows the
+- **Homebrew**: revert the formula commit in the tap repo; `brew install` follows the
   tap head, not GitHub `latest`.
-- **Website/changelog** — the next `site:deploy` (manual or the fixed release's
+- **Website/changelog**: the next `site:deploy` (manual or the fixed release's
   auto-deploy) reconciles the changelog against the *published* releases, so an
   unpublished/rolled-back version automatically drops back to `pending release`.
 
 **Hotfix flow**: fix on `main` → `bun run release patch`. There are no release
-branches — a hotfix is just the next patch release. If the bad version must stop
+branches, a hotfix is just the next patch release. If the bad version must stop
 being installed *right now*, do the pre-release flip above first, then take the time
 to fix properly.
 
@@ -196,7 +196,7 @@ changelog stays current with zero manual steps. Use this only for out-of-band si
 edits between releases:
 
 1. Edit the page(s) under `website/` (or the changelog source, or `scripts/install.*`).
-2. `bun run site:build` — confirm the brand check passes and the changelog looks right.
+2. `bun run site:build`: confirm the brand check passes and the changelog looks right.
 3. `export CLOUDFLARE_API_TOKEN="$CF_PAGES_API_TOKEN"`.
 4. `bun run site:deploy`.
 5. If `install.sh`/`install.ps1` changed, also deploy `veyyon-get`.

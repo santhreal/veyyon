@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-a2447057.js";
+            window.path_to_searchindex_js = "../searchindex-b31c94e7.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-cc1a72e9.js"></script>
@@ -204,9 +204,9 @@
 <tr><th>File</th><th>Name</th><th>Notes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>defaults/titanium.json</code></td><td>Titanium</td><td><strong>Default dark theme.</strong> Pitch black <code>#000000</code>, silver <code>#C6CBD4</code>, ember accent <code>#F0862E</code> — matches the website tokens (<code>website/site.css</code>)</td></tr>
+<tr><td><code>defaults/titanium.json</code></td><td>Titanium</td><td><strong>Default dark theme.</strong> Pitch black <code>#000000</code>, silver <code>#C6CBD4</code>, ember accent <code>#F0862E</code>, matches the website tokens (<code>website/site.css</code>)</td></tr>
 <tr><td><code>dark.json</code></td><td>Veyyon Dark</td><td>Pitch black <code>#000000</code> / <code>#FAFAFA</code> / silver <code>#B8BDC7</code>; predates the ember accent</td></tr>
-<tr><td><code>light.json</code></td><td>Light</td><td><strong>Default light theme.</strong> Titanium’s inverse: white <code>#FFFFFF</code> ground, dark-silver structure <code>#5C6470</code>, ember accent (<code>#F0862E</code> chrome, <code>#B65E14</code> links) — see <code>docs/internal/design.md</code> “Light ground”</td></tr>
+<tr><td><code>light.json</code></td><td>Light</td><td><strong>Default light theme.</strong> Titanium’s inverse: white <code>#FFFFFF</code> ground, dark-silver structure <code>#5C6470</code>, ember accent (<code>#F0862E</code> chrome, <code>#B65E14</code> links), see <code>docs/internal/design.md</code> “Light ground”</td></tr>
 </tbody>
 </table>
 </div>
@@ -222,7 +222,7 @@
 <p><code>tui.paintGround</code> (<code>/settings</code> → Appearance → Display) controls whether Veyyon sets the
 terminal’s own background color (OSC 11) to the theme’s ground while it runs, so the UI
 fills the window edge-to-edge instead of floating on the terminal’s configured background.
-The original background is restored on exit — including crash exits.</p>
+The original background is restored on exit, including crash exits.</p>
 <div class="table-wrapper">
 <table>
 <thead>
@@ -237,7 +237,7 @@ The original background is restored on exit — including crash exits.</p>
 </div>
 <p>Terminals that don’t support OSC 11 ignore the sequence; nothing breaks.</p>
 <h2 id="what-the-theme-covers"><a class="header" href="#what-the-theme-covers">What the theme covers</a></h2>
-<p>The contract applies to onboarding, composer, menus, dialogs, status line, markdown, tables, diffs, tool output, approvals, progress, and errors — not only the chat pane.</p>
+<p>The contract applies to onboarding, composer, menus, dialogs, status line, markdown, tables, diffs, tool output, approvals, progress, and errors, not only the chat pane.</p>
 <h2 id="identity-elsewhere"><a class="header" href="#identity-elsewhere">Identity elsewhere</a></h2>
 <ul>
 <li>CLI binary: <code>veyyon</code></li>

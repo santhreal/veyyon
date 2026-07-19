@@ -54,7 +54,7 @@ Invalid regex conditions and unreachable scopes are logged as warnings and ignor
 
 A rule may carry `astCondition`: a list of [ast-grep](https://ast-grep.github.io/) patterns (OR'd, same as regex `condition`), matched structurally instead of textually. A repeated metavariable inside one pattern requires both occurrences to be equal (`if ($X) clearTimeout($X)` matches but `if ($X) clearTimeout($Y)` does not).
 
-AST conditions only evaluate on **edit/write tool-argument streams** — they need a language, which is inferred from the file extension on the tool's path argument, and they match against the tool's reconstructed source snapshot (`matcherDigest`), not the raw wire delta. Matching is performed in memory by the native `astMatch` engine (no temp files) with Smart strictness. Streams without a usable file path (prose, thinking, path-less tool calls) skip AST conditions entirely. A rule may mix `condition` and `astCondition`; the regex paths keep working on every scope while AST paths apply only to those tool streams.
+AST conditions only evaluate on **edit/write tool-argument streams**, they need a language, which is inferred from the file extension on the tool's path argument, and they match against the tool's reconstructed source snapshot (`matcherDigest`), not the raw wire delta. Matching is performed in memory by the native `astMatch` engine (no temp files) with Smart strictness. Streams without a usable file path (prose, thinking, path-less tool calls) skip AST conditions entirely. A rule may mix `condition` and `astCondition`; the regex paths keep working on every scope while AST paths apply only to those tool streams.
 
 ### Setting gating
 
@@ -134,18 +134,18 @@ Non-interrupting matches split by `matchContext.source`:
 
 - **`source === "text"` / `"thinking"` (prose-source match).** Behavior is unchanged: the rule is queued in `#pendingTtsrInjections` and, after a successful non-error, non-aborted assistant message, `AgentSession` injects the hidden `ttsr-injection` custom message as a follow-up and schedules continuation.
 
-Within a single matching batch, each rule is attached to exactly one sibling tool call — if multiple sibling tool calls would satisfy the same rule, deduplication picks one and the others are left untouched. Multiple distinct rules can still fold onto the same tool call.
+Within a single matching batch, each rule is attached to exactly one sibling tool call, if multiple sibling tool calls would satisfy the same rule, deduplication picks one and the others are left untouched. Multiple distinct rules can still fold onto the same tool call.
 
 #### Implications for tool authors and transcript readers
 
 - The tool's own `toolResult` content is preserved verbatim; the reminder is **prepended** as an additional leading text block. Renderers that assume `content[0]` is the tool's primary output must scan past any block whose text begins with `<system-reminder reason="rule_violation"` (or filter on the wrapper tag) to find the real payload.
 - The reminder is in-band on the tool result, not a separate `custom_message`/`ttsr-injection` entry. Transcript readers looking for non-interrupting TTSR activity on tool-source rules MUST inspect tool results (and the persisted `ttsr_injection` entry list), not just synthetic injection entries.
 - A single tool result may carry reminders for several rules concatenated with a blank line between rendered templates.
-- If the assistant message ends with `stopReason === "aborted"` or `"error"` before the matched tools run, the pending per-tool buckets are cleared — those rules are **not** persisted as injected and remain eligible to re-trigger on a future turn (subject to repeat policy).
+- If the assistant message ends with `stopReason === "aborted"` or `"error"` before the matched tools run, the pending per-tool buckets are cleared: those rules are **not** persisted as injected and remain eligible to re-trigger on a future turn (subject to repeat policy).
 
 ## 5. Repeat policy and gap logic
 
-`TtsrManager` tracks `#messageCount` and per-rule `lastInjectedAt`. `repeatMode` and `repeatGap` are manager-level `ttsr.*` settings (defaults `"once"` / `10`), not per-rule fields — one policy applies to every registered rule.
+`TtsrManager` tracks `#messageCount` and per-rule `lastInjectedAt`. `repeatMode` and `repeatGap` are manager-level `ttsr.*` settings (defaults `"once"` / `10`), not per-rule fields, one policy applies to every registered rule.
 
 ### `repeatMode: "once"`
 

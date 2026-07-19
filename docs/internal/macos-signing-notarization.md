@@ -31,7 +31,7 @@ The binary is a Bun single-file executable, so the hardened runtime needs:
 | --- | --- |
 | `com.apple.security.cs.allow-jit` | JavaScriptCore JITs at runtime. |
 | `com.apple.security.cs.allow-unsigned-executable-memory` | JSC executable memory pages. |
-| `com.apple.security.cs.disable-library-validation` | veyyon extracts its native addon (`veyyon_natives.<triple>.node`) and other optional dylibs to a runtime cache and `dlopen()`s them. They do not share the main binary's Team ID, so without this the hardened runtime aborts with *"mapping process and mapped file have different Team IDs"* — breaking effectively every command. |
+| `com.apple.security.cs.disable-library-validation` | veyyon extracts its native addon (`veyyon_natives.<triple>.node`) and other optional dylibs to a runtime cache and `dlopen()`s them. They do not share the main binary's Team ID, so without this the hardened runtime aborts with *"mapping process and mapped file have different Team IDs"*, breaking effectively every command. |
 
 Without `disable-library-validation`, a signed+notarized binary signs and
 notarizes fine but **fails at first real use**. `scripts/ci-macos-sign.sh` runs
@@ -40,17 +40,17 @@ notarizes fine but **fails at first real use**. `scripts/ci-macos-sign.sh` runs
 ### Stapling limitation (important)
 
 A bare Mach-O executable **cannot be stapled** (`stapler` only supports
-`.app`/`.pkg`/`.dmg`). The binary is genuinely notarized — `notarytool` returns
-`Accepted` and the ticket exists on Apple's servers keyed to its cdhash — but
+`.app`/`.pkg`/`.dmg`). The binary is genuinely notarized, `notarytool` returns
+`Accepted` and the ticket exists on Apple's servers keyed to its cdhash, but
 because there is no *stapled* ticket, a direct `spctl -a -t exec` assessment
 reports `rejected / source=Unnotarized Developer ID`. This is expected and is
 **not** a signing or credential failure.
 
 What this means in practice:
 
-- `curl -fsSL https://get.veyyon.dev | sh` — `curl` sets no quarantine bit, so
+- `curl -fsSL https://get.veyyon.dev | sh`: `curl` sets no quarantine bit, so
   Gatekeeper is never consulted; the binary just runs. ✅
-- Homebrew **formula** installs — Homebrew does not quarantine formula files, so
+- Homebrew **formula** installs: Homebrew does not quarantine formula files, so
   Gatekeeper is never consulted. ✅
 - Anything that **quarantines** the binary (a browser download, or a Homebrew
   **cask**) and is assessed offline will be blocked, because there is no stapled
@@ -82,17 +82,17 @@ Drop these into a working directory (default `~/veyyon-signing`):
 | `p12-password.txt` | the password you just set on the `.p12`. |
 | `AuthKey_<KEYID>.p8` | App Store Connect → **Users and Access → Integrations → App Store Connect API** → create a key (**Account Holder** role also allows API cert creation; **Developer** is enough for notarization) → **download once** (non-recoverable). |
 | `issuer-id.txt` | the **Issuer ID** (UUID) shown above the keys table. |
-| `key-id.txt` | *optional* — the Key ID; otherwise read from the `.p8` filename. |
+| `key-id.txt` | *optional*, the Key ID; otherwise read from the `.p8` filename. |
 
 The App Store Connect API key is the one credential that **cannot** be minted
-from a CLI — it is the bootstrap credential for the API itself, and the `.p8`
+from a CLI, it is the bootstrap credential for the API itself, and the `.p8`
 downloads exactly once. Everything else is local.
 
 ### Uploading (no value leaves disk)
 
 `scripts/ci-macos-upload-secrets.sh` validates the files (opens the `.p12` with
 your password, sanity-checks the `.p8`) and pipes each value to `gh secret set`
-over stdin — no secret is ever printed to the terminal, argv, or shell history:
+over stdin, no secret is ever printed to the terminal, argv, or shell history:
 
 ```sh
 scripts/ci-macos-upload-secrets.sh ~/veyyon-signing --dry-run   # validate first

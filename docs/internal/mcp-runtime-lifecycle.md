@@ -59,13 +59,13 @@ So startup does not fail the whole agent session when individual MCP servers fai
 
 `MCPManager` tracks runtime lifecycle with separate registries:
 
-- `#connections: Map<string, MCPServerConnection>` — fully connected servers.
-- `#pendingConnections: Map<string, Promise<MCPServerConnection>>` — handshake in progress.
-- `#pendingToolLoads: Map<string, Promise<{ connection, serverTools }>>` — connected but tools still loading.
-- `#tools: CustomTool[]` — current MCP tool view exposed to callers.
-- `#sources: Map<string, SourceMeta>` — provider/source metadata even before connect completes.
-- `#pendingReconnections: Map<string, Promise<MCPServerConnection | null>>` — reconnects in progress after a dropped transport or explicit reconnect.
-- `#serverConfigs: Map<string, MCPServerConfig>` — original unresolved configs preserved so reconnect can re-resolve credentials without leaking resolved tokens.
+- `#connections: Map<string, MCPServerConnection>`: fully connected servers.
+- `#pendingConnections: Map<string, Promise<MCPServerConnection>>`: handshake in progress.
+- `#pendingToolLoads: Map<string, Promise<{ connection, serverTools }>>`: connected but tools still loading.
+- `#tools: CustomTool[]`: current MCP tool view exposed to callers.
+- `#sources: Map<string, SourceMeta>`: provider/source metadata even before connect completes.
+- `#pendingReconnections: Map<string, Promise<MCPServerConnection | null>>`: reconnects in progress after a dropped transport or explicit reconnect.
+- `#serverConfigs: Map<string, MCPServerConfig>`: original unresolved configs preserved so reconnect can re-resolve credentials without leaking resolved tokens.
 
 `getConnectionStatus(name)` derives status from these maps:
 
@@ -95,7 +95,7 @@ For each discovered server in `connectServers()`:
 - performs MCP `initialize`,
 - for HTTP/SSE, starts the optional background SSE listener before `notifications/initialized`,
 - sends `notifications/initialized`,
-- uses timeout (`VEYYON_MCP_TIMEOUT_MS` — `config.timeout`, or 30s default; `0` disables the client-side timeout),
+- uses timeout (`VEYYON_MCP_TIMEOUT_MS`: `config.timeout`, or 30s default; `0` disables the client-side timeout),
 - closes transport on init failure.
 
 ### Fast startup gate + deferred fallback
@@ -111,7 +111,7 @@ After 250ms:
 - rejected tasks produce per-server errors,
 - still-pending tasks:
   - use cached tool definitions if available (`MCPToolCache.get`) to create `DeferredMCPTool`s,
-  - otherwise contribute no tools at startup; they stay in flight, and the background continuation registers their tools via `#onToolsChanged` once connect/list finishes (a slow server no longer blocks startup — issue #2100).
+  - otherwise contribute no tools at startup; they stay in flight, and the background continuation registers their tools via `#onToolsChanged` once connect/list finishes (a slow server no longer blocks startup: issue #2100).
 
 This is a hybrid startup model: fast return with deferred handles when cache is available, late background registration when it is not.
 
@@ -213,15 +213,15 @@ In current wiring, explicit teardown is used in MCP command flows (for reload/re
 
 ## Implementation files
 
-- [`src/mcp/loader.ts`](../../packages/coding-agent/src/mcp/loader.ts) — loader facade, discovery error normalization, `LoadedCustomTool` conversion.
-- [`src/mcp/manager.ts`](../../packages/coding-agent/src/mcp/manager.ts) — lifecycle state registries, parallel connect/list flow, refresh/disconnect.
-- [`src/mcp/client.ts`](../../packages/coding-agent/src/mcp/client.ts) — transport setup, initialize handshake, list/call/disconnect.
-- [`src/mcp/index.ts`](../../packages/coding-agent/src/mcp/index.ts) — MCP module API exports.
-- [`src/sdk.ts`](../../packages/coding-agent/src/sdk.ts) — startup wiring into session/tool registry.
-- [`src/mcp/config.ts`](../../packages/coding-agent/src/mcp/config.ts) — config discovery/filtering/validation used by manager.
-- [`src/mcp/tool-bridge.ts`](../../packages/coding-agent/src/mcp/tool-bridge.ts) — `MCPTool` and `DeferredMCPTool` runtime behavior.
-- [`src/session/agent-session.ts`](../../packages/coding-agent/src/session/agent-session.ts) — `refreshMCPTools` live rebinding.
-- [`src/modes/controllers/mcp-command-controller.ts`](../../packages/coding-agent/src/modes/controllers/mcp-command-controller.ts) — interactive reload/reconnect flows.
-- [`src/task/executor.ts`](../../packages/coding-agent/src/task/executor.ts) — subagent MCP proxying via parent manager connections.
+- [`src/mcp/loader.ts`](../../packages/coding-agent/src/mcp/loader.ts): loader facade, discovery error normalization, `LoadedCustomTool` conversion.
+- [`src/mcp/manager.ts`](../../packages/coding-agent/src/mcp/manager.ts): lifecycle state registries, parallel connect/list flow, refresh/disconnect.
+- [`src/mcp/client.ts`](../../packages/coding-agent/src/mcp/client.ts): transport setup, initialize handshake, list/call/disconnect.
+- [`src/mcp/index.ts`](../../packages/coding-agent/src/mcp/index.ts): MCP module API exports.
+- [`src/sdk.ts`](../../packages/coding-agent/src/sdk.ts): startup wiring into session/tool registry.
+- [`src/mcp/config.ts`](../../packages/coding-agent/src/mcp/config.ts): config discovery/filtering/validation used by manager.
+- [`src/mcp/tool-bridge.ts`](../../packages/coding-agent/src/mcp/tool-bridge.ts): `MCPTool` and `DeferredMCPTool` runtime behavior.
+- [`src/session/agent-session.ts`](../../packages/coding-agent/src/session/agent-session.ts): `refreshMCPTools` live rebinding.
+- [`src/modes/controllers/mcp-command-controller.ts`](../../packages/coding-agent/src/modes/controllers/mcp-command-controller.ts): interactive reload/reconnect flows.
+- [`src/task/executor.ts`](../../packages/coding-agent/src/task/executor.ts): subagent MCP proxying via parent manager connections.
 
 *Verified against `7ca44d3` on 2026-07-17.*

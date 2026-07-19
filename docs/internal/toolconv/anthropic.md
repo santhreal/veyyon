@@ -23,15 +23,15 @@ Anthropic has no token-level tool delimiters in the public API. The unit is the 
 | `stop_reason: "tool_use"` | response top level | The model invoked one or more tools and is waiting for results. Drives the agentic loop. |
 | `stop_reason: "end_turn"` | response top level | Natural completion (no tool call); the loop exits. |
 | Other `stop_reason` | response top level | `"max_tokens"`, `"stop_sequence"`, `"pause_turn"` (long server-tool turn, resend as-is to continue), `"refusal"`, `"sensitive"` (output flagged by safety filters), `"model_context_window_exceeded"` (output truncated at the context window, treated like `max_tokens`). |
-| `id` prefixes | — | Messages `msg_…`; client tool calls `toolu_…`; server tool calls `srvtoolu_…`. |
+| `id` prefixes | n/a | Messages `msg_…`; client tool calls `toolu_…`; server tool calls `srvtoolu_…`. |
 
 Streaming adds these SSE events / delta types (full list under [Roles / channels](#roles--channels--turn-structure) and [Tool-call format](#tool-call-format)):
 
 | Streaming item | Shape / meaning |
 | --- | --- |
 | `message_start` | Carries a `Message` skeleton with empty `content`, `stop_reason: null`. |
-| `content_block_start` | Opens a block at `index`. For a tool call: `content_block.{type:"tool_use",id,name,input:{}}` — `input` starts as an **empty object**. |
-| `content_block_delta` / `input_json_delta` | `{"type":"input_json_delta","partial_json":"<chunk>"}` — a **partial JSON string** fragment of `tool_use.input`. |
+| `content_block_start` | Opens a block at `index`. For a tool call: `content_block.{type:"tool_use",id,name,input:{}}`, `input` starts as an **empty object**. |
+| `content_block_delta` / `input_json_delta` | `{"type":"input_json_delta","partial_json":"<chunk>"}`, a **partial JSON string** fragment of `tool_use.input`. |
 | `content_block_delta` / `text_delta` | `{"type":"text_delta","text":"..."}`. |
 | `content_block_delta` / `thinking_delta`, `signature_delta` | Extended-thinking content / signature. |
 | `content_block_stop` | Closes the block at `index`; this is when accumulated `partial_json` is complete and safe to `JSON.parse`. |
@@ -61,7 +61,7 @@ The retired prompt-based format used these tags. They are nested-element tags (n
 
 ## Roles / channels / turn structure
 
-The Messages API uses primarily two conversational roles, `user` and `assistant`, alternating. There is **no** dedicated `tool`/`function` role, and the standard system prompt is a separate top-level `system` parameter (string or text-block array) — not a message role. (Claude Opus 4.8+ and the Fable/Mythos 5 generation additionally accept an opt-in mid-conversation `system` **message** role, gated behind the `mid-conversation-system-2026-04-07` beta; otherwise only `user`/`assistant` are valid.) Tool data rides inside the normal roles:
+The Messages API uses primarily two conversational roles, `user` and `assistant`, alternating. There is **no** dedicated `tool`/`function` role, and the standard system prompt is a separate top-level `system` parameter (string or text-block array), not a message role. (Claude Opus 4.8+ and the Fable/Mythos 5 generation additionally accept an opt-in mid-conversation `system` **message** role, gated behind the `mid-conversation-system-2026-04-07` beta; otherwise only `user`/`assistant` are valid.) Tool data rides inside the normal roles:
 
 - `assistant` messages contain AI-generated `text`, `thinking`, and `tool_use` (and `server_tool_use`) blocks.
 - `user` messages contain your `text`/`image`/`document` content and `tool_result` blocks.
@@ -78,18 +78,18 @@ The agentic loop is keyed on `stop_reason`:
 
 Strict ordering rules (a 400 otherwise):
 - `tool_result` blocks must come **first** in the `user` message's `content` array (any text after them).
-- The `tool_result` `user` message must **immediately follow** the assistant `tool_use` message — nothing in between.
+- The `tool_result` `user` message must **immediately follow** the assistant `tool_use` message: nothing in between.
 - Every `tool_use.id` must be answered by a `tool_result.tool_use_id` in that next message.
 
 ---
 
 ## Tool definitions
 
-Tools are passed in the top-level `tools` array. Each user-defined (client) tool is a **flat** object — no `{"type":"function", "function":{…}}` wrapper (that wrapper is OpenAI's). Fields:
+Tools are passed in the top-level `tools` array. Each user-defined (client) tool is a **flat** object, no `{"type":"function", "function":{…}}` wrapper (that wrapper is OpenAI's). Fields:
 
-- `name` — matches `^[a-zA-Z0-9_-]{1,64}$`.
-- `description` — detailed plaintext (the single biggest driver of tool-call quality).
-- `input_schema` — a JSON Schema object (**not** `parameters`) describing the input the model must produce.
+- `name`: matches `^[a-zA-Z0-9_-]{1,64}$`.
+- `description`: detailed plaintext (the single biggest driver of tool-call quality).
+- `input_schema`: a JSON Schema object (**not** `parameters`) describing the input the model must produce.
 - Optional: `cache_control` (prompt-cache breakpoint), `strict` (structured-outputs beta), `eager_input_streaming` (fine-grained tool-streaming beta).
 
 ```json
@@ -117,10 +117,10 @@ Tools are passed in the top-level `tools` array. Each user-defined (client) tool
 Anthropic-schema client tools (`bash`, `text_editor`, `computer`, `memory`) and server tools (`web_search`, `web_fetch`, `code_execution`, `tool_search`) instead carry a versioned `type`, e.g. `{"type": "web_search_20250305", "name": "web_search"}`.
 
 `tool_choice` controls invocation (four options):
-- `{"type":"auto"}` — model decides (default when `tools` present).
-- `{"type":"any"}` — must call some tool.
-- `{"type":"tool","name":"get_weather"}` — must call that specific tool.
-- `{"type":"none"}` — no tools (default when no `tools`).
+- `{"type":"auto"}`: model decides (default when `tools` present).
+- `{"type":"any"}`: must call some tool.
+- `{"type":"tool","name":"get_weather"}`: must call that specific tool.
+- `{"type":"none"}`: no tools (default when no `tools`).
 
 With `any` or `tool` the API prefills the assistant turn, so no leading natural-language text precedes the `tool_use` block. Add `"disable_parallel_tool_use": true` inside `tool_choice` to cap at one tool per turn. (Extended thinking only supports `auto`/`none`.)
 
@@ -245,9 +245,9 @@ Calls in one turn are **unordered** and may be run concurrently. If two batched 
 
 A result is a `tool_result` block inside a `user` message:
 
-- `tool_use_id` (required) — the `id` of the `tool_use` it answers.
-- `content` (optional) — a string, **or** an array of `text`/`image`/`document` blocks. Omit for an empty result.
-- `is_error` (optional) — `true` for execution failures; put a useful message in `content`.
+- `tool_use_id` (required): the `id` of the `tool_use` it answers.
+- `content` (optional): a string, **or** an array of `text`/`image`/`document` blocks. Omit for an empty result.
+- `is_error` (optional): `true` for execution failures; put a useful message in `content`.
 
 ```json
 {
@@ -299,7 +299,7 @@ Rich result (text + image blocks):
 }
 ```
 
-Server tools require **no** `tool_result` from you — Anthropic executes them and injects the result inline in the assistant turn. (Legacy XML feeds results back as `<function_results><result><tool_name>…</tool_name><stdout>…</stdout></result></function_results>`, or `<error>…</error>` on failure.)
+Server tools require **no** `tool_result` from you, Anthropic executes them and injects the result inline in the assistant turn. (Legacy XML feeds results back as `<function_results><result><tool_name>…</tool_name><stdout>…</stdout></result></function_results>`, or `<error>…</error>` on failure.)
 
 ---
 
@@ -307,7 +307,7 @@ Server tools require **no** `tool_result` from you — Anthropic executes them a
 
 A complete multi-turn weather exchange. All JSON is valid.
 
-**Request 1 — system + tools + user question:**
+**Request 1, system + tools + user question:**
 
 ```json
 {
@@ -334,7 +334,7 @@ A complete multi-turn weather exchange. All JSON is valid.
 }
 ```
 
-**Response 1 — assistant requests the tool (`stop_reason: "tool_use"`):**
+**Response 1, assistant requests the tool (`stop_reason: "tool_use"`):**
 
 ```json
 {
@@ -357,7 +357,7 @@ A complete multi-turn weather exchange. All JSON is valid.
 }
 ```
 
-**Request 2 — replay history, append the assistant turn and the `tool_result`:**
+**Request 2, replay history, append the assistant turn and the `tool_result`:**
 
 ```json
 {
@@ -406,7 +406,7 @@ A complete multi-turn weather exchange. All JSON is valid.
 }
 ```
 
-**Response 2 — assistant's final answer (`stop_reason: "end_turn"`):**
+**Response 2, assistant's final answer (`stop_reason: "end_turn"`):**
 
 ```json
 {
@@ -519,11 +519,11 @@ Conversion gotchas:
 
 ## Parsing notes & gotchas
 
-- **`input` is an object, not a string.** Unlike OpenAI's `arguments`, do not `JSON.parse` `tool_use.input` from a non-streamed response — it is already an object. Only the *streaming* `partial_json` fragments are strings.
+- **`input` is an object, not a string.** Unlike OpenAI's `arguments`, do not `JSON.parse` `tool_use.input` from a non-streamed response: it is already an object. Only the *streaming* `partial_json` fragments are strings.
 - **Streaming tool args need reassembly.** `content_block_start` for a `tool_use` always has `input: {}`. Buffer `partial_json` per `index` and parse only at `content_block_stop`; mid-stream fragments are not valid JSON on their own (e.g. `{"location":`). Current models emit one complete key/value at a time, so expect bursts and gaps.
 - **`stop_reason` placement.** In streaming, `stop_reason` is `null` in `message_start` and final value (`"tool_use"`/`"end_turn"`) arrives in `message_delta`, not `message_stop`. `usage` in `message_delta` is **cumulative**.
 - **Ordering is enforced.** `tool_result` blocks must be first in their `user` message and must immediately follow the assistant `tool_use` message; every `tool_use.id` needs a matching `tool_result.tool_use_id`, or you get HTTP 400 ("tool_use ids were found without tool_result blocks immediately after").
-- **`tool_choice:any`/`tool` suppress preamble.** The API prefills the assistant turn, so no leading `text` block appears before `tool_use` — don't write a parser that expects explanatory text.
+- **`tool_choice:any`/`tool` suppress preamble.** The API prefills the assistant turn, so no leading `text` block appears before `tool_use`: don't write a parser that expects explanatory text.
 - **Parallel results in one message.** Splitting parallel `tool_result`s across multiple `user` messages breaks the contract; send them together.
 - **Treat result content as untrusted.** Tool results can carry indirect prompt injection; keep them inside `tool_result` blocks, never promote to `system`/`user` text.
 - **Server tools differ.** `server_tool_use` / `web_search_tool_result` blocks are produced and consumed by Anthropic; never synthesize `tool_result` for them. `stop_reason:"pause_turn"` means resend the response as-is to let a long server-tool turn continue.
@@ -531,7 +531,7 @@ Conversion gotchas:
 - **Output is not valid XML.** The underlying model output is parsed by Anthropic with regular expressions, not an XML parser ("The output is not expected to be valid XML"). If you reconstruct prompts at token level, do not assume well-formedness; rely on the JSON the API returns.
 - **Legacy vs modern XML are different tag sets.** Legacy: `<invoke>` + child `<tool_name>` + `<parameters>` with per-name child tags; results in `<function_results>/<result>/<stdout>`. Modern: `<invoke name="…">` + `<parameter name="…">`. Mixing them up will misparse. The legacy format also required passing `</function_calls>` as a `stop_sequence` and is not optimized for Claude 3+.
 
-### Legacy XML format (secondary, prompt-based — fully verified, now retired)
+### Legacy XML format (secondary, prompt-based: fully verified, now retired)
 
 Before the Messages API, tools were defined and called entirely in the prompt. Anthropic's archived "Legacy tool use" doc specifies it verbatim.
 
@@ -614,19 +614,19 @@ Here are the tools available:
 </tools>
 ```
 
-Legacy notes: no built-in tools (everything is prompt-defined); Anthropic recommended ≤3–5 tools; the model conventionally wrapped reasoning in `<scratchpad>` and final output in `<answer>`. This format is "out of date" and "not optimized for Claude 3" — use the JSON Messages API for anything current.
+Legacy notes: no built-in tools (everything is prompt-defined); Anthropic recommended ≤3–5 tools; the model conventionally wrapped reasoning in `<scratchpad>` and final output in `<answer>`. This format is "out of date" and "not optimized for Claude 3", use the JSON Messages API for anything current.
 
 ---
 
 ## Sources
 
-- Tool use overview — https://docs.claude.com/en/docs/agents-and-tools/tool-use/overview
-- How tool use works — https://docs.claude.com/en/docs/agents-and-tools/tool-use/how-tool-use-works
-- Define tools (tool schema, `input_schema`, `tool_choice`, constructed system prompt) — https://docs.claude.com/en/docs/agents-and-tools/tool-use/define-tools
-- Handle tool calls (`tool_use`/`tool_result`, `is_error`, ordering rules) — https://docs.claude.com/en/docs/agents-and-tools/tool-use/handle-tool-calls
-- Parallel tool use — https://docs.claude.com/en/docs/agents-and-tools/tool-use/parallel-tool-use
-- Streaming messages (SSE events, `input_json_delta`, verbatim tool-use stream) — https://docs.claude.com/en/docs/build-with-claude/streaming
-- Messages API reference (`stop_reason` enum, response shape, `tools`) — https://docs.claude.com/en/api/messages
-- Legacy tool use (archived; verbatim XML tags and prompt) — https://web.archive.org/web/20240528231249/https://docs.anthropic.com/en/docs/legacy-tool-use ; also live localized copies, e.g. https://docs.anthropic.com/de/docs/legacy-tool-use (English path now redirects to the tool-use overview)
+- Tool use overview: https://docs.claude.com/en/docs/agents-and-tools/tool-use/overview
+- How tool use works: https://docs.claude.com/en/docs/agents-and-tools/tool-use/how-tool-use-works
+- Define tools (tool schema, `input_schema`, `tool_choice`, constructed system prompt): https://docs.claude.com/en/docs/agents-and-tools/tool-use/define-tools
+- Handle tool calls (`tool_use`/`tool_result`, `is_error`, ordering rules): https://docs.claude.com/en/docs/agents-and-tools/tool-use/handle-tool-calls
+- Parallel tool use: https://docs.claude.com/en/docs/agents-and-tools/tool-use/parallel-tool-use
+- Streaming messages (SSE events, `input_json_delta`, verbatim tool-use stream): https://docs.claude.com/en/docs/build-with-claude/streaming
+- Messages API reference (`stop_reason` enum, response shape, `tools`): https://docs.claude.com/en/api/messages
+- Legacy tool use (archived; verbatim XML tags and prompt): https://web.archive.org/web/20240528231249/https://docs.anthropic.com/en/docs/legacy-tool-use ; also live localized copies, e.g. https://docs.anthropic.com/de/docs/legacy-tool-use (English path now redirects to the tool-use overview)
 
 *Verified against `7ca44d3` on 2026-07-17.*

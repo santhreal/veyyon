@@ -1,7 +1,8 @@
 # Configuring providers
 
-Copy-paste setups for bring-your-own-key (BYOK) and local providers. For model selection
-guide, see [Models and providers](./models.md). For the harness/provider boundary, see
+This page gives you copy-paste setups for bring-your-own-key (BYOK) and local providers.
+Once a provider works, see [Models and providers](./models.md) to choose and switch models.
+For what the harness owns versus what the provider owns, see
 [Model contract](../concepts/model-contract.md).
 
 Custom providers live under `providers:` in `~/.veyyon/profiles/default/agent/models.yml`. Keys are resolved from the
@@ -37,7 +38,7 @@ Notes worth knowing:
 
 - Custom providers are merged **alongside** built-ins; they do not silently replace `openai`.
 - A custom `ollama` / `lm-studio` / `llama.cpp` entry replaces that engine's built-in discovery.
-- A YAML or schema error makes the registry skip the file with an error message — validate with `veyyon models`.
+- A YAML or schema error makes the registry skip the file with an error message: validate with `veyyon models`.
 
 After editing, restart the session.
 
@@ -97,7 +98,7 @@ To reach Anthropic models through a gateway instead, add an OpenAI-compatible cu
 
 ## Other OpenAI-compatible hosts
 
-Any host that speaks Chat Completions works the same way — only `baseUrl`, `api`, and `apiKey` change:
+Any host that speaks Chat Completions works the same way, only `baseUrl`, `api`, and `apiKey` change:
 
 ```yaml
 providers:
@@ -170,7 +171,7 @@ $ veyyon models
 $ veyyon --model <provider>/<id> "reply with the model name you are"
 ```
 
-If discovery or auth fails, the error names the provider and the missing key or unreachable base URL —
+If discovery or auth fails, the error names the provider and the missing key or unreachable base URL,
 fix that rather than retrying with a different silent default.
 
 ## See also

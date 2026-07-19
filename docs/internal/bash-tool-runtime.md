@@ -28,11 +28,11 @@ Set `bash.enabled: false` in settings to remove the model-facing `bash` tool fro
 - extracts a leading single-line `cd <path> && ...` into `cwd` when `cwd` was not supplied,
 - rejects `async: true` when `async.enabled` is false.
 
-There are no structured `head` or `tail` tool parameters in the current schema, and commands run exactly as written — no pre-execution rewrites. Output limiting is handled by `OutputSink` truncation/artifacts.
+There are no structured `head` or `tail` tool parameters in the current schema, and commands run exactly as written, no pre-execution rewrites. Output limiting is handled by `OutputSink` truncation/artifacts.
 
 ## 2) Optional interception (blocked-command path)
 
-If `bashInterceptor.enabled` is true, `BashTool` loads rules from settings (`getBashInterceptorRules()`) and runs `checkBashInterception()` against the command — checking both the original and the cwd-normalized form (after a leading `cd … &&` is extracted) when they differ.
+If `bashInterceptor.enabled` is true, `BashTool` loads rules from settings (`getBashInterceptorRules()`) and runs `checkBashInterception()` against the command, checking both the original and the cwd-normalized form (after a leading `cd … &&` is extracted) when they differ.
 
 Interception behavior:
 
@@ -82,7 +82,7 @@ PTY eligibility is decided by `canUseInteractiveBashPty(pty, ctx)` (`src/tools/b
 
 If `pty` is requested but unavailable, the call falls back to non-PTY and appends a `pty requested but unavailable …` notice.
 
-Before the local PTY/non-PTY choice, a foreground (`async: false`) call can route to a managed background job (auto-backgrounding; see below) or — when the session's client advertises a terminal capability (`clientBridge.capabilities.terminal` + `createTerminal`, with `pty` false) — to a **client-bridge editor terminal** that runs the command remotely (streaming `terminalId` updates, killing on timeout, mapping a signal kill to exit code `137`). Otherwise it uses non-interactive `executeBash()`.
+Before the local PTY/non-PTY choice, a foreground (`async: false`) call can route to a managed background job (auto-backgrounding; see below) or, when the session's client advertises a terminal capability (`clientBridge.capabilities.terminal` + `createTerminal`, with `pty` false), to a **client-bridge editor terminal** that runs the command remotely (streaming `terminalId` updates, killing on timeout, mapping a signal kill to exit code `137`). Otherwise it uses non-interactive `executeBash()`.
 
 That means print mode and non-UI RPC/tool contexts always use non-PTY.
 
@@ -272,18 +272,18 @@ This component is wired by `CommandController.handleBashCommand()` and fed from 
 
 ## Implementation files
 
-- [`src/tools/bash.ts`](../../packages/coding-agent/src/tools/bash.ts) — tool entrypoint, input handling/interception, async and PTY/non-PTY selection, result/error mapping, bash tool renderer.
-- [`src/tools/bash-pty-selection.ts`](../../packages/coding-agent/src/tools/bash-pty-selection.ts) — `canUseInteractiveBashPty` predicate for choosing the local PTY overlay.
-- [`src/tools/bash-interceptor.ts`](../../packages/coding-agent/src/tools/bash-interceptor.ts) — interceptor rule matching and blocked-command messages.
-- [`src/exec/bash-executor.ts`](../../packages/coding-agent/src/exec/bash-executor.ts) — non-PTY executor, shell session reuse, cancellation wiring, output sink integration.
-- [`src/exec/non-interactive-env.ts`](../../packages/coding-agent/src/exec/non-interactive-env.ts) — non-interactive child-process env defaults (`buildNonInteractiveEnv`) used by the non-PTY executor.
-- [`src/tools/bash-interactive.ts`](../../packages/coding-agent/src/tools/bash-interactive.ts) — PTY runtime, overlay UI, input normalization, and interactive `TERM` setup.
-- [`src/session/streaming-output.ts`](../../packages/coding-agent/src/session/streaming-output.ts) — `OutputSink`, `TailBuffer`, truncation/artifact spill, and summary metadata.
-- [`src/tools/output-meta.ts`](../../packages/coding-agent/src/tools/output-meta.ts) — truncation metadata shape + notice injection wrapper.
-- [`src/session/agent-session.ts`](../../packages/coding-agent/src/session/agent-session.ts) — session-level `executeBash`, message recording, abort lifecycle.
-- [`src/modes/components/bash-execution.ts`](../../packages/coding-agent/src/modes/components/bash-execution.ts) — interactive `!` command execution component.
-- [`src/modes/controllers/command-controller.ts`](../../packages/coding-agent/src/modes/controllers/command-controller.ts) — wiring for interactive `!` command UI stream/update completion.
-- [`src/modes/rpc/rpc-mode.ts`](../../packages/coding-agent/src/modes/rpc/rpc-mode.ts) — RPC `bash` and `abort_bash` command surface.
-- [`src/internal-urls/artifact-protocol.ts`](../../packages/coding-agent/src/internal-urls/artifact-protocol.ts) — `artifact://<id>` resolution.
+- [`src/tools/bash.ts`](../../packages/coding-agent/src/tools/bash.ts): tool entrypoint, input handling/interception, async and PTY/non-PTY selection, result/error mapping, bash tool renderer.
+- [`src/tools/bash-pty-selection.ts`](../../packages/coding-agent/src/tools/bash-pty-selection.ts): `canUseInteractiveBashPty` predicate for choosing the local PTY overlay.
+- [`src/tools/bash-interceptor.ts`](../../packages/coding-agent/src/tools/bash-interceptor.ts): interceptor rule matching and blocked-command messages.
+- [`src/exec/bash-executor.ts`](../../packages/coding-agent/src/exec/bash-executor.ts): non-PTY executor, shell session reuse, cancellation wiring, output sink integration.
+- [`src/exec/non-interactive-env.ts`](../../packages/coding-agent/src/exec/non-interactive-env.ts): non-interactive child-process env defaults (`buildNonInteractiveEnv`) used by the non-PTY executor.
+- [`src/tools/bash-interactive.ts`](../../packages/coding-agent/src/tools/bash-interactive.ts): PTY runtime, overlay UI, input normalization, and interactive `TERM` setup.
+- [`src/session/streaming-output.ts`](../../packages/coding-agent/src/session/streaming-output.ts): `OutputSink`, `TailBuffer`, truncation/artifact spill, and summary metadata.
+- [`src/tools/output-meta.ts`](../../packages/coding-agent/src/tools/output-meta.ts): truncation metadata shape + notice injection wrapper.
+- [`src/session/agent-session.ts`](../../packages/coding-agent/src/session/agent-session.ts): session-level `executeBash`, message recording, abort lifecycle.
+- [`src/modes/components/bash-execution.ts`](../../packages/coding-agent/src/modes/components/bash-execution.ts): interactive `!` command execution component.
+- [`src/modes/controllers/command-controller.ts`](../../packages/coding-agent/src/modes/controllers/command-controller.ts): wiring for interactive `!` command UI stream/update completion.
+- [`src/modes/rpc/rpc-mode.ts`](../../packages/coding-agent/src/modes/rpc/rpc-mode.ts): RPC `bash` and `abort_bash` command surface.
+- [`src/internal-urls/artifact-protocol.ts`](../../packages/coding-agent/src/internal-urls/artifact-protocol.ts): `artifact://<id>` resolution.
 
 *Verified against `a49ff74` on 2026-07-17.*

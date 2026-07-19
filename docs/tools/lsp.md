@@ -6,19 +6,19 @@
 - Entry: `packages/coding-agent/src/lsp/index.ts`
 - Model-facing prompt: `packages/coding-agent/src/prompts/tools/lsp.md`
 - Key collaborators:
-  - `packages/coding-agent/src/lsp/client.ts` — client process lifecycle and JSON-RPC
-  - `packages/coding-agent/src/lsp/config.ts` — config loading, auto-detect, server selection
-  - `packages/coding-agent/src/lsp/lspmux.ts` — optional `lspmux` command wrapping
-  - `packages/coding-agent/src/lsp/edits.ts` — apply `WorkspaceEdit` and text edits
-  - `packages/coding-agent/src/lsp/utils.ts` — URI conversion, symbol resolution, formatting, glob expansion
-  - `packages/coding-agent/src/lsp/types.ts` — tool schema and protocol types
-  - `packages/coding-agent/src/lsp/clients/index.ts` — custom linter client cache/factory
-  - `packages/coding-agent/src/lsp/clients/lsp-linter-client.ts` — LSP-backed linter adapter
-  - `packages/coding-agent/src/lsp/clients/biome-client.ts` — Biome CLI diagnostics/formatting adapter
-  - `packages/coding-agent/src/lsp/clients/swiftlint-client.ts` — SwiftLint CLI diagnostics adapter
-  - `packages/coding-agent/src/tools/index.ts` — tool registration and `lsp.enabled` gating
-  - `packages/coding-agent/src/tools/tool-timeouts.ts` — timeout defaults and clamping
-  - `packages/coding-agent/src/lsp/defaults.json` — built-in server definitions for auto-detect
+  - `packages/coding-agent/src/lsp/client.ts`: client process lifecycle and JSON-RPC
+  - `packages/coding-agent/src/lsp/config.ts`: config loading, auto-detect, server selection
+  - `packages/coding-agent/src/lsp/lspmux.ts`: optional `lspmux` command wrapping
+  - `packages/coding-agent/src/lsp/edits.ts`: apply `WorkspaceEdit` and text edits
+  - `packages/coding-agent/src/lsp/utils.ts`: URI conversion, symbol resolution, formatting, glob expansion
+  - `packages/coding-agent/src/lsp/types.ts`: tool schema and protocol types
+  - `packages/coding-agent/src/lsp/clients/index.ts`: custom linter client cache/factory
+  - `packages/coding-agent/src/lsp/clients/lsp-linter-client.ts`: LSP-backed linter adapter
+  - `packages/coding-agent/src/lsp/clients/biome-client.ts`: Biome CLI diagnostics/formatting adapter
+  - `packages/coding-agent/src/lsp/clients/swiftlint-client.ts`: SwiftLint CLI diagnostics adapter
+  - `packages/coding-agent/src/tools/index.ts`: tool registration and `lsp.enabled` gating
+  - `packages/coding-agent/src/tools/tool-timeouts.ts`: timeout defaults and clamping
+  - `packages/coding-agent/src/lsp/defaults.json`: built-in server definitions for auto-detect
 
 ## Inputs
 
@@ -62,7 +62,7 @@
 - `status` ignores `file`.
 - `capabilities` with omitted `file` or `"*"` inspects all non-custom LSP servers; with a concrete file it scopes to matching non-custom servers.
 - `request` with omitted `file` or `"*"` chooses the first available non-custom LSP server; with a concrete file it chooses that file's primary non-linter server.
-- `rename_file` sends `workspace/willRenameFiles` and `workspace/didRenameFiles` to every non-custom LSP server from `getLspServers(config)` whose `fileTypes` match the source, destination, or any enumerated rename pair — not just one file-scoped server.
+- `rename_file` sends `workspace/willRenameFiles` and `workspace/didRenameFiles` to every non-custom LSP server from `getLspServers(config)` whose `fileTypes` match the source, destination, or any enumerated rename pair: not just one file-scoped server.
 - Diagnostics are the only tool action that queries both normal LSP servers and custom linter clients (`BiomeClient`, `SwiftLintClient`, or `LspLinterClient`).
 
 ### `diagnostics`
@@ -268,20 +268,20 @@ Same as `definition`, but sends `textDocument/implementation` and reports `imple
   - Background message readers persist for each live client until process exit/shutdown.
 
 ## Limits & Caps
-- Tool timeout clamp: default `20`, min `5`, max `60` seconds — `TOOL_TIMEOUTS.lsp` in `packages/coding-agent/src/tools/tool-timeouts.ts`.
-- LSP request default timeout inside `sendRequest()`: `30_000ms` — `DEFAULT_REQUEST_TIMEOUT_MS` in `packages/coding-agent/src/lsp/client.ts`.
-- Warmup initialize timeout default: `5_000ms` — `WARMUP_TIMEOUT_MS` in `packages/coding-agent/src/lsp/client.ts`.
-- Project-load wait fallback: `15_000ms` — `PROJECT_LOAD_TIMEOUT_MS` in `packages/coding-agent/src/lsp/client.ts`.
-- Idle-client sweep interval when enabled: `60_000ms` — `IDLE_CHECK_INTERVAL_MS` in `packages/coding-agent/src/lsp/client.ts`.
-- Diagnostic message output cap: first `50` messages — `DIAGNOSTIC_MESSAGE_LIMIT` in `packages/coding-agent/src/lsp/index.ts`.
-- Single-file diagnostics wait: `3_000ms` — `SINGLE_DIAGNOSTICS_WAIT_TIMEOUT_MS`.
-- Batch/glob diagnostics wait per file: `400ms` — `BATCH_DIAGNOSTICS_WAIT_TIMEOUT_MS`.
-- Glob diagnostic target cap: first `20` matches — `MAX_GLOB_DIAGNOSTIC_TARGETS`.
-- Workspace symbol cap: first `200` entries — `WORKSPACE_SYMBOL_LIMIT`.
-- Reference context cap: first `50` references include source context — `REFERENCE_CONTEXT_LIMIT`.
-- References retry count: `2` retries, `250ms` backoff — `REFERENCES_RETRY_COUNT`, `REFERENCES_RETRY_DELAY_MS`.
-- Directory rename cap: `1_000` file pairs — `MAX_RENAME_PAIRS`.
-- `detectLspmux()` state cache TTL: `5 * 60 * 1000ms`; liveness check timeout: `1_000ms` — `STATE_CACHE_TTL_MS`, `LIVENESS_TIMEOUT_MS` in `packages/coding-agent/src/lsp/lspmux.ts`.
+- Tool timeout clamp: default `20`, min `5`, max `60` seconds: `TOOL_TIMEOUTS.lsp` in `packages/coding-agent/src/tools/tool-timeouts.ts`.
+- LSP request default timeout inside `sendRequest()`: `30_000ms`: `DEFAULT_REQUEST_TIMEOUT_MS` in `packages/coding-agent/src/lsp/client.ts`.
+- Warmup initialize timeout default: `5_000ms`: `WARMUP_TIMEOUT_MS` in `packages/coding-agent/src/lsp/client.ts`.
+- Project-load wait fallback: `15_000ms`: `PROJECT_LOAD_TIMEOUT_MS` in `packages/coding-agent/src/lsp/client.ts`.
+- Idle-client sweep interval when enabled: `60_000ms`: `IDLE_CHECK_INTERVAL_MS` in `packages/coding-agent/src/lsp/client.ts`.
+- Diagnostic message output cap: first `50` messages: `DIAGNOSTIC_MESSAGE_LIMIT` in `packages/coding-agent/src/lsp/index.ts`.
+- Single-file diagnostics wait: `3_000ms`: `SINGLE_DIAGNOSTICS_WAIT_TIMEOUT_MS`.
+- Batch/glob diagnostics wait per file: `400ms`: `BATCH_DIAGNOSTICS_WAIT_TIMEOUT_MS`.
+- Glob diagnostic target cap: first `20` matches: `MAX_GLOB_DIAGNOSTIC_TARGETS`.
+- Workspace symbol cap: first `200` entries: `WORKSPACE_SYMBOL_LIMIT`.
+- Reference context cap: first `50` references include source context: `REFERENCE_CONTEXT_LIMIT`.
+- References retry count: `2` retries, `250ms` backoff: `REFERENCES_RETRY_COUNT`, `REFERENCES_RETRY_DELAY_MS`.
+- Directory rename cap: `1_000` file pairs: `MAX_RENAME_PAIRS`.
+- `detectLspmux()` state cache TTL: `5 * 60 * 1000ms`; liveness check timeout: `1_000ms`: `STATE_CACHE_TTL_MS`, `LIVENESS_TIMEOUT_MS` in `packages/coding-agent/src/lsp/lspmux.ts`.
 - Workspace diagnostics output cap: first `50` lines from the subprocess.
 
 ## Errors

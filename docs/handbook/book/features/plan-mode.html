@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-a2447057.js";
+            window.path_to_searchindex_js = "../searchindex-b31c94e7.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-cc1a72e9.js"></script>
@@ -219,12 +219,12 @@
 <h3 id="enabling-1"><a class="header" href="#enabling-1">Enabling</a></h3>
 <ul>
 <li>Setting: <code>goal.enabled</code> (default <code>true</code>)</li>
-<li><code>/goal set &lt;objective&gt;</code> — create or replace</li>
-<li><code>/goal show</code> — status, tokens, budget</li>
+<li><code>/goal set &lt;objective&gt;</code>: create or replace</li>
+<li><code>/goal show</code>: status, tokens, budget</li>
 <li><code>/goal pause</code> / <code>/goal resume</code></li>
-<li><code>/goal drop</code> — remove</li>
-<li><code>/goal budget &lt;N|off&gt;</code> — token budget</li>
-<li><code>/guided-goal</code> — interview flow before enabling</li>
+<li><code>/goal drop</code>: remove</li>
+<li><code>/goal budget &lt;N|off&gt;</code>: token budget</li>
+<li><code>/guided-goal</code>: interview flow before enabling</li>
 </ul>
 <h3 id="goal-state"><a class="header" href="#goal-state">Goal state</a></h3>
 <p>Stored on the session. Fields include:</p>
@@ -246,6 +246,13 @@
 (<code>fast</code> / <code>good</code> model lanes) instead of editing files itself.</p>
 <p>Mutual exclusion: plan mode, goal mode, and vibe mode cannot run together; the TUI warns if you try
 to enter one while another is active.</p>
+<p>Permissions: <code>vibe_spawn</code> and <code>vibe_send</code> are <code>exec</code>-level tool calls, so starting a worker or handing
+it a new instruction is gated by the session approval mode exactly like running a command (<code>vibe_wait</code>,
+<code>vibe_kill</code>, and <code>vibe_list</code> are read-level). Each worker then runs headless with the full tool set
+(edit, write, bash, …) and executes autonomously, a detached subagent has no UI to confirm prompts
+against, so approving the spawn is the authorization boundary. Your <code>tools.approval</code> allow/deny policies
+still apply inside every worker, so path and command denials you have configured are enforced there too.
+Workers are killed when you leave vibe mode, so none outlive the director that drives them.</p>
 
                     </main>
 

@@ -6,11 +6,11 @@
 - Entry: `packages/coding-agent/src/tools/search-tool-bm25.ts`
 - Model-facing prompt: `packages/coding-agent/src/prompts/tools/search-tool-bm25.md`
 - Key collaborators:
-  - `packages/coding-agent/src/tool-discovery/tool-index.ts` — discoverable-tool metadata and BM25 index/search.
-  - `packages/coding-agent/src/session/agent-session.ts` — session discovery mode, corpus assembly, activation, cache invalidation.
-  - `packages/coding-agent/src/sdk.ts` — initial hiding of discoverable built-ins and prompt-time discoverable summary.
-  - `packages/coding-agent/src/tools/index.ts` — tool-session discovery hooks, essential/discoverable load modes, registry wiring.
-  - `packages/coding-agent/src/config/settings-schema.ts` — `tools.discoveryMode` and legacy `mcp.discoveryMode` settings.
+  - `packages/coding-agent/src/tool-discovery/tool-index.ts`: discoverable-tool metadata and BM25 index/search.
+  - `packages/coding-agent/src/session/agent-session.ts`: session discovery mode, corpus assembly, activation, cache invalidation.
+  - `packages/coding-agent/src/sdk.ts`: initial hiding of discoverable built-ins and prompt-time discoverable summary.
+  - `packages/coding-agent/src/tools/index.ts`: tool-session discovery hooks, essential/discoverable load modes, registry wiring.
+  - `packages/coding-agent/src/config/settings-schema.ts`: `tools.discoveryMode` and legacy `mcp.discoveryMode` settings.
 
 ## Inputs
 

@@ -3,10 +3,10 @@
 Three surfaces share a local neural TTS engine (Kokoro-82M, ~100 MB, WAV/PCM). Network
 is used only for the first model download (and for optional remote TTS backends when configured):
 
-- **Spoken replies** — the assistant's streaming output is vocalized through
+- **Spoken replies**: the assistant's streaming output is vocalized through
   the speakers as it arrives.
-- **Voice input** — hold Space to talk; speech-to-text feeds the composer.
-- **Speech synthesis** — the `tts` agent tool and the `veyyon say` CLI turn
+- **Voice input**: hold Space to talk; speech-to-text feeds the composer.
+- **Speech synthesis**: the `tts` agent tool and the `veyyon say` CLI turn
   text into audio files or playback.
 
 ## Setup

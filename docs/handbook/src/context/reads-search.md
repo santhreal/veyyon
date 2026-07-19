@@ -1,11 +1,14 @@
 # Bounded reads and search
 
-`read`, `glob`, `grep`, and `write` ship as TypeScript modules under
-`packages/coding-agent/src/tools/{read,glob,grep,write}.ts`. They are always available (no
-`experimental_tools` or `backends.toml` gate). This page documents parameter shapes and bounds.
+Four tools give the agent controlled access to your files: `read`, `glob`, `grep`, and
+`write`. They are always available; there is no `experimental_tools` or `backends.toml` gate
+to turn them on.
 
-Unbounded `cat` / `find` / `grep -r` via shell can fill the context window. These tools apply
-line/byte/result caps and surface truncation instead of silent dumps.
+The point of these tools is bounds. An unbounded `cat`, `find`, or `grep -r` in the shell
+can dump enough text to fill the whole context window. These tools apply line, byte, and
+result caps instead, and they surface truncation rather than dropping output silently. This
+page documents each tool's parameters and the limits it enforces. The implementations live
+under `packages/coding-agent/src/tools/{read,glob,grep,write}.ts`.
 
 ## The `read` tool (`tools/read.ts`)
 
@@ -36,7 +39,7 @@ a vision prepass rather than being bundled into ordinary text reads.
 
 ## The `glob` tool (`tools/glob.ts`)
 
-There is no separate `find` or `ls` tool — pattern matching and directory listing are both the `glob`
+There is no separate `find` or `ls` tool, pattern matching and directory listing are both the `glob`
 tool. A model that runs `find . -name '*.rs'` or `ls -R` in the shell gets back an unbounded dump that
 includes `target/`, `node_modules/`, and `.git/`; `glob` is bounded and gitignore-aware instead:
 
@@ -45,7 +48,7 @@ includes `target/`, `node_modules/`, and `.git/`; `glob` is bounded and gitignor
   (`src/**/*.ts; test/**/*.ts`); omitted, it searches the workspace root.
 - **`gitignore` (default `true`)** hides `.gitignore` matches; set `false` to find `.env*`, build
   output, or anything the repo ignores. **`hidden` (default `true`)** includes dotfiles.
-- **Bounded by result count**, default and max `200` (`DEFAULT_LIMIT` / `MAX_LIMIT` in `glob.ts`) — not
+- **Bounded by result count**, default and max `200` (`DEFAULT_LIMIT` / `MAX_LIMIT` in `glob.ts`): not
   a byte cap. Every truncation is surfaced as an actionable notice.
 - **Sorted by mtime, newest first** (not lexicographic), grouped under `# <dir>/` headers with
   basenames below; directories get a trailing `/`.
@@ -60,7 +63,7 @@ count on top of the same gitignore-aware traversal `glob` uses:
 
 - **`grep {pattern, path?, case?, gitignore?, skip?}`.** `path` scopes the search (single path,
   semicolon-delimited list, or a `file:line-range` selector on one target); `case` enables
-  case-sensitivity (default case-insensitive is **not** assumed — see the tool description for the
+  case-sensitivity (default case-insensitive is **not** assumed, see the tool description for the
   exact default); `skip` pages past files already returned once a call hits the file limit.
 - **Bounded by file count, not match count.** Results are paginated at `DEFAULT_FILE_LIMIT = 20` files
   per call, with an internal total cap of `2000` matches (`grep.ts`); `skip` continues from where the
@@ -69,7 +72,7 @@ count on top of the same gitignore-aware traversal `glob` uses:
   runs in line-number mode.
 - **Cross-line patterns** are detected from a literal `\n`/`\\n` in `pattern`.
 - The tool description explicitly forbids shelling out to `grep`/`rg`/`ripgrep`/`ag`/`ack`/`git grep`
-  via Bash — the built-in tool is the only sanctioned path.
+  via Bash, the built-in tool is the only sanctioned path.
 
 ## The `write` tool (`tools/write.ts`)
 
@@ -95,7 +98,7 @@ capture path (`tools/bash-interactive.ts`):
 - **ANSI stripping is Bun-native, not a hand-rolled parser.** `sanitizeText()` calls Bun's built-in
   `Bun.stripANSI()` when an ESC byte is present, then strips C0/C1 control bytes and DEL with a single
   regex pass. The function is a TypeScript replacement for a former Rust native
-  (`crates/veyyon-natives/src/text.rs::sanitize_text`, noted in the current source comment) — there is no
+  (`crates/veyyon-natives/src/text.rs::sanitize_text`, noted in the current source comment), there is no
   live Rust ECMA-48 grammar walker in this path today.
 - **Keep `\n` and `\t`, drop the rest.** The control regex covers C0 (excluding tab/newline), `\r`,
   DEL, and the C1 range; `\n` and `\t` are the two explicit exclusions.

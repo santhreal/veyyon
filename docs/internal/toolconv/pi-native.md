@@ -1,15 +1,15 @@
 # pi-native tool-call format
 
-The **pi-native** format is a tool-call serialization **designed for** the veyyon (pi) coding agent. It ships as the `pi-native` dialect in the in-band registry (`packages/ai/src/dialect/pi-native.ts`, registered in `factory.ts` alongside `glm`, `hermes`, `kimi`, `xml`, `anthropic`, `deepseek`, `minimax`, `harmony`, `qwen3`, `gemma`, and `gemini`), selectable via the Tool Calling Mode setting or `VEYYON_DIALECT=pi-native`. Unlike the JSON-in-a-tag conventions (Hermes/Qwen, Harmony) and unlike the fully separate JSON content-block channel (Anthropic Messages API), pi-native serializes each call as an **XML-flavored block** whose tag carries the tool name — `<call:NAME>…</call:NAME>` — and whose arguments are child elements named after the parameters. It is **schema-driven**: the tool's JSON Schema decides how each value is typed (string vs number vs object vs array) and which compact spellings are legal.
+The **pi-native** format is a tool-call serialization **designed for** the veyyon (pi) coding agent. It ships as the `pi-native` dialect in the in-band registry (`packages/ai/src/dialect/pi-native.ts`, registered in `factory.ts` alongside `glm`, `hermes`, `kimi`, `xml`, `anthropic`, `deepseek`, `minimax`, `harmony`, `qwen3`, `gemma`, and `gemini`), selectable via the Tool Calling Mode setting or `VEYYON_DIALECT=pi-native`. Unlike the JSON-in-a-tag conventions (Hermes/Qwen, Harmony) and unlike the fully separate JSON content-block channel (Anthropic Messages API), pi-native serializes each call as an **XML-flavored block** whose tag carries the tool name, `<call:NAME>…</call:NAME>`, and whose arguments are child elements named after the parameters. It is **schema-driven**: the tool's JSON Schema decides how each value is typed (string vs number vs object vs array) and which compact spellings are legal.
 
 This document is a **specification** of the format (it is the contract a renderer must emit and a parser must accept), not a reverse-engineering of trained model weights. It is designed around four goals:
 
-- **Token economy** — the common cases (a single scalar argument; a single string payload) collapse to one short line.
-- **Verbatim payloads** — a large multi-line string argument (a patch body, a file's contents, a shell script) is carried **raw**, with no JSON string-escaping and no entity-encoding, terminated by the call's own unique closing tag.
-- **Human legibility** — a call reads like the function it denotes; nesting maps to nesting.
-- **Lenient parsing** — the tags are plain text matched by a tolerant parser (regex / streaming state machine), not a strict XML parser; output is *not* required to be well-formed XML.
+- **Token economy**: the common cases (a single scalar argument; a single string payload) collapse to one short line.
+- **Verbatim payloads**: a large multi-line string argument (a patch body, a file's contents, a shell script) is carried **raw**, with no JSON string-escaping and no entity-encoding, terminated by the call's own unique closing tag.
+- **Human legibility**: a call reads like the function it denotes; nesting maps to nesting.
+- **Lenient parsing**: the tags are plain text matched by a tolerant parser (regex / streaming state machine), not a strict XML parser; output is *not* required to be well-formed XML.
 
-Scope: pi-native specifies only the **tool-call (and argument) serialization**. It is **envelope-agnostic** — the `<call:…>` blocks are emitted as ordinary assistant text and embed unchanged in any conversation envelope (ChatML, Harmony, the Anthropic two-role shape, …). Reasoning channels, role markers, and result delivery are the host envelope's concern; the one envelope-level requirement pi-native imposes is in [Tool-result correlation](#tool-result-correlation).
+Scope: pi-native specifies only the **tool-call (and argument) serialization**. It is **envelope-agnostic**, the `<call:…>` blocks are emitted as ordinary assistant text and embed unchanged in any conversation envelope (ChatML, Harmony, the Anthropic two-role shape, …). Reasoning channels, role markers, and result delivery are the host envelope's concern; the one envelope-level requirement pi-native imposes is in [Tool-result correlation](#tool-result-correlation).
 
 Lineage: the attribute spelling (`<call:read path="…"/>`) follows Anthropic's modern attribute XML (`<invoke name="…">` / `<parameter name="…">`); the schema-driven **unquoted** value rule (a bare string value carries no quotes; non-strings are JSON) follows GLM-4.5's `<arg_value>` convention. pi-native folds both into one recursive, name-on-the-tag grammar and adds the verbatim **inline body** for bulk string arguments. See [`anthropic.md`](./anthropic.md) and [`glm-4.5.md`](./glm-4.5.md) in this folder.
 
@@ -33,7 +33,7 @@ A single call has three interchangeable surface forms. Which forms are legal for
 
 ### 1. Element form (canonical, fully general)
 
-Each top-level argument is a child element named after the parameter; the element body is the value. This form expresses every schema — scalars, strings, arrays, and nested objects:
+Each top-level argument is a child element named after the parameter; the element body is the value. This form expresses every schema, scalars, strings, arrays, and nested objects:
 
 ```text
 <call:read>
@@ -54,7 +54,7 @@ When the arguments being passed are **top-level scalars** (string, number, integ
 
 → `read({ "path": "src/server/auth.ts" })`.
 
-Attributes and child elements MAY be combined on a non-self-closing call tag — attributes carry the scalars, child elements carry anything structured:
+Attributes and child elements MAY be combined on a non-self-closing call tag, attributes carry the scalars, child elements carry anything structured:
 
 ```text
 <call:read path="src/server/auth.ts">
@@ -62,11 +62,11 @@ Attributes and child elements MAY be combined on a non-self-closing call tag —
 </call:read>
 ```
 
-An attribute whose value cannot be represented as a scalar (an object or array argument) MUST use the element form instead — there is no attribute spelling for structured values on a call tag.
+An attribute whose value cannot be represented as a scalar (an object or array argument) MUST use the element form instead, there is no attribute spelling for structured values on a call tag.
 
 ### 3. Inline-body form (verbatim string payload)
 
-When the tool's parameters are **all strings** — most often a single string parameter — the call body MAY be the argument value written **verbatim**, with no child element tags:
+When the tool's parameters are **all strings**, most often a single string parameter, the call body MAY be the argument value written **verbatim**, with no child element tags:
 
 ```text
 <call:edit>
@@ -84,10 +84,10 @@ Rules for the inline body:
 
 - The body fills the **first parameter not already supplied by an attribute**. With no attributes that is simply the first parameter (the "first argument verbatim").
 - It is permitted only when that target parameter is **string**-typed (the enabling condition "the type only contains string arguments"); any *other* parameters set on the same call MUST be scalars given as attributes.
-- The value is captured **verbatim** up to the call's own closing tag `</call:NAME>`. No JSON escaping, no entity decoding. The body MAY freely contain `<`, `>`, `&`, quotes, JSON, even other `<call:…>`-looking text — the only sequence it MUST NOT contain is the literal closer `</call:NAME>`. Because that closer carries the tool name, collisions are far rarer than with a short generic delimiter.
+- The value is captured **verbatim** up to the call's own closing tag `</call:NAME>`. No JSON escaping, no entity decoding. The body MAY freely contain `<`, `>`, `&`, quotes, JSON, even other `<call:…>`-looking text: the only sequence it MUST NOT contain is the literal closer `</call:NAME>`. Because that closer carries the tool name, collisions are far rarer than with a short generic delimiter.
 - Whitespace: a single newline immediately after the opening `>` and a single newline immediately before the closing `</` are treated as block delimiters and are **not** part of the value; all other whitespace (indentation, blank lines, trailing spaces) is preserved exactly.
 
-A multi-string tool can still use the inline body for its bulk argument by passing the others as attributes — the body then fills the first parameter left unset:
+A multi-string tool can still use the inline body for its bulk argument by passing the others as attributes, the body then fills the first parameter left unset:
 
 ```text
 <call:write path="notes/todo.md">
@@ -112,14 +112,14 @@ Let `coerce(text, type)` produce the JSON value for a captured scalar `text`:
 - `type` is a non-string scalar (`number` / `integer` / `boolean` / `null`) → `JSON.parse(text)` (so `<offset>50</offset>` → `50`, `<recursive>true</recursive>` → `true`).
 - `type` unknown (no schema) → **best-effort JSON coercion**: try `JSON.parse(text)`; on success use the parsed value (number, boolean, null, quoted-string, object, or array); on failure treat `text` as a literal string. So a bare `4` becomes the number `4`, `foo.ts` (not valid JSON) becomes `"foo.ts"`.
 
-The same `coerce` applies to **attribute values** after the surrounding quotes (if any) are stripped — the quotes are XML delimiters only. Hence both spellings below are identical, and both yield the **number** `4` (not the string `"4"`) when `y` is untyped/numeric:
+The same `coerce` applies to **attribute values** after the surrounding quotes (if any) are stripped, the quotes are XML delimiters only. Hence both spellings below are identical, and both yield the **number** `4` (not the string `"4"`) when `y` is untyped/numeric:
 
 ```text
 <object y=4/>     →  { "object": { "y": 4 } }
 <object y="4"/>   →  { "object": { "y": 4 } }
 ```
 
-Consequence to internalize: under loose/no schema, quoting does **not** force a string — `"4"` still coerces to `4`. To carry a numeric-looking value *as a string*, the parameter MUST be `string`-typed in the schema (then the verbatim rule keeps `"4"` → `"4"`). Unquoted attribute values run until whitespace or the closing `>` / `/>`; spaces around `=` are tolerated; a bare attribute with no `=value` (e.g. `<call:tool dry_run/>`) denotes boolean `true`.
+Consequence to internalize: under loose/no schema, quoting does **not** force a string, `"4"` still coerces to `4`. To carry a numeric-looking value *as a string*, the parameter MUST be `string`-typed in the schema (then the verbatim rule keeps `"4"` → `"4"`). Unquoted attribute values run until whitespace or the closing `>` / `/>`; spaces around `=` are tolerated; a bare attribute with no `=value` (e.g. `<call:tool dry_run/>`) denotes boolean `true`.
 
 ### Scalars and strings
 
@@ -131,7 +131,7 @@ A scalar argument is one element (or one attribute). String values are unquoted 
 
 → `bash({ "command": "ls -la", "timeout": 30 })`.
 
-### Arrays — repeat the element
+### Arrays: repeat the element
 
 An array-typed field is expressed by **repeating** its element; each occurrence contributes one item, in order:
 
@@ -142,9 +142,9 @@ An array-typed field is expressed by **repeating** its element; each occurrence 
 
 → `"list": ["x", "y"]`.
 
-A field the schema types as an **array always yields an array, even for a single occurrence** — so one `<list>x</list>` under an array-typed `list` is `["x"]`, not `"x"`. When no schema is available the parser falls back to a count heuristic: a name appearing **2+ times among its siblings** is an array; a name appearing **once** is a scalar (so schema typing is the only way to express a one-element array with the heuristic alone). Item values coerce by the array's item type (`<ports>80</ports><ports>443</ports>` → `[80, 443]` for a `number[]`); arrays of objects repeat a nested block (see below). There is no attribute spelling for an array (attributes cannot repeat) — arrays require element form.
+A field the schema types as an **array always yields an array, even for a single occurrence**, so one `<list>x</list>` under an array-typed `list` is `["x"]`, not `"x"`. When no schema is available the parser falls back to a count heuristic: a name appearing **2+ times among its siblings** is an array; a name appearing **once** is a scalar (so schema typing is the only way to express a one-element array with the heuristic alone). Item values coerce by the array's item type (`<ports>80</ports><ports>443</ports>` → `[80, 443]` for a `number[]`); arrays of objects repeat a nested block (see below). There is no attribute spelling for an array (attributes cannot repeat), arrays require element form.
 
-### Objects — a nested block
+### Objects: a nested block
 
 An object-typed field opens its own block and follows the **same rules recursively**: its child elements become its properties, repeated children become arrays, and nested object children open further blocks.
 
@@ -156,7 +156,7 @@ An object-typed field opens its own block and follows the **same rules recursive
 
 → `"object": { "list": ["x"] }` (with `object` typed object and `list` typed array).
 
-An object's **scalar** sub-fields MAY instead be written as attributes — `<object y=4/>` is shorthand for `<object><y>4</y></object>`. Attributes and child elements may be combined on the same object element (attributes for scalars, children for structured sub-fields). An empty object is `<object/>` or `<object></object>` → `{}`.
+An object's **scalar** sub-fields MAY instead be written as attributes, `<object y=4/>` is shorthand for `<object><y>4</y></object>`. Attributes and child elements may be combined on the same object element (attributes for scalars, children for structured sub-fields). An empty object is `<object/>` or `<object></object>` → `{}`.
 
 ### Recursion
 
@@ -237,7 +237,7 @@ Note: `timeout=120` and `y=4` are JSON numbers (numeric/untyped scalars), `path`
 
 ## Grammar (lenient EBNF)
 
-This is the shape a tolerant parser accepts; it is intentionally looser than XML (mismatched-but-recoverable tails are closed heuristically — see gotchas).
+This is the shape a tolerant parser accepts; it is intentionally looser than XML (mismatched-but-recoverable tails are closed heuristically, see gotchas).
 
 ```ebnf
 stream       ::= ( text | call )*
@@ -260,9 +260,9 @@ inline-text  ::= < any chars up to "</call:" Name ">", verbatim >
 
 - **Schema decides string-vs-JSON.** A `string`-typed value is verbatim and unquoted; everything else is JSON. With no schema, scalars best-effort JSON-coerce and fall back to string. This is the single most error-prone rule (identical to GLM-4.5's unquoted strings): emitting `"San Francisco"` for a string parameter yields the literal value *including the quote characters*.
 - **Quotes are delimiters, not types.** `y="4"` and `y=4` both coerce to the number `4` under loose/no schema. Quoting an attribute never makes it a string; only a `string` schema type does.
-- **Arrays = repetition; single-element arrays need the schema.** Two same-named siblings is unambiguously an array. One occurrence is a scalar under the count heuristic and an array only because the schema says so — a parser without the schema cannot tell `<list>x</list>` (scalar) from a one-element array.
-- **Verbatim bodies are delimited by the named closer.** The inline body and any `string`-typed element body are captured up to their matching `</call:NAME>` / `</KEY>`. A body that contains that exact closing sequence truncates early; there is no escaping mechanism. The inline body's risk is minimal because the delimiter includes the tool name (`</call:edit>`), but a short string-typed *element* (e.g. `<note>…</note>`) is more exposed — prefer the inline-body form for any value that might contain markup, or keep such values in the single-string inline payload.
-- **Element form vs inline body.** A block call whose body's first non-whitespace content is a child tag matching a known parameter is parsed as element form; otherwise (all-string tool) it is the inline body. A string value that legitimately *starts* with a `<param>`-looking token is the one ambiguity — emit such a tool in element form, or rely on the schema (a tool with structured params is never inline-eligible).
+- **Arrays = repetition; single-element arrays need the schema.** Two same-named siblings is unambiguously an array. One occurrence is a scalar under the count heuristic and an array only because the schema says so: a parser without the schema cannot tell `<list>x</list>` (scalar) from a one-element array.
+- **Verbatim bodies are delimited by the named closer.** The inline body and any `string`-typed element body are captured up to their matching `</call:NAME>` / `</KEY>`. A body that contains that exact closing sequence truncates early; there is no escaping mechanism. The inline body's risk is minimal because the delimiter includes the tool name (`</call:edit>`), but a short string-typed *element* (e.g. `<note>…</note>`) is more exposed: prefer the inline-body form for any value that might contain markup, or keep such values in the single-string inline payload.
+- **Element form vs inline body.** A block call whose body's first non-whitespace content is a child tag matching a known parameter is parsed as element form; otherwise (all-string tool) it is the inline body. A string value that legitimately *starts* with a `<param>`-looking token is the one ambiguity: emit such a tool in element form, or rely on the schema (a tool with structured params is never inline-eligible).
 - **No ids; order is the contract.** Calls carry no id; results MUST be returned in call order. Reordering results silently misattributes them.
 - **Lenient, not strict XML.** Do not feed pi-native to an XML parser: tag names contain a colon (`call:read`), attribute values may be unquoted, bodies are not entity-encoded, and the stream need not be balanced beyond each call's own open/close. Match the tags as literals (regex / streaming state machine).
 - **Streaming.** A stateful parser emits the tool name as soon as `<call:NAME` closes, then streams attribute/child deltas; for an inline body it streams body text incrementally and holds back any partial trailing `</call:` until it can decide whether it is the closer. Coercion of a scalar can only finalize at the value's close tag (a partial number/boolean is not yet valid JSON).

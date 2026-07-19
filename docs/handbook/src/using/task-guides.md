@@ -103,7 +103,7 @@ When asked to audit configuration:
 3. Prefer concrete remediations over generic advice.
 ```
 
-Restart or open a new session so skill discovery picks it up. Skills are data — you can version them in
+Restart or open a new session so skill discovery picks it up. Skills are data, you can version them in
 git and share them without shipping a new `veyyon` build. Prefer a skill when the "tool" is mostly
 prompting and local scripts; prefer MCP when the capability is a long-lived external process. See
 [Skills](../features/skills.md).

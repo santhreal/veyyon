@@ -24,7 +24,7 @@ Retry and compaction are checked from the same `agent_end` maintenance path, in 
 4. `#handleUnexpectedAssistantStop(...)` handles anomalous stops.
 5. `#isRetryableReasonlessAbort(...)` retries empty reason-less provider aborts (no model fallback).
 6. A deliberate `aborted` stop settles the turn (no retry, no queued continuations).
-7. `#isFireworksFastFallbackEligible(...)` degrades a Fireworks Fast variant to its base model — even for hard errors the generic classifier rejects, and even with `retry.enabled === false`.
+7. `#isFireworksFastFallbackEligible(...)` degrades a Fireworks Fast variant to its base model: even for hard errors the generic classifier rejects, and even with `retry.enabled === false`.
 8. `#isRetryableError(...)` drives the standard retry engine.
 9. Otherwise, `#isHardErrorFallbackEligible(...)` gives a non-retryable hard error one fallback-chain consult (`hardErrorFallback: true`); if no model switch happens, the error surfaces instead of backoff-retrying the failing model.
 10. If nothing retried, the bottom `#checkCompaction(...)` runs (unless the active-goal pre-empt already did).
@@ -38,7 +38,7 @@ Classification is **typed**, not ad-hoc regex at the call site: `#classifyRetryM
 - assistant `stopReason === "error"`
 - message is **not** context overflow (`AIError.isContextOverflow` checks the `ContextOverflow` flag, token usage vs the context window, and overflow text patterns)
 - one of:
-  - the stop is a classifier refusal (`stopDetails.type` is `"refusal"` or `"sensitive"` — checked first, from the typed field)
+  - the stop is a classifier refusal (`stopDetails.type` is `"refusal"` or `"sensitive"`: checked first, from the typed field)
   - `AIError.retriable(id, { replayUnsafe })` is true
 
 `AIError.retriable` semantics:
@@ -50,7 +50,7 @@ Classification is **typed**, not ad-hoc regex at the call site: `#classifyRetryM
 
 The `Transient` patterns (in `flags.ts`) cover overload/rate-limit/429/5xx wording, provider-suggested-retry wording, network/socket/timeout failures, Anthropic stream-envelope failures before `message_start`, and unexpected socket closes. `StaleResponsesItem` (OpenAI Responses APIs only) matches `Item with id '…' not found` / invalid/expired `previous_response`. A deterministic llama.cpp/Ollama tool-call JSON parse failure strips `Transient` so it surfaces instead of looping.
 
-Beyond `#isRetryableError(...)`, a narrower trigger feeds the same retry engine: `#isRetryableReasonlessAbort(...)` routes a **content-less** stop carrying the generic abort sentinel (`"Request was aborted"`) — whether finalized as `stopReason: "aborted"` or leaked as `"error"` — into `#handleRetryableError(message, { allowModelFallback: false })`. It never fires while a user abort, dispose, or streaming-edit-guard abort is in progress; those are deliberate and settle the turn.
+Beyond `#isRetryableError(...)`, a narrower trigger feeds the same retry engine: `#isRetryableReasonlessAbort(...)` routes a **content-less** stop carrying the generic abort sentinel (`"Request was aborted"`), whether finalized as `stopReason: "aborted"` or leaked as `"error"`, into `#handleRetryableError(message, { allowModelFallback: false })`. It never fires while a user abort, dispose, or streaming-edit-guard abort is in progress; those are deliberate and settle the turn.
 
 ## Retry lifecycle and state transitions
 
@@ -64,12 +64,12 @@ Session state used by retry:
 Flow (`#handleRetryableError`):
 
 1. Read `retry` settings group.
-2. If `retry.enabled === false`, stop immediately — **except** the Fireworks Fast→base degrade (`fireworksFastFallback: true`), which is an intrinsic model-selection safety net and runs even with retries disabled.
+2. If `retry.enabled === false`, stop immediately: **except** the Fireworks Fast→base degrade (`fireworksFastFallback: true`), which is an intrinsic model-selection safety net and runs even with retries disabled.
 3. Increment `#retryAttempt`.
 4. Create `#retryPromise` once (first attempt in a chain).
-5. Exceeding `retry.maxRetries` does **not** fail immediately: the fallback chain below gets one last consult (credential rotation can spend the whole budget without the fallback branch ever running). Only if no model switch happens does it emit the final failure event and stop. A successful last-resort switch resets the counter to `1` — the fallback model gets a fresh retry budget.
+5. Exceeding `retry.maxRetries` does **not** fail immediately: the fallback chain below gets one last consult (credential rotation can spend the whole budget without the fallback branch ever running). Only if no model switch happens does it emit the final failure event and stop. A successful last-resort switch resets the counter to `1`: the fallback model gets a fresh retry budget.
 6. Compute capped jittered local delay via `calculateRetryBackoffDelayMs`: `min(retry.baseDelayMs * 2^(attempt-1), 8000ms) * (75–100% jitter)`. Stale OpenAI Responses replay errors skip the backoff entirely (delay `0`) after resetting the cached provider session.
-7. For usage-limit errors, parse retry hints and call auth storage (`markUsageLimitReached(...)`); if credential switching succeeds — including spending a banked Codex reset via the opt-in auto-redeem — force delay to `0`. Otherwise wait for whichever comes first — the provider's retry-after/backoff hint, or the earliest moment a temporarily blocked sibling credential frees up (`retryAtMs` + `SIBLING_UNBLOCK_BUFFER_MS`, 1s) so the next attempt can pick it up.
+7. For usage-limit errors, parse retry hints and call auth storage (`markUsageLimitReached(...)`); if credential switching succeeds, including spending a banked Codex reset via the opt-in auto-redeem, force delay to `0`. Otherwise wait for whichever comes first, the provider's retry-after/backoff hint, or the earliest moment a temporarily blocked sibling credential frees up (`retryAtMs` + `SIBLING_UNBLOCK_BUFFER_MS`, 1s) so the next attempt can pick it up.
 8. If no credential switch occurred and `retry.modelFallback` is enabled, suppress the current model selector for cooldown and try configured retry model fallback chains, forcing delay to `0` on model switch. Classifier refusals skip the cooldown, pin the fallback, and never use the exhausted-budget last resort; with no fallback applied, the chain ends without an `auto_retry_start`. `fireworksFastFallback` / `hardErrorFallback` entries that fail to switch also bail out here rather than backoff-retrying a model the generic classifier would not retry.
 9. If the final delay exceeds `retry.maxDelayMs` and no credential/model switch happened, emit final failure and do not sleep.
 10. Record the pending recovered-retry error (surfaced later in `auto_retry_end.recoveredErrors`) and emit `auto_retry_start` (includes the classified `errorId`).

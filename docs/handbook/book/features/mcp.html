@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-a2447057.js";
+            window.path_to_searchindex_js = "../searchindex-b31c94e7.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-cc1a72e9.js"></script>
@@ -196,9 +196,11 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="mcp"><a class="header" href="#mcp">MCP</a></h1>
-<p>Model Context Protocol (MCP) is how Veyyon <strong>consumes</strong> external tools and data (MCP client). Veyyon
-is not an MCP server binary. For editor embedding use <strong>ACP</strong> (<code>veyyon acp</code>); for in-process control
-use the SDK.</p>
+<p>You point Veyyon at an external program (a database bridge, a browser driver, a hosted API) and its
+tools show up in the session, ready for the model to call. The Model Context Protocol (MCP) is the
+standard that makes this work. Veyyon speaks it as a client: it connects out to MCP servers and
+consumes their tools and data. It is not itself an MCP server binary. To embed Veyyon in an editor,
+use ACP (<code>veyyon acp</code>); to drive it from your own process, use the SDK.</p>
 <h2 id="transports"><a class="header" href="#transports">Transports</a></h2>
 <div class="table-wrapper">
 <table>
@@ -259,8 +261,8 @@ use the SDK.</p>
 <p>Tool names appear namespaced as <code>mcp__&lt;server&gt;__&lt;tool&gt;</code>.</p>
 <h2 id="related-surfaces-not-mcp-server-mode"><a class="header" href="#related-surfaces-not-mcp-server-mode">Related surfaces (not MCP server mode)</a></h2>
 <ul>
-<li><strong>ACP</strong> (<code>veyyon acp</code>) — Agent Client Protocol for editors; not MCP.</li>
-<li><strong>SDK</strong> — embed the agent in a host process.</li>
+<li><strong>ACP</strong> (<code>veyyon acp</code>): Agent Client Protocol for editors; not MCP.</li>
+<li><strong>SDK</strong>: embed the agent in a host process.</li>
 </ul>
 <p>MCP config remains <code>mcp.json</code> and <code>/mcp</code>.</p>
 

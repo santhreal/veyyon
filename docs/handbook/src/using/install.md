@@ -1,15 +1,15 @@
 # Install
 
-Veyyon ships as the npm package **`@veyyon/coding-agent`** and installs the `veyyon`
-executable. It is a TypeScript + Bun agent loop with Rust natives (`@veyyon/natives`) for hot paths
-(grep, walker, shell/PTY, hashline edits). After install, run `veyyon plugin doctor`.
+Veyyon ships as the npm package `@veyyon/coding-agent`, and installing it gives you the `veyyon` executable. Under the hood it is a TypeScript and Bun agent loop, with Rust natives in `@veyyon/natives` handling the hot paths: grep, the file walker, the shell and PTY, and hashline edits. After you install, run `veyyon plugin doctor` to confirm everything is wired up.
 
 ## Requirements
 
-- **Bun** (recommended runtime) or a recent Node.js.
-- **Git** — most workflows expect a repository.
+You need two things:
 
-## Install (npm / Bun)
+- **Bun**, which is the recommended runtime, or a recent Node.js.
+- **Git**, because most workflows expect to run inside a repository.
+
+## Install with npm or Bun
 
 ```console
 $ bun install -g @veyyon/coding-agent
@@ -23,11 +23,11 @@ $ npm install -g @veyyon/coding-agent
 $ veyyon --version
 ```
 
-`bun install` also builds `@veyyon/natives`. Config home: `~/.veyyon`; default profile agent dir: `~/.veyyon/profiles/default/agent/`.
+The install step also builds `@veyyon/natives`. Your configuration home is `~/.veyyon`, and the default profile keeps its agent directory at `~/.veyyon/profiles/default/agent/`.
 
 ## After install
 
-The first interactive `veyyon` opens the first-run setup (splash → providers → glyphs → theme → outro). Force it again with `veyyon setup`. Re-open providers inside a session with `/setup` or `/providers`. See [Getting started](./getting-started.md).
+The first interactive `veyyon` opens the first-run setup, which moves through a splash, providers, glyphs, theme, and an outro. To run it again later, use `veyyon setup`. To re-open just the providers panel inside a session, use `/setup` or `/providers`. See [Getting started](./getting-started.md).
 
 ## Build from source
 
@@ -38,7 +38,7 @@ $ bun setup      # installs workspace deps and builds @veyyon/natives
 $ bun dev --version
 ```
 
-`bun dev` runs the in-repo build; use it while evaluating or contributing.
+`bun dev` runs the in-repo build. Use it while you are evaluating Veyyon or contributing to it.
 
 ## Shell completions
 
@@ -54,29 +54,22 @@ $ veyyon plugin doctor
 $ veyyon plugin doctor --fix
 ```
 
-`veyyon plugin doctor` checks plugin health and warns when optional external binaries (`sd`, `sg`,
-`git`) or common API keys are missing. For interactive diagnostics use `/debug` in the TUI. See
-[Diagnostics](../features/doctor.md).
+`veyyon plugin doctor` checks plugin health and warns you when an optional external binary (`sd`, `sg`, or `git`) or a common API key is missing. For interactive diagnostics, use `/debug` in the TUI. See [Diagnostics](../features/doctor.md).
 
 ### Relocate the config directory
 
-By default Unix uses `~/.veyyon`. `VEYYON_CONFIG_DIR` renames the
-home-relative config directory; `VEYYON_CODING_AGENT_DIR` relocates
-the agent base (`config.yml`, `agent.db`, sessions, and more):
+On Unix, Veyyon uses `~/.veyyon` by default. Two environment variables let you move it. `VEYYON_CONFIG_DIR` renames the home-relative config directory, and `VEYYON_CODING_AGENT_DIR` relocates the agent base, which holds `config.yml`, `agent.db`, your sessions, and more.
 
 ```console
 $ export VEYYON_CODING_AGENT_DIR=/path/to/veyyon-agent
 $ veyyon plugin doctor
 ```
 
-Layout: [File locations](../reference/file-locations.md).
+The [File locations](../reference/file-locations.md) chapter shows the full layout.
 
 ## First credentials
 
-On first interactive launch, first-run setup (or `veyyon setup`) walks sign-in and API keys.
-Inside a session, use `/setup` / `/providers` to re-open that panel, `/login` (or `/login <provider>`)
-for OAuth and key entry, or export the provider's environment variable and skip the interactive step.
-See [Authentication](./authentication.md) and [Configuring providers](./configuring-providers.md).
+On the first interactive launch, the first-run setup (or `veyyon setup`) walks you through sign-in and API keys. Inside a session you have three ways to manage credentials: open the panel again with `/setup` or `/providers`, run `/login` (or `/login <provider>`) for OAuth and key entry, or export the provider's environment variable and skip the interactive step. See [Authentication](./authentication.md) and [Configuring providers](./configuring-providers.md).
 
 ## Uninstall
 
@@ -87,7 +80,7 @@ $ bun remove -g @veyyon/coding-agent
 $ # or: npm uninstall -g @veyyon/coding-agent
 ```
 
-Then remove state if you want a clean machine:
+Then remove your state if you want a clean machine:
 
 ```console
 $ rm -rf ~/.veyyon          # irreversible: config, secrets, sessions, plugins, skills, logs
@@ -95,10 +88,9 @@ $ # if you relocated the agent base:
 $ rm -rf "$VEYYON_CODING_AGENT_DIR"
 ```
 
-Project-local files (`AGENTS.md`, `.veyyon/` in a repo) are **not** removed by deleting the
-home directory — clean those per repository if desired.
+Deleting the home directory does not remove project-local files such as a repository's `AGENTS.md` or its `.veyyon/` directory. Clean those per repository if you want to.
 
-To keep projects but wipe only sessions:
+To keep your projects but wipe only sessions:
 
 ```console
 $ rm -rf ~/.veyyon/profiles/default/agent/sessions
@@ -106,7 +98,7 @@ $ rm -rf ~/.veyyon/profiles/default/agent/sessions
 
 ## Next
 
-- [Getting started](./getting-started.md) — first interactive edit with sample terminal output.
-- [Model contract](../concepts/model-contract.md) — choose credentials with the harness boundary in mind.
-- [Safety](./safety.md) — approvals and fail-closed behavior.
-- [Troubleshooting](./troubleshooting.md) / [FAQ](./faq.md) — when the doctor is not enough.
+- [Getting started](./getting-started.md) walks through a first interactive edit, with sample terminal output.
+- [Model contract](../concepts/model-contract.md) helps you choose credentials with the harness boundary in mind.
+- [Safety](./safety.md) covers approvals and fail-closed behavior.
+- [Troubleshooting](./troubleshooting.md) and the [FAQ](./faq.md) are there for when the doctor is not enough.

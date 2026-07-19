@@ -1,6 +1,6 @@
 # Configuration
 
-Settings by goal. Provider setup: [Models and providers](./models.md), [Authentication](./authentication.md). Full key catalog: repository `docs/settings.md`.
+This page groups settings by what you are trying to do. For provider and sign-in setup, see [Models and providers](./models.md) and [Authentication](./authentication.md). For the full list of every key, see the repository's `docs/settings.md`.
 
 ## Where settings live
 
@@ -74,7 +74,7 @@ tools:
 ```
 
 Per run, `--approval-mode <mode>` and `--auto-approve` / `--yolo` override the mode. There is no
-separate OS shell sandbox — the approval mode is the only boundary; see
+separate OS shell sandbox, the approval mode is the only boundary; see
 [Approvals](../features/sandbox.md) and [Safety](./safety.md).
 
 ## Run unattended or in CI
@@ -143,7 +143,7 @@ See [Profiles](../features/profiles.md), [File locations](../reference/file-loca
 
 MCP servers are configured as JSON, not in `config.yml`:
 
-In `~/.veyyon/profiles/default/agent/mcp.json` (JSON is strict — no comments):
+In `~/.veyyon/profiles/default/agent/mcp.json` (JSON is strict, no comments):
 
 ```json
 {
@@ -163,6 +163,6 @@ Hooks: TypeScript modules under project/profile hook paths (`pi.on(...)`). See [
 
 - [Getting started](./getting-started.md)
 - [Task guides](./task-guides.md)
-- [Safety](./safety.md) — `tools.approvalMode` (default `yolo`)
+- [Safety](./safety.md): `tools.approvalMode` (default `yolo`)
 - [Extending](./extending.md)
 - [CLI](../reference/cli.md)

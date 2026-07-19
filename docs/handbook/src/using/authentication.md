@@ -9,10 +9,10 @@ tracks its own credentials.
 
 Use the interactive slash commands inside a session:
 
-- `/login` — opens the OAuth/key selector.
-- `/login <provider>` — jumps straight to one provider, e.g. `/login anthropic`, `/login openai`.
-- `/login <redirect-url>` — completes an OAuth flow that needs a pasted callback URL.
-- `/logout` — opens the provider selector to remove stored credentials.
+- `/login`: opens the OAuth/key selector.
+- `/login <provider>`: jumps straight to one provider, e.g. `/login anthropic`, `/login openai`.
+- `/login <redirect-url>`: completes an OAuth flow that needs a pasted callback URL.
+- `/logout`: opens the provider selector to remove stored credentials.
 
 On first run, the first-run setup (`veyyon setup`, or `/setup` / `/providers` later) walks the same flow.
 
@@ -69,7 +69,7 @@ it.
 
 Provider identity (display name, env var, OAuth parameters) and endpoints (base URL, API kind) come
 from the bundled model catalog plus your `~/.veyyon/profiles/default/agent/models.yml`. A new BYOK provider becomes
-selectable by adding a `providers:` entry — not by changing code. See
+selectable by adding a `providers:` entry, not by changing code. See
 [Configuring providers](./configuring-providers.md) and `docs/providers.md`.
 
 See also: [Models and providers](./models.md) and the [CLI reference](../reference/cli.md).

@@ -1,8 +1,14 @@
 # Approvals
 
-Control surface: **`tools.approvalMode`**. There is no OS-level command sandbox (no Landlock, seccomp, Seatbelt, or bubblewrap). Shell and writes run as the process user subject to this policy and execpolicy rules.
+Approvals are how you decide which tools run without asking. One setting drives them:
+`tools.approvalMode`. There is no operating-system sandbox behind it (no Landlock, seccomp,
+Seatbelt, or bubblewrap). Shell commands and file writes run as your user, bounded only by
+this policy and the execpolicy rules below.
 
-Concepts: [Permission model](../concepts/permission-model.md). UX: [Permissions and approvals](./permissions-explainer.md). [Safety](../using/safety.md).
+This page is the operator reference. For the model behind it, see
+[Permission model](../concepts/permission-model.md). For how the prompts look and feel, see
+[Permissions and approvals](./permissions-explainer.md). For the wider boundary, see
+[Safety](../using/safety.md).
 
 ## Tool tiers
 
@@ -46,7 +52,9 @@ Denied actions return an error to the model; permissions are not widened.
 
 ## Headless
 
-`veyyon --print` has no TTY. A mode that would prompt stops the turn unless you use `--yolo` or a non-prompting mode. Process exit status follows the run.
+`veyyon --print` has no terminal to prompt in. If the mode would ask for approval, the turn
+stops instead. To run unattended, pass `--yolo` or pick a mode that does not prompt for the
+tiers you need. The process exit status follows the run.
 
 ## Execpolicy
 

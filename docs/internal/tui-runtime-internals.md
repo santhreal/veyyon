@@ -3,7 +3,7 @@
 This document maps the non-theme runtime path from terminal input to rendered output in interactive mode. It focuses on behavior in `packages/tui` and its integration from `packages/coding-agent` controllers.
 
 > **Editing the rendering engine itself?** Read
-> [`tui-core-renderer.md`](./tui-core-renderer.md) first — it documents the
+> [`tui-core-renderer.md`](./tui-core-renderer.md) first: it documents the
 > failure modes (yank / corruption / flash / width crashes) and the invariants
 > the render planner, native-scrollback bookkeeping, and capability detection
 > must not violate.
@@ -62,7 +62,7 @@ A forced render (`requestRender(true)`) queues a viewport repaint or explicit se
 5. Queries Kitty keyboard protocol support (`CSI ? u`), then enables protocol flags if supported; otherwise enables modifyOtherKeys fallback after a short timeout.
 6. Queries OSC 11 background color and Mode 2031 appearance notifications for dark/light theme detection.
 7. Queries OSC 99 notification capabilities.
-8. Probes DEC private modes 2026 (synchronized output), 2048 (in-band resize), 2031, and the xterm scroll-to-bottom modes via DECRQM. (Earlier builds also polled OSC 11 every 30s for terminals without Mode 2031, but each poll wiped the user's active text selection on several terminals — issue #3297 — so mid-session theme tracking now relies on Mode 2031 push notifications only, with a scoped fallback on native Windows Terminal after DECRQM confirms 2031 unsupported.)
+8. Probes DEC private modes 2026 (synchronized output), 2048 (in-band resize), 2031, and the xterm scroll-to-bottom modes via DECRQM. (Earlier builds also polled OSC 11 every 30s for terminals without Mode 2031, but each poll wiped the user's active text selection on several terminals, issue #3297, so mid-session theme tracking now relies on Mode 2031 push notifications only, with a scoped fallback on native Windows Terminal after DECRQM confirms 2031 unsupported.)
 
 `StdinBuffer` behavior:
 
@@ -118,7 +118,7 @@ This keeps key parsing/editor mechanics in `packages/tui` and mode semantics in 
 3. Extract and strip `CURSOR_MARKER`, normalize lines, slice the visible window, composite overlays into the window slice (screen coordinates; overlays freeze commits).
 4. Emit one of: gesture-driven full paint (initial / session replace / resize), scroll-append (chunk rows only), in-window row diff, or seam rewrite (chunk + full window).
 
-Native scrollback always equals the committed frame prefix — rows enter history exactly once, in order, when the seam says they are final. There are no viewport probes and no deferred reconciliation; see [`tui-core-renderer.md`](./tui-core-renderer.md).
+Native scrollback always equals the committed frame prefix, rows enter history exactly once, in order, when the seam says they are final. There are no viewport probes and no deferred reconciliation; see [`tui-core-renderer.md`](./tui-core-renderer.md).
 
 Render writes use synchronized output mode (`CSI ? 2026 h/l`) when enabled; capability detection, DECRQM, or `VEYYON_NO_SYNC_OUTPUT` can disable the wrappers while leaving autowrap discipline on.
 
@@ -133,9 +133,9 @@ Critical safety checks in `TUI`:
 
 These constraints are runtime guards plus component conventions; renderers should still return width-safe lines rather than rely on truncation.
 
-The deeper reasons these guards exist — why the renderer cannot observe scroll
+The deeper reasons these guards exist, why the renderer cannot observe scroll
 position, why ED3 (`CSI 3 J`) is confined to one path, and why the hot path
-clamps instead of throwing — are documented in
+clamps instead of throwing, are documented in
 [`tui-core-renderer.md`](./tui-core-renderer.md).
 
 ## Resize handling
@@ -146,7 +146,7 @@ Effects:
 
 - A resize is an explicit user gesture: outside multiplexers the engine erases and replays (`ED3` + full paint) so history rewraps at the new geometry; the commit ledger restarts from the replayed frame.
 - Inside terminal multiplexers, resize repaints the visible window in place after a settle debounce (issue #2088); pane history keeps its old wrap, like any shell output, because pane scrollback cannot be erased safely.
-- Terminals that re-report their size when the alternate screen buffer is toggled (Warp reports a height one row different for the alt buffer) take the in-place path too. The non-multiplexer fast path borrows the alternate screen for drag frames, so on these terminals each alt enter/leave emits a fresh resize event, which re-enters the fast path — a self-sustaining loop that floods ED3 full repaints with stable geometry. `resizeRepaintsInPlace()` (covering multiplexers and these terminals; overridable via `VEYYON_TUI_RESIZE_IN_PLACE`) routes them through the in-place repaint, which never touches the alt buffer.
+- Terminals that re-report their size when the alternate screen buffer is toggled (Warp reports a height one row different for the alt buffer) take the in-place path too. The non-multiplexer fast path borrows the alternate screen for drag frames, so on these terminals each alt enter/leave emits a fresh resize event, which re-enters the fast path: a self-sustaining loop that floods ED3 full repaints with stable geometry. `resizeRepaintsInPlace()` (covering multiplexers and these terminals; overridable via `VEYYON_TUI_RESIZE_IN_PLACE`) routes them through the in-place repaint, which never touches the alt buffer.
 - Overlay visibility can depend on terminal dimensions (`OverlayOptions.visible`); focus is corrected when overlays become non-visible after resize.
 
 ## Streaming and incremental UI updates

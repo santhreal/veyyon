@@ -6,10 +6,10 @@
 - Entry: `packages/coding-agent/src/tools/resolve.ts`
 - Model-facing prompt: `packages/coding-agent/src/prompts/tools/resolve.md`
 - Key collaborators:
-  - `docs/internal/resolve-tool-runtime.md` — preview/apply runtime reference
-  - `packages/coding-agent/src/extensibility/custom-tools/loader.ts` — forwards custom pending actions into the queue
-  - `packages/coding-agent/src/tools/ast-edit.ts` — built-in preview producer example
-  - `packages/coding-agent/src/session/agent-session.ts` — tool-choice queue, standing resolve handler, and invoker access
+  - `docs/internal/resolve-tool-runtime.md`: preview/apply runtime reference
+  - `packages/coding-agent/src/extensibility/custom-tools/loader.ts`: forwards custom pending actions into the queue
+  - `packages/coding-agent/src/tools/ast-edit.ts`: built-in preview producer example
+  - `packages/coding-agent/src/session/agent-session.ts`: tool-choice queue, standing resolve handler, and invoker access
 
 ## Inputs
 
@@ -27,7 +27,7 @@
   - `extra?`
   - `sourceToolName?`
   - `label?`
-  - `sourceResultDetails?` — original `result.details` from the apply/reject callback when present
+  - `sourceResultDetails?`: original `result.details` from the apply/reject callback when present
 - If `discard` has no custom reject callback, or the reject callback returns `undefined`, the default success payload is `Discarded: <label>. Reason: <reason>`.
 - The TUI renderer is inline and merges call+result into one block.
 
@@ -35,7 +35,7 @@
 1. Preview-producing code can call `queueResolveHandler(...)` with a label, source tool name, `apply(reason, extra?)` callback, and optional `reject(reason, extra?)` callback.
 2. Modes can also register a standing resolve handler through `session.setStandingResolveHandler(...)`; `resolve.execute()` consults it only when no queued invoker is active.
 3. `queueResolveHandler(...)` registers a non-forcing pending invoker on the session's tool-choice queue under a unique `pending-action:<sourceTool>:<seq>` id. It does NOT force a tool choice and does NOT steer a reminder.
-4. While a preview is pending, the session's `getToolChoice` (`nextToolChoiceDirective`) returns a `SoftToolRequirement` (`toolName: "resolve"`) carrying the resolve reminder — a non-consuming peek. The agent runtime injects the reminder once and forces `tool_choice: resolve` for one turn only if the model declines (see `docs/internal/resolve-tool-runtime.md`). The reminder text is:
+4. While a preview is pending, the session's `getToolChoice` (`nextToolChoiceDirective`) returns a `SoftToolRequirement` (`toolName: "resolve"`) carrying the resolve reminder: a non-consuming peek. The agent runtime injects the reminder once and forces `tool_choice: resolve` for one turn only if the model declines (see `docs/internal/resolve-tool-runtime.md`). The reminder text is:
 
 ```text
 <system-reminder>
@@ -63,7 +63,7 @@ This is a preview. Call the `resolve` tool to apply or discard these changes.
 ## Side Effects
 - Session state
   - Consumes or invokes the current pending action through the pending invoker, tool-choice queue, or standing handler; `resolve` does not maintain its own stack.
-  - Does not steer a reminder or force a tool choice for previews — the reminder rides a non-forcing `SoftToolRequirement` and the agent runtime forces `resolve` only on non-compliance.
+  - Does not steer a reminder or force a tool choice for previews: the reminder rides a non-forcing `SoftToolRequirement` and the agent runtime forces `resolve` only on non-compliance.
   - On queued apply failure, requeues the same pending action before rethrowing so the model can discard or retry instead of losing the pending preview.
 - User-visible prompts / interactive UI
   - The visible effect depends on the preview-producing tool and the resolve renderer.

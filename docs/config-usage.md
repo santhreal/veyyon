@@ -79,7 +79,7 @@ A named profile (`veyyon --profile <name>`, the `--alias` shortcut, `/profile <n
 
 The relocation is uniform across the native provider (`builtin.ts`) and the generic `config.ts` helpers, so it covers slash commands, rules, prompts, instructions, hooks, tools, extensions, settings, skills, and MCP, plus the top-level `SYSTEM.md` / `RULES.md` / `AGENTS.md` files and runtime state (sessions, blobs, `agent.db`). A profile sees only its own Veyyon config, never the default profile's `~/.veyyon/profiles/default/agent`.
 
-Keybindings get a one-time seed rather than a live merge: a new named profile copies the default profile's `~/.veyyon/profiles/default/agent/keybindings.*` once (at `profile new`, or on first launch of an older profile that has no keybindings file). After that the profile's own file is the only one read — later edits to the default profile's keybindings do not flow into other profiles.
+Keybindings get a one-time seed rather than a live merge: a new named profile copies the default profile's `~/.veyyon/profiles/default/agent/keybindings.*` once (at `profile new`, or on first launch of an older profile that has no keybindings file). After that the profile's own file is the only one read, later edits to the default profile's keybindings do not flow into other profiles.
 
 The other source bases are not profile-scoped and load identically under every profile: the external-tool bases (`~/.claude`, `~/.codex`, `~/.gemini`) belong to those tools, and the project-level bases (`<cwd>/.veyyon`, `<cwd>/.claude`, ...) are keyed to the working directory. Throughout this document, read `~/.veyyon/profiles/default/agent` as shorthand for the active profile's agent directory.
 

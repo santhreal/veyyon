@@ -13,4 +13,4 @@ goal mode (`/goal`) add gating on top of the default prompt stack.
 Edit tool prompts switch with `edit.mode` (the hashline prompt when hashline is active).
 
 There is no `backends.toml`-driven catalog or per-backend prompt tuning, and `apply_patch` is not the
-default edit surface — Veyyon uses hashline by default.
+default edit surface, Veyyon uses hashline by default.

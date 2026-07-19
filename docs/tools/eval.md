@@ -2,28 +2,28 @@
 
 > Execute Python or JavaScript code in persistent cell-based runtimes.
 
-> **Notice:** Do not shell out to `python -c`/`python -e`, `bun -e`, or `node -e` via the `bash` tool for ad-hoc code execution. Use this tool instead — it gives you persistent state across cells, structured `display()` output, image/JSON capture, and proper cancellation/timeout handling that one-shot `-e`/`-c` invocations cannot provide.
+> **Notice:** Do not shell out to `python -c`/`python -e`, `bun -e`, or `node -e` via the `bash` tool for ad-hoc code execution. Use this tool instead: it gives you persistent state across cells, structured `display()` output, image/JSON capture, and proper cancellation/timeout handling that one-shot `-e`/`-c` invocations cannot provide.
 
 ## Source
 - Entry: `packages/coding-agent/src/tools/eval.ts`
 - Model-facing prompt: `packages/coding-agent/src/prompts/tools/eval.md`
 - Key collaborators:
-  - `packages/coding-agent/src/eval/backend.ts` — backend execution contract
-  - `packages/coding-agent/src/eval/agent-bridge.ts` — host-side `agent()` bridge into the subagent executor
-  - `packages/coding-agent/src/eval/js/executor.ts` — JS backend adapter
-  - `packages/coding-agent/src/eval/js/worker-core.ts` — JS execution, VM context, display/log capture
-  - `packages/coding-agent/src/eval/js/shared/prelude.txt` — JS global helper installer
-  - `packages/coding-agent/src/eval/js/shared/helpers.ts` — JS filesystem/text/env helper implementations
-  - `packages/coding-agent/src/eval/py/index.ts` — Python backend adapter
-  - `packages/coding-agent/src/eval/py/executor.ts` — kernel session retention, reset, cleanup
-  - `packages/coding-agent/src/eval/py/kernel.ts` — subprocess NDJSON runner protocol, display capture
-  - `packages/coding-agent/src/eval/py/prelude.py` — Python helper functions and status events
-  - `packages/coding-agent/src/session/streaming-output.ts` — truncation, artifacts, streamed chunks
-  - `docs/python-repl.md` — Python kernel/runner internals
+  - `packages/coding-agent/src/eval/backend.ts`: backend execution contract
+  - `packages/coding-agent/src/eval/agent-bridge.ts`: host-side `agent()` bridge into the subagent executor
+  - `packages/coding-agent/src/eval/js/executor.ts`: JS backend adapter
+  - `packages/coding-agent/src/eval/js/worker-core.ts`: JS execution, VM context, display/log capture
+  - `packages/coding-agent/src/eval/js/shared/prelude.txt`: JS global helper installer
+  - `packages/coding-agent/src/eval/js/shared/helpers.ts`: JS filesystem/text/env helper implementations
+  - `packages/coding-agent/src/eval/py/index.ts`: Python backend adapter
+  - `packages/coding-agent/src/eval/py/executor.ts`: kernel session retention, reset, cleanup
+  - `packages/coding-agent/src/eval/py/kernel.ts`: subprocess NDJSON runner protocol, display capture
+  - `packages/coding-agent/src/eval/py/prelude.py`: Python helper functions and status events
+  - `packages/coding-agent/src/session/streaming-output.ts`: truncation, artifacts, streamed chunks
+  - `docs/python-repl.md`: Python kernel/runner internals
 
 ## Inputs
 
-Tool parameters are a JSON object with a single `cells` field — an ordered array of cell objects. Each cell is a structured record; there is no `*** Cell` header parsing, no language sniffing, and no implicit single-cell fallback. Cells run in array order; state persists within each language across cells and across tool calls.
+Tool parameters are a JSON object with a single `cells` field, an ordered array of cell objects. Each cell is a structured record; there is no `*** Cell` header parsing, no language sniffing, and no implicit single-cell fallback. Cells run in array order; state persists within each language across cells and across tool calls.
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -34,7 +34,7 @@ Each `EvalCellInput` (from `evalCellSchema` in `packages/coding-agent/src/tools/
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
 | `language` | `"py" \| "js"` | Yes | Backend selector. `"py"` maps to the IPython-style subprocess kernel (`python` backend); `"js"` maps to the persistent JavaScript VM. |
-| `code` | `string` | Yes | Cell body, verbatim. JSON-encoded — embed newlines, quotes, and indentation directly; no fences, no headers. |
+| `code` | `string` | Yes | Cell body, verbatim. JSON-encoded, embed newlines, quotes, and indentation directly; no fences, no headers. |
 | `title` | `string` | No | Short label rendered in the transcript (e.g. `"imports"`, `"load config"`). |
 | `timeout` | `integer` | No | Per-cell timeout in seconds, clamped to `1..3600`. Defaults to 30 when omitted. |
 | `reset` | `boolean` | No | Wipe this cell's language kernel before running. Reset is per-language: a `py` cell's reset does not touch the JS VM and vice versa. Defaults to `false`. |
@@ -84,7 +84,7 @@ Side-channel artifacts:
 
 ## Flow
 
-1. `EvalTool.execute()` in `packages/coding-agent/src/tools/eval.ts` receives `params.cells` already validated by the Zod schema — no string parsing step.
+1. `EvalTool.execute()` in `packages/coding-agent/src/tools/eval.ts` receives `params.cells` already validated by the Zod schema: no string parsing step.
 2. For each cell, `execute()` maps `cell.language` to an `EvalLanguage` (`"py"` → `"python"`, `"js"` → `"js"`) and calls `resolveBackend(session, language)`:
    - `python` is gated on `resolveEvalBackends(session).python` (the `eval.py` setting, overridden by the `VEYYON_PY` env flag) and `pythonBackend.isAvailable(session)`.
    - `js` is gated on `resolveEvalBackends(session).js` (the `eval.js` setting, overridden by the `VEYYON_JS` env flag).
@@ -111,7 +111,7 @@ Side-channel artifacts:
 
 ### Backend selection
 
-Backend choice is **explicit per cell** — there is no auto-detection.
+Backend choice is **explicit per cell**, there is no auto-detection.
 
 - `language: "py"` → Python (IPython-style subprocess kernel) backend
 - `language: "js"` → JavaScript VM backend
@@ -126,7 +126,7 @@ Implemented in `packages/coding-agent/src/eval/js/worker-core.ts`, `packages/cod
 - `reset: true` calls `resetVmContext(sessionKey)` before the cell executes; reset is destructive for all live runs on that JS session
 - Top-level `await` and bare `return` are supported by wrapping code in an async IIFE when `wrapCode()` sees `await` or `return`
 - Top-level static `import ... from ...` and dynamic `import(...)` calls are routed through `rewriteImports()`, which sends them via `__veyyon_import__` so the specifier resolves against the session cwd. Dynamic-import call sites are swapped for a guarded shim (`typeof __veyyon_import__ === "function" ? __veyyon_import__ : (s, o) => import(s, o)`) rather than the bare helper identifier: functions handed to puppeteer (`tab.evaluate`, `page.evaluate`, ...) are serialized with `Function.prototype.toString()` and re-evaluated inside the browser page, where the worker-injected helper does not exist, so the shim falls back to native dynamic import there
-- Module cache is busted for **local** imports between cells so edits to source files are picked up without restarting the runtime. `__veyyon_import__` deletes `require.cache[absPath]` before re-importing whenever the original specifier is a filesystem path: relative (`./x`, `../x`, `.`, `..`), POSIX-absolute (`/...`), home-prefixed (`~/...`), or Windows drive-letter (`C:\...` / `C:/...`). Bare specifiers (`react`, `lodash/x`) and URL/scheme specifiers (`node:fs`, `file://...`, `https://...`) are left in cache so package identity stays stable across cells. The cache-bust only fires when the resolved target is an absolute path — unresolved bare-package fallbacks (`resolveImportSpecifier()` returning the original specifier) skip it.
+- Module cache is busted for **local** imports between cells so edits to source files are picked up without restarting the runtime. `__veyyon_import__` deletes `require.cache[absPath]` before re-importing whenever the original specifier is a filesystem path: relative (`./x`, `../x`, `.`, `..`), POSIX-absolute (`/...`), home-prefixed (`~/...`), or Windows drive-letter (`C:\...` / `C:/...`). Bare specifiers (`react`, `lodash/x`) and URL/scheme specifiers (`node:fs`, `file://...`, `https://...`) are left in cache so package identity stays stable across cells. The cache-bust only fires when the resolved target is an absolute path: unresolved bare-package fallbacks (`resolveImportSpecifier()` returning the original specifier) skip it.
 - The prelude installs globals:
   - `display`, `print`, and a `console` bridge
   - `read`, `write`, `env`, `output`
@@ -144,7 +144,7 @@ Implemented in `packages/coding-agent/src/eval/js/worker-core.ts`, `packages/cod
   - plain objects/arrays become JSON outputs
   - `{ type: "image", data, mimeType }` becomes an image output
   - scalars become text
-- The VM runs in the host worker's global scope: user code gets the worker's real `process` (intentionally not subsetted — subsetting it segfaulted alongside puppeteer/worker_threads), the injected `fs`, `require`, `createRequire`, and `webcrypto`, plus host globals like `Buffer`, `fetch`, `Blob`, `File`, `Headers`, `Request`, and `Response`
+- The VM runs in the host worker's global scope: user code gets the worker's real `process` (intentionally not subsetted: subsetting it segfaulted alongside puppeteer/worker_threads), the injected `fs`, `require`, `createRequire`, and `webcrypto`, plus host globals like `Buffer`, `fetch`, `Blob`, `File`, `Headers`, `Request`, and `Response`
 - Concurrent runs on the same VM are not queued end-to-end. Synchronous JS still runs on the single event loop; awaited regions can interleave with sibling runs.
 
 ### Python runtime
@@ -173,7 +173,7 @@ Implemented in `packages/coding-agent/src/eval/py/executor.ts`, `packages/coding
 
 ### Oneshot completion helper (`completion`)
 
-Both runtimes expose `completion()` — a single stateless completion against a model tier. It is intentionally minimal: no conversation history, no agent-visible tools, pure text in / text (or object) out. Implemented host-side in `packages/coding-agent/src/eval/completion-bridge.ts` and routed through the existing tool bridge under the reserved name `__completion__`.
+Both runtimes expose `completion()`, a single stateless completion against a model tier. It is intentionally minimal: no conversation history, no agent-visible tools, pure text in / text (or object) out. Implemented host-side in `packages/coding-agent/src/eval/completion-bridge.ts` and routed through the existing tool bridge under the reserved name `__completion__`.
 
 - Signatures:
   - JS: `await completion(prompt, { model?, system?, schema? })`
@@ -188,7 +188,7 @@ Both runtimes expose `completion()` — a single stateless completion against a 
 
 ### Subagent helper (`agent`)
 
-Both runtimes expose `agent()` — a single subagent invocation routed through `packages/coding-agent/src/eval/agent-bridge.ts` into the same `runSubprocess(...)` path used by the `task` tool. It uses the current eval session's spawn policy and inherits the parent eval executor id, so parent and subagent code share JS/Python runtime state.
+Both runtimes expose `agent()`, a single subagent invocation routed through `packages/coding-agent/src/eval/agent-bridge.ts` into the same `runSubprocess(...)` path used by the `task` tool. It uses the current eval session's spawn policy and inherits the parent eval executor id, so parent and subagent code share JS/Python runtime state.
 
 - Signatures:
   - JS: `await agent(prompt, agent?, model?, label?, schema?)` or `await agent(prompt, { agent?, model?, label?, schema?, handle? })`
@@ -197,7 +197,7 @@ Both runtimes expose `agent()` — a single subagent invocation routed through `
 - `model` overrides the selected agent's model. Without it, normal per-agent settings and the agent frontmatter model apply.
 - Shared background is passed via files: write a `local://` file and reference it in the prompt. `label` controls the `agent://<id>` output label prefix.
 - `schema` passes a JSON Schema to the subagent structured-output path. When present, the helper parses the final JSON text and returns an object.
-- `handle` (default off) returns a DAG node dict — `{ text, output, handle: "agent://<id>", id, agent }`, plus a parsed `data` field when `schema` is set — instead of the bare output, so a downstream stage can reference the transcript by handle.
+- `handle` (default off) returns a DAG node dict, `{ text, output, handle: "agent://<id>", id, agent }`, plus a parsed `data` field when `schema` is set, instead of the bare output, so a downstream stage can reference the transcript by handle.
 - Spawn restrictions use `session.getSessionSpawns()` exactly like the `task` tool. Eval-driven subagent recursion is capped at depth 3.
 - JS and Python both expose `parallel(thunks)` and `pipeline(items, ...stages)`; both use a bounded async/threaded pool whose width tracks the `task.maxConcurrency` setting (the same ceiling the `task` tool uses; `0` = run every item at once), preserve item order, and propagate rejections. The width is fetched live from the host via the `__concurrency__` bridge, so the helpers no longer take a `concurrency` argument.
 - Errors surface as exceptions: unknown or disabled agent, disallowed spawn, recursion cap, subagent failure, or invalid structured output all fail the eval cell.
@@ -271,7 +271,7 @@ A single tool call can mix Python and JS cells. Persistence is per language runt
 - Parent agents and subagents share eval state bidirectionally when a subagent inherits the parent's executor id. Mutations in either direction are visible to the other participant.
 - Async regions of concurrent runs can interleave. Synchronous JS still blocks the VM event loop; synchronous Python still contends on the GIL.
 - Cancelling one run is destructive to the shared backend executor. This is intentional: JS worker termination and Python SIGINT/subprocess shutdown are the only reliable way to interrupt arbitrary user code.
-- `reset: true` is destructive for every live run on that backend session id. Concurrent Python resets coalesce — a reset already in flight is awaited rather than duplicated, and runs queued behind it proceed on the freshly-restarted kernel.
+- `reset: true` is destructive for every live run on that backend session id. Concurrent Python resets coalesce: a reset already in flight is awaited rather than duplicated, and runs queued behind it proceed on the freshly-restarted kernel.
 
 ## Notes
 

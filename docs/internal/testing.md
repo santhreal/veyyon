@@ -13,14 +13,14 @@ From the repo root (or `--cwd=packages/coding-agent` for package-local runs):
 | `bun run check:ts` | Biome + `tsc --noEmit` across every package. |
 | `bun run test` | The local TS test runner. |
 | `bun run ci:test:ts:workspace` | The exact workspace bucket CI runs. |
-| `bun run ci:build:native` | Build the `veyyon_natives` addon — required before tests that touch native paths. |
+| `bun run ci:build:native` | Build the `veyyon_natives` addon, required before tests that touch native paths. |
 
 Native/integration tests need the addon built first (`ci:build:native`); the CI test
 jobs download a prebuilt addon artifact instead.
 
 ## What a test must do
 
-A test defends one **concrete, externally observable contract** — a behavior, output
+A test defends one **concrete, externally observable contract**, a behavior, output
 shape, state transition, error mapping, or a regression-prone parsing boundary. If you
 can't name the contract, don't add the test.
 
@@ -48,7 +48,7 @@ value, exit code, or output bytes that actually matter.
 ## Depth by risk
 
 Scale coverage to what the code does. A shipped rule or user-visible surface wants the
-positive case, a negative twin, adversarial/boundary inputs, and — where it applies —
+positive case, a negative twin, adversarial/boundary inputs, and, where it applies,
 property tests, a differential check against a reference, a perf benchmark, and an e2e
 run through the real CLI. A tiny low-risk change doesn't need a test unless it protects
 a real contract or fixes a regression-prone edge.

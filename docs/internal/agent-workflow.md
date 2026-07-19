@@ -13,7 +13,7 @@ This page is the loop that ties them together: queue → change → gate → shi
 sessions and context resets:
 
 - Row shape: `id | affected files | problem | acceptance criteria | status`.
-- Every finding — an agent's own, a subagent's, a test failure, a doc drift — is
+- Every finding, an agent's own, a subagent's, a test failure, a doc drift, is
   appended **the moment it is found**. A finding that lives only in chat context
   is lost work.
 - Fixed rows are flipped to `done` with a one-line record of the change, in place.
@@ -27,10 +27,10 @@ that doesn't collide with other active sessions, and drains it.
 
 1. **Read before editing.** Open the actual code; never patch from a guess or a
    summary. `rg -n` for definitions and duplicate candidates before adding any
-   helper, constant, or list — if an owner exists, import it (one definitional
+   helper, constant, or list, if an owner exists, import it (one definitional
    home per value/behavior).
 2. **Edit in batches.** Land a coherent unit (a refactor, a module, a test suite),
-   not one-line dribbles. Don't run the full gate after every tiny edit — batch,
+   not one-line dribbles. Don't run the full gate after every tiny edit, batch,
    then gate.
 3. **Gate.** Typecheck the touched packages (`bunx tsc --noEmit` per package),
    run the targeted test slice (`bun test <files>`), then the repo gate
@@ -44,7 +44,7 @@ that doesn't collide with other active sessions, and drains it.
    anything an intermediate build missed.
 5. **Record.** Flip the ledger row (or append a new one for anything discovered
    en route), and put user-visible changes under the affected package's
-   `## [Unreleased]` changelog section *as part of the same unit* — the release
+   `## [Unreleased]` changelog section *as part of the same unit*, the release
    flow finalizes whatever sits there, so an unrecorded change ships silently
    undocumented.
 
@@ -74,7 +74,7 @@ everything that leaves the machine is gated on explicit per-action approval.
 | Ledger + changelog `[Unreleased]` upkeep | npm publish, Homebrew, GitHub Releases (CI does these, but the tag push that triggers them is human-gated) |
 | Docs under `docs/` and handbook sources | Opening/commenting on GitHub issues & PRs, any `gh` call against a public repo |
 
-Approval is **per action**, not per session — one approved push does not
+Approval is **per action**, not per session, one approved push does not
 pre-approve the next. Outward GitHub actions run under the project's designated
 account only (verify with `gh auth status` first).
 
@@ -82,7 +82,7 @@ account only (verify with `gh auth status` first).
 
 Production is two independent surfaces (see [`deployment.md`](./deployment.md)):
 
-**CLI binaries** — the agent's steady-state job is keeping `main` *release-ready*:
+**CLI binaries**, the agent's steady-state job is keeping `main` *release-ready*:
 green `bun run check`, changelogs current under `[Unreleased]`, ledger drained.
 The actual cut is one human-approved command:
 
@@ -96,7 +96,7 @@ Release-shaped runs route to GitHub-hosted runners, so the cut does not depend o
 the self-hosted fleet. If the watch is interrupted, `bun run release watch`
 re-attaches to CI for the current commit.
 
-**Website** — `bun run site:build` locally at will (the brand check is part of the
+**Website**, `bun run site:build` locally at will (the brand check is part of the
 gate); `bun run site:deploy` only with approval. If handbook sources changed,
 `mdbook build` in `docs/handbook` first; if the install scripts changed, deploy
 the `veyyon-get` project too.
@@ -106,7 +106,7 @@ the `veyyon-get` project too.
 A release is verified by the **shipped install path**, never a local `bun`/`cargo`
 artifact: on a clean environment, uninstall any prior copy, run
 `curl -fsSL https://get.veyyon.dev | sh` (or `install.ps1`), and exercise the
-installed binary — subcommands, output formats, error paths. Checksum
+installed binary, subcommands, output formats, error paths. Checksum
 verification failing closed, PATH wiring, and completions are part of the product
 surface; a dev build proves none of them. Install-flow friction found this way is
 a ledger row like any other bug.
@@ -116,7 +116,7 @@ a ledger row like any other bug.
 - Release CI failures: re-attach with `bun run release watch`; the recovery
   procedures live in [`docs/internal/runbooks/`](./runbooks/README.md).
 - A bad deploy or release is rolled forward (fix + new cut), not force-pushed
-  away — tags and published assets are immutable once installers can see them.
+  away, tags and published assets are immutable once installers can see them.
 - Anything an agent cannot fix locally (expired credentials, runner outages,
   account-level Cloudflare/GitHub state) is a human-blocker: record it in the
   ledger with what was tried, and continue on other rows rather than stopping.

@@ -17,7 +17,7 @@ It covers tool behavior, runner lifecycle, environment handling, execution seman
 
 ## What eval's Python backend is
 
-The `eval` tool executes one or more Python cells inside a retained `python` subprocess that speaks NDJSON over stdin/stdout. No Jupyter gateway and no extra pip dependencies are required — a vanilla Python 3.8+ interpreter is enough. Rich `display()` output (PIL, pandas, plotly, matplotlib figures) keeps working because the wrapper implements MIME-bundle dispatch.
+The `eval` tool executes one or more Python cells inside a retained `python` subprocess that speaks NDJSON over stdin/stdout. No Jupyter gateway and no extra pip dependencies are required, a vanilla Python 3.8+ interpreter is enough. Rich `display()` output (PIL, pandas, plotly, matplotlib figures) keeps working because the wrapper implements MIME-bundle dispatch.
 
 Tool params:
 
@@ -27,7 +27,7 @@ Tool params:
     language: "py" | "js";
     code: string;
     title?: string;
-    timeout?: number; // seconds, clamped to 1..3600, default 30. Inactivity budget — see "Cell timeout".
+    timeout?: number; // seconds, clamped to 1..3600, default 30. Inactivity budget, see "Cell timeout".
     reset?: boolean; // reset this cell's selected runtime before execution
   }>;
 }
@@ -41,10 +41,10 @@ Each Python kernel is a single subprocess: `<resolved-python> -u <runner.py>`. T
 
 Kernel startup sequence:
 
-1. Availability check (`checkPythonKernelAvailability`) — verifies that a Python interpreter resolves and runs.
+1. Availability check (`checkPythonKernelAvailability`): verifies that a Python interpreter resolves and runs.
 2. Spawn `python -u runner.py` with filtered env and `cwd`.
 3. Send an init request that runs `os.chdir(cwd)`, injects env entries, and adds `cwd` to `sys.path`.
-4. Execute `PYTHON_PRELUDE` (idempotent — only initializes once per process).
+4. Execute `PYTHON_PRELUDE` (idempotent: only initializes once per process).
 
 Kernel shutdown:
 
@@ -168,7 +168,7 @@ Python prelude helpers include `agent(prompt, *, agent="task", model=None, label
 
 Each eval cell `timeout` is in seconds, defaults to 30, and is clamped to `1..3600`. It is a **wall-clock budget on the cell's own work** that the watchdog (`IdleTimeout`, `src/eval/idle-timeout.ts`) enforces, **but it is suspended while a host-side `agent()`/`parallel()`/`completion()` bridge call is in flight**: those calls emit synthetic pause/resume timeout-control status events (`withBridgeTimeoutPause`, `src/eval/bridge-timeout.ts`) that pause the watchdog entirely and start a fresh timeout window when control returns to the runtime, so a long fanout or a slow completion runs to completion instead of being killed mid-stream. Pause is reference-counted because `parallel()` can have multiple bridge calls in flight at once.
 
-The pause/resume events are the **sole** mechanism that suspends the budget. Everything else the cell does — compute, `stdout`/`stderr`, `log()`/`phase()`, and ordinary (non-agent) tool calls — counts against `timeout`, so a cell that is not delegating to an agent/completion is bounded by a plain wall-clock timeout. The tool combines the caller abort signal, the session abort signal, and the watchdog's signal with `AbortSignal.any(...)`; no wall-clock deadline is passed to the backend, so neither runtime arms a competing fixed timer.
+The pause/resume events are the **sole** mechanism that suspends the budget. Everything else the cell does, compute, `stdout`/`stderr`, `log()`/`phase()`, and ordinary (non-agent) tool calls, counts against `timeout`, so a cell that is not delegating to an agent/completion is bounded by a plain wall-clock timeout. The tool combines the caller abort signal, the session abort signal, and the watchdog's signal with `AbortSignal.any(...)`; no wall-clock deadline is passed to the backend, so neither runtime arms a competing fixed timer.
 
 ### Kernel execution cancellation
 
@@ -179,7 +179,7 @@ On abort/timeout:
 - Result includes `cancelled=true`; a kernel timeout is annotated as `eval cell timed out after <n>s; kernel interrupted but remains running. Reset the kernel via { reset: true } if state appears corrupted.`
 - Between requests the runner installs `SIG_IGN` for SIGINT so a stray cancel does not tear down the kernel.
 
-If the runner does not emit `done` within 5s of the interrupt (`INTERRUPT_ESCALATION_MS` — e.g. stuck in C code holding the GIL), the host shuts the subprocess down (escalating `exit` → `SIGTERM` → `SIGKILL`), the cell is annotated as kernel-killed, and the kernel is recreated on the next call.
+If the runner does not emit `done` within 5s of the interrupt (`INTERRUPT_ESCALATION_MS`, e.g. stuck in C code holding the GIL), the host shuts the subprocess down (escalating `exit` → `SIGTERM` → `SIGKILL`), the cell is annotated as kernel-killed, and the kernel is recreated on the next call.
 
 ### stdin behavior
 
@@ -230,17 +230,17 @@ Output is streamed through `OutputSink` and may be persisted to artifact storage
 
 ## Operational troubleshooting
 
-- **Python backend not available** — Check `eval.py`, `VEYYON_PY`, and that `python`/`python3` is on PATH. If preflight fails and `eval.js` is enabled, use a `js` cell.
-- **No Python on PATH** — Install a system Python 3.8+ or place a venv at `~/.veyyon/python-env`. `veyyon setup python --check` reports the resolved interpreter.
-- **Execution hangs then times out** — Increase tool `timeout` (max 3600s) if workload is legitimate. For stuck native code, cancellation triggers `SIGINT` first then escalates; the session restarts on the next request.
-- **stdin/input prompts in Python code** — `input()` is not supported; pass data programmatically.
-- **Working directory errors** — Tool validates `cwd` exists and is a directory before execution.
+- **Python backend not available**: Check `eval.py`, `VEYYON_PY`, and that `python`/`python3` is on PATH. If preflight fails and `eval.js` is enabled, use a `js` cell.
+- **No Python on PATH**: Install a system Python 3.8+ or place a venv at `~/.veyyon/python-env`. `veyyon setup python --check` reports the resolved interpreter.
+- **Execution hangs then times out**: Increase tool `timeout` (max 3600s) if workload is legitimate. For stuck native code, cancellation triggers `SIGINT` first then escalates; the session restarts on the next request.
+- **stdin/input prompts in Python code**: `input()` is not supported; pass data programmatically.
+- **Working directory errors**: Tool validates `cwd` exists and is a directory before execution.
 
 ## Relevant environment variables
 
 Each variable also accepts its `VEYYON_`-prefixed primary name (e.g. `VEYYON_PY`); the `VEYYON_`/`OMP_` value wins when both are set.
 
-- `VEYYON_PY` / `VEYYON_JS` — eval backend exposure overrides
-- `VEYYON_PYTHON_SKIP_CHECK=1` — bypass Python preflight/warm checks
-- `VEYYON_PYTHON_INTEGRATION=1` — enable gated integration tests that spawn a real Python
-- `VEYYON_PYTHON_IPC_TRACE=1` — log NDJSON frames exchanged with the runner subprocess
+- `VEYYON_PY` / `VEYYON_JS`: eval backend exposure overrides
+- `VEYYON_PYTHON_SKIP_CHECK=1`: bypass Python preflight/warm checks
+- `VEYYON_PYTHON_INTEGRATION=1`: enable gated integration tests that spawn a real Python
+- `VEYYON_PYTHON_IPC_TRACE=1`: log NDJSON frames exchanged with the runner subprocess

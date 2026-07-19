@@ -1,6 +1,6 @@
 # Settings
 
-`veyyon` resolves settings from built-in defaults, a persistent global config file, optional project-local config, one-shot CLI overlays, and in-memory runtime overrides. Reach for project settings when one repository needs a different provider set, model role, tool policy, memory backend, or UI behavior than your global defaults — without touching your machine-wide configuration.
+`veyyon` resolves settings from built-in defaults, a persistent global config file, optional project-local config, one-shot CLI overlays, and in-memory runtime overrides. Reach for project settings when one repository needs a different provider set, model role, tool policy, memory backend, or UI behavior than your global defaults, without touching your machine-wide configuration.
 
 Settings are stored as plain YAML mappings. Every key, its type, default, and enum values come from the settings schema, and you can inspect or change any of them with `veyyon config` or the interactive `/settings` panel.
 
@@ -22,7 +22,7 @@ Settings are stored as plain YAML mappings. Every key, its type, default, and en
 
 `VEYYON_CODING_AGENT_DIR` relocates the `~/.veyyon/profiles/default/agent` base directory. When it is set, the global `config.yml`, the auth store (`agent.db`), and everything else under the agent directory move with it. Use `veyyon config path` to print the active agent directory.
 
-Native project settings are intentionally scoped to the process working directory's `.veyyon/` folder — settings discovery does **not** walk ancestor directories looking for the nearest `.veyyon/`. Other discovery providers (Claude, Codex, Gemini, Cursor, OpenCode) can also contribute project-level settings from their own files; those are read-only from `veyyon` settings commands and can be turned off by provider id (see [Provider and source disabling](#provider-and-source-disabling)).
+Native project settings are intentionally scoped to the process working directory's `.veyyon/` folder, settings discovery does **not** walk ancestor directories looking for the nearest `.veyyon/`. Other discovery providers (Claude, Codex, Gemini, Cursor, OpenCode) can also contribute project-level settings from their own files; those are read-only from `veyyon` settings commands and can be turned off by provider id (see [Provider and source disabling](#provider-and-source-disabling)).
 
 ## Config file formats
 
@@ -80,7 +80,7 @@ This only controls the startup splash animation. It does not rerun setup or chan
 | record | A JSON object | e.g. `'{"bash":"prompt"}'`. Must parse and be a non-array object. |
 | string | Stored as given (trimmed) | Multi-word values are joined with spaces. |
 
-Keys must match a real schema path exactly. There is no shorthand — set `theme.dark`, not `theme`.
+Keys must match a real schema path exactly. There is no shorthand, set `theme.dark`, not `theme`.
 
 ### Where writes go
 
@@ -96,11 +96,11 @@ built-in defaults  <-  global config  <-  project config  <-  CLI overlays  <-  
 
 From highest to lowest:
 
-1. **Runtime overrides** — dedicated CLI flags and feature env vars applied in memory for the current process: `--model`, `--smol`, `--slow`, `--plan`, `--approval-mode`, `--auto-approve`/`--yolo`, `--hide-thinking`, `--advisor`, `--no-pty`, `--api-key`, and protocol-mode defaults. Never persisted.
-2. **CLI config overlays** — each `--config <file>`; later overlay files override earlier ones.
-3. **Project settings** — `<cwd>/.veyyon/settings.json` then `<cwd>/.veyyon/config.yml` (and contributions from other discovery providers at project level).
-4. **Global settings** — `~/.veyyon/profiles/default/agent/config.yml`.
-5. **Built-in defaults** — from the settings schema.
+1. **Runtime overrides**: dedicated CLI flags and feature env vars applied in memory for the current process: `--model`, `--smol`, `--slow`, `--plan`, `--approval-mode`, `--auto-approve`/`--yolo`, `--hide-thinking`, `--advisor`, `--no-pty`, `--api-key`, and protocol-mode defaults. Never persisted.
+2. **CLI config overlays**: each `--config <file>`; later overlay files override earlier ones.
+3. **Project settings**: `<cwd>/.veyyon/settings.json` then `<cwd>/.veyyon/config.yml` (and contributions from other discovery providers at project level).
+4. **Global settings**: `~/.veyyon/profiles/default/agent/config.yml`.
+5. **Built-in defaults**: from the settings schema.
 
 A key that is unset at every layer resolves to its schema default at read time.
 
@@ -128,7 +128,7 @@ Provider API keys are resolved separately (stored auth, OAuth, `models.yml`, env
 
 Layers are combined with a deep merge:
 
-- **Objects are deep-merged** — keys present only in a lower layer are kept; keys present in a higher layer override.
+- **Objects are deep-merged**: keys present only in a lower layer are kept; keys present in a higher layer override.
 - **Scalars and arrays are replaced wholesale** by the higher-precedence layer. A higher layer's array does not append to a lower layer's array.
 
 Use nested YAML mappings for dotted setting paths:
@@ -179,7 +179,7 @@ disabledProviders:
   - groq                # project array REPLACES the global array
 ```
 
-Array replacement is the most common surprise: the project's `disabledProviders` does not extend the global list — it becomes the entire list for that project. The same applies to `enabledModels`, `cycleOrder`, `extensions`, and every other array-typed setting.
+Array replacement is the most common surprise: the project's `disabledProviders` does not extend the global list, it becomes the entire list for that project. The same applies to `enabledModels`, `cycleOrder`, `extensions`, and every other array-typed setting.
 
 ## Project-local config
 
@@ -216,11 +216,11 @@ veyyon --config ./local/ci-settings.yml "check this failure"
 veyyon --config ./base.yml --config ./experiment.yml "try this model"
 ```
 
-Overlay paths are resolved relative to the process working directory (and `~` is expanded). Each overlay must parse as a YAML mapping; a missing file, invalid YAML, or a top-level array/scalar is a hard error — it does **not** silently fall back to lower-precedence settings.
+Overlay paths are resolved relative to the process working directory (and `~` is expanded). Each overlay must parse as a YAML mapping; a missing file, invalid YAML, or a top-level array/scalar is a hard error, it does **not** silently fall back to lower-precedence settings.
 
 ## Path-scoped arrays
 
-Two array settings — `enabledModels` and `disabledProviders` — accept path-scoped entries in addition to bare strings, so a single global config can behave differently per directory:
+Two array settings, `enabledModels` and `disabledProviders`, accept path-scoped entries in addition to bare strings, so a single global config can behave differently per directory:
 
 ```yaml
 enabledModels:
@@ -259,7 +259,7 @@ Only string values are kept; malformed scoped entries are ignored. Path scoping 
 | Model providers | `anthropic`, `openai`, `gemini`, `groq`, `ollama`, `openrouter` | Removes those backends from model selection, even when credentials are available. See [Providers](./providers.md). |
 | Discovery sources | `native`, `claude`, `codex`, `gemini`, `github`, `opencode`, `cursor`, `agents-md` | Stops that source from contributing context files, MCP servers, commands, skills, hooks, tools, prompts, or settings. See [Context files](./context-files.md). |
 
-Most provider-control use cases list model provider ids. Disabling the `claude` discovery source is different from disabling the `anthropic` model provider — one stops Claude-format config discovery, the other stops the Anthropic model backend.
+Most provider-control use cases list model provider ids. Disabling the `claude` discovery source is different from disabling the `anthropic` model provider, one stops Claude-format config discovery, the other stops the Anthropic model backend.
 
 Because arrays replace rather than append, a project that sets `disabledProviders` must list the complete desired set:
 
@@ -269,7 +269,7 @@ disabledProviders:
   - anthropic
   - openai
 
-# <repo>/.veyyon/config.yml — inside this repo ONLY groq is disabled
+# <repo>/.veyyon/config.yml: inside this repo ONLY groq is disabled
 disabledProviders:
   - groq
 ```
@@ -368,7 +368,7 @@ thinkingBudgets:
 
 ### Sampling
 
-A value of `-1` means "use the provider/model default" — `veyyon` does not send that parameter.
+A value of `-1` means "use the provider/model default", `veyyon` does not send that parameter.
 
 | Key | Type | Default | Notes |
 |---|---|---|---|
@@ -412,7 +412,7 @@ retry:
     # which role it is assigned to, and survives role reassignment.
     google/gemini-3-pro:
       - google-vertex/gemini-3-pro
-    # A `provider/*` KEY covers every model of a provider — current or
+    # A `provider/*` KEY covers every model of a provider: current or
     # future. A `provider/*` ENTRY keeps the failing model's id and swaps
     # the provider: google-antigravity/x -> google/x -> google-vertex/x.
     # Ids missing on the target provider are skipped (near-miss ids resolve
@@ -432,7 +432,7 @@ retry:
 | `retry.fallbackChains` | record | `{}` | Maps roles, model selectors, or `provider/*` wildcards to ordered fallback selectors. Keys containing `/` are model-oriented and win over roles: `provider/model-id` matches that exact model, `provider/*` matches every model of the provider. A `provider/*` *entry* keeps the failing model's id and swaps the provider. The `default` chain covers every assigned role without its own chain. Unknown models/providers or malformed chains are reported as config warnings at startup. |
 | `retry.fallbackRevertPolicy` | enum | `cooldown-expiry` | `cooldown-expiry` returns to the primary model once its suppression window ends; `never` stays on the fallback until switched manually. |
 
-When the active model keeps failing (429s, quota walls, provider outages) and `retry.modelFallback` is on, the session picks the chain that owns the failing model, by specificity: an exact `provider/model-id` key, then a `provider/*` wildcard, then the current role's chain, then `default`. It skips models whose selectors are still cooling down and switches for the rest of the turn. Subagents get their own per-spawn chains when their agent definition lists multiple model patterns — the first resolvable pattern is primary and the rest become its fallbacks; there is no `agent:<name>` key in `fallbackChains`.
+When the active model keeps failing (429s, quota walls, provider outages) and `retry.modelFallback` is on, the session picks the chain that owns the failing model, by specificity: an exact `provider/model-id` key, then a `provider/*` wildcard, then the current role's chain, then `default`. It skips models whose selectors are still cooling down and switches for the rest of the turn. Subagents get their own per-spawn chains when their agent definition lists multiple model patterns, the first resolvable pattern is primary and the rest become its fallbacks; there is no `agent:<name>` key in `fallbackChains`.
 
 ### Tools and approvals
 
@@ -677,7 +677,7 @@ searxng:
 | `auth.broker.url` | string | _(unset)_ | Auth-broker URL. Overridden by `VEYYON_AUTH_BROKER_URL`. |
 | `auth.broker.token` | string | _(unset)_ | Auth-broker token. Overridden by `VEYYON_AUTH_BROKER_TOKEN`. |
 
-Provider credentials and custom model definitions are configured separately — see [Providers](./providers.md) and [Models](./models.md).
+Provider credentials and custom model definitions are configured separately, see [Providers](./providers.md) and [Models](./models.md).
 
 ### Other groups
 
@@ -722,11 +722,11 @@ Applied whenever raw settings are loaded (global, project, overlays, and runtime
 
 ### A global array disappeared in a project
 
-Arrays replace; they do not append. If a project sets `disabledProviders`, `enabledModels`, `cycleOrder`, `extensions`, or any other array, include the **complete** desired value in the project layer — the global array is fully replaced.
+Arrays replace; they do not append. If a project sets `disabledProviders`, `enabledModels`, `cycleOrder`, `extensions`, or any other array, include the **complete** desired value in the project layer, the global array is fully replaced.
 
 ### A provider is still available after editing config
 
-- Check whether you disabled the model provider id (e.g. `anthropic`) or a discovery source id (e.g. `claude`) — they are different namespaces with different effects.
+- Check whether you disabled the model provider id (e.g. `anthropic`) or a discovery source id (e.g. `claude`): they are different namespaces with different effects.
 - Check for a project (or overlay) `disabledProviders` array replacing your global one.
 - Credentials can still come from environment variables, `.env`, OAuth, stored auth, or `models.yml`; disabling a provider blocks selection regardless, but verify you edited the right layer. See [Providers](./providers.md).
 - Restart the session if the model list was already initialized.
@@ -737,11 +737,11 @@ Arrays replace; they do not append. If a project sets `disabledProviders`, `enab
 
 ### `veyyon config reset` did not remove my key
 
-`reset` writes the schema **default** value into the global config — it persists the default rather than deleting the key. To stop overriding a project value from global config, delete the key from `~/.veyyon/profiles/default/agent/config.yml` by hand.
+`reset` writes the schema **default** value into the global config, it persists the default rather than deleting the key. To stop overriding a project value from global config, delete the key from `~/.veyyon/profiles/default/agent/config.yml` by hand.
 
 ### A `--config` overlay fails at startup
 
-`--config` files are process-local YAML mappings. A missing file, invalid YAML, or a top-level array/scalar is a hard error — it does not silently fall back to lower-precedence settings. Fix the path or contents.
+`--config` files are process-local YAML mappings. A missing file, invalid YAML, or a top-level array/scalar is a hard error, it does not silently fall back to lower-precedence settings. Fix the path or contents.
 
 ### An environment variable beats my config
 

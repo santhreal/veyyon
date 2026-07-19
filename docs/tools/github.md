@@ -6,12 +6,12 @@
 - Entry: `packages/coding-agent/src/tools/gh.ts`
 - Model-facing prompt: `packages/coding-agent/src/prompts/tools/github.md`
 - Key collaborators:
-  - `packages/coding-agent/src/tools/gh-format.ts` — shorten commit SHAs for summaries.
-  - `packages/coding-agent/src/tools/gh-renderer.ts` — TUI rendering, especially `run_watch` live/result views.
-  - `packages/coding-agent/src/utils/git.ts` — `gh`/`git` process wrappers, repo locking, branch config writes.
-  - `packages/utils/src/dirs.ts` — base directory for dedicated PR worktrees.
-  - `packages/coding-agent/src/sdk.ts` — session artifact allocation hook.
-  - `packages/coding-agent/src/session/artifacts.ts` — artifact filename format `<id>.<toolType>.log`.
+  - `packages/coding-agent/src/tools/gh-format.ts`: shorten commit SHAs for summaries.
+  - `packages/coding-agent/src/tools/gh-renderer.ts`: TUI rendering, especially `run_watch` live/result views.
+  - `packages/coding-agent/src/utils/git.ts`: `gh`/`git` process wrappers, repo locking, branch config writes.
+  - `packages/utils/src/dirs.ts`: base directory for dedicated PR worktrees.
+  - `packages/coding-agent/src/sdk.ts`: session artifact allocation hook.
+  - `packages/coding-agent/src/session/artifacts.ts`: artifact filename format `<id>.<toolType>.log`.
 
 ## Inputs
 
@@ -64,7 +64,7 @@ The tool returns a single text result built by `buildTextResult()` in `packages/
    - maps common auth/repo-context failures into tool-facing `ToolError` messages;
    - `json()` rejects empty or invalid JSON.
 5. Read-style ops (`repo_view`, `search_*`) fetch JSON and format Markdown-like text summaries. Single-issue and single-PR views were moved out of the tool and now resolve through the `issue://` / `pr://` internal URL schemes, which share the same SQLite cache.
-6. PR diffs moved out of the tool. `pr://<N>/diff` lists changed files, `pr://<N>/diff/<i>` slices a single file, and `pr://<N>/diff/all` returns the full unified diff — see `docs/tools/read.md`. All three variants share one `gh pr diff` invocation through the `pr-diff` cache row.
+6. PR diffs moved out of the tool. `pr://<N>/diff` lists changed files, `pr://<N>/diff/<i>` slices a single file, and `pr://<N>/diff/all` returns the full unified diff: see `docs/tools/read.md`. All three variants share one `gh pr diff` invocation through the `pr-diff` cache row.
 7. `pr_checkout` resolves PR metadata first, then enters `git.withRepoLock()` before any git mutation so parallel checkout calls for the same primary repo do not race on shared `.git` state.
 8. `pr_push` reads PR head metadata back from git branch config, derives a refspec, pushes with `git.push()`, then invalidates the cached `pr://` rows for the pushed PR via `invalidateAllForNumber()` so the next `pr://` read reflects the push.
 9. `pr_create` shells out once, then best-effort re-reads the created PR for a richer summary.

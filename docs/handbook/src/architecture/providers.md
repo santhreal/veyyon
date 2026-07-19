@@ -25,9 +25,9 @@ The provider stack lives in the `@veyyon/ai` package.
 
 ## Key concepts
 
-- Provider metadata — a provider's auth mode and endpoint configuration.
-- Model info — per-model capabilities such as context window and vision support.
-- Auth material — resolved from API keys, access tokens, or OAuth credentials.
+- Provider metadata: a provider's auth mode and endpoint configuration.
+- Model info: per-model capabilities such as context window and vision support.
+- Auth material: resolved from API keys, access tokens, or OAuth credentials.
 
 See [Models and providers](../using/models.md) and
 [Provider stack and bring-your-own-key](../models/providers.md) for how to add

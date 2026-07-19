@@ -38,5 +38,5 @@ See [Plugins](./plugins.md) for installation and management.
 
 ## Related
 
-Tool approvals are not feature flags — they use `tools.approvalMode` and per-tool policy.
+Tool approvals are not feature flags, they use `tools.approvalMode` and per-tool policy.
 See [Approvals](./sandbox.md).

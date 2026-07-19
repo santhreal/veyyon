@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-a2447057.js";
+            window.path_to_searchindex_js = "../searchindex-b31c94e7.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-cc1a72e9.js"></script>
@@ -196,8 +196,10 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="memory"><a class="header" href="#memory">Memory</a></h1>
-<p>Veyyon can remember durable project context across sessions. Memory is <strong>off by default</strong>; pick a
-backend in <code>config.yml</code> or <code>/settings</code>.</p>
+<p>By default, each session starts fresh: Veyyon knows nothing about your last one. Turn memory on and it
+carries durable project context forward, so a fact it learned yesterday is available today. Memory is
+off by default. To use it, you pick a backend, which is the store that holds what Veyyon remembers, in
+<code>config.yml</code> or <code>/settings</code>.</p>
 <h2 id="backends"><a class="header" href="#backends">Backends</a></h2>
 <div class="table-wrapper">
 <table>
@@ -205,7 +207,7 @@ backend in <code>config.yml</code> or <code>/settings</code>.</p>
 <tr><th>Backend</th><th>Storage</th><th>Notes</th></tr>
 </thead>
 <tbody>
-<tr><td><code>off</code></td><td>—</td><td>No memory injection or retention</td></tr>
+<tr><td><code>off</code></td><td>n/a</td><td>No memory injection or retention</td></tr>
 <tr><td><code>local</code></td><td>Markdown under the agent memories dir (<code>MEMORY.md</code>, <code>memory_summary.md</code>, <code>skills/</code>)</td><td>Summaries from past session files</td></tr>
 <tr><td><code>mnemopi</code></td><td>SQLite via <code>@veyyon/mnemopi</code></td><td>Vector + FTS, auto-retain, compaction hooks</td></tr>
 <tr><td><code>hindsight</code></td><td>Hindsight server (when configured)</td><td>Remote bank; retain/recall/reflect tools</td></tr>

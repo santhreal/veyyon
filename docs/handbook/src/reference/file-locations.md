@@ -1,6 +1,6 @@
 # File locations
 
-Everything Veyyon stores lives under the config home — `~/.veyyon` by default on every platform.
+Everything Veyyon stores lives under the config home, `~/.veyyon` by default on every platform.
 Override the directory name with `VEYYON_CONFIG_DIR`;
 on Linux/macOS the XDG layout is available after `veyyon config init-xdg`.
 
@@ -10,16 +10,16 @@ The root itself holds only **global, cross-profile** state. Everything else is p
 
 | Path | Contents |
 | --- | --- |
-| `config.yml` | **Global** settings that apply across profiles — today `defaultProfile` (which profile a bare `vey` launches). Not to be confused with a profile's own `config.yml` (below). |
+| `config.yml` | **Global** settings that apply across profiles, today `defaultProfile` (which profile a bare `vey` launches). Not to be confused with a profile's own `config.yml` (below). |
 | `install-id` | Persistent per-install UUID. Shared by every profile. |
-| `profiles/` | One directory per profile, including `profiles/default/` — see below. |
+| `profiles/` | One directory per profile, including `profiles/default/`, see below. |
 
 ## Profiles (`~/.veyyon/profiles/<name>/`)
 
-Every profile — including `default` — is a directory under `profiles/` with the same shape.
+Every profile, including `default`, is a directory under `profiles/` with the same shape.
 A profile owns two layers:
 
-**Profile root** (`profiles/<name>/`) — operational state:
+**Profile root** (`profiles/<name>/`), operational state:
 
 | Path | Contents |
 | --- | --- |
@@ -31,7 +31,7 @@ A profile owns two layers:
 | `stats.db`, `autoqa.db`, `gpu_cache.json` | Usage stats, auto-QA state, GPU probe cache. |
 | `reports/`, `remote/`, `remote-host/`, `ssh-control/`, `autoresearch/` | Reports, remote mounts, SSH control sockets, autoresearch state. |
 
-**Agent dir** (`profiles/<name>/agent/`) — identity and conversation state:
+**Agent dir** (`profiles/<name>/agent/`), identity and conversation state:
 
 | Path | Contents |
 | --- | --- |
@@ -57,7 +57,7 @@ Resolution order for every `veyyon` / `vey` invocation:
 1. `--profile <name>` on the command line.
 2. `VEYYON_PROFILE`. An explicitly **empty**
    `VEYYON_PROFILE=` forces the `default` profile, bypassing step 3.
-3. `defaultProfile` in the **global** `~/.veyyon/config.yml` — set it with
+3. `defaultProfile` in the **global** `~/.veyyon/config.yml`: set it with
    `veyyon profile default <name>`.
 4. The `default` profile.
 
@@ -67,7 +67,7 @@ The name `default` always addresses `profiles/default/` and cannot be removed.
 
 Before this layout, the default profile lived bare in the config root (`~/.veyyon/agent/`,
 `~/.veyyon/logs/`, …). On first launch Veyyon migrates that state into `profiles/default/`
-once, and refuses to guess if both layouts are present — the error names the exact
+once, and refuses to guess if both layouts are present, the error names the exact
 directories to reconcile.
 
 ## Credential storage
@@ -83,4 +83,4 @@ Alongside your project (not under the config home):
 | Path | Purpose |
 | --- | --- |
 | `AGENTS.md` | Project instructions Veyyon auto-loads. See [AGENTS.md](../using/extending.md). |
-| `.veyyon/` | Optional per-project overrides and data (`mcp.json`, `ssh.json`, `modules/`, `prompts/`). Follows the working directory — never profile-scoped. |
+| `.veyyon/` | Optional per-project overrides and data (`mcp.json`, `ssh.json`, `modules/`, `prompts/`). Follows the working directory, never profile-scoped. |

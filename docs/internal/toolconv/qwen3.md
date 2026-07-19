@@ -1,12 +1,12 @@
 # Qwen3 tool-calling format (Hermes convention)
 
-Tool-calling convention of Alibaba's **Qwen3** family (`Qwen/Qwen3-*`: dense `0.6B–32B` and MoE `30B-A3B`/`235B-A22B`; same template line as `Qwen2.5-*` and `QwQ-32B`). It is the **Hermes** convention — the XML+JSON format originated by NousResearch's Hermes 2 Pro and adopted verbatim by Qwen, plus a long tail of community fine-tunes. The envelope is **ChatML**: every turn is `<|im_start|>{role}\n{body}<|im_end|>\n`. Available tools are advertised in the system turn inside a `<tools>…</tools>` block (one JSON spec per line); the model emits each call as a `<tool_call>\n{json}\n</tool_call>` block whose `arguments` is a **nested JSON object** (not a stringified JSON); tool results are fed back inside `<tool_response>…</tool_response>`. Hybrid reasoning is carried in `<think>…</think>`. The format ships in the model's own `chat_template`, so an inference server enables it with no extra template: vLLM uses `--enable-auto-tool-choice --tool-call-parser hermes` (pair with `--reasoning-parser deepseek_r1` for the thinking split); SGLang exposes the matching parsers (e.g. `--reasoning-parser qwen3`).
+Tool-calling convention of Alibaba's **Qwen3** family (`Qwen/Qwen3-*`: dense `0.6B–32B` and MoE `30B-A3B`/`235B-A22B`; same template line as `Qwen2.5-*` and `QwQ-32B`). It is the **Hermes** convention, the XML+JSON format originated by NousResearch's Hermes 2 Pro and adopted verbatim by Qwen, plus a long tail of community fine-tunes. The envelope is **ChatML**: every turn is `<|im_start|>{role}\n{body}<|im_end|>\n`. Available tools are advertised in the system turn inside a `<tools>…</tools>` block (one JSON spec per line); the model emits each call as a `<tool_call>\n{json}\n</tool_call>` block whose `arguments` is a **nested JSON object** (not a stringified JSON); tool results are fed back inside `<tool_response>…</tool_response>`. Hybrid reasoning is carried in `<think>…</think>`. The format ships in the model's own `chat_template`, so an inference server enables it with no extra template: vLLM uses `--enable-auto-tool-choice --tool-call-parser hermes` (pair with `--reasoning-parser deepseek_r1` for the thinking split); SGLang exposes the matching parsers (e.g. `--reasoning-parser qwen3`).
 
 Verified against: Qwen's canonical function-calling guide (`qwen.readthedocs.io/en/latest/framework/function_call.html`, read in full incl. the Qwen-Agent + vLLM sections), the byte-exact `chat_template` field of `Qwen/Qwen3-8B`'s `tokenizer_config.json` (HF resolve-cache commit `b968826d9c46dd6066d109eabc6255188de91218`, rendered locally with Jinja2 for the raw streams below) and its `added_tokens_decoder` for token IDs, the NousResearch `Hermes-Function-Calling` README, and the vLLM tool-calling docs (`hermes` parser + Qwen models section).
 
 ## Special tokens
 
-Only the three ChatML markers are "special" control tokens (`special=true`, skipped by `skip_special_tokens`). The reasoning and tool markers are also single vocabulary tokens (one ID each) but are registered with `special=false`, i.e. they render as ordinary text and are **not** stripped by `skip_special_tokens`. The `<tools>`/`</tools>` wrapper has **no** dedicated token at all — it is plain text that BPE-splits into several tokens. IDs are from `Qwen/Qwen3-8B` `added_tokens_decoder`.
+Only the three ChatML markers are "special" control tokens (`special=true`, skipped by `skip_special_tokens`). The reasoning and tool markers are also single vocabulary tokens (one ID each) but are registered with `special=false`, i.e. they render as ordinary text and are **not** stripped by `skip_special_tokens`. The `<tools>`/`</tools>` wrapper has **no** dedicated token at all, it is plain text that BPE-splits into several tokens. IDs are from `Qwen/Qwen3-8B` `added_tokens_decoder`.
 
 | Token (verbatim) | ID | `special` | Purpose |
 |---|---|---|---|
@@ -19,10 +19,10 @@ Only the three ChatML markers are "special" control tokens (`special=true`, skip
 | `</tool_call>` | 151658 | false | Closes one tool call |
 | `<tool_response>` | 151665 | false | Opens one tool result |
 | `</tool_response>` | 151666 | false | Closes one tool result |
-| `<tools>` … `</tools>` | — | — | Plain text wrapper around the tool list in the system turn (not a single token) |
+| `<tools>` … `</tools>` | n/a |, | Plain text wrapper around the tool list in the system turn (not a single token) |
 
 Notes on exactness:
-- All markers use the ASCII pipe `|` (U+007C) and ASCII angle brackets. Qwen3 has **no** fullwidth (`｜` U+FF5C) or `▁` (U+2581) variants — that is DeepSeek/SentencePiece territory, not Qwen.
+- All markers use the ASCII pipe `|` (U+007C) and ASCII angle brackets. Qwen3 has **no** fullwidth (`｜` U+FF5C) or `▁` (U+2581) variants: that is DeepSeek/SentencePiece territory, not Qwen.
 - `<|im_start|>` and `<|im_end|>` are the only tokens that matter for splitting turns. Because `<tool_call>`, `</tool_call>`, `<tool_response>`, `<think>`, `</think>` are `special=false`, they survive a `skip_special_tokens=True` decode, which is exactly why the regex-based `hermes` parser can recover them from decoded text.
 - The model card confirms `</think>` = token `151668` (used by the reference parsing snippet `output_ids[::-1].index(151668)`).
 
@@ -37,8 +37,8 @@ ChatML. Each message renders as:
 
 - Roles: `system`, `user`, `assistant`, `tool`. There is no separate "channel" concept; the only sub-stream is the `<think>` reasoning block inside an assistant turn.
 - `<|im_end|>\n` terminates every turn. With `add_generation_prompt=True` the prompt ends with `<|im_start|>assistant\n` and the model continues from there.
-- **System turn:** if the caller supplies a `system` message it becomes the first turn. When `tools` are present, the tool advertisement is merged **into** that same system turn (the user's system text first, then `\n\n`, then the `# Tools` block — see below). Qwen3 injects no default system prompt when none is given.
-- **Tool-result turns use the `user` envelope.** Qwen3's template maps every `role: "tool"` message into a `<|im_start|>user` turn carrying `<tool_response>` blocks (consecutive tool messages are coalesced into one user turn). This differs from classic Hermes 2 Pro, which used a dedicated `<|im_start|>tool` turn for results — Qwen folds them into `user`.
+- **System turn:** if the caller supplies a `system` message it becomes the first turn. When `tools` are present, the tool advertisement is merged **into** that same system turn (the user's system text first, then `\n\n`, then the `# Tools` block: see below). Qwen3 injects no default system prompt when none is given.
+- **Tool-result turns use the `user` envelope.** Qwen3's template maps every `role: "tool"` message into a `<|im_start|>user` turn carrying `<tool_response>` blocks (consecutive tool messages are coalesced into one user turn). This differs from classic Hermes 2 Pro, which used a dedicated `<|im_start|>tool` turn for results: Qwen folds them into `user`.
 - **Thinking/reasoning:** carried in `<think>…</think>` at the start of an assistant turn (see the Parsing notes for the toggle and the history-rerender rule).
 
 ## Tool definitions
@@ -79,8 +79,8 @@ The model emits each call as a `<tool_call>` line, a single-line JSON object, th
 </tool_call>
 ```
 
-- `arguments` is a **nested JSON object**, not a JSON-encoded string. On the wire it is `"arguments": {"location": "..."}` — never `"arguments": "{\"location\": ...}"`. (The template renders a dict argument via `tojson`; only if a caller stored `arguments` as a pre-serialized string does it pass through verbatim.)
-- The call object has exactly two keys, `name` (string) and `arguments` (object). There is no per-call ID on the wire — the OpenAI-style `tool_call_id` is minted by the server, not the model (see API mapping).
+- `arguments` is a **nested JSON object**, not a JSON-encoded string. On the wire it is `"arguments": {"location": "..."}`: never `"arguments": "{\"location\": ...}"`. (The template renders a dict argument via `tojson`; only if a caller stored `arguments` as a pre-serialized string does it pass through verbatim.)
+- The call object has exactly two keys, `name` (string) and `arguments` (object). There is no per-call ID on the wire: the OpenAI-style `tool_call_id` is minted by the server, not the model (see API mapping).
 - A tool-calling assistant turn may also contain natural-language `content` before the first `<tool_call>`; the template inserts a `\n` between that content and the first call.
 
 ## Multiple / parallel tool calls
@@ -113,7 +113,7 @@ Each executed result is wrapped in `<tool_response>…</tool_response>`. Qwen3 p
 </tool_response><|im_end|>
 ```
 
-- The body between the tags is the tool's return value (typically a JSON string, but any text is allowed). The function name is **not** repeated inside Qwen3's `<tool_response>` — ordering ties results to calls. (Classic Hermes 2 Pro instead nested `{"name": ..., "content": ...}` inside `<tool_response>` under a `tool` turn; Qwen3's template emits the bare content under a `user` turn.)
+- The body between the tags is the tool's return value (typically a JSON string, but any text is allowed). The function name is **not** repeated inside Qwen3's `<tool_response>`: ordering ties results to calls. (Classic Hermes 2 Pro instead nested `{"name": ..., "content": ...}` inside `<tool_response>` under a `tool` turn; Qwen3's template emits the bare content under a `user` turn.)
 - At the OpenAI API layer a result message is `{"role": "tool", "content": "...", "tool_call_id": "..."}`; the template renders only its `content` into a `<tool_response>` block.
 
 ## End-to-end example
@@ -159,7 +159,7 @@ What's the temperature in San Francisco now?<|im_end|>
 The current temperature in San Francisco is 26.1°C.<|im_end|>
 ```
 
-In **thinking mode** (`enable_thinking=True`, the default) the generation prompt instead ends with a bare `<|im_start|>assistant\n` and the model itself produces the `<think>…real reasoning…</think>` block before the `<tool_call>`. (When re-rendering stored history, the template keeps the `<think>` block only for the last assistant message or messages that carry `reasoning_content`, and strips reasoning from earlier turns — see Parsing notes.)
+In **thinking mode** (`enable_thinking=True`, the default) the generation prompt instead ends with a bare `<|im_start|>assistant\n` and the model itself produces the `<think>…real reasoning…</think>` block before the `<tool_call>`. (When re-rendering stored history, the template keeps the `<think>` block only for the last assistant message or messages that carry `reasoning_content`, and strips reasoning from earlier turns, see Parsing notes.)
 
 ## OpenAI-compatible API mapping
 
@@ -173,7 +173,7 @@ With `--enable-auto-tool-choice --tool-call-parser hermes`, vLLM converts the ra
   - `function.name`: the call's `name`.
   - `function.arguments`: a **JSON string** at the API boundary, e.g. `'{"location": "San Francisco, CA, USA"}'`. The wire format is a nested object, but the server re-serializes it to a string here (`json.loads(...)` it before use), matching OpenAI and Qwen-Agent.
 - With thinking + `--reasoning-parser deepseek_r1`, the `<think>…</think>` content is split out into `message.reasoning_content` and removed from `content`.
-- Feeding results back: append `{"role": "tool", "content": <result>, "tool_call_id": <id-from-the-call>}` for each result. `tool_call_id` links a result to its call (Qwen3's template ignores the id when rendering — ordering is what reaches the model — but the API still requires it).
+- Feeding results back: append `{"role": "tool", "content": <result>, "tool_call_id": <id-from-the-call>}` for each result. `tool_call_id` links a result to its call (Qwen3's template ignores the id when rendering, ordering is what reaches the model, but the API still requires it).
 
 Example assistant message returned for the two-call query:
 
@@ -193,9 +193,9 @@ message.tool_calls = [
 - **Regex/streaming parse:** the vLLM `hermes` parser (`vllm/tool_parsers/hermes_tool_parser.py`, `Hermes2ProToolParser`) keys on the literal `<tool_call>` / `</tool_call>` substrings and JSON-decodes the body, supporting multiple blocks per turn. In streaming it buffers from `<tool_call>` until it can incrementally parse `name` then `arguments`; partial argument JSON is emitted as argument deltas. Text before the first `<tool_call>` is streamed as ordinary content.
 - **Thinking toggle:** `enable_thinking=False` (passed via `chat_template_kwargs={"enable_thinking": False}` over the OpenAI API, or `tokenizer.apply_chat_template(..., enable_thinking=False)`) injects an empty `<think>\n\n</think>\n\n` into the generation prompt, hard-suppressing reasoning. Soft switches `/think` and `/no_think` in a user/system message flip it per-turn when thinking is enabled. Greedy decoding is discouraged for Qwen3 (repetition risk).
 - **History rerender asymmetry:** when `apply_chat_template` re-renders a stored conversation, it emits the `<think>` block only for the final assistant message or messages carrying `reasoning_content`; reasoning from earlier turns is dropped. So a stored intermediate tool-call assistant turn shows no `<think>` block, while the live generation step that produced it was prefixed with one (in non-thinking mode). Reasoning is preserved only within the current multi-step tool sequence (after the last real user query).
-- **Reasoning models + stopword templates:** Qwen warns against ReAct-style stopword tool templates for Qwen3, since reasoning text may contain the stopwords and corrupt parsing — use this native Hermes template instead.
+- **Reasoning models + stopword templates:** Qwen warns against ReAct-style stopword tool templates for Qwen3, since reasoning text may contain the stopwords and corrupt parsing: use this native Hermes template instead.
 - **Robustness:** the format is prompt/template-driven, so malformed output is possible (truncated JSON, missing `</tool_call>`, prose mixed into a call, an array serialized as a string). Production parsers should tolerate and, on failure, fall back to treating the text as content. Named / `required` tool_choice routes through vLLM's structured-outputs backend for guaranteed-parseable arguments.
-- **Version/scope:** this `hermes` template covers `Qwen3-*`, `Qwen2.5-*`, and `QwQ-32B`. It does **not** cover `Qwen3-Coder`, which uses a different XML scheme parsed by vLLM's `qwen3_xml` parser — a separate convention.
+- **Version/scope:** this `hermes` template covers `Qwen3-*`, `Qwen2.5-*`, and `QwQ-32B`. It does **not** cover `Qwen3-Coder`, which uses a different XML scheme parsed by vLLM's `qwen3_xml` parser: a separate convention.
 
 ## Sources
 

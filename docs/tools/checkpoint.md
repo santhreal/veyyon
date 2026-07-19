@@ -6,10 +6,10 @@
 - Entry: `packages/coding-agent/src/tools/checkpoint.ts`
 - Model-facing prompt: `packages/coding-agent/src/prompts/tools/checkpoint.md`
 - Key collaborators:
-  - `packages/coding-agent/src/session/agent-session.ts` — captures the active checkpoint after tool success.
-  - `packages/coding-agent/src/session/session-manager.ts` — persists the normal session entry stream; not the active checkpoint marker.
-  - `packages/coding-agent/src/tools/index.ts` — registers the tool and gates it behind `checkpoint.enabled`.
-  - `packages/coding-agent/src/config/settings-schema.ts` — defines the disabled-by-default feature flag.
+  - `packages/coding-agent/src/session/agent-session.ts`: captures the active checkpoint after tool success.
+  - `packages/coding-agent/src/session/session-manager.ts`: persists the normal session entry stream; not the active checkpoint marker.
+  - `packages/coding-agent/src/tools/index.ts`: registers the tool and gates it behind `checkpoint.enabled`.
+  - `packages/coding-agent/src/config/settings-schema.ts`: defines the disabled-by-default feature flag.
 
 ## Inputs
 
@@ -26,7 +26,7 @@ The tool returns a single text result plus structured details:
   - `Run your investigation, then call rewind with a concise report.`
 - `details`:
   - `goal: string`
-  - `startedAt: string` — ISO timestamp created inside `CheckpointTool.execute()`
+  - `startedAt: string`: ISO timestamp created inside `CheckpointTool.execute()`
 
 No checkpoint ID, artifact URI, job handle, file path, or restore token is returned.
 
@@ -36,9 +36,9 @@ No checkpoint ID, artifact URI, job handle, file path, or restore token is retur
 3. It rejects nested checkpoints with `ToolError("Checkpoint already active.")` when `session.getCheckpointState?.()` is already set.
 4. It creates `startedAt = new Date().toISOString()` and returns a normal `toolResult()` payload. The tool itself does not persist anything.
 5. On the later `tool_execution_end` event, `AgentSession` in `packages/coding-agent/src/session/agent-session.ts` detects successful `checkpoint` execution and captures three in-memory fields:
-   - `checkpointMessageCount` — current `agent.state.messages.length`, after the checkpoint tool result has already been appended
-   - `checkpointEntryId` — `sessionManager.getEntries().at(-1)?.id ?? null`, i.e. the last persisted session entry ID at checkpoint time
-   - `startedAt` — copied from tool details or regenerated
+   - `checkpointMessageCount`: current `agent.state.messages.length`, after the checkpoint tool result has already been appended
+   - `checkpointEntryId`: `sessionManager.getEntries().at(-1)?.id ?? null`, i.e. the last persisted session entry ID at checkpoint time
+   - `startedAt`: copied from tool details or regenerated
 6. `AgentSession` stores that object in its private `#checkpointState` field and clears `#pendingRewindReport`.
 
 ## Side Effects
@@ -64,8 +64,8 @@ You are in an active checkpoint. You MUST call rewind with your investigation fi
 - Session persistence still applies to the ordinary checkpoint tool call message. Global session persistence truncation is `MAX_PERSIST_CHARS = 500_000` in `packages/coding-agent/src/session/session-persistence.ts`.
 
 ## Errors
-- `ToolError("Checkpoint not available in subagents.")` — thrown for subagent sessions.
-- `ToolError("Checkpoint already active.")` — thrown when a prior checkpoint has not been rewound or cleared.
+- `ToolError("Checkpoint not available in subagents.")`: thrown for subagent sessions.
+- `ToolError("Checkpoint already active.")`: thrown when a prior checkpoint has not been rewound or cleared.
 - The tool body has no local `try/catch`; unexpected exceptions propagate.
 
 ## Notes

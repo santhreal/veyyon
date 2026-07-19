@@ -1,17 +1,17 @@
 # Getting started
 
-Install, first-run setup, first session.
+This chapter takes you from nothing installed to a first real change in your own project. It has four steps: install Veyyon, run the first-time setup, sign in to a provider, and hand Veyyon a small task.
 
 ## 1. Install
 
-**npm / Bun (recommended)**
+The quickest path uses Bun to install the published package.
 
 ```console
 $ bun install -g @veyyon/coding-agent
 $ veyyon --version
 ```
 
-**From source** (repo root):
+If you would rather build from a source checkout, clone the repository and run the setup script.
 
 ```console
 $ git clone https://github.com/santhreal/veyyon.git
@@ -20,25 +20,31 @@ $ bun setup
 $ bun dev --version
 ```
 
-`bun setup` installs workspace deps and builds `@veyyon/natives`. Config home: `~/.veyyon`; default profile agent dir: `~/.veyyon/profiles/default/agent/`.
+`bun setup` installs the workspace dependencies and builds `@veyyon/natives`, the Rust addon. Your configuration lives under `~/.veyyon`, and the default profile keeps its agent state in `~/.veyyon/profiles/default/agent/`.
 
-Shell completions: `veyyon completions bash|zsh|fish`. See [Install](./install.md).
+To add shell completion, run `veyyon completions bash`, `veyyon completions zsh`, or `veyyon completions fish`. The [Install](./install.md) chapter has the full details.
 
 ## 2. First launch
 
-First interactive `veyyon` (or `veyyon setup`) runs the setup UI:
+The first time you run `veyyon` (or any time you run `veyyon setup`), the setup UI walks you through five steps:
 
-1. Splash
-2. Providers (sign-in / keys; optional web search)
-3. Glyphs (Nerd Font / Unicode / ASCII)
-4. Theme
-5. Session welcome
+1. The splash screen.
+2. Providers, where you sign in or paste an API key, and optionally enable web search.
+3. Glyphs, where you choose a Nerd Font, plain Unicode, or ASCII.
+4. Theme.
+5. The session welcome.
 
-Later: `/setup` or `/providers` in the TUI. Skip with `VEYYON_SKIP_SETUP=1` or by resuming a session.
+You can return to provider setup later with `/setup` or `/providers` inside the TUI. To skip setup entirely, set `VEYYON_SKIP_SETUP=1`, or resume an existing session.
 
-**API key (example):** set `DEEPSEEK_API_KEY` in the environment, then pick a DeepSeek model in `/model`.
+## 3. Sign in to a provider
 
-**Custom gateway** — add a provider in `~/.veyyon/profiles/default/agent/models.yml`:
+Veyyon needs at least one model provider. You have three common options.
+
+**Use an API key.** Set the provider's key in your environment, then pick one of its models in `/model`. For example, export `DEEPSEEK_API_KEY` and choose a DeepSeek model.
+
+**Sign in with OAuth.** Run `/login`, or name a provider directly with `/login anthropic`. These are the same flows the Providers setup scene uses.
+
+**Add a custom gateway.** Declare a provider in `~/.veyyon/profiles/default/agent/models.yml`:
 
 ```yaml
 providers:
@@ -53,65 +59,59 @@ providers:
         maxTokens: 8192
 ```
 
-**OAuth providers:** `/login` or `/login anthropic` inside the TUI (same flows the Providers scene uses).
-
-Details: [Models and providers](./models.md), [Configuring providers](./configuring-providers.md), engine doc `docs/providers.md`.
-
-Local **Ollama** (keyless when the daemon is up):
+**Run a local model.** With the Ollama daemon running, Veyyon discovers local models and needs no key:
 
 ```console
 $ ollama serve
 $ veyyon
 ```
 
-Then `/model` and choose an `ollama/…` model from discovery.
+Open `/model` and choose an `ollama/...` entry from the discovered list.
 
-## 3. Run your first task
+For the full picture, see [Models and providers](./models.md) and [Configuring providers](./configuring-providers.md).
+
+## 4. Run your first task
+
+Change into a project you know, and start Veyyon.
 
 ```console
 $ cd ~/code/my-project
 $ veyyon
 ```
 
-Describe a small task:
+Describe a small, checkable task:
 
 ```text
 Add a function add(a, b) in src/lib.rs and a unit test. Run the test.
 ```
 
-Typical flow:
+A typical run looks like this:
 
-1. Veyyon reads relevant files (`read`, `grep`, `glob`, …).
-2. It proposes an edit through hashline/`edit`/`write` tools.
-3. When policy requires it, you approve the tool call (`tools.approvalMode` — see [Safety](./safety.md)).
-4. The change lands; diffs appear in the TUI.
-5. If you asked for tests, approve `bash` or `cargo test` as needed.
+1. Veyyon reads the files it needs with `read`, `grep`, and `glob`.
+2. It proposes an edit through the hashline `edit` and `write` tools.
+3. When your policy requires it, you approve the tool call. The `tools.approvalMode` setting decides when this happens; see [Safety](./safety.md).
+4. The change lands, and the diff appears in the TUI.
+5. If you asked for tests, you approve the `bash` or `cargo test` call when Veyyon runs them.
 
-## 4. Approval mode
+## Approval mode
 
-Tool approval tiers (`read`, `write`, `exec`) combine with `tools.approvalMode`:
+Every tool call falls into one of three tiers: `read`, `write`, or `exec`. The `tools.approvalMode` setting decides which tiers run without asking and which ones prompt you first.
 
-| Mode | Auto-approves | Prompts for |
+| Mode | Runs without asking | Prompts you for |
 | --- | --- | --- |
-| `plan` | `read` (proposes without writing) | everything that writes or runs |
-| `ask` | `read` | `write`, `exec` |
-| `auto-edit` | `read`, `write` | `exec` |
-| `yolo` (default) | all tiers | none (unless per-tool override or bash safety override) |
+| `plan` | `read` (it proposes, but does not write) | everything that writes or runs |
+| `ask` | `read` | `write` and `exec` |
+| `auto-edit` | `read` and `write` | `exec` |
+| `yolo` (default) | all tiers | nothing, unless a per-tool override or a bash safety rule applies |
 
-Legacy names `always-ask` (→ `ask`) and `write` (→ `auto-edit`) are still accepted.
-
-Schema default for `tools.approvalMode` is **`yolo`**. Change in `/settings` or config. See [Approvals](../features/sandbox.md), [Safety](./safety.md).
-
-## 5. Further surfaces
-
-1. **Multi-file change** — refactor across modules; hashline edits batch paths.
-2. **Session tree** — `/tree` jumps to an earlier user message and branches in the same session file.
-3. **Models** — `/model` for the interactive model; set subagent and compaction models in settings. See [Models, roles, and profiles](./roles-and-profiles.md).
+The older names `always-ask` and `write` still work, and map to `ask` and `auto-edit`. The schema default is `yolo`. You can change it in `/settings` or in your config. See [Approvals](../features/sandbox.md) and [Safety](./safety.md).
 
 ## Where to go next
 
-- [Quickstart](./quickstart.md) — shorter walkthrough.
-- [Configuration](./configuration.md)
-- [Sessions](./sessions.md)
-- [Memory](../features/memory.md) — mnemopi backend
-- [Diagnostics](../features/doctor.md) — plugin doctor and debug tools
+A few surfaces are worth trying early:
+
+- **A multi-file change.** Ask for a refactor across modules. Hashline edits batch the paths together.
+- **The session tree.** `/tree` jumps back to an earlier message and branches from it inside the same session file.
+- **Model slots.** `/model` sets the interactive model. You set the subagent and compaction models in settings; see [Models, roles, and profiles](./roles-and-profiles.md).
+
+From here, the [Quickstart](./quickstart.md) is a shorter walkthrough, [Configuration](./configuration.md) covers settings, [Sessions](./sessions.md) explains resuming and branching, [Memory](../features/memory.md) covers the mnemopi backend, and [Diagnostics](../features/doctor.md) covers the doctor and debug tools.

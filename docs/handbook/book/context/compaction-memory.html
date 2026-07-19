@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-a2447057.js";
+            window.path_to_searchindex_js = "../searchindex-b31c94e7.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-cc1a72e9.js"></script>
@@ -196,23 +196,25 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="compaction-and-project-memory"><a class="header" href="#compaction-and-project-memory">Compaction and project memory</a></h1>
-<p>Long sessions need three records: the <strong>goal</strong> (when enabled), the <strong>recent transcript</strong>, and
-<strong>compacted history</strong>. Compaction compresses older history instead of truncating it, keeping
-task-critical context.</p>
+<p>A long session eventually fills the context window. The simple fix, dropping the oldest messages, loses
+the decisions and constraints the model still needs. Compaction is the better fix: instead of
+truncating old history, it compresses it into a summary and keeps working. At any moment a long session
+holds three records: the goal (when enabled), the recent transcript verbatim, and the compacted history
+behind it.</p>
 <h2 id="context-compaction"><a class="header" href="#context-compaction">Context compaction</a></h2>
 <p>Primary compaction knobs (settings → Models → Compaction, or <code>config.yml</code>):</p>
 <ul>
-<li><strong>Threshold</strong> (<code>compaction.thresholdPercent</code>) — percent of the
+<li><strong>Threshold</strong> (<code>compaction.thresholdPercent</code>): percent of the
 context window at which auto-compaction runs. Also on demand with <code>/compact</code>.
 Optional fixed trigger: <code>compaction.thresholdTokens</code> when set <code>&gt; 0</code>.</li>
-<li><strong>Type</strong> (<code>compaction.strategy</code>) — how history is compressed:
+<li><strong>Type</strong> (<code>compaction.strategy</code>): how history is compressed:
 <ul>
-<li><code>handoff</code> — writes a structured handoff summary that preserves the task, pending questions, and
+<li><code>handoff</code>: writes a structured handoff summary that preserves the task, pending questions, and
 recent decisions, then continues from it (LLM transfer path).</li>
-<li><code>snap</code> — archives history via the snapcompact engine (dense image snapshot path; schema default).</li>
+<li><code>snap</code>: archives history via the snapcompact engine (dense image snapshot path; schema default).</li>
 </ul>
 </li>
-<li><strong>Model</strong> (<code>compaction.model</code>) — the model that performs LLM compaction / handoff. Unset uses your
+<li><strong>Model</strong> (<code>compaction.model</code>): the model that performs LLM compaction / handoff. Unset uses your
 interactive model. See <a href="../using/roles-and-profiles.html">Models, roles, and profiles</a>.</li>
 </ul>
 <p><code>/compact &lt;focus&gt;</code> steers a run with an “Additional focus:” directive. Recent user messages are

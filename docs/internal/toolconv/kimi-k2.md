@@ -44,7 +44,7 @@ Kimi K2 uses a ChatML-style envelope. Every message is rendered as:
 - `<|im_end|>` terminates every turn. The chat template does **not** emit `[BOS]`/`[EOS]`; turn boundaries are purely `<|im_*|>` markers (the tokenizer is TikToken-based with `add_bos_token`/`add_eos_token` unset, and the manual-parse flow feeds the rendered template straight to `/completions`).
 - **Default system prompt:** if the first message is not a `system` message, the template injects `<|im_system|>system<|im_middle|>You are Kimi, an AI assistant created by Moonshot AI.<|im_end|>` before the first turn.
 - **Generation prompt:** with `add_generation_prompt=True` the template ends with `<|im_assistant|>assistant<|im_middle|>`, and the model generates from there.
-- **Thinking/reasoning:** `Kimi-K2-Instruct` is a "reflex-grade" model with no long thinking, so there is no reasoning channel in this format. (Thinking variants are handled separately — vLLM ships a distinct `kimi_k2` reasoning parser keyed on a `</think>` token — but that is out of scope for the Instruct tool-call format documented here.)
+- **Thinking/reasoning:** `Kimi-K2-Instruct` is a "reflex-grade" model with no long thinking, so there is no reasoning channel in this format. (Thinking variants are handled separately, vLLM ships a distinct `kimi_k2` reasoning parser keyed on a `</think>` token, but that is out of scope for the Instruct tool-call format documented here.)
 
 ## Tool definitions
 
@@ -64,7 +64,7 @@ The `tool_declare` turn is rendered only when `tools` is non-empty.
 
 ## Tool-call format
 
-When the model decides to call a function, it emits — inside the assistant turn, after any natural-language content — a tool-calls section. Minimal single call (this is the assistant generation that follows `<|im_assistant|>assistant<|im_middle|>`):
+When the model decides to call a function, it emits, inside the assistant turn, after any natural-language content, a tool-calls section. Minimal single call (this is the assistant generation that follows `<|im_assistant|>assistant<|im_middle|>`):
 
 ```text
 <|tool_calls_section_begin|><|tool_call_begin|>functions.get_weather:0<|tool_call_argument_begin|>{"city": "Beijing"}<|tool_call_end|><|tool_calls_section_end|>
@@ -92,7 +92,7 @@ Two or more calls in one turn are emitted as consecutive `<|tool_call_begin|>…
 <|tool_calls_section_begin|><|tool_call_begin|>functions.get_weather:0<|tool_call_argument_begin|>{"city": "Beijing"}<|tool_call_end|><|tool_call_begin|>functions.get_weather:1<|tool_call_argument_begin|>{"city": "Shanghai"}<|tool_call_end|><|tool_calls_section_end|>
 ```
 
-Note the IDs `functions.get_weather:0` and `functions.get_weather:1` — same function, distinct trailing index. The index is per-turn (it resets to `0` in the next assistant turn).
+Note the IDs `functions.get_weather:0` and `functions.get_weather:1`, same function, distinct trailing index. The index is per-turn (it resets to `0` in the next assistant turn).
 
 ## Tool-result format
 
@@ -111,7 +111,7 @@ Tool execution results are fed back as a turn with `role: "tool"`. Because `tool
 
 A complete multi-turn weather exchange. These are the exact rendered streams (system + user supplied explicitly; line breaks inside a turn are literal, turns are otherwise contiguous).
 
-**Stage 1 — prompt fed to the model** (`tools` set, `add_generation_prompt=True`):
+**Stage 1, prompt fed to the model** (`tools` set, `add_generation_prompt=True`):
 
 ```text
 <|im_system|>tool_declare<|im_middle|>[{"type":"function","function":{"name":"get_weather","description":"Get weather information. Call this tool when the user needs to get weather information","parameters":{"type":"object","required":["city"],"properties":{"city":{"type":"string","description":"City name"}}}}}]<|im_end|><|im_system|>system<|im_middle|>You are Kimi, an AI assistant created by Moonshot AI.<|im_end|><|im_user|>user<|im_middle|>What's the weather like in Beijing today? Use the tool to check.<|im_end|><|im_assistant|>assistant<|im_middle|>
@@ -123,7 +123,7 @@ A complete multi-turn weather exchange. These are the exact rendered streams (sy
 <|tool_calls_section_begin|><|tool_call_begin|>functions.get_weather:0<|tool_call_argument_begin|>{"city": "Beijing"}<|tool_call_end|><|tool_calls_section_end|><|im_end|>
 ```
 
-**Stage 2 — prompt for the next turn**, after appending the assistant tool-call turn and the tool result turn (`add_generation_prompt=True`):
+**Stage 2, prompt for the next turn**, after appending the assistant tool-call turn and the tool result turn (`add_generation_prompt=True`):
 
 ```text
 <|im_system|>tool_declare<|im_middle|>[{"type":"function","function":{"name":"get_weather","description":"Get weather information. Call this tool when the user needs to get weather information","parameters":{"type":"object","required":["city"],"properties":{"city":{"type":"string","description":"City name"}}}}}]<|im_end|><|im_system|>system<|im_middle|>You are Kimi, an AI assistant created by Moonshot AI.<|im_end|><|im_user|>user<|im_middle|>What's the weather like in Beijing today? Use the tool to check.<|im_end|><|im_assistant|>assistant<|im_middle|><|tool_calls_section_begin|><|tool_call_begin|>functions.get_weather:0<|tool_call_argument_begin|>{"city": "Beijing"}<|tool_call_end|><|tool_calls_section_end|><|im_end|><|im_system|>get_weather<|im_middle|>## Return of functions.get_weather:0
@@ -141,7 +141,7 @@ It's sunny in Beijing today.<|im_end|>
 With a server parser active (`--tool-call-parser kimi_k2`), the raw stream maps onto the Chat Completions shape as follows:
 
 - `choices[].finish_reason` = `"tool_calls"` when the turn contained a tool-calls section (otherwise `"stop"`).
-- `choices[].message.tool_calls[]` — one entry per `<|tool_call_begin|>…<|tool_call_end|>` block:
+- `choices[].message.tool_calls[]`: one entry per `<|tool_call_begin|>…<|tool_call_end|>` block:
   - `.id` = the raw call ID verbatim, e.g. `"functions.get_weather:0"`.
   - `.type` = `"function"`.
   - `.function.name` = the function name parsed out of the ID. vLLM computes `id.split(":")[0].split(".")[-1]` → `"get_weather"`.
@@ -163,7 +163,7 @@ Moonshot's hosted API (`platform.moonshot.ai`) exposes both OpenAI- and Anthropi
 - **Extraction regexes differ too.** Guidance: `<\|tool_call_begin\|>\s*(?P<tool_call_id>[\w\.]+:\d+)\s*<\|tool_call_argument_begin\|>\s*(?P<function_arguments>.*?)\s*<\|tool_call_end\|>`. vLLM: ID class is `[^<]+:\d+` and the argument body uses a negative lookahead `(?:(?!<\|tool_call_begin\|>).)*?` so adjacent calls aren't merged. Both run with `DOTALL`.
 - **`skip_special_tokens` must be False.** The parser depends on the literal marker text surviving detokenization; vLLM forces `skip_special_tokens = False` when tools are enabled and `tool_choice != "none"`. If markers are stripped, no tool call is detected.
 - **Arguments are unvalidated raw text.** Whatever the model emits between the argument marker and `<|tool_call_end|>` is passed straight through as the `arguments` string; it must be valid JSON for downstream `json.loads`, and the model can emit malformed/truncated JSON. Validate before executing.
-- **Index semantics.** `{idx}` is the per-turn call counter starting at `0`; it is not a global counter and resets each assistant turn. Do not assume IDs are unique across turns — disambiguate by turn when persisting history.
+- **Index semantics.** `{idx}` is the per-turn call counter starting at `0`; it is not a global counter and resets each assistant turn. Do not assume IDs are unique across turns: disambiguate by turn when persisting history.
 - **Streaming marker splits.** Section and call markers can be split across token boundaries. vLLM holds back any trailing suffix that partially matches a marker (`partial_tag_overlap`) to avoid leaking marker bytes into streamed content, and only streams a call's name once its header is fully received.
 - **`finish_reason` varies by engine.** The official guide explicitly warns the terminal `finish_reason` for tool calls "may vary across different engines"; loop on `finish_reason == "tool_calls"` but be defensive.
 - **Engine fallback.** Kimi K2 reuses the DeepSeek-V3 architecture; `config.json` sets `model_type: "kimi_k2"` so engines apply the right parser. If you force `model_type: "deepseek_v3"` as a compatibility workaround, no native Kimi tool parser is available and you must parse the `<|tool_calls_section_*|>` markers manually.

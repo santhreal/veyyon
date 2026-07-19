@@ -15,7 +15,7 @@ A personality injects a `<personality>` block into the system prompt when enable
 | Friendly | `friendly` | Collaborative prompt text |
 | None | `none` | No personality block |
 
-Schema default: `personality: default` in `settings-schema.ts`. The setting is a free-form string, not a closed enum — see [Extending the catalog](#extending-the-catalog).
+Schema default: `personality: default` in `settings-schema.ts`. The setting is a free-form string, not a closed enum, see [Extending the catalog](#extending-the-catalog).
 
 ## Configuring personality
 
@@ -32,15 +32,15 @@ There is no `/personality` slash command in the shipped registry. Subagents use 
 
 The 3 shipped personalities are seeds, not a closed set. Add a `<name>.md` file and its filename stem becomes a selectable personality name; the file body is injected verbatim as the `<personality>` block:
 
-- **User-level:** `~/.veyyon/personalities/<name>.md` — available in every project.
-- **Project-level:** `.veyyon/personalities/<name>.md` — available only in that project, and overrides a user or built-in personality of the same name.
+- **User-level:** `~/.veyyon/personalities/<name>.md`: available in every project.
+- **Project-level:** `.veyyon/personalities/<name>.md`: available only in that project, and overrides a user or built-in personality of the same name.
 
 Precedence for a given name is **project > user > built-in**. For example, dropping `~/.veyyon/personalities/pirate.md` with the body `You speak like a pirate.` and setting `personality: pirate` renders `<personality>You speak like a pirate.</personality>` with no rebuild. A project `.veyyon/personalities/default.md` overrides the built-in `default` for that project only.
 
 Edge cases:
 
 - `none` is a reserved sentinel that disables the block; a file literally named `none.md` is ignored (it can never shadow the disable behavior).
-- An empty or whitespace-only personality file is treated as absent — the next tier (or the built-in) is used instead, so the block is never emitted empty.
+- An empty or whitespace-only personality file is treated as absent: the next tier (or the built-in) is used instead, so the block is never emitted empty.
 - Setting `personality` to a name that resolves to nothing (no built-in, user, or project file) falls back to `default` and prints a visible warning; the `<personality>` block is never silently emitted empty for a real (non-`none`) request.
 
 See `packages/coding-agent/src/personality/resolver.ts` for the resolver implementation.

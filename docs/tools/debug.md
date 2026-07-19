@@ -6,21 +6,21 @@
 - Entry: `packages/coding-agent/src/tools/debug.ts`
 - Model-facing prompt: `packages/coding-agent/src/prompts/tools/debug.md`
 - Key collaborators:
-  - `packages/coding-agent/src/dap/session.ts` — session lifecycle, breakpoint/state cache
-  - `packages/coding-agent/src/dap/client.ts` — adapter process/socket transport, DAP message loop
-  - `packages/coding-agent/src/dap/config.ts` — adapter resolution and auto-selection
-  - `packages/coding-agent/src/dap/defaults.json` — built-in adapter definitions
-  - `packages/coding-agent/src/dap/types.ts` — request/response/capability shapes
-  - `packages/coding-agent/src/tools/tool-timeouts.ts` — per-tool timeout clamp
-  - `packages/coding-agent/src/debug/index.ts` — interactive debug selector menu
-  - `packages/coding-agent/src/debug/log-viewer.ts` — recent-log TUI viewer
-  - `packages/coding-agent/src/debug/raw-sse.ts` — raw SSE TUI viewer
-  - `packages/coding-agent/src/debug/raw-sse-buffer.ts` — bounded SSE capture buffer
-  - `packages/coding-agent/src/debug/profiler.ts` — CPU/heap profiling helpers
-  - `packages/coding-agent/src/debug/report-bundle.ts` — `.tar.gz` report bundling, log source, cache cleanup
-  - `packages/coding-agent/src/debug/system-info.ts` — system snapshot collection and env redaction
-  - `packages/coding-agent/src/debug/terminal-info.ts` — terminal state collection/formatting
-  - `packages/coding-agent/src/debug/protocol-probe.ts` — terminal protocol probe panel and sample image
+  - `packages/coding-agent/src/dap/session.ts`: session lifecycle, breakpoint/state cache
+  - `packages/coding-agent/src/dap/client.ts`: adapter process/socket transport, DAP message loop
+  - `packages/coding-agent/src/dap/config.ts`: adapter resolution and auto-selection
+  - `packages/coding-agent/src/dap/defaults.json`: built-in adapter definitions
+  - `packages/coding-agent/src/dap/types.ts`: request/response/capability shapes
+  - `packages/coding-agent/src/tools/tool-timeouts.ts`: per-tool timeout clamp
+  - `packages/coding-agent/src/debug/index.ts`: interactive debug selector menu
+  - `packages/coding-agent/src/debug/log-viewer.ts`: recent-log TUI viewer
+  - `packages/coding-agent/src/debug/raw-sse.ts`: raw SSE TUI viewer
+  - `packages/coding-agent/src/debug/raw-sse-buffer.ts`: bounded SSE capture buffer
+  - `packages/coding-agent/src/debug/profiler.ts`: CPU/heap profiling helpers
+  - `packages/coding-agent/src/debug/report-bundle.ts`: `.tar.gz` report bundling, log source, cache cleanup
+  - `packages/coding-agent/src/debug/system-info.ts`: system snapshot collection and env redaction
+  - `packages/coding-agent/src/debug/terminal-info.ts`: terminal state collection/formatting
+  - `packages/coding-agent/src/debug/protocol-probe.ts`: terminal protocol probe panel and sample image
 
 ## Inputs
 
@@ -197,40 +197,40 @@ Example `.veyyon/dap.json`:
   - stdio adapters: direct `stdin`/`stdout` framing.
   - socket adapters: Unix domain socket on Linux; TCP callback on macOS/other.
 - **DAP agent-tool actions**
-  - `launch` — spawn adapter, initialize session, maybe stop on entry; returns formatted session snapshot and `details.adapter`.
-  - `attach` — connect to a live process or remote port; same output shape as `launch`.
-  - `set_breakpoint` — source or function breakpoint add/update; returns the current breakpoint list for that target.
-  - `remove_breakpoint` — source or function breakpoint removal; returns the remaining breakpoint list.
-  - `set_instruction_breakpoint` / `remove_instruction_breakpoint` — require `supportsInstructionBreakpoints`; return current instruction breakpoint list.
-  - `data_breakpoint_info` — require `supportsDataBreakpoints`; asks the adapter for a `dataId`, access types, and description for `name`.
-  - `set_data_breakpoint` / `remove_data_breakpoint` — require `supportsDataBreakpoints`; return the cached data-breakpoint list.
-  - `continue` / `step_over` / `step_in` / `step_out` — return text describing whether execution stopped, terminated, or kept running, plus `details.state` and `details.timedOut`.
-  - `pause` — interrupts a running target and returns a stopped snapshot.
-  - `evaluate` — adapter expression evaluation; defaults context to `repl`.
-  - `stack_trace` — fetches frames for the resolved thread.
-  - `threads` — fetches current threads.
-  - `scopes` — frame scopes for an explicit `frame_id` or the current stopped frame.
-  - `variables` — variables for `variable_ref` or `scope_id`.
-  - `disassemble` — require `supportsDisassembleRequest`; disassembles around `memory_reference`, or around the current stopped instruction pointer when no memory reference is supplied.
-  - `read_memory` — require `supportsReadMemoryRequest`; returns address, base64 data, unreadable-byte count.
-  - `write_memory` — require `supportsWriteMemoryRequest`; writes base64 data and reports bytes written.
-  - `modules` — require `supportsModulesRequest`; optional pagination via `start_module` / `module_count`.
-  - `loaded_sources` — require `supportsLoadedSourcesRequest`; returns loaded source descriptors.
-  - `custom_request` — sends any DAP request name with arbitrary arguments.
-  - `output` — dumps captured stdout/stderr/console text from the session cache.
-  - `terminate` — disconnects and disposes the active session; returns `No debug session to terminate.` when none exists.
-  - `sessions` — lists all cached session summaries.
+  - `launch`: spawn adapter, initialize session, maybe stop on entry; returns formatted session snapshot and `details.adapter`.
+  - `attach`: connect to a live process or remote port; same output shape as `launch`.
+  - `set_breakpoint`: source or function breakpoint add/update; returns the current breakpoint list for that target.
+  - `remove_breakpoint`: source or function breakpoint removal; returns the remaining breakpoint list.
+  - `set_instruction_breakpoint` / `remove_instruction_breakpoint`: require `supportsInstructionBreakpoints`; return current instruction breakpoint list.
+  - `data_breakpoint_info`: require `supportsDataBreakpoints`; asks the adapter for a `dataId`, access types, and description for `name`.
+  - `set_data_breakpoint` / `remove_data_breakpoint`: require `supportsDataBreakpoints`; return the cached data-breakpoint list.
+  - `continue` / `step_over` / `step_in` / `step_out`: return text describing whether execution stopped, terminated, or kept running, plus `details.state` and `details.timedOut`.
+  - `pause`: interrupts a running target and returns a stopped snapshot.
+  - `evaluate`: adapter expression evaluation; defaults context to `repl`.
+  - `stack_trace`: fetches frames for the resolved thread.
+  - `threads`: fetches current threads.
+  - `scopes`: frame scopes for an explicit `frame_id` or the current stopped frame.
+  - `variables`: variables for `variable_ref` or `scope_id`.
+  - `disassemble`: require `supportsDisassembleRequest`; disassembles around `memory_reference`, or around the current stopped instruction pointer when no memory reference is supplied.
+  - `read_memory`: require `supportsReadMemoryRequest`; returns address, base64 data, unreadable-byte count.
+  - `write_memory`: require `supportsWriteMemoryRequest`; writes base64 data and reports bytes written.
+  - `modules`: require `supportsModulesRequest`; optional pagination via `start_module` / `module_count`.
+  - `loaded_sources`: require `supportsLoadedSourcesRequest`; returns loaded source descriptors.
+  - `custom_request`: sends any DAP request name with arbitrary arguments.
+  - `output`: dumps captured stdout/stderr/console text from the session cache.
+  - `terminate`: disconnects and disposes the active session; returns `No debug session to terminate.` when none exists.
+  - `sessions`: lists all cached session summaries.
 - **Interactive selector routes (UI-only)**
-  - `logs` — loads today’s log tail and optional older daily log files into `DebugLogViewerComponent`; supports copy, range selection, pid filtering, load-older.
-  - `raw-sse` — live view over the session’s `RawSseDebugBuffer`; supports tail-follow, scrolling, copy-all.
-  - `performance` — CPU profile + 30-second work profile + report bundle.
-  - `memory` — heap snapshot + report bundle.
-  - `dump` — report bundle without profiler artifacts.
-  - `work` — standalone work-profile flamegraph export/open.
-  - `system` — formatted OS/arch/CPU/memory/version/cwd/shell/terminal dump.
-  - `terminal` — formatted terminal subprotocol/geometry/scrollback state dump.
-  - `protocols` — terminal protocol test: desktop-notification side effect plus a probe panel sampling special protocols.
-  - `open-artifacts` / `transcript` / `clear-cache` — artifact directory open, transcript export, artifact-cache pruning.
+  - `logs`: loads today’s log tail and optional older daily log files into `DebugLogViewerComponent`; supports copy, range selection, pid filtering, load-older.
+  - `raw-sse`: live view over the session’s `RawSseDebugBuffer`; supports tail-follow, scrolling, copy-all.
+  - `performance`: CPU profile + 30-second work profile + report bundle.
+  - `memory`: heap snapshot + report bundle.
+  - `dump`: report bundle without profiler artifacts.
+  - `work`: standalone work-profile flamegraph export/open.
+  - `system`: formatted OS/arch/CPU/memory/version/cwd/shell/terminal dump.
+  - `terminal`: formatted terminal subprotocol/geometry/scrollback state dump.
+  - `protocols`: terminal protocol test: desktop-notification side effect plus a probe panel sampling special protocols.
+  - `open-artifacts` / `transcript` / `clear-cache`: artifact directory open, transcript export, artifact-cache pruning.
 
 ## Side Effects
 - Filesystem

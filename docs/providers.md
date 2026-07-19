@@ -20,20 +20,20 @@ The registry can hold a model even when it is not currently selectable. A model 
 1. its provider ID is **not** in the effective `disabledProviders` list; **and**
 2. the provider is either **keyless** (an implicit local provider, or a custom provider with `auth: none`) **or** has resolvable credentials.
 
-`disabledProviders` is checked *before* credentials. If a provider ID is disabled, no stored key, OAuth session, environment variable, `.env` entry, or `models.yml` `apiKey` will make it selectable — the provider's models are dropped from availability regardless of credentials. Removing the ID from the effective list restores them.
+`disabledProviders` is checked *before* credentials. If a provider ID is disabled, no stored key, OAuth session, environment variable, `.env` entry, or `models.yml` `apiKey` will make it selectable, the provider's models are dropped from availability regardless of credentials. Removing the ID from the effective list restores them.
 
-Keyless local engines are a special case: `ollama`, `llama.cpp`, and `lm-studio` are treated as keyless when no key is configured, so their discovered models are selectable as soon as the engine answers — no login required. See [Built-in local engines](#built-in-local-engines).
+Keyless local engines are a special case: `ollama`, `llama.cpp`, and `lm-studio` are treated as keyless when no key is configured, so their discovered models are selectable as soon as the engine answers, no login required. See [Built-in local engines](#built-in-local-engines).
 
 ## Credentials and precedence
 
 When a provider needs an API key, `veyyon` resolves it in this order (first match wins):
 
-1. **Runtime override** — a key supplied for the current process, e.g. CLI `--api-key`. Never persisted.
-2. **`models.yml` config key** — an `apiKey` pinned on a custom provider, registered as a config-sourced bearer. This deliberately beats stored OAuth, so a key supplied for a custom `baseUrl`/gateway is honored instead of forwarding an upstream OAuth token the proxy would reject.
-3. **Stored API key** — an API-key credential saved in the auth store.
-4. **Stored OAuth credential** — refreshed when needed; multiple accounts are ranked/rotated automatically. For Anthropic, each organization counts as its own account: one email holding both a Team seat and a personal plan can log in once per subscription (pick the workspace on the browser consent page) and rotation treats them as two accounts.
-5. **Provider environment variable** — including values loaded from `.env` files (see [the env-var table](#environment-variables-and-env-files)).
-6. **`models.yml` fallback resolver** — keys for custom providers not otherwise registered.
+1. **Runtime override**: a key supplied for the current process, e.g. CLI `--api-key`. Never persisted.
+2. **`models.yml` config key**: an `apiKey` pinned on a custom provider, registered as a config-sourced bearer. This deliberately beats stored OAuth, so a key supplied for a custom `baseUrl`/gateway is honored instead of forwarding an upstream OAuth token the proxy would reject.
+3. **Stored API key**: an API-key credential saved in the auth store.
+4. **Stored OAuth credential**: refreshed when needed; multiple accounts are ranked/rotated automatically. For Anthropic, each organization counts as its own account: one email holding both a Team seat and a personal plan can log in once per subscription (pick the workspace on the browser consent page) and rotation treats them as two accounts.
+5. **Provider environment variable**: including values loaded from `.env` files (see [the env-var table](#environment-variables-and-env-files)).
+6. **`models.yml` fallback resolver**: keys for custom providers not otherwise registered.
 
 Stored credentials live in the auth store at `~/.veyyon/profiles/default/agent/agent.db` for local auth (or the active profile's `agent.db`), or in the configured auth-broker snapshot when running in broker mode. `VEYYON_CODING_AGENT_DIR` relocates the entire agent directory, and the auth store moves with it.
 
@@ -43,8 +43,8 @@ Logins are **provider-scoped**: authenticating `anthropic` does not authenticate
 
 Use the interactive slash commands inside a session:
 
-- `/login` — opens the OAuth/key selector. `/login <provider>` jumps straight to one provider (e.g. `/login anthropic`); for an OAuth flow that needs a pasted callback, run `/login <redirect-url>` to complete it.
-- `/logout` — opens the provider selector to remove stored credentials.
+- `/login`: opens the OAuth/key selector. `/login <provider>` jumps straight to one provider (e.g. `/login anthropic`); for an OAuth flow that needs a pasted callback, run `/login <redirect-url>` to complete it.
+- `/logout`: opens the provider selector to remove stored credentials.
 
 For headless or remote setups backed by a shared auth broker, the CLI exposes `veyyon auth-broker login <provider>` / `veyyon auth-broker logout` (and `status`, `list`, `import`, `migrate`). See [Secrets and credentials](./secrets.md) for the broker model.
 
@@ -156,7 +156,7 @@ OLLAMA_BASE_URL=http://127.0.0.1:11434
 `.env` parsing is intentionally minimal:
 
 - blank lines and lines starting with `#` are ignored;
-- keys must match `[A-Za-z_][A-Za-z0-9_]*` (shell-identifier shape) — other names are dropped;
+- keys must match `[A-Za-z_][A-Za-z0-9_]*` (shell-identifier shape): other names are dropped;
 - values may be wrapped in single or double quotes, which are stripped;
 - values containing a NUL byte are dropped.
 
@@ -200,7 +200,7 @@ Provider IDs are matched exactly. Disable `google` to hide the Google Gemini API
 - extension-registered providers;
 - implicit local engines.
 
-Disabling a provider does not delete its stored credentials — re-enable it by removing its ID from the effective list.
+Disabling a provider does not delete its stored credentials, re-enable it by removing its ID from the effective list.
 
 ## Project-specific provider control
 
@@ -270,8 +270,8 @@ Path scopes are resolved **after** the settings merge. Because a higher-preceden
 
 `disabledProviders` uses a **single shared ID namespace** that gates two different subsystems:
 
-- **Model providers** — the backends on this page (`anthropic`, `openai`, `ollama`, a custom `models.yml` ID, …). Disabling one removes its models from selection.
-- **Discovery providers** — sources of context files, MCP servers, commands, skills, hooks, tools, prompts, and settings. Disabling one stops that source from contributing capability items.
+- **Model providers**: the backends on this page (`anthropic`, `openai`, `ollama`, a custom `models.yml` ID, …). Disabling one removes its models from selection.
+- **Discovery providers**: sources of context files, MCP servers, commands, skills, hooks, tools, prompts, and settings. Disabling one stops that source from contributing capability items.
 
 | Entry type | Examples | Effect |
 |---|---|---|

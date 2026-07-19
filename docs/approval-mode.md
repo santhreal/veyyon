@@ -2,11 +2,11 @@
 
 Tool approval has two independent inputs:
 
-1. **Tool declaration** — every tool may declare an `approval` tier:
+1. **Tool declaration**: every tool may declare an `approval` tier:
    - `read`: reads data or updates UI-only session metadata.
    - `write`: mutates workspace/session state but does not execute arbitrary code.
    - `exec`: executes code, shells out, drives a browser, spawns agents, or performs similarly broad actions.
-2. **User policy** — `tools.approval.<toolName>: allow | deny | prompt` overrides the mode for that tool unless a non-yolo safety override forces a prompt.
+2. **User policy**: `tools.approval.<toolName>: allow | deny | prompt` overrides the mode for that tool unless a non-yolo safety override forces a prompt.
 
 Tools without an `approval` declaration are treated as `exec`. This is the safe default for unknown custom tools. MCP server tools declare `write`.
 

@@ -6,39 +6,39 @@
 - Entry: `packages/coding-agent/src/web/search/index.ts`
 - Model-facing prompt: `packages/coding-agent/src/prompts/tools/web-search.md`
 - Key collaborators:
-  - `packages/coding-agent/src/web/search/provider.ts` — lazy provider registry; availability chain.
-  - `packages/coding-agent/src/web/search/types.ts` — unified `SearchResponse` / `SearchProviderError` types.
-  - `packages/coding-agent/src/web/search/render.ts` — TUI renderer details type.
-  - `packages/coding-agent/src/web/search/providers/base.ts` — provider interface and shared params contract.
-  - `packages/coding-agent/src/web/search/providers/utils.ts` — credential lookup; source normalization.
-  - `packages/coding-agent/src/web/search/providers/browser-headers.ts` — shared Chromium navigation headers for scrape providers.
-  - `packages/coding-agent/src/web/search/providers/browser-page.ts` — shared fetch/headless-browser page loader for scrape providers.
-  - `packages/coding-agent/src/web/search/providers/anthropic.ts` — Claude web-search provider.
-  - `packages/coding-agent/src/web/search/providers/brave.ts` — Brave Search API adapter.
-  - `packages/coding-agent/src/web/search/providers/codex.ts` — OpenAI Codex SSE adapter.
-  - `packages/coding-agent/src/web/search/providers/duckduckgo.ts` — DuckDuckGo HTML frontend scraper.
-  - `packages/coding-agent/src/web/search/providers/ecosia.ts` — Ecosia browser-backed scraper.
-  - `packages/coding-agent/src/web/search/providers/exa.ts` — Exa API or MCP adapter.
-  - `packages/coding-agent/src/web/search/providers/firecrawl.ts` — Firecrawl search adapter.
-  - `packages/coding-agent/src/web/search/providers/gemini.ts` — Gemini grounding SSE adapter.
-  - `packages/coding-agent/src/web/search/providers/google.ts` — Google browser-backed SERP scraper.
-  - `packages/coding-agent/src/web/search/providers/jina.ts` — Jina Reader search adapter.
-  - `packages/coding-agent/src/web/search/providers/kagi.ts` — Kagi provider wrapper.
-  - `packages/coding-agent/src/web/search/providers/kimi.ts` — Kimi search adapter.
-  - `packages/coding-agent/src/web/search/providers/mojeek.ts` — Mojeek browser-backed scraper (independent index).
-  - `packages/coding-agent/src/web/search/providers/parallel.ts` — Parallel provider wrapper.
-  - `packages/coding-agent/src/web/search/providers/perplexity.ts` — Perplexity API / OAuth adapter.
-  - `packages/coding-agent/src/web/search/providers/public.ts` — Public Web aggregate over all credential-free engines.
-  - `packages/coding-agent/src/web/search/providers/searxng.ts` — self-hosted SearXNG adapter.
-  - `packages/coding-agent/src/web/search/providers/startpage.ts` — Startpage (Google-proxied) form-flow scraper.
-  - `packages/coding-agent/src/web/search/providers/synthetic.ts` — Synthetic search adapter.
-  - `packages/coding-agent/src/web/search/providers/tavily.ts` — Tavily search adapter.
-  - `packages/coding-agent/src/web/search/providers/tinyfish.ts` — TinyFish search adapter.
-  - `packages/coding-agent/src/web/search/providers/xai.ts` — xAI Responses web-search adapter.
-  - `packages/coding-agent/src/web/search/providers/zai.ts` — Z.AI remote MCP adapter.
-  - `packages/coding-agent/src/web/parallel.ts` — Parallel search/extract HTTP client.
-  - `packages/coding-agent/src/web/kagi.ts` — Kagi HTTP client.
-  - `packages/coding-agent/src/tools/index.ts` — built-in tool registration and enable flag.
+  - `packages/coding-agent/src/web/search/provider.ts`: lazy provider registry; availability chain.
+  - `packages/coding-agent/src/web/search/types.ts`: unified `SearchResponse` / `SearchProviderError` types.
+  - `packages/coding-agent/src/web/search/render.ts`: TUI renderer details type.
+  - `packages/coding-agent/src/web/search/providers/base.ts`: provider interface and shared params contract.
+  - `packages/coding-agent/src/web/search/providers/utils.ts`: credential lookup; source normalization.
+  - `packages/coding-agent/src/web/search/providers/browser-headers.ts`: shared Chromium navigation headers for scrape providers.
+  - `packages/coding-agent/src/web/search/providers/browser-page.ts`: shared fetch/headless-browser page loader for scrape providers.
+  - `packages/coding-agent/src/web/search/providers/anthropic.ts`: Claude web-search provider.
+  - `packages/coding-agent/src/web/search/providers/brave.ts`: Brave Search API adapter.
+  - `packages/coding-agent/src/web/search/providers/codex.ts`: OpenAI Codex SSE adapter.
+  - `packages/coding-agent/src/web/search/providers/duckduckgo.ts`: DuckDuckGo HTML frontend scraper.
+  - `packages/coding-agent/src/web/search/providers/ecosia.ts`: Ecosia browser-backed scraper.
+  - `packages/coding-agent/src/web/search/providers/exa.ts`: Exa API or MCP adapter.
+  - `packages/coding-agent/src/web/search/providers/firecrawl.ts`: Firecrawl search adapter.
+  - `packages/coding-agent/src/web/search/providers/gemini.ts`: Gemini grounding SSE adapter.
+  - `packages/coding-agent/src/web/search/providers/google.ts`: Google browser-backed SERP scraper.
+  - `packages/coding-agent/src/web/search/providers/jina.ts`: Jina Reader search adapter.
+  - `packages/coding-agent/src/web/search/providers/kagi.ts`: Kagi provider wrapper.
+  - `packages/coding-agent/src/web/search/providers/kimi.ts`: Kimi search adapter.
+  - `packages/coding-agent/src/web/search/providers/mojeek.ts`: Mojeek browser-backed scraper (independent index).
+  - `packages/coding-agent/src/web/search/providers/parallel.ts`: Parallel provider wrapper.
+  - `packages/coding-agent/src/web/search/providers/perplexity.ts`: Perplexity API / OAuth adapter.
+  - `packages/coding-agent/src/web/search/providers/public.ts`: Public Web aggregate over all credential-free engines.
+  - `packages/coding-agent/src/web/search/providers/searxng.ts`: self-hosted SearXNG adapter.
+  - `packages/coding-agent/src/web/search/providers/startpage.ts`: Startpage (Google-proxied) form-flow scraper.
+  - `packages/coding-agent/src/web/search/providers/synthetic.ts`: Synthetic search adapter.
+  - `packages/coding-agent/src/web/search/providers/tavily.ts`: Tavily search adapter.
+  - `packages/coding-agent/src/web/search/providers/tinyfish.ts`: TinyFish search adapter.
+  - `packages/coding-agent/src/web/search/providers/xai.ts`: xAI Responses web-search adapter.
+  - `packages/coding-agent/src/web/search/providers/zai.ts`: Z.AI remote MCP adapter.
+  - `packages/coding-agent/src/web/parallel.ts`: Parallel search/extract HTTP client.
+  - `packages/coding-agent/src/web/kagi.ts`: Kagi HTTP client.
+  - `packages/coding-agent/src/tools/index.ts`: built-in tool registration and enable flag.
 
 ## Inputs
 
@@ -104,120 +104,120 @@ Streaming: none. `WebSearchTool.execute()` forwards its `AbortSignal` into `exec
   - **Excluded providers**: `setExcludedSearchProviders()` records providers `resolveProviderCandidates()` must skip, including as fallbacks. Wired from the `providers.webSearchExclude` setting (`providers.webSearch` drives the preferred provider) in `packages/coding-agent/src/sdk.ts`, `packages/coding-agent/src/modes/interactive-mode.ts`, and `packages/coding-agent/src/modes/controllers/selector-controller.ts`.
   - **Auto chain order** (23 providers): `perplexity`, `gemini`, `anthropic`, `codex`, `xai`, `zai`, `exa`, `tinyfish`, `jina`, `kagi`, `tavily`, `firecrawl`, `brave`, `kimi`, `parallel`, `synthetic`, `searxng`, `startpage`, `duckduckgo`, `ecosia`, `google`, `mojeek`, `public` (`SEARCH_PROVIDER_ORDER` in `packages/coding-agent/src/web/search/types.ts`). `public` is explicit-only: its `isAvailable()` returns `false` so the auto chain never fans out implicitly.
 - **Provider adapters**
-  - **Perplexity** — `packages/coding-agent/src/web/search/providers/perplexity.ts`
+  - **Perplexity**: `packages/coding-agent/src/web/search/providers/perplexity.ts`
     - Availability: auth precedence is `PERPLEXITY_COOKIES` -> OAuth token in `agent.db` -> `PERPLEXITY_API_KEY` / `PPLX_API_KEY` -> anonymous ask-endpoint fallback. `isAvailable()` gates the auto chain on credentials, but `isExplicitlyAvailable()` is always true, so explicit selection works unauthenticated.
     - OAuth/cookie/anonymous mode: POSTs to `https://www.perplexity.ai/rest/sse/perplexity_ask`, consumes SSE, merges partial events, extracts answer and source URLs, sets `authMode: "oauth"` (`"anonymous"` for the unauthenticated fallback).
     - API-key mode: POSTs to `https://api.perplexity.ai/chat/completions` with `model: "sonar-pro"`, `search_mode: "web"`, `num_search_results`, optional `search_recency_filter`, `max_tokens`, `temperature`.
     - `num_search_results` controls upstream API breadth only in API-key mode. `limit` is preserved separately as `num_results` and slices returned `sources` after parsing in both auth modes.
     - Output may include `answer`, `sources`, `citations`, `usage`, `model`, `requestId`, `authMode`.
-  - **Gemini** — `packages/coding-agent/src/web/search/providers/gemini.ts`
+  - **Gemini**: `packages/coding-agent/src/web/search/providers/gemini.ts`
     - Availability: OAuth credentials in `agent.db` for `google-gemini-cli` / `google-antigravity`, or a Google Developer API key.
     - Querying: SSE `streamGenerateContent` call with Google Search grounding enabled. Antigravity auth tries two fallback endpoints and retries `401/403/400 invalid auth` once after token refresh; `429/5xx` retry with exponential backoff and server-provided retry delay, capped by a `5 * 60 * 1000` ms rate-limit budget.
     - Model: `providers.webSearchGeminiModel` selects the Gemini grounding model; `GEMINI_SEARCH_MODEL` overrides it. Defaults to `gemini-2.5-flash`.
     - `max_tokens` and `temperature` pass through as `generationConfig.maxOutputTokens` / `generationConfig.temperature`.
     - `limit` and `num_search_results` are collapsed together before dispatch.
     - Output may include `answer`, `sources`, `citations`, `searchQueries`, `usage`, `model`.
-  - **Anthropic** — `packages/coding-agent/src/web/search/providers/anthropic.ts`
+  - **Anthropic**: `packages/coding-agent/src/web/search/providers/anthropic.ts`
     - Availability: `ANTHROPIC_SEARCH_API_KEY` env var, otherwise `authStorage.hasAuth("anthropic")`; search credentials come from `authStorage.getApiKey("anthropic")` when no search-specific key is set.
     - Env overrides specific to search (do not affect chat completions):
-      - `ANTHROPIC_SEARCH_API_KEY` — highest-priority search auth; overrides `ANTHROPIC_API_KEY` / OAuth / `ANTHROPIC_FOUNDRY_API_KEY` for the search call only.
-      - `ANTHROPIC_SEARCH_BASE_URL` — search-only base URL for either `ANTHROPIC_SEARCH_API_KEY` or fallback Anthropic credentials; overrides `ANTHROPIC_BASE_URL` (and `FOUNDRY_BASE_URL` in Foundry mode); defaults to `https://api.anthropic.com`.
-      - `ANTHROPIC_SEARCH_MODEL` — search model; defaults to `claude-haiku-4-5`.
+      - `ANTHROPIC_SEARCH_API_KEY`: highest-priority search auth; overrides `ANTHROPIC_API_KEY` / OAuth / `ANTHROPIC_FOUNDRY_API_KEY` for the search call only.
+      - `ANTHROPIC_SEARCH_BASE_URL`: search-only base URL for either `ANTHROPIC_SEARCH_API_KEY` or fallback Anthropic credentials; overrides `ANTHROPIC_BASE_URL` (and `FOUNDRY_BASE_URL` in Foundry mode); defaults to `https://api.anthropic.com`.
+      - `ANTHROPIC_SEARCH_MODEL`: search model; defaults to `claude-haiku-4-5`.
     - Querying: Claude Messages API with web-search tool enabled.
     - `max_tokens` and `temperature` pass through.
     - `limit` and `num_search_results` are collapsed together before dispatch: `num_results = params.numSearchResults ?? params.limit`.
     - Output may include `answer`, `sources`, `citations`, `searchQueries`, `usage.searchRequests`, `model`, `requestId`.
-  - **Codex** — `packages/coding-agent/src/web/search/providers/codex.ts`
-    - Availability: OAuth credential for `openai-codex` in `agent.db` (`hasOAuth()`; expiry is not checked here — refresh is lazy in `searchCodex`).
+  - **Codex**: `packages/coding-agent/src/web/search/providers/codex.ts`
+    - Availability: OAuth credential for `openai-codex` in `agent.db` (`hasOAuth()`; expiry is not checked here: refresh is lazy in `searchCodex`).
     - Querying: SSE POST to `https://chatgpt.com/backend-api/codex/responses` with `tool_choice: { type: "web_search" }` and `search_context_size: "high"` by default.
     - Ignores `recency`, `max_tokens`, and `temperature` in this tool path.
     - `limit` and `num_search_results` are collapsed together before dispatch.
     - Output may include `answer`, `sources`, `usage`, `model`, `requestId`. If the streamed response has no `url_citation` annotations, the adapter falls back to scraping markdown links and bare URLs from the answer text.
-  - **xAI** — `packages/coding-agent/src/web/search/providers/xai.ts`
+  - **xAI**: `packages/coding-agent/src/web/search/providers/xai.ts`
     - Availability: `XAI_API_KEY` or `agent.db` credential for `xai`.
     - Querying: POST `https://api.x.ai/v1/responses` with model `grok-4.3` and `tools: [{ type: "web_search" }]` using the `/v1/responses` Agent Tools API.
     - `max_tokens` and `temperature` pass through. `recency` is sent as `search_parameters.from_date`/`to_date`; `num_search_results` (or `limit` when absent) is sent as `search_parameters.max_search_results`. Because xAI citations may include every encountered URL, the adapter also locally caps returned `sources` and `citations` after parsing. The local cap uses `num_search_results` before `limit`, defaults to `10` when omitted/invalid/zero, and is capped at `30`.
     - Output may include `answer`, `sources`, `citations`, `usage`, `model`, `requestId`, `authMode: "api_key"`.
-  - **Z.AI** — `packages/coding-agent/src/web/search/providers/zai.ts`
+  - **Z.AI**: `packages/coding-agent/src/web/search/providers/zai.ts`
     - Availability: env or `agent.db` credential for `zai`.
     - Querying: JSON-RPC `tools/call` against `https://api.z.ai/api/mcp/web_search_prime/mcp` for remote MCP tool `web_search_prime`.
     - Fallback chain inside the provider: tries `{query,count}`, then `{search_query,count}`, then `{search_query, search_engine:"search-prime", count}` when earlier attempts fail with argument-shape errors.
     - `limit` and `num_search_results` are collapsed together before dispatch.
     - Output may include parsed free-text `answer`, `sources`, `requestId`.
-  - **Exa** — `packages/coding-agent/src/web/search/providers/exa.ts`
+  - **Exa**: `packages/coding-agent/src/web/search/providers/exa.ts`
     - Availability: env or `agent.db` credential for `exa` admits Exa to the auto chain; settings must not explicitly disable `exa.enabled` or `exa.enableSearch`. Explicit selection (`providers.webSearch: exa`) reaches Exa even without a credential and falls back to public MCP.
     - Querying: POST `https://api.exa.ai/search` with the resolved Exa API key, otherwise JSON-RPC `tools/call` against `https://mcp.exa.ai/mcp` for remote MCP tool `web_search_exa`.
     - `limit` and `num_search_results` are collapsed together before dispatch.
     - Output: synthesized `answer` from up to 3 result summaries, `sources`, `requestId`.
-  - **TinyFish** — `packages/coding-agent/src/web/search/providers/tinyfish.ts`
+  - **TinyFish**: `packages/coding-agent/src/web/search/providers/tinyfish.ts`
     - Availability: `TINYFISH_API_KEY` or `agent.db` credential for `tinyfish`.
     - Querying: GET `https://api.search.tinyfish.ai` with `X-API-Key` and `query`; `recency` maps to `recency_minutes`.
     - `limit` / `num_search_results`: collapsed as `params.numSearchResults ?? params.limit`, clamped to `1..20`, default `10`. TinyFish has no count parameter and returns at most 10 results per page; for counts above the first page, the adapter fetches documented `page` values (`0`, then `1` when needed) before slicing locally. Output `sources`, `authMode: "api_key"`.
-  - **Jina** — `packages/coding-agent/src/web/search/providers/jina.ts`
+  - **Jina**: `packages/coding-agent/src/web/search/providers/jina.ts`
     - Availability: `JINA_API_KEY` only.
     - Querying: GET-like fetch to `https://s.jina.ai/<encoded query>` with bearer auth.
     - Ignores `recency`, `max_tokens`, and `temperature`.
     - `limit` / `num_search_results`: adapter slices sources to `params.numSearchResults ?? params.limit` when provided; otherwise returns all payload items.
     - Output: `sources` only.
-  - **Kagi** — `packages/coding-agent/src/web/search/providers/kagi.ts`, `packages/coding-agent/src/web/kagi.ts`
+  - **Kagi**: `packages/coding-agent/src/web/search/providers/kagi.ts`, `packages/coding-agent/src/web/kagi.ts`
     - Availability: env or `agent.db` credential for `kagi`.
     - Querying: POST `https://kagi.com/api/v1/search` with `Authorization: Bearer <key>` and JSON body `{ query, workflow: "search", limit, filters?: { after } }`. `recency` maps to `filters.after` as a UTC `YYYY-MM-DD` string (`day`/`week`/`month`/`year`).
     - `limit` and `num_search_results` are collapsed together before dispatch, clamped to `1..40`, default `10`.
     - Output: `sources` (concatenated `data.search` + `data.video` + `data.news` + `data.infobox`, with video/news/infobox results tagged in the title), `relatedQuestions` (`data.adjacent_question` + `data.related_search` `props.question`), `answer` (`data.direct_answer[0].snippet ?? title`), `requestId` (`meta.trace`).
-  - **Tavily** — `packages/coding-agent/src/web/search/providers/tavily.ts`
+  - **Tavily**: `packages/coding-agent/src/web/search/providers/tavily.ts`
     - Availability: API key from env or `agent.db` via `findCredential()`.
     - Querying: POST `https://api.tavily.com/search`.
     - `recency` maps to Tavily `time_range`; code explicitly keeps `topic` at default general scope instead of narrowing to news.
     - `limit` / `num_search_results`: adapter uses `params.numSearchResults ?? params.limit`, clamped to `5..20` with default `5`.
     - Output: `answer`, `sources`, `requestId`, `authMode: "api_key"`.
-  - **Firecrawl** — `packages/coding-agent/src/web/search/providers/firecrawl.ts`
+  - **Firecrawl**: `packages/coding-agent/src/web/search/providers/firecrawl.ts`
     - Availability: `FIRECRAWL_API_KEY` or `agent.db` credential for `firecrawl`.
     - Querying: POST `https://api.firecrawl.dev/v2/search` with `sources: [{ type: "web" }]`; `recency` maps to Google-style `tbs`.
     - `limit` / `num_search_results`: collapsed and clamped to `1..100`, default `10`; output `sources`, `requestId`, `authMode: "api_key"`.
-  - **Brave** — `packages/coding-agent/src/web/search/providers/brave.ts`
+  - **Brave**: `packages/coding-agent/src/web/search/providers/brave.ts`
     - Availability: `BRAVE_API_KEY` only.
     - Querying: GET `https://api.search.brave.com/res/v1/web/search` with `count`, `extra_snippets=true`, and `freshness=pd|pw|pm|py` for `recency`.
     - `limit` / `num_search_results`: `params.numSearchResults ?? params.limit`, clamped to `1..20`, default `10`.
     - Output: `sources`, `requestId`.
-  - **Kimi** — `packages/coding-agent/src/web/search/providers/kimi.ts`
+  - **Kimi**: `packages/coding-agent/src/web/search/providers/kimi.ts`
     - Availability: `MOONSHOT_SEARCH_API_KEY`, `KIMI_SEARCH_API_KEY`, `MOONSHOT_API_KEY`, or `agent.db` credentials for `moonshot` / `kimi-code`.
     - Querying: POST to `MOONSHOT_SEARCH_BASE_URL` / `KIMI_SEARCH_BASE_URL` / default `https://api.kimi.com/coding/v1/search` with `text_query`, `limit`, `enable_page_crawling`, `timeout_seconds: 30`.
     - `limit` / `num_search_results`: `params.numSearchResults ?? params.limit`, clamped to `1..20`, default `10`.
     - Output: `sources`, `requestId`.
-  - **Parallel** — `packages/coding-agent/src/web/search/providers/parallel.ts`, `packages/coding-agent/src/web/parallel.ts`
+  - **Parallel**: `packages/coding-agent/src/web/search/providers/parallel.ts`, `packages/coding-agent/src/web/parallel.ts`
     - Availability: env or `agent.db` credential for `parallel`.
     - Querying: POST `https://api.parallel.ai/v1beta/search` with `objective=query`, `search_queries=[query]`, `mode:"fast"`, `max_chars_per_result: 10000`, beta header `search-extract-2025-10-10`.
     - There is no provider fan-out here despite the name; the current adapter always sends a one-element `search_queries` array.
     - `limit` and `num_search_results` are collapsed together before dispatch, clamped to `1..40`, default `10`.
     - Output: `sources`, `requestId`.
-  - **Synthetic** — `packages/coding-agent/src/web/search/providers/synthetic.ts`
+  - **Synthetic**: `packages/coding-agent/src/web/search/providers/synthetic.ts`
     - Availability: env or `agent.db` credential for `synthetic`.
     - Querying: POST `https://api.synthetic.new/v2/search` with `{ query }`.
     - Ignores `recency`, `max_tokens`, and `temperature`.
     - `limit` and `num_search_results` are collapsed together before dispatch.
     - Output: `sources` only.
-  - **SearXNG** — `packages/coding-agent/src/web/search/providers/searxng.ts`
+  - **SearXNG**: `packages/coding-agent/src/web/search/providers/searxng.ts`
     - Availability: endpoint from `searxng.endpoint` setting or `SEARXNG_ENDPOINT` env.
     - Querying: GET `<endpoint>/search?format=json&q=...`; optional settings add `categories` and `language`.
     - Auth precedence: Basic auth (`searxng.basicUsername` / `searxng.basicPassword` or env equivalents) over bearer token (`searxng.token` / `SEARXNG_TOKEN`). Basic credentials are validated for RFC 7617 restrictions.
     - `recency` maps to `time_range`; `week` is downgraded to `month` because SearXNG does not support week.
     - `limit` and `num_search_results` are collapsed together before dispatch, clamped to `1..20`, default `10`.
     - Output: `sources`, `relatedQuestions` from `suggestions`.
-  - **DuckDuckGo** — `packages/coding-agent/src/web/search/providers/duckduckgo.ts`
+  - **DuckDuckGo**: `packages/coding-agent/src/web/search/providers/duckduckgo.ts`
     - Availability: always available; no API key.
     - Querying: POST the no-JS HTML frontend `https://html.duckduckgo.com/html/` with `q`, `kl=us-en`, and an optional `df` recency filter (`d`/`w`/`m`/`y`); parses the result list and unwraps `//duckduckgo.com/l/?uddg=…` redirect URLs.
     - `recency` maps to `df`; values outside `day|week|month|year` are ignored.
     - `limit` / `num_search_results`: collapsed and clamped to `1..20`, default `10`; output exposes `sources` only (DuckDuckGo's HTML page does not return a standalone abstract).
     - DuckDuckGo serves a bot-detection challenge (HTTP 200/202 with an `anomaly-modal` body) when it throttles datacenter or shared-egress IPs. The adapter detects this and raises a `SearchProviderError` so the orchestrator can fall through to the next configured provider with a clear cause.
-  - **Startpage** — `providers/startpage.ts`
+  - **Startpage**: `providers/startpage.ts`
     - Availability: always available; no API key. Plain fetch with shared browser navigation headers.
     - Proxies Google's index; GET homepage to lift the `sc` anti-bot form token, then POST `/sp/search` (tokenless GET fallback); `recency` maps to `with_date=d|w|m|y`.
     - Detects Startpage's bot-challenge/consent page and raises a provider-tagged `SearchProviderError` (429) so the chain advances.
-  - **Google / Ecosia / Mojeek** — `providers/google.ts`, `providers/ecosia.ts`, `providers/mojeek.ts`
+  - **Google / Ecosia / Mojeek**: `providers/google.ts`, `providers/ecosia.ts`, `providers/mojeek.ts`
     - Availability: always available; no API key. `browserFetch` (`providers/browser-page.ts`) tries a browser-profiled plain fetch first and escalates fetch failures, non-2xx statuses, and challenge bodies to the shared stealth headless browser (`acquireBrowser`); an injected `params.fetch` (tests) never escalates.
     - Google: seeds cookies via the homepage, then loads the rendered SERP; `recency` maps to `tbs=qdr:*`. Ecosia sits behind Cloudflare (hence the browser); its organic results are Google-backed; `recency` is a server-side no-op and silently ignored. Mojeek fronts an ALTCHA proof-of-work wall that the browser path auto-solves; `recency` maps to `since=day|week|month|year`.
     - Challenge pages (Google `unusual traffic`, Ecosia Firewall, Mojeek ALTCHA/robot 403) raise provider-tagged `SearchProviderError`s (429).
-  - **Public Web** — `packages/coding-agent/src/web/search/providers/public.ts`
+  - **Public Web**: `packages/coding-agent/src/web/search/providers/public.ts`
     - Availability: explicit selection only (`isAvailable()` is `false`; `isExplicitlyAvailable()` is `true`).
     - Querying: fans out to every credential-free engine in parallel (`duckduckgo`, `startpage`, `google`, `ecosia`, `mojeek`, minus excluded ones), then consolidates: URLs deduplicated on a canonical key (host without `www.`, no trailing slash, no fragment), ranked by cross-engine consensus, then best per-engine rank; the longest snippet wins.
     - Deadline race: returns at the earliest of all engines settled, 5s soft deadline with at least one success, or 30s hard cap; stragglers are aborted. Individual engine failures are tolerated; it fails only when every engine fails (aggregated 503).

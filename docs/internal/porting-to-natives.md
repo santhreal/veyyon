@@ -1,4 +1,4 @@
-# Porting to veyyon-natives (N-API) — Field Notes
+# Porting to veyyon-natives (N-API): Field Notes
 
 This is a practical guide for moving hot paths into `crates/veyyon-natives` and wiring them through the generated native package entrypoint. It exists to avoid the same failures happening twice.
 
@@ -40,7 +40,7 @@ Consumers import directly from `@veyyon/natives`. The generated declarations and
 
 - `packages/natives/scripts/build-native.ts` runs napi-rs, installs the `.node` artifact, copies generated `index.d.ts`, and regenerates explicit ESM class/function exports plus enum runtime exports in the checked-in `native/index.js`.
 - `packages/natives/native/index.js` is the ESM entrypoint that calls the loader, exposes named exports, and rejects install/compiled `.node` files that do not expose the package-version sentinel.
-- `packages/natives/package.json` exposes only the package root (`@veyyon/natives`) as the import surface. At publish time the binaries are split out: the core ships the loader only (no `.node`), and each platform's `.node` is published as an optional-dependency leaf package `@veyyon/natives-<tag>` (`scripts/ci-release-publish.ts` + `packages/natives/scripts/gen-npm-packages.ts`). This is transparent to importers — you still `import` from `@veyyon/natives`.
+- `packages/natives/package.json` exposes only the package root (`@veyyon/natives`) as the import surface. At publish time the binaries are split out: the core ships the loader only (no `.node`), and each platform's `.node` is published as an optional-dependency leaf package `@veyyon/natives-<tag>` (`scripts/ci-release-publish.ts` + `packages/natives/scripts/gen-npm-packages.ts`). This is transparent to importers: you still `import` from `@veyyon/natives`.
 
 **Consumer side:**
 

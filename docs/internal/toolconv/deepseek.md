@@ -26,8 +26,8 @@ An inference server enables it with a chat template plus a tool-call parser:
 DeepSeek's markers do **not** use the ASCII vertical bar `|` (U+007C) or ASCII underscore
 `_`. They use:
 
-- `｜` — **U+FF5C FULLWIDTH VERTICAL LINE**, as the delimiter just inside the angle brackets.
-- `▁` — **U+2581 LOWER ONE EIGHTH BLOCK** (the SentencePiece word-boundary glyph), as the
+- `｜`: **U+FF5C FULLWIDTH VERTICAL LINE**, as the delimiter just inside the angle brackets.
+- `▁`: **U+2581 LOWER ONE EIGHTH BLOCK** (the SentencePiece word-boundary glyph), as the
   separator *between words* inside a token, e.g. `begin▁of▁sentence`, `tool▁calls▁begin`.
 
 So `<｜tool▁calls▁begin｜>` is `<` + `｜`(FF5C) + `tool` + `▁`(2581) + `calls` + `▁`(2581) +
@@ -84,10 +84,10 @@ the prompt is one flat string:
   marker follows directly.)
 - **Assistant turn**: opens with `<｜Assistant｜>`, then a thinking tag, then content, then
   `<｜end▁of▁sentence｜>`.
-- **Thinking vs non-thinking (V3.1 hybrid)** — selected by the template, not by the model:
-  - Non-thinking generation prefix: `…<｜Assistant｜></think>` — the model starts *after* a
+- **Thinking vs non-thinking (V3.1 hybrid)**: selected by the template, not by the model:
+  - Non-thinking generation prefix: `…<｜Assistant｜></think>`: the model starts *after* a
     `</think>` it never had to open. Unlike DeepSeek-V3, V3.1 always injects this `</think>`.
-  - Thinking generation prefix: `…<｜Assistant｜><think>` — the model emits its chain of
+  - Thinking generation prefix: `…<｜Assistant｜><think>`: the model emits its chain of
     thought, closes with `</think>`, then the answer.
   - In multi-turn context, **every** stored assistant turn keeps a `</think>`; only the last
     turn's leading thinking tag reflects the requested mode. When rendering a stored
@@ -157,7 +157,7 @@ Grammar (V3.1):
 - The whole assistant turn is then closed by the template/server with
   `<｜end▁of▁sentence｜>`.
 
-(V3.1 has **no** `type` field and **no** ` ```json ` fence around arguments — that is the
+(V3.1 has **no** `type` field and **no** ` ```json ` fence around arguments, that is the
 older R1/V3-0324 convention; see Version differences.)
 
 ## Multiple / parallel tool calls
@@ -186,11 +186,11 @@ after the assistant tool-call turn's `<｜end▁of▁sentence｜>`:
 
 `{result_text}` is the raw tool output (typically a JSON string, but any text). For multiple
 results, the V3.1 template emits one `<｜tool▁output▁begin｜>…<｜tool▁output▁end｜>` per `tool`
-message, concatenated directly. There is **no tool-call ID in the wire format** — results are
+message, concatenated directly. There is **no tool-call ID in the wire format**, results are
 matched to calls **positionally** (order of outputs ↔ order of calls).
 
 The model then produces its final answer **directly after `<｜tool▁output▁end｜>`** with no
-`<｜Assistant｜>` marker and no `</think>` (see Parsing notes — the V3.1 reference template
+`<｜Assistant｜>` marker and no `</think>` (see Parsing notes, the V3.1 reference template
 deliberately renders post-tool assistant content as just `content<｜end▁of▁sentence｜>`).
 
 > R1-0528 / V3-0324 differ: results are enclosed in a `<｜tool▁outputs▁begin｜>` …
@@ -226,12 +226,12 @@ Where:
 
 Reading the spans:
 
-1. `<｜begin▁of▁sentence｜>` + system text + `\n\n` + `## Tools…` block — prompt prefix.
-2. `<｜User｜>What's the weather in San Francisco?` — user turn.
-3. `<｜Assistant｜></think>` — non-thinking generation prefix (prompt). **Model generates from here.**
-4. `<｜tool▁calls▁begin｜>…<｜tool▁calls▁end｜>` — the model's tool call; server appends `<｜end▁of▁sentence｜>` and stops with `finish_reason: "tool_calls"`.
-5. `<｜tool▁output▁begin｜>…<｜tool▁output▁end｜>` — your executed result, appended to the prompt.
-6. `It's currently 18°C and foggy in San Francisco.<｜end▁of▁sentence｜>` — **the model generates the final answer directly after the tool output** (no new `<｜Assistant｜>` marker), ending with EOS.
+1. `<｜begin▁of▁sentence｜>` + system text + `\n\n` + `## Tools…` block: prompt prefix.
+2. `<｜User｜>What's the weather in San Francisco?`: user turn.
+3. `<｜Assistant｜></think>`: non-thinking generation prefix (prompt). **Model generates from here.**
+4. `<｜tool▁calls▁begin｜>…<｜tool▁calls▁end｜>`: the model's tool call; server appends `<｜end▁of▁sentence｜>` and stops with `finish_reason: "tool_calls"`.
+5. `<｜tool▁output▁begin｜>…<｜tool▁output▁end｜>`: your executed result, appended to the prompt.
+6. `It's currently 18°C and foggy in San Francisco.<｜end▁of▁sentence｜>`: **the model generates the final answer directly after the tool output** (no new `<｜Assistant｜>` marker), ending with EOS.
 
 ## OpenAI-compatible API mapping
 
@@ -266,7 +266,7 @@ deepseek_v31`):
 - **Tool/role markers are `special: false`.** Only `<｜begin▁of▁sentence｜>`,
   `<｜end▁of▁sentence｜>`, `<｜▁pad▁｜>`, and `<|EOT|>` are flagged `special: true`. So
   decoding with `skip_special_tokens=True` will **not** strip `<｜tool▁calls▁begin｜>`,
-  `<｜tool▁sep｜>`, `<｜Assistant｜>`, `</think>`, etc. — they remain in the decoded string for
+  `<｜tool▁sep｜>`, `<｜Assistant｜>`, `</think>`, etc., they remain in the decoded string for
   the parser to find. (Conversely, do not assume special-token filtering removes them.)
 - **No code fence / no `type` field in V3.1.** A parser written for R1/V3-0324
   (`function<｜tool▁sep｜>name` + ` ```json ` block) will not parse V3.1, and vice-versa.
@@ -289,7 +289,7 @@ deepseek_v31`):
   `arguments | tojson`. If `arguments` is already a JSON string (the OpenAI convention), that
   pipe will JSON-encode the string again (wrapping it in quotes and escaping it). Pass an
   object where the template expects `| tojson`, or a string where the template inlines
-  verbatim — match the template you actually run.
+  verbatim, match the template you actually run.
 - **Streaming.** Tool calls arrive token-by-token; the name is complete only at
   `<｜tool▁sep｜>`, and arguments are partial JSON until `<｜tool▁call▁end｜>`. Buffer per call
   boundary; do not attempt to `json.loads` arguments before the closing tool-call token.
@@ -344,7 +344,7 @@ series **and** to DeepSeek-V3.1; it extracts the `<think>…</think>` span into 
 ## DSML envelope (newer DeepSeek models)
 
 Newer DeepSeek models (for example `deepseek-v4-pro`) emit tool calls in a second, XML-style
-envelope — **DSML** — instead of the `<｜tool▁calls▁begin｜>` special-token run. The tag names
+envelope, **DSML**, instead of the `<｜tool▁calls▁begin｜>` special-token run. The tag names
 reuse the same fullwidth pipe (`｜`, U+FF5C), but the body is an Anthropic-style `invoke` /
 `parameter` block rather than a `name<｜tool▁sep｜>{json}` pair:
 

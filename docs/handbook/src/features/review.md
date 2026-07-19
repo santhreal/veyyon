@@ -2,10 +2,10 @@
 
 Review surfaces:
 
-1. **`/review`** — bundled interactive review command (branch, commits, or uncommitted work).
-2. **Advisor** — optional second model that comments on main-agent turns.
-3. **Plan review** — `/plan-review` while plan mode is active.
-4. **Non-interactive** — free-form review prompts under `veyyon -p`.
+1. **`/review`**: bundled interactive review command (branch, commits, or uncommitted work).
+2. **Advisor**: optional second model that comments on main-agent turns.
+3. **Plan review**: `/plan-review` while plan mode is active.
+4. **Non-interactive**: free-form review prompts under `veyyon -p`.
 
 ## `/review`
 

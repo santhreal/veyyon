@@ -6,19 +6,19 @@
 - Entry: `packages/coding-agent/src/tools/job.ts`
 - Model-facing prompt: `packages/coding-agent/src/prompts/tools/job.md`
 - Key collaborators:
-  - `packages/coding-agent/src/async/job-manager.ts` — job registry, cancellation, delivery suppression.
-  - `packages/coding-agent/src/tools/bash.ts` — explicit async bash and auto-backgrounded bash jobs.
-  - `packages/coding-agent/src/task/index.ts` — async task-job scheduling.
-  - `packages/coding-agent/src/sdk.ts` — automatic follow-up delivery for unsuppressed completions.
-  - `packages/coding-agent/src/config/settings-schema.ts` — `async.pollWaitDuration` options.
+  - `packages/coding-agent/src/async/job-manager.ts`: job registry, cancellation, delivery suppression.
+  - `packages/coding-agent/src/tools/bash.ts`: explicit async bash and auto-backgrounded bash jobs.
+  - `packages/coding-agent/src/task/index.ts`: async task-job scheduling.
+  - `packages/coding-agent/src/sdk.ts`: automatic follow-up delivery for unsuppressed completions.
+  - `packages/coding-agent/src/config/settings-schema.ts`: `async.pollWaitDuration` options.
 
 ## Inputs
 
 | Field | Type | Required | Description |
 | --- | --- | --- | --- |
-| `poll` | `string[]` | No | Job ids to watch. Cannot be combined with `list`. If omitted (and `cancel` is also omitted), the tool watches all running jobs owned by the calling agent. If provided, missing ids — and ids owned by other agents — are silently filtered out before waiting. |
+| `poll` | `string[]` | No | Job ids to watch. Cannot be combined with `list`. If omitted (and `cancel` is also omitted), the tool watches all running jobs owned by the calling agent. If provided, missing ids, and ids owned by other agents, are silently filtered out before waiting. |
 | `cancel` | `string[]` | No | Job ids to cancel before any polling. Missing ids (and other agents' jobs) are reported as `not_found`; non-running ids as `already_completed`. |
-| `list` | `boolean` | No | Return an immediate snapshot of every job spawned by the calling agent (running + completed within retention) without waiting. Read-only — cannot be combined with `poll` or `cancel`. |
+| `list` | `boolean` | No | Return an immediate snapshot of every job spawned by the calling agent (running + completed within retention) without waiting. Read-only, cannot be combined with `poll` or `cancel`. |
 
 ## Outputs
 The tool returns one text block plus `details`.
@@ -62,7 +62,7 @@ Read-only snapshot path:
 7. If every watched job is already non-running, `#buildResult(...)` returns immediately without waiting.
 8. Otherwise the tool waits on `Promise.race(...)` across:
    - every watched running job's `job.promise`,
-   - a timeout promise for the poll wait window — `manager.nextPollWaitMs(ownerId)` when `async.pollWaitDuration` is `smart`, otherwise the fixed duration,
+   - a timeout promise for the poll wait window: `manager.nextPollWaitMs(ownerId)` when `async.pollWaitDuration` is `smart`, otherwise the fixed duration,
    - the tool-call abort signal when present.
 9. Before waiting, it calls `manager.watchJobs(watchedJobIds)`. This suppresses automatic completion delivery for those ids while they are being watched.
 10. If `onUpdate` exists, a 500 ms interval sends progress snapshots from `#snapshotJobs(...)`; one snapshot is emitted immediately before entering the race.

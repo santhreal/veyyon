@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-a2447057.js";
+            window.path_to_searchindex_js = "../searchindex-b31c94e7.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-cc1a72e9.js"></script>
@@ -213,7 +213,7 @@
 </tbody>
 </table>
 </div>
-<p>Schema default: <code>personality: default</code> in <code>settings-schema.ts</code>. The setting is a free-form string, not a closed enum — see <a href="#extending-the-catalog">Extending the catalog</a>.</p>
+<p>Schema default: <code>personality: default</code> in <code>settings-schema.ts</code>. The setting is a free-form string, not a closed enum, see <a href="#extending-the-catalog">Extending the catalog</a>.</p>
 <h2 id="configuring-personality"><a class="header" href="#configuring-personality">Configuring personality</a></h2>
 <ul>
 <li><strong>Settings UI:</strong> <code>/settings</code> → <strong>Model</strong> tab → <strong>Prompt</strong> group → <strong>Personality</strong>. Options are resolved at render time (built-ins + your <code>~/.veyyon/personalities</code> and project <code>.veyyon/personalities</code> files); changing the value refreshes the base system prompt immediately.</li>
@@ -225,14 +225,14 @@
 <h2 id="extending-the-catalog"><a class="header" href="#extending-the-catalog">Extending the catalog</a></h2>
 <p>The 3 shipped personalities are seeds, not a closed set. Add a <code>&lt;name&gt;.md</code> file and its filename stem becomes a selectable personality name; the file body is injected verbatim as the <code>&lt;personality&gt;</code> block:</p>
 <ul>
-<li><strong>User-level:</strong> <code>~/.veyyon/personalities/&lt;name&gt;.md</code> — available in every project.</li>
-<li><strong>Project-level:</strong> <code>.veyyon/personalities/&lt;name&gt;.md</code> — available only in that project, and overrides a user or built-in personality of the same name.</li>
+<li><strong>User-level:</strong> <code>~/.veyyon/personalities/&lt;name&gt;.md</code>: available in every project.</li>
+<li><strong>Project-level:</strong> <code>.veyyon/personalities/&lt;name&gt;.md</code>: available only in that project, and overrides a user or built-in personality of the same name.</li>
 </ul>
 <p>Precedence for a given name is <strong>project &gt; user &gt; built-in</strong>. For example, dropping <code>~/.veyyon/personalities/pirate.md</code> with the body <code>You speak like a pirate.</code> and setting <code>personality: pirate</code> renders <code>&lt;personality&gt;You speak like a pirate.&lt;/personality&gt;</code> with no rebuild. A project <code>.veyyon/personalities/default.md</code> overrides the built-in <code>default</code> for that project only.</p>
 <p>Edge cases:</p>
 <ul>
 <li><code>none</code> is a reserved sentinel that disables the block; a file literally named <code>none.md</code> is ignored (it can never shadow the disable behavior).</li>
-<li>An empty or whitespace-only personality file is treated as absent — the next tier (or the built-in) is used instead, so the block is never emitted empty.</li>
+<li>An empty or whitespace-only personality file is treated as absent: the next tier (or the built-in) is used instead, so the block is never emitted empty.</li>
 <li>Setting <code>personality</code> to a name that resolves to nothing (no built-in, user, or project file) falls back to <code>default</code> and prints a visible warning; the <code>&lt;personality&gt;</code> block is never silently emitted empty for a real (non-<code>none</code>) request.</li>
 </ul>
 <p>See <code>packages/coding-agent/src/personality/resolver.ts</code> for the resolver implementation.</p>

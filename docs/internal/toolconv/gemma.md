@@ -6,29 +6,29 @@ Verified against the Veyyon `gemma` dialect (`packages/ai/src/dialect/gemma.ts`)
 
 ## Special tokens
 
-Gemma 4 wraps each structural element in a paired token. Note the **asymmetric pipe placement** — an opener carries the pipe on the left (`<|x>`) and its closer carries it on the right (`<x|>`):
+Gemma 4 wraps each structural element in a paired token. Note the **asymmetric pipe placement**, an opener carries the pipe on the left (`<|x>`) and its closer carries it on the right (`<x|>`):
 
 | Open | Close | Purpose |
 |---|---|---|
-| `<bos>` | — | Beginning of sequence |
+| `<bos>` | n/a | Beginning of sequence |
 | `<|turn>` | `<turn|>` | One conversation turn; the role name is the first line of the body |
 | `<|tool_call>` | `<tool_call|>` | One tool **call** emitted by the model |
 | `<|tool_response>` | `<tool_response|>` | One tool **result** fed back to the model |
 | `<|channel>` | `<channel|>` | Reasoning channel; `<|channel>thought` opens the model's chain-of-thought (closed by `<channel|>`) before the visible reply |
 | `<|"|>` | `<|"|>` | String-literal delimiter (same token on both ends) |
-| `<eos>` | — | End of sequence |
+| `<eos>` | n/a | End of sequence |
 
-Because the string delimiter is a token (`<|"|>`), values may contain raw ASCII quotes and commas without escaping — only a literal `<|"|>` token sequence cannot appear inside a string.
+Because the string delimiter is a token (`<|"|>`), values may contain raw ASCII quotes and commas without escaping, only a literal `<|"|>` token sequence cannot appear inside a string.
 
-Thinking variants emit reasoning in a dedicated channel — `<|channel>thought\n…<channel|>` at the start of the model turn, before any reply text or tool call. The `gemma` scanner routes that channel to thinking events (keeping it out of the visible reply) and still parses tool calls that follow it; `renderThinking` round-trips a thought back to the same `<|channel>thought\n…<channel|>` block. With `parseThinking: false` the channel is left in the visible text instead.
+Thinking variants emit reasoning in a dedicated channel, `<|channel>thought\n…<channel|>` at the start of the model turn, before any reply text or tool call. The `gemma` scanner routes that channel to thinking events (keeping it out of the visible reply) and still parses tool calls that follow it; `renderThinking` round-trips a thought back to the same `<|channel>thought\n…<channel|>` block. With `parseThinking: false` the channel is left in the visible text instead.
 
 ## Roles / turn structure
 
-Each turn is `<|turn>{role}\n{body}<turn|>`, and turns are concatenated with no separator between them. Roles are `system`, `user`, `model` (a `developer` message renders as `system`). With a generation prompt the stream ends at `<|turn>model\n` and the model continues. Tool calls and the tool responses that follow them are emitted inside one `model` turn — the response block immediately follows the call block in the re-rendered history.
+Each turn is `<|turn>{role}\n{body}<turn|>`, and turns are concatenated with no separator between them. Roles are `system`, `user`, `model` (a `developer` message renders as `system`). With a generation prompt the stream ends at `<|turn>model\n` and the model continues. Tool calls and the tool responses that follow them are emitted inside one `model` turn, the response block immediately follows the call block in the re-rendered history.
 
 ## Tool definitions
 
-The `gemma` dialect does not put tool schemas on the wire. Tools are advertised in the system prompt by `renderInbandToolPrompt` (`packages/ai/src/dialect/catalog.ts`): an OpenAI-style JSON catalog — one object per line inside a `<tools></tools>` block — followed by the format guide (`packages/ai/src/dialect/gemma.md`):
+The `gemma` dialect does not put tool schemas on the wire. Tools are advertised in the system prompt by `renderInbandToolPrompt` (`packages/ai/src/dialect/catalog.ts`): an OpenAI-style JSON catalog, one object per line inside a `<tools></tools>` block, followed by the format guide (`packages/ai/src/dialect/gemma.md`):
 
 ```text
 <tools>
@@ -36,7 +36,7 @@ The `gemma` dialect does not put tool schemas on the wire. Tools are advertised 
 </tools>
 ```
 
-The verbose system-prompt inventory and `/dump` additionally render each tool as a `# Tool: <name>` section — description, a TypeScript-style parameter signature, and native `<|tool_call>` examples — via `renderToolInventory` (`packages/ai/src/dialect/inventory.ts`).
+The verbose system-prompt inventory and `/dump` additionally render each tool as a `# Tool: <name>` section, description, a TypeScript-style parameter signature, and native `<|tool_call>` examples, via `renderToolInventory` (`packages/ai/src/dialect/inventory.ts`).
 
 ## Tool-call format
 
@@ -61,7 +61,7 @@ The Veyyon parser is the streaming `GemmaInbandScanner` (`packages/ai/src/dialec
 
 1. finds the matching `<tool_call|>` close, skipping any `<|"|>…<|"|>` string span so a `<tool_call|>` sequence that appears inside a string value does not end the block early;
 2. matches the `call:NAME{` head, then takes the brace body up to its depth-matched `}`;
-3. splits that body into `key:value` pairs at top-level commas — bracket depth (`[]`, `{}`) and `<|"|>` string spans are skipped — and decodes each value per the grammar above, so nested lists and objects parse correctly (a single-level regex would not).
+3. splits that body into `key:value` pairs at top-level commas, bracket depth (`[]`, `{}`) and `<|"|>` string spans are skipped, and decodes each value per the grammar above, so nested lists and objects parse correctly (a single-level regex would not).
 
 ## Multiple / parallel tool calls
 
@@ -69,7 +69,7 @@ Parallel calls are consecutive `<|tool_call>…<tool_call|>` blocks (one call ea
 
 ## Tool-result format
 
-Each result is `<|tool_response>response:NAME{output:VALUE}<tool_response|>`. `renderToolResults` always wraps the result under a single `output` key, and `JSON.parse`s the tool's text first — so JSON output becomes a nested object/array in the brace syntax, while a plain string is wrapped in `<|"|>…<|"|>`:
+Each result is `<|tool_response>response:NAME{output:VALUE}<tool_response|>`. `renderToolResults` always wraps the result under a single `output` key, and `JSON.parse`s the tool's text first, so JSON output becomes a nested object/array in the brace syntax, while a plain string is wrapped in `<|"|>…<|"|>`:
 
 ```text
 <|tool_response>response:get_current_weather{output:{temperature:15,weather:<|"|>sunny<|"|>}}<tool_response|>
@@ -78,7 +78,7 @@ Each result is `<|tool_response>response:NAME{output:VALUE}<tool_response|>`. `r
 
 ## End-to-end example
 
-`renderTranscript` output for a weather query. The system turn also carries the `<tools>` catalog and format guide (see *Tool definitions*, abbreviated here); the model's call merges with its tool response into one `model` turn (response right after the call), and the final answer is the next `model` turn. Turns are emitted back-to-back with no separator — only the `\n` after each role is literal:
+`renderTranscript` output for a weather query. The system turn also carries the `<tools>` catalog and format guide (see *Tool definitions*, abbreviated here); the model's call merges with its tool response into one `model` turn (response right after the call), and the final answer is the next `model` turn. Turns are emitted back-to-back with no separator, only the `\n` after each role is literal:
 
 ```text
 <bos><|turn>system
@@ -90,7 +90,7 @@ The current weather in Tokyo is 15 degrees Celsius and sunny.<turn|>
 
 ## Parsing notes & gotchas
 
-- **String delimiter is a token, not a quote.** Inside `<|"|>…<|"|>` the bytes `"` and `,` are literal data — the example `<|"|>The city and state, e.g. "San Francisco, CA"…<|"|>` contains both. Split arguments on `,`/`}` only **outside** a `<|"|>…<|"|>` span.
+- **String delimiter is a token, not a quote.** Inside `<|"|>…<|"|>` the bytes `"` and `,` are literal data: the example `<|"|>The city and state, e.g. "San Francisco, CA"…<|"|>` contains both. Split arguments on `,`/`}` only **outside** a `<|"|>…<|"|>` span.
 - **Asymmetric pipes.** The closer is `<tool_call|>`, not `</tool_call>` or `<|tool_call>`. Matching the wrong pipe side will never close the block.
 - **One call per block.** Unlike a JSON `tool_calls[]` array, parallelism is "more blocks", not "more entries in one block".
 - **Bare scalars.** A value not wrapped in `<|"|>` is `true`/`false` → bool, `null`/`none` → null, numeric → number, otherwise a bare string (e.g. an unquoted enum or type name like `STRING`).

@@ -6,13 +6,13 @@
 - Entry: `packages/coding-agent/src/tools/write.ts`
 - Model-facing prompt: `packages/coding-agent/src/prompts/tools/write.md`
 - Key collaborators:
-  - `packages/coding-agent/src/utils/zip.ts` — the unified ZIP/tar wrapper: parse `archive.ext:entry` selectors and rewrite the archive whole.
-  - `packages/coding-agent/src/tools/sqlite-reader.ts` — detect SQLite paths and perform row insert/update/delete.
-  - `packages/coding-agent/src/tools/conflict-detect.ts` — parse `conflict://` URIs and splice recorded merge-conflict regions.
-  - `packages/coding-agent/src/lsp/index.ts` — format-on-write and diagnostics writethrough.
-  - `packages/coding-agent/src/tools/auto-generated-guard.ts` — block overwriting generated files.
-  - `packages/coding-agent/src/tools/fs-cache-invalidation.ts` — invalidate shared FS scan caches after writes.
-  - `packages/coding-agent/src/tools/plan-mode-guard.ts` — resolve paths and enforce plan-mode write policy.
+  - `packages/coding-agent/src/utils/zip.ts`: the unified ZIP/tar wrapper: parse `archive.ext:entry` selectors and rewrite the archive whole.
+  - `packages/coding-agent/src/tools/sqlite-reader.ts`: detect SQLite paths and perform row insert/update/delete.
+  - `packages/coding-agent/src/tools/conflict-detect.ts`: parse `conflict://` URIs and splice recorded merge-conflict regions.
+  - `packages/coding-agent/src/lsp/index.ts`: format-on-write and diagnostics writethrough.
+  - `packages/coding-agent/src/tools/auto-generated-guard.ts`: block overwriting generated files.
+  - `packages/coding-agent/src/tools/fs-cache-invalidation.ts`: invalidate shared FS scan caches after writes.
+  - `packages/coding-agent/src/tools/plan-mode-guard.ts`: resolve paths and enforce plan-mode write policy.
 
 ## Inputs
 | Field | Type | Required | Description |

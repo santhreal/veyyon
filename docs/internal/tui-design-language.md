@@ -13,7 +13,7 @@ First-party themes follow [Brand and identity](./brand.md); the website (`websit
 | Structure / brand | Silver `#C6CBD4` | Silver `#B8BDC7` | Dark silver `#5C6470` |
 | Accent | Ember `#F0862E` | Deep blue `#4A84C9` (pre-ember) | Ember `#F0862E` (chrome) / `#B65E14` (links) |
 
-Titanium mirrors the website tokens exactly, and Light is its sanctioned inverse (see `docs/internal/design.md`, "Light ground") — both locked by `packages/coding-agent/test/brand-conformance.test.ts`.
+Titanium mirrors the website tokens exactly, and Light is its sanctioned inverse (see `docs/internal/design.md`, "Light ground"), both locked by `packages/coding-agent/test/brand-conformance.test.ts`.
 
 Theme JSON is validated via `getThemeJsonSchema()` (`color.ts`, applied on load in `theme.ts`; built-in themes bypass validation). User overrides live under `~/.veyyon/profiles/default/agent/themes/` (`getCustomThemesDir()`). See [Themes and identity](../handbook/src/using/themes.md) and engine doc `docs/theme.md`.
 
@@ -21,11 +21,11 @@ Theme JSON is validated via `getThemeJsonSchema()` (`color.ts`, applied on load 
 
 Work surfaces are **full-bleed**: the transcript, prompt/composer, status line,
 hints, and banners span the terminal width, flush left. There is no shared
-centered content column — a terminal is a work instrument, and artificial
+centered content column, a terminal is a work instrument, and artificial
 margins waste columns on the dense tool output this product lives in.
 
 The one exception is the **hero moment**: the startup welcome card centers
-horizontally on the empty home screen — header lines center on the full terminal
+horizontally on the empty home screen, header lines center on the full terminal
 width (`centerLine` in `welcome.ts`), the `/welcome` menu column centers at a
 56-column maximum (`Math.min(56, termWidth - 4)`), and the card hides entirely
 below 30 columns. Once real work starts, everything is full-bleed.
@@ -55,7 +55,7 @@ Prefer `space-1` / `space-2` in dense tool UIs. One-off paddings are bugs.
 | Secondary / meta | `dim` or `muted` tokens |
 | Emphasis | Bold on primary; silver accent for focus and selection |
 | Links | Theme `link` / `mdLink` (ember in titanium, matching website link color) |
-| Focus / selected surface | `borderAccent` (ember) + `selectedBg` (ember glow `#241510`) — the TUI's analog of the website `:focus-visible` ember ring |
+| Focus / selected surface | `borderAccent` (ember) + `selectedBg` (ember glow `#241510`), the TUI's analog of the website `:focus-visible` ember ring |
 | Danger / deny | Theme `error` (red) |
 | Success / approved | Theme `success` (green) |
 | Warning | Theme `warning` (yellow) |
@@ -63,14 +63,14 @@ Prefer `space-1` / `space-2` in dense tool UIs. One-off paddings are bugs.
 
 Never rely on color alone. Pair hue with a glyph or word (`ok`, `err`, `mcp`). Respect `NO_COLOR` / `--no-color`.
 
-Call sites route through `packages/coding-agent/src/modes/theme/theme.ts` helpers — not raw ANSI literals at widget sites.
+Call sites route through `packages/coding-agent/src/modes/theme/theme.ts` helpers, not raw ANSI literals at widget sites.
 
 ## Motion
 
 | Kind | Budget |
 | --- | --- |
 | Spinner / shimmer | Low effective FPS; no 30 FPS frames for short blinks |
-| Cursor blink | Hardware cursor — the terminal's own blink cadence; no software blink loop |
+| Cursor blink | Hardware cursor, the terminal's own blink cadence; no software blink loop |
 | Status pulse | Slow, interruptible |
 
 No gratuitous animation on static content.
@@ -94,7 +94,7 @@ Prefer ASCII-safe glyphs with Unicode upgrades when width is known (`theme.symbo
 
 ## Voice register
 
-The website nav speaks lowercase terse ("docs install models changelog") — a display-typography choice for the marketing surface. The TUI deliberately does **not** copy it: menu items, action rows, and settings labels use sentence case ("Resume session", "Settings") because terminal UIs carry no font-weight hierarchy and lowercase labels read as unfinished next to command literals (`/resume`, `ctrl+d`). Command names, flags, and paths stay verbatim lowercase everywhere. Do not mix registers within one surface.
+The website nav speaks lowercase terse ("docs install models changelog"), a display-typography choice for the marketing surface. The TUI deliberately does **not** copy it: menu items, action rows, and settings labels use sentence case ("Resume session", "Settings") because terminal UIs carry no font-weight hierarchy and lowercase labels read as unfinished next to command literals (`/resume`, `ctrl+d`). Command names, flags, and paths stay verbatim lowercase everywhere. Do not mix registers within one surface.
 
 ## Composer and chrome
 

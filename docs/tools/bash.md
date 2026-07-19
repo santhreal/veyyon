@@ -6,16 +6,16 @@
 - Entry: `packages/coding-agent/src/tools/bash.ts`
 - Model-facing prompt: `packages/coding-agent/src/prompts/tools/bash.md`
 - Key collaborators:
-  - `packages/coding-agent/src/tools/bash-interactive.ts` — PTY/TUI execution path.
-  - `packages/coding-agent/src/tools/bash-interceptor.ts` — blocks tool-better shell patterns.
-  - `packages/coding-agent/src/tools/bash-skill-urls.ts` — expands internal URLs to paths.
-  - `packages/coding-agent/src/tools/bash-pty-selection.ts` — `canUseInteractiveBashPty()` decides whether a call may use the local PTY overlay.
-  - `packages/coding-agent/src/tools/gh-cache-invalidation.ts` — drops `github-cache` rows for mutating `gh issue`/`gh pr` subcommands.
-  - `packages/coding-agent/src/exec/bash-executor.ts` — non-PTY shell execution.
-  - `packages/coding-agent/src/session/streaming-output.ts` — tail buffer, truncation, artifact spill.
-  - `packages/coding-agent/src/tools/tool-timeouts.ts` — timeout clamp bounds.
-  - `packages/coding-agent/src/config/settings-schema.ts` — default interceptor rules.
-  - `docs/internal/bash-tool-runtime.md` — deeper executor/runtime notes; use as the companion doc for shell-session internals.
+  - `packages/coding-agent/src/tools/bash-interactive.ts`: PTY/TUI execution path.
+  - `packages/coding-agent/src/tools/bash-interceptor.ts`: blocks tool-better shell patterns.
+  - `packages/coding-agent/src/tools/bash-skill-urls.ts`: expands internal URLs to paths.
+  - `packages/coding-agent/src/tools/bash-pty-selection.ts`: `canUseInteractiveBashPty()` decides whether a call may use the local PTY overlay.
+  - `packages/coding-agent/src/tools/gh-cache-invalidation.ts`: drops `github-cache` rows for mutating `gh issue`/`gh pr` subcommands.
+  - `packages/coding-agent/src/exec/bash-executor.ts`: non-PTY shell execution.
+  - `packages/coding-agent/src/session/streaming-output.ts`: tail buffer, truncation, artifact spill.
+  - `packages/coding-agent/src/tools/tool-timeouts.ts`: timeout clamp bounds.
+  - `packages/coding-agent/src/config/settings-schema.ts`: default interceptor rules.
+  - `docs/internal/bash-tool-runtime.md`: deeper executor/runtime notes; use as the companion doc for shell-session internals.
 
 ## Inputs
 
@@ -53,7 +53,7 @@ The tool returns a single `text` content block plus optional `details`.
 Stdout and stderr are merged before the model sees them. Definite non-zero exit codes are appended to the returned error result text as `Command exited with code <n>`.
 
 ## Flow
-1. `BashTool.execute()` in `packages/coding-agent/src/tools/bash.ts` reads `command`, normalizes `env`, and defaults `timeout` to `300`. Commands execute exactly as written — there is no pre-execution rewrite pass.
+1. `BashTool.execute()` in `packages/coding-agent/src/tools/bash.ts` reads `command`, normalizes `env`, and defaults `timeout` to `300`. Commands execute exactly as written: there is no pre-execution rewrite pass.
 2. If `cwd` is absent, it rewrites a leading `cd <path> && ...` into the structured `cwd` field and strips that prefix from `command`.
 3. If `async: true` is requested while `async.enabled` is off, it throws `ToolError` before any execution.
 4. If `bashInterceptor.enabled` is on, `checkBashInterception()` runs against both the original command and the `cd`-stripped command. A matching enabled rule throws before URL expansion or execution.
@@ -160,4 +160,4 @@ Stdout and stderr are merged before the model sees them. Definite non-zero exit 
 - Non-PTY runs merge `NON_INTERACTIVE_ENV` with `env` via `buildNonInteractiveEnv()`; PTY runs instead inherit the user environment with `TERM=xterm-256color` prepended before the custom `env` values.
 - When the shell minimizer rewrites output inside `executeBash()`, the visible output is replaced with minimized text and a `[raw output: artifact://<id>]` footer may be appended if `onMinimizedSave` persisted the original text.
 - The TUI renderer parses partial JSON to recover `env` assignments early in streaming previews; that behavior is display-only.
-- For executor internals that are not tool-specific — shell session reuse keys, snapshots, prefix handling, and native timeout behavior — see `docs/internal/bash-tool-runtime.md`.
+- For executor internals that are not tool-specific, shell session reuse keys, snapshots, prefix handling, and native timeout behavior, see `docs/internal/bash-tool-runtime.md`.

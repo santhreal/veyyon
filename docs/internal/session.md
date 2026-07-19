@@ -17,19 +17,19 @@ Does not cover `/tree` UI rendering behavior beyond semantics that affect sessio
 
 ## Implementation Files
 
-- [`src/session/session-manager.ts`](../../packages/coding-agent/src/session/session-manager.ts) — orchestration: tree/leaf, appends, persistence, blobs, lifecycle factories
-- [`src/session/session-entries.ts`](../../packages/coding-agent/src/session/session-entries.ts) — entry/header types, `SessionEntry` union, `CURRENT_SESSION_VERSION`
-- [`src/session/session-migrations.ts`](../../packages/coding-agent/src/session/session-migrations.ts) — version migrations
-- [`src/session/session-loader.ts`](../../packages/coding-agent/src/session/session-loader.ts) — file load + blob-ref resolution
-- [`src/session/session-context.ts`](../../packages/coding-agent/src/session/session-context.ts) — `buildSessionContext`
-- [`src/session/session-persistence.ts`](../../packages/coding-agent/src/session/session-persistence.ts) — truncation + image blob externalization
-- [`src/session/session-title-slot.ts`](../../packages/coding-agent/src/session/session-title-slot.ts) — fixed-width title-slot serialization/parsing
-- [`src/session/session-paths.ts`](../../packages/coding-agent/src/session/session-paths.ts) — on-disk layout, dir encoding, terminal breadcrumbs
-- [`src/session/session-listing.ts`](../../packages/coding-agent/src/session/session-listing.ts) — discovery (list/recent/resolve)
-- [`src/session/session-storage.ts`](../../packages/coding-agent/src/session/session-storage.ts) — storage abstractions
-- [`src/session/messages.ts`](../../packages/coding-agent/src/session/messages.ts) — custom-message transformers
-- [`src/session/blob-store.ts`](../../packages/coding-agent/src/session/blob-store.ts) — content-addressed blob store
-- [`src/session/history-storage.ts`](../../packages/coding-agent/src/session/history-storage.ts) — prompt history (separate subsystem)
+- [`src/session/session-manager.ts`](../../packages/coding-agent/src/session/session-manager.ts): orchestration: tree/leaf, appends, persistence, blobs, lifecycle factories
+- [`src/session/session-entries.ts`](../../packages/coding-agent/src/session/session-entries.ts): entry/header types, `SessionEntry` union, `CURRENT_SESSION_VERSION`
+- [`src/session/session-migrations.ts`](../../packages/coding-agent/src/session/session-migrations.ts): version migrations
+- [`src/session/session-loader.ts`](../../packages/coding-agent/src/session/session-loader.ts): file load + blob-ref resolution
+- [`src/session/session-context.ts`](../../packages/coding-agent/src/session/session-context.ts): `buildSessionContext`
+- [`src/session/session-persistence.ts`](../../packages/coding-agent/src/session/session-persistence.ts): truncation + image blob externalization
+- [`src/session/session-title-slot.ts`](../../packages/coding-agent/src/session/session-title-slot.ts): fixed-width title-slot serialization/parsing
+- [`src/session/session-paths.ts`](../../packages/coding-agent/src/session/session-paths.ts): on-disk layout, dir encoding, terminal breadcrumbs
+- [`src/session/session-listing.ts`](../../packages/coding-agent/src/session/session-listing.ts): discovery (list/recent/resolve)
+- [`src/session/session-storage.ts`](../../packages/coding-agent/src/session/session-storage.ts): storage abstractions
+- [`src/session/messages.ts`](../../packages/coding-agent/src/session/messages.ts): custom-message transformers
+- [`src/session/blob-store.ts`](../../packages/coding-agent/src/session/blob-store.ts): content-addressed blob store
+- [`src/session/history-storage.ts`](../../packages/coding-agent/src/session/history-storage.ts): prompt history (separate subsystem)
 
 ## On-Disk Layout
 
@@ -66,7 +66,7 @@ Breadcrumb content is two lines: original cwd, then session file path. `continue
 Session files are JSONL: one JSON object per line.
 
 - Physical line 1 of newly written files is a **fixed-width title slot** (`SESSION_TITLE_SLOT_BYTES = 256` bytes): `{"type":"title","v":1,"title":...,"source":"auto"|"user","updatedAt":...,"pad":"..."}` padded to exactly 256 bytes so the mutable current title can be overwritten in place (`storage.updateSessionTitle` writes the slot at offset 0) without rewriting the file. Titles too long for the slot are code-point-truncated to fit (`session-title-slot.ts`). Legacy files without a slot still load (`readTitleSlotFromFile` returns `undefined`); the slot is added on the next full rewrite.
-- The session header (`type: "session"`) is the first *logical* entry — line 2 of slot-bearing files, line 1 of legacy files. Loaders strip the slot before entry parsing.
+- The session header (`type: "session"`) is the first *logical* entry: line 2 of slot-bearing files, line 1 of legacy files. Loaders strip the slot before entry parsing.
 - Remaining lines are `SessionEntry` values.
 - Entries are append-only at runtime; branch navigation moves a pointer (`leafId`) rather than mutating existing entries.
 
@@ -407,7 +407,7 @@ The underlying model is append-only tree + mutable leaf pointer:
 
 ## Context Reconstruction (`buildSessionContext`)
 
-`buildSessionContext(entries, leafId?, byId?, options?)` resolves what is sent to the model. Passing `options.transcript: true` instead builds the full-history display transcript (compactions emitted inline at the position they fired) — display-only, never sent to a provider.
+`buildSessionContext(entries, leafId?, byId?, options?)` resolves what is sent to the model. Passing `options.transcript: true` instead builds the full-history display transcript (compactions emitted inline at the position they fired), display-only, never sent to a provider.
 
 Algorithm:
 

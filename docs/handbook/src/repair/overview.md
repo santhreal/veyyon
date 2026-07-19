@@ -21,7 +21,7 @@ Tests: `packages/coding-agent/test/repair/schema-repair.test.ts`
 
 ## Related
 
-- [The repair cascade](./cascade.md) — ordered rules
-- [Per-model posture](./per-model.md) — harness profiles
+- [The repair cascade](./cascade.md): ordered rules
+- [Per-model posture](./per-model.md): harness profiles
 - [Soundness and telemetry](./soundness.md)
-- [The hashline edit engine](../edit/engine.md) — edit path (separate from argument repair)
+- [The hashline edit engine](../edit/engine.md): edit path (separate from argument repair)

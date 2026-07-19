@@ -16,7 +16,7 @@ Seatbelt, or bubblewrap. The boundary is policy the agent loop enforces before d
 
 `tools.approvalMode` in `config.yml` and the launch flags (`--approval-mode`, `--auto-approve` /
 `--yolo`, `--plan-yolo`) resolve to a decision applied to the `bash`, `edit`, and `write` tools, with
-plan-mode guards on top. Commands run **in-process** after policy resolution — there is no standalone
+plan-mode guards on top. Commands run **in-process** after policy resolution, there is no standalone
 exec-server process in the shipped product.
 
 ## Key concepts

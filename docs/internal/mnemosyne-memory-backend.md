@@ -62,16 +62,16 @@ Recalled memory is background context, not instructions. Current user messages a
 The coding-agent wrapper applies scoping on top of the underlying `Mnemopi` package:
 
 - `global` uses one shared bank for recall and writes.
-- `per-project` writes to and recalls from a bank derived from the current working directory alone — its basename plus a stable hash of its absolute path, independent of the surrounding git layout.
+- `per-project` writes to and recalls from a bank derived from the current working directory alone: its basename plus a stable hash of its absolute path, independent of the surrounding git layout.
 - `per-project-tagged` writes to the project-local bank and recalls from both the project-local bank and the shared global bank, with duplicate recall results merged.
 
 The combined project-plus-global behavior lives in the wrapper. The `@veyyon/mnemopi` package itself still exposes banks and constructor options directly, including `bank` for selecting a bank name. Project-local banks other than the shared bank are stored as sibling bank databases managed by Mnemopi's `BankManager`.
 
-**Per-profile scoping:** `memory.backend`, every `mnemopi.*` setting, and the resulting SQLite database all resolve from the active profile (`VEYYON_PROFILE`). Profile `alpha` and profile `beta` get disjoint `mnemopi.dbPath` values under their own `~/.veyyon/profiles/<name>/agent/memories/mnemopi/` directory, so a memory saved under one profile is never recalled under another. Switching `VEYYON_PROFILE` mid-process is not supported — the active profile resolves once per process; restart to pick up a change.
+**Per-profile scoping:** `memory.backend`, every `mnemopi.*` setting, and the resulting SQLite database all resolve from the active profile (`VEYYON_PROFILE`). Profile `alpha` and profile `beta` get disjoint `mnemopi.dbPath` values under their own `~/.veyyon/profiles/<name>/agent/memories/mnemopi/` directory, so a memory saved under one profile is never recalled under another. Switching `VEYYON_PROFILE` mid-process is not supported, the active profile resolves once per process; restart to pick up a change.
 
 ## LLM and embeddings
 
-The backend passes these settings to the `Mnemopi` constructor; if a setting is omitted, Mnemopi falls back to its `MNEMOPI_*` environment defaults. The backend does not download or run a local GGUF LLM. LLM-dependent paths use a configured pi-ai model, an opt-in local on-device memory model (`providers.memoryModel`, ONNX — overrides `smol`/`remote` when set to a local model), a dynamic completion function, a remote OpenAI-compatible endpoint, or deterministic no-LLM fallbacks.
+The backend passes these settings to the `Mnemopi` constructor; if a setting is omitted, Mnemopi falls back to its `MNEMOPI_*` environment defaults. The backend does not download or run a local GGUF LLM. LLM-dependent paths use a configured pi-ai model, an opt-in local on-device memory model (`providers.memoryModel`, ONNX, overrides `smol`/`remote` when set to a local model), a dynamic completion function, a remote OpenAI-compatible endpoint, or deterministic no-LLM fallbacks.
 
 FTS-only:
 
@@ -146,7 +146,7 @@ mnemopi:
   llmMode: smol
 ```
 
-The coding agent resolves the tiny→smol role chain (`resolveRoleSelectionWithInherit(["tiny", "smol"], ...)` — the TINY role from `/models` when set, else `@smol`, else the default model) and passes a dynamic completion function so every Mnemopi LLM call can fetch the current provider credentials at call time; if no model resolves, it logs a warning and continues without an LLM:
+The coding agent resolves the tiny→smol role chain (`resolveRoleSelectionWithInherit(["tiny", "smol"], ...)`, the TINY role from `/models` when set, else `@smol`, else the default model) and passes a dynamic completion function so every Mnemopi LLM call can fetch the current provider credentials at call time; if no model resolves, it logs a warning and continues without an LLM:
 
 ```ts
 new Mnemopi({

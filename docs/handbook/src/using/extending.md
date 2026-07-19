@@ -22,5 +22,5 @@ TypeScript modules with `pi.on(...)`, not JSON command tables. See [Hooks](../fe
 
 ## Related
 
-- [Configuration](./configuration.md) — approval mode and settings paths
+- [Configuration](./configuration.md): approval mode and settings paths
 - [Mechanisms](../why/innovations.md)

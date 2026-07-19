@@ -44,7 +44,7 @@ You do not need to rewrite the whole file. Most upgrades only add or rename a fe
 
 Session data lives under the **profile agent dir** (`~/.veyyon/profiles/default/agent/` by default):
 
-- `sessions/` — append-only JSONL rollouts (conversation history, branching).
+- `sessions/`: append-only JSONL rollouts (conversation history, branching).
 - SQLite stores under the agent dir (for example `history.db`, `agent.db`) mirror lookups; they can be rebuilt from rollouts when missing.
 
 This means you usually do not need a manual database migration. When you start the new binary, it reads the rollout files and updates the state database as needed. If you see a warning about a stale state database, the binary repairs it automatically on startup.

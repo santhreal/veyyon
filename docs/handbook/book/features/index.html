@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-a2447057.js";
+            window.path_to_searchindex_js = "../searchindex-b31c94e7.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-cc1a72e9.js"></script>
@@ -196,33 +196,43 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="features"><a class="header" href="#features">Features</a></h1>
+<p>This chapter is the hub for Veyyon’s features. It groups them into the interactive surfaces you work with directly, the modes and extensions that change how the agent runs, and a short list of recipes.</p>
 <h2 id="interactive-surfaces"><a class="header" href="#interactive-surfaces">Interactive surfaces</a></h2>
+<p>These are the parts of the TUI you touch every session:</p>
 <ul>
-<li><a href="./cockpit.html">Status line and multi-agent UI</a> — status segments, <code>/cockpit</code>, jobs, swarm</li>
-<li><a href="./keybindings.html">Keybindings</a> — chords and Vim mode</li>
-<li>Composer: prompt history, <code>@</code> / <code>/</code> completion, Esc interrupt — <a href="../using/quickstart.html">Quickstart</a>, <a href="./keybindings.html">Keybindings</a></li>
-<li><a href="./web-search.html">Web search</a></li>
+<li><a href="./cockpit.html">Status line and multi-agent UI</a> covers the status segments, <code>/cockpit</code>, jobs, and the swarm view.</li>
+<li><a href="./keybindings.html">Keybindings</a> covers the chords and Vim mode.</li>
+<li>The composer gives you prompt history, <code>@</code> and <code>/</code> completion, and <code>Esc</code> to interrupt. See <a href="../using/quickstart.html">Quickstart</a> and <a href="./keybindings.html">Keybindings</a>.</li>
+<li><a href="./web-search.html">Web search</a> covers searching from inside a session.</li>
 </ul>
 <h2 id="modes-and-extensions"><a class="header" href="#modes-and-extensions">Modes and extensions</a></h2>
-<ul>
-<li><a href="./plan-mode.html">Plan mode, goals, and vibe</a></li>
-<li><a href="./skills.html">Skills</a></li>
-<li><a href="./plugins.html">Plugins</a></li>
-<li><a href="./hooks.html">Hooks</a> — TypeScript modules, <code>pi.on(...)</code></li>
-<li><a href="./mcp.html">MCP</a></li>
-<li><a href="./branching.html">Branching</a></li>
-<li><a href="./memory.html">Memory</a></li>
-<li><a href="./profiles.html">Profiles</a></li>
-<li><a href="./personalities.html">Personalities</a></li>
-<li><a href="./speech.html">Speech</a></li>
-<li><a href="./export-import.html">Export and import</a></li>
-<li><a href="./connectors.html">Connectors</a></li>
-<li><a href="./sandbox.html">Approvals</a></li>
-<li><a href="./review.html">Code review</a></li>
-<li><a href="./exec.html">Non-interactive mode</a></li>
-</ul>
+<p>These change how the agent runs, or add new capabilities:</p>
+<div class="table-wrapper">
+<table>
+<thead>
+<tr><th>Feature</th><th>What it adds</th></tr>
+</thead>
+<tbody>
+<tr><td><a href="./plan-mode.html">Plan mode, goals, and vibe</a></td><td>Engine modes that plan, pursue an objective, or direct workers</td></tr>
+<tr><td><a href="./skills.html">Skills</a></td><td>Reusable, on-demand instructions</td></tr>
+<tr><td><a href="./plugins.html">Plugins</a></td><td>Packaged extensions</td></tr>
+<tr><td><a href="./hooks.html">Hooks</a></td><td>TypeScript modules that run on events with <code>pi.on(...)</code></td></tr>
+<tr><td><a href="./mcp.html">MCP</a></td><td>Model Context Protocol servers and tools</td></tr>
+<tr><td><a href="./branching.html">Branching</a></td><td>Forking a session into parallel lines of work</td></tr>
+<tr><td><a href="./memory.html">Memory</a></td><td>Project-scoped recall across sessions</td></tr>
+<tr><td><a href="./profiles.html">Profiles</a></td><td>Isolated config, sessions, and state per name</td></tr>
+<tr><td><a href="./personalities.html">Personalities</a></td><td>Named voice and behavior presets</td></tr>
+<tr><td><a href="./speech.html">Speech</a></td><td>Text-to-speech output</td></tr>
+<tr><td><a href="./export-import.html">Export and import</a></td><td>Moving sessions in and out</td></tr>
+<tr><td><a href="./connectors.html">Connectors</a></td><td>Third-party app integrations</td></tr>
+<tr><td><a href="./sandbox.html">Approvals</a></td><td>The approval-mode boundary in depth</td></tr>
+<tr><td><a href="./review.html">Code review</a></td><td>Reviewing branches, commits, and uncommitted work</td></tr>
+<tr><td><a href="./exec.html">Non-interactive mode</a></td><td>Running Veyyon from a script</td></tr>
+</tbody>
+</table>
+</div>
 <h2 id="recipes"><a class="header" href="#recipes">Recipes</a></h2>
-<p><a href="../using/task-guides.html">Task guides</a>. Reference: <a href="../reference/index.html">Reference</a>.</p>
+<p>For worked examples, see the <a href="../using/task-guides.html">Task guides</a>. For the full command and setting reference, see <a href="../reference/index.html">Reference</a>.</p>
 
                     </main>
 

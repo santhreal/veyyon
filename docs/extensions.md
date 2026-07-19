@@ -130,17 +130,17 @@ Also exposed:
 
 - `pi.logger`
 - `pi.typebox` (zod-backed compatibility shim for legacy TypeBox-style schemas)
-- `pi.zod` (injected `zod/v4` module — canonical for tool parameter schemas)
+- `pi.zod` (injected `zod/v4` module: canonical for tool parameter schemas)
 - `pi.pi` (package exports)
 
 ### Message delivery semantics
 
 `pi.sendMessage(message, options)` supports:
 
-- `deliverAs: "steer"` (default) — interrupts current run
-- `deliverAs: "followUp"` — queued to run after current run
-- `deliverAs: "nextTurn"` — stored and injected on the next user prompt
-- `triggerTurn: true` — starts a turn when idle (also honored with `deliverAs: "nextTurn"`: idle prompts immediately; while streaming the queued message schedules an internal continuation)
+- `deliverAs: "steer"` (default): interrupts current run
+- `deliverAs: "followUp"`: queued to run after current run
+- `deliverAs: "nextTurn"`: stored and injected on the next user prompt
+- `triggerTurn: true`: starts a turn when idle (also honored with `deliverAs: "nextTurn"`: idle prompts immediately; while streaming the queued message schedules an internal continuation)
 
 `pi.sendUserMessage(content, { deliverAs })` always goes through prompt flow. Omit `deliverAs` to start a normal prompt when idle; while streaming, omitted `deliverAs` queues the message as a steer. Set `deliverAs: "followUp"` to wait until the current run finishes.
 
@@ -153,22 +153,22 @@ Handlers and tool `execute` receive `ctx` with:
 - `cwd`
 - `sessionManager` (read-only)
 - `modelRegistry`, `model`
-- `models` (read-only model query — see below)
+- `models` (read-only model query: see below)
 - `getContextUsage()`
 - `compact(...)`
 - `isIdle()`, `hasPendingMessages()`, `abort()`
 - `shutdown()`
 - `getSystemPrompt()`
-- `memory` (optional structured memory runtime — status/search/save across the configured backend)
+- `memory` (optional structured memory runtime: status/search/save across the configured backend)
 
 ### Model selection (`ctx.models`)
 
 `ctx.models` is a read-only facade for picking and comparing models the same way core does:
 
-- `list()` — authenticated models available this session.
-- `current()` — the live session model (read lazily, so it reflects `/model` switches).
-- `resolve(spec)` — a model string (`provider/id`, bare id) or role alias (`@slow`, a configured role) → `Model`, honoring the same settings-backed aliases and match preferences as `--model`. Returns `undefined` when nothing matches.
-- `family(model)` — an opaque lineage token for "same family?" checks (Claude point releases share a token; Claude and GPT differ). Compare it; don't persist it (the vocabulary tracks new releases).
+- `list()`: authenticated models available this session.
+- `current()`: the live session model (read lazily, so it reflects `/model` switches).
+- `resolve(spec)`: a model string (`provider/id`, bare id) or role alias (`@slow`, a configured role) → `Model`, honoring the same settings-backed aliases and match preferences as `--model`. Returns `undefined` when nothing matches.
+- `family(model)`: an opaque lineage token for "same family?" checks (Claude point releases share a token; Claude and GPT differ). Compare it; don't persist it (the vocabulary tracks new releases).
 
 ```ts
 // Pick a model from a different family than the current one (e.g. a cross-family reviewer).
@@ -218,8 +218,8 @@ Cancelable pre-events:
 - `before_provider_request` (may replace provider request payload)
 - `after_provider_response`
 - `context`
-- `agent_start` / `agent_end` — agent loop lifecycle notification; `agent_end` remains notification-only
-- `session_stop` — main-session stop hook, awaited before settle; may continue with `{ continue: true, additionalContext }` or `{ decision: "block", reason }`; capped at 8 consecutive continuations and never fires for task/subagent sessions
+- `agent_start` / `agent_end`: agent loop lifecycle notification; `agent_end` remains notification-only
+- `session_stop`: main-session stop hook, awaited before settle; may continue with `{ continue: true, additionalContext }` or `{ decision: "block", reason }`; capped at 8 consecutive continuations and never fires for task/subagent sessions
 - `turn_start` / `turn_end`
 - `message_start` / `message_update` / `message_end`
 

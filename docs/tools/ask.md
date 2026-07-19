@@ -6,9 +6,9 @@
 - Entry: `packages/coding-agent/src/tools/ask.ts`
 - Model-facing prompt: `packages/coding-agent/src/prompts/tools/ask.md`
 - Key collaborators:
-  - `packages/coding-agent/src/config/settings-schema.ts` — `ask.timeout` / `ask.notify` defaults
-  - `packages/coding-agent/src/modes/theme/theme.ts` — checkbox and radio glyphs for TUI rendering
-  - `packages/coding-agent/src/tui/index.ts` — status-line rendering
+  - `packages/coding-agent/src/config/settings-schema.ts`: `ask.timeout` / `ask.notify` defaults
+  - `packages/coding-agent/src/modes/theme/theme.ts`: checkbox and radio glyphs for TUI rendering
+  - `packages/coding-agent/src/tui/index.ts`: status-line rendering
 
 ## Inputs
 

@@ -14,7 +14,7 @@ The chat template shipped with the gpt-oss weights renders these same token sequ
 
 ## Special tokens
 
-All Harmony control tokens have the literal form `<|type|>` (ASCII pipes `|`, U+007C — no unicode variants). They are real single tokens in `o200k_harmony`, not text that is BPE-split. The structurally meaningful ones:
+All Harmony control tokens have the literal form `<|type|>` (ASCII pipes `|`, U+007C, no unicode variants). They are real single tokens in `o200k_harmony`, not text that is BPE-split. The structurally meaningful ones:
 
 | Token (verbatim) | Token ID | Purpose |
 | :--------------- | :------- | :------ |
@@ -26,7 +26,7 @@ All Harmony control tokens have the literal form `<|type|>` (ASCII pipes `|`, U+
 | `<\|return\|>`    | `200002` | Stop token: the model finished its final answer. Decode-time only (see normalization note). |
 | `<\|call\|>`      | `200012` | Stop token: the model is emitting a tool call and wants it executed. |
 
-`<|return|>` and `<|call|>` are the two valid generation stop tokens — halt inference on either.
+`<|return|>` and `<|call|>` are the two valid generation stop tokens, halt inference on either.
 
 The encoding also defines (same `o200k_harmony` block, IDs `199998`–`200013`) `<|startoftext|>` (199998), `<|endoftext|>` (199999), and reserved slots `<|reserved_200000|>`, `<|reserved_200001|>`, `<|reserved_200004|>`, `<|reserved_200009|>`–`<|reserved_200011|>`, `<|reserved_200013|>`, plus a bulk reserved range `<|reserved_200014|>`…`<|reserved_201088|>`. The renderer additionally knows the names `<|refusal|>`, `<|untrusted|>`, `<|end_untrusted|>`, `<|meta_end|>` but they are not part of the committed gpt-oss vocabulary and do not appear in normal traffic.
 
@@ -112,7 +112,7 @@ format?: "celsius" | "fahrenheit", // default: celsius
 
 A function call is an **assistant** message on the **commentary** channel, addressed to the tool via recipient `to=functions.<name>`, with the JSON arguments as the body, terminated by the `<|call|>` stop token.
 
-The recipient may appear in the *role section* or the *channel section* of the header — both are valid Harmony and the parser accepts either. The model commonly emits it in the channel section. The pi renderer omits the optional content-type marker:
+The recipient may appear in the *role section* or the *channel section* of the header, both are valid Harmony and the parser accepts either. The model commonly emits it in the channel section. The pi renderer omits the optional content-type marker:
 
 ```text
 <|start|>assistant<|channel|>commentary to=functions.get_current_weather<|message|>{"location":"San Francisco, CA"}<|call|>
@@ -128,7 +128,7 @@ The arguments body is a raw JSON object. The optional `<|constrain|>json` conten
 
 ## Multiple / parallel tool calls
 
-Harmony has no special "parallel" wrapper. Multiple calls are just multiple consecutive messages. The model may first emit an optional **preamble** — a *user-visible* assistant message on the `commentary` channel (unlike `analysis`, this is meant to be shown) — then one tool-call message per function. Each individual call still ends with its own `<|call|>` stop token, so a host that stops on `<|call|>` collects calls one at a time, executes, feeds the result back, and resumes:
+Harmony has no special "parallel" wrapper. Multiple calls are just multiple consecutive messages. The model may first emit an optional **preamble**, a *user-visible* assistant message on the `commentary` channel (unlike `analysis`, this is meant to be shown), then one tool-call message per function. Each individual call still ends with its own `<|call|>` stop token, so a host that stops on `<|call|>` collects calls one at a time, executes, feeds the result back, and resumes:
 
 ```text
 <|channel|>analysis<|message|>{reasoning}<|end|><|start|>assistant<|channel|>commentary<|message|>**Action plan**:
@@ -194,7 +194,7 @@ Turn boundaries:
 When a server (vLLM/SGLang/Ollama) bridges Harmony to Chat Completions JSON:
 
 - **`finish_reason`**: `tool_calls` when generation stopped on `<|call|>`; `stop` when it stopped on `<|return|>`.
-- **`message.tool_calls[]`**: one entry per `commentary` `to=functions.*` call. `function.name` is the recipient with the `functions.` namespace stripped (`get_current_weather`). `function.arguments` is a **JSON string** (the verbatim `<|message|>` body), matching OpenAI semantics — not a parsed object.
+- **`message.tool_calls[]`**: one entry per `commentary` `to=functions.*` call. `function.name` is the recipient with the `functions.` namespace stripped (`get_current_weather`). `function.arguments` is a **JSON string** (the verbatim `<|message|>` body), matching OpenAI semantics: not a parsed object.
 - **`tool_call_id`**: Harmony has no native call ID. The server synthesizes one (e.g. `call_abc123`) and is responsible for correlating the follow-up `role:"tool"` message back to the Harmony tool-result envelope (recipient `to=functions.<name>` / call order).
 - **Tool result messages** (`{"role":"tool","tool_call_id":...,"content":...}`) are rendered into `<|start|>{toolname} to=assistant<|channel|>commentary<|message|>{content}<|end|>`. The server maps `tool_call_id` → the original function name to build the `{toolname}` author.
 - **Reasoning**: `analysis`-channel text is surfaced as `reasoning_content` (vLLM/SGLang) or as a `reasoning`/`thinking` field, and is generally not echoed back on subsequent requests. `final`-channel text is the normal `message.content`. `commentary` preambles, if surfaced, also map to assistant content.
@@ -208,13 +208,13 @@ When a server (vLLM/SGLang/Ollama) bridges Harmony to Chat Completions JSON:
 - **Tool author, not `tool`.** The tool-result message's role is the tool's *name* (`functions.get_current_weather`), not the literal string `tool`. Splitting `functions.x` into namespace + function is the parser's job.
 - **CoT dropping is conditional.** Drop `analysis` only when the previous assistant turn ended on `final`. Dropping the `analysis` that immediately precedes a `<|call|>` breaks multi-step tool reasoning.
 - **`arguments` is a string.** Do not double-encode. The body after `<|message|>` is already serialized JSON; pass it through as the `arguments` string.
-- **Content-type variants.** `<|constrain|>json` is optional. If present, it is metadata, not a guarantee of valid JSON. Enforce JSON validity with constrained decoding / your own grammar — the prompt format alone does not guarantee schema adherence (same caveat applies to structured-output `# Response Formats`).
-- **Streaming.** Use a stateful parser (the library ships `StreamableParser`) so partial UTF-8 and the header/channel/recipient/content-type fields are reconstructed incrementally; a naive substring scan mishandles multi-byte splits and the optional header fields. `parse_messages_from_completion_tokens` takes `strict=True|False` — `strict=False` tolerates some malformed headers. Do not pass the trailing stop token into the parser.
+- **Content-type variants.** `<|constrain|>json` is optional. If present, it is metadata, not a guarantee of valid JSON. Enforce JSON validity with constrained decoding / your own grammar: the prompt format alone does not guarantee schema adherence (same caveat applies to structured-output `# Response Formats`).
+- **Streaming.** Use a stateful parser (the library ships `StreamableParser`) so partial UTF-8 and the header/channel/recipient/content-type fields are reconstructed incrementally; a naive substring scan mishandles multi-byte splits and the optional header fields. `parse_messages_from_completion_tokens` takes `strict=True|False`: `strict=False` tolerates some malformed headers. Do not pass the trailing stop token into the parser.
 - **Encoding.** Use `o200k_harmony` (the `o200k_base` ranks plus the Harmony specials above). Treat the `<|...|>` tokens as atomic special tokens during both encode and decode; encoding them as ordinary text yields different ranks and corrupts the stream.
 
 ## Sources
 
-- OpenAI Cookbook — OpenAI harmony response format: https://cookbook.openai.com/articles/openai-harmony
+- OpenAI Cookbook: OpenAI harmony response format: https://cookbook.openai.com/articles/openai-harmony
 - openai/harmony renderer (README): https://github.com/openai/harmony
 - openai/harmony canonical format guide: https://raw.githubusercontent.com/openai/harmony/main/docs/format.md
 - openai/harmony special-token registry (`o200k_harmony` IDs): https://raw.githubusercontent.com/openai/harmony/main/src/tiktoken_ext/public_encodings.rs

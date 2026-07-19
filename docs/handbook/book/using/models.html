@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-a2447057.js";
+            window.path_to_searchindex_js = "../searchindex-b31c94e7.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-cc1a72e9.js"></script>
@@ -196,15 +196,15 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="models-and-providers"><a class="header" href="#models-and-providers">Models and providers</a></h1>
-<p>Select endpoints and model ids; the agent calls the configured provider API with your credentials (local server, hosted API, or OpenAI-compatible gateway).</p>
+<p>You choose an endpoint and a model id. Veyyon then calls that provider’s API directly with your credentials. The endpoint can be a local server, a hosted API, or any OpenAI-compatible gateway.</p>
 <ul>
 <li>Contract (what the harness owns vs the provider): <a href="../concepts/model-contract.html">Model contract</a></li>
 <li>Copy-paste provider setups: <a href="./configuring-providers.html">Configuring providers</a></li>
 <li>Built-in provider stack internals: <a href="../models/providers.html">Provider stack and BYOK</a></li>
 </ul>
 <h2 id="api-keys-byok"><a class="header" href="#api-keys-byok">API keys (BYOK)</a></h2>
-<p>For non-managed providers the process sends the key to the provider endpoint you configured (no hosted proxy required).</p>
-<p>Set the key through:</p>
+<p>BYOK means bring your own key. For a provider you configure yourself, Veyyon sends your key straight to that provider’s endpoint. There is no hosted proxy in between.</p>
+<p>Set the key one of three ways:</p>
 <ul>
 <li>The provider’s environment variable (see <a href="../models/providers.html">Providers</a> for the full map), or</li>
 <li><code>/login</code> inside the TUI, which stores the credential in the auth store, or</li>
@@ -244,7 +244,7 @@ selectable when it is not in <code>disabledProviders</code> <strong>and</strong>
 </tbody>
 </table>
 </div>
-<p>Once a provider is available, model ids come from its discovery endpoint — there is no hardcoded BYOK
+<p>Once a provider is available, model ids come from its discovery endpoint, there is no hardcoded BYOK
 allowlist. Failed discovery returns an error; it does not invent an empty catalog.</p>
 <h2 id="local-models-ollama-and-lm-studio"><a class="header" href="#local-models-ollama-and-lm-studio">Local models: Ollama and LM Studio</a></h2>
 <p>Both are discovered automatically once the engine is running; no <code>models.yml</code> entry and no key are
@@ -303,7 +303,7 @@ subagent:
 compaction:
   model: openai/gpt-5-mini
 </code></pre>
-<p>Ctrl+P (default binding) cycles roles listed in <code>cycleOrder</code> (schema default <code>smol</code>, <code>slow</code> — not <code>default</code>). Full role list and aliases: <a href="./roles-and-profiles.html">Models, roles, and profiles</a>.</p>
+<p>Ctrl+P (default binding) cycles roles listed in <code>cycleOrder</code> (schema default <code>smol</code>, <code>slow</code>, not <code>default</code>). Full role list and aliases: <a href="./roles-and-profiles.html">Models, roles, and profiles</a>.</p>
 <h2 id="per-model-harness-settings"><a class="header" href="#per-model-harness-settings">Per-model harness settings</a></h2>
 <p>Prompt order, repair enablement, and tool exposure can be set per model id through <strong>harness profiles</strong>
 and model roles. See <a href="../models/prompts.html">Execution-order prompts</a> and
@@ -341,11 +341,11 @@ $ veyyon --model openrouter/anthropic/claude-sonnet-4
 <p>Pin models in CI and shared profiles (<code>--model</code>, <code>modelRoles</code>). Floating “latest” aliases change under you.</p>
 <h2 id="where-to-go-next"><a class="header" href="#where-to-go-next">Where to go next</a></h2>
 <ul>
-<li><a href="./configuring-providers.html">Configuring providers</a> — full copy-paste setups.</li>
-<li><a href="../concepts/model-contract.html">Model contract</a> — harness vs provider boundary.</li>
-<li><a href="./getting-started.html">Getting started</a> — first key and first task.</li>
-<li><a href="./configuration.html">Configuration</a> — model defaults and overrides.</li>
-<li><a href="./authentication.html">Authentication</a> — login, logout, secret storage.</li>
+<li><a href="./configuring-providers.html">Configuring providers</a>: full copy-paste setups.</li>
+<li><a href="../concepts/model-contract.html">Model contract</a>: harness vs provider boundary.</li>
+<li><a href="./getting-started.html">Getting started</a>: first key and first task.</li>
+<li><a href="./configuration.html">Configuration</a>: model defaults and overrides.</li>
+<li><a href="./authentication.html">Authentication</a>: login, logout, secret storage.</li>
 </ul>
 
                     </main>

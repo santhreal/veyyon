@@ -1,6 +1,10 @@
 # Goal state and long sessions
 
-Long context fails when the objective is only buried in the transcript. Goal mode keeps a structured objective on the session, injects it outside the raw conversation tail, and pairs with compaction for history.
+On a long task, the model can drift. The objective was stated an hour ago, and now it is buried under a
+thousand messages the model reads only the tail of. Goal mode fixes this. It pins a structured
+objective to the session and injects it separately from the raw conversation tail, so the goal stays in
+view no matter how long the transcript grows. It pairs with compaction, which handles the history
+behind it.
 
 ## Goal card (session-backed)
 

@@ -11,7 +11,7 @@ Four similarly named things behave differently. Keep them straight:
 - **Context files** are read as plain Markdown and shown to the agent inside a `<context>` block. They are advisory background that stays in the session's opening context.
 - **Sticky rules** come from a top-level `RULES.md`. They are converted into an always-apply rule that is re-attached near the current turn, so they keep their hold even after the visible conversation grows. See "Sticky rules vs normal context" below.
 - **Discovery providers** are the config-source adapters (`native`, `claude`, `codex`, `gemini`, `opencode`, `github`, `agents`, `agents-md`) that know where each tool keeps its files. The same provider that contributes context files may also contribute MCP servers, slash commands, skills, hooks, tools, prompts, and settings.
-- **Model providers** are inference backends such as `anthropic`, `openai`, `google`, `groq`, `ollama`, and `openrouter`. They have nothing to do with context files except that both kinds of id share the one `disabledProviders` list — see "Disabling discovery providers" below and [Providers](./providers.md).
+- **Model providers** are inference backends such as `anthropic`, `openai`, `google`, `groq`, `ollama`, and `openrouter`. They have nothing to do with context files except that both kinds of id share the one `disabledProviders` list: see "Disabling discovery providers" below and [Providers](./providers.md).
 
 Authoring **skills** and **rule** files (as opposed to the sticky `RULES.md`) is covered in [Skills](./skills.md). Customizing the system prompt with `SYSTEM.md` is covered in [System prompt customization](./system-prompt-customization.md).
 
@@ -65,7 +65,7 @@ Put broad, durable project background in `AGENTS.md`. Reserve `RULES.md` for sho
 | `opencode` | `.config/opencode/AGENTS.md` | User | User file `~/.config/opencode/AGENTS.md` only. |
 | `github` | `.github/copilot-instructions.md` | User + project | Project file `<cwd>/.github/copilot-instructions.md` only (no ancestor walk-up), plus a user-global `~/.copilot/copilot-instructions.md` (relocate with `COPILOT_HOME`) and an `AGENTS.md` from each `COPILOT_CUSTOM_INSTRUCTIONS_DIRS` entry. |
 | `agents` | `.agent/AGENTS.md`, `.agents/AGENTS.md` | User + project | User files from `~/.agent/` and `~/.agents/`; project files discovered while walking up from the current directory to the repository root. |
-| `agents-md` | `AGENTS.md` | Project | Standalone (non-config-directory) `AGENTS.md` files, discovered by walking up from the current directory to the repository root (or home when no repo root is known). Files whose parent directory name starts with `.` are ignored — those belong to a config-directory provider instead. |
+| `agents-md` | `AGENTS.md` | Project | Standalone (non-config-directory) `AGENTS.md` files, discovered by walking up from the current directory to the repository root (or home when no repo root is known). Files whose parent directory name starts with `.` are ignored, those belong to a config-directory provider instead. |
 | `github` | `.github/instructions/**/*.instructions.md` | Project rules | GitHub Copilot / VS Code instruction files become rules. `applyTo: '*'` or `applyTo: '**'` is injected as always-apply context; other `applyTo` globs are listed in the rulebook with `description` and are readable as `rule://<name>`. |
 
 Providers marked "(no ancestor walk-up)" only look in the current working directory's config directory. If you need ancestor walk-up behavior, prefer the native `.veyyon/AGENTS.md` format or a standalone `AGENTS.md` (the `agents-md` provider), or launch `veyyon` from the directory that holds the config directory.
@@ -127,7 +127,7 @@ You MUST follow the context files below for all tasks:
 </context>
 ```
 
-The agent sees each file's absolute path and its fully expanded Markdown content (with `@` imports already resolved — see below). When discovery is enabled, matching context files are injected at session start.
+The agent sees each file's absolute path and its fully expanded Markdown content (with `@` imports already resolved, see below). When discovery is enabled, matching context files are injected at session start.
 
 Deeper-directory `AGENTS.md` files that were *not* auto-loaded (for example, ones below the current directory) are surfaced separately in a `<dir-context>` block that lists their paths and tells the agent to read them before editing those directories. Those files are pointers, not full injected content.
 
@@ -146,7 +146,7 @@ The exact rules:
 
 - **Relative paths resolve from the importing file's own directory**, not the session's working directory.
 - **`~/` and `~`** resolve from the user's home directory; absolute paths are used as-is.
-- **Tokens inside fenced code blocks and inline code spans are left untouched** — useful when you want to *write about* an `@token` without expanding it.
+- **Tokens inside fenced code blocks and inline code spans are left untouched**: useful when you want to *write about* an `@token` without expanding it.
 - **`git@github.com:org/repo.git` and `user@example.com`-style tokens are not treated as imports.** A token only counts when the `@` sits at the start of a line or after a space or tab.
 - **Trailing sentence punctuation is trimmed** off the path (`. , ; : ! ? ) ] } " '`), so `@docs/setup.md.` imports `docs/setup.md`.
 - **Imports recurse up to five hops.** An imported file may itself contain `@` imports, up to a total depth of five.
@@ -168,7 +168,7 @@ Do not edit generated files.
 
 `RULES.md` is special:
 
-- It is read **only** at the native locations — `~/.veyyon/profiles/default/agent/RULES.md` and the nearest `<ancestor>/.veyyon/RULES.md` from the cwd up to the repo root. A `RULES.md` anywhere else is not a context-file convention and is ignored.
+- It is read **only** at the native locations: `~/.veyyon/profiles/default/agent/RULES.md` and the nearest `<ancestor>/.veyyon/RULES.md` from the cwd up to the repo root. A `RULES.md` anywhere else is not a context-file convention and is ignored.
 - It is loaded as an **always-apply rule**, not as a context file, so it is re-attached near the current turn and keeps its hold across long sessions.
 - It is **always sticky**: frontmatter cannot make it non-sticky. If you want conditional or opt-in behavior, write a normal rule file instead (see [Skills](./skills.md)).
 
@@ -189,10 +189,10 @@ disabledProviders:
 
 | Id kind | Examples | Effect when listed |
 |---|---|---|
-| Discovery provider ids | `native`, `claude`, `codex`, `gemini`, `opencode`, `github`, `agents`, `agents-md` | The entire config source is removed — not just its context files, but also any MCP servers, slash commands, skills, hooks, tools, prompts, and settings it would have contributed. |
+| Discovery provider ids | `native`, `claude`, `codex`, `gemini`, `opencode`, `github`, `agents`, `agents-md` | The entire config source is removed, not just its context files, but also any MCP servers, slash commands, skills, hooks, tools, prompts, and settings it would have contributed. |
 | Model provider ids | `anthropic`, `openai`, `google`, `groq`, `ollama`, `openrouter` | The model backend is removed from selection even when its credentials are present. See [Providers](./providers.md). |
 
-Ids are exact and the two namespaces do not collide by accident: `google` disables the Google model backend, while `gemini` disables the Gemini CLI discovery files. Disabling a discovery provider is heavier than it looks — disabling `claude`, for instance, also drops Claude-discovered MCP servers, commands, skills, hooks, tools, and settings, not only `CLAUDE.md`.
+Ids are exact and the two namespaces do not collide by accident: `google` disables the Google model backend, while `gemini` disables the Gemini CLI discovery files. Disabling a discovery provider is heavier than it looks, disabling `claude`, for instance, also drops Claude-discovered MCP servers, commands, skills, hooks, tools, and settings, not only `CLAUDE.md`.
 
 Only `enabledModels` and `disabledProviders` support **path-scoped** entries, so you can vary provider availability per subtree:
 
@@ -214,10 +214,10 @@ Remember that higher-precedence settings layers **replace** array settings rathe
 
 - Native project context must live at `.veyyon/AGENTS.md`, and the `.veyyon/` directory must be non-empty; an empty `.veyyon/` is skipped and the walk-up continues to the next ancestor.
 - A standalone `AGENTS.md` is handled by `agents-md`, not `native`.
-- `.claude/CLAUDE.md`, `.gemini/GEMINI.md`, and `.github/copilot-instructions.md` are read only from the current working directory's config directory — not from every ancestor.
+- `.claude/CLAUDE.md`, `.gemini/GEMINI.md`, and `.github/copilot-instructions.md` are read only from the current working directory's config directory: not from every ancestor.
 - `~/.codex/AGENTS.md` and `~/.config/opencode/AGENTS.md` are user-level only and have no project equivalent.
 - Empty files contribute nothing for the native and standalone providers.
-- A disabled discovery provider contributes nothing — check `disabledProviders` across your global, project, and `--config` layers.
+- A disabled discovery provider contributes nothing: check `disabledProviders` across your global, project, and `--config` layers.
 
 ### The wrong file wins
 
@@ -225,7 +225,7 @@ At one user scope or project depth, the higher-priority provider shadows the oth
 
 ### User context disappeared
 
-Only one user-level context file survives, and `~/.veyyon/profiles/default/agent/AGENTS.md` has the highest priority. If it exists, it shadows user-level `~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md`, `~/.gemini/GEMINI.md`, `~/.config/opencode/AGENTS.md`, `~/.copilot/copilot-instructions.md`, and `~/.agent`/`~/.agents` files. Consolidate user guidance into the native file or remove the native one if you prefer another tool's file. Under a named profile the native user file is the profile's own `~/.veyyon/profiles/<name>/agent/AGENTS.md` — a profile without one falls through to the next-priority user file (typically `~/.claude/CLAUDE.md`).
+Only one user-level context file survives, and `~/.veyyon/profiles/default/agent/AGENTS.md` has the highest priority. If it exists, it shadows user-level `~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md`, `~/.gemini/GEMINI.md`, `~/.config/opencode/AGENTS.md`, `~/.copilot/copilot-instructions.md`, and `~/.agent`/`~/.agents` files. Consolidate user guidance into the native file or remove the native one if you prefer another tool's file. Under a named profile the native user file is the profile's own `~/.veyyon/profiles/<name>/agent/AGENTS.md`, a profile without one falls through to the next-priority user file (typically `~/.claude/CLAUDE.md`).
 
 ### A `RULES.md` file is ignored
 

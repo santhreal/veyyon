@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-a2447057.js";
+            window.path_to_searchindex_js = "../searchindex-b31c94e7.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-cc1a72e9.js"></script>
@@ -196,11 +196,14 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="bounded-reads-and-search"><a class="header" href="#bounded-reads-and-search">Bounded reads and search</a></h1>
-<p><code>read</code>, <code>glob</code>, <code>grep</code>, and <code>write</code> ship as TypeScript modules under
-<code>packages/coding-agent/src/tools/{read,glob,grep,write}.ts</code>. They are always available (no
-<code>experimental_tools</code> or <code>backends.toml</code> gate). This page documents parameter shapes and bounds.</p>
-<p>Unbounded <code>cat</code> / <code>find</code> / <code>grep -r</code> via shell can fill the context window. These tools apply
-line/byte/result caps and surface truncation instead of silent dumps.</p>
+<p>Four tools give the agent controlled access to your files: <code>read</code>, <code>glob</code>, <code>grep</code>, and
+<code>write</code>. They are always available; there is no <code>experimental_tools</code> or <code>backends.toml</code> gate
+to turn them on.</p>
+<p>The point of these tools is bounds. An unbounded <code>cat</code>, <code>find</code>, or <code>grep -r</code> in the shell
+can dump enough text to fill the whole context window. These tools apply line, byte, and
+result caps instead, and they surface truncation rather than dropping output silently. This
+page documents each tool’s parameters and the limits it enforces. The implementations live
+under <code>packages/coding-agent/src/tools/{read,glob,grep,write}.ts</code>.</p>
 <h2 id="the-read-tool-toolsreadts"><a class="header" href="#the-read-tool-toolsreadts">The <code>read</code> tool (<code>tools/read.ts</code>)</a></h2>
 <p><code>read</code> takes a single <code>path</code> string (no separate <code>offset</code>/<code>limit</code> arguments) and bounds every read
 to a budget:</p>
@@ -227,7 +230,7 @@ notebooks (editable cell text), images, URLs (reader-mode by default), and inter
 <p>Text reading is intentionally separate from image inspection: image files go through <code>view_image</code> or
 a vision prepass rather than being bundled into ordinary text reads.</p>
 <h2 id="the-glob-tool-toolsglobts"><a class="header" href="#the-glob-tool-toolsglobts">The <code>glob</code> tool (<code>tools/glob.ts</code>)</a></h2>
-<p>There is no separate <code>find</code> or <code>ls</code> tool — pattern matching and directory listing are both the <code>glob</code>
+<p>There is no separate <code>find</code> or <code>ls</code> tool, pattern matching and directory listing are both the <code>glob</code>
 tool. A model that runs <code>find . -name '*.rs'</code> or <code>ls -R</code> in the shell gets back an unbounded dump that
 includes <code>target/</code>, <code>node_modules/</code>, and <code>.git/</code>; <code>glob</code> is bounded and gitignore-aware instead:</p>
 <ul>
@@ -236,7 +239,7 @@ accepts a glob, a single file, a directory (recursed), or a semicolon-delimited 
 (<code>src/**/*.ts; test/**/*.ts</code>); omitted, it searches the workspace root.</li>
 <li><strong><code>gitignore</code> (default <code>true</code>)</strong> hides <code>.gitignore</code> matches; set <code>false</code> to find <code>.env*</code>, build
 output, or anything the repo ignores. <strong><code>hidden</code> (default <code>true</code>)</strong> includes dotfiles.</li>
-<li><strong>Bounded by result count</strong>, default and max <code>200</code> (<code>DEFAULT_LIMIT</code> / <code>MAX_LIMIT</code> in <code>glob.ts</code>) — not
+<li><strong>Bounded by result count</strong>, default and max <code>200</code> (<code>DEFAULT_LIMIT</code> / <code>MAX_LIMIT</code> in <code>glob.ts</code>): not
 a byte cap. Every truncation is surfaced as an actionable notice.</li>
 <li><strong>Sorted by mtime, newest first</strong> (not lexicographic), grouped under <code># &lt;dir&gt;/</code> headers with
 basenames below; directories get a trailing <code>/</code>.</li>
@@ -250,7 +253,7 @@ count on top of the same gitignore-aware traversal <code>glob</code> uses:</p>
 <ul>
 <li><strong><code>grep {pattern, path?, case?, gitignore?, skip?}</code>.</strong> <code>path</code> scopes the search (single path,
 semicolon-delimited list, or a <code>file:line-range</code> selector on one target); <code>case</code> enables
-case-sensitivity (default case-insensitive is <strong>not</strong> assumed — see the tool description for the
+case-sensitivity (default case-insensitive is <strong>not</strong> assumed, see the tool description for the
 exact default); <code>skip</code> pages past files already returned once a call hits the file limit.</li>
 <li><strong>Bounded by file count, not match count.</strong> Results are paginated at <code>DEFAULT_FILE_LIMIT = 20</code> files
 per call, with an internal total cap of <code>2000</code> matches (<code>grep.ts</code>); <code>skip</code> continues from where the
@@ -259,7 +262,7 @@ previous call left off.</li>
 runs in line-number mode.</li>
 <li><strong>Cross-line patterns</strong> are detected from a literal <code>\n</code>/<code>\\n</code> in <code>pattern</code>.</li>
 <li>The tool description explicitly forbids shelling out to <code>grep</code>/<code>rg</code>/<code>ripgrep</code>/<code>ag</code>/<code>ack</code>/<code>git grep</code>
-via Bash — the built-in tool is the only sanctioned path.</li>
+via Bash, the built-in tool is the only sanctioned path.</li>
 </ul>
 <h2 id="the-write-tool-toolswritets"><a class="header" href="#the-write-tool-toolswritets">The <code>write</code> tool (<code>tools/write.ts</code>)</a></h2>
 <p><code>read</code>/<code>glob</code>/<code>grep</code> are the read side; <code>write {path, content}</code> creates or replaces a whole file. It
@@ -283,7 +286,7 @@ capture path (<code>tools/bash-interactive.ts</code>):</p>
 <li><strong>ANSI stripping is Bun-native, not a hand-rolled parser.</strong> <code>sanitizeText()</code> calls Bun’s built-in
 <code>Bun.stripANSI()</code> when an ESC byte is present, then strips C0/C1 control bytes and DEL with a single
 regex pass. The function is a TypeScript replacement for a former Rust native
-(<code>crates/veyyon-natives/src/text.rs::sanitize_text</code>, noted in the current source comment) — there is no
+(<code>crates/veyyon-natives/src/text.rs::sanitize_text</code>, noted in the current source comment), there is no
 live Rust ECMA-48 grammar walker in this path today.</li>
 <li><strong>Keep <code>\n</code> and <code>\t</code>, drop the rest.</strong> The control regex covers C0 (excluding tab/newline), <code>\r</code>,
 DEL, and the C1 range; <code>\n</code> and <code>\t</code> are the two explicit exclusions.</li>

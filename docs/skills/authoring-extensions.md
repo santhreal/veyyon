@@ -5,7 +5,7 @@ description: Use when creating a new veyyon extension. Covers ExtensionAPI, fact
 
 # Authoring Extensions
 
-Extensions are the primary way to add capabilities to Veyyon. A single extension module can register tools the LLM can call, slash commands users can invoke, and event handlers that run throughout the session lifecycle — all from one TypeScript file.
+Extensions are the primary way to add capabilities to Veyyon. A single extension module can register tools the LLM can call, slash commands users can invoke, and event handlers that run throughout the session lifecycle, all from one TypeScript file.
 
 ## Minimum viable extension
 
@@ -81,10 +81,10 @@ veyyon loads extension modules from these sources:
    - `<cwd>/.veyyon/extensions/`
    - `~/.veyyon/profiles/default/agent/extensions/`
    - legacy extension paths listed in `.veyyon/settings.json#extensions` or `~/.veyyon/profiles/default/agent/settings.json#extensions`
-2. Installed plugins under `~/.veyyon/profiles/default/plugins/node_modules` (`veyyon plugin install` npm/git specs, or `veyyon plugin link`) via their `veyyon.extensions` manifests (legacy `omp.extensions`/`pi.extensions` still accepted). Marketplace cache installs do not feed extension modules — they surface skills/commands/hooks/tools/MCP only.
+2. Installed plugins under `~/.veyyon/profiles/default/plugins/node_modules` (`veyyon plugin install` npm/git specs, or `veyyon plugin link`) via their `veyyon.extensions` manifests (legacy `omp.extensions`/`pi.extensions` still accepted). Marketplace cache installs do not feed extension modules: they surface skills/commands/hooks/tools/MCP only.
 3. Explicit configured paths passed by the CLI (`veyyon --extension ./my-ext.ts`, also `-e`; `--hook` is treated as an alias) and by the `extensions:` setting in config.
 
-The runtime de-duplicates by resolved absolute path — first seen wins.
+The runtime de-duplicates by resolved absolute path, first seen wins.
 
 When a path points to a directory, veyyon resolves the entry point in this order:
 
@@ -136,7 +136,7 @@ pi.registerCommand("my-cmd", {
   description: "What the command does",
   handler: async (args, ctx) => {
     // args: everything the user typed after /my-cmd
-    // ctx: ExtensionCommandContext — includes ctx.ui, ctx.cwd, session controls
+    // ctx: ExtensionCommandContext, includes ctx.ui, ctx.cwd, session controls
     ctx.ui.notify("Running!", "info");
     await ctx.waitForIdle();
     await ctx.newSession();
@@ -210,7 +210,7 @@ pi.on("session_stop", async (event) => {
 
 Full event catalog: see [extension authoring guide](../extensions.md).
 
-## Extension vs hook — when to use which
+## Extension vs hook: when to use which
 
 | Need | Use |
 |---|---|
@@ -251,7 +251,7 @@ The derived name is the filename stem (or directory name for `index.ts`-style en
 
 ## Further reading
 
-- `docs/extensions.md` — runtime internals and full API surface reference
-- `docs/internal/extension-loading.md` — detailed path resolution rules
-- `docs/hooks.md` — hook subsystem internals
-- `docs/skills/examples/hello-extension/` — complete working example
+- `docs/extensions.md`: runtime internals and full API surface reference
+- `docs/internal/extension-loading.md`: detailed path resolution rules
+- `docs/hooks.md`: hook subsystem internals
+- `docs/skills/examples/hello-extension/`: complete working example

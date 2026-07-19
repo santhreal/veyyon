@@ -50,7 +50,7 @@ Validate with `veyyon models list` and `/model`.
 
 `ollama`, `llama.cpp`, and `lm-studio` are treated as keyless when the engine responds. Each has its
 own discovery variable, not a shared `VEYYON_OSS_*` pair: `OLLAMA_BASE_URL` (or `OLLAMA_HOST`),
-`LLAMA_CPP_BASE_URL`, `LM_STUDIO_BASE_URL` — see [Environment variables](../reference/environment.md#local-and-self-hosted-providers).
+`LLAMA_CPP_BASE_URL`, `LM_STUDIO_BASE_URL`, see [Environment variables](../reference/environment.md#local-and-self-hosted-providers).
 
 User guides: [Models](../using/models.md), [Configuring providers](../using/configuring-providers.md).
 

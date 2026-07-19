@@ -2,10 +2,10 @@
 
 ## Structure
 
-- **Using** — install, config, and operator workflows.
-- **Features** — one topic per page (approvals, plan mode, profiles, …).
-- **Reference** — CLI flags, slash commands, keybindings, env vars.
-- **Architecture / repair / edit** — how the harness implements those surfaces.
+- **Using**: install, config, and operator workflows.
+- **Features**: one topic per page (approvals, plan mode, profiles, …).
+- **Reference**: CLI flags, slash commands, keybindings, env vars.
+- **Architecture / repair / edit**: how the harness implements those surfaces.
 
 Cross-links point at the page that owns a concept; prefer that page over repeating the full contract elsewhere.
 

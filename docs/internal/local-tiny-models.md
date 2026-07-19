@@ -25,7 +25,7 @@ they opt in.
     hard-crashes on worker teardown after WebGPU inference.
   - Use `providers.tinyModelDevice` or `VEYYON_TINY_DEVICE` only when explicitly opting out of the CPU
     default.
-- **Quantization: q4 is the sweet spot** — smaller on disk, faster to load, and fast at inference.
+- **Quantization: q4 is the sweet spot**: smaller on disk, faster to load, and fast at inference.
   q8/int8 loads slower _and_ infers slower on CPU. Every shipped model defaults to `q4`; override the
   precision persistently with the `providers.tinyModelDtype` setting (`default` keeps `q4`, e.g. `fp16`
   for higher fidelity), or per-run with `VEYYON_TINY_DTYPE` (overrides the setting). Accepts `auto`,
@@ -60,7 +60,7 @@ they opt in.
 **What we learned**:
 
 - **Few-shot examples HURT sub-0.6B models** for titles; the tag-prefill rescues even 270M models.
-- **Token biasing (`bad_words_ids`) is a confirmed no-op** here — the prefill already controls the
+- **Token biasing (`bad_words_ids`) is a confirmed no-op** here: the prefill already controls the
   opener.
 
 **Leaderboard** (tag trick, CPU, warm):
@@ -72,7 +72,7 @@ they opt in.
 | gemma-3-270m  | Smallest viable                     |
 | Qwen2.5-0.5B  | Acceptable                          |
 | SmolLM2-135M  | Too small                           |
-| flan-t5-small | Rejected — just echoes the input    |
+| flan-t5-small | Rejected, just echoes the input    |
 
 **Shipped local options**: `lfm2-350m`, `qwen3-0.6b`, `gemma-270m`, `qwen2.5-0.5b`, `lfm2-700m`.
 **Default**: `online` (@smol).
@@ -81,8 +81,8 @@ they opt in.
 
 Mnemopi runs two small-LLM tasks:
 
-1. **Extraction** — pull durable, structured items from a single message.
-2. **Consolidation** — summarize a list of memories into 1–3 faithful sentences.
+1. **Extraction**: pull durable, structured items from a single message.
+2. **Consolidation**: summarize a list of memories into 1–3 faithful sentences.
 
 These need **bigger models than titles: 1B–1.7B**. We tested LFM2-1.2B, Qwen2.5-1.5B, Qwen3-1.7B,
 and gemma-3-1b (q4, CPU) via four parallel agents each running 27–31 experiments.
@@ -103,22 +103,22 @@ chit-chat → NONE example is the best mitigation.
 
 - At 1B+, **few-shot is the dominant quality lever**: e.g. Qwen2.5-1.5B extraction F1 0.52 → 0.83
   going 1 → 3 shots; gemma recall 0.65 → 0.92 with 2 shots.
-- **Prefill HURTS extraction** — it forces output on small talk, producing false positives.
+- **Prefill HURTS extraction**: it forces output on small talk, producing false positives.
 - **System-split** (instructions in the system role) helps models that have a system role.
 - **Greedy >= temperature** for both tasks.
 - **Token biasing** is again a no-op.
 
 ### Per-model verdicts (head-to-head, 16-fixture set)
 
-- **Qwen3-1.7B** — most disciplined extraction: returns empty on small talk, no buried-fact leak,
+- **Qwen3-1.7B**: most disciplined extraction: returns empty on small talk, no buried-fact leak,
   preserves language, clean flat JSON. Weaknesses: coarse granularity, missed a multi-turn value
   update.
-- **Qwen2.5-1.5B** — best extraction granularity (atomic facts), caught the value update, zero
+- **Qwen2.5-1.5B**: best extraction granularity (atomic facts), caught the value update, zero
   small-talk leakage. Weaknesses: weakest consolidation (run-on, no dedup) and one degenerate
   buried-fact output.
-- **gemma-3-1b** — best consolidation (dedup works, faithful, clean single-memory). Weaknesses: leaks
+- **gemma-3-1b**: best consolidation (dedup works, faithful, clean single-memory). Weaknesses: leaks
   small talk and translated German.
-- **LFM2-1.2B** — solid and fastest to load. Weaknesses: `Label: value` noise, small-talk + buried
+- **LFM2-1.2B**: solid and fastest to load. Weaknesses: `Label: value` noise, small-talk + buried
   leaks, a fluffy single-memory summary.
 
 ### Recommendation

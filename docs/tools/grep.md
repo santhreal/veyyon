@@ -6,15 +6,15 @@
 - Entry: `packages/coding-agent/src/tools/grep.ts`
 - Model-facing prompt: `packages/coding-agent/src/prompts/tools/grep.md`
 - Key collaborators:
-  - `packages/coding-agent/src/tools/match-line-format.ts` — model-facing anchor formatting.
-  - `packages/coding-agent/src/tools/path-utils.ts` — path normalization, glob splitting, internal URL resolution.
-  - `packages/coding-agent/src/tools/file-recorder.ts` — file ordering for grouped output.
-  - `packages/coding-agent/src/tools/grouped-file-output.ts` — grouped per-file text layout.
-  - `packages/coding-agent/src/session/streaming-output.ts` — line truncation and final byte truncation.
-  - `packages/coding-agent/src/config/settings-schema.ts` — default context lines.
-  - `packages/natives/native/index.d.ts` — native `grep()` types exposed to TS.
-  - `crates/veyyon-natives/src/grep.rs` — native regex/file search implementation.
-  - `docs/internal/natives-text-search-pipeline.md` — native search pipeline overview.
+  - `packages/coding-agent/src/tools/match-line-format.ts`: model-facing anchor formatting.
+  - `packages/coding-agent/src/tools/path-utils.ts`: path normalization, glob splitting, internal URL resolution.
+  - `packages/coding-agent/src/tools/file-recorder.ts`: file ordering for grouped output.
+  - `packages/coding-agent/src/tools/grouped-file-output.ts`: grouped per-file text layout.
+  - `packages/coding-agent/src/session/streaming-output.ts`: line truncation and final byte truncation.
+  - `packages/coding-agent/src/config/settings-schema.ts`: default context lines.
+  - `packages/natives/native/index.d.ts`: native `grep()` types exposed to TS.
+  - `crates/veyyon-natives/src/grep.rs`: native regex/file search implementation.
+  - `docs/internal/natives-text-search-pipeline.md`: native search pipeline overview.
 
 ## Inputs
 
@@ -34,14 +34,14 @@ The tool returns a single text block in `content[0].text` plus structured `detai
   - Plain mode: `*5|content`, ` 9|content`.
 - Directory and multi-file results are grouped through `formatGroupedFiles()` as a multi-level, prefix-folded directory tree: one `#` per nesting level, directory headers end with `/`, and file headers carry a `#TAG` suffix when editable hashline anchors are available.
 - `details` may include:
-  - `scopePath` — formatted search scope.
-  - `matchCount`, `fileCount`, `files`, `fileMatches` — counts for the returned page.
-  - `fileLimitReached` — more matching files remain beyond the current 20-file page.
-  - `perFileLimitReached` — a hot file was trimmed to the per-file match cap.
-  - `linesTruncated` — one or more matched lines were shortened to `512` chars plus `…`.
-  - `truncated` and `meta.truncation` — final text output was head-truncated by `truncateHead()`.
-  - `displayContent` — TUI-only rendering text with `│` gutters instead of model anchors.
-  - `missingPaths` — multi-path entries skipped because their base path did not exist.
+  - `scopePath`: formatted search scope.
+  - `matchCount`, `fileCount`, `files`, `fileMatches`: counts for the returned page.
+  - `fileLimitReached`: more matching files remain beyond the current 20-file page.
+  - `perFileLimitReached`: a hot file was trimmed to the per-file match cap.
+  - `linesTruncated`: one or more matched lines were shortened to `512` chars plus `…`.
+  - `truncated` and `meta.truncation`: final text output was head-truncated by `truncateHead()`.
+  - `displayContent`: TUI-only rendering text with `│` gutters instead of model anchors.
+  - `missingPaths`: multi-path entries skipped because their base path did not exist.
 - No-match result text is `No matches found` (or `No more results (...)` when `skip` points past the last file page), optionally followed by skipped missing-path, unreadable-archive, or oversized-file notes.
 
 ## Flow

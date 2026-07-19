@@ -64,7 +64,7 @@ The catalog file lives at either `.veyyon-plugin/marketplace.json` or `.claude-p
 | Field | Required | Description |
 |---|---|---|
 | `name` | yes | Plugin name (same naming rules as marketplace name) |
-| `source` | yes | Where to find the plugin — string or object (see source types below) |
+| `source` | yes | Where to find the plugin, string or object (see source types below) |
 | `description` | no | Short plugin description |
 | `version` | no | Version string |
 | `author` | no | `{ name, email? }` |
@@ -174,7 +174,7 @@ For plugins living inside a subdirectory of a larger repository. `url` accepts a
 }
 ```
 
-The `path` must resolve inside the cloned repository — directory escape is rejected.
+The `path` must resolve inside the cloned repository, directory escape is rejected.
 
 ### 5. NPM package
 
@@ -206,7 +206,7 @@ my-plugin/
   README.md                ← recommended: description + usage
 ```
 
-> Note: extension modules declared via `package.json` `veyyon.extensions` (legacy `omp`/`pi`) are **not** loaded from marketplace installs — that mechanism only applies to npm-installed or `veyyon plugin link`ed plugins. Ship marketplace plugin behavior through the conventional directories above.
+> Note: extension modules declared via `package.json` `veyyon.extensions` (legacy `omp`/`pi`) are **not** loaded from marketplace installs: that mechanism only applies to npm-installed or `veyyon plugin link`ed plugins. Ship marketplace plugin behavior through the conventional directories above.
 
 ## Install command
 
@@ -225,8 +225,8 @@ veyyon plugin install name@marketplace-name
 
 Scope behavior:
 
-- **user** (default) — installed in `~/.veyyon/profiles/default/plugins/installed_plugins.json`, available in all projects
-- **project** — installed in `<project>/.veyyon/plugins/installed_plugins.json`, available only in that project
+- **user** (default): installed in `~/.veyyon/profiles/default/plugins/installed_plugins.json`, available in all projects
+- **project**: installed in `<project>/.veyyon/plugins/installed_plugins.json`, available only in that project
 
 Project-scoped installs shadow user-scoped installs of the same plugin name.
 
@@ -261,6 +261,6 @@ Local path sources also accept `~/` and absolute paths.
 
 ## Further reading
 
-- `docs/marketplace.md` — marketplace system internals, on-disk layout, command reference
-- `docs/skills/authoring-extensions.md` — how to author the extension modules inside plugins
-- `docs/skills/examples/mini-marketplace/` — minimal working marketplace example
+- `docs/marketplace.md`: marketplace system internals, on-disk layout, command reference
+- `docs/skills/authoring-extensions.md`: how to author the extension modules inside plugins
+- `docs/skills/examples/mini-marketplace/`: minimal working marketplace example

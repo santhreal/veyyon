@@ -46,34 +46,34 @@ export default function myExtension(pi: ExtensionAPI): void {
 
 | Event | Fires | Can return |
 |---|---|---|
-| `session_start` | On initial session load | — |
+| `session_start` | On initial session load | n/a |
 | `session_before_switch` | Before session switch | `{ cancel?: boolean }` |
-| `session_switch` | After session switch | — |
+| `session_switch` | After session switch | n/a |
 | `session_before_branch` | Before session branch | `{ cancel?: boolean; skipConversationRestore?: boolean }` |
-| `session_branch` | After session branch | — |
+| `session_branch` | After session branch | n/a |
 | `session_before_compact` | Before compaction | `{ cancel?: boolean; compaction?: CompactionResult }` |
 | `session.compacting` | During compaction (inject context) | `{ context?: string[]; prompt?: string; preserveData?: Record<string, unknown> }` |
-| `session_compact` | After compaction | — |
+| `session_compact` | After compaction | n/a |
 | `session_before_tree` | Before tree navigation | `{ cancel?: boolean; summary?: { summary: string; details?: unknown } }` |
-| `session_tree` | After tree navigation | — |
-| `session_shutdown` | On session shutdown | — |
+| `session_tree` | After tree navigation | n/a |
+| `session_shutdown` | On session shutdown | n/a |
 
 ### Agent/turn lifecycle
 
 | Event | Fires | Can return |
 |---|---|---|
 | `before_agent_start` | Before agent starts a turn | `{ message?: { customType; content; display; details; attribution? } }` |
-| `agent_start` | Agent streaming starts | — |
-| `agent_end` | Agent streaming ends | — |
-| `turn_start` | Start of a user→agent turn | — |
-| `turn_end` | End of a user→agent turn | — |
+| `agent_start` | Agent streaming starts | n/a |
+| `agent_end` | Agent streaming ends | n/a |
+| `turn_start` | Start of a user→agent turn | n/a |
+| `turn_end` | End of a user→agent turn | n/a |
 | `context` | Before each LLM API call | `{ messages?: Message[] }` |
-| `auto_compaction_start` | Auto-compaction begins | — |
-| `auto_compaction_end` | Auto-compaction ends | — |
-| `auto_retry_start` | Auto-retry begins | — |
-| `auto_retry_end` | Auto-retry ends | — |
-| `ttsr_triggered` | A Time-Traveling Stream Rule (TTSR) triggered | — |
-| `todo_reminder` | Todo reminder fires | — |
+| `auto_compaction_start` | Auto-compaction begins | n/a |
+| `auto_compaction_end` | Auto-compaction ends | n/a |
+| `auto_retry_start` | Auto-retry begins | n/a |
+| `auto_retry_end` | Auto-retry ends | n/a |
+| `ttsr_triggered` | A Time-Traveling Stream Rule (TTSR) triggered | n/a |
+| `todo_reminder` | Todo reminder fires | n/a |
 
 Extension-only events such as `tool_execution_start`, `tool_execution_update`, `tool_execution_end`, `input`, `user_bash`, and `user_python` require `ExtensionAPI`.
 
@@ -179,7 +179,7 @@ export default function rmRfBlocker(veyyon: HookAPI): void {
 ```ts
 import type { HookAPI } from "@veyyon/coding-agent/extensibility/hooks";
 
-// Common API-key shapes. Not exhaustive — providers using bespoke formats
+// Common API-key shapes. Not exhaustive, providers using bespoke formats
 // (Anthropic `sk-ant-…`, JWT-style bearers, gateway-specific prefixes, etc.)
 // need their own entries.
 const SECRET_PATTERNS = [
@@ -257,10 +257,10 @@ export default function contextFilter(veyyon: HookAPI): void {
 
 Pass `{ promptStyle: true }` as the fourth argument when Enter should submit and Shift+Enter should insert a newline. The default hook editor behavior keeps Enter as newline and submits on the `app.message.followUp` chord (`Ctrl+Q` or `Ctrl+Enter`).
 
-`ctx.hasUI` is `false` in headless/print/subagent mode — always guard interactive calls.
+`ctx.hasUI` is `false` in headless/print/subagent mode, always guard interactive calls.
 
 ## Further reading
 
-- `docs/hooks.md` — hook subsystem internals, ordering rules, error propagation
-- `docs/extensions.md` — `ExtensionAPI` (superset of `HookAPI`)
-- `docs/skills/examples/safety-hook/` — complete working example
+- `docs/hooks.md`: hook subsystem internals, ordering rules, error propagation
+- `docs/extensions.md`: `ExtensionAPI` (superset of `HookAPI`)
+- `docs/skills/examples/safety-hook/`: complete working example

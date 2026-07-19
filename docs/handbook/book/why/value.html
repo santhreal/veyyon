@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-a2447057.js";
+            window.path_to_searchindex_js = "../searchindex-b31c94e7.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-cc1a72e9.js"></script>
@@ -196,31 +196,32 @@
                 <div id="mdbook-content" class="content">
                     <main>
                         <h1 id="overview"><a class="header" href="#overview">Overview</a></h1>
-<p>Veyyon is a local terminal coding agent: the loop, tools, and credentials stay on your machine. You pick models through the bundled provider catalog (subscription sign-in or BYOK).</p>
+<p>Veyyon is a local terminal coding agent. The loop, the tools, and your credentials all stay on your machine. You choose which model to use from the bundled provider catalog, either by signing in to a subscription or by bringing your own key.</p>
+<p>This chapter is a one-page map of what the harness does. Each row links to the chapter that explains it in full, so you can skim now and follow up later.</p>
 <h2 id="what-the-harness-does"><a class="header" href="#what-the-harness-does">What the harness does</a></h2>
 <div class="table-wrapper">
 <table>
 <thead>
-<tr><th>Area</th><th>Behavior</th></tr>
+<tr><th>Area</th><th>What you get</th></tr>
 </thead>
 <tbody>
-<tr><td>Edits</td><td>Hashline-oriented <code>edit</code> / <code>write</code> with verification before disk write</td></tr>
-<tr><td>Tools</td><td>read, grep, glob, bash, LSP, DAP, browser, MCP, task subagents, …</td></tr>
-<tr><td>Approvals</td><td><code>tools.approvalMode</code> gates read / write / exec (no OS process sandbox)</td></tr>
-<tr><td>Models</td><td>Interactive, subagent, and compaction slots; optional roles per profile</td></tr>
-<tr><td>Sessions</td><td>Branchable session trees; resume and fork</td></tr>
-<tr><td>Memory</td><td>Memory backends when <code>memory.backend</code> is not <code>off</code></td></tr>
-<tr><td>Config</td><td><code>~/.veyyon</code> (or profile-relocated agent dir); project files under cwd</td></tr>
+<tr><td>Edits</td><td>Hashline <code>edit</code> and <code>write</code>, verified before anything is written to disk</td></tr>
+<tr><td>Tools</td><td>read, grep, glob, bash, LSP, DAP, browser, MCP, task subagents, and more</td></tr>
+<tr><td>Approvals</td><td><code>tools.approvalMode</code> gates the read, write, and exec tiers (there is no operating-system process sandbox)</td></tr>
+<tr><td>Models</td><td>Separate slots for the interactive, subagent, and compaction models, plus optional roles per profile</td></tr>
+<tr><td>Sessions</td><td>Branchable session trees that you can resume and fork</td></tr>
+<tr><td>Memory</td><td>Memory backends, active whenever <code>memory.backend</code> is not <code>off</code></td></tr>
+<tr><td>Config</td><td><code>~/.veyyon</code>, or a relocated agent directory per profile, alongside project files under your working directory</td></tr>
 </tbody>
 </table>
 </div>
 <h2 id="lineage"><a class="header" href="#lineage">Lineage</a></h2>
-<p>Built from <a href="https://github.com/can1357/oh-my-pi">oh-my-pi</a> and <a href="https://github.com/badlogic/pi-mono">Pi</a>. See <a href="../acknowledgements.html">Acknowledgements</a>.</p>
+<p>Veyyon is built from <a href="https://github.com/can1357/oh-my-pi">oh-my-pi</a> and <a href="https://github.com/badlogic/pi-mono">Pi</a>. The <a href="../acknowledgements.html">Acknowledgements</a> page records the full provenance.</p>
 <h2 id="next"><a class="header" href="#next">Next</a></h2>
 <ul>
-<li><a href="./innovations.html">Mechanisms</a></li>
-<li><a href="../using/getting-started.html">Getting started</a></li>
-<li><a href="../using/editing.html">Editing and repair</a></li>
+<li><a href="./innovations.html">Mechanisms</a> explains how the harness works.</li>
+<li><a href="../using/getting-started.html">Getting started</a> walks through your first session.</li>
+<li><a href="../using/editing.html">Editing and repair</a> covers the edit path in depth.</li>
 </ul>
 
                     </main>

@@ -33,7 +33,7 @@ web_search:
 
 ## Provider support
 
-The tool queries a configurable search backend — API-backed providers (using keys you have
+The tool queries a configurable search backend, API-backed providers (using keys you have
 configured) or credential-free engines (Ecosia, Google, Mojeek, or `public`, which fans out
 to every credential-free engine and consolidates deduplicated results). `auto` resolves the
 first available provider in the built-in priority order; `providers.webSearchExclude` removes

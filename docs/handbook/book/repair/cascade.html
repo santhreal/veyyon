@@ -50,7 +50,7 @@
             const path_to_root = "../";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "../searchindex-a2447057.js";
+            window.path_to_searchindex_js = "../searchindex-b31c94e7.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="../toc-cc1a72e9.js"></script>
@@ -198,11 +198,11 @@
                         <h1 id="the-repair-cascade"><a class="header" href="#the-repair-cascade">The repair cascade</a></h1>
 <p>Before argument validation, the agent loop runs <code>packages/coding-agent/src/repair/schema-repair.ts</code> in this order:</p>
 <ol>
-<li><strong>Parse leniency</strong> — trailing commas / relaxed JSON; stringified argument blobs.</li>
-<li><strong>Ambiguity guard</strong> — refuse when required string fields have multiple plausible donors.</li>
-<li><strong>Alias / typo key rename</strong> — unknown keys that match a common alias (<code>filepath</code> → <code>path</code>, <code>contents</code> → <code>content</code>) or a casing/separator typo of a declared property are renamed to the declared name. Refuse when the rename would be ambiguous (two unknown keys map to the same property, one unknown key matches more than one declared property, or the alias target already has a value).</li>
-<li><strong>Strict unknown-key rejection</strong> — when the tool schema declares <code>additionalProperties: false</code>, any key left after alias resolution is refused rather than dropped or passed through.</li>
-<li><strong>Outcome</strong> — <code>clean</code>, <code>repaired</code> (canonical args + hints), or <code>unrepairable</code> (error tool result, no dispatch).</li>
+<li><strong>Parse leniency</strong>: trailing commas / relaxed JSON; stringified argument blobs.</li>
+<li><strong>Ambiguity guard</strong>: refuse when required string fields have multiple plausible donors.</li>
+<li><strong>Alias / typo key rename</strong>: unknown keys that match a common alias (<code>filepath</code> → <code>path</code>, <code>contents</code> → <code>content</code>) or a casing/separator typo of a declared property are renamed to the declared name. Refuse when the rename would be ambiguous (two unknown keys map to the same property, one unknown key matches more than one declared property, or the alias target already has a value).</li>
+<li><strong>Strict unknown-key rejection</strong>: when the tool schema declares <code>additionalProperties: false</code>, any key left after alias resolution is refused rather than dropped or passed through.</li>
+<li><strong>Outcome</strong>: <code>clean</code>, <code>repaired</code> (canonical args + hints), or <code>unrepairable</code> (error tool result, no dispatch).</li>
 </ol>
 <p>Conformance suite: <code>packages/coding-agent/test/repair/schema-repair.test.ts</code> (alias renames, ambiguity refusals, strict-mode refusals, and a guard that strict rejection does not fire on ArkType/Zod wire schemas that synthesize <code>additionalProperties: false</code> for closed-object emission rather than authorial strictness).</p>
 <p>Per-model enable/disable and tool allowlist hints: <a href="./per-model.html">Per-model posture</a>.</p>
