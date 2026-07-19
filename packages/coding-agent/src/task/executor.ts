@@ -119,6 +119,27 @@ function formatSalvageSnippet(text: string, maxLength = 500): string {
 	return truncate(collapseWhitespace(text), maxLength);
 }
 
+/**
+ * The thinking effort a dispatched subagent runs at, by precedence:
+ *
+ * 1. an explicit `:level` suffix on the resolved model pattern (e.g.
+ *    `subagent.model = "anthropic/claude-sonnet-4-5:high"`) always wins;
+ * 2. otherwise the agent definition's own default (e.g. a task agent that asks
+ *    for `auto`);
+ * 3. otherwise the level derived from the pattern match itself.
+ *
+ * `explicitThinkingLevel` is set by the model resolver when it stripped a
+ * concrete `:level` suffix off the pattern; in that case `resolvedThinkingLevel`
+ * carries that level and it is authoritative, so the agent default is ignored.
+ */
+export function resolveEffectiveSubagentThinkingLevel(
+	explicitThinkingLevel: boolean,
+	resolvedThinkingLevel: ConfiguredThinkingLevel | undefined,
+	agentDefaultThinkingLevel: ConfiguredThinkingLevel | undefined,
+): ConfiguredThinkingLevel | undefined {
+	return explicitThinkingLevel ? resolvedThinkingLevel : (agentDefaultThinkingLevel ?? resolvedThinkingLevel);
+}
+
 /** Agent event types to forward for progress tracking. */
 const agentEventTypes = new Set<AgentEvent["type"]>([
 	"agent_start",
@@ -2377,11 +2398,11 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 					? formatModelSelectorValue(formatModelStringWithRouting(model), resolvedThinkingLevel)
 					: formatModelStringWithRouting(model);
 			}
-			// Precedence: explicit `:level` suffix on the resolved model pattern >
-			// agent-definition default (e.g. task's `auto`) > pattern-derived level.
-			const effectiveThinkingLevel = explicitThinkingLevel
-				? resolvedThinkingLevel
-				: (thinkingLevel ?? resolvedThinkingLevel);
+			const effectiveThinkingLevel = resolveEffectiveSubagentThinkingLevel(
+				explicitThinkingLevel,
+				resolvedThinkingLevel,
+				thinkingLevel,
+			);
 			resolvedAt = performance.now();
 
 			const effectiveCwd = worktree ?? cwd;
