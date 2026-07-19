@@ -6,9 +6,12 @@ import {
 	clusterBySimilarity,
 	cosineSimilarity,
 	embed,
+	extractJsonFromLlmOutput,
+	formatClusterForLlm,
 	getResonanceLog,
 	harmonize,
 	recallBeliefs,
+	reflect,
 } from "@veyyon/mnemopi/core/shmr";
 
 let embedSpy: Mock<typeof embeddings.embed> | null = null;
@@ -132,5 +135,115 @@ describe("SHMR deterministic helpers", () => {
 		} finally {
 			db.close();
 		}
+	});
+});
+
+describe("SHMR pure parse and format helpers", () => {
+	it("formats a cluster and skips holes in a sparse cluster array", () => {
+		expect(formatClusterForLlm([])).toBe("=== MEMORY CLUSTER ===");
+		expect(
+			formatClusterForLlm([{ subject: "user", predicate: "likes", object: "tea", source: "fact", confidence: 0.8 }]),
+		).toBe("=== MEMORY CLUSTER ===\n[0] (fact, conf=0.80) user | likes | tea");
+		// Missing subject/predicate/source/confidence fall back to defaults, and
+		// object resolves from content when object is absent.
+		expect(formatClusterForLlm([{ content: "note" }])).toBe(
+			"=== MEMORY CLUSTER ===\n[0] (fact, conf=0.50) unknown | stated | note",
+		);
+		// A hole in the array is skipped, so the surviving row keeps its real index.
+		const sparse: Parameters<typeof formatClusterForLlm>[0] = [{ object: "y" }];
+		(sparse as unknown[]).unshift(undefined);
+		expect(formatClusterForLlm(sparse)).toBe("=== MEMORY CLUSTER ===\n[1] (fact, conf=0.50) unknown | stated | y");
+	});
+
+	it("extracts beliefs from direct, wrapped, fenced, and embedded JSON", () => {
+		expect(
+			extractJsonFromLlmOutput(
+				'[{"subject":"a","predicate":"b","object":"tea","confidence":0.9,"action":"update","target_fact_id":"f1","rationale":"r"}]',
+			),
+		).toEqual([
+			{
+				subject: "a",
+				predicate: "b",
+				object: "tea",
+				confidence: 0.9,
+				action: "update",
+				target_fact_id: "f1",
+				rationale: "r",
+			},
+		]);
+		// A {beliefs:[...]} wrapper is unwrapped; missing fields take their defaults.
+		expect(extractJsonFromLlmOutput('{"beliefs":[{"object":"x"}]}')).toEqual([
+			{
+				subject: "entity",
+				predicate: "related_to",
+				object: "x",
+				confidence: 0.5,
+				action: "create",
+				target_fact_id: null,
+			},
+		]);
+		// Fenced block: out-of-range confidence clamps to 1 and an unknown action becomes "create".
+		expect(extractJsonFromLlmOutput('```json\n[{"object":"y","confidence":5,"action":"bogus"}]\n```')).toEqual([
+			{
+				subject: "entity",
+				predicate: "related_to",
+				object: "y",
+				confidence: 1,
+				action: "create",
+				target_fact_id: null,
+			},
+		]);
+		// A bare array embedded in prose is recovered.
+		expect(extractJsonFromLlmOutput('noise before [{"object":"z"}] noise after')).toEqual([
+			{
+				subject: "entity",
+				predicate: "related_to",
+				object: "z",
+				confidence: 0.5,
+				action: "create",
+				target_fact_id: null,
+			},
+		]);
+	});
+
+	it("returns no beliefs for junk and drops entries with a non-string object", () => {
+		expect(extractJsonFromLlmOutput("no json here")).toEqual([]);
+		expect(extractJsonFromLlmOutput('[{"object":123},{"object":"ok"}]')).toEqual([
+			{
+				subject: "entity",
+				predicate: "related_to",
+				object: "ok",
+				confidence: 0.5,
+				action: "create",
+				target_fact_id: null,
+			},
+		]);
+	});
+
+	it("reflects the highest-scoring non-empty facts, honoring topK", () => {
+		expect(reflect(null, "q", null)).toBeNull();
+		expect(reflect(null, "q", [])).toBeNull();
+		// Sorted by score desc, empty content dropped: "a"(3) then "b"(1).
+		expect(
+			reflect(null, "q", [
+				{ content: "b", score: 1 },
+				{ content: "a", score: 3 },
+				{ content: "", score: 5 },
+			]),
+		).toBe("a b");
+		// topK=1 keeps only the top fact and falls back to `object` when content is absent.
+		expect(
+			reflect(
+				null,
+				"q",
+				[
+					{ object: "x", score: 2 },
+					{ content: "y", score: 1 },
+				],
+				1,
+			),
+		).toBe("x");
+		// All-empty content collapses to null.
+		expect(reflect(null, "q", [{ content: "", score: 1 }])).toBeNull();
 	});
 });
