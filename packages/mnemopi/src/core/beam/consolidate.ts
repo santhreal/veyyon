@@ -434,64 +434,6 @@ export function consolidateToEpisodic(
 	});
 	return memoryId;
 }
-export function detectLanguage(_beam: BeamMemoryState, text: string): string {
-	if (typeof text !== "string" || text.length === 0) return "en";
-	const lower = text.toLowerCase();
-	const russianChars = [...lower].filter(c => "абвгдеёжзийклмнопрстуфхцчшщъыьэюя".includes(c)).length;
-	if (russianChars >= 5) return "ru";
-	if (russianChars >= 2) {
-		const markers = new Set(["я", "ты", "он", "она", "мы", "вы", "они", "не", "на", "что", "как", "это"]);
-		let hits = 0;
-		for (const word of lower.split(/\s+/)) if (markers.has(word)) hits++;
-		if (hits >= 2) return "ru";
-	}
-	if (/[äöüß]/.test(lower)) return "de";
-	const words = new Set(unicodeWordTokens(lower));
-	let german = 0;
-	for (const marker of [
-		"ich",
-		"du",
-		"wir",
-		"ist",
-		"nicht",
-		"für",
-		"und",
-		"der",
-		"die",
-		"das",
-		"ein",
-		"eine",
-		"habe",
-		"bin",
-		"sind",
-	]) {
-		if (words.has(marker)) german++;
-	}
-	if (german >= 2) return "de";
-	if (/[ñáéíóúü¿¡]/.test(lower)) return "es";
-	let spanish = 0;
-	for (const marker of [
-		"y",
-		"de",
-		"por",
-		"con",
-		"para",
-		"que",
-		"qué",
-		"como",
-		"el",
-		"la",
-		"un",
-		"una",
-		"mi",
-		"tu",
-		"soy",
-		"estoy",
-	]) {
-		if (words.has(marker)) spanish++;
-	}
-	return spanish >= 3 ? "es" : "en";
-}
 type StoreFactStringOptions = {
 	routeHeuristicCategories?: boolean;
 };
