@@ -26,6 +26,7 @@ import {
 	$env,
 	errorMessage,
 	getStringProperty,
+	isRecord,
 	logger,
 	scopedTimeoutSignal,
 	stringifyJson,
@@ -763,10 +764,6 @@ export function getCompactionV2PreserveData(
 		replacementHistory: candidate.replacementHistory as Array<Record<string, unknown>>,
 		usedTokens: numberField(candidate, "usedTokens") ?? 0,
 	};
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return !!value && typeof value === "object";
 }
 
 function numberField(record: Record<string, unknown>, field: string): number | undefined {

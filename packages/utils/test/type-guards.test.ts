@@ -70,20 +70,14 @@ const PACKAGES_DIR = path.join(import.meta.dir, "../..");
 const OWNER = "utils/src/type-guards.ts";
 
 // launch/protocol.ts is a deliberately dependency-free cross-process protocol
-// module (zero imports) and keeps a self-contained guard. The four remaining
-// entries live in packages that either predate the shared owner or carry a
-// package-local shape — fold each onto @veyyon/utils and drop its entry.
-// The six coding-agent copies (share/legacy-pi-compat/model-profile/
-// startup-events/agent-session/task-executor) were folded 2026-07-19; two of
-// them (share, startup-events) had drifted to accept arrays, the exact
-// same-name divergence this lock exists to catch. Shrink-only.
-const ISRECORD_ALLOWED = new Set([
-	"coding-agent/src/launch/protocol.ts",
-	"agent/src/compaction/compaction-v2-streaming.ts",
-	"ai/src/providers/openai-reasoning-fallback.ts",
-	"ai/src/registry/oauth/xai-oauth.ts",
-	"utils/src/runtime-install.ts",
-]);
+// module (zero imports) and keeps a self-contained guard. It is the ONLY
+// permitted local copy — every other definition must import isRecord from
+// @veyyon/utils (or, inside the utils package, from ./type-guards). All the
+// former grandfathered copies were folded onto the owner on 2026-07-19; four of
+// them (coding-agent share + startup-events, agent compaction-v2-streaming, ai
+// xai-oauth) had drifted to accept arrays, the exact same-name divergence this
+// lock exists to catch.
+const ISRECORD_ALLOWED = new Set(["coding-agent/src/launch/protocol.ts"]);
 
 // No production source outside the owner defines a local errorMessage. The
 // three former holdouts (gc-cli.ts, subprocess/worker-runtime.ts,

@@ -1,4 +1,4 @@
-import { escapeRegExp, extractHttpStatusFromError } from "@veyyon/utils";
+import { escapeRegExp, extractHttpStatusFromError, isRecord } from "@veyyon/utils";
 import type { CapturedHttpErrorResponse } from "../utils/http-inspector";
 
 /** @internal */
@@ -62,10 +62,6 @@ export function createOpenAIReasoningEffortFallbackKey(
 	wireModelId: string | undefined,
 ): string {
 	return `${endpoint}:${baseUrl ?? ""}:${wireModelId ?? ""}`;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 /** @internal */
