@@ -10,6 +10,7 @@ import type { AgentMessage } from "@veyyon/agent-core";
 import type { AssistantMessage, ImageContent, TextContent, ToolResultMessage } from "@veyyon/ai";
 import { collapseWhitespace, escapeXmlText, formatCount, truncate } from "@veyyon/utils";
 import { INTENT_FIELD } from "@veyyon/wire";
+import { contentText } from "./content-text";
 import type {
 	BashExecutionMessage,
 	BranchSummaryMessage,
@@ -76,15 +77,10 @@ function oneLine(text: string, max = PRIMARY_ARG_MAX): string {
 }
 
 /** Join the text blocks of a string-or-blocks content field. Images become `[image]`. */
-function contentToText(content: string | readonly (TextContent | ImageContent)[]): string {
-	if (typeof content === "string") return content;
-	const parts: string[] = [];
-	for (const block of content) {
-		if (block.type === "text") parts.push(block.text);
-		else parts.push("[image]");
-	}
-	return parts.join("\n");
-}
+// This view renders image blocks as an "[image]" placeholder rather than
+// dropping them, so the reader sees that an image was present.
+const contentToText = (content: string | readonly (TextContent | ImageContent)[]): string =>
+	contentText(content, { image: "[image]" });
 
 function lineCount(text: string): number {
 	if (!text) return 0;

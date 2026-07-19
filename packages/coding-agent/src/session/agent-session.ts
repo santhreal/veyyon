@@ -373,6 +373,7 @@ import {
 	shouldPromptCodexAutoRedeem,
 } from "./codex-auto-reset";
 import { findCompactMode } from "./compact-modes";
+import { contentText } from "./content-text";
 import {
 	collectPendingToolCalls,
 	createInterruptedTurnAbortMessage,
@@ -1697,6 +1698,10 @@ type SetSessionNameWithTrigger = (
 	trigger?: SessionNameTrigger,
 ) => Promise<boolean>;
 
+// Distinct from `contentText` in ./content-text on purpose: this accepts
+// `unknown` agent-message content (a wider union that also carries thinking and
+// tool-call blocks and may be malformed at this boundary), guards each block
+// defensively, trims, and joins with a blank line.
 function textFromContent(content: unknown): string {
 	if (typeof content === "string") return content.trim();
 	if (!Array.isArray(content)) return "";
@@ -8267,13 +8272,7 @@ export class AgentSession {
 			queueOnly?: boolean;
 		},
 	): Promise<void> {
-		const textContent =
-			typeof message.content === "string"
-				? message.content
-				: message.content
-						.filter((content): content is TextContent => content.type === "text")
-						.map(content => content.text)
-						.join("");
+		const textContent = contentText(message.content, { separator: "" });
 
 		let keywordNotices: CustomMessage[] = [];
 		if (message.customType === SKILL_PROMPT_MESSAGE_TYPE && message.attribution === "user") {
@@ -8865,13 +8864,7 @@ export class AgentSession {
 	}
 
 	#getCustomMessageTextContent(message: Pick<CustomMessage, "content">): string {
-		if (typeof message.content === "string") {
-			return message.content;
-		}
-		return message.content
-			.filter((content): content is TextContent => content.type === "text")
-			.map(content => content.text)
-			.join("");
+		return contentText(message.content, { separator: "" });
 	}
 
 	/**
@@ -16309,13 +16302,7 @@ export class AgentSession {
 		} else if (targetEntry.type === "custom_message" && targetEntry.customType !== SKILL_PROMPT_MESSAGE_TYPE) {
 			// Custom message: leaf = parent (null if root), text goes to editor
 			newLeafId = targetEntry.parentId;
-			editorText =
-				typeof targetEntry.content === "string"
-					? targetEntry.content
-					: targetEntry.content
-							.filter((c): c is { type: "text"; text: string } => c.type === "text")
-							.map(c => c.text)
-							.join("");
+			editorText = contentText(targetEntry.content, { separator: "" });
 		} else {
 			// Non-user message (or a user-invoked skill-prompt injection): land the
 			// leaf on the selected node so it stays on the active branch. Skill
@@ -16390,14 +16377,10 @@ export class AgentSession {
 	}
 
 	#extractUserMessageText(content: string | Array<{ type: string; text?: string }>): string {
-		if (typeof content === "string") return content;
-		if (Array.isArray(content)) {
-			return content
-				.filter((c): c is { type: "text"; text: string } => c.type === "text")
-				.map(c => c.text)
-				.join("");
-		}
-		return "";
+		// Persisted entry content arrives loosely typed here; keep the defensive
+		// guard for malformed data, then delegate to the shared flattener.
+		if (typeof content !== "string" && !Array.isArray(content)) return "";
+		return contentText(content, { separator: "" });
 	}
 
 	/**

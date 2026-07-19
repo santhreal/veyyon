@@ -1,4 +1,4 @@
-import { type AssistantMessage, completeSimple, type Model } from "@veyyon/ai";
+import { type AssistantMessage, assistantText, completeSimple, type Model } from "@veyyon/ai";
 import { errorMessage, logger, prompt } from "@veyyon/utils";
 
 import type { ModelRegistry } from "../config/model-registry";
@@ -98,10 +98,7 @@ async function classifyOnline(text: string, deps: ClassifyUnexpectedStopDeps): P
 		throw new Error(`unexpected-stop: online classification failed: ${response.errorMessage ?? "unknown error"}`);
 	}
 
-	const outputText = response.content
-		.filter((part): part is { type: "text"; text: string } => part.type === "text")
-		.map(part => part.text)
-		.join("\n");
+	const outputText = assistantText(response);
 	return parseUnexpectedStopClassification(outputText);
 }
 

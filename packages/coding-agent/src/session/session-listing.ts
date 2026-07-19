@@ -1,7 +1,8 @@
 import * as os from "node:os";
 import * as path from "node:path";
-import type { Message, TextContent } from "@veyyon/ai";
+import type { Message } from "@veyyon/ai";
 import { DAY_MS, getAgentDir as getDefaultAgentDir, HOUR_MS, logger, parseJsonlLenient, toError } from "@veyyon/utils";
+import { contentText } from "./content-text";
 import { computeDefaultSessionDir } from "./session-paths";
 import { FileSessionStorage, type SessionStorage } from "./session-storage";
 
@@ -104,14 +105,6 @@ function sessionDisplayName(info: SessionInfo): string {
 	const date = new Date(ts);
 	const time = date.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" });
 	return `Untitled · ${time}`;
-}
-
-function extractTextFromContent(content: Message["content"]): string {
-	if (typeof content === "string") return content;
-	return content
-		.filter((block): block is TextContent => block.type === "text")
-		.map(block => block.text)
-		.join(" ");
 }
 
 /**
@@ -382,7 +375,7 @@ async function scanSessionFile(
 				parsedMessageCount++;
 
 				if (entry.message.role === "user" || entry.message.role === "assistant") {
-					const textContent = extractTextFromContent(entry.message.content);
+					const textContent = contentText(entry.message.content, { separator: " " });
 
 					if (textContent) {
 						allMessages.push(textContent);
