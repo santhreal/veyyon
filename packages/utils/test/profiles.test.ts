@@ -7,7 +7,9 @@ import {
 	__resetDirsFromEnvForTests,
 	__resetProfileSnapshotForTests,
 	APP_NAME,
+	DEFAULT_PROFILE_DIR_NAME,
 	getActiveProfile,
+	getActiveProfileOrDefault,
 	getAgentDbPath,
 	getAgentDir,
 	getConfigAgentDirName,
@@ -530,5 +532,32 @@ describe("dirs module import behavior", () => {
 		} finally {
 			await fs.rm(root, { recursive: true, force: true });
 		}
+	});
+});
+
+describe("profile path segment ownership", () => {
+	afterEach(() => {
+		setProfile(undefined);
+	});
+
+	it("getActiveProfileOrDefault returns the active profile, or the default name when none is active", () => {
+		setProfile(undefined);
+		expect(getActiveProfileOrDefault()).toBe(DEFAULT_PROFILE_DIR_NAME);
+		setProfile("work");
+		expect(getActiveProfileOrDefault()).toBe("work");
+		// The explicit "default" sentinel normalizes to the implicit default.
+		setProfile("default");
+		expect(getActiveProfileOrDefault()).toBe(DEFAULT_PROFILE_DIR_NAME);
+	});
+
+	it('dirs.ts builds every profile path from PROFILES_DIR_NAME, never a raw "profiles" literal', async () => {
+		// ONE PLACE lock: the profiles-directory segment has a single owner
+		// (PROFILES_DIR_NAME). A second raw "profiles" path literal reintroduced by
+		// a future path builder would drift on a rename, so the only permitted
+		// occurrence is the const declaration itself.
+		const dirsSource = await fs.readFile(path.join(import.meta.dir, "..", "src", "dirs.ts"), "utf-8");
+		const literals = dirsSource.match(/"profiles"/g) ?? [];
+		expect(literals).toHaveLength(1);
+		expect(dirsSource).toContain('export const PROFILES_DIR_NAME = "profiles";');
 	});
 });
