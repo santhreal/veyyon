@@ -49,6 +49,15 @@ error results, and results already elided are never deduplicated.
 The match is exact. If a command's output changes between runs, both runs are kept, because the
 later one is genuinely new information rather than a repeat.
 
+This duplicate elision does not wait for the `shake` strategy. Whenever auto-maintenance is about
+to compact because the context crossed the threshold or overflowed, it first runs the lossless
+dedup as a Tier-0 pass, whatever your `compaction.strategy` is. The pass is recall-preserving and
+makes no model call, so it always runs before the heavier path and shrinks what that path has to
+process. If dropping the duplicates alone brings a threshold trigger back under the bar, the
+compaction is skipped entirely and your history is left intact apart from the elided copies. An
+overflow recovery always finishes its compaction, because the prompt still has to be rebuilt to fit
+the window, but it too starts from the smaller deduped history.
+
 ## Memory backends
 
 When `memory.backend` is `mnemopi` or `local`, compaction can request **pre-compaction context**
