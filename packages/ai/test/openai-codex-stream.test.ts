@@ -18,6 +18,7 @@ import type {
 } from "@veyyon/ai/types";
 import { buildModel } from "@veyyon/catalog/build";
 import * as piUtils from "@veyyon/utils";
+import { isRecord } from "@veyyon/utils";
 
 const { getAgentDir, setAgentDir, TempDir } = piUtils;
 
@@ -75,10 +76,6 @@ function createCodexTestContext(): Context {
 		systemPrompt: ["You are a helpful assistant."],
 		messages: [{ role: "user", content: "Say hello", timestamp: Date.now() }],
 	};
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function requireRecord(value: unknown, label: string): Record<string, unknown> {

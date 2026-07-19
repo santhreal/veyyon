@@ -1,5 +1,6 @@
 import { afterEach, beforeAll, describe, expect, it } from "bun:test";
 import { Markdown } from "@veyyon/tui";
+import { stripAnsi } from "@veyyon/utils";
 import { Settings } from "../../config/settings";
 import { buildSystemPrompt } from "../../system-prompt";
 import { getMarkdownTheme, getThemeByName, setMarkdownMermaidRendering, setThemeInstance } from "./theme";
@@ -11,10 +12,6 @@ const workspaceTree = {
 	totalLines: 0,
 	agentsMdFiles: [],
 };
-
-function stripAnsi(text: string): string {
-	return text.replace(/\x1b\[[0-9;]*m/g, "");
-}
 
 beforeAll(async () => {
 	await Settings.init({ inMemory: true });
