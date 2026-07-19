@@ -13,6 +13,8 @@ import {
 	generateStableId,
 	inMemoryVecSearch,
 	lexicalRelevance,
+	memoryRowMetadata,
+	metadataJson,
 	normalizeImportance,
 	normalizeMetadata,
 	normalizeWeights,
@@ -91,6 +93,13 @@ describe("beam lexical and FTS helpers", () => {
 		expect(cjkFtsTerms("東京東京")).toEqual(["東", "京", '"東京"', '"京東"']);
 		expect(lexicalRelevance([], "明日は東京で会議", "東京")).toBe(1);
 	});
+
+	it("scores query-synonym partials and fractional CJK overlap", () => {
+		// "preference" is absent but its synonym "prefers" is present -> 0.75 partial.
+		expect(lexicalRelevance(["preference"], "the user prefers dark mode", "")).toBe(0.75);
+		// 2 of the 4 query CJK chars appear in the content -> 0.5 fractional overlap.
+		expect(lexicalRelevance([], "東京", "東京大阪")).toBe(0.5);
+	});
 });
 
 describe("beam language helpers", () => {
@@ -99,6 +108,38 @@ describe("beam language helpers", () => {
 		expect(detectLanguage("ich bin sehr gern dabei und das ist gut")).toBe("de");
 		expect(detectLanguage("recuerda que siempre usa este estilo")).toBe("es");
 		expect(detectLanguage("plain English text")).toBe("en");
+	});
+
+	it("detects languages via secondary marker and accent branches", () => {
+		// 2-4 Cyrillic chars alone are inconclusive; two Russian marker words tip it to ru.
+		expect(detectLanguage("code: да не please")).toBe("ru");
+		// A German umlaut short-circuits before the marker scan.
+		expect(detectLanguage("Kaffee über alles")).toBe("de");
+		// A Spanish-only accent (ñ) short-circuits before the Spanish marker scan.
+		expect(detectLanguage("el señor")).toBe("es");
+		// Italian grave accents plus two Italian markers resolve to it.
+		expect(detectLanguage("questo è il caffè")).toBe("it");
+		// A lone Italian accent with fewer than two markers falls through to en.
+		expect(detectLanguage("città")).toBe("en");
+	});
+});
+
+describe("beam metadata normalization", () => {
+	it("coerces malformed, non-object, and non-finite metadata inputs", () => {
+		// Unparseable JSON string and non-object top-level values collapse to {}.
+		expect(normalizeMetadata("not json{")).toEqual({});
+		expect(normalizeMetadata([1, 2])).toEqual({});
+		expect(normalizeMetadata(42)).toEqual({});
+		// Array values are normalized element-by-element, dropping non-finite numbers
+		// while keeping strings and nulls.
+		expect(normalizeMetadata({ tags: [1, Number.POSITIVE_INFINITY, "a", null] })).toEqual({ tags: [1, "a", null] });
+		// metadataJson serializes the normalized object, dropping the NaN key.
+		expect(metadataJson({ a: 1, drop: Number.NaN })).toBe('{"a":1}');
+	});
+
+	it("reads a row's metadata from metadata_json first, then metadata", () => {
+		expect(memoryRowMetadata({ metadata_json: '{"k":"v"}' })).toEqual({ k: "v" });
+		expect(memoryRowMetadata({ metadata: { n: 1 } })).toEqual({ n: 1 });
 	});
 });
 
