@@ -3,22 +3,28 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+	addMemory,
+	flushExtractions,
 	forget,
 	get,
 	getBank,
 	getContext,
+	getDefaultInstance,
 	getStats,
 	Mnemopi,
 	recall,
 	recallEnhanced,
 	remember,
 	resetDefaultInstanceForTests,
+	saveMemory,
 	scratchpadClear,
 	scratchpadRead,
 	scratchpadWrite,
+	search,
 	setBank,
 	sleep,
 	sleepAllSessions,
+	storeMemory,
 	update,
 } from "@veyyon/mnemopi/core/memory";
 import { openDatabase } from "@veyyon/mnemopi/db";
@@ -183,6 +189,52 @@ describe("Mnemopi facade", () => {
 		expect(forget(id)).toBe(true);
 		resetDefaultInstanceForTests();
 		expect(getBank()).toBe("default");
+	});
+
+	it("routes the module-level write/read aliases through the singleton and flushes extractions", async () => {
+		useTempDataDir();
+		const addId = addMemory("Added via module alias", { importance: 0.7 });
+		const saveId = saveMemory("Saved via module alias");
+		const storeId = storeMemory("Stored via module alias");
+		expect(addId).toHaveLength(16);
+		expect(saveId).toHaveLength(16);
+		expect(storeId).toHaveLength(16);
+
+		// The module search alias reads from the same singleton the writes landed in.
+		const hits = await search("alias", 10);
+		const ids = hits.map(row => row.id);
+		expect(ids).toContain(addId);
+
+		// getDefaultInstance hands back the live singleton, and flushExtractions drains cleanly.
+		const instance = getDefaultInstance();
+		expect(instance).toBeInstanceOf(Mnemopi);
+		expect(instance.bank).toBe("default");
+		await expect(flushExtractions()).resolves.toBeUndefined();
+
+		// The class-level consolidate alias is a dry-run passthrough to sleep.
+		expect(instance.consolidate(true).dry_run).toBe(true);
+	});
+
+	it("writes and reads annotations through the db-backed beam facade", () => {
+		const db = openDatabase(":memory:");
+		const memory = new Mnemopi({ db });
+		try {
+			const id = memory.remember("Annotated memory", { source: "test" });
+			const facade = memory.beam.annotations;
+			expect(facade).not.toBeNull();
+			if (facade === null) return;
+
+			// addMany inserts every non-blank value and returns the inserted count.
+			expect(facade.addMany?.(id, "topic", ["alpha", "beta"], { source: "unit", confidence: 0.9 })).toBe(2);
+			expect(facade.add?.(id, "topic", "gamma", { source: "unit", confidence: 0.8 }) as number).toBeGreaterThan(0);
+
+			const rows = (facade.queryByMemory?.(id, "topic") ?? []) as { value: string; source: string | null }[];
+			expect(rows.map(row => row.value).sort()).toEqual(["alpha", "beta", "gamma"]);
+			expect(rows.every(row => row.source === "unit")).toBe(true);
+			expect(facade.getDistinctValues?.("topic")?.sort()).toEqual(["alpha", "beta", "gamma"]);
+		} finally {
+			memory.close();
+		}
 	});
 
 	it("switches singleton banks and supports per-call bank selection", async () => {
