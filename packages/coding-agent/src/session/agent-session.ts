@@ -12777,6 +12777,35 @@ export class AgentSession {
 		return candidates;
 	}
 
+	/**
+	 * Map each configured `compaction.model` candidate to the explicit thinking
+	 * effort its selector carries (the `:level` suffix picked in settings). Only
+	 * patterns that name an explicit level land here; role/main/largest-context
+	 * fallbacks are absent and fall back to the session effort at run time. `auto`
+	 * is treated as "no explicit level" so compact() applies its own default. The
+	 * resolution mirrors {@link #resolveCompactionModelCandidates} so a candidate
+	 * and its configured effort always agree.
+	 */
+	#resolveConfiguredCompactionEfforts(availableModels: Model[]): Map<string, ThinkingLevel> {
+		const efforts = new Map<string, ThinkingLevel>();
+		for (const pattern of resolveCompactionModelPatterns(this.settings)) {
+			const resolved = resolveModelRoleValue(pattern, availableModels, {
+				settings: this.settings,
+				matchPreferences: getModelMatchPreferences(this.settings),
+			});
+			if (
+				resolved.model &&
+				resolved.explicitThinkingLevel &&
+				resolved.thinkingLevel !== undefined &&
+				resolved.thinkingLevel !== AUTO_THINKING
+			) {
+				const key = this.#getModelKey(resolved.model);
+				if (!efforts.has(key)) efforts.set(key, resolved.thinkingLevel);
+			}
+		}
+		return efforts;
+	}
+
 	#buildCompactionAuthError(): Error {
 		const currentModel = this.model;
 		if (!currentModel) {
@@ -12800,6 +12829,9 @@ export class AgentSession {
 		const candidates =
 			precomputedCandidates ?? this.#getCompactionModelCandidates(this.#modelRegistry.getAvailable());
 		const telemetry = resolveTelemetry(this.agent.telemetry, this.sessionId);
+		// Per-candidate effort configured on `compaction.model` (its `:level`
+		// suffix). A candidate without an explicit level uses the session effort.
+		const configuredEffortByModel = this.#resolveConfiguredCompactionEfforts(this.#modelRegistry.getAvailable());
 
 		// Effective window of the model RUNNING the compaction. The payload was
 		// sized against the MAIN model's threshold, so a compaction model with a
@@ -12841,11 +12873,12 @@ export class AgentSession {
 						metadata: this.agent.metadataForProvider(candidate.provider),
 						convertToLlm: messages => this.#convertToLlmForSideRequest(messages),
 						telemetry,
-						// Honor the user's /model thinking selection (incl. `off`) on
-						// the manual `/compact` path. Clamped per-model inside compact()
-						// via resolveCompactionEffort so unsupported-effort models
-						// (xai-oauth/grok-build) don't trip requireSupportedEffort.
-						thinkingLevel: this.thinkingLevel,
+						// Effort configured on this compaction candidate wins; otherwise
+						// honor the user's /model thinking selection (incl. `off`).
+						// Clamped per-model inside compact() via resolveCompactionEffort
+						// so unsupported-effort models (xai-oauth/grok-build) don't trip
+						// requireSupportedEffort.
+						thinkingLevel: configuredEffortByModel.get(this.#getModelKey(candidate)) ?? this.thinkingLevel,
 						tools: this.agent.state.tools,
 						sessionId: this.sessionId,
 						promptCacheKey: this.sessionId,
@@ -13561,6 +13594,9 @@ export class AgentSession {
 				preserveData = { ...(compactionPrep.preserveData ?? {}), ...(snapcompactResult.preserveData ?? {}) };
 			} else {
 				const candidates = this.#getCompactionModelCandidates(availableModels);
+				// Per-candidate effort configured on `compaction.model` (its `:level`
+				// suffix). A candidate without an explicit level uses the session effort.
+				const configuredEffortByModel = this.#resolveConfiguredCompactionEfforts(availableModels);
 				const retrySettings = this.settings.getGroup("retry");
 				const telemetry = resolveTelemetry(this.agent.telemetry, this.sessionId);
 				let compactResult: CompactionResult | undefined;
@@ -13596,11 +13632,12 @@ export class AgentSession {
 									initiatorOverride: "agent",
 									convertToLlm: messages => this.#convertToLlmForSideRequest(messages),
 									telemetry,
-									// Honor the user's /model thinking selection on the
-									// auto-compaction path — the most-fired compaction
-									// site. Clamped per-model inside compact() via
-									// resolveCompactionEffort.
-									thinkingLevel: this.thinkingLevel,
+									// Effort configured on this compaction candidate wins;
+									// otherwise honor the user's /model thinking selection.
+									// The most-fired compaction site. Clamped per-model
+									// inside compact() via resolveCompactionEffort.
+									thinkingLevel:
+										configuredEffortByModel.get(this.#getModelKey(candidate)) ?? this.thinkingLevel,
 									tools: this.agent.state.tools,
 									sessionId: this.sessionId,
 									promptCacheKey: this.sessionId,
