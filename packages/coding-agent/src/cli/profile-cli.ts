@@ -284,6 +284,15 @@ export async function removeProfile(name: string, options: { yes?: boolean } = {
 		throw new Error(`Refusing to remove ${rootDir} without --yes`);
 	}
 	await removeWithRetries(rootDir);
+
+	// If this profile was the launch default, clear the global pointer. Leaving
+	// it would dangle: the next launch resolves defaultProfile to a directory
+	// that no longer exists and silently lands in a freshly created empty
+	// profile of that name. Clearing reverts the launch default to the base
+	// profile, which always exists.
+	if (resolveGlobalDefaultProfile() === normalized) {
+		writeGlobalDefaultProfile(undefined);
+	}
 }
 
 export async function runProfileCommand(args: ProfileCommandArgs): Promise<void> {

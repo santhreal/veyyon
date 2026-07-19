@@ -155,6 +155,28 @@ describe("profile lifecycle CLI", () => {
 		expect(profileExists("work")).toBe(false);
 		expect(listProfiles().map(profile => profile.name)).not.toContain("work");
 	});
+
+	it("clears the global launch default when its profile is removed", async () => {
+		await createProfile("work", "blank");
+		await runProfileCommand({ action: "default", name: "work" });
+		expect(resolveGlobalDefaultProfile()).toBe("work");
+
+		// Removing the launch-default profile (from the base profile, so it is not
+		// active) must not leave defaultProfile dangling at a deleted directory.
+		await removeProfile("work", { yes: true });
+		expect(profileExists("work")).toBe(false);
+		expect(resolveGlobalDefaultProfile()).toBeUndefined();
+	});
+
+	it("leaves the launch default untouched when a different profile is removed", async () => {
+		await createProfile("work", "blank");
+		await createProfile("spare", "blank");
+		await runProfileCommand({ action: "default", name: "work" });
+		expect(resolveGlobalDefaultProfile()).toBe("work");
+
+		await removeProfile("spare", { yes: true });
+		expect(resolveGlobalDefaultProfile()).toBe("work");
+	});
 });
 
 describe("profile keybindings isolation", () => {

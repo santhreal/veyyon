@@ -99,7 +99,7 @@ $ veyyon profile default work
 - `new` creates `~/.veyyon/profiles/<name>/agent/` with the expected identity dirs (`skills/`, `commands/`, …).
 - `--from default` (default) seeds `config.yml`, keybindings, MCP, skills, and other identity files from the default profile. Sessions, blobs, and databases are **not** copied.
 - `--from blank` creates an empty agent tree.
-- `rm` refuses the default profile, the active profile, and destructive deletes without `--yes`.
+- `rm` refuses the default profile, the active profile, and destructive deletes without `--yes`. If you remove the profile that is set as the launch default, its `defaultProfile` pointer is cleared at the same time, so the next launch falls back to the default profile instead of a directory that no longer exists.
 - `default [name]` shows or sets the global `defaultProfile` (which profile a bare `vey` launches); `default --clear` removes it.
 
 In the TUI, `/profile new <name>` (or `/profile create <name>`) opens a picker listing every carry-over item (AGENTS.md, settings, MCP servers, SSH targets, skills, commands, tools, prompts, themes, extensions, keybindings), each individually toggleable (all selected by default). The new profile is seeded from the **active** profile with exactly the chosen items. Deleting is available too: `/profile rm <name>` (or the picker's **Delete** action) removes a profile after a confirmation, and refuses the active and default profiles. See [TUI profile commands](#tui-profile-commands) for the full verb list.
