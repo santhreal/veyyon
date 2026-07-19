@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import * as fs from "node:fs";
 import * as fsp from "node:fs/promises";
 import * as path from "node:path";
-import { atomicWriteFile } from "../src/atomic-write";
+import { atomicWriteFile, atomicWriteFileSync } from "../src/atomic-write";
 import { TempDir } from "../src/temp";
 
 describe("atomicWriteFile", () => {
@@ -160,5 +160,56 @@ describe("atomicWriteFile", () => {
 			expect(seen === small || seen === big).toBe(true);
 		}
 		expect(fs.readFileSync(target, "utf8")).toBe(big);
+	});
+
+	describe("atomicWriteFileSync", () => {
+		it("writes content exactly, creates parents, and leaves no temp file", () => {
+			const target = path.join(dir.path(), "nested", "config.yml");
+			atomicWriteFileSync(target, "defaultProfile: work\n");
+
+			expect(fs.readFileSync(target, "utf8")).toBe("defaultProfile: work\n");
+			expect(tempSiblings(target)).toEqual([]);
+		});
+
+		it("replaces an existing file with the full new content", () => {
+			const target = path.join(dir.path(), "config.yml");
+			atomicWriteFileSync(target, "OLD\n".repeat(500));
+			atomicWriteFileSync(target, "NEW\n");
+
+			expect(fs.readFileSync(target, "utf8")).toBe("NEW\n");
+		});
+
+		it("defaults to owner-only 0o600 permissions", () => {
+			if (process.platform === "win32") return;
+			const target = path.join(dir.path(), "secret.yml");
+			atomicWriteFileSync(target, "token: abc");
+
+			expect(fs.statSync(target).mode & 0o777).toBe(0o600);
+		});
+
+		it("preserves a symlinked target, updating the file it points to", () => {
+			if (process.platform === "win32") return;
+			const realDir = path.join(dir.path(), "dotfiles");
+			fs.mkdirSync(realDir);
+			const realFile = path.join(realDir, "config.yml");
+			fs.writeFileSync(realFile, "old: 1\n");
+			const link = path.join(dir.path(), "config.yml");
+			fs.symlinkSync(realFile, link);
+
+			atomicWriteFileSync(link, "new: 2\n");
+
+			expect(fs.lstatSync(link).isSymbolicLink()).toBe(true);
+			expect(fs.readFileSync(realFile, "utf8")).toBe("new: 2\n");
+		});
+
+		it("throws and leaves a prior file intact when the write path is invalid", () => {
+			const blocker = path.join(dir.path(), "blocker");
+			fs.writeFileSync(blocker, "i am a file");
+			const target = path.join(blocker, "child", "config.yml");
+
+			expect(() => atomicWriteFileSync(target, "data")).toThrow();
+			expect(fs.readFileSync(blocker, "utf8")).toBe("i am a file");
+			expect(fs.readdirSync(dir.path())).toEqual(["blocker"]);
+		});
 	});
 });

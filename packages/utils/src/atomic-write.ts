@@ -7,14 +7,14 @@
  * truncated or empty. For a config file that holds every profile and setting,
  * that is silent data loss.
  *
- * {@link atomicWriteFile} avoids it the standard way: write the new bytes to a
- * unique temp file in the same directory, flush them to disk, then `rename` the
- * temp over the target. `rename` within one filesystem is atomic, so a reader or
- * a crash sees either the whole old file or the whole new file, never a partial
- * one.
+ * {@link atomicWriteFile} (and its blocking twin {@link atomicWriteFileSync})
+ * avoid it the standard way: write the new bytes to a unique temp file in the
+ * same directory, flush them to disk, then `rename` the temp over the target.
+ * `rename` within one filesystem is atomic, so a reader or a crash sees either
+ * the whole old file or the whole new file, never a partial one.
  *
  * This is the single home for atomic writes. Do not hand-roll temp-file +
- * rename at a call site; import this instead.
+ * rename at a call site; import one of these instead.
  *
  * @example
  * ```ts
@@ -24,7 +24,8 @@
  * ```
  */
 
-import * as fs from "node:fs/promises";
+import * as fs from "node:fs";
+import * as fsp from "node:fs/promises";
 import * as path from "node:path";
 import { isEnoent, isFsError } from "./fs-error";
 
@@ -51,6 +52,18 @@ export interface AtomicWriteOptions {
 // fixed `${path}.tmp` suffix (the pattern several call sites used) races.
 let tempCounter = 0;
 
+function nextTempPath(dir: string, targetBasename: string): string {
+	tempCounter = (tempCounter + 1) >>> 0;
+	return path.join(dir, `.${targetBasename}.${process.pid}.${tempCounter}.tmp`);
+}
+
+// Windows can reject renaming a temp over an existing file. These codes mean
+// "remove the destination and retry the rename", never "fall back to a
+// non-atomic copy".
+function isRenameClobberError(error: unknown): boolean {
+	return isFsError(error) && (error.code === "EPERM" || error.code === "EEXIST" || error.code === "EACCES");
+}
+
 /**
  * Write `data` to `filePath` atomically. Creates parent directories as needed.
  * Either fully succeeds (the target now holds `data`) or throws with the target
@@ -72,8 +85,8 @@ export async function atomicWriteFile(
 	let target = filePath;
 	let viaSymlink = false;
 	try {
-		if ((await fs.lstat(filePath)).isSymbolicLink()) {
-			target = path.resolve(path.dirname(filePath), await fs.readlink(filePath));
+		if ((await fsp.lstat(filePath)).isSymbolicLink()) {
+			target = path.resolve(path.dirname(filePath), await fsp.readlink(filePath));
 			viaSymlink = true;
 		}
 	} catch (error) {
@@ -84,33 +97,30 @@ export async function atomicWriteFile(
 	const dir = path.dirname(target);
 	// Create parents for a regular path (a convenience). Never fabricate the
 	// target directory of a symlink: a missing one means the link is dangling.
-	if (!viaSymlink) await fs.mkdir(dir, { recursive: true });
+	if (!viaSymlink) await fsp.mkdir(dir, { recursive: true });
 
-	tempCounter = (tempCounter + 1) >>> 0;
-	const tmpPath = path.join(dir, `.${path.basename(target)}.${process.pid}.${tempCounter}.tmp`);
+	const tmpPath = nextTempPath(dir, path.basename(target));
 
-	let handle: Awaited<ReturnType<typeof fs.open>> | undefined;
+	let handle: fsp.FileHandle | undefined;
 	try {
-		handle = await fs.open(tmpPath, "w", mode);
+		handle = await fsp.open(tmpPath, "w", mode);
 		await handle.writeFile(data);
 		if (fsync) await handle.sync();
 	} catch (error) {
 		await handle?.close().catch(() => {});
-		await fs.rm(tmpPath, { force: true }).catch(() => {});
+		await fsp.rm(tmpPath, { force: true }).catch(() => {});
 		throw error;
 	}
 	await handle.close();
 
 	try {
-		await fs.rename(tmpPath, target);
+		await fsp.rename(tmpPath, target);
 	} catch (error) {
-		// Windows can reject renaming over an existing file (EPERM/EEXIST/EACCES).
-		// Remove the target and retry rather than fall back to a non-atomic copy.
-		if (isFsError(error) && (error.code === "EPERM" || error.code === "EEXIST" || error.code === "EACCES")) {
-			await fs.rm(target, { force: true });
-			await fs.rename(tmpPath, target);
+		if (isRenameClobberError(error)) {
+			await fsp.rm(target, { force: true });
+			await fsp.rename(tmpPath, target);
 		} else {
-			await fs.rm(tmpPath, { force: true }).catch(() => {});
+			await fsp.rm(tmpPath, { force: true }).catch(() => {});
 			throw error;
 		}
 	}
@@ -120,11 +130,91 @@ export async function atomicWriteFile(
 		// platforms (notably Windows) do not allow opening a directory for
 		// fsync; the rename is still durable enough there, so ignore the failure.
 		try {
-			const dirHandle = await fs.open(dir, "r");
+			const dirHandle = await fsp.open(dir, "r");
 			try {
 				await dirHandle.sync();
 			} finally {
 				await dirHandle.close();
+			}
+		} catch {
+			// Directory fsync unsupported on this platform; the rename stands.
+		}
+	}
+}
+
+/**
+ * Blocking twin of {@link atomicWriteFile} with identical crash-safety and
+ * symlink semantics. Use only where the call site cannot be async (for example
+ * a synchronous config accessor); prefer the async form everywhere else.
+ */
+export function atomicWriteFileSync(
+	filePath: string,
+	data: string | NodeJS.ArrayBufferView,
+	options: AtomicWriteOptions = {},
+): void {
+	const { mode = 0o600, fsync = true } = options;
+
+	let target = filePath;
+	let viaSymlink = false;
+	try {
+		if (fs.lstatSync(filePath).isSymbolicLink()) {
+			target = path.resolve(path.dirname(filePath), fs.readlinkSync(filePath));
+			viaSymlink = true;
+		}
+	} catch (error) {
+		if (!isEnoent(error)) throw error;
+	}
+
+	const dir = path.dirname(target);
+	if (!viaSymlink) fs.mkdirSync(dir, { recursive: true });
+
+	const tmpPath = nextTempPath(dir, path.basename(target));
+
+	let fd: number | undefined;
+	try {
+		fd = fs.openSync(tmpPath, "w", mode);
+		fs.writeFileSync(fd, data);
+		if (fsync) fs.fsyncSync(fd);
+	} catch (error) {
+		if (fd !== undefined) {
+			try {
+				fs.closeSync(fd);
+			} catch {
+				// already closed / invalid fd
+			}
+		}
+		try {
+			fs.rmSync(tmpPath, { force: true });
+		} catch {
+			// temp never created
+		}
+		throw error;
+	}
+	fs.closeSync(fd);
+
+	try {
+		fs.renameSync(tmpPath, target);
+	} catch (error) {
+		if (isRenameClobberError(error)) {
+			fs.rmSync(target, { force: true });
+			fs.renameSync(tmpPath, target);
+		} else {
+			try {
+				fs.rmSync(tmpPath, { force: true });
+			} catch {
+				// best effort
+			}
+			throw error;
+		}
+	}
+
+	if (fsync) {
+		try {
+			const dirFd = fs.openSync(dir, "r");
+			try {
+				fs.fsyncSync(dirFd);
+			} finally {
+				fs.closeSync(dirFd);
 			}
 		} catch {
 			// Directory fsync unsupported on this platform; the rename stands.
