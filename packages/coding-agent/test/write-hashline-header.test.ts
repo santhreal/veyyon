@@ -115,4 +115,45 @@ describe("write tool hashline header", () => {
 		expect(text.startsWith("[")).toBe(false);
 		expect(text).toBe(`Successfully wrote ${content.length} bytes to ${path.relative(tmpDir, filePath)}`);
 	});
+
+	// TW-3: the write result body reports only a summary (byte count), never the
+	// resulting file content the model already supplied as input. Re-echoing the
+	// content would double its token cost in wire history for the whole session.
+	it("reports only a byte-count summary, never the written content (replace mode)", async () => {
+		const filePath = path.join(tmpDir, "big.txt");
+		const session = createSession(tmpDir);
+		session.settings.set("edit.mode", "replace");
+		const tool = new WriteTool(session);
+		const sentinel = "PAYLOAD_LINE_UNIQUE_MARKER_9f2a\n";
+		const content = sentinel.repeat(2000); // ~62 KB of distinctive content
+
+		const result = await tool.execute("call-1", { path: filePath, content });
+		const text = resultText(result);
+
+		// Exact summary, and not one byte of the payload leaks into the result.
+		expect(text).toBe(`Successfully wrote ${content.length} bytes to ${path.relative(tmpDir, filePath)}`);
+		expect(text).not.toContain(sentinel);
+		// The result stays tiny regardless of how large the file is.
+		expect(text.length).toBeLessThan(200);
+		// The file itself did get the full content.
+		expect(await fs.readFile(filePath, "utf8")).toBe(content);
+	});
+
+	it("keeps the result body bounded and content-free in hashline mode", async () => {
+		const filePath = path.join(tmpDir, "big.ts");
+		const session = createSession(tmpDir);
+		const tool = new WriteTool(session);
+		const sentinel = "export const UNIQUE_TOKEN_7e10 = true;\n";
+		const content = sentinel.repeat(2000);
+
+		const result = await tool.execute("call-1", { path: filePath, content });
+		const text = resultText(result);
+
+		// Header line + summary line only; the payload never appears.
+		expect(text).not.toContain(sentinel);
+		expect(text.length).toBeLessThan(200);
+		const lines = text.split("\n");
+		expect(HASHLINE_HEADER_LINE.test(lines[0] ?? "")).toBe(true);
+		expect(lines[1]).toBe(`Successfully wrote ${content.length} bytes to ${path.relative(tmpDir, filePath)}`);
+	});
 });
