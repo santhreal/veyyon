@@ -9,6 +9,7 @@ import {
 	getContaminated,
 	getEpisodicStats,
 	getMemoriaStats,
+	health,
 	memoriaRetrieve,
 	sleep,
 	sleepAllSessions,
@@ -539,5 +540,88 @@ describe("beam consolidation free functions", () => {
 		const none = memoriaRetrieve(beam, "phoenix is here");
 		expect(none.ability).toBe("");
 		expect(none.results).toEqual([]);
+	});
+
+	it("scopes getEpisodicStats by author id, author type, and channel id", () => {
+		const beam = trackedState();
+		for (const [wm, content] of [
+			["wm1", "Ada shipped the release"],
+			["wm2", "Bob paged the on-call"],
+			["wm3", "Ada wrote the runbook"],
+		] as const) {
+			insertWorking(beam.db, wm, "s1", content);
+		}
+		const id1 = consolidateToEpisodic(beam, "Ada shipped the release", ["wm1"], "consolidation", 0.7);
+		const id2 = consolidateToEpisodic(beam, "Bob paged the on-call", ["wm2"], "consolidation", 0.7);
+		const id3 = consolidateToEpisodic(beam, "Ada wrote the runbook", ["wm3"], "consolidation", 0.7);
+		beam.db.run("UPDATE episodic_memory SET author_id = ?, author_type = ?, channel_id = ? WHERE id = ?", [
+			"ada",
+			"human",
+			"ch1",
+			id1,
+		]);
+		beam.db.run("UPDATE episodic_memory SET author_id = ?, author_type = ?, channel_id = ? WHERE id = ?", [
+			"bob",
+			"bot",
+			"ch2",
+			id2,
+		]);
+		beam.db.run("UPDATE episodic_memory SET author_id = ?, author_type = ?, channel_id = ? WHERE id = ?", [
+			"ada",
+			"bot",
+			"ch1",
+			id3,
+		]);
+
+		// No filter sees every row.
+		expect(getEpisodicStats(beam).total).toBe(3);
+		// Each single clause narrows to its matching rows.
+		expect(getEpisodicStats(beam, "ada", null, null).total).toBe(2);
+		expect(getEpisodicStats(beam, null, "bot", null).total).toBe(2);
+		expect(getEpisodicStats(beam, null, null, "ch1").total).toBe(2);
+		// All three clauses AND together to a single row.
+		const scoped = getEpisodicStats(beam, "ada", "bot", "ch1");
+		expect(scoped.total).toBe(1);
+		expect(scoped.count).toBe(1);
+		expect(scoped.vectors).toBe(0);
+		expect(scoped.vec_type).toBe("none");
+		expect(typeof scoped.last).toBe("string");
+	});
+
+	it("reports a healthy consolidation window with a zero error count", () => {
+		const beam = trackedState();
+		// One recent successful consolidation, one recent failure marker within the 7-day window.
+		beam.db.run(
+			"INSERT INTO consolidation_log (session_id, items_consolidated, summary_preview, created_at) VALUES (?, ?, ?, ?)",
+			["s1", 5, "consolidated 5 memories", new Date().toISOString()],
+		);
+		beam.db.run(
+			"INSERT INTO consolidation_log (session_id, items_consolidated, summary_preview, created_at) VALUES (?, ?, ?, ?)",
+			["s1", 0, "sleep failed to reach the model", new Date().toISOString()],
+		);
+
+		const report = health(beam, 24);
+		expect(report.status).toBe("healthy");
+		expect(report.error_count).toBe(1);
+		expect(report.stale_threshold_hours).toBe(24);
+		expect(report.recommendation).toBe("Consolidation is within the healthy window.");
+		expect(report.details).toEqual({ stale: false, consolidation_log_entries_checked: "last 7 days" });
+		expect(typeof report.stale_hours).toBe("number");
+		expect(report.stale_hours as number).toBeLessThanOrEqual(1);
+	});
+
+	it("reports a stale consolidation window past the threshold", () => {
+		const beam = trackedState();
+		beam.db.run(
+			"INSERT INTO consolidation_log (session_id, items_consolidated, summary_preview, created_at) VALUES (?, ?, ?, ?)",
+			["s1", 3, "consolidated 3 memories", oldIso(30)],
+		);
+
+		const report = health(beam, 24);
+		expect(report.status).toBe("stale");
+		expect(report.error_count).toBe(0);
+		expect(report.stale_hours as number).toBeGreaterThan(24);
+		expect(report.details).toEqual({ stale: true, consolidation_log_entries_checked: "last 7 days" });
+		expect(report.recommendation as string).toContain("Run sleepAllSessions()");
 	});
 });
