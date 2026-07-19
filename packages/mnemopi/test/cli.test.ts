@@ -136,6 +136,53 @@ describe("CLI command handlers", () => {
 		}
 	});
 
+	it("runs consolidation through the sleep command", async () => {
+		const root = tempRoot();
+		try {
+			const dbPath = join(root, "mnemopi.db");
+			const memory = new BeamMemory({ dbPath });
+			try {
+				memory.remember("Sleep consolidation candidate memory", { source: "test", importance: 0.7 });
+			} finally {
+				memory.close();
+			}
+
+			const io = capture();
+			expect(await runCli(["sleep"], io.context(root))).toBe(0);
+			expect(io.stdout).toContain("Consolidation complete:");
+			expect(io.stderr).toBe("");
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
+	});
+
+	it("reports diagnostics with a check count and no-issues line for a fresh store", async () => {
+		const root = tempRoot();
+		try {
+			const dbPath = join(root, "mnemopi.db");
+			const memory = new BeamMemory({ dbPath });
+			memory.close();
+
+			const io = capture();
+			expect(await runCli(["diagnose"], io.context(root))).toBe(0);
+			expect(io.stdout).toContain("Mnemopi Diagnostics");
+			expect(io.stdout).toContain("Checks passed:");
+			expect(io.stdout).toContain("No issues detected");
+		} finally {
+			rmSync(root, { recursive: true, force: true });
+		}
+	});
+
+	it("prints the help screen for --help with every command listed", async () => {
+		const io = capture();
+		expect(await runCli(["--help"], io.context(tempRoot()))).toBe(0);
+		expect(io.stdout).toContain("Mnemopi - Local AI Memory System");
+		expect(io.stdout).toContain("Usage: mnemopi <command> [args]");
+		expect(io.stdout).toContain("sleep                                  Run consolidation");
+		expect(io.stdout).toContain("diagnose                               Run diagnostics");
+		expect(io.stdout).toContain("mcp [args]                             Run MCP server");
+	});
+
 	it("manages scratchpad and banks in the configured data directory", async () => {
 		const root = tempRoot();
 		try {
