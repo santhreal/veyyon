@@ -5,6 +5,7 @@ import {
 	AGGRESSIVE_SHAKE_CONFIG,
 	applyShakeRegion,
 	applyShakeRegions,
+	collectRedundantToolResultRegions,
 	collectShakeRegions,
 	DEFAULT_SHAKE_CONFIG,
 	estimateTokens,
@@ -333,5 +334,137 @@ describe("collectShakeRegions — compaction boundary", () => {
 		expect(region.entry).toBe(after);
 		expect(region.originalText).toContain("AFTER_BOUNDARY_PAYLOAD");
 		expect(region.originalText).not.toContain("BEFORE_BOUNDARY_PAYLOAD");
+	});
+});
+
+describe("collectRedundantToolResultRegions — identical re-reads / re-runs", () => {
+	/** Build a paired assistant tool-call + its tool-result so the call's arguments are visible to the dedup signature. */
+	function callPair(
+		toolName: string,
+		args: Record<string, unknown>,
+		output: string,
+		extra?: Partial<ToolResultMessage>,
+	): { assistant: SessionMessageEntry; result: SessionMessageEntry; toolResult: ToolResultMessage } {
+		const id = `tc-${idCounter++}`;
+		const toolCall: ToolCall = { type: "toolCall", id, name: toolName, arguments: args };
+		const assistant = messageEntry(assistantMessage([toolCall]));
+		const toolResult = toolResultMessage(toolName, output, { toolCallId: id, ...extra });
+		return { assistant, result: messageEntry(toolResult), toolResult };
+	}
+
+	test("elides every earlier byte-identical result and keeps the newest copy", () => {
+		const body = "FILE_CONTENT_LINE\n".repeat(40);
+		const first = callPair("read", { path: "a.ts" }, body);
+		const second = callPair("read", { path: "a.ts" }, body);
+		const entries = [first.assistant, first.result, second.assistant, second.result];
+
+		const regions = collectRedundantToolResultRegions(entries, cfg());
+		expect(regions).toHaveLength(1);
+		expect(regions[0].entry).toBe(first.result);
+		expect(regions[0].originalText).toBe(body);
+
+		// Applying the region prunes the earlier copy; the newest copy is untouched.
+		applyShakeRegion(regions[0], "[deduped]");
+		expect(first.toolResult.prunedAt).toBeGreaterThan(0);
+		expect(first.toolResult.content).toEqual([{ type: "text", text: "[deduped]" }]);
+		expect(second.toolResult.prunedAt).toBeUndefined();
+		expect(second.toolResult.content).toEqual([{ type: "text", text: body }]);
+	});
+
+	test("with three identical runs, both older copies are elided and the last survives", () => {
+		const out = "PASS 128 tests\n".repeat(30);
+		const runs = [
+			callPair("bash", { command: "cargo test" }, out),
+			callPair("bash", { command: "cargo test" }, out),
+			callPair("bash", { command: "cargo test" }, out),
+		];
+		const entries = runs.flatMap(r => [r.assistant, r.result]);
+
+		const regions = collectRedundantToolResultRegions(entries, cfg());
+		expect(regions).toHaveLength(2);
+		expect(regions.map(r => r.entry)).toEqual([runs[0].result, runs[1].result]);
+	});
+
+	test("does not dedup when the output differs (same command, changed result)", () => {
+		const before = callPair("bash", { command: "cargo test" }, "FAIL 3 tests\n".repeat(30));
+		const after = callPair("bash", { command: "cargo test" }, "PASS 128 tests\n".repeat(30));
+		const entries = [before.assistant, before.result, after.assistant, after.result];
+		expect(collectRedundantToolResultRegions(entries, cfg())).toHaveLength(0);
+	});
+
+	test("does not dedup when the arguments differ even if the output is identical", () => {
+		const out = "ok\n".repeat(30);
+		const a = callPair("bash", { command: "touch a" }, out);
+		const b = callPair("bash", { command: "touch b" }, out);
+		const entries = [a.assistant, a.result, b.assistant, b.result];
+		expect(collectRedundantToolResultRegions(entries, cfg())).toHaveLength(0);
+	});
+
+	test("dedups bare (unpaired) identical results by tool name and output alone", () => {
+		const body = "grep hit line\n".repeat(40);
+		const first = messageEntry(toolResultMessage("grep", body));
+		const second = messageEntry(toolResultMessage("grep", body));
+		const regions = collectRedundantToolResultRegions([first, second], cfg());
+		expect(regions).toHaveLength(1);
+		expect(regions[0].entry).toBe(first);
+	});
+
+	test("ignores the protect-recent window and the savings gate (a duplicate is always eligible)", () => {
+		// collectShakeRegions would protect both recent copies and gate on minSavings;
+		// dedup elides the older copy regardless because it carries no unique info.
+		const body = "SMALL\n".repeat(4);
+		const first = messageEntry(toolResultMessage("read", body));
+		const second = messageEntry(toolResultMessage("read", body));
+		const entries = [first, second];
+		expect(collectShakeRegions(entries, cfg({ protectTokens: 1_000_000, minSavings: 1_000_000 }))).toHaveLength(0);
+		const regions = collectRedundantToolResultRegions(
+			entries,
+			cfg({ protectTokens: 1_000_000, minSavings: 1_000_000 }),
+		);
+		expect(regions).toHaveLength(1);
+		expect(regions[0].entry).toBe(first);
+	});
+
+	test("never dedups protected tools, error results, pruned results, or empty results", () => {
+		const skillA = messageEntry(toolResultMessage("skill", "SKILL_BODY\n".repeat(20)));
+		const skillB = messageEntry(toolResultMessage("skill", "SKILL_BODY\n".repeat(20)));
+		expect(collectRedundantToolResultRegions([skillA, skillB], cfg({ protectedTools: ["skill"] }))).toHaveLength(0);
+
+		const errA = messageEntry(toolResultMessage("bash", "boom\n".repeat(20), { isError: true }));
+		const errB = messageEntry(toolResultMessage("bash", "boom\n".repeat(20), { isError: true }));
+		expect(collectRedundantToolResultRegions([errA, errB], cfg())).toHaveLength(0);
+
+		const prunedA = messageEntry(toolResultMessage("bash", "old\n".repeat(20), { prunedAt: Date.now() }));
+		const liveB = messageEntry(toolResultMessage("bash", "old\n".repeat(20)));
+		// Only the live copy exists as a signature; nothing older to elide.
+		expect(collectRedundantToolResultRegions([prunedA, liveB], cfg())).toHaveLength(0);
+
+		const emptyA = messageEntry(toolResultMessage("bash", ""));
+		const emptyB = messageEntry(toolResultMessage("bash", ""));
+		expect(collectRedundantToolResultRegions([emptyA, emptyB], cfg())).toHaveLength(0);
+	});
+
+	test("skips duplicates that live before the compaction boundary", () => {
+		const body = "PAYLOAD\n".repeat(40);
+		const before = messageEntry(toolResultMessage("read", body));
+		const boundary = messageEntry({ role: "user", content: "resume", timestamp: 0 });
+		const after = messageEntry(toolResultMessage("read", body));
+		// Without a boundary, the earlier copy is deduped.
+		expect(collectRedundantToolResultRegions([before, boundary, after], cfg())).toHaveLength(1);
+		// With the boundary at `boundary`, the pre-boundary copy is never sent, so
+		// only the after-boundary copy is seen — nothing to dedup.
+		expect(
+			collectRedundantToolResultRegions([before, boundary, after], cfg({ keepBoundaryId: boundary.id })),
+		).toHaveLength(0);
+	});
+
+	test("non-identical results interleaved between duplicates do not break matching", () => {
+		const body = "DUP\n".repeat(40);
+		const first = messageEntry(toolResultMessage("read", body));
+		const noise = messageEntry(toolResultMessage("bash", "unrelated\n".repeat(40)));
+		const second = messageEntry(toolResultMessage("read", body));
+		const regions = collectRedundantToolResultRegions([first, noise, second], cfg());
+		expect(regions).toHaveLength(1);
+		expect(regions[0].entry).toBe(first);
 	});
 });
