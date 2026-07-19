@@ -1,3 +1,4 @@
+import { clamp01 } from "@veyyon/utils";
 import { TERMINAL } from "./terminal-capabilities";
 
 // LaTeX → Unicode/ANSI converter.
@@ -934,12 +935,6 @@ const LATEX_NAMED_COLORS: Record<string, string> = {
 
 function colorFormat(): AnsiColorFormat {
 	return TERMINAL.trueColor ? "ansi-16m" : "ansi-256";
-}
-
-function clamp01(n: number): number {
-	if (n <= 0) return 0;
-	if (n >= 1) return 1;
-	return n;
 }
 
 function clampByte(n: number): number {
