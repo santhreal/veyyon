@@ -3,6 +3,7 @@ import { createRequire } from "node:module";
 import * as path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import * as vm from "node:vm";
+import { hasUriScheme } from "@veyyon/utils";
 import { collectModuleSourceSpecifiers, stripTypeScriptSyntax } from "./rewrite-imports";
 
 interface LocalModuleEntry {
@@ -321,7 +322,7 @@ function buildModuleSource(source: string, modulePath: string): string {
 }
 
 function resolveImportSpecifier(cwd: string, source: string): string {
-	if (/^[a-z][a-z0-9+.-]*:/i.test(source)) return source;
+	if (hasUriScheme(source)) return source;
 	try {
 		return Bun.resolveSync(source, cwd);
 	} catch {

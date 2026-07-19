@@ -50,6 +50,21 @@ export function hasUrlScheme(value: string): boolean {
 }
 
 /**
+ * The RFC 3986 scheme grammar followed only by its `:` separator, with no `//`.
+ * This is the looser sibling of {@link URL_SCHEME_PREFIX_RE}: it matches any
+ * absolute-URI prefix (`https:`, `file:`, `node:`, `mailto:`, `data:`), not
+ * only hierarchical `scheme://` URLs. Use it to tell an absolute URI or module
+ * specifier from a bare filesystem path or a bare package name. Non-global, so
+ * `.test` stays stateless.
+ */
+export const URI_SCHEME_PREFIX_RE = /^[a-z][a-z0-9+.-]*:/i;
+
+/** True when `value` begins with a URI scheme prefix (`scheme:`, with or without `//`). */
+export function hasUriScheme(value: string): boolean {
+	return URI_SCHEME_PREFIX_RE.test(value);
+}
+
+/**
  * The lowercased scheme of a leading `scheme://` prefix, or `null` when `value`
  * has none. Lowercasing matches the scheme-lookup keys every caller used before
  * (`match[1].toLowerCase()`), so schemes compare case-insensitively.

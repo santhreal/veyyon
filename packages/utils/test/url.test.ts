@@ -3,9 +3,11 @@ import { readdir, readFile } from "node:fs/promises";
 import * as path from "node:path";
 import {
 	containsUrlScheme,
+	hasUriScheme,
 	hasUrlScheme,
 	normalizeBaseUrl,
 	trimTrailingSlashes,
+	URI_SCHEME_PREFIX_RE,
 	URL_SCHEME_ANYWHERE_RE,
 	URL_SCHEME_PREFIX_RE,
 	urlScheme,
@@ -119,6 +121,34 @@ describe("containsUrlScheme (unanchored)", () => {
 	});
 });
 
+// `URI_SCHEME_PREFIX_RE` / `hasUriScheme` is the looser sibling: the ONE owner
+// for "begins with a `scheme:` prefix" (no `//` required). Three former local
+// copies (custom-editor isExplicitPastedPath, local-module-loader
+// resolveImportSpecifier, legacy-pi-compat isBareExtensionDependencySpecifier)
+// re-point here to tell an absolute URI / module specifier from a bare path.
+describe("hasUriScheme (scheme prefix, no // required)", () => {
+	it("accepts any absolute-URI prefix, with or without //", () => {
+		expect(hasUriScheme("https://x")).toBe(true);
+		expect(hasUriScheme("file:/etc/hosts")).toBe(true);
+		expect(hasUriScheme("node:fs")).toBe(true);
+		expect(hasUriScheme("mailto:a@b.com")).toBe(true);
+		expect(hasUriScheme("data:text/plain,hi")).toBe(true);
+	});
+
+	it("rejects bare paths, package names, and relative specifiers", () => {
+		expect(hasUriScheme("/home/user/a.ts")).toBe(false);
+		expect(hasUriScheme("./rel")).toBe(false);
+		expect(hasUriScheme("lodash")).toBe(false);
+		expect(hasUriScheme("@scope/pkg")).toBe(false);
+		expect(hasUriScheme("")).toBe(false);
+	});
+
+	it("is anchored and non-global (stateless)", () => {
+		expect(URI_SCHEME_PREFIX_RE.global).toBe(false);
+		expect(hasUriScheme("x/node:fs")).toBe(false); // scheme in the middle is not a prefix
+	});
+});
+
 // Repo-wide source lock: trimTrailingSlashes has exactly ONE owner,
 // packages/utils/src/url.ts. Both named local copies (catalog antigravity.ts,
 // catalog provider-models/ollama.ts) were converted when this lock landed, so
@@ -166,6 +196,15 @@ const STRIPONE = /endsWith\("\/"\) \? \w+(?:\.\w+)*\.slice\(0, ?-1\)/;
 // utils/src/url.ts must import hasUrlScheme / urlScheme / containsUrlScheme.
 const SCHEME_LITERAL = /\[a-z\]\[a-z0-9\+\.-\]\*\)?:\\\/\\\/\//;
 
+// Bare-`scheme:` (colon-only, no `//`) literal lock. Matches the scheme charset
+// immediately followed by `:` and the regex-literal close `/` — the exact
+// `/^[a-z][a-z0-9+.-]*:/i` form the three former copies used. The `://` family
+// never matches (its `:` is followed by `\`, not the closing `/`), nor do the
+// scheme+host/path parsers or the bare-scheme-name check. Empty grandfathered
+// set: any new colon-only scheme literal outside utils/src/url.ts must import
+// hasUriScheme instead.
+const URI_LITERAL = /\[a-z\]\[a-z0-9\+\.-\]\*:\//;
+
 async function walk(dir: string, out: string[], includeTests = false): Promise<void> {
 	for (const entry of await readdir(dir, { withFileTypes: true })) {
 		const full = path.join(dir, entry.name);
@@ -206,6 +245,7 @@ describe("trimTrailingSlashes source lock", () => {
 		const striponeOffenders: string[] = [];
 		const striponeSeen = new Set<string>();
 		const schemeOffenders: string[] = [];
+		const uriOffenders: string[] = [];
 		for (const pkg of await readdir(PACKAGES_DIR, { withFileTypes: true })) {
 			if (!pkg.isDirectory()) continue;
 			const files: string[] = [];
@@ -229,6 +269,7 @@ describe("trimTrailingSlashes source lock", () => {
 					if (!STRIPONE_GRANDFATHERED.has(rel)) striponeOffenders.push(rel);
 				}
 				if (SCHEME_LITERAL.test(text)) schemeOffenders.push(rel);
+				if (URI_LITERAL.test(text)) uriOffenders.push(rel);
 			}
 		}
 		const cleared = [
@@ -251,6 +292,10 @@ describe("trimTrailingSlashes source lock", () => {
 		expect(
 			schemeOffenders,
 			"new bare `scheme://` regex literal — import hasUrlScheme / urlScheme / containsUrlScheme from @veyyon/utils instead",
+		).toEqual([]);
+		expect(
+			uriOffenders,
+			"new bare `scheme:` (colon-only) regex literal — import hasUriScheme from @veyyon/utils instead",
 		).toEqual([]);
 		expect(cleared, "grandfathered entries whose strip is gone — remove them from the list").toEqual([]);
 	});

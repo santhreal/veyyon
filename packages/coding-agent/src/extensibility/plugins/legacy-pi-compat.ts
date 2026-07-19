@@ -3,7 +3,13 @@ import * as fs from "node:fs";
 import { isBuiltin } from "node:module";
 import * as path from "node:path";
 import * as url from "node:url";
-import { escapeRegExp, isCompiledBinary, isRecord, stripWindowsExtendedLengthPathPrefix } from "@veyyon/utils";
+import {
+	escapeRegExp,
+	hasUriScheme,
+	isCompiledBinary,
+	isRecord,
+	stripWindowsExtendedLengthPathPrefix,
+} from "@veyyon/utils";
 import { registerPluginCacheInvalidator } from "../../discovery/helpers";
 
 const IS_COMPILED_BINARY = isCompiledBinary();
@@ -833,7 +839,7 @@ function isBareExtensionDependencySpecifier(specifier: string): boolean {
 		specifier.startsWith("#") ||
 		specifier.startsWith("node:") ||
 		specifier.startsWith("bun:") ||
-		/^[a-z][a-z0-9+.-]*:/i.test(specifier)
+		hasUriScheme(specifier)
 	) {
 		return false;
 	}
