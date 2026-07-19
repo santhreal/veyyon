@@ -71,6 +71,8 @@ export interface Args {
 	noRules?: boolean;
 	noTitle?: boolean;
 	autoApprove?: boolean;
+	/** `--dangerously-skip-permissions`: start with the full `/yolo` bypass on. */
+	dangerouslySkipPermissions?: boolean;
 	approvalMode?: "plan" | "ask" | "auto-edit" | "yolo" | "always-ask" | "write";
 	messages: string[];
 	fileArgs: string[];
@@ -259,6 +261,11 @@ export function parseArgs(inputArgs: string[], extensionFlags?: Map<string, { ty
 			result.noTitle = true;
 		} else if (arg === "--auto-approve" || arg === "--yolo") {
 			result.autoApprove = true;
+		} else if (arg === "--dangerously-skip-permissions") {
+			// Stronger than --yolo: start with the full permission bypass on
+			// (removes per-tool prompt overrides too). Explicit deny and plan mode
+			// still block. Runtime-toggleable with /yolo.
+			result.dangerouslySkipPermissions = true;
 		} else if (arg.startsWith("@")) {
 			let filePath = arg.slice(1);
 			if (filePath.startsWith('"') && filePath.endsWith('"') && filePath.length > 1) {

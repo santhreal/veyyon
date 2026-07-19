@@ -40,6 +40,8 @@ The bypass is session-scoped. It defaults to off, is never written to settings, 
 
 This is different from the `--yolo` and `--auto-approve` launch flags, which set the `yolo` approval mode (and so keep honoring your per-tool `prompt`/`deny` policies). The `/yolo` command is the in-session full bypass.
 
+To start a session already in full bypass, pass `--dangerously-skip-permissions`. It turns on the same session-scoped bypass that `/yolo on` does (removing per-tool `prompt` overrides too), so explicit `deny` and plan mode still block, and you can toggle it off at runtime with `/yolo off`. Prefer `--yolo`/`--auto-approve` when you only want the `yolo` approval mode; reach for `--dangerously-skip-permissions` only when you want every prompt gone from the first tool call.
+
 ## User overrides
 
 `tools.approval` is honored in every mode:

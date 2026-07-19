@@ -167,6 +167,13 @@ export default class Index extends Command {
 			aliases: ["yolo"],
 			description: "Auto-approve all tool calls (skip approval prompts)",
 		}),
+		// `--dangerously-skip-permissions`: start with the full /yolo bypass on.
+		// Declared here so oclif's `--help` lists it; runtime parsing is in
+		// `cli/args.ts parseArgs`, applied via `bypassAllApprovals` on the session.
+		"dangerously-skip-permissions": Flags.boolean({
+			description:
+				"Remove ALL permission prompts for the session, including per-tool prompt overrides (explicit deny and plan mode still block). Toggle at runtime with /yolo.",
+		}),
 		// `--approval-mode`: declared here so oclif's auto-generated `--help` lists it; runtime parsing
 		// happens in `cli/args.ts parseArgs`. The value is applied via `Settings.override("tools.approvalMode", …)`
 		// in `main.ts` after the `Settings` instance is constructed, so every `settings.get("tools.approvalMode")`
