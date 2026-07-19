@@ -2,7 +2,7 @@ import type { AgentTool, AgentToolContext, AgentToolResult, AgentToolUpdateCallb
 import type { ToolExample } from "@veyyon/ai";
 import type { Component } from "@veyyon/tui";
 import { Text } from "@veyyon/tui";
-import { formatCount, prompt } from "@veyyon/utils";
+import { formatCount, NON_ALNUM_RUN_RE, prompt } from "@veyyon/utils";
 import { type } from "arktype";
 import chalk from "chalk";
 import type { RenderResultOptions } from "../extensibility/custom-tools/types";
@@ -182,10 +182,7 @@ export function getLatestTodoPhasesFromEntries(entries: SessionEntry[]): TodoPha
 const TODO_DESCRIPTION_MIN_OVERLAP = 6;
 
 function normalizeForTodoMatch(value: string): string {
-	return value
-		.toLowerCase()
-		.replace(/[^\p{L}\p{N}]+/gu, " ")
-		.trim();
+	return value.toLowerCase().replace(NON_ALNUM_RUN_RE, " ").trim();
 }
 
 /**

@@ -1,3 +1,4 @@
+import { ALNUM_WORD_RE } from "@veyyon/utils";
 import { cleanTinyMessage, isPreformattedChatContext, stripChatScaffolding } from "./message-preproc";
 
 /**
@@ -85,7 +86,6 @@ const FILLER_TITLE_TOKENS = new Set<string>([
 	"anyway",
 ]);
 
-const TITLE_WORD = /[\p{L}\p{N}]+/gu;
 const COMMON_TITLE_ACRONYMS = new Set<string>([
 	"API",
 	"CLI",
@@ -129,7 +129,7 @@ export function isLowSignalTitleInput(message: string): boolean {
 	// scaffolding tags are dropped so the turn text drives the signal check
 	// (cleanTinyMessage would strip the paired <chat> envelope to nothing).
 	const cleaned = isPreformattedChatContext(message) ? stripChatScaffolding(message) : cleanTinyMessage(message);
-	const tokens = cleaned.toLowerCase().match(TITLE_WORD);
+	const tokens = cleaned.toLowerCase().match(ALNUM_WORD_RE);
 	if (!tokens) return true;
 	return tokens.every(token => FILLER_TITLE_TOKENS.has(token) || /^\d+$/.test(token));
 }
@@ -188,7 +188,7 @@ function reconcileTitleCasing(title: string, sourceText: string): string {
 	const distinctive = new Map<string, string>();
 	const acronyms = new Map<string, string>();
 	const shouty = isShoutySource(sourceText);
-	for (const [token] of sourceText.matchAll(TITLE_WORD)) {
+	for (const [token] of sourceText.matchAll(ALNUM_WORD_RE)) {
 		verbatim.add(token);
 		if (isDistinctiveCasing(token)) {
 			const lower = token.toLowerCase();
@@ -198,7 +198,7 @@ function reconcileTitleCasing(title: string, sourceText: string): string {
 			if (!acronyms.has(lower)) acronyms.set(lower, token);
 		}
 	}
-	return title.replace(TITLE_WORD, token => {
+	return title.replace(ALNUM_WORD_RE, token => {
 		if (verbatim.has(token)) return token;
 		const lower = token.toLowerCase();
 		const restored = distinctive.get(lower);
@@ -259,7 +259,7 @@ function isTitleCasedArtifact(token: string): boolean {
  *  so we don't re-shout emphatic prose the model correctly de-shouted. */
 function isShoutySource(sourceText: string): boolean {
 	let run = 0;
-	for (const [token] of sourceText.matchAll(TITLE_WORD)) {
+	for (const [token] of sourceText.matchAll(ALNUM_WORD_RE)) {
 		if (isAllCapsWord(token)) {
 			run += 1;
 			if (run >= 2) return true;

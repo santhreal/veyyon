@@ -1,7 +1,7 @@
 import { Database, type Statement } from "bun:sqlite";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { AsyncDrain, getHistoryDbPath, logger } from "@veyyon/utils";
+import { AsyncDrain, getHistoryDbPath, logger, NON_ALNUM_RUN_RE } from "@veyyon/utils";
 
 export interface HistoryEntry {
 	id: number;
@@ -293,7 +293,7 @@ END;
 	#tokenize(query: string): string[] {
 		return query
 			.toLowerCase()
-			.split(/[^\p{L}\p{N}]+/u)
+			.split(NON_ALNUM_RUN_RE)
 			.filter(tok => tok.length > 0);
 	}
 

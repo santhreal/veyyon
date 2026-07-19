@@ -24,6 +24,8 @@
  * session lifecycle, so this class stays trivially unit-testable.
  */
 
+import { hasAlphanumeric } from "@veyyon/utils";
+
 /** Minimum length before the very first segment may cut at a sentence boundary. */
 const FIRST_SEGMENT_MIN = 12;
 /** Buffer length past which the first segment may cut at a clause boundary instead. */
@@ -68,7 +70,6 @@ const EMPHASIS_UNDERSCORE_RE = /(^|\s)_+|_+(?=\s|$)/g;
 const HTML_TAG_RE = /<\/?[a-zA-Z][^<>]*>/g;
 const HR_INLINE_RE = /(^|\s)[-*_]{3,}(?=\s|$)/g;
 const PATH_RE = /(^|[\s("'`])((?:~|\.{1,2})?\/?[\w.@+-]+(?:\/[\w.@+-]+){2,}\/?)/g;
-const HAS_SPEAKABLE_RE = /[\p{L}\p{N}]/u;
 
 /** "https://github.com/foo/bar?x#y" → "github.com". */
 function speakableUrl(url: string): string {
@@ -101,7 +102,7 @@ function normalizeSpeakable(raw: string): string {
 		})
 		.replace(/\s+/g, " ")
 		.trim();
-	return HAS_SPEAKABLE_RE.test(spoken) ? spoken : "";
+	return hasAlphanumeric(spoken) ? spoken : "";
 }
 
 /**
