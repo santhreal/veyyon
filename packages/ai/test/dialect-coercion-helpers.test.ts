@@ -8,6 +8,7 @@
 import { describe, expect, it } from "bun:test";
 import {
 	jsonTypeOf,
+	mintToolCallId,
 	normalizeKimiFunctionName,
 	partialSuffixOverlap,
 	partialSuffixOverlapAny,
@@ -74,5 +75,20 @@ describe("jsonTypeOf", () => {
 
 	it("maps undefined (not a JSON value) to object, the catch-all branch", () => {
 		expect(jsonTypeOf(undefined)).toBe("object");
+	});
+});
+
+describe("mintToolCallId", () => {
+	it("produces the ptc_<base36>_<base36> shape", () => {
+		expect(mintToolCallId()).toMatch(/^ptc_[0-9a-z]+_[0-9a-z]+$/);
+	});
+
+	it("never collides across many consecutive calls in the same millisecond", () => {
+		// The monotonic counter suffix, not the timestamp, is what keeps ids unique
+		// when many are minted within one millisecond. A collision would cross-wire
+		// two tool calls to the same result.
+		const ids = new Set<string>();
+		for (let i = 0; i < 5_000; i++) ids.add(mintToolCallId());
+		expect(ids.size).toBe(5_000);
 	});
 });
