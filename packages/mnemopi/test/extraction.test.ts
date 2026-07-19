@@ -1,7 +1,8 @@
-import { afterEach, describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it, spyOn } from "bun:test";
 import {
 	buildExtractionPrompt,
 	countExtractedFactCategories,
+	extractFactCategories,
 	extractFacts,
 	extractFactsSafe,
 	flattenExtractedFactCategories,
@@ -253,5 +254,90 @@ describe("local heuristic fallback after an empty configured completion", () => 
 		expect(facts).toEqual([]);
 		const stats = getExtractionStats();
 		expect(stats.by_tier.local.successes).toBe(0);
+	});
+});
+
+/** A `fetch` stand-in returning one OpenAI chat-completions body, keeping `.preconnect` typed. */
+function mockChatCompletion(content: string, status = 200) {
+	return spyOn(globalThis, "fetch").mockImplementation(
+		Object.assign(
+			() => Promise.resolve(new Response(JSON.stringify({ choices: [{ message: { content } }] }), { status })),
+			{
+				preconnect: globalThis.fetch.preconnect,
+			},
+		),
+	);
+}
+
+describe("extraction transport failure and no-output diagnostics", () => {
+	it("returns empty categories and records configured_completion_raised when the completion throws", async () => {
+		process.env.MNEMOPI_LLM_ENABLED = "true";
+		const resolved: ResolvedMnemopiRuntimeOptions = {
+			llm: {
+				enabled: true,
+				complete: () => {
+					throw new Error("completion exploded");
+				},
+			},
+		};
+		const result = await withMnemopiRuntimeOptions(resolved, () =>
+			extractFactCategories("Ada uses Rust and drinks tea."),
+		);
+		expect(countExtractedFactCategories(result)).toBe(0);
+		const host = getExtractionStats().by_tier.host;
+		expect(host.failures).toBe(1);
+		expect(host.error_samples[0]?.reason).toBe("configured_completion_raised");
+	});
+
+	it("records a host no_output and falls back to the local tier when the host returns blank text", async () => {
+		process.env.MNEMOPI_LLM_ENABLED = "true";
+		process.env.MNEMOPI_HOST_LLM_ENABLED = "true";
+		setHostLlmBackend(new CallableLlmBackend("blank-host", () => "   "));
+
+		const result = await extractFactCategories("Zzz qqq opaque payload.");
+		expect(countExtractedFactCategories(result)).toBe(0);
+		const stats = getExtractionStats();
+		expect(stats.by_tier.host.no_output).toBe(1);
+		// localFallback runs after the blank host: callLocalLlm is a null stub, so the local tier
+		// is attempted, misses (model_not_loaded), then the heuristic finds nothing in the payload.
+		expect(stats.by_tier.local.attempts).toBe(1);
+	});
+
+	it("returns remote-extracted categories when the remote LLM yields facts", async () => {
+		process.env.MNEMOPI_LLM_ENABLED = "true";
+		process.env.MNEMOPI_LLM_BASE_URL = "http://remote.test/v1";
+		delete process.env.MNEMOPI_HOST_LLM_ENABLED;
+		const spy = mockChatCompletion('{"facts":["Remote fact one"]}');
+		try {
+			const result = await extractFactCategories("Some input to embed remotely.");
+			expect(result.facts).toEqual(["Remote fact one"]);
+			expect(getExtractionStats().by_tier.remote.successes).toBe(1);
+		} finally {
+			spy.mockRestore();
+		}
+	});
+
+	it("records a remote no_output and falls back locally when the remote yields no facts", async () => {
+		process.env.MNEMOPI_LLM_ENABLED = "true";
+		process.env.MNEMOPI_LLM_BASE_URL = "http://remote.test/v1";
+		delete process.env.MNEMOPI_HOST_LLM_ENABLED;
+		const spy = mockChatCompletion("NO_FACTS");
+		try {
+			const result = await extractFactCategories("Zzz qqq opaque payload.");
+			expect(countExtractedFactCategories(result)).toBe(0);
+			const stats = getExtractionStats();
+			expect(stats.by_tier.remote.no_output).toBe(1);
+			expect(stats.by_tier.local.attempts).toBe(1);
+		} finally {
+			spy.mockRestore();
+		}
+	});
+
+	it("line-parses a brace-prefixed string that is neither valid JSON nor holds quoted runs", () => {
+		// startsWith("{") enters the JSON branch, JSON.parse throws, no 10+ char quoted run exists,
+		// so the salvage misses and control falls through to the newline splitter.
+		const result = parseExtractedFactCategories("{oops this is not valid json at all}");
+		expect(result.facts).toEqual(["{oops this is not valid json at all}"]);
+		expect(result.kg).toEqual([]);
 	});
 });
