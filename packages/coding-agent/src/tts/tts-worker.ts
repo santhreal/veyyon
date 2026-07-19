@@ -249,7 +249,7 @@ async function waitForCacheQuiescence(repoDir: string): Promise<void> {
 	const deadline = Date.now() + 60_000;
 	let previous = await totalSize();
 	while (Date.now() < deadline) {
-		await new Promise(resolve => setTimeout(resolve, 300));
+		await Bun.sleep(300);
 		const next = await totalSize();
 		if (next === previous && next > 0) return;
 		previous = next;
