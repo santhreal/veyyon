@@ -17,6 +17,7 @@ import {
 	popLoopPhase,
 	prompt,
 	pushLoopPhase,
+	scopedTimeoutSignal,
 	truncate,
 	untilAborted,
 } from "@veyyon/utils";
@@ -1946,10 +1947,16 @@ export async function finalizeSubagentLifecycle(args: {
 }): Promise<void> {
 	const registry = AgentRegistry.global();
 	const disposeSession = async (): Promise<void> => {
+		// scopedTimeoutSignal clears the 5s cleanup deadline the moment dispose()
+		// settles, so a bare AbortSignal.timeout timer never outlives disposal and
+		// piles up under a burst of subagent teardowns.
+		const { signal, cancel } = scopedTimeoutSignal(5000);
 		try {
-			await untilAborted(AbortSignal.timeout(5000), () => args.session.dispose());
+			await untilAborted(signal, () => args.session.dispose());
 		} catch {
 			// Ignore cleanup errors
+		} finally {
+			cancel();
 		}
 	};
 
@@ -2068,10 +2075,13 @@ export async function runSubagentFollowUpTurn(options: FollowUpTurnOptions): Pro
 	try {
 		outcome = await driveSessionToYield(session, monitor, message);
 	} finally {
+		const { signal, cancel } = scopedTimeoutSignal(5000);
 		try {
-			await untilAborted(AbortSignal.timeout(5000), () => monitor.waitForActiveSessionAbort());
+			await untilAborted(signal, () => monitor.waitForActiveSessionAbort());
 		} catch {
 			// Ignore abort cleanup timeouts; the session stays adopted either way.
+		} finally {
+			cancel();
 		}
 		unsubscribe();
 		const active = monitor.takeActiveSession();
@@ -2669,10 +2679,13 @@ export async function runSubprocess(options: ExecutorOptions): Promise<SingleRes
 				if (exitCode === 0) exitCode = 1;
 			}
 			sessionAbortController.abort();
+			const { signal: cleanupSignal, cancel: cancelCleanup } = scopedTimeoutSignal(5000);
 			try {
-				await untilAborted(AbortSignal.timeout(5000), () => monitor.waitForActiveSessionAbort());
+				await untilAborted(cleanupSignal, () => monitor.waitForActiveSessionAbort());
 			} catch {
 				// Ignore abort cleanup timeouts/errors; terminal disposal below is still best-effort.
+			} finally {
+				cancelCleanup();
 			}
 			if (unsubscribe) {
 				try {
