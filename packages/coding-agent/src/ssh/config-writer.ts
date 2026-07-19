@@ -5,7 +5,7 @@
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { atomicWriteFile, isEnoent } from "@veyyon/utils";
+import { atomicWriteFile, isEnoent, withFileLock } from "@veyyon/utils";
 
 export interface SSHHostConfig {
 	host: string;
@@ -55,6 +55,27 @@ export async function writeSSHConfigFile(filePath: string, config: SSHConfigFile
 }
 
 /**
+ * Read-modify-write an SSH config file under a cross-process lock.
+ *
+ * Every mutation (add/update/remove) funnels through here so two concurrent
+ * writers cannot both read the same base config, each apply one change, and have
+ * the last write silently drop the other's host. The lock serializes the
+ * read+mutate+write critical section across processes; the write itself is still
+ * atomic (temp file + rename), so a crash mid-write never tears the file.
+ *
+ * `mutate` runs inside the lock with the freshly re-read config and returns the
+ * next config. Duplicate/not-found checks that depend on the current on-disk
+ * state must run inside `mutate` so they see the latest committed state.
+ */
+async function mutateSSHConfigFile(filePath: string, mutate: (current: SSHConfigFile) => SSHConfigFile): Promise<void> {
+	await withFileLock(filePath, async () => {
+		const current = await readSSHConfigFile(filePath);
+		const next = mutate(current);
+		await writeSSHConfigFile(filePath, next);
+	});
+}
+
+/**
  * Validate host name.
  * @returns Error message if invalid, undefined if valid
  */
@@ -89,25 +110,21 @@ export async function addSSHHost(filePath: string, name: string, hostConfig: SSH
 		throw new Error("Host address cannot be empty");
 	}
 
-	// Read existing config
-	const existing = await readSSHConfigFile(filePath);
-
-	// Check for duplicate name
-	if (existing.hosts?.[name]) {
-		throw new Error(`Host "${name}" already exists in ${filePath}`);
-	}
-
-	// Add host
-	const updated: SSHConfigFile = {
-		...existing,
-		hosts: {
-			...existing.hosts,
-			[name]: hostConfig,
-		},
-	};
-
-	// Write back
-	await writeSSHConfigFile(filePath, updated);
+	// The duplicate check reads the current on-disk state, so it must run inside
+	// the lock: another writer may have added this name between our validation
+	// and our write.
+	await mutateSSHConfigFile(filePath, existing => {
+		if (existing.hosts?.[name]) {
+			throw new Error(`Host "${name}" already exists in ${filePath}`);
+		}
+		return {
+			...existing,
+			hosts: {
+				...existing.hosts,
+				[name]: hostConfig,
+			},
+		};
+	});
 }
 
 /**
@@ -128,20 +145,13 @@ export async function updateSSHHost(filePath: string, name: string, hostConfig: 
 		throw new Error("Host address cannot be empty");
 	}
 
-	// Read existing config
-	const existing = await readSSHConfigFile(filePath);
-
-	// Update host
-	const updated: SSHConfigFile = {
+	await mutateSSHConfigFile(filePath, existing => ({
 		...existing,
 		hosts: {
 			...existing.hosts,
 			[name]: hostConfig,
 		},
-	};
-
-	// Write back
-	await writeSSHConfigFile(filePath, updated);
+	}));
 }
 
 /**
@@ -150,23 +160,18 @@ export async function updateSSHHost(filePath: string, name: string, hostConfig: 
  * @throws Error if host doesn't exist
  */
 export async function removeSSHHost(filePath: string, name: string): Promise<void> {
-	// Read existing config
-	const existing = await readSSHConfigFile(filePath);
-
-	// Check if host exists
-	if (!existing.hosts?.[name]) {
-		throw new Error(`Host "${name}" not found in ${filePath}`);
-	}
-
-	// Remove host
-	const { [name]: _removed, ...remaining } = existing.hosts;
-	const updated: SSHConfigFile = {
-		...existing,
-		hosts: remaining,
-	};
-
-	// Write back
-	await writeSSHConfigFile(filePath, updated);
+	// The existence check reads the current on-disk state, so it must run inside
+	// the lock alongside the removal.
+	await mutateSSHConfigFile(filePath, existing => {
+		if (!existing.hosts?.[name]) {
+			throw new Error(`Host "${name}" not found in ${filePath}`);
+		}
+		const { [name]: _removed, ...remaining } = existing.hosts;
+		return {
+			...existing,
+			hosts: remaining,
+		};
+	});
 }
 
 /**
