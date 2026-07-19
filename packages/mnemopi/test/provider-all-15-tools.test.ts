@@ -155,4 +155,49 @@ describe("representative provider-compatible handlers", () => {
 		const sharedStats = await handleToolCall("mnemopi_shared_stats", {});
 		expect(sharedStats.provider).toBe("mnemopi_shared");
 	});
+
+	it("labels shared surface memories by kind and passes pre-labelled content through", async () => {
+		for (const [kind, prefix] of [
+			["preference", "Surface preference:"],
+			["correction", "Surface correction:"],
+			["identity", "Surface identity:"],
+			["meta", "Surface meta:"],
+		] as const) {
+			const res = await handleToolCall("mnemopi_shared_remember", { content: `note ${kind}`, kind });
+			expect(res.status).toBe("stored_shared");
+			expect(res.kind).toBe(kind);
+			expect(res.content_preview).toBe(`${prefix} note ${kind}`);
+		}
+
+		// Content already carrying its surface label is stored verbatim, not double-labelled.
+		const preLabelled = await handleToolCall("mnemopi_shared_remember", {
+			content: "Surface meta: already tagged",
+			kind: "meta",
+		});
+		expect(preLabelled.content_preview).toBe("Surface meta: already tagged");
+	});
+
+	it("updates and rejects unknown memories through the validate tool", async () => {
+		const stored = await handleToolCall("mnemopi_remember", { content: "Original text", source: "test" });
+		const memoryId = stored.memory_id as string;
+
+		const updated = await handleToolCall("mnemopi_validate", {
+			memory_id: memoryId,
+			action: "update",
+			new_content: "Updated text",
+			validator: "ada",
+		});
+		expect(updated.status).toBe("validation_update");
+		expect(updated.previous_content).toBe("Original text");
+		expect(updated.validator).toBe("ada");
+		const got = await handleToolCall("mnemopi_get", { memory_id: memoryId });
+		expect((got.memory as { content: string }).content).toBe("Updated text");
+
+		const missing = await handleToolCall("mnemopi_validate", {
+			memory_id: "deadbeefdeadbeef",
+			action: "update",
+			new_content: "x",
+		});
+		expect(missing.error).toBe("memory_not_found");
+	});
 });
