@@ -660,6 +660,83 @@ describe("listClaudePluginRoots", () => {
 		expect(found).toBeUndefined();
 	});
 
+	test("surfaces a warning for a malformed plugin.json and still loads default skills (Law 10)", async () => {
+		const pluginsDir = path.join(tempDir, ".claude", "plugins");
+		const pluginPath = path.join(tempDir, "plugins", "malformed-manifest");
+		const skillDir = path.join(pluginPath, "skills", "fallback-skill");
+		await fs.mkdir(pluginsDir, { recursive: true });
+		await fs.mkdir(path.join(pluginPath, ".claude-plugin"), { recursive: true });
+		await fs.mkdir(skillDir, { recursive: true });
+
+		const registry = {
+			version: 2,
+			plugins: {
+				"malformed-manifest@market": [
+					{
+						scope: "user",
+						installPath: pluginPath,
+						version: "1.0.0",
+						installedAt: "2025-01-01T00:00:00Z",
+						lastUpdated: "2025-01-01T00:00:00Z",
+					},
+				],
+			},
+		};
+		await fs.writeFile(path.join(pluginsDir, "installed_plugins.json"), JSON.stringify(registry));
+		// Truncated JSON: the file exists and the author meant to configure the
+		// plugin, but a syntax error must not be swallowed into "no manifest".
+		await fs.writeFile(path.join(pluginPath, ".claude-plugin", "plugin.json"), '{ "skills": "./custom-skills"');
+		await fs.writeFile(
+			path.join(skillDir, "SKILL.md"),
+			"---\nname: fallback-skill\ndescription: Default-dir skill\n---\nBody\n",
+		);
+
+		const result = await loadCapability<Skill>("skills", { cwd: tempDir });
+		// Loud: the parse failure is reported with the offending path.
+		const invalid = result.warnings.find(w => w.includes("Invalid JSON") && w.includes("plugin.json"));
+		expect(invalid).toBeDefined();
+		// Fail-soft: the plugin still contributes its default-dir skill.
+		expect(result.all.find(skill => skill.name === "fallback-skill")).toBeDefined();
+	});
+
+	test("surfaces a warning for a malformed marketplace.json and keeps the default skills dir (Law 10)", async () => {
+		const pluginsDir = path.join(tempDir, ".claude", "plugins");
+		const pluginPath = path.join(tempDir, "plugins", "malformed-marketplace");
+		const skillDir = path.join(pluginPath, "skills", "market-fallback-skill");
+		await fs.mkdir(pluginsDir, { recursive: true });
+		await fs.mkdir(path.join(pluginPath, ".claude-plugin"), { recursive: true });
+		await fs.mkdir(skillDir, { recursive: true });
+
+		const registry = {
+			version: 2,
+			plugins: {
+				"malformed-marketplace@market": [
+					{
+						scope: "user",
+						installPath: pluginPath,
+						version: "1.0.0",
+						installedAt: "2025-01-01T00:00:00Z",
+						lastUpdated: "2025-01-01T00:00:00Z",
+					},
+				],
+			},
+		};
+		await fs.writeFile(path.join(pluginsDir, "installed_plugins.json"), JSON.stringify(registry));
+		await fs.writeFile(path.join(pluginPath, ".claude-plugin", "plugin.json"), JSON.stringify({ name: "mm" }));
+		// Malformed marketplace.json previously defaulted silently to "does not
+		// replace fallback"; now it warns while preserving that safe default.
+		await fs.writeFile(path.join(pluginPath, "marketplace.json"), "{ plugins: [ }}}");
+		await fs.writeFile(
+			path.join(skillDir, "SKILL.md"),
+			"---\nname: market-fallback-skill\ndescription: Kept default skill\n---\nBody\n",
+		);
+
+		const result = await loadCapability<Skill>("skills", { cwd: tempDir });
+		const invalid = result.warnings.find(w => w.includes("Invalid JSON") && w.includes("marketplace.json"));
+		expect(invalid).toBeDefined();
+		expect(result.all.find(skill => skill.name === "market-fallback-skill")).toBeDefined();
+	});
+
 	test("ignores manifest slash commands directory that resolves outside plugin root", async () => {
 		const pluginsDir = path.join(tempDir, ".claude", "plugins");
 		const pluginPath = path.join(tempDir, "plugins", "manifest-commands-outside");
