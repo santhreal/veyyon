@@ -2,7 +2,7 @@ import { Database, type Statement } from "bun:sqlite";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { AsyncDrain, getHistoryDbPath, logger, NON_ALNUM_RUN_RE } from "@veyyon/utils";
-import { tableExists } from "@veyyon/utils/sqlite";
+import { escapeLike, tableExists } from "@veyyon/utils/sqlite";
 
 export interface HistoryEntry {
 	id: number;
@@ -22,12 +22,6 @@ type HistoryRow = {
 };
 
 const SQLITE_NOW_EPOCH = "CAST(strftime('%s','now') AS INTEGER)";
-
-// Escape LIKE wildcards so user input is treated as literal text.
-// Matches the `ESCAPE '\\'` clause used by substring-search statements.
-function escapeLikePattern(text: string): string {
-	return text.replace(/[\\%_]/g, "\\$&");
-}
 
 export class HistoryStorage {
 	#db: Database;
@@ -300,7 +294,7 @@ END;
 
 	#searchSubstring(tokens: string[], limit: number): HistoryRow[] {
 		const stmt = this.#getSubstringStmt(tokens.length);
-		const params: unknown[] = tokens.map(tok => `%${escapeLikePattern(tok)}%`);
+		const params: unknown[] = tokens.map(tok => `%${escapeLike(tok)}%`);
 		params.push(limit);
 		return stmt.all(...(params as [string, ...unknown[]])) as HistoryRow[];
 	}
