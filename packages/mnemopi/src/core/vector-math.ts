@@ -1,3 +1,5 @@
+import { tryParseJson } from "@veyyon/utils";
+
 export function cosineSimilarity(a: ArrayLike<number>, b: ArrayLike<number>): number {
 	const length = a.length > b.length ? a.length : b.length;
 	if (length === 0) {
@@ -86,12 +88,7 @@ export function encodeEmbeddingJson(embedding: readonly number[]): string {
  */
 export function decodeEmbeddingJson(raw: unknown): number[] | null {
 	if (typeof raw !== "string" || raw.length === 0) return null;
-	let parsed: unknown;
-	try {
-		parsed = JSON.parse(raw);
-	} catch {
-		return null;
-	}
+	const parsed = tryParseJson<unknown>(raw);
 	if (!Array.isArray(parsed) || parsed.length === 0) return null;
 	const out: number[] = new Array(parsed.length);
 	for (let i = 0; i < parsed.length; i++) {

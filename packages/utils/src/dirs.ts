@@ -17,6 +17,7 @@ import * as path from "node:path";
 import { YAML } from "bun";
 import { engines, version } from "../package.json" with { type: "json" };
 import { atomicWriteFileSync } from "./atomic-write";
+import { withFileLockSync } from "./file-lock";
 import { isUuid } from "./regex";
 import { errorMessage, isRecord } from "./type-guards";
 
@@ -253,47 +254,57 @@ export function resolveGlobalDefaultProfile(): string | undefined {
 export function writeGlobalDefaultProfile(profile: string | undefined): string {
 	const normalized = normalizeProfileName(profile);
 	const root = getBaseConfigRoot();
-	// Reuse an existing global config file (either accepted name); default to
-	// the canonical filename for a fresh write.
-	let filePath = path.join(root, MAIN_CONFIG_FILENAMES[0]);
-	let existing: Record<string, unknown> = {};
-	for (const filename of MAIN_CONFIG_FILENAMES) {
-		const candidate = path.join(root, filename);
-		let text: string;
-		try {
-			text = fs.readFileSync(candidate, "utf8");
-		} catch {
-			continue;
-		}
-		let parsed: unknown;
-		try {
-			parsed = YAML.parse(text);
-		} catch (error) {
-			throw new Error(
-				`Global config ${candidate} is not valid YAML: ${errorMessage(error)}. ` +
-					`Fix or remove the file before changing defaultProfile.`,
-			);
-		}
-		if (isRecord(parsed)) {
-			existing = parsed as Record<string, unknown>;
-		}
-		filePath = candidate;
-		break;
-	}
-	if (normalized === undefined) delete existing.defaultProfile;
-	else existing.defaultProfile = normalized;
 	fs.mkdirSync(root, { recursive: true });
-	if (Object.keys(existing).length === 0) {
-		// Nothing left — remove the file rather than leaving an empty stub.
-		try {
-			fs.unlinkSync(filePath);
-		} catch {}
+	// The canonical config path is the stable lock target regardless of which
+	// filename actually exists on disk, so every writer serializes on one lock.
+	const canonicalPath = path.join(root, MAIN_CONFIG_FILENAMES[0]);
+	// Serialize the whole read-modify-write across processes. Without this a
+	// concurrent writeGlobalDefaultProfile (or an in-flight edit to a
+	// cross-profile key) would read a stale snapshot and clobber the other
+	// writer's change. The lock directory contends with #saveNow's async lock
+	// too, but that guards a different per-profile file, so they never collide.
+	return withFileLockSync(canonicalPath, () => {
+		// Reuse an existing global config file (either accepted name); default to
+		// the canonical filename for a fresh write.
+		let filePath = canonicalPath;
+		let existing: Record<string, unknown> = {};
+		for (const filename of MAIN_CONFIG_FILENAMES) {
+			const candidate = path.join(root, filename);
+			let text: string;
+			try {
+				text = fs.readFileSync(candidate, "utf8");
+			} catch {
+				continue;
+			}
+			let parsed: unknown;
+			try {
+				parsed = YAML.parse(text);
+			} catch (error) {
+				throw new Error(
+					`Global config ${candidate} is not valid YAML: ${errorMessage(error)}. ` +
+						`Fix or remove the file before changing defaultProfile.`,
+				);
+			}
+			if (isRecord(parsed)) {
+				existing = parsed as Record<string, unknown>;
+			}
+			filePath = candidate;
+			break;
+		}
+		if (normalized === undefined) delete existing.defaultProfile;
+		else existing.defaultProfile = normalized;
+		if (Object.keys(existing).length === 0) {
+			// Nothing left — remove the file rather than leaving an empty stub.
+			try {
+				fs.unlinkSync(filePath);
+			} catch {}
+			return filePath;
+		}
+		// Atomic: an interrupted write here would corrupt the pointer to the
+		// active profile (defaultProfile) plus any cross-profile keys.
+		atomicWriteFileSync(filePath, YAML.stringify(existing, null, 2));
 		return filePath;
-	}
-	// Atomic: an interrupted write here would corrupt the pointer to the active
-	// profile (defaultProfile) plus any cross-profile keys.
-	atomicWriteFileSync(filePath, YAML.stringify(existing, null, 2));
-	return filePath;
+	});
 }
 
 /** Module-load-safe variant of {@link resolveGlobalDefaultProfile}: a broken global config must not crash a bare import; the CLI re-validates loudly. */

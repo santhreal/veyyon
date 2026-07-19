@@ -98,6 +98,28 @@ describe("global defaultProfile config", () => {
 		fs.writeFileSync(file, "defaultProfile: 'bad/name'\n");
 		expect(() => resolveGlobalDefaultProfile()).toThrow(file);
 	});
+
+	it("leaves no lock directory behind after a write", () => {
+		const file = path.join(getGlobalConfigRootDir(), "config.yml");
+		writeGlobalDefaultProfile("work");
+		// The cross-process lock is released inside the critical section, so no
+		// `.lock` directory may linger to block the next writer.
+		expect(fs.existsSync(`${file}.lock`)).toBe(false);
+	});
+
+	it("reaps a stale lock left by a dead writer and still records the profile", () => {
+		const file = path.join(getGlobalConfigRootDir(), "config.yml");
+		const lockPath = `${file}.lock`;
+		// Simulate a crashed writer: a lock dir owned by a pid that is not alive.
+		// Pid 0x7fffffff is not a running process, so the reaper clears it.
+		fs.mkdirSync(getGlobalConfigRootDir(), { recursive: true });
+		fs.mkdirSync(lockPath);
+		fs.writeFileSync(path.join(lockPath, "info"), JSON.stringify({ pid: 0x7fffffff, timestamp: 1, token: "dead" }));
+
+		writeGlobalDefaultProfile("work");
+		expect(resolveGlobalDefaultProfile()).toBe("work");
+		expect(fs.existsSync(lockPath)).toBe(false);
+	});
 });
 
 describe("startup profile resolution", () => {
