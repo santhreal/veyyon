@@ -6,6 +6,7 @@ import {
 	formatApprovalPrompt,
 	requiresApproval,
 	resolveApproval,
+	type ToolTier,
 	truncateForPrompt,
 } from "@veyyon/coding-agent/tools/approval";
 import { BashTool } from "@veyyon/coding-agent/tools/bash";
@@ -236,5 +237,128 @@ describe("tool-owned dynamic approval declarations", () => {
 		expect(LSP_READONLY_ACTIONS.has("rename")).toBe(false);
 		expect(DEBUG_READONLY_ACTIONS.has("variables")).toBe(true);
 		expect(DEBUG_READONLY_ACTIONS.has("continue")).toBe(false);
+	});
+});
+
+/**
+ * HSL-4: exhaustive fail-closed sweep of the approval precedence order. Approval
+ * is a security control, so a single inverted branch that turns a `deny` into an
+ * `allow`/`prompt` — or lets a bypass punch through a hard denial — is a
+ * fail-open bug. These sweeps assert the two invariants that must hold across
+ * every combination of mode, tool override, and bypass:
+ *
+ *   1. An explicit user `deny` always resolves to `deny` and always throws in
+ *      `requiresApproval`, no matter the autonomy level, tool override, or
+ *      `bypassAllApprovals`.
+ *   2. `bypassAllApprovals` only ever upgrades `prompt` -> `allow`; it never
+ *      turns a `deny` into anything runnable, and never overrides a plan-mode
+ *      mutation block.
+ */
+describe("resolveApproval precedence — fail-closed matrix (HSL-4)", () => {
+	const MODES: ApprovalMode[] = ["plan", "ask", "auto-edit", "yolo", "always-ask", "write"];
+	const TIERS: ToolTier[] = ["read", "write", "exec"];
+	const OVERRIDES = [false, true] as const;
+	const BYPASS = [false, true] as const;
+
+	it("an explicit user deny is honored in every mode, tier, override, and bypass combination", () => {
+		const survived: string[] = [];
+		for (const mode of MODES) {
+			for (const tier of TIERS) {
+				for (const override of OVERRIDES) {
+					for (const bypass of BYPASS) {
+						const subject = tool("locked_tool", override ? { tier, override: true } : tier);
+						const userConfig = { locked_tool: "deny" };
+						const resolved = resolveApproval(subject, {}, mode, userConfig, {
+							bypassAllApprovals: bypass,
+						});
+						if (resolved.policy !== "deny") {
+							survived.push(
+								`mode=${mode} tier=${tier} override=${override} bypass=${bypass} -> ${resolved.policy}`,
+							);
+						}
+						// requiresApproval must throw on the same deny — never return { required: false }.
+						let threw = false;
+						try {
+							requiresApproval(subject, {}, mode, userConfig, { bypassAllApprovals: bypass });
+						} catch {
+							threw = true;
+						}
+						if (!threw) {
+							survived.push(
+								`mode=${mode} tier=${tier} override=${override} bypass=${bypass} -> requiresApproval did not throw`,
+							);
+						}
+					}
+				}
+			}
+		}
+		expect(survived).toEqual([]);
+	});
+
+	it("bypass upgrades prompt to allow but never manufactures allow from a deny", () => {
+		// Every case that resolves to prompt WITHOUT bypass must resolve to allow
+		// WITH bypass; every case that resolves to deny WITHOUT bypass must stay
+		// deny WITH bypass. No policy ever moves from deny to prompt/allow.
+		const wrong: string[] = [];
+		const userPolicies: Array<Record<string, string> | undefined> = [
+			undefined,
+			{ p_tool: "deny" },
+			{ p_tool: "prompt" },
+			{ p_tool: "allow" },
+		];
+		for (const mode of MODES) {
+			for (const tier of TIERS) {
+				for (const override of OVERRIDES) {
+					for (const userConfig of userPolicies) {
+						const subject = tool("p_tool", override ? { tier, override: true } : tier);
+						const withoutBypass = resolveApproval(subject, {}, mode, userConfig, { bypassAllApprovals: false });
+						const withBypass = resolveApproval(subject, {}, mode, userConfig, { bypassAllApprovals: true });
+						const label = `mode=${mode} tier=${tier} override=${override} user=${JSON.stringify(userConfig)}`;
+						if (withoutBypass.policy === "deny" && withBypass.policy !== "deny") {
+							wrong.push(`${label}: deny leaked to ${withBypass.policy} under bypass`);
+						}
+						if (withoutBypass.policy === "prompt" && withBypass.policy !== "allow") {
+							wrong.push(`${label}: prompt did not upgrade to allow (got ${withBypass.policy})`);
+						}
+						if (withoutBypass.policy === "allow" && withBypass.policy !== "allow") {
+							wrong.push(`${label}: allow changed to ${withBypass.policy} under bypass`);
+						}
+					}
+				}
+			}
+		}
+		expect(wrong).toEqual([]);
+	});
+
+	it("a plan-mode mutation block denies write/exec and bypass never punches through it", () => {
+		for (const tier of ["write", "exec"] as const) {
+			const subject = tool(`${tier}_mut`, tier);
+			// Plan mode active but the tool is not a plan-file write: mutation blocked.
+			const blocked = resolveApproval(subject, {}, "plan", {}, { planModeActive: false });
+			expect(blocked.policy).toBe("deny");
+			const withBypass = resolveApproval(
+				subject,
+				{},
+				"plan",
+				{},
+				{
+					planModeActive: false,
+					bypassAllApprovals: true,
+				},
+			);
+			expect(withBypass.policy).toBe("deny");
+		}
+	});
+
+	it("plan autonomy allows read tier but denies unescorted mutations", () => {
+		expect(resolveApproval(tool("r", "read"), {}, "plan").policy).toBe("allow");
+		expect(resolveApproval(tool("w", "write"), {}, "plan").policy).toBe("deny");
+		expect(resolveApproval(tool("x", "exec"), {}, "plan").policy).toBe("deny");
+		// planModeActive lifts the hard write-tier block to a prompt (not an
+		// auto-allow): plan autonomy still only auto-approves read tier, so the
+		// write goes to the user, and the plan-file guard runs at execute.
+		expect(resolveApproval(tool("w", "write"), {}, "plan", {}, { planModeActive: true }).policy).toBe("prompt");
+		// exec is still hard-denied even with planModeActive.
+		expect(resolveApproval(tool("x", "exec"), {}, "plan", {}, { planModeActive: true }).policy).toBe("deny");
 	});
 });
