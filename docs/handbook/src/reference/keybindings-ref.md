@@ -21,7 +21,11 @@ Quick lookup for the default Veyyon TUI shortcuts. For the full guide on customi
 | `esc` | Interrupt the running turn |
 | `alt-,` or `shift-down` | Decrease reasoning effort |
 | `alt-.` or `shift-up` | Increase reasoning effort |
+| `shift-tab` | Cycle reasoning effort (`app.thinking.cycle`) |
+| `ctrl-t` | Toggle reasoning on and off (`app.thinking.toggle`) |
 | `alt-up` or `shift-left` | Edit the most recently queued message |
+
+You can also set the effort by name with the `/thinking` command (its alias is `/effort`). With no argument it opens a picker; `/thinking high` sets the level directly. The choice persists with the active profile.
 
 ## Composer
 

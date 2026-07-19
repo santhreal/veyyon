@@ -282,7 +282,9 @@ Every key below is defined in the settings schema; `veyyon config list` shows th
 
 ### Models
 
-`modelRoles`, `modelTags`, and `cycleOrder` work together. Role values may carry a thinking suffix (`:minimal`, `:low`, `:medium`, `:high`, `:xhigh`, `:max`).
+`modelRoles`, `modelTags`, and `cycleOrder` work together. Role values may carry a thinking suffix (`:minimal`, `:low`, `:medium`, `:high`, `:xhigh`, `:max`). The same suffix works on `subagent.model` and `compaction.model`, so any model slot can run at a chosen effort.
+
+In the settings model pickers (`/settings`, or `/model` for the interactive model), picking a model that supports thinking efforts opens a second step where you choose the effort. The choice is stored as the `:level` suffix on that slot's selector and persists with the active profile. A model with no thinking efforts skips the step and stores the bare selector. Choosing the first row, `(model default thinking)`, stores no suffix and lets the model use its own default. The settings rows show a stored effort as a readable ` · high` rather than the raw `:high` token. To change the effort of the model you are talking to, use the `/thinking` command (its alias is `/effort`), or cycle it with Shift+Tab and toggle it with Ctrl+T.
 
 The **interactive** model (main conversation) is persisted as **`modelRoles.default`**. That key is a legacy storage name: it is hidden from role pickers and stripped from `cycleOrder` on load. Selectable built-in roles: `smol`, `slow`, `vision`, `plan`, `designer`, `commit`, `tiny`, `task`, `advisor`.
 
@@ -301,10 +303,10 @@ cycleOrder:
   - slow
 
 subagent:
-  model: deepseek/deepseek-chat          # optional; overrides modelRoles.task when set
+  model: deepseek/deepseek-chat:high     # optional; overrides modelRoles.task when set; :effort optional
 
 compaction:
-  model: openai/gpt-5-mini               # optional; else inherits interactive
+  model: openai/gpt-5-mini               # optional; else inherits interactive; may carry :effort
 
 modelProviderOrder:
   - anthropic
@@ -320,8 +322,8 @@ enabledModels:
 | `modelTags` | record | `{}` | Custom role/tag metadata; can introduce additional roles. |
 | `modelProviderOrder` | array | `[]` | Preferred provider order when a model id is ambiguous. |
 | `cycleOrder` | array | `["smol","slow"]` | Roles cycled by the model switcher (`app.model.cycleForward`, often Ctrl+P). The entry `default` is dropped on load. |
-| `subagent.model` | string | unset | Task subagent model; unset inherits interactive; when set overrides `modelRoles.task`. |
-| `compaction.model` | string | unset | Compaction model; unset inherits interactive. |
+| `subagent.model` | string | unset | Task subagent model; unset inherits interactive; when set overrides `modelRoles.task`. May carry a `:effort` suffix (an explicit suffix wins over the agent's own default). |
+| `compaction.model` | string | unset | Compaction model; unset inherits interactive. May carry a `:effort` suffix, applied on every compaction pass. |
 | `enabledModels` | array | `[]` | Allow-list of models; supports [path-scoped entries](#path-scoped-arrays). Empty means all available models. |
 | `disabledProviders` | array | `[]` | Disabled model/discovery providers; supports path-scoped entries. See [above](#provider-and-source-disabling). |
 | `includeModelInPrompt` | boolean | `true` | Include the active model name in the system prompt. |
