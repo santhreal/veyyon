@@ -253,7 +253,7 @@ function normalizeAnthropicBaseUrl(baseUrl: string | undefined, fallback: string
 	if (!value) {
 		return fallback;
 	}
-	return value.endsWith("/") ? value.slice(0, -1) : value;
+	return trimTrailingSlashes(value);
 }
 
 function toAnthropicDiscoveryBaseUrl(baseUrl: string): string {
@@ -265,7 +265,7 @@ function normalizeOllamaBaseUrl(baseUrl?: string): string {
 	if (!value) {
 		return "http://127.0.0.1:11434/v1";
 	}
-	const trimmed = value.endsWith("/") ? value.slice(0, -1) : value;
+	const trimmed = trimTrailingSlashes(value);
 	return trimmed.endsWith("/v1") ? trimmed : `${trimmed}/v1`;
 }
 
@@ -2273,7 +2273,7 @@ function normalizeZenMuxOpenAiBaseUrl(baseUrl?: string): string {
 	if (!value) {
 		return ZENMUX_OPENAI_BASE_URL;
 	}
-	const normalized = value.endsWith("/") ? value.slice(0, -1) : value;
+	const normalized = trimTrailingSlashes(value);
 	if (normalized.endsWith("/api/anthropic")) {
 		return normalized.replace("/api/anthropic", "/api/v1");
 	}
@@ -2576,7 +2576,7 @@ const LM_STUDIO_NATIVE_METADATA_TIMEOUT_MS = 250;
 
 function toLmStudioNativeBaseUrl(baseUrl: string): string {
 	const trimmed = baseUrl.trim();
-	const normalized = trimmed.endsWith("/") ? trimmed.slice(0, -1) : trimmed;
+	const normalized = trimTrailingSlashes(trimmed);
 	return normalized.endsWith("/v1") ? normalized.slice(0, -3) : normalized;
 }
 
@@ -3266,7 +3266,7 @@ export function normalizeLiteLLMManagementBaseUrl(baseUrl: string): string {
 		const path = trimTrailingSlashes(parsed.pathname);
 		parsed.pathname = path.endsWith("/v1") ? path.slice(0, -3) || "/" : path || "/";
 		const normalized = `${parsed.protocol}//${parsed.host}${parsed.pathname}`;
-		return normalized.endsWith("/") ? normalized.slice(0, -1) : normalized;
+		return trimTrailingSlashes(normalized);
 	} catch {
 		return trimmed.replace(/\/v1$/, "");
 	}
@@ -3274,7 +3274,7 @@ export function normalizeLiteLLMManagementBaseUrl(baseUrl: string): string {
 
 function normalizeLiteLLMRuntimeBaseUrl(baseUrl: string): string {
 	const trimmed = baseUrl.trim();
-	return trimmed.endsWith("/") ? trimmed.slice(0, -1) : trimmed;
+	return trimTrailingSlashes(trimmed);
 }
 
 const LITELLM_RESELLER_USAGE_SUFFIX = /\s+\(\d+(?:\.\d+)?[x×] usage\)$/i;

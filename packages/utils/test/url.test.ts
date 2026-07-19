@@ -38,6 +38,15 @@ const LOCAL_DEF = /function\s+trimTrailingSlash(?:es)?\s*\(/;
 const INLINE_STRIP_GRANDFATHERED = new Set<string>([]);
 const INLINE_STRIP = /replace\(\/\\\/\+\$\//;
 
+// Strip-ONE `X.endsWith("/") ? X.slice(0, -1) : X` variants. On a base URL these
+// diverge from strip-all on doubled slashes ("http://x//"), so every URL
+// normalizer was converted to trimTrailingSlashes. The only two survivors are
+// dir-marker sites where a single trailing slash is a filesystem-path separator,
+// not a URL, and the doubled-slash case never arises: keep them local. Any NEW
+// strip-one URL normalizer fails this lock — call trimTrailingSlashes instead.
+const STRIPONE_GRANDFATHERED = new Set<string>(["tui/src/autocomplete.ts", "utils/src/path-tree.ts"]);
+const STRIPONE = /endsWith\("\/"\) \? \w+(?:\.\w+)*\.slice\(0, ?-1\)/;
+
 async function walk(dir: string, out: string[]): Promise<void> {
 	for (const entry of await readdir(dir, { withFileTypes: true })) {
 		const full = path.join(dir, entry.name);
@@ -55,6 +64,8 @@ describe("trimTrailingSlashes source lock", () => {
 		const offenders: string[] = [];
 		const inlineOffenders: string[] = [];
 		const inlineSeen = new Set<string>();
+		const striponeOffenders: string[] = [];
+		const striponeSeen = new Set<string>();
 		for (const pkg of await readdir(PACKAGES_DIR, { withFileTypes: true })) {
 			if (!pkg.isDirectory()) continue;
 			const files: string[] = [];
@@ -72,14 +83,25 @@ describe("trimTrailingSlashes source lock", () => {
 					inlineSeen.add(rel);
 					if (!INLINE_STRIP_GRANDFATHERED.has(rel)) inlineOffenders.push(rel);
 				}
+				if (STRIPONE.test(text)) {
+					striponeSeen.add(rel);
+					if (!STRIPONE_GRANDFATHERED.has(rel)) striponeOffenders.push(rel);
+				}
 			}
 		}
-		const cleared = [...INLINE_STRIP_GRANDFATHERED].filter(rel => !inlineSeen.has(rel));
+		const cleared = [
+			...[...INLINE_STRIP_GRANDFATHERED].filter(rel => !inlineSeen.has(rel)),
+			...[...STRIPONE_GRANDFATHERED].filter(rel => !striponeSeen.has(rel)),
+		];
 		expect(offenders, "local trimTrailingSlash copies — import from @veyyon/utils instead").toEqual([]);
 		expect(
 			inlineOffenders,
 			"new inline trailing-slash strip — import trimTrailingSlashes from @veyyon/utils instead",
 		).toEqual([]);
-		expect(cleared, "grandfathered entries whose inline strip is gone — remove them from the list").toEqual([]);
+		expect(
+			striponeOffenders,
+			"new strip-one `endsWith('/') ? slice(0,-1)` URL normalizer — call trimTrailingSlashes instead",
+		).toEqual([]);
+		expect(cleared, "grandfathered entries whose strip is gone — remove them from the list").toEqual([]);
 	});
 });

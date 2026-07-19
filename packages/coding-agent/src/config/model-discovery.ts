@@ -880,7 +880,7 @@ function toLlamaCppNativeBaseUrl(baseUrl: string): string {
 		const trimmedPath = trimTrailingSlashes(parsed.pathname);
 		parsed.pathname = trimmedPath.endsWith("/v1") ? trimmedPath.slice(0, -3) || "/" : trimmedPath || "/";
 		const normalized = `${parsed.protocol}//${parsed.host}${parsed.pathname}`;
-		return normalized.endsWith("/") ? normalized.slice(0, -1) : normalized;
+		return trimTrailingSlashes(normalized);
 	} catch {
 		return baseUrl.endsWith("/v1") ? baseUrl.slice(0, -3) : baseUrl;
 	}

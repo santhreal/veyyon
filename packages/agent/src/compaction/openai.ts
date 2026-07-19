@@ -123,7 +123,7 @@ function resolveOpenAiCompactEndpoint(model: Model): string {
 
 	const defaultBase = "https://api.openai.com/v1";
 	const rawBase = model.baseUrl && model.baseUrl.length > 0 ? model.baseUrl : defaultBase;
-	const normalizedBase = rawBase.endsWith("/") ? rawBase.slice(0, -1) : rawBase;
+	const normalizedBase = trimTrailingSlashes(rawBase);
 	if (normalizedBase.endsWith("/v1")) return `${normalizedBase}/responses/compact`;
 	return `${normalizedBase}/v1/responses/compact`;
 }
@@ -165,7 +165,7 @@ function resolveOpenAiCompactModel(model: Model): string {
 
 function resolveOpenAiCodexCompactEndpoint(baseUrl: string | undefined): string {
 	const rawBase = baseUrl && baseUrl.length > 0 ? baseUrl : CODEX_BASE_URL;
-	const normalizedBase = rawBase.endsWith("/") ? rawBase.slice(0, -1) : rawBase;
+	const normalizedBase = trimTrailingSlashes(rawBase);
 	if (/\/codex(?:\/v\d+)?$/.test(normalizedBase)) return `${normalizedBase}/responses/compact`;
 	return `${normalizedBase}/codex/responses/compact`;
 }

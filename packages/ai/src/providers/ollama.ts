@@ -1,4 +1,4 @@
-import { fetchWithRetry, parseStreamingJson } from "@veyyon/utils";
+import { fetchWithRetry, parseStreamingJson, trimTrailingSlashes } from "@veyyon/utils";
 import * as AIError from "../error";
 import { getEnvApiKey } from "../stream";
 import type {
@@ -99,7 +99,7 @@ function normalizeBaseUrl(baseUrl?: string): string {
 	if (!value) {
 		return "https://ollama.com";
 	}
-	const trimmed = value.endsWith("/") ? value.slice(0, -1) : value;
+	const trimmed = trimTrailingSlashes(value);
 	return trimmed.endsWith("/api") ? trimmed.slice(0, -4) : trimmed;
 }
 
