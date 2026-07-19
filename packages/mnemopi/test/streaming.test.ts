@@ -86,6 +86,37 @@ describe("MemoryStream", () => {
 		await expect(next).resolves.toMatchObject({ value: { memoryId: "hit" }, done: false });
 		await iterator.return();
 	});
+
+	it("stops delivering to a listener after off and offAny remove it", () => {
+		const stream = new MemoryStream();
+		const seen: string[] = [];
+		const typed = (event: MemoryEvent): void => {
+			seen.push(`typed:${event.memoryId}`);
+		};
+		const any = (event: MemoryEvent): void => {
+			seen.push(`any:${event.memoryId}`);
+		};
+		stream.on(EventType.MEMORY_ADDED, typed);
+		stream.onAny(any);
+		stream.emit(new MemoryEvent({ event_type: EventType.MEMORY_ADDED, memory_id: "1" }));
+
+		stream.off(EventType.MEMORY_ADDED, typed);
+		stream.offAny(any);
+		stream.emit(new MemoryEvent({ event_type: EventType.MEMORY_ADDED, memory_id: "2" }));
+
+		expect(seen).toEqual(["typed:1", "any:1"]);
+	});
+
+	it("resolves a parked next() as done when the iterator returns", async () => {
+		const stream = new MemoryStream();
+		const iterator = stream.listen();
+		const pending = iterator.next(); // No buffered event, so this parks a waiter.
+
+		const closed = await iterator.return();
+		expect(closed).toEqual({ value: undefined, done: true });
+		await expect(pending).resolves.toEqual({ value: undefined, done: true });
+		expect(iterator[Symbol.asyncIterator]()).toBe(iterator);
+	});
 });
 
 describe("DeltaSync", () => {
@@ -123,5 +154,26 @@ describe("DeltaSync", () => {
 			last_rowid: 42,
 		});
 		expect(JSON.parse(checkpoint.toJson()).last_rowid).toBe(42);
+	});
+
+	it("derives the checkpoint directory from the host db path when none is supplied", () => {
+		const db = new Database(":memory:");
+		try {
+			// An in-memory host falls back to a cwd-relative sync directory.
+			const memSync = new DeltaSync({ db, dbPath: ":memory:" });
+			expect(memSync.checkpointDir).toBe(join(process.cwd(), ".mnemopi-sync"));
+			rmSync(memSync.checkpointDir, { recursive: true, force: true });
+
+			// A real db path derives a sibling sync_checkpoints directory.
+			const root = mkdtempSync(join(tmpdir(), "mnemopi-cproot-"));
+			try {
+				const fileSync = new DeltaSync({ db, dbPath: join(root, "mem.db") });
+				expect(fileSync.checkpointDir).toBe(join(root, "sync_checkpoints"));
+			} finally {
+				rmSync(root, { recursive: true, force: true });
+			}
+		} finally {
+			db.close();
+		}
 	});
 });
