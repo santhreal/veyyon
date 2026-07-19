@@ -29,3 +29,18 @@ export function clamp(value: number, min: number, max: number): number {
 export function clamp01(value: number): number {
 	return clamp(value, 0, 1);
 }
+
+/**
+ * Clamp `value` into `[low, high]`, but when the range is empty (`high < low`)
+ * the LOW bound wins. This is the textbook `Math.max(low, Math.min(value, high))`
+ * form, and it differs from {@link clamp} only in that degenerate case: an index
+ * clamped into a list of length zero (`low = 0`, `high = len - 1 = -1`) lands on
+ * `0`, not on the inverted `-1` that {@link clamp} would return. Use this for
+ * index, offset, and scroll math where an empty range must fall to the low bound
+ * rather than below it. A non-finite `value` also returns `low`, so a broken
+ * upstream computation fails to a defined bound instead of propagating `NaN`.
+ */
+export function clampLow(value: number, low: number, high: number): number {
+	if (!Number.isFinite(value)) return low;
+	return Math.max(low, Math.min(value, high));
+}

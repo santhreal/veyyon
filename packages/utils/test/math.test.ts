@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import { readdir, readFile } from "node:fs/promises";
 import * as path from "node:path";
-import { clamp, clamp01 } from "../src/math";
+import { clamp, clamp01, clampLow } from "../src/math";
 
 describe("clamp", () => {
 	it("returns the value when it is inside the range", () => {
@@ -49,6 +49,31 @@ describe("clamp01", () => {
 	});
 });
 
+describe("clampLow", () => {
+	it("behaves like clamp when the range is non-empty", () => {
+		expect(clampLow(5, 0, 10)).toBe(5);
+		expect(clampLow(-3, 0, 10)).toBe(0);
+		expect(clampLow(42, 0, 10)).toBe(10);
+		expect(clampLow(-1, -5, -2)).toBe(-2);
+	});
+
+	it("prefers the low bound when the range is empty (high < low) — the divergence from clamp", () => {
+		// The canonical index case: clamping into a list of length zero
+		// (low 0, high len-1 = -1). clampLow returns 0 (a usable floor); clamp
+		// would return the inverted -1. This is why index/offset/scroll math uses
+		// the floor-first form.
+		expect(clampLow(3, 0, -1)).toBe(0);
+		expect(clamp(3, 0, -1)).toBe(-1);
+		expect(clampLow(-5, 2, 1)).toBe(2);
+	});
+
+	it("maps non-finite inputs to the low bound", () => {
+		expect(clampLow(Number.NaN, 2, 8)).toBe(2);
+		expect(clampLow(Number.POSITIVE_INFINITY, 2, 8)).toBe(2);
+		expect(clampLow(Number.NEGATIVE_INFINITY, 2, 8)).toBe(2);
+	});
+});
+
 // Source lock: clamp and clamp01 have exactly ONE owner, packages/utils/src/math.ts.
 // Hand-rolled copies drifted on NaN handling before they were folded onto this
 // owner: local clamp01 copies (coding-agent/sun.ts, mnemopi helpers.ts +
@@ -61,6 +86,7 @@ const CLAMP01_DEF = /function\s+clamp01\s*\(/;
 // `clamp\s*\(` matches `function clamp(` but not `clamp01(` (which is `clamp` + `01`)
 // nor `clampFoo(`, so a second same-name owner is caught without false positives.
 const CLAMP_DEF = /function\s+clamp\s*\(/;
+const CLAMPLOW_DEF = /function\s+clampLow\s*\(/;
 
 async function walkTsSources(dir: string, out: string[], skipModes = false): Promise<void> {
 	let entries: import("node:fs").Dirent[];
@@ -153,7 +179,7 @@ describe("clamp source lock", () => {
 			const rel = path.relative(PACKAGES_DIR, file).replaceAll(path.sep, "/");
 			if (rel === OWNER) continue;
 			const body = await readFile(file, "utf8");
-			if (CLAMP01_DEF.test(body) || CLAMP_DEF.test(body)) defOffenders.push(rel);
+			if (CLAMP01_DEF.test(body) || CLAMP_DEF.test(body) || CLAMPLOW_DEF.test(body)) defOffenders.push(rel);
 		}
 		expect(defOffenders, "local clamp/clamp01 copies — import them from @veyyon/utils instead").toEqual([]);
 

@@ -5,6 +5,7 @@ import type { MouseRoutable, SgrMouseEvent } from "../mouse";
 import type { Component } from "../tui";
 import {
 	clamp,
+	clampLow,
 	Ellipsis,
 	padding,
 	sanitizeSingleLine,
@@ -610,7 +611,7 @@ export class SettingsList implements Component {
 				}
 			}
 			const computeStart = (vh: number) =>
-				Math.max(0, Math.min(this.#selectedIndex - Math.floor(vh / 2), this.#filteredItems.length - vh));
+				clampLow(this.#selectedIndex - Math.floor(vh / 2), 0, this.#filteredItems.length - vh);
 			let viewportHeight = clamp(this.#maxVisible - inlineDesc.length, 1, this.#filteredItems.length);
 			let startIndex = computeStart(viewportHeight);
 			// Sticky header: once scrolling carries the active section's heading

@@ -34,6 +34,7 @@ import {
 	TERMINAL,
 } from "./terminal-capabilities";
 import {
+	clampLow,
 	Ellipsis,
 	extractSegments,
 	normalizeTerminalOutput,
@@ -1168,7 +1169,7 @@ export class TUI extends Container {
 				const liveRegionStart = getNativeScrollbackLiveRegionStart(child);
 				if (liveRegionStart !== undefined) {
 					liveLocalStart = Number.isFinite(liveRegionStart)
-						? Math.max(0, Math.min(childLines.length, Math.trunc(liveRegionStart)))
+						? clampLow(Math.trunc(liveRegionStart), 0, childLines.length)
 						: childLines.length;
 				}
 				// Consume the stability report unconditionally for implementers:
@@ -1784,7 +1785,7 @@ export class TUI extends Container {
 		if (this.#previousFrameLength > 0) {
 			const targetRow = this.#previousFrameLength;
 			const viewportBottom = this.#windowTopRow + this.terminal.rows - 1;
-			const clampedCursorRow = Math.max(this.#windowTopRow, Math.min(this.#hardwareCursorRow, viewportBottom));
+			const clampedCursorRow = clampLow(this.#hardwareCursorRow, this.#windowTopRow, viewportBottom);
 			const moveTargetRow = Math.min(targetRow, viewportBottom);
 			const lineDiff = moveTargetRow - clampedCursorRow;
 			if (lineDiff > 0) {
@@ -2024,7 +2025,7 @@ export class TUI extends Container {
 			return;
 		}
 
-		const currentScreenRow = Math.max(0, Math.min(height - 1, this.#hardwareCursorRow - windowTop));
+		const currentScreenRow = clampLow(this.#hardwareCursorRow - windowTop, 0, height - 1);
 		const targetScreenRow = screenStart + firstChanged;
 		const rowDelta = targetScreenRow - currentScreenRow;
 		let buffer = this.#paintBeginSequence;
@@ -2411,11 +2412,11 @@ export class TUI extends Container {
 			width = Math.max(width, opt.minWidth);
 		}
 		// Clamp to available space
-		width = Math.max(1, Math.min(width, availWidth));
+		width = clampLow(width, 1, availWidth);
 
 		// === Resolve maxHeight ===
 		let maxHeight = parseSizeValue(opt.maxHeight, termHeight) ?? availHeight;
-		maxHeight = Math.max(1, Math.min(maxHeight, availHeight));
+		maxHeight = clampLow(maxHeight, 1, availHeight);
 
 		// Effective overlay height: maxHeight is always resolved (defaults to
 		// availHeight above), so the overlay is unconditionally clamped to fit.
@@ -2474,8 +2475,8 @@ export class TUI extends Container {
 		if (opt.offsetX !== undefined) col += opt.offsetX;
 
 		// Clamp to terminal bounds (respecting margins)
-		row = Math.max(marginTop, Math.min(row, termHeight - marginBottom - effectiveHeight));
-		col = Math.max(marginLeft, Math.min(col, termWidth - marginRight - width));
+		row = clampLow(row, marginTop, termHeight - marginBottom - effectiveHeight);
+		col = clampLow(col, marginLeft, termWidth - marginRight - width);
 
 		return { width, row, col, maxHeight };
 	}
@@ -2829,7 +2830,7 @@ export class TUI extends Container {
 		// #committedPrefixAuditRows). The whole frame is final when the root
 		// reports no seam (shell semantics).
 		const frameLength = rawFrame.length;
-		const finalBoundary = Math.max(0, Math.min(frameLength, liveRegionStart ?? frameLength));
+		const finalBoundary = clampLow(liveRegionStart ?? frameLength, 0, frameLength);
 
 		// 2. Transition state captured before any emitter runs.
 		const prevWindowTop = this.#windowTopRow;
@@ -3360,7 +3361,7 @@ export class TUI extends Container {
 	): HardwareCursorState | null {
 		if (!cursorPos || totalLines <= 0) return null;
 		return {
-			row: Math.max(0, Math.min(cursorPos.row, totalLines - 1)),
+			row: clampLow(cursorPos.row, 0, totalLines - 1),
 			col: Math.max(0, cursorPos.col),
 			visible: this.#showHardwareCursor,
 		};
@@ -3528,7 +3529,7 @@ export class TUI extends Container {
 		// Park the hardware cursor at real content bottom, not the padded
 		// window bottom — a later height shrink would otherwise scroll live
 		// rows into scrollback and duplicate them per resize step.
-		const contentRows = Math.max(1, Math.min(height, frame.length - windowTop));
+		const contentRows = clampLow(frame.length - windowTop, 1, height);
 		const parkUp = height - contentRows;
 		if (parkUp > 0) buffer += `\x1b[${parkUp}A`;
 		const contentBottomRow = windowTop + contentRows - 1;
@@ -3826,12 +3827,12 @@ export class TUI extends Container {
 		const chunkLength = chunkTo - chunkFrom;
 		const scroll = windowTop - prevWindowTop;
 		const previousWindow = this.#previousWindow;
-		const contentRows = Math.max(1, Math.min(height, frame.length - windowTop));
+		const contentRows = clampLow(frame.length - windowTop, 1, height);
 		const contentBottomRow = windowTop + contentRows - 1;
 		// Terminals clamp the hardware cursor to the viewport on resize; clamp
 		// our tracking to match so relative moves land correctly.
 		const clampedCursor = Math.min(prevHardwareCursorRow, prevWindowTop + height - 1);
-		const currentScreenRow = Math.max(0, Math.min(height - 1, clampedCursor - prevWindowTop));
+		const currentScreenRow = clampLow(clampedCursor - prevWindowTop, 0, height - 1);
 
 		// Scroll-append: committing exactly the rows that scroll off the top,
 		// with content untouched since they were painted.
