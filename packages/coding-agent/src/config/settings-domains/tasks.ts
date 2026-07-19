@@ -49,8 +49,9 @@ export const TASKS_SETTINGS = {
 		ui: {
 			tab: "tasks",
 			group: "Modes",
-			label: "Goal Status in Footer",
-			description: "Show token budget alongside the goal indicator in the status line",
+			label: "Goal Progress Bar in Footer",
+			description:
+				"Add a compact progress bar next to the goal token count in the status line. The token count is always shown; this controls the extra bar.",
 		},
 	},
 

@@ -51,7 +51,7 @@
             const path_to_root = "";
             const default_light_theme = "navy";
             const default_dark_theme = "navy";
-            window.path_to_searchindex_js = "searchindex-751a3c12.js";
+            window.path_to_searchindex_js = "searchindex-ca1f7644.js";
         </script>
         <!-- Start loading toc.js asap -->
         <script src="toc-cc1a72e9.js"></script>
@@ -5117,14 +5117,20 @@ behind it.</p>
 <h2 id="goal-card-session-backed"><a class="header" href="#goal-card-session-backed">Goal card (session-backed)</a></h2>
 <pre><code class="language-text">id:
 objective:
-status:          # active | paused | budget-limited | complete | dropped
-token_budget:    # optional
+status:            # active | paused | budget-limited | complete | dropped
+token_budget:      # optional
 tokens_used:
 time_used_seconds:
+turns_completed:   # agent turns accounted to this goal
 created_at / updated_at:
 </code></pre>
 <p>The harness persists this on the session. Updates come from <code>/goal</code> commands and the <code>goal</code> tool (<code>create</code>, <code>get</code>, <code>complete</code>, <code>resume</code>, <code>drop</code>). User objective text is escaped before prompt injection.</p>
-<p>Token accounting includes input, output, and cache-write deltas used for provider billing.</p>
+<p>Token accounting includes input, output, and cache-write deltas used for provider billing. <code>turns_completed</code> counts each agent turn that ran under the goal, so it advances only while the goal is active.</p>
+<h2 id="status-indicator"><a class="header" href="#status-indicator">Status indicator</a></h2>
+<p>While a goal is set, the mode segment in the status line reads <code>Goal</code> with a live token count. When the goal has no budget, it shows the tokens used. When you set a token budget, it shows <code>used/budget</code> and a percent, for example <code>20K/50K 40%</code>. Once the goal has burned 90% or more of its budget, the segment turns to the warning color so you see the ceiling approaching before the goal hits <code>budget-limited</code>.</p>
+<p>The goal icon animates through the theme spinner frames while the agent is streaming under the goal, and holds steady when the goal is paused or idle. The animation is driven by active processing time, so it moves only while work is happening.</p>
+<p>The <code>goal.statusInFooter</code> setting no longer controls whether the token count appears (it always does). It now controls verbosity: turn it on to also render a compact <code>▰▱</code> progress bar next to the numbers.</p>
+<p>To see the full goal card, press the down arrow while the composer is empty. This opens the goal detail menu (the same menu <code>/goal</code> opens): objective, status, tokens used against budget with the progress bar, completed turns, time spent, and the pause, resume, adjust-budget, and drop actions. The down arrow only opens this while a goal is active or paused, so it never interferes with normal editing.</p>
 <h2 id="context-assembly"><a class="header" href="#context-assembly">Context assembly</a></h2>
 <p>Each turn combines system rules, goal injection (when active), active instructions, recent transcript, compaction prefix, and other session context. Compaction settings: <a href="#compaction-and-project-memory">Compaction and project memory</a>. Operator commands: <a href="#plan-mode-and-goals">Plan mode and goals</a>.</p>
 <h2 id="what-goal-mode-provides"><a class="header" href="#what-goal-mode-provides">What goal mode provides</a></h2>

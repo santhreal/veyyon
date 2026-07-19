@@ -48,3 +48,12 @@ On Windows Terminal, `Ctrl+V` may be handled by the terminal paste command befor
 Terminals that implement OSC 5522 enhanced paste can send clipboard MIME data directly to `veyyon`; image pastes are attached as `[Image #N]`, while text/plain paste events keep normal paste behavior. When OSC 5522 is unavailable, bracketed paste still handles text, and a pasted single image-file path is loaded as an image when the file is readable from the `veyyon` host.
 
 Older unqualified action names are migrated when `keybindings.yml` is loaded, but new docs and new configs should use the namespaced action IDs above. Existing `keybindings.json` files are still accepted and migrated to `keybindings.yml`; `keybindings.yaml` is also accepted.
+
+## Status-line affordances
+
+A few arrow gestures act on the status line when the composer is empty. They are fixed input gestures, not remappable action IDs, so they are not in the table above.
+
+| Gesture             | When                          | Effect                                                        |
+| ------------------- | ----------------------------- | ------------------------------------------------------------ |
+| Down arrow          | A goal is active or paused    | Open the goal detail menu (same as `/goal`): objective, tokens against budget, completed turns, time spent, and pause/resume/adjust-budget/drop |
+| Double-tap ← (left) | Composer empty                | Open the Agent Hub, or return a focused subagent view to the main session |
