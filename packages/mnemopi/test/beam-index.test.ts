@@ -34,4 +34,20 @@ describe("BeamMemory hub", () => {
 			beam.close();
 		}
 	});
+
+	it("routes detectLanguage to the single comprehensive owner (all five languages)", () => {
+		const beam = new BeamMemory({ dbPath: ":memory:" });
+		try {
+			// The public method now delegates to helpers.detectLanguage, the one
+			// owner. Italian is the tell: the deleted consolidate fork had no Italian
+			// branch and returned "en" for this sentence.
+			expect(beam.detectLanguage("questo è il progetto e non deve mai cambiare")).toBe("it");
+			expect(beam.detectLanguage("Привет, это мой проект и это важно")).toBe("ru");
+			expect(beam.detectLanguage("ich bin sehr gern dabei und das ist gut")).toBe("de");
+			expect(beam.detectLanguage("recuerda que siempre usa este estilo")).toBe("es");
+			expect(beam.detectLanguage("plain English text")).toBe("en");
+		} finally {
+			beam.close();
+		}
+	});
 });
