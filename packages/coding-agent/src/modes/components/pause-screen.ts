@@ -21,7 +21,7 @@ import {
 	type OverlayOptions,
 	TERMINAL,
 } from "@veyyon/tui";
-import { formatDuration } from "../../slash-commands/helpers/format";
+import { formatDurationCoarse } from "../../slash-commands/helpers/format";
 import { theme } from "../theme/theme";
 import { matchesAppInterrupt } from "../utils/keybinding-matchers";
 import { renderEmberField } from "./sun";
@@ -207,7 +207,7 @@ export async function runPauseScreen(host: PauseScreenHost): Promise<void> {
 		overlay.hide();
 		const heldMs = agentPauseGate.resume();
 		if (heldMs !== undefined) {
-			host.showStatus(`Resumed after ${formatDuration(heldMs)} — agents are running again.`);
+			host.showStatus(`Resumed after ${formatDurationCoarse(heldMs)} — agents are running again.`);
 		}
 	}
 }

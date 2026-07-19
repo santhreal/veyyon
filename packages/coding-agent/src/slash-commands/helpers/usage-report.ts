@@ -3,7 +3,7 @@ import { formatCount, sanitizeText } from "@veyyon/utils";
 import type { OAuthAccountIdentity } from "../../session/auth-storage";
 import type { SlashCommandRuntime } from "../types";
 import { reportMatchesActiveAccount } from "./active-oauth-account";
-import { formatDuration, renderAsciiBar } from "./format";
+import { formatDurationCoarse, renderAsciiBar } from "./format";
 
 function formatProviderName(provider: string): string {
 	return provider
@@ -57,7 +57,7 @@ function renderUsageReports(
 	resolveActiveAccount?: (provider: string) => OAuthAccountIdentity | undefined,
 ): string {
 	const latestFetchedAt = Math.max(...reports.map(report => report.fetchedAt ?? 0));
-	const lines = [`Usage${latestFetchedAt ? ` (${formatDuration(nowMs - latestFetchedAt)} ago)` : ""}`];
+	const lines = [`Usage${latestFetchedAt ? ` (${formatDurationCoarse(nowMs - latestFetchedAt)} ago)` : ""}`];
 	const grouped = new Map<string, UsageReport[]>();
 	for (const report of reports) {
 		const providerReports = grouped.get(report.provider) ?? [];
@@ -95,7 +95,9 @@ function renderUsageReports(
 							if (!Number.isNaN(expiryMs)) {
 								const remaining = expiryMs - nowMs;
 								if (remaining > 0) {
-									lines.push(`  expires in ${formatDuration(remaining)} (${credit.expiresAt.slice(0, 10)})`);
+									lines.push(
+										`  expires in ${formatDurationCoarse(remaining)} (${credit.expiresAt.slice(0, 10)})`,
+									);
 								} else {
 									lines.push(`  expired (${credit.expiresAt.slice(0, 10)})`);
 								}
@@ -124,7 +126,7 @@ function renderUsageReports(
 				);
 				lines.push(`  ${renderAsciiBar(limit.amount.usedFraction)}`);
 				if (limit.window?.resetsAt && limit.window.resetsAt > nowMs) {
-					lines.push(`  resets in ${formatDuration(limit.window.resetsAt - nowMs)}`);
+					lines.push(`  resets in ${formatDurationCoarse(limit.window.resetsAt - nowMs)}`);
 				}
 				if (limit.notes && limit.notes.length > 0)
 					lines.push(

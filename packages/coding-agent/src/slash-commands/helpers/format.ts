@@ -2,7 +2,12 @@ import { shimmerText } from "../../modes/theme/shimmer";
 import { theme as currentTheme, type Theme } from "../../modes/theme/theme";
 
 /** Format a millisecond duration as a coarse-grained human label. */
-export function formatDuration(ms: number): string {
+// Coarse, single-unit duration for compact status lines: rounds to the nearest
+// one of s/m/h/d and shows only that unit ("3m", "5h", "2d"). This is a
+// deliberately different contract from @veyyon/utils formatDuration, which is
+// fine-grained and compound ("3m20s", "2h15m", "5d3h") and floors. Keep the
+// names distinct so a reader never confuses the two at a call site.
+export function formatDurationCoarse(ms: number): string {
 	const seconds = Math.max(0, Math.round(ms / 1000));
 	if (seconds < 60) return `${seconds}s`;
 	const minutes = Math.round(seconds / 60);
