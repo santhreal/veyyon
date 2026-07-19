@@ -70,6 +70,27 @@ describe("ModelRegistry.create() factory (F6)", () => {
 		expect(mtime2).toBe(mtime1);
 	});
 
+	test("ConfigFile migration writes the yml atomically (owner-only, no temp leftover)", async () => {
+		const yml = path.join(tempDir.path(), "models.yml");
+		const json = path.join(tempDir.path(), "models.json");
+		await Bun.write(json, JSON.stringify({ models: [] }));
+
+		const cf = new ConfigFile("models", modelsConfigSchemas().ModelsConfigSchema, yml);
+		const result = cf.tryLoad();
+		expect(result.status).toBe("ok");
+		expect(fs.existsSync(yml)).toBe(true);
+
+		// atomicWriteFileSync stages under a temp name and renames into place with
+		// mode 0o600; a raw fs.writeFileSync would land at the umask default
+		// (~0o644), so the exact mode proves the interrupted-write-safe path.
+		expect(fs.statSync(yml).mode & 0o777).toBe(0o600);
+
+		// No temp sibling is left behind — the migrated dir holds exactly the
+		// source json and the migrated yml.
+		const entries = fs.readdirSync(tempDir.path()).sort();
+		expect(entries).toEqual(["models.json", "models.yml"]);
+	});
+
 	test("ConfigFile migrates legacy models.json containing comments", async () => {
 		const yml = path.join(tempDir.path(), "models.yml");
 		const json = path.join(tempDir.path(), "models.json");

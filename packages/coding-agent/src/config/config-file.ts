@@ -1,6 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { getAgentDir, isEnoent, logger } from "@veyyon/utils";
+import { atomicWriteFileSync, getAgentDir, isEnoent, logger } from "@veyyon/utils";
 import { ArkErrors, type Type } from "arktype";
 import { JSONC, YAML } from "bun";
 
@@ -46,7 +46,12 @@ function migrateJsonToYml(jsonPath: string, ymlPath: string) {
 			migratedPaths.add(key);
 			return;
 		}
-		fs.writeFileSync(ymlPath, YAML.stringify(parsed, null, 2));
+		// Atomic write (temp + fsync + rename) so an interrupted migration never
+		// leaves a partial .yml. A torn file would keep existing, short-circuit
+		// this migration on every later run (the `existsSync(ymlPath)` guard
+		// above), and fail to parse in #parseContent — a config the operator can
+		// never load without manually deleting the corrupt file.
+		atomicWriteFileSync(ymlPath, YAML.stringify(parsed, null, 2));
 		migratedPaths.add(key);
 	} catch (error) {
 		logger.warn("migrateJsonToYml: migration failed", { error: String(error) });
