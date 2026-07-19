@@ -97,6 +97,7 @@ into `RequestInit.tls.ca` itself).
 | Variable | Purpose |
 | --- | --- |
 | `VEYYON_INSTALL_DIR` | Overrides the install script's target directory (default `~/.local/bin` on Unix, `%LOCALAPPDATA%\veyyon` on Windows). |
+| `VEYYON_SKIP_SETUP` | Skips the first-run setup wizard when set to any value other than empty, `0`, `false`, or `no`. Use it for unattended or scripted installs. |
 
 There is no `VEYYON_NON_INTERACTIVE` or `VEYYON_INSTALL_URL`; the install scripts (`scripts/install.sh`,
 `scripts/install.ps1`) do not read those names today.
