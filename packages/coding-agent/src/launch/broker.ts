@@ -3,7 +3,16 @@ import * as net from "node:net";
 import * as os from "node:os";
 import * as path from "node:path";
 import { Process, type PtyRunResult, PtySession } from "@veyyon/natives";
-import { clampLow, errorMessage, isEexist, isEnoent, logger, postmortem, sanitizeText } from "@veyyon/utils";
+import {
+	atomicWriteFile,
+	clampLow,
+	errorMessage,
+	isEexist,
+	isEnoent,
+	logger,
+	postmortem,
+	sanitizeText,
+} from "@veyyon/utils";
 import { truncateHead, truncateHeadBytes, truncateTail, truncateTailBytes } from "../session/streaming-output";
 import { workerEnvFromParent } from "../subprocess/worker-client";
 import { daemonBrokerEndpoint } from "./paths";
@@ -900,12 +909,8 @@ class DaemonBroker {
 
 	#persist(record: ManagedDaemon): void {
 		const metaPath = path.join(record.dir, META_FILE);
-		const tempPath = `${metaPath}.${process.pid}.tmp`;
 		record.persistQueue = record.persistQueue
-			.then(async () => {
-				await Bun.write(tempPath, JSON.stringify({ daemon: record.snapshot, spec: record.spec }));
-				await fs.rename(tempPath, metaPath);
-			})
+			.then(() => atomicWriteFile(metaPath, JSON.stringify({ daemon: record.snapshot, spec: record.spec })))
 			.catch(error => {
 				logger.warn("Failed to persist daemon metadata", {
 					name: record.snapshot.name,

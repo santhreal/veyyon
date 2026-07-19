@@ -18,6 +18,7 @@ import { CODEX_BASE_URL } from "@veyyon/catalog/wire/codex";
 import {
 	$env,
 	$pickenv,
+	atomicWriteFile,
 	errorMessage,
 	getConfigRootDir,
 	isEnoent,
@@ -236,15 +237,7 @@ async function readProviderInFlightInfo(infoPath: string): Promise<ProviderInFli
 
 async function writeProviderInFlightInfo(dir: string, token: string): Promise<void> {
 	const info: ProviderInFlightLeaseInfo = { pid: process.pid, timestamp: Date.now(), token };
-	const infoPath = path.join(dir, "info.json");
-	const tempPath = path.join(dir, `.info-${process.pid}-${crypto.randomUUID()}.tmp`);
-	try {
-		await Bun.write(tempPath, JSON.stringify(info));
-		await fs.rename(tempPath, infoPath);
-	} catch (error) {
-		await fs.rm(tempPath, { force: true }).catch(() => {});
-		throw error;
-	}
+	await atomicWriteFile(path.join(dir, "info.json"), JSON.stringify(info));
 }
 
 async function isProviderInFlightDirStale(dir: string, staleMs: number): Promise<boolean> {

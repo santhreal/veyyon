@@ -3,6 +3,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { gunzipSync, gzipSync } from "node:zlib";
 import {
+	atomicWriteFile,
 	DAY_MS,
 	errorMessage,
 	formatBytes,
@@ -465,18 +466,15 @@ async function archivedSessionIdFromFile(file: string): Promise<string | undefin
 }
 
 async function gzipSessionFile(source: string, destination: string): Promise<void> {
-	await fs.mkdir(path.dirname(destination), { recursive: true });
-	const tempPath = `${destination}.${process.pid}.${Date.now()}.tmp`;
-	let renamed = false;
+	const compressed = gzipSync(await Bun.file(source).bytes(), { level: 9 });
+	await atomicWriteFile(destination, compressed);
 	try {
-		const compressed = gzipSync(await Bun.file(source).bytes(), { level: 9 });
-		await Bun.write(tempPath, compressed);
-		await fs.rename(tempPath, destination);
-		renamed = true;
 		await fs.unlink(source);
 	} catch (error) {
-		await fs.rm(tempPath, { force: true });
-		if (renamed) await fs.rm(destination, { force: true });
+		// The gzip is durable, but the move isn't complete until the source is
+		// gone. If the unlink fails, roll the archive back so source and
+		// destination don't both linger and a rerun starts clean.
+		await fs.rm(destination, { force: true });
 		throw error;
 	}
 }
