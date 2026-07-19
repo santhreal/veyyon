@@ -1,14 +1,6 @@
-import type { Database } from "bun:sqlite";
-
-/**
- * True when a table (regular or virtual, e.g. FTS/vec) exists. Query errors
- * propagate: a failing sqlite_master read means a broken/closed handle, and
- * masking that as "table missing" silently disables whole features.
- */
-export function tableExists(db: Database, table: string): boolean {
-	return (
-		db
-			.query("SELECT 1 FROM sqlite_master WHERE type IN ('table','virtual table') AND name = ? LIMIT 1")
-			.get(table) !== null
-	);
-}
+// tableExists is a generic sqlite helper with one home in the shared lib. It is
+// re-exported here so mnemopi's own modules keep their existing import path.
+// The previous local copy filtered on `type IN ('table','virtual table')`, but
+// SQLite registers FTS5/vec virtual tables with `type = 'table'`, so the extra
+// literal never matched; the shared owner uses the correct set.
+export { tableExists } from "@veyyon/utils/sqlite";

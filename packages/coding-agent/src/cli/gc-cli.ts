@@ -13,6 +13,7 @@ import {
 	getSessionsDir,
 	MINUTE_MS,
 } from "@veyyon/utils";
+import { tableExists } from "@veyyon/utils/sqlite";
 import { Settings } from "../config/settings";
 import { getDefault } from "../config/settings-schema";
 import { listSessionsReadOnly, type SessionInfo, type SessionStatus } from "../session/session-listing";
@@ -527,13 +528,6 @@ function sqliteNumber(value: number | bigint | null | undefined): number {
 	if (typeof value === "bigint") return Number(value);
 	if (typeof value === "number") return value;
 	return 0;
-}
-
-function tableExists(db: Database, table: string): boolean {
-	const row = db
-		.prepare("SELECT 1 AS present FROM sqlite_master WHERE type IN ('table','view') AND name = ?")
-		.get(table) as { present?: number } | null;
-	return row?.present === 1;
 }
 
 function historyHasSessionId(db: Database): boolean {
