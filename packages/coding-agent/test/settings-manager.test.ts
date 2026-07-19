@@ -1,7 +1,9 @@
-import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { Effort } from "@veyyon/ai";
+import { initializeWithSettings } from "@veyyon/coding-agent/capability";
+import "@veyyon/coding-agent/discovery";
 import { clearCustomApis } from "@veyyon/ai/api-registry";
 import { createMockModel, registerMockApi } from "@veyyon/ai/providers/mock";
 import { __providerInFlightForTesting, streamSimple } from "@veyyon/ai/stream";
@@ -16,7 +18,7 @@ import {
 	Settings,
 } from "@veyyon/coding-agent/config/settings";
 import { AgentStorage } from "@veyyon/coding-agent/session/agent-storage";
-import { getProjectAgentDir, TempDir } from "@veyyon/utils";
+import { getProjectAgentDir, logger, TempDir } from "@veyyon/utils";
 import { YAML } from "bun";
 import { beginSettingsTest, restoreSettingsTestState, type SettingsTestState } from "./helpers/settings-test-state";
 
@@ -69,6 +71,60 @@ describe("Settings", () => {
 		settingsState = undefined;
 		await Bun.sleep(0);
 		await tempDir?.remove();
+	});
+
+	describe("malformed project settings surfacing (Law 10)", () => {
+		it("warns instead of silently ignoring a malformed foreign project settings file", async () => {
+			// A foreign settings provider (gemini) flags a broken .gemini/settings.json
+			// with an "Invalid JSON" warning. #loadProjectSettings used to read only
+			// result.items and drop result.warnings, so the broken file vanished with
+			// no signal. Ensure the warning now reaches the operator.
+			initializeWithSettings(Settings.isolated({ "discovery.importForeignConfig": true }));
+			const geminiDir = path.join(projectDir, ".gemini");
+			fs.mkdirSync(geminiDir, { recursive: true });
+			fs.writeFileSync(path.join(geminiDir, "settings.json"), '{ "mcpServers": { broken ');
+
+			const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
+			await Settings.init({ cwd: projectDir, agentDir });
+
+			const surfaced = warnSpy.mock.calls.some(([message, context]) => {
+				const ctx = context as Record<string, unknown> | undefined;
+				const warning = typeof ctx?.warning === "string" ? ctx.warning : "";
+				return (
+					message === "Settings: project settings discovery warning" &&
+					warning.includes("Invalid JSON") &&
+					warning.includes("settings.json")
+				);
+			});
+			expect(surfaced).toBe(true);
+		});
+
+		it("does not flag a well-formed project settings file as invalid", async () => {
+			// A well-formed .gemini/settings.json under this project must not draw an
+			// "Invalid JSON" warning that names it. Scope the assertion to this
+			// project's own path: ambient user-level foreign config on the host may
+			// surface its own unrelated discovery warnings, which are not what this
+			// test is about.
+			initializeWithSettings(Settings.isolated({ "discovery.importForeignConfig": true }));
+			const geminiDir = path.join(projectDir, ".gemini");
+			fs.mkdirSync(geminiDir, { recursive: true });
+			const settingsPath = path.join(geminiDir, "settings.json");
+			fs.writeFileSync(settingsPath, JSON.stringify({ mcpServers: {} }));
+
+			const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
+			await Settings.init({ cwd: projectDir, agentDir });
+
+			const flagged = warnSpy.mock.calls.some(([message, context]) => {
+				const ctx = context as Record<string, unknown> | undefined;
+				const warning = typeof ctx?.warning === "string" ? ctx.warning : "";
+				return (
+					message === "Settings: project settings discovery warning" &&
+					warning.includes("Invalid JSON") &&
+					warning.includes(settingsPath)
+				);
+			});
+			expect(flagged).toBe(false);
+		});
 	});
 
 	describe("main config file selection", () => {
