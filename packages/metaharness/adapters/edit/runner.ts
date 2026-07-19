@@ -11,7 +11,7 @@ import { formatHashlineHeader, InMemorySnapshotStore } from "@veyyon/hashline";
 import type { AgentMessage, ResolvedThinkingLevel, ThinkingLevel } from "@veyyon/agent-core";
 import type { Model, ToolExample } from "@veyyon/ai";
 import { formatSessionDumpText, RpcClient } from "@veyyon/coding-agent";
-import { estimateTokensFromText, prompt } from "@veyyon/utils";
+import { estimateTokensFromText, prompt, splitTextLines } from "@veyyon/utils";
 import { diffLines } from "diff";
 import { formatDirectory } from "@veyyon/typescript-edit-benchmark/formatter";
 import {
@@ -187,10 +187,6 @@ async function snapshotConversationDump(client: BenchmarkClient): Promise<Conver
 	};
 }
 
-function splitLines(value: string): string[] {
-	return value.split("\n").filter((line, idx, arr) => idx < arr.length - 1 || line);
-}
-
 function getEditPathFromArgs(args: unknown): string | null {
 	if (!args || typeof args !== "object") return null;
 	const pathValue = (args as { path?: unknown }).path;
@@ -315,7 +311,7 @@ function buildMutationPreviewAgainstOriginal(original: string, current: string):
 	// Hashline diff-preview format: `-LINE:TEXT` for removed (pre-edit line
 	// number), `+LINE:TEXT` for added (post-edit line number). No per-line hash.
 	for (const change of changes) {
-		const lines = splitLines(change.value);
+		const lines = splitTextLines(change.value);
 		if (!change.added && !change.removed) {
 			origLineNum += lines.length;
 			newLineNum += lines.length;
@@ -596,7 +592,7 @@ function buildGuidedHashlinePatch(file: string, actual: string, expected: string
 	};
 
 	for (const change of changes) {
-		const lines = splitLines(change.value);
+		const lines = splitTextLines(change.value);
 		if (!change.added && !change.removed) {
 			flush();
 			line += lines.length;
