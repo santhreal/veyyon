@@ -15,6 +15,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { configureProviderMaxInFlightRequests } from "@veyyon/ai/stream";
 import {
+	errorMessage,
 	expandTilde,
 	getAgentDbPath,
 	getAgentDir,
@@ -854,9 +855,26 @@ export class Settings {
 				migrated = true;
 				try {
 					fs.renameSync(settingsJsonPath, `${settingsJsonPath}.bak`);
-				} catch {}
+				} catch (error) {
+					// The settings were migrated in memory; only the archival rename
+					// failed. Non-fatal (the next run re-migrates), but surface it.
+					logger.warn("Settings: could not archive legacy settings.json after migration", {
+						path: settingsJsonPath,
+						error: errorMessage(error),
+					});
+				}
 			}
-		} catch {}
+		} catch (error) {
+			// A missing legacy file is the normal case (nothing to migrate). A file
+			// that exists but cannot be read or parsed means the user's legacy
+			// settings would be dropped silently — surface that instead (Law 10).
+			if (!isEnoent(error)) {
+				logger.warn("Settings: legacy settings.json exists but could not be migrated", {
+					path: settingsJsonPath,
+					error: errorMessage(error),
+				});
+			}
+		}
 
 		// 2. Migrate from agent.db
 		try {
@@ -865,14 +883,26 @@ export class Settings {
 				settings = this.#deepMerge(settings, this.#migrateRawSettings(dbSettings as RawSettings));
 				migrated = true;
 			}
-		} catch {}
+		} catch (error) {
+			logger.warn("Settings: could not read legacy settings from agent.db during migration", {
+				error: errorMessage(error),
+			});
+		}
 
 		// 3. Write merged settings
 		if (migrated && Object.keys(settings).length > 0) {
 			try {
 				await Bun.write(this.#configPath, YAML.stringify(settings, null, 2));
 				logger.debug("Settings: migrated to config.yml", { path: this.#configPath });
-			} catch {}
+			} catch (error) {
+				// The migration ran but the merged config could not be persisted, so
+				// the migrated settings are lost for this run. Surface it loudly
+				// rather than silently discarding the user's settings (Law 10).
+				logger.warn("Settings: migrated settings could not be written to config.yml", {
+					path: this.#configPath,
+					error: errorMessage(error),
+				});
+			}
 		}
 	}
 

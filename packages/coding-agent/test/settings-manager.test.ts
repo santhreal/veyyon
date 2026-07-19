@@ -127,6 +127,58 @@ describe("Settings", () => {
 		});
 	});
 
+	describe("legacy migration surfacing (Law 10)", () => {
+		// #migrateFromLegacy runs when persist is on and no config.yml/config.yaml
+		// exists yet: it reads a legacy agent/settings.json, merges it, archives the
+		// original to .bak, and writes config.yml. Each step used to swallow its
+		// failure with a bare `catch {}`, so a malformed legacy file or a failed
+		// write silently discarded the user's settings.
+
+		it("warns when a legacy settings.json exists but cannot be parsed", async () => {
+			fs.writeFileSync(path.join(agentDir, "settings.json"), '{ "theme": broken ');
+			const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
+
+			await Settings.init({ cwd: projectDir, agentDir });
+
+			const surfaced = warnSpy.mock.calls.some(
+				([message]) => message === "Settings: legacy settings.json exists but could not be migrated",
+			);
+			expect(surfaced).toBe(true);
+		});
+
+		it("migrates a well-formed legacy settings.json without warning and archives the original", async () => {
+			const legacyPath = path.join(agentDir, "settings.json");
+			fs.writeFileSync(legacyPath, JSON.stringify({ theme: { name: "dark" } }));
+			const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
+
+			await Settings.init({ cwd: projectDir, agentDir });
+
+			const migrateWarned = warnSpy.mock.calls.some(([message]) =>
+				String(message).startsWith("Settings: legacy settings.json exists but could not"),
+			);
+			expect(migrateWarned).toBe(false);
+			// The original is archived and config.yml now exists (migration ran).
+			expect(fs.existsSync(`${legacyPath}.bak`)).toBe(true);
+			expect(fs.existsSync(path.join(agentDir, "config.yml"))).toBe(true);
+		});
+
+		it("warns when migrated settings cannot be written to config.yml", async () => {
+			fs.writeFileSync(path.join(agentDir, "settings.json"), JSON.stringify({ theme: { name: "dark" } }));
+			// A dangling symlink at the config.yml path reads as ENOENT (so the
+			// "existing config" probe returns null and migration still runs) but
+			// its write follows into a missing directory and fails with ENOENT.
+			fs.symlinkSync(path.join(agentDir, "missing-dir", "config.yml"), path.join(agentDir, "config.yml"));
+			const warnSpy = vi.spyOn(logger, "warn").mockImplementation(() => {});
+
+			await Settings.init({ cwd: projectDir, agentDir });
+
+			const surfaced = warnSpy.mock.calls.some(
+				([message]) => message === "Settings: migrated settings could not be written to config.yml",
+			);
+			expect(surfaced).toBe(true);
+		});
+	});
+
 	describe("main config file selection", () => {
 		it("loads and updates an existing config.yaml without creating config.yml", async () => {
 			const yamlConfigPath = path.join(agentDir, "config.yaml");
