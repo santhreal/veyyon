@@ -90,6 +90,35 @@ export async function fetchBinary(url: string, timeout: number = 20, signal?: Ab
 }
 
 /**
+ * Assemble a partial ISO 8601 calendar date from year, month, and day parts.
+ *
+ * Scholarly metadata reports a date at whatever precision it has: a year alone,
+ * a year and month, or a full date. Missing parts are simply omitted, and each
+ * present part is left-padded to two digits. The parts arrive as numbers (a
+ * Crossref `date-parts` triple) or as strings (an ORCID `{value}` field), so
+ * every part is stringified before padding.
+ *
+ * A part counts as present only when it is truthy, so `0`, `""`, `null`, and
+ * `undefined` all read as absent. A day is only emitted when a month is also
+ * present, because a day without a month is not a valid calendar date; this is
+ * why the month and day checks nest rather than run independently. Returns
+ * `null` when no year is present, since a date must have at least a year.
+ */
+export function partialIsoDate(
+	year: number | string | null | undefined,
+	month?: number | string | null,
+	day?: number | string | null,
+): string | null {
+	if (!year) return null;
+	let out = String(year);
+	if (month) {
+		out += `-${String(month).padStart(2, "0")}`;
+		if (day) out += `-${String(day).padStart(2, "0")}`;
+	}
+	return out;
+}
+
+/**
  * Convert binary content to markdown using markit.
  */
 export async function convertWithMarkit(

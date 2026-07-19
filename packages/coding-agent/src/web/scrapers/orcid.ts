@@ -5,6 +5,7 @@
 import { tryParseJson } from "@veyyon/utils";
 import type { RenderResult, ScraperDegrade, SpecialHandler } from "./types";
 import { buildResult, loadPage, scraperDegrade, tryParseUrl } from "./types";
+import { partialIsoDate } from "./utils";
 
 const MAX_WORKS = 50;
 const ORCID_PATTERN = /\/(\d{4}-\d{4}-\d{4}-\d{3}[\dXx])(?:\/|$)/;
@@ -112,16 +113,7 @@ function formatName(name?: OrcidName): string | null {
 }
 
 function formatDate(date?: OrcidSummaryDate): string | null {
-	const year = date?.year?.value;
-	if (!year) return null;
-
-	const month = date?.month?.value;
-	const day = date?.day?.value;
-	if (month && day) {
-		return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
-	}
-	if (month) return `${year}-${month.padStart(2, "0")}`;
-	return year;
+	return partialIsoDate(date?.year?.value, date?.month?.value, date?.day?.value);
 }
 
 function collectAffiliations(
