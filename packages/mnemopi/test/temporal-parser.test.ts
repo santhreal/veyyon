@@ -6,6 +6,7 @@ import {
 	MONTH_MAP,
 	NAMED_TIMES,
 	parseNlDate,
+	resolveRelativeDay,
 } from "@veyyon/mnemopi/core/temporal-parser";
 
 const REF = new Date("2026-05-20T15:30:00Z"); // Wednesday
@@ -239,5 +240,53 @@ describe("temporal parser", () => {
 		expect(extractTemporal("yesterday", "2026-05-20").event_date).toBe("2026-05-19");
 		expect(extractTemporal("yesterday", "2026-05-20T02:00:00").event_date).toBe("2026-05-19");
 		expect(extractTemporal("yesterday", "2026-05-20T02:00:00Z").event_date).toBe("2026-05-19");
+	});
+
+	it("resolves relative days and falls back to the reference for unknown days or qualifiers", () => {
+		// "this" of the reference weekday is the reference day itself.
+		expect(iso(resolveRelativeDay(REF, "wednesday", "this"))).toBe("2026-05-20");
+		// An unknown day name returns the reference date unchanged (dateOnly guard).
+		expect(iso(resolveRelativeDay(REF, "notaday"))).toBe("2026-05-20");
+		// An unrecognized qualifier falls through to the reference date, not this/last/next.
+		expect(iso(resolveRelativeDay(REF, "wednesday", "whenever"))).toBe("2026-05-20");
+	});
+
+	it("extracts sub-day and multi-year intervals through every delta unit", () => {
+		// second and minute units resolve to the same calendar day but a "week" precision.
+		let result = extractTemporal("pinged 5 seconds ago", REF);
+		expect(result.event_date).toBe("2026-05-20");
+		expect(result.event_date_precision).toBe("week");
+		expect(result.temporal_tags).toEqual(["2026-05-20", "5-seconds-ago"]);
+
+		result = extractTemporal("pinged 10 minutes ago", REF);
+		expect(result.event_date).toBe("2026-05-20");
+		expect(result.temporal_tags).toEqual(["2026-05-20", "10-minutes-ago"]);
+
+		// year deltas span 365 days each.
+		result = extractTemporal("shipped 2 years ago", REF);
+		expect(result.event_date).toBe("2024-05-20");
+		expect(result.temporal_tags).toEqual(["2024-05-20", "2-years-ago"]);
+
+		result = extractTemporal("renews in 1 year", REF);
+		expect(result.event_date).toBe("2027-05-20");
+		expect(result.temporal_tags).toEqual(["2027-05-20", "in-1-years"]);
+	});
+
+	it("extracts this-month and this-year references", () => {
+		expect(extractTemporal("this month", REF)).toMatchObject({
+			event_date: "2026-05-20",
+			event_date_precision: "month",
+			temporal_tags: ["2026-05", "this-month"],
+		});
+		expect(extractTemporal("this year", REF)).toMatchObject({
+			event_date: "2026-05-20",
+			event_date_precision: "year",
+			temporal_tags: ["2026", "this-year"],
+		});
+	});
+
+	it("returns null when an interval magnitude overflows the safe-integer range", () => {
+		expect(parseNlDate("in 99999999999999999999 days", REF)).toBeNull();
+		expect(parseNlDate("99999999999999999999 days ago", REF)).toBeNull();
 	});
 });
