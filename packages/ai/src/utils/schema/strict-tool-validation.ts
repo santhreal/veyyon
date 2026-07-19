@@ -1,3 +1,5 @@
+import { isRecord } from "@veyyon/utils";
+
 /**
  * Detects tool-parameter schemas that pass structural JSON-Schema validation
  * (so {@link isValidJsonSchema} accepts them) yet make OpenAI-style providers
@@ -34,7 +36,7 @@ function jsonValueMatchesType(value: unknown, type: string): boolean {
 		case "null":
 			return value === null;
 		case "object":
-			return typeof value === "object" && value !== null && !Array.isArray(value);
+			return isRecord(value);
 		case "array":
 			return Array.isArray(value);
 		default:
@@ -93,7 +95,7 @@ export function findStrictToolSchemaViolation(schema: unknown, path = "#"): stri
 
 	for (const key of CHILD_MAP_KEYS) {
 		const sub = node[key];
-		if (sub && typeof sub === "object" && !Array.isArray(sub)) {
+		if (isRecord(sub)) {
 			for (const k of Object.keys(sub as JsonRecord)) {
 				const hit = findStrictToolSchemaViolation((sub as JsonRecord)[k], `${path}/${key}/${k}`);
 				if (hit) return hit;

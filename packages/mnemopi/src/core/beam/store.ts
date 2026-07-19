@@ -1,5 +1,5 @@
 import type { Database, SQLQueryBindings } from "bun:sqlite";
-import { errorMessage, HOUR_MS, logger } from "@veyyon/utils";
+import { errorMessage, HOUR_MS, isRecord, logger } from "@veyyon/utils";
 import { transaction } from "../../db";
 import { toUtcIso } from "../../util/datetime";
 import { generateId } from "../../util/ids";
@@ -69,9 +69,7 @@ function metadataJson(metadata: Metadata | null | undefined): string | null {
 }
 
 function jsonObject(value: unknown): Record<string, unknown> {
-	return value !== null && typeof value === "object" && !Array.isArray(value)
-		? (value as Record<string, unknown>)
-		: {};
+	return isRecord(value) ? (value as Record<string, unknown>) : {};
 }
 
 function isSqlBinding(value: unknown): value is SQLQueryBindings {

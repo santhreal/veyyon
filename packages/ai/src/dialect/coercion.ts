@@ -1,3 +1,4 @@
+import { isRecord } from "@veyyon/utils";
 import { toolWireSchema } from "../utils/schema";
 import type { InbandTool } from "./types";
 
@@ -12,8 +13,7 @@ export function buildArgShapes(tools: readonly InbandTool[] = []): Map<string, T
 	for (const tool of tools) {
 		const schema = resolveToolSchema(tool);
 		const props = schema.properties;
-		const properties =
-			props && typeof props === "object" && !Array.isArray(props) ? (props as Record<string, unknown>) : {};
+		const properties = isRecord(props) ? props : {};
 		const stringArgs = new Set<string>();
 		const parameterOrder: string[] = [];
 		for (const key in properties) {
@@ -36,7 +36,7 @@ export function resolveToolSchema(tool: InbandTool): Record<string, unknown> {
 		return toolWireSchema(tool);
 	} catch {
 		const params = tool.parameters;
-		return params && typeof params === "object" && !Array.isArray(params) ? (params as Record<string, unknown>) : {};
+		return isRecord(params) ? params : {};
 	}
 }
 
@@ -97,7 +97,7 @@ export function isObjectSchema(schema: unknown): boolean {
 export function getObjectProperties(schema: unknown): Record<string, unknown> {
 	if (!schema || typeof schema !== "object" || Array.isArray(schema)) return {};
 	const props = (schema as Record<string, unknown>).properties;
-	return props && typeof props === "object" && !Array.isArray(props) ? (props as Record<string, unknown>) : {};
+	return isRecord(props) ? props : {};
 }
 
 export function getArrayItemSchema(schema: unknown): unknown {
@@ -132,5 +132,5 @@ export function normalizeKimiFunctionName(rawId: string): string {
 }
 
 export function asRecord(value: unknown): Record<string, unknown> {
-	return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+	return isRecord(value) ? value : {};
 }

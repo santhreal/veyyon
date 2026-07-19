@@ -7,7 +7,7 @@
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import { isEnoent, logger } from "@veyyon/utils";
+import { isEnoent, isRecord, logger } from "@veyyon/utils";
 import * as git from "../../../utils/git";
 
 import type { MarketplaceCatalog, MarketplaceSourceType } from "./types";
@@ -117,7 +117,7 @@ export function parseMarketplaceCatalog(content: string, filePath: string): Mark
 	assertField(typeof obj.name === "string" && isValidNameSegment(obj.name), "name", filePath);
 
 	// owner: required object with name string
-	assertField(typeof obj.owner === "object" && obj.owner !== null && !Array.isArray(obj.owner), "owner", filePath);
+	assertField(isRecord(obj.owner), "owner", filePath);
 	const owner = obj.owner as Record<string, unknown>;
 	assertField(typeof owner.name === "string", "owner.name", filePath);
 
@@ -129,7 +129,7 @@ export function parseMarketplaceCatalog(content: string, filePath: string): Mark
 	for (let i = 0; i < plugins.length; i++) {
 		try {
 			const entry = plugins[i];
-			assertField(typeof entry === "object" && entry !== null && !Array.isArray(entry), `plugins[${i}]`, filePath);
+			assertField(isRecord(entry), `plugins[${i}]`, filePath);
 			const p = entry as Record<string, unknown>;
 			assertField(typeof p.name === "string" && isValidNameSegment(p.name), `plugins[${i}].name`, filePath);
 			// source can be a string path or a typed object (github/url/git-subdir/npm)

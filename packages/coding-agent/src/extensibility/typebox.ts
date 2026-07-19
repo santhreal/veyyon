@@ -18,7 +18,7 @@
  */
 
 import { areJsonValuesEqual } from "@veyyon/ai/utils/schema";
-import { isDateOnly, isUuid } from "@veyyon/utils";
+import { isDateOnly, isRecord, isUuid } from "@veyyon/utils";
 
 // ---------------------------------------------------------------------------
 // Type aliases — exported so `import type { Static, TSchema } from "..."`
@@ -746,7 +746,7 @@ function tRequired<_P extends Record<string, ArkSchema>>(obj: ArkSchema): ArkSch
 		return tObject(properties, { additionalProperties: obj.__additionalProperties });
 	}
 	const metadata = jsonSchemaOf(obj);
-	if (metadata.properties && typeof metadata.properties === "object" && !Array.isArray(metadata.properties)) {
+	if (isRecord(metadata.properties)) {
 		const properties = metadata.properties as Record<string, unknown>;
 		const required: string[] = [];
 		for (const key in properties) {
@@ -785,7 +785,7 @@ function tPick<P extends Record<string, ArkSchema>, K extends keyof P>(obj: ArkS
 	};
 
 	const metadata = jsonSchemaOf(obj);
-	if (metadata.properties && typeof metadata.properties === "object" && !Array.isArray(metadata.properties)) {
+	if (isRecord(metadata.properties)) {
 		const properties = metadata.properties as Record<string, unknown>;
 		const filteredProps: Record<string, unknown> = {};
 		for (const key in properties) {
@@ -830,7 +830,7 @@ function tOmit<P extends Record<string, ArkSchema>, K extends keyof P>(obj: ArkS
 	};
 
 	const metadata = jsonSchemaOf(obj);
-	if (metadata.properties && typeof metadata.properties === "object" && !Array.isArray(metadata.properties)) {
+	if (isRecord(metadata.properties)) {
 		const properties = metadata.properties as Record<string, unknown>;
 		const filteredProps: Record<string, unknown> = {};
 		for (const key in properties) {

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { emptyUsage } from "@veyyon/catalog/models";
-import { errorMessage } from "@veyyon/utils";
+import { errorMessage, isRecord } from "@veyyon/utils";
 import { type } from "arktype";
 import { resolvePromptCacheKey } from "../auth-gateway/http";
 /**
@@ -264,8 +264,7 @@ function buildAssistantMessage(
 			if (argsStr.length > 0) {
 				try {
 					const v: unknown = JSON.parse(argsStr);
-					args =
-						v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : { __raw: argsStr };
+					args = isRecord(v) ? (v as Record<string, unknown>) : { __raw: argsStr };
 				} catch {
 					args = { __raw: argsStr };
 				}

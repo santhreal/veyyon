@@ -17,7 +17,7 @@ import * as path from "node:path";
 import { YAML } from "bun";
 import { engines, version } from "../package.json" with { type: "json" };
 import { isUuid } from "./regex";
-import { errorMessage } from "./type-guards";
+import { errorMessage, isRecord } from "./type-guards";
 
 /** App name (e.g. "veyyon") */
 export const APP_NAME: string = "veyyon";
@@ -265,7 +265,7 @@ export function writeGlobalDefaultProfile(profile: string | undefined): string {
 					`Fix or remove the file before changing defaultProfile.`,
 			);
 		}
-		if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+		if (isRecord(parsed)) {
 			existing = parsed as Record<string, unknown>;
 		}
 		filePath = candidate;

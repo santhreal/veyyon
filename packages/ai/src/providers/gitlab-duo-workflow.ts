@@ -5,7 +5,13 @@ import {
 	type GitLabDuoWorkflowNamespaceSelection,
 } from "@veyyon/catalog/discovery/gitlab-duo-workflow";
 import { emptyUsage } from "@veyyon/catalog/models";
-import { errorMessage, getNonBlankStringProperty, scopedTimeoutSignal, trimTrailingSlashes } from "@veyyon/utils";
+import {
+	errorMessage,
+	getNonBlankStringProperty,
+	isRecord,
+	scopedTimeoutSignal,
+	trimTrailingSlashes,
+} from "@veyyon/utils";
 import * as AIError from "../error";
 import type {
 	Api,
@@ -744,10 +750,7 @@ function detectGitLabDuoWorkflowStall(state: GitLabDuoWorkflowStreamState): bool
 }
 
 function buildGitLabDuoWorkflowActionToolCall(action: GitLabDuoWorkflowActionDescriptor): ToolCall {
-	const args =
-		action.args && typeof action.args === "object" && !Array.isArray(action.args)
-			? (action.args as Record<string, unknown>)
-			: {};
+	const args = isRecord(action.args) ? (action.args as Record<string, unknown>) : {};
 	const mapped = mapGitLabDuoWorkflowActionToOmpTool(action.name, args);
 	return {
 		type: "toolCall",
@@ -792,14 +795,12 @@ function parseGitLabDuoWorkflowMcpArguments(value: unknown): Record<string, unkn
 	if (typeof value === "string") {
 		try {
 			const parsed = JSON.parse(value) as unknown;
-			return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-				? (parsed as Record<string, unknown>)
-				: {};
+			return isRecord(parsed) ? (parsed as Record<string, unknown>) : {};
 		} catch {
 			return {};
 		}
 	}
-	return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+	return isRecord(value) ? (value as Record<string, unknown>) : {};
 }
 
 function gitLabDuoWorkflowProviderSessionStateKey(
@@ -3130,7 +3131,7 @@ function requireGitLabDuoWorkflowRequestID(
 }
 
 function withGitLabDuoWorkflowToolCallId(args: unknown, requestID: string): unknown {
-	const record = args && typeof args === "object" && !Array.isArray(args) ? (args as Record<string, unknown>) : {};
+	const record = isRecord(args) ? (args as Record<string, unknown>) : {};
 	if (typeof record.toolCallId === "string" || typeof record.tool_call_id === "string") {
 		return record;
 	}

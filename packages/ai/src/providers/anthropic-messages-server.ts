@@ -1,6 +1,6 @@
 import { Effort } from "@veyyon/catalog/effort";
 import { emptyUsage } from "@veyyon/catalog/models";
-import { errorMessage, logger } from "@veyyon/utils";
+import { errorMessage, isRecord, logger } from "@veyyon/utils";
 import { type } from "arktype";
 import { captureRequestHeaders, resolvePromptCacheKey } from "../auth-gateway/http";
 import * as AIError from "../error";
@@ -207,10 +207,7 @@ function walkAssistantContent(
 					type: "toolCall",
 					id: block.id,
 					name: block.name,
-					arguments:
-						block.input && typeof block.input === "object" && !Array.isArray(block.input)
-							? (block.input as Record<string, unknown>)
-							: {},
+					arguments: isRecord(block.input) ? (block.input as Record<string, unknown>) : {},
 				});
 				break;
 			default: {

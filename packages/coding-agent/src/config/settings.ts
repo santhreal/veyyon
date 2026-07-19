@@ -850,7 +850,7 @@ export class Settings {
 		const settingsJsonPath = path.join(this.#agentDir, "settings.json");
 		try {
 			const parsed: unknown = JSONC.parse(await Bun.file(settingsJsonPath).text());
-			if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+			if (isRecord(parsed)) {
 				settings = this.#deepMerge(settings, this.#migrateRawSettings(parsed as RawSettings));
 				migrated = true;
 				try {
@@ -996,7 +996,7 @@ export class Settings {
 				editObj.mode = "hashline";
 			}
 			const modelVariants = editObj.modelVariants as Record<string, unknown> | undefined;
-			if (modelVariants && typeof modelVariants === "object" && !Array.isArray(modelVariants)) {
+			if (isRecord(modelVariants)) {
 				for (const [pattern, variant] of Object.entries(modelVariants)) {
 					if (variant === "atom" || variant === "vim") {
 						modelVariants[pattern] = "hashline";
@@ -1316,7 +1316,7 @@ export class Settings {
 		};
 		const ensureToolsObject = (): Record<string, unknown> => {
 			const current = raw.tools;
-			if (current && typeof current === "object" && !Array.isArray(current)) {
+			if (isRecord(current)) {
 				return current as Record<string, unknown>;
 			}
 			const created: Record<string, unknown> = {};

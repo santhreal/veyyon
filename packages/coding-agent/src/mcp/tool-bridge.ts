@@ -3,10 +3,11 @@
  *
  * Converts MCP tool definitions to CustomTool format for the agent.
  */
+
 import type { AgentToolUpdateCallback } from "@veyyon/agent-core";
 import type { TSchema } from "@veyyon/ai";
 import { normalizeSchemaForMCP } from "@veyyon/ai/utils/schema";
-import { errorMessage, untilAborted } from "@veyyon/utils";
+import { errorMessage, isRecord, untilAborted } from "@veyyon/utils";
 import { INTENT_FIELD } from "@veyyon/wire";
 import type { SourceMeta } from "../capability/types";
 import type {
@@ -62,11 +63,7 @@ function normalizeToolArgs(value: unknown): MCPToolArgs {
 }
 
 function isUnusedOptionalPlaceholder(value: unknown): boolean {
-	return (
-		value === undefined ||
-		value === "" ||
-		(typeof value === "object" && value !== null && !Array.isArray(value) && Object.keys(value).length === 0)
-	);
+	return value === undefined || value === "" || (isRecord(value) && Object.keys(value).length === 0);
 }
 
 function omitUnusedOptionalArgs(args: MCPToolArgs, inputSchema: MCPToolDefinition["inputSchema"]): MCPToolArgs {

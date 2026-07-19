@@ -6,7 +6,9 @@
  * - compare a tool capability tier against the active autonomy / approval mode,
  * - format the generic approval prompt body.
  */
+
 import type { AgentTool, ToolApprovalDecision, ToolTier } from "@veyyon/agent-core";
+import { isRecord } from "@veyyon/utils";
 
 export type { ToolApproval, ToolApprovalDecision, ToolTier } from "@veyyon/agent-core";
 
@@ -83,7 +85,7 @@ function normalizeDecision(value: unknown): Omit<ResolvedApproval, "policy"> {
 		return { tier: value, override: false };
 	}
 
-	if (value && typeof value === "object" && !Array.isArray(value)) {
+	if (isRecord(value)) {
 		const record = value as Record<string, unknown>;
 		const tier = isToolTier(record.tier) ? record.tier : "exec";
 		const reason = typeof record.reason === "string" && record.reason.length > 0 ? record.reason : undefined;

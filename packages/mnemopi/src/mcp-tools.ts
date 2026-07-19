@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import { isRecord } from "@veyyon/utils";
 import { DEFAULT_DB_FILENAME, dataDir } from "./config";
 import { BankManager } from "./core/banks";
 import { BeamMemory, type RecallOptions } from "./core/beam";
@@ -417,9 +418,7 @@ function booleanArg(args: ToolArguments, key: string, fallback = false): boolean
 
 function metadataArg(args: ToolArguments): Record<string, JsonValue> | null {
 	const value = args.metadata;
-	return value !== null && typeof value === "object" && !Array.isArray(value)
-		? (value as Record<string, JsonValue>)
-		: null;
+	return isRecord(value) ? (value as Record<string, JsonValue>) : null;
 }
 
 function resolveBank(args: ToolArguments): string {

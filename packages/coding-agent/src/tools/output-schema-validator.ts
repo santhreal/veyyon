@@ -86,10 +86,7 @@ export function buildOutputValidator(schema: unknown): BuildOutputValidatorResul
 	// the inlined node, not the wrapper. Without this, unknown labels slipped past the yield gate and
 	// only fired as parent-side schema_violations.
 	const dereferenced = dereferenceJsonSchema(jsonSchemaRecord);
-	const labelSchema =
-		dereferenced && typeof dereferenced === "object" && !Array.isArray(dereferenced)
-			? (dereferenced as Record<string, unknown>)
-			: jsonSchemaRecord;
+	const labelSchema = isRecord(dereferenced) ? (dereferenced as Record<string, unknown>) : jsonSchemaRecord;
 	const required = extractRequiredFields(labelSchema);
 	const sectionLabels = buildSectionLabelMetadata(labelSchema);
 	return {
@@ -180,7 +177,7 @@ function collectClosedTopLevelSchemas(jsonSchema: Record<string, unknown>): Reco
 	const allOf = jsonSchema.allOf;
 	if (Array.isArray(allOf)) {
 		for (const raw of allOf) {
-			if (raw !== null && typeof raw === "object" && !Array.isArray(raw)) {
+			if (isRecord(raw)) {
 				schemas.push(...collectClosedTopLevelSchemas(raw as Record<string, unknown>));
 			}
 		}
@@ -235,11 +232,11 @@ function declaredPropertyLabels(jsonSchema: Record<string, unknown>): string[] {
 
 function schemaAcceptsSectionLabel(jsonSchema: Record<string, unknown>, label: string): boolean {
 	const properties = jsonSchema.properties;
-	if (properties !== null && typeof properties === "object" && !Array.isArray(properties) && label in properties) {
+	if (isRecord(properties) && label in properties) {
 		return true;
 	}
 	const patternProperties = jsonSchema.patternProperties;
-	if (patternProperties !== null && typeof patternProperties === "object" && !Array.isArray(patternProperties)) {
+	if (isRecord(patternProperties)) {
 		for (const pattern in patternProperties) {
 			try {
 				if (new RegExp(pattern).test(label)) return true;

@@ -83,7 +83,7 @@ function matchesExpectedType(value: unknown, expectedTypes: string[]): boolean {
 			case "array":
 				return Array.isArray(value);
 			case "object":
-				return value !== null && typeof value === "object" && !Array.isArray(value);
+				return isRecord(value);
 			default:
 				return false;
 		}
@@ -944,7 +944,7 @@ function normalizeEnumStringWhitespace(
 		}
 
 		const itemSchema = schemaObject.items;
-		if (itemSchema !== null && typeof itemSchema === "object" && !Array.isArray(itemSchema)) {
+		if (isRecord(itemSchema)) {
 			for (let i = 0; i < value.length; i += 1) {
 				if (Array.isArray(prefixItems) && i < prefixItems.length) continue;
 				const normalized = normalizeEnumStringWhitespace(itemSchema, nextValue[i], root, refs);

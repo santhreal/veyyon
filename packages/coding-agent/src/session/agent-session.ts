@@ -1464,7 +1464,7 @@ function getPermissionIntent(
 	toolName: string,
 	args: unknown,
 ): { toolName: string; title: string; paths?: string[]; cacheKey: string } | undefined {
-	const a = args && typeof args === "object" && !Array.isArray(args) ? (args as Record<string, unknown>) : {};
+	const a = isRecord(args) ? (args as Record<string, unknown>) : {};
 	if (toolName === "bash") {
 		const cmd = getStringProperty(a, "command")?.slice(0, 80);
 		return { toolName, title: cmd || toolName, cacheKey: toolName };
@@ -6878,7 +6878,7 @@ export class AgentSession {
 						return await target.execute(toolCallId, args as never, signal, onUpdate, ctx);
 					}
 					const command =
-						target.name === "bash" && args && typeof args === "object" && !Array.isArray(args)
+						target.name === "bash" && isRecord(args)
 							? getStringProperty(args as Record<string, unknown>, "command")
 							: undefined;
 					const commandContent = command
