@@ -83,6 +83,21 @@ describe("orchestrateRecall", () => {
 		}
 	});
 
+	it("returns an empty list when the Beam exposes no recall surface at all", async () => {
+		const beam = fakeBeam();
+		try {
+			process.env.MNEMOPI_POLYPHONIC_RECALL = "0";
+			// A Beam with neither recall nor recallEnhanced falls through to [] rather
+			// than throwing — the orchestrator degrades to no hits, not a crash.
+			(beam as { recall?: unknown }).recall = undefined;
+			(beam as { recallEnhanced?: unknown }).recallEnhanced = undefined;
+			const results = await orchestrateRecall(beam, "needle", 4);
+			expect(results).toEqual([]);
+		} finally {
+			closeQuietly(beam.db);
+		}
+	});
+
 	it("delegates to enhanced recall when requested on the non-polyphonic path", async () => {
 		const beam = fakeBeam();
 		try {

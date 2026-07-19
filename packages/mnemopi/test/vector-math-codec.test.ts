@@ -137,4 +137,10 @@ describe("cosine scorer", () => {
 		expect(cosineScorer(v)(v)).toBe(1);
 		expect(cosineScorer(v)(v)).toBe(cosineSimilarity(v, v));
 	});
+
+	it("returns 0 when both vectors are empty, before any norm arithmetic", () => {
+		// max(0, 0) === 0 short-circuits the loop entirely.
+		expect(cosineSimilarity([], [])).toBe(0);
+		expect(cosineScorer([])([])).toBe(0);
+	});
 });
