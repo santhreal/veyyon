@@ -18,6 +18,7 @@ import {
 	type UsageWindow,
 } from "../usage";
 import { isRecord } from "../utils";
+import { usageStatusFromUsedFraction } from "./shared";
 
 const DEFAULT_ENDPOINT = "https://api.anthropic.com/api/oauth";
 const FIVE_HOURS_MS = 5 * HOUR_MS;
@@ -370,11 +371,11 @@ function buildUsageAmount(utilization: number | undefined): UsageAmount | undefi
 	};
 }
 
+// Claude omits the status field entirely when the used fraction is unknown
+// (rather than emitting "unknown"), so the undefined case stays here; the
+// defined-fraction ladder is the shared owner.
 function buildUsageStatus(usedFraction: number | undefined): UsageStatus | undefined {
-	if (usedFraction === undefined) return undefined;
-	if (usedFraction >= 1) return "exhausted";
-	if (usedFraction >= 0.9) return "warning";
-	return "ok";
+	return usedFraction === undefined ? undefined : usageStatusFromUsedFraction(usedFraction);
 }
 
 function buildUsageLimit(args: {

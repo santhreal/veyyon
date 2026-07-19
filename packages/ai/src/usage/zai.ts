@@ -12,6 +12,7 @@ import type {
 	UsageWindow,
 } from "../usage";
 import { isRecord } from "../utils";
+import { usageStatusFromUsedFraction } from "./shared";
 
 const DEFAULT_ENDPOINT = "https://api.z.ai";
 const QUOTA_PATH = "/api/monitor/usage/quota/limit";
@@ -115,11 +116,11 @@ function buildUsageAmount(args: {
 	};
 }
 
+// Z.ai omits the status field when the used fraction is unknown (rather than
+// emitting "unknown"), so the undefined case stays here; the defined-fraction
+// ladder is the shared owner.
 function getUsageStatus(usedFraction: number | undefined): UsageStatus | undefined {
-	if (usedFraction === undefined) return undefined;
-	if (usedFraction >= 1) return "exhausted";
-	if (usedFraction >= 0.9) return "warning";
-	return "ok";
+	return usedFraction === undefined ? undefined : usageStatusFromUsedFraction(usedFraction);
 }
 
 function formatDate(value: Date): string {
