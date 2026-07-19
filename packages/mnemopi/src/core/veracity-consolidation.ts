@@ -2,6 +2,7 @@ import type { Database } from "bun:sqlite";
 import { createHash } from "node:crypto";
 import { type DatabasePath, openDatabase } from "../db";
 import { toUtcIso } from "../util/datetime";
+import { truncateForLog } from "../util/log-format";
 
 export const VERACITY_WEIGHTS = Object.freeze({
 	stated: 1.0,
@@ -132,11 +133,7 @@ export function clampVeracity(raw: unknown, context = "veracity"): Veracity {
 	const norm = String(raw).trim().toLowerCase();
 	if (norm === "") return "unknown";
 	if (isVeracity(norm)) return norm;
-	const rawString = String(raw);
-	const rawForLog =
-		rawString.length > VERACITY_WARN_VALUE_CAP
-			? `${rawString.slice(0, VERACITY_WARN_VALUE_CAP)}...[truncated]`
-			: rawString;
+	const rawForLog = truncateForLog(String(raw), VERACITY_WARN_VALUE_CAP);
 	console.warn(`${context} received unknown veracity ${JSON.stringify(rawForLog)}; clamping to 'unknown'`);
 	return "unknown";
 }
