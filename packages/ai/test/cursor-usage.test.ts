@@ -135,6 +135,109 @@ describe("cursor usage provider", () => {
 			const limit = report?.limits[0];
 			expect(limit?.window?.resetsAt).toBe(Date.parse("2026-07-20T00:00:00.000Z"));
 		});
+
+		it("accepts each end-key alias directly (endOfMonth, resetsAt, nextReset)", () => {
+			for (const key of ["endOfMonth", "resetsAt", "nextReset"]) {
+				const payload = {
+					"gpt-4": { numRequests: 1, maxRequestUsage: 10 },
+					[key]: "2026-09-15T00:00:00.000Z",
+				};
+				const report = parseCursorUsage(payload);
+				expect(report?.limits[0]?.window?.resetsAt, `end key ${key}`).toBe(Date.parse("2026-09-15T00:00:00.000Z"));
+			}
+		});
+
+		it("prefers an end key over a start key when both are present", () => {
+			const payload = {
+				"gpt-4": { numRequests: 1, maxRequestUsage: 10 },
+				startOfMonth: "2026-07-01T00:00:00.000Z",
+				billingCycleEnd: "2026-07-18T00:00:00.000Z",
+			};
+			const report = parseCursorUsage(payload);
+			// billingCycleEnd is used verbatim; the +1 month start fallback never runs.
+			expect(report?.limits[0]?.window?.resetsAt).toBe(Date.parse("2026-07-18T00:00:00.000Z"));
+		});
+
+		it("falls back to each start-key alias plus one month (billingCycleStart, startOfBillingCycle)", () => {
+			for (const key of ["billingCycleStart", "startOfBillingCycle"]) {
+				const payload = {
+					"gpt-4": { numRequests: 1, maxRequestUsage: 10 },
+					[key]: "2026-07-05T00:00:00.000Z",
+				};
+				const report = parseCursorUsage(payload);
+				expect(report?.limits[0]?.window?.resetsAt, `start key ${key}`).toBe(
+					Date.parse("2026-08-05T00:00:00.000Z"),
+				);
+			}
+		});
+
+		it("omits resetsAt when no cycle field is present", () => {
+			const payload = { "gpt-4": { numRequests: 1, maxRequestUsage: 10 } };
+			const report = parseCursorUsage(payload);
+			const window = report?.limits[0]?.window;
+			expect(window).toBeDefined();
+			expect(window?.id).toBe("monthly");
+			expect(window?.resetsAt).toBeUndefined();
+		});
+
+		it("reads numeric timestamps in both seconds and milliseconds", () => {
+			// Below 1e12 is treated as epoch seconds and scaled to ms.
+			const seconds = parseCursorUsage({
+				"gpt-4": { numRequests: 1, maxRequestUsage: 10 },
+				resetsAt: 1_780_000_000,
+			});
+			expect(seconds?.limits[0]?.window?.resetsAt).toBe(1_780_000_000_000);
+			// At/above 1e12 the value is already milliseconds and passes through.
+			const millis = parseCursorUsage({
+				"gpt-4": { numRequests: 1, maxRequestUsage: 10 },
+				resetsAt: 1_780_000_000_000,
+			});
+			expect(millis?.limits[0]?.window?.resetsAt).toBe(1_780_000_000_000);
+		});
+
+		it("marks a fully consumed bucket as exhausted", () => {
+			const report = parseCursorUsage({ "gpt-4": { numRequests: 100, maxRequestUsage: 100 } });
+			const limit = report?.limits[0];
+			expect(limit?.amount.usedFraction).toBe(1);
+			expect(limit?.amount.remaining).toBe(0);
+			expect(limit?.status).toBe("exhausted");
+		});
+
+		it("guards against a zero limit instead of dividing by zero", () => {
+			const report = parseCursorUsage({ "gpt-4": { used: 5, limit: 0 } });
+			const limit = report?.limits[0];
+			expect(limit?.amount.limit).toBe(0);
+			expect(limit?.amount.remaining).toBe(0);
+			expect(limit?.amount.usedFraction).toBe(0);
+			expect(limit?.amount.remainingFraction).toBe(0);
+			expect(limit?.status).toBe("ok");
+		});
+
+		it("classifies stripe/billing keys and usd* fields as USD spend", () => {
+			const report = parseCursorUsage({
+				stripeBalance: { usdUsed: 12, usdLimit: 40 },
+				billingMeter: { used: 8, limit: 10 },
+			});
+			expect(report).not.toBeNull();
+			const stripe = report?.limits.find(l => l.id === "cursor:usd:stripebalance");
+			expect(stripe?.amount.unit).toBe("usd");
+			expect(stripe?.label).toBe("stripeBalance spend");
+			expect(stripe?.amount.used).toBe(12);
+			expect(stripe?.amount.limit).toBe(40);
+			const billing = report?.limits.find(l => l.id === "cursor:usd:billingmeter");
+			expect(billing?.amount.unit).toBe("usd");
+			// 8/10 = 0.8 -> ok (below the 0.9 warning threshold).
+			expect(billing?.status).toBe("ok");
+		});
+
+		it("skips a bucket that reports usage but no limit", () => {
+			const report = parseCursorUsage({
+				"has-both": { numRequests: 3, maxRequestUsage: 10 },
+				"used-only": { numRequests: 5 },
+			});
+			expect(report?.limits).toHaveLength(1);
+			expect(report?.limits[0]?.id).toBe("cursor:requests:has-both");
+		});
 	});
 
 	describe("default registration", () => {
@@ -315,6 +418,91 @@ describe("cursor usage provider", () => {
 			);
 
 			expect(report).toBeNull();
+		});
+
+		it("authorizes with the api key when the credential is an api_key", async () => {
+			let seenAuth: string | undefined;
+			const mockFetch = (async (_input: string | URL, init?: RequestInit): Promise<Response> => {
+				const headers = (init?.headers ?? {}) as Record<string, string>;
+				seenAuth = headers.Authorization;
+				return new Response(JSON.stringify({ "gpt-4": { numRequests: 1, maxRequestUsage: 10 } }), { status: 200 });
+			}) as unknown as typeof fetch;
+
+			const report = await cursorUsageProvider.fetchUsage(
+				{ provider: "cursor", credential: { type: "api_key", apiKey: "key-abc" } },
+				{ fetch: mockFetch },
+			);
+
+			expect(seenAuth).toBe("Bearer key-abc");
+			expect(report?.limits[0]?.id).toBe("cursor:requests:gpt-4");
+		});
+
+		it("uses an overridden base URL and trims its trailing slash", async () => {
+			let seenUrl: string | undefined;
+			const mockFetch = (async (input: string | URL): Promise<Response> => {
+				seenUrl = typeof input === "string" ? input : input.toString();
+				return new Response(JSON.stringify({ "gpt-4": { numRequests: 1, maxRequestUsage: 10 } }), { status: 200 });
+			}) as unknown as typeof fetch;
+
+			await cursorUsageProvider.fetchUsage(
+				{
+					provider: "cursor",
+					baseUrl: "https://cursor.internal//",
+					credential: { type: "oauth", accessToken: "t" },
+				},
+				{ fetch: mockFetch },
+			);
+
+			expect(seenUrl).toBe("https://cursor.internal/auth/usage");
+		});
+
+		it("falls back to the credential apiEndpoint for the base URL", async () => {
+			let seenUrl: string | undefined;
+			const mockFetch = (async (input: string | URL): Promise<Response> => {
+				seenUrl = typeof input === "string" ? input : input.toString();
+				return new Response(JSON.stringify({ "gpt-4": { numRequests: 1, maxRequestUsage: 10 } }), { status: 200 });
+			}) as unknown as typeof fetch;
+
+			await cursorUsageProvider.fetchUsage(
+				{
+					provider: "cursor",
+					credential: { type: "api_key", apiKey: "k", apiEndpoint: "https://tenant.cursor.sh" },
+				},
+				{ fetch: mockFetch },
+			);
+
+			expect(seenUrl).toBe("https://tenant.cursor.sh/auth/usage");
+		});
+
+		it("carries projectId into the report metadata", async () => {
+			const mockFetch = (async (): Promise<Response> =>
+				new Response(JSON.stringify({ "gpt-4": { numRequests: 1, maxRequestUsage: 10 } }), {
+					status: 200,
+				})) as unknown as typeof fetch;
+
+			const report = await cursorUsageProvider.fetchUsage(
+				{
+					provider: "cursor",
+					credential: { type: "oauth", accessToken: "t", projectId: "proj_42" },
+				},
+				{ fetch: mockFetch },
+			);
+
+			expect(report?.metadata).toEqual({ projectId: "proj_42" });
+		});
+
+		it("attaches no metadata when the credential carries no identity fields", async () => {
+			const mockFetch = (async (): Promise<Response> =>
+				new Response(JSON.stringify({ "gpt-4": { numRequests: 1, maxRequestUsage: 10 } }), {
+					status: 200,
+				})) as unknown as typeof fetch;
+
+			const report = await cursorUsageProvider.fetchUsage(
+				{ provider: "cursor", credential: { type: "oauth", accessToken: "t" } },
+				{ fetch: mockFetch },
+			);
+
+			expect(report?.metadata).toBeUndefined();
 		});
 	});
 });
