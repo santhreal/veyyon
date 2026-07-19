@@ -12,7 +12,7 @@ import { clamp, DEFAULT_TAB_WIDTH } from "@veyyon/utils";
 
 export { Ellipsis } from "@veyyon/natives";
 
-export { clamp, DEFAULT_TAB_WIDTH } from "@veyyon/utils";
+export { clamp, clampLow, DEFAULT_TAB_WIDTH } from "@veyyon/utils";
 
 export type HangulCompatibilityJamoWidth = "platform" | "unicode" | 1 | 2;
 

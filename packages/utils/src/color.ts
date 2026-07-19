@@ -12,7 +12,7 @@
  * ```
  */
 
-import { clamp } from "./math";
+import { clamp, clamp01 } from "./math";
 
 export interface HSV {
 	/** Hue in degrees (0-360) */
@@ -56,10 +56,7 @@ export function hexToRgb(hex: string): RGB {
  * Convert RGB to hex color string.
  */
 export function rgbToHex(rgb: RGB): string {
-	const toHex = (n: number) =>
-		Math.max(0, Math.min(255, Math.round(n)))
-			.toString(16)
-			.padStart(2, "0");
+	const toHex = (n: number) => clamp(Math.round(n), 0, 255).toString(16).padStart(2, "0");
 	return `#${toHex(rgb.r)}${toHex(rgb.g)}${toHex(rgb.b)}`;
 }
 
@@ -195,10 +192,10 @@ export function adjustHsv(hex: string, adj: HSVAdjustment): string {
 		if (hsv.h < 0) hsv.h += 360;
 	}
 	if (adj.s !== undefined) {
-		hsv.s = Math.max(0, Math.min(1, hsv.s * adj.s));
+		hsv.s = clamp01(hsv.s * adj.s);
 	}
 	if (adj.v !== undefined) {
-		hsv.v = Math.max(0, Math.min(1, hsv.v * adj.v));
+		hsv.v = clamp01(hsv.v * adj.v);
 	}
 	return hsvToHex(hsv);
 }

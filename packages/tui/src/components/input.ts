@@ -4,6 +4,7 @@ import { extractPrintableText } from "../keys";
 import { KillRing } from "../kill-ring";
 import { type Component, CURSOR_MARKER, type Focusable } from "../tui";
 import {
+	clampLow,
 	getSegmenter,
 	getWordNavKind,
 	moveWordLeft,
@@ -431,20 +432,20 @@ export class Input implements Component, Focusable {
 		let startCol = 0;
 		if (totalCols > availableWidth) {
 			const half = Math.floor(availableWidth / 2);
-			startCol = Math.max(0, Math.min(maxStart, cursorCols - half));
+			startCol = clampLow(cursorCols - half, 0, maxStart);
 
 			// Ensure the cursor grapheme is inside the viewport (and fits fully if wide).
 			const maxCursorRel = Math.max(0, availableWidth - cursorGWidth);
 			const cursorRel = cursorCols - startCol;
 			if (cursorRel > maxCursorRel) {
-				startCol = Math.max(0, Math.min(maxStart, cursorCols - maxCursorRel));
+				startCol = clampLow(cursorCols - maxCursorRel, 0, maxStart);
 			}
 		}
 
 		const visibleText = sliceWithWidth(displayValue, startCol, availableWidth, true).text;
 		const prefixText = sliceWithWidth(displayValue, startCol, Math.max(0, cursorCols - startCol), true).text;
 		let cursorDisplay = prefixText.length;
-		cursorDisplay = Math.max(0, Math.min(cursorDisplay, visibleText.length));
+		cursorDisplay = clampLow(cursorDisplay, 0, visibleText.length);
 
 		// Build the visible line and insert the cursor marker at the buffer cursor.
 		const graphemes = [...segmenter.segment(visibleText.slice(cursorDisplay))];

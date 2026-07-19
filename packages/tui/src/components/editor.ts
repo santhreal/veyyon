@@ -12,6 +12,7 @@ import { KillRing } from "../kill-ring";
 import type { SymbolTheme } from "../symbols";
 import { type Component, CURSOR_MARKER, type Focusable } from "../tui";
 import {
+	clampLow,
 	getSegmenter,
 	getWordNavKind,
 	moveWordLeft,
@@ -568,7 +569,7 @@ export class Editor implements Component, Focusable {
 	}
 
 	setAutocompleteMaxVisible(maxVisible: number): void {
-		const newMaxVisible = Number.isFinite(maxVisible) ? Math.max(3, Math.min(20, Math.floor(maxVisible))) : 5;
+		const newMaxVisible = Number.isFinite(maxVisible) ? clampLow(Math.floor(maxVisible), 3, 20) : 5;
 		if (this.#autocompleteMaxVisible !== newMaxVisible) {
 			this.#autocompleteMaxVisible = newMaxVisible;
 		}
@@ -1526,7 +1527,7 @@ export class Editor implements Component, Focusable {
 						}
 						if (hasCursorInChunk) {
 							// Clamp into the displayed text (cursor may sit in trimmed/skipped whitespace)
-							adjustedCursorPos = Math.max(0, Math.min(cursorPos - chunk.startIndex, chunk.text.length));
+							adjustedCursorPos = clampLow(cursorPos - chunk.startIndex, 0, chunk.text.length);
 						}
 					}
 
@@ -2781,7 +2782,7 @@ export class Editor implements Component, Focusable {
 		const visualLines = this.#buildVisualLineMap(this.#lastLayoutWidth);
 		const currentVisualLine = this.#findCurrentVisualLine(visualLines);
 		const step = this.#getPageScrollStep(visualLines.length);
-		const targetVisualLine = Math.max(0, Math.min(visualLines.length - 1, currentVisualLine + direction * step));
+		const targetVisualLine = clampLow(currentVisualLine + direction * step, 0, visualLines.length - 1);
 		if (targetVisualLine === currentVisualLine) return;
 		this.#moveToVisualLine(visualLines, currentVisualLine, targetVisualLine);
 	}
