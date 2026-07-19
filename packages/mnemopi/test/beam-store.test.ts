@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "bun:test";
+import { afterEach, describe, expect, it, spyOn } from "bun:test";
 import { recallEnhanced } from "@veyyon/mnemopi/core/beam/recall";
 import { initBeam } from "@veyyon/mnemopi/core/beam/schema";
 import {
@@ -19,10 +19,21 @@ import {
 } from "@veyyon/mnemopi/core/beam/store";
 import type { BeamEvent, BeamMemoryState } from "@veyyon/mnemopi/core/beam/types";
 import { openDatabase } from "@veyyon/mnemopi/db";
+import { logger } from "@veyyon/utils";
+
+interface RecordedAnnotation {
+	memoryId: string;
+	kind: string;
+	value: string;
+}
 
 const states: BeamMemoryState[] = [];
 
-function makeState(sessionId = "session-a", events: BeamEvent[] = []): BeamMemoryState {
+function makeState(
+	sessionId = "session-a",
+	events: BeamEvent[] = [],
+	annotations: BeamMemoryState["annotations"] = null,
+): BeamMemoryState {
 	const db = openDatabase(":memory:");
 	initBeam(db);
 	const state: BeamMemoryState = {
@@ -41,7 +52,7 @@ function makeState(sessionId = "session-a", events: BeamEvent[] = []): BeamMemor
 				events.push({ ...event, type: `plugin:${event.type}` });
 			},
 		},
-		annotations: null,
+		annotations,
 		triples: null,
 		episodicGraph: null,
 		veracityConsolidator: null,
@@ -283,5 +294,109 @@ describe("fact-id read path (issue #4725)", () => {
 		expect(forgetWorking(beam, "fact-missing")).toBe(false);
 		expect(forgetWorking(beam, "shared-id")).toBe(true);
 		expect(get(beam, "shared-id")?.memory_store).toBe("fact");
+	});
+});
+
+describe("trust tier, temporal annotations, and episodic invalidation", () => {
+	function trustTier(beam: BeamMemoryState, id: string): string {
+		return (beam.db.prepare("SELECT trust_tier FROM working_memory WHERE id = ?").get(id) as { trust_tier: string })
+			.trust_tier;
+	}
+
+	it("derives the trust tier from the source when none is supplied, honors a valid explicit tier, and falls back on an unknown one", () => {
+		const beam = makeState();
+
+		// Source drives the tier when the caller passes none: writer-facing sources
+		// map to EXTERNAL_WRITE, ingestion sources to IMPORTED, everything else STATED.
+		expect(trustTier(beam, remember(beam, "from a tool call", { source: "tool" }))).toBe("EXTERNAL_WRITE");
+		expect(trustTier(beam, remember(beam, "from the api", { source: "api" }))).toBe("EXTERNAL_WRITE");
+		expect(trustTier(beam, remember(beam, "from the system", { source: "system" }))).toBe("EXTERNAL_WRITE");
+		expect(trustTier(beam, remember(beam, "restored from import", { source: "import" }))).toBe("IMPORTED");
+		expect(trustTier(beam, remember(beam, "restored from imported set", { source: "imported" }))).toBe("IMPORTED");
+		expect(trustTier(beam, remember(beam, "restored from backup", { source: "backup" }))).toBe("IMPORTED");
+		expect(trustTier(beam, remember(beam, "a plain chat turn", { source: "conversation" }))).toBe("STATED");
+
+		// An explicit, recognized tier overrides the source-derived default.
+		expect(trustTier(beam, remember(beam, "explicit derived tier", { source: "tool", trustTier: "DERIVED" }))).toBe(
+			"DERIVED",
+		);
+
+		// An explicit but unrecognized tier is rejected and clamped to STATED, not
+		// stored verbatim.
+		expect(trustTier(beam, remember(beam, "bogus explicit tier", { source: "tool", trustTier: "MADE_UP" }))).toBe(
+			"STATED",
+		);
+	});
+
+	it("writes occurred_on for every memory and has_source only for non-conversation sources through the wired store", () => {
+		const recorded: RecordedAnnotation[] = [];
+		const beam = makeState("session-a", [], {
+			add(memoryId: string, kind: string, value: string): number {
+				recorded.push({ memoryId, kind, value });
+				return 1;
+			},
+		});
+
+		const toolId = remember(beam, "Tool wrote this", {
+			source: "tool",
+			timestamp: "2026-03-04T09:15:00.000Z",
+		});
+		const chatId = remember(beam, "User said this", {
+			source: "conversation",
+			timestamp: "2026-03-05T09:15:00.000Z",
+		});
+
+		// occurred_on carries the date slice for both; has_source is added only for
+		// the tool source, never the conversation one.
+		expect(recorded).toEqual([
+			{ memoryId: toolId, kind: "occurred_on", value: "2026-03-04" },
+			{ memoryId: toolId, kind: "has_source", value: "tool" },
+			{ memoryId: chatId, kind: "occurred_on", value: "2026-03-05" },
+		]);
+	});
+
+	it("surfaces a failing annotation write loudly and still stores the memory", () => {
+		const warn = spyOn(logger, "warn").mockImplementation(() => {});
+		const beam = makeState("session-a", [], {
+			add(): number {
+				throw new Error("annotation-store-down");
+			},
+		});
+		try {
+			const id = remember(beam, "Durable despite annotation failure", { source: "tool" });
+
+			// The write still lands: enrichment is best-effort and must not block it.
+			expect(get(beam, id)?.content).toBe("Durable despite annotation failure");
+
+			// The failure is surfaced, not swallowed: one warn carrying the memory id
+			// and the original error message.
+			expect(warn).toHaveBeenCalledTimes(1);
+			const [message, context] = warn.mock.calls[0] as [string, Record<string, unknown>];
+			expect(message).toContain("temporal annotation enrichment failed");
+			expect(context).toMatchObject({ memoryId: id, error: "annotation-store-down" });
+		} finally {
+			warn.mockRestore();
+		}
+	});
+
+	it("invalidates a memory that lives only in episodic storage", () => {
+		const beam = makeState();
+		beam.db
+			.prepare(
+				"INSERT INTO episodic_memory (id, content, source, timestamp, session_id, importance, metadata_json, veracity) VALUES (?, ?, 'sleep', ?, ?, 0.6, '{}', 'unknown')",
+			)
+			.run("only-episodic", "Consolidated episode", "2026-05-30T00:00:00.000Z", beam.sessionId);
+
+		// No working row shadows the id, so invalidate falls through to the episodic
+		// UPDATE arm and reports the change.
+		expect(invalidate(beam, "only-episodic", "replacement-9")).toBe(true);
+		const row = beam.db
+			.prepare("SELECT valid_until, superseded_by FROM episodic_memory WHERE id = ?")
+			.get("only-episodic") as { valid_until: string | null; superseded_by: string | null };
+		expect(row.superseded_by).toBe("replacement-9");
+		expect(row.valid_until).not.toBeNull();
+
+		// An id present nowhere returns false from both arms.
+		expect(invalidate(beam, "ghost-id")).toBe(false);
 	});
 });
